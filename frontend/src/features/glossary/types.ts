@@ -157,6 +157,14 @@ export type GlossaryEntitySummary = {
   // Optional author-set disambiguator (e.g. a world/realm name) for a name that
   // legitimately recurs across different in-story contexts — D-GLOSSARY-ENTITY-SCOPE.
   scope_label?: string;
+  /** Secondary readings of this entity's kind — the facets. 西岐 is an organization 52
+   *  times and a location 38; both are true, and before the kind-vote ledger existed one of
+   *  them was erased by whichever extraction batch named it first. Absent for most entities. */
+  kind_labels?: KindSummary[];
+  /** A kind the model currently LEADS with that has not cleared the switch threshold. The
+   *  writeback used to report `updated` and never `conflict`, so a standing disagreement
+   *  between the model and the store was invisible. Absent when there is none. */
+  kind_conflict?: KindSummary | null;
   tags: string[];
   chapter_link_count: number;
   translation_count: number;

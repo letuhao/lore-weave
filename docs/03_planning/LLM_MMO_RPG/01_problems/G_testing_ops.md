@@ -12,7 +12,7 @@ generated_by: scripts/chunk_doc.py
 
 **Problem:** Unit tests assume determinism. LLM output varies. Regression test suites become flaky or meaningless.
 
-**Resolved by:** 3-tier testing framework in [`05_qa/LLM_MMO_TESTING_STRATEGY.md §2`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#2-g1--ci-for-non-deterministic-llm-flows):
+**Resolved by:** 3-tier testing framework in [`05_qa/LLM_MMO_TESTING_STRATEGY.md §2`](../../../05_qa/LLM_MMO_TESTING_STRATEGY.md#2-g1--ci-for-non-deterministic-llm-flows):
 
 - Tier 1 (G1-D1) — unit tests with frozen mock LLM (prompt-hash keyed fixtures; <1s; per-PR)
 - Tier 2 (G1-D2) — nightly integration on cheap real LLM (~30 scenarios, 85% pass-rate threshold)
@@ -20,7 +20,7 @@ generated_by: scripts/chunk_doc.py
 - Fixture maintenance via `admin-cli regen-fixtures` with mandatory human review (G1-D4)
 - Canonical scenario library at `docs/05_qa/LLM_TEST_SCENARIOS.md` (G1-D5)
 
-Decisions G1-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+Decisions G1-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 **Residual `OPEN`:** rubric dimension weights, judge-model bias calibration — V1 tuning.
 
@@ -28,7 +28,7 @@ Decisions G1-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
 
 **Problem:** How to load-test an MMO with LLM in the loop? Real LLM costs real money; mocked LLM doesn't exercise real latency/failure modes.
 
-**Resolved by:** Tiered load matrix in [`05_qa/LLM_MMO_TESTING_STRATEGY.md §3`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#3-g2--multi-user-load--simulation-testing):
+**Resolved by:** Tiered load matrix in [`05_qa/LLM_MMO_TESTING_STRATEGY.md §3`](../../../05_qa/LLM_MMO_TESTING_STRATEGY.md#3-g2--multi-user-load--simulation-testing):
 
 - Tier 1 (G2-D1) — mocked LLM at 1000 concurrency for pipeline stress, hourly
 - Tier 2 (G2-D2) — real LLM at 10-20 concurrency for latency/throughput, daily on staging
@@ -44,7 +44,7 @@ Decisions G2-D1..D5 locked 2026-04-23.
 
 **Problem:** In live play, NPC may say things that contradict canon. How to detect and alert?
 
-**Resolved by:** 5-layer detection + feedback loop in [`05_qa/LLM_MMO_TESTING_STRATEGY.md §4`](../../05_qa/LLM_MMO_TESTING_STRATEGY.md#4-g3--canon-drift-detection-in-production):
+**Resolved by:** 5-layer detection + feedback loop in [`05_qa/LLM_MMO_TESTING_STRATEGY.md §4`](../../../05_qa/LLM_MMO_TESTING_STRATEGY.md#4-g3--canon-drift-detection-in-production):
 
 - Layer 1 (G3-D1) — async post-response lint against knowledge-service oracle, logs to `canon_drift_log`
 - Layer 2 (G3-D2) — user "that's not right" button with categorized reports + per-NPC aggregation

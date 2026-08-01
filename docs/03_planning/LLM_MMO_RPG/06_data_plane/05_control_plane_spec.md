@@ -294,7 +294,7 @@ Separate from the gRPC surface. Operator-only CLI + small web UI for:
 - Inspecting invalidation audit log
 - Inspecting per-reality cache hotset
 
-Admin operations are gated by human approval per [02_storage/R13](../02_storage/R13_admin_discipline.md) and the existing [`ADMIN_ACTION_POLICY.md`](../../02_governance/ADMIN_ACTION_POLICY.md) — this axiom does not create a new governance model, it plugs into the existing one.
+Admin operations are gated by human approval per [02_storage/R13](../02_storage/R13_admin_discipline.md) and the existing [`ADMIN_ACTION_POLICY.md`](../../../02_governance/ADMIN_ACTION_POLICY.md) — this axiom does not create a new governance model, it plugs into the existing one.
 
 ### Failover drill
 
@@ -329,7 +329,7 @@ Monthly failover drill triggered via admin CLI:
 - [DP-A8](02_invariants.md#dp-a8--durable-tier-delegates-to-02_storage-unchanged) — durable tier in 02_storage unchanged
 - [DP-K9](04d_capability_and_lifecycle.md#dp-k9--capability-tokens), [DP-K10](04d_capability_and_lifecycle.md#dp-k10--sdk-initialization-and-session-binding) — SDK side of CP interactions
 - [02_storage/R02](../02_storage/R02_projection_rebuild.md) — rebuild machinery DP-C5 orchestrates
-- [02_storage/R13](../02_storage/R13_admin_discipline.md), [`ADMIN_ACTION_POLICY.md`](../../02_governance/ADMIN_ACTION_POLICY.md) — admin governance DP-C10 plugs into
+- [02_storage/R13](../02_storage/R13_admin_discipline.md), [`ADMIN_ACTION_POLICY.md`](../../../02_governance/ADMIN_ACTION_POLICY.md) — admin governance DP-C10 plugs into
 - [02_storage/S11](../02_storage/S11_service_to_service_auth.md) — mTLS used by DP-C3
 - [06_cache_coherency.md](06_cache_coherency.md) (next) — detailed coherency protocol behind DP-C6
 

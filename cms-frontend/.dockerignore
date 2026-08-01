@@ -1,0 +1,17 @@
+# Build context = cms-frontend, so the repo-root .dockerignore does not apply.
+#
+# `node_modules` is the load-bearing line: the Dockerfile runs `npm install` and only THEN
+# `COPY . .`, so without this the host's tree lands on top of the install and the image builds
+# against whatever a developer has on disk. ai-gateway's image failed exactly this way on
+# 2026-08-02. This app is on TypeScript 7 deliberately (the React 19 + TS 7 upgrade), so the
+# host copy happens to match today — that is a coincidence, not the contract.
+#
+# `package-lock.json` is excluded because the Dockerfile deliberately copies only
+# `package.json`; shipping a lock the build never reads would only mislead a reader.
+node_modules
+dist
+package-lock.json
+.git
+coverage
+*.tsbuildinfo
+*.md

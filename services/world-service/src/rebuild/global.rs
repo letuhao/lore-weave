@@ -149,6 +149,7 @@ mod tests {
             recorded_at: format!("2026-01-01T00:00:{secs:02}.000000Z"),
             payload: serde_json::json!({ "npc_id": npc, "session_id": sid, "aggregate_id": sid }),
             metadata: None,
+            ruleset_digest: None,
         }
     }
 
@@ -165,6 +166,7 @@ mod tests {
             recorded_at: format!("2026-01-01T00:00:{secs:02}.000000Z"),
             payload: serde_json::json!({ "text": "hi" }),
             metadata: Some(serde_json::json!({ "session_id": sid })),
+            ruleset_digest: None,
         }
     }
 

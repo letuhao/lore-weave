@@ -111,6 +111,7 @@ fn decode_event(row: &sqlx::postgres::PgRow) -> Result<EventEnvelope, String> {
         recorded_at: row.try_get("recorded_at").map_err(col_err)?,
         payload: row.try_get("payload").map_err(col_err)?,
         metadata: row.try_get("metadata").map_err(col_err)?,
+        ruleset_digest: None,
     })
 }
 

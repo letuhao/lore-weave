@@ -257,7 +257,7 @@ Rule sketch (to be implemented in 05 work):
 - Critical-L1 sync pre-response check (~50-100ms) on LLM output before streaming to user
 - Non-critical L1 + L2 drift → async G3 linter (existing)
 
-Cross-ref added to [03 §3 four-layer canon](03_MULTIVERSE_MODEL.md) noting L1_severity tag reserved.
+Cross-ref added to [03 §3 four-layer canon](../03_multiverse/01_four_layer_canon.md) noting L1_severity tag reserved.
 
 ### 12R.7 Projection Rebuild Determinism (P4)
 

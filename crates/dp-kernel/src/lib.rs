@@ -101,6 +101,7 @@
 
 pub mod aggregate;
 pub mod canon_cache;
+pub mod channel;
 pub mod canon_history;
 pub mod capacity;
 pub mod dependencies;
@@ -144,6 +145,9 @@ pub use upcaster::{Upcaster, UpcasterChain, UpcasterRegistry};
 // ── Cycle 17 / L4.A re-exports ────────────────────────────────────────────
 pub use aggregate::AggregateMeta;
 pub use event::{Event, EventFromEnvelope};
+pub use channel::{
+    acquire_writer_lease, ChannelAppended, ChannelError, ChannelId, ChannelWriter, WriterLease,
+};
 pub use event_store::{EventStore, EventStoreError, EventStoreResult};
 pub use event_store_pg::{status_accepts_append, AppendGuard, MetaFreezeGuard, PgEventStore};
 pub use metadata::EventMetadata;

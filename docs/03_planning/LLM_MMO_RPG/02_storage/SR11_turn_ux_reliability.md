@@ -7,6 +7,8 @@ note: Not produced by scripts/chunk_doc.py split; authored as new SR-series cont
 
 ## 12AN. Turn-Based Game Reliability UX — SR11 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #5).** The turn state machine's awaited `llm_processing` state (§12AN.2) and the per-session R7 queue semantics (`queued`, `position_in_queue`) assume a synchronous awaited LLM turn admitted at the session — the current model is dispatch-**never-await** (SL-A3/A4) with deadline + fallback, and admission is at the channel/island (SL-A9). The UX layering (indicators, presence, disconnect policy, error discipline) remains valid over the replacement states. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md). Status markers below predate the island/commit-service model.
+
 **Origin:** SRE Review SR11 — the first SR concern at the product+infra boundary. SR1-SR10 made the platform reliable; SR11 makes failures **coherent to the user**. A turn takes 60-120s (SR1-D2 LLM SLO); during that window, LLMs time out, WS connections drop, pods scale down (SR6-D10), chaos drills fire (SR7), degraded modes activate (SR6-D5). Without disciplined UX, users see spinners-forever, duplicate messages, mysterious disconnects, or worse — they re-send a turn that already charged against S6 budget. SR11 makes every infra failure state map to a specific user-visible state with a clear affordance.
 
 ### 12AN.1 Problems closed

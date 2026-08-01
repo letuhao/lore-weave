@@ -1,0 +1,82 @@
+{
+  "_why": [
+    "PGN-A8: a fixture that already contains the answers makes every stage vacuous.",
+    "This file is the ANSWER KEY and it lives OUTSIDE the corpus on purpose. The first draft",
+    "carried the same information in `<!-- fixture role: ... -->` comments inside each corpus",
+    "file, which DEFEATED R6: the comment in neigong.md named 罡元, so the realm that is",
+    "supposed to be un-orderable because no page places it was sitting in the very page it must",
+    "be absent from. A `<!-- source: ... is_authored_source = FALSE -->` header leaked the",
+    "provenance the pipeline is meant to be tested on, too.",
+    "Metadata about a test must never live inside the thing under test. Enforced by",
+    "tests/test_wuxia_fixture_teeth.py::test_no_fixture_metadata_leaks_into_the_corpus."
+  ],
+
+  "provenance": {
+    "_rule": "PGN-A14 — says[] may cite only is_authored_source=true. A wiki page is somebody's summary.",
+    "book/synopsis.md": true,
+    "book/ch03.md": true,
+    "book/ch11.md": true,
+    "book/ch27.md": true,
+    "wiki/neigong.md": false,
+    "wiki/jianshu.md": false,
+    "wiki/wuxing.md": false,
+    "wiki/hantan_sect.md": false,
+    "wiki/chen_xuanyi.md": false
+  },
+
+  "systems": {
+    "internal_energy": { "zh": "內功", "type": "Stage",     "body_or_soul": "Body" },
+    "swordsmanship":   { "zh": "劍術", "type": "Skill",     "body_or_soul": "Body", "derives_from": "comprehension" },
+    "comprehension":   { "zh": "悟性", "type": "Attribute", "body_or_soul": "Soul" }
+  },
+
+  "teeth": [
+    {
+      "id": "R1", "tests": "PGN-A5 — the model may take names and order, never magnitude",
+      "present": { "wiki/neigong.md": ["引氣", "凝脈", "蘊海", "返樸", "本書無丹藥"] },
+      "note": "Four realms named in sequence; no cap, no rate, no duration-as-rule anywhere in the page (guarded by test_the_progression_page_states_no_arabic_number). 本書無丹藥 is a STATED FORECLOSURE, not an omission — the book rules pills out, so AtMaxPlus.item_consumption must be None BY CITATION rather than by nobody asking. That is a different and stronger fact than not_stated, and the pipeline must be able to tell them apart."
+    },
+    {
+      "id": "R2", "tests": "the NAMING owner — one pattern, expanded deterministically",
+      "present_once": { "wiki/neigong.md": "每境分三重" },
+      "note": "Stated exactly once. 15 tier names must come from expanding this, not from invention."
+    },
+    {
+      "id": "R3", "tests": "PGN-A10 §2.1 — the fold must REFUSE and mint a new S2 question",
+      "present": { "wiki/neigong.md": ["每境分三重"], "wiki/jianshu.md": ["凝脈第五重"] },
+      "note": "三重 vs 第五重. Two reader-built pages, two contributors, one contradiction."
+    },
+    {
+      "id": "R4", "tests": "enrichment does real work — a system implied ONLY by its effects",
+      "present": { "book/ch11.md": ["打熬筋骨"], "wiki/hantan_sect.md": ["打熬筋骨"] },
+      "absent_everywhere": ["外功"],
+      "note": "Bronze skin, blades that stop at an inch, 30 years unbroken. Never named, never given realms. says[] cannot cover it; a proposed_text with NO span must."
+    },
+    {
+      "id": "R5", "tests": "the pipeline must be able to DISCARD",
+      "present": { "wiki/hantan_sect.md": ["紅梅", "灰袍", "潭醒", "寒食"] },
+      "note": "Four details with zero mechanical consequence. A pipeline that absorbs everything turns set-dressing into rules."
+    },
+    {
+      "id": "R6", "tests": "PGN-A4 + §4.3 — not_stated on a required field ⇒ an S5 refusal naming it",
+      "present": { "wiki/hantan_sect.md": ["罡元"] },
+      "absent":  { "wiki/neigong.md": ["罡元"] },
+      "note": "A realm NAMED but never ORDERED. THIS IS THE ONE THE FIRST DRAFT BROKE — see _why."
+    },
+    {
+      "id": "R7", "tests": "PGN-A20 — an out-of-scope element is a refusal that NAMES ITS OWNER",
+      "present": { "wiki/neigong.md": ["寒潭"], "book/ch27.md": ["寒潭"] },
+      "note": "閉關 → TrainingSource::Time (generated). 寒潭 → LocationMatch(PlaceTypeRef) → REFUSED, citing the place module that does not exist."
+    },
+    {
+      "id": "R8", "tests": "PGN-A5's sharpest case — a magnitude in NARRATIVE form",
+      "present": { "book/ch27.md": ["閉關三年"], "wiki/chen_xuanyi.md": ["於原文無據"] },
+      "note": "Three years is what happened ONCE, not what is true. The wiki page explicitly rebuts the generalisation, so a pipeline that still derives tier_max from it ignored a cited refutation."
+    },
+    {
+      "id": "R9", "tests": "the one cross-system edge in POC-1 scope",
+      "present": { "wiki/wuxing.md": ["一日千里"], "book/ch03.md": ["一日千里"] },
+      "note": "悟性 → 劍術 derives_from. Stated in both an authored source and a wiki page."
+    }
+  ]
+}

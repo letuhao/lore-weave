@@ -59,7 +59,7 @@ PF_001 introduces no new EVT-T* category. Maps onto existing mechanism-level tax
 
 | PF event | EVT-T* | Sub-type | Producer | Notes |
 |---|---|---|---|---|
-| Place birth (canonical seed at RealityManifest bootstrap) | **EVT-T4 System** | `PlaceBorn` | DP-Internal RealityBootstrapper (Synthetic actor) | Emitted alongside cell-channel `MemberJoined` for canonical actors who start at this cell |
+| Place birth (canonical seed at RealityManifest bootstrap) | **EVT-T4 System** | `PlaceBorn` | DP-Internal RealityBootstrapper (Synthetic actor) | **⚠ CORRECTED 2026-07-26 (REC-17 / AUD-F17 #15/#16/#38 / RBS-F1): `PlaceBorn` births the place and *nothing else*. It STRICTLY PRECEDES cell-channel `MemberJoined`; it does not emit it.** Prior text read *"emitted alongside cell-channel `MemberJoined` for canonical actors who start at this cell"*, which is **circular**: ACT_001 requires `spawn_cell ∈ RealityManifest.places`, so actors cannot exist until places do — yet this clause emitted membership *for those actors* at place-birth. Membership is a **later bootstrap phase** (after `EntityBorn`/`ActorBorn`), per [`18` §3.2](../../18_reality_bootstrap.md) phase 7. The same clause also (a) gave CSC_001 §15.1 a **zero-width window** for `ensure_cell_scene_layout` (which must run *after* `place.place_type` is readable and *before* `MemberJoined`), and (b) registered a **duplicate `MemberJoined` emission** — EF_001 §2.5 claims the same emission for `EntityBorn`, and the ownership matrix records both. Per PL_001 §3.4, DP is the sole emitter. |
 | Place runtime spawn (V1+: Forge author creates new place at runtime) | **EVT-T8 Administrative** | `Forge:CreatePlace` | world-service | V1+: Author-edit feature; PF-D7 procedural generation deferred |
 | Place structural-state transition (Pristine ↔ Damaged ↔ Destroyed ↔ Restored) | **EVT-T3 Derived** | `aggregate_type=place` (structural_state field delta) | Aggregate-Owner role (world-service post-validate) | Causal-ref to triggering EVT-T1 Submitted (PL_005 Strike Destructive) or EVT-T8 Administrative (Forge edit) |
 | Place narrative-drift edit | **EVT-T3 Derived** | `aggregate_type=place` (narrative_drift field delta) | Aggregate-Owner role | Triggered by author-edit OR V1+ in-fiction LLM proposal |
@@ -145,10 +145,12 @@ pub struct SeedUid(pub Uuid);                         // computed; never author-
 - Every cell channel MUST have a `place` row at bootstrap. Cells without place reject runtime ops with `place.missing_decl` (validated at first-use, not at channel creation — channel can exist briefly during bootstrap before place lands).
 - Higher-tier channels (continent/country/district/town) MUST NOT have place rows V1. Validated by `place_id.0` resolving to a cell-tier channel per DP channel-tree query.
 - `canon_ref` is REQUIRED. Author-created places use `BookCanonRef::AuthorCreated { reality_id, fiction_time, reason }` (PF-D12 watchpoint: BookCanonRef is a shared schema; ownership/registration deferred to future boundary cleanup).
-- `connections[].to_place` MUST resolve to existing place row (validated at write); orphan connections reject `place.connection_target_unknown`.
+- `connections[].to_place` MUST resolve to existing place row (~~validated at write~~ validated **end-of-batch within bootstrap phase 3; at write for runtime single-row writes** — REC-19, see note below); orphan connections reject `place.connection_target_unknown`.
 - `connections[].to_place` MUST NOT equal the place's own `place_id` (no self-loops); rejects `place.self_referential_connection`.
 - `fixture_seed[].slot_id` MUST be unique within the place's seed list; duplicate slot_ids reject `place.fixture_seed_uid_collision` (rule_id name preserved for namespace stability — collision detected via slot_id since seed_uid is derived).
 - `structural_state` transitions follow §7 state machine; forbidden transitions reject `place.invalid_structural_transition`.
+
+> **⚠ CORRECTED 2026-07-26 (REC-19): `to_place` referential validation is END-OF-BATCH within the bootstrap phase — not per-row write-time — for bootstrap writes.** Bootstrap materialises `place` rows one decl at a time ([`18_reality_bootstrap.md`](../../18_reality_bootstrap.md) §3.2 phase 3), so **any mutually-referencing connection pair — this doc's own canonical examples included (tavern back door ↔ alley)** — would fail per-row write-time validation: the first-written place references a `to_place` row that does not yet exist. Fix, per RBS-D6's per-phase validator rule (seed-time validators run per phase, immediately after that phase's emissions): during bootstrap, the `place.connection_target_unknown` referential check evaluates **once at the end of phase 3, over the complete batch of that phase's place rows** (gate_slot_id fixture resolution, being place-local, stays per-row). Runtime single-row writes (Forge edits, in-fiction structural changes) keep write-time checking unchanged. Same class as RLS-A9 / `18` §3.2.
 
 **Schema policy V1 — `narrative_drift` freeform JSON:**
 - V1 NO server-side schema validation. Authors write whatever JSON; LLM consumes via AssemblePrompt as opaque flavor input.
@@ -481,7 +483,7 @@ pub enum PlaceDestructionReason {
 | `place.duplicate_place` | second write attempt for `place_id` that already has a row | "Vị trí này đã được đăng ký." | No (write-time invariant) |
 | `place.invalid_structural_transition` | aggregate-owner attempts forbidden transition (§7) | "Chuyển đổi trạng thái cấu trúc không hợp lệ." | No (write-time validator) |
 | `place.unknown_place` | `PlaceId` resolves to no `place` row | "Không tìm thấy vị trí." | No (always reject) |
-| `place.connection_target_unknown` | ConnectionDecl `to_place` references non-existent place | "Đích kết nối không tồn tại." | No (write-time validator) |
+| `place.connection_target_unknown` | ConnectionDecl `to_place` references non-existent place | "Đích kết nối không tồn tại." | No (~~write-time validator~~ **end-of-batch within bootstrap phase 3; write-time for runtime single-row writes** — ⚠ CORRECTED 2026-07-26 (REC-19), see §3 note) |
 | `place.connection_locked` | Travel attempt through Locked connection without satisfying gate (V1: always reject; V1+ key-matching) | "Lối đi đã khoá." | No (V1; soft-override may activate V1+ if Examine-the-lock is needed) |
 | `place.connection_private` | Travel attempt through Private connection without canonical residency match | "Lối đi riêng tư, không được phép." | No |
 | `place.connection_hidden` | Travel attempt through undiscovered Hidden connection (V1: visible to all so does not fire; V1+30d when discovery flags land) | "Không nhìn thấy lối đi nào ở đây." | Yes (Examine-the-area can hint per V1+ discovery feature) |
@@ -568,6 +570,18 @@ write place row { place_id: cell:yen_vu_lau, place_type: Tavern, structural_stat
 For each fixture_seed[i]: deterministic EnvObjectId via UUID v5; write entity_binding row per EF_001 §13.1
 emit EVT-T4 System EntityBorn (per fixture) — these are cascaded with PlaceBorn in the same atomic batch
 ```
+
+> **⚠ REC-17 (2026-07-26) — canonical-actor membership is NOT part of this sequence.** The flow above
+> ends at fixture `EntityBorn`. Canonical **actors** are born in a later bootstrap phase (they
+> reference `spawn_cell`, which requires these place rows to exist first), and their cell-channel
+> `MemberJoined` is later still. See [`18` §3.2](../../18_reality_bootstrap.md): places = phase 3,
+> actors = phase 6, membership = phase 7.
+>
+> **§5 step 5 already said this** — *"NPC + PC canonical seeds … place actors at cells whose place
+> rows are now valid"* — and contradicted §2.5's *"alongside"* clause. §2.5 was the defect; §5 was
+> right. Five documents (PL_001b §16.2, ACT_001, PCS_001, REP_001, GEO_001 §11) currently give five
+> different canonical-seed orderings while all citing §16.2 as authority; **PL_001b §16.2 is the
+> single normative list** and the other four are being corrected to it.
 
 ### 14.2 Travel through public connection (PL_002 /travel)
 

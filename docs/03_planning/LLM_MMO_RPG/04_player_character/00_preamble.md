@@ -10,7 +10,7 @@ generated_by: scripts/chunk_doc.py
 
 > **Status:** Exploratory — locks fundamental PC semantics. Multiple "big features" identified here are deferred to their own design docs (see §9).
 > **Created:** 2026-04-23
-> **Prerequisites:** [03_MULTIVERSE_MODEL.md](03_MULTIVERSE_MODEL.md), [02_STORAGE_ARCHITECTURE.md](02_STORAGE_ARCHITECTURE.md)
+> **Prerequisites:** [03_MULTIVERSE_MODEL.md](../03_multiverse/_index.md), [02_STORAGE_ARCHITECTURE.md](../02_storage/_index.md)
 
 ---
 

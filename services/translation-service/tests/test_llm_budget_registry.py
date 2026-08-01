@@ -19,19 +19,63 @@ import pathlib
 
 import pytest
 
-from app.llm_budget import PROFILES, budget_for
+from loreweave_llm.budget import OutputKind
+
+from app.llm_budget import PROFILES, budget_for, budget_obj_for
 
 _APP = pathlib.Path(__file__).resolve().parents[1] / "app"
 
 
-def test_every_profile_resolves_to_the_omit_sentinel():
+def test_every_translation_profile_resolves_to_the_omit_sentinel():
     """Translation length is set by the source text; the model's natural stop is the bound.
     0 is the platform's existing wire sentinel for "omit the cap" — the SDK strips it
-    (loreweave_llm/models.py), so declaring it is byte-identical to omitting it."""
+    (loreweave_llm/models.py), so declaring it is byte-identical to omitting it.
+
+    Scoped to the MIRROR rows on purpose. It used to assert this of EVERY row, which was
+    true only while every row was a translation; `glossary_sweep` (the two-stage extraction
+    sweep, merged from main 2026-08-02) is STRUCTURED and a 0 there would mean "no cap" on a
+    call whose truncation is unrecoverable. A blanket assertion would have had to be
+    weakened to admit it — so it is narrowed to the claim it can actually make."""
     assert PROFILES, "an empty registry would make budget_for unreachable"
-    for code, budget in PROFILES.items():
+    mirrors = [c for c, p in PROFILES.items() if p.kind is OutputKind.MIRROR]
+    assert mirrors, "no MIRROR rows left — the translation paths lost their declaration"
+    for code in mirrors:
+        budget = budget_obj_for(code)
         assert budget.max_output_tokens == 0, f"{code} resolved to {budget.max_output_tokens}"
         assert budget.source == "default", f"{code} has no recorded source"
+        assert not budget.truncation_is_fatal, f"{code} claims a MIRROR stop is fatal"
+
+
+def test_no_row_resolves_below_the_literal_it_replaced():
+    """The seam's promise — adopting it never truncates something that previously fit — is
+    enforced here rather than asserted in a docstring. `was` is the flat literal the row
+    replaced; a row that resolves under it is a silent downgrade."""
+    for code, p in PROFILES.items():
+        if p.was is None:
+            continue
+        got = budget_for(code)
+        assert got >= p.was, f"{code} resolved to {got}, below the {p.was} it replaced"
+
+
+def test_the_sweep_row_is_structured_so_truncation_is_fatal():
+    """The whole reason the sweep gets a row: `parse_sweep_mentions` salvages the
+    complete-objects prefix of a clipped JSON array, so a truncated sweep is
+    indistinguishable from a short one unless something declares the truncation fatal and
+    the call site checks `finish_reason`."""
+    b = budget_obj_for("glossary_sweep")
+    assert b.truncation_is_fatal, "a clipped mention array is unparseable, not short"
+    assert b.max_output_tokens > 0, "STRUCTURED must never resolve to the omit sentinel"
+
+
+def test_a_caller_ceiling_can_only_lower_the_rows():
+    """The extraction worker passes the context-derived headroom as `ceiling`. It must be
+    able to make the cap SMALLER (a small-context model) and must not be able to make it
+    bigger — that would let a call site overrule the registry, which is what the registry
+    exists to stop."""
+    row = PROFILES["glossary_sweep"].ceiling
+    assert row is not None
+    assert budget_for("glossary_sweep", ceiling=1000) == 1000
+    assert budget_for("glossary_sweep", ceiling=row * 10) == budget_for("glossary_sweep")
 
 
 def test_budget_for_raises_on_an_unknown_code():

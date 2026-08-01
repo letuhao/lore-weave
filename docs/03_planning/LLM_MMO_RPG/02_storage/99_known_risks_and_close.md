@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 13. Known risks (for separate discussion)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #3, #4).** This summary repeats superseded resolutions as MITIGATED: R7 “session is the concurrency unit” (now channel/island — DP-A16 · SL-A9 · CS-A1), the DB/events-table-as-SSOT framing behind R6/R12 (DB is a persistence sink; live state is island memory; Class A is never event-sourced), and the reality-global BIGSERIAL event id (now `(reality_id, channel_id, channel_event_id)`). Read these statuses against the corpus banner in [`_index.md`](_index.md), not at face value. Status markers below predate the island/commit-service model.
+
 > The user indicated they have ideas for these. Listed here so we have them in one place when we resume.
 
 ### R1. Event volume explosion — **MITIGATED**
@@ -39,7 +41,7 @@ Expected V3 footprint: 2–4 Postgres servers (not 1 per DB), ~40 TB backup stor
 ### R5. Cross-instance queries — **MITIGATED (by rejection)**
 Initial framing assumed feature demand for cross-reality queries. Re-examination: no product feature actually requires cross-instance live query. The only cross-reality feature is world travel (DF6), which is atomic import/export, not query.
 
-**Resolution:** 3-layer strategy in [§12E](#12e-cross-instance-data-access-r5-mitigation) — meta registry lookups (L1), event-driven propagation via dedicated `meta-worker` service (L2), analytics explicitly deferred (L3). Anti-pattern codified in [docs/02_governance/CROSS_INSTANCE_DATA_ACCESS_POLICY.md](../../02_governance/CROSS_INSTANCE_DATA_ACCESS_POLICY.md).
+**Resolution:** 3-layer strategy in [§12E](#12e-cross-instance-data-access-r5-mitigation) — meta registry lookups (L1), event-driven propagation via dedicated `meta-worker` service (L2), analytics explicitly deferred (L3). Anti-pattern codified in [docs/02_governance/CROSS_INSTANCE_DATA_ACCESS_POLICY.md](../../../02_governance/CROSS_INSTANCE_DATA_ACCESS_POLICY.md).
 
 Over-designed analytics tooling (DF12) withdrawn — not registered until demand surfaces.
 
@@ -97,7 +99,7 @@ Across DB-per-reality + event sourcing + multi-state lifecycle + 11 admin surfac
 
 **Resolution:** mechanisms + discipline layer in [§12L](#12l-admin-tooling-discipline-r13-mitigation) — canonical admin command library (no ad-hoc SQL), compensating-event pattern (respect event sourcing), centralized admin_action_audit log, destructive action confirmation with typed reality name, UI guardrails (no raw DROP button, only safe state machine), rollback-per-action via compensating events.
 
-Governance policy formalized at [`docs/02_governance/ADMIN_ACTION_POLICY.md`](../../02_governance/ADMIN_ACTION_POLICY.md) — L1–L6 are requirements, not suggestions.
+Governance policy formalized at [`docs/02_governance/ADMIN_ACTION_POLICY.md`](../../../02_governance/ADMIN_ACTION_POLICY.md) — L1–L6 are requirements, not suggestions.
 
 ---
 
@@ -124,14 +126,14 @@ These become blocking when we commit to implementation. For now they can wait.
 **Still open (in decreasing order of urgency):**
 - **R1–R13** above — the user indicated ideas for these; discuss next
 - Commands and event types enumerated in full (only envelope + examples given here)
-- NPC memory aggregation strategy in detail (touches [01 A1](01_OPEN_PROBLEMS.md#a1-npc-memory-at-scale--open))
+- NPC memory aggregation strategy in detail (touches [01 A1](../01_problems/A_llm_reasoning.md#a1-npc-memory-at-scale--partial))
 - Projection query patterns (read path specifics)
 - Migration from V1 sync projections → V3 async projections
 
 ## 16. References
 
-- [00_VISION.md](00_VISION.md)
-- [01_OPEN_PROBLEMS.md](01_OPEN_PROBLEMS.md) — storage decisions here constrain A1 (NPC memory), B1 (concurrency), B3 (simulation tick), B5 (rollback), G3 (canon-drift audit)
+- [00_VISION.md](../00_VISION.md)
+- [01_OPEN_PROBLEMS.md](../01_problems/_index.md) — storage decisions here constrain A1 (NPC memory), B1 (concurrency), B3 (simulation tick), B5 (rollback), G3 (canon-drift audit)
 - `../101_DATA_RE_ENGINEERING_PLAN.md` — knowledge-service's event-pipeline shape
 - Event Sourcing canonical refs: Greg Young on Event Sourcing (2010 talk); Fowler's bliki entry; "Implementing Domain-Driven Design" (Vaughn Vernon) Ch. 8
 - MMO prior art: EVE Online's stackless single-shard design; WoW's per-realm database model; Guild Wars 2 architecture talks

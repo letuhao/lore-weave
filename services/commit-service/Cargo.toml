@@ -1,0 +1,65 @@
+[package]
+name = "commit-service"
+version = "0.1.0-poc2"
+description = "LoreWeave commit-service seed (POC-2): the Rust writer-node role hosting sim-core natively (15_commit_service.md CS-A5) + the AGT-A3 LlmDriver — NPC decisions dispatched via loreweave_llm → provider-registry, validated against the contracts/agent closed vocabulary, resolved by a sim-core island. SHIP RULE: build with --profile release-commit (panic=\"unwind\"), never plain --release."
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "poc2-turn-runner"
+path = "src/main.rs"
+
+[lib]
+name = "commit_service"
+path = "src/lib.rs"
+
+[dependencies]
+# The simulation kernel (14_sim_core_spec.md) — linked natively per CS-A5.
+sim-core = { path = "../../crates/sim-core" }
+# F1 — the resolved ruleset + its content digest (RLS-A13). The laws take
+# `&Rules` by reference and know nothing about where it came from (IMP-D2);
+# this crate has no I/O, so depending on it cannot make a law fallible.
+ruleset-core = { path = "../../crates/ruleset-core" }
+# F2 — the loader. A reality's rules come from a FILE, and the resolved bytes
+# go into the content-addressed store so a HISTORICAL ruleset stays resolvable
+# (RLS-D6/D18). Only the HOST depends on this; the laws take `&Rules` by
+# reference and must not (IMP-D2).
+ruleset-loader = { path = "../../crates/ruleset-loader" }
+# S2 — the LAWS, now their own crate (IMP-A5/D2/Q2). The host depends on the
+# laws; the laws do NOT depend on the host, and cannot depend on the loader.
+game-rules = { path = "../../crates/game-rules" }
+# LoreWeave LLM gateway SDK (the ONLY road to a model — provider-gateway invariant).
+loreweave_llm = { path = "../../sdks/rust/loreweave_llm" }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+# ── S3a spine (bus → admission → island → epoch-fenced commit) ──
+# The DP SDK: channel-ordered, epoch-fenced event append (DP-A16).
+dp-kernel = { path = "../../crates/dp-kernel" }
+# Q1 B2b — the Meta Access Library's Rust port + its concrete Postgres adapter.
+# Every meta write goes through MetaWrite (I8), so the binding row, its
+# meta_write_audit row and its meta_outbox event land in ONE transaction.
+meta-rs = { path = "../../crates/meta-rs", features = ["sqlx-pg"] }
+redis = { workspace = true }
+sqlx = { workspace = true }
+blake3 = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+ruleset-loader = { path = "../../crates/ruleset-loader" }
+wiremock = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# IAS-D3 — `test-util` exposes `Admitted::unchecked` for tests that drive the
+# island directly (domain/kernel behaviour, no rules pipeline involved). It is
+# a DEV dependency on purpose: `cargo build --profile release-commit` does not
+# enable it, so the shipped binary still cannot mint a bypass token.
+sim-core = { path = "../../crates/sim-core", features = ["test-util"] }

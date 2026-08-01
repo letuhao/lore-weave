@@ -96,8 +96,10 @@ class PgTaskStore(TaskStore):
             RETURNING {_COLS}
             """,
             tid, descriptor, _as_uuid(owner_user_id),
-            # ML-5: a task payload carries the author's own words (a propose body, an
-            # input request's prompt), so it is serialized unescaped.
+            # ensure_ascii=False (ML-5): a task payload carries the author's own words
+            # (a propose body, an input request's prompt), so it is serialized unescaped.
+            # JSONB columns — both forms decode identically, so existing rows are
+            # unaffected.
             json.dumps(payload or {}, ensure_ascii=False),
             json.dumps(input_requests, ensure_ascii=False) if input_requests is not None else None,
             ttl_ms, poll_interval_ms,

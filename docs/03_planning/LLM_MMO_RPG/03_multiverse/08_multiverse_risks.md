@@ -10,7 +10,7 @@ generated_by: scripts/chunk_doc.py
 
 ### M1. Reality discovery problem (C3 variant) — **MITIGATED**
 
-Resolved by 7-layer design in [§9.1](#91-reality-discovery): smart-funnel entry flow, composite ranking (friend presence / density / locale / canonicality / recency / near-cap penalty), friend-follow via auth-service, creator-declared canonicality hint, flat browse UI with filters, create-new gated behind "Advanced" tab, metrics feedback loop for weight tuning. Decisions M1-D1..D7 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md). Residual sub-items (weight values, preview format, cold-start interaction with C3, preview caching) need V1 prototype data before SOLVED.
+Resolved by 7-layer design in [§9.1](#91-reality-discovery): smart-funnel entry flow, composite ranking (friend presence / density / locale / canonicality / recency / near-cap penalty), friend-follow via auth-service, creator-declared canonicality hint, flat browse UI with filters, create-new gated behind "Advanced" tab, metrics feedback loop for weight tuning. Decisions M1-D1..D7 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md). Residual sub-items (weight values, preview format, cold-start interaction with C3, preview caching) need V1 prototype data before SOLVED.
 
 ### M2. Storage cost of many inactive realities — **MITIGATED**
 
@@ -18,11 +18,11 @@ All mitigation layers locked: auto-freeze at 30 days no activity (MV10), auto-ar
 
 ### M3. Canonization contamination — **MITIGATED**
 
-Resolved by 8-layer safeguard framework in [§9.7](#97-canonization-safeguards--m3-resolution): author-only trigger (no player request queue, no voting, no public metrics), mandatory diff view with cascade impact analysis, event eligibility + per-PC consent gates, harder L2 → L1 promotion gate (R9-style with 7-day cooldown + typed confirm + double approval), 90-day undo window with compensating-write for later reverts, attribution + IP metadata schema, distinguishability in book content (label + icon + export options), explicit scope fence with DF3 (implementation) and E3 (legal launch-gate). Decisions M3-D1..D8 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md). Residual sub-items are DF3 implementation details + E3 legal review (independent launch gate for platform mode; self-hosted exempt).
+Resolved by 8-layer safeguard framework in [§9.7](#97-canonization-safeguards--m3-resolution): author-only trigger (no player request queue, no voting, no public metrics), mandatory diff view with cascade impact analysis, event eligibility + per-PC consent gates, harder L2 → L1 promotion gate (R9-style with 7-day cooldown + typed confirm + double approval), 90-day undo window with compensating-write for later reverts, attribution + IP metadata schema, distinguishability in book content (label + icon + export options), explicit scope fence with DF3 (implementation) and E3 (legal launch-gate). Decisions M3-D1..D8 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md). Residual sub-items are DF3 implementation details + E3 legal review (independent launch gate for platform mode; self-hosted exempt).
 
 ### M4. Inconsistent L1/L2 updates across reality lifetimes — **MITIGATED**
 
-Resolved by 6-layer author-safety UX in [§9.8](#98-canon-update-propagation--m4-resolution): cascade-impact preview before edit, default passive read-through (safe default — cascade rule handles it), optional force-propagate with 3-gate consent (opt-in + owner consent + R13 admin audit), louder L1 warnings with conflict listing, reuse of locked R5-L2 `xreality.canon.updated` channels, glossary entity change timeline with per-reality drill-down. Decisions M4-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md). Residual sub-items are DF3 implementation details + governance policy for ownerless / abandoned realities.
+Resolved by 6-layer author-safety UX in [§9.8](#98-canon-update-propagation--m4-resolution): cascade-impact preview before edit, default passive read-through (safe default — cascade rule handles it), optional force-propagate with 3-gate consent (opt-in + owner consent + R13 admin audit), louder L1 warnings with conflict listing, reuse of locked R5-L2 `xreality.canon.updated` channels, glossary entity change timeline with per-reality drill-down. Decisions M4-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md). Residual sub-items are DF3 implementation details + governance policy for ownerless / abandoned realities.
 
 ### M5. Fork explosion (depth) — **MITIGATED**
 
@@ -36,5 +36,5 @@ All mitigation layers locked: auto-rebase at depth N=5 (MV9 — flatten ancestor
 
 ### M7. Concept complexity for users — **MITIGATED**
 
-Resolved by 5-layer progressive disclosure in [§9.6](#96-progressive-disclosure--m7-resolution): user-facing terminology map (reality → timeline, NPC → character, L1 → "world law", etc.), 3-tier user model (Reader / Player / Author) with soft upgrade triggers, 4-step onboarding tutorial, copy style guide governance doc, and contextual tooltips on must-appear concepts. Decisions M7-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md). Residual sub-items (tutorial A/B copy, tier-upgrade thresholds, tooltip wording per locale) need V1 prototype data before SOLVED.
+Resolved by 5-layer progressive disclosure in [§9.6](#96-progressive-disclosure--m7-resolution): user-facing terminology map (reality → timeline, NPC → character, L1 → "world law", etc.), 3-tier user model (Reader / Player / Author) with soft upgrade triggers, 4-step onboarding tutorial, copy style guide governance doc, and contextual tooltips on must-appear concepts. Decisions M7-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md). Residual sub-items (tutorial A/B copy, tier-upgrade thresholds, tooltip wording per locale) need V1 prototype data before SOLVED.
 

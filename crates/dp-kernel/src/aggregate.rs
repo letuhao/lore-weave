@@ -106,6 +106,7 @@ mod tests {
             recorded_at: "2026-05-29T00:00:00Z".into(),
             payload: json!({ "tick": tick }),
             metadata: None,
+            ruleset_digest: None,
         }
     }
 

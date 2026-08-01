@@ -173,6 +173,12 @@ def test_ratchet_reds_in_both_directions(tmp_path, monkeypatch, baseline, expect
           {"services/x/app/a.py": _SUBMIT.format(budget='"max_tokens": 1200')})
     monkeypatch.setattr(sys, "argv", ["llm-budget-ssot-gate.py"])
     monkeypatch.setattr(lbg, "UNATTRIBUTED_BASELINE", baseline)
+    # The OTHER ratchet has to be neutralised or this test cannot fail for its own reason.
+    # The synthetic tree has zero `budget_for(...)` calls, so `no_signal` is 0 against a live
+    # baseline of 28 — that alone made `main()` return 1 and the [1-0] case fail regardless of
+    # the unattributed count it is actually asserting on. A test whose red comes from a
+    # neighbouring check is not testing what its name says.
+    monkeypatch.setattr(lbg, "NO_SIGNAL_BASELINE", 0)
     assert lbg.main() == expected
 
 

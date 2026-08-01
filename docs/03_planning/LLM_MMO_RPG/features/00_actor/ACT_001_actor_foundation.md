@@ -1,5 +1,59 @@
 # ACT_001 — Actor Foundation
 
+> **⚠ L3 STRENGTHENING REQUIRED 2026-07-30 — [`36_map_architecture.md`](../../36_map_architecture.md)
+> `SPG-A10` / `SPG-F5`, rows `SPG-R6` + `SPG-R7`:**
+> **This doc has the right seam and the wrong shape for it.** The 3-layer model's insight is correct and
+> is reused unchanged: **L3 Control source is DYNAMIC**, not a property of actor kind — and
+> [`AGT-A3`](../../11_agent_decision_standard.md) already makes drivers *"assigned per actor/tier and
+> **swappable at runtime**"*. The `ActorControlSourceChange` event and the AI-controls-offline-PC path
+> (`ACT-D1`) are the same mechanism seen from one angle.
+> **But `control_source: User | AI | Engine` is an ENUM ON THE ACTOR.** It answers *"what kind of thing
+> is driving this"*. It cannot answer *"**which** controller"*, and it cannot represent **one controller
+> holding several actors at once** — which is not an exotic edge case but, per PO decision 2026-07-29,
+> **a core mechanic of this game**: control is possession, and the controller is the persistent identity
+> while the body is not.
+> **✅ REGISTERED 2026-07-30 (`SPG-R6`) — new aggregate `control_binding` (T2 / Reality), owned here:**
+>
+> ```rust
+> #[dp(type_name = "control_binding", tier = "T2", scope = "reality")]
+> pub struct ControlBinding {
+>     pub controller_id: ControllerId,   // the persistent identity; the BODY is not
+>     pub actor_id: ActorId,             // may be Pc, Npc, or (since WSA-R21) Locus
+>     pub since: FictionTime,
+>     pub authority: ControlAuthority,   // closed enum — Full | Pilot | Puppet { expires_at } | …
+> }
+> ```
+>
+> **Many-to-many by construction.** One controller may hold several actors at once, in different frames.
+> `control_source` stays useful as an L3 *classification*; `AGT-A3`'s runtime-swappable drivers are
+> untouched — this names **who the driver serves**. Collapses into one mechanism: 分身 (one controller,
+> two actors, two frames) · a dying elder **seizing a disciple's body** (rebind + the `body_memory`
+> already in `pc_user_binding`) · logout→LLM handover (`ACT-D1`) · `pc_mortality_state`'s **Ghost** (a
+> controller between bodies) · demonic puppetry · mounts (`TVL_003`) · **and a captain steering a ship**
+> — possessing an entity whose interior is a map (`SPG-A1`). Steering a vessel and cultivating an inner
+> world become the *same* operation.
+>
+> **⚠ NOT the blocker I first claimed — `SPG-R7` RETIRED, [REC-96](../../19_reconciliation_register.md).**
+> My own `REC-87` said [`PCS-A4`](../06_pc_systems/PCS_001_pc_substrate.md) and the `cap=1` validator
+> closed this off. Reading them shows otherwise: `PCS-A4` is *"single `pc_user_binding` **aggregate**"*
+> (a packaging decision, silent on control cardinality), and `Q9`'s `cap=1` is **PC-per-REALITY** for
+> *"single PC narrative"* vs *"multi-PC charter coauthors"* — a narrative scope call, already shaped as
+> `Vec<PcId>` + a validator so relaxing it needs **no migration** (`PCS-D3`). And a 分身 need not be a
+> `Pc` at all: with a binding it can be `ActorId::Npc` driven by a **User** controller, never touching
+> Q9. **The real blocker was a `user_id` FIELD ON THE BODY** — extract the relation and possession works
+> with Q9 left exactly as locked.
+>
+> **⚠ Consequence that is NOT optional (`SPG-A11`):** interest/AOI keys on the **controlled actor**,
+> never on the account. A controller with two actors in two frames has **two independent interest sets**
+> — key it on the account and the 分身 never receives its own frame's updates. A **per-controller** rate
+> limit must also exist beside per-actor validation, or possession is sanctioned multiboxing.
+> **Also relevant:** [`WSA-D3`](../../32_locus_as_actor.md) requires a **`Locus` variant** on `ActorId`
+> rather than reusing `Synthetic`, and correspondingly requires narrowing this file's
+> `actor.synthetic_actor_forbidden` so a village may hold and be the subject of an opinion
+> (`WSA-R21`/`R22` — still **PROPOSED, not applied**, as doc 32 recorded).
+> **CANDIDATE-LOCK preserved**; `SPG-R6`/`R7` are PROPOSED, not applied. Annotation only — no aggregate,
+> axiom or rule_id in this file was edited.
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-04-27 — DF05_001 Session/Group Chat CANDIDATE-LOCK 71a60346:**
 >
 > §3.4 actor_session_memory R8 bounded LRU is the **PRIMARY post-close memory store** for DF05_001 sessions. Post-close write path verified: on Closed transition, DF05_001 LLM POV-distill cascade writes 3-5 facts per actor per Q5 LOCKED (cached in EVT-T3 Derived payload `update_kind=SessionPovDistill` with `{ actor_id, session_id, facts: Vec<MemoryFact>, llm_model_id, prompt_template_version, provider_id, attempt_count, ... }` per Q12-D1 LOCKED full JSON V1 for replay-determinism per Q12-D3). Cross-session memory bleed YES per Q7 — actor's persona prompt assembly reads top-K=10-20 facts by salience across all past sessions for that actor. NO cross-reality bleed per Q7-D1 (DP T2 Reality scope enforced naturally). R8 cold-decay 30/90/365 fiction-day cadence already locked; aligns with DF05_001 retention policy Q6. SDK backend implementation: `services/session-service/src/adapters/lru_distill.rs` LruDistillProvider V1 consumes ACT_001 R8 LRU pattern. NO change to ACT_001 aggregate schema or invariants; CANDIDATE-LOCK status PRESERVED. MEDIUM magnitude — primary consumer of post-close write path; SDK trait import. Reference: [DF05_001 §6 POV memory distill](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#6--per-actor-pov-memory-distill-on-close-critical-mechanism) + [DF05_001 §11 Replay-determinism cache](../DF/DF05_session_group_chat/DF05_001_session_foundation.md#11--replay-determinism-via-pov-distill-cache-q12-locked).
@@ -84,7 +138,7 @@ After this lock: NPC_001 closure-pass-extension transfers 3 aggregates to ACT_00
 - **ACT-A3** (`actor_core` always present post-creation) — Every non-Synthetic actor has `actor_core` row from creation event onward. Read fallback: missing row = creation event not yet processed (transient; not "default"). Synthetic actors have NO `actor_core` row V1.
 - **ACT-A4** (`actor_chorus_metadata` sparse — control-source-driven population) — Row populated ONLY when actor's current control source = AI (NOT just because actor is NPC kind). V1: NPCs always have row (control source = AI always V1); PCs never have row (control source = User always V1). V1+ AI-controls-PC-offline (ACT-D1): PCs populate row when control source transitions User → AI (offline); row removed/inactive when control source transitions AI → User (re-online). Layer assignment is L3 (control state), NOT L2 (kind).
 - **ACT-A5** (`actor_actor_opinion` bilateral) — Per-(observer_actor, target_actor) opinion stored. Observer ≠ target enforced (Stage 0 schema reject `actor.opinion_self_target_forbidden`). V1 active patterns: NPC→PC (preserved from npc_pc_relationship_projection); V1+ patterns: PC→NPC + NPC→NPC + PC→PC.
-- **ACT-A6** (`actor_session_memory` per-(actor, session)) — Memory facts scoped to specific session; supports LLM context continuity. V1: NPCs populated; V1+ AI-controls-PC-offline: PCs populated when offline (chat-service handoff to world-service via V1+ unification design).
+- **ACT-A6** (`actor_session_memory` per-(actor, session)) — Memory facts scoped to specific session; supports LLM context continuity. **AMENDED 2026-07-26 (REC-09 / AUD-F17 #23, PO decision): V1 = ALL session participants, PCs included.** Prior text (*"V1: NPCs populated; V1+ … PCs populated when offline"*) contradicted DF05_001, whose **defining V1 mechanism** — per-actor POV distill (`write_actor_session_memory` for *every* participant, §6.3) and the per-turn persona budget reading *"the PC's actor_session_memory"* (§10.4, AC-DF5-12) — requires PC rows this axiom forbade. The DF05 closure note stamped into this header simultaneously claimed *"NO change to ACT_001 schema or invariants"*; that claim was false and is withdrawn with this amendment. **Schema unchanged** — the amendment is population scope only. The V1+ item that *remains* deferred is AI-controls-**offline**-PC (the chorus_metadata activation, ACT-D1), which is about who drives the actor, not whose memory is written.
 - **ACT-A7** (Synthetic actor forbidden V1) — Universal substrate discipline (matches IDF + FF + FAC + REP + PROG + RES + PL_006). V1+ may relax IF admin-faction synthetic narrative identity needed.
 - **ACT-A8** (Cross-reality strict V1) — Reality boundaries enforced V1; V2+ Heresy migration via WA_002 (universal V2+ deferral pattern).
 
@@ -148,8 +202,34 @@ pub struct ActorCore {
 - Field `current_session_id: Option<SessionId>` SEMANTICS preserved: None = actor not in session (NPC idle/ambient; PC offline)
 - All other fields preserved; semantics preserved (current_region_id + glossary_entity_id + core_beliefs + flexible_state)
 
-**Synthetic actors forbidden V1 (ACT-A7):**
-- Reject `actor.synthetic_actor_forbidden` Stage 0 schema for actor.kind == ActorKind::Synthetic.
+**Out-of-world actors forbidden V1 (ACT-A7) — NARROWED 2026-07-30 (`WSA-R22`):**
+- Reject `actor.synthetic_actor_forbidden` Stage 0 schema for actor.kind == ActorKind::**Synthetic**.
+- **`ActorKind::Locus` is NOT rejected.** The rule tests the *out-of-world* property, not
+  "is not a person".
+
+> **✅ NARROWED 2026-07-30 — `WSA-R22` / [REC-83](../../19_reconciliation_register.md), applied in the
+> same pass as [`WSA-R21`](../../32_locus_as_actor.md) (`ActorId::Locus`).** The pairing was the point:
+> applying the narrowing alone would have been **vacuous** (no `Locus` variant existed for it to admit),
+> and applying `WSA-R21` alone would have given loci turn-submission while still forbidding them any
+> opinion. Why the old wording was wrong:
+>
+> - **`WSA-D3` — a locus is NOT `Synthetic`.** `Synthetic` means an actor **outside** the fiction (the
+>   orchestrator, the scheduler, `RealityBootstrapper`). A village is **inside** it.
+> - **[`WSA-A1`](../../31_world_simulation_architecture.md) requires a locus to be both subject and
+>   object of an imprint** — *"this village regards you as a benefactor"* has a settlement as its
+>   subject; familiarity and notoriety *here* have a place as their object. This rule as written makes
+>   both unrepresentable.
+>
+> **Applied form:** the rule now names **`Synthetic`** only, and `ActorKind::Locus` passes. It tests the
+> *out-of-world* property rather than "is not a person" — which is what `WSA-D3` demanded and why
+> `Synthetic` could not simply be reused for loci.
+>
+> **Still open, deliberately:** `ACT-A5`'s bilateral `actor_actor_opinion` now *admits* a locus as
+> observer or target, but the **V1 active pattern** is still NPC→PC (`WSA-R07` proposes promoting
+> NPC→NPC into the critical path, and remains unapplied). So a village *may* hold standing as of this
+> change; nothing yet *writes* it. That gap is real and is the honest state — recorded rather than
+> papered over, because a variant that is admitted but never populated is exactly the shape that reads
+> as coverage later.
 
 **Cross-reality strict V1 (ACT-A8):**
 - Reject `actor.cross_reality_mismatch` Stage 0 schema for cross-reality reads.

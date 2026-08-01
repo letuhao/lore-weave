@@ -7,7 +7,12 @@
 #   • INV-KAL (HTTP-surface half): no consumer hits the owning services' bi-temporal
 #     knowledge /internal endpoints (facts/canonical/timeline/attr-values/search/
 #     neighborhood/retrieve) — read them through the KAL. (Both halves now ENFORCED.)
-# Checks only STAGED files (fast). Bypass in a true emergency with `git commit --no-verify`.
+#   • I3 language rule (PRR-16 / PRR-21): services/<name>/ detected language must match
+#     contracts/language-rule.yaml, and a service present on disk with NO row is a FAIL.
+#   • _boundaries/ single-writer mutex: a _boundaries/ edit must carry an evidenced
+#     claim+release cycle.
+# Checks only STAGED files (fast), except where noted. Bypass in a true emergency with
+# `git commit --no-verify`.
 #
 # Activate (per checkout):  git config core.hooksPath .githooks
 set -e
@@ -15,8 +20,28 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PY=python
 command -v python >/dev/null 2>&1 || PY=python3
 "$PY" "$ROOT/scripts/ai-provider-gate.py" --staged
+
+# IAS-D3 — admission must stay the sole minter of the island's `Admitted`
+# token. Repo-wide, not staged-scoped: "only one mint point exists" is a
+# property of the TREE, so a staged-only check would pass while a second
+# minter sat un-staged one commit away.
+"$PY" "$ROOT/scripts/ingress-admission-gate.py"
 "$PY" "$ROOT/scripts/knowledge-access-gate.py" --staged
 "$PY" "$ROOT/scripts/knowledge-http-surface-gate.py" --staged
+
+# I3 language rule (added 2026-07-26). Repo-wide, NOT staged-scoped, on purpose: PRR-21
+# completeness is a property of the tree, since a service can be added with no row by a
+# commit that touches no yaml at all. That is exactly how jobs-service landed 2026-06-15
+# with no row while the lint sat on no commit path.
+sh "$ROOT/scripts/language-rule-lint.sh"
+
+# _boundaries/ single-writer mutex (added 2026-07-26). Checks for EVIDENCE OF A CYCLE, not
+# for Owner != None — the normal combined claim+release commit ends with Owner: None by
+# design, so a naive owner check would reject every legitimate commit. Added after three
+# changelog entries were found asserting lock cycles that never happened, and a peer wrote
+# 99_changelog.md while another session held the lock.
+"$PY" "$ROOT/scripts/boundaries-lock-gate.py" --staged
+
 # Context Budget Law OUT-2 — a LIST-returning MCP tool (has both `detail` + `limit`) must
 # DEFAULT to the small shape (detail=summary, limit<=25); full/big-limit are opt-ins. The
 # runtime size gate only WARNS (nobody acted → jobs_list dumped 45.6 KB for weeks, K36); this
@@ -28,12 +53,162 @@ command -v python >/dev/null 2>&1 || PY=python3
 # "Destructive DB ops in tests". Exempt a real false positive with a `db-safety-gate: ok` pragma.
 "$PY" "$ROOT/scripts/db-safety-gate.py" --staged
 
+# CLOSED SET vs its companion list. Rust forces you to HANDLE every variant (a match with no
+# wildcard arm) but cannot force an ARRAY to CONTAIN every variant, and variant_count is
+# unstable — so `const ALL: [Enum; N]` drifts from its enum silently. That shipped once:
+# ModifierSource listed 3 of 6, so Base/Archetype/Lex flat modifiers were constructible,
+# accepted and DISCARDED, and a world rule worked or did nothing depending on which operator
+# the author picked (XST-D7). Passed all 76 tests; deterministic, so replay agreed with itself.
+# A genuinely partial list carries `closed-set-gate: ok — <reason>` in its doc block.
+"$PY" "$ROOT/scripts/closed-set-gate.py" --staged
+
+# A RULESET PIN must not be an anonymous zero. RLS-A13 makes the digest the thing that ties an
+# event to the rules that produced it; `RulesetDigest([0u8; 32])` — which appeared in 15 places,
+# four of them production — makes that pin INERT: two realities with different rules stamp
+# indistinguishable events, and replay cannot detect the rules moved underneath it (IMP-D6).
+# It survived because it LOOKS like a value: nothing distinguished "the loader is not wired yet"
+# from "this domain genuinely has no ruleset". Now the second case is the NAMED
+# `RulesetDigest::UNPINNED` (kernel harness + tests only) and the first is a finding.
+"$PY" "$ROOT/scripts/zero-digest-gate.py" --staged
+"$PY" "$ROOT/scripts/pin-resolution-gate.py"
+
+# NO STRING-KEYED LOOKUP on the island step path (IMP-D4 / QTY-A9). Q1 introduces author-declared
+# quantities, which arrive as NAMES in TOML, and the shortest path from `name = "qi"` to a working
+# Q2 is `resources: BTreeMap<String, ResourceState>` on the actor — after which `evaluate_outcome`'s
+# three closures each do a string compare plus a tree descent, `outcome_of` runs them five times per
+# call, on every landed Strike and every EndTurn. Determinism SURVIVES (BTreeMap is ordered), so no
+# existing test reds and QTY-A9's letter is even satisfied — it forbids map iteration in AGGREGATION.
+# The bug is invisible to the suite by construction, which is why it is a gate. Note the rule is on
+# the KEY TYPE, never the container: `BTreeMap<EntityId, Actor>` structurally cannot match, which is
+# doc 26's "this distinction must be ENCODED, not assumed", encoded.
+"$PY" "$ROOT/scripts/hot-path-gate.py" --staged
+
+# A LAW MUST NOT BE ABLE TO READ A FILE (IMP-D2). `game-rules` was extracted as a CRATE rather than
+# a module precisely so this is a link error instead of a promise (IMP-Q2: "leaning crate, because
+# the gate is the point") — but a crate boundary only means a violation needs one extra line in a
+# Cargo.toml, so the boundary needs a gate to mean anything. Four rules, three of them deny-by-
+# default: R1 workspace-internal deps TRANSITIVELY (game-rules -> ruleset-core -> ruleset-loader is
+# the case a direct-deps check waves through), R2 direct external deps (serde yes, serde_json/toml
+# no — a derive is not a format), R3 no std::fs/net/process/env/clock in the source, which is the
+# rule that actually states IMP-D2 because it is about the CAPABILITY, and R4 an I/O-runtime
+# denylist. Scans the whole tree, so it does not need a staged-file trigger.
+"$PY" "$ROOT/scripts/crate-purity-gate.py"
+
+# IMP-D3's 400-line ceiling, which had NO gate and decayed exactly as IMP-A7 predicts: doc 26
+# recorded domain.rs at 592 as already over, and by the time S2 came to split it it had reached 609
+# while everyone was working on something else. Nothing noticed because nothing was watching. Scope
+# is DIRECTORIES (a file created tomorrow is covered on its first line — an enumerated list is
+# default-uncovered, NV-3) over the game-logic tier only; world-gen alone would red 20+ times from
+# another track, and a gate that cries wolf gets switched off. The allowlist is visible debt: each
+# row carries a reason AND its real size, so an allowlisted file that GROWS reds again.
+"$PY" "$ROOT/scripts/file-ceiling-gate.py"
+
+# The EVENT ENVELOPE is ONE shape in TWO languages: contracts/events/envelope.go is the SSOT and
+# crates/dp-kernel/src/envelope.rs is its mirror. Both files SAY they must move together and
+# NOTHING checked it — a rule with three of the four parts of rule+SoT+gate+test. The failure it
+# permits is the classic polyglot one: a Go producer writes a field, the Rust projector
+# deserializes without it and silently drops it (serde ignores unknown fields; Go tolerates missing
+# ones), and no test fails — the data is just gone downstream. Runs only when a side is staged.
+"$PY" "$ROOT/scripts/envelope-mirror-gate.py" --staged
+
 # No ABSOLUTE HOST PATH hardcoded in committed code. Such a path resolves on exactly one
 # machine; everywhere else the script dies or — worse — the path happens to exist and it
 # silently reads a STALE COPY from a sibling checkout (four POC exporters pointed at a
 # different repo, `lore-weave-mvp`). In-repo target -> derive from __file__; external
 # target -> os.environ.get(VAR, default) AND fail loudly when absent.
 "$PY" "$ROOT/scripts/no-absolute-host-paths.py"
+
+# Every persisted artifact this repo produces is written in ENGLISH (CLAUDE.md → Key
+# Rules, LOCKED 2026-07-31). The recurring defect is MIXING, not translation: an English
+# design doc with Vietnamese fragments pasted through it, most often a verbatim quote —
+# docs 40/41 shipped with eight and had to be swept. Chat with the user stays in whatever
+# language they wrote in; the artifact is not the conversation.
+# ADDED LINES ONLY on purpose: 468 of 1962 tracked docs already contain Vietnamese, so
+# judging file contents would make every touch of a legacy doc uncommittable and the gate
+# would be off within a day. `--all` reports that baseline and never blocks.
+"$PY" "$ROOT/scripts/doc-language-gate.py" --staged
+
+# I8 / I11 / S08 §12X.3 — the META-TABLE gates. Wired 2026-07-29 after Q1 B2b
+# added the first RUST writer of meta tables and shipped it with NO ACL matrix
+# entry: `service-acl-matrix-lint` was red for a whole commit and nothing said
+# so, because none of these four lints had ever been hooked. They were "run them
+# if you remember", which is the same as not having them.
+#
+# `meta-write-discipline-lint.sh` is deliberately NOT here: it greps every Go /
+# Rust / SQL / TS file for every meta table and takes ~74s, which is a pre-commit
+# nobody keeps. It belongs in CI. The three below total ~8s.
+#
+# The trigger is CONTENT as well as path. A path-only condition
+# (migrations/meta/, contracts/meta/, crates/meta-rs/) would have MISSED the very
+# commit that motivated this: it added a `meta-rs` dependency in a Cargo.toml and
+# a `use meta_rs::…` in a service source file, and touched none of those
+# directories. Default-uncovered again (docs/standards/non-vacuity.md, NV-3).
+if git diff --cached --name-only | grep -qE 'migrations/meta/|contracts/(service_acl|meta)/|crates/meta-rs/'    || git diff --cached -U0 | grep -qE '^\+.*(meta-rs|meta_rs|contracts/meta|MetaWrite\(|meta_write)'; then
+  sh "$ROOT/scripts/service-acl-matrix-lint.sh"
+  sh "$ROOT/scripts/role-grant-validator.sh"
+  sh "$ROOT/scripts/pii-classify-lint.sh"
+fi
+
+# A GATE NOBODY RUNS IS NOT A GATE. Wired 2026-07-29 after an audit found 26 of
+# the repo's 58 gate/lint scripts running NOWHERE — not here, not in any
+# workflow — six of them RED, two reporting "NEW offender(s)" for regressions
+# that had already landed. Every one of those gates was correct; none was
+# attached to anything, while sitting in the same directory as the ones that
+# were. This is the cheap half (<1s, no subprocess): it only asks whether every
+# discovered gate is reachable from the hook or from CI. The EXECUTION of them
+# all is .github/workflows/gates.yml.
+#
+# Unconditional on purpose. The trigger for "did someone add a gate and forget
+# to wire it" is "someone committed", and any path-based condition would miss
+# the commit that adds scripts/foo-gate.py while touching nothing else.
+"$PY" "$ROOT/scripts/gate-wiring-gate.py"
+
+# A DEFERRAL NOBODY MECHANISED IS A WISH. Same family as the line above, one
+# level up: gate-wiring asks "does every gate run?", this asks "does every
+# tracked deferral have something that changes colour by itself?". Measured
+# 2026-07-29 — 9 of 19 game-tier deferrals were prose only, and in that same day
+# the project produced four rows fixed in the morning and still listed as open
+# in the afternoon, plus one fixed deferral cited as an open blocker in four
+# places (including the row of the task that was fixing it).
+#
+# Unconditional for the same reason as gate-wiring: the trigger is "someone
+# opened a deferral", which can happen in a docs-only commit. Measured 1.8s (it
+# reads every tracked source file once, short-circuiting on files with no `D-`);
+# the epoch trigger below is 1.0s. That ~3s is the price of the two checks that
+# fire when nobody is looking, which is when they matter.
+"$PY" "$ROOT/scripts/deferral-gate.py"
+
+# amendment-rot-gate — deferral-gate's sibling, for the DESIGN corpus rather than
+# the code tier. Same conclusion reached a third time, from a third direction:
+# 15 of 25 WSA amendment ids were UNGREPPABLE (written `**R19**`, no prefix), six
+# stable-ID prefixes from docs 27-35 had never been registered in the ownership
+# matrix at all, and a batch the reconciliation register routed to "next
+# `_boundaries` lock claim" was missed by the next claim -- because that phrasing
+# names an OCCASION, not an OWNER.
+#
+# Its own first run is the argument for it: after two manual sweeps the same day
+# had fixed docs 31/32 and registered six prefixes, the gate immediately found a
+# SEVENTH orphan prefix and NINE more bare ids in docs 33/34 that both sweeps had
+# walked past. Unconditional, and cheap (docs-only scan).
+"$PY" "$ROOT/scripts/amendment-rot-gate.py"
+
+# Q0b B3's asserted trigger. Greens while the RulesetEpochActivated emit path is
+# unbuilt; reds the day any producer appears, printing the three unresolved
+# constraints (DP-A16 lease, the S5 chokepoint, dp::channel_pause) so the path
+# cannot be built without them being answered in a diff a human reads.
+"$PY" "$ROOT/scripts/epoch-emit-trigger-gate.py"
+
+# The FAST gates the audit un-orphaned (each <500ms; the slower ones run in
+# gates.yml). Conditioned so an unrelated commit does not pay for them.
+if git diff --cached --name-only | grep -qE '\.(py|go|rs|ts|tsx|sql|ya?ml)$'; then
+  "$PY" "$ROOT/scripts/slo-latency-lint.py"
+  "$PY" "$ROOT/scripts/context-budget-l3-lint.py"
+  sh "$ROOT/scripts/transitions-validation-lint.sh"
+fi
+if git diff --cached --name-only | grep -qE 'migrations/meta/|contracts/meta/|crates/meta-rs/|_audit'; then
+  sh "$ROOT/scripts/meta-actor-uuid-lint.sh"
+  sh "$ROOT/scripts/read-audit-query-type-drift-lint.sh"
+fi
 
 # ML-7 (multilingual.md) — locale completeness. When an i18n locale JSON is staged, every uiLocale
 # must carry the full `en` key-set for the touched namespace(s): i.e. `en` copy was regenerated via
@@ -66,6 +241,31 @@ if git diff --cached --name-only | grep -qE 'design-drafts/screens/studio/.*\.ht
   "$PY" "$ROOT/scripts/design-draft-token-lint.py"
 fi
 
+# Layer-1 design-doc lint (added 2026-07-27, right after the corpus went from 17,120
+# findings to 1 — a clean baseline is a PERISHABLE asset; without an enforcement point
+# the drift returns and the gate becomes unaddable, exactly how jobs-service sat red for
+# six weeks). Staged-scoped for speed. Split by check on purpose:
+#   • broken-link + phantom-registration = HARD FAIL — mechanical, currently 0 findings,
+#     effectively no false positives. A dead link or a fabricated "(registered …)" claim
+#     is never intentional.
+#   • unregistered-prefix = WARN ONLY — a genuinely new namespace appears mid-design
+#     (CWC did, this very session) and must not block writing the doc that introduces it.
+#     The warning is the reminder to add the catalog row.
+# Runs only when a corpus .md is staged. Bypass: `git commit --no-verify`.
+if git diff --cached --name-only | grep -qE '^docs/03_planning/LLM_MMO_RPG/.*\.md$'; then
+  "$PY" "$ROOT/scripts/design-lint.py" --staged --warn-check symbol
+fi
+
+# game-wire contract integrity (added 2026-07-27, CWC-Q4). The client wire DTOs
+# (contracts/game-wire/) are contract-FIRST — hand-authored SoT, no code to generate
+# from — so the gate is a schema-integrity lint of the doc-20 invariants: every $ref
+# resolves (incl. the cross-contract Decision ref), every 64-bit id is a STRING
+# (CWC-A2 — JS number corrupts past 2^53, invisibly in dev), every object is closed.
+# Producer-side conformance lives with each producer (Rust: commit-service::wire tests).
+if git diff --cached --name-only | grep -qE '^contracts/(game-wire|agent)/.*\.json$'; then
+  "$PY" "$ROOT/scripts/game-wire-lint.py"
+fi
+
 # SEC-1 / audit P0-6: catch secrets BEFORE they enter a commit. gitleaks scans
 # only the staged diff (`protect --staged`) so this stays fast. gitleaks is an
 # optional local tool — if it isn't installed we warn and continue (CI's
@@ -76,4 +276,27 @@ if command -v gitleaks >/dev/null 2>&1; then
   gitleaks protect --staged --redact --config "$ROOT/.gitleaks.toml"
 else
   echo "pre-commit: gitleaks not installed — skipping staged secret scan (install: https://github.com/gitleaks/gitleaks; CI still scans on push)." >&2
+fi
+
+# ESLint for the pnpm workspace (added 2026-07-30). This gate exists because
+# linting had been DEAD for months and nothing noticed: TypeScript was upgraded
+# to 7.x (the native Go port, which ships no classic `ts.*` compiler API), so
+# @typescript-eslint/typescript-estree threw at module load and every eslint run
+# aborted before reading a single file. `tsc` still passed, tests still passed.
+# A hook makes the linter's absence loud instead of silent.
+#
+# Staged-scoped for speed: runs only when a workspace TS/TSX file is staged, and
+# lints only those files. `--max-warnings` is deliberately NOT set to 0 — there
+# are 6 pre-existing advisory warnings (setState-in-effect, array-index keys)
+# that are tracked, not blocking. ERRORS fail the commit.
+# Bypass in a true emergency with `git commit --no-verify`.
+STAGED_TS=$(git diff --cached --name-only --diff-filter=ACM \
+  | grep -E '^(frontend-game/(src|tests)|packages/[^/]+/src)/.*\.(ts|tsx)$' || true)
+if [ -n "$STAGED_TS" ]; then
+  echo "pre-commit: eslint on $(echo "$STAGED_TS" | wc -l | tr -d ' ') staged file(s)"
+  # shellcheck disable=SC2086
+  (cd "$ROOT" && npx --no-install eslint --config eslint.config.mjs $STAGED_TS) || {
+    echo "pre-commit: eslint FAILED — fix the errors above (or 'npm run lint:fix')." >&2
+    exit 1
+  }
 fi

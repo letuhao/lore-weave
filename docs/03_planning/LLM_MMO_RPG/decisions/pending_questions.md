@@ -11,7 +11,7 @@ generated_by: scripts/chunk_doc.py
 These are items where I did not propose a default because either (a) the question is genuinely ambiguous and needs product intent, or (b) the answer has dependencies on decisions above.
 
 ### Q-RISK — Risk discussion items
-User indicated they have ideas for risks R1–R13 in [02_STORAGE_ARCHITECTURE.md §13](02_STORAGE_ARCHITECTURE.md) and M1–M7 in [01_OPEN_PROBLEMS.md §M](01_OPEN_PROBLEMS.md). These were parked for separate discussion.
+User indicated they have ideas for risks R1–R13 in [02_STORAGE_ARCHITECTURE.md §13](../02_storage/99_known_risks_and_close.md) and M1–M7 in [01_OPEN_PROBLEMS.md §M](../01_problems/_index.md). These were parked for separate discussion.
 
 | # | Risk | Source | Note |
 |---|---|---|---|
@@ -28,10 +28,10 @@ User indicated they have ideas for risks R1–R13 in [02_STORAGE_ARCHITECTURE.md
 | R11 | pgvector per-instance footprint | 02 §13 | Depends on S2 |
 | R12 | Redis stream ephemerality | 02 §13 | Depends on S3 |
 | R13 | Admin tooling complexity | 02 §13 | |
-| ~~M1~~ | ~~Reality discovery problem~~ | 01 §M | **LOCKED 2026-04-23** — M1-D1..D7 below; [03 §9.1](03_MULTIVERSE_MODEL.md#91-reality-discovery) |
-| ~~M3~~ | ~~Canonization contamination~~ | 01 §M | **LOCKED 2026-04-23** — M3-D1..D8 below; [03 §9.7](03_MULTIVERSE_MODEL.md#97-canonization-safeguards--m3-resolution). DF3 implementation + E3 legal still independent. |
-| ~~M4~~ | ~~Inconsistent L1/L2 updates across reality lifetimes~~ | 01 §M | **LOCKED 2026-04-23** — M4-D1..D6 below; [03 §9.8](03_MULTIVERSE_MODEL.md#98-canon-update-propagation--m4-resolution). Reuses R5-L2 xreality infrastructure. |
-| ~~M7~~ | ~~Concept complexity for users~~ | 01 §M | **LOCKED 2026-04-23** — M7-D1..D5 below; [03 §9.6](03_MULTIVERSE_MODEL.md#96-progressive-disclosure--m7-resolution) |
+| ~~M1~~ | ~~Reality discovery problem~~ | 01 §M | **LOCKED 2026-04-23** — M1-D1..D7 below; [03 §9.1](../03_multiverse/05_product_ux_basics.md#91-reality-discovery) |
+| ~~M3~~ | ~~Canonization contamination~~ | 01 §M | **LOCKED 2026-04-23** — M3-D1..D8 below; [03 §9.7](../03_multiverse/06_M_C_resolutions.md#97-canonization-safeguards--m3-resolution). DF3 implementation + E3 legal still independent. |
+| ~~M4~~ | ~~Inconsistent L1/L2 updates across reality lifetimes~~ | 01 §M | **LOCKED 2026-04-23** — M4-D1..D6 below; [03 §9.8](../03_multiverse/06_M_C_resolutions.md#98-canon-update-propagation--m4-resolution). Reuses R5-L2 xreality infrastructure. |
+| ~~M7~~ | ~~Concept complexity for users~~ | 01 §M | **LOCKED 2026-04-23** — M7-D1..D5 below; [03 §9.6](../03_multiverse/06_M_C_resolutions.md#96-progressive-disclosure--m7-resolution) |
 
 ### Q-A1 — NPC memory at scale
 Critical-path `OPEN` problem. Multiverse bounds the scope (per-reality) but storage strategy still unsolved. Needs:

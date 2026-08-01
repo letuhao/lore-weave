@@ -20,7 +20,7 @@ generated_by: scripts/chunk_doc.py
 - **Status** tells you where the feature stands:
   - ✅ **Designed** — has a concrete design in one of the numbered docs
   - 🟡 **Partial** — designed in broad strokes, has pending decisions
-  - 📦 **Deferred** — known, explicitly pushed to a future design doc (tied to a `DF*` in [OPEN_DECISIONS.md](OPEN_DECISIONS.md))
+  - 📦 **Deferred** — known, explicitly pushed to a future design doc (tied to a `DF*` in [OPEN_DECISIONS.md](../decisions/_index.md))
   - ❓ **Open** — identified but no design yet
   - 🚫 **Out of scope** — considered and rejected
 - **Tier** tells you when the feature is needed:
@@ -37,7 +37,7 @@ When adding new features:
 1. Assign the next ID in its category
 2. Set status + tier + dep
 3. Point `Design ref` to where the detail lives (or `TBD`)
-4. Mark deferred ones with a `DF` tag from [OPEN_DECISIONS.md](OPEN_DECISIONS.md)
+4. Mark deferred ones with a `DF` tag from [OPEN_DECISIONS.md](../decisions/_index.md)
 
 ---
 

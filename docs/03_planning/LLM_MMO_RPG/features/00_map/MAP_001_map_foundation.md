@@ -1,5 +1,42 @@
 # MAP_001 — Map Foundation
 
+> **⚠ SCOPE SUPERSEDED 2026-07-30 — [`36_map_architecture.md`](../../36_map_architecture.md) (`SPG-*`):**
+> **§3.1 `ChannelTier` (`Continent | Country | District | Town | Cell`) is RETIRED** and replaced by the
+> closed **`MapKind`** set plus a **containment matrix** validated on write (`SPG-A3`, amendment row
+> `SPG-R1`). Three reasons, each verified against code rather than against a handoff note:
+> (a) the ladder mixes a **geographic** rung (Continent) with **political** ones (Country/District/Town),
+> the exact conflation [`FLAT_TO_3D_MIGRATION_PLAN`](../../FLAT_TO_3D_MIGRATION_PLAN.md) §C diagnosed and
+> the shipped `crates/world-gen` avoided by keeping two independent hierarchies (`SPG-F2`);
+> (b) it has **no World and no Universe rung**, so a multi-world / multi-plane map has nowhere to sit;
+> (c) it was a *feature-level narrowing of an already-general substrate* — [`DP-Ch1`](../../06_data_plane/12_channel_primitives.md)
+> has always been an arbitrary tree with a free-form `level_name` (`SPG-F1`).
+> Also superseded: **`MapPosition` is now a parent-relative transform** (`SPG-A5` — no node stores an
+> absolute position, which is what lets a frame move at all), and this doc's own demo
+> [`_ui_drafts/MAP_GUI_v2.html`](../../_ui_drafts/MAP_GUI_v2.html) already used `region` where the enum
+> says `District`/`Town` — a fourth ladder, and evidence the enum was never load-bearing.
+> **Everything else in MAP_001 stands**: the node-link drill-down concept, image asset slots,
+> `distance_units` + `default_fiction_duration` on edges, and the PF_001 composition at the interior
+> tier. The **lazy-cell `map_layout`** fix (closure S2.6) is generalized by `SPG-A12` rather than
+> replaced.
+>
+> **⚠ STATUS CORRECTED 2026-07-30 ([REC-97](../../19_reconciliation_register.md)).** This paragraph read
+> *"**CANDIDATE-LOCK status preserved** — `SPG-R1` is **PROPOSED, not applied**; no schema in this file
+> was edited by that arc. Annotation only."* **It was false when written, and it disagreed with its own
+> file:** §3.1 and §11 had already renamed the retired `tier: ChannelTier` → `kind: MapKind`, and the enum
+> enum was already struck through below. Meanwhile `_boundaries/01_feature_ownership_matrix.md` claimed
+> the row was **applied**. Three statements about one question, no two agreeing.
+>
+> **Actual status: `SPG-R1` is APPLIED in this file as of 2026-07-30.** The rename is carried through
+> every site here; `map.tier_field_mismatch` is **retired** in favour of `map.containment_violation`
+> (the `SPG-Q1` resolution — §4 below); AC-MAP-3 and AC-MAP-11 are restated over `MapKind`.
+> **CANDIDATE-LOCK preserved**: no field added or removed — one renamed, one validator re-targeted, both
+> under a `_boundaries` lock claim.
+>
+> **Why the half-state was the dangerous one.** A rename applied to 2 of ~72 sites leaves the file
+> carrying *both* vocabularies with nothing marking which are outstanding — worse than not starting,
+> because the matrix then reports coverage it does not have. Same shape as a check that cannot fail.
+> Mechanised by `amendment-rot-gate.py` **check D** (retired-identifier containment, empty allowlist).
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
 > TMP_001 is a **derived consumer** of MAP_001. TMP_001 §7 subscribes to `map_layout` deltas via DP-Ch24; on each delta TMP_001 re-derives `child_cell_anchors` (partial update — not full regenerate). MAP_001 remains canonical; TMP_001's tile-coord derivation is `(map_pos × grid_size) / 1000`. No MAP_001 surface change — annotation only. See §17 row for cross-reference. WA_003 Forge gains 3 TMP-owned AdminAction sub-shapes (`Forge:RegenTilemap` + `Forge:EditTemplate` + `Forge:OverridePlacement`) that are orthogonal to existing `Forge:EditMapLayout` — TMP regen does not modify `map_layout`.
 
@@ -71,8 +108,8 @@ One aggregate owned by MAP_001:
 #[dp(type_name = "map_layout", tier = "T2", scope = "channel")]
 pub struct MapLayout {
     pub channel_id: ChannelId,                            // primary key — covers ALL tiers (continent through cell)
-    pub tier: ChannelTier,                                // denormalized: Continent | Country | District | Town | Cell
-    pub position: MapPosition,                            // (x, y) within parent viewport (0..1000 normalized; Q3-a author-positioned)
+    pub kind: MapKind,                                    // SPG-R1: was `tier: ChannelTier` (retired below)
+    pub position: MapPosition,                            // parent-RELATIVE transform (SPG-A5) — see the note on MapPosition
     pub tier_metadata: Option<TierMetadata>,              // Some for non-cell tiers; None for cell (PF_001 supplies — Q1-a invariant)
     pub icon_asset: Option<ImageAssetRef>,                // V1: None (Q5-a slot reservation); V1+ author/LLM populates
     pub background_asset: Option<ImageAssetRef>,          // shown when this node IS the current map view
@@ -82,16 +119,79 @@ pub struct MapLayout {
 }
 
 pub struct MapPosition {
-    pub x: u32,                                           // 0..1000 within parent viewport
-    pub y: u32,                                           // 0..1000 within parent viewport
+    pub x: u32,                                           // 0..1000 within PARENT frame
+    pub y: u32,                                           // 0..1000 within PARENT frame
 }
+// ⚠ REINTERPRETED 2026-07-30 — SPG-A5. The numbers are unchanged; what they MEAN
+// is now a hard rule rather than a convention: a node stores its position
+// RELATIVE TO ITS PARENT ONLY, and absolute position is DERIVED by accumulating
+// transforms from the root. NO NODE EVER STORES AN ABSOLUTE POSITION.
+//
+// This was already how MAP_001 worked ("within parent viewport"), which is why
+// the change costs nothing today — but it must be stated as an invariant, because
+// the day a parent MOVES (a ship, a cart, a flying 洞府) the two readings diverge
+// completely: relative keeps every descendant correct for free, absolute breaks
+// all of them at once and the repair is a migration through the spine.
+//
+// Same rule as USD's `Xform` and Star Citizen's Local Physics Grids, whose zone
+// system states it exactly: "an entity's absolute world position [is] the
+// accumulation of the transforms of each zone host above it… if a zone host moves
+// all the hosted entities move relative to it."
+//
+// Consequence for the wire (doc 36 §5, SPG-N2): the frame's transform and the
+// occupant's position replicate as SEPARATE streams. Sending absolute positions
+// adds the frame's motion error to the occupant's — which is the jitter every
+// moving-platform netcode thread is about.
 
-pub enum ChannelTier {                                    // closed enum; matches DP channel hierarchy
-    Continent,
-    Country,
-    District,
-    Town,
-    Cell,
+// ⛔ RETIRED 2026-07-30 — SPG-R1 / REC-81. Replaced by `MapKind` + a containment
+// matrix (doc 36 §3, SPG-A3). Kept here struck-through rather than deleted so a
+// reader arriving from an old cross-reference learns WHY, not just that it is gone.
+//
+// pub enum ChannelTier {                 // RETIRED — closed enum; "matches DP channel hierarchy"
+//     Continent, Country, District, Town, Cell,
+// }
+//
+// Three defects, each verified against code rather than against a handoff note:
+//
+// 1. IT MIXES TWO HIERARCHIES. `Continent` is geographic; `Country`/`District`/
+//    `Town` are political. FLAT_TO_3D §C already diagnosed this conflation
+//    ("'lift the zone tree as a political hierarchy' silently merges two DIFFERENT
+//    things") and chose geometry-first, politics-anchored-on-top. The shipped
+//    `crates/world-gen` implements that choice as TWO independent ladders
+//    (World→Continent→Subcontinent→Region, and World→Realm→State→Province→County).
+//    This enum is neither of them.
+//
+// 2. IT HAS NO WORLD AND NO UNIVERSE RUNG. Its top is `Continent`, positioned
+//    "within reality root viewport" — so a multi-world / multi-plane map has
+//    nowhere to sit, and `Universe → World` cannot be expressed at all.
+//
+// 3. IT NARROWED A SUBSTRATE THAT WAS ALREADY GENERAL. The comment above claimed
+//    it "matches DP channel hierarchy". It does not: DP-Ch1 has ALWAYS been an
+//    arbitrary tree with a free-form `level_name: String` (SPG-F1). The ladder was
+//    a feature-level invention, not a reflection of the data plane.
+//
+// Evidence it was never load-bearing: this feature's OWN demo, `MAP_GUI_v2.html`,
+// navigates continent → country → REGION → cell — a fourth ladder, matching none
+// of the three above (REC-81).
+//
+// REPLACEMENT: `MapKind` (Universe · World · Region · Locale · Domain · Passage ·
+// Arena, + reserved Vessel) with legality decided by `allowed(parent_kind,
+// child_kind)` VALIDATED ON WRITE — a relation, not an ordinal. Political
+// structure becomes an `owner_*` ATTRIBUTE on a node, so territory changes hands
+// by rebinding an ownership relation instead of restructuring the tree.
+//
+// See doc 36 §3 for the set and the matrix. `SPG-R2` narrows `DP-Ch1`'s
+// `level_name: String` to `MapKind` and touches a LOCKED file, so it carries its
+// own claim.
+pub enum MapKind {                                        // SPG-A3 — closed; legality from the matrix, not from order
+    Universe,
+    World,
+    Region,
+    Locale,
+    Domain,
+    Passage,
+    Arena,
+    // Vessel,                                            // RESERVED — a Domain whose parent changes over time (doc 36 §3)
 }
 
 pub struct TierMetadata {
@@ -116,8 +216,30 @@ pub struct MapConnectionDecl {
 **Rules:**
 - One row per `channel_id`. Primary key conflict = `map.duplicate_layout`.
 - Every channel from `root_channel_tree` (continent through cell) MUST have a `map_layout` row at bootstrap. Channels without layout reject runtime ops with `map.missing_layout_decl`.
-- `tier`: denormalized for SQL filter (sum-type variant tag isn't directly indexable); validator enforces equality with DP channel hierarchy at write-time per **Phase 3 cleanup S1.1**. Mismatch (e.g., `channel_id=country:dai_tong` per DP hierarchy but `tier=Continent` in row) rejects `map.tier_field_mismatch`. Readers SHOULD prefer DP channel-tree query over the `tier` field.
-- `tier_metadata`: Some iff `tier ∈ {Continent, Country, District, Town}`; None iff `tier == Cell`. Mismatch rejects `map.invalid_tier_metadata`.
+- `kind`: **AUTHORITATIVE on this row, never derived** (`SPG-R1` + the `SPG-Q1` resolution, 2026-07-30). Still denormalized for SQL filter (a sum-type variant tag isn't directly indexable), but the **cross-check changes target** — see the box below. Write-path validation is `allowed(parent.kind, child.kind)` against the containment matrix; a violation rejects **`map.containment_violation`**.
+- `kind_metadata`: `Some` iff the kind bears exterior map metadata; `None` for an interior kind, where `PF_001` supplies `display_name` / `canon_ref`. Mismatch rejects `map.invalid_kind_metadata`. (`SPG-R1`: was `tier_metadata`, `Some` iff `tier ∈ {Continent, Country, District, Town}` / `None` iff `Cell`.)
+
+> **⛔ `map.tier_field_mismatch` is RETIRED 2026-07-30 — its premise is unobtainable.** The rule read:
+> *"validator enforces equality with DP channel hierarchy at write-time… Readers SHOULD prefer DP
+> channel-tree query over the `tier` field."* That was **coherent** under `ChannelTier`, an enum whose
+> own comment said it *"matches DP channel hierarchy"*. It is **incoherent** under `MapKind`, because
+> [`DP-A13`](../../06_data_plane/02_invariants.md) states *"DP is agnostic to `level_name` semantics;
+> feature/book layer interprets level names… the tree shape is **per-reality** (book-specific)"*. The
+> validator asks the data plane for a value the data plane is **forbidden to hold**, and the reader
+> guidance sends readers to a source that cannot answer.
+>
+> **This is the "adjacent decision defeats it" shape** from [`non-vacuity.md`](../../../../standards/non-vacuity.md):
+> `SPG-R1` and `DP-A13` are each correct, and jointly they make a third rule unimplementable. Note the
+> symmetry with the miss that produced it — `SPG-R2` was retired for pushing `MapKind` **into** DP, and
+> that pass never looked for a consumer **depending on** DP knowing `MapKind`. Same seam, opposite
+> direction, found only on the second visit.
+>
+> **Replacement: `map.containment_violation` (this is the `SPG-Q1` answer).** `MapKind` lives on
+> `map_layout` — a FEATURE aggregate — and is authoritative there. The write path validates the **edge**,
+> not the label: `allowed(parent.kind, child.kind)` against the containment matrix, which is
+> **ruleset data** per `SPG-A2` and therefore per-reality without DP knowing anything. The
+> denormalisation rationale survives untouched; only the thing it is checked against moves, from a
+> source that cannot answer to one that can.
 - `position.x` and `position.y` MUST be in `0..=1000` (inclusive); out-of-bounds rejects `map.position_out_of_bounds`.
 - `connections[]`: non-empty only for non-cell tiers; cell-tier `connections` MUST be empty (cell graph edges live on PF_001 `place.connections`). Cell-tier non-empty connections reject `map.invalid_tier_metadata` (collapsed for V1; V1+ separate rule_id if needed).
 - `connections[].to_channel` MUST resolve to existing map_layout row at SAME tier as `self` (cross-tier disallowed V1; rejects `map.cross_tier_connection_disallowed`).
@@ -125,6 +247,8 @@ pub struct MapConnectionDecl {
 - `connections[].distance_units > 0`; zero or unset rejects `map.connection_distance_invalid`.
 - `connections[].default_fiction_duration.value > 0`; zero rejects `map.connection_duration_invalid` (Phase 3 cleanup S1.2 — distance_invalid only covered distance, not duration; teleport-without-intent prevention).
 - All asset_ref fields MUST BE `None` V1 (schema-only; V1+ MAP_002 populates). Author write attempts with non-None V1 reject `map.asset_pipeline_not_active_v1` (Phase 3 cleanup S1.3 — defensive write-time reject; rule retired when MAP_002 V1+30d lands). Reads with non-None values during V1 also reject via `map.asset_ref_unresolved`.
+
+> **⚠ CORRECTED 2026-07-26 (REC-19): referential connection validation is END-OF-BATCH within the bootstrap phase — not per-row write-time — for bootstrap writes.** As written, the `connections[].to_channel` existence check above ran at write time on every row, but bootstrap materialises layouts one decl at a time ([`18_reality_bootstrap.md`](../../18_reality_bootstrap.md) §3.2 phase 4), so **any mutually-referencing pair — including this doc's own canonical examples (e.g. `country:dai_tong ↔ country:tay_van`) — is un-bootstrappable**: the first-written row references a `map_layout` row that does not yet exist. Fix, per RBS-D6's per-phase validator rule (seed-time validators run per phase, immediately after that phase's emissions): during bootstrap, the referential checks (`map.connection_target_unknown`, `map.cross_tier_connection_disallowed`) evaluate **once at the end of phase 4, over the complete batch of that phase's rows**. Runtime single-row writes (Forge edits, V1+ in-fiction triggers) keep write-time checking unchanged — at runtime the target either already exists or the connection is genuinely orphan. Same class as RLS-A9 / `18` §3.2. Non-referential per-row invariants (position bounds, self-loop, distance/duration > 0, tier metadata shape) stay write-time everywhere.
 
 ---
 
@@ -182,6 +306,23 @@ fn derive_lazy_map_layout_position(parent_existing_children: &[MapLayout]) -> Ma
     MapPosition { x: x.clamp(50, 950), y: y.clamp(50, 950) }       // keep inside viewport with margin
 }
 ```
+
+> **⚠ CORRECTED 2026-07-26 (REC-24): the `f32` `cos`/`sin` formula above is WITHDRAWN — lazy-cell positions compute in fixed-point.** The snippet uses `f32` transcendental trig, the exact pattern GEO_001 §5 and CSC_001 §5.2 both ban: `cos`/`sin` results differ across platforms/compilers, so the "NOT random (replay-determinism per EVT-A9)" comment was self-defeating — the offset was deterministic per machine, not per replay. Corrected discipline (matching GEO_001's own): positions compute in **fixed-point i32 milli-units** with **integer/table-based trig** (or an equivalent precomputed-offset table) — no floating point anywhere on the path:
+>
+> ```rust
+> // REC-24 corrected form — fixed-point, table-based trig; no f32 on the position path.
+> // SIN_MILLI[d] / COS_MILLI[d] = round(sin/cos(d°) × 1000) for d in 0..360 — const i32 tables.
+> fn derive_lazy_map_layout_position(parent_existing_children: &[MapLayout]) -> MapPosition {
+>     let n = parent_existing_children.len() as i64;
+>     let deg = ((n * 137_500) / 1_000).rem_euclid(360) as usize;      // golden angle 137.5° in milli-degrees, integer math
+>     let radius: i64 = (50 + ((n as u32) * 30).min(400)) as i64;      // same growth/cap as before
+>     let x = (500_000 + radius * COS_MILLI[deg]) / 1_000;             // milli-units → units
+>     let y = (500_000 + radius * SIN_MILLI[deg]) / 1_000;
+>     MapPosition { x: (x as u32).clamp(50, 950), y: (y as u32).clamp(50, 950) }
+> }
+> ```
+>
+> Table granularity (1° / milli-unit rounding) is irrelevant to layout quality here — the only contract is bit-identical output for the same `n_existing` on every platform and every replay.
 
 Same policy for both lazy-cell + lazy any future runtime-channel-creation cases. Author can override later via Forge:EditMapLayout.UpdatePosition.
 
@@ -242,7 +383,7 @@ pub enum AssetReviewState {                               // closed enum 3 V1 (Q
 ```
 
 **V1 behavior:** all `ImageAssetRef` field values are `None` (icon_asset / background_asset / inline_artwork all None). UI falls back to:
-- icon: emoji per PlaceType / ChannelTier (formalized below as **Default icon emoji map V1** per Phase 3 cleanup S3.3)
+- icon: emoji per PlaceType / `MapKind` (`SPG-R1`; formalized below as **Default icon emoji map V1** per Phase 3 cleanup S3.3)
 - background: plain dark gradient (matches demo `_ui_drafts/MAP_GUI_v1.html` style)
 - inline_artwork: empty info-pane visual; just text description
 
@@ -265,9 +406,9 @@ pub enum AssetReviewState {                               // closed enum 3 V1 (Q
 | Wilderness | 🌲 | natural outdoor |
 | Cave | 🕳️ | subterranean |
 
-**Non-cell tier (per ChannelTier — §2):**
+**Exterior kinds (per `MapKind` — §2; `SPG-R1`):**
 
-| ChannelTier | Default emoji | Notes |
+| `MapKind` | Default emoji | Notes |
 |---|---|---|
 | Continent | 🌍 | world-scale |
 | Country | 🏯 | sovereign region |
@@ -383,8 +524,8 @@ pub struct RealityManifest {
 
 pub struct MapLayoutDecl {
     pub channel_id: ChannelId,
-    pub tier: ChannelTier,
-    pub position: MapPosition,
+    pub kind: MapKind,                                    // SPG-R1 (was `tier: ChannelTier`)
+    pub position: MapPosition,                            // parent-relative (SPG-A5)
     pub tier_metadata: Option<TierMetadata>,              // Some for non-cell; None for cell
     pub initial_icon_asset: Option<ImageAssetRef>,        // V1 always None; reservation
     pub initial_background_asset: Option<ImageAssetRef>,  // V1 always None
@@ -406,14 +547,15 @@ pub struct TravelDefaults {
 | `map.missing_layout_decl` | channel exists without `map_layout` row at runtime | "Vị trí chưa được tô hình bản đồ." | No (bootstrap invariant) |
 | `map.duplicate_layout` | second write attempt for `channel_id` already with row | "Vị trí này đã có bản đồ." | No (write-time invariant) |
 | `map.position_out_of_bounds` | x or y outside `0..=1000` | "Tọa độ không hợp lệ." | No (write-time validator) |
-| `map.connection_target_unknown` | MapConnectionDecl `to_channel` references non-existent channel | "Đích kết nối không tồn tại." | No (write-time validator) |
+| `map.connection_target_unknown` | MapConnectionDecl `to_channel` references non-existent channel | "Đích kết nối không tồn tại." | No (~~write-time validator~~ **end-of-batch within bootstrap phase 4; write-time for runtime single-row writes** — ⚠ CORRECTED 2026-07-26 (REC-19), see §3 note) |
 | `map.cross_tier_connection_disallowed` | MapConnectionDecl `to_channel` is at different tier than `self` | "Kết nối khác cấp không được phép V1." | No (V1 invariant; V1+ may allow per MAP-D9) |
 | `map.invalid_tier_metadata` | `tier_metadata = None` but `tier ≠ Cell`, OR `tier_metadata = Some` but `tier == Cell`, OR cell-tier `connections` non-empty | "Cấu trúc cấp bản đồ không hợp lệ." | No (write-time validator) |
 | `map.asset_ref_unresolved` | asset_id doesn't exist in storage at read-time (V1 should never fire since all asset fields None) | "Không tìm thấy tài nguyên hình ảnh." | No (defensive) |
 | `map.asset_review_pending` | UI requests asset that's still Pending review | "Hình ảnh đang chờ duyệt." | Yes (V1+ Forge integration; UI can fall back to icon emoji) |
 | `map.connection_distance_invalid` | `distance_units == 0` for non-cell connection | "Khoảng cách không hợp lệ." | No (write-time validator) |
 | `map.self_referential_connection` | `to_channel == self.channel_id` (self-loop) | "Kết nối không thể trỏ về chính nó." | No (write-time validator) |
-| `map.tier_field_mismatch` | denormalized `tier` field doesn't match the channel's actual tier in DP hierarchy (e.g., `channel_id=country:dai_tong` but `tier=Continent`) | "Cấp bản đồ không khớp với cấp kênh." | No (write-time validator; mirror of PF entity_type_mismatch / Phase 3 cleanup S1.1) |
+| ~~`map.tier_field_mismatch`~~ | **⛔ RETIRED 2026-07-30 (`SPG-Q1`)** — required deriving `MapKind` from the DP channel tree, which `DP-A13` forbids. See §3.1. | — | — |
+| `map.containment_violation` | the row's `kind` is not permitted under its parent's `kind` by the reality's containment matrix (`SPG-A3`; the matrix is ruleset data per `SPG-A2`) | "Cấp bản đồ không hợp lệ bên trong bản đồ cha." | No (write-time validator; replaces `tier_field_mismatch`) |
 | `map.connection_duration_invalid` | `default_fiction_duration.value == 0` for non-cell connection (zero duration = teleport-without-intent) | "Thời gian di chuyển không hợp lệ." | No (write-time validator; Phase 3 cleanup S1.2) |
 | `map.asset_pipeline_not_active_v1` | author writes non-None ImageAssetRef on icon/background/inline_artwork field V1 (before MAP_002 V1+30d lands) | "Chức năng tải hình ảnh chưa khả dụng V1." | No (V1 defensive; rule retired when MAP_002 V1+30d lands; Phase 3 cleanup S1.3) |
 
@@ -587,7 +729,7 @@ PL_001 §13 step ④ Travel resolution:
   ↓ DP emits MemberLeft + MemberJoined; FictionClock advances by 14 Day; LLM narrator gets canon_ref + 14-day flavor hint
 ```
 
-**Note on canon_ref None narrator fallback (Phase 3 cleanup S2.5; mirror PF_001 §6 step 11):** if the matched ConnectionDecl has `canon_ref = None` (author-added connection without book grounding), narrator falls back to `(ChannelTier-default-transition-phrase + ConnectionKind-default-phrase)`. Examples: Country + Public + Road-context → "đoàn người di chuyển qua quan đạo nối hai quốc gia"; Country + OneWay → "đi qua cổng đặc biệt, không thể quay lại"; District + Hidden → "đi theo lối nhỏ ít người biết". LLM AssemblePrompt receives both endpoint Place (or non-cell tier metadata) contexts so prose can interpolate without canon hint. Same pattern at all tiers.
+**Note on canon_ref None narrator fallback (Phase 3 cleanup S2.5; mirror PF_001 §6 step 11):** if the matched ConnectionDecl has `canon_ref = None` (author-added connection without book grounding), narrator falls back to `(MapKind-default-transition-phrase + ConnectionKind-default-phrase)` (`SPG-R1`). Examples: Country + Public + Road-context → "đoàn người di chuyển qua quan đạo nối hai quốc gia"; Country + OneWay → "đi qua cổng đặc biệt, không thể quay lại"; District + Hidden → "đi theo lối nhỏ ít người biết". LLM AssemblePrompt receives both endpoint Place (or non-cell tier metadata) contexts so prose can interpolate without canon hint. Same pattern at all tiers.
 
 ### 14.4 Author-edit map layout via Forge (WA_003)
 
@@ -624,7 +766,7 @@ V1: this flow doesn't exist; all asset slots are None.
 
 1. **AC-MAP-1 — RealityManifest map_layout extension required:** RealityManifest with `map_layout: []` (empty) but channels declared in `root_channel_tree` rejects bootstrap with `map.missing_layout_decl { offending_channels: [...] }`. Tests §3.1 invariant + §9 bootstrap order.
 2. **AC-MAP-2 — Cell-tier tier_metadata invariant:** writing map_layout with `tier = Cell, tier_metadata = Some(...)` rejects `map.invalid_tier_metadata`. Symmetric: writing `tier = Country, tier_metadata = None` also rejects. Tests §3.1.
-3. **AC-MAP-3 — ChannelTier variant exhaustiveness (compile-time):** Rust unit test that uses `match channel_tier` without arms for all 5 V1 variants fails to compile. CI lint flags `_ =>` arms outside designated catch-all sites with `// CLOSED-ENUM-EXEMPT: <reason>` annotation (unified per PF/EF closure pass conventions).
+3. **AC-MAP-3 — `MapKind` variant exhaustiveness (compile-time)** — ⚠ **RESTATED `SPG-R1` 2026-07-30. As written this AC had become VACUOUS**: it asserted exhaustiveness over an enum that no longer exists, so nothing could fail it. Restated over `MapKind`'s **7** variants (`Universe · World · Region · Locale · Domain · Passage · Arena`): a Rust unit test that `match`es a `MapKind` without arms for all 7 variants fails to compile. The count is deliberately stated here so `design-lint`'s `count` check can verify it against the real enum the day `MapKind` exists in code. CI lint flags `_ =>` arms outside designated catch-all sites with `// CLOSED-ENUM-EXEMPT: <reason>` annotation (unified per PF/EF closure pass conventions).
 4. **AC-MAP-4 — Position out-of-bounds rejects:** writing map_layout with `position.x = 1500` (or `y = -10` etc.) rejects `map.position_out_of_bounds`. Tests §5.
 5. **AC-MAP-5 — Cross-tier connection disallowed V1:** writing MapConnectionDecl with `to_channel` at different tier (e.g., country layout connecting to a region) rejects `map.cross_tier_connection_disallowed`. Tests §3.1 + §4.
 6. **AC-MAP-6 — Self-referential connection rejects:** writing MapConnectionDecl with `to_channel == self.channel_id` rejects `map.self_referential_connection`. Tests §3.1.
@@ -632,7 +774,7 @@ V1: this flow doesn't exist; all asset slots are None.
 8. **AC-MAP-8 — Travel resolver consumes default_fiction_duration:** NPC /travel from country:A to country:B (where MAP_001 connection has `default_fiction_duration = 14 Day`) and `fiction_duration_proposed = None` results in committed TurnEvent with `fiction_duration_proposed = 14 Day` (auto-resolved). Tests §8 V1 contract + §14.3 sequence + PL_001 §13 light reopen.
 9. **AC-MAP-9 — V1 asset slots None + defensive write-reject (closure-pass expansion):** **(a)** at bootstrap, all `icon_asset / background_asset / inline_artwork` fields on every map_layout row are `None`. Reads succeed; UI renders fallback icons + plain background per §7.1 default emoji map (Tests §7 V1 schema-only contract). **(b)** author writing MapLayoutDecl with non-None ImageAssetRef on any asset slot V1 (before MAP_002 V1+30d Asset Pipeline lands) rejects `map.asset_pipeline_not_active_v1` at write-time (Phase 3 S1.3 — defensive rule; rule retired when MAP_002 lands).
 10. **AC-MAP-10 — Forge:EditMapLayout 3-write transaction atomicity:** Forge:EditMapLayout executes 3 writes in single Postgres transaction: (a) update map_layout row, (b) emit EVT-T8 Administrative `Forge:EditMapLayout`, (c) append to forge_audit_log (WA_003-owned). Mid-transaction failure → all 3 rollback. Tests §14.4 sequence + WA_003 forge_audit_log integration (mirror PF_001 AC-PF-8 pattern).
-11. **AC-MAP-11 — ChannelTier denorm validation (closure-pass NEW per Phase 3 S1.1):** writing map_layout with `channel_id = country:dai_tong` (DP channel hierarchy says Country tier) but `tier = Continent` (denormalized field mismatch) rejects `map.tier_field_mismatch`. Validator computes tier from DP channel-tree at write-time and enforces equality with the row's `tier` field. Mirrors PF_001 AC-PF-3 entity_type_mismatch pattern. Tests §3.1 rules + Phase 3 S1.1 fix.
+11. **AC-MAP-11 — containment validation** — ⚠ **REPLACED `SPG-R1`/`SPG-Q1` 2026-07-30.** It previously read: *"writing map_layout with `channel_id = country:dai_tong` (DP channel hierarchy says Country tier) but `tier = Continent` rejects `map.tier_field_mismatch`. **Validator computes tier from DP channel-tree at write-time**."* That scenario is **unrunnable** under `MapKind` — `DP-A13` forbids DP from holding the semantics it asks DP to compute. Replaced: writing a `map_layout` whose `kind` is not permitted under its parent's `kind` by the reality's containment matrix (e.g. a `World` child of a `Locale`) rejects **`map.containment_violation`**; and the legal-but-scale-skipping case (`Domain` child of a `World`, the 内天地 row) is **accepted**, proving the matrix is a relation and not an ordinal ladder. Still mirrors the `PF_001` AC-PF-3 shape — a write-time cross-check — but against a source that can answer.
 
 ---
 
@@ -640,7 +782,7 @@ V1: this flow doesn't exist; all asset slots are None.
 
 | ID | What | Why deferred | Target phase |
 |---|---|---|---|
-| **MAP-D1** | V1+ ChannelTier extensions (e.g., StarSystem / Sector / Galaxy for sci-fi realities; PocketDimension for cultivation) | Not V1-blocking; additive per I14 | When first such genre feature designed |
+| **MAP-D1** | ~~V1+ `ChannelTier` extensions~~ — **SUPERSEDED by `SPG-A2` (`SPG-R1`)**: extending the kind set is no longer a schema deferral, because the whitelist is **ruleset data** and the capability is an engine primitive. A sci-fi `StarSystem` or a cultivation `PocketDimension` is a ruleset row, not a code change. | Not V1-blocking; additive per I14 | When first such genre feature designed |
 | **MAP-D2** | V1+ MapConnectionKind extensions (TimePortal / PocketDimension / Resonance) | V1+ supernatural travel kinds; current V1 mirrors PF_001's 5 kinds | V1+ supernatural feature design |
 | **MAP-D3** | V1+30d MAP_002 Asset Pipeline feature (AuthorUploaded + CanonicalSeed pipelines) | requires Forge UI extension + S3/MinIO bucket setup; per-reality quotas | V1+30d implementation |
 | **MAP-D4** | V1+60d MAP_002 PlayerUploaded pipeline | per-PC gallery + cost limits + review queue | V1+60d implementation |
@@ -656,6 +798,19 @@ V1: this flow doesn't exist; all asset slots are None.
 | **MAP-D14** | `BookCanonRef` shared-schema registration | inherited from PF-D12; same boundary cleanup pass | Future boundary cleanup / IF_001 design |
 | **MAP-D15** | `ImageAssetRef.storage_uri` typed URI + `mime_type` closed enum | V1 freeform String accepts any content (security-relevant for V1+ when MAP_002 populates: path traversal, mime spoofing, malicious schemes). V1 schema-only (values None) so no exposure; V1+ MAP_002 must validate at write-time. Phase 3 cleanup S1.4 reservation. | V1+30d MAP_002 implementation |
 | **MAP-D16** | World-service unified `read_map_view(channel_id) → MapViewDTO` API merging MAP_001 + PF_001 at cell tier | V1: frontend dual-subscription (Subscription A on map_layout + Subscription B on place; client-side composition per §12.1). V1+ optimization to reduce round-trips. Phase 3 cleanup S2.1 reservation. | V1+30d profiling |
+| **GEO-D5** *(cross-reference row — added 2026-07-26, REC-30)* | GEO_001's V1+ derivation of `map_layout.position` from world-geometry (settlement coordinates) | GEO_001 claimed this doc carried the cross-reference; it never did. See precedence note below. | GEO-D5 activation |
+
+> **⚠ CORRECTED 2026-07-26 (REC-30 / AUD-F17 #42): GEO-D5 cross-reference row added above, with a
+> precedence rule that did not exist.** GEO-D5 (GEO_001) and MAP-D6 (this table) named **two
+> different V1+ derivation sources** for `map_layout.position`, with no rule for which wins, and
+> MAP_001 carried neither the cross-reference nor the row GEO_001 claimed it had. Precedence,
+> locked per the register: **(1) author-pin wins** — a Q3-a author-positioned `position` is never
+> overwritten by any derivation; **(2) GEO-D5 derivation fills UNPINNED positions only** (nodes
+> whose position was never author-set — e.g. lazy-created cells, currently served by §5's
+> deterministic offset); MAP-D6's force-directed auto-layout is likewise a fill-unpinned
+> proposal, never an overwrite. **TMP-A6 note:** TMP-A6's premise assumes positions are not
+> geometry-derived — if GEO-D5 activates, TMP-A6 requires an explicit amendment in the same
+> cycle; activation without that amendment is a drift defect, not an oversight.
 
 ---
 
@@ -670,7 +825,7 @@ V1: this flow doesn't exist; all asset slots are None.
 - **PL_005 Interaction** — V1+ Examine of map node (e.g., "examine the country") could read tier_metadata.description for narrator content; MAP-Q3 watchpoint for ExamineTarget extension to non-cell tiers.
 - **PL_002 Grammar** — `/travel destination=<channel_id>` consumes MAP_001 connection-resolver at non-cell tier; cell tier consumes PF_001 resolver. Both via PL_001 §13.
 - **PL_006 Status Effects** — V1+ if "the country is under siege" status effect needed (PlaceState analog at non-cell tier); V1: no.
-- **WA_001 Lex** — V1+ Lex axioms can reference ChannelTier (e.g., "magic strength varies by tier: Wilderness +20%, OfficialHall −30%"); current V1: PlaceType only.
+- **WA_001 Lex** — V1+ Lex axioms can reference `MapKind` (`SPG-R1`) (e.g., "magic strength varies by kind: Wilderness +20%, OfficialHall −30%"); current V1: PlaceType only.
 - **WA_002 Heresy** — V1+ if per-region contamination spread; V1: per-actor only.
 - **PCS_001** (when designed) — PC spawn cell MUST have valid map_layout row (V1 invariant). V1+ per-PC discovered_nodes set integrates with MAP-D10.
 - **MV12 (multiverse)** — V1+ multiverse portals = MapConnectionDecl with V2+ MAP-D9 cross-reality kind.
@@ -682,16 +837,16 @@ V1: this flow doesn't exist; all asset slots are None.
 
 ## §18 Readiness checklist
 
-- [x] Domain concepts table covers MapLayout / MapPosition / ChannelTier / TierMetadata / MapConnectionDecl / MapConnectionKind / distance_units / default_fiction_duration / ImageAssetRef / AssetSource / AssetReviewState / MapLayoutDecl
+- [x] Domain concepts table covers MapLayout / MapPosition / `MapKind` (`SPG-R1`; was ChannelTier) / KindMetadata / MapConnectionDecl / MapConnectionKind / distance_units / default_fiction_duration / ImageAssetRef / AssetSource / AssetReviewState / MapLayoutDecl
 - [x] Aggregate inventory: 1 aggregate (`map_layout` primary; T2/Channel scope; covers all tiers)
-- [x] ChannelTier 5 V1 closed enum (Continent / Country / District / Town / Cell)
+- [x] ~~ChannelTier 5 V1 closed enum~~ → **`MapKind` 7-variant closed set + containment matrix** (`SPG-R1` APPLIED 2026-07-30)
 - [x] Place ↔ Channel composition explicit (cell-tier MAP_001 visual layer; PF_001 semantic; non-cell tier MAP_001 owns end-to-end)
 - [x] Connection graph: hybrid (DP hierarchy implicit + Vec<MapConnectionDecl> explicit horizontal); 5 V1 ConnectionKinds matching PF_001
 - [x] Position model: author-positioned absolute u32 (0..=1000); per-tier viewport reset
 - [x] Image asset architecture: 3 slot reservations + 4 source variants + 3 review states; V1 schema-only with V1+ phased pipeline
 - [x] Distance + Travel cost integration: distance_units (invariant) + default_fiction_duration (OnFoot baseline) + V1 cell-tier fallback constant; space-game pattern (EVE / Stellaris / FTL)
 - [x] RealityManifest extension `map_layout: Vec<MapLayoutDecl>` + `travel_defaults: TravelDefaults` (registered in `_boundaries/02_extension_contracts.md` §2)
-- [x] Reference safety policy: **13 V1 rule_ids** in `map.*` namespace (Phase 3 cleanup added `tier_field_mismatch` + `connection_duration_invalid` + `asset_pipeline_not_active_v1`) + 3 V1+ reservations (cross_reality_layout / layout_too_dense / connection_method_unsupported)
+- [x] Reference safety policy: **13 V1 rule_ids** in `map.*` namespace (Phase 3 cleanup added `tier_field_mismatch` — since **retired**, replaced by `map.containment_violation` per `SPG-Q1` — plus `connection_duration_invalid` + `asset_pipeline_not_active_v1`) + 3 V1+ reservations (cross_reality_layout / layout_too_dense / connection_method_unsupported)
 - [x] Event-model mapping: EVT-T3 Derived (`aggregate_type=map_layout`) + EVT-T4 System (`LayoutBorn`) + EVT-T8 Administrative (`Forge:EditMapLayout`); V1+ MAP_002 sub-shapes reserved; no new EVT-T*
 - [x] DP primitives: existing surface only (no new DP-K*)
 - [x] Capability JWT: existing claims (no new top-level)
@@ -701,7 +856,7 @@ V1: this flow doesn't exist; all asset slots are None.
 - [x] 10 V1-testable acceptance scenarios (AC-MAP-1..10)
 - [x] **16 deferrals (MAP-D1..D16) with target phases** — covers V1+ asset pipeline phases · auto-layout · pathfinding · cross-tier connections · TVL_001 method matrix · LocalizedName/BookCanonRef shared-schema cleanups · Phase 3 add: typed URI/mime + unified read_map_view API
 - [x] Cross-references to all 14 affected features + foundation docs
-- [x] Phase 3 review cleanup applied 2026-04-26 (Severity 1 + 2 + 3 — ChannelTier denorm validation `tier_field_mismatch` + `connection_duration_invalid` + `asset_pipeline_not_active_v1` rule_ids; FictionDuration cross-ref; cell-tier dual-subscription composition flow §12.1; V1 limitations boxout §8; lazy-cell auto-position policy §5 + PL_001b §16.3 lazy map_layout creation; canon_ref None narrator fallback §14.3; reality root viewport §5; AssetReviewState V1+ prefix; default emoji map V1 §7.1; Hidden V1 limitation §4)
+- [x] Phase 3 review cleanup applied 2026-04-26 (Severity 1 + 2 + 3 — ChannelTier denorm validation `tier_field_mismatch`, **retired 2026-07-30 per `SPG-Q1`**, + `connection_duration_invalid` + `asset_pipeline_not_active_v1` rule_ids; FictionDuration cross-ref; cell-tier dual-subscription composition flow §12.1; V1 limitations boxout §8; lazy-cell auto-position policy §5 + PL_001b §16.3 lazy map_layout creation; canon_ref None narrator fallback §14.3; reality root viewport §5; AssetReviewState V1+ prefix; default emoji map V1 §7.1; Hidden V1 limitation §4)
 - [x] Closure-pass walk-through 2026-04-26 — §15 acceptance criteria walked AC-MAP-1..11; AC-MAP-7 + AC-MAP-9 expanded to cover Phase 3 added rule_ids (`connection_duration_invalid` + `asset_pipeline_not_active_v1`); new AC-MAP-11 added for `tier_field_mismatch` coverage; AC count 10 → 11
 - [x] **CANDIDATE-LOCK 2026-04-26** — boundary matrix `map_layout` row updated · _index.md status promoted · changelog appended. Downstream updates (PCS_001 brief reading list / demo `MAP_GUI_v2.html` already covers distance labels in commit fe31e0b) tracked at consumer-feature design time
 

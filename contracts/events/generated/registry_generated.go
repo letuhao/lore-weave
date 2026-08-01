@@ -8,6 +8,21 @@ package events
 // contracts/events/. Consumers use this for runtime dispatch (logging, telemetry,
 // generic serialization paths).
 var EventDispatch = map[string]map[uint32]string{
+	"admin.canon.override.compensating": {
+		1: "AdminCanonOverrideCompensatingV1",
+	},
+	"admin.canon.override.consented": {
+		1: "AdminCanonOverrideConsentedV1",
+	},
+	"admin.canon.override.requested": {
+		1: "AdminCanonOverrideRequestedV1",
+	},
+	"admin.canon.override.vetoed": {
+		1: "AdminCanonOverrideVetoedV1",
+	},
+	"canon.change.recorded": {
+		1: "CanonChangeRecordedV1",
+	},
 	"canon.entry.created": {
 		1: "CanonEntryCreatedV1",
 	},
@@ -27,6 +42,9 @@ var EventDispatch = map[string]map[uint32]string{
 	"reality.created": {
 		1: "RealityCreatedV1",
 	},
+	"ruleset.epoch_activated": {
+		1: "RulesetEpochActivatedV1",
+	},
 	"world.tick": {
 		1: "WorldTickV1",
 	},
@@ -41,12 +59,18 @@ var EventDispatch = map[string]map[uint32]string{
 // EventTypesGenerated is the alphabetically-sorted list of event_type names
 // known to the registry at codegen time.
 var EventTypesGenerated = []string{
+	"admin.canon.override.compensating",
+	"admin.canon.override.consented",
+	"admin.canon.override.requested",
+	"admin.canon.override.vetoed",
+	"canon.change.recorded",
 	"canon.entry.created",
 	"canon.entry.decanonized",
 	"canon.entry.promoted",
 	"canon.entry.updated",
 	"npc.said",
 	"reality.created",
+	"ruleset.epoch_activated",
 	"world.tick",
 	"xreality.canon.promoted",
 	"xreality.user.erased",

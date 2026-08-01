@@ -73,10 +73,16 @@ async def internal_create_session(
     # the system prompt + title so no field carries a disclosure past the gate (shape-agnostic).
     from loreweave_safety import screen
     _source = " ".join(str(x) for x in [
-        # ML-5 is a CORRECTNESS bug here, not a size one: this string is what the
-        # disclosure screen reads. Escaped, a Vietnamese or Chinese seed reaches the
-        # screen as \uXXXX and every pattern it looks for misses — the gate would pass
-        # a disclosure it cannot see.
+        # ensure_ascii=False is LOAD-BEARING here, not hygiene (ML-5 + Security) — a
+        # CORRECTNESS bug, not a size one, and it cuts both ways:
+        #   · MISS — this string is what the disclosure screen reads. Escaped, a
+        #     Vietnamese or Chinese seed reaches `screen()` as \uXXXX and every pattern
+        #     it looks for misses; the gate passes a disclosure it cannot see.
+        #   · BYPASS — `screen()` NFKC-folds its input specifically so "unicode
+        #     look-alikes and width variants don't slip" (loreweave_safety/floor.py:120).
+        #     Escaping to \uXXXX BEFORE screen() runs means the fold never happens, so a
+        #     full-width payload hidden in working_memory_seed evades the safety floor.
+        # In both directions the upstream serializer was defeating the downstream defense.
         body.system_prompt, body.title,
         json.dumps(body.working_memory_seed or {}, ensure_ascii=False),
     ] if x)

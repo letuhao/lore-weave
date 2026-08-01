@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onboarding — concept pass 2026-07-29</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body data-reality="dongphong">
+<div class="app-shell">
+
+  <header>
+    <h1 style="font-size:1.875rem;margin:0 0 .375rem">Onboarding — đợt rà soát khái niệm</h1>
+    <p class="subtle" style="margin:0">
+      Bản nháp 2026-07-29 · nền tảng trước, pixel sau · đọc
+      <a href="00_CONCEPT.md" style="color:var(--accent)">00_CONCEPT.md</a> trước
+    </p>
+    <div class="brush-divider"></div>
+  </header>
+
+  <div class="note" style="margin-bottom:1.75rem">
+    <strong>Onboarding là gì.</strong> Là hàm biến <em>một người có tài khoản</em> thành
+    <em>một actor được ràng buộc vào thế giới đang chạy</em>. Sản phẩm của nó không phải mấy màn hình,
+    mà là đúng một ràng buộc: <span class="mono">user → actor → cell → channel</span>.
+    Mọi thứ khác — mode picker, wizard, AI assistant — chỉ là các đường đi tới ràng buộc đó.
+  </div>
+
+  <h3 style="font-size:1.0625rem;margin:0 0 .75rem">Xương sống — 4 màn, mỗi màn truy được về một nền tảng</h3>
+  <div class="grid-2" style="margin-bottom:2rem">
+
+    <div class="card card-disabled">
+      <strong>00 — Account</strong>
+      <p class="subtle" style="margin:.375rem 0 0">
+        Bạn là bạn? auth-service đã có sẵn email+password + JWT. Màn rẻ nhất —
+        <a href="../../features/03_player_onboarding/wireframes/00_landing.html">bản 2026-04-27 vẫn dùng được</a>,
+        không vẽ lại.
+      </p>
+    </div>
+
+    <a href="01_reality.html" class="card card-hoverable" style="text-decoration:none;color:inherit">
+      <strong>01 — Reality</strong> <span class="from-manifest">F3</span>
+      <p class="subtle" style="margin:.375rem 0 0">
+        Thế giới nào, và nó cho phép những gì? Chọn xong là nạp cấu hình cho toàn bộ phần sau.
+      </p>
+    </a>
+
+    <a href="02_entry.html" class="card card-hoverable" style="text-decoration:none;color:inherit">
+      <strong>02 — Entry</strong> <span class="from-manifest">F4</span>
+      <p class="subtle" style="margin:.375rem 0 0">
+        Nhận actor bằng cách nào? Ba lối vào, <em>một</em> primitive. Danh sách lối do manifest quyết định.
+      </p>
+    </a>
+
+    <a href="03_arrival.html" class="card card-hoverable" style="text-decoration:none;color:inherit">
+      <strong>03 — Arrival</strong> <span class="from-manifest">F1 · F2 · F5</span>
+      <p class="subtle" style="margin:.375rem 0 0">
+        Đã hạ cánh: ở đâu, lúc nào, ai đang ở đó. <strong>Thay thế <span class="mono">05_first_turn</span></strong>.
+      </p>
+    </a>
+
+  </div>
+
+  <h3 style="font-size:1.0625rem;margin:0 0 .5rem">Năm nền tảng</h3>
+  <div class="card" style="margin-bottom:2rem;padding:1rem 1.25rem">
+    <div style="line-height:2;font-size:.875rem">
+      <div><strong>F1</strong> · Thế giới đã chạy sẵn — bạn <em>nhập cư</em>, không "new game".</div>
+      <div><strong>F2</strong> · Client <em>đề xuất</em>, không ghi. Ba kết cục, không phải một.</div>
+      <div><strong>F3</strong> · Reality chọn trước, và nó cấu hình mọi thứ sau đó.</div>
+      <div><strong>F4</strong> · PC và NPC chung một substrate; "PC" là <em>ràng buộc</em>, không phải kiểu.</div>
+      <div><strong>F5</strong> · Trạng thái cuối là một ô thế giới được render, không phải khung văn xuôi.</div>
+    </div>
+  </div>
+
+  <h3 style="font-size:1.0625rem;margin:0 0 .5rem">Bộ 2026-04-27 còn dùng được bao nhiêu</h3>
+  <p class="subtle" style="margin:0 0 .75rem">
+    <strong>8 trên 10 màn sống sót.</strong> Công sức hồi tháng 4 không phí — nó nhắm vào một medium
+    đã được đính chính, và đúng một màn nằm trên đường đứt gãy: màn cuối cùng.
+  </p>
+  <div class="grid-3" style="margin-bottom:1rem">
+    <div class="card" style="padding:.875rem">
+      <span class="verdict verdict-resolved">● giữ nguyên</span>
+      <p class="subtle" style="margin:.5rem 0 0;font-size:.75rem">
+        00 landing · 03a canonical · 03b custom · 03b2 advanced · 03c xuyên không · 06 AI assistant
+      </p>
+    </div>
+    <div class="card" style="padding:.875rem">
+      <span class="verdict verdict-discarded">● sửa lại</span>
+      <p class="subtle" style="margin:.5rem 0 0;font-size:.75rem">
+        01 reality select (phải data-driven) · 04 confirm (preview phải là <em>ô thế giới</em>, và phải
+        render đủ ba verdict)
+      </p>
+    </div>
+    <div class="card" style="padding:.875rem">
+      <span class="verdict verdict-rejected">● xây lại</span>
+      <p class="subtle" style="margin:.5rem 0 0;font-size:.75rem">
+        05 first turn — là chat client, mâu thuẫn 00_VISION §0
+      </p>
+    </div>
+  </div>
+
+  <footer class="draft-foot">
+    <p>
+      Đợt rà soát khái niệm onboarding · 2026-07-29 ·
+      spec gốc <a href="../../features/03_player_onboarding/PO_001_player_onboarding.md">PO_001</a> ·
+      bộ wireframe cũ <a href="../../features/03_player_onboarding/wireframes/index.html">2026-04-27</a> ·
+      màn game kế bên <a href="../CELL_SCENE_v4_layered.html">CELL_SCENE_v4</a> ·
+      <a href="../MAP_GUI_v2.html">MAP_GUI_v2</a>
+    </p>
+  </footer>
+</div>
+
+<script>
+  const p = new URLSearchParams(location.search).get('reality');
+  if (p) document.body.dataset.reality = p;
+</script>
+</body>
+</html>

@@ -151,6 +151,31 @@ paths:
       honesty is real but OPTIONAL — it lives in `fallback_count`, and nothing obliges a
       consumer to read it before treating the set as generated content.
 
+  # ── commit-service · NPC combat decision (Rust) ──────────────────────────────────────────
+  - id: commit.combat.npc_decision
+    service: commit-service
+    language: rust
+    file: services/commit-service/src/llm_driver.rs
+    symbol: Dispatch
+    status: guarded
+    coverage_field: reject
+    note: >-
+      Arrived with the game-logic promotion (merge 2026-08-02) and classified rather than
+      absorbed into the discovery baseline, because it IS a model deciding something a player
+      sees. It is guarded by SHAPE, which is the property this registry cares about: the
+      degraded result is not shaped like the successful one. `Dispatch` carries
+      `payload: Option<CombatPayload>` beside `reject: Option<String>`, so "the model chose"
+      and "we fell back" are distinguishable by a consumer that reads either field — unlike
+      tilemap's `fallback_count`, which a consumer may ignore and still get a narration.
+      The model also cannot invent a target: `vocab.validate` checks the tool name against a
+      closed set and the argument against the ids actually OFFERED this turn, so a truncated
+      or off-vocabulary call resolves to a reject, never to a valid-looking payload.
+      GAP, tracked for S7 not fixed here — `with_max_tokens(256)` is a flat literal at the
+      call site. Rust has no `call_budget` equivalent (the seam is Python-only), so attributing
+      it needs the Rust half of S7, not an edit here. The 256 is a runaway guard, and the
+      vocabulary post-condition is why an undersized cap degrades to a reject rather than to a
+      wrong strike — but nothing says WHY 256 is the number.
+
 # The code-derived denominator this registry does NOT cover. Measured by the gate itself, so
 # the number cannot drift away from reality the way a hand-written count does.
 discovery:
@@ -164,5 +189,20 @@ discovery:
   baseline:
     python: 59
     go: 2
-    rust: 24
+    # 24 → 30 on the 2026-08-02 merge of `origin/main` (the game-logic promotion). The six new
+    # files are all `services/commit-service/src/`, and the raise is narrow because each was
+    # READ before being counted rather than accepted as a number:
+    #   · llm_driver.rs   — a real generation path. NOT absorbed into this number; it is
+    #                       classified above as `commit.combat.npc_decision`.
+    #   · main.rs         — the POC-2 turn runner. Constructs the `GatewayClient` and calls
+    #                       `decide`; assembles no prompt of its own, so it has no separate
+    #                       guard surface to declare.
+    #   · admission.rs · domain/payload.rs · lib.rs · producer.rs — no gateway call at all.
+    #                       They match the detector on the WORD (doc comments about the
+    #                       LLM-safety tier, an `LW_PRODUCER_KEY_LLM_DRIVER` env name). This is
+    #                       the detector being deliberately loose, which is the right trade for
+    #                       a growth guard — but it means the count is "files mentioning a
+    #                       model gateway", not "files calling one", and raising it must not be
+    #                       read as six new generation paths.
+    rust: 30
     typescript: 8

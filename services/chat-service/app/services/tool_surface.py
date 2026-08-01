@@ -111,6 +111,13 @@ def _tool_tokens(td: dict) -> int:
 
 
 def _is_read_tool(name: str) -> bool:
+    # ML-2 FALSE POSITIVE (documented, NOT an active pragma — language-bias-gate
+    # exempts via its BASELINE fingerprint set, not inline markers, so writing one
+    # here would be a claim that silences nothing). `name` is an MCP TOOL NAME,
+    # ASCII by contract
+    # (closed-set snake_case per the Frontend-Tool Contract), never user prose. On
+    # ASCII, .lower() and the NFKC+casefold spine are identical, and routing tool
+    # dispatch through an entity-name normalizer would imply it can carry prose.
     n = name.lower()
     return any(v in n for v in _READ_VERBS)
 

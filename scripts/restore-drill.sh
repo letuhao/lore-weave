@@ -66,6 +66,9 @@ if [[ $DRY_RUN -eq 0 ]]; then
 fi
 
 DRILL_TS="$(date -u +%Y%m%dT%H%M%SZ)"
+# db-safety-gate: file-ok — the dropped name is built here from a FIXED `drill_` prefix
+# plus a timestamp, so no environment variable can retarget it at a real database.
+# The connection string is env-supplied, but the DB name never is.
 DRILL_DB="drill_${DRILL_TS}"
 VERIFICATION_ID="$(uuidgen 2>/dev/null || python -c 'import uuid;print(uuid.uuid4())')"
 

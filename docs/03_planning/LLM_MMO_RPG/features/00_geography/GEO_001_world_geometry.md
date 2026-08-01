@@ -1,5 +1,25 @@
 # GEO_001 — World Geometry
 
+> **⚠ SCOPE INVERTED — CORRECTION 2026-07-30 ([`36_map_architecture.md`](../../36_map_architecture.md) `SPG-F3`, row `SPG-R3`):**
+> **§2 scopes `world_geometry` to a CONTINENT channel (*"One row per continent channel"*). That
+> containment is backwards relative to both the locked redesign and the shipped code.**
+> Seven days after this doc was drafted, [`GEO_WORLD_TIER_REDESIGN`](../../GEO_WORLD_TIER_REDESIGN.md)
+> (LOCKED 2026-05-20) stated the finding directly — *"the current generator is structurally a **region**
+> generator; this spec defines the **world** tier above it"* — and `crates/world-gen` followed it:
+> [`hierarchy.rs`](../../../../../crates/world-gen/src/hierarchy.rs) now emits **one sphere containing
+> many continents** (L0 Continent = a connected land component *inside* the world; L1 Subcontinent;
+> L2 Region). So a continent is a **product** of world generation, not its container.
+> **Correct scope: `world_geometry` belongs to a `MapKind::World` node.** Because GEO_001 is still at
+> **DRAFT** (never locked), this is correctable without a lock claim — but until `SPG-R3` is applied,
+> this file describes the inverse of what ships.
+> Also affected: `CellGrid` / `GeoCellId` adopt the name **`GeoCell`** (`SPG-R4`) to end the collision
+> with `CSC_001`'s "cell" (a tavern-sized interior) — see doc 36 §6.
+> **What still stands, and is load-bearing:** the per-cell substrate itself (`HeightmapValue u16`,
+> 8-variant `ClimateZone`, 14-variant `BiomeKind`, `RiverFlux`, adjacency) matches the shipped generator
+> exactly; the deterministic `(seed, creative_seed) → geometry` contract; and the **delta-overlay**
+> editing model — though that overlay is one of the two cascades `SPG-A15` requires be unified into a
+> single strength order (`SPG-R11`). Annotation only; no schema edited.
+
 > **Conversational name:** "World Geometry" (GEO). The procedural geographic substrate beneath MAP_001's visual layer. Voronoi cell partition (~10k cells per continent) + heightmap + climate + biome + (V1+ schema-reserved) political layer + settlement layer + route network + culture distribution + resource slots. Per-continent ChannelScoped T2 aggregate. Generated from `(seed, creative_seed)` reproducibly; edited via delta-overlay (admin canonization adds named ordered deltas); inherited by snapshot fork via reference + per-reality local deltas. V1 populates geometry/climate/biome layers; V1+ layers schema-reserved.
 >
 > **Category:** GEO — Geography Foundation (foundation tier; sibling of EF_001 + PF_001 + MAP_001 + CSC_001 + RES_001 + PROG_001)
@@ -27,7 +47,7 @@ Three concrete gaps in the V1+ design surface that GEO_001 closes.
 
 | Concept | Maps to | Notes |
 |---|---|---|
-| **WorldGeometry** | Aggregate `world_geometry` (T2 / Channel scope at continent channel) | One row per continent channel. Single aggregate with internal layered structure (geometry / climate / biome V1 populated + political / settlement / route / culture / resource V1 schema-reserved). |
+| **WorldGeometry** | Aggregate `world_geometry` (T2 / Channel scope at the **`MapKind::World`** node) | **CORRECTED 2026-07-30 (`SPG-R3` / [REC-80](../../19_reconciliation_register.md)).** ~~One row per **continent** channel.~~ **One row per WORLD** — a world **contains** many continents, not the reverse. The original scoping was written 2026-05-13 and inverted seven days later by [`GEO_WORLD_TIER_REDESIGN`](../../GEO_WORLD_TIER_REDESIGN.md) (LOCKED 2026-05-20): *"the current generator is structurally a **region** generator; this spec defines the **world** tier above it."* The shipped code followed the redesign — [`hierarchy.rs`](../../../../../crates/world-gen/src/hierarchy.rs) emits one sphere whose **L0 Continent** is a connected land component *inside* it, with L1 Subcontinent and L2 Region beneath — so a continent is a **product** of world generation. This spec is still **DRAFT**, so the correction needs no lock claim. Single aggregate with internal layered structure (geometry / climate / biome V1 populated + political / settlement / route / culture / resource V1 schema-reserved). |
 | **CellGrid** | `Vec<GeoCell>` — ~10k Voronoi cells per continent (V1 cap 16k) | Each cell carries center coordinate + neighbor adjacency list + heightmap value + climate zone + biome. Generated deterministically from `(seed, creative_seed)` via Voronoi partition over Poisson-disk sample (per Patel dual-mesh). NOT a DP channel — cells are rows under the world_geometry aggregate; the DP `cell` channel level (where gameplay sessions live) is a separate concept and maps to ONE GeoCell via `cell_channel.metadata.geo_cell_id` FK. |
 | **GeoCellId** | Newtype `pub struct GeoCellId(pub(crate) u32)` (per-continent dense u32; module-private constructor) | Dense small integers (0..16384) make adjacency lists compact. Distinct from `ChannelId` (which is per-reality UUID) — these are internal handles within the continent's geometry. |
 | **HeightmapValue** | `u16` (0..65535) per cell | Sea level threshold at deterministic value (default 32768); below = water cell. Plates + thermal/hydraulic erosion shape values during generation (§5). |
@@ -72,7 +92,7 @@ One aggregate owned by GEO_001:
 #[derive(Aggregate)]
 #[dp(type_name = "world_geometry", tier = "T2", scope = "channel")]
 pub struct WorldGeometry {
-    pub channel_id: ChannelId,                              // primary key — MUST be continent-tier per MAP-2 ChannelTier (HIGH-2 fix)
+    pub channel_id: ChannelId,                              // primary key — MUST be a `MapKind::World` node (SPG-R3 APPLIED 2026-07-30; was "continent-tier per MAP-2 ChannelTier", a retired enum AND an inverted scope)
     pub continent_index: u8,                                // 0..=N within the reality; reality with one continent = 0
     pub schema_version: u32,                                // (MED-5 fix) aggregate field-shape version per I14 additive evolution; V1 = 1
     pub generator_pipeline_version: u32,                    // (MED-4 fix) algorithm version; pinned at GeographyBorn; mid-life upgrades FORBIDDEN
@@ -187,8 +207,49 @@ pub struct GeographyDelta {
 **Rules:**
 
 - One row per continent `channel_id`. Primary key conflict rejects `geography.duplicate_world_geometry`.
-- `channel_id` MUST resolve to a channel whose `MAP-2 ChannelTier == Continent` (mapped from `DP-Ch1 level_name` per MAP_001 §3 enum). Non-continent channels reject `geography.invalid_channel_tier`. (HIGH-2 fix: explicit dependency on MAP-2 closed-enum prevents validator ambiguity across `level_name` string conventions.)
+- `channel_id` MUST resolve to a channel whose `map_layout.kind == MapKind::World`; other kinds reject `geography.invalid_channel_kind`. **`SPG-R3` APPLIED 2026-07-30 — two defects in one line.** (a) It named `MAP-2 ChannelTier`, an enum **retired** by `SPG-R1`. (b) It had the scope **inverted**: one row per *continent*, when a world **contains** many continents. The shipped [`hierarchy.rs`](../../../../../crates/world-gen/src/hierarchy.rs) settles it — one sphere whose L0 Continent is a connected land component *inside* it, so a continent is a **product** of world generation, not its unit. The HIGH-2 fix's *intent* survives and is better served: the check now reads a **feature** aggregate (`map_layout.kind`, authoritative per `SPG-Q1`) instead of mapping from `DP-Ch1 level_name`, which `DP-A13` forbids interpreting.
 - `cells.len()` MUST be in `[1024, 16384]` V1; outside range rejects `geography.cell_count_out_of_bounds`. (Lower bound prevents degenerate worlds; upper bound caps memory.)
+
+<!-- geo-scale-band:begin — MACHINE-READ by scripts/design-lint.py check `scale-band`.
+     Do not reformat: the check parses `cell_count_band` and the `production` rows,
+     resolves each scale's cell count from crates/world-gen/src/creative_seed.rs
+     (grid_side arms, count = (g-2)^2 + 4*(g-1)), and fails on any disagreement. -->
+
+**Production scale declaration (GEO-D14 / GEO-D15, PO-decided 2026-07-30).** The band above bounds
+what may be *provisioned*; this block declares which generator scales are *offered for play*. Both
+halves are read by one check, so the doc cannot drift from the code that implements it.
+
+```yaml
+cell_count_band: [1024, 16384]
+# `name: count` — the count is CROSS-CHECKED against the generator's own
+# grid_side arms. Writing a wrong number here fails the build, which is the
+# point: the numbers below were unguarded prose until 2026-07-30, and a
+# grid_side change that stayed inside the band moved silently past the check.
+production:
+  - Pocket: 1024
+  - Region: 2025
+  - Continent: 8281
+  - SuperContinent: 12321
+  - Megaplanet: 16384        # DEFAULT — GEO-D14
+non_production:
+  - Gigaplanet: 501264       # GEO-D15; generator stress fixture only
+```
+
+> **GEO-D14 — `Megaplanet` (16 384 cells) is the production default, and it sits at the band CEILING.**
+> Measured across every scale at seed 7 (see [the plan](../../../../plans/2026-07-30-world-tier-scale-and-storage.md) §1):
+> 16× the cells buys **1.8×** the provinces, and `Continent` (8 281) yields *fewer* provinces than
+> `Region` (2 025) — the relation is not even monotonic. **Resolution buys boundary smoothness, not
+> content**, which is why this is a free aesthetic choice rather than a capacity trade. Recorded
+> explicitly: there is **no headroom left** in the band. A future world larger than Megaplanet must
+> amend `cell_count_out_of_bounds` — it cannot be had by adding a variant. The PO was told this before
+> choosing, so it is a known cost, not a trap.
+>
+> **GEO-D15 — `Gigaplanet` (501 264 cells) is NOT a production scale.** It is a generator stress
+> fixture, kept for determinism and performance work. It **already violated** this spec's own
+> `cell_count_out_of_bounds` — [`creative_seed.rs:361`](../../../../../crates/world-gen/src/creative_seed.rs)
+> says so in as many words: *"`Gigaplanet` **deliberately exceeds it**"*. The spec forbade the scale
+> before this decision existed; the generator was the outlier. Measured cost of treating it as a game
+> scale: **459 MB** of payload, and ~1 M genesis events under the pre-`WDS` seeding design.
 - `neighbors[i].len()` MUST be in `[3, 12]` for every cell (Voronoi cells have 3-12 neighbors); outside rejects `geography.invalid_neighbor_degree`.
 - `climate_zones.len() == biomes.len() == river_flux.len() == is_coast.len() == cells.len()` — all parallel arrays MUST match length; mismatch rejects `geography.parallel_array_length_mismatch`.
 - `sea_level_threshold` MUST be in `[8192, 57344]` (avoid degenerate all-water or all-land worlds); outside rejects `geography.sea_level_out_of_bounds`.
@@ -321,7 +382,7 @@ Procedural generation pipeline implemented in `world-service`'s `geography-gener
 pub struct CreativeSeed {                                   // immutable post-bootstrap V1; V1+ extension via T6 LLM proposal + T8 Forge approval
     pub schema_version: u32,                                // V1 = 1; bump on additive extension
     pub archetype: WorldArchetype,                          // closed enum 12 V1 — wuxia / cyberpunk / high_fantasy / etc.
-    pub world_scale: WorldScale,                            // closed enum 5 V1 — Pocket(1024) / Region(2048) / Continent(8192) / SuperContinent(12288) / Megaplanet(16384) cells
+    pub world_scale: WorldScale,                            // closed set — see the WorldScale block below; production default Megaplanet (GEO-D14)
     pub hemisphere_orientation: HemisphereOrientation,      // Northern / Southern / Equatorial (latitude convention)
     pub coastline_profile: CoastlineProfile,                // Island / Peninsula / Coastal / Inland / Archipelago — drives radial falloff in stage 2
     pub climate_bias: Option<ClimateZone>,                  // None = balanced; Some(ClimateZone) = bias toward this zone (e.g., Arid for Dune-style)
@@ -347,12 +408,27 @@ pub enum WorldArchetype {                                   // closed 12 V1; V1+
     Custom,                                                 // author declares everything; generator falls back to neutral defaults
 }
 
-pub enum WorldScale {                                       // closed 5 V1; determines cells.len() target
-    Pocket,                                                 // ~1024 cells; single-city tabletop
-    Region,                                                 // ~2048 cells; country-scale wuxia
-    Continent,                                              // ~8192 cells; default V1
-    SuperContinent,                                         // ~12288 cells; epic fantasy
-    Megaplanet,                                             // ~16384 cells; sci-fi planet
+// ⚠ CORRECTED 2026-07-30 (GEO-D14/D15). This block claimed "closed 5 V1" with
+// cell counts 1024 / 2048 / 8192 / 12288 / 16384 — round powers of two that were
+// never anything but placeholders. The shipped `crates/world-gen` has SIX
+// variants, and the real counts are `(g-2)² + 4(g-1)` over a grid side `g`:
+//
+//   Pocket 1024 · Region 2025 · Continent 8281 · SuperContinent 12321
+//   · Megaplanet 16384 · Gigaplanet 501264
+//
+// Three of the five numbers here were wrong (2048→2025, 8192→8281, 12288→12321)
+// and a whole variant was missing. `design-lint`'s `count` check EXISTS to catch
+// a "5 variants" claim against a 6-variant Rust enum — it did not fire because
+// its COUNT_FORMS require the adjacency "`X` (N variants)" and the phrasing
+// "closed 5 V1" walks straight past it. The `scale-band` check added with this
+// correction is the cross-source guard that does not depend on phrasing.
+pub enum WorldScale {                                       // closed set; determines cells.len() target
+    Pocket,                                                 // 1024 cells; single-city tabletop
+    Region,                                                 // 2025 cells; country-scale wuxia
+    Continent,                                              // 8281 cells
+    SuperContinent,                                         // 12321 cells; epic fantasy
+    Megaplanet,                                             // 16384 cells — PRODUCTION DEFAULT (GEO-D14)
+    Gigaplanet,                                             // 501264 cells — ⛔ NOT PRODUCTION (GEO-D15)
 }
 
 pub struct CultureHint {
@@ -523,7 +599,7 @@ GEO_001 composes with the existing foundation tier without overlap. Composition 
 | **EF_001 Entity Foundation** | No direct composition. Entities live in cells (EF_001 `entity_binding`); cells live in the channel hierarchy; geometry data is per-continent. Entity queries don't traverse GEO. LLM prompt-assembly does (per §6 grounding contract). |
 | **RES_001 Resource Foundation** | V2+ GEO-D10: resource distribution generator (`GEO_005`) consumes `world_geometry.biomes × climate_zones` to seed per-province `resource_inventory` production base (e.g., Biome::Plain + Temperate → grain production; Biome::Mountain + Highland → ore; Biome::Coast → fish). V1 schema-only — Province.resources is declared empty. RES_001 V2+ NPCAutoCollect (RES-D19 lazy migration) reads this for resource production rates. |
 | **PROG_001 Progression Foundation** | No direct composition V1. V2+ if cultivation-realm world archetype (Wuxia) declares Highland cells as "spirit-vein" cells with bonus cultivation rate, PROG_001 could read `world_geometry.biomes[geo_cell_id] + creative_seed.archetype` to apply per-cell training modifiers. Tracked GEO-D7 alongside MagicalAnomaly climate extension. |
-| **DP-Ch1..Ch10** | World_geometry is ChannelScoped at continent tier (DP-Ch4 marker). `cell_channel.metadata.geo_cell_id` FK is the bridge from DP channel hierarchy to procedural geometry rows. ChannelTier::Continent in MAP_001's enum aligns. |
+| **DP-Ch1..Ch10** | World_geometry is ChannelScoped at the **`MapKind::World`** node (DP-Ch4 marker) — `SPG-R3`, corrected 2026-07-30 from "continent tier". `cell_channel.metadata.geo_cell_id` FK is the bridge from the DP channel hierarchy to procedural geometry rows. The alignment is with `map_layout.kind`, a **feature** aggregate — **not** with `DP-Ch1 level_name`, which `DP-A13` keeps semantics-free. |
 
 **Six foundation features compose without overlap:** EF (WHO) + PF (WHERE-semantic) + MAP (WHERE-graph-visual) + CSC (WHAT-inside-cell) + RES (WHAT-flows-through-entity) + PROG (HOW-actors-grow) + **GEO** (WHERE-geometric-substrate). GEO completes the spatial-substrate triangle (semantic / visual / geometric) and serves as the foundation for V1+ POL/SET/ROUTE features and V2+ STRAT/EXPL features.
 
@@ -573,7 +649,7 @@ Owned by GEO_001. Registered in `_boundaries/02_extension_contracts.md` §1.4. *
 | Rule ID | Severity | Where raised | Vietnamese user copy (V1) | English fallback |
 |---|---|---|---|---|
 | `geography.duplicate_world_geometry` | schema | RealityBootstrapper | "Lục địa này đã có dữ liệu địa lý." | "This continent already has geography data." |
-| `geography.invalid_channel_tier` | schema | RealityBootstrapper | "Chỉ kênh lục địa mới có dữ liệu địa lý." | "Only continent channels can have geography data." |
+| `geography.invalid_channel_kind` | schema | RealityBootstrapper | "Chỉ nút thế giới mới có dữ liệu địa lý." | "Only World nodes can have geography data." | ⚠ **RENAMED from `geography.invalid_channel_tier` (`SPG-R3`, 2026-07-30)** — the old id and message both said *continent*, which was the inverted scope. |
 | `geography.cell_count_out_of_bounds` | schema | Generator pipeline | "Số ô không hợp lệ (cần 1024..16384)." | "Cell count out of bounds (must be 1024..16384)." |
 | `geography.invalid_neighbor_degree` | schema | Generator pipeline | "Sơ đồ ô bị lỗi cấu trúc." | "Cell graph structural error." |
 | `geography.parallel_array_length_mismatch` | schema | Generator pipeline / Forge | "Dữ liệu địa lý không nhất quán." | "Geography data inconsistent." |

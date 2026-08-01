@@ -110,7 +110,7 @@ The service tables here are hand-maintained and therefore driftable. `contracts/
 | **video-gen-service** | Thin domain BFF for video generation → LLM gateway → MinIO + billing. | `8213` |
 | **worker-ai** | Async poll loop processing running extraction jobs (worker, not a web server). | `8226` |
 
-### Rust — kernel-derived / MMO substrate (4)
+### Rust — kernel-derived / MMO substrate (5)
 
 | Service | Purpose | Compose |
 |---|---|---|
@@ -118,6 +118,7 @@ The service tables here are hand-maintained and therefore driftable. `contracts/
 | **tilemap-service** | Procedural tilemap generation (continent/country/district/town). Uses the `loreweave_llm` crate. | `8220` |
 | **world-service** | Geography substrate — `world_geometry` + POL/SET/ROUTE activation generators. | — |
 | **travel-service** | Travel mechanics — 5 aggregates (actor travel state, composite journey, mount, encounter, party). | — |
+| **commit-service** | POC-2 seed of the writer-node role (`15_commit_service.md` CS-A1/A5): hosts `sim-core` natively + the AGT-A3 LlmDriver (NPC decisions via `loreweave_llm` → provider-registry, validated against `contracts/agent/`). Not composed yet — POC turn-runner binary. ⚠ Ships ONLY with `--profile release-commit` (`panic="unwind"`). | — |
 
 ### Workers & meta (Go · 4)
 

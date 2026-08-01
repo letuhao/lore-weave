@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12D. Database Fleet Operations (R4 mitigation)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16).** §12D.1's provisioning flow (create DB → migrate → register) is missing the **seeding phase, seed manifest and digest pinning** that [`18_reality_bootstrap.md`](../18_reality_bootstrap.md) §1 makes part of reality creation — the fleet lifecycle here starts one step too late. Pooling, backups, sharding and orphan-detection layers are unaffected. Status markers below predate the island/commit-service model.
+
 With 1000+ active realities + 10K+ frozen at V3 scale, the platform runs ~11K Postgres DBs across 2–6 Postgres servers. Postgres can handle the raw count; the problem is that standard tooling (goose, pg_dump, postgres-exporter, pgadmin) was designed for 1 or a few DBs, not thousands. R4 requires purpose-built automation across 7 areas.
 
 ### 12D.1 Layer 1 — Automated provisioning + deprovisioning

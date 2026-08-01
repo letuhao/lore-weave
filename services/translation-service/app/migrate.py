@@ -270,6 +270,26 @@ ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS reasoning_effort TEXT NOT N
 -- Nullable: an older/unpriced job leaves it NULL (the GUI renders cost null-safe). Mirrors
 -- translation_jobs.cost_usd.
 ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS cost_usd NUMERIC;
+-- BOOK_TO_GAME/15 — the prompt SHAPE the worker uses for this job, so two shapes can be
+-- A/B'd on the same book at the same time. A deploy-wide env flag could not do that: it
+-- would have to be flipped between runs, which is exactly the comparison the POC showed is
+-- confounded by ordering (BTG-A41). Per-job also keeps it off the global-flag path that
+-- CLAUDE.md's settings boundary forbids for user-facing behavior.
+-- Closed set, validated at the router: batched | single_call | single_call_delta | edc_cited.
+-- Default 'batched' = the shipped 3-batch shape ⇒ zero behavior change for existing rows.
+ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS extraction_strategy TEXT NOT NULL DEFAULT 'batched';
+-- CACHE TRACEABILITY. The raw-output cache can serve an entire job at ZERO tokens, and
+-- until now that was invisible: the GUI showed "completed, 0 tokens" with no explanation,
+-- and a user who had just edited a kind definition and re-run had no way to tell whether
+-- their edit had been honoured or silently served from before it. Two dimensions of the
+-- cache key were found missing in one day (the extraction strategy, then the kind/attribute
+-- descriptions), each producing exactly that silent failure — so the answer cannot be
+-- "remember every dimension". It has to be VISIBLE, and it has to be OVERRIDABLE.
+ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS cached_batches   INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS executed_batches INTEGER NOT NULL DEFAULT 0;
+-- Caller asked to ignore the cache and re-extract. Recorded on the row so a later reader
+-- can tell a cheap run from a forced one.
+ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS force_refresh BOOLEAN NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS idx_ej_owner ON extraction_jobs(owner_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ej_book  ON extraction_jobs(book_id, created_at DESC);
 
@@ -366,6 +386,14 @@ ALTER TABLE extraction_raw_outputs ADD COLUMN IF NOT EXISTS raw_response_uri TEX
 CREATE INDEX IF NOT EXISTS idx_ero_offload_pending
   ON extraction_raw_outputs(created_at)
   WHERE raw_response_uri IS NULL AND raw_response <> '';
+-- The kind/attribute DESCRIPTIONS this parse was prompted with, digested. `profile_hash` is
+-- a composite of (profile map, strategy, these descriptions), and the descriptions are the
+-- one component that cannot be recovered later: they live in glossary-service and an author
+-- edits them. Without this column a REPLAY has to recompute the digest from today's
+-- definitions, gets a different composite, and declares a perfectly faithful cache row
+-- drifted -- which is exactly what happened the moment the descriptions joined the hash.
+-- NULL = a legacy row written when `profile_hash` was still a bare sha256 of the profile.
+ALTER TABLE extraction_raw_outputs ADD COLUMN IF NOT EXISTS defs_hash TEXT;
 
 -- ── V8: Translation Pipeline V3 — selection flag, per-role models, QA config ──
 -- Additive + idempotent. Default pipeline_version='v2' ⇒ zero behavior change

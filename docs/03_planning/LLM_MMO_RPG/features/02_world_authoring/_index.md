@@ -146,7 +146,7 @@ Each below has a locked design-decision but is NOT V1-blocking (V1 ships hardcod
 
 | Future WA_NNN | Locked decision | Consumer that will trigger design | V1 default location |
 |---|---|---|---|
-| `WA_NNN_pvp_consent` | PC-D2 | PvP feature (V2+ — depends on combat) | "enabled within session" hardcoded |
+| ~~`WA_NNN_pvp_consent`~~ | PC-D2 | ~~PvP feature (V2+ — depends on combat)~~ | ✅ **RETIRED 2026-07-26 — the prediction below came true.** Combat opened, and its author took the override into their own folder exactly as this section anticipated: [`features/18_combat/COMB_006_pvp_and_stakes.md`](../18_combat/COMB_006_pvp_and_stakes.md) (`PVP-*`, `pvp_policy` manifest field, `Forge:EditPvpPolicy`). **No `WA_NNN` is needed.** PC-D2 is discharged there — its substance stands, its *"within a session"* scoping is amended as medium-stale (PVP-Q7). The V1 default is **no longer** "enabled within session hardcoded": `pvp_policy` defaults to `None`, i.e. **PvP unreachable**, because WA_006 already defaults to `Permadeath` and two harsh defaults must not compose without an author choosing (PVP-A2). |
 | `WA_NNN_voice_mode_lock` | C1-D3 | PL-22 voice mode (PL_NNN future) | V1 default "mixed" |
 | `WA_NNN_session_caps` | H3-NEW-D1, H3-NEW-D5 | PL_004 Session lifecycle (future) | V1 hardcoded 6 PCs / 4 NPCs / 10 total |
 | `WA_NNN_queue_policy` | S7-D6 | PL_004 Session lifecycle (future) | V1 default; reality_registry.queue_policy reserved |

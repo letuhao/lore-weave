@@ -198,12 +198,12 @@ on GET /v1/turn/status:
   ELSE: return NotFound  (interpreted as "first attempt never reached us")
 ```
 
-### 14.3 Lost-server-state recovery
+> **⚠ CORRECTED 2026-07-26 (REC-69): ONE idempotency window — 5 MINUTES, everywhere.** Every `60 s` in this section (the gateway cache guarantee/eviction above, the `turn_idempotency_log` sweeper TTL in §14.3, the §15 Rejected-response hold) reads **5 minutes**. The prior 60 s gateway window disagreed with sim-core's 5-minute `seen` window (SC-D3), creating a 60 s–5 min zone where a client retry was simultaneously a **new turn** to the gateway (cache already evicted) and a **duplicate** to sim-core — the worst possible split. Register §12b resolution: the gateway cache aligns **up** to SC-D3's window, which was chosen against the client-retry horizon (the right anchor); bus retention already exceeds 5 minutes, so no other layer moves. 5 minutes is the single client-retry contract across gateway, sim-core, and bus. (Cache-size bound in §14.4 scales accordingly: entries live 5× longer; still trivially small at V1 scale.)
 
 If gateway crashes mid-turn (cache lost), client's retry with same key gets `NotFound` and re-submits. Server-side double-commit is prevented because:
 
 - `advance_turn` itself is **NOT** idempotent on key alone (DP doesn't see the key). But:
-- world-service stores `(idempotency_key → channel_event_id)` mapping in a per-reality T2 aggregate `turn_idempotency_log` (RealityScoped, 60s TTL via background sweeper) BEFORE calling `advance_turn`. Second invocation finds the existing event_id and short-circuits.
+- world-service stores `(idempotency_key → channel_event_id)` mapping in a per-reality T2 aggregate `turn_idempotency_log` (RealityScoped, ~~60s~~ **5 min** TTL via background sweeper — REC-69, see §14.2 note) BEFORE calling `advance_turn`. Second invocation finds the existing event_id and short-circuits.
 - This pushes the idempotency boundary into world-service rather than gateway alone — **defense in depth**.
 
 ```rust
@@ -218,7 +218,7 @@ pub struct TurnIdempotencyLog {
 
 **Why T2 + Reality:** the lookup is hot-path-adjacent (one extra indexed read per turn) but the data must survive a gateway restart. RealityScoped because keys are per-reality (a key collision across realities is fine — separate streams).
 
-**Eviction:** background task sweeps `committed_at < now - 60s`. Sweep cadence 30s. Worst case: extra ~120s before key is reusable, which exceeds the PL_001 §3.7 60s TTL — that's intentional safety margin.
+**Eviction:** background task sweeps ~~`committed_at < now - 60s`~~ `committed_at < now - 5min` (⚠ CORRECTED 2026-07-26 (REC-69) — single 5-minute idempotency window, see §14.2 note). Sweep cadence 30s. Worst case: extra ~120s before key is reusable, which exceeds the ~~PL_001 §3.7 60s~~ 5-minute TTL — that's intentional safety margin.
 
 ### 14.4 Limits
 
@@ -264,6 +264,14 @@ world-service consumer:
     ⑩ return ack to gateway
 ```
 
+> **⚠ CORRECTED 2026-07-26 (REC-66 / error-taxonomy sweep): the `Rejected { reason:
+> WorldRuleViolation { rule_id, detail } }` syntax in step ⑦ above is SHORTHAND, not a type.**
+> The locked shape is PL_001 §3's **struct** `RejectReason { rule_id, user_message, detail }` —
+> no enum, no `WorldRuleViolation` variant exists. The variant-style spelling names the
+> **`rule_id` family** (`world_rule.*`); what is built and serialized is the struct (as the
+> gateway body below already shows: `kind` is derived from the `rule_id` namespace, not from an
+> enum tag). Same reading applies to §14's and AC-9's uses of the syntax.
+
 Then gateway:
 ```text
 HTTP 200 OK with body {
@@ -294,7 +302,7 @@ ORDER BY channel_event_id DESC;
 
 Backed by indexed projection in world-service.
 
-**MV12-D11 honored:** `fiction_clock` not advanced. `turn_number` not advanced. PC may immediately retry with a different command (no penalty turn-slot). Idempotency key for THIS submit is still consumed (§14 cache holds the Rejected response for 60s — preventing accidental double-submit + UX showing the same reject toast twice).
+**MV12-D11 honored:** `fiction_clock` not advanced. `turn_number` not advanced. PC may immediately retry with a different command (no penalty turn-slot). Idempotency key for THIS submit is still consumed (§14 cache holds the Rejected response for ~~60s~~ **5 min** (REC-69) — preventing accidental double-submit + UX showing the same reject toast twice).
 
 ---
 
@@ -596,7 +604,7 @@ PL_001b (this file):
 - [x] **§11** Sequence: normal turn
 - [x] **§12** Sequence: /sleep (fast-forward across day boundary)
 - [x] **§13** Sequence: /travel (5-op chain, ASCII flow, 5 edge cases)
-- [x] **§14** Reconnect/resume + idempotency (UUID key, 60s cache, world-service `turn_idempotency_log`)
+- [x] **§14** Reconnect/resume + idempotency (UUID key, ~~60s~~ 5-min cache (REC-69), world-service `turn_idempotency_log`)
 - [x] **§15** Rejection path (Q1=option-b: Rejected event committed via plain `t2_write` (NOT `advance_turn`), turn_number stays at N, MV12-D11 honored)
 - [x] **§16** Bootstrap (Q2=hybrid: book manifest declares root tree + fiction_clock; cells lazy-create)
 - [x] **§17** Acceptance criteria (16 scenarios across happy-path / failure-path / boundary)

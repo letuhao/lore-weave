@@ -243,6 +243,10 @@ func (s *Server) Router() http.Handler {
 		// KG_ADOPT_NEEDS_GLOSSARY and silently does nothing. Internal-token gated;
 		// the caller (knowledge-service) already verified the user's MANAGE grant.
 		r.Post("/books/{book_id}/ontology/adopt-kinds", s.internalAdoptBookKinds)
+		// Bulk observation import for the kind ledger (spec 2026-08-02). The history that
+		// would have prevented the frozen kinds lives in translation-service; this is how it
+		// reaches the estimator without a second copy of the estimator.
+		r.Post("/books/{book_id}/kind-votes", s.internalImportKindVotes)
 		// WS-1.6 (spec 05 §Q5) — get-or-create the user's is_self identity entity in their
 		// diary (the assistant provisioner calls this after adopt-kinds).
 		r.Post("/books/{book_id}/self-entity", s.internalSeedSelfEntity)

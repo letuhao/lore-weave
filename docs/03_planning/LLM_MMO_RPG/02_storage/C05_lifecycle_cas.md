@@ -140,6 +140,28 @@ For owner/admin-initiated transitions: **no retry** (they'd see the failure + cu
 
 Valid transitions enforced at helper function level. Invalid transitions rejected regardless of CAS:
 
+> **⚠ INCOMPLETE — AMENDED 2026-07-26 (REC-48 / AUD-F16).** The map below has **no entry states**:
+> it begins at `active` and never says how a reality reaches it. `HMP_followups` §12R.2 defines
+> `provisioning → seeding → active` and [`18_reality_bootstrap.md`](../18_reality_bootstrap.md) §1
+> declares that lifecycle *"CAS-protected per §12Q"* — but an implementer of
+> `AttemptStateTransition()` working from this map would **reject the entire bootstrap sequence**.
+> RBS-D5 additionally requires a terminal `failed{reason}` so that a manifest defect abandons instead
+> of retrying forever. **The four missing transitions:**
+>
+> ```
+>   (none)         → provisioning   (reality creation / fork / restore requested)
+>   provisioning   → seeding        (DB + extensions + migrations complete)
+>   provisioning   → failed         (provisioning error — terminal)
+>   seeding        → active         (all phases complete + seed-time validators pass)
+>   seeding        → seeding        (resume from checkpoint — transient failure, RBS-A6)
+>   seeding        → failed         (manifest defect — terminal, NOT resumable, RBS-A6)
+>   archived       → provisioning   (restore, GDA-D14 — restore is B2 with a different seed source)
+> ```
+>
+> `seeding → failed` is the one most likely to be dropped as an edge case, and it is the one that
+> matters: without it a manifest defect leaves the reality **stuck in `seeding` forever with no
+> diagnostic**, which presents as a hang.
+
 ```
 Valid transitions (enforced):
   active         → pending_close, migrating, rebasing

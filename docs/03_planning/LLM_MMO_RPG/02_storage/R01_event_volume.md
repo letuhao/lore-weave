@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12A. Event Volume Management (R1 mitigation)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #3).** The emission and retention inventory counts `pc.moved`/`npc.moved` as event rows — Class A movement is **never event-sourced** (SL-D11); those rows are gone, which revises the §12A.7 volume math downward. The tiered retention/archive/compression machinery remains valid for the event classes that do persist. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md) SL-D11. Status markers below predate the island/commit-service model.
+
 Full event sourcing emits many writes. Multiverse isolation bounds scope per reality but does not reduce total platform volume. The following 6-layer strategy addresses event volume explosion (R1 in §13).
 
 ### 12A.1 Layer 1 — Audit split

@@ -1,0 +1,98 @@
+{
+  "_why": "PGN-A2. This question set is ASSERTED equal to the REQUIRED paths in contracts/progression-schema.json at load. It is System tier: the platform authors the questions, a user answers them.",
+  "_note_on_breakthrough": "The question deliberately invites a requirement the schema cannot hold (PGN-A20: at_max_plus needs a place/item module that does not exist). Asking anyway is what lets the pipeline REFUSE BY NAME instead of silently emitting at_max - the fixture's cold-pool clause is exactly this case.",
+  "element_kind": "progression_system",
+  "schema_fingerprint": "787c69388addda04170236c72ba1dfd8ee3c69d46d705c3739ec50967a8b225b",
+  "questions": [
+    {
+      "id": "cardinality",
+      "path": "kind.quantity",
+      "ask": "Which distinct progression systems does this world have? Name each one as the book names it.",
+      "answer_shape": "list of names"
+    },
+    {
+      "id": "kind_name",
+      "path": "kind.name",
+      "ask": "What is each system called, in the source language?",
+      "answer_shape": "name"
+    },
+    {
+      "id": "kind_type",
+      "path": "kind.progression_type",
+      "ask": "Is it innate (you are born with more or less of it), learned by doing, or advanced in named stages?",
+      "answer_shape": "closed set",
+      "options": [
+        "attribute",
+        "skill",
+        "stage"
+      ]
+    },
+    {
+      "id": "curve",
+      "path": "kind.curve",
+      "ask": "Does it improve at a steady rate, with diminishing returns, or only by advancing a stage?",
+      "answer_shape": "closed set",
+      "options": [
+        "linear",
+        "log",
+        "stage"
+      ]
+    },
+    {
+      "id": "cap",
+      "path": "kind.cap_rule",
+      "ask": "Is there a ceiling? Absolute (training is refused at it), soft (it keeps creeping), per-stage, or none?",
+      "answer_shape": "closed set",
+      "options": [
+        "soft_cap",
+        "hard_cap",
+        "tier_based",
+        "unbounded"
+      ]
+    },
+    {
+      "id": "start_tier",
+      "path": "kind.initial_tier",
+      "ask": "Where does an ORDINARY person start on this ladder? Name the stage, not a number.",
+      "answer_shape": "ordinal"
+    },
+    {
+      "id": "tier_count",
+      "path": "kind.tier_count",
+      "ask": "How many stages does the ladder have in total, counting sub-levels?",
+      "answer_shape": "count"
+    },
+    {
+      "id": "tier_order",
+      "path": "kind.tier[].tier_index",
+      "ask": "Name the stages IN ORDER, lowest first.",
+      "answer_shape": "ordered list"
+    },
+    {
+      "id": "tier_name",
+      "path": "kind.tier[].name",
+      "ask": "What is each stage called? If sub-levels follow a pattern, state the PATTERN once rather than listing them.",
+      "answer_shape": "names or one pattern"
+    },
+    {
+      "id": "tier_shape",
+      "path": "kind.tier[].within_tier_curve",
+      "ask": "Within a stage, is progress steady or does it slow as you approach the next breakthrough?",
+      "answer_shape": "closed set",
+      "options": [
+        "linear",
+        "log"
+      ]
+    },
+    {
+      "id": "breakthrough",
+      "path": "kind.tier[].breakthrough",
+      "ask": "What must happen for someone to advance a stage? If the book states a REQUIREMENT (a place, an object, a person), say so even though this pipeline cannot yet express it.",
+      "answer_shape": "closed set + prose",
+      "options": [
+        "at_max",
+        "author_only"
+      ]
+    }
+  ]
+}

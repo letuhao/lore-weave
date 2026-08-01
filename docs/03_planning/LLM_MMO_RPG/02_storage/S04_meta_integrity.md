@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12T. Meta Integrity & Access Control — S4 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #9).** §12T.8's least-privilege grants give `world_service_role` INSERT on `session_participants` — session-unit membership bookkeeping that predates channel/island membership; and reality gameplay rules now live in the **digest-pinned ruleset** (per RLS), not in meta rows this file's integrity model covers. The MetaWrite / CHECK-constraint / append-only-audit layers remain valid for true meta. Status markers below predate the island/commit-service model.
+
 **Origin:** Security Review S4 — meta registry as trust root. C3 HA ensures availability; C5 CAS covers lifecycle status only; R13 admin audit covers command-level admin actions. **Broad meta-write surface remained un-audited.** S4 closes the gap with 7-layer strategy generalizing C5's CAS pattern to ALL meta writes.
 
 ### 12T.1 Threat model specifics

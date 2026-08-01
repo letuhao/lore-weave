@@ -29,6 +29,11 @@ Load-bearing facts an agent needs regardless:
 
 ### Key Rules
 - **📇 Standards index (start here)** — every cross-cutting rule/law/invariant/machine-contract in the repo is catalogued in [`docs/standards/README.md`](docs/standards/README.md): what it governs · where the authoritative source lives · how it's enforced · status. It has a *quick-nav by concern* (building an MCP tool? a dockable panel? a new table? an LLM call?) + a *Known gaps* list, and it **links out — never duplicates**. **Adding/retiring a standard? Update its row there.** The rules below are the always-loaded subset.
+- **Non-Vacuity (LOCKED)** — adding or changing a gate, lint, test, `const` assertion, validator, or an axiom that constrains code? Follow [`docs/standards/non-vacuity.md`](docs/standards/non-vacuity.md) (NV-1..6). **A check that cannot fail is not a check — it is a claim wearing the costume of evidence, and it is WORSE than no check, because it reports coverage and silences review.** The obligation is mechanical: **break the guarded thing, watch it go red, put it back, and paste the output** into the VERIFY evidence — *"I added a test"* is not evidence. The four shapes, each with a real occurrence: the **subject cannot vary** (a `size_of` assertion on a boxed payload is 16 bytes for every n) · the **scope never reaches it** (an enumerated file list is *default-uncovered*: what happens to a file created tomorrow?) · **an adjacent decision defeats it** (the hardest — both decisions individually correct; a decoder tolerance broke the store check that depended on it) · the **escape hatch cannot reach its reason** (a fixed one-line pragma window, shipped in three sibling gates). This standard exists because the same defect shipped **twenty-seven** recorded times, **not one caught by the test suite** — twenty-six by someone reading, one by a linter — while three design docs cited a "non-vacuity discipline" that had no home. Two of them landed the day *after* the standard was written, by an author who had it actively in mind: **intent is not a mechanism.**
+- **Written artifacts are ENGLISH (LOCKED 2026-07-31)** — **every persisted artifact this repo produces is written in English**: design/architecture/spec/planning docs, `SESSION_HANDOFF`/deferred rows, ADRs, READMEs, code + comments + docstrings, identifiers, log/error messages, commit messages, PR bodies, test names. **Chat with the user is a different thing — answer in whatever language they wrote in.** The artifact is not the conversation.
+  - **The failure mode this kills is MIXING, not translation.** The recurring defect is an English document with Vietnamese fragments pasted through it — most often a verbatim PO quote dropped into a design doc, which then makes the surrounding paragraph bilingual. **Quote the MEANING in English** (*"the LLM only helps enrich; how many attributes there are is a bounded proposal surface"*), never paste the original. A doc that needs a bilingual quote to make its point has a translation problem, not a fidelity problem.
+  - **Non-English is allowed only where the text IS the subject matter**, not the exposition: corpus/fixture content and the spans cited from it · i18n bundles and translated user-facing strings · test data that exercises CJK/RTL/normalisation · genre/domain terminology with no English equivalent (`築基`, `靈石`, `打坐`) — **gloss it in English on first use**. Everything wrapping that content stays English.
+  - Quick check before saving any `docs/**` file: grep it for Vietnamese diacritics. A hit outside a fixture block is a defect.
 - **Agent Extensibility Standard** — adding a user/agent-authorable capability (skill, slash command, hook, subagent, MCP-server registration, plugin bundle)? Follow [`docs/standards/agent-extensibility.md`](docs/standards/agent-extensibility.md): the storage→resolver→degrade-safe-consumer→live-E2E shape, validate-parity on import paths, no-silent-no-op (API advertises only what the engine wires), quarantine+scan+SSRF for every external source (verification ≠ safety), and enum-closed-set capability args. Each rule caught a real bug across P0→P5.
 - **Settings & Configuration Boundary** — adding *any* configurable behavior (a toggle, mode, threshold, model choice, persona, limit)? Follow [`docs/standards/settings-and-config.md`](docs/standards/settings-and-config.md) (SET-1..8). **Do not abuse a global setting / env var for what is really a per-user choice.** Ask "would two users want different values?" → **yes ⇒ user setting** (a tenancy tier + scope key + the resolution cascade, per User Boundaries), **not** an env flag. Env/global config is reserved for platform-wide, load-bearing infra + **deploy-time ceilings/kill-switches** — and a ceiling is a *max* the user narrows within (`effective = AND(deploy_allows, user_enables)`), **never a per-user knob**. A user setting must: expose its **effective value + source tier** (no silent hidden default — the "grounding always-on / reasoning silently-off" bug class); be **CONSUMED, proven by effect** (a stored-but-unread settings blob is a bug, not a feature — the write-only-behavior bug); enum-validate **closed-set values** on write (Frontend-Tool-Contract discipline); live **server-side** (not localStorage); and have **one home/one name** (consumers inherit, they don't re-store — the model-picked-in-8-places bug). Adding a new global `*_ENABLED`/`*_MODE` env flag that gates *user-facing* behavior is a `/review-impl` finding.
 - **Contract-first**: API contract frozen before frontend flow. **Enforced for glossary-service** by
@@ -340,6 +345,23 @@ LoreWeave is a hobby project with **no fixed deadline**. This shapes how reviews
 - **A deferral that passes the gate gets a tracked row** in the **Deferred Items** section of
   `docs/sessions/SESSION_HANDOFF.md` (and `docs/deferred/DEFERRED.md` in AMAW mode): ID, origin
   phase, description, the gate reason (which of 1–5), and target phase/trigger.
+
+- **…and a row is not enough. A tracked deferral needs a MECHANISM (ENFORCED on the game tier).**
+  Measured 2026-07-29: **9 of 19** game-tier deferrals were *prose only* — a row and nothing else —
+  and in that single day the project produced `D-PUBLISHER-DROPS-RULESET-PIN` cited as an open
+  blocker in **four** places *after it was fixed* (including the row of the task fixing it), six CI
+  legs red on `main` for four days, a test that could never un-skip, and four rows fixed in the
+  morning and still listed as open in the afternoon. What survived instead was, without exception,
+  mechanical. **Intent is not a mechanism.** So every id inside a
+  `<!-- deferral-registry:begin/end -->` block must either be **named by non-comment source** (an
+  asserted trigger that reds when its subject arrives, a `KNOWN_RED` row, a test named for it) or
+  carry a `PROSE_ONLY` row in **`scripts/deferral-gate.py`** saying **what would wake it up**.
+  Enforced pre-commit + CI. Two traps it exists to catch, both real: a `// TODO(D-…)` comment, a
+  JSDoc header and a module **docstring** are *prose that happens to live in a source file* and do
+  **not** count (this certified three prose-only deferrals as covered before the stripper was
+  fixed); and a **pragma is an exemption, not a mechanism** — it silences a finding and keeps
+  silencing it after the debt is paid. The registry **shrinks**: a `PROSE_ONLY` row fails when its
+  id becomes mechanised or leaves the block.
 - **At every PLAN phase, read the Deferred Items section.** Any row whose Target phase equals the current phase is a must-do for that phase.
 - **Whenever a deferral is cleared, move it to "Recently cleared"** (or delete after a few sessions). The list should shrink as often as it grows — if it's only growing, the gate above is being applied too loosely.
 - **Avoid the "we'll come back to it" trap.** "Skip if time is tight" is a yellow flag — there is no time pressure here. Either it clears the defer gate, or it's a real bug to fix now.
@@ -545,13 +567,34 @@ auth id:  019d5e3c-7cc5-7e6a-8b27-1344e148bf7c   (loreweave_auth.users.id)
 ```
 Use this account for browser smoke tests (Playwright MCP, etc.).
 
-**It also has ~15 active BYOK `user_models`** (in `loreweave_provider_registry`),
-so it can drive **real LLM smokes**, not just browser tests. Chat-capable models
-include **gpt-4o** (OpenAI — real cost) and several **local lm_studio** chat
-models (e.g. *Qwen2.5 7B Instruct*, *Gemma-4 26B*, *Qwen3 35B*) plus *bge-m3*
-(embedding), *bge-reranker-v2-m3* (rerank), *Kokoro* (tts). Prefer a **local**
-chat model for $0 spend (needs lm_studio running). The `model_ref` to pass is the
-`user_model_id` UUID — resolve live:
-`SELECT user_model_id, alias, capability_flags FROM user_models WHERE owner_user_id='019d5e3c-…' AND is_active;`
-Caveat: `user_default_models` is **empty** for this account — anything resolving
-a "default model for capability X" gets nothing; pass an explicit `model_ref`.
+**It also has ~18 active BYOK `user_models`** (in `loreweave_provider_registry`),
+so it can drive **real LLM smokes**, not just browser tests.
+
+### 🔒 Which model do I test with? — `scripts/dev-model.py`. Do not ask.
+
+```bash
+python scripts/dev-model.py chat        # -> the user_model_id for this stack
+python scripts/dev-model.py --env       # exportable lines for every role + the internal token
+python scripts/dev-model.py --list      # everything available, and what it would pick
+```
+
+**Never hardcode a `user_model_id`, and never ask which model to use.** This block
+exists because *"prefer a local one"* plus a list of five is not a default, it is
+a question — and it was answered by hand session after session. A first attempt at
+fixing it pinned the UUIDs here, which is **worse**: `user_model_id`s are
+**per-machine**, so a hardcoded table sends the next developer to a 404 or to
+someone else's row.
+
+The resolver asks for a **role** and reads preference off data the user already
+expressed — capability flag, then `is_favorite`, then the `sort_order` they
+arranged in the UI. On a stack with the standing setup that resolves chat to
+**Gemma-4 26B-A4B QAT**, without anyone being told so.
+
+**It refuses to return a billed model unless you pass `--allow-paid`**, decided by
+`provider_kind` (`lm_studio`/`ollama`/… are local and free; anything unrecognised
+is treated as billed, which is the safe direction). If lm_studio is down it says
+so and stops, rather than silently spending on `gpt-4o` to paper over an outage.
+
+Caveat that bites: `user_default_models` is **empty** for this account, so anything
+resolving *"the default model for capability X"* gets nothing — **always pass an
+explicit `model_ref`**.

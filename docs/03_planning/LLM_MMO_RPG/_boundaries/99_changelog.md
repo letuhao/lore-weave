@@ -6,6 +6,479 @@
 
 ---
 
+## 2026-07-30 (5th claim) — NEW aggregate `control_binding`, and `SPG-R7` retired as a mis-diagnosis
+
+- **Lock CLAIMED 02:10, `Owner:` set BEFORE the first edit, released after.**
+- **Registered `control_binding` (T2 / Reality, owned by ACT_001)** — `SPG-A10`. Per-`(controller_id,
+  actor_id)`, **many-to-many by construction**. Extracted from `pc_user_binding.user_id`, which encoded
+  the control relation 1:1 inside the body's own aggregate. `ACT_001`'s L3 `control_source` enum stays
+  useful but answers a different question (*what kind of thing drives this*, never *which controller*),
+  and `AGT-A3`'s runtime-swappable drivers are untouched — this names **who the driver serves**.
+- **⚠️ SELF-CORRECTION — `SPG-R7` RETIRED, and my own `REC-87` was imprecise.** That row claimed
+  `PCS-A4` + the `cap=1` validator *"closes it exactly where possession needs it open"*. Reading the
+  source before acting on it shows otherwise:
+  - `PCS-A4` is *"single `pc_user_binding` **aggregate**"* — one cohesive aggregate holding
+    user_id + session + body_memory. It says nothing about control cardinality.
+  - `Q9`'s `cap=1` is **PC-per-REALITY**, and its recorded reason is *"single PC narrative"* vs
+    *"multi-PC for charter coauthors"* — a **narrative scope** decision. It was even designed as
+    `Vec<PcId>` + a validator precisely so relaxing it is *"a single-line validator change, no schema
+    migration"* (`PCS-D3`).
+  - And a 分身 need not be a `Pc` at all: with a control binding it can be `ActorId::Npc` driven by a
+    **User** controller, which never touches Q9.
+  **So Q9 was never the blocker.** The real one is narrower and different: a `user_id` **field on the
+  body**. Extract the relation and possession works with Q9 left exactly as locked. Recorded as
+  **REC-96**; this is the second row this session retired by reading its target instead of acting on
+  the table (after `SPG-R2`/REC-93).
+- Files within `_boundaries/`: `_LOCK.md` + `01_feature_ownership_matrix.md` + this file.
+
+---
+
+## 2026-07-30 — ⚠️ RECORD CORRECTION: the day's four cycles landed under a commit that names none of them
+
+**The four `[boundaries-lock-claim+release]` cycles recorded below (`SPG` registration · six-prefix
+backfill · REC-92 discharge + closed-enum boundary review · `TRG` backfill · `SPG-R2` retirement) were
+committed as:**
+
+```
+056961f80  feat(sim-core): Q0b B2 — the ruleset epoch switch, out-of-band and ordered
+```
+
+**That subject describes a different session's work.** A concurrent session ran `git commit` while this
+session was composing its own message, and git's index — a **shared** resource with **no mutex** — was
+swept wholesale into their commit: 23 files belonging to this arc (21 design docs, the new
+`scripts/amendment-rot-gate.py`, and its `.githooks/pre-commit` wiring) went in under a `sim-core`
+subject. This session's own commit then found nothing left to commit.
+
+**Not a claim-discipline failure, and worth separating from the four RECORD CORRECTIONs below.** Those
+were about cycles *asserted but never performed*. Here every cycle was performed correctly — `Owner:`
+set before the first edit, cleared after, evidence in each release note — and the staging was done by
+**explicit pathspec** precisely to avoid touching the peer's files. Pathspec protects the peer from
+this session. **Nothing protects this session from the peer**, because `git add` writes to one index
+that both sessions share. The `_LOCK.md` mutex governs `_boundaries/` *content*; it says nothing about
+the index.
+
+**Content verified intact before writing this entry** (checked, not assumed): all 23 files present in
+`056961f80`; `36_map_architecture.md` carries its 54 `SPG-A*` references; `amendment-rot-gate.py`
+runs from committed content with `--selftest` green. **Nothing was lost — only mislabelled.**
+
+**PO decision (2026-07-30): record-correct, do NOT rewrite.** `056961f80` is unpushed, so a
+`reset --soft` split was technically available — but a concurrent session had just created that SHA and
+may still be working from it, and destroying a peer's commit to improve a label is the wrong trade. This
+is also how this folder has handled the class four times already: correct the record, keep the history.
+
+**Where to find the work:** the map-architecture seal is `docs/03_planning/LLM_MMO_RPG/36_map_architecture.md`
+(prefix `SPG-*`), introduced in `056961f80`, with its narrative in that folder's `SESSION_HANDOFF.md` §1
+and its contradiction register in `19_reconciliation_register.md` §15b/§15c/REC-93.
+
+**The mechanism this argues for**, consistent with every other bullet in `_LOCK.md`: the repo's
+convention of *"stage only changed files (no `git add -A`)"* is a rule about **what you add**, and this
+failure is about **what someone else already added**. A commit-time check that the staged set matches
+the pathspec the committer intended — or simply committing by pathspec in the same shell breath as the
+`add` — is the shape that would have caught it. Convention did not, and could not.
+
+---
+
+## 2026-07-30 (4th claim) — `SPG-R2` RETIRED: a row that pointed at work which must not happen
+
+- **Lock CLAIMED 01:15, `Owner:` set BEFORE the first edit, released after.**
+- **No boundary surface changed.** This claim exists only to correct a row *I wrote earlier today*: the
+  `SPG-*` entry asserted that `SPG-R2` *"touches a **LOCKED** file and needs its own claim"* — i.e. it
+  pointed a future claimant at an edit that must never be made.
+- **Why the row died.** `SPG-R2` proposed narrowing `DP-Ch1`'s `Channel.level_name: String` to the
+  closed `MapKind` set, and was marked **verified**. Opening the target before editing it killed it:
+  [`DP-A13`](../06_data_plane/02_invariants.md) states the refusal outright — *"**DP is agnostic to
+  `level_name` semantics; feature/book layer interprets level names**… the tree shape is **per-reality**
+  (book-specific)"*. Applying it would have (a) pushed a **game-domain** concept into the **data plane**,
+  breaking the exact invariant DP-A13 exists to state, and (b) destroyed per-reality vocabulary — a
+  wuxia reality could no longer name a level `phủ` or `châu`. DP's agnosticism is systematic: `DP-A17`
+  for turn semantics, `metadata` as *"a feature-level bag; DP does not interpret"*, `CausalityToken`
+  opaque by construction.
+- **The finding survives; only the mechanism was wrong** — the shape of `WSA-R02` and `XST-R6`. A free
+  string where a closed set is required *is* a defect; it was diagnosed one layer too low. `SPG-R1`
+  already fixes it correctly, on the **feature** aggregate `map_layout`. Net: **two fields, two jobs** —
+  `Channel.level_name` is the reality's own word, `map_layout.kind` is the structural kind the engine
+  understands. No DP change, no claim, and a better design than the amendment would have produced.
+- **Recorded as REC-93** — the first row in that register retired by its own author on the day of
+  writing. Every prior instance of this class (`GDA-A5` prohibited by `DP-X1`, `GDA-A6` deleting the
+  locked `t1_read`, `RBS`'s `*Born` mis-typed as EVT-T4) was found by a verification agent reading specs
+  the docs had only been **grepped** against. Same root cause, caught one layer earlier.
+- Files within `_boundaries/`: `_LOCK.md` + `01_feature_ownership_matrix.md` + this file.
+
+---
+
+## 2026-07-30 (3rd claim) — `TRG-*`: the seventh orphan prefix, found by a gate rather than a person
+
+- **Lock CLAIMED 01:05, `Owner:` set BEFORE the first edit, released after.**
+- **Registered `TRG-*`** (`33_trigger_group_order.md`). Owns no aggregate.
+- **⚠️ Why this claim exists is the whole point.** `scripts/amendment-rot-gate.py` was written **this
+  session**, because two manual sweeps had just found six unregistered prefixes and 15 ungreppable
+  amendment ids. On its **first real run** the gate found:
+  - a **seventh** unregistered prefix (`TRG-*`) that both manual sweeps had walked past;
+  - **nine more** bare `**R25**..**R29**` / `**R32**..**R35**` ids in docs `33` and `34` — after the
+    same sweeps had already fixed exactly this defect in docs `31` and `32`;
+  - and **one false positive of its own** — `TMP_008b`'s `| Rule | Check |` table, whose `**R1**..**R5**`
+    are validation rules correctly scoped to that table. Narrowed by arming the check only inside a
+    table whose header names `Target`, **with the narrowing itself bite-tested** so it cannot silently
+    disarm the check it narrows (`NV-1`).
+- **This is the third independent arrival at the standing conclusion in `_LOCK.md`:** the convention is
+  the failure point. `boundaries-lock-gate` reached it for the mutex, `deferral-gate` for the code
+  tier, and now `amendment-rot-gate` for the design corpus. In each case a careful human had just
+  looked and had just missed something.
+- Wired into `.githooks/pre-commit` next to `deferral-gate`. `--selftest` green (all 3 checks red on
+  their defect, green without it). Corpus-wide greppable amendment ids: **37 → 59**.
+- Files within `_boundaries/`: `_LOCK.md` + `01_feature_ownership_matrix.md` + this file.
+  Outside: `scripts/amendment-rot-gate.py`, `.githooks/pre-commit`, docs `33` + `34` (id prefixing).
+
+---
+
+## 2026-07-30 (2nd claim) — REC-92 discharge + closed-enum boundary review opened
+
+- **Lock CLAIMED 00:45, `Owner:` set BEFORE the first edit, released after.**
+- **⚠️ This claim exists because the PREVIOUS claim — 35 minutes earlier, in this same session — missed
+  a batch that [REC](../19_reconciliation_register.md) §15 had explicitly routed to it.** §15 wrote:
+  *"next `_boundaries` lock claim — one batch"*. My `SPG` claim **was** that next claim and did not do
+  it. Discharged now: **`Item:TakeSpoils`** (COMB_004) and the **`ruleset.*` reject-rule namespace**
+  (REC-67) are registered. Verified already-present: `agent_decision` intent, `ability.*` counts.
+  Still correctly **blocked**: `RulesetEpochActivated`, on the REC-29 ownership knot.
+- **Root cause, recorded as REC-92 and it is not "carelessness":** *"the next lock claim"* names an
+  **occasion**, not an **owner**. An occasion-gated item belongs to nobody, and the claimant has no
+  reason to open the file that gated it. This is §14's process finding arriving again, and it argues
+  for the same remedy the `_LOCK.md` bullets already reach for: **a check, not a convention.** The
+  concrete shape here would be a gate that reads REC's gated queues and reds on any `_boundaries` diff
+  that leaves a queue-item undone.
+- **Boundary review OPENED (not applied)** for two closed-enum variant additions, because EF_001's own
+  rule requires a lock-claim + boundary review *before* the edit: **`EntityId::Place`/`Locus`**
+  (`WSA-R19` + `SPG-R10`) and **`ActorId::Locus`** (`WSA-R21`, per `WSA-D3` — explicitly **not**
+  reusing `Synthetic`, which denotes an actor outside the fiction). Both rows state their **pairing
+  gate**: `WSA-R19` must land with `SPG-R10` or the entity↔interior seam is half-built; `WSA-R21` must
+  land with `WSA-R22` (narrowing `actor.synthetic_actor_forbidden`) or a locus can be an actor yet
+  cannot hold an opinion.
+- **Not done:** the variants themselves. Opening the review is the gated step; applying it is the next
+  one, and it edits feature specs rather than `_boundaries/`.
+- Files within `_boundaries/`: `_LOCK.md` + `01_feature_ownership_matrix.md` + this file.
+
+---
+
+## 2026-07-30 — map-architecture registration (`SPG`) + **six-prefix backfill** (`XST` `PRD` `ONT` `EXC` `WSA` `QTY`)
+
+- **Lock CLAIMED 00:10, `Owner:` set BEFORE the first edit, released after.** A genuine
+  `[boundaries-lock-claim+release]` cycle.
+- **Registered `SPG-*`** — `36_map_architecture.md`, the space-graph / map architecture seal.
+  **Owns NO aggregate.** Defines the closed **`MapKind`** set + the **containment matrix** replacing
+  `MAP_001`'s `ChannelTier` ordinal ladder; parent-relative coordinates (`SPG-A5`); the **two-graph
+  separation** (`SPG-A4` — containment strict-acyclic, control free, never interacting); **control as
+  a first-class binding** (`SPG-A10`); **collision as topology, not dynamics** (`SPG-A8`); and an
+  explicit **refusal** of inter-frame rigid-body physics (`SPG-A9`). `SPG-A1` is the deliberate
+  converse of doc 32's `WSA-A7` — a locus is an entity, *and* an entity may hold an interior — which
+  is why `SPG-R10` must land in the same pass as `WSA-R19`.
+- **⚠️ FINDING, surfaced by this claim: six stable-ID prefixes introduced by docs 27–35 were never
+  registered at all.** `XST-*` (27) · `PRD-*` (28) · `ONT-*` (29) · `EXC-*` (30) · `WSA-*` (31/32/34) ·
+  `QTY-*` (35). Unlike the four prior RECORD CORRECTIONs — where a doc header *falsely asserted* a
+  registration that had not happened — these docs made **no claim either way**, so nothing in the
+  corpus was false; the prefixes were simply invisible to the ownership matrix, which is the file that
+  is supposed to be the inventory. **Backfilled all six in this cycle**, each marked
+  *"registered 2026-07-30, backfill"* with its true doc-add date, so the gap stays legible rather than
+  being smoothed over. This is the **fifth** occurrence in the class the `_LOCK.md` bullets describe,
+  and the first found by a *routine check during an unrelated claim* rather than by an audit — which
+  supports the same standing conclusion those bullets reach: **the convention is the failure point.**
+  The recommended pre-commit hook (any diff touching `_boundaries/*` requires `Owner:` ≠ `None` in the
+  same commit) would not have caught *this* variant, since these docs never touched `_boundaries/` at
+  all; the complementary check is **a prefix appearing in a doc header with no matrix row**.
+- **NOT done, deliberately:** `SPG-R1..R12` and the inherited `WSA-R19..R24` remain **PROPOSED, not
+  applied** — no feature spec was edited by this cycle, same discipline doc 32 recorded. Two of them
+  (`SPG-R2` narrowing `DP-Ch1`'s `level_name: String` to `MapKind`; `WSA-R19`/`R21` adding variants to
+  the closed `EntityId`/`ActorId` enums) touch **LOCKED** files and each needs its own claim.
+- Files within `_boundaries/`: `_LOCK.md` + `01_feature_ownership_matrix.md` + this file.
+  Files outside: none in this cycle (doc 36 itself is outside the boundary folder).
+- **NEXT:** annotate the affected feature docs with dated cross-reference notes (the
+  CLOSURE-PASS-EXTENSION convention `MAP_001`/`CSC_001` already carry) · then the `SPG-R*` + `WSA-R*`
+  application pass as its own claim.
+
+---
+
+## 2026-07-26 — data-architecture registration (`RLS` / `GDA` / `RBS` / `REC`) + ⚠️ **fourth** record correction
+
+- **Lock CLAIMED 21:47, `Owner:` set BEFORE the first edit, released after.** A genuine
+  `[boundaries-lock-claim+release]` cycle.
+- **⚠️ RECORD CORRECTION — this session's own, and it is the *fourth* instance of the defect the three
+  bullets in `_LOCK.md` already describe.** Docs `16`, `16a`, `17`, `18` and `19` were written earlier
+  today with headers asserting *"Prefix: `RLS-*` (registered 2026-07-26)"* and the same for `GDA-*`,
+  `RBS-*`, `REC-*`. **None of those registrations had happened.** No claim was made, no matrix row
+  existed, and the assertion sat in five doc headers for several hours. This session had **read** the
+  RECORD CORRECTION bullets before writing them. That is the strongest available evidence for the
+  standing conclusion in those bullets: **the convention is the failure point, not the agent** — a
+  pre-commit hook requiring `Owner:` ≠ `None` on any diff touching `_boundaries/*` would have caught
+  all four instances; care did not catch the fourth even with the first three in context.
+- **Registered 4 stable-ID prefixes** (matrix `## Stable-ID prefix ownership`):
+  **`RLS-*`** (`16` + `16a`, closes **AUD-F14**) — splits `RealityManifest` into Ruleset / WorldContent /
+  Provenance on a **cardinality** axis; presets **early-bound**; content-addressed digest pinned per
+  event; `Domain::Rules` so rules reach `apply()` as an argument, not ambient state ·
+  **`GDA-*`** (`17`, opens **AUD-F15**) — 6 boot levels, 18 flows, composes locked contracts and adds
+  no primitive · **`RBS-*`** (`18`) — `RealityBootstrapper` as a **role** on the §12R.2 seeding worker,
+  three seed sources on one lifecycle · **`REC-*`** (`19`) — the reconciliation register.
+  **All four own NO aggregate.**
+- **Two of the four carry an explicit correction hold, recorded in their matrix rows rather than
+  quietly**: `GDA-A5 ReadFreshness` is prohibited by **DP-X1** (*"no runtime flag to upgrade coherency
+  without upgrading tier"*), `GDA-A6` deletes the locked **`t1_read`** primitive, `GDA-Q1` is falsified
+  by **DP-Ch33**'s locked ≤2 s wakeup budget, and 4 **DP-R** rules are violated; `RBS`'s `*Born` events
+  are **EVT-T5, not EVT-T4** (EVT-T4 is DP-Internal-only, closed set of 8) and **EVT-T5 requires
+  causal-refs that bootstrap phase 1 cannot supply**. Both were found by verification agents reading
+  the locked specs the docs had only been *grepped* against.
+- **REC-28 — `commit-service` has no ownership row**, and **EVT-A4's closed 7-role producer set has no
+  role for `sim-core` / the island** despite SC-A4 making it the authoritative writer. **Recorded as a
+  gap, not invented** — adding a producer role is EVT-A12 point (e), an event-model AMEND. Two live
+  questions ride on it, including **two claimed writers for `fiction_clock`** (EVT-V6 says the pipeline
+  executor, SC-A4 says the island).
+- **Aggregate table declared the inventory SSOT** (GDA-D12) — `02_storage` §5's four projections are
+  *patterns*, and its `region` / `npc_proxy` vocabulary predates the feature layer's 52 rows.
+- **NOT done under this claim, deliberately:** the `02_extension_contracts.md` §2 Ruleset/WorldContent
+  split (needs `16a` owner sign-off — 65 fields, 6 owners with real decisions) · `RulesetEpochActivated`
+  EVT-T8 registration (**blocked on a knot `16` created itself**: EVT-A11 demands one owning *feature*,
+  RLS-D21 made `16` a platform doc with no feature identity; candidate owner **WA_003 Forge**) · the
+  REC-31 validator stage-order renumber (an AMEND owned by the boundary/event-model tracks).
+- **Two new AUD findings recorded**: **AUD-F16** (`02_storage` corpus stale — ~75 claims, ~30 HIGH,
+  **10 root causes**) and **AUD-F17** (feature layer — 48 findings, **13 CRITICAL**; as designed the V1
+  game cannot run). Both reach the same process conclusion: **documents are locked individually, but
+  correctness is a property of the set.**
+- Files within `_boundaries/`: `_LOCK.md` · `01_feature_ownership_matrix.md` · `99_changelog.md`.
+  Files outside this cycle: `PF_001` (REC-17) · `C05_lifecycle_cas.md` (REC-48) · `PL_005b` (REC-03,
+  REC-22) · `02_storage/_index.md` (AUD-F16 banner) · `12_module_coverage_audit.md`.
+- **NEXT:** the two P0 DECISIONs — **REC-04** (clock deadlock) and **REC-01** (no enemy can attack) —
+  then the REC-05..13 dependency-inversion table in **one** PO sitting.
+
+---
+
+## 2026-07-26 — `DL-A1 vs B3-D1` watchpoint CLOSED (amendment landed as `B3-D1a`)
+
+- **Lock CLAIMED 21:34, `Owner:` set before the first edit; released after.** Note: the claim edit returned git's *"file changed on disk"* warning — **treated as a stop, not as noise**, per the finding two entries down. Investigated: a peer session had written `_LOCK.md`, `locked_decisions.md`, `12` and `13` within the preceding three minutes. **Verified no content loss** (`B3-D1a` present; `13` matched HEAD) before continuing.
+- **Closes the `DL-A1 vs B3-D1` drift watchpoint.** Its "Pending" was the amendment row in `decisions/locked_decisions.md`, now landed as **`B3-D1a`**.
+- **The amendment is narrow, and the split is the point:** B3-D1 made two claims. *"No between-session **activity**"* is **preserved literally** — `DL-D1` evaluates routines **on read**, never ticks them, so there is zero background compute; V1 does not simulate between sessions, it computes what the world looks like now. Only *"NPCs resume where last session ended"* is superseded.
+- **B3-D2 / B3-D3 / B3-D4 / B3-D5 unchanged** — generative simulation stays V2+/V3+, opt-in, budget-capped, free-tier-frozen. B3 was protecting the **token cost of generative** simulation (its own list: relationship drift, plotline beats, rumour propagation); deterministic engine routines spend none of it.
+- **MV12-D4** (*"reality paused at 0 players"*) is **not an obstacle rather than overridden** — paused and running realities return the same answer when the answer is `f(fiction_time)`.
+- **Files within `_boundaries/`:** `_LOCK.md` + `01_feature_ownership_matrix.md` (1 watchpoint row) + `99_changelog.md`. **Outside:** `decisions/locked_decisions.md` (`B3-D1` marked amended + new `B3-D1a` row).
+
+---
+
+## 2026-07-26 — Simulation tier registration (`SL-*` / `SC-*` / `CS-*` / `DL-*`)
+
+- **Lock CLAIMED 21:16 SEAST, `Owner:` set BEFORE the first edit**, per the discipline the preceding entry established. Released after.
+- **4 NEW Stable-ID prefix rows:**
+  - **`SL-*`** — `13_simulation_loop.md` (closes AUD-F7). Three execution classes with "a slower class may never block a faster one" (SL-A2); the **island** as unit of parallelism (SL-A9); cross-island async-message-only (SL-A10); commit order by logical key not arrival time (SL-A5) + wall-clock events recorded-not-re-evaluated (SL-A6), which preserve TDIL-A9 replay.
+  - **`SC-*`** — `14_sim_core_spec.md`. `crates/sim-core`: order-independent safety (SC-A1), preconditions re-validated at execution, generational invalidation, two-lane ingress, panic containment (SC-A8/A9).
+  - **`CS-*`** — `15_commit_service.md` (closes AUD-F8). **Adds no new semantics** — EVT-A5/A7, EVT-V1..V7, EVT-L1..L6, DP-A15/A16/A17, DP-R7 already specified the behaviour; supplies **shape only**.
+  - **`DL-*`** — `features/12_daily_life/DL_001_daily_life_foundation.md` (closes **DF1**, absorbs **DF8**, resolves **AUD-F13**).
+- **NO new aggregate, and that is the load-bearing finding.** An island **is** a **DP-A16 channel**, not a feature aggregate — `SL-A9` turned out to be a rediscovery of what the data plane locked in April. DP-A16 therefore supplies four mechanisms 13/14 lacked: the **epoch token** forgery guard, **CP-coordinated writer handoff** (so `CS-D1` declares SL-A12 migration to *be* DP-A16 handoff rather than a second protocol), SDK `route_channel_write` gRPC, and DB-level total order.
+- **NEW channel level `"encounter"`** (`CS-A6`) — an ephemeral child channel of its cell, `Dissolved` on resolution. **Legal under DP-Ch1 as written** (`level_name` is a free-form `String`, `ChannelLifecycle` has `Dissolved`, Q27 bubble-up and Q32 privacy are unblocked) — **no DP change required**.
+- **2 NEW drift watchpoints:** `SL-D7→CS-A5` (host moved WASM-in-game-server → native in `commit-service`; RTM-Q10 **narrowed not reversed** — Class A walkability stays WASM) · `DL-A1 vs B3-D1` (narrow amendment of a locked decision; *"no between-session activity"* preserved literally, *"NPCs resume where last session ended"* superseded).
+- **Superseded within `SL-*`:** `SL-D7` (by CS-A5) and `SL-D12` (by SL-D19, per-island-class tick rates).
+- **Outstanding, deliberately not done here:** an amendment row for **`B3-D1`** in `decisions/locked_decisions.md` — that file was in a peer session's active area at registration time, and the preceding entry's lesson is that writing into a peer's live surface is exactly how the record gets corrupted. Tracked on the `DL-A1 vs B3-D1` watchpoint.
+- **Files within `_boundaries/`:** `_LOCK.md` + `01_feature_ownership_matrix.md` (4 prefix rows + 2 drift rows) + `99_changelog.md`. **Files outside:** none this cycle (13/14/15 already committed; DL_001 + its `_index.md` commit separately).
+
+---
+
+## 2026-07-26 — DF07-session record correction (lock held for real; no surface change)
+
+- **Lock genuinely CLAIMED and RELEASED** — `Owner:` set in `_LOCK.md` **before** the first edit and cleared after, which is exactly what the three cycles it corrects failed to do. **No boundary surface changed**; this claim existed only to fix the record with the mutex actually held.
+- **Corrected:** the three DF07-session `_LOCK.md` entries (DF07_001 DRAFT · DF07_002 closure · `/review-impl` seam pass) and their three matching changelog headers, each of which asserted a `[boundaries-lock-claim+release]` cycle that never happened. Also corrected the peer's top entry, which recorded the folder as *"held by the parallel session"* — it never was; that belief came from these entries.
+- **The harm was not content loss, it was a false signal.** The COMB/ABL session read a held lock, correctly stayed out, and **deferred its whole registration** — leaving `THR-*` / `SPO-*` / `SPN-*` / `PVP-*` / `ABL-*` on the branch with no catalog row until its own catch-up cycle. Serialisation by honest deferral is worth more than serialisation by luck, and the false note destroyed the former while relying on the latter.
+- **Verified no loss** across the unlocked concurrency: `DF7-*` · `stat.*` · `stat.tuning_invalid` · `group_pools` · `StatSnapshot` · §2.Z all present beside the peer's `ITM-*` / `THR-*` / `SPO-*` / `SPN-*` / `PVP-*` / `ABL-*` rows. The writes landed in different table regions; a same-row edit would have dropped one side silently.
+- **Both sessions found this independently within the hour** — which points at the convention rather than at either agent. Two mechanisms would have caught it that discipline did not: a **pre-commit check** that any diff touching `_boundaries/*` requires `Owner:` ≠ `None` in the same commit, and treating the tooling's *"file changed on disk"* warning as a **stop** rather than as merge noise. Both sessions saw that warning three times each and worked through it. **Even during this correction cycle, with `Owner:` set, another session wrote `99_changelog.md`** — so the mutex is advisory in practice and needs the hook to become real.
+
+---
+
+## 2026-07-26 — combat-family boundary registration `[boundaries-lock-claim+release]`
+
+**A catch-up cycle, and worth recording as one.** COMB_003/004/005/006 + ABL_001 were authored earlier
+today while the `_boundaries/` lock was held by the parallel session (DF07 → PL_007 → seam review). The
+correct move at the time was to stay out of the folder, and the registration was tracked in
+`features/18_combat/_index.md` under "Outstanding registration" instead. But tracking is not registering:
+by the time the parallel session committed those docs (`6fee77360`, `5cb6f59a3`), **five stable-ID
+prefixes existed on the branch that appear in no catalog** — precisely the drift signal `00_README.md`
+names (*"a feature design uses a stable-ID prefix that's not in the foundation/06_id_catalog"*). This
+cycle closes it. Surfaced by the user asking directly whether the lock had been held.
+
+**Registered — `01_feature_ownership_matrix.md`:**
+- **5 stable-ID prefixes:** `THR-*` (COMB_003) · `SPO-*` (COMB_004) · `SPN-*` (COMB_005) · `PVP-*`
+  (COMB_006) · `ABL-*` (ABL_001, **new namespace `features/19_ability/`**), each with its full ID ranges.
+- **`EffectOp` — the shared effect vocabulary** as a new Schema/envelope row: **one owner (ABL_001), many
+  producers** (ABL abilities, PL_007 item use-effects, V1+ Lex/quests/crafting) — the same shape as DF07's
+  `StatModifier`. Records ABL-Q9/Q10 and the defect that forced the merge (below).
+- **A negative claim: `NO NEW AGGREGATE`** for all five features, recorded deliberately because five
+  features landing without one reads as an oversight to a later reader. Everything is either derived
+  (population = `f(place, decl_index, epoch, seed)`; the known-ability set) or hosted on the
+  already-ephemeral `combat_session`. The only genuinely-stored additions are three ephemerals:
+  `spoils_claim`, `SpawnGroupLootState`, `DuelOffer`.
+
+**Registered — `02_extension_contracts.md`:**
+- **§1.4** five reject namespaces: `threat.*` (6) · `spoils.*` (12) · `spawn.*` (10) · `ability.*` (14) ·
+  `pvp.*` (9).
+- **NEW §1.4a** the `EffectOp` shared vocabulary, including the reason the merge was **not** optional:
+  PL_007's `UseEffectDecl` and ABL's `EffectOp` had **already diverged within 24 hours** (`StatusApply`
+  arity; `VitalDelta` field name), and `VitalDelta { amount: i32 }` — in **both** docs — was a
+  **damage-law-chain bypass**. A signed vital write reachable from `UseItem` skips COMB_001 §4's chain
+  (armour, variance), takes **no hit roll**, accrues **no COMB_003 threat** (accrual reads
+  `damage_applied` *from* the chain), and ignores both COMB_001 Q4's disparity cap and COMB_006's PvP
+  predicate — i.e. **an unmissable, armour-ignoring PvP weapon usable inside a sanctuary**, silently
+  falsifying COMB_001's *"the 4-step chain is the sole damage authority"*. Fixed by
+  `VitalRestore { amount: u32 }` (harm **unrepresentable by type**) + **`ABL-V9`**.
+- **NEW §2.AB** RealityManifest extensions: `threat_config` · `loot_tables` · `abilities` · `pvp_policy`
+  (all optional/defaultable — a reality declaring none of them still plays), plus the two that land on
+  other features' declarations (`PlaceDecl.hostile_spawns` + the `Contested` safety band; TMP
+  `TerrainSpawnDecl`).
+- **§4** three Forge sub-actions: `Forge:EditLootTable` · `Forge:EditSpawnDecl` · `Forge:EditPvpPolicy`,
+  each carrying its System-tier rationale (SPO-A7 / SPN-A8 / PVP-A7).
+
+**Registered outside `_boundaries/`:**
+- `00_foundation/06_id_catalog.md` — the same five prefixes with full ID ranges.
+- `decisions/locked_decisions.md` — **NEW "Combat family" block** (27 load-bearing decisions), and
+  **`PC-D2` marked DISCHARGED**: locked 2026-04-23 as *"PvP enabled within a session"* with its consent
+  model deferred to DF4/DF5 and never built. COMB_006 supplies it — **not DF4/DF5** — and amends
+  *"within a session"* as medium-stale (PVP-Q7): it was text-medium shorthand for "an explicit bounded
+  mutual context", which the `Duel` channel preserves exactly.
+- `features/02_world_authoring/_index.md` — **`WA_NNN_pvp_consent` RETIRED.** That section predicted
+  *"PvP→combat … when those consumer features open, their author may choose to put the override in their
+  own folder"*. Combat opened; the prediction held; the reservation is closed rather than left dangling.
+  Note the V1 default **changed**: no longer *"enabled within session hardcoded"* but `pvp_policy: None`
+  ⇒ **PvP unreachable**, because WA_006 already defaults to `Permadeath` (PC-B1) and two harsh defaults
+  must not compose without an author choosing (PVP-A2).
+
+**Still outstanding (tracked, not silently dropped):** the two catalog files
+(`cat_18_COMB_combat.md`, `cat_19_ABL_ability.md`) remain uncreated — the matrix has said "defer to
+DRAFT-stable cycle" for COMB since 2026-06-20; and **the one-line PL_007 §7.1 change**
+(`pub type UseEffectDecl = EffectOp;`) belongs to that doc's owner — the *decision* is made, only the
+edit is pending, and **until it lands the bypass stands in the item path**.
+
+---
+
+## 2026-07-26 — PL_007 cold-start `/review-impl` pass (11 further defects, 4 HIGH — all interior)
+
+Follow-up to the entry below, run at the user's request immediately after commit `6fee77360`, aimed at
+§5–§7 because the self-review's own §19 predicted those were under-challenged. **The prediction held.**
+
+- **4 HIGH.** (1) **§8.1 contradicted ITM-C4 — and the self-review created it:** §8.1 said flatly "items never go `Suspended` in V1" while the corrected ITM-C4 requires lifecycle **lockstep with the holder**. EF_001 says both halves precisely — §6 = no *independent* item suspension, §6.1 = held items *do* cascade-suspend — and §8.1's transition table was **missing both cascade rows**, which is what let the contradiction hide. (2) **`EquipRequirement { min_level }` invented a concept PROG_001 explicitly forbids** — PROG_001 §1 carries a user-directed locked decision, *"NO level / NO power-rating concept"*; it exposes `raw_value: u64` + optional tiers, so ITM-V5 would have read a nonexistent field and the name would have re-imported the aggregate-power framing the substrate exists to avoid. (3) **§6.4 silently changed PROG_001's `instrument_match` semantics** — PROG_001 matches `current_turn.instrument` (`tools[0]`), not the equipped item; because `ItemClass::Tool` is never equippable, *every* "train X while using tool Y" rule became permanently unsatisfiable. Resolution is now split per consumer (PROG → turn instrument; DF07 → equipped). (4) **`type_default_affordances()` was unimplementable** — `class_default(self.def_id.class())` on a `String` newtype, and more fundamentally EF_001's contract is one default per `EntityType` with a deliberately `&self`-only signature (object-safe for `&dyn EntityKind`), so 8 per-class defaults do not fit that slot at all; the per-class set is now **materialised at instance birth** into the existing `entity_binding.affordance_overrides`, keeping the read path a single binding read.
+- **5 MED.** §7.1's central claim ("every variant routes to an aggregate already owned by another feature") was **false for 2 of 7** — `Unlock` mutates nothing and `Reveal` has no durable V1 sink, yet both pass ITM-V8 and return success with zero state change (indistinguishable from a bug, unassertable by QA); now declared via the new `item.use_effect_narrative_only` warning, and `Key` is documented as narrative-only in V1. Plus three constraints that were **documentation with no validator** → **ITM-C12**: the §5.2 "Equip?" column, `Consumable` ⇒ finite charges, and `use_effect` on a class whose affordances lack `BeUsed` (unreachable by construction). And **ITM-C9's scope was too narrow** — it gated `equip.*` only, leaving `class` / `use_effect` / `max_charges` editable under live instances; extended, with **ITM-C13** deciding the retroactivity question explicitly rather than leaving it undefined.
+- **2 LOW.** `has_charges DESC` over an `Option<u32>` was ambiguous in the worst direction — read as `is_some()` it ranks a **spent husk** (`Some(0)`) above a usable charge-less sword (`None`), spending the digest's scarce lines on what the actor cannot use; predicate now spelled out. Dead declarations (`ItemOrigin::Trade`, `EquipSlotProfileId`) accepted and documented as forward-declarations.
+- **Boundary surface:** `item.*` → **24 V1 (21 rejects + 3 warnings)**; **ITM-C12 + ITM-C13** added; **8 new acceptance criteria AC-ITM-24..31**, each written to bite one of these findings (AC-ITM-25 cannot even resolve against a `min_level` field; AC-ITM-26 fails under the pre-review single resolution rule; AC-ITM-31 fails under `is_some()`).
+- **4 new closure-pass extensions** created for other owners: PROG_001 (`InstrumentMatch` variants + `EquipRequirement` field names) · DF07 (resolution-subject note) · WA_003 (`Forge:EditItemDef` divergence flag) · CSC_001 (3.5.d predicate, from the earlier pass).
+- **The generalizable lesson, recorded because it should change how this track reviews:** a feature integrating with eight others gets its **seams** checked by the act of writing it (you must read the neighbour to write the sentence) and its **own closed enums and trait impls** left unchecked, because nothing forces a second look. `ItemClass`, `UseEffectDecl`, `EquipDecl` and the `EntityKind` impl were each authored once and never re-derived — and all four had defects. Self-review and cold-start review found **disjoint** defect populations; neither substitutes for the other.
+- **No third pass recommended.** Two passes, 22 defects, sharply different profiles; a third over unchanged text has low expected yield. The next real test is building against it (AUD-F8 `commit-service`, which still has no code).
+
+---
+
+## 2026-07-26 — PL_007 + PL_007b Item Foundation DRAFT (resolves AUD-F5 + the "Inventory 🟡 partial" row)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]`). **Concurrency note:** landed alongside the DF07_001 cycle below, which was in flight in the same working tree. The two touched disjoint regions of every shared boundary file and were verified to coexist (`item_instance`/`actor_equipment`/`actor_inventory_view` + `ITM-*` rows vs `DF7-*` + `stat.*` rows). **Both cycles are uncommitted at the time of writing — commit boundary is the human's call.**
+- **Wrote** `features/04_play_loop/PL_007_item.md` + `features/04_play_loop/PL_007b_inventory.md` (both DRAFT). PL_007 is the file [`EF_001 §Defers-to`](../features/00_entity/EF_001_entity_foundation.md) named by path (`features/04_play_loop/PL_007_item.md`) and that EF_001 §1 opened by flagging as *"Gap 1 — PL_005 nợ Item"* — never written, while PL_005 shipped **four of five** V1 InteractionKinds carrying `// V1 placeholder check; V1+ enforces via Item aggregate` in their validation rules (PL_005b §3.7 / §4.7 / §6.7). Those placeholders now resolve to ITM-V2 at Stage 3.5.e.
+- **9 axioms.** ITM-A1 def/instance split on the **System tenancy tier** (`Forge:EditItemDef` is the only runtime def-write; a user-editable shared template is the exact tenancy defect CLAUDE.md's User Boundaries section was written about) · **ITM-A2 the representation rule** — instanced ⇒ EF_001 entity, fungible ⇒ RES_001 balance, exactly one per thing, **enforced at bootstrap** (ITM-V10/C36), not merely asserted · ITM-A3 items carry `StatModifier`s against DF07's closed `StatSlot` enum, never stat values · ITM-A4 LLM-zero-item-math (extends COMB-A1 / TG-A1) · ITM-A5 equipment is a **slot assignment, not a location** — keeps EF_001's `LocationKind` closed with no 5th variant and preserves "exactly one place at a time" · ITM-A6 V1 flat inventory (**resolves EF-D3**; V1 holder depth ≤1 is *why* `entity.cyclic_holder_graph` is structurally unreachable rather than merely untested) · ITM-A7 item-management as 4 `Item:*` EVT-T1 sub-types, **not** new InteractionKinds (PL_005's five-kind closed set + closed-set proof unchanged; the TG-A3 precedent where movement became a turn phase) · ITM-A8 one inventory, two stores, no third · **ITM-A9 inventory context is fixed-size** (≤29 lines for any inventory of any size).
+- **Files landed within `_boundaries/`:**
+  - `01_feature_ownership_matrix.md` — **3 NEW aggregate/projection rows** (`item_instance` · `actor_equipment` · `actor_inventory_view`+`cell_item_view` as explicit T1 projections, never aggregates); **NEW `ITM-*` Stable-ID prefix row**; **3 NEW drift-watchpoint rows** — the `ItemId`/`ItemInstanceId` spelling drift (RESOLVED by ITM-C1 alias), the two-candidate-inventory-representations drift (RESOLVED by ITM-A2 + RES-D1 withdrawal), and the DF07 `StatRef` seam (now closed on arrival, see below).
+  - `02_extension_contracts.md` — §1.4 **NEW `item.*` namespace** (21 V1 rejects + 2 V1 warnings + 4 V1+ reservations, incl. the `item.inventory.*` sub-namespace under the same prefix — one owner, one registration); **NEW §2.AA** (4 RealityManifest fields, all OPTIONAL with engine defaults); §4 **4 NEW `EVT-T8` Forge sub-shapes** (`Forge:SpawnItem`/`DestroyItem`/`EditItemDef`/`GrantItems`).
+  - `03_validator_pipeline_slots.md` — **NEW Stage 3.5.e `item_structural`** with an applicability predicate (fires on `Item:*` + PL_005 kinds with an Item tool; early-exits on everything else) and an explicit **DELEGATES-rather-than-duplicates** list of 5 checks already owned by EF_001 3.5.a / PF_001 3.5.b / CSC_001 3.5.d; Stage→namespace matrix row; **4 NEW cross-aggregate rules C36–C39**; **NEW post-commit cascade hook** (equipment clearing *inside* the EF_001 §6.1 HolderCascade batch).
+- **Three latent breaks found only because all the docs now exist at once** — each invisible from any single file:
+  1. **`ItemId` vs `ItemInstanceId`** — EF_001 §5 declares `ItemId(Uuid)`; RES_001 §4.2/§4.4 references an undefined `ItemInstanceId`. Resolved as an **alias** (ITM-C1), `ItemId` canonical.
+  2. **Two candidate inventory representations** — RES_001's reserved `ResourceKind::Item` + `ResourceBalance.instance_id` vs EF_001 AC-EF-10's "inventory *is* a `HeldBy` read-view". Both cannot be it; this ambiguity *is* why the audit's Inventory row sat at 🟡. **RES-D1 RESOLVED by withdrawal** — `ResourceKind::Item` is withdrawn/never-activated and `instance_id` is permanently unused (retained-never-reused per I15).
+  3. **`InstrumentMatch` could no longer name a wielded weapon** — PROG_001 matches instruments by `ResourceKind` and DF07 §6.1's worked example writes `instrument_match: Some(Blade)`; once ITM-A2 withdraws `ResourceKind::Item`, **every "+skill while wielding X" training rule and every conditional stat term would have silently never fired**. Fixed by author-declared `ItemDefDecl.instrument_tags` + two additive `InstrumentMatch` variants — which **also resolves PROG-D15** (`InstrumentClass` match, deferred V1+30d for want of exactly this taxonomy). ITM-C7/C39 reports an unreferenced tag as a **warning**, because a silently-dead bonus is worse than an error.
+- **DF07 seam: implemented, not described.** DF07_001 (landed the same day, below) ends with *"the equipment layer contributes ∅ until PL_007 ships an `EquipmentStats` impl — no DF7 change needed then."* PL_007 §6.3 is that impl, with **zero DF07 change**, exactly as DF7-Q7 planned. Two seam bugs called out rather than left latent: `equipped_modifiers` MUST filter `blocked_by_primary` slots or a two-handed weapon's modifiers apply **twice** (AC-ITM-6b bites this), and `equipment_version = last_modified_at_turn` is not monotonic across two same-turn equipment changes (safe under V1's one-action-per-turn rule; ITM-Q1). The original "which `StatRef` spelling?" reservation is closed on arrival — DF07 defines `StatSlot::StrikePower`/`Armor` explicitly.
+- **Discharged promises that were one sentence long.** EF_001 §3.1 promised *"LLM context bloat mitigated V1 via AssemblePrompt summarization (top-N entries per kind)"* — PL_007b §5 makes it a contract: `InventoryDigest` bounded at ≤29 lines with a deterministic ranking, **truthful elision** (so the narrator cannot assert "he had nothing else" — an A6 canon-drift class), and a live V1 assertion (ITM-V17) that **can** fail on a mis-tuned bound, a long-rendering locale, or a future 9th `ItemClass`. Same shape of fix as CSC_001's measured 31K→2.5K token win. PL_005b §8.2's *"Use → Lex severity: CRITICAL, item × reality compatibility matrix"* finally has an operand (`lex_tags`).
+- **Boundary behaviour decided rather than deferred to implementation** (PL_007b §4.4): single atomic transfers **hard-reject** at capacity; bulk drains **partial-fill** with the remainder left at source and a warning on an *accepted* turn (destroying it is unrecoverable; failing the whole drain wastes the action). Ground-item cap is deliberately **soft and asymmetric** — `Item:Drop` proposals reject, holder-death cascades only warn, because a cascade is a consequence and must never fail.
+- **Resolved elsewhere:** EF-D3 (by decision) · RES-D1 (by withdrawal) · RES-D2 + RES-D4 (schema homes: `weight`, `durability`) · PROG-D15 · EF_001 Q6b `inventory_cap` accounting · EF_001 §6.1's "future Item" cascade-consumer placeholder.
+- **Counts:** 2 new aggregates + 2 projections · 13 V1 rejects + 2 warnings · 17 validators · 7 consistency rules · 4 T1 + 1 T4 + 2 T3 + 4 T8 + 1 V1+30d T5 EVT sub-types · 4 manifest fields · 23 acceptance criteria (AC-ITM-1..13 + AC-INV-1..10) · 19 deferrals · 8 open questions · 12 closure-pass-extensions declared (5 load-bearing).
+- **Not designed, deliberately:** the Loot module (AUD-F9). PL_007 §8.5 hands it a substrate (post-death possessions are ordinary `Existing` items `InCell`, `ItemOrigin::Loot` reserved, `CellItemView` + bulk partial-fill available) and stops there.
+- **REVIEW PASS (same cycle, 2026-07-26)** — user asked for spec evaluation + edge cases + open questions. **11 defects found and fixed, 4 HIGH**, and the pattern is the finding: *every one of the first five sits at a seam with another feature and is invisible from inside PL_007 alone.*
+  1. **HIGH — ITM-C4 contradicted EF_001 §6.1.** "Equipped ⇒ `Existing`" is violated by every NPC cold-decay (EF_001's `Existing → Suspended` cascade suspends held items), and the natural "fix" — clearing slots — would have NPCs wake up disarmed. Restated as **lifecycle lockstep with the holder**.
+  2. **HIGH — unequip soft-lock.** PL_007 §8.3 claimed unequip is safe at capacity "because it doesn't change holding", but PL_007b §4.1 counts *held-and-not-equipped*, so unequip **increments** `slots_used`: a full actor at cap could neither equip nor unequip, with no in-game escape. Fixed by the **over-encumbered rule** (rearrangement exempt from the cap; encumbrance gates acquisition only).
+  3. **HIGH — item-side destroy cascade missing.** Only the holder-dying direction was covered; an equipped item destroyed on its own (wand spends last charge, `Forge:DestroyItem` on worn armour) left `actor_equipment` pointing at a destroyed entity with DF07 still applying its modifiers.
+  4. **HIGH — a delegated check that could never fire.** §9.1 delegated drop-tile placeability to CSC_001 3.5.d, whose applicability predicate matches no `Item:*` sub-type — so 3.5.d early-exits on every drop and items could be dropped onto non-placeable tiles forever, while both docs read as covered. Introduced in the same paragraph that names the non-vacuity rule. Fixed by extending 3.5.d's predicate (registered here; CSC_001 closure-pass item).
+  5. **MED — ITM-V13 was vacuous.** In typed Rust the payload has no engine-owned field, so the check could not fail. Respecified at the **deserialization boundary** (`serde(deny_unknown_fields)`), which is where the real risk lives — an LLM emitting `{"instance": ..., "heal_amount": 40}` through the ai-gateway MCP path.
+  6. **MED — digest bound broke on a legitimate config.** The ≤29-line assertion came from the 6-slot default, but the slot profile is author-declared and `equipped` renders in full; a 20-slot reality would trip ITM-V17 on valid authoring. Fixed by capping the profile at 12 **and** restating the bound as a formula over profile size.
+  7. **MED — starvation while carrying rations.** An author could declare `travel_ration` as an item; RES_001 §7.2's hunger tick only scans `resource_inventory`, so the PC starves holding food — and `Hungry` 7 escalates to a mortality trigger. **ITM-C11** forbids nutritional item defs.
+  8. **MED — Untracked instance explosion.** Nothing forbade item instances on Untracked actors, so COMB_005's default-`Untracked` hostile spawns would mint an entity per enemy per weapon — the blow-up AIT_001 exists to prevent, reached through the item system's back door. **ITM-C10**.
+  9. **LOW ×3** — contradictory charge configs (**ITM-C8**) · `Forge:EditItemDef` orphaning equipped instances (**ITM-C9**, on the TVL_001 `route.remove_blocked_by_active_journey` precedent) · **rule_id undercount** (claimed 13 V1, actually 21 rejects + 2 warnings; §9.2 now counts per source).
+- **New boundary surface from the pass:** `item.*` grows to **23 V1 (21 rejects + 2 warnings)** with 3 new rejects (`def_edit_blocked_by_equipped` · `untracked_actor_cannot_hold` · `slot_profile_too_large`); consistency rules **C40–C44** added to `03_validator_pipeline_slots.md`; 3.5.d's applicability predicate extended; **10 new acceptance criteria (AC-ITM-14..23) and 3 (AC-INV-11..13), each written to bite a specific defect** — several fail against the pre-review wording by construction.
+- **All 8 open questions RESOLVED** (PL_007c §16 + PL_007b §12): 3 decided outright (ITM-Q2 sub-types — with a third, decisive reason that only appeared once §8.6 was written · Q3 blow-up risk now structurally excluded by ITM-C10 · Q8 stack sizes rejected, with the RES_001 double-ceiling collision named), 3 deferred **with named triggers** (Q1 `equipment_version` monotonicity, mirrored as DF7-D13 · Q4 · Q5), 2 given a **measurement method and an owner** (Q6 now defensible on mechanism rather than inherited on trust · Q7 A/B against CSC_001's own token-measurement methodology).
+- **ABL_001's two routed questions answered** (PL_007c §12.13) — ABL-Q9 `UseEffectDecl` ⊂ `EffectOp`: **agreed in principle, deferred in execution** to the first CANDIDATE-LOCK closure, because a closed enum shared by two DRAFT features becomes a change-coupling seam (every future `EffectOp` variant would need a PL_007 boundary claim even where no item can produce it); merged form should be ABL's enum with PL_007 declaring the item-legal **subset**. `EquipDecl.grants_ability`: **agreed, V1+** (ITM-D21).
+- **Split into 3 files.** The combined PL_007 reached **1150 lines** against the track's 800-line hard cap — and note the process error worth recording: the earlier "744 lines, under the cap" verification was **wrong**, because `Measure-Object -Line` silently skips blank lines. New shape mirrors PL_005/b/c: `PL_007` substrate **§1–§8** · **NEW `PL_007c_integration.md`** contracts + integration **§9–§19** · `PL_007b` inventory. **PL_007c continues PL_007's section numbering rather than restarting at §1**, deliberately — peer docs already cite `PL_007 §9.1` / `§11` / `§12.8`, and renumbering would silently break them. All 3 now 684 / 557 / 513 lines.
+- **NEXT:** `/review-impl` **cold-start** pass (§19 was author self-review; its findings cluster in cross-feature seams and thin out in PL_007's own interior — suspicious, so point the cold-start reviewer at §5–§7) · DF4 World Rules (last V1-blocking DF) · the ABL-Q9 merge at whichever feature closes first.
+
+---
+
+## 2026-07-26 — `/review-impl` seam pass across the same-day family (7 cross-doc defects, all fixed)
+
+- ⚠️ **CORRECTED 2026-07-26 21:05 — the lock was NOT claimed for this cycle.** The line below originally read "Lock CLAIMED + RELEASED"; `Owner:` was `None` throughout and only a release note was written afterwards. See `_LOCK.md` → the DF07-session RECORD CORRECTION bullet.
+- **Scope:** the eight docs authored the same day by two parallel sessions — DF07_001/002, PL_007/PL_007b, COMB_001 (CANDIDATE-LOCK), COMB_003/004/005, ABL_001 — reviewed **at the seams**, on the theory that docs cross-referencing each other's unfinished text is where defects hide. Findings and fixes recorded in [`DF07_002 §1.5`](../features/DF/DF07_pc_stats/DF07_002_edge_cases_and_closure.md).
+- **HIGH-1 — the Untracked group HP pool had no declaring owner.** AC-COMB-7 required a pooled HP bar, COMB_004 SPO-A1/A6 fired **loot generation when it reached zero**, DF07 §9 supplied its ceiling — and **no doc stored the current value**; Untracked actors hold no `vital_pool` row (AIT-A8). Since Untracked is the default tier for every COMB_005 spawn, the default enemy path was unimplementable. **Fixed:** NEW `combat_session.group_pools: BTreeMap<ActorRef, GroupPool { max, current, member_count }>` (COMB_001 §2 owns it; DF07 the ceiling; COMB_004 the zero-trigger; COMB_005 the member count), with COMB_001 §4 win/lose, COMB_004 SPO-A1/A6 and COMB_005 §7 all repointed at it.
+- **HIGH-2 — ABL_001 `PowerTerm.scale` read progression live**, while every other law-chain input came from the DF07 snapshot. PROG_001 `Action` training fires *during* combat (striking trains swordsmanship), so ability damage drifted mid-encounter while `Strike` stayed frozen — breaking AC-COMB-15 and AC-COMB-16. **DF7-V4 could not catch it**: the epoch guards the block; a direct progression read bypasses the block entirely. **Fixed:** the snapshot became `StatSnapshot { stats, prog, epoch }` (DF07 §8.1), `prog` carrying exactly the kinds any declared `PowerTerm.scale` references (bounded, known at schema stage via ABL-V3); ABL §4.3 reads `snapshot.prog` and saturating-multiplies (LOW-7).
+- **MED-3 — innate abilities leaked to Untracked actors** via a vacuous quantifier (`∀ req ∈ []` is true, so an empty `requires` admitted an ability to an actor with no progression row, contradicting ABL's own prose). **Fixed:** ABL §6 short-circuits on an absent row; a missing `kind_id` reads as 0.
+- **MED-4 — round-scoped status expiry was asserted by three docs and owned by none.** `duration_rounds`, `knocked_out`'s 5-round lifecycle and the `defending`/`slowed`/`hasted`/`stunned` set all need expiry; **PL_006 V1 has no auto-expire at all** (scheduler is V1+30d), so a 3-round debuff was permanent. **Fixed:** COMB_001 §4 now owns in-combat expiry at the round boundary via `CombatRoundDelta`; PL_006's scheduler keeps out-of-combat fiction-time expiry.
+- **MED-5 — Untracked ability costs had no store** (costs deduct from `vital_pool`; archetype-granted abilities are exactly the Untracked case). **Fixed:** NEW **ABL-V8** schema-stage warning; a pooled stamina bar was declined — it would put a second resource on the one tier that exists to have none.
+- **LOW-6 — COMB_004 wrote `actor_progression` outside PROG_001's closed `TrainingSource` enum.** **Fixed:** `TrainingSource::CombatVictory` declared (schema-additive per I14); reusing `Action` would have double-counted, since `Action` already trains per blow during the fight.
+- **Also applied:** every `combat_session` map is now a `BTreeMap` — the per-round checkpoint serialises the struct, so hash iteration order would have entered the replay bytes and made DF7-V4 fail nondeterministically (DF07_002 EC-3 generalised beyond `StatBlock`).
+- **Files:** `01_feature_ownership_matrix.md` (`combat_session` row — `group_pools`, `StatSnapshot`, ordered-map discipline) + `_LOCK.md` + this entry; outside `_boundaries/`: COMB_001 §2/§4, COMB_004 §2/§event-map, COMB_005 §7, ABL_001 §1/§4.3/§6/§7/§10/§12, DF07_001 §8.1/§9, DF07_002 §1.5 + AC-DF7-22..23. **Two DF07 statements written against the broken behaviour were corrected, not papered over** (EC-6 described a promotion path COMB_005 forbids and leaned on an HP value Untracked actors do not have). NEXT: commit the batch / DF4 World Rules.
+
+---
+
+## 2026-07-26 — DF07_002 closure pass (adversarial edge-case review of the stat law; 4 defects fixed)
+
+- ⚠️ **CORRECTED 2026-07-26 21:05 — the lock was NOT claimed for this cycle** (originally "Lock CLAIMED + RELEASED"). See `_LOCK.md` → the DF07-session RECORD CORRECTION bullet.
+- **NEW** `features/DF/DF07_pc_stats/DF07_002_edge_cases_and_closure.md` — adversarial review of DF07_001 against the six consumers that landed the same day (COMB_001 CANDIDATE-LOCK, COMB_003/004/005, ABL_001, PL_007). **4 defects found in the law and fixed in DF07_001**, 11 edge cases closed, 3 open questions decided, 1 left open with an owner.
+- **The defects** (all internal to resolution — none had propagated to a consumer):
+  - **EC-1 (high) — the Lex clamp was escapable.** The DRAFT ran `Lex clamp → slot clamp` reasoning "so an author clamp cannot escape a world rule"; that is inverted, because **the last clamp wins**. An author `clamp.min` above a Lex ceiling raised the value straight back through it — i.e. under DF4, a world rule would have been a suggestion. Order corrected to `slot clamp → Lex clamp` and generalised as **DF7-A14: clamp order is a security property**, so any future clamp source must declare its position. The Untracked archetype path applies both clamps too, or the same hole returns by the back door.
+  - **EC-2 (high) — percent past −100% inverted the stat.** `v × (1000 + Σpct)/1000` with `Σpct = −1200` flips the sign of every affected slot. Floored: `factor = max(0, 1000 + Σpct)`.
+  - **EC-3 (med) — `StatBlock` as a `HashMap` broke the replay assertion.** Resolution is order-stable, but the *container* is not, and COMB_001 now checkpoints `stat_snapshots` per round — hash order enters the replay bytes and DF7-V4 starts failing nondeterministically. Now `[i32; STAT_SLOT_COUNT]`; the outer snapshot map is declared to COMB_001 as `BTreeMap`. (ABL_001 reached the same conclusion independently for `known_abilities` — ABL-V7.)
+  - **EC-4 (low, panic) — unbounded intermediates.** PROG_001 supports `Unbounded` cultivation values; `raw_value × weight` in i64 milli-units overflows. Now saturating throughout, with the slot clamp bringing it back.
+- **NEW reject** `stat.tuning_invalid` (9 → **10 V1 rule_ids**) — `stat_tuning.speed_per_tile` is a **divisor**; a zero must reject at canonical seed, not panic on the first `MoveRange` resolve (EC-5).
+- **NEW axioms DF7-A12..A14** — archetype is terminal for Untracked actors (no per-actor rows exist to read under AIT-A8; a modifier that must apply *is* the promotion signal) · `Percent` is relative, never percentage-points · clamp order is a security property.
+- **NEW decisions DF7-Q12..Q14** — `Speed` does **not** bind to TVL travel duration V1 (named so nobody "obviously" multiplies travel time by speed; DF7-D14 if wanted) · skill checks read PROG_001 kinds, not slots · still **no** cache table (combat reads the snapshot, which was DF7-Q5's second purpose). Left open with an owner: **DF7-D15** `SetFloor` op.
+- **NEW criteria AC-DF7-16..21**, each written as a **bite test** with the mutation that must make it fail (swap the clamps back → 200 not 100; drop the percent floor → negative stat; restore the hash map → epoch mismatch; plain `*` → wrap; modifiers on Untracked → group pool desync; remove the tuning validator → division by zero).
+- **Cross-consumer edge cases closed:** tier promotion mid-encounter (archetype → derived block at a round boundary, current HP preserved by RES_001's max-increase rule) · `instrument_match` binds to the **equipped** main-hand, never a per-action `tool` (keeps it inside `StatEpoch`) · A10 **tightened** — no LLM-bound payload carries a raw slot value *including the actor's own*, which is what COMB_003 THR-A4 and ABL_001 §8.3 already assumed · PL_006 `Sum` magnitudes clamped at 10 by DF7 rather than trusted upstream · `VitalMaxRecomputed` while Dead/KO fires no transition · manifest hot-reload invalidates all combatants together.
+- **Files landed:** NEW `DF07_002_edge_cases_and_closure.md`; `DF07_001` (law fixes §2/§4/§6/§8/§9 + DF7-A3/A10 corrected); `DF07_pc_stats/_index.md`; `00_foundation/06_id_catalog.md`; `_boundaries/01_feature_ownership_matrix.md` (ID ranges + 10th rule_id); `_boundaries/02_extension_contracts.md` (`stat.*` row + `stat_tuning` validation); `_LOCK.md` + this entry. **No consumer doc required a change** — the four defects were internal to resolution. NEXT: DF4 World Rules (the last V1-blocking DF, and now the first real consumer of the corrected clamp order) / `/review-impl` across the DF07 + PL_007 + COMB family.
+
+---
+
+## 2026-07-26 — DF07_001 Actor Stat Block DRAFT (resolves AUD-F6; unblocks COMB_001 leaving DRAFT)
+
+- ⚠️ **CORRECTED 2026-07-26 21:05 — the lock was NOT claimed for this cycle** (originally "Lock CLAIMED + RELEASED"). This is the entry whose false claim caused the COMB/ABL session to defer its registration for hours. See `_LOCK.md` → the DF07-session RECORD CORRECTION bullet.
+- **Promoted** DF7 from placeholder `_index.md` to **DRAFT** — `features/DF/DF07_pc_stats/DF07_001_actor_stat_block.md`. **Re-scoped**: the 2026-04-23 placeholder ("inventory + relationships + simple stats") is obsolete — those are owned by RES_001 / ACT_001 / PCS_001+WA_006. What was actually unowned, and what AUD-F6 flagged as V1-blocking, is the **derived-stat projection layer**: COMB_001 §4's law-chain reads `strike_power / armor / acc / dodge / crit_mult / speed` and COMB_002 TG-A3 reads `move_range`, while PROG_001 ships an *open, author-declared* kind schema. DF7 is the law between them.
+- **Files landed:**
+  - **NEW** `features/DF/DF07_pc_stats/DF07_001_actor_stat_block.md` (DRAFT, 504 lines; DF7-A1..A11 axioms · DF7-Q1..Q11 LOCKED · DF7-D1..D13 · DF7-V1..V6 · AC-DF7-1..15).
+  - `features/DF/DF07_pc_stats/_index.md` — placeholder → DRAFT index + exported IDs + superseded-scope traceability.
+  - `features/DF/_index.md` — DF7 row → DRAFT; V1-blocking priority list corrected (DF5 done; DF4 is the last one); stale DF5 "placeholder" row corrected to CANDIDATE-LOCK.
+  - `00_foundation/06_id_catalog.md` — NEW `DF7-*` namespace row.
+  - `_boundaries/01_feature_ownership_matrix.md` — NEW `DF7-*` Stable-ID prefix row (**explicitly owns NO aggregate**, per DF7-A2 — noteworthy: the first feature registered as a pure law + contract); `stat.*` (9 V1 rule_ids) added to the RejectReason namespace row; `vital_pool` row extended with the derived-`max_value` binding + `VitalMaxRecomputed` delta_kind; **ITM-Q1 drift watchpoint marked RESOLVED**.
+  - `_boundaries/02_extension_contracts.md` — NEW §2.Z RealityManifest stat fields (`stat_slots` / `stat_archetypes` / `stat_tuning`, 3 OPTIONAL).
+  - `_LOCK.md` + `99_changelog.md` (this entry).
+  - Dated closure-pass notes on `PROG_001` (§9 stat terms superseded; PROG-D25 crit deferral REVERSED), `COMB_001` (§4 slot bindings + snapshot rule + fixed-point), `RES_001` (§4.1 derived `max_value`; RES-Q1 resolved), `PL_006` (NEW §8.3b status→stat table + `stat_layer` flag), `PCS_001` (§3.3/§8.5 — **PCS-D4 `pc_stats_v1_stub` RESOLVED as unnecessary, not deferred**).
+- **Design surface declared:** closed `StatSlot` enum (10 V1 / 6 reserved); one resolution law with locked layer order + i64 milli-unit fixed-point (no float in the stat path — replay determinism); additive-percent rule (order-independent, no exponential stacking); `StatModifier` cross-feature contract (the single extension point for equipment / status / Lex / future systems); `StatEpoch` snapshot invalidation with a **bite-able** replay assertion (DF7-V4); untracked-NPC archetype path (AIT quantum-observation parity). 9 closure-pass-extensions — **5 load-bearing applied as dated notes this cycle**; 4 (COMB_002 tuning constants / AIT_001 / EF_001 / ACT_001) apply when each feature is next opened. **Cross-agent reconciliation (same day):** a parallel agent landed **PL_007 Item + PL_007b Inventory** DRAFTs which deferred the stat half to DF07 (ITM-A3) and reserved **ITM-Q1** for a possible stat-identity rename. It closes at **zero cost** — the identity is DF7's closed `StatSlot` enum and PL_007's two V1-minimum refs (`strike_power`, `armor`) are already the slot names; PL_007 §6.3 implements DF07's `EquipmentStats` trait. So the equipment layer is V1-**active**, not deferred: DF7-D1 reduces to per-item balance content, and PL_007 §6.5's *"stats change on Equip/Unequip and the destroy-cascade, and at no other time"* is exactly the `StatEpoch.equipment_version` invalidation trigger. Two seam-only silent-bug classes are guarded on both sides — two-handed weapons occupying two slots contribute **once** (`blocked_by_primary` filter + a DF7 one-entry-per-`(instance, slot)` invariant, AC-DF7-15), and the turn-stamped `equipment_version` (safe under V1's one-action-per-turn rule; monotonic counter if that changes — **DF7-D13**, tracked jointly). NEXT: DF4 World Rules (last V1-blocking DF) / spawning + threat + loot (AUD-F7..F9) / `/review-impl` on the DF07 + PL_007 pair.
+
+---
+
+## 2026-06-20 — COMB_001 Combat Foundation DRAFT promotion (+ tactical-grid integration + Agent-driver expression)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]`).
+- **Promoted** COMB_001 from concept-notes (Q1–Q9 LOCKED 2026-04-27) to **DRAFT** — `features/18_combat/COMB_001_combat_foundation.md`. Integrates the **COMB_002 tactical grid** (retires concept §11.1/§11.2 abstract arena + Front/Back rows; **pulls zone-tactics V2+→V1** per AUD-F1) and expresses the 3-layer AI as **Agent Decision drivers** (AGT-A3: PC=Human / Major=Llm via NPC_002 / Minor=Script / Untracked=Engine).
+- **Files landed:**
+  - **NEW** `features/18_combat/COMB_001_combat_foundation.md` (DRAFT).
+  - `features/18_combat/_index.md` — Active→DRAFT; feature-list COMB_001 + COMB_002 rows; roadmap reshuffle note (COMB_002 = V1 tactical grid, was reserved "Social Skirmish" → renumbers later).
+  - `_boundaries/01_feature_ownership_matrix.md` — NEW `combat_session` aggregate row; NEW combat EVT sub-types (EVT-T4 CombatSessionBorn/Resolved + EVT-T3 CombatRoundDelta + EVT-T8 Forge:CancelCombat) in Schema/envelope ownership; `combat.*` (10 V1 rule_ids) added to the RejectReason namespace row; NEW `COMB-*` Stable-ID prefix row.
+  - `_boundaries/02_extension_contracts.md` — NEW §2.Y RealityManifest combat fields (5 OPTIONAL) + §4 `Forge:CancelCombat` sub-shape.
+  - `_LOCK.md` + `99_changelog.md` (this entry).
+  - Dated closure-pass notes on `features/00_progression/PROG_001` (§9 Strike formula REVERSED) + `features/04_play_loop/PL_005` (Strike `damage_amount` drop) + `features/04_play_loop/PL_006` (3 combat status entries + knocked_out).
+- **Design surface declared:** `combat_session` ephemeral aggregate (holds the COMB_002 `tactical_grid`); engine-owned damage law-chain + HSR initiative + LLM-zero-math/zero-space; 10 closure-pass-extensions (PROG_001/PL_005/PL_006/NPC_002/AIT_001/WA_006/WA_001/PF_001/ACT_001/RealityManifest) — **3 load-bearing applied as dated notes this cycle**; the remaining 6 apply incrementally when each feature is next opened (behavioral-closure deferral, per the travel-arc precedent). **DRAFT ready for /review-impl.** NEXT: PCS_001 PC Substrate kickoff (full V1 vertical slice) / the remaining closure-pass notes / `contracts/agent/` SDK scaffolding.
+
+---
+
+## 2026-06-20 — Medium-correction registration batch (08–11 + COMB_002 standards into the matrix)
+
+- **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]`). Pure registration of standards already designed + committed this session (commits `dd005622`→`5d753e8c`); no new design.
+- **Context:** the session corrected the game medium (text → rendered 2D/2.5D) and produced five new top-level standards — `08` realtime movement authority, `09` interaction-layer reconciliation, `10` blast-radius audit, `11` agent decision standard, `COMB_002` tactical-grid combat. These needed their ownership registered in the boundary matrix.
+- **Files landed (all within `_boundaries/`):**
+  - `01_feature_ownership_matrix.md` — **5 NEW Stable-ID prefix rows** (`RTM-*` / `ILR-*` / `TG-*` / `AGT-*` / `AUD-*`); **NEW aggregate row** `tactical_grid` (COMB_002; ephemeral per-encounter); **NEW Schema/envelope row** `contracts/agent/` Agent Decision contract (AGT-owned); **2 NEW drift watchpoints** (RTM-Q10 WASM seam; three-layer position stack ILR-A2).
+  - `02_extension_contracts.md` — **NEW §6** registering the `contracts/agent/` Agent Decision contract (ToolSchema/DecisionContext/Decision/Driver + the MCP-tool-as-bounded-vocab extension rules).
+  - `_LOCK.md` + `99_changelog.md` (this entry).
+- **Design surface declared:** the bounded agent-decision vocabulary IS a set of MCP tools on the owning domain service (AGT-A4); `tactical_grid` is the per-encounter combat battlefield (TG, ephemeral like RTM position); the game-server is the new owner of the realtime layer (RTM) pending registration in `contracts/language-rule.yaml` + service map at implementation. **These are DESIGN-layer standards, not yet feature DRAFTs** — rows mark ownership ahead of implementation. NEXT candidates: COMB_001 DRAFT promotion (apply COMB_002 §10 retirements + claim the `tactical_grid` aggregate shape) / `contracts/agent/` SDK scaffolding at implementation / the deferred cosmetic AUD-F3+F4.
+
+---
+
 ## 2026-05-16 — TVL_005 V1+30d+ Group/Party Travel DRAFT + /review-impl 1-pass fix cycle (the group layer; three later TVL features each declared a dependency on it; 2 HIGH + 1 MED + 3 LOW all resolved)
 
 - **Lock CLAIMED + RELEASED** in single cycle (combined `[boundaries-lock-claim+release]` commit — Phase 0 TVP-D1..D7 + DRAFT + /review-impl 1st pass all in this commit, per the POL/SET/ROUTE/TVL_001/TVL_002/TVL_004/TVL_003 precedent).

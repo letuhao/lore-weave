@@ -467,3 +467,39 @@ services:
       meta_outbox:
         - SELECT
         - UPDATE
+
+  # ── Q1 B2b (2026-07-29) — commit-service binds a reality to its ruleset
+  - name: commit-service
+    svid_spiffe_id: spiffe://loreweave.dev/sa/commit-service
+    notes: |
+      The FIRST Rust writer of meta tables (via crates/meta-rs, the Rust port of
+      contracts/meta — same MetaWrite discipline, same allowlist SoT, so I8 holds
+      identically). Writes exactly one domain table: reality_ruleset_binding, the
+      RLS-A3 early binding (migrations/meta/033), one row per ruleset epoch.
+
+      NO UPDATE AND NO DELETE, AND NOT ONLY AS POLICY. The table is append-only
+      in the database itself — an ENABLE ALWAYS trigger refuses both operations
+      for every role, including the superuser a migration runs as. A reality's
+      rules change by INSERTing the NEXT epoch (doc 16 §9 makes the switch an
+      ordered event); rewriting or removing an epoch would erase quantity
+      ordinals that committed events still refer to by number (QTY-A5). Granting
+      either op here would advertise a permission the schema cannot honour.
+
+      SELECT on reality_ruleset_binding is the LOAD path: every node reads the
+      newest epoch's digest at island Cold -> Hot and fetches those exact bytes
+      from the content-addressed store. It does NOT re-resolve the layer files.
+
+      meta_write_audit + meta_outbox are MetaWrite's own same-TX writes, not
+      commit-service's choice: the library appends the audit row and the
+      allowlisted outbox event inside the caller's transaction. INSERT only —
+      both are append-only by the audit-table principle (S04 §12T.4).
+    permissions:
+      reality_ruleset_binding:
+        - SELECT
+        - INSERT
+
+      meta_write_audit:
+        - INSERT
+
+      meta_outbox:
+        - INSERT

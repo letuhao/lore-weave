@@ -12,7 +12,9 @@ import asyncpg
 import pytest
 
 from app.migrate import DDL
+from app.workers import extraction_cache as C
 from app.workers import extraction_replay as R
+from app.workers import extraction_strategy as S
 
 _DSN = os.environ.get(
     "TRANSLATION_TEST_PG_DSN",
@@ -199,6 +201,99 @@ async def test_replay_tenant_isolation(patched_io):
             chapter_id=str(chap), confirm=True)
         assert res["status"] == "no_cache"
         assert "writeback" not in patched_io
+    await _with_pg(body)
+
+
+# ── The hash the WORKER actually writes, and the sweep rows sharing the table ──
+#
+# Everything above seeds `profile_hash` as a bare sha256 of the profile map — the shape the
+# cache used before the strategy and the kind descriptions joined it. That is now the LEGACY
+# form, and testing only it is how the regression these tests exist for got through: the
+# producer moved to a composite hash while both the consumer and this file kept computing the
+# old one, agreed with each other, stayed green, and every replay in the system answered
+# `profile_drifted`. So the tests below build their key by CALLING the production function.
+
+
+async def _seed_current_form(conn, *, owner, book, chap, job_id, entities,
+                             kinds_metadata, strategy="batched", window_idx=0):
+    """Seed a row exactly as today's worker writes one: `profile_hash` from the real
+    `shape_hash`, and the descriptions digest recorded alongside it."""
+    defs = S.defs_digest(kinds_metadata)
+    await _seed_cache_window(
+        conn, owner=owner, book=book, chap=chap, job_id=job_id, window_idx=window_idx,
+        entities=entities, profile_hash=S.shape_hash(_PROFILE, strategy, kinds_metadata))
+    await conn.execute(
+        "UPDATE extraction_raw_outputs SET defs_hash=$1 WHERE owner_user_id=$2",
+        defs, owner)
+
+
+_KINDS_META = [{"code": "character", "description": "A person who acts in the story.",
+                "attributes": [{"code": "name", "description": "What they are called."}]}]
+
+
+@pytest.mark.asyncio
+async def test_replay_accepts_the_hash_the_worker_writes(patched_io):
+    """The regression guard. A row whose `profile_hash` came from the real `shape_hash` —
+    strategy and kind descriptions folded in — must replay, not read as drifted."""
+    async def body(conn, pool):
+        owner, book, chap, job = (uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+        await _seed_job(conn, job_id=job, owner=owner, book=book)
+        await _seed_current_form(conn, owner=owner, book=book, chap=chap, job_id=job,
+                                 entities=[_ent("Alice")], kinds_metadata=_KINDS_META)
+        res = await R.replay_chapter_from_cache(
+            pool, caller_user_id=str(owner), book_id=str(book),
+            chapter_id=str(chap), confirm=False)
+        assert res["status"] == "preview", res
+        assert res["would_write"] == 1
+    await _with_pg(body)
+
+
+@pytest.mark.asyncio
+async def test_replay_still_detects_a_mutated_profile_map(patched_io):
+    """The composite must not have cost the mutation guard: the profile map is still
+    recomputed from the live job row, so editing it after the fact refuses the replay."""
+    async def body(conn, pool):
+        owner, book, chap, job = (uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+        await _seed_job(conn, job_id=job, owner=owner, book=book)
+        await _seed_current_form(conn, owner=owner, book=book, chap=chap, job_id=job,
+                                 entities=[_ent("Alice")], kinds_metadata=_KINDS_META)
+        await conn.execute(
+            "UPDATE extraction_jobs SET extraction_profile=$1 WHERE job_id=$2",
+            json.dumps({"character": {"name": "skip"}}), job)
+        res = await R.replay_chapter_from_cache(
+            pool, caller_user_id=str(owner), book_id=str(book),
+            chapter_id=str(chap), confirm=True)
+        assert res["status"] == "profile_unavailable"
+        assert res["reason"] == "profile_drifted"
+        assert "writeback" not in patched_io
+    await _with_pg(body)
+
+
+@pytest.mark.asyncio
+async def test_sweep_rows_are_invisible_to_replay(patched_io):
+    """A stage-1 sweep row shares this table but holds MENTIONS, not entities. It is written
+    FIRST and stamped NEWEST here (an explicit `created_at`, because rows inserted in one
+    transaction all share `now()` and the ordering would be arbitrary — which is exactly how
+    a first version of this test passed with the filter deleted). Replay must exclude it by
+    `batch_idx`, or a half-formed mention gets pushed into glossary."""
+    async def body(conn, pool):
+        owner, book, chap, job = await _fixture(conn)
+        await conn.execute(
+            """INSERT INTO extraction_raw_outputs
+               (owner_user_id, book_id, chapter_id, chapter_content_hash, chapter_chunk_idx,
+                batch_idx, kinds_requested, profile_hash, effort_band, parsed_entities,
+                parse_status, job_id, created_at)
+               VALUES ($1,$2,$3,$4,0,$5,$6,$7,'none',$8,'ok',$9, now() + interval '1 hour')""",
+            owner, book, chap, _HASH, C.SWEEP_BATCH_IDX, [],
+            S.sweep_shape_hash("whatever the sweep prompt was"),
+            json.dumps([{"name": "NOT-AN-ENTITY", "evidence": "a mention, not a parse"}]), job,
+        )
+        res = await R.replay_chapter_from_cache(
+            pool, caller_user_id=str(owner), book_id=str(book),
+            chapter_id=str(chap), confirm=True)
+        assert res["status"] == "replayed"
+        names = sorted(e["name"] for e in patched_io["writeback"]["entities"])
+        assert names == ["Alice", "Bob"], "a sweep MENTION leaked into the writeback"
     await _with_pg(body)
 
 

@@ -269,6 +269,7 @@ async fn read_events(pool: &PgPool, inv: &Invocation) -> Result<Vec<EventEnvelop
             recorded_at: row.try_get("recorded_at")?,
             payload: row.try_get("payload")?,
             metadata: row.try_get("metadata")?,
+            ruleset_digest: None,
         });
     }
     Ok(out)

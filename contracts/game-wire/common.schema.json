@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "loreweave://contracts/game-wire/common.schema.json",
+  "title": "game-wire common definitions",
+  "description": "Shared shapes for the client wire contract (docs/03_planning/LLM_MMO_RPG/20_client_wire_contract.md). Nothing here is a message; these are the building blocks every message reuses.",
+  "$defs": {
+    "Uint64String": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,19})$",
+      "description": "CWC-A2 — a 64-bit integer ALWAYS crosses the wire as a decimal string. JS `number` silently corrupts past 2^53, and channel_event_id / turn_number / channel_id are all BIGINT server-side. One rule, no exceptions; enforced by scripts/game-wire-lint.py."
+    },
+    "EntityId": {
+      "$ref": "#/$defs/Uint64String",
+      "description": "Island-scoped entity identity."
+    },
+    "Uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "Digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "RLS-A13 content address (BLAKE3, hex). The client caches by digest — a digest can never be stale, only unused."
+    },
+    "HpBand": {
+      "type": "string",
+      "enum": ["healthy", "wounded", "critical", "down"],
+      "description": "REC-79 — state travels BESIDE identity, never inside the id token. Numeric hp is never sent for a non-party entity."
+    },
+    "Disposition": {
+      "type": "string",
+      "enum": ["friendly", "neutral", "hostile"]
+    },
+    "CellCoord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "integer", "description": "cell-local milli-units (MAP §5 — i32, never f32; TDIL-A9)" },
+        "y": { "type": "integer" }
+      }
+    }
+  }
+}

@@ -14,8 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/loreweave/grantclient"
 	"github.com/loreweave/glossary-service/internal/textnorm"
+	"github.com/loreweave/grantclient"
 )
 
 // pgxRWQuerier is the read+write querier shared by *pgxpool.Pool and pgx.Tx —
@@ -545,15 +545,22 @@ const (
 // model-offset-trust contract (INV-7 / T1). The worker already validated the quote's
 // location against the real chapter text; glossary still trusts no raw number:
 //
-//   - Only the closed enum {exact,resolved,ambiguous,unmatched} is honored; anything
-//     else (incl. an omitting legacy caller) degrades to 'unverified' with NULL offsets.
+//   - Only the closed enum {exact,resolved,abridged,partial,ambiguous,unmatched} is
+//     honored; anything else (incl. an omitting legacy caller) degrades to 'unverified'
+//     with NULL offsets.
 //   - Offsets are persisted ONLY for exact/resolved (a single verified location) AND only
 //     when sane (non-negative, start<=end). A status that claims exact/resolved without
 //     valid offsets is downgraded to 'unverified' rather than stored half-trusted.
-//   - ambiguous/unmatched keep the status but carry NULL offsets (no blind pick / no
-//     fabricated citation — the quote is still stored via original_text).
+//   - abridged/partial/ambiguous/unmatched keep the status but carry NULL offsets (no
+//     blind pick / no fabricated citation — the quote is still stored via original_text).
+//     abridged = an ellipsis-joined citation whose every fragment occurs in the chapter;
+//     partial = most of the quote occurs contiguously and the rest does not. Both are
+//     GROUNDED-but-unlocatable, and collapsing them into 'unmatched' is what made this
+//     pipeline's fabrication rate read 44.6% when it was 2.4% (BOOK_TO_GAME/13 §5).
+//     This set must stay in sync with translation-service's extraction_provenance.py;
+//     TestEvidenceProvenanceTaxonomyParity reds if the two drift.
 //
-// block_or_line is TEXT NOT NULL DEFAULT '' (the legacy column), so a present block index
+// block_or_line is TEXT NOT NULL DEFAULT ” (the legacy column), so a present block index
 // is rendered as a decimal string and absence is the empty string.
 func evidenceProvenanceFields(ent extractedEntity) (status string, charStart, charEnd *int, blockOrLine string) {
 	status = "unverified"
@@ -569,7 +576,7 @@ func evidenceProvenanceFields(ent extractedEntity) (status string, charStart, ch
 			}
 		}
 		// else: claimed exact/resolved but no/invalid offset → stay 'unverified'.
-	case "ambiguous", "unmatched":
+	case "abridged", "partial", "ambiguous", "unmatched":
 		status = ent.EvidenceProvenanceStatus // keep the quote; offsets stay NULL
 	}
 	return
@@ -723,6 +730,25 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		updated int
 		skipped int
 	)
+
+	// Kind resolution (spec 2026-08-02-entity-kind-resolution.md). Loaded ONCE per request:
+	// the hierarchy is book-local and tiny, and the inverse of kindMap is needed so the outbox
+	// event can carry the RESOLVED kind rather than the one this batch happened to propose.
+	kindParents, kperr := s.loadKindParents(ctx, tx, bookID)
+	if kperr != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "kind hierarchy load failed")
+		return
+	}
+	// CANONICAL codes, not the inverse of the alias-folded kindMap -- inverting that map
+	// yields whichever alias iteration reached (`generic` for `terminology`), and this value
+	// goes out on the wire to knowledge-service as the entity's kind.
+	codeByKind, cberr := s.loadCanonicalKindCodes(ctx, tx, bookID)
+	if cberr != nil {
+		BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "kind code map load failed")
+		return
+	}
 
 	// Temporal-knowledge Path A (§12): when the caller supplies the chapter ordinal, ingest
 	// the immutable episode for this chapter revision ONCE (UNIQUE(chapter_id, content_hash)
@@ -967,7 +993,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		// 5. Add evidence (extraction quote)
 		if ent.Evidence != "" {
 			entID, _ := uuid.Parse(result.EntityID)
-			nameAttrDefID, nameOK := attrDefMap[kindID.String()+":name"]
+			nameAttrDefID, _, nameOK := displayAttrDef(attrDefMap, kindID)
 			if nameOK {
 				// Get the name attr_value_id
 				var nameAVID uuid.UUID
@@ -1039,7 +1065,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		translationChanged := false
 		if ent.Translation != nil && ent.Translation.LanguageCode != "" && ent.Translation.Value != "" {
 			entID, _ := uuid.Parse(result.EntityID)
-			nameAttrDefID, nameOK := attrDefMap[kindID.String()+":name"]
+			nameAttrDefID, _, nameOK := displayAttrDef(attrDefMap, kindID)
 			if nameOK {
 				var nameAVID uuid.UUID
 				if err := tx.QueryRow(ctx, `
@@ -1084,13 +1110,51 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		// within the same request. Best-effort (pool.Exec already
 		// committed each entity above; a broker hiccup must not fail the
 		// whole bulk response).
-		if result.Status == "created" || result.Status == "updated" {
+		// 5b. KIND RESOLUTION (spec 2026-08-02). Record what this batch proposed and
+		// re-resolve the entity's kind from the whole ledger.
+		//
+		// This is the site that used to DISCARD the incoming kind: `findEntityCrossKind`
+		// returned the stored one and the proposal was dropped without a trace, so the first
+		// batch to ever name a thing decided its kind permanently. Measured cost: 173 of
+		// 1,531 entities held a kind the model disagreed with by majority, the protagonist
+		// among them.
+		//
+		// A `skipped` entity votes too, and that is deliberate: a settled entity whose
+		// attributes are all filled skips every run, so excluding it would freeze its ledger
+		// at whatever the early runs said — reintroducing the exact defect one level down.
+		// A TOMBSTONED skip does not vote (the user rejected the suggestion outright).
+		resolvedKindCode := ent.KindCode
+		kindMoved := false
+		if kindOK && result.EntityID != "" && result.SkipReason != "tombstoned" {
+			if entID, perr := uuid.Parse(result.EntityID); perr == nil {
+				res, rerr := s.resolveEntityKind(ctx, tx, entID, kindID, mergeKindID, kindParents)
+				if rerr != nil {
+					BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
+					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL",
+						"kind resolution failed: "+rerr.Error())
+					return
+				}
+				if c, ok := codeByKind[res.Primary]; ok {
+					resolvedKindCode = c
+				}
+				kindMoved = res.Changed
+				result.KindCode = resolvedKindCode
+			}
+		}
+
+		// `kindMoved` joins the emit condition: a re-kind on an otherwise unchanged entity
+		// must still reach the KG, or the graph keeps projecting the kind we just corrected.
+		if result.Status == "created" || result.Status == "updated" || kindMoved {
 			entID, _ := uuid.Parse(result.EntityID)
 			// Phase B: actor_type="pipeline" — this is the extraction's
 			// ORIGINAL output, not a user correction. learning-service skips
 			// pipeline events (no before/after attached).
+			//
+			// The payload carries the RESOLVED kind, not the one this batch proposed. It
+			// used to send `ent.KindCode` unconditionally, so on any cross-kind hit the KG
+			// was told a kind the database did not hold.
 			payload := buildEntityEventPayload(
-				bookID.String(), result.EntityID, ent.Name, ent.KindCode,
+				bookID.String(), result.EntityID, ent.Name, resolvedKindCode,
 				nil, "", result.Status, "pipeline", "", nil,
 			)
 			// Transactional outbox (INV-O12): the event row now commits ATOMICALLY
@@ -1250,6 +1314,28 @@ func (s *Server) loadBookKindCodes(ctx context.Context, bookID uuid.UUID) (map[s
 // s.pool — the fix for D-GLOSSARY-PROPOSE-LOCK's connection-pool deadlock risk
 // (a hardcoded s.pool here forced every tx-holding caller to need 2 connections
 // at once). Callers with no open tx yet just pass s.pool.
+// displayAttrDef resolves the attribute that HOLDS AN ENTITY'S NAME for a given kind,
+// preferring 'name' and falling back to 'term'.
+//
+// Every read path in this service already does exactly this — `ad.code IN ('name','term')`
+// in entity_handler.go and entity_display_names_handler.go — while three write paths here
+// hardcoded `:name`. `terminology` is the only kind whose display attribute is `term`, and
+// it is REQUIRED there, so on that kind the lookup missed and the writes were skipped
+// silently: the name was dropped, and with it the evidence row and the translation, since
+// both hang off the name's attr_value_id.
+//
+// Measured on 封神演義 before the fix: 215 of 224 `terminology` entities had an empty
+// cached_name. A nameless entity cannot be referenced, deduped by name, or joined to a KG
+// node — which is the entity-linkage hole this repairs at the source.
+func displayAttrDef(attrDefMap map[string]uuid.UUID, kindID uuid.UUID) (uuid.UUID, string, bool) {
+	for _, code := range [...]string{"name", "term"} {
+		if id, ok := attrDefMap[kindID.String()+":"+code]; ok {
+			return id, code, true
+		}
+	}
+	return uuid.Nil, "", false
+}
+
 func (s *Server) loadAttrDefMap(ctx context.Context, q pgxRWQuerier, bookID uuid.UUID) (map[string]uuid.UUID, error) {
 	rows, err := q.Query(ctx, `
 		SELECT DISTINCT ON (ba.kind_id, ba.code) ba.attr_id, ba.kind_id, ba.code
@@ -1569,19 +1655,34 @@ func (s *Server) createExtractedEntity(
 		return uuid.Nil, nil, nil, fmt.Errorf("insert entity: %w", err)
 	}
 
-	// Insert name attribute
-	nameDefID, ok := attrDefMap[kindID.String()+":name"]
-	if ok {
-		_, err = q.Exec(ctx, `
-			INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
-			VALUES ($1, $2, $3, $4)
-			ON CONFLICT (entity_id, attr_def_id) DO NOTHING
-		`, entityID, nameDefID, sourceLang, ent.Name)
-		if err != nil {
-			return uuid.Nil, nil, nil, fmt.Errorf("insert name attr: %w", err)
-		}
-		written = append(written, "name")
+	// Insert the entity's NAME into whichever attribute this kind uses for it —
+	// 'name' for seven of the eight kinds, 'term' for `terminology`. Hardcoding "name"
+	// here silently dropped every terminology name (see displayAttrDef).
+	//
+	// A MISS IS AN ERROR, not a skip. The old code did `if ok { ... }` and fell through
+	// silently when the lookup failed, so an entity was created with no name attribute at
+	// all — and because `cached_name`/`normalized_name` are derived from that row by
+	// trigger, both came out empty. `normalized_name` is the dedup key
+	// (findEntityByNameOrAlias / findEntityCrossKind), so every later encounter of the same
+	// entity failed to match and created ANOTHER nameless row. Measured: 215 of 224
+	// `terminology` entities, with duplicate definitions to show the dedup failing.
+	//
+	// A kind with neither `name` nor `term` is a broken ontology, and the only safe
+	// response is to refuse the write. Silence here cost this project a whole kind.
+	nameDefID, nameCode, ok := displayAttrDef(attrDefMap, kindID)
+	if !ok {
+		return uuid.Nil, nil, nil, fmt.Errorf(
+			"kind %s has no display attribute (neither 'name' nor 'term'): refusing to "+
+				"create a nameless entity, which cannot be deduped or linked", kindID)
 	}
+	if _, err = q.Exec(ctx, `
+		INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (entity_id, attr_def_id) DO NOTHING
+	`, entityID, nameDefID, sourceLang, ent.Name); err != nil {
+		return uuid.Nil, nil, nil, fmt.Errorf("insert %s attr: %w", nameCode, err)
+	}
+	written = append(written, nameCode)
 
 	// Insert other attributes
 	var unmatchedCodes, unmatchedNotes []string

@@ -34,7 +34,7 @@ generated_by: scripts/chunk_doc.py
 - **Reality clock** (B3-D4) — `reality_registry.reality_time` advances during active sessions; between-session advancement depends on mode.
 - **Platform-mode tier-aware budget** (B3-D5) — free tier = frozen only; paid tiers opt-in to tick.
 
-Decisions B3-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+Decisions B3-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 **Residual `OPEN`:**
 - Tick pacing (NPC drift rate, rumor frequency) — V2+ playtest
@@ -56,7 +56,7 @@ Decisions B3-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
 
 **Problem (original):** Bug corrupts world state across instances with N active players. How to revert without losing hours of player progress?
 
-**Resolved by:** Full event sourcing ([02 §4](02_STORAGE_ARCHITECTURE.md)) + snapshot fork ([03 §6](03_MULTIVERSE_MODEL.md)) + DB-per-reality ([02 §7](02_STORAGE_ARCHITECTURE.md)). Rollback = replay events to chosen point; blast radius = one reality. Snapshot-fork semantics means rollback of parent does not affect forked children — each reality is its own recovery domain.
+**Resolved by:** Full event sourcing ([02 §4](../02_storage/00_overview_and_schema.md)) + snapshot fork ([03 §6](../03_multiverse/03_fork_and_cascading.md)) + DB-per-reality ([02 §7](../02_storage/00_overview_and_schema.md)). Rollback = replay events to chosen point; blast radius = one reality. Snapshot-fork semantics means rollback of parent does not affect forked children — each reality is its own recovery domain.
 
 **Residual `OPEN` bits:** event schema evolution during replay (R3 in 02), projection rebuild time at scale (R2 in 02), and "did the bug write events that shouldn't exist" — compensating events pattern needed for logical rollback without history mutation.
 

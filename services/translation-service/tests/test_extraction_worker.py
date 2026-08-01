@@ -352,7 +352,7 @@ async def test_cache_hit_skips_llm_and_reuses_entities():
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
          patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \
@@ -392,7 +392,7 @@ async def test_cache_busts_on_model_change_when_enabled(monkeypatch):
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="short chapter text")), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -437,7 +437,7 @@ async def test_unplannable_oversized_window_skips_llm(caplog):
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
          patch.object(ew, "_plan_chapter_windows", return_value=[huge_window]), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
          patch.object(ew, "_persist_batch_outcomes", new=AsyncMock(side_effect=_capture_outcomes)), \
@@ -475,7 +475,7 @@ async def _run_with_window_and_ctx(window: str, ctx: int, llm_job):
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="t")), \
          patch.object(ew, "_get_model_context_window", new=AsyncMock(return_value=ctx)), \
          patch.object(ew, "_plan_chapter_windows", return_value=[window]), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -511,7 +511,7 @@ async def test_graded_effort_reaches_llm_input():
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="short chapter text")), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -576,7 +576,7 @@ async def test_truncated_batch_is_not_cached():
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -653,7 +653,7 @@ async def _run_one_chapter_batch(finish_reason: str | None, entities: list[dict]
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=prepare_mock), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -702,7 +702,7 @@ async def test_batch_concurrency_runs_all_units_via_gather():
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
-         patch.object(ew, "plan_kind_batches", return_value=batches), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=batches), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -744,7 +744,7 @@ async def _capture_llm_input(*, thinking_enabled: bool, reasoning_effort):
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -911,3 +911,116 @@ def test_extraction_system_template_has_precision_filter():
     assert "identify all named entities" not in t.lower()
     assert "RELATIONSHIPS between" in t  # explicit: a relationship is not an entity
     assert "OMIT" in t and "backstory" in t  # omission bias for background mentions
+
+
+def test_chapter_index_is_the_books_sort_order_not_the_job_position():
+    """`chapter_index` must be the chapter's position in the BOOK.
+
+    It used to be the enumerate() index over the job's chapter_ids, while
+    glossary-service's `before_chapter_index` documents and windows the same column as a
+    book position. Measured on a real book: index 0 named SIX different chapters, and even
+    a single-job run was off by one (sort_order is 1-based, enumerate() is 0-based), so
+    every chapter-ordered read — known-entity windowing, spoiler windows, timeline cutoffs
+    — was shifted. book-service already returns `sort_order` on the payload the worker
+    fetches, so the fix is to prefer it.
+
+    Asserted on the SOURCE rather than by driving the whole async chapter processor,
+    which needs a live pool: the contract is "sort_order wins, job index is the fallback".
+    """
+    import inspect
+
+    from app.workers import extraction_worker as ew
+
+    src = inspect.getsource(ew._process_extraction_chapter)
+    assert 'chapter.get("sort_order")' in src, (
+        "the worker no longer reads sort_order — chapter_index would revert to the "
+        "job-relative index, which collides across jobs")
+    # The fallback must stay LOUD: a silent revert is how this shipped in the first place.
+    assert "NOT a book position" in src
+
+
+# ── D-LLM-BUDGET-SSOT · the two-stage SWEEP's truncation guard ────────────────────────────
+#
+# The sweep (stage 1 of `edc_cited`) arrived with the game-logic merge carrying a flat
+# `max_tokens` literal, no `finish_reason` read, and `finish_reason=None` hard-coded into its
+# cache write. Its profile is STRUCTURED — `parse_sweep_mentions` salvages the
+# complete-objects prefix of a clipped array — so a truncated sweep is indistinguishable from
+# a short one, and caching it makes the loss PERMANENT: a re-run is the only way the user gets
+# those mentions back, and a cache hit would hand back the same short list forever.
+#
+# The batch path 200 lines below already refused to cache a truncated batch. These two pin the
+# sweep to the same rule, in both directions — a guard tested only on the failing input can be
+# satisfied by never caching at all.
+
+def _sweep_setup(finish_reason: str):
+    """The patch set for one two-stage chapter whose sweep returns `finish_reason`."""
+    db = AsyncMock()
+    db.fetchval = AsyncMock(return_value=uuid4())
+    db.execute = AsyncMock()
+    llm = MagicMock()
+    llm.submit_and_wait = AsyncMock(return_value=_sdk_job(finish_reason))
+    return db, llm
+
+
+async def _run_two_stage(db, llm, put_mock):
+    with patch.object(ew, "build_internal_client",
+                      return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
+         patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="short chapter text")), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
+         patch.object(ew, "build_known_entities_context", return_value=""), \
+         patch.object(ew, "build_sweep_system_prompt", return_value="sweep-sys"), \
+         patch.object(ew, "sweep_shape_hash", return_value="sweephash"), \
+         patch.object(ew, "parse_sweep_mentions", return_value=[("张若尘", "evidence")]), \
+         patch.object(ew, "build_extraction_prompt", return_value={}), \
+         patch.object(ew, "build_system_prompt", return_value="sys"), \
+         patch.object(ew, "build_user_prompt", return_value="usr"), \
+         patch.object(ew, "parse_and_validate_with_stats",
+                      return_value=([], ParseStats(raw_count=0, parse_ok=True))), \
+         patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
+         patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \
+         patch.object(ew, "get_cached_batch", new=AsyncMock(return_value=None)), \
+         patch.object(ew, "put_batch", new=put_mock), \
+         patch.object(ew, "post_extracted_entities", new=AsyncMock(return_value={})):
+        await ew._process_extraction_chapter(
+            job_id=uuid4(), book_id="b", chapter_id=uuid4(), chapter_index=0,
+            extraction_profile={"character": {}}, kinds_metadata=[], known_entities=[],
+            source_language="zh", model_source="user_model", model_ref=str(uuid4()),
+            max_entities_per_kind=10, thinking_enabled=False, pool=_pool(db), llm_client=llm,
+            strategy="edc_cited",
+        )
+
+
+def _sweep_writes(put_mock):
+    """The put_batch calls that are SWEEP rows (batch_idx == SWEEP_BATCH_IDX)."""
+    return [c for c in put_mock.await_args_list
+            if getattr(c.args[1], "batch_idx", None) == ew.SWEEP_BATCH_IDX]
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_sweep_is_not_cached(caplog):
+    db, llm = _sweep_setup("length")
+    put_mock = AsyncMock()
+    with caplog.at_level(logging.WARNING):
+        await _run_two_stage(db, llm, put_mock)
+
+    assert _sweep_writes(put_mock) == [], (
+        "a clipped mention array was cached — the lost mentions become permanent, and a "
+        "re-run (the only recovery) returns the cache instead of re-asking the model")
+    assert any("SWEEP TRUNCATED" in r.getMessage() for r in caplog.records), (
+        "the truncation was silent; a STRUCTURED clip that nothing reports reads as a "
+        "chapter with fewer entities in it")
+
+
+@pytest.mark.asyncio
+async def test_a_clean_sweep_IS_cached_and_records_its_finish_reason():
+    # The other direction. Without this, "never cache" would satisfy the test above while
+    # destroying the cache the sweep exists to fill.
+    db, llm = _sweep_setup("stop")
+    put_mock = AsyncMock()
+    await _run_two_stage(db, llm, put_mock)
+
+    writes = _sweep_writes(put_mock)
+    assert len(writes) == 1, f"the clean sweep was not cached ({len(writes)} sweep write(s))"
+    assert writes[0].kwargs["finish_reason"] == "stop", (
+        "the sweep cached finish_reason=None, so a stored row could never be told apart "
+        "from one written before the field was recorded")

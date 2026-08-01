@@ -66,6 +66,8 @@ ALLOWLIST_PREFIXES: tuple[str, ...] = (
 # every flagged site is in the baseline; a NEW site (not listed) fails the run.
 # The audit (docs/standards/security.md §Enforcement) found the codebase clean,
 # so this started EMPTY — the lint's whole job is to catch the next regression.
+# If a legitimate exception ever appears, add a "relpath::matched-line-substring"
+# row here with a comment explaining why.
 #
 # D-QC-GATES-BUILT-BUT-NOT-WIRED (2026-07-31): this lint had never run in CI. Its first
 # execution reported six sites; each was read before being listed, and all six are the
@@ -77,6 +79,15 @@ ALLOWLIST_PREFIXES: tuple[str, ...] = (
 #     module-level constant lists (_USER_ID_RENAMES, _OWNER_USER_ID_RENAMES,
 #     _BOOK_ID_TABLES, _ORPHAN_TABLES, _BATCH_TABLES, _SMALL_PROJECT_TABLES) — closed sets
 #     in the file, never user input. `{marker}` is the module's own `pkg_rekey_v1` constant.
+#     The builders are private with no caller outside the module, and they emit `DO $$ … $$`
+#     blocks, which in Postgres CANNOT take bind parameters at all — so `$1` is not an
+#     available alternative even where the position is a value rather than an identifier.
+#
+#     THE EXEMPTION IS GUARDED, not asserted: the reasoning rests entirely on those names
+#     staying literal, and a baseline row that outlived that fact would silently bless a
+#     real injection (non-vacuity NV-4 — an adjacent decision defeating the check).
+#     `tests/unit/test_package_rekey_constants.py` parses the module with `ast` and reds if
+#     any of them stops being a module-level tuple of string literals.
 #   · two knowledge `_smoke_*` dev scripts — not runtime; one of the two is inside a
 #     `print()` that emits a Cypher string for a human to paste.
 #

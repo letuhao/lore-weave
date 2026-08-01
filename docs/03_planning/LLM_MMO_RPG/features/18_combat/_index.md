@@ -1,12 +1,55 @@
 # 18_combat — Index
 
-> **Category:** COMB — Combat (V1 simple side-based abstract combat with zone-aware narration; V2+ zone-graph tactical RPG using CSC_001 4-layer scene composition)
-> **Catalog reference:** `catalog/cat_18_COMB_combat.md` (NOT YET CREATED — defer to COMB_001 DRAFT promotion)
+> **Category:** COMB — Combat. **V1 = tactical-grid combat** (positions, range/LoS, pathfinding) with
+> engine-owned math and LLM-narrated prose. *(The older "V1 simple side-based abstract combat; V2+
+> zone-graph tactical RPG" framing was reversed by AUD-F1 — see the roadmap-reshuffle note below.)*
+> **Catalog reference:** `catalog/cat_18_COMB_combat.md` (NOT YET CREATED — pending; see "Outstanding registration" below)
 > **Purpose:** Defines combat resolution including encounter mode, side allegiance, AI action selection, deterministic damage formula, status effect integration, and post-resolution narration. Solves user's V1 combat requirement (simple Pokemon-style hybrid with 2-row positioning; LLM-driven narration but engine-owned math). V2+ promotes to zone-graph tactical RPG using existing CSC_001 zones as battlefield grid (FE-style movement + range + terrain) without breaking TDIL-A5 atomic-per-turn travel. Resolves the long-standing PL_005 Strike "what does combat look like" gap that PROG_001 §9 partially addressed via hybrid LLM-proposes-damage formula.
 
-**Active:** COMB_001 — **Combat Foundation** (CONCEPT 2026-04-27 — Q1-Q9 ALL LOCKED via 4-batch deep-dive 2026-04-27; concept-notes ready for COMB_001 DRAFT promotion; chaos-backend `combat-core` design adoption applied; module decomposition + damage law chain locked)
+**Active:** (empty — no agent currently editing)
 
-**Folder closure status:** Open — concept-notes Q-LOCKED phase complete; COMB_001 DRAFT promotion pending boundary lock window. User kickoff confirmed 2026-04-27 post TDIL_001 DRAFT; Q-deep-dive completed same session.
+> ## ✅ COMBAT CLOSURE 2026-07-26 — COMB_001 + COMB_002 at CANDIDATE-LOCK
+>
+> The DRAFT could not be promoted because the encounter had **no ends** and its formulas had **no
+> inputs**. Both are now closed:
+>
+> | Gap | Closed by | Audit |
+> |---|---|---|
+> | Nothing put enemies in the world; nothing started a fight | **COMB_005** Encounter Spawning | AUD-F9 |
+> | TG-A4's stance picker had no target-priority model | **COMB_003** Threat & Targeting | AUD-F9 |
+> | Combat resolved and produced nothing | **COMB_004** Loot & Spoils | AUD-F9 |
+> | `Skill { skill_id }` referred to nothing | **ABL_001** ([`../19_ability/`](../19_ability/)) | AUD-F10 |
+> | Law-chain stat inputs had no producer | **DF07_001** *(parallel track)* | AUD-F6 |
+> | `Strike`'s tool / `UseItem`'s item had no body | **PL_007 + PL_007b** *(parallel track)* | AUD-F5 |
+>
+> **Net new aggregates across the entire closure: zero.** Threat, cooldowns and stat snapshots became
+> fields on the already-ephemeral `combat_session`; population and the known-ability set are derived;
+> spoils reuse EF_001/RES_001/PL_007b storage. The only new structure anywhere is COMB_004's ephemeral
+> `spoils_claim` (the loot-rights window).
+>
+> **The end-to-end encounter now has no missing step** (COMB_001 AC-COMB-13) — spawn → engage → form →
+> threat → rounds → resolve → finalise → spoils, with every step owned.
+>
+> ### Edge-case + open-question pass (same day)
+>
+> An adversarial re-read followed. **13 defects fixed**; the four worth knowing about are recorded as
+> "Edge cases (resolved)" sections in each doc — COMB_003 §14, COMB_004 §15, COMB_005 §15, ABL_001 §14:
+>
+> - **Threat read rolled damage, not applied damage** — overkill banked threat that never happened
+> - **An opening taunt multiplied zero** and was inert; a taunt could also *lower* a leader's threat
+> - **`first_kill_only` required stored state** the doc claimed it did not need (corrected, **SPO-D10**)
+> - **Epoch rollover would pop enemies in beside a standing PC**, or mid-fight → **SPN-A9** edge-triggered
+>   materialisation; and two groups aggroing one PC wanted a third side against Q5's cap → **§6.1**
+>   engagement never manufactures a side
+>
+> **All 8 `-QO` questions closed** (two reversing the original call — SPN-QO1 phase offset now V1;
+> THR-QO1 healer threat splits across *attackers*, since the original made healers unaggroable).
+> **COMB-Q1/Q2 closed. Only `COMB-Q3` (PvP — now scoped and explicitly *unreachable*, not undefined) and
+> `ABL-Q9` (cross-track, needs the PL_007 owner) remain open anywhere in the family.**
+
+> **⚠ ROADMAP RESHUFFLE 2026-06-20 (medium correction / AUD-F1):** the rendered 2D/2.5D medium pulled **zone-graph tactical combat from V2+ to V1** ([`COMB_002_tactical_grid.md`](COMB_002_tactical_grid.md), `TG-*`), **retiring** the concept-notes §11.1/§11.2 "abstract arena + Front/Back rows". `COMB_002` is now the **V1 tactical grid** (was reserved for "Social Skirmish" — that renumbers to a later COMB_NNN). Reason: the grid was deferred only for LLM-narration token cost (§139), which the graphical medium dissolves.
+
+**Folder closure status:** COMB_001 + COMB_002 DRAFT 2026-06-20 (combined `[boundaries-lock-claim+release]`). User kickoff 2026-04-27; Q-deep-dive same session; DRAFT promotion + grid integration 2026-06-20.
 
 **NOT a foundation tier feature:** Foundation tier remains 6/6 (closed at PROG_001). COMB_001 is a **domain-scale Tier 6 feature** consuming 6 V1 foundations + IDF + FF + FAC + REP + ACT + AIT + TDIL clocks + PROG progression + RES vital_pool + PL_006 status. Opt-in per reality (modern slice-of-life reality may have NO combat; tu tiên / wuxia / sci-fi reality has rich combat).
 
@@ -76,8 +119,82 @@ Translation: LLM intervention should be minimal or zero in combat. LLM only part
 
 | ID | Conversational name | Title | Status | File | Commit |
 |---|---|---|---|---|---|
-| (concept) | **00_CONCEPT_NOTES.md** — COMB_001 brainstorm + market survey + LLM-zero-math constraint LOCKED + 3-layer architecture + chaos-backend module decomposition + Q1-Q9 LOCKED matrix | **CONCEPT Q-LOCKED 2026-04-27** — Q1-Q9 ALL LOCKED via 4-batch deep-dive; ready for DRAFT promotion | [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) | pending |
-| COMB_001 | **Combat Foundation** (COMB) | **Q-LOCKED 2026-04-27 awaiting DRAFT promotion** — Side-based 2-row abstract combat V1; engine-owned math + LLM-narrated prose; HSR Action Value initiative; PL_006 status `knocked_out` for KO-intermediate; 4-step damage law chain (chaos-backend); 10 closure-pass-extensions across PROG/PL_005/PL_006/NPC_002/AIT_001/WA_006/WA_001/PF_001/ACT_001/RealityManifest. | DRAFT pending boundary lock | (to be created) | pending |
+| (concept) | **00_CONCEPT_NOTES.md** — COMB_001 brainstorm + market survey + LLM-zero-math constraint LOCKED + 3-layer architecture + chaos-backend module decomposition + Q1-Q9 LOCKED matrix | **CONCEPT Q-LOCKED 2026-04-27** — superseded-by-DRAFT (full derivation reference; §11.1/§11.2 retired by COMB_002) | [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) | committed |
+| COMB_001 | **Combat Foundation** (COMB) | **CANDIDATE-LOCK 2026-07-26** — engine-owned math + LLM-narrated prose; HSR Action Value initiative; 4-step damage law chain; `combat_session` aggregate (+ stat snapshots, threat table, cooldowns); 3-layer AI as Agent Decision drivers. §0 family map; seed role `loot`; `Skill` typed to `AbilityId`; encounter trigger 3 now V1-active; AC-COMB-13..18 added. | **CANDIDATE-LOCK** | [`COMB_001_combat_foundation.md`](COMB_001_combat_foundation.md) | this commit |
+| COMB_002 | **Tactical-Grid Combat** (TG) | **CANDIDATE-LOCK 2026-07-26** — AUD-F1; square grid (CSC_001 16×16 / arena), move+act budgets (FFT/XCOM), Chebyshev range + corner-line LoS, LLM-zero-space, NPC bounded-stance positioning. Promoted once its three dangling refs resolved: `move_range`→DF07 `stat_tuning`, `skill.range`→ABL_001, TG-A4 `target`→COMB_003; the §7 arena generator finally has a caller (COMB_005). | **CANDIDATE-LOCK** | [`COMB_002_tactical_grid.md`](COMB_002_tactical_grid.md) | this commit |
+| COMB_003 | **Threat & Targeting** (THR) | **DRAFT 2026-07-26** — AUD-F9. Deterministic seedless integer threat accrual (damage/heal/status/taunt/initiator/stance/proximity); per-round decay; **switch-margin hysteresis** (the anti-flicker rule); closed 7-variant `TargetSelector`; **top-K vague-labelled candidate list** for LlmDriver (THR-A4); accrual-stage anti-grief guard. No aggregate — a `combat_session` field. | DRAFT | [`COMB_003_threat_and_targeting.md`](COMB_003_threat_and_targeting.md) | this commit |
+| COMB_004 | **Loot & Spoils** (SPO) | **DRAFT 2026-07-26** — AUD-F9. `LootTableDecl` keyed by `ActorClassRef`; **independent per-entry seeded rolls** (not one weighted pick); **rolls at defeat finalisation, never at KO** (SPO-A1); spoils land via PL_007 §8.5's substrate; `spoils_claim` rights window; **progression award** (the part that makes fighting worth it); epoch-keyed anti-farm. | DRAFT | [`COMB_004_loot_and_spoils.md`](COMB_004_loot_and_spoils.md) | this commit |
+| COMB_005 | **Encounter Spawning** (SPN) | **DRAFT 2026-07-26** — AUD-F9. Layers on AIT_001's population ownership (SPN-A1). `HostileSpawnDecl`; **epoch respawn** (`floor(fiction_day / period)`) — no timers, no roster, time-dilation-safe; aggro/engagement predicate (COMB_001's trigger-3 stub, generalised); encounter formation + arena choice; tier promotion with soft-fail; **the newbie-zone validator COMB_001 declared and never built** (SPN-V4, schema stage). | DRAFT | [`COMB_005_encounter_spawning.md`](COMB_005_encounter_spawning.md) | this commit |
+
+| COMB_006 | **PvP & Stakes** (PVP) | **DRAFT 2026-07-26** — closes **COMB-Q3** and discharges **PC-D2** (locked 2026-04-23, consent model deferred to DF4/DF5 and never built). Two channels: **Duel** with stakes declared at challenge time (`Spar` / `LifeAndDeath` 生死战) and **ContestedZone** (a new PF_001 `combat_safety` band where entering *is* consent). Master gate **defaults Disabled**; full WA_006 mortality applies (PVP-A4); **disparity-cap waiver is pairwise**; post-incarnation grace prevents permadeath spawn-camping; REP_001 notoriety is the social consequence. | DRAFT | [`COMB_006_pvp_and_stakes.md`](COMB_006_pvp_and_stakes.md) | this commit |
+
+**Sibling namespace:** [`../19_ability/ABL_001_ability_foundation.md`](../19_ability/ABL_001_ability_foundation.md) — **ABL_001 Ability Foundation** (DRAFT 2026-07-26, AUD-F10). Homed outside `18_combat` because PL_005/PL_007 call it too; see its `_index.md` for the reasoning.
+
+> ## ✅ COMB-Q3 CLOSED — PvP designed 2026-07-26
+>
+> **It was never an open design question.** `PC-D2` locked *"PvP enabled within a session"* on
+> **2026-04-23**, deferring only the consent model to DF4/DF5 — where DF5 deferred it again (DF5-D3 → V2)
+> and DF4 is still CONCEPT-only. Meanwhile [`02_world_authoring/_index.md`](../02_world_authoring/_index.md)
+> reserved `WA_NNN_pvp_consent` **and named combat as its home** once combat opened: *"the others have
+> stronger affinity to their consumer (**PvP→combat**)."* Combat opened; the condition fired; the WA
+> reservation can be **retired**.
+>
+> **Three findings shaped the design:**
+> 1. **Anti-grief was already built** — four layers (TDIL-A1/A6 turn economics, WA_001 Lex axiom, PF_001
+>    `combat_safety`, COMB_001 Q4 disparity cap). PvP needed none of its own.
+> 2. **Faction war is structurally unavailable** — FAC_001 `RelationStance` is a closed 3-variant enum
+>    **static at canonical seed**; there is no `AtWar` to read. Deferred to DIPL_001 (PVP-D1), not by
+>    preference but by foundation lock.
+> 3. **The death default is permadeath** (WA_006 / PC-B1) — so PvP + no config would let a stranger
+>    permanently delete a character with no author choosing it. Hence the master gate defaults **Disabled**.
+>
+> ### The Binding Contest ([COMB_004 §16](COMB_004_loot_and_spoils.md))
+>
+> Per user direction, PvP defeat is **full WA_006 including permadeath** — made survivable not by a softer
+> death but by making what you lose **degradable, contestable and reclaimable**. `BindTier`
+> (`Unbound / BodyBound / SoulBound`) reuses **PROG_001's existing `BodyOrSoul` axis** — which already
+> calls soul-carried progressions *"soul-bound"* — so the mechanic needs **no new metaphysics**. Three
+> deterministic loss paths, no random gear-loss roll: **sunder** (attrition across deaths), **severance**
+> (an authored `SeverBinding` ability, `Break` or `Claim`), **overwhelm** (raw power ratio).
+>
+> **The structural result worth naming:** overwhelm reads *the same ratio* as COMB_001 Q4's disparity cap,
+> in the opposite direction — the cap protects the weak, overwhelm rewards the overwhelming — and since
+> `cap_applies` and `cap_waived` are complements, **the two can never both fire**. A strong player
+> therefore *cannot* follow a weak one into a newbie zone and strip their bindings: the anti-grief property
+> falls out of the arithmetic rather than being a check someone added.
+>
+> **⚠ One hard dependency:** sunder consumes PL_007's `durability`, currently `V1: ALWAYS None`
+> (**RES-D4**, schema reservation only). **Binding degradation cannot ship until RES-D4 is activated**
+> (SPO-D11). Severance and overwhelm are unaffected, so the V1+ subset is coherent — bindings can be
+> *taken*, just not yet *worn down*.
+
+---
+
+## ✅ Boundary registration COMPLETE (2026-07-26, `[boundaries-lock-claim+release]`)
+
+The family's design landed while `_boundaries/` was held by the parallel session, so registration was
+tracked here rather than applied. **It has now been applied** — see
+[`_boundaries/99_changelog.md`](../../_boundaries/99_changelog.md) (top entry).
+
+| Target | Registered |
+|---|---|
+| `01_feature_ownership_matrix.md` — prefixes | ✅ `THR-*` · `SPO-*` · `SPN-*` · `PVP-*` · `ABL-*`, with full ID ranges |
+| `01_feature_ownership_matrix.md` — aggregates | ✅ an explicit **`NO NEW AGGREGATE`** negative claim for all five features (recorded deliberately, since five features landing without one otherwise reads as an oversight) |
+| `01_feature_ownership_matrix.md` — shared schema | ✅ **`EffectOp`** — one owner (ABL_001), many producers; the DF07 `StatModifier` shape |
+| `02_extension_contracts.md` §1.4 | ✅ `threat.*` (6) · `spoils.*` (12) · `spawn.*` (10) · `ability.*` (14) · `pvp.*` (9) |
+| `02_extension_contracts.md` §1.4a | ✅ **NEW** — the `EffectOp` vocabulary + the law-chain-bypass defect that forced the merge |
+| `02_extension_contracts.md` §2.AB | ✅ **NEW** — `threat_config` · `loot_tables` · `abilities` · `pvp_policy` · `PlaceDecl.hostile_spawns` + `Contested` band · TMP `TerrainSpawnDecl` |
+| `02_extension_contracts.md` §4 | ✅ `Forge:EditLootTable` · `Forge:EditSpawnDecl` · `Forge:EditPvpPolicy` |
+| `00_foundation/06_id_catalog.md` | ✅ all five prefixes |
+| `decisions/locked_decisions.md` | ✅ NEW combat-family block (27 decisions); **`PC-D2` marked DISCHARGED** by COMB_006 |
+| `02_world_authoring/_index.md` | ✅ **`WA_NNN_pvp_consent` RETIRED** — its own prediction (*"PvP→combat when those consumer features open"*) held |
+
+| `catalog/cat_18_COMB_combat.md` | ✅ **created 2026-07-26** — the matrix had carried "NOT YET CREATED" since 2026-06-20 |
+| `catalog/cat_19_ABL_ability.md` | ✅ **created 2026-07-26** with the namespace |
+| PL_007 §7.1 `UseEffectDecl` → `EffectOp` | ✅ **ABL-Q9 closure note applied** to PL_007 §7.1 (dated additive note, the track's behavioural-closure pattern); the schema edit lands when that doc is next opened |
+
+**Nothing outstanding.** Every open question in the family is closed — the 8 `-QO` items, `COMB-Q1`,
+`COMB-Q2`, `COMB-Q3` and `ABL-Q9` — and the boundary surface is fully registered.
 
 ---
 

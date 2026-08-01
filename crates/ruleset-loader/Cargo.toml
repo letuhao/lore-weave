@@ -1,0 +1,35 @@
+# ruleset-loader — F2 of the doc-26 build order: rules become CONTENT.
+#
+# The I/O half that `ruleset-core` deliberately has none of: the layer stack
+# (RLS-A3), TOML parsing, normalization to fixed-point (RLS-A7/A8), load-time
+# validation (RLS-A10) and the content-addressed immutable store (RLS-D6/D18).
+#
+# IMP-D2 — `game-rules` must NOT depend on this crate. The laws take a resolved
+# `&Rules` by reference and know nothing about where it came from; a law that
+# can read a file is a law that can be slow, fallible and untestable.
+[package]
+name = "ruleset-loader"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+ruleset-core = { path = "../ruleset-core" }
+serde = { workspace = true }
+toml = { workspace = true }
+
+# PGN-A7's binary. Doc 39 §7 says the axiom "stamps a version from nothing" until
+# something can actually RUN the engine's validator; S-1 built it as a library,
+# which is a validator nothing outside this workspace can call.
+[[bin]]
+name = "progression-validate"
+path = "src/bin/progression_validate.rs"
+
+# S6. The sibling of progression-validate: the same resolve path against the REAL
+# store, with --expect making the pinned digest the one a human approved.
+[[bin]]
+name = "progression-pin"
+path = "src/bin/progression_pin.rs"

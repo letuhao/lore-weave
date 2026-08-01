@@ -20,7 +20,7 @@ generated_by: hand-authored (foundation-tier catalog seed)
 | ID | Feature | Status | Tier | Dep | Design ref |
 |---|---|---|---|---|---|
 | MAP-1 | `map_layout` aggregate (T2 / Channel scope; covers all tiers continent through cell) | ✅ | V1 | PF-1, PL-1, DP-Ch* | [MAP_001 §3.1](../features/00_map/MAP_001_map_foundation.md#31-map_layout-t2--channel-scope--primary) |
-| MAP-2 | ChannelTier closed enum (5 V1: Continent / Country / District / Town / Cell) | ✅ | V1 | MAP-1 | [MAP_001 §2 + §3.1](../features/00_map/MAP_001_map_foundation.md) |
+| MAP-2 | ~~ChannelTier closed enum (5 V1: Continent / Country / District / Town / Cell)~~ → **`MapKind` closed set (7: Universe / World / Region / Locale / Domain / Passage / Arena) + containment matrix**. `SPG-R1` APPLIED 2026-07-30; the ✅ was for the retired enum. | ✅ | V1 | MAP-1 | [MAP_001 §2 + §3.1](../features/00_map/MAP_001_map_foundation.md) |
 | MAP-3 | Position model: author-positioned absolute u32 (0..=1000) within per-tier viewport reset | ✅ | V1 | MAP-1 | [MAP_001 §5](../features/00_map/MAP_001_map_foundation.md#5-position-model--viewport-scaling) |
 | MAP-4 | TierMetadata Option discriminator: Some non-cell (display_name + canon_ref + description) / None cell (PF_001 supplies) | ✅ | V1 | MAP-1, PF-1 | [MAP_001 §6](../features/00_map/MAP_001_map_foundation.md#6-tiermetadata-for-non-cell-tiers) |
 | MAP-5 | MapConnectionKind closed enum (5 V1 matching PF_001: Public / Private / Locked / Hidden / OneWay) | ✅ | V1 | MAP-1, PF-4 | [MAP_001 §4](../features/00_map/MAP_001_map_foundation.md#4-mapconnectionkind-closed-enum) |
@@ -44,4 +44,4 @@ generated_by: hand-authored (foundation-tier catalog seed)
 | MAP-23 | V1+ TVL_001 Travel Mechanics (speed/method matrix consuming distance_units) | 📦 | V1+ | MAP-6 | [MAP_001 §16 MAP-D12](../features/00_map/MAP_001_map_foundation.md#16-deferrals) |
 | MAP-24 | V1+30d tier-density ceiling validator | 📦 | V1+ | MAP-1 | [MAP_001 §16 MAP-D13](../features/00_map/MAP_001_map_foundation.md#16-deferrals) |
 | MAP-25 | V1+ MapConnectionKind extensions (TimePortal / PocketDimension / Resonance) | 📦 | V1+ | MAP-5 | [MAP_001 §16 MAP-D2](../features/00_map/MAP_001_map_foundation.md#16-deferrals) |
-| MAP-26 | V1+ ChannelTier extensions (StarSystem / Sector / Galaxy for sci-fi; PocketDimension for cultivation) | 📦 | V1+ | MAP-2 | [MAP_001 §16 MAP-D1](../features/00_map/MAP_001_map_foundation.md#16-deferrals) |
+| MAP-26 | ~~V1+ ChannelTier extensions~~ — **SUPERSEDED by `SPG-A2`**: extending the kind set is ruleset data, not a schema deferral, so a sci-fi `StarSystem` or cultivation `PocketDimension` is a row rather than a code change (`SPG-R1`). | 📦 | V1+ | MAP-2 | [MAP_001 §16 MAP-D1](../features/00_map/MAP_001_map_foundation.md#16-deferrals) |

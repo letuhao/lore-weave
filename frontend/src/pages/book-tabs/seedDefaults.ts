@@ -70,8 +70,22 @@ export const SEED_KINDS: Record<string, SeedKind> = {
       usage_note: { name: 'Usage Note', fieldType: 'textarea', isRequired: false },
     },
   },
+  // The ladder, not the art. Its name always read as a graded scheme; only the definition
+  // said otherwise, so the arts moved to `technique` below (Go migration 0056).
   power_system: {
-    name: 'Power System', icon: '✨', color: '#a855f7',
+    name: 'Power System (Tier Ladder)', icon: '✨', color: '#a855f7',
+    attrs: {
+      name: { name: 'Name', fieldType: 'text', isRequired: true },
+      aliases: { name: 'Aliases', fieldType: 'tags', isRequired: false },
+      tiers: { name: 'Tiers', fieldType: 'tags', isRequired: false },
+      rank: { name: 'Position in the Ladder', fieldType: 'text', isRequired: false },
+      entry_requirement: { name: 'Entry Requirement', fieldType: 'textarea', isRequired: false },
+      capabilities: { name: 'Capabilities', fieldType: 'textarea', isRequired: false },
+      description: { name: 'Description', fieldType: 'textarea', isRequired: false },
+    },
+  },
+  technique: {
+    name: 'Technique / Art', icon: '🌀', color: '#8b5cf6',
     attrs: {
       name: { name: 'Name', fieldType: 'text', isRequired: true },
       aliases: { name: 'Aliases', fieldType: 'tags', isRequired: false },

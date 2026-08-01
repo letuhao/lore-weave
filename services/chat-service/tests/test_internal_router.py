@@ -461,3 +461,73 @@ async def test_weekly_reflection_headless_resolves_book_and_zone_no_model(client
     assert kw["book_id"] == book_id and kw["entry_zone"] == "UTC"
     assert "model_ref" not in kw and "model_source" not in kw  # deterministic — no model plumbed
     assert kw["week_end"] == (today - timedelta(days=1)).isoformat()
+
+
+# ── ML-5 × Security: the serializer must not defeat the safety screener ────────
+#
+# THE BYPASS THIS PROVES, found by /review-impl 2026-07-30 and demonstrated before
+# it was fixed. `internal.py` screens the persona-create payload by joining
+# `system_prompt`, `title` and `json.dumps(working_memory_seed)` and passing the
+# result to `loreweave_safety.screen()`. That screener NFKC-folds its input
+# SPECIFICALLY so "unicode look-alikes and width variants don't slip"
+# (loreweave_safety/floor.py:120) — full-width `ｏｖｅｒｄｏｓｅ` folds to `overdose`
+# and trips the lexicon.
+#
+# But `json.dumps` defaults to `ensure_ascii=True`, which escapes every non-ASCII
+# character to a backslash-u sequence BEFORE screen() ever runs. NFKC then folds
+# nothing, because there is nothing left to fold — the payload reaches the screener
+# as the literal ASCII text `\uff4f\uff56...`. Measured, both directions:
+#
+#     ensure_ascii=True   -> MISSED   (safety floor bypassed)
+#     ensure_ascii=False  -> TRIPPED
+#
+# This is the review-impl question "does an upstream normalization make a
+# downstream defense moot?" answering yes. The test asserts the PROPERTY (a
+# look-alike payload in the seed is caught), not the call shape, so it stays valid
+# if the screening moves.
+def test_full_width_lookalike_in_seed_reaches_the_safety_screener():
+    import json
+
+    from loreweave_safety import screen
+    from loreweave_safety import floor
+
+    # Pick a real single-word ASCII lexicon term rather than hardcoding one, so the
+    # test cannot rot into checking a term the lexicon no longer carries.
+    term = next(
+        t for terms in floor._LEXICON.values()
+        for t in sorted(terms)
+        if t.isascii() and " " not in t and len(t) > 5
+    )
+    full_width = "".join(
+        chr(ord(c) + 0xFEE0) if "a" <= c <= "z" else c for c in term
+    )
+    assert full_width != term, "fixture built no look-alike — the +0xFEE0 map broke"
+
+    seed = {"note": full_width}
+
+    # The regression being locked: escaping first hides the payload.
+    assert not screen(json.dumps(seed)).tripped, (
+        "ensure_ascii=True unexpectedly tripped — if the screener learned to decode "
+        "backslash-u escapes this assertion is obsolete, but until then it documents "
+        "exactly why ensure_ascii=False is load-bearing here"
+    )
+    # The behaviour the fix guarantees.
+    assert screen(json.dumps(seed, ensure_ascii=False)).tripped, (
+        "a full-width look-alike in working_memory_seed did NOT reach the safety "
+        "floor — internal.py must serialize the seed with ensure_ascii=False"
+    )
+
+
+def test_internal_router_serializes_the_seed_without_ascii_escaping():
+    """Guards the call site itself, so the property test above cannot pass while
+    `internal.py` quietly reverts to the default."""
+    import inspect
+
+    from app.routers import internal
+
+    src = inspect.getsource(internal)
+    assert "json.dumps(body.working_memory_seed or {}, ensure_ascii=False)" in src, (
+        "the safety-screen input is no longer serialized with ensure_ascii=False — "
+        "see test_full_width_lookalike_in_seed_reaches_the_safety_screener for why "
+        "that reopens a safety-floor bypass"
+    )

@@ -336,6 +336,13 @@ async def _amain() -> None:
     # `basicConfig` is banned because it installs a plain formatter on the root logger and
     # wins over the shared JSON handler — a service whose logs bypass the trace-id
     # correlation cannot be read alongside the rest of a request.
+    #
+    # The name passed is the SERVICE NAME (`loreweave_obs.setup_logging(service_name,
+    # *, level=...)`), not a level — the CLI stamps itself `composition-arc-lift` so a
+    # migration run is distinguishable from the service in the log stream. Importing at
+    # module scope is fine; CONFIGURING at import time would not be, and this call sits
+    # in the CLI entry point precisely because `run_arc_lift` is also invoked in-process
+    # by a service that has already configured logging.
     setup_logging("composition-arc-lift")
     conn = await asyncpg.connect(dsn)
     try:

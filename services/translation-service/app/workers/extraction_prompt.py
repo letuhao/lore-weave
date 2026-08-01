@@ -228,6 +228,20 @@ def build_extraction_prompt(
     return "\n\n".join(sections)
 
 
+#: Appended to the known-entity block by the `single_call_delta` shape (BOOK_TO_GAME/15).
+#: The block already says "do NOT create duplicates" and the entities came back in full
+#: anyway — 88% of entity writes were re-writes. This asks for the delta explicitly. It is
+#: additive text on an existing section rather than a new one, so it rides the same prefix.
+DELTA_INSTRUCTION = (
+    "\n\nIMPORTANT — report only what is NEW in this chapter:\n"
+    "- If an entity above is already known AND this chapter adds nothing to it, OMIT it "
+    "entirely.\n"
+    "- Emit a known entity ONLY when this chapter genuinely adds or corrects something, "
+    "and then include only the attributes that changed, plus its exact name.\n"
+    "- Emit every entity that does NOT appear above, in full."
+)
+
+
 def build_known_entities_context(known_entities: list[dict]) -> str:
     """Build the known entities section for cross-chapter awareness.
 
@@ -442,7 +456,14 @@ def parse_and_validate_with_stats(
         if kind not in valid_kinds:
             continue
 
-        name = entry.get("name", "")
+        # An entity's name lives under `name` for seven of the eight kinds and under
+        # `term` for `terminology` — that is what the schema ASKS that kind for, because
+        # `term` is its required display attribute. Accepting only `name` meant a model
+        # that answered the schema correctly had its entity dropped here, while a model
+        # that answered `name` got through and then had the value discarded on the
+        # glossary side (which hardcoded the same assumption in the opposite direction).
+        # Both halves are fixed together; either alone still loses the entity.
+        name = entry.get("name", "") or entry.get("term", "")
         if not name:
             continue
 
@@ -450,7 +471,10 @@ def parse_and_validate_with_stats(
         allowed_attrs = set(extraction_profile.get(kind, {}).keys())
         attrs = {}
         for key, val in entry.items():
-            if key in ("kind", "name", "evidence", "evidence_block", "relevance"):
+            # `term` is consumed as the entity's NAME above, so it must not also be
+            # written back as an attribute — glossary writes the name into that same
+            # attr_def and the two would race on one ON CONFLICT.
+            if key in ("kind", "name", "term", "evidence", "evidence_block", "relevance"):
                 continue
             if key in allowed_attrs:
                 attrs[key] = val
@@ -588,3 +612,92 @@ def estimate_extraction_cost(
             "chapters_count": len(chapters),
             "batches_per_chapter": batches_per_chapter,
         }
+
+
+# ── Two-stage (EDC) sweep — BOOK_TO_GAME/15 §6b-6c, arm A9 ───────────────────
+
+#: Stage 1 of `edc_cited`: find the salient entities and QUOTE each one, nothing else.
+#: Stage 2 then types and enriches from those citations instead of re-reading the chapter,
+#: which is where the saving comes from — A5 sent the chapter twice and paid ~5,300 extra
+#: tokens per chapter for it.
+#:
+#: The naming rule is SPLIT BY CATEGORY, and that split is the whole finding (`BTG-A55`):
+#: seven of the eight kinds are "find the name in the text", but an `event` is spread across
+#: paragraphs and appears nowhere as a phrase — it has to have a label INVENTED for it. An
+#: earlier arm enumerated the categories while still demanding each name be quoted verbatim,
+#: and got 2 events against a baseline of 34. Relaxing the rule for that one category — and
+#: only that one — took it to 8, and recovered `terminology`, which had read ZERO for every
+#: arm including the shipped baseline. Evidence stays verbatim throughout, so grounding is
+#: unaffected by construction.
+SWEEP_SYSTEM_TEMPLATE = """\
+You read {source_language} novel chapters and list the SALIENT entities that appear. Output \
+ONLY a JSON array of objects with two fields: "name" and "evidence" (an EXACT quote from \
+the chapter, up to two sentences, showing who or what this is).
+
+Cover EVERY category below. The categories after the first two are the ones most often \
+missed, and an empty category is a failure of this step.
+
+NAMES THAT EXIST IN THE TEXT — copy the name EXACTLY as written:
+- PEOPLE: named persons, gods, immortals, generals.
+- PLACES: mountains, caves, halls, palaces, passes, cities, rivers.
+- GROUPS: sects, dynasties, armies, clans, offices.
+- OBJECTS: named weapons, treasures, talismans.
+- TECHNIQUES: named arts, spells, formations, cultivation methods.
+- CREATURES: named beasts, spirits, species.
+
+THINGS THE TEXT DOES BUT DOES NOT NAME — WRITE A SHORT LABEL YOURSELF:
+- EVENTS: what HAPPENS in this chapter — a battle, an execution, a flight, an investiture, \
+a betrayal, a prophecy fulfilled. The text will NOT contain a phrase naming the event, so \
+do not look for one: write a short label of your own in {source_language}, and put the \
+exact sentence that shows it happening in "evidence". THIS CATEGORY IS ROUTINELY RETURNED \
+EMPTY, and returning it empty when the chapter plainly contains events is the single worst \
+failure of this step.
+- CONCEPTS: doctrines, ranks, titles, terms of art — name them as the text does when it \
+names them, otherwise write a short label.
+
+- Do NOT classify them. Do NOT describe them. Do NOT add any other field.
+- The EVIDENCE must always be copied exactly from the chapter, never invented.
+- The quote is the ONLY thing the next step will see, so choose the sentence that best \
+characterises the entity."""
+
+
+def build_sweep_system_prompt(source_language: str) -> str:
+    return SWEEP_SYSTEM_TEMPLATE.format(source_language=source_language)
+
+
+def parse_sweep_mentions(response_text: str) -> list[tuple[str, str]]:
+    """(name, evidence) pairs from a stage-1 response. Empty list on an unusable reply.
+
+    Reuses `_extract_json_from_text` — the same markdown-fence / leading-reasoning /
+    truncated-array handling the entity parser gets. Hand-rolling it here is how a PARSE
+    failure turns into "the two-stage shape extracted nothing", which reads as a result
+    rather than a bug.
+    """
+    text = _extract_json_from_text(response_text)
+    if not text:
+        return []
+    try:
+        rows = json.loads(text)
+    except json.JSONDecodeError:
+        return []
+    out: list[tuple[str, str]] = []
+    for r in rows if isinstance(rows, list) else []:
+        if isinstance(r, dict) and r.get("name"):
+            out.append((str(r["name"]), str(r.get("evidence", ""))))
+    return out
+
+
+def build_cited_user_prompt(cited: list[tuple[str, str]]) -> str:
+    """Stage 2's user turn: the citation list, and NOT the chapter again.
+
+    Sending the chapter a second time is exactly the cost the two-stage shape exists to
+    avoid. It also measured BETTER at typing than re-reading the chapter did — the typing
+    step sees a name and one focused sentence instead of ~5,300 characters of narrative.
+    """
+    return (
+        "These named entities were found in one chapter, each with the exact quote it came "
+        "from. For EACH, decide its type and fill its attributes from its quote. Use the "
+        "quote as the entity's `evidence` verbatim. Drop any that is not a discrete named "
+        "entity. Do not invent entities.\n\n"
+        + "\n\n".join(f"NAME: {n}\nQUOTE: {q}" for n, q in cited)
+    )

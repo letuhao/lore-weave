@@ -3,7 +3,10 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { LoginRoute } from '@/routes/login';
 import { WorldSelectRoute } from '@/routes/world-select';
 import { PlayRoute } from '@/routes/play';
+import { ResetRoute } from '@/routes/reset';
 import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { RequireAuth } from '@/components/shared/RequireAuth';
+import { useLanguagePreference } from '@/hooks/use-language-preference';
 import type { JSX } from 'react';
 
 // App router shell. Per spec §3, three routes:
@@ -21,11 +24,33 @@ const WorldPreviewRoute = lazy(() =>
 );
 
 export default function App(): JSX.Element {
+  // Mounted at the router root ON PURPOSE. This hook pulls the server-side
+  // `ui_language` preference once per session, and it first lived inside
+  // <LanguageSwitcher>, which only ever renders on /login — so a returning user
+  // with a live session landing straight on /play never had their stored
+  // language applied. The write-through worked; the read-back was unreachable.
+  useLanguagePreference();
+
   return (
     <Routes>
       <Route path="/login" element={<LoginRoute />} />
-      <Route path="/world-select" element={<WorldSelectRoute />} />
-      <Route path="/play" element={<PlayRoute />} />
+      <Route path="/reset" element={<ResetRoute />} />
+      <Route
+        path="/world-select"
+        element={
+          <RequireAuth>
+            <WorldSelectRoute />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/play"
+        element={
+          <RequireAuth>
+            <PlayRoute />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/world-preview"
         element={

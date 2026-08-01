@@ -36,9 +36,9 @@ roleplay.pc.default_death_rule = 'permadeath' (V1 default; per-reality override 
 
 ## 11. References
 
-- [03_MULTIVERSE_MODEL.md](03_MULTIVERSE_MODEL.md) — reality model this sits on top of
-- [02_STORAGE_ARCHITECTURE.md](02_STORAGE_ARCHITECTURE.md) — PC projection lives here (§5.1); extended in §8 above
-- [01_OPEN_PROBLEMS.md](01_OPEN_PROBLEMS.md) — B3 (world tick), E3 (IP), M3 (canonization contamination) now cross-ref DF1/DF3/DF4
-- [OPEN_DECISIONS.md](OPEN_DECISIONS.md) — PC locks added; new deferred features DF1–DF8 registered
-- [98_CHAT_SERVICE_DESIGN.md](../98_CHAT_SERVICE_DESIGN.md) — sibling for Cursor-style chat; DF5 is multi-char scene variant
-- [103_PLATFORM_MODE_PLAN.md](../103_PLATFORM_MODE_PLAN.md) — tier/billing home for DF2
+- [03_MULTIVERSE_MODEL.md](../03_multiverse/_index.md) — reality model this sits on top of
+- [02_STORAGE_ARCHITECTURE.md](../02_storage/_index.md) — PC projection lives here (§5.1); extended in §8 above
+- [01_OPEN_PROBLEMS.md](../01_problems/_index.md) — B3 (world tick), E3 (IP), M3 (canonization contamination) now cross-ref DF1/DF3/DF4
+- [OPEN_DECISIONS.md](../decisions/_index.md) — PC locks added; new deferred features DF1–DF8 registered
+- [98_CHAT_SERVICE_DESIGN.md](../../98_CHAT_SERVICE_DESIGN.md) — sibling for Cursor-style chat; DF5 is multi-char scene variant
+- [103_PLATFORM_MODE_PLAN.md](../../103_PLATFORM_MODE_PLAN.md) — tier/billing home for DF2

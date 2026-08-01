@@ -1,6 +1,134 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `c3a187b0f` + this cycle · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-01
+**HEAD:** `37e453255` + merge of `origin/main` (`1dc1509ed`) · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-02
+
+> **MERGE 2026-08-02** — `origin/main` (67 commits: the game-logic promotion + a Dependabot
+> sweep) merged in. 14 files conflicted; the reconciliation notes live in
+> §MERGE RECONCILIATION below. Main's own session sections are preserved verbatim under
+> §FROM `origin/main` further down — they are a different track's history, not this run's.
+
+## 🔀 MERGE RECONCILIATION — `origin/main` → this branch (2026-08-02)
+
+`origin/main` (67 commits — the **game-logic promotion** #162 plus a Dependabot sweep) merged
+into a branch mid-way through the Generation-SSOT run. 14 files conflicted. The value was not
+in resolving them; it was in what the branch's own gates said about the code that arrived.
+
+**The conflicts, and how each was decided** (ours / theirs / union — never "take one side"):
+
+| file | resolution |
+|---|---|
+| `scripts/dep-pinning-lint.sh` | **OURS.** Main still had the `uv.lock`/`poetry.lock` arm with a widened grandfather; this branch had already *replaced* that rule (the repo has zero lock files, so it "named a path where it meant a class" and only ever fired on two SDK sub-packages). Restoring main's would have re-imposed a rule the repo does not follow. |
+| `scripts/raw-sql-lint.py` · `sdks/python/pyproject.toml` · 3× `ensure_ascii` comments | **UNION.** Both sides had found the same defect and written different halves of the explanation. Main's `raw-sql` note carries the `test_package_rekey_constants.py` guard reference; ours carries the two knowledge `_smoke_*` rows. Both kept; all 6 baseline rows verified byte-identical afterwards. |
+| `scripts/i18n_translate.py` | **UNION** — disjoint flags (`--audit`/`--retry-echoed` vs `--locales-dir`). |
+| `sdks/rust/.../models.rs` | **BOTH builders, OURS for `with_max_tokens`.** Main's copy coerced `0 → None` at the builder; ours leaves that to `normalize`. One place decides what the wire sees — a second opinion at the builder is how two rules for one decision start. |
+| `glossary-service/internal/migrate/ledger.go` | **BOTH — ours renumbered `0056` → `0059`.** Both branches took `0056`. Main's three steps (`technique_kind_split`/`_attrs`/`entity_kind_votes`) rewrite kinds and build a vote table; ours is one `CREATE INDEX IF NOT EXISTS`. The chain forbids renaming a shipped step because a rename re-runs it — which is exactly why OURS is the one that moves: re-running it costs a no-op. `attr_lookup_index_test.go` updated in the same commit. |
+| `composition/app/db/arc_lift.py` | **OURS.** Both replaced the banned `basicConfig`; main called `setup_logging("INFO")` (level), ours `setup_logging("composition-arc-lift")` (the SDK's first positional is the SERVICE NAME), so a migration run is distinguishable in the log stream. |
+| `test_plan_overlay.py` | **BOTH TESTS KEPT.** Both branches independently killed the same permanently-skipped test, differently: ours drives 403 through an injected `InsufficientGrant` (proves the MAPPING), main's asserts no `GrantLevel` sits below VIEW (proves no real input REACHES it). They are complementary, and a cross-reference now says so. |
+| `contracts/capacity/budgets.yaml` | Comments merged; `scheduler-service` kept as `cron` (its driver is a `time.NewTicker` loop, so the interval is the workload) over main's `worker` + queue-depth trigger. Divergence recorded in the row. |
+| `SESSION_HANDOFF.md` | Ours on top, main's 8 sections preserved verbatim below (zero shared headings — checked, not assumed). |
+
+**Then the gates were run against the merged tree, and three of them went red.** Each was
+diffed against the pre-merge tree in a worktree, so "the merge caused this" is a measurement:
+
+1. **`llm-budget-ssot-gate` 29 → 30.** Main's two-stage extraction shape added a sweep call with
+   `"max_tokens": _EXTRACTION_OUTPUT_CEILING` — a flat literal. Fixed properly, not baselined:
+   a `glossary_sweep` row in translation-service's registry, **STRUCTURED** (a clipped mention
+   array is unparseable, not short). Three things fell out of doing it right:
+   · the sweep never checked `finish_reason` and hard-coded `finish_reason=None` into its cache,
+     so a truncated sweep was **cached as clean** and a re-run could never recover the lost
+     mentions — the batch path 200 lines below already had this exact rule;
+   · the literal ignored `out_budget`, the context-derived headroom the batch path computes from
+     the real input size, so a small-context model was asked for a flat 8000 output tokens on
+     top of its window;
+   · the registry itself grew the composition-service shape (`CallProfile` + a `was` the test
+     reads), so "adopting the seam never truncates what previously fit" is now enforced here too.
+   Gate back to 29 · translation-service **1128 passed**.
+2. **`injection-coverage-lint` PASS → FAIL on 6 composition modules.** Main tightened the
+   sanitizer check from a MENTION to a CALL — correct, and it caught a real gap in
+   `canon_check.py`. But it also deleted the `from …sanitize import` alternatives, and
+   composition does not use `loreweave_grounding`'s sanitizer; it has its own
+   (`app/packer/sanitize.py`). The six DO call it. Fixed by naming the call-forms explicitly —
+   keeping main's tightening — after verifying `app/packer/sanitize.py` is the only definer of
+   all four names in the repo. **Proven red-able** by removing one call and watching it fail.
+3. **`gate-teeth-gate` 46 → 47.** Main's `gate-wiring-gate.py` arrived with a *working*
+   red-ability proof — `self_test()` behind `--self-test` — and the detector missed it because
+   the regex was the bare string `SELFTEST`. Widened to the two shapes that are proofs
+   (`def self_test`, `--self-test`) rather than to the word: the naive `SELF[-_ ]?TEST` also
+   certified `context-inspector-checklist-gate.py`, which has no self-test at all and matched
+   the phrase "for gate self-tests" inside an argparse `help=` string. Exactly one gate flipped.
+4. **`generation-guard-gate` rust 24 → 30.** `commit-service` arrived. Six files, each READ
+   before being counted: `llm_driver.rs` is a real generation path and is now CLASSIFIED
+   (`commit.combat.npc_decision`, `status: guarded` — `Dispatch` carries `payload` beside
+   `reject`, so the degraded result is not shaped like the successful one, and `vocab.validate`
+   means a truncated tool call resolves to a reject rather than a wrong strike). `main.rs` wires
+   the client; the other four match the detector on the WORD, not a call. Baseline raised with
+   that breakdown written into the file.
+
+**And main brought the thing that makes all of the above load-bearing: `.github/workflows/gates.yml`,**
+which runs `gate-wiring-gate.py --run-all` — *every* gate in `scripts/`, discovered by filename
+predicate, failing on any red not named in `KNOWN_RED`. Running it against the merged tree
+surfaced three more reds that no per-gate invocation would have shown:
+
+5. **`projection-coverage-lint` FAIL.** Main registered `ruleset.epoch_activated`
+   (owner: commit-service) with no projection arm and no allowlist row — 14 → 15 events.
+   Allowlisted after reading `epoch_commit.rs`, which calls it an EVT-T8 **administrative
+   transcription**: one event per affected channel, appended by that channel's own
+   lease-holding writer, recording a decision already durably audited in
+   `reality_ruleset_binding`; the epoch is enforced by `ChannelWriter::append` CASing on
+   `channel_writer_state.current_epoch`, so the state is the writer's, not a read model's.
+   Same shape as the `admin.canon.override.*` rows already there. **The row says out loud
+   that this classification was made by the merging branch, not by the event's author** —
+   the game track's owner should confirm it.
+6. **`admin-command-registry-lint` 5s → 134s, and once a 900s TIMEOUT.** Two bare
+   `grep -R … services/` calls now walk every `services/*/node_modules` and every Rust
+   `services/*/target`, which the four new Rust services made enormous. Excluded the
+   build/vendor dirs: **134s → 2.8s**. CI never saw it (a fresh checkout has neither
+   directory), which is precisely why it could sit there — a gate red for a reason unrelated
+   to what it checks is how a suite becomes background noise.
+7. **`test-dsn-coverage-gate` FAIL — a FALSE POSITIVE of our own gate**, red before the merge
+   too, but only CI-blocking now that `gates.yml` exists. It flagged
+   `LOREWEAVE_TEST_MIGRATION_MEMO` as an unarmed gating variable; it gates nothing. It is a
+   performance opt-out for composition's migration memoisation — both branches run the
+   migrations and both run every test. Given a `NOT_GATING` list kept **separate** from
+   `DECLARED_UNARMED`, because that list means "these tests really do not run", and folding a
+   non-gate into it would make the gate's most valuable output quietly untrue.
+
+**One gap left OPEN, deliberately, and it belongs to S7:** `llm_driver.rs` calls
+`.with_max_tokens(256)` — a flat literal at a Rust call site. `call_budget` is Python-only, so
+attributing it needs the Rust half of S7, not an edit in the registry. Tracked in the
+`commit.combat.npc_decision` row rather than in a comment nobody greps.
+
+**Also fixed while verifying (not merge-caused):** `docker compose build --no-cache` failed on
+`ai-gateway` with `tsBinary.getParsedCommandLineOfConfigFile is not a function`. Root cause was
+NOT the TypeScript-7 bumps main landed — ai-gateway is pinned `^5.5.3` and its lockfile
+resolves 5.9.3 under both `npm ci` and `npm install` (measured in a scratch dir). It had **no
+`.dockerignore`**, and its build context is its own directory, so the repo-root one does not
+apply: `COPY . .` dropped the HOST's drifted `node_modules` (typescript@7.0.2, which npm itself
+reports `invalid`) on top of the correct install, and TS 7's JS API no longer exposes that
+function to the Nest CLI. Added `.dockerignore` to `ai-gateway`, `knowledge-gateway`,
+`mcp-public-gateway` and `cms-frontend` — the same omission, the other three only surviving on
+the luck of a clean host tree — and repaired the host install with `npm ci`.
+
+**Verified after the merge:** translation 1128 · composition 3468 (+403 db-skipped) ·
+knowledge 4108 (+561) · chat 1960 · frontend 6324 across 844 files with `@dnd-kit/sortable`
+8 → 10 and `tsc --noEmit` clean · glossary Go migrate suite ok · Rust SDK builds ·
+`gate-wiring-gate` 77 gates discovered, all wired · **`docker compose build --no-cache`
+green: 33 images, 0 failures.**
+
+The sweep's truncation guard has **two tests driving the real chapter processor** with
+`strategy="edc_cited"` — one asserting a `finish_reason=length` sweep is NOT cached and DOES
+warn, one asserting a clean sweep IS cached and records its `finish_reason` (a guard tested
+only on the failing input is satisfied by never caching at all). **Proven red-able**: deleting
+`and not _sweep_truncated` reds the first and leaves the second green. translation 1128 → 1130.
+
+⚠ **Not verified: nothing was live-smoked.** Every number above is a unit suite or a build.
+The merge crosses ≥2 services (translation + knowledge + composition + glossary + a whole new
+Rust service), and this repo has been bitten four times by mock-green hiding a cross-service
+contract bug. The sweep tests above use a fabricated `Job`, so what is proven is the WORKER's
+branch, not that a real provider stamps `finish_reason="length"` where this code reads it.
+Tracked as `D-SWEEP-TRUNCATION-LIVE-SMOKE`.
+
+---
 
 ## 🧭 THE RUN — read the RUN-STATE first, always
 
@@ -10,9 +138,41 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 **After any compaction, re-read it before anything else.** Spec:
 [`docs/specs/2026-07-31-generation-ssot.md`](../specs/2026-07-31-generation-ssot.md).
 
-**Order:** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` →
-`S2 ✅` → `S8 ✅` → `S12 ✅` → **`S7` (surveyed, not built)** → `S6(+UI) → S11 → S3 → S4`
-→ `S9 → S5`.
+**Order (author-set 2026-08-02):** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` →
+`[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
+**`[budget-seam rot] → S7`** → `S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+
+### ⛔ KG / extraction is PARKED — do not start it
+
+The author's call, explicit: *"tôi không khuyến khích lao đầu vào KG ngay bây giờ, bao gồm
+2026-08-01-entity-identity-under-qualitative-extraction.md … cách làm đúng bây giờ nên là làm
+phần 'Budget seam rot' trước và rồi resume slice 7 và các slice còn lại."*
+
+The entity-identity spec is a **diagnosis to return to**, not the next work item.
+
+**And the root goes deeper than that spec says.** Author, 2026-08-02: *"tính năng alive chết là
+đúng rồi, ngay từ đầu chúng ta đã sai vì không có lifecycle thực sự cho entity."* So the
+FK-unreachability the spec measured is a **symptom**. `alive`/gone was built on an entity model
+that was never designed — there is no lifecycle. **Do not try to fix this by repairing the join.**
+It belongs to a larger refactor that **already has its own document**, and the author will name the
+starting point when it begins; there is nothing to look up, design, or prepare in the meantime.
+
+State the current status plainly and do not soften it: **the dead-character feature does not work
+end-to-end.** The liveness store fills; nothing can read it. Parked in the RUN-STATE's Parked
+register.
+
+### ▶ NEXT: the budget-seam rot = **S7 slice 4**, one item not two
+
+They are the same work found from two ends. Spec §S7 already says the gate must red on *"an int
+default in any signature that reaches an LLM call (~31 of ~40 are defaults)"*; the measurement
+found **26 of 28** signal-free budget sites are exactly that — `max_tokens: int =
+max_tokens_for("kind")`, evaluated once at import and unreachable by any per-call signal.
+Sentinel pattern (`max_tokens: int | None = None`, resolve at call time) is proven in-repo by
+`judge_plan_conflict`. Each of the 26 needs a judgement about its real size driver; the JSON kinds
+need their own sizing model (`cast_plan` = rows × per-row; `motif_conformance` = a 20-word reason).
+
+**Full standing overview — board, off-board work, de-rot, loose ends:** RUN-STATE §*WHERE THE RUN
+STANDS*.
 
 **S7 slice 1 is DONE** — `worker-ai`'s distill window reserved 2048 for output while the
 request asked for 4096, so an 8k-context BYOK model was budgeted 10240 against an 8192
@@ -4170,6 +4330,611 @@ ARCHITECTURE decision below). Book state for the resumed run: Lâm Uyên (active
 exist; 3 characters (Tô Thanh Dao, Lâm Trạch, Huyết Vô Thường) still to create — the first test
 case for the new workflow.
 
+
+---
+
+# FROM `origin/main` (merged 2026-08-02) — the game-logic / glossary-KG track's history
+
+Kept verbatim. These sections were written on `main` while this branch ran; none of them
+overlap a section above (checked: zero shared headings).
+
+## 🗳️ ENTITY KIND: FIRST-WRITER-WINS → A RESOLVED VOTE (2026-08-02)
+
+Spec: `docs/specs/2026-08-02-entity-kind-resolution.md`. PO chose **all three** directions
+(vote · sub-kinds · facets) plus re-kind-by-mode. **M1–M3 shipped; M4 is the remainder.**
+
+**The estimator.** `entity_kind_votes(entity_id, kind_id, votes)` — one ledger, two jobs: the
+argmax is the **primary** kind, everything else above a floor is a **facet**. That is why all
+three directions fit one table; multi-label is the same rows read at a looser threshold.
+`glossary_entities.kind_id` **stays a scalar** (≈470 Go sites, KG's `NOT NULL` mirror, Neo4j) —
+it just stops being frozen. `domain.ResolveKind` is pure, so it is tested without a pool.
+
+Rules, each with a test that reds when the mechanism is removed:
+- **hysteresis** (`>1.5×`, `≥2` votes) — one stray observation must not re-kind; a near-tie
+  must not flip (every flip re-emits to the KG).
+- **refinement is exempt** — parent→descendant loses no information, so `terminology →
+  technique` needs no majority. This is the only way a corrected ontology can correct the data
+  the wrong one produced.
+- **roll-up + strict-majority descent** — `{technique 7, power_system 7}` beats `character 8`
+  as a branch, but an even split between siblings resolves to the **parent**. "If unsure, use
+  the generic kind" is now a rule, not a hope.
+- **a challenger that leads and loses is RECORDED** (`kind_conflict_id`) — the writeback said
+  `updated` and never `conflict`, so a standing disagreement was invisible.
+
+**Hierarchy** (`parent_kind_id` × 3 tiers): `terminology → {technique, power_system}`. This
+**describes** what the model already did — terminology collected 崑崙之妙術, 土遁, 五行方位.
+
+**Applied, on 封神演義:** 77 re-kinds + 77 outbox events (KG re-syncs through the existing
+path), then **idempotent** (a re-run applies 0). 姜子牙 **species → character**, keeping
+`species` as a *facet* — the second reading survives instead of being erased. 武王 → character.
+八九變化 → **technique**, as a refinement. 西岐 → organization **+ location**. Book-wide:
+character 272→302, species 227→202, organization 112→96, location 92→108. **399 entities carry
+a facet, 33 carry a live conflict.**
+
+**A re-kind is not always a MOVE — 17 of them are MERGES.** The dedup key is
+`(book_id, kind_id, normalized_name, scope_label)`, so moving into a kind that already holds
+that name is a unique violation. The first backfill aborted its whole transaction on one. Now
+detected, skipped, recorded as a conflict, and reported as `blocked_by_duplicate` — the run's
+output does not overstate what it did.
+
+**Three of my own defects, found by using it:** the alias-folded `loadKindMap` inverted to
+`generic` (an alias of `terminology`) and that value was going out to the KG as the entity's
+kind · pgx cannot bind `[]uuid.UUID` into `uuid[]`, failing opaquely where the same statement
+worked by hand · the import INCREMENTED, so four runs inflated 姜子牙's ledger 84 → 321 (ratios
+survived, the numbers were fiction) — it now RESTATES absolutely.
+
+**Verified** — glossary `internal/...` all green (`-count=1`) · translation **1117 passed** ·
+`tsc` clean · ai-provider-gate + db-safety-gate OK · bite-tested hysteresis / refinement /
+roll-up, each red when removed · live: backfill + a real extraction recording votes through the
+**writeback** path (20 new ledger rows).
+
+**M4 — the facets are now VISIBLE (API + FE).** `kind_labels` / `kind_conflict` ride the entity
+list *and* detail as one query each (a JSON sub-select, not an N+1). The list shows the primary
+badge solid, each secondary faded, and a standing disagreement as a **dashed outline with a
+`?`** — a genuine "we are not sure" that reads as one. Proven by effect in a browser, not by a
+green unit test: 陳塘關 renders `🏛 Organization` + `📍 Location?`, 姜子牙 renders
+`👤 Character` + a faded `🧬 Species / Race`, and the 9 event rows beside them carry no badge
+at all, so the overlay is signal rather than decoration.
+- Decoding is deliberately **tolerant** — a malformed facet yields no badge rather than a 500.
+  It is an advisory overlay on a kind the row already carries; a list that fails to load
+  because a badge could not be built would be strictly worse than a missing badge.
+
+**▶ NEXT, two decisions that are yours because both touch data:**
+1. **The 17 blocked merges.** A re-kind into a kind that already holds that name is a MERGE of
+   two entities, and merging is destructive. The pairs are recorded (`kind_conflict_id`) and
+   listed by `--apply` under `blocked_by_duplicate`.
+2. **`D-KG-KIND-FACETS`** — knowledge-service still mirrors ONE `kind_code TEXT NOT NULL`, so
+   the graph cannot filter on a facet. **Deliberately deferred** (defer-gate #1, out of scope):
+   it is a cross-service contract change, and you have a glossary↔KG entity-consistency
+   refactor coming that will re-cut this seam. Trigger: that refactor.
+
+## 🧭 THE KIND WAS WRONG, AND SO WAS MY READING OF ITS ZERO (2026-08-02)
+
+The PO challenged a claim rather than a line of code, and was right on both counts.
+
+**1 · `power_system` was two concepts sharing a code.** Its name reads as a graded ladder —
+練氣/築基/金丹, 大羅金仙 — the thing a model trained on this genre will look for. Its
+description, written the day before, said the opposite in as many words: *"the name says
+system but one art is enough."* Name and definition were arguing; the model followed the
+name, so individual arts (崑崙之妙術) went to `terminology` instead. **A misfile can be a
+missing-category error rather than a judgement error** (`BTG-A64`).
+- **Split at the System tier**: new `technique` kind (migrations `0056`+`0057`), and
+  `power_system` rewritten to mean the ladder — with an explicit licence to return **none**,
+  so a story without one is not pressured into filling it. `type`/`user`/`effects` retired
+  (soft, `deprecated_at`); `tiers`/`entry_requirement`/`capabilities` added.
+- **Verified live end-to-end**: adopt copied `technique` into a book, and **G5 sync**
+  surfaced 5 `update_available` rows for the redefinition and applied them.
+
+**2 · I read `power_system = 0` as a defect twice, and never checked the corpus.** The
+document argued first that it was a coverage gap, then that it was a typing failure, and
+produced a plausible mechanism for each. The marker count that seemed to settle it counted
+變化 · 陣 · 符 · 遁 — **arts, not tiers**. Re-scanned for the ladder itself, chapters 88–92
+of 封神演義 contain **零** 境界 · 修為 · 品階 · 等級 · 階級 · 層次 · 果位 · 金仙 · 大羅 ·
+天仙 · 太乙. There is no ladder in that book. **`power_system = 0` is the correct answer**
+(`BTG-A63`: *a zero is only evidence once you have shown the thing could have been there*).
+
+**3 · …and the split changed nothing, for a structural reason worth knowing** (`BTG-A65`).
+Re-run on the corrected catalogue: still zero. The stage-1 sweep cited **95 mentions** and
+one art-like string; 縱地行之術 · 陰符之術 never reached stage 2, which types only what
+stage 1 cites. **Under `edc_cited` the ontology can change TYPING but never RECALL.** A user
+who adds a kind and re-extracts will see the ontology change and the results not. The
+batched shape does not have this property — part of what its 7.4× input is buying, and it
+was not priced in when the cheap shapes were ranked.
+
+**4 · The sweep is cached now** (the gap left open yesterday). It was the one call nothing
+keyed: `prefer_cache` reported 100% of batches served and still spent 12,622 tokens. Keyed
+on the rendered sweep prompt, not the extraction shape hash — the sweep is handed no kinds,
+so busting it on a definition edit would re-spend for an answer that cannot change.
+- **Measured**: `always_refresh` 25,971 in / 6 executed → `prefer_cache` **0 tokens, 6/6
+  cached** → after the definition edit, `refresh_if_stale` **3 cached (the sweeps) / 3
+  executed (the typing)**, automatically, with no flag.
+
+**5 · Two of my own defects, found on the way.**
+- **Replay was fully broken and nothing went red.** Folding strategy + descriptions into
+  `profile_hash` left the consumer recomputing a bare `sha256(profile)`, so every replay
+  answered `profile_drifted`. The test computed the same bare hash the consumer did — both
+  mirroring a producer that had moved on. Fixed by decomposing the hash and storing the one
+  component that cannot be recomputed (`defs_hash` on the row, because glossary's
+  definitions drift); tests now call the production function.
+- **`SeedGenreKindAttr` seeded NULL descriptions** — `var desc *string // DefaultKinds carry
+  no per-attr description today`, stale since the field was added. Existing DBs were covered
+  by the one-shot 0036 backfill, which hid it; a **fresh** database would have seeded 93
+  nameless attributes while the Go struct held all 93 definitions. This also corrects
+  yesterday's overstatement that *"every extraction prompt this platform has ever sent was a
+  list of naked codes"* — the live path had attribute descriptions since 2026-06-22.
+
+**Verified** — translation-service **1117 passed** · glossary `internal/...` all green ·
+frontend `tsc` clean · ai-provider-gate + db-safety-gate OK · bite-tested ×3 (drop the
+`batch_idx>=0` filter → sweep leaks into replay; force the legacy hash path → replay reds;
+restore the old power_system wording → the ladder guard reds) · **live smoke** across
+translation + glossary as above.
+
+**6 · MEASURED under `batched` (ch90/92/94/96) — the model is right, the STORE overwrites it.**
+`technique` alone on ch96 returned three real arts (五雷正法, 土遁, 妖風). Tracing each to its
+stored row: 五雷正法 → **`power_system`** (first seen 08:20, under the definition this work
+deleted) · 土遁 → **`terminology`** (14:15) · 遁龍樁 → **`item`** (07:56) · 八九變化 →
+**`terminology`** (18:21, *the same run*, by an earlier batch) · 妖風 → `technique` ✓ — the
+only name nobody had claimed before. **One in five, and the one that worked was new.**
+- `findEntityCrossKind` is **oldest-wins** and returns the STORED kind by design, so the
+  first run that ever names a thing decides its kind permanently and later runs are
+  discarded silently (`updated`, never `conflict`). **`BTG-A66`: correcting an ontology
+  cannot correct the data the wrong ontology produced** — and that data is now the authority.
+- Within one run the batch order decides it: `terminology` is batch 1, `technique` batch 2.
+  Not a model preference. A for-loop.
+
+**▶ NEXT — the decision this leaves you (PO call, it mutates data):** fix `BTG-A49`. Options
+are (a) let a later extraction re-kind when the stored kind's own definition has changed
+since (the `defs_hash`/`source_hash` needed for that now exists), (b) record a kind CONFLICT
+instead of silently updating, so it surfaces for review, or (c) a one-off re-kind pass for
+the arts currently frozen under `power_system`/`terminology`/`item`. Until then, every
+kind-accuracy number this project quotes measures **arrival order**, not the model.
+
+**Also open:** the `event`/`terminology`/`power_system` batch **truncated on every chapter
+tested** (`finish_reason=length` at 133, 148, 233 entities). 233 entities from one chapter is
+degenerate output, and its results are missing from the cached rows entirely.
+
+## 🔗 GLOSSARY↔KG LINKAGE — both holes closed + backfilled (2026-08-01)
+
+Cleared before the entity-consistency refactor, because both defects corrupt the data that
+refactor would build on.
+
+**1 · 96% of one kind had no name.** The writeback resolved an entity's display attribute
+with a hardcoded `attrDefMap[kindID+":name"]`; every read path and the DB trigger use
+`code IN ('name','term')`. `terminology` is the only kind whose display attribute is
+`term`, so the lookup missed — and `if ok { … }` turned that into a **silent skip**: no
+`entity_attribute_values` row at all. One causal chain, three equal numbers: **215 of 224**
+had no `term` row → no `cached_name` → no `normalized_name`. That last one is the **dedup
+key** (`findEntityByNameOrAlias`/`findEntityCrossKind`), so every re-encounter created
+ANOTHER nameless row. Evidence and translations were lost too — both hang off the name's
+`attr_value_id`.
+- **Fixed both ends** (either alone still loses the entity): Go `displayAttrDef()` resolves
+  `name`→`term` at all **3** call sites and a miss is now an **error**, not a skip; the
+  Python parser accepts `name` **or** `term` and excludes `term` from attributes.
+- **Recovered:** names were never stored but survive in `extraction_raw_outputs`.
+  `scripts/backfill-terminology-names.py` restores them, then the existing M3b endpoint
+  (`dedup-name-variants?apply=true`) re-stamped `normalized_name` and merged the
+  duplicates — journaled, emitting `merged` outbox events that **re-sync the KG**.
+  **9 → 167 with a dedup key; 14 duplicates merged; 57 unrecoverable.**
+
+**2 · `chapter_index` meant different things to writer and reader.** The worker wrote the
+`enumerate()` index over the job's chapters; glossary's `before_chapter_index` windows it
+as a position in the **book**. **All 3,268 link rows were wrong, 88/88 chapters.**
+Multi-job: index 4 meant chapter 66, 14 indices each named several chapters. **Single-job:
+off by one** (`sort_order` is 1-based, `enumerate()` 0-based) — so known-entity windowing,
+spoiler windows and timeline cutoffs have been shifted for **every** book, not just
+re-extracted ones.
+- **Fixed:** book-service already returns `sort_order` on the payload the worker fetches;
+  it now prefers it, with a **loud** fallback. **Backfilled** from `chapter_id` →
+  `sort_order`: 0 wrong rows, 0 colliding indices (was 14).
+
+**Verified** — translation-service **1095 passed** · glossary-service `internal/...` all
+green · bite-tested (remove the `sort_order` read → red; an entity with neither `name` nor
+`term` still dropped) · **live on a fresh extraction**: a chapter at book position 92 now
+writes `chapter_index=92`, and its new `terminology` entities (`山河社稷圖`, `梅山七怪`)
+carry both a name and a dedup key.
+
+**Both pre-merge items are now CLEARED.**
+
+**`edc_cited` is WIRED and live** — sweep pre-pass, then stage 2 types from the citations
+rather than re-reading the chapter. `PLANNED` is now empty but the refusal gate is kept and
+re-tested; it is what stops the next declared-but-unwired name running as the default.
+
+**The −38.4% is attributed** (`BTG-A60`): running `single_call` WITHOUT delta over the same
+chapters recovers **49 distinct entities** — nearly all `event` (47→71) and `terminology`
+(6→16) — but only closes the gap to **−27.3%**. So the delta instruction is ~a third of it;
+**the rest is intrinsic to packing eight kinds into one response**, and no wording fixes an
+attention budget.
+
+**And the shape that does fix it** (`BTG-A61`), measured live on 5 fresh chapters:
+
+| shape | in/ch | entities/ch | vs `batched` |
+|---|---|---|---|
+| `batched` | 30,687 | 29.3 | — |
+| `single_call_delta` | 9,866 | 18.1 | **−38%** |
+| **`edc_cited`** | **13,397** | **27.2** | **−7% at −56% input** |
+
+⚠ **`power_system` came back ZERO — and reading the chapters says that is a TYPING failure,
+not a gap** (`BTG-A62`). All five chapters carry power-system material (9–20 markers each:
+`道術 神通 變化 遁 陣 符 法寶 玄功 妖術`), and it WAS extracted — under the wrong kinds:
+
+| entity | filed as | actually |
+|---|---|---|
+| 崑崙之妙術 | `terminology` | power_system |
+| 五行方位 · 八卦方位 | `terminology` | formation → power_system |
+| 梅山七怪 (a group of seven) | `terminology` | organization/species |
+| 哮天犬 · 雲霞獸 · 逍遙馬 (a hound, a beast, a horse) | `item` | species |
+| 狼牙棒 (a club) | `terminology` | item |
+
+The misfiling runs both ways. **This is the per-kind axis catching what the POC's Q4 could
+not**: that answer key covered only `location`/`organization`, so a shape could score 70%
+strict while shuffling techniques, creatures and objects freely. **A kind-typing claim is
+only as wide as the key behind it.** `edc_cited`'s discovery is excellent; its typing is
+unverified outside two kinds. **Not promotable yet.**
+
+**▶ NEXT**
+1. **Extend the answer key past `location`/`organization`** — the misfiles above are the
+   material — then re-run `edc_cited` at 15 chapters and score typing per kind.
+2. The 57 unrecoverable terminology names — only re-extraction can restore them.
+3. `BTG-A49` re-decide-on-merge — still the deepest unfixed thing, and untouched by any of
+   this: an entity's kind is still fixed by the first chapter that mentions it.
+
+
+## 🔀 EXTRACTION STRATEGY — the POC shapes ship as a PER-JOB parameter (2026-08-01)
+
+**PO call:** ship the promising shapes behind a switch and re-measure on a large book to choose —
+10 chapters is too small to decide. **Built as a per-job parameter, not a deploy flag**, because a
+global env var *cannot* A/B: it has to be flipped between runs, so the arms differ in *when* they ran
+as well as *how*, and `BTG-A41` is the measured case of exactly that confound. Per-job also keeps it
+off the global-flag path CLAUDE.md's settings boundary forbids for user-facing behaviour.
+
+**Shipped**
+- `POST /v1/extraction/books/{id}/extract-glossary` takes **`extraction_strategy`** — closed set
+  `batched` (default, byte-identical to the shipped shape) · `single_call` · `single_call_delta`.
+  Persisted on `extraction_jobs.extraction_strategy` so results are attributable, and surfaced in the
+  Jobs GUI params.
+- `app/workers/extraction_strategy.py` — the SSOT. Batching and the output ceiling were **extracted
+  out of the worker's 400-line async chapter processor** so they can be tested at all; a branch buried
+  in there is a branch nothing can red.
+- Single-call shapes get a **24k output ceiling** (`_EXTRACTION_SINGLE_CALL_OUTPUT_CEILING`) — not a
+  knob: one call must hold every kind's entities, which is the very thing `MAX_KINDS_PER_BATCH=3` was
+  protecting against, so the ceiling is part of the shape.
+- `DELTA_INSTRUCTION` moved into `extraction_prompt.py` and applied only by `single_call_delta`.
+
+**Two defects found by doing it, both mine, both caught by the live smoke rather than by reading**
+1. **`edc_cited` was accepted while the worker never implemented it** → it fell through to the default
+   batching. Proof: `edc_cited` and `batched` both cost **ZERO tokens** on the same chapter, having
+   produced the same extraction-cache key *because they were the same shape*. An A/B on that compares
+   the control against itself and reports no difference — the exact failure the closed set exists to
+   prevent. Now split into `STRATEGIES` (what the worker implements) and **`PLANNED`** (`edc_cited`),
+   refused at the boundary with *"measured but NOT YET WIRED"*.
+2. **`mcp>=1.27` had no upper bound.** A routine rebuild pulled **mcp 2.0.0**, which removed
+   `mcp.server.fastmcp` — imported at module scope by `loreweave_mcp/context.py` — and
+   translation-service **failed to boot**. Latent in every Python image; it would have surfaced on
+   whichever service was rebuilt next, with nothing in that diff to explain it. Pinned `>=1.27,<2`.
+
+**Bite-tested (NV-2), each restored:** silent fallback on an unknown strategy → 1 red · emptying
+`SINGLE_CALL_SHAPES` → 3 red. The second bite **found a hole in my own tests**: `parametrize(...,
+sorted(SINGLE_CALL_SHAPES))` over an empty set *skips* rather than fails, so the suite would have gone
+green while the shapes reverted. Added an explicit non-empty guard (NV-3).
+
+**Verified** — translation-service **1089 passed** · migration applied (`extraction_strategy` column,
+default `batched`) · **live**: `garbage` → 400 naming the legal set, `edc_cited` → 400 "NOT YET WIRED",
+`single_call` → 202 and ran a genuinely different shape (fresh cache key, real tokens), omitted → 202
+defaulting to `batched`.
+
+## 🏆 A9 — the shape to wire, and a defect older than the POC (2026-08-01)
+
+`BTG-A55` said an event has to be *labelled*, not quoted. A8 tested the **enumeration** and never
+tested the **constraint** — its sweep still said to name each thing *"as the text names it, or with
+the exact phrase the text uses"*, a verbatim rule applied to the one category that cannot satisfy it.
+**A9 changes only that**: the naming rule is split by category — verbatim for things that have names,
+**composed** for events — while the evidence stays verbatim either way, so grounding is untouched by
+construction.
+
+| | A0 | A7 | A8 | **A9** |
+|---|---|---|---|---|
+| event | 34 | 0 | 2 | **8** |
+| terminology | **0** | **0** | **0** | **6** |
+| kinds at zero | 1 | 2 | 1 | **0** |
+| **new**/ch | 9.7 | 12.5 | 13.5 | **15.8 (+63%)** |
+| input | 22,614 | 9,663 | 11,687 | **10,330 (−54.3%)** |
+| grounded | 80.1% | 92.7% | 92.9% | 92.6% |
+| trunc / lost | 0/0 | 0/0 | 5/1 | **0/0** |
+
+Its events are unmistakably the composed kind the baseline makes: `九龍宴 · 燒毀軒轅墳狐狸 ·
+比干之死 · 聞太師上奏十條 · 聞太師出征東海`.
+
+> **`BTG-A56`** — A9 is the **only arm that abandons no kind**, and the fix was one sentence of
+> permission, not machinery. It is also the only arm that ever produced `terminology`, which was
+> **0 for every arm including the baseline**: the shipped extractor has been silently losing a whole
+> kind for its entire life, because the prompt only ever asked for *names*.
+>
+> Caveats: events reach **8 vs a baseline 34** — the permission recovers the category, not the
+> volume. And `terminology`'s six are mostly `resolved` (they do occur verbatim), so on n=6 that is
+> likelier prompt attention than the `BTG-A55` mechanism.
+
+**Superseded, kept because it was instructively wrong:** `14` and an earlier draft of `15` said to
+take `event` OUT of the EDC shape and give it its own path. Right diagnosis, wrong remedy — the
+constraint could just be relaxed for that category.
+
+## ⚠ THE 30-CHAPTER A/B REVERSES THE SHIP-IT RECOMMENDATION (2026-08-01)
+
+Full write-up: [`BOOK_TO_GAME/16`](../03_planning/BOOK_TO_GAME/16_book_scale_ab.md). Chapters 58–87 of
+封神演義, **interleaved** (even→`single_call_delta`, odd→`batched`), 15 each, no shared chapter, cheap
+arm first, through the **real pipeline** (worker + writeback + dedup + merge, not the harness).
+
+**Cost — better than the POC.** in/ch 30,687 → **9,866 (−67.9%)** · out/ch 9,773 → **4,107 (−58.0%)**
+· total **−65.5%** · wall **−55.8%**. One pass over the 100-chapter book: **4.05M tokens / 2.7 h →
+1.40M / 1.2 h.**
+
+**Coverage — the reversal.** Distinct entities on each arm's own chapters, **440 → 271 (−38.4%)**, and
+it loses on EVERY kind, worst where the kind is rarest:
+
+| character | location | item | event | organization | species | power_system | terminology |
+|---|---|---|---|---|---|---|---|
+| −22.8% | −17.4% | −16.4% | −36.5% | −51.4% | −61.8% | −68.2% | **−80.0%** |
+
+> **`BTG-A57`** — one call for eight kinds spends its attention where the chapter is densest and the
+> long tail pays. So `MAX_KINDS_PER_BATCH=3` was buying something nobody had named: **attention per
+> kind**, not just truncation safety. **`15` §8's "ship A4 as the default" is WITHDRAWN** — this is a
+> 38%-coverage-for-65%-cost trade, i.e. a decision, not a default.
+>
+> **`BTG-A58`** — a zero-check is not a coverage check. `kinds_zero` reports **0 for both arms**;
+> nothing hit zero, everything shrank. The axis has to be the **per-kind RATIO vs baseline**, measured
+> at a scale where the known-entity context is saturated. Ten chapters with a frozen 50-entity
+> snapshot is a regime in which this defect cannot appear — every POC axis was green.
+
+Chapter sizes matched within **4.5%** (18,589 vs 19,423 mean bytes), so content volume does not
+explain it. Ordering does not either: `batched` ran second, from a glossary the other arm had already
+added 164 entities to, and still created more (248 vs 164).
+
+**`BTG-A59` — a defect found on the way.** `chapter_entity_links.chapter_index` is written by the
+worker as the index **within the job's chapter list** (its own comment says so), while
+glossary-service's `before_chapter_index` documents and windows it as a position **in the book**.
+Measured: index 0 maps to **6 different chapters**, 1–14 to 3 each, and 87 distinct chapters carry
+links whose index never exceeds 56. Any book extracted in more than one job (resume, incremental,
+this A/B) has colliding indices, so known-entity windowing and anything keyed on chapter order
+(spoiler windows, timeline cutoffs) reads a number that does not mean what it says. **Not fixed** —
+needs the real `sort_order` at write time plus a backfill.
+
+**▶ NEXT**
+0. **Run `single_call` WITHOUT the delta instruction at this scale.** `single_call_delta` is two
+   changes at once and this A/B cannot separate them. If coverage recovers, the delta instruction is
+   the culprit and the one-call saving is keepable; if not, the loss is intrinsic to packing 8 kinds
+   into one call.
+0b. **Measure A9 (`edc_cited`) at book scale.** Its two-stage sweep gives each kind a dedicated pass
+   at the chapter instead of making them compete inside one response — exactly the mechanism
+   `BTG-A57` says the one-call shape lacks. At POC scale it raised coverage on every axis.
+1. **Wire A9 as `edc_cited`** (currently `PLANNED`, refused at the boundary). Two-stage call flow.
+2. **Fix `BTG-A59`** — write the real `sort_order` as `chapter_index`, plus a backfill. It silently
+   corrupts every chapter-ordered read on any multi-job book.
+3. Then `BTG-A49` re-decide-on-merge — still the deepest fix, and untouched by any of this.
+
+**Scale note (PO):** the 4,000-chapter book was **destroyed by a migration bug**; the corpus survives
+but is not worth re-measuring. 100 chapters is the working scale, and at the measured baseline
+(22.6k in/ch, 65.5 s/ch) the old flow costs **~2.9M tokens and ~1.8 h** for one pass of it.
+
+## 🔬 EXTRACTION POC — instrument repaired, arms not yet run (2026-08-01)
+
+**Why:** the PO's economics — 24h and ~50M tokens for 700 chapters of a 4,000-chapter book at
+*medium* detail; a game needs 3–4 enrichment layers, so 5–10× that. Measurement first
+([`BOOK_TO_GAME/13`](../03_planning/BOOK_TO_GAME/13_extraction_cost_and_quality.md)), arms after
+([`/14`](../03_planning/BOOK_TO_GAME/14_extraction_poc.md)).
+
+**Measured (instrumented, 57/100 chapters of 封神演義, then cancelled)**
+- **21,834 in + 6,835 out tokens/chapter**, 3 LLM calls. → ~115M tokens for a 4,000-chapter book.
+- **7.4 chars of prompt per 1 char of source.** Chapter text is 40.8% of input *and is sent 3×*;
+  the source read once is **13.4%**. `MAX_KINDS_PER_BATCH=3` fixed an output-truncation bug by
+  **tripling the input**, and that price had never been measured. One call = **−55% input**.
+- `SYSTEM_TEMPLATE` puts the per-batch `{dynamic_schema}` **before** the static boilerplate and the
+  known-entity block, so ~10k byte-identical chars/chapter sit downstream of the cache break.
+- **88% of entity writes are re-writes.** The known-entity block costs input and does not buy the
+  output saving it exists for; it also carries `人` ("person", 8 aliases) as an entity.
+
+**Shipped — step 0 only: the measuring instrument**
+`validate_evidence` reported **44.6% unmatched** on 1,739 real rows where only **2.4%** of quotes
+were fully absent — 39% differed only in punctuation/width, 19% were faithful ellipsis abridgements.
+An instrument whose noise floor is 18× the defect cannot rank arms, so it was repaired **before** any
+arm ran: punctuation/width fold (mapped back to real offsets), ellipsis-fragment path, near-match
+threshold, plus two statuses `abridged`/`partial` that persist with **NULL offsets** (no single span
+equals an abridged quote; claiming one is the T1 fabricated-citation failure).
+- Re-scored all 1,739: unmatched **44.6% → 9.8%**, resolved 55.0% → 72.5%. **Strictly monotone**
+  (every move is `unmatched →`, `ambiguous` unchanged at 7), **0 offsets whose span omits the quote**,
+  and the offline classifier + shipped validator independently agree on the same **171** residue.
+- Cross-service closed set moved on **both** sides (Go `evidenceProvenanceFields`) + a parity test
+  that parses the Go switch — the drift class where Python emits a status Go degrades to `unverified`.
+- **Bite-tested 3 ways** (NV-2): drop `abridged` from the Go gate → parity reds; slacken the
+  near-match threshold to 0.05/1 → **7** red incl. two pre-existing; weaken the ellipsis check to
+  "any fragment" → 2 red. Each restored.
+
+**Verified** — translation-service **1070 passed** (`-n auto --dist loadgroup`) · glossary-service
+`internal/api` ok · ai-provider-gate OK · doc-language-gate OK.
+
+**Cacheable-prefix, settled deterministically** (`prefix_cacheability.py` — string prefixes, no
+model, no timing noise), chars per chapter over the frozen slice:
+
+| shape | sent | cacheable | fresh after a perfect cache |
+|---|---|---|---|
+| A0 as shipped (3 batches) | 35,981 | 8,288 | 27,693 |
+| **A1 one call** | 16,212 | 9,806 | **6,405 (−76.9%)** |
+| A2 reorder only | 36,092 | **15,918** | 20,174 (−27.1%) |
+| A3 one call + reorder | 16,249 | 9,840 | 6,409 (−76.9%) |
+
+`BTG-A45` — **A1 subsumes A3.** With one call per chapter the whole system prompt is already
+byte-identical chapter to chapter, so reordering adds nothing on top; it is the **fallback** for when
+batching cannot be given up (there it lifts the within-chapter shared prefix 1,506 → 9,102, 6×). `14`
+predicted A3 would be the interesting arm — it is not. Upper bound, not a realised saving: LM Studio
+caches server-side and reports no cache tokens on the chat endpoint, so only wall-clock (and a paying
+provider's bill) can corroborate it.
+
+**Source correction (PO):** a claim in `provider-registry-service/internal/provider/prompt_cache.go`
+that prompt caching "won't help an A3B/A4B MoE model — LM Studio bug #1563" is **wrong and was
+removed**. Do not reintroduce it; it would have been used to discount A2/A3 on this stack.
+
+**ARMS RUN — full card in [`BOOK_TO_GAME/15`](../03_planning/BOOK_TO_GAME/15_extraction_poc_results.md).**
+Per chapter, 10 chapters/arm, no DB writes, harness imports the worker's own builders + parser +
+validator (only the call loop varies).
+
+| arm | in | out | calls | s | ents | Q1 grounded | Q4 strict |
+|---|---|---|---|---|---|---|---|
+| A0 baseline | 22,614 | 6,189 | 3.0 | 65.5 | 20.1 | 80.1% | 59.3% |
+| A0b rerun | 22,614 | 6,548 | 3.0 | 66.1 | 18.4 | 79.3% | 61.7% |
+| **A1** one call | **8,603** | **3,282** | 1.0 | **31.1** | 17.6 | 80.1% | 62.2% |
+| A2 reordered | 21,889 | 6,646 | 3.0 | 71.3 | 17.9 | 77.7% | 65.4% |
+| A3 one call+reorder | 8,610 | 3,235 | 1.0 | 30.5 | 17.5 | 77.7% | 63.0% |
+| **A4** + delta-only | 8,688 | 3,301 | 1.0 | 31.2 | 18.1 | **81.8%** | **67.5%** |
+
+- **`BTG-A46` variance floor is ~8.5% yield** (A0 vs A0b, same arm twice). Every *quality* delta on
+  the card sits at or below it; only the **cost** deltas (60%+) clear it. Do not read a 2pp move.
+- **`BTG-A47`** one call makes a parse failure **all-or-nothing** — A3 lost a whole chapter to one
+  malformed JSON. Shipping A1/A4 requires a retry; the token numbers hide this.
+- **`BTG-A50`** three harness bugs each reported a *plausible number, not an error* (wrong arg → "1
+  call, 7.6k input"; `kind` vs `kind_code` → "Q4 = 0.0%"; NULL `source_kind_code` → "no
+  organizations"). Caught only because A0 had a figure to reproduce (`BTG-A44`).
+
+**THE HEADLINE — `BTG-A49`: an entity's kind is fixed by the FIRST chapter that mentions it and is
+immune to every later chapter.** `findEntityCrossKind` returns the matched entity's kind and the
+caller merges into it (`mergeKindID = crossKindID`); nothing in the extraction path ever writes
+`kind_id` — the only route that does is `reassignEntityKind`, a **human curation endpoint**. Evidence:
+12 of 25 matched names are `organization` in the glossary and `location` in every fresh arm (right in
+11/12, incl. **終南山**); and accuracy is *lower* for recurring entities (41.7%) than one-off ones
+(66.7%) — more evidence buys nothing. ⇒ **`09`'s 64%, `10`'s 75%, and Q4's 43.8% all measured the
+STORE, not the model.** Per-call typing is ~100% lenient on the key's subset.
+
+- **`BTG-A48`** `10` §6 falsifier settled: **16 collapsed pairs (17.6%) vs 58 plain misfiles (63.7%)**
+  — `BTG-A28` FALSIFIED, and 17.6% lands on the metonymy literature's ~19% base rate (`BTG-A31` was
+  right). Fix is levers ④+② , **not** lever ① (split the pair). Morphology lint scores 96.9%
+  precision / 74.8% recall — a good flagger that must never rewrite (下虛門 = a **sect**, 黃門 = a
+  **clan**).
+
+**A7 (run after the others) is the most promising shape — and it broke the scorecard.** EDC whose
+stage 2 reads stage 1's CITATIONS instead of the chapter again (A5's whole premium was sending the
+chapter twice). −57.3% input · grounded **92.7%** · fabrication **1.7%** · Q4 strict **77.1%** · 0
+chapters lost · yield **+15.4%** — best on every axis. Then the kind mix: **`event` 34 → 0**, item
+19 → 7, character 79 → **160**. Its yield gain is *double the characters*, not coverage; a
+named-mention sweep never proposes an event.
+
+> **`BTG-A53` — aggregate yield is not an anti-gaming axis; per-kind yield is.** Q5 was on the card
+> exactly to stop an arm getting cheap by extracting less, and A7 defeated it by extracting more of
+> the easy kind. Every axis stayed green while a whole kind went to zero. **The card would have
+> shipped it as the best arm**; it was caught only by printing the distribution, which nothing
+> required. Same shape as `BTG-A27` a level up.
+
+**Wiring the axis in found three more instantly:** A2, A3 and A5 had each abandoned `power_system`,
+all green on the aggregate card, none noticed. The defect was wider than the arm that exposed it —
+the usual shape when an axis is missing. Same table surfaced a pre-existing defect: **`terminology`
+= 0 for EVERY arm including the baseline**, though the kind is adopted and in every prompt.
+
+**`BTG-A54` — for a DELTA arm, total yield and new-entity yield say opposite things; `new/ch` is the
+fair one.** A4's `organization` count of 1 vs the baseline's 19 looks like a 95% collapse; A0's
+nineteen are **商 ten times and 西岐 eight times**, the same two entities re-extracted every chapter,
+and A4 emits 商 once because the delta instruction told it to. On `new/ch`: A0 9.7 vs **A4 9.5 —
+a 2.1% gap, inside the noise floor**, against a 10.0% gap on totals. **A4's recall cost is suppressed
+repeats, not lost discoveries, so the case for shipping it is stronger than the headline table.** By
+the same column A7 finds **12.5 new/ch, +29% over baseline** — its discovery gain is real even though
+its kind mix is broken.
+
+**▶ NEXT**
+1. **Ship A4's shape** into `extraction_worker` — one call, delta instruction, raised output ceiling,
+   **plus a parse-failure retry** (`BTG-A47`). Best kind mix of any cost arm.
+1b. **A7 over the seven NAMEABLE kinds; give `event` its own path.** A8 tried the prompt route and
+   failed — see below.
+
+**A8 (A7 + a sweep enumerating every category, events in capitals) — `BTG-A55`.** It recovered
+`item` 7→20 and `power_system` 1→4, and moved `event` **0 → 2 against a baseline of 34**. The reason
+is structural, not a prompt-tuning gap:
+
+```
+A0  文王逃離朝歌 · 費仲與尤渾密謀 · 雷震子食仙杏變形 · 比干剖心 · 武吉打死王相 …
+A8  九龍宴 · 弒君
+```
+
+A0's events are **composed noun phrases** ("King Wen flees Chaoge") that appear nowhere in the text as
+a string; A8's two are actual words. **The `event` kind is authoring, not extraction, and a
+citation-constrained sweep structurally cannot do it** — the constraint that makes EDC grounded (quote
+it verbatim) is the same one that forbids naming an event. Seven of the eight kinds are *find the name*;
+one is *invent a label for something the text does*. `03_two_jobs.md` one level down, living inside the
+extractor because the schema lists all eight kinds as though alike. **Consequence for the game tier:
+quests are events, so they cannot be extracted — they must be authored, which is what this tier is for.**
+A8's cost also disqualifies it: output **+46.4%**, **5/10 chapters truncated**, 1 lost, 74.5 s/chapter —
+slower than the 3-call baseline.
+2. **Build re-decide-on-merge** (`BTG-A49`) — the real kind fix, and not a prompt change. Surface the
+   disagreement as a conflict instead of oldest-wins.
+3. Re-baseline every kind-quality claim after (2). Until then do not quote them as model accuracy.
+4. **A6 (GLiNER) is CLOSED — negative result.** 191 spans, 42s, CPU, zero tokens — but only **3
+   entities in common with A4** (177 LLM-only, 188 encoder-only). 182 of 191 spans collapsed to
+   `character`; its longest "persons" are whole clauses (`堯崩` = "Yao died"), its shortest are common
+   nouns (劍, 將軍). **`BTG-A52`: no span-boundary sense in unsegmented classical Chinese, so it is
+   not a second reader — it is a different task.** `12` §5's warning was right; the measurement cost
+   an afternoon and no tokens, and `BTG-A43`'s service-shaped adoption cost never has to be paid.
+   The second-reader slot goes to the morphology lint (free, 96.9% precision) + KG typed edges.
+5. **A5 (EDC) clean run is the OTHER winner:** grounded **85.1% (+5.0pp, 6× its axis floor)**, lowest
+   fabrication (7.2%), yield only −3.0% where other cost arms lose 10–13% — at −38% input over 2
+   calls. **`BTG-A51`: EDC improved grounding and recall, NOT typing** (its Q4 lenient 94.1% is the
+   only one below 100%) — the opposite of what `11` §3 recommends it for. Consistent with `BTG-A49`:
+   per-call typing had no headroom to win. **Next arm nobody ran: EDC built on A4's one-call shape.**
+
+**⚠ Open**
+- 100-chapter extraction **cancelled at 57/100**; 872 entities kept. Resume = new job with the
+  remaining chapter_ids.
+- Stored `provenance_status` rows are **pre-repair**; the re-score was computed, not written back.
+- A5 (EDC) first run was **mis-parameterised** (stage-1 sweep capped at 4k → 3 chapters truncated to
+  zero); re-run at 8k. Its first-run signal was interesting anyway: grounded **+6.4pp**.
+- Answer key was **agent-labelled at the PO's instruction**, not PO-labelled; criteria recorded in the
+  labelling script, 162 rows, auditable.
+
+## 🔐 GAME CLIENT AUTH — login + register + recovery, one account with the novel app (2026-07-30)
+
+**Scope:** `frontend-game` had no auth at all (`/login` was a "Continue as guest" button and
+`@loreweave/auth-client` was literally `export {}`). Now it signs in against the SAME
+`auth-service` + `users` table the novel app uses — **no migration, no second registration**.
+
+**Shipped**
+- **`@loreweave/auth-client`** — real: login · register · refresh (single-flight, rotation-safe) ·
+  `authedJson` (silent-refresh + one retry + multi-tab rotation race) · **`logout` that REVOKES
+  server-side** (it previously only cleared localStorage; the refresh token stayed valid) ·
+  `checkPassword` (mirrors the Go policy so the user learns WHICH rule failed).
+- **Login / register / `/reset`** routes + `RequireAuth` guard + session hydrated synchronously.
+- **i18n foundation** — `@loreweave/i18n` filled in (was a skeleton), 4-locale cluster
+  (en/ja/vi/zh-TW), `auth` + `common` namespaces, language switcher. **Non-`en` locales are
+  TOOL-GENERATED** per ML-7 — never hand-edit them, run
+  `python scripts/i18n_translate.py --locales-dir packages/i18n/locales --ns <ns>`.
+- **HTML transactional mail** (auth-service) — `multipart/alternative` (text part first, RFC 2046),
+  RFC 2047 subject encoding, implicit-TLS mode for port 465, **async send** (a real relay is
+  200-2000 ms and used to sit inside the register request).
+- **Toolchain**: root `eslint.config.mjs` covering `frontend-game/{src,tests}` + `packages/*/src`
+  (was one dir, everything else default-uncovered) + a staged-scoped eslint pre-commit gate.
+
+**Two HIGH fixes from `/review-impl`**
+1. `frontend/nginx.conf` proxied `/game/` to a LITERAL upstream. `frontend-game` is profile-gated,
+   `frontend` is always-up ⇒ a plain `docker compose up` would have failed to start the novel app's
+   nginx (`host not found in upstream`). Now resolver + variable, so a missing game container is a
+   502 on `/game/` only.
+2. `scripts/i18n-completeness-gate.py` was hardcoded to the novel tree and matched staged paths by
+   the substring `/i18n/locales/` — present in BOTH trees. Staging a game locale validated the
+   *novel* app and printed OK. A game namespace with zero translations passed silently. Gate now
+   iterates `LOCALE_ROOTS` with per-root anchoring; `i18n_translate.py` gained `--locales-dir`.
+
+**Verified** — TS 211/211 · Go auth-service all `internal/...` green (6 new mail tests) · lint 0
+errors · i18n gate 2 trees × 35 namespaces. Live: login → SSO into the novel app on one origin
+(`lw_auth` + `lw_language` shared) · register (weak-password + mismatch + verify notice, `locale`
+reached the DB) · reset (old pw 401 / new pw 200 / token single-use 400).
+
+**⚠ Deferred / open**
+- `D-GAME-RESET-DEEPLINK` — the emailed link points at `PUBLIC_APP_URL/reset` = the **novel** app,
+  not `/game/reset`. Works (same token, novel app owns `/reset`), but a game user lands in the
+  writing app. Needs a product call on per-source links.
+- `D-GAME-SSO-ORIGIN` — SSO requires both SPAs on ONE origin. Prod wiring exists
+  (`frontend/nginx.conf` `location /game/`); **not yet deployed or smoked in prod**.
+- `D-MAIL-DNS` — SPF/DKIM/DMARC are DNS-side. Until they exist, real Gmail delivery lands in spam
+  no matter how the HTML looks. Relay itself is config-only (`SMTP_*`), no code change needed.
+- `D-GAME-SETTINGS-SOURCE-TIER` (LOW, SET-4) — the language switcher shows the value, not which
+  tier it resolved from.
+- 6 pre-existing eslint warnings now VISIBLE for the first time (setState-in-effect in
+  `EchoPanel`/`RotatePrompt`, array-index keys) — lint had been dead repo-wide.
+
+---
+
 ## 🏗️ ARCHITECTURE — chat = supporter, compile+draft = subagent (2026-07-26)
 **Human decision (this session):** the chat agent is a lightweight **SUPPORTER** (atomic edits —
 edit plan/glossary/KG, suggestions); the heavy **COMPILE + long-run DRAFTING** runs in the
@@ -4276,6 +5041,27 @@ composition **authoring-run SUBAGENT** (designed for focused, high-attention lon
   - TUNING (unchanged): per-scene length steer; `link_scene_plan` leaves scene `target_words` NULL.
   - Full browser E2E of the whole loop (chat foundation → compile → materialise → subagent draft) —
     every leg is unit/integration/live-smoke proven; a single Playwright pass would be the capstone.
+
+## 📦 DEPENDABOT TRIAGE (2026-07-26) — 32/49 merged; 4 PRs open for review; rest HELD w/ triggers
+Deep-dive verified every remaining bump by **attempting the migration** (cargo/tsc/nest build), not assuming.
+
+**Open PRs awaiting merge (all verified locally):**
+- **#154** fix(game-server) Colyseus 0.17 Room typing — tsc 0 + 40 tests. Merge first (unblocks #136).
+- **#155** syn 3 — zero code changes, `cargo check --workspace` clean, 6 tests. (Closes #105)
+- **#156** cms-frontend React 19 + TS 7 — vite build + 41 tests. (Closes #113, #114)
+- **#157** frontend-game + poc TS 7 — both `build` clean. (Closes #112, #120)
+
+**HELD Dependabot PRs (kept OPEN — commented on each; NOT declined). Revisit triggers:**
+| PR(s) | Held reason (reproduced) | Revisit trigger |
+|---|---|---|
+| #117 TS7 /frontend | `npm install` ERESOLVE + `eslint` crash (typescript-eslint 8.65 hard peer `<6.1.0`; typescript-estree reads removed TS7 internals). tsc/vite build themselves pass | `typescript-eslint` supports TS 7 (`^7` peer) |
+| #122 #134 #140 #148 TS7 /gateways | `nest build` → `getParsedCommandLineOfConfigFile is not a function` (@nestjs/cli uses removed programmatic TS API) | `@nestjs/cli` supports TS 7 |
+| #136 TS7 /game-server | raw tsc OK, but build blocked by pre-existing colyseus errors | **#154 merges** → bump version (no tsconfig change) |
+| #106 #107 #108 rand 0.10 | `cargo check` 11 errors (`random_range`/`random_bool` off `Rng`) + deterministic-generator seed re-tuning (proven precedent). Routine bump | security advisory, or a planned tilemap RNG-sequence migration |
+| #115 vite-static-copy 4 | needs vite 6+; main frontend on vite 5.4 → forces full vite-6 FE migration for a low-value patch | a planned frontend vite-6 upgrade |
+| #126 #145 datasets 5 | eval-only; DocRED anchor uses `trust_remote_code=True` (removed in datasets 4) → already broken on installed 4.x | `anchor_runner.py` DocRED source reworked |
+
+**Trigger check (greppable):** `npm view typescript-eslint version` ≥ TS7-peer · `npm view @nestjs/cli` TS7 support.
 
 <details><summary>MILESTONE-1 detail + earlier investigation (2026-07-26)</summary>
 
@@ -5686,6 +6472,12 @@ UI"* and **there is no UI**, so an agent calling it today writes a row **no huma
 | **D-CHAT-TURN-RETRYABLE-SWALLOW** | 🔴 Found reviewing W1. In `runner.py`'s **chat-turn** branch a `retryable` persist failure falls straight through to `_mark_pending_processed` + `_advance_cursor` — the turn is silently SKIPPED and counted as processed. The chapters branch has the bounded-retry cursor pattern; chat has none. | #2 — needs the chapters branch's retry-accounting replicated, not a one-liner. Pre-existing; W1 makes 503 newly reachable here. |
 | **D-KG-CJK-SUBSTRING-FALSE-POSITIVE** | Surface matching uses ASCII-only boundary lookarounds, so a short CJK name matches INSIDE a longer word (`林` selected from `森林`). Confirmed live + pinned by `TestCjkBoundary`; shared with knowledge-service's `entity_detector`. | #2 — the real fix is CJK segmentation (jieba is already a knowledge-service dep) or a min-length/aliased-only rule, applied to BOTH matchers together. Documented, not silent. |
 | **D-GLOSSARY-PROJECTION-FAILURE-CONFLATION** | `project_glossary_entities_to_nodes` still returns an all-zero `ProjectionResult` for BOTH "glossary empty" and "glossary unreachable" — the same conflation W1 removed from the extraction path. Lower severity: it is a foreground tool with a visible result, not a background mint. | #1 out of scope of this cycle (tool contract + its caller's messaging), but the fix shape is now established. |
+| **D-ENTITY-LIFECYCLE** | 🔴 **The system has no entity lifecycle.** Four services keep four private notions of "gone" (`deleted_at`, `status`, `alive`, KG `archived_at`, translation `is_glossary_stale`) and none is connected to any other. `grep -rn "deleted_at\|entity_deleted" services/knowledge-service/app` returns **0** — the knowledge layer has never been told the concept exists, so a trashed entity still reads as **`canonical`** in the graph and still reaches generation. Full investigation, with per-call-site evidence: [`docs/specs/2026-08-02-entity-lifecycle-architecture-gap.md`](../specs/2026-08-02-entity-lifecycle-architecture-gap.md). | #2 large/structural — this is a **re-architecture**, not a filter fix: KAL was built after glossary against an undefined lifecycle and invented its own. PO 2026-08-02: rebuild it as a correct architecture and re-wire it, rather than patching filters, and it is **game-tier critical** — the game generates narrative from canon, so a retraction the graph never hears about becomes world state. Trigger: the glossary↔KG entity-consistency refactor. |
+| **D-KG-KIND-FACETS** | knowledge-service mirrors ONE `kind_code TEXT NOT NULL`, so the graph cannot filter on the secondary kind labels shipped 2026-08-02 (`glossary_entities.kind_labels`, 399 entities carrying one). | #1 out of scope — a cross-service contract change, and the refactor above re-cuts exactly this seam, so doing it first is likely wasted. Trigger: that refactor. |
+| **D-GLOSSARY-EVENTS-NO-SOT** | `contracts/events/_registry.yaml` calls itself the *"AUTHORITATIVE list of every event_type"* and contains **zero** `glossary.*` entries; the real list is a Go `const` block (`outbox.go:45,51,530`) hand-mirrored by every consumer with no generator and no drift gate. | #2 large/structural — registering one event means backfilling all three plus `go_struct` + `make eventgen` + the CI validator. Trigger: adding any new glossary event (i.e. `glossary.entity_deleted`, which D-ENTITY-LIFECYCLE needs). |
+| **D-RUST-LLM-BUDGET-SEAM** | `call_budget` is Python-only, so every Rust LLM call site sets its cap with a literal — `commit-service/src/llm_driver.rs` `.with_max_tokens(256)` (arrived with the 2026-08-02 merge) and tilemap's L3 harness. The Python gate cannot see them, so the backlog number understates the repo. | #2 large/structural — needs a Rust equivalent of the seam (an `OutputKind` + a per-service profile registry), which is the Rust half of **S7**. Recorded in the `commit.combat.npc_decision` row of `contracts/generation-paths.yaml` so it is greppable from the code, not only from here. |
+| **D-SWEEP-TRUNCATION-LIVE-SMOKE** | The two-stage sweep's `finish_reason=length` guard is unit-proven against a fabricated `Job`. What is NOT proven is that a real provider stamps `finish_reason` where this code reads it, on the sweep call specifically. | #4 blocked-on-external at dev time: needs a stack-up plus a model that actually truncates — i.e. a deliberately tiny cap on a real chapter window. Do it on the next `edc_cited` live run; the warning line (`SWEEP TRUNCATED`) is the thing to look for. |
+| **D-EPOCH-EVENT-PROJECTION-CLASSIFICATION** | `ruleset.epoch_activated` was allowlisted in `projection-coverage-lint` as an administrative transcription by the branch that MERGED main, reading `epoch_commit.rs` — not by the event's author. | #4 blocked on a product/ownership decision: the game track's owner should confirm the classification (or add a projection arm). Harmless if right, a silently-unprojected event if wrong. |
 | **D-PUSH-LIVE-SMOKE** | The M5 closed-tab VAPID push not proven live (mechanics unit-proven; routes live-smoked; SSRF guard live-verified). | #4 blocked-on-external: needs a deploy with a VAPID keypair + HTTPS + a browser push service (FCM/autopush) — none bootable at dev. Do the closed-tab content-free E2E there. |
 | **D-PUSH-ACCOUNT-TEARDOWN** | M5 push subs not auto-deleted on ACCOUNT deletion (sign-out DELETE IS wired). `DeleteAllForOwner` primitive is built. | #2/#4: account erasure is admin-cli-driven, no AMQP event to bind. Wire to an erasure event OR add `push_subscriptions` to the admin erasure purge. |
 | **D-STUDIO-07S-COMPACTION-BREAKER** | 🔴 **P1 — a real defect, not a gap.** 07S has **no microcompact tier, no `hard_truncate`, and no `compaction_failed` breaker** (0 grep hits) — while **Agent Mode's L3/L4 autonomous runs are SHIPPED and running**, and 07S §3/§10 make that breaker **MANDATORY for headless runs**. An unattended run can therefore fail compaction with nothing to stop it. **Raise it, scope it, build it.** | #2 large/structural (needs its own slice + design), **not** "later" |

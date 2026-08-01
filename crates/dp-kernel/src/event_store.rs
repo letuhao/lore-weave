@@ -221,6 +221,7 @@ pub mod shared_test_suite {
             recorded_at: format!("2026-05-29T00:00:{:02}Z", aggregate_version % 60),
             payload: json!({ "v": aggregate_version }),
             metadata: None,
+            ruleset_digest: None,
         }
     }
 

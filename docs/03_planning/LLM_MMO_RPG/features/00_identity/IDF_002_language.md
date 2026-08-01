@@ -58,7 +58,7 @@ After this lock: SPIKE_01 turn 5 reproducible (data layer correct); A6 detector 
 | **ProficiencyMatrix** | `{ read: ProficiencyLevel, write: ProficiencyLevel, speak: ProficiencyLevel, listen: ProficiencyLevel }` | 4 fields × 5 levels = 5^4 = 625 combinations possible. V1 most actors have realistic patterns. |
 
 **Cross-feature consumers:**
-- 05_llm_safety A6 (V1+) — canon-drift detector at Stage 8 reads speaker proficiency
+- 05_llm_safety A6 (V1+) — canon-drift detector at the canon-drift stage (7 per current lock; REC-33) reads speaker proficiency
 - PL_005b §2.7 — Speak validator rejects when speaker proficiency < threshold
 - NPC_002 persona prompt assembly — embeds proficiency matrix in LLM context
 - IDF_004 Origin — origin pack `default_native_language` ref (V1+ enrichment)
@@ -226,18 +226,29 @@ LanguageId + LangCode are both String wrappers; runtime check at RealityManifest
 
 ## §9 Failure-mode UX
 
+> **⚠ CORRECTED 2026-07-26 (REC-33 / AUD-F17 #39): this doc's stage numbers are renumbered to the
+> LOCKED pipeline.** IDF_002 used a numbering with world-rule = 7 and canon-drift = 8; the locked
+> `_boundaries/03_validator_pipeline_slots.md` has canon-drift at 7, causal-ref at 8 and
+> **world-rule at 9** — so as written, `language.*` rejects fired at a slot registered to
+> `canon_drift.*` (05_llm_safety's). Corrected binding: **`language.*` fires at the world-rule
+> stage — stage 9 under the current lock** — and the A6 literacy detector consumes at the
+> canon-drift stage (7 under the current lock). The binding is to the *stage name*, not the
+> number, so if REC-31's boundary renumbering lands, `language.*` follows world-rule wherever it
+> sits. Every "Stage 7"/"Stage 8" reference in this doc reads world-rule / canon-drift
+> respectively.
+
 | Reject reason | Stage | When | Vietnamese reject copy (I18nBundle) |
 |---|---|---|---|
 | `language.unknown_language_id` | 0 schema | LanguageId not in RealityManifest.languages | "Ngôn ngữ không tồn tại trong thế giới này." |
-| `language.speaker_proficiency_insufficient` | 7 world-rule | Speaker Speak < Basic for utterance language | "Bạn không nói được [ngôn ngữ]." |
-| `language.listener_proficiency_insufficient` | 7 world-rule (V1+) | All direct_targets Listen < Basic | (V1+ enforces; V1 warning only) |
+| `language.speaker_proficiency_insufficient` | ~~7~~ world-rule (stage **9** per current lock; REC-33) | Speaker Speak < Basic for utterance language | "Bạn không nói được [ngôn ngữ]." |
+| `language.listener_proficiency_insufficient` | ~~7~~ world-rule (stage **9** per current lock; REC-33) (V1+) | All direct_targets Listen < Basic | (V1+ enforces; V1 warning only) |
 | `language.proficiency_axis_invalid` | 0 schema | (V1+ learning) Apply event references invalid axis | (Schema check; not user-facing) |
 
 **`language.*` V1 rule_id enumeration** (registered in `_boundaries/02_extension_contracts.md` §1.4):
 
 1. `language.unknown_language_id` — Stage 0
-2. `language.speaker_proficiency_insufficient` — Stage 7
-3. `language.listener_proficiency_insufficient` — Stage 7 (V1+ active; V1 warning only)
+2. `language.speaker_proficiency_insufficient` — ~~Stage 7~~ world-rule stage (9 per current lock; REC-33)
+3. `language.listener_proficiency_insufficient` — ~~Stage 7~~ world-rule stage (9 per current lock; REC-33) (V1+ active; V1 warning only)
 4. `language.proficiency_axis_invalid` — Stage 0 (V1+ learning context)
 
 V1+ reservations: `language.dialect_mismatch`; `language.code_switch_unsupported` (LNG-D7).
@@ -256,13 +267,13 @@ V1 user-facing rejects: `language.unknown_language_id` + `language.speaker_profi
      }) → T1 Derived
    E.g., Lý Minh: { lang_quan_thoai: {Native/Native/None/None}, lang_co_ngu: {Basic/None/None/None}, ... }
 
-2. Speak validator (Stage 7 world-rule):
+2. Speak validator (world-rule stage — 9 per current lock; REC-33):
    PL_005b InteractionSpeakPayload.utterance.language=lang_quan_thoai
      a. dp::read_projection_reality::<ActorLanguageProficiency>(ctx, agent_id)
      b. proficiencies[lang_quan_thoai].speak >= Basic ✓
-     c. continue Stage 8
+     c. continue the pipeline (REC-33: stage numbers per the locked boundary doc)
 
-3. A6 canon-drift detector (V1+ at Stage 8):
+3. A6 canon-drift detector (V1+ at the canon-drift stage — 7 per current lock; REC-33):
    Speak utterance Quote-kind references lang_co_ngu canonical text:
      a. read agent.proficiencies[lang_co_ngu].read = None (LM01 SPIKE_01 turn 5)
      b. flag canon_drift_flag::BodyKnowledgeMismatch
@@ -291,14 +302,14 @@ Each seed emits T3 Derived with causal_refs=[reality_bootstrap_event_id].
 
 LM01 `/verbatim "Tiểu nhị, vĩnh ngộ tại ư phi vi tà"` (Quan thoại Speak):
 - Stage 0: utterance.language=lang_quan_thoai exists in RealityManifest.languages ✓
-- Stage 7: agent.proficiencies[lang_quan_thoai].speak = Native ≥ Basic ✓
-- Stage 8: A6 detector flags canon-drift (Cổ ngữ Read=None) — non-blocking
+- world-rule stage (9 per current lock; REC-33): agent.proficiencies[lang_quan_thoai].speak = Native ≥ Basic ✓
+- canon-drift stage (7 per current lock; REC-33): A6 detector flags canon-drift (Cổ ngữ Read=None) — non-blocking
 - Commit Speak T1.
 
 ### §13 Speak validator (reject — speaker can't speak)
 
 Hypothetical: LM01 attempts utterance.language=lang_dao_ngon (Daoist canon — LM01 None all axes):
-- Stage 7: agent.proficiencies[lang_dao_ngon].speak = None < Basic
+- world-rule stage (9 per current lock; REC-33): agent.proficiencies[lang_dao_ngon].speak = None < Basic
 - Reject with `language.speaker_proficiency_insufficient`
 - turn_number unchanged
 
@@ -318,7 +329,7 @@ Admin edits LM01.proficiencies[lang_co_ngu].read from None → Basic (story-even
 | ID | Scenario | Pass criteria |
 |---|---|---|
 | **AC-LNG-1** | Wuxia 4-language preset; LM01 seeded with literacy slip pattern | proficiency row committed; matrix shows Quan thoại Native + Cổ ngữ Read=None |
-| **AC-LNG-2** | LM01 Speaks Quan thoại utterance | Stage 7 passes; Speak commits |
+| **AC-LNG-2** | LM01 Speaks Quan thoại utterance | world-rule stage passes (REC-33); Speak commits |
 | **AC-LNG-3** | LM01 attempts Speak Cổ ngữ (Speak=None) | rejected with `language.speaker_proficiency_insufficient` |
 | **AC-LNG-4** | Speak utterance.language=`lang_unknown` (not in RealityManifest) | rejected at Stage 0 with `language.unknown_language_id` |
 | **AC-LNG-5** | (SPIKE_01 turn 5 reproducibility) LM01 Speaks Quan thoại Quote-kind referencing 道德经注 | Speak commits + A6 detector flags `canon_drift_flag::BodyKnowledgeMismatch` (V1: data layer correct; V1+ A6 wires up) |
@@ -387,10 +398,10 @@ DRAFT promotion registers:
 
 **Sibling IDF:**
 - [`IDF_001 Race`](IDF_001_race.md) — race may have native language hint (LNG-D9 V1+)
-- [`IDF_004 Origin`](IDF_004_origin_concept.md) — origin pack default_native_language ref
+- [`IDF_004 Origin`](IDF_004_origin.md) — origin pack default_native_language ref
 
 **Consumers:**
-- 05_llm_safety A6 (V1+) — canon-drift detector at Stage 8
+- 05_llm_safety A6 (V1+) — canon-drift detector at the canon-drift stage (7 per current lock; REC-33)
 - [`PL_005b §2.7`](../04_play_loop/PL_005b_interaction_contracts.md) — Speak validator
 - NPC_002 persona prompt assembly
 - Future PCS_001 — PC creation form
@@ -398,7 +409,7 @@ DRAFT promotion registers:
 **Boundaries:**
 - `_boundaries/01_feature_ownership_matrix.md` — `actor_language_proficiency`
 - `_boundaries/02_extension_contracts.md` §1.4 — `language.*` namespace; §2 — `languages` RealityManifest extension
-- `_boundaries/03_validator_pipeline_slots.md` — Stage 7 world-rule (Speak validator) + Stage 8 canon-drift (V1+ A6)
+- `_boundaries/03_validator_pipeline_slots.md` — world-rule stage (Speak validator; **stage 9** per current lock — REC-33, was cited "7") + canon-drift stage (V1+ A6; **stage 7** per current lock — was cited "8")
 
 **Spike:**
 - [`SPIKE_01 turn 5`](../_spikes/SPIKE_01_two_sessions_reality_time.md) — literacy slip canonical reproducibility gate

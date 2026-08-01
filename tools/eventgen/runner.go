@@ -29,6 +29,16 @@ func Run(cfg Config) error {
 		return fmt.Errorf("load registry: %w", err)
 	}
 
+	// BEFORE --validate returns and before any emitter runs. A field-map gap is
+	// a registry-level defect, so `--validate` — the mode whose whole job is to
+	// answer "is this registry OK to ship" — must not answer yes to a registry
+	// that generates empty contracts. And running it ahead of the emitters means
+	// a bad state never reaches disk, so the files a reviewer opens are never
+	// the empty ones.
+	if err := checkFieldMaps(reg); err != nil {
+		return err
+	}
+
 	if cfg.Validate {
 		fmt.Fprintf(os.Stderr, "eventgen: registry valid — %d events registered\n", reg.Len())
 		return nil

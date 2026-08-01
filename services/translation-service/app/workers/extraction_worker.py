@@ -33,11 +33,13 @@ from loreweave_llm.errors import (
 from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
 
 from ..config import settings
+from ..llm_budget import budget_for, budget_obj_for
 from ..llm_client import LLMClient
 from .block_batcher import build_batch_plan
 from .cost import resolve_job_cost_usd
 from .chunk_splitter import estimate_tokens
 from .extraction_cache import (
+    SWEEP_BATCH_IDX,
     RawCacheKey,
     effort_band_for,
     get_cached_batch,
@@ -55,13 +57,29 @@ from .extraction_outcomes import (
 from .extraction_preprocessor import prepare_chapter_text
 from .extraction_provenance import stamp_entity_provenance
 from .mention_count import count_entity_mentions
+from .extraction_strategy import (
+    CACHE_ALWAYS_REFRESH,
+    CACHE_PREFER_CACHE,
+    SINGLE_CALL_DELTA,
+    TWO_STAGE_SHAPES,
+    compose_shape_hash,
+    defs_digest as strategy_defs_digest,
+    normalize_cache_policy,
+    normalize as normalize_strategy,
+    output_ceiling as strategy_output_ceiling,
+    plan_batches as plan_batches_for_strategy,
+    sweep_shape_hash,
+)
 from .extraction_prompt import (
+    DELTA_INSTRUCTION,
+    build_cited_user_prompt,
     build_extraction_prompt,
+    build_sweep_system_prompt,
     build_known_entities_context,
     build_system_prompt,
     build_user_prompt,
     parse_and_validate_with_stats,
-    plan_kind_batches,
+    parse_sweep_mentions,
 )
 from .glossary_client import (
     fetch_known_entities,
@@ -92,6 +110,11 @@ from .extraction_model import FALLBACK_CONTEXT_WINDOW as _FALLBACK_CONTEXT_WINDO
 from .extraction_model import get_model_context_window as _get_model_context_window  # noqa: E402
 
 _EXTRACTION_OUTPUT_CEILING = 8000  # per-window output cap (entities JSON is small)
+#: A single-call shape emits every kind in one response, so 8000 would truncate on an
+#: entity-dense chapter. Measured over chapters 21-30 of 封神演義 the one-call arms peaked at
+#: ~5,600 output tokens, so this is ~4x headroom over the observed worst case. Still clamped
+#: by the context-derived budget, so it never eats the input's context.
+_EXTRACTION_SINGLE_CALL_OUTPUT_CEILING = 24000
 _EXTRACTION_OUTPUT_FLOOR = 1024
 _CONTEXT_SAFETY_RATIO = 0.15  # mirror the gateway's context-fit safety margin
 
@@ -348,6 +371,24 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     # D-EXTRACTION-BATCH-CONCURRENCY: per-chapter LLM-call fan-out cap. Absent/None on a
     # pre-field message ⇒ 1 (sequential, prior behavior). Clamped to a hard ceiling.
     concurrency = max(1, min(_EXTRACTION_MAX_CONCURRENCY, int(msg.get("concurrency") or 1)))
+    # BOOK_TO_GAME/15 — the prompt shape for this job. Absent on a message minted before the
+    # field ⇒ 'batched', the shipped behaviour. An UNKNOWN value is refused rather than
+    # defaulted: a job that silently ran the baseline would make an A/B report no difference.
+    # CACHE TRACEABILITY — when true, every batch ignores the cached parse and re-extracts,
+    # overwriting the stored row. This is the escape hatch for the case the cache key cannot
+    # cover: a caller who changed something the key does not know about (or who simply does
+    # not trust it) can always force the work.
+    # Default `refresh_if_stale`: reuse a cached batch only when everything the row records
+    # still matches. `prefer_cache` restores the old trust-the-key behaviour; `always_refresh`
+    # ignores the cache entirely. An unknown value raises rather than falling back, because a
+    # run the caller believed was fresh must never quietly be served from cache.
+    cache_policy = normalize_cache_policy(msg.get("cache_policy"))
+    force_refresh = cache_policy == CACHE_ALWAYS_REFRESH
+    try:
+        strategy = normalize_strategy(msg.get("extraction_strategy"))
+    except ValueError:
+        log.exception("extraction_worker: job %s has an unusable extraction_strategy", job_id)
+        raise
 
     # D-PMCP-WORKER-CARRIER: re-set the public-MCP-key attribution for THIS task so
     # every provider job submitted while extracting tags job_meta with the agent's
@@ -440,6 +481,8 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     total_created = 0
     total_updated = 0
     total_skipped = 0
+    total_cached_batches = 0
+    total_executed_batches = 0
     # Seed token totals + completed/failed counts from the checkpoint so the columns
     # ACCUMULATE across redeliveries (the convergence-critical part — completed/failed
     # must reach total_chapters for the job to finalize). entity created/updated/skipped
@@ -565,6 +608,9 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 thinking_enabled=thinking_enabled,
                 reasoning_effort=reasoning_effort,
                 concurrency=concurrency,
+                strategy=strategy,
+                force_refresh=force_refresh,
+                cache_policy=cache_policy,
                 pool=pool,
                 llm_client=llm_client,
             )
@@ -591,6 +637,8 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             total_skipped += ch_skipped
             total_input_tokens += ch_input_tokens
             total_output_tokens += ch_output_tokens
+            total_cached_batches += int(result.get("cached_batches") or 0)
+            total_executed_batches += int(result.get("executed_batches") or 0)
             # bug #37 — realized LLM calls = one per executed batch (BatchOutcome row), the
             # same unit estimated_llm_calls counts. Advances the Jobs-GUI "done / total".
             total_llm_calls += len(result.get("batch_outcomes") or [])
@@ -630,11 +678,13 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 """UPDATE extraction_jobs
                    SET completed_chapters=$2, failed_chapters=$3,
                        entities_created=$4, entities_updated=$5, entities_skipped=$6,
-                       total_input_tokens=$7, total_output_tokens=$8
+                       total_input_tokens=$7, total_output_tokens=$8,
+                       cached_batches=$9, executed_batches=$10, force_refresh=$11
                    WHERE job_id=$1""",
                 job_id, completed, failed,
                 total_created, total_updated, total_skipped,
                 total_input_tokens, total_output_tokens,
+                total_cached_batches, total_executed_batches, force_refresh,
             )
 
         await publish_event(user_id, {
@@ -810,6 +860,9 @@ async def _process_extraction_chapter(
     llm_client: LLMClient,
     reasoning_effort: str = "none",
     concurrency: int = 1,
+    strategy: str = "batched",
+    force_refresh: bool = False,
+    cache_policy: str = "refresh_if_stale",
 ) -> dict:
     """Extract entities from a single chapter via LLM."""
     import time as _time
@@ -825,10 +878,34 @@ async def _process_extraction_chapter(
         raise RuntimeError(f"book-service returned {r.status_code} for chapter {chapter_id}")
 
     chapter = r.json()
+
+    # The chapter's position IN THE BOOK, not in this job's chapter list.
+    #
+    # `chapter_index` used to be the enumerate() index over `chapter_ids`, which is
+    # job-relative — and glossary-service's `before_chapter_index` documents and windows
+    # the very same column as a position in the BOOK. So any book extracted across more
+    # than one job (a resume, an incremental pass, an A/B) wrote colliding indices:
+    # measured on 封神演義, index 0 named SIX different chapters and 1-14 named three
+    # each, while 87 distinct chapters carried links whose index never exceeded 56.
+    # Everything keyed on chapter order — known-entity windowing, spoiler windows,
+    # timeline cutoffs — was reading a number that did not mean what it said.
+    #
+    # book-service already returns `sort_order` on this very payload, so the true value
+    # was one field away the whole time. Falls back to the job-relative index only when
+    # the field is absent, which keeps an older book-service from breaking the write.
+    book_position = chapter.get("sort_order")
+    if isinstance(book_position, int):
+        chapter_index = book_position
+    else:
+        log.warning("extraction: chapter %s has no sort_order — falling back to the "
+                    "job-relative index %d, which is NOT a book position",
+                    chapter_id, chapter_index)
+
     chapter_text = prepare_chapter_text(chapter)
     if not chapter_text.strip():
         log.warning("extraction: chapter %s has no text content — skipping", chapter_id)
-        return {"created": 0, "updated": 0, "skipped": 0, "entities": [], "input_tokens": 0, "output_tokens": 0}
+        return {"created": 0, "updated": 0, "skipped": 0, "entities": [], "input_tokens": 0,
+                "output_tokens": 0, "cached_batches": 0, "executed_batches": 0}
 
     # Context-aware windowing (D-EXTRACTION-CONTEXT-WINDOW): split a chapter that exceeds
     # the model context into sub-chapter windows (whole paragraph blocks) that fit, then
@@ -837,7 +914,13 @@ async def _process_extraction_chapter(
     windows = _plan_chapter_windows(chapter, chapter_text, context_window, source_language)
 
     # 2. Plan kind-batches (output-schema grouping — same set for every window).
-    batches = plan_kind_batches(extraction_profile, kinds_metadata)
+    # BOOK_TO_GAME/15 — a single-call shape puts EVERY kind in one request, which is exactly
+    # what MAX_KINDS_PER_BATCH exists to prevent. That cap fixed a real output-truncation bug
+    # by TRIPLING the input (35,316 chars sent to read 4,747), and the measurement says the
+    # trade was bad: one call is -62% input and -47% output with no quality regression outside
+    # the noise floor. The cap's protection is restored by the raised ceiling below plus the
+    # parse retry — dropping the cap WITHOUT them is the bug it was written for.
+    batches = plan_batches_for_strategy(strategy, extraction_profile, kinds_metadata)
     log.info("extraction: chapter %s (index %d) — %d window(s) × %d batch(es), ctx=%d, text_len=%d",
              chapter_id, chapter_index, len(windows), len(batches), context_window, len(chapter_text))
 
@@ -847,9 +930,19 @@ async def _process_extraction_chapter(
     # The glossary writeback dedupes on this key so a retry/redelivery/concurrent
     # fresh run lands the chapter exactly once (INV-C3).
     content_hash = hashlib.sha256(chapter_text.encode("utf-8")).hexdigest()
-    profile_hash = hashlib.sha256(
-        json.dumps(extraction_profile, sort_keys=True, ensure_ascii=False).encode("utf-8")
-    ).hexdigest()
+    # The STRATEGY belongs in this hash for exactly the reason the profile does: it re-maps
+    # `batch_idx` to a different set of kinds. `batched` batch 0 is
+    # [character, location, item]; `single_call` batch 0 is ALL EIGHT kinds. Without the
+    # strategy in the key those two collide, so running `single_call` over a chapter
+    # `batched` had already done would CACHE-HIT and reuse the three-kind parse as if it
+    # were the eight-kind one — silently dropping five kinds and reporting zero tokens.
+    # It also makes an A/B between two shapes on the same chapter impossible, which is what
+    # this parameter exists for.
+    # Computed in two steps rather than one: `defs_hash` is the component a CONSUMER cannot
+    # recompute — the definitions live in glossary and an author edits them — so it is stored
+    # on each raw-output row and fed back to `compose_shape_hash` at replay time.
+    defs_hash = strategy_defs_digest(kinds_metadata)
+    profile_hash = compose_shape_hash(extraction_profile, strategy, defs_hash)
     all_kinds = sorted({k for batch in batches for k in batch})
     writeback_key = hashlib.sha256(
         "|".join([book_id, str(chapter_id), content_hash, ",".join(all_kinds), profile_hash]).encode("utf-8")
@@ -857,6 +950,13 @@ async def _process_extraction_chapter(
 
     # 3. Build known entities context
     known_ctx = build_known_entities_context(known_entities) if known_entities else ""
+    # BOOK_TO_GAME/15 — 88% of entity writes were re-writes of entities the glossary already
+    # held, and the known-entity block was paying input for an output saving it was not
+    # buying. Asking for a DELTA recovered the saving without costing recall: measured, new
+    # entities per chapter went 9.7 -> 9.5 (inside the noise floor) while the total fell 10%,
+    # i.e. what it suppressed was repeats, not discoveries (BTG-A54).
+    if strategy == SINGLE_CALL_DELTA and known_ctx:
+        known_ctx += DELTA_INSTRUCTION
 
     # Resolve owner user_id once for internal invoke auth
     async with pool.acquire() as db:
@@ -875,6 +975,11 @@ async def _process_extraction_chapter(
     # worker never read it (architecture §8.3). Consumed via `.get()` downstream
     # so it is additive/non-breaking on the chapter-result dict.
     batch_finish_reasons: list[dict] = []
+    # CACHE TRACEABILITY — how many batches were SERVED vs actually EXECUTED. Surfaced on
+    # the job so "completed, 0 tokens" is explained rather than mysterious, and so a user
+    # who re-ran after editing a kind definition can see whether their edit was honoured.
+    nonlocal_cache_hits: list[int] = []
+    nonlocal_cache_exec: list[int] = []
     # OBS/M2 — per-batch outcome rows (the SSOT, INV-F15). Each batch contributes one
     # row with its classified status so a silent all-rejected/truncated/errored batch is
     # no longer invisible; the chapter status is then DERIVED from these (not from a bare
@@ -900,8 +1005,10 @@ async def _process_extraction_chapter(
         })
 
     def _accept(entities: list[dict], window_text: str = "") -> None:
-        # Attach this chapter's link to each entity (fresh per run — NOT cached, since the
-        # chapter_index is per-job) and merge into the chapter's accumulated entities.
+        # Attach this chapter's link to each entity (fresh per run — NOT cached) and merge
+        # into the chapter's accumulated entities. `chapter_index` is the chapter's
+        # position in the BOOK (see the sort_order resolution above); it used to be the
+        # job-relative index, which made it collide across jobs.
         #
         # M7 — per-chapter mention_count: count this entity's surface forms (canonical +
         # alias) in THIS window's text with a CJK-aware longest-match scan (span-deduped,
@@ -931,7 +1038,14 @@ async def _process_extraction_chapter(
     max_win_tok = max((estimate_tokens(w) for w in windows), default=0)
     known_ctx_tok = estimate_tokens(known_ctx)
     out_budget = context_window - max_win_tok - safety - known_ctx_tok - 600
-    out_budget = max(_EXTRACTION_OUTPUT_FLOOR, min(_EXTRACTION_OUTPUT_CEILING, out_budget))
+    # A single-call shape must fit EVERY kind's entities in one response, so it gets the
+    # ceiling the per-batch cap was buying. Not a tuning knob: without it the shape measures
+    # truncation rather than batching, and truncation is how the original bug lost a whole
+    # batch silently. Still clamped by the context-derived budget above, so it can only
+    # raise the cap where the context genuinely allows it.
+    ceiling = strategy_output_ceiling(
+        strategy, _EXTRACTION_OUTPUT_CEILING, _EXTRACTION_SINGLE_CALL_OUTPUT_CEILING)
+    out_budget = max(_EXTRACTION_OUTPUT_FLOOR, min(ceiling, out_budget))
 
     # D-CACHE-PLANNER-WIRING Part 2 — pre-flight FEASIBILITY gate (Option B, spec
     # docs/specs/2026-06-22-planner-executor-wiring-part2.md). The block-windower packs WHOLE
@@ -992,6 +1106,153 @@ async def _process_extraction_chapter(
     # independently. `window_text` replaces the whole-chapter text in the prompt.
     total_calls = len(windows) * len(batches)
 
+    # ── `edc_cited` stage 1: sweep for named mentions + a verbatim quote ──────────────
+    #
+    # One cheap call per window that finds and CITES, and does not classify or describe.
+    # Stage 2 then types from those citations instead of re-reading the chapter, which is
+    # where the saving comes from. Measured (BOOK_TO_GAME/15 §6b): grounded 92.6% against
+    # a baseline 80.1%, +63% new entities per chapter, and the only shape that abandons no
+    # kind — because the sweep's naming rule is split by category, verbatim for the things
+    # that have names and COMPOSED for events, which have none (`BTG-A55`).
+    #
+    # It is CACHED like any other call. It was not, and the omission was invisible in every
+    # place a cost shows up: a `prefer_cache` re-run reported 100% of its batches served and
+    # still spent 12,622 tokens, because the one call nothing keyed was the one call the
+    # traceability work had just taught the UI to account for.
+    #
+    # Its key is deliberately NOT the extraction shape hash — the sweep is handed no kinds,
+    # no attributes and no profile, so busting it on a kind-description edit would re-spend
+    # tokens for an answer that cannot have changed. `sweep_shape_hash` keys on the rendered
+    # sweep prompt instead, and `SWEEP_BATCH_IDX` namespaces the row away from real batches.
+    #
+    # Model drift is staleness for the sweep exactly as it is for a batch, so the same
+    # `_drift_matters` decision governs both — see the policy note at its definition.
+    _drift_matters = (cache_policy != CACHE_PREFER_CACHE
+                      or settings.extraction_cache_bust_on_model_change)
+    _sweep_cache: dict[int, list[tuple[str, str]]] = {}
+    if strategy in TWO_STAGE_SHAPES:
+        sweep_system = build_sweep_system_prompt(source_language)
+        sweep_profile_hash = sweep_shape_hash(sweep_system)
+        # The sweep's output budget comes from the call-profile registry, not from the
+        # `_EXTRACTION_OUTPUT_CEILING` literal it used to read (D-LLM-BUDGET-SSOT). Only the
+        # KIND is read here — `truncation_is_fatal` is a property of STRUCTURED and does not
+        # depend on the sizing arguments, so this cannot disagree with the number the payload
+        # resolves below (which is where the call has to live for the gate to trace it).
+        _sweep_fatal = budget_obj_for("glossary_sweep").truncation_is_fatal
+        for _wi, _wtext in enumerate(windows):
+            _sweep_key = RawCacheKey(
+                owner_user_id=str(owner_user_id) if owner_user_id else "",
+                book_id=book_id, chapter_id=str(chapter_id), content_hash=content_hash,
+                batch_idx=SWEEP_BATCH_IDX, chunk_idx=_wi,
+                profile_hash=sweep_profile_hash, effort_band=_effort_band,
+            )
+            _sweep_cached = (await get_cached_batch(pool, _sweep_key)
+                             if owner_user_id and not force_refresh else None)
+            _sweep_busted = force_refresh
+            if (_sweep_cached is not None and _drift_matters
+                    and _sweep_cached.get("model_ref") and model_ref
+                    and str(_sweep_cached["model_ref"]) != str(model_ref)):
+                log.info("extraction: chapter %s window %d — sweep cache model %s ≠ current %s; "
+                         "busting", chapter_id, _wi, _sweep_cached["model_ref"], model_ref)
+                _sweep_cached = None
+                _sweep_busted = True
+            if _sweep_cached is not None:
+                nonlocal_cache_hits.append(1)
+                # A sweep row stores MENTIONS, not entities: [{"name","evidence"}, ...].
+                _sweep_cache[_wi] = [
+                    (str(m.get("name") or ""), str(m.get("evidence") or ""))
+                    for m in (_sweep_cached["parsed_entities"] or [])
+                    if isinstance(m, dict) and m.get("name")
+                ]
+                log.info("extraction: chapter %s window %d — sweep CACHE HIT (%d mention(s), "
+                         "0 tokens)", chapter_id, _wi, len(_sweep_cache[_wi]))
+                continue
+            nonlocal_cache_exec.append(1)
+            try:
+                _job = await llm_client.submit_and_wait(
+                    user_id=str(owner_user_id), operation="chat",
+                    model_source=model_source, model_ref=str(model_ref),
+                    input={
+                        "messages": [
+                            {"role": "system", "content": sweep_system},
+                            {"role": "user", "content": build_user_prompt(_wtext)},
+                        ],
+                        "temperature": 0.1,
+                        # `ceiling=out_budget` is not belt-and-braces — it is the bug the
+                        # flat literal had. `out_budget` is derived from THIS chapter's real
+                        # input size (context − max window tokens − known ctx − safety),
+                        # which the registry row cannot know; asking a small-context model
+                        # for a flat 8000 output tokens on top of its window is how a call
+                        # comes back LLM_CONTEXT_OVERFLOW. The batch path already sized
+                        # itself this way; the sweep, added later, did not.
+                        "max_tokens": budget_for("glossary_sweep",
+                                                 context_length=context_window,
+                                                 ceiling=out_budget),
+                        **reasoning_fields(ReasoningDirective(
+                            effort=reasoning_effort, passthrough=False, source="user")),
+                    },
+                    chunking=None,
+                    job_meta={
+                        "usage_purpose": "glossary_extraction",
+                        "extractor": "glossary_sweep",
+                        "extraction_job_id": str(job_id),
+                        "chapter_id": str(chapter_id),
+                    },
+                    transient_retry_budget=1,
+                )
+                _res = (_job.result or {}) if hasattr(_job, "result") else {}
+                _usage = _res.get("usage") or {}
+                total_input_tokens += _usage.get("input_tokens") or 0
+                total_output_tokens += _usage.get("output_tokens") or 0
+                _msgs = _res.get("messages") or []
+                _sweep_raw = (_msgs[0].get("content") if _msgs else "") or ""
+                # D-LLM-BUDGET-SSOT: the sweep's profile is STRUCTURED, so
+                # `truncation_is_fatal` is True and this check is REQUIRED, not optional —
+                # `parse_sweep_mentions` salvages the complete-objects prefix of a clipped
+                # array, which means a truncated sweep looks exactly like a short one. The
+                # batch path below already recorded `finish_reason`; the sweep, added later,
+                # hard-coded None into the cache and never read it. `getattr` because a
+                # degraded/older gateway result may not carry the field, and a truncation
+                # DETECTOR that raises is worse than the truncation.
+                _sweep_finish = getattr(_job, "finish_reason", None)
+                _sweep_truncated = _sweep_fatal and _sweep_finish == "length"
+                _sweep_cache[_wi] = parse_sweep_mentions(_sweep_raw)
+                log.info("extraction: chapter %s window %d — sweep found %d mention(s) "
+                         "finish=%s", chapter_id, _wi, len(_sweep_cache[_wi]),
+                         _sweep_finish or "?")
+                if _sweep_truncated:
+                    log.warning(
+                        "extraction: chapter %s window %d SWEEP TRUNCATED "
+                        "(finish_reason=length, out=%s tokens, context-derived clamp=%d, "
+                        "profile=glossary_sweep) — partial salvage only; mentions after the "
+                        "cut are LOST",
+                        chapter_id, _wi, _usage.get("output_tokens") or 0, out_budget,
+                    )
+                # Cache only a NON-EMPTY, NON-TRUNCATED sweep. An empty one is either a parse
+                # failure or a window the model gave up on, and a truncated one is missing
+                # mentions it will never regrow — caching either makes that failure permanent,
+                # and a re-run is precisely how the user recovers it. Same rule the batch cache
+                # applies by storing only OK/EMPTY_VALID outcomes.
+                if owner_user_id and _sweep_cache[_wi] and not _sweep_truncated:
+                    await put_batch(
+                        pool, _sweep_key, job_id=str(job_id), kinds_requested=[],
+                        model_source=model_source, model_ref=str(model_ref),
+                        reasoning_effort=_effort_band,
+                        input_tokens=_usage.get("input_tokens") or 0,
+                        output_tokens=_usage.get("output_tokens") or 0,
+                        finish_reason=_sweep_finish, raw_response=_sweep_raw,
+                        parsed_entities=[{"name": n, "evidence": e}
+                                         for n, e in _sweep_cache[_wi]],
+                        parse_status="ok", overwrite=_sweep_busted,
+                    )
+            except Exception as exc:  # noqa: BLE001 — one window must not lose the chapter
+                log.warning("extraction: chapter %s window %d — sweep failed: %s",
+                            chapter_id, _wi, exc)
+                _sweep_cache[_wi] = []
+        # The sweep is a real LLM call per window, so the chapter's call budget grew.
+        total_calls += len(windows)
+
+
     # D-EXTRACTION-BATCH-CONCURRENCY — the per-(window,batch) unit body, extracted into a
     # coroutine so the units can run CONCURRENTLY under a semaphore (see the driver below).
     # asyncio is single-threaded, so the shared collectors mutate safely between awaits;
@@ -1019,15 +1280,24 @@ async def _process_extraction_chapter(
             batch_idx=batch_idx, chunk_idx=window_idx, profile_hash=profile_hash,
             effort_band=_effort_band,
         )
-        cached = await get_cached_batch(pool, cache_key) if owner_user_id else None
+        # force_refresh skips the READ entirely. `_busted` below then makes the write
+        # OVERWRITE rather than DO-NOTHING, so a forced run actually replaces the stale row
+        # instead of re-spending tokens and discarding the result.
+        cached = (await get_cached_batch(pool, cache_key)
+                  if owner_user_id and not force_refresh else None)
         # D-CACHE-MODEL-KEY: opt-in bust-on-model-change. The cache is content-addressed (model
         # NOT in the key), so a hit may carry a DIFFERENT model's parse. When the flag is on, a
         # hit whose stored model_ref differs from the resolved model is treated as a miss → a live
         # re-extraction on the new model (default off keeps the content-addressed reuse). `_busted`
         # is threaded to put_batch so the live re-extraction OVERWRITES the stale row (the key has
         # no model, so a plain DO-NOTHING put could never refresh it → every run would re-bust).
-        _busted = False
-        if (cached is not None and settings.extraction_cache_bust_on_model_change
+        _busted = force_refresh
+        # Model drift is STALENESS (`_drift_matters`, decided once per chapter above). The key
+        # is content-addressed and deliberately excludes the model (D-CACHE-MODEL-KEY), so a
+        # hit can carry a different model's parse — precisely the silent substitution the
+        # default policy exists to stop. Under `refresh_if_stale` the check is unconditional;
+        # `prefer_cache` falls back to the deploy flag, i.e. the old behaviour, chosen.
+        if (cached is not None and _drift_matters
                 and cached.get("model_ref") and model_ref
                 and str(cached["model_ref"]) != str(model_ref)):
             log.info("extraction: chapter %s call %d (win %d batch %d) — cache model %s ≠ current "
@@ -1036,6 +1306,7 @@ async def _process_extraction_chapter(
             cached = None
             _busted = True
         if cached is not None:
+            nonlocal_cache_hits.append(1)
             entities = cached["parsed_entities"]
             # Replay the cached batch outcome (status stored at first extraction); 0 NEW tokens
             # are spent (the cost was already paid + billed on the original run).
@@ -1049,6 +1320,7 @@ async def _process_extraction_chapter(
             return
 
         # 4. Build prompt
+        nonlocal_cache_exec.append(1)
         _block_hints = settings.extraction_evidence_block_hints
         schema = build_extraction_prompt(batch, extraction_profile, kinds_metadata, block_hints=_block_hints)
         system_prompt = build_system_prompt(
@@ -1057,7 +1329,23 @@ async def _process_extraction_chapter(
             known_entities_context=known_ctx,
             max_entities_per_kind=max_entities_per_kind,
         )
-        user_prompt = build_user_prompt(window_text, block_hints=_block_hints)
+        # `edc_cited` stage 2 reads the CITATIONS stage 1 produced, not the chapter again.
+        # Re-sending the chapter is the entire cost premium the two-stage shape exists to
+        # avoid (~5,300 tokens/chapter measured), and typing measured BETTER from a name
+        # plus one focused sentence than from the whole narrative.
+        if strategy in TWO_STAGE_SHAPES:
+            cited = _sweep_cache.get(window_idx) or []
+            if not cited:
+                # Stage 1 produced nothing usable. Emitting the chapter here would silently
+                # turn this into the one-call shape and report it as the two-stage one.
+                _record_outcome(call_idx, batch, "sweep_empty", entities_found=0)
+                log.warning("extraction: chapter %s window %d — stage-1 sweep produced no "
+                            "mentions; skipping stage 2 (this is a PARSE result, not an "
+                            "extraction result)", chapter_id, window_idx)
+                return
+            user_prompt = build_cited_user_prompt(cited)
+        else:
+            user_prompt = build_user_prompt(window_text, block_hints=_block_hints)
 
         # 5. LLM call via SDK (replaces /internal/invoke).
         # Phase 4c-γ: HIGH#1 lesson from cycle 11 applied — catch
@@ -1243,6 +1531,10 @@ async def _process_extraction_chapter(
                 # D-CACHE-MODEL-KEY: on a model-change bust, OVERWRITE the stale row so the cache
                 # holds the new model's parse (else the next run re-busts forever).
                 overwrite=_busted,
+                # The descriptions this parse was prompted with. They are folded into
+                # `profile_hash` and cannot be recomputed later (glossary drifts), so a replay
+                # needs them recorded or it declares every faithful row stale.
+                defs_hash=defs_hash,
             )
 
         _accept(entities, window_text)
@@ -1287,6 +1579,8 @@ async def _process_extraction_chapter(
         log.info("extraction: chapter %s done in %.1fs — 0 entities (status=%s)",
                  chapter_id, _ch_elapsed, chapter_status)
         return {"created": 0, "updated": 0, "skipped": 0, "entities": [],
+                "cached_batches": len(nonlocal_cache_hits),
+                "executed_batches": len(nonlocal_cache_exec),
                 "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
                 "batch_finish_reasons": batch_finish_reasons,
                 "batch_outcomes": batch_outcomes, "chapter_status": chapter_status}
@@ -1311,6 +1605,8 @@ async def _process_extraction_chapter(
                     chapter_id, content_hash[:12], current_hash[:12],
                 )
                 return {"created": 0, "updated": 0, "skipped": 0, "entities": [],
+                        "cached_batches": len(nonlocal_cache_hits),
+                        "executed_batches": len(nonlocal_cache_exec),
                         "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
                         "batch_finish_reasons": batch_finish_reasons,
                         "batch_outcomes": batch_outcomes, "chapter_status": chapter_status,
@@ -1357,4 +1653,9 @@ async def _process_extraction_chapter(
     upsert_result["batch_finish_reasons"] = batch_finish_reasons
     upsert_result["batch_outcomes"] = batch_outcomes
     upsert_result["chapter_status"] = chapter_status
+    # CACHE TRACEABILITY — carried up so the job row can say how much of the run was served
+    # rather than executed. Without it "completed, 0 tokens" is indistinguishable from a
+    # broken run, and a re-extraction after a definition edit gives the user no signal at all.
+    upsert_result["cached_batches"] = len(nonlocal_cache_hits)
+    upsert_result["executed_batches"] = len(nonlocal_cache_exec)
     return upsert_result

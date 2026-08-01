@@ -154,6 +154,7 @@ async fn append(store: &PgEventStore, rid: Uuid, version: u64) -> Result<u64, Ev
         recorded_at: "2026-06-14T00:00:00Z".to_string(),
         payload: serde_json::json!({"v": version}),
         metadata: None,
+        ruleset_digest: None,
     };
     store
         .append_events(rid, "W1F", "agg-1", version - 1, &[ev])

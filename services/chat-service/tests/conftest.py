@@ -24,6 +24,62 @@ os.environ.setdefault("JWT_SECRET", "test-secret-key-for-unit-tests")
 os.environ.setdefault("MINIO_SECRET_KEY", "test-minio-secret")
 os.environ.setdefault("INTERNAL_SERVICE_TOKEN", "test-internal-token")
 
+# Point every outbound service URL at a closed local port during tests.
+#
+# The Settings defaults are docker-compose hostnames ("http://ai-gateway:8210",
+# "http://book-service:8082", …). Outside the compose network those do not resolve, and a
+# FAILED name lookup is not free — measured on a Windows dev host: provider-registry-service
+# 1,276 ms, ai-gateway 2,690 ms, book-service 7,259 ms (NetBIOS/LLMNR/suffix-search fallback
+# chain), versus 2 ms for 127.0.0.1. Any test that reaches an un-mocked outbound call therefore
+# stalls for seconds, and the suite crawls: ~1.4 s/test at ~1 % CPU, i.e. hours instead of
+# ~90 s, which reads as a hang rather than as slowness.
+#
+# 127.0.0.1:1 is closed, so the connection is REFUSED immediately. The test outcome is
+# identical — an un-mocked call still fails — it just fails in microseconds instead of seconds.
+# This masks nothing: a test that should mock and doesn't still fails, only faster.
+#
+# setdefault, so a real compose/CI environment that exports these keeps its own values.
+_DEAD = "http://127.0.0.1:1"
+for _var in (
+    "PROVIDER_REGISTRY_INTERNAL_URL",
+    "USAGE_BILLING_SERVICE_URL",
+    "STATISTICS_SERVICE_INTERNAL_URL",
+    "NOTIFICATION_SERVICE_INTERNAL_URL",
+    "COMPOSITION_SERVICE_INTERNAL_URL",
+    "KNOWLEDGE_SERVICE_URL",
+    "AI_GATEWAY_URL",
+    "BOOK_SERVICE_URL",
+    "AUTH_SERVICE_URL",
+    "GLOSSARY_SERVICE_URL",
+    "AGENT_REGISTRY_URL",
+):
+    os.environ.setdefault(_var, _DEAD)
+os.environ.setdefault("REDIS_URL", "redis://127.0.0.1:1")
+
+# Collapse the AUXILIARY per-call timeouts for tests.
+#
+# stream_response makes several best-effort side calls (book steering, user timezone, known
+# entities, agent registry, knowledge). Each is deliberately given a small budget in production
+# — 0.5–2.0 s — and each is designed to DEGRADE, not fail, when the callee is absent. In a unit
+# run the callee is always absent, so every one of those calls burns its full budget, several
+# times per test. Measured on tests/test_admin_surface.py: 34.5 s with production budgets vs
+# 6.7 s with these — a 5x difference on one file, and the same shape across the suite.
+#
+# These are TEST-ONLY defaults. Behaviour is unchanged: the calls still fail and the degrade
+# path is still what gets exercised — the suite simply stops paying wall-clock to watch each
+# one expire. Production values live in app/config.py and are untouched. setdefault again, so
+# a test that needs a real budget can export its own.
+for _var, _budget in (
+    ("BOOK_STEERING_TIMEOUT_S", "0.01"),
+    ("USER_TIMEZONE_TIMEOUT_S", "0.01"),
+    ("KNOWN_ENTITIES_TIMEOUT_S", "0.01"),
+    ("AGENT_REGISTRY_TIMEOUT_S", "0.01"),
+    ("KNOWLEDGE_CLIENT_TIMEOUT_S", "0.01"),
+    ("KNOWLEDGE_TOOL_TIMEOUT_S", "0.01"),
+    ("CANON_CAPTURE_TIMEOUT_S", "0.01"),
+):
+    os.environ.setdefault(_var, _budget)
+
 from app.deps import get_current_user, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 

@@ -63,6 +63,38 @@ export type ExtractionJobRequest = {
   /** Parallel LLM calls per chapter (the window×batch fan-out). Omitted/1 ⇒ sequential.
    *  The worker clamps to a hard ceiling (16). */
   concurrency_level?: number;
+  /** The prompt SHAPE. `batched` (default) is the shipped 3-call-per-chapter form;
+   *  `single_call` sends every kind in one call (much cheaper, measurably less coverage
+   *  on rare kinds); `single_call_delta` adds "report only what is NEW"; `edc_cited`
+   *  sweeps for named mentions first and then types from those citations.
+   *  Closed set — an unknown value is a 400, never a silent fallback. */
+  extraction_strategy?: ExtractionStrategy;
+  /** How to treat the raw-output cache. Default `refresh_if_stale`: reuse a cached batch
+   *  only when everything it recorded still matches, model included. `prefer_cache` is the
+   *  older trust-the-key behaviour; `always_refresh` ignores the cache and overwrites it.
+   *  The default is the CORRECT one rather than the cheap one — editing a kind definition
+   *  and re-extracting used to silently return the parse from before the edit. */
+  cache_policy?: CachePolicy;
+};
+
+/** Closed set — mirrors translation-service `extraction_strategy.STRATEGIES`. */
+export type ExtractionStrategy =
+  | 'batched'
+  | 'single_call'
+  | 'single_call_delta'
+  | 'edc_cited';
+
+/** Closed set — mirrors translation-service `extraction_strategy.CACHE_POLICIES`. */
+export type CachePolicy = 'refresh_if_stale' | 'prefer_cache' | 'always_refresh';
+
+/** How much of a run was SERVED from the raw-output cache rather than executed.
+ *  Surfaced so "completed, 0 tokens" is explained instead of mysterious, and so a user
+ *  who re-ran after editing a kind definition can see whether the edit was honoured. */
+export type ExtractionCacheStats = {
+  cached_batches: number;
+  executed_batches: number;
+  force_refresh: boolean;
+  served_from_cache_pct: number;
 };
 
 // ── Extraction Job Response (from POST 202 + GET /v1/extraction/jobs/{jobId}) ──
@@ -107,6 +139,11 @@ export type ExtractionJobStatus = {
   entities_skipped: number;
   total_input_tokens: number;
   total_output_tokens: number;
+  /** The prompt shape this job ran. */
+  extraction_strategy?: ExtractionStrategy;
+  /** Cache traceability — see ExtractionCacheStats. Absent on jobs created before the
+   *  columns existed, so read it defensively. */
+  cache?: ExtractionCacheStats;
   cost_estimate: CostEstimate | null;
   error_message: string | null;
   started_at: string | null;

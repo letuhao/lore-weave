@@ -26,6 +26,11 @@ class RawCacheKey:
     of the key (§8.1): a changed extraction profile re-maps `batch_idx` to different kinds/attrs,
     so it MUST miss the cache (re-extract) rather than reuse the old profile's parse.
 
+    The caller folds the EXTRACTION STRATEGY into `profile_hash` for the same reason — the
+    shape decides which kinds `batch_idx` names. `batched` batch 0 is three kinds;
+    `single_call` batch 0 is all eight. Keyed on the profile alone, those two collide and a
+    strategy switch silently serves the other shape's parse (BOOK_TO_GAME/15-16).
+
     NOTE (D-CACHE-MODEL-KEY): per design §8.1 the MODEL is deliberately NOT in the key — the
     cache is content-addressed (content+profile+effort determines WHAT to extract). A
     consequence: switching the extraction model and re-running the same chapter reuses the prior
@@ -41,6 +46,21 @@ class RawCacheKey:
     profile_hash: str = ""
     effort_band: str = "none"
     chunk_idx: int = 0
+
+
+#: `batch_idx` sentinel for a STAGE-1 SWEEP row (`edc_cited`). A real batch index is always
+#: >= 0, so this namespaces the sweep's cached mentions away from every kind-batch parse in
+#: the same table without a second table or a discriminator column.
+#:
+#: It exists because the sweep was the one LLM call in the pipeline that NOTHING cached: a
+#: re-run with `prefer_cache` reported 100% of its batches served and still spent 12,622
+#: tokens, which is precisely the kind of unexplained cost the cache traceability work was
+#: meant to end.
+#:
+#: A sweep row holds MENTIONS (`{name, evidence}`), not entities. Every consumer that reads
+#: this table for entities must therefore filter `batch_idx >= 0` — replay does, and
+#: `test_sweep_rows_are_invisible_to_replay` reds if that filter is dropped.
+SWEEP_BATCH_IDX: int = -1
 
 
 def effort_band_for(thinking_enabled: bool, reasoning_effort: str | None = None) -> str:
@@ -63,7 +83,7 @@ async def get_cached_batch(pool, key: RawCacheKey) -> dict | None:
         async with pool.acquire() as db:
             row = await db.fetchrow(
                 """SELECT parsed_entities, finish_reason, input_tokens, output_tokens, parse_status,
-                          model_ref
+                          model_ref, defs_hash
                    FROM extraction_raw_outputs
                    WHERE owner_user_id=$1 AND book_id=$2 AND chapter_id=$3
                      AND chapter_chunk_idx=$4 AND chapter_content_hash=$5
@@ -84,6 +104,10 @@ async def get_cached_batch(pool, key: RawCacheKey) -> dict | None:
             # D-CACHE-MODEL-KEY: the model that produced this parse (for the opt-in
             # bust-on-model-change check; None for a legacy row written without it).
             "model_ref": str(row["model_ref"]) if row["model_ref"] else None,
+            # The kind/attribute descriptions this parse was prompted with, as fed to
+            # `compose_shape_hash`. Recorded because it CANNOT be recomputed later (the
+            # definitions live in glossary and drift) — see `defs_digest`.
+            "defs_hash": row["defs_hash"],
         }
     except Exception as exc:  # noqa: BLE001 — cache is best-effort; fall back to a live call
         log.warning("extraction_cache: get failed for chapter %s batch %d (%s) — live call",
@@ -107,6 +131,7 @@ async def put_batch(
     parsed_entities: list,
     parse_status: str = "ok",
     overwrite: bool = False,
+    defs_hash: str | None = None,
 ) -> None:
     """Record a batch's LLM output (EXECUTE ledger). Default `ON CONFLICT DO NOTHING` makes a
     concurrent-miss race / replay a no-op. With `overwrite=True` (a D-CACHE-MODEL-KEY model-change
@@ -128,7 +153,8 @@ async def put_batch(
                          model_source=EXCLUDED.model_source, model_ref=EXCLUDED.model_ref,
                          reasoning_effort=EXCLUDED.reasoning_effort, input_tokens=EXCLUDED.input_tokens,
                          output_tokens=EXCLUDED.output_tokens, finish_reason=EXCLUDED.finish_reason,
-                         raw_response=EXCLUDED.raw_response, raw_response_uri=NULL, job_id=EXCLUDED.job_id"""
+                         raw_response=EXCLUDED.raw_response, raw_response_uri=NULL, job_id=EXCLUDED.job_id,
+                         defs_hash=EXCLUDED.defs_hash"""
         if overwrite else "DO NOTHING"
     )
     try:
@@ -138,15 +164,15 @@ async def put_batch(
                    (job_id, owner_user_id, book_id, chapter_id, chapter_content_hash,
                     chapter_chunk_idx, batch_idx, kinds_requested, profile_hash, model_source,
                     model_ref, reasoning_effort, effort_band, input_tokens, output_tokens,
-                    finish_reason, raw_response, parsed_entities, parse_status)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+                    finish_reason, raw_response, parsed_entities, parse_status, defs_hash)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
                    ON CONFLICT (owner_user_id, book_id, chapter_id, chapter_chunk_idx,
                                 chapter_content_hash, effort_band, batch_idx, profile_hash) {conflict}""",
                 job_id, key.owner_user_id, key.book_id, key.chapter_id, key.content_hash,
                 key.chunk_idx, key.batch_idx, kinds_requested, key.profile_hash, model_source,
                 mref, reasoning_effort, key.effort_band, input_tokens, output_tokens,
                 finish_reason, raw_response, json.dumps(parsed_entities, ensure_ascii=False),
-                parse_status,
+                parse_status, defs_hash,
             )
     except Exception as exc:  # noqa: BLE001 — cache write is best-effort
         log.warning("extraction_cache: put failed for chapter %s batch %d (%s)",

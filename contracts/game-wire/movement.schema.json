@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "loreweave://contracts/game-wire/movement.schema.json",
+  "title": "Movement frames (Class A — the RTM lane)",
+  "description": "Doc 20 §5. CWC-A4: movement frames NEVER carry authority and NEVER enter the event log. Validation is game-server-side WASM (RTM-Q10); a rejected move is a SnapBack, not an error.",
+  "$defs": {
+    "MoveIntent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "dx", "dy"],
+      "description": "client → server, ≤20 Hz (client-clamped).",
+      "properties": {
+        "seq": { "type": "integer", "description": "Client echo for snap-back reconciliation ONLY — carries no authority." },
+        "dx": { "type": "integer", "description": "cell-local milli-units (i32, never f32)" },
+        "dy": { "type": "integer" }
+      }
+    },
+    "PositionPatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entities"],
+      "description": "server → client, AOI-filtered batch (RTM-A6..A8).",
+      "properties": {
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["entity_id", "position"],
+            "properties": {
+              "entity_id": { "$ref": "common.schema.json#/$defs/EntityId" },
+              "position": { "$ref": "common.schema.json#/$defs/CellCoord" }
+            }
+          }
+        }
+      }
+    },
+    "SnapBack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "position", "reason"],
+      "properties": {
+        "seq": { "type": "integer", "description": "The rejected MoveIntent's echo." },
+        "position": { "$ref": "common.schema.json#/$defs/CellCoord" },
+        "reason": { "type": "string", "enum": ["walkability", "speed", "authority"] }
+      }
+    },
+    "ModeFlip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "description": "The realtime↔turn-based handoff (RTM). CWC-D8: the only frame touching both lanes — it announces the encounter channel the turn lane will bind to.",
+      "properties": {
+        "mode": { "type": "string", "enum": ["realtime", "turn_based"] },
+        "encounter_channel_id": { "$ref": "common.schema.json#/$defs/Uint64String" }
+      }
+    }
+  }
+}

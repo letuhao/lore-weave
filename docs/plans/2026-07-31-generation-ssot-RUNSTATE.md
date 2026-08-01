@@ -15,6 +15,35 @@ Eleven slices that turn PLAN and PROSE from two disjoint toolchains into one spi
 Tô Thanh Dao, whom the plan has alive in scene 2 — is caught by **a gate**, not by a human
 reading the prose.
 
+### ▶ THE ACTIVE GOAL (set 2026-08-02) — re-read this after every compaction
+
+Author's framing, and it changes what "good" means for this stretch: *"chúng ta sẽ còn bước audit
+sau khi hoàn thành nên việc chúng ta đang thực hiện chỉ đơn giản là tăng tốc độ thôi, bước audit
+đó mới là thứ quan trọng và cực kỳ mất thời gian."* ⇒ **the job here is THROUGHPUT that leaves an
+auditable trail.** A later audit will read this transcript and this file; evidence that is not
+written down does not exist for it.
+
+**Condition set with the human:** drive the board to completion in sealed order —
+`[budget-seam rot = S7 slice 4] → S6(+UI) → S11 → S3 → S4 → S9 → S5 → S13` — with KG/extraction
+PARKED throughout. **No turn bound** (author's explicit choice: *"Không giới hạn lượt, chỉ dừng khi
+board sạch"*).
+
+⚠ **What that costs, recorded so it is not a surprise.** The `/goal` evaluator reads the transcript
+only — it cannot run a command or read a file, so it is satisfied by a *claim* that a check passed.
+A turn bound was the one brake that layer had, and it is deliberately off. **The compensation is
+that the other two enforcement layers now carry the whole load:**
+
+1. **This file's slice board** — a slice is not done until its row here says so, with its evidence
+   string. Update it in the same commit as the code. If the transcript and this file disagree,
+   **this file is right.**
+2. **The gates** (`scripts/*-gate.py`, `.githooks/pre-commit`, `scripts/workflow-gate.py`) — these
+   are mechanical and cannot be talked past. Run them; paste them.
+3. **The drift log** — an empty drift log at the end of a stretch this long is not clean, it is
+   dishonest. Append near-misses as they happen, not in a sweep at the end.
+
+**Stop and ask the human only for:** a destructive or irreversible action, or a sealed decision in
+this file turning out to be wrong. Everything else — park it in the register and keep moving.
+
 ## Invariants that must hold at every commit
 
 1. No guard reports clean without having checked something (`verdict is None` unless `CHECKED`).
@@ -78,7 +107,86 @@ Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
 **Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+**`[budget-seam rot] → S7`** → `S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+
+> **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
+> that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
+> real diagnosis and it points at a large refactor; it is **not** what to do next.
+> *"tôi không khuyến khích lao đầu vào KG ngay bây giờ … cách làm đúng bây giờ nên là làm phần
+> 'Budget seam rot' trước và rồi resume slice 7 và các slice còn lại."*
+> Pay the budget-seam rot down first, then finish S7, then the board in its sealed order.
+
+---
+
+## ▶ WHERE THE RUN STANDS — the overview (2026-08-02)
+
+Written because the slice board alone gives a **false** reading: it shows the run parked at S7,
+when in fact most of the last two days went into defect work that was never on the board.
+
+### The board — 7 closed, S7 open, 6 untouched
+
+| slice | state | note |
+|---|---|---|
+| `S10` the eval instrument | ✅ | a real build slice, not a formality |
+| `D-GENERATED-FACT-HAS-NO-HOME` | ✅ | inserted before S1 as the root of both continuity failures |
+| `[CI-RED sweep]` | ✅ | **3 roots**, not the 1 the handoff claimed; one was a production bug |
+| `S1` one honest verdict shape | ✅ | `GuardReport` · `CheckStatus` · `verdict` |
+| `S2` one cast-liveness SSOT | ✅ | both directions |
+| `S8` the pack's diagnostics ride the job | ✅ | |
+| `S12` every declared enforcement site resolves | ✅ | the gate went green on its own example 3× before it was real |
+| **`S7` one output budget** | **◐ ~85%** | slices 1·2·3 ✅ · slice 4 only the tilemap half |
+| `S6` no model silently its own judge | ☐ surveyed | **blocked on a UI slice** |
+| `S11` one context compiler | ☐ | the largest remaining |
+| `S3` one `Finding` | ☐ | deliberately after S11 |
+| `S4` the plan half onto the spine | ☐ | the gate exists; the work is widening it |
+| `S9` the shared guard SDK | ☐ | **inverted** — converge three services first, extract after |
+| `S5` one heal loop | ☐ | |
+| `S13` cite the exemplars | ☐ | mostly documentation |
+
+**The join nobody had made:** what this session called *"155 — 28 budget call sites carrying no
+adaptive signal"* **IS S7 slice 4's unbuilt scope.** Spec §S7 already specifies the gate as
+*"red on an int default in any signature that reaches an LLM call (~31 of ~40 are defaults)"*, and
+the measurement found **26 of 28 are exactly that** — `max_tokens: int = max_tokens_for("kind")`,
+evaluated once at import, unreachable by any per-call signal. It was named as new work because it
+was found from the other end.
+
+### What was NOT on the board — and is most of the elapsed effort
+
+Since the POST-RUN REVIEW, ~13 items, none of them a slice: the review's own 3 defects (the publish
+gate rounding up to a pass · `loreweave_guard` having zero production consumers · `plan_status` with
+no producer) · closing the run's acceptance test (detection half) · the plan-liveness judge tier
+advisory → **HARD** · building the prevention half · measuring it and finding it **does not work** ·
+chapter paths declaring their gap instead of looking like a pass · A/B v2 (detector **11/11** on real
+drafts) · a mute judge no longer reading as one that declined · wiring the budget seam + its ratchet ·
+the FE finally saying **why** the guard is amber (+17 locales) · the planned-lens leaking **40
+synopses from 14 chapters** into every scene · `POST /entities` honouring its own contract · the
+**canon flywheel** (2 commits — a book written from scratch now reaches the graph its guard checks) ·
+the entity-identity architecture review.
+
+Not waste — most were real defects, several surfaced by the author's questions. But the board does
+not reflect them, so reading the board alone understates the run and overstates the stall.
+
+### De-rot
+
+| | state |
+|---|---|
+| **ROT-0** skip audit | ✅ SEALED — **200 tests that had never run** (41 reported first; a full sweep found 159 more). jobs 13 + PIIKMS 28 Go tests wired into CI. One real defect found on first execution. |
+| Test parallelisation | ✅ composition **508s → 107s (4.7×)** — per-worker DBs + a fingerprinted migration memo |
+| Suite restoration plan | ◐ **written and measured, NOT executed** — knowledge still **561 skips**, and `-n auto` is still *unsafe* there (12 failed + 118 errors). [`docs/plans/2026-08-01-test-suite-restoration.md`](2026-08-01-test-suite-restoration.md) |
+| **Budget seam rot** | ◐ found, gate ratcheted, **26 sites unswept** ⇒ **this is what comes next** |
+| CI-RED | ✅ |
+
+### The three concrete loose ends
+
+1. **S7-4 / budget-seam rot** — 26 functions whose budget is frozen at import. Mechanical, with an
+   in-repo pattern to copy (`judge_plan_conflict`), but each needs a judgement about its real size
+   driver. **Next.**
+2. **S6 is blocked by an affordance, not by code** — no surface sets a critic; `critic_model_ref`
+   lives only in `work.settings` JSONB. So today's self-graded fraction is *100% minus hand-edited
+   JSONB*. The spec is explicit: ship the UI in the same slice or the label is noise.
+3. **Suite restoration** — fully measured, unexecuted.
+
+---
 
 `D-GENERATED-FACT-HAS-NO-HOME` is inserted BEFORE S1 because it is the root of both continuity
 failures this session measured: a fact the generator invents (a character's gender, a name, a
@@ -1571,6 +1679,8 @@ all wrong in ways the red team named.
 | 2026-07-31 | S6 ships label-then-tighten; a hard refusal on day one would fail every default-configured job. |
 | 2026-07-31 | Audit F2 (`chapter_index`) and F3 (control-plane i18n) stay OUT — adjacent tracks. |
 | 2026-07-31 | Order puts S11 **before** S4: migrating the plan half twice is the avoidable cost. |
+| 2026-08-02 | **KG/extraction identity is PARKED, not next.** Budget-seam rot → finish S7 → the rest of the board in sealed order. The entity-identity spec is a diagnosis to return to, not a work item to start. Author, verbatim: *"tôi không khuyến khích lao đầu vào KG ngay bây giờ."* |
+| 2026-08-02 | **The budget-seam rot and S7 slice 4 are the SAME work**, approached from two ends. Do not track them as two items. |
 
 ## Measured facts (do not re-measure; cite these)
 
@@ -1603,11 +1713,21 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 
 ## Parked
 
-*(empty)*
+| date | item | why parked, and what un-parks it |
+|---|---|---|
+| 2026-08-02 | **The whole KG/extraction identity thread** — [`docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`](../specs/2026-08-01-entity-identity-under-qualitative-extraction.md) | **Author's call**, explicit: do not dive into KG now. The diagnosis stands (all 21 `:EntityStatus` rows in the graph are unreachable by the guard's FK lookup; identity is `hash(name, kind)` over LLM output), and its own §5 says step **C — measure the fork** must come before anything else. Un-parked when the board reaches a natural stop, or when the author calls it. **Consequence to state plainly: the dead-character feature does NOT work end-to-end while this is parked.** The store fills; nothing reads it. |
+| 2026-08-02 | **`:EntityStatus` / dead-cast guard, end-to-end** | **Author, 2026-08-02: the root is that there has never been a real ENTITY LIFECYCLE** — *"ngay từ đầu chúng ta đã sai vì không có lifecycle thực sự cho entity"*. So this is not "correct code blocked by a parked join": `alive`/gone was built on a model that was never designed, and the FK unreachability documented in the entity-identity spec is a symptom, not the disease. **Do not attempt to fix it by repairing the join.** It belongs to a larger refactor that **already has its own document**; the author will name the starting point when it begins. Nothing to look up or design in the meantime. |
+| 2026-08-02 | **Backfill of the 15 already-written dogfood chapters** | The canon flywheel catches from the next approval forward. Backfilling is a separate decision (irreversible-into-canon, unmeasured per-chapter cost) and is not blocking the board. |
+| 2026-08-01 | **Test-suite restoration execution** — [`docs/plans/2026-08-01-test-suite-restoration.md`](2026-08-01-test-suite-restoration.md) | Plan written and every number in it measured; execution is a separate run. knowledge's 561 skips are a *local-dev* gap, not a CI coverage hole (CI arms every gated suite), which is why it does not block. |
 
 ## Debt taken on
 
-*(empty)*
+| date | debt | the honest cost |
+|---|---|---|
+| 2026-08-01 | The **prevention** half of plan-liveness ships with its efficacy **disproven**, not merely unmeasured. A/B v2 showed the detector at 11/11 and prevention not holding. | The drafter is told who the plan still needs, and it does not reliably obey. The *detector* is what is load-bearing today. Do not describe prevention as working. |
+| 2026-08-01 | The dogfood book carries **16 scenes on a second `story_order` convention** (book slots 11-15, numbered 1,2,3 — so on the global axis they sort *before chapter 1*). Written by this session's own eval/POC runs via the authored `create_node` path. | Position-gated lenses under-serve those 5 chapters. `resync_reading_order` is the right repair but is parent-keyed and those scenes are parentless, and its only caller is the chapter-reorder route. 16 rows. |
+| 2026-08-01 | The authored `create_node` path takes a caller-supplied `story_order` and never derives it from the chapter's slot. | This is the *writer* that produced the debt above; not fixing it means the drift recurs. |
+| 2026-08-01 | Smoke debris: throwaway book `019fbd8f-008c-7cef-bf81-1d53a808361d` and its knowledge project `019fbd90-…` | Deliberately a throwaway (never the dogfood book), but it is real rows in the dev stack awaiting purge. |
 
 ## Drift log — near-misses, wrong turns, bars I nearly lowered
 

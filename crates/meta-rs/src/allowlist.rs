@@ -22,6 +22,18 @@ pub struct EventBinding {
     pub op: MetaWriteOp,
     /// Outbox event name emitted on successful write.
     pub event_name: String,
+    /// Cross-reality Redis topic the relay ALSO XADDs to, when set.
+    ///
+    /// **This field did not exist here until 2026-07-29, and its absence was a
+    /// silent polyglot drift.** `contracts/meta/allowlist.go` has read it since
+    /// the file was written (`LoadXRealityTopics`, and the Go appender stamps
+    /// `meta_outbox.xreality_topic` from it). serde ignores unknown fields by
+    /// default, so the Rust mirror parsed the same YAML, dropped the field
+    /// without a word, and any Rust writer of a table declaring a topic would
+    /// have written a row the cross-reality relay never forwards — a consumer
+    /// that simply stops receiving, with nothing failing anywhere.
+    #[serde(default)]
+    pub xreality_topic: Option<String>,
 }
 
 /// One entry in the allowlist YAML.
@@ -53,6 +65,8 @@ pub struct Allowlist {
     tables: HashMap<String, AllowlistEntry>,
     /// `(table, op) -> event_name` for O(1) lookup at MetaWrite emission time.
     events: HashMap<(String, MetaWriteOp), String>,
+    /// `event_name -> xreality topic`, mirroring Go's `LoadXRealityTopics`.
+    xreality: HashMap<String, String>,
 }
 
 impl Allowlist {
@@ -79,6 +93,7 @@ impl Allowlist {
         }
         let mut tables = HashMap::with_capacity(f.entries.len());
         let mut events = HashMap::new();
+        let mut xreality: HashMap<String, String> = HashMap::new();
         for entry in f.entries {
             let table = entry.table.trim();
             if table.is_empty() {
@@ -104,10 +119,37 @@ impl Allowlist {
                     )));
                 }
                 events.insert(key, b.event_name.clone());
+                if let Some(topic) = b.xreality_topic.as_deref().map(str::trim) {
+                    if !topic.is_empty() {
+                        // Same conflict check Go makes: one event name must not
+                        // map to two topics, or which one the relay uses depends
+                        // on iteration order.
+                        if let Some(prev) = xreality.get(b.event_name.trim()) {
+                            if prev != topic {
+                                return Err(MetaError::ConfigInvalid(format!(
+                                    "event {} mapped to conflicting xreality topics {prev} and {topic}",
+                                    b.event_name
+                                )));
+                            }
+                        }
+                        xreality.insert(b.event_name.trim().to_string(), topic.to_string());
+                    }
+                }
             }
             tables.insert(table.to_string(), entry);
         }
-        Ok(Self { tables, events })
+        Ok(Self { tables, events, xreality })
+    }
+
+    /// The cross-reality topic for `event_name`, if the SoT declares one.
+    /// Mirrors Go's `LoadXRealityTopics`.
+    pub fn xreality_topic(&self, event_name: &str) -> Option<&str> {
+        self.xreality.get(event_name).map(String::as_str)
+    }
+
+    /// The whole `event_name -> topic` map, for an appender that stamps it.
+    pub fn xreality_topics(&self) -> &HashMap<String, String> {
+        &self.xreality
     }
 
     /// True if `table` is registered.
@@ -139,9 +181,14 @@ impl Allowlist {
                     "table": e.table,
                     "owner": e.owner,
                     "notes": e.notes,
+                    // Every field of EventBinding must be listed here. This
+                    // round-trips through YAML, so a field omitted is a field
+                    // SILENTLY DROPPED — the same shape as the missing
+                    // `xreality_topic` this constructor had to be corrected for.
                     "events": e.events.iter().map(|b| serde_json::json!({
                         "op": b.op.as_str(),
                         "event_name": b.event_name,
+                        "xreality_topic": b.xreality_topic,
                     })).collect::<Vec<_>>(),
                 })
             }).collect::<Vec<_>>(),

@@ -360,8 +360,8 @@ DRAFT promotion registers:
 - [`IDF_002 LanguageId pattern`](IDF_002_language.md)
 
 **Sibling IDF:**
-- [`IDF_004 Origin`](IDF_004_origin_concept.md) — origin pack may suggest default archetype (V1+)
-- [`IDF_005 Ideology`](IDF_005_ideology_concept.md) — Pious archetype + Daoist ideology jointly affect NPC reactions (V1+ enrichment)
+- [`IDF_004 Origin`](IDF_004_origin.md) — origin pack may suggest default archetype (V1+)
+- [`IDF_005 Ideology`](IDF_005_ideology.md) — Pious archetype + Daoist ideology jointly affect NPC reactions (V1+ enrichment)
 
 **Consumers:**
 - [`PL_005b §2.1`](../04_play_loop/PL_005b_interaction_contracts.md) — speaker_voice (orphan ref RESOLVED)

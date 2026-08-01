@@ -37,6 +37,35 @@ members = [
     # dp_kernel::resilience::CircuitBreaker is unchanged.
     "crates/breaker-core",
     "crates/dp-kernel",
+    # S1a (2026-07-26) — the simulation kernel per 14_sim_core_spec.md: pure,
+    # zero-dep, deterministic island scheduler (Domain trait w/ Rules seam per
+    # RLS-A12). `sim` is its test/chaos harness + TestDomain + bench bin.
+    # ⚠ [profile.release] panic="abort" below is FINE for these two crates but
+    # is a HARD S3 GATE ITEM for the commit-service host binary — see
+    # docs/plans/2026-07-26-sim-core-s1a.md (docs 14 §10.4 / 15 warned by name).
+    "crates/sim-core",
+    "crates/sim",
+    # F1 (2026-07-28) — the resolved ruleset + its REAL content digest
+    # (16_ruleset_loader_and_registry.md RLS-A13/D5, 26 §6 F1). No I/O: the
+    # provider stack / presets / merge algebra are F2 (`ruleset-loader`).
+    # Depends on sim-core for `RulesetDigest` alone — the kernel CARRIES the
+    # digest and keeps its zero-runtime-dependency invariant; blake3 lives here.
+    "crates/ruleset-core",
+    # S2 (2026-07-29) — the LAWS, extracted from commit-service per IMP-A5/D2
+    # and IMP-Q2 (resolved: crate, "because the gate is the point"). PURE: a
+    # crate, not a module, so "a law cannot read a file" is a link error rather
+    # than a promise. Guarded by scripts/crate-purity-gate.py.
+    "crates/game-rules",
+    # F2 (2026-07-28) — the loader: layer stack, TOML artifacts, normalization,
+    # load-time validation, and the content-addressed immutable ruleset store.
+    # The I/O half `ruleset-core` deliberately has none of (IMP-D2).
+    "crates/ruleset-loader",
+    # POC-2 (2026-07-27) — commit-service seed per 15_commit_service.md CS-A5:
+    # the Rust writer-node role hosting sim-core natively + the LlmDriver
+    # (AGT-A3) dispatching NPC decisions via loreweave_llm → provider-registry.
+    # ⚠ SHIP RULE: build with `--profile release-commit` (panic="unwind") —
+    # NEVER plain --release (panic="abort" kills SC-A8 containment).
+    "services/commit-service",
     # Cycle 13 — L3.B per-aggregate projection skeletons (consume
     # `crates/dp-kernel::Projection` trait shipped cycle 12; write to the
     # `contracts/migrations/per_reality/0006_projections.sql` tables shipped
@@ -111,6 +140,9 @@ publish = false
 [workspace.dependencies]
 # Async runtime
 tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "signal"] }
+# S3a proposal-bus consumer (EVT-L1 names redis-rs as the expected client).
+# Streams commands (XREADGROUP/XAUTOCLAIM/XACK) via AsyncCommands.
+redis = { version = "0.27", features = ["tokio-comp", "streams", "connection-manager"], default-features = false }
 
 # HTTP client (rustls-tls avoids OpenSSL build pain on Windows)
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
@@ -127,6 +159,11 @@ toml = "1.1"
 
 # TMP-A4 deterministic seed
 blake3 = "1.5"
+# PID-D1 — HMAC-SHA256 for producer identity on the proposal bus. Chosen over
+# blake3 (already here) because the signature is a POLYGLOT contract: Node has
+# HMAC-SHA256 built in, blake3 would need a native/WASM binding in game-server.
+hmac = "0.12"
+sha2 = "0.10"
 
 # Deterministic procedural RNG — ChaCha8 streams sub-seeded from the blake3
 # TilemapSeed (TMP_002 §8). rand provides the SeedableRng/Rng traits.
@@ -151,7 +188,23 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # User-facing JWT auth (crates/service-http::require_user; roleplay-service is
 # the first consumer). HS256, `sub` claim → user_id — mirrors book-service.
-jsonwebtoken = "9"
+# A CRYPTO PROVIDER FEATURE IS NOT OPTIONAL — this was declared bare and the
+# result was not a flaky test, it was auth that could not work at all.
+#
+# jsonwebtoken 10 has `default = ["use_pem"]` and NO provider, so the first
+# crypto call panics: "Could not automatically determine the process-level
+# CryptoProvider from jsonwebtoken crate features." Six `service-http::auth`
+# tests had been red on that panic since the 10.x bump, mentioned as
+# "pre-existing" in three session handoffs and tracked in none — and the tests
+# were the symptom, not the disease: `auth.rs`'s middleware calls `decode` on
+# every request, so ANY binary linking service-http would panic on its first
+# token verification. A permanently-red test is how a production break becomes
+# wallpaper.
+#
+# `rust_crypto` over `aws_lc_rs`: pure Rust, no cmake/nasm on the build host, and
+# it covers HS256 (`hmac` + `sha2`) which is what `Validation::new(Algorithm::HS256)`
+# uses. Revisit only with a measurement — aws-lc-rs is faster and needs a toolchain.
+jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 # Typed TIMESTAMPTZ <-> DateTime<Utc> in sqlx models (roleplay-service).
 chrono = { version = "0.4", features = ["serde"] }
 
@@ -186,10 +239,10 @@ sqlx = { version = "0.8", default-features = false, features = [
 #   endpoint; mirrors the Go workers' prometheus/client_golang surface).
 async-trait = "0.1"
 pgvector = { version = "0.4", default-features = false, features = ["sqlx"] }
-prometheus = "0.13"
+prometheus = "0.14"
 
 # Cycle 17 (L4.B) — proc-macro toolkit for `#[derive(Aggregate)]`.
-syn = { version = "2.0", features = ["full"] }
+syn = { version = "3.0", features = ["full"] }
 quote = "1.0"
 proc-macro2 = "1.0"
 # trybuild is used by L4.B macros' tests to assert compile-error messages stay
@@ -201,3 +254,13 @@ lto = "thin"
 codegen-units = 1
 panic = "abort"
 strip = "symbols"
+
+# The commit-service host profile (docs 14 §10.4 / 15 §6 — the S3 gate item).
+# SC-A8 panic containment REQUIRES unwind: `catch_unwind` cannot catch an
+# aborting panic, so a commit-service built with the plain release profile
+# would die (taking every island on the node) instead of poisoning one
+# island. commit-service ships ONLY via `--profile release-commit`; its
+# panic-canary test guards the runtime behavior.
+[profile.release-commit]
+inherits = "release"
+panic = "unwind"

@@ -57,17 +57,17 @@ For V1, output filter (A6-D4) is a library inside roleplay-service (not a separa
 | **A5 Tool-use reliability** | `PARTIAL` (formalized) | 3-intent classifier + hard rule (state mutations from client only) + tool-call allowlist locked. Per-model reliability benchmark pending V1. |
 | **A6 Prompt injection & jailbreak** | `PARTIAL` (formalized) | 5-layer defense locked; Layer 3 (canon-scoped retrieval) is structural primary. Output filter calibration + novel jailbreak classes are ongoing ops. |
 
-See [OPEN_DECISIONS.md](OPEN_DECISIONS.md) entries A3-D1..D4, A5-D1..D4, A6-D1..D5 for the 13 locked decisions.
+See [OPEN_DECISIONS.md](../decisions/_index.md) entries A3-D1..D4, A5-D1..D4, A6-D1..D5 for the 13 locked decisions.
 
 ---
 
 ## 9. References
 
-- [01_OPEN_PROBLEMS.md §A3/A5/A6](01_OPEN_PROBLEMS.md) — problem statements
-- [02_STORAGE_ARCHITECTURE.md §7 R7-L1 single-writer session, §12H R8 NPC memory aggregate split](02_STORAGE_ARCHITECTURE.md)
-- [03_MULTIVERSE_MODEL.md §3 Four-layer canon, §9.7 Canonization safeguards](03_MULTIVERSE_MODEL.md) — canon layers + M3
-- [04_PLAYER_CHARACTER_DESIGN.md](04_PLAYER_CHARACTER_DESIGN.md) — PC identity, session scope
-- [OPEN_DECISIONS.md](OPEN_DECISIONS.md) — A3-D1..D4, A5-D1..D4, A6-D1..D5 locked
+- [01_OPEN_PROBLEMS.md §A3/A5/A6](../01_problems/A_llm_reasoning.md) — problem statements
+- [02_STORAGE_ARCHITECTURE.md §7 R7-L1 single-writer session, §12H R8 NPC memory aggregate split](../02_storage/00_overview_and_schema.md)
+- [03_MULTIVERSE_MODEL.md §3 Four-layer canon, §9.7 Canonization safeguards](../03_multiverse/01_four_layer_canon.md) — canon layers + M3
+- [04_PLAYER_CHARACTER_DESIGN.md](../04_player_character/_index.md) — PC identity, session scope
+- [OPEN_DECISIONS.md](../decisions/_index.md) — A3-D1..D4, A5-D1..D4, A6-D1..D5 locked
 - Generative Agents paper (arXiv:2304.03442) — memory stream + retrieval patterns
 - MemGPT (arXiv:2310.08560) — hierarchical memory context management
 - OWASP LLM Top 10 — injection defense principles

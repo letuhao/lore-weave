@@ -32,6 +32,7 @@ from ..grant_deps import (
 )
 from ..model_name import resolve_model_name
 from ..book_client import build_chapters_meta
+from ..workers import extraction_strategy as ExtractionStrategy
 from ..workers.extraction_model import get_model_context_window
 from ..workers.extraction_prompt import estimate_extraction_cost
 from ..workers.glossary_client import fetch_extraction_profile
@@ -68,6 +69,19 @@ class CreateExtractionJobPayload(BaseModel):
     # worker clamps to a hard ceiling; chapters still run sequentially (entity
     # accumulation is per-chapter) — only the batches within a chapter fan out.
     concurrency_level: int | None = Field(default=None, ge=1, le=64)
+    # BOOK_TO_GAME/15 — the prompt SHAPE for this job, so two shapes can be A/B'd on the
+    # same book concurrently. Closed set (see extraction_strategy.py); an unknown value is
+    # a 400 rather than a silent fallback to the default, because a typo that quietly ran
+    # the baseline would make an A/B report "no difference" for the wrong reason.
+    extraction_strategy: str = ExtractionStrategy.BATCHED
+    # How to treat the raw-output cache. DEFAULT `refresh_if_stale` — reuse only when every
+    # dimension the cached row records still matches, model included. `prefer_cache` is the
+    # old trust-the-key behaviour, now an explicit choice; `always_refresh` ignores the cache
+    # and overwrites it. The default is deliberately the CORRECT one rather than the cheap
+    # one: two key dimensions were found missing in a single day (the strategy, then the
+    # kind/attribute descriptions), and each made a re-extraction after an edit silently
+    # serve the parse from before that edit.
+    cache_policy: str = ExtractionStrategy.CACHE_REFRESH_IF_STALE
 
 
 class CancelJobResponse(BaseModel):
@@ -189,6 +203,14 @@ async def _create_extraction_job_core(
     _grant_level = await get_grant_client().resolve_grant(book_id, uid)
     reasoning_effort, _ = clamp_effort_to_grant(effort_raw, int(_grant_level))
 
+    # Closed-set gate. A rejection here is the point: silently defaulting an unknown value
+    # would make an A/B run compare the baseline against itself and report no difference.
+    try:
+        strategy = ExtractionStrategy.normalize(payload.extraction_strategy)
+        cache_policy = ExtractionStrategy.normalize_cache_policy(payload.cache_policy)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     chapters_meta = await build_chapters_meta(book_id, payload.chapter_ids)
     cost_estimate = estimate_extraction_cost(
         chapters_meta, extraction_profile, kinds_metadata,
@@ -245,8 +267,8 @@ async def _create_extraction_job_core(
                 INSERT INTO extraction_jobs
                   (book_id, owner_user_id, status, source_language, model_source, model_ref,
                    extraction_profile, context_filters, chapter_ids, total_chapters, cost_estimate,
-                   reasoning_effort, mcp_key_id, spend_cap_usd)
-                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+                   reasoning_effort, mcp_key_id, spend_cap_usd, extraction_strategy)
+                VALUES ($1,$2,'pending',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
                 RETURNING *
                 """,
                 book_id, uid, source_language, model_source, model_ref,
@@ -256,7 +278,7 @@ async def _create_extraction_job_core(
                 len(payload.chapter_ids),
                 json.dumps(cost_estimate),
                 reasoning_effort,
-                mcp_key_id, spend_cap_usd,
+                mcp_key_id, spend_cap_usd, strategy,
             )
             job_id = job_row["job_id"]
 
@@ -287,6 +309,9 @@ async def _create_extraction_job_core(
         "max_entities_per_kind": payload.max_entities_per_kind,
         "thinking_enabled": payload.thinking_enabled,
         "reasoning_effort": reasoning_effort,
+        # BOOK_TO_GAME/15 — the prompt shape this job runs (A/B on one book).
+        "extraction_strategy": strategy,
+        "cache_policy": cache_policy,
         # D-EXTRACTION-BATCH-CONCURRENCY: per-chapter LLM-call fan-out cap (None ⇒ 1).
         "concurrency": payload.concurrency_level,
         # D-PMCP-WORKER-CARRIER: ride the public-MCP key + cap so the extraction
@@ -372,6 +397,20 @@ async def get_extraction_job(
         "entities_skipped": row["entities_skipped"],
         "total_input_tokens": row["total_input_tokens"],
         "total_output_tokens": row["total_output_tokens"],
+        # CACHE TRACEABILITY — how much of this run was SERVED rather than executed, so the
+        # GUI can explain a cheap run instead of leaving "completed, 0 tokens" unexplained,
+        # and so a user who re-ran after editing a kind definition can see whether their
+        # edit was honoured or the answer came from before it.
+        "extraction_strategy": row["extraction_strategy"],
+        "cache": {
+            "cached_batches": row["cached_batches"],
+            "executed_batches": row["executed_batches"],
+            "force_refresh": row["force_refresh"],
+            "served_from_cache_pct": (
+                round(100.0 * row["cached_batches"]
+                      / max(row["cached_batches"] + row["executed_batches"], 1), 1)
+            ),
+        },
         "cost_estimate": json.loads(row["cost_estimate"]) if row["cost_estimate"] else None,
         "error_message": row["error_message"],
         "started_at": row["started_at"].isoformat() if row["started_at"] else None,

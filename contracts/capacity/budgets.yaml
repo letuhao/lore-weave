@@ -96,6 +96,32 @@ services:
     class: worker
     v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "outbox_lag>1000" }
     v3: { min_replicas: 2, max_replicas: 4 }
+  # The Rust writer node: hosts sim-core natively (CS-A5) and commits through an
+  # epoch-fenced ChannelWriter.
+  #
+  # THE SCALING FACT THAT MATTERS, because it is not the usual one: a replica
+  # holds a WRITER LEASE per (reality, channel) (DP-A16). Replicas therefore do
+  # NOT share a channel — adding one serves MORE channels, it does not make a
+  # single channel faster. So `max_replicas` is a bound on concurrent channels,
+  # not on throughput, and raising it to chase latency on one busy reality will
+  # do nothing at all.
+  #
+  # Memory is dominated by resident island state, not by the rules: a `Ruleset`
+  # is ~1.3 KB and is interned ONCE PER REALITY (QTY-A6.1 puts O(n²) tables on
+  # the ruleset and O(n) on the actor precisely so this stays true), while an
+  # `Actor` is 192 B — ten thousand resident actors are ~2 MB.
+  #
+  # ⚠ THESE NUMBERS ARE UNVALIDATED. Zero production realities exist, so nothing
+  # here has been observed under load; they are a defensible starting point sized
+  # against world-service, not a measurement. The one measured figure is the step
+  # cost — 176 ns/step, ~5.7M steps/sec on a single island (release), recorded in
+  # docs/plans/2026-07-26-sim-core-s1a.md — which says CPU is not the binding
+  # constraint at any plausible V1 load. Re-derive from real traffic before this
+  # is used to size a cluster.
+  - name: commit-service
+    class: worker
+    v1: { min_replicas: 1, max_replicas: 4, cpu_per_replica: 1.0, memory_per_replica: 2Gi, scale_trigger: "proposal_stream_lag>200" }
+    v3: { min_replicas: 2, max_replicas: 16 }
   - name: meta-outbox-relay
     class: worker
     v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.25, memory_per_replica: 256Mi, scale_trigger: "lw_meta_outbox_pending>1000" }
@@ -238,6 +264,10 @@ services:
   # ── 2026-07-31: three services shipped a Dockerfile without a budget row. SR08 I17 is
   # enforced by capacity-budget-lint.sh, which had never been wired into CI — so the rule
   # held on paper for the 50 services that predate them and caught none of these three.
+  # Stub budgets only; tuning belongs to each service's own sub-program cycle. Classes
+  # derived from source, not guessed:
+  #   agent-registry-service · knowledge-gateway → http.Server / NestJS  ⇒ web
+  #   scheduler-service      → a leased tick driver                      ⇒ cron (see below)
   - name: agent-registry-service
     class: web
     v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>100" }
@@ -247,6 +277,10 @@ services:
     v1: { min_replicas: 1, max_replicas: 4, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>200" }
     v3: { min_replicas: 2, max_replicas: 12 }
   # A per-user tick driver: fixed replicas, no autoscale — the tick is the workload.
+  # (main's independent seeding of this row proposed `worker` + `scheduled_agent_runs_due>100`.
+  # Kept as `cron` on merge 2026-08-02: `internal/scheduler/driver.go` is a `time.NewTicker`
+  # loop, so the workload is the interval, not a queue depth. The row is a stub either way —
+  # re-derive from real traffic before it sizes a cluster.)
   - name: scheduler-service
     class: cron
     v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "none" }

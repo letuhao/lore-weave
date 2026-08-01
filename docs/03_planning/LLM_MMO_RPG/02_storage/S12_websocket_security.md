@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12AB. WebSocket Token Security — S12 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #6).** This entire layer stack is written against `api-gateway-bff` as the WS edge (“Gateway redeems ticket”, `WSGateway`) — per PRR-20 the sanctioned WS edge is **`game-server`** (Colyseus), a second public entry point inheriting the same edge controls, and the per-session authorization unit is now the channel/island. The mechanisms themselves (ticket handshake, per-message authz, origin allowlist, rate limits, close-code audit) carry over but must be re-sited onto game-server. Current design: PRR-20 + [`13_simulation_loop.md`](../13_simulation_loop.md). Status markers below predate the island/commit-service model.
+
 **Origin:** Security Review S12 — WebSocket surface has distinct threat model from REST + S11 service-to-service auth. Long-lived connections, browser WS API constraints (no custom headers), per-message re-auth absent, state-change propagation to live connections not designed. Without this layer, WS is the easiest way to regress S2 capability + S3 privacy + S8 erasure + S10 state semantics.
 
 ### 12AB.1 Threat model

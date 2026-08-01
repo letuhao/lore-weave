@@ -4,6 +4,7 @@
 >
 > **Category:** PL — Play Loop (core runtime)
 > **Status:** CANDIDATE-LOCK 2026-04-26 (Phase 3 cleanup + closure pass — ActorId source-of-truth EF_001 §5.1; legacy pc_stats_v1_stub.StatusFlagDelta path retired V1 in favor of actor_status canonical; Stage 3.5.a entity.lifecycle_dead allocation; status.* V1 enumeration locked at 3 rules) + **2026-04-26 RES_001 downstream Phase 2 update: `Hungry` promoted from V1+ reserved → V1 active (5 V1 kinds total) per RES_001 Q5 LOCKED hunger loop; magnitude 1/4/7 semantics documented; HungerTick Generator (RES_001 §7.2) consumes; magnitude 7+ → emit MortalityTransitionTrigger Starvation (WA_006 cause_kind extension).**
+> **⚠ CLOSURE-PASS-EXTENSION 2026-06-20 — COMB_001 Combat Foundation DRAFT promotion:** register 4 combat-relevant status entries (additive to `StatusFlag` per I14; apply/tick/expire lifecycle unchanged): **`slowed`** / **`hasted`** / **`stunned`** — HSR action-value mutations (+20% / −20% / +100% AV per COMB_001 §4, Q7) — and **`knocked_out`** — KO-intermediate (`ko_duration_rounds` V1=5; on-expire → WA_006 Dying per reality `combat_mortality_config`, Q3). See [COMB_001 §4/§6](../18_combat/COMB_001_combat_foundation.md).
 > **Catalog refs:** Inferred from V1 vertical-slice gaps (Use:wine outcome / Strike Stun intent / Exhausted post-/sleep). No catalog row pre-existed; PL category extension.
 > **Builds on:** [PL_001 Continuum](PL_001_continuum.md) (turn-slot + fiction-clock substrate for tick/expire), [PL_005 Interaction](PL_005_interaction.md) + [PL_005b contracts](PL_005b_interaction_contracts.md) (Interaction OutputDecl applies statuses), [PL_005c integration](PL_005c_interaction_integration.md) §4 (opinion drift parallel pattern), [WA_001 Lex](../02_world_authoring/WA_001_lex.md) (axiom enforcement at validator stage).
 > **Defers to:** [PCS_001 brief](../06_pc_systems/00_AGENT_BRIEF.md) (`pc_stats_v1_stub.status_flags: Vec<StatusFlag>` references PL_006 enum); future [`NPC_003 mortality`](../05_npc_systems/) (will reference same enum for NPC statuses); V1+30d scheduler (auto-expire via Scheduled:StatusExpire generator).
@@ -195,6 +196,25 @@ Single `actor_status` aggregate covers PC + NPC. PCS_001 references via `pc_stat
 | Frightened | **ReplaceIfHigher** | frightened is a state |
 
 V1+ kinds declare their stack policy at registration in boundary matrix.
+
+### 8.3b Stat-layer effects per flag (DF07_001 closure-pass-extension 2026-07-26)
+
+> Until now every V1 flag was **narrative-only**. DF7 gives them mechanics by mapping each flag to
+> `StatModifier`s over the closed DF7 stat-slot set. PL_006 keeps owning the flags, magnitudes, stack
+> policy and lifecycle; **DF7 owns the mapping**; combat-resolution-only effects stay with COMB_001.
+
+| Flag | `stat_layer` | Stat modifiers (magnitude `m`) |
+|---|---|---|
+| `Drunk` | ✅ | `Accuracy` Flat −20·m ‰ · `Dodge` Flat −10·m ‰ |
+| `Exhausted` | ✅ | `Speed` Pct −5·m % · `StrikePower` Pct −3·m % |
+| `Wounded` | ✅ | `StrikePower` Pct −4·m % · `Dodge` Flat −15·m ‰ — **never `MaxHp`** (resizing the pool while `current_value` stands is a status that silently deals damage, breaking COMB_001's "status applies AFTER damage" invariant) |
+| `Frightened` | ✅ | `Accuracy` Flat −15·m ‰ · `StrikePower` Pct −3·m % |
+| `Hungry` | ✅ | `Speed` Pct −2·m % · `StrikePower` Pct −2·m % (supersedes the §8.4 "V1+30d −10% Stamina max" note — a max-pool change now goes through RES_001 `VitalMaxRecomputed`, not a raw clamp) |
+| `defending` · `slowed` · `hasted` · `stunned` · `knocked_out` (registration pending per COMB_001 closure item 3) | ❌ | **resolution-time, COMB-owned** — the AV mutations are pinned to exact percentages that a `Speed` modifier cannot reproduce (`av = 10000/speed` is non-linear), and applying them in both layers double-counts (DF7-A8). Registering one as a stat modifier trips validator DF7-V6. |
+
+**Rule for new flags (V1+):** at boundary-matrix registration each flag declares `stat_layer: bool`. A flag
+is stat-layer only if it is meaningful *outside* combat resolution. See
+[DF07_001 §6.3](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md).
 
 ### 8.4 Magnitude semantics
 

@@ -1,0 +1,24 @@
+# ruleset-core — F1 of the doc-26 build order: the resolved ruleset, its
+# canonical encoding, and the REAL content digest (RLS-A13).
+#
+# NO I/O. The provider stack, presets, merge algebra and validation are F2
+# (`ruleset-loader`); this crate is types + one pure function (bytes -> digest),
+# so it is trivially unit-testable and can be depended on by the laws without
+# IMP-D2's "a law that can read a file is a law that can be slow" problem.
+#
+# Depends on `sim-core` for `RulesetDigest` ALONE — see F1-D1 in
+# docs/plans/2026-07-28-f1-ruleset-core.md. The type stays in the kernel because
+# the kernel only ever CARRIES it and states a zero-runtime-dependency
+# invariant; the COMPUTATION (blake3 over canonical bytes) lives here.
+[package]
+name = "ruleset-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+sim-core = { path = "../sim-core" }
+blake3 = { workspace = true }

@@ -29,6 +29,15 @@ import (
 //                       to deserialize into
 //   - Metadata        — out-of-band context (request_id, actor_id, trace_id,
 //                       privacy flags); NOT part of the canonical event shape
+//   - RulesetDigest   — RLS-A13: the content digest (BLAKE3, 64 lowercase hex)
+//                       of the resolved RealityRuleset the producing island was
+//                       running. EMPTY when the event did not come from a
+//                       ruleset-pinned simulation (canon writes, Forge edits,
+//                       admin actions) — that is a real category, not a gap.
+//                       Optional here and REQUIRED at the game writer, because
+//                       this envelope is the whole platform's wire shape and a
+//                       required field would break every existing producer (I14
+//                       additive rule).
 //
 // The envelope is INTENTIONALLY identical in Go + Rust (see
 // `crates/dp-kernel/src/upcaster.rs`) — having a single shape makes
@@ -45,6 +54,27 @@ type Envelope struct {
 	RecordedAt       time.Time              `json:"recorded_at"`
 	Payload          map[string]any         `json:"payload"`
 	Metadata         map[string]any         `json:"metadata,omitempty"`
+	RulesetDigest    string                 `json:"ruleset_digest,omitempty"`
+}
+
+// isLowerHex64 reports whether s is exactly 64 lowercase hex characters.
+//
+// The digest is compared and joined as TEXT, so a mixed-case or truncated value
+// silently fails to match the same digest written by another producer. Rejecting
+// the shape at the envelope is cheaper than discovering it as a replay
+// false-alarm — RLS-D5's "worse than no digest, because it fails loudly and
+// WRONGLY".
+func isLowerHex64(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // Validate runs the structural checks that don't require the registry:
@@ -79,6 +109,10 @@ func (e *Envelope) Validate() error {
 	}
 	if e.RecordedAt.IsZero() {
 		return ErrInvalidEnvelope("recorded_at is zero")
+	}
+	// PRESENCE is not required (see the field docs); FORMAT is, when present.
+	if e.RulesetDigest != "" && !isLowerHex64(e.RulesetDigest) {
+		return ErrInvalidEnvelope("ruleset_digest must be 64 lowercase hex characters")
 	}
 	return nil
 }

@@ -5,9 +5,11 @@
 > **Status:** **CANDIDATE-LOCK 2026-04-27** (DRAFT 2026-04-26 → 5 NEW deferrals D33..D37 cross-cultivation extensibility audit b20c4dcb → CULT_001 V2+ deferred d57fb7fc → TDIL closure-pass-extension Q3f day-boundary → turn-boundary applied at TDIL DRAFT bdc8d8e1 → CANDIDATE-LOCK 2026-04-27 closure pass: §16 acceptance scenarios walked; PROG-Q1..Q5 noted as deferred to consumer feature closures — PROG-Q1 to PCS_001+NPC_001 first-design-pass / PROG-Q2 V1 default eager + V1+30d offline mode / PROG-Q3 V1 BodyOrSoul auto + V1+30d author mapping / PROG-Q4 i18n cross-cutting commit / PROG-Q5 future AI Tier ownership). All 7 critical scope questions LOCKED via 6-batch deep-dive 2026-04-26 (Q1+Q6 / Q2 / Q3 / Q4+Q5 batched / Q4+Q5 REVISED quantum-observation / Q7). PROG_001 V1 substrate proven cross-cultivation-extensible via PROG-D33..D37 audit (11-cultivation-system survey verified PROG_001 future-proof). Foundation tier 6/6 closure feature — final V1 foundation feature CANDIDATE-LOCK promotion. Companion documents: [`00_CONCEPT_NOTES.md`](00_CONCEPT_NOTES.md) + [`02_CHAOS_BACKEND_REFERENCE.md`](02_CHAOS_BACKEND_REFERENCE.md).
 >
 > **CLOSURE-PASS-EXTENSION 2026-04-27 (TDIL_001 DRAFT promotion):** Q3f "DailyBoundary only V1" Generator semantic SUPERSEDED by TDIL-A3 per-turn O(1) Generator semantic (architecture-scale TDIL_001 Time Dilation Foundation). Mechanical revision: `Scheduled:CultivationTick` Generator binding changes from `EVT-G2 FictionTimeMarker (day-boundary)` to **per-turn fire** with elapsed-time parameter. Computation invariant: `delta = base_rate × elapsed_time × multiplier` (O(1) regardless of `time_flow_rate` magnitude). Per TDIL-A4 actor-bound clock-source matrix, CultivationTick reads `body_clock` (BodyOrSoul::Body progressions) or `soul_clock` (BodyOrSoul::Soul progressions) per ProgressionKindDecl.body_or_soul discriminator — NOT channel `wall_clock`. NO semantic change to user-facing behavior (PCs still cultivate per fiction-time elapsed; Tracked NPCs lazy materialization preserved); all V1 acceptance scenarios AC-PROG-1..12 preserved. Cross-realm tu tiên (Tây Du Ký heaven 0.0027× / Dragon Ball chamber 365×) now correctly handled by elapsed-time multiplication. Affected sections: §6 Training Triggers (Time-source semantic), §7 Hybrid Observation NPC Model (Tracked NPC lazy materialization formula), §12 Generator Bindings (Scheduled:CultivationTick binding row), §14 Cascade Integration (EVT-G2 → per-turn fire). PROG-D19 RES_001 alignment concern resolved via TDIL-A3 unified per-turn semantic. See [TDIL_001 §6 Generator clock-source matrix](../17_time_dilation/TDIL_001_time_dilation_foundation.md#6-generator-clock-source-matrix-q6-locked) for full clock-source matrix and [TDIL_001 §6.4 closure-pass coordination](../17_time_dilation/TDIL_001_time_dilation_foundation.md#64-closure-pass-coordination) for cascade rationale.
+> **⚠ CLOSURE-PASS-EXTENSION 2026-06-20 — COMB_001 Combat Foundation DRAFT promotion:** PROG_001 §9 V1 Strike formula is **REVERSED** — the hybrid "LLM-proposes-damage → engine-clamps" direction is replaced by **engine-computes-damage** end-to-end via the COMB_001 4-step damage law-chain (LLM-zero-math, COMB-A1). The simple PROG-D24 deterministic form is promoted to V1; the LLM **never** proposes a `damage_amount`. No PROG schema change beyond the §9 formula-direction note — the damage computation lives in the CombatEngine. See [COMB_001 §4](../18_combat/COMB_001_combat_foundation.md) + [COMB_002 tactical grid](../18_combat/COMB_002_tactical_grid.md).
+> **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 — DF07_001 Actor Stat Block DRAFT:** §9's `StrikeFormulaDecl.offense_terms` / `.defense_terms` are **SUPERSEDED** by DF7 `StatSlotDecl` for the `StrikePower` / `Armor` slots — same `StatTerm` shape (DF7 becomes its owner-of-record), one declaration site instead of two. `post_damage_hooks` stays with combat. PROG-D24 / PROG-D30 ("DF7-equivalent full damage law") now point at a real document: [DF07_001](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md). **PROG-D25 (crit deferred V1+) is REVERSED** — crit ships V1 as the `CritChance` / `CritMult` slots, because COMB_001's locked V1 law-chain and RNG seed roles already assume it (DF7-Q11). No PROG schema change; the projection law lives in DF7. See DF07_001 §6.1 (`instrument_match` reuse) + §11 closure items 1–2.
 > **i18n compliance:** Conforms to RES_001 §2 cross-cutting pattern — all stable IDs English `snake_case` / `PascalCase`; all user-facing strings `I18nBundle`.
 > **V1 testable acceptance:** 12 scenarios AC-PROG-1..12 (§16).
-> **Supersedes:** DF7 PC Stats placeholder (V1-blocking deferred since 2026-04-23). DF7-V1+ becomes "Combat Damage Formulas Full" sub-feature reading PROG_001 ProgressionInstance values (per chaos-backend law chain — PROG-D24).
+> **Supersedes:** DF7 PC Stats placeholder as originally scoped (inventory / relationships / simple stats, deferred since 2026-04-23). **Partially reversed 2026-07-26:** DF7 was re-scoped to the *derived-stat projection layer* (engine slot set + resolution law) which PROG_001 deliberately does not own — see [DF07_001](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md) §1. PROG_001 remains the open author-declared value substrate; DF7 is the closed engine-facing projection of it.
 
 ---
 
@@ -65,7 +67,7 @@ PROG_001 establishes the value-substrate for ALL actor progression dimensions ac
 | `ActorClassMatch` / `FictionTimeWindow` / `RelationshipRequired` TrainingConditions | V1+30d (PROG-D10/D11/D12) | Q3e — 3 V1 only |
 | `HourlyBoundary` / Custom TickPeriod | V1+30d (PROG-D13) | Q3f — DailyBoundary only V1 |
 | `TrainingSource::Quest` | V2 (PROG-D14) | Q3c — QST_001 dependency |
-| `InstrumentClass` match | V1+30d (PROG-D15) | Q3 — broader category match V1+ |
+| ~~`InstrumentClass` match~~ | ✅ **RESOLVED 2026-07-26** by PL_007 (PROG-D15) | Q3 — deferred for want of a class taxonomy; PL_007 `ItemDefDecl.instrument_tags` supplies it, and `InstrumentMatch::ItemTag` is the match. See the §training closure-pass note. |
 | RES_001 NPC eager → lazy migration | V1+30d (PROG-D19) | Q4 REVISED — RES_001 closure pass alignment |
 | Intermediate-state interpolation | V1+ (PROG-D20) | Q4 REVISED — V1 conservative single-state |
 | NPC-to-NPC cascade during un-observed period | V2 (PROG-D21) | Q4 REVISED — complex determinism |
@@ -273,6 +275,18 @@ V1 simplification: derivation only affects training rate (Q1e). V1+30d may exten
 
 ### §5.1 CurveDecl enum
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 (REC-25 / RLS-A8) — all five `f32` fields in this doc
+> convert to fixed-point milli-units (`u32`/`i64` ×1000), authored as decimals, normalized at
+> ruleset load (RLS-A7).** Affected: `rate_per_train_unit` · `base_rate` · `difficulty_factor`
+> (here and in `WithinTierCurve`) · `training_rate_factor` (§4.4 `DerivationDecl`) ·
+> `min_damage_factor`/`max_damage_factor` (§9.2 — already DF7-superseded, corrected for the
+> record). Rationale: DF7-A4 and TDIL-A9 both hold that *"floats in a replayed, event-sourced
+> engine are a determinism liability"* — DF7 fixed the stat path and left this **training** path,
+> which feeds replay identically, on floats. Same milli-unit convention as `StatTerm.weight`
+> (`1.5` → `1500`); training arithmetic per §6.2 runs saturating-integer like DF7 §4. **This also
+> retires stale PROG-D6's framing**: DF7-A3 shipped the contribution/stacking layer that row
+> deferred.
+
 Per Q2a LOCKED — 3 V1 curve types. Threshold collapsed into Stage 1-tier degenerate (Q2b). DiscreteLevelup deferred V1+30d (PROG-D1).
 
 ```rust
@@ -463,9 +477,34 @@ pub enum TargetMatch {
 
 pub enum InstrumentMatch {
     Any,
-    Specific(ResourceKind),                               // training Sword skill requires Sword item as tool
-    // InstrumentClass V1+30d (PROG-D15)
+    Specific(ResourceKind),                               // fungible tools only — see the 2026-07-26 note
+    ItemDef(ItemDefId),                                   // NEW 2026-07-26 (PL_007) — exact item
+    ItemTag(InstrumentTag),                               // NEW 2026-07-26 (PL_007) — RESOLVES PROG-D15
 }
+
+> **Closure-pass note 2026-07-26 (PL_007 Item Foundation cold-start review) — two additive variants,
+> and one clarification that is load-bearing.**
+>
+> **(a) `Specific(ResourceKind)` can no longer name a wielded weapon.** PL_007 ITM-A2 makes an item with
+> identity an **EF_001 entity** (`ItemDefId`), and **withdraws `ResourceKind::Item`** (RES-D1) — so a
+> sword is not nameable by any `ResourceKind`. Without the two new variants, *every* rule of the form
+> "train X while wielding/using Y" would have been **silently unsatisfiable**: the rule parses, the
+> match never fires, and the author sees a declared bonus that never arrives. `Specific(ResourceKind)`
+> is **retained** for genuinely fungible instruments. `ItemTag` is PROG-D15's "`InstrumentClass` match"
+> — deferred V1+30d for want of exactly this taxonomy, now **RESOLVED**; the tags are author-declared on
+> `ItemDefDecl.instrument_tags`, and PL_007 ITM-C7 warns at bootstrap if a tag no item carries is
+> referenced here.
+>
+> **(b) The same enum is resolved against different subjects by its two consumers — deliberately.**
+>
+> | Consumer | Resolves against | Why |
+> |---|---|---|
+> | **PROG_001 training rules** (this section, `§training` pseudocode) | **`current_turn.instrument`** — the `tools[0]` of the Interaction being processed. **Unchanged from the original semantic.** | Training is *what you just did with what was in your hand*. `ItemClass::Tool` (lockpick, flint, rope) is **never equippable** in PL_007 §5.2, so an equipped-only rule would make every tool-training rule permanently dead. |
+> | **DF07 `StatTerm.instrument_match`** ([DF07_001 §6.1](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md)) | the **equipped main-hand instance** | A stat term is a *standing* contribution resolved outside any turn — there is no "current turn instrument" to read, and DF07 additionally needs the instrument inside `StatEpoch.equipment_version` rather than as a hidden per-action input its snapshot cannot see. |
+>
+> PL_007's first draft stated one global rule ("the main_hand-equipped item"), which would have changed
+> **this** feature's behaviour by side effect. It does not. PL_007 supplies the vocabulary and the tags;
+> each consumer resolves its own subject. No change to any existing `training_rules` declaration.
 
 pub enum TrainingAmount {
     Fixed { amount: u32 },                                // V1 active
@@ -751,6 +790,15 @@ Both V1+30d but separate mechanisms. Atrophy uses `last_trained_at_fiction_ts`; 
 ---
 
 ## §9 — Combat Damage Formula V1 (Q7 LOCKED)
+
+> **⚠ 2026-07-26 — direction + ownership now settled.** Two dated corrections apply to this whole section:
+> (a) **COMB_001 2026-06-20** reversed the hybrid direction — the LLM never proposes `damage_amount`; the
+> engine computes the 4-step law-chain end-to-end (COMB-A1, LLM-zero-math).
+> (b) **DF07_001 2026-07-26** takes over the *stat inputs* — `offense_terms` / `defense_terms` below are
+> superseded by the `StrikePower` / `Armor` `StatSlotDecl`s (identical `StatTerm` shape), and the stat
+> resolution runs in fixed-point milli-units per DF7-A4. `damage_floor` + `post_damage_hooks` remain with
+> the combat engine. **Read §9.2–§9.5 as historical derivation**, with the live contract at
+> [DF07_001 §5–§8](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md) + [COMB_001 §4](../18_combat/COMB_001_combat_foundation.md).
 
 ### §9.1 Hybrid V1 architecture
 
@@ -1440,7 +1488,7 @@ Already enumerated in CONCEPT_NOTES §11.2 / §11.4 / §11.8 / §11.11. PROG-D33
 - PROG-D11 TrainingCondition::FictionTimeWindow
 - PROG-D12 TrainingCondition::RelationshipRequired
 - PROG-D13 TickPeriod::HourlyBoundary / Custom
-- PROG-D15 InstrumentMatch::InstrumentClass
+- ~~PROG-D15 InstrumentMatch::InstrumentClass~~ — ✅ **RESOLVED 2026-07-26 by PL_007** (`InstrumentMatch::ItemTag` + `ItemDefDecl.instrument_tags`; see §training closure-pass note)
 - PROG-D19 RES_001 NPC eager → lazy migration alignment
 - PROG-D23 Closed-form materialization optimization
 - PROG-D28 Per-instrument formula override

@@ -40,10 +40,11 @@ def _row(row: asyncpg.Record) -> WorkChapterDraft:
 def _dump(body: Any) -> str:
     # asyncpg has no default codec for a Python dict → JSONB; serialize ourselves
     # (the same reason DerivativesRepo json.dumps its override deltas).
-    # ML-5: `body` is the chapter's PROSE. Escaping inflates every non-ASCII character
-    # six-fold on the wire to Postgres and makes the payload unreadable in any log or
-    # psql dump — for a manuscript written in Vietnamese or Chinese that is the whole
-    # document.
+    # ensure_ascii=False (ML-5): `body` is the chapter's PROSE. Escaping inflates every
+    # non-ASCII character six-fold on the wire to Postgres and makes the payload
+    # unreadable in the column, in any log, and in a psql dump — for a manuscript written
+    # in Vietnamese or Chinese that is the whole document. Safe for existing rows: both
+    # forms decode to the same object, so this changes what we WRITE, never how we READ.
     return json.dumps(body, ensure_ascii=False)
 
 

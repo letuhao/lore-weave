@@ -33,6 +33,8 @@ last_updated: 2026-04-27 ACT_001 unification refactor (main session attribution;
 
 ## 12H. NPC Memory Aggregate Split (R8 mitigation, A1 foundation) — HISTORICAL CONTEXT
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #9).** In addition to the ACT_001 note above: the `region` aggregate referenced in this file's aggregate inventory no longer exists (`place`/`actor_core` per the 52-row ownership matrix), and `npc_session_memory` is `actor_session_memory` per ACT_001. Status markers below predate the island/commit-service model.
+
 NPC state grows linearly with interaction count. A popular NPC (tavern keeper) after 1 year with 10K PCs would have ~75MB state per snapshot in a naive design. Resolution: split NPC into core aggregate + per-pair memory aggregates. This is also the storage foundation for A1 (NPC memory at scale) — A1's semantic layer builds on this infrastructure.
 
 ### 12H.1 Core insight — linear growth must be broken
@@ -257,7 +259,7 @@ lw_npc_memory_compaction_triggered_count              counter
 
 ### 12H.9 Connection to A1 (NPC memory at scale)
 
-[01_OPEN_PROBLEMS A1](01_OPEN_PROBLEMS.md#a1-npc-memory-at-scale--open) was critical-path `OPEN`. With R8 resolution (this section), A1 moves to `PARTIAL`:
+[01_OPEN_PROBLEMS A1](../01_problems/A_llm_reasoning.md#a1-npc-memory-at-scale--partial) was critical-path `OPEN`. With R8 resolution (this section), A1 moves to `PARTIAL`:
 
 **What R8 provides (infrastructure):**
 - Bounded state per (NPC, PC) pair

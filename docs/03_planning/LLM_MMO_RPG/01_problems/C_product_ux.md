@@ -22,7 +22,7 @@ generated_by: scripts/chunk_doc.py
 - **C1-D4** — persistence: user voice preference per book stored in auth-service user-preferences.
 - **C1-D5** — LLM Safety Layer integration: voice mode is a prompt-template variable; output filter (A6-D4) enforces mode-consistency (terse must not produce 3-paragraph rewrite).
 
-Decisions C1-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+Decisions C1-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 **Residual `OPEN`:**
 - "Mixed" auto-adapt classifier (pivotal vs casual) — V1 tuning
@@ -58,7 +58,7 @@ Decisions C1-D1..D5 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
 - **C3-D5** Friend-follow (reuses M1-D3) = primary organic MMO concentration mechanic.
 - **C3-D6** Anti-dispersion defaults (reuses M1-D2 composite ranking + M1-D6 create-new gating) prevent fork-spam creating lonely realities at launch.
 
-Decisions C3-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+Decisions C3-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 **Residual `OPEN`:**
 - Scheduled-event UX spec (DF5 detail)
@@ -69,7 +69,7 @@ Decisions C3-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
 
 **Problem (original):** A book's author has a canonical story. Players in the world create emergent stories. How do these relate? Is player narrative throwaway, or can it feed back into canon?
 
-**Resolved by:** Four-layer canon model in [03 §3](03_MULTIVERSE_MODEL.md). Author canon lives at L1 (axiomatic) and L2 (seeded). Emergent narrative lives at L3 (reality-local, immutable within its reality). Player stories are **not throwaway** — they are permanent L3 canon of their reality. **Canonization** (L3 → L2 promotion) is an explicit author-gated flow.
+**Resolved by:** Four-layer canon model in [03 §3](../03_multiverse/01_four_layer_canon.md). Author canon lives at L1 (axiomatic) and L2 (seeded). Emergent narrative lives at L3 (reality-local, immutable within its reality). Player stories are **not throwaway** — they are permanent L3 canon of their reality. **Canonization** (L3 → L2 promotion) is an explicit author-gated flow.
 
 **Residual `OPEN`:** IP ownership of canonized content (E3), UI/diff tooling for author review, bright lines for what kinds of L3 events are canonization-eligible.
 

@@ -1,0 +1,16 @@
+# sim — test/chaos harness for sim-core (14_sim_core_spec.md §13, S1a slice).
+# Hosts TestDomain, the bite-tests + SC-A1 permutation property, and the
+# measurement bin (GDA-Q1 / SL-Q11 numbers). Zero external deps, same rule as
+# the kernel.
+[package]
+name = "sim"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+sim-core = { path = "../sim-core", features = ["test-util"] }
+
+[[bin]]
+name = "sim-bench"
+path = "src/bin/bench.rs"

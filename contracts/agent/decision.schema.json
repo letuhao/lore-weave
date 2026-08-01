@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "loreweave://contracts/agent/decision.schema.json",
+  "title": "Decision",
+  "description": "AGT-A1: the single shape every driver emits from decide(ctx). A Decision is a PROPOSAL (AGT-A6) — it executes nothing; commit-service validates it against the context's vocabulary and sim-core resolves it.",
+  "type": "object",
+  "required": ["vocabulary", "tool", "params"],
+  "additionalProperties": false,
+  "properties": {
+    "vocabulary": {
+      "type": "string",
+      "description": "The vocabulary id this decision claims to be drawn from, e.g. 'combat_v1'. Must equal the vocabulary the dispatcher offered — a mismatch is a reject."
+    },
+    "tool": {
+      "type": "string",
+      "description": "Tool name. MUST be a member of the vocabulary's closed set; anything else rejects to the vocabulary's fallback_tool."
+    },
+    "params": {
+      "type": "object",
+      "description": "Arguments, validated against the named tool's parameter schema in the vocabulary file."
+    },
+    "rationale": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Optional flavor for narration. NEVER enters the event log (EVT-A8) and never affects validation."
+    }
+  }
+}

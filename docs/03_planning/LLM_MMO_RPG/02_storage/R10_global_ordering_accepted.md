@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12J. Global Event Ordering — Accepted Trade-off (R10)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #4).** The trade-off is framed as per-reality monotonic `event_id` with reality-local order — ordering is now **per-island total order with causal ordering across islands** (SL-A11), over identity `(reality_id, channel_id, channel_event_id)`. The acceptance (no global cross-reality order) still holds, but at channel/island granularity, not reality granularity. Status markers below predate the island/commit-service model.
+
 Per-reality `event_id` is monotonic per-DB only; no global sequence across realities.
 
 ### 12J.1 Why this is accepted (not mitigated)

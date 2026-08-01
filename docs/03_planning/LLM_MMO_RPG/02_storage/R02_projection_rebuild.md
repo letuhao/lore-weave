@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12B. Projection Rebuild & Integrity (R2 mitigation)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #9 + write-freeze).** Projections are not consulted on the write path (CS-A3), so §12B.5's catastrophic-rebuild step “all writes for this reality rejected with 503” must not freeze gameplay — the island keeps serving from memory while the sink rebuilds; and `region_projection` naming is stale (`region` → `place`/`actor_core` per the 52-row ownership matrix). Current design: [`15_commit_service.md`](../15_commit_service.md) CS-A3. Status markers below predate the island/commit-service model.
+
 Event sourcing requires the ability to rebuild projections from events. This is rare but load-bearing: schema changes, corruption recovery, and catastrophic restore all depend on it. Multiverse isolation + snapshots from §6 already solve most normal cases; the layers below address edge cases.
 
 ### 12B.1 Layer 1 — Snapshot-anchored rebuild (baseline)
@@ -143,7 +145,7 @@ Operations around rebuild need admin surface area:
 - Schema migration planner (stage blue-green across N realities, throttle, rollback)
 - Audit trail of rebuild history
 
-This is substantial UI + orchestration work. Deferred to **DF9 — Rebuild & Integrity Ops** (see [OPEN_DECISIONS.md](OPEN_DECISIONS.md) deferred features). Algorithms/mechanisms locked here in §12B; admin UX + orchestration is DF9's scope.
+This is substantial UI + orchestration work. Deferred to **DF9 — Rebuild & Integrity Ops** (see [OPEN_DECISIONS.md](../decisions/_index.md) deferred features). Algorithms/mechanisms locked here in §12B; admin UX + orchestration is DF9's scope.
 
 ### 12B.8 Implementation ordering
 

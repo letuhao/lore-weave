@@ -9,7 +9,7 @@ generated_by: scripts/chunk_doc.py
 # 05 — LLM Safety Layer
 
 > **Status:** Locked design — 13 decisions committed 2026-04-23. Implementation contract for `roleplay-service` and `world-service` (Phase 6+).
-> **Scope:** Cross-cutting LLM I/O discipline resolving [01 A3 / A5 / A6](01_OPEN_PROBLEMS.md).
+> **Scope:** Cross-cutting LLM I/O discipline resolving [01 A3 / A5 / A6](../01_problems/_index.md).
 > **Created:** 2026-04-23
 
 ---
@@ -18,7 +18,7 @@ generated_by: scripts/chunk_doc.py
 
 **LLM narrates, world-service decides.**
 
-World state is the single source of truth (event-sourced per [02](02_STORAGE_ARCHITECTURE.md), per-reality per [03](03_MULTIVERSE_MODEL.md)). The LLM's job is to provide voice, prose, personality, and narrative texture. It is **not** the world model. It does not decide what happens, what is true, or what other players know.
+World state is the single source of truth (event-sourced per [02](../02_storage/_index.md), per-reality per [03](../03_multiverse/_index.md)). The LLM's job is to provide voice, prose, personality, and narrative texture. It is **not** the world model. It does not decide what happens, what is true, or what other players know.
 
 This principle is the root of all three safety properties:
 

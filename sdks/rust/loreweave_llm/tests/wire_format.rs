@@ -377,3 +377,43 @@ fn chat_stream_request_omits_tool_choice_when_unset() {
         "tool_choice skip-when-none — must NOT appear"
     );
 }
+
+// ─── reasoning_effort / chat_template_kwargs (mirror-drift fix 2026-07-27:
+//     the Python SDK + Go gateway had these; Rust didn't — POC-2 found the
+//     gap when a thinking model's hidden reasoning blew caller deadlines) ───
+
+#[test]
+fn reasoning_fields_absent_from_wire_when_unset() {
+    let req = ChatStreamRequest::new_chat_with_tools(
+        ModelSource::UserModel,
+        Uuid::nil(),
+        vec![json!({"role": "user", "content": "x"})],
+        vec![],
+        StreamFormat::Openai,
+    );
+    let wire = serde_json::to_value(&req).unwrap();
+    // The gateway forwards optional chat fields only when PRESENT — an
+    // explicit null would change provider behavior.
+    assert!(wire.get("reasoning_effort").is_none());
+    assert!(wire.get("chat_template_kwargs").is_none());
+}
+
+#[test]
+fn reasoning_fields_serialize_with_gateway_wire_values() {
+    use loreweave_llm::ReasoningEffort;
+    let req = ChatStreamRequest::new_chat_with_tools(
+        ModelSource::UserModel,
+        Uuid::nil(),
+        vec![json!({"role": "user", "content": "x"})],
+        vec![],
+        StreamFormat::Openai,
+    )
+    .with_reasoning_effort(ReasoningEffort::None)
+    .with_chat_template_kwargs(json!({"enable_thinking": false}))
+    .with_max_tokens(256);
+    let wire = serde_json::to_value(&req).unwrap();
+    // Wire values are the Go allowlist's lowercase strings (none|low|medium|high).
+    assert_eq!(wire["reasoning_effort"], json!("none"));
+    assert_eq!(wire["chat_template_kwargs"], json!({"enable_thinking": false}));
+    assert_eq!(wire["max_tokens"], json!(256));
+}

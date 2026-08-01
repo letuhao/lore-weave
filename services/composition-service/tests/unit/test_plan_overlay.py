@@ -411,3 +411,45 @@ def test_route_403_maps_insufficient_grant():
     # 403, not 404: a grantee already knows the book exists, so there is no oracle to
     # protect — collapsing this to 404 would lose that distinction silently.
     assert r.json()["detail"] == "insufficient access"
+
+def test_no_grant_tier_sits_below_view_so_403_is_unreachable_on_this_route():
+    """This replaced a test that **skipped on every run**, which is the honest
+    version of what it was doing.
+
+    It used to build a client at "some grant below VIEW", assert 403, and
+    `pytest.skip` when no such tier existed. None ever has:
+    `GrantLevel` is `NONE=0 < VIEW=1 < EDIT < MANAGE < OWNER`, and this route
+    needs only VIEW — so a caller is either NONE (→ 404, the no-oracle path,
+    covered by `test_route_404_when_no_grant`) or ≥ VIEW (→ 200, covered by
+    `test_route_returns_overlay_for_a_viewer`). The 403 branch has **no input
+    that can reach it here**, so the old test could not fail: a check whose
+    subject cannot vary (docs/standards/non-vacuity.md, NV-2). A skip line in
+    the summary reads like a temporary gap; this one was permanent.
+
+    Deleting it outright would lose the real information, which is *why* 403 is
+    unreachable — a fact about the enum, not about this route. So the assertion
+    is now on the enum itself: **add a tier between NONE and VIEW and this reds**,
+    at which point the 403 case becomes reachable and someone has to write it.
+
+    Pairs with `test_route_403_maps_insufficient_grant` above, which arrived from the
+    other branch of the same fix and does NOT contradict this one: it drives the 403
+    through an injected `InsufficientGrant`, proving the MAPPING; this proves no real
+    GrantLevel input can reach it. Both were needed to retire the same permanent skip.
+    """
+    from app.grant_client import GrantLevel
+
+    below_view = [
+        lvl for lvl in GrantLevel
+        if lvl is not GrantLevel.NONE and not lvl.at_least(GrantLevel.VIEW)
+    ]
+    assert below_view == [], (
+        f"GrantLevel gained {[l.name for l in below_view]} between NONE and VIEW. "
+        f"A caller can now hold a grant that is neither 'absent' nor 'enough', so "
+        f"this route's InsufficientGrant → 403 branch is reachable and needs a "
+        f"test: build a client at that tier and assert 403. Until this fired, the "
+        f"403 path had no possible input on this route."
+    )
+    # …and the floor is where the route's dependency actually reads it. If VIEW
+    # stops being the minimum this route requires, the reasoning above is void
+    # even with the enum unchanged.
+    assert GrantLevel.VIEW.value == 1 and GrantLevel.NONE.value == 0

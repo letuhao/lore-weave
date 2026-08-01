@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12E. Cross-Instance Data Access (R5 mitigation)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16).** §12E.3's `xreality.user.deleted` handler “convert PC to orphan NPC” has meta-worker authoring game state — PC→NPC conversion is an **AGT-A3 driver swap** per DL-A8 and must route through the owning island's admission path, never be written by a cross-reality consumer. The no-live-cross-instance-query stance itself remains correct. Current design: [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 Cross-reality queries across N reality DBs are rejected as an API pattern. This section locks the alternative: a tight 3-layer model for every legitimate cross-instance need, plus an explicit anti-pattern rule.
 
 ### 12E.1 Core insight — no product feature requires live cross-instance query
@@ -64,7 +66,7 @@ Push, not pull. Narrow scope — only the cross-instance state that actually nee
 
 | Topic | Producer | Consumer | Purpose |
 |---|---|---|---|
-| `xreality.book.canon.updated` | book-service, glossary-service | Each reality subscribed to book_id | L1/L2 canon sync ([M4](01_OPEN_PROBLEMS.md#m4-inconsistent-l1l2-updates-across-reality-lifetimes--open) resolved) |
+| `xreality.book.canon.updated` | book-service, glossary-service | Each reality subscribed to book_id | L1/L2 canon sync ([M4](../01_problems/M_multiverse_specific.md#m4-inconsistent-l1l2-updates-across-reality-lifetimes--partial) resolved) |
 | `xreality.user.deleted` | auth-service | All realities where user has PC | GDPR purge; convert PC to orphan NPC |
 | `xreality.reality.stats` | Each reality | meta-worker | Update registry fields (`current_player_count`, etc.) |
 
@@ -152,7 +154,7 @@ Formal governance rule. When a feature seems to need "query across realities," t
 - App-level fan-out in user-facing code path
 - Ad-hoc direct connections to multiple reality DBs in realtime path
 
-This is codified as governance policy: see [`docs/02_governance/CROSS_INSTANCE_DATA_ACCESS_POLICY.md`](../../02_governance/CROSS_INSTANCE_DATA_ACCESS_POLICY.md).
+This is codified as governance policy: see [`docs/02_governance/CROSS_INSTANCE_DATA_ACCESS_POLICY.md`](../../../02_governance/CROSS_INSTANCE_DATA_ACCESS_POLICY.md).
 
 **Code review enforcement:**
 - PR touching realtime code must not import multiple reality DB drivers

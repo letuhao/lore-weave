@@ -151,7 +151,7 @@ LLM output (JSON, validated):
 #[dp(type_name = "tilemap_view", tier = "T2", scope = "channel")]
 pub struct TileMapView {
     pub channel_id: ChannelId,                    // primary key (per-channel)
-    pub tier: ChannelTier,                        // mirror MAP_001
+    pub kind: MapKind,                            // mirror MAP_001 (SPG-R1: was `tier: ChannelTier`)
     pub grid_size: GridSize,                      // (width, height)
     pub skeleton_id: TileMapSkeletonId,           // L1 template
     pub procedural_seed: u64,                     // L2 input — blake3 deterministic
@@ -415,11 +415,11 @@ If user rejects after PoC review:
 
 ### §11.1 What was built
 
-Project at [`poc/tilemap_world_view/`](../../../../poc/tilemap_world_view/):
+Project at [`poc/tilemap_world_view/`](../../../../../poc/tilemap_world_view/):
 
 | Module | LoC | Purpose |
 |---|---:|---|
-| `src/data/types.ts` | 145 | TileMapView aggregate types mirroring §4 (10 TerrainKind, 7 MapObjectKind, ChannelTier, TileMapView) |
+| `src/data/types.ts` | 145 | TileMapView aggregate types mirroring §4 (10 TerrainKind, 7 MapObjectKind, `MapKind` — `SPG-R1`, TileMapView) |
 | `src/data/skeleton.ts` | 165 | L1 hardcoded `kingdom_default` (7 zones, 7 cell anchors, 7 landmarks, 6 road connections) — wuxia/Vietnamese theme |
 | `src/generators/prng.ts` | 35 | Mulberry32 PRNG + hash2D pure function |
 | `src/generators/noise.ts` | 60 | Value-noise 2D + fBm |
@@ -541,9 +541,9 @@ HOMM3-rich is **not realistic in PoC** — HOMM3 has 25 years of polish + custom
 
 | File | LoC | Purpose |
 |---|---:|---|
-| [`src/render/kenney_atlas.ts`](../../../../poc/tilemap_world_view/src/render/kenney_atlas.ts) | 110 | Sprite index map: terrain-keyed decoration palette + CELL_SPRITES + LANDMARK_SPRITES + frameOf() helper. **All indices TUNABLE** if wrong sprite shows. |
-| [`src/render/decorations.ts`](../../../../poc/tilemap_world_view/src/render/decorations.ts) | 75 | Procedural scatter using PRNG hash2D — deterministic per (cell_id, x, y, seed). Skips occupied tiles (cell anchors + landmarks + road waypoints + 1-tile halo around cells). |
-| [`src/render/minimap.ts`](../../../../poc/tilemap_world_view/src/render/minimap.ts) | 130 | DOM canvas overlay top-right of game container. 2px-per-tile scale (128×128 minimap for 64×64 grid). Click-to-jump main camera. Viewport rect highlight in cyan. Pure DOM/canvas — no Phaser dep. |
+| [`src/render/kenney_atlas.ts`](../../../../../poc/tilemap_world_view/src/render/kenney_atlas.ts) | 110 | Sprite index map: terrain-keyed decoration palette + CELL_SPRITES + LANDMARK_SPRITES + frameOf() helper. **All indices TUNABLE** if wrong sprite shows. |
+| [`src/render/decorations.ts`](../../../../../poc/tilemap_world_view/src/render/decorations.ts) | 75 | Procedural scatter using PRNG hash2D — deterministic per (cell_id, x, y, seed). Skips occupied tiles (cell anchors + landmarks + road waypoints + 1-tile halo around cells). |
+| [`src/render/minimap.ts`](../../../../../poc/tilemap_world_view/src/render/minimap.ts) | 130 | DOM canvas overlay top-right of game container. 2px-per-tile scale (128×128 minimap for 64×64 grid). Click-to-jump main camera. Viewport rect highlight in cyan. Pure DOM/canvas — no Phaser dep. |
 
 **Modified modules:**
 
@@ -644,7 +644,7 @@ L3/L4 still deferred to V2 design phase. PoC v3 only adds L1.b (NL-prompt-to-ske
 
 ### §13.2 What was built in v3
 
-**New modules ([src/llm/](../../../../poc/tilemap_world_view/src/llm/)):**
+**New modules ([src/llm/](../../../../../poc/tilemap_world_view/src/llm/)):**
 
 | File | LoC | Purpose |
 |---|---:|---|
@@ -654,7 +654,7 @@ L3/L4 still deferred to V2 design phase. PoC v3 only adds L1.b (NL-prompt-to-ske
 | `validator.ts` | 290 | Hand-rolled validator (no Zod dep); 13 sub-validators for skeleton_id / grid_size / terrain_zones / cell_anchors / landmark_anchors / road_connections; coverage check (zones cover full grid); connectivity check (Town-tier cells reachable from capital) |
 | `skeleton_generator.ts` | 110 | Orchestration: max 3 attempts; per-attempt phases (calling → parsing → validating → retrying); strips markdown JSON fences if LLM ignores `response_format: json_object`; aggregates AttemptRecord history |
 
-**New UI ([src/ui/llm_dialog.ts](../../../../poc/tilemap_world_view/src/ui/llm_dialog.ts)):**
+**New UI ([src/ui/llm_dialog.ts](../../../../../poc/tilemap_world_view/src/ui/llm_dialog.ts)):**
 
 | LoC | Purpose |
 |---:|---|

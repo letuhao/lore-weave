@@ -1,0 +1,14 @@
+# Build context = services/mcp-public-gateway, so the repo-root .dockerignore does not apply.
+# Mirrors services/api-gateway-bff/.dockerignore.
+#
+# `node_modules` is the load-bearing line: the Dockerfile installs from the lockfile and then
+# runs `COPY . .`, which without this file overwrites that install with the host's tree. The
+# identical omission took ai-gateway's image down on 2026-08-02 (a host-drifted typescript@7
+# broke `nest build`); this service's host tree happened to be clean, which is luck, not a
+# guarantee.
+node_modules
+dist
+.git
+test
+coverage
+*.md

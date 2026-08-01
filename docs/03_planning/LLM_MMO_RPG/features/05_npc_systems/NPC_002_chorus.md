@@ -77,7 +77,7 @@ NPC_002 emits / consumes events that all map to existing active categories — n
 | Trigger consumption (PCTurn) | **EVT-T1 Submitted** (consumed) | PCTurn | gateway → roleplay → commit-service (per PL_001/PL_002) | Read-only consumption via durable subscribe |
 | Reaction emission (one per reacting NPC) | **EVT-T1 Submitted** (formerly EVT-T2 NPCTurn — `_withdrawn` 2026-04-25, merged into T1) | NPCTurn (Speak / Action / Narration) | Orchestrator role (world-service) | **REQUIRED** causal_refs to Trigger per EVT-A6 |
 | Batched LLM proposals (one per reacting NPC) | **EVT-T6 Proposal** | NPCTurnProposal | LLM-Originator role (roleplay-service per orchestrator-coordinated call) | Each promoted to EVT-T1 Submitted/NPCTurn after validator chain |
-| Opinion / relationship update (V2 — defer to NPC_001) | **EVT-T3 Derived** | aggregate_type=npc_pc_relationship_projection | Aggregate-Owner role (NPC_001 owns the aggregate) | NPC_002 only triggers; aggregate definition belongs to NPC_001 |
+| Opinion / relationship update (V2 — defer to NPC_001) | **EVT-T3 Derived** | ~~aggregate_type=npc_pc_relationship_projection~~ `actor_actor_opinion` | ~~Aggregate-Owner role (NPC_001 owns the aggregate)~~ Aggregate-Owner role (**ACT_001**) | NPC_002 only triggers. **⚠ CORRECTED 2026-07-26 (REC-26 / AUD-F17 #24):** ownership transferred to **ACT_001** per the 2026-04-27 unification (this file's own header table) — the row still granted it to NPC_001 (`npc_pc_relationship_projection` was renamed `actor_actor_opinion`). See ACT_001 §3. |
 | Cascade event (V2+ — out of scope) | **EVT-T1 Submitted/NPCTurn** cascade | NPCTurn | same orchestrator | Cascade depth >1 V2+; V1 caps at 1 |
 
 **Closed-set proof:** every Chorus-emitted event is **EVT-T1 Submitted/NPCTurn** (or EVT-T6 Proposal → EVT-T1 Submitted/NPCTurn). All triggers are existing EVT-T1 Submitted events. No new EVT-T*.
@@ -147,7 +147,12 @@ NPC_002 reads/writes the following aggregates without redefining them:
 - **`participant_presence`** (PL_001 §3.3) — to find NPCs in scene
 - **`entity_binding`** (PL_001 §3.6) — to confirm NPC location
 - **`scene_state`** (PL_001 §3.2) — to read scene metadata for context (combat? private?)
-- **NPC opinion / relationship aggregates** — owned by **NPC_001** (not yet designed); NPC_002 reads via abstract trait `NpcOpinion::for_pc(npc_id, pc_id) → OpinionScore`. V1 stub returns neutral.
+- ~~**NPC opinion / relationship aggregates** — owned by **NPC_001** (not yet designed); NPC_002 reads via abstract trait `NpcOpinion::for_pc(npc_id, pc_id) → OpinionScore`. V1 stub returns neutral.~~
+  > **⚠ CORRECTED 2026-07-26 (REC-26 / AUD-F17 #24):** opinion/relationship aggregates are owned by
+  > **ACT_001** (`actor_actor_opinion`), not NPC_001 — the 2026-04-27 unification recorded in this
+  > file's header transferred them, but this body bullet (and §6.1's `NpcOpinion::for_pc` call)
+  > still named NPC_001. Read path is **`ActorOpinion::for_target(observer_actor_id,
+  > target_actor_id)`** per the header table. V1 stub returns neutral (unchanged).
 - **`tool_call_allowlist`** (PL_002 §3.1) — for actor_type=NPC_Reactive when each NPC's reaction goes to LLM
 
 ---
@@ -196,6 +201,17 @@ The algorithm runs in `ChorusBatchPhase::Resolving`. Inputs: Trigger event + Sce
 
 ### 6.1 Tier assignment
 
+> **⚠ CORRECTED 2026-07-26 (REC-40 / AUD-F17 #25): the AIT-A8 tier gate is added HERE, before the
+> `&Npc` deref.** This doc's headers claim the tier filter (Major full / Minor low-priority /
+> Untracked excluded) is *"preserved"*, but the body below had **no tier check at all** and takes
+> `&Npc` — a struct an Untracked actor **never has** (no `npc_core`, no `actor_progression`). The
+> gate is now explicit and runs on the roster **before** `assign_tier` is called: for each roster
+> member, match `storage.actor_progression.get(actor)` on the `Option<>` — `None` ⇒ Untracked ⇒
+> **excluded from candidacy before any `&Npc` dereference**; `Some(Minor)` ⇒ eligible at
+> `Priority::MinorBaseline` only; `Some(Major)`/PC ⇒ full algorithm below. This matches AIT_001
+> §7.3's corrected pseudocode (same REC), which now also matches on the `Option<>` rather than
+> dereferencing `.tracking_tier` on an absent row.
+
 For each NPC in SceneRoster (excluding the Trigger's actor if it's an NPC), compute tier:
 
 ```rust
@@ -221,6 +237,11 @@ fn assign_tier(npc: &Npc, trigger: &TriggerContext) -> Option<u8> {
     None  // not a candidate
 }
 ```
+
+> **⚠ CORRECTED 2026-07-26 (REC-26 / AUD-F17 #24):** the Tier-2 read above,
+> `NpcOpinion::for_pc(npc.id, trigger.pc_id)` *"NPC_001 stub"*, is superseded — the aggregate is
+> **ACT_001-owned** `actor_actor_opinion`, read via `ActorOpinion::for_target(observer, target)`
+> (see the §3.3 REC-26 note and the header unification table).
 
 ### 6.2 Within-tier ordering
 
@@ -413,6 +434,8 @@ gateway → world-service:
 gateway → UI: subscribe-stream delivers PC's TurnEvent + N reactions in order
 UI renders them in sequence (animation cadence ~1-2s between events for readability)
 ```
+
+> **⚠ CORRECTED 2026-07-26 (REC-60): NPC *decisions* do not ride `intent=npc_reply`.** The `AssemblePrompt(intent=npc_reply, ...)` calls in this flow (and in the §11 worked example below) are correct only for the **prose composition** step. The **decision/tool-selection** dispatch — which action an NPC takes — uses S09 12Y.2's NEW intent **`agent_decision`** (input 8K / output 1K: a decision is a proposal-schema tool-call, not prose), added by REC-60. Per the REC-54/55/56 resolution, that dispatch runs through **ai-gateway** (the LLM-Originator, hosting the ContextResolver role from `17` R8 and the `DecisionContext` → `PromptContext` mapping), not through a `roleplay-service` `npc_reply` call. Where this flow's step ① produces an action choice rather than reply text, read `AssemblePrompt(intent=agent_decision, ...)` via ai-gateway.
 
 **Latency budget:** PC's TurnEvent ack returns immediately (~200ms wall-clock). NPC reactions stream via subscribe over the next 9-15s. UI shows PC's text rendered first, then progressively the NPC reactions with a typing indicator per upcoming reaction.
 

@@ -1,5 +1,36 @@
 # 02_storage — Index
 
+> # ⛔ CORPUS-WIDE STALENESS — DO NOT BUILD FROM THIS FOLDER WITHOUT CHECKING (2026-07-26)
+>
+> A full sweep of all 40+ files against the current simulation model (`13`, `14`, `15`, `18`) found
+> **~75 stale claims, ~30 of them HIGH** — statements an implementer could build the wrong thing from.
+> The `MITIGATED` / `LOCKED` / `ACCEPTED` statuses in the table below **predate the island model and
+> should not be read as current.**
+>
+> **This is not 75 independent defects.** It is ~10 superseded root decisions with wide blast radius:
+>
+> | # | Superseded claim | Now | Blast radius |
+> |---|---|---|---|
+> | 1 | **Session is the concurrency unit / single writer** (R07 §12G.1, *"per-reality single writer → replaced by per-session single writer"*) | the **channel/island** is (DP-A16 · SL-A9 · CS-A1) | R07 · SR11 · S01_03 · S12 · SR08 · HMP §12R.1 · C01 |
+> | 2 | **`event-handler` service tails the events table** to drive gameplay propagation | event log is a **sink**; cross-island is async messages (SL-A10) — and this is a second writer | R07 · C04 · S01_03 · S12 · `03_service_map.md` |
+> | 3 | **DB / events table is SSOT** | DB is a persistence medium; live state is island memory; Class A is never event-sourced | R06_R12 · SR06 · SR07 · S08 |
+> | 4 | **Global monotonic BIGSERIAL `event_id`** | identity is `(reality_id, channel_id, channel_event_id)`; resume is a per-channel token | S06 · R06_R12 · C01 · S09 · R10 |
+> | 5 | **Awaited synchronous LLM turn** (`llm_processing` state, `response := llmProcess(...)`) | dispatch, **never await** (SL-A3/A4); deadline + fallback | R07 · SR11 · S06 · S09 |
+> | 6 | **`api-gateway-bff` is the WS edge / sole external entry** | **`game-server`** is, sanctioned as a second public entry by PRR-20 | S12 (entirely) · S11 |
+> | 7 | **`roleplay-service` orchestrates LLM calls / owns a scene manager** | island + `commit-service` | S09 · SR08 |
+> | 8 | **Stateless fungible replicas** (HPA/KEDA, pod-kill as low blast, claim-lock takeover) | sticky per-channel writer nodes holding epoch tokens; handoff is CP-coordinated with an epoch bump | SR08 · SR05 · SR06 · SR07 · SR03 |
+> | 9 | **`region` aggregate** | `place` / `actor_core` — see the 52-row ownership matrix | R08 · R09 · R02 · HMP |
+> | 10 | **Go is the authoritative event-producer language** | Rust (`contracts/language-rule.yaml`: `world-service: rust`; `commit-service` is Rust) | R03 (no Rust codegen target) · C03 (Go-only meta library) · SR10 (no `Cargo.lock` pinning) |
+>
+> **One item is a direct blocker:** `C05_lifecycle_cas.md` §12Q.6's valid-transition map has **no
+> `provisioning`, `seeding` or `failed` states**, so an implementer of `AttemptStateTransition()` would
+> reject the entire reality-bootstrap lifecycle that [`18_reality_bootstrap.md`](../18_reality_bootstrap.md)
+> §1 declares *"CAS-protected per §12Q"*.
+>
+> **Two files already carry inline notes** (`00_overview_and_schema.md` §4.4/§4.6/§5 · `HMP_followups.md`
+> §12R.2 as RBS-F2). The rest do not yet. Full itemised list: **AUD-F16** in
+> [`12_module_coverage_audit.md`](../12_module_coverage_audit.md).
+
 > **Purpose:** Storage engineering for the LLM MMO RPG track — event sourcing, DB-per-reality, and all R/C/H-M-P/S/SR resolutions. Split from `02_STORAGE_ARCHITECTURE.ARCHIVED.md` on 2026-04-24 via `scripts/chunk_doc.py`. Every chunk is a verbatim byte-range of the archived monolith; `chunk_rules.json` + `chunk_doc.py verify` prove losslessness (`VERIFY OK`, sha256=`9766f6c3afda7f648fdac6367c70cb3a691c72dc954817f4b7b252a8bea0c62b`, 476 561 bytes, 36 chunks).
 
 **Active:** (empty — no agent currently editing)

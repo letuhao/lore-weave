@@ -94,3 +94,33 @@ func TestEnvelopeFields_OmitsNilPayloadMetadata(t *testing.T) {
 		t.Error("nil metadata should be omitted")
 	}
 }
+
+// D-PUBLISHER-DROPS-RULESET-PIN — the pin must survive the last hop.
+//
+// It did not: the outbox SELECT never fetched `e.ruleset_digest`, and
+// `contracts/events/envelope.go`'s json tag is `omitempty`, so the field left
+// the reality DB and simply ceased to exist with nothing anywhere reporting it.
+// RLS-A13 makes the digest the thing that ties an event to the rules that
+// produced it; QTY-A14 makes it the thing that gives a per-reality quantity
+// ordinal its meaning. A consumer holding an ordinal and no digest resolves it
+// against whatever table it happens to have.
+func TestEnvelopeFields_CarriesRulesetPin(t *testing.T) {
+	digest := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	f := envelopeFields(types.OutboxRow{RulesetDigest: &digest})
+	if f["ruleset_digest"] != digest {
+		t.Errorf("ruleset_digest=%v want %q", f["ruleset_digest"], digest)
+	}
+}
+
+// ABSENT, not empty — a consumer must be able to tell "this event has no
+// ruleset" from "this event is pinned to the empty string". Same discipline the
+// channel-ordering fields above already follow.
+func TestEnvelopeFields_OmitsAbsentRulesetPin(t *testing.T) {
+	if f := envelopeFields(types.OutboxRow{}); f["ruleset_digest"] != nil {
+		t.Errorf("nil pin must be ABSENT, got %v", f["ruleset_digest"])
+	}
+	empty := ""
+	if f := envelopeFields(types.OutboxRow{RulesetDigest: &empty}); f["ruleset_digest"] != nil {
+		t.Errorf("empty pin must be ABSENT, got %v", f["ruleset_digest"])
+	}
+}

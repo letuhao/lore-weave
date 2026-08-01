@@ -1,7 +1,34 @@
 # CSC_001 — Cell Scene Composition
 
+> **⚠ VOCABULARY + SCOPE NOTE 2026-07-30 — [`36_map_architecture.md`](../../36_map_architecture.md) (`SPG-*`), row `SPG-R5`:**
+> **(1) "cell" → `Domain`.** The word `cell` carries two live meanings — a Voronoi cell of the world
+> mesh (~10k–500k per world, `crates/world-gen`) and the tavern-sized interior this doc composes.
+> Doc 36 §6 retires the collision decisively (PO decision, taken *before* any schema exists): the world
+> mesh unit becomes **`GeoCell`**, and this doc's unit becomes **`MapKind::Domain`**.
+> **(2) The 16×16 grid becomes a DEFAULT, not an invariant.** A tavern is 16×16; a palace, a cave system
+> and a ship's hold are not, and `Domain` is explicitly **recursive** (`SPG-A3` matrix: `Domain → Domain`),
+> so a palace is a Domain of Domains rather than one oversized grid.
+> **(3) A Domain is the interior of an ENTITY** (`SPG-A1` — the `SpaceNode.holder` field). This is the
+> converse of [`WSA-A7`](../../32_locus_as_actor.md) (*a locus is both an entity and an actor*), and it is
+> what makes a chest, a house, a ship and a cultivator's 内天地 the same construct rather than four
+> special cases. Interiors materialize **lazily** — `SPG-A12` generalizes this doc's own
+> *"first PC entry to cell triggers compute"* into the corpus-wide rule, riding
+> [`WSA-A9`](../../32_locus_as_actor.md)'s existence ladder rather than adding a second one.
+> **(4) Combat may now resolve HERE.** `SPG-A16` + `SPG-D1` reverse `RTM-D Q4`'s instanced-arena stance
+> (on the `AUD-F1` precedent): combat always runs on a tactical grid, and the grid is sampled from
+> **this Domain's floor plan** when the space allows — the fixtures Layer 2 places become cover — or
+> derived from the world field when it does not. One mechanism, two sources.
+> **What stands, entirely: the 4-layer architecture** (skeleton → procedural fixtures → LLM zone
+> classifier → narration). The v3→v4 evidence in `_ui_drafts/CELL_SCENE_v1..v4` — 31,448 tokens and
+> **0 successful renders** for LLM-as-grid-generator versus **2,471 tokens and 6/6 entities placed** for
+> LLM-as-zone-classifier — remains the single strongest empirical result in this track, and `SPG-*`
+> depends on it rather than revisiting it. **CANDIDATE-LOCK preserved**; `SPG-R5` is PROPOSED, not
+> applied. Annotation only.
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
 > TMP_001 is the **non-cell-tier sibling** to CSC_001. Tier delineation (per TMP-A1): cell tier has NO `tilemap_view` — CSC_001 owns cell rendering; non-cell tiers (continent / country / district / town) have NO `cell_scene_layout` — TMP_001 owns them. From the parent-tilemap perspective, cells appear as `TilemapObjectKind::Town` or `TilemapObjectKind::Landmark` markers; clicking such a marker drills into the cell's CSC_001 16×16 interior. CSC_001 surface is unchanged; the drill-down arrow points FROM TMP_001 TO CSC_001. CSC's own 4-layer LLM architecture (CSC-A1: zone-classifier pattern) is what TMP_008b §2's 3-segment cacheable-prefix structure was deliberately modeled after (cross-feature pattern reuse — AIT-A4 hybrid 2-stage). No CSC contract change — annotation only.
+
+> **⚠ MEDIUM-RECONCILIATION 2026-06-20 — graphical 2D/2.5D medium ([09](../../09_interaction_layer_reconciliation.md)):** Layer 3 occupant **zone-assignment** is the occupant's *ambient / spawn* placement, **not** a per-turn position lock. Under the rendered near-realtime medium, **PCs always — and NPCs while engaged (in a DF05 session or combat) — carry continuous live position owned by the realtime layer ([08 RTM-A1](../../08_realtime_movement_authority.md)), which SUPERSEDES the CSC_001 zone-assignment for as long as they are engaged** (ILR-A3 hybrid). *Ambient* NPCs (95%+, matching the DF05 sparse model) keep deterministic zone-placement at zero realtime cost. Static fixtures (Layer 2) unchanged. Annotation only — no CSC contract/decision row changes; the contradiction + resolution are in [09 §4](../../09_interaction_layer_reconciliation.md).
 
 > **Conversational name:** "Cell Scene" (CSC). The 4-layer composition pipeline that turns a cell-tier place into a renderable in-scene UI: hand-authored skeleton template (Layer 1) + seed-driven procedural fixture placement (Layer 2) + LLM categorical zone-assignment for occupants (Layer 3, optional with canonical fallback) + LLM creative narration (Layer 4, optional). Replaces the architecturally-flawed "LLM-as-grid-generator" approach with bounded layers matching LLM strengths to creative-decision-only and LLM weaknesses (spatial coordinate manipulation) confined to deterministic engine code.
 >
@@ -41,7 +68,7 @@ LLMs are bad at spatial coordinate manipulation at scale (256-cell grid mental t
 |---|---|---|
 | **CellSceneLayout** | Aggregate `cell_scene_layout` (T2 / Channel-cell scope) — per-cell-id | Single row per cell; covers all 4 layers' state. See §3. |
 | **SkeletonId** | Newtype `pub struct SkeletonId(String)` — identifier for hand-authored template | V1: `tavern_compact` / `tavern_long_hall` / `tavern_open_plan` / `default_generic_room`. V1+ libraries grow per-PlaceType. |
-| **SkeletonTemplate** | Layer 1 hand-authored template — `tiles: [[char; 16]; 16]` + `zones: HashMap<String, ZoneBounds>` | Static config (Rust const or JSON file shipped with binary V1). Author override per-cell V1+ via Forge. |
+| **SkeletonTemplate** | Layer 1 hand-authored template — `tiles: Grid<char>` (**default 16×16**) + `zones: HashMap<String, ZoneBounds>` | Static config (Rust const or JSON file shipped with binary V1). Author override per-cell V1+ via Forge. **⚠ `SPG-R5` 2026-07-30: the grid was `[[char; 16]; 16]` — a fixed-size array, i.e. an *invariant*. It becomes a DEFAULT.** A tavern is 16×16; a palace, a cave system and a ship's hold are not, and `Domain` is explicitly **recursive** (doc 36 §3.1 matrix: `Domain → Domain`), so a palace is a *Domain of Domains* rather than one oversized grid. The 16×16 default stays because it is what the v4 evidence was measured on (§1 Gap 2) and what every V1 skeleton uses — nothing about the 4-layer pipeline depends on the number being fixed at the type level. |
 | **ZoneBounds** | Declarative bounding box `Rect { rows: (u32, u32), cols: (u32, u32) }` OR `TileList(Vec<TileCoord>)` | Skeleton declares zone NAMES + bounds; Layer 2 resolves to actual tile coords (subtracting walls/fixtures). |
 | **ProceduralSeed** | u64 — derived from `blake3(reality_id, cell_id, structural_state, fiction_time_bucket)` | Replay-deterministic per EVT-A9. Same inputs → same fixture placement. |
 | **FixturePosition** | Layer 2 output — `{ kind: FixtureKind, position: TileCoord, size: u32, group_id: Option<u32> }` | One per fixture placed (counter, table, chairs, fireplace, window). `group_id` ties tables to their adjacent chairs. |
@@ -50,7 +77,7 @@ LLMs are bad at spatial coordinate manipulation at scale (256-cell grid mental t
 | **EntityZoneAssignment** | Layer 3 output (optional) — `HashMap<EntityId, String>` mapping entity → zone-name | LLM-generated OR canonical-default. None → use canonical fallback algorithm. |
 | **Layer3Source** | Closed enum — `CanonicalDefault \| LlmGenerated { model, attempts, generated_at }` | Audit + cache invalidation. |
 | **NarrationText** | Layer 4 output — `Option<String>` (Vietnamese prose V1; en V1+ per CSC-Q3) | Free-form; no schema validation. Cached per (cell, scene_state, occupant_set). |
-| **TileCoord** | `(u32, u32)` — (x, y) within 16×16 grid | x = column 0..15, y = row 0..15. Same convention as MAP_001 §5 but at cell-internal scale (not parent-viewport). |
+| **TileCoord** | `(u32, u32)` — (x, y) within the Domain's grid (**default 16×16**) | x = column, y = row; `0..w-1` / `0..h-1` (`SPG-R5` — was hard-coded `0..15`). Same convention as MAP_001 §5 and, per **`SPG-A5`**, the same *rule*: the coordinate is **relative to its parent frame**, never absolute. A Domain nested inside a Domain (a chamber inside a palace) composes by accumulating transforms — which is also why a Domain carried by a moving frame (a ship's hold) needs no special case. |
 | **PlaceMetadata** | Read-projection from PF_001 — `{ place_type, canon_ref, structural_state, narrative_drift, display_name }` | Layer 3+4 LLM input context. |
 | **AmbientState** | Read-projection from PL_001 scene_state — `{ weather, time_of_day_qualifier, crowd_density }` | Layer 4 LLM input context. |
 | **OccupantSummary** | Per-entity input to Layer 3+4 — `{ entity_id, kind, display_name, mood?, status_effects? }` | Read-projection from EF_001 entity_binding + per-feature aggregates (NPC_001 mood; PL_006 status). |

@@ -30,6 +30,17 @@ export default defineConfig({
   server: {
     port: 5174,
     proxy: {
+      // MED-8 single-domain: serve the game client under /game on THIS origin.
+      // Not a convenience — localStorage is partitioned per origin, so this is
+      // what lets a session (`lw_auth`) and a language (`lw_language`) chosen
+      // here carry into the game with no code shared between the two apps.
+      // Mirrors the prod `location /game/` block in frontend/nginx.conf.
+      // `ws: true` forwards vite's HMR socket so the game still hot-reloads.
+      '/game': {
+        target: 'http://localhost:5176',
+        changeOrigin: false,
+        ws: true,
+      },
       '/v1': {
         target: 'http://localhost:3123',
         changeOrigin: true,

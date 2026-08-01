@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12C. Event Schema Evolution (R3 mitigation)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #10).** §12C.2/§12C.7's “Go structs are authoritative” polyglot strategy is stale — the authoritative event producer is **Rust** (`contracts/language-rule.yaml`: world-service and commit-service are Rust), and the codegen chain here has no Rust target. The additive-first / upcaster / registry discipline itself carries over. Status markers below predate the island/commit-service model.
+
 Unlike R1 (volume) and R2 (rebuild), R3 is a **discipline problem**, not a one-shot fix. Without tooling, schema evolution cost compounds; with tooling, it stays linear. The strategy below locks discipline + tooling together.
 
 ### 12C.1 Layer 1 — Additive-first discipline

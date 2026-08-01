@@ -86,6 +86,13 @@ pub trait Event {
             recorded_at,
             payload: self.payload(),
             metadata: self.metadata().into_value(),
+            // No ruleset pin: this constructor serves platform events that do
+            // not come from a ruleset-pinned island (RLS-A13). `None` says so;
+            // a 64-zero string would claim a pin that does not exist.
+            ruleset_digest: None,
+            // No ruleset pin: this constructor serves platform events that do
+            // not come from a ruleset-pinned island (RLS-A13). `None` says so;
+            // a 64-zero string would claim a pin that does not exist.
         }
     }
 }
@@ -202,6 +209,7 @@ mod tests {
             recorded_at: "2026-05-29T00:00:00Z".into(),
             payload: json!({"k": 1}),
             metadata: None,
+            ruleset_digest: None,
         };
         let e: &dyn Event = &env;
         assert_eq!(e.event_type(), "x.y");
@@ -225,6 +233,7 @@ mod tests {
             recorded_at: "2026-05-29T00:00:00Z".into(),
             payload: json!({}),
             metadata: None,
+            ruleset_digest: None,
         };
         let other = env.to_envelope(
             Uuid::from_u128(99),

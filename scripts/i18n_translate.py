@@ -43,6 +43,10 @@ from pathlib import Path
 
 # ── config ────────────────────────────────────────────────────────────────
 REPO = Path(__file__).resolve().parents[1]
+# Default tree = the novel app. `--locales-dir` points the SAME tool at another
+# one (the game client's `packages/i18n/locales`, added 2026-07-30) — ML-7 says
+# this script is the ONLY sanctioned path for non-`en` locales, so a second tree
+# must be reachable by it or the rule quietly stops applying there.
 LOCALES_DIR = REPO / "frontend" / "src" / "i18n" / "locales"
 SRC_LANG = "en"
 ENDPOINT = "http://localhost:1234/v1/chat/completions"
@@ -574,7 +578,17 @@ def main() -> int:
     ap.add_argument("--retry-echoed", action="store_true",
                     help="also re-translate keys that came back as the English source. "
                          "One pass — a genuine loan word returns unchanged and stays.")
+    ap.add_argument("--locales-dir",
+                    help="locale tree to operate on (default: frontend/src/i18n/locales; "
+                         "use packages/i18n/locales for the game client)")
     args = ap.parse_args()
+
+    global LOCALES_DIR
+    if args.locales_dir:
+        LOCALES_DIR = (REPO / args.locales_dir).resolve()
+        if not (LOCALES_DIR / SRC_LANG).is_dir():
+            print(f"i18n_translate: no {SRC_LANG}/ under {LOCALES_DIR}", file=sys.stderr)
+            return 2
 
     src_dir = LOCALES_DIR / SRC_LANG
     if args.check:

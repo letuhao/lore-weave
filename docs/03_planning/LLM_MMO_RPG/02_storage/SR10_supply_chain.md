@@ -7,6 +7,8 @@ note: Not produced by scripts/chunk_doc.py split; authored as new SR-series cont
 
 ## 12AM. Supply Chain Security — SR10 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #10).** The per-language pinning matrix (SR10-D2: `go.sum` / `--require-hashes` / `package-lock.json`) has **no Rust row** — no `Cargo.lock` + `cargo-audit` discipline — leaving the sim crate (world-service / commit-service, the authoritative writer path per `contracts/language-rule.yaml`) outside I18 pinning enforcement. Everything else stands; add the Rust row. Status markers below predate the island/commit-service model.
+
 **Origin:** SRE Review SR10 — prior work secured the **runtime** (S9 prompt assembly · S11 service auth · S12 WebSocket · SR6 dependency failure) but left the **build path** untouched. A compromised upstream library, an unsigned container image, or a floating dependency version is just as dangerous as a runtime bug — and harder to detect because it enters through the supply chain. SR10 extends I12 (no hardcoded secrets) from runtime discipline into build-time supply chain: SBOM + dep pinning + image signing + CVE gating + 3rd-party vetting + build provenance.
 
 ### 12AM.1 Problems closed

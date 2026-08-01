@@ -34,15 +34,52 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: 'bg-destructive/15 text-destructive',
 };
 
-function KindBadge({ kind }: { kind: GlossaryEntitySummary['kind'] }) {
+function KindBadge({ kind, faded }: { kind: GlossaryEntitySummary['kind']; faded?: boolean }) {
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
-      style={{ backgroundColor: kind.color + '18', color: kind.color }}
+      style={
+        faded
+          ? { backgroundColor: kind.color + '0e', color: kind.color, opacity: 0.75 }
+          : { backgroundColor: kind.color + '18', color: kind.color }
+      }
     >
       <span>{kind.icon}</span>
       {kind.name}
     </span>
+  );
+}
+
+/** The secondary readings, and the standing disagreement.
+ *
+ *  An entity's kind used to be whatever the first extraction batch guessed, and every later
+ *  answer was thrown away — so 西岐 was an organization OR a location depending on which call
+ *  saw it first, and nothing said the other reading existed. It is now resolved from a vote,
+ *  and what did not win is kept rather than erased. The faded badges are those; the outlined
+ *  one is a kind currently leading the vote WITHOUT enough of a lead to take over, which is a
+ *  genuine "we are not sure" and reads as one. */
+function KindFacets({ entity }: { entity: GlossaryEntitySummary }) {
+  const labels = entity.kind_labels ?? [];
+  const conflict = entity.kind_conflict;
+  // A conflict is usually also a label; show it once, as the conflict.
+  const extra = labels.filter((l) => l.code !== conflict?.code);
+  if (extra.length === 0 && !conflict) return null;
+  return (
+    <>
+      {extra.map((l) => (
+        <KindBadge key={l.kind_id} kind={l} faded />
+      ))}
+      {conflict && (
+        <span
+          className="inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-0.5 text-[10px] font-medium"
+          style={{ borderColor: conflict.color + '80', color: conflict.color }}
+          title={`Extraction currently leans "${conflict.name}" for this entity, but not by enough to change its kind. Both readings are kept.`}
+        >
+          <span>{conflict.icon}</span>
+          {conflict.name}?
+        </span>
+      )}
+    </>
   );
 }
 
@@ -631,6 +668,7 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
                     {e.display_name || t('glossary.untitled')}
                   </span>
                   <KindBadge kind={e.kind} />
+                  <KindFacets entity={e} />
                   <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-medium', STATUS_COLORS[e.status])}>
                     {t(`glossary.status.${e.status}`)}
                   </span>

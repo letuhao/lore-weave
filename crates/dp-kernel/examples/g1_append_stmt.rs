@@ -80,6 +80,7 @@ fn make_batch(reality: Uuid, atype: &str, aid: &str, k: u64) -> Vec<EventEnvelop
             recorded_at: FIXED_TS.to_string(),
             payload: serde_json::json!({"text": "hello", "n": v}),
             metadata: Some(serde_json::json!({"session_id": "sess-1"})),
+            ruleset_digest: None,
         })
         .collect()
 }

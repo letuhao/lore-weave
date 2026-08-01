@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>LoreWeave — Space Graph v1 (doc 36 SPG-*)</title>
+<style>
+/* Canon destructive/warning tokens (design-draft-token-lint): one concept, one name. */
+:root{
+  --bg:#0d1117; --panel:#161b22; --panel2:#1c2128; --line:#30363d;
+  --ink:#e6edf3; --dim:#8b949e; --faint:#6e7681;
+  --accent:#58a6ff; --ok:#3fb950;
+  --destructive:#d9584f; --destructive-muted:#3a1f1c; --warning:#e8a832;
+  /* MapKind palette — geometry-first placeholder rendering (PO decision 2026-07-29:
+     "render dựa trên data, dùng hình học trước, chưa có ảnh không sao cả"). */
+  --k-universe:#a371f7; --k-world:#58a6ff; --k-region:#3fb950; --k-locale:#d29922;
+  --k-domain:#db6d28; --k-passage:#e8a832; --k-arena:#d9584f;
+}
+*{box-sizing:border-box}
+/* Flex column, not `100vh - 47px` on <main>: the first cut hard-coded the header
+   height and pushed #log entirely off-screen, so every line of the narration this
+   draft exists to deliver was invisible. Caught by looking at it in a browser
+   rather than by reading the CSS. */
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);display:flex;flex-direction:column;
+     font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+header{display:flex;align-items:baseline;gap:16px;padding:10px 16px;
+       border-bottom:1px solid var(--line);background:var(--panel)}
+h1{font-size:15px;margin:0;font-weight:600}
+header .sub{color:var(--dim);font-size:11px}
+header .spacer{margin-left:auto}
+main{display:grid;grid-template-columns:300px 1fr 340px;flex:1;min-height:0}
+.col{overflow:auto;padding:12px}
+.col+.col{border-left:1px solid var(--line)}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);
+   margin:0 0 8px;font-weight:600}
+h2+p{margin-top:-4px}
+.hint{color:var(--faint);font-size:11px;margin:0 0 10px}
+
+/* ── tree ── */
+.node{display:flex;align-items:center;gap:6px;padding:2px 6px;border-radius:4px;cursor:pointer;
+      white-space:nowrap}
+.node:hover{background:var(--panel2)}
+.node.sel{background:#1f6feb33;outline:1px solid var(--accent)}
+.chip{display:inline-block;width:9px;height:9px;border-radius:2px;flex:none}
+.node .nm{overflow:hidden;text-overflow:ellipsis}
+.node .kd{color:var(--faint);font-size:10px}
+.node.declared .nm{color:var(--faint);font-style:italic}
+.holder{color:var(--k-domain);font-size:10px}
+
+/* ── stage ── */
+#stage{background:var(--panel);border:1px solid var(--line);border-radius:6px;
+       position:relative;height:420px;overflow:hidden}
+#stage svg{display:block}
+.stagebar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.crumb{color:var(--dim)}
+.crumb b{color:var(--ink);font-weight:600}
+
+/* ── controls ── */
+button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+       border-radius:5px;padding:4px 9px;font:inherit;font-size:11px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.ghost{opacity:.55}
+button:disabled{opacity:.3;cursor:not-allowed}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+
+/* ── inspector ── */
+table.kv{width:100%;border-collapse:collapse;margin-bottom:12px}
+table.kv td{padding:2px 0;vertical-align:top}
+table.kv td:first-child{color:var(--dim);width:38%}
+.matrix{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:10px}
+.matrix th,.matrix td{border:1px solid var(--line);padding:2px 3px;text-align:center}
+.matrix th{color:var(--dim);font-weight:500}
+.matrix td.y{background:#3fb95022;color:var(--ok)}
+.matrix td.n{color:var(--faint)}
+.matrix td.hi{outline:1px solid var(--accent)}
+
+/* ── log ── */
+#log{border-top:1px solid var(--line);background:var(--panel);flex:none;
+     height:170px;overflow:auto;padding:8px 16px;font-size:11px}
+#log div{padding:1px 0}
+.lg-ok{color:var(--ok)} .lg-no{color:var(--destructive)} .lg-i{color:var(--dim)}
+.lg-w{color:var(--warning)}
+code{background:var(--panel2);padding:0 3px;border-radius:3px;color:var(--accent)}
+.axiom{color:var(--faint);font-size:10px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Space Graph v1</h1>
+  <span class="sub">doc 36 <code>SPG-*</code> — typed tree · containment matrix · entity ⊇ space · parent-relative frames · two graphs</span>
+  <span class="spacer"></span>
+  <span class="sub">placeholder render = geometry + colour, no assets</span>
+</header>
+
+<main>
+  <!-- ── LEFT: the containment tree ─────────────────────────────────── -->
+  <div class="col">
+    <h2>Containment tree</h2>
+    <p class="hint">Strict, acyclic, single parent (<span class="axiom">SPG-A4</span>).
+       Italic = <b>Declared</b>, not yet materialized (<span class="axiom">SPG-A12</span>).</p>
+    <div id="tree"></div>
+
+    <h2 style="margin-top:16px">Control graph</h2>
+    <p class="hint">Free, many-to-many, points anywhere. <b>Never</b> traversed for containment
+       (<span class="axiom">SPG-A4 / SPG-A10</span>).</p>
+    <div id="control"></div>
+  </div>
+
+  <!-- ── CENTRE: the rendered node ──────────────────────────────────── -->
+  <div class="col">
+    <div class="stagebar">
+      <span class="crumb" id="crumb"></span>
+    </div>
+    <div id="stage"><svg id="svg" width="100%" height="420"></svg></div>
+
+    <div class="row" style="margin-top:10px">
+      <button id="btn-sail">⛵ Sail the ship (move a frame)</button>
+      <button id="btn-graft">🪝 Graft: ram the other ship</button>
+      <button id="btn-enter" class="ghost">↳ Enter interior</button>
+      <button id="btn-up" class="ghost">↰ Up</button>
+    </div>
+    <p class="hint" id="stagehint"></p>
+  </div>
+
+  <!-- ── RIGHT: inspector ───────────────────────────────────────────── -->
+  <div class="col">
+    <h2>Node</h2>
+    <table class="kv" id="kv"></table>
+
+    <h2>Containment matrix</h2>
+    <p class="hint">Legality is a <b>relation</b>, validated on write — not an ordinal ladder
+       (<span class="axiom">SPG-A3</span>). Row = parent, column = child.</p>
+    <div id="matrix"></div>
+
+    <h2>Add a child here</h2>
+    <p class="hint">Illegal kinds are refused with a named reason — the point of the matrix.</p>
+    <div class="row" id="addrow"></div>
+  </div>
+</main>
+
+<div id="log"></div>
+
+<script>
+'use strict';
+/* ═══════════════════════════════════════════════════════════════════════════
+   MODEL — doc 36 §3 / §4
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const KINDS = ['Universe','World','Region','Locale','Domain','Passage','Arena'];
+
+// doc 36 §3.1. `Domain -> World` is the 内天地 row: the one that proves this is a
+// RELATION and not a ladder in disguise.
+const MATRIX = {
+  Universe: ['Universe','World','Domain','Passage'],
+  World:    ['Region','Locale','Domain','Passage'],
+  Region:   ['Region','Locale','Domain','Passage'],
+  Locale:   ['Domain','Passage','Arena'],
+  Domain:   ['World','Domain','Passage','Arena'],
+  Passage:  ['Domain','Arena'],
+  Arena:    [],
+};
+const COLOR = k => getComputedStyle(document.body).getPropertyValue('--k-'+k.toLowerCase()).trim();
+
+let uid = 0;
+const N = {};                       // id -> node
+function node(o){
+  const n = Object.assign({
+    id:'n'+(++uid), kind:'Domain', name:'?', parent:null,
+    // SPG-A5 — RELATIVE to parent. Nothing here is ever an absolute position.
+    x:500, y:500,
+    holder:null,                    // SPG-A1 — the entity whose interior this is
+    materialized:true,              // SPG-A12
+    mobility:'Static',              // SPG-A9 — Static | Kinematic
+    derived:false,                  // SPG-A13 — geometry generated, not authored
+  }, o);
+  N[n.id]=n; return n;
+}
+const kids = id => Object.values(N).filter(n=>n.parent===id);
+
+// SPG-A5 — absolute position is DERIVED by accumulating transforms from the root.
+// This function is the entire reason a ship can sail without touching its cargo.
+function absolute(n){
+  let x=0,y=0,c=n;
+  while(c){ x+=c.x; y+=c.y; c = c.parent ? N[c.parent] : null; }
+  return {x,y};
+}
+
+/* ── seed world ─────────────────────────────────────────────────────────── */
+const u0 = node({kind:'Universe', name:'Vạn Giới',        x:0,y:0});
+const w1 = node({kind:'World',    name:'Thanh Vân Giới',  parent:u0.id, x:340,y:250, holder:'planet:thanh-van'});
+const u1 = node({kind:'Universe', name:'Ảnh Giới',        parent:u0.id, x:640,y:170});
+const dX = node({kind:'Domain',   name:'Mảnh bí cảnh',    parent:u0.id, x:160,y:430, holder:'shard:bi-canh'});
+
+const r1 = node({kind:'Region',   name:'Đông Hoang',      parent:w1.id, x:300,y:250});
+const l1 = node({kind:'Locale',   name:'Lâm An Phủ',      parent:r1.id, x:330,y:230});
+const d1 = node({kind:'Domain',   name:'Yên Vũ Lâu',      parent:l1.id, x:250,y:200, holder:'building:yen-vu-lau'});
+const d2 = node({kind:'Domain',   name:'Vương Cung',      parent:l1.id, x:560,y:300, holder:'building:vuong-cung'});
+const d3 = node({kind:'Domain',   name:'Mật thất',        parent:d2.id, x:400,y:300, holder:'room:mat-that'});
+const p1 = node({kind:'Passage',  name:'Đèo Vân Sơn',     parent:r1.id, x:600,y:420, derived:true, materialized:false});
+
+const sh = node({kind:'Domain',   name:'Thuyền Trục Lãng', parent:w1.id, x:640,y:430,
+                 holder:'vessel:truc-lang', mobility:'Kinematic'});
+const sd = node({kind:'Domain',   name:'Khoang dưới',     parent:sh.id, x:420,y:520, holder:'room:khoang'});
+const sh2= node({kind:'Domain',   name:'Thuyền Hắc Phong', parent:w1.id, x:880,y:470,
+                 holder:'vessel:hac-phong', mobility:'Kinematic'});
+
+// The stress case: a cultivator at 神境 forms an inner world (内天地).
+// The HOLDER is a PERSON, and the interior was born at runtime — no static
+// whitelist could have anticipated it (SPG-A2).
+const w2 = node({kind:'World', name:'Nội Thiên Địa', parent:d1.id, x:520,y:250,
+                 holder:'actor:ly-minh', materialized:false});
+
+/* ── control graph (SPG-A10) — a SEPARATE relation ──────────────────────── */
+const ACTORS = {
+  'actor:ly-minh'      : {name:'Lý Minh (bản thể)',  at:d1.id},
+  'actor:ly-minh-hoa'  : {name:'Lý Minh (hóa thân)', at:w2.id},
+  'actor:thuyen-truong': {name:'Thuyền trưởng',      at:sh.id},
+};
+// One controller, three bodies, three different frames. This is what an
+// enum-on-the-actor cannot express (SPG-F5).
+const CONTROL = [
+  {controller:'user:nene', actor:'actor:ly-minh',       authority:'full'},
+  {controller:'user:nene', actor:'actor:ly-minh-hoa',   authority:'full'},
+  {controller:'user:nene', actor:'actor:thuyen-truong', authority:'pilot'},
+];
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   STATE + LOG
+   ═══════════════════════════════════════════════════════════════════════════ */
+let cur = w1.id;
+
+const logEl = document.getElementById('log');
+function log(cls, msg){
+  const d=document.createElement('div');
+  d.className='lg-'+cls; d.innerHTML=msg;
+  logEl.appendChild(d); logEl.scrollTop = logEl.scrollHeight;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   RENDER
+   ═══════════════════════════════════════════════════════════════════════════ */
+function renderTree(){
+  const box = document.getElementById('tree'); box.innerHTML='';
+  (function walk(id, depth){
+    const n = N[id];
+    const el = document.createElement('div');
+    el.className = 'node'+(id===cur?' sel':'')+(n.materialized?'':' declared');
+    el.style.paddingLeft = (6 + depth*13)+'px';
+    el.innerHTML =
+      `<span class="chip" style="background:${COLOR(n.kind)}"></span>`+
+      `<span class="nm">${n.name}</span>`+
+      `<span class="kd">${n.kind}</span>`+
+      (n.holder?`<span class="holder" title="SPG-A1 — this map is an entity's interior">◈</span>`:'')+
+      (n.mobility==='Kinematic'?`<span class="kd" title="SPG-A9 kinematic frame">↔</span>`:'')+
+      (n.derived?`<span class="kd" title="SPG-A13 derived geometry">~</span>`:'');
+    el.onclick = ()=>{ cur=id; renderAll(); };
+    box.appendChild(el);
+    kids(id).forEach(k=>walk(k.id, depth+1));
+  })(u0.id, 0);
+}
+
+function renderControl(){
+  const box = document.getElementById('control'); box.innerHTML='';
+  CONTROL.forEach(c=>{
+    const a = ACTORS[c.actor], frame = N[a.at];
+    const el = document.createElement('div');
+    el.className='node';
+    el.innerHTML = `<span class="chip" style="background:var(--accent)"></span>`+
+      `<span class="nm">${a.name}</span><span class="kd">in ${frame.name}</span>`;
+    el.onclick = ()=>{ cur=a.at; renderAll();
+      log('i',`control → <code>${c.actor}</code> lives in <b>${frame.name}</b>. `+
+             `Jumping there followed a CONTROL edge, which containment never does (SPG-A4).`); };
+    box.appendChild(el);
+  });
+}
+
+/* Geometry-first placeholder render. Every kind draws as shape+colour derived
+   from DATA — swapping in an atlas later replaces this function only. */
+function renderStage(){
+  const n = N[cur], svg = document.getElementById('svg');
+  const W = svg.clientWidth || 700, H = 420;
+  const ch = kids(cur);
+  let s = '';
+
+  // backdrop keyed by kind
+  s += `<rect width="${W}" height="${H}" fill="${COLOR(n.kind)}" opacity="0.06"/>`;
+  if(n.kind==='Locale'||n.kind==='Region'||n.kind==='World'){
+    for(let i=0;i<=W;i+=40) s+=`<line x1="${i}" y1="0" x2="${i}" y2="${H}" stroke="var(--line)" opacity=".35"/>`;
+    for(let j=0;j<=H;j+=40) s+=`<line x1="0" y1="${j}" x2="${W}" y2="${j}" stroke="var(--line)" opacity=".35"/>`;
+  }
+  if(n.kind==='Domain'){ // floor plan: a bounded room
+    s += `<rect x="30" y="30" width="${W-60}" height="${H-60}" fill="none"
+           stroke="${COLOR('Domain')}" stroke-width="2" opacity=".6"/>`;
+  }
+  if(!n.materialized){
+    s += `<text x="${W/2}" y="24" fill="var(--warning)" font-size="11" text-anchor="middle">`+
+         `Declared — not materialized (SPG-A12: cost is paid on entry, not at authoring)</text>`;
+  }
+
+  // children, placed by their PARENT-RELATIVE transform scaled into the viewport
+  ch.forEach(k=>{
+    const px = 30 + (k.x/1000)*(W-60), py = 30 + (k.y/1000)*(H-60);
+    const c = COLOR(k.kind);
+    if(k.kind==='Passage'){
+      s += `<line x1="${px-60}" y1="${py+30}" x2="${px+60}" y2="${py-30}" stroke="${c}"
+             stroke-width="3" stroke-dasharray="6 4" opacity=".9"/>`;
+    } else if(k.kind==='Universe'){
+      s += `<circle cx="${px}" cy="${py}" r="18" fill="none" stroke="${c}" stroke-width="2"/>`+
+           `<circle cx="${px}" cy="${py}" r="8" fill="${c}" opacity=".5"/>`;
+    } else if(k.kind==='World'){
+      s += `<circle cx="${px}" cy="${py}" r="20" fill="${c}" opacity=".55"/>`;
+    } else if(k.kind==='Region'){
+      s += `<polygon points="${px-24},${py+14} ${px},${py-20} ${px+24},${py+14}" fill="${c}" opacity=".5"/>`;
+    } else if(k.kind==='Locale'){
+      s += `<rect x="${px-20}" y="${py-14}" width="40" height="28" rx="3" fill="${c}" opacity=".55"/>`;
+    } else {
+      s += `<rect x="${px-16}" y="${py-12}" width="32" height="24" rx="2" fill="${c}"
+             opacity="${k.materialized?.7:.28}"/>`;
+    }
+    if(k.holder) s += `<circle cx="${px+19}" cy="${py-15}" r="3.5" fill="var(--k-domain)"/>`;
+    s += `<text x="${px}" y="${py+34}" fill="var(--ink)" font-size="10" text-anchor="middle">${k.name}</text>`;
+    if(k.mobility==='Kinematic')
+      s += `<text x="${px}" y="${py+46}" fill="var(--dim)" font-size="9" text-anchor="middle">`+
+           `rel(${k.x},${k.y})</text>`;
+  });
+
+  if(!ch.length) s += `<text x="${W/2}" y="${H/2}" fill="var(--faint)" font-size="11"
+                        text-anchor="middle">no children — a leaf, or nothing placed yet</text>`;
+  svg.innerHTML = s;
+
+  // breadcrumb
+  const path=[]; let c=n; while(c){ path.unshift(c); c = c.parent?N[c.parent]:null; }
+  document.getElementById('crumb').innerHTML =
+    path.map((p,i)=> i===path.length-1 ? `<b>${p.name}</b>` : p.name).join(' <span style="opacity:.4">›</span> ');
+
+  const a = absolute(n);
+  document.getElementById('stagehint').innerHTML =
+    `stored transform <code>rel(${n.x}, ${n.y})</code> — relative to parent only. `+
+    `absolute <code>(${a.x}, ${a.y})</code> is <b>derived</b> by accumulating from the root `+
+    `(<span class="axiom">SPG-A5</span>: no node ever stores an absolute position).`;
+}
+
+function renderInspector(){
+  const n = N[cur], a = absolute(n);
+  document.getElementById('kv').innerHTML = [
+    ['name', n.name],
+    ['kind', `<span class="chip" style="background:${COLOR(n.kind)}"></span> ${n.kind}`],
+    ['parent', n.parent?N[n.parent].name:'— (root)'],
+    ['holder', n.holder?`<code>${n.holder}</code> <span class="axiom">SPG-A1</span>`
+                       :'<span class="axiom">none — a pure space</span>'],
+    ['transform', `rel(${n.x}, ${n.y})`],
+    ['absolute', `(${a.x}, ${a.y}) <span class="axiom">derived</span>`],
+    ['mobility', n.mobility + (n.mobility==='Kinematic'?' <span class="axiom">SPG-A9</span>':'')],
+    ['state', n.materialized?'Materialized':'<span style="color:var(--warning)">Declared</span>'],
+    ['geometry', n.derived?'Derived <span class="axiom">SPG-A13</span>':'Authored'],
+  ].map(([k,v])=>`<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+
+  // matrix
+  let m = '<table class="matrix"><tr><th></th>'+KINDS.map(k=>`<th>${k.slice(0,3)}</th>`).join('')+'</tr>';
+  KINDS.forEach(p=>{
+    m += `<tr><th style="text-align:left">${p}</th>`;
+    KINDS.forEach(c=>{
+      const ok = MATRIX[p].includes(c);
+      m += `<td class="${ok?'y':'n'}${p===n.kind?' hi':''}">${ok?'●':'·'}</td>`;
+    });
+    m += '</tr>';
+  });
+  document.getElementById('matrix').innerHTML = m+'</table>';
+
+  // add-child buttons
+  const ar = document.getElementById('addrow'); ar.innerHTML='';
+  KINDS.forEach(k=>{
+    const b=document.createElement('button');
+    b.textContent='+ '+k;
+    if(!MATRIX[n.kind].includes(k)) b.classList.add('ghost');
+    b.onclick=()=>addChild(k);
+    ar.appendChild(b);
+  });
+
+  document.getElementById('btn-up').disabled = !n.parent;
+  document.getElementById('btn-enter').disabled = !kids(cur).length;
+}
+
+function renderAll(){ renderTree(); renderControl(); renderStage(); renderInspector(); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ACTIONS — each one demonstrates one axiom
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+// SPG-A3 — the matrix is validated ON WRITE, and a refusal is NAMED.
+function addChild(kind){
+  const p = N[cur];
+  if(!MATRIX[p.kind].includes(kind)){
+    log('no', `✗ <code>space.containment_forbidden</code> — a <b>${kind}</b> may not sit inside a `+
+              `<b>${p.kind}</b>. The matrix is a RELATION checked at write time, not a ladder `+
+              `(SPG-A3). Nothing was created.`);
+    return;
+  }
+  const n = node({kind, name:kind+' '+(uid), parent:p.id,
+                  x:200+Math.floor(((uid*137)%7)*90), y:250+Math.floor(((uid*91)%5)*60),
+                  materialized:kind!=='Passage', derived:kind==='Passage'});
+  log('ok', `✓ created <b>${n.name}</b> (${kind}) inside <b>${p.name}</b> (${p.kind}).`+
+            (kind==='Passage'?' Geometry is <b>derived</b> from the field it crosses, and it stays '+
+                              '<b>Declared</b> until something happens on it (SPG-A13 + SPG-A12).':''));
+  cur=n.id; renderAll();
+}
+
+// SPG-A5 + SPG-A9 — move a KINEMATIC frame. Children are not touched.
+document.getElementById('btn-sail').onclick = ()=>{
+  const before = kids(sh.id).map(k=>`${k.name} rel(${k.x},${k.y}) abs(${absolute(k).x},${absolute(k).y})`);
+  sh.x = 200 + ((sh.x + 130) % 700);
+  sh.y = 380 + ((sh.y +  70) % 220);
+  const after  = kids(sh.id).map(k=>`${k.name} rel(${k.x},${k.y}) abs(${absolute(k).x},${absolute(k).y})`);
+  log('ok', `⛵ <b>${sh.name}</b> moved to rel(${sh.x}, ${sh.y}).`);
+  log('i',  `&nbsp;&nbsp;before: ${before.join(' · ')}`);
+  log('i',  `&nbsp;&nbsp;after:&nbsp; ${after.join(' · ')}`);
+  log('ok', `&nbsp;&nbsp;⇒ every child's STORED transform is byte-identical; only the DERIVED absolute `+
+            `moved. That is SPG-A5 doing the whole job — store absolute instead and this is the `+
+            `moment every descendant becomes wrong at once.`);
+  renderAll();
+};
+
+// SPG-A8 — collision is a TOPOLOGICAL edit, not a dynamics problem.
+let grafted=false;
+document.getElementById('btn-graft').onclick = ()=>{
+  if(grafted){ log('w','already grafted — Merge/Breach/Sever are the other three ops (SPG-A8).'); return; }
+  const g = node({kind:'Passage', name:'Ván cầu (graft)', parent:sh.id, x:820,y:500, derived:true});
+  grafted=true; cur=g.id;
+  log('ok', `🪝 <b>Graft</b> — a <code>Passage</code> node now joins <b>${sh.name}</b> and `+
+            `<b>${sh2.name}</b>. Both keep their identity and keep moving.`);
+  log('ok', `&nbsp;&nbsp;⇒ NO collision was resolved. What gets replicated is a <b>discrete event</b> `+
+            `("A grafted to B at T, seam here") — exactly what an event-sourced spine carries `+
+            `natively, and exactly what continuous physics sync is not (SPG-A8 / SPG-A9).`);
+  renderAll();
+};
+
+document.getElementById('btn-enter').onclick = ()=>{ const k=kids(cur)[0]; if(k){cur=k.id;renderAll();} };
+document.getElementById('btn-up').onclick    = ()=>{ const n=N[cur]; if(n.parent){cur=n.parent;renderAll();} };
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BOOT — narrate the four claims this draft exists to make visible
+   ═══════════════════════════════════════════════════════════════════════════ */
+renderAll();
+log('i', `<b>Space Graph v1</b> — the four claims of doc 36 that are cheapest to get wrong and `+
+         `most expensive to fix after a schema exists.`);
+log('i', `<b>1 · typed tree, no ladder.</b> Look at the tree: <code>Universe → Domain</code> `+
+         `("Mảnh bí cảnh") and <code>Universe → Universe</code> ("Ảnh Giới") are both legal, and `+
+         `<code>Domain → World</code> ("Nội Thiên Địa" inside Lý Minh) is the row that proves the `+
+         `matrix is a relation rather than a ladder wearing a disguise.`);
+log('i', `<b>2 · entity ⊇ space (◈).</b> Every ◈ node is an entity's interior — a building, a room, `+
+         `a vessel, a shard, and a <b>person</b>. Same construct, no special cases.`);
+log('i', `<b>3 · parent-relative frames.</b> Press <b>Sail the ship</b> and read the log: the cargo `+
+         `hold's stored coordinates never change.`);
+log('i', `<b>4 · two graphs.</b> The control list shows ONE controller holding THREE bodies in three `+
+         `frames — including 分身 inside its own body's inner world. Containment stays acyclic `+
+         `because the 分身 is a different entity; control loops freely because nothing traverses it.`);
+log('w', `Try the ghosted <b>+ kind</b> buttons on the right: an illegal child is refused with a `+
+         `named rule, not silently dropped.`);
+</script>
+</body>
+</html>

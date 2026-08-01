@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12U. Admin Command Classification — S5 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16).** §12U.2's Tier 1 example `admin/edit-player-canon-event` implies in-place edit of a canon event — the log is **append-only**; corrections are compensating events (R13 §12L.2) admitted through the island. The three-tier impact classification itself is unaffected. Status markers below predate the island/commit-service model.
+
 **Origin:** Security Review S5 — R13-L4 had implicit two-tier model (dangerous vs not-dangerous). Many "non-destructive" commands can still grief users. Also unblocks S3 deferred admin-tier gating (V1+30d → V1 ready).
 
 ### 12U.1 Framing
@@ -187,7 +189,7 @@ AND (
 
 ### 12U.8 Governance — ADMIN_ACTION_POLICY amendment
 
-New section R7 added to [docs/02_governance/ADMIN_ACTION_POLICY.md](../../02_governance/ADMIN_ACTION_POLICY.md):
+New section R7 added to [docs/02_governance/ADMIN_ACTION_POLICY.md](../../../02_governance/ADMIN_ACTION_POLICY.md):
 
 > **R7 — Command Impact Classification**
 >

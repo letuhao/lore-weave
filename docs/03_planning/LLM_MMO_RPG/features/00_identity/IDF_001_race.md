@@ -530,10 +530,10 @@ DRAFT promotion registers:
 - [`RES_001 §2.3 I18nBundle`](../00_resource/RES_001_resource_foundation.md) — display_name type for declarative names
 
 **Sibling IDF:**
-- [`IDF_002 Language`](IDF_002_language_concept.md) — race optional ref V1+ (LNG-D9)
-- [`IDF_003 Personality`](IDF_003_personality_concept.md) — independent V1
-- [`IDF_004 Origin`](IDF_004_origin_concept.md) — origin pack may suggest default race (V1+ enrichment)
-- [`IDF_005 Ideology`](IDF_005_ideology_concept.md) — race + ideology jointly gate Lex axioms (V1+ companion fields)
+- [`IDF_002 Language`](IDF_002_language.md) — race optional ref V1+ (LNG-D9)
+- [`IDF_003 Personality`](IDF_003_personality.md) — independent V1
+- [`IDF_004 Origin`](IDF_004_origin.md) — origin pack may suggest default race (V1+ enrichment)
+- [`IDF_005 Ideology`](IDF_005_ideology.md) — race + ideology jointly gate Lex axioms (V1+ companion fields)
 
 **Consumers:**
 - Future PCS_001 — PC creation form selects RaceId

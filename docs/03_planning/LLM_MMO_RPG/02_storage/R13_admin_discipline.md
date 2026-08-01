@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12L. Admin Tooling Discipline (R13 mitigation)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16).** The compensating-event pattern (§12L.2) survives, but admin writes as described bypass the channel/epoch/commit-service admission path — admin mutations of live game state must be admitted through the owning island like any other write (the EVT-T8 subset applies), not applied directly to the events table or projections. Current design: [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 Most of R13 already addressed by DF9/DF10/DF11/DF13 tooling registrations. What remains is the **discipline layer**: guardrails, audit, compensating-event pattern, destructive-action confirmation.
 
 ### 12L.1 Layer 1 — Admin command library (canonical set)
@@ -113,7 +115,7 @@ Rollback via compensating events: emit opposite-effect event through same pipeli
 
 ### 12L.7 Governance policy
 
-Policy formalized at [`docs/02_governance/ADMIN_ACTION_POLICY.md`](../../02_governance/ADMIN_ACTION_POLICY.md):
+Policy formalized at [`docs/02_governance/ADMIN_ACTION_POLICY.md`](../../../02_governance/ADMIN_ACTION_POLICY.md):
 - L1–L6 are requirements, not suggestions
 - No ad-hoc SQL in production (code review rejects)
 - New commands require PR review + dry-run test

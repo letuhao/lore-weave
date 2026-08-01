@@ -151,13 +151,32 @@ var chain = []Step{
 	// mirroring book-service. Backs the KIND-C durable human gate (action_task_gate.go): a
 	// propose on one replica + its accept on another resolve the same task exactly once.
 	{"0055_mcp_gate_tasks", UpMcpGateTasks},
+	// The `technique` kind, split out of `power_system` — whose NAME reads as a graded
+	// scheme while its description claimed a single art was enough. Rewrites both.
+	{"0056_technique_kind_split", UpTechniqueKindSplit},
+	// ...and its attributes, in a step of their own — 0056 was already applied when this
+	// was written, and an applied ledger entry never runs again.
+	{"0057_technique_kind_attrs", UpTechniqueKindAttrs},
+	// The entity-kind VOTE ledger + the kind hierarchy. An entity's kind stops being decided
+	// by whichever extraction batch named it first (BTG-A49/A66) and becomes the argmax over
+	// every observation, with a refinement rule so a corrected ontology can correct the data
+	// the wrong one produced.
+	{"0058_entity_kind_votes", UpEntityKindVotes},
 	// D-GLOSSARY-ATTR-LOOKUP-SEQSCAN — (kind_id, code) index on book_attributes. Ten
 	// handler queries resolve an attribute definition by (kind_id, code) with no
 	// book_id, and every prior index leads with book_id, so each evaluation seq-scanned
 	// 441k rows. Live: known-entities 56s -> 0.05s on a 3,187-entity book. The latency
 	// silently timed out knowledge-service's anchor pre-load, which made extraction mint
 	// duplicate entities. See attr_lookup_index.go.
-	{"0056_attr_lookup_index", UpAttrLookupIndex},
+	//
+	// MERGE 2026-08-02: this shipped as `0056_attr_lookup_index` on
+	// feat/frontend-tools-mcp-migration while main independently took 0056–0058 for the
+	// technique/kind-vote steps. Renumbered to 0059 rather than main's, and the rename —
+	// normally forbidden by the chain rule above — is safe HERE and only here because the
+	// step is a single `CREATE INDEX IF NOT EXISTS`: re-running it on a DB that already
+	// applied it under the old name costs one no-op statement. Renaming main's three would
+	// have re-run kind rewrites and a vote-table build instead.
+	{"0059_attr_lookup_index", UpAttrLookupIndex},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

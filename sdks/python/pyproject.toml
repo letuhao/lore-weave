@@ -42,10 +42,14 @@ dependencies = [
   # `loreweave_mcp` and every provider service's `app/mcp/server.py` import. With the
   # bound open, a rebuild silently resolved 2.0.0 and composition-service crash-looped on
   # `ModuleNotFoundError: No module named 'mcp.server.fastmcp'` — nothing in the repo had
-  # changed but the day. chat-service and knowledge-service survived only because they
-  # happen to re-pin `mcp==1.28.1` in their own requirements.txt; a service that trusts the
-  # SDK's declaration (composition) got no such protection. Raise this deliberately, with
-  # the fastmcp import path migrated, never as a drive-by.
+  # changed but the day. translation-service went down the same way on a routine rebuild
+  # (`context.py` imports fastmcp at module scope), which is the shape of the failure: it
+  # was latent in EVERY image and surfaced on whichever service happened to be rebuilt
+  # next, with nothing in the diff to explain it. chat-service and knowledge-service
+  # survived only because they happen to re-pin `mcp==1.28.1` in their own
+  # requirements.txt; a service that trusts the SDK's declaration (composition) got no
+  # such protection. Raise this deliberately, with the fastmcp import path migrated,
+  # never as a drive-by.
   "mcp>=1.27,<2",
   # SDK-2 / SEC-2 (2026-07-04) — loreweave_authn is the shared platform-user JWT
   # verifier (replaces the ~6 copy-pasted jwt.decode blocks). It needs PyJWT; every

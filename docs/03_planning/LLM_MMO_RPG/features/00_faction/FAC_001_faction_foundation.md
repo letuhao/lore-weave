@@ -189,8 +189,17 @@ pub enum JoinReason {
 
 - T2 + RealityScoped; per-actor across reality lifetime
 - One row per `(reality_id, actor_id)` (every PC + NPC MUST have row except Synthetic forbidden V1)
-- **Mutable V1+** via Apply events (JoinFaction / LeaveFaction / ChangeRole / ChangeRank / SetMaster / RemoveMaster)
-- V1 ships canonical seed only (V1+ runtime per FAC-D11)
+- **Mutability REVISED 2026-07-26 (REC-05 / AUD-F17 #7, PO decision) — two Apply events promote to
+  V1 as cascade-only writes:** **`ChangeRole` and `SetCurrentHead` are V1-active**, writable
+  exclusively by (a) the TIT_001 succession cascade and (b) `Forge:EditFactionMembership` /
+  `Forge:EditFaction`. Rationale: TIT_001's V1-active `faction_role_grant` cascade wrote through
+  these paths while this doc deferred them — FAC-D6 was even marked *"resolved by TIT_001 V1"*
+  without lifting this restriction; and without `SetCurrentHead`, §8.11's own scenario leaves
+  `current_head_actor_id` pointing at a corpse with two actors at authority_level=100. **Scope
+  note:** the V1 succession *trigger* is PC-title-holder death + Forge only — NPC-death-triggered
+  succession moved to V1+30d with NPC death itself (REC-06).
+- **Free-form runtime membership churn stays V1+ per FAC-D11**: JoinFaction / LeaveFaction /
+  ChangeRank / SetMaster / RemoveMaster remain canonical-seed + Forge only.
 - Synthetic actors forbidden V1 per Q10 LOCKED
 
 ---

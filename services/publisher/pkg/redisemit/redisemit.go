@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -81,6 +82,31 @@ func envelopeFields(row types.OutboxRow) map[string]any {
 	}
 	if row.Metadata != nil {
 		f["metadata"] = row.Metadata
+	}
+	// Channel ordering (DP-Ch11). Emitted as DECIMAL STRINGS, deliberately:
+	// these are BIGINT server-side, and the browser client consuming this
+	// stream loses precision past 2^53 on a JSON number (CWC-A2, doc 20 §2).
+	// Absent (not empty) when the event is reality-scoped rather than
+	// channel-scoped, so a consumer can tell "no channel" from "channel 0".
+	if row.ChannelID != nil {
+		f["channel_id"] = strconv.FormatInt(*row.ChannelID, 10)
+	}
+	if row.ChannelEventID != nil {
+		f["channel_event_id"] = strconv.FormatInt(*row.ChannelEventID, 10)
+	}
+	if row.WriterEpoch != nil {
+		f["writer_epoch"] = strconv.FormatInt(*row.WriterEpoch, 10)
+	}
+	// RLS-A13 / QTY-A14 — the ruleset pin. Absent (not empty) when the event has
+	// none, so a consumer can tell "unpinned" from "pinned to nothing".
+	//
+	// This is the LAST hop where the pin could be lost, and it was being lost at
+	// the previous one: the outbox SELECT did not fetch the column. Anything
+	// downstream that reads a ruleset-scoped ORDINAL out of `payload` needs this
+	// value to know what the ordinal means — without it the number resolves
+	// against whatever table the reader happens to hold, silently.
+	if row.RulesetDigest != nil && *row.RulesetDigest != "" {
+		f["ruleset_digest"] = *row.RulesetDigest
 	}
 	return f
 }

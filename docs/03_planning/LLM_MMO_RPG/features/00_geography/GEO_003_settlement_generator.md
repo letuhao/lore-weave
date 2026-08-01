@@ -730,7 +730,7 @@ This sequence demonstrates that **the V1+30d admin tooling is asymmetric for "de
 - [`07_event_model/03_event_taxonomy.md`](../../07_event_model/03_event_taxonomy.md) — EVT-T3 / T8 sub-shapes unchanged (SET_001 reuses GEO_001 + POL_001 registrations)
 - [`features/00_map/MAP_001_map_foundation.md`](../00_map/MAP_001_map_foundation.md) — V1+ position auto-derivation per GEO-D5 activates at SET ship (settlement centroids → map_layout.position for town-tier channels)
 - [`features/00_place/PF_001_place_foundation.md`](../00_place/PF_001_place_foundation.md) — PF-D7 procedural place generation gains Settlement.role + population_tier input
-- [`features/00_csc/CSC_001_cell_scene_composition.md`](../00_csc/CSC_001_cell_scene_composition.md) — V1+30d skeleton selection gains Settlement.role input (Capital → palace_complex; Fortress → fortified_keep; etc.)
+- [`features/00_csc/CSC_001_cell_scene_composition.md`](../00_cell_scene/CSC_001_cell_scene_composition.md) — V1+30d skeleton selection gains Settlement.role input (Capital → palace_complex; Fortress → fortified_keep; etc.)
 
 ---
 

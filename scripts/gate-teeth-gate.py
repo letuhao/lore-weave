@@ -70,7 +70,20 @@ _PY_FAIL = re.compile(
 )
 _SH_FAIL = re.compile(r"\bexit\s+(?!0\b)[\"'$\w]", re.M)
 _SET_E = re.compile(r"^\s*set\s+-\w*e", re.M)
-_SELFTEST = re.compile(r"SELFTEST", re.I)
+# MERGE 2026-08-02: `gate-wiring-gate.py` arrived from main carrying a real, working proof —
+# a `self_test()` function behind a `--self-test` flag, verified red-able — and the previous
+# pattern (`SELFTEST`) reported it as UNPROVEN purely because it spells the word with a
+# separator. A detector that misses an existing proof is a false accusation, and the pressure
+# it creates is to bolt on a second, redundant proof to satisfy a regex.
+#
+# But the separator must NOT simply be made optional. Measured: a bare `SELF[-_ ]?TEST` also
+# certified `context-inspector-checklist-gate.py`, which has no self-test at all — it matched
+# the words "for gate self-tests" inside an argparse `help=` string. `_executable_text` strips
+# docstrings and comments, not string literals, so a MENTION would have counted as a PROOF.
+# That is this file's own warning ("a gate must never be its own witness") re-committed one
+# level out. So the separator spellings are accepted only in the two shapes that are proofs
+# rather than prose: a `def self_test` and a `--self-test` CLI flag.
+_SELFTEST = re.compile(r"SELFTEST|def\s+self[-_]?test\b|--self[-_]?test\b", re.I)
 _PY_DOCSTRING = re.compile(r'("""|\'\'\')(?:.|\n)*?\1')
 _HASH_COMMENT = re.compile(r"(?m)^\s*#.*$")
 

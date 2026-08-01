@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12I. Safe Reality Closure (R9 mitigation)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #9).** The archive-verification sample restore (§12I.3: “restore 5 random aggregates (pc, npc, region)”) references the `region` aggregate, which no longer exists — aggregates are `place`/`actor_core` per the 52-row ownership matrix. The multi-stage close state machine itself remains valid, but closure must also account for island checkpoint drain, not only DB archival. Status markers below predate the island/commit-service model.
+
 Closing a reality = DROP DATABASE = irreversible. One mistake destroys active world. Unlike other failure modes where retry recovers, here there is no retry. Replace the naive 1-step close flow in §7.3 with a multi-gate, multi-state, multi-day protocol that makes accidental data loss structurally impossible.
 
 ### 12I.1 Multi-stage close state machine

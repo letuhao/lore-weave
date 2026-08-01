@@ -11,7 +11,7 @@ generated_by: scripts/chunk_doc.py
 > **Status:** Exploratory design — locks two decisions, leaves others open. Risks listed for separate discussion.
 > **Scope:** Physical persistence of world state for the LLM MMO RPG. Does not cover canonical data (book / glossary / knowledge — those are owned by existing services).
 > **Created:** 2026-04-23
-> **Superseded in framing by:** [03_MULTIVERSE_MODEL.md](03_MULTIVERSE_MODEL.md) — the conceptual model that sits above this engineering baseline. The word "instance" used throughout this document corresponds to **"reality"** in the multiverse model. There is no privileged "root reality"; every reality is a peer universe. See [03 §1–3](03_MULTIVERSE_MODEL.md) for the conceptual framing and [03 §8](03_MULTIVERSE_MODEL.md) for schema adjustments (notably: every events/projection row gains a `reality_id` column).
+> **Superseded in framing by:** [03_MULTIVERSE_MODEL.md](../03_multiverse/_index.md) — the conceptual model that sits above this engineering baseline. The word "instance" used throughout this document corresponds to **"reality"** in the multiverse model. There is no privileged "root reality"; every reality is a peer universe. See [03 §1–3](../03_multiverse/00_overview_philosophy.md) for the conceptual framing and [03 §8](../03_multiverse/04_schema_additions.md) for schema adjustments (notably: every events/projection row gains a `reality_id` column).
 
 ---
 
@@ -24,7 +24,7 @@ generated_by: scripts/chunk_doc.py
 | — | Fork semantics | **Snapshot fork** (locked separately in 03) — peer realities, no live inheritance between them |
 | — | Model name | **Multiverse** (peer realities, no root) |
 
-The remaining decisions (#2 embedding storage, #3 Redis durability, #5 event log partitioning, #6 hot state durability) are parked as `TBC`. All pending items live in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+The remaining decisions (#2 embedding storage, #3 Redis durability, #5 event log partitioning, #6 hot state durability) are parked as `TBC`. All pending items live in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 ## 2. Why these two together
 
@@ -154,7 +154,7 @@ CREATE INDEX events_reality_event_idx ON events (reality_id, event_id);
 - Enforces monotonic versioning per (reality, aggregate) (duplicate version = constraint violation = concurrency conflict)
 - Natural ordering for replay of one aggregate in one reality
 - Reality scoping ensures snapshot-fork isolation — events from sibling realities never collide
-- Cascading reads filter by `reality_id IN (ancestor chain)` + `event_id <= fork_point` per ancestor (see [03 §7](03_MULTIVERSE_MODEL.md))
+- Cascading reads filter by `reality_id IN (ancestor chain)` + `event_id <= fork_point` per ancestor (see [03 §7](../03_multiverse/03_fork_and_cascading.md))
 
 **`event_version`:** schema version of the event *type*, not the aggregate. Allows evolving `pc.say` v1 → v2 without rewriting history. Upcasters convert old events to latest schema on read.
 
@@ -179,6 +179,18 @@ The `metadata` JSONB holds cross-cutting concerns every event carries:
 `correlation_id` is how we group "one player turn" — which typically spans 3-5 events across multiple aggregates.
 
 ### 4.4 Command flow (write path)
+
+> **⚠ SUPERSEDED 2026-07-26 (GDA-D11) — the *sequence* below is obsolete; read
+> [`17_game_data_architecture.md` §5 R2](../17_game_data_architecture.md) for the current write path.**
+> This section predates `sim-core` / `commit-service` (docs `13`/`14`/`15`) and contradicts them in
+> two places: **(a)** it has the command handler write directly in a DB transaction, whereas the
+> **island** is the writer (SC-A4 §5.1) with `commit-service` wrapping `sim-core` on both sides
+> (CS-A2); **(b)** it validates by reading a projection, whereas preconditions are re-validated
+> **at step time, never at admission** (SC-A1) — admission is the EVT-V1 pipeline (CS-A3).
+> **What survives:** the optimistic-concurrency reasoning below is unchanged and still applies at the
+> durability step, where `UNIQUE(reality_id, channel_id, channel_event_id)` is the DB-level
+> expression of the same per-island total order SL-A9 asserts at the simulation layer.
+> Retained rather than deleted because that reasoning is still the best statement of it.
 
 ```
 1. Command arrives ("player X says 'hello' to NPC Y in region Z")
@@ -209,6 +221,13 @@ For a *normal* CRUD app, full event sourcing is usually overkill. For this MMO i
 
 ### 4.6 Sync vs async projection — start sync
 
+> **✅ RETAINED 2026-07-26 (GDA-D10) — this decision stands; only its *host* moved.** Unlike §4.4, the
+> choice below was never in conflict with the `sim-core` model: who writes and when validation happens
+> changed, but whether the projection updates in the same transaction as the event append is an
+> **independent** question, and the reasoning here still holds at V1 turn rates. It re-homes from the
+> command handler to **`commit-service`'s durability step** ([`17` §5 R2](../17_game_data_architecture.md)
+> step 5). The V3 async escape hatch below travels with it unchanged.
+
 Projections can be updated (a) in the same transaction as the event append, or (b) asynchronously by a worker tailing the event stream.
 
 **V1 decision: synchronous, in-transaction.** The event append and the projection update commit together. Reads are strongly consistent. No projection lag window.
@@ -222,6 +241,15 @@ Deferring async keeps V1 simple and removes an entire class of bugs (stale reads
 ## 5. Projections
 
 Each aggregate type has one or more **projection tables** — denormalized, query-optimized views of current state. These are the tables the app actually reads from for rendering.
+
+> **⚠ NOT AN INVENTORY 2026-07-26 (GDA-D12).** The four projections below (PC / NPC / Region /
+> WorldKV) are **patterns** — per-actor, per-NPC, per-region, world-KV — and remain instructive as
+> such. They are **not** the catalogue: the feature layer has since declared **52 aggregates**, and
+> the authoritative registry with tier, scope and owning feature is
+> [`_boundaries/01_feature_ownership_matrix.md`](../_boundaries/01_feature_ownership_matrix.md).
+> The names here (`region`, `npc_proxy`) predate the feature vocabulary (`place`, `map_layout`,
+> `actor_core`, `entity_binding`, …) and should not be used for new work. No third registry was
+> created — see [`17` §5 R7](../17_game_data_architecture.md).
 
 ### 5.1 PC projection
 
@@ -712,7 +740,7 @@ Baseline per active instance, assuming 500 concurrent players in one instance (a
 | Postgres write TPS | ~200 (events + projection updates) |
 | Postgres headroom | Commodity Postgres handles 5K–10K TPS; using 2–4% |
 
-Bottleneck is **not DB**. It is LLM cost and latency. See [01_OPEN_PROBLEMS.md D1](01_OPEN_PROBLEMS.md#d1-llm-cost-per-user-hour--open).
+Bottleneck is **not DB**. It is LLM cost and latency. See [01_OPEN_PROBLEMS.md D1](../01_problems/D_economics.md#d1-llm-cost-per-user-hour--open).
 
 Scale by replicating instance DBs across Postgres servers (§7.6). Any single instance bounded by one DB's throughput, which tolerates ~100× the projected V1 load.
 

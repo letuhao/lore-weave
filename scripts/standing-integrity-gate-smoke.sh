@@ -33,6 +33,12 @@ PG_PASS="foundation"
 PG_PORT="${FOUNDATION_PG_PORT:-55432}"
 SHARDS="${SHARDS:-4}"
 PROFILE="${PROFILE:-multi-reality}"
+# db-safety-gate: file-ok — every database this script DROPs is named by a
+# NON-OVERRIDABLE LITERAL (standing_gate_meta and the per-shard names derived from it), so no
+# environment variable can retarget it at a real database. That is a stronger
+# guarantee than a runtime marker check on an overridable name, which is what the
+# gate would otherwise ask for. Brought into scope 2026-07-29 when the gate's
+# shell-file selector was widened from "test" to test|smoke|drill.
 META_DB="standing_gate_meta"
 SHARD_PREFIX="standing_gate_shard_"
 BITE="${BITE:-0}"

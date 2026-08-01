@@ -40,9 +40,7 @@ import (
 // llama.cpp *native /completion* param, not honored on the chat endpoint), and
 // its cache-token visibility lives on the separate `/v1/responses` API
 // (`previous_response_id` → `input_tokens_details.cached_tokens`). So sending
-// `cache_prompt` here is a pure no-op — we don't. (Caching still won't help an
-// A3B/A4B MoE model — LM Studio bug #1563 — but that's a server/model limit no
-// request field can change.)
+// `cache_prompt` here is a pure no-op — we don't.
 
 // promptCacheEnabled — deploy kill-switch for the Anthropic path (default ON).
 // Disable platform-wide with LLM_PROMPT_CACHE=0 (or false/off).

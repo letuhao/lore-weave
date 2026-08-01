@@ -401,6 +401,6 @@ Phases 1–4 already make a *believable Earth-scale world*; 5 makes it *huge*;
 |---|---|---|
 | 1 | **Topology** — cylinder or true sphere? | **RESOLVED 2026-05-20** — true sphere (§3 / §3a). |
 | 2 | **Fantasy split** — world-archetype + anomaly-region two-level? | **RESOLVED 2026-05-20** — two-level per §6c. |
-| 3 | **Tier-2 persistence** — generated-on-demand-and-cached, or stored? | **DEFERRED to Phase 5** — affects storage design, not the generator core. Revisit when tier-2 implementation begins. |
+| 3 | **Tier-2 persistence** — generated-on-demand-and-cached, or stored? | **RESOLVED 2026-07-30 — STORED, content-addressed.** The deferral's own trigger (*"revisit when tier-2 implementation begins"*) arrived. Answer: **stored**, not generated-on-demand — see [`37_world_data_storage.md`](37_world_data_storage.md) (`WDS-*`). The deciding argument is **not** size: it is that `f32` noise makes cross-platform regeneration unproven, so the bytes must be the SSOT and regeneration is the *audit* path only. Measured inputs: at the production scale (`Megaplanet`, GEO-D14) the payload is ~15 MB and regenerates in ~1 s; **67.6 %** of it is derivable (`fibonacci(n) · R(seed)` + Quickhull), and PO chose **not** to strip that yet (`D-WORLD-PAYLOAD-DERIVABLE`). |
 | 4 | **Phasing** — §8 order or move scale earlier? | **RESOLVED 2026-05-20** — default §8 order (with phase 1 retitled to *spherical topology*). |
 | 5 | **Scale targets** — tier-1 100k–500k / area 100×100 / cells/area 1000? | **RESOLVED 2026-05-20** — spec defaults, LLM-tunable within bands. |

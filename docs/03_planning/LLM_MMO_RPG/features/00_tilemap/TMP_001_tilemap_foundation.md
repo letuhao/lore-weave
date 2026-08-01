@@ -1,5 +1,23 @@
 # TMP_001 — Tilemap Foundation
 
+> **⚠ TIER RESTATEMENT 2026-07-30 — [`36_map_architecture.md`](../../36_map_architecture.md) (`SPG-*`), row `SPG-R9`:**
+> `TMP-A1` currently draws its boundary against `MAP_001`'s retired `ChannelTier` ladder (*"cell tier has
+> no `tilemap_view`; every non-cell tier may have one"*). Restated in `MapKind` terms, the split is
+> **sharper, not different**: a **`Locale`** carries the tilemap (this doc); a **`Domain`** carries the
+> interior composition ([`CSC_001`](../00_cell_scene/CSC_001_cell_scene_composition.md)). The drill-down
+> arrow still points FROM here TO there — clicking a `Domain`-holding object on a Locale tilemap enters
+> its interior — and nothing in the pipeline, the modificators or the placement engine changes.
+> **`zone` needs NO rename, and that is the point.** Doc 36 §6 found `zone` carrying three live meanings
+> (the frozen flat-track `plate→zone→subzone`, this doc's HoMM3 partition *inside one tilemap*, and an
+> informal word for a world subdivision). Because the tier ladder that used the third meaning is being
+> deleted anyway and the flat track is frozen, **this doc's `zone` survives as the single live meaning**.
+> `ZoneRole` / `ZoneSpec` / `ZoneEdge` are unaffected.
+> **New neighbour:** `MapKind::Passage` (`SPG-A13`) — the road *between* Locales is now a node with
+> derived geometry, not a bare edge. It is generated from the world field it crosses (reusing
+> `COMB_002`'s `TG-D7` wilderness generator), so it costs this doc nothing and gives `TVL_002`/`TVL_004`
+> a spatial substrate they previously lacked.
+> **CANDIDATE-LOCK preserved**; `SPG-R9` is PROPOSED, not applied. Annotation only.
+
 > **Conversational name:** "Tilemap Foundation" (TMP). The procedural-generation visual layer for the world map. **MAP_001** owns the author-positioned logical graph; **TMP_001** owns the procedurally-generated tilemap rendered on top. Both ship; both are canonical at their layer; TMP_001 derives positions from MAP_001 (subscribe pattern).
 >
 > **Category:** TMP — Tilemap Foundation (foundation tier; sibling of MAP_001 + CSC_001 + EF_001 + PF_001)
@@ -156,7 +174,7 @@ Per-non-cell-channel runtime tilemap state. Created at RealityManifest bootstrap
 #[dp(type_name = "tilemap_view", tier = "T2", scope = "channel")]
 pub struct TilemapView {
     pub channel_id: ChannelId,                              // primary key (per non-cell channel)
-    pub tier: ChannelTier,                                  // denormalized: Continent | Country | District | Town (NOT Cell — TMP-A1)
+    pub kind: MapKind,                                      // SPG-R1 (was `tier: ChannelTier`); denormalized. ⚠ SPG-R13: under SPG-R9 the tilemap belongs to `Locale` alone — World/Region are served by GEO_001's Voronoi mesh and Domain by CSC_001 — so the old "4 non-cell tiers" set collapses. Routed to TMP_001.
     pub grid_size: GridSize,                                // (width, height) — from tilemap_defaults or per-channel override
     pub template_id: TilemapTemplateId,                     // ref to tilemap_template aggregate (per-reality)
     pub seed: u64,                                          // deterministic Blake3 hash — per TMP-A4
@@ -266,7 +284,7 @@ pub struct GenerationMetadata {
 
 ### 3.2 `tilemap_template` (T2 / Reality scope) — SECONDARY
 
-Author-declared template document. Multiple templates per reality (e.g., one per ChannelTier, or per genre subzone). Referenced by `tilemap_view.template_id`.
+Author-declared template document. Multiple templates per reality (e.g., one per `MapKind`, or per genre subzone). Referenced by `tilemap_view.template_id`.
 
 ```rust
 #[derive(Aggregate)]
@@ -275,7 +293,7 @@ pub struct TilemapTemplate {
     pub template_id: TilemapTemplateId,                     // primary key (per-reality)
     pub name: String,                                       // author-supplied, e.g. "Wuxia Continent V1"
     pub description: String,                                // freeform
-    pub applicable_tiers: BTreeSet<ChannelTier>,            // which tiers this template applies to
+    pub applicable_kinds: BTreeSet<MapKind>,                // which kinds this template applies to (SPG-R1: was `applicable_tiers: BTreeSet<ChannelTier>`)
     pub default_grid_size: GridSize,                        // when applied
     pub zones: HashMap<ZoneId, ZoneSpec>,                   // zone-by-zone specs
     pub connections: Vec<ZoneEdgeSpec>,                     // edges between zones
@@ -433,9 +451,9 @@ Two fields, both engine-defaulted:
 pub struct RealityManifest {
     // ... existing fields ...
 
-    pub tilemap_templates: Option<HashMap<ChannelTier, TilemapTemplateRef>>,
-    // V1+30d: None (engine uses `tilemap_defaults.default_template_per_tier`)
-    // If Some: per-tier template selection. Falls back to defaults for any tier not specified.
+    pub tilemap_templates: Option<HashMap<MapKind, TilemapTemplateRef>>,
+    // V1+30d: None (engine uses `tilemap_defaults.default_template_per_kind`)
+    // If Some: per-KIND template selection. Falls back to defaults for any kind not specified.
 
     pub tilemap_defaults: Option<TilemapDefaults>,
     // V1+30d: None (engine uses hardcoded sensible defaults)
@@ -443,13 +461,13 @@ pub struct RealityManifest {
 }
 
 pub struct TilemapDefaults {
-    pub grid_size_per_tier: HashMap<ChannelTier, GridSize>,
-    pub default_template_per_tier: HashMap<ChannelTier, TilemapTemplateRef>,
+    pub grid_size_per_kind: HashMap<MapKind, GridSize>,     // SPG-R1; ⚠ SPG-R13 — near-degenerate under SPG-R9
+    pub default_template_per_kind: HashMap<MapKind, TilemapTemplateRef>,
     pub default_water_content: WaterContent,                // None | Normal | Islands
     pub default_monster_strength: MonsterStrength,          // Weak | Normal | Strong
     pub llm_enabled: bool,                                  // V1+30d default false; V2 default true
     pub single_thread: bool,                                // V1+30d default false (parallel); for deterministic-debug builds
-    pub skip_tier: BTreeSet<ChannelTier>,                   // tiers to NOT generate tilemaps for; UI falls back to MAP_001 graph view
+    pub skip_kind: BTreeSet<MapKind>,                       // kinds to NOT generate tilemaps for; UI falls back to MAP_001 graph view
 }
 ```
 
@@ -552,13 +570,15 @@ All 8 TMP-Q1..Q8 RESOLVED at closure pass. 3 of 8 (TMP-Q3 / TMP-Q4 / TMP-LLM-Q4 
 | ID | Question | Locked decision (2026-05-13) | How resolved |
 |---|---|---|---|
 | **TMP-Q1** | Storage strategy: persist `terrain_layer` or regenerate from seed? | **Persist V1+30d** — `terrain_layer: Vec<u8>` bytea in Postgres (~1.3MB per reality is cheap; enables V3 paint UX schema-prepared per TMP-D2). | ✅ ACCEPT default |
-| **TMP-Q2** | Should `tilemap_view` exist for District + Town tiers, or only Continent + Country? | **All 4 non-cell tiers V1+30d** — Continent / Country / District / Town all get `tilemap_view`; engine config `tilemap_defaults.skip_tier: BTreeSet<ChannelTier>` allows author opt-out for performance-sensitive realities (UI falls back to MAP_001 graph view for skipped tiers). | ✅ ACCEPT default |
+| **TMP-Q2** | ⚠ **REFRAMED by `SPG-R13` 2026-07-30** — the question presupposed the retired 4-tier ladder. Under `MapKind` + `SPG-R9` the tilemap belongs to `Locale`, so the live question is whether any *other* kind bears one at all. ~~Should `tilemap_view` exist for District + Town tiers, or only Continent + Country?~~ | ~~**All 4 non-cell tiers V1+30d** — Continent / Country / District / Town all get `tilemap_view`; engine config `tilemap_defaults.skip_tier: BTreeSet<ChannelTier>` allows author opt-out for performance-sensitive realities (UI falls back to MAP_001 graph view for skipped tiers). | ✅ ACCEPT default |
 | **TMP-Q3** | LLM enablement default V2 | **V2 default ON** — `tilemap_defaults.llm_enabled: true` ships as default at V2 launch; V1+30d ships with `llm_enabled: false` (cost validation period). Author can opt out per-reality. Aligned with TMP_008b §12 cost model (~$7/reality Y1 with cross-zone context per TMP-LLM-Q4). | ✅ USER LOCK 2026-05-13 |
 | **TMP-Q4** | FE rendering engine — Phaser vs Pixi vs custom canvas? | **Phaser 3** — V1+30d FE renders via Phaser 3 (mature WebGL-accelerated 2D game framework; React-wrapper integration; ~120KB gzipped). Author-configurable swap to Pixi or custom in V2+ if needed. | ✅ USER LOCK 2026-05-13 |
-| **TMP-Q5** | Force-directed convergence: needs a wall-clock budget. | **1000 iterations OR 5 seconds wall-clock, whichever first** — emit `tilemap.generation_timeout` rule_id on cap hit; UI falls back to MAP_001 graph view for that channel. Cross-ref TMP-PLACE-Q2 (failure fallback). | ✅ ACCEPT default |
+| **TMP-Q5** | Force-directed convergence: needs a wall-clock budget. | **1000 iterations ~~OR 5 seconds wall-clock, whichever first~~** (⚠ CORRECTED 2026-07-26 (REC-23): fixed iteration count only — see note below) — emit `tilemap.generation_timeout` rule_id on cap hit; UI falls back to MAP_001 graph view for that channel. Cross-ref TMP-PLACE-Q2 (failure fallback). | ✅ ACCEPT default |
 | **TMP-Q6** | Should LLM L3 zone classifier accept author-narrative-hints from tilemap_template, or use only zone summaries? | **Both** — engine-computed zone summary (terrain + monster_strength + object_count) is mandatory; optional `narrative_hint: Option<String>` per zone is merged with engine summary in prompt. Hint is delimited via `<author_text>` tags per TMP_008b §7 (injection defense). | ✅ ACCEPT default |
 | **TMP-Q7** | Cells on parent tilemap = 1×1 marker or multi-tile region matching CSC_001? | **1×1 marker V1+30d** — cells render as 1×1 `TilemapObjectKind::Town` or `Landmark` markers on parent tilemap; click → drill into CSC_001 16×16 interior. V2+ multi-tile rendering reserved as TMP-D11. | ✅ ACCEPT default |
 | **TMP-Q8** | Multi-PC parallel generation: serial or parallel? | **Parallel** — tilemap-service is stateless; uses per-(reality_id, channel_id) lock for concurrent generation. Two players creating realities concurrently → both generated in parallel. | ✅ ACCEPT default |
+
+> **⚠ CORRECTED 2026-07-26 (REC-23): the wall-clock bound is REMOVED from the layout algorithm — termination is a fixed iteration count only.** TMP-Q5's `min(1000 iterations, 5 s wall-clock)` termination is non-deterministic: on a slower or loaded machine the loop truncates at a different iteration, so the same seed yields a different layout — directly contradicting TMP-A4 / AC-TMP-2's byte-identical-output-from-the-same-seed contract. The force-directed loop now terminates on the **fixed iteration count alone** (1000, or a per-template declared `force_directed_max_iterations`). The 5-second budget moves to the **host** as a generation-**job** timeout that **FAILS the job** (`tilemap.generation_timeout`; MAP_001 graph-view fallback unchanged) rather than truncating the layout mid-run — a timed-out job produces *no* tilemap, never a differently-truncated one. Cross-ref RLS-D13: wall-clock knobs are platform config, never algorithm inputs.
 
 ---
 
@@ -661,7 +681,7 @@ All 8 TMP-Q1..Q8 RESOLVED at closure pass. 3 of 8 (TMP-Q3 / TMP-Q4 / TMP-LLM-Q4 
 
 | Step | Detail |
 |---|---|
-| **Setup** | Existing template `wuxia_continent_v1` has `applicable_tiers: BTreeSet::from([ChannelTier::Continent])`. RealityManifest specifies `tilemap_templates: Some({ChannelTier::Town: TilemapTemplateRef(wuxia_continent_v1)})`. |
+| **Setup** | Existing template `wuxia_continent_v1` has `applicable_kinds: BTreeSet::from([MapKind::World])` (`SPG-R1`+`SPG-R3`; was `applicable_tiers: BTreeSet::from([ChannelTier::Continent])`). RealityManifest specifies `tilemap_templates: Some({ChannelTier::Town: TilemapTemplateRef(wuxia_continent_v1)})`. |
 | **Action** | Trigger RealityManifest bootstrap (or `Forge:UpdateRealityManifest`). |
 | **Expected** | Reject with `rule_id: tilemap.template_tier_mismatch`, `user_message` containing template_id + offending tier. NO `tilemap_view` created for any Town channel using this template. Bootstrap proceeds for Continent (correct tier). Author Forge sees rejection with corrective guidance. |
 | **Validates** | TMP_004 §2 `applicable_tiers` constraint; `tilemap.template_tier_mismatch` rule_id |
@@ -670,10 +690,10 @@ All 8 TMP-Q1..Q8 RESOLVED at closure pass. 3 of 8 (TMP-Q3 / TMP-Q4 / TMP-LLM-Q4 
 
 | Step | Detail |
 |---|---|
-| **Setup** | Pathological template with 30 zones + dense Adversarial connections forcing force-directed convergence to fail. `tilemap_defaults.force_directed_max_iterations: 1000`, `max_wall_clock_seconds: 5`. |
+| **Setup** | Pathological template with 30 zones + dense Adversarial connections forcing force-directed convergence to fail. `tilemap_defaults.force_directed_max_iterations: 1000`, ~~`max_wall_clock_seconds: 5`~~ (⚠ CORRECTED 2026-07-26 (REC-23): the 5 s budget is a HOST generation-job timeout, not an algorithm parameter). |
 | **Action** | Trigger bootstrap for this channel. |
-| **Expected** | After 1000 iterations or 5s wall-clock (whichever first), engine emits `rule_id: tilemap.generation_timeout` with `user_message` noting iteration cap. `tilemap_view` is NOT created for this channel. EVT-T4 `TilemapBorn` is NOT emitted. Channel's UI client falls back to MAP_001 graph view (no tilemap render). `generation_metadata.iteration_count: 1000` logged to ops dashboard. |
-| **Validates** | TMP-Q5 lock (1000 iters OR 5s); TMP-PLACE-Q2 fallback discipline; `tilemap.generation_timeout` rule_id |
+| **Expected** | After 1000 iterations ~~or 5s wall-clock (whichever first)~~ (REC-23: fixed iteration count only; a host job-timeout FAILS the whole job with the same rule_id, never truncates the layout), engine emits `rule_id: tilemap.generation_timeout` with `user_message` noting iteration cap. `tilemap_view` is NOT created for this channel. EVT-T4 `TilemapBorn` is NOT emitted. Channel's UI client falls back to MAP_001 graph view (no tilemap render). `generation_metadata.iteration_count: 1000` logged to ops dashboard. |
+| **Validates** | TMP-Q5 lock (1000 iters ~~OR 5s~~ — REC-23 iteration-count-only); TMP-PLACE-Q2 fallback discipline; `tilemap.generation_timeout` rule_id |
 
 ### AC-TMP-9 — "Never seal a gap" connectivity invariant
 

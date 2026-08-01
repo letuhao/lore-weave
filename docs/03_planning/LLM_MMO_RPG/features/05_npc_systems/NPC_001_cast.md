@@ -64,7 +64,7 @@ After this lock: world-service can implement NPC orchestration; NPC_002 Chorus c
 | Concept | Maps to | Notes |
 |---|---|---|
 | **NpcId** | Newtype `pub struct NpcId(pub Uuid)` | Distinct from `PcId` (owned by PCS_001) and `glossary_entity_id` (book-side). Derived deterministically from `(reality_id, glossary_entity_id)` for canonical NPCs (NPC-1 catalog: "NPC proxy derivation from glossary entity"). Author-created NPCs get fresh UUIDs. |
-| **ActorId (closed enum)** | `pub enum ActorId { Pc(PcId), Npc(NpcId), Synthetic { kind: SyntheticActorKind }, Admin(AdminId) }` | Locked here. `Pc`/`PcId` deferred to PCS_001. `Synthetic` covers ChorusOrchestrator (NPC_002), BubbleUpAggregator, scheduler. `Admin` covers S5 actors. |
+| **ActorId (closed enum)** | `pub enum ActorId { Pc(PcId), Npc(NpcId), Synthetic { kind: SyntheticActorKind }, Admin(AdminId), Locus(PlaceId) }` | Locked here. `Pc`/`PcId` deferred to PCS_001. `Synthetic` covers ChorusOrchestrator (NPC_002), BubbleUpAggregator, scheduler. `Admin` covers S5 actors. **`Locus` ADDED 2026-07-30 (`WSA-R21`; boundary review + lock claim, per EF_001's closed-enum rule).** [`WSA-A7`](../../32_locus_as_actor.md): a locus is **both** an entity and an actor — a trap is a place reacting, and a village can regard and be regarded. **[`WSA-D3`](../../32_locus_as_actor.md) explicitly refuses reusing `Synthetic`**: that variant denotes an actor *outside* the fiction, and putting an out-of-world escape hatch on the critical path of the social layer is the wrong trade. Landed **paired with `WSA-R22`** (ACT_001's `actor.synthetic_actor_forbidden` narrowed in the same pass) — otherwise a locus could submit turns yet never hold an opinion. Cost bounded by [`WSA-A9`](../../32_locus_as_actor.md): loci ride the AIT_001 existence ladder, so an unvisited cell is **Untracked** and takes no turns. |
 | **SyntheticActorKind** | Closed enum: `ChorusOrchestrator \| BubbleUpAggregator \| Scheduler \| RealityBootstrapper` | V1; V2+ adds. |
 | **NpcOwnerNode** | Mapping `NpcId → NodeId` resolving who writes the NPC's events | Refines PL_001 §3.6 `BindingKind::NPC_OwnerNode_<node_id>`. V1: deterministic `hash(npc_id) mod cluster_size`. Failover: re-hash on cluster membership change with explicit handoff. |
 | **NpcPersona** | Read-side projection assembled per LLM call | NOT a separate aggregate — derived from `npc.core_beliefs` + `npc.flexible_state` + `npc_session_memory` + `npc_pc_relationship_projection` per request. See §6. |
@@ -91,7 +91,16 @@ No new EVT-T* row. **EVT-T2 references throughout this doc** updated semanticall
 
 ## §3 Aggregate inventory
 
-Five aggregates total: 3 imported from R8 (locked by 02_storage; Cast adds DP-A14 scope/tier annotations only), 2 new owned by Cast.
+> **⚠ CORRECTED 2026-07-26 (REC-26 / AUD-F17 #24): §3.1–§3.3 below are SUPERSEDED shapes — the
+> three R8 aggregates were TRANSFERRED to ACT_001 (this file's own 2026-04-27 header), but the
+> normative body was never updated, leaving two owners on record for `npc`, `npc_session_memory`
+> and `npc_pc_relationship_projection`.** The header's transfer table is authoritative: `npc` →
+> ACT_001 `actor_core` + `actor_chorus_metadata`; `npc_session_memory` → ACT_001
+> `actor_session_memory`; `npc_pc_relationship_projection` → ACT_001 `actor_actor_opinion`
+> (bilateral). §3.1–§3.3 are retained below as historical shape reference only — **ACT_001 §3 is
+> the owning spec**; NPC_001 is a reader. §3.4 `npc_node_binding` remains NPC_001-owned. The §4
+> tier/scope rows, §5.2 write calls and §7.1 JWT claims for the three transferred aggregates are
+> superseded by the same REC (notes at each site).
 
 ### 3.1 `npc` (R8-locked, scope/tier annotated by Cast)
 
@@ -232,6 +241,15 @@ dp::t3_write::<NpcNodeBinding>(ctx, npc_id, BindingDelta::Handoff { new_owner, n
 
 The handoff write is T3 because it carries epoch fencing — must be globally visible before any new owner can write.
 
+> **⚠ CORRECTED 2026-07-26 (REC-26 / AUD-F17 #24): the first three write calls above are
+> superseded — they claim writer authority NPC_001 no longer holds.** `dp::t2_write::<Npc>`,
+> `dp::t2_write::<NpcSessionMemory>` and `dp::t2_write::<NpcPcRelationshipProjection>` write
+> aggregates transferred to **ACT_001** (header table): the post-unify writes are
+> `dp::t2_write::<ActorCore>` / `::<ActorSessionMemory>` / `::<ActorActorOpinion>` under
+> **ACT_001's Aggregate-Owner role** — NPC_001 code paths invoke them only as ACT_001's declared
+> write API, never as owner. Only the `npc_node_binding` T3 handoff write remains an NPC_001-owned
+> write claim.
+
 ### 5.3 Channel ops (handoff only)
 
 - `dp::DpClient::move_session_to_channel` — NOT applicable (NPCs are not sessions).
@@ -351,6 +369,15 @@ The world-service backend session that writes EVT-T2 NPCTurn on behalf of NPCs n
 ```
 
 `produce: NPCTurn` is the new claim Cast adds to the JWT shape — required by EVT-A4 producer-category binding.
+
+> **⚠ CORRECTED 2026-07-26 (REC-26 / AUD-F17 #24): the JWT `write` rows for `npc`,
+> `npc_session_memory` and `npc_pc_relationship_projection` above are superseded.** Those
+> aggregates are ACT_001-owned post-unification (header table); the capability rows belong to
+> ACT_001's substrate spec under the renamed aggregates (`actor_core` / `actor_session_memory` /
+> `actor_actor_opinion`), and NPC_001's claim set keeps only `npc_node_binding` (+
+> `entity_binding` per PL_001) and the `produce: NPCTurn` role. Leaving the old rows normative
+> here granted world-service a second, NPC_001-flavored write path onto ACT_001's aggregates —
+> exactly the two-owner drift the register flags.
 
 ### 7.2 Per-node binding
 

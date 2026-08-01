@@ -10,7 +10,7 @@ PyJWT>=2.8
 # cryptography backend for RSA + SPKI/PKIX PEM parsing. Present transitively
 # today, but pinned explicitly so a security-critical dep can't silently drop.
 cryptography>=49.0.0
-cachetools>=5.3
+cachetools>=7.1.4
 prometheus-client>=0.25.0
 
 # loreweave_llm SDK (Phase 4a-α) — installed via Dockerfile COPY of
@@ -31,7 +31,7 @@ langdetect>=1.0.9
 # check (extract_canon_terms: CJK proper-noun extraction, lazy-loaded so
 # its dict cost is paid only when a contradiction term is needed). Same
 # version lore-enrichment pins; pure Python, no native deps.
-jieba>=0.42
+jieba>=0.42.1
 # M-recall (2026-07-07) — pyahocorasick for CJK/VI-aware entity-anchor matching.
 # The intent classifier can't segment scriptio-continua (Chinese has no spaces),
 # so `select_l2_facts` anchored on classifier tokens returns 0 facts for CJK queries
@@ -43,7 +43,7 @@ pyahocorasick>=2.0
 # The len/4 heuristic undercounts CJK by ~3-7x, which over-promises
 # context budget. tiktoken.cl100k_base matches GPT-4/Claude-3.x
 # tokenization closely enough for budget enforcement.
-tiktoken>=0.7
+tiktoken>=0.13.0
 # P1 (2026-05-23) — loreweave_parse SDK uses bs4 + stdlib html.parser
 # for the /internal/parse endpoint. Pure Python, no native deps.
 beautifulsoup4>=4.15.0,<5
@@ -53,7 +53,7 @@ beautifulsoup4>=4.15.0,<5
 # Realistic added image footprint ~500MB-1GB including transitive
 # pydantic v2 + sentence-transformers + pyarrow (per plan LOW-12).
 # Used only in tests/quality/* and only opt-in via --run-quality.
-deepeval==4.1.0
+deepeval==4.1.1
 seqeval==1.2.2
 datasets==2.21.0
 krippendorff==0.8.2
@@ -77,7 +77,7 @@ mcp[cli]==1.28.1
 # import-guarded in pdf_walker.py the same way lore-enrichment-service's
 # extract.py guards them — a missing lib/binary degrades gracefully
 # (text-layer only), it never crashes the service.
-pymupdf>=1.24
-pytesseract>=0.3.10
+pymupdf>=1.28.0
+pytesseract>=0.3.13
 pdf2image>=1.17
 Pillow>=12.3.0

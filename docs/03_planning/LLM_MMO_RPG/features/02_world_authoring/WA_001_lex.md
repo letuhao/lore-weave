@@ -210,7 +210,21 @@ pub enum EnergyKind {
 }
 ```
 
-V1 doesn't use EnergyKind for validation — it's metadata for V2+ when WA_002 contamination model + ability-cost model lands. Authors declare it now so future features have structured data.
+~~V1 doesn't use EnergyKind for validation — it's metadata for V2+ when WA_002 contamination model + ability-cost model lands. Authors declare it now so future features have structured data.~~
+
+> **⚠ CORRECTED 2026-07-26 (REC-44 / AUD-F17 #40): `energy_system` is bound to RES_001's declared
+> vitals by a bootstrap C-rule — it can no longer float as unvalidated metadata.** The struck
+> sentence assigned the ability-cost axis to a future doc (LX-D8), but **ABL_001 ships ability
+> costs in V1 against RES_001 vitals** — so a reality could legally set `energy_system: Qi` while
+> every one of its abilities costs `Mana`, and nothing anywhere would object. Per the register's
+> resolution, a **bootstrap C-rule** now binds the two at manifest-validation (schema stage):
+> `energy_system` must be consistent with the RES_001 vital pool that the reality's declared
+> ability costs draw on — `EnergyKind::Mana` ⇒ the `Mana` vital, `::Stamina` ⇒ `Stamina`,
+> `::None` ⇒ no declared ability may carry an energy cost, and the flavor kinds (`Qi`, `Aether`,
+> `SpellSlots`, `Other`) must declare which engine vital they alias (the name is presentation;
+> the pool is the vital). A manifest whose ability costs reference a vital inconsistent with
+> `energy_system` **rejects at bootstrap**, not at first cast. LX-D8's full cost *model*
+> (amounts, budgets) remains V2+ — this rule binds only the identity of the pool.
 
 ---
 

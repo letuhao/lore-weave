@@ -7,6 +7,8 @@ note: Not produced by scripts/chunk_doc.py split; authored as new SR-series cont
 
 ## 12AK. Capacity Planning + Auto-Scaling — SR8 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #8).** The scaling model (HPA/KEDA over fungible replicas) does not fit **sticky per-channel writer nodes holding epoch tokens** — scale events are CP-coordinated channel reassignments with epoch bumps, and overload is first absorbed by tick dilation, not replica count. Also §12AK.4 has the roleplay-service “scene manager” pruning NPCs, i.e. mutating `actor_core` outside the island's admission path. Service-class taxonomy and capacity-budget governance (I17) otherwise stand. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md) + [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 **Origin:** SRE Review SR8 — SR1 set SLO targets, SR6 bounded dependency blast radius with bulkheads, SR7 made reliability mechanisms falsifiable through chaos drills. But **"how much of what, and when do we add more?"** is undesigned. Under-provisioning burns SR1 error budget. Over-provisioning burns S6 cost budget. DB-per-reality fleet (R4-L6) adds a unique scaling dimension: thousands of small DBs on shared shards rather than one huge DB. Without a declared capacity model, SR1 SLO targets are aspirations, not commitments.
 
 ### 12AK.1 Problems closed

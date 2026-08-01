@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12M. Reality Ancestry Severance — Orphan Worlds (C1 resolution)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #4).** The schema pins `ancestry_severance_baseline_event_id BIGINT` and cascade reads filter `event_id__gt` — both assume a reality-wide monotonic event id; identity is now `(reality_id, channel_id, channel_event_id)`, so the severance baseline must be a per-channel cut / checkpoint reference. The `scope='reality'` session-propagation of `reality.ancestry_severed` also predates channel/island scoping. Current design: [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 **Origin:** SA+DE adversarial review 2026-04-24 surfaced C1 — cascade read broken when ancestor reality is archived/dropped. User proposed reframing as **gameplay feature**: "orphan worlds" — realities whose ancestry has faded from memory. Elegant resolution: turn tech constraint into in-world mystery.
 
 ### 12M.1 The problem C1 identified

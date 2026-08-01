@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>03 Arrival — Onboarding draft (thay thế 05_first_turn)</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  .arrival { display:grid; grid-template-columns: 1fr 260px; gap:1rem; }
+  .stat { display:flex; justify-content:space-between; gap:1.25rem; font-size:.75rem; padding:.1875rem 0; }
+  .stat span:first-child { color: var(--ink-muted); }
+  .turnstrip {
+    display:flex; gap:.5rem; align-items:center; font-size:.6875rem;
+    padding:.5rem .75rem; border:1px dashed var(--ink-soft); border-radius:.375rem;
+    color: var(--ink-muted); opacity:.55;
+  }
+  @media (max-width: 860px) { .arrival { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body data-reality="dongphong">
+<div class="app-shell">
+
+  <div class="rail">
+    <span>00 Account</span><span class="sep">→</span>
+    <span>01 Reality</span><span class="sep">→</span>
+    <span>02 Entry</span><span class="sep">→</span>
+    <b>03 Arrival</b>
+    <span style="margin-left:auto">F1 · F2 · F5</span>
+  </div>
+
+  <div class="note note-warn" style="margin-bottom:1.25rem">
+    <strong>Màn này thay thế <span class="mono">05_first_turn.html</span> (2026-04-27).</strong>
+    Bản cũ là một chat client — khối văn xuôi + ô textarea "Gửi turn →" + 5 nút verb, không canvas,
+    không avatar, không tilemap. Nó mâu thuẫn trực tiếp với
+    <a href="../../00_VISION.md">00_VISION §0</a> (đính chính medium 2026-06-20). Chi tiết:
+    <a href="00_CONCEPT.md">00_CONCEPT §3</a>.
+  </div>
+
+  <!-- ── F2: ràng buộc đã được commit, và nó có ba khả năng ── -->
+  <div class="card" style="margin-bottom:1rem;padding:1rem">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem">
+      <strong style="font-size:.9375rem">Ràng buộc đã commit</strong>
+      <span class="verdict verdict-resolved">● resolved</span>
+    </div>
+    <div class="mono" style="margin-top:.625rem;line-height:1.9">
+      user <span style="color:var(--ink-muted)">019d5e3c…</span>
+      → actor <strong>7741</strong> “Lý Minh”
+      → cell <strong>đông-hải-đạo-cốc/tu-luyện-thất</strong>
+      → channel <strong>ch:dhdc:04</strong>
+    </div>
+    <p class="subtle" style="margin:.625rem 0 0;font-size:.75rem">
+      Từ giây phút này <span class="mono">actorForUser()</span> đọc ràng buộc trên, không đọc
+      <span class="mono">LW_CHANNEL_ACTOR_MAP</span> nữa. Biến env đó biến mất là
+      <strong>bài kiểm tra hoàn thành</strong> của cả tính năng — không giả được.
+    </p>
+  </div>
+
+  <div class="arrival" style="margin-bottom:1rem">
+
+    <!-- ── F5: bề mặt chính là một ô thế giới được render ── -->
+    <div class="stage">
+      <div class="iso"></div>
+
+      <div class="stage-hud" style="top:.75rem;left:.75rem">
+        <strong>Tu Luyện Thất · Đông Hải Đạo Cốc</strong><br>
+        <span class="subtle" style="font-size:.6875rem">giờ Mão · sương chưa tan · 6 actor trong ô</span>
+      </div>
+
+      <div class="stage-hud" style="top:.75rem;right:.75rem">
+        <div class="stat"><span>actor</span><span>0d 0h</span></div>
+        <div class="stat"><span>soul</span><span>0d 0h</span></div>
+        <div class="stat"><span>body</span><span>0d 0h</span></div>
+        <div class="stat"><span>rate</span><span>1.0×</span></div>
+      </div>
+
+      <div class="pin pin-self"   style="left:46%; top:58%"><div class="dot"></div>Lý Minh</div>
+      <div class="pin pin-npc"    style="left:63%; top:47%"><div class="dot"></div>Lý Lão Tổ</div>
+      <div class="pin pin-npc"    style="left:31%; top:66%"><div class="dot"></div>đệ tử coi cửa</div>
+      <div class="pin pin-player" style="left:71%; top:70%"><div class="dot"></div>Hàn Nhi <span class="subtle">(player)</span></div>
+
+      <div class="stage-hud" style="bottom:.75rem;left:50%;transform:translateX(-50%);text-align:center">
+        Click để đi · tới gần một actor để mở tương tác
+      </div>
+    </div>
+
+    <aside style="display:flex;flex-direction:column;gap:.75rem">
+      <div class="card" style="padding:.875rem">
+        <h4 style="margin:0 0 .5rem;font-size:.8125rem;color:var(--accent)">Ai đang ở đây</h4>
+        <div class="stat"><span>Lý Lão Tổ</span><span>NPC</span></div>
+        <div class="stat"><span>đệ tử coi cửa</span><span>NPC</span></div>
+        <div class="stat"><span>Hàn Nhi</span><span style="color:var(--info)">player</span></div>
+        <div class="stat"><span>+ 2 nữa</span><span>NPC</span></div>
+        <p class="subtle" style="margin:.5rem 0 0;font-size:.6875rem">
+          F1 — thế giới đã chạy sẵn. Bạn nhập cư, không phải bắt đầu ván mới.
+        </p>
+      </div>
+
+      <div class="card" style="padding:.875rem">
+        <h4 style="margin:0 0 .5rem;font-size:.8125rem;color:var(--accent)">Lý Minh</h4>
+        <div class="stat"><span>cảnh giới</span><span>Luyện Khí 7</span></div>
+        <div class="stat"><span>môn phái</span><span>Đông Hải Đạo Cốc</span></div>
+        <div class="stat"><span>danh tiếng</span><span>+250</span></div>
+        <div class="stat"><span>túi đồ</span><span>12/30</span></div>
+      </div>
+
+      <div class="note note-warn" style="font-size:.6875rem;line-height:1.55">
+        <strong>C-Q1 (mở):</strong> chấm tròn kia phải là <em>sprite</em>. Bản kiểm kê 46 field coi
+        ngoại hình là các ô chữ, còn chân dung thì hoãn tới V2+ (PO-D8) — nhưng sprite ≠ chân dung,
+        và client đồ hoạ <em>bắt buộc</em> phải vẽ được PC ở V1. Đây có vẻ là một lỗ hổng thật.
+      </div>
+    </aside>
+  </div>
+
+  <!-- ── narration bị hạ xuống đúng vị trí của nó ── -->
+  <div class="dock" style="margin-bottom:1rem">
+    <div class="dock-head">
+      <span>Tường thuật · lớp phụ LLM</span>
+      <span>thu gọn được · không phải giao diện chính</span>
+    </div>
+    <div class="dock-body">
+      “Sương sớm phủ đỉnh Hàn Tuyết Phong. Ngươi vừa mở mắt trong thất tu luyện — kinh mạch còn
+      run nhẹ sau lần đột phá. Sau cánh cửa gỗ tử đàn, có người đang đợi.”
+    </div>
+  </div>
+
+  <div class="turnstrip" style="margin-bottom:1.25rem">
+    Idle → Composing → Submitted → NPC Reacting → Narration
+    <span style="margin-left:auto">SR11 · chỉ hiện khi một lượt <em>mở ra</em> (giao chiến / đối thoại)</span>
+  </div>
+
+  <div class="note" style="margin-bottom:1.25rem">
+    <strong>Chỗ này là điểm sửa sâu nhất của cả đợt rà soát.</strong> Game là <em>lai</em>: di chuyển
+    gần-thời-gian-thực (RTM-A1..A9) + giao chiến theo lượt (TG-A1..A4). Lượt là một <strong>chế độ
+    bạn bước vào</strong>, không phải trạng thái nền của sự tồn tại. Bản 2026-04-27 biến ô nhập lượt
+    thành thứ duy nhất người mới có thể làm. Máy trạng thái SR11 <em>không bị bỏ</em> — nó chỉ được
+    trả về đúng phạm vi.
+  </div>
+
+  <h4 style="margin:0 0 .5rem;font-size:.9375rem">F2 — nút "Tạo" chỉ có nhánh thành công là một lời nói dối</h4>
+  <p class="subtle" style="margin:0 0 .75rem">
+    Client đề xuất, không ghi. Mọi proposal có ba kết cục trong tập đóng của
+    <span class="mono">channel-protocol.ts</span>, và UI phải phân biệt được cả ba:
+  </p>
+  <div class="grid-3" style="margin-bottom:1rem">
+    <div class="card" style="padding:.875rem">
+      <span class="verdict verdict-resolved">● resolved</span>
+      <p class="subtle" style="margin:.5rem 0 0;font-size:.75rem">Đã xảy ra. Vào thế giới.</p>
+    </div>
+    <div class="card" style="padding:.875rem">
+      <span class="verdict verdict-discarded">● discarded</span>
+      <p class="subtle" style="margin:.5rem 0 0;font-size:.75rem">
+        Ý định hợp lệ nhưng thế giới đã đổi dưới chân bạn — ví dụ PC canon vừa bị người khác nhận.
+        <strong>Đọc lại và thử lại</strong>, không phải lỗi của bạn.
+      </p>
+    </div>
+    <div class="card" style="padding:.875rem">
+      <span class="verdict verdict-rejected">● rejected</span>
+      <p class="subtle" style="margin:.5rem 0 0;font-size:.75rem">
+        Validator từ chối — <span class="mono">onboarding.pc_cap_exceeded</span>. Sửa rồi thử lại.
+      </p>
+    </div>
+  </div>
+  <p class="subtle" style="margin:0">
+    Hiện "không được phép" cho một <span class="mono">discarded</span> là nói dối người chơi —
+    đó là lý do CWC-A6 giữ ba nhánh này tách nhau.
+  </p>
+
+  <footer class="draft-foot">
+    Onboarding concept pass · 2026-07-29 · <a href="index.html">← index</a> ·
+    <a href="00_CONCEPT.md">00_CONCEPT.md</a> ·
+    bàn giao tới <a href="../CELL_SCENE_v4_layered.html">CELL_SCENE_v4</a>
+  </footer>
+</div>
+
+<script>
+  const p = new URLSearchParams(location.search).get('reality');
+  if (p) document.body.dataset.reality = p;
+</script>
+</body>
+</html>

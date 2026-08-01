@@ -5,7 +5,10 @@ import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { extractionApi } from './api';
 import type { EffortLevel } from '@/components/ai-task';
-import type { ExtractionProfile, ContextFilters, ExtractionProfileKind, CostEstimate } from './types';
+import type {
+  ExtractionProfile, ContextFilters, ExtractionProfileKind, CostEstimate,
+  ExtractionStrategy, CachePolicy,
+} from './types';
 
 interface StepConfirmProps {
   bookId: string;
@@ -47,6 +50,16 @@ export function StepConfirm({
   // once. 1 = sequential (default). Raise it if your model/GPU serves multiple
   // concurrent requests (e.g. a 200K-context local model can comfortably do 4).
   const [concurrency, setConcurrency] = useState(1);
+  // The prompt SHAPE. `batched` is the shipped default and stays the default here — the
+  // cheaper shapes were measured to lose coverage on the rare kinds (−80% and −68% on the
+  // two thinnest), so they are a deliberate trade, not a free win. The measurement was a
+  // BETWEEN-SHAPE comparison on one fixed catalogue, so the deltas stand even though one of
+  // those kinds has since been redefined and split (power_system → power_system+technique).
+  const [strategy, setStrategy] = useState<ExtractionStrategy>('batched');
+  // How to treat the raw-output cache. Default REFRESHES when anything looks stale: the
+  // cache can serve a whole job at zero tokens, and before this existed a user who edited
+  // a kind definition and re-extracted was silently served the parse from before the edit.
+  const [cachePolicy, setCachePolicy] = useState<CachePolicy>('refresh_if_stale');
 
   const enabledKinds = Object.keys(profile);
   const enabledKindsMeta = kinds.filter((k) => enabledKinds.includes(k.code));
@@ -73,6 +86,8 @@ export function StepConfirm({
           max_entities_per_kind: maxEntitiesPerKind,
           context_filters: contextFilters,
           reasoning_effort: effort,
+          extraction_strategy: strategy,
+          cache_policy: cachePolicy,
           ...(concurrency > 1 ? { concurrency_level: concurrency } : {}),
         },
         accessToken,
@@ -132,6 +147,64 @@ export function StepConfirm({
         <span className="text-[10px] text-muted-foreground">
           {t('confirm.concurrencyHint', {
             defaultValue: '1 = sequential. Raise it if your model serves concurrent requests.',
+          })}
+        </span>
+      </div>
+
+      {/* Prompt SHAPE. Measured trade-offs, so the labels carry the number rather than
+          leaving the user to guess which one is "better". */}
+      <div className="flex items-center justify-center gap-2">
+        <label htmlFor="extraction-strategy" className="text-[11px] font-medium">
+          {t('confirm.strategy', { defaultValue: 'Prompt shape' })}
+        </label>
+        <select
+          id="extraction-strategy"
+          value={strategy}
+          onChange={(e) => setStrategy(e.target.value as ExtractionStrategy)}
+          className="rounded-md border bg-background px-2 py-1 text-xs"
+          data-testid="extraction-strategy"
+        >
+          <option value="batched">
+            {t('confirm.strategyBatched', { defaultValue: 'Batched — most thorough (default)' })}
+          </option>
+          <option value="single_call">
+            {t('confirm.strategySingle', { defaultValue: 'One call — ~66% cheaper, misses rare kinds' })}
+          </option>
+          <option value="single_call_delta">
+            {t('confirm.strategyDelta', { defaultValue: 'One call + deltas — cheapest' })}
+          </option>
+          <option value="edc_cited">
+            {t('confirm.strategyEdc', { defaultValue: 'Sweep then type — ~56% cheaper, best grounding' })}
+          </option>
+        </select>
+      </div>
+
+      {/* CACHE POLICY. The default REFRESHES on staleness. Before this control existed a
+          re-extraction after editing a kind definition was silently served from cache. */}
+      <div className="flex items-center justify-center gap-2">
+        <label htmlFor="extraction-cache-policy" className="text-[11px] font-medium">
+          {t('confirm.cachePolicy', { defaultValue: 'Cached results' })}
+        </label>
+        <select
+          id="extraction-cache-policy"
+          value={cachePolicy}
+          onChange={(e) => setCachePolicy(e.target.value as CachePolicy)}
+          className="rounded-md border bg-background px-2 py-1 text-xs"
+          data-testid="extraction-cache-policy"
+        >
+          <option value="refresh_if_stale">
+            {t('confirm.cacheAuto', { defaultValue: 'Re-run when anything changed (default)' })}
+          </option>
+          <option value="prefer_cache">
+            {t('confirm.cacheReuse', { defaultValue: 'Reuse cached results where possible' })}
+          </option>
+          <option value="always_refresh">
+            {t('confirm.cacheForce', { defaultValue: 'Always re-extract — ignore the cache' })}
+          </option>
+        </select>
+        <span className="text-[10px] text-muted-foreground">
+          {t('confirm.cacheHint', {
+            defaultValue: 'Edited a kind definition? The default already re-runs.',
           })}
         </span>
       </div>

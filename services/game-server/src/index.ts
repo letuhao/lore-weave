@@ -4,6 +4,7 @@ import cors from 'cors';
 import { Server } from 'colyseus';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import { EchoRoom } from './rooms/EchoRoom.js';
+import { ChannelRoom } from './rooms/ChannelRoom.js';
 import { assertWsAuthConfig } from './ws/auth.js';
 import { log } from './log.js';
 
@@ -37,6 +38,13 @@ const gameServer = new Server({
 });
 
 gameServer.define('echo', EchoRoom);
+
+// ChannelRoom — the GDA-A7 projection of one DP-A16 channel (= one sim-core
+// island). Consumes the per-reality committed-event stream and fans
+// `turn.outcome` frames per contracts/game-wire. Options are supplied by the
+// matchmaker (stream + redisUrl + optional from-cursor); no authority lives
+// here (CWC-A1).
+gameServer.define('channel', ChannelRoom);
 
 // Fail-closed (077 review HIGH-2): refuse to start a PUBLIC listener that would
 // fall back to static dev_token auth in production (no shared Redis ticket store).

@@ -204,6 +204,30 @@ BASELINE: frozenset[str] = frozenset({
     # server-set cap (batchSize/pipelineReadCap/*ListCap) and are safe; a few
     # (sharing listPublicInternal, statistics, usage-billing) are genuinely
     # unclamped client limits — tracked debt, not fixed by this lint.
+    # ── 2026-07-29 · three verified NON-defects, traced before baselining ──────
+    # The lint recognises a clamp by the NAME of the helper (`clampLimit` /
+    # `parseLimitOffset`). These three clamp correctly without using it, so they
+    # read as unbounded and are not. Each was traced to the value's source:
+    #
+    #   dek_shred_sweeper / reparse_sweeper — NOT ROUTES. `batchSize` is a
+    #     parameter of `RunDekShredSweeper(ctx, interval, batchSize)`, a
+    #     background sweeper started at boot with an operator-set batch. No
+    #     client can reach it, which is outside this lint's own stated subject
+    #     ("every list/search ENDPOINT").
+    #   entity_handler — clamped INLINE and completely:
+    #     `limit := queryInt(q.Get("limit"), 200)`, then `<1 → 1`, `>500 → 500`.
+    #     glossary-service has no `clampLimit` to route through; introducing one
+    #     for a single call site would be a different change than this lint asks
+    #     for.
+    #
+    # The fourth finding from that run was NOT baselined — `mcp_worlds.go` was
+    # fixed, because its inline clamp DISAGREED with the helper beside it
+    # (over-max → 20 rather than the 100 `clampLimit` returns, so `world_list`
+    # and `book_list` answered the same over-request differently).
+    "services/book-service/internal/api/dek_shred_sweeper.go::ORDER BY last_attempt_at ASC NULLS FIRST, requested_at ASC LIMIT $1`, batchSize)",
+    "services/book-service/internal/api/reparse_sweeper.go::LIMIT $1`, batchSize)",
+    "services/glossary-service/internal/api/entity_handler.go::LIMIT $3`, bookID, afterArg, limit+1)",
+
     "services/auth-service/internal/api/handlers.go::ORDER BY f.created_at DESC LIMIT $2 OFFSET $3`, userID, limit, offset)",
     "services/auth-service/internal/api/mcp_audit.go::LIMIT $3 OFFSET $4`, uid, keyID, limit, offset)",
     "services/book-service/internal/api/favorites.go::ORDER BY f.created_at DESC LIMIT $2 OFFSET $3`, userID, limit, offset)",

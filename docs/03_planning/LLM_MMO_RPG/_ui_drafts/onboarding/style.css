@@ -1,0 +1,280 @@
+/* Onboarding drafts (2026-07-29 concept pass) — shared style.
+ *
+ * Descends from `features/03_player_onboarding/wireframes/style.css` (wuxia
+ * ink-wash + per-reality accent) and keeps that palette so the two sets read as
+ * one system. What is ADDED here is everything the corrected medium needs and
+ * the 2026-04-27 set had no reason to own:
+ *
+ *   .stage / .iso      — a rendered cell surface (F5: the terminal state is a
+ *                        tilemap, not a prose box)
+ *   .verdict-*         — resolved / discarded / rejected (F2: a proposal has
+ *                        THREE outcomes; a success-only button is a lie)
+ *   .from-manifest     — marks every value the RealityManifest supplies, so a
+ *                        reader can see at a glance what is data-driven (F3)
+ *
+ * See 00_CONCEPT.md.
+ */
+
+:root {
+  --paper: #f5f0e6;
+  --paper-soft: #ebe4d4;
+  --ink: #1a1815;
+  --ink-soft: #3d3a32;
+  --ink-muted: #6b6557;
+
+  --accent: #2d6a5f;
+  --accent-soft: #4a8b7e;
+  --accent-bg: #d8e4dd;
+
+  --success: #4d7c0f;
+  --warning: #b45309;
+  --danger: #991b1b;
+  --info: #0e7490;
+}
+
+[data-reality='dongphong'] {
+  --accent: #2d6a5f;
+  --accent-soft: #4a8b7e;
+  --accent-bg: #d8e4dd;
+}
+
+[data-reality='saigon'] {
+  --accent: #c026d3;
+  --accent-soft: #e879f9;
+  --accent-bg: #2a1a30;
+  --paper: #0d0d10;
+  --paper-soft: #1a1a20;
+  --ink: #e0e0e8;
+  --ink-soft: #b0b0bc;
+  --ink-muted: #707080;
+}
+
+[data-reality='faerun'] {
+  --accent: #92400e;
+  --accent-soft: #b45309;
+  --accent-bg: #f4e8d4;
+  --paper: #f9f3e3;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  margin: 0;
+  min-height: 100vh;
+}
+
+/* Serif stack — Georgia is deliberately EXCLUDED. It has no precomposed
+   Vietnamese glyphs (ế ộ ấ …), so it renders them as base + floating combining
+   mark ("Tuyế´t"), which is unreadable in a Vietnamese-language draft. Cambria
+   and Times New Roman both carry the full Vietnamese range and ship on Windows;
+   the Google font stays first for anyone who has it installed. */
+h1, h2, h3, h4, .heading {
+  font-family: 'Source Serif Pro', Cambria, 'Times New Roman', serif;
+  letter-spacing: -0.01em;
+}
+
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.brush-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--ink-soft), transparent);
+  margin: 1rem 0;
+}
+
+.subtle { color: var(--ink-muted); font-size: 0.875rem; }
+.label { font-size: 0.8125rem; font-weight: 600; margin-bottom: 0.375rem; display: block; }
+.mono { font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; font-size: 0.8125rem; }
+
+/* ── step rail ─────────────────────────────────────────────── */
+
+.rail {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+  padding: 0.625rem 0.875rem;
+  background: var(--paper-soft);
+  border-radius: 0.375rem;
+  margin-bottom: 1.75rem;
+  flex-wrap: wrap;
+}
+.rail b { color: var(--accent); font-weight: 600; }
+.rail .sep { opacity: 0.4; }
+
+/* ── cards ─────────────────────────────────────────────────── */
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--ink-soft);
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  transition: all 0.18s;
+}
+.card-hoverable:hover {
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07);
+  transform: translateY(-2px);
+}
+.card-selected { border-color: var(--accent); background: var(--accent-bg); }
+.card-disabled { opacity: 0.42; filter: grayscale(0.7); pointer-events: none; }
+
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+
+/* ── buttons ───────────────────────────────────────────────── */
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--paper);
+  padding: 0.625rem 1.5rem;
+  border: none;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Source Serif Pro', Cambria, 'Times New Roman', serif;
+}
+.btn-primary:hover { background: var(--accent-soft); }
+.btn-secondary {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--ink-soft);
+  padding: 0.625rem 1.5rem;
+  border-radius: 0.375rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn-secondary:hover { background: var(--paper-soft); }
+
+/* ── F3: everything the manifest supplies is marked ────────── */
+
+.from-manifest {
+  display: inline-block;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.6875rem;
+  color: var(--info);
+  border: 1px dashed var(--info);
+  border-radius: 0.25rem;
+  padding: 0.0625rem 0.375rem;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.note {
+  border-left: 3px solid var(--accent);
+  background: var(--accent-bg);
+  padding: 0.75rem 1rem;
+  border-radius: 0 0.375rem 0.375rem 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+.note-warn { border-left-color: var(--warning); background: transparent; border: 1px solid var(--warning); border-left-width: 3px; }
+
+/* ── F2: a proposal has THREE verdicts ─────────────────────── */
+
+.verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.1875rem 0.625rem;
+  border-radius: 1rem;
+  border: 1px solid;
+}
+.verdict-resolved  { color: var(--success); border-color: var(--success); }
+.verdict-discarded { color: var(--warning); border-color: var(--warning); }
+.verdict-rejected  { color: var(--danger);  border-color: var(--danger); }
+
+/* ── F5: the rendered cell surface ─────────────────────────── */
+
+.stage {
+  position: relative;
+  border: 1px solid var(--ink-soft);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: linear-gradient(170deg, var(--paper-soft), var(--paper));
+  min-height: 380px;
+}
+
+/* A dimetric grid drawn in CSS — placeholder for the Phaser iso tilemap.
+   2:1 dimetric matches frontend-game TILE_W=128 / TILE_H=64. */
+.iso {
+  position: absolute;
+  inset: -30%;
+  background-image:
+    repeating-linear-gradient(26.57deg, rgba(61, 58, 50, 0.16) 0 1px, transparent 1px 64px),
+    repeating-linear-gradient(-26.57deg, rgba(61, 58, 50, 0.16) 0 1px, transparent 1px 64px);
+}
+
+.pin {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  text-align: center;
+  font-size: 0.6875rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.pin .dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  margin: 0 auto 0.25rem;
+  border: 2px solid var(--paper);
+}
+.pin-self  .dot { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.pin-npc   .dot { background: var(--ink-muted); }
+.pin-player .dot { background: var(--info); }
+.pin-self  { font-weight: 700; color: var(--accent); }
+
+.stage-hud {
+  position: absolute;
+  padding: 0.5rem 0.75rem;
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
+  border: 1px solid var(--ink-soft);
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+}
+
+/* narration is a DOCKED SUB-LAYER, never the interface (F5) */
+.dock {
+  border: 1px solid var(--ink-soft);
+  border-radius: 0.5rem;
+  background: var(--paper-soft);
+}
+.dock-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--ink-soft);
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+.dock-body {
+  padding: 0.875rem;
+  font-family: 'Source Serif Pro', Cambria, 'Times New Roman', serif;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: var(--ink-soft);
+  font-style: italic;
+}
+
+footer.draft-foot {
+  margin-top: 3rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--ink-soft);
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+footer.draft-foot a { color: var(--accent); }

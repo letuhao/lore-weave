@@ -148,15 +148,51 @@ RETRIEVED_TEXT = re.compile(
     r")\b"
 )
 
-# (c) The module routes through the injection sanitizer (any reference counts as
-# "nearby" — module-level proximity, per the pragmatic heuristic).
+# (c) The module CALLS the injection sanitizer.
+#
+# This required only a MENTION until 2026-07-29, and the gap was not theoretical.
+# `knowledge-service/app/extraction/canon_check.py` assembled a judge prompt out
+# of chapter text with no sanitizer at all; adding the import alone would have
+# turned this lint green while changing nothing. Measured on the real tree:
+# bypassing the sanitizer but leaving `from …injection_defense import
+# neutralize_injection` in place, this lint still reported
+#     "OK — every retrieved-text prompt-assembly module routes through the sanitizer"
+#
+# So the name must be followed by `(`. A bare import, a docstring mention, a
+# metric description (`knowledge-service/app/metrics.py` has one) and a comment
+# no longer count as coverage.
+#
+# Verified free: of the 16 non-test modules referencing the sanitizer, all 16
+# call it, so tightening this reds nothing today. The one module that references
+# it without calling is `metrics.py`, and only inside a metric's help string —
+# it assembles no prompt, so it was never a subject.
+#
+# The known false positive is a module that passes the function as a VALUE
+# (`map(neutralize_injection, …)`) rather than calling it. None exists; if one
+# appears, it gets a BASELINE row with a note, which is the right amount of
+# friction for something that reads as unsanitized at a glance.
+# MERGE 2026-08-02 — the tightening above arrived on `main`, and it also DELETED the two
+# `from …sanitize import` alternatives this pattern used to carry. That silently un-covered
+# six composition-service modules (cowrite · cross_scene_check · error_block_heal ·
+# motif_plan · plan_forge/material_search · glossary_build/prompts), because composition does
+# not use `loreweave_grounding`'s sanitizer — it has its own, `app/packer/sanitize.py` (§13
+# SEC3: fullwidth-escape the assembly delimiters, then TAG directive spans rather than delete
+# them). Those six were matched by the import alternative alone, which is exactly the weakness
+# main was right to remove.
+#
+# So the call-forms are named explicitly rather than the import restored. Verified before
+# adding, not assumed: each of the six CALLS one of these (read at the call site), and
+# `app/packer/sanitize.py` is the ONLY definer of all four names in the repo
+# (`grep -rn "^def neutralize(" services sdks` → one hit), so no unrelated module can be
+# laundered by a same-named local helper.
 SANITIZER_REF = re.compile(
-    r"\bneutralize_injection\b"
-    r"|\bneutralize_proposal_text\b"
-    r"|\bscan_injection\b"
-    r"|\binjection_defense\b"
-    r"|\bfrom\s+[\w.]*sanitize\s+import\b"
-    r"|\bimport\s+[\w.]*sanitize\b"
+    r"\bneutralize_injection\s*\("
+    r"|\bneutralize_proposal_text\s*\("
+    r"|\bscan_injection\s*\("
+    r"|\bneutralize\s*\("
+    r"|\bsanitize_lore\s*\("
+    r"|\bsanitize_guide\s*\("
+    r"|\bsanitize_prose_context\s*\("
 )
 
 

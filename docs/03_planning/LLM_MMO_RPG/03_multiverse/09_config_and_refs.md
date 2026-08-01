@@ -71,20 +71,20 @@ This makes depth limit non-blocking: user can always fork, but at depth N+1 the 
 | Fork depth strategy | Auto-rebase at N=5 (configurable) | **LOCKED** |
 | Cross-reality travel | Deferred to future world-travel feature | **LOCKED (as deferred)** |
 
-**MV5 primitives locked now** — see [OPEN_DECISIONS.md §"MV5 primitives"](OPEN_DECISIONS.md). Schema must accommodate future travel:
+**MV5 primitives locked now** — see [OPEN_DECISIONS.md §"MV5 primitives"](../decisions/_index.md). Schema must accommodate future travel:
 - P1: Reality has `locale` field
 - P4: Event metadata reserves `travel_origin_reality_id` + `travel_origin_event_id` (nullable, unused in V1)
 - P5: Inventory items have `origin_reality_id` (nullable)
 
 Incorporated into §8 schema below.
 
-See [OPEN_DECISIONS.md](OPEN_DECISIONS.md) for complete decision history.
+See [OPEN_DECISIONS.md](../decisions/_index.md) for complete decision history.
 
 ## 13. References
 
-- [00_VISION.md](00_VISION.md)
-- [01_OPEN_PROBLEMS.md](01_OPEN_PROBLEMS.md) — A2, C4, F1 moved to PARTIAL; M1–M7 added
-- [02_STORAGE_ARCHITECTURE.md](02_STORAGE_ARCHITECTURE.md) — engineering baseline, receives schema adjustments in §8
-- [OPEN_DECISIONS.md](OPEN_DECISIONS.md) — all pending decisions including defaults above
+- [00_VISION.md](../00_VISION.md)
+- [01_OPEN_PROBLEMS.md](../01_problems/_index.md) — A2, C4, F1 moved to PARTIAL; M1–M7 added
+- [02_STORAGE_ARCHITECTURE.md](../02_storage/_index.md) — engineering baseline, receives schema adjustments in §8
+- [OPEN_DECISIONS.md](../decisions/_index.md) — all pending decisions including defaults above
 - SCP Foundation canon structure (hubs, alternate canons, reality-bender SCPs) — conceptual inspiration
 - Copy-on-write branching patterns: Git, Dolt (OLTP branchable DB), Prolly trees, Datomic as-of queries

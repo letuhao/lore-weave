@@ -1,0 +1,87 @@
+# engine_default — the priority-0 layer of the RLS-A3 provider stack.
+#
+# RLS-D2: "engine_default is an ARTIFACT, not prose." Every feature document
+# used to state its own defaults, which made "omit the field -> the feature
+# default applies" unverifiable and untestable. This file is the default, and
+# `engine_default_matches_the_code` asserts it resolves to exactly
+# `Ruleset::engine_default()` — the same digest. The `const fn` remains as the
+# bootstrap floor (a node must boot with no filesystem); the two can no longer
+# disagree in silence.
+#
+# UNITS: `_pm` is per-mille (1000 = 1.0). The unit is engine SHAPE — it is what
+# the number MEANS — so it is not configurable here. The values are.
+#
+# WHAT IS NOT IN THIS FILE, and why: the per-mille divisor itself, the non-crit
+# multiplicative identity, and every `max(1, ...)` floor. Those are the law's
+# STRUCTURE (IMP-D1). A configurable floor of 1 is a configurable stalemate.
+
+[combat]
+
+# hit_chance = clamp(base + accuracy - dodge, floor, ceiling), per-mille.
+# The clamps are not cosmetic and each has a failure mode: without the ceiling
+# an accuracy-stacked build is unmissable and dodge stops being a stat; without
+# the floor a high-dodge target is untouchable and the fight cannot end.
+hit_base_pm = 500
+hit_floor_pm = 50
+hit_ceiling_pm = 950
+
+# Damage variance band, INCLUSIVE at both ends: 0.85x .. 1.15x.
+# Inclusive matters — XST-D3 was a half-open reading of this band, which made
+# the top unreachable and cost a permanent -0.06% damage bias. A bias, not
+# noise: it never averages out.
+roll_band_lo_pm = 850
+roll_band_hi_pm = 1150
+
+# V1 identity values. Kept IN the chain rather than omitted, so promoting them
+# later fills in a constant instead of re-deriving where they multiply — and
+# the locked multiplication ORDER stops being a thing to rediscover.
+elem_mult_pm = 1000
+resist_pm = 0
+
+# `defending` divides the result by this. Consumed by the next hit; a
+# resolution-time flag, explicitly NOT a stat modifier (DF7-A8).
+defend_divisor = 2
+
+# The DECLARED ceiling on a single hit. The chain runs in i128 so nothing
+# overflows, but the result must return to i64, which makes a ceiling
+# unavoidable — and a declared ceiling is a different object from an emergent
+# one: it has a number, a reason, and a flag that fires when it binds
+# (`AttackOutcome::capped`). 1e9 is ~1000x beyond any plausible content, so
+# damage above it is a content defect rather than a balance choice.
+max_hit = 1_000_000_000
+
+# COMB_001 AC-8 — a KO is REVIVABLE for this many rounds. It is not death.
+ko_duration_rounds = 5
+
+# Initiative: av = av_base / speed, LOWEST acts first. Each status contributes
+# one commutative per-mille factor. Which statuses exist is the law; these
+# numbers are not.
+av_base = 10_000
+av_slowed_pm = 1200   # acts later
+av_hasted_pm = 800    # acts sooner
+av_stunned_pm = 2000
+av_initiator_first_pm = 750   # starting a fight is a head start, not a free round
+
+[stats]
+
+# DF7-A6 — every slot has an engine default, so a reality that declares nothing
+# at all still yields a valid, balanced-enough block. "Playable with zero
+# declaration" is a hard requirement, not a convenience.
+#
+# Ordered by StatSlot ordinal:
+#   MaxHp, MaxStamina, StrikePower, Armor, Accuracy(pm), Dodge(pm),
+#   CritChance(pm), CritMult(pm), Speed, MoveRange
+slot_defaults = [100, 100, 10, 0, 250, 50, 50, 1500, 100, 5]
+
+# MoveRange derivation: clamp(base + floor(speed / per_tile), 1, max).
+# DF7-V1 validates these at load: per_tile >= 1 (it is a divisor), max >= 1,
+# base <= max -> `stat.tuning_invalid`.
+move_base = 3
+move_speed_per_tile = 50
+move_max = 10
+
+# A plain melee archetype, as a dense per-slot declaration. `MaxHp` is
+# overwritten per-actor at spawn, so the value here is the fallback.
+# Same ordinal order as slot_defaults; differs from it in StrikePower, Armor,
+# Accuracy and Dodge.
+melee_archetype = [100, 100, 12, 2, 450, 100, 50, 1500, 100, 5]

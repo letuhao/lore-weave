@@ -7,6 +7,8 @@ note: Not produced by scripts/chunk_doc.py split; authored as new SR-series cont
 
 ## 12AI. Dependency Failure Handling — SR6 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #3, #8).** Recovery here assumes claim-lock takeover and event-sourced replay — takeover is now **epoch-fenced** (a stale writer must be fenced out, not merely out-claimed); event-sourced recovery does not cover Class A state (checkpoints); and “per-reality DB down → writes rejected” is inverted: the island should **buffer and dilate ticks** while the sink is down, not reject gameplay. Timeout/breaker/retry/bulkhead layers stand. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md) + [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 **Origin:** SRE Review SR6 — the platform has ~15 external dependencies (LLM providers, meta DB, per-reality DBs, Redis Streams, MinIO, Vault, auth IdP, monitoring surfaces). SR1-SR5 covered targets, incidents, runbooks, postmortems, deploy — but "a dependency just failed, what happens?" was undesigned. Without discipline, any one outage cascades: an LLM timeout holds a DB connection which exhausts the pool which backs up the outbox which stalls propagation which breaks WS delivery. The goal of SR6 is **bounded blast radius per dependency failure** + **graceful degradation** + **audit trail for postmortem**.
 
 ### 12AI.1 Problems closed

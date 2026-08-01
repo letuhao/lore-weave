@@ -1,0 +1,577 @@
+//! The island — single-threaded inside, one DP-A16 channel, the unit of
+//! parallelism (SL-A9). S1a: single island; cross-island messaging is S2.
+
+mod epoch;
+mod lifecycle;
+mod registry;
+
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use crate::domain::Domain;
+use crate::ingress::{Ingress, IngressItem, Lane};
+use crate::metrics::IslandMetrics;
+use crate::rng::DetRng;
+use crate::seen::SeenSet;
+use crate::types::{
+    Admitted,
+    Class, DiscardReason, EntityId, Fallback, Gen, InputId,
+    IslandId,
+    IslandMessage, Outcome, Precondition, PreconditionKind, Producer, QueuedInput, RulesetDigest, RulesetEpoch,
+    Seq, Tick, Violation,
+};
+
+/// Result of one `step()` call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepStatus {
+    /// Ingress empty — nothing done.
+    Idle,
+    /// Exactly one item processed (its admission stamp).
+    Processed(Seq),
+    /// S1b: a previous `apply` panicked; the island refuses further work
+    /// until the host rebuilds it (SC-A8 poison-not-resume).
+    Poisoned,
+}
+
+pub struct Island<D: Domain> {
+    pub id: IslandId,
+    tick: Tick,
+    /// Structural registries — the generations sim-core itself tracks.
+    /// `BTreeMap` everywhere: hash order must never enter replay state.
+    entities: BTreeMap<EntityId, Gen>,
+    encounters: BTreeMap<EntityId, Gen>,
+    ingress: Ingress<D>,
+    seen: SeenSet,
+    state: D::State,
+    /// RLS-A12: rules are held by `Arc`, NOT inside `State` — they never
+    /// enter checkpoints, migration payloads or crash rebuilds.
+    rules: Arc<D::Rules>,
+    pub digest: RulesetDigest,
+    /// RLS-I1 — which ruleset epoch this island is running. Monotonic; see
+    /// [`Island::activate_epoch`].
+    pub epoch: RulesetEpoch,
+    rng: DetRng,
+    /// Recorded outcomes, in processing order. Every item's fate is recorded;
+    /// nothing is silent (CS-D5 discipline). Bounding is an S1b concern.
+    outcomes: Vec<(Seq, Outcome<D>)>,
+    externals: Vec<D::External>,
+    /// Due-at-tick inputs; admitted (stamped) only when due.
+    schedule: BTreeMap<Tick, Vec<(Lane, QueuedInput<D>)>>,
+    /// `Fallback::Buffer` parking; re-offered at next `tick()` with original
+    /// `Seq` preserved (spec §5.3).
+    buffered: Vec<(Lane, QueuedInput<D>)>,
+    /// S1b island generation (spec §7). Items are stamped at admission; a
+    /// bump supersedes everything stamped older, O(1).
+    island_gen: Gen,
+    /// S1b panic containment (SC-A8/A9). `containment=false` lets panics
+    /// propagate (chaos-harness mode per spec §10.4 — surfacing beats
+    /// swallowing in tests).
+    containment: bool,
+    /// True for the duration of `step`. Its ONLY reader is `activate_epoch`,
+    /// and its only purpose is to make RLS-D8's *"never inside a step"* a
+    /// refusal rather than a sentence in a doc comment. Unreachable from a
+    /// host — `step` holds `&mut self` — so the arm it guards is reachable
+    /// only by an edit to this file, which is the edit worth catching.
+    in_step: bool,
+    poisoned: bool,
+    /// Quarantined poison-pill inputs (≤1 in V1: first quarantine poisons).
+    quarantine: Vec<QueuedInput<D>>,
+    /// InputIds currently in a buffered episode — `Buffered` is recorded once
+    /// per episode, not once per re-park (finding 1). NOTE (finding 4,
+    /// accepted): while buffered, an id is absent from `seen`, so a concurrent
+    /// true duplicate can apply in its place; exactly-one-applies still holds.
+    currently_buffered: std::collections::BTreeSet<InputId>,
+    metrics: IslandMetrics,
+}
+
+impl<D: Domain> Island<D> {
+    /// Chaos-harness mode: panics PROPAGATE instead of poisoning (spec
+    /// §10.4 — "do NOT catch in sim/debug builds"). Default is containment ON.
+    pub fn set_containment(&mut self, on: bool) {
+        self.containment = on;
+    }
+
+    /// S1b — the O(1) invalidation cascade (spec §7): every item admitted
+    /// under an older generation discards as `Superseded` at its pop, with
+    /// no queue walk. Their input_ids are NOT burned in `seen`, so a
+    /// re-submission after the bump processes normally.
+    pub fn bump_island_gen(&mut self) -> Gen {
+        self.island_gen = Gen(self.island_gen.0.saturating_add(1));
+        self.metrics.island_gen_bumps += 1;
+        self.island_gen
+    }
+
+    pub fn is_poisoned(&self) -> bool {
+        self.poisoned
+    }
+
+    pub fn quarantined(&self) -> &[QueuedInput<D>] {
+        &self.quarantine
+    }
+
+    /// CNC-D2 — seed the I2 set from the committed log during writer
+    /// recovery. Returns false if the id was already present.
+    ///
+    /// The island's dedup state is RAM-only and dies with the process, while
+    /// the bus is at-least-once: without this, a writer that takes over a
+    /// channel starts blind and re-applies whatever was still in flight. This
+    /// is deliberately narrow — it inserts into `seen` and touches nothing
+    /// else, so it cannot be used to fabricate history, only to remember it.
+    pub fn seed_seen(&mut self, id: InputId, at: Tick) -> bool {
+        self.seen.insert(id, at)
+    }
+
+    /// The island's logical clock — needed by recovery to stamp seeded ids at
+    /// the CURRENT tick rather than in the past (a past stamp expires
+    /// immediately under a TTL window).
+    pub fn tick_now(&self) -> Tick {
+        self.tick
+    }
+
+    // ─── admission (stamps Seq + island_gen, validates NOTHING — spec §5) ───
+
+    /// Admit an input that has passed the ingress pipeline.
+    ///
+    /// IAS-D3 — the parameter is [`Admitted<D>`], not a bare [`QueuedInput`],
+    /// and that is the entire point: a `QueuedInput` is publicly
+    /// constructible, so while this took one, *any* caller could feed the
+    /// island directly. That was not hypothetical — `commit-service`'s POC
+    /// turn runner did exactly that, routing LLM decisions into the island
+    /// with no admission call at all, and nothing in the type system noticed.
+    ///
+    /// The island still validates NOTHING here (spec §5 — scheduling is not
+    /// rules). The token does not make the input *good*; it makes the input's
+    /// *provenance* unforgeable, so "did this go through admission?" stops
+    /// being a question you answer by reading call sites.
+    ///
+    /// Same technique as `dissolve(self, …)` making "Gone" unrepresentable by
+    /// move semantics: push the invariant into the type, not the review.
+    pub fn submit(&mut self, lane: Lane, admitted: Admitted<D>) -> Seq {
+        self.submit_inner(lane, admitted.into_inner())
+    }
+
+    /// The kernel's own admission path. Private: `deliver()` and the
+    /// scheduler admit items the island itself produced or already accepted,
+    /// which need no external proof — but neither may they become a public
+    /// side door, so this is not exposed.
+    fn submit_inner(&mut self, lane: Lane, mut input: QueuedInput<D>) -> Seq {
+        input.admitted_gen = self.island_gen;
+        let seq = self.ingress.push(lane, IngressItem::Input(input));
+        IslandMetrics::gauge_peak(&mut self.metrics.peak_ingress_depth, self.ingress.len());
+        seq
+    }
+
+    /// Admit `input` when the island's logical clock reaches `due`.
+    pub fn schedule_at(&mut self, due: Tick, lane: Lane, input: QueuedInput<D>) {
+        self.schedule.entry(due).or_default().push((lane, input));
+    }
+
+    /// S2 §9 — accept a cross-island message. `delivery_id` becomes the
+    /// `input_id`, so exactly-once (I8) IS the existing I2 seen-set dedup —
+    /// a router redelivery discards as `Duplicate`, recorded like any other.
+    /// The +1-tick latency lives in the ROUTER (it delivers at the target's
+    /// next tick boundary); the kernel just admits.
+    ///
+    /// `from`/`causality` are NOT retained here — the ROUTER is the audit
+    /// point for cross-island provenance (it sees every message; the kernel
+    /// sees only what was delivered). A message arrives with no
+    /// preconditions, so its payload must be TOTAL/defensive in `apply`
+    /// (same bar as a `Substitute` fallback).
+    pub fn deliver(&mut self, lane: Lane, msg: IslandMessage<D>) -> Seq {
+        self.metrics.cross_island_delivered += 1;
+        self.submit_inner(lane, QueuedInput {
+            seq: Seq(u64::MAX), // overwritten at admission
+            input_id: msg.delivery_id,
+            class: Class::B,
+            source: Producer::CrossIsland,
+            payload: msg.payload,
+            preconditions: Vec::new(),
+            on_invalid: Fallback::Drop,
+            admitted_gen: self.island_gen, // re-stamped in submit anyway
+            deadline: None,
+        })
+    }
+
+    // ─── S2 handoff (SL-A12: EntityDeparted → EntityArrived) ───
+
+    /// Remove `id` from this island and return its portable state. The
+    /// registry entry is removed BEFORE any message can exist, so
+    /// entity-in-exactly-one-island is structural, not a protocol promise.
+    /// In-flight inputs referencing it now fail `EntityAlive`/`IslandOwns`
+    /// at their step (S1a machinery, unchanged).
+    pub fn depart(&mut self, id: EntityId) -> Option<(Gen, D::Portable)> {
+        let generation = self.entities.remove(&id)?;
+        Some((generation, D::extract(&mut self.state, id)))
+    }
+
+    /// Install a departed entity. Arriving over an entity this island already
+    /// owns bumps its generation (the old epoch's refs go stale) — arrivals
+    /// never silently merge.
+    pub fn arrive(&mut self, id: EntityId, portable: D::Portable) -> Gen {
+        let generation = match self.entities.get(&id) {
+            Some(g) => Gen(g.0.saturating_add(1)),
+            None => Gen(0),
+        };
+        self.entities.insert(id, generation);
+        D::install(&mut self.state, id, portable);
+        generation
+    }
+
+    // ─── time (injected, never read — TDIL-A9) ───
+
+    /// Advance logical time. Never blocks; Class A work + due timers only.
+    ///
+    /// HOST CONTRACT (finding 3): seen-set TTL eviction runs HERE, never on
+    /// the per-item path — a host that steps without ever ticking leaks the
+    /// seen-set even with a TTL window. Cell islands must tick periodically.
+    pub fn tick(&mut self, dt: u64) {
+        // SC-A8: poisoned = NEVER resumed — firing timers and reparking
+        // buffered items is work (review-impl S2 finding 6).
+        if self.poisoned {
+            return;
+        }
+        self.tick = Tick(self.tick.0.saturating_add(dt));
+        self.metrics.ticks += 1;
+
+        // Due timers → admission (stamped now, validated at their step).
+        let due: Vec<Tick> = self
+            .schedule
+            .range(..=self.tick)
+            .map(|(t, _)| *t)
+            .collect();
+        for t in due {
+            if let Some(items) = self.schedule.remove(&t) {
+                for (lane, mut input) in items {
+                    // Stamped at FIRE time — a scheduled item outliving a
+                    // dissolution belongs to the new epoch.
+                    input.admitted_gen = self.island_gen;
+                    self.ingress.push(lane, IngressItem::Input(input));
+                    self.metrics.scheduled_fired += 1;
+                }
+            }
+        }
+
+        // Re-offer buffered items at the FRONT, original Seq preserved.
+        // Reverse iteration keeps their relative order after push_front.
+        for (lane, input) in self.buffered.drain(..).rev().collect::<Vec<_>>() {
+            self.ingress.push_front_preserving_seq(lane, IngressItem::Input(input));
+        }
+
+        // Eviction runs on the tick path, never the per-item path.
+        self.metrics.seen_evictions += self.seen.evict_expired(self.tick);
+    }
+
+    // ─── the step function (spec §5, verbatim semantics) ───
+
+    /// Process exactly ONE ingress item, atomically (SL-A9 per-item atomicity).
+    pub fn step(&mut self) -> StepStatus {
+        if self.poisoned {
+            return StepStatus::Poisoned;
+        }
+        // RLS-D8's "never inside a step", made refusable. Set here rather than
+        // after the pop so that even an idle step is covered: a switch is not
+        // more legal because this call happened to find the queue empty.
+        // Cleared on EVERY exit below, including the early returns - a flag
+        // left set by one path would refuse every subsequent switch forever,
+        // which fails toward "no epoch switches ever" and would look like the
+        // feature simply not working.
+        self.in_step = true;
+        let status = self.step_inner();
+        self.in_step = false;
+        status
+    }
+
+    fn step_inner(&mut self) -> StepStatus {
+        let Some((lane, item)) = self.ingress.pop() else {
+            return StepStatus::Idle;
+        };
+        let seq = item.seq();
+        self.metrics.steps_processed += 1;
+
+        // S1b §7 — generation gate FIRST, before the seen-set and before the
+        // control/input split: a superseded item must not burn its input_id
+        // (re-submit after invalidation is legitimate), and a superseded
+        // EPOCH SWITCH must not apply either — an island that has dissolved
+        // and been rebuilt is not the island that switch was aimed at.
+        if item.admitted_gen() != self.island_gen {
+            if let IngressItem::Input(i) = &item {
+                self.currently_buffered.remove(&i.input_id);
+            }
+            self.metrics.discarded_superseded += 1;
+            self.record(seq, Outcome::Discarded { reason: DiscardReason::Superseded });
+            return StepStatus::Processed(seq);
+        }
+
+        // RLS-A14 — a switch is a CONTROL item, and its handling lives in
+        // `island::epoch` beside the rest of the epoch machinery.
+        let item = match item {
+            IngressItem::EpochSwitch { epoch, rules, .. } => {
+                return self.step_epoch_switch(seq, epoch, rules);
+            }
+            IngressItem::Input(i) => i,
+        };
+
+        // I2 — idempotency. A duplicate is a normal recorded outcome.
+        if !self.seen.insert(item.input_id, self.tick) {
+            self.metrics.discarded_duplicate += 1;
+            self.record(seq, Outcome::Discarded {
+                reason: DiscardReason::Duplicate,
+            });
+            return StepStatus::Processed(seq);
+        }
+        IslandMetrics::gauge_peak(&mut self.metrics.peak_seen_len, self.seen.len());
+
+        // S1b SL-A4 — deadline, resolved through the declared fallback.
+        // AFTER the seen-set, deliberately (review-impl S2 finding 1): expiry
+        // is a FINAL outcome, so it must burn the input_id — otherwise a
+        // redelivery re-expires and a `Substitute` fallback COMMITS TWICE,
+        // and a duplicate of an already-applied input whose deadline has
+        // since passed would misreport as Expired instead of Duplicate.
+        // (The gen gate stays BEFORE seen: a cascade cancel is "never
+        // happened", not a final outcome — re-submit is legitimate there.)
+        if let Some(d) = item.deadline
+            && self.tick > d
+        {
+            self.resolve_expiry(lane, item);
+            return StepStatus::Processed(seq);
+        }
+
+        // Preconditions re-validated NOW, never at admission.
+        match self.check_all(&item) {
+            Ok(()) => {
+                self.currently_buffered.remove(&item.input_id);
+                match self.apply_contained(&item) {
+                    Ok(events) => {
+                        self.metrics.applied += 1;
+                        self.externals.extend(D::externals(&events));
+                        self.record(seq, Outcome::Applied { events });
+                    }
+                    Err(()) => {
+                        // SC-A8/A9: poison, quarantine the pill, record —
+                        // half-mutated state is never observable because no
+                        // further step runs.
+                        self.poisoned = true;
+                        self.metrics.quarantined += 1;
+                        self.record(seq, Outcome::Discarded {
+                            reason: DiscardReason::Quarantined,
+                        });
+                        self.quarantine.push(item);
+                    }
+                }
+            }
+            Err(violation) => self.resolve_fallback(lane, item, violation),
+        }
+        StepStatus::Processed(seq)
+    }
+
+    /// S1b SC-A8: containment boundary. `AssertUnwindSafe` is sound HERE
+    /// because every Err path poisons the island before returning — the
+    /// possibly-half-mutated state can never be observed by another step.
+    fn apply_contained(&mut self, item: &QueuedInput<D>) -> Result<Vec<D::Event>, ()> {
+        if self.containment {
+            let state = &mut self.state;
+            let rules = &self.rules;
+            let rng = &mut self.rng;
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                D::apply(state, rules, item, rng)
+            }))
+            .map_err(|_| ())
+        } else {
+            Ok(D::apply(&mut self.state, &self.rules, item, &mut self.rng))
+        }
+    }
+
+    /// S1b SL-A4 expiry: resolved through the declared fallback; `Buffer`
+    /// coerces to Drop (retrying a dead item forever is never right).
+    fn resolve_expiry(&mut self, _lane: Lane, item: QueuedInput<D>) {
+        let seq = item.seq;
+        self.currently_buffered.remove(&item.input_id);
+        match item.on_invalid.clone() {
+            Fallback::Substitute(payload) => {
+                let sub = QueuedInput { payload, preconditions: Vec::new(), ..item };
+                match self.apply_contained(&sub) {
+                    Ok(events) => {
+                        self.metrics.applied += 1;
+                        self.metrics.substituted += 1;
+                        self.externals.extend(D::externals(&events));
+                        self.record(seq, Outcome::Applied { events });
+                    }
+                    Err(()) => {
+                        self.poisoned = true;
+                        self.metrics.quarantined += 1;
+                        self.record(seq, Outcome::Discarded {
+                            reason: DiscardReason::Quarantined,
+                        });
+                        // The SUBSTITUTE is quarantined, not the original —
+                        // it is the object that panicked, which is what the
+                        // operator reviews (accepted, review-impl finding 7).
+                        self.quarantine.push(sub);
+                    }
+                }
+            }
+            _ => {
+                self.metrics.discarded_expired += 1;
+                self.record(seq, Outcome::Discarded { reason: DiscardReason::Expired });
+            }
+        }
+    }
+
+    /// Structural preconditions from island registries; semantic ones
+    /// delegated to the domain (spec §4.0 split).
+    fn check_all(&self, item: &QueuedInput<D>) -> Result<(), Violation> {
+        for p in &item.preconditions {
+            match p {
+                Precondition::EntityAlive { id, generation } => {
+                    if self.entities.get(id) != Some(generation) {
+                        return Err(Violation {
+                            kind: PreconditionKind::EntityAlive,
+                            entity: Some(*id),
+                        });
+                    }
+                }
+                Precondition::EncounterActive { id, generation } => {
+                    if self.encounters.get(id) != Some(generation) {
+                        return Err(Violation {
+                            kind: PreconditionKind::EncounterActive,
+                            entity: Some(*id),
+                        });
+                    }
+                }
+                Precondition::ActorEligible { id, turn } => {
+                    // Eligible once the island clock has reached the actor's turn.
+                    if self.tick < *turn {
+                        return Err(Violation {
+                            kind: PreconditionKind::ActorEligible,
+                            entity: Some(*id),
+                        });
+                    }
+                }
+                Precondition::IslandOwns { id } => {
+                    if !self.entities.contains_key(id) {
+                        return Err(Violation {
+                            kind: PreconditionKind::IslandOwns,
+                            entity: Some(*id),
+                        });
+                    }
+                }
+                sem @ Precondition::ResourceAtLeast { .. } => {
+                    D::check(&self.state, &self.rules, sem)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn resolve_fallback(&mut self, lane: Lane, item: QueuedInput<D>, violation: Violation) {
+        let seq = item.seq;
+        match item.on_invalid.clone() {
+            Fallback::Drop => {
+                self.currently_buffered.remove(&item.input_id);
+                self.metrics.discarded_precondition += 1;
+                self.record(seq, Outcome::Discarded {
+                    reason: DiscardReason::PreconditionFailed(violation),
+                });
+            }
+            Fallback::Substitute(payload) => {
+                // The substitute is the domain's DECLARED safe alternative —
+                // applied with no preconditions of its own (it must be total).
+                let sub = QueuedInput {
+                    payload,
+                    preconditions: Vec::new(),
+                    ..item
+                };
+                match self.apply_contained(&sub) {
+                    Ok(events) => {
+                        self.metrics.applied += 1;
+                        self.metrics.substituted += 1;
+                        self.externals.extend(D::externals(&events));
+                        self.record(seq, Outcome::Applied { events });
+                    }
+                    Err(()) => {
+                        self.poisoned = true;
+                        self.metrics.quarantined += 1;
+                        self.record(seq, Outcome::Discarded {
+                            reason: DiscardReason::Quarantined,
+                        });
+                        self.quarantine.push(sub);
+                    }
+                }
+            }
+            Fallback::Notify(_entity, _declared) => {
+                // Delivery is the host's `turn.outcome` frame (REC-64). The
+                // kernel records the ACTUAL violation — the caller-declared
+                // reason is a presentation hint and must never overwrite the
+                // audit record (review-impl finding 2: a client could declare
+                // `Expired` over a real EntityAlive failure and falsify the log).
+                self.metrics.discarded_precondition += 1;
+                self.record(seq, Outcome::Discarded {
+                    reason: DiscardReason::PreconditionFailed(violation),
+                });
+            }
+            Fallback::Buffer => {
+                // Must not collide with itself on re-offer.
+                self.seen.forget(&item.input_id);
+                // Record Buffered only on ENTRY into the buffered state —
+                // a re-buffer cycle (re-offer → still ineligible → re-park)
+                // must not append a new outcome each tick, or one stuck
+                // input grows the log without bound (review-impl finding 1).
+                if !self.currently_buffered.contains(&item.input_id) {
+                    self.currently_buffered.insert(item.input_id);
+                    self.metrics.buffered_episodes += 1;
+                    self.record(seq, Outcome::Buffered);
+                } else {
+                    self.metrics.rebuffer_cycles += 1;
+                }
+                // Re-offer on the item's OWN lane (review finding 1: the
+                // prior hardcoded Live was a priority inversion for
+                // Background items).
+                self.buffered.push((lane, item));
+                IslandMetrics::gauge_peak(&mut self.metrics.peak_buffered_len, self.buffered.len());
+            }
+        }
+    }
+
+    fn record(&mut self, seq: Seq, outcome: Outcome<D>) {
+        self.outcomes.push((seq, outcome));
+        IslandMetrics::gauge_peak(&mut self.metrics.peak_outcomes_len, self.outcomes.len());
+    }
+
+    // ─── read surface (host + tests) ───
+
+    pub fn now(&self) -> Tick {
+        self.tick
+    }
+
+    pub fn state(&self) -> &D::State {
+        &self.state
+    }
+
+    pub fn outcomes(&self) -> &[(Seq, Outcome<D>)] {
+        &self.outcomes
+    }
+
+    pub fn ingress_len(&self) -> usize {
+        self.ingress.len()
+    }
+
+    pub fn seen_len(&self) -> usize {
+        self.seen.len()
+    }
+
+    pub fn buffered_len(&self) -> usize {
+        self.buffered.len()
+    }
+
+    /// The kernel's observability surface — deterministic counters + peak
+    /// gauges. The HOST emits these as real telemetry (DP-R8); tests assert
+    /// they agree with the outcome log (a drift = a silent outcome path).
+    pub fn metrics(&self) -> &IslandMetrics {
+        &self.metrics
+    }
+
+    /// Drain effects that must LEAVE the island (SC-A4). sim-core never
+    /// writes anything external itself (AGT-A6 / DP-A6).
+    pub fn drain_proposals(&mut self) -> Vec<D::External> {
+        std::mem::take(&mut self.externals)
+    }
+}

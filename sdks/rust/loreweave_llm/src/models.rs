@@ -65,6 +65,28 @@ pub enum StreamFormat {
     VercelAiUiV1,
 }
 
+/// Reasoning-budget knob, forwarded as-is to the provider (the gateway's
+/// `forwardOptionalChatFields` allowlist). The cross-provider way to DISABLE
+/// hidden thinking on reasoning models (Qwen3.x, DeepSeek-R1, Gemma-thinking
+/// variants) is `ReasoningEffort::None` — verified for LM Studio + Qwen3.6;
+/// OpenAI o-series accept low/medium/high. Without it, reasoning_tokens
+/// silently burn the output budget (POC-2 live finding: 150–900 reasoning
+/// tokens + occasional >30 s runaway per 4-tool decision). Companion:
+/// `chat_template_kwargs = {"enable_thinking": false}` (llama.cpp/vLLM
+/// toggle; a no-op for models that only honor reasoning_effort).
+///
+/// Mirrors the Python SDK's `ReasoningEffort` Literal — this field existed
+/// in the Python SDK + Go gateway but not here (polyglot mirror drift,
+/// closed 2026-07-27).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ReasoningEffort {
+    None,
+    Low,
+    Medium,
+    High,
+}
+
 /// Wire shape for `POST /internal/llm/stream` (chat variant).
 ///
 /// Mirrors openapi `ChatStreamRequest`. **Tool definitions go in the `tools`
@@ -104,6 +126,19 @@ pub struct ChatStreamRequest {
     /// strips it pre-send); [`ChatStreamRequest::normalize`] coerces it to None.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+
+    /// Reasoning controls — forwarded to the provider unchanged. Set
+    /// [`ReasoningEffort::None`] to turn OFF hidden thinking on reasoning
+    /// models so reasoning_tokens don't eat the output budget (and don't
+    /// blow SL-A4-style caller deadlines). ABSENT from the wire when `None`
+    /// (the gateway forwards optional chat fields only when present).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<ReasoningEffort>,
+
+    /// Provider chat-template toggles (e.g. `{"enable_thinking": false}`),
+    /// forwarded as-is. Absent when `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_template_kwargs: Option<serde_json::Value>,
 
     #[serde(default)]
     pub stream_format: StreamFormat,
@@ -145,6 +180,8 @@ impl ChatStreamRequest {
             tool_choice: None,
             temperature: 0.0,
             max_tokens: None,
+            reasoning_effort: None,
+            chat_template_kwargs: None,
             stream_format,
             trace_id: None,
         }
@@ -158,7 +195,22 @@ impl ChatStreamRequest {
         self
     }
 
-    /// Set the output cap (builder style).
+    /// Bound (or disable) the provider's hidden thinking (builder style).
+    /// `ReasoningEffort::None` is the verified LM-Studio/Qwen off-switch.
+    pub fn with_reasoning_effort(mut self, effort: ReasoningEffort) -> Self {
+        self.reasoning_effort = Some(effort);
+        self
+    }
+
+    /// Set provider chat-template toggles, e.g.
+    /// `json!({"enable_thinking": false})` (builder style).
+    pub fn with_chat_template_kwargs(mut self, kwargs: serde_json::Value) -> Self {
+        self.chat_template_kwargs = Some(kwargs);
+        self
+    }
+
+    /// Set the output cap (builder style) — belt-and-braces against runaway
+    /// generation even with reasoning bounded.
     ///
     /// S7 — this builder did not exist, and MEASURED 2026-08-01 no Rust service anywhere in
     /// the repo set `max_tokens` at all: the field was declared, defaulted to `None`, and
@@ -168,7 +220,8 @@ impl ChatStreamRequest {
     ///
     /// `Some(0)` is accepted here rather than rejected because `normalize` owns that
     /// conversion — one place decides what the wire sees, and a second opinion at the builder
-    /// is how two rules for one decision start.
+    /// is how two rules for one decision start. (main's independent copy of this builder
+    /// coerced `0 → None` in-place; dropped on merge 2026-08-02 for exactly that reason.)
     pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
         self.max_tokens = Some(max_tokens);
         self

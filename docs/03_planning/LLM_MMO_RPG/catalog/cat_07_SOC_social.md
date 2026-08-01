@@ -19,5 +19,5 @@ generated_by: scripts/chunk_doc.py
 | SOC-7 | Global chat | 🚫 | — | — | Explicitly rejected — session only (PC-D3) |
 | SOC-8 | User reporting / content moderation UI | 📦 | PLT | SOC-1 | Standard platform feature |
 | SOC-9 | Shadow-ban / sanctions | 📦 | PLT | SOC-8 | Standard |
-| SOC-10 | NSFW opt-in / age verification | 📦 | PLT | — | [01 E2](01_OPEN_PROBLEMS.md) |
+| SOC-10 | NSFW opt-in / age verification | 📦 | PLT | — | [01 E2](../01_problems/_index.md) |
 

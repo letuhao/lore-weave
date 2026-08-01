@@ -5,6 +5,18 @@
 
 ---
 
+## ⚠️ MEDIUM (read before anything else)
+
+**This is a rendered 2D / 2.5D MMO RPG — a graphical game client, NOT a text/chat game.**
+
+- **World:** spatial 2D / 2.5D tilemap; avatars move in **near-realtime** (server-authoritative, client-predicted).
+- **Combat:** **turn-based**, resolved server-side with seeded RNG.
+- **LLM text** (NPC dialogue, narration, chat) is a **sub-layer inside the game client**, not the interface.
+
+~47 legacy docs (created 2026-04-23) call this a "text-based MMO" with a "chat GUI." **That is stale and wrong** — when you hit it, read it through the canonical correction in [`../00_VISION.md` §0](../00_VISION.md). Text/chat-shaped interaction decisions (voice modes C1, multi-stream UI C5, command grammar PL_002, session group-chat DF05) survive only as the **dialogue/narration sub-layer** and are pending a reconciliation pass. **Do not build a chat client.**
+
+---
+
 ## Why this folder exists
 
 Loading all of `02_storage/` (36 chunks, 476 KB) and `03_multiverse/` (10 chunks, 56 KB) into every feature-design session is impossible and wasteful. The foundation folder distills everything downstream features MUST respect into 7 short files, ~30 KB total.

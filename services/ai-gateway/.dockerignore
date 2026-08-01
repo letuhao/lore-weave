@@ -1,0 +1,22 @@
+# Build context = services/ai-gateway (compose `context: ../services/ai-gateway`), so the
+# REPO-ROOT .dockerignore does not apply here — a service with its own context needs its own
+# file. Mirrors services/api-gateway-bff/.dockerignore.
+#
+# `node_modules` is the load-bearing line, not a size optimisation. The Dockerfile installs
+# from the lockfile FIRST and only then runs `COPY . .`; without this file that COPY drops the
+# HOST's node_modules on top of the freshly-installed one, so the image builds against
+# whatever a developer happens to have on disk. That is not hypothetical: on 2026-08-02 a
+# `docker compose build --no-cache` failed with
+#
+#     Error  tsBinary.getParsedCommandLineOfConfigFile is not a function
+#
+# because the host tree had drifted to typescript@7.0.2 (npm itself reports it `invalid:
+# "^5.5.3" from the root project`), and TypeScript 7's JS API no longer exposes that function
+# to the Nest CLI. The lockfile pins 5.9.3 and both `npm ci` and `npm install` resolve it
+# correctly inside the image — the host copy was the only thing putting 7 there.
+node_modules
+dist
+.git
+test
+coverage
+*.md

@@ -24,6 +24,12 @@ cd "$ROOT"
 
 PG_CONTAINER="${FOUNDATION_PG_CONTAINER:-foundation-dev-postgres}"
 PG_USER="${FOUNDATION_PG_USER:-foundation}"
+# db-safety-gate: file-ok — every database this script DROPs is named by a
+# NON-OVERRIDABLE LITERAL (meta_invariants_check and the per-shard names derived from it), so no
+# environment variable can retarget it at a real database. That is a stronger
+# guarantee than a runtime marker check on an overridable name, which is what the
+# gate would otherwise ask for. Brought into scope 2026-07-29 when the gate's
+# shell-file selector was widened from "test" to test|smoke|drill.
 DB="meta_invariants_check"
 AUDIT_MIGRATION="migrations/meta/013_meta_write_audit.up.sql"
 

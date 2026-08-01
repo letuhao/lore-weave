@@ -268,6 +268,19 @@ Author can override any default by declaring same `kind_id`.
 
 ### §4.1 `vital_pool` aggregate
 
+> **⚠ CLOSURE-PASS-EXTENSION 2026-07-26 — DF07_001 Actor Stat Block DRAFT.** `VitalInstance.max_value` is
+> no longer a static per-actor-class constant: it is **derived** from the DF7 `MaxHp` / `MaxStamina` stat
+> slots, and `VitalProfile.max_value` degrades to that slot's `base` term (so existing `vital_profiles`
+> declarations keep working unchanged, with progression/equipment/status now layering on top).
+> **This resolves RES-Q1** ("what max_value for PC vs NPC peasant vs NPC noble?") — the answer is *derived*,
+> not declared per class. New delta_kind on `aggregate_type=vital_pool`: **`VitalMaxRecomputed { kind,
+> old_max, new_max }`** with two locked rules — max **increase** leaves `current_value` untouched (growth
+> does not heal; otherwise an equipment swap is a heal exploit), and max **decrease** clamps
+> `current_value` **without** firing `OnZeroEffect` (a clamp must never kill; only damage does).
+> `RegenRule` / `DepletionRule` / `OnZeroEffect` remain RES_001-owned — DF7 supplies the ceiling only.
+> Mid-combat, changes apply at the next round boundary per DF7-Q5. See
+> [DF07_001 §7](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md).
+
 **Scope:** T2/Reality (per DP-A14). One instance per Actor (PC + NPC).
 **Owner:** Body-bound — `vital_pool.actor_ref` MUST resolve to an entity_binding with body-presence.
 **Transferable:** NO (type-system enforced — no transfer event accepts vital_pool source/target).
@@ -862,7 +875,13 @@ PF_001 doc closure pass cross-references RES_001 for cell-as-economic-entity mod
 PCS_001 brief at [`../06_pc_systems/00_AGENT_BRIEF.md`](../06_pc_systems/00_AGENT_BRIEF.md) §4.4 reading list update needed:
 - Add RES_001 mandatory reading
 - Add §X "Cell ownership inheritance via body-substitution" — V1 mechanic where xuyên không soul-replacement preserves body-bound ownership chain (Q9c LOCKED)
-- Add VitalProfile reference: PCS_001 declares per-PC max_value overriding RealityManifest defaults
+- ~~Add VitalProfile reference: PCS_001 declares per-PC max_value overriding RealityManifest defaults~~
+
+> **⚠ CORRECTED 2026-07-26 (REC-42 / AUD-F17 #32): the struck instruction is WITHDRAWN — it told
+> PCS_001 to take a write path DF7-A2 forbids.** `max_value` is derived from the DF7
+> `MaxHp`/`MaxStamina` stat slots (§4.1's 2026-07-26 note; the stat layer is a projection — DF7-A2
+> allows no per-PC max_value override write). PCS_001 declares nothing here; per-PC variation
+> arrives only through DF7's own resolution (progression/equipment/status layering on the slot).
 
 Update scheduled at PCS_001 first-design-pass (parallel agent picks up).
 
@@ -1061,7 +1080,7 @@ PL_001 Continuum closure pass folds in (additive per I14 — `user_message` is n
 
 | ID | Question | Resolution at CANDIDATE-LOCK 2026-04-27 |
 |---|---|---|
-| RES-Q1 | Default vital_pool VitalProfile — what max_value for PC vs NPC peasant vs NPC noble? | **RESOLVED: deferred to PCS_001 + NPC_001 first-design-pass** — consumer features own per-actor-class default declarations; RES_001 V1 schema-stable for any per-class profile. PCS_001 already CANDIDATE-LOCK 2026-04-27 (`af025ebb`); NPC_001 CANDIDATE-LOCK; both consume `vital_pool` aggregate via standard pattern. |
+| RES-Q1 | Default vital_pool VitalProfile — what max_value for PC vs NPC peasant vs NPC noble? | ~~**RESOLVED: deferred to PCS_001 + NPC_001 first-design-pass** — consumer features own per-actor-class default declarations; RES_001 V1 schema-stable for any per-class profile. PCS_001 already CANDIDATE-LOCK 2026-04-27 (`af025ebb`); NPC_001 CANDIDATE-LOCK; both consume `vital_pool` aggregate via standard pattern.~~ **⚠ CORRECTED 2026-07-26 (REC-42 / AUD-F17 #32): this answer is superseded — RES-Q1 was answered twice, incompatibly, in this one file.** §4.1's 2026-07-26 DF07 extension is the standing answer: `max_value` is **derived from the DF7 `MaxHp`/`MaxStamina` stat slots** (VitalProfile.max_value degrades to the slot's `base` term) — **NOT declared per actor class by consumer features**. This row's "deferred to consumers, per-actor-class declarations" reading is withdrawn; there is no per-class declaration path. |
 | RES-Q2 | Cell stockpile overflow handling V1: drop or queue? | **RESOLVED: drop** (production halts at cap per Q4 + Q2c LOCKED); user-facing I18nBundle message `cell_production_halted_storage_full` with default English `"storage full, production paused"` + Vietnamese translation `"kho đầy, sản xuất tạm dừng"` per §2 i18n contract. |
 | RES-Q3 | Trade reciprocity: V1 uses Give-kind reciprocal pair OR dedicated Trade kind? | **RESOLVED: deferred to PL_005 closure pass** — PL_005 owns interaction-kind ontology; RES_001 V1 supports both via OutputDecl pattern (schema-additive either way). |
 | RES-Q4 | Determinism of "any nutritional consumable" food-priority — author-declared vs deterministic-id-order? | **RESOLVED: V1 default author-declared `consumable_priority`** (RealityManifest extension OPTIONAL); fallback to declaration-order in `resource_kinds` if author empty. Deterministic per replay-determinism invariant. |

@@ -2,6 +2,7 @@ package events
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,5 +62,57 @@ func goodEnvelope() Envelope {
 		OccurredAt:       now,
 		RecordedAt:       now,
 		Payload:          map[string]any{"text": "hello"},
+	}
+}
+
+// The RLS-A13 ruleset pin is OPTIONAL by presence and STRICT by format.
+//
+// Optional because this envelope is the whole platform's wire shape: canon
+// writes, Forge edits and admin actions have no ruleset governing them, and a
+// required field would break every existing producer (I14 additive rule). The
+// obligation to always stamp it belongs to the game writer, where it is
+// enforced, not to the shared validator.
+//
+// Strict about format because the digest is compared and joined as TEXT. A
+// mixed-case or truncated value silently fails to equal the same digest written
+// by another producer — RLS-D5's "worse than no digest, because it fails loudly
+// and WRONGLY", where every replay reports a mismatch that isn't one.
+func TestEnvelopeRulesetDigestFormat(t *testing.T) {
+	base := func() Envelope {
+		return Envelope{
+			EventID:          uuid.New(),
+			EventType:        "turn.resolved",
+			EventVersion:     1,
+			AggregateID:      "enc-1",
+			AggregateType:    "combat_session",
+			AggregateVersion: 1,
+			RealityID:        uuid.New(),
+			RecordedAt:       time.Now(),
+		}
+	}
+	valid := "807d5b5213f0707ff1e0f2e359d1b22463ce074d914ab98646440a4f62f4fe01"
+
+	cases := []struct {
+		name   string
+		digest string
+		ok     bool
+	}{
+		{"absent is legal — not every event comes from a pinned island", "", true},
+		{"64 lowercase hex", valid, true},
+		{"uppercase would not match the same digest written lowercase", strings.ToUpper(valid), false},
+		{"truncated", valid[:63], false},
+		{"too long", valid + "0", false},
+		{"non-hex", strings.Repeat("z", 64), false},
+	}
+	for _, c := range cases {
+		e := base()
+		e.RulesetDigest = c.digest
+		err := e.Validate()
+		if c.ok && err != nil {
+			t.Errorf("%s: want valid, got %v", c.name, err)
+		}
+		if !c.ok && err == nil {
+			t.Errorf("%s: want rejected, got nil", c.name)
+		}
 	}
 }

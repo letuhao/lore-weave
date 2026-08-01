@@ -1,0 +1,148 @@
+{
+  "_why": [
+    "PGN-A8: a fixture that already contains the answers makes every stage vacuous.",
+    "This file is the ANSWER KEY and it lives OUTSIDE the corpus on purpose — the same reason the",
+    "wuxia fixture's teeth do. Metadata about a test must never live inside the thing under test.",
+    "",
+    "This corpus tests the ITEM contract (docs/03_planning/LLM_MMO_RPG/40_progression_planner/",
+    "06_item_contract.md) and the retrieval/enrichment split (08_retrieval_and_enrichment.md).",
+    "It was chosen because Fengshen Yanyi is the most treasure-dense classical Chinese novel there",
+    "is: retrieval has a great deal to find, which is exactly what makes the things it CANNOT find",
+    "a fair test of enrichment."
+  ],
+
+  "_authorship": [
+    "The characters, treasures, owners and events are REAL facts about the Ming novel, verified",
+    "against Baidu Baike's 封神法宝 entry and the English Wikipedia article.",
+    "The PROSE is fixture-authored in the style of the novel — it is NOT verbatim Ming text, and",
+    "must never be cited as such. Written this way on purpose: the teeth below have to be placed",
+    "precisely, and a real chapter cannot be edited to carry a designed gap."
+  ],
+
+  "provenance": {
+    "_rule": "PGN-A14 — says[] may cite only is_authored_source=true. A reader wiki is somebody's summary.",
+    "book/synopsis.md": true,
+    "book/ch12_nezha.md": true,
+    "book/ch47_zhaogongming.md": true,
+    "book/ch65_zhuxian.md": true,
+    "wiki/fabao_zonglun.md": false,
+    "wiki/nezha.md": false,
+    "wiki/jiang_ziya.md": false,
+    "wiki/zuoqi.md": false
+  },
+
+  "slots_under_test": {
+    "item_archetype": { "planner": "Composite",   "visibility": "SHARED",  "expect": "mostly CITED" },
+    "instrument_tag": { "planner": "Enumeration", "visibility": "SHARED",  "expect": "partly CITED, closure ENRICHED" },
+    "item_grade":     { "planner": "Ladder",      "visibility": "SHARED",  "expect": "FULLY ENRICHED — rung 4" },
+    "equip_slot":     { "planner": "Profile",     "visibility": "SHARED",  "expect": "ACCEPT ENGINE DEFAULT" },
+    "item_affix":     { "planner": "Composite",   "visibility": "PRIVATE", "expect": "FULLY ENRICHED" }
+  },
+
+  "teeth": [
+    {
+      "id": "I1",
+      "tests": "ENR-A1 — retrieval succeeds richly for named unique items",
+      "present": {
+        "book/ch12_nezha.md": ["乾坤圈", "混天綾", "風火輪", "火尖槍", "九龍神火罩"],
+        "book/ch47_zhaogongming.md": ["定海珠", "金鞭", "金蛟剪", "混元金斗"],
+        "book/ch65_zhuxian.md": ["誅仙", "戮仙", "陷仙", "絕仙", "杏黃旗", "打神鞭"]
+      },
+      "note": "The easy half, and it must be easy. If retrieval cannot find these, nothing downstream is worth measuring. This is the PO's 'find-and-load only works for unique items in the story'."
+    },
+    {
+      "id": "I2",
+      "tests": "ENR-A4 rung 4 — the source AFFIRMATIVELY LACKS a grade system, and the game needs one anyway",
+      "present": {
+        "book/ch65_zhuxian.md": ["寶各有用，未嘗較其次第"],
+        "wiki/fabao_zonglun.md": ["書中未嘗分品第"]
+      },
+      "absent_everywhere": ["品階", "上品", "中品", "下品", "一品", "九品", "靈寶", "先天", "後天"],
+      "note": "THE SHARPEST TOOTH. This is a STATED FORECLOSURE, not an omission — the corpus says out loud that no ranking exists, and 燃燈 refuses the question inside the fiction. A game still needs item_grade. So the Ladder planner must: probe both ends, find nothing, record the query log (ENR-A3), and reach rung 4 GENRE CONVENTION from an authored genre pack — never invent a ladder and never silently default. A run that produces grades labelled ③ CITED has fabricated. A run that produces none has failed to enrich."
+    },
+    {
+      "id": "I3",
+      "tests": "Enumeration with PARTIAL retrieval — the members are findable, the CLOSURE is not",
+      "present": { "wiki/fabao_zonglun.md": ["打擊之器", "纏縛之器", "困陷之器", "斬截之器", "旗幡之屬", "圖鑑之屬", "行動之器"] },
+      "note": "A reader wiki groups the treasures by function AND says 原書未嘗立此分類 — the grouping is the reader's, not the book's. So instrument_tag members are citable from a NON-AUTHORED source only, which PGN-A14 forbids for says[]. The tags must therefore be PROPOSED with the wiki as context, or DECLARED by the human — and the pipeline must not launder a wiki page into a book citation."
+    },
+    {
+      "id": "I4",
+      "tests": "Profile — silence is NOT an override",
+      "absent_everywhere": ["裝備欄", "主手", "副手", "護身之位"],
+      "note": "Classical novels have no equipment-slot concept. The corpus contradicts the engine default in no way, so the Profile planner must ACCEPT the 6-slot default (PL_007 §6.1) and record 'no override'. A planner that reads silence as a reason to invent slots is broken. This is the cheapest tooth to pass and the easiest to fail by over-eagerness."
+    },
+    {
+      "id": "I5",
+      "tests": "name-only items — every field but the name needs enrichment",
+      "present": { "book/ch65_zhuxian.md": ["落寶金錢", "七香車", "照妖鑑", "但錄其名"] },
+      "note": "Three treasures named in a battle roll-call with zero properties, and the text SAYS SO ('多有名而不知其用者'). Retrieval finds the name; class, effect, slot and grade must all come from enrichment. 落寶金錢 has one property stated far away in ch47 (it took 趙公明's pearls) — a retrieval test as well as an enrichment one."
+    },
+    {
+      "id": "I6",
+      "tests": "PGN-A10 §2.1 / ENR §9.5 — a CONTRADICTION must refuse, never resolve",
+      "present": { "wiki/jiang_ziya.md": ["一說杏黃旗與打神鞭同為元始天尊下山時所授", "一說旗本燃燈道人之物"] },
+      "note": "One wiki page carries both accounts and says it cannot decide. The fold must refuse and mint a new question naming both, not pick the first. Deliberately placed INSIDE one page rather than across two, because a single-page contradiction is the harder case — a naive dedup by source cannot separate them."
+    },
+    {
+      "id": "I7",
+      "tests": "PGN-A5 — a near-miss and a trap, adjacent",
+      "present": {
+        "book/ch47_zhaogongming.md": ["定海珠二十四顆", "二十四節", "或曰死者三千，或曰三萬"],
+        "book/ch12_nezha.md": ["長七尺", "長丈八", "日行千里"]
+      },
+      "note": "TWO different things that look alike. 二十四顆 and 二十四節 are CARDINALITIES of a physical set — PGN-A5 permits them. 長七尺 / 長丈八 / 日行千里 are MAGNITUDES stated as description, and 或曰三千，或曰三萬 is a narrative instance the text itself flags as unreliable. A pipeline that turns 七尺 into a stat, or 三千 into anything, has confused description with rule. The wiki page nezha.md states the distinction explicitly so a human reviewer can see the line — the pipeline must find it without being told."
+    },
+    {
+      "id": "I8",
+      "tests": "the pipeline must be able to DISCARD",
+      "present": { "book/ch47_zhaogongming.md": ["五色毫光"], "book/ch12_nezha.md": ["金色", "赤色"], "wiki/nezha.md": ["蓮花化身", "父子不睦"] },
+      "note": "Colour, appearance and family drama have no mechanical consequence. A pipeline that absorbs everything turns set-dressing into item stats."
+    },
+    {
+      "id": "I9",
+      "tests": "ItemClass reach — not everything is a Weapon",
+      "present": { "wiki/jiang_ziya.md": ["此非兵器，乃名冊也", "其實乃文書"], "book/synopsis.md": ["榜非兵器，乃名冊也"] },
+      "note": "封神榜 is a Document (PL_007 §5.2's 8-variant closed enum), and the corpus says so twice in plain words. A classifier that forces it to Weapon or Valuable has not read. Also tests that item_archetype's `class` field reaches a non-obvious variant."
+    },
+    {
+      "id": "I10",
+      "tests": "PPB-A1 / PGN-A20 — a mount is NOT an item, and the refusal must name the owner",
+      "present": { "book/ch65_zhuxian.md": ["四不相", "墨麒麟", "寶可授受，可奪，可失；獸則有性，不受則不行"], "wiki/zuoqi.md": ["坐騎非法寶"] },
+      "note": "PL_007 §5.2 is explicit: Mount and Vehicle are NOT reserved ItemClass variants — mounts belong to TVL_003. The corpus is full of prominent mounts and states the distinction in-world. The item planner must REFUSE them by name, citing the module that owns them, rather than minting an item archetype. This is the cross-module boundary test, and it is the one an eager generator fails."
+    },
+    {
+      "id": "I11",
+      "tests": "the item / ability boundary — use_effect is the item-legal SUBSET of ABL's EffectOp",
+      "present": {
+        "book/ch12_nezha.md": ["此罩非打人之器，乃困人之器。困之而後火起，非罩自能傷人也"],
+        "wiki/fabao_zonglun.md": ["此火究屬寶之能，抑屬太乙真人之術"]
+      },
+      "note": "九龍神火罩 traps, and THEN fire happens. The book distinguishes the trapping (the item) from the burning (arguably the wielder's art), and the wiki says openly that it cannot decide. Whether this is one item effect or an item plus an ability is a real boundary question, and the correct output is a refusal that names both candidate owners — not a silent choice."
+    },
+    {
+      "id": "I12",
+      "tests": "EPL-A8 — the cross-module demand appears as a dangling reference",
+      "present": { "book/ch65_zhuxian.md": ["鞭打榜上之神"], "wiki/jiang_ziya.md": ["專打封神榜上有名之神"] },
+      "note": "打神鞭 works only against actors listed on 封神榜. That is an item whose effect is gated on an ACTOR PROPERTY the item module does not own. Expect a pool_reference with to_member IS NULL pointing at an actor/faction-side slot — the mechanism 40.7 §7 claim 3 exists to prove. If this tooth produces no dangling reference, EPL-A8 is unproven."
+    }
+  ],
+
+  "deliberately_not_here": [
+    "No treasure ranking, grading or tier vocabulary of any kind — I2 depends on it.",
+    "No numeric stats: no damage, no durability, no price, no weight. The only integers are counts of physical objects (24 pearls, 24 segments), narrative distances the text flags as description, and one casualty figure the text itself reports two ways.",
+    "No equipment slots, no inventory, no carrying capacity — I4 depends on their absence.",
+    "No crafting: nothing in this corpus says how a treasure is made. Fengshen treasures are given, found, or simply possessed. A crafting contract cannot be derived from this book and should not be attempted against it.",
+    "No completeness. Four pages carry 待補 markers where a real reader wiki would."
+  ],
+
+  "what_passing_means": [
+    "The pipeline read a treasure-dense source; extracted archetypes and tags it could cite;",
+    "refused three things by name (the mount boundary, the ownership contradiction, the item/ability",
+    "boundary); discarded the set-dressing; declined to invent a grade ladder the source explicitly",
+    "denies having, and instead reached a labelled genre-convention proposal a human approved; and",
+    "left one dangling cross-module reference for the actor side to satisfy.",
+    "",
+    "That is the item half of the pool. It is NOT proof that the generated items PLAY — see PPL-A2."
+  ]
+}

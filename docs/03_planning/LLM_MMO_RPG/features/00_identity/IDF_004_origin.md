@@ -7,7 +7,7 @@
 > **Category:** IDF — Identity Foundation (Tier 5 Actor Substrate)
 > **Status:** CANDIDATE-LOCK 2026-04-26 (CONCEPT → DRAFT → Phase 3 → closure pass; Q-decisions ORG-Q1..Q10 locked + Q4 family graph LOCKED to V1 opaque only per POST-SURVEY-Q4)
 > **Stable IDs:** `ORG-A*` axioms · `ORG-D*` deferrals · `ORG-Q*` decisions
-> **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types); [PF_001 §3.1 ChannelId](../00_place/PF_001_place_foundation.md); [IDF_001 RaceId](IDF_001_race.md); [IDF_002 LanguageId](IDF_002_language.md); [IDF_005 IdeologyId](IDF_005_ideology_concept.md); [RES_001 §2.3 I18nBundle](../00_resource/RES_001_resource_foundation.md).
+> **Builds on:** [EF_001 §5.1 ActorId](../00_entity/EF_001_entity_foundation.md#5-actorid--entityid-sibling-types); [PF_001 §3.1 ChannelId](../00_place/PF_001_place_foundation.md); [IDF_001 RaceId](IDF_001_race.md); [IDF_002 LanguageId](IDF_002_language.md); [IDF_005 IdeologyId](IDF_005_ideology.md); [RES_001 §2.3 I18nBundle](../00_resource/RES_001_resource_foundation.md).
 > **Defers to:** future PCS_001 (PC origin at creation); NPC_001/`NPC_NNN` (NPC canonical seed origin); V1+ FF_001 Family Foundation (lineage graph + dynasty; HIGH priority); V1+ cultural_tradition_pack (naming convention + values + arts); V1+ multi-cultural origin V2+.
 > **Event-model alignment:** Origin assignment events = EVT-T3 Derived (`aggregate_type=actor_origin`). Bootstrap OriginBorn events = EVT-T4 System (V1+ when origin packs populated). EVT-T8 Forge:EditOrigin admin override.
 
@@ -351,7 +351,7 @@ DRAFT promotion registers:
 - [`IDF_001 Race`](IDF_001_race.md) — race may correlate with origin (V1+ ORG-D6)
 - [`IDF_002 Language`](IDF_002_language.md) — native_language ref REQUIRED V1
 - [`IDF_003 Personality`](IDF_003_personality.md) — independent V1
-- [`IDF_005 Ideology`](IDF_005_ideology_concept.md) — default_ideology_refs ref
+- [`IDF_005 Ideology`](IDF_005_ideology.md) — default_ideology_refs ref
 
 **Consumers:**
 - Future PCS_001 — PC creation form

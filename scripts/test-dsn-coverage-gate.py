@@ -51,6 +51,22 @@ READ = re.compile(
 #: The shape of a gating variable: it names a TEST resource.
 GATING = re.compile(r"(^|_)TEST(_|$)")
 
+#: Variables that MATCH the shape above but do not gate anything — a name containing `TEST`
+#: is a heuristic, and this is where the heuristic is corrected, with the reading that
+#: corrected it. Distinct from DECLARED_UNARMED on purpose: that list means "the tests really
+#: do not run and we are saying so", which would be a FALSE statement about these. Merging the
+#: two would make the gate's most valuable output — the list of suites CI is not running —
+#: quietly untrue, which is the failure this gate exists to prevent, one level up.
+NOT_GATING: dict[str, str] = {
+    "LOREWEAVE_TEST_MIGRATION_MEMO": (
+        "not a gate — a PERFORMANCE opt-out. `composition-service/tests/conftest.py` "
+        "memoises `run_migrations` per schema-fingerprint; setting this to '0' takes the "
+        "un-memoised branch. BOTH branches run the migrations and BOTH run every test, so "
+        "nothing is skipped whether or not a workflow sets it. Arming it in CI would only "
+        "make the suite slower."
+    ),
+}
+
 #: Variables that genuinely cannot be armed in CI, with the reason. An entry here is a
 #: DECLARATION, not an exemption — the tests still do not run, and saying so keeps that
 #: fact visible instead of letting a skip read as a pass.
@@ -97,7 +113,7 @@ def main() -> int:
                 except OSError:
                     continue
                 for name in READ.findall(body):
-                    if GATING.search(name):
+                    if GATING.search(name) and name not in NOT_GATING:
                         gating.setdefault(name, set()).add(rel)
 
     armed: set[str] = set()
@@ -116,6 +132,9 @@ def main() -> int:
 
     print(f"test-dsn-coverage-gate: {len(gating)} gating variable(s)")
     print(f"  {len(armed)} armed by a workflow")
+    for n in sorted(NOT_GATING):
+        print(f"  NOT A GATE — {n}")
+        print(f"      {NOT_GATING[n].splitlines()[0]}")
     for n in sorted(declared):
         print(f"  DECLARED UNARMED — {n}")
         print(f"      {DECLARED_UNARMED[n].splitlines()[0]}")

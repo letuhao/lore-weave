@@ -111,11 +111,42 @@ After this lock: world-service can scaffold pc_user_binding + pc_mortality_state
 - **PCS-A2 (Identity unified at L1 via ACT_001):** PCS_001 does NOT own actor identity (canonical_traits, flexible_state, knowledge_tags, voice_register, core_beliefs_ref, mood). All identity at ACT_001 actor_core; PCS_001 reads + extends.
 - **PCS-A3 (PcId Uuid + DP-A12 constructor):** Per Q1 LOCKED; module-private constructor enforces forge-controlled PC creation only.
 - **PCS-A4 (Single pc_user_binding aggregate V1):** Per Q2 LOCKED; user_id + current_session + body_memory in 1 cohesive aggregate. V1+ split if NPC body-substitution PCS-D5 ships.
+  > **⚠ `user_id` MOVES OUT — `SPG-R6` (2026-07-30), [REC-96](../../19_reconciliation_register.md).**
+  > A new aggregate **`control_binding`** `(controller_id, actor_id, since, authority)` is registered to
+  > [`ACT_001`](../00_actor/ACT_001_actor_foundation.md) per [`SPG-A10`](../../36_map_architecture.md):
+  > **control is a relation, not a field on the body.** `pc_user_binding.user_id` encoded that relation
+  > **1:1 inside the body's own aggregate**, which makes one controller holding two bodies
+  > unrepresentable — and possession is a core mechanic (PO, 2026-07-29: *"nó là cơ chế chiếm hữu
+  > control gốc của game"*). `body_memory` and `current_session` are unaffected and stay here: they
+  > describe the BODY and the login, not the controller relation. This is the V1+ split `PCS-A4` itself
+  > anticipates, arriving through possession rather than through `PCS-D5`.
+  >
+  > **⚠ `PCS-A4` and Q9 were NOT the blocker — a correction of my own earlier claim.** `REC-87` asserted
+  > that this axiom plus the `cap=1` validator *"closes it exactly where possession needs it open"*.
+  > That was imprecise on both halves: `PCS-A4` is a **packaging** decision (one cohesive aggregate) and
+  > says nothing about control cardinality; and `Q9`'s `cap=1` is **PC-per-REALITY**, recorded reason
+  > *"single PC narrative"* vs *"multi-PC for charter coauthors"* — a **narrative scope** call, already
+  > shaped as `Vec<PcId>` + a validator so relaxing it is *"a single-line validator change, no schema
+  > migration"* (`PCS-D3`). **Q9 stays exactly as locked**, and `SPG-R7` (which proposed relaxing it) is
+  > **retired**. A 分身 need not even be a `Pc`: with a binding it can be `ActorId::Npc` driven by a
+  > **User** controller, which never touches Q9 at all.
 - **PCS-A5 (Body-soul split via PcBodyMemory):** Full schema per Q5 REFINEMENT — SoulLayer + BodyLayer + LeakagePolicy 4-variant. native_skills + motor_skills V1 empty Vec reserved (V1+ A6 detector populates).
 - **PCS-A6 (4-state mortality V1 schema):** Per Q7 LOCKED; Alive/Dying/Dead/Ghost. V1 active death transitions per mortality_config.mode; V1+ Respawn + Resurrection + GhostDispersed deferred PCS-D2.
 - **PCS-A7 (Synthetic actor PC forbidden V1):** Universal substrate discipline; reject `pc.synthetic_actor_forbidden`.
 - **PCS-A8 (Cross-reality strict V1):** Per Q8 LOCKED; V2+ Heresy migration via WA_002. xuyên không origin_world_ref is GlossaryEntityId (canonical reference; not active reality).
-- **PCS-A9 (Multi-PC cap=1 V1):** Per Q9 LOCKED Stage 0 schema validator counts pc_user_binding rows per reality; V1+ relax via RealityManifest.max_pc_count Optional (PCS-D3).
+- **PCS-A9 (PC cap — AMENDED 2026-07-26, REC-02 / AUD-F17 #6, PO decision): the V1 cap is
+  per-`(reality, user)`, not per-reality.** As locked (Q9: ≤1 `pc_user_binding` row *per reality*),
+  **no second player could ever onboard anywhere** — while PO_001 Mode A ships ~5 canonical PCs per
+  preset and its own reject table (`onboarding.user_already_has_pc`, `onboarding.canonical_pc_unavailable`
+  *"already bound to another user"*) had silently re-read the cap as per-user. Validators C13/C34
+  asserted the two "match" while stating different constraints. **PCS-D3 is pulled into V1 in its
+  cap form**: Stage 0 counts `pc_user_binding` rows per `(reality_id, user_id)` → ≤1; reject
+  `pc.multi_pc_per_user_forbidden_v1` (supersedes `pc.multi_pc_per_reality_forbidden_v1`, retired
+  per I15). `RealityManifest.max_pc_count` stays the V1+ *per-user* relaxation (charter coauthors).
+  The multiverse capacity bound was never this axiom — it is `multiverse.reality.player_cap` (100).
+  Q9's original intent (one user ≠ a party of alts) is preserved exactly; only the scope key moves.
+  Consequential re-reads: §8.9's count, the two enforcement pseudocode sites (§8 step / §bootstrap
+  step), and C13/C34's phrasing — all now count per-(reality, user).
 - **PCS-A10 (Single event clock-split contract):** Per Q10 LOCKED; PcTransmigrationCompleted (PCS_001-owned EVT-T1) consumed by TDIL_001 actor_clocks per TDIL §10 contract; aggregate-owner discipline EVT-A11 preserved.
 
 ---
@@ -287,7 +318,7 @@ pub enum TransitionTrigger {
 
 ### §3.3 V1+ deferred aggregates (PCS-D4)
 
-- `pc_stats_v1_stub` — DEFERRED V1+ per Q4 LOCKED. PROG_001 actor_progression + RES_001 vital_pool + PL_006 actor_status cover stats. V1+ may activate cache layer if combat hot-path performance demands.
+- `pc_stats_v1_stub` — **PCS-D4 RESOLVED 2026-07-26 — not deferred, unnecessary** (DF07_001 Actor Stat Block DRAFT, DF7-Q1). The derived-stat layer that this stub anticipated is a **law, not an aggregate**: a stat block is a pure function of `actor_progression` + equipment + `actor_status` + manifest (DF7-A2), so there is no second SSOT to drift. The "V1+ cache layer if combat hot-path demands" is likewise superseded — combat snapshots the block into the ephemeral `combat_session` with a `StatEpoch` (DF7-Q5), which is the cache, epoch-invalidated and replay-asserted. **Reserved consumer hook:** the fog-of-war vision range this file's TMP_001 closure note (§4 header) promises PC vision/perception attributes for is the V1+ `VisionRange` stat slot (DF7-D5) — no PCS_001 schema change when it activates. See [DF07_001 §11 closure item 5](../DF/DF07_pc_stats/DF07_001_actor_stat_block.md).
 
 ### §3.4 PcBodyMemory schema (nested in pc_user_binding; per Q5 REFINEMENT)
 
@@ -486,9 +517,9 @@ V1 supports 2 paths: (1) canonical seed declares PC actor_id; (2) Forge admin bi
 - (D) admin-only — no clear path to multi-user V1+
 - (C) wins — canonical seed for narrative realities; Forge admin V1 immediate; V1+ PO_001 player self-onboarding
 
-### §8.5 Defer pc_stats_v1_stub V1+ (Q4 LOCKED)
+### §8.5 Defer pc_stats_v1_stub V1+ (Q4 LOCKED → **RESOLVED 2026-07-26**)
 
-PROG_001 actor_progression + RES_001 vital_pool + PL_006 actor_status cover stats; PCS_001 V1 = 2 aggregates instead of 3.
+PROG_001 actor_progression + RES_001 vital_pool + PL_006 actor_status cover stats; PCS_001 V1 = 2 aggregates instead of 3. **2026-07-26 (DF07_001 DRAFT):** the deferral is now *closed*, not pending — DF7 owns the derived-stat projection over exactly those three inputs and deliberately stores nothing (DF7-A2), so PCS_001 stays at 2 aggregates permanently. PCS-D4 moves to "resolved / won't-build".
 
 **Reasoning:**
 - PROG_001 superseded DF7 placeholder per PROG_001 DRAFT (commit a76a4e4)

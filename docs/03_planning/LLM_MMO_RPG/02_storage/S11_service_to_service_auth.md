@@ -8,6 +8,8 @@ generated_by: scripts/chunk_doc.py
 
 ## 12AA. Service-to-Service Authentication — S11 Resolution (2026-04-24)
 
+> **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #6).** §12AA.3's claim that “api-gateway-bff remains sole external termination point” is stale — PRR-20 sanctions **`game-server`** as a second public entry point; and the meta-worker cross-reality fan-out this file models as a trusted privileged writer (§12AA.1 threat 7) is a second-writer concern — any game-state effect must route through the island's admission path. The SVID/mTLS/ACL/audit layers themselves remain valid. Current design: PRR-20 + [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
+
 **Origin:** Security Review S11 — current design covers external-traffic auth (gateway JWT) + per-service DB roles (§12T.8), but service-to-service RPC has no cryptographic identity. With 19+ services at MMO-RPG scope (adding world-service, roleplay-service, publisher, meta-worker, event-handler, migration-orchestrator, admin-cli, audit_retention_cron), flat-trust VPC = blast radius = whole platform.
 
 ### 12AA.1 Threat model

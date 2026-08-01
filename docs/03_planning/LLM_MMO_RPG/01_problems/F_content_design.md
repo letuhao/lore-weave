@@ -12,7 +12,7 @@ generated_by: scripts/chunk_doc.py
 
 **Problem (original):** Author wants "Elena is the villain of act 3." But in play, if a player charms Elena she might become an ally. Canon is violated.
 
-**Resolved by:** Four-layer canon model in [03 §3](03_MULTIVERSE_MODEL.md). Author tags each belief/attribute with a `canon_lock_level`:
+**Resolved by:** Four-layer canon model in [03 §3](../03_multiverse/01_four_layer_canon.md). Author tags each belief/attribute with a `canon_lock_level`:
 - **L1 (axiomatic)** — never drifts in any reality; globally enforced. Use for cosmic truths ("magic exists"), not personality.
 - **L2 (seeded)** — default. Starts true, can drift per reality. Use for "Elena is the villain" — true in canon-faithful realities, free to diverge in "what-if" realities.
 - **L3/L4** — emergent, per-reality. Not author-tagged; emerges from play.
@@ -48,7 +48,7 @@ Players "bending" Elena happens naturally in a divergent reality; canon-faithful
 - **F3-D5** — discovery mechanisms: proximity (NPC triggers in player region), rumor propagation, explicit quest board (V2+ MMO). All 3 opt-in per World Rule.
 - **F3-D6** — player-created quests = **V3+** with canon-lock constraints (L1 axioms unchangeable); author opts-in per book.
 
-Decisions F3-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](OPEN_DECISIONS.md).
+Decisions F3-D1..D6 locked 2026-04-23 in [OPEN_DECISIONS.md](../decisions/_index.md).
 
 **Residual `OPEN`:**
 - Scaffold schema evolution — beat types (do we need more? are some unused?) — V1-V2 playtest

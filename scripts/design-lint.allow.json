@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "design-lint.py prefix allowlist (symbol check). Every entry must carry a",
+    "reason. These are tokens that MATCH the stable-ID regex but are not design",
+    "namespaces — encodings, standards, model names, and the audit-sweep",
+    "severity row numbering (HIGH-1/MED-3/LOW-2). Removing an entry makes its",
+    "occurrences findings again. A doc-scoped alternative is the inline pragma:",
+    "<!-- design-lint: ok prefix XYZ — reason -->"
+  ],
+  "prefixes": {
+    "UTF": "UTF-8 — encoding token, not a namespace",
+    "ISO": "ISO-8601 etc. — standards numbers",
+    "IEEE": "IEEE-754 — standards numbers",
+    "SHA": "SHA-256 — hash algorithm names",
+    "AES": "AES-256 — cipher names",
+    "HTTP": "HTTP-2 — protocol version",
+    "GPT": "GPT-4 / GPT-5 — LLM model names quoted in prose",
+    "GPL": "GPL-3.0 — license identifiers",
+    "AGPL": "AGPL-3.0 — license identifiers",
+    "HIGH": "audit-sweep severity row numbering (HIGH-n), local to the sweep banners, not a stable namespace",
+    "MED": "audit-sweep severity row numbering (MED-n)",
+    "LOW": "audit-sweep severity row numbering (LOW-n)",
+    "PRR": "platform PR-review item numbering (PRR-20, PRR-23) — cross-repo process items, not a design-track namespace (backfill 2026-07-27)",
+    "FG": "frontend-game V0 milestone/acceptance numbering (FG-1..16, AC-FG-n) — declaring spec docs/specs/2026-05-24-frontend-game-architecture.md lives outside this corpus (backfill 2026-07-27)",
+    "WARN": "AMAW adversary-review warning numbering (WARN-n) in SESSION_HANDOFF retros — process-local, not a namespace (backfill 2026-07-27)",
+    "LW": "LW-1234 — example admin/support ticket id in 02_storage prose, not a namespace (backfill 2026-07-27)",
+    "DEFER": "DEFER-V2 / DEFER-V2+ resolution-status tags in closure tables — statuses, not IDs (backfill 2026-07-27)",
+    "CON": "sub-segment of compound PL_005 deferral ids (INT-CON-D1..D10) — parent namespace INT is catalogued (backfill 2026-07-27)",
+    "GIV": "sub-segment of compound PL_005b acceptance ids (AC-INT-GIV-n) — parent namespace INT is catalogued (backfill 2026-07-27)",
+    "USE": "sub-segment of compound PL_005b acceptance ids (AC-INT-USE-n) — parent namespace INT is catalogued (backfill 2026-07-27)",
+    "STK": "sub-segment of compound PL_005b acceptance ids (AC-INT-STK-n) — parent namespace INT is catalogued (backfill 2026-07-27)",
+    "SPK": "sub-segment of compound PL_005b acceptance ids (AC-INT-SPK-n) — parent namespace INT is catalogued (backfill 2026-07-27)",
+    "EXM": "sub-segment of compound PL_005b acceptance ids (AC-INT-EXM-n) — parent namespace INT is catalogued (backfill 2026-07-27)",
+    "INV": "sub-segment of compound PL_007b acceptance ids (AC-INV-1..11) — parent namespace ITM is catalogued (backfill 2026-07-27)",
+    "RMBG": "RMBG-1.4 — BriaAI background-removal model name quoted in TMP_009, not a namespace (backfill 2026-07-27)",
+    "EWD": "EWD-123 — Dijkstra manuscript citation in TMP prose, not a namespace (backfill 2026-07-27)"
+  }
+}
