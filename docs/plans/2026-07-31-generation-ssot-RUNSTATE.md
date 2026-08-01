@@ -1441,6 +1441,57 @@ AUDIT POC-DEFECT A (cross-chapter synopsis leak)
   NEXT       — (B) POST /entities dropping documented fields, then (C).
 ```
 
+### ✅ (B) POST /entities NOW HONOURS THE FIELDS ITS CONTRACT DOCUMENTS
+
+```
+AUDIT POC-DEFECT B (create drops documented fields)
+  BUILT      — `createEntity` accepts `display_name`, `status` and `tags`. The request struct
+               carried NONE of them, so `json.Decode` discarded all three in silence and the
+               route answered 201. `display_name` seeds the NAME ATTRIBUTE VALUE (the name is
+               not a column), `status` is enum-validated on write (422, not a CHECK-constraint
+               500), `tags` persists.
+               Plus a fix to the PP-4 seed helper — see DRIFT.
+
+  PROVEN     — 3 new tests, all asserting the READ-BACK and never the status code: 201 proved
+               nothing here for as long as the bug existed.
+                 `--- PASS: TestCreateEntity_HonoursTheFieldsItsContractDocuments`
+                 `--- PASS: TestCreateEntity_DefaultsAreUnchangedWhenTheFieldsAreOmitted`
+                 `--- PASS: TestCreateEntity_RejectsAStatusOutsideTheClosedSet`
+               plus the pre-existing `TestCreateEntity_ValidatesBookTierKind` and
+               `TestCreateEntity_MultiGenreKeepBothValues` — five RUN, none skipped.
+               `TestOpenAPIRouteConformance` ok (contract-first holds).
+               red-able: disabling ONLY the seed (keeping the struct field so it compiles)
+               fails on `cached_name: want "Tô Thanh Dao", got ""`.
+
+               FULL PACKAGE, three runs, because the first one lied:
+                 with my change, run 1 : 2 failed  (TestEnrichments_RefusesAColleagueEntity_PP4,
+                                                    TestWikiGenDelegate_ExcludesColleague_PP4)
+                 at HEAD, stashed      : 0 failed, ok 651.606s
+                 with my change, run 2 : 0 failed, ok 679.913s
+               So the two PP-4 failures are FLAKY, not mine.
+
+  NOT PROVEN — the flake's trigger. The mechanism is identified (see DRIFT) but I did not
+               reproduce it deliberately, so "poisoned `book_kinds` row" is the best
+               explanation and not a demonstrated one. The new guard turns it into a clear
+               message when it next fires; it does not stop it firing.
+               No live smoke: the fields are proven through the handler against a real DB, not
+               through the gateway from the UI.
+
+  DRIFT      — I had already written "the two PP-4 failures ARE caused by my change" and was
+               about to hunt the cause. HEAD was green once; my branch failed once; that is
+               n=1 on each side, and I have been burned by exactly that three times today.
+               Re-running settled it in the opposite direction.
+               The flake deserves its own note because of HOW it fails: `seedEntityOfKind`
+               reuses an existing `book_kinds` row without checking its `is_person`, and the
+               shared database keeps that row forever (cleanup deletes the entity, not the
+               kind). When they disagree the enrichment guard correctly returns 200 and the
+               assertion reports **"PP-4 BREACH"** — a privacy hole in production. A test that
+               misattributes its own state to a product defect costs more than the bug it was
+               written for, so the helper now fails with "FIXTURE STATE, NOT A PRODUCT DEFECT".
+
+  NEXT       — (C) is a product decision, deferred as 157. The parked test-suite work.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -1522,6 +1573,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **Wrote “this regression is mine” from one run against one run.** A full glossary package failed twice on my branch and passed at HEAD — n=1 each way. Re-running my branch came back clean: the two PP-4 tests are flaky. I had already drafted the attribution and would have gone hunting a bug that does not exist. |
 | 2026-08-01 | **Quoted a number I had not re-run.** The POC note said 809 leaked synopses; measuring properly gave 850. The figure had been carried forward from a one-off query into a defect list as if it were established. |
 | 2026-08-01 | **Moved a component off the legacy scalar and left half of it behind.** `checked` was switched to `guard_status`; the unchecked-REASON chain in the same file kept keying on `canon.status`, so every new status fell through to a branch that asserts “the canon service was unavailable”. I then wrote the gap up as “the FE renders nothing”, when it rendered a fabricated cause. |
 | 2026-08-01 | **Blamed my own call site before counting the others.** Asked whether the budget seam had rotted, I said the mechanism existed and my new call ignored it. Counting showed 28 of 30 call sites passed no signal, and that the VERDICT kind was hardcoded `base = 0.0` so no judge call COULD have carried any. A local explanation reached for before a systemic measurement. |

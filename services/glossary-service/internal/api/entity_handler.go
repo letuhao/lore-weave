@@ -347,6 +347,15 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 		// active genres. The set also decides which (kind × genre) attribute value rows
 		// are seeded (D-GKA-ENTITY-MULTIGENRE-VALUES — one per (genre, code)).
 		GenreIDs []string `json:"genre_ids"`
+		// D-GLOSS-CREATE-DROPS-DOCUMENTED-FIELDS (2026-08-01). The OpenAPI for this route
+		// documents display_name, status and tags; this struct carried none of them, so
+		// `json.Decode` discarded all three in silence. Measured: a create sending
+		// display_name returned 201 with a NAMELESS entity, and the caller had to write the
+		// name attribute by hand afterwards. An API that advertises what the engine does not
+		// wire is the no-silent-no-op rule, and 201 is the worst possible way to say "ignored".
+		DisplayName string   `json:"display_name"`
+		Status      string   `json:"status"`
+		Tags        []string `json:"tags"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.KindID == "" {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "kind_id is required")
@@ -356,6 +365,21 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "kind_id must be a UUID")
 		return
+	}
+
+	// Closed set, validated on write rather than trusted: the column has a CHECK and a bad
+	// value would surface as a 500 on insert instead of a 422 naming the field.
+	status := in.Status
+	if status == "" {
+		status = "draft"
+	}
+	if status != "draft" && status != "active" {
+		writeError(w, http.StatusUnprocessableEntity, "GLOSS_INVALID_BODY", "status must be draft or active")
+		return
+	}
+	tags := in.Tags
+	if tags == nil {
+		tags = []string{}
 	}
 
 	ctx := r.Context()
@@ -427,8 +451,8 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 	var entityIDStr string
 	if err := tx.QueryRow(ctx,
 		`INSERT INTO glossary_entities(book_id, kind_id, status, tags)
-		 VALUES($1,$2,'draft','{}') RETURNING entity_id`,
-		bookID, kindID,
+		 VALUES($1,$2,$3,$4) RETURNING entity_id`,
+		bookID, kindID, status, tags,
 	).Scan(&entityIDStr); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert entity failed")
 		return
@@ -497,6 +521,28 @@ func (s *Server) createEntity(w http.ResponseWriter, r *http.Request) {
 			entityIDStr, defID,
 		); err != nil {
 			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "insert attr value failed")
+			return
+		}
+	}
+
+	// D-GLOSS-CREATE-DROPS-DOCUMENTED-FIELDS — seed the NAME attribute from display_name.
+	// The name does not live on `glossary_entities`; it is an attribute value, which is why a
+	// create that "accepted" display_name could return 201 with a nameless entity and nobody
+	// noticed. `cached_name` is trigger-maintained from this row, so writing it here is what
+	// makes the entity findable by every downstream reader (the packer's `<present>` block
+	// renders `cached_name`, and an empty one is how a live probe ended up with an unjoinable
+	// cast). Best-effort by design: a kind with no `name` attribute (terminology identifies
+	// itself with `term`) is not an error, it simply has nowhere to put it.
+	if strings.TrimSpace(in.DisplayName) != "" {
+		if _, err := tx.Exec(ctx, `
+			UPDATE entity_attribute_values SET original_value=$3
+			WHERE entity_id=$1 AND attr_def_id = (
+			  SELECT ba.attr_id FROM book_attributes ba
+			  JOIN book_genres g ON g.genre_id = ba.genre_id
+			  WHERE ba.kind_id=$2 AND ba.code='name' AND ba.deprecated_at IS NULL
+			  ORDER BY (g.code='universal') DESC LIMIT 1)`,
+			entityUUID, kindID, strings.TrimSpace(in.DisplayName)); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "seed display_name failed")
 			return
 		}
 	}
