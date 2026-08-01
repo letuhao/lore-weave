@@ -56,8 +56,11 @@ from .extraction_preprocessor import prepare_chapter_text
 from .extraction_provenance import stamp_entity_provenance
 from .mention_count import count_entity_mentions
 from .extraction_strategy import (
+    CACHE_ALWAYS_REFRESH,
+    CACHE_PREFER_CACHE,
     SINGLE_CALL_DELTA,
     TWO_STAGE_SHAPES,
+    normalize_cache_policy,
     normalize as normalize_strategy,
     output_ceiling as strategy_output_ceiling,
     plan_batches as plan_batches_for_strategy,
@@ -367,6 +370,16 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     # BOOK_TO_GAME/15 — the prompt shape for this job. Absent on a message minted before the
     # field ⇒ 'batched', the shipped behaviour. An UNKNOWN value is refused rather than
     # defaulted: a job that silently ran the baseline would make an A/B report no difference.
+    # CACHE TRACEABILITY — when true, every batch ignores the cached parse and re-extracts,
+    # overwriting the stored row. This is the escape hatch for the case the cache key cannot
+    # cover: a caller who changed something the key does not know about (or who simply does
+    # not trust it) can always force the work.
+    # Default `refresh_if_stale`: reuse a cached batch only when everything the row records
+    # still matches. `prefer_cache` restores the old trust-the-key behaviour; `always_refresh`
+    # ignores the cache entirely. An unknown value raises rather than falling back, because a
+    # run the caller believed was fresh must never quietly be served from cache.
+    cache_policy = normalize_cache_policy(msg.get("cache_policy"))
+    force_refresh = cache_policy == CACHE_ALWAYS_REFRESH
     try:
         strategy = normalize_strategy(msg.get("extraction_strategy"))
     except ValueError:
@@ -464,6 +477,8 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     total_created = 0
     total_updated = 0
     total_skipped = 0
+    total_cached_batches = 0
+    total_executed_batches = 0
     # Seed token totals + completed/failed counts from the checkpoint so the columns
     # ACCUMULATE across redeliveries (the convergence-critical part — completed/failed
     # must reach total_chapters for the job to finalize). entity created/updated/skipped
@@ -590,6 +605,8 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 reasoning_effort=reasoning_effort,
                 concurrency=concurrency,
                 strategy=strategy,
+                force_refresh=force_refresh,
+                cache_policy=cache_policy,
                 pool=pool,
                 llm_client=llm_client,
             )
@@ -616,6 +633,8 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
             total_skipped += ch_skipped
             total_input_tokens += ch_input_tokens
             total_output_tokens += ch_output_tokens
+            total_cached_batches += int(result.get("cached_batches") or 0)
+            total_executed_batches += int(result.get("executed_batches") or 0)
             # bug #37 — realized LLM calls = one per executed batch (BatchOutcome row), the
             # same unit estimated_llm_calls counts. Advances the Jobs-GUI "done / total".
             total_llm_calls += len(result.get("batch_outcomes") or [])
@@ -655,11 +674,13 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 """UPDATE extraction_jobs
                    SET completed_chapters=$2, failed_chapters=$3,
                        entities_created=$4, entities_updated=$5, entities_skipped=$6,
-                       total_input_tokens=$7, total_output_tokens=$8
+                       total_input_tokens=$7, total_output_tokens=$8,
+                       cached_batches=$9, executed_batches=$10, force_refresh=$11
                    WHERE job_id=$1""",
                 job_id, completed, failed,
                 total_created, total_updated, total_skipped,
                 total_input_tokens, total_output_tokens,
+                total_cached_batches, total_executed_batches, force_refresh,
             )
 
         await publish_event(user_id, {
@@ -836,6 +857,8 @@ async def _process_extraction_chapter(
     reasoning_effort: str = "none",
     concurrency: int = 1,
     strategy: str = "batched",
+    force_refresh: bool = False,
+    cache_policy: str = "refresh_if_stale",
 ) -> dict:
     """Extract entities from a single chapter via LLM."""
     import time as _time
@@ -877,7 +900,8 @@ async def _process_extraction_chapter(
     chapter_text = prepare_chapter_text(chapter)
     if not chapter_text.strip():
         log.warning("extraction: chapter %s has no text content — skipping", chapter_id)
-        return {"created": 0, "updated": 0, "skipped": 0, "entities": [], "input_tokens": 0, "output_tokens": 0}
+        return {"created": 0, "updated": 0, "skipped": 0, "entities": [], "input_tokens": 0,
+                "output_tokens": 0, "cached_batches": 0, "executed_batches": 0}
 
     # Context-aware windowing (D-EXTRACTION-CONTEXT-WINDOW): split a chapter that exceeds
     # the model context into sub-chapter windows (whole paragraph blocks) that fit, then
@@ -910,7 +934,7 @@ async def _process_extraction_chapter(
     # were the eight-kind one — silently dropping five kinds and reporting zero tokens.
     # It also makes an A/B between two shapes on the same chapter impossible, which is what
     # this parameter exists for.
-    profile_hash = strategy_shape_hash(extraction_profile, strategy)
+    profile_hash = strategy_shape_hash(extraction_profile, strategy, kinds_metadata)
     all_kinds = sorted({k for batch in batches for k in batch})
     writeback_key = hashlib.sha256(
         "|".join([book_id, str(chapter_id), content_hash, ",".join(all_kinds), profile_hash]).encode("utf-8")
@@ -943,6 +967,11 @@ async def _process_extraction_chapter(
     # worker never read it (architecture §8.3). Consumed via `.get()` downstream
     # so it is additive/non-breaking on the chapter-result dict.
     batch_finish_reasons: list[dict] = []
+    # CACHE TRACEABILITY — how many batches were SERVED vs actually EXECUTED. Surfaced on
+    # the job so "completed, 0 tokens" is explained rather than mysterious, and so a user
+    # who re-ran after editing a kind definition can see whether their edit was honoured.
+    nonlocal_cache_hits: list[int] = []
+    nonlocal_cache_exec: list[int] = []
     # OBS/M2 — per-batch outcome rows (the SSOT, INV-F15). Each batch contributes one
     # row with its classified status so a silent all-rejected/truncated/errored batch is
     # no longer invisible; the chapter status is then DERIVED from these (not from a bare
@@ -1148,15 +1177,26 @@ async def _process_extraction_chapter(
             batch_idx=batch_idx, chunk_idx=window_idx, profile_hash=profile_hash,
             effort_band=_effort_band,
         )
-        cached = await get_cached_batch(pool, cache_key) if owner_user_id else None
+        # force_refresh skips the READ entirely. `_busted` below then makes the write
+        # OVERWRITE rather than DO-NOTHING, so a forced run actually replaces the stale row
+        # instead of re-spending tokens and discarding the result.
+        cached = (await get_cached_batch(pool, cache_key)
+                  if owner_user_id and not force_refresh else None)
         # D-CACHE-MODEL-KEY: opt-in bust-on-model-change. The cache is content-addressed (model
         # NOT in the key), so a hit may carry a DIFFERENT model's parse. When the flag is on, a
         # hit whose stored model_ref differs from the resolved model is treated as a miss → a live
         # re-extraction on the new model (default off keeps the content-addressed reuse). `_busted`
         # is threaded to put_batch so the live re-extraction OVERWRITES the stale row (the key has
         # no model, so a plain DO-NOTHING put could never refresh it → every run would re-bust).
-        _busted = False
-        if (cached is not None and settings.extraction_cache_bust_on_model_change
+        _busted = force_refresh
+        # Model drift is STALENESS. The key is content-addressed and deliberately excludes
+        # the model (D-CACHE-MODEL-KEY), so a hit can carry a different model's parse — which
+        # is precisely the silent substitution the default policy exists to stop. Under
+        # `refresh_if_stale` this check is unconditional; `prefer_cache` falls back to the
+        # deploy flag, i.e. the old behaviour, chosen explicitly.
+        _drift_matters = (cache_policy != CACHE_PREFER_CACHE
+                          or settings.extraction_cache_bust_on_model_change)
+        if (cached is not None and _drift_matters
                 and cached.get("model_ref") and model_ref
                 and str(cached["model_ref"]) != str(model_ref)):
             log.info("extraction: chapter %s call %d (win %d batch %d) — cache model %s ≠ current "
@@ -1165,6 +1205,7 @@ async def _process_extraction_chapter(
             cached = None
             _busted = True
         if cached is not None:
+            nonlocal_cache_hits.append(1)
             entities = cached["parsed_entities"]
             # Replay the cached batch outcome (status stored at first extraction); 0 NEW tokens
             # are spent (the cost was already paid + billed on the original run).
@@ -1178,6 +1219,7 @@ async def _process_extraction_chapter(
             return
 
         # 4. Build prompt
+        nonlocal_cache_exec.append(1)
         _block_hints = settings.extraction_evidence_block_hints
         schema = build_extraction_prompt(batch, extraction_profile, kinds_metadata, block_hints=_block_hints)
         system_prompt = build_system_prompt(
@@ -1432,6 +1474,8 @@ async def _process_extraction_chapter(
         log.info("extraction: chapter %s done in %.1fs — 0 entities (status=%s)",
                  chapter_id, _ch_elapsed, chapter_status)
         return {"created": 0, "updated": 0, "skipped": 0, "entities": [],
+                "cached_batches": len(nonlocal_cache_hits),
+                "executed_batches": len(nonlocal_cache_exec),
                 "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
                 "batch_finish_reasons": batch_finish_reasons,
                 "batch_outcomes": batch_outcomes, "chapter_status": chapter_status}
@@ -1456,6 +1500,8 @@ async def _process_extraction_chapter(
                     chapter_id, content_hash[:12], current_hash[:12],
                 )
                 return {"created": 0, "updated": 0, "skipped": 0, "entities": [],
+                        "cached_batches": len(nonlocal_cache_hits),
+                        "executed_batches": len(nonlocal_cache_exec),
                         "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
                         "batch_finish_reasons": batch_finish_reasons,
                         "batch_outcomes": batch_outcomes, "chapter_status": chapter_status,
@@ -1502,4 +1548,9 @@ async def _process_extraction_chapter(
     upsert_result["batch_finish_reasons"] = batch_finish_reasons
     upsert_result["batch_outcomes"] = batch_outcomes
     upsert_result["chapter_status"] = chapter_status
+    # CACHE TRACEABILITY — carried up so the job row can say how much of the run was served
+    # rather than executed. Without it "completed, 0 tokens" is indistinguishable from a
+    # broken run, and a re-extraction after a definition edit gives the user no signal at all.
+    upsert_result["cached_batches"] = len(nonlocal_cache_hits)
+    upsert_result["executed_batches"] = len(nonlocal_cache_exec)
     return upsert_result

@@ -24,12 +24,17 @@ from app.workers.extraction_strategy import (
     EDC_CITED,
     SINGLE_CALL,
     SINGLE_CALL_DELTA,
+    CACHE_ALWAYS_REFRESH,
+    CACHE_POLICIES,
+    CACHE_PREFER_CACHE,
+    CACHE_REFRESH_IF_STALE,
     ONE_RESPONSE_SHAPES,
     PLANNED,
     SINGLE_CALL_SHAPES,
     TWO_STAGE_SHAPES,
     STRATEGIES,
     normalize,
+    normalize_cache_policy,
     output_ceiling,
     plan_batches,
     shape_hash,
@@ -236,3 +241,74 @@ def test_a_changed_profile_still_changes_the_key():
     """The property the field originally existed for must survive the addition."""
     other = {**PROFILE, "character": {"name": "default"}}
     assert _profile_hash(other, BATCHED) != _profile_hash(PROFILE, BATCHED)
+
+
+def test_changing_a_kind_DESCRIPTION_changes_the_cache_key():
+    """Descriptions are rendered into the prompt, so editing one changes the answer.
+
+    Keyed only on the profile, the cache served the pre-edit parse — and worse, made the
+    edit unmeasurable: you cannot re-run a chapter to see whether a better definition
+    helped if the answer comes from before you wrote it. Found while trying to test exactly
+    that, on the same day the identical gap was fixed for `strategy`.
+    """
+    bare = [{"code": "power_system", "description": None, "attributes": []}]
+    defined = [{"code": "power_system",
+                "description": "A named TECHNIQUE... NOT the object used to perform it.",
+                "attributes": []}]
+    assert shape_hash(PROFILE, BATCHED, bare) != shape_hash(PROFILE, BATCHED, defined)
+
+
+def test_changing_an_ATTRIBUTE_description_changes_the_cache_key():
+    a = [{"code": "item", "description": "d", "attributes": [{"code": "type", "description": None}]}]
+    b = [{"code": "item", "description": "d",
+          "attributes": [{"code": "type", "description": "weapon, treasure, talisman"}]}]
+    assert shape_hash(PROFILE, BATCHED, a) != shape_hash(PROFILE, BATCHED, b)
+
+
+def test_identical_definitions_still_hit_the_cache():
+    """Vacuity guard — otherwise every run would miss and the two tests above would pass
+    for the wrong reason."""
+    m = [{"code": "item", "description": "d", "attributes": [{"code": "type", "description": "x"}]}]
+    assert shape_hash(PROFILE, BATCHED, m) == shape_hash(PROFILE, BATCHED, list(m))
+
+
+# ── cache policy ─────────────────────────────────────────────────────────────
+
+def test_the_default_policy_is_the_CORRECT_one_not_the_cheap_one():
+    """This is the whole design decision.
+
+    The cache could serve an entire job at zero tokens and nothing said so. Two dimensions
+    of its key were found missing in one day — the strategy, then the kind/attribute
+    descriptions — and each made a re-extraction after an edit silently return the parse
+    from before that edit. The answer cannot be "remember every dimension", so the DEFAULT
+    refreshes when anything looks stale and reuse is an explicit choice.
+    """
+    assert normalize_cache_policy(None) == CACHE_REFRESH_IF_STALE
+    assert normalize_cache_policy("") == CACHE_REFRESH_IF_STALE
+
+
+def test_all_three_policies_exist_and_are_distinct():
+    assert CACHE_POLICIES == {CACHE_REFRESH_IF_STALE, CACHE_PREFER_CACHE, CACHE_ALWAYS_REFRESH}
+    assert len(CACHE_POLICIES) == 3
+
+
+def test_an_unknown_policy_RAISES_rather_than_defaulting():
+    """A typo must not quietly become a policy the caller did not choose — in either
+    direction. Falling back to `prefer_cache` would serve stale silently; falling back to
+    `always_refresh` would burn tokens the caller did not agree to spend."""
+    with pytest.raises(ValueError) as exc:
+        normalize_cache_policy("use_cache_pls")
+    assert "use_cache_pls" in str(exc.value)
+    for p in CACHE_POLICIES:
+        assert p in str(exc.value)
+
+
+def test_policy_names_are_not_interchangeable_with_strategy_names():
+    """They travel together on one request; a value valid for one must not pass for the
+    other, or a caller could set a cache policy and get a prompt shape."""
+    for p in CACHE_POLICIES:
+        with pytest.raises(ValueError):
+            normalize(p)
+    for s in STRATEGIES:
+        with pytest.raises(ValueError):
+            normalize_cache_policy(s)

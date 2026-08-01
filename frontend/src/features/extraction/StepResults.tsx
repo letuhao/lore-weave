@@ -117,6 +117,51 @@ export function StepResults({ jobStatus, costEstimate, onClose, onViewGlossary, 
             </p>
           )}
         </div>
+
+        {/* CACHE TRACEABILITY. A run served entirely from cache costs zero tokens, which
+            used to render as "completed, 0 tokens" with nothing to explain it — and left a
+            user who had just edited a kind definition unable to tell whether the edit was
+            honoured or the answer predated it. Now it says so. */}
+        {s.cache && s.cache.cached_batches + s.cache.executed_batches > 0 && (
+          <div
+            className="mt-2 border-t pt-2 text-[10px]"
+            data-testid="extraction-cache-stats"
+          >
+            {s.cache.cached_batches === 0 ? (
+              <span className="text-muted-foreground">
+                {t('results.cacheAllFresh', {
+                  defaultValue: 'All {{n}} batches were extracted fresh.',
+                  n: s.cache.executed_batches,
+                })}
+              </span>
+            ) : (
+              <span
+                className={
+                  s.cache.served_from_cache_pct >= 50
+                    ? 'text-amber-500 font-medium'
+                    : 'text-muted-foreground'
+                }
+              >
+                {t('results.cacheServed', {
+                  defaultValue:
+                    '{{pct}}% of this run ({{cached}} of {{total}} batches) was REUSED from a previous extraction, not re-read.',
+                  pct: s.cache.served_from_cache_pct,
+                  cached: s.cache.cached_batches,
+                  total: s.cache.cached_batches + s.cache.executed_batches,
+                })}{' '}
+                {t('results.cacheRerunHint', {
+                  defaultValue:
+                    'If you changed a kind definition since then, re-run with "Always re-extract".',
+                })}
+              </span>
+            )}
+            {s.cache.force_refresh && (
+              <span className="ml-1 text-muted-foreground">
+                {t('results.cacheForced', { defaultValue: '(cache was bypassed by request)' })}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Draft note */}

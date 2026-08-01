@@ -652,13 +652,19 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 	defer tx.Rollback(ctx)
 
 	for _, k := range domain.DefaultKinds {
-		// DO NOTHING (not DO UPDATE) so an author's customized default kind is never
-		// clobbered; then read the id (whether just-inserted or pre-existing) for attrs.
+		// The row is never clobbered — the DO UPDATE below is guarded to fire ONLY when
+		// `description` is still empty, so an author's customized default kind keeps its
+		// name/icon/colour and a pre-existing catalogue simply gains the definition it
+		// never had. That guard is why this is an UPDATE at all: `description` was added
+		// to SeedKind on 2026-08-01, and every already-seeded database has NULLs that a
+		// plain DO NOTHING could never fill. Then read the id for attrs.
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO system_kinds(code, name, icon, color, is_default, is_hidden, sort_order)
-			VALUES ($1,$2,$3,$4,true,false,$5)
-			ON CONFLICT (code) DO NOTHING`,
-			k.Code, k.Name, k.Icon, k.Color, k.SortOrder,
+			INSERT INTO system_kinds(code, name, description, icon, color, is_default, is_hidden, sort_order)
+			VALUES ($1,$2,$3,$4,$5,true,false,$6)
+			ON CONFLICT (code) DO UPDATE
+			   SET description = EXCLUDED.description
+			 WHERE system_kinds.description IS NULL OR system_kinds.description = ''`,
+			k.Code, k.Name, k.Description, k.Icon, k.Color, k.SortOrder,
 		); err != nil {
 			return fmt.Errorf("seed kind %s: %w", k.Code, err)
 		}
@@ -671,10 +677,12 @@ func Seed(ctx context.Context, pool *pgxpool.Pool) error {
 
 		for _, a := range k.Attrs {
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO system_kind_attributes(kind_id, code, name, field_type, is_required, is_system, sort_order)
-				VALUES ($1,$2,$3,$4,$5,true,$6)
-				ON CONFLICT (kind_id, code) DO NOTHING`,
-				kindID, a.Code, a.Name, a.FieldType, a.IsRequired, a.SortOrder,
+				INSERT INTO system_kind_attributes(kind_id, code, name, description, field_type, is_required, is_system, sort_order)
+				VALUES ($1,$2,$3,$4,$5,$6,true,$7)
+				ON CONFLICT (kind_id, code) DO UPDATE
+				   SET description = EXCLUDED.description
+				 WHERE system_kind_attributes.description IS NULL OR system_kind_attributes.description = ''`,
+				kindID, a.Code, a.Name, a.Description, a.FieldType, a.IsRequired, a.SortOrder,
 			); err != nil {
 				return fmt.Errorf("seed attr %s.%s: %w", k.Code, a.Code, err)
 			}

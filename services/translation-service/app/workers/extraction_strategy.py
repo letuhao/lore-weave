@@ -119,7 +119,8 @@ def normalize(value: object) -> str:
     return s
 
 
-def shape_hash(extraction_profile: dict, strategy: str) -> str:
+def shape_hash(extraction_profile: dict, strategy: str,
+               kinds_metadata: list[dict] | None = None) -> str:
     """The cache/writeback key component that identifies WHAT a `batch_idx` names.
 
     Lives here, and is called by the worker, so a test can bind to the real computation.
@@ -137,7 +138,58 @@ def shape_hash(extraction_profile: dict, strategy: str) -> str:
     import hashlib
     import json
 
+    # The kind and attribute DESCRIPTIONS are part of it too. They are rendered straight
+    # into the prompt — the kind's own line, and `- <code> (<type>): <description>` —
+    # so editing one changes what comes back — and keying only on the profile meant the
+    # cache served the pre-edit parse, which is the same collision the strategy had. It
+    # also made the edit UNMEASURABLE: you cannot re-run a chapter to see whether a better
+    # definition helped if the answer is served from before you wrote it.
+    defs = ""
+    if kinds_metadata:
+        defs = json.dumps(
+            [[k.get("code"), k.get("description") or "",
+              [[a.get("code"), a.get("description") or "", a.get("auto_fill_prompt") or ""]
+               for a in (k.get("attributes") or [])]]
+             for k in kinds_metadata],
+            sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(
         (json.dumps(extraction_profile, sort_keys=True, ensure_ascii=False)
-         + "|strategy=" + strategy).encode("utf-8")
+         + "|strategy=" + strategy + "|defs=" + defs).encode("utf-8")
     ).hexdigest()
+
+
+# ── Cache policy (2026-08-01) ────────────────────────────────────────────────
+#
+# The raw-output cache can serve an entire job at ZERO tokens, and until now that was both
+# INVISIBLE and UNCONDITIONAL. Two dimensions of its key were found missing on a single day
+# — the extraction strategy, then the kind/attribute descriptions — and each produced the
+# same silent failure: a user edits a kind definition, re-extracts, and is served the parse
+# from before the edit, with nothing in the UI to say so.
+#
+# The lesson is not "remember every dimension". It is that the DEFAULT must be correctness
+# and the state must be visible. So the default policy REFRESHES when anything the job can
+# see has changed, and the caller may opt back into reuse deliberately.
+
+#: Default. Reuse a cached batch only when every dimension the row records still matches —
+#: including the model, which the content-addressed key deliberately excludes. Anything else
+#: re-extracts.
+CACHE_REFRESH_IF_STALE: Final = "refresh_if_stale"
+#: Reuse whatever the key matches, model drift included. The old behaviour, now explicit.
+CACHE_PREFER_CACHE: Final = "prefer_cache"
+#: Ignore the cache entirely and overwrite it. The escape hatch for a change the key cannot
+#: see — a reworded prompt template, a provider-side model update, or simple distrust.
+CACHE_ALWAYS_REFRESH: Final = "always_refresh"
+
+CACHE_POLICIES: Final[frozenset[str]] = frozenset(
+    {CACHE_REFRESH_IF_STALE, CACHE_PREFER_CACHE, CACHE_ALWAYS_REFRESH}
+)
+
+
+def normalize_cache_policy(value: object) -> str:
+    """Closed set, and an unknown value RAISES — same reason as `normalize`. A typo that
+    quietly fell back would make a run that the caller believed was fresh serve cache."""
+    s = str(value or "").strip().lower() or CACHE_REFRESH_IF_STALE
+    if s not in CACHE_POLICIES:
+        raise ValueError(
+            f"unknown cache_policy {s!r} — expected one of {sorted(CACHE_POLICIES)}")
+    return s

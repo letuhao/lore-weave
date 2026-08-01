@@ -278,6 +278,18 @@ ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS cost_usd NUMERIC;
 -- Closed set, validated at the router: batched | single_call | single_call_delta | edc_cited.
 -- Default 'batched' = the shipped 3-batch shape ⇒ zero behavior change for existing rows.
 ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS extraction_strategy TEXT NOT NULL DEFAULT 'batched';
+-- CACHE TRACEABILITY. The raw-output cache can serve an entire job at ZERO tokens, and
+-- until now that was invisible: the GUI showed "completed, 0 tokens" with no explanation,
+-- and a user who had just edited a kind definition and re-run had no way to tell whether
+-- their edit had been honoured or silently served from before it. Two dimensions of the
+-- cache key were found missing in one day (the extraction strategy, then the kind/attribute
+-- descriptions), each producing exactly that silent failure — so the answer cannot be
+-- "remember every dimension". It has to be VISIBLE, and it has to be OVERRIDABLE.
+ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS cached_batches   INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS executed_batches INTEGER NOT NULL DEFAULT 0;
+-- Caller asked to ignore the cache and re-extract. Recorded on the row so a later reader
+-- can tell a cheap run from a forced one.
+ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS force_refresh BOOLEAN NOT NULL DEFAULT false;
 CREATE INDEX IF NOT EXISTS idx_ej_owner ON extraction_jobs(owner_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ej_book  ON extraction_jobs(book_id, created_at DESC);
 
