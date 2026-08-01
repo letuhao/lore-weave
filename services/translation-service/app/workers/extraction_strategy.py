@@ -44,22 +44,33 @@ SINGLE_CALL_DELTA: Final = "single_call_delta"
 EDC_CITED: Final = "edc_cited"
 
 #: What the WORKER actually implements. The API advertises only this — a strategy the
-#: engine does not wire must not be accepted, or it runs as the default and the A/B reports
-#: "no difference" from a control compared against itself. Caught in the live smoke exactly
-#: that way: `edc_cited` and `batched` both cost ZERO tokens on the same chapter, because
-#: they produced the same cache key, because they were the same shape.
-STRATEGIES: Final[frozenset[str]] = frozenset({BATCHED, SINGLE_CALL, SINGLE_CALL_DELTA})
+#: engine does not wire must not be accepted, or it runs as the default and an A/B reports
+#: "no difference" from a control compared against itself. That is not hypothetical: before
+#: `edc_cited` was wired it was accepted and fell through to `batched`, and the live smoke
+#: caught it because both cost ZERO tokens on the same chapter — same cache key, because
+#: same shape.
+STRATEGIES: Final[frozenset[str]] = frozenset(
+    {BATCHED, SINGLE_CALL, SINGLE_CALL_DELTA, EDC_CITED}
+)
 
-#: Declared, measured in the POC, NOT yet wired in the worker (it needs a two-stage call
-#: flow, not just a different batching). Named here so the name is stable and the intent is
-#: recorded — and refused at the boundary until the engine catches up.
-PLANNED: Final[frozenset[str]] = frozenset({EDC_CITED})
+#: Declared but not yet implemented. Empty today; kept as the mechanism, because the
+#: alternative — quietly accepting a name the engine ignores — is the failure above.
+PLANNED: Final[frozenset[str]] = frozenset()
 
-#: Shapes that issue ONE call carrying every kind. They need a larger output ceiling than
-#: the per-batch one, because a single response must hold every kind's entities — which is
-#: the very thing `MAX_KINDS_PER_BATCH` was introduced to avoid, so raising the ceiling is
-#: part of the shape and not a tuning knob.
-SINGLE_CALL_SHAPES: Final[frozenset[str]] = frozenset({SINGLE_CALL, SINGLE_CALL_DELTA})
+#: Shapes whose ONE response carries every kind. They need a larger output ceiling than the
+#: per-batch one, because a single response must hold every kind's entities — which is the
+#: very thing `MAX_KINDS_PER_BATCH` was introduced to avoid, so raising the ceiling is part
+#: of the shape and not a tuning knob. `edc_cited` qualifies: its second stage is one call
+#: over all kinds.
+ONE_RESPONSE_SHAPES: Final[frozenset[str]] = frozenset(
+    {SINGLE_CALL, SINGLE_CALL_DELTA, EDC_CITED}
+)
+#: Back-compat alias — the older name described the same set before `edc_cited` joined it.
+SINGLE_CALL_SHAPES: Final[frozenset[str]] = ONE_RESPONSE_SHAPES
+
+#: Shapes that run a SWEEP first and then type from its citations rather than from the
+#: chapter a second time (BOOK_TO_GAME/15 §6b-6c, A9).
+TWO_STAGE_SHAPES: Final[frozenset[str]] = frozenset({EDC_CITED})
 
 
 def plan_batches(strategy: str, extraction_profile: dict, kinds_metadata: list[dict]) -> list[list[str]]:
@@ -75,7 +86,7 @@ def plan_batches(strategy: str, extraction_profile: dict, kinds_metadata: list[d
     """
     from .extraction_prompt import find_kind, plan_kind_batches
 
-    if strategy in SINGLE_CALL_SHAPES:
+    if strategy in ONE_RESPONSE_SHAPES:
         return [[k for k in extraction_profile if find_kind(kinds_metadata, k)]]
     return plan_kind_batches(extraction_profile, kinds_metadata)
 
@@ -84,7 +95,7 @@ def output_ceiling(strategy: str, per_batch: int, single_call: int) -> int:
     """The output cap a strategy needs. A single-call shape must hold every kind's
     entities in one response, so the per-batch cap would truncate it — and a truncated
     response is how the original bug lost an entire batch silently."""
-    return single_call if strategy in SINGLE_CALL_SHAPES else per_batch
+    return single_call if strategy in ONE_RESPONSE_SHAPES else per_batch
 
 
 def normalize(value: object) -> str:

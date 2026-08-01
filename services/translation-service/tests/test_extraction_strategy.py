@@ -24,8 +24,10 @@ from app.workers.extraction_strategy import (
     EDC_CITED,
     SINGLE_CALL,
     SINGLE_CALL_DELTA,
+    ONE_RESPONSE_SHAPES,
     PLANNED,
     SINGLE_CALL_SHAPES,
+    TWO_STAGE_SHAPES,
     STRATEGIES,
     normalize,
     output_ceiling,
@@ -52,22 +54,16 @@ PROFILE = {k["code"]: {a["code"]: "default" for a in k["attributes"]} for k in K
 # ── the closed set ───────────────────────────────────────────────────────────
 
 def test_the_advertised_set_is_exactly_what_the_worker_implements():
-    assert STRATEGIES == {BATCHED, SINGLE_CALL, SINGLE_CALL_DELTA}
+    assert STRATEGIES == {BATCHED, SINGLE_CALL, SINGLE_CALL_DELTA, EDC_CITED}
 
 
-def test_a_PLANNED_strategy_is_refused_rather_than_run_as_the_default():
-    """No-silent-no-op: the API advertises only what the engine wires.
-
-    Found in the live smoke, not by reading. `edc_cited` was accepted while the worker had
-    no two-stage path, so it fell through to the default batching — and the proof was that
-    it and `batched` both cost ZERO tokens on the same chapter, having produced the same
-    extraction-cache key because they were the same shape. An A/B on that would have
-    compared the control against itself and reported no difference.
-    """
-    assert EDC_CITED in PLANNED and EDC_CITED not in STRATEGIES
+def test_the_PLANNED_mechanism_still_refuses_even_though_the_set_is_empty():
+    """PLANNED is empty now that edc_cited is wired, but the GATE must survive — it is what
+    stops the next declared-but-unwired name from silently running as the default. Proven
+    by feeding the check a name that is in neither set."""
     with pytest.raises(ValueError) as exc:
-        normalize(EDC_CITED)
-    assert "NOT YET WIRED" in str(exc.value)
+        normalize("some_future_shape")
+    assert "unknown extraction_strategy" in str(exc.value)
 
 
 def test_planned_and_implemented_never_overlap():
@@ -104,7 +100,7 @@ def test_the_single_call_set_is_NON_EMPTY():
     the set turned four assertions into two skips. NV-3, the scope-never-reaches-it shape.
     """
     assert SINGLE_CALL_SHAPES, "SINGLE_CALL_SHAPES is empty — the parametrized tests below cover nothing"
-    assert len(SINGLE_CALL_SHAPES) == 2
+    assert len(SINGLE_CALL_SHAPES) == 3  # single_call, single_call_delta, edc_cited
 
 
 # ── batching ─────────────────────────────────────────────────────────────────
@@ -170,11 +166,32 @@ def test_only_the_delta_shape_is_named_delta():
     assert SINGLE_CALL != SINGLE_CALL_DELTA
 
 
-def test_edc_is_declared_but_not_a_single_call_shape():
-    """`edc_cited` is two calls by construction, so when it IS wired it must not pick up
-    the single-call batching or ceiling by accident."""
-    assert EDC_CITED in PLANNED
-    assert EDC_CITED not in SINGLE_CALL_SHAPES
+def test_edc_is_wired_and_gets_the_one_response_treatment():
+    """`edc_cited` is TWO calls, but its second one carries every kind — so it needs the
+    same one-batch plan and raised ceiling as the single-call shapes, and additionally the
+    sweep pre-pass."""
+    assert EDC_CITED in STRATEGIES and EDC_CITED not in PLANNED
+    assert EDC_CITED in ONE_RESPONSE_SHAPES
+    assert EDC_CITED in TWO_STAGE_SHAPES
+    assert len(plan_batches(EDC_CITED, PROFILE, KINDS)) == 1
+    assert output_ceiling(EDC_CITED, 8000, 24000) == 24000
+
+
+def test_only_edc_is_two_stage():
+    """The sweep costs an extra call per window; no other shape may pick it up silently."""
+    assert TWO_STAGE_SHAPES == {EDC_CITED}
+    for s in (BATCHED, SINGLE_CALL, SINGLE_CALL_DELTA):
+        assert s not in TWO_STAGE_SHAPES
+
+
+def test_nothing_is_advertised_that_the_engine_does_not_implement():
+    """The no-silent-no-op rule, now that PLANNED is empty: every advertised strategy must
+    be one the worker actually branches on. This is the assertion that reds if someone adds
+    a name to STRATEGIES before wiring it."""
+    assert not (PLANNED & STRATEGIES)
+    for s in STRATEGIES:
+        assert s in ONE_RESPONSE_SHAPES or s == BATCHED, (
+            f"{s} is advertised but matches no implemented shape")
 
 
 # ── the cache key must separate the shapes ───────────────────────────────────

@@ -57,6 +57,7 @@ from .extraction_provenance import stamp_entity_provenance
 from .mention_count import count_entity_mentions
 from .extraction_strategy import (
     SINGLE_CALL_DELTA,
+    TWO_STAGE_SHAPES,
     normalize as normalize_strategy,
     output_ceiling as strategy_output_ceiling,
     plan_batches as plan_batches_for_strategy,
@@ -64,11 +65,14 @@ from .extraction_strategy import (
 )
 from .extraction_prompt import (
     DELTA_INSTRUCTION,
+    build_cited_user_prompt,
     build_extraction_prompt,
+    build_sweep_system_prompt,
     build_known_entities_context,
     build_system_prompt,
     build_user_prompt,
     parse_and_validate_with_stats,
+    parse_sweep_mentions,
 )
 from .glossary_client import (
     fetch_known_entities,
@@ -1065,6 +1069,58 @@ async def _process_extraction_chapter(
     # independently. `window_text` replaces the whole-chapter text in the prompt.
     total_calls = len(windows) * len(batches)
 
+    # ── `edc_cited` stage 1: sweep for named mentions + a verbatim quote ──────────────
+    #
+    # One cheap call per window that finds and CITES, and does not classify or describe.
+    # Stage 2 then types from those citations instead of re-reading the chapter, which is
+    # where the saving comes from. Measured (BOOK_TO_GAME/15 §6b): grounded 92.6% against
+    # a baseline 80.1%, +63% new entities per chapter, and the only shape that abandons no
+    # kind — because the sweep's naming rule is split by category, verbatim for the things
+    # that have names and COMPOSED for events, which have none (`BTG-A55`).
+    _sweep_cache: dict[int, list[tuple[str, str]]] = {}
+    if strategy in TWO_STAGE_SHAPES:
+        sweep_system = build_sweep_system_prompt(source_language)
+        for _wi, _wtext in enumerate(windows):
+            try:
+                _job = await llm_client.submit_and_wait(
+                    user_id=str(owner_user_id), operation="chat",
+                    model_source=model_source, model_ref=str(model_ref),
+                    input={
+                        "messages": [
+                            {"role": "system", "content": sweep_system},
+                            {"role": "user", "content": build_user_prompt(_wtext)},
+                        ],
+                        "temperature": 0.1,
+                        "max_tokens": _EXTRACTION_OUTPUT_CEILING,
+                        **reasoning_fields(ReasoningDirective(
+                            effort=reasoning_effort, passthrough=False, source="user")),
+                    },
+                    chunking=None,
+                    job_meta={
+                        "usage_purpose": "glossary_extraction",
+                        "extractor": "glossary_sweep",
+                        "extraction_job_id": str(job_id),
+                        "chapter_id": str(chapter_id),
+                    },
+                    transient_retry_budget=1,
+                )
+                _res = (_job.result or {}) if hasattr(_job, "result") else {}
+                _usage = _res.get("usage") or {}
+                total_input_tokens += _usage.get("input_tokens") or 0
+                total_output_tokens += _usage.get("output_tokens") or 0
+                _msgs = _res.get("messages") or []
+                _sweep_cache[_wi] = parse_sweep_mentions(
+                    (_msgs[0].get("content") if _msgs else "") or "")
+                log.info("extraction: chapter %s window %d — sweep found %d mention(s)",
+                         chapter_id, _wi, len(_sweep_cache[_wi]))
+            except Exception as exc:  # noqa: BLE001 — one window must not lose the chapter
+                log.warning("extraction: chapter %s window %d — sweep failed: %s",
+                            chapter_id, _wi, exc)
+                _sweep_cache[_wi] = []
+        # The sweep is a real LLM call per window, so the chapter's call budget grew.
+        total_calls += len(windows)
+
+
     # D-EXTRACTION-BATCH-CONCURRENCY — the per-(window,batch) unit body, extracted into a
     # coroutine so the units can run CONCURRENTLY under a semaphore (see the driver below).
     # asyncio is single-threaded, so the shared collectors mutate safely between awaits;
@@ -1130,7 +1186,23 @@ async def _process_extraction_chapter(
             known_entities_context=known_ctx,
             max_entities_per_kind=max_entities_per_kind,
         )
-        user_prompt = build_user_prompt(window_text, block_hints=_block_hints)
+        # `edc_cited` stage 2 reads the CITATIONS stage 1 produced, not the chapter again.
+        # Re-sending the chapter is the entire cost premium the two-stage shape exists to
+        # avoid (~5,300 tokens/chapter measured), and typing measured BETTER from a name
+        # plus one focused sentence than from the whole narrative.
+        if strategy in TWO_STAGE_SHAPES:
+            cited = _sweep_cache.get(window_idx) or []
+            if not cited:
+                # Stage 1 produced nothing usable. Emitting the chapter here would silently
+                # turn this into the one-call shape and report it as the two-stage one.
+                _record_outcome(call_idx, batch, "sweep_empty", entities_found=0)
+                log.warning("extraction: chapter %s window %d — stage-1 sweep produced no "
+                            "mentions; skipping stage 2 (this is a PARSE result, not an "
+                            "extraction result)", chapter_id, window_idx)
+                return
+            user_prompt = build_cited_user_prompt(cited)
+        else:
+            user_prompt = build_user_prompt(window_text, block_hints=_block_hints)
 
         # 5. LLM call via SDK (replaces /internal/invoke).
         # Phase 4c-γ: HIGH#1 lesson from cycle 11 applied — catch
