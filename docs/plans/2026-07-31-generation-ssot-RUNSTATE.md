@@ -544,6 +544,45 @@ not otherwise touched, which is why it is checkpointed here rather than started 
 glossary, and the JSON kinds each needing their own sizing model (the spec is explicit that
 `prose` is mechanical and the rest are not — v1's “mechanical once the function exists” was wrong).
 
+### ✅ S7 slice 1 — the distill window and the distill cap were two numbers for one decision
+
+```
+AUDIT S7-1
+  BUILT      — `OUTPUT_RESERVE_TOKENS` and `DISTILL_MAX_TOKENS` are now ONE constant.
+               `distiller.py` owns it (`distill_job` already imports from there — the reverse
+               is a measured `ImportError: partially initialized module`), and `distill_job`
+               re-exports rather than restating it.
+
+  PROVEN     — worker-ai `504 passed` (502 before, +2).
+               The overflow, computed for both versions:
+                 ctx      OLD(reserve=2048)          NEW(reserve=4096)
+                 8192     win=4096  tot=10240 OVER   win=2048  tot=8192  ok
+                 16384    win=12000 tot=18144 OVER   win=10240 tot=16384 ok
+                 32768    win=12000 tot=18144 ok     win=12000 tot=18144 ok
+               An 8k-context BYOK model was budgeted chunk+prompt+output = 10240 against an
+               8192 window — exceeding it by 2048, which is the exact overflow
+               `resolve_distill_window` was written to prevent, on exactly the models it names.
+
+  NOT PROVEN — ctx=4096 STILL overflows (tot=7144) and this slice does not fix it:
+               `MIN_WINDOW_TOKENS = 1000` floors the chunk, so a 4k model cannot fit
+               prompt+output+a-usable-chunk at all. The floor deliberately wins ("a tiny model
+               gets the largest chunk that fits, floored") — the honest statement is that a
+               4k-context distill model is unsupported, and nothing SAYS that anywhere.
+               No live run: this is a constant-arithmetic fix on a path that needs a real
+               diary-distill job to exercise, and the arithmetic is pinned by a test that
+               derives from the constants instead of restating them.
+
+  DRIFT      — the existing test asserted `8_000 - 2_048 - 2_048`, restating both constants.
+               When the reserve changed it went red — for PINNING THE BUG. I nearly read that
+               red as "my fix is wrong" instead of "the test hardcoded the defect", which is
+               the same shape as the motif tests that asserted the removed i18n behaviour, two
+               slices ago, in this same session.
+
+  NEXT       — S7 slices 2-4, still untouched and unmeasured: ABSENT `max_tokens` (glossary's
+               Go tools, tilemap), ZERO `finish_reason == "length"` checks anywhere in
+               glossary, and per-kind sizing models for the JSON kinds.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -626,6 +665,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
 | 2026-08-01 | **Wrote a diagnosis into the handoff from ONE error message.** Told the next session "CI red = 33 failures, one root, `language`→`original_language`, a mechanical sweep". There were **three** roots — a fastapi 0.139 `app.routes` change across two services, a pip editable path resolving outside the checkout, and the rename — and the rename half needed a SEMANTIC rewrite because the identity key had changed too. I had read one traceback and generalised, which is the §1.4 mistake the red team already caught me making twice. |
+| 2026-08-01 | **Nearly read a red test as “my fix is wrong” when it was pinning the bug.** `test_window_shrinks_for_a_small_context_model` restated `8_000 - 2_048 - 2_048`; raising the output reserve to match the request cap made it fail. Same shape as the motif tests asserting the removed i18n behaviour, two slices earlier in this same run. |
 | 2026-08-01 | **Counted `call_budget` call sites with a regex that also matched `per_call_budget` and a stale `sdks/python/build/lib/` copy** — 4 “unclamped” sites, all four phantom. Then read the two real ones and found the spec's claim (“two clamp, two do not”) was itself wrong: the unclamped ones are `OutputKind.MIRROR`, where clamping would be the bug. Nearly “fixed” correct code on the strength of a spec sentence. |
 | 2026-08-01 | **Wrote a checker that silently halved its own input — inside the gate whose docstring records that exact failure.** The S12 generalisation matched only repo-relative markdown link targets; the standards index lives at `docs/standards/` so nearly all its links are `../../…`. It found 43 paths and printed “0 missing” while never examining a single doc link. The fix took it to 91. |
 | 2026-08-01 | **Wrote a fixture that asserted the opposite of its own name.** The “content lost while the budget reads fine” case used a 401-token protected floor against a 200-token budget, so both halves were over-budget. It failed loudly — the only reason I noticed. Written the other way round it would have PASSED and pinned the very semantic inversion S8 exists to correct. |

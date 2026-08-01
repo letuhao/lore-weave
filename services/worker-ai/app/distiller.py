@@ -59,7 +59,20 @@ GIANT_PASTE_TOKENS = 40_000
 # shrinks the window to fit the RESOLVED model's context length: window = min(12k, ctx − overhead − reserve),
 # floored so a tiny model still gets a usable chunk. A None/unknown ctx keeps the 12k default (per the seal).
 PROMPT_OVERHEAD_TOKENS = 2_048   # the extraction system prompt + instructions wrapped around each chunk
-OUTPUT_RESERVE_TOKENS = 2_048    # room for the generated diary entry + facts (the map/reduce output)
+# S7 — the OUTPUT reserve must be the output CAP. These were two independent numbers for one
+# decision and they disagreed by 2x: the window was sized reserving 2048 for output, and
+# `make_distill_llm` then permitted `DISTILL_MAX_TOKENS = 4096`. On a small-context BYOK model —
+# exactly what `resolve_distill_window` was written to protect — chunk + prompt + output could
+# therefore exceed the window, which is the overflow it exists to prevent.
+#
+# ONE constant, defined HERE because `distill_job` already imports from this module (the
+# reverse direction is a cycle — measured, `ImportError: cannot import name 'DayMessage' from
+# partially initialized module`). `distill_job.DISTILL_MAX_TOKENS` now re-exports this rather
+# than restating it, so the reserve and the cap cannot drift apart again.
+#
+# Raising the reserve 2048 -> 4096 SHRINKS the input chunk on a tight model. That is the honest
+# reservation: under-reserving is what produced the bug.
+OUTPUT_RESERVE_TOKENS = 4_096    # room for the generated diary entry + facts, AND the request cap
 MIN_WINDOW_TOKENS = 1_000        # never shrink below this — a sub-1k window would fragment a day absurdly
 
 

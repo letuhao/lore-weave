@@ -14,7 +14,12 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 `S2 ✅` → `S8 ✅` → `S12 ✅` → **`S7` (surveyed, not built)** → `S6(+UI) → S11 → S3 → S4`
 → `S9 → S5`.
 
-**S7 is measured and checkpointed, NOT done.** Start from the RUN-STATE's S7 block, not
+**S7 slice 1 is DONE** — `worker-ai`'s distill window reserved 2048 for output while the
+request asked for 4096, so an 8k-context BYOK model was budgeted 10240 against an 8192
+window. One constant now, owned by `distiller.py`. ⚠ A 4k-context model still overflows
+(`MIN_WINDOW_TOKENS` floors the chunk) — it is effectively unsupported and nothing says so.
+
+**S7 slices 2-4 remain, measured but NOT built.** Start from the RUN-STATE's S7 block, not
 from the spec — one of the spec's claims is falsified there. In short: there is no
 unclamped `call_budget` adopter (translation's three are `MIRROR`, where clamping would be
 the bug); the real gap is `worker-ai/app/distill_job.py:68`, a signature-default
