@@ -49,12 +49,15 @@ job, and that is a different job — see [`03_two_jobs.md`](03_two_jobs.md).
 | [`05_planforge_reuse.md`](05_planforge_reuse.md) | evidence-based: what of PlanForge is reusable, what is not, and why |
 | [`06_poc_plan.md`](06_poc_plan.md) | the smallest thing that could falsify this design |
 | [`07_lore_bible.md`](07_lore_bible.md) | **the find-and-load answer** — the bible's spine is an exhaustive SWEEP over the glossary the book produced, not a search. The chapter is the wrong unit. |
+| [`08_measuring_a_creative_result.md`](08_measuring_a_creative_result.md) | there is no right answer, so what IS proven — traceability, not truth — and the **census, not score**, that measures the rest |
 
-**`03`, `04` and `07` are corrections.** The first draft of this folder put authoring and structuring in one
+**`03`, `04`, `07` and `08` are corrections.** The first draft of this folder put authoring and structuring in one
 place, treated fidelity as a gate that could forbid a mechanism, and argued the corpus-vs-derived
 question from COST when the real reason is that a chapter is the wrong UNIT. All three were wrong, all
-three were corrected by the PO, and the superseded axioms are marked as replaced rather than deleted —
-the mistakes are more instructive than the fixes.
+three were corrected by the PO — and `08` corrects a fourth: calling the residue *"correctness is not
+provable"* was a category error, because an authored world has no truth to be correct about. The
+superseded axioms are marked as replaced rather than deleted; the mistakes are more instructive than
+the fixes.
 
 ## Working name
 

@@ -182,8 +182,16 @@ The floor is what makes the work tractable; the ceiling is what makes it suffici
 ## 10. What section 8 does not fix
 
 1. **The bible inherits the glossary's errors.** Aliases, mis-splits, wrong kinds — the sweep visits
-   exactly the list it is given, so a bad merge upstream is a bad decision downstream and no amount of
-   care here repairs it. **Coverage is provable; correctness is not.**
+   exactly the list it is given, so a bad merge upstream produces a coherent, traceable, well-measured
+   decision **about the wrong entity**.
+
+   The first draft summarised this as *"coverage is provable; correctness is not"*, which was a category
+   error: it used *correctness* to mean fidelity to a truth about the world, and for an **authored**
+   world no such truth exists. What is provable is **traceability** — every fact reduces to a decision,
+   every decision to a citation or a marked invention — and what varies is **fidelity**, which is a
+   chosen position rather than an accuracy. See [`08_measuring_a_creative_result.md`](08_measuring_a_creative_result.md);
+   the residue that survives is narrower and truer: **the profile measures the pipeline, not its
+   inputs.**
 2. **Frequency finds systems, not keystones.** A single `FOUNDED_BY` edge defines a sect. The aggregate
    in §6 would rank it as noise. Centrality is the obvious complement and is unmeasured.
 3. **A sweep is only as bounded as its list is closed.** The glossary grows when new chapters are
