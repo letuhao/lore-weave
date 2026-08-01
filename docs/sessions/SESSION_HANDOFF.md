@@ -84,7 +84,33 @@ no critic configured the blocking tier is silently off — S6's axis, still open
 
 ✅ The chapter paths now DECLARE the gap: `plan_liveness = NO_POSITION`, distinct from a
 scene with nothing after it (NOT_APPLICABLE). They still check nothing — they say so.
-⚠ Prevention's EFFECT is unmeasured, and the first attempt to measure it was INVALID —
+## 📊 A/B v2 — the DETECTOR is 11/11 on real drafts; PREVENTION does not hold
+
+12 isolated books (one per run, so nothing crosses), each verified against the prompt the
+drafter actually received: constraint present iff intended (6/6, 0/6) and `leaves=cast=` absent
+in all 12, so no run inherited another's exit state.
+
+| | deaths | who |
+|---|---|---|
+| constrained | **6/6** | Lạc Viên |
+| free | 6/6 | Lạc Viên, Tô Thanh Dao (both died in 2 of 6) |
+
+**Prevention FAILED**: the constraint names both characters and Lạc Viên died 6/6 anyway. The
+only hint is Tô Thanh Dao 0/6 vs 2/6 — two events at n=6, a hint not a result.
+
+**Detection is 11/11**: 6/6 true positives (a needed character died → the violation fired, every
+time) and 5/5 true negatives (plan rung active, no death in the prose → zero violations). No
+false positives or negatives observed.
+
+⚠ v2 is still not a clean prevention test: fixing v1's no-resolution problem meant making the
+synopsis COMMAND a terminal outcome, which recreated the conflicting-instructions trap v1 was
+designed to avoid. What it measures is: when the author's synopsis demands a death and the plan
+forbids it, the synopsis wins. Prevention under NO conflict remains untested.
+
+**For the architecture**: prevention is advice a model may ignore. Detection is the gate that
+holds. Detect → judge → block; prevention is cheap insurance with no demonstrated effect.
+
+⚠ (superseded, kept for the record) Prevention's EFFECT is unmeasured, and the first attempt to measure it was INVALID —
 corrected in the RUN-STATE. The manipulation did reach the model (`packed_prompt` 5/5 vs
 0/5) and nobody died in any draft, but: (1) the drafter never RESOLVED the fight in any
 of the ten — it stops at the decisive moment, so there was no outcome to steer; and (2)

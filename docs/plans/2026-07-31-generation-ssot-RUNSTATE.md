@@ -1200,6 +1200,63 @@ AUDIT PLAN-LIVENESS (chapter paths)
                foreign-chapter synopses across 41/41 scenes of the dogfood book.
 ```
 
+### ✅ A/B v2 — the detector is 11/11 on real drafts, and PREVENTION DOES NOT WORK
+
+```
+AUDIT PLAN-LIVENESS (efficacy, v2)
+
+  DESIGN     — v1 leaked through four channels; v2 closes each and VERIFIES the closure per
+               run against `generation_job.input.packed_prompt`, the string the drafter really
+               received:
+                 · ONE BOOK per run (chapters share `gather_recent`; projects share
+                   `gather_structural`'s planned lens — a book is the only boundary nothing
+                   crosses). 12 books.
+                 · each scene generated EXACTLY ONCE → `leaves=cast=` absent in 12/12, so no
+                   run inherited another's exit state. v1 had it in 8 of 10.
+                 · a synopsis this drafter will CONCLUDE — v1's produced ten unresolved fights.
+                 · bios on both characters, so the constraint is not 40% of the prompt.
+               `INVALID RUNS: 0` — constraint present iff the arm intended it, 6/6 and 0/6.
+
+  MEASURED   — deaths, scored by the same `status_effects` extractor the detector uses:
+                 constrained 6/6   who = [Lạc Viên]
+                 free        6/6   who = [Lạc Viên, Tô Thanh Dao]   (both died in 2 of 6)
+
+               PREVENTION FAILED. The constraint NAMES BOTH characters and Lạc Viên died 6/6
+               anyway. The only hint of an effect is that Tô Thanh Dao died 0/6 constrained vs
+               2/6 free — two events, n=6. That is a hint, not a result.
+
+               DETECTION IS 11/11 on real, unforced drafts:
+                 6/6 true positives  — v2 constrained: a needed character died, the violation
+                                       fired, `plan_liveness = checked`, every time
+                 5/5 true negatives  — v1 constrained: plan rung ACTIVE, extractor found no
+                                       death, ZERO violations raised
+                 0 false positives · 0 false negatives observed
+
+  WHAT I GOT WRONG AGAIN — and it is the same mistake in a new place. I fixed v1's
+               no-resolution problem by making the synopsis COMMAND a terminal outcome ("one of
+               the two falls and does not rise"), which RECREATED the conflicting-instructions
+               trap I had written v1 specifically to avoid. So v2 does not cleanly isolate
+               prevention either: it measures what happens when the author's synopsis demands a
+               death and the plan forbids it. The synopsis wins, 6/6.
+
+               That is still worth knowing — arguably more than the clean number would have
+               been — but it is not the experiment I set out to run, and calling it one would
+               be the third framing error in this thread.
+
+  WHAT IT MEANS FOR THE ARCHITECTURE — prevention is advice a model may ignore, and here it
+               ignored it completely. DETECTION is the gate that actually holds. The two halves
+               are not redundant and the ordering of trust between them should be: detect,
+               then judge, then block; prevention is cheap insurance with no demonstrated
+               effect under conflict.
+
+  STILL NOT PROVEN — prevention under NO conflict, i.e. a synopsis that neither forbids nor
+               demands a death, on a drafter that still resolves the scene. v1 and v2 bracket
+               that case without landing on it. It needs a synopsis whose ending is terminal
+               but not fatal-by-instruction.
+
+  NEXT       — the three POC defects, (A) first.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -1281,6 +1338,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **Fixed one confound by recreating the one I had explicitly set out to avoid.** v1 failed because the drafter never resolved the fight; I fixed that by having the synopsis COMMAND a terminal outcome — which is the conflicting-instructions trap v1 was designed around. v2 measures synopsis-vs-constraint, not prevention. The result is valuable; the framing would have been wrong for the third time if I had not checked. |
 | 2026-08-01 | **Called a flat A/B “no power” without checking my own samples were independent.** Re-running the same node five times fed each run's exit-state into the next one's prompt, so n was 1 per arm, not 5 — and the prose showed the drafter never resolved the fight at all, which is a different finding from the one I reported. I had the lesson row for this and applied half of it. |
 | 2026-08-01 | **A third gate that passed its own injection — same cause each time.** The chapter-path no-omission guard used a regex over call bodies; it matched 2 of 3 calls and one match ran 19,993 chars, swallowing the next call, so a deleted flag was still found inside another's blob. `ast` reds correctly. I keep reaching for a regex where the structure is a parse tree. |
 | 2026-08-01 | **Nearly scored an A/B with a column that cannot differ.** The `free` arm has no plan rung, so its `plan_violations` is 0 by construction — an arm that killed everyone would still read 0. I caught it while writing the scorer, not while designing the experiment. |
