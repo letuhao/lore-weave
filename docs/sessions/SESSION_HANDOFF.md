@@ -34,8 +34,13 @@ NO BUILDER to set it — so no Rust service anywhere sent an output cap.
 `with_max_tokens` added; tilemap's L3 harness sends 8192. ⚠ That 8192 is a RUNAWAY GUARD,
 not a derived size, and the other Rust services are still uncapped.
 
-**S7 slice 4** (per-kind sizing for the JSON kinds) is untouched — and it should replace
-tilemap's placeholder 8192 with a derived number.
+**S7 slice 4 is HALF done.** Tilemap's placeholder 8192 is replaced by
+`l3_output_budget(zones) = zones × 128`, floored 512, ceilinged 8192 — derivation and
+runaway guard kept as separate jobs. ⚠ The 128 is REASONED from the tool's shape, not
+measured against a real completion (that needs a live lmstudio L3 run's
+`output_tokens / zones`). **S7-4's real scope — per-kind sizing inside `call_budget` for
+the JSON kinds (`cast_plan` 4000 = rows × per-row; `motif_conformance` 512 = a 20-word
+reason) — is untouched.**
 
 **S6 is SURVEYED and blocked on a UI slice.** Measured: `critic_model_ref` appears in
 `frontend/src` in **`__tests__` files only** — five fixture sites, zero production readers

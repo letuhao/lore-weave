@@ -728,6 +728,46 @@ AUDIT S7-3
                that S7-4 should replace with a derived number.
 ```
 
+### ✅ S7 slice 4 (tilemap) — the cap now tracks what it caps
+
+```
+AUDIT S7-4 (tilemap)
+  BUILT      — `l3_output_budget(zones)` replaces the flat 8192 S7-3 shipped as a placeholder:
+               `zones × L3_TOKENS_PER_ZONE`, floored at 512 and ceilinged at 8192. Derivation
+               and runaway guard are now two separate jobs.
+
+  PROVEN     — `cargo test -p tilemap-service --lib s7_budget`:
+                 `test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 464 filtered out`
+               `cargo test -p tilemap-service --lib`:
+                 `test result: ok. 467 passed; 0 failed` (464 before, +3)
+               gates: `ai-provider-gate (full): OK` ·
+               `llm-budget-ssot-gate: PASS — 92 LLM call site(s) scanned` ·
+               `[language-rule] PASS` · `enforcement-claims-gate: OK`
+
+               Each of the three tests carries its counterweight rather than only its claim:
+               "tracks the zone count" is paired with "a 1-zone call still gets the envelope"
+               (sizing PURELY by count would starve it) and with "a hostile list cannot ask for
+               the moon" — which also pins `saturating_mul`, because a wrapping multiply would
+               turn `usize::MAX` zones into a SMALL budget, the failure being silent.
+
+  NOT PROVEN — `L3_TOKENS_PER_ZONE = 128` is REASONED from the tool's shape (one small JSON
+               object per placeholder: an id, some enum-ish fields, a short reason), NOT
+               measured against a real completion. The right number comes from a live L3 run's
+               `output_tokens / zones`, which needs lmstudio and a fixture; until then it is a
+               better-shaped guess than 8192, not a measured one. And this is tilemap ONLY —
+               S7-4's real scope is the JSON kinds in `call_budget` (`cast_plan`'s 4000 as rows
+               × per-row, `motif_conformance`'s 512 as a 20-word reason), which is untouched.
+
+  DRIFT      — I nearly folded the ceiling INTO the derivation — one constant doing both jobs.
+               That is exactly the S7-1 bug I fixed four commits ago, where the distill window's
+               output reserve and the request's cap were one decision expressed as two numbers
+               that then disagreed. Here it would have been the inverse: two decisions collapsed
+               into one number, so a raised ceiling would silently re-size every request.
+
+  NEXT       — S7-4 proper: per-kind sizing inside `call_budget` for the JSON kinds. Then S6,
+               which is surveyed and blocked on the critic picker row.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -810,6 +850,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
 | 2026-08-01 | **Wrote a diagnosis into the handoff from ONE error message.** Told the next session "CI red = 33 failures, one root, `language`→`original_language`, a mechanical sweep". There were **three** roots — a fastapi 0.139 `app.routes` change across two services, a pip editable path resolving outside the checkout, and the rename — and the rename half needed a SEMANTIC rewrite because the identity key had changed too. I had read one traceback and generalised, which is the §1.4 mistake the red team already caught me making twice. |
+| 2026-08-01 | **Nearly collapsed two decisions into one constant — the inverse of the bug I had fixed four commits earlier.** I almost let tilemap's runaway ceiling double as its sizing model. S7-1 was one decision written as two numbers that disagreed; this would have been two decisions written as one, so raising the ceiling would silently re-size every request. |
 | 2026-08-01 | **Reached for the dramatic reading of code I had just met.** `tool_use_success: classifications_parsed > 0` looked like “a truncated run reads as success” and I began writing it up — but the classifications ARE parsed and the render already prints `finish_reason`. The real defect was plainer: no cap was ever sent, anywhere in Rust. Same shape as B4/B5, whose severity this project already walked back. |
 | 2026-08-01 | **Three falsifications in a row primed me to expect a fourth.** On the first grep hit (`ModelRole` includes `'critic'`) I nearly recorded “the spec is wrong again”. The type member exists and is unreachable — the spec was RIGHT, and sharper than it knew. A measurement has to be allowed to confirm as well as refute. |
 | 2026-08-01 | **Treated the spec's §S7 bullets as a work list instead of as hypotheses — three of them falsified by measurement in one slice.** “two SDK sites unclamped” (they are MIRROR, where clamping is the bug) · “33 CI failures, one root” (three roots) · “glossary has ZERO FinishReason checks service-wide” (it has ten, and the gap was closed earlier in this same session). This is the exact habit the red team already caught the spec doing to itself. |
