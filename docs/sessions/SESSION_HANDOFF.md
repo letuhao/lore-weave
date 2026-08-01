@@ -43,9 +43,52 @@ default `batched`) · **live**: `garbage` → 400 naming the legal set, `edc_cit
 `single_call` → 202 and ran a genuinely different shape (fresh cache key, real tokens), omitted → 202
 defaulting to `batched`.
 
-**▶ NEXT — run the large-book A/B.** `batched` vs `single_call_delta` over a few hundred chapters of a
-real book, scored **per kind** (`BTG-A53`) and on **new/ch not ents/ch** (`BTG-A54`). Then wire
-`edc_cited` (two-stage; needs its own call flow) with `event` on a separate path (`BTG-A55`).
+## 🏆 A9 — the shape to wire, and a defect older than the POC (2026-08-01)
+
+`BTG-A55` said an event has to be *labelled*, not quoted. A8 tested the **enumeration** and never
+tested the **constraint** — its sweep still said to name each thing *"as the text names it, or with
+the exact phrase the text uses"*, a verbatim rule applied to the one category that cannot satisfy it.
+**A9 changes only that**: the naming rule is split by category — verbatim for things that have names,
+**composed** for events — while the evidence stays verbatim either way, so grounding is untouched by
+construction.
+
+| | A0 | A7 | A8 | **A9** |
+|---|---|---|---|---|
+| event | 34 | 0 | 2 | **8** |
+| terminology | **0** | **0** | **0** | **6** |
+| kinds at zero | 1 | 2 | 1 | **0** |
+| **new**/ch | 9.7 | 12.5 | 13.5 | **15.8 (+63%)** |
+| input | 22,614 | 9,663 | 11,687 | **10,330 (−54.3%)** |
+| grounded | 80.1% | 92.7% | 92.9% | 92.6% |
+| trunc / lost | 0/0 | 0/0 | 5/1 | **0/0** |
+
+Its events are unmistakably the composed kind the baseline makes: `九龍宴 · 燒毀軒轅墳狐狸 ·
+比干之死 · 聞太師上奏十條 · 聞太師出征東海`.
+
+> **`BTG-A56`** — A9 is the **only arm that abandons no kind**, and the fix was one sentence of
+> permission, not machinery. It is also the only arm that ever produced `terminology`, which was
+> **0 for every arm including the baseline**: the shipped extractor has been silently losing a whole
+> kind for its entire life, because the prompt only ever asked for *names*.
+>
+> Caveats: events reach **8 vs a baseline 34** — the permission recovers the category, not the
+> volume. And `terminology`'s six are mostly `resolved` (they do occur verbatim), so on n=6 that is
+> likelier prompt attention than the `BTG-A55` mechanism.
+
+**Superseded, kept because it was instructively wrong:** `14` and an earlier draft of `15` said to
+take `event` OUT of the EDC shape and give it its own path. Right diagnosis, wrong remedy — the
+constraint could just be relaxed for that category.
+
+**▶ NEXT**
+1. **The 30-chapter A/B is running** — `single_call_delta` vs `batched`, chapters 58–87 of 封神演義,
+   **interleaved** (even/odd) so neither arm shares a chapter, cheap arm first so `BTG-A41`'s
+   path-dependence runs *against* it. Chapters 1–57 are excluded: they are cache-warm for `batched`
+   and would cost it 0 tokens.
+2. **Wire A9 as `edc_cited`** (currently `PLANNED`, refused at the boundary). Two-stage call flow.
+3. Then `BTG-A49` re-decide-on-merge — still the deepest fix, and untouched by any of this.
+
+**Scale note (PO):** the 4,000-chapter book was **destroyed by a migration bug**; the corpus survives
+but is not worth re-measuring. 100 chapters is the working scale, and at the measured baseline
+(22.6k in/ch, 65.5 s/ch) the old flow costs **~2.9M tokens and ~1.8 h** for one pass of it.
 
 ## 🔬 EXTRACTION POC — instrument repaired, arms not yet run (2026-08-01)
 

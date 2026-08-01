@@ -25,6 +25,7 @@ Per chapter, 10 chapters per arm. `lost` = chapters that produced **zero** entit
 | **A5** two-stage (EDC) | 13,988 | 4,924 | 2.0 | 43.7 | 0 | **1** | 19.5 | 9.0 | 85.1% | 7.2% | 1.0% | 58.8% | 94.1% | 40.5% |
 | **A7** EDC on citations | 9,663 | 5,266 | 2.0 | 46.0 | 0 | 0 | **23.2** | 12.5 | **92.7%** | **1.7%** | 0.4% | **77.1%** | 97.9% | 36.2% |
 | A8 A7 + enumerated sweep | 11,687 | 9,061 | 2.0 | 74.5 | **5** | 1 | 24.0 | 13.5 | 92.9% | 1.7% | 0.0% | 74.5% | 100% | 35.0% |
+| **A9** A8 + composed event names | 10,330 | 6,316 | 2.0 | 55.2 | 0 | 0 | **27.1** | **15.8** | 92.6% | 1.8% | 0.0% | 70.0% | 95.0% | **33.6%** |
 
 ⚠ **A7's row is green on every axis and it dropped an entire kind.** Read §6b before using it.
 ⚠ **A8 tried to fix that with a prompt and could not** — §6c, and the reason is structural.
@@ -354,7 +355,47 @@ lost entirely, and 74.5 s/chapter — *slower than the 3-call baseline*. Enumera
 stage 1 emit far more, and the truncations cluster in the entity-dense later chapters (24, 26, 28, 29,
 30) where output hit 11.9k–15.4k tokens. A8 is not shippable and is not a tuning problem.
 
-**So A7 remains the promising shape, with `event` moved out of it** rather than prompted back into it.
+### A9 — the constraint was the blocker, not the enumeration, and one sentence proves it
+
+A8 tested the *enumeration* and never tested the *constraint*. Re-read its sweep: it lists events in
+capitals and then says to name each thing **"as the text names it, or with the exact phrase the text
+uses for it"** — a verbatim rule, applied to the one category that by `BTG-A55` cannot satisfy it.
+
+A9 changes exactly that, and nothing else: the rule is **split by category**. A name must be verbatim
+for things that *have* names; for events it may be **composed**, while the evidence stays verbatim
+either way — so grounding is untouched by construction.
+
+| | A0 | A7 | A8 | **A9** |
+|---|---|---|---|---|
+| event | 34 | 0 | 2 | **8** |
+| terminology | **0** | **0** | **0** | **6** |
+| kinds at zero | 1 | 2 | 1 | **0** |
+| entities/ch | 20.1 | 23.2 | 24.0 | **27.1** |
+| **new**/ch | 9.7 | 12.5 | 13.5 | **15.8 (+63%)** |
+| input | 22,614 | 9,663 | 11,687 | **10,330 (−54.3%)** |
+| grounded | 80.1% | 92.7% | 92.9% | 92.6% |
+| truncations / lost | 0 / 0 | 0 / 0 | 5 / 1 | **0 / 0** |
+
+And the events it returns are unmistakably the composed kind the baseline produces:
+
+```
+九龍宴 · 鹿臺宴 · 燒毀軒轅墳狐狸 · 比干之死 · 夏招之死 · 聞太師上奏十條 ·
+聞太師與費仲尤渾之爭 · 聞太師出征東海
+```
+
+> **`BTG-A56`.** **A9 is the only arm with no abandoned kind**, and the fix was a single sentence of
+> permission rather than any new machinery. It is also the only arm that ever produced `terminology`
+> — which was **0 for every other arm including the baseline**, a defect older than this POC. So the
+> shipped extractor has been silently losing a whole kind for its entire life, and the cause was a
+> prompt that only ever asked for names.
+>
+> Two honest caveats. Events reach **8 against a baseline of 34** — the permission recovers the
+> *category*, not the *volume*. And `terminology`'s six are mostly `resolved`, i.e. they do occur
+> verbatim, so that recovery is likelier a prompt-attention effect than the `BTG-A55` mechanism, on
+> an n of 6.
+
+**A9 supersedes A7 as the shape to wire.** It costs 7% more input and buys the kind coverage A7 was
+disqualified for, plus 26% more new entities, with no truncations and no lost chapters.
 
 ## 7. A6 (GLiNER) — the second reader does not read this language
 
@@ -402,12 +443,15 @@ morphology lint at 96.9% precision, and now the KG's own typed edges — and two
    cost of **2.1%, inside the noise floor**, not the 10% the totals suggest. It needs the raised
    output ceiling and a **retry on parse failure** (`BTG-A47`), because the blast radius of a bad
    parse is now a whole chapter.
-2. **A7 is the most promising shape — take `event` OUT of it rather than prompting it back in.**
-   −57% input, grounded 92.7%, fabrication 1.7%, strict typing 77.1%, no lost chapters, and
-   +29% new-entity discovery. A8 proved the prompt route does not work (`BTG-A55`): explicit,
-   emphatic solicitation moved events 0 → 2 against a baseline of 34, while costing +46% output and
-   truncating half the chapters. Run A7 over the seven **nameable** kinds and give `event` its own
-   path — it is an authoring step, not an extraction one.
+2. **Wire A9 as `edc_cited`.** −54.3% input, **+63% new-entity discovery**, grounded 92.6%,
+   fabrication 1.8%, **the only arm that abandons no kind**, no truncations, no lost chapters. It
+   supersedes A7 (which dropped `event`) and A8 (which truncated half the chapters); the difference
+   from both is one sentence of permission, not new machinery (`BTG-A56`). Superseded advice, kept
+   because it was wrong in an instructive way: `14` and an earlier draft of this section said to take
+   `event` *out* of the EDC shape and give it its own path. That was the right diagnosis
+   (`BTG-A55` — an event must be *labelled*, not quoted) and the wrong remedy: the constraint could
+   simply be relaxed for that category, and A8 never tested that because it kept the verbatim rule
+   while adding the enumeration.
 3. **Per-kind yield is now on the card** (`kinds_zero` + the distribution, printed unconditionally).
    Wiring it in immediately surfaced three more zeroed kinds nobody had seen. Keep it.
 4. **Investigate `terminology` = 0 across every arm including the baseline** — a pre-existing defect
