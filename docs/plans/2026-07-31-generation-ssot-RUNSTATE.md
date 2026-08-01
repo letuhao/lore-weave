@@ -1107,48 +1107,57 @@ AUDIT PLAN-LIVENESS (prevention)
                and the three defects the POC surfaced.
 ```
 
-### ⚠ PREVENTION efficacy — A NEGATIVE RESULT, recorded as one
+### ⚠ PREVENTION efficacy — CORRECTED. The first write-up was wrong twice.
 
 ```
-AUDIT PLAN-LIVENESS (prevention efficacy)
-  BUILT      — nothing. This is a MEASUREMENT of the slice shipped in ef785a398, run because
-               that slice's own NOT PROVEN said its effect was unmeasured.
+AUDIT PLAN-LIVENESS (prevention efficacy) — REVISED after the author asked
+                                            "is the measurement even right?"
 
-  PROVEN     — the A/B design, and its own powerlessness. Two structurally identical throwaway
-               books; the ONLY difference is whether the successor scene DECLARES A CAST, which
-               is what makes the plan rung speak. Verified per arm before any generate:
-                 constrained → `constraint_in_prompt=True`
-                 free        → `constraint_in_prompt=False`
-               (the script EXITS if an arm's prompt does not match its intent, so a silently
-               mis-set arm cannot be reported as a result).
+  WHAT HELD     — the manipulation DID reach the model, and this was verified against the
+                  string the drafter actually received, not the one an endpoint rebuilds:
+                    `generation_job.input->>'packed_prompt'` LIKE '%must still be alive%'
+                    constrained 5/5 · free 0/5
+                  And the scoring was right: reading all ten drafts by hand, nobody dies. The
+                  extractor and I agree.
 
-               Scored by the SAME `status_effects` extractor the detector uses, not by me
-               reading the prose. Attempt 1 (a confrontation, blade drawn, outcome open):
-                 constrained 0/5 · free 0/5   event kinds: action, dialogue
-               Attempt 2 (a fight that "reaches its end", still not commanded):
-                 constrained 0/5 · free 0/5   event kinds: battle in ALL TEN drafts
-               So attempt 2's synopsis DID land — they fight — and nobody dies either way.
+  WHAT WAS WRONG — two things, and the second is the one that voids the experiment.
 
-  NOT PROVEN — THE THING THE SLICE IS FOR. With 0 deaths in both arms the constraint had
-               nothing to prevent, so its efficacy is still unmeasured and I am not claiming
-               otherwise. I bound myself to ONE retry before running, and stopped there:
-               tuning the synopsis until a difference appears is choosing the fixture that
-               gives the answer I want.
+                  1. THE INFERENCE. I wrote "this drafter did not spontaneously kill a named
+                     cast member". The prose says something else: it never RESOLVES THE FIGHT
+                     AT ALL. Ten out of ten end at the decisive moment — "ranh giới giữa sự
+                     sống và cái chết chỉ còn mỏng manh", "cú đâm quyết định" — and stop,
+                     although the synopsis said the fight "đi tới hồi kết". Against the earlier
+                     POC at the SAME target_words, where a synopsis naming the death produced
+                     one immediately, the honest statement is: this drafter commits to an
+                     outcome when TOLD the outcome, not when told there is one.
 
-               What the data DOES say, stated no more strongly than it supports: this drafter,
-               at ~400 words, did not spontaneously kill a NAMED cast member in 10 drafts of a
-               sword fight. It kills readily when the synopsis says to (the earlier POC). So
-               the risk the prevention half addresses may be RARE in this configuration — which
-               would make the DETECTION half the load-bearing one and prevention cheap
-               insurance. 10 drafts, one model, one length: that is a hint, not a rate.
+                  2. THE SAMPLE. n=1 per arm, not 5. I re-ran the SAME node five times, so the
+                     exit-state write-back from each run landed in the next run's prompt:
+                       run 1 → no `leaves=cast=` · runs 2-5 → `leaves=cast=[Lạc Viên, Tô Thanh
+                       Dao]`, i.e. a "this scene LEAVES these two" signal, in BOTH arms.
+                     It cannot manufacture a difference between arms, but the runs are not
+                     independent samples and both arms were nudged toward survival.
 
-  DRIFT      — my first scoring pass nearly used `plan_violations` from the run envelope as the
-               metric. It is 0 in the "free" arm BY CONSTRUCTION — no plan rung means the check
-               is NOT_APPLICABLE — so an arm that killed everyone would still have scored 0.
-               I would have reported "constrained 0, free 0, no difference" from a column that
-               cannot differ, and called it a measurement.
+  ALSO WORTH SAYING — the packs were 226–602 characters. The fixture books have no bios, no
+                  canon rules, no prior prose, so `<present>` is two bare names and the
+                  constraint is ~40% of the constrained arm's entire prompt. Whatever this
+                  measured, it was not the product's real prompt conditions.
 
-  NEXT       — the chapter-level paths, which take no plan rung and say nothing about it.
+  STILL NOT PROVEN — prevention's efficacy. Unchanged, and now for better-understood reasons.
+                  A valid experiment needs: a FRESH node per run (or exit_state cleared between
+                  them), a synopsis whose conclusion this drafter will actually write, and a
+                  pack resembling a real book's.
+
+  DRIFT         — I reported a flat 0-vs-0 as "no power because the synopsis wasn't lethal
+                  enough" and moved on. I had a lesson row for exactly this shape — *verify the
+                  varied input reached the model before trusting a flat measurement* — and I
+                  applied only half of it: I checked the constraint reached the prompt and
+                  never checked whether the SAMPLES were independent or read what the prose
+                  actually did. The author asking "is the measurement right?" is what produced
+                  both findings, not my own re-reading.
+
+  NEXT          — the three POC defects. This experiment gets redesigned before it is rerun,
+                  and until then prevention ships as reasoned, unmeasured insurance.
 ```
 
 ### ✅ CHAPTER paths — the gap is DECLARED instead of looking like a pass
@@ -1272,6 +1281,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **Called a flat A/B “no power” without checking my own samples were independent.** Re-running the same node five times fed each run's exit-state into the next one's prompt, so n was 1 per arm, not 5 — and the prose showed the drafter never resolved the fight at all, which is a different finding from the one I reported. I had the lesson row for this and applied half of it. |
 | 2026-08-01 | **A third gate that passed its own injection — same cause each time.** The chapter-path no-omission guard used a regex over call bodies; it matched 2 of 3 calls and one match ran 19,993 chars, swallowing the next call, so a deleted flag was still found inside another's blob. `ast` reds correctly. I keep reaching for a regex where the structure is a parse tree. |
 | 2026-08-01 | **Nearly scored an A/B with a column that cannot differ.** The `free` arm has no plan rung, so its `plan_violations` is 0 by construction — an arm that killed everyone would still read 0. I caught it while writing the scorer, not while designing the experiment. |
 | 2026-08-01 | **Wrote a field name from memory instead of reading it — twice in one session.** `seg.kind` (it is `block`), after the judge stub's `{"content": …}` (it is `messages[0].content`). Both were caught by a failing test, and both were the same habit: asserting the shape I expected rather than the shape the producer defines. |

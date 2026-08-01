@@ -84,10 +84,13 @@ no critic configured the blocking tier is silently off — S6's axis, still open
 
 ✅ The chapter paths now DECLARE the gap: `plan_liveness = NO_POSITION`, distinct from a
 scene with nothing after it (NOT_APPLICABLE). They still check nothing — they say so.
-⚠ Prevention's EFFECT remains unmeasured: two A/B attempts on a neutral synopsis came
-back 0/5 vs 0/5 deaths. The drafter did not spontaneously kill a named character in 10
-drafts of a sword fight, so the constraint had nothing to prevent. It kills readily when
-the synopsis says to. 10 drafts, one model, one length — a hint, not a rate.
+⚠ Prevention's EFFECT is unmeasured, and the first attempt to measure it was INVALID —
+corrected in the RUN-STATE. The manipulation did reach the model (`packed_prompt` 5/5 vs
+0/5) and nobody died in any draft, but: (1) the drafter never RESOLVED the fight in any
+of the ten — it stops at the decisive moment, so there was no outcome to steer; and (2)
+n was 1 per arm, not 5, because re-running the same node fed each run's exit_state into
+the next run's prompt. A valid rerun needs a fresh node per run and a synopsis this
+drafter will actually conclude.
 The extraction takes the SDK's default budget; a long scene will chunk into several calls and
 that is unmeasured.
 
