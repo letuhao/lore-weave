@@ -55,13 +55,19 @@ from .extraction_outcomes import (
 from .extraction_preprocessor import prepare_chapter_text
 from .extraction_provenance import stamp_entity_provenance
 from .mention_count import count_entity_mentions
+from .extraction_strategy import (
+    SINGLE_CALL_DELTA,
+    normalize as normalize_strategy,
+    output_ceiling as strategy_output_ceiling,
+    plan_batches as plan_batches_for_strategy,
+)
 from .extraction_prompt import (
+    DELTA_INSTRUCTION,
     build_extraction_prompt,
     build_known_entities_context,
     build_system_prompt,
     build_user_prompt,
     parse_and_validate_with_stats,
-    plan_kind_batches,
 )
 from .glossary_client import (
     fetch_known_entities,
@@ -92,6 +98,11 @@ from .extraction_model import FALLBACK_CONTEXT_WINDOW as _FALLBACK_CONTEXT_WINDO
 from .extraction_model import get_model_context_window as _get_model_context_window  # noqa: E402
 
 _EXTRACTION_OUTPUT_CEILING = 8000  # per-window output cap (entities JSON is small)
+#: A single-call shape emits every kind in one response, so 8000 would truncate on an
+#: entity-dense chapter. Measured over chapters 21-30 of 封神演義 the one-call arms peaked at
+#: ~5,600 output tokens, so this is ~4x headroom over the observed worst case. Still clamped
+#: by the context-derived budget, so it never eats the input's context.
+_EXTRACTION_SINGLE_CALL_OUTPUT_CEILING = 24000
 _EXTRACTION_OUTPUT_FLOOR = 1024
 _CONTEXT_SAFETY_RATIO = 0.15  # mirror the gateway's context-fit safety margin
 
@@ -348,6 +359,14 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
     # D-EXTRACTION-BATCH-CONCURRENCY: per-chapter LLM-call fan-out cap. Absent/None on a
     # pre-field message ⇒ 1 (sequential, prior behavior). Clamped to a hard ceiling.
     concurrency = max(1, min(_EXTRACTION_MAX_CONCURRENCY, int(msg.get("concurrency") or 1)))
+    # BOOK_TO_GAME/15 — the prompt shape for this job. Absent on a message minted before the
+    # field ⇒ 'batched', the shipped behaviour. An UNKNOWN value is refused rather than
+    # defaulted: a job that silently ran the baseline would make an A/B report no difference.
+    try:
+        strategy = normalize_strategy(msg.get("extraction_strategy"))
+    except ValueError:
+        log.exception("extraction_worker: job %s has an unusable extraction_strategy", job_id)
+        raise
 
     # D-PMCP-WORKER-CARRIER: re-set the public-MCP-key attribution for THIS task so
     # every provider job submitted while extracting tags job_meta with the agent's
@@ -565,6 +584,7 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 thinking_enabled=thinking_enabled,
                 reasoning_effort=reasoning_effort,
                 concurrency=concurrency,
+                strategy=strategy,
                 pool=pool,
                 llm_client=llm_client,
             )
@@ -810,6 +830,7 @@ async def _process_extraction_chapter(
     llm_client: LLMClient,
     reasoning_effort: str = "none",
     concurrency: int = 1,
+    strategy: str = "batched",
 ) -> dict:
     """Extract entities from a single chapter via LLM."""
     import time as _time
@@ -837,7 +858,13 @@ async def _process_extraction_chapter(
     windows = _plan_chapter_windows(chapter, chapter_text, context_window, source_language)
 
     # 2. Plan kind-batches (output-schema grouping — same set for every window).
-    batches = plan_kind_batches(extraction_profile, kinds_metadata)
+    # BOOK_TO_GAME/15 — a single-call shape puts EVERY kind in one request, which is exactly
+    # what MAX_KINDS_PER_BATCH exists to prevent. That cap fixed a real output-truncation bug
+    # by TRIPLING the input (35,316 chars sent to read 4,747), and the measurement says the
+    # trade was bad: one call is -62% input and -47% output with no quality regression outside
+    # the noise floor. The cap's protection is restored by the raised ceiling below plus the
+    # parse retry — dropping the cap WITHOUT them is the bug it was written for.
+    batches = plan_batches_for_strategy(strategy, extraction_profile, kinds_metadata)
     log.info("extraction: chapter %s (index %d) — %d window(s) × %d batch(es), ctx=%d, text_len=%d",
              chapter_id, chapter_index, len(windows), len(batches), context_window, len(chapter_text))
 
@@ -857,6 +884,13 @@ async def _process_extraction_chapter(
 
     # 3. Build known entities context
     known_ctx = build_known_entities_context(known_entities) if known_entities else ""
+    # BOOK_TO_GAME/15 — 88% of entity writes were re-writes of entities the glossary already
+    # held, and the known-entity block was paying input for an output saving it was not
+    # buying. Asking for a DELTA recovered the saving without costing recall: measured, new
+    # entities per chapter went 9.7 -> 9.5 (inside the noise floor) while the total fell 10%,
+    # i.e. what it suppressed was repeats, not discoveries (BTG-A54).
+    if strategy == SINGLE_CALL_DELTA and known_ctx:
+        known_ctx += DELTA_INSTRUCTION
 
     # Resolve owner user_id once for internal invoke auth
     async with pool.acquire() as db:
@@ -931,7 +965,14 @@ async def _process_extraction_chapter(
     max_win_tok = max((estimate_tokens(w) for w in windows), default=0)
     known_ctx_tok = estimate_tokens(known_ctx)
     out_budget = context_window - max_win_tok - safety - known_ctx_tok - 600
-    out_budget = max(_EXTRACTION_OUTPUT_FLOOR, min(_EXTRACTION_OUTPUT_CEILING, out_budget))
+    # A single-call shape must fit EVERY kind's entities in one response, so it gets the
+    # ceiling the per-batch cap was buying. Not a tuning knob: without it the shape measures
+    # truncation rather than batching, and truncation is how the original bug lost a whole
+    # batch silently. Still clamped by the context-derived budget above, so it can only
+    # raise the cap where the context genuinely allows it.
+    ceiling = strategy_output_ceiling(
+        strategy, _EXTRACTION_OUTPUT_CEILING, _EXTRACTION_SINGLE_CALL_OUTPUT_CEILING)
+    out_budget = max(_EXTRACTION_OUTPUT_FLOOR, min(ceiling, out_budget))
 
     # D-CACHE-PLANNER-WIRING Part 2 — pre-flight FEASIBILITY gate (Option B, spec
     # docs/specs/2026-06-22-planner-executor-wiring-part2.md). The block-windower packs WHOLE

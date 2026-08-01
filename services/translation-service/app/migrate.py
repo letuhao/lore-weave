@@ -270,6 +270,14 @@ ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS reasoning_effort TEXT NOT N
 -- Nullable: an older/unpriced job leaves it NULL (the GUI renders cost null-safe). Mirrors
 -- translation_jobs.cost_usd.
 ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS cost_usd NUMERIC;
+-- BOOK_TO_GAME/15 — the prompt SHAPE the worker uses for this job, so two shapes can be
+-- A/B'd on the same book at the same time. A deploy-wide env flag could not do that: it
+-- would have to be flipped between runs, which is exactly the comparison the POC showed is
+-- confounded by ordering (BTG-A41). Per-job also keeps it off the global-flag path that
+-- CLAUDE.md's settings boundary forbids for user-facing behavior.
+-- Closed set, validated at the router: batched | single_call | single_call_delta | edc_cited.
+-- Default 'batched' = the shipped 3-batch shape ⇒ zero behavior change for existing rows.
+ALTER TABLE extraction_jobs ADD COLUMN IF NOT EXISTS extraction_strategy TEXT NOT NULL DEFAULT 'batched';
 CREATE INDEX IF NOT EXISTS idx_ej_owner ON extraction_jobs(owner_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ej_book  ON extraction_jobs(book_id, created_at DESC);
 

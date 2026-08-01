@@ -37,7 +37,13 @@ dependencies = [
   # (stateless FastMCP wiring, identity envelope, scope guards, confirm-token spine,
   # _meta validator). It needs the MCP SDK; every Python MCP provider service that
   # `pip install /sdk`s gets the kit + its transport.
-  "mcp>=1.27",
+  # Upper bound added 2026-08-01 after a routine rebuild of translation-service took the
+  # service DOWN at import: `mcp` 2.0.0 removed `mcp.server.fastmcp`, which `context.py`
+  # imports at module scope, so every Python MCP provider service failed to boot. The pin
+  # was `>=1.27` with no ceiling, so the break was latent in EVERY image and would have
+  # surfaced on whichever service happened to be rebuilt next — with nothing in the diff
+  # to explain it. Raise the ceiling deliberately, after porting to the 2.x import path.
+  "mcp>=1.27,<2",
   # SDK-2 / SEC-2 (2026-07-04) — loreweave_authn is the shared platform-user JWT
   # verifier (replaces the ~6 copy-pasted jwt.decode blocks). It needs PyJWT; every
   # service that `pip install /sdk`s + imports the verifier gets it (a migrated

@@ -352,7 +352,7 @@ async def test_cache_hit_skips_llm_and_reuses_entities():
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
          patch.object(ew, "_persist_batch_outcomes", new=AsyncMock()), \
@@ -392,7 +392,7 @@ async def test_cache_busts_on_model_change_when_enabled(monkeypatch):
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="short chapter text")), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -437,7 +437,7 @@ async def test_unplannable_oversized_window_skips_llm(caplog):
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
          patch.object(ew, "_plan_chapter_windows", return_value=[huge_window]), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "stamp_entity_provenance", new=MagicMock()), \
          patch.object(ew, "_persist_batch_outcomes", new=AsyncMock(side_effect=_capture_outcomes)), \
@@ -475,7 +475,7 @@ async def _run_with_window_and_ctx(window: str, ctx: int, llm_job):
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="t")), \
          patch.object(ew, "_get_model_context_window", new=AsyncMock(return_value=ctx)), \
          patch.object(ew, "_plan_chapter_windows", return_value=[window]), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -511,7 +511,7 @@ async def test_graded_effort_reaches_llm_input():
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="short chapter text")), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -576,7 +576,7 @@ async def test_truncated_batch_is_not_cached():
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -653,7 +653,7 @@ async def _run_one_chapter_batch(finish_reason: str | None, entities: list[dict]
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=prepare_mock), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -702,7 +702,7 @@ async def test_batch_concurrency_runs_all_units_via_gather():
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
-         patch.object(ew, "plan_kind_batches", return_value=batches), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=batches), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \
@@ -744,7 +744,7 @@ async def _capture_llm_input(*, thinking_enabled: bool, reasoning_effort):
     with patch.object(ew, "build_internal_client",
                       return_value=_http_cm_returning({"title": "Ch1", "content": "text"})), \
          patch.object(ew, "prepare_chapter_text", new=MagicMock(return_value="some chapter text")), \
-         patch.object(ew, "plan_kind_batches", return_value=[["character"]]), \
+         patch.object(ew, "plan_batches_for_strategy", return_value=[["character"]]), \
          patch.object(ew, "build_known_entities_context", return_value=""), \
          patch.object(ew, "build_extraction_prompt", return_value={}), \
          patch.object(ew, "build_system_prompt", return_value="sys"), \

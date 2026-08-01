@@ -228,6 +228,20 @@ def build_extraction_prompt(
     return "\n\n".join(sections)
 
 
+#: Appended to the known-entity block by the `single_call_delta` shape (BOOK_TO_GAME/15).
+#: The block already says "do NOT create duplicates" and the entities came back in full
+#: anyway — 88% of entity writes were re-writes. This asks for the delta explicitly. It is
+#: additive text on an existing section rather than a new one, so it rides the same prefix.
+DELTA_INSTRUCTION = (
+    "\n\nIMPORTANT — report only what is NEW in this chapter:\n"
+    "- If an entity above is already known AND this chapter adds nothing to it, OMIT it "
+    "entirely.\n"
+    "- Emit a known entity ONLY when this chapter genuinely adds or corrects something, "
+    "and then include only the attributes that changed, plus its exact name.\n"
+    "- Emit every entity that does NOT appear above, in full."
+)
+
+
 def build_known_entities_context(known_entities: list[dict]) -> str:
     """Build the known entities section for cross-chapter awareness.
 

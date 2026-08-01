@@ -1,5 +1,52 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🔀 EXTRACTION STRATEGY — the POC shapes ship as a PER-JOB parameter (2026-08-01)
+
+**PO call:** ship the promising shapes behind a switch and re-measure on a large book to choose —
+10 chapters is too small to decide. **Built as a per-job parameter, not a deploy flag**, because a
+global env var *cannot* A/B: it has to be flipped between runs, so the arms differ in *when* they ran
+as well as *how*, and `BTG-A41` is the measured case of exactly that confound. Per-job also keeps it
+off the global-flag path CLAUDE.md's settings boundary forbids for user-facing behaviour.
+
+**Shipped**
+- `POST /v1/extraction/books/{id}/extract-glossary` takes **`extraction_strategy`** — closed set
+  `batched` (default, byte-identical to the shipped shape) · `single_call` · `single_call_delta`.
+  Persisted on `extraction_jobs.extraction_strategy` so results are attributable, and surfaced in the
+  Jobs GUI params.
+- `app/workers/extraction_strategy.py` — the SSOT. Batching and the output ceiling were **extracted
+  out of the worker's 400-line async chapter processor** so they can be tested at all; a branch buried
+  in there is a branch nothing can red.
+- Single-call shapes get a **24k output ceiling** (`_EXTRACTION_SINGLE_CALL_OUTPUT_CEILING`) — not a
+  knob: one call must hold every kind's entities, which is the very thing `MAX_KINDS_PER_BATCH=3` was
+  protecting against, so the ceiling is part of the shape.
+- `DELTA_INSTRUCTION` moved into `extraction_prompt.py` and applied only by `single_call_delta`.
+
+**Two defects found by doing it, both mine, both caught by the live smoke rather than by reading**
+1. **`edc_cited` was accepted while the worker never implemented it** → it fell through to the default
+   batching. Proof: `edc_cited` and `batched` both cost **ZERO tokens** on the same chapter, having
+   produced the same extraction-cache key *because they were the same shape*. An A/B on that compares
+   the control against itself and reports no difference — the exact failure the closed set exists to
+   prevent. Now split into `STRATEGIES` (what the worker implements) and **`PLANNED`** (`edc_cited`),
+   refused at the boundary with *"measured but NOT YET WIRED"*.
+2. **`mcp>=1.27` had no upper bound.** A routine rebuild pulled **mcp 2.0.0**, which removed
+   `mcp.server.fastmcp` — imported at module scope by `loreweave_mcp/context.py` — and
+   translation-service **failed to boot**. Latent in every Python image; it would have surfaced on
+   whichever service was rebuilt next, with nothing in that diff to explain it. Pinned `>=1.27,<2`.
+
+**Bite-tested (NV-2), each restored:** silent fallback on an unknown strategy → 1 red · emptying
+`SINGLE_CALL_SHAPES` → 3 red. The second bite **found a hole in my own tests**: `parametrize(...,
+sorted(SINGLE_CALL_SHAPES))` over an empty set *skips* rather than fails, so the suite would have gone
+green while the shapes reverted. Added an explicit non-empty guard (NV-3).
+
+**Verified** — translation-service **1089 passed** · migration applied (`extraction_strategy` column,
+default `batched`) · **live**: `garbage` → 400 naming the legal set, `edc_cited` → 400 "NOT YET WIRED",
+`single_call` → 202 and ran a genuinely different shape (fresh cache key, real tokens), omitted → 202
+defaulting to `batched`.
+
+**▶ NEXT — run the large-book A/B.** `batched` vs `single_call_delta` over a few hundred chapters of a
+real book, scored **per kind** (`BTG-A53`) and on **new/ch not ents/ch** (`BTG-A54`). Then wire
+`edc_cited` (two-stage; needs its own call flow) with `event` on a separate path (`BTG-A55`).
+
 ## 🔬 EXTRACTION POC — instrument repaired, arms not yet run (2026-08-01)
 
 **Why:** the PO's economics — 24h and ~50M tokens for 700 chapters of a 4,000-chapter book at
