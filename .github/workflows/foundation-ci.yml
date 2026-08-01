@@ -229,7 +229,8 @@ jobs:
                scripts/test_deprecated_tool_scan.py scripts/test_gate_teeth_gate.py
                scripts/test_llm_budget_ssot_gate.py scripts/perf/test_slo_assert.py
                scripts/eval/tests/test_persist_claim_detector.py
-               scripts/test_generation_guard_gate.py -q
+               scripts/test_generation_guard_gate.py
+               scripts/test_enforcement_claims_gate.py -q
       - run: python scripts/gate-teeth-gate.py
 
       # NOT wired, with the reason, because "it exists" is not "it enforces":

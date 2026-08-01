@@ -11,7 +11,13 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 [`docs/specs/2026-07-31-generation-ssot.md`](../specs/2026-07-31-generation-ssot.md).
 
 **Order:** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` →
-`S2 ✅` → `S8 ✅` → **`S12`** → `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+`S2 ✅` → `S8 ✅` → `S12 ✅` → **`S7`** → `S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+
+**S12 closed** — `enforcement-claims-gate` now checks EVERY path the 125-row standards
+index names (91 of them), not just the 12 machine-contract rows, and it finally has a
+teeth test. `gate-teeth-gate` ratcheted 47 → 46 no-proof gates. ⚠ Existence is not
+correctness: the gate cannot tell whether a named script DOES what its cell claims, and a
+standard with no row in the index is invisible to it.
 
 **S8 closed** — `PackedContext.diagnostics()` puts the eight numbers the pack already
 measured onto the job result (only two used to get there). ⚠ `over_budget=True` means the

@@ -221,6 +221,76 @@ def is_reachable(reader_rel: str, sources: list[tuple[str, str]]) -> bool:
     return False
 
 
+# ── S12 · every DECLARED enforcement site must resolve, not only the 12 contract rows ────
+
+#: Repo-relative paths the index names. Deliberately restricted to the extensions an
+#: enforcement claim actually uses — widening it starts swallowing prose ("see services/foo"),
+#: and a gate that manufactures findings is abandoned faster than one that misses some.
+_EXT = r"(?:py|sh|ya?ml|json|md|go|rs|ts|tsx)"
+_TOP = r"(?:scripts|contracts|docs|services|sdks|crates|frontend|\.github)"
+
+#: A backticked repo-relative path: `scripts/ai-provider-gate.py`.
+_NAMED_PATH = re.compile(rf"`(?P<p>{_TOP}/[A-Za-z0-9_./*-]+\.{_EXT})`")
+
+#: A markdown LINK TARGET. This index sits at `docs/standards/`, so most of its links are
+#: written `../../contracts/x.yaml` — and a pattern anchored on the repo-relative form matches
+#: NONE of them. The first version of this check did exactly that and reported "43 paths, 0
+#: missing" while never looking at a single doc link; the teeth test caught it by injecting a
+#: broken link and watching the checker stay silent. Targets are resolved against the index's
+#: own directory, which is what a reader clicking the link does.
+_LINK_TARGET = re.compile(rf"\]\((?P<p>[A-Za-z0-9_./*-]+\.{_EXT})(?:#[^)]*)?\)")
+
+#: A path with a glob cannot be stat'd; `contracts/api/glossary-service/*.yaml` is a real and
+#: correct way to name a set. Resolved by directory existence instead of skipped, because
+#: "the directory is gone" is the same failure one level up.
+_GLOB = "*"
+
+
+def declared_paths(text: str) -> set[str]:
+    """Every path the index names, normalised to repo-relative.
+
+    Two forms, because the index writes both and a checker that sees only one silently halves
+    its own input — the exact failure the contract-row regex shipped with.
+    """
+    out = {m.group("p") for m in _NAMED_PATH.finditer(text)}
+    index_dir = os.path.dirname(os.path.relpath(INDEX, REPO_ROOT)).replace(os.sep, "/")
+    for m in _LINK_TARGET.finditer(text):
+        raw = m.group("p")
+        rel = raw if not raw.startswith(("./", "../")) else os.path.normpath(
+            os.path.join(index_dir, raw)).replace(os.sep, "/")
+        # A target that climbs OUT of the repo is not ours to check.
+        if not rel.startswith(".."):
+            out.add(rel)
+    return out
+
+
+def unresolved_paths(text: str) -> list[str]:
+    """Paths the standards index names that do not exist on disk.
+
+    THE GENERALISATION S12 ASKS FOR. The contract check above covers section B — 12 rows of a
+    125-row index. Sections A, C, D, E and F name gates, lints, specs and source files in their
+    enforcement cells, and NOTHING checked that any of them still exist. That is the B3 shape
+    exactly: a standard whose enforcement is a script that was renamed, moved, or never
+    written, asserted in a document nobody diffs against the tree.
+
+    A missing path is reported, never a missing SYMBOL — this cannot tell whether the named
+    script does what the cell claims. "It is not there at all" is the terminal case, it is what
+    happened, and it is cheaply decidable.
+    """
+    out: list[str] = []
+    for rel in sorted(declared_paths(text)):
+        target = os.path.join(REPO_ROOT, *rel.split("/"))
+        if _GLOB in rel:
+            # `a/b/*.yaml` → the directory must exist and hold at least one match.
+            import glob as _g
+            if not _g.glob(target):
+                out.append(rel)
+            continue
+        if not os.path.exists(target):
+            out.append(rel)
+    return out
+
+
 def main() -> int:
     if not os.path.isfile(INDEX):
         print(f"enforcement-claims-gate: standards index not found at {INDEX}")
@@ -319,9 +389,16 @@ def main() -> int:
         for p in declared_unwired:
             print(f"    · {p}")
 
-    if not missing and not unread:
+    # S12 — the generalisation: every path the index NAMES, in any section, must resolve.
+    with open(INDEX, encoding="utf-8") as fh:
+        phantom = unresolved_paths(fh.read())
+    print(f"  {len(declared_paths(open(INDEX, encoding='utf-8').read()))} path(s) named across "
+          f"the whole index; {len(phantom)} do not exist")
+
+    if not missing and not unread and not phantom:
         print("OK — every claimed-enforced contract is backed by a live non-test reader, or by "
-              "a gate/drift-test its enforcement cell names and that exists")
+              "a gate/drift-test its enforcement cell names and that exists; and every path the "
+              "index names resolves on disk")
         return 0
 
     print()
@@ -338,6 +415,13 @@ def main() -> int:
         for p, enf in unread:
             print(f"  {p}")
             print(f"      index claims: {enf}")
+    if phantom:
+        print("[the index NAMES these and they do not exist]")
+        print("  → a standard whose enforcement is a script that was renamed, moved or never")
+        print("    written is worse than an unwritten standard: it reads as covered.")
+        print()
+        for p in phantom:
+            print(f"  {p}")
     return 1
 
 

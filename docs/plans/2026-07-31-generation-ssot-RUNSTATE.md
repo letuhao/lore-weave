@@ -77,7 +77,7 @@ Everything else in the family passed — the suites had not rotted, they had sim
 Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh bị drift … cần thêm bước audit
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
-**Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12` →
+**Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
 `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
 
 `D-GENERATED-FACT-HAS-NO-HOME` is inserted BEFORE S1 because it is the root of both continuity
@@ -462,6 +462,49 @@ AUDIT S8
                this slice treats "no field".
 ```
 
+## ✅ S12 · every declared enforcement site must resolve — CLOSED 2026-08-01
+
+```
+AUDIT S12
+  BUILT      — `enforcement-claims-gate` generalised from the 12 machine-contract rows to
+               EVERY path the 125-row standards index names, in any section — and given the
+               teeth test it had shipped without since Phase 0.
+
+  PROVEN     — `enforcement-claims-gate: 12 registered contract(s) · 2 declared NOT WIRED ·
+               91 path(s) named across the whole index; 0 do not exist`.
+               `gate-teeth-gate: PASS — 56 CI-invoked gate(s) … 10 carry a red-ability proof;
+               46 held at baseline` (was 9/47; the meta-gate ASKED for the ratchet).
+               scripts suite `41 passed`. generation-guard-gate PASS · ai-provider OK ·
+               db-safety PASS · language-rule PASS.
+               RED-ABLE, by injection into a copy of the index: a named gate script that does
+               not exist → reported; a broken markdown link → reported; a missing glob
+               directory → reported; prose naming a directory → correctly NOT reported.
+
+  NOT PROVEN — existence is not correctness. The gate cannot tell whether a named script DOES
+               what its enforcement cell claims, only that it is there — the B3 defect was a
+               crate with zero call sites, which this would still miss if the crate file
+               existed. Sections A/C/D/E/F are covered only insofar as they NAME a path; a row
+               whose enforcement cell is prose ("planned perf-nightly p95 assertion") is
+               deliberately unchecked and therefore uncounted. And the index remains the only
+               input: a standard that exists in the repo but has NO row here is invisible to
+               this gate entirely.
+
+  DRIFT      — my first version of the generalisation matched only repo-relative link targets.
+               This index lives at `docs/standards/`, so nearly all its links are
+               `../../contracts/x.yaml` — it found 43 paths and reported "0 missing" while
+               never looking at a single doc link. Fixing it took the count to 91. I had
+               written a checker that silently halved its own input and printed the smaller
+               number as though it were the set, INSIDE the gate whose docstring already
+               records that exact failure two paragraphs up. The teeth test caught it, and only
+               because I wrote the broken-link case before I trusted the number.
+
+  NEXT       — S7 (one output budget). It is the largest remaining mechanical slice — ~40
+               `max_tokens` sites of which ~31 are signature defaults, plus ABSENT budgets in
+               glossary's Go tools and tilemap, plus zero `finish_reason == "length"` checks
+               service-wide in glossary. The spec is explicit that it must SPLIT: `prose` is
+               mechanical, the JSON kinds each need their own sizing model.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -544,6 +587,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
 | 2026-08-01 | **Wrote a diagnosis into the handoff from ONE error message.** Told the next session "CI red = 33 failures, one root, `language`→`original_language`, a mechanical sweep". There were **three** roots — a fastapi 0.139 `app.routes` change across two services, a pip editable path resolving outside the checkout, and the rename — and the rename half needed a SEMANTIC rewrite because the identity key had changed too. I had read one traceback and generalised, which is the §1.4 mistake the red team already caught me making twice. |
+| 2026-08-01 | **Wrote a checker that silently halved its own input — inside the gate whose docstring records that exact failure.** The S12 generalisation matched only repo-relative markdown link targets; the standards index lives at `docs/standards/` so nearly all its links are `../../…`. It found 43 paths and printed “0 missing” while never examining a single doc link. The fix took it to 91. |
 | 2026-08-01 | **Wrote a fixture that asserted the opposite of its own name.** The “content lost while the budget reads fine” case used a 401-token protected floor against a 200-token budget, so both halves were over-budget. It failed loudly — the only reason I noticed. Written the other way round it would have PASSED and pinned the very semantic inversion S8 exists to correct. |
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
