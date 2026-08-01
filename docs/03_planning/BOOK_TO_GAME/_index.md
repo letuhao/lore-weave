@@ -48,12 +48,13 @@ job, and that is a different job — see [`03_two_jobs.md`](03_two_jobs.md).
 | [`04_fidelity.md`](04_fidelity.md) | how far from the source, on which axes, and how a human can actually decide — fidelity as **recorded distance, not permission** |
 | [`05_planforge_reuse.md`](05_planforge_reuse.md) | evidence-based: what of PlanForge is reusable, what is not, and why |
 | [`06_poc_plan.md`](06_poc_plan.md) | the smallest thing that could falsify this design |
-| [`07_lore_bible.md`](07_lore_bible.md) | **the scale answer** — how a Lore Bible is built from a book nobody can read: from the derived layers, never from the corpus |
+| [`07_lore_bible.md`](07_lore_bible.md) | **the find-and-load answer** — the bible's spine is an exhaustive SWEEP over the glossary the book produced, not a search. The chapter is the wrong unit. |
 
-**`03` and `04` are corrections.** The first draft of this folder put authoring and structuring in one
-place and treated fidelity as a gate that could forbid a mechanism. Both were wrong, both were
-corrected by the PO, and the superseded axioms are marked as replaced rather than deleted — the
-mistakes are more instructive than the fixes.
+**`03`, `04` and `07` are corrections.** The first draft of this folder put authoring and structuring in one
+place, treated fidelity as a gate that could forbid a mechanism, and argued the corpus-vs-derived
+question from COST when the real reason is that a chapter is the wrong UNIT. All three were wrong, all
+three were corrected by the PO, and the superseded axioms are marked as replaced rather than deleted —
+the mistakes are more instructive than the fixes.
 
 ## Working name
 

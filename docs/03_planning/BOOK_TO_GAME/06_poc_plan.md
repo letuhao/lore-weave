@@ -176,16 +176,20 @@ E  does a reference game help?        the claim that makes a SYSTEMLESS source w
 F  does the KG yield an invariant?    the Lore Bible's whole premise, and it is SQL
 ```
 
-**POC-F, added with §[`07`](07_lore_bible.md).** The bible's premise is that a systemic claim can be
-recovered from typed edges without reading prose — the sharpest form being *the realm ladder falls out
-of `BREAKS_THROUGH_TO` edges even though no chapter lists the realms in order*. On the fixture world
-that is a handful of queries and no model at all, which makes it the cheapest step on this ladder and
-the one whose failure would be most expensive to discover late.
+**POC-F, added with §[`07`](07_lore_bible.md).** Two claims, both SQL and neither needing a model,
+which makes this the cheapest step on the ladder and the one whose failure would be most expensive to
+find late:
 
-**Its honest limit, stated before it runs:** the largest book on the stack is **100 chapters** with
-**5,431 glossary entities** — one to two orders of magnitude below the case §[`07`](07_lore_bible.md)
-designs for. A green POC-F proves the *shape* of the idea and proves **nothing about scale**, and that
-sentence should be repeated in whatever reports it.
+1. **The sweep has a real denominator.** Enumerate the glossary for the world, per kind, and confirm
+   the number is stable, closed and countable — `5,431 / 5,412 described / 5,109 attributed / 4,943
+   chapter-linked` on the stack today. This is `evidence_n`, the thing that had no definition against a
+   corpus, and either it is a list or the spine of §[`07`](07_lore_bible.md) does not exist.
+2. **A systemic claim can be recovered from typed edges.** The sharpest form: *the realm ladder falls
+   out of `BREAKS_THROUGH_TO` edges even though no chapter lists the realms in order.*
+
+**Scale is explicitly NOT what this measures**, and after the PO's correction that is the point rather
+than a caveat: the problem was never *can we read enough of the book* — it is *is the list closed and
+can we visit every element*. What POC-F must not be allowed to prove is a cost claim.
 
 A and B are independent; A is first because it is cheaper and because what it finds changes what POC-B
 should author.
