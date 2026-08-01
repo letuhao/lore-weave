@@ -476,6 +476,10 @@ export type CanonResult = {
   // S1 — `resolved`, but only when something actually verified it; null when nothing did.
   // `resolved` alone ships `true` on the no-cast early return, where no check ran.
   verdict?: boolean | null;
+  // S1 — what EACH check did, keyed by name (`canon_cast`, `name_grounding`, `plan_liveness`).
+  // The panel names the specific check that could not run; without it the author is told the
+  // guard is amber and not which half of it.
+  checks?: Record<string, string>;
 };
 
 // V1 slice 3 — controlled-auto (diverge→converge) result. NON-streaming: the

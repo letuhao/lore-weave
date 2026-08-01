@@ -1358,6 +1358,47 @@ AUDIT LLM-BUDGET (adaptive signal)
   NEXT       — the three POC defects (A/B/C), and surfacing UNPARSEABLE to the author.
 ```
 
+### ✅ THE AUTHOR CAN NOW SEE WHY THE GUARD IS AMBER
+
+```
+AUDIT PLAN-LIVENESS (surfacing)
+  BUILT      — `CanonGatePanel`'s unchecked reason derives from `guard_status`, with a case per
+               status and a fallback that NAMES the status; plus a `(which_check)` suffix from
+               `canon.checks`.
+
+  PROVEN     — two defects, both measured by reading the component rather than the envelope:
+               1. the reason chain keyed on `canon.status` — the SAME legacy scalar `checked`
+                  was moved off this morning. So every status added since (`no_rules`,
+                  `no_subject`, `unverified_input`, `unparseable`) fell through.
+               2. what they fell through TO asserts *"the canon service was unavailable"* for
+                  anything unrecognised. A truncated judge is not an outage. The panel was
+                  telling the author to go look at a healthy service — a cause it cannot know,
+                  which is the same class as the explanation the author corrected me on an hour
+                  earlier, this time shipped in the UI.
+
+               `19 passed` in the panel file (6 new) · `1049 passed` across composition FE ·
+               `tsc --noEmit` exit=0
+               red-able: reverting `reasonKey` to the legacy scalar fails exactly the
+               truncated-judge test; restored by re-editing.
+
+  NOT PROVEN — no browser smoke. The tests use the i18n mock, so they assert the KEY is chosen,
+               not that the rendered Vietnamese sentence reads well — and `canonUncheckedOther`
+               interpolates a raw enum member (`unparseable`) into author-facing copy, which is
+               developer vocabulary leaking into the UI.
+               The `(plan_liveness)` suffix names the check with its INTERNAL key for the same
+               reason. Both are honest and neither is finished copy.
+               No translations added — only `defaultValue`s, so a vi reader sees English until
+               the locale files catch up.
+
+  DRIFT      — I shipped `guard_status` to the SQL gate and the `checked` flag this morning and
+               left the reason chain on the old field, in the same component, in the same edit.
+               Then I recorded "the FE renders nothing for UNPARSEABLE" as the gap — which was
+               wrong in the more embarrassing direction: it rendered something, and what it
+               rendered was a fabricated cause.
+
+  NEXT       — the three POC defects (A/B/C).
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -1439,6 +1480,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **Moved a component off the legacy scalar and left half of it behind.** `checked` was switched to `guard_status`; the unchecked-REASON chain in the same file kept keying on `canon.status`, so every new status fell through to a branch that asserts “the canon service was unavailable”. I then wrote the gap up as “the FE renders nothing”, when it rendered a fabricated cause. |
 | 2026-08-01 | **Blamed my own call site before counting the others.** Asked whether the budget seam had rotted, I said the mechanism existed and my new call ignored it. Counting showed 28 of 30 call sites passed no signal, and that the VERDICT kind was hardcoded `base = 0.0` so no judge call COULD have carried any. A local explanation reached for before a systemic measurement. |
 | 2026-08-01 | **Asserted a CAUSE from one observation, in a probe that had drifted off the platform's own call path.** I wrote that the thinking-disable flags “do not work for this model”; `build_judge_request` in fact sends the STRONGER disable. The author caught it. The observation — a truncated judge silently kills the blocking tier — held; the explanation I had already committed to prose did not. |
 | 2026-08-01 | **Validated a judge on three-sentence excerpts and called the tier proven.** The 3/3 real/dream/feint result was real and useless as evidence for production: on 500-word drafts the same judge overruns its budget and returns nothing. Fixture LENGTH was the difference between a working tier and a dead one. |

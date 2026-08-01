@@ -49,12 +49,50 @@ export function CanonGatePanel({ canon, onRevise }: Props) {
   const verdict = canon.verdict === undefined ? canon.resolved : canon.verdict;
   const clear = checked && verdict === true && hard.length === 0 && advisory.length === 0;
 
+  // WHY it is unchecked, derived from `guard_status` — the per-check headline — and not from
+  // the legacy scalar. Two defects this replaces, both measured:
+  //   · the chain keyed on `canon.status`, the SAME field `checked` was moved off, so every
+  //     status added since (`no_rules`, `unverified_input`, `unparseable`, `no_subject`) fell
+  //     through to the final branch;
+  //   · that branch asserts "the canon service was unavailable" for ANYTHING unrecognised — a
+  //     cause it cannot know. A truncated JUDGE is not an outage, and telling the author to go
+  //     look at a healthy service is worse than saying nothing.
+  // The fallback now NAMES the status instead of inventing a reason for it.
+  const REASONS: Record<string, string> = {
+    no_subject: t('canonUncheckedNoCast', { defaultValue: 'no tracked characters in this scene' }),
+    no_position: t('canonUncheckedNoPosition', {
+      defaultValue: 'this scene has no reading-order position yet',
+    }),
+    no_rules: t('canonUncheckedNoRules', {
+      defaultValue: 'nothing is known yet about this scene’s characters to check against',
+    }),
+    unverified_input: t('canonUncheckedUnverifiedInput', {
+      defaultValue: 'part of what this check needed could not be loaded, so it is incomplete',
+    }),
+    unparseable: t('canonUncheckedUnparseable', {
+      defaultValue: 'the reviewing model did not return a usable answer',
+    }),
+    degraded: t('canonUncheckedDegraded', { defaultValue: 'the canon service was unavailable' }),
+    failed: t('canonUncheckedFailed', { defaultValue: 'the check itself errored' }),
+  };
+  // Pre-S1 rows carry only the legacy scalar; map its two known values onto the same reasons.
+  const LEGACY: Record<string, string> = {
+    skipped_no_cast: 'no_subject',
+    skipped_no_position: 'no_position',
+    degraded: 'degraded',
+  };
+  const reasonKey = canon.guard_status ?? LEGACY[canon.status] ?? canon.status;
   const uncheckedReason =
-    canon.status === 'skipped_no_cast'
-      ? t('canonUncheckedNoCast', { defaultValue: 'no tracked characters in this scene' })
-      : canon.status === 'skipped_no_position'
-        ? t('canonUncheckedNoPosition', { defaultValue: 'this scene has no reading-order position yet' })
-        : t('canonUncheckedDegraded', { defaultValue: 'the canon service was unavailable' });
+    REASONS[reasonKey] ??
+    t('canonUncheckedOther', {
+      defaultValue: 'this check did not run ({{status}})',
+      status: reasonKey,
+    });
+  // Which half of the composite could not run. Named because "the guard is amber" without
+  // WHICH check is the same shape as the scalar this arc replaced.
+  const stalledChecks = Object.entries(canon.checks ?? {})
+    .filter(([, v]) => v !== 'checked' && v !== 'not_applicable')
+    .map(([k]) => k);
 
   const row = (v: CanonViolation, kind: 'hard' | 'advisory', i: number) => (
     <div
@@ -79,10 +117,16 @@ export function CanonGatePanel({ canon, onRevise }: Props) {
   );
 
   return (
-    <div data-testid="canon-gate-panel" data-status={canon.status} className="rounded border border-neutral-200 p-2 dark:border-neutral-700">
+    <div data-testid="canon-gate-panel" data-status={canon.status}
+      data-guard-status={canon.guard_status ?? canon.status} className="rounded border border-neutral-200 p-2 dark:border-neutral-700">
       {!checked && (
         <div data-testid="canon-unchecked" className="rounded bg-amber-50 p-1.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           <span className="font-medium">{t('canonUncheckedTitle', { defaultValue: 'Canon not verified' })}</span> — {uncheckedReason}
+          {stalledChecks.length > 0 && (
+            <span data-testid="canon-unchecked-which" className="opacity-80">
+              {' '}({stalledChecks.join(', ')})
+            </span>
+          )}
         </div>
       )}
 

@@ -111,3 +111,58 @@ describe('CanonGatePanel (A2-S4a — hard / advisory / unchecked)', () => {
     expect(screen.queryByTestId('canon-clear')).toBeNull();
   });
 });
+
+describe('CanonGatePanel — WHY it is unchecked', () => {
+  // The reason chain keyed on `canon.status`, the same legacy scalar `checked` was moved off,
+  // so every status added since fell through to a final branch that asserts "the canon service
+  // was unavailable" — a cause it cannot know. A truncated JUDGE is not an outage.
+
+  it('a truncated judge says the MODEL did not answer, not that the service was down', () => {
+    panel({ violations: [], resolved: true, iterations: 0, status: 'checked',
+            guard_status: 'unparseable', verdict: null });
+    const banner = screen.getByTestId('canon-unchecked');
+    expect(banner.textContent).toContain('canonUncheckedUnparseable');
+    expect(banner.textContent).not.toContain('canonUncheckedDegraded');
+  });
+
+  it('a real outage still says outage', () => {
+    // The counterweight: without it, "never say degraded" satisfies the test above and a
+    // genuine knowledge outage becomes indistinguishable from a model that rambled.
+    panel({ violations: [], resolved: true, iterations: 0, status: 'degraded',
+            guard_status: 'degraded', verdict: null });
+    expect(screen.getByTestId('canon-unchecked').textContent)
+      .toContain('canonUncheckedDegraded');
+  });
+
+  it('an unrecognised status NAMES itself instead of inventing a cause', () => {
+    panel({ violations: [], resolved: true, iterations: 0, status: 'checked',
+            guard_status: 'some_status_invented_next_year', verdict: null });
+    const banner = screen.getByTestId('canon-unchecked');
+    expect(banner.textContent).toContain('canonUncheckedOther');
+    expect(banner.textContent).not.toContain('canonUncheckedDegraded');
+  });
+
+  it('a PRE-S1 row with only the legacy scalar still reads correctly', () => {
+    panel({ violations: [], resolved: true, iterations: 0, status: 'skipped_no_cast' });
+    expect(screen.getByTestId('canon-unchecked').textContent)
+      .toContain('canonUncheckedNoCast');
+  });
+
+  it('names WHICH check stalled, and omits the ones that ran or did not apply', () => {
+    panel({ violations: [], resolved: true, iterations: 0, status: 'checked',
+            guard_status: 'unparseable', verdict: null,
+            checks: { canon_cast: 'checked', name_grounding: 'not_applicable',
+                      plan_liveness: 'unparseable' } });
+    const which = screen.getByTestId('canon-unchecked-which');
+    expect(which.textContent).toContain('plan_liveness');
+    expect(which.textContent).not.toContain('canon_cast');
+    expect(which.textContent).not.toContain('name_grounding');
+  });
+
+  it('CONTROL — a fully checked scene shows no unchecked banner at all', () => {
+    panel({ violations: [], resolved: true, iterations: 0, status: 'checked',
+            guard_status: 'checked', verdict: true,
+            checks: { canon_cast: 'checked', plan_liveness: 'checked' } });
+    expect(screen.queryByTestId('canon-unchecked')).toBeNull();
+  });
+});
