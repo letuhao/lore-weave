@@ -104,6 +104,22 @@ class ExtractItemRequest(BaseModel):
     # Previously known entities for context enrichment
     known_entities: list[str] = Field(default_factory=list)
 
+    # FD-4 (066) — the chapter's reading-order ordinal (book-service sort_order). The SAME
+    # field `PersistPass2Request` already carries, and for the same reason: without it every
+    # extracted Event lands with `event_order = NULL`, and `pass2_writer` then discards its
+    # `status_effects` ("no place on the reading axis"), so no `:EntityStatus` is ever written.
+    #
+    # The two extraction entry points had diverged on exactly the field the liveness store
+    # needs. `persist_pass2` (the import/worker path) took it; this one (the AUTHORING path a
+    # book written from scratch uses) did not, so a book composed in the product could never
+    # populate the store its own canon guard reads. MEASURED live 2026-08-01 on a throwaway
+    # book: 8 events, every event_order NULL, 0 :EntityStatus, on prose whose own extracted
+    # summary read "Castor falls and dies at the Bridge of Ash".
+    #
+    # ge=0 for the same reason `PersistPass2Request.chapter_index` is: a 0-based sort_order
+    # must not 422 an otherwise-good extraction.
+    chapter_index: int | None = Field(default=None, ge=0)
+
 
 class ExtractItemResponse(BaseModel):
     source_id: str
@@ -623,6 +639,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     job_id=str(body.job_id),
                     chapter_text=body.chapter_text,
                     known_entities=body.known_entities,
+                    chapter_index=body.chapter_index,  # FD-4 — event_order → status_effects
                     model_source=body.model_source,
                     model_ref=body.model_ref,
                     llm_client=llm_client,

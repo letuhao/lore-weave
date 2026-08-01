@@ -163,7 +163,7 @@ class KnowledgeClient:
         self, *, user_id: UUID, project_id: UUID, source_id: str,
         chapter_text: str, model_source: str, model_ref: str,
         job_id: UUID, known_entities: list[str] | None = None,
-        source_type: str = "chapter",
+        source_type: str = "chapter", chapter_index: int | None = None,
     ) -> dict[str, Any] | None:
         """C27 delta flywheel — dispatch the EXISTING knowledge extraction trigger
         (`POST /internal/extraction/extract-item`, X-Internal-Token) for ONE
@@ -202,6 +202,20 @@ class KnowledgeClient:
             "chapter_text": chapter_text,
             "known_entities": list(known_entities or []),
         }
+        # FD-4 (066): the chapter's reading-order ordinal. Without it every extracted Event
+        # lands with `event_order = NULL`, and `pass2_writer` then SKIPS every `status_effect`
+        # by design (M2: "no place on the reading axis"). So a death the extractor understood
+        # perfectly well writes no `:EntityStatus`, and the composition canon guard — whose
+        # whole job is gating a gone character — reads an empty store.
+        #
+        # MEASURED on throwaway book 019fbd8f… 2026-08-01: two chapters extracted 6 entities
+        # and 4 events, one summarised verbatim as "Castor falls and dies at the Bridge of
+        # Ash", and `:EntityStatus` was 0. The receiving field already existed for exactly this
+        # ("a flat book, chapters and no part, still gets a dense event_order") and composition
+        # simply never sent it — while `approve_chapter` had already fetched the sort_order
+        # three statements earlier to decide forward-of-branch.
+        if chapter_index is not None:
+            payload["chapter_index"] = chapter_index
         try:
             resp = await self._http.post(
                 url, json=payload, headers=self._internal_headers(),

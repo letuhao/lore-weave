@@ -918,6 +918,15 @@ async def _run_pipeline(
     # after successful write, enqueue summary.chapter (always) + on
     # is_last_chapter_of_book, also summary.part × N + summary.book.
     hierarchy_paths: HierarchyPaths | None = None,
+    # FD-4 (066) — the chapter's reading-order ordinal, threaded here for exactly the reason
+    # `persist_pass2` already takes one: an Event with no `event_order` has no place on the
+    # reading axis, so `pass2_writer` DISCARDS its `status_effects` and no `:EntityStatus` is
+    # ever written. The worker path supplied it; this path did not, so the authoring flywheel
+    # could fill a graph with entities and events and never with liveness — which is the one
+    # thing the composition canon guard reads. MEASURED live 2026-08-01 on a throwaway book:
+    # 8 events, every `event_order` NULL, 0 `:EntityStatus`, on prose the extractor summarised
+    # as "Castor falls and dies at the Bridge of Ash".
+    chapter_index: int | None = None,
     is_last_chapter_of_book: bool = False,
     book_parts: list[tuple[str, str, str]] | None = None,  # for book-end: [(part_id, part_path, part_index), ...]
     embedding_model_uuid: str | None = None,
@@ -1210,6 +1219,7 @@ async def _run_pipeline(
         extraction_model=model_ref,
         anchors=anchors,
         hierarchy_paths=hierarchy_paths,   # P3 D2a — hierarchy MERGE in same Tx
+        chapter_index=chapter_index,       # FD-4 — event_order for a flat book
         # lane LB / L7B — closed-edge-set write-boundary guard. Prefer the
         # AUTHORITATIVE write_schema (real allow_free_edges) when the caller
         # split it from the advisory prompt schema (/extract-item, L7B); else
@@ -1448,6 +1458,15 @@ async def extract_pass2_chapter(
     # P3 (D2 + D3 + D9): hierarchy + async summary kwargs passthrough.
     # See _run_pipeline docstring for semantics.
     hierarchy_paths: HierarchyPaths | None = None,
+    # FD-4 (066) — the chapter's reading-order ordinal, threaded here for exactly the reason
+    # `persist_pass2` already takes one: an Event with no `event_order` has no place on the
+    # reading axis, so `pass2_writer` DISCARDS its `status_effects` and no `:EntityStatus` is
+    # ever written. The worker path supplied it; this path did not, so the authoring flywheel
+    # could fill a graph with entities and events and never with liveness — which is the one
+    # thing the composition canon guard reads. MEASURED live 2026-08-01 on a throwaway book:
+    # 8 events, every `event_order` NULL, 0 `:EntityStatus`, on prose the extractor summarised
+    # as "Castor falls and dies at the Bridge of Ash".
+    chapter_index: int | None = None,
     is_last_chapter_of_book: bool = False,
     book_parts: list[tuple[str, str, str]] | None = None,
     embedding_model_uuid: str | None = None,
@@ -1500,6 +1519,7 @@ async def extract_pass2_chapter(
         chapter_id=chapter_id,
         save_raw_extraction=save_raw_extraction,
         hierarchy_paths=hierarchy_paths,
+        chapter_index=chapter_index,
         is_last_chapter_of_book=is_last_chapter_of_book,
         book_parts=book_parts,
         embedding_model_uuid=embedding_model_uuid,

@@ -16,6 +16,7 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock
 
+from app.clients.book_client import BookClientError
 from app.db.models import CompositionWork
 
 USER = uuid.uuid4()
@@ -205,6 +206,104 @@ def test_approve_canon_work_extracts_into_its_own_project(ctx):
     assert r.json()["dispatched"] is True
     assert len(know.extract_calls) == 1, "a canon chapter must reach extraction"
     assert str(know.extract_calls[0]["project_id"]) == str(works.work.project_id),         "canon extraction targets the book's OWN project, never null and never a source"
+
+
+def test_approve_forwards_the_chapters_reading_ORDINAL_so_status_effects_survive(ctx):
+    """LIVE-SMOKE finding 2026-08-01 (throwaway book 019fbd8f…), the one that mattered most.
+
+    The flywheel dispatched, extraction ran, 6 entities and 4 events landed — and
+    `:EntityStatus` was **0**, on prose whose own extracted summary read "Castor falls and
+    dies at the Bridge of Ash". `pass2_writer` skips every `status_effect` whose Event has no
+    `event_order` (M2 — "no place on the reading axis"), and `event_order` comes from
+    `chapter_index`, which this route never sent. So the liveness store the entire canon
+    gone-cast guard reads was structurally unfillable from the authoring path.
+
+    `chapter_sort_order` was already in hand three statements earlier — it decides
+    forward-of-branch. The value existed; only the wire did not."""
+    client, works, derivs, bookc, know = ctx
+    works.work = _canon_work()
+    works.source = None
+    bookc.sort_order = 7
+    know.result = {"entities_merged": 1, "events_merged": 1, "facts_merged": 0}
+
+    assert _approve(client).status_code == 200
+    assert know.extract_calls[0]["chapter_index"] == 7, (
+        "without the reading ordinal every Event is positionless and knowledge DISCARDS "
+        "its status_effects — the guard then checks a store nothing can fill"
+    )
+
+
+def test_approve_with_an_unplaceable_chapter_still_dispatches(ctx):
+    """The counterweight: book-service being unreachable makes the ordinal None. That must
+    degrade to positionless events (what happened before this field existed), never block the
+    extraction — the approval is the author's action and it stands."""
+    client, works, derivs, bookc, know = ctx
+    works.work = _canon_work()
+    works.source = None
+    know.result = {"entities_merged": 1, "events_merged": 0, "facts_merged": 0}
+
+    async def _no_orders(chapter_ids):
+        raise BookClientError("book-service down", "BOOK_SERVICE_UNAVAILABLE")
+    bookc.get_chapter_sort_orders = _no_orders
+
+    assert _approve(client).json()["dispatched"] is True
+    assert know.extract_calls[0]["chapter_index"] is None
+
+
+def test_approve_canon_dispatch_REPORTS_the_canon_path_not_the_delta_one(ctx):
+    """LIVE-SMOKE finding 2026-08-01 (throwaway book 019fbd8f…): the dispatch was right and
+    every word describing it was wrong. The success return was hardcoded to `decision.*` — the
+    DELTA decision — whose fields are all None on a canon Work. A real 200 came back as
+
+        {"dispatched": true, "reason": "not_a_derivative", "source_project_id": "None"}
+
+    i.e. the one field that tells an operator WHICH path ran named the path that did not run,
+    and a Python None was str()'d into JSON as the four-character string "None". The unit tests
+    asserted `dispatched` and the extract call's project, so both passed.
+
+    `project_id` was accidentally correct — `plan_flywheel_dispatch` echoes its input back — so
+    it is asserted here against the canon decision's own value, not left to that coincidence."""
+    client, works, derivs, bookc, know = ctx
+    works.work = _canon_work()
+    works.source = None
+    bookc.sort_order = 5
+    know.result = {"entities_merged": 4, "events_merged": 2, "facts_merged": 0}
+
+    body = _approve(client).json()
+    assert body["dispatched"] is True
+    assert body["reason"] == "canon_dispatch", "the reason must name the path that actually ran"
+    assert body["project_id"] == str(works.work.project_id)
+    assert body["source_project_id"] is None, "a canon Work has no source; null, never the string 'None'"
+
+
+def test_approve_derivative_still_reports_the_delta_path(ctx):
+    """The counterweight: without it, "always say canon" satisfies the test above and the
+    derivative path — the one this route was built for — starts lying instead."""
+    client, works, derivs, bookc, know = ctx
+    works.work = _derivative_work(branch_point=4)
+    works.source = _canon_work(project_id=SOURCE_PROJECT)
+    bookc.sort_order = 5
+    know.result = {"entities_merged": 1, "events_merged": 0, "facts_merged": 0}
+
+    body = _approve(client).json()
+    assert body["reason"] == "delta_dispatch", body["reason"]
+    assert body["project_id"] == str(DELTA)
+    assert body["source_project_id"] == str(SOURCE_PROJECT)
+
+
+def test_approve_canon_knowledge_outage_names_the_books_own_project(ctx):
+    """The outage return had the same defect: `str(decision.delta_project_id)` → "None" for a
+    canon Work, so the one line telling the author which project failed to enrich named none."""
+    client, works, derivs, bookc, know = ctx
+    works.work = _canon_work()
+    works.source = None
+    bookc.sort_order = 5
+    know.result = None  # knowledge down
+
+    body = _approve(client).json()
+    assert body["dispatched"] is False
+    assert body["reason"] == "knowledge_unavailable"
+    assert body["project_id"] == str(works.work.project_id)
 
 
 def test_approve_canon_work_with_a_null_project_refuses(ctx):

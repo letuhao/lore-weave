@@ -134,6 +134,94 @@ that is unmeasured.
    no agent tool, and no path to the canon guard. It only filters extraction candidates. It is
    also POSITION-FREE, so it must NOT be fed to the cascade as a per-scene status.
 
+## 🔴 THE STORE THE WHOLE GUARD READS WAS UNFILLABLE — closed live 2026-08-01
+
+The author rejected the five deferrals (*"the reasons are not legitimate and they make the
+product a stub"*). Re-grading them against the repo's own defer gate, **4 of 5 did not clear
+it** — and digging into the first one found what sat underneath three of them.
+
+**`extract-item` had exactly ONE caller in the repo**: the *derivative* branch of
+`approve_chapter`, behind `if not decision.dispatch: return`. `plan_flywheel_dispatch`'s
+docstring said a greenfield Work "uses the event-driven path". **Measured: there is no such
+path.** So a book written from scratch was never extracted at all.
+
+| | measured 2026-08-01 |
+|---|---|
+| `:EntityStatus`, whole graph | 17 `gone` + 3 `active`, across 4 projects |
+| dogfood book: chapters / published / knowledge project | 15 / 4 / exists (shares the composition project id) |
+| its `:EntityStatus` | **0** |
+
+The canon guard, its LLM judge and the publish gate all check every scene against **nothing**
+for a book composed in the product. The plan rung built earlier this run is not a feature on
+top of that — it is the compensation for it.
+
+**Three fixes, each proven live on throwaway book `019fbd8f…` (project `019fbd90…`), never on
+the dogfood book, all on a local gemma at $0:**
+
+1. **`plan_canon_dispatch`** — a SEPARATE decision, not a loosening of the LOCKED C27
+   invariants (those stop a *derivative* writing into its *source*; a canon book writing into
+   its own project is not that leak). The C23 null-scope refusal is kept. ⚠ A test named
+   `test_approve_canon_work_is_clean_no_op` was **green and pinning the defect** — it asserted
+   `extract_calls == []` under the comment "canon partition untouched". True, and the bug.
+2. **The dispatch was right and every word describing it was wrong.** Live, the successful
+   canon 200 came back `{"reason": "not_a_derivative", "source_project_id": "None"}` — the
+   field naming which path ran named the path that did not, and a Python `None` was `str()`'d
+   into JSON. The whole tail read `decision.*`, all `None` on the canon path. The unit tests
+   asserted `dispatched` and the target project, so they passed. Root-caused further: a
+   DECLINED `FlywheelDecision` still echoed a real, writable `delta_project_id`, which is why
+   injecting the wrong target left the router's whole test file green.
+3. **`chapter_index` — the field that makes liveness possible at all.** With the flywheel
+   dispatching, extraction wrote 6 entities and 8 events and **0 `:EntityStatus`**, on prose
+   whose own extracted summary read *"Castor falls and dies at the Bridge of Ash"*.
+   `pass2_writer` discards a `status_effect` whose Event has no `event_order` (M2), and
+   `event_order` derives from `chapter_index` — which `PersistPass2Request` (the import/worker
+   path) has taken since 066 and `ExtractItemRequest` (the **authoring** path) never had. The
+   two extraction entry points had diverged on exactly the field the liveness store needs.
+   Plumbed 4 hops: composition's client + router → `ExtractItemRequest` → `extract_pass2_chapter`
+   → `_run_pipeline` → `write_pass2`. ⚠ The first attempt added the key to the payload only;
+   Pydantic ignored it silently and nothing changed on the wire — hence the endpoint-level test.
+
+**LIVE, chapter 4 of the throwaway book, both images rebuilt + content-verified:**
+`event_order` 4000000/4000001/4000002 (positioned), and `:EntityStatus` → **Vane · `gone` ·
+`from_order=4000000`**. Zero before.
+
+⚠ **What this does NOT do.** The 15 already-written dogfood chapters are still unextracted —
+this catches from the next approval forward, and the backfill is a separate decision. Approval
+is now irreversible-into-canon with no undo. Per-chapter cost is unmeasured (~10-12s each,
+local). Smoke debris to purge: book `019fbd8f-008c-7cef-bf81-1d53a808361d`.
+
+## 🔎 156 AUDIT — done, and it is NOT a large data migration (2026-08-01)
+
+The audit half of D-156 (a grep I had refused to run). Measured, not recalled:
+
+- **Scoped, safe:** `prior_scene_drafts`, `OutlineRepo`'s prev-scene lookup, and
+  `plan_liveness_after` all carry `chapter_id = $2`. `gather_structural` was fixed this run.
+- **Cross-chapter by design, and wrong under mixed numbering:** `_applies_at` (canon-rule
+  `from_order`/`until_order`) and `_arc_position`.
+- **The drifted rows are 16 scenes in 5 chapters of ONE book** — book slots **11-15**,
+  numbered `1,2,3`, so on the global axis they sort *before chapter 1*. All `source='authored'`,
+  created **2026-07-31**, one scene at a time: **my own eval/POC runs**, not legacy data. The
+  writer is the authored `create_node` path, where `story_order` is caller-supplied and never
+  derived from the chapter's slot.
+- **`resync_reading_order` already IS the repair** — it renumbers every chapter + scene from
+  book-service truth and remaps canon anchors. Two gaps: it is **parent-keyed**
+  (`WHERE parent_id = <chapter node>`) and the drifted scenes have **no chapter node and no
+  parent**, so it cannot reach them; and its only caller is the chapter-REORDER route, so a
+  book whose axis drifted can only be repaired by dragging a chapter and dragging it back.
+
+⇒ Not gate #2. The remaining work is: derive `story_order` at the authored create path, make
+the repair reachable standalone, and let it adopt parentless scenes. 16 rows of data.
+
+## 🔎 155 RE-GRADED — they are DEFAULT ARGUMENTS, which is worse (2026-08-01)
+
+**26 of the 28 signal-free budget sites are `max_tokens: int = max_tokens_for("kind")`** —
+evaluated once at *import*, so they cannot carry a per-call signal even in principle. This is
+not "28 kwargs to add"; it is 26 functions whose budget is frozen at module load and which no
+adaptive mechanism can ever reach. `budget_for`'s own docstring already says it: *"a call site
+that passes none gets a constant with extra steps."* The fix shape is the sentinel
+(`max_tokens: int | None = None` → resolve at call time), proven in-repo by
+`judge_plan_conflict`. Each of the 26 needs a judgement about its real size driver.
+
 ## ⚠ A POST-RUN REVIEW FOUND THREE DEFECTS IN WORK THIS RUN CALLED DONE
 
 The author paused the run and asked for a quality audit before continuing. Reading the CODE

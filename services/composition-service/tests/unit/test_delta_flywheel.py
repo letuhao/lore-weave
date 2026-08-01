@@ -89,6 +89,10 @@ def test_plan_skips_non_derivative_clean_no_op():
     )
     assert d.dispatch is False
     assert d.reason == "not_a_derivative"
+    # A decision that declined chose NO target. Echoing the input back handed a caller a real,
+    # writable project id for a dispatch that was never approved — so a wrong-partition write
+    # read exactly like a right one, to a reviewer and to a test alike.
+    assert d.delta_project_id is None
 
 
 def test_plan_skips_pre_branch_thinner_delta_not_an_error():
@@ -99,6 +103,7 @@ def test_plan_skips_pre_branch_thinner_delta_not_an_error():
     )
     assert d.dispatch is False
     assert d.reason == "pre_branch_thinner_delta"
+    assert d.delta_project_id is None
 
 
 def test_plan_raises_on_null_delta_for_a_real_forward_derivative():

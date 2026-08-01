@@ -173,15 +173,22 @@ def plan_flywheel_dispatch(
     Returns a FlywheelDecision; raises DeltaScopeError only at step 3 (a derivative
     that should dispatch but has a null delta project — a real defect, never a
     silent wrong-partition write)."""
+    # A DECLINED decision carries NO target. It used to echo `delta_project_id` back on every
+    # branch, which reads harmless and is not: a caller that reaches for the target of a decision
+    # that chose not to dispatch gets a real, writable project id instead of None, so a
+    # wrong-partition write is indistinguishable from a right one — including to a test. That is
+    # the C23 leak shape this module exists to prevent, sitting inside the module itself.
+    # (Found 2026-08-01 when injecting `target_project = decision.delta_project_id` into the
+    # canon path left the router's whole test file GREEN.)
     if source_project_id is None:
         return FlywheelDecision(
-            dispatch=False, delta_project_id=delta_project_id,
+            dispatch=False, delta_project_id=None,
             source_project_id=None, branch_point=branch_point,
             reason="not_a_derivative",
         )
     if not is_forward_of_branch(chapter_sort_order, branch_point):
         return FlywheelDecision(
-            dispatch=False, delta_project_id=delta_project_id,
+            dispatch=False, delta_project_id=None,
             source_project_id=source_project_id, branch_point=branch_point,
             reason="pre_branch_thinner_delta",
         )

@@ -26,6 +26,23 @@ def _llm_stub():
     return SimpleNamespace(resolve_context_length=_resolve_context_length)
 
 
+def _reflect_stub(*, status: str, coverage: list[str]):
+    """A canon-reflect result for the worker tests — the REAL model, not a duck type.
+
+    These were hand-built `SimpleNamespace`s, which meant every field added to the canon
+    envelope broke them from a distance: `coverage` did it once, then `verdict` left three
+    of these tests red at HEAD with an AttributeError that names the stub and not the change.
+    `ReflectResult` requires only `text`; everything else defaults, so the projection can grow
+    without the stubs needing to know. If a NEW field ever needs a non-default value here, that
+    is a real signal about the test, not maintenance."""
+    from app.engine.canon_check import ReflectResult
+    return ReflectResult(
+        text="", violations=[], resolved=True, iterations=0, status=status,
+        revise_finish_reason=None, coverage=coverage,
+        unanchored_names=[], name_near_misses=[], name_check_method="capitalised_latin",
+    )
+
+
 class _FakeRepo:
     def __init__(self, job):
         self._job = job
@@ -202,13 +219,7 @@ async def test_run_stitch_computes_and_stores_no_persist(monkeypatch):
         stitch_inputs.update(kw)
         return ("STITCHED PROSE", "stop")
 
-    reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
-                              status="ok", revise_finish_reason=None,
-                              # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER: the envelope now
-                              # reports WHICH checks ran, so a stub must carry them.
-                              coverage=["name_grounding", "canon_cast"],
-                              unanchored_names=[], name_near_misses=[],
-                              name_check_method="capitalised_latin")
+    reflect = _reflect_stub(status="ok", coverage=["name_grounding", "canon_cast"])
 
     async def _fake_reflect(**kw):
         return (kw["draft"], reflect, 0)
@@ -307,13 +318,7 @@ async def test_run_generate_computes_winner_and_canon(monkeypatch):
         return Selection(winner=cands[1], winner_index=1, candidates=cands,
                          rerank_reason="B", rerank_measured=True)
 
-    reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
-                              status="ok", revise_finish_reason=None,
-                              # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER: the envelope now
-                              # reports WHICH checks ran, so a stub must carry them.
-                              coverage=["name_grounding", "canon_cast"],
-                              unanchored_names=[], name_near_misses=[],
-                              name_check_method="capitalised_latin")
+    reflect = _reflect_stub(status="ok", coverage=["name_grounding", "canon_cast"])
 
     async def _fake_reflect(**kw):
         return (kw["draft"], reflect, 3)
@@ -376,11 +381,7 @@ async def test_run_generate_forwards_the_length_target_and_the_beats(monkeypatch
                          rerank_reason="", rerank_measured=False)
 
     async def _fake_reflect(**kw):
-        return (kw["draft"], SimpleNamespace(violations=[], resolved=True, iterations=0,
-                                             status="ok", revise_finish_reason=None,
-                                             coverage=["name_grounding"],
-                                             unanchored_names=[], name_near_misses=[],
-                                             name_check_method="capitalised_latin"), 0)
+        return (kw["draft"], _reflect_stub(status="ok", coverage=["name_grounding"]), 0)
 
     monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
     monkeypatch.setattr(select_mod, "select_draft", _fake_select)
@@ -428,11 +429,7 @@ async def test_run_generate_with_no_beats_makes_exactly_one_call_carrying_the_ta
                          rerank_reason="", rerank_measured=False)
 
     async def _fake_reflect(**kw):
-        return (kw["draft"], SimpleNamespace(violations=[], resolved=True, iterations=0,
-                                             status="ok", revise_finish_reason=None,
-                                             coverage=["name_grounding"],
-                                             unanchored_names=[], name_near_misses=[],
-                                             name_check_method="capitalised_latin"), 0)
+        return (kw["draft"], _reflect_stub(status="ok", coverage=["name_grounding"]), 0)
 
     monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
     monkeypatch.setattr(select_mod, "select_draft", _fake_select)
@@ -516,11 +513,7 @@ async def test_run_chapter_generate_single_pass_no_persist(monkeypatch):
         seen.update(kw)
         return [Candidate("CHAPTER PROSE", DraftMetering(40, 12, True))]
 
-    reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
-                              status="checked", revise_finish_reason=None,
-                              coverage=["name_grounding", "canon_cast"],
-                              unanchored_names=[], name_near_misses=[],
-                              name_check_method="capitalised_latin")
+    reflect = _reflect_stub(status="checked", coverage=["name_grounding", "canon_cast"])
 
     async def _fake_reflect(**kw):
         return (kw["draft"], reflect, 4)

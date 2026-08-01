@@ -197,7 +197,15 @@ async def approve_chapter(
     # future refactor can't drop the guard (type-narrows for mypy too).
     # The delta path targets the derivative's own delta partition (G2); the canon path targets
     # the book's own project. Both are "this Work's own graph" — never the source's.
+    #
+    # EVERYTHING the caller is told about this dispatch derives from these three, never from
+    # `decision.*` directly. The live smoke on throwaway book 019fbd8f… caught why: on a canon
+    # Work the delta decision's fields are all None, so the 200 reported
+    # `reason="not_a_derivative"` over a successful canon extraction and `source_project_id`
+    # as the string "None". The dispatch was right; every word describing it was wrong.
     target_project = canon.project_id if canon is not None else decision.delta_project_id
+    dispatch_reason = canon.reason if canon is not None else decision.reason
+    source_project = None if canon is not None else decision.source_project_id
     assert target_project is not None
     result = await knowledge.extract_item(
         user_id=user_id,
@@ -207,32 +215,39 @@ async def approve_chapter(
         model_source=body.model_source,
         model_ref=body.model_ref,
         job_id=uuid.uuid4(),
+        chapter_index=chapter_sort_order,
+        # The SAME sort_order resolved above for the forward-of-branch decision. It is what
+        # gives every extracted Event an `event_order`, and without an event_order knowledge
+        # discards the status_effects — so the liveness store the canon guard reads stays
+        # empty no matter how well the extractor understood the death. Best-effort by design:
+        # None here (book-service unreachable) means positionless events, exactly as before.
     )
     if result is None:
         # Knowledge outage — the approval itself succeeds (the chapter is approved);
         # the flywheel just didn't enrich this round (it re-arms on re-approval).
         logger.warning(
-            "C27 flywheel: extract-item returned None for chapter=%s delta_project=%s "
-            "(knowledge unavailable) — approval stands, delta not enriched",
-            chapter_id, decision.delta_project_id,
+            "C27 flywheel: extract-item returned None for chapter=%s path=%s project=%s "
+            "(knowledge unavailable) — approval stands, graph not enriched",
+            chapter_id, dispatch_reason, target_project,
         )
         return {
             "dispatched": False,
             "reason": "knowledge_unavailable",
-            "project_id": str(decision.delta_project_id),
+            "project_id": str(target_project),
         }
 
     logger.info(
-        "C27 flywheel: approved derivative chapter=%s → extracted into delta "
-        "project=%s (entities=%s events=%s facts=%s)",
-        chapter_id, decision.delta_project_id,
+        "C27 flywheel: approved chapter=%s via %s → extracted into project=%s "
+        "(entities=%s events=%s facts=%s)",
+        chapter_id, dispatch_reason, target_project,
         result.get("entities_merged"), result.get("events_merged"),
         result.get("facts_merged"),
     )
     return {
         "dispatched": True,
-        "reason": decision.reason,
-        "project_id": str(decision.delta_project_id),
-        "source_project_id": str(decision.source_project_id),
+        "reason": dispatch_reason,
+        "project_id": str(target_project),
+        # None → JSON null. `str(None)` shipped the four-character string "None" to the client.
+        "source_project_id": str(source_project) if source_project is not None else None,
         "extraction": result,
     }
