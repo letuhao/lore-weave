@@ -1488,9 +1488,22 @@ class OutlineRepo:
                   count(*) FILTER (
                     WHERE (latest.result -> 'canon' ->> 'resolved') = 'false'
                   ) AS unresolved,
+                  -- S1 — "unchecked" is ANYTHING that is not `checked`, not an enumerated
+                  -- list of the states someone remembered. The list version shipped as
+                  -- ('skipped_no_position','degraded') and therefore counted
+                  -- `skipped_no_cast` — the ONE state in which the guard verified nothing at
+                  -- all — as a checked chapter. Measured: an 8,116-word chapter, an invented
+                  -- character in three of four scenes, publish gate green.
+                  --
+                  -- COALESCE prefers the derived `guard_status` (per-check, honest across the
+                  -- whole composite) and falls back to the legacy scalar for rows written
+                  -- before S1. `<> 'checked'` fails SAFE: a status added to the enum later is
+                  -- counted as unchecked until someone decides otherwise.
                   count(*) FILTER (
-                    WHERE (latest.result -> 'canon' ->> 'status')
-                          IN ('skipped_no_position', 'degraded')
+                    WHERE COALESCE(
+                            latest.result -> 'canon' ->> 'guard_status',
+                            latest.result -> 'canon' ->> 'status'
+                          ) <> 'checked'
                   ) AS unchecked
                 FROM (
                   SELECT DISTINCT ON (j.outline_node_id) j.result AS result
@@ -1514,10 +1527,13 @@ class OutlineRepo:
             )
         total, done = int(row["total"]), int(row["done"])
         canon_unresolved = int(canon_row["unresolved"]) if canon_row else 0
-        # Scenes whose latest auto job had a CAST but could not be verified
-        # (dangling chapter position / knowledge outage). Dirty data is normal in
-        # a real DB, so this is SURFACED, not hard-blocked — false-blocking every
-        # un-positioned scene would be worse; the FE warns + the author can act.
+        # Scenes whose latest auto job did NOT reach a `checked` canon guard — for ANY reason:
+        # no cast bound, a dangling chapter position, a knowledge outage, a state nobody has
+        # enumerated yet. (S1 widened this from a two-item list that happened to omit
+        # `skipped_no_cast`, the one state in which the guard checks nothing at all.)
+        # Dirty data is normal in a real DB, so this is SURFACED, not hard-blocked —
+        # false-blocking every un-positioned scene would be worse; the FE warns + the author
+        # can act.
         canon_unchecked = int(canon_row["unchecked"]) if canon_row else 0
         canon_blocked = canon_unresolved > 0
         return {

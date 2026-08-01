@@ -157,6 +157,12 @@ include = [
   # A1 /review-impl caught exactly this (tests use PYTHONPATH=sdks/python, which hides it).
   # Pure-stdlib (no deps); consumers: chat-service, knowledge-service (roleplay/game later).
   "loreweave_agent_control*",
+  # S1 GENERATION-SSOT (2026-08-01) — `loreweave_guard` added (CheckStatus + GuardReport:
+  # one honest verdict shape). Pure-stdlib, no deps. It MUST be listed here: a package left
+  # out of this include list is SILENTLY absent from `pip install /sdk` (the loreweave_crypto
+  # trap above), and a guard-honesty primitive that imports as ModuleNotFoundError in prod
+  # would make every adopter fall back to the scalar status it exists to replace.
+  "loreweave_guard*",
 ]
 exclude = ["tests*"]
 

@@ -705,6 +705,11 @@ async def generate(
                 # alone read green on a book with no bound cast; the whole 8,116-word chapter
                 # that exposed this was generated with `coverage` empty and nobody able to tell.
                 "coverage": reflect.coverage,
+                # S1 — the per-check block + its derived headline. Both ride the
+                # envelope: `chapter_scene_gate` reads `guard_status` back out of
+                # `generation_job.result`.
+                "checks": reflect.checks,
+                "guard_status": reflect.guard_status,
                 "unanchored_names": reflect.unanchored_names,
                 "name_near_misses": reflect.name_near_misses,
                 "name_check_method": reflect.name_check_method,
@@ -1333,6 +1338,11 @@ async def generate_chapter(
                    # alone read green on a book with no bound cast; the whole 8,116-word chapter
                    # that exposed this was generated with `coverage` empty and nobody able to tell.
                    "coverage": reflect.coverage,
+                # S1 — the per-check block + its derived headline. Both ride the
+                # envelope: `chapter_scene_gate` reads `guard_status` back out of
+                # `generation_job.result`.
+                "checks": reflect.checks,
+                "guard_status": reflect.guard_status,
                    "unanchored_names": reflect.unanchored_names,
                    "name_near_misses": reflect.name_near_misses,
                    "name_check_method": reflect.name_check_method,
@@ -1575,6 +1585,11 @@ async def stitch_chapter_endpoint(
                    # alone read green on a book with no bound cast; the whole 8,116-word chapter
                    # that exposed this was generated with `coverage` empty and nobody able to tell.
                    "coverage": reflect.coverage,
+                # S1 — the per-check block + its derived headline. Both ride the
+                # envelope: `chapter_scene_gate` reads `guard_status` back out of
+                # `generation_job.result`.
+                "checks": reflect.checks,
+                "guard_status": reflect.guard_status,
                    "unanchored_names": reflect.unanchored_names,
                    "name_near_misses": reflect.name_near_misses,
                    "name_check_method": reflect.name_check_method,

@@ -25,6 +25,7 @@ from app.engine.canon_check import (
     reflect_revise,
     scene_at_order,
 )
+from loreweave_guard import CheckStatus
 from loreweave_llm import ReasoningDirective
 
 from app.engine.cowrite import build_revise_messages, revise_draft
@@ -60,8 +61,25 @@ async def run_canon_reflect(
         unanchored_names=audit.unanchored, name_near_misses=audit.near_misses,
         name_check_method=audit.method,
     )
-    # A check that could not see (caseless script, no grounding names) is not coverage.
-    name_cov = ["name_grounding"] if audit.method == "capitalised_latin" else []
+
+    def _name_check(a) -> CheckStatus:
+        """S1 — WHY the name check did or did not run, not merely whether it did.
+
+        `caseless_script` is not a failure and not a gap in this guard: the detector is
+        capitalisation-based, so on Chinese or Japanese there is nothing for it to see and
+        never will be. That is NOT_APPLICABLE. `empty` means there were no grounding names to
+        compare against — an empty corpus, which is NO_RULES, computed on the CORPUS and not
+        on the matched subset (the rule that keeps a book where nobody has died from rendering
+        permanent amber)."""
+        if a.method == "capitalised_latin":
+            return CheckStatus.CHECKED
+        if a.method == "caseless_script":
+            return CheckStatus.NOT_APPLICABLE
+        return CheckStatus.NO_RULES
+
+    name_status = _name_check(audit)
+    # Legacy `coverage` is the CHECKED subset — one source of truth, two shapes.
+    name_cov = ["name_grounding"] if name_status is CheckStatus.CHECKED else []
     if audit.near_misses:
         logger.info("draft uses %d name(s) close to but not matching a known one: %s",
                     len(audit.near_misses),
@@ -72,13 +90,17 @@ async def run_canon_reflect(
     if not cast_glossary_ids:
         # No entity could be contradicted — but that is NOT "nothing to check", which is what
         # this branch used to assume on its way to returning a green.
-        return draft, ReflectResult(text=draft, resolved=True, status="skipped_no_cast",
-                                    coverage=name_cov, **name_fields), 0
+        return draft, ReflectResult(
+            text=draft, resolved=True, status="skipped_no_cast", coverage=name_cov,
+            checks={"canon_cast": CheckStatus.NO_SUBJECT, "name_grounding": name_status},
+            **name_fields), 0
     at_order = scene_at_order(scene_sort_order)
     if at_order is None:
         # Has a cast but no resolved reading position → could NOT verify.
-        return draft, ReflectResult(text=draft, resolved=True, status="skipped_no_position",
-                                    coverage=name_cov, **name_fields), 0
+        return draft, ReflectResult(
+            text=draft, resolved=True, status="skipped_no_position", coverage=name_cov,
+            checks={"canon_cast": CheckStatus.NO_POSITION, "name_grounding": name_status},
+            **name_fields), 0
 
     snapshot = await knowledge.fact_for_check(
         project_id=project_id, at_order=at_order,
@@ -137,8 +159,20 @@ async def run_canon_reflect(
     result.unanchored_names = final_audit.unanchored
     result.name_near_misses = final_audit.near_misses
     result.name_check_method = final_audit.method
-    result.coverage = (["name_grounding"] if final_audit.method == "capitalised_latin" else []) \
-        + ([] if degraded else ["canon_cast"])
+    # S1 — per-check first; `coverage` is its CHECKED subset. `canon_cast` is DEGRADED (not
+    # merely absent from coverage) when the knowledge snapshot could not be read: the guard is
+    # fine, its input was not, and those are different things to whoever reads the report.
+    #
+    # `no_judge` is not distinguished here on purpose: a symbolic-only pass DID check, it just
+    # could not confirm, and its findings ride as advisory `confirmed=None` violations. Calling
+    # that a coverage gap would paint amber on every book without a configured critic — the
+    # exact "permanent amber" failure S1 exists to prevent. S6 owns the judge axis.
+    result.checks = {
+        "canon_cast": CheckStatus.DEGRADED if degraded else CheckStatus.CHECKED,
+        "name_grounding": _name_check(final_audit),
+    }
+    result.coverage = sorted(
+        k for k, v in result.checks.items() if v is CheckStatus.CHECKED)
     if result.iterations:
         logger.info(
             "A2-S3b canon reflect: project=%s iters=%d resolved=%s remaining=%d",

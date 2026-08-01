@@ -27,7 +27,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Awaitable, Callable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
+
+from loreweave_guard import CheckStatus, worst
 
 from loreweave_canon_check import (
     CanonCandidateBase,
@@ -193,8 +195,17 @@ class ReflectResult(BaseModel):
     # status it means "nothing was verified", which the FE + publish-gate surface
     # so dirty data doesn't silently strip canon protection.
     status: str = "checked"
-    # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHICH checks actually ran, listed rather than
-    # inferred from `status`.
+    # ── S1 · the honest primitive ────────────────────────────────────────────────────────
+    # PER-CHECK status (`loreweave_guard.CheckStatus`), because this guard is a COMPOSITE and
+    # a scalar makes it lie in one direction or the other: `status` above describes the
+    # gone-cast check ONLY, so a run where name-grounding fired and cast-liveness could not
+    # run has no honest single value.
+    #
+    # `status` is deliberately LEFT ALONE and still emits its legacy strings — they are
+    # persisted in `generation_job.result` and matched by SQL in OutlineRepo.chapter_scene_gate.
+    # Additive-then-switch (the S11 discipline): the new shape ships beside the old one, and
+    # nothing that reads the old one changes behaviour until its own measurement says it may.
+    checks: dict[str, str] = Field(default_factory=dict)
     #
     # `status` describes the gone-cast check only, and on a book with no bound cast it read
     # `skipped_no_cast` while `resolved=True` and `violations=[]` — honest field by field, and
@@ -204,6 +215,10 @@ class ReflectResult(BaseModel):
     #
     # A guard whose coverage is conditional on data the author may never have created must
     # REPORT its coverage. Empty list = nothing was verified.
+    #
+    # S1: this is now DERIVED from `checks` (the CHECKED subset). Kept as a field rather than a
+    # property because callers assign to it, and because it is what three envelopes already
+    # ship — but there is one source of truth behind it now.
     coverage: list[str] = Field(default_factory=list)
     # Names in the draft that appear nowhere in what the model was shown. Advisory by
     # construction — fiction introduces names — but `name_near_misses` is the sharper signal:
@@ -227,6 +242,23 @@ class ReflectResult(BaseModel):
     # pass produced text (no repair, or the reviser gave up). The engine ORs this
     # into the job's `truncated` flag so a truncating repair isn't a silent green.
     revise_finish_reason: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def guard_status(self) -> str:
+        """S1 — the HONEST headline, derived from `checks` by `loreweave_guard.worst`.
+
+        Distinct from `status`, and it has to be: `status` is one check's verdict wearing the
+        guard's name. The measured consequence was `status="skipped_no_cast"` counting as a
+        checked chapter in `chapter_scene_gate`'s SQL, which lists only
+        `('skipped_no_position','degraded')` as unchecked — so the ONE state in which the guard
+        verified nothing at all was the one the publish gate treated as fine.
+
+        `computed_field` so it serialises: this rides in `generation_job.result` and the gate
+        SQL reads it back. A plain `@property` would be invisible to `model_dump`, which is
+        how a derived field becomes a field that exists only in Python.
+        """
+        return str(worst(self.checks.values())) if self.checks else str(CheckStatus.NOT_APPLICABLE)
 
 
 async def reflect_revise(
