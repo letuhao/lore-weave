@@ -53,6 +53,7 @@ job, and that is a different job — see [`03_two_jobs.md`](03_two_jobs.md).
 | [`08_measuring_a_creative_result.md`](08_measuring_a_creative_result.md) | there is no right answer, so what IS proven — traceability, not truth — and the **census, not score**, that measures the rest |
 | [`09_first_extraction.md`](09_first_extraction.md) | **the first real input** — a glossary extracted from classical Chinese, what it got right, and the systematic kind error a sweep cannot see |
 | [`10_place_or_organization.md`](10_place_or_organization.md) | that error, diagnosed: it is a **missing-entity** error, not a classification one — five levers, ranked by evidence |
+| [`11_prior_art.md`](11_prior_art.md) | **the industry solved most of this** — metonymy resolution, ACE's GPE, EDC, G-KMS. What to take, what to build, and the axiom of mine it makes *less* likely |
 
 **`03`, `04`, `07` and `08` are corrections.** The first draft of this folder put authoring and structuring in one
 place, treated fidelity as a gate that could forbid a mechanism, and argued the corpus-vs-derived
