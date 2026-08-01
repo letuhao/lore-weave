@@ -583,6 +583,54 @@ AUDIT S7-1
                glossary, and per-kind sizing models for the JSON kinds.
 ```
 
+### ◐ S7 slices 2-3 — measured; one was ALREADY DONE, the other needs a Rust cycle
+
+```
+AUDIT S7-2/3 (survey)
+  BUILT      — nothing. Both sub-goals were MEASURED against code, and the measurement changed
+               what each of them is.
+
+  PROVEN     — S7-2, "glossary-service has ZERO FinishReason checks service-wide": FALSE, and
+               stale rather than wrong-in-principle. `grep` finds 10 hits; the guard is
+               `llmbudget.Truncated(res.FinishReason)` at BOTH of glossary's LLM call sites
+               (`action_plan_tools.go:228`, `entity_doc_extract_tools.go:245`), backed by a
+               dedicated `internal/llmbudget` package whose own docstring records the bug the
+               spec is describing — *"`llm.StreamRequest` with NO MaxTokens and never looked at
+               `res.FinishReason`"*. It was closed by the LLM-BUDGET SSOT M1-M3 work EARLIER IN
+               THIS SAME SESSION. The third file that matches `MaxTokens`
+               (`select_for_context_handler.go`) is not an LLM call at all — its `MaxTokens` is
+               a context-PACKING budget for entity selection, so it has no finish_reason to
+               check.
+
+               S7-3, tilemap: CONFIRMED, and it is the `l4_retry.rs` shape exactly.
+                 `max_tokens|max_output_tokens` in `services/tilemap-service/src`: **0 hits**.
+                 `finish_reason`: captured at `harness/mod.rs:142`, carried at :220, and
+                 PRINTED at :240 — and compared to nothing. Grepping for a comparison against
+                 `"length"` near finish/truncat returns EMPTY.
+               So tilemap sends no output cap, receives the truncation signal, records it, and
+               treats a cut-off narration as a narration.
+
+  NOT PROVEN — I did not run glossary's Go suite or tilemap's cargo tests, so "already done"
+               rests on reading the call sites, not on executing them. I also did not check
+               whether `llmbudget.Truncated` is reached on every BRANCH of those two handlers
+               — only that it is present in each file. And tilemap's 0-hit `max_tokens` count
+               is over `src/`; if a cap is set in a config or passed by a caller outside the
+               crate, this survey would not see it.
+
+  DRIFT      — THIRD spec claim falsified by measurement in this slice alone ("two SDK sites
+               unclamped" → they are MIRROR; "33 CI failures, one root" → three roots;
+               "glossary has zero FinishReason checks" → it has ten). I have been treating the
+               spec's §S7 bullets as a work list rather than as hypotheses, which is exactly
+               what the red team already caught this spec doing to itself. Every remaining
+               bullet gets measured before it gets built.
+
+  NEXT       — tilemap is a Rust crate this run has not opened; the fix (send a cap, make
+               `finish_reason == length` a first-class outcome instead of a printed field)
+               needs a cargo build/test cycle that does not fit the remaining context. It is
+               recorded here with exact line numbers so the next window builds rather than
+               re-surveys.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -665,6 +713,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
 | 2026-08-01 | **Wrote a diagnosis into the handoff from ONE error message.** Told the next session "CI red = 33 failures, one root, `language`→`original_language`, a mechanical sweep". There were **three** roots — a fastapi 0.139 `app.routes` change across two services, a pip editable path resolving outside the checkout, and the rename — and the rename half needed a SEMANTIC rewrite because the identity key had changed too. I had read one traceback and generalised, which is the §1.4 mistake the red team already caught me making twice. |
+| 2026-08-01 | **Treated the spec's §S7 bullets as a work list instead of as hypotheses — three of them falsified by measurement in one slice.** “two SDK sites unclamped” (they are MIRROR, where clamping is the bug) · “33 CI failures, one root” (three roots) · “glossary has ZERO FinishReason checks service-wide” (it has ten, and the gap was closed earlier in this same session). This is the exact habit the red team already caught the spec doing to itself. |
 | 2026-08-01 | **Nearly read a red test as “my fix is wrong” when it was pinning the bug.** `test_window_shrinks_for_a_small_context_model` restated `8_000 - 2_048 - 2_048`; raising the output reserve to match the request cap made it fail. Same shape as the motif tests asserting the removed i18n behaviour, two slices earlier in this same run. |
 | 2026-08-01 | **Counted `call_budget` call sites with a regex that also matched `per_call_budget` and a stale `sdks/python/build/lib/` copy** — 4 “unclamped” sites, all four phantom. Then read the two real ones and found the spec's claim (“two clamp, two do not”) was itself wrong: the unclamped ones are `OutputKind.MIRROR`, where clamping would be the bug. Nearly “fixed” correct code on the strength of a spec sentence. |
 | 2026-08-01 | **Wrote a checker that silently halved its own input — inside the gate whose docstring records that exact failure.** The S12 generalisation matched only repo-relative markdown link targets; the standards index lives at `docs/standards/` so nearly all its links are `../../…`. It found 43 paths and printed “0 missing” while never examining a single doc link. The fix took it to 91. |

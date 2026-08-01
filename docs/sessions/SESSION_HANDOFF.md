@@ -19,7 +19,16 @@ request asked for 4096, so an 8k-context BYOK model was budgeted 10240 against a
 window. One constant now, owned by `distiller.py`. ⚠ A 4k-context model still overflows
 (`MIN_WINDOW_TOKENS` floors the chunk) — it is effectively unsupported and nothing says so.
 
-**S7 slices 2-4 remain, measured but NOT built.** Start from the RUN-STATE's S7 block, not
+**S7 slice 2 was ALREADY DONE** — the spec's “glossary has zero FinishReason checks” is
+stale: `llmbudget.Truncated(res.FinishReason)` guards both LLM call sites, closed by the
+LLM-budget SSOT work earlier in this same session.
+
+**S7 slice 3 is CONFIRMED and unbuilt** — `services/tilemap-service/src` has **0** hits for
+`max_tokens`, and `finish_reason` is captured (`harness/mod.rs:142`), carried (:220) and
+PRINTED (:240) while being compared to nothing. Tilemap sends no output cap, receives the
+truncation signal, and treats a cut-off narration as a narration. Needs a cargo cycle.
+
+**S7 slice 4** (per-kind sizing for the JSON kinds) is untouched. Start from the RUN-STATE's S7 block, not
 from the spec — one of the spec's claims is falsified there. In short: there is no
 unclamped `call_budget` adopter (translation's three are `MIRROR`, where clamping would be
 the bug); the real gap is `worker-ai/app/distill_job.py:68`, a signature-default
