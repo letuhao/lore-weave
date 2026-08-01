@@ -846,6 +846,29 @@ async def _process_extraction_chapter(
         raise RuntimeError(f"book-service returned {r.status_code} for chapter {chapter_id}")
 
     chapter = r.json()
+
+    # The chapter's position IN THE BOOK, not in this job's chapter list.
+    #
+    # `chapter_index` used to be the enumerate() index over `chapter_ids`, which is
+    # job-relative — and glossary-service's `before_chapter_index` documents and windows
+    # the very same column as a position in the BOOK. So any book extracted across more
+    # than one job (a resume, an incremental pass, an A/B) wrote colliding indices:
+    # measured on 封神演義, index 0 named SIX different chapters and 1-14 named three
+    # each, while 87 distinct chapters carried links whose index never exceeded 56.
+    # Everything keyed on chapter order — known-entity windowing, spoiler windows,
+    # timeline cutoffs — was reading a number that did not mean what it said.
+    #
+    # book-service already returns `sort_order` on this very payload, so the true value
+    # was one field away the whole time. Falls back to the job-relative index only when
+    # the field is absent, which keeps an older book-service from breaking the write.
+    book_position = chapter.get("sort_order")
+    if isinstance(book_position, int):
+        chapter_index = book_position
+    else:
+        log.warning("extraction: chapter %s has no sort_order — falling back to the "
+                    "job-relative index %d, which is NOT a book position",
+                    chapter_id, chapter_index)
+
     chapter_text = prepare_chapter_text(chapter)
     if not chapter_text.strip():
         log.warning("extraction: chapter %s has no text content — skipping", chapter_id)
@@ -934,8 +957,10 @@ async def _process_extraction_chapter(
         })
 
     def _accept(entities: list[dict], window_text: str = "") -> None:
-        # Attach this chapter's link to each entity (fresh per run — NOT cached, since the
-        # chapter_index is per-job) and merge into the chapter's accumulated entities.
+        # Attach this chapter's link to each entity (fresh per run — NOT cached) and merge
+        # into the chapter's accumulated entities. `chapter_index` is the chapter's
+        # position in the BOOK (see the sort_order resolution above); it used to be the
+        # job-relative index, which made it collide across jobs.
         #
         # M7 — per-chapter mention_count: count this entity's surface forms (canonical +
         # alias) in THIS window's text with a CJK-aware longest-match scan (span-deduped,

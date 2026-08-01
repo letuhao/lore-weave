@@ -911,3 +911,29 @@ def test_extraction_system_template_has_precision_filter():
     assert "identify all named entities" not in t.lower()
     assert "RELATIONSHIPS between" in t  # explicit: a relationship is not an entity
     assert "OMIT" in t and "backstory" in t  # omission bias for background mentions
+
+
+def test_chapter_index_is_the_books_sort_order_not_the_job_position():
+    """`chapter_index` must be the chapter's position in the BOOK.
+
+    It used to be the enumerate() index over the job's chapter_ids, while
+    glossary-service's `before_chapter_index` documents and windows the same column as a
+    book position. Measured on a real book: index 0 named SIX different chapters, and even
+    a single-job run was off by one (sort_order is 1-based, enumerate() is 0-based), so
+    every chapter-ordered read — known-entity windowing, spoiler windows, timeline cutoffs
+    — was shifted. book-service already returns `sort_order` on the payload the worker
+    fetches, so the fix is to prefer it.
+
+    Asserted on the SOURCE rather than by driving the whole async chapter processor,
+    which needs a live pool: the contract is "sort_order wins, job index is the fallback".
+    """
+    import inspect
+
+    from app.workers import extraction_worker as ew
+
+    src = inspect.getsource(ew._process_extraction_chapter)
+    assert 'chapter.get("sort_order")' in src, (
+        "the worker no longer reads sort_order — chapter_index would revert to the "
+        "job-relative index, which collides across jobs")
+    # The fallback must stay LOUD: a silent revert is how this shipped in the first place.
+    assert "NOT a book position" in src
