@@ -909,6 +909,26 @@ AUDIT S7-2
   NEXT       — S7-4's real scope (`call_budget`'s JSON kinds), then S6.
 ```
 
+### ◐ S6 survey v2 (2026-08-02) — the two questions the first survey left open, answered
+
+The first survey's NOT PROVEN list named two things it had not checked: the MCP/agent surface,
+and the server-side write endpoint. Both measured now, and the gap is **wider** than recorded.
+
+| surface | can it set a critic? |
+|---|---|
+| **FE GUI** | **No.** `MODEL_ROLES` in `ChatAiSettingsPanel.tsx` is `chat · composer · planner · embedding · rerank` — no `critic` row. `critic_model_ref` appears in `frontend/src` in `__tests__` files ONLY. |
+| **Agent / MCP** | **No.** Every `critic` hit in `frontend_tools.py` and `contracts/frontend-tools.contract.json` is the panel id `quality-critic` — the critic OUTPUT view. No tool sets a model role. |
+| **`settings.model_roles`** | **No — and this is the new finding.** It has **one reader** (`internal_model_settings.py`, feeding chat-service's effective-settings Book tier) and **ZERO writers repo-wide**. |
+
+So the map that "wins if present" is never present, and the Book tier of the Chat & AI settings
+cascade resolves a key nothing in the repo can write. Same no-producer shape as `plan_status`,
+which the POST-RUN REVIEW found and fixed one layer up — except this one is a whole scope tier.
+
+⇒ S6's affordance is not "a missing picker row". The write path does not exist at any layer, and
+the surface that would consume it (`model_roles`) is a read-only contract with no producer. That
+is what the slice has to build, and it is why shipping the label alone would produce a warning
+the author has no way to clear.
+
 ### ✅ S7 slice 4 — the budget-seam rot. The ratchet was measuring the wrong thing.
 
 ```
