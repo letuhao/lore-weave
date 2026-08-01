@@ -113,16 +113,18 @@ async def _check_plan_liveness(
         )
         for c in conflicts
     ]
+    judge_unusable = False
     if candidates and judge_source and judge_ref:
         # ADVISORY → HARD, and ONLY here. The author's rule is *judge confirms ⇒ HARD, no
         # judge ⇒ advisory*, and the caller passes judge_source/ref only when a model DISTINCT
         # from the drafter is configured — the model that wrote the death must not be the one
         # that certifies it (invariant 2). Every failure inside leaves `confirmed=None`.
-        candidates = await judge_plan_conflicts(
+        candidates, judged = await judge_plan_conflicts(
             llm, user_id=str(user_id), model_source=judge_source, model_ref=judge_ref,
             draft=result.text, candidates=candidates, source_language=source_language or "auto",
             trace_id=trace_id, cancel_check=cancel_check,
         )
+        judge_unusable = not judged
     result.violations.extend(candidates)
     if any(v.confirmed is True for v in candidates):
         # `reflect_revise` computed `resolved` BEFORE this check existed, from the gone-cast
@@ -133,6 +135,16 @@ async def _check_plan_liveness(
     if candidates:
         logger.info("plan-liveness conflict: %d candidate(s), %d judge-confirmed",
                     len(candidates), sum(1 for v in candidates if v.confirmed is True))
+    if judge_unusable:
+        # The judge was configured, was asked, and came back with nothing usable. MEASURED on
+        # real 500-word drafts: a judge model reasoned aloud for 5,684 characters and hit the
+        # output cap before emitting any JSON (`finish_reason='length'`), so zero verdicts
+        # parsed and every candidate stayed `confirmed=None`. That is byte-identical to "the
+        # judge looked and declined to confirm" — the blocking tier had stopped existing and
+        # the envelope said nothing. UNPARSEABLE is the enum member for exactly this ("the
+        # judge answered and the answer could not be used"), and it exists because a guard that
+        # cannot report its own silence is the bug this whole arc is about.
+        return CheckStatus.UNPARSEABLE, unlinked
     # UNLINKED is not clean. The check ran, but on a corpus it could only partly resolve, and
     # the live POC hit exactly this (glossary held the cast with an empty `cached_name`): the
     # death was detected and nothing joined. Reporting `checked` there is the false-green this

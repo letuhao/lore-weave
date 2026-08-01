@@ -189,6 +189,9 @@ class _Judge:
         self._verdicts, self._status = verdicts, status
         self.calls = []
 
+    def __init_subclass__(cls, **kw):  # pragma: no cover - defensive
+        super().__init_subclass__(**kw)
+
     async def submit_and_wait(self, **kw):
         self.calls.append(kw)
         import json as _json
@@ -370,3 +373,72 @@ def test_every_CHAPTER_level_call_site_declares_plan_supported_False():
                 missing.append(f"{rel}:{node.lineno}")
     assert checked == 6, f"expected 6 run_canon_reflect call sites, found {checked}"
     assert missing == [], f"chapter-level call sites not declaring the gap: {missing}"
+
+
+# ── a judge that came back with NOTHING must not read as "declined to confirm" ────────────
+
+class _TruncatedJudge:
+    """A COMPLETED job whose text is a half-finished reply — no JSON, no verdicts.
+
+    Not hypothetical. MEASURED 2026-08-01 on real 500-word drafts: the judge model reasoned
+    aloud in Vietnamese for 5,684 characters and hit the output cap before emitting any JSON.
+    `status='completed'`, `finish_reason='length'`, zero verdicts parsed, every candidate left
+    `confirmed=None` — byte-identical to a judge that looked and declined. The blocking tier
+    had stopped existing and nothing on the envelope said so.
+
+    The earlier 3/3 live judge validation used three-sentence excerpts, which never reproduced
+    it. That is why this fixture is long-reply-shaped rather than error-shaped.
+    """
+
+    def __init__(self):
+        self.calls = []
+
+    async def submit_and_wait(self, **kw):
+        self.calls.append(kw)
+        import types
+        return types.SimpleNamespace(
+            status="completed",
+            result={"finish_reason": "length",
+                    "messages": [{"content": "Hãy xem xét lại: đoạn văn mô tả Lạc Viên bị đâm"}]},
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_TRUNCATED_judge_is_UNPARSEABLE_not_a_quiet_advisory(monkeypatch):
+    _stub_extractor(monkeypatch, events=[_Ev(_Eff("Tô Thanh Dao", "gone"))])
+    llm = _TruncatedJudge()
+    _t, r, _ = await CR.run_canon_reflect(
+        knowledge=_Knowledge(), llm=llm, user_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        cast_glossary_ids=[DAO, VIEN], scene_sort_order=1,
+        plan_status=PLAN, plan_cast=CAST,
+        draft="Lạc Viên đâm chết Tô Thanh Dao.",
+        packed_prompt="Tô Thanh Dao và Lạc Viên ở cổng thành.",
+        profile=type("P", (), {"source_language": "vi"})(),
+        drafter_source="user_model", drafter_ref="drafter-model",
+        judge_source="user_model", judge_ref="critic-model",
+        prompt_estimate=0, max_output_tokens=100, max_iters=0,
+    )
+    assert llm.calls, "the judge WAS asked"
+    assert r.checks["plan_liveness"] == CheckStatus.UNPARSEABLE
+    assert r.guard_status != "checked", "a guard that could not judge must not read as checked"
+    hit = next(v for v in r.violations if v.kind == PLAN_CONFLICT_KIND)
+    assert hit.confirmed is None, "still advisory — a mute judge may not block either"
+    assert r.resolved is True
+
+
+@pytest.mark.asyncio
+async def test_CONTROL_a_judge_that_ANSWERS_is_checked_not_unparseable(monkeypatch):
+    """The counterweight: without it, "always UNPARSEABLE" satisfies the test above and the
+    check goes permanently amber on every book that has a working critic."""
+    (_t, r, _), _llm = await _reflect_judged(
+        monkeypatch, [{"entity_id": DAO, "violated": False, "why": "chỉ là giấc mơ"}])
+    assert r.checks["plan_liveness"] == CheckStatus.CHECKED
+
+
+def test_judge_plan_conflicts_reports_whether_it_actually_judged():
+    """The signature carries the fact, because the candidates cannot: an unjudged candidate and
+    a judge-declined one are both `confirmed=None`."""
+    import inspect
+    from app.engine.canon_check import judge_plan_conflicts
+    ret = str(inspect.signature(judge_plan_conflicts).return_annotation)
+    assert "tuple" in ret and "bool" in ret, ret

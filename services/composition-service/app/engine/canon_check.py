@@ -202,7 +202,7 @@ async def judge_plan_conflicts(
     draft: str, candidates: list[CanonViolation], source_language: str = "auto",
     max_tokens: int = max_tokens_for("judge_plan_conflict"), trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
-) -> list[CanonViolation]:
+) -> tuple[list[CanonViolation], bool]:
     """Promote plan-liveness candidates from ADVISORY to HARD — or clear them.
 
     The author's decision, verbatim: *judge confirms ⇒ HARD, no judge ⇒ advisory*. So this is
@@ -212,9 +212,21 @@ async def judge_plan_conflicts(
 
     CC4: every LLM/parse failure leaves `confirmed=None`, i.e. the candidate stays advisory.
     A judge that is down must not be able to BLOCK a publish, and must not clear one either.
+
+    Returns `(candidates, judged)`. `judged` is False when the call produced NO usable verdict
+    at all, and the second value exists because the first one cannot carry that fact: an
+    unjudged candidate and a candidate the judge declined to confirm are both `confirmed=None`.
+
+    MEASURED on real 500-word drafts, 2026-08-01, and it is why this returns a flag rather than
+    logging and moving on: a judge model spent 5,684 characters reasoning aloud in Vietnamese
+    and hit the output cap BEFORE emitting any JSON — `finish_reason='length'`, zero verdicts
+    parsed, every candidate left `confirmed=None`. The blocking tier had silently stopped
+    existing and the envelope read exactly as if the judge had looked and declined. Short
+    fixture passages never reproduced it: the earlier 3/3 live validation used three-sentence
+    excerpts, and it passed for that reason.
     """
     if not candidates:
-        return []
+        return [], True
     from loreweave_llm.errors import LLMError
 
     system, user = _build_plan_conflict_messages(draft, candidates, source_language)
@@ -229,13 +241,25 @@ async def judge_plan_conflicts(
         )
     except LLMError as exc:
         logger.warning("judge_plan_conflict degraded (LLM error): %s — advisory", exc)
-        return candidates
+        return candidates, False
     if getattr(job, "status", None) != "completed":
-        logger.info("judge_plan_conflict status=%s → advisory",
-                    getattr(job, "status", None))
-        return candidates
-    apply_verdicts(candidates, parse_judge_verdicts(extract_judge_text(job.result)))
-    return candidates
+        logger.info("judge_plan_conflict status=%s → advisory", getattr(job, "status", None))
+        return candidates, False
+    verdicts = parse_judge_verdicts(extract_judge_text(job.result))
+    if not verdicts:
+        # A COMPLETED job whose text yielded nothing. `status == completed` does not mean the
+        # model finished its sentence — a truncated reply is completed-and-useless, and
+        # `finish_reason` is the only thing that says which. Logged with the reason so the
+        # operator sees "length" (raise the budget, or pick a judge that answers directly)
+        # rather than a mystery.
+        logger.warning(
+            "judge_plan_conflict produced NO verdicts for %d candidate(s) "
+            "(finish_reason=%s) — the HARD tier did not run",
+            len(candidates), (job.result or {}).get("finish_reason"),
+        )
+        return candidates, False
+    apply_verdicts(candidates, verdicts)
+    return candidates, True
 
 
 async def check_canon(

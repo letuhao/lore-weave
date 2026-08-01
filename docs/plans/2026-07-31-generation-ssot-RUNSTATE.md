@@ -1257,6 +1257,56 @@ AUDIT PLAN-LIVENESS (efficacy, v2)
   NEXT       — the three POC defects, (A) first.
 ```
 
+### ✅ A MUTE JUDGE NO LONGER READS AS A JUDGE THAT DECLINED
+
+```
+AUDIT PLAN-LIVENESS (judge truncation)
+  BUILT      — `judge_plan_conflicts` returns `(candidates, judged)`. The flag is necessary
+               because the candidates CANNOT carry the fact: an unjudged candidate and a
+               judge-declined one are both `confirmed=None`. `_check_plan_liveness` maps
+               `judged=False` to `CheckStatus.UNPARSEABLE` — the enum member written for exactly
+               this ("the judge answered and the answer could not be used").
+
+  PROVEN     — MEASURED on real 500-word drafts through PRODUCTION code
+               (`judge_plan_conflicts`), not a hand-rolled probe:
+                 `job.status = completed` · `finish_reason = length`
+                 `raw len = 5684` · `parsed verdicts = {}`
+               The judge model reasoned aloud in Vietnamese past the output cap and never
+               emitted the JSON. Every candidate stayed `confirmed=None`, which is
+               byte-identical to a judge that looked and declined — so the BLOCKING TIER HAD
+               SILENTLY STOPPED EXISTING and the envelope said nothing.
+
+               The earlier 3/3 live judge validation used THREE-SENTENCE excerpts. It passed
+               for that reason. Fixture length was the difference between a validated tier and
+               a dead one.
+
+               tests `22 passed` in the wiring file (3 new: the truncated judge, the CONTROL
+               that must stay `checked`, and a signature check) · suite
+               `11 failed, 3835 passed, 8 skipped in 108.21s`, the same 11 pre-existing ·
+               all six gates PASS · red-able: dropping the `judge_unusable` branch fails
+               exactly the truncation test, with the diagnostic log line visible.
+
+  NOT PROVEN — WHY the model overruns. `build_judge_request` already sends the strong disable
+               (`reasoning_effort:"none"` + `chat_template_kwargs:{thinking:False,
+               enable_thinking:False}`), so "the flag does not work for this model" was MY
+               guess and I did not verify it. It could equally be the 1536-token budget being
+               too small for a Vietnamese verdict, or this judge model simply being verbose in
+               visible output. This slice makes the failure VISIBLE; it does not diagnose it,
+               and the fix for the cause is a separate measurement.
+               Nothing yet surfaces the UNPARSEABLE status to the AUTHOR — it rides the
+               envelope and the FE does not render it.
+
+  DRIFT      — I asserted a cause ("the thinking-disable flags are not effective for this
+               model") from one observation, and the author corrected me: the POC had diverged
+               from the platform's own call path, so a POC-shaped conclusion was being applied
+               to production. Checking `build_judge_request` showed it sends the STRONGER
+               disable, not a weaker hand-rolled one — the opposite of what I had claimed. The
+               observation (truncation kills the tier silently) survived; the explanation did
+               not, and I had already written the explanation down as if it had.
+
+  NEXT       — per the author: stop POCing, the finding is wired. Then the three POC defects.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -1338,6 +1388,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **Asserted a CAUSE from one observation, in a probe that had drifted off the platform's own call path.** I wrote that the thinking-disable flags “do not work for this model”; `build_judge_request` in fact sends the STRONGER disable. The author caught it. The observation — a truncated judge silently kills the blocking tier — held; the explanation I had already committed to prose did not. |
+| 2026-08-01 | **Validated a judge on three-sentence excerpts and called the tier proven.** The 3/3 real/dream/feint result was real and useless as evidence for production: on 500-word drafts the same judge overruns its budget and returns nothing. Fixture LENGTH was the difference between a working tier and a dead one. |
 | 2026-08-01 | **Fixed one confound by recreating the one I had explicitly set out to avoid.** v1 failed because the drafter never resolved the fight; I fixed that by having the synopsis COMMAND a terminal outcome — which is the conflicting-instructions trap v1 was designed around. v2 measures synopsis-vs-constraint, not prevention. The result is valuable; the framing would have been wrong for the third time if I had not checked. |
 | 2026-08-01 | **Called a flat A/B “no power” without checking my own samples were independent.** Re-running the same node five times fed each run's exit-state into the next one's prompt, so n was 1 per arm, not 5 — and the prose showed the drafter never resolved the fight at all, which is a different finding from the one I reported. I had the lesson row for this and applied half of it. |
 | 2026-08-01 | **A third gate that passed its own injection — same cause each time.** The chapter-path no-omission guard used a regex over call bodies; it matched 2 of 3 calls and one match ran 19,993 chars, swallowing the next call, so a deleted flag was still found inside another's blob. `ast` reds correctly. I keep reaching for a regex where the structure is a parse tree. |
