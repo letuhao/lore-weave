@@ -22,7 +22,10 @@ Per chapter, 10 chapters per arm. `lost` = chapters that produced **zero** entit
 | **A2** reordered | 21,889 | 6,646 | 3.0 | 71.3 | 1 | 0 | 17.9 | 7.3 | 77.7% | 11.7% | 0.6% | 65.4% | 100% | 46.4% |
 | **A3** one call + reorder | 8,610 | 3,235 | 1.0 | 30.5 | **1** | 0 | 17.5 | 8.1 | 77.7% | 14.9% | 0.6% | 63.0% | 100% | 40.6% |
 | **A4** + delta-only | 8,688 | 3,301 | 1.0 | 31.2 | 0 | 0 | 18.1 | 9.5 | 81.8% | 9.4% | 0.0% | **67.5%** | 100% | **35.4%** |
-| **A5** two-stage (EDC) | 13,988 | 4,924 | 2.0 | 43.7 | 0 | **1** | **19.5** | 9.0 | **85.1%** | **7.2%** | 1.0% | 58.8% | 94.1% | 40.5% |
+| **A5** two-stage (EDC) | 13,988 | 4,924 | 2.0 | 43.7 | 0 | **1** | 19.5 | 9.0 | 85.1% | 7.2% | 1.0% | 58.8% | 94.1% | 40.5% |
+| **A7** EDC on citations | 9,663 | 5,266 | 2.0 | 46.0 | 0 | 0 | **23.2** | 12.5 | **92.7%** | **1.7%** | 0.4% | **77.1%** | 97.9% | 36.2% |
+
+⚠ **A7's row is green on every axis and it dropped an entire kind.** Read §6b before using it.
 
 Against A0:
 
@@ -34,6 +37,7 @@ Against A0:
 | A3 | −61.9% | −47.7% | −12.9% | −2.4pp |
 | **A4** | −61.6% | −46.7% | **−10.0%** | +1.7pp |
 | **A5** | −38.1% | −20.4% | **−3.0%** | **+5.0pp** |
+| **A7** | −57.3% | −14.9% | +15.4% ⚠ | **+12.6pp** |
 
 ## 2. Read A0b first — it sets what counts as a result
 
@@ -208,6 +212,65 @@ looked like results:
 > only because a figure existed to reproduce (`BTG-A44`) or because the number was too extreme to be
 > real. A POC without a self-test arm would have shipped all three as findings.
 
+## 6b. A7 — EDC that reads its own citations, and the axis that failed to catch it
+
+A5's entire cost premium over A4 is that the chapter is sent **twice** — 13,988 − 8,688 = 5,300
+tokens, almost exactly one chapter of classical Chinese. A7 asks whether stage 2 needs the chapter at
+all: stage 1 returns a name **and a characterising quote**, and stage 2 is given only that list.
+
+On the card it looks like a dominant win:
+
+| | A0 | A4 | A5 | **A7** |
+|---|---|---|---|---|
+| input | 22,614 | 8,688 | 13,988 | **9,663 (−57.3%)** |
+| entities/chapter | 20.1 | 18.1 | 19.5 | **23.2 (+15.4%)** |
+| Q1 grounded | 80.1% | 81.8% | 85.1% | **92.7% (+12.6pp)** |
+| Q2 unmatched | 9.5% | 9.4% | 7.2% | **1.7%** |
+| Q4 strict | 59.3% | 67.5% | 58.8% | **77.1%** |
+| chapters lost | 0 | 0 | 1 | **0** |
+
+It is the only arm that *beats the baseline on yield*, its groundedness is 16× its axis floor, and its
+strict typing is +17.8pp over A0 — the typing improvement EDC was supposed to deliver and A5 did not.
+The mechanism is legible and slightly counter-intuitive: **giving the typing step less context made it
+type better.** Stage 2 sees a name and one focused sentence instead of 5,300 characters of narrative.
+
+**And then the kind mix:**
+
+| arm | character | location | event | item | power | org | species | total |
+|---|---|---|---|---|---|---|---|---|
+| A0 | 79 | 40 | **34** | 19 | 5 | 19 | 5 | 201 |
+| A4 | 91 | 43 | 24 | 15 | 3 | 1 | 4 | 181 |
+| A5 | 95 | 48 | 11 | 18 | 0 | 12 | 11 | 195 |
+| **A7** | **160** | 54 | **0** | **7** | 1 | 7 | 3 | **232** |
+
+A7 extracted **zero events** where the baseline found 34, and **7 items** where it found 19. Its
+"+15.4% yield" is **double the characters**, not broader coverage. A named-mention sweep finds names;
+an event is not a name, so stage 1 never proposes one and stage 2 cannot recover it.
+
+> **`BTG-A53`.** **Aggregate yield is not an anti-gaming axis — per-kind yield is.** `14` §3 put Q5 on
+> the card precisely so that an arm could not get cheap by extracting less, and A7 defeated it by
+> extracting *more of the easy kind*. The total went up 15% while an entire kind went to zero, and
+> every axis on the card stayed green: groundedness rose, fabrication fell, typing improved, no
+> chapters were lost. **The scorecard would have shipped this as the best arm.** It was caught by
+> printing the distribution, which nothing required.
+>
+> This is the same shape as `BTG-A27` one level up — a kind error is invisible to the question that
+> would have found it — and the same shape as the non-vacuity rule generally: a check whose subject
+> cannot vary in the direction of the defect is not a check.
+
+**Also caught by the same table:** `terminology` is **0 for every arm including the baseline**. The
+kind is adopted, its 4 attributes are in the profile, it is in every prompt, and nothing has ever come
+back under it. That is a pre-existing pipeline defect this POC did not cause and would not have found
+without the distribution.
+
+**Verdict on A7: promising, not shippable as-is.** It needs the sweep prompt to solicit events and
+items explicitly — a prompt fix on a two-stage shape whose grounding and typing numbers are the best
+measured. Re-run before adopting, and score per-kind.
+
+**Grounding caveat.** A7 carries stage 1's quote through verbatim, so its 92.7% measures how faithfully
+the *sweep* quoted, not the typing step. The citation genuinely is grounded, but it is not the same
+claim A0–A4's Q1 makes and the two should not be compared without saying so (§9).
+
 ## 7. A6 (GLiNER) — the second reader does not read this language
 
 `12` §7 step 2 asked for exactly this measurement, and `12` §5 warned the honest answer might be no.
@@ -249,24 +312,27 @@ morphology lint at 96.9% precision, and now the KG's own typed edges — and two
 
 ## 8. Recommendation
 
-**There are two winners and they are not the same arm.** A4 is the cost arm; A5 is the quality arm.
-A5 costs **63% more input than A4** and buys **+3.3pp grounding, +7.7% yield** — and gives back A4's
-Q4 advantage. That is a real trade and it is the PO's, not a dominance the card can settle.
-
-1. **Ship A4's shape as the default.** −62% input, −47% output, 2× faster, and no quality
-   *regression* outside any axis floor. It needs the raised output ceiling and a **retry on parse
-   failure** (`BTG-A47`), because the blast radius of a bad parse is now a whole chapter.
-   **Then re-run A5 against A4** rather than against A0 — a 2-call EDC built on the one-call shape is
-   an arm this POC never ran, and on these numbers it is the most promising one left: it would carry
-   A5's grounding and recall at something much closer to A4's cost.
-2. **Build re-decide-on-merge** (`BTG-A49`). This is the real kind fix and it is not a prompt change.
+1. **Ship A4's shape as the default now.** −62% input, −47% output, 2× faster, no quality regression
+   outside any axis floor, and the kind mix closest to the baseline of any cost arm. It needs the
+   raised output ceiling and a **retry on parse failure** (`BTG-A47`), because the blast radius of a
+   bad parse is now a whole chapter.
+2. **Fix A7's sweep and re-run it — this is the most promising shape measured.** Its numbers are the
+   best on the card (−57% input, grounded 92.7%, fabrication 1.7%, strict typing 77.1%, no lost
+   chapters) and it dropped `event` to zero because a named-mention sweep does not propose events
+   (`BTG-A53`). Solicit events and items explicitly in stage 1, re-run, and **score per kind**. Do not
+   adopt it on the current card.
+3. **Add per-kind yield to the scorecard permanently.** Aggregate yield was on the card as the
+   anti-gaming axis and it did not do the job.
+4. **Investigate `terminology` = 0 across every arm including the baseline** — a pre-existing defect
+   the distribution surfaced, unrelated to any arm.
+5. **Build re-decide-on-merge** (`BTG-A49`). This is the real kind fix and it is not a prompt change.
    Today a first-chapter mistake is permanent; the model already knows better by chapter 40 and has no
    way to say so. Surface the disagreement as a conflict rather than resolving it oldest-wins.
-3. **Do not build lever ①** (split the pair). `BTG-A48` — the pairs are 17.6%, in line with the
+6. **Do not build lever ①** (split the pair). `BTG-A48` — the pairs are 17.6%, in line with the
    published base rate, and the misfiles outnumber them 3.6:1.
-4. **Re-baseline every kind-quality claim** once (2) exists. Until then, `09`'s 64% and this
+7. **Re-baseline every kind-quality claim** once (5) exists. Until then, `09`'s 64% and this
    document's Q4 describe the store, not the extractor, and should not be quoted as model accuracy.
-5. **Do not adopt GLiNER** (`BTG-A52`). The second-reader slot is better filled by the morphology
+8. **Do not adopt GLiNER** (`BTG-A52`). The second-reader slot is better filled by the morphology
    lint (free, 96.9% precision, already written) plus the KG's typed edges once they exist.
 
 ## 9. Honest limits
@@ -279,6 +345,18 @@ Q4 advantage. That is a real trade and it is the PO's, not a dominance the card 
   name. The strict/lenient gap is almost entirely the schema's inability to say "both", not error.
 * **The answer key was labelled by the agent**, at the PO's explicit instruction, not by the PO. The
   criteria are recorded in the labelling script and the key is small enough to audit.
+* **Q1 and Q2 measure the EVIDENCE QUOTE, not the attribute values.** An entity whose quote is a
+  perfect verbatim citation but whose `description`, `affiliation` and `role` are invented scores
+  100% grounded. Nothing on this card detects a fabricated *attribute* — and attributes are 59 of the
+  ~62 fields an entity carries. The groundedness axis is real and deterministic, and it is also much
+  narrower than "is this entity true". Labelling the answer key surfaced three attribute defects by
+  eye that no axis caught: a throne hall described as "an organization with members", an island whose
+  description is an empty `members/leader/headquarters` template, and a palace described as the
+  residence of **楊貴妃** — a *Tang* figure hallucinated into a novel about the Shang.
+* **A two-stage arm inherits its grounding from stage 1.** Where stage 2 carries stage 1's quote
+  through verbatim, Q1 measures how faithfully the *sweep* quoted, not how faithfully the typing step
+  did. That is not cheating — the citation genuinely is grounded — but it is a different claim from
+  the one A0–A4's Q1 makes, and the two should not be compared without saying so.
 * **No arm was scored against the *live* pipeline end-to-end.** The harness reproduces the worker's
   prompts and parser exactly and A0 matches the shipped per-chapter cost, but writeback, dedup and
   merge are out of scope — which is precisely where `BTG-A49` lives.

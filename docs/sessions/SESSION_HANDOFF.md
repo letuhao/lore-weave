@@ -93,9 +93,26 @@ STORE, not the model.** Per-call typing is ~100% lenient on the key's subset.
   precision / 74.8% recall — a good flagger that must never rewrite (下虛門 = a **sect**, 黃門 = a
   **clan**).
 
+**A7 (run after the others) is the most promising shape — and it broke the scorecard.** EDC whose
+stage 2 reads stage 1's CITATIONS instead of the chapter again (A5's whole premium was sending the
+chapter twice). −57.3% input · grounded **92.7%** · fabrication **1.7%** · Q4 strict **77.1%** · 0
+chapters lost · yield **+15.4%** — best on every axis. Then the kind mix: **`event` 34 → 0**, item
+19 → 7, character 79 → **160**. Its yield gain is *double the characters*, not coverage; a
+named-mention sweep never proposes an event.
+
+> **`BTG-A53` — aggregate yield is not an anti-gaming axis; per-kind yield is.** Q5 was on the card
+> exactly to stop an arm getting cheap by extracting less, and A7 defeated it by extracting more of
+> the easy kind. Every axis stayed green while a whole kind went to zero. **The card would have
+> shipped it as the best arm**; it was caught only by printing the distribution, which nothing
+> required. Same shape as `BTG-A27` a level up.
+
+Same table surfaced a pre-existing defect: **`terminology` = 0 for EVERY arm including the baseline**,
+though the kind is adopted and in every prompt.
+
 **▶ NEXT**
 1. **Ship A4's shape** into `extraction_worker` — one call, delta instruction, raised output ceiling,
-   **plus a parse-failure retry** (`BTG-A47`).
+   **plus a parse-failure retry** (`BTG-A47`). Best kind mix of any cost arm.
+1b. **Fix A7's sweep to solicit events/items, re-run, score PER KIND.** Highest-value follow-up.
 2. **Build re-decide-on-merge** (`BTG-A49`) — the real kind fix, and not a prompt change. Surface the
    disagreement as a conflict instead of oldest-wins.
 3. Re-baseline every kind-quality claim after (2). Until then do not quote them as model accuracy.
