@@ -631,6 +631,53 @@ AUDIT S7-2/3 (survey)
                re-surveys.
 ```
 
+### ◐ S6 · no model silently its own judge — SURVEYED; the affordance gap is worse than stated
+
+```
+AUDIT S6 (survey)
+  BUILT      — nothing. Measured first, per the rule this run added after three spec claims
+               were falsified by measurement in a single slice.
+
+  PROVEN     — the spec says *"No surface sets a critic: `critic_model_ref` lives in
+               `work.settings` JSONB and `CompositionSettingsView` contains no `critic`
+               string."* Measured, it is CORRECT and SHARPER than that:
+                 · `frontend/src/features/chat-ai-settings/types.ts:41` DOES declare
+                   `ModelRole = 'chat'|'composer'|'planner'|'embedding'|'rerank'|'critic'` —
+                   so the role exists in the type system.
+                 · the literal `'critic'` appears NOWHERE else in that feature: no picker, no
+                   option row, no write path.
+                 · `critic_model_ref` appears in `frontend/src` in **`__tests__` FILES ONLY** —
+                   `ChapterAssembleView.test.tsx:124,127`,
+                   `CompositionSettingsView.test.tsx:41,45`,
+                   `useChapterAssembly.test.tsx:33`. Zero production readers or writers.
+               So the FE suite is GREEN on a configuration no user can produce: the fixtures
+               hand components `{critic_model_ref: 'x'}` and assert the behaviour that follows,
+               while the only way to reach that state in the product is hand-editing JSONB.
+               That is the affordance-gate shape one level down — tests supplying a value the
+               product cannot.
+
+  NOT PROVEN — I did not check the MCP/agent surface or `chat-ai-settings`' server-side write
+               endpoint; a critic may be settable by an agent tool even with no GUI, which
+               would change "100% self-graded" to "100% minus whatever agents set". I also did
+               not measure the actual self-graded FRACTION on real jobs — the spec asserts
+               "100% minus hand-edited JSONB" and I have confirmed the affordance is absent,
+               not counted the jobs. And I did not verify the five other S6 corrections
+               (`purpose` discriminator, enforce-at-write-time, move to provider-registry,
+               compare RESOLVED provider models, the static gate's shape).
+
+  DRIFT      — I nearly recorded "the spec is wrong again, `ModelRole` has 'critic'" on the
+               strength of one grep hit. The type member exists and is unreachable; stopping at
+               the hit would have inverted the finding. Three falsifications in a row had
+               primed me to expect a fourth, which is its own bias — the measurement has to be
+               allowed to CONFIRM as well as refute.
+
+  NEXT       — S6 cannot close without the UI slice: shipping the label without the affordance
+               produces a warning the author has no way to clear, which is the permanent-amber
+               failure S1 exists to prevent. The FE work (a critic row in the model-role picker,
+               writing `critic_model_ref` through the existing settings path) is the gating
+               piece and it is a frontend cycle this window cannot start.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -713,6 +760,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
 | 2026-08-01 | **Wrote a diagnosis into the handoff from ONE error message.** Told the next session "CI red = 33 failures, one root, `language`→`original_language`, a mechanical sweep". There were **three** roots — a fastapi 0.139 `app.routes` change across two services, a pip editable path resolving outside the checkout, and the rename — and the rename half needed a SEMANTIC rewrite because the identity key had changed too. I had read one traceback and generalised, which is the §1.4 mistake the red team already caught me making twice. |
+| 2026-08-01 | **Three falsifications in a row primed me to expect a fourth.** On the first grep hit (`ModelRole` includes `'critic'`) I nearly recorded “the spec is wrong again”. The type member exists and is unreachable — the spec was RIGHT, and sharper than it knew. A measurement has to be allowed to confirm as well as refute. |
 | 2026-08-01 | **Treated the spec's §S7 bullets as a work list instead of as hypotheses — three of them falsified by measurement in one slice.** “two SDK sites unclamped” (they are MIRROR, where clamping is the bug) · “33 CI failures, one root” (three roots) · “glossary has ZERO FinishReason checks service-wide” (it has ten, and the gap was closed earlier in this same session). This is the exact habit the red team already caught the spec doing to itself. |
 | 2026-08-01 | **Nearly read a red test as “my fix is wrong” when it was pinning the bug.** `test_window_shrinks_for_a_small_context_model` restated `8_000 - 2_048 - 2_048`; raising the output reserve to match the request cap made it fail. Same shape as the motif tests asserting the removed i18n behaviour, two slices earlier in this same run. |
 | 2026-08-01 | **Counted `call_budget` call sites with a regex that also matched `per_call_budget` and a stale `sdks/python/build/lib/` copy** — 4 “unclamped” sites, all four phantom. Then read the two real ones and found the spec's claim (“two clamp, two do not”) was itself wrong: the unclamped ones are `OutputKind.MIRROR`, where clamping would be the bug. Nearly “fixed” correct code on the strength of a spec sentence. |

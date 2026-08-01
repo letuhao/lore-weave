@@ -28,7 +28,15 @@ LLM-budget SSOT work earlier in this same session.
 PRINTED (:240) while being compared to nothing. Tilemap sends no output cap, receives the
 truncation signal, and treats a cut-off narration as a narration. Needs a cargo cycle.
 
-**S7 slice 4** (per-kind sizing for the JSON kinds) is untouched. Start from the RUN-STATE's S7 block, not
+**S7 slice 4** (per-kind sizing for the JSON kinds) is untouched.
+
+**S6 is SURVEYED and blocked on a UI slice.** Measured: `critic_model_ref` appears in
+`frontend/src` in **`__tests__` files only** — five fixture sites, zero production readers
+or writers. `ModelRole` declares `'critic'` at `chat-ai-settings/types.ts:41` and the
+literal appears nowhere else in that feature. So the FE suite is green on a configuration
+no user can produce. Shipping S6's label without the affordance gives the author a warning
+they cannot clear — the permanent-amber failure S1 exists to prevent — so the picker row
+is the gating piece. Start from the RUN-STATE's S7 block, not
 from the spec — one of the spec's claims is falsified there. In short: there is no
 unclamped `call_budget` adopter (translation's three are `MIRROR`, where clamping would be
 the bug); the real gap is `worker-ai/app/distill_job.py:68`, a signature-default
