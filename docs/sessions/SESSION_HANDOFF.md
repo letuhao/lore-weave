@@ -121,12 +121,62 @@ warn, one asserting a clean sweep IS cached and records its `finish_reason` (a g
 only on the failing input is satisfied by never caching at all). **Proven red-able**: deleting
 `and not _sweep_truncated` reds the first and leaves the second green. translation 1128 → 1130.
 
-⚠ **Not verified: nothing was live-smoked.** Every number above is a unit suite or a build.
-The merge crosses ≥2 services (translation + knowledge + composition + glossary + a whole new
-Rust service), and this repo has been bitten four times by mock-green hiding a cross-service
-contract bug. The sweep tests above use a fabricated `Job`, so what is proven is the WORKER's
-branch, not that a real provider stamps `finish_reason="length"` where this code reads it.
-Tracked as `D-SWEEP-TRUNCATION-LIVE-SMOKE`.
+### ✅ LIVE-SMOKED 2026-08-02 — the whole stack, a throwaway book, a real local model
+
+Full stack up on the freshly-built images (41 containers). Throwaway book
+`019fbf66-…7a4ae2a71667` (created, used, **deleted** — HTTP 204, gone from the listing),
+one Chinese wuxia chapter, model **Gemma-4 26B-A4B QAT (200K)**
+`019ebb72-27a2-72f3-a42d-d2d0e0ded179` via lm_studio BYOK. $0.
+
+**1 · The premise held.** The `edc_cited` two-stage sweep ran against the real provider:
+
+    extraction: chapter 019fbf67-… window 0 — sweep found 14 mention(s) finish=stop
+
+`finish=stop`, not `?` — so `_job.finish_reason` IS populated where this code reads it, on the
+sweep call specifically. That was the one thing the unit tests could not establish.
+
+**2 · The field the merge hard-coded is now real.** The sweep cache row (`batch_idx = -1` =
+`SWEEP_BATCH_IDX`) came back `finish_reason = stop`, where main's code wrote a literal `NULL`:
+
+    batch_idx | parse_status | finish_reason | n
+           -1 | ok           | stop          | 14
+
+**3 · The truncation, forced and observed — and it is exactly the bug class.** The registry
+row's ceiling was temporarily patched to 48 tokens in the running worker (restored after,
+verified: cap back to 8000, no `SMOKE-FORCED` string left in the container), the cache rows
+deleted, and the job re-run:
+
+    extraction: repaired truncated JSON array (cut at 68/73 chars)
+    sweep found 1 mention(s) finish=length
+    SWEEP TRUNCATED (finish_reason=length, out=48 tokens, context-derived clamp=24000,
+      profile=glossary_sweep) — partial salvage only; mentions after the cut are LOST
+
+**14 mentions → 1**, and the repair layer made it *parse cleanly*. That is the whole point: a
+truncated sweep is indistinguishable from a short one at the parse boundary. Before this fix it
+would have been stored `parse_status='ok'`, `finish_reason=NULL`, and a re-run — the user's only
+recovery — would have served the 1-mention row back forever.
+
+**4 · The guard held.** After the truncated run the sweep row was **absent**; only the batch
+row remained. The degraded result did not become sticky.
+
+**5 · Restored, and the chain end-to-end.** Ceiling back to 8000 → `sweep found 14 mention(s)
+finish=stop`, job complete, **11 entities written to glossary-service**, correctly kinded:
+6 character (张若尘 · 柳无痕 · 苏雨柔 · 萧无极 · 赵铁山 · 赵长风) · 1 item (青冥剑) ·
+2 location (落霞谷 · 青莲峰) · 2 organization (天云宗 · 血魔殿). Every one is genuinely in the
+source text. Services on that path: api-gateway-bff → translation-service → RabbitMQ →
+translation-worker → provider-registry → lm_studio → glossary-service (+ book-service for the
+chapter fetch) — **7, all on merged images.**
+
+**6 · The image that was broken now SERVES, not just builds.** `ai-gateway` — the
+`.dockerignore` casualty — reports `catalog: 312 tools / 10 providers` with no `PARTIAL`, and a
+real `POST /mcp` `tools/list` through the host port returns **315 tools**.
+
+⚠ **Still not covered:** the game-logic track main brought (commit-service / roleplay /
+tilemap / the crates) was **not** exercised — it builds and its containers are healthy, nothing
+more. `video-gen-worker` reports unhealthy, but by design: `VIDEO_GEN_DECOUPLE_ENABLED=false`,
+so it logs *"worker idle"* and its healthcheck probes a loop that never starts. Pre-existing,
+not merge-caused — but a healthcheck that disagrees with its own feature flag is the
+degrade-safe-signal smell and deserves a row of its own someday.
 
 ---
 
@@ -2247,6 +2297,15 @@ chars / 0 reasoning deltas** · worker **2,393 chars**, `reasoning_source=suppre
 **NEXT:** write chương 1 through the FE as a real user — the original goal, now unblocked.
 
 ### Recently cleared
+
+**`D-SWEEP-TRUNCATION-LIVE-SMOKE` — CLEARED the same day it was written (2026-08-02).** It was
+opened as gate #4 ("needs a stack-up plus a model that actually truncates"), and that was the
+lazy half of a true statement: the stack-up was one command, and "a model that truncates" did
+not need a special model — it needed a 48-token ceiling. Forced it in the running worker,
+observed 14 mentions → 1 with `finish=length` and a JSON array the repair layer made
+*parse cleanly*, confirmed the row was NOT cached, restored the ceiling, and re-ran to a clean
+14 + 11 entities into glossary. Evidence in §LIVE-SMOKED above. The row cost more to write than
+to clear.
 
 **`D-REASONING-CAPFLAGS-UNREACHABLE` — CLEARED same session.** It was deferred under gate #2
 (cross-service contract) and then challenged rather than left to age. The whole cost was one
@@ -6476,7 +6535,6 @@ UI"* and **there is no UI**, so an agent calling it today writes a row **no huma
 | **D-KG-KIND-FACETS** | knowledge-service mirrors ONE `kind_code TEXT NOT NULL`, so the graph cannot filter on the secondary kind labels shipped 2026-08-02 (`glossary_entities.kind_labels`, 399 entities carrying one). | #1 out of scope — a cross-service contract change, and the refactor above re-cuts exactly this seam, so doing it first is likely wasted. Trigger: that refactor. |
 | **D-GLOSSARY-EVENTS-NO-SOT** | `contracts/events/_registry.yaml` calls itself the *"AUTHORITATIVE list of every event_type"* and contains **zero** `glossary.*` entries; the real list is a Go `const` block (`outbox.go:45,51,530`) hand-mirrored by every consumer with no generator and no drift gate. | #2 large/structural — registering one event means backfilling all three plus `go_struct` + `make eventgen` + the CI validator. Trigger: adding any new glossary event (i.e. `glossary.entity_deleted`, which D-ENTITY-LIFECYCLE needs). |
 | **D-RUST-LLM-BUDGET-SEAM** | `call_budget` is Python-only, so every Rust LLM call site sets its cap with a literal — `commit-service/src/llm_driver.rs` `.with_max_tokens(256)` (arrived with the 2026-08-02 merge) and tilemap's L3 harness. The Python gate cannot see them, so the backlog number understates the repo. | #2 large/structural — needs a Rust equivalent of the seam (an `OutputKind` + a per-service profile registry), which is the Rust half of **S7**. Recorded in the `commit.combat.npc_decision` row of `contracts/generation-paths.yaml` so it is greppable from the code, not only from here. |
-| **D-SWEEP-TRUNCATION-LIVE-SMOKE** | The two-stage sweep's `finish_reason=length` guard is unit-proven against a fabricated `Job`. What is NOT proven is that a real provider stamps `finish_reason` where this code reads it, on the sweep call specifically. | #4 blocked-on-external at dev time: needs a stack-up plus a model that actually truncates — i.e. a deliberately tiny cap on a real chapter window. Do it on the next `edc_cited` live run; the warning line (`SWEEP TRUNCATED`) is the thing to look for. |
 | **D-EPOCH-EVENT-PROJECTION-CLASSIFICATION** | `ruleset.epoch_activated` was allowlisted in `projection-coverage-lint` as an administrative transcription by the branch that MERGED main, reading `epoch_commit.rs` — not by the event's author. | #4 blocked on a product/ownership decision: the game track's owner should confirm the classification (or add a projection arm). Harmless if right, a silently-unprojected event if wrong. |
 | **D-PUSH-LIVE-SMOKE** | The M5 closed-tab VAPID push not proven live (mechanics unit-proven; routes live-smoked; SSRF guard live-verified). | #4 blocked-on-external: needs a deploy with a VAPID keypair + HTTPS + a browser push service (FCM/autopush) — none bootable at dev. Do the closed-tab content-free E2E there. |
 | **D-PUSH-ACCOUNT-TEARDOWN** | M5 push subs not auto-deleted on ACCOUNT deletion (sign-out DELETE IS wired). `DeleteAllForOwner` primitive is built. | #2/#4: account erasure is admin-cli-driven, no AMQP event to bind. Wire to an erasure event OR add `push_subscriptions` to the admin erasure purge. |
