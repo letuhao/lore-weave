@@ -67,6 +67,9 @@ func TestTheConfusableKindsAreDefinedContrastively(t *testing.T) {
 	confusable := map[string]bool{
 		"power_system": true, "terminology": true, "item": true,
 		"species": true, "organization": true, "location": true,
+		// `technique` was split out of `power_system` on 2026-08-02 (below). The two are
+		// now the closest pair in the catalogue, so both must name the other.
+		"technique": true,
 	}
 	for _, k := range DefaultKinds {
 		if !confusable[k.Code] {
@@ -76,5 +79,55 @@ func TestTheConfusableKindsAreDefinedContrastively(t *testing.T) {
 			t.Errorf("kind %q is one of the confusable set and its description never says "+
 				"what it is NOT: %q", k.Code, k.Description)
 		}
+	}
+}
+
+// A kind's NAME is part of its prompt. `power_system` first shipped with no description at
+// all, and its first description made the disagreement explicit — it read "a SINGLE technique
+// belongs here; the name says system but one art is enough", which asks the model to file an
+// individual art under a token that reads as a graded scheme. The model has been trained on
+// corpora where 境界/築基/大羅金仙 are what "power system" names; a lone spell is not that.
+//
+// Measured on chapters 88-92 of 封神演義: ZERO occurrences of 境界, 修為, 品階, 等級,
+// 階級, 層次, 果位, 金仙, 大羅, 天仙 or 太乙 — the text has no ranked ladder anywhere. It
+// does have individual arts (縱地行之術, 陰符之術, 崑崙之妙術, 八九變化). So the extraction's
+// `power_system = 0` was never evidence of a defect; there was nothing of that kind to find,
+// and reading the zero as a miss was an unfounded inference about an unexamined corpus.
+//
+// The kinds were split accordingly. This test is the mechanism that stops them merging back.
+func TestPowerSystemMeansTheLadderAndTechniqueMeansTheArt(t *testing.T) {
+	byCode := map[string]SeedKind{}
+	for _, k := range DefaultKinds {
+		byCode[k.Code] = k
+	}
+	ps, ok := byCode["power_system"]
+	if !ok {
+		t.Fatal("power_system is gone — if that is deliberate, delete this test with it")
+	}
+	tech, ok := byCode["technique"]
+	if !ok {
+		t.Fatal("technique is gone; individual arts have nowhere to go but power_system, " +
+			"which is the conflation this split fixed")
+	}
+	// The ladder kind must be about ORDERING, and must refuse the single art.
+	if !strings.Contains(ps.Description, "TIER") && !strings.Contains(ps.Description, "GRADED") {
+		t.Errorf("power_system no longer describes a graded/tiered scheme: %q", ps.Description)
+	}
+	if !strings.Contains(ps.Description, "technique") {
+		t.Errorf("power_system must send single arts to `technique` by name: %q", ps.Description)
+	}
+	if strings.Contains(ps.Description, "SINGLE technique belongs here") {
+		t.Errorf("power_system is back to claiming one art is enough — the exact wording that "+
+			"contradicted its own name: %q", ps.Description)
+	}
+	// ...and the art kind must accept one art standing alone.
+	if !strings.Contains(tech.Description, "power_system") {
+		t.Errorf("technique must name power_system as its neighbour: %q", tech.Description)
+	}
+	// A story with no ladder must be allowed to report none, or the model fills the kind
+	// with whatever is nearest — which is how four swords and a mirror got in.
+	if !strings.Contains(ps.Description, "NO entities of this kind") {
+		t.Errorf("power_system must license an EMPTY result for a story with no ladder: %q",
+			ps.Description)
 	}
 }

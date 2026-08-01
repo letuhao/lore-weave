@@ -119,6 +119,47 @@ def normalize(value: object) -> str:
     return s
 
 
+def defs_digest(kinds_metadata: list[dict] | None) -> str:
+    """A stable digest of the kind + attribute DESCRIPTIONS a run was prompted with.
+
+    They are rendered straight into the prompt — the kind's own line, and
+    `- <code> (<type>): <description>` — so editing one changes what comes back. Keying
+    only on the profile meant the cache served the pre-edit parse, which is the same
+    collision the strategy had, and it made the edit UNMEASURABLE: you cannot re-run a
+    chapter to see whether a better definition helped if the answer comes from before you
+    wrote it.
+
+    Separated from `shape_hash` because it is the one component that cannot be RECOVERED
+    later. The profile is stored verbatim on the job row and the strategy is a column, but
+    the descriptions live in glossary and drift; a replay months later would recompute a
+    different digest from today's definitions and wrongly call a faithful cache row stale.
+    So it is persisted per raw-output row and fed back in — see `compose_shape_hash`.
+    """
+    import json
+
+    if not kinds_metadata:
+        return ""
+    return json.dumps(
+        [[k.get("code"), k.get("description") or "",
+          [[a.get("code"), a.get("description") or "", a.get("auto_fill_prompt") or ""]
+           for a in (k.get("attributes") or [])]]
+         for k in kinds_metadata],
+        sort_keys=True, ensure_ascii=False)
+
+
+def compose_shape_hash(extraction_profile: dict, strategy: str, defs: str) -> str:
+    """The three components, combined. Public so a CONSUMER (replay) can re-derive the key
+    from what it can prove — the live profile map, the job's recorded strategy, the row's
+    recorded defs digest — instead of mirroring the formula locally."""
+    import hashlib
+    import json
+
+    return hashlib.sha256(
+        (json.dumps(extraction_profile, sort_keys=True, ensure_ascii=False)
+         + "|strategy=" + strategy + "|defs=" + defs).encode("utf-8")
+    ).hexdigest()
+
+
 def shape_hash(extraction_profile: dict, strategy: str,
                kinds_metadata: list[dict] | None = None) -> str:
     """The cache/writeback key component that identifies WHAT a `batch_idx` names.
@@ -135,27 +176,25 @@ def shape_hash(extraction_profile: dict, strategy: str,
     tokens reported. It also makes an A/B between two shapes on one chapter impossible,
     which is the entire purpose of the parameter.
     """
-    import hashlib
-    import json
+    return compose_shape_hash(extraction_profile, strategy, defs_digest(kinds_metadata))
 
-    # The kind and attribute DESCRIPTIONS are part of it too. They are rendered straight
-    # into the prompt — the kind's own line, and `- <code> (<type>): <description>` —
-    # so editing one changes what comes back — and keying only on the profile meant the
-    # cache served the pre-edit parse, which is the same collision the strategy had. It
-    # also made the edit UNMEASURABLE: you cannot re-run a chapter to see whether a better
-    # definition helped if the answer is served from before you wrote it.
-    defs = ""
-    if kinds_metadata:
-        defs = json.dumps(
-            [[k.get("code"), k.get("description") or "",
-              [[a.get("code"), a.get("description") or "", a.get("auto_fill_prompt") or ""]
-               for a in (k.get("attributes") or [])]]
-             for k in kinds_metadata],
-            sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(
-        (json.dumps(extraction_profile, sort_keys=True, ensure_ascii=False)
-         + "|strategy=" + strategy + "|defs=" + defs).encode("utf-8")
-    ).hexdigest()
+
+def sweep_shape_hash(sweep_system_prompt: str) -> str:
+    """The key component for a STAGE-1 SWEEP row, which is a different question entirely.
+
+    The sweep asks "what named things are mentioned here, quote them" — it is handed no
+    kinds, no attributes, no profile. So keying it on the extraction shape hash would bust
+    it on every kind-description edit for an answer that cannot change, and re-spend the
+    tokens this cache exists to save.
+
+    Instead it is keyed on the ONE input it actually has: the rendered sweep system prompt.
+    That is stricter than the batch key in the direction that matters — reword the template
+    and the digest moves, where the batch key would keep serving the old parse (which is
+    why `always_refresh` exists as an escape hatch at all).
+    """
+    import hashlib
+
+    return "sweep:" + hashlib.sha256(sweep_system_prompt.encode("utf-8")).hexdigest()
 
 
 # ── Cache policy (2026-08-01) ────────────────────────────────────────────────

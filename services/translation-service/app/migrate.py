@@ -386,6 +386,14 @@ ALTER TABLE extraction_raw_outputs ADD COLUMN IF NOT EXISTS raw_response_uri TEX
 CREATE INDEX IF NOT EXISTS idx_ero_offload_pending
   ON extraction_raw_outputs(created_at)
   WHERE raw_response_uri IS NULL AND raw_response <> '';
+-- The kind/attribute DESCRIPTIONS this parse was prompted with, digested. `profile_hash` is
+-- a composite of (profile map, strategy, these descriptions), and the descriptions are the
+-- one component that cannot be recovered later: they live in glossary-service and an author
+-- edits them. Without this column a REPLAY has to recompute the digest from today's
+-- definitions, gets a different composite, and declares a perfectly faithful cache row
+-- drifted -- which is exactly what happened the moment the descriptions joined the hash.
+-- NULL = a legacy row written when `profile_hash` was still a bare sha256 of the profile.
+ALTER TABLE extraction_raw_outputs ADD COLUMN IF NOT EXISTS defs_hash TEXT;
 
 -- ── V8: Translation Pipeline V3 — selection flag, per-role models, QA config ──
 -- Additive + idempotent. Default pipeline_version='v2' ⇒ zero behavior change

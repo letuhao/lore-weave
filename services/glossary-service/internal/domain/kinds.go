@@ -67,10 +67,19 @@ type SeedAttr struct {
 	Name string
 	// Description is rendered into the extraction prompt directly after the attribute's
 	// code and type — `- role (text): <description>`. Without it the model sees a bare
-	// identifier and guesses, which is the same rot as SeedKind.Description one level
-	// down: this struct never had the field either, so all 93 seeded attributes carried
-	// none and every extraction prompt this platform has ever sent was a list of naked
-	// codes. Say what the value IS and, where a neighbour competes for it, what it is not.
+	// identifier and guesses.
+	//
+	// Corrected 2026-08-02, because the first version of this comment overstated the
+	// damage. This struct genuinely had no such field until 2026-08-01 — but the live
+	// databases were not sending naked codes, because migration 0036 (2026-06-22) had
+	// backfilled a description onto every System attribute in SQL, bypassing Go entirely.
+	// The real defect was the SPLIT: the definitions lived in a one-shot migration that a
+	// fresh database would run against rows Go had just seeded as NULL, with nothing
+	// keeping the two in agreement. The Go struct is now the source, and the seed writes
+	// it. (Migration 0036 still, deliberately, leaves `name`/`term` NULL — hence the one
+	// naked line visible in a real prompt.)
+	//
+	// Say what the value IS and, where a neighbour competes for it, what it is not.
 	Description string
 	FieldType   string // text | textarea | select | number | date | tags | url | boolean
 	IsRequired  bool
@@ -78,7 +87,7 @@ type SeedAttr struct {
 	Options     []string
 }
 
-// DefaultKinds is the canonical ordered list of 12 system kinds used for seed and tests.
+// DefaultKinds is the canonical ordered list of 13 system kinds used for seed and tests.
 var DefaultKinds = []SeedKind{
 	// ── Group A: Universal ────────────────────────────────────────────────────
 	{
@@ -117,7 +126,7 @@ var DefaultKinds = []SeedKind{
 	},
 	{
 		Code: "item", Name: "Item / Prop",
-		Description: "A physical OBJECT — a weapon, treasure, talisman, garment, vehicle. NOT a living creature or mount, even one someone owns (that is species), and NOT the technique performed with it (that is power_system).", Icon: "🎁", Color: "#ef4444",
+		Description: "A physical OBJECT — a weapon, treasure, talisman, garment, vehicle. NOT a living creature or mount, even one someone owns (that is species), and NOT the technique performed with it (that is technique).", Icon: "🎁", Color: "#ef4444",
 		SortOrder: 3, GenreTags: []string{"universal"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The object's canonical name, exactly as written in the source.", FieldType: "text", IsRequired: true, SortOrder: 1},
@@ -145,7 +154,7 @@ var DefaultKinds = []SeedKind{
 	},
 	{
 		Code: "terminology", Name: "Terminology",
-		Description: "An abstract TERM, doctrine, rank, title or concept with no physical form and no practitioner. NOT a technique someone performs (that is power_system), NOT an object (item), NOT a group of people (organization).", Icon: "📖", Color: "#f97316",
+		Description: "An abstract TERM, doctrine, rank, title or concept with no physical form and no practitioner. NOT a technique someone performs (that is technique), NOT an object (item), NOT a group of people (organization).", Icon: "📖", Color: "#f97316",
 		SortOrder: 5, GenreTags: []string{"universal"},
 		Attrs: []SeedAttr{
 			{Code: "term", Name: "Term", Description: "The term exactly as the text writes it.", FieldType: "text", IsRequired: true, SortOrder: 1},
@@ -156,14 +165,28 @@ var DefaultKinds = []SeedKind{
 	},
 	// ── Group B: Fantasy ─────────────────────────────────────────────────────
 	{
-		Code: "power_system", Name: "Power System",
-		Description: "A named TECHNIQUE, ART, SPELL, FORMATION or magical METHOD — something a practitioner performs, casts or cultivates. A SINGLE technique belongs here; the name says system but one art is enough. NOT the object used to perform it (item), and NOT an abstract term nobody performs (terminology).", Icon: "✨", Color: "#a855f7",
+		Code: "power_system", Name: "Power System (Tier Ladder)",
+		Description: "The GRADED SCHEME a world measures power by, or one named TIER within it — 練氣/築基/金丹, 大羅金仙, the ranks of a mage college, a belt or class ladder. Extract this only where the text establishes an ORDERING that characters move along; the mark of it is that two tiers can be compared. NOT a single art someone performs, however impressive (that is technique), NOT the object used (item), NOT a bare honorific with no ladder behind it (terminology). A story with no ranked ladder has NO entities of this kind — report none rather than filling it with techniques.", Icon: "✨", Color: "#a855f7",
 		SortOrder: 6, GenreTags: []string{"fantasy"},
+		Attrs: []SeedAttr{
+			{Code: "name", Name: "Name", Description: "The tier's or the scheme's name as the text writes it.", FieldType: "text", IsRequired: true, SortOrder: 1},
+			{Code: "aliases", Name: "Aliases", Description: "Other names the text uses for the same tier or scheme.", FieldType: "tags", SortOrder: 2},
+			{Code: "tiers", Name: "Tiers", Description: "When this IS the scheme: its levels in order, lowest first.", FieldType: "tags", SortOrder: 3},
+			{Code: "rank", Name: "Position in the Ladder", Description: "When this IS one tier: what sits above and below it.", FieldType: "text", SortOrder: 4},
+			{Code: "entry_requirement", Name: "Entry Requirement", Description: "What a character must do or endure to reach this tier.", FieldType: "textarea", SortOrder: 5},
+			{Code: "capabilities", Name: "Capabilities", Description: "What someone at this tier can do that someone below cannot.", FieldType: "textarea", SortOrder: 6},
+			{Code: "description", Name: "Description", Description: "How the scheme works, in the world's own terms.", FieldType: "textarea", SortOrder: 7},
+		},
+	},
+	{
+		Code: "technique", Name: "Technique / Art",
+		Description: "A single named ART, SPELL, FORMATION, MARTIAL MOVE or magical METHOD that someone performs, casts or has mastered — 崑崙之妙術, 八九玄功, a named sword form. One art is a whole entity here; it does not need a system behind it. NOT the ladder such arts might be ranked on (power_system), NOT the weapon or talisman used to perform it (item), NOT a doctrine nobody performs (terminology).", Icon: "🌀", Color: "#8b5cf6",
+		SortOrder: 7, GenreTags: []string{"fantasy"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The technique or art's name as the text writes it.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "aliases", Name: "Aliases", Description: "Other names the text uses for the same technique.", FieldType: "tags", SortOrder: 2},
-			{Code: "type", Name: "Type", Description: "What sort of method — a spell, a formation, an escape art, a cultivation path.", FieldType: "text", SortOrder: 3},
-			{Code: "rank", Name: "Rank / Tier", Description: "Its level, tier or grade, if the world ranks such things.", FieldType: "text", SortOrder: 4},
+			{Code: "type", Name: "Type", Description: "What sort of method — a spell, a formation, an escape art, a transformation.", FieldType: "text", SortOrder: 3},
+			{Code: "rank", Name: "Rank / Tier", Description: "Its grade on the world's ladder, if the world ranks such things.", FieldType: "text", SortOrder: 4},
 			{Code: "user", Name: "User", Description: "Who performs or has mastered it.", FieldType: "text", SortOrder: 5},
 			{Code: "effects", Name: "Effects", Description: "What it does when used, and at what cost.", FieldType: "textarea", SortOrder: 6},
 			{Code: "description", Name: "Description", Description: "How the technique works, in the world's own terms.", FieldType: "textarea", SortOrder: 7},
@@ -172,7 +195,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "organization", Name: "Organization",
 		Description: "A body of PEOPLE acting together — a sect, dynasty, army, clan, court, office. It survives the loss of its building. NOT the place it occupies (location), and NOT a doctrine it teaches (terminology).", Icon: "🏛", Color: "#0ea5e9",
-		SortOrder: 7, GenreTags: []string{"fantasy", "drama"},
+		SortOrder: 8, GenreTags: []string{"fantasy", "drama"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The group's name exactly as the text writes it.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "aliases", Name: "Aliases", Description: "Other names the text uses for the same group.", FieldType: "tags", SortOrder: 2},
@@ -186,7 +209,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "species", Name: "Species / Race",
 		Description: "A kind of LIVING BEING, or a named individual creature — including divine mounts, beasts and animal companions. NOT an object (item), even when someone owns or rides it.", Icon: "🧬", Color: "#ec4899",
-		SortOrder: 8, GenreTags: []string{"fantasy"},
+		SortOrder: 9, GenreTags: []string{"fantasy"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The creature or kind's name as the text writes it.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "aliases", Name: "Aliases", Description: "Other names the text uses for the same creature or kind.", FieldType: "tags", SortOrder: 2},
@@ -201,7 +224,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "relationship", Name: "Relationship",
 		Description: "A standing TIE between two named parties — master and disciple, sworn brothers, a marriage, a feud. NOT either party, and NOT the single event that created it.", Icon: "💕", Color: "#e879f9",
-		SortOrder: 9, GenreTags: []string{"romance", "drama"},
+		SortOrder: 10, GenreTags: []string{"romance", "drama"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "A short label for the tie, e.g. A and B as master and disciple.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "parties", Name: "Parties", Description: "The two (or more) named parties bound by it.", FieldType: "tags", SortOrder: 2},
@@ -218,7 +241,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "plot_arc", Name: "Plot Arc",
 		Description: "A multi-chapter STORYLINE with a beginning and an end. Larger than one event; a sequence of them.", Icon: "📈", Color: "#f43f5e",
-		SortOrder: 10, GenreTags: []string{"romance", "drama"},
+		SortOrder: 11, GenreTags: []string{"romance", "drama"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "A short label for the storyline.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "arc_type", Name: "Arc Type", Description: "What sort of arc — revenge, ascent, redemption, war, courtship.", FieldType: "text", SortOrder: 2},
@@ -234,7 +257,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "trope", Name: "Trope",
 		Description: "A recurring narrative DEVICE or convention the story uses. A property of the telling, not a thing inside the world.", Icon: "🎭", Color: "#7c3aed",
-		SortOrder: 11, GenreTags: []string{"romance", "drama"},
+		SortOrder: 12, GenreTags: []string{"romance", "drama"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The device's usual name.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "category", Name: "Category", Description: "What sort of device — structural, character, romantic, thematic.", FieldType: "text", SortOrder: 2},
@@ -248,7 +271,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "social_setting", Name: "Social Setting",
 		Description: "A social STRUCTURE or custom of the world — a caste order, a rite, an economy, a law. NOT a place (location) and NOT the body enforcing it (organization).", Icon: "🏫", Color: "#0891b2",
-		SortOrder: 12, GenreTags: []string{"romance", "drama", "historical"},
+		SortOrder: 13, GenreTags: []string{"romance", "drama", "historical"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "A short label for the structure or custom.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "era", Name: "Era", Description: "The period it belongs to, however the text marks time.", FieldType: "text", SortOrder: 2},

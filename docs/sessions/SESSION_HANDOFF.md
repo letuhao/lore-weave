@@ -1,5 +1,70 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🧭 THE KIND WAS WRONG, AND SO WAS MY READING OF ITS ZERO (2026-08-02)
+
+The PO challenged a claim rather than a line of code, and was right on both counts.
+
+**1 · `power_system` was two concepts sharing a code.** Its name reads as a graded ladder —
+練氣/築基/金丹, 大羅金仙 — the thing a model trained on this genre will look for. Its
+description, written the day before, said the opposite in as many words: *"the name says
+system but one art is enough."* Name and definition were arguing; the model followed the
+name, so individual arts (崑崙之妙術) went to `terminology` instead. **A misfile can be a
+missing-category error rather than a judgement error** (`BTG-A64`).
+- **Split at the System tier**: new `technique` kind (migrations `0056`+`0057`), and
+  `power_system` rewritten to mean the ladder — with an explicit licence to return **none**,
+  so a story without one is not pressured into filling it. `type`/`user`/`effects` retired
+  (soft, `deprecated_at`); `tiers`/`entry_requirement`/`capabilities` added.
+- **Verified live end-to-end**: adopt copied `technique` into a book, and **G5 sync**
+  surfaced 5 `update_available` rows for the redefinition and applied them.
+
+**2 · I read `power_system = 0` as a defect twice, and never checked the corpus.** The
+document argued first that it was a coverage gap, then that it was a typing failure, and
+produced a plausible mechanism for each. The marker count that seemed to settle it counted
+變化 · 陣 · 符 · 遁 — **arts, not tiers**. Re-scanned for the ladder itself, chapters 88–92
+of 封神演義 contain **零** 境界 · 修為 · 品階 · 等級 · 階級 · 層次 · 果位 · 金仙 · 大羅 ·
+天仙 · 太乙. There is no ladder in that book. **`power_system = 0` is the correct answer**
+(`BTG-A63`: *a zero is only evidence once you have shown the thing could have been there*).
+
+**3 · …and the split changed nothing, for a structural reason worth knowing** (`BTG-A65`).
+Re-run on the corrected catalogue: still zero. The stage-1 sweep cited **95 mentions** and
+one art-like string; 縱地行之術 · 陰符之術 never reached stage 2, which types only what
+stage 1 cites. **Under `edc_cited` the ontology can change TYPING but never RECALL.** A user
+who adds a kind and re-extracts will see the ontology change and the results not. The
+batched shape does not have this property — part of what its 7.4× input is buying, and it
+was not priced in when the cheap shapes were ranked.
+
+**4 · The sweep is cached now** (the gap left open yesterday). It was the one call nothing
+keyed: `prefer_cache` reported 100% of batches served and still spent 12,622 tokens. Keyed
+on the rendered sweep prompt, not the extraction shape hash — the sweep is handed no kinds,
+so busting it on a definition edit would re-spend for an answer that cannot change.
+- **Measured**: `always_refresh` 25,971 in / 6 executed → `prefer_cache` **0 tokens, 6/6
+  cached** → after the definition edit, `refresh_if_stale` **3 cached (the sweeps) / 3
+  executed (the typing)**, automatically, with no flag.
+
+**5 · Two of my own defects, found on the way.**
+- **Replay was fully broken and nothing went red.** Folding strategy + descriptions into
+  `profile_hash` left the consumer recomputing a bare `sha256(profile)`, so every replay
+  answered `profile_drifted`. The test computed the same bare hash the consumer did — both
+  mirroring a producer that had moved on. Fixed by decomposing the hash and storing the one
+  component that cannot be recomputed (`defs_hash` on the row, because glossary's
+  definitions drift); tests now call the production function.
+- **`SeedGenreKindAttr` seeded NULL descriptions** — `var desc *string // DefaultKinds carry
+  no per-attr description today`, stale since the field was added. Existing DBs were covered
+  by the one-shot 0036 backfill, which hid it; a **fresh** database would have seeded 93
+  nameless attributes while the Go struct held all 93 definitions. This also corrects
+  yesterday's overstatement that *"every extraction prompt this platform has ever sent was a
+  list of naked codes"* — the live path had attribute descriptions since 2026-06-22.
+
+**Verified** — translation-service **1117 passed** · glossary `internal/...` all green ·
+frontend `tsc` clean · ai-provider-gate + db-safety-gate OK · bite-tested ×3 (drop the
+`batch_idx>=0` filter → sweep leaks into replay; force the legacy hash path → replay reds;
+restore the old power_system wording → the ladder guard reds) · **live smoke** across
+translation + glossary as above.
+
+**Open, deliberately:** `technique`'s effect on extraction quality is UNMEASURED — the only
+run so far was on the shape structurally unable to show it (`BTG-A65`). Measure it under
+`batched`, on chapters that contain arts, against a widened answer key.
+
 ## 🔗 GLOSSARY↔KG LINKAGE — both holes closed + backfilled (2026-08-01)
 
 Cleared before the entity-consistency refactor, because both defects corrupt the data that

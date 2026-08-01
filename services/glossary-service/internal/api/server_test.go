@@ -76,10 +76,13 @@ func TestListKindsBadToken(t *testing.T) {
 
 // ── seed data unit tests (no DB) ─────────────────────────────────────────────
 
-// TestDefaultKindsCount verifies exactly 12 kinds are declared.
+// TestDefaultKindsCount verifies exactly 13 kinds are declared. It went 12 -> 13 on
+// 2026-08-02 when `technique` was split out of `power_system`: the latter's name reads as a
+// graded scheme and its definition claimed a single art was enough, so the two concepts were
+// competing for one code. See TestPowerSystemMeansTheLadderAndTechniqueMeansTheArt.
 func TestDefaultKindsCount(t *testing.T) {
-	if got := len(domain.DefaultKinds); got != 12 {
-		t.Fatalf("expected 12 default kinds, got %d", got)
+	if got := len(domain.DefaultKinds); got != 13 {
+		t.Fatalf("expected 13 default kinds, got %d", got)
 	}
 }
 

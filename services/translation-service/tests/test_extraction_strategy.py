@@ -272,6 +272,44 @@ def test_identical_definitions_still_hit_the_cache():
     assert shape_hash(PROFILE, BATCHED, m) == shape_hash(PROFILE, BATCHED, list(m))
 
 
+# ── the sweep's own key, and the decomposition replay depends on ─────────────
+
+def test_a_sweep_key_is_never_a_batch_key():
+    """The stage-1 sweep and a kind-batch share one table. Their keys must not collide, or
+    a sweep's MENTIONS get served as a batch's entities."""
+    from app.workers.extraction_strategy import sweep_shape_hash
+    assert sweep_shape_hash("SWEEP PROMPT") != shape_hash(PROFILE, EDC_CITED, None)
+
+
+def test_rewording_the_sweep_prompt_busts_the_sweep_cache():
+    from app.workers.extraction_strategy import sweep_shape_hash
+    assert sweep_shape_hash("find every name") != sweep_shape_hash("find every named thing")
+    assert sweep_shape_hash("find every name") == sweep_shape_hash("find every name")
+
+
+def test_a_kind_description_edit_does_NOT_bust_the_sweep():
+    """The sweep is handed no kinds and no profile, so its answer cannot change when a
+    definition does. Busting it there would re-spend tokens for an identical reply — the
+    opposite mistake from the one the batch key had."""
+    import inspect
+
+    from app.workers.extraction_strategy import sweep_shape_hash
+    # Asserted on the SIGNATURE, because that is where the property lives: the key cannot
+    # depend on descriptions if the function is never given any. Growing a kinds argument
+    # reds this, which is the moment to re-decide whether the extra busting is worth paying.
+    assert list(inspect.signature(sweep_shape_hash).parameters) == ["sweep_system_prompt"]
+
+
+def test_the_hash_decomposes_the_way_replay_re_derives_it():
+    """Replay cannot recompute the descriptions digest (glossary drifts), so it stores that
+    component and re-composes. If `shape_hash` ever stops being exactly that composition,
+    every replay silently starts answering `profile_drifted` — which is what happened."""
+    from app.workers.extraction_strategy import compose_shape_hash, defs_digest
+    meta = [{"code": "item", "description": "d", "attributes": [{"code": "type", "description": "x"}]}]
+    assert (compose_shape_hash(PROFILE, BATCHED, defs_digest(meta))
+            == shape_hash(PROFILE, BATCHED, meta))
+
+
 # ── cache policy ─────────────────────────────────────────────────────────────
 
 def test_the_default_policy_is_the_CORRECT_one_not_the_cheap_one():

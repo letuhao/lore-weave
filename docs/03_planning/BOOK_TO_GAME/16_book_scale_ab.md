@@ -154,26 +154,62 @@ with this profile. Per chapter, against the two arms above:
 > dedicated sweep pass is what stops them competing. The extra cost is one cheap call per
 > window, and its output — a name and a quote — is small.
 
-### The `power_system` zero is a TYPING failure, not a coverage one
+### ~~The `power_system` zero is a TYPING failure, not a coverage one~~ — RETRACTED 2026-08-02
 
-`power_system` came back **ZERO**. The first draft of this section guessed that might be
-what chapters 88–92 contain. Reading them says otherwise — every one carries power-system
-material, 9 to 20 markers each:
+<details>
+<summary>The original claim, kept because the correction is the point</summary>
+
+> `power_system` came back **ZERO**. The first draft of this section guessed that might be
+> what chapters 88–92 contain. Reading them says otherwise — every one carries power-system
+> material, 9 to 20 markers each:
+>
+> ```
+> ch 88  變化 1 · 陣 6 · 符 2
+> ch 89  遁 1 · 陣 7 · 符 1 · 丹 1 · 妖術 1
+> ch 90  道術 1 · 變化 1 · 遁 2 · 陣 10 · 符 6
+> ch 91  法寶 1 · 變化 1 · 遁 5 · 陣 4 · 玄功 1 · 妖術 1
+> ch 92  道術 2 · 神通 2 · 變化 8 · 遁 1 · 陣 7
+> ```
+
+</details>
+
+**The marker count was real and it measured the wrong thing.** 變化 (transformation), 陣
+(formation), 符 (talisman), 遁 (escape-art), 神通 (a power used), 玄功 (an inner art) are
+**individual arts**. Not one of them is a *tier*. A `power_system` — as the phrase is used in
+this genre and as any model trained on it will read the token — is a **graded ladder** a
+character climbs: 練氣 → 築基 → 金丹, or 大羅金仙 above 太乙金仙 above 天仙. Its mark is that
+two of its members can be **compared**. Counting arts and calling them power-system material
+assumes the answer.
+
+Re-scanned for the ladder itself, across the same five chapters:
 
 ```
-ch 88  變化 1 · 陣 6 · 符 2
-ch 89  遁 1 · 陣 7 · 符 1 · 丹 1 · 妖術 1
-ch 90  道術 1 · 變化 1 · 遁 2 · 陣 10 · 符 6
-ch 91  法寶 1 · 變化 1 · 遁 5 · 陣 4 · 玄功 1 · 妖術 1
-ch 92  道術 2 · 神通 2 · 變化 8 · 遁 1 · 陣 7
+境界 0 · 修為 0 · 品階 0 · 等級 0 · 階級 0 · 層次 0 · 果位 0
+金仙 0 · 大羅 0 · 天仙 0 · 太乙 0            道行 1 · 煉氣 1 (in 煉氣士, a role)
 ```
 
-And the material *was* extracted — it landed under the wrong kinds:
+**封神演義 has no tier ladder.** It is a Ming-dynasty *shenmo* novel, not a xianxia
+progression fantasy; its beings are ranked by title and lineage, never by a stated scheme
+anyone advances through. So on chapters 88–92, `power_system = 0` is not a failure of any
+kind — **it is the correct answer**, and reading it as a miss was an inference about a corpus
+that had not been examined for the thing being claimed.
+
+> **`BTG-A63`.** **A zero is only evidence once you have shown the thing could have been
+> there.** Two full sections of this document treated `power_system: 0` as a defect to
+> explain — first as a coverage gap, then as a typing failure — and produced a plausible
+> mechanism for each. Neither was ever tested against the only question that mattered: *does
+> the text contain a power system?* The marker count that seemed to settle it was a count of
+> a **different concept wearing the same word**, which is the failure mode a well-chosen
+> query is least likely to expose and most likely to dress up as evidence.
+
+**What survives, re-labelled.** The material *was* extracted and it *did* land under the wrong
+kinds — that finding stands, and it is now sharper, because the destination it should have had
+did not exist:
 
 | entity | filed as | actually |
 |---|---|---|
-| **崑崙之妙術** "the wondrous art of Kunlun" | `terminology` | **power_system** |
-| 五行方位 · 八卦方位 (five-phase / eight-trigram array positions) | `terminology` | formation → power_system |
+| **崑崙之妙術** "the wondrous art of Kunlun" | `terminology` | **technique** |
+| 五行方位 · 八卦方位 (five-phase / eight-trigram array positions) | `terminology` | a formation → **technique** |
 | 山河社稷圖 | `terminology` | a magic artifact |
 | **梅山七怪** "the Seven Monsters of Meishan" | `terminology` | a **group** → organization/species |
 | **哮天犬** Yang Jian's divine hound | `item` | **species** |
@@ -181,15 +217,56 @@ And the material *was* extracted — it landed under the wrong kinds:
 | **狼牙棒** a wolf-tooth club | `terminology` | **item** |
 
 > **`BTG-A62`.** **`edc_cited` finds the material and misfiles it.** The −7% coverage figure
-> stands — the entities are there — but the kind distribution is not trustworthy, and
-> `power_system: 0` names a typing failure rather than a gap. The misfiling runs in both
-> directions: techniques and groups drift into `terminology`, creatures and treasures drift
-> into `item`, and a plain weapon drifts *out* of `item`.
+> stands — the entities are there — but the kind distribution is not trustworthy. The
+> misfiling runs in both directions: arts and groups drift into `terminology`, creatures and
+> treasures drift into `item`, and a plain weapon drifts *out* of `item`.
 >
 > This is the axis catching what the POC's Q4 could not. That answer key covered only
 > `location`/`organization`, so a shape could score 70% strict on it while shuffling
 > techniques, creatures and objects freely — which is exactly what happened. **A kind-typing
 > claim is only as wide as the key behind it.**
+
+> **`BTG-A64`.** **Some of the misfiling had nowhere else to go.** 崑崙之妙術 is an art. The
+> catalogue's only home for an art was a kind named `power_system` — whose own description
+> conceded the mismatch in as many words (*"the name says system but one art is enough"*).
+> A model reading a name and a definition that disagree will follow the name, and the name
+> said *ladder*. So the art went to `terminology`, which at least did not claim to be
+> something it wasn't. **A misfile can be a missing-category error rather than a judgement
+> error** — the same shape as `BTG-A28`'s place-vs-organization finding, one level up: not
+> "the model picked wrong", but "the right box did not exist."
+>
+> Fixed 2026-08-02: `technique` split out of `power_system` at the System tier (glossary
+> migrations `0056`/`0057`), and `power_system` rewritten to mean the graded ladder its name
+> always implied — including an explicit licence to return **none**, so a story without a
+> ladder is not pressured into filling the kind with whatever is nearest.
+
+### The split did NOT change the extraction, and the reason is structural
+
+Re-run on chapters 88–89 with the corrected catalogue adopted through G5 sync: **zero
+`technique`, zero `power_system`.** The split, on its own, changed nothing.
+
+Reading the cached stage-1 output says why. The sweep cited **95 mentions** across the two
+chapters, and exactly one art-like string among them (`三賢遠遁`). 縱地行之術, 陰符之術 and
+崑崙之妙術 are all in that text and **none of them reached stage 2**. Stage 2 types what
+stage 1 cites; it never sees the chapter. So no kind definition, however good, could have
+filed them — the material was gone one call earlier.
+
+> **`BTG-A65`.** **Under `edc_cited`, the ontology cannot affect RECALL — only TYPING.** The
+> sweep is deliberately kind-blind (it is handed no kinds, no attributes, no profile; that is
+> what makes it cheap, and what lets its cache survive a definition edit). The consequence is
+> that adding a kind, redefining one, or writing a better description can change how a found
+> thing is *labelled* and can change nothing at all about what is *found*. A user who adds a
+> kind and re-extracts under this shape will see the ontology change and the results not, and
+> will reasonably conclude the feature is broken.
+>
+> This cuts against `BTG-A61` (edc recovers coverage): it recovers coverage of the things its
+> sweep is good at naming — people, places, groups — and is structurally blind to the rest.
+> Combined with `BTG-A55` (it cannot name events, which have no name to quote), the shape's
+> real profile is: **excellent on named nouns, blind by construction on everything else.**
+>
+> The batched shape does not have this property — every kind gets its own call against the
+> chapter text, so a new kind is a new chance to find something. That is a large part of what
+> the 7.4× input cost is buying, and it was not priced in when the cheap shapes were ranked.
 
 **So `edc_cited` is not promotable on this evidence.** Its discovery is excellent and its
 typing is unverified outside two kinds. Before promoting it: re-run at 15 chapters, and

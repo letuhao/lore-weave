@@ -38,6 +38,7 @@ from .block_batcher import build_batch_plan
 from .cost import resolve_job_cost_usd
 from .chunk_splitter import estimate_tokens
 from .extraction_cache import (
+    SWEEP_BATCH_IDX,
     RawCacheKey,
     effort_band_for,
     get_cached_batch,
@@ -60,11 +61,13 @@ from .extraction_strategy import (
     CACHE_PREFER_CACHE,
     SINGLE_CALL_DELTA,
     TWO_STAGE_SHAPES,
+    compose_shape_hash,
+    defs_digest as strategy_defs_digest,
     normalize_cache_policy,
     normalize as normalize_strategy,
     output_ceiling as strategy_output_ceiling,
     plan_batches as plan_batches_for_strategy,
-    shape_hash as strategy_shape_hash,
+    sweep_shape_hash,
 )
 from .extraction_prompt import (
     DELTA_INSTRUCTION,
@@ -934,7 +937,11 @@ async def _process_extraction_chapter(
     # were the eight-kind one — silently dropping five kinds and reporting zero tokens.
     # It also makes an A/B between two shapes on the same chapter impossible, which is what
     # this parameter exists for.
-    profile_hash = strategy_shape_hash(extraction_profile, strategy, kinds_metadata)
+    # Computed in two steps rather than one: `defs_hash` is the component a CONSUMER cannot
+    # recompute — the definitions live in glossary and an author edits them — so it is stored
+    # on each raw-output row and fed back to `compose_shape_hash` at replay time.
+    defs_hash = strategy_defs_digest(kinds_metadata)
+    profile_hash = compose_shape_hash(extraction_profile, strategy, defs_hash)
     all_kinds = sorted({k for batch in batches for k in batch})
     writeback_key = hashlib.sha256(
         "|".join([book_id, str(chapter_id), content_hash, ",".join(all_kinds), profile_hash]).encode("utf-8")
@@ -1106,10 +1113,54 @@ async def _process_extraction_chapter(
     # a baseline 80.1%, +63% new entities per chapter, and the only shape that abandons no
     # kind — because the sweep's naming rule is split by category, verbatim for the things
     # that have names and COMPOSED for events, which have none (`BTG-A55`).
+    #
+    # It is CACHED like any other call. It was not, and the omission was invisible in every
+    # place a cost shows up: a `prefer_cache` re-run reported 100% of its batches served and
+    # still spent 12,622 tokens, because the one call nothing keyed was the one call the
+    # traceability work had just taught the UI to account for.
+    #
+    # Its key is deliberately NOT the extraction shape hash — the sweep is handed no kinds,
+    # no attributes and no profile, so busting it on a kind-description edit would re-spend
+    # tokens for an answer that cannot have changed. `sweep_shape_hash` keys on the rendered
+    # sweep prompt instead, and `SWEEP_BATCH_IDX` namespaces the row away from real batches.
+    #
+    # Model drift is staleness for the sweep exactly as it is for a batch, so the same
+    # `_drift_matters` decision governs both — see the policy note at its definition.
+    _drift_matters = (cache_policy != CACHE_PREFER_CACHE
+                      or settings.extraction_cache_bust_on_model_change)
     _sweep_cache: dict[int, list[tuple[str, str]]] = {}
     if strategy in TWO_STAGE_SHAPES:
         sweep_system = build_sweep_system_prompt(source_language)
+        sweep_profile_hash = sweep_shape_hash(sweep_system)
         for _wi, _wtext in enumerate(windows):
+            _sweep_key = RawCacheKey(
+                owner_user_id=str(owner_user_id) if owner_user_id else "",
+                book_id=book_id, chapter_id=str(chapter_id), content_hash=content_hash,
+                batch_idx=SWEEP_BATCH_IDX, chunk_idx=_wi,
+                profile_hash=sweep_profile_hash, effort_band=_effort_band,
+            )
+            _sweep_cached = (await get_cached_batch(pool, _sweep_key)
+                             if owner_user_id and not force_refresh else None)
+            _sweep_busted = force_refresh
+            if (_sweep_cached is not None and _drift_matters
+                    and _sweep_cached.get("model_ref") and model_ref
+                    and str(_sweep_cached["model_ref"]) != str(model_ref)):
+                log.info("extraction: chapter %s window %d — sweep cache model %s ≠ current %s; "
+                         "busting", chapter_id, _wi, _sweep_cached["model_ref"], model_ref)
+                _sweep_cached = None
+                _sweep_busted = True
+            if _sweep_cached is not None:
+                nonlocal_cache_hits.append(1)
+                # A sweep row stores MENTIONS, not entities: [{"name","evidence"}, ...].
+                _sweep_cache[_wi] = [
+                    (str(m.get("name") or ""), str(m.get("evidence") or ""))
+                    for m in (_sweep_cached["parsed_entities"] or [])
+                    if isinstance(m, dict) and m.get("name")
+                ]
+                log.info("extraction: chapter %s window %d — sweep CACHE HIT (%d mention(s), "
+                         "0 tokens)", chapter_id, _wi, len(_sweep_cache[_wi]))
+                continue
+            nonlocal_cache_exec.append(1)
             try:
                 _job = await llm_client.submit_and_wait(
                     user_id=str(owner_user_id), operation="chat",
@@ -1138,10 +1189,26 @@ async def _process_extraction_chapter(
                 total_input_tokens += _usage.get("input_tokens") or 0
                 total_output_tokens += _usage.get("output_tokens") or 0
                 _msgs = _res.get("messages") or []
-                _sweep_cache[_wi] = parse_sweep_mentions(
-                    (_msgs[0].get("content") if _msgs else "") or "")
+                _sweep_raw = (_msgs[0].get("content") if _msgs else "") or ""
+                _sweep_cache[_wi] = parse_sweep_mentions(_sweep_raw)
                 log.info("extraction: chapter %s window %d — sweep found %d mention(s)",
                          chapter_id, _wi, len(_sweep_cache[_wi]))
+                # Cache only a NON-EMPTY sweep. An empty one is either a parse failure or a
+                # window the model gave up on, and caching it makes that failure permanent —
+                # a re-run is precisely how the user recovers it. Same rule the batch cache
+                # applies by storing only OK/EMPTY_VALID outcomes.
+                if owner_user_id and _sweep_cache[_wi]:
+                    await put_batch(
+                        pool, _sweep_key, job_id=str(job_id), kinds_requested=[],
+                        model_source=model_source, model_ref=str(model_ref),
+                        reasoning_effort=_effort_band,
+                        input_tokens=_usage.get("input_tokens") or 0,
+                        output_tokens=_usage.get("output_tokens") or 0,
+                        finish_reason=None, raw_response=_sweep_raw,
+                        parsed_entities=[{"name": n, "evidence": e}
+                                         for n, e in _sweep_cache[_wi]],
+                        parse_status="ok", overwrite=_sweep_busted,
+                    )
             except Exception as exc:  # noqa: BLE001 — one window must not lose the chapter
                 log.warning("extraction: chapter %s window %d — sweep failed: %s",
                             chapter_id, _wi, exc)
@@ -1189,13 +1256,11 @@ async def _process_extraction_chapter(
         # is threaded to put_batch so the live re-extraction OVERWRITES the stale row (the key has
         # no model, so a plain DO-NOTHING put could never refresh it → every run would re-bust).
         _busted = force_refresh
-        # Model drift is STALENESS. The key is content-addressed and deliberately excludes
-        # the model (D-CACHE-MODEL-KEY), so a hit can carry a different model's parse — which
-        # is precisely the silent substitution the default policy exists to stop. Under
-        # `refresh_if_stale` this check is unconditional; `prefer_cache` falls back to the
-        # deploy flag, i.e. the old behaviour, chosen explicitly.
-        _drift_matters = (cache_policy != CACHE_PREFER_CACHE
-                          or settings.extraction_cache_bust_on_model_change)
+        # Model drift is STALENESS (`_drift_matters`, decided once per chapter above). The key
+        # is content-addressed and deliberately excludes the model (D-CACHE-MODEL-KEY), so a
+        # hit can carry a different model's parse — precisely the silent substitution the
+        # default policy exists to stop. Under `refresh_if_stale` the check is unconditional;
+        # `prefer_cache` falls back to the deploy flag, i.e. the old behaviour, chosen.
         if (cached is not None and _drift_matters
                 and cached.get("model_ref") and model_ref
                 and str(cached["model_ref"]) != str(model_ref)):
@@ -1430,6 +1495,10 @@ async def _process_extraction_chapter(
                 # D-CACHE-MODEL-KEY: on a model-change bust, OVERWRITE the stale row so the cache
                 # holds the new model's parse (else the next run re-busts forever).
                 overwrite=_busted,
+                # The descriptions this parse was prompted with. They are folded into
+                # `profile_hash` and cannot be recomputed later (glossary drifts), so a replay
+                # needs them recorded or it declares every faithful row stale.
+                defs_hash=defs_hash,
             )
 
         _accept(entities, window_text)

@@ -151,6 +151,12 @@ var chain = []Step{
 	// mirroring book-service. Backs the KIND-C durable human gate (action_task_gate.go): a
 	// propose on one replica + its accept on another resolve the same task exactly once.
 	{"0055_mcp_gate_tasks", UpMcpGateTasks},
+	// The `technique` kind, split out of `power_system` — whose NAME reads as a graded
+	// scheme while its description claimed a single art was enough. Rewrites both.
+	{"0056_technique_kind_split", UpTechniqueKindSplit},
+	// ...and its attributes, in a step of their own — 0056 was already applied when this
+	// was written, and an applied ledger entry never runs again.
+	{"0057_technique_kind_attrs", UpTechniqueKindAttrs},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

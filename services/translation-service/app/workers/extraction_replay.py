@@ -28,6 +28,7 @@ from loreweave_internal_client import build_internal_client
 
 from ..config import settings
 from .extraction_preprocessor import prepare_chapter_text
+from .extraction_strategy import BATCHED, compose_shape_hash
 from .extraction_provenance import stamp_entity_provenance
 from .glossary_client import post_extracted_entities
 
@@ -88,10 +89,15 @@ async def replay_chapter_from_cache(
 
     async with pool.acquire() as db:
         # Pick the latest cached GENERATION for the CURRENT text (caller's own cache only).
+        # `batch_idx >= 0` excludes STAGE-1 SWEEP rows. Those share the table but hold
+        # MENTIONS (`{name, evidence}`), not entities — replaying one would push half-formed
+        # rows into glossary. It is filtered here rather than trusted to ordering because a
+        # sweep row can legitimately be the newest row of a generation.
         head = await db.fetchrow(
             """SELECT effort_band, profile_hash, job_id
                FROM extraction_raw_outputs
                WHERE owner_user_id=$1 AND book_id=$2 AND chapter_id=$3 AND chapter_content_hash=$4
+                 AND batch_idx >= 0
                ORDER BY created_at DESC LIMIT 1""",
             caller_user_id, book_id, chapter_id, content_hash,
         )
@@ -101,10 +107,10 @@ async def replay_chapter_from_cache(
 
         # Gather every batch row of that (content, effort, profile) generation, ordered.
         rows = await db.fetch(
-            """SELECT chapter_chunk_idx, batch_idx, parsed_entities, kinds_requested
+            """SELECT chapter_chunk_idx, batch_idx, parsed_entities, kinds_requested, defs_hash
                FROM extraction_raw_outputs
                WHERE owner_user_id=$1 AND book_id=$2 AND chapter_id=$3 AND chapter_content_hash=$4
-                 AND effort_band=$5 AND profile_hash=$6
+                 AND effort_band=$5 AND profile_hash=$6 AND batch_idx >= 0
                ORDER BY chapter_chunk_idx, batch_idx""",
             caller_user_id, book_id, chapter_id, content_hash, effort_band, profile_hash,
         )
@@ -114,17 +120,39 @@ async def replay_chapter_from_cache(
         # the only faithful source of the kind→attr→action map (the cache stores only its
         # hash), so a missing/drifted job means we can't reconstruct it → refuse.
         extraction_profile = None
+        job_strategy = BATCHED
         if job_id is not None:
-            prof_raw = await db.fetchval(
-                "SELECT extraction_profile FROM extraction_jobs WHERE job_id=$1", job_id)
-            if prof_raw is not None:
+            job_row = await db.fetchrow(
+                "SELECT extraction_profile, extraction_strategy FROM extraction_jobs "
+                "WHERE job_id=$1", job_id)
+            if job_row is not None and job_row["extraction_profile"] is not None:
+                prof_raw = job_row["extraction_profile"]
                 extraction_profile = json.loads(prof_raw) if isinstance(prof_raw, str) else prof_raw
+                job_strategy = job_row["extraction_strategy"] or BATCHED
 
     if extraction_profile is None:
         return {"status": "profile_unavailable", "reason": "source_job_gone"}
-    recomputed = hashlib.sha256(
-        json.dumps(extraction_profile, sort_keys=True, ensure_ascii=False).encode("utf-8")
-    ).hexdigest()
+    # Re-derive the row's `profile_hash` from what can be PROVEN, and refuse on a mismatch.
+    #
+    # The hash is a composite of three things: the profile map, the strategy, and a digest of
+    # the kind/attribute descriptions. Only the first is recomputable from live state — which
+    # is the point of recomputing it, since it is the map replay reconstructs attribute-actions
+    # from and a mutation of it must be caught. The strategy comes off the job row; the
+    # descriptions come off the CACHE row, because glossary's copy drifts and recomputing from
+    # today's definitions would call every faithful row stale. (It did: the day the descriptions
+    # joined the hash, replay recomputed a bare sha256 of the profile and every replay in the
+    # system started answering `profile_drifted`. Nothing went red, because the test computed
+    # the same bare sha256 the consumer did — both mirroring a producer that had moved on.)
+    #
+    # `defs_hash IS NULL` marks a row written before the composite existed, when `profile_hash`
+    # WAS that bare sha256 — so the legacy form is still accepted, for legacy rows only.
+    row_defs_hash = rows[0]["defs_hash"] if rows else None
+    if row_defs_hash is None:
+        recomputed = hashlib.sha256(
+            json.dumps(extraction_profile, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+    else:
+        recomputed = compose_shape_hash(extraction_profile, job_strategy, row_defs_hash)
     if recomputed != profile_hash:
         return {"status": "profile_unavailable", "reason": "profile_drifted"}
 
@@ -241,8 +269,11 @@ async def rerun_merge_book(
     if chapter_ids is None:
         async with pool.acquire() as db:
             rows = await db.fetch(
+                # `batch_idx >= 0`: a chapter whose ONLY cached rows are stage-1 sweeps has no
+                # parse to replay, and listing it here would spend a round-trip per chapter to
+                # learn that.
                 """SELECT DISTINCT chapter_id FROM extraction_raw_outputs
-                   WHERE owner_user_id=$1 AND book_id=$2""",
+                   WHERE owner_user_id=$1 AND book_id=$2 AND batch_idx >= 0""",
                 caller_user_id, book_id,
             )
         chapter_ids = [str(r["chapter_id"]) for r in rows]

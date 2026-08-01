@@ -51,8 +51,10 @@ export function StepConfirm({
   // concurrent requests (e.g. a 200K-context local model can comfortably do 4).
   const [concurrency, setConcurrency] = useState(1);
   // The prompt SHAPE. `batched` is the shipped default and stays the default here — the
-  // cheaper shapes were measured to lose coverage on rare kinds (terminology −80%,
-  // power_system −68%), so they are a deliberate trade, not a free win.
+  // cheaper shapes were measured to lose coverage on the rare kinds (−80% and −68% on the
+  // two thinnest), so they are a deliberate trade, not a free win. The measurement was a
+  // BETWEEN-SHAPE comparison on one fixed catalogue, so the deltas stand even though one of
+  // those kinds has since been redefined and split (power_system → power_system+technique).
   const [strategy, setStrategy] = useState<ExtractionStrategy>('batched');
   // How to treat the raw-output cache. Default REFRESHES when anything looks stale: the
   // cache can serve a whole job at zero tokens, and before this existed a user who edited

@@ -2039,7 +2039,16 @@ func SeedGenreKindAttr(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 
 		for _, a := range k.Attrs {
-			var desc *string // DefaultKinds carry no per-attr description today
+			// `SeedAttr.Description` was added 2026-08-01; this line read
+			// `var desc *string // DefaultKinds carry no per-attr description today`
+			// and so seeded NULL into the column the extraction prompt reads. On existing
+			// databases the descriptions came from the one-shot 0036 backfill instead, which
+			// hid the gap — a FRESH database would have seeded 93 nameless attributes while
+			// the Go struct sat there holding all 93 definitions.
+			desc := &a.Description
+			if a.Description == "" {
+				desc = nil
+			}
 			var opts []string
 			if len(a.Options) > 0 {
 				opts = a.Options
