@@ -268,6 +268,50 @@ filed them — the material was gone one call earlier.
 > chapter text, so a new kind is a new chance to find something. That is a large part of what
 > the 7.4× input cost is buying, and it was not priced in when the cheap shapes were ranked.
 
+### Measured under `batched`: the model gets it right and the STORE overwrites it
+
+`BTG-A65` says the two-stage shape cannot show an ontology change. So the split was measured
+under `batched`, which can — chapters 90, 92, 94 and 96, `always_refresh`, fresh every time.
+
+**The model finds arts now.** `technique` alone on ch96 returned three, all genuinely arts:
+五雷正法 (the orthodox Five-Thunders method), 土遁 (earth-escape), 妖風 (demon-wind). Under
+the full nine-kind profile it returned 五行方位, 五雷之法, 土遁, 八九變化, 變化, 遁龍樁.
+
+**Almost none of it survives to the store.** Tracing each name to its stored row:
+
+| the model said | stored as | that row was first created |
+|---|---|---|
+| 五雷正法 → `technique` | **`power_system`** | 08:20 — under the definition that said power_system meant *an art* |
+| 土遁 → `technique` | **`terminology`** | 14:15 |
+| 遁龍樁 → `technique` | **`item`** | 07:56 |
+| 八九變化 → `technique` | **`terminology`** | 18:21 — **the same run**, by an earlier batch |
+| 妖風 → `technique` | `technique` ✓ | 18:25 — **the only name nobody had claimed before** |
+
+One in five. And the one that worked is the one that was new.
+
+> **`BTG-A66`.** **`BTG-A49` is not a subtle bias, it is a hard override, and it now blocks
+> its own repair.** `findEntityCrossKind` is *oldest-wins* and returns the entity's STORED
+> kind — deliberately, so an incoming mis-tag cannot re-kind a settled entity. The
+> consequence is that **the first run that ever names a thing decides its kind permanently**,
+> and every later run's opinion is discarded silently (the writeback reports `updated`, not
+> `rekinded` or `conflict`).
+>
+> The trap closes on itself here. 五雷正法 is locked to `power_system` **because it was first
+> extracted at 08:20 today, under the very definition this work deleted.** Correcting an
+> ontology cannot correct the data the wrong ontology produced — and the wrong ontology's
+> output is now the authority the corrected one is measured against.
+>
+> The batch ordering makes it worse *within* a single run: `terminology` sits in batch 1 and
+> `technique` in batch 2, so on any name both propose, terminology wins by construction. That
+> is not the model preferring terminology. It is a for-loop.
+
+**Two things this measurement does NOT support** (stated because the first read of it
+supported both, wrongly): that `terminology` fell to zero because arts moved out — it did
+not; the `event`/`terminology`/`power_system` batch **truncated** (`finish_reason=length`) on
+**every chapter tested**, at 133, 148 and 233 entities, and its results are simply missing
+from the cached rows. And that the split improved extraction — on the evidence above the
+ontology is correct and its effect on the STORE is roughly nil until `BTG-A49` is addressed.
+
 **So `edc_cited` is not promotable on this evidence.** Its discovery is excellent and its
 typing is unverified outside two kinds. Before promoting it: re-run at 15 chapters, and
 extend the answer key past `location`/`organization` — the material for that already exists

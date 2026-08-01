@@ -61,9 +61,29 @@ frontend `tsc` clean · ai-provider-gate + db-safety-gate OK · bite-tested ×3 
 restore the old power_system wording → the ladder guard reds) · **live smoke** across
 translation + glossary as above.
 
-**Open, deliberately:** `technique`'s effect on extraction quality is UNMEASURED — the only
-run so far was on the shape structurally unable to show it (`BTG-A65`). Measure it under
-`batched`, on chapters that contain arts, against a widened answer key.
+**6 · MEASURED under `batched` (ch90/92/94/96) — the model is right, the STORE overwrites it.**
+`technique` alone on ch96 returned three real arts (五雷正法, 土遁, 妖風). Tracing each to its
+stored row: 五雷正法 → **`power_system`** (first seen 08:20, under the definition this work
+deleted) · 土遁 → **`terminology`** (14:15) · 遁龍樁 → **`item`** (07:56) · 八九變化 →
+**`terminology`** (18:21, *the same run*, by an earlier batch) · 妖風 → `technique` ✓ — the
+only name nobody had claimed before. **One in five, and the one that worked was new.**
+- `findEntityCrossKind` is **oldest-wins** and returns the STORED kind by design, so the
+  first run that ever names a thing decides its kind permanently and later runs are
+  discarded silently (`updated`, never `conflict`). **`BTG-A66`: correcting an ontology
+  cannot correct the data the wrong ontology produced** — and that data is now the authority.
+- Within one run the batch order decides it: `terminology` is batch 1, `technique` batch 2.
+  Not a model preference. A for-loop.
+
+**▶ NEXT — the decision this leaves you (PO call, it mutates data):** fix `BTG-A49`. Options
+are (a) let a later extraction re-kind when the stored kind's own definition has changed
+since (the `defs_hash`/`source_hash` needed for that now exists), (b) record a kind CONFLICT
+instead of silently updating, so it surfaces for review, or (c) a one-off re-kind pass for
+the arts currently frozen under `power_system`/`terminology`/`item`. Until then, every
+kind-accuracy number this project quotes measures **arrival order**, not the model.
+
+**Also open:** the `event`/`terminology`/`power_system` batch **truncated on every chapter
+tested** (`finish_reason=length` at 133, 148, 233 entities). 233 entities from one chapter is
+degenerate output, and its results are missing from the cached rows entirely.
 
 ## 🔗 GLOSSARY↔KG LINKAGE — both holes closed + backfilled (2026-08-01)
 
