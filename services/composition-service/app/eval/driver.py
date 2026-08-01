@@ -25,6 +25,7 @@ import json
 import os
 import time
 import urllib.request
+import uuid as _uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -363,11 +364,43 @@ class LiveDriver:
                            note=f"entity={name} gone={variant == 'seeded'}")
 
     #: code → seeding function. A class absent here is NOT driveable yet, and says so.
+    def _unresolved_cast(self, variant: Variant) -> Observation:
+        """Seeded = a scene whose cast carries an id the book's graph has never seen.
+
+        THE FIXTURE IS THE POINT (spec S2): the seeded half binds a REAL, well-formed glossary
+        entity id that simply does not exist in this book's knowledge graph — so `fact_for_check`
+        returns a snapshot with no status row for it. The control binds NOTHING, which resolves
+        to `no_subject` and a cast of zero: `unresolved_refs` is 0 because there is nobody to
+        resolve, not because everybody resolved.
+
+        Those two halves differ in the ONE way that matters. A control that used an EMPTY
+        snapshot instead would have gone quiet against the broken implementation too — v1's
+        fixture, and the reason this docstring says so.
+        """
+        _book, chapter, project = self._throwaway_work(f"unresolved-{variant}")
+        body: dict[str, Any] = {
+            "kind": "scene", "chapter_id": chapter, "title": f"unresolved {variant}",
+            "synopsis": "Hai nguoi doi mat nhau truoc cong dong luc rang dong.",
+            "target_words": 400, "story_order": 1,
+        }
+        if variant == "seeded":
+            body["present_entity_ids"] = [str(_uuid.uuid4())]
+        node = _req("POST", f"/v1/composition/works/{project}/outline/nodes",
+                    self.token, body)["id"]
+        r = self._draft(project, node)
+        canon = r.get("canon") or {}
+        return Observation(
+            fields={"unresolved_refs": canon.get("unresolved_refs"),
+                    "guard_status": canon.get("guard_status")},
+            note=f"cast={len(body.get('present_entity_ids') or [])} "
+                 f"liveness={canon.get('cast_liveness')}")
+
     def _seeders(self) -> dict[str, Any]:
         return {
             "length_target_unmet": self._length,
             "structured_output_truncated": self._truncation,
             "gone_cast_asserted_active": self._gone_cast,
+            "unresolved_cast_reference": self._unresolved_cast,
         }
 
     def run(self, cls: DefectClass, variant: Variant) -> Observation:

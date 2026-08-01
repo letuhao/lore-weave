@@ -257,13 +257,15 @@ DEFECTS: tuple[DefectClass, ...] = (
     ),
     DefectClass(
         code="unresolved_cast_reference",
-        defect="the plan names a character the book's roster does not contain",
-        seeded="a decompose whose beats reference a character never introduced",
-        control="the same decompose over a roster that contains every referenced character",
+        defect="a scene's cast contains an entity NO layer can speak to — the knowledge graph "
+               "has no status row for it and the plan has no opinion either",
+        seeded="a scene whose present_entity_ids carry an id the book's graph never knew",
+        control="the same scene with a cast the graph has a status row for",
         detector=_fired_unresolved_reference,
         reads=("unresolved_refs",),
-        blocked_on="`unresolved_refs` has ZERO occurrences in the service — the plan validator "
-                   "rejects unknown refs but reports no COUNT a detector can read.",
+        # UN-BLINDED by S2 (2026-08-01). `resolve_cast_liveness` now answers per ENTITY with
+        # the layer that answered, so an id nothing can speak to is COUNTED instead of taking
+        # the same silent path as one the graph knows is alive.
         provenance="PF-1 — 'anonymous characters were uses of undeclared identifiers'",
     ),
 )
@@ -276,5 +278,6 @@ MIN_CLASSES = 5
 #: How many classes must be SCORABLE — i.e. not blind on a field the engine never emits. A
 #: registry can look broad and measure almost nothing: the first version of this file declared
 #: five classes of which only two could ever produce a number. Ratcheted upward as the engine
-#: gains observability; it must never fall.
-MIN_SCORABLE = 3
+#: gains observability; it must never fall. 3 -> 4 on 2026-08-01 when S2's
+#: per-entity cast resolution made `unresolved_refs` a real number.
+MIN_SCORABLE = 4

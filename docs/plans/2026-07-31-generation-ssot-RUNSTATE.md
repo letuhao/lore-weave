@@ -77,7 +77,7 @@ Everything else in the family passed — the suites had not rotted, they had sim
 Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh bị drift … cần thêm bước audit
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
-**Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 → S8 → S12` →
+**Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 → S12` →
 `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
 
 `D-GENERATED-FACT-HAS-NO-HOME` is inserted BEFORE S1 because it is the root of both continuity
@@ -352,6 +352,68 @@ AUDIT S1
                declares BLIND on.
 ```
 
+## ✅ S2 · one cast-liveness SSOT, both directions — CLOSED 2026-08-01
+
+```
+AUDIT S2
+  BUILT      — `resolve_cast_liveness` in `loreweave_canon_check`: per-ENTITY status WITH the
+               layer that answered (KG → plan → none). The canon guard now carries
+               `cast_liveness` + `unresolved_refs` on every scene envelope, and reports
+               `canon_cast = NO_RULES` when a POPULATED graph has no status row for any of the
+               scene's cast — an empty corpus for that check, not a pass. The eval class
+               `unresolved_cast_reference` is UN-BLINDED with a live seeder.
+
+  PROVEN     — composition unit `3315 passed` (3311 before, +4); sdks/python `32 passed`
+               (+10 for the liveness SSOT).
+               `composition eval-gate: PASS — 5 seeded defect class(es) … 4 SCORABLE · 1 blind`
+               (was 3 SCORABLE · 2 blind; `MIN_SCORABLE` ratcheted 3 → 4 so it cannot fall back).
+               gates: ai-provider OK · db-safety PASS · language-rule PASS ·
+               generation-guard-gate PASS · gate-teeth-gate PASS.
+
+               LIVE, $0 gemma-4-26b, throwaway books, the newly-scorable class:
+                 `ok unresolved_cast_reference   seeded=fired  control=quiet`
+               Recorded into `app/eval/baseline.json` alongside the other three:
+                 length_target_unmet         seeded=fired  control=quiet
+                 structured_output_truncated seeded=fired  control=quiet
+                 gone_cast_asserted_active   seeded=error  control=quiet   (the known
+                   knowledge-service gap: the entity anchors but no EntityStatus{gone} is
+                   visible at the scene position — unchanged by this slice)
+
+               THE FIXTURE IS THE POINT, and the spec said so: the failing case is a NON-EMPTY
+               snapshot with no row for the subject. An empty snapshot passes against the
+               BROKEN implementation too, so the unit tests carry both and label the weak one
+               as a control rather than letting it stand in for the real one.
+
+  NOT PROVEN — `scenes_covered` is still BLIND and this slice did not touch it. Emitting a
+               constant 1 would have made its detector permanently quiet, which is worse than
+               declared blindness, so it stays declared. The plan→KG direction is
+               UNIMPLEMENTED in practice: `resolve_cast_liveness` accepts `plan_status` and
+               composition passes nothing, so the cascade's middle rung is tested but not fed —
+               "both directions" is half-built and the half that exists is the KG one. Nothing
+               outside composition adopted it: knowledge-service has the same
+               everything-not-gone-reads-as-alive shape and still has it. And `unresolved_refs`
+               counts ids, not NAMES — a cast bound to the wrong entity id resolves fine.
+
+  DRIFT      — I checked whether `_uuid` was imported by searching for the string
+               `import uuid as _uuid`. It matched — at line 277, INSIDE another method, where
+               it is a local. My check answered a different question from the one I asked, and
+               the new seeder would have died on `NameError` at its first live run. Caught by
+               re-reading the grep output, not by the test suite, because no test drives the
+               seeder without a stack.
+               Second: I recorded a baseline with `gone_cast = error/error` and nearly committed
+               it. Both halves failed because MY SHELL lacked `INTERNAL_SERVICE_TOKEN` and then
+               because the seeder's internal URLs default to docker hostnames. Committing that
+               would have written a WORSE baseline into the repo and blamed the engine for my
+               environment — the "host-env drift masquerades as a code bug" shape, one step
+               removed. Re-run with `GLOSSARY_INTERNAL_URL=http://localhost:8211
+               KNOWLEDGE_INTERNAL_URL=http://localhost:8216`.
+
+  NEXT       — S8. S2 leaves it two things: `plan_status` is a live parameter with no producer,
+               so whichever slice owns the plan-side cast roster should feed it; and the
+               `NO_RULES`-on-empty-corpus rule now has a second worked example, which is the
+               shape S8's own coverage reporting should copy rather than re-invent.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -434,6 +496,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
 | 2026-08-01 | **Wrote a diagnosis into the handoff from ONE error message.** Told the next session "CI red = 33 failures, one root, `language`→`original_language`, a mechanical sweep". There were **three** roots — a fastapi 0.139 `app.routes` change across two services, a pip editable path resolving outside the checkout, and the rename — and the rename half needed a SEMANTIC rewrite because the identity key had changed too. I had read one traceback and generalised, which is the §1.4 mistake the red team already caught me making twice. |
+| 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
+| 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
 | 2026-08-01 | **Built the fix list from a TRUNCATED terminal, then called it complete.** The failure list printed 20 of 33 rows; I swept the 6 files I could see and reported "one root, six files". The other 13 rows held two more files with the same root — and one of them was a PRODUCTION bug (`retrieve_arcs` selecting a dropped column, 500 on the shipped schema). Same shape as the ROT-1 miss: a denominator taken from what I happened to see rather than from the full set. |
 

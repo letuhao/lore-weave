@@ -11,6 +11,10 @@
     "structured_output_truncated": {
       "control": "quiet",
       "seeded": "fired"
+    },
+    "unresolved_cast_reference": {
+      "control": "quiet",
+      "seeded": "fired"
     }
   }
 }

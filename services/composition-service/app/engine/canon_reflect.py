@@ -25,6 +25,7 @@ from app.engine.canon_check import (
     reflect_revise,
     scene_at_order,
 )
+from loreweave_canon_check import resolve_cast_liveness, unresolved_cast_refs
 from loreweave_guard import CheckStatus
 from loreweave_llm import ReasoningDirective
 
@@ -167,8 +168,21 @@ async def run_canon_reflect(
     # could not confirm, and its findings ride as advisory `confirmed=None` violations. Calling
     # that a coverage gap would paint amber on every book without a configured critic — the
     # exact "permanent amber" failure S1 exists to prevent. S6 owns the judge axis.
+    # S2 — resolve the cast PER ENTITY before deciding what the check did. A populated
+    # snapshot that happens to carry no status row for any of this scene's cast is an EMPTY
+    # CORPUS for this check, not a pass: there was nothing to check against. That is NO_RULES,
+    # computed on the corpus and not on the matched subset.
+    result.cast_liveness = resolve_cast_liveness(cast_glossary_ids, snapshot)
+    unresolved = unresolved_cast_refs(result.cast_liveness)
+    result.unresolved_refs = len(unresolved)
+    if degraded:
+        cast_status = CheckStatus.DEGRADED
+    elif result.cast_liveness and len(unresolved) == len(result.cast_liveness):
+        cast_status = CheckStatus.NO_RULES
+    else:
+        cast_status = CheckStatus.CHECKED
     result.checks = {
-        "canon_cast": CheckStatus.DEGRADED if degraded else CheckStatus.CHECKED,
+        "canon_cast": cast_status,
         "name_grounding": _name_check(final_audit),
     }
     result.coverage = sorted(

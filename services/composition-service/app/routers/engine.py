@@ -710,6 +710,10 @@ async def generate(
                 # `generation_job.result`.
                 "checks": reflect.checks,
                 "guard_status": reflect.guard_status,
+                # S2 — the per-entity cast resolution + the count no layer could speak
+                # to. `unresolved_cast_reference` in the eval was BLIND on this field.
+                "cast_liveness": reflect.cast_liveness,
+                "unresolved_refs": reflect.unresolved_refs,
                 "unanchored_names": reflect.unanchored_names,
                 "name_near_misses": reflect.name_near_misses,
                 "name_check_method": reflect.name_check_method,
@@ -1343,6 +1347,10 @@ async def generate_chapter(
                 # `generation_job.result`.
                 "checks": reflect.checks,
                 "guard_status": reflect.guard_status,
+                # S2 — the per-entity cast resolution + the count no layer could speak
+                # to. `unresolved_cast_reference` in the eval was BLIND on this field.
+                "cast_liveness": reflect.cast_liveness,
+                "unresolved_refs": reflect.unresolved_refs,
                    "unanchored_names": reflect.unanchored_names,
                    "name_near_misses": reflect.name_near_misses,
                    "name_check_method": reflect.name_check_method,
@@ -1590,6 +1598,10 @@ async def stitch_chapter_endpoint(
                 # `generation_job.result`.
                 "checks": reflect.checks,
                 "guard_status": reflect.guard_status,
+                # S2 — the per-entity cast resolution + the count no layer could speak
+                # to. `unresolved_cast_reference` in the eval was BLIND on this field.
+                "cast_liveness": reflect.cast_liveness,
+                "unresolved_refs": reflect.unresolved_refs,
                    "unanchored_names": reflect.unanchored_names,
                    "name_near_misses": reflect.name_near_misses,
                    "name_check_method": reflect.name_check_method,

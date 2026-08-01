@@ -206,6 +206,16 @@ class ReflectResult(BaseModel):
     # Additive-then-switch (the S11 discipline): the new shape ships beside the old one, and
     # nothing that reads the old one changes behaviour until its own measurement says it may.
     checks: dict[str, str] = Field(default_factory=dict)
+    # ── S2 · one cast-liveness SSOT, per ENTITY ───────────────────────────────────────────
+    # `{entity_id: {"status", "source"}}`. `gone_cast_in_draft` answers only "which of these is
+    # marked gone AND named in the draft", so every entity it omits reads as fine — an entity
+    # the graph has never heard of is indistinguishable from one it knows is alive.
+    cast_liveness: dict[str, dict[str, str]] = Field(default_factory=dict)
+    #: Cast ids NO layer could speak to (KG silent, plan silent). The eval's
+    #: `unresolved_cast_reference` class reads this and was BLIND without it — the field had
+    #: zero occurrences anywhere in the service. A COUNT OF FACTS, not of failures: a book
+    #: early in its life legitimately has a cast the graph has not caught up with.
+    unresolved_refs: int = 0
     #
     # `status` describes the gone-cast check only, and on a book with no bound cast it read
     # `skipped_no_cast` while `resolved=True` and `violations=[]` — honest field by field, and

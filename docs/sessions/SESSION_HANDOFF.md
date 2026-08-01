@@ -10,8 +10,25 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 **After any compaction, re-read it before anything else.** Spec:
 [`docs/specs/2026-07-31-generation-ssot.md`](../specs/2026-07-31-generation-ssot.md).
 
-**Order:** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → **`S2`**
-→ `S8 → S12` → `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+**Order:** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` →
+`S2 ✅` → **`S8`** → `S12` → `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+
+**S2 closed** — `resolve_cast_liveness` answers per ENTITY *with the layer that answered*
+(KG → plan → none), so an entity the graph has never heard of no longer takes the same silent
+path as one it knows is alive. The eval's `unresolved_cast_reference` class is UN-BLINDED and
+scores `seeded=fired · control=quiet` live; `MIN_SCORABLE` ratcheted 3 → 4 so it cannot fall
+back. ⚠ `plan_status` is a live parameter with **no producer** — the cascade's middle rung is
+tested but not fed — and `scenes_covered` is still blind.
+
+**The live eval needs the HOST-MAPPED internal ports**, or the gone-cast seeder dies on
+`getaddrinfo` against docker hostnames:
+```
+INTERNAL_SERVICE_TOKEN=dev_internal_token \
+GLOSSARY_INTERNAL_URL=http://localhost:8211 KNOWLEDGE_INTERNAL_URL=http://localhost:8216 \
+EVAL_GATEWAY=http://localhost:3123 python -m app.eval.run_live --token <bearer> \
+  --model-ref 019ebb72-27a2-72f3-a42d-d2d0e0ded179 --language vi \
+  --user-id 019d5e3c-7cc5-7e6a-8b27-1344e148bf7c --against app/eval/baseline.json
+```
 
 **S1 closed** — `loreweave_guard` (per-check `CheckStatus`, a derived headline, and
 `verdict` as a property that returns None unless the report is CHECKED), the canon
