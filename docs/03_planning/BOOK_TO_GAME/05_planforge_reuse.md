@@ -30,7 +30,7 @@ Three of those fields are things this tier was about to invent from nothing:
 
 * **`charter.consistency_anchors` / `charter.forbids`** — a human-authored statement of what the work
   must stay true to and what it must never do, with `eval_fidelity.py` scoring a spec against it. That
-  is the fidelity mechanism of §[`03`](03_fidelity.md), already built, already evaluated.
+  is the fidelity mechanism of §[`04`](04_fidelity.md), already built, already evaluated.
 * **`meta.open_questions[]`** — the assistant's unanswered questions, **as a first-class field of the
   artifact**. The "workflow that keeps asking the human questions" has a home in the schema.
 * **`layers.variables[] { code, range, transition_rules }`** — strikingly close to `PPL-A1`'s definition
@@ -45,7 +45,7 @@ Three of those fields are things this tier was about to invent from nothing:
 | the **run model** — `POST /v1/books/{book_id}/plan/runs`, `NovelSystemSpecPatch` (`extra: allow`), modes, `force` | authoring a game concept is a run against a book producing a versioned spec plus patches. Identical shape. |
 | `interpret.py` + `apply_policy.py` (**`focus_paths`**) | the human says something in chat; it is interpreted into a **patch against specific spec paths** and applied under policy. This is the human-in-the-loop the game tier has been faking with `approve = lambda: True`. |
 | `eval_chat_hil.py` (I1–I4) | the HIL turn is already **measured** — did the interpretation focus where the human meant, did the patch land |
-| `charter` + `eval_fidelity.py` | §[`03`](03_fidelity.md)'s charter, already scored |
+| `charter` + `eval_fidelity.py` | §[`04`](04_fidelity.md)'s charter, already scored |
 | `meta.open_questions[]` | the question channel |
 | `existing_state.py` / `ground_on_existing` | a new run grounded on what has already been authored — the difference between iterative authoring and starting over each time |
 | `self_check.py`, `refine.py` | the quality loop, and the precedent for the game tier's own heal round |
@@ -84,31 +84,36 @@ side-by-side module, deliberately *not* imported by `validate.run_rules`, becaus
 said a new rule set must be scored against the same fixtures before adoption. A game rule set enters
 the same way.
 
-## 4. The seam this raises, and it is the sharpest open question here
+## 4. The seam, restated after the two-jobs correction
 
-If the game concept enumerates the world's closed sets, **what is left for the contract generator?**
-That is a real risk of two systems producing the same artifact, and it should be settled before either
-is built further.
+The first draft asked *"if the game concept enumerates the world's closed sets, what is left for the
+contract generator?"* — and treated the answer as an open discovery that might delete a subsystem.
 
-The proposal, and it is precedented rather than invented — it is the platform's own two-layer pattern
-(`glossary-service` authored SSOT ↔ `knowledge-service` derived, anchored by `glossary_entity_id`):
+§[`03`](03_two_jobs.md) settles the direction: **the concept does not enumerate.** It is authored,
+unstructured prose; enumeration is the structuring side's job and is supposed to be deterministic.
+Nothing is competing to produce the same artifact — they produce different ones, for different readers.
+
+What remains is the platform's own two-layer pattern (`glossary-service` authored SSOT ↔
+`knowledge-service` derived, anchored by `glossary_entity_id`) applied one tier up:
 
 | | **game concept** (this tier) | **contract pool** (game tier) |
 |---|---|---|
 | is | the **authored SSOT** — a document | the **derived** machine artifact |
-| holds | the answer, its justification, its citation, its provenance, the human's disagreements | codes, typed references, closed sets, a digest |
+| holds | the decision, its reason, its citation, its provenance, the human's disagreements — in prose | codes, typed references, closed sets, a digest |
 | audience | a human, reading and editing | a generator, resolving codes |
-| changes by | someone deciding | re-derivation |
+| changes by | someone **deciding** | **re-derivation** |
+| invents | yes — that is its purpose | never |
 | anchored by | — | a reference back to the concept entity, as `glossary_entity_id` anchors knowledge to glossary |
 
 Under this split the contract generator stops planning **from the novel** and starts deriving **from
-the concept** — which is precisely the fix §[`01`](01_the_missing_tier.md) identified for all three of
-its stuck problems, arrived at from the other direction.
+the concept** — precisely the fix §[`01`](01_the_missing_tier.md) identified for all three of its stuck
+problems, arrived at from the other direction.
 
-**What would falsify it:** if deriving the pool from the concept turns out to be a mechanical
-projection with no judgement in it, then the contract generator's planner kinds are redundant and the
-concept should emit the pool directly. §[`05`](05_poc_plan.md) is built to find that out early, because
-it decides whether a whole subsystem stays.
+**What would falsify it** is no longer *"is the derivation mechanical"* — it is supposed to be. It is
+this: **does the authored concept decide enough that deriving requires no judgement?** A concept that
+under-decides forces the structuring side to invent, which is the one thing it must not do
+(`BTG-A14`), and that is a measurable rate rather than a yes/no. §[`06`](06_poc_plan.md) POC-C measures
+it.
 
 ## 5. What would have to change in composition-service
 

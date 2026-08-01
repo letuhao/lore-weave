@@ -94,7 +94,7 @@ it**. A game concept authored as glossary entities + wiki pages on the bible boo
 option 1 and option 2 — it hangs off a book, and it is stored as authored lore. G1 additivity is
 satisfied without a migration and without a `world_id` on anything new.
 
-**This is a recommendation, not a decision, and it is the first thing §[`05`](05_poc_plan.md) tries to
+**This is a recommendation, not a decision, and it is the first thing §[`06`](06_poc_plan.md) tries to
 falsify.** The thing that would break it: a closed set is not a wiki page, and if expressing *"these
 are all six equip slots and there are no others"* needs a structure the glossary cannot hold, the
 option collapses back to a new artifact.

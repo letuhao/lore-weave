@@ -55,6 +55,12 @@ That last row is the one that decides the architecture. A summariser cannot prod
 because most of what a game needs was never written down: how many realms, what a grade means, what a
 tier costs. The source **constrains** the answer; it does not contain it.
 
+And 封神演義 is the **easy** case — a cultivation novel arrives with realms, breakthroughs and a
+treasure economy already in it. For a family saga or a detective novel there is nothing to extract at
+all, and *every* mechanical statement is authored. A tier designed around extraction is designed around
+its rarest input; see [`04_fidelity.md`](04_fidelity.md) §1, which is where the first draft of this
+folder was corrected.
+
 ## 4. Why `lore-enrichment-service` cannot close this alone
 
 `lore-enrichment-service` is a **retrieval and verification** engine, and a good one: sealed corpora,
