@@ -64,6 +64,12 @@ throwaway books, both images rebuilt and hash-verified:
 Same model, same cast, same prompt shape. Before this slice BOTH returned `guard_status='checked'`
 with no violation.
 
+✅ **The PREVENTION half is built too.** The drafter's prompt now carries a PROTECTED
+`canon` constraint naming who the plan still needs — live-verified with a control (the
+chapter's last scene correctly gets none). ⚠ Its EFFECT is unmeasured: proving it changes
+what the model writes needs a neutral-synopsis corpus, and forcing a death in the synopsis
+would only measure which of two conflicting instructions wins.
+
 **How it works, and why it is not a model judging.** The model fills one slot — *who does this
 passage say died* — via `status_effects`, an extractor that already existed and was already
 prompt-taught. The contradiction is set intersection against the plan rung, in

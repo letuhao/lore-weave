@@ -42,6 +42,7 @@ from app.packer import profile as profile_mod
 from app.packer import spoiler
 from app.packer.lenses import (
     LensBundle, gather_arc, gather_canon, gather_carried_cast, gather_lore, gather_motif,
+    gather_must_survive,
     gather_open_promises, gather_present, gather_recent, gather_references, gather_source_scene,
     gather_prior_chapters, gather_structural, gather_timeline,
 )
@@ -439,6 +440,12 @@ async def pack(
         )
     )
 
+    # PREVENTION half of the plan-liveness arc. NOT in the fan-out above: it needs `present`
+    # for the names, and `present` is produced by that same gather. One indexed query, run
+    # once the cast is known.
+    must_survive = await gather_must_survive(
+        outline_repo, present, project_id=req.project_id, node=node)
+
     # C25 — DERIVATIVE two-project base+delta merge (G2). Gather the inherited BASE
     # knowledge grounding from the SOURCE project, branch-FILTERED to ≤ branch_point
     # (so the base never leaks content authored after the divergence), then apply the
@@ -557,6 +564,7 @@ async def pack(
         extra_canon=extra_canon,  # C25 — added canon-rule scope from overrides
         references=references_kept,  # T3.6 — author reference passages (excludes dropped)
         source_scene=source_scene,  # M1 — inherited source prose for the adapt op (empty otherwise)
+        must_survive=must_survive,  # the plan-liveness CONSTRAINT (prevention half)
         carried_cast=carried_cast,  # D-GENERATED-FACT-HAS-NO-HOME — the prior scene's record
     )
 

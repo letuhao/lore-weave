@@ -59,6 +59,12 @@ class LensBundle:
     # (the M0 "added canon rule" override scope). Rendered in the <canon> block
     # alongside inherited canon. Empty for a non-derivative pack.
     extra_canon: list[str] = field(default_factory=list)
+    # PREVENTION half of the plan-liveness arc — the names the PLAN still needs after this
+    # scene, rendered as a protected CONSTRAINT. The detection half catches a draft that kills
+    # one of them; this is the half that stops it being written. Measured before it existed:
+    # `gather_present` put name + short_description + relations into the prompt and NOTHING
+    # about who may die, so the drafter was never told.
+    must_survive: list[str] = field(default_factory=list)
     # T3.6 — the author's semantically-retrieved reference passages (external
     # influences) for this scene. Each {id, title, author, source_url, content,
     # score}. composition-owned; pinned ones are protected in the budget.
@@ -269,6 +275,45 @@ async def gather_structural(
     except Exception:  # noqa: BLE001
         logger.warning("gather planned failed", exc_info=True)
     return beat, threads, planned
+
+
+async def gather_must_survive(
+    outline_repo: OutlineRepo, present: list[dict[str, Any]], *,
+    project_id: UUID, node: dict[str, Any],
+) -> list[str]:
+    """The PREVENTION half — who the PLAN still needs after this scene, by NAME.
+
+    The detection half (`plan_conflict`) catches a draft that kills one of them, after the
+    tokens are spent and with a revise to pay for. This is the half that tells the drafter
+    first. Measured before it existed: the prompt carried each cast member's name, bio and
+    relations, and not one word about who may die.
+
+    Names come from the `present` lens rather than a second glossary read: pack has already
+    paid for them, and an id the drafter never saw a name for is one it cannot obey a
+    constraint about anyway.
+
+    Degrade-safe like every gatherer here: no chapter, no position, or a repo failure ⇒ `[]`
+    and the prompt simply carries no constraint — never a failed pack.
+    """
+    chapter_id, story_order = node.get("chapter_id"), node.get("story_order")
+    if not chapter_id or story_order is None:
+        return []
+    try:
+        plan = await outline_repo.plan_liveness_after(
+            project_id, UUID(str(chapter_id)), int(story_order))
+    except Exception:  # noqa: BLE001 — repo failure degrades the lens
+        logger.warning("gather_must_survive failed", exc_info=True)
+        return []
+    if not plan:
+        return []
+    by_id = {str(p.get("entity_id")): (p.get("name") or "") for p in present}
+    # Only entities the plan says are ALIVE, and only ones we have a name for. Sorted so the
+    # prompt is byte-stable across runs — an unstable constraint line would churn the prompt
+    # cache for no reason.
+    return sorted({
+        nm for eid, status in plan.items()
+        if status == "alive" and (nm := by_id.get(str(eid)))
+    })
 
 
 async def gather_carried_cast(

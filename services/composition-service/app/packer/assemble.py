@@ -74,6 +74,20 @@ def build_segments(
         if txt:
             segs.append(Segment("canon", txt, B.PRIO_CANON, protected=True))
 
+    # The plan-liveness CONSTRAINT, rendered as CANON: protected and highest priority, so a
+    # tight budget can never trim the one line that says who the story still needs. That is
+    # InkOS F5 applied literally — do not compress what the next step must OBEY. It sits with
+    # `canon` rather than `present` because it is a rule, not context: `present` describes who
+    # is in the scene, this forbids an outcome.
+    if bundle.must_survive:
+        segs.append(Segment(
+            "canon",
+            "These characters must still be alive and present at the end of this scene, "
+            "because the plan places them in a later scene: "
+            + ", ".join(bundle.must_survive)
+            + ". Do not kill, destroy, or permanently remove them.",
+            B.PRIO_CANON, protected=True))
+
     for p in bundle.present:
         rel = ("; ".join(p.get("relations") or [])).strip()
         line = f'{p.get("name", "")}: {p.get("summary", "")}'.strip(": ").strip()

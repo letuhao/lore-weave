@@ -1054,6 +1054,59 @@ AUDIT PLAN-LIVENESS (judge tier)
   NEXT       — the PREVENTION half: the drafter's prompt still says nothing about who may die.
 ```
 
+### ✅ PLAN-LIVENESS prevention half — the drafter is finally TOLD
+
+```
+AUDIT PLAN-LIVENESS (prevention)
+  BUILT      — `gather_must_survive` + `LensBundle.must_survive` + a render in
+               `build_segments`. The names the plan still needs after this scene now reach the
+               prompt as a PROTECTED `canon` segment: *"These characters must still be alive
+               and present at the end of this scene… Do not kill, destroy, or permanently
+               remove them."*
+
+               `canon`, not `present`, and protected on purpose. `present` DESCRIBES who is in
+               the scene; this FORBIDS an outcome, and InkOS F5 says do not compress what the
+               next step must OBEY — a constraint the budget may trim is one that vanishes on
+               exactly the long scenes where the drafter most needs it.
+
+               Names come from the `present` lens, not a second glossary read: pack has already
+               paid for them, and an id the drafter never saw a name for is one it cannot obey
+               a constraint about anyway.
+
+  PROVEN     — LIVE on the real stack, both images rebuilt + hash-verified, WITH a control:
+                 scene that HAS a later scene → `CONSTRAINT: These characters must still be
+                   alive and present at the end of this scene, because the plan places them in
+                   a later scene: Lạc Viên, Tô Thanh Dao. Do not kill, destroy, or permanently
+                   remove them.`
+                 LAST scene of the chapter → `(absent — correct: nothing comes after it)`
+               Same book, same cast, different position → different prompt.
+
+               tests `8 passed` (`test_must_survive_constraint.py`) · suite
+               `11 failed, 3829 passed, 8 skipped in 110.48s` — the same 11 pre-existing ·
+               gates: `ai-provider-gate (full): OK` · `llm-budget-ssot-gate: PASS — 93` ·
+               `generation-guard-gate: PASS` · `enforcement-claims-gate: OK` ·
+               `db-safety-gate: OK` · `[language-rule] PASS`
+
+  NOT PROVEN — THE BEHAVIOURAL EFFECT IS UNMEASURED, and it is the thing the slice is FOR.
+               I proved the constraint reaches the prompt; I did not prove it changes what the
+               model writes. The obvious experiment is a trap: my death-forcing synopsis says
+               "kill her" while the constraint says "don't", so a run would measure which of
+               two conflicting instructions wins — not prevention. The real scenario is a
+               NEUTRAL synopsis where the drafter drifts into a death on its own, and I have
+               no corpus of those. Until that exists, this is a prompt change with a live
+               render proof and no efficacy number.
+               It also fires ONLY on the scene paths (the chapter-level ones have no single
+               position), and it inherits the plan rung's chapter scope.
+
+  DRIFT      — I asserted `seg.kind == "canon"` from memory. The field is `block`. Small, and
+               the test caught it — but it is the same "wrote what I expected the shape to be
+               instead of reading it" that produced the judge-stub `{"content": …}` an hour
+               earlier, twice in one session.
+
+  NEXT       — a neutral-synopsis A/B to put a number on prevention; the chapter-level paths;
+               and the three defects the POC surfaced.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -1135,6 +1188,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **Wrote a field name from memory instead of reading it — twice in one session.** `seg.kind` (it is `block`), after the judge stub's `{"content": …}` (it is `messages[0].content`). Both were caught by a failing test, and both were the same habit: asserting the shape I expected rather than the shape the producer defines. |
 | 2026-08-01 | **Invented a fixture's shape from the consumer instead of the producer.** My judge stub returned `{"content": …}`; the gateway's job result puts it at `messages[0].content`, which `extract_judge_text` calls LOAD-BEARING in its own docstring and which this repo already has a lesson row for. Two tests failed for a reason that had nothing to do with the code. |
 | 2026-08-01 | **Nearly ‘fixed’ the honesty rule to make my own test pass.** I asserted `verdict is False` on a fixture with an empty `packed_prompt`, so name-grounding was NO_RULES, `guard_status` was not `checked`, and `verdict` was None — exactly as the rule I wrote hours earlier requires. The fixture was wrong, not the rule. |
 | 2026-08-01 | **Built a fixture three times before it could measure anything.** Bare-UUID cast made the drafter write a character as a fortress; a same-chapter control inherited the death through `<recent>`; two scenes at the same `story_order` swapped each other's synopsis. Every failure was the fixture, and every one of them would have produced a confident wrong answer if I had not read the prose. |
