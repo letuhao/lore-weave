@@ -507,3 +507,109 @@ per-owner gate.
 4. **The consumer's own L2 has no store.** `accept` returns admitted defs and nothing persists them,
    so nothing yet tests that a *second* generator cannot read them — which is the other half of
    `PPB-A6` and still has no subject.
+
+---
+
+# Part E — a second consumer, and the three things it broke
+
+Part D built the first consumer and stated plainly what it could not test: nothing persisted an
+admitted def, so *no module reads another module's L2* had **no subject**. A rule forbidding access to
+something that does not exist has not been tested; it has been asserted more carefully.
+
+So this part adds a second generator whose whole purpose is to try to need the first one's output.
+`item_archetype.consumed_by` has named `loot.table` since the day the slot was registered — a string
+in a JSON file that nothing read. `app/generators/loot_l2.py` is the module it names.
+
+## 22 — The question, and the answer that could have gone the other way
+
+> Can a generator that owns **no slot** do its job from the contract alone, or does it need the item
+> generator's `ItemDefDecl`s?
+
+A drop table drops *things*, and the obvious reading of "thing" is a concrete def. The answer this
+part argues for is that a row names an **archetype** — you roll *a sword*, and which sword is an
+instantiation decision made later by whoever owns instances (`ICT-A1`'s third tier). It ran: 13 drop
+rows built from `pool.loot.freeze.json` alone, pinned to the same digest the item generator pinned.
+
+It is an argument, not a proof, and the module states where it breaks: **the first time a drop table
+must distinguish two concrete items of the same archetype** — a common sword from a named one — the
+row needs something the contract does not carry. Then either the contract grows the distinction (which
+is contract-shaped: a rarity or tier slot) or `PPB-A6` is wrong. That case has not been reached, and
+"not reached" is not "ruled out".
+
+## 23 — The closure was seeded by OWNERSHIP, and a pure consumer owns nothing
+
+`closure_for` walked out from the slots a module owns. `loot` owns none, so it got the empty set — a
+consumer with no contract, a state the architecture has no account of at all.
+
+The fix is one line and the finding is not: **a module's needs are declared on the slots that name it**,
+in `consumed_by`, and that declaration had been sitting in the registry since the beginning being read
+by nothing but a prompt. The seed is now owners ∪ declared consumers, which also gives `df07` a real
+minimal artifact — one slot, `instrument_tag`, exactly what it consumes.
+
+> **`BLD-A15`.** The registry already knew about modules that own nothing. Every mechanism built on it
+> — the axis computation, the abductive register, the closure — read `consumed_by` for a different
+> purpose and none read it for **who exists**. A field with several readers and no owner drifts into
+> being whatever its most recent reader needed.
+
+## 24 — `EPL-A7` cannot mean what it said, and the loader now proves it
+
+`equip_slot` was registered PRIVATE on a sound argument: item is the only referrer, so SHARED would
+claim something nothing supports. Withholding its members from `loot`'s artifact then left
+`item_archetype` — which is **SHARED** — carrying `"equip_slot": "main_hand"` in its member bodies.
+
+Two individually correct decisions; the privacy defeated by their combination. That is the third shape
+`NV` names, and it was found by a test failing rather than by anyone reasoning about it.
+
+Redacting the field from the bodies would be worse: a consumer would see a declared optional field
+absent, which is indistinguishable from *"this archetype has no equip slot"* — the gap-that-reads-like
+-an-answer this pipeline has now caught three times.
+
+> **`BLD-A16`.** **Visibility may not decrease along a reference**, enforced at load. The consequence
+> is a real constraint on when PRIVATE is available at all: *a slot that any SHARED slot points at
+> cannot be private, whatever its owner intended.* Every registered slot is SHARED today for that
+> reason and not by default, `equip_slot` included — and `EPL-A7`'s PRIVATE branch therefore has **no
+> production subject**. The withholding machinery is real, tested, and exercised only on constructed
+> data. That is the honest description of its coverage and it is written into the test's name.
+
+## 25 — Two of my own assertions could not fail
+
+Recorded because the pattern is the finding, not the instances.
+
+**`assert not hasattr(row, "def_id")`** on a frozen dataclass that has no such field re-states the
+class definition. It passes for every possible implementation of `build`, including one that reads
+item's L2. Replaced with a pin on the row's field SET, which reds when someone adds `def_id` — the
+moment the decision would actually be made. Bite-tested by adding the field.
+
+**`blocked_slots == set(dangling) | {"lex_tag"}`** in Part D's convergence test. The union was papering
+over a real disagreement: `lex_tag` was named in a *document* and referenced by nothing, so the register
+could not see it and the two mechanisms did not actually agree. Writing it as a reference on
+`item_archetype.lex_tags` made them agree without the fudge — and it is now the demand channel's last
+remaining subject.
+
+> **`BLD-A17`.** A `|` or an `or` inside an equality assertion is worth a second look. It is how a test
+> keeps passing across the exact change that should have broken it, and both instances here were
+> written by the same author who had just spent a day on non-vacuity.
+
+## 26 — A generator gets no I/O
+
+The import check closes the boundary in the import graph. It does not close the filesystem: once one
+generator's output is persisted, a second could read it with `json.load(path)` and import nothing
+suspicious.
+
+So a generator receives a `PoolView` and returns a value — no `pathlib`, no `os`, no `open`, no HTTP —
+and persistence is the caller's job. Checked by AST over every file under `app/generators/`. It is in
+place **before** any L2 store exists, which is the point: the natural moment to add this check is the
+moment it is already too late.
+
+## 27 — Where it stands
+
+Five slots, four planner kinds, four consumer artifacts, two generators, and the fifth slot added a
+registry row and no planner file — `CONFIRM` already existed, which is `BLD-A5` tested by a case that
+could have gone wrong.
+
+The item contract's reach went from **0.5 to 0.75** — `equip` unblocked when item registered the slot
+it owned. The remaining quarter is `lex_tag`, which `WA_001` owns and item cannot close.
+
+Open: the `PPB-A6` case that would falsify it (two concrete items, one archetype) has not been reached ·
+`REOPENED` is still unreachable · the registry is still hand-authored · `EPL-A7`'s PRIVATE branch has
+no production subject and structurally may not get one while every slot is referenced by a shared slot.

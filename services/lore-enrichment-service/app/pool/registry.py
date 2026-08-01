@@ -175,6 +175,36 @@ def load_registry(path: pathlib.Path | None = None) -> Registry:
                 f"slot confirms a declared set; without one there is nothing to confirm."
             )
         slots[slot.id] = slot
+
+    # A SHARED slot may not reference a PRIVATE one.
+    #
+    # Found by writing the second consumer, not by reasoning: `equip_slot` was
+    # registered PRIVATE to item, and withholding its MEMBERS from loot's artifact
+    # left `item_archetype` — which is SHARED — carrying `"equip_slot": "main_hand"`
+    # in its member bodies. The privacy was defeated by an adjacent decision, both
+    # halves individually defensible, which is the third shape `NV` names.
+    #
+    # Redacting the field instead would be worse: a consumer would see a declared
+    # optional field absent, which is indistinguishable from "this archetype has no
+    # equip slot" — the gap-that-reads-like-an-answer this pipeline keeps catching.
+    #
+    # So visibility must not decrease along a reference. The consequence is a real
+    # constraint on when PRIVATE is even available: a slot that any SHARED slot
+    # points at cannot be private, whatever its owner intended.
+    for slot in slots.values():
+        if slot.visibility is not Visibility.SHARED:
+            continue
+        for f in slot.refs():
+            target = slots.get(f.target_slot or "")
+            if target is not None and target.visibility is not Visibility.SHARED:
+                raise ValueError(
+                    f"{slot.id!r} is SHARED and references {target.id!r}, which is "
+                    f"{target.visibility.value}. The reference carries {target.id}'s "
+                    f"codes into every consumer of {slot.id}, so the privacy is not "
+                    f"enforceable. Either {target.id} is SHARED, or {slot.id} must "
+                    f"not declare {f.name!r} (EPL-A7)."
+                )
+
     return Registry(
         slots=slots,
         engine_enums={k: tuple(v) for k, v in (raw.get("engine_enums") or {}).items()},

@@ -55,11 +55,13 @@ def test_a_slot_with_no_consumer_admits_it_rather_than_inventing_an_axis(reg):
 def test_unregistered_reference_targets_are_visible_before_any_model_runs(reg):
     """`EPL-A8` — cross-module demand is a property of the registry, not of a run."""
     dangling = reg.dangling_targets()
-    assert dangling["equip_slot"] == ["item_archetype.equip_slot"]
-    assert "progression_kind" not in dangling, (
-        "PROG_001 has registered progression_kind, so its demand row is GONE. This is "
-        "the half of EPL-A8 that is easy to leave untested: a demand channel that only "
-        "ever accumulates is a list, not a register."
+    assert dangling == {"lex_tag": ["item_archetype.lex_tags"]}, (
+        "progression_kind and equip_slot were both demand rows and both closed when "
+        "their owners registered. That is the half of EPL-A8 easy to leave untested: "
+        "a channel that only ever accumulates is a list, not a register. `lex_tag` is "
+        "the last subject it has — WA_001 owns it, and it became a real reference "
+        "instead of a note in a document only when the item generator's field census "
+        "had to special-case it."
     )
 
 
@@ -346,19 +348,30 @@ _GOOD_STAGES = json.dumps({"members": [
      "evidence": None, "body": {"kind": "skill_mastery"}},
 ], "refused": []})
 
+#: CONFIRM — every declared default kept, which needs no evidence and no reason.
+_GOOD_EQUIP = json.dumps({"members": [
+    {"code": c, "name": {"en": c}, "provenance": "DECLARED", "evidence": None}
+    for c in ("head", "body", "main_hand", "off_hand", "waist", "feet")
+], "refused": []})
+
 _ALL_GOOD = {"progression_kind": [_GOOD_KINDS], "instrument_tag": [_GOOD_TAGS],
-             "item_archetype": [_GOOD_ARCH], "progression_stage": [_GOOD_STAGES]}
+             "item_archetype": [_GOOD_ARCH], "progression_stage": [_GOOD_STAGES],
+             "equip_slot": [_GOOD_EQUIP]}
 
 
-def test_the_cycle_fills_four_slots_with_four_kinds_and_no_per_slot_code(reg):
-    """The reuse claim (`BLD-A5`), stated so it can fail: every registered slot, every
-    operation, two owning modules, and zero code anywhere that names a slot."""
+def test_the_cycle_fills_five_slots_with_four_kinds_and_no_per_slot_code(reg):
+    """The reuse claim (`BLD-A5`). The fifth slot is the sharper test: it added a
+    registry row and NO kind, because CONFIRM already existed."""
     run = run_cycle(reg, "EVIDENCE", _fake_model(_ALL_GOOD), evidence_n=11)
     assert {s.state for s in run.slots.values()} == {State.SETTLED}
+    assert len(run.slots) == 5
     assert {reg[sid].operation for sid in run.slots} == set(Operation), (
         "this test is only a four-kind test while the registry exercises all four "
         "operations; if a future registry drops one, say so here rather than let the "
         "name of the test carry a claim the fixture no longer supports"
+    )
+    assert sum(1 for s in reg.slots.values() if s.operation is Operation.CONFIRM) == 2, (
+        "two slots, one kind — adding equip_slot added no planner file"
     )
     assert {reg[sid].owner for sid in run.slots} == {"item", "progression"}
     assert run.frozen and len(run.digest) == 64
@@ -479,10 +492,11 @@ def test_cross_module_demands_survive_the_freeze_and_are_reported(reg):
     silently dropped."""
     run = run_cycle(reg, "EVIDENCE", _fake_model(_ALL_GOOD), evidence_n=11)
     targets = {r.target for r in run.cross_module_demands()}
-    assert targets == {"equip_slot"}, (
-        "progression_kind used to be here and is now a registered slot, so its row is "
-        "gone; equip_slot is deliberately left unregistered so this channel still has "
-        "a subject. If it ever empties, this test stops proving anything."
+    assert targets == {"lex_tag"}, (
+        "progression_kind and equip_slot were both here and both closed when their "
+        "owners registered. lex_tag is the LAST subject this channel has, and it is "
+        "not ours to close — WA_001 owns it. If it empties, this test stops proving "
+        "anything and should be retired deliberately rather than quietly."
     )
     assert run.frozen, (
         "an unregistered TARGET is another module's obligation, not this module's — "
@@ -509,7 +523,7 @@ def test_a_module_freezes_when_ITS_closure_settles_not_when_the_pool_does(reg):
     )
     assert "progression" not in run.artifacts
     assert sorted(run.artifacts["item"].slots) == [
-        "instrument_tag", "item_archetype", "progression_kind"], (
+        "equip_slot", "instrument_tag", "item_archetype", "progression_kind"], (
         "an item artifact must carry progression_kind: gates_on points at it, and a "
         "consumer handed a code it cannot resolve has an artifact with a hole in it"
     )

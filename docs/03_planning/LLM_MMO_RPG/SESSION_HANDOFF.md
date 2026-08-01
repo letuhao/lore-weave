@@ -14,8 +14,8 @@
 
 **Date:** 2026-08-01 · **Docs:** [`40_progression_planner/`](40_progression_planner/_index.md) — 12 docs,
 prefixes `PPL` `PPO` `PPB` `EPL` `GP` `ICT` `MOD` `ENR` `ASK` `MEM` `BLD`, all registered.
-**Code:** `contracts/pool/registry.json` + `app/pool/` (produce) + `app/generators/` (consume) —
-**64 tests** across the two, service suite **1255 passed / 161 skipped**.
+**Code:** `contracts/pool/registry.json` (5 slots) + `app/pool/` (produce) + `app/generators/`
+(2 consumers) — **72 tests** across the two, service suite **1263 passed / 161 skipped**.
 
 **Where this came from.** POC-1 (doc 39's progression pipeline) was run end-to-end against a real model
 four times and **FAILED** — zero manifests, and the blocking question turned out to be a design decision
@@ -73,23 +73,50 @@ content and a test pins its exact surface; every file under `app/generators/` ha
 the artifact verifies its own digest and carries the unmet holes forward as named refusals rather than
 empty lists. Nine mechanisms bite-tested.
 
+### The second consumer — and the three things it broke (doc 12 Part E)
+
+`loot` owns no slot and does its job from contract alone: 13 drop rows over frozen **archetypes**,
+pinned to the same digest item pinned. The `PPB-A6` split holds. The case that would falsify it —
+a drop table needing to tell two concrete items of the same archetype apart — has **not been reached**,
+which is not the same as ruled out, and `loot_l2.build` says where it breaks.
+
+Three defects it found, none by reasoning:
+
+1. **`closure_for` was seeded by OWNERSHIP**, so a pure consumer got the empty set. A module's needs
+   are declared in `consumed_by`, which had been in the registry since the beginning read by nothing
+   but a prompt.
+2. **`EPL-A7` cannot mean what it said.** `equip_slot` was registered PRIVATE on a sound argument;
+   `item_archetype` is SHARED and carries `"equip_slot": "main_hand"` in its bodies, so the privacy
+   was defeated by an adjacent decision. **Visibility may not decrease along a reference**, enforced at
+   load — and the consequence is that a slot any SHARED slot points at *cannot* be private. Every slot
+   is SHARED today for that reason, so PRIVATE has **no production subject**.
+3. **Two of my own assertions could not fail** — `not hasattr(row, "def_id")` on a dataclass without
+   that field, and a `set(dangling) | {"lex_tag"}` union papering over a real disagreement between two
+   mechanisms. Both replaced with pins that red on the change they were supposed to catch.
+
+Item's contract reach went **0.5 → 0.75** (`equip` unblocked). The last quarter is `lex_tag`, which
+`WA_001` owns. A generator now also gets **no I/O at all** — checked by AST before any L2 store exists,
+because the natural moment to add that check is the moment it is too late.
+
 ### Do-now next
 
-1. **`WA_001` must register `lex_tag`, and item must register `equip_slot`.** These now block a
-   measured thing rather than an abstract one: **half** of what the item contract owes.
+1. **`WA_001` must register `lex_tag`.** `equip_slot` is done — item registered what it owned and
+   the contract's reach went 0.5 → 0.75. This is the last quarter, and the last subject the `EPL-A8`
+   demand channel has.
 2. **PO sign-off on two blocking decisions:** how many of the 19 competency questions must be
    answerable to ship, and whether the two-layer pipeline is adopted **pipeline-wide** — which
    requires first walking all seven of doc 38's element-roster entries.
-3. **A second consumer, or a store for the first.** The other half of `PPB-A6` — *no module reads
-   another module's L2* — still has no subject: `accept()` returns admitted defs and nothing persists
-   them, so nothing can yet try to read them.
+3. **Reach the case that would falsify `PPB-A6`.** A drop table that must distinguish two concrete
+   items of the same archetype needs something the contract does not carry — then either the contract
+   grows a rarity/tier slot, or the two-layer split is wrong. Nothing has reached it.
 4. **Wire `REOPENED`, or decide not to.** Declared, unreachable, and its trigger was measured:
    `item_archetype` needs `instrument_tag` codes that cover everything, and the model correctly
    omitted the field rather than lie when they did not. The fix is upstream in an already-settled
    slot. Needs a termination bound.
 5. **The Rust half:** `declare_pool_slot!` + `export.rs` + the drift test, which flips
    `registry.generated` to true and reds the test holding that place.
-6. **No production slot is PRIVATE**, so `EPL-A7`'s enforcement has only a constructed subject.
+6. **`EPL-A7` may be unusable as written** — a slot any SHARED slot references cannot be PRIVATE,
+   which is most of them. Either PRIVATE means something narrower, or it should be retired.
 
 **Fixture:** `services/lore-enrichment-service/tests/fixtures/fengshen/` — a treasure-dense Ming-novel
 corpus with **12 designed teeth**, answer key outside the corpus, guarded by 29 assertions.

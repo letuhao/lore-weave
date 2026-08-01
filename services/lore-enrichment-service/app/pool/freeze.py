@@ -34,7 +34,8 @@ from typing import Any, Mapping
 
 from app.pool.registry import Registry, Visibility
 
-__all__ = ["FrozenSlot", "Unmet", "Freeze", "digest_of", "freeze_of", "closure_for"]
+__all__ = ["FrozenSlot", "Unmet", "Freeze", "digest_of", "freeze_of", "closure_for",
+           "consumers_of"]
 
 #: Bumped when the artifact's SHAPE changes. A consumer refuses a version it does
 #: not know rather than reading a field that has moved.
@@ -79,6 +80,11 @@ class Freeze:
     digest: str
     slots: Mapping[str, FrozenSlot]
     unmet: tuple[Unmet, ...] = ()
+    #: Slots inside this consumer's closure that are PRIVATE to another module.
+    #: Named but not carried: withholding the MEMBERS is what enforces `EPL-A7`,
+    #: and naming the SLOT is what keeps "may not look" distinguishable from
+    #: "is not there".
+    withheld: tuple[str, ...] = ()
     schema_version: int = SCHEMA_VERSION
 
     @property
@@ -114,6 +120,7 @@ class Freeze:
                       for sid, s in sorted(self.slots.items())},
             "unmet": [{"target": u.target, "wanted_by": list(u.wanted_by)}
                       for u in self.unmet],
+            "withheld": list(self.withheld),
         }, ensure_ascii=False, indent=2, sort_keys=False)
 
     @classmethod
@@ -128,6 +135,7 @@ class Freeze:
                    for sid, s in (raw.get("slots") or {}).items()},
             unmet=tuple(Unmet(target=u["target"], wanted_by=tuple(u["wanted_by"]))
                         for u in (raw.get("unmet") or [])),
+            withheld=tuple(raw.get("withheld") or ()),
         )
 
     def write(self, path: pathlib.Path) -> None:
@@ -140,8 +148,30 @@ class Freeze:
         return f
 
 
-def closure_for(reg: Registry, owner: str) -> set[str]:
-    """Every slot a module's contract depends on — its own, plus what those point at.
+def consumers_of(reg: Registry) -> set[str]:
+    """Every module the registry knows about — owners and declared consumers alike.
+
+    `consumed_by` entries are dotted paths (`loot.table`, `df07.stat_term.…`); the
+    module is the first segment. These strings were authored to explain the
+    abstraction axis (`BLD-A2`) and turn out to be the only place a pure consumer
+    declares that it exists at all.
+    """
+    out = {s.owner for s in reg.slots.values()}
+    for s in reg.slots.values():
+        out |= {c.split(".")[0] for c in s.consumed_by if c}
+    return out
+
+
+def closure_for(reg: Registry, module: str) -> set[str]:
+    """Every slot a module's contract depends on — what it owns, what it CONSUMES,
+    and everything those point at.
+
+    The seed was ownership alone until a generator that owns nothing was written.
+    `loot` owns no slot; `item_archetype.consumed_by` has named `loot.table` since
+    the slot was registered, and an ownership-seeded closure handed that module an
+    empty set — a consumer with no contract, which is not a state the architecture
+    has any account of. A module's needs are declared on the slots that name it, and
+    that declaration was already there, being read by nothing.
 
     This exists because the first freeze was **pool-wide**, and three consecutive
     live runs failed to produce an artifact for a reason that had nothing to do with
@@ -158,7 +188,9 @@ def closure_for(reg: Registry, owner: str) -> set[str]:
     :class:`Unmet` instead.
     """
     seen: set[str] = set()
-    stack = [s.id for s in reg.slots.values() if s.owner == owner]
+    stack = [s.id for s in reg.slots.values()
+             if s.owner == module
+             or any(c.split(".")[0] == module for c in s.consumed_by)]
     while stack:
         sid = stack.pop()
         if sid in seen or sid not in reg.slots:
@@ -169,7 +201,8 @@ def closure_for(reg: Registry, owner: str) -> set[str]:
 
 
 def freeze_of(reg: Registry, pool: Mapping[str, list[dict]],
-              *, scope: set[str] | None = None) -> Freeze:
+              *, scope: set[str] | None = None,
+              for_consumer: str | None = None) -> Freeze:
     """Build the artifact from a settled pool plus the registry that shaped it.
 
     ``scope`` narrows it to one consumer's closure (see :func:`closure_for`); the
@@ -177,9 +210,23 @@ def freeze_of(reg: Registry, pool: Mapping[str, list[dict]],
     :meth:`Registry.dangling_targets`, so the hole a consumer is told about is the
     SAME fact the abductive register reports — one source, two readers, rather than
     two lists that can disagree.
+
+    ``for_consumer`` WITHHOLDS another module's PRIVATE slots from the bytes rather
+    than relying on the reader to refuse itself. The closure drags them in — `loot`
+    needs `item_archetype`, whose members carry `equip_slot` codes — so without this
+    an artifact written for `loot` would ship item's private members to disk, and
+    `EPL-A7` would be enforced only by the good manners of whoever opened the file.
+    The withheld ids are still LISTED, because *may not look* and *is not there* are
+    different answers and a consumer has to be able to tell them apart.
     """
+    withheld = tuple(sorted(
+        sid for sid, ms in pool.items()
+        if (scope is None or sid in scope)
+        and for_consumer is not None
+        and reg[sid].visibility is not Visibility.SHARED
+        and reg[sid].owner != for_consumer))
     members_by_slot = {sid: ms for sid, ms in pool.items()
-                       if scope is None or sid in scope}
+                       if (scope is None or sid in scope) and sid not in withheld}
     dangling = {t: refs for t, refs in reg.dangling_targets().items()
                 if scope is None or any(r.split(".")[0] in scope for r in refs)}
     return Freeze(
@@ -190,4 +237,5 @@ def freeze_of(reg: Registry, pool: Mapping[str, list[dict]],
                for sid, ms in members_by_slot.items()},
         unmet=tuple(Unmet(target=t, wanted_by=tuple(sorted(refs)))
                     for t, refs in sorted(dangling.items())),
+        withheld=withheld,
     )

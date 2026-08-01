@@ -47,10 +47,26 @@
         "class": { "ref": "engine:ItemClass", "required": true },
         "instrument_tags": { "ref": "slot:instrument_tag", "list": true, "required": true },
         "equip_slot": { "ref": "slot:equip_slot", "required": false },
-        "gates_on": { "ref": "slot:progression_kind", "list": true, "required": false }
+        "gates_on": { "ref": "slot:progression_kind", "list": true, "required": false },
+        "lex_tags": { "ref": "slot:lex_tag", "list": true, "required": false }
       },
+      "_lex_tags_note": "MEM-A4's gap, finally written as a REFERENCE instead of prose. It was recorded as 'the one real gap in the item contract' and then existed nowhere the machinery could see — so the register reported no demand for it, and the item generator's field census had to special-case it. A gap named only in a document is a gap two mechanisms disagree about. WA_001 owns lex_tag; an archetype declares which lexical tags things of its kind carry (PL_007 §12.7, the WA_001 Stage-4 input).",
       "consumed_by": ["item.generator.tier2", "crafting.recipe", "loot.table"],
       "_gates_on_note": "MEM-A4 open #2 — kept OPTIONAL on purpose. It is the first OUTBOUND reference from item into progression, so it is where EPL-A8 fires in that direction. progression_kind was unregistered for one cycle; PROG_001 has now registered it below, and the row it used to raise is gone. equip_slot still dangles, so the demand channel is still under load."
+    },
+    {
+      "id": "equip_slot",
+      "owner": "item",
+      "shape": "unordered",
+      "operation": "CONFIRM",
+      "visibility": "SHARED",
+      "arity": [1, 16],
+      "suggest": [3, 10],
+      "member": {},
+      "default": ["head", "body", "main_hand", "off_hand", "waist", "feet"],
+      "consumed_by": ["item.archetype.equip_slot"],
+      "_visibility_note": "Registered PRIVATE first, and the LOADER refused it. The reasoning for PRIVATE was sound on its own — the only reference is item's own item_archetype.equip_slot, so SHARED would claim something nothing supports. What it missed is that item_archetype is itself SHARED, so its member bodies carry `\"equip_slot\": \"main_hand\"` into loot and crafting whatever this field says. Withholding the slot's MEMBERS does not withhold the codes; redacting the field from the bodies would be worse, because an absent optional field is indistinguishable from 'this archetype has no equip slot'. Visibility may not decrease along a reference (enforced in load_registry), and the consequence is a real constraint: a slot any SHARED slot points at cannot be private, whatever its owner intended.",
+      "_default_note": "A body plan, not a genre choice — the same six read sensibly for a wuxia sect disciple and a mail-clad knight. A reality that runs a different anatomy DROPS what it does not have and says why, which is what CONFIRM is for."
     },
     {
       "id": "progression_kind",
@@ -94,7 +110,6 @@
   },
 
   "_not_registered_yet": {
-    "equip_slot": "item owns it; deliberately still unregistered so the EPL-A8 demand channel stays under load after progression_kind closed. If every dangling target were resolved at once, nothing would prove that resolving ONE removes exactly one row.",
-    "lex_tag": "WA_001 must register it — the MEM-A4 gap"
+    "lex_tag": "WA_001 must register it — the MEM-A4 gap, and the LAST subject the EPL-A8 demand channel has. equip_slot used to be the other one and is registered above; if this one closes too, the channel has nothing left to demonstrate on and a test that asserts a non-empty demand set will red. That red is correct: it means the check needs a new subject or should be retired, and neither should happen silently."
   }
 }

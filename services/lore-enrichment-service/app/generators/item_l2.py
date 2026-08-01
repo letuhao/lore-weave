@@ -62,17 +62,19 @@ ITEM_DEF_FIELDS: tuple[FieldSpec, ...] = (
               why="engine-fixed ItemClass, chosen per archetype in the contract"),
     FieldSpec("affordance_overrides", Source.OWN,
               why="Option; None means the ItemClass default — PL_007 §5.3"),
-    FieldSpec("equip", Source.BLOCKED, slot="equip_slot",
-              why="item owns equip_slot and has not registered it; the register has "
-                  "reported the hole since the first cycle"),
+    FieldSpec("equip", Source.FROZEN, slot="equip_slot",
+              why="item owns equip_slot and registered it PRIVATE — no other module "
+                  "references it yet, so SHARED would be a claim nothing supports"),
     FieldSpec("use_effect", Source.OWN, why="an effect is this generator's content, not a contract enum"),
     FieldSpec("max_charges", Source.OWN, why="PGN-A5 — a magnitude, authored by its owner"),
     FieldSpec("consume_on_exhaust", Source.OWN, why="per-def behaviour flag"),
     FieldSpec("price", Source.OWN, why="PGN-A5 — a magnitude"),
     FieldSpec("weight", Source.OWN, why="PGN-A5 — a magnitude"),
     FieldSpec("lex_tags", Source.BLOCKED, slot="lex_tag",
-              why="WA_001 must register it — MEM-A4 §4.2, the one real gap in the "
-                  "item contract and not item's to fix"),
+              why="WA_001 must register it — MEM-A4 §4.2, the last real gap in the "
+                  "item contract and not item's to fix. It is now a REFERENCE on "
+                  "item_archetype rather than a note in a document, so the register "
+                  "reports the demand and this table agrees with it by construction"),
     FieldSpec("instrument_tags", Source.FROZEN, slot="instrument_tag",
               why="the PROG_001 + DF07 instrument_match operand — the seam that "
                   "already shipped (ICT-A3)"),

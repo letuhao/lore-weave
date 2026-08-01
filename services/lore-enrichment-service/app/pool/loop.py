@@ -21,7 +21,8 @@ from enum import Enum
 from typing import Callable
 
 from app.pool import criteria
-from app.pool.freeze import Freeze, closure_for, digest_of, freeze_of
+from app.pool.freeze import (Freeze, closure_for, consumers_of, digest_of,
+                             freeze_of)
 from app.pool.kinds import parse, planner_for
 from app.pool.register import OpenRow, abduce
 from app.pool.registry import Registry, Slot
@@ -189,21 +190,29 @@ def run_cycle(reg: Registry, evidence: str, complete: Complete,
 
     run.register = abduce(reg, run.pool)
 
-    # Per-CONSUMER artifacts, emitted independently of whether the whole pool
+    # One artifact per CONSUMER, emitted independently of whether the whole pool
     # closed. `PPB-A5` says a planner is done when it is internally closed, and
     # three consecutive live runs proved the pool-wide gate was the wrong reading
     # of "internally": item's contract was complete and unusable because
     # `progression_stage` — which item does not reference — had not settled.
-    for owner in sorted({s.owner for s in reg.slots.values()}):
-        scope = closure_for(reg, owner)
+    #
+    # The set is owners UNION declared consumers. Keying it on owners alone gave a
+    # module that owns nothing an empty closure, which is how the second generator
+    # found this: `loot` owns no slot and `item_archetype.consumed_by` has named
+    # `loot.table` since the day the slot was registered.
+    for module in sorted(consumers_of(reg)):
+        scope = closure_for(reg, module)
         if scope and all(run.slots[sid].state is State.SETTLED for sid in scope):
-            run.artifacts[owner] = freeze_of(reg, run.pool, scope=scope)
-            run.log.append(f"{owner}: FROZEN {run.artifacts[owner].digest[:16]}… "
-                           f"over {sorted(scope)}")
+            run.artifacts[module] = freeze_of(reg, run.pool, scope=scope,
+                                              for_consumer=module)
+            held = run.artifacts[module].withheld
+            run.log.append(f"{module}: FROZEN {run.artifacts[module].digest[:16]}… "
+                           f"over {sorted(scope)}"
+                           + (f", withheld {list(held)}" if held else ""))
         else:
             open_in_scope = sorted(sid for sid in scope
                                    if run.slots[sid].state is not State.SETTLED)
-            run.log.append(f"{owner}: not frozen — {open_in_scope} still open")
+            run.log.append(f"{module}: not frozen — {open_in_scope or 'no slots in scope'}")
 
     blocking = [r for r in run.register if r.target in reg.slots]
     if not blocking and all(s.state in (State.SETTLED, State.DECLINED)

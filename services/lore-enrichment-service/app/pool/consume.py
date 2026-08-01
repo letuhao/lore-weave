@@ -62,7 +62,8 @@ class PoolView:
     def visible_slots(self) -> tuple[str, ...]:
         return tuple(sorted(
             sid for sid, s in self.freeze.slots.items()
-            if s.visibility is Visibility.SHARED or s.owner == self.consumer))
+            if (s.visibility is Visibility.SHARED or s.owner == self.consumer)
+            and sid not in self.freeze.withheld))
 
     def has(self, slot_id: str) -> bool:
         """Whether this consumer could read the slot — used to DEGRADE knowingly.
@@ -75,6 +76,12 @@ class PoolView:
         return slot_id in self.visible_slots()
 
     def members(self, slot_id: str) -> tuple[dict, ...]:
+        if slot_id in self.freeze.withheld:
+            raise NotVisible(
+                f"{slot_id!r} is PRIVATE to another module and was WITHHELD from "
+                f"this artifact (EPL-A7). It is named here rather than omitted so "
+                f"that 'may not look' stays distinguishable from 'is not there'."
+            )
         slot = self.freeze.slots.get(slot_id)
         if slot is None:
             unmet = next((u for u in self.freeze.unmet if u.target == slot_id), None)
