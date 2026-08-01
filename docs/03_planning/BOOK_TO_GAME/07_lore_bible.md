@@ -53,10 +53,19 @@ for every entity the book produced:
 
 > **`BTG-A21`.** **The bible's spine is an enumeration over a closed list, not a retrieval.** The list
 > is the glossary — a list **the book itself produced**, which is why it is the right denominator and
-> not an arbitrary one. Coverage becomes a fact rather than a hope: on the world currently on the
-> stack, `5,431` entities · `5,412` with a description · `5,109` carrying attributes · `4,943`
-> chapter-linked. Five thousand four hundred and thirty-one decisions, and a progress number that means
-> something.
+> not an arbitrary one. Coverage becomes a fact rather than a hope: *decided ÷ entities*, a progress
+> number that means something.
+
+> ⚠ **The first draft of this axiom cited `5,431 / 5,412 / 5,109 / 4,943` as "the world currently on
+> the stack".** The query was right and its scope was wrong: those rows are **orphans of three books
+> that have since been deleted from book-service**, and the world this track actually built —
+> 封神演義（原著）, 100 chapters — has **zero glossary entities and no knowledge project**, because
+> building them was explicitly skipped when the plan was for the pool loop to read the novel directly.
+>
+> So the denominator this document is built on **does not exist yet for any live world**, and the
+> number was a figure that looked like evidence — the exact shape `census.py` warns about, produced by
+> the author of the warning. §[`10`](#10-what-section-8-does-not-fix) now carries it as the first
+> honest limit rather than a footnote.
 
 This is also the answer to a question left open one tier down. `evidence_n` — the denominator that
 `m < n` needs and that retrieved spans could never supply — **is defined against the glossary.** It was
@@ -197,3 +206,10 @@ The floor is what makes the work tractable; the ceiling is what makes it suffici
 3. **A sweep is only as bounded as its list is closed.** The glossary grows when new chapters are
    extracted, so the denominator moves. That is a versioning problem — the same one the cutoff in §8
    answers — and it means a "100% swept" claim is always *as of* a chapter and a glossary version.
+
+4. **THE LIST DOES NOT EXIST YET.** 封神演義（原著）— the world this whole track was built around — has
+   **0 glossary entities and no knowledge project.** Extraction was deliberately skipped early on,
+   correctly, under a plan where the pool loop would read the novel directly; that plan is now known to
+   be wrong, and the skipped step has become the prerequisite. Every POC that depends on a sweep
+   (`B`, `C`, `F`) is **blocked** until a live world has a glossary and a KG. `POC-A` is not — it is a
+   search over the self-contained fixture and can run today.

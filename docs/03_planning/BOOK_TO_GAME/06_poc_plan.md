@@ -10,6 +10,17 @@ its expectation written **before** the run, and a stated result that means **sto
 **Constraint on every step: no new service, no migration, no change to `composition-service` until
 POC-B has passed.** Everything runs against artifacts that already exist.
 
+> ⚠ **PREREQUISITE, discovered 2026-08-01 after this plan was written.** The world this track built —
+> 封神演義（原著）, 100 chapters — has **0 glossary entities and no knowledge project**. Extraction was
+> skipped on purpose under the old plan, where the pool loop read the novel directly. Under the current
+> design the glossary IS the subject matter, so **`POC-B`, `POC-C` and `POC-F` are blocked** until a
+> live world has been extracted. **`POC-A` is not blocked** — it is a search over the self-contained
+> fixture corpus and can run today.
+>
+> Satisfying the prerequisite is itself informative: what a real glossary of a 100-chapter classical
+> Chinese novel actually contains — how many entities, which kinds, which of the 49 declared edge types
+> fire — is the first honest input this design has ever had.
+
 ---
 
 ## POC-A — can a foreclosure be found at all?
