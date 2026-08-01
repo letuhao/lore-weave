@@ -1,6 +1,7 @@
 # BOOK → GAME — the missing tier
 
-**Status:** DESIGN. Nothing here is built. **Date opened:** 2026-08-01.
+**Status:** DESIGN. Nothing here is built — but the prerequisite is now being satisfied and
+measured ([`09`](09_first_extraction.md)). **Date opened:** 2026-08-01.
 
 ---
 
@@ -50,6 +51,7 @@ job, and that is a different job — see [`03_two_jobs.md`](03_two_jobs.md).
 | [`06_poc_plan.md`](06_poc_plan.md) | the smallest thing that could falsify this design |
 | [`07_lore_bible.md`](07_lore_bible.md) | **the find-and-load answer** — the bible's spine is an exhaustive SWEEP over the glossary the book produced, not a search. The chapter is the wrong unit. |
 | [`08_measuring_a_creative_result.md`](08_measuring_a_creative_result.md) | there is no right answer, so what IS proven — traceability, not truth — and the **census, not score**, that measures the rest |
+| [`09_first_extraction.md`](09_first_extraction.md) | **the first real input** — a glossary extracted from classical Chinese, what it got right, and the systematic kind error a sweep cannot see |
 
 **`03`, `04`, `07` and `08` are corrections.** The first draft of this folder put authoring and structuring in one
 place, treated fidelity as a gate that could forbid a mechanism, and argued the corpus-vs-derived
