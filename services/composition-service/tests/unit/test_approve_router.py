@@ -178,20 +178,49 @@ def test_approve_null_delta_project_is_refused_409(ctx):
     assert know.extract_calls == []
 
 
-# ── non-derivative: clean no-op, never touches the canon partition ───────
+# ── non-derivative: extracts into ITS OWN project ────────────────────────
+#
+# This test used to assert `dispatched is False` and `extract_calls == []`, and it was GREEN,
+# and it was pinning the defect. The delta module's docstring says a greenfield Work "uses the
+# event-driven path"; MEASURED 2026-08-01 there is no such path — `extract-item` had exactly
+# one caller in the repo, behind this very branch. So a book written from scratch was never
+# extracted, its knowledge graph stayed empty, and the canon guard, the LLM judge and the
+# publish gate all checked every scene against nothing. The dogfood book: 15 chapters, 4
+# published, a knowledge project that exists, and 0 :EntityStatus nodes.
+#
+# "The canon partition is untouched" was true and was the bug. What the C27 guard protects is
+# a DERIVATIVE writing into its SOURCE's graph; a canon book writing into its own project is
+# not that leak.
 
 
-def test_approve_canon_work_is_clean_no_op(ctx):
+def test_approve_canon_work_extracts_into_its_own_project(ctx):
     client, works, derivs, bookc, know = ctx
     works.work = _canon_work()       # no source_work_id → not a derivative
+    works.source = None
+    bookc.sort_order = 5
+    know.result = {"entities_merged": 2, "events_merged": 1, "facts_merged": 0}
+
+    r = _approve(client)
+    assert r.status_code == 200, r.text
+    assert r.json()["dispatched"] is True
+    assert len(know.extract_calls) == 1, "a canon chapter must reach extraction"
+    assert str(know.extract_calls[0]["project_id"]) == str(works.work.project_id),         "canon extraction targets the book's OWN project, never null and never a source"
+
+
+def test_approve_canon_work_with_a_null_project_refuses(ctx):
+    """The C23 leak guard, kept for the canon path too: a null project_id widens a knowledge
+    write to ALL of a user's projects. Refuse rather than dispatch unscoped."""
+    client, works, derivs, bookc, know = ctx
+    works.work = _canon_work()
+    works.work.project_id = None
     works.source = None
     bookc.sort_order = 5
 
     r = _approve(client)
     assert r.status_code == 200, r.text
     assert r.json()["dispatched"] is False
-    assert r.json()["reason"] == "not_a_derivative"
-    assert know.extract_calls == []  # canon partition untouched
+    assert r.json()["reason"] == "unscoped_project"
+    assert know.extract_calls == []
 
 
 # ── out-of-order (pre-branch) chapter → thinner delta, not an error ──────

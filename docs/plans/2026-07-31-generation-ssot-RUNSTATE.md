@@ -1492,6 +1492,58 @@ AUDIT POC-DEFECT B (create drops documented fields)
   NEXT       — (C) is a product decision, deferred as 157. The parked test-suite work.
 ```
 
+### ✅ THE CANON GUARD WAS CHECKING AGAINST A GRAPH NOTHING EVER FILLED
+
+```
+AUDIT FLYWHEEL (canon path)
+  BUILT      — `plan_canon_dispatch` + the approve route's canon branch. An approved chapter of
+               a NON-derivative Work now extracts into its OWN knowledge project.
+
+               A SEPARATE decision, not a loosening of `plan_flywheel_dispatch`, whose
+               invariants are LOCKED and exist to stop a DERIVATIVE writing into its SOURCE's
+               graph. A canon book writing into its own project is not that leak. The C23
+               null-scope guard is kept for the new path (`unscoped_project` refuses).
+
+  PROVEN     — the finding first, because it reorders the whole backlog. MEASURED 2026-08-01:
+                 `extract-item` has exactly ONE caller in the repo — the derivative branch of
+                 `approve_chapter`, behind `if not decision.dispatch: return dispatched=false`
+                 · `:EntityStatus` across the live graph: 17 gone + 3 active, on 4 projects
+                 · on the DOGFOOD book: 15 chapters, 4 published, a knowledge project that
+                   exists and SHARES the composition project's id — and **0** EntityStatus
+               So for a book written from scratch the knowledge graph is permanently empty, and
+               the canon guard, the LLM judge and the publish gate all check every scene
+               against nothing. The plan rung built earlier today is a COMPENSATION for that.
+
+               `plan_flywheel_dispatch`'s docstring says a greenfield Work "uses the
+               event-driven path". There is no event-driven path. I grepped every caller.
+
+               tests `21 passed` (approve-router + delta-flywheel), 2 new · suite
+               `11 failed, 3841 passed, 8 skipped in 120.65s` — the same 11 pre-existing ·
+               all six gates OK
+               red-able: disabling the canon branch fails exactly the 2 new tests (and the
+               pre-branch one, which shares the branch).
+
+  NOT PROVEN — NO LIVE RUN. Nothing has been extracted end-to-end through this path yet: it
+               dispatches a real LLM extraction, and doing that on the dogfood book would
+               mutate the author's real graph and spend real tokens. It needs a throwaway book
+               with one approved chapter, and that is the next step, not a done one.
+               APPROVAL is the trigger. Whether that is the right threshold (vs publish, vs an
+               explicit author action) is the author's call and was decided as "approve" today
+               — but a low-quality approved chapter now becomes canon, and nothing walks that
+               back.
+               The 15 already-written dogfood chapters stay unextracted; this fires on the NEXT
+               approval only. A backfill is a separate decision.
+               Cost is unmeasured: one full Pass-2 extraction per approved chapter.
+
+  DRIFT      — `test_approve_canon_work_is_clean_no_op` was GREEN and was PINNING THE DEFECT.
+               It asserted `extract_calls == []` with the comment "canon partition untouched" —
+               true, and the bug. I have spent a day hunting guards that report clean without
+               checking; this was a test doing it, and it read as a deliberate invariant
+               because it was written like one.
+
+  NEXT       — a live end-to-end on a throwaway book. Then 155/156 (mechanical) while suites run.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -1573,6 +1625,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **A green test was pinning the stub.** `test_approve_canon_work_is_clean_no_op` asserted that approving a canon chapter dispatches NO extraction, commented “canon partition untouched”. True, and the defect: it is why a book written from scratch never reached the knowledge graph the canon guard checks against. It read as a deliberate invariant because it was written like one. |
+| 2026-08-01 | **I deferred five items and four did not clear the gate.** The author pushed back that the reasons were not legitimate and that deferring makes the product a stub. Re-grading against the repo's own rule: 155 is breadth not depth, 156's audit half is a grep I refused to run, 158 and 159 are experiments I had already designed. Only a data migration was genuinely large. |
 | 2026-08-01 | **Wrote “this regression is mine” from one run against one run.** A full glossary package failed twice on my branch and passed at HEAD — n=1 each way. Re-running my branch came back clean: the two PP-4 tests are flaky. I had already drafted the attribution and would have gone hunting a bug that does not exist. |
 | 2026-08-01 | **Quoted a number I had not re-run.** The POC note said 809 leaked synopses; measuring properly gave 850. The figure had been carried forward from a one-off query into a defect list as if it were established. |
 | 2026-08-01 | **Moved a component off the legacy scalar and left half of it behind.** `checked` was switched to `guard_status`; the unchecked-REASON chain in the same file kept keying on `canon.status`, so every new status fell through to a branch that asserts “the canon service was unavailable”. I then wrote the gap up as “the FE renders nothing”, when it rendered a fabricated cause. |
