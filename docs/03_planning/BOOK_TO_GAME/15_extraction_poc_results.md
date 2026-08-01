@@ -208,7 +208,46 @@ looked like results:
 > only because a figure existed to reproduce (`BTG-A44`) or because the number was too extreme to be
 > real. A POC without a self-test arm would have shipped all three as findings.
 
-## 7. Recommendation
+## 7. A6 (GLiNER) — the second reader does not read this language
+
+`12` §7 step 2 asked for exactly this measurement, and `12` §5 warned the honest answer might be no.
+It is no, and not marginally.
+
+`urchade/gliner_multi-v2.1` over the same 10 chapters: **191 spans, 19.1/chapter, 42 seconds total,
+on CPU, zero tokens.** The throughput is superb — 4.2s per chapter against 31–66s for the LLM arms —
+and the yield looks comparable to A1's 17.6. Both of those numbers are meaningless, because:
+
+| | |
+|---|---|
+| found by **both** GLiNER and A4 | **3** |
+| only the LLM | 177 |
+| only the encoder | 188 |
+
+Three. Looking at what it actually produced explains it:
+
+* **182 of 191 spans mapped to `character`.** The type space collapsed almost entirely to "person".
+* Its longest "person" spans are **whole clauses** — `宜生在馬上看那挑柴的好像猾民武吉` ("Yisheng,
+  on horseback, saw that the firewood-carrier resembled the rogue Wu Ji") is a sentence, not a name.
+  `堯崩` ("Yao died") is a verb phrase tagged as a person.
+* Its shortest are **common nouns**: 劍 sword, 戟 halberd, 鞭 whip, 斧 axe as "weapon"; 父王 "royal
+  father" and 將軍 "general" as persons.
+
+> **`BTG-A52`.** **GLiNER has no span-boundary sense in classical Chinese, so it is not a second
+> reader — it is a different task.** Unsegmented text with no spaces gives it nothing to anchor on,
+> and it returns arbitrary substrings. The 3-entity overlap is not a scoring artifact to be tuned
+> around; there is almost no shared subject to disagree *about*, and disagreement was the entire
+> product (`12` §4②).
+>
+> `12` §5 said adopting it on faith would be a mistake because its published numbers are English
+> benchmarks and 文言文 is unmeasured. That was the right call, and the measurement cost an afternoon
+> and no tokens. **The negative result is the deliverable**: the "add a second reader" half of `12`'s
+> recommendation is closed for this corpus, and `BTG-A43`'s service-shaped adoption cost never has to
+> be paid.
+
+What survives is the *idea*, not the tool. The three signals `10` §4 wanted still exist — the LLM, the
+morphology lint at 96.9% precision, and now the KG's own typed edges — and two of those are free.
+
+## 8. Recommendation
 
 **There are two winners and they are not the same arm.** A4 is the cost arm; A5 is the quality arm.
 A5 costs **63% more input than A4** and buys **+3.3pp grounding, +7.7% yield** — and gives back A4's
@@ -227,11 +266,10 @@ Q4 advantage. That is a real trade and it is the PO's, not a dominance the card 
    published base rate, and the misfiles outnumber them 3.6:1.
 4. **Re-baseline every kind-quality claim** once (2) exists. Until then, `09`'s 64% and this
    document's Q4 describe the store, not the extractor, and should not be quoted as model accuracy.
-5. **A6 (GLiNER) is still open** and is the only arm that can test whether a second reader helps —
-   noting `BTG-A43`, that adopting it means a `local-ner-service` behind a BYOK credential, not a
-   library import.
+5. **Do not adopt GLiNER** (`BTG-A52`). The second-reader slot is better filled by the morphology
+   lint (free, 96.9% precision, already written) plus the KG's typed edges once they exist.
 
-## 8. Honest limits
+## 9. Honest limits
 
 * **10 chapters, one book, one model, one setting.** The variance floor (`BTG-A46`) is measured from
   a single repeat; two runs establish that differences below ~8.5% are noise, not that differences

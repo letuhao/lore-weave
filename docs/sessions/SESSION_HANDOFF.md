@@ -99,8 +99,18 @@ STORE, not the model.** Per-call typing is ~100% lenient on the key's subset.
 2. **Build re-decide-on-merge** (`BTG-A49`) — the real kind fix, and not a prompt change. Surface the
    disagreement as a conflict instead of oldest-wins.
 3. Re-baseline every kind-quality claim after (2). Until then do not quote them as model accuracy.
-4. **A6 (GLiNER)** still unrun — `arm_a6_gliner.py` is written, gliner 0.2.28 installed `--no-deps`.
-   `BTG-A43`: adopting it means a `local-ner-service` behind a BYOK credential, not a library import.
+4. **A6 (GLiNER) is CLOSED — negative result.** 191 spans, 42s, CPU, zero tokens — but only **3
+   entities in common with A4** (177 LLM-only, 188 encoder-only). 182 of 191 spans collapsed to
+   `character`; its longest "persons" are whole clauses (`堯崩` = "Yao died"), its shortest are common
+   nouns (劍, 將軍). **`BTG-A52`: no span-boundary sense in unsegmented classical Chinese, so it is
+   not a second reader — it is a different task.** `12` §5's warning was right; the measurement cost
+   an afternoon and no tokens, and `BTG-A43`'s service-shaped adoption cost never has to be paid.
+   The second-reader slot goes to the morphology lint (free, 96.9% precision) + KG typed edges.
+5. **A5 (EDC) clean run is the OTHER winner:** grounded **85.1% (+5.0pp, 6× its axis floor)**, lowest
+   fabrication (7.2%), yield only −3.0% where other cost arms lose 10–13% — at −38% input over 2
+   calls. **`BTG-A51`: EDC improved grounding and recall, NOT typing** (its Q4 lenient 94.1% is the
+   only one below 100%) — the opposite of what `11` §3 recommends it for. Consistent with `BTG-A49`:
+   per-call typing had no headroom to win. **Next arm nobody ran: EDC built on A4's one-call shape.**
 
 **⚠ Open**
 - 100-chapter extraction **cancelled at 57/100**; 872 entities kept. Resume = new job with the
