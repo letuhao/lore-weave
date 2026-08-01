@@ -11,7 +11,17 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 [`docs/specs/2026-07-31-generation-ssot.md`](../specs/2026-07-31-generation-ssot.md).
 
 **Order:** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` →
-`S2 ✅` → `S8 ✅` → `S12 ✅` → **`S7`** → `S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+`S2 ✅` → `S8 ✅` → `S12 ✅` → **`S7` (surveyed, not built)** → `S6(+UI) → S11 → S3 → S4`
+→ `S9 → S5`.
+
+**S7 is measured and checkpointed, NOT done.** Start from the RUN-STATE's S7 block, not
+from the spec — one of the spec's claims is falsified there. In short: there is no
+unclamped `call_budget` adopter (translation's three are `MIRROR`, where clamping would be
+the bug); the real gap is `worker-ai/app/distill_job.py:68`, a signature-default
+`max_tokens` on a path where `distill_consumer.py:104` has ALREADY resolved `ctx_len` and
+uses it only for the input window. Three further sub-goals are untouched: absent budgets
+in glossary's Go tools + tilemap, zero `finish_reason == "length"` checks in glossary, and
+per-kind sizing models for the JSON kinds.
 
 **S12 closed** — `enforcement-claims-gate` now checks EVERY path the 125-row standards
 index names (91 of them), not just the 12 machine-contract rows, and it finally has a

@@ -505,6 +505,45 @@ AUDIT S12
                mechanical, the JSON kinds each need their own sizing model.
 ```
 
+## ◐ S7 · one output budget — MEASURED, not yet built (2026-08-01)
+
+Checkpointed at a risk boundary with the survey done, so the next run starts from numbers
+instead of from the spec's prose — which is falsified in one place below.
+
+**The existing gate already covers more than the spec assumed.**
+`llm-budget-ssot-gate: PASS — 92 LLM call site(s) scanned · 18 traced to call_budget() · 29 held
+at baseline (8 literal, 21 unattributed, **0 signature defaults**) · 45 built off-site.`
+It explicitly does NOT scan `raw POST /internal/llm/stream` (chat, lore-enrichment, video-gen).
+
+**⚠ SPEC CORRECTION — “two SDK sites clamp and two do not” is wrong as written.** Measured, all
+six real `call_budget(` sites (word-boundary matched; a naive grep also catches
+`per_call_budget` and the stale `sdks/python/build/lib/` copy, which is how I first counted 4):
+
+| site | clamps? | verdict |
+|---|---|---|
+| `composition/app/llm_budget.py` | yes | correct — threads `context_length` through `budget_for` |
+| `translation/app/llm_budget.py` ×3 | no | **CORRECT, not a bug.** All three are `OutputKind.MIRROR`, and `call_budget` short-circuits MIRROR before every clamp on purpose: applying a window share would turn a deliberate “no cap” into a cap. |
+| `sdks/loreweave_llm/budget.py` ×2 | 1 of 2 | the definition + its own MIRROR branch |
+
+So there is no unclamped `call_budget` adopter. **The real asymmetry is where the spec's own
+example pointed — worker-ai — and it is a call site that never reaches `call_budget` at all:**
+
+- `worker-ai/app/decoupled_extract.py:318,475,566` resolves `context_length` and threads it.
+- `worker-ai/app/distill_job.py:68` — `max_tokens: int = DISTILL_MAX_TOKENS`, a SIGNATURE
+  DEFAULT, never clamped against the window.
+- and `worker-ai/app/distill_consumer.py:104` **already resolves `ctx_len`** — it uses it to
+  size the INPUT window (`resolve_distill_window`) and then does not use it for the OUTPUT
+  budget. The value is in hand at the call site and dropped.
+
+The fix threads `ctx_len` consumer → `distill_and_write` → `make_distill_llm` and resolves the
+output through `call_budget(..., context_length=…)`. Multi-hop across a service this run has
+not otherwise touched, which is why it is checkpointed here rather than started at 91% context.
+
+**The other three S7 sub-goals, unstarted and unmeasured beyond the spec's claims:** an ABSENT
+`max_tokens` (glossary's Go tools, tilemap), zero `finish_reason == "length"` checks anywhere in
+glossary, and the JSON kinds each needing their own sizing model (the spec is explicit that
+`prose` is mechanical and the rest are not — v1's “mechanical once the function exists” was wrong).
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -587,6 +626,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
 | 2026-08-01 | **Wrote a diagnosis into the handoff from ONE error message.** Told the next session "CI red = 33 failures, one root, `language`→`original_language`, a mechanical sweep". There were **three** roots — a fastapi 0.139 `app.routes` change across two services, a pip editable path resolving outside the checkout, and the rename — and the rename half needed a SEMANTIC rewrite because the identity key had changed too. I had read one traceback and generalised, which is the §1.4 mistake the red team already caught me making twice. |
+| 2026-08-01 | **Counted `call_budget` call sites with a regex that also matched `per_call_budget` and a stale `sdks/python/build/lib/` copy** — 4 “unclamped” sites, all four phantom. Then read the two real ones and found the spec's claim (“two clamp, two do not”) was itself wrong: the unclamped ones are `OutputKind.MIRROR`, where clamping would be the bug. Nearly “fixed” correct code on the strength of a spec sentence. |
 | 2026-08-01 | **Wrote a checker that silently halved its own input — inside the gate whose docstring records that exact failure.** The S12 generalisation matched only repo-relative markdown link targets; the standards index lives at `docs/standards/` so nearly all its links are `../../…`. It found 43 paths and printed “0 missing” while never examining a single doc link. The fix took it to 91. |
 | 2026-08-01 | **Wrote a fixture that asserted the opposite of its own name.** The “content lost while the budget reads fine” case used a 401-token protected floor against a 200-token budget, so both halves were over-budget. It failed loudly — the only reason I noticed. Written the other way round it would have PASSED and pinned the very semantic inversion S8 exists to correct. |
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
