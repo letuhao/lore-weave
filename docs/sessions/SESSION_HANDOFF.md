@@ -1,5 +1,55 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🔗 GLOSSARY↔KG LINKAGE — both holes closed + backfilled (2026-08-01)
+
+Cleared before the entity-consistency refactor, because both defects corrupt the data that
+refactor would build on.
+
+**1 · 96% of one kind had no name.** The writeback resolved an entity's display attribute
+with a hardcoded `attrDefMap[kindID+":name"]`; every read path and the DB trigger use
+`code IN ('name','term')`. `terminology` is the only kind whose display attribute is
+`term`, so the lookup missed — and `if ok { … }` turned that into a **silent skip**: no
+`entity_attribute_values` row at all. One causal chain, three equal numbers: **215 of 224**
+had no `term` row → no `cached_name` → no `normalized_name`. That last one is the **dedup
+key** (`findEntityByNameOrAlias`/`findEntityCrossKind`), so every re-encounter created
+ANOTHER nameless row. Evidence and translations were lost too — both hang off the name's
+`attr_value_id`.
+- **Fixed both ends** (either alone still loses the entity): Go `displayAttrDef()` resolves
+  `name`→`term` at all **3** call sites and a miss is now an **error**, not a skip; the
+  Python parser accepts `name` **or** `term` and excludes `term` from attributes.
+- **Recovered:** names were never stored but survive in `extraction_raw_outputs`.
+  `scripts/backfill-terminology-names.py` restores them, then the existing M3b endpoint
+  (`dedup-name-variants?apply=true`) re-stamped `normalized_name` and merged the
+  duplicates — journaled, emitting `merged` outbox events that **re-sync the KG**.
+  **9 → 167 with a dedup key; 14 duplicates merged; 57 unrecoverable.**
+
+**2 · `chapter_index` meant different things to writer and reader.** The worker wrote the
+`enumerate()` index over the job's chapters; glossary's `before_chapter_index` windows it
+as a position in the **book**. **All 3,268 link rows were wrong, 88/88 chapters.**
+Multi-job: index 4 meant chapter 66, 14 indices each named several chapters. **Single-job:
+off by one** (`sort_order` is 1-based, `enumerate()` 0-based) — so known-entity windowing,
+spoiler windows and timeline cutoffs have been shifted for **every** book, not just
+re-extracted ones.
+- **Fixed:** book-service already returns `sort_order` on the payload the worker fetches;
+  it now prefers it, with a **loud** fallback. **Backfilled** from `chapter_id` →
+  `sort_order`: 0 wrong rows, 0 colliding indices (was 14).
+
+**Verified** — translation-service **1095 passed** · glossary-service `internal/...` all
+green · bite-tested (remove the `sort_order` read → red; an entity with neither `name` nor
+`term` still dropped) · **live on a fresh extraction**: a chapter at book position 92 now
+writes `chapter_index=92`, and its new `terminology` entities (`山河社稷圖`, `梅山七怪`)
+carry both a name and a dedup key.
+
+**▶ NEXT**
+1. **Wire A9 as `edc_cited`** — currently `PLANNED`, refused at the boundary with 400 "NOT
+   YET WIRED" so it cannot silently run as `batched`. Two-stage call flow. Not a linkage
+   concern; it is a new extraction shape.
+2. **Separate the two changes in `single_call_delta`** — run `single_call` without the
+   delta instruction at 30-chapter scale. `BTG-A57`'s −38.4% coverage loss cannot be
+   attributed to one or the other yet.
+3. The 57 unrecoverable terminology names — only re-extraction can restore them.
+
+
 ## 🔀 EXTRACTION STRATEGY — the POC shapes ship as a PER-JOB parameter (2026-08-01)
 
 **PO call:** ship the promising shapes behind a switch and re-measure on a large book to choose —
