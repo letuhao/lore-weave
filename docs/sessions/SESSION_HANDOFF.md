@@ -49,6 +49,50 @@ measured against a real completion (that needs a live lmstudio L3 run's
 the JSON kinds (`cast_plan` 4000 = rows × per-row; `motif_conformance` 512 = a 20-word
 reason) — is untouched.**
 
+## ⚠ A POST-RUN REVIEW FOUND THREE DEFECTS IN WORK THIS RUN CALLED DONE
+
+The author paused the run and asked for a quality audit before continuing. Reading the CODE
+instead of the audit blocks found three real defects, all inside S1/S2 — slices with pasted
+test output, pasted gate output, and a written AUDIT block. **The evidence protocol proved the
+claims were measured; it did not prove the code was right.** Full audit in the RUN-STATE.
+
+1. **HIGH — the publish gate still rounded up to a pass.** `COALESCE(guard_status, status)
+   <> 'checked'` reads as fail-safe and is not: a result with NO `canon` key makes both arms
+   NULL, `NULL <> 'checked'` is NULL, and `FILTER` does not count a NULL. **Measured on the
+   real corpus: 127 scenes with a latest completed job, 23 with no canon envelope — counted 93
+   unchecked where the honest answer is 116.** Not hypothetical: every completed `continue`
+   (14/14) and `plan_pass` (103/103) job carries no canon envelope, and 26 of 163
+   `draft_scene` rows. Fixed with a third COALESCE arm (`'no_envelope'`).
+
+2. **MED — `loreweave_guard`'s core had ZERO production consumers.** `GuardReport` and
+   `check_over` existed only in their own tests while `guard_status`/`coverage` were
+   hand-rolled restatements. Now `check_over` owns its one real call site, `ReflectResult`
+   derives from a `GuardReport`, and `verdict` (= `resolved` AND something-checked) is a field
+   instead of a conjunction each caller repeats — `CanonGatePanel` was restating it in
+   TypeScript. **The FE was also still reading the LEGACY `canon.status`**, so a run whose
+   name-grounding degraded drew a green all-clear.
+
+3. **MED — `plan_status` had no producer.** `resolve_cast_liveness` has taken the argument
+   since S2 and nothing ever passed one, so the cascade's middle rung was unreachable.
+   `OutlineRepo.plan_liveness_after` now asserts `alive` for any entity the plan places in a
+   LATER scene of the chapter, threaded into the scene worker + the inline router.
+
+Plus the consolidation the fixes exposed: the `result.canon` projection existed in **six**
+hand-written copies, which is exactly why `guard_status` reached all six and `verdict` reached
+none. It is now `canon_envelope()`, with `test_there_is_no_FIFTH_hand_built_canon_envelope`
+holding the line — that test found two of the six the first sweep missed.
+
+**LIVE on a throwaway book** (both images rebuilt + hash-verified): scene 1, with a later
+scene, resolves `{"source": "plan", "status": "alive"}`, `unresolved_refs=0`,
+`guard_status='checked'`, `verdict=True`; scene 2, the last scene, resolves `source: none`
+twice, `guard_status='no_rules'`. Same code, same book, different position.
+
+⚠ **The acceptance test is STILL NOT closed.** This makes the middle rung reachable; it does
+not make the guard COMPARE prose-death against plan-alive. `scenes_covered` is still blind and
+composition's two SSE paths are still unguarded. Chapter-level paths (single-pass, stitch)
+deliberately get no plan rung — they have no single scene position to be "after" — and nothing
+in their envelope says so.
+
 **S6 is SURVEYED and blocked on a UI slice.** Measured: `critic_model_ref` appears in
 `frontend/src` in **`__tests__` files only** — five fixture sites, zero production readers
 or writers. `ModelRole` declares `'critic'` at `chat-ai-settings/types.ts:41` and the

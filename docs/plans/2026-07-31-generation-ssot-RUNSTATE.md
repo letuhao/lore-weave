@@ -801,6 +801,129 @@ AUDIT S7-2
   NEXT       — S7-4's real scope (`call_budget`'s JSON kinds), then S6.
 ```
 
+### ✅ POST-RUN REVIEW — the author-requested audit of S1/S2, and what it found
+
+The author stopped the run and asked for a quality review before continuing: *"nên đánh giá
+chất lượng của những gì chúng ta vừa làm trước khi tiếp tục — chạy goal dài thường có chất lượng
+không cao."* Reading the CODE rather than the audit blocks found three real defects, all in
+work this run had already recorded as done. The instinct was right.
+
+```
+AUDIT POST-RUN REVIEW
+  BUILT      — three fixes + one consolidation the fixes exposed:
+               1. HIGH · `chapter_scene_gate`'s unchecked clause gets a THIRD COALESCE arm.
+                  `COALESCE(guard_status, status) <> 'checked'` reads as fail-safe and is not:
+                  a result with NO `canon` key makes both arms NULL, `NULL <> 'checked'` is
+                  NULL, and FILTER does not count a NULL — so a scene nothing verified read as
+                  verified. S1 closed the enumerated-list version of this bug and left the
+                  missing-envelope version IN THE SAME QUERY, under a comment claiming
+                  fail-safe.
+               2. MED · `loreweave_guard` had ZERO production consumers for its core:
+                  `GuardReport` and `check_over` existed only in their own tests, while
+                  `guard_status` and `coverage` were hand-rolled restatements of `.status` and
+                  `.covered`. `check_over` now owns its one real call site; `ReflectResult`
+                  derives both from a `GuardReport`; and `verdict` (`resolved` AND
+                  something-checked) is a field rather than a conjunction each caller repeats
+                  — `CanonGatePanel` was restating it in TypeScript, where no Python test holds.
+               3. MED · `plan_status` got a PRODUCER. `resolve_cast_liveness` has taken the
+                  argument since S2 and nothing ever passed one, so the middle rung of a
+                  three-rung cascade was unreachable. `OutlineRepo.plan_liveness_after` asserts
+                  `alive` for any entity the plan places in a LATER scene of the chapter.
+               4. `canon_envelope()` — the `result.canon` projection existed in SIX
+                  hand-written copies, which is exactly why `guard_status` reached all six and
+                  `verdict` reached none. Plus `test_there_is_no_FIFTH_hand_built_canon_envelope`,
+                  which found two of the six the first sweep had missed.
+               Also: the FE read the LEGACY scalar. S1 added `guard_status` to the envelope and
+               to the gate SQL and left `CanonGatePanel` on `canon.status` — so a run whose
+               name-grounding degraded drew a green all-clear.
+
+  PROVEN     — composition full suite, on the final tree:
+                 `11 failed, 3789 passed, 8 skipped in 508.36s`
+               The 11 are pre-existing and were MEASURED at HEAD, not assumed: with the whole
+               change stashed (`git stash push -u -- services/composition-service`),
+               `tests/test_worker_jobs.py` gives `3 failed, 27 passed` — the same three. The
+               other 8 are the tracked `test_motif_retrieve_db` rows.
+               sdk: `996 passed, 9 skipped` · frontend composition: `1043 passed` (155 files)
+               · `tsc --noEmit` exit=0
+               targeted (publish-gate + plan-liveness + guard-report): `35 passed`
+               the gate's OWN teeth: `13 passed` (`scripts/test_generation_guard_gate.py`,
+               3 of them new — one per branch of the `via` hop, each asserting the REASON
+               rather than the exit code, because the first draft of one reddened on the
+               OTHER branch while claiming to test its own)
+               gates: `ai-provider-gate (full): OK` · `llm-budget-ssot-gate: PASS — 92 LLM call
+               site(s)` · `generation-guard-gate: PASS — 8 paths, 4 guarded, 4
+               tracked-unguarded` · `enforcement-claims-gate: OK — 91 path(s)` ·
+               `db-safety-gate: OK` · `[language-rule] PASS`
+
+               MEASURED ON THE REAL CORPUS (`loreweave_composition`, SELECT only), because the
+               finding was a claim about live data and not about a fixture:
+                 127 scenes with a latest completed job · 23 of them with NO canon envelope
+                 counted unchecked BEFORE: 93 · AFTER: 116
+               The sources are current, not historical: every completed `continue` (14/14) and
+               `plan_pass` (103/103) job carries no canon envelope, and so do 26 of 163
+               `draft_scene` rows.
+
+               LIVE, on a throwaway book, both images rebuilt and hash-verified against source:
+                 scene 1 (a later scene exists) — 378 words, `cast_liveness =
+                 {"32a33d57…": {"source": "plan", "status": "alive"}}`, `unresolved_refs=0`,
+                 `checks={"canon_cast":"checked","name_grounding":"checked"}`,
+                 `guard_status='checked'`, `verdict=True`
+                 scene 2 CONTROL (last scene, nothing after it) — 454 words,
+                 both cast ids `{"source":"none","status":"unknown"}`, `unresolved_refs=2`,
+                 `guard_status='no_rules'`
+                 persisted: `generation_job.result` reads `checked|true|{…"source":"plan"…}`
+                 for scene 1 and `no_rules||{…"source":"none"…}` for scene 2
+                 the gate on that chapter: `canon_unchecked_scenes: 1`
+               Same code, same book, different position → different answer. That is the control
+               that makes it a statement about the plan rung and not about the fixture.
+
+               EVERY new check proven RED-ABLE by injection, restored by re-editing (never
+               `git checkout`):
+                 · drop the third COALESCE arm → the two new gate tests fail `assert 0 == 1`,
+                   the control stays green
+                 · cut `plan_status=` out of the `resolve_cast_liveness` call → exactly the
+                   wiring test fails, `source: none` instead of `plan`
+                 · rename the emitted `"guard_status"` key → generation-guard-gate FAILs on all
+                   four guarded rows
+                 · remove every `canon_envelope(` call from `routers/engine.py` → "the hop is
+                   claimed, not taken"
+
+  NOT PROVEN — the plan rung's REACH is measured only as an upper bound. On the real corpus,
+               37 cast references across 20 scenes are ones the plan CAN now speak to; how many
+               of those the KG already answered is not measured, because that needs a live
+               knowledge snapshot per scene. The number is "what the layer can say", not "what
+               it adds".
+               `plan_liveness_after` is wired into TWO call sites (the scene worker and the
+               inline router) and deliberately NOT into the chapter-level paths, which have no
+               single scene position to be "after" — so chapter single-pass and stitch still
+               run a KG-only cascade and nothing says so in their envelope.
+               The plan layer only ever emits `alive`; a plan that has not been updated after
+               an author kills someone will keep asserting it, and the KG outranking it is the
+               only thing that saves that case.
+               And the acceptance test is STILL NOT CLOSED: this makes the cascade's middle rung
+               reachable, it does not make the guard COMPARE prose-death against plan-alive.
+               `scenes_covered` remains blind, and composition's two SSE paths remain unguarded.
+
+  DRIFT      — four, and two would have shipped:
+               1. I verified the composition-SERVICE image against source, concluded the plan
+                  rung was broken, and started writing it up — the job had run in the WORKER,
+                  which is a SEPARATE image I had not rebuilt. The live probe's first run was a
+                  measurement of stale code that I very nearly recorded as a code defect.
+               2. My own FE fix reintroduced the bug it fixed: `canon.verdict ?? canon.resolved`
+                  treats an explicit `null` — the server saying *nothing verified this* — as
+                  "absent" and falls back to `resolved`. The operator that reads as safe.
+                  Caught only because I wrote the `verdict: null` test before trusting it.
+               3. My first `via`-hop check in generation-guard-gate PASSED its own injection,
+                  twice: first because a substring test matched the property DEFINITION, then
+                  because an `or f"{field}=" in body` escape hatch matched a DOCSTRING. A gate
+                  that survives its own defect, inside the gate written to enforce that rule.
+               4. I counted the hand-built envelopes by eye and wrote "FOUR" into the docstring.
+                  The test I wrote in the same commit immediately found two more.
+
+  NEXT       — unchanged: S7-4's `call_budget` JSON kinds, then S6. The acceptance test needs
+               `scenes_covered` and a comparison step, neither of which this review touched.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -882,6 +1005,10 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **Verified ONE of two images and drew a conclusion about the path that ran in the other.** Rebuilt `composition-service`, hash-checked it, ran the live probe, saw the plan rung silent and began writing up a code defect. The job runs in `composition-worker` — a separate image, still stale. The measurement was of code I had not deployed. |
+| 2026-08-01 | **My fix for the null-swallowing bug swallowed a null.** `canon.verdict ?? canon.resolved` treats an explicit `null` — *nothing verified this* — as absent and falls back. `undefined` and `null` mean OPPOSITE things there. The `??` operator reads as the safe one, which is why it got through. |
+| 2026-08-01 | **Wrote a gate that passed its own injection — twice — inside the gate whose job is that rule.** The `via`-hop evidence check first matched the property DEFINITION, then matched a DOCSTRING through an `or field=` escape hatch I added for generality. Only the third version went red on the renamed key. |
+| 2026-08-01 | **Counted copies by eye and wrote the number into a docstring.** “SIX places” was first written as “FOUR”; the mechanical test written in the same commit found the other two immediately. The wrong count came from the same eyeballing that let the copies exist. |
 | 2026-08-01 | **Wrote a diagnosis into the handoff from ONE error message.** Told the next session "CI red = 33 failures, one root, `language`→`original_language`, a mechanical sweep". There were **three** roots — a fastapi 0.139 `app.routes` change across two services, a pip editable path resolving outside the checkout, and the rename — and the rename half needed a SEMANTIC rewrite because the identity key had changed too. I had read one traceback and generalised, which is the §1.4 mistake the red team already caught me making twice. |
 | 2026-08-01 | **Wrote “already done” instead of running the tests.** S7-2 rested on reading two call sites. The goal's own clause — *saying a check passed without pasting its output does NOT satisfy this* — is what sent me back for the four PASS lines. It caught the single claim in this run I had not measured. |
 | 2026-08-01 | **Nearly collapsed two decisions into one constant — the inverse of the bug I had fixed four commits earlier.** I almost let tilemap's runaway ceiling double as its sizing model. S7-1 was one decision written as two numbers that disagreed; this would have been two decisions written as one, so raising the ceiling would silently re-size every request. |

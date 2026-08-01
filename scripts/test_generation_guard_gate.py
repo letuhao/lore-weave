@@ -150,3 +150,62 @@ def test_an_unknown_language_reds(contract):
         "coverage_field": "guard_status"})
     contract(spec)
     assert _run() == 1
+
+
+# ── the `via` hop (2026-08-01) ────────────────────────────────────────────────────────────
+# Added when consolidating six hand-written canon envelopes into one builder made the gate
+# blind: the coverage field left the path's file while the behaviour was unchanged. Following
+# the hop is right; the risk is that "follow a hop" degenerates into "accept a claim", so both
+# halves get an injection.
+
+def test_a_via_hop_whose_EMITTER_does_not_emit_the_field_reds(contract, capsys):
+    """The first version of this check used a bare substring test and PASSED its own injection:
+    renaming the emitted `"guard_status"` key left `def guard_status` and four docstring
+    mentions behind. Only the quoted-KEY form is evidence.
+
+    The assertion is on the REASON, not on the exit code. The first draft of this test used a
+    `via` the path does not call, so it reddened on the OTHER branch while claiming to test
+    this one — green for a reason the name disowns, which is the failure this whole file exists
+    to catch. `packer/lenses.py` genuinely calls `render_carried_cast`, so the hop is TAKEN and
+    the only thing left to fail is the emitter."""
+    spec = _base()
+    spec["paths"].append({
+        "id": "fake.via_empty_emitter", "service": "x", "language": "python",
+        "file": "services/composition-service/app/packer/lenses.py",
+        "symbol": "gather_carried_cast", "status": "guarded",
+        "coverage_field": "guard_status",
+        "via": {"file": "services/composition-service/app/engine/exit_state.py",
+                "symbol": "render_carried_cast"}})
+    contract(spec)
+    assert _run() == 1
+    out = capsys.readouterr().out + capsys.readouterr().err
+    assert "does not EMIT" in out, out
+
+
+def test_a_via_hop_the_path_never_CALLS_reds(contract, capsys):
+    """The other half. A row may not borrow evidence from a builder it does not use."""
+    spec = _base()
+    spec["paths"].append({
+        "id": "fake.via_uncalled", "service": "x", "language": "python",
+        "file": "services/composition-service/app/engine/exit_state.py",
+        "symbol": "render_carried_cast", "status": "guarded",
+        "coverage_field": "guard_status",
+        "via": {"file": "services/composition-service/app/engine/canon_check.py",
+                "symbol": "canon_envelope"}})
+    contract(spec)
+    assert _run() == 1
+    out = capsys.readouterr().out
+    assert "never CALLS it" in out, out
+
+
+def test_a_via_hop_with_no_declaration_still_reds(contract):
+    """No implicit hops. A path whose file lacks the field and declares no `via` is exactly the
+    case the gate existed for before this feature, and it must not have become passable."""
+    spec = _base()
+    spec["paths"].append({
+        "id": "fake.no_via", "service": "x", "language": "python",
+        "file": "services/composition-service/app/engine/exit_state.py",
+        "symbol": "render_carried_cast", "status": "guarded",
+        "coverage_field": "guard_status"})
+    contract(spec)
+    assert _run() == 1

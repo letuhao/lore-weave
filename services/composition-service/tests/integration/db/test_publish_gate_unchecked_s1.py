@@ -41,6 +41,28 @@ async def pool():
         await p.close()
 
 
+async def _scene_with_result(
+    pool, repo, project, user, book, chapter, result: dict, operation: str = "draft_scene",
+) -> uuid.UUID:
+    """Like `_scene_with_canon` but writes the WHOLE result, so a test can express the shape
+    that has no `canon` key at all — which `_scene_with_canon` cannot, because it always wraps
+    its argument in one. That gap in the helper is why the missing-envelope hole survived S1:
+    every test could only describe results that HAVE a canon envelope."""
+    node = await repo.create_node(project, created_by=user, kind="scene",
+                                  chapter_id=chapter, status="done")
+    async with pool.acquire() as c:
+        await c.execute(
+            """
+            INSERT INTO generation_job
+              (project_id, book_id, created_by, operation, outline_node_id, mode, status,
+               input, result)
+            VALUES ($1,$2,$3,$6,$4,'auto','completed','{}'::jsonb,$5::jsonb)
+            """,
+            project, book, user, node.id, json.dumps(result), operation,
+        )
+    return node.id
+
+
 async def _scene_with_canon(pool, repo, project, user, book, chapter, canon: dict) -> uuid.UUID:
     """A DONE scene plus the completed generation job whose `result.canon` the gate reads.
 
@@ -129,3 +151,72 @@ async def test_a_status_NOBODY_enumerated_is_counted_as_unchecked(pool):
 
     gate = await repo.chapter_scene_gate(project, chapter)
     assert gate["canon_unchecked_scenes"] == 1
+
+
+async def test_a_result_with_NO_canon_envelope_AT_ALL_counts_as_unchecked(pool):
+    """The hole S1 left in its own fix, found by re-reading the SQL rather than the audit block.
+
+    `COALESCE(guard_status, status) <> 'checked'` reads as fail-safe and is not: with no `canon`
+    key, both arms are NULL, the predicate evaluates to NULL, and `FILTER` does not count a
+    NULL — so a scene nothing verified reported as verified. Exactly the bug class S1 exists to
+    kill, one level up from where S1 killed it.
+    """
+    repo = OutlineRepo(pool)
+    user, project, book, chapter = (uuid.uuid4() for _ in range(4))
+    await WorksRepo(pool).create(user, project, book)
+    await _scene_with_result(pool, repo, project, user, book, chapter,
+                             {"beats": [], "word_count": 812})
+
+    gate = await repo.chapter_scene_gate(project, chapter)
+    assert gate["canon_unchecked_scenes"] == 1
+
+
+async def test_a_continue_job_shadowing_a_checked_draft_counts_as_unchecked(pool):
+    """The live shape, not a synthetic one. Measured on the dev corpus 2026-08-01: every
+    completed `continue` job (14/14) and every `plan_pass` (103/103) carries no canon envelope.
+    Because the gate takes the LATEST completed non-synthetic job per node, a `continue` run
+    after a clean draft becomes the row the gate reads — and under the two-arm COALESCE it
+    turned a checked scene into a silently-checked one.
+
+    Only `promoted_scene_prose` is excluded from `latest`; `continue` is not, by design (it
+    rewrites prose, so an earlier canon verdict no longer describes the text on the page).
+    """
+    repo = OutlineRepo(pool)
+    user, project, book, chapter = (uuid.uuid4() for _ in range(4))
+    await WorksRepo(pool).create(user, project, book)
+    node = await _scene_with_canon(pool, repo, project, user, book, chapter, {
+        "status": "checked", "guard_status": "checked", "resolved": True, "violations": [],
+    })
+    async with pool.acquire() as c:
+        await c.execute(
+            """
+            INSERT INTO generation_job
+              (project_id, book_id, created_by, operation, outline_node_id, mode, status,
+               input, result, created_at)
+            VALUES ($1,$2,$3,'continue',$4,'auto','completed','{}'::jsonb,
+                    '{"text_len": 4096}'::jsonb, now() + interval '1 minute')
+            """,
+            project, book, user, node,
+        )
+
+    gate = await repo.chapter_scene_gate(project, chapter)
+    assert gate["canon_unchecked_scenes"] == 1
+
+
+async def test_CONTROL_the_sentinel_does_not_count_a_checked_row_twice(pool):
+    """The counterweight to the two tests above: the third COALESCE arm must change the answer
+    ONLY for rows that have no envelope. A sentinel that leaked into the checked path would
+    make every chapter permanently amber, which is the failure mode that trains an author to
+    stop reading the banner."""
+    repo = OutlineRepo(pool)
+    user, project, book, chapter = (uuid.uuid4() for _ in range(4))
+    await WorksRepo(pool).create(user, project, book)
+    for _ in range(3):
+        await _scene_with_canon(pool, repo, project, user, book, chapter, {
+            "status": "checked", "guard_status": "checked",
+            "resolved": True, "violations": [], "coverage": ["canon_cast"],
+        })
+
+    gate = await repo.chapter_scene_gate(project, chapter)
+    assert gate["canon_unchecked_scenes"] == 0
+    assert gate["can_publish"] is True

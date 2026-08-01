@@ -119,12 +119,12 @@ class _Knowledge:
         return self._snap
 
 
-async def _reflect(cast, snapshot):
+async def _reflect(cast, snapshot, plan=None):
     from app.engine.canon_reflect import run_canon_reflect
     import uuid as _u
     return await run_canon_reflect(
         knowledge=_Knowledge(snapshot), llm=None, user_id=_u.uuid4(), project_id=_u.uuid4(),
-        cast_glossary_ids=list(cast), scene_sort_order=1,
+        cast_glossary_ids=list(cast), scene_sort_order=1, plan_status=plan,
         draft="They met at the gate.", packed_prompt="",
         profile=type("P", (), {"source_language": "en"})(),
         drafter_source="s", drafter_ref="m", judge_source=None, judge_ref=None,
@@ -175,3 +175,101 @@ async def test_an_OUTAGE_is_degraded_and_outranks_the_no_rules_reading():
     _t, r, _ = await _reflect(["elara"], None)
     assert r.checks["canon_cast"] == CheckStatus.DEGRADED
     assert r.unresolved_refs == 1, "and the count is still honest about what it could not resolve"
+
+
+# ══ the PLAN rung — built in S2, and nothing passed one until this review ═════════════════
+
+@pytest.mark.asyncio
+async def test_the_plan_rung_REACHES_the_cascade():
+    """The wiring, not the SDK. `resolve_cast_liveness` has taken `plan_status` since S2 and
+    every production call site passed the snapshot alone, so the middle rung was unreachable —
+    a parameter with tests and no caller. This asserts the value survives the engine boundary,
+    which is the only part the SDK's own tests cannot see."""
+    _t, r, _ = await _reflect(
+        ["dao"], {"entities": [{"entity_id": "someone_else", "status": "alive"}]},
+        plan={"dao": "alive"})
+    assert r.cast_liveness["dao"] == {"status": "alive", "source": "plan"}
+    assert r.unresolved_refs == 0
+    assert r.checks["canon_cast"] == CheckStatus.CHECKED
+
+
+@pytest.mark.asyncio
+async def test_CONTROL_the_SAME_call_without_a_plan_falls_through_to_none():
+    """The counterweight, and the thing that makes the assertion above about the PLAN rather
+    than about the fixture: identical cast, identical snapshot, no plan ⇒ unresolved."""
+    _t, r, _ = await _reflect(
+        ["dao"], {"entities": [{"entity_id": "someone_else", "status": "alive"}]})
+    assert r.cast_liveness["dao"] == {"status": "unknown", "source": "none"}
+    assert r.unresolved_refs == 1
+
+
+@pytest.mark.asyncio
+async def test_the_graph_still_OUTRANKS_the_plan():
+    """The cascade stops at the first layer with an opinion, and the plan is the weaker one.
+    A plan that could overwrite the graph would let an outline the author has not updated
+    resurrect a character the story killed."""
+    _t, r, _ = await _reflect(
+        ["dao"], {"entities": [{"entity_id": "dao", "status": "gone"}]}, plan={"dao": "alive"})
+    assert r.cast_liveness["dao"] == {"status": "gone", "source": "kg"}
+
+
+# ══ `verdict` — the conjunction the FE was restating by hand ══════════════════════════════
+
+def test_verdict_is_None_when_nothing_checked_even_though_resolved_is_True():
+    """The original false-green, in one field. `resolved=True` is what the no-cast early return
+    ships; `verdict` refuses to call that a pass."""
+    r = _R(status="skipped_no_cast", resolved=True,
+           checks={"canon_cast": CheckStatus.NO_SUBJECT})
+    assert r.resolved is True, "the legacy field keeps its meaning — SQL depends on it"
+    assert r.verdict is None
+
+
+def test_CONTROL_verdict_is_True_on_a_scene_that_really_did_pass():
+    r = _R(status="checked", resolved=True,
+           checks={"canon_cast": CheckStatus.CHECKED, "name_grounding": CheckStatus.CHECKED})
+    assert r.verdict is True
+
+
+def test_verdict_is_False_when_a_real_check_found_a_real_contradiction():
+    r = _R(status="checked", resolved=False,
+           checks={"canon_cast": CheckStatus.CHECKED, "name_grounding": CheckStatus.CHECKED})
+    assert r.verdict is False
+
+
+def test_the_envelope_the_FE_actually_receives_carries_verdict():
+    """The gap the LIVE run found, which every unit test above missed.
+
+    `result.canon` is NOT `model_dump()` — it is a hand-written projection. It existed in FOUR
+    copies (three in `worker/operations.py`, one in `routers/engine.py`), so S1's `guard_status`
+    was added to all four and `verdict`, added minutes later, reached none. The live probe
+    printed `guard_status='checked'` beside an EMPTY verdict while `CanonGatePanel` had already
+    been switched to read it. Adding a field to a model does not put it on the wire."""
+    from app.engine.canon_check import canon_envelope
+
+    env = canon_envelope(_R(status="skipped_no_cast", resolved=True,
+                            checks={"canon_cast": CheckStatus.NO_SUBJECT}))
+    assert env["verdict"] is None and env["resolved"] is True
+    assert env["guard_status"] == "no_subject"
+    assert "text" not in env, "the draft does not belong in a verdict envelope"
+
+
+def test_there_is_no_FIFTH_hand_built_canon_envelope():
+    """A field that four copies must remember is a field the fifth copy will forget. This is
+    the mechanical guard, not a comment asking nicely: any re-inlined projection reds here."""
+    import pathlib
+    root = pathlib.Path(__file__).resolve().parents[2] / "app"
+    offenders = [
+        str(p.relative_to(root)) for p in root.rglob("*.py")
+        if "[v.model_dump() for v in reflect.violations]" in p.read_text(encoding="utf-8")
+        and p.name != "canon_check.py"
+    ]
+    assert offenders == [], f"canon envelope re-inlined in {offenders}; call canon_envelope()"
+
+
+def test_verdict_SERIALISES_because_the_FE_reads_it_off_the_wire():
+    """`CanonGatePanel` gates its green all-clear on this. A computed field invisible to
+    `model_dump` would leave the panel falling back to `resolved` forever — which is the hand
+    -rolled conjunction this replaces."""
+    d = _R(status="skipped_no_cast", resolved=True,
+           checks={"canon_cast": CheckStatus.NO_SUBJECT}).model_dump()
+    assert d["verdict"] is None and d["resolved"] is True

@@ -41,6 +41,12 @@ paths:
     symbol: run_generate
     status: guarded
     coverage_field: guard_status
+    # Emitted through the shared builder, not inline: the canon envelope lived in SIX
+    # hand-written copies until 2026-08-01, which is how `guard_status` reached all six
+    # and `verdict` reached none. The gate follows exactly this one declared hop.
+    via:
+      file: services/composition-service/app/engine/canon_check.py
+      symbol: canon_envelope
     note: >-
       The live path (COMPOSITION_WORKER_ENABLED=true in the shipped compose). Emits
       canon.checks + canon.guard_status, cross_scene.status/earlier_source, and
@@ -53,6 +59,12 @@ paths:
     symbol: generate
     status: guarded
     coverage_field: guard_status
+    # Emitted through the shared builder, not inline: the canon envelope lived in SIX
+    # hand-written copies until 2026-08-01, which is how `guard_status` reached all six
+    # and `verdict` reached none. The gate follows exactly this one declared hop.
+    via:
+      file: services/composition-service/app/engine/canon_check.py
+      symbol: canon_envelope
     note: >-
       The fallback branch (worker flag off). Carries the canon block and the exit-state record;
       it does NOT run the cross-scene check — tracked below as a separate gap, because a guard
@@ -88,6 +100,12 @@ paths:
     symbol: run_chapter_generate
     status: guarded
     coverage_field: guard_status
+    # Emitted through the shared builder, not inline: the canon envelope lived in SIX
+    # hand-written copies until 2026-08-01, which is how `guard_status` reached all six
+    # and `verdict` reached none. The gate follows exactly this one declared hop.
+    via:
+      file: services/composition-service/app/engine/canon_check.py
+      symbol: canon_envelope
     note: >-
       Chapter-scoped, so there is no per-scene outline node: exit_state_record reports
       `no_node` rather than looking like a scene that recorded nothing.
@@ -99,6 +117,12 @@ paths:
     symbol: run_stitch
     status: guarded
     coverage_field: guard_status
+    # Emitted through the shared builder, not inline: the canon envelope lived in SIX
+    # hand-written copies until 2026-08-01, which is how `guard_status` reached all six
+    # and `verdict` reached none. The gate follows exactly this one declared hop.
+    via:
+      file: services/composition-service/app/engine/canon_check.py
+      symbol: canon_envelope
 
   # ── glossary · wiki (Go) ─────────────────────────────────────────────────────────────────
   - id: glossary.wiki.kg_drift_sweep

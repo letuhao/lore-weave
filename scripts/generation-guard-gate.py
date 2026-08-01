@@ -78,6 +78,23 @@ def _candidates(lang: str) -> set[pathlib.Path]:
     return out
 
 
+def _emits_key(body: str, field: str) -> bool:
+    """Is `field` written as an emitted KEY, not merely mentioned?
+
+    A bare substring test is what let the first version of the `via` hop pass its own injection:
+    renaming the emitted key `"guard_status"` to `"gs_TEMP"` left the *property definition*
+    `def guard_status` and four docstring mentions behind, and the gate stayed green. A gate
+    that survives its own defect is not a gate — invariant 5 of this run, hit by the code
+    enforcing it.
+
+    The second version was still too loose: an `or f"{field}=" in body` escape hatch, meant to
+    admit a kwargs-style emission, matched `guard_status='checked'` inside a DOCSTRING and kept
+    the gate green through the same injection. Only the quoted-key form counts. If a future
+    non-Python path emits differently, add that form here WITH an injection that proves it.
+    """
+    return any(q + field + q + ":" in body for q in ('"', "'"))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--verbose", action="store_true")
@@ -115,9 +132,30 @@ def main() -> int:
             if not field:
                 findings.append(f"{rid}: claims `guarded` with no coverage_field")
             elif field not in body:
-                findings.append(
-                    f"{rid}: claims `guarded` but {field!r} is never emitted in "
-                    f"{row.get('file')} — the claim has no evidence")
+                # ONE hop, and only when the row declares it. A path may emit its coverage
+                # field through a shared builder rather than inline — composition's canon
+                # envelope was hand-written in SIX copies until 2026-08-01, and consolidating
+                # them made this gate blind while the behaviour was unchanged. Following the
+                # hop is right; following it IMPLICITLY is not, so the row must name the
+                # emitter and BOTH halves are still checked mechanically: the path must call
+                # it, and the emitter must actually contain the field.
+                via = row.get("via") or {}
+                via_file, via_symbol = str(via.get("file") or ""), str(via.get("symbol") or "")
+                via_path = ROOT / via_file if via_file else None
+                if not via_symbol or via_path is None or not via_path.is_file():
+                    findings.append(
+                        f"{rid}: claims `guarded` but {field!r} is never emitted in "
+                        f"{row.get('file')} — the claim has no evidence")
+                elif f"{via_symbol}(" not in body:
+                    findings.append(
+                        f"{rid}: declares via {via_symbol!r} but {row.get('file')} never "
+                        f"CALLS it — the hop is claimed, not taken")
+                elif not _emits_key(
+                    via_path.read_text(encoding="utf-8", errors="ignore"), field
+                ):
+                    findings.append(
+                        f"{rid}: hops to {via_symbol!r} in {via_file}, which does not EMIT "
+                        f"{field!r} as a key — the evidence was only moved, not produced")
         elif status == "unguarded":
             unguarded += 1
             if not row.get("owner"):

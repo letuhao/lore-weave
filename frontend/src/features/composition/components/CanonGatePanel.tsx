@@ -23,16 +23,31 @@ function violationLabel(v: CanonViolation): string {
 
 export function CanonGatePanel({ canon, onRevise }: Props) {
   const { t } = useTranslation('composition');
-  const checked = canon.status === 'checked';
+  // S1 — prefer the DERIVED headline over the legacy scalar. `status` describes the gone-cast
+  // check only while wearing the guard's name, so a run whose name-grounding degraded reported
+  // 'checked' here and this panel drew a green all-clear over it. `guard_status` is the worst
+  // status across every check the guard ran; `?? status` keeps pre-S1 rows readable.
+  const checked = (canon.guard_status ?? canon.status) === 'checked';
   // Defensive: the backend excludes judge-cleared (confirmed===false), but never
   // trust the wire — only true=HARD, null/undefined=ADVISORY are shown.
   const hard = checked ? canon.violations.filter((v) => v.confirmed === true) : [];
   const advisory = checked ? canon.violations.filter((v) => v.confirmed !== true && v.confirmed !== false) : [];
-  // Gate the green "clear" line on the AUTHORITATIVE `resolved` field, not just an
-  // empty filtered list — the whole canon arc is "no silent false-green". If the
-  // backend ever reports resolved=false without an individual hard row, we must
-  // NOT show green (the panel renders empty rather than a false all-clear).
-  const clear = checked && canon.resolved && hard.length === 0 && advisory.length === 0;
+  // Gate the green "clear" line on the AUTHORITATIVE verdict, not just an empty filtered
+  // list — the whole canon arc is "no silent false-green". If the backend ever reports a
+  // failed verdict without an individual hard row, we must NOT show green (the panel renders
+  // empty rather than a false all-clear).
+  //
+  // `verdict` IS `resolved && something-was-checked`, computed server-side by
+  // `loreweave_guard.GuardReport`. This line used to restate that conjunction by hand, which
+  // put a rule with Python tests into TypeScript where none of them apply. `?? resolved` is
+  // the pre-S1 fallback, and it is still ANDed with `checked` above.
+  // `=== undefined`, NOT `??`. The two nullish values mean OPPOSITE things here: `undefined`
+  // is a pre-S1 row that never carried the field (fall back), while `null` is the server
+  // saying *nothing verified this* (must not fall back). `??` collapses them, and the first
+  // version of this line did exactly that — a green all-clear on an unverified scene, which
+  // is the bug the field was added to close, reintroduced by the operator that reads as safe.
+  const verdict = canon.verdict === undefined ? canon.resolved : canon.verdict;
+  const clear = checked && verdict === true && hard.length === 0 && advisory.length === 0;
 
   const uncheckedReason =
     canon.status === 'skipped_no_cast'

@@ -26,7 +26,7 @@ from app.engine.canon_check import (
     scene_at_order,
 )
 from loreweave_canon_check import resolve_cast_liveness, unresolved_cast_refs
-from loreweave_guard import CheckStatus
+from loreweave_guard import CheckStatus, GuardReport, check_over
 from loreweave_llm import ReasoningDirective
 
 from app.engine.cowrite import build_revise_messages, revise_draft
@@ -40,6 +40,11 @@ async def run_canon_reflect(
     knowledge, llm,
     user_id: UUID, project_id: UUID,
     cast_glossary_ids: list[str], scene_sort_order: int | None,
+    # The PLAN layer of the liveness cascade, produced by the caller (which owns the repo) —
+    # `OutlineRepo.plan_liveness_after`. Optional because the chapter-level paths have no single
+    # scene position to be "after", and a caller that cannot answer must pass nothing rather
+    # than a guess. Absent ⇒ the cascade is KG-only, which is what it was before this review.
+    plan_status: dict[str, str] | None = None,
     draft: str, packed_prompt: str, profile: Any,
     drafter_source: str, drafter_ref: str,
     judge_source: str | None, judge_ref: str | None,
@@ -79,8 +84,21 @@ async def run_canon_reflect(
         return CheckStatus.NO_RULES
 
     name_status = _name_check(audit)
-    # Legacy `coverage` is the CHECKED subset — one source of truth, two shapes.
-    name_cov = ["name_grounding"] if name_status is CheckStatus.CHECKED else []
+
+    def _early(status: str, cast: CheckStatus) -> "ReflectResult":
+        """The two early returns, built from ONE checks dict.
+
+        `coverage` used to be spelled `["name_grounding"] if name_status is CHECKED else []`
+        here — a third hand-rolled restatement of `GuardReport.covered`, correct today only
+        because `canon_cast` happens never to be CHECKED on these branches. Correct-by-branch
+        is how the six copies of the canon envelope stayed consistent right up until the run
+        that added a field to five of them.
+        """
+        checks = {"canon_cast": cast, "name_grounding": name_status}
+        return ReflectResult(
+            text=draft, resolved=True, status=status,
+            coverage=GuardReport(checks=checks).covered, checks=checks, **name_fields)
+
     if audit.near_misses:
         logger.info("draft uses %d name(s) close to but not matching a known one: %s",
                     len(audit.near_misses),
@@ -91,17 +109,11 @@ async def run_canon_reflect(
     if not cast_glossary_ids:
         # No entity could be contradicted — but that is NOT "nothing to check", which is what
         # this branch used to assume on its way to returning a green.
-        return draft, ReflectResult(
-            text=draft, resolved=True, status="skipped_no_cast", coverage=name_cov,
-            checks={"canon_cast": CheckStatus.NO_SUBJECT, "name_grounding": name_status},
-            **name_fields), 0
+        return draft, _early("skipped_no_cast", CheckStatus.NO_SUBJECT), 0
     at_order = scene_at_order(scene_sort_order)
     if at_order is None:
         # Has a cast but no resolved reading position → could NOT verify.
-        return draft, ReflectResult(
-            text=draft, resolved=True, status="skipped_no_position", coverage=name_cov,
-            checks={"canon_cast": CheckStatus.NO_POSITION, "name_grounding": name_status},
-            **name_fields), 0
+        return draft, _early("skipped_no_position", CheckStatus.NO_POSITION), 0
 
     snapshot = await knowledge.fact_for_check(
         project_id=project_id, at_order=at_order,
@@ -172,21 +184,22 @@ async def run_canon_reflect(
     # snapshot that happens to carry no status row for any of this scene's cast is an EMPTY
     # CORPUS for this check, not a pass: there was nothing to check against. That is NO_RULES,
     # computed on the corpus and not on the matched subset.
-    result.cast_liveness = resolve_cast_liveness(cast_glossary_ids, snapshot)
+    result.cast_liveness = resolve_cast_liveness(
+        cast_glossary_ids, snapshot, plan_status=plan_status)
     unresolved = unresolved_cast_refs(result.cast_liveness)
     result.unresolved_refs = len(unresolved)
-    if degraded:
-        cast_status = CheckStatus.DEGRADED
-    elif result.cast_liveness and len(unresolved) == len(result.cast_liveness):
-        cast_status = CheckStatus.NO_RULES
-    else:
-        cast_status = CheckStatus.CHECKED
+    #
+    # The corpus for this check is the cast SOME layer could speak to; `unresolved` is exactly
+    # the part no layer could. `check_over` owns the "empty corpus ⇒ NO_RULES, outage ⇒
+    # DEGRADED" branch. It is called here rather than restated because it had NO production
+    # call site at all until this review — the branch above it was a hand-rolled copy, and a
+    # rule with one implementation and one copy has two implementations.
     result.checks = {
-        "canon_cast": cast_status,
+        "canon_cast": check_over(
+            len(result.cast_liveness) - len(unresolved), degraded=degraded),
         "name_grounding": _name_check(final_audit),
     }
-    result.coverage = sorted(
-        k for k, v in result.checks.items() if v is CheckStatus.CHECKED)
+    result.coverage = GuardReport(checks=result.checks).covered
     if result.iterations:
         logger.info(
             "A2-S3b canon reflect: project=%s iters=%d resolved=%s remaining=%d",

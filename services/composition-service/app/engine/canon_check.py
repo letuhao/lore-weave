@@ -29,7 +29,7 @@ from typing import Any, Awaitable, Callable
 
 from pydantic import BaseModel, Field, computed_field
 
-from loreweave_guard import CheckStatus, worst
+from loreweave_guard import GuardReport
 
 from loreweave_canon_check import (
     CanonCandidateBase,
@@ -51,6 +51,7 @@ __all__ = [
     "judge_canon",
     "check_canon",
     "ReflectResult",
+    "canon_envelope",
     "reflect_revise",
 ]
 
@@ -256,7 +257,7 @@ class ReflectResult(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def guard_status(self) -> str:
-        """S1 — the HONEST headline, derived from `checks` by `loreweave_guard.worst`.
+        """S1 — the HONEST headline, derived from `checks` by `loreweave_guard.GuardReport`.
 
         Distinct from `status`, and it has to be: `status` is one check's verdict wearing the
         guard's name. The measured consequence was `status="skipped_no_cast"` counting as a
@@ -268,7 +269,83 @@ class ReflectResult(BaseModel):
         SQL reads it back. A plain `@property` would be invisible to `model_dump`, which is
         how a derived field becomes a field that exists only in Python.
         """
-        return str(worst(self.checks.values())) if self.checks else str(CheckStatus.NOT_APPLICABLE)
+        return str(self._report().status)
+
+    def _report(self) -> GuardReport:
+        """The S1 primitive, built once per read.
+
+        Review finding, 2026-08-01: `loreweave_guard` was imported for its ENUM and its ranking
+        function while `GuardReport` itself — the shape the whole package argues for — had zero
+        production consumers, and `guard_status` / `coverage` were two hand-rolled restatements
+        of `.status` / `.covered`. A primitive that exists only in its own tests is the same
+        defect this file's S6 note names in the critic setting; it took a second reading to see
+        it here. `raw_verdict` is `resolved`, which is what makes `verdict` below answerable.
+        """
+        return GuardReport(checks=dict(self.checks), raw_verdict=self.resolved)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def verdict(self) -> bool | None:
+        """`resolved`, but ONLY if something actually verified it — else None.
+
+        `resolved` alone cannot carry this: it ships `True` on the `skipped_no_cast` early
+        return, where nothing ran. Every consumer therefore has to remember to AND it with a
+        status check, and `CanonGatePanel` was doing exactly that by hand in TypeScript
+        (`checked && canon.resolved && …`) — the rule restated in a second language, where no
+        Python test can hold it. This is that conjunction, computed once, on the side that has
+        the tests.
+
+        `resolved` stays untouched and keeps its legacy meaning: it is persisted and matched by
+        SQL in `chapter_scene_gate`, and the gate deliberately blocks on a contradiction found
+        during a DEGRADED run — a "did we find something" question, which is not the "did we
+        pass" question this field answers.
+        """
+        return self._report().verdict
+
+
+def canon_envelope(reflect: "ReflectResult") -> dict[str, Any]:
+    """The `result.canon` block, built ONCE.
+
+    Review finding, 2026-08-01: this dict was hand-written in SIX places — three in
+    `worker/operations.py`, three in `routers/engine.py` — with identical keys and identical
+    comments. The measured consequence is precise: S1's `guard_status` was added to all six,
+    and the `verdict` field added minutes earlier reached NONE of them, so a live run showed
+    `guard_status='checked'` beside an EMPTY verdict while `CanonGatePanel` had already been
+    changed to read it.
+
+    SIX, not four: the first sweep found four, and `test_there_is_no_FIFTH_hand_built_canon_
+    envelope` immediately red-flagged two more that the pattern had missed. Counting copies by
+    eye is how the count was wrong in the first place — hence the test, which is the real fix.
+
+    Deliberately NOT `reflect.model_dump()`: `text` is the draft (it does not belong in a
+    verdict envelope) and `revise_finish_reason` is ORed into the job's own `truncated` flag by
+    the caller rather than nested here. The projection is the point — but it is one projection.
+    """
+    return {
+        "violations": [v.model_dump() for v in reflect.violations],
+        "resolved": reflect.resolved,
+        # S1 — `resolved` AND something-actually-checked. The FE's green all-clear keys on this
+        # so the rule lives on the side that has tests for it.
+        "verdict": reflect.verdict,
+        "iterations": reflect.iterations,
+        # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHAT RAN, and what it saw. `status` alone read
+        # green on a book with no bound cast; the whole 8,116-word chapter that exposed this was
+        # generated with `coverage` empty and nobody able to tell.
+        "coverage": reflect.coverage,
+        # S1 — the per-check block + its derived headline. Both ride the envelope:
+        # `chapter_scene_gate` reads `guard_status` back out of `generation_job.result`.
+        "checks": reflect.checks,
+        "guard_status": reflect.guard_status,
+        # S2 — the per-entity cast resolution + the count no layer could speak to.
+        # `unresolved_cast_reference` in the eval was BLIND on this field.
+        "cast_liveness": reflect.cast_liveness,
+        "unresolved_refs": reflect.unresolved_refs,
+        "unanchored_names": reflect.unanchored_names,
+        "name_near_misses": reflect.name_near_misses,
+        "name_check_method": reflect.name_check_method,
+        # LEGACY scalar, kept verbatim: it is persisted and matched by SQL.
+        "status": reflect.status,
+    }
 
 
 async def reflect_revise(

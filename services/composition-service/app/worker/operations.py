@@ -256,6 +256,7 @@ async def run_stitch(
     config) into ``input``; drafts + profile are re-read from the DB here."""
     from app.db.repositories.generation_jobs import GenerationJobsRepo
     from app.db.repositories.works import WorksRepo
+    from app.engine.canon_check import canon_envelope
     from app.engine.canon_reflect import run_canon_reflect
     from app.engine.stitch import prepend_scene_headings, stitch_chapter
     from app.packer.profile import from_settings
@@ -310,25 +311,7 @@ async def run_stitch(
             max_iters=int(input.get("reflect_max_iters", 1) or 1),
             reasoning=reasoning, cancel_check=cancel_check,
         )
-        canon_v = {"violations": [v.model_dump() for v in reflect.violations],
-                   "resolved": reflect.resolved, "iterations": reflect.iterations,
-                   # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHAT RAN, and what it saw. `status`
-                   # alone read green on a book with no bound cast; the whole 8,116-word chapter
-                   # that exposed this was generated with `coverage` empty and nobody able to tell.
-                   "coverage": reflect.coverage,
-                   # S1 — the per-check block + its derived headline. Both
-                   # ride the envelope: `chapter_scene_gate` reads
-                   # `guard_status` back out of `generation_job.result`.
-                   "checks": reflect.checks,
-                   "guard_status": reflect.guard_status,
-                   # S2 — the per-entity cast resolution + the count no layer could speak
-                   # to. `unresolved_cast_reference` in the eval was BLIND on this field.
-                   "cast_liveness": reflect.cast_liveness,
-                   "unresolved_refs": reflect.unresolved_refs,
-                   "unanchored_names": reflect.unanchored_names,
-                   "name_near_misses": reflect.name_near_misses,
-                   "name_check_method": reflect.name_check_method,
-                   "status": reflect.status}
+        canon_v = canon_envelope(reflect)
         revise_finish = reflect.revise_finish_reason
     except Exception:  # noqa: BLE001 — canon reflect is advisory, never blocks
         logger.warning("stitch canon reflect failed (advisory) — keeping stitched draft", exc_info=True)
@@ -357,6 +340,7 @@ async def run_generate(
     can't stream)."""
     from app.db.repositories.works import WorksRepo
     from app.engine.adaptive_k import adaptive_k
+    from app.engine.canon_check import canon_envelope
     from app.engine.canon_reflect import run_canon_reflect
     from app.engine.select import select_scene
     from app.packer.profile import from_settings
@@ -416,10 +400,26 @@ async def run_generate(
                              "status": "degraded"}
     revise_out_tokens = 0
     revise_finish: str | None = None
+    # The PLAN layer of the liveness cascade. Degrade-safe on purpose: a repo failure here
+    # must thin the cascade back to KG-only, never fail a draft the user has already paid for
+    # — the same F1 rule the exit-state write-back follows.
+    plan_status: dict[str, str] = {}
+    try:
+        _pch, _pso = input.get("chapter_id"), input.get("story_order")
+        if _pch and _pso is not None:
+            # Imported here, not reused from the alias 50 lines below: that one is bound
+            # AFTER this point in the function body, so referencing it would be a NameError
+            # on the first real run and green in every test that never reaches this branch.
+            from app.db.repositories.outline import OutlineRepo as _OutlineForPlan
+            plan_status = await _OutlineForPlan(pool).plan_liveness_after(
+                UUID(project_id), UUID(str(_pch)), int(_pso))
+    except Exception:  # noqa: BLE001
+        logger.warning("plan liveness lookup failed (cascade falls back to KG)", exc_info=True)
     try:
         final_text, reflect, revise_out_tokens = await run_canon_reflect(
             knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
             cast_glossary_ids=cast_glossary_ids, scene_sort_order=input.get("scene_sort_order"),
+            plan_status=plan_status,
             draft=w.text, packed_prompt=packed_prompt, profile=profile,
             drafter_source=model_source, drafter_ref=model_ref,
             judge_source=critic_source, judge_ref=critic_ref,
@@ -427,25 +427,7 @@ async def run_generate(
             max_iters=int(input.get("reflect_max_iters", 1) or 1),
             reasoning=reasoning, cancel_check=cancel_check,
         )
-        canon = {"violations": [v.model_dump() for v in reflect.violations],
-                 "resolved": reflect.resolved, "iterations": reflect.iterations,
-                 # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHAT RAN, and what it saw. `status`
-                 # alone read green on a book with no bound cast; the whole 8,116-word chapter
-                 # that exposed this was generated with `coverage` empty and nobody able to tell.
-                 "coverage": reflect.coverage,
-                   # S1 — the per-check block + its derived headline. Both
-                   # ride the envelope: `chapter_scene_gate` reads
-                   # `guard_status` back out of `generation_job.result`.
-                   "checks": reflect.checks,
-                   "guard_status": reflect.guard_status,
-                   # S2 — the per-entity cast resolution + the count no layer could speak
-                   # to. `unresolved_cast_reference` in the eval was BLIND on this field.
-                   "cast_liveness": reflect.cast_liveness,
-                   "unresolved_refs": reflect.unresolved_refs,
-                 "unanchored_names": reflect.unanchored_names,
-                 "name_near_misses": reflect.name_near_misses,
-                 "name_check_method": reflect.name_check_method,
-                 "status": reflect.status}
+        canon = canon_envelope(reflect)
         revise_finish = reflect.revise_finish_reason
     except Exception:  # noqa: BLE001 — canon reflect must NEVER fail the generate (F1).
         logger.warning("generate canon reflect failed (advisory) — keeping winner", exc_info=True)
@@ -609,6 +591,7 @@ async def run_chapter_generate(
     bearer. The endpoint already resolved chapter_sort/scenes/pack into ``input``."""
     from app.db.repositories.narrative_thread import NarrativeThreadRepo
     from app.db.repositories.works import WorksRepo
+    from app.engine.canon_check import canon_envelope
     from app.engine.canon_reflect import run_canon_reflect
     from app.engine.select import diverge
     from app.packer.profile import from_settings
@@ -662,25 +645,7 @@ async def run_chapter_generate(
             max_iters=int(input.get("reflect_max_iters", 1) or 1),
             reasoning=reasoning, cancel_check=cancel_check,
         )
-        canon_v = {"violations": [v.model_dump() for v in reflect.violations],
-                   "resolved": reflect.resolved, "iterations": reflect.iterations,
-                   # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHAT RAN, and what it saw. `status`
-                   # alone read green on a book with no bound cast; the whole 8,116-word chapter
-                   # that exposed this was generated with `coverage` empty and nobody able to tell.
-                   "coverage": reflect.coverage,
-                   # S1 — the per-check block + its derived headline. Both
-                   # ride the envelope: `chapter_scene_gate` reads
-                   # `guard_status` back out of `generation_job.result`.
-                   "checks": reflect.checks,
-                   "guard_status": reflect.guard_status,
-                   # S2 — the per-entity cast resolution + the count no layer could speak
-                   # to. `unresolved_cast_reference` in the eval was BLIND on this field.
-                   "cast_liveness": reflect.cast_liveness,
-                   "unresolved_refs": reflect.unresolved_refs,
-                   "unanchored_names": reflect.unanchored_names,
-                   "name_near_misses": reflect.name_near_misses,
-                   "name_check_method": reflect.name_check_method,
-                   "status": reflect.status}
+        canon_v = canon_envelope(reflect)
         revise_finish = reflect.revise_finish_reason
     except Exception:  # noqa: BLE001 — canon reflect must NEVER fail the generate (F1).
         logger.warning("chapter canon reflect failed (advisory) — keeping draft", exc_info=True)

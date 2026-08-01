@@ -20,6 +20,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_canon_check import LIVENESS_ALIVE
 
 from app.db.models import OutlineNode
 from app.db.repositories import (
@@ -519,6 +520,46 @@ class OutlineRepo:
         if isinstance(row, str):
             return json.loads(row)
         return row if isinstance(row, dict) else None
+
+    async def plan_liveness_after(
+        self, project_id: UUID, chapter_id: UUID, after_story_order: int | None,
+    ) -> dict[str, str]:
+        """S2 — the PLAN layer of the cast-liveness cascade. `{entity_id: 'alive'}`.
+
+        `resolve_cast_liveness` has taken a `plan_status` argument since S2 and NOTHING EVER
+        PASSED ONE — measured 2026-08-01: the only production call site passed the KG snapshot
+        alone, so the middle layer of a three-layer cascade was unreachable and every entity the
+        graph had not heard of fell straight through to `unknown`/`none`. This is its producer.
+
+        The rule: an entity the plan places in a LATER scene of this chapter is asserted ALIVE
+        here, because the plan intends them to act after this point. That is exactly the
+        acceptance defect this run exists for — scene 1's prose kills someone scene 2's cast
+        still lists, while the knowledge graph tracks book-level status and has no row either
+        way.
+
+        It only ever emits `alive`, and that asymmetry is deliberate: a scene's cast says who is
+        PRESENT, so absence from later scenes is evidence of nothing at all. The KG is checked
+        first and always wins; this layer speaks only where the graph is silent.
+
+        No position ⇒ `{}`. Without one there is no "later", and inferring an order is how a
+        position-gated guarantee quietly becomes a guess. Chapter-scoped for the same reason
+        `prior_scene_exit_state` is: `story_order` is compared within a chapter everywhere else
+        in this repo, and widening the axis here would be a second convention.
+        """
+        if after_story_order is None:
+            return {}
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                """
+                SELECT DISTINCT unnest(present_entity_ids)::text AS entity_id
+                FROM outline_node
+                WHERE project_id = $1 AND chapter_id = $2
+                  AND kind = 'scene' AND NOT is_archived
+                  AND story_order IS NOT NULL AND story_order > $3
+                """,
+                project_id, chapter_id, after_story_order,
+            )
+        return {r["entity_id"]: LIVENESS_ALIVE for r in rows}
 
     async def chapter_node_id(
         self, project_id: UUID, chapter_id: UUID,
@@ -1497,12 +1538,26 @@ class OutlineRepo:
                   --
                   -- COALESCE prefers the derived `guard_status` (per-check, honest across the
                   -- whole composite) and falls back to the legacy scalar for rows written
-                  -- before S1. `<> 'checked'` fails SAFE: a status added to the enum later is
-                  -- counted as unchecked until someone decides otherwise.
+                  -- before S1.
+                  --
+                  -- The THIRD arm is the one S1 shipped without, and it is the difference
+                  -- between a fail-safe clause and one that only looks like it. With two arms,
+                  -- a result carrying NO `canon` key at all makes both `->>` return NULL, so
+                  -- the predicate is `NULL <> 'checked'` = NULL — and FILTER does not count a
+                  -- NULL. The row reads as CHECKED. Measured 2026-08-01 on the dev corpus:
+                  -- 127 scenes with a latest completed job, 23 of them with no canon envelope,
+                  -- counted 93 unchecked where the honest answer is 116. The sources are real
+                  -- and current — every completed `continue` (14/14) and `plan_pass` (103/103)
+                  -- job carries no canon envelope, and so do 26 of 163 `draft_scene` rows.
+                  --
+                  -- `'no_envelope'` is a SENTINEL, not a status: it is never written anywhere,
+                  -- it exists only so the comparison has a non-NULL left side. NOW the clause
+                  -- fails safe for both shapes — an unknown status AND a missing envelope.
                   count(*) FILTER (
                     WHERE COALESCE(
                             latest.result -> 'canon' ->> 'guard_status',
-                            latest.result -> 'canon' ->> 'status'
+                            latest.result -> 'canon' ->> 'status',
+                            'no_envelope'
                           ) <> 'checked'
                   ) AS unchecked
                 FROM (
