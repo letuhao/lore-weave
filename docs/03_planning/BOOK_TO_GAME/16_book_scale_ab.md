@@ -154,12 +154,50 @@ with this profile. Per chapter, against the two arms above:
 > dedicated sweep pass is what stops them competing. The extra cost is one cheap call per
 > window, and its output — a name and a quote — is small.
 
-**Two honest limits.** This is **5 chapters**, against 15 for the other arms, on a
-different stretch of the book — nothing here is variance-controlled. And the per-kind axis
-immediately earns its keep again: `power_system` came back **ZERO** on this sample. On n=5
-that may simply be what chapters 88–92 contain, but it is exactly the shape of defect
-`BTG-A53` exists to surface, and it must be re-checked at 15 chapters before `edc_cited` is
-promoted.
+### The `power_system` zero is a TYPING failure, not a coverage one
+
+`power_system` came back **ZERO**. The first draft of this section guessed that might be
+what chapters 88–92 contain. Reading them says otherwise — every one carries power-system
+material, 9 to 20 markers each:
+
+```
+ch 88  變化 1 · 陣 6 · 符 2
+ch 89  遁 1 · 陣 7 · 符 1 · 丹 1 · 妖術 1
+ch 90  道術 1 · 變化 1 · 遁 2 · 陣 10 · 符 6
+ch 91  法寶 1 · 變化 1 · 遁 5 · 陣 4 · 玄功 1 · 妖術 1
+ch 92  道術 2 · 神通 2 · 變化 8 · 遁 1 · 陣 7
+```
+
+And the material *was* extracted — it landed under the wrong kinds:
+
+| entity | filed as | actually |
+|---|---|---|
+| **崑崙之妙術** "the wondrous art of Kunlun" | `terminology` | **power_system** |
+| 五行方位 · 八卦方位 (five-phase / eight-trigram array positions) | `terminology` | formation → power_system |
+| 山河社稷圖 | `terminology` | a magic artifact |
+| **梅山七怪** "the Seven Monsters of Meishan" | `terminology` | a **group** → organization/species |
+| **哮天犬** Yang Jian's divine hound | `item` | **species** |
+| 雲霞獸 · 逍遙馬 (a divine beast, a horse) | `item` | species |
+| **狼牙棒** a wolf-tooth club | `terminology` | **item** |
+
+> **`BTG-A62`.** **`edc_cited` finds the material and misfiles it.** The −7% coverage figure
+> stands — the entities are there — but the kind distribution is not trustworthy, and
+> `power_system: 0` names a typing failure rather than a gap. The misfiling runs in both
+> directions: techniques and groups drift into `terminology`, creatures and treasures drift
+> into `item`, and a plain weapon drifts *out* of `item`.
+>
+> This is the axis catching what the POC's Q4 could not. That answer key covered only
+> `location`/`organization`, so a shape could score 70% strict on it while shuffling
+> techniques, creatures and objects freely — which is exactly what happened. **A kind-typing
+> claim is only as wide as the key behind it.**
+
+**So `edc_cited` is not promotable on this evidence.** Its discovery is excellent and its
+typing is unverified outside two kinds. Before promoting it: re-run at 15 chapters, and
+extend the answer key past `location`/`organization` — the material for that already exists
+in the misfiles above.
+
+**Also 5 chapters against 15**, on a different stretch of the book. Nothing here is
+variance-controlled.
 
 The live run also confirms the flow does what it claims: the worker logged
 `sweep found 51 mention(s)` / `9 mention(s)` for the two windows, then a stage-2 call with
@@ -173,7 +211,7 @@ the citation list rather than the text.
 | `batched` | baseline | baseline | **remains the default** |
 | `single_call` | −66% in (10,446/ch) | union with delta still **−27.3%** | the delta instruction is not the culprit (`BTG-A60`) |
 | `single_call_delta` | **−65.5%** | **−38.4%** | not a default; a deliberate trade for a cheap first pass |
-| **`edc_cited`** (A9) | **−56% in** | **−7% entities/ch** (5 chapters) | **wired and live.** The only shape that keeps the coverage AND most of the saving. Re-run at 15 chapters — `power_system` read zero on the small sample. |
+| **`edc_cited`** (A9) | **−56% in** | **−7% entities/ch** (5 chapters) | **wired and live.** Keeps the coverage and most of the saving — but MISFILES kinds (`BTG-A62`): `power_system` read zero because its material went to `terminology` and `item`. Not promotable until typing is checked against a wider key. |
 
 A9 is the interesting one against this result: at POC scale it was the only shape that *increased*
 coverage on every axis while cutting cost, and its two-stage sweep gives each kind a dedicated pass at

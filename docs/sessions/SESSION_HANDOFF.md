@@ -60,13 +60,27 @@ attention budget.
 | `single_call_delta` | 9,866 | 18.1 | **−38%** |
 | **`edc_cited`** | **13,397** | **27.2** | **−7% at −56% input** |
 
-⚠ 5 chapters only, and **`power_system` came back ZERO** on that sample — possibly just what
-chapters 88–92 contain, but it is exactly `BTG-A53`'s defect shape. **Re-run at 15 chapters
-before promoting `edc_cited`.**
+⚠ **`power_system` came back ZERO — and reading the chapters says that is a TYPING failure,
+not a gap** (`BTG-A62`). All five chapters carry power-system material (9–20 markers each:
+`道術 神通 變化 遁 陣 符 法寶 玄功 妖術`), and it WAS extracted — under the wrong kinds:
+
+| entity | filed as | actually |
+|---|---|---|
+| 崑崙之妙術 | `terminology` | power_system |
+| 五行方位 · 八卦方位 | `terminology` | formation → power_system |
+| 梅山七怪 (a group of seven) | `terminology` | organization/species |
+| 哮天犬 · 雲霞獸 · 逍遙馬 (a hound, a beast, a horse) | `item` | species |
+| 狼牙棒 (a club) | `terminology` | item |
+
+The misfiling runs both ways. **This is the per-kind axis catching what the POC's Q4 could
+not**: that answer key covered only `location`/`organization`, so a shape could score 70%
+strict while shuffling techniques, creatures and objects freely. **A kind-typing claim is
+only as wide as the key behind it.** `edc_cited`'s discovery is excellent; its typing is
+unverified outside two kinds. **Not promotable yet.**
 
 **▶ NEXT**
-1. **Re-run `edc_cited` at 15 chapters**, scored per kind, to confirm `BTG-A61` and settle
-   the `power_system` zero.
+1. **Extend the answer key past `location`/`organization`** — the misfiles above are the
+   material — then re-run `edc_cited` at 15 chapters and score typing per kind.
 2. The 57 unrecoverable terminology names — only re-extraction can restore them.
 3. `BTG-A49` re-decide-on-merge — still the deepest unfixed thing, and untouched by any of
    this: an entity's kind is still fixed by the first chapter that mentions it.
