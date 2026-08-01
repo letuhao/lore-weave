@@ -491,6 +491,42 @@ def test_cross_module_demands_survive_the_freeze_and_are_reported(reg):
     )
 
 
+def test_a_module_freezes_when_ITS_closure_settles_not_when_the_pool_does(reg):
+    """The exact live scenario, and the reason `closure_for` exists.
+
+    Three consecutive runs against a real model produced no artifact at all, and in
+    two of them the reason was `progression_stage` — a slot `item` does not
+    reference and cannot be blocked by. Item's contract was complete and unusable.
+    That is `PPB-A5` inverted by a pool-wide gate."""
+    run = run_cycle(reg, "E", _fake_model({**_ALL_GOOD,
+                                           "progression_stage": [_BAD_TAGS]}),
+                    evidence_n=11, heal_rounds=0)
+    assert run.slots["progression_stage"].state is State.PROPOSED
+    assert not run.frozen, "the pool as a whole is NOT closed"
+    assert "item" in run.artifacts, (
+        "item references instrument_tag, item_archetype and progression_kind — all "
+        "settled — so its contract is complete and must be consumable"
+    )
+    assert "progression" not in run.artifacts
+    assert sorted(run.artifacts["item"].slots) == [
+        "instrument_tag", "item_archetype", "progression_kind"], (
+        "an item artifact must carry progression_kind: gates_on points at it, and a "
+        "consumer handed a code it cannot resolve has an artifact with a hole in it"
+    )
+    assert "progression_stage" not in run.artifacts["item"].slots
+
+
+def test_a_module_does_not_freeze_while_something_it_references_is_open(reg):
+    run = run_cycle(reg, "E", _fake_model({**_ALL_GOOD,
+                                           "progression_kind": [_BAD_TAGS]}),
+                    evidence_n=11, heal_rounds=0)
+    assert "item" not in run.artifacts, (
+        "progression_kind is in item's closure via item_archetype.gates_on"
+    )
+    assert any("item: not frozen" in line and "progression_kind" in line
+               for line in run.log)
+
+
 def test_the_freeze_digest_is_of_content_not_of_order(reg):
     a = run_cycle(reg, "E", _fake_model(_ALL_GOOD), evidence_n=11)
     b = run_cycle(reg, "E", _fake_model(_ALL_GOOD), evidence_n=11)

@@ -265,18 +265,6 @@ def mechanisms() -> dict[str, list[str]]:
 # when a row's id leaves the registry OR becomes mechanised, so every row here
 # is on a clock. A reason must say what the TRIGGER is, not restate the task.
 PROSE_ONLY: dict[str, str] = {
-    "D-POOL-FREEZE-IS-PER-MODULE": (
-        "TRIGGER: the first module other than item/progression registering a pool "
-        "slot, or the first consumer that reads the frozen pool across module "
-        "boundaries. PPB-A5 says a planner is DONE when it is internally closed, and "
-        "the cycle freezes on exactly that basis — it hashes its own settled slots "
-        "while equip_slot is still unregistered elsewhere, and a test asserts that "
-        "this is deliberate rather than an oversight. A pool-WIDE freeze is a "
-        "different gate with a different question (who decides the whole world is "
-        "closed, and what happens to a module that never finishes) and it is not "
-        "built. No mechanism today because there is no second freeze to disagree "
-        "with the first: with one module-level digest, a cross-module consistency "
-        "check would have no possible violation, which is the NV-2 shape"),
     "D-POOL-REFUSAL-CHANNEL-HAS-TWO-MEANINGS": (
         "TRIGGER: the first consumer that READS the refusal channel — a router that "
         "turns a refusal into work for the named module, or a report that groups "

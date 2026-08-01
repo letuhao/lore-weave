@@ -16,13 +16,12 @@ is never asked which transition to take.
 """
 from __future__ import annotations
 
-import hashlib
-import json
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable
 
 from app.pool import criteria
+from app.pool.freeze import Freeze, closure_for, digest_of, freeze_of
 from app.pool.kinds import parse, planner_for
 from app.pool.register import OpenRow, abduce
 from app.pool.registry import Registry, Slot
@@ -78,6 +77,10 @@ class PoolRun:
     slots: dict[str, SlotState]
     register: list[OpenRow]
     digest: str | None = None
+    #: One artifact per OWNER module, keyed by owner — the thing a generator
+    #: consumes (`PPB-A6`). A module appears here as soon as its own reference
+    #: closure has settled, which is not the same as the whole pool closing.
+    artifacts: dict[str, Freeze] = field(default_factory=dict)
     log: list[str] = field(default_factory=list)
 
     @property
@@ -110,10 +113,6 @@ class PoolRun:
         return [r for r in self.register if r.reason == "unregistered_target"]
 
 
-def _freeze(pool: dict[str, list[dict]]) -> str:
-    """Content-address the pool (`PPB-A6`). Sorted, so the digest is of the CONTENT."""
-    canon = json.dumps(pool, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
-    return hashlib.blake2b(canon.encode("utf-8"), digest_size=32).hexdigest()
 
 
 def run_cycle(reg: Registry, evidence: str, complete: Complete,
@@ -189,10 +188,27 @@ def run_cycle(reg: Registry, evidence: str, complete: Complete,
             run.log.append(f"{target}: stays PROPOSED — the gate declined")
 
     run.register = abduce(reg, run.pool)
+
+    # Per-CONSUMER artifacts, emitted independently of whether the whole pool
+    # closed. `PPB-A5` says a planner is done when it is internally closed, and
+    # three consecutive live runs proved the pool-wide gate was the wrong reading
+    # of "internally": item's contract was complete and unusable because
+    # `progression_stage` — which item does not reference — had not settled.
+    for owner in sorted({s.owner for s in reg.slots.values()}):
+        scope = closure_for(reg, owner)
+        if scope and all(run.slots[sid].state is State.SETTLED for sid in scope):
+            run.artifacts[owner] = freeze_of(reg, run.pool, scope=scope)
+            run.log.append(f"{owner}: FROZEN {run.artifacts[owner].digest[:16]}… "
+                           f"over {sorted(scope)}")
+        else:
+            open_in_scope = sorted(sid for sid in scope
+                                   if run.slots[sid].state is not State.SETTLED)
+            run.log.append(f"{owner}: not frozen — {open_in_scope} still open")
+
     blocking = [r for r in run.register if r.target in reg.slots]
     if not blocking and all(s.state in (State.SETTLED, State.DECLINED)
                             for s in run.slots.values()):
-        run.digest = _freeze(run.pool)
+        run.digest = digest_of(run.pool)
         run.log.append(f"FROZEN {run.digest[:16]}…")
     else:
         # Name the slots, not just a count. `NOT FROZEN — 0 slot-level open row(s)`

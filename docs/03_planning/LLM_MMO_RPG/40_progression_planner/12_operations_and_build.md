@@ -392,3 +392,118 @@ seam: the model emitting a number of its own, which the probe rounds did. So the
 5. **The freeze is per-module.** `PPB-A5` says a planner is done when it is internally closed, and the
    cycle freezes on that basis while `equip_slot` is still open elsewhere. A pool-wide freeze across
    modules is a different gate and does not exist.
+
+---
+
+# Part D — the consumer half, and what the freeze actually reaches
+
+Everything up to Part C **produced** contract. The pool was filled, validated, hashed and read by
+nobody: the digest was computed and thrown away. That means `PPB-A6` — *two layers separated by a
+freeze, and no module ever reads another module's L2 output* — had never been under load in either
+direction. Nothing existed to violate it, and nothing existed to show it was satisfiable either.
+
+This part is the load: `app/pool/freeze.py` (the artifact), `app/pool/consume.py` (the only surface a
+generator gets), `app/generators/item_l2.py` (the first consumer), and a separate process that reads
+the artifact file and nothing else.
+
+## 17 — The number `ICT-A2` was asserting without one
+
+`ICT-A2` says the item module's pool footprint is **small** and its bulk is tier 2, which it produces
+itself. Resolved against a real freeze, field by field over `PL_007`'s 14-field `ItemDefDecl`:
+
+| | count | fields |
+|---|---|---|
+| **FROZEN** — the contract supplies it | 2 | `class` · `instrument_tags` |
+| **OWN** — this generator produces it | 10 | ids, vocabulary, and every magnitude (`PGN-A5`) |
+| **BLOCKED** — the contract owes it and no module registered the slot | 2 | `equip` → `equip_slot` · `lex_tags` → `lex_tag` |
+
+`ICT-A2` holds, and holds harder than it claimed: the contract's footprint is 4 of 14 fields, and it
+currently delivers **half** of its own scope. The ratio is deliberately `frozen / (frozen + blocked)`
+rather than `frozen / total` — dividing by all fields would make the number fall as the generator grew
+fields of its own, which reads as the contract getting worse when nothing about the contract changed.
+
+> **`BLD-A12`.** The two blocked fields are **exactly** the two targets the abductive register has
+> reported since the first cycle — `equip_slot` and `lex_tag`. Two mechanisms built for different
+> purposes, one over the registry's reference graph and one over a downstream struct's fields,
+> independently name the same pair. A test asserts they agree, because the day they stop agreeing one
+> of them is reading a stale list.
+
+## 18 — The freeze was the wrong SHAPE, and three live runs said so before any test did
+
+The first freeze was **pool-wide**: the artifact was emitted only when every registered slot in the
+whole registry had settled. Three consecutive runs against a real model produced no artifact at all,
+and in two of them the blocker was `progression_stage` — a slot `item` does not reference and cannot
+be affected by. **Item's contract was complete and unusable.**
+
+That is `PPB-A5` inverted by its own implementation. *A planner is done when it is internally closed* —
+and "internally" is neither of the two obvious readings:
+
+* **its own slots** drops `progression_kind`, which `item_archetype.gates_on` points at, so the
+  artifact would carry a code the consumer cannot resolve;
+* **the whole pool** drags in every unrelated module, which is what blocked those runs.
+
+The right unit is the **transitive closure of the references** (`freeze.closure_for`). For `item` that
+is `{instrument_tag, item_archetype, progression_kind}` — a proper superset of its own slots and a
+proper subset of the pool. With it, item froze on a run where `progression_stage` never settled.
+
+> **`BLD-A13`.** A boundary that has never been crossed has not been tested; it has only been drawn.
+> The pool-wide gate passed every unit test for two cycles because no test had a consumer in it, and
+> the defect appeared within three runs of one existing. **The first consumer is a test of the
+> contract, not of the consumer.**
+
+## 19 — Making `PPB-A6` a mechanism rather than a rule
+
+Three things now enforce what doc 03 asserted:
+
+**The surface is an absence.** `PoolView` exposes `members` · `codes` · `member` · `has` ·
+`visible_slots` · `unmet` · `digest`, and **nothing that could return another module's generated
+content**. A test pins that exact set, so adding `view.output_of(module)` reds here rather than
+becoming a code-review topic again.
+
+**The import graph is checked.** A generator may import the freeze and the view. Importing
+`app.pool.loop`, `.criteria`, `.kinds` or `.register` means it is reading the machinery that produced
+the pool rather than the pool; importing another generator means it is reading someone else's L2.
+Both are asserted by walking the AST of every file under `app/generators/`, and the test refuses to
+pass with an empty file list — a scope that reaches nothing is the default-uncovered shape.
+
+**The artifact is self-describing and self-checking.** It carries its digest and `verify()`
+recomputes it, because a hash stored beside content and never recomputed is a label; a consumer pins
+that digest into everything it generates, so a mismatched artifact would put truthful-looking
+provenance on different bytes. It also carries the **unmet demands forward**: `equip_slot` is present
+as a named hole naming who else waits on it, never as an empty list that reads *"this world has no
+equip slots"*. That confusion has now been caught twice in this project — once in the register, once
+in the pool — which is why it is a raise and not a return value.
+
+`EPL-A7`'s SHARED/PRIVATE split is enforced here too, and this is where it first had anything to
+enforce against. Both registered slots are SHARED, so the PRIVATE subject is constructed in the test.
+That is legitimate — the check reads the freeze's **data**, and the data varies — but it is worth
+saying plainly: no production slot exercises it yet.
+
+## 20 — A closed set that was not the RIGHT closed set
+
+The live consumer run admitted 14 of 14 defs and refused none. That is weak evidence on its own, and
+inspecting it found the reason it was weak: `accept` checked `instrument_tags` against the **union of
+all frozen tags**, not against the archetype's own. The model happened to reproduce each archetype's
+tags exactly, so the run would have looked identical if every tag had been shuffled between
+archetypes.
+
+> **`BLD-A14`.** A closed-set check answers *"is this value in a legal set"*, and getting the SET
+> wrong is invisible in exactly the runs that pass. The check now reads the archetype's own tags, and
+> permits narrowing but not reaching — a def may carry fewer tags than its archetype, never one that
+> belongs to a different archetype.
+
+Nine mechanisms in this part were bite-tested — digest verification, the unmet hole, the closure in
+both wrong directions, the missing-slot raise, visibility, the tag set, the digest pin, and the
+per-owner gate.
+
+## 21 — Open
+
+1. **`lex_tag` and `equip_slot` are still unregistered**, and they are now blocking a named,
+   measurable thing rather than an abstract one: 2 of the 4 fields the item contract owes.
+2. **No production slot is PRIVATE**, so `EPL-A7`'s enforcement has only a constructed subject.
+3. **The whole-pool freeze rate is low** and was not measured before this part. Four slots each with
+   an independent chance of failing a hard criterion means the pool-wide digest is rare; per-closure
+   artifacts make that mostly irrelevant, but the run-level `digest` still reports the strict answer.
+4. **The consumer's own L2 has no store.** `accept` returns admitted defs and nothing persists them,
+   so nothing yet tests that a *second* generator cannot read them — which is the other half of
+   `PPB-A6` and still has no subject.

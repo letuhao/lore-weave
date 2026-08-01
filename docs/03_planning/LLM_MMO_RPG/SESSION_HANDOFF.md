@@ -14,8 +14,8 @@
 
 **Date:** 2026-08-01 · **Docs:** [`40_progression_planner/`](40_progression_planner/_index.md) — 12 docs,
 prefixes `PPL` `PPO` `PPB` `EPL` `GP` `ICT` `MOD` `ENR` `ASK` `MEM` `BLD`, all registered.
-**Code:** `contracts/pool/registry.json` + `services/lore-enrichment-service/app/pool/` — **41 tests**,
-service suite **1222 passed / 161 skipped**.
+**Code:** `contracts/pool/registry.json` + `app/pool/` (produce) + `app/generators/` (consume) —
+**64 tests** across the two, service suite **1255 passed / 161 skipped**.
 
 **Where this came from.** POC-1 (doc 39's progression pipeline) was run end-to-end against a real model
 four times and **FAILED** — zero manifests, and the blocking question turned out to be a design decision
@@ -51,22 +51,45 @@ declare a field the operation required, and the first fix went into the **checke
 the model to repair an answer it could not see; and `refusals_name_an_owner` was a truthiness test, which
 the string `"null"` satisfies. **13 mechanisms bite-tested**, each broken and restored.
 
+### The consumer half — `PPB-A6` under load for the first time (doc 12 Part D)
+
+The pool was produced, hashed and read by nobody for two cycles, so *two layers separated by a freeze*
+had nothing on its far side. There is now an artifact (`app/pool/freeze.py`), the only surface a
+generator gets (`app/pool/consume.py`), a first consumer (`app/generators/item_l2.py`), and a separate
+process that reads the artifact file and nothing else.
+
+**The number `ICT-A2` was asserting without one.** Over `PL_007`'s 14-field `ItemDefDecl`: the contract
+supplies **2** (`class`, `instrument_tags`), the generator owns **10**, and **2** are blocked
+(`equip` → `equip_slot`, `lex_tags` → `lex_tag`) — the same pair the abductive register has named since
+the first cycle. Two mechanisms built for different purposes, one answer, and a test asserts they agree.
+
+**The freeze was the wrong SHAPE and three live runs said so before any test did.** It was pool-wide,
+so `item` could not consume its own complete contract until `progression_stage` settled — a slot item
+does not reference. The right unit is the transitive closure of the references, which is neither the
+module nor the pool.
+
+**`PPB-A6` is now a mechanism**: `PoolView` has no method that could return another module's generated
+content and a test pins its exact surface; every file under `app/generators/` has its imports walked;
+the artifact verifies its own digest and carries the unmet holes forward as named refusals rather than
+empty lists. Nine mechanisms bite-tested.
+
 ### Do-now next
 
-1. **PO sign-off on two blocking decisions:** how many of the 19 competency questions must be answerable
-   to ship, and whether the two-layer pipeline (`PPB-A6` + `EPL-*`) is adopted **pipeline-wide** — which
+1. **`WA_001` must register `lex_tag`, and item must register `equip_slot`.** These now block a
+   measured thing rather than an abstract one: **half** of what the item contract owes.
+2. **PO sign-off on two blocking decisions:** how many of the 19 competency questions must be
+   answerable to ship, and whether the two-layer pipeline is adopted **pipeline-wide** — which
    requires first walking all seven of doc 38's element-roster entries.
-2. **`WA_001` must register a `lex_tag` slot** and **item must register `equip_slot`** — the two live
-   `unregistered_target` rows. Neither is the other module's to fix, which is the point.
-3. **Wire `REOPENED`, or decide not to.** It is declared and unreachable, and its trigger was measured:
-   `item_archetype` needs `instrument_tag` codes that cover everything, and the model correctly omitted
-   the field rather than lie when they did not. The fix is **upstream in an already-settled slot** —
-   which is what `REOPENED` is for. Needs a termination bound.
-4. **The Rust half:** `declare_pool_slot!` + `export.rs` + the drift test, which flips
-   `registry.generated` to true and reds `test_the_registry_is_the_one_the_engine_would_read`.
-5. **Re-probe without `rule_sentence`, with a hard `m ≤ n/2`** (`BLD-A4`, still not run).
-6. **POC-1's uncommitted Python is still valid** — anchors + sentence expansion, `census.py`, the
-   `run_interrogation` seam, and the corpus `to_prose` fix.
+3. **A second consumer, or a store for the first.** The other half of `PPB-A6` — *no module reads
+   another module's L2* — still has no subject: `accept()` returns admitted defs and nothing persists
+   them, so nothing can yet try to read them.
+4. **Wire `REOPENED`, or decide not to.** Declared, unreachable, and its trigger was measured:
+   `item_archetype` needs `instrument_tag` codes that cover everything, and the model correctly
+   omitted the field rather than lie when they did not. The fix is upstream in an already-settled
+   slot. Needs a termination bound.
+5. **The Rust half:** `declare_pool_slot!` + `export.rs` + the drift test, which flips
+   `registry.generated` to true and reds the test holding that place.
+6. **No production slot is PRIVATE**, so `EPL-A7`'s enforcement has only a constructed subject.
 
 **Fixture:** `services/lore-enrichment-service/tests/fixtures/fengshen/` — a treasure-dense Ming-novel
 corpus with **12 designed teeth**, answer key outside the corpus, guarded by 29 assertions.
@@ -119,7 +142,6 @@ its subject arrived. **Intent is not a mechanism.**
 
 | `D-POOL-REOPEN-UNREACHABLE` | 2 | The cycle declares a `REOPENED` state and nothing enters it. The trigger is real and was measured: `item_archetype` requires `instrument_tag` codes covering every archetype, and the model correctly OMITTED the field rather than lie when they did not — a failure healing cannot fix, because the fix is upstream in a slot that has already SETTLED. Reopening on downstream under-coverage needs a termination bound, which is a design decision. | `test_reopened_is_declared_and_currently_unreachable_and_says_so` greps `loop.py` for `move(State.REOPENED)` and **re-reds the day one appears**, forcing whoever wires it to state the bound they chose. |
 | `D-POOL-REGISTRY-NOT-GENERATED` | 3 | `contracts/pool/registry.json` is hand-authored. Doc 40.12 §7 puts the declaration in Rust (`declare_pool_slot!`) with this file as its build output plus a drift test; until then the Python loop and the Rust engine agree only by hand. | `test_the_registry_is_the_one_the_engine_would_read` asserts `generated is False` — it reds the moment the export lands and flips the flag, and its message names the drift test that must replace it. |
-| `D-POOL-FREEZE-IS-PER-MODULE` | 2 | `PPB-A5` says a planner is done when INTERNALLY closed, and the cycle freezes on exactly that basis — it hashes its own settled slots while `equip_slot` is still unregistered elsewhere. A pool-WIDE freeze asks a different question (who decides the world is closed; what happens to a module that never finishes). | **prose-only** — declared in `deferral-gate.py`. No mechanism because there is no second freeze to disagree with the first, so a cross-module consistency check would have no possible violation (the `NV-2` shape). Trigger: a third module registering a slot, or the first consumer reading the frozen pool across a module boundary. |
 | `D-POOL-REFUSAL-CHANNEL-HAS-TWO-MEANINGS` | 2 | `BLD-A3` gave refusal its own channel with one shape `{what, why, owner}`; live runs showed `owner` carrying two unrelated meanings — *belongs to another module* for ABSTRACT/CLASSIFY_LINK, but *this axis has no ladder* for PARTITION, where nothing is routed and the model duly wrote the slot's own name. | **prose-only** — declared in `deferral-gate.py`. No mechanism because **nothing consumes the channel yet**, so a check on the field's meaning would have no possible violation. Trigger: the first reader — a router that turns a refusal into work for the named module, or a report grouping refusals by owner. |
 
 <!-- deferral-registry:end -->
