@@ -1134,5 +1134,11 @@
       "loading": "実行を読み込み中…",
       "back": "← 実行一覧に戻る"
     }
-  }
+  },
+  "canonUncheckedNoRules": "照合できるこの場面の登場人物の情報がまだありません",
+  "canonUncheckedUnverifiedInput": "確認に必要な情報の一部を読み込めなかったため、結果は不完全です",
+  "canonUncheckedUnparseable": "判定モデルから使用可能な回答が返りませんでした",
+  "canonUncheckedFailed": "確認処理自体がエラーになりました",
+  "canonUncheckedOther": "この確認は実行できませんでした",
+  "canonUncheckedWhich": "{{count}} 件の確認が完了していません"
 }

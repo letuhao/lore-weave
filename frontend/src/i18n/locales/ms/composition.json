@@ -1134,5 +1134,11 @@
       "loading": "Memuatkan sesi…",
       "back": "← Kembali ke senarai runs"
     }
-  }
+  },
+  "canonUncheckedNoRules": "belum ada maklumat tentang watak dalam babak ini untuk dibandingkan",
+  "canonUncheckedUnverifiedInput": "sebahagian data yang diperlukan pemeriksaan ini gagal dimuatkan, jadi ia tidak lengkap",
+  "canonUncheckedUnparseable": "model penyemak tidak mengembalikan jawapan yang boleh digunakan",
+  "canonUncheckedFailed": "pemeriksaan itu sendiri gagal",
+  "canonUncheckedOther": "pemeriksaan ini tidak dapat dijalankan",
+  "canonUncheckedWhich": "{{count}} pemeriksaan belum selesai"
 }

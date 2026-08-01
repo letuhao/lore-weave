@@ -1134,5 +1134,11 @@
       "loading": "রান লোড হচ্ছে…",
       "back": "← রানস লিস্টে ফিরে যান"
     }
-  }
+  },
+  "canonUncheckedNoRules": "এই দৃশ্যের চরিত্রদের সম্পর্কে মিলিয়ে দেখার মতো তথ্য এখনও নেই",
+  "canonUncheckedUnverifiedInput": "এই পরীক্ষার জন্য প্রয়োজনীয় কিছু তথ্য লোড করা যায়নি, তাই এটি অসম্পূর্ণ",
+  "canonUncheckedUnparseable": "পর্যালোচনাকারী মডেল ব্যবহারযোগ্য উত্তর ফেরত দেয়নি",
+  "canonUncheckedFailed": "পরীক্ষাটিই ব্যর্থ হয়েছে",
+  "canonUncheckedOther": "এই পরীক্ষাটি চালানো যায়নি",
+  "canonUncheckedWhich": "এর {{count}}টি পরীক্ষা সম্পূর্ণ হয়নি"
 }

@@ -1134,5 +1134,11 @@
       "loading": "Loading run…",
       "back": "← Back to runs list"
     }
-  }
+  },
+  "canonUncheckedNoRules": "nothing is known yet about this scene's characters to check against",
+  "canonUncheckedUnverifiedInput": "part of what this check needed could not be loaded, so it is incomplete",
+  "canonUncheckedUnparseable": "the reviewing model did not return a usable answer",
+  "canonUncheckedFailed": "the check itself errored",
+  "canonUncheckedOther": "this check could not run",
+  "canonUncheckedWhich": "{{count}} of its checks did not complete"
 }

@@ -1134,5 +1134,11 @@
       "loading": "جاري تحميل عملية التشغيل…",
       "back": "← العودة إلى قائمة العمليات"
     }
-  }
+  },
+  "canonUncheckedNoRules": "لا تتوفر بعد معلومات عن شخصيات هذا المشهد للمقارنة بها",
+  "canonUncheckedUnverifiedInput": "تعذّر تحميل جزء مما يحتاجه هذا الفحص، لذا فهو غير مكتمل",
+  "canonUncheckedUnparseable": "لم يُرجِع نموذج المراجعة إجابة قابلة للاستخدام",
+  "canonUncheckedFailed": "الفحص نفسه أخفق",
+  "canonUncheckedOther": "تعذّر تنفيذ هذا الفحص",
+  "canonUncheckedWhich": "لم يكتمل {{count}} من فحوصه"
 }

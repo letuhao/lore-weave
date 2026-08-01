@@ -148,15 +148,27 @@ describe('CanonGatePanel — WHY it is unchecked', () => {
       .toContain('canonUncheckedNoCast');
   });
 
+  it('does NOT put the raw status enum in the sentence a novelist reads', () => {
+    // The first version interpolated it: "this check did not run (unparseable)". The value
+    // still has to reach support, so it rides `title=` — where an untranslated internal token
+    // belongs — and never the copy.
+    panel({ violations: [], resolved: true, iterations: 0, status: 'checked',
+            guard_status: 'some_status_invented_next_year', verdict: null });
+    const banner = screen.getByTestId('canon-unchecked');
+    expect(banner.textContent).not.toContain('some_status_invented_next_year');
+    expect(banner.getAttribute('title')).toBe('some_status_invented_next_year');
+  });
+
   it('names WHICH check stalled, and omits the ones that ran or did not apply', () => {
     panel({ violations: [], resolved: true, iterations: 0, status: 'checked',
             guard_status: 'unparseable', verdict: null,
             checks: { canon_cast: 'checked', name_grounding: 'not_applicable',
                       plan_liveness: 'unparseable' } });
     const which = screen.getByTestId('canon-unchecked-which');
-    expect(which.textContent).toContain('plan_liveness');
-    expect(which.textContent).not.toContain('canon_cast');
-    expect(which.textContent).not.toContain('name_grounding');
+    // The COUNT is what the author reads; the internal keys ride `title=` for support.
+    expect(which.textContent).toContain('canonUncheckedWhich');
+    expect(which.textContent).not.toContain('plan_liveness');
+    expect(which.getAttribute('title')).toBe('plan_liveness');
   });
 
   it('CONTROL — a fully checked scene shows no unchecked banner at all', () => {

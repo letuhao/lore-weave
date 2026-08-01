@@ -1134,5 +1134,11 @@
       "loading": "실행 로딩 중…",
       "back": "← 실행 목록으로 돌아가기"
     }
-  }
+  },
+  "canonUncheckedNoRules": "이 장면의 인물에 대해 대조할 정보가 아직 없습니다",
+  "canonUncheckedUnverifiedInput": "검사에 필요한 자료 일부를 불러오지 못해 결과가 불완전합니다",
+  "canonUncheckedUnparseable": "검토 모델이 사용할 수 있는 답을 반환하지 않았습니다",
+  "canonUncheckedFailed": "검사 자체에서 오류가 발생했습니다",
+  "canonUncheckedOther": "이 검사를 실행할 수 없었습니다",
+  "canonUncheckedWhich": "확인 {{count}}건이 완료되지 않았습니다"
 }

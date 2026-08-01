@@ -1134,5 +1134,11 @@
       "loading": "रन लोड हो रहा है…",
       "back": "← रन सूची पर वापस जाएँ"
     }
-  }
+  },
+  "canonUncheckedNoRules": "इस दृश्य के पात्रों के बारे में मिलान करने योग्य जानकारी अभी नहीं है",
+  "canonUncheckedUnverifiedInput": "इस जाँच के लिए ज़रूरी कुछ सामग्री लोड नहीं हो सकी, इसलिए यह अधूरी है",
+  "canonUncheckedUnparseable": "समीक्षक मॉडल ने उपयोग योग्य उत्तर नहीं लौटाया",
+  "canonUncheckedFailed": "जाँच स्वयं विफल रही",
+  "canonUncheckedOther": "यह जाँच नहीं चल सकी",
+  "canonUncheckedWhich": "इसकी {{count}} जाँचें पूरी नहीं हुईं"
 }

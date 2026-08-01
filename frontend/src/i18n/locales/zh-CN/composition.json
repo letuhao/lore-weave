@@ -1134,5 +1134,11 @@
       "loading": "正在加载运行…",
       "back": "← 返回运行列表"
     }
-  }
+  },
+  "canonUncheckedNoRules": "尚无本场景人物的资料可供比对",
+  "canonUncheckedUnverifiedInput": "本次检查所需的部分数据未能载入，结果并不完整",
+  "canonUncheckedUnparseable": "审校模型没有返回可用的答复",
+  "canonUncheckedFailed": "检查本身出错了",
+  "canonUncheckedOther": "本次检查无法执行",
+  "canonUncheckedWhich": "有 {{count}} 项检查未完成"
 }

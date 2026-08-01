@@ -1134,5 +1134,11 @@
       "loading": "กำลังโหลดการทำงาน...",
       "back": "← กลับไปยังรายการ runs"
     }
-  }
+  },
+  "canonUncheckedNoRules": "ยังไม่มีข้อมูลตัวละครในฉากนี้ให้เทียบเคียง",
+  "canonUncheckedUnverifiedInput": "ข้อมูลบางส่วนที่การตรวจสอบนี้ต้องใช้โหลดไม่สำเร็จ ผลจึงยังไม่ครบ",
+  "canonUncheckedUnparseable": "โมเดลผู้ตรวจไม่ได้ส่งคำตอบที่ใช้งานได้กลับมา",
+  "canonUncheckedFailed": "ตัวการตรวจสอบเองเกิดข้อผิดพลาด",
+  "canonUncheckedOther": "การตรวจสอบนี้ทำงานไม่ได้",
+  "canonUncheckedWhich": "มี {{count}} รายการตรวจสอบที่ยังไม่เสร็จ"
 }

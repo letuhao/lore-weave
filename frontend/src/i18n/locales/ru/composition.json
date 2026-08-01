@@ -1134,5 +1134,11 @@
       "loading": "Загрузка запуска…",
       "back": "← Вернуться к списку запусков"
     }
-  }
+  },
+  "canonUncheckedNoRules": "о персонажах этой сцены пока нечего сопоставить",
+  "canonUncheckedUnverifiedInput": "часть данных для этой проверки не удалось загрузить, поэтому она неполная",
+  "canonUncheckedUnparseable": "проверяющая модель не вернула пригодный ответ",
+  "canonUncheckedFailed": "сама проверка завершилась ошибкой",
+  "canonUncheckedOther": "эту проверку не удалось выполнить",
+  "canonUncheckedWhich": "не завершено проверок: {{count}}"
 }

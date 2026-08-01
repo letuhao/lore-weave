@@ -82,12 +82,12 @@ export function CanonGatePanel({ canon, onRevise }: Props) {
     degraded: 'degraded',
   };
   const reasonKey = canon.guard_status ?? LEGACY[canon.status] ?? canon.status;
+  // No raw enum in author-facing copy. The first version interpolated `reasonKey` into the
+  // sentence, so a novelist read "this check did not run (unparseable)" — developer vocabulary
+  // leaking into the product. The value still has to reach support, so it rides `title=`,
+  // which is where an untranslated internal token belongs.
   const uncheckedReason =
-    REASONS[reasonKey] ??
-    t('canonUncheckedOther', {
-      defaultValue: 'this check did not run ({{status}})',
-      status: reasonKey,
-    });
+    REASONS[reasonKey] ?? t('canonUncheckedOther', { defaultValue: 'this check could not run' });
   // Which half of the composite could not run. Named because "the guard is amber" without
   // WHICH check is the same shape as the scalar this arc replaced.
   const stalledChecks = Object.entries(canon.checks ?? {})
@@ -120,11 +120,17 @@ export function CanonGatePanel({ canon, onRevise }: Props) {
     <div data-testid="canon-gate-panel" data-status={canon.status}
       data-guard-status={canon.guard_status ?? canon.status} className="rounded border border-neutral-200 p-2 dark:border-neutral-700">
       {!checked && (
-        <div data-testid="canon-unchecked" className="rounded bg-amber-50 p-1.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <div data-testid="canon-unchecked" title={reasonKey}
+          className="rounded bg-amber-50 p-1.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           <span className="font-medium">{t('canonUncheckedTitle', { defaultValue: 'Canon not verified' })}</span> — {uncheckedReason}
           {stalledChecks.length > 0 && (
-            <span data-testid="canon-unchecked-which" className="opacity-80">
-              {' '}({stalledChecks.join(', ')})
+            <span data-testid="canon-unchecked-which" className="opacity-80"
+              title={stalledChecks.join(', ')}>
+              {' '}
+              {t('canonUncheckedWhich', {
+                defaultValue: '{{count}} of its checks did not complete',
+                count: stalledChecks.length,
+              })}
             </span>
           )}
         </div>

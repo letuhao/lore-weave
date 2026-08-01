@@ -1134,5 +1134,11 @@
       "loading": "載入運行中…",
       "back": "← 返回運行清單"
     }
-  }
+  },
+  "canonUncheckedNoRules": "尚無本場景人物的資料可供比對",
+  "canonUncheckedUnverifiedInput": "本次檢查所需的部分資料未能載入，結果並不完整",
+  "canonUncheckedUnparseable": "審校模型沒有回傳可用的答覆",
+  "canonUncheckedFailed": "檢查本身發生錯誤",
+  "canonUncheckedOther": "本次檢查無法執行",
+  "canonUncheckedWhich": "有 {{count}} 項檢查未完成"
 }

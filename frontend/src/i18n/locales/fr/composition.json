@@ -1134,5 +1134,11 @@
       "loading": "Chargement de la session…",
       "back": "← Retour à la liste des sessions"
     }
-  }
+  },
+  "canonUncheckedNoRules": "on ne sait encore rien des personnages de cette scène pour pouvoir comparer",
+  "canonUncheckedUnverifiedInput": "une partie de ce dont cette vérification avait besoin n'a pas pu être chargée, elle est donc incomplète",
+  "canonUncheckedUnparseable": "le modèle de relecture n'a pas renvoyé de réponse exploitable",
+  "canonUncheckedFailed": "la vérification elle-même a échoué",
+  "canonUncheckedOther": "cette vérification n'a pas pu s'exécuter",
+  "canonUncheckedWhich": "{{count}} de ses vérifications ne se sont pas terminées"
 }

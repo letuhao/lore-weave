@@ -1134,5 +1134,11 @@
       "loading": "Çalıştırma yükleniyor…",
       "back": "← Çalıştırmalar listesine dön"
     }
-  }
+  },
+  "canonUncheckedNoRules": "bu sahnedeki karakterler hakkında karşılaştırılacak bir bilgi henüz yok",
+  "canonUncheckedUnverifiedInput": "bu denetimin ihtiyaç duyduğu verilerin bir kısmı yüklenemedi, bu yüzden eksik",
+  "canonUncheckedUnparseable": "denetleyen model kullanılabilir bir yanıt döndürmedi",
+  "canonUncheckedFailed": "denetimin kendisi hata verdi",
+  "canonUncheckedOther": "bu denetim çalıştırılamadı",
+  "canonUncheckedWhich": "denetimlerinden {{count}} tanesi tamamlanmadı"
 }

@@ -1134,5 +1134,11 @@
       "loading": "Đang tải lượt chạy…",
       "back": "← Quay lại danh sách lượt chạy"
     }
-  }
+  },
+  "canonUncheckedNoRules": "chưa biết gì về các nhân vật của cảnh này để đối chiếu",
+  "canonUncheckedUnverifiedInput": "một phần dữ liệu cần cho lần kiểm tra này không tải được nên kết quả chưa đầy đủ",
+  "canonUncheckedUnparseable": "mô hình thẩm định không trả về câu trả lời dùng được",
+  "canonUncheckedFailed": "bản thân lần kiểm tra bị lỗi",
+  "canonUncheckedOther": "lần kiểm tra này không chạy được",
+  "canonUncheckedWhich": "{{count}} mục kiểm tra chưa hoàn tất"
 }

@@ -1134,5 +1134,11 @@
       "loading": "Memuat proses...",
       "back": "← Kembali ke daftar runs"
     }
-  }
+  },
+  "canonUncheckedNoRules": "belum ada informasi tentang tokoh di adegan ini untuk dibandingkan",
+  "canonUncheckedUnverifiedInput": "sebagian data yang dibutuhkan pemeriksaan ini gagal dimuat, jadi hasilnya belum lengkap",
+  "canonUncheckedUnparseable": "model peninjau tidak mengembalikan jawaban yang dapat dipakai",
+  "canonUncheckedFailed": "pemeriksaannya sendiri gagal",
+  "canonUncheckedOther": "pemeriksaan ini tidak dapat dijalankan",
+  "canonUncheckedWhich": "{{count}} pemeriksaan belum selesai"
 }

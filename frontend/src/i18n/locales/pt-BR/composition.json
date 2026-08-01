@@ -1134,5 +1134,11 @@
       "loading": "Carregando execução…",
       "back": "← Voltar para a lista de execuções"
     }
-  }
+  },
+  "canonUncheckedNoRules": "ainda não se sabe nada sobre os personagens desta cena para comparar",
+  "canonUncheckedUnverifiedInput": "parte do que esta verificação precisava não pôde ser carregada, então está incompleta",
+  "canonUncheckedUnparseable": "o modelo revisor não retornou uma resposta utilizável",
+  "canonUncheckedFailed": "a própria verificação deu erro",
+  "canonUncheckedOther": "esta verificação não pôde ser executada",
+  "canonUncheckedWhich": "{{count}} das verificações não foram concluídas"
 }

@@ -1134,5 +1134,11 @@
       "loading": "Durchlauf wird geladen…",
       "back": "← Zurück zur Liste der Durchläufe"
     }
-  }
+  },
+  "canonUncheckedNoRules": "über die Figuren dieser Szene ist noch nichts bekannt, womit sich abgleichen ließe",
+  "canonUncheckedUnverifiedInput": "ein Teil der für diese Prüfung nötigen Daten ließ sich nicht laden, sie ist daher unvollständig",
+  "canonUncheckedUnparseable": "das prüfende Modell lieferte keine verwertbare Antwort",
+  "canonUncheckedFailed": "die Prüfung selbst ist fehlgeschlagen",
+  "canonUncheckedOther": "diese Prüfung konnte nicht ausgeführt werden",
+  "canonUncheckedWhich": "{{count}} ihrer Prüfungen wurden nicht abgeschlossen"
 }
