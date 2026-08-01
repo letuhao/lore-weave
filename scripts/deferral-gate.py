@@ -265,6 +265,32 @@ def mechanisms() -> dict[str, list[str]]:
 # when a row's id leaves the registry OR becomes mechanised, so every row here
 # is on a clock. A reason must say what the TRIGGER is, not restate the task.
 PROSE_ONLY: dict[str, str] = {
+    "D-POOL-PROBE-IS-NOT-A-QUERY": (
+        "TRIGGER: the first commit that threads a retrieval call into the pool loop "
+        "— the moment probe() output would actually be used as a search. Measured "
+        "2026-08-01 against the real Fengshen corpus (2329 chunks, production "
+        "chunker and cosine, BYOK embeddings): probe() returns the slot id and its "
+        "consumers last path segments, which are English snake_case identifiers in "
+        "the CONTRACT vocabulary, and the corpus is Ming-dynasty classical Chinese. "
+        "Every slot scored at the noise floor and not one top-3 hit was on topic - "
+        "instrument tag returned a lesson on playing the zither. Queries written by "
+        "a model in the corpus own register scored about 0.09 higher and, far more "
+        "importantly, returned the right material. No mechanism today because "
+        "NOTHING CONSUMES probe() OUTPUT: it is computed, logged, and dropped, so a "
+        "check on query quality would have no possible violation - the NV-2 shape. "
+        "The fix changes the PlannerKind protocol and needs the retrieval seam "
+        "threaded through the loop, which is a build, not an edit"),
+    "D-POOL-EVIDENCE-N-UNDEFINED-ON-A-REAL-CORPUS": (
+        "TRIGGER: the same commit - the first time retrieved spans replace the "
+        "hand-written evidence block. The ABSTRACT criterion is m < n, and n came "
+        "from a block the author wrote by hand: eleven bullet lines, so n=11. "
+        "Retrieved spans do not arrive counted, and there is no defensible way to "
+        "derive n from a chunk count because a chunk is not an object. Asking the "
+        "MODEL for n hands it the denominator of its own gate, which is exactly the "
+        "BLD-A4 failure this track already measured. The count has to come from an "
+        "extraction step - where POC-1 interrogation stage and the citation matcher "
+        "already live. No mechanism today because the evidence block is a literal "
+        "in a git-ignored spike file, so nothing in the repo can disagree with it"),
     "D-POOL-REFUSAL-CHANNEL-HAS-TWO-MEANINGS": (
         "TRIGGER: the first consumer that READS the refusal channel — a router that "
         "turns a refusal into work for the named module, or a report that groups "

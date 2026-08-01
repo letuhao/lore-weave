@@ -98,6 +98,30 @@ Item's contract reach went **0.5 → 0.75** (`equip` unblocked). The last quarte
 `WA_001` owns. A generator now also gets **no I/O at all** — checked by AST before any L2 store exists,
 because the natural moment to add that check is the moment it is too late.
 
+### Retrieval, measured on the real book (doc 12 Part F)
+
+**Every quality number in Parts A–E rests on evidence written by hand** — eleven bullet lines the
+author extracted, one object per line, each chosen because it was worth grouping. The world built for
+this on day one (100 chapters + 16 lore pages) had never been read by the pool loop.
+
+Measured with production pieces (`chunk_text`, `top_k`, BYOK embeddings): 675,860 chars → 2329 chunks.
+
+1. **`probe()` returns identifiers, and an identifier is not a question.** Every slot scored at the
+   noise floor; not one top-3 hit was on topic. `instrument tag` → a zither lesson. `progression stage`
+   → Père David's deer conservation, 1985.
+2. **The query is a MODEL turn.** 法寶 · 境界 · 修爲層次 — the setting's own words, which the charter
+   already establishes. Same corpus, same scorer, only the queries changed: ~+0.09 mean top-1 and,
+   far more importantly, the right material. Not all of it lands — roughly 3 of 5 terms are useful.
+3. **The score got worse and the answer got better.** Dropping the 16 scraped lore pages (12% of
+   chunks) moved the mean by 0.004, but replaced a 《狐狸缘全传》 crossover reference with the actual
+   campaign passage, and a 《老子變化經》 footnote with a named weapon in use. **Encyclopaedic text
+   out-scores narrative text while being less useful** — a wiki page is written *about* a thing, a
+   novel *uses* it. So **cosine score is not a usable proxy for usefulness here**, and a relevance
+   floor tuned on score would keep exactly the wrong chunks.
+
+Two new deferral rows carry what this leaves open: `probe()` is measured-broken and still in the code,
+and `evidence_n` has no definition against a real corpus.
+
 ### Do-now next
 
 1. **`WA_001` must register `lex_tag`.** `equip_slot` is done — item registered what it owned and
@@ -170,6 +194,9 @@ its subject arrived. **Intent is not a mechanism.**
 | `D-POOL-REOPEN-UNREACHABLE` | 2 | The cycle declares a `REOPENED` state and nothing enters it. The trigger is real and was measured: `item_archetype` requires `instrument_tag` codes covering every archetype, and the model correctly OMITTED the field rather than lie when they did not — a failure healing cannot fix, because the fix is upstream in a slot that has already SETTLED. Reopening on downstream under-coverage needs a termination bound, which is a design decision. | `test_reopened_is_declared_and_currently_unreachable_and_says_so` greps `loop.py` for `move(State.REOPENED)` and **re-reds the day one appears**, forcing whoever wires it to state the bound they chose. |
 | `D-POOL-REGISTRY-NOT-GENERATED` | 3 | `contracts/pool/registry.json` is hand-authored. Doc 40.12 §7 puts the declaration in Rust (`declare_pool_slot!`) with this file as its build output plus a drift test; until then the Python loop and the Rust engine agree only by hand. | `test_the_registry_is_the_one_the_engine_would_read` asserts `generated is False` — it reds the moment the export lands and flips the flag, and its message names the drift test that must replace it. |
 | `D-POOL-REFUSAL-CHANNEL-HAS-TWO-MEANINGS` | 2 | `BLD-A3` gave refusal its own channel with one shape `{what, why, owner}`; live runs showed `owner` carrying two unrelated meanings — *belongs to another module* for ABSTRACT/CLASSIFY_LINK, but *this axis has no ladder* for PARTITION, where nothing is routed and the model duly wrote the slot's own name. | **prose-only** — declared in `deferral-gate.py`. No mechanism because **nothing consumes the channel yet**, so a check on the field's meaning would have no possible violation. Trigger: the first reader — a router that turns a refusal into work for the named module, or a report grouping refusals by owner. |
+
+| `D-POOL-PROBE-IS-NOT-A-QUERY` | 2 | `probe()` returns the slot id and its consumers' last path segments — English snake_case in the CONTRACT's vocabulary — and the corpus is classical Chinese. Measured against the real 2329-chunk Fengshen corpus: **every slot at the noise floor, not one on-topic hit** (`instrument tag` → a lesson on playing the zither). Model-written queries in the corpus's own register scored ~0.09 higher and returned the right material. The fix makes query generation a MODEL turn, which changes the `PlannerKind` protocol. | **prose-only** — declared in `deferral-gate.py`. No mechanism because **nothing consumes `probe()` output**: it is computed, logged and dropped, so a check on query quality would have no possible violation (the `NV-2` shape). Trigger: the first commit threading a retrieval call into the loop. |
+| `D-POOL-EVIDENCE-N-UNDEFINED-ON-A-REAL-CORPUS` | 2 | `is_an_abstraction` is `m < n`, and `n` came from a block the author wrote by hand — eleven lines, so eleven. Retrieved spans do not arrive counted; a chunk is not an object. Asking the model for `n` hands it the denominator of its own gate (`BLD-A4`). The count has to come from an extraction step. | **prose-only** — declared in `deferral-gate.py`. No mechanism because the evidence block is a literal in a git-ignored spike, so nothing in the repo can disagree with it. Trigger: the same commit — the first time retrieved spans replace the hand-written block. |
 
 <!-- deferral-registry:end -->
 

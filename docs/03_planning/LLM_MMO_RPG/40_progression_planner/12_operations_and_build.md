@@ -613,3 +613,105 @@ it owned. The remaining quarter is `lex_tag`, which `WA_001` owns and item canno
 Open: the `PPB-A6` case that would falsify it (two concrete items, one archetype) has not been reached ·
 `REOPENED` is still unreachable · the registry is still hand-authored · `EPL-A7`'s PRIVATE branch has
 no production subject and structurally may not get one while every slot is referenced by a shared slot.
+
+---
+
+# Part F — retrieval, measured on the real book
+
+Every quality number in Parts A–E rests on evidence **written by hand**: eleven bullet lines extracted
+from the corpus by the author, one object per line, each chosen because it was worth grouping.
+`instrument_tag` compressing 11 objects into 4 categories is a measurement over that extraction, not
+over the novel. `ENR-A1` says *retrieve, don't stuff*; the pipeline has been stuffing, and the world it
+was built to read — 100 source chapters and 16 lore pages, imported on day one — had never been
+touched by the pool loop.
+
+Measured with the production pieces: `chunk_text`, `top_k`, embeddings through provider-registry under
+a BYOK `user_model`. 675,860 chars → **2329 chunks**, median 310 chars. Persistence skipped on purpose:
+the question is about the RANKING, and a database round-trip does not change it.
+
+## 28 — `probe()` returns identifiers, and an identifier is not a question
+
+`ENR-A2` says the searches are *derived from the slot*. Derived-from-the-slot yields the slot's own
+name and its consumers' last path segments — `instrument tag`, `instrument_match`,
+`item_archetype class` — English snake_case in the contract's vocabulary, searched against
+Ming-dynasty classical Chinese.
+
+Top-3 for every slot, and not one hit was on topic:
+
+| query | score | what came back |
+|---|---|---|
+| `instrument tag` | 0.412 | a lesson on playing the zither |
+| `item_archetype class` | 0.374 | a Wikipedia footer about Japanese light novels |
+| `progression stage` | 0.368 | Père David's deer conservation in Beijing, 1985 |
+
+> **`BLD-A18`.** A slot id is a **label**, not a query. It names a concept in the contract's vocabulary,
+> and the corpus was written by someone who had never heard that vocabulary. Deriving a search from an
+> identifier is a string operation dressed as retrieval, and it returned the noise floor across every
+> slot tested.
+
+The round also surfaced two smaller defects for free: `probe()` **duplicates** terms, because it maps
+consumers to their last path segment and both of `instrument_tag`'s end in `instrument_match`; and the
+scraped lore pages carry Wikipedia navigation furniture (`外部鏈接`, `青空文庫`, archive links).
+
+## 29 — The query is a MODEL turn
+
+The setting's own words are 法寶 · 神兵異寶 · 境界 · 修爲層次, and the thing that knows them is the
+model — the charter already establishes the register. So the slot supplies the **intent** (what kind of
+thing, and what a consumer will condition on) and the model writes the **terms**, in the corpus's
+language. Same corpus, same chunker, same scoring, same embedding model; only the queries changed.
+
+| slot | derived (round 1) | asked (round 2) |
+|---|---|---|
+| `instrument_tag` | ~0.40 · a zither lesson | **0.468 mean / 0.512 max** · 哪吒八寶, 九龍神火罩…元始天尊的法寶 |
+| `progression_stage` | 0.384 / 0.428 · deer, mountains | **0.476 mean / 0.488 max** · 縱服氣煉形…未曾斬卻三尸 |
+
+The score moved about +0.09. The **content** moved from unrelated to exactly the material a planner
+needs — which is the finding, and the score is not.
+
+Not all of it lands: of five asked terms for `progression_stage`, roughly three retrieve cultivation
+material and two retrieve a palace audience and a snow poem. Query generation is a real step with a
+real yield, not a solved problem.
+
+## 30 — The score got worse and the answer got better
+
+Dropping the 16 scraped lore pages — 280 of 2329 chunks, **12%** — changes the mean top-1 by 0.004
+(0.475 → 0.471). The per-query detail is the interesting part:
+
+| query | with lore | source only |
+|---|---|---|
+| `神兵異寶` | **0.495** — a crossover reference in 《狐狸缘全传》 | 0.482 — the Mo brothers' campaign, with their treasures |
+| `器物造化` | **0.439** — a footnote on 《老子變化經》 and Mahāyāna三身 | 0.432 — 化血神刀, a named weapon in use |
+
+Both times the higher-scoring chunk is the less useful one, and the reason generalises.
+
+> **`BLD-A19`.** **Encyclopaedic text out-scores narrative text while being less useful.** A wiki page
+> is written ABOUT a thing, so it is topically dense and every sentence is on-query. A novel USES the
+> thing, so the term appears once inside a scene that is mostly about something else. A similarity
+> ranker prefers the description; a planner needs the **instance**.
+>
+> The direct consequence: **cosine score is not a usable proxy for usefulness here, and a relevance
+> floor tuned on score would keep exactly the wrong chunks.** Any threshold added to this retrieval
+> has to be justified against this measurement, not against intuition about what 0.5 means.
+
+It also revises what the lore book is for. Enriching where the novel is thin is sound and remains the
+plan (`ENR-A4`); *scraped* encyclopaedia entries are the wrong material for it, because the page for
+麒麟 covers everything the word has ever meant — Hong Kong lion dances, deer conservation, a light-novel
+species — and all of it out-ranks the novel.
+
+## 31 — What this does not yet answer
+
+The retrieval was measured **on its own, before reaching a planner**, deliberately: wiring it in first
+would confound *did retrieval find the right material* with *can a planner work from retrieved
+material*. The first now has an answer good enough to ask the second.
+
+Still open, and each is a separate measurement:
+
+1. **`probe()` is measured-broken and still in the code.** Replacing it with a model turn changes the
+   `PlannerKind` protocol and needs the retrieval seam threaded through the loop.
+2. **`evidence_n` has no definition against a real corpus.** The hand-written block had n=11 because
+   eleven lines were written. Retrieved spans do not arrive counted, and `is_an_abstraction` (m < n)
+   needs a denominator. Letting the model report n hands it the denominator of its own gate — the
+   `BLD-A4` failure — so the count has to come from an extraction step, which is where POC-1's
+   interrogation stage and the citation matcher already live.
+3. **Nothing is persisted.** The corpus was chunked and embedded in-process, twice, for two rounds of
+   one spike.
