@@ -39,6 +39,8 @@ import hashlib
 
 from app.gamegen.brief import load_brief, load_contract
 from app.gamegen.generate import AdmissionRefusal, generate
+from app.gamegen.interrogate import Chunk as InterrogationChunk
+from app.gamegen.interrogate import InterrogationRefusal, interrogate
 from app.gamegen.pinner import PinnerUnavailable, run_pinner
 from app.gamegen.validator import run_validator
 from app.gamegen.policy import (
@@ -997,3 +999,89 @@ class GamegenS2Repo:
                 candidate_id, pinned_by, result.ruleset_digest,
             )
         return result.ruleset_digest
+
+    # ── S1 -> S2: the interrogation, recorded ───────────────────────────────
+
+    async def run_interrogation(
+        self,
+        *,
+        job_id: UUID,
+        owner_user_id: UUID,
+        book_id: UUID,
+        element_kind: str,
+        seal_id: UUID,
+        targets: Sequence[str],
+        complete_fn,
+        context,
+    ) -> dict:
+        """Ask the brief's questions of the sealed corpus and record what survives.
+
+        The last unwired seam. Everything either side of it existed: the brief
+        knows what to ask, the corpus can be cited, and `S2` can store an answer —
+        nothing joined them, so every answer in every test had been written by
+        hand.
+
+        **A refusal is recorded as a refusal, not dropped.** The returned census
+        names every question that produced nothing and why, because a run that
+        silently answered 5 of 11 and reported success is the shape this whole
+        pipeline exists to make impossible. The caller decides whether a run with
+        gaps is worth approving; this reports, it does not judge.
+
+        Answers are recorded but **not approved** — approval is a human action
+        (`T3`), and a stage that both proposed and approved would be the model
+        marking its own homework.
+        """
+        brief = load_brief(element_kind)
+        chunks = await self._sealed_chunks(seal_id)
+
+        census = {"answered": 0, "extracted": 0, "invented": 0, "not_stated": 0,
+                  "refused": 0, "refusals": [], "decision_ids": []}
+
+        for target in targets:
+            for q in brief.questions:
+                try:
+                    evidence = await interrogate(
+                        question=q, target_ref=target, chunks=chunks,
+                        seal_id=str(seal_id), complete_fn=complete_fn, context=context,
+                    )
+                except InterrogationRefusal as e:
+                    census["refused"] += 1
+                    census["refusals"].append({"question": q.id, "target": target,
+                                               "why": str(e)[:400]})
+                    continue
+
+                decision_id = await self.propose_decision(
+                    job_id=job_id, owner_user_id=owner_user_id, book_id=book_id,
+                    element_kind=element_kind, question_class=q.id, target_ref=target,
+                )
+                await self.record_answer(
+                    decision_id=decision_id, job_id=job_id, owner_user_id=owner_user_id,
+                    book_id=book_id, created_by=owner_user_id, evidence=evidence,
+                )
+                census["answered"] += 1
+                census["decision_ids"].append(str(decision_id))
+                if evidence.not_stated:
+                    census["not_stated"] += 1
+                elif evidence.says:
+                    census["extracted"] += 1
+                else:
+                    census["invented"] += 1
+
+        return census
+
+    async def _sealed_chunks(self, seal_id: UUID) -> list:
+        """The chunks a seal covers, in order. Read through the SEAL rather than
+        by corpus id, so the interrogation cannot be shown text the seal does not
+        attest — the same boundary `verify_citation` enforces on the way back."""
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT c.chunk_id, c.content
+                  FROM source_corpus_chunk c
+                  JOIN gamegen_corpus_seal s ON s.corpus_id = c.corpus_id
+                 WHERE s.seal_id = $1
+                 ORDER BY c.chunk_index
+                """,
+                seal_id,
+            )
+        return [InterrogationChunk(str(r["chunk_id"]), r["content"]) for r in rows]

@@ -69,7 +69,17 @@ __all__ = [
 #: markdown parser, and it must not become one: anything cleverer would start
 #: rewriting the text a citation is checked against, which is the one thing this
 #: corpus must never do.
-_MD_EMPHASIS = re.compile(r"(\*\*|__|\*|_)")
+#: **Only unambiguous BOLD.** The first version also stripped single ``*`` and
+#: ``_``, which corrupted the corpus: the wiki writes ``internal_energy`` and the
+#: stored chunk said ``internalenergy``, so every citation naming a declared
+#: quantity was refused as a fabrication — the corpus had been made to disagree
+#: with the book. A normaliser that edits identifiers is worse than no normaliser,
+#: because the text a citation is checked against is no longer the text.
+#:
+#: Everything else markup-ish is handled at MATCH time instead (see
+#: ``interrogate._FOLD_IGNORE``), where being wrong costs a tolerated variant
+#: rather than a damaged source.
+_MD_EMPHASIS = re.compile(r"(\*\*|__)")
 _MD_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+", re.MULTILINE)
 _MD_BULLET = re.compile(r"^\s{0,3}[-*+]\s+", re.MULTILINE)
 

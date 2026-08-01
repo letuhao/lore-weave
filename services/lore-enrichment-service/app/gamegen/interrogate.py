@@ -14,14 +14,23 @@ self-reported input*: the same class already removed six times in this pipeline
 (``chunk_count``, ``merkle_root``, ``schema_fingerprint``, ``question_paths``,
 ``policy_hash``, the pin's parent).
 
-So the model emits a **chunk id and a quote**. The span is **derived** by finding
-that quote in that chunk's sealed text. Which makes fabrication structural rather
-than detected:
+So the model emits a **chunk id and a short ANCHOR** — 4-15 characters, just
+enough to point. The span is **derived** by finding that anchor in the sealed text
+and then **widening it to the sentence** out of the source. Which makes
+fabrication structural rather than detected:
 
 > **a quote that is not in the chunk cannot be given a span at all.**
 
 There is no code path that stores an unverified citation, because a citation
 without an offset is not a citation and the only source of offsets is the corpus.
+
+**Anchors replaced long quotes after three measured runs.** Asking for a verbatim
+quote asks a model to do the thing it is worst at — transcription — and the numbers
+said so: across three end-to-end runs the dominant refusal was a quote that
+abridged the middle of a passage or reformatted a list, and eight fixes moved the
+answered count from 4 to 5 to 4 to 3. Pointing is a task a model is good at. The
+evidence is *better* too: the stored citation is a whole sentence lifted from the
+source, not the fragment a model chose to copy.
 
 ## What the model is allowed to say
 
@@ -58,6 +67,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Mapping, Sequence
 
@@ -66,6 +76,7 @@ from app.gamegen.brief import Question
 
 __all__ = [
     "MAX_PROMPT_CHUNKS",
+    "expand_to_sentence",
     "Chunk",
     "InterrogationRefusal",
     "Proposal",
@@ -108,14 +119,20 @@ You are answering ONE question about a book, for a game-rules pipeline.
 
 You may answer in exactly one of three shapes:
 
-1. "extracted" - the book states this. Give the value AND one or more exact
-   quotes copied character-for-character from the passages below, each with the
-   chunk_id it came from - the bare UUID, exactly as printed after "chunk_id:".
-   Do NOT paraphrase, translate, or normalise a quote: it is checked against the
-   source and a quote that does not appear verbatim is REFUSED. A quote must be
-   UNIQUE in its chunk - if a short phrase appears more than once, extend it until
-   only one place matches. Copy from ONE continuous run of text: do not join lines,
-   renumber a list, or add markup that is not there.
+1. "extracted" - the book states this. Give the value AND one or more ANCHORS.
+
+   An ANCHOR is a SHORT run of 4-15 characters copied EXACTLY from a passage
+   below - just enough to point at the place that says it. You are pointing, not
+   transcribing: the pipeline reads the full sentence around your anchor out of
+   the source itself, so a short anchor gives BETTER evidence than a long quote
+   and is far easier to copy without a slip.
+
+   * copy it character-for-character from ONE continuous run - no joining lines,
+     no renumbering, no leaving words out of the middle
+   * it must appear ONLY ONCE in that chunk; if it repeats, extend it a little
+   * give the bare chunk_id UUID, exactly as printed after "chunk_id:"
+
+   An anchor that does not appear in the chunk is REFUSED.
 2. "invented"  - the book does not state it, and you propose a value anyway.
    Say so. This is legitimate and it is recorded as your proposal, not the
    book's. Do not attach quotes.
@@ -125,10 +142,11 @@ You may answer in exactly one of three shapes:
 QUESTION ({question_id}): {ask}
 ANSWER SHAPE: {answer_shape}{options}
 
-Reply with ONE JSON object and nothing else:
+Reply with ONE JSON object and nothing else. "shape" is ONE OF THE THREE WORDS
+above - it is not the answer; the answer goes in "value".
 {{"shape": "extracted|invented|not_stated",
   "value": <the answer, or null for not_stated>,
-  "quotes": [{{"chunk_id": "...", "quote": "..."}}],
+  "quotes": [{{"chunk_id": "...", "quote": "<4-15 char anchor>"}}],
   "proposed_text": "<your reasoning, only for invented>",
   "not_stated_reason": "<only for not_stated>"}}
 
@@ -234,13 +252,95 @@ def parse_proposal(raw: str, question: Question) -> Proposal:
     return Proposal(shape=shape, value=value, quotes=quotes)
 
 
+#: Punctuation a model routinely re-renders. **NFKC does not fold these** — it
+#: leaves 。 as 。 — so the shared normalisation spine is necessary and not
+#: sufficient here.
+#:
+#: **Measured, not guessed.** The first end-to-end run against a real model
+#: refused 4 of 7 failures on this alone: the corpus says 氣初入脈。 and the model
+#: writes 氣初入脈. — one character, ASCII full stop for ideographic. Every
+#: citation touching a sentence end was refused as a fabrication.
+_PUNCT_FOLD = {
+    "。": ".", "，": ",", "、": ",", "；": ";", "：": ":",
+    "！": "!", "？": "?", "（": "(", "）": ")",
+    "「": '"', "」": '"', "『": '"', "』": '"',
+    "《": '"', "》": '"', "—": "-", "–": "-", "－": "-",
+    "‘": "'", "’": "'", "“": '"', "”": '"',
+}
+
+
+#: Characters that carry FORMATTING rather than meaning, ignored when matching.
+#: A model reading a markdown table quotes the cell and drops the pipes; one
+#: reading a bolded term quotes the term. Ignoring these at match time is safe —
+#: they cannot make two different sentences equal — and it is where the tolerance
+#: belongs, because being wrong here costs a variant rather than a damaged corpus.
+_FOLD_IGNORE = set("*_`|#>")
+
+
+def _fold(text: str) -> tuple[str, list[int]]:
+    """A comparison projection of ``text``, plus a map back to original offsets.
+
+    Folds NFKC, then CJK punctuation, then drops whitespace entirely — models
+    reflow lines and renumber lists, and none of that changes what the book says.
+    The returned list maps each folded character to the index it came from, which
+    is what makes the recovered span point at the ORIGINAL text.
+    """
+    out: list[str] = []
+    idx: list[int] = []
+    for i, ch in enumerate(text):
+        if ch.isspace() or ch in _FOLD_IGNORE:
+            continue
+        folded = _PUNCT_FOLD.get(ch) or unicodedata.normalize("NFKC", ch)
+        for c in folded:
+            out.append(c)
+            idx.append(i)
+    return "".join(out), idx
+
+
+#: Sentence terminators, CJK and ASCII. A newline ends a sentence too — the corpus
+#: carries list entries and table rows, where the line IS the unit.
+_SENTENCE_END = set("。！？!?\n")
+
+
+def expand_to_sentence(content: str, start: int, end: int) -> tuple[int, int]:
+    """Widen an anchor span to the sentence containing it.
+
+    **This is what makes a short anchor better evidence than a long quote.** The
+    model points at 4-15 characters it can copy without slipping; the pipeline
+    reads the whole sentence out of the source. The reviewer sees a complete
+    statement from the corpus, and the model never had to transcribe it.
+
+    Deterministic and source-only: no model output reaches this, so the widened
+    span is as trustworthy as the anchor that seeded it.
+    """
+    s = start
+    while s > 0 and content[s - 1] not in _SENTENCE_END:
+        s -= 1
+    e = end
+    while e < len(content) and content[e - 1] not in _SENTENCE_END:
+        e += 1
+    # Trim leading whitespace the widening swept up; the trailing terminator stays,
+    # because a sentence without its full stop reads as a fragment.
+    while s < e and content[s].isspace():
+        s += 1
+    return s, max(e, end)
+
+
 def locate(chunks: Mapping[str, str], chunk_id: str, quote: str) -> tuple[int, int]:
     """Derive the span by finding ``quote`` in the sealed chunk.
 
-    **The model never supplies an offset.** This is where fabrication stops being
-    something to detect and becomes something that cannot be expressed: a quote
-    absent from the chunk gets no span, and a citation without a span is not a
-    citation.
+    **The model never supplies an offset**, and — after the first real run — it
+    does not supply the stored quote either. Matching happens on a folded
+    projection (punctuation rendered differently, whitespace reflowed); the span
+    that comes back indexes the **original** text, so what gets stored is always
+    the corpus's own characters. The model's rendition is discarded.
+
+    That makes the check *stronger*, not looser. Before, a model that wrote a
+    correct quote with an ASCII full stop was recorded as a fabricator; now the
+    stored evidence is the source's bytes in every case, and a quote whose
+    *characters* differ still fails. Folding punctuation and whitespace cannot
+    make two different sentences match — it only stops one sentence from failing
+    to match itself.
 
     :raises InterrogationRefusal: quote absent, chunk unknown, or the quote
         appearing more than once (ambiguous — two different passages could be
@@ -255,21 +355,43 @@ def locate(chunks: Mapping[str, str], chunk_id: str, quote: str) -> tuple[int, i
     if not quote:
         raise InterrogationRefusal(f"an empty quote for chunk {chunk_id}")
 
+    # Exact first: unambiguous, and the common case once a model copies well.
     first = content.find(quote)
-    if first < 0:
+    if first >= 0:
+        if content.find(quote, first + 1) >= 0:
+            raise InterrogationRefusal(
+                f"the quote {quote[:40]!r} appears more than once in chunk {chunk_id}. "
+                f"Refused rather than resolved to the first: two different passages "
+                f"could be meant, and choosing one would decide for the reviewer."
+            )
+        return first, first + len(quote)
+
+    fc, fmap = _fold(content)
+    fq, _ = _fold(quote)
+    if not fq:
         raise InterrogationRefusal(
-            f"the quote {quote[:40]!r} does not appear in chunk {chunk_id}. THE CORPUS "
-            f"DOES NOT SAY THIS. Refused rather than stored with a guessed span: a "
-            f"citation whose bytes are not in the source is the fabrication `PGN-A14` "
-            f"exists to make impossible."
+            f"the quote for chunk {chunk_id} is only punctuation and whitespace, which "
+            f"cites nothing."
         )
-    if content.find(quote, first + 1) >= 0:
+    hit = fc.find(fq)
+    if hit < 0:
+        raise InterrogationRefusal(
+            f"the quote {quote[:40]!r} does not appear in chunk {chunk_id}, even allowing "
+            f"for punctuation and line breaks. THE CORPUS DOES NOT SAY THIS. Refused "
+            f"rather than stored with a guessed span: a citation whose characters are "
+            f"not in the source is the fabrication `PGN-A14` exists to make impossible."
+        )
+    if fc.find(fq, hit + 1) >= 0:
         raise InterrogationRefusal(
             f"the quote {quote[:40]!r} appears more than once in chunk {chunk_id}. "
             f"Refused rather than resolved to the first: two different passages could be "
             f"meant, and choosing one would decide for the reviewer."
         )
-    return first, first + len(quote)
+    # Map the folded span back to the ORIGINAL text. `end` is the character after
+    # the last matched one, so a trailing 。 the model wrote as . is included.
+    start = fmap[hit]
+    end = fmap[hit + len(fq) - 1] + 1
+    return start, end
 
 
 def to_evidence(
@@ -299,6 +421,7 @@ def to_evidence(
     seen: set[tuple[str, int, int]] = set()
     for chunk_id, quote in proposal.quotes:
         start, end = locate(chunks, chunk_id, quote)
+        start, end = expand_to_sentence(chunks[chunk_id], start, end)
         key = (chunk_id, start, end)
         if key in seen:
             # The same span twice is one piece of evidence dressed as two, and
@@ -309,7 +432,13 @@ def to_evidence(
                 f"twice. One piece of evidence dressed as two."
             )
         seen.add(key)
-        says.append(Citation(chunk_id=chunk_id, start=start, end=end, quote=quote))
+        # **The corpus's own characters, not the model's.** `locate` matched on a
+        # folded projection, so the model may have written `.` where the book
+        # writes 。 — storing its rendition would put text in the evidence column
+        # that the source does not contain, and `verify_citation` would then
+        # refuse the pipeline's own output.
+        says.append(Citation(chunk_id=chunk_id, start=start, end=end,
+                             quote=chunks[chunk_id][start:end]))
 
     return AnswerEvidence(
         question_id=question.id, target_ref=target_ref, value=proposal.value,

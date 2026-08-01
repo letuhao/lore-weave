@@ -306,14 +306,43 @@ async def test_genuinely_malformed_JSON_is_still_called_malformed() -> None:
     assert "TRUNCATED" not in str(e.value)
 
 
-def test_the_prompt_asks_for_a_UNIQUE_quote_not_merely_a_short_one() -> None:
-    """The prompt said *keep quotes SHORT* while :func:`locate` refuses an
-    ambiguous one — two instructions in direct conflict, and the live run hit it:
-    a model quoted 引氣 (2 characters) and it appeared many times."""
+def test_the_prompt_asks_for_a_SHORT_ANCHOR_not_a_long_quote() -> None:
+    """**The change three measured runs produced.** Asking for a verbatim quote
+    asks a model to do the thing it is worst at — transcription — and the numbers
+    said so: the dominant refusal was a quote that abridged a passage or reformatted
+    a list, and eight fixes moved the answered count 4 → 5 → 4 → 3.
+
+    Pointing is a task a model is good at, and the evidence is *better*: the stored
+    citation is a whole sentence lifted from the source rather than the fragment a
+    model chose to copy."""
     p = build_prompt(Q_OPEN, CORPUS)
-    assert "UNIQUE in its chunk" in p
-    assert "extend it until" in p
-    assert "SHORT" not in p, "the conflicting instruction is gone"
+    assert "ANCHOR" in p
+    assert "4-15 characters" in p
+    assert "You are pointing, not" in p
+    assert "ONLY ONCE in that chunk" in p
+
+
+def test_an_ANCHOR_expands_to_the_whole_SENTENCE_from_the_source() -> None:
+    """Deterministic and source-only: no model output reaches the widening, so the
+    expanded span is as trustworthy as the anchor that seeded it."""
+    from app.gamegen.interrogate import expand_to_sentence
+
+    content = "引氣既久，脈中不復澀滯，是為凝脈。凝脈之後，氣自成海。"
+    s, e = locate({"c": content}, "c", "脈中不復澀滯")
+    assert content[s:e] == "脈中不復澀滯", "the anchor itself"
+    s2, e2 = expand_to_sentence(content, s, e)
+    assert content[s2:e2] == "引氣既久，脈中不復澀滯，是為凝脈。", "the sentence around it"
+
+
+def test_expansion_stops_at_a_LINE_BREAK_too() -> None:
+    """The corpus carries list entries and table rows, where the line IS the unit —
+    widening past a newline would attribute a neighbouring entry to this one."""
+    from app.gamegen.interrogate import expand_to_sentence
+
+    content = "1. 引氣 —— 氣初入脈\n2. 凝脈 —— 脈中不復澀滯\n"
+    s, e = locate({"c": content}, "c", "脈中不復澀滯")
+    s2, e2 = expand_to_sentence(content, s, e)
+    assert "引氣" not in content[s2:e2], content[s2:e2]
 
 
 def test_the_prompt_forbids_joining_lines_or_adding_markup() -> None:
@@ -321,5 +350,16 @@ def test_the_prompt_forbids_joining_lines_or_adding_markup() -> None:
     assembled itself, with emphasis the corpus does not contain. Correctly refused
     as a fabrication, and worth telling the model up front."""
     p = build_prompt(Q_OPEN, CORPUS)
-    assert "do not join lines" in p
-    assert "markup that is not there" in p
+    assert "no joining lines" in p
+    assert "no renumbering" in p
+    # Abridging was the single most common failure in run 2, and "copy exactly"
+    # had not been enough — it is now called out on its own.
+    assert "no leaving words out of the middle" in p
+
+
+def test_the_prompt_says_SHAPE_is_not_the_answer() -> None:
+    """Live, a model replied ``"shape": "stage"`` — it put the VALUE in the shape
+    field. Refused correctly, and the template invited it by showing `shape` first
+    with no note that it is one of three fixed words."""
+    p = build_prompt(Q_OPEN, CORPUS)
+    assert "it is not the answer" in p
