@@ -123,10 +123,22 @@ Full standard: [`docs/standards/mcp-tool-io.md`](docs/standards/mcp-tool-io.md) 
 Python suites run under **pytest-xdist**: `python -m pytest tests -q -n auto --dist loadgroup`
 (install once per machine: `python -m pip install pytest-xdist`). Measured: composition
 1472 tests 418s→55s; translation full suite 37s. Rules:
-- **Always pass `--dist loadgroup`** — tests hitting the shared dev Postgres carry
+- **Pass `--dist loadgroup`** — tests hitting the shared dev Postgres carry
   `pytestmark = pytest.mark.xdist_group("pg")` (serialized onto one worker). A NEW test file
   that touches a real DB/port MUST add that mark, or parallel workers interleave and counts lie.
-- Iterating during BUILD: run `-k` subsets serially; the full `-n auto` suite is the VERIFY gate.
+- **EXCEPT composition-service, which uses `--dist load`** (2026-08-01). Its `tests/conftest.py`
+  gives every xdist worker its OWN database (`…_s1test_gw0`, `_gw1`, …, created on demand from
+  `PYTEST_XDIST_WORKER`), so the reason to serialise the group is gone and the marks are inert.
+  **Measured, clean, same 11 pre-existing failures either way: 508.4s → 106.6s (4.8×)**; the pg
+  group alone 495.5s → 51.5s. The conftest no-ops when `PYTEST_XDIST_WORKER` is unset, so serial
+  runs and CI (which runs this suite serially, on purpose) are unaffected.
+  It also memoises `run_migrations` per schema-fingerprint — worth ~48s, and far less than the
+  arithmetic suggested; the parallelisation is the lever that matters. A test whose SUBJECT is
+  the migration runner must import `run_migrations_uncached` (see `test_package_rekey.py`).
+- **Don't run the full suite while iterating** — that was the real cost, not the suite. Use `-k`
+  subsets during BUILD; the full `-n auto` run is the VERIFY gate. And never run two suites
+  against the SAME test DB at once: it produces failures that look like code defects (measured
+  2026-08-01 — a contaminated run showed 14 failed + 24 errors against a true 11).
 - Cross-service: run each service's suite as a parallel background task; ONE combined verify
   before commit when multiple services changed.
 
