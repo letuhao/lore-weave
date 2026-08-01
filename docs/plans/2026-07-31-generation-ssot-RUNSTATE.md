@@ -768,6 +768,39 @@ AUDIT S7-4 (tilemap)
                which is surveyed and blocked on the critic picker row.
 ```
 
+### ✅ S7 slice 2 — EXECUTED, not just read
+
+```
+AUDIT S7-2
+  BUILT      — nothing new. The gap the spec describes was closed earlier in this session by
+               the LLM-BUDGET SSOT M1-M3 work; what this entry adds is the EVIDENCE, because
+               the first version of it said "already done" on the strength of reading two call
+               sites, and a claim is not a measurement.
+
+  PROVEN     — `go -C services/glossary-service test ./internal/llmbudget/...`
+                 `ok  github.com/loreweave/glossary-service/internal/llmbudget  0.417s`
+               and the named tests that back the specific claim:
+                 `--- PASS: TestTruncatedFinishReasonMatchesTheContract`
+                 `--- PASS: TestStructuredTruncationIsFatalMatchesTheContract`
+                 `--- PASS: TestTheTruncationMessageMakesSenseForAnUncappedRow`
+                 `--- PASS: TestTruncationErrorNamesTheCauseAsCapacityNotMalformedOutput`
+               Plus the two production call sites: `llmbudget.Truncated(res.FinishReason)` at
+               `action_plan_tools.go:228` and `entity_doc_extract_tools.go:245`. The spec's
+               "glossary-service has ZERO FinishReason checks service-wide" is FALSE.
+
+  NOT PROVEN — the package's own tests pass; I did not execute glossary's FULL Go suite, and I
+               did not verify that `Truncated` is reached on every BRANCH of those two handlers
+               — only that each file calls it. A handler that returns early before the check
+               would still satisfy everything measured here.
+
+  DRIFT      — I wrote "already done" and moved on. It took the goal's own condition — "saying
+               a check passed without pasting its output does NOT satisfy this" — to send me
+               back for the four PASS lines. The rule caught me on the one claim in this whole
+               run that I had not measured, which is exactly the claim it was written for.
+
+  NEXT       — S7-4's real scope (`call_budget`'s JSON kinds), then S6.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -850,6 +883,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
 | 2026-08-01 | **Wrote a diagnosis into the handoff from ONE error message.** Told the next session "CI red = 33 failures, one root, `language`→`original_language`, a mechanical sweep". There were **three** roots — a fastapi 0.139 `app.routes` change across two services, a pip editable path resolving outside the checkout, and the rename — and the rename half needed a SEMANTIC rewrite because the identity key had changed too. I had read one traceback and generalised, which is the §1.4 mistake the red team already caught me making twice. |
+| 2026-08-01 | **Wrote “already done” instead of running the tests.** S7-2 rested on reading two call sites. The goal's own clause — *saying a check passed without pasting its output does NOT satisfy this* — is what sent me back for the four PASS lines. It caught the single claim in this run I had not measured. |
 | 2026-08-01 | **Nearly collapsed two decisions into one constant — the inverse of the bug I had fixed four commits earlier.** I almost let tilemap's runaway ceiling double as its sizing model. S7-1 was one decision written as two numbers that disagreed; this would have been two decisions written as one, so raising the ceiling would silently re-size every request. |
 | 2026-08-01 | **Reached for the dramatic reading of code I had just met.** `tool_use_success: classifications_parsed > 0` looked like “a truncated run reads as success” and I began writing it up — but the classifications ARE parsed and the render already prints `finish_reason`. The real defect was plainer: no cap was ever sent, anywhere in Rust. Same shape as B4/B5, whose severity this project already walked back. |
 | 2026-08-01 | **Three falsifications in a row primed me to expect a fourth.** On the first grep hit (`ModelRole` includes `'critic'`) I nearly recorded “the spec is wrong again”. The type member exists and is unreachable — the spec was RIGHT, and sharper than it knew. A measurement has to be allowed to confirm as well as refute. |

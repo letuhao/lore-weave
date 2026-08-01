@@ -19,7 +19,14 @@ request asked for 4096, so an 8k-context BYOK model was budgeted 10240 against a
 window. One constant now, owned by `distiller.py`. ⚠ A 4k-context model still overflows
 (`MIN_WINDOW_TOKENS` floors the chunk) — it is effectively unsupported and nothing says so.
 
-**S7 slice 2 was ALREADY DONE** — the spec's “glossary has zero FinishReason checks” is
+**S7 slice 2 is DONE and EXECUTED** — `go test ./internal/llmbudget/...` → `ok … 0.417s`,
+with `TestTruncatedFinishReasonMatchesTheContract`,
+`TestStructuredTruncationIsFatalMatchesTheContract`,
+`TestTheTruncationMessageMakesSenseForAnUncappedRow` and
+`TestTruncationErrorNamesTheCauseAsCapacityNotMalformedOutput` all PASS.
+⚠ The package's tests pass; the full Go suite was NOT run, and nothing verifies that
+`Truncated` is reached on every BRANCH of the two handlers — only that each file calls it.
+Originally recorded as — the spec's “glossary has zero FinishReason checks” is
 stale: `llmbudget.Truncated(res.FinishReason)` guards both LLM call sites, closed by the
 LLM-budget SSOT work earlier in this same session.
 
