@@ -436,6 +436,12 @@ Three. Looking at what it actually produced explains it:
 What survives is the *idea*, not the tool. The three signals `10` §4 wanted still exist — the LLM, the
 morphology lint at 96.9% precision, and now the KG's own typed edges — and two of those are free.
 
+> ⚠ **§8's first recommendation is WITHDRAWN by [`16`](16_book_scale_ab.md).** At book scale on the
+> real pipeline, `single_call_delta` loses **38.4% of entity coverage**, concentrated in the rare
+> kinds (`terminology` −80%, `power_system` −68%, `species` −62%). This document's 2.1% recall figure
+> was measured in a regime — 10 chapters, a frozen 50-entity context — where the defect could not
+> appear, and all three of its yield axes reported green. Read `16` before acting on §8.
+
 ## 8. Recommendation
 
 1. **Ship A4's shape as the default now.** −62% input, −47% output, 2× faster, no quality regression

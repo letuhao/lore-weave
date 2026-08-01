@@ -58,6 +58,7 @@ job, and that is a different job — see [`03_two_jobs.md`](03_two_jobs.md).
 | [`13_extraction_cost_and_quality.md`](13_extraction_cost_and_quality.md) | **what extraction actually costs** — 7.4 chars of prompt per 1 char of source; 86% of input is overhead; the groundedness check overstates fabrication 18.5× |
 | [`14_extraction_poc.md`](14_extraction_poc.md) | **the POC** — repair the instrument first, then seven arms against a frozen slice, scored on one card with anti-gaming axes |
 | [`15_extraction_poc_results.md`](15_extraction_poc_results.md) | **the results** — one call is −62% input at no measurable quality cost; and the kind is frozen at first sight, so every kind-accuracy number this project has quoted measured the store, not the model |
+| [`16_book_scale_ab.md`](16_book_scale_ab.md) | **the book-scale A/B** — cost −65.5% confirmed on the real pipeline, coverage −38.4% concentrated in the rare kinds, and `15`'s ship-it recommendation WITHDRAWN |
 
 **`03`, `04`, `07` and `08` are corrections.** The first draft of this folder put authoring and structuring in one
 place, treated fidelity as a gate that could forbid a mechanism, and argued the corpus-vs-derived

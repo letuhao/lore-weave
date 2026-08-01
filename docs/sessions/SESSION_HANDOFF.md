@@ -78,12 +78,57 @@ Its events are unmistakably the composed kind the baseline makes: `九龍宴 · 
 take `event` OUT of the EDC shape and give it its own path. Right diagnosis, wrong remedy — the
 constraint could just be relaxed for that category.
 
+## ⚠ THE 30-CHAPTER A/B REVERSES THE SHIP-IT RECOMMENDATION (2026-08-01)
+
+Full write-up: [`BOOK_TO_GAME/16`](../03_planning/BOOK_TO_GAME/16_book_scale_ab.md). Chapters 58–87 of
+封神演義, **interleaved** (even→`single_call_delta`, odd→`batched`), 15 each, no shared chapter, cheap
+arm first, through the **real pipeline** (worker + writeback + dedup + merge, not the harness).
+
+**Cost — better than the POC.** in/ch 30,687 → **9,866 (−67.9%)** · out/ch 9,773 → **4,107 (−58.0%)**
+· total **−65.5%** · wall **−55.8%**. One pass over the 100-chapter book: **4.05M tokens / 2.7 h →
+1.40M / 1.2 h.**
+
+**Coverage — the reversal.** Distinct entities on each arm's own chapters, **440 → 271 (−38.4%)**, and
+it loses on EVERY kind, worst where the kind is rarest:
+
+| character | location | item | event | organization | species | power_system | terminology |
+|---|---|---|---|---|---|---|---|
+| −22.8% | −17.4% | −16.4% | −36.5% | −51.4% | −61.8% | −68.2% | **−80.0%** |
+
+> **`BTG-A57`** — one call for eight kinds spends its attention where the chapter is densest and the
+> long tail pays. So `MAX_KINDS_PER_BATCH=3` was buying something nobody had named: **attention per
+> kind**, not just truncation safety. **`15` §8's "ship A4 as the default" is WITHDRAWN** — this is a
+> 38%-coverage-for-65%-cost trade, i.e. a decision, not a default.
+>
+> **`BTG-A58`** — a zero-check is not a coverage check. `kinds_zero` reports **0 for both arms**;
+> nothing hit zero, everything shrank. The axis has to be the **per-kind RATIO vs baseline**, measured
+> at a scale where the known-entity context is saturated. Ten chapters with a frozen 50-entity
+> snapshot is a regime in which this defect cannot appear — every POC axis was green.
+
+Chapter sizes matched within **4.5%** (18,589 vs 19,423 mean bytes), so content volume does not
+explain it. Ordering does not either: `batched` ran second, from a glossary the other arm had already
+added 164 entities to, and still created more (248 vs 164).
+
+**`BTG-A59` — a defect found on the way.** `chapter_entity_links.chapter_index` is written by the
+worker as the index **within the job's chapter list** (its own comment says so), while
+glossary-service's `before_chapter_index` documents and windows it as a position **in the book**.
+Measured: index 0 maps to **6 different chapters**, 1–14 to 3 each, and 87 distinct chapters carry
+links whose index never exceeds 56. Any book extracted in more than one job (resume, incremental,
+this A/B) has colliding indices, so known-entity windowing and anything keyed on chapter order
+(spoiler windows, timeline cutoffs) reads a number that does not mean what it says. **Not fixed** —
+needs the real `sort_order` at write time plus a backfill.
+
 **▶ NEXT**
-1. **The 30-chapter A/B is running** — `single_call_delta` vs `batched`, chapters 58–87 of 封神演義,
-   **interleaved** (even/odd) so neither arm shares a chapter, cheap arm first so `BTG-A41`'s
-   path-dependence runs *against* it. Chapters 1–57 are excluded: they are cache-warm for `batched`
-   and would cost it 0 tokens.
-2. **Wire A9 as `edc_cited`** (currently `PLANNED`, refused at the boundary). Two-stage call flow.
+0. **Run `single_call` WITHOUT the delta instruction at this scale.** `single_call_delta` is two
+   changes at once and this A/B cannot separate them. If coverage recovers, the delta instruction is
+   the culprit and the one-call saving is keepable; if not, the loss is intrinsic to packing 8 kinds
+   into one call.
+0b. **Measure A9 (`edc_cited`) at book scale.** Its two-stage sweep gives each kind a dedicated pass
+   at the chapter instead of making them compete inside one response — exactly the mechanism
+   `BTG-A57` says the one-call shape lacks. At POC scale it raised coverage on every axis.
+1. **Wire A9 as `edc_cited`** (currently `PLANNED`, refused at the boundary). Two-stage call flow.
+2. **Fix `BTG-A59`** — write the real `sort_order` as `chapter_index`, plus a backfill. It silently
+   corrupts every chapter-ordered read on any multi-job book.
 3. Then `BTG-A49` re-decide-on-merge — still the deepest fix, and untouched by any of this.
 
 **Scale note (PO):** the 4,000-chapter book was **destroyed by a migration bug**; the corpus survives
