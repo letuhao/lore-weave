@@ -61,13 +61,24 @@ nowhere to hide.
 | hand-written 11-line block | today's best result — but it is *cooked by a human who was not counted as part of the pipeline* |
 | raw corpus + model-written queries | measured 2026-08-01: noise floor for derived queries, ~0.47 top-1 for asked ones |
 
-**Run:** hand-author a **deliberately small** game concept — one axis, ~10 entities (Nezha's treasures
-plus the power axis is the obvious slice, because the fixture already has teeth there) — then point the
-**existing** contract generator at it as its retrieval source and run the four-slot cycle unchanged.
+**Run:** hand-author **one gameplay design document for one element family** (`03_two_jobs.md` §4d) —
+items is the obvious first family, because the fixture already has teeth there and the pool already has
+three item slots to compile into. Deliberately small: the unique treasures the book names, **plus the
+common item families the book does not have and a game needs anyway**. Then point the **existing**
+contract generator at that document as its source and run the cycle unchanged.
+
+The second half of that sentence is the test. A document containing only what the book contains is a
+summary, and summaries are what §[`01`](01_the_missing_tier.md) measured failing. What makes an item
+document a *design* document is the invented common families — the things there are enough of to drop,
+craft and trade.
 
 **Measured:** the criteria the pool loop already computes — pass rate, heal rounds needed, compression
-(`m < n`), refusal quality — **and `evidence_n`, which is the tell**: if the concept has a table of
+(`m < n`), refusal quality — **and `evidence_n`, which is the tell**: if the document has a table of
 contents, `n` is countable, and one of the three stuck problems is closed by construction.
+
+**Also measured, and it decides §4b's caveat:** how much of the document the compiler could read
+*without* judgement. This is the per-family parseability question, and items is the family most likely
+to look easy — so a good result here must NOT be generalised to quests.
 
 **Stop if:** the authored concept does not beat the raw corpus. That would mean the problem is not the
 source material, and the whole tier is aimed at the wrong thing.

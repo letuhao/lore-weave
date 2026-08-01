@@ -1,5 +1,20 @@
 # 40 — Progression planner — Index
 
+> ## ⛔ STOPPED — 2026-08-01
+>
+> This track is **paused deliberately**, not abandoned. It built the **Data Spec** and **compiler**
+> layers (3 and 4) and then, finding the design layers above them absent, reached back to the novel for
+> its material — which was measured failing at the noise floor.
+>
+> **Read [`13_stopped.md`](13_stopped.md) before touching anything here.** It records what works, what
+> is measured-broken, what was never built, and — most importantly — which working pieces are
+> **superseded** because they live in the wrong tier. The four planner kinds ask a model to INVENT;
+> invention has moved to the design tier.
+>
+> Work continues in [`../../BOOK_TO_GAME/`](../../BOOK_TO_GAME/_index.md).
+> The pause is also mechanical: `test_the_track_is_stopped_and_says_what_supersedes_it`.
+
+
 > **Category:** PPL / PPO / PPB / EPL / GP / ICT / MOD / ENR / ASK / MEM / BLD — the **authoring tier** for progression systems.
 > **Status:** DESIGN, unreviewed. Nothing here is locked and nothing is built.
 > **One-line:** how a human + an LLM converge, in a loop, on a progression system strict enough to

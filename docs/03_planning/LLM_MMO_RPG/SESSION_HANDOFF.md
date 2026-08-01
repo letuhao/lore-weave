@@ -10,141 +10,58 @@
 
 ---
 
-## ▶ NEXT SESSION — the contract generator RUNS (`40_progression_planner/` + `app/pool/`)
+## ▶ NEXT SESSION — this track is STOPPED; work moved to `BOOK_TO_GAME`
 
-**Date:** 2026-08-01 · **Docs:** [`40_progression_planner/`](40_progression_planner/_index.md) — 12 docs,
-prefixes `PPL` `PPO` `PPB` `EPL` `GP` `ICT` `MOD` `ENR` `ASK` `MEM` `BLD`, all registered.
-**Code:** `contracts/pool/registry.json` (5 slots) + `app/pool/` (produce) + `app/generators/`
-(2 consumers) — **72 tests** across the two, service suite **1263 passed / 161 skipped**.
+**Date:** 2026-08-01 · **Status:** ⛔ **PAUSED DELIBERATELY.** Not abandoned, not failed.
 
-**Where this came from.** POC-1 (doc 39's progression pipeline) was run end-to-end against a real model
-four times and **FAILED** — zero manifests, and the blocking question turned out to be a design decision
-that had been routed to a model. That re-opened the architecture. Doc 39's **back half survives intact**
-(S-1 validator, S4 policy, S5 candidate, S6 pin).
+**Read first:** [`40_progression_planner/13_stopped.md`](40_progression_planner/13_stopped.md) — the
+full inventory of what works, what is measured-broken, what was never built, and which working pieces
+are **superseded because they live in the wrong tier**.
 
-**The shape.** A **contract generator** produces *the lists* — closed sets and structures over them —
-into a shared **pool**. **Specific generators** (item, place, …) consume the frozen pool and produce
-their own content, each internally two-layered (LLM vocabulary + procedural spine). Two pipeline layers
-separated by a freeze; **no module ever reads another module's L2 output**.
+**Then:** [`../BOOK_TO_GAME/_index.md`](../BOOK_TO_GAME/_index.md) — where the work continues.
 
-### What is now BUILT and measured (doc 12 Part C)
+### Why it stopped, in one paragraph
 
-Four slots, four planner kinds, **two owning modules**, one abductive register between steps, one freeze:
+A game pipeline stacks four document layers: **Lore Bible → Game Design → Data Spec → compiled data.**
+This track built layers **3 and 4** — the slot registry and its compiler — and then, finding layers 1
+and 2 absent, reached all the way back to the novel for its material. Two measurements made that
+untenable: every quality result rested on **eleven evidence lines cooked by hand** by a step nobody had
+modelled, and substituting the raw source scored at the **noise floor** (a slot-id query returned a
+lesson on playing the zither). The book is not a specification of the game — *"the ancient dragon
+roared, the mountain shook"* tells a human Boss · huge · earthquake · fear aura · spawn · drop table ·
+faction · AI, and a compiler cannot know what the author **wanted**.
 
-| slot | owner | operation | kind |
-|---|---|---|---|
-| `instrument_tag` | item | ABSTRACT | `Enumeration` |
-| `item_archetype` | item | CLASSIFY_LINK | `ClassifyLink` |
-| `progression_kind` | progression | CONFIRM | `Profile` |
-| `progression_stage` | progression | PARTITION | `Ladder` |
+### What is BUILT here and stays built
 
-A full live run against a local model reaches `FROZEN 3091d0f8…` with per-group ordinals stamped by the
-**planner**, not the model. Three claims held that could each have failed: `BLD-A5` (a slot is a registry
-row, never a file — adding a module added zero per-slot code), `EPL-A8` (registering `progression_kind`
-**removed** its demand row; `equip_slot` is left unregistered so the channel keeps a subject), and the
-kinds generalising past their author's slot.
+5 slots · 4 planner kinds · the clingo open-decision register · per-consumer freeze artifacts with
+digest verification and PRIVATE withholding · `PoolView` (a boundary with no method that can return
+another module's L2) · 2 consumers, one owning no slot · **72 tests**, service suite **1263 passed**.
+Plus the Fengshen fixture (12 designed teeth), `doc-language-gate`, and `design-lint`'s spec-enum source.
 
-**Five defects, all in this project's code, found by the live runs** — the register was compiling model
-text as **ASP source** (`Blade` parses, as a *variable*); rejected members were readable as approved
-(`ASK-A5` a second time, this one *laundering* the verdict rather than ignoring it); the envelope did not
-declare a field the operation required, and the first fix went into the **checker**; the heal round asked
-the model to repair an answer it could not see; and `refusals_name_an_owner` was a truthiness test, which
-the string `"null"` satisfies. **13 mechanisms bite-tested**, each broken and restored.
+**Superseded, and this is the part that would drift:** the four planner kinds **ask a model to INVENT**.
+Invention moves to the design tier. The kinds survive as **readers of a design document**; the
+operations (`PARTITION` · `ABSTRACT` · `CONFIRM` · `CLASSIFY_LINK`) survive because they describe what a
+*structure* is, not how it was decided. `probe()`, `evidence_n` and the hand-written evidence block do
+not survive at all — `13_stopped.md` §4 is the table.
 
-### The consumer half — `PPB-A6` under load for the first time (doc 12 Part D)
+### The pause is mechanical, not just written down
 
-The pool was produced, hashed and read by nobody for two cycles, so *two layers separated by a freeze*
-had nothing on its far side. There is now an artifact (`app/pool/freeze.py`), the only surface a
-generator gets (`app/pool/consume.py`), a first consumer (`app/generators/item_l2.py`), and a separate
-process that reads the artifact file and nothing else.
+`test_the_track_is_stopped_and_says_what_supersedes_it` pins the planner-kind count (4) and the slot
+count (5) and reds if either grows. **It is a prompt, not a prohibition** — it sends the next author to
+`13_stopped.md` §4 before they extend a compiler that has nothing to compile. Bite-tested: adding a
+fifth kind reds it.
 
-**The number `ICT-A2` was asserting without one.** Over `PL_007`'s 14-field `ItemDefDecl`: the contract
-supplies **2** (`class`, `instrument_tags`), the generator owns **10**, and **2** are blocked
-(`equip` → `equip_slot`, `lex_tags` → `lex_tag`) — the same pair the abductive register has named since
-the first cycle. Two mechanisms built for different purposes, one answer, and a test asserts they agree.
+### What would restart this track
 
-**The freeze was the wrong SHAPE and three live runs said so before any test did.** It was pool-wide,
-so `item` could not consume its own complete contract until `progression_stage` settled — a slot item
-does not reference. The right unit is the transitive closure of the references, which is neither the
-module nor the pool.
+Not a date — a condition: **a gameplay design document exists for one element family**, and the
+question becomes *can the compiler read it*. That is `BOOK_TO_GAME` POC-B/POC-C.
 
-**`PPB-A6` is now a mechanism**: `PoolView` has no method that could return another module's generated
-content and a test pins its exact surface; every file under `app/generators/` has its imports walked;
-the artifact verifies its own digest and carries the unmet holes forward as named refusals rather than
-empty lists. Nine mechanisms bite-tested.
+### Still owed here, tracked below
 
-### The second consumer — and the three things it broke (doc 12 Part E)
-
-`loot` owns no slot and does its job from contract alone: 13 drop rows over frozen **archetypes**,
-pinned to the same digest item pinned. The `PPB-A6` split holds. The case that would falsify it —
-a drop table needing to tell two concrete items of the same archetype apart — has **not been reached**,
-which is not the same as ruled out, and `loot_l2.build` says where it breaks.
-
-Three defects it found, none by reasoning:
-
-1. **`closure_for` was seeded by OWNERSHIP**, so a pure consumer got the empty set. A module's needs
-   are declared in `consumed_by`, which had been in the registry since the beginning read by nothing
-   but a prompt.
-2. **`EPL-A7` cannot mean what it said.** `equip_slot` was registered PRIVATE on a sound argument;
-   `item_archetype` is SHARED and carries `"equip_slot": "main_hand"` in its bodies, so the privacy
-   was defeated by an adjacent decision. **Visibility may not decrease along a reference**, enforced at
-   load — and the consequence is that a slot any SHARED slot points at *cannot* be private. Every slot
-   is SHARED today for that reason, so PRIVATE has **no production subject**.
-3. **Two of my own assertions could not fail** — `not hasattr(row, "def_id")` on a dataclass without
-   that field, and a `set(dangling) | {"lex_tag"}` union papering over a real disagreement between two
-   mechanisms. Both replaced with pins that red on the change they were supposed to catch.
-
-Item's contract reach went **0.5 → 0.75** (`equip` unblocked). The last quarter is `lex_tag`, which
-`WA_001` owns. A generator now also gets **no I/O at all** — checked by AST before any L2 store exists,
-because the natural moment to add that check is the moment it is too late.
-
-### Retrieval, measured on the real book (doc 12 Part F)
-
-**Every quality number in Parts A–E rests on evidence written by hand** — eleven bullet lines the
-author extracted, one object per line, each chosen because it was worth grouping. The world built for
-this on day one (100 chapters + 16 lore pages) had never been read by the pool loop.
-
-Measured with production pieces (`chunk_text`, `top_k`, BYOK embeddings): 675,860 chars → 2329 chunks.
-
-1. **`probe()` returns identifiers, and an identifier is not a question.** Every slot scored at the
-   noise floor; not one top-3 hit was on topic. `instrument tag` → a zither lesson. `progression stage`
-   → Père David's deer conservation, 1985.
-2. **The query is a MODEL turn.** 法寶 · 境界 · 修爲層次 — the setting's own words, which the charter
-   already establishes. Same corpus, same scorer, only the queries changed: ~+0.09 mean top-1 and,
-   far more importantly, the right material. Not all of it lands — roughly 3 of 5 terms are useful.
-3. **The score got worse and the answer got better.** Dropping the 16 scraped lore pages (12% of
-   chunks) moved the mean by 0.004, but replaced a 《狐狸缘全传》 crossover reference with the actual
-   campaign passage, and a 《老子變化經》 footnote with a named weapon in use. **Encyclopaedic text
-   out-scores narrative text while being less useful** — a wiki page is written *about* a thing, a
-   novel *uses* it. So **cosine score is not a usable proxy for usefulness here**, and a relevance
-   floor tuned on score would keep exactly the wrong chunks.
-
-Two new deferral rows carry what this leaves open: `probe()` is measured-broken and still in the code,
-and `evidence_n` has no definition against a real corpus.
-
-### Do-now next
-
-1. **`WA_001` must register `lex_tag`.** `equip_slot` is done — item registered what it owned and
-   the contract's reach went 0.5 → 0.75. This is the last quarter, and the last subject the `EPL-A8`
-   demand channel has.
-2. **PO sign-off on two blocking decisions:** how many of the 19 competency questions must be
-   answerable to ship, and whether the two-layer pipeline is adopted **pipeline-wide** — which
-   requires first walking all seven of doc 38's element-roster entries.
-3. **Reach the case that would falsify `PPB-A6`.** A drop table that must distinguish two concrete
-   items of the same archetype needs something the contract does not carry — then either the contract
-   grows a rarity/tier slot, or the two-layer split is wrong. Nothing has reached it.
-4. **Wire `REOPENED`, or decide not to.** Declared, unreachable, and its trigger was measured:
-   `item_archetype` needs `instrument_tag` codes that cover everything, and the model correctly
-   omitted the field rather than lie when they did not. The fix is upstream in an already-settled
-   slot. Needs a termination bound.
-5. **The Rust half:** `declare_pool_slot!` + `export.rs` + the drift test, which flips
-   `registry.generated` to true and reds the test holding that place.
-6. **`EPL-A7` may be unusable as written** — a slot any SHARED slot references cannot be PRIVATE,
-   which is most of them. Either PRIVATE means something narrower, or it should be retired.
-
-**Fixture:** `services/lore-enrichment-service/tests/fixtures/fengshen/` — a treasure-dense Ming-novel
-corpus with **12 designed teeth**, answer key outside the corpus, guarded by 29 assertions.
-**Gate:** `scripts/doc-language-gate.py` — persisted artifacts are English; judges **added lines only**.
+`lex_tag` (WA_001's, and the last subject the `EPL-A8` demand channel has) · the Rust
+`declare_pool_slot!` export · `REOPENED` unreachable · the refusal channel's two meanings · **two PO
+decisions** (how many of the 19 competency questions to ship; whether `PPB-A6` is adopted pipeline-wide,
+which needs doc 38's 7 element-roster entries walked first).
 
 ---
 

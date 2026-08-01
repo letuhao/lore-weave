@@ -29,6 +29,29 @@ def reg():
 
 # ── the registry ────────────────────────────────────────────────────────────
 
+def test_the_track_is_stopped_and_says_what_supersedes_it(reg):
+    """This track is STOPPED (2026-08-01). Work moved to `docs/03_planning/BOOK_TO_GAME/`.
+
+    A stop recorded only in prose gets re-argued in six weeks, so it is also
+    mechanical. This pins the two numbers that would grow if someone resumed
+    building here, and it is **not a prohibition** — it is a prompt to read
+    `40_progression_planner/13_stopped.md` §4 first, because the four planner kinds
+    ASK A MODEL TO INVENT and invention has moved to the design tier. Extending the
+    compiler before the design tier exists rebuilds the mistake the stop was for.
+    """
+    from app.pool.kinds import PLANNERS
+    assert len(PLANNERS) == 4, (
+        "a fifth planner kind. The track is stopped — see 13_stopped.md §4: the kinds "
+        "are superseded as INVENTORS and survive only as READERS of a design document. "
+        "If this is the reader rewrite, update this test and say so."
+    )
+    assert len(reg.slots) == 5, (
+        "the slot registry grew. Slots are the Data Spec layer and may legitimately "
+        "grow — but each new slot needs a design document to be filled from, and "
+        "there are none yet. Confirm that before deleting this line."
+    )
+
+
 def test_the_registry_is_the_one_the_engine_would_read(reg):
     assert REGISTRY.exists(), "the Python loop and the Rust engine read the same file"
     assert reg.slots, "no slots registered"

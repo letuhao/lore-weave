@@ -94,6 +94,88 @@ Re-reading the game tier's stuck points under this separation:
 None of that is a promise; it is the prediction this design makes, and
 §[`06`](06_poc_plan.md) is how it gets checked.
 
+## 4b. Four layers, not two — and one of them is already built
+
+The two-job split is right and too coarse. Professional game production does not go from prose to data
+in one step; it stacks documents, and the stack maps onto what this repo already has:
+
+| layer | industry name | here | state |
+|---|---|---|---|
+| 1 | **Lore Bible / World Bible** | Lore Design — what the world IS | not built |
+| 2 | **Narrative + Game Design (GDD)** | Gameplay Design — what the GAME does | not built |
+| 3 | **Technical Design / Data Spec** | **`contracts/pool/registry.json`** — slots, arity, references, visibility | **BUILT** |
+| 4 | compiled data | `app/pool` + `app/generators` → manifests | **BUILT** |
+
+> **`BTG-A15`.** The contract-generator track built layers **3 and 4** and then, finding layers 1 and 2
+> absent, reached past them to the novel. That is the whole diagnosis, and it explains a measurement
+> that otherwise looks like a retrieval problem: slot-id queries scored at the noise floor because a
+> **Data Spec** was being used as a **search query against a story**. Nothing in layer 3 was ever meant
+> to be legible to a novel.
+>
+> The compiler analogy holds and is worth keeping: **nobody compiles source text straight to machine
+> code.** Book is source; the design documents are the IR; the registry is the target's type system.
+
+**Where the analogy breaks, and it matters.** A compiler's IR has a formal grammar. A game design
+document is natural language *with structure* — semi-structured. So layer 3→4 is **not a parse**; it is
+still a model reading prose, just prose in which the decisions have already been made. **The
+determinism comes from the decisions being upstream, not from the format being formal.** Treating the
+GDD as a formal IR would mean writing a parser and being surprised: a `Weapon / Material / Durability`
+block is nearly YAML, while quest branching and NPC behaviour are not. How parseable a family is turns
+out to be a **per-family property**, and one worth measuring rather than assuming.
+
+## 4c. Lore Design vs Gameplay Design — the boundary is not the topic
+
+The obvious split — *world stuff over here, game stuff over there* — does not survive contact. `Currency`
+is lore; `Economy` is gameplay; spirit stones are both. `Realm` is lore; the gate that stops you
+entering a zone is gameplay.
+
+The boundary that does work is **what makes the statement true**:
+
+> **`BTG-A16`.** A statement belongs to **Lore Design** if it is true because the world says so — it
+> would still be true if no game were ever made. It belongs to **Gameplay Design** if it is true because
+> the game needs it — it means nothing outside the game.
+
+Same location, two documents:
+
+```
+LORE DESIGN                          GAMEPLAY DESIGN
+Thanh Vân Thành                      Thanh Vân Thành
+  population 550,000                   purpose: STARTER HUB
+    cultivator 120,000                 first-hour flow: arrive → guild → first quest
+  districts: inner · market ·          services: trainer, vendor, storage
+    academy · slum · dock              level band: 1–10
+  economy: spirit stone,               spawn budget: 0 hostile inside the barrier
+    weapon craft, alchemy              quest anchors: 3 main, 6 side
+  power: city lord · 12 elders ·       fast-travel: unlocked on arrival
+    merchant council
+```
+
+Everything in the right-hand column is **invented**. None of it is in any novel. That column is why the
+tier exists, and it is the column a Kind Generator can actually compile.
+
+## 4d. Gameplay Design is MANY documents — one per element family
+
+Lore Design is one document set, world-scoped. Gameplay Design is not: quests, items, enemies,
+dungeons, skills, economy, crafting, spawn rules each need a **different design method, different
+questions, and a different notion of "complete"**. A quest document asks about branching, inputs and
+outcomes; an item document asks what exists uniquely in the book *and* what common families must be
+invented so there is anything to loot.
+
+> **`BTG-A17`.** **The gameplay design families and the pool's slots are the same taxonomy at two levels
+> of formality.** A `quest` design document feeds `quest_*` slots; an `item` document feeds
+> `item_archetype`, `instrument_tag`, `equip_slot`. This is falsifiable in both directions: a family
+> with no slots produces documents nothing compiles, and a slot with no family is a data spec nobody
+> designs for. Either is a defect, and both are checkable from the registry.
+
+**Is this too much?** [`05_gameplay_inventory.md`](../LLM_MMO_RPG/40_progression_planner/05_gameplay_inventory.md)
+counts **178 entries in 18 families**. Eighteen document types is a great deal of work — but the
+*structure* costs nothing to adopt, and only the building is expensive. The discipline is the one this
+project already used on the planner kinds: **build ONE family end to end, measure it, and only then
+claim the pattern.** `BLD-A5` made exactly that claim falsifiable and it survived a fifth slot being
+added without a fifth planner file. The same falsifiable claim governs here — *adding an element family
+must not add an authoring engine* — and if it fails, the design is wrong and better to know at family
+two than at family eighteen.
+
 ## 5. The handoff between them
 
 The concept is unstructured, so the handoff cannot be a schema. What it can be:
