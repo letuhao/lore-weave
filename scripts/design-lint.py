@@ -29,10 +29,25 @@ CHECKS (each independently toggleable via --check):
                 "(the §11 variant" as a count and mis-attributed one symbol's
                 number to another — and a lint that cries wolf gets switched
                 off, which is how this check spent its first life as INFO-only.
-                It can only check enums that EXIST in code. Exempt a real
-                false positive (a name collision, a spec-only type) with
-                `design-lint: ok count — reason` on the line or the one above,
-                or in an HTML comment to scope it to the whole file.
+                TWO SOURCES since 2026-07-30 (REC-98): the real Rust enum,
+                and — when the enum is SPEC-ONLY — the declaration in the same
+                document's own rust block. The second closed this check's own
+                documented hole ("it can only check enums that EXIST in code"),
+                which had let `EF_001` claim "4 variants V1" beside a 5-variant
+                declaration in the same file. Per-file on purpose: three docs
+                declare `pub enum ActorId` and two are legitimately different
+                types (DP's vs the feature layer's), so a cross-doc comparison
+                would false-positive on its first run.
+                Guards, each bite-tested, and each added because running it
+                found the case: elided bodies (`...`) are illustrative not
+                declarations; commented-out enums must not phantom (MAP_001
+                carries a struck-through `ChannelTier`); version-partitioned
+                enums (`// V1` / `// V2+` in the body) have NO single arity and
+                are excluded, detected BEFORE comment stripping since the
+                markers live in the comments the stripper removes.
+                Exempt a real false positive (a name collision, a historical
+                claim) with `design-lint: ok count — reason` on the line or the
+                one above, or in an HTML comment to scope it to the whole file.
 
 ALLOWLIST (symbol check):
   - scripts/design-lint.allow.json — {"prefixes": {"UTF": "reason", ...}},
@@ -116,6 +131,46 @@ COUNT_FORMS = (
 )
 
 
+# ── the LOOSE form, safe ONLY because it is file-scoped ─────────────────────
+#
+# WHY A LOOSE MATCHER IS ALLOWED HERE WHEN IT WAS BANNED ABOVE. `COUNT_FORMS`
+# requires the number and the symbol to be ADJACENT, because a same-line matcher
+# produced ~8 parse errors in 11 findings ("(the §11 variant" read as a count).
+# That trade is right for a corpus-wide check. But it MISSES the defect this
+# source exists for: `EF_001:67` reads
+#
+#     | **EntityId** | Closed sum type — `Pc(PcId) \| …` | 4 variants V1. …
+#
+# — bold rather than backticked, and the count is a table cell away. Adjacency
+# never fires, so the "4 variants" claim sat beside a FIVE-variant declaration in
+# the same file (REC-98).
+#
+# The narrowing that makes loose matching safe is that the symbol must name an
+# enum THIS FILE DECLARES. The original false-positive mode cannot survive it:
+# "§11 variant" names no enum, so there is nothing to compare against. And the
+# mis-attribution mode — "`ZoneType` (6 variants) | `ZoneRole` (4 …)" giving one
+# symbol's number to another — is killed by requiring EXACTLY ONE declared enum
+# name on the line. Two candidates means the line is ambiguous, so it is skipped
+# rather than guessed. Both are bite-tested.
+LOOSE_SYMBOL = re.compile(r"(?:`|\*\*)([A-Za-z_]\w*)(?:`|\*\*)")
+LOOSE_COUNT = re.compile(r"\b(\d+)[\s-]*variants?\b", re.I)
+
+
+def loose_count_claim(line: str, declared: dict):
+    """(symbol, claimed) when the line names EXACTLY ONE file-declared enum and
+    exactly one variant count. Returns None on any ambiguity — skipping is the
+    correct answer for a check whose first life ended in false positives."""
+    if not declared:
+        return None
+    names = {m for m in LOOSE_SYMBOL.findall(line) if m in declared}
+    if len(names) != 1:
+        return None
+    counts = LOOSE_COUNT.findall(line)
+    if len(counts) != 1:
+        return None
+    return names.pop(), int(counts[0])
+
+
 def rust_enum_arities(roots=("crates", "services")) -> dict:
     """enum name -> {arity: [defining files]}. Parsed with the closed-set-gate
     parser so the two checks cannot disagree about what a variant is."""
@@ -148,6 +203,88 @@ def rust_enum_arities(roots=("crates", "services")) -> dict:
                 rel = os.path.relpath(path, REPO_ROOT).replace("\\", "/")
                 for name, variants in mod.parse_enums(mod.strip_comments(src)).items():
                     out.setdefault(name, {}).setdefault(len(variants), []).append(rel)
+    return out
+
+
+# ── count-drift, second source: enums DECLARED IN THE CORPUS ITSELF ──────────
+#
+# THE BUG THIS CLOSES, and it is the check's own documented hole. `count` states:
+# "KNOWN LIMIT: it can only check enums that EXIST in code." `EntityId` is
+# spec-only — and on 2026-07-30 `EF_001` carried "4 variants V1" at line 67 next
+# to a FIVE-variant `pub enum EntityId { …, Place(PlaceId) }` at line 352, in the
+# SAME FILE, with nothing able to look. That was the THIRD half-applied amendment
+# of one arc (after SPG-R1 and the "Applied so far" claim, REC-97), which is the
+# point at which the answer stops being another careful sweep.
+#
+# PER-FILE, AND THAT IS A DESIGN DECISION, NOT A SHORTCUT. A cross-document
+# version would have false-positived on its FIRST run: three docs declare
+# `pub enum ActorId`, and two of them are legitimately different types —
+# `06_data_plane/17_channel_lifecycle.md` declares the DATA PLANE's
+# `{Player, Npc}` (2 variants) while `EF_001`/`NPC_001` declare the FEATURE
+# layer's `{Pc, Npc, Synthetic, Admin, Locus}` (5). Both correct; it is the
+# DP-A13 boundary. Per-file has no homonym problem because two files never meet,
+# and it still catches the defect exactly. Cross-doc parity is deferred as
+# `D-SPEC-CODE-ENUM-PARITY` rather than shipped noisy — a lint that cries wolf
+# gets switched off, which is how this very check spent its first life INFO-only.
+RUST_FENCE = re.compile(r"^\s*```+\s*rust\b", re.I)
+FENCE_END = re.compile(r"^\s*```+\s*$")
+# An elided body is ILLUSTRATIVE, not a declaration. Counting it would contradict
+# a correct claim with a partial sample — bite-tested as a NON-finding.
+ELISION = re.compile(r"\.\.\.|…")
+# A VERSION-PARTITIONED enum has no single arity, so no claim about it can be
+# checked against a total. Found by running the loose form over the corpus: it
+# flagged `MemoryQuery` ("V1 4 variants; V2+ adds …" against a 6-variant block
+# whose body is commented `// V1 query types` / `// V2+ additive`) and
+# `SpatialPreference` the same way. BOTH CLAIMS ARE CORRECT — they scope
+# themselves to V1 while the block declares the V1+V2 union. Comparing them to
+# the total is the check misreading the corpus, not the corpus being wrong.
+#
+# Detected on the RAW body, BEFORE comment stripping, because the version markers
+# live in exactly the comments the stripper removes. That ordering is the whole
+# trick and is bite-tested.
+VERSIONED_BODY = re.compile(r"//.*\bV\d\+?", re.I)
+
+
+def corpus_enum_arities(lines) -> dict:
+    """{enum name: arity} for enums declared in this FILE's rust code blocks.
+
+    Parsed with `closed-set-gate`'s parser + comment stripper, the same pair
+    `rust_enum_arities` uses, so the checks cannot disagree about what a variant
+    is. The stripper is load-bearing here and not theoretical: `MAP_001` carries a
+    deliberately COMMENTED-OUT `// pub enum ChannelTier { … }` recording a
+    retirement, and a parser that counted it would invent a phantom enum out of
+    documentation. Bite-tested against that real block.
+    """
+    import importlib.util
+
+    gate = os.path.join(SCRIPT_DIR, "closed-set-gate.py")
+    if not os.path.exists(gate):
+        return {}
+    spec = importlib.util.spec_from_file_location("_closed_set_gate", gate)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    out: dict[str, int] = {}
+    block: list[str] = []
+    inside = False
+    for line in lines:
+        if not inside:
+            if RUST_FENCE.match(line):
+                inside, block = True, []
+            continue
+        if FENCE_END.match(line):
+            body = "\n".join(block)
+            inside = False
+            if ELISION.search(body):
+                continue                      # illustrative, not a declaration
+            if VERSIONED_BODY.search(body):
+                continue                      # V1/V2+ partitioned: no single arity
+            for name, variants in mod.parse_enums(mod.strip_comments(body)).items():
+                # First declaration in the file wins; a file that declares one enum
+                # twice is its own problem and not this check's to adjudicate.
+                out.setdefault(name, len(variants))
+            continue
+        block.append(line)
     return out
 
 
@@ -251,7 +388,8 @@ def iter_staged_md_files(root: str):
 # ── per-file scanning ─────────────────────────────────────────────────────
 
 def scan_file(path, rel, lines, checks, registered, allow, matrix_text, findings,
-              counters, enum_arities=None):
+              counters, enum_arities=None, corpus_enums=None):
+    corpus_enums = corpus_enums if corpus_enums is not None else {}
     pragma_ok = {m for line in lines for m in PRAGMA.findall(line)}
     # File-scoped only when the pragma sits in an HTML comment; otherwise it is
     # line-scoped, so muting one collision does not blind a whole document.
@@ -311,9 +449,12 @@ def scan_file(path, rel, lines, checks, registered, allow, matrix_text, findings
             line_muted = count_muted or COUNT_PRAGMA.search(line) or (
                 n >= 2 and COUNT_PRAGMA.search(lines[n - 2]))
             claim = None if line_muted else count_claim(line)
-            if claim and enum_arities:
+            if claim is None and not line_muted:
+                # Adjacency missed it; try the file-scoped loose form.
+                claim = loose_count_claim(line, corpus_enums)
+            if claim:
                 sym, claimed = claim
-                arities = enum_arities.get(sym)
+                arities = (enum_arities or {}).get(sym)
                 if arities:
                     counters["count_checked"] += 1
                     if claimed not in arities:
@@ -322,6 +463,19 @@ def scan_file(path, rel, lines, checks, registered, allow, matrix_text, findings
                         findings.append((rel, n, "count-drift",
                                          f"claims `{sym}` has {claimed} variant(s); the enum in "
                                          f"`{where}` has {actual if len(actual) > 1 else actual[0]}"))
+                elif sym in corpus_enums:
+                    # SPEC-ONLY enum — the check's documented KNOWN LIMIT, closed
+                    # 2026-07-30. Compared against the declaration IN THIS FILE, so
+                    # there is no homonym ambiguity (see corpus_enum_arities).
+                    counters["count_checked_corpus"] += 1
+                    real = corpus_enums[sym]
+                    if claimed != real:
+                        findings.append((rel, n, "count-drift",
+                                         f"claims `{sym}` has {claimed} variant(s), but THIS FILE "
+                                         f"declares it with {real} — a document disagreeing with its "
+                                         f"own code block is how a half-applied amendment hides "
+                                         f"(REC-97/REC-98). The enum is spec-only, so nothing in "
+                                         f"crates/ or services/ can arbitrate; fix whichever is stale"))
 
 
 # ── scale-band: GEO_001's declared production scales vs the real generator ──
@@ -506,6 +660,76 @@ def check_scale_band(corpus: str, findings: list) -> dict:
     return stats
 
 
+# ── selftest ──────────────────────────────────────────────────────────────
+def selftest() -> int:
+    """Prove the corpus-enum source reds on its defect AND stays silent on each
+    guard. Modelled on `amendment-rot-gate.py --selftest`.
+
+    Every guard here exists because RUNNING the check found the case, not because
+    someone imagined it. A guard proven only by the absence of complaints is not
+    proven — three of the five cases below must produce NO finding, and those are
+    the ones most likely to rot into a permanently-silent check.
+    """
+    import tempfile
+    from collections import Counter
+
+    failures = []
+
+    def run(md: str):
+        found: list = []
+        counters = {"symbol_prefixes": Counter(), "count_assertions": 0,
+                    "count_checked": 0, "count_checked_corpus": 0}
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "x.md")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(md)
+            lines = md.splitlines()
+            scan_file(path, "x.md", lines, ("count",), set(), {}, "",
+                      found, counters, {}, corpus_enum_arities(lines))
+        return [f for f in found if f[2] == "count-drift"]
+
+    cases = (
+        # (label, markdown, must_red)
+        ("the defect (REC-98): a claim disagreeing with the file's own block",
+         "`Widget` (3 variants)\n\n```rust\npub enum Widget { A, B, C, D, E }\n```\n", True),
+        ("LOOSE form: bold symbol, count a table cell away (the EF_001 shape)",
+         "| **Widget** | sum type | 3 variants V1 |\n\n```rust\npub enum Widget { A, B, C, D, E }\n```\n", True),
+        ("GUARD elision: `...` marks an illustrative body, not a declaration",
+         "`Gadget` (2 variants)\n\n```rust\npub enum Gadget {\n    A,\n    ...\n}\n```\n", False),
+        # The stripper's REAL failure mode. A commented-OUT enum is skipped by the
+        # parser anyway, so the first version of this case ("// pub enum Doohickey
+        # { A, B, C, D, E }") proved NOTHING — found by disarming the stripper and
+        # watching this suite still pass, i.e. by bite-testing the bite test. The
+        # case that genuinely depends on stripping is a trailing comment that LOOKS
+        # like variants: `A,   // B, C, D` parses as THREE without it, one with.
+        ("GUARD comments: a trailing comment must not inflate the count (1 vs 3)",
+         "`Doohickey` (1 variant)\n\n```rust\npub enum Doohickey {\n    A,   // B, C, D are reserved\n}\n```\n", False),
+        ("GUARD version-partition: `// V2+` means there is NO single arity",
+         "`Memo` (4 variants)\n\n```rust\npub enum Memo {\n    // V1\n    A, B, C, D,\n    // V2+ additive\n    E, F,\n}\n```\n", False),
+        ("GUARD ambiguity: two declared enums on one line -> skip, never guess",
+         "| **Widget** | vs `Gizmo` | 3 variants |\n\n```rust\npub enum Widget { A, B, C, D, E }\n```\n"
+         "```rust\npub enum Gizmo { A, B, C }\n```\n", False),
+        ("a correct claim stays silent",
+         "`Sprocket` (4 variants)\n\n```rust\npub enum Sprocket { A, B, C, D }\n```\n", False),
+    )
+
+    for label, md, must_red in cases:
+        red = bool(run(md))
+        if red != must_red:
+            failures.append(
+                f"count/corpus: {label} -> {'RED' if red else 'silent'}, "
+                f"expected {'RED' if must_red else 'silent'}")
+
+    if failures:
+        print("SELFTEST FAILED — a check that cannot fail is not a check (NV-1):")
+        for f in failures:
+            print(f"  x {f}")
+        return 1
+    print(f"design-lint selftest: OK — {len(cases)} count-source cases behaved as "
+          f"specified (2 red on their defect, 5 silent through their guards)")
+    return 0
+
+
 # ── main ──────────────────────────────────────────────────────────────────
 
 def main() -> int:
@@ -525,7 +749,13 @@ def main() -> int:
     ap.add_argument("--warn-check", default="",
                     help="comma-separated checks whose findings WARN instead of "
                          "failing (still printed; exit stays 0 if only these fire)")
+    ap.add_argument("--selftest", action="store_true",
+                    help="prove the count corpus-source reds on its defect and "
+                         "stays silent through each guard")
     args = ap.parse_args()
+
+    if args.selftest:
+        return selftest()
 
     checks = tuple(c.strip() for c in args.check.split(",") if c.strip())
     bad = [c for c in checks if c not in ALL_CHECKS]
@@ -563,7 +793,7 @@ def main() -> int:
 
     findings: list[tuple[str, int, str, str]] = []
     counters = {"symbol_prefixes": Counter(), "count_assertions": 0,
-                "count_checked": 0}
+                "count_checked": 0, "count_checked_corpus": 0}
     enum_arities = rust_enum_arities() if "count" in checks else {}
     n_files = 0
     source = iter_staged_md_files(corpus) if args.staged else iter_md_files(corpus)
@@ -571,8 +801,10 @@ def main() -> int:
         n_files += 1
         rel = os.path.relpath(path, corpus).replace(os.sep, "/")
         lines = read_text(path).splitlines()
+        # Per-file: enums this document declares in its own rust blocks.
+        file_enums = corpus_enum_arities(lines) if "count" in checks else {}
         scan_file(path, rel, lines, checks, registered, allow, matrix_text,
-                  findings, counters, enum_arities)
+                  findings, counters, enum_arities, file_enums)
 
     scale_stats = check_scale_band(corpus, findings) if "scale-band" in checks else {}
 
@@ -606,8 +838,9 @@ def main() -> int:
         print(f"phantom-registration: {by_kind.get('phantom-registration', 0)} finding(s)")
     if "count" in checks:
         print(f"count-drift: {by_kind.get('count-drift', 0)} finding(s) "
-              f"({counters['count_checked']} claim(s) verified against a real Rust enum; "
-              f"{counters['count_assertions']} count-style phrases seen overall)")
+              f"({counters['count_checked']} claim(s) verified against a real Rust enum, "
+              f"{counters['count_checked_corpus']} against a spec-only enum declared in the "
+              f"same doc; {counters['count_assertions']} count-style phrases seen overall)")
 
     if "scale-band" in checks:
         print(f"scale-band-drift: {by_kind.get('scale-band-drift', 0)} finding(s) "
