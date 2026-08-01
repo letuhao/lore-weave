@@ -24,8 +24,10 @@ Per chapter, 10 chapters per arm. `lost` = chapters that produced **zero** entit
 | **A4** + delta-only | 8,688 | 3,301 | 1.0 | 31.2 | 0 | 0 | 18.1 | 9.5 | 81.8% | 9.4% | 0.0% | **67.5%** | 100% | **35.4%** |
 | **A5** two-stage (EDC) | 13,988 | 4,924 | 2.0 | 43.7 | 0 | **1** | 19.5 | 9.0 | 85.1% | 7.2% | 1.0% | 58.8% | 94.1% | 40.5% |
 | **A7** EDC on citations | 9,663 | 5,266 | 2.0 | 46.0 | 0 | 0 | **23.2** | 12.5 | **92.7%** | **1.7%** | 0.4% | **77.1%** | 97.9% | 36.2% |
+| A8 A7 + enumerated sweep | 11,687 | 9,061 | 2.0 | 74.5 | **5** | 1 | 24.0 | 13.5 | 92.9% | 1.7% | 0.0% | 74.5% | 100% | 35.0% |
 
 ⚠ **A7's row is green on every axis and it dropped an entire kind.** Read §6b before using it.
+⚠ **A8 tried to fix that with a prompt and could not** — §6c, and the reason is structural.
 
 Against A0:
 
@@ -258,6 +260,42 @@ an event is not a name, so stage 1 never proposes one and stage 2 cannot recover
 > would have found it — and the same shape as the non-vacuity rule generally: a check whose subject
 > cannot vary in the direction of the defect is not a check.
 
+**Wiring the axis in found three more, immediately.** Once `kinds_zero` and the distribution were
+printed unconditionally, the card flagged that **A2, A3 and A5 had each abandoned `power_system`**
+— all three sat green on the aggregate card and none of them was noticed:
+
+| arm | character | location | item | event | terminology | power_system | organization | species |
+|---|---|---|---|---|---|---|---|---|
+| A0 | 79 | 40 | 19 | 34 | **0** | 5 | 19 | 5 |
+| A0b | 71 | 37 | 17 | 32 | **0** | 7 | 15 | 5 |
+| A1 | 83 | 38 | 15 | 21 | **0** | 1 | 9 | 9 |
+| A2 | 86 | 38 | 16 | 19 | **0** | **0** | 15 | 5 |
+| A3 | 76 | 44 | 18 | 17 | **0** | **0** | 7 | 13 |
+| A4 | 91 | 43 | 15 | 24 | **0** | 3 | 1 | 4 |
+| A5 | 95 | 48 | 18 | 11 | **0** | **0** | 12 | 11 |
+| A7 | 160 | 54 | 7 | **0** | **0** | 1 | 7 | 3 |
+
+So the defect was **wider than the arm that exposed it**, which is the usual shape: the axis was
+missing, so nobody could see any instance of it.
+
+### The counts mislead for a delta arm — read `new/ch`, not `ents/ch`
+
+A4's `organization` count is **1** against a baseline **19**, which looks like a 95% collapse. It is
+not. A0's nineteen are **商 ten times and 西岐 eight times** — the same two entities re-extracted in
+every chapter that mentions them, plus one misfiled palace and one clan. A4 emits 商 once because the
+delta instruction told it to omit a known entity that adds nothing. **That is the arm working.**
+
+> **`BTG-A54`.** **Total yield and *new*-entity yield say opposite things about a delta arm, and the
+> fair one is `new/ch`.** A0 discovers 9.7 new entities per chapter and A4 discovers **9.5 — a 2.1%
+> difference, inside the noise floor**, while their totals differ by 10.0%. So A4's apparent recall
+> cost is almost entirely **suppressed repeats, not lost discoveries**, and the case for shipping it
+> is stronger than §1's table suggests. By the same column A7 finds **12.5 new per chapter, +29% over
+> the baseline** — its discovery gain is real even though its kind mix is broken.
+
+The per-kind zero-check stays right regardless (an abandoned kind is a defect however you count), but
+comparing raw per-kind *counts* between a delta arm and a non-delta arm conflates suppression with
+coverage.
+
 **Also caught by the same table:** `terminology` is **0 for every arm including the baseline**. The
 kind is adopted, its 4 attributes are in the profile, it is in every prompt, and nothing has ever come
 back under it. That is a pre-existing pipeline defect this POC did not cause and would not have found
@@ -270,6 +308,53 @@ measured. Re-run before adopting, and score per-kind.
 **Grounding caveat.** A7 carries stage 1's quote through verbatim, so its 92.7% measures how faithfully
 the *sweep* quoted, not the typing step. The citation genuinely is grounded, but it is not the same
 claim A0–A4's Q1 makes and the two should not be compared without saying so (§9).
+
+## 6c. A8 — the prompt fix worked for two kinds, failed for the third, and the failure is structural
+
+A8 is A7 with a sweep that enumerates every category and says of events, in capitals, that the
+category is routinely missed and must not come back empty. It recovered two of the three:
+
+| kind | A0 | A7 | **A8** |
+|---|---|---|---|
+| item | 19 | 7 | **20** ✓ |
+| power_system | 5 | 1 | **4** ✓ |
+| **event** | **34** | **0** | **2** ✗ |
+
+Two attempts — implicit then explicit and emphatic — produced 0 and 2 against a baseline of 34. Look
+at what the two sets actually contain:
+
+```
+A0  文王逃離朝歌 · 費仲與尤渾密謀 · 雷震子食仙杏變形 · 比干剖心 · 武吉打死王相 · 漁樵問答 …
+A8  九龍宴 · 弒君
+```
+
+A0's events are **composed noun phrases** — *"King Wen flees Chaoge"*, *"Bigan cuts out his heart"*,
+*"Leizhenzi eats the immortal apricot and transforms"*. None of them is a string that appears in the
+chapter. A8's two are actual lexical items: 九龍宴 *the Nine Dragon Banquet*, 弒君 *regicide*.
+
+> **`BTG-A55`.** **The `event` kind is not extraction — it is authoring, and a citation-constrained
+> sweep structurally cannot do it.** A7/A8's stage 1 demands a name *exactly as written* plus a
+> verbatim quote. An event like *"King Wen flees Chaoge"* is nowhere written as a phrase; the model
+> must **compose a label** for a happening spread across paragraphs. The two events A8 did find are
+> precisely the two that happen to be words. No prompt fixes this, because the constraint that makes
+> EDC grounded (quote it verbatim) is the same constraint that forbids naming an event.
+>
+> Seven of the eight kinds are *find the name in the text*. One of them is *invent a label for
+> something the text does*. They were never the same operation, and `03_two_jobs.md` is this
+> distinction one level up — here it turns out to be living **inside** the extractor, unnoticed,
+> because the schema lists all eight kinds side by side as though they were alike.
+
+**This matters beyond cost.** Events are what a game most needs — a quest is an event with
+preconditions — and this says the game tier cannot expect to *extract* them. It has to author them,
+which is exactly what [`03`](03_two_jobs.md) and [`01`](01_the_missing_tier.md) argue the tier is for.
+The extractor's 34 events were always a small authoring step wearing an extractor's costume.
+
+**And A8's cost is bad.** Output **+46.4%** against the baseline, **5 of 10 chapters truncated**, one
+lost entirely, and 74.5 s/chapter — *slower than the 3-call baseline*. Enumerating the categories made
+stage 1 emit far more, and the truncations cluster in the entity-dense later chapters (24, 26, 28, 29,
+30) where output hit 11.9k–15.4k tokens. A8 is not shippable and is not a tuning problem.
+
+**So A7 remains the promising shape, with `event` moved out of it** rather than prompted back into it.
 
 ## 7. A6 (GLiNER) — the second reader does not read this language
 
@@ -313,18 +398,21 @@ morphology lint at 96.9% precision, and now the KG's own typed edges — and two
 ## 8. Recommendation
 
 1. **Ship A4's shape as the default now.** −62% input, −47% output, 2× faster, no quality regression
-   outside any axis floor, and the kind mix closest to the baseline of any cost arm. It needs the
-   raised output ceiling and a **retry on parse failure** (`BTG-A47`), because the blast radius of a
-   bad parse is now a whole chapter.
-2. **Fix A7's sweep and re-run it — this is the most promising shape measured.** Its numbers are the
-   best on the card (−57% input, grounded 92.7%, fabrication 1.7%, strict typing 77.1%, no lost
-   chapters) and it dropped `event` to zero because a named-mention sweep does not propose events
-   (`BTG-A53`). Solicit events and items explicitly in stage 1, re-run, and **score per kind**. Do not
-   adopt it on the current card.
-3. **Add per-kind yield to the scorecard permanently.** Aggregate yield was on the card as the
-   anti-gaming axis and it did not do the job.
+   outside any axis floor, and — once read on `new/ch` rather than `ents/ch` (`BTG-A54`) — a recall
+   cost of **2.1%, inside the noise floor**, not the 10% the totals suggest. It needs the raised
+   output ceiling and a **retry on parse failure** (`BTG-A47`), because the blast radius of a bad
+   parse is now a whole chapter.
+2. **A7 is the most promising shape — take `event` OUT of it rather than prompting it back in.**
+   −57% input, grounded 92.7%, fabrication 1.7%, strict typing 77.1%, no lost chapters, and
+   +29% new-entity discovery. A8 proved the prompt route does not work (`BTG-A55`): explicit,
+   emphatic solicitation moved events 0 → 2 against a baseline of 34, while costing +46% output and
+   truncating half the chapters. Run A7 over the seven **nameable** kinds and give `event` its own
+   path — it is an authoring step, not an extraction one.
+3. **Per-kind yield is now on the card** (`kinds_zero` + the distribution, printed unconditionally).
+   Wiring it in immediately surfaced three more zeroed kinds nobody had seen. Keep it.
 4. **Investigate `terminology` = 0 across every arm including the baseline** — a pre-existing defect
-   the distribution surfaced, unrelated to any arm.
+   the distribution surfaced, unrelated to any arm. Given `BTG-A55`, check first whether it is the
+   same failure: is a "term" nameable in the text, or does it also have to be composed?
 5. **Build re-decide-on-merge** (`BTG-A49`). This is the real kind fix and it is not a prompt change.
    Today a first-chapter mistake is permanent; the model already knows better by chapter 40 and has no
    way to say so. Surface the disagreement as a conflict rather than resolving it oldest-wins.

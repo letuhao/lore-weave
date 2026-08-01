@@ -106,13 +106,44 @@ named-mention sweep never proposes an event.
 > shipped it as the best arm**; it was caught only by printing the distribution, which nothing
 > required. Same shape as `BTG-A27` a level up.
 
-Same table surfaced a pre-existing defect: **`terminology` = 0 for EVERY arm including the baseline**,
-though the kind is adopted and in every prompt.
+**Wiring the axis in found three more instantly:** A2, A3 and A5 had each abandoned `power_system`,
+all green on the aggregate card, none noticed. The defect was wider than the arm that exposed it —
+the usual shape when an axis is missing. Same table surfaced a pre-existing defect: **`terminology`
+= 0 for EVERY arm including the baseline**, though the kind is adopted and in every prompt.
+
+**`BTG-A54` — for a DELTA arm, total yield and new-entity yield say opposite things; `new/ch` is the
+fair one.** A4's `organization` count of 1 vs the baseline's 19 looks like a 95% collapse; A0's
+nineteen are **商 ten times and 西岐 eight times**, the same two entities re-extracted every chapter,
+and A4 emits 商 once because the delta instruction told it to. On `new/ch`: A0 9.7 vs **A4 9.5 —
+a 2.1% gap, inside the noise floor**, against a 10.0% gap on totals. **A4's recall cost is suppressed
+repeats, not lost discoveries, so the case for shipping it is stronger than the headline table.** By
+the same column A7 finds **12.5 new/ch, +29% over baseline** — its discovery gain is real even though
+its kind mix is broken.
 
 **▶ NEXT**
 1. **Ship A4's shape** into `extraction_worker` — one call, delta instruction, raised output ceiling,
    **plus a parse-failure retry** (`BTG-A47`). Best kind mix of any cost arm.
-1b. **Fix A7's sweep to solicit events/items, re-run, score PER KIND.** Highest-value follow-up.
+1b. **A7 over the seven NAMEABLE kinds; give `event` its own path.** A8 tried the prompt route and
+   failed — see below.
+
+**A8 (A7 + a sweep enumerating every category, events in capitals) — `BTG-A55`.** It recovered
+`item` 7→20 and `power_system` 1→4, and moved `event` **0 → 2 against a baseline of 34**. The reason
+is structural, not a prompt-tuning gap:
+
+```
+A0  文王逃離朝歌 · 費仲與尤渾密謀 · 雷震子食仙杏變形 · 比干剖心 · 武吉打死王相 …
+A8  九龍宴 · 弒君
+```
+
+A0's events are **composed noun phrases** ("King Wen flees Chaoge") that appear nowhere in the text as
+a string; A8's two are actual words. **The `event` kind is authoring, not extraction, and a
+citation-constrained sweep structurally cannot do it** — the constraint that makes EDC grounded (quote
+it verbatim) is the same one that forbids naming an event. Seven of the eight kinds are *find the name*;
+one is *invent a label for something the text does*. `03_two_jobs.md` one level down, living inside the
+extractor because the schema lists all eight kinds as though alike. **Consequence for the game tier:
+quests are events, so they cannot be extracted — they must be authored, which is what this tier is for.**
+A8's cost also disqualifies it: output **+46.4%**, **5/10 chapters truncated**, 1 lost, 74.5 s/chapter —
+slower than the 3-call baseline.
 2. **Build re-decide-on-merge** (`BTG-A49`) — the real kind fix, and not a prompt change. Surface the
    disagreement as a conflict instead of oldest-wins.
 3. Re-baseline every kind-quality claim after (2). Until then do not quote them as model accuracy.
