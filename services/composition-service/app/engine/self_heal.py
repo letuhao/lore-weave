@@ -309,12 +309,18 @@ _VERIFY_SYSTEM = (
 
 async def _verify(
     llm: LLMClient, chapter: str, finding: Finding, *, canon: str | None,
-    max_tokens: int = max_tokens_for("self_heal_verify"), **kw,
+    source_language: str = "auto", max_tokens: int | None = None, **kw,
 ) -> bool:
     """True ⇒ keep the finding (confirmed or verify degraded), False ⇒ drop (refuted).
     Fail-OPEN: a degraded/unparseable verify keeps the finding — the satellite edit is
     canon-grounded and localized, and a human/stronger-model gate follows; dropping a real
     fix on a transient verify failure is the worse error here."""
+    # Exactly ONE verdict per finding — the count is fixed, and `source_language` is what
+    # varies. It had to be threaded in to be passed at all: the budget was previously an
+    # import-time default, so this call could not have carried the book's language even
+    # though the pipeline two frames up has always known it.
+    max_tokens = max_tokens or max_tokens_for(
+        "self_heal_verify", target=1, language=source_language)
     system = _VERIFY_SYSTEM + ("\n\nSTORY BIBLE:\n" + canon.strip() if canon and canon.strip() else "")
     user = f"CHAPTER:\n\n{chapter}\n\nFINDING: {finding.issue}\nQUOTE: \"{finding.span}\""
     content = await _chat(llm, system=system, user=user, max_tokens=max_tokens,
@@ -330,7 +336,8 @@ async def _verify(
 
 
 async def _verify_vote(
-    llm: LLMClient, chapter: str, finding: Finding, *, canon: str | None, k: int, **kw,
+    llm: LLMClient, chapter: str, finding: Finding, *, canon: str | None, k: int,
+    source_language: str = "auto", **kw,
 ) -> bool:
     """Vote the verify to RAISE recall — single-shot verify is stochastic + fail-toward-refute
     (it dropped the real CH01 'mẫu thân ngươi'). Because each `_verify` already DEFAULTS to
@@ -339,8 +346,8 @@ async def _verify_vote(
     the skeptical default) is enough to keep a finding; a true confab the model refutes every
     time still gets 0 confirms → dropped. k≤1 ⇒ single-shot."""
     if k <= 1:
-        return await _verify(llm, chapter, finding, canon=canon, **kw)
-    votes = await asyncio.gather(*[_verify(llm, chapter, finding, canon=canon, **kw) for _ in range(k)])
+        return await _verify(llm, chapter, finding, canon=canon, source_language=source_language, **kw)
+    votes = await asyncio.gather(*[_verify(llm, chapter, finding, canon=canon, source_language=source_language, **kw) for _ in range(k)])
     return any(votes)   # keep unless EVERY vote refutes (recall-biased; the human gate culls the rest)
 
 
@@ -427,7 +434,8 @@ async def _compute_edits(
     if verify and findings:
         survivors: list[Finding] = []
         for f in findings:
-            if await _verify_vote(llm, chapter, f, canon=canon, k=verify_k, **kw):
+            if await _verify_vote(llm, chapter, f, canon=canon, k=verify_k,
+                                  source_language=source_language, **kw):
                 survivors.append(f)
             else:
                 f.skip_reason = "refuted"
@@ -659,7 +667,7 @@ def _is_convention_fix(edit_type: str) -> bool:
 async def propose_edits_direct(
     llm: LLMClient, chapter: str, *, user_id: str, model_source: str, model_ref: str,
     canon: str | None = None, source_language: str = "auto", prefilter: bool = True,
-    rerank: bool = False, max_tokens: int = max_tokens_for("propose_edits_direct"), temperature: float = 0.4,
+    rerank: bool = False, max_tokens: int | None = None, temperature: float = 0.4,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[list[EditProposal], SelfHealReport]:
@@ -668,6 +676,12 @@ async def propose_edits_direct(
     No vote/verify (the human gate filters). When `rerank`, a comparative re-ranker sets each
     semantic edit's `recommended` (pre-check) — it never drops. Returns offset-ascending
     `EditProposal`s + a report."""
+    # `None`, not `max_tokens_for(...)` as a default: a default argument is evaluated ONCE at
+    # import, so it can never see the chapter. The EDIT kind sizes on INPUT CHARACTERS and the
+    # chapter is the input — measured, the signal starts to bite above 4502 chars, which every
+    # real chapter clears. No `language=`: `call_budget` reads it only on the PROSE and VERDICT
+    # branches, so passing it here would satisfy the gate and change nothing.
+    max_tokens = max_tokens or max_tokens_for("propose_edits_direct", target=len(chapter))
     kw = dict(user_id=user_id, model_source=model_source, model_ref=model_ref,
               trace_id=trace_id, cancel_check=cancel_check)
     system, user = build_direct_judge_messages(chapter, source_language, canon)
@@ -732,7 +746,7 @@ async def propose_edits_direct(
 async def propose_self_heal(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     chapter: str, source_language: str = "auto", canon: str | None = None,
-    prefilter: bool = True, rerank: bool = False, max_tokens: int = max_tokens_for("propose_self_heal"),
+    prefilter: bool = True, rerank: bool = False, max_tokens: int | None = None,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
     **_legacy: object,   # absorbs the old vote_k/verify/verify_k/etc. knobs (no longer used here)
@@ -742,6 +756,10 @@ async def propose_self_heal(
     the filter, so there is NO verify/vote pre-filter that would mute real edits (the diagnosis
     that v2≈v3). When `rerank`, a comparative re-ranker sets each semantic edit's `recommended`
     pre-check (it never drops). `apply_self_heal_edits` splices the accepted subset."""
+    # Resolved HERE under its own registry code rather than left to `propose_edits_direct`'s.
+    # The two rows are separate on purpose, and forwarding `None` would silently retire this
+    # one — the budget would still be right today and the row would stop describing anything.
+    max_tokens = max_tokens or max_tokens_for("propose_self_heal", target=len(chapter))
     return await propose_edits_direct(
         llm, chapter, user_id=user_id, model_source=model_source, model_ref=model_ref,
         canon=canon, source_language=source_language, prefilter=prefilter, rerank=rerank,

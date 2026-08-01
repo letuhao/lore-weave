@@ -293,14 +293,14 @@ async def extract_people_from(
     """
     return await _extract_one(
         judge, user_id=user_id, model_source=model_source, model_ref=model_ref, text=text,
-        system=build_extract_prompt(source_language), trace_id=trace_id,
-        cancel_check=cancel_check,
+        system=build_extract_prompt(source_language), source_language=source_language,
+        trace_id=trace_id, cancel_check=cancel_check,
     )
 
 
 async def _extract_one(
     judge, *, user_id: str, model_source: str, model_ref: str, text: str, system: str,
-    trace_id: str | None = None,
+    source_language: str = "auto", trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[dict] | None:
     # The passage is DATA here, not prose to continue — it is being read for a structured
@@ -316,7 +316,12 @@ async def _extract_one(
             input={"messages": [{"role": "system", "content": system},
                                 {"role": "user", "content": text}],
                    "response_format": {"type": "text"}, "temperature": 0.0,
-                   "max_tokens": max_tokens_for("cross_scene_check"),
+                   # `source_language` is threaded in rather than inferred from `system`,
+                   # which already baked it into a prompt string. No `target`: the row count
+                   # is what the extraction is for, so stating one would be a guess wearing
+                   # the shape of a measurement.
+                   "max_tokens": max_tokens_for("cross_scene_check",
+                                                language=source_language),
                    **no_thinking_fields()},
             job_meta={"usage_purpose": "continuity_check", "extractor": "cast_state"},
             trace_id=trace_id, cancel_check=cancel_check,
@@ -355,7 +360,8 @@ async def check_chapter_consistency(
     async def extract(text: str) -> list[dict] | None:
         return await _extract_one(
             judge, user_id=user_id, model_source=model_source, model_ref=model_ref,
-            text=text, system=system, trace_id=trace_id, cancel_check=cancel_check,
+            text=text, system=system, source_language=source_language,
+            trace_id=trace_id, cancel_check=cancel_check,
         )
 
     merged = CrossSceneResult(status="checked")

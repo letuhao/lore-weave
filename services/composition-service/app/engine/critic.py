@@ -138,12 +138,20 @@ def build_critique_prompt(
 async def judge_prose(
     judge: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     passage: str, active_rules: list[dict[str, Any]], present_facts: list[str],
-    profile: BookProfile, max_tokens: int = max_tokens_for("judge_prose"), trace_id: str | None = None,
+    profile: BookProfile, max_tokens: int | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Run the advisory critique. Returns the generation_job.critic dict. CC4:
     any LLM/timeout/parse failure degrades to an empty critique with an `error`
     marker — NEVER raises (advisory must not block accept)."""
+    # The critique is FOUR scored dimensions plus at most one violation per active canon
+    # rule, so the rule count is the part that varies per call — a book with 40 active rules
+    # can return an order of magnitude more than one with two, and the old import-time
+    # default gave both the same room. `language` because the reason strings are written in
+    # the book's language and VERDICT is a branch that reads it.
+    max_tokens = max_tokens or max_tokens_for(
+        "judge_prose", target=len(_DIMENSIONS) + len(active_rules),
+        language=profile.source_language)
     system, user = build_critique_prompt(passage, active_rules, present_facts, profile)
     try:
         job = await judge.submit_and_wait(

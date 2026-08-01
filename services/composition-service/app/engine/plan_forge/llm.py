@@ -85,7 +85,10 @@ class ProviderPlanForgeLLM:
         system: str,
         user: str,
         temperature: float = 0.2,
-        max_tokens: int = max_tokens_for("plan_forge_chat"),
+        # Sentinel, resolved below. The response is a whole planning package and its item
+        # count is what the step is producing, so there is no truthful `target` to pass and
+        # this site stays on the no-signal ratchet by design — see the resolution point.
+        max_tokens: int | None = None,
         cancel_check: Callable[[], Awaitable[bool]] | None = None,
         schema: dict[str, Any] | None = None,
         frequency_penalty: float | None = None,
@@ -104,6 +107,14 @@ class ProviderPlanForgeLLM:
         `frequency_penalty` overrides the default anti-loop strength. Callers raise it when a
         previous attempt came back as a repetition loop — the one lever that actually addresses that
         failure, since the grammar cannot forbid a loop inside a string."""
+        # Resolved per call rather than as a default argument. Nothing here can pass a
+        # `target`: this method serves every plan-forge step (analyze, materialize, refine,
+        # elaborate, and each one's JSON repair), and the item count is precisely what the
+        # step is generating. `language` is not read by STRUCTURED. So the row's measured
+        # floor — 12000, sized for a whole planning package in one response — IS the answer,
+        # and this site is left counted as backlog rather than cleared with a kwarg the kind
+        # would discard.
+        max_tokens = max_tokens or max_tokens_for("plan_forge_chat")
         check = cancel_check if cancel_check is not None else self._cancel_check
         anti_loop = dict(_ANTI_LOOP)
         if frequency_penalty is not None:

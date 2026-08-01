@@ -17,7 +17,12 @@ class LMStudioClient(Protocol):
         system: str,
         user: str,
         temperature: float = 0.2,
-        max_tokens: int = 8000,
+        # `None` ⇒ the implementation resolves it from the call-profile registry
+        # (`plan_forge_chat`). This read `8000` while the registry row — and the real
+        # implementation's own default — say 12000. A Protocol's defaults are documentation
+        # (the concrete client's are what run), so the number was never applied and was free
+        # to disagree; it is the kind of stale figure a reader takes for the answer.
+        max_tokens: int | None = None,
     ) -> str: ...
 
 

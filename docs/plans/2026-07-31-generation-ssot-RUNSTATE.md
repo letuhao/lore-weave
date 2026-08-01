@@ -107,7 +107,7 @@ Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
 **Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-**`[budget-seam rot] → S7`** → `S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+`[budget-seam rot] ✅ → S7 ✅` → **`S6(+UI)`** → `S11 → S3 → S4` → `S9 → S5 → S13`.
 
 > **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
 > that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
@@ -134,7 +134,7 @@ when in fact most of the last two days went into defect work that was never on t
 | `S2` one cast-liveness SSOT | ✅ | both directions |
 | `S8` the pack's diagnostics ride the job | ✅ | |
 | `S12` every declared enforcement site resolves | ✅ | the gate went green on its own example 3× before it was real |
-| **`S7` one output budget** | **◐ ~85%** | slices 1·2·3 ✅ · slice 4 only the tilemap half |
+| **`S7` one output budget** | **✅ CLOSED 2026-08-02** | slices 1·2·3 ✅ · slice 4 (budget-seam rot) ✅ — 28 no-signal sites → 9, and the 9 are named |
 | `S6` no model silently its own judge | ☐ surveyed | **blocked on a UI slice** |
 | `S11` one context compiler | ☐ | the largest remaining |
 | `S3` one `Finding` | ☐ | deliberately after S11 |
@@ -909,6 +909,140 @@ AUDIT S7-2
   NEXT       — S7-4's real scope (`call_budget`'s JSON kinds), then S6.
 ```
 
+### ✅ S7 slice 4 — the budget-seam rot. The ratchet was measuring the wrong thing.
+
+```
+AUDIT S7-4 (budget-seam rot)
+  BUILT      — the 28 frozen budgets are gone, and the number that tracked them now means
+               something. Three parts:
+               1. `max_tokens: int = max_tokens_for("kind")` → `max_tokens: int | None = None`
+                  resolved AT THE CALL, at 20 sites. A default argument is evaluated once at
+                  IMPORT, so it could never see a roster, a chapter or a candidate list —
+                  which is the whole defect, independent of whether the number moves.
+               2. `CallProfile.signal_inert` in BOTH registries, for rows where NOTHING can
+                  size the call (translation's three MIRROR rows short-circuit before the
+                  sizing model runs). Declared, not assumed: a two-directional PROBE test in
+                  each service fails if the flag disagrees with `call_budget` either way.
+               3. `llm-budget-ssot-gate` now scores a kwarg only if the KIND READS it, and
+                  learned the sentinel shape so it stops punishing the migration it enforces.
+               Plus one production bug the live run found — see PROVEN.
+
+  PROVEN     — THE RATCHET WAS SATISFIABLE WITH THEATRE, and that is the finding. `language`
+               is consulted ONLY on the PROSE and VERDICT branches; STRUCTURED sizes on
+               `target * 220` and EDIT on `target / 3`, and neither reads it. So adding
+               `language=` to a STRUCTURED call site cleared it from the backlog and changed
+               no budget, ever. Injected exactly that into `propose_cast` — the OLD gate
+               counts `{language}` as signal and goes GREEN; the new one FAILs, naming the
+               site and its kind. Restored by re-editing.
+
+               `llm-budget-ssot-gate: PASS — 94 LLM call site(s) scanned …
+                 19 traced to call_budget() · 29 held at baseline (8 literal, 21
+                 unattributed, 0 signature defaults) · 46 built off-site
+                 adaptive signal: 18/31 budget calls carry one that their KIND reads ·
+                 4 declared signal_inert (nothing can size them) · 9 held at baseline`
+               28 → 9, and the attribution axis held at EXACTLY its 29 baseline — the
+               conversion is attribution-neutral, which is what says the drop is real work
+               and not a widened detector.
+
+               NON-VACUITY, measured per site (BEFORE = the old frozen default):
+                 propose_edits_direct  20k-char chapter   3000 → 13333   4.44x
+                 propose_cast          40-name roster     4096 → 24750   6.04x
+                 propose_world         full roster        4096 → 32768   8.00x
+                 score_promise_coverage 18 promises       4096 →  9900   2.42x
+                 judge_prose           30 rules, vi       1536 →  5202   3.39x
+                 plan_character_arcs   12 characters      4096 →  6600   1.61x
+               10 of 18 realistic cases resolve to a DIFFERENT number; 8 still land on the
+               floor and are LISTED as such rather than counted as wins.
+
+               suites: composition `8 failed, 3883 passed, 8 skipped` — the 8 are the tracked
+               `test_motif_retrieve_db` rows (earlier audits said 11; three were the
+               duck-typed stubs fixed in 9e346a439) · translation `1136 passed` · SDK
+               `1174 passed, 9 skipped` · gate teeth `19 passed`.
+               gates: `llm-budget-ssot-gate PASS` · `ai-provider-gate OK` ·
+               `generation-guard-gate PASS` · `enforcement-claims-gate OK — 103 path(s)` ·
+               `db-safety-gate exit 0` · `[language-rule] PASS`.
+
+               LIVE, $0 gemma-4-26b, both images rebuilt and hash-verified (7 files, MATCH in
+               service AND worker — the run before this one verified only the service and the
+               drift log already carries that mistake once):
+                 resolve_context_length → 200000, live from provider-registry
+                                    BLANK roster        ESTABLISHED roster
+                 propose_cast  wire       4096                24750
+                 propose_world wire       4950                32768
+                 cast parsed                 6                    7
+                 world parsed                9                   10
+               Same code, same model, same premise — only the roster differs. The budget
+               reaching the WIRE differs 6x. That is the control that makes this a statement
+               about the signal and not about the fixture.
+
+               …AND THE LIVE RUN FOUND A DEAD PRODUCTION PASS. `propose_world` parsed **0**
+               entities in both arms. Not truncation: `finish_reason=stop`, 2864 characters of
+               valid JSON. `_WORLD_SCHEMA` requires `{"items": [...]}` — added when WORLD_KINDS
+               moved to decoder enforcement — and `parse_world` still read a bare array, so
+               `isinstance(arr, list)` was False and the pass degraded to `[]` on every
+               grammar-honouring provider. Pass 3 returns `[]` on any failure, so a DEAD PASS
+               and a premise with no world in it were indistinguishable from outside. Fixed,
+               with an ambiguous-wrapper case refused rather than guessed; live after the fix:
+               0 → 9 and 0 → 10.
+
+  NOT PROVEN — the live run is NOT book-scoped. `propose_cast`/`propose_world` take a premise
+               and write nothing, so there is no throwaway book and no debris — but neither is
+               there evidence about the planning ORCHESTRATION, only about the two calls.
+               The window clamp is UNEXERCISED in production: the dev model reports a 200k
+               window, so its half-share (100000) is above every budget here. The clamp is
+               proven only by unit test (8192 → 4096, with the unclamped control). A
+               small-window BYOK model is the case that matters and it was not run.
+               `_INVENTED_CAST_ALLOWANCE = 5` and `_INVENTED_WORLD_PER_KIND = 3` are READ OFF
+               the prompts' own wording, not measured against what models return. And
+               `_TOKENS_PER_ITEM = 220` is the SDK's generic per-item cost; a world entity is
+               plausibly half that, which is why a full roster reaches the 32768 runaway
+               ceiling. Nobody has measured a real per-item cost.
+               The 9 remaining no-signal sites are argued, not proven, to be unsizable.
+               The `cross_scene_check` ROW is mislabelled: its `why` describes "a contradiction
+               list … each entry quotes both sides", and its only two call sites emit a cast
+               ROSTER. The row documents a call that no longer exists, and VERDICT's
+               `truncation_is_fatal=False` is wrong for a roster, where a clipped response
+               silently drops people. Recorded as debt, not fixed — changing the kind changes
+               the budget and needs its own measurement.
+
+  DRIFT      — four, and the first would have shipped inside the slice written to stop it.
+               1. I marked `compress` `signal_inert` on an argument that felt airtight —
+                  `ceiling == floor == 512`, ceiling applied last, therefore nothing can move
+                  it. The PROBE reddened immediately: the window clamp also runs after the
+                  floor and pushes DOWN, so `context_length=8` resolves it to 4. A ceiling
+                  bounds ONE direction. Marking it inert would have excused a call site from a
+                  signal it is entitled to — the exact rot this slice pays down, re-created by
+                  its own exemption mechanism, in the first row I applied it to.
+               2. My first `_ssot_local_names` bound names MODULE-wide, and quietly cleared
+                  three sites this slice never touched — including `self_heal._chat`, a helper
+                  fed a flat `400` by one of its callers. The name matched, so a literal would
+                  have been laundered into `attributed` by an assignment 400 lines away. I was
+                  looking at a backlog that had dropped 29 → 26 and had to stop and ask which
+                  three, rather than bank it.
+               3. I nearly deleted the explicit `max_tokens=max_tokens_for("plan_forge_chat")`
+                  from five repair sites as redundant restatement of a default. They are
+                  load-bearing overrides: `LMStudioClient.chat` declares 8000 against the
+                  row's 12000. Deleting them would have cut a plan JSON by a third, and the
+                  registry says a clipped plan comes back unparseable, not short. Checking the
+                  Protocol is what stopped it — and it turned up the real version of the same
+                  bug: `_parse_with_repair`'s own `8000` default, which only `materialize`
+                  overrode, so `analyze` and `refine_spec` had been running a third under the
+                  declared row all along.
+               4. I read `MISMATCH` on all seven image hash checks and had started treating it
+                  as a stale build. Git Bash was rewriting `/app/...` into
+                  `C:/Program Files/Git/app/...`. Host-env drift wearing a deployment bug's
+                  clothes — a lesson this repo already has written down, which I applied only
+                  after generating the false report.
+
+  NEXT       — S6 (no model silently its own judge). It is surveyed and BLOCKED on an
+               affordance, not on code: no surface sets a critic, `critic_model_ref` lives
+               only in `work.settings` JSONB, and the FE suite is green on a configuration no
+               user can produce. The spec is explicit that the UI ships in the same slice or
+               the label is noise. Nothing in S7-4 changes its shape; the one carry-over is
+               that `judge_plan_conflict` and `judge_canon` now size on candidate count, so a
+               critic that IS configured gets a budget that tracks its workload.
+```
+
 ### ✅ POST-RUN REVIEW — the author-requested audit of S1/S2, and what it found
 
 The author stopped the run and asked for a quality review before continuing: *"nên đánh giá
@@ -1681,6 +1815,8 @@ all wrong in ways the red team named.
 | 2026-07-31 | Order puts S11 **before** S4: migrating the plan half twice is the avoidable cost. |
 | 2026-08-02 | **KG/extraction identity is PARKED, not next.** Budget-seam rot → finish S7 → the rest of the board in sealed order. The entity-identity spec is a diagnosis to return to, not a work item to start. Author, verbatim: *"tôi không khuyến khích lao đầu vào KG ngay bây giờ."* |
 | 2026-08-02 | **The budget-seam rot and S7 slice 4 are the SAME work**, approached from two ends. Do not track them as two items. |
+| 2026-08-02 | **A budget kwarg counts as signal only if its KIND reads it.** `language` on a STRUCTURED or EDIT row is discarded by `call_budget`, so a gate that greps kwargs can be turned green without changing a single budget. Enforced by the gate; the per-kind read-set lives in `_KIND_READS`. |
+| 2026-08-02 | **A row where nothing can size the call DECLARES it (`signal_inert`) instead of accumulating fake signal at its call sites.** The declaration is probed against the mechanism in each service's registry test, two-directionally, so it cannot drift into a comment. Same move as `OutputKind.MIRROR`: make silence and intent distinguishable. |
 
 ## Measured facts (do not re-measure; cite these)
 
@@ -1728,6 +1864,9 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | The dogfood book carries **16 scenes on a second `story_order` convention** (book slots 11-15, numbered 1,2,3 — so on the global axis they sort *before chapter 1*). Written by this session's own eval/POC runs via the authored `create_node` path. | Position-gated lenses under-serve those 5 chapters. `resync_reading_order` is the right repair but is parent-keyed and those scenes are parentless, and its only caller is the chapter-reorder route. 16 rows. |
 | 2026-08-01 | The authored `create_node` path takes a caller-supplied `story_order` and never derives it from the chapter's slot. | This is the *writer* that produced the debt above; not fixing it means the drift recurs. |
 | 2026-08-01 | Smoke debris: throwaway book `019fbd8f-008c-7cef-bf81-1d53a808361d` and its knowledge project `019fbd90-…` | Deliberately a throwaway (never the dogfood book), but it is real rows in the dev stack awaiting purge. |
+| 2026-08-02 | The `cross_scene_check` registry row is MISLABELLED. Its `why` describes "a contradiction list across one scene seam"; its only two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a cast ROSTER. | The row documents a call that does not exist, and the kind is wrong in a way that matters: VERDICT carries `truncation_is_fatal=False`, but a clipped roster silently DROPS PEOPLE — the same class as the `propose_world` dead pass. Not fixed here because changing the kind changes the budget (VERDICT 2048 → STRUCTURED 4096) and needs its own measurement. |
+| 2026-08-02 | `_TOKENS_PER_ITEM = 220` (SDK, generic) is what makes a full-roster `propose_world` reach the 32768 runaway ceiling. A world entity is plausibly half that. | Every STRUCTURED budget is sized off a per-item cost nobody has measured against a real completion. The right number is `output_tokens / items` from a live run; until then the big-roster budgets are over-generous rather than wrong. |
+| 2026-08-02 | The output-budget window clamp is unexercised in production. | The dev model reports a 200k window, so the half-share never binds. It is proven only by unit test. The case that matters — a small-window BYOK model getting a 24750-token cap — has never been run. |
 
 ## Drift log — near-misses, wrong turns, bars I nearly lowered
 
@@ -1780,6 +1919,10 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
+| 2026-08-02 | **Applied the new exemption to the wrong row, first try, inside the slice written to stop exactly that.** I marked `compress` `signal_inert` because `ceiling == floor == 512` and the ceiling is applied last. The probe reddened at once: the window clamp ALSO runs after the floor and pushes DOWN, so `context_length=8` gives 4. A ceiling bounds one direction. The flag would have excused a call site from a signal it is entitled to — the rot this slice pays down, re-created by its own exemption mechanism. Only the two-directional assert caught it; a one-directional one would have passed. |
+| 2026-08-02 | **Widened the detector and nearly banked the smaller number.** My first `_ssot_local_names` bound names module-wide, and the unattributed backlog fell 29 → 26 — three sites this slice never touched, including `self_heal._chat`, a helper one of whose callers passes a flat `400`. The name matched, so a literal would have been laundered into `attributed` by an assignment four hundred lines away. Shrinking a backlog by loosening the thing that measures it is how a ratchet stops meaning anything, and it presents as progress. |
+| 2026-08-02 | **Nearly deleted five load-bearing overrides as redundancy.** The plan-forge repair sites restate `max_tokens_for("plan_forge_chat")`, which looked like duplication of the client default — but `LMStudioClient.chat` declares **8000** against the row's **12000**, so removing them would have cut a plan JSON by a third, and a clipped plan comes back unparseable rather than short. Reading the Protocol before editing is what stopped it, and it exposed the genuine version of the bug: `_parse_with_repair`'s own `8000` default, overridden only by `materialize`, so `analyze` and `refine_spec` had been running a third under the declared row. |
+| 2026-08-02 | **Reported a deployment failure that was my shell.** Seven image hash checks came back `MISMATCH` and I had begun treating the build as stale. Git Bash rewrites `/app/...` into `C:/Program Files/Git/app/...`; with `MSYS_NO_PATHCONV=1` all seven MATCH. The repo already has this lesson written down. I applied it only after producing the false report — which is the failure mode, not the path mangling. |
 | 2026-08-01 | **Built the fix list from a TRUNCATED terminal, then called it complete.** The failure list printed 20 of 33 rows; I swept the 6 files I could see and reported "one root, six files". The other 13 rows held two more files with the same root — and one of them was a PRODUCTION bug (`retrieve_arcs` selecting a dropped column, 500 on the shipped schema). Same shape as the ROT-1 miss: a denominator taken from what I happened to see rather than from the full set. |
 
 

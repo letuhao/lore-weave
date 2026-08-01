@@ -126,7 +126,7 @@ async def detect_and_update_threads(
     drafter_ref: str,
     source_language: str = "auto",
     max_open: int = 5,
-    max_tokens: int = max_tokens_for("detect_and_update_threads"),
+    max_tokens: int | None = None,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> ThreadUpdateResult:
@@ -146,6 +146,11 @@ async def detect_and_update_threads(
     # or lock is S3/S4 hardening, not built here.
     open_folds = {_fold(t.summary) for t in open_threads}
 
+    # The response can touch every thread it was SHOWN (advance/close) and open up to
+    # `max_open` more, so both terms are real and both are known only here — `open_threads`
+    # is the row set just read from the repo, which an import-time default could never see.
+    max_tokens = max_tokens or max_tokens_for(
+        "detect_and_update_threads", target=len(open_threads) + max_open)
     system, user = _build_messages(scene_text, open_threads, source_language)
     try:
         job = await llm.submit_and_wait(

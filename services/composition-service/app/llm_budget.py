@@ -54,6 +54,21 @@ class CallProfile:
     #: see `compress`. `None` ⇒ the SDK's runaway guard.
     ceiling: int | None = None
     why: str = ""
+    #: True ⇒ NO per-call signal can change this row's resolved budget, by construction.
+    #:
+    #: This exists because the no-signal ratchet was counting two different things as one.
+    #: `call_budget` reads `language` ONLY on the PROSE and VERDICT branches, and MIRROR
+    #: short-circuits before any sizing runs at all — so a call site can pass `language=` to a
+    #: STRUCTURED row, satisfy a gate that greps kwargs, and change nothing. That is the
+    #: "renamed constant" this seam's own docstring warns about, one level up: theatre that
+    #: reads as progress.
+    #:
+    #: So the rule is: pass a kwarg only if the kind READS it, and a row where nothing can be
+    #: read says so HERE rather than accumulating fake signal at its call sites. Same move as
+    #: `OutputKind.MIRROR` itself — declaring the decision so silence and intent stop looking
+    #: alike. `test_llm_budget_registry` PROBES every row against the mechanism and fails if
+    #: this flag disagrees with it, in either direction, so it cannot drift into a comment.
+    signal_inert: bool = False
 
 
 #: code → profile. A code is the FUNCTION the call lives in, so a reader can go straight
@@ -120,6 +135,16 @@ PROFILES: dict[str, CallProfile] = {
     # there is no guidance at all, so raising capability silently raises the output. Guidance
     # and capability must move as ONE signal — and when only one of them exists, the budget
     # is not free to move.
+    # NOT `signal_inert`, and the reason is worth keeping because the first version of this
+    # row claimed it was. The argument looked airtight — `ceiling == floor == 512`, and the
+    # ceiling is applied last, so nothing can move it. The registry PROBE disagreed: the
+    # window clamp runs after the floor and pushes DOWN, so `context_length=8` resolves this
+    # row to 4, not 512. A ceiling bounds one direction only.
+    #
+    # So `target` and `language` really are inert here (the ceiling eats them), and
+    # `context_length` really is not. The call site does not know the model's window today, so
+    # this row stays honest backlog rather than a declared exemption — the difference being
+    # that backlog is something the ratchet still counts.
     "compress": CallProfile(OutputKind.PROSE, 512, 512, ceiling=512,
                             why="compressed running context — re-injected, so its SIZE is "
                                 "the feature; the prompt states no length, so this bounds it"),

@@ -230,6 +230,11 @@ async def test_propose_world_FORWARDS_the_roster_and_canon_to_the_prompt(monkeyp
     monkeypatch.setattr(wp, "build_propose_world_messages", _spy)
 
     class _LLM:
+        # propose_cast/propose_world thread the model window into the
+        # output budget; None = 'unknown', which applies no clamp.
+        async def resolve_context_length(self, *a, **k):
+            return None
+
         async def submit_and_wait(self, **kw):
             self.input = kw["input"]
             return type("J", (), {"status": "failed", "result": None})()
@@ -269,6 +274,11 @@ def test_empty_fields_are_omitted_never_written_as_blanks():
 
 
 class _LLM:
+    # propose_cast/propose_world thread the model window into the
+    # output budget; None = 'unknown', which applies no clamp.
+    async def resolve_context_length(self, *a, **k):
+        return None
+
     def __init__(self, *, raises=None, status="completed", content="[]"):
         self._raises = raises
         self._status = status
@@ -315,3 +325,79 @@ async def test_a_completed_job_is_parsed():
         user_id="u", model_source="user_model", model_ref="m", premise="p",
     )
     assert [e.name for e in out] == ["Ironhold"]
+
+
+# ── the model's window actually bounds the output budget ──────────────────────────────────
+
+async def test_a_small_context_model_CLAMPS_the_world_budget():
+    """Proof by EFFECT, not by the call being made.
+
+    Sizing `propose_world` on its item count is what this budget change is for, and on an
+    established book it resolves to ~32k output tokens — the SDK's runaway ceiling. A cap the
+    model's window cannot honour trades an under-budget bug for a failed request, so the
+    window is threaded in and `_MAX_WINDOW_SHARE` clamps it.
+
+    Asserting that `resolve_context_length` was CALLED would pass just as well with the result
+    thrown away, which is how a threaded signal becomes decoration. So this reads the number
+    that reached the wire, and carries its own control: the same call on a large-window model
+    must NOT be clamped, or the assertion below is about the ceiling rather than the window.
+    """
+    sent: dict = {}
+
+    def _client(window: int | None):
+        class _LLM:
+            async def resolve_context_length(self, *a, **k):
+                return window
+
+            async def submit_and_wait(self, **kw):
+                sent[window] = kw["input"]["max_tokens"]
+                return type("J", (), {"status": "failed", "result": None})()
+        return _LLM()
+
+    big_roster = {k: [f"n{i}" for i in range(40)] for k in ("location", "faction", "concept")}
+    for window in (8192, None):
+        await propose_world(
+            _client(window), user_id="u", model_source="user_model", model_ref="m",
+            premise="p", known_world=big_roster,
+        )
+
+    assert sent[8192] == 4096, "an 8k-window model was not clamped to its half-window share"
+    assert sent[None] > sent[8192], (
+        "the unclamped control resolved no higher than the clamped run — then the clamp is "
+        "not what produced the smaller number and this test proves nothing"
+    )
+
+
+# ── the schema-shaped answer must parse ───────────────────────────────────────────────────
+
+def test_the_SCHEMA_shaped_response_parses():
+    """`_WORLD_SCHEMA` requires `{"items": [...]}`, so that is the shape every grammar-honouring
+    provider returns — and this parser read a bare array, so it produced `[]` for all of them.
+
+    Measured live on gemma-4-26b before the fix: `finish_reason=stop`, 2864 characters of valid
+    JSON, ZERO entities. Pass 3 degrades to `[]` on any failure, so a dead pass was
+    indistinguishable from a premise with no world in it.
+    """
+    payload = json.dumps({"items": [
+        {"name": "Thanh Vân Môn", "kind": "faction", "summary": "s", "is_new": False},
+        {"name": "Hoa Sơn", "kind": "location", "summary": "s", "is_new": True},
+    ]}, ensure_ascii=False)
+    out = parse_world(payload)
+    assert [e.name for e in out] == ["Thanh Vân Môn", "Hoa Sơn"]
+    assert [e.kind for e in out] == ["faction", "location"]
+
+
+def test_the_bare_array_shape_still_parses():
+    """The CONTROL. The prompt asks for a bare array and a provider without grammar support
+    still returns one, so the wrapper fix must not become a wrapper REQUIREMENT."""
+    payload = json.dumps([{"name": "Hoa Sơn", "kind": "location", "summary": "s"}],
+                         ensure_ascii=False)
+    assert [e.name for e in parse_world(payload)] == ["Hoa Sơn"]
+
+
+def test_an_AMBIGUOUS_wrapper_is_refused_rather_than_guessed():
+    """Two candidate lists and no `items` key — picking one would be a coin flip that reads as
+    a successful parse. `[]` is the honest answer and the degrade path already handles it."""
+    payload = json.dumps({"alpha": [{"name": "A", "kind": "location"}],
+                          "beta": [{"name": "B", "kind": "faction"}]})
+    assert parse_world(payload) == []

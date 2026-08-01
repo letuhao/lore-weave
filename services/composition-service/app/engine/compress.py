@@ -167,7 +167,12 @@ async def _cast_state(
                                  "content": build_extract_prompt(source_language)},
                                 {"role": "user", "content": body}],
                    "response_format": {"type": "text"}, "temperature": 0.0,
-                   "max_tokens": max_tokens_for("cross_scene_check"), **no_thinking_fields()},
+                   # No `target`: the output is one row per person in the passage and the
+                   # count is exactly what the call exists to discover, so any number here
+                   # would be invented. `language` is known and IS read on the VERDICT branch.
+                   "max_tokens": max_tokens_for("cross_scene_check",
+                                                language=source_language),
+                   **no_thinking_fields()},
             job_meta={"usage_purpose": "context_compress", "extractor": "cast_state"},
             trace_id=trace_id, cancel_check=cancel_check,
         )

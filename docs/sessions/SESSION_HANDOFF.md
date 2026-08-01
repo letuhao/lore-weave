@@ -190,7 +190,7 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 
 **Order (author-set 2026-08-02):** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` →
 `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-**`[budget-seam rot] → S7`** → `S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+`[budget-seam rot] ✅ → S7 ✅` → **`S6(+UI)`** → `S11 → S3 → S4` → `S9 → S5 → S13`.
 
 ### ⛔ KG / extraction is PARKED — do not start it
 
@@ -211,15 +211,43 @@ State the current status plainly and do not soften it: **the dead-character feat
 end-to-end.** The liveness store fills; nothing can read it. Parked in the RUN-STATE's Parked
 register.
 
-### ▶ NEXT: the budget-seam rot = **S7 slice 4**, one item not two
+### ✅ DONE: the budget-seam rot = **S7 slice 4** — and S7 is closed
 
-They are the same work found from two ends. Spec §S7 already says the gate must red on *"an int
-default in any signature that reaches an LLM call (~31 of ~40 are defaults)"*; the measurement
-found **26 of 28** signal-free budget sites are exactly that — `max_tokens: int =
-max_tokens_for("kind")`, evaluated once at import and unreachable by any per-call signal.
-Sentinel pattern (`max_tokens: int | None = None`, resolve at call time) is proven in-repo by
-`judge_plan_conflict`. Each of the 26 needs a judgement about its real size driver; the JSON kinds
-need their own sizing model (`cast_plan` = rows × per-row; `motif_conformance` = a 20-word reason).
+**28 signal-free budget sites → 9, with the 9 named.** Full audit in the RUN-STATE.
+
+**The finding worth carrying forward: the ratchet was satisfiable with theatre.** `call_budget`
+reads `language` ONLY on the PROSE and VERDICT branches — STRUCTURED sizes on `target × 220`,
+EDIT on `target / 3`, MIRROR reads nothing. So adding `language=` to a STRUCTURED call site
+cleared it from the backlog and changed no budget, ever. Proven by injection: the OLD gate goes
+GREEN on it. The gate now scores a kwarg only if its KIND reads it (`_KIND_READS`), and rows where
+*nothing* can size the call declare `signal_inert` rather than accumulating fake signal — probed
+two-directionally in each service's registry test so the flag cannot drift into a comment.
+
+Real numbers, not just kwargs: `propose_cast` 4096 → 24750 on a 40-name roster · `propose_world`
+4096 → 32768 · `propose_edits_direct` 3000 → 13333 on a 20k-char chapter · `judge_prose`
+1536 → 5202 with 30 canon rules in Vietnamese. 10 of 18 realistic cases move; 8 still land on
+the floor and are listed as such.
+
+**⚠ The live run found a DEAD PRODUCTION PASS, now fixed.** `propose_world` parsed **0** entities
+on every call — not truncation (`finish_reason=stop`, 2864 chars of valid JSON). `_WORLD_SCHEMA`
+requires `{"items": [...]}`; `parse_world` still read a bare array. Pass 3 degrades to `[]` on any
+failure, so a dead pass and a premise with no world looked identical. Live after the fix: 0 → 9
+and 0 → 10 entities.
+
+**Three carry-overs are in the RUN-STATE Debt register**, not lost: the `cross_scene_check` row is
+mislabelled (its two call sites emit a cast roster, and VERDICT's `truncation_is_fatal=False`
+silently drops people from a clipped one) · `_TOKENS_PER_ITEM = 220` is unmeasured and is what
+sends a full roster into the 32768 runaway ceiling · the output-window clamp is unexercised in
+production because the dev model reports a 200k window.
+
+### ▶ NEXT: **S6 — no model silently its own judge**
+
+Surveyed already, and **blocked on an affordance rather than on code**: no surface sets a critic,
+`critic_model_ref` lives only in `work.settings` JSONB, and the FE suite is green on a
+configuration no user can produce (fixtures hand components `{critic_model_ref: 'x'}`; the only
+way to reach that state in the product is hand-editing JSONB). The spec is explicit — ship the UI
+in the same slice or the label is noise, because a warning the author cannot clear is the
+permanent-amber failure S1 exists to prevent. Survey detail in the RUN-STATE `AUDIT S6 (survey)`.
 
 **Full standing overview — board, off-board work, de-rot, loose ends:** RUN-STATE §*WHERE THE RUN
 STANDS*.

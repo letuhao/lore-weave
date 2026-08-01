@@ -78,6 +78,11 @@ def test_parse_cast_salvages_truncated_array():
 
 async def test_propose_cast_degrades_to_empty_on_non_completion():
     class _LLM:
+        # propose_cast/propose_world thread the model window into the
+        # output budget; None = 'unknown', which applies no clamp.
+        async def resolve_context_length(self, *a, **k):
+            return None
+
         async def submit_and_wait(self, **kw):
             return SimpleNamespace(status="failed", result={})
     out = await propose_cast(_LLM(), user_id="u", model_source="user_model", model_ref="m",
@@ -89,6 +94,11 @@ async def test_propose_cast_happy_parses_array():
     payload = json.dumps([{"name": "Lâm Uyển", "role": "protagonist", "is_new": False}])
 
     class _LLM:
+        # propose_cast/propose_world thread the model window into the
+        # output budget; None = 'unknown', which applies no clamp.
+        async def resolve_context_length(self, *a, **k):
+            return None
+
         async def submit_and_wait(self, **kw):
             # the genre/language steer must reach the prompt
             assert "PREMISE:" in kw["input"]["messages"][1]["content"]
@@ -159,6 +169,11 @@ async def test_propose_cast_THREADS_the_roster_and_canon_into_the_real_call():
     captured: dict = {}
 
     class _LLM:
+        # propose_cast/propose_world thread the model window into the
+        # output budget; None = 'unknown', which applies no clamp.
+        async def resolve_context_length(self, *a, **k):
+            return None
+
         async def submit_and_wait(self, **kw):
             captured["user"] = kw["input"]["messages"][1]["content"]
             captured["system"] = kw["input"]["messages"][0]["content"]

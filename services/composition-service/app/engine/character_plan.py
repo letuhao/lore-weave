@@ -111,7 +111,7 @@ def parse_character_arcs(
 async def plan_character_arcs(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     premise: str, cast: list[dict[str, Any]], beat_roles: list[str | None],
-    source_language: str = "auto", max_tokens: int = max_tokens_for("plan_character_arcs"),
+    source_language: str = "auto", max_tokens: int | None = None,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[CharacterArc]:
@@ -122,6 +122,11 @@ async def plan_character_arcs(
     if not valid:
         return []
     role_by_name = {c["name"]: c.get("role", "") for c in cast if c.get("name")}
+    # One arc per NAMED cast member — the response is keyed to the roster the caller passed
+    # in, so this is a count the call site actually holds rather than an estimate. `valid`
+    # rather than `cast`: an entry with no name is dropped before the prompt is built, so
+    # budgeting for it would size against rows the model is never asked to produce.
+    max_tokens = max_tokens or max_tokens_for("plan_character_arcs", target=len(valid))
     system, user = build_character_arc_messages(premise, cast, beat_roles, source_language)
     try:
         job = await llm.submit_and_wait(

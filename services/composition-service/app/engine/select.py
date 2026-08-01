@@ -190,7 +190,7 @@ def build_rerank_prompt(candidates: list[Candidate], profile: BookProfile) -> tu
 
 async def score(
     judge: LLMClient, *, user_id: str, model_source: str, model_ref: str,
-    candidates: list[Candidate], profile: BookProfile, max_tokens: int = max_tokens_for("select_score"),
+    candidates: list[Candidate], profile: BookProfile, max_tokens: int | None = None,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[int, str, bool]:
@@ -198,6 +198,14 @@ async def score(
     single candidate or any failure/malformed verdict (never raises)."""
     if len(candidates) <= 1:
         return 0, "single_candidate", False
+    # Resolved here, not as a default argument, because the candidate count is a per-call
+    # fact and a default is frozen at import. The response is
+    # `{"best": int, "ranking": [one entry per candidate], "reason": str}` and the reason has
+    # to justify a choice among all of them, so it grows with the count — `language` because
+    # a Vietnamese reason costs 2.6 tokens/word against English's 1.7, and VERDICT is one of
+    # the two branches that actually reads it.
+    max_tokens = max_tokens or max_tokens_for(
+        "select_score", target=len(candidates), language=profile.source_language)
     system, user = build_rerank_prompt(candidates, profile)
     try:
         job = await judge.submit_and_wait(

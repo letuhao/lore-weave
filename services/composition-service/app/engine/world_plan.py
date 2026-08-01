@@ -66,6 +66,12 @@ _WORLD_SCHEMA: dict = {
 #: PER KIND, not overall: a book with ninety locations and three factions must still show both.
 _MAX_KNOWN_WORLD = 40
 
+#: Entities the model is expected to INVENT per kind, on top of whatever roster it was given.
+#: Read off the system prompt, which asks it to propose the places, factions and concepts
+#: "the story will need but has not named yet" for each of the three `WORLD_KINDS`. A sizing
+#: input only — the decoder's schema, not this number, is what bounds the response.
+_INVENTED_WORLD_PER_KIND = 3
+
 #: Rendering order for the existing-world roster. Fixed rather than dict order so the same book
 #: produces the same prompt on every run.
 _WORLD_KIND_LABELS: tuple[tuple[str, str], ...] = (
@@ -219,6 +225,27 @@ def parse_world(content: str) -> list[ProposedWorldEntity]:
                 rows.append(row)
         arr = rows
 
+    # The SCHEMA-shaped answer: `{"items": [...]}`. `_WORLD_SCHEMA` declares exactly that
+    # wrapper — it was introduced to enforce WORLD_KINDS at the decoder — and this parser was
+    # left reading a bare array, which is what the PROMPT asks for. So on every provider that
+    # honours the grammar, `json.loads` returned a dict, `isinstance(arr, list)` was False,
+    # and the whole pass degraded to `[]` through its own tolerant path.
+    #
+    # MEASURED LIVE 2026-08-02 on gemma-4-26b: `finish_reason=stop`, 2864 characters of
+    # perfectly well-formed JSON, zero entities parsed — in BOTH budget arms, so it is not a
+    # truncation. Pass 3 is advisory and returns `[]` on any failure, which is exactly why
+    # nothing ever reported it: a dead pass and a book with no world to propose look identical
+    # from the outside.
+    if isinstance(arr, dict):
+        inner = arr.get("items")
+        if not isinstance(inner, list):
+            # Tolerant, in the spirit of the rest of this function: accept a differently-named
+            # single list rather than fail on a wrapper key we did not predict. Ambiguous
+            # payloads (two lists) are NOT guessed at.
+            lists = [v for v in arr.values() if isinstance(v, list)]
+            inner = lists[0] if len(lists) == 1 else None
+        arr = inner
+
     if not isinstance(arr, list) or not arr:
         return []
 
@@ -296,7 +323,7 @@ async def propose_world(
     cast_names: list[str] | None = None,
     known_world: dict[str, list[str]] | None = None,
     canon: str = "",
-    max_tokens: int = max_tokens_for("propose_world"),   # a full world JSON is verbose — undersizing truncates the array → parse fails
+    max_tokens: int | None = None,   # a full world JSON is verbose — undersizing truncates the array → parse fails
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[ProposedWorldEntity]:
@@ -305,6 +332,22 @@ async def propose_world(
     Returns `[]` on ANY LLM/parse failure. Pass 3 is advisory: an empty world plan means grounding
     stays as thin as it was before this pass existed — it must never block the compiler.
     """
+    # Counted the way the PROMPT counts: only the three `WORLD_KINDS` buckets are listed, each
+    # capped at `_MAX_KNOWN_WORLD`, so the roster that reaches the model — not the dict the
+    # caller happens to hold — is the lower bound on the array coming back. A kind outside
+    # WORLD_KINDS is dropped from the prompt, so counting it here would budget for entries the
+    # model was never asked for. No `language`: STRUCTURED never reads it.
+    _known = sum(
+        len([n for n in ((known_world or {}).get(kind) or []) if str(n).strip()][:_MAX_KNOWN_WORLD])
+        for kind in WORLD_KINDS
+    )
+    # `context_length` for the same reason as `propose_cast`: this is the largest target in
+    # the registry — a book with a full roster in all three kinds reaches the SDK's 32768
+    # runaway ceiling — and an output cap the model's window cannot honour trades an
+    # under-budget bug for a request that fails outright. None ⇒ no clamp, as before.
+    max_tokens = max_tokens or max_tokens_for(
+        "propose_world", target=_known + _INVENTED_WORLD_PER_KIND * len(WORLD_KINDS),
+        context_length=await llm.resolve_context_length(model_source, model_ref))
     system, user = build_propose_world_messages(
         premise, source_language, genre_tags, cast_names,
         known_world=known_world, canon=canon,

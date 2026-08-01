@@ -170,7 +170,7 @@ def test_no_caller_re_introduces_a_budget_literal_the_registry_owns():
 _KNOWN_HELPER_LITERALS = [
     "engine/planning_pipeline.py:98 =2048",
     "engine/plan_forge/material_search.py:169 =1500",
-    "engine/self_heal.py:629 =400",
+    "engine/self_heal.py:637 =400",
 ]
 
 
@@ -188,3 +188,127 @@ def test_compress_is_bounded_because_its_prompt_states_no_length():
 def test_only_rows_that_declare_a_ceiling_are_bounded_by_one():
     bounded = {c for c, p in PROFILES.items() if p.ceiling is not None}
     assert bounded == {"compress"}, f"unexpected ceiling rows: {bounded - {'compress'}}"
+
+
+# ── `signal_inert` must agree with the MECHANISM, not with a comment ──────────────────────
+
+#: Signal values chosen to be absurdly large in every direction a row could respond to. If a
+#: row does not move under ALL of these, nothing a real call site could pass will move it.
+#: `reasoning=None` is deliberate: the reasoning multiplier scales `need`, which is already 0
+#: for a row that ignores `target`, so it cannot rescue an otherwise-inert row on its own.
+_PROBE_SIGNALS = (
+    {"target": 100_000},
+    {"language": "zh"},
+    {"target": 100_000, "language": "zh"},
+    {"context_length": 8},          # the window clamp, pushing DOWN rather than up
+    {"target": 100_000, "context_length": 4_000_000},
+)
+
+
+def _row_responds_to_any_signal(code: str) -> bool:
+    """Does ANY signal change this row's resolved budget? Probed, never assumed."""
+    base = max_tokens_for(code)
+    return any(max_tokens_for(code, **kw) != base for kw in _PROBE_SIGNALS)
+
+
+@pytest.mark.parametrize("code", sorted(PROFILES))
+def test_signal_inert_matches_what_the_mechanism_actually_does(code):
+    """The flag is a CLAIM about `call_budget`; this is the claim being checked.
+
+    It fails in BOTH directions on purpose. A row wrongly marked inert would let its call
+    sites stop passing signal they really do have — the rot this slice exists to pay down,
+    re-introduced through its own exemption. A row wrongly NOT marked inert forces its call
+    sites to pass arguments the kind never reads, which is the theatre the flag exists to
+    stop. Only one of those is caught by a one-directional assert, and it is the less likely
+    one.
+    """
+    declared_inert = PROFILES[code].signal_inert
+    responds = _row_responds_to_any_signal(code)
+    if declared_inert:
+        assert not responds, (
+            f"{code!r} declares signal_inert=True but its budget DOES move under a real "
+            f"signal — the call sites are entitled to pass one, and this flag is excusing "
+            f"them from it"
+        )
+    else:
+        assert responds, (
+            f"{code!r} does not declare signal_inert, but NO signal changes its budget. "
+            f"Its call sites can only satisfy the no-signal gate with arguments the kind "
+            f"never reads. Either mark the row signal_inert=True with the reason, or fix "
+            f"the sizing model so the signal is actually consumed."
+        )
+
+
+def test_a_ceiling_bounds_ONE_direction_and_the_window_clamp_is_the_other():
+    """The near-miss this test exists to pin, because I shipped the wrong claim first.
+
+    `compress` has `ceiling == floor == 512`, and the ceiling is applied last — from which I
+    concluded nothing could move it and marked the row `signal_inert`. The probe reddened:
+    the window clamp also runs after the floor and pushes DOWN, so a tiny `context_length`
+    resolves the row to 4. A ceiling bounds ABOVE; it says nothing about below.
+
+    The consequence is not cosmetic. Marking the row inert would have excused its call site
+    from a signal it is genuinely entitled to pass, inside the slice whose whole purpose is
+    removing that excuse.
+    """
+    assert max_tokens_for("compress") == 512
+    for kw in ({"target": 100_000}, {"language": "zh"}):
+        assert max_tokens_for("compress", **kw) == 512, f"{kw} escaped the ceiling"
+    assert max_tokens_for("compress", context_length=8) == 4, "the window clamp stopped biting"
+
+
+def test_the_probe_can_tell_the_two_classes_apart():
+    """A control, and it has to reach OUTSIDE this registry to be one.
+
+    Every non-MIRROR row responds to `context_length`, because the window clamp applies to
+    all of them. So composition-service currently has NO inert row, the `declared_inert`
+    branch of the test above never executes here, and `_row_responds_to_any_signal` returning
+    a hardcoded True would leave every assertion in this file green. That is precisely the
+    check-that-cannot-fail shape, so the negative case is exercised against the mechanism
+    directly rather than waiting for a row that may never exist.
+    """
+    from loreweave_llm.budget import call_budget
+
+    assert _row_responds_to_any_signal("propose_cast") is True    # STRUCTURED sizes on items
+    assert _row_responds_to_any_signal("compress") is True        # via the window clamp only
+
+    # MIRROR is the genuinely inert construction — it returns the omit sentinel BEFORE the
+    # sizing model and before every clamp, so no signal reaches anything. translation-service
+    # owns three such rows; this asserts the probe would report False if one landed here.
+    base = call_budget(OutputKind.MIRROR).max_output_tokens
+    assert base == 0
+    for kw in _PROBE_SIGNALS:
+        assert call_budget(OutputKind.MIRROR, **kw).max_output_tokens == base
+
+
+def test_composition_declares_no_inert_row_and_that_is_a_measurement():
+    """Pinned so that ADDING one is a deliberate act with a failing test to read first.
+
+    If this ever needs updating, the question to answer is not "does the flag look right" but
+    "what does the probe say" — the probe is the authority, and it has already overruled one
+    confident argument in this file's history."""
+    assert {c for c, p in PROFILES.items() if p.signal_inert} == set()
+
+
+def test_language_is_unread_by_the_structured_and_edit_branches():
+    """The specific asymmetry that makes a kwarg-counting gate satisfiable with theatre.
+
+    `call_budget` computes `per_word` from `language` and then consults it ONLY on the PROSE
+    and VERDICT branches. So `budget_for("propose_cast", language="zh")` is a no-op, while
+    `budget_for("judge_canon", language="zh")` is not — and a gate that greps for the kwarg
+    cannot tell those apart. Pinning it here means a future change to the sizing model that
+    makes `language` load-bearing for STRUCTURED shows up as a failing test rather than as a
+    silent shift in what the call sites ought to be passing.
+    """
+    for code in ("propose_cast", "plan_character_arcs", "plan_forge_chat"):
+        assert profile_for(code).kind is OutputKind.STRUCTURED
+        assert (max_tokens_for(code, target=20, language="zh")
+                == max_tokens_for(code, target=20)), f"{code}: language became load-bearing"
+    for code in ("propose_edits_direct", "propose_self_heal"):
+        assert profile_for(code).kind is OutputKind.EDIT
+        assert (max_tokens_for(code, target=50_000, language="zh")
+                == max_tokens_for(code, target=50_000)), f"{code}: language became load-bearing"
+    # …and the CONTROL: on VERDICT it really is read, so the pattern above is a statement
+    # about the branch and not about `max_tokens_for` ignoring its kwargs generally.
+    assert (max_tokens_for("judge_canon", target=40, language="zh")
+            != max_tokens_for("judge_canon", target=40))
