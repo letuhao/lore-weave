@@ -929,7 +929,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		// 5. Add evidence (extraction quote)
 		if ent.Evidence != "" {
 			entID, _ := uuid.Parse(result.EntityID)
-			nameAttrDefID, nameOK := attrDefMap[kindID.String()+":name"]
+			nameAttrDefID, _, nameOK := displayAttrDef(attrDefMap, kindID)
 			if nameOK {
 				// Get the name attr_value_id
 				var nameAVID uuid.UUID
@@ -1001,7 +1001,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		translationChanged := false
 		if ent.Translation != nil && ent.Translation.LanguageCode != "" && ent.Translation.Value != "" {
 			entID, _ := uuid.Parse(result.EntityID)
-			nameAttrDefID, nameOK := attrDefMap[kindID.String()+":name"]
+			nameAttrDefID, _, nameOK := displayAttrDef(attrDefMap, kindID)
 			if nameOK {
 				var nameAVID uuid.UUID
 				if err := tx.QueryRow(ctx, `
@@ -1212,6 +1212,28 @@ func (s *Server) loadBookKindCodes(ctx context.Context, bookID uuid.UUID) (map[s
 // s.pool — the fix for D-GLOSSARY-PROPOSE-LOCK's connection-pool deadlock risk
 // (a hardcoded s.pool here forced every tx-holding caller to need 2 connections
 // at once). Callers with no open tx yet just pass s.pool.
+// displayAttrDef resolves the attribute that HOLDS AN ENTITY'S NAME for a given kind,
+// preferring 'name' and falling back to 'term'.
+//
+// Every read path in this service already does exactly this — `ad.code IN ('name','term')`
+// in entity_handler.go and entity_display_names_handler.go — while three write paths here
+// hardcoded `:name`. `terminology` is the only kind whose display attribute is `term`, and
+// it is REQUIRED there, so on that kind the lookup missed and the writes were skipped
+// silently: the name was dropped, and with it the evidence row and the translation, since
+// both hang off the name's attr_value_id.
+//
+// Measured on 封神演義 before the fix: 215 of 224 `terminology` entities had an empty
+// cached_name. A nameless entity cannot be referenced, deduped by name, or joined to a KG
+// node — which is the entity-linkage hole this repairs at the source.
+func displayAttrDef(attrDefMap map[string]uuid.UUID, kindID uuid.UUID) (uuid.UUID, string, bool) {
+	for _, code := range [...]string{"name", "term"} {
+		if id, ok := attrDefMap[kindID.String()+":"+code]; ok {
+			return id, code, true
+		}
+	}
+	return uuid.Nil, "", false
+}
+
 func (s *Server) loadAttrDefMap(ctx context.Context, q pgxRWQuerier, bookID uuid.UUID) (map[string]uuid.UUID, error) {
 	rows, err := q.Query(ctx, `
 		SELECT DISTINCT ON (ba.kind_id, ba.code) ba.attr_id, ba.kind_id, ba.code
@@ -1521,19 +1543,34 @@ func (s *Server) createExtractedEntity(
 		return uuid.Nil, nil, nil, fmt.Errorf("insert entity: %w", err)
 	}
 
-	// Insert name attribute
-	nameDefID, ok := attrDefMap[kindID.String()+":name"]
-	if ok {
-		_, err = q.Exec(ctx, `
-			INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
-			VALUES ($1, $2, $3, $4)
-			ON CONFLICT (entity_id, attr_def_id) DO NOTHING
-		`, entityID, nameDefID, sourceLang, ent.Name)
-		if err != nil {
-			return uuid.Nil, nil, nil, fmt.Errorf("insert name attr: %w", err)
-		}
-		written = append(written, "name")
+	// Insert the entity's NAME into whichever attribute this kind uses for it —
+	// 'name' for seven of the eight kinds, 'term' for `terminology`. Hardcoding "name"
+	// here silently dropped every terminology name (see displayAttrDef).
+	//
+	// A MISS IS AN ERROR, not a skip. The old code did `if ok { ... }` and fell through
+	// silently when the lookup failed, so an entity was created with no name attribute at
+	// all — and because `cached_name`/`normalized_name` are derived from that row by
+	// trigger, both came out empty. `normalized_name` is the dedup key
+	// (findEntityByNameOrAlias / findEntityCrossKind), so every later encounter of the same
+	// entity failed to match and created ANOTHER nameless row. Measured: 215 of 224
+	// `terminology` entities, with duplicate definitions to show the dedup failing.
+	//
+	// A kind with neither `name` nor `term` is a broken ontology, and the only safe
+	// response is to refuse the write. Silence here cost this project a whole kind.
+	nameDefID, nameCode, ok := displayAttrDef(attrDefMap, kindID)
+	if !ok {
+		return uuid.Nil, nil, nil, fmt.Errorf(
+			"kind %s has no display attribute (neither 'name' nor 'term'): refusing to "+
+				"create a nameless entity, which cannot be deduped or linked", kindID)
 	}
+	if _, err = q.Exec(ctx, `
+		INSERT INTO entity_attribute_values (entity_id, attr_def_id, original_language, original_value)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (entity_id, attr_def_id) DO NOTHING
+	`, entityID, nameDefID, sourceLang, ent.Name); err != nil {
+		return uuid.Nil, nil, nil, fmt.Errorf("insert %s attr: %w", nameCode, err)
+	}
+	written = append(written, nameCode)
 
 	// Insert other attributes
 	var unmatchedCodes, unmatchedNotes []string

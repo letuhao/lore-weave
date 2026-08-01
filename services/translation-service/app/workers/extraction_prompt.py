@@ -456,7 +456,14 @@ def parse_and_validate_with_stats(
         if kind not in valid_kinds:
             continue
 
-        name = entry.get("name", "")
+        # An entity's name lives under `name` for seven of the eight kinds and under
+        # `term` for `terminology` — that is what the schema ASKS that kind for, because
+        # `term` is its required display attribute. Accepting only `name` meant a model
+        # that answered the schema correctly had its entity dropped here, while a model
+        # that answered `name` got through and then had the value discarded on the
+        # glossary side (which hardcoded the same assumption in the opposite direction).
+        # Both halves are fixed together; either alone still loses the entity.
+        name = entry.get("name", "") or entry.get("term", "")
         if not name:
             continue
 
@@ -464,7 +471,10 @@ def parse_and_validate_with_stats(
         allowed_attrs = set(extraction_profile.get(kind, {}).keys())
         attrs = {}
         for key, val in entry.items():
-            if key in ("kind", "name", "evidence", "evidence_block", "relevance"):
+            # `term` is consumed as the entity's NAME above, so it must not also be
+            # written back as an attribute — glossary writes the name into that same
+            # attr_def and the two would race on one ON CONFLICT.
+            if key in ("kind", "name", "term", "evidence", "evidence_block", "relevance"):
                 continue
             if key in allowed_attrs:
                 attrs[key] = val
