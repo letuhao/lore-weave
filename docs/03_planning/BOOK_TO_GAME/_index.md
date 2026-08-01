@@ -48,6 +48,7 @@ job, and that is a different job — see [`03_two_jobs.md`](03_two_jobs.md).
 | [`04_fidelity.md`](04_fidelity.md) | how far from the source, on which axes, and how a human can actually decide — fidelity as **recorded distance, not permission** |
 | [`05_planforge_reuse.md`](05_planforge_reuse.md) | evidence-based: what of PlanForge is reusable, what is not, and why |
 | [`06_poc_plan.md`](06_poc_plan.md) | the smallest thing that could falsify this design |
+| [`07_lore_bible.md`](07_lore_bible.md) | **the scale answer** — how a Lore Bible is built from a book nobody can read: from the derived layers, never from the corpus |
 
 **`03` and `04` are corrections.** The first draft of this folder put authoring and structuring in one
 place and treated fidelity as a gate that could forbid a mechanism. Both were wrong, both were

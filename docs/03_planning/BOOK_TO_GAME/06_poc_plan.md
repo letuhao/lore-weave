@@ -173,7 +173,19 @@ B  authored concept beats raw corpus? reuses everything built · kills the tier
 C  does the concept decide enough?    tests the authoring/structuring separation
 D  does the charter refuse anything?  cheap · confirms disclosure is enforceable
 E  does a reference game help?        the claim that makes a SYSTEMLESS source workable
+F  does the KG yield an invariant?    the Lore Bible's whole premise, and it is SQL
 ```
+
+**POC-F, added with §[`07`](07_lore_bible.md).** The bible's premise is that a systemic claim can be
+recovered from typed edges without reading prose — the sharpest form being *the realm ladder falls out
+of `BREAKS_THROUGH_TO` edges even though no chapter lists the realms in order*. On the fixture world
+that is a handful of queries and no model at all, which makes it the cheapest step on this ladder and
+the one whose failure would be most expensive to discover late.
+
+**Its honest limit, stated before it runs:** the largest book on the stack is **100 chapters** with
+**5,431 glossary entities** — one to two orders of magnitude below the case §[`07`](07_lore_bible.md)
+designs for. A green POC-F proves the *shape* of the idea and proves **nothing about scale**, and that
+sentence should be repeated in whatever reports it.
 
 A and B are independent; A is first because it is cheaper and because what it finds changes what POC-B
 should author.
