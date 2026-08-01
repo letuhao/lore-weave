@@ -77,7 +77,7 @@ Everything else in the family passed — the suites had not rotted, they had sim
 Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh bị drift … cần thêm bước audit
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
-**Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 → S12` →
+**Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12` →
 `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
 
 `D-GENERATED-FACT-HAS-NO-HOME` is inserted BEFORE S1 because it is the root of both continuity
@@ -414,6 +414,54 @@ AUDIT S2
                shape S8's own coverage reporting should copy rather than re-invent.
 ```
 
+## ✅ S8 · the pack's diagnostics ride the job — CLOSED 2026-08-01
+
+```
+AUDIT S8
+  BUILT      — `PackedContext.diagnostics()`: ONE method, called from all four envelope
+               assembly sites plus the three worker results, carrying the eight numbers the
+               pack already measured and then discarded. Only `grounding_available` and
+               `reinjected_promise_count` used to reach a job.
+
+  PROVEN     — composition unit `3322 passed` (3315 before, +7).
+               gates: ai-provider OK · db-safety PASS · language-rule PASS ·
+               generation-guard-gate PASS.
+               LIVE, $0 gemma-4-26b, throwaway book, the job result now carries:
+                 {"warnings": ["grounding_unavailable: no knowledge-graph data for this
+                  scene/project (C3a)"], "over_budget": false, "token_count": 16,
+                  "dropped_count": 0, "grounding_available": false,
+                  "l4_dropped_no_position": 0, "recent_floor_compressed": 0,
+                  "reinjected_promise_count": 0}   · 559 words drafted
+               That warning previously had nowhere to go — it was raised, and then the request
+               ended.
+
+               THE SEMANTICS v1 INVERTED, pinned against the REAL budget pass rather than my
+               description of it: `enforce_budget` produces `over_budget=True, dropped_count=0`
+               (protected floor alone over budget — nothing lost) AND
+               `over_budget=False, dropped_count=2` (the trim SUCCEEDED by discarding content).
+               An alarm keyed on `over_budget` fires on the first and is silent on the second,
+               which is exactly backwards.
+
+  NOT PROVEN — no live control on a GROUNDED book. The run above is a bare throwaway, so
+               `dropped_count`/`l4_dropped_no_position`/`recent_floor_compressed` were all 0 and
+               only the unit tests show them non-zero; `warnings` being non-empty is the one
+               live signal that these are not constants. Nothing CONSUMES the block yet — no FE
+               surface, no gate, no eval class reads it, so this slice makes a fact available
+               rather than acted upon. And the two SSE paths still carry no result envelope at
+               all, so they carry no diagnostics either.
+
+  DRIFT      — my first fixture for "content lost while the budget reads fine" used a protected
+               floor of 401 tokens against a 200-token budget, so BOTH halves were over-budget
+               and the test asserted the opposite of its own name. It failed loudly, which is
+               the only reason I noticed: had I written the assertion the other way round it
+               would have passed and pinned the inversion this slice exists to correct.
+
+  NEXT       — S12 (every declared enforcement site must resolve to a real call site). S8 hands
+               it a worked example of the same shape one level down: a number that is computed,
+               documented, and read by nobody. S12's gate should treat "no consumer" the way
+               this slice treats "no field".
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -496,6 +544,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
 | 2026-08-01 | **Wrote a diagnosis into the handoff from ONE error message.** Told the next session "CI red = 33 failures, one root, `language`→`original_language`, a mechanical sweep". There were **three** roots — a fastapi 0.139 `app.routes` change across two services, a pip editable path resolving outside the checkout, and the rename — and the rename half needed a SEMANTIC rewrite because the identity key had changed too. I had read one traceback and generalised, which is the §1.4 mistake the red team already caught me making twice. |
+| 2026-08-01 | **Wrote a fixture that asserted the opposite of its own name.** The “content lost while the budget reads fine” case used a 401-token protected floor against a 200-token budget, so both halves were over-budget. It failed loudly — the only reason I noticed. Written the other way round it would have PASSED and pinned the very semantic inversion S8 exists to correct. |
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |

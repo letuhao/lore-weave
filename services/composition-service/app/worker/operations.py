@@ -586,6 +586,9 @@ async def run_generate(
         "grounding_available": input.get("grounding_available"),
         "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
         "reinjected_promise_count": input.get("reinjected_promise_count"),
+        # S8 — the pack diagnostics the endpoint measured. Serialised into `job_input`
+        # because the worker has no bearer and cannot re-run pack().
+        "pack": input.get("pack"),
         "persisted": False,
         # W5: critic-merge patch for the consumer (popped off → the job's `critic`
         # column, NOT the result blob). None when conformance is off / not sampled /
@@ -711,6 +714,9 @@ async def run_chapter_generate(
         "grounding_available": input.get("grounding_available"),
         "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
         "reinjected_promise_count": input.get("reinjected_promise_count"),
+        # S8 — the pack diagnostics the endpoint measured. Serialised into `job_input`
+        # because the worker has no bearer and cannot re-run pack().
+        "pack": input.get("pack"),
         "max_output_tokens": max_out,
     }
 
@@ -762,6 +768,8 @@ async def run_selection_edit(llm: LLMClient, *, input: dict[str, Any]) -> dict[s
         "truncated": m.finish_reason == "length" or bool(stream_error),
         "selection_edit": True,
         "grounding_available": input.get("grounding_available"),
+        # S8 — the selection-edit path measured the same pack and reported none of it.
+        "pack": input.get("pack"),
         "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
         "persisted": False,
     }

@@ -581,6 +581,8 @@ async def generate(
             "reasoning_passthrough": reasoning.passthrough,
             "grounding_available": pc.grounding_available,
             "reinjected_promise_count": pc.reinjected_promise_count,
+            # S8 — everything else the pack measured and then threw away.
+            "pack": pc.diagnostics(),
             "assembly_mode": assembly_mode,
             "reflect_max_iters": max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
             "critic_source": str(c_src) if distinct else None,
@@ -802,6 +804,8 @@ async def generate(
             # prompt (advisory; 0 when narrative_thread is off). Deterministic S3
             # fired-signal for the live-smoke.
             "reinjected_promise_count": pc.reinjected_promise_count,
+            # S8 — everything else the pack measured and then threw away.
+            "pack": pc.diagnostics(),
         })
 
     async def event_gen():
@@ -1243,6 +1247,8 @@ async def generate_chapter(
             "reasoning_passthrough": reasoning.passthrough,
             "grounding_available": pc.grounding_available,
             "reinjected_promise_count": pc.reinjected_promise_count,
+            # S8 — everything else the pack measured and then threw away.
+            "pack": pc.diagnostics(),
             "reflect_max_iters": max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
             "critic_source": str(c_src) if distinct else None,
             "critic_ref": str(c_ref) if distinct else None,
@@ -1407,7 +1413,8 @@ async def generate_chapter(
         "assembly_mode": "chapter", "persisted": persisted, "draft_version": draft_version,
         "persist_error": persist_error, "max_output_tokens": max_out,
         "open_promise_count": open_promise_count,  # FD-1 S4a advisory debt flag
-        "reinjected_promise_count": pc.reinjected_promise_count})  # FD-1 S4b S3 fired-signal
+        "reinjected_promise_count": pc.reinjected_promise_count,
+        "pack": pc.diagnostics()})  # FD-1 S4b + S8 pack diagnostics
 
 
 @router.post("/works/{project_id}/chapters/{chapter_id}/stitch")

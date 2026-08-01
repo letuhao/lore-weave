@@ -130,6 +130,40 @@ class PackedContext:
     # hold the chapter, which is the normal case.
     recent_floor_compressed: int = 0
 
+    def diagnostics(self) -> dict[str, Any]:
+        """S8 — what the pack DID, in one dict, so the job result can carry it.
+
+        Every number here was already computed and then thrown away: only
+        `grounding_available` and `reinjected_promise_count` reached a job, so the questions an
+        author or a debugger actually asks — *was anything dropped? was the chapter I am
+        continuing summarised away?* — had no answer anywhere after the request ended.
+
+        ⚠ `over_budget` DOES NOT MEAN CONTENT WAS LOST, and reading it that way inverts the
+        semantics (v1 of this slice did). It means the PROTECTED segments alone exceeded the
+        budget and were KEPT — the prompt is oversized, and nothing load-bearing was discarded.
+        The genuinely silent signals are `dropped_count` (lore/references/threads actually
+        discarded to fit) and `l4_dropped_no_position` (grounding dropped because its reading
+        position could not be resolved — a spoiler-safety drop, not a budget one).
+
+        `recent_floor_compressed > 0` is the sharpest of them: the scene is being written
+        against an LLM SUMMARY of its own chapter rather than the prose, which is how "He is
+        the anchor" became "She's a Scribe" one scene later.
+
+        One method, called from every assembly site, because this envelope is built in four
+        places and a field added to one of them has already been read back as None by a live
+        probe.
+        """
+        return {
+            "dropped_count": self.dropped_count,
+            "l4_dropped_no_position": self.l4_dropped_no_position,
+            "recent_floor_compressed": self.recent_floor_compressed,
+            "over_budget": self.over_budget,
+            "token_count": self.token_count,
+            "grounding_available": self.grounding_available,
+            "reinjected_promise_count": self.reinjected_promise_count,
+            "warnings": list(self.warnings),
+        }
+
 
 def _as_uuid(value: Any) -> UUID | None:
     try:

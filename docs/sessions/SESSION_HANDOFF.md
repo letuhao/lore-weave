@@ -11,7 +11,14 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 [`docs/specs/2026-07-31-generation-ssot.md`](../specs/2026-07-31-generation-ssot.md).
 
 **Order:** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` →
-`S2 ✅` → **`S8`** → `S12` → `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+`S2 ✅` → `S8 ✅` → **`S12`** → `S7 → S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+
+**S8 closed** — `PackedContext.diagnostics()` puts the eight numbers the pack already
+measured onto the job result (only two used to get there). ⚠ `over_budget=True` means the
+protected floor was KEPT and nothing load-bearing was dropped — the silent signals are
+`dropped_count` and `l4_dropped_no_position`, and `recent_floor_compressed > 0` means the
+scene is being written against an LLM summary of its own chapter. **Nothing consumes the
+block yet**: no FE surface, no gate, no eval class.
 
 **S2 closed** — `resolve_cast_liveness` answers per ENTITY *with the layer that answered*
 (KG → plan → none), so an entity the graph has never heard of no longer takes the same silent
