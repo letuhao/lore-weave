@@ -172,3 +172,132 @@ async def test_the_violation_reaches_the_envelope_the_FE_reads(monkeypatch):
     assert PLAN_CONFLICT_KIND in kinds
     assert env["checks"]["plan_liveness"] == "checked"
     assert "unlinked_gone_refs" in env
+
+
+# ── the JUDGE tier: advisory -> HARD, and the ways it must NOT fire ───────────────────────
+#
+# The author's rule, verbatim: judge confirms => HARD, no judge => advisory. These pin both
+# halves, plus the thing a "does it become HARD" test alone would miss — that `resolved` has
+# to flip too, because the publish gate keys on `resolved == false` and NOT on the violation
+# list. A red row on a chapter that still publishes is the false-green in reverse.
+
+class _Judge:
+    """A judge whose verdicts are scripted. `status` is settable so the CC4 degrade paths
+    (a job that never completes) can be exercised without a network."""
+
+    def __init__(self, verdicts, status="completed"):
+        self._verdicts, self._status = verdicts, status
+        self.calls = []
+
+    async def submit_and_wait(self, **kw):
+        self.calls.append(kw)
+        import json as _json
+        import types
+        # `messages[0].content`, NOT `content` — the gateway's job result shape, which
+        # `extract_judge_text` calls LOAD-BEARING in its own docstring. The first version of
+        # this stub used `{"content": ...}`, invented from what the code looked like it wanted,
+        # and both judge tests failed for a reason that had nothing to do with the code. Take a
+        # fixture's shape from the PRODUCER's schema, never from the consumer.
+        return types.SimpleNamespace(
+            status=self._status,
+            result={"messages": [{"content": _json.dumps({"verdicts": self._verdicts})}]},
+        )
+
+
+async def _reflect_judged(monkeypatch, verdicts, *, status="completed",
+                          judge=("user_model", "critic-model")):
+    _stub_extractor(monkeypatch, events=[_Ev(_Eff("Tô Thanh Dao", "gone"))])
+    llm = _Judge(verdicts, status=status)
+    return await CR.run_canon_reflect(
+        knowledge=_Knowledge(), llm=llm, user_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        cast_glossary_ids=[DAO, VIEN], scene_sort_order=1,
+        plan_status=PLAN, plan_cast=CAST,
+        draft="Lạc Viên đâm chết Tô Thanh Dao.",
+        # The names must be IN the packed prompt or name-grounding reports NO_RULES, the
+        # derived guard_status is not `checked`, and `verdict` is None by the honesty rule
+        # — which would make the verdict assertions below untestable for a reason that has
+        # nothing to do with the judge.
+        packed_prompt="Tô Thanh Dao và Lạc Viên ở cổng thành.",
+        profile=type("P", (), {"source_language": "vi"})(),
+        drafter_source="user_model", drafter_ref="drafter-model",
+        judge_source=judge[0] if judge else None,
+        judge_ref=judge[1] if judge else None,
+        prompt_estimate=0, max_output_tokens=100, max_iters=0,
+    ), llm
+
+
+@pytest.mark.asyncio
+async def test_a_CONFIRMED_conflict_is_HARD_and_blocks_publish(monkeypatch):
+    (_t, r, _), _llm = await _reflect_judged(
+        monkeypatch, [{"entity_id": DAO, "violated": True, "why": "cô ấy chết thật"}])
+    hit = next(v for v in r.violations if v.kind == PLAN_CONFLICT_KIND)
+    assert hit.confirmed is True
+    assert r.resolved is False, "the publish gate keys on resolved, not on the violation list"
+    assert r.guard_status == "checked", "the fixture must fully check, or verdict is None"
+    assert r.verdict is False, "a fully-checked guard with a HARD violation is a FAILED verdict"
+
+
+@pytest.mark.asyncio
+async def test_a_judge_that_CLEARS_it_does_not_block(monkeypatch):
+    """A feint, a dream, a prophecy. The counterweight without which "always HARD" passes the
+    test above and every planned death becomes unpublishable."""
+    (_t, r, _), _llm = await _reflect_judged(
+        monkeypatch, [{"entity_id": DAO, "violated": False, "why": "chỉ là giấc mơ"}])
+    hit = next(v for v in r.violations if v.kind == PLAN_CONFLICT_KIND)
+    assert hit.confirmed is False
+    assert r.resolved is True
+    assert r.verdict is True, "cleared by the judge ⇒ the scene really did pass"
+
+
+@pytest.mark.asyncio
+async def test_NO_distinct_judge_leaves_it_advisory(monkeypatch):
+    """Invariant 2 — the drafter that wrote the death may not certify it. Without a distinct
+    judge the finding is neither promoted nor dropped."""
+    (_t, r, _), llm = await _reflect_judged(monkeypatch, [], judge=None)
+    hit = next(v for v in r.violations if v.kind == PLAN_CONFLICT_KIND)
+    assert hit.confirmed is None
+    assert r.resolved is True, "advisory must not block"
+    assert llm.calls == [], "no judge call may be made without a distinct judge"
+
+
+@pytest.mark.asyncio
+async def test_a_judge_that_never_COMPLETES_leaves_it_advisory(monkeypatch):
+    """CC4: a judge that is down must not be able to block a publish — nor clear one."""
+    (_t, r, _), _llm = await _reflect_judged(
+        monkeypatch, [{"entity_id": DAO, "violated": True, "why": "x"}], status="failed")
+    hit = next(v for v in r.violations if v.kind == PLAN_CONFLICT_KIND)
+    assert hit.confirmed is None and r.resolved is True
+
+
+@pytest.mark.asyncio
+async def test_the_judge_is_called_with_the_CRITIC_model_not_the_drafters(monkeypatch):
+    (_t, _r, _), llm = await _reflect_judged(
+        monkeypatch, [{"entity_id": DAO, "violated": True, "why": "x"}])
+    assert llm.calls, "the judge was never called"
+    assert llm.calls[0]["model_ref"] == "critic-model"
+    assert llm.calls[0]["model_ref"] != "drafter-model"
+
+
+@pytest.mark.asyncio
+async def test_a_judge_verdict_for_SOMEONE_ELSE_leaves_the_candidate_advisory(monkeypatch):
+    """A candidate the judge does not answer for stays `None` — it must not inherit another
+    entity's verdict, and it must not be silently promoted."""
+    (_t, r, _), _llm = await _reflect_judged(
+        monkeypatch, [{"entity_id": "someone-else", "violated": True, "why": "x"}])
+    hit = next(v for v in r.violations if v.kind == PLAN_CONFLICT_KIND)
+    assert hit.confirmed is None and r.resolved is True
+
+
+def test_the_plan_judge_asks_a_DIFFERENT_question_from_the_gone_cast_judge():
+    """Two judges, two questions. `judge_canon` asks whether an already-gone character is being
+    portrayed as present; this one asks whether the death the passage just wrote is real. A
+    shared prompt would ask the wrong one for whichever check borrowed it."""
+    from app.engine.canon_check import _build_judge_messages, _build_plan_conflict_messages
+    v = [CR.CanonViolation(kind=PLAN_CONFLICT_KIND, entity_id=DAO, name="Tô Thanh Dao",
+                           matched="Tô Thanh Dao", status="gone")]
+    gone_sys, _ = _build_judge_messages("prose", v, "vi")
+    plan_sys, plan_user = _build_plan_conflict_messages("prose", v, "vi")
+    assert gone_sys != plan_sys
+    assert "permanently" in plan_sys and "ACTIVE PRESENCE" not in plan_sys
+    assert "vi" in plan_sys, "the judge must write its `why` in the book's language"
+    assert "Tô Thanh Dao" in plan_user

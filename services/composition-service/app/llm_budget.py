@@ -62,6 +62,11 @@ PROFILES: dict[str, CallProfile] = {
     # ── judges/critics: a bounded verdict + a short reason. Clipping costs a reason string.
     "judge_canon": CallProfile(OutputKind.VERDICT, 1536, 1024,
                                why="per-candidate verdicts + a one-line why"),
+    # Its own key, not a reuse of judge_canon: this judge answers a DIFFERENT question (is the
+    # death real and permanent, vs a feint/dream/prophecy) over a candidate set bounded by the
+    # scene's cast, which is smaller than the gone-set judge_canon can face.
+    "judge_plan_conflict": CallProfile(OutputKind.VERDICT, 1024, 768,
+                                       why="one verdict + a short why per cast member"),
     "judge_prose": CallProfile(OutputKind.VERDICT, 1536, 1536, why="the critic's scored findings"),
     "pairwise_judge": CallProfile(OutputKind.VERDICT, 1536, 1024, why="A/B verdict + rationale"),
     "cross_scene_check": CallProfile(

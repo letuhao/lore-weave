@@ -997,6 +997,63 @@ AUDIT PLAN-LIVENESS (detection half)
                nothing about who may die.
 ```
 
+### ✅ PLAN-LIVENESS judge tier — advisory → HARD, and it blocks publish
+
+```
+AUDIT PLAN-LIVENESS (judge tier)
+  BUILT      — `judge_plan_conflicts` + its own prompt + its own budget key
+               (`judge_plan_conflict`). A DISTINCT judge is now the ONLY thing that can set
+               `confirmed=True` on a `plan_liveness_conflict`, and a confirmed one flips
+               `result.resolved = False` — which is what the publish gate actually reads.
+
+               Its own prompt, not `judge_canon`'s: that judge asks "this character is already
+               gone — is the passage treating them as present?"; this one asks "the passage
+               appears to END this character — is that real and permanent, here, now?".
+               Borrowing one prompt would ask the wrong question for whichever check borrowed it.
+
+  PROVEN     — LIVE, a real local judge model, three passages differing ONLY in the nature of
+               the death, `why` returned in Vietnamese:
+                 REAL  → confirmed=True  · "mô tả trực tiếp… kiếm xuyên qua ngực, cô ngã xuống"
+                 DREAM → confirmed=False · "chỉ xảy ra trong giấc mơ… cô ấy vẫn đang sống"
+                 FEINT → confirmed=False · "né tránh kiếm và vẫn đứng vững, không hề chết"
+               3/3, at zero cost. The unit tests script the judge, so they prove the wiring and
+               prove NOTHING about the prompt — this is the half that could only be measured.
+
+               tests `31 passed` (15 comparison + 16 wiring, 8 of them the judge tier) · suite
+               `11 failed, 3821 passed, 8 skipped in 106.04s` (the same 11 pre-existing) ·
+               gates: `llm-budget-ssot-gate: PASS — 93 LLM call site(s)` (92 before: the new
+               judge call is budget-declared) · `ai-provider-gate (full): OK` ·
+               `generation-guard-gate: PASS` · `enforcement-claims-gate: OK` ·
+               `db-safety-gate: OK` · `[language-rule] PASS`
+               red-able: cut `result.resolved = False` → exactly the HARD test fails; restored
+               by re-editing.
+
+  NOT PROVEN — the judge was measured on THREE hand-written passages, not on a corpus. 3/3 is
+               an existence proof that the prompt works in vi, not a false-positive rate. A
+               feint written more ambiguously than mine is unmeasured.
+               The judge runs only when the work has a DISTINCT critic configured; with none,
+               the finding stays advisory forever and nothing tells the author that the tier
+               that could block is switched off. That is S6's axis and it is still open.
+               No live END-TO-END run with a critic configured: the probe called
+               `judge_plan_conflicts` directly. The path from `distinct` → judge_source/ref →
+               HARD → publish-gate 409 is covered by unit tests, not by a stack.
+               A confirmed conflict does NOT trigger a re-revise — `reflect_revise` has already
+               run by then. The author gets a red row with a Revise affordance; the loop does
+               not fix it for them.
+
+  DRIFT      — my judge STUB invented the job-result shape from what the code looked like it
+               wanted: `{"content": …}`. The real one is `result["messages"][0]["content"]` —
+               `extract_judge_text` calls that LOAD-BEARING in its own docstring, and this
+               repo already has a lesson row for it. Both judge tests failed for a reason that
+               had nothing to do with the code under test.
+               Then a second one: I asserted `verdict is False` on a fixture whose
+               `packed_prompt` was empty, so name-grounding was NO_RULES, `guard_status` was
+               not `checked`, and `verdict` was None BY THE RULE I wrote this morning. I was
+               one keystroke from "fixing" the honesty rule to make my test pass.
+
+  NEXT       — the PREVENTION half: the drafter's prompt still says nothing about who may die.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -1078,6 +1135,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Shipped a "gate" that stayed GREEN with its own defect injected — again.** The protected-segment test squeezed the budget until the prose dropped and asserted `carries=` survived. With `protected=False` injected it still passed, because the line is 25 characters and the budget drops largest-first then stops. It was testing SIZE, not protection. Second time this session a check could not fail; the first was `cross_scene_check` v1. |
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
+| 2026-08-01 | **Invented a fixture's shape from the consumer instead of the producer.** My judge stub returned `{"content": …}`; the gateway's job result puts it at `messages[0].content`, which `extract_judge_text` calls LOAD-BEARING in its own docstring and which this repo already has a lesson row for. Two tests failed for a reason that had nothing to do with the code. |
+| 2026-08-01 | **Nearly ‘fixed’ the honesty rule to make my own test pass.** I asserted `verdict is False` on a fixture with an empty `packed_prompt`, so name-grounding was NO_RULES, `guard_status` was not `checked`, and `verdict` was None — exactly as the rule I wrote hours earlier requires. The fixture was wrong, not the rule. |
 | 2026-08-01 | **Built a fixture three times before it could measure anything.** Bare-UUID cast made the drafter write a character as a fortress; a same-chapter control inherited the death through `<recent>`; two scenes at the same `story_order` swapped each other's synopsis. Every failure was the fixture, and every one of them would have produced a confident wrong answer if I had not read the prose. |
 | 2026-08-01 | **Nearly wrote up a cross-chapter spoiler leak that isn’t one — then nearly ‘fixed’ correct code into a bug.** `gather_structural` scans project-wide; I called it a leak before finding `STORY_ORDER_CHAPTER_STRIDE`. Then, having found it, I started widening `plan_liveness_after` to match — which under the mixed convention the data really has would have broken it. Both directions were caught by measuring, not by thinking harder. |
 | 2026-08-01 | **Passed two kwargs the callee does not accept.** `extract_events` takes neither `trace_id` nor `source_language`. Every test that stubs the extractor stays green; only a live call raises — and the degrade-safe `except` would have swallowed it into a permanent DEGRADED status nobody would have questioned. |

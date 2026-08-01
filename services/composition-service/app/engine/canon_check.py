@@ -49,6 +49,7 @@ __all__ = [
     "CanonViolation",
     "gone_cast_in_draft",
     "judge_canon",
+    "judge_plan_conflicts",
     "check_canon",
     "ReflectResult",
     "canon_envelope",
@@ -160,6 +161,80 @@ async def judge_canon(
         return candidates
     verdicts = parse_judge_verdicts(extract_judge_text(job.result))
     apply_verdicts(candidates, verdicts)   # /review-impl #3 — surfaces the judge's why
+    return candidates
+
+
+def _build_plan_conflict_messages(
+    draft: str, candidates: list[CanonViolation], source_language: str,
+) -> tuple[str, str]:
+    """(system, user) for the plan-liveness judge.
+
+    A DIFFERENT question from `judge_canon`'s, which is why it gets its own prompt rather than
+    a shared one. That judge asks *"this character is already gone — is the passage treating
+    them as present?"*. This one asks *"the passage appears to END this character — is that
+    real and permanent, here, now?"*, because the plan-liveness candidate was raised by an
+    extractor reading THIS passage, and `status_effects` cannot tell a death from a feint, a
+    dream, a vision, a prophecy, a near-miss, a metaphor, or somebody else's body.
+
+    Kept free of English-only illustrative phrasing (the multilingual-judge lesson): the list
+    of what does NOT count is abstract, so it does not bias a Vietnamese or CJK judge.
+    """
+    lang = "" if source_language in ("", "auto") else (
+        f" Write each `why` in the language with code '{source_language}'."
+    )
+    system = (
+        "You verify story continuity. For each listed character, the passage appears to end "
+        "their presence — death, departure, or destruction. Decide whether the passage "
+        "ACTUALLY establishes that as a real, permanent event happening now. It is NOT real "
+        "if the passage presents it as imagined, dreamed, foreseen, feared, remembered, "
+        "hypothetical, figurative, attempted-but-survived, or as happening to someone else. "
+        "Answer `violated: true` ONLY when the character truly and permanently ceases to be "
+        "present from this point on. Return ONLY a JSON object "
+        '{"verdicts":[{"entity_id":str,"violated":bool,"why":str}]}.' + lang
+    )
+    listed = "\n".join(f'- entity_id={c.entity_id} name="{c.name}"' for c in candidates)
+    user = f"CHARACTERS THE PASSAGE APPEARS TO END:\n{listed}\n\nPASSAGE:\n{draft}"
+    return system, user
+
+
+async def judge_plan_conflicts(
+    judge, *, user_id: str, model_source: str, model_ref: str,
+    draft: str, candidates: list[CanonViolation], source_language: str = "auto",
+    max_tokens: int = max_tokens_for("judge_plan_conflict"), trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> list[CanonViolation]:
+    """Promote plan-liveness candidates from ADVISORY to HARD — or clear them.
+
+    The author's decision, verbatim: *judge confirms ⇒ HARD, no judge ⇒ advisory*. So this is
+    the only thing that may set `confirmed=True` on a `plan_liveness_conflict`, and the caller
+    must only reach it with a DISTINCT judge model (invariant 2 — no model is silently its own
+    judge; the drafter that wrote the death must not be the one that certifies it).
+
+    CC4: every LLM/parse failure leaves `confirmed=None`, i.e. the candidate stays advisory.
+    A judge that is down must not be able to BLOCK a publish, and must not clear one either.
+    """
+    if not candidates:
+        return []
+    from loreweave_llm.errors import LLMError
+
+    system, user = _build_plan_conflict_messages(draft, candidates, source_language)
+    req = build_judge_request(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        usage_purpose="canon_check", extractor="judge_plan_conflict", max_tokens=max_tokens,
+    )
+    try:
+        job = await judge.submit_and_wait(
+            user_id=user_id, operation="chat", model_source=model_source,
+            model_ref=model_ref, trace_id=trace_id, cancel_check=cancel_check, **req,
+        )
+    except LLMError as exc:
+        logger.warning("judge_plan_conflict degraded (LLM error): %s — advisory", exc)
+        return candidates
+    if getattr(job, "status", None) != "completed":
+        logger.info("judge_plan_conflict status=%s → advisory",
+                    getattr(job, "status", None))
+        return candidates
+    apply_verdicts(candidates, parse_judge_verdicts(extract_judge_text(job.result)))
     return candidates
 
 

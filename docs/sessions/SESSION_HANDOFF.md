@@ -69,9 +69,12 @@ passage say died* — via `status_effects`, an extractor that already existed an
 prompt-taught. The contradiction is set intersection against the plan rung, in
 `app/engine/plan_conflict.py`, in code, with 15 tests.
 
-⚠ **The judge tier is NOT built.** Every conflict is `confirmed=None` — ADVISORY. It flags; it
-does not block publish. The decision was *judge confirms ⇒ HARD, no judge ⇒ advisory* and only
-the second half exists.
+✅ **The judge tier IS built.** A DISTINCT judge promotes a conflict to `confirmed=True`,
+which flips `resolved` and blocks publish; with no distinct judge it stays advisory.
+Measured LIVE on a real local judge, three passages differing only in the nature of the
+death: REAL → true, DREAM → false, FEINT → false, `why` in Vietnamese, 3/3, $0.
+⚠ Three hand-written passages is an existence proof, not a false-positive rate. And with
+no critic configured the blocking tier is silently off — S6's axis, still open.
 
 ⚠ Scene paths only (chapter single-pass + stitch pass no plan rung, and say nothing about it).
 The extraction takes the SDK's default budget; a long scene will chunk into several calls and

@@ -22,6 +22,7 @@ from app.engine.canon_check import (
     CanonViolation,
     ReflectResult,
     check_canon,
+    judge_plan_conflicts,
     reflect_revise,
     scene_at_order,
 )
@@ -46,7 +47,9 @@ logger = logging.getLogger(__name__)
 async def _check_plan_liveness(
     llm, result, *, user_id: UUID, plan_status: dict[str, str] | None,
     plan_cast: list[dict[str, Any]] | None,
-    drafter_source: str, drafter_ref: str, cancel_check,
+    drafter_source: str, drafter_ref: str,
+    judge_source: str | None, judge_ref: str | None, source_language: str | None,
+    trace_id: str | None, cancel_check,
 ) -> tuple[CheckStatus, list[str]]:
     """Does this draft kill someone the PLAN still needs? Appends any conflict to
     `result.violations` and returns `(CheckStatus, unlinked_names)`.
@@ -57,10 +60,13 @@ async def _check_plan_liveness(
     candidate. Measured on two isolated throwaway books — the scene that kills her and the one
     that does not both returned `guard_status='checked'`.
 
-    Advisory tier only (`confirmed=None`). `status_effects` is one model's reading of a passage,
-    and a feint, a dream, a prophecy or a body that turns out to be someone else all look the
-    same to it. Promoting to HARD is the judge's job (the same two tiers the gone-cast check
-    already uses) and is the next slice.
+    TWO TIERS, the same shape the gone-cast check already uses. The symbolic tier is
+    `status_effects` — one model's reading of a passage, to which a feint, a dream, a prophecy
+    and a body that turns out to be someone else all look identical — so it may only ever
+    produce `confirmed=None`, ADVISORY. A DISTINCT judge promotes to `confirmed=True`, HARD,
+    which flips `resolved` and blocks publish. With no distinct judge configured the finding
+    stays advisory rather than being dropped OR promoted: the drafter that wrote the death
+    must not be the model that certifies it.
 
     Every failure mode returns a STATUS rather than raising: this runs on a draft the author has
     already paid for, and it must never be the reason a generate fails (F1).
@@ -88,16 +94,36 @@ async def _check_plan_liveness(
 
     conflicts, unlinked = plan_conflicts(
         asserted_gone(events), name_index(plan_cast), plan_status)
-    for c in conflicts:
-        result.violations.append(CanonViolation(
+    candidates = [
+        CanonViolation(
             kind=PLAN_CONFLICT_KIND, source="score_symbolic",
             entity_id=c["entity_id"], glossary_entity_id=c["entity_id"],
             name=c["name"], matched=c["name"], status="gone", confirmed=None,
             why=("the prose has this character die or depart, but the plan places them in a "
                  "later scene of this chapter"),
-        ))
-    if conflicts:
-        logger.info("plan-liveness conflict: %d entity(ies) the plan still needs", len(conflicts))
+        )
+        for c in conflicts
+    ]
+    if candidates and judge_source and judge_ref:
+        # ADVISORY → HARD, and ONLY here. The author's rule is *judge confirms ⇒ HARD, no
+        # judge ⇒ advisory*, and the caller passes judge_source/ref only when a model DISTINCT
+        # from the drafter is configured — the model that wrote the death must not be the one
+        # that certifies it (invariant 2). Every failure inside leaves `confirmed=None`.
+        candidates = await judge_plan_conflicts(
+            llm, user_id=str(user_id), model_source=judge_source, model_ref=judge_ref,
+            draft=result.text, candidates=candidates, source_language=source_language or "auto",
+            trace_id=trace_id, cancel_check=cancel_check,
+        )
+    result.violations.extend(candidates)
+    if any(v.confirmed is True for v in candidates):
+        # `reflect_revise` computed `resolved` BEFORE this check existed, from the gone-cast
+        # violations only. A confirmed plan conflict is a HARD violation by the same rule, and
+        # the publish gate keys on `resolved == false` — leaving it True would give the author
+        # a red row on a chapter that still publishes, which is the false-green in reverse.
+        result.resolved = False
+    if candidates:
+        logger.info("plan-liveness conflict: %d candidate(s), %d judge-confirmed",
+                    len(candidates), sum(1 for v in candidates if v.confirmed is True))
     # UNLINKED is not clean. The check ran, but on a corpus it could only partly resolve, and
     # the live POC hit exactly this (glossary held the cast with an empty `cached_name`): the
     # death was detected and nothing joined. Reporting `checked` there is the false-green this
@@ -272,7 +298,9 @@ async def run_canon_reflect(
     plan_status_check, plan_unlinked = await _check_plan_liveness(
         llm, result, user_id=user_id, plan_status=plan_status, plan_cast=plan_cast,
         drafter_source=drafter_source, drafter_ref=drafter_ref,
-        cancel_check=cancel_check,
+        judge_source=judge_source, judge_ref=judge_ref,
+        source_language=getattr(profile, "source_language", None),
+        trace_id=trace_id, cancel_check=cancel_check,
     )
     result.unlinked_gone_refs = plan_unlinked
     result.checks = {
