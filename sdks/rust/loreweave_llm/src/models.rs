@@ -158,6 +158,22 @@ impl ChatStreamRequest {
         self
     }
 
+    /// Set the output cap (builder style).
+    ///
+    /// S7 — this builder did not exist, and MEASURED 2026-08-01 no Rust service anywhere in
+    /// the repo set `max_tokens` at all: the field was declared, defaulted to `None`, and
+    /// `normalize` below already anticipated it being set (`Some(0)` → `None`). So the whole
+    /// Rust surface sent uncapped requests while `normalize` stood ready for a value nothing
+    /// could supply.
+    ///
+    /// `Some(0)` is accepted here rather than rejected because `normalize` owns that
+    /// conversion — one place decides what the wire sees, and a second opinion at the builder
+    /// is how two rules for one decision start.
+    pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
+        self.max_tokens = Some(max_tokens);
+        self
+    }
+
     /// Apply gateway-SDK conventions before sending: clamp temperature into
     /// the openapi range; coerce `max_tokens = Some(0)` → `None`.
     pub fn normalize(mut self) -> Self {

@@ -32,6 +32,12 @@ use validate::{L3Classification, L3ToolArguments, L3ValidationError, validate_l3
 const HAIKU_INPUT_USD_PER_1M: f64 = 1.0;
 const HAIKU_OUTPUT_USD_PER_1M: f64 = 5.0;
 
+/// S7 — the L3 measurement's output cap. A RUNAWAY GUARD, not a sizing model: the tool
+/// returns a bounded array of zone classifications whose real size is set by the zone count,
+/// so this is set far above any plausible fixture and exists so an unbounded generation cannot
+/// run the local model until it stops on its own. Per-kind sizing is S7-4.
+const L3_MAX_OUTPUT_TOKENS: u32 = 8_192;
+
 /// Outcome of one L3 measurement run.
 #[derive(Debug)]
 pub struct L3MeasurementReport {
@@ -109,7 +115,17 @@ pub async fn call_l3_attempt(
         vec![prompt::submit_zone_classifications_tool()],
         StreamFormat::Openai,
     )
-    .with_tool_choice(prompt::forced_tool_choice());
+    .with_tool_choice(prompt::forced_tool_choice())
+    // S7 — an output CAP. This request sent none: `max_tokens` had zero occurrences anywhere
+    // in `services/tilemap-service/src`, and the SDK had no builder to set it with. The
+    // harness then read `finish_reason` off the terminal event, stored it, printed it, and
+    // compared it to nothing — so a run cut off mid-tool-call still reported
+    // `tool_use_success` on whatever classifications happened to parse first.
+    //
+    // The tool returns a bounded JSON array of zone classifications, so this is a runaway
+    // guard rather than a sizing model: STRUCTURED output whose real size is set by the zone
+    // count, and a cap far above any plausible fixture. Sizing it properly per-kind is S7-4.
+    .with_max_tokens(L3_MAX_OUTPUT_TOKENS);
 
     let mut attempt = L3Attempt::default();
 

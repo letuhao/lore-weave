@@ -28,7 +28,14 @@ LLM-budget SSOT work earlier in this same session.
 PRINTED (:240) while being compared to nothing. Tilemap sends no output cap, receives the
 truncation signal, and treats a cut-off narration as a narration. Needs a cargo cycle.
 
-**S7 slice 4** (per-kind sizing for the JSON kinds) is untouched.
+**S7 slice 3 is DONE** — and the finding was wider than tilemap: `ChatStreamRequest` had
+`max_tokens` declared, defaulted to `None`, and `normalize` already coercing `Some(0)`, but
+NO BUILDER to set it — so no Rust service anywhere sent an output cap.
+`with_max_tokens` added; tilemap's L3 harness sends 8192. ⚠ That 8192 is a RUNAWAY GUARD,
+not a derived size, and the other Rust services are still uncapped.
+
+**S7 slice 4** (per-kind sizing for the JSON kinds) is untouched — and it should replace
+tilemap's placeholder 8192 with a derived number.
 
 **S6 is SURVEYED and blocked on a UI slice.** Measured: `critic_model_ref` appears in
 `frontend/src` in **`__tests__` files only** — five fixture sites, zero production readers

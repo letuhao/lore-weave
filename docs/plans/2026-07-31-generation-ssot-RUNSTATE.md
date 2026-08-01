@@ -678,6 +678,56 @@ AUDIT S6 (survey)
                piece and it is a frontend cycle this window cannot start.
 ```
 
+### ✅ S7 slice 3 — the Rust surface had no way to set an output cap at all
+
+```
+AUDIT S7-3
+  BUILT      — `ChatStreamRequest::with_max_tokens` in the Rust SDK (it did not exist), and
+               tilemap's L3 harness now sends `L3_MAX_OUTPUT_TOKENS = 8192`.
+
+  PROVEN     — `cargo test -p loreweave_llm --test budget_contract`:
+                 `test result: ok. 5 passed; 0 failed` — including
+                 `the_builder_can_actually_SET_the_budget_it_normalises ... ok`
+               `cargo test -p tilemap-service`: `test result: ok. 5 passed; 0 failed`
+               `cargo check -p loreweave_llm -p tilemap-service`: `Finished dev profile`
+               gates: `ai-provider-gate (full): OK` ·
+               `llm-budget-ssot-gate: PASS — 92 LLM call site(s) scanned` · `[language-rule] PASS`
+
+               THE FINDING IS WIDER THAN TILEMAP. `max_tokens` was declared on
+               `ChatStreamRequest` (models.rs:106), defaulted to `None` (:147), and `normalize`
+               already coerced `Some(0)` → `None` (:171) — the conversion stood ready for a
+               value nothing could supply, because there was no builder. Measured: NO Rust
+               service in the repo set an output cap. The whole Rust surface sent uncapped.
+
+               The new test carries its CONTROL in the same body: an un-built request asserts
+               `max_tokens.is_none()` first, so the positive assertion is about the builder and
+               not about a default — and it re-checks after `normalize`, because a builder
+               whose value `normalize` silently dropped would be worse than no builder.
+
+  NOT PROVEN — 8192 is a RUNAWAY GUARD, not a sizing model. The tool returns a bounded array
+               of zone classifications whose real size is the zone count; I did not measure
+               what a fixture actually produces, so the number is "far above anything
+               plausible" rather than derived. Sizing it per-kind is S7-4 and remains undone.
+               No live run: tilemap's harness needs an lmstudio L3 measurement, and the cap's
+               EFFECT (a long generation stopping at the cap rather than running on) is
+               therefore unobserved — I proved the value reaches the wire, not that the wire
+               honours it. And the other Rust services remain uncapped; this slice added the
+               ability and used it in ONE place.
+
+  DRIFT      — I nearly claimed a bug that is not there. `tool_use_success:
+               classifications_parsed > 0` looked like "a truncated run reads as success", and
+               I started writing it up that way — but the classifications ARE parsed, so the
+               field is literally true, and the render already prints `finish_reason`. The real
+               defect was the plainer one underneath: no cap was ever sent. Reaching for the
+               more dramatic reading of code I had just met is how B4 and B5 got their severity
+               walked back on this same project.
+
+  NEXT       — S7-4: per-kind sizing for the JSON kinds. The spec is explicit that `prose` is
+               mechanical and the rest are not (`cast_plan`'s 4000 is rows × per-row tokens;
+               `motif_conformance`'s 512 is a 20-word reason), so 8192 above is a placeholder
+               that S7-4 should replace with a derived number.
+```
+
 ### Standing quality bars — a slice is NOT done if any of these is skipped
 
 - **A new check ships with its CONTROL run and pasted.** A detector that answers the same on a
@@ -760,6 +810,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Accepted a green STATUS over garbage DATA.** The first live run returned `{'status': 'recorded', 'cast_size': 10}` and I read it as the feature working. The ten rows were Vietnamese pronouns and common nouns — *Anh ta*, *ngươi*, *Ánh mắt họ* ("their gaze"). All ten would have been injected into the next scene's prompt as facts about the cast. `_NOT_A_NAME` is an English word list and filtered none of them. |
 | 2026-08-01 | **Fixed that bug in one consumer and left it in the other.** The recorder got a strict name key; `compare_people`'s fallback kept using the same broken one, so the CONTROL run reported `linked=2, clean=true` on a scene where nobody is named — a false green in the guard, reached through my own fix. An empty `name` from the extractor is an ANSWER, not a missing value to fall back from. |
 | 2026-08-01 | **Wrote a diagnosis into the handoff from ONE error message.** Told the next session "CI red = 33 failures, one root, `language`→`original_language`, a mechanical sweep". There were **three** roots — a fastapi 0.139 `app.routes` change across two services, a pip editable path resolving outside the checkout, and the rename — and the rename half needed a SEMANTIC rewrite because the identity key had changed too. I had read one traceback and generalised, which is the §1.4 mistake the red team already caught me making twice. |
+| 2026-08-01 | **Reached for the dramatic reading of code I had just met.** `tool_use_success: classifications_parsed > 0` looked like “a truncated run reads as success” and I began writing it up — but the classifications ARE parsed and the render already prints `finish_reason`. The real defect was plainer: no cap was ever sent, anywhere in Rust. Same shape as B4/B5, whose severity this project already walked back. |
 | 2026-08-01 | **Three falsifications in a row primed me to expect a fourth.** On the first grep hit (`ModelRole` includes `'critic'`) I nearly recorded “the spec is wrong again”. The type member exists and is unreachable — the spec was RIGHT, and sharper than it knew. A measurement has to be allowed to confirm as well as refute. |
 | 2026-08-01 | **Treated the spec's §S7 bullets as a work list instead of as hypotheses — three of them falsified by measurement in one slice.** “two SDK sites unclamped” (they are MIRROR, where clamping is the bug) · “33 CI failures, one root” (three roots) · “glossary has ZERO FinishReason checks service-wide” (it has ten, and the gap was closed earlier in this same session). This is the exact habit the red team already caught the spec doing to itself. |
 | 2026-08-01 | **Nearly read a red test as “my fix is wrong” when it was pinning the bug.** `test_window_shrinks_for_a_small_context_model` restated `8_000 - 2_048 - 2_048`; raising the output reserve to match the request cap made it fail. Same shape as the motif tests asserting the removed i18n behaviour, two slices earlier in this same run. |

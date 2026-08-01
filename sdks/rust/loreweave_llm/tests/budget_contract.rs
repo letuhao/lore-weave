@@ -92,3 +92,38 @@ fn the_truncated_finish_reason_matches_the_contract() {
          unrecognisable, which is how glossary-service repaired clipped JSON as malformed"
     );
 }
+
+#[test]
+fn the_builder_can_actually_SET_the_budget_it_normalises() {
+    // S7 — `max_tokens` was declared on the struct, defaulted to `None`, and `normalize`
+    // already handled `Some(0)`. What did not exist was any way to SET it: measured
+    // 2026-08-01, no Rust service in the repo passed an output cap, because there was no
+    // builder to pass one with. `normalize` stood ready for a value nothing could supply.
+    let base = ChatStreamRequest::new_chat_with_tools(
+        ModelSource::UserModel,
+        Uuid::nil(),
+        vec![],
+        vec![],
+        StreamFormat::Openai,
+    );
+    assert!(
+        base.max_tokens.is_none(),
+        "the CONTROL: an un-built request still carries no cap, so the assertion below is \
+         about the builder and not about a default"
+    );
+
+    let capped = ChatStreamRequest::new_chat_with_tools(
+        ModelSource::UserModel,
+        Uuid::nil(),
+        vec![],
+        vec![],
+        StreamFormat::Openai,
+    )
+    .with_max_tokens(8_192);
+    assert_eq!(capped.max_tokens, Some(8_192));
+
+    // …and it survives the wire conversion, which is the half that matters: a builder whose
+    // value `normalize` silently dropped would be worse than no builder at all.
+    let body = serde_json::to_value(capped.normalize()).expect("serialises");
+    assert_eq!(body["max_tokens"], 8_192, "the cap did not reach the wire: {body}");
+}
