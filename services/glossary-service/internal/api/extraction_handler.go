@@ -532,13 +532,20 @@ const (
 // model-offset-trust contract (INV-7 / T1). The worker already validated the quote's
 // location against the real chapter text; glossary still trusts no raw number:
 //
-//   - Only the closed enum {exact,resolved,ambiguous,unmatched} is honored; anything
-//     else (incl. an omitting legacy caller) degrades to 'unverified' with NULL offsets.
+//   - Only the closed enum {exact,resolved,abridged,partial,ambiguous,unmatched} is
+//     honored; anything else (incl. an omitting legacy caller) degrades to 'unverified'
+//     with NULL offsets.
 //   - Offsets are persisted ONLY for exact/resolved (a single verified location) AND only
 //     when sane (non-negative, start<=end). A status that claims exact/resolved without
 //     valid offsets is downgraded to 'unverified' rather than stored half-trusted.
-//   - ambiguous/unmatched keep the status but carry NULL offsets (no blind pick / no
-//     fabricated citation — the quote is still stored via original_text).
+//   - abridged/partial/ambiguous/unmatched keep the status but carry NULL offsets (no
+//     blind pick / no fabricated citation — the quote is still stored via original_text).
+//     abridged = an ellipsis-joined citation whose every fragment occurs in the chapter;
+//     partial = most of the quote occurs contiguously and the rest does not. Both are
+//     GROUNDED-but-unlocatable, and collapsing them into 'unmatched' is what made this
+//     pipeline's fabrication rate read 44.6% when it was 2.4% (BOOK_TO_GAME/13 §5).
+//     This set must stay in sync with translation-service's extraction_provenance.py;
+//     TestEvidenceProvenanceTaxonomyParity reds if the two drift.
 //
 // block_or_line is TEXT NOT NULL DEFAULT '' (the legacy column), so a present block index
 // is rendered as a decimal string and absence is the empty string.
@@ -556,7 +563,7 @@ func evidenceProvenanceFields(ent extractedEntity) (status string, charStart, ch
 			}
 		}
 		// else: claimed exact/resolved but no/invalid offset → stay 'unverified'.
-	case "ambiguous", "unmatched":
+	case "abridged", "partial", "ambiguous", "unmatched":
 		status = ent.EvidenceProvenanceStatus // keep the quote; offsets stay NULL
 	}
 	return

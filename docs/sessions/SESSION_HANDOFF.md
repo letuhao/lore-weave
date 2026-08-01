@@ -1,5 +1,57 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## 🔬 EXTRACTION POC — instrument repaired, arms not yet run (2026-08-01)
+
+**Why:** the PO's economics — 24h and ~50M tokens for 700 chapters of a 4,000-chapter book at
+*medium* detail; a game needs 3–4 enrichment layers, so 5–10× that. Measurement first
+([`BOOK_TO_GAME/13`](../03_planning/BOOK_TO_GAME/13_extraction_cost_and_quality.md)), arms after
+([`/14`](../03_planning/BOOK_TO_GAME/14_extraction_poc.md)).
+
+**Measured (instrumented, 57/100 chapters of 封神演義, then cancelled)**
+- **21,834 in + 6,835 out tokens/chapter**, 3 LLM calls. → ~115M tokens for a 4,000-chapter book.
+- **7.4 chars of prompt per 1 char of source.** Chapter text is 40.8% of input *and is sent 3×*;
+  the source read once is **13.4%**. `MAX_KINDS_PER_BATCH=3` fixed an output-truncation bug by
+  **tripling the input**, and that price had never been measured. One call = **−55% input**.
+- `SYSTEM_TEMPLATE` puts the per-batch `{dynamic_schema}` **before** the static boilerplate and the
+  known-entity block, so ~10k byte-identical chars/chapter sit downstream of the cache break.
+- **88% of entity writes are re-writes.** The known-entity block costs input and does not buy the
+  output saving it exists for; it also carries `人` ("person", 8 aliases) as an entity.
+
+**Shipped — step 0 only: the measuring instrument**
+`validate_evidence` reported **44.6% unmatched** on 1,739 real rows where only **2.4%** of quotes
+were fully absent — 39% differed only in punctuation/width, 19% were faithful ellipsis abridgements.
+An instrument whose noise floor is 18× the defect cannot rank arms, so it was repaired **before** any
+arm ran: punctuation/width fold (mapped back to real offsets), ellipsis-fragment path, near-match
+threshold, plus two statuses `abridged`/`partial` that persist with **NULL offsets** (no single span
+equals an abridged quote; claiming one is the T1 fabricated-citation failure).
+- Re-scored all 1,739: unmatched **44.6% → 9.8%**, resolved 55.0% → 72.5%. **Strictly monotone**
+  (every move is `unmatched →`, `ambiguous` unchanged at 7), **0 offsets whose span omits the quote**,
+  and the offline classifier + shipped validator independently agree on the same **171** residue.
+- Cross-service closed set moved on **both** sides (Go `evidenceProvenanceFields`) + a parity test
+  that parses the Go switch — the drift class where Python emits a status Go degrades to `unverified`.
+- **Bite-tested 3 ways** (NV-2): drop `abridged` from the Go gate → parity reds; slacken the
+  near-match threshold to 0.05/1 → **7** red incl. two pre-existing; weaken the ellipsis check to
+  "any fragment" → 2 red. Each restored.
+
+**Verified** — translation-service **1070 passed** (`-n auto --dist loadgroup`) · glossary-service
+`internal/api` ok · ai-provider-gate OK · doc-language-gate OK.
+
+**▶ NEXT — run the arms.** PO approved **all of A0–A6**, instrument first (done).
+Order per `/14` §7: freeze the slice (chapters 21–30) + known-entity snapshot + throwaway book +
+answer key → **A0 ×2 for the variance floor** → A1–A4 (prompt/shape) → read the card → A5 (EDC) → A6
+(GLiNER). `BTG-A41`: every arm must start from the SAME frozen known-entity snapshot or the
+comparison measures ordering, not the arm. Q5 yield + Q6 duplication are on the card as anti-gaming
+axes — every cost arm can be "won" by extracting less.
+
+**⚠ Open**
+- The 100-chapter extraction is **cancelled at 57/100**; 872 entities kept. Resume = post a new job
+  with the remaining chapter_ids (entities already written are permanent).
+- Stored `provenance_status` rows are **pre-repair**; the re-score was computed, not written back. A
+  backfill is a decision, not a bug — the POC scores fresh runs.
+- Answer key for Q4 (kind conformance) is unwritten; authoring it also settles `10` §6's falsifier
+  (are the 41 place-suffix `organization` rows collapsed pairs or plain misfiles — `BTG-A31` favours
+  misfiles).
+
 ## 🔐 GAME CLIENT AUTH — login + register + recovery, one account with the novel app (2026-07-30)
 
 **Scope:** `frontend-game` had no auth at all (`/login` was a "Continue as guest" button and
