@@ -190,6 +190,36 @@ this catches from the next approval forward, and the backfill is a separate deci
 is now irreversible-into-canon with no undo. Per-chapter cost is unmeasured (~10-12s each,
 local). Smoke debris to purge: book `019fbd8f-008c-7cef-bf81-1d53a808361d`.
 
+## 🔴 …AND THE GUARD STILL CANNOT READ IT — the join key is unreachable (2026-08-01)
+
+The author asked the only question that mattered: *"tính năng quản lý status nhân vật giờ đã
+work chưa?"* **No.** The store fills now; the guard cannot address it. I had proven a rung and
+celebrated the ladder.
+
+**Measured:** all **21** `:EntityStatus` rows in the graph, across **5** projects, sit on
+entities whose `glossary_entity_id` is NULL. The guard's only lookup is FK-strict
+(`MATCH (e:Entity {glossary_entity_id: gid})`, no name fallback). ⇒ **No liveness row has ever
+been reachable by the guard, on any book.** Not even on project `019effe4`, which has
+1751/1814 entities anchored — its `张若尘` node carrying 4 status rows is a single, unanchored node.
+
+Root cause, and it is architectural, not a bug: **`entity id = hash(user_id, project_id, name,
+kind)` — a strict identity key computed from two LLM outputs**, then joined on with equality. A
+miss does not degrade to a weaker match; it MINTS a second node, irreversibly (a human merges by
+hand). Every fix in the file so far is a narrowing patch on the *lookup* side — kind-vocabulary
+map, name-only fallback, alias-map redirect, the 50-anchor cap, the `min_frequency=2` gate that
+made a from-scratch book load **0 anchors**. All correct, all defending an exact key against
+fuzzy input one observed failure at a time.
+
+**Full analysis, with the measurements, the patch archaeology, what is missing (entity writes
+have NO confidence gate; the KG has no "unresolved" state; the fork is unmeasured; `CheckStatus`
+cannot say "cast unresolvable" as distinct from `NO_RULES`) and the ordered recommendation
+(C → D → A → B):**
+[`docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`](../specs/2026-08-01-entity-identity-under-qualitative-extraction.md)
+
+⚠ **Next measurement before any fix** (recorded in §6 of that doc): confirm that the status
+lands on the forked node *because the ENTITY step forked*, not because `_resolve_status_entity_id`
+prefers the chapter-local map. That is reasoned from code, **not measured**.
+
 ## 🔎 156 AUDIT — done, and it is NOT a large data migration (2026-08-01)
 
 The audit half of D-156 (a grep I had refused to run). Measured, not recalled:
