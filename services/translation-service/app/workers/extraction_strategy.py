@@ -106,3 +106,27 @@ def normalize(value: object) -> str:
             f"unknown extraction_strategy {s!r} — expected one of {sorted(STRATEGIES)}"
         )
     return s
+
+
+def shape_hash(extraction_profile: dict, strategy: str) -> str:
+    """The cache/writeback key component that identifies WHAT a `batch_idx` names.
+
+    Lives here, and is called by the worker, so a test can bind to the real computation.
+    A local mirror in the test file would keep passing after the worker stopped folding
+    the strategy in — which is exactly what a bite-test of the first version showed.
+
+    The strategy belongs in this hash for the same reason the profile does: it re-maps
+    `batch_idx` to a different set of kinds. `batched` batch 0 is three kinds;
+    `single_call` batch 0 is all eight. Without it those two collide in the raw-output
+    cache, so running one shape over a chapter the other already did returns a HIT and
+    serves the three-kind parse as the eight-kind one — five kinds silently gone, zero
+    tokens reported. It also makes an A/B between two shapes on one chapter impossible,
+    which is the entire purpose of the parameter.
+    """
+    import hashlib
+    import json
+
+    return hashlib.sha256(
+        (json.dumps(extraction_profile, sort_keys=True, ensure_ascii=False)
+         + "|strategy=" + strategy).encode("utf-8")
+    ).hexdigest()

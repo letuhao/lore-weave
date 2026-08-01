@@ -60,6 +60,7 @@ from .extraction_strategy import (
     normalize as normalize_strategy,
     output_ceiling as strategy_output_ceiling,
     plan_batches as plan_batches_for_strategy,
+    shape_hash as strategy_shape_hash,
 )
 from .extraction_prompt import (
     DELTA_INSTRUCTION,
@@ -897,9 +898,15 @@ async def _process_extraction_chapter(
     # The glossary writeback dedupes on this key so a retry/redelivery/concurrent
     # fresh run lands the chapter exactly once (INV-C3).
     content_hash = hashlib.sha256(chapter_text.encode("utf-8")).hexdigest()
-    profile_hash = hashlib.sha256(
-        json.dumps(extraction_profile, sort_keys=True, ensure_ascii=False).encode("utf-8")
-    ).hexdigest()
+    # The STRATEGY belongs in this hash for exactly the reason the profile does: it re-maps
+    # `batch_idx` to a different set of kinds. `batched` batch 0 is
+    # [character, location, item]; `single_call` batch 0 is ALL EIGHT kinds. Without the
+    # strategy in the key those two collide, so running `single_call` over a chapter
+    # `batched` had already done would CACHE-HIT and reuse the three-kind parse as if it
+    # were the eight-kind one — silently dropping five kinds and reporting zero tokens.
+    # It also makes an A/B between two shapes on the same chapter impossible, which is what
+    # this parameter exists for.
+    profile_hash = strategy_shape_hash(extraction_profile, strategy)
     all_kinds = sorted({k for batch in batches for k in batch})
     writeback_key = hashlib.sha256(
         "|".join([book_id, str(chapter_id), content_hash, ",".join(all_kinds), profile_hash]).encode("utf-8")

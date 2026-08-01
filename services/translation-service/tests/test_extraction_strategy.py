@@ -30,6 +30,7 @@ from app.workers.extraction_strategy import (
     normalize,
     output_ceiling,
     plan_batches,
+    shape_hash,
 )
 
 #: Eight kinds with realistic attribute counts — the same shape the POC ran against, so
@@ -174,3 +175,47 @@ def test_edc_is_declared_but_not_a_single_call_shape():
     the single-call batching or ceiling by accident."""
     assert EDC_CITED in PLANNED
     assert EDC_CITED not in SINGLE_CALL_SHAPES
+
+
+# ── the cache key must separate the shapes ───────────────────────────────────
+
+def _profile_hash(profile: dict, strategy: str) -> str:
+    """The REAL computation the worker calls — not a copy.
+
+    The first version of these tests mirrored the hash locally, and a bite-test showed the
+    hole immediately: deleting the strategy from the worker left every assertion green,
+    because they were testing the mirror. NV-1 — the subject has to be able to vary.
+    """
+    return shape_hash(profile, strategy)
+
+
+def test_two_strategies_on_one_profile_get_DIFFERENT_cache_keys():
+    """The bug this guards is silent and expensive.
+
+    The raw-output cache is keyed on (chapter, content, batch_idx, profile_hash, effort).
+    `batched` batch 0 is [character, location, item]; `single_call` batch 0 is ALL EIGHT
+    kinds. With the strategy absent from the key those two collide, so running one shape
+    over a chapter the other had already done returns a CACHE HIT — the three-kind parse
+    served as the eight-kind one, five kinds silently gone, zero tokens reported. It also
+    makes an A/B between two shapes on one chapter impossible, which is the whole point of
+    the parameter.
+    """
+    assert _profile_hash(PROFILE, BATCHED) != _profile_hash(PROFILE, SINGLE_CALL)
+
+
+def test_delta_is_a_different_cache_key_from_plain_single_call():
+    """`single_call` and `single_call_delta` produce the SAME batches, so batch_idx alone
+    cannot tell them apart — but they send different prompts and get different answers."""
+    assert _profile_hash(PROFILE, SINGLE_CALL) != _profile_hash(PROFILE, SINGLE_CALL_DELTA)
+
+
+def test_the_same_strategy_and_profile_still_hit_the_cache():
+    """Vacuity guard: if every call produced a fresh key the cache would never hit and the
+    two assertions above would pass for the wrong reason."""
+    assert _profile_hash(PROFILE, BATCHED) == _profile_hash(PROFILE, BATCHED)
+
+
+def test_a_changed_profile_still_changes_the_key():
+    """The property the field originally existed for must survive the addition."""
+    other = {**PROFILE, "character": {"name": "default"}}
+    assert _profile_hash(other, BATCHED) != _profile_hash(PROFILE, BATCHED)

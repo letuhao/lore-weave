@@ -26,6 +26,11 @@ class RawCacheKey:
     of the key (§8.1): a changed extraction profile re-maps `batch_idx` to different kinds/attrs,
     so it MUST miss the cache (re-extract) rather than reuse the old profile's parse.
 
+    The caller folds the EXTRACTION STRATEGY into `profile_hash` for the same reason — the
+    shape decides which kinds `batch_idx` names. `batched` batch 0 is three kinds;
+    `single_call` batch 0 is all eight. Keyed on the profile alone, those two collide and a
+    strategy switch silently serves the other shape's parse (BOOK_TO_GAME/15-16).
+
     NOTE (D-CACHE-MODEL-KEY): per design §8.1 the MODEL is deliberately NOT in the key — the
     cache is content-addressed (content+profile+effort determines WHAT to extract). A
     consequence: switching the extraction model and re-running the same chapter reuses the prior
