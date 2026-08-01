@@ -56,8 +56,6 @@
     "llmCalls": "{{count}} การเรียกใช้ LLM",
     "provider": "โมเดล",
     "tokenEstimate": "ประมาณการ Token",
-    "inputTokens": "Input tokens",
-    "outputTokens": "Output tokens",
     "totalTokens": "ยอดรวมโดยประมาณ",
     "estimateNote": "นี่คือการประมาณการ การใช้งานจริงขึ้นอยู่กับความยาวของบทและ Tokenizer ของโมเดล",
     "profileSummary": "สรุปโปรไฟล์",
@@ -65,7 +63,9 @@
     "thinkingOn": "การคิด: เปิด (เปิดใช้งานการใช้เหตุผล)",
     "thinkingOff": "การคิด: ปิด (เร็วกว่า, JSON ดีกว่า)",
     "startExtraction": "เริ่มการดึงข้อมูล",
-    "editProfile": "แก้ไขโปรไฟล์"
+    "editProfile": "แก้ไขโปรไฟล์",
+    "inputTokens": "โทเคนขาเข้า",
+    "outputTokens": "โทเคนขาออก"
   },
   "progress": {
     "title": "กำลังดึงข้อมูลคำศัพท์",

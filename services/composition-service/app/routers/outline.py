@@ -76,6 +76,8 @@ class NodeCreate(BaseModel):
     stakes: str = ""
     value_shift: int | None = None
     target_words: int | None = None
+    # D-SCENE-BEATS — same reason the block above gives for target_words.
+    draft_beats: list[dict[str, Any]] | None = None
 
 
 class NodePatch(BaseModel):
@@ -102,6 +104,11 @@ class NodePatch(BaseModel):
     stakes: str | None = None
     value_shift: int | None = None
     target_words: int | None = None
+    # D-SCENE-BEATS — the units a scene is drafted in. Declared here for the reason the block
+    # above records: the repo's `_UPDATABLE_COLUMNS` accepting a field is NOT enough, because
+    # `extra='ignore'` drops anything this model does not name and the write silently no-ops.
+    # Verified live — a PATCH carrying `beats` round-tripped as `[]` until this line existed.
+    draft_beats: list[dict[str, Any]] | None = None
 
 
 class NodeReorder(BaseModel):
@@ -487,9 +494,14 @@ async def outline_stats(
     works: WorksRepo = Depends(get_works_repo),
     outline: OutlineRepo = Depends(get_outline_repo),
     grant: GrantClient = Depends(get_grant_client_dep),
-) -> dict[str, int]:
-    """Whole-book totals for the navigator footer: {arcs, chapters, scenes} (non-archived).
-    Not derivable from the lazy-loaded tree window — a single GROUP BY over the outline."""
+) -> dict[str, Any]:
+    """Whole-book totals for the navigator footer: {arcs, chapters, scenes} (non-archived),
+    plus `linked_chapter_ids` — every book chapter this outline claims.
+
+    Not derivable from the lazy-loaded tree window — a single GROUP BY over the outline. The
+    link list rides here rather than on a new route because the navigator already calls this
+    once per book in outline mode, and it is what lets the rail show the chapters that are NOT
+    in the plan instead of hiding them (D-STUDIO-CHAPTER-OUTSIDE-THE-PLAN)."""
     await _require_work(works, grant, user_id, project_id, GrantLevel.VIEW)
     return await outline.outline_stats(project_id)
 
@@ -572,6 +584,7 @@ async def create_node(
             location_entity_id=body.location_entity_id, story_time=body.story_time,
             conflict=body.conflict, outcome=body.outcome, stakes=body.stakes,
             value_shift=body.value_shift, target_words=body.target_words,
+            draft_beats=body.draft_beats,
             created_by=user_id,
         )
     except ReferenceViolationError as exc:
@@ -802,6 +815,56 @@ async def delete_scene_link(
         # Post-authorization (the caller cleared the EDIT grant above): a benign
         # race where the row vanished — keep the specific, non-leaking message.
         raise HTTPException(status_code=404, detail="scene-link not found")
+
+
+@router.post("/scene-links/{link_id}/restore", status_code=200)
+async def restore_scene_link(
+    link_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    scene_links: SceneLinksRepo = Depends(get_scene_links_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """F3 — un-archive a soft-deleted scene link: the UNDO the DELETE promises.
+
+    The DELETE above became a soft archive so the author's declared setup/payoff connection and
+    its authored `label` survive — but the reverse shipped on MCP only, so for a while the AGENT
+    could undo the deletion and the AUTHOR could not. A soft delete that only an agent can reverse
+    is worse than the hard delete it replaced, because it LOOKS recoverable. This is the author's
+    door.
+
+    Reachability follows the canon-rule precedent: the list reads filter `NOT is_archived`, so an
+    archived edge is unlistable — but the caller just deleted it BY ID, so the FE holds that id and
+    renders "Link deleted · Undo" → here. The toast is the door, not an archive browser.
+
+    Same by-id scope bootstrap as the DELETE (ids-only read → gate on the ROW's book → mutate under
+    the same project), so the gate can never check a different book than the one mutated.
+    """
+    row = await get_pool().fetchrow(
+        "SELECT project_id, is_archived FROM scene_link WHERE id = $1", link_id,
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail=NOT_ACCESSIBLE_MESSAGE)
+    await _require_work(works, grant, user_id, row["project_id"], GrantLevel.EDIT)
+    if await scene_links.restore(row["project_id"], link_id):
+        return {"id": str(link_id), "restored": True}
+    # The repo returns False for two very different situations, and the author needs them told
+    # apart: the partial unique rejects the un-archive when that same edge has been RE-DECLARED
+    # since (resurrecting this one would collide with the newer), which is a 409 the author can
+    # act on — not a 404 that reads as "your link is gone".
+    still = await get_pool().fetchrow(
+        "SELECT is_archived FROM scene_link WHERE id = $1", link_id,
+    )
+    if still is None:
+        raise HTTPException(status_code=404, detail="scene-link not found")
+    if not still["is_archived"]:
+        # Already live — a concurrent restore won. Idempotent, not an error.
+        return {"id": str(link_id), "restored": True}
+    raise HTTPException(
+        status_code=409,
+        detail={"code": "SCENE_LINK_EXISTS",
+                "detail": "that edge has been re-declared since; restoring this one would collide"},
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

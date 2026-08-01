@@ -1,0 +1,428 @@
+{
+  "rebirth.butterfly_divergence": {
+    "beats": {
+      "adapt": {
+        "intent": "lần đầu tiên nhân vật chính phải hành xử mà không còn biết trước",
+        "label": "Phán đoán thay chỗ ký ức"
+      },
+      "intervene": {
+        "intent": "một lần ra tay có kết quả và làm đổi một cục diện ban đầu",
+        "label": "Một can thiệp sớm thành công"
+      },
+      "mismatch": {
+        "intent": "một biến cố đã nhớ không xảy ra hoặc xảy ra sai",
+        "label": "Kịch bản thôi khớp"
+      },
+      "ripple": {
+        "intent": "hệ quả dồn lại vượt xa cái thay đổi vốn định",
+        "label": "Sóng lan rộng"
+      }
+    },
+    "effects": [
+      "khả năng biết trước không còn đáng tin và không thể lấy lại",
+      "năng lực của nhân vật chính từ nay phải chứng minh chứ không còn mặc định"
+    ],
+    "emotion_target": "bồn chồn",
+    "examples": [
+      "Cuộc loạn giá gạo mà nàng đã dàn thế từ mùa xuân rốt cuộc không hề nổ ra, và nàng đứng giữa chợ, hiểu rằng từ đây mình cũng mù như mọi kẻ trong đó."
+    ],
+    "name": "Ký Ức Thôi Còn Khớp",
+    "preconditions": [
+      "một chuỗi sự việc đã nhớ mà một lần can thiệp đã làm đổi khác ở một mốc có ngày tháng"
+    ],
+    "roles": {
+      "changed": {
+        "constraints": [
+          "từ nay hành xử theo cách ký ức không đoán nổi"
+        ],
+        "label": "những kẻ đã đi lệch khỏi số phận cũ"
+      },
+      "returner": {
+        "constraints": [
+          "dựng mọi toan tính trên kịch bản đã nhớ"
+        ],
+        "label": "kẻ đang mất tấm bản đồ"
+      },
+      "script": {
+        "constraints": [
+          "hao mòn tỉ lệ thuận với chính thành công của họ"
+        ],
+        "label": "tương lai trong trí nhớ"
+      }
+    },
+    "summary": "Một lần can thiệp sớm có kết quả, rồi hệ quả của nó lan ra khỏi đúng cái điều nó định đổi: những người lẽ ra đã chết nay dựng vợ gả chồng, một nhà lẽ ra đã đổ vẫn đứng, một cuộc chiến nổ ra muộn mất một mùa. Từng cái một, những mốc ngày đã nhớ thôi không còn linh, cho tới khi lợi thế từng khiến nhân vật chính bất khả xâm phạm đã lặng lẽ hết hạn và họ bước vào một tương lai xa lạ với chính mình chẳng kém gì với người khác — đã tiêu hết tấm bản đồ."
+  },
+  "rebirth.foreknowledge_leverage": {
+    "beats": {
+      "arrive": {
+        "intent": "chuyện được nhớ xảy ra y như dự liệu",
+        "label": "Biến cố tới đúng hẹn"
+      },
+      "bank": {
+        "intent": "phần lợi được thu về và câu hỏi làm sao biết trước được gieo xuống",
+        "label": "Vừa được lời vừa bị ngờ"
+      },
+      "position": {
+        "intent": "một cam kết được đưa ra mà mọi kẻ đứng ngoài đều thấy là liều",
+        "label": "Đặt thế cờ sớm"
+      },
+      "recall": {
+        "intent": "một biến cố tương lai có ngày tháng được nhớ đủ chính xác để dùng",
+        "label": "Nhớ lại biến cố"
+      }
+    },
+    "effects": [
+      "lợi thế vật chất hoặc chính trị được nắm trước tất cả mọi người",
+      "ít nhất một kẻ đứng ngoài bắt đầu ngờ rằng làm sao có thể biết trước"
+    ],
+    "emotion_target": "chờ đợi",
+    "examples": [
+      "Hắn mua ruộng trũng bằng giá ruộng cao, chịu người ta cười suốt mười một tháng, rồi trời đổ mưa."
+    ],
+    "name": "Đặt Sẵn Trước Khi Chuyện Xảy Ra",
+    "preconditions": [
+      "một biến cố tương lai được nhớ, có ngày tháng và có hệ quả dùng được"
+    ],
+    "roles": {
+      "doubters": {
+        "constraints": [
+          "suy luận đúng dựa trên những gì họ biết"
+        ],
+        "label": "những kẻ cho là liều lĩnh"
+      },
+      "position": {
+        "constraints": [
+          "nhìn có vẻ vô lý khi biến cố chưa tới"
+        ],
+        "label": "thế cờ đặt sớm"
+      },
+      "returner": {
+        "constraints": [
+          "không thể giải thích vì sao mình biết"
+        ],
+        "label": "kẻ nhớ được nó"
+      }
+    },
+    "summary": "Một biến cố còn nằm trong ký ức vẫn thuộc về thì tương lai — trận lụt sẽ nuốt mấy thửa ruộng trũng, nhà nọ sẽ siết nợ, cái đề sẽ ra trong kỳ thi, đoàn buôn sẽ tới vào mùa xuân — nên một thế cờ được đặt sớm hàng tháng trời mà ai nhìn cũng thấy là tự chuốc lấy khuynh gia: mua đất bỏ đi, chối một mối tốt, bán ra giữa lúc giá đang lên. Biến cố tới đúng hẹn, thế cờ ăn tiền, và cái lời ấy dính liền với câu hỏi làm sao có thể biết trước."
+  },
+  "rebirth.inherited_debts": {
+    "beats": {
+      "answer": {
+        "intent": "kẻ mới tới trả, chối, hoặc thương lượng lại theo cách của riêng mình",
+        "label": "Đáp lại các món nợ"
+      },
+      "become": {
+        "intent": "cách đáp lại làm cuộc đời đi mượn thật sự thành của họ",
+        "label": "Viết mình vào cuộc đời ấy"
+      },
+      "claim": {
+        "intent": "nợ nần và thù oán của kiếp trước tự tìm tới cửa",
+        "label": "Người đòi tìm tới"
+      },
+      "mute": {
+        "intent": "lời giải thích thật còn tệ hơn cả lời buộc tội",
+        "label": "Sự thật không nói ra được"
+      }
+    },
+    "effects": [
+      "các nghĩa vụ thừa hưởng được giải quyết theo cách của chính kẻ mới tới",
+      "kẻ mới tới từ nay là tác giả của cuộc đời này chứ không còn là người ở trọ"
+    ],
+    "emotion_target": "căng thẳng",
+    "examples": [
+      "Ba gã tới đòi món nợ nàng chưa từng vay, và nàng nhận ra mình chỉ có thể hoặc chối chữ ký chính tay mình, hoặc trả."
+    ],
+    "name": "Trả Nợ Cho Một Đời Mình Chưa Sống",
+    "preconditions": [
+      "một thân xác và thân phận bị chiếm chỗ mà nghĩa vụ sẵn có của nó không phải của nhân vật chính, lại có người làm chứng"
+    ],
+    "roles": {
+      "claimants": {
+        "constraints": [
+          "đòi hỏi của họ là chính đáng"
+        ],
+        "label": "những kẻ bị chủ cũ nợ"
+      },
+      "history": {
+        "constraints": [
+          "có giấy tờ và có người làm chứng"
+        ],
+        "label": "cái lịch sử thừa hưởng"
+      },
+      "newcomer": {
+        "constraints": [
+          "không hề làm những việc đó"
+        ],
+        "label": "kẻ đang khoác lấy cuộc đời ấy"
+      }
+    },
+    "summary": "Thân xác ấy tới kèm nguyên lịch sử của nó: chủ nợ đứng ngoài cổng với tờ khế mang đúng nét chữ của mình, một mối hôn ước do kẻ khác gật đầu, thù oán gây ra trong những năm mình chưa từng sống, một tiếng tăm đã lan sẵn. Sự thật thì không nói ra được, nên nợ nần phải trả, phải chối, hoặc phải nhận lấy — và chính cái cách đáp lại mới là thứ biến một cuộc đời đi mượn thành của mình."
+  },
+  "rebirth.known_traitor_untouchable": {
+    "beats": {
+      "mute": {
+        "intent": "mọi lời cảnh báo đều sẽ bị nghe như điên hoặc như ác ý",
+        "label": "Không thể tố cáo"
+      },
+      "prepare": {
+        "intent": "mặt sàn được chuẩn bị mà không hề nói ra lý do",
+        "label": "Lặng lẽ dàn thế chống"
+      },
+      "recognize": {
+        "intent": "gặp lại kẻ sẽ phản bội khi chưa hề có tội trạng nào",
+        "label": "Nhận ra gương mặt ấy"
+      },
+      "spring": {
+        "intent": "cuộc trở mặt xảy ra đúng hẹn và thất bại",
+        "label": "Phản bội rơi vào chỗ đã dọn"
+      }
+    },
+    "effects": [
+      "chuỗi sự việc đã nhớ bị làm đổi khác ở một mốc có ngày tháng: cuộc phản bội đã tới và đã hỏng",
+      "nó bị vô hiệu mà nhân vật chính không phải giải thích vì sao mình biết",
+      "những chuẩn bị ấy khiến chính người thân cận nhìn họ như kẻ tính toán"
+    ],
+    "emotion_target": "khiếp sợ",
+    "examples": [
+      "Hắn tự tay rót rượu, mỉm cười, nàng cảm ơn hắn, rồi ghi nhớ cái tráp nào đang cất con dấu."
+    ],
+    "name": "Kẻ Phản Bội Mà Ai Cũng Còn Tin",
+    "preconditions": [
+      "biết trước một cuộc phản bội của kẻ hiện thời chưa có tội gì"
+    ],
+    "roles": {
+      "circle": {
+        "constraints": [
+          "hôm nay sẽ đứng về phía hắn"
+        ],
+        "label": "những người đang tin hắn"
+      },
+      "returner": {
+        "constraints": [
+          "không thể tố cáo vì chưa có tội để chứng minh"
+        ],
+        "label": "kẻ đã biết"
+      },
+      "traitor": {
+        "constraints": [
+          "hiện thời vô tội và được tin cậy"
+        ],
+        "label": "kẻ sẽ phản bội"
+      }
+    },
+    "summary": "Kẻ rồi sẽ đem họ ra bán đang đứng giữa sân rót rượu, được lòng người và chưa phạm đúng một tội nào, mà chẳng lời tố cáo nào không nghe như lời điên hay lời ác ý. Vậy nên thế chống được dựng chéo và không giải thích — con dấu dời sang tráp khác, một tờ văn thư lặng lẽ sao lại, một viên chức nhỏ được gây dựng — cho tới khi cuộc phản bội tới đúng cái ngày nó vẫn tới và rơi xuống một mặt sàn đã dọn sẵn."
+  },
+  "rebirth.outsider_knowledge": {
+    "beats": {
+      "apply": {
+        "intent": "một hiểu biết không có gốc bản địa được dùng công khai",
+        "label": "Đem dùng ở nơi nó không thể ra đời"
+      },
+      "attribute": {
+        "intent": "người ta gán cho nó một nguyên nhân mà họ chấp nhận được",
+        "label": "Thế gian chọn một cách giải thích"
+      },
+      "bind": {
+        "intent": "cái nguyên nhân được chấp nhận trở thành một vai phải giữ",
+        "label": "Cách giải thích ấy trói lại"
+      },
+      "work": {
+        "intent": "kết quả không thể chối trước mắt người chứng kiến",
+        "label": "Nó hiệu nghiệm rành rành"
+      }
+    },
+    "effects": [
+      "nhân vật chính từ nay giữ một vai do người khác gán cho",
+      "nguồn gốc thật của hiểu biết ấy là một bí mật có hậu quả"
+    ],
+    "emotion_target": "bất an",
+    "examples": [
+      "Hắn đun sôi nước và cả trại thôi chết dần, tới tuần thứ hai thì người ta quyết rằng hắn được thần linh chạm tới, thế cho tiện."
+    ],
+    "name": "Hiểu Biết Từ Nơi Khác Tới",
+    "preconditions": [
+      "một bối cảnh mà nền tri thức rành rành không thể sinh ra thứ đang được dùng"
+    ],
+    "roles": {
+      "knowledge": {
+        "constraints": [
+          "hiệu quả kiểm chứng được"
+        ],
+        "label": "hiểu biết mang từ nơi khác tới"
+      },
+      "outsider": {
+        "constraints": [
+          "không thể dẫn ra một nguồn tồn tại ở đây"
+        ],
+        "label": "kẻ biết một cách bất khả"
+      },
+      "witnesses": {
+        "constraints": [
+          "phải nhét nó vừa vào thế giới quan của mình"
+        ],
+        "label": "những kẻ chứng kiến nó hiệu nghiệm"
+      }
+    },
+    "summary": "Một phương thuốc, một cách đun sôi nước, một lối tính sổ sách, một mẹo đúc hay ghép cây từ thế giới khác hoặc thế kỷ khác được đem dùng ở nơi chẳng ai nghĩ ra nổi, và nó hiệu nghiệm rành rành trước mắt người chứng kiến. Kết quả ấy sau đó buộc phải được gán cho một nguyên do mà thế gian này chứa nổi — thần đồng, ơn trên, một dòng dõi thất truyền, hoặc tà đạo — và cái cách giải thích mà thế gian chọn lấy trở thành một vai từ đó phải diễn suốt."
+  },
+  "rebirth.save_what_was_lost": {
+    "beats": {
+      "alive": {
+        "intent": "người đã mất hiện diện, bình thường như mọi ngày",
+        "label": "Sống lại, mà không hay"
+      },
+      "approach": {
+        "intent": "ngày đã nhớ tới gần mà chưa có gì thay đổi",
+        "label": "Cái ngày tiến lại"
+      },
+      "cost": {
+        "intent": "phần giá phải trả rơi xuống một chỗ không ai giữ",
+        "label": "Cái giá rơi chỗ khác"
+      },
+      "intercept": {
+        "intent": "dốc hết mọi thứ để bẻ gãy chuỗi sự việc",
+        "label": "Chặn lại"
+      }
+    },
+    "effects": [
+      "chuỗi sự việc đã nhớ bị làm đổi khác ở một mốc có ngày tháng: người ấy sống qua được cái ngày lẽ ra không qua nổi",
+      "một mất mát không lường trước đã phải trả để đổi lấy"
+    ],
+    "emotion_target": "xót xa",
+    "examples": [
+      "Nàng giữ ông tránh xa đường sông ngày mùng chín, và việc đó có kết quả, chỉ là thằng bé chạy đi báo tin mới là kẻ họ đem chôn."
+    ],
+    "name": "Cái Ngày Đang Tới Gần",
+    "preconditions": [
+      "một cái chết cụ thể đã nhớ, biết rõ ngày và cách"
+    ],
+    "roles": {
+      "cost": {
+        "constraints": [
+          "không được giữ vì không hề được lường trước"
+        ],
+        "label": "chỗ mà cái giá rơi xuống thay vào đó"
+      },
+      "doomed": {
+        "constraints": [
+          "đang sống và chẳng hay biết"
+        ],
+        "label": "người đã chết ở kiếp trước"
+      },
+      "returner": {
+        "constraints": [
+          "biết cả ngày lẫn cách"
+        ],
+        "label": "kẻ ra tay chặn lại"
+      }
+    },
+    "summary": "Một người từng được đem chôn nay lại sống nhờ chuyến trở về, đang ngồi bên mâm cơm càu nhàu chuyện gạo, còn cái ngày họ chết thì đang tới gần trên tờ lịch mà chưa có gì đổi khác. Dốc hết mọi thứ để bẻ gãy chuỗi ấy — tránh con đường kia, rước thầy thuốc sớm, chặn lá thư lại — và việc đó có kết quả, rồi cái giá bị lấy từ một chỗ chẳng ai nghĩ tới việc phải giữ, bởi một cái chết bị chặn không phải là một cái chết bị hủy."
+  },
+  "rebirth.second_chance_wake": {
+    "beats": {
+      "end": {
+        "intent": "kiếp trước kết thúc bằng một mất mát hoặc một cuộc phản bội xác định",
+        "label": "Một đời khép lại"
+      },
+      "verify": {
+        "intent": "một dữ kiện kiểm được xác nhận chính xác đã lùi tới đâu",
+        "label": "Đối chiếu ngày tháng"
+      },
+      "vow": {
+        "intent": "một cái kết cụ thể trong tương lai được chọn làm thứ nhất định không cho phép xảy ra",
+        "label": "Lời thề đổi khác"
+      },
+      "wake": {
+        "intent": "ý thức mở lại trước ngày tan nát, trong một thân xác hoặc thế giới lẽ ra bất khả",
+        "label": "Tỉnh dậy ở thuở trước"
+      }
+    },
+    "effects": [
+      "nhân vật chính nắm trong tay một chuỗi sự việc đã nhớ mà chúng chưa hề xảy ra",
+      "nhân vật chính chiếm lấy một thân xác và một thân phận mà nghĩa vụ sẵn có của nó không phải của mình",
+      "một cái kết cụ thể có ngày tháng từ nay là thước đo cho mọi thứ"
+    ],
+    "emotion_target": "bàng hoàng",
+    "examples": [
+      "Trần nhà là trần nhà của thuở chưa cháy, tờ lịch trên vách sai mất ba năm, và đôi tay kia là tay một đứa trẻ."
+    ],
+    "name": "Tỉnh Dậy Trước Ngày Tan Nát",
+    "preconditions": [
+      "một đời người có sẵn trong đó một tai họa đã biết ngày biết tháng"
+    ],
+    "roles": {
+      "anchor": {
+        "constraints": [
+          "kiểm được và không thể hiểu lệch"
+        ],
+        "label": "dữ kiện chứng minh ngày tháng"
+      },
+      "outcome": {
+        "constraints": [
+          "cụ thể và có ngày tháng"
+        ],
+        "label": "cái kết phải ngăn lại"
+      },
+      "returner": {
+        "constraints": [
+          "mang trọn ký ức về những gì đã xảy ra sau đó"
+        ],
+        "label": "kẻ tỉnh dậy ở thời điểm sớm hơn"
+      }
+    },
+    "summary": "Một đời người khép lại — trên pháp trường, dưới tay huynh đệ kết nghĩa, trên chiếc giường đầy hối tiếc — rồi ý thức mở ra lại trong một thân xác có đôi tay trẻ con, dưới cái trần nhà của thuở chưa cháy, bên tờ lịch sai mất ba năm. Hoài nghi nhường chỗ cho việc dò lại: ngày tháng, một gương mặt chưa kịp già, một vết sẹo chưa hề có. Từ chỗ dò lại ấy sinh ra lời thề rằng lần này cái kết đã từng sống qua sẽ không được phép tới."
+  },
+  "rebirth.slip_of_the_impossible": {
+    "beats": {
+      "choose": {
+        "intent": "nhân vật chính phải chọn giữa việc che giấu tới cùng và việc tin một con người",
+        "label": "Dối sâu thêm hay thổ lộ"
+      },
+      "notice": {
+        "intent": "một người ghi nhận điều đó và bắt đầu lặng lẽ quan sát",
+        "label": "Có kẻ thấy mà không nói"
+      },
+      "slip": {
+        "intent": "một sự quen thuộc bất khả lộ ra trước khi kịp che",
+        "label": "Phản xạ làm lộ"
+      },
+      "thin": {
+        "intent": "mỗi khoảnh khắc bình thường tiếp theo lại kéo căng lời giải thích",
+        "label": "Cái vỏ mỏng dần"
+      }
+    },
+    "effects": [
+      "có thêm một người ôm mối ngờ mà mối ngờ ấy về cơ bản là đúng",
+      "nhân vật chính từ nay hoặc có đồng lõa, hoặc có kẻ rình"
+    ],
+    "emotion_target": "bồn chồn",
+    "examples": [
+      "Nàng đưa tay tìm cái then bên trái trước khi có ai chỉ cho nàng gian phòng ấy, và suốt buổi tối mắt lão bộc không rời khỏi nàng."
+    ],
+    "name": "Cái Lỡ Không Giải Thích Nổi",
+    "preconditions": [
+      "một nhân vật chính đang duy trì một lời khai giả về thân phận mình"
+    ],
+    "roles": {
+      "cover": {
+        "constraints": [
+          "mỏng dần sau mỗi lần lỡ"
+        ],
+        "label": "cái vỏ che đậy"
+      },
+      "observer": {
+        "constraints": [
+          "không nói gì và cứ lặng lẽ để mắt"
+        ],
+        "label": "kẻ đã nhìn thấy"
+      },
+      "returner": {
+        "constraints": [
+          "phản ứng trước khi kịp nghĩ"
+        ],
+        "label": "kẻ lỡ lời lỡ tay"
+      }
+    },
+    "summary": "Một phản xạ làm lộ ra — đưa tay tìm then cửa trong gian phòng chưa từng bước vào, giật mình trước một cái tên chưa ai kịp gọi, một chữ thuộc thứ tiếng mà cả tỉnh này chưa từng nghe — và có một người trông thấy. Kẻ ấy không tố cáo. Kẻ ấy chỉ bắt đầu để mắt, và mỗi buổi tối bình thường trôi qua lại bào mỏng thêm cái vỏ, cho tới khi phải chọn giữa một lời dối cứ phải phình ra và việc thổ lộ với một người mà phản ứng thì không đoán trước được."
+  }
+}

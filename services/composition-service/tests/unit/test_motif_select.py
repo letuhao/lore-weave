@@ -40,7 +40,7 @@ from app.engine.plan import ChapterPlan, ChapterScenes, ScenePlan
 # ── fixtures ────────────────────────────────────────────────────────────
 
 def _motif(
-    *, code="m.bait_and_switch", name="Bait and switch", language="en",
+    *, code="m.bait_and_switch", name="Bait and switch", original_language="en",
     roles=None, beats=None, effects=None, tension_target=4,
     status="active", mining_support=None, judge_score=None,
     info_asymmetry=None, annotations=None,
@@ -49,7 +49,7 @@ def _motif(
         "id": uuid.uuid4(),
         "owner_user_id": None,
         "code": code,
-        "language": language,
+        "original_language": original_language,
         "visibility": "unlisted",
         "kind": "scheme",
         "name": name,
@@ -117,7 +117,7 @@ def _sel(motif: Motif, score=0.9) -> SelectedMotif:
 
 _COMMON = dict(
     book_id=uuid.uuid4(), project_id=uuid.uuid4(), caller_id=uuid.uuid4(),
-    genre_tags=["xianxia"], language="en", prev_effects=[],
+    genre_tags=["xianxia"], display_language="en", prev_effects=[],
     min_score=0.30, high_threshold=70,
 )
 
@@ -165,7 +165,7 @@ async def test_select_calls_retrieve_with_frozen_kwargs():
     await select_motif_for_chapter(_chapter(beat_role="switch"), r, **_COMMON)
     call = r.calls[-1]
     assert call["caller_id"] == _COMMON["caller_id"]
-    for k in ("book_id", "project_id", "genre_tags", "language", "beat_role",
+    for k in ("book_id", "project_id", "genre_tags", "display_language", "beat_role",
               "tension", "prev_effects"):
         assert k in call, f"missing frozen kwarg {k}"
     assert call["beat_role"] == "switch"

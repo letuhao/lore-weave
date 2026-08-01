@@ -54,6 +54,11 @@ class WikiJudgeArticle(BaseModel):
     user_id: str | None = None  # the content owner (bills the BYOK judge + attributes the score)
     article_text: str
     sources: list[str] = Field(default_factory=list)
+    # D-JUDGE-DISTINCTNESS-UNRECORDED — the model that WROTE this article. Optional, and
+    # currently absent from every caller, which is exactly why the persisted score records
+    # `judge_distinct: null` ("unverified") rather than implying independence. Supply it and
+    # a self-graded score becomes visible instead of indistinguishable.
+    generator_model: str | None = None
 
 
 class WikiJudgeRequest(BaseModel):
@@ -124,6 +129,7 @@ async def judge_wiki_articles(
             verdict=verdict,
             judge_model=judge_model,
             run_id=run_id,
+            generator_model=art.generator_model,  # None ⇒ persisted as judge_distinct: null
         )
         scores.append(
             WikiJudgeScore(article_id=art.article_id, score=verdict.score, reason=verdict.reason)

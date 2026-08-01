@@ -307,11 +307,20 @@ export class AssistantController {
     const { userId } = this.requireAuth(authorization);
 
     const bookId = (body?.book_id ?? '').trim();
+    if (!bookId) {
+      throw new HttpException('book_id is required', 400);
+    }
+    // model_source/model_ref/entry_zone are OPTIONAL and resolve SERVER-SIDE (chat-service
+    // WS-3.0/D-B1: the user's `distill` default, else their `chat` default, else their real
+    // timezone). This handler used to REQUIRE the model pair and to substitute a hardcoded
+    // 'UTC' zone, which meant the downstream resolution could never run: whatever the FE sent
+    // always won. The user's `distill` capability default was therefore stored and never read
+    // — and since the FE sends the chat session's model, every diary distill ran on the CHAT
+    // model. That is why an account whose chat model emits only `reasoning_content` produced
+    // a blank completion and no diary entry, no matter what its distill default said.
     const modelSource = (body?.model_source ?? '').trim();
     const modelRef = (body?.model_ref ?? '').trim();
-    if (!bookId || !modelSource || !modelRef) {
-      throw new HttpException('book_id, model_source and model_ref are required', 400);
-    }
+    const entryZone = (body?.entry_zone ?? '').trim();
 
     const chatUrl = process.env.CHAT_SERVICE_URL;
     const internalToken = process.env.INTERNAL_SERVICE_TOKEN;
@@ -328,10 +337,12 @@ export class AssistantController {
       {
         user_id: userId,
         book_id: bookId,
-        model_source: modelSource,
-        model_ref: modelRef,
+        // Omit rather than default: an omitted field is what triggers the server-side
+        // resolution. Sending a placeholder is indistinguishable from a real choice.
+        ...(modelSource ? { model_source: modelSource } : {}),
+        ...(modelRef ? { model_ref: modelRef } : {}),
         language: (body?.language ?? 'en').trim() || 'en',
-        entry_zone: (body?.entry_zone ?? 'UTC').trim() || 'UTC',
+        ...(entryZone ? { entry_zone: entryZone } : {}),
       },
     );
     if (!distill.ok) {

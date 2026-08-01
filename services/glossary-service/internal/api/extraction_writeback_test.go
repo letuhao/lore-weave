@@ -1842,3 +1842,196 @@ func TestEntityDedup_UniqueIndexBackstop(t *testing.T) {
 		t.Errorf("want errDuplicateName (→ 409), got %v", err)
 	}
 }
+
+// TestBulkExtract_DerivesShortDescriptionOnCreate proves D-GLOSSARY-BULK-NO-SHORTDESC.
+// short_description is a COLUMN on glossary_entities, not an attr_def, so the EAV writes
+// in the bulk path can never set it — and every OTHER caller of
+// regenerateAutoShortDescription is an edit path. Machine-built entities were therefore
+// left empty until the next process restart swept it via the K3 startup backfill — which
+// masks the gap in dev (frequent restarts) while a production container runs for weeks.
+// It is the ONE field the composition packer reads for a cast bio (packer/lenses.py
+// gather_present → "summary"). Measured on the live Mị Đế book: 12 of 13 built entities
+// empty, so the whole authored lore layer reached the drafting prompt as bare NAMES.
+// This test asserts the value exists at WRITE time — no restart required.
+func TestBulkExtract_DerivesShortDescriptionOnCreate(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1050"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "vi",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "Lâm Uyên", "attributes": map[string]any{
+				"description": "Thiếu chủ dòng chính Lâm gia, mang Vô Cấu Chân Linh bất biến qua trùng sinh.",
+			}},
+		},
+	})
+
+	var short string
+	if err := pool.QueryRow(ctx,
+		`SELECT COALESCE(short_description, '') FROM glossary_entities WHERE book_id = $1`,
+		bookID).Scan(&short); err != nil {
+		t.Fatalf("query short_description: %v", err)
+	}
+	if strings.TrimSpace(short) == "" {
+		t.Fatal("short_description is EMPTY — the packer would render this entity as a bare name")
+	}
+}
+
+// TestBulkExtract_DoesNotClobberAuthoredShortDescription proves the derivation added above
+// stays subordinate to the human. Once an author writes their own summary
+// (short_description_auto = false), a later machine writeback must leave it alone — the
+// same K3.3a stickiness PATCH and the canon-content route already honour.
+func TestBulkExtract_DoesNotClobberAuthoredShortDescription(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1051"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "vi",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "Lâm Uyên",
+				"attributes": map[string]any{"description": "Bản máy sinh lần một."}},
+		},
+	})
+
+	const authored = "Bản tóm tắt do tác giả tự viết."
+	if _, err := pool.Exec(ctx, `
+		UPDATE glossary_entities SET short_description = $1, short_description_auto = false
+		WHERE book_id = $2`, authored, bookID); err != nil {
+		t.Fatalf("author edit: %v", err)
+	}
+
+	// A second writeback merges a DIFFERENT description onto the same entity.
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "vi",
+		"entities": []map[string]any{
+			{"kind_code": "character", "name": "Lâm Uyên",
+				"attributes": map[string]any{"description": "Bản máy sinh lần hai, khác hẳn."}},
+		},
+	})
+
+	var short string
+	if err := pool.QueryRow(ctx,
+		`SELECT COALESCE(short_description, '') FROM glossary_entities WHERE book_id = $1`,
+		bookID).Scan(&short); err != nil {
+		t.Fatalf("query short_description: %v", err)
+	}
+	if short != authored {
+		t.Errorf("machine writeback clobbered the author's summary: want %q, got %q", authored, short)
+	}
+}
+
+// TestBulkExtract_ShortDescriptionUsesTheKindsOwnProseField proves
+// D-GLOSSARY-SHORTDESC-KIND-BLIND. `terminology` has no `description` attribute — its
+// prose lives in `definition` — so a lookup hardcoded to 'description' found nothing and
+// shortdesc.Generate fell back to kind+name, yielding the stub "Terminology: <name>".
+// That stub then sat in the ONE field the composition packer reads for a bio, i.e. a
+// bare name wearing a label. Live-caught on the Mị Đế book.
+func TestBulkExtract_ShortDescriptionUsesTheKindsOwnProseField(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1052"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	const definition = "Quá trình dùng năng lượng để rèn giũa pháp khí từ vật liệu có chỉ số."
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "vi",
+		"entities": []map[string]any{
+			{"kind_code": "terminology", "name": "Luyện khí", "attributes": map[string]any{
+				"term": "Luyện khí", "definition": definition,
+			}},
+		},
+	})
+
+	var short string
+	if err := pool.QueryRow(ctx,
+		`SELECT COALESCE(short_description, '') FROM glossary_entities WHERE book_id = $1`,
+		bookID).Scan(&short); err != nil {
+		t.Fatalf("query short_description: %v", err)
+	}
+	if !strings.Contains(short, "rèn giũa") {
+		t.Errorf("summary should come from the kind's own prose field, got %q", short)
+	}
+}
+
+// TestKnownEntities_ResolvesNameForAKindWithoutANameAttribute proves
+// D-GLOSSARY-KNOWN-ENTITIES-NAME-BLIND. entity_name read the attribute coded 'name'
+// only, so `terminology` (which identifies itself with `term`) produced an empty string
+// and was dropped by the "skip entities without a name" guard — while the UI, the
+// snapshot and cached_name all showed a perfectly good name. This endpoint is the
+// EXTRACTION ANCHOR list, so those entities could never anchor: every chapter mentioning
+// them let the extractor mint a duplicate instead of linking to canon.
+func TestKnownEntities_ResolvesNameForAKindWithoutANameAttribute(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	runK2aMigrations(t, pool)
+
+	bookID := "00000000-0000-0000-0001-0000000a1053"
+	adoptTestBook(t, pool, uuid.MustParse(bookID))
+	t.Cleanup(func() { cleanupExtractBook(pool, bookID) })
+
+	srv, token := newEntitiesListServer(t)
+	srv.pool = pool
+
+	postExtract(t, srv, token, bookID, map[string]any{
+		"source_language": "vi",
+		"entities": []map[string]any{
+			{"kind_code": "terminology", "name": "Luyện khí", "attributes": map[string]any{
+				"term": "Luyện khí", "definition": "Rèn giũa pháp khí từ vật liệu có chỉ số.",
+			}},
+			{"kind_code": "character", "name": "Lâm Uyên",
+				"attributes": map[string]any{"name": "Lâm Uyên"}},
+		},
+	})
+
+	// min_frequency=0 — these entities have no chapter links yet, which is the normal
+	// state for a book being written from scratch (see the anchor-preload gate).
+	req := httptest.NewRequest(http.MethodGet,
+		"/internal/books/"+bookID+"/known-entities?min_frequency=0&limit=100", nil)
+	req.Header.Set("X-Internal-Token", token)
+	rec := httptest.NewRecorder()
+	srv.Router().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("known-entities: want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var rows []struct {
+		Name     string `json:"name"`
+		KindCode string `json:"kind_code"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &rows); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	got := map[string]string{}
+	for _, r := range rows {
+		got[r.Name] = r.KindCode
+	}
+	if got["Lâm Uyên"] != "character" {
+		t.Errorf("the name-attribute kind regressed: %v", got)
+	}
+	if got["Luyện khí"] != "terminology" {
+		t.Errorf("a terminology entity must be anchorable by its `term`; got %v", got)
+	}
+	_ = ctx
+}

@@ -90,7 +90,8 @@ class _FakeOutline:
         return self.search_items
 
     async def outline_stats(self, project_id):
-        return {"arcs": 1, "chapters": 12, "scenes": 35}
+        return {"arcs": 1, "chapters": 12, "scenes": 35,
+                "linked_chapter_ids": ["11111111-1111-1111-1111-111111111111"]}
 
     async def scenes_for_chapter(self, project_id, chapter_id):
         self.calls.append({"scenes_for_chapter": chapter_id, "project_id": project_id})
@@ -252,4 +253,19 @@ def test_stats_returns_kind_totals(client):
     holder["repo"] = _FakeOutline([])
     r = c.get(f"/v1/composition/works/{PROJECT}/outline/stats")
     assert r.status_code == 200
-    assert r.json() == {"arcs": 1, "chapters": 12, "scenes": 35}
+    assert r.json() == {
+        "arcs": 1, "chapters": 12, "scenes": 35,
+        "linked_chapter_ids": ["11111111-1111-1111-1111-111111111111"],
+    }
+
+
+def test_stats_carries_the_chapters_the_plan_claims(client):
+    """D-STUDIO-CHAPTER-OUTSIDE-THE-PLAN — the navigator asks THIS route which chapters the
+    outline claims, so it can show the ones it does NOT in a 'Not in the plan' bucket. It cannot
+    derive them from the tree: the outline loads lazily and the node carrying the link can sit at
+    any depth. Dropping this field silently re-hides a chapter written outside the plan."""
+    c, holder = client
+    holder["repo"] = _FakeOutline([])
+    body = c.get(f"/v1/composition/works/{PROJECT}/outline/stats").json()
+    assert "linked_chapter_ids" in body, "the coverage set must ship with the totals"
+    assert body["linked_chapter_ids"] == ["11111111-1111-1111-1111-111111111111"]

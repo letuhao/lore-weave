@@ -229,6 +229,7 @@
   "actionConfirm": {
     "label": "確認操作",
     "batch_count": "{{count}} 項",
+    "warning": "在套用此變更前，請先進行確認。",
     "warning_destructive": "此操作具破壞性且會連帶影響 — 請確認。",
     "destructive_skipped": "{{count}} 個破壞性操作將被略過，除非你在上方啟用它們。",
     "confirm": "確認",
@@ -242,8 +243,7 @@
     "cancelled": "已取消",
     "reprice": "估價後費用已上漲至 {{cost}} — 請重新詢問以依新價格再次確認。",
     "reprice_title": "費用已變動 — 尚未套用",
-    "reprice_detail": "原估 {{old}}，現為 {{new}}。未產生任何花費 — 請重新詢問以依新價格再次確認。",
-    "warning": "在套用此變更前，請先進行確認。"
+    "reprice_detail": "原估 {{old}}，現為 {{new}}。未產生任何花費 — 請重新詢問以依新價格再次確認。"
   },
   "batchConfirm": {
     "title": "一次確認 {{count}} 項操作",
@@ -346,7 +346,6 @@
     "temperature": "溫度",
     "temp_min": "0（精確）",
     "temp_max": "2（創意）",
-    "top_p": "Top P",
     "topp_min": "0（窄）",
     "topp_max": "1（多樣）",
     "default_mode": "預設模式",
@@ -358,7 +357,8 @@
     "yes": "是",
     "no": "否",
     "reset": "重設為預設",
-    "save_failed": "儲存失敗：{{error}}"
+    "save_failed": "儲存失敗：{{error}}",
+    "top_p": "Top P"
   },
   "session_toast": {
     "create_failed": "建立聊天失敗：{{error}}",
@@ -376,11 +376,11 @@
     "approve_once": "允許一次",
     "always_allow": "一律允許",
     "deny": "拒絕",
-    "never_allow": "Never allow",
     "approved": "已允許 — 執行中 ✓",
     "always_allowed": "一律允許 — 執行中 ✓",
     "denied": "已拒絕",
-    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
+    "never_allowed": "絕不允許 — 您可以在「設定」→「權限」中取消此設定",
+    "never_allow": "從不允許"
   },
   "rack": {
     "label": "情境",

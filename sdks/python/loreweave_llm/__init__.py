@@ -79,12 +79,20 @@ from loreweave_llm.models import (
     VideoGenDataItem,
     VideoGenResult,
 )
+from .budget import (
+    DEFAULT_CEILING,
+    CallBudget,
+    OutputKind,
+    call_budget,
+)
 from .reasoning import (
     ReasoningControl,
     ReasoningDirective,
     UserReasoningPref,
     bucket_effort,
+    directive_from_parts,
     infer_reasoning_control,
+    looks_like_reasoning_model,
     reasoning_fields,
     resolve_reasoning,
 )
@@ -109,10 +117,16 @@ __all__ = [
     "ReasoningControl",
     "UserReasoningPref",
     "ReasoningDirective",
+    "CallBudget",
+    "OutputKind",
+    "call_budget",
+    "DEFAULT_CEILING",
     "infer_reasoning_control",
+    "looks_like_reasoning_model",
     "bucket_effort",
     "resolve_reasoning",
     "reasoning_fields",
+    "directive_from_parts",
     # AI-Task Standard — single-shot structured generate (shared plumbing)
     "structured_generate",
     "parse_json_object",

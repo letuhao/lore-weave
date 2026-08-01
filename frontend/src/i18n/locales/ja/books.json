@@ -43,9 +43,9 @@
       "glossary": "用語集",
       "kgOntology": "グラフスキーマ",
       "enrichment": "拡充",
-      "wiki": "Wiki",
       "sharing": "共有",
-      "settings": "設定"
+      "settings": "設定",
+      "wiki": "Wiki"
     },
     "trash_confirm": {
       "title": "ゴミ箱に移動しますか？",
@@ -220,6 +220,7 @@
       "selected": "{{count}} 件選択中",
       "activate": "有効化",
       "deactivate": "無効化",
+      "reject": "却下",
       "clear": "選択解除",
       "done": "{{count}} 件のエンティティを {{status}} にしました",
       "select_all_matching": "一致する {{count}} 件すべてを選択",
@@ -229,8 +230,7 @@
       "delete_confirm": {
         "title": "{{count}} 件のエンティティを削除しますか？",
         "description": "選択した {{count}} 件のエンティティはゴミ箱に移動されます。"
-      },
-      "reject": "却下"
+      }
     },
     "clear_filters": "すべてのフィルターをクリア",
     "deleted": "エンティティを削除しました",
@@ -239,6 +239,7 @@
       "description": "最初の用語エンティティを作成しましょう — キャラクター、場所、アイテムなど。"
     },
     "untitled": "無題",
+    "scope_label_title": "スコープ — 同名の他のエンティティとこのエンティティを区別します",
     "alive_title": "生存 — クリックして死亡にする",
     "dead_title": "死亡 — クリックして復活",
     "alive": "生存",
@@ -254,8 +255,7 @@
       "title": "エンティティを削除しますか？",
       "description": "「{{title}}」はゴミ箱に移動されます。",
       "confirm": "削除"
-    },
-    "scope_label_title": "スコープ — 同名の他のエンティティとこのエンティティを区別します"
+    }
   },
   "sharing": {
     "title": "公開設定",
@@ -404,7 +404,6 @@
   },
   "kind_editor": {
     "modified": "変更済み",
-    "ai": "AI",
     "required": "必須",
     "optional": "任意",
     "activate": "有効化",
@@ -470,7 +469,8 @@
       "title": "デフォルトに戻しますか？",
       "desc": "「{{name}}」は元の名前、アイコン、色、属性名にリセットされます。ジャンルタグとカスタム属性は影響を受けません。",
       "confirm": "元に戻す"
-    }
+    },
+    "ai": "AI"
   },
   "attr_editor": {
     "field_type": {
@@ -480,15 +480,14 @@
       "number": "数値",
       "date": "日付",
       "tags": "タグ",
-      "url": "URL",
-      "boolean": "真偽"
+      "boolean": "真偽",
+      "url": "URL"
     },
     "new_attr": "新しい属性",
     "edit_attr": "属性を編集",
     "system": "システム",
     "custom": "カスタム",
     "modified": "変更済み",
-    "ai": "AI",
     "core": "基本",
     "display_name": "表示名",
     "field_type_label": "フィールドタイプ",
@@ -528,6 +527,7 @@
       "title": "属性名を戻しますか？",
       "desc": "名前を「{{from}}」から「{{to}}」に戻します。他のフィールドは影響を受けません。",
       "confirm": "元に戻す"
-    }
+    },
+    "ai": "AI"
   }
 }

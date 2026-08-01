@@ -778,6 +778,22 @@ _GEMMA_TOOLCALL_TAIL_RE = re.compile(r"\s*<tool_call\|>\s*$", re.IGNORECASE)
 _GEMMA_QUOTE_TOKEN_RE = re.compile(r"<\|[\"']\|>")
 _UNQUOTED_KEY_RE = re.compile(r'(?<=[{,])\s*([A-Za-z_][A-Za-z0-9_]*)\s*:')
 
+# D-TOOLCALL-GEMMA-INTERIOR-LEAK — ANY of this model family's native control tokens.
+# The wrapper strippers above are anchored (`^` / `$`), so they only ever remove ONE
+# leading and ONE trailing marker. A marker in the MIDDLE of an args string survives —
+# which is the whole bug: see `_split_interior_leaked_tool_calls`.
+_LEAK_MARKER_ANY_RE = re.compile(
+    r"<\|tool_call>|<tool_call\|>|<\|channel>|<channel\|>", re.IGNORECASE,
+)
+# A leaked call HEAD inside an args string: `<|tool_call>call:NAME` followed by its `{…}` body.
+_LEAK_CALL_HEAD_RE = re.compile(
+    r"<\|tool_call>\s*call\s*:\s*([\w.-]+)\s*(?=\{)", re.IGNORECASE,
+)
+
+
+def _has_leak_marker(text: str) -> bool:
+    return bool(_LEAK_MARKER_ANY_RE.search(text))
+
 
 def _degemmify_tool_args(raw: str) -> str:
     """Strip Gemma 4's native tool-call wrapper/quote tokens, and quote bare
@@ -786,6 +802,85 @@ def _degemmify_tool_args(raw: str) -> str:
     text = _GEMMA_TOOLCALL_TAIL_RE.sub("", _GEMMA_TOOLCALL_WRAP_RE.sub("", raw))
     text = _GEMMA_QUOTE_TOKEN_RE.sub('"', text)
     return _UNQUOTED_KEY_RE.sub(r' "\1":', text)
+
+
+def _split_interior_leaked_tool_calls(calls: list[dict]) -> list[dict]:
+    """D-TOOLCALL-GEMMA-INTERIOR-LEAK — recover the calls this model concatenated
+    INTO one args string, instead of letting the repair layer swallow them.
+
+    Third manifestation in the same defective-decoding family (after
+    D-TOOLCALL-GEMMA-TOKEN-LEAK and D-TOOLCALL-DUP-EMPTY-CALL): the model emits
+    several tool calls back-to-back in ONE `arguments` payload, separated by its
+    own native control tokens, e.g.
+
+        {ops:[…]}<tool_call|><|channel>thought<channel|><|tool_call>call:glossary_propose_entities{items:[…]}
+
+    Because `_degemmify_tool_args` is anchored, the INTERIOR markers survive, and
+    `repair_json` then produces **parseable but wrong** JSON — it glues the marker
+    text into whatever value it landed next to. Pulled from a live transcript
+    (session 019faf5b, seq 16), the model's second, CORRECT call ended up as an
+    enum value:
+
+        "type": "create_kinds\\"}]}<tool_call|>…<|tool_call>call:glossary_propose_entities{items:[{description:"
+
+    which the tool rejected as `enum: … does not equal any of [create_kinds …]`.
+    So the model was told it sent a bad enum it never wrote, while the call it
+    actually wanted was destroyed. It cannot act on that feedback: the turn
+    degraded into 10,882 characters of repeated prose until the author hit Stop.
+
+    This splits instead of swallowing: everything before the first interior marker
+    stays with the original call, and each `<|tool_call>call:NAME{…}` after it
+    becomes its own call. A body runs to the next marker, or to end-of-string when
+    the model's output was cut off mid-call (the live case) — a truncated tail
+    still parses far enough for the schema to give an HONEST error about the real
+    tool. No markers → returns `calls` unchanged, so a well-behaved provider is
+    untouched."""
+    out: list[dict] = []
+    split_from: list[str] = []
+    dropped: list[str] = []
+    for c in calls:
+        raw = c.get("arguments") or ""
+        m = _LEAK_MARKER_ANY_RE.search(raw)
+        if not m:
+            out.append(c)
+            continue
+        head, tail = raw[:m.start()], raw[m.start():]
+        recovered: list[dict] = []
+        for hm in _LEAK_CALL_HEAD_RE.finditer(tail):
+            nxt = _LEAK_MARKER_ANY_RE.search(tail, hm.end())
+            body = tail[hm.end():nxt.start() if nxt else len(tail)]
+            recovered.append({
+                "id": f"interior-{uuid4()}", "name": hm.group(1), "arguments": body,
+            })
+            split_from.append(f"{c['name']}→{hm.group(1)}")
+        # A BLANK head means the marker was the very first thing the model emitted, so
+        # this entry never had arguments of its own. Two different situations, and
+        # conflating them re-introduces the silent no-op this whole fix is about:
+        #   • we recovered real calls from the tail → the model's intent is fully carried
+        #     by those; DROP the empty shell (same contract as the sibling dedupe helpers:
+        #     a dropped call never reaches `working`, so the provider is never left
+        #     waiting on a result for it);
+        #   • we recovered nothing → there is no intent to act on. Keep the args EXACTLY
+        #     as they arrived, marker included, so the dispatch guard reports an honest
+        #     "your args were corrupted" instead of quietly dispatching `{}` and letting
+        #     the tool answer with a misleading "missing required field".
+        if not head.strip():
+            if recovered:
+                dropped.append(c["name"])
+            else:
+                out.append(c)  # marker intact on purpose — the dispatch guard owns it
+        else:
+            c["arguments"] = head
+            out.append(c)
+        out.extend(recovered)
+    if split_from or dropped:
+        logger.warning(
+            "D-TOOLCALL-GEMMA-INTERIOR-LEAK: recovered %d tool call(s) concatenated into "
+            "another call's arguments (would otherwise have been swallowed into a value by "
+            "json repair): %s%s", len(split_from), split_from,
+            f"; dropped {dropped} (marker-only, no args of their own)" if dropped else "",
+        )
+    return out
 
 
 _LEAK_MARKER_START = "<|tool_call>"
@@ -825,6 +920,111 @@ def _extract_leaked_tool_calls(text: str) -> list[tuple[str, str]]:
     return [(m.group(1), m.group(2)) for m in _GEMMA_LEAKED_CALL_RE.finditer(text)]
 
 
+# D-NARRATED-WRITE — one nudge per turn. This guard exists to stop a model talking
+# itself out of acting; a cap above 1 would let it become the very loop it prevents.
+NARRATED_WRITE_NUDGE_CAP = 1
+
+# A snake_case identifier in prose. Deliberately loose — the CATALOG does the real
+# filtering (only a token that IS a registered tool name survives), so this never needs a
+# hand-maintained prefix list that would silently rot as domains are added.
+_SNAKE_IDENT_RE = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
+
+
+def _narrated_uncalled_writes(
+    text: str, *, catalog_index: dict, attempted: set[str],
+) -> list[str]:
+    """Write tools NAMED in the model's prose that this turn never ATTEMPTED.
+
+    The signal for the "claimed a write it never made" failure — see the call site for
+    the live transcript. Three conditions, all mechanical:
+
+    * the token is a REAL tool in this turn's catalog (not a plausible-looking invention —
+      an invented name is a different bug with its own honest message at the dispatch
+      chokepoint, and must not be confused with this one);
+    * its tier is a WRITE (A/W/S). A read named-but-not-called is harmless: nothing was
+      claimed to have changed, so there is nothing for the author to go and not find;
+    * it is absent from `attempted` — successes AND failures both count as attempted,
+      because a model that TRIED and got a real error already has honest feedback to
+      report, and nudging it there would just be noise.
+    """
+    named = set(_SNAKE_IDENT_RE.findall(text or ""))
+    return sorted(
+        nm for nm in named & set(catalog_index)
+        if nm not in attempted and tool_tier(catalog_index[nm]) in ("A", "W", "S")
+    )
+
+
+async def _flush_activated_tools(pool, session_id, activation_state: dict | None) -> None:
+    """D-TOOLLOAD-LOST-ON-SUSPEND — persist the tools this turn activated.
+
+    `tool_load` adds to the session's hot set so the tool survives into the NEXT turn;
+    `resolve_session_tool_pins` reads `chat_sessions.activated_tools` back at turn start.
+    That contract only holds if every way a turn can END writes the set back.
+
+    It didn't. The flush lived on the normal-completion path only, and the suspend path
+    `return`s before reaching it — so a turn that stopped for a human approval discarded
+    everything it had loaded. That is precisely the turn that matters: a WRITE tool is
+    tier A/W, so it suspends for approval, which means **the only turn that ever loads a
+    write tool is the turn whose activation is thrown away.**
+
+    Observed live (Mị Đế, session 019faf5b): the model `tool_load`ed
+    `composition_outline_node_edit`, called it, suspended on the approval card — and by
+    the next turn the tool was off the surface again (29 advertised, outline tools all
+    read-only). Unable to call it, the model narrated the call in prose and then reported
+    the write as DONE. Zero outline nodes existed. A hallucinated success is worse for an
+    author than a loop: they are told to go and look at work that was never made.
+
+    Best-effort by design — a failure here costs one re-load next turn, and must never
+    take down a turn that otherwise succeeded."""
+    if not (activation_state and activation_state.get("dirty")):
+        return
+    try:
+        await pool.execute(
+            """
+            UPDATE chat_sessions
+            SET activated_tools = $2::text[], updated_at = now()
+            WHERE session_id = $1
+            """,
+            session_id,
+            activation_state["activated_tools"],
+        )
+        activation_state["dirty"] = False
+    except Exception:
+        logger.warning(
+            "failed to persist activated_tools for session %s", session_id, exc_info=True,
+        )
+
+
+def _rail_is_in_flight(
+    *,
+    resumed_mid_rail: bool,
+    step_tools_succeeded: list[str],
+    step_tools_attempted: list[str],
+) -> bool:
+    """D-RAIL-INFLIGHT-ON-ATTEMPT — is a pinned rail live enough for the P-1 step-runner
+    to re-steer the model this turn?
+
+    Live when ANY of:
+      • `resumed_mid_rail` — this pass is a resume that suspended mid-rail. The confirm
+        executes off the backend chokepoint, so it never lands in `turn_succeeded`, but
+        the rail is unambiguously in flight.
+      • a rail step tool SUCCEEDED this turn — the model chose to start the recipe.
+      • a rail step tool was ATTEMPTED and FAILED this turn.
+
+    That last clause is the fix. Gating "in flight" on success alone is the hole named in
+    `D-CHAT-CONTROL-PLANE` §1 — *"it cannot rescue a model that cannot start"* — and it has
+    now cost TWO live incidents with unrelated triggers: a step tool hidden from the turn
+    catalog by the capability floor, and a step tool whose arguments the decoder corrupted
+    (D-TOOLCALL-GEMMA-INTERIOR-LEAK). In both, every tool call in the iteration failed, so
+    `turn_succeeded` stayed empty, the step-runner stayed silent, and the model degraded
+    into repeated prose (40,597 and 10,882 characters) until the author hit Stop.
+
+    **Intent is what makes a rail live: the model reached for the step.** Whether the
+    platform let the call through is precisely the situation the directive exists to
+    re-steer — so a failed attempt must not read as "no rail here"."""
+    return bool(resumed_mid_rail or step_tools_succeeded or step_tools_attempted)
+
+
 def _braces_balanced(text: str) -> bool:
     """A cheap structural-completeness gate, NOT a JSON validator: same count
     of `{`/`}`. Distinguishes a genuinely truncated stream (e.g. `{"q": "Ka`,
@@ -855,11 +1055,20 @@ def _parse_tool_args(raw: str) -> dict:
         return {}
     try:
         parsed = json.loads(raw)
-        return parsed if isinstance(parsed, dict) else {}
+        if isinstance(parsed, dict) and not _has_leak_marker(raw):
+            return parsed
     except (ValueError, TypeError):
         pass
     for candidate in (_degemmify_tool_args(raw), raw):
-        if not _braces_balanced(candidate):
+        # D-TOOLCALL-GEMMA-INTERIOR-LEAK post-condition. `repair_json` will happily
+        # absorb a surviving control token into the nearest string value and hand back
+        # JSON that PARSES — the worst possible outcome, because every caller then
+        # treats a corrupted payload as a clean one and the tool blames the model for
+        # a value it never wrote. A candidate that still carries a marker has not been
+        # repaired, it has been disguised; refuse it. `_split_interior_leaked_tool_calls`
+        # upstream normally removes the marker first, so reaching here means the shape
+        # was one that splitting could not resolve.
+        if _has_leak_marker(candidate) or not _braces_balanced(candidate):
             continue
         try:
             parsed = json.loads(repair_json(candidate))
@@ -868,7 +1077,9 @@ def _parse_tool_args(raw: str) -> dict:
         if isinstance(parsed, dict) and parsed:
             return parsed
     logger.warning(
-        "tool-call arguments unparseable after repair attempts, degrading to {}: %r",
+        "tool-call arguments unparseable after repair attempts, degrading to {}%s: %r",
+        " (native control tokens present — decoder leak, not a model mistake)"
+        if _has_leak_marker(raw) else "",
         raw[:300],
     )
     return {}
@@ -1058,6 +1269,31 @@ def _catalog_index(catalog: list[dict]) -> dict[str, dict]:
     return idx
 
 
+def _project_ambient_book_schema(td: dict) -> dict:
+    """D-AMBIENT-BOOK-SCHEMA-PROJECTION (2026-07-26, Mị Đế dogfood): on a BOOK-BOUND
+    session, an `ambient_book` tool's advertised schema drops `book_id` entirely —
+    the backend resolves it from the studio binding (X-Book-Id) and the arg-injection
+    seam backfills/overrides it anyway, so the model must never be ASKED for it. A
+    weak model shown a book_id property treats it as a demand and stalls hunting for
+    the id (live: "mọi nỗ lực tự tìm book_id của tôi đều thất bại vì các lệnh đọc
+    cũng yêu cầu phải có book_id"). Absent from the schema, the belief cannot form."""
+    fn = td.get("function") if isinstance(td, dict) else None
+    if not isinstance(fn, dict):
+        return td
+    meta = fn.get("_meta") or {}
+    if not meta.get("ambient_book"):
+        return td
+    params = fn.get("parameters") or {}
+    props = params.get("properties") or {}
+    if "book_id" not in props:
+        return td
+    new_params = dict(params)
+    new_params["properties"] = {k: v for k, v in props.items() if k != "book_id"}
+    if isinstance(params.get("required"), list):
+        new_params["required"] = [r for r in params["required"] if r != "book_id"]
+    return {**td, "function": {**fn, "parameters": new_params}}
+
+
 def _advertise_discovery_tools(
     catalog_index: dict[str, dict],
     active_tool_names: set[str],
@@ -1066,6 +1302,7 @@ def _advertise_discovery_tools(
     has_workflows: bool = False,
     suppress_tool_list: bool = False,
     suppress_names: set[str] | frozenset[str] = frozenset(),
+    book_bound: bool = False,
 ) -> list[dict]:
     """MCP-fanout C-FT — the tools advertised on a universal /chat pass:
     ``{always-on core} ∪ {full schemas of active_tool_names}``, with the
@@ -1096,6 +1333,8 @@ def _advertise_discovery_tools(
         if not name or name in seen:
             return
         seen.add(name)
+        if book_bound:
+            td = _project_ambient_book_schema(td)
         out.append(strip_tool_meta(td))
 
     # Always-on core: prefer the catalog's own def (if a core tool is federated),
@@ -1692,6 +1931,14 @@ async def _stream_with_tools(
         # overrides an artifact verdict (that is compute_rail_progress's job).
         turn_succeeded: Counter = Counter()
         rail_redrive_count = 0           # per-turn cap on how many times the server re-drives
+        narrated_write_nudges = 0        # D-NARRATED-WRITE — per-turn cap (see the guard)
+        # D-NARRATED-WRITE — every pass's prose, accumulated for the WHOLE turn.
+        # `text_parts` is re-created per pass, so scanning it alone misses the common
+        # case: the model announces the write in one pass ("I will now create the 5
+        # scenes"), reads a few tools, then closes in a later pass whose text no longer
+        # repeats the tool name. The claim and the silence are in different passes.
+        turn_text_parts: list[str] = []
+        turn_attempted: set[str] = set()  # D-NARRATED-WRITE — see the update site
         rail_nudge_counts: Counter = Counter()   # per-step: how many times we've nudged it
         rail_twice_nudged: set[str] = set()      # a step the model ignored twice → give up on it
         # Set when the step-runner injected at least one synthetic '[SYSTEM DIRECTIVE]' nudge
@@ -1725,6 +1972,13 @@ async def _stream_with_tools(
                 _middle, model_source=model_source, model_ref=model_ref, user_id=user_id,
             )
 
+        # D-PASS-TEXT-REECHO — all content ACCEPTED (streamed to the user) this turn,
+        # across passes. Gemma re-emits its full prior reply VERBATIM at the start of
+        # each continuation pass after a tool round, so an N-tool-round turn rendered
+        # the same paragraphs N+1 times (measured live: 943→1884 chars, then a 4-copy
+        # bubble). Each pass's opening tokens are held while they prefix-match this
+        # accumulator; a full match is swallowed, a divergence is flushed unchanged.
+        turn_text_so_far = ""
         iteration = -1
         while True:
             iteration += 1
@@ -1850,6 +2104,7 @@ async def _stream_with_tools(
                         has_workflows=bool(turn_workflows),
                         suppress_tool_list=suppress_tool_list,
                         suppress_names=_suppress,
+                        book_bound=bool((context_ids or {}).get("book_id")),
                     )
                 else:
                     advertised = (
@@ -1994,6 +2249,16 @@ async def _stream_with_tools(
             # marker that started but never completed, must not be silently lost).
             content_hold = ""
             reasoning_hold = ""
+            # D-PASS-TEXT-REECHO — guard only continuation passes with real prior text
+            # (a short accumulator is not worth guarding and raises false-hold risk).
+            # Matching is whitespace-tolerant at the seams: gemma's re-echo opens with
+            # "\n\n" before the copied text (measured live — the exact-prefix first cut
+            # missed every real echo because of it), and the copy may drop the turn
+            # text's trailing newline. Compare a lstripped probe against the stripped
+            # turn text; flush the ORIGINAL buffer on divergence so nothing is lost.
+            _turn_norm = turn_text_so_far.strip()
+            _echo_scan = iteration > 0 and len(_turn_norm) >= 40
+            _echo_buf = ""
             finish_reason: str | None = None
             # D-REASONING-LOOP — one detector per pass, fed BOTH channels. On a trip
             # we abort the stream (hoisted iterator so we can aclose deterministically)
@@ -2004,15 +2269,39 @@ async def _stream_with_tools(
             try:
                 async for ev in _stream_iter:
                     if isinstance(ev, TokenEvent):
-                        text_parts.append(ev.delta)
-                        content_hold += ev.delta
+                        if loop_det.feed(ev.delta):
+                            _looped = True
+                            break
+                        _delta = ev.delta
+                        if _echo_scan:
+                            # D-PASS-TEXT-REECHO — hold the pass's opening tokens while
+                            # they verbatim-prefix the text already shown this turn.
+                            _echo_buf += _delta
+                            _probe = _echo_buf.lstrip()
+                            if not _probe:
+                                continue  # pure leading whitespace — keep holding
+                            if _turn_norm.startswith(_probe):
+                                if len(_probe) == len(_turn_norm):
+                                    # full re-echo swallowed; stream the rest normally
+                                    _echo_scan = False
+                                    _echo_buf = ""
+                                continue
+                            _echo_scan = False
+                            if _probe.startswith(_turn_norm):
+                                # a delta straddled the echo's end: swallow the echo,
+                                # keep only the genuinely-new excess
+                                _delta = _probe[len(_turn_norm):].lstrip("\n")
+                            else:
+                                # diverged → not an echo: flush everything held, unchanged
+                                _delta = _echo_buf
+                            _echo_buf = ""
+                        text_parts.append(_delta)
+                        turn_text_so_far += _delta
+                        content_hold += _delta
                         flush, content_hold = _split_safe_emit(content_hold)
                         if flush:
                             yield {"content": flush, "reasoning_content": "",
                                    "finish_reason": None, "usage": None}
-                        if loop_det.feed(ev.delta):
-                            _looped = True
-                            break
                     elif isinstance(ev, ReasoningEvent):
                         reasoning_parts.append(ev.delta)
                         reasoning_hold += ev.delta
@@ -2185,6 +2474,11 @@ async def _stream_with_tools(
                     yield {"content": content_hold, "reasoning_content": reasoning_hold,
                            "finish_reason": None, "usage": None}
 
+            # D-NARRATED-WRITE — fold this pass's prose into the turn-level buffer (see
+            # its declaration: a claim made in an early pass must still be visible to the
+            # guard that runs on the last one).
+            turn_text_parts.extend(text_parts)
+
             if not tool_frags and not leaked_calls:
                 # ── P-1 step-runner: the model stopped without a tool call. If a pinned rail
                 # is IN FLIGHT (a rail step tool actually succeeded this turn — the model chose
@@ -2195,25 +2489,31 @@ async def _stream_with_tools(
                 # and loop ONE more pass. Wholly best-effort — any failure falls through to the
                 # normal end-of-turn below, byte-identical to pre-P-1.
                 _verdict = None
-                if (
-                    settings.rail_driver_enabled
-                    and rail_specs
-                    and rail_book_id
-                    and rail_grant_ok
-                    and rail_redrive_count < RAIL_REDRIVE_CAP
-                    and not last_iter
-                    # G2: the deploy strength "off" disables the drive entirely (the pre-drive rail).
-                    and settings.rail_enforcement != "off"
+                # ONE evaluation of the guards, named — so the log below can never disagree with
+                # the branch it explains. (Duplicating the condition to log it is how two copies
+                # of one decision drift apart.)
+                _step_tools_hit = sorted(set(turn_succeeded) & _rail_all_step_tools)
+                _step_tools_tried = sorted(set(fail_by_tool_error) & _rail_all_step_tools)
+                _rail_guards = {
+                    "driver_on": bool(settings.rail_driver_enabled),
+                    "have_specs": bool(rail_specs),
+                    "have_book": bool(rail_book_id),
+                    "grant_ok": bool(rail_grant_ok),
+                    "redrive_left": rail_redrive_count < RAIL_REDRIVE_CAP,
+                    "not_last_iter": not last_iter,
+                    # G2: the deploy strength "off" disables the drive entirely (pre-drive rail).
+                    "strength_on": settings.rail_enforcement != "off",
                     # GOV-13 escape hatch: an explicit "skip the plan" / "just write" releases the
                     # hold this turn — governance serves the author, it never imprisons them.
-                    and not rail_user_abandoned
-                    and write_passes < max_iterations - 1
-                    # In flight = a rail tool succeeded THIS turn (the model chose to start it),
-                    # OR this is a resume that suspended mid-rail (the confirm executes off the
-                    # backend chokepoint, so it never lands in turn_succeeded — but the rail is
-                    # unambiguously in flight, so the driver must be allowed to continue it).
-                    and (rail_in_flight or (set(turn_succeeded) & _rail_all_step_tools))
-                ):
+                    "not_abandoned": not rail_user_abandoned,
+                    "passes_left": write_passes < max_iterations - 1,
+                    "in_flight": _rail_is_in_flight(
+                        resumed_mid_rail=bool(rail_in_flight),
+                        step_tools_succeeded=_step_tools_hit,
+                        step_tools_attempted=_step_tools_tried,
+                    ),
+                }
+                if all(_rail_guards.values()):
                     # ACP A2 (RW-3): the drive+enforcement DECISION lives in the SDK harness
                     # (decide_rail_drive) — it unifies the fresh re-probe, next_actionable_step, and
                     # the nudge-cap/strength/give-up logic into one verdict. The probe is INJECTED
@@ -2229,6 +2529,23 @@ async def _stream_with_tools(
                         nudge_counts=rail_nudge_counts,
                         enforcement_strength=settings.rail_enforcement,
                         required_nudge_cap=settings.rail_required_nudge_cap,
+                    )
+                    if not _verdict.should_drive:
+                        logger.info(
+                            "rail step-runner: guards held but no actionable step "
+                            "(every step done, gated on a confirm, or already nudged out)",
+                        )
+                elif _rail_guards["driver_on"] and _rail_guards["have_specs"]:
+                    # A step-runner that silently does not fire is indistinguishable from a rail
+                    # with nothing to do — and that ambiguity cost a live debugging session: the
+                    # rail logged `0/9 steps done, next=…` on every pass while the model improvised
+                    # the wrong tool three times and no nudge was ever injected. Name the guard that
+                    # held, so the next occurrence is one grep instead of a code read.
+                    logger.info(
+                        "rail step-runner SKIPPED — held by: %s (step tools this turn: "
+                        "succeeded=%s tried-and-failed=%s)",
+                        ", ".join(k for k, v in _rail_guards.items() if not v) or "none",
+                        _step_tools_hit or "—", _step_tools_tried or "—",
                     )
                 if _verdict is not None and _verdict.should_drive:
                     _step = _verdict.step
@@ -2250,6 +2567,99 @@ async def _stream_with_tools(
                                   f"{'giveup' if _verdict.giving_up else 'redrive'}:{_step.tool}")
                     continue  # loop top re-offers the tools; the model calls the next step
 
+                # D-NARRATED-WRITE — the model is about to END the turn having NAMED a
+                # write tool in its prose that it never actually CALLED. For an author
+                # this is the most damaging failure the loop has: they are told the work
+                # is done and sent to go look at it, and it is not there.
+                #
+                # Live (Mị Đế 019faf5b seq 26 + 32): *"composition_outline_node_create:
+                # Tôi đã tạo một Chương 1 … composition_outline_node_edit: Tôi đã tạo và
+                # điền chi tiết 5 cảnh"* and *"5 cảnh hiện đang ở trạng thái Draft trong
+                # Outline, bạn hãy mở tab Outline để kiểm tra"* — with, respectively, 4
+                # and 6 tool calls, every one of them a READ, and zero outline nodes in
+                # the database.
+                #
+                # Detected MECHANICALLY, not by reading intent out of prose: a token that
+                # matches a real catalog tool name, whose tier is a write (A/W/S), that
+                # this TURN never attempted. No NLP, no claim-parsing, no guessing at
+                # tense — and a model that was merely *explaining* a tool loses nothing,
+                # because the directive explicitly offers "say plainly you did not run it"
+                # as a valid answer. Capped at one nudge per turn so this can never become
+                # the loop it exists to prevent.
+                _narrated = _narrated_uncalled_writes(
+                    "".join(turn_text_parts),
+                    catalog_index=cat_index,
+                    attempted=turn_attempted,
+                )
+                if _narrated:
+                    _nw_guards = {
+                        "under_cap": narrated_write_nudges < NARRATED_WRITE_NUDGE_CAP,
+                        "not_last_iter": not last_iter,
+                        "passes_left": write_passes < max_iterations - 1,
+                    }
+                    if not all(_nw_guards.values()):
+                        # A guard that silently declines is indistinguishable from a guard
+                        # that saw nothing — and that ambiguity already cost one live
+                        # debugging pass here. Name what held.
+                        logger.warning(
+                            "D-NARRATED-WRITE (session=%s): %s named but never called — "
+                            "NOT nudging, held by: %s",
+                            session_id, _narrated,
+                            ", ".join(k for k, v in _nw_guards.items() if not v),
+                        )
+                    else:
+                        narrated_write_nudges += 1
+                        # A directive to "call it now" is empty if the tool is not on the
+                        # wire — and OFF-SURFACE is the usual reason the model narrated
+                        # instead of calling in the first place. Telling it to `tool_load`
+                        # first is ceremony a mid-tier model skips (measured: it kept
+                        # reading and re-claiming instead). So ARM the tool here, exactly
+                        # as the dispatch chokepoint already does for an off-surface tool
+                        # the model *did* call — same decision, one step earlier.
+                        _armed = [
+                            nm for nm in _narrated
+                            if discovery and nm in cat_index and nm not in active_tool_names
+                        ]
+                        if _armed:
+                            from app.services.tool_surface import merge_activated_tools
+                            active_tool_names.update(_armed)
+                            if activation_state is not None:
+                                activation_state["activated_tools"] = merge_activated_tools(
+                                    activation_state["activated_tools"], _armed,
+                                    catalog=discovery_catalog, context_length=context_length,
+                                )
+                                activation_state["dirty"] = True
+                        logger.warning(
+                            "D-NARRATED-WRITE (session=%s): the turn is ending with write "
+                            "tool(s) named in prose but never called: %s — nudging once "
+                            "(armed off-surface: %s)",
+                            session_id, _narrated, _armed or "—",
+                        )
+                        if trace is not None:
+                            trace.add("compile", "T6", "tools",
+                                      f"narrated_write:{','.join(_narrated)}", is_error=True)
+                        working.append({"role": "assistant", "content": "".join(text_parts)})
+                        working.append({"role": "user", "content": (
+                            "[SYSTEM DIRECTIVE] You just described using "
+                            f"{', '.join(_narrated)}, but you did not call "
+                            + ("it" if len(_narrated) == 1 else "them")
+                            + " — nothing was written and the author will find nothing.\n"
+                            + (
+                                f"{', '.join(_armed)} "
+                                + ("is" if len(_armed) == 1 else "are")
+                                + " now available to you on this turn — no tool_load needed.\n"
+                                if _armed else ""
+                            )
+                            + "Do ONE of these, and nothing else:\n"
+                            "(a) call the tool now, for real, with complete arguments; or\n"
+                            "(b) if you genuinely cannot, tell the author plainly that you "
+                            "did NOT make the change, and why.\n"
+                            "Do not re-read anything — you have already read enough. Never "
+                            "report a change as done, and never tell the author to go and "
+                            "check for it, unless a tool call actually returned a result."
+                        )})
+                        continue
+
                 # No tool calls — this pass IS the final text response.
                 yield {"content": "", "reasoning_content": "",
                        "finish_reason": finish_reason or "stop",
@@ -2268,6 +2678,11 @@ async def _stream_with_tools(
             # native tokens above) — record the assistant turn, execute each
             # call, append the results, and loop.
             calls = _reassemble_tool_calls(tool_frags)
+            # D-TOOLCALL-GEMMA-INTERIOR-LEAK — FIRST, before any helper inspects the
+            # args: un-concatenate calls the model packed into one args payload. Runs
+            # here (one site) rather than inside `_parse_tool_args` (25 call sites)
+            # because it changes the NUMBER of calls, not one call's parse.
+            calls = _split_interior_leaked_tool_calls(calls)
             # D-TOOLCALL-GEMMA-TOKEN-LEAK — this pass's ENTIRE call set came from
             # the leak scan (tool_frags was empty), typically because this WAS
             # the D7 forced tool-free final pass (offered_tools False this
@@ -2351,6 +2766,14 @@ async def _stream_with_tools(
             # and on the first frontend tool, suspend with the partial state.
             suspended_call: dict | None = None
             pass_did_write = False  # H9 — only a Tier-A/W write decrements budget
+            # D-NARRATED-WRITE — every tool the model actually EMITTED this turn, recorded
+            # before any gate can drop it. Deliberately NOT `turn_succeeded`: that counter is
+            # the rail driver's ledger and only counts a tool the pinned rail names (see the
+            # backend chokepoint), so a perfectly good non-rail write is absent from it — and
+            # reading it as "tools attempted" would flag a model that DID the work. Caught by
+            # `test_a_write_actually_called_never_nudges`; a false accusation right after real
+            # work is worse than the silence this guard exists to break.
+            turn_attempted.update(c["name"] for c in calls)
             for c in calls:
                 # Wrap-repair for CONSUMER-LOCAL meta tools (find_tools/tool_load/workflow_load/
                 # run_subagent/*_list). The federated dispatch below unwraps {"args":{…}} with each
@@ -2520,7 +2943,15 @@ async def _stream_with_tools(
                             "(use tool_list to see what's available)."
                         )
                     active_tool_names.update(names_to_activate)
-                    if curated and activation_state is not None:
+                    # D-TOOL-LOAD-PERSISTS (2026-07-26, Mị Đế dogfood) — UNGATED like
+                    # workflow_load, no longer curated-only. In auto mode a tool_load
+                    # evaporated at turn end; the model re-loaded glossary_propose_entities
+                    # every turn, found it gone the next, and fell back to the always-
+                    # visible frontend edit tool (the placeholder_id loop). An explicit
+                    # tool_load is the same strength of signal as workflow_load: the agent
+                    # NAMED the tool it needs. Auto-mode re-advertisement is bounded to the
+                    # recency tail (assemble_initial_active_names), not the whole set.
+                    if activation_state is not None:
                         from app.services.tool_surface import merge_activated_tools
                         activation_state["activated_tools"] = merge_activated_tools(
                             activation_state["activated_tools"], loaded,
@@ -3012,6 +3443,62 @@ async def _stream_with_tools(
                     }}
                     continue
 
+                # D-TOOLCALL-GEMMA-INTERIOR-LEAK — the args STILL carry this model family's
+                # native control tokens, so `_split_interior_leaked_tool_calls` could not
+                # resolve the shape and `_parse_tool_args` refused the payload. Refuse the
+                # call, and do NOT report it as a schema / missing-args mistake: the payload
+                # is a DECODER artifact, not what the model wrote. Misattributing it is what
+                # made the live incident unrecoverable — the model was told it sent a bad
+                # enum value that json repair had synthesized out of a swallowed control
+                # token, so no amount of self-correction could reach it and the turn collapsed
+                # into 10,882 characters of repeated prose. Name the real fault and ask for
+                # ONE call — the shape this decoder gets right.
+                #
+                # Placed BEFORE the frontend/backend fork on purpose: both sides validate
+                # against a schema and would otherwise blame the model. The live incident hit
+                # BOTH (`glossary_propose_entity_edit` is a frontend tool,
+                # `glossary_propose_batch` a backend one), so a backend-only guard would have
+                # fixed half the bug and left the other half looking identical.
+                if _has_leak_marker(c.get("arguments") or ""):
+                    # Counts toward the existing per-turn cap: the model is blameless, but a
+                    # decoder that leaks every pass must still terminate the turn rather than
+                    # trade honest errors until MAX_TOOL_ITERATIONS runs out.
+                    blank_tool_args_streak += 1
+                    _leak_msg = (
+                        f"The arguments for '{c['name']}' arrived corrupted — your output "
+                        "carried tool-call control tokens inside the JSON, so the payload "
+                        "could not be trusted and the call was NOT run. This is a decoding "
+                        "fault, not an error in your reasoning: do not change which tool you "
+                        "chose, and do not apologise for a wrong argument value. "
+                        + (
+                            "You have hit the retry limit for this — tell the author plainly "
+                            "that the call could not be sent, and stop."
+                            if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP else
+                            "Emit exactly ONE tool call, with plain JSON arguments and "
+                            "nothing after the closing brace."
+                        )
+                    )
+                    logger.warning(
+                        "D-TOOLCALL-GEMMA-INTERIOR-LEAK: refused to dispatch %r with "
+                        "marker-bearing args (session=%s, streak=%d): %r",
+                        c["name"], session_id, blank_tool_args_streak,
+                        (c.get("arguments") or "")[:200],
+                    )
+                    if trace is not None:
+                        trace.add("compile", "T6", "tools",
+                                  f"args_corrupted:{c['name']}", is_error=True)
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(
+                            {"error": "tool_args_corrupted_by_decoder", "message": _leak_msg}
+                        ),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": {}, "ok": False, "result": None, "error": _leak_msg,
+                    }}
+                    continue
+
                 # DELIBERATELY is_frontend_tool, not is_browser_executed: this asks
                 # "does chat-service INTERCEPT and suspend here?". propose_edit/ui_*
                 # are browser-executed but route to ai-gateway and are detected from
@@ -3036,6 +3523,20 @@ async def _stream_with_tools(
                         or frontend_tool_def_by_name(c["name"])
                     )
                     _fe_args = _unwrap_wrapped_args(_parse_tool_args(c["arguments"]), _fe_def)
+                    # D-FE-TOOL-CONTEXT-IDS (2026-07-26, Mị Đế dogfood) — S02 parity for
+                    # frontend tools: they are validated BEFORE the backend dispatch's
+                    # context-id injection, so the session's known book_id never reached
+                    # them and a weak model had to transcribe it itself — it invented one
+                    # (live: "mình sẽ sử dụng một ID giả định") → guaranteed validation
+                    # failure, every call. Same injector, same conservative rules
+                    # (fill-blank + replace-malformed + studio single-book override).
+                    _inject_context_ids(
+                        _fe_args, _fe_def,
+                        book_id=(context_ids or {}).get("book_id"),
+                        chapter_id=(context_ids or {}).get("chapter_id"),
+                        project_id=(context_ids or {}).get("project_id"),
+                        studio=bool((context_ids or {}).get("studio")),
+                    )
                     # Phase 0 (frontend-tools → MCP migration) — the MCP-native
                     # validation seam. A frontend tool used to SUSPEND on its raw
                     # args with no validation, so a mis-shaped call (the reported
@@ -3052,6 +3553,32 @@ async def _stream_with_tools(
                         # reset/increment rule at the backend dispatch site below).
                         if _MISSING_REQUIRED_ARGS_MARKER in _fe_err:
                             blank_tool_args_streak += 1
+                        # D-FE-TOOL-LOOP — frontend tools bypassed BOTH loop guards (the
+                        # repeated-failure breaker and the blank-args cap both live on the
+                        # backend dispatch path, below this branch), so a model that kept
+                        # re-emitting the same invalid frontend call looped unbounded.
+                        # Measured live (Mị Đế dogfood, session 019f9f2e): ~205 identical
+                        # malformed glossary_propose_entity_edit calls in ONE turn while the
+                        # backend sibling tripped its breaker at 2. Feed the shared
+                        # (tool → error → count) map and short-circuit + de-advertise at the
+                        # same cap a backend tool gets.
+                        _err_sig = _fe_err[:200]
+                        _fe_fails = fail_by_tool_error.setdefault(c["name"], {})
+                        _fe_fails[_err_sig] = _fe_fails.get(_err_sig, 0) + 1
+                        if _fe_fails[_err_sig] > REPEATED_FAILURE_CAP:
+                            _fe_err = (
+                                f"'{c['name']}' has already FAILED {_fe_fails[_err_sig]} times "
+                                f"this turn with the same invalid arguments: {_err_sig} — "
+                                "retrying it keeps hitting the same wall. STOP calling it. "
+                                "Fix EXACTLY what that error says is wrong, use a DIFFERENT "
+                                "tool, or tell the user plainly what is blocking you."
+                            )
+                            failure_suppress.add(c["name"])
+                            logger.info(
+                                "repeated-failure breaker (frontend): %s failed %d× with the "
+                                "same validation error this turn — short-circuited + "
+                                "de-advertised", c["name"], _fe_fails[_err_sig],
+                            )
                         working.append({
                             "role": "tool", "tool_call_id": c["id"],
                             "content": tool_result_content({"error": _fe_err}),
@@ -3062,6 +3589,9 @@ async def _stream_with_tools(
                         }}
                         continue
                     blank_tool_args_streak = 0  # a valid frontend-tool call
+                    # A valid call breaks the failure loop — reset the tool's failure map
+                    # (mirrors the backend success-clears rule at the dispatch site below).
+                    fail_by_tool_error.pop(c["name"], None)
                     suspended_call = {
                         "id": c["id"],
                         "name": c["name"],
@@ -3662,6 +4192,94 @@ async def _stream_with_tools(
                     }}
                     continue
 
+                # ── UNRESOLVABLE-TOOL GUARD ──────────────────────────────────────────
+                # Two distinct failures used to look identical here — the call went out,
+                # came back an error, and the model was left to guess why:
+                #
+                #   (a) the tool EXISTS but is not on this turn's surface. The model reached
+                #       for it because something TOLD it to — a rail step, or another tool's
+                #       own error text ("create the categories first (glossary_adopt_standards
+                #       …)"). Nothing ever told it the tool was merely unloaded, so it retried
+                #       forever. Measured live: 40,597 characters of one paragraph repeated,
+                #       until the user hit Stop.
+                #   (b) the tool does NOT exist anywhere — a hallucinated name. Retrying that
+                #       can never succeed, so the only useful reply names real neighbours and
+                #       tells the model its own reasoning is what needs re-checking.
+                #
+                # Both are answered HERE, in code, rather than hoped for in a prompt: the
+                # existing guidance lives in a skill prompt and only covers `plan_*`,
+                # `composition_*` and `book_*` — `glossary_*` (the live wedge) is not in that
+                # list, and a mid-tier model ignores prose guidance under pressure anyway.
+                if discovery and cat_index and c["name"] not in cat_index:
+                    import difflib
+
+                    from app.services.tool_discovery import INTENT_GATED_SETUP_TOOLS
+                    # A name absent from the catalog is NOT automatically invented. The
+                    # capability floor (N5a-FULL) deliberately REMOVES some real tools from the
+                    # turn catalog, so telling the model it hallucinated one of those would be a
+                    # false accusation — and would send it hunting for a different tool when the
+                    # one it named was right all along. Separate the two cases honestly.
+                    _withheld = c["name"] in INTENT_GATED_SETUP_TOOLS
+                    _near = difflib.get_close_matches(c["name"], list(cat_index), n=3, cutoff=0.6)
+                    if _withheld:
+                        _guidance = {
+                            "error": "tool_not_available_this_turn",
+                            "message": (
+                                f"{c['name']!r} is a real tool, but it is not available on this "
+                                "turn: it reshapes the book's whole ontology, so it is only "
+                                "offered when the author has asked for world-setup. Do NOT keep "
+                                "retrying it and do NOT claim you ran it. Tell the author plainly "
+                                "that this step needs their go-ahead to set up the book's "
+                                "categories, and ask for it."
+                            ),
+                        }
+                    else:
+                        _guidance = {
+                            "error": "no_such_tool",
+                            "message": (
+                                f"There is no tool named {c['name']!r}. You invented it — do NOT "
+                                "call it again, and do not tell the user you used it. Re-read your "
+                                "own reasoning: the step you are on needs a tool that exists."
+                                + (f" Closest real names: {', '.join(_near)}." if _near else "")
+                                + " Call tool_list to see what this domain really offers, then "
+                                "tool_load the exact name before using it."
+                            ),
+                        }
+                    logger.warning(
+                        "unresolvable tool %r (session=%s): %s; near=%s",
+                        c["name"], session_id,
+                        "withheld by the capability floor" if _withheld else "not in any catalog",
+                        _near,
+                    )
+                    if trace is not None:
+                        trace.add("compile", "T6", "tools", f"no_such_tool:{c['name']}", is_error=True)
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(_guidance),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False,
+                        "result": None, "error": _guidance["message"],
+                    }}
+                    continue
+                # (a) — real tool, just not advertised this turn. Load it and let the call
+                # proceed: the model already decided correctly, so making it round-trip through
+                # tool_list/tool_load to be told "yes, that one" is ceremony a weak model fails.
+                if discovery and c["name"] in cat_index and c["name"] not in active_tool_names:
+                    from app.services.tool_surface import merge_activated_tools
+                    active_tool_names.add(c["name"])
+                    if activation_state is not None:
+                        activation_state["activated_tools"] = merge_activated_tools(
+                            activation_state["activated_tools"], [c["name"]],
+                            catalog=discovery_catalog, context_length=context_length,
+                        )
+                        activation_state["dirty"] = True
+                    logger.info(
+                        "auto-loaded off-surface tool %r (session=%s) — it is in the catalog and "
+                        "the model asked for it by name", c["name"], session_id,
+                    )
+
                 # backend tool — execute via the ai-gateway over MCP (ai-gateway
                 # P0: the only tool transport). Tier-A auto-commits here (the
                 # "lazy man" path); Tier-W/S domain tools MINT a confirm_token and
@@ -3719,6 +4337,33 @@ async def _stream_with_tools(
                 # frontend tools suspend BEFORE this line and are correctly never counted.)
                 if ok and c["name"] in _rail_all_step_tools:
                     turn_succeeded[c["name"]] += 1
+                    # …and the rail just ADVANCED. Its next step's tool is budget-exempt in the
+                    # surface seed (D-RAIL-NEXT-STEP-EXEMPT) — but that seed is computed ONCE, at
+                    # turn start, from the turn-start probe. A rail that advances WITHIN a turn
+                    # therefore leaves the new next step's tool off the wire until the next turn.
+                    # Live wedge: the turn opened at 0/9 (next = glossary_list_system_standards,
+                    # duly exempted), the model called it, the rail moved to 1/9 (next =
+                    # glossary_adopt_standards) — and that tool was never advertised. The model
+                    # correctly worked out which tool it needed, could not reach it, and looped.
+                    # Re-arm the whole (small, author-declared) step set the moment the rail moves.
+                    if discovery and cat_index:
+                        _rearm = [
+                            t for t in _rail_all_step_tools
+                            if t in cat_index and t not in active_tool_names
+                        ]
+                        if _rearm:
+                            from app.services.tool_surface import merge_activated_tools
+                            active_tool_names.update(_rearm)
+                            if activation_state is not None:
+                                activation_state["activated_tools"] = merge_activated_tools(
+                                    activation_state["activated_tools"], _rearm,
+                                    catalog=discovery_catalog, context_length=context_length,
+                                )
+                                activation_state["dirty"] = True
+                            logger.info(
+                                "rail advanced on %s — re-armed step tools now on the wire: %s",
+                                c["name"], ", ".join(sorted(_rearm)),
+                            )
                 # Repeated-FAILURE breaker — record this failure under (tool → error → count) so a
                 # further call that keeps hitting the same error is short-circuited next iteration.
                 # A SUCCESS clears the tool's whole map: the loop is broken, so a later failure
@@ -5097,7 +5742,13 @@ async def stream_response(
                 # N5a-FULL — capability floor: high-impact world-setup tools are dropped from the
                 # turn catalog (all three reach-paths) unless this turn is world-setup intent
                 # (glossary_shaping injected). Request-scoped autonomy for the co-writer.
-                discovery_catalog = filter_intent_gated_setup_tools(catalog, injected_skill_codes)
+                # …with the PINNED rail's own step tools exempt: the rail is rendered into the
+                # prompt naming them, so filtering one out splits guidance from capability and
+                # leaves an instruction the model cannot satisfy (see the filter's docstring —
+                # this is the Mị Đế 40k-character loop).
+                discovery_catalog = filter_intent_gated_setup_tools(
+                    catalog, injected_skill_codes, set(pinned_step_tools or ()),
+                )
                 # GUI-nav tools deprecated 2026-07-25 — only the editor/book_scoped frontend
                 # tools (propose_edit / glossary) are advertised now.
                 discovery_extra_frontend = frontend_tool_defs(editor=editor, book_scoped=book_scoped)
@@ -5131,15 +5782,37 @@ async def stream_response(
                     )
                 except Exception:  # noqa: BLE001 — stickiness is best-effort; never break the turn
                     _sticky_domains = set()
-                # Budget priority (2026-07-26): the fully-DONE rail step tools, so the rail's
+                # Budget priority (2026-07-26): the DONE rail step tools, so the rail's
                 # token budget is spent on the steps still to do (not on completed early steps
-                # that would starve `plan_propose_spec` et al.). Same "fully done" set the
-                # action-space gate uses; computed regardless of gate MODE (budget prioritization
-                # is independent of runtime suppression).
-                _rail_done_tools = (
-                    rail_gate_suppressions(_rail_progress_objs, set(), "done_suppress")
-                    if _rail_progress_objs else set()
-                )
+                # that would starve `plan_propose_spec` et al.).
+                # v2 (D-RAIL-REPEAT-BUDGET): computed DIRECTLY from progress — ALL done steps,
+                # INCLUDING `repeat` ones. The gate function now exempts repeat steps (they must
+                # stay advertisable: "add MORE characters" re-invokes a done save-cast), but for
+                # BUDGET priority a done-but-repeatable step still yields to never-done steps —
+                # tool_surface reorders these to the back of the queue instead of dropping them.
+                _rail_done_tools = {
+                    s.tool
+                    for p in (_rail_progress_objs or [])
+                    for s in p.steps
+                    if s.done and s.tool
+                }
+                # Within the done group, a REPEATABLE done step outranks a one-shot done
+                # step for budget: the one-shots are advertise-suppressed by the gate
+                # anyway, so budget spent on them is pure waste — while a repeat step
+                # (save-cast: "add MORE characters") is the one a user actually re-invokes.
+                _rail_repeat_done_tools = {
+                    s.tool
+                    for p in (_rail_progress_objs or [])
+                    for s in p.steps
+                    if s.done and s.tool and s.repeat
+                }
+                # D-RAIL-NEXT-STEP-EXEMPT — the tool of each rail's NEXT actionable step is
+                # budget-exempt in the surface seed: the step being driven must be callable.
+                _rail_next_tools = {
+                    p.next_step.tool
+                    for p in (_rail_progress_objs or [])
+                    if getattr(p, "next_step", None) is not None
+                }
                 discovery_seed_names = discovery_seed_for_surface(
                     discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                     pins=tool_pins,
@@ -5152,13 +5825,19 @@ async def stream_response(
                     binding_categories=(mode_binding.seed_tool_categories if mode_binding else None),
                     pinned_step_tools=pinned_step_tools,
                     rail_done_step_tools=_rail_done_tools,
+                    rail_repeat_done_step_tools=_rail_repeat_done_tools,
+                    rail_next_step_tools=_rail_next_tools,
                     sticky_domains=_sticky_domains,
+                    # D-SKILL-NAMED-TOOLS-RIDE — the tools these injected skill prompts
+                    # name directly must be on the wire (budget-exempt).
+                    injected_skill_codes=injected_skill_codes,
                 )
                 # `tool_defs` is the FIRST-pass advertisement when discovery is on;
                 # _stream_with_tools recomputes it each pass (core ∪ extra_fe ∪
                 # {seed ∪ discovered}), but a non-empty value flips use_tools True.
                 tool_defs = _advertise_discovery_tools(
-                    _catalog_index(catalog), discovery_seed_names, discovery_extra_frontend
+                    _catalog_index(catalog), discovery_seed_names, discovery_extra_frontend,
+                    book_bound=bool(_ctx_book_id),
                 )
             else:
                 # No discovery: a legacy non-agui tool-calling client (full catalog —
@@ -6006,6 +6685,10 @@ async def _emit_chat_turn(
                       "usage": {"promptTokens": suspend_state["input_tokens"],
                                 "completionTokens": suspend_state["output_tokens"]},
                       "timing": {}}
+            # D-TOOLLOAD-LOST-ON-SUSPEND — the suspend is a real end-of-turn, so it owes
+            # the same activation flush as a normal finish. Without it, the tools this
+            # turn loaded to REACH the approval are gone by the time the author approves.
+            await _flush_activated_tools(pool, session_id, activation_state)
             for line in emitter.finish(
                 finish, status="suspended",
                 pending={"runId": run_id, "toolCallId": pending["id"],
@@ -6319,23 +7002,7 @@ async def _emit_chat_turn(
         for line in emitter.persisted_data(data_payload):
             yield line
 
-        if activation_state and activation_state.get("dirty"):
-            try:
-                await pool.execute(
-                    """
-                    UPDATE chat_sessions
-                    SET activated_tools = $2::text[], updated_at = now()
-                    WHERE session_id = $1
-                    """,
-                    session_id,
-                    activation_state["activated_tools"],
-                )
-            except Exception:
-                logger.warning(
-                    "failed to persist activated_tools for session %s",
-                    session_id,
-                    exc_info=True,
-                )
+        await _flush_activated_tools(pool, session_id, activation_state)
 
         if surface_tracker is not None:
             payload = surface_tracker.idle()
@@ -6855,8 +7522,14 @@ async def resume_stream_response(
         tool_defs = list(catalog)
         if stream_format == "agui" and catalog:
             from app.services.tool_discovery import filter_intent_gated_setup_tools
-            # N5a-FULL — same capability floor on the resume path (mirror the fresh turn).
-            resume_discovery_catalog = filter_intent_gated_setup_tools(catalog, resume_injected_skills)
+            # N5a-FULL — same capability floor on the resume path (mirror the fresh turn),
+            # INCLUDING the pinned rail's step-tool exemption. `susp.pinned_step_tools` exists
+            # precisely because a resume re-derives its surface from scratch (WS-3); dropping
+            # the exemption here would strand a rail at its FIRST confirm gate — the same
+            # failure WS-3 was written to fix, re-entered through the capability floor.
+            resume_discovery_catalog = filter_intent_gated_setup_tools(
+                catalog, resume_injected_skills, set(susp.pinned_step_tools or ()),
+            )
             # The generic frontend tools (core) + the glossary write-back tools, both
             # available on resume; _stream_with_tools advertises {core} ∪ {discovered}
             # ∪ extra_frontend per pass.
@@ -6883,9 +7556,12 @@ async def resume_stream_response(
                 # the flagship rail broke at its very first gate. Captured at suspend time
                 # because the resume has no book_id to re-resolve the binding with.
                 pinned_step_tools=susp.pinned_step_tools,
+                # D-SKILL-NAMED-TOOLS-RIDE — same guarantee on the resume pass.
+                injected_skill_codes=resume_injected_skills,
             )
             tool_defs = _advertise_discovery_tools(
-                _catalog_index(catalog), resume_seed_names, resume_extra_frontend
+                _catalog_index(catalog), resume_seed_names, resume_extra_frontend,
+                book_bound=bool(susp.book_id),
             )
         elif stream_format == "agui":
             # No catalog (gateway down) → no discovery, but still re-advertise the

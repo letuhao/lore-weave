@@ -666,11 +666,11 @@
       "staticMemory": "स्थिर मेमोरी",
       "archivedBadge": "संग्रहित",
       "open": "खोलें",
-      "edit": "Edit",
-      "archive": "Archive",
-      "restore": "Restore",
-      "delete": "Delete",
       "tuneExtraction": "Extraction ट्यून करें",
+      "edit": "संपादित करें",
+      "archive": "संग्रहित करें",
+      "restore": "पुनर्स्थापित करें",
+      "delete": "मिटाएं",
       "bookId": "book_id"
     },
     "form": {
@@ -688,7 +688,6 @@
         "general": "सामान्य"
       },
       "bookId": "बुक ID (वैकल्पिक)",
-      "bookIdPlaceholder": "uuid",
       "description": "विवरण (वैकल्पिक)",
       "instructions": "निर्देश (वैकल्पिक)",
       "instructionsPlaceholder": "शैली संबंधी नोट्स, स्वर, सीमाएँ — इस प्रोजेक्ट के लिए हर चैट में शामिल किए जाएंगे।",
@@ -707,7 +706,8 @@
         "errorAlreadyRunning": "इस प्रोजेक्ट के लिए बेंचमार्क पहले से ही चल रहा है। प्रतीक्षा करें और पुनः प्रयास करें।",
         "errorProviderFlake": "एम्बेडिंग प्रदाता रन के दौरान विफल हो गया। कृपया पुनः प्रयास करें।",
         "errorGeneric": "बेंचमार्क विफल रहा: {{message}}"
-      }
+      },
+      "bookIdPlaceholder": "uuid"
     },
     "archiveDialog": {
       "title": "प्रोजेक्ट को आर्काइव करें?",
@@ -790,7 +790,7 @@
           "concurrencyLabel": "समानांतर कॉल",
           "concurrencyApply": "लागू करें",
           "stagesTitle": "निर्माण चरण",
-          "stages": "Entities → Relations · Events · Facts → Summaries",
+          "stages": "इकाइयाँ → संबंध · घटनाएँ · तथ्य → सारांश",
           "stagesNote": "पास इस क्रम में चलते हैं। Facts और Summaries, Entities और Relations के पूरा होने के बाद चलते हैं, इसलिए वे पूर्ण निर्माण में बाद में दिखाई देते हैं — जल्दी रुकने पर वे छूट जाते हैं।"
         },
         "building_paused_user": {
@@ -804,7 +804,7 @@
           "body": "पुनः प्रयास करने योग्य त्रुटि: {{error}}"
         },
         "complete": {
-          "stats": "{{entities}} entities · {{facts}} facts · {{events}} events · {{passages}} passages",
+          "stats": "{{entities}} इकाइयाँ · {{facts}} तथ्य · {{events}} घटनाएँ · {{passages}} अंश",
           "lastExtracted": "अंतिम निष्कर्षण: {{date}}"
         },
         "stale": {

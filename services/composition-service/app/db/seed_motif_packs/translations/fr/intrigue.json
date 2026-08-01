@@ -1,0 +1,334 @@
+{
+  "intrigue.double_agent_reveal": {
+    "beats": {
+      "insider_acts": {
+        "intent": "le groupe place sa confiance en l'initié",
+        "label": "Actions de l'initié"
+      },
+      "note": {
+        "intent": "une fuite trop précise pour être le fruit du hasard",
+        "label": "Incohérence relevée"
+      },
+      "trap": {
+        "intent": "un faux secret appât est semé",
+        "label": "Piège tendu pour confirmer"
+      },
+      "unmask": {
+        "intent": "confirmer l'identité de la taupe et la retourner",
+        "label": "Démasquer et retourner"
+      }
+    },
+    "effects": [
+      "la taupe est identifiée et devient un agent double ou est écartée",
+      "la confiance au sein du groupe est totalement restructurée"
+    ],
+    "emotion_target": "suspense",
+    "examples": [
+      "Une fuite trop précise pour être le fruit du hasard ; un faux secret semé comme un appât révèle qui colporte les informations — et à qui."
+    ],
+    "name": "Révélation du double agent",
+    "preconditions": [
+      "une fuite trop précise suggère qu'un membre de l'entourage est compromis"
+    ],
+    "roles": {
+      "confidant": {
+        "constraints": [
+          "aide à tendre le piège"
+        ],
+        "label": "le confident"
+      },
+      "mole": {
+        "constraints": [
+          "un membre de l'entourage de confiance"
+        ],
+        "label": "la taupe"
+      },
+      "protagonist": {
+        "constraints": [
+          "traque discrètement la fuite"
+        ],
+        "label": "celui qui soupçonne"
+      }
+    },
+    "summary": "Une fuite trop précise pour être fortuite ; un faux secret tendu comme appât révèle qui colporte les informations — et à qui — avant de retourner le traître."
+  },
+  "intrigue.feigned_alliance": {
+    "beats": {
+      "betray": {
+        "intent": "rompre le pacte au moment opportun",
+        "label": "Trahir au moment du pivot"
+      },
+      "offer": {
+        "intent": "proposer un pacte que l'allié acceptera",
+        "label": "Offrir l'alliance"
+      },
+      "realign": {
+        "intent": "transformer la trahison en avantage stratégique",
+        "label": "Réalignement"
+      },
+      "rely": {
+        "intent": "l'allié engage ses ressources ou sa confiance",
+        "label": "L'allié s'y fie"
+      },
+      "share": {
+        "intent": "révéler juste assez pour être cru",
+        "label": "Partager une vérité partielle"
+      }
+    },
+    "effects": [
+      "l'allié est écarté au moment où le levier est le plus puissant",
+      "le manipulateur prend l'ascendant"
+    ],
+    "emotion_target": "tension",
+    "examples": [
+      "Un pacte sincère, un secret partagé juste assez vrai pour inspirer la confiance — jusqu'au moment où il devient profitable de le rompre."
+    ],
+    "name": "Alliance feinte",
+    "preconditions": [
+      "le manipulateur et sa cible partagent un objectif commun plausible"
+    ],
+    "roles": {
+      "advantage": {
+        "constraints": [
+          "le butin de la trahison"
+        ],
+        "label": "l'avantage recherché"
+      },
+      "false_ally": {
+        "constraints": [
+          "se repose sur le pacte"
+        ],
+        "label": "l'allié trompé"
+      },
+      "schemer": {
+        "constraints": [
+          "propose un pacte fallacieux"
+        ],
+        "label": "le manipulateur"
+      }
+    },
+    "summary": "Un pacte sincère et un secret partagé, assez vrais pour inspirer la confiance, jusqu'au moment du pivot où la trahison devient cruciale."
+  },
+  "intrigue.loyalty_test_trap": {
+    "beats": {
+      "act": {
+        "intent": "agir selon la vérité révélée",
+        "label": "Récompense ou purge"
+      },
+      "observe": {
+        "intent": "guetter celui qui mord à l'hameçon",
+        "label": "Observer la réaction"
+      },
+      "stage": {
+        "intent": "préparer une opportunité appâtée",
+        "label": "Mettre en scène la tentation"
+      },
+      "verdict": {
+        "intent": "le test tranche entre la confiance et la trahison",
+        "label": "Verdict : loyauté ou échec"
+      }
+    },
+    "effects": [
+      "la véritable loyauté de la personne testée est mise à nu",
+      "le détenteur du pouvoir récompense ou purge en conséquence"
+    ],
+    "emotion_target": "suspense",
+    "examples": [
+      "Une porte laissée entrouverte de manière tentante est en réalité un piège ; celui qui franchit le seuil révèle précisément ce que l'observateur voulait savoir."
+    ],
+    "name": "Le piège du test de loyauté",
+    "preconditions": [
+      "le détenteur du pouvoir soupçonne une déloyauté cachée"
+    ],
+    "roles": {
+      "loyalty_proof": {
+        "constraints": [
+          "ce que le test révèle"
+        ],
+        "label": "la preuve de loyauté"
+      },
+      "power_holder": {
+        "constraints": [
+          "met en scène la tentation"
+        ],
+        "label": "le détenteur du pouvoir"
+      },
+      "suspect": {
+        "constraints": [
+          "la personne soumise au test"
+        ],
+        "label": "le suspect de trahison"
+      }
+    },
+    "summary": "Une porte laissée entrouverte est en réalité un piège ; celui qui franchit le seuil révèle précisément ce que l'observateur cherchait à savoir."
+  },
+  "intrigue.planted_evidence_scheme": {
+    "beats": {
+      "act": {
+        "intent": "la victime s'engage dans le piège",
+        "label": "La victime agit selon sa fausse croyance"
+      },
+      "bait": {
+        "intent": "attirer la victime pour provoquer sa réaction",
+        "label": "Lancer l'appât pour faire agir la victime"
+      },
+      "counter": {
+        "intent": "les retombées sont orientées au profit de l'instigateur",
+        "label": "Contre-coup"
+      },
+      "plant": {
+        "intent": "placer une preuve falsifiée là où elle sera découverte",
+        "label": "Planter la fausse preuve"
+      },
+      "reveal": {
+        "intent": "la « preuve » fait surface, l'instigateur reste hors de cause",
+        "label": "Révélation déniable"
+      }
+    },
+    "effects": [
+      "la victime est discréditée ou condamnée sur des bases mensongères",
+      "la main de l'instigateur demeure invisible"
+    ],
+    "emotion_target": "l'angoisse",
+    "examples": [
+      "Un grand livre falsifié est glissé là où le rival le trouvera et l'« exposera » — marchant droit vers le piège qui le désigne comme coupable."
+    ],
+    "name": "Le stratagème de la preuve plantée",
+    "preconditions": [
+      "l'instigateur peut placer une preuve que l'autorité jugera crédible"
+    ],
+    "roles": {
+      "agent": {
+        "constraints": [
+          "transporte l'appât sans le savoir"
+        ],
+        "label": "l'agent involontaire"
+      },
+      "authority": {
+        "constraints": [
+          "juge sur la base de la preuve visible"
+        ],
+        "label": "l'autorité décisionnaire"
+      },
+      "schemer": {
+        "constraints": [
+          "plante la fausse preuve"
+        ],
+        "label": "le machiavélique"
+      },
+      "victim": {
+        "constraints": [
+          "agit en fonction de sa fausse croyance"
+        ],
+        "label": "la victime ciblée"
+      }
+    },
+    "summary": "Une preuve falsifiée est glissée de manière à ce que le rival la trouve et l'« expose », poussant la victime à agir selon une fausse croyance et à s'enfermer dans un piège dont l'auteur pourra nier l'existence."
+  },
+  "intrigue.scapegoat_substitution": {
+    "beats": {
+      "frame": {
+        "intent": "choisir un bouc émissaire prêt à être accusé",
+        "label": "Inculper un innocent"
+      },
+      "must_pin": {
+        "intent": "le blâme doit s'abattre sur quelqu'un",
+        "label": "Le crime doit être imputé"
+      },
+      "steer": {
+        "intent": "guider l'enquête vers le bouc émissaire",
+        "label": "Preuves orientées"
+      },
+      "walk_free": {
+        "intent": "le véritable coupable échappe aux regards",
+        "label": "Le véritable auteur s'en tire libre"
+      }
+    },
+    "effects": [
+      "le bouc émissaire porte le chapeau",
+      "le véritable coupable échappe à toute responsabilité"
+    ],
+    "emotion_target": "effroi",
+    "examples": [
+      "Lorsqu'un blâme doit être attribué, la main habile s'assure qu'il retombe sur un innocent."
+    ],
+    "name": "Le bouc émissaire",
+    "preconditions": [
+      "un crime exige un coupable et l'auteur réel doit rester dans l'ombre"
+    ],
+    "roles": {
+      "investigators": {
+        "constraints": [
+          "orientés vers la mauvaise cible"
+        ],
+        "label": "les enquêteurs"
+      },
+      "scapegoat": {
+        "constraints": [
+          "une partie lésée et coupable en apparence"
+        ],
+        "label": "le bouc émissaire"
+      },
+      "schemer": {
+        "constraints": [
+          "le véritable auteur"
+        ],
+        "label": "le manipulateur"
+      }
+    },
+    "summary": "Lorsqu'un coupable doit être désigné, la main habile s'assure que le blâme retombe sur une victime innocente ou insignifiante, tandis que le véritable auteur s'en tire indemne."
+  },
+  "intrigue.whisper_campaign": {
+    "beats": {
+      "isolate": {
+        "intent": "la cible perd sa influence",
+        "label": "Isolement de la cible"
+      },
+      "seed": {
+        "intent": "instiller un doute unique",
+        "label": "Semer la rumeur"
+      },
+      "spread": {
+        "intent": "le doute se répète par des bouches inconscientes",
+        "label": "Propagation de la rumeur"
+      },
+      "withdraw": {
+        "intent": "le protecteur de la cible se retire",
+        "label": "Le protecteur retire son soutien"
+      }
+    },
+    "effects": [
+      "la cible se retrouve isolée et perd son protecteur",
+      "la véritable source de la rumeur demeure occulte"
+    ],
+    "emotion_target": "malaise",
+    "examples": [
+      "Un doute semé, répété par des voix qui ignorent son origine, jusqu'à ce que la cible se retrouve seule contre tous."
+    ],
+    "name": "Campagne de calomnies",
+    "preconditions": [
+      "la cible dépend de la bienveillance d'un mécène ou d'une cour"
+    ],
+    "roles": {
+      "court": {
+        "constraints": [
+          "transmet la rumeur involontairement"
+        ],
+        "label": "la cour ou le conseil"
+      },
+      "schemer": {
+        "constraints": [
+          "est l'auteur de la rumeur"
+        ],
+        "label": "le machiavélique"
+      },
+      "target": {
+        "constraints": [
+          "est isolée par la rumeur"
+        ],
+        "label": "la cible"
+      }
+    },
+    "summary": "Un doute unique, semé par un initié, se propage par des bouches qui ignorent son origine, isolant la cible jusqu'à ce que son protecteur lui retire son soutien."
+  }
+}

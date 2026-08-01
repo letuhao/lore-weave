@@ -48,35 +48,46 @@ class TestToolSurface:
         # re-advertise them in auto mode (the S03 cross-turn drop) — BUT ONLY those that
         # belong to a currently-visible workflow. A stale find_tools accumulation left in
         # activated_tools by a prior curated phase MUST be dropped (review-impl leak fix).
+        # D-TOOL-LOAD-PERSISTS amendment: the RECENCY TAIL also re-advertises now
+        # (an explicit tool_load persists like workflow_load), so a stale accumulation
+        # is bounded out by pushing it beyond the tail — not by set intersection alone.
+        from app.services.tool_surface import AUTO_ACTIVATED_TAIL
+
         hot = {"glossary_search", "glossary_list"}
+        stale = [f"stale_{i}" for i in range(AUTO_ACTIVATED_TAIL + 5)]
         out = assemble_initial_active_names(
             curated=False,
             enabled_tools=[],
             activated_tools=[
-                "glossary_propose_status_change",  # current workflow step tool
-                "glossary_propose_merge",          # current workflow step tool
-                "translation_start_job",           # STALE find_tools accumulation
-                "kg_build_graph",                  # STALE find_tools accumulation
+                "glossary_propose_status_change",  # current workflow step tool (oldest)
+                *stale,                            # STALE accumulation pushes it out of tail
+                "glossary_propose_merge",          # current workflow step tool (recent)
             ],
             hot_seed_names=hot,
             workflow_step_tools={"glossary_propose_status_change", "glossary_propose_merge"},
         )
-        assert out == hot | {"glossary_propose_status_change", "glossary_propose_merge"}
-        assert "translation_start_job" not in out
-        assert "kg_build_graph" not in out
+        # workflow step tools survive REGARDLESS of tail position (the ∩ wf arm)
+        assert {"glossary_propose_status_change", "glossary_propose_merge"} <= out
+        # the stale front (older than the tail) does not leak
+        assert "stale_0" not in out
 
-    def test_assemble_auto_mode_no_workflow_filter_stays_hot_seed_only(self):
-        # No workflow_step_tools supplied → strict original auto behavior: hot-seed only,
-        # activated_tools (whatever they are) NEVER leak. Defends the resume path, which
-        # does not pass the filter.
+    def test_assemble_auto_mode_no_workflow_filter_keeps_only_the_recency_tail(self):
+        # No workflow_step_tools supplied → hot seed + the bounded recency tail
+        # (D-TOOL-LOAD-PERSISTS). An accumulation beyond the tail NEVER leaks —
+        # defends the resume path, which does not pass the filter.
+        from app.services.tool_surface import AUTO_ACTIVATED_TAIL
+
         hot = {"glossary_search"}
+        many = [f"stale_{i}" for i in range(AUTO_ACTIVATED_TAIL + 10)] + ["freshly_loaded"]
         out = assemble_initial_active_names(
             curated=False,
             enabled_tools=[],
-            activated_tools=["translation_start_job", "kg_build_graph"],
+            activated_tools=many,
             hot_seed_names=hot,
         )
-        assert out == hot
+        assert "freshly_loaded" in out          # the just-loaded tool survives the turn boundary
+        assert "stale_0" not in out             # the old accumulation stays gone
+        assert len(out - hot) <= AUTO_ACTIVATED_TAIL
 
     def test_assemble_curated_uses_pins_and_activated(self):
         out = assemble_initial_active_names(
@@ -104,6 +115,44 @@ class TestToolSurface:
         merged = merge_activated_tools(base, {"new_tool"})
         assert len(merged) == ACTIVATED_TOOLS_CAP
         assert merged[-1] == "new_tool"
+
+    def test_merge_activated_tools_reactivation_refreshes_recency(self):
+        # D-ACTIVATED-LRU-REFRESH (live 2026-07-26, Mị Đế dogfood): re-loading an
+        # ALREADY-activated tool must move it to the recency END. The old first-
+        # occurrence dedup left it at its original (oldest) slot, so the budget
+        # evicted the exact tool the model had JUST tool_load'ed — gemma re-loaded
+        # glossary_propose_entities every turn and it was gone again by the next,
+        # so the agent could never create an entity.
+        catalog = [_tool_padded(i) for i in range(40)]
+        current = [f"t{i}" for i in range(40)]  # t0 is the OLDEST
+        # re-activate the oldest name; budget forces eviction of the oldest slots
+        merged = merge_activated_tools(current, {"t0"}, catalog=catalog)
+        assert "t0" in merged, (
+            "a just-re-activated tool must survive the budget eviction — it is the "
+            "most recently REQUESTED, not the oldest"
+        )
+        assert merged[-1] == "t0"  # recency actually refreshed, not just retained
+
+    def test_auto_mode_readvertises_the_recency_tail_of_activated_tools(self):
+        # D-TOOL-LOAD-PERSISTS: an auto-mode turn re-advertises the LAST few activated
+        # tools (the ones the model most recently tool_load'ed) — the live failure was
+        # glossary_propose_entities evaporating every turn while the frontend edit tool
+        # stayed visible, so the create intent kept landing on the wrong tool.
+        from app.services.tool_surface import (
+            AUTO_ACTIVATED_TAIL,
+            assemble_initial_active_names,
+        )
+        activated = [f"old_{i}" for i in range(20)] + ["glossary_propose_entities"]
+        names = assemble_initial_active_names(
+            curated=False, enabled_tools=[], activated_tools=activated,
+            hot_seed_names={"book_get_chapter"},
+        )
+        assert "glossary_propose_entities" in names, (
+            "the most recently loaded tool must survive into the next auto turn"
+        )
+        # bounded: the stale front of the accumulation does NOT leak back
+        assert "old_0" not in names
+        assert len(names & {f"old_{i}" for i in range(20)}) <= AUTO_ACTIVATED_TAIL
 
     def test_merge_activated_tools_scales_budget_with_context_length(self):
         # A 1M-context session must NOT get the same token-budget cap a 200K
@@ -253,9 +302,9 @@ class TestTokenBudgetedSeed:
         # Neutral names (no hot-domain prefix) + a bare surface, so the rail budget is the ONLY
         # path these tools can enter — isolating exactly the fix.
         pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
-        big = 9000  # ~2.2K tok — one such tool alone fills the 2K budget
+        big = 9000  # ~2.2K tok each — a few fill the dedicated rail budget
         cat = ([_tool_big(f"zdone_{i}", big) for i in range(3)]
-               + [_tool_big("zplan_spec", 400)])  # the small late step that got starved
+               + [_tool_big("zplan_spec", big)])  # the late step that got starved
         rail = ["zdone_0", "zdone_1", "zdone_2", "zplan_spec"]
         done = {"zdone_0", "zdone_1", "zdone_2"}
         # WITHOUT the exclusion: step-order budgeting spends the whole budget on the first done
@@ -273,6 +322,80 @@ class TestTokenBudgetedSeed:
             "the current rail step must survive the budget once completed steps are excluded — "
             "otherwise the agent reads a recipe naming a tool it cannot see"
         )
+
+    def test_rail_next_step_tool_is_budget_exempt(self):
+        # REGRESSION (live 2026-07-26, Mị Đế dogfood, D-RAIL-NEXT-STEP-EXEMPT): excluding
+        # DONE steps is not enough — EARLIER NOT-DONE steps can still eat the whole budget
+        # and starve the step the runner is driving RIGHT NOW. Live: kg_propose_edge failed
+        # with "call kg_project_entities_to_nodes first" while that exact tool was
+        # budget-dropped; the step-runner redrove a step whose tool was invisible, 8×.
+        pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
+        big = 9000  # ~2.2K tok each — a few fill the dedicated rail budget
+        cat = ([_tool_big(f"zearly_{i}", big) for i in range(3)]
+               + [_tool_big("znodes_project", big)])   # the mid-rail step being driven
+        rail = ["zearly_0", "zearly_1", "zearly_2", "znodes_project"]
+        cold = discovery_seed_for_surface(
+            cat, pins=pins, editor=False, book_scoped=False, pinned_step_tools=rail,
+        )
+        assert "znodes_project" not in cold, "precondition: the driven step is starved without the fix"
+        warm = discovery_seed_for_surface(
+            cat, pins=pins, editor=False, book_scoped=False, pinned_step_tools=rail,
+            rail_next_step_tools={"znodes_project"},
+        )
+        assert "znodes_project" in warm, (
+            "the rail's NEXT step tool must be budget-exempt — the step being DRIVEN must "
+            "always be on the wire, or the runner redrives a step the agent cannot execute"
+        )
+
+    def test_rail_repeat_done_step_outranks_one_shot_done_for_budget(self):
+        # D-RAIL-REPEAT-BUDGET — Mị Đế layer 2: marking save-cast `repeat` removed it
+        # from the gate's done-set, so ALL steps re-entered the budget in declared order
+        # and the late repeatable step STILL lost. Order must be: never-done →
+        # repeat-done → one-shot-done (the gate hides one-shot-done anyway).
+        pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
+        big = 9000
+        cat = ([_tool_big(f"zoneshot_{i}", big) for i in range(3)]     # done, NOT repeat
+               + [_tool_big("znotdone_next", 400)]                     # never-done, small
+               + [_tool_big("zsave_cast", 600)])                       # done + repeat
+        rail = ["zoneshot_0", "zoneshot_1", "zoneshot_2", "zsave_cast", "znotdone_next"]
+        done = {"zoneshot_0", "zoneshot_1", "zoneshot_2", "zsave_cast"}
+        out = discovery_seed_for_surface(
+            cat, pins=pins, editor=False, book_scoped=False,
+            pinned_step_tools=rail, rail_done_step_tools=done,
+            rail_repeat_done_step_tools={"zsave_cast"},
+        )
+        assert "znotdone_next" in out          # active step always wins first
+        assert "zsave_cast" in out, (
+            "a done-but-REPEATABLE step must outrank one-shot-done steps for budget — "
+            "it is the step a user actually re-invokes ('add MORE characters')"
+        )
+
+    def test_injected_skills_named_tools_ride_budget_exempt(self):
+        # D-SKILL-NAMED-TOOLS-RIDE — THE Mị Đế root cause, proven on the wire: the
+        # injected glossary skill's prose says "Add new entities:
+        # `glossary_propose_entities`" while the budgeted hot seed had dropped that
+        # exact tool — the request advertised only glossary_propose_entity_edit, so
+        # the model mapped the create intent onto the similarly-named edit tool,
+        # every turn. An injected instruction must never name a tool that is not on
+        # the wire.
+        from app.services.tool_surface import skill_named_tools
+
+        pins = resolve_session_tool_pins({"enabled_tools": [], "activated_tools": []})
+        cat = [_tool("glossary_propose_entities"), _tool("glossary_search")]
+        # bare auto surface (editor/book_scoped off) → hot seed contributes nothing;
+        # the ONLY way the tool gets on the wire is the injected-skill exemption.
+        cold = discovery_seed_for_surface(cat, pins=pins, editor=False, book_scoped=False)
+        assert "glossary_propose_entities" not in cold, "precondition: seed alone drops it"
+        warm = discovery_seed_for_surface(
+            cat, pins=pins, editor=False, book_scoped=False,
+            injected_skill_codes=["glossary"],
+        )
+        assert "glossary_propose_entities" in warm, (
+            "a tool the injected skill prompt NAMES must ride the surface — the "
+            "instructions must never point at a tool the model cannot see"
+        )
+        # sanity on the extractor: the glossary skill really does name the tool
+        assert "glossary_propose_entities" in skill_named_tools(["glossary"], cat)
 
     def test_recall_and_timeline_classified_as_reads(self):
         from app.services.tool_surface import _is_read_tool

@@ -173,13 +173,26 @@ def test_sdk_does_not_pull_llm_packages_transitively():
     """Importing loreweave_parse must NOT cause loreweave_llm/loreweave_extraction
     to be loaded as a side effect.
     """
-    # Drop any cached entries first so we can observe the side-effects fresh.
-    for mod in list(sys.modules.keys()):
-        if mod.startswith(("loreweave_parse", "loreweave_llm", "loreweave_extraction")):
+    # Drop any cached entries first so we can observe the side-effects fresh — then PUT THEM
+    # BACK. Popping `loreweave_llm` without restoring it made every later test that imports it
+    # get a second, distinct module object: `from_code()` then returned an instance of the NEW
+    # exception class while the importing test file still held the OLD one, so
+    # `isinstance(...)` was False and test_video_gen's regression lock failed — but only when
+    # run as part of the suite, never alone. A test that silently rewrites global interpreter
+    # state for its neighbours makes the whole suite's counts unreliable.
+    prefixes = ("loreweave_parse", "loreweave_llm", "loreweave_extraction")
+    saved = {m: mod for m, mod in sys.modules.items() if m.startswith(prefixes)}
+    try:
+        for mod in saved:
             sys.modules.pop(mod, None)
-    importlib.import_module("loreweave_parse")
-    assert "loreweave_llm" not in sys.modules
-    assert "loreweave_extraction" not in sys.modules
+        importlib.import_module("loreweave_parse")
+        assert "loreweave_llm" not in sys.modules
+        assert "loreweave_extraction" not in sys.modules
+    finally:
+        for mod in list(sys.modules):
+            if mod.startswith(prefixes):
+                sys.modules.pop(mod, None)
+        sys.modules.update(saved)
 
 
 # ─── Dispatcher error handling ──────────────────────────────────────────────

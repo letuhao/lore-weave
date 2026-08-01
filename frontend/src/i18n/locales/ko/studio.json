@@ -1,5 +1,4 @@
 {
-  "title": "Writing Studio",
   "back": "도서 목록으로",
   "settings": "도서 설정",
   "planNav": {
@@ -11,11 +10,11 @@
   },
   "welcome": {
     "tab": "환영합니다",
-    "title": "Writing Studio",
     "body": "이 도서를 위한 도킹 가능한 워크스페이스입니다. 패널(작성, 플래너, 등장인물, 품질 등)이 여기에 하나씩 추가됩니다. 탭을 드래그하여 분할, 쌓기, 플로팅 또는 별도의 창으로 띄울 수 있습니다.",
     "openUserGuide": "사용자 가이드 열기",
     "startGuidedTour": "가이드 투어 시작하기",
-    "paletteHint": "언제든지 ⌘⇧P → \"집중 모드 선택\" 또는 \"가이드 투어 시작\""
+    "paletteHint": "언제든지 ⌘⇧P → \"집중 모드 선택\" 또는 \"가이드 투어 시작\"",
+    "title": "라이팅 스튜디오"
   },
   "panels": {
     "arc-templates": {
@@ -145,6 +144,11 @@
       "title": "AI 제안",
       "desc": "AI가 초안을 작성한 엔티티 검토",
       "guideBody": "원고에서 AI가 자동으로 초안을 작성하여 검토를 기다리고 있는 엔티티 항목들을 보여줍니다. 각 제안이 공식 용어집의 일부가 되기 전에 수락, 수정 또는 거부하세요."
+    },
+    "world-setup": {
+      "title": "세계관 설정",
+      "desc": "설명만으로 등장인물, 세계관 및 인물 관계도를 구축하세요",
+      "guideBody": "이야기에 대한 설명을 추적 가능한 실제 설정으로 변환하세요. 먼저 구축할 항목들을 계획하고, 목록을 승인하거나 다듬으면 각 캐릭터, 세력, 용어가 하나씩 작성되어 검토를 위해 저장됩니다 (주요 인물은 상세 프로필이 생성됩니다). 마지막으로 이들이 서로 어떻게 연결되는지 정리하며, 관계를 저장하기 전 사용자에게 승인을 요청합니다."
     },
     "glossary-merge-candidates": {
       "title": "병합 후보",
@@ -572,8 +576,8 @@
       "guideBody": "이 도서의 편향 제거 프로필을 작성하세요. 의도한 세계관, 언어 관습, 시대 및 서사 문체를 설정하면 Enrichment 및 Compose 초안이 일반적인 기본값이 아닌 도서의 톤에 맞춰 생성됩니다. 생성된 설정이 처음부터 도서와 일치하도록 Enrichment 작업을 실행하기 전에 미리 설정해 두세요."
     },
     "json-editor": {
-      "title": "JSON",
-      "desc": "리소스의 원본 JSON 보기"
+      "desc": "리소스의 원본 JSON 보기",
+      "title": "JSON"
     },
     "media-version-history": {
       "title": "버전 기록",
@@ -1057,22 +1061,14 @@
     "loadingMore": "추가 로딩 중...",
     "count": "{{n}} 챕터",
     "statArcs": "{{n}} 아크",
+    "statActs": "{{n}}부",
     "statChapters": "{{n}} 챕터",
     "statScenes": "{{n}} 장면",
-    "window": "win {{a}}–{{b}} / {{n}}",
     "chapterN": "{{number}}장",
     "newChapter": "새 챕터",
     "chapterShort": "챕터",
     "startFirstChapter": "첫 번째 챕터 시작하기",
     "creatingChapter": "생성 중…",
-    "unassignedBucket": "미지정",
-    "emptyActHint": "여기에 챕터를 끌어다 놓으세요",
-    "restore": "복원",
-    "undo": "실행 취소",
-    "lensOutline": "개요",
-    "lensToggle": "보기",
-    "reorderFailed": "순서를 변경할 수 없습니다",
-    "statActs": "{{n}}부",
     "actShort": "부",
     "actTag": "부",
     "newAct": "새 부",
@@ -1083,17 +1079,25 @@
     "moveActUp": "위로 이동",
     "moveActDown": "아래로 이동",
     "untitledAct": "(제목 없는 부)",
+    "unassignedBucket": "미지정",
+    "emptyActHint": "여기에 챕터를 끌어다 놓으세요",
     "trashedActs": "삭제된 부",
+    "restore": "복원",
     "restoreActHint": "이 부를 복구합니다 (내용은 비어 있게 복구되므로, 필요에 따라 장을 다시 배치하세요)",
     "actTrashed": "«{{name}}» 부가 휴지통으로 이동되었습니다 — 해당 부의 장들은 책에 그대로 유지됩니다",
     "partVsArc": "부는 원고를 그룹화합니다. 아크는 구성 계획입니다.",
+    "undo": "실행 취소",
     "lensParts": "부",
+    "lensOutline": "개요",
+    "lensToggle": "보기",
     "createFailed": "부를 생성할 수 없습니다",
     "renameFailed": "부의 이름을 변경할 수 없습니다",
     "trashFailed": "부를 휴지통으로 이동할 수 없습니다",
     "restoreFailed": "부를 복구할 수 없습니다",
     "moveFailed": "해당 부로 장을 이동할 수 없습니다",
-    "partsUnavailable": "부를 일시적으로 사용할 수 없습니다 — 장 목록을 평면적으로 표시합니다."
+    "reorderFailed": "순서를 변경할 수 없습니다",
+    "partsUnavailable": "부를 일시적으로 사용할 수 없습니다 — 장 목록을 평면적으로 표시합니다.",
+    "window": "{{a}}–{{b}}쪽 / {{n}}쪽"
   },
   "intro": {
     "title": "Writing Studio에 오신 것을 환영합니다",
@@ -1543,8 +1547,6 @@
     },
     "costHint": "구조를 편집해도 모델 호출 비용은 발생하지 않습니다.",
     "flow": {
-      "chNo": "ch {{n}}",
-      "chCount": "{{n}} ch",
       "gap": "⚠ 공백",
       "aiCollapsed": "AI · 축소됨",
       "subArcTag": "서브 아크",
@@ -1565,7 +1567,9 @@
       },
       "moveTo": "아크로 이동…",
       "unassigned": "스토리라인이 없는 챕터 {{count}}개",
-      "unassigned_other": "스토리라인이 없는 챕터 {{count}}개"
+      "unassigned_other": "스토리라인이 없는 챕터 {{count}}개",
+      "chNo": "{{n}}장",
+      "chCount": "{{n}} 장"
     },
     "adv": {
       "graph": "그래프",
@@ -1608,7 +1612,6 @@
     "nameLabel": "구조 이름",
     "namePlaceholder": "구조의 이름을 입력하세요…",
     "kindLabel": "종류 (자유 텍스트 레이블)",
-    "beatKey": "key",
     "beatKeyLabel": "비트 키",
     "beatLabelLabel": "비트 레이블",
     "moveUp": "비트 위로 이동",
@@ -1631,7 +1634,8 @@
       "builtin": "기본 제공",
       "mine": "내 항목",
       "archived": "보관됨"
-    }
+    },
+    "beatKey": "키"
   },
   "search": {
     "modeLabel": "검색 모드",
@@ -1659,5 +1663,6 @@
     "firstStructureTitle": "제1막",
     "everything": "이 책의 설정을 완료합니다",
     "everythingBusy": "설정 중…"
-  }
+  },
+  "title": "라이팅 스튜디오"
 }

@@ -159,14 +159,26 @@ async def test_clone_captures_adopted_base_snapshot(repo):
     assert nb is None
 
 
-async def test_create_unique_per_owner_code_language(repo):
+async def test_create_unique_per_owner_and_code_REGARDLESS_of_language(repo):
+    """MOTIF-I18N — the identity key is (owner, code). Language is NOT in it.
+
+    This test asserted the opposite until 2026-08-01, and its old assertion was the exact
+    bug the i18n migration removed: with `language` in `uq_motif_*`, "the same motif in two
+    languages" became two UNRELATED rows — separate ids, separate embeddings, separate
+    adoption. One motif is now one row (`original_language` = what it was authored in) and
+    every other language is a `motif_translation` row resolved with fallback.
+    See migrate.py's `motif` DDL comment and docs/specs/2026-07-29-motif-i18n.md.
+    """
     r, _ = repo
     u = uuid.uuid4()
-    await r.create(u, _args(code="dup", language="en"))
+    await r.create(u, _args(code="dup", original_language="en"))
     with pytest.raises(asyncpg.UniqueViolationError):
-        await r.create(u, _args(code="dup", language="en"))
-    # N-1: same code, different language → OK (language is in the dedup key).
-    await r.create(u, _args(code="dup", language="vi"))
+        await r.create(u, _args(code="dup", original_language="en"))
+    # The change that matters: a DIFFERENT authored language is still the same motif.
+    with pytest.raises(asyncpg.UniqueViolationError):
+        await r.create(u, _args(code="dup", original_language="vi"))
+    # …and the per-user tier still holds — another owner may use the same code.
+    await r.create(uuid.uuid4(), _args(code="dup", original_language="en"))
 
 
 async def test_create_then_idor_visibility(repo):

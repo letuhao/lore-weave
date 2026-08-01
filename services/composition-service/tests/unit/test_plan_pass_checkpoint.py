@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
+
 from app.services import plan_forge_service as pfs
 from app.services.bootstrap_service import BootstrapService
 
@@ -70,7 +72,15 @@ def test_accepting_CAST_requires_its_seed_proposal_to_be_APPLIED():
     disagree."""
     src = inspect.getsource(pfs.PlanForgeService._assert_seed_applied)
     assert 'if proposal.status != "applied":' in src
-    assert "apply it first (PF-7)" in src
+    # Assert the message's PROPERTIES, not its wording. This line used to pin the literal sentence
+    # "apply it first (PF-7)" — which is exactly the sentence that walked an author into a loop
+    # during the 2026-07-29 dogfood: it names no proposal, so the obvious next move is
+    # `bootstrap/propose`, which mints a SECOND proposal; approving and applying that one leaves
+    # this gate reading the pass-opened proposal and refusing with the identical words. A test that
+    # pins the wording protects the wording; these pin what the author needs to get unstuck.
+    assert "proposal.id" in src, "the refusal must name WHICH proposal the gate reads"
+    assert "Do NOT call bootstrap/propose" in src, "the decoy must be called out"
+    assert "PF-7" in src
     # …and it is actually called on the approve path
     review = inspect.getsource(pfs.PlanForgeService._review_pass)
     assert "await self._assert_seed_applied(book_id, run, pass_id)" in review
@@ -141,11 +151,65 @@ def test_a_cast_edit_REPLACES_the_roster_so_a_REMOVED_member_actually_disappears
     assert out["notes"] == "x"                               # untouched scalars are preserved
 
 
-def test_a_beat_edit_REPLACES_the_beats_even_though_beats_carry_ids():
-    """beats/events carry ids, so deep_merge would merge-by-id and never delete. Option A replaces."""
-    content = {"beats": [{"id": "b1"}, {"id": "b2"}, {"id": "b3"}]}
-    out = pfs._merge_pass_edits("beat_plan", content, {"beats": [{"id": "b1"}, {"id": "b3"}]})
-    assert [b["id"] for b in out["beats"]] == ["b1", "b3"]   # b2 removed
+def test_a_beat_edit_REPLACES_the_chapters_even_though_chapters_carry_ids():
+    """Chapters carry ids, so deep_merge would merge-by-id and never delete. Option A replaces.
+
+    This test used to operate on a `beats` key — which `run_beats` has NEVER emitted (its output is
+    {chapters, tension_curve, unmapped_beats}). It passed against a field that did not exist, and
+    so vouched for a replace rule that targeted nothing while the author's real beat edits went
+    nowhere. Fixtures here now mirror the adapter.
+    """
+    content = {
+        "chapters": [
+            {"ordinal": 1, "event_id": "b1", "title": "A", "beat_role": "hook", "intent": ""},
+            {"ordinal": 2, "event_id": "b2", "title": "B", "beat_role": "setup", "intent": ""},
+            {"ordinal": 3, "event_id": "b3", "title": "C", "beat_role": "climax", "intent": ""},
+        ],
+        "tension_curve": [{"chapter_index": i, "beat_role": None, "tension_target": 50}
+                          for i in (1, 2, 3)],
+    }
+    edits = {"chapters": [content["chapters"][0], content["chapters"][2]]}
+
+    out = pfs._merge_pass_edits("beat_plan", content, edits)
+
+    assert [c["event_id"] for c in out["chapters"]] == ["b1", "b3"]   # b2 removed
+
+
+def test_a_beat_edit_REDERIVES_the_tension_curve_so_the_halves_cannot_disagree():
+    """Pass 6 honours the stored curve VERBATIM, so a role edit that left the curve stale would
+    show the author `climax` while the drafter still aimed at the old chapter's neutral band."""
+    content = {
+        "chapters": [
+            {"ordinal": 1, "event_id": "e1", "title": "A", "beat_role": "setup", "intent": ""},
+            {"ordinal": 2, "event_id": "e2", "title": "B", "beat_role": "setup", "intent": ""},
+        ],
+        "tension_curve": [
+            {"chapter_index": 1, "beat_role": "setup", "tension_target": 30},
+            {"chapter_index": 2, "beat_role": "setup", "tension_target": 50},
+        ],
+    }
+    promoted = [dict(content["chapters"][0]),
+                {**content["chapters"][1], "beat_role": "climax"}]
+
+    out = pfs._merge_pass_edits("beat_plan", content, {"chapters": promoted})
+
+    curve = {c["chapter_index"]: c for c in out["tension_curve"]}
+    assert curve[2]["beat_role"] == "climax"
+    assert curve[2]["tension_target"] >= 88, "the promoted chapter must aim at the climax band"
+
+
+def test_a_non_chapter_beat_edit_does_NOT_rewrite_a_hand_tuned_curve():
+    """Editing only `unmapped_beats` must leave a curve the author tuned at this checkpoint alone —
+    the re-derive fires on a chapters edit, not on every beat_plan edit."""
+    content = {
+        "chapters": [{"ordinal": 1, "event_id": "e1", "title": "A", "beat_role": "setup"}],
+        "tension_curve": [{"chapter_index": 1, "beat_role": "setup", "tension_target": 77}],
+    }
+
+    out = pfs._merge_pass_edits("beat_plan", content, {"unmapped_beats": ["climax"]})
+
+    assert out["tension_curve"][0]["tension_target"] == 77, "hand-tuned value survived"
+    assert out["unmapped_beats"] == ["climax"]
 
 
 def test_a_non_list_edit_still_DEEP_MERGES_and_an_unknown_kind_is_untouched():
@@ -154,9 +218,11 @@ def test_a_non_list_edit_still_DEEP_MERGES_and_an_unknown_kind_is_untouched():
     out = pfs._merge_pass_edits("cast_plan", {"cast": [{"id": "c1"}], "meta": {"a": 1}}, {"meta": {"b": 2}})
     assert out["meta"] == {"a": 1, "b": 2}                   # object deep-merged
     assert [m["id"] for m in out["cast"]] == ["c1"]          # list untouched when not in the edit
-    # an unknown kind: no list field declared → pure deep_merge (id-upsert), list preserved
-    un = pfs._merge_pass_edits("motif_plan", {"motifs": [{"id": "m1"}]}, {"motifs": [{"id": "m2"}]})
-    assert {m["id"] for m in un["motifs"]} == {"m1", "m2"}   # upsert, not replace
+    # A kind with NO declared list field → pure deep_merge (id-upsert), list preserved. This used
+    # to use `motif_plan`, which is now a declared replace-kind (every atom must support delete);
+    # `heal_report` is a real artifact kind that is not a reviewable atom, so it keeps the fallback.
+    un = pfs._merge_pass_edits("heal_report", {"findings": [{"id": "m1"}]}, {"findings": [{"id": "m2"}]})
+    assert {m["id"] for m in un["findings"]} == {"m1", "m2"}   # upsert, not replace
 
 
 def test_serialize_run_and_pass_status_AGREE_on_the_compiled_field():
@@ -478,3 +544,39 @@ def test_a_RUNNING_pass_cannot_be_ACCEPTED_and_nothing_downstream_can_run():
         __import__("app.services.plan_forge_service", fromlist=["x"]).PlanForgeService._review_pass,
     )
     assert 'if entry.get("status") != "completed":' in src
+
+
+# ── every atom kind must support DELETE, not just add ────────────────────────────────────────────
+# `plan_review_checkpoint` accepts `edits` for ANY pass, but `_PASS_LIST_REPLACE_FIELDS` originally
+# named only cast_plan/beat_plan. The other four fell through to `_deep_merge`'s id-upsert, so a
+# shorter list silently KEPT the removed member and the call still reported success — an advertised
+# operation that could not work. Field names are the producers': run_motifs {motifs},
+# run_world {entities}, run_character_arcs {character_arcs}, run_scenes {chapters}.
+
+@pytest.mark.parametrize(("kind", "field"), [
+    ("motif_plan", "motifs"),
+    ("motif_plan", "selected_motifs"),
+    ("world_plan", "entities"),
+    ("char_arc_plan", "character_arcs"),
+    ("scene_plan", "chapters"),
+])
+def test_every_atom_kind_can_DELETE_a_member(kind: str, field: str):
+    content = {field: [{"id": "a"}, {"id": "b"}, {"id": "c"}]}
+
+    out = pfs._merge_pass_edits(kind, content, {field: [{"id": "a"}, {"id": "c"}]})
+
+    assert [x["id"] for x in out[field]] == ["a", "c"], f"{kind}.{field} must delete, not upsert"
+
+
+def test_scene_plan_delete_removes_a_nested_SCENE_too():
+    """scene_plan's scenes hang off chapters, so replacing `chapters` is what makes a scene
+    deletion actually take."""
+    content = {"arc_title": "A", "chapters": [
+        {"chapter": {"chapter_id": "c1"}, "scenes": [{"title": "s1"}, {"title": "s2"}]},
+    ]}
+    trimmed = [{"chapter": {"chapter_id": "c1"}, "scenes": [{"title": "s1"}]}]
+
+    out = pfs._merge_pass_edits("scene_plan", content, {"chapters": trimmed})
+
+    assert [s["title"] for s in out["chapters"][0]["scenes"]] == ["s1"]
+    assert out["arc_title"] == "A", "untouched siblings survive"

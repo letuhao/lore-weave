@@ -1,0 +1,439 @@
+{
+  "mystery.assembled_confrontation": {
+    "beats": {
+      "assemble": {
+        "intent": "mọi kẻ có phần dính líu bị đặt chung một phòng",
+        "label": "Triệu tập các bên"
+      },
+      "consequence": {
+        "intent": "câu hỏi chuyển từ ai có tội sang giờ xử lý ra sao",
+        "label": "Còn lại là hậu quả"
+      },
+      "deny": {
+        "intent": "kẻ bị gọi tên chối và đưa ra phản bác mạnh nhất của mình",
+        "label": "Lời chối"
+      },
+      "lay": {
+        "intent": "chuỗi sự việc được đi lại từng bước chỉ bằng dữ kiện đã bày",
+        "label": "Bày ra cả chuỗi"
+      },
+      "prove": {
+        "intent": "một mẩu chứng cứ đặt xuống mà chẳng cần diễn giải",
+        "label": "Bằng chứng không cãi nổi"
+      }
+    },
+    "effects": [
+      "trách nhiệm được định công khai",
+      "cái giá của màn vạch trần rơi xuống cả những người vô can"
+    ],
+    "emotion_target": "hả hê",
+    "examples": [
+      "Ông dắt họ đi qua chuỗi ấy hai lượt, và lượt thứ hai ông dừng lại đúng chỗ mà cả phòng chỉ một người có thể biết được giờ giấc."
+    ],
+    "name": "Bày Ra Cả Chuỗi",
+    "preconditions": [
+      "đủ dữ kiện đã xác lập để dựng một chuỗi mà không cần chứng cứ mới"
+    ],
+    "roles": {
+      "assembled": {
+        "constraints": [
+          "ai cũng từng có lý do hợp lý để bị nghi"
+        ],
+        "label": "các bên được triệu tập"
+      },
+      "culprit": {
+        "constraints": [
+          "chối trước khi chịu"
+        ],
+        "label": "kẻ bị gọi tên"
+      },
+      "investigator": {
+        "constraints": [
+          "chỉ dùng những gì đã được chứng minh"
+        ],
+        "label": "kẻ bày ra chuỗi"
+      },
+      "proof": {
+        "constraints": [
+          "không cần diễn giải vẫn có sức nặng"
+        ],
+        "label": "chứng cứ không cãi được"
+      }
+    },
+    "summary": "Cả nhà được triệu về một gian phòng và chuỗi sự việc được đi lại trước mặt tất cả, từng bước một, mỗi bước chỉ tựa vào những thứ đã bày ra — bảng giờ giấc, cuốn sổ, ai có thể biết được canh mấy. Lời chối cãi tới, như nó phải tới, và được đáp lại bằng đúng một món không cần diễn giải, sau đó thứ còn lại không phải câu hỏi ai có tội mà là câu hỏi giờ phải xử ra sao."
+  },
+  "mystery.false_lead": {
+    "beats": {
+      "collapse": {
+        "intent": "dấu vết giả trở thành chứng cứ mạnh nhất về kẻ đã bày ra nó",
+        "label": "Manh mối sụp ngược lên trên"
+      },
+      "commit": {
+        "intent": "nguồn lực, danh tiếng hoặc tình cảm được đặt lên manh mối ấy",
+        "label": "Cuộc điều tra dốc vào"
+      },
+      "emerge": {
+        "intent": "chứng cứ dồn về một người với độ ngăn nắp bất thường",
+        "label": "Một nghi phạm gọn ghẽ hiện ra"
+      },
+      "seam": {
+        "intent": "một đường chỉ lộ ra chỗ chứng cứ được bày chứ không phải được để lại",
+        "label": "Khớp quá gọn"
+      }
+    },
+    "effects": [
+      "người điều tra mất thế đứng và phải đi tiếp với ít hơn",
+      "việc tồn tại một kẻ sắp đặt có chủ ý từ nay là điều đã xác lập"
+    ],
+    "emotion_target": "bất an",
+    "examples": [
+      "Mọi giấy tờ họ cần đều nằm trong đúng cái ngăn kéo họ lục đầu tiên, và chính điều đó rốt cuộc mới làm cô thấy gợn."
+    ],
+    "name": "Manh Mối Khớp Quá Vừa",
+    "preconditions": [
+      "một cuộc điều tra đang bị ép phải nêu ra một cái tên"
+    ],
+    "roles": {
+      "arranger": {
+        "constraints": [
+          "đứng ngoài sân khấu trong lúc manh mối chạy"
+        ],
+        "label": "kẻ đã sắp đặt cho khớp"
+      },
+      "investigator": {
+        "constraints": [
+          "đặt cược trước khi kiểm chứng"
+        ],
+        "label": "người điều tra đã dốc vào"
+      },
+      "suspect": {
+        "constraints": [
+          "quả thật bị dữ kiện chỉ vào"
+        ],
+        "label": "nghi phạm tiện lợi quá mức"
+      }
+    },
+    "summary": "Một nghi phạm nổi lên mà chứng cứ khớp vào gọn ghẽ — thư từ nằm đúng cái ngăn kéo được lục đầu tiên, nợ nần có ghi trong sổ, chứng cứ ngoại phạm thì mỏng — và cuộc điều tra dốc vào đó bằng danh tiếng, bằng tiền của, hoặc bằng cảm xúc. Nó sụp không phải vì có chứng cứ mới mà vì có kẻ nhận ra nó khớp quá gọn: đã có người sắp đặt để đống giấy tờ này được tìm thấy theo đúng thứ tự này, và kẻ đó mới là đối tượng thật."
+  },
+  "mystery.hidden_connection": {
+    "beats": {
+      "join": {
+        "intent": "một chuyện tình cờ để lộ chúng cùng ra từ một chỗ",
+        "label": "Một gốc chung hiện ra"
+      },
+      "redraw": {
+        "intent": "các dữ kiện đã biết tự sắp lại quanh tâm điểm mới",
+        "label": "Vụ án vẽ lại"
+      },
+      "separate": {
+        "intent": "cả hai đều đã biết và chẳng cái nào dính tới cái nào",
+        "label": "Hai dữ kiện nằm rời"
+      }
+    },
+    "effects": [
+      "tâm của vụ án đã dịch mà chẳng cần chứng cứ mới",
+      "những kẻ từng bị gạt ra nay trở lại trong tầm ngắm"
+    ],
+    "emotion_target": "tò mò",
+    "examples": [
+      "Nhà băng trong sổ sách và cái làng trong lá thư hóa ra cách nhau trăm bước chân, và mọi thứ còn lại tự sắp lại quanh chỗ đó."
+    ],
+    "name": "Hai Dữ Kiện, Một Gốc",
+    "preconditions": [
+      "một hồ sơ vụ án giữ những dữ kiện đã xác lập mà chưa từng được đặt cạnh nhau"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "vốn đã có sẵn cả hai dữ kiện"
+        ],
+        "label": "kẻ nối chúng lại"
+      },
+      "origin": {
+        "constraints": [
+          "nằm ngay trước mắt mà không ai lấy làm tâm"
+        ],
+        "label": "cái gốc chung"
+      },
+      "source": {
+        "constraints": [
+          "tình cờ, không phải chứng cứ"
+        ],
+        "label": "cái cớ khiến nối được"
+      }
+    },
+    "summary": "Hai thứ vẫn nằm trong hồ sơ như chẳng dính gì tới nhau — hai cái tên, hai ngày tháng, một khoản tiền trong sổ và một địa danh trong lá thư — hóa ra cùng một gốc, và hình dạng cả vụ án tự vẽ lại quanh nó. Không có gì mới được tìm thấy; một dữ kiện vốn đã nằm sẵn trong tay bỗng thành tâm điểm, và những kẻ từng được loại lại trở vào tầm ngắm."
+  },
+  "mystery.impossible_circumstance": {
+    "beats": {
+      "bound": {
+        "intent": "vụ án được chỉ ra là bị loại trừ bởi các điều kiện đã biết",
+        "label": "Nêu ra cái bất khả"
+      },
+      "dissolve": {
+        "intent": "bỏ giả định đi thì chuỗi sự việc trở nên tầm thường",
+        "label": "Cái bất khả tan ra"
+      },
+      "enumerate": {
+        "intent": "mỗi điều kiện được bày ra để kiểm chứng thay vì để cảm nhận",
+        "label": "Liệt kê từng điều kiện"
+      },
+      "identify": {
+        "intent": "tìm ra điều kiện mà thật ra chưa ai từng kiểm lại",
+        "label": "Một cái chỉ là giả định"
+      }
+    },
+    "effects": [
+      "cách thức đã rõ dù bàn tay thì chưa",
+      "ai được lợi từ cái giả định chung ấy trở thành câu hỏi mới"
+    ],
+    "emotion_target": "tò mò",
+    "examples": [
+      "Bốn người thề rằng cánh cửa được canh suốt đêm, và cả bốn đều nói thật — về bốn đêm khác nhau."
+    ],
+    "name": "Chuyện Ấy Không Thể Xảy Ra",
+    "preconditions": [
+      "một loạt điều kiện được mọi người có mặt coi như dữ kiện"
+    ],
+    "roles": {
+      "assumption": {
+        "constraints": [
+          "chưa từng được ai kiểm chứng"
+        ],
+        "label": "giả định chung"
+      },
+      "constraint": {
+        "constraints": [
+          "còn đứng vững cho tới khi một mục bị xếp lại loại"
+        ],
+        "label": "cái bất khả"
+      },
+      "investigator": {
+        "constraints": [
+          "phải nêu chúng thật thà thì mới phá được"
+        ],
+        "label": "kẻ liệt kê các điều kiện"
+      }
+    },
+    "summary": "Vụ án bị bao bởi những điều kiện khiến nó thành bất khả — gian phòng cài then từ bên trong, cầu thang có người canh suốt đêm, chứng cứ ngoại phạm do người dưng thề, quãng đường không ai ruổi kịp trong chừng ấy canh giờ. Các điều kiện được liệt kê thật thà, từng cái một, và lời đáp nằm ở chỗ tìm ra cái điều kiện chưa từng là dữ kiện được kiểm mà chỉ là một giả định cả nhà cùng ôm."
+  },
+  "mystery.impossible_detail": {
+    "beats": {
+      "detail": {
+        "intent": "một dữ kiện đơn lẻ không thể cắt nghĩa bằng cách đọc vô hại kia",
+        "label": "Một chi tiết không chịu khớp"
+      },
+      "discover": {
+        "intent": "một chuyện bị phát hiện và nó có sẵn một cách giải thích vô hại",
+        "label": "Biến cố bị phát giác"
+      },
+      "fix": {
+        "intent": "chỗ sai lệch được nêu đủ chính xác để có thể truy tới cùng",
+        "label": "Định hình câu hỏi"
+      },
+      "open": {
+        "intent": "có kẻ chịu đi tìm lời đáp, ngược lại mong muốn khép hồ sơ",
+        "label": "Cuộc điều tra mở ra"
+      }
+    },
+    "effects": [
+      "một câu hỏi cụ thể chưa có lời đáp từ nay chi phối mọi chuyện tiếp theo",
+      "ít nhất một bên mong rằng câu hỏi ấy đừng được đặt ra"
+    ],
+    "emotion_target": "tò mò",
+    "examples": [
+      "Mọi thứ trong phòng đều nói rằng ông ta uống một mình; chỉ có cái chén thứ hai, đã rửa, đã khô, đã treo lại trên móc, là không đồng ý."
+    ],
+    "name": "Chi Tiết Lẽ Ra Không Nên Có",
+    "preconditions": [
+      "một sự việc có sẵn lời giải thích vô hại nằm ngay trước mắt"
+    ],
+    "roles": {
+      "authority": {
+        "constraints": [
+          "thích cách giải thích vô hại hơn"
+        ],
+        "label": "những kẻ muốn khép lại"
+      },
+      "investigator": {
+        "constraints": [
+          "thấy thứ người khác đi lướt qua"
+        ],
+        "label": "kẻ nhìn ra"
+      },
+      "question": {
+        "constraints": [
+          "sắc hơn câu 'ai làm'"
+        ],
+        "label": "câu hỏi được mở ra"
+      },
+      "scene": {
+        "constraints": [
+          "bày ra phần lớn là dữ kiện bình thường"
+        ],
+        "label": "bản thân biến cố"
+      }
+    },
+    "summary": "Một biến cố bị phát giác — một cái xác nằm trên sàn, một vụ mất trộm, một người biến mất, một cuốn sổ không khớp — và giữa những dữ kiện bình thường lại nằm một vật nhỏ mà không lời giải vô hại nào cắt nghĩa nổi: chiếc chén thứ hai đã rửa và treo lại lên móc, chiếc chìa khóa nằm nhầm phía cánh cửa, tấm áo khô quá mức so với trời mưa. Chính cái sai lệch đơn lẻ ấy biến một tai nạn thành một câu hỏi, và câu hỏi đó mới là thứ cuộc điều tra thật sự theo đuổi."
+  },
+  "mystery.investigator_compromised": {
+    "beats": {
+      "bend": {
+        "intent": "một quyết định được đưa ra mà phần dính líu giải thích nó tốt hơn chứng cứ",
+        "label": "Phán đoán nghiêng đi"
+      },
+      "expose": {
+        "intent": "phần dính líu ấy trở nên ai cũng biết",
+        "label": "Mối liên hệ lộ ra"
+      },
+      "reearn": {
+        "intent": "các kết luận cũ phải được chứng minh lại trước một đám đông đang ngờ",
+        "label": "Phải giành lại tất cả từ đầu"
+      },
+      "stake": {
+        "intent": "người điều tra có liên hệ với vụ án mà không hề thừa nhận",
+        "label": "Phần dính líu tồn tại mà không ai thấy"
+      }
+    },
+    "effects": [
+      "các kết luận trước đó không còn giá trị cho tới khi được chứng minh lại",
+      "việc người ấy có được tiếp tục tham gia hay không tự nó thành chuyện tranh cãi"
+    ],
+    "emotion_target": "bất an",
+    "examples": [
+      "Không phải ông ta nói dối về việc quen gia đình ấy; chỉ là chẳng ai nghĩ tới việc hỏi, và ông đã để yên như thế suốt ba tuần."
+    ],
+    "name": "Người Điều Tra Có Phần Trong Đó",
+    "preconditions": [
+      "một người điều tra vốn có liên hệ từ trước với một bên trong vụ án"
+    ],
+    "roles": {
+      "doubters": {
+        "constraints": [
+          "ngờ là có cơ sở"
+        ],
+        "label": "những kẻ giờ đâm ngờ"
+      },
+      "investigator": {
+        "constraints": [
+          "không hề chọn phần dính líu ấy"
+        ],
+        "label": "người điều tra bị dính líu"
+      },
+      "stake": {
+        "constraints": [
+          "là thật và đủ để mất tư cách"
+        ],
+        "label": "phần dính líu cá nhân"
+      }
+    },
+    "summary": "Kẻ đặt câu hỏi hóa ra lại nằm bên trong vụ án — có họ hàng với một bên, bị một bên cho vay nợ, hoặc chính là nguyên do khiến chuyện xảy ra — mà đã không nói ra. Sự phán đoán nghiêng đi trước khi có ai kịp nhận ra nó nghiêng, và một khi mối liên hệ ấy lộ ra thì mọi kết luận đã ghi vào hồ sơ đều phải giành lại từ đầu trước những người giờ có đủ cớ để ngờ tất cả."
+  },
+  "mystery.second_death": {
+    "beats": {
+      "carry": {
+        "intent": "phần trách nhiệm vì đã khơi ra cái chết làm đổi cách họ đi tiếp",
+        "label": "Người điều tra mang lấy nó"
+      },
+      "narrow": {
+        "intent": "chỉ những kẻ biết trước điều sắp nói mới có thể ra tay",
+        "label": "Phạm vi thu hẹp"
+      },
+      "provoke": {
+        "intent": "một cuộc hỏi han chạm tới người từ đó thành mối hiểm cho kẻ khác",
+        "label": "Câu hỏi chạm gần"
+      },
+      "silence": {
+        "intent": "người sắp mở lời bị loại bỏ",
+        "label": "Nhân chứng bị bịt miệng"
+      }
+    },
+    "effects": [
+      "hồ sơ vụ án giờ giữ những dữ kiện đã xác lập về kẻ biết trước, vẫn chưa đặt cạnh nhau",
+      "vòng nghi phạm co lại còn những kẻ biết nhân chứng đã chết sắp nói ra điều gì",
+      "người điều tra từ nay có một phần dính líu cá nhân mà họ không hề chọn"
+    ],
+    "emotion_target": "khiếp sợ",
+    "examples": [
+      "Cô hẹn ông ta sáng mai tới; người ta tìm thấy ông trước khi trời sáng, và chuyện đó nói với cô nhiều hơn câu trả lời của ông."
+    ],
+    "name": "Điều Tra Gọi Ra Cái Chết Thứ Hai",
+    "preconditions": [
+      "một cuộc điều tra đã lọt vào mắt chính đối tượng của nó"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "gánh phần trách nhiệm vì đã khơi ra"
+        ],
+        "label": "kẻ mà câu hỏi của mình đã khơi ra chuyện đó"
+      },
+      "killer": {
+        "constraints": [
+          "ắt phải biết trước điều sắp được nói"
+        ],
+        "label": "kẻ ra tay bịt miệng"
+      },
+      "silenced": {
+        "constraints": [
+          "sắp nói ra điều hữu ích"
+        ],
+        "label": "nạn nhân thứ hai"
+      }
+    },
+    "summary": "Việc đặt câu hỏi khiến ai đó trở nên nguy hiểm với kẻ khác, và một cái xác thứ hai nối theo — thường là chính người đã hẹn sáng mai sẽ nói, rồi bị tìm thấy trước khi trời sáng. Cuộc hỏi chuyện không bao giờ diễn ra ấy nói nhiều hơn cả câu trả lời: chỉ những kẻ biết điều sắp được nói mới kịp ra tay, phạm vi thu về đúng họ, và người điều tra từ đây mang trên mình một cái chết do chính câu hỏi của mình khơi ra."
+  },
+  "mystery.witness_who_lies": {
+    "beats": {
+      "contradict": {
+        "intent": "một chi tiết kiểm được không khớp với lời khai",
+        "label": "Một dữ kiện nhỏ chỏi lại"
+      },
+      "press": {
+        "intent": "chỗ mâu thuẫn được đặt thẳng trước mặt nhân chứng",
+        "label": "Ép vào chỗ dối"
+      },
+      "reason": {
+        "intent": "nhân chứng khai ra một chuyện chẳng liên quan làm đổi khung cả vụ án",
+        "label": "Cái lý do mới là thứ tìm được"
+      },
+      "testify": {
+        "intent": "nhân chứng cung cấp một lời khai đại thể là nhất quán",
+        "label": "Lời khai được đưa ra"
+      }
+    },
+    "effects": [
+      "hồ sơ vụ án giữ thêm một dữ kiện đã xác lập — một quan hệ bị giấu — mà chưa đặt cạnh thứ gì",
+      "dòng thời gian của nhân chứng được sửa lại, kéo theo một người khác dịch chỗ"
+    ],
+    "emotion_target": "căng thẳng",
+    "examples": [
+      "Ông ta không có mặt ở kho hàng và nhất định không nói mình ở đâu, phải mất thêm hai ngày mới biết đó là một nhà thương."
+    ],
+    "name": "Nhân Chứng Nói Dối Vì Chuyện Khác",
+    "preconditions": [
+      "một nhân chứng có thứ để mất mà thứ đó không phải vụ án"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "phải ép mà không mặc định là có tội"
+        ],
+        "label": "kẻ ép tới cùng"
+      },
+      "secret": {
+        "constraints": [
+          "đủ nhục để người ta nói dối vì nó"
+        ],
+        "label": "bí mật chẳng liên quan"
+      },
+      "witness": {
+        "constraints": [
+          "đang nói dối về một chuyện, nhưng không phải chuyện này"
+        ],
+        "label": "nhân chứng nói dối"
+      }
+    },
+    "summary": "Một lời khai chỏi lại đúng một thứ nhỏ có thể kiểm được — giờ ghi trên tờ biên lai, chuyến xe nào còn chạy, cửa sổ nhà ai trông ra sân — và khi bị ép tới cùng thì cái bật ra không phải lời thú nhận về vụ án mà là lời thú nhận về một chuyện hoàn toàn khác: một món nợ, một mối tình vụng trộm, một đêm nằm ở nhà thương mà họ nhất định không nói tên. Lời dối là thật, lý do thì chẳng liên quan, và chính cái lý do chẳng liên quan ấy mở được vụ án."
+  }
+}

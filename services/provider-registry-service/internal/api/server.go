@@ -2902,16 +2902,17 @@ func (s *Server) getInternalModelInfo(w http.ResponseWriter, r *http.Request) {
 	modelSource := chi.URLParam(r, "model_source")
 
 	var providerKind, providerModelName string
+	var capabilityFlags []byte
 	if modelSource == "platform_model" {
 		err = s.pool.QueryRow(r.Context(),
-			"SELECT provider_kind, provider_model_name FROM platform_models WHERE platform_model_id=$1 AND status='active'",
+			"SELECT provider_kind, provider_model_name, capability_flags FROM platform_models WHERE platform_model_id=$1 AND status='active'",
 			modelRef,
-		).Scan(&providerKind, &providerModelName)
+		).Scan(&providerKind, &providerModelName, &capabilityFlags)
 	} else { // user_model (default)
 		err = s.pool.QueryRow(r.Context(),
-			"SELECT provider_kind, provider_model_name FROM user_models WHERE user_model_id=$1 AND is_active=true",
+			"SELECT provider_kind, provider_model_name, capability_flags FROM user_models WHERE user_model_id=$1 AND is_active=true",
 			modelRef,
-		).Scan(&providerKind, &providerModelName)
+		).Scan(&providerKind, &providerModelName, &capabilityFlags)
 	}
 	if err != nil {
 		writeError(w, http.StatusNotFound, "MODEL_NOT_FOUND", "model not found or inactive")
@@ -2920,7 +2921,30 @@ func (s *Server) getInternalModelInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"provider_kind":       providerKind,
 		"provider_model_name": providerModelName,
+		// capability_flags carries the per-model behaviour overrides callers need — notably
+		// `reasoning_control`, which the shared classifier checks BEFORE its name heuristic and
+		// is the documented way to correct a model that heuristic gets wrong. Until this field
+		// was returned, that override was unreachable from any server: the only caller that
+		// could supply it was one that already had the flags client-side.
+		//
+		// These are declarative capability/display hints (`_capability`, `_display_name`,
+		// `vision`, `extended_thinking`, …) — never credentials. The secret lives on
+		// provider_credentials and is not touched here; the endpoint stays internal-token-gated.
+		"capability_flags": jsonObjectOrEmpty(capabilityFlags),
 	})
+}
+
+// jsonObjectOrEmpty renders a jsonb column as a JSON OBJECT, degrading to `{}` for anything
+// that is not one. capability_flags is nullable AND holds a bare JSON `null` on some live rows
+// (58 objects / 5 json-nulls at the time of writing) — a shape that already broke an ad-hoc
+// `jsonb_object_keys` query. Callers should be able to treat this field as a map without
+// re-deriving that defence in every language that consumes the route.
+func jsonObjectOrEmpty(raw []byte) json.RawMessage {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		return json.RawMessage(`{}`)
+	}
+	return json.RawMessage(trimmed)
 }
 
 // recordSyncUsage logs a SYNCHRONOUS (non-streaming) model invocation to

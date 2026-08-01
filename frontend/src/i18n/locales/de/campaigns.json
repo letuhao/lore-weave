@@ -74,12 +74,12 @@
     "chapters": "Kapitel",
     "stage": "Phase",
     "status": "Status",
-    "tokens": "Tokens (in/out)",
     "usd": "USD",
     "localFree": "🖥 {{kind}} · kostenlos",
     "cloud": "☁ {{kind}}",
     "launching": "Startet…",
-    "launch": "Kampagne starten"
+    "launch": "Kampagne starten",
+    "tokens": "Tokens (in/out)"
   },
   "list": {
     "title": "Auto-Draft-Kampagnen",

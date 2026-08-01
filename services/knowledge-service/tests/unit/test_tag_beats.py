@@ -40,7 +40,8 @@ def _ev(eid, title, *, summary="", participants=None):
 
 def test_route_is_registered():
     from app.main import app
-    assert _PATH in {r.path for r in app.routes}
+    from loreweave_obs.routes import route_paths  # FastAPI 0.139: app.routes is not flat
+    assert _PATH in route_paths(app)
 
 
 def test_route_requires_internal_token():

@@ -1,0 +1,752 @@
+[
+  {
+    "code": "rebirth.second_chance_wake",
+    "kind": "sequence",
+    "category": "rebirth.wake",
+    "name": "Waking Before the Ruin",
+    "summary": "A life ends — on a scaffold, at the hands of a sworn brother, in a bed of regrets — and consciousness resumes in a body with a boy's hands, under a ceiling from before the fire, beside a calendar three years wrong. Disbelief gives way to checking: the date, a face not yet aged, a scar that has not happened. Out of that checking comes the vow that this time the ending already lived through will not be allowed to arrive.",
+    "genre_tags": [
+      "rebirth",
+      "trong-sinh",
+      "transmigration",
+      "xuyen-khong",
+      "second-chance"
+    ],
+    "roles": [
+      {
+        "key": "returner",
+        "actant": "subject",
+        "label": "the one who wakes earlier",
+        "constraints": [
+          "carries a complete memory of what came after"
+        ]
+      },
+      {
+        "key": "outcome",
+        "actant": "object",
+        "label": "the outcome to be prevented",
+        "constraints": [
+          "is specific and dated"
+        ]
+      },
+      {
+        "key": "anchor",
+        "actant": "sender",
+        "label": "the fact that proves the date",
+        "constraints": [
+          "is checkable and unambiguous"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "end",
+        "label": "The life ends",
+        "intent": "the prior life closes on a defined loss or betrayal",
+        "tension_target": 5,
+        "order": 1
+      },
+      {
+        "key": "wake",
+        "label": "Waking earlier",
+        "intent": "consciousness resumes before the ruin, in a body or world that should be impossible",
+        "tension_target": 4,
+        "order": 2
+      },
+      {
+        "key": "verify",
+        "label": "Verifying the date",
+        "intent": "a checkable fact confirms exactly how far back this is",
+        "tension_target": 3,
+        "order": 3
+      },
+      {
+        "key": "vow",
+        "label": "The vow to change it",
+        "intent": "a specific future outcome is chosen as the thing that will not be allowed",
+        "tension_target": 4,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a life with a known, dated catastrophe in it"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the protagonist holds a remembered sequence of events that have not happened"
+      },
+      {
+        "text": "the protagonist occupies a body and an identity whose pre-existing obligations are not theirs"
+      },
+      {
+        "text": "a specific, dated outcome is now the thing everything is measured against"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "disbelief",
+    "examples": [
+      {
+        "text": "The ceiling was the one from before the fire, and the calendar on the wall was three years wrong, and his hands were a boy's hands."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "rebirth.foreknowledge_leverage",
+    "kind": "situation",
+    "category": "rebirth.leverage",
+    "name": "Positioned Before It Happens",
+    "summary": "A remembered event still sits in the future — the flood that takes the low fields, the house that calls in its loans, the question that will be on the examination, the caravan that arrives in spring — so a position is taken months early that looks like ruin to everyone watching: buying worthless land, refusing a good match, selling at the top of a rising market. The event arrives on schedule, the position pays, and the profit is inseparable from the question of how it could have been known.",
+    "genre_tags": [
+      "rebirth",
+      "trong-sinh",
+      "transmigration",
+      "xuyen-khong",
+      "foreknowledge"
+    ],
+    "roles": [
+      {
+        "key": "returner",
+        "actant": "subject",
+        "label": "the one who remembers it",
+        "constraints": [
+          "cannot explain how they know"
+        ]
+      },
+      {
+        "key": "position",
+        "actant": "object",
+        "label": "the position taken early",
+        "constraints": [
+          "looks irrational before the event"
+        ]
+      },
+      {
+        "key": "doubters",
+        "actant": "opponent",
+        "label": "those who think it reckless",
+        "constraints": [
+          "are reasoning correctly from what they know"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "recall",
+        "label": "The event is remembered",
+        "intent": "a dated future event is recalled with usable precision",
+        "tension_target": 2,
+        "order": 1
+      },
+      {
+        "key": "position",
+        "label": "The position is taken early",
+        "intent": "a commitment is made that looks reckless to every observer",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "arrive",
+        "label": "The event arrives on time",
+        "intent": "the remembered event happens exactly as expected",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "bank",
+        "label": "Profit and suspicion together",
+        "intent": "the gain is banked and the question of how it was known is planted",
+        "tension_target": 3,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a remembered future event with a date and a usable consequence"
+      }
+    ],
+    "effects": [
+      {
+        "text": "material or political advantage is secured ahead of everyone else"
+      },
+      {
+        "text": "at least one observer now wonders how it could have been known"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 3,
+    "emotion_target": "anticipation",
+    "examples": [
+      {
+        "text": "He bought the flooded fields at the price of dry ones, and endured the laughter for eleven months, and then it rained."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "rebirth.butterfly_divergence",
+    "kind": "sequence",
+    "category": "rebirth.divergence",
+    "name": "The Memory Stops Matching",
+    "summary": "An early intervention works, and its consequences spread past the thing it was meant to change: people who should have died marry, a house that should have fallen holds, a war starts a season late. One by one the remembered dates stop delivering, until the advantage that made the protagonist untouchable has quietly expired and they are walking into a future as unknown to them as it is to everyone else — having spent the last of the map.",
+    "genre_tags": [
+      "rebirth",
+      "trong-sinh",
+      "transmigration",
+      "xuyen-khong",
+      "divergence"
+    ],
+    "roles": [
+      {
+        "key": "returner",
+        "actant": "subject",
+        "label": "the one losing the map",
+        "constraints": [
+          "built their plans on the remembered script"
+        ]
+      },
+      {
+        "key": "script",
+        "actant": "object",
+        "label": "the remembered future",
+        "constraints": [
+          "degrades in proportion to their own success"
+        ]
+      },
+      {
+        "key": "changed",
+        "actant": "helper",
+        "label": "those whose lives already diverged",
+        "constraints": [
+          "now act in ways the memory cannot predict"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "intervene",
+        "label": "An early change succeeds",
+        "intent": "an intervention lands and alters an early outcome",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "ripple",
+        "label": "The ripple spreads",
+        "intent": "consequences accumulate beyond the intended change",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "mismatch",
+        "label": "The script stops matching",
+        "intent": "a remembered event fails to occur or occurs wrongly",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "adapt",
+        "label": "Judgement replaces memory",
+        "intent": "the protagonist must act without foreknowledge for the first time",
+        "tension_target": 5,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a remembered sequence of events that an intervention has already altered at a dated point"
+      }
+    ],
+    "effects": [
+      {
+        "text": "foreknowledge is no longer reliable and cannot be restored"
+      },
+      {
+        "text": "the protagonist's competence must now be demonstrated rather than assumed"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "anxiety",
+    "examples": [
+      {
+        "text": "The grain riot she had been positioned for since spring simply never came, and she stood in the market understanding that from here she was as blind as everyone else in it."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "rebirth.known_traitor_untouchable",
+    "kind": "situation",
+    "category": "rebirth.traitor",
+    "name": "The Traitor Everyone Still Trusts",
+    "summary": "The one who will hand them over is standing in the courtyard pouring the wine, well-liked and guilty of precisely nothing yet, and there is no accusation that would not sound like madness or malice. So the counter is built sideways and unexplained — a seal moved to a different cupboard, a document quietly copied, a junior officer cultivated — until the betrayal arrives on the day it always arrived and lands on a floor that was prepared for it.",
+    "genre_tags": [
+      "rebirth",
+      "trong-sinh",
+      "betrayal",
+      "foreknowledge",
+      "intrigue"
+    ],
+    "roles": [
+      {
+        "key": "returner",
+        "actant": "subject",
+        "label": "the one who knows",
+        "constraints": [
+          "cannot accuse without proof of a future act"
+        ]
+      },
+      {
+        "key": "traitor",
+        "actant": "opponent",
+        "label": "the future betrayer",
+        "constraints": [
+          "is currently innocent and trusted"
+        ]
+      },
+      {
+        "key": "circle",
+        "actant": "receiver",
+        "label": "those who trust them",
+        "constraints": [
+          "would side with the traitor today"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "recognize",
+        "label": "Recognising the face",
+        "intent": "the future betrayer is encountered before any offence exists",
+        "tension_target": 4,
+        "order": 1
+      },
+      {
+        "key": "mute",
+        "label": "Accusation is impossible",
+        "intent": "any warning would read as madness or malice",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "prepare",
+        "label": "Counter-positioning in silence",
+        "intent": "the ground is quietly prepared without naming the reason",
+        "tension_target": 3,
+        "order": 3
+      },
+      {
+        "key": "spring",
+        "label": "The betrayal lands on prepared ground",
+        "intent": "the treachery happens on schedule and fails",
+        "tension_target": 5,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "knowledge of a betrayal by a currently blameless person"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the remembered sequence has been altered at a dated point: the betrayal came and failed"
+      },
+      {
+        "text": "it was neutralised without the protagonist explaining how they knew"
+      },
+      {
+        "text": "the protagonist's preparations have made them look calculating to their own circle"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "dread",
+    "examples": [
+      {
+        "text": "He poured the wine himself, smiling, and she thanked him for it, and made a note of which cupboard the seal was kept in."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "rebirth.save_what_was_lost",
+    "kind": "sequence",
+    "category": "rebirth.rescue",
+    "name": "The Date That Is Coming",
+    "summary": "Someone who was buried is alive again by virtue of the return, sitting at the table and complaining about the rice, with the date of their death coming up on the calendar and nothing yet changed. Everything is spent to break the sequence — the road avoided, the physician fetched early, the letter intercepted — and it works, and the price is taken from somewhere nobody thought to guard, because a death prevented is not a death cancelled.",
+    "genre_tags": [
+      "rebirth",
+      "trong-sinh",
+      "rescue",
+      "foreknowledge",
+      "sacrifice"
+    ],
+    "roles": [
+      {
+        "key": "returner",
+        "actant": "subject",
+        "label": "the one intercepting",
+        "constraints": [
+          "knows the date and the manner"
+        ]
+      },
+      {
+        "key": "doomed",
+        "actant": "object",
+        "label": "the one who died before",
+        "constraints": [
+          "is alive and unaware"
+        ]
+      },
+      {
+        "key": "cost",
+        "actant": "opponent",
+        "label": "where the cost lands instead",
+        "constraints": [
+          "was not defended because it was not foreseen"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "alive",
+        "label": "Alive again, unknowing",
+        "intent": "the lost person is present and ordinary",
+        "tension_target": 2,
+        "order": 1
+      },
+      {
+        "key": "approach",
+        "label": "The date approaches",
+        "intent": "the remembered day comes closer with nothing yet changed",
+        "tension_target": 4,
+        "order": 2
+      },
+      {
+        "key": "intercept",
+        "label": "The interception",
+        "intent": "everything is spent to break the sequence",
+        "tension_target": 5,
+        "order": 3
+      },
+      {
+        "key": "cost",
+        "label": "The cost lands elsewhere",
+        "intent": "the price is paid somewhere undefended",
+        "tension_target": 4,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a specific remembered death with a known date and manner"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the remembered sequence has been altered at a dated point: the person is alive past the date they should not have passed"
+      },
+      {
+        "text": "an unforeseen loss has been incurred in exchange"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 5,
+    "emotion_target": "grief",
+    "examples": [
+      {
+        "text": "She kept him off the river road on the ninth, and it worked, and it was the boy who had run to warn him that they buried instead."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "rebirth.outsider_knowledge",
+    "kind": "situation",
+    "category": "rebirth.knowledge",
+    "name": "Knowledge From Somewhere Else",
+    "summary": "A remedy, a way of boiling water, a method of reckoning accounts, a trick of casting or grafting from another world or another century is used where nobody here could have derived it, and it plainly works in front of witnesses. The result must then be given a cause this world can hold — a prodigy, a god's favour, a lost lineage, heresy — and whichever explanation the world settles on becomes a role that has to be performed from then on.",
+    "genre_tags": [
+      "rebirth",
+      "xuyen-khong",
+      "transmigration",
+      "isekai",
+      "knowledge"
+    ],
+    "roles": [
+      {
+        "key": "outsider",
+        "actant": "subject",
+        "label": "the one who knows impossibly",
+        "constraints": [
+          "cannot cite a source that exists here"
+        ]
+      },
+      {
+        "key": "knowledge",
+        "actant": "object",
+        "label": "the imported knowledge",
+        "constraints": [
+          "is verifiably effective"
+        ]
+      },
+      {
+        "key": "witnesses",
+        "actant": "receiver",
+        "label": "those who saw it work",
+        "constraints": [
+          "must fit it into their own world-model"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "apply",
+        "label": "Applied where it cannot come from",
+        "intent": "knowledge with no local origin is used openly",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "work",
+        "label": "It plainly works",
+        "intent": "the result is undeniable in front of witnesses",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "attribute",
+        "label": "An explanation is chosen",
+        "intent": "the world assigns a cause it can accept",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "bind",
+        "label": "The explanation binds",
+        "intent": "the accepted attribution becomes a role that must be maintained",
+        "tension_target": 4,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a setting whose knowledge base plainly excludes what is being used"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the protagonist now occupies a role assigned by others"
+      },
+      {
+        "text": "the true source of the knowledge is a secret with consequences"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "unease",
+    "examples": [
+      {
+        "text": "He boiled the water and the ward stopped dying, and by the second week they had decided he was touched by a god, which was easier for everyone."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "rebirth.inherited_debts",
+    "kind": "situation",
+    "category": "rebirth.inheritance",
+    "name": "Answering for a Life Not Lived",
+    "summary": "The body arrives with its own history attached: creditors at the gate with a note in handwriting that matches theirs, a betrothal agreed to by someone else, enemies made over years they did not live, a reputation already in circulation. The truth is unsayable, so the debts have to be paid, repudiated or grown into — and the manner of answering is what turns a borrowed life into their own.",
+    "genre_tags": [
+      "rebirth",
+      "xuyen-khong",
+      "transmigration",
+      "identity",
+      "debt"
+    ],
+    "roles": [
+      {
+        "key": "newcomer",
+        "actant": "subject",
+        "label": "the one now wearing the life",
+        "constraints": [
+          "did not commit the acts"
+        ]
+      },
+      {
+        "key": "claimants",
+        "actant": "opponent",
+        "label": "those owed by the previous occupant",
+        "constraints": [
+          "have legitimate claims"
+        ]
+      },
+      {
+        "key": "history",
+        "actant": "object",
+        "label": "the inherited history",
+        "constraints": [
+          "is documented and witnessed"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "claim",
+        "label": "The claims arrive",
+        "intent": "obligations and enmities of the previous life present themselves",
+        "tension_target": 3,
+        "order": 1
+      },
+      {
+        "key": "mute",
+        "label": "The truth cannot be told",
+        "intent": "the real explanation would be worse than the accusation",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "answer",
+        "label": "The debts are answered",
+        "intent": "the newcomer pays, refuses, or renegotiates in their own manner",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "become",
+        "label": "Written into the life",
+        "intent": "the manner of answering makes the borrowed life genuinely theirs",
+        "tension_target": 3,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "an occupied body and identity whose pre-existing obligations are not the protagonist's, with witnesses to them"
+      }
+    ],
+    "effects": [
+      {
+        "text": "the inherited obligations are resolved on the newcomer's own terms"
+      },
+      {
+        "text": "the newcomer is now the author of this life rather than its tenant"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "tension",
+    "examples": [
+      {
+        "text": "Three men came for a debt she had never borrowed, and she found she could either deny a signature in her own hand or pay it."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  },
+  {
+    "code": "rebirth.slip_of_the_impossible",
+    "kind": "situation",
+    "category": "rebirth.exposure",
+    "name": "The Slip That Cannot Be Explained",
+    "summary": "A reflex gives it away — reaching for a latch in a room never entered, flinching at a name not yet spoken here, a word from a language this province has never heard — and one person sees it. They do not accuse. They simply begin watching, and every ordinary evening afterwards wears the cover story thinner, until the choice is between a lie that has to keep growing and confiding in someone whose reaction cannot be predicted.",
+    "genre_tags": [
+      "rebirth",
+      "trong-sinh",
+      "xuyen-khong",
+      "transmigration",
+      "exposure"
+    ],
+    "roles": [
+      {
+        "key": "returner",
+        "actant": "subject",
+        "label": "the one who slipped",
+        "constraints": [
+          "reacted before thinking"
+        ]
+      },
+      {
+        "key": "observer",
+        "actant": "opponent",
+        "label": "the one who noticed",
+        "constraints": [
+          "says nothing and keeps watching"
+        ]
+      },
+      {
+        "key": "cover",
+        "actant": "object",
+        "label": "the cover story",
+        "constraints": [
+          "thins with every further slip"
+        ]
+      }
+    ],
+    "beats": [
+      {
+        "key": "slip",
+        "label": "A reflex betrays it",
+        "intent": "an impossible familiarity shows before it can be masked",
+        "tension_target": 4,
+        "order": 1
+      },
+      {
+        "key": "notice",
+        "label": "Someone notices and says nothing",
+        "intent": "an observer registers it and begins watching quietly",
+        "tension_target": 3,
+        "order": 2
+      },
+      {
+        "key": "thin",
+        "label": "The cover thins",
+        "intent": "each further ordinary moment strains the explanation",
+        "tension_target": 4,
+        "order": 3
+      },
+      {
+        "key": "choose",
+        "label": "Deepen the lie or confide",
+        "intent": "the protagonist must commit to concealment or to a person",
+        "tension_target": 5,
+        "order": 4
+      }
+    ],
+    "preconditions": [
+      {
+        "text": "a protagonist maintaining a false account of who they are"
+      }
+    ],
+    "effects": [
+      {
+        "text": "one other party holds a suspicion that is essentially correct"
+      },
+      {
+        "text": "the protagonist has either an accomplice or a watcher"
+      }
+    ],
+    "annotations": {},
+    "tension_target": 4,
+    "emotion_target": "anxiety",
+    "examples": [
+      {
+        "text": "She reached for the latch on the left before anyone had shown her the room, and the old servant's eyes did not leave her for the rest of the evening."
+      }
+    ],
+    "source": "authored",
+    "source_version": 2
+  }
+]

@@ -40,6 +40,16 @@ test.describe('Assistant — end-of-day core loop (S1) @slow', () => {
     await expect(review).toBeVisible({ timeout: 150_000 });
     const entry = page.getByTestId('assistant-entry');
     await expect(entry, 'a distilled diary entry is produced from the day').toBeVisible({ timeout: 150_000 });
+    // "an entry is PRODUCED" is a claim about content, and the container renders whether or
+    // not `entry.body` has anything in it — an empty distillation, or a field-name drift,
+    // paints the same visible box. The exact words are the model's, so assert substance
+    // rather than wording: real prose, not a blank panel.
+    // Deliberately just "has non-whitespace text", not a length floor: the words are the
+    // model's, and inventing a minimum I cannot validate would trade a blind spot for a
+    // flake. Empty is unambiguously wrong; short may be legitimate.
+    const body = page.getByTestId('assistant-entry-body');
+    await expect(body, 'the entry BODY carries real prose, not an empty box')
+      .toHaveText(/\S/, { timeout: 150_000 });
 
     // Capture the result for the record.
     await page.screenshot({ path: 'tests/e2e/test-results/journey/06-endofday-entry.png', fullPage: true });

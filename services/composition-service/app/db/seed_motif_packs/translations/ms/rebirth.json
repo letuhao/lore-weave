@@ -1,0 +1,428 @@
+{
+  "rebirth.butterfly_divergence": {
+    "beats": {
+      "adapt": {
+        "intent": "protagonis mesti bertindak tanpa pengetahuan awal buat kali pertama",
+        "label": "Pertimbangan menggantikan memori"
+      },
+      "intervene": {
+        "intent": "satu campur tangan berlaku dan mengubah hasil awal",
+        "label": "Perubahan awal berjaya"
+      },
+      "mismatch": {
+        "intent": "peristiwa yang diingati gagal berlaku atau berlaku secara salah",
+        "label": "Skrip tidak lagi seiring"
+      },
+      "ripple": {
+        "intent": "kesan-kesan terkumpul melampaui perubahan yang disasarkan",
+        "label": "Riak kesan merebak"
+      }
+    },
+    "effects": [
+      "pengetahuan awal tidak lagi boleh dipercayai dan tidak boleh dipulihkan",
+      "kecekapan protagonis kini mesti dibuktikan dan bukannya sekadar andaian"
+    ],
+    "emotion_target": "kebimbangan",
+    "examples": [
+      "Rusuhan bijirin yang telah dijangkanya sejak musim bunga tidak kunjung tiba, dan dia berdiri di pasar dengan kesedaran bahawa bermula saat ini, dia sama butanya dengan semua orang di situ."
+    ],
+    "name": "Memori Tidak Lagi Seiring",
+    "preconditions": [
+      "urutan peristiwa yang diingati yang mana campur tangan telah pun mengubahnya pada satu titik masa tertentu"
+    ],
+    "roles": {
+      "changed": {
+        "constraints": [
+          "kini bertindak dengan cara yang tidak dapat diramal oleh memori"
+        ],
+        "label": "mereka yang hidupnya telah menyimpang"
+      },
+      "returner": {
+        "constraints": [
+          "membina rancangan mereka berdasarkan skrip yang diingati"
+        ],
+        "label": "si penghilang peta"
+      },
+      "script": {
+        "constraints": [
+          "merosot selari dengan kejayaan mereka sendiri"
+        ],
+        "label": "masa depan yang diingati"
+      }
+    },
+    "summary": "Satu campur tangan awal membuahkan hasil, dan kesannya merebak melampaui perkara yang sepatutnya diubah: individu yang sepatutnya mati akhirnya berkahwin, sebuah rumah yang sepatutnya runtuh tetap teguh, sebuah peperangan bermula lewat satu musim. Satu demi satu tarikh yang diingati tidak lagi berlaku, sehingga kelebihan yang menjadikan protagonis tidak terkalahkan telah luput secara senyap, dan mereka melangkah ke masa depan yang sama asingnya dengan orang lain — setelah menghabiskan helaian terakhir peta panduan."
+  },
+  "rebirth.foreknowledge_leverage": {
+    "beats": {
+      "arrive": {
+        "intent": "peristiwa yang diingati itu berlaku tepat seperti yang dijangkakan",
+        "label": "Peristiwa itu tiba tepat pada masanya"
+      },
+      "bank": {
+        "intent": "keuntungan telah disimpan dan persoalan tentang bagaimana ia diketahui mula tertanam",
+        "label": "Keuntungan dan kecurigaan yang bersatu"
+      },
+      "position": {
+        "intent": "suatu komitmen dibuat yang kelihatan melulu bagi setiap pemerhati",
+        "label": "Kedudukan diambil lebih awal"
+      },
+      "recall": {
+        "intent": "suatu peristiwa masa hadapan yang telah ditetapkan diingati dengan ketepatan yang boleh digunakan",
+        "label": "Peristiwa itu diingati"
+      }
+    },
+    "effects": [
+      "kelebihan material atau politik berjaya dikukuhkan lebih awal daripada orang lain",
+      "sekurang-kurangnya seorang pemerhati mula tertanya-tanya bagaimana perkara itu boleh diketahui"
+    ],
+    "emotion_target": "antisipasi",
+    "examples": [
+      "Dia membeli sawah yang bakal banjir itu pada harga tanah kering, dan menanggung ejekan selama sebelas bulan, kemudian hujan pun turun."
+    ],
+    "name": "Kedudukan Sebelum Ia Berlaku",
+    "preconditions": [
+      "suatu peristiwa masa depan yang diingati, lengkap dengan tarikh dan kesan yang boleh dimanfaatkan"
+    ],
+    "roles": {
+      "doubters": {
+        "constraints": [
+          "bernalar secara betul berdasarkan apa yang mereka tahu"
+        ],
+        "label": "mereka yang menganggapnya melulu"
+      },
+      "position": {
+        "constraints": [
+          "kelihatan tidak rasional sebelum peristiwa itu berlaku"
+        ],
+        "label": "kedudukan yang diambil lebih awal"
+      },
+      "returner": {
+        "constraints": [
+          "tidak dapat menjelaskan bagaimana dia mengetahuinya"
+        ],
+        "label": "dia yang mengingatinya"
+      }
+    },
+    "summary": "Sesuatu peristiwa yang diingati masih menanti di masa hadapan — banjir yang menenggelamkan kawasan rendah, rumah yang gagal melunaskan hutang, soalan yang bakal muncul dalam peperiksaan, atau kafilah yang tiba pada musim bunga — maka satu kedudukan diambil lebih awal yang kelihatan seperti kehancuran bagi setiap mata yang memandang: membeli tanah yang tidak bernilai, menolak jodoh yang baik, atau menjual pada puncak pasaran yang sedang melonjak. Peristiwa itu tiba mengikut jadual, kedudukan itu membuahkan hasil, dan keuntungan tersebut tidak dapat dipisahkan daripada persoalan tentang bagaimana ia boleh diketahui lebih awal."
+  },
+  "rebirth.inherited_debts": {
+    "beats": {
+      "answer": {
+        "intent": "pendatang baharu itu membayar, menolak, atau merundingkan semula mengikut caranya sendiri",
+        "label": "Hutang-hutang dijawab"
+      },
+      "become": {
+        "intent": "cara seseorang menjawab tuntutan itulah yang menjadikan kehidupan yang dipinjam itu benar-benar miliknya",
+        "label": "Terukir ke dalam kehidupan"
+      },
+      "claim": {
+        "intent": "obligasi dan permusuhan daripada kehidupan terdahulu mula muncul",
+        "label": "Tuntutan tiba"
+      },
+      "mute": {
+        "intent": "penjelasan sebenar akan menjadi lebih buruk daripada tuduhan yang dikenakan",
+        "label": "Kebenaran tidak dapat diceritakan"
+      }
+    },
+    "effects": [
+      "kewajipan yang diwarisi itu diselesaikan mengikut syarat-syaratnya sendiri oleh pendatang baharu tersebut",
+      "pendatang baharu itu kini menjadi penulis kepada kehidupan ini, bukan sekadar penyewa"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Tiga lelaki datang menuntut hutang yang tidak pernah dipinjamnya, dan dia mendapati dia boleh sama ada menafikan tandatangan yang menyerupai tulisan tangannya sendiri atau membayarnya."
+    ],
+    "name": "Menjawab bagi Nyawa yang Tidak Dilalui",
+    "preconditions": [
+      "sebuah tubuh dan identiti yang telah diduduki, di mana segala kewajipan sedia ada bukanlah milik protagonis, namun mempunyai saksi-saksi yang menyaksikannya"
+    ],
+    "roles": {
+      "claimants": {
+        "constraints": [
+          "mempunyai tuntutan yang sah"
+        ],
+        "label": "mereka yang menuntut daripada penghuni terdahulu"
+      },
+      "history": {
+        "constraints": [
+          "terdokumentasi dan disaksikan"
+        ],
+        "label": "sejarah yang diwarisi"
+      },
+      "newcomer": {
+        "constraints": [
+          "tidak melakukan perbuatan tersebut"
+        ],
+        "label": "dia yang kini menyarung nyawa tersebut"
+      }
+    },
+    "summary": "Tubuh itu tiba dengan sejarahnya sendiri yang melekat: pemiutang di pintu gerbang dengan nota bertulisan tangan yang serupa dengan milik mereka, pertunangan yang telah dipersetujui oleh orang lain, musuh yang tercipta sepanjang tahun yang tidak mereka lalui, reputasi yang sudah tersebar luas. Kebenaran tidak dapat diungkapkan, maka hutang-hutang itu harus dibayar, disangkal, atau diteruskan — dan cara menjawabnya itulah yang mengubah nyawa pinjaman menjadi milik mereka sendiri."
+  },
+  "rebirth.known_traitor_untouchable": {
+    "beats": {
+      "mute": {
+        "intent": "sebarang amaran akan kedengaran seperti kegilaan atau hasad dengki",
+        "label": "Tuduhan adalah mustahil"
+      },
+      "prepare": {
+        "intent": "landasan disediakan secara diam-diam tanpa menyatakan sebabnya",
+        "label": "Langkah balas dalam kesunyian"
+      },
+      "recognize": {
+        "intent": "si pengkhianat masa hadapan ditemui sebelum sebarang kesalahan dilakukan",
+        "label": "Mengenali wajah itu"
+      },
+      "spring": {
+        "intent": "pengkhianatan berlaku mengikut jadual namun menemui kegagalan",
+        "label": "Pengkhianatan mendarat di landasan yang sedia ada"
+      }
+    },
+    "effects": [
+      "urutan peristiwa yang diingati telah diubah pada satu titik masa: pengkhianatan itu berlaku tetapi menemui kegagalan",
+      "ia telah dineutralkan tanpa protagonis menjelaskan bagaimana dia mengetahuinya",
+      "persediaan yang dilakukan oleh protagonis membuatkan dia kelihatan licik di mata kelompoknya sendiri"
+    ],
+    "emotion_target": "gentar",
+    "examples": [
+      "Dia menuang sendiri wain itu sambil tersenyum, dan wanita itu mengucapkan terima kasih, sambil mencatat di almari manakah meterai itu disimpan."
+    ],
+    "name": "Pengkhianat yang Masih Dipercayai Semua",
+    "preconditions": [
+      "pengetahuan tentang pengkhianatan oleh seseorang yang kini tidak bersalah"
+    ],
+    "roles": {
+      "circle": {
+        "constraints": [
+          "akan menyebelahi pengkhianat tersebut pada hari ini"
+        ],
+        "label": "mereka yang mempercayainya"
+      },
+      "returner": {
+        "constraints": [
+          "tidak boleh menuduh tanpa bukti perbuatan masa hadapan"
+        ],
+        "label": "si pembawa berita"
+      },
+      "traitor": {
+        "constraints": [
+          "kini tidak bersalah dan dipercayai"
+        ],
+        "label": "si pengkhianat masa hadapan"
+      }
+    },
+    "summary": "Individu yang bakal menyerahkan mereka sedang berdiri di laman sambil menuang wain, seorang yang disukai ramai dan belum melakukan sebarang kesalahan, dan tiada tuduhan yang tidak akan kedengaran seperti kegilaan atau niat jahat. Maka, langkah balas disusun secara senyap dan tanpa penjelasan — cop mohor dipindahkan ke kabinet lain, dokumen disalin secara diam-diam, pegawai bawahan didekati — sehinggalah pengkhianatan itu tiba pada hari yang telah lama dinantikan dan mendarat di atas landasan yang telah sedia menanti."
+  },
+  "rebirth.outsider_knowledge": {
+    "beats": {
+      "apply": {
+        "intent": "pengetahuan tanpa asal-usul tempatan digunakan secara terbuka",
+        "label": "Digunakan di tempat yang mustahil untuk menemuinya"
+      },
+      "attribute": {
+        "intent": "dunia menetapkan punca yang boleh mereka terima",
+        "label": "Satu penjelasan dipilih"
+      },
+      "bind": {
+        "intent": "atribusi yang diterima menjadi satu peranan yang mesti dikekalkan",
+        "label": "Penjelasan itu mengikat"
+      },
+      "work": {
+        "intent": "hasilnya tidak dapat dinafikan di hadapan saksi",
+        "label": "Ia terbukti berkesan"
+      }
+    },
+    "effects": [
+      "protagonis kini menduduki peranan yang ditentukan oleh orang lain",
+      "sumber sebenar pengetahuan tersebut adalah satu rahsia yang membawa kesan"
+    ],
+    "emotion_target": "kegelisahan",
+    "examples": [
+      "Dia mendidihkan air itu dan penyakit si pesakit terhenti, dan menjelang minggu kedua mereka telah memutuskan bahawa dia diberkati tuhan, sesuatu yang lebih memudahkan semua orang."
+    ],
+    "name": "Pengetahuan Dari Dunia Lain",
+    "preconditions": [
+      "suatu latar yang asas pengetahuannya jelas tidak merangkumi apa yang sedang digunakan"
+    ],
+    "roles": {
+      "knowledge": {
+        "constraints": [
+          "terbukti berkesan secara nyata"
+        ],
+        "label": "pengetahuan yang dibawa masuk"
+      },
+      "outsider": {
+        "constraints": [
+          "tidak boleh memetik sumber yang wujud di dunia ini"
+        ],
+        "label": "si pembawa pengetahuan mustahil"
+      },
+      "witnesses": {
+        "constraints": [
+          "mesti menyelaraskannya ke dalam acuan dunia mereka sendiri"
+        ],
+        "label": "mereka yang melihat keberkesanannya"
+      }
+    },
+    "summary": "Sesuatu penawar, cara mendidihkan air, kaedah mengira akaun, atau teknik sihir dan cantuman dari dunia lain atau abad yang berbeza digunakan di tempat di mana tiada sesiapa pun boleh menemuinya, dan ia terbukti berkesan di hadapan saksi. Hasilnya kemudiannya mesti diberikan punca yang boleh diterima oleh dunia ini — sama ada sebuah keajaiban, kurniaan tuhan, keturunan yang hilang, atau ajaran sesat — dan apa jua penjelasan yang dipersetujui oleh dunia tersebut akan menjadi peranan yang perlu dimainkan mulai saat itu."
+  },
+  "rebirth.save_what_was_lost": {
+    "beats": {
+      "alive": {
+        "intent": "sosok yang telah hilang kini hadir dalam keadaan biasa",
+        "label": "Hidup semula, tanpa menyedari"
+      },
+      "approach": {
+        "intent": "hari yang diingati semakin dekat tanpa sebarang perubahan",
+        "label": "Tarikh itu menghampiri"
+      },
+      "cost": {
+        "intent": "harganya dibayar di tempat yang tidak dijaga",
+        "label": "Harga jatuh ke tempat lain"
+      },
+      "intercept": {
+        "intent": "segala daya dikerahkan untuk memecahkan kitaran",
+        "label": "Penyekatan"
+      }
+    },
+    "effects": [
+      "urutan yang diingati telah diubah pada satu titik masa: orang tersebut masih hidup melampaui tarikh yang sepatutnya dia telah tiada",
+      "sebuah kehilangan yang tidak dijangka telah ditanggung sebagai pertukaran"
+    ],
+    "emotion_target": "kesedihan",
+    "examples": [
+      "Dia menghalangnya daripada melalui jalan sungai pada hari kesembilan, dan rancangan itu berjaya, namun akhirnya budak yang berlari untuk memberi amaran kepadanya itulah yang mereka tanam sebagai pengganti."
+    ],
+    "name": "Tarikh Yang Kian Mendekat",
+    "preconditions": [
+      "sebuah kematian yang diingati secara khusus dengan tarikh dan cara yang telah diketahui"
+    ],
+    "roles": {
+      "cost": {
+        "constraints": [
+          "tidak dipertahankan kerana tidak dijangka"
+        ],
+        "label": "tempat di mana harga perlu dibayar"
+      },
+      "doomed": {
+        "constraints": [
+          "masih hidup dan tidak menyedari apa-apa"
+        ],
+        "label": "si mati yang terdahulu"
+      },
+      "returner": {
+        "constraints": [
+          "mengetahui tarikh dan cara kematian itu berlaku"
+        ],
+        "label": "si penyekat"
+      }
+    },
+    "summary": "Seseorang yang telah dikebumikan kini hidup semula melalui kepulangan yang mustahil, duduk di meja makan sambil merungut tentang nasi, manakala tarikh kematiannya semakin menghampiri pada kalendar tanpa sebarang perubahan yang berlaku. Segala daya upaya dikerahkan untuk memecahkan kitaran itu — jalan yang dielak, tabib yang dipanggil lebih awal, surat yang dipintas — dan usaha itu berjaya, namun harganya diambil dari tempat yang tidak pernah disangka — kerana kematian yang dicegah bukanlah kematian yang dibatalkan."
+  },
+  "rebirth.second_chance_wake": {
+    "beats": {
+      "end": {
+        "intent": "kehidupan terdahulu ditutup dengan kehilangan atau pengkhianatan yang nyata",
+        "label": "Kehidupan berakhir"
+      },
+      "verify": {
+        "intent": "fakta yang boleh disahkan mengesahkan sejauh mana masa telah berputar ke belakang",
+        "label": "Mengesahkan tarikh"
+      },
+      "vow": {
+        "intent": "suatu natijah masa depan yang khusus dipilih sebagai perkara yang tidak akan dibiarkan berlaku",
+        "label": "Sumpah untuk mengubahnya"
+      },
+      "wake": {
+        "intent": "kesedaran kembali sebelum kehancuran, dalam tubuh atau dunia yang sepatutnya mustahil",
+        "label": "Terjaga lebih awal"
+      }
+    },
+    "effects": [
+      "protagonis memegang urutan peristiwa yang diingati yang belum lagi berlaku",
+      "protagonis mendiami jasad dan identiti yang tanggungjawab sedia adanya bukan milik mereka",
+      "suatu natijah yang khusus dan bertarikh kini menjadi kayu ukur bagi segala-galanya"
+    ],
+    "emotion_target": "ketidakpercayaan",
+    "examples": [
+      "Siling itu adalah siling sebelum kebakaran itu, dan kalendar di dinding itu salah tiga tahun, dan tangannya adalah tangan seorang budak lelaki."
+    ],
+    "name": "Terjaga Sebelum Kehancuran",
+    "preconditions": [
+      "sebuah kehidupan yang mengandungi malapetaka yang sudah diketahui dan bertarikh"
+    ],
+    "roles": {
+      "anchor": {
+        "constraints": [
+          "boleh disahkan dan tidak mengelirukan"
+        ],
+        "label": "fakta yang membuktikan tarikh tersebut"
+      },
+      "outcome": {
+        "constraints": [
+          "adalah spesifik dan bertarikh"
+        ],
+        "label": "pengakhiran yang perlu dicegah"
+      },
+      "returner": {
+        "constraints": [
+          "membawa memori lengkap tentang apa yang berlaku selepas itu"
+        ],
+        "label": "dia yang terjaga lebih awal"
+      }
+    },
+    "summary": "Sebuah kehidupan berakhir — di atas tiang gantung, di tangan saudara sepersaudaraan, di atas ranjang penuh penyesalan — dan kesedaran kembali dalam tubuh dengan tangan seorang budak lelaki, di bawah siling dari zaman sebelum kebakaran, di sisi kalendar yang tersilap tiga tahun. Rasa tidak percaya bertukar menjadi cubaan mengesahkan: tarikhnya, wajah yang belum dimamah usia, parut yang belum pernah terjadi. Daripada pengesahan itulah lahirnya sebuah sumpah bahawa kali ini, pengakhiran yang telah dilalui itu tidak akan dibiarkan terjadi."
+  },
+  "rebirth.slip_of_the_impossible": {
+    "beats": {
+      "choose": {
+        "intent": "protagonis mesti memilih sama ada untuk terus menyembunyikan rahsia atau mempercayai seseorang",
+        "label": "Teruskan penipuan atau meluahkan segalanya"
+      },
+      "notice": {
+        "intent": "seorang pemerhati mengesan perkara itu dan mula memerhati secara senyap",
+        "label": "Seseorang menyedari dan tetap berdiam diri"
+      },
+      "slip": {
+        "intent": "keakraban yang mustahil terserlah sebelum sempat disembunyikan",
+        "label": "Gerak refleks membongkar rahsia"
+      },
+      "thin": {
+        "intent": "setiap detik biasa yang berlalu semakin menyulitkan penjelasan yang ada",
+        "label": "Alasan semakin rapuh"
+      }
+    },
+    "effects": [
+      "pihak lain mempunyai syak wasangka yang pada hakikatnya adalah benar",
+      "protagonis kini mempunyai sekutu atau pemerhati"
+    ],
+    "emotion_target": "kebimbangan",
+    "examples": [
+      "Dia cuba mencapai selak di sebelah kiri sebelum sesiapa pun menunjukkan bilik itu kepadanya, dan mata pelayan tua itu tidak beralih daripadanya sepanjang malam itu."
+    ],
+    "name": "Kesilapan Yang Tidak Terjelaskan",
+    "preconditions": [
+      "seorang protagonis yang sedang mengekalkan penyamaran tentang identiti sebenar mereka"
+    ],
+    "roles": {
+      "cover": {
+        "constraints": [
+          "semakin menipis dengan setiap kesilapan baharu"
+        ],
+        "label": "alasan penyamaran"
+      },
+      "observer": {
+        "constraints": [
+          "diam membisu dan terus memerhati"
+        ],
+        "label": "si pemerhati"
+      },
+      "returner": {
+        "constraints": [
+          "bertindak sebelum sempat berfikir"
+        ],
+        "label": "si pelaku kesilapan"
+      }
+    },
+    "summary": "Satu gerak refleks membongkar segalanya — cuba mencapai selak di bilik yang tidak pernah dimasuki, tersentak mendengar nama yang belum pernah disebut di sini, atau sebaris kata daripada bahasa yang tidak pernah didengari di wilayah ini — dan seseorang menyedarinya. Mereka tidak menuduh. Mereka hanya mula memerhati, dan setiap malam biasa yang berlalu selepas itu menjadikan alasan yang dibina semakin rapuh, sehingga pilihannya hanyalah antara terus membesarkan penipuan atau meluahkan segalanya kepada seseorang yang reaksinya tidak dapat diramal."
+  }
+}

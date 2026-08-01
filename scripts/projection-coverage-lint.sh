@@ -45,6 +45,17 @@ declare -A allow=(
   [admin.canon.override.consented]="by-design: meta-worker override writers (audit), not projected"
   [admin.canon.override.vetoed]="by-design: meta-worker override writers (audit), not projected"
   [admin.canon.override.compensating]="by-design: meta-worker force_propagate compensating writer"
+  # Arrived with the game-logic promotion (merge 2026-08-02) — registered with owner
+  # commit-service and no projection arm, which reds this lint. Allowlisted after reading the
+  # emitter, not to make the gate green: `epoch_commit.rs` calls it an EVT-T8 ADMINISTRATIVE
+  # TRANSCRIPTION — one event per affected channel, appended by that channel's own
+  # lease-holding writer, recording a decision already durably audited in
+  # `reality_ruleset_binding`. The epoch it announces is enforced by `ChannelWriter::append`
+  # CASing on `channel_writer_state.current_epoch`, so the state is the writer's, not a read
+  # model's. Same shape as the admin.canon.override.* rows above. Confirmed no
+  # `crates/projections/*` arm reads it. FLAGGED for the game track's owner: this classification
+  # was made from the emitter by the branch that merged main, not by the author of the event.
+  [ruleset.epoch_activated]="by-design: EVT-T8 administrative transcription; per-channel writer state (channel_writer_state.current_epoch), authorisation audited in reality_ruleset_binding — no read-model projection"
   [xreality.user.erased]="by-design: handled by meta-worker user_erased_writer (P2/071) — GDPR erasure is a per-reality pc_projection scrub + meta player_character_index scrub, NOT a read-model projection rebuild"
 )
 

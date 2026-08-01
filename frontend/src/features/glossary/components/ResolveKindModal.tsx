@@ -4,8 +4,8 @@ import { FormDialog } from '@/components/shared';
 import type { EntityKind, UnknownEntity } from '../types';
 
 export type ResolveResult =
-  | { strategy: 'existing'; kindId: string; applyAll: boolean }
-  | { strategy: 'new'; code: string; name: string; applyAll: boolean };
+  | { strategy: 'existing'; kindId: string }
+  | { strategy: 'new'; code: string; name: string };
 
 type Props = {
   entity: UnknownEntity;
@@ -23,29 +23,33 @@ export function ResolveKindModal({ entity, kinds, sameCodeCount, onResolve, onCl
   const [kindId, setKindId] = useState(kinds[0]?.kind_id ?? '');
   const [newCode, setNewCode] = useState('');
   const [newName, setNewName] = useState('');
-  const [applyAll, setApplyAll] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   const code = entity.source_kind_code;
-  const canMergeAll = !!code && sameCodeCount > 1;
+  // How many other parked entities arrived under the same source code. Shown as CONTEXT only.
+  // It used to gate an "apply to all" checkbox, pre-checked, that routed through
+  // `POST /kind-aliases` — removed in SS-4, live-probed at 405. So the default action of this
+  // modal could only fail. The count is still worth telling the author (it says how much work is
+  // left), but the bulk promise it carried — "future extractions with this code resolve
+  // automatically" — belongs to the alias row, and that returns in SS-7.
+  const othersWithSameCode = code ? Math.max(sameCodeCount - 1, 0) : 0;
 
   // Radix Dialog.Root (inside FormDialog) handles Escape/outside-click → onOpenChange(false);
   // the `!saving` guard (block dismissal mid-submit) moves into that callback below.
 
   const handleSubmit = async () => {
     setError('');
-    const merge = canMergeAll && applyAll;
     let payload: ResolveResult;
     if (strategy === 'existing') {
       if (!kindId) { setError(t('unknown.err_pick_kind')); return; }
-      payload = { strategy: 'existing', kindId, applyAll: merge };
+      payload = { strategy: 'existing', kindId };
     } else {
       const c = newCode.trim().toLowerCase();
       const n = newName.trim();
       if (!c || !n) { setError(t('unknown.err_new_kind')); return; }
       if (!/^[a-z0-9_]+$/.test(c)) { setError(t('unknown.err_code_format')); return; }
-      payload = { strategy: 'new', code: c, name: n, applyAll: merge };
+      payload = { strategy: 'new', code: c, name: n };
     }
     setSaving(true);
     try {
@@ -143,15 +147,15 @@ export function ResolveKindModal({ entity, kinds, sameCodeCount, onResolve, onCl
               </div>
             )}
 
-            {/* Merge-all scope */}
-            {canMergeAll && (
-              <label className="flex items-start gap-2 rounded-md border bg-secondary/30 px-3 py-2 text-xs">
-                <input type="checkbox" checked={applyAll} onChange={(e) => setApplyAll(e.target.checked)} data-testid="resolve-merge-all" className="mt-0.5" />
-                <span>
-                  {t('unknown.merge_all', { count: sameCodeCount, code })}
-                  <span className="mt-0.5 block text-[10px] text-muted-foreground">{t('unknown.merge_all_hint')}</span>
-                </span>
-              </label>
+            {/* Context, not an action: how many others are still parked under this code. */}
+            {othersWithSameCode > 0 && (
+              <p data-testid="resolve-same-code-count" className="rounded-md border bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
+                {t('unknown.same_code_note', {
+                  count: othersWithSameCode,
+                  code,
+                  defaultValue: '{{count}} more entities arrived as "{{code}}" — resolve each one here.',
+                })}
+              </p>
             )}
 
             {error && <p className="text-xs text-destructive">{error}</p>}

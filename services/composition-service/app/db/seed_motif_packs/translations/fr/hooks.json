@@ -1,0 +1,327 @@
+{
+  "hook.betrayal_hinted": {
+    "beats": {
+      "crack": {
+        "intent": "révéler la déloyauté cachée d'une figure de confiance",
+        "label": "Fêlure de doute"
+      }
+    },
+    "effects": [
+      "le lecteur se méfie de la figure et poursuit sa lecture"
+    ],
+    "emotion_target": "malaise",
+    "examples": [
+      "Son amie de toujours sourit, acquiesça — puis glissa la seconde clé dans sa propre manche."
+    ],
+    "name": "Présage de trahison",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la première personne"
+      }
+    },
+    "summary": "Une figure de confiance laisse paraître une faille de doute lors d'une rupture."
+  },
+  "hook.choice_forced": {
+    "beats": {
+      "corner": {
+        "intent": "forcer une décision irréversible",
+        "label": "Acculer à un choix"
+      }
+    },
+    "effects": [
+      "le lecteur poursuit sa lecture pour connaître la décision"
+    ],
+    "emotion_target": "anxiété",
+    "examples": [
+      "Deux portes, une seule clé, et l'eau lui arrive déjà aux genoux."
+    ],
+    "name": "Choix imposé",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la première personne"
+      }
+    },
+    "summary": "Le personnage à la première personne est acculé à prendre une décision irréversible à la fin de la scène."
+  },
+  "hook.cliff_question": {
+    "beats": {
+      "cut": {
+        "intent": "laisser une menace en suspens au moment de la rupture du chapitre",
+        "label": "Coupure sur un danger imminent"
+      }
+    },
+    "effects": [
+      "le lecteur est entraîné vers le chapitre suivant"
+    ],
+    "emotion_target": "suspense",
+    "examples": [
+      "Le sceau était déjà brisé — et la cellule, derrière lui, était vide."
+    ],
+    "name": "Suspense en suspens",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la vue"
+      }
+    },
+    "summary": "Terminez sur un danger non résolu qui entraîne le lecteur dans le chapitre suivant."
+  },
+  "hook.countdown_started": {
+    "beats": {
+      "set_timer": {
+        "intent": "imposer un délai limité à l'objectif",
+        "label": "Fixer l'échéance"
+      }
+    },
+    "effects": [
+      "le lecteur ressent l'urgence et poursuit sa lecture"
+    ],
+    "emotion_target": "anticipation",
+    "examples": [
+      "Trois jours. Passé ce délai, l'offre — et la ville — auraient disparu."
+    ],
+    "name": "Compte à rebours lancé",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la première personne"
+      }
+    },
+    "summary": "Une échéance ou un compte à rebours est fixé, transformant la suite du récit en une course contre la montre."
+  },
+  "hook.dialogue_bomb": {
+    "beats": {
+      "detonate": {
+        "intent": "clore sur une phrase qui bouleverse toute la perspective",
+        "label": "Réplique explosive, puis coupure"
+      }
+    },
+    "effects": [
+      "le lecteur est ébranlé et veut immédiatement la suite"
+    ],
+    "emotion_target": "choc",
+    "examples": [
+      "« Tu devrais demander à ton père, » dit-elle, « pourquoi il a enterré un cercueil vide. »"
+    ],
+    "name": "Bombe de dialogue",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la première personne"
+      }
+    },
+    "summary": "Une réplique fait l'effet d'une déflagration et le chapitre s'achève sur elle."
+  },
+  "hook.identity_teased": {
+    "beats": {
+      "tease": {
+        "intent": "évoquer une véritable identité sans la confirmer",
+        "label": "Identité suggérée"
+      }
+    },
+    "effects": [
+      "le lecteur poursuit sa lecture pour découvrir qui est réellement ce personnage"
+    ],
+    "emotion_target": "intrigue",
+    "examples": [
+      "Le mendiant écarta sa capuche, et les gardes tombèrent à genoux."
+    ],
+    "name": "Identité suggérée",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la première personne"
+      }
+    },
+    "summary": "Un indice sur le véritable nom ou le rôle de quelqu'un, laissé en suspens à la fin de la séquence."
+  },
+  "hook.impending_threat": {
+    "beats": {
+      "inbound": {
+        "intent": "nommer un danger qui n'a pas encore frappé",
+        "label": "La menace est annoncée"
+      }
+    },
+    "effects": [
+      "le lecteur anticipe l'arrivée de la menace"
+    ],
+    "emotion_target": "l'appréhension",
+    "examples": [
+      "À l'aube, l'armée serait aux portes, et les portes ne résisteraient pas."
+    ],
+    "name": "Menace imminente",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la vue"
+      }
+    },
+    "summary": "Un danger nommé est en route, mais n'est pas encore arrivé."
+  },
+  "hook.loss_imminent": {
+    "beats": {
+      "about_to_lose": {
+        "intent": "placer un objet ou un être cher au bord de la perte",
+        "label": "Perte imminente"
+      }
+    },
+    "effects": [
+      "le lecteur redoute la perte et poursuit sa lecture"
+    ],
+    "emotion_target": "angoisse",
+    "examples": [
+      "La guérisseuse secoua la tête. Il n'y en aurait, dit-elle, que pour l'un des enfants."
+    ],
+    "name": "Perte imminente",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la première personne"
+      }
+    },
+    "summary": "Ce que le personnage à la première personne chérit est sur le point de lui être arraché au moment de la coupure."
+  },
+  "hook.mystery_deepened": {
+    "beats": {
+      "contradict": {
+        "intent": "renverser la conclusion implicite par un nouvel indice",
+        "label": "Indice contradictoire"
+      }
+    },
+    "effects": [
+      "le lecteur relance l'interrogation et poursuit sa lecture"
+    ],
+    "emotion_target": "curiosité",
+    "examples": [
+      "L'écriture du mort était encore fraîche — et datée de demain."
+    ],
+    "name": "Mystère approfondi",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la vue"
+      }
+    },
+    "summary": "Un nouvel indice contredit la réponse supposée à la fin de la scène précédente."
+  },
+  "hook.power_glimpsed": {
+    "beats": {
+      "flash": {
+        "intent": "révéler une capacité sans l'expliquer",
+        "label": "Éclat de puissance inexpliqué"
+      }
+    },
+    "effects": [
+      "le lecteur exige une explication"
+    ],
+    "emotion_target": "anticipation",
+    "examples": [
+      "Pendant un battement de cœur, les yeux de l'employé terrifié brillèrent d'un éclat d'or — puis la lampe s'éteignit."
+    ],
+    "name": "Éclat de puissance",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la vue"
+      }
+    },
+    "summary": "Une capacité cachée se manifeste de manière inexpliquée lors de la coupure."
+  },
+  "hook.revelation_drop": {
+    "beats": {
+      "half_reveal": {
+        "intent": "exposer une partie d'un secret, dissimuler le reste",
+        "label": "Demi-révélation puis coupure"
+      }
+    },
+    "effects": [
+      "le lecteur poursuit sa lecture pour découvrir la suite"
+    ],
+    "emotion_target": "curiosité",
+    "examples": [
+      "Il retourna le médaillon. Le visage à l'intérieur était le sien."
+    ],
+    "name": "Révélation tronquée",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la vue"
+      }
+    },
+    "summary": "Un secret est partiellement dévoilé puis étouffé par une coupure brutale."
+  },
+  "hook.sudden_reversal": {
+    "beats": {
+      "flip": {
+        "intent": "inverser la portée de la scène au moment de la coupure",
+        "label": "Basculement sémantique final"
+      }
+    },
+    "effects": [
+      "le lecteur réinterprète la scène et poursuit sa lecture"
+    ],
+    "emotion_target": "choc",
+    "examples": [
+      "Elle finit par lui accorder sa confiance — ce qu'il attendait précisément depuis trois ans."
+    ],
+    "name": "Renversement soudain",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la première personne"
+      }
+    },
+    "summary": "Une information révélée en dernière ligne bascule le sens de toute la scène."
+  },
+  "hook.unexpected_arrival": {
+    "beats": {
+      "walk_in": {
+        "intent": "introduire quelqu'un qui ne devrait pas être présent",
+        "label": "Arrivée impossible"
+      }
+    },
+    "effects": [
+      "le lecteur doit comprendre qui est cette personne et pourquoi elle est là"
+    ],
+    "emotion_target": "tension",
+    "examples": [
+      "La porte s'ouvrit, et l'homme qu'ils avaient enterré l'hiver dernier entra dans la pièce."
+    ],
+    "name": "Arrivée inattendue",
+    "preconditions": [
+      "une scène est en cours"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la vue"
+      }
+    },
+    "summary": "Une personne qui ne devrait pas être là fait irruption au moment crucial."
+  }
+}

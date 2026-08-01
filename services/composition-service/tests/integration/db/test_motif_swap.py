@@ -68,7 +68,7 @@ async def pool():
 
 def _motif(*, code="m.swap", name="Swap", tension_target=4) -> Motif:
     return Motif.model_validate({
-        "id": uuid.uuid4(), "owner_user_id": None, "code": code, "language": "en",
+        "id": uuid.uuid4(), "owner_user_id": None, "code": code, "original_language": "en",
         "visibility": "unlisted", "kind": "scheme", "name": name,
         "summary": "s", "genre_tags": ["x"],
         "roles": [{"key": "hero", "actant": "subject", "label": "Lin", "constraints": []}],
@@ -85,7 +85,7 @@ async def _insert_motif(pool, m: Motif) -> None:
     """Insert the motif as a system row so motif_application's motif_id FK resolves."""
     async with pool.acquire() as c:
         await c.execute(
-            "INSERT INTO motif (id, owner_user_id, code, language, visibility, kind, "
+            "INSERT INTO motif (id, owner_user_id, code, original_language, visibility, kind, "
             "name, summary, status, version) "
             "VALUES ($1, NULL, $2, 'en', 'unlisted', 'scheme', $3, 's', 'active', $4)",
             m.id, m.code, m.name, m.version,

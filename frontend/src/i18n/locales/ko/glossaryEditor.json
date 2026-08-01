@@ -8,6 +8,14 @@
   "select": "선택",
   "dismiss": "닫기",
   "createNew": "새로 만들기",
+  "createAs": "{{name}}을(를) 다음과 같이 생성: …",
+  "kind": {
+    "character": "캐릭터",
+    "location": "장소",
+    "organization": "조직",
+    "concept": "개념",
+    "item": "아이템"
+  },
   "filterEntities": "엔티티 필터링...",
   "noEntities": "이 챕터에서 감지된 엔티티가 없습니다",
   "showHighlights": "용어 사전 강조 표시",
@@ -110,6 +118,7 @@
     "new_kind_code_hint": "소문자, 숫자, 밑줄(_)만 사용 가능합니다. 고유 식별자로 사용됩니다.",
     "merge_all": "\"{{code}}\"(으)로 유입된 모든 {{count}}개 엔티티에 적용",
     "merge_all_hint": "재사용 가능한 별칭을 생성하여, 향후 동일한 코드로 추출되는 항목이 자동으로 해결되도록 합니다.",
+    "same_code_note": "{{count}}개의 엔티티가 \"{{code}}\"로 도착했습니다 — 각 엔티티를 여기서 해결하세요.",
     "cancel": "취소",
     "apply": "적용",
     "saving": "적용 중...",
@@ -142,17 +151,9 @@
     },
     "actor": {
       "user": "나",
-      "pipeline": "AI",
-      "system": "시스템"
+      "system": "시스템",
+      "pipeline": "AI"
     },
     "error": "버전 기록을 불러올 수 없습니다."
-  },
-  "createAs": "{{name}}을(를) 다음과 같이 생성: …",
-  "kind": {
-    "character": "캐릭터",
-    "location": "장소",
-    "organization": "조직",
-    "concept": "개념",
-    "item": "아이템"
   }
 }

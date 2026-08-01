@@ -97,19 +97,17 @@
     "col_input": "ข้อมูลนำเข้า",
     "col_output": "ข้อมูลส่งออก",
     "col_cost": "ค่าใช้จ่าย",
-    "cell_ok": "200 OK",
     "cell_error": "ข้อผิดพลาด",
     "cell_rejected": "ถูกปฏิเสธ",
     "collapse_details": "ย่อรายละเอียด",
     "expand_details": "ขยายรายละเอียด",
-    "no_logs": "ไม่พบประวัติการใช้งาน"
+    "no_logs": "ไม่พบประวัติการใช้งาน",
+    "cell_ok": "200 OK"
   },
   "detail": {
     "load_failed": "โหลดรายละเอียดล้มเหลว",
     "no_input": "(ไม่มีข้อมูล Input ที่บันทึกไว้สำหรับคำขอนี้)",
     "no_output": "(ไม่มีข้อมูล Output ที่บันทึกไว้สำหรับคำขอนี้)",
-    "request_id": "Request ID:",
-    "provider": "Provider:",
     "model_ref": "รุ่นโมเดล:",
     "billing": "การเรียกเก็บเงิน:",
     "viewed_at": "ดูเมื่อ:",
@@ -119,6 +117,8 @@
     "tab_raw": "JSON ดิบ",
     "copy_aria": "คัดลอกไปยังคลิปบอร์ด",
     "copied": "คัดลอกแล้ว",
-    "copy": "คัดลอก"
+    "copy": "คัดลอก",
+    "request_id": "ID คำขอ:",
+    "provider": "ผู้ให้บริการ:"
   }
 }

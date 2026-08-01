@@ -98,6 +98,106 @@ class GlossaryClient:
     # owns + drains that bounded-but-complete list (X1 / D4). The direct glossary
     # entity-list read was removed here so it can't be reintroduced as a bypass.
 
+    async def entities_by_ids(
+        self, book_id: UUID, entity_ids: list[str], *, language: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Identity ONLY (`entity_id`, `cached_name`, `cached_aliases`, `kind_code`) for a
+        known id set. `[]` on any failure — every caller of this is advisory.
+
+        This is a BOUNDED by-id read, not the roster INV-KAL removed above: the ids come from
+        the outline's own `present_entity_ids`, so it cannot become "list the book's cast" by
+        drift. It exists because the plan-liveness check joins the extractor's display strings
+        to entity ids by NAME, and a name is the one thing composition does not already hold —
+        the knowledge snapshot carries names only for entities extraction has already seen,
+        which on a book still being written is none of them.
+
+        `language` augments each row's aliases with that language's alias set, the same reason
+        `select_for_context` takes it: prose uses the names a vi author actually writes.
+        """
+        if not entity_ids:
+            return []
+        url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
+        payload: dict[str, Any] = {"entity_ids": [str(e) for e in entity_ids]}
+        if language:
+            payload["language"] = language
+        try:
+            resp = await self._http.post(url, json=payload)
+            if resp.status_code != 200:
+                logger.warning("glossary entities/by-ids → %d", resp.status_code)
+                return []
+            return resp.json().get("items", [])
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("glossary entities/by-ids unavailable: %s", exc)
+            return []
+
+    async def read_book_ontology(
+        self, bearer: str, book_id: UUID,
+    ) -> dict[str, list[dict[str, Any]]]:
+        """The book's REAL attribute schema per kind: ``{kind_code: [attr, ...]}``,
+        each attr ordered required-first then by ``sort_order``.
+
+        Load-bearing for glossary-build (M6): the executor used to emit a fixed
+        character-shaped attribute set for EVERY kind, so `terminology` (whose real
+        fields are term/definition/category/usage_note) produced rows with NOTHING
+        written — 5 empty shells on the live Mị Đế build.
+
+        Uses the PUBLIC ontology route because the internal one is contract-bound to
+        knowledge-service's `OntologyKinds` model and deliberately returns kinds
+        without attributes — widening it would drift that contract. Returns {} on any
+        failure; the caller must then SKIP rather than fall back to a guessed schema
+        (falling back is exactly how the empty shells happened)."""
+        url = f"{self._base_url}/v1/glossary/books/{book_id}/ontology"
+        try:
+            resp = await self._http.get(
+                url, headers={"Authorization": f"Bearer {bearer}"})
+            if resp.status_code != 200:
+                logger.warning("glossary ontology → %d", resp.status_code)
+                return {}
+            body = resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("glossary ontology unavailable: %s", exc)
+            return {}
+        by_kind_id = {k.get("book_kind_id"): k.get("code") for k in (body.get("kinds") or [])}
+        out: dict[str, list[dict[str, Any]]] = {}
+        for a in (body.get("attributes") or []):
+            code = by_kind_id.get(a.get("kind_id"))
+            if code and a.get("code"):
+                out.setdefault(code, []).append(a)
+        for defs in out.values():
+            defs.sort(key=lambda d: (not d.get("is_required"), d.get("sort_order") or 0))
+        return out
+
+    async def adopt_book_kinds(
+        self, book_id: UUID, user_id: UUID, kinds: list[str],
+    ) -> bool:
+        """Idempotently copy the given System kind codes down into the book's tier.
+
+        The SAME internal route knowledge-service calls before adopting a KG graph-schema, and for
+        the same reason: a dependent operation that needs a kind should seed that kind rather than
+        fail and tell the author to go and find another screen. Adopting a schema used to 422
+        `NEEDS_GLOSSARY`; this is the composition-side of that fix.
+
+        TENANCY — this route carries NO grant check of its own (glossary trusts the caller, exactly
+        as it trusts knowledge). Scaffolding a book's ontology is a MANAGE-tier act while
+        `apply_bootstrap` is EDIT-gated, so the CALLER must have verified MANAGE before calling
+        this. Do not call it from an EDIT-gated path without that check.
+
+        Returns False rather than raising: the caller's next move is to retry the real work and let
+        THAT report the honest error. A failure here is never the interesting one.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/ontology/adopt-kinds"
+        try:
+            resp = await self._http.post(
+                url, params={"user_id": str(user_id)}, json={"kinds": kinds},
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("glossary adopt-kinds failed (%s): %s", url, exc)
+            return False
+        if resp.status_code != 200:
+            logger.warning("glossary adopt-kinds %s returned %d", url, resp.status_code)
+            return False
+        logger.info("glossary adopt-kinds: book=%s seeded %s", book_id, kinds)
+        return True
 
     async def seed_entities_or_raise(
         self, book_id: UUID, *, source_language: str, entities: list[dict[str, Any]],

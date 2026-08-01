@@ -34,12 +34,13 @@ import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
+from loreweave_llm import ReasoningDirective
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.prose_doc import ATX_HEADING_RE
-from app.engine.select import _NO_THINK
+from app.reasoning import wire_fields
 from app.packer.profile import BookProfile
 
 logger = logging.getLogger(__name__)
@@ -248,7 +249,7 @@ async def stitch_chapter(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     scene_drafts: list[str], chapter_intent: str, profile: BookProfile,
     max_tokens: int, max_input_chars: int,
-    reasoning_effort: str | None = None, trace_id: str | None = None,
+    reasoning: ReasoningDirective | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[str, str | None]:
     """Merge the chapter's scene drafts into one seamless chapter. Returns
@@ -327,7 +328,7 @@ async def stitch_chapter(
                              {"role": "user", "content": user}],
                 "temperature": 0.3, "max_tokens": max_tokens,
                 "response_format": {"type": "text"},
-                **({"reasoning_effort": reasoning_effort} if reasoning_effort is not None else _NO_THINK),
+                **wire_fields(reasoning),
             },
             job_meta={"usage_purpose": "prose_stitch", "extractor": "stitch_chapter"}, trace_id=trace_id,
             cancel_check=cancel_check,

@@ -1,0 +1,461 @@
+{
+  "revenge.betrayal_to_exile": {
+    "beats": {
+      "betrayal": {
+        "intent": "el aliado más cercano traiciona en el peor momento",
+        "label": "La traición estalla"
+      },
+      "fall": {
+        "intent": "el protagonista es despojado de todo",
+        "label": "Caída y pérdida"
+      },
+      "trust": {
+        "intent": "se forja un vínculo íntimo destinado a ser roto",
+        "label": "Confianza establecida"
+      },
+      "vow": {
+        "intent": "desterrado, el superviviente jura regresar",
+        "label": "Exilio y juramento"
+      }
+    },
+    "effects": [
+      "el protagonista pierde su posición y es expulsado",
+      "se sella un juramento implacable de venganza"
+    ],
+    "emotion_target": "duelo",
+    "examples": [
+      "En la víspera del triunfo, el aliado más cercano traiciona; despojado de todo y expulsado, el superviviente jura volver."
+    ],
+    "name": "De la traición al exilio",
+    "preconditions": [
+      "el protagonista posee confianza, prestigio o poder"
+    ],
+    "roles": {
+      "betrayer": {
+        "constraints": [
+          "íntimo, de confianza"
+        ],
+        "label": "el hermano de sangre / traidor"
+      },
+      "lost_kin": {
+        "constraints": [
+          "caídos en la debacle"
+        ],
+        "label": "los parientes o aliados perdidos"
+      },
+      "protagonist": {
+        "constraints": [
+          "confiado, en ascenso"
+        ],
+        "label": "el superviviente traicionado"
+      },
+      "vengeance": {
+        "constraints": [
+          "jurado, motor de la trama"
+        ],
+        "label": "el voto de venganza"
+      }
+    },
+    "summary": "En la víspera del triunfo, el aliado más cercano traiciona; despojado de todo y expulsado, el superviviente jura regresar."
+  },
+  "revenge.blood_debt_collection": {
+    "beats": {
+      "confront": {
+        "intent": "presentar pruebas irrefutables",
+        "label": "Confrontar con pruebas"
+      },
+      "exact": {
+        "intent": "hacer que rindan cuentas",
+        "label": "Cobrar el precio"
+      },
+      "locate": {
+        "intent": "encontrar a uno de los partícipes del crimen",
+        "label": "Localizar al culpable"
+      },
+      "respond": {
+        "intent": "el culpable ruega por su vida o se mantiene desafiante",
+        "label": "El culpable suplica o desafía"
+      }
+    },
+    "effects": [
+      "uno de los culpables es llamado a rendir cuentas",
+      "la cadena de ajuste de cuentas avanza hacia el instigador principal"
+    ],
+    "emotion_target": "determinación-sombría",
+    "examples": [
+      "Uno a uno, el vengador encuentra a quienes compartieron el crimen y hace que cada uno responda por él."
+    ],
+    "name": "Cobro de la deuda de sangre",
+    "preconditions": [
+      "varias partes comparten la culpa de un agravio pasado, y los propios secretos del enemigo han revelado qué hizo cada uno"
+    ],
+    "roles": {
+      "perpetrator": {
+        "constraints": [
+          "uno de varios"
+        ],
+        "label": "el culpable"
+      },
+      "protagonist": {
+        "constraints": [
+          "impulsado por la obsesión, metódico"
+        ],
+        "label": "el vengador"
+      },
+      "wronged_dead": {
+        "constraints": [
+          "la causa por la que se exige justicia"
+        ],
+        "label": "el difunto agraviado"
+      }
+    },
+    "summary": "Uno a uno, el vengador localiza a quienes participaron en el crimen, confronta a cada uno con las pruebas y los hace rendir cuentas."
+  },
+  "revenge.false_accusation": {
+    "beats": {
+      "condemned": {
+        "intent": "el protagonista es deshonrado ante todos",
+        "label": "Condena pública"
+      },
+      "evidence_hidden": {
+        "intent": "la verdad es suprimida; el punto más bajo",
+        "label": "Prueba ocultada"
+      },
+      "framed": {
+        "intent": "las pruebas plantadas marcan al protagonista",
+        "label": "Incriminación"
+      },
+      "unmasked": {
+        "intent": "el verdadero culpable es sacado a la luz",
+        "label": "La verdad sale a la luz"
+      }
+    },
+    "effects": [
+      "el nombre del protagonista queda reivindicado",
+      "el verdadero culpable es expuesto"
+    ],
+    "emotion_target": "indignación",
+    "examples": [
+      "Acusado de traidor mediante pruebas plantadas, el implicado soporta la deshonra pública hasta que el verdadero autor es sacado a la luz."
+    ],
+    "name": "Falsa acusación",
+    "preconditions": [
+      "el protagonista puede ser culpado de forma plausible por un crimen"
+    ],
+    "roles": {
+      "clue": {
+        "constraints": [
+          "suprimido inicialmente"
+        ],
+        "label": "el testigo o pista oculta"
+      },
+      "framer": {
+        "constraints": [
+          "metódico y oculto"
+        ],
+        "label": "el impostor"
+      },
+      "judges": {
+        "constraints": [
+          "influenciado por las apariencias"
+        ],
+        "label": "el tribunal o cuerpo juzgador"
+      },
+      "protagonist": {
+        "constraints": [
+          "condenado públicamente"
+        ],
+        "label": "el acusado injustamente"
+      }
+    },
+    "summary": "Marcado como traidor mediante pruebas plantadas, el acusado soporta la deshonra pública hasta que la mano criminal sale a la luz."
+  },
+  "revenge.mercy_or_vengeance": {
+    "beats": {
+      "at_mercy": {
+        "intent": "el asesino yace indefenso",
+        "label": "El enemigo a merced"
+      },
+      "choice": {
+        "intent": "el vengador debe decidir",
+        "label": "Elección forzada"
+      },
+      "consequence": {
+        "intent": "la elección redefine su esencia",
+        "label": "Cae la consecuencia"
+      },
+      "reason": {
+        "intent": "aparece una razón para no atacar",
+        "label": "Surge un motivo para perdonar"
+      }
+    },
+    "effects": [
+      "el protagonista queda transformado por su decisión",
+      "el ciclo de la venganza se cierra o se perpetúa"
+    ],
+    "emotion_target": "tensión-moral",
+    "examples": [
+      "Con el asesino indefenso, surge una razón para perdonar; la elección del vengador redefine quién es."
+    ],
+    "name": "Misericordia o venganza",
+    "preconditions": [
+      "el protagonista tiene al enemigo a su merced"
+    ],
+    "roles": {
+      "broken_enemy": {
+        "constraints": [
+          "a merced del protagonista"
+        ],
+        "label": "el enemigo vencido"
+      },
+      "moral_voice": {
+        "constraints": [
+          "un familiar, la conciencia o un testigo"
+        ],
+        "label": "la voz de la clemencia"
+      },
+      "protagonist": {
+        "constraints": [
+          "posee el poder de acabar con todo"
+        ],
+        "label": "el vengador al límite"
+      }
+    },
+    "summary": "Con el asesino indefenso, surge un motivo para perdonar; la elección del vengador redefine su propia esencia."
+  },
+  "revenge.patient_infiltration": {
+    "beats": {
+      "earn_trust": {
+        "intent": "ascender en los rangos del enemigo",
+        "label": "Ganarse la confianza"
+      },
+      "enter": {
+        "intent": "infiltrarse en el enemigo bajo cobertura",
+        "label": "Entrar bajo un nombre falso"
+      },
+      "gather": {
+        "intent": "recopilar sigilosamente secretos y pruebas",
+        "label": "Reunir material de chantaje"
+      },
+      "strike": {
+        "intent": "utilizar los secretos del enemigo contra él mismo",
+        "label": "Atacar desde dentro"
+      }
+    },
+    "effects": [
+      "el enemigo es derrotado por sus propios secretos",
+      "la verdadera identidad del vengador sale a la luz en el momento del ataque"
+    ],
+    "emotion_target": "tensión",
+    "examples": [
+      "Bajo una identidad prestada, el vengador escala en las propias filas del enemigo para luego usar sus secretos en su contra."
+    ],
+    "name": "Infiltración paciente",
+    "preconditions": [
+      "el protagonista puede infiltrarse sin ser reconocido en el círculo del enemigo"
+    ],
+    "roles": {
+      "contact": {
+        "constraints": [
+          "un aliado discreto en el interior"
+        ],
+        "label": "el contacto interno"
+      },
+      "leverage": {
+        "constraints": [
+          "secretos, pruebas"
+        ],
+        "label": "el material de chantaje"
+      },
+      "protagonist": {
+        "constraints": [
+          "ocultar su verdadera identidad"
+        ],
+        "label": "el vengador encubierto"
+      },
+      "target_house": {
+        "constraints": [
+          "poderosa y vigilada"
+        ],
+        "label": "la casa enemiga"
+      }
+    },
+    "summary": "Bajo una identidad prestada, el vengador escala los rangos del enemigo, reúne material de chantaje y luego utiliza sus propios secretos para traicionarlos desde dentro."
+  },
+  "revenge.pyrrhic_victory": {
+    "beats": {
+      "aftermath": {
+        "intent": "el vengador reflexiona sobre el vacío",
+        "label": "Secuelas vacías"
+      },
+      "confront": {
+        "intent": "llega el último ajuste de cuentas",
+        "label": "Confrontación final"
+      },
+      "cost": {
+        "intent": "sale a la luz el precio de la persecución",
+        "label": "Revelación del coste oculto"
+      },
+      "victory": {
+        "intent": "el enemigo cae",
+        "label": "Victoria alcanzada"
+      }
+    },
+    "effects": [
+      "el archienemigo es derrotado",
+      "el vengador se enfrenta al precio de su venganza"
+    ],
+    "emotion_target": "melancolía",
+    "examples": [
+      "El enemigo cae al fin —y en el silencio que le sigue, el vengador comprende lo que le han costado los años de odio."
+    ],
+    "name": "Victoria pírrica",
+    "preconditions": [
+      "el protagonista se acerca al fin de una larga búsqueda de venganza"
+    ],
+    "roles": {
+      "arch_enemy": {
+        "constraints": [
+          "el objetivo final"
+        ],
+        "label": "el archienemigo"
+      },
+      "protagonist": {
+        "constraints": [
+          "consumido por la larga persecución"
+        ],
+        "label": "el vengador"
+      },
+      "revenge_attained": {
+        "constraints": [
+          "vacía una vez obtenida"
+        ],
+        "label": "la venganza consumada"
+      }
+    },
+    "summary": "El enemigo cae al fin y, en el silencio posterior, el vengador comprende el precio que han costado los años de odio."
+  },
+  "revenge.three_year_pact": {
+    "beats": {
+      "ascent": {
+        "intent": "crecimiento arduo y oculto",
+        "label": "Ascenso amargo"
+      },
+      "breakthrough": {
+        "intent": "el protagonista cruza el umbral de la fortaleza",
+        "label": "El gran avance"
+      },
+      "encounter": {
+        "intent": "un giro del destino abre un camino hacia el poder",
+        "label": "Encuentro fortuito"
+      },
+      "humiliation": {
+        "intent": "el paria es derrotado y recibe un plazo límite",
+        "label": "Humillación"
+      },
+      "return": {
+        "intent": "regresa para derrocar a quien lo quebrantó",
+        "label": "Regreso y revés"
+      }
+    },
+    "effects": [
+      "el protagonista regresa transformado y poderoso",
+      "aquel que lo quebrantó es derrocado"
+    ],
+    "emotion_target": "vindicación",
+    "examples": [
+      "Con un plazo para fortalecerse o morir, el paria entrena en la oscuridad y regresa para derrocar a quien lo quebrantó."
+    ],
+    "name": "Pacto de tres años",
+    "preconditions": [
+      "el protagonista ha sido humillado y derrotado",
+      "se establece un plazo finito para fortalecerse o morir"
+    ],
+    "roles": {
+      "ally": {
+        "constraints": [
+          "permanece a su lado durante el ascenso"
+        ],
+        "label": "el aliado leal"
+      },
+      "mentor": {
+        "constraints": [
+          "oculto y exigente"
+        ],
+        "label": "el mentor de la naturaleza"
+      },
+      "protagonist": {
+        "constraints": [
+          "con un plazo límite para su crecimiento"
+        ],
+        "label": "el paria"
+      },
+      "rival": {
+        "constraints": [
+          "seguro de su victoria"
+        ],
+        "label": "quien lo quebrantó"
+      }
+    },
+    "summary": "Con un plazo para fortalecerse o morir, el paria se entrena en la oscuridad tras la humillación y un giro fortuito, para luego regresar y derrocar a quien lo quebrantó."
+  },
+  "revenge.usurped_inheritance": {
+    "beats": {
+      "cast_out": {
+        "intent": "el verdadero heredero es desheredado",
+        "label": "Expulsado como un impostor"
+      },
+      "reclaim": {
+        "intent": "la prueba resurface y el derecho se restaura",
+        "label": "Derecho recuperado"
+      },
+      "seek_proof": {
+        "intent": "el heredero busca la prueba que ha sobrevivido",
+        "label": "Búsqueda de la prueba de linaje"
+      },
+      "stolen": {
+        "intent": "el derecho de nacimiento es arrebatado mediante falsificación",
+        "label": "Robo del derecho legítimo"
+      }
+    },
+    "effects": [
+      "el usurpador queda expuesto",
+      "el protagonista recupera su derecho de nacimiento"
+    ],
+    "emotion_target": "vindicación",
+    "examples": [
+      "Un derecho de nacimiento robado y un testamento falsificado dejan al verdadero heredero en la miseria — hasta que resurface la prueba que nadie pudo destruir."
+    ],
+    "name": "Herencia usurpada",
+    "preconditions": [
+      "el protagonista posee un derecho legítimo que puede ser arrebatado"
+    ],
+    "roles": {
+      "birthright": {
+        "constraints": [
+          "la herencia en disputa"
+        ],
+        "label": "el derecho de nacimiento"
+      },
+      "protagonist": {
+        "constraints": [
+          "privado de lo que le corresponde"
+        ],
+        "label": "el heredero desposeído"
+      },
+      "retainer": {
+        "constraints": [
+          "custodia la prueba"
+        ],
+        "label": "el leal servidor"
+      },
+      "usurper": {
+        "constraints": [
+          "posee el derecho robado"
+        ],
+        "label": "el usurpador"
+      }
+    },
+    "summary": "Un derecho de nacimiento robado y un testamento falsificado dejan al legítimo heredero en la indigencia, hasta que resurge la prueba que nadie pudo destruir."
+  }
+}

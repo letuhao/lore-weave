@@ -107,7 +107,6 @@
       "authentication": "認証",
       "authNone": "なし",
       "authBearer": "Bearerトークン",
-      "authOauth": "OAuth 2.1",
       "noAuthHint": "認証なし — このサーバーは公開されています。このまま登録とスキャンに進みます。",
       "bearerLabel": "Bearerトークン (Vaultに安全に保存されます。二度と表示されません)",
       "bearerPlaceholder": "トークンを貼り付け",
@@ -124,7 +123,8 @@
       "continue": "続行",
       "authKind": "認証: {{kind}}",
       "enable": "セッションで有効にする",
-      "done": "完了"
+      "done": "完了",
+      "authOauth": "OAuth 2.1"
     }
   },
   "commands": {

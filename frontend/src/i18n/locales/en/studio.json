@@ -146,6 +146,11 @@
       "desc": "Review AI-drafted entities",
       "guideBody": "Shows entity entries the AI drafted automatically from your manuscript, waiting for your review. Open it to accept, edit, or reject each suggestion before it becomes part of your official glossary."
     },
+    "world-setup": {
+      "title": "World Setup",
+      "desc": "Build your cast, world and their relationships from a description",
+      "guideBody": "Turn a description of your story into real, tracked lore: it plans what to build, you approve or trim the list, then each character, faction and term is written up one at a time (major ones get a full deep profile) and filed for your review. Finally it works out how they all connect and asks you to approve those relationships before saving them."
+    },
     "glossary-merge-candidates": {
       "title": "Merge candidates",
       "desc": "Review and confirm likely-duplicate entities",

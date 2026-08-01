@@ -86,6 +86,10 @@ _GENERATE_DESCRIPTOR = "composition.generate"
 # billing precheck (fail-closed) BEFORE enqueue.
 _MOTIF_ADOPT_DESCRIPTOR = "composition.motif_adopt"
 _MOTIF_MINE_DESCRIPTOR = "composition.motif_mine"
+# The user-paid LIBRARY translate — motif or arc_template, one descriptor (the payload's
+# `kind` selects). USER-scoped like adopt: the payload names ids, not a Work, with an
+# optional book_id when the targets are that book's SHARED tier, EDIT-re-gated at confirm.
+_LIBRARY_TRANSLATE_DESCRIPTOR = "composition.library_translate"
 _ARC_IMPORT_DESCRIPTOR = "composition.arc_import"
 _CONFORMANCE_RUN_DESCRIPTOR = "composition.conformance_run"
 # close-21-28 P-O2a — the deterministic arc decompiler (book-scoped, EDIT-gated at confirm).
@@ -121,7 +125,7 @@ _BOOTSTRAP_APPLY_DESCRIPTOR = "composition.bootstrap_apply"
 # to its scope: adopt/arc_import = user-scoped; mine = book/corpus; the rest = Work).
 _ALL_DESCRIPTORS = (
     _PUBLISH_DESCRIPTOR, _GENERATE_DESCRIPTOR,
-    _MOTIF_ADOPT_DESCRIPTOR, _MOTIF_MINE_DESCRIPTOR,
+    _MOTIF_ADOPT_DESCRIPTOR, _MOTIF_MINE_DESCRIPTOR, _LIBRARY_TRANSLATE_DESCRIPTOR,
     _ARC_IMPORT_DESCRIPTOR, _CONFORMANCE_RUN_DESCRIPTOR,
     _DECOMPILE_DESCRIPTOR, _DERIVE_DESCRIPTOR,
     _BOOTSTRAP_APPLY_DESCRIPTOR,
@@ -344,6 +348,23 @@ async def confirm_action(
             except (OwnershipError, InsufficientGrant) as exc:
                 raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
         return await _execute_motif_mine(payload, envelope_user, token=token, claims=claims)
+
+    # ── translate is USER-scoped (the payload names ids + kind). A book_id is present
+    # only when the targets are that book's SHARED tier, so re-check EDIT on it — a
+    # grant revoked since propose must stop the spend, exactly as for mine. The engine
+    # ALSO re-applies the tenancy filter per motif, because a sweeper re-drive can run
+    # this job long after any grant check here.
+    if claims.descriptor == _LIBRARY_TRANSLATE_DESCRIPTOR:
+        if payload.get("book_id"):
+            try:
+                book_id = UUID(str(payload["book_id"]))
+            except (ValueError, TypeError) as exc:
+                raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
+            try:
+                await authorize_book(grant, book_id, envelope_user, GrantLevel.EDIT)
+            except (OwnershipError, InsufficientGrant) as exc:
+                raise HTTPException(status_code=403, detail={"code": "action_error"}) from exc
+        return await _execute_library_translate(payload, envelope_user, token=token, claims=claims)
 
     # ── D-AGENT-MODE §20: authoring-run descriptors are BOOK-scoped (no Work/
     # project_id — mirrors motif_adopt's per-book branch). Re-check EDIT on the
@@ -755,6 +776,43 @@ async def _execute_motif_mine(
     return {
         "outcome": "action_accepted",
         "descriptor": _MOTIF_MINE_DESCRIPTOR,
+        "job_id": job_id,
+        "poll": "composition_get_mine_job",
+    }
+
+
+async def _execute_library_translate(
+    payload: dict[str, Any], envelope_user: UUID, *, token: str, claims: Any,
+) -> dict[str, Any]:
+    """composition.library_translate effect — ledger-claim → usage-billing precheck →
+    enqueue a `translate_library` worker job (202+poll).
+
+    This is the ONLY way a translation of a user's own library gets paid for. The
+    platform's own motifs ship translated for free; a user's motifs and arc templates
+    are translated when — and only when — the user confirms this spend (spec
+    2026-07-29-motif-i18n §5)."""
+    await _claim_or_replay(token, claims)
+    estimate = float(payload.get("estimate_usd") or 0.0)
+    await _precheck_or_402(
+        owner_user_id=envelope_user, job_id=_billing_job_id(token), estimate_usd=estimate)
+    job_id = await _enqueue_motif_job(
+        envelope_user=envelope_user, project_id=None, operation="translate_library",
+        spec={
+            "kind": payload.get("kind") or "motif",
+            "ids": payload.get("ids"),
+            "target_language": payload.get("target_language"),
+            "book_id": payload.get("book_id"),
+            "force": payload.get("force"),
+            # BYOK translate model rides through (provider-gateway invariant); the
+            # engine fails closed rather than falling back to a platform model — the
+            # user's own model is what makes this THEIR spend.
+            "model_ref": payload.get("model_ref"),
+            "model_source": payload.get("model_source"),
+        },
+    )
+    return {
+        "outcome": "action_accepted",
+        "descriptor": _LIBRARY_TRANSLATE_DESCRIPTOR,
         "job_id": job_id,
         "poll": "composition_get_mine_job",
     }

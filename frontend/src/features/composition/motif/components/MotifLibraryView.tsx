@@ -11,6 +11,7 @@ import { MotifFacetRail } from './MotifFacetRail';
 import { MotifCard } from './MotifCard';
 import { MotifDetailDrawer } from './MotifDetailDrawer';
 import { MotifQuickCreateForm } from './MotifQuickCreateForm';
+import { MotifBatchTranslateBar } from './MotifBatchTranslateBar';
 import { MotifMinePanel } from './MotifMinePanel';
 import { AdoptTargetModal } from './AdoptTargetModal';
 import { ArcTemplateLibraryView } from './ArcTemplateLibraryView';
@@ -47,6 +48,24 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, h
   const [mining, setMining] = useState(false);
   const [showFilters, setShowFilters] = useState(false);   // mobile filter sheet (§5.5)
   const [kind, setKind] = useState<'motifs' | 'arcs'>('motifs');   // W10 — motif vs arc-template library
+  // Batch translate — a selection MODE rather than always-on checkboxes, so the library
+  // stays a reading surface until the author asks to act on many rows at once.
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const toggleSelect = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  // A selection is over a VIEW. Change the view and the count stops describing anything
+  // the author can see — the button would still offer "Translate 3" while the list shows
+  // none of the three, and they would pay for rows they had lost sight of. Cleared at the
+  // point the view changes (an explicit handler, not a useEffect watching state — that
+  // pattern is banned here precisely because it reacts one render too late).
+  const changeView = <A extends unknown[]>(fn: (...a: A) => void) => (...a: A) => {
+    setSelected(new Set());
+    fn(...a);
+  };
 
   const detail = useMotifDetail(openId, me, token);
   const quickCreate = useMotifQuickCreate(token, (m) => { setCreating(false); setOpenId(m.id); });
@@ -78,7 +97,7 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, h
       <>
       {/* header: scope tabs + simple-mode toggle + new-motif */}
       <div className="flex items-center justify-between gap-2 px-1 pt-1">
-        <MotifScopeTabs scope={lib.scope} onScope={lib.setScope} hasBook={lib.hasBook} />
+        <MotifScopeTabs scope={lib.scope} onScope={changeView(lib.setScope)} hasBook={lib.hasBook} />
         <div className="flex items-center gap-1">
           <button type="button" aria-pressed={simple} data-testid="motif-simple-toggle" className="rounded border border-neutral-300 px-2 py-0.5 text-[11px] dark:border-neutral-600" onClick={toggle}>
             {simple ? t('motif.mode.simple', { defaultValue: 'Simple' }) : t('motif.mode.expert', { defaultValue: 'Expert' })}
@@ -104,6 +123,19 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, h
         </div>
       )}
 
+      {/* batch translate (mount-on-open) — the other half of the user-paid path: the
+          engine and the tool have always taken 1..50, only the picker was missing. */}
+      {selecting && (
+        <MotifBatchTranslateBar
+          selectedIds={[...selected]}
+          notSelectableCount={lib.motifs.filter((m) => !me || m.owner_user_id !== me).length}
+          token={token}
+          bookId={bookId}
+          onDone={() => { setSelecting(false); setSelected(new Set()); }}
+          onCancel={() => { setSelecting(false); setSelected(new Set()); }}
+        />
+      )}
+
       {/* search */}
       <div className="flex items-center gap-1 p-1">
         <input
@@ -112,8 +144,18 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, h
           className="min-w-0 flex-1 rounded border border-neutral-300 px-2 py-1 text-xs dark:border-neutral-600 dark:bg-neutral-800"
           placeholder={t('motif.search', { defaultValue: 'Search motifs' })}
           value={lib.search}
-          onChange={(e) => lib.setSearch(e.target.value)}
+          onChange={(e) => changeView(lib.setSearch)(e.target.value)}
         />
+        {!selecting && kind === 'motifs' && (
+          <button
+            type="button"
+            data-testid="motif-batch-open"
+            className="rounded border border-amber-500 px-2 py-1 text-xs text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-950/30"
+            onClick={() => setSelecting(true)}
+          >
+            {t('motif.batch.open', { defaultValue: 'Translate…' })}
+          </button>
+        )}
         <button type="button" data-testid="motif-filter-toggle" className="rounded border border-neutral-300 px-2 py-1 text-xs sm:hidden dark:border-neutral-600" onClick={() => setShowFilters((v) => !v)}>
           {t('motif.facet.filters', { defaultValue: 'Filters' })}
         </button>
@@ -122,7 +164,7 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, h
       <div className="flex min-h-0 flex-1">
         {/* facet rail — left column desktop; toggled sheet on mobile (§5.5) */}
         <div className={`w-44 shrink-0 overflow-auto border-r border-neutral-200 dark:border-neutral-700 ${showFilters ? 'block' : 'hidden'} sm:block`}>
-          <MotifFacetRail facets={lib.facets} available={lib.available} onSetFacet={lib.setFacet} onClear={lib.clearFacets} />
+          <MotifFacetRail facets={lib.facets} available={lib.available} onSetFacet={changeView(lib.setFacet)} onClear={changeView(lib.clearFacets)} />
         </div>
 
         {/* list */}
@@ -146,6 +188,13 @@ export function MotifLibraryView({ token, meUserId: meProp, projectId, bookId, h
                     key={m.id}
                     motif={m}
                     meUserId={me}
+                    selected={selected.has(m.id)}
+                    // ONLY a row the caller owns gets the handler — and therefore the
+                    // checkbox. Offering a tick on a built-in and refusing it at propose
+                    // is a batch narrowed after the fact, which is the same silent
+                    // truncation in a costlier place.
+                    onToggleSelect={selecting && !!me && m.owner_user_id === me
+                      ? toggleSelect : undefined}
                     onOpen={setOpenId}
                     onAdopt={adopt.begin}
                     onPromote={lib.scope === 'drafts' ? (mm) => drafts.promote.mutate({ id: mm.id, version: mm.version }) : undefined}

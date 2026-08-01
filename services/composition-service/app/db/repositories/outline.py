@@ -20,6 +20,7 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_canon_check import LIVENESS_ALIVE
 
 from app.db.models import OutlineNode
 from app.db.repositories import (
@@ -39,7 +40,7 @@ _SELECT_COLS = """
   present_entity_ids, goal, beat_role, status, chapter_id, tension,
   story_order, synopsis, structure_node_id,
   location_entity_id, story_time, conflict, outcome, value_shift, stakes,
-  target_words, exit_state, source,
+  target_words, draft_beats, exit_state, source, intent_slots,
   -- SC11 Phase 1/3 — the written verdict. A MAINTAINED column (reconciled from
   -- book-service's scenes.source_scene_id), never authored. Selected here so the PH10
   -- summary projection can ship `written` without a second query.
@@ -57,7 +58,7 @@ _UPDATABLE_COLUMNS: frozenset[str] = frozenset(
      # 22 SC4/B2 — authored scene intent (the eight fields). conflict/outcome/stakes
      # are NOT NULL DEFAULT '' (not clearable); the rest accept an explicit NULL.
      "location_entity_id", "story_time", "conflict", "outcome", "value_shift",
-     "stakes", "target_words", "exit_state"}
+     "stakes", "target_words", "draft_beats", "exit_state"}
 )
 # Columns that accept an explicit NULL (clear). The others are NOT NULL, so a
 # None on them is skipped (treated as no-op for that field).
@@ -75,6 +76,16 @@ def _row_to_node(row: asyncpg.Record) -> OutlineNode:
     ev = data.get("exit_state")
     if isinstance(ev, str):
         data["exit_state"] = json.loads(ev)
+    # Same TEXT-not-dict story for the FSM's per-slot provenance. `or {}` covers a legacy row
+    # written before the column existed — a NULL here must read as "nothing settled", never crash
+    # the whole node read.
+    st = data.get("intent_slots")
+    data["intent_slots"] = json.loads(st) if isinstance(st, str) else (st or {})
+    # D-SCENE-BEATS — same TEXT-not-list story. `or []` covers a row written before the column
+    # existed: a NULL must read as "this is a legacy single-beat scene", which is the behaviour
+    # every existing scene relies on, never a crash on the whole node read.
+    bt = data.get("draft_beats")
+    data["draft_beats"] = json.loads(bt) if isinstance(bt, str) else (bt or [])
     return OutlineNode.model_validate(data)
 
 
@@ -237,11 +248,15 @@ class OutlineRepo:
         value_shift: int | None = None,
         stakes: str = "",
         target_words: int | None = None,
+        draft_beats: list[dict[str, Any]] | None = None,
         exit_state: dict[str, Any] | None = None,
         # 26 IX-11 (D1) — provenance. Human authoring defaults 'authored'; the
         # decompiler passes source='decompiled' + decompile_key='<chapter>:<sort>'.
         source: str = "authored",
         decompile_key: str | None = None,
+        # Intent-collection FSM: which slots the AUTHOR settled ({"goal":"settled",...}).
+        # Carried across a re-plan so author-settled intent is not destroyed by the next plan.
+        intent_slots: dict[str, Any] | None = None,
         conn: asyncpg.Connection | None = None,
     ) -> OutlineNode:
         """Insert an outline node. When `rank` is omitted it is auto-computed to
@@ -264,6 +279,7 @@ class OutlineRepo:
             node_rank = rank if rank is not None else await self._next_rank(
                 c, project_id, parent_id
             )
+            node_story_order = story_order
             row = await c.fetchrow(
                 f"""
                 INSERT INTO outline_node
@@ -271,25 +287,28 @@ class OutlineRepo:
                    pov_entity_id, present_entity_ids, goal, beat_role, status,
                    chapter_id, tension, story_order, synopsis,
                    location_entity_id, story_time, conflict, outcome, value_shift,
-                   stakes, target_words, exit_state, source, decompile_key,
+                   stakes, target_words, draft_beats, exit_state, source, decompile_key, intent_slots,
                    structure_node_id)
                 SELECT $1, $2, w.book_id, $3, $4, $5, $6,
                        $7, $8, $9, $10, $11,
                        $12, $13, $14, $15,
                        $16, $17, $18, $19, $20,
-                       $21, $22, $23::jsonb, $24, $25,
-                       $26
+                       $21, $22, $23::jsonb, $24::jsonb, $25, $26, $27::jsonb,
+                       $28
                 FROM composition_work w
                 WHERE (w.project_id = $2 OR (w.project_id IS NULL AND w.id = $2))
                 RETURNING {_SELECT_COLS}
                 """,
                 created_by, project_id, parent_id, kind, node_rank, title,
                 pov_entity_id, present_entity_ids or [], goal, beat_role, status,
-                chapter_id, tension, story_order, synopsis,
+                chapter_id, tension, node_story_order, synopsis,
                 location_entity_id, story_time, conflict, outcome, value_shift,
                 stakes, target_words,
+                json.dumps(draft_beats or []),
                 json.dumps(exit_state) if exit_state is not None else None,
-                source, decompile_key, structure_node_id,
+                source, decompile_key,
+                json.dumps(intent_slots or {}),
+                structure_node_id,
             )
             if row is None:
                 # The INSERT … SELECT found no composition_work to derive book_id
@@ -297,6 +316,31 @@ class OutlineRepo:
                 # never mint a node without a book_id home.
                 raise ReferenceViolationError(
                     f"project {project_id} has no composition_work row"
+                )
+            # D-SCENE-STORY-ORDER-UNWIRED — put the new SCENE on the reading axis.
+            #
+            # `rank` (the UI tree's fractional string) has always been auto-computed when
+            # omitted; `story_order` (the integer NARRATIVE position) never was. PlanForge
+            # sets it, `composition_outline_node_edit` has no such argument — so a scene
+            # created outside a plan run got a correct place on screen and NO place in the
+            # story. That is not cosmetic: `story_order` is the key the cross-scene
+            # state-reinjection reads (`prior_scene_drafts`: `story_order < $3`), so NULL
+            # matched nothing, every scene drafted blind, and the system prompt's "do NOT
+            # reuse a distinctive image you have already used" had no data to check
+            # against. Measured on the Mị Đế book: five scenes, five beats, one ending.
+            #
+            # Reuse `_renumber_scene_story_order` rather than computing an append slot
+            # here. This column is chapter-major/scene-minor on ONE strided global axis
+            # (`chapter.story_order + i`, zero-based, chapters at n*1000), shared with
+            # plan.py's commit, chapter_gen, the packer's strictly-prior lenses and the
+            # canon-rule windows. A local "max + 1" would have been a THIRD convention on
+            # a column whose own docstring records that two conventions already shipped
+            # once and destroyed the global order on the first scene drag. One axis, one
+            # implementation — the same one the move path calls.
+            if kind == "scene" and story_order is None:
+                await self._renumber_scene_story_order(c, project_id, parent_id)
+                row = await c.fetchrow(
+                    f"SELECT {_SELECT_COLS} FROM outline_node WHERE id = $1", row["id"],
                 )
             return row
 
@@ -441,6 +485,82 @@ class OutlineRepo:
             )
         return [_row_to_node(r) for r in rows]
 
+    async def prior_scene_exit_state(
+        self, project_id: UUID, chapter_id: UUID, before_story_order: int,
+    ) -> dict[str, Any] | None:
+        """D-GENERATED-FACT-HAS-NO-HOME — the `exit_state` of the scene IMMEDIATELY before
+        this one in the same chapter. None when there is no predecessor or it recorded nothing.
+
+        ⚠ ARCHIVED-EXCLUDED, for the same reason `prior_scene_drafts` is: a soft-deleted scene
+        is not part of the story. Feeding a deleted scene's cast into the next prompt would
+        resurrect a discarded character exactly the way the archived-prose leak resurrected a
+        discarded ending.
+
+        ⚠ POSITION-BOUNDED: strictly `< before_story_order`, so a scene can never see its own
+        future. A NULL `story_order` is excluded rather than sorted last — an unplaced scene has
+        no provable position, and "probably before" is not a spoiler guarantee.
+        """
+        async with self._pool.acquire() as c:
+            row = await c.fetchval(
+                """
+                SELECT exit_state FROM outline_node
+                WHERE project_id = $1 AND chapter_id = $2
+                  AND kind = 'scene' AND NOT is_archived
+                  AND story_order IS NOT NULL AND story_order < $3
+                ORDER BY story_order DESC
+                LIMIT 1
+                """,
+                project_id, chapter_id, before_story_order,
+            )
+        # This pool sets no jsonb codec, so asyncpg hands back the raw string. Decoded exactly
+        # the way `_row_to_node` does it, with no try/except: the column is JSONB, so the string
+        # postgres returns is valid JSON by construction. The first version guarded it anyway
+        # and referenced a `logger` this module does not have — a defensive branch that could
+        # only ever have fired as a NameError, on a path nothing can reach.
+        if isinstance(row, str):
+            return json.loads(row)
+        return row if isinstance(row, dict) else None
+
+    async def plan_liveness_after(
+        self, project_id: UUID, chapter_id: UUID, after_story_order: int | None,
+    ) -> dict[str, str]:
+        """S2 — the PLAN layer of the cast-liveness cascade. `{entity_id: 'alive'}`.
+
+        `resolve_cast_liveness` has taken a `plan_status` argument since S2 and NOTHING EVER
+        PASSED ONE — measured 2026-08-01: the only production call site passed the KG snapshot
+        alone, so the middle layer of a three-layer cascade was unreachable and every entity the
+        graph had not heard of fell straight through to `unknown`/`none`. This is its producer.
+
+        The rule: an entity the plan places in a LATER scene of this chapter is asserted ALIVE
+        here, because the plan intends them to act after this point. That is exactly the
+        acceptance defect this run exists for — scene 1's prose kills someone scene 2's cast
+        still lists, while the knowledge graph tracks book-level status and has no row either
+        way.
+
+        It only ever emits `alive`, and that asymmetry is deliberate: a scene's cast says who is
+        PRESENT, so absence from later scenes is evidence of nothing at all. The KG is checked
+        first and always wins; this layer speaks only where the graph is silent.
+
+        No position ⇒ `{}`. Without one there is no "later", and inferring an order is how a
+        position-gated guarantee quietly becomes a guess. Chapter-scoped for the same reason
+        `prior_scene_exit_state` is: `story_order` is compared within a chapter everywhere else
+        in this repo, and widening the axis here would be a second convention.
+        """
+        if after_story_order is None:
+            return {}
+        async with self._pool.acquire() as c:
+            rows = await c.fetch(
+                """
+                SELECT DISTINCT unnest(present_entity_ids)::text AS entity_id
+                FROM outline_node
+                WHERE project_id = $1 AND chapter_id = $2
+                  AND kind = 'scene' AND NOT is_archived
+                  AND story_order IS NOT NULL AND story_order > $3
+                """,
+                project_id, chapter_id, after_story_order,
+            )
+        return {r["entity_id"]: LIVENESS_ALIVE for r in rows}
+
     async def chapter_node_id(
         self, project_id: UUID, chapter_id: UUID,
     ) -> UUID | None:
@@ -480,9 +600,107 @@ class OutlineRepo:
                 project_id, chapter_id,
             )
 
+    #: The intent slots a re-plan must not destroy. Ordered as the FSM asks them (closed sets
+    #: first — a weak model picks well and invents badly, and each answer narrows the next).
+    INTENT_SLOTS = (
+        "beat_role", "value_shift", "tension",
+        "goal", "conflict", "outcome", "stakes", "exit_state", "story_time", "target_words",
+    )
+
+    async def settle_intent_slot(
+        self, project_id: UUID, node_id: UUID, *,
+        slot: str, value: Any, pg_cast: str, verdict: str,
+    ) -> Any:
+        """Write ONE intent slot and stamp who settled it. Returns the value as PERSISTED.
+
+        The intent-collection FSM's apply step (spec 2026-07-28 §4). Two properties matter:
+
+        **It returns the column read BACK, not the value passed in.** Metric B of the POC asks
+        whether the artifact ends up saying exactly what the author said — `exact` / `drifted` /
+        `dropped`. Echoing the request would make that metric measure nothing, since the one failure
+        it exists to catch is precisely a write that did not land as given.
+
+        **`slot` is interpolated into the statement, so it is membership-checked FIRST.** The caller
+        (`intent_fsm.slots.spec`) already does this; doing it again here is deliberate — this is the
+        only method in the repo that chooses a column at runtime, and the check must not live solely
+        in a module that a future caller might bypass.
+
+        `intent_slots` is MERGED (`||`), never replaced: two slots settled in sequence must both
+        survive, and a whole-map write would drop the earlier one.
+        """
+        if slot not in self.INTENT_SLOTS:
+            raise ValueError(f"not a settleable intent slot: {slot!r}")
+        if verdict not in ("settled", "absent"):
+            raise ValueError(f"not an intent verdict: {verdict!r}")
+        async with self._pool.acquire() as c:
+            row = await c.fetchrow(
+                f"""
+                UPDATE outline_node
+                   SET {slot} = $3::{pg_cast},
+                       intent_slots = intent_slots || jsonb_build_object($4::text, $5::text),
+                       -- Bumped even though `update_node` bumps only on a CAS write. A settled
+                       -- slot IS a content change, so an editor holding the pre-write version
+                       -- SHOULD lose its compare-and-set rather than clobber it — the FSM writes
+                       -- the same columns a human editor does.
+                       version = version + 1,
+                       updated_at = now()
+                 WHERE project_id = $1 AND id = $2 AND NOT is_archived
+                RETURNING {slot} AS settled_value
+                """,
+                project_id, node_id,
+                json.dumps(value) if pg_cast == "jsonb" and value is not None else value,
+                slot, verdict,
+            )
+        if row is None:
+            raise ReferenceViolationError(
+                f"outline node {node_id} not found in project {project_id} (or archived)"
+            )
+        return row["settled_value"]
+
+    async def _lift_settled_intent(
+        self, c: asyncpg.Connection, project_id: UUID, chapter_ids: list,
+    ) -> dict[str, dict[str, Any]]:
+        """Read the AUTHOR-settled intent off the chapter nodes a re-plan is about to archive.
+
+        Returns ``{chapter_id: {"slots": {...values...}, "state": {...settled/absent...}}}``.
+
+        Only slots the author actually settled are lifted — `intent_slots` records that per node,
+        because the node-level `source` ('authored' vs 'planforge') is too coarse: an author who
+        settles ONE slot on a planforge chapter must keep it AND still receive the planner's fresh
+        values for the slots they never touched.
+
+        An `absent` slot is carried too, and carrying it is the point: it is an AUTHORED STATEMENT
+        ("the story has not decided this"), so a re-plan must not quietly refill it.
+        """
+        rows = await c.fetch(
+            f"""
+            SELECT chapter_id, intent_slots, {", ".join(self.INTENT_SLOTS)}
+            FROM outline_node
+            WHERE project_id = $1 AND kind = 'chapter'
+              AND NOT is_archived AND chapter_id = ANY($2)
+              AND intent_slots <> '{{}}'::jsonb
+            """,
+            project_id, chapter_ids,
+        )
+        carried: dict[str, dict[str, Any]] = {}
+        for r in rows:
+            state = r["intent_slots"]
+            if isinstance(state, str):
+                state = json.loads(state)
+            if not state:
+                continue
+            slots = {
+                name: r[name]
+                for name, verdict in state.items()
+                if verdict == "settled" and name in self.INTENT_SLOTS
+            }
+            carried[str(r["chapter_id"])] = {"slots": slots, "state": state}
+        return carried
+
     async def _insert_decomposed_tree(
         self, c: asyncpg.Connection, project_id: UUID, *,
         book_id: UUID, created_by: UUID, arc_title: str, chapters: list[dict[str, Any]],
+        carried: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Insert arc→chapter→scene on an open connection (NO Tx of its own — the
         caller owns the transaction). The ARC is a `structure_node` (kind='arc',
@@ -490,9 +708,21 @@ class OutlineRepo:
         NEVER as a `kind='arc'` outline_node, which the post-lift CHECK rejects);
         chapters are outline_nodes LINKED to it via `structure_node_id` (parent_id
         stays NULL — the arc is not an outline parent). `beat_role` is stamped on
-        the SCENES (DB CHECK forbids it on chapter); the chapter node carries the
-        beat intent in `goal`. Returns the created node ids (UUIDs); `arc_id` is a
-        `structure_node` id."""
+        the chapter AND on its scenes; the chapter also carries the beat intent in
+        `goal`. Returns the created node ids (UUIDs); `arc_id` is a `structure_node` id.
+
+        The chapter used to be created WITHOUT `beat_role`, explained by "DB CHECK forbids it on
+        chapter". The constraint says the opposite and has for some time:
+
+            outline_beatrole_kind CHECK (beat_role IS NULL OR kind = ANY (ARRAY['scene','chapter']))
+
+        The check was widened; the comment and the code never followed. Measured 2026-07-28:
+        0 of 95 chapter nodes carried a beat role while `plan_artifact(kind='beat_plan')` held the
+        full curve — two representations, diverged, because the apply step dropped it.
+
+        `carried` holds the slots the author already SETTLED on the chapter being re-planned
+        (see `_lift_settled_intent`). Author-settled shadows planner-proposed — the same
+        higher-tier-wins cascade this repo already mandates for settings."""
         # Lazy import avoids a package-load cycle (structure ↔ repositories __init__).
         from app.db.repositories.structure import StructureRepo
 
@@ -502,12 +732,38 @@ class OutlineRepo:
         )
         chapter_ids: list[UUID] = []
         scene_ids: list[UUID] = []
+        carried = carried or {}
         for ch in chapters:
+            # Author-settled slots SHADOW the planner's fresh values; slots the author never
+            # touched take the plan's. `state` is re-stamped so the next re-plan carries them again
+            # — dropping it would make the merge work exactly once.
+            keep = carried.get(str(ch.get("chapter_id")), {})
+            settled, state = keep.get("slots") or {}, keep.get("state") or {}
+
+            def _slot(name: str, planner_value: Any, *, empty: Any = None) -> Any:
+                """Resolve one slot: author-settled > author-absent > planner.
+
+                The `absent` branch is the one that is easy to get wrong and was: carrying the
+                marker but still falling through to the planner's value silently refills a slot the
+                author explicitly declined — which is exactly the machine answering a question they
+                said the story has not decided. Caught by
+                `test_an_ABSENT_slot_is_not_quietly_refilled`.
+                """
+                verdict = state.get(name)
+                if verdict == "absent":
+                    return empty
+                if verdict == "settled":
+                    return settled.get(name, empty)
+                return planner_value
             ch_node = await self.create_node(
                 project_id, created_by=created_by, kind="chapter",
                 structure_node_id=arc.id,
                 chapter_id=ch["chapter_id"], title=ch.get("title", ""),
-                goal=ch.get("intent", ""),
+                goal=_slot("goal", ch.get("intent", ""), empty=""),
+                # The chapter's OWN beat role. Omitting it is what left beat_role 0/95 while the
+                # plan artifact held the whole curve (see the docstring).
+                beat_role=_slot("beat_role", ch.get("beat_role")),
+                intent_slots=state,
                 # The chapter's reading position on the SAME axis its scenes use
                 # (chapter_sort * STORY_ORDER_CHAPTER_STRIDE — so a chapter sits exactly at its
                 # own scene 0). Omitting it left every chapter node's story_order NULL, which:
@@ -705,6 +961,23 @@ class OutlineRepo:
                     if existing_ids and not replace:
                         raise AlreadyPlannedError(existing_ids)
                     if replace:
+                        # MERGE, NOT REPLACE (spec 2026-07-28 §SSOT). Before archiving, lift every
+                        # slot the AUTHOR settled off the chapter nodes about to be archived, keyed
+                        # by `chapter_id` — the identity that survives a re-plan (it is the real book
+                        # chapter UUID, and the archive sweep below keys on it too).
+                        #
+                        # Without this the choice of `outline_node` as the SSOT for settled intent
+                        # does not survive its own code path: a re-plan archives the chapter nodes
+                        # and inserts a FRESH tree built purely from the plan output, carrying
+                        # nothing forward. The first re-plan would silently delete everything the
+                        # author had settled — and an intent-collection FSM whose output the next
+                        # re-plan deletes is worse than none, because by then the author relies on it.
+                        #
+                        # CHAPTERS ONLY. A scene has no stable identity across a re-plan (the planner
+                        # re-decomposes them), so there is nothing to key a carry-forward on. Chapter
+                        # intent is what the author settles; scenes are the planner's decomposition
+                        # of it.
+                        carried = await self._lift_settled_intent(c, project_id, affected)
                         # true replace — soft-archive the target chapters' prior
                         # PLAN nodes: the scene + chapter outline_nodes AND the now-
                         # emptied `structure_node` arc (D-A3-REPLACE-ORPHAN-ARC-NODES
@@ -768,6 +1041,7 @@ class OutlineRepo:
                     ids = await self._insert_decomposed_tree(
                         c, project_id, book_id=book_id, created_by=created_by,
                         arc_title=arc_title, chapters=chapters,
+                        carried=carried if replace else None,
                     )
                     result = {
                         "arc_id": str(ids["arc_id"]),
@@ -1008,10 +1282,24 @@ class OutlineRepo:
 
     async def outline_stats(
         self, project_id: UUID,
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
         """Whole-book totals per kind (non-archived) for the navigator footer — arcs / chapters
         / scenes. A single GROUP BY (not derivable from the lazy-loaded tree window). Kinds with
-        no rows report 0; 'beat' is excluded (structural, not navigable)."""
+        no rows report 0; 'beat' is excluded (structural, not navigable).
+
+        Also returns `linked_chapter_ids`: every book chapter this outline claims. The navigator
+        needs it to answer "which chapters are NOT in the plan" — a question it cannot answer from
+        the tree, because the outline loads lazily and a node carrying the link can sit at any
+        depth. Without it a chapter written outside the plan was invisible in the manuscript rail
+        (D-STUDIO-CHAPTER-OUTSIDE-THE-PLAN), and to an author a chapter they cannot see is a
+        chapter they have lost.
+
+        `chapter_id` ONLY, deliberately — it is the node's OWN spec chapter, i.e. plan identity.
+        `written_chapter_id` means "whose prose backs this scene", which a chapter can satisfy
+        without being planned at all; counting it would HIDE such a chapter. The failure
+        directions are not symmetric: listing a chapter twice is noise, dropping it is data loss
+        from the author's point of view.
+        """
         async with self._pool.acquire() as c:
             rows = await c.fetch(
                 """
@@ -1021,12 +1309,20 @@ class OutlineRepo:
                 """,
                 project_id,
             )
-        out = {"arcs": 0, "chapters": 0, "scenes": 0}
+            linked = await c.fetch(
+                """
+                SELECT DISTINCT chapter_id FROM outline_node
+                WHERE project_id = $1 AND NOT is_archived AND chapter_id IS NOT NULL
+                """,
+                project_id,
+            )
+        out: dict[str, Any] = {"arcs": 0, "chapters": 0, "scenes": 0}
         key = {"arc": "arcs", "chapter": "chapters", "scene": "scenes"}
         for r in rows:
             mapped = key.get(r["kind"])
             if mapped:
                 out[mapped] = r["n"]
+        out["linked_chapter_ids"] = [str(r["chapter_id"]) for r in linked]
         return out
 
     async def search_nodes(
@@ -1111,7 +1407,11 @@ class OutlineRepo:
             # 22 SC12/B2 — exit_state is JSONB; asyncpg does not auto-encode a dict, so
             # serialize + cast (mirrors the ::jsonb inserts elsewhere in this repo). A
             # clear (None, allowed since it is nullable) passes through as SQL NULL.
-            if field == "exit_state" and value is not None:
+            # D-SCENE-BEATS — `beats` is JSONB for the same reason and needs the same
+            # treatment. Omitting it here would bind a Python list to a jsonb column and fail
+            # at write time, which is the kind of thing that only shows up on the ONE path a
+            # unit test does not take.
+            if field in ("exit_state", "draft_beats") and value is not None:
                 params.append(json.dumps(value))
                 set_clauses.append(f"{field} = ${len(params)}::jsonb")
             else:
@@ -1229,9 +1529,36 @@ class OutlineRepo:
                   count(*) FILTER (
                     WHERE (latest.result -> 'canon' ->> 'resolved') = 'false'
                   ) AS unresolved,
+                  -- S1 — "unchecked" is ANYTHING that is not `checked`, not an enumerated
+                  -- list of the states someone remembered. The list version shipped as
+                  -- ('skipped_no_position','degraded') and therefore counted
+                  -- `skipped_no_cast` — the ONE state in which the guard verified nothing at
+                  -- all — as a checked chapter. Measured: an 8,116-word chapter, an invented
+                  -- character in three of four scenes, publish gate green.
+                  --
+                  -- COALESCE prefers the derived `guard_status` (per-check, honest across the
+                  -- whole composite) and falls back to the legacy scalar for rows written
+                  -- before S1.
+                  --
+                  -- The THIRD arm is the one S1 shipped without, and it is the difference
+                  -- between a fail-safe clause and one that only looks like it. With two arms,
+                  -- a result carrying NO `canon` key at all makes both `->>` return NULL, so
+                  -- the predicate is `NULL <> 'checked'` = NULL — and FILTER does not count a
+                  -- NULL. The row reads as CHECKED. Measured 2026-08-01 on the dev corpus:
+                  -- 127 scenes with a latest completed job, 23 of them with no canon envelope,
+                  -- counted 93 unchecked where the honest answer is 116. The sources are real
+                  -- and current — every completed `continue` (14/14) and `plan_pass` (103/103)
+                  -- job carries no canon envelope, and so do 26 of 163 `draft_scene` rows.
+                  --
+                  -- `'no_envelope'` is a SENTINEL, not a status: it is never written anywhere,
+                  -- it exists only so the comparison has a non-NULL left side. NOW the clause
+                  -- fails safe for both shapes — an unknown status AND a missing envelope.
                   count(*) FILTER (
-                    WHERE (latest.result -> 'canon' ->> 'status')
-                          IN ('skipped_no_position', 'degraded')
+                    WHERE COALESCE(
+                            latest.result -> 'canon' ->> 'guard_status',
+                            latest.result -> 'canon' ->> 'status',
+                            'no_envelope'
+                          ) <> 'checked'
                   ) AS unchecked
                 FROM (
                   SELECT DISTINCT ON (j.outline_node_id) j.result AS result
@@ -1255,10 +1582,13 @@ class OutlineRepo:
             )
         total, done = int(row["total"]), int(row["done"])
         canon_unresolved = int(canon_row["unresolved"]) if canon_row else 0
-        # Scenes whose latest auto job had a CAST but could not be verified
-        # (dangling chapter position / knowledge outage). Dirty data is normal in
-        # a real DB, so this is SURFACED, not hard-blocked — false-blocking every
-        # un-positioned scene would be worse; the FE warns + the author can act.
+        # Scenes whose latest auto job did NOT reach a `checked` canon guard — for ANY reason:
+        # no cast bound, a dangling chapter position, a knowledge outage, a state nobody has
+        # enumerated yet. (S1 widened this from a two-item list that happened to omit
+        # `skipped_no_cast`, the one state in which the guard checks nothing at all.)
+        # Dirty data is normal in a real DB, so this is SURFACED, not hard-blocked —
+        # false-blocking every un-positioned scene would be worse; the FE warns + the author
+        # can act.
         canon_unchecked = int(canon_row["unchecked"]) if canon_row else 0
         canon_blocked = canon_unresolved > 0
         return {

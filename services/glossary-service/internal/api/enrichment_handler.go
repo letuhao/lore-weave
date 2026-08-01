@@ -349,7 +349,10 @@ func (s *Server) internalEnrichmentCoverage(w http.ResponseWriter, r *http.Reque
 		SELECT
 			e.entity_id,
 			k.code AS kind_code,
-			COALESCE(name_av.original_value, '') AS name,
+			-- D-GLOSSARY-KNOWN-ENTITIES-NAME-BLIND (same class): a kind without a
+			-- name attribute (terminology uses term) rendered blank and could never be
+			-- offered as an enrichment target. cached_name is kind-aware already.
+			COALESCE(NULLIF(name_av.original_value, ''), e.cached_name, '') AS name,
 			(SELECT COUNT(*) FROM chapter_entity_links cel WHERE cel.entity_id = e.entity_id) AS mention_count,
 			COALESCE(ARRAY(
 				SELECT DISTINCT ee.dimension FROM entity_enrichments ee

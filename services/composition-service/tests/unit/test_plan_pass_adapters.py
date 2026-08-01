@@ -185,3 +185,261 @@ def test_chapter_plans_carry_pass4s_beat_roles_onto_the_engines_shape():
     assert [p.sort_order for p in plans] == [1, 2]
     # `chapter_id` is the PLAN's event id — at plan time the manuscript chapter may not exist yet
     assert [p.chapter_id for p in plans] == ["arc_1_event_1", "arc_1_event_2"]
+
+
+# ── E6: the cast pass can SEE the book it is planning ────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_run_cast_FORWARDS_the_roster_and_canon_it_was_given(monkeypatch):
+    """The third link in the chain, and the one a builder test cannot reach.
+
+    E6 threads two things the cast pass never had: the book's established roster (so `is_new` means
+    "not in the BOOK", not "not in this arc's premise") and the compiled canon anchors (which were
+    built on every run and read by nobody). Each layer needs its own assertion — mutation-checking
+    showed that deleting this forward left every cast_plan test green, because those call the
+    prompt builder directly. A capability wired at one layer and dropped at the next is precisely
+    the failure this sweep has been chasing.
+    """
+    import app.engine.cast_plan as cast_plan
+    from app.services.plan_pass_adapters import run_cast
+
+    seen: dict = {}
+
+    async def _fake_propose_cast(llm, **kw):
+        seen.update(kw)
+        return []
+
+    monkeypatch.setattr(cast_plan, "propose_cast", _fake_propose_cast)
+
+    await run_cast(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m",
+        package={"premise": "an arc summary", "canon": "The empire fell in year 300."},
+        known_cast=["Lâm Uyển", "Mị Đế"],
+    ))
+    assert seen["known_cast"] == ["Lâm Uyển", "Mị Đế"]
+    assert seen["canon"] == "The empire fell in year 300."
+
+
+@pytest.mark.asyncio
+async def test_run_world_forwards_the_known_world_and_canon(monkeypatch):
+    """E6b, the adapter link — the world-side twin of the cast forward above.
+
+    Same mutation result, and worth restating because it is the whole reason this test exists:
+    deleting `known_world=ctx.known_world, canon=ctx.canon` from `run_world` leaves every
+    `world_plan` test green, because those call the prompt builder directly. Nothing between the
+    context and the engine is watched unless it is watched HERE.
+    """
+    import app.engine.world_plan as world_plan
+    from app.services.plan_pass_adapters import run_world
+
+    seen: dict = {}
+
+    async def _fake_propose_world(llm, **kw):
+        seen.update(kw)
+        return []
+
+    monkeypatch.setattr(world_plan, "propose_world", _fake_propose_world)
+
+    await run_world(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m",
+        package={"premise": "an arc summary", "canon": "The empire fell in year 300."},
+        known_world={"location": ["Hoa Sơn"], "faction": ["Thanh Vân Môn"]},
+    ))
+    assert seen["known_world"] == {"location": ["Hoa Sơn"], "faction": ["Thanh Vân Môn"]}
+    assert seen["canon"] == "The empire fell in year 300."
+
+
+@pytest.mark.asyncio
+async def test_a_retriever_that_MATCHED_NOTHING_warns_too_not_just_a_missing_one(monkeypatch):
+    """Absent ≠ zero, the second half — and the untested half.
+
+    The no-retriever case above covers "we could not even LOOK". This covers "we looked and found
+    nothing", which is a different claim and the one that actually shipped:
+    D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL had `language="auto"` match 0 of 147 rows, so EVERY
+    motif_plan in the database was empty and pass 6 planned every scene with no motif layer while
+    the checkpoint reported perfect health.
+
+    Found by mutation: deleting this warning left the artifact-contract guard green (the key is
+    still set by the OTHER branch, so the shape never changed) and no behaviour test noticed. A
+    shape guard cannot see which code path filled a key — that is what this test is for.
+    """
+    import app.engine.motif_plan as motif_plan
+    from app.services.plan_pass_adapters import run_motifs
+
+    async def _matched_nothing(llm, retriever, **kw):
+        return []
+
+    monkeypatch.setattr(motif_plan, "select_arc_motifs", _matched_nothing)
+    art = await run_motifs(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m", package={"premise": "p"},
+        retriever=object(),                       # a retriever that RAN
+    ))
+    assert art["motifs"] == []
+    assert "degraded" not in art                  # it is not degraded — it worked and found none
+    assert "no motif was selected for this arc" in art["warning"]
+    assert "no motif layer" in art["warning"]     # says what it COSTS, not just what happened
+    # …and it must NOT blame the library alone. Live, this exact sentence said "the library had no
+    # candidate" while retrieval had returned 30 and the MODEL answered with codes that were not in
+    # the catalog. A message that misattributes sends the author to fix something that is not broken.
+    assert "did not match the catalog" in art["warning"]
+
+
+@pytest.mark.asyncio
+async def test_beats_with_EVERY_chapter_unassigned_warns_at_the_BLOCKING_checkpoint(monkeypatch):
+    """The A0 failure, made visible where it can still be stopped.
+
+    Every chapter unassigned is not "this arc has no beats" — it is the mapping having failed
+    wholesale. Downstream it is indistinguishable from success: `unmapped_beats` filters to `[]`
+    and the curve collapses to a smooth default ramp that reads as deliberate pacing. `beats` is
+    the BLOCKING checkpoint, so approving a shape that was never computed is precisely what the
+    checkpoint exists to prevent — it has to say so here, not three passes later.
+    """
+    import app.engine.grounded_plan as gp
+    from app.engine.arc_plan import ChapterTension
+    from app.engine.plan import ChapterPlan
+    from app.services.plan_pass_adapters import run_beats
+
+    async def _fake_map(llm, **kw):
+        chapters = [ChapterPlan(chapter_id=f"c{i}", title=f"T{i}", sort_order=i,
+                                beat_role=None, intent="") for i in (1, 2)]
+        curve = [ChapterTension(chapter_index=i, beat_role=None, tension_target=50 + i)
+                 for i in (1, 2)]
+        return chapters, [], curve
+
+    monkeypatch.setattr(gp, "map_beats_and_shape", _fake_map)
+    art = await run_beats(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m", package={"premise": "p", "chapters": []},
+    ))
+    assert "NO role for any chapter" in art["warning"]
+    assert "flat default ramp" in art["warning"]
+    assert "Re-run this pass rather than approving it" in art["warning"]
+
+
+@pytest.mark.asyncio
+async def test_beats_says_NOTHING_when_the_mapping_actually_worked(monkeypatch):
+    """A warning on every run is one nobody reads — and a false alarm at a blocking checkpoint
+    trains the author to click past the real one."""
+    import app.engine.grounded_plan as gp
+    from app.engine.arc_plan import ChapterTension
+    from app.engine.plan import ChapterPlan
+    from app.services.plan_pass_adapters import run_beats
+
+    async def _fake_map(llm, **kw):
+        chapters = [ChapterPlan(chapter_id="c1", title="T", sort_order=1,
+                                beat_role="hook", intent=""),
+                    ChapterPlan(chapter_id="c2", title="T2", sort_order=2,
+                                beat_role=None, intent="")]      # ONE unassigned is not the bug
+        return chapters, [], [ChapterTension(chapter_index=1, beat_role="hook", tension_target=65)]
+
+    monkeypatch.setattr(gp, "map_beats_and_shape", _fake_map)
+    art = await run_beats(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m", package={"premise": "p", "chapters": []},
+    ))
+    assert "warning" not in art
+
+
+@pytest.mark.asyncio
+async def test_run_scenes_STAMPS_the_curve_conformance_onto_the_artifact(monkeypatch):
+    """E7. Pass 6 hands the curve to the drafter as a prompt line and never checks the result, so a
+    chapter that missed its target by 22 was indistinguishable from one that hit exactly.
+
+    Stamped ON the artifact rather than logged, because pass 7's input IS this artifact — that is
+    what makes `self_heal` (which knows nothing about the curve) checkable for flattening it.
+    """
+    import app.engine.grounded_plan as gp
+    from app.engine.plan import ChapterPlan, ChapterScenes, DecomposeResult, ScenePlan
+    from app.services.plan_pass_adapters import run_scenes
+
+    async def _fake_decompose(llm, **kw):
+        return DecomposeResult(arc_title="A", chapters=[
+            ChapterScenes(
+                chapter=ChapterPlan(chapter_id="c1", title="T", sort_order=1,
+                                    beat_role="hook", intent=""),
+                scenes=[ScenePlan(title="s", synopsis="", tension=40, suggested_k=1,
+                                  present_entity_ids=[],
+                                  present_entity_names_unresolved=[])],
+            ),
+        ], unmapped_beats=[])
+
+    monkeypatch.setattr(gp, "grounded_decompose", _fake_decompose)
+
+    art = await run_scenes(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m", package={"premise": "p"},
+        inputs={"beats": {
+            "chapters": [{"ordinal": 1, "beat_role": "hook"}],
+            "tension_curve": [{"chapter_index": 1, "beat_role": "hook", "tension_target": 65}],
+        }},
+    ))
+    r = art["tension_conformance"]
+    assert r["measured"] is True
+    assert r["chapters"][0]["tension_target"] == 65 and r["chapters"][0]["peak"] == 40
+    assert r["under"] == 1                       # 40 against a target of 65 is a real miss
+    assert "missed their tension target" in r["warning"]
+
+
+@pytest.mark.asyncio
+async def test_run_self_heal_RE_MEASURES_against_pass_6s_stamped_targets(monkeypatch):
+    """`run_plan_self_heal` receives the DecomposeResult and nothing else — no curve, no targets,
+    no beats. It rewrites scenes with no knowledge of the arc's pacing, so it can flatten what pass
+    6 achieved while reporting a successful heal. Re-measuring is what makes that visible, and the
+    targets come from pass 6's stamp because pass 7 depends on ("scenes", "cast"), not on `beats`.
+    """
+    import app.engine.plan_heal as ph
+    from app.services.plan_pass_adapters import run_self_heal
+
+    class _Report:
+        findings: list = []
+        edits_applied = 1
+
+    async def _fake_heal(llm, result, **kw):
+        for ch in result.chapters:          # the heal flattens chapter 1 down to 20
+            for s in ch.scenes:
+                s.tension = 20
+        return result, _Report()
+
+    monkeypatch.setattr(ph, "run_plan_self_heal", _fake_heal)
+
+    scenes_art = {
+        "arc_title": "A",
+        "chapters": [{"chapter": {"chapter_id": "c1", "title": "T", "sort_order": 1,
+                                  "beat_role": "hook", "intent": ""},
+                      "scenes": [{"title": "s", "synopsis": "", "tension": 65,
+                                  "suggested_k": 1, "present_entity_ids": [],
+                                  "present_entity_names_unresolved": []}],
+                      "warning": None, "exit_state": None}],
+        "unmapped_beats": [], "motif_coverage": {},
+        # pass 6's stamp — the only place pass 7 can learn what the chapter was aiming at
+        "tension_conformance": {"measured": True, "chapters": [
+            {"chapter_index": 1, "beat_role": "hook", "tension_target": 65,
+             "peak": 65, "delta": 0, "verdict": "on_target"}]},
+    }
+    out = await run_self_heal(PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m", inputs={"scenes": scenes_art},
+    ))
+    r = out["tension_conformance"]
+    assert r["measured"] is True
+    assert r["chapters"][0]["peak"] == 20 and r["chapters"][0]["delta"] == -45
+    assert r["under"] == 1                       # the heal's flattening is now VISIBLE
+    assert out["heal"]["edits_applied"] == 1
+
+
+@pytest.mark.asyncio
+async def test_pass_context_exposes_canon_from_the_package():
+    """`package["canon"]` had no reader at all — compile wrote it, telemetry logged 200 chars of
+    it, and no pass ever asked for it. The reader lives on PassContext with the others so a
+    package-shape change breaks loudly in one place."""
+    ctx = PassContext(
+        llm=None, user_id=str(uuid4()), book_id=uuid4(), project_id=uuid4(),
+        model_source="user_model", model_ref="m", package={"canon": "anchors here"},
+    )
+    assert ctx.canon == "anchors here"
+    # Absent/garbage degrades to "", never a crash mid-plan.
+    assert PassContext(llm=None, user_id="u", book_id=uuid4(), project_id=uuid4(),
+                       model_source="user_model", model_ref="m").canon == ""

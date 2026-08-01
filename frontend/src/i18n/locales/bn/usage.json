@@ -9,7 +9,6 @@
   "purpose": {
     "translation": "অনুবাদ",
     "chat": "চ্যাট",
-    "chunk_edit": "Chunk Edit",
     "image_gen": "ইমেজ জেনারেশন",
     "glossary_extraction": "গ্লসারি এক্সট্রাকশন",
     "glossary_translation": "গ্লসারি অনুবাদ",
@@ -30,7 +29,8 @@
     "passage_select": "প্যাসেজ নির্বাচন",
     "kg_backfill": "KG ব্যাকফিল",
     "reward_judge": "রিওয়ার্ড জাজ",
-    "unknown": "অন্যান্য"
+    "unknown": "অন্যান্য",
+    "chunk_edit": "Chunk Edit"
   },
   "stats": {
     "total_tokens": "মোট টোকেন ({{period}})",
@@ -97,12 +97,12 @@
     "col_input": "ইনপুট",
     "col_output": "আউটপুট",
     "col_cost": "খরচ",
-    "cell_ok": "200 OK",
-    "cell_error": "Error",
-    "cell_rejected": "Rejected",
     "collapse_details": "বিস্তারিত সংকুচিত করুন",
     "expand_details": "বিস্তারিত সম্প্রসারিত করুন",
-    "no_logs": "কোনো ব্যবহারের লগ পাওয়া যায়নি।"
+    "no_logs": "কোনো ব্যবহারের লগ পাওয়া যায়নি।",
+    "cell_ok": "200 OK",
+    "cell_error": "ত্রুটি",
+    "cell_rejected": "প্রত্যাখ্যাত"
   },
   "detail": {
     "load_failed": "বিস্তারিত লোড করতে ব্যর্থ হয়েছে",
@@ -116,9 +116,9 @@
     "payload_view_aria": "পেলোড ভিউ",
     "tab_input": "ইনপুট (System + User)",
     "tab_output": "আউটপুট",
-    "tab_raw": "Raw JSON",
     "copy_aria": "ক্লিপবোর্ডে কপি করুন",
     "copied": "কপি করা হয়েছে",
-    "copy": "কপি"
+    "copy": "কপি",
+    "tab_raw": "র র JSON"
   }
 }

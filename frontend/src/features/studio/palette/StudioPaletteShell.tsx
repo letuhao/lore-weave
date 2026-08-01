@@ -116,7 +116,14 @@ export function StudioPaletteShell({
               return (
                 <div key={entry.id}>
                   {header && (
-                    <div className="px-4 pb-0.5 pt-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+                    // testid so a test can assert the GROUPING structure without asserting the
+                    // header's text — the text is localized, and a spec that hardcodes the
+                    // English wording is red for every non-English user (which is how the
+                    // palette specs came to be silently failing on a Vietnamese account).
+                    <div
+                      data-testid="palette-group"
+                      className="px-4 pb-0.5 pt-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70"
+                    >
                       {header}
                     </div>
                   )}

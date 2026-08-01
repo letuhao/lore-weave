@@ -1,0 +1,450 @@
+{
+  "wuxia.contested_manual": {
+    "beats": {
+      "blood": {
+        "intent": "o conflito é decidido pela força, com um custo desproporcional ao prêmio",
+        "label": "Sangue por papel"
+      },
+      "converge": {
+        "intent": "facções com reivindicações conflitantes chegam ao mesmo lugar",
+        "label": "Todos convergem"
+      },
+      "surface": {
+        "intent": "a notícia do tratado alcança o mundo marcial",
+        "label": "O manual surge"
+      },
+      "unread": {
+        "intent": "o vencedor descobre que o texto é inútil sem aquilo que ele pressupõe",
+        "label": "Possuir não é dominar"
+      }
+    },
+    "effects": [
+      "o detentor torna-se um alvo, em vez de um possuidor",
+      "o verdadeiro pré-requisito para a técnica torna-se o novo problema"
+    ],
+    "emotion_target": "tensão",
+    "examples": [
+      "Onze homens morreram pela segunda metade do manuscrito, e o homem que saiu de lá com ele não conseguia decifrar a caligrafia em que foi escrito."
+    ],
+    "name": "O Manual Cobiçado por Todos",
+    "preconditions": [
+      "um mundo de artes marciais no qual uma técnica confere prestígio real"
+    ],
+    "roles": {
+      "factions": {
+        "constraints": [
+          "cada uma possui uma reivindicação legítima"
+        ],
+        "label": "as facções convergentes"
+      },
+      "jianghu": {
+        "constraints": [
+          "julgará a forma como o manual foi obtido"
+        ],
+        "label": "o vasto mundo marcial"
+      },
+      "manual": {
+        "constraints": [
+          "é incompleto ou condicional"
+        ],
+        "label": "o tratado marcial"
+      },
+      "seeker": {
+        "constraints": [
+          "carece da base necessária que o texto pressupõe"
+        ],
+        "label": "aquele que o toma"
+      }
+    },
+    "summary": "Metade de um pergaminho surge em uma estalagem ou no fardo de um saqueador de túmulos, e todas as escolas que já reivindicaram descendência de seu autor convergem para a estrada de uma só vez — pois a disputa não é realmente sobre as páginas, mas sobre qual linhagem é a legítima. Sangue é derramado por papel. Quem quer que saia dali com o objeto em mãos descobrirá que o texto foi escrito para um corpo treinado da mesma forma que os discípulos do autor foram treinados, e ler o manual não é o mesmo que dominá-lo."
+  },
+  "wuxia.escort_under_watch": {
+    "beats": {
+      "ambush": {
+        "intent": "o ataque ocorre onde e quando sempre foi previsto",
+        "label": "A emboscada agendada"
+      },
+      "charge": {
+        "intent": "a responsabilidade pela entrega segura é conferida e assumida",
+        "label": "A missão é aceita"
+      },
+      "deliver": {
+        "intent": "a carga chega, paga com algo que o escolta valorizava mais",
+        "label": "Entrega a preço de custo"
+      },
+      "watched": {
+        "intent": "torna-se claro que a rota foi comprometida antes mesmo da partida",
+        "label": "A estrada já é conhecida"
+      }
+    },
+    "effects": [
+      "a palavra empenhada foi mantida, mas algo mais foi perdido",
+      "quem vazou a rota agora é uma questão em aberto"
+    ],
+    "emotion_target": "resolução-sombria",
+    "examples": [
+      "Eles sabiam qual era o vau, e aproximadamente a hora; a única coisa que restava decidir era o que ele estaria disposto a deixar na margem."
+    ],
+    "name": "A Carga que Deve Chegar",
+    "preconditions": [
+      "uma carga cuja rota e valor são de conhecimento de partes interessadas"
+    ],
+    "roles": {
+      "cargo": {
+        "constraints": [
+          "não pode se defender"
+        ],
+        "label": "o que deve chegar"
+      },
+      "consignor": {
+        "constraints": [
+          "não revelou tudo"
+        ],
+        "label": "quem confiou a carga"
+      },
+      "escort": {
+        "constraints": [
+          "deu sua palavra"
+        ],
+        "label": "quem é responsável pela entrega"
+      },
+      "watchers": {
+        "constraints": [
+          "já conhecem a rota"
+        ],
+        "label": "aqueles que aguardam na estrada"
+      }
+    },
+    "summary": "Algo precisa ser transportado de um ponto a outro — um baú, uma testemunha, uma noiva, um caixão — por uma estrada que todos os interessados já conhecem. A emboscada não é uma surpresa, mas um compromisso agendado, e a entrega só é concretizada pagando-se exatamente com o preço que o escolta menos pode se dar ao luxo de perder."
+  },
+  "wuxia.forbidden_shortcut": {
+    "beats": {
+      "offer": {
+        "intent": "alguém honesto sobre seus efeitos coloca o livro queimado ao alcance da mão",
+        "label": "Um manual proibido é oferecido"
+      },
+      "price": {
+        "intent": "a mudança torna-se legível para outros praticantes e as escolas ortodoxas deserdam o nome",
+        "label": "O corpo o revela antes das palavras"
+      },
+      "take": {
+        "intent": "o método demoníaco é aprendido e entrega exatamente o que foi prometido",
+        "label": "É praticado em segredo"
+      },
+      "wall": {
+        "intent": "o que o mestre ensinou deixa de ser suficiente para o que está por vir",
+        "label": "O caminho da própria escola se esgota"
+      }
+    },
+    "effects": [
+      "a capacidade aumentou genuinamente e não pode ser devolvida",
+      "um custo está sendo acumulado e que outros poderão, eventualmente, enxergar"
+    ],
+    "emotion_target": "pavor",
+    "examples": [
+      "Fez exatamente tudo o que o velho disse que faria. Passaram-se dois invernos antes que alguém notasse que ele não sentia mais o frio."
+    ],
+    "name": "O Método que Ninguém Mais Pratica",
+    "preconditions": [
+      "um praticante bloqueado por um muro que o caminho ortodoxo não consegue transpor"
+    ],
+    "roles": {
+      "method": {
+        "constraints": [
+          "funciona exatamente como anunciado"
+        ],
+        "label": "o método proibido"
+      },
+      "offerer": {
+        "constraints": [
+          "não mente sobre o efeito, apenas omite o preço"
+        ],
+        "label": "aquele que o oferece"
+      },
+      "practitioner": {
+        "constraints": [
+          "está genuinamente exausto da rota ortodoxa"
+        ],
+        "label": "aquele que está contra a parede"
+      }
+    },
+    "summary": "Um manual proibido de uma escola — do tipo que as seitas ortodoxas queimaram e sobre o qual ainda sussurram — é oferecido por alguém que não mente sobre o seu propósito. Ele funciona exatamente como prometido. O preço, porém, não se mede em prestígio: o corpo sofre mudanças que outros praticantes conseguem ler do outro lado de uma sala, as escolas ortodoxas que os treinaram renegam seu nome, e o praticante acaba pertencendo ao lado demoníaco de uma linha que jamais pretendeu cruzar."
+  },
+  "wuxia.inherited_feud": {
+    "beats": {
+      "break": {
+        "intent": "o herdeiro escolhe entre os mortos e os vivos",
+        "label": "Perpetuar o ciclo ou quebrá-lo"
+      },
+      "inherit": {
+        "intent": "uma rixa é herdada junto com o título e a lâmina",
+        "label": "O rancor é transmitido"
+      },
+      "origin": {
+        "intent": "a queixa fundadora é rastreada e revela-se insuficiente para justificar o acerto de contas",
+        "label": "A transgressão original é descoberta"
+      },
+      "side": {
+        "intent": "um incidente torna a neutralidade impossível",
+        "label": "Forçado a escolher um lado"
+      }
+    },
+    "effects": [
+      "a rixa é renovada com pleno conhecimento ou repudiada publicamente",
+      "o herdeiro torna-se um estranho para um dos lados de sua própria casa"
+    ],
+    "emotion_target": "melancolia",
+    "examples": [
+      "Quatro gerações de homens mortos e, no fundo de tudo, uma disputa por um poço que secou antes de qualquer um deles nascer."
+    ],
+    "name": "Um Rancor Mais Antigo que o Próprio Portador",
+    "preconditions": [
+      "uma antiga inimizade, que volta à vida, cuja origem ninguém vivo presenciou"
+    ],
+    "roles": {
+      "elders": {
+        "constraints": [
+          "acreditam estar honrando a memória dos mortos"
+        ],
+        "label": "aqueles que mantêm a rixa viva"
+      },
+      "inheritor": {
+        "constraints": [
+          "não escolheu o lado em que nasceu"
+        ],
+        "label": "aquele que herda o rancor"
+      },
+      "wrong": {
+        "constraints": [
+          "é menor ou mais antiga do que a rixa exige"
+        ],
+        "label": "a transgressão original"
+      }
+    },
+    "summary": "Uma rixa é transmitida através do fio da espada — duas casas, duas escolas, duas famílias que matam uns aos outros há mais tempo do que qualquer vivo possa recordar com precisão. Forçado a escolher um lado, o herdeiro busca a transgressão original e descobre que ela é ou pequena demais para justificar tanto sangue, ou que já foi vingada, restando-lhe escolher entre perpetuar o ciclo ou abraçar a verdade."
+  },
+  "wuxia.recognition_between_equals": {
+    "beats": {
+      "meet": {
+        "intent": "um encontro entre partes que nada devem uma à outra",
+        "label": "Dois estranhos se encontram"
+      },
+      "recognize": {
+        "intent": "cada um encontra o primeiro igual que conheceu em anos",
+        "label": "Reconhecimento antes dos nomes"
+      },
+      "swear": {
+        "intent": "um vínculo é selado, transcendendo as lealdades já existentes",
+        "label": "Juramento ao redor do vinho"
+      },
+      "test": {
+        "intent": "a habilidade é medida como um teste, não como uma briga",
+        "label": "Uma troca sem malícia"
+      }
+    },
+    "effects": [
+      "surge uma lealdade que não segue as linhas de facções",
+      "ambos passam a ter um compromisso mútuo que suas próprias casas não autorizaram"
+    ],
+    "emotion_target": "calor humano",
+    "examples": [
+      "Nenhum deles perguntou o nome do outro antes da terceira taça, e, a essa altura, pouco importava qual fosse a resposta."
+    ],
+    "name": "Dois Estranhos de Habilidade Equivalente",
+    "preconditions": [
+      "duas partes de habilidade comparável e sem obrigações prévias, tendo cada uma enxergado na outra uma capacidade que não fora revelada"
+    ],
+    "roles": {
+      "first": {
+        "constraints": [
+          "testa sem malícia"
+        ],
+        "label": "aquele que inicia"
+      },
+      "second": {
+        "constraints": [
+          "responde à altura"
+        ],
+        "label": "o estranho à altura"
+      },
+      "world": {
+        "constraints": [
+          "eventualmente contestarão este vínculo"
+        ],
+        "label": "as lealdades às quais nasceram"
+      }
+    },
+    "summary": "Duas pessoas que nada devem uma à outra trocam golpes ou palavras como um teste, e não como uma briga, e cada uma encontra no outro o primeiro oponente em anos que não precisa ser tratado com delicadeza. O reconhecimento chega antes dos nomes, e o vínculo formado ao redor do vinho, depois, durará mais que a maioria das lealdades às quais qualquer um deles tenha nascido."
+  },
+  "wuxia.retired_blade_recalled": {
+    "beats": {
+      "arrive": {
+        "intent": "algo do passado surge e não pode ser evitado",
+        "label": "O passado à porta"
+      },
+      "quiet": {
+        "intent": "um antigo mestre vive de forma anônima e contente",
+        "label": "A vida pacata"
+      },
+      "raise": {
+        "intent": "a lâmina é empunhada porque a alternativa é pior",
+        "label": "O voto se quebra"
+      },
+      "recognized": {
+        "intent": "a técnica é identificada e a vida pacata chega ao fim",
+        "label": "O jianghu reconhece a mão"
+      }
+    },
+    "effects": [
+      "uma antiga inimizade que sobreviveu muito além de sua origem renasce, e sabe onde eles estão",
+      "a identidade assumida não oferece mais proteção"
+    ],
+    "emotion_target": "melancolia",
+    "examples": [
+      "Ele fora barqueiro por nove anos, e bastou uma noite e um único golpe para que três províncias soubessem que ele não era."
+    ],
+    "name": "Aquele que Depôs a Lâmina",
+    "preconditions": [
+      "um passado renunciado que outros ainda conseguem identificar pela técnica"
+    ],
+    "roles": {
+      "arrival": {
+        "constraints": [
+          "não pode ser ignorado ou repelido"
+        ],
+        "label": "o passado à porta"
+      },
+      "jianghu": {
+        "constraints": [
+          "lembra-se da técnica"
+        ],
+        "label": "o mundo que reconhece o golpe"
+      },
+      "quiet_life": {
+        "constraints": [
+          "é genuinamente valorizada"
+        ],
+        "label": "a vida que está em jogo"
+      },
+      "retired": {
+        "constraints": [
+          "renunciou de fato e com convicção"
+        ],
+        "label": "aquele que depôs a lâmina"
+      }
+    },
+    "summary": "Alguém que renunciou ao mundo marcial vive tranquilamente sob outro nome até que o passado bate à porta — um antigo inimigo, um ex-discípulo, uma dívida que não o deixa em paz. O voto é quebrado não por glória, mas porque a alternativa é pior, e o jianghu reconhece a mão em poucos dias após ela ser erguida novamente."
+  },
+  "wuxia.righteous_debt": {
+    "beats": {
+      "aid": {
+        "intent": "o arroz é compartilhado ou um nome é defendido, antes que alguém saiba de quem se trata",
+        "label": "Um estranho na estrada é ajudado"
+      },
+      "bind": {
+        "intent": "tendo uma vez defendido esta pessoa, o ajudante não pode recuar",
+        "label": "O código dos rios e lagos vincula o ajudante"
+      },
+      "call": {
+        "intent": "apoiar o estranho agora custará ao benfeitor seus próprios interesses",
+        "label": "A cobrança surge na pior hora"
+      },
+      "choose": {
+        "intent": "a escolha é feita onde os viajantes a levarão a cada estalagem da estrada",
+        "label": "Pago em reputação, diante de estranhos"
+      }
+    },
+    "effects": [
+      "o prestígio do benfeitor no jianghu é selado por essa escolha",
+      "um interesse concreto foi sacrificado ou um código foi quebrado"
+    ],
+    "emotion_target": "determinação",
+    "examples": [
+      "Ele havia compartilhado seu arroz com um mendigo sob a chuva, e o mendigo retornou vestido de seda e com uma escolta, no momento mais inoportuno."
+    ],
+    "name": "A Dívida que o Código Exige",
+    "preconditions": [
+      "um mundo de artes marciais onde a reputação é uma moeda de troca"
+    ],
+    "roles": {
+      "debtor": {
+        "constraints": [
+          "revela-se alguém cujo favor custará caro"
+        ],
+        "label": "o ajudado"
+      },
+      "helper": {
+        "constraints": [
+          "agiu antes de saber quem era a pessoa"
+        ],
+        "label": "aquele que ajudou sem calcular"
+      },
+      "interest": {
+        "constraints": [
+          "é real e substancial"
+        ],
+        "label": "o preço de honrar a dívida"
+      },
+      "witnesses": {
+        "constraints": [
+          "lembrará da escolha feita"
+        ],
+        "label": "o olhar do jianghu"
+      }
+    },
+    "summary": "Um estranho na estrada é ajudado sem qualquer cálculo — uma tigela de arroz compartilhada em uma estalagem, um ferimento enfaixado, um nome defendido perante um magistrado — e o código dos rios e lagos vincula o AJUDANTE, não o ajudado: tendo uma vez defendido esta pessoa, ele não pode agora ficar de lado. A cobrança ocorre na pior hora possível, e é paga em reputação entre estranhos que relatarão essa escolha em cada estalagem, daqui até a fronteira da província."
+  },
+  "wuxia.tavern_provocation": {
+    "beats": {
+      "exchange": {
+        "intent": "uma única e breve demonstração encerra o assunto",
+        "label": "Uma troca resolve a questão"
+      },
+      "restraint": {
+        "intent": "a parte insultada avalia o custo de uma resposta",
+        "label": "A contenção é testada"
+      },
+      "slight": {
+        "intent": "um insulto é feito de forma que não pode ser ignorado em particular",
+        "label": "O desdém é lançado"
+      },
+      "travel": {
+        "intent": "o relato se espalha e altera a reputação de ambos",
+        "label": "A história se espalha"
+      }
+    },
+    "effects": [
+      "o status de ambas as partes foi alterado pelo boato, e não pelo desfecho",
+      "alguém na sala agora conhece uma habilidade que não havia sido revelada"
+    ],
+    "emotion_target": "tensão",
+    "examples": [
+      "A taça não caiu. Ninguém na sala pôde dizer, depois, quem deles havia se movido, apenas que o vinho não havia sido derramado."
+    ],
+    "name": "Um Insulto em uma Taverna",
+    "preconditions": [
+      "um ambiente público onde a reputação é construída ou destruída pelo que se diz"
+    ],
+    "roles": {
+      "insulted": {
+        "constraints": [
+          "deve pesar a contenção contra a reputação"
+        ],
+        "label": "o insultado"
+      },
+      "provoker": {
+        "constraints": [
+          "está testando, em vez de lutar"
+        ],
+        "label": "o provocador"
+      },
+      "room": {
+        "constraints": [
+          "propaga a história para o mundo exterior"
+        ],
+        "label": "o ambiente que relatará o feito"
+      }
+    },
+    "summary": "Um desdém é lançado em uma sala repleta de pessoas que espalharão a história — um nome zombado, uma linhagem insultada, uma caneca derrubada deliberadamente. A contenção é testada diante de testemunhas, uma breve troca de palavras resolve a questão, e o relato do que aconteceu viaja mais rápido e mais longe do que qualquer uma das partes pretendia."
+  }
+}

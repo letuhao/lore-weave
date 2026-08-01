@@ -84,3 +84,47 @@ export function buildPartsTree(parts: Part[], chapters: ChapterLike[]): TreeStat
 export function isUnassignedBucket(nodeId: string): boolean {
   return nodeId === PART_UNASSIGNED_ID;
 }
+
+/**
+ * D-STUDIO-CHAPTER-OUTSIDE-THE-PLAN — append a "Not in the plan" bucket to an OUTLINE tree.
+ *
+ * The outline lens renders `outline_node` rows, so a chapter the plan does not claim appeared
+ * NOWHERE in the rail. To an author, a chapter they cannot see is a chapter they have lost —
+ * which is exactly what happened live: a chapter created in a planned book was absent from the
+ * tree AND from both searches.
+ *
+ * Coverage is decided by the server (`outline_stats.linked_chapter_ids`, keyed on the node's own
+ * `chapter_id`) because the outline loads lazily — the node carrying a link can sit at any depth,
+ * so the client cannot answer this from the tree it has.
+ *
+ * Appended LAST and expanded, mirroring the parts lens's Unassigned bucket. Empty ⇒ unchanged:
+ * unlike the parts bucket there is no drop-target reason to show it, and a permanent empty row
+ * in every planned book is noise.
+ */
+export function appendUnplannedChapters(state: TreeState, chapters: ChapterLike[]): TreeState {
+  if (chapters.length === 0) return state;
+  const nodes = chapters.map(chapterNode);
+  const t: TreeState = {
+    nodes: { ...state.nodes },
+    childrenOf: { ...state.childrenOf },
+    childCursor: { ...state.childCursor },
+    expanded: { ...state.expanded },
+    loading: { ...state.loading },
+  };
+  t.nodes[PART_UNASSIGNED_ID] = {
+    id: PART_UNASSIGNED_ID,
+    kind: 'part',
+    title: i18n.t('studio:manuscript.notInPlanBucket', { defaultValue: 'Not in the plan' }),
+    number: null,
+    status: 'unassigned', // the renderer's bucket flag (no rename/trash affordance)
+    chapterId: null,
+    hasChildren: true,
+    childCount: nodes.length,
+  };
+  for (const n of nodes) t.nodes[n.id] = n;
+  t.childrenOf[PART_UNASSIGNED_ID] = nodes.map((n) => n.id);
+  t.childCursor[PART_UNASSIGNED_ID] = null; // fully loaded, nothing to page
+  t.expanded[PART_UNASSIGNED_ID] = true;
+  t.childrenOf[ROOT_KEY] = [...(state.childrenOf[ROOT_KEY] ?? []), PART_UNASSIGNED_ID];
+  return t;
+}

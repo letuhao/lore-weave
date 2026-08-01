@@ -128,13 +128,27 @@ func (s *Server) toolBookCreate(ctx context.Context, _ *mcp.CallToolRequest, in 
 			return &mcp.CallToolResult{}, bookCreateOut{BookID: existing.String()}, nil
 		}
 	}
+	// A tx so book.created is atomic with the INSERT (see BookCreatedEvent). An AGENT-created book
+	// needs its composition Work provisioned exactly as much as a GUI-created one — this path is
+	// the reason the emit could not live only in the REST handler.
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, bookCreateOut{}, errors.New("failed to create book")
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
 	var bookID uuid.UUID
-	if err := s.pool.QueryRow(ctx, `
+	if err := tx.QueryRow(ctx, `
 -- WS-1.1: kind EXPLICIT (see server.go createBook). An agent-created book is a novel;
 -- only the diary provisioner may write kind='diary'.
 INSERT INTO books(owner_user_id,title,description,original_language,summary,genre_tags,kind)
 VALUES($1,$2,$3,$4,$5,$6,'novel') RETURNING id`,
 		userID, title, in.Description, in.OriginalLanguage, in.Summary, in.GenreTags).Scan(&bookID); err != nil {
+		return nil, bookCreateOut{}, errors.New("failed to create book")
+	}
+	if err := emitBookCreated(ctx, tx, bookID, userID, "novel"); err != nil {
+		return nil, bookCreateOut{}, errors.New("failed to create book")
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, bookCreateOut{}, errors.New("failed to create book")
 	}
 	// No undo_hint: the agent book-trash tool (book_delete) was removed 2026-07-19,

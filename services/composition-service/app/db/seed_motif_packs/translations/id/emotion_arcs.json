@@ -1,0 +1,224 @@
+{
+  "emotion_arc.dread_to_relief": {
+    "beats": {
+      "climax": {
+        "intent": "momen yang ditakutkan tiba",
+        "label": "Klimaks"
+      },
+      "fear": {
+        "intent": "meningkatkan rasa ngeri menuju kepanikan",
+        "label": "Ketakutan yang memuncak"
+      },
+      "release": {
+        "intent": "bahaya telah berlalu; kelegaan menyapa",
+        "label": "Pelepasan"
+      },
+      "unease": {
+        "intent": "menanamkan rasa ngeri yang samar",
+        "label": "Kegelisahan"
+      }
+    },
+    "effects": [
+      "unit tersebut berakhir pada ketegangan yang terurai"
+    ],
+    "emotion_target": "kelegaan",
+    "examples": [
+      "Ketakutan itu terus membuncah hingga mencapai puncaknya — dan kemudian, secara mustahil, semuanya berakhir dan mereka akhirnya bisa bernapas lega."
+    ],
+    "name": "Ketakutan Menuju Kelegaan",
+    "preconditions": [
+      "sebuah unit naratif membutuhkan bentuk emosional"
+    ],
+    "roles": {
+      "pov": {
+        "label": "tokoh POV"
+      }
+    },
+    "summary": "Kegelisahan memuncak menjadi ketakutan dan klimaks, lalu meluruh menjadi kelegaan."
+  },
+  "emotion_arc.fall_then_rise": {
+    "beats": {
+      "comfort": {
+        "intent": "membangun landasan emosional yang stabil",
+        "label": "Kenyamanan"
+      },
+      "loss": {
+        "intent": "menjatuhkan karakter ke dalam lubang",
+        "label": "Kehilangan"
+      },
+      "struggle": {
+        "intent": "awal dari upaya pendakian keluar",
+        "label": "Perjuangan"
+      },
+      "triumph": {
+        "intent": "muncul kembali dengan posisi yang lebih tinggi dari titik awal",
+        "label": "Kemenangan"
+      }
+    },
+    "effects": [
+      "unit ini berakhir pada luapan katarsis yang membangkitkan semangat"
+    ],
+    "emotion_target": "katarsis",
+    "examples": [
+      "Keadaan yang tenang, lalu hancur, lalu berjuang keras untuk merangkak naik — hingga akhirnya berdiri di tempat yang lebih tinggi daripada sebelum jatuh."
+    ],
+    "name": "Jatuh lalu Bangkit (Man in a Hole)",
+    "preconditions": [
+      "sebuah unit naratif membutuhkan bentuk emosional"
+    ],
+    "roles": {
+      "pov": {
+        "label": "tokoh POV"
+      }
+    },
+    "summary": "Kenyamanan berganti menjadi kehilangan dan perjuangan, lalu berakhir pada kemenangan yang diraih dengan susah payah — kurva katarsis 'manusia dalam lubang'."
+  },
+  "emotion_arc.hope_to_heartbreak": {
+    "beats": {
+      "grief": {
+        "intent": "terhempas dalam kehilangan",
+        "label": "Duka"
+      },
+      "hope": {
+        "intent": "membangkitkan secercah harapan yang rapuh",
+        "label": "Harapan mulai tumbuh"
+      },
+      "near": {
+        "intent": "mendekatkan tujuan dalam jangkauan",
+        "label": "Keberhasilan yang nyaris"
+      },
+      "turn": {
+        "intent": "merenggutnya di saat terakhir",
+        "label": "Tikungan kejam"
+      }
+    },
+    "effects": [
+      "unit tersebut berakhir pada kepedihan"
+    ],
+    "emotion_target": "patah hati",
+    "examples": [
+      "Begitu dekat hingga hampir tergapai — lalu semuanya lenyap, dan tidak ada lagi yang bisa dilakukan selain meratapi duka."
+    ],
+    "name": "Harapan menuju Patah Hati",
+    "preconditions": [
+      "sebuah unit naratif membutuhkan bentuk emosional"
+    ],
+    "roles": {
+      "pov": {
+        "label": "tokoh POV"
+      }
+    },
+    "summary": "Harapan mulai tumbuh menuju keberhasilan yang nyaris nyata, lalu sebuah tikungan kejam mengakhirinya dalam duka."
+  },
+  "emotion_arc.rise_then_fall": {
+    "beats": {
+      "ascent": {
+        "intent": "bangkit menuju keberhasilan",
+        "label": "Pendakian"
+      },
+      "downfall": {
+        "intent": "jatuh dari ketinggian",
+        "label": "Kejatuhan"
+      },
+      "flaw": {
+        "intent": "cacat fatal mulai menampakkan diri",
+        "label": "Cacat muncul"
+      },
+      "peak": {
+        "intent": "mencapai titik tertinggi",
+        "label": "Puncak"
+      }
+    },
+    "effects": [
+      "unit berakhir pada penurunan yang tragis"
+    ],
+    "emotion_target": "tragedi",
+    "examples": [
+      "Semakin tinggi dan semakin tinggi, hingga sesuatu yang mengangkat mereka justru menjadi penyebab kejatuhan mereka."
+    ],
+    "name": "Bangkit lalu Terhempas (Ikarus)",
+    "preconditions": [
+      "sebuah unit naratif membutuhkan bentuk emosional"
+    ],
+    "roles": {
+      "pov": {
+        "label": "tokoh POV"
+      }
+    },
+    "summary": "Pendakian menuju puncak di mana sebuah cacat karakter muncul dan memicu kejatuhan — kurva tragedi Ikarus."
+  },
+  "emotion_arc.steady_fall": {
+    "beats": {
+      "collapse": {
+        "intent": "mencapai titik nadir",
+        "label": "Keruntuhan"
+      },
+      "decline": {
+        "intent": "kejatuhan semakin cepat",
+        "label": "Kemerosotan"
+      },
+      "erosion": {
+        "intent": "kehilangan pijakan selangkah demi selangkah",
+        "label": "Pengikisan"
+      },
+      "start_high": {
+        "intent": "mulai dari posisi tinggi",
+        "label": "Titik Puncak"
+      }
+    },
+    "effects": [
+      "unit berakhir pada keruntuhan yang kelam"
+    ],
+    "emotion_target": "keputusasaan",
+    "examples": [
+      "Ia bertahan, lalu perlahan luruh — sebuah penguraian lambat yang tidak dapat dijelaskan oleh satu kehilangan pun."
+    ],
+    "name": "Kejatuhan Bertahap",
+    "preconditions": [
+      "sebuah unit naratif membutuhkan bentuk emosional"
+    ],
+    "roles": {
+      "pov": {
+        "label": "tokoh POV"
+      }
+    },
+    "summary": "Dari titik puncak melalui pengikisan hingga keruntuhan — sebuah deklin menuju keputusasaan."
+  },
+  "emotion_arc.steady_rise": {
+    "beats": {
+      "arrival": {
+        "intent": "mencapai puncak yang layak didapatkan",
+        "label": "Pencapaian puncak"
+      },
+      "climb": {
+        "intent": "membangun momentum",
+        "label": "Pendakian berkelanjutan"
+      },
+      "start_low": {
+        "intent": "memulai dari nol",
+        "label": "Titik terendah"
+      },
+      "wins": {
+        "intent": "mengumpulkan pencapaian",
+        "label": "Kemenangan beruntun"
+      }
+    },
+    "effects": [
+      "unit berakhir pada kejayaan yang layak diraih"
+    ],
+    "emotion_target": "kejayaan",
+    "examples": [
+      "Bukan apa-apa, lalu sedikit demi sedikit, lalu lebih banyak lagi — setiap langkah diperjuangkan, hingga masa sulit hanyalah kenangan jauh."
+    ],
+    "name": "Kebangkitan Bertahap (Rags to Riches)",
+    "preconditions": [
+      "sebuah unit naratif membutuhkan bentuk emosional"
+    ],
+    "roles": {
+      "pov": {
+        "label": "tokoh POV"
+      }
+    },
+    "summary": "Dari titik terendah melalui kemenangan demi kemenangan hingga mencapai puncak — kurva kemenangan dari kemiskinan menuju kejayaan."
+  }
+}

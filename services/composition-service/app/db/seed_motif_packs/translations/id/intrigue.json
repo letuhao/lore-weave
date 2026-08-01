@@ -1,0 +1,334 @@
+{
+  "intrigue.double_agent_reveal": {
+    "beats": {
+      "insider_acts": {
+        "intent": "pihak internal mengandalkan si orang dalam",
+        "label": "Tindakan orang dalam yang dipercaya"
+      },
+      "note": {
+        "intent": "kebocoran informasi yang terlalu presisi untuk dianggap kebetulan",
+        "label": "Ketidakkonsistenan kecil terdeteksi"
+      },
+      "trap": {
+        "intent": "rahasia palsu yang telah dipancing ditanamkan",
+        "label": "Jebakan dipasang untuk konfirmasi"
+      },
+      "unmask": {
+        "intent": "mengonfirmasi sang pengkhianat dan membelotkan mereka",
+        "label": "Pengungkapan dan pembalikan keadaan"
+      }
+    },
+    "effects": [
+      "sang pengkhianat teridentifikasi dan kemudian dibelotkan atau disingkirkan",
+      "struktur kepercayaan di dalam kelompok disusun ulang"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Kebocoran yang terlalu presisi untuk dianggap sebagai kebetulan; sebuah rahasia palsu yang telah dipancing membuktikan siapa pembawa berita — dan kepada siapa ia melapor."
+    ],
+    "name": "Pengungkapan Agen Ganda",
+    "preconditions": [
+      "kebocoran informasi yang terlalu presisi mengisyaratkan adanya orang dalam kepercayaan yang telah berkompromi"
+    ],
+    "roles": {
+      "confidant": {
+        "constraints": [
+          "membantu memasang umpan"
+        ],
+        "label": "sang rekan kepercayaan"
+      },
+      "mole": {
+        "constraints": [
+          "orang dalam yang dipercaya"
+        ],
+        "label": "sang penyusup"
+      },
+      "protagonist": {
+        "constraints": [
+          "diam-diam memburu sumber kebocoran"
+        ],
+        "label": "sang pencurigai"
+      }
+    },
+    "summary": "Kebocoran informasi yang terlalu presisi untuk dianggap kebetulan; sebuah rahasia palsu yang dipancing akan membuktikan siapa pengkhianatnya — dan kepada siapa ia melapor — sebelum akhirnya membalikkan keadaan sang penyusup."
+  },
+  "intrigue.feigned_alliance": {
+    "beats": {
+      "betray": {
+        "intent": "langgar pakta saat keuntungan tiba",
+        "label": "Khianati pada titik balik"
+      },
+      "offer": {
+        "intent": "mengusulkan pakta yang akan diterima oleh sekutu",
+        "label": "Tawarkan aliansi"
+      },
+      "realign": {
+        "intent": "ubah pengkhianatan menjadi posisi tawar",
+        "label": "Penyelarasan Ulang"
+      },
+      "rely": {
+        "intent": "sekutu mempertaruhkan sumber daya atau kepercayaan",
+        "label": "Sekutu mengandalkannya"
+      },
+      "share": {
+        "intent": "mengungkapkan informasi secukupnya agar dapat dipercaya",
+        "label": "Bagikan sebagian kebenaran"
+      }
+    },
+    "effects": [
+      "sekutu dibuang pada saat daya tawar berada di titik tertinggi",
+      "sang perencana memperoleh keunggulan"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Sebuah pakta yang tulus, sebuah rahasia bersama yang cukup nyata untuk dipercaya — hingga saat di mana pengkhianatan mendatangkan keuntungan."
+    ],
+    "name": "Aliansi Semu",
+    "preconditions": [
+      "sang perencana dan target berbagi tujuan bersama yang masuk akal"
+    ],
+    "roles": {
+      "advantage": {
+        "constraints": [
+          "hadiah dari pengkhianatan"
+        ],
+        "label": "keuntungan yang diincar"
+      },
+      "false_ally": {
+        "constraints": [
+          "mengandalkan pakta tersebut"
+        ],
+        "label": "sekutu yang tertipu"
+      },
+      "schemer": {
+        "constraints": [
+          "menawarkan pakta palsu"
+        ],
+        "label": "sang penyusun siasat"
+      }
+    },
+    "summary": "Sebuah pakta tulus dan rahasia bersama yang cukup nyata untuk dipercaya, hingga tiba saatnya pengkhianatan mendatangkan keuntungan pada titik balik cerita."
+  },
+  "intrigue.loyalty_test_trap": {
+    "beats": {
+      "act": {
+        "intent": "bertindak berdasarkan kebenaran yang terungkap",
+        "label": "Hadiah atau pembersihan"
+      },
+      "observe": {
+        "intent": "melihat siapa yang terpancing",
+        "label": "Mengamati reaksi"
+      },
+      "stage": {
+        "intent": "menyiapkan peluang yang memancing",
+        "label": "Menyusun godaan"
+      },
+      "verdict": {
+        "intent": "ujian ini menentukan kepercayaan atau pengkhianatan",
+        "label": "Lulus atau gagal dalam kesetiaan"
+      }
+    },
+    "effects": [
+      "kesetiaan sejati dari pihak yang diuji terungkap",
+      "pemegang kuasa memberikan imbalan atau melakukan pembersihan sesuai hasilnya"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Pintu yang dibiarkan terbuka lebar sebenarnya adalah sebuah jebakan; siapa pun yang melangkah masuk akan mengungkap tepat apa yang ingin diketahui oleh sang pengamat."
+    ],
+    "name": "Jebakan Uji Loyalitas",
+    "preconditions": [
+      "pemegang kuasa mencurigai adanya pengkhianatan yang tersembunyi"
+    ],
+    "roles": {
+      "loyalty_proof": {
+        "constraints": [
+          "apa yang diekstraksi dari ujian tersebut"
+        ],
+        "label": "bukti loyalitas"
+      },
+      "power_holder": {
+        "constraints": [
+          "menyusun sebuah godaan"
+        ],
+        "label": "pemegang kuasa"
+      },
+      "suspect": {
+        "constraints": [
+          "pihak yang diuji"
+        ],
+        "label": "tersangka pengkhianat"
+      }
+    },
+    "summary": "Pintu yang dibiarkan terbuka lebar sebenarnya adalah sebuah ujian; siapa yang melangkah masuk akan mengungkap tepat apa yang ingin diketahui oleh sang pengamat."
+  },
+  "intrigue.planted_evidence_scheme": {
+    "beats": {
+      "act": {
+        "intent": "korban terjebak dalam rencana",
+        "label": "Korban bertindak berdasarkan keyakinan yang salah"
+      },
+      "bait": {
+        "intent": "memancing korban agar bereaksi",
+        "label": "Memancing korban untuk bertindak"
+      },
+      "counter": {
+        "intent": "dampak yang timbul diarahkan untuk keuntungan sang penyusun rencana",
+        "label": "Pembalikan"
+      },
+      "plant": {
+        "intent": "menempatkan bukti rekayasa di tempat yang akan ditemukan",
+        "label": "Menanam bukti palsu"
+      },
+      "reveal": {
+        "intent": "«bukti» muncul ke permukaan, sang penyusun rencana tetap tak tersentuh",
+        "label": "Pengungkapan yang tak berbekas"
+      }
+    },
+    "effects": [
+      "korban menjadi tidak dipercaya atau dihukum atas dasar yang salah",
+      "jejak tangan sang penyusun rencana tetap tersembunyi"
+    ],
+    "emotion_target": "kecemasan",
+    "examples": [
+      "Sebuah buku kas yang telah dimanipulasi diselipkan di tempat yang akan ditemukan dan «diungkap» oleh sang rival — membuatnya melangkah langsung ke dalam jebakan yang menyudutkan dirinya sendiri."
+    ],
+    "name": "Skema Bukti Rekayasa",
+    "preconditions": [
+      "sang penyusun rencana dapat menempatkan bukti yang akan dipercaya oleh pihak berwenang"
+    ],
+    "roles": {
+      "agent": {
+        "constraints": [
+          "membawa umpan tanpa menyadarinya"
+        ],
+        "label": "agen yang tidak sadar"
+      },
+      "authority": {
+        "constraints": [
+          "menilai berdasarkan bukti yang terlihat"
+        ],
+        "label": "pihak berwenang pengambil keputusan"
+      },
+      "schemer": {
+        "constraints": [
+          "menanamkan bukti palsu"
+        ],
+        "label": "sang penyusun siasat"
+      },
+      "victim": {
+        "constraints": [
+          "bertindak berdasarkan keyakinan yang salah"
+        ],
+        "label": "korban yang ditargetkan"
+      }
+    },
+    "summary": "Sebuah bukti palsu diselipkan di tempat yang akan ditemukan dan «diungkap» oleh sang rival, memancing korban untuk bertindak berdasarkan keyakinan yang salah dan terjebak dalam perangkap yang tak terlacak."
+  },
+  "intrigue.scapegoat_substitution": {
+    "beats": {
+      "frame": {
+        "intent": "memilih kambing hitam yang layak disalahkan",
+        "label": "Menjebak pihak yang lebih lemah"
+      },
+      "must_pin": {
+        "intent": "kesalahan harus ditimpakan pada seseorang",
+        "label": "Kejahatan harus ditetapkan"
+      },
+      "steer": {
+        "intent": "mengarahkan penyelidikan kepada kambing hitam",
+        "label": "Bukti diarahkan"
+      },
+      "walk_free": {
+        "intent": "pelaku sebenarnya lolos dari pengamatan",
+        "label": "Pelaku sebenarnya melenggang bebas"
+      }
+    },
+    "effects": [
+      "si kambing hitam menanggung semua kesalahan",
+      "pelaku sebenarnya terbebas dari tanggung jawab"
+    ],
+    "emotion_target": "ketakutan",
+    "examples": [
+      "Ketika kesalahan harus ditimpakan kepada seseorang, tangan yang licik memastikan beban itu jatuh pada pihak lain."
+    ],
+    "name": "Pengambinghitaman",
+    "preconditions": [
+      "sebuah kejahatan menuntut adanya tersangka dan pelaku sebenarnya harus tetap tersembunyi"
+    ],
+    "roles": {
+      "investigators": {
+        "constraints": [
+          "digerakkan menuju target yang salah"
+        ],
+        "label": "penyelidik"
+      },
+      "scapegoat": {
+        "constraints": [
+          "pihak yang lebih lemah dan layak disalahkan"
+        ],
+        "label": "kambing hitam"
+      },
+      "schemer": {
+        "constraints": [
+          "pelaku sebenarnya"
+        ],
+        "label": "sang penyusun siasat"
+      }
+    },
+    "summary": "Saat kesalahan harus ditimpakan pada seseorang, tangan yang licik memastikan beban itu jatuh pada pihak yang tak berdaya, sementara pelaku sebenarnya melenggang bebas."
+  },
+  "intrigue.whisper_campaign": {
+    "beats": {
+      "isolate": {
+        "intent": "sang target kehilangan kedudukan",
+        "label": "Target terisolasi"
+      },
+      "seed": {
+        "intent": "menanamkan satu keraguan",
+        "label": "Menanam rumor"
+      },
+      "spread": {
+        "intent": "keraguan tersebut berulang melalui mulut-mulut yang tidak menyadarinya",
+        "label": "Rumor menyebar"
+      },
+      "withdraw": {
+        "intent": "pelindung sang target menarik diri",
+        "label": "Pelindung menarik dukungan"
+      }
+    },
+    "effects": [
+      "sang target terisolasi dan kehilangan pelindungnya",
+      "sumber asli rumor tersebut tetap tersembunyi"
+    ],
+    "emotion_target": "kegelisahan",
+    "examples": [
+      "Sebuah keraguan yang sengaja ditanamkan, diulang-ulang oleh mulut-mulut yang tidak tahu asal-usulnya, hingga sang target berdiri sendirian."
+    ],
+    "name": "Kampanye Bisik",
+    "preconditions": [
+      "sang target bergantung pada restu atau pengakuan dari seorang pelindung atau pihak istana"
+    ],
+    "roles": {
+      "court": {
+        "constraints": [
+          "menyebarkan rumor tanpa sadar"
+        ],
+        "label": "lingkaran sosial atau dewan"
+      },
+      "schemer": {
+        "constraints": [
+          "menyusun rumor"
+        ],
+        "label": "sang penyusun siasat"
+      },
+      "target": {
+        "constraints": [
+          "terisolasi oleh rumor"
+        ],
+        "label": "sang target"
+      }
+    },
+    "summary": "Satu keraguan yang sengaja ditanamkan, yang diulang oleh mulut-mulut yang tidak tahu asal-usulnya, mengucilkan sang target hingga pelindungnya menarik dukungan."
+  }
+}

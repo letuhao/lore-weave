@@ -28,6 +28,10 @@ from uuid import UUID
 import httpx
 
 from app.config import settings
+
+# Mirror knowledge-service's /drawers/search `query` max_length (DRAWERS_QUERY_MAX_
+# LENGTH) — a longer query 422s. Cap the composition-side query to stay under it.
+_DRAWERS_QUERY_MAX_LENGTH = 1000
 from app.logging_config import trace_id_var
 
 logger = logging.getLogger(__name__)
@@ -159,7 +163,7 @@ class KnowledgeClient:
         self, *, user_id: UUID, project_id: UUID, source_id: str,
         chapter_text: str, model_source: str, model_ref: str,
         job_id: UUID, known_entities: list[str] | None = None,
-        source_type: str = "chapter",
+        source_type: str = "chapter", chapter_index: int | None = None,
     ) -> dict[str, Any] | None:
         """C27 delta flywheel — dispatch the EXISTING knowledge extraction trigger
         (`POST /internal/extraction/extract-item`, X-Internal-Token) for ONE
@@ -198,6 +202,20 @@ class KnowledgeClient:
             "chapter_text": chapter_text,
             "known_entities": list(known_entities or []),
         }
+        # FD-4 (066): the chapter's reading-order ordinal. Without it every extracted Event
+        # lands with `event_order = NULL`, and `pass2_writer` then SKIPS every `status_effect`
+        # by design (M2: "no place on the reading axis"). So a death the extractor understood
+        # perfectly well writes no `:EntityStatus`, and the composition canon guard — whose
+        # whole job is gating a gone character — reads an empty store.
+        #
+        # MEASURED on throwaway book 019fbd8f… 2026-08-01: two chapters extracted 6 entities
+        # and 4 events, one summarised verbatim as "Castor falls and dies at the Bridge of
+        # Ash", and `:EntityStatus` was 0. The receiving field already existed for exactly this
+        # ("a flat book, chapters and no part, still gets a dense event_order") and composition
+        # simply never sent it — while `approve_chapter` had already fetched the sort_order
+        # three statements earlier to decide forward-of-branch.
+        if chapter_index is not None:
+            payload["chapter_index"] = chapter_index
         try:
             resp = await self._http.post(
                 url, json=payload, headers=self._internal_headers(),
@@ -492,6 +510,108 @@ class KnowledgeClient:
             logger.warning("knowledge entity unavailable: %s", exc)
             return None
 
+    # ── glossary-build KG phase (spec 2026-07-27) ───────────────────────────
+
+    async def project_entities_from_glossary(
+        self, bearer: str, *, project_id: UUID, entity_ids: list[str] | None = None,
+    ) -> dict[str, Any] | None:
+        """Project glossary entities into the graph as canonical :Entity nodes —
+        the REST twin of `kg_project_entities_to_nodes` (idempotent: re-seeding
+        upserts, never duplicates). `entity_ids=None` ⇒ the whole active glossary.
+        Returns the {created, existing, seen, skipped, ...} counts, or None on any
+        failure (the caller records a degraded KG phase rather than claiming one)."""
+        url = f"{self._base_url}/v1/knowledge/projects/{project_id}/entities/from-glossary"
+        try:
+            resp = await self._http.post(
+                url, json={"entity_ids": entity_ids},
+                headers=self._bearer_headers(bearer),
+            )
+            if resp.status_code not in (200, 201):
+                logger.warning("knowledge from-glossary → %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge from-glossary unavailable: %s", exc)
+            return None
+
+    async def index_glossary_passages(self, *, project_id: UUID) -> dict[str, Any] | None:
+        """Index the project's glossary entities as retrievable `:Passage` nodes.
+
+        Projecting entities into the graph (above) makes them EXIST; this makes them
+        FINDABLE. The packer's lore lens searches passages, and `source_type='glossary'`
+        had no producer at all — so a book whose glossary was built before chapter 1
+        retrieved nothing from its own canon.
+
+        Returns the per-outcome tally (e.g. `{"indexed": 12}` or
+        `{"no_embedding_model": 12}`) so the caller can TELL THE AUTHOR rather than
+        reporting a build that quietly indexed nothing. None on transport failure."""
+        url = f"{self._base_url}/internal/projects/{project_id}/backfill-glossary-passages"
+        try:
+            # An /internal route — service token, not the user's bearer. (The bearer
+            # form 401s; caught live, where it degraded to `{"error": "unavailable"}`
+            # and the wizard would have warned about lore that was actually fine.)
+            resp = await self._http.post(url, json={}, headers=self._internal_headers())
+            if resp.status_code != 200:
+                logger.warning("knowledge backfill-glossary-passages → %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge backfill-glossary-passages unavailable: %s", exc)
+            return None
+
+    async def list_project_entities(
+        self, bearer: str, *, project_id: UUID, limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        """The project's graph entities — each carries the GRAPH node `id`, its
+        `name`, and the `glossary_entity_id` anchor.
+
+        Load-bearing for glossary-build's edge resolution (live-caught in the M4
+        maiden run): a relation must be written with the KG node id, which is a
+        content hash, NOT the glossary entity_id — passing the glossary id 409s
+        ("entity not found"). Listing here ALSO returns entities from earlier
+        builds, so a relation pointing at previously-created lore resolves too.
+        [] on any failure (the caller reports unresolved edges rather than
+        writing wrong ones)."""
+        url = f"{self._base_url}/v1/knowledge/entities"
+        try:
+            resp = await self._http.get(
+                url, params={"project_id": str(project_id), "limit": limit},
+                headers=self._bearer_headers(bearer),
+            )
+            if resp.status_code != 200:
+                logger.warning("knowledge list entities → %d", resp.status_code)
+                return []
+            body = resp.json()
+            return body.get("entities") or body.get("items") or []
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge list entities unavailable: %s", exc)
+            return []
+
+    async def create_relation(
+        self, bearer: str, *, subject_id: str, predicate: str, object_id: str,
+    ) -> dict[str, Any] | None:
+        """Write ONE user-authored relation (the World-Map "link places" path:
+        user-asserted, confidence 1.0). Used by the glossary-build CP3 apply —
+        every edge here has been reviewed by a human. Idempotent on
+        (user, subject, predicate, object). None on any failure so a partial
+        apply is REPORTED (the caller counts applied vs failed) — never silently
+        counted as written."""
+        url = f"{self._base_url}/v1/knowledge/relations"
+        try:
+            resp = await self._http.post(
+                url,
+                json={"subject_id": subject_id, "predicate": predicate,
+                      "object_id": object_id},
+                headers=self._bearer_headers(bearer),
+            )
+            if resp.status_code not in (200, 201):
+                logger.warning("knowledge create_relation → %d", resp.status_code)
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("knowledge create_relation unavailable: %s", exc)
+            return None
+
     async def search_drawers(
         self, bearer: str, *, project_id: UUID, query: str, limit: int = 40,
         source_type: str | None = None, language: str | None = None,
@@ -505,6 +625,12 @@ class KnowledgeClient:
         in-language passages first (matched-first partition, not a filter) so a vi
         author's lore lens surfaces vi passages — the headline scenario. Omitted →
         relevance order only (back-compat)."""
+        # The /drawers/search endpoint 422s a query over DRAWERS_QUERY_MAX_LENGTH
+        # (1000). The chapter packer passes the whole combined multi-scene synopsis
+        # as the query, which for a long chapter EXCEEDS that — so the lore lens
+        # silently 422'd and the drafter lost its semantic-lore grounding (seen in
+        # the 2026-07-26 logs). Cap it: a 1000-char prefix is ample retrieval signal.
+        query = query[:_DRAWERS_QUERY_MAX_LENGTH]
         params: dict[str, Any] = {
             "project_id": str(project_id), "query": query, "limit": limit,
         }

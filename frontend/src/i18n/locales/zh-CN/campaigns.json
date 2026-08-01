@@ -75,11 +75,11 @@
     "stage": "阶段",
     "status": "状态",
     "tokens": "Token 数 (输入/输出)",
-    "usd": "USD",
     "localFree": "🖥 {{kind}} · 免费",
     "cloud": "☁ {{kind}}",
     "launching": "正在启动…",
-    "launch": "启动任务"
+    "launch": "启动任务",
+    "usd": "美元"
   },
   "list": {
     "title": "自动草拟任务",

@@ -53,14 +53,44 @@ async def persist_wiki_judge(
     verdict: GroundednessVerdict,
     judge_model: str,
     run_id: str,
+    generator_model: str | None = None,
 ) -> bool:
     """Persist a groundedness verdict as a `source='auto'` quality_scores row keyed to
     the wiki article. The dedup key is ``<run_id>:<article_id>`` so each eval run is a
     distinct judgment (trend), but re-judging an article WITHIN a run is idempotent.
     The rationale + judge model + panel-safety note ride in the comment
-    (``panel_safe=False`` — a single online judge, not a disjoint panel)."""
+    (``panel_safe=False`` — a single online judge, not a disjoint panel).
+
+    D-JUDGE-DISTINCTNESS-UNRECORDED (2026-07-31): `judge_model` was recorded and the model
+    that WROTE the article was not, so a score produced by the article's own writer looked
+    exactly like one from an independent judge. provider-registry's `critic` role states
+    the rule — *"it MUST differ from the session's actor model (else the roleplay partner
+    grades its own performance)"* — and `chat-service/app/routers/evaluate.py` is the only
+    place in the repo that enforces it.
+
+    Enforcing it here is not yet possible: the caller does not transmit the generator. So
+    record the honest three-state answer instead of implying the good one —
+
+        True  — judge and generator are known and differ
+        False — they are the SAME model; the article graded itself
+        None  — the generator was not supplied, so distinctness is UNVERIFIED
+
+    `None` is the current default for every caller, and that is the point: an unverified
+    score must not read as an independent one. A consumer can now filter on it, and the
+    fraction of self-graded scores becomes measurable — which is what has to happen before
+    a hard refusal can be turned on without failing every default-configured job.
+    """
+    judge_distinct: bool | None = None
+    if generator_model:
+        judge_distinct = str(judge_model) != str(generator_model)
     detail = json.dumps(
-        {"reason": verdict.reason, "judge_model": judge_model, "panel_safe": False},
+        {
+            "reason": verdict.reason,
+            "judge_model": judge_model,
+            "generator_model": generator_model,
+            "judge_distinct": judge_distinct,
+            "panel_safe": False,
+        },
         ensure_ascii=False,
     )
     return await persist_consumed_score(

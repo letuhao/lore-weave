@@ -41,12 +41,19 @@ type CardState = null | 'saved' | 'conflict' | 'error' | 'dismissed';
 export function GlossaryDiffCard({ record }: Props) {
   const { t } = useTranslation('chat');
   const { accessToken } = useAuth();
-  const { submitToolResult } = useChatStream();
+  const { submitToolResult, ambientBookId } = useChatStream();
   const [state, setState] = useState<CardState>(null);
   const [busy, setBusy] = useState(false);
 
   const args = (record.args ?? {}) as GlossaryEditArgs;
-  const { book_id, entity_id, base_version } = args;
+  const { entity_id, base_version } = args;
+  // WHICH BOOK gets written is the surface's fact, not the model's. `args.book_id` is a
+  // model-supplied argument, and a model that fills it wrong redirects the write: observed
+  // live with an ENTITY id in the `book_id` slot, so Apply POSTed to `/books/<entity-id>/…`
+  // and 403'd. That failure was loud only by luck — the same slip pointing at a book the
+  // caller does happen to own would write to the wrong book silently. Ambient wins; the
+  // argument is a fallback for surfaces that carry no book context of their own.
+  const book_id = ambientBookId ?? args.book_id;
   const changes = Array.isArray(args.changes) ? args.changes : [];
 
   async function resume(outcome: FrontendToolOutcome) {

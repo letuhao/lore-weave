@@ -128,7 +128,9 @@ async def list_arc_templates(
     scope: str = Query(default="all", pattern="^(mine|system|all)$"),
     genre: str | None = Query(default=None, max_length=100),
     q: str | None = Query(default=None, max_length=200),
-    language: str | None = Query(default=None, max_length=20),
+    # ARC-I18N: a READ preference, never a filter. It re-words the result with per-leaf
+    # fallback; the old `language` narrowed it, which returned an empty library.
+    display_language: str | None = Query(default=None, max_length=20),
     status: str = Query(default="active", pattern="^(draft|active|archived)$"),
     limit: int = Query(default=50, ge=1, le=100),
     book_id: UUID | None = Query(default=None),
@@ -148,7 +150,7 @@ async def list_arc_templates(
     repo_scope = "user" if scope == "mine" else scope
     rows = await repo.list_for_caller(
         user_id, scope=repo_scope, genre=genre, status=status,
-        q=q, language=language, limit=limit, book_id=book_id,
+        q=q, display_language=display_language, limit=limit, book_id=book_id,
     )
     return {
         "arc_templates": [a.model_dump(mode="json") for a in rows],
@@ -161,7 +163,7 @@ async def list_arc_templates(
 async def catalog_arc_templates(
     genre: str | None = Query(default=None, max_length=100),
     q: str | None = Query(default=None, max_length=200),
-    language: str | None = Query(default=None, max_length=20),
+    display_language: str | None = Query(default=None, max_length=20),
     sort: str = Query(default="recent", pattern="^(recent|name)$"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -172,7 +174,7 @@ async def catalog_arc_templates(
     user may read it (no grant). The projection is an explicit allow-list — embedding /
     raw source_ref / the heavy layout+roster are structurally excluded."""
     items, total = await repo.list_public(
-        genre=genre, q=q, language=language, sort=sort, limit=limit, offset=offset,
+        genre=genre, q=q, display_language=display_language, sort=sort, limit=limit, offset=offset,
     )
     out = []
     for it in items:
@@ -192,6 +194,39 @@ async def get_arc_template(
     if arc is None:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
     return arc.model_dump(mode="json")
+
+
+@router.get("/arc-templates/{arc_id}/translations")
+async def list_arc_template_translations(
+    arc_id: UUID,
+    book_id: UUID | None = Query(default=None),
+    user_id: UUID = Depends(get_current_user),
+    repo: ArcTemplateRepo = Depends(get_arc_template_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Which languages this arc template already reads in (ARC-I18N).
+
+    The detail surface shows a template AS AUTHORED — it is the edit surface and the
+    PATCH is whole-object, so rendering a translation there and saving would write the
+    translated wording onto the source row. This is how it reports what exists without
+    becoming one of them. Text is not returned, only the inventory.
+
+    `book_id` selects the SHARED-tier read (VIEW-gated): `get_visible` is
+    system|public|owned, which excludes a book_shared row a COLLABORATOR owns — exactly
+    the rows a grantee may translate.
+    """
+    if book_id is not None:
+        await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    arc = await repo.get_visible(user_id, arc_id, book_id=book_id)
+    if arc is None:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    return {
+        "original_language": arc.original_language,
+        "translations": [
+            {**t, "updated_at": t["updated_at"].isoformat() if t.get("updated_at") else None}
+            for t in await repo.list_translations(arc_id)
+        ],
+    }
 
 
 # ── create / patch / archive ────────────────────────────────────────────────────────
@@ -228,7 +263,7 @@ async def create_arc_template(
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=409, detail={
             "code": "ARC_TEMPLATE_CODE_EXISTS",
-            "message": "an arc template with this code + language already exists",
+            "message": "an arc template with this code already exists",
         })
     return arc.model_dump(mode="json")
 
@@ -274,7 +309,7 @@ async def patch_arc_template(
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=409, detail={
             "code": "ARC_TEMPLATE_CODE_EXISTS",
-            "message": "an arc template with this code + language already exists",
+            "message": "an arc template with this code already exists",
         })
     if arc is None:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)
@@ -340,7 +375,7 @@ async def adopt_arc_template(
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=409, detail={
             "code": "ARC_TEMPLATE_CODE_EXISTS",
-            "message": "an arc template with this code + language already exists "
+            "message": "an arc template with this code already exists "
                        "— rename or retag before adopting",
         })
     return JSONResponse(status_code=201, content=arc.model_dump(mode="json"))
@@ -865,7 +900,7 @@ async def assign_arc_chapters(
 class ArcExtractTemplate(BaseModel):
     code: str = Field(min_length=1, max_length=120)
     name: str = Field(min_length=1, max_length=200)
-    language: str = "en"
+    original_language: str = "en"
     # 'public' is excluded at create — publishing is the separate library visibility flip.
     visibility: Literal["private", "unlisted"] = "private"
 
@@ -879,18 +914,19 @@ async def extract_arc_template(
 ) -> dict[str, Any]:
     """Save an authored arc (a structure_node) as a reusable arc TEMPLATE in the caller's own
     library. Reading the arc to extract from it ⇒ VIEW on its book (derived from the ROW); the
-    new template is owner-stamped to the caller. 409 on a duplicate (owner, code, language)."""
+    new template is owner-stamped to the caller. 409 on a duplicate (owner, code)."""
     structures = _structures()
     node = await _gate_arc(structures, grant, user_id, node_id, GrantLevel.VIEW)
     try:
         result = await extract_template_from_arc(
             get_pool(), arc_node=node, owner_user_id=user_id,
-            code=body.code, name=body.name, language=body.language, visibility=body.visibility,
+            code=body.code, name=body.name, original_language=body.original_language,
+            visibility=body.visibility,
         )
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=409, detail={
             "code": "ARC_TEMPLATE_CODE_EXISTS",
-            "message": "an arc template with this code + language already exists in your library",
+            "message": "an arc template with this code already exists in your library",
         })
     return result
 

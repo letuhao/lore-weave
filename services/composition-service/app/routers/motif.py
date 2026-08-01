@@ -119,6 +119,40 @@ def _redact_for_viewer(motif: Motif, *, is_owner: bool) -> dict[str, Any]:
     return data
 
 
+def _reject_redacted_writes(body: MotifPatchArgs, prior: Motif, caller_id: UUID) -> None:
+    """The READ boundary and the WRITE boundary must be the SAME boundary.
+
+    `_PUBLIC_DETAIL_REDACT` hides `examples` from a non-owner (they may carry imported source
+    prose — copyright). The shared book tier (D-MOTIF-ADOPT-BOOK-COLLAB-TIER) separately lets ANY
+    EDIT-grantee of the book patch the row. Those two facts compose into silent destruction: a
+    grantee's client seeds an editor from the redacted read — where the field arrives as `[]`,
+    indistinguishable from genuinely empty — sends a whole-object patch, and wipes `examples` for
+    everyone, including the owner, who is the only person permitted to SEE them.
+
+    No client can defend against this on its own: the redaction is lossy in a way the payload does
+    not announce. So the server refuses the write rather than trusting every present and future
+    client to notice. Refused loudly (400), never dropped silently — a silently-ignored field is
+    the no-silent-no-op bug this codebase keeps re-learning.
+
+    Found by the F3 round-trip sweep. Not reachable from today's FE (its `isReadOnly` keys on
+    `owner_user_id`, which the same redaction nulls, so the editor never opens on a shared row) —
+    but that also means the shared-tier edit has no FE door at all, and the obvious way to add one
+    walks straight into this.
+    """
+    if prior.owner_user_id is not None and prior.owner_user_id == caller_id:
+        return  # the owner may write what the owner may read
+    offending = sorted(f for f in _PUBLIC_DETAIL_REDACT if f in body.model_fields_set)
+    if offending:
+        raise HTTPException(status_code=400, detail={
+            "code": "MOTIF_REDACTED_FIELD_NOT_WRITABLE",
+            "message": (
+                f"{', '.join(offending)} is hidden from you on a motif you do not own, so it "
+                f"cannot be written — omit the field (editing the rest is allowed)"
+            ),
+            "fields": offending,
+        })
+
+
 async def _publish_quota_guard(repo: MotifRepo, caller_id: UUID) -> None:
     """B-4 publish ceiling — informative refusal (NOT the uniform not-accessible
     error; a quota condition is not an ownership one). 0 = unlimited."""
@@ -157,7 +191,10 @@ async def list_motifs(
     genre: str | None = Query(default=None, max_length=100),
     kind: str | None = Query(default=None),
     q: str | None = Query(default=None, max_length=200),
-    language: str | None = Query(default=None, max_length=20),
+    # MOTIF-I18N: this is the language to READ the motifs in, not a filter on which
+    # motifs exist. It never subtracts rows; a motif with no translation falls back to
+    # its original language and says so via `text_fallback`.
+    display_language: str | None = Query(default=None, max_length=20),
     status: str = Query(default="active", pattern="^(draft|active|archived)$"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -171,7 +208,7 @@ async def list_motifs(
     repo_scope = "user" if scope == "mine" else scope  # repo names the owned scope 'user'
     rows = await repo.list_for_caller(
         user_id, scope=repo_scope, genre=genre, kind=kind, status=status,
-        q=q, language=language, limit=limit, offset=offset,
+        q=q, display_language=display_language, limit=limit, offset=offset,
     )
     return {
         "motifs": [m.model_dump(mode="json") for m in rows],
@@ -186,7 +223,10 @@ async def catalog_motifs(
     genre: str | None = Query(default=None, max_length=100),
     kind: str | None = Query(default=None),
     q: str | None = Query(default=None, max_length=200),
-    language: str | None = Query(default=None, max_length=20),
+    # MOTIF-I18N: this is the language to READ the motifs in, not a filter on which
+    # motifs exist. It never subtracts rows; a motif with no translation falls back to
+    # its original language and says so via `text_fallback`.
+    display_language: str | None = Query(default=None, max_length=20),
     sort: str = Query(default="recent", pattern="^(recent|name)$"),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -197,7 +237,7 @@ async def catalog_motifs(
     may read it (no grant). The projection is an explicit allow-list — embedding /
     examples / raw source_ref are structurally excluded."""
     items, total = await repo.list_public(
-        genre=genre, kind=kind, q=q, language=language,
+        genre=genre, kind=kind, q=q, display_language=display_language,
         sort=sort, limit=limit, offset=offset,
     )
     # serialize the allow-list rows (UUID/datetime/Decimal → json) + adopt hint.
@@ -213,7 +253,15 @@ def _book_view(motif: Motif, *, caller_id: UUID) -> dict[str, Any]:
     """Book-library projection (D-MOTIF-ADOPT-BOOK-COLLAB-TIER): own rows full; a SHARED row
     owned by another collaborator gets the B-3 redaction (no examples / opaque source_ref / no
     owner) but keeps book_id + book_shared so the FE can badge it + route an edit to the shared
-    path. Mirrors the MCP _motif_book_view."""
+    path. Mirrors the MCP _motif_book_view.
+
+    NB (F3 sweep, 2026-07-28): the *badge* half is live; the *edit* half has **no FE door yet**.
+    The redaction nulls `owner_user_id`, and the FE derives its tier from exactly that field, so a
+    shared row reads as `system` → read-only → the in-place editor never opens and every client
+    path is clone-to-edit. `PATCH ?book_id=` + `patch_shared` are implemented and tested; only the
+    affordance is missing. Whoever builds it: the redaction is why `_reject_redacted_writes`
+    exists — a grantee's editor would otherwise seed `examples: []` from this very projection and
+    write the owner's prose away."""
     is_owner = motif.owner_user_id is not None and motif.owner_user_id == caller_id
     data = _redact_for_viewer(motif, is_owner=is_owner)
     data["book_id"] = str(motif.book_id) if motif.book_id else None
@@ -227,7 +275,10 @@ async def list_book_motifs(
     genre: str | None = Query(default=None, max_length=100),
     kind: str | None = Query(default=None),
     q: str | None = Query(default=None, max_length=200),
-    language: str | None = Query(default=None, max_length=20),
+    # MOTIF-I18N: this is the language to READ the motifs in, not a filter on which
+    # motifs exist. It never subtracts rows; a motif with no translation falls back to
+    # its original language and says so via `text_fallback`.
+    display_language: str | None = Query(default=None, max_length=20),
     status: str = Query(default="active", pattern="^(draft|active|archived)$"),
     limit: int = Query(default=50, ge=1, le=100),
     user_id: UUID = Depends(get_current_user),
@@ -241,7 +292,7 @@ async def list_book_motifs(
     await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
     rows = await repo.list_in_book(
         user_id, book_id, genre=genre, kind=kind, status=status,
-        q=q, language=language, limit=limit,
+        q=q, display_language=display_language, limit=limit,
     )
     return {
         "motifs": [_book_view(m, caller_id=user_id) for m in rows],
@@ -263,6 +314,46 @@ async def get_motif(
     return _redact_for_viewer(motif, is_owner=is_owner)
 
 
+@router.get("/motifs/{motif_id}/translations")
+async def list_motif_translations(
+    motif_id: UUID,
+    book_id: UUID | None = Query(default=None),
+    user_id: UUID = Depends(get_current_user),
+    repo: MotifRepo = Depends(get_motif_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Which languages this motif already reads in (MOTIF-I18N).
+
+    The detail drawer shows a motif as AUTHORED — it is the edit surface, and the PATCH
+    is whole-object, so rendering a translation there and saving would write translated
+    wording onto the source row. This is how the drawer can still tell the reader what
+    exists without becoming one of them: the original language plus the list of
+    translations, each flagged `stale` when the source text has moved since.
+
+    Same visibility as the motif itself; text is not returned, only the inventory.
+
+    `book_id` selects the SHARED-tier read (VIEW-gated on that book), because
+    `get_visible` is system|public|owned and a book_shared row owned by a *collaborator*
+    is none of those. Without it, exactly the users who may buy a translation for a
+    shared motif would see an empty inventory — the row would report "no translation in
+    your language" for a motif that has one, and offer to sell them a duplicate.
+    """
+    if book_id is not None:
+        await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+        motif = await repo.get_in_book(user_id, motif_id, book_id)
+    else:
+        motif = await repo.get_visible(user_id, motif_id)
+    if motif is None:
+        raise HTTPException(status_code=404, detail=_NOT_FOUND)
+    return {
+        "original_language": motif.original_language,
+        "translations": [
+            {**t, "updated_at": t["updated_at"].isoformat() if t.get("updated_at") else None}
+            for t in await repo.list_translations(motif_id)
+        ],
+    }
+
+
 # ── create / patch / archive ─────────────────────────────────────────────────
 
 
@@ -274,7 +365,7 @@ async def create_motif(
 ) -> dict[str, Any]:
     """Create a user-tier motif; owner_user_id is server-stamped = caller (the
     body cannot carry it — _ForbidExtra). A public/unlisted create runs the
-    publish quota pre-check first. A duplicate (owner, code, language) → 409."""
+    publish quota pre-check first. A duplicate (owner, code) → 409."""
     if body.visibility in ("public", "unlisted"):
         await _publish_quota_guard(repo, user_id)
     try:
@@ -282,7 +373,7 @@ async def create_motif(
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=409, detail={
             "code": "MOTIF_CODE_EXISTS",
-            "message": "a motif with this code + language already exists",
+            "message": "a motif with this code already exists",
         })
     return motif.model_dump(mode="json")
 
@@ -315,6 +406,11 @@ async def patch_motif(
                 "message": "a shared book-tier motif stays private; publish from your own copy instead",
             })
         await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+        # F3 — a grantee must not WRITE a field the same read redacts (see the helper). Reading
+        # the row first mirrors what the MCP path already does before its shared patch.
+        prior = await repo.get_in_book(user_id, motif_id, book_id)
+        if prior is not None:
+            _reject_redacted_writes(body, prior, user_id)
         try:
             motif = await repo.patch_shared(
                 user_id, motif_id, book_id, body, expected_version=_parse_if_match(if_match),
@@ -327,7 +423,7 @@ async def patch_motif(
         except asyncpg.UniqueViolationError:
             raise HTTPException(status_code=409, detail={
                 "code": "MOTIF_CODE_EXISTS",
-                "message": "a motif with this code + language already exists in this book",
+                "message": "a motif with this code already exists in this book",
             })
         if motif is None:
             raise HTTPException(status_code=404, detail=_NOT_FOUND)
@@ -356,7 +452,7 @@ async def patch_motif(
     except asyncpg.UniqueViolationError:
         raise HTTPException(status_code=409, detail={
             "code": "MOTIF_CODE_EXISTS",
-            "message": "a motif with this code + language already exists",
+            "message": "a motif with this code already exists",
         })
     if motif is None:
         raise HTTPException(status_code=404, detail=_NOT_FOUND)

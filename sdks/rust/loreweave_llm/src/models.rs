@@ -209,10 +209,21 @@ impl ChatStreamRequest {
         self
     }
 
-    /// Cap completion length (builder style) — belt-and-braces against
-    /// runaway generation even with reasoning bounded.
+    /// Set the output cap (builder style) — belt-and-braces against runaway
+    /// generation even with reasoning bounded.
+    ///
+    /// S7 — this builder did not exist, and MEASURED 2026-08-01 no Rust service anywhere in
+    /// the repo set `max_tokens` at all: the field was declared, defaulted to `None`, and
+    /// `normalize` below already anticipated it being set (`Some(0)` → `None`). So the whole
+    /// Rust surface sent uncapped requests while `normalize` stood ready for a value nothing
+    /// could supply.
+    ///
+    /// `Some(0)` is accepted here rather than rejected because `normalize` owns that
+    /// conversion — one place decides what the wire sees, and a second opinion at the builder
+    /// is how two rules for one decision start. (main's independent copy of this builder
+    /// coerced `0 → None` in-place; dropped on merge 2026-08-02 for exactly that reason.)
     pub fn with_max_tokens(mut self, max_tokens: u32) -> Self {
-        self.max_tokens = if max_tokens == 0 { None } else { Some(max_tokens) };
+        self.max_tokens = Some(max_tokens);
         self
     }
 

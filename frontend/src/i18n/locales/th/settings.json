@@ -221,16 +221,16 @@
       "display_name_ph": "เช่น My Groq",
       "api_standard": "มาตรฐาน API",
       "api_standard_hint": "ผู้ให้บริการภายนอกส่วนใหญ่ (Groq, Together, Mistral, DeepSeek) รองรับมาตรฐาน OpenAI Compatible",
-      "endpoint_url": "Endpoint URL",
       "endpoint_ph_ollama": "http://localhost:11434",
       "endpoint_ph_default": "https://api.example.com",
       "endpoint_hint": "เว้นว่างไว้เพื่อใช้ Endpoint เริ่มต้น (OpenAI, Anthropic)",
-      "api_key": "API Key",
       "api_key_ph_local": "ไม่จำเป็นสำหรับเครื่อง Local",
-      "api_key_ph": "sk-...",
       "cancel": "ยกเลิก",
       "adding": "กำลังเพิ่ม...",
-      "submit": "เพิ่มผู้ให้บริการ"
+      "submit": "เพิ่มผู้ให้บริการ",
+      "endpoint_url": "URL ของ Endpoint",
+      "api_key": "API Key",
+      "api_key_ph": "sk-..."
     },
     "edit_dialog": {
       "aria": "แก้ไขผู้ให้บริการ",
@@ -239,16 +239,16 @@
       "api_standard": "มาตรฐาน API",
       "endpoint_url": "URL ของ Endpoint",
       "endpoint_ph_default": "เว้นว่างไว้เพื่อใช้ค่าเริ่มต้น",
-      "api_key": "API Key",
       "api_key_ph_keep": "•••••••• (เว้นว่างไว้เพื่อใช้ค่าเดิม)",
-      "api_key_ph": "sk-...",
       "api_key_keep_hint": "เว้นว่างไว้เพื่อใช้คีย์เดิมที่มีอยู่",
       "max_concurrency": "จำนวนคำขอที่ทำงานพร้อมกันสูงสุด",
       "max_concurrency_ph": "ไม่จำกัด",
       "max_concurrency_hint": "จำนวนคำขอที่ผู้ให้บริการรายนี้จะรันในเวลาเดียวกัน เว้นว่างไว้เพื่อไม่จำกัด (ระบบหลังบ้านจะเป็นผู้กำหนด) ตั้งค่าเป็นตัวเลขเฉพาะในกรณีที่ระบบหลังบ้านของคุณมีขีดจำกัดที่ทราบแน่ชัด (เช่น GPU ในเครื่อง)",
       "cancel": "ยกเลิก",
       "saving": "กำลังบันทึก...",
-      "submit": "บันทึกการเปลี่ยนแปลง"
+      "submit": "บันทึกการเปลี่ยนแปลง",
+      "api_key": "API Key",
+      "api_key_ph": "sk-..."
     },
     "delete": {
       "title": "ลบ {{name}} หรือไม่?",
@@ -364,13 +364,13 @@
       "extended_thinking": "การคิดวิเคราะห์เชิงลึก",
       "json_mode": "โหมด JSON",
       "reasoning": "การใช้เหตุผล",
-      "tts": "TTS",
-      "stt": "STT",
       "image_gen": "การสร้างรูปภาพ",
       "video_gen": "การสร้างวิดีโอ",
-      "embedding": "Embedding",
-      "rerank": "Rerank",
-      "moderation": "การตรวจสอบเนื้อหา"
+      "moderation": "การตรวจสอบเนื้อหา",
+      "tts": "TTS",
+      "stt": "STT",
+      "embedding": "การฝังคำ",
+      "rerank": "จัดลำดับใหม่"
     }
   },
   "services": {
@@ -398,8 +398,6 @@
       "type": "บริการ",
       "endpoint": "URL ของ Endpoint",
       "endpoint_hint": "URL พื้นฐานของบริการ — ในฝั่งเซิร์ฟเวอร์จะเรียกว่า provider-registry หากเป็นบริการที่อยู่บนเครื่องโฮสต์ ให้ใช้ host.docker.internal ห้ามใช้ localhost (เพราะภายในคอนเทนเนอร์ localhost คือตัวคอนเทนเนอร์เอง)",
-      "key": "API Key",
-      "key_ph": "Bearer token",
       "key_ph_keyless": "เว้นว่างไว้หากเป็นบริการภายในเครื่องแบบไม่ต้องใช้คีย์",
       "key_hint": "Bearer secret สำหรับบริการนี้",
       "key_hint_keyless": "ไม่บังคับ — เว้นว่างไว้หากเป็น backend ภายในเครื่องแบบไม่ต้องใช้คีย์ (เช่น SearXNG)",
@@ -409,13 +407,14 @@
       "alias_ph": "ชื่อที่แสดง (ไม่บังคับ)",
       "cancel": "ยกเลิก",
       "submit": "เพิ่มบริการ",
-      "adding": "กำลังเพิ่ม…"
+      "adding": "กำลังเพิ่ม…",
+      "key": "API Key",
+      "key_ph": "Bearer token"
     },
     "edit_dialog": {
       "aria": "แก้ไขบริการภายนอก",
       "title": "แก้ไข {{name}}",
       "endpoint": "URL ของ Endpoint",
-      "key": "API Key",
       "key_ph_keep": "เว้นว่างไว้เพื่อใช้คีย์เดิม",
       "key_keep_hint": "เว้นว่างไว้เพื่อใช้คีย์ที่มีอยู่เดิม",
       "max_concurrency": "จำนวนคำขอที่ทำงานพร้อมกันสูงสุด",
@@ -423,7 +422,8 @@
       "max_concurrency_hint": "จำนวนคำขอที่บริการนี้จะรันพร้อมกัน เว้นว่างไว้หากไม่จำกัด (ระบบหลังบ้านจะเป็นผู้กำหนด) ให้ระบุตัวเลขเฉพาะในกรณีที่ระบบหลังบ้านของคุณมีการจำกัดจำนวนที่แน่นอนแล้วเท่านั้น",
       "cancel": "ยกเลิก",
       "submit": "บันทึก",
-      "saving": "กำลังบันทึก…"
+      "saving": "กำลังบันทึก…",
+      "key": "API Key"
     },
     "toast": {
       "added": "เพิ่ม {{name}} แล้ว",
@@ -448,12 +448,12 @@
   "model_modal": {
     "cap": {
       "chat": "แชท / LLM",
-      "embedding": "Embedding",
-      "tts": "Text-to-Speech",
-      "stt": "Speech-to-Text",
+      "tts": "ข้อความเสียง",
+      "stt": "เสียงเป็นข้อความ",
       "image_gen": "การสร้างรูปภาพ",
       "moderation": "การตรวจสอบเนื้อหา",
-      "reranker": "Reranker"
+      "embedding": "การฝังคำ",
+      "reranker": "ตัวจัดลำดับใหม่"
     },
     "add": {
       "aria": "เพิ่มโมเดล",
@@ -464,7 +464,6 @@
       "model": "โมเดล",
       "search_ph": "ค้นหาโมเดล...",
       "top": "ยอดนิยม",
-      "ctx": "ctx",
       "model_hint": "พิมพ์เพื่อค้นหา หรือป้อนชื่อโมเดลที่กำหนดเองที่ไม่มีในรายการ",
       "alias": "นามแฝง (ชื่อที่แสดง)",
       "alias_ph": "เช่น My Fast Model",
@@ -473,7 +472,8 @@
       "notes_ph": "บันทึกเพิ่มเติมเกี่ยวกับโครงสร้างโมเดลนี้... (ไม่บังคับ)",
       "cancel": "ยกเลิก",
       "adding": "กำลังเพิ่ม...",
-      "submit": "เพิ่มโมเดล"
+      "submit": "เพิ่มโมเดล",
+      "ctx": "ctx"
     },
     "edit": {
       "aria": "แก้ไขโมเดล",

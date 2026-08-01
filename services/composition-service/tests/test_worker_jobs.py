@@ -26,6 +26,23 @@ def _llm_stub():
     return SimpleNamespace(resolve_context_length=_resolve_context_length)
 
 
+def _reflect_stub(*, status: str, coverage: list[str]):
+    """A canon-reflect result for the worker tests — the REAL model, not a duck type.
+
+    These were hand-built `SimpleNamespace`s, which meant every field added to the canon
+    envelope broke them from a distance: `coverage` did it once, then `verdict` left three
+    of these tests red at HEAD with an AttributeError that names the stub and not the change.
+    `ReflectResult` requires only `text`; everything else defaults, so the projection can grow
+    without the stubs needing to know. If a NEW field ever needs a non-default value here, that
+    is a real signal about the test, not maintenance."""
+    from app.engine.canon_check import ReflectResult
+    return ReflectResult(
+        text="", violations=[], resolved=True, iterations=0, status=status,
+        revise_finish_reason=None, coverage=coverage,
+        unanchored_names=[], name_near_misses=[], name_check_method="capitalised_latin",
+    )
+
+
 class _FakeRepo:
     def __init__(self, job):
         self._job = job
@@ -202,8 +219,7 @@ async def test_run_stitch_computes_and_stores_no_persist(monkeypatch):
         stitch_inputs.update(kw)
         return ("STITCHED PROSE", "stop")
 
-    reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
-                              status="ok", revise_finish_reason=None)
+    reflect = _reflect_stub(status="ok", coverage=["name_grounding", "canon_cast"])
 
     async def _fake_reflect(**kw):
         return (kw["draft"], reflect, 0)
@@ -302,8 +318,7 @@ async def test_run_generate_computes_winner_and_canon(monkeypatch):
         return Selection(winner=cands[1], winner_index=1, candidates=cands,
                          rerank_reason="B", rerank_measured=True)
 
-    reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
-                              status="ok", revise_finish_reason=None)
+    reflect = _reflect_stub(status="ok", coverage=["name_grounding", "canon_cast"])
 
     async def _fake_reflect(**kw):
         return (kw["draft"], reflect, 3)
@@ -329,8 +344,107 @@ async def test_run_generate_computes_winner_and_canon(monkeypatch):
     assert out["canon"]["status"] == "ok"
     assert out["reasoning_effort"] == "medium" and out["reinjected_promise_count"] == 2
     assert out["persisted"] is False
-    # no distinct critic → judge falls back to the drafter; passthrough False → effort passed
-    assert seen["judge_ref"] == "m1" and seen["reasoning_effort"] == "medium"
+    # no distinct critic → judge falls back to the drafter. The worker must rebuild the
+    # ENDPOINT's directive from the stored parts, not re-derive a bare effort string.
+    assert seen["judge_ref"] == "m1"
+    assert seen["reasoning"].effort == "medium" and seen["reasoning"].passthrough is False
+
+
+async def test_run_generate_forwards_the_length_target_and_the_beats(monkeypatch):
+    """D-LENGTH-DIRECTIVE-NEVER-SENT + D-SCENE-BEATS slice 2 — the WIRING seam.
+
+    `input["target_words"]` was stored by the endpoint, used to size `max_out`, echoed in the
+    result envelope as the number the model was asked for — and never passed to the selection,
+    because `select_draft` had no such parameter. Every unit test around it inspected the
+    prompt BUILDER, which was correct the whole time. This asserts the value crosses the
+    boundary, which is where it was lost.
+    """
+    import app.db.repositories.works as works_mod
+    import app.engine.select as select_mod
+    import app.engine.canon_reflect as reflect_mod
+    import app.packer.profile as profile_mod
+    from app.engine.select import Candidate, Selection
+    from app.engine.cowrite import DraftMetering
+    from app.worker.operations import run_generate
+
+    class _FakeWorks:
+        def __init__(self, pool): ...
+        async def get(self, pid):
+            return SimpleNamespace(settings={"source_language": "en"})
+
+    seen: list[dict] = []
+
+    async def _fake_select(llm, judge, **kw):
+        seen.append(kw)
+        return Selection(winner=Candidate("passage", DraftMetering(10, 5, True)),
+                         winner_index=0, candidates=[Candidate("passage", DraftMetering(10, 5, True))],
+                         rerank_reason="", rerank_measured=False)
+
+    async def _fake_reflect(**kw):
+        return (kw["draft"], _reflect_stub(status="ok", coverage=["name_grounding"]), 0)
+
+    monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
+    monkeypatch.setattr(select_mod, "select_draft", _fake_select)
+    monkeypatch.setattr(reflect_mod, "run_canon_reflect", _fake_reflect)
+    monkeypatch.setattr(profile_mod, "from_settings",
+                        lambda s: SimpleNamespace(source_language="en"))
+
+    inp = {"user_id": str(uuid4()), "project_id": str(uuid4()), "model_source": "user_model",
+           "model_ref": "m1", "operation": "draft_scene", "packed_prompt": "P",
+           "prompt_estimate": 1, "max_out": 8000, "source_language": "en",
+           "target_words": 900, "draft_beats": [{"goal": "arrive"}, {"goal": "leave"}]}
+    out = await run_generate(object(), object(), object(), input=inp)
+
+    assert len(seen) == 2, "two declared beats must produce two draft calls"
+    assert [c["target_words"] for c in seen] == [450, 450],         "the scene target must be SPLIT across the passages and reach each call"
+    assert "arrive" in (seen[0]["beat_scope"] or "")
+    assert "leave" in (seen[1]["beat_scope"] or "")
+    # ...and the envelope must carry what actually happened, not just what was asked for.
+    assert out["scene_assembly"] == "per_beat" and out["beats_drafted"] == 2
+    assert out["beat_words"] == [1, 1] and out["beats_failed"] == 0
+
+
+async def test_run_generate_with_no_beats_makes_exactly_one_call_carrying_the_target(monkeypatch):
+    """Every scene authored before the feature has an empty list, so this is the path almost
+    all real traffic takes — and the one the missing `target_words` was breaking."""
+    import app.db.repositories.works as works_mod
+    import app.engine.select as select_mod
+    import app.engine.canon_reflect as reflect_mod
+    import app.packer.profile as profile_mod
+    from app.engine.select import Candidate, Selection
+    from app.engine.cowrite import DraftMetering
+    from app.worker.operations import run_generate
+
+    class _FakeWorks:
+        def __init__(self, pool): ...
+        async def get(self, pid):
+            return SimpleNamespace(settings={})
+
+    seen: list[dict] = []
+
+    async def _fake_select(llm, judge, **kw):
+        seen.append(kw)
+        return Selection(winner=Candidate("scene", DraftMetering(10, 5, True)), winner_index=0,
+                         candidates=[Candidate("scene", DraftMetering(10, 5, True))],
+                         rerank_reason="", rerank_measured=False)
+
+    async def _fake_reflect(**kw):
+        return (kw["draft"], _reflect_stub(status="ok", coverage=["name_grounding"]), 0)
+
+    monkeypatch.setattr(works_mod, "WorksRepo", _FakeWorks)
+    monkeypatch.setattr(select_mod, "select_draft", _fake_select)
+    monkeypatch.setattr(reflect_mod, "run_canon_reflect", _fake_reflect)
+    monkeypatch.setattr(profile_mod, "from_settings",
+                        lambda s: SimpleNamespace(source_language="en"))
+
+    inp = {"user_id": str(uuid4()), "project_id": str(uuid4()), "model_source": "user_model",
+           "model_ref": "m1", "operation": "draft_scene", "packed_prompt": "P",
+           "prompt_estimate": 1, "max_out": 8000, "target_words": 900, "draft_beats": []}
+    out = await run_generate(object(), object(), object(), input=inp)
+
+    assert len(seen) == 1 and seen[0]["target_words"] == 900
+    assert seen[0].get("beat_scope") is None, "an unbeated scene must not get a passage frame"
+    assert out["scene_assembly"] == "single_call" and out["beats_drafted"] == 1
 
 
 async def test_run_generate_select_failure_is_terminal(monkeypatch):
@@ -399,8 +513,7 @@ async def test_run_chapter_generate_single_pass_no_persist(monkeypatch):
         seen.update(kw)
         return [Candidate("CHAPTER PROSE", DraftMetering(40, 12, True))]
 
-    reflect = SimpleNamespace(violations=[], resolved=True, iterations=0,
-                              status="checked", revise_finish_reason=None)
+    reflect = _reflect_stub(status="checked", coverage=["name_grounding", "canon_cast"])
 
     async def _fake_reflect(**kw):
         return (kw["draft"], reflect, 4)
@@ -427,7 +540,8 @@ async def test_run_chapter_generate_single_pass_no_persist(monkeypatch):
     assert out["open_promise_count"] is None  # narrative_thread off
     assert out["max_output_tokens"] == 4000
     assert seen["k"] == 1  # single pass
-    assert seen["reasoning_effort"] is None  # passthrough → omit effort
+    # passthrough (an adaptive model) survives the job round-trip and still omits both knobs.
+    assert seen["reasoning"].passthrough is True and seen["reasoning"].effort is None
 
 
 async def test_run_job_dispatches_selection_edit_via_worker_op(monkeypatch):

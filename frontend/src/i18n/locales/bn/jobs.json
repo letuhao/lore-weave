@@ -109,7 +109,6 @@
     "elapsed": "অতিক্রান্ত সময়",
     "throughput": "থ্রুপুট",
     "throughputVal": "~{{n}} /ঘণ্টা",
-    "eta": "ETA",
     "costSoFar": "এখন পর্যন্ত খরচ",
     "tokensIn": "ইনপুট টোকেন",
     "tokensOut": "আউটপুট টোকেন",
@@ -127,7 +126,8 @@
     "copied": "জব ID কপি করা হয়েছে।",
     "copyFailed": "কপি করা সম্ভব হয়নি।",
     "activity": "অ্যাক্টিভিটি (লাইভ)",
-    "errorTitle": "ত্রুটি"
+    "errorTitle": "ত্রুটি",
+    "eta": "পৌঁছানোর সম্ভাব্য সময়"
   },
   "activity": {
     "created": "তৈরি করা হয়েছে",

@@ -444,7 +444,7 @@ def _motif_args(spec: dict[str, Any], *, index: int, language: str = "en") -> Mo
     effects = [{"text": str(e)[:2000]} for e in (spec.get("effects") or []) if e]
     return MotifCreateArgs(
         code=_slug(spec.get("code"), f"imported.motif-{index}"),
-        language=language,
+        original_language=language,
         name=str(spec.get("name") or f"Imported Motif {index + 1}")[:500],
         kind=spec.get("kind") if spec.get("kind") in
         {"sequence", "scheme", "reveal", "reversal", "relationship"} else "sequence",
@@ -493,7 +493,10 @@ def _arc_args(
                        (reduced.get("placements") or []) if isinstance(p, dict)) \
         if reduced.get("placements") else None
     return ArcTemplateCreateArgs(
-        code=code, name=name, language=language,
+        # ARC-I18N: the imported work's SOURCE language IS the derived template's
+        # authoring language — that mapping is right and unchanged; only the column
+        # name moved (`language` was inside the identity key, `original_language` is not).
+        code=code, name=name, original_language=language,
         threads=threads, layout=layout, pacing=pacing, arc_roster=roster,
         visibility="private",
     )

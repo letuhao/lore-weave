@@ -27,7 +27,11 @@ import uuid
 import asyncpg
 import pytest
 
-from app.db.migrate import run_migrations
+# The MEMO in tests/conftest.py skips a re-run when the schema fingerprint is unchanged.
+# This file's subject IS the runner: it deletes a marker ROW and re-runs to prove the
+# crash-resume path converges — a data mutation no schema fingerprint can see. Measured:
+# `test_t1_crash_before_marker_stamp_converges` went red the first time the memo shipped.
+from app.db.migrate import run_migrations_uncached as run_migrations
 from app.db.package_rekey import _MARKER, revert_package_rekey
 
 _DSN = os.environ.get("TEST_COMPOSITION_DB_URL")

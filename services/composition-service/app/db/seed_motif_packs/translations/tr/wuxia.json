@@ -1,0 +1,450 @@
+{
+  "wuxia.contested_manual": {
+    "beats": {
+      "blood": {
+        "intent": "mücadele, ödülün değerinden çok daha ağır bir bedelle, güç yoluyla sonuçlanır",
+        "label": "Kağıt uğruna dökülen kan"
+      },
+      "converge": {
+        "intent": "birbirine rakip iddiaları olan taraflar aynı noktada buluşur",
+        "label": "Herkes toplanır"
+      },
+      "surface": {
+        "intent": "risalenin haberi dövüş dünyasına yayılır",
+        "label": "El yazması gün yüzüne çıkar"
+      },
+      "unread": {
+        "intent": "kazanan, metnin varsaydığı yetkinliklere sahip değilse onu kullanılamaz bulur",
+        "label": "Sahip olmak, ustalaşmak değildir"
+      }
+    },
+    "effects": [
+      "sahip olan kişi artık bir malik değil, bir hedeftir",
+      "tekniğin asıl ön koşulu, yeni bir sorun haline gelir"
+    ],
+    "emotion_target": "gerilim",
+    "examples": [
+      "Metnin ikinci yarısı için on bir adam öldü; elinde kalan adam ise yazıldığı el yazısını okuyamıyordu bile."
+    ],
+    "name": "Herkesin Peşinde Olduğu El Yazması",
+    "preconditions": [
+      "bir tekniğin gerçek bir statü kazandırdığı bir dövüş sanatları dünyası"
+    ],
+    "roles": {
+      "factions": {
+        "constraints": [
+          "her birinin meşru bir iddiası vardır"
+        ],
+        "label": "bir araya gelen taraflar"
+      },
+      "jianghu": {
+        "constraints": [
+          "el yazmasının nasıl ele geçirildiğini yargılayacaktır"
+        ],
+        "label": "geniş dövüş dünyası"
+      },
+      "manual": {
+        "constraints": [
+          "eksik veya şartlıdır"
+        ],
+        "label": "dövüş sanatları risalesi"
+      },
+      "seeker": {
+        "constraints": [
+          "metnin varsaydığı temele sahip değildir"
+        ],
+        "label": "onu ele geçiren"
+      }
+    },
+    "summary": "Bir handa ya da bir mezar soyguncusunun çantasından yarım bir parşömen çıkar ve yazarıdan soy geldiğini iddia eden tüm ekoller aynı anda yola düşer; çünkü asıl mesele sayfalar değil, hangi silsilenin meşru olduğudur. Kağıt parçası uğruna kan dökülür. El yazmasını ele geçiren kişi, metnin yazarın kendi öğrencileri gibi eğitilmiş bir beden için yazıldığını ve okumanın, ona gerçekten sahip olmakla aynı şey olmadığını fark eder."
+  },
+  "wuxia.escort_under_watch": {
+    "beats": {
+      "ambush": {
+        "intent": "pusu, tam da olması gereken yerde ve zamanda gerçekleşir",
+        "label": "Takvime uygun pusku"
+      },
+      "charge": {
+        "intent": "güvenli teslimat sorumluluğu verilir ve üstlenilir",
+        "label": "Görev kabul edilir"
+      },
+      "deliver": {
+        "intent": "yük, korumanın en kıymetli varlığı feda edilerek hedefe ulaşır",
+        "label": "Bedeli ödenmiş teslimat"
+      },
+      "watched": {
+        "intent": "rotanın yola çıkmadan önce deşifre olduğu anlaşılır",
+        "label": "Yol zaten bilinmektedir"
+      }
+    },
+    "effects": [
+      "verilen söz tutulmuştur ancak başka bir şey kaybedilmiştir",
+      "rotayı kimin sızdırdığı artık bir soru işaretidir"
+    ],
+    "emotion_target": "kararlı-bir-ciddiyet",
+    "examples": [
+      "Hangi geçidi ve aşağı yukarı hangi saati bildikleri belliydi; geriye kalan tek karar, onun kıyı kenarında neyi bırakmaya razı olacağıydı."
+    ],
+    "name": "Varış Yapması Gereken Yük",
+    "preconditions": [
+      "rotası ve değeri ilgili tüm taraflarca bilinen bir yük"
+    ],
+    "roles": {
+      "cargo": {
+        "constraints": [
+          "kendini savunamaz"
+        ],
+        "label": "varış yapması gereken şey"
+      },
+      "consignor": {
+        "constraints": [
+          "her şeyi açıkça söylememiştir"
+        ],
+        "label": "emaneti teslim eden"
+      },
+      "escort": {
+        "constraints": [
+          "sözünü vermiştir"
+        ],
+        "label": "teslimattan sorumlu olan"
+      },
+      "watchers": {
+        "constraints": [
+          "rotayı zaten bilmektedirler"
+        ],
+        "label": "yolda bekleyenler"
+      }
+    },
+    "summary": "Bir şey buradan oraya taşınmalıdır — bir sandık, bir tanık, bir gelin ya da bir tabut — ve bu yol, menfaati olan herkes tarafından zaten bilinmektedir. Pusuda bekleyenler bir sürpriz değil, bir takvim dahilinde hareket ederler; varış ise ancak korumaların en ağır bedelini ödemesi gereken o bedelle sağlanır."
+  },
+  "wuxia.forbidden_shortcut": {
+    "beats": {
+      "offer": {
+        "intent": "etkileri konusunda dürüst olan biri, yakılmış o kitabı ulaşılabilecek bir yere bırakır",
+        "label": "Yasaklanmış bir el kitabı sunulur"
+      },
+      "price": {
+        "intent": "değişim diğer uygulayıcılar tarafından fark edilir hale gelir ve geleneksel okullar bu ismi reddeder",
+        "label": "Beden, kelimelerden önce okur"
+      },
+      "take": {
+        "intent": "karanlık yöntem öğrenilir ve tam olarak vaat edilen sonucu verir",
+        "label": "Gizlice uygulanır"
+      },
+      "wall": {
+        "intent": "ustanın öğrettikleri, yaklaşmakta olan tehlikeye karşı yetersiz kalmaya başlar",
+        "label": "Okulun kendi yolu tükenir"
+      }
+    },
+    "effects": [
+      "yetenek gerçekten artmıştır ve bu artış geri alınamaz",
+      "başkalarının nihayetinde görebileceği bir bedel birikmeye başlar"
+    ],
+    "emotion_target": "dehşet",
+    "examples": [
+      "Yaşlı adamın dediği her şeyi yaptı. Soğuğu artık hissetmediğine dair birinin bunu fark etmesi iki kış sürdü."
+    ],
+    "name": "Artık Kimsenin Uygulamadığı Yöntem",
+    "preconditions": [
+      "geleneksel yolun aşamadığı bir duvara çarpmış bir uygulayıcı"
+    ],
+    "roles": {
+      "method": {
+        "constraints": [
+          "tam olarak vadedildiği gibi çalışan"
+        ],
+        "label": "yasaklı yöntem"
+      },
+      "offerer": {
+        "constraints": [
+          "etkisi hakkında yalan söylemeyen, sadece bedeli gizleyen"
+        ],
+        "label": "onu sunan"
+      },
+      "practitioner": {
+        "constraints": [
+          "ortodoks yolu gerçekten tüketmiş olan"
+        ],
+        "label": "duvara dayanan"
+      }
+    },
+    "summary": "Bir okulun yasaklanmış el kitabı —doğru yolun savunucusu olan mezheplerin kopyalarını yakıp hâlâ fısıldaşarak bahsettiği türden bir kitap— ne yapacağı konusunda yalan söylemeyen biri tarafından sunulur. Vaat edildiği gibi çalışır. Bedeli ise rütbe ile ölçülmez: Beden, diğer uygulayıcıların odanın öbür ucundan bile okuyabileceği şekillerde değişir; kişiyi yetiştiren ortodoks okullar bu ismi reddeder ve uygulayıcı, hiç niyet etmediği bir çizginin karanlık tarafına ait hale gelir."
+  },
+  "wuxia.inherited_feud": {
+    "beats": {
+      "break": {
+        "intent": "mirasçı, ölüler ile yaşayanlar arasında bir seçim yapar",
+        "label": "Döngüyü sürdür ya da onu kır"
+      },
+      "inherit": {
+        "intent": "makam ve kılıçla birlikte bir kan davası da miras kalır",
+        "label": "Kin devredilir"
+      },
+      "origin": {
+        "intent": "temeldeki husumet iz sürülerek bulunur ve kan dökülmesini haklı kılmadığı ortaya çıkar",
+        "label": "Asıl yanlışın keşfi"
+      },
+      "side": {
+        "intent": "bir olay tarafsız kalmayı imkansız kılar",
+        "label": "Bir taraf seçmeye zorlanmak"
+      }
+    },
+    "effects": [
+      "kan davası ya tam bir bilgiyle yeniden alevlenir ya da topluma açık bir şekilde reddedilir",
+      "mirasçı, kendi hanedanının bir kanadıyla yabancılaşır"
+    ],
+    "emotion_target": "melankoli",
+    "examples": [
+      "Dört nesildir süregelen ölüler ve tüm bunların temelinde, hiçbiri doğmadan çok önce kurumuş bir kuyu üzerindeki anlaşmazlık."
+    ],
+    "name": "Taşıyıcısından Daha Eski Bir Kin",
+    "preconditions": [
+      "yaşayan hiç kimsenin tanıklık etmediği, yeniden alevlenen kadim bir düşmanlık"
+    ],
+    "roles": {
+      "elders": {
+        "constraints": [
+          "ölülere olan sadakatlerini koruduklarına inanırlar"
+        ],
+        "label": "kini canlı tutanlar"
+      },
+      "inheritor": {
+        "constraints": [
+          "doğduğu tarafı kendi seçmemiştir"
+        ],
+        "label": "kini miras alan kişi"
+      },
+      "wrong": {
+        "constraints": [
+          "davanın gerektirdiğinden daha küçük veya daha eskidir"
+        ],
+        "label": "asıl yanlış"
+      }
+    },
+    "summary": "Bir kan davası kılıçla birlikte nesilden nesile aktarılır; iki hanedan, iki okul veya iki aile, yaşayanların artık hatırlayamayacağı kadar uzun bir süredir birbirlerinin canını almaktadır. Bir taraf seçmeye zorlanan mirasçı, asıl yanlışı aramaya koyulur; ancak bulduğu şey ya ölüme değmeyecek kadar küçük bir mesele ya da çoktan intikamı alınmış bir hak ediştir. Artık bir yol ayrımındadır: Ya bu kan döngüsüne devam edecek ya da hakikati seçecektir."
+  },
+  "wuxia.recognition_between_equals": {
+    "beats": {
+      "meet": {
+        "intent": "birbirine hiçbir borcu olmayan taraflar arasındaki karşılaşma",
+        "label": "İki yabancı karşılaşır"
+      },
+      "recognize": {
+        "intent": "her biri yıllardır karşılaştığı ilk dengini bulur",
+        "label": "İsimlerden önce gelen tanıma"
+      },
+      "swear": {
+        "intent": "mevcut bağlılıkları aşan bir bağ kurulur",
+        "label": "Şarap eşliğinde mühürlenen bağ"
+      },
+      "test": {
+        "intent": "beceri, bir kavga yerine bir sınav olarak ölçülür",
+        "label": "Kötü niyet barındırmayan bir alışveriş"
+      }
+    },
+    "effects": [
+      "artık taraflar arasında, mensup oldukları grupların çizdiği sınırların ötesinde bir sadakat oluşur",
+      "her iki taraf da artık birbirine, kendi hanedanlarının veya ailelerinin onaylamadığı bir hakka/bağlılığa sahiptir"
+    ],
+    "emotion_target": "samimiyet",
+    "examples": [
+      "İkisi de üçüncü kadehe kadar birbirinin adını sormadı; o noktaya gelindiğinde ise cevabın ne olduğunun pek bir önemi kalmamıştı."
+    ],
+    "name": "Eşit Yetenekli İki Yabancı",
+    "preconditions": [
+      "birbirine karşı hiçbir yükümlülüğü olmayan, benzer yeteneklere sahip iki tarafın, her birinin diğerinde gizli kalmış bir maharet görmesi"
+    ],
+    "roles": {
+      "first": {
+        "constraints": [
+          "kötü niyet gütmeden sınar"
+        ],
+        "label": "başlatan"
+      },
+      "second": {
+        "constraints": [
+          "aynı üslupla karşılık verir"
+        ],
+        "label": "eş değer yabancı"
+      },
+      "world": {
+        "constraints": [
+          "eninde sonunda bu bağı sınayacaktır"
+        ],
+        "label": "içine doğdukları sadakatler"
+      }
+    },
+    "summary": "Birbirine hiçbir borcu olmayan iki kişi, bir kavga yerine bir sınav niteliğinde sözleri veya darbeleri paylaşır; her biri diğerinde, yıllardır nazik davranmak zorunda kalmadığı ilk rakibini bulur. Tanışıklık isimlerden önce gelir ve sonrasında kadeh kaldırırken kurulan bağ, her ikisinin de içine doğduğu sadakatlerin çoğundan daha uzun ömürlü olacaktır."
+  },
+  "wuxia.retired_blade_recalled": {
+    "beats": {
+      "arrive": {
+        "intent": "geri çevrilmesi mümkün olmayan, geçmişten gelen bir şey gelir",
+        "label": "Kapıdaki geçmiş"
+      },
+      "quiet": {
+        "intent": "eski bir savaşçı, kimliği bilinmeden ve huzur içinde yaşar",
+        "label": "Sakin hayat"
+      },
+      "raise": {
+        "intent": "kılıç, alternatif bir seçenek çok daha kötü olduğu için tekrar kuşanılır",
+        "label": "Yemin bozulur"
+      },
+      "recognized": {
+        "intent": "teknik deşifre edilir ve huzurlu yaşam sona erer",
+        "label": "Jianghu, o eli tanır"
+      }
+    },
+    "effects": [
+      "kökeninden çok daha uzun süre yaşamış eski bir düşmanlık yeniden canlanır ve yerini bulur",
+      "taklit edilen kimlik artık koruma sağlamaz"
+    ],
+    "emotion_target": "melankoli",
+    "examples": [
+      "Dokuz yıl boyunca bir feribotçu olarak yaşamıştı; ancak tek bir akşam ve tek bir kılıç darbesi, üç eyaletin onun aslında kim olduğunu öğrenmesi için yeterli oldu."
+    ],
+    "name": "Kılıcı Bırakan Kişi",
+    "preconditions": [
+      "başkalarının tekniklerinden hala tanıyabildiği, reddedilmiş bir geçmiş"
+    ],
+    "roles": {
+      "arrival": {
+        "constraints": [
+          "geri çevrilemez"
+        ],
+        "label": "kapıdaki geçmiş"
+      },
+      "jianghu": {
+        "constraints": [
+          "tekniği hatırlar"
+        ],
+        "label": "eli tanıyan dünya"
+      },
+      "quiet_life": {
+        "constraints": [
+          "gerçekten değer verilen"
+        ],
+        "label": "kaybedilmekte olan hayat"
+      },
+      "retired": {
+        "constraints": [
+          "vazgeçmiş ve buna gerçekten sadık kalmış"
+        ],
+        "label": "kılıcı bırakan"
+      }
+    },
+    "summary": "Dövüş sanatları dünyasına veda eden biri, başka bir isim altında huzur içinde yaşarken geçmiş kapıyı çalar — eski bir düşman, eski bir öğrenci ya da peşini bırakmayan bir borç. Yemin, şan ve şöhret için değil, alternatif daha korkunç olduğu için bozulur ve jianghu, kılıç kınından çıktıktan birkaç gün sonra o eli hemen tanır."
+  },
+  "wuxia.righteous_debt": {
+    "beats": {
+      "aid": {
+        "intent": "kim olduğu henüz bilinmeden pirinç paylaşılır veya bir isim savunulur",
+        "label": "Yol üstündeki bir yabancıya yardım edilir"
+      },
+      "bind": {
+        "intent": "bu kişi için bir kez saf tutulmuşsa, yardım eden artık geri duramaz",
+        "label": "Nehirlerin-göllerin kanunu yardım edeni bağlar"
+      },
+      "call": {
+        "intent": "yabancıya sahip çıkmak, yardım edenin kendi menfaatinden vazgeçmesi demektir",
+        "label": "Alacak en kötü zamanda gelir"
+      },
+      "choose": {
+        "intent": "verilen karar, yolcuların her han kapısında anlatacağı bir efsaneye dönüşür",
+        "label": "Yabancıların huzurunda, itibar ile ödenir"
+      }
+    },
+    "effects": [
+      "yardım edenin jianghu içindeki konumu, bu seçimle mühürlenir",
+      "somut bir menfaat feda edilmiş veya bir onur kuralı çiğnenmiştir"
+    ],
+    "emotion_target": "kararlılık",
+    "examples": [
+      "Yağmur altında pirincini bir dilenciyle paylaşmıştı; dilenci ise tam da en yanlış zamanda, ipekler içinde ve korumalarıyla geri döndü."
+    ],
+    "name": "Kodun Talep Ettiği Borç",
+    "preconditions": [
+      "itibarın, yaptırımı olan bir para birimi sayıldığı bir dövüş sanatları dünyası"
+    ],
+    "roles": {
+      "debtor": {
+        "constraints": [
+          "borçlanılan kişinin bedeli ağırdır"
+        ],
+        "label": "yardım edilen"
+      },
+      "helper": {
+        "constraints": [
+          "kim olduğunu bilmeden harekete geçmiş"
+        ],
+        "label": "karşılık beklemeden yardım eden"
+      },
+      "interest": {
+        "constraints": [
+          "gerçek ve büyüktür"
+        ],
+        "label": "borcu ödemenin bedeli olan onur"
+      },
+      "witnesses": {
+        "constraints": [
+          "yapılan seçimi unutmayacaktır"
+        ],
+        "label": "jianghu'nun gözleri"
+      }
+    },
+    "summary": "Yol üstündeki bir yabancıya karşılık beklenmeksizin yardım edilir — bir handa paylaşılan bir kase pirinç, sarılan bir yara, bir yargıç huzurunda savunulan bir isim — ve nehirlerin-göllerin (jianghu) kanunu, yardım edilen kişiyi değil, YARDIM EDENİ bağlar: Bu kişi için bir kez saf tutulmuşsa, artık geri durulamaz. Alacak en umulmadık anda tahsil edilir ve bu borç, eyaletten eyalete tüm hanlarda bu seçimi yeniden anlatacak olan yabancılar arasında, itibar ile ödenir."
+  },
+  "wuxia.tavern_provocation": {
+    "beats": {
+      "exchange": {
+        "intent": "kısa ve öz bir gösteri tüm soruları sonlandırır",
+        "label": "Tek bir atışma meseleyi çözer"
+      },
+      "restraint": {
+        "intent": "aşağılanan taraf, karşılık vermenin bedelini tartar",
+        "label": "Sabır sınanır"
+      },
+      "slight": {
+        "intent": "özelde görmezden gelinemeyecek bir ortamda hakaret edilir",
+        "label": "Aşağılama sunulur"
+      },
+      "travel": {
+        "intent": "anlatılanlar yayılır ve her iki tarafın da itibarını dönüştürür",
+        "label": "Hikâye yayılır"
+      }
+    },
+    "effects": [
+      "her iki tarafın da konumu, yaşanan olaydan ziyade hakkındaki söylentilerle değişmiştir",
+      "odadaki birisi, daha önce fark edilmemiş bir yeteneği artık bilmektedir"
+    ],
+    "emotion_target": "gerilim",
+    "examples": [
+      "Kadeh devrilmedi. Odadaki hiç kimse sonrasında hangisinin hareket ettiğini söyleyemedi; sadece şarabın dökülmediğini söyleyebildiler."
+    ],
+    "name": "Bir Meyhanede Hakaret",
+    "preconditions": [
+      "itibarın söylentiyle inşa edildiği veya yerle bir edildiği kamusal bir ortam"
+    ],
+    "roles": {
+      "insulted": {
+        "constraints": [
+          "sabır ile itibar arasında bir seçim yapmalıdır"
+        ],
+        "label": "aşağılanan kişi"
+      },
+      "provoker": {
+        "constraints": [
+          "amacı dövüşmekten ziyade sınamaktır"
+        ],
+        "label": "hakareti eden kişi"
+      },
+      "room": {
+        "constraints": [
+          "hikâyeyi dış dünyaya taşır"
+        ],
+        "label": "hikâyeyi yeniden anlatacak olan kalabalık"
+      }
+    },
+    "summary": "Hikâyeyi yayacak olan kalabalığın ortasında bir aşağılama sunulur — alay edilen bir isim, hakarete uğrayan bir okul ya da kasten devrilen bir kadeh. Tanıkların önünde sabır sınanır, kısa bir atışma meseleyi çözer ve olan bitenin anlatısı, tarafların niyetinden çok daha hızlı ve uzağa yayılır."
+  }
+}

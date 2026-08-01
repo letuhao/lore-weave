@@ -15,19 +15,58 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Callable
 
+from loreweave_llm import ReasoningDirective
 from loreweave_llm.errors import LLMError
 from loreweave_llm.models import DoneEvent, ReasoningEvent, StreamRequest, TokenEvent, UsageEvent
 
+from app.reasoning import wire_fields
+
 from app.packer.profile import BookProfile, style_directive
+from app.packer.sanitize import sanitize_guide, sanitize_prose_context
 
 logger = logging.getLogger(__name__)
 
 _OPERATION_INSTRUCTIONS = {
     "continue": "Continue the scene from where the recent prose ends, in the same voice.",
-    "draft_scene": "Draft this scene from its beat, goal, POV, and synopsis.",
+    # SCENE-BOUNDARY (2026-07-30, Mị Đế): the plan block shows the whole chapter, so
+    # "draft this scene" alone let the drafter run straight through its neighbours —
+    # scene 1's draft arrived carrying scene 3's and scene 4's material. The boundary
+    # has to be stated, not implied by the singular "this".
+    # D-SCENE-INTENT-NEVER-SHOWN — this named exactly the four fields the packer used to
+    # send, which was honest then and starves the model now that all twelve arrive. An
+    # author who fills `conflict`, `stakes` and `outcome` is describing the SHAPE of the
+    # scene; saying "draft from the beat" leaves the model to infer a shape it was handed.
+    # So name each one and what it is FOR — a label with no job attached gets skimmed.
+    "draft_scene": "Draft ONLY this scene, using every field of its <beat>. Read them as a "
+                   "brief, not a summary to paraphrase: `goal` is what the scene must "
+                   "achieve; `conflict` is what stands in the way and must be FELT on the "
+                   "page, not asserted; `stakes` is what it costs to lose, so let it press "
+                   "on the characters; `outcome` is where the scene must arrive, so steer "
+                   "there rather than stopping early; `tension` is its intensity out of "
+                   "100, which should govern the rhythm; `value_shift` is the net "
+                   "emotional change, so the reader must end somewhere different from "
+                   "where they began; `leaves` is the state the next scene inherits, so "
+                   "land on it. Other scenes appear in the plan for context: do NOT write "
+                   "them. Stop when THIS scene's beat has played out, even if later beats "
+                   "are visible.",
+    # W6 — the conformance judge read the WRITTEN scene and found it did not realize its planned
+    # beat. This is a second attempt with that knowledge, so it must not be a bare re-roll: the
+    # plan above is unchanged and the beat is already in it, what failed was landing it ON THE
+    # PAGE. Server-authored on purpose — the drift is a machine verdict, and letting the client
+    # phrase the retry instruction would put the one part that matters in the least trustworthy
+    # place. (`guide` still carries the AUTHOR's own words when they add any.)
+    "regenerate_to_beat":
+        "Draft this scene AGAIN from its beat, goal, POV, and synopsis. A previous draft of this "
+        "scene did NOT realize its planned beat, so writing something merely competent is not "
+        "enough: the beat named in the plan above must unmistakably HAPPEN in this passage — "
+        "dramatised through action, dialogue and interiority, never summarised or asserted. Keep "
+        "the scene's established POV, characters and continuity; change how the beat is played "
+        "out, not which beat it is. If the plan also names a tension target, let the scene's "
+        "rhythm actually reach it rather than staying flat.",
     # B2 chapter single-pass: the user prompt carries the chapter intent + every
     # scene beat in order; write the WHOLE chapter as one continuous narrative
     # (not a single scene) so the output isn't fragmented back into per-scene size.
@@ -76,10 +115,352 @@ def estimate_prompt_tokens(messages: list[dict[str, Any]], counter: Callable[[st
 #: chapter). Tunable; the scene's own `target_words` (when the planner sets it) always wins.
 DEFAULT_SCENE_TARGET_WORDS = 1000
 
+#: What a scene draft came back at when the model was given NO length instruction at all.
+#:
+#: MEASURED 2026-07-31, 10 live runs on throwaway books, asks of 200→1500:
+#:   gemma-26b  565 · 673 · 497 · 625 · 559 · 519 · 509 · 528 · 698
+#:   gpt-4o     461   ← for a 1500 ask, FEWER than the local model
+#:
+#: **These runs did not measure what they were first read as measuring.** They were taken
+#: through `select_draft`, which had no `target_words` parameter and therefore never put the
+#: LENGTH directive in the prompt (D-LENGTH-DIRECTIVE-NEVER-SENT, fixed the same day). Output
+#: uncorrelated with the ask across a 7.5x range, on two models, every run `finish="stop"`, is
+#: exactly the signature of a request that carried no length at all — and the first reading of
+#: it, "one beat's material runs out around 500 words", was a conclusion about a prompt nobody
+#: had sent. gpt-4o being SHORTEST does not show a material ceiling; it shows two models
+#: free-running to similar lengths, which is unremarkable.
+#:
+#: Kept, renamed, because it is still a real number and the honest BEFORE: it is the length
+#: this engine produced when it asked for nothing, it is what the eval instrument's length
+#: control was picked to sit on (`eval/defects.py`), and it is the baseline any claim that the
+#: directive now works has to beat. Nothing computes from it — `beat_targets` divides the
+#: scene's target, not this.
+MEASURED_UNDIRECTED_YIELD_WORDS = 500
+
+#: What ONE draft call actually delivers, once it is genuinely told a length.
+#:
+#: MEASURED 2026-08-01, gemma-26b, throwaway books, n=3/3/2/2, every run finish="stop":
+#:   target   400 -> 468 · 458 · 447     ratio 1.14
+#:   target  1200 -> 1375 · 1260 · 1319  ratio 1.10
+#:   target  2500 -> 1557 · 1515         ratio 0.61
+#:   target  4000 ->  849 · 1052         ratio 0.24
+#:
+#: Two facts, and the second is the surprising one. The model tracks a target closely up to
+#: about here — and past it the curve does not flatten, it INVERTS: asking for 4000 produced
+#: barely half what asking for 2500 did, and a third of what asking for 1200 did.
+#:
+#: READING THE PROSE explains the inversion, and it is not what I first wrote here ("an ask far
+#: beyond reach pushes the model toward summarising the span"). The model REFUSES, in-band, and
+#: the platform files the refusal as prose:
+#:
+#:   "Do lỗi kỹ thuật, tôi không thể tạo ra một văn bản dài 4000 chữ trong một phản hồi duy
+#:    nhất do giới hạn về độ dài đầu ra của hệ thống. Tuy nhiên, tôi sẽ viết một phân đoạn…"
+#:   ("…I cannot produce a 4000-word text in a single response… However, I will write one
+#:    segment.")  — then a `***` rule, then an opening scene.
+#:
+#: Both 4000 runs opened that way; all three 2500 single-call runs opened with a shorter
+#: variant ("since you have not supplied the original text, I will build the scene from…").
+#: So the word counts at those two points are INFLATED by text that is not prose at all, the
+#: real shortfall is worse than 0.61/0.24, and the mechanism is negotiation, not compression.
+#: See D-DRAFT-OUTPUT-NO-POST-CONDITION.
+#:
+#: This is the number `draft_beats` is actually for, and it is ~3x the 500 first claimed. The
+#: payoff is measured, not argued — same book, same model, same day:
+#:   2500 in one call   -> 1557 · 1515   ratio 0.61
+#:   2500 in two beats  -> 2365 · 3067   ratio 0.95 · 1.23
+#:   4000 in one call   ->  849 · 1052   ratio 0.24
+#:   4000 in three      -> 4849 · 4163   ratio 1.21 · 1.04
+#: `repeated_chars` was 0 on every beated run — the passages did not restate each other.
+#:
+#: A scene wanting more than this needs MORE PASSAGES, each asked for a length inside the
+#: ceiling. Advisory, never enforced: it is one local model's measurement, and silently
+#: re-splitting an author's declared passages would be the engine overruling authored intent.
+MEASURED_SINGLE_CALL_CEILING_WORDS = 1500
+
+#: D-SCENE-BEATS slice 2 — the order a per-beat brief renders its fields in.
+#:
+#: Mirrors the packer's `<beat>` block (`assemble.build_segments`) EXACTLY, down to the
+#: `key=value | key=value` shape, so a beat brief and a scene beat read to the model as the
+#: same kind of object. Two renderings of one concept is how a model learns to skim one of
+#: them.
+_BEAT_BRIEF_ORDER = ("title", "goal", "synopsis", "conflict", "stakes", "outcome",
+                     "tension", "value_shift", "when", "leaves")
+
+#: Keys that are drafting CONTROL, not story direction — rendered nowhere, read by the loop.
+#: Same distinction `_NOT_SCENE_INTENT` draws for `target_words` at the scene level.
+_BEAT_CONTROL_KEYS = frozenset({"target_words"})
+
+#: A single beat field is a brief line, not an essay. Bounded for the same reason `guide` is.
+_BEAT_VALUE_MAX_LEN = 600
+
+#: How much of the scene's already-written prose a later beat is shown. A runaway guard, not
+#: a budget: at the measured ~500 words/beat a 4-beat scene is ~2,000 words (~12k Latin chars,
+#: fewer for CJK), well inside this — only a scene near the 24-beat cap can reach it. There the
+#: TAIL is what continuity needs, but the elision is MARKED, because a model that cannot see
+#: the scene's opening must be told that rather than assume the scene starts where its context
+#: does (and then write a second opening).
+_BEAT_CONTEXT_MAX_CHARS = 24_000
+
+
+def beat_targets(draft_beats: list[dict[str, Any]], scene_target: int) -> list[int]:
+    """Per-beat word targets for a scene drafted in beats.
+
+    A beat carrying its own `target_words` takes it; what is left of the scene's target
+    splits evenly over the rest. That ordering matters — the author's explicit number is
+    the authored intent and an even split is the machine's guess, so the guess must yield.
+
+    NO floor. It is tempting to refuse to ask for a 100-word passage, but the measurement
+    this whole feature rests on says the model will not go that short anyway (the shortest
+    of ten live runs was 461 words against a 1500-word ask). A floor here would silently
+    overrule an author to prevent something that does not happen.
+    """
+    n = len(draft_beats)
+    if n == 0:
+        return []
+    explicit: list[int | None] = []
+    for b in draft_beats:
+        raw = (b or {}).get("target_words")
+        explicit.append(int(raw) if isinstance(raw, int) and not isinstance(raw, bool) and raw > 0
+                        else None)
+    spoken_for = sum(v for v in explicit if v)
+    implicit = [i for i, v in enumerate(explicit) if v is None]
+    share = max(1, (max(0, int(scene_target) - spoken_for)) // len(implicit)) if implicit else 0
+    return [v if v is not None else share for v in explicit]
+
+
+def render_beat_brief(beat: dict[str, Any]) -> str:
+    """One beat's brief, in the packer's own `key=value | …` beat shape.
+
+    Every non-control key reaches the string: the known ones first in `_BEAT_BRIEF_ORDER`,
+    then anything else the author put there, sorted. Rendering only a known set would
+    re-commit D-SCENE-INTENT-NEVER-SHOWN — an author fills a field and the drafter never
+    sees it — and a freeform `dict[str, Any]` is exactly where that recurs.
+
+    Values are sanitised: a beat brief is author free-text arriving at the strongest
+    position in the prompt, which is the same trust level as `guide`.
+    """
+    b = beat or {}
+    known = [k for k in _BEAT_BRIEF_ORDER if k in b]
+    extra = sorted(k for k in b if k not in _BEAT_BRIEF_ORDER and k not in _BEAT_CONTROL_KEYS)
+    parts = []
+    for k in known + extra:
+        v = b.get(k)
+        if v is None or v == "" or v == [] or v == {}:
+            continue
+        text = sanitize_guide(str(v), max_len=_BEAT_VALUE_MAX_LEN)
+        parts.append(f"{k}={text}/100" if k == "tension" else f"{k}={text}")
+    return " | ".join(parts)
+
+
+def build_beat_scope(
+    *, index: int, total: int, beat: dict[str, Any], written_so_far: str = "",
+    max_context_chars: int = _BEAT_CONTEXT_MAX_CHARS,
+) -> str:
+    """The block that narrows a scene draft to ONE of its beats (D-SCENE-BEATS slice 2).
+
+    Two jobs, and they pull against each other:
+
+    1. **Scope it.** The model must write this passage and not the scene's other ones —
+       the same boundary problem SCENE-BOUNDARY hit one level up, where a plan block
+       showing the whole chapter let the drafter run through its neighbours.
+    2. **Continue it.** Passage 3 that re-opens the scene, re-introduces the cast and
+       re-establishes the setting is worse than no passage 3. So the prose written so far
+       rides along, with an explicit instruction to continue FROM it rather than restate it.
+
+    Job 2 is why the beats are drafted SEQUENTIALLY rather than in parallel: k parallel
+    beat calls would be faster and would each write the scene's opening.
+    """
+    n = max(1, int(total))
+    i = int(index) + 1
+    brief = render_beat_brief(beat)
+    head = (
+        f"\n\nPASSAGE {i} OF {n}. This scene is written as {n} consecutive passages and you "
+        f"are writing passage {i}. Write ONLY what this passage's brief asks for: the other "
+        "passages' material belongs to them, and covering it here — or repeating what an "
+        "earlier passage has already covered — is a failure, not thoroughness."
+    )
+    if brief:
+        head += f"\n\nThis passage covers: {brief}"
+    body = (written_so_far or "").strip()
+    if not body:
+        # Passage 1 opens the scene; every later one must not.
+        return head
+    elided = ""
+    if len(body) > max_context_chars:
+        body = body[-max_context_chars:]
+        elided = ("[…the earlier part of this scene is not shown; it exists — do NOT treat "
+                  "what follows as the scene's opening]\n")
+    return head + (
+        f"\n\nPassages 1-{i - 1} of THIS SAME scene are already written and appear below. "
+        "Continue directly from where they end: do not re-open the scene, re-introduce the "
+        "characters, re-establish the setting, or restate anything already on the page. "
+        "Carry it forward.\n\n<written_so_far>\n"
+        + elided + sanitize_prose_context(body)
+        + "\n</written_so_far>"
+    )
+
+
+#: A run this long recurring verbatim is a repetition, not a coincidence. Short enough to
+#: catch a restated sentence, long enough that a shared idiom or a character's name is not
+#: a hit.
+_REPEAT_MIN_SPAN_CHARS = 60
+
+#: Sentence-ish boundaries, Latin and CJK. Coarse on purpose — this counts repetition, it
+#: does not parse language.
+_SENTENCE_SPLIT = re.compile(r"[.!?;\n]+|[。！？；\n]+")
+
+
+def repeated_span_chars(earlier: str, later: str,
+                        min_span: int = _REPEAT_MIN_SPAN_CHARS) -> int:
+    """Chars of `later` that appear VERBATIM in `earlier`, counted in sentence units.
+
+    The per-beat prompt tells the model not to repeat what an earlier passage covered. That
+    is an instruction, and an instruction is not a guarantee — this is the cheap measurement
+    of whether it held, so the result can SAY it rather than assert it. No LLM, no judge:
+    exact repetition is the failure mode a stitched-from-passages scene actually exhibits,
+    and it is detectable by string equality.
+
+    Deliberately conservative. It counts only whole sentence-ish units of at least
+    `min_span` chars, so a shared name, a repeated stock phrase, or a deliberate refrain in
+    dialogue does not register. It will therefore MISS a paraphrase — that is a known blind
+    spot, not a claim of completeness, and the honest one to have: a false "the beats
+    repeated" reading would be worse than a missed soft echo.
+    """
+    if not earlier or not later:
+        return 0
+    seen = {s.strip() for s in _SENTENCE_SPLIT.split(earlier) if len(s.strip()) >= min_span}
+    if not seen:
+        return 0
+    return sum(len(s) for s in
+               (u.strip() for u in _SENTENCE_SPLIT.split(later))
+               if len(s) >= min_span and s in seen)
+
+#: D-SCENE-OUTPUT-BUDGET-FLAT — tokens per WORD, by script family.
+#:
+#: A word is not a token, and the ratio is not close to 1 outside English. Latin-script
+#: prose runs ~1.4 tokens/word; Vietnamese carries a diacritic on a large share of its
+#: syllables and each one costs extra BPE pieces, so it runs closer to 2.6; CJK has no
+#: spaces at all, so "words" split on whitespace under-counts badly.
+#:
+#: These are deliberately GENEROUS. Over-provisioning the ceiling costs nothing — a model
+#: stops when the passage is done, and `max_tokens` is a ceiling, not a target (the LENGTH
+#: directive is what asks for a length). Under-provisioning silently truncates mid-sentence,
+#: which is the bug this table exists to end.
+_TOKENS_PER_WORD: dict[str, float] = {"vi": 2.6, "th": 2.6, "zh": 3.2, "ja": 3.2, "ko": 3.0}
+_TOKENS_PER_WORD_DEFAULT = 1.7
+
+#: Scripts with no whitespace between words. Splitting these on spaces under-counts by an
+#: order of magnitude — the same fact `_TOKENS_PER_WORD` above already encodes.
+_SPACELESS = {"zh", "ja", "ko", "th"}
+
+#: Characters per "word" for a spaceless script. Chinese words average ~1.5 hanzi; Japanese
+#: and Korean land nearby once kana/particles are counted. Coarse ON PURPOSE — this exists to
+#: tell "roughly the length asked for" from "a third of it", not to be a linguistic measure.
+_CHARS_PER_WORD = 1.6
+
+
+def realised_words(text: str, language: str | None = None) -> tuple[int, str]:
+    """(count, method) — how long the draft ACTUALLY came out, measured the way its own
+    LENGTH directive asks.
+
+    The directive is `"write a FULL passage of approximately {target_words} words"`, and it is
+    sent in that wording regardless of output language. For a space-separated script that is
+    unambiguous and `split()` is exactly right. For a spaceless one it is NOT: neither the
+    model nor this function can know what the author meant by "word", so the count is an
+    ESTIMATE and says so in `method` rather than being passed off as a measurement.
+
+    Returning the method matters more than the number. A shortfall detector comparing a
+    `split()` count against a Chinese target would report every CJK scene as ~85% short — a
+    false finding manufactured by the metric, which is precisely the class the eval instrument
+    exists to avoid. A consumer that sees `method="cjk_chars_estimate"` can weigh it.
+    """
+    body = (text or "").strip()
+    if not body:
+        return 0, "empty"
+    lang = (language or "").lower().split("-")[0]
+    if lang in _SPACELESS:
+        # Count CJK/Thai script characters, ignoring punctuation and any embedded Latin runs.
+        chars = sum(1 for ch in body if not ch.isspace() and not ch.isascii())
+        if chars:
+            return max(1, round(chars / _CHARS_PER_WORD)), f"{lang}_chars_estimate"
+        # Declared spaceless but written in ASCII — trust the text over the declaration.
+    return len(body.split()), "whitespace"
+
+#: Headroom over the computed need: a scene that lands slightly long must not be cut off
+#: one sentence from its ending.
+#:
+#: Deliberately loose, because this is a CREATION tool. A tight ceiling on a drafting call
+#: is a bad LLM usage pattern: `max_tokens` does not make prose shorter, it makes it STOP —
+#: mid-sentence, with the tokens already paid for. The thing that should govern length is
+#: the LENGTH directive in the prompt, which the model can weigh against the scene it is
+#: actually writing. The ceiling's only job is to be too big to matter.
+_OUTPUT_BUDGET_HEADROOM = 2.0
+
+#: Reasoning tokens are spent BEFORE the visible prose and come out of the SAME budget.
+#: Left unaccounted, turning thinking on silently halves the room for the passage — the
+#: "empty ghost" failure this repo has already shipped once (a reasoning model spending its
+#: whole allowance on hidden reasoning and returning text="", billed as a success). Scale by
+#: effort rather than adding a flat number, because that is how the cost actually grows.
+_REASONING_ALLOWANCE: dict[str, float] = {
+    "none": 0.0, "off": 0.0, "low": 0.6, "medium": 1.2, "high": 2.0,
+}
+_REASONING_ALLOWANCE_UNKNOWN = 1.2
+
+#: The hard ceiling. Not a budget — a runaway guard. Sized so no legitimate scene or
+#: chapter can reach it, so that hitting it is a bug report rather than a quiet truncation.
+SCENE_OUTPUT_CEILING = 32768
+
+
+def scene_output_budget(
+    target_words: int | None,
+    source_language: str | None,
+    *,
+    reasoning: ReasoningDirective | None = None,
+    ceiling: int = SCENE_OUTPUT_CEILING,
+) -> int:
+    """The output-token ceiling a scene draft needs to actually REACH `target_words`.
+
+    D-SCENE-OUTPUT-BUDGET-FLAT. The scene path used a flat `_MAX_OUTPUT_DEFAULT = 1024`
+    that had no relationship to the length it was asking for. In `job.input` the two sat
+    ADJACENT and disagreed:
+
+        "target_words": 900,     # what the LENGTH directive asks the model for
+        "max_out": 1024,         # what the wire actually allows
+
+    900 Vietnamese words is ~2300 tokens, so the model was cut off at roughly a third of
+    the ask — and it looked like the model writing short. Measured on the Mị Đế book:
+    targets of 900/850/800/750/800 produced 445/414/532/618/736 words.
+
+    The chapter path already sizes its budget from the plan
+    (`len(scenes) * chapter_gen_per_scene_tokens`, clamped). This is the same idea for the
+    scene path, which simply never got it: **guidance and capability must move as one
+    signal.** A prompt that asks for 900 words while the wire allows 1024 tokens is not a
+    length instruction, it is a truncation.
+
+    `reasoning` adds room for thinking tokens, which are spent BEFORE the prose and drawn
+    from the same allowance — without it, enabling reasoning silently halves the space left
+    for the passage. It takes the resolved `ReasoningDirective`, not a bare effort string:
+    the reasoning-SSOT gate bans threading a loose effort through the engine, and it is
+    right to — that is precisely how the sixteen drifting copies this session consolidated
+    came about. The caller already holds the directive.
+
+    The result is deliberately generous. A ceiling on a creative draft is a runaway guard,
+    not a budget: over-provisioning costs nothing (a model stops when the passage is done
+    and you are billed for what it emitted), while under-provisioning truncates mid-sentence
+    and you are billed for that too.
+    """
+    words = target_words or DEFAULT_SCENE_TARGET_WORDS
+    lang = (source_language or "").split("-")[0].lower()
+    per_word = _TOKENS_PER_WORD.get(lang, _TOKENS_PER_WORD_DEFAULT)
+    prose = words * per_word * _OUTPUT_BUDGET_HEADROOM
+    effort = (getattr(reasoning, "effort", None) or "none").lower()
+    thinking = prose * _REASONING_ALLOWANCE.get(effort, _REASONING_ALLOWANCE_UNKNOWN)
+    return max(1, min(ceiling, int(prose + thinking)))
+
 
 def build_messages(
     packed_prompt: str, profile: BookProfile, operation: str, guide: str = "",
-    target_words: int | None = None,
+    target_words: int | None = None, beat_scope: str | None = None,
 ) -> list[dict[str, str]]:
     """System + user messages for the drafter. The packer's structured blocks are
     the grounding; the wrapper carries language + the operation steer.
@@ -87,7 +468,14 @@ def build_messages(
     ``target_words`` (scene-draft path only) appends an explicit LENGTH directive so the model
     writes a full scene instead of a sketch — a max_output_tokens cap is a ceiling, not a target,
     so with no directive a local model stops early. Callers that are NOT drafting a full scene
-    (selection ops, revise) pass None and the prompt is unchanged."""
+    (selection ops, revise) pass None and the prompt is unchanged.
+
+    ``beat_scope`` (D-SCENE-BEATS slice 2, from ``build_beat_scope``) narrows the draft to ONE
+    of the scene's beats and carries the passages already written. It is placed immediately
+    ABOVE the LENGTH directive on purpose: that directive says "reach that length by playing
+    out the beats THIS passage covers more fully", a sentence whose referent is vague for a
+    whole scene and exact once a passage brief sits directly above it. None ⇒ the single-call
+    scene draft, byte-unchanged."""
     lang = "" if profile.source_language in ("", "auto") else (
         f" Write the prose in the language with code '{profile.source_language}'."
     )
@@ -101,6 +489,21 @@ def build_messages(
         "the reader has read it: CONTINUE the story forward from that point — do "
         "NOT re-introduce characters, re-describe the established setting, or "
         "re-narrate prior scenes/events already shown; advance new action instead. "
+        # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER (2026-08-01). "Never introduce facts beyond what
+        # is given" was already here and did not cover the case that actually happened: over a
+        # real 4-scene chapter the drafter invented a NAMED character, "Mira", and gave her the
+        # mentor role in three scenes. The book's cast is Cassius and Silas; it contains "Mina"
+        # twice and "Mira" never — so this is not even a new invention, it is a corruption of a
+        # minor character's name promoted to a lead.
+        #
+        # A name is not read as a "fact" by a model writing fiction; inventing one feels like
+        # craft. So the constraint has to be stated about NAMES specifically, and it has to give
+        # the legitimate alternative (an unnamed role) rather than only forbidding.
+        "Use ONLY the character, place and object names that appear in the context above. Do "
+        "NOT invent a new proper name, and do not alter one you were given — a name that is "
+        "close to but not the same as an established one reads as a different character. If "
+        "this passage needs someone or somewhere the context does not name, refer to them by "
+        "role or description (\"the gatekeeper\", \"the older scribe\") instead of naming them. "
         # Anti-repetition (LOOM-69d): the model-vs-architecture diagnostic found the
         # local drafter reuses a small set of distinctive images/openings across
         # scenes (recurring weather/color motifs, a repeated opening construction).
@@ -108,7 +511,19 @@ def build_messages(
         "Vary your prose: do NOT reuse a distinctive image, metaphor, or "
         "sentence-opening you have already used in this work (e.g. a recurring "
         "weather or colour motif, or a repeated opening line) — each passage should "
-        "read freshly with its own sensory language."
+        "read freshly with its own sensory language. "
+        # Pacing craft (2026-07-26 pacing diagnostic): mid-arc chapters scored low on
+        # "fit to the beat" for three concrete reasons — beats crammed together
+        # (whiplash escalation), a uniform action-then-reaction sentence cadence, and
+        # emotional turns STATED rather than dramatised. A model-agnostic craft nudge,
+        # not tied to any one chapter's content.
+        "Control the PACING so the prose rhythm fits the beat: let a rising or "
+        "high-tension beat BREATHE — build the dread or anticipation before the turn "
+        "and do not rush several escalations together into a few lines. Vary your "
+        "sentence rhythm and length — avoid a uniform action-then-reaction cadence "
+        "that reads as rapid jump-cuts. And DRAMATISE emotional turning points "
+        "through action, sensory detail, and interiority — do NOT state them outright "
+        "(not \"the realisation hit her like a blow\"; show the blow landing)."
         + lang + voice + style
     )
     instruction = _OPERATION_INSTRUCTIONS.get(operation, "Write the next passage of the scene.")
@@ -124,14 +539,65 @@ def build_messages(
     # LENGTH directive — a max_output_tokens cap is a CEILING, not a target; without an explicit
     # word goal the model free-runs short (measured: 83 words). Only on the scene-draft path
     # (target_words passed); selection/revise ops pass None and stay unchanged.
+    # SCENE-BOUNDARY — the previous wording ended "keep writing until the planned beats are
+    # fully played out", plural and unscoped, while the plan block shows the WHOLE chapter.
+    # Length is the more concrete instruction, so it WON: the drafter ran through the
+    # neighbouring scenes' beats to reach the word count (measured — scene 1 came back
+    # carrying scenes 3 and 4).
+    #
+    # The repair stays GENERIC on purpose. This directive is shared with `draft_chapter`,
+    # where covering every scene is exactly right, so the boundary itself cannot live here
+    # — it belongs to the per-operation instruction (see `draft_scene` above). What this
+    # must do is stop TELLING the model to widen its scope: reach the length by deepening
+    # the passage it was asked for, never by annexing the next one.
     length_steer = (
-        f"\n\nLENGTH: write a FULL scene of approximately {target_words} words. Dramatise it "
+        f"\n\nLENGTH: write a FULL passage of approximately {target_words} words. Dramatise it "
         "with concrete action, sensory detail, and dialogue where it fits — do NOT summarise, "
-        "compress, or stop early; a short sketch is a failure. Keep writing until the scene's "
-        "beat is fully played out at roughly that length."
+        "compress, or stop early; a short sketch is a failure. Reach that length by playing "
+        "out the beats THIS passage covers more fully — deeper interiority, sharper sensory "
+        "detail, real dialogue — never by extending past the material you were asked to write. "
+        # The sentence that used to close this directive was "If those beats are genuinely
+        # finished, stop: ending a little short is correct, writing beyond your assigned scope
+        # is not." It was replaced by what follows, on this reasoning:
+        #
+        #   "MEASURED, 5 live runs: targets 200/400/900/900/1500 produced 565/673/497/625/559
+        #   words — UNCORRELATED with the ask across a 7.5x range. The directive was not being
+        #   ignored; it was being OVERRIDDEN by its own last sentence."
+        #
+        # **That diagnosis was wrong, and this comment is kept as the correction rather than
+        # quietly rewritten.** Those runs went through `select_draft`, which had no
+        # `target_words` parameter — so NO length directive reached the model on any of them
+        # (D-LENGTH-DIRECTIVE-NEVER-SENT, same day). Output uncorrelated with an ask that was
+        # never sent is not evidence about the wording of the ask. The escape clause was not
+        # overriding anything; nothing was there to override.
+        #
+        # The replacement text below is kept because it is defensible ON ITS OWN TERMS — a
+        # model handed one soft number and an explicit permission to stop early takes the
+        # permission, and `draft_scene` separately ends "Stop when THIS scene's beat has played
+        # out", so two stop instructions against one soft number is a real imbalance. It
+        # preserves the anti-annexation guarantee the 2026-07-30 SCENE-BOUNDARY fix added (the
+        # only sanctioned way to gain length is depth, never scope) while giving "a little
+        # short" a magnitude. But it has never been TESTED against the alternative, because
+        # until the fix neither version was in a prompt. Whether it beats the original wording
+        # is an open question, not a settled one.
+        "Do not pad, and do not annex the next scene. Stop short ONLY if you have genuinely "
+        "exhausted the interiority, sensory detail and dialogue these beats can carry — and a "
+        "passage under half the target has not been written fully, it has been summarised."
     ) if target_words and target_words > 0 else ""
-    user = packed_prompt + "\n\n" + instruction + promise_steer + length_steer + (
-        f"\n\nAuthor guidance: {guide}" if guide else "")
+    # D-COWRITE-GUIDE-UNSANITIZED (2026-07-31): the SAME `guide` value reaches this
+    # function and `build_pack`. The pack neutralises it into a protected `<guide>`
+    # segment (assemble.py) — and then this wrapper appended the RAW original again,
+    # LAST, which is the strongest position in the prompt for an injection payload.
+    # `sanitize_guide` had exactly ONE call site; the wrapper bypassed it twice (here
+    # and in `build_revise_messages`), so the guard §13 SEC3 describes was defeated on
+    # the live prose path.
+    #
+    # Sanitising here is a no-op for legitimate guidance (it fullwidth-escapes angle
+    # brackets and BRACKETS directive spans rather than deleting them), so the model
+    # reads the same instruction — it just can no longer read a forged `<canon>` tag or
+    # an "ignore previous instructions" as a command.
+    user = packed_prompt + "\n\n" + instruction + promise_steer + (beat_scope or "") + (
+        length_steer) + (f"\n\nAuthor guidance: {sanitize_guide(guide)}" if guide else "")
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
@@ -182,7 +648,7 @@ def build_selection_messages(
     parts.append(_SELECTION_INSTRUCTIONS[operation])
     parts.append("SELECTED PASSAGE:\n" + selection)
     if guide:
-        parts.append("Author guidance: " + guide)
+        parts.append("Author guidance: " + sanitize_guide(guide))  # D-COWRITE-GUIDE-UNSANITIZED
     return [{"role": "system", "content": system}, {"role": "user", "content": "\n\n".join(parts)}]
 
 
@@ -222,7 +688,7 @@ async def revise_draft(
     sdk: Any, *, user_id: str, model_source: str, model_ref: str,
     messages: list[dict[str, Any]], prompt_token_estimate: int,
     max_output_tokens: int, temperature: float = 0.7,
-    trace_id: str | None = None, reasoning_effort: str | None = None,
+    trace_id: str | None = None, reasoning: ReasoningDirective | None = None,
 ) -> tuple[str, "DraftMetering"]:
     """One-shot (non-stream) revise: drives `stream_draft` and harvests the
     terminal usage frame. Returns (revised_text, metering). Empty text on LLM
@@ -233,7 +699,7 @@ async def revise_draft(
         sdk, user_id=user_id, model_source=model_source, model_ref=model_ref,
         messages=messages, prompt_token_estimate=prompt_token_estimate,
         max_output_tokens=max_output_tokens, hard_cap_output=max_output_tokens * 2,
-        temperature=temperature, trace_id=trace_id, reasoning_effort=reasoning_effort,
+        temperature=temperature, trace_id=trace_id, reasoning=reasoning,
     ):
         if ev["type"] == "usage":
             text, metering = ev["text"], ev["metering"]
@@ -245,7 +711,7 @@ async def stream_draft(
     messages: list[dict[str, Any]], prompt_token_estimate: int,
     max_output_tokens: int, hard_cap_output: int | None = None,
     temperature: float = 0.7, trace_id: str | None = None,
-    reasoning_effort: str | None = None,
+    reasoning: ReasoningDirective | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Async generator of stream events for the router to relay as SSE:
       {"type":"token","delta":...} · {"type":"reasoning","delta":...}
@@ -256,10 +722,12 @@ async def stream_draft(
         model_source=model_source, model_ref=model_ref, messages=messages,
         temperature=temperature, max_tokens=max_output_tokens or None,
         trace_id=trace_id,
-        # Expose the reasoning knob (model-default when None). reasoning_effort
-        # ="none" disables hidden thinking on reasoning-model drafters so the
-        # whole budget doesn't get spent on reasoning_tokens (empty ghost).
-        reasoning_effort=reasoning_effort,
+        # BOTH reasoning knobs, or neither — via the one seam. This call site used to take a
+        # bare effort string, which structurally could not carry `chat_template_kwargs`, and
+        # treated "no directive" as "send nothing". A local drafter the platform had
+        # misclassified as non-reasoning then kept its template's thinking ON and spent the
+        # entire budget on hidden reasoning: an empty draft, billed, reported as success.
+        **wire_fields(reasoning),
     )
     parts: list[str] = []
     measured = False

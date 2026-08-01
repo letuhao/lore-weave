@@ -1,0 +1,439 @@
+{
+  "mystery.assembled_confrontation": {
+    "beats": {
+      "assemble": {
+        "intent": "tous les intéressés sont réunis dans une même pièce",
+        "label": "Le rassemblement"
+      },
+      "consequence": {
+        "intent": "la question ne porte plus sur la culpabilité, mais sur ce que l'on va faire de la situation",
+        "label": "Ce qui suit est la conséquence"
+      },
+      "deny": {
+        "intent": "la personne nommée nie les faits et oppose le contre-argument le plus puissant",
+        "label": "Le déni"
+      },
+      "lay": {
+        "intent": "la séquence est retracée en utilisant uniquement les faits établis",
+        "label": "L'exposition de la chaîne"
+      },
+      "prove": {
+        "intent": "un élément irréfutable tombe, ne nécessitant aucune interprétation",
+        "label": "La preuve incontestable"
+      }
+    },
+    "effects": [
+      "la responsabilité est publiquement établie",
+      "le coût de la révélation pèse sur des innocents"
+    ],
+    "emotion_target": "catharsis",
+    "examples": [
+      "Il leur exposa le raisonnement à deux reprises ; la seconde fois, il s'arrêta au moment précis où une seule personne dans la pièce pouvait connaître l'heure."
+    ],
+    "name": "La chaîne des faits",
+    "preconditions": [
+      "assez de faits établis pour tisser une chaîne logique sans apporter de nouvelles preuves"
+    ],
+    "roles": {
+      "assembled": {
+        "constraints": [
+          "chacun avait une raison plausible d'être soupçonné"
+        ],
+        "label": "les parties réunies"
+      },
+      "culprit": {
+        "constraints": [
+          "nie avant de se résigner"
+        ],
+        "label": "celui qui est désigné"
+      },
+      "investigator": {
+        "constraints": [
+          "ne s'appuie que sur ce qui a été montré"
+        ],
+        "label": "celui qui expose les faits"
+      },
+      "proof": {
+        "constraints": [
+          "ne nécessite aucune interprétation pour s'imposer"
+        ],
+        "label": "la preuve irréfutable"
+      }
+    },
+    "summary": "Les membres de la maisonnée sont réunis dans une pièce et la chronologie est passée en revue devant eux, étape par étape, chaque fait s'appuyant uniquement sur ce qui a déjà été établi — l'emploi du temps, le grand livre, qui pouvait connaître l'heure exacte. Le déni survient, comme il se doit, et se heurte à l'unique élément qui ne souffre aucune interprétation ; après quoi, il ne s'agit plus de déterminer la culpabilité, mais de décider de ce qu'il convient d'en faire."
+  },
+  "mystery.false_lead": {
+    "beats": {
+      "collapse": {
+        "intent": "la fausse piste devient la preuve irréfutable de l'identité de celui qui l'a mise en place",
+        "label": "La piste s'effondre vers le haut"
+      },
+      "commit": {
+        "intent": "des ressources, une réputation ou des sentiments sont mis en jeu dans cette piste",
+        "label": "L'enquête s'engage"
+      },
+      "emerge": {
+        "intent": "les preuves convergent vers une seule personne avec une netteté inhabituelle",
+        "label": "Un suspect idéal émerge"
+      },
+      "seam": {
+        "intent": "une faille apparaît, révélant que les preuves ont été disposées plutôt que laissées en l'état",
+        "label": "La concordance est trop parfaite"
+      }
+    },
+    "effects": [
+      "l'enquêteur a perdu sa crédibilité et doit poursuivre son travail avec moins de moyens",
+      "l'existence d'un orchestrateur délibéré est désormais établie"
+    ],
+    "emotion_target": "malaise",
+    "examples": [
+      "Chaque document nécessaire se trouvait dans le premier tiroir qu'ils avaient fouillé, et c'est précisément ce détail qui finit par l'inquiéter."
+    ],
+    "name": "La piste trop parfaite",
+    "preconditions": [
+      "une enquête sous la pression de devoir désigner un coupable"
+    ],
+    "roles": {
+      "arranger": {
+        "constraints": [
+          "reste dans l'ombre pendant que la piste se déroule"
+        ],
+        "label": "celui qui a orchestré la piste"
+      },
+      "investigator": {
+        "constraints": [
+          "s'investit avant d'avoir vérifié"
+        ],
+        "label": "l'enquêteur qui s'engage"
+      },
+      "suspect": {
+        "constraints": [
+          "est véritablement impliqué par les faits"
+        ],
+        "label": "le suspect trop opportun"
+      }
+    },
+    "summary": "Un suspect se présente et les preuves concordent de manière limpide — les lettres se trouvent dans le premier tiroir fouillé, les dettes sont officiellement enregistrées, l'alibi est ténu — et l'enquête s'engage dans cette voie, que ce soit publiquement, financièrement ou émotionnellement. Tout s'effondre, non pas à cause de nouvelles preuves, mais parce qu'on réalise que la concordance était trop parfaite : quelqu'un a orchestré la découverte de ces documents dans cet ordre précis, et cet orchestrateur est le véritable coupable."
+  },
+  "mystery.hidden_connection": {
+    "beats": {
+      "join": {
+        "intent": "un détail fortuit révèle qu'ils proviennent d'un même lieu",
+        "label": "Une origine commune apparaît"
+      },
+      "redraw": {
+        "intent": "les faits connus se réorganisent autour du nouveau centre",
+        "label": "L'enquête se redessine"
+      },
+      "separate": {
+        "intent": "les deux sont connus et aucun n'est lié à l'autre",
+        "label": "Deux faits isolés"
+      }
+    },
+    "effects": [
+      "le centre de l'enquête a basculé sans qu'aucune nouvelle preuve n'ait été apportée",
+      "des individus précédemment écartés reviennent au premier plan"
+    ],
+    "emotion_target": "curiosité",
+    "examples": [
+      "La banque inscrite au grand livre et le village mentionné dans la lettre se sont révélés n'être qu'à cent pas l'un de l'autre, et tout le reste s'est réorganisé autour de ce fait."
+    ],
+    "name": "Deux faits, une origine",
+    "preconditions": [
+      "un dossier contenant des faits établis qui n'ont jamais été mis en relation"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "possédait déjà les deux faits"
+        ],
+        "label": "celui qui les relie"
+      },
+      "origin": {
+        "constraints": [
+          "était sous les yeux, mais sans importance"
+        ],
+        "label": "l'origine commune"
+      },
+      "source": {
+        "constraints": [
+          "est fortuit, et non probant"
+        ],
+        "label": "l'élément déclencheur de la jonction"
+      }
+    },
+    "summary": "Deux éléments qui reposaient dans le dossier comme des éléments sans lien — deux noms, deux dates, une somme dans un grand livre et un village dans une lettre — s'avèrent partager une même origine, et la structure de l'enquête se redessine autour d'elle. Rien de nouveau n'est découvert ; un fait déjà en main devient simplement le centre, et des personnes autrefois innocente rentrent à nouveau dans le champ des suspects."
+  },
+  "mystery.impossible_circumstance": {
+    "beats": {
+      "bound": {
+        "intent": "le crime est présenté comme étant exclu par les contraintes connues",
+        "label": "L'impossibilité est énoncée"
+      },
+      "dissolve": {
+        "intent": "une fois l'hypothèse écartée, la séquence redevient ordinaire",
+        "label": "L'impossibilité se dissipe"
+      },
+      "enumerate": {
+        "intent": "chaque condition est exposée de manière à être testée plutôt que ressentie",
+        "label": "L'énumération des contraintes"
+      },
+      "identify": {
+        "intent": "une contrainte est identifiée comme n'ayant jamais été réellement vérifiée",
+        "label": "L'une n'est qu'une supposition"
+      }
+    },
+    "effects": [
+      "le mode opératoire est désormais connu, même si l'auteur demeure inconnu",
+      "celui qui a tiré profit de cette erreur collective devient la nouvelle question"
+    ],
+    "emotion_target": "curiosité",
+    "examples": [
+      "Quatre personnes ont juré que la porte avait été surveillée toute la nuit, et chacune d'elles disait la vérité, mais pour une nuit différente."
+    ],
+    "name": "L'Impossible Évidence",
+    "preconditions": [
+      "un ensemble de conditions considérées comme des faits par tous les témoins"
+    ],
+    "roles": {
+      "assumption": {
+        "constraints": [
+          "n'a jamais été vérifiée par quiconque"
+        ],
+        "label": "l'assomption partagée"
+      },
+      "constraint": {
+        "constraints": [
+          "tient bon jusqu'à ce qu'un élément soit reclassé"
+        ],
+        "label": "l'impossibilité"
+      },
+      "investigator": {
+        "constraints": [
+          "doit les exposer avec honnêteté pour pouvoir les briser"
+        ],
+        "label": "celui qui énumère les contraintes"
+      }
+    },
+    "summary": "Le crime est enserré dans des contraintes qui le rendent impossible — une chambre verrouillée de l'intérieur, un escalier surveillé toute la nuit, un alibi attesté par des inconnus, une distance qu'on ne peut parcourir en quelques heures. Les contraintes sont énumérées avec honnêteté, une à une, et la solution surgit lorsqu'on découvre que l'une d'elles n'était pas un fait vérifié, mais une simple supposition partagée par tous les témoins."
+  },
+  "mystery.impossible_detail": {
+    "beats": {
+      "detail": {
+        "intent": "un fait unique ne peut être expliqué par l'interprétation innocente",
+        "label": "Un détail refuse de s'intégrer"
+      },
+      "discover": {
+        "intent": "quelque chose est découvert et possède une interprétation innocente évidente",
+        "label": "Le trouble est découvert"
+      },
+      "fix": {
+        "intent": "l'anomalie est énoncée avec assez de précision pour être poursuivie",
+        "label": "La question est posée"
+      },
+      "open": {
+        "intent": "quelqu'un s'engage à résoudre l'énigme, au mépris du désir de passer à autre chose",
+        "label": "L'enquête s'ouvre"
+      }
+    },
+    "effects": [
+      "une question précise et sans réponse régit désormais la suite des événements",
+      "au moins une partie préférerait que cette question ne soit jamais posée"
+    ],
+    "emotion_target": "curiosité",
+    "examples": [
+      "Tout dans la pièce indiquait qu'il avait bu seul ; seule la seconde tasse, lavée, sèche et remise à son crochet, contredisait ce constat."
+    ],
+    "name": "Le détail qui n'a pas sa place",
+    "preconditions": [
+      "un événement doté d'une explication innocente et immédiate"
+    ],
+    "roles": {
+      "authority": {
+        "constraints": [
+          "préfèrent l'explication la plus banale"
+        ],
+        "label": "ceux qui veulent clore l'affaire"
+      },
+      "investigator": {
+        "constraints": [
+          "voit ce que les autres ignorent"
+        ],
+        "label": "celui qui remarque"
+      },
+      "question": {
+        "constraints": [
+          "est plus tranchante que le simple « qui a fait ça »"
+        ],
+        "label": "la question qui ouvre"
+      },
+      "scene": {
+        "constraints": [
+          "présente des faits pour l'essentiel ordinaires"
+        ],
+        "label": "le trouble lui-même"
+      }
+    },
+    "summary": "Un trouble est découvert — un corps au sol, un vol, une disparition, un grand livre dont les comptes ne s'équilibrent pas — et parmi les faits ordinaires se niche un petit élément physique qu'aucun récit innocent ne peut expliquer : une seconde tasse lavée et remise sur son crochet, une clé du mauvais côté de la porte, un manteau trop sec pour la météo. Cette unique anomalie transforme le malheur en question, et c'est cette question qui constitue le véritable cœur de l'enquête."
+  },
+  "mystery.investigator_compromised": {
+    "beats": {
+      "bend": {
+        "intent": "une décision est prise, laquelle s'explique mieux par l'intérêt personnel que par les preuves",
+        "label": "Le jugement s'incline"
+      },
+      "expose": {
+        "intent": "l'intérêt personnel est révélé aux autres",
+        "label": "Le lien fait surface"
+      },
+      "reearn": {
+        "intent": "les conclusions précédentes doivent être prouvées à nouveau devant un public sceptique",
+        "label": "Tout doit être à nouveau prouvé"
+      },
+      "stake": {
+        "intent": "l'enquêteur est lié à l'affaire sans l'admettre",
+        "label": "L'intérêt est occulte"
+      }
+    },
+    "effects": [
+      "les conclusions antérieures n'ont plus aucune autorité tant qu'elles n'ont pas été démontrées à nouveau",
+      "la poursuite de l'enquête par l'enquêteur lui-même devient contestable"
+    ],
+    "emotion_target": "malaise",
+    "examples": [
+      "Ce n'était pas qu'il avait menti sur sa connaissance de la famille ; c'est que personne n'avait pensé à poser la question, et il avait laissé planer ce secret pendant trois semaines."
+    ],
+    "name": "L'enquêteur est impliqué",
+    "preconditions": [
+      "un enquêteur ayant un lien antérieur avec l'une des parties impliquées dans l'affaire"
+    ],
+    "roles": {
+      "doubters": {
+        "constraints": [
+          "ont raison de douter"
+        ],
+        "label": "ceux qui doutent désormais d'eux"
+      },
+      "investigator": {
+        "constraints": [
+          "n'a pas choisi cet intérêt personnel"
+        ],
+        "label": "l'enquêteur compromis"
+      },
+      "stake": {
+        "constraints": [
+          "est réel et disqualifiant"
+        ],
+        "label": "l'intérêt personnel"
+      }
+    },
+    "summary": "Celui qui pose les questions s'avère être au cœur de l'affaire — lié à l'un des protagonistes, créancier de l'un d'eux, ou cause même de l'événement — et ne l'a pas révélé. Le jugement s'incline avant que quiconque ne remarque ce biais, et une fois le lien mis au jour, chaque conclusion déjà consignée au dossier doit être à nouveau prouvée devant des témoins qui ont désormais de bonnes raisons de douter de tout."
+  },
+  "mystery.second_death": {
+    "beats": {
+      "carry": {
+        "intent": "la responsabilité d'avoir provoqué le décès change la manière dont l'enquêteur procède",
+        "label": "L'enquêteur en porte le poids"
+      },
+      "narrow": {
+        "intent": "seuls ceux qui savaient ce qui allait se passer ont pu agir",
+        "label": "Le cercle se resserre"
+      },
+      "provoke": {
+        "intent": "un interrogatoire atteint une personne qui devient alors une menace pour quelqu'un",
+        "label": "Les questions touchent un point sensible"
+      },
+      "silence": {
+        "intent": "la personne sur le point de parler est éliminée",
+        "label": "Le témoin est réduit au silence"
+      }
+    },
+    "effects": [
+      "le dossier de l'affaire contient désormais des faits établis sur ceux qui étaient au courant, bien qu'ils ne soient pas encore liés entre eux",
+      "le cercle des suspects se réduit à ceux qui savaient ce que le témoin décédé s'apprêtait à dire",
+      "l'enquêteur se retrouve désormais impliqué personnellement, malgré lui"
+    ],
+    "emotion_target": "effroi",
+    "examples": [
+      "Elle lui avait demandé de passer le lendemain matin ; il fut retrouvé avant l'aube, ce qui en dit bien plus long que ne l'aurait fait sa réponse."
+    ],
+    "name": "L'enquête provoque un second meurtre",
+    "preconditions": [
+      "une enquête qui est devenue manifeste pour son sujet"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "porte la responsabilité de la provocation"
+        ],
+        "label": "celui dont les questions ont provoqué le crime"
+      },
+      "killer": {
+        "constraints": [
+          "devait impérativement savoir ce qui allait être révélé"
+        ],
+        "label": "celui qui a agi pour faire taire"
+      },
+      "silenced": {
+        "constraints": [
+          "était sur le point de livrer un témoignage crucial"
+        ],
+        "label": "la seconde victime"
+      }
+    },
+    "summary": "Le fait de poser des questions rend quelqu'un dangereux pour autrui, et un second corps apparaît — typiquement celui de la personne qui avait accepté de témoigner le lendemain matin, mais qui est retrouvée avant l'aube. L'entretien qui n'a jamais eu lieu en dit bien plus long que la réponse ne l'aurait fait : seuls ceux qui savaient ce qui allait être révélé ont pu agir ; le cercle des suspects se resserre sur eux, et l'enquêteur porte désormais la responsabilité d'un décès que ses propres questions ont provoqué."
+  },
+  "mystery.witness_who_lies": {
+    "beats": {
+      "contradict": {
+        "intent": "un détail vérifiable ne correspond pas au récit",
+        "label": "Un fait infime le contredit"
+      },
+      "press": {
+        "intent": "la contradiction est présentée directement au témoin",
+        "label": "Le mensonge est mis au jour"
+      },
+      "reason": {
+        "intent": "le témoin avoue un fait sans rapport qui recadre l'enquête",
+        "label": "La raison est la clé"
+      },
+      "testify": {
+        "intent": "un témoin fournit un récit globalement cohérent",
+        "label": "Le témoignage est livré"
+      }
+    },
+    "effects": [
+      "le dossier de l'enquête contient un nouveau fait établi — une relation cachée — qui n'est encore lié à rien de concret",
+      "l'emploi du temps du témoin est rectifié, ce qui déplace la position d'un autre personnage"
+    ],
+    "emotion_target": "tension",
+    "examples": [
+      "Il n'était pas à l'entrepôt et refusait de dire où il se trouvait ; il fallut deux jours de plus pour apprendre qu'il était à l'hôpital."
+    ],
+    "name": "Le témoin dont le mensonge n'est pas le crime",
+    "preconditions": [
+      "un témoin qui a quelque chose à perdre, mais qui n'est pas lié au crime"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "doit confronter sans présumer de la culpabilité"
+        ],
+        "label": "celui qui confronte"
+      },
+      "secret": {
+        "constraints": [
+          "est assez honteux pour justifier un mensonge"
+        ],
+        "label": "le secret étranger"
+      },
+      "witness": {
+        "constraints": [
+          "ment sur quelque chose, mais pas sur ceci"
+        ],
+        "label": "le témoin menteur"
+      }
+    },
+    "summary": "Un témoignage est livré qui contredit un détail infime et vérifiable — l'heure sur un reçu, le train qui circulait, la fenêtre donnant sur la cour — et confronter cette contradiction ne produit pas un aveu pour le crime, mais l'aveu d'autre chose : une dette, une liaison, une nuit passée dans un hôpital qu'il ne nommera pas. Le mensonge est réel, la raison est étrangère à l'affaire, et c'est cette raison qui dénoue l'enquête."
+  }
+}

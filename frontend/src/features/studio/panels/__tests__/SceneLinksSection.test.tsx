@@ -7,18 +7,21 @@ import type { OutlineNode, SceneLink } from '@/features/composition/types';
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string, o?: { defaultValue?: string }) => o?.defaultValue ?? k }),
 }));
-vi.mock('sonner', () => ({ toast: { error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
+import { toast } from 'sonner';
 
 const links = { current: [] as SceneLink[] };
 const nodes = { current: [] as OutlineNode[] };
 const createMutate = vi.fn();
 const deleteMutate = vi.fn();
+const restoreMutate = vi.fn();
 vi.mock('@/features/composition/hooks/useOutline', () => ({
   useSceneLinks: () => ({ data: links.current }),
   useOutline: () => ({ data: nodes.current }),
   useOutlineMutations: () => ({
     createSceneLink: { mutate: createMutate, isPending: false },
     deleteSceneLink: { mutate: deleteMutate },
+    restoreSceneLink: { mutate: restoreMutate },
   }),
 }));
 
@@ -32,7 +35,8 @@ const link = (id: string, from: string, to: string, kind = 'setup_payoff', label
   ({ id, from_node_id: from, to_node_id: to, kind: kind as SceneLink['kind'], label } as SceneLink);
 
 beforeEach(() => {
-  links.current = []; nodes.current = []; createMutate.mockReset(); deleteMutate.mockReset();
+  links.current = []; nodes.current = []; createMutate.mockReset(); deleteMutate.mockReset(); restoreMutate.mockReset();
+  vi.mocked(toast.success).mockReset(); vi.mocked(toast.error).mockReset();
 });
 
 describe('SceneLinksSection (22-C3 Links)', () => {
@@ -120,6 +124,40 @@ describe('SceneLinksSection (22-C3 Links)', () => {
     links.current = [link('l1', 's1', 's2')];
     render(<SceneLinksSection projectId="p" token="t" sceneId="s1" />);
     fireEvent.click(screen.getByTestId('scene-links-remove-l1'));
-    expect(deleteMutate).toHaveBeenCalledWith('l1');
+    expect(deleteMutate).toHaveBeenCalledWith('l1', expect.any(Object));
+  });
+
+  // F3 — the delete is a SOFT archive, so it owes the author a way back. The list read filters
+  // archived edges and there is no archive browser, so this toast IS the only door: if it stops
+  // offering Undo, the author's undo is gone even though the row is still sitting in the table.
+  // That is the exact state this family shipped in for a while (restore existed on MCP only).
+  it('offers an Undo that RESTORES the deleted link — the toast is the only door back', () => {
+    nodes.current = [node('s1', 'Here'), node('s2', 'There')];
+    links.current = [link('l1', 's1', 's2')];
+    render(<SceneLinksSection projectId="p" token="t" sceneId="s1" />);
+    fireEvent.click(screen.getByTestId('scene-links-remove-l1'));
+
+    // Fire the delete's onSuccess the way react-query would.
+    deleteMutate.mock.calls[0][1].onSuccess();
+    const [, opts] = vi.mocked(toast.success).mock.calls[0];
+    expect(opts?.action).toBeTruthy();
+
+    (opts!.action as { onClick: () => void }).onClick();
+    expect(restoreMutate).toHaveBeenCalledWith('l1', expect.any(Object));
+  });
+
+  it('says so when the undo is refused because the edge was re-declared (409, not a silent no-op)', () => {
+    nodes.current = [node('s1', 'Here'), node('s2', 'There')];
+    links.current = [link('l1', 's1', 's2')];
+    render(<SceneLinksSection projectId="p" token="t" sceneId="s1" />);
+    fireEvent.click(screen.getByTestId('scene-links-remove-l1'));
+    deleteMutate.mock.calls[0][1].onSuccess();
+    const [, opts] = vi.mocked(toast.success).mock.calls[0];
+    (opts!.action as { onClick: () => void }).onClick();
+
+    restoreMutate.mock.calls[0][1].onError({ status: 409 });
+    expect(toast.error).toHaveBeenCalledWith(
+      'That link was re-created since — nothing to restore.',
+    );
   });
 });

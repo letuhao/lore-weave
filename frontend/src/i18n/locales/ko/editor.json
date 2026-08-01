@@ -19,8 +19,8 @@
   "mode": {
     "classic": "클래식",
     "classic_title": "클래식 모드 — 집중에 최적화된 글쓰기",
-    "ai": "AI",
-    "ai_title": "AI 어시스턴트 모드 — 모든 기능 제공"
+    "ai_title": "AI 어시스턴트 모드 — 모든 기능 제공",
+    "ai": "AI"
   },
   "workmode": {
     "write": "쓰기",
@@ -90,7 +90,6 @@
     "underline": "밑줄 (Ctrl+U)",
     "inline_code": "인라인 코드",
     "link": "링크",
-    "url_prompt": "URL:",
     "highlight": "하이라이트 (Ctrl+Shift+H)",
     "subscript": "아래 첨자",
     "superscript": "위 첨자",
@@ -103,7 +102,8 @@
     "code_block": "코드 블록",
     "horizontal_rule": "구분선",
     "undo": "실행 취소 (Ctrl+Z)",
-    "redo": "다시 실행 (Ctrl+Shift+Z)"
+    "redo": "다시 실행 (Ctrl+Shift+Z)",
+    "url_prompt": "URL:"
   },
   "slash": {
     "paragraph": {
@@ -344,6 +344,27 @@
     "gate_unchecked": "{{count}}개의 장면에서 캐논(Canon)이 확인되지 않음",
     "gate_unchecked_hint": "이 장면들은 확인해야 할 캐릭터는 있으나 확정된 읽기 순서 위치가 없어 캐논 검증이 완료되지 않았습니다. 게시할 수 있지만, 가능하다면 검토해 주세요."
   },
+  "knowledge": {
+    "add": "지식에 추가",
+    "reindex": "지식 업데이트",
+    "indexed_badge": "지식에 포함됨",
+    "not_indexed_badge": "지식에 포함되지 않음",
+    "excluded_badge": "제외됨",
+    "forget": "이 챕터 기억 삭제",
+    "keep_out": "지식에서 제외",
+    "allow": "지식에 포함",
+    "save_first": "지식에 추가하기 전에 저장하세요",
+    "indexed_toast": "지식에 추가되었습니다",
+    "reused_toast": "이미 최신 상태입니다 — 변경 사항이 없습니다",
+    "empty_toast": "이 챕터에는 추가할 내용이 없습니다 — 먼저 내용을 작성해 주세요.",
+    "excluded_toast": "이 챕터는 지식에 포함되지 않았습니다 — 먼저 허용해 주세요.",
+    "forgotten_toast": "삭제됨 — 지식에서 제거되었습니다",
+    "allowed_toast": "허용됨. 준비가 되면 «지식에 추가»를 선택하세요.",
+    "failed_toast": "지식을 업데이트할 수 없습니다 — 다시 시도해 주세요.",
+    "forget_confirm_title": "이 챕터를 삭제할까요?",
+    "forget_confirm_body": "이 챕터에서 학습한 모든 내용이 지식에서 제거됩니다. 챕터 자체가 삭제되는 것은 아니며, 나중에 다시 추가할 수 있습니다.",
+    "hint": "챕터를 지식에 추가하면 어시스턴트가 해당 내용을 활용할 수 있습니다. 반드시 발행할 필요는 없습니다."
+  },
   "compare": {
     "open": "비교하기",
     "title": "수정 사항 비교",
@@ -371,26 +392,5 @@
     "no_restore": "복원할 이전 버전이 없습니다",
     "confirm_title": "이 AI 편집 이전 상태로 복원하시겠습니까?",
     "confirm_desc": "현재 초안이 먼저 스냅샷으로 저장되므로, 수정 기록을 통해 언제든 되돌릴 수 있습니다."
-  },
-  "knowledge": {
-    "add": "지식에 추가",
-    "reindex": "지식 업데이트",
-    "indexed_badge": "지식에 포함됨",
-    "not_indexed_badge": "지식에 포함되지 않음",
-    "excluded_badge": "제외됨",
-    "forget": "이 챕터 기억 삭제",
-    "keep_out": "지식에서 제외",
-    "allow": "지식에 포함",
-    "save_first": "지식에 추가하기 전에 저장하세요",
-    "indexed_toast": "지식에 추가되었습니다",
-    "reused_toast": "이미 최신 상태입니다 — 변경 사항이 없습니다",
-    "empty_toast": "이 챕터에는 추가할 내용이 없습니다 — 먼저 내용을 작성해 주세요.",
-    "excluded_toast": "이 챕터는 지식에 포함되지 않았습니다 — 먼저 허용해 주세요.",
-    "forgotten_toast": "삭제됨 — 지식에서 제거되었습니다",
-    "allowed_toast": "허용됨. 준비가 되면 «지식에 추가»를 선택하세요.",
-    "failed_toast": "지식을 업데이트할 수 없습니다 — 다시 시도해 주세요.",
-    "forget_confirm_title": "이 챕터를 삭제할까요?",
-    "forget_confirm_body": "이 챕터에서 학습한 모든 내용이 지식에서 제거됩니다. 챕터 자체가 삭제되는 것은 아니며, 나중에 다시 추가할 수 있습니다.",
-    "hint": "챕터를 지식에 추가하면 어시스턴트가 해당 내용을 활용할 수 있습니다. 반드시 발행할 필요는 없습니다."
   }
 }

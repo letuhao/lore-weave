@@ -59,6 +59,12 @@ class LensBundle:
     # (the M0 "added canon rule" override scope). Rendered in the <canon> block
     # alongside inherited canon. Empty for a non-derivative pack.
     extra_canon: list[str] = field(default_factory=list)
+    # PREVENTION half of the plan-liveness arc — the names the PLAN still needs after this
+    # scene, rendered as a protected CONSTRAINT. The detection half catches a draft that kills
+    # one of them; this is the half that stops it being written. Measured before it existed:
+    # `gather_present` put name + short_description + relations into the prompt and NOTHING
+    # about who may die, so the drafter was never told.
+    must_survive: list[str] = field(default_factory=list)
     # T3.6 — the author's semantically-retrieved reference passages (external
     # influences) for this scene. Each {id, title, author, source_url, content,
     # score}. composition-owned; pinned ones are protected in the budget.
@@ -68,6 +74,13 @@ class LensBundle:
     # that op, spoiler-bounded ≤ the branch). Renders as the <source_scene> block
     # the adapt instruction points the model at. Empty for every other op / Work.
     source_scene: list[str] = field(default_factory=list)
+    # D-GENERATED-FACT-HAS-NO-HOME — the PREVIOUS scene's recorded cast, rendered as one line
+    # ("Cassius — he — the anchor; Elara — she — Scribe"). The same facts are already present
+    # as prose in `recent`, and that is exactly the problem: prose is what the budget
+    # compresses first, and `recent_floor_compressed > 0` means the next scene is written
+    # against a lossy account of its own chapter. These rows are a FLOOR — they are what the
+    # next scene must MATCH, not merely know, so they are protected and never summarised.
+    carried_cast: str = ""
 
 
 def _applies_at(rule: CanonRule, story_order: int | None) -> bool:
@@ -205,12 +218,38 @@ async def gather_structural(
     outline_repo: OutlineRepo, scene_links_repo: SceneLinksRepo, *,
     project_id: UUID, node: dict[str, Any],
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
-    """L2 beat/goal/POV/synopsis + setup_payoff threads, and L2′ planned
-    synopses of unwritten scenes at/before this position."""
+    """L2 the scene's AUTHORED INTENT + setup_payoff threads, and L2′ planned
+    synopses of unwritten scenes at/before this position.
+
+    D-SCENE-INTENT-NEVER-SHOWN — this used to build a five-key dict (beat_role, goal,
+    pov, synopsis, title) and the docstring said so: it predates SC4, which added eight
+    fields of authored scene intent, and was never updated. The result was that the
+    richest signal in the system was asked for, schema-validated, stored — and then
+    never shown to the drafter.
+
+    Measured on the Mị Đế book: five scenes were authored with `tension` 70/80/45/35/65
+    plus conflict, outcome and stakes on every one. **None of it reached the model.** The
+    prose came back thin and drifting for the obvious reason — it was written from a goal
+    and a synopsis, with no idea what opposed the character, what was at risk, how the
+    scene should resolve, or what state it had to leave behind.
+
+    A field an author fills that no consumer reads is not a feature, it is a lie about
+    what the tool does with their work.
+    """
     beat = {
         "beat_role": node.get("beat_role"), "goal": node.get("goal", ""),
         "pov_entity_id": node.get("pov_entity_id"), "synopsis": node.get("synopsis", ""),
         "title": node.get("title", ""),
+        # SC4 authored intent — the eight fields. `assemble.build_segments` renders each
+        # one it finds, so adding a field here is the whole wiring.
+        "conflict": node.get("conflict", ""),
+        "outcome": node.get("outcome", ""),
+        "stakes": node.get("stakes", ""),
+        "value_shift": node.get("value_shift"),
+        "tension": node.get("tension"),
+        "story_time": node.get("story_time"),
+        "location_entity_id": node.get("location_entity_id"),
+        "exit_state": node.get("exit_state"),
     }
     threads: list[dict[str, Any]] = []
     planned: list[dict[str, Any]] = []
@@ -226,8 +265,25 @@ async def gather_structural(
     try:
         tree = await outline_repo.list_tree(project_id)
         my_order = node.get("story_order")
+        my_chapter = node.get("chapter_id")
         for n in tree:
             if n.kind != "scene" or n.status == "done" or str(n.id) == str(node_id):
+                continue
+            # SAME CHAPTER ONLY. `story_order` is comparable WITHIN a chapter and not across
+            # them: MEASURED on the dogfood book 2026-08-01, one project holds two conventions
+            # at once — five chapters numbered 1,2,3,4 and the rest chapter*1000+i (2000-2002,
+            # 3000-3001, 4000-4002). So `n.story_order <= my_order` compared numbers from two
+            # incompatible schemes, and a scene at 10002 pulled in 40 planned synopses from 14
+            # chapters where the honest answer is 2.
+            #
+            # That is a SPOILER LEAK, not merely prompt bloat: any chapter using the small
+            # convention sorts below every 4-digit order, so a scene early in the book was
+            # shown the unwritten synopses of chapters ten ahead of it.
+            #
+            # Cross-chapter "what is planned before me" needs the CHAPTER's own sort order,
+            # which this lens does not have. Until it does, the narrow answer is the correct
+            # one — a lens that silently spans the book is worse than one that says it does not.
+            if my_chapter and str(n.chapter_id) != str(my_chapter):
                 continue
             if my_order is not None and n.story_order is not None and n.story_order > my_order:
                 continue
@@ -236,6 +292,73 @@ async def gather_structural(
     except Exception:  # noqa: BLE001
         logger.warning("gather planned failed", exc_info=True)
     return beat, threads, planned
+
+
+async def gather_must_survive(
+    outline_repo: OutlineRepo, present: list[dict[str, Any]], *,
+    project_id: UUID, node: dict[str, Any],
+) -> list[str]:
+    """The PREVENTION half — who the PLAN still needs after this scene, by NAME.
+
+    The detection half (`plan_conflict`) catches a draft that kills one of them, after the
+    tokens are spent and with a revise to pay for. This is the half that tells the drafter
+    first. Measured before it existed: the prompt carried each cast member's name, bio and
+    relations, and not one word about who may die.
+
+    Names come from the `present` lens rather than a second glossary read: pack has already
+    paid for them, and an id the drafter never saw a name for is one it cannot obey a
+    constraint about anyway.
+
+    Degrade-safe like every gatherer here: no chapter, no position, or a repo failure ⇒ `[]`
+    and the prompt simply carries no constraint — never a failed pack.
+    """
+    chapter_id, story_order = node.get("chapter_id"), node.get("story_order")
+    if not chapter_id or story_order is None:
+        return []
+    try:
+        plan = await outline_repo.plan_liveness_after(
+            project_id, UUID(str(chapter_id)), int(story_order))
+    except Exception:  # noqa: BLE001 — repo failure degrades the lens
+        logger.warning("gather_must_survive failed", exc_info=True)
+        return []
+    if not plan:
+        return []
+    by_id = {str(p.get("entity_id")): (p.get("name") or "") for p in present}
+    # Only entities the plan says are ALIVE, and only ones we have a name for. Sorted so the
+    # prompt is byte-stable across runs — an unstable constraint line would churn the prompt
+    # cache for no reason.
+    return sorted({
+        nm for eid, status in plan.items()
+        if status == "alive" and (nm := by_id.get(str(eid)))
+    })
+
+
+async def gather_carried_cast(
+    outline_repo: OutlineRepo, *, project_id: UUID, node: dict[str, Any],
+) -> str:
+    """D-GENERATED-FACT-HAS-NO-HOME — the PREVIOUS scene's recorded cast, as one prompt line.
+
+    This is the consuming half of the write-back. The generator invents facts no spec contains —
+    a character's gender, a name, a role — and until now the only path those facts had into the
+    next scene was the prose itself, sitting in `recent` where the budget compresses it first.
+    Measured: a 14,314-character `<recent>` did carry an invented `he` correctly once, and a
+    different run of the same architecture turned "He is the anchor" into "She's a Scribe" one
+    scene later. A fact the next step must MATCH cannot live only in compressible prose.
+
+    Degrade-safe like every gatherer here: no chapter, no position, no predecessor, or a repo
+    failure ⇒ "" and the pack thins rather than failing.
+    """
+    chapter_id, story_order = node.get("chapter_id"), node.get("story_order")
+    if not chapter_id or story_order is None:
+        return ""
+    try:
+        prior = await outline_repo.prior_scene_exit_state(
+            project_id, UUID(str(chapter_id)), int(story_order))
+    except Exception:  # noqa: BLE001 — repo failure degrades the lens
+        logger.warning("gather_carried_cast failed", exc_info=True)
+        return ""
+    from app.engine.exit_state import render_carried_cast
+    return render_carried_cast(prior)
 
 
 def _arc_position(story_order: int | None, span: dict[str, Any]) -> int | None:
@@ -480,6 +603,26 @@ async def gather_motif(
     return "\n".join(lines)
 
 
+#: D-RECENT-STUB-SUPPRESSES-FALLBACK — what makes an accepted draft the story-so-far
+#: rather than a stub. Both bars are low on purpose: this is not judging quality, only
+#: separating "the author has written into this chapter" from "there is a line in here".
+#: A real drafted scene clears them by an order of magnitude; a title, a note, or a
+#: single pasted sentence does not.
+_SUBSTANTIAL_DRAFT_MIN_WORDS = 80
+_SUBSTANTIAL_DRAFT_MIN_PARAGRAPHS = 2
+
+
+def _is_substantial_draft(paragraphs: list[str]) -> bool:
+    """Whether an accepted chapter draft is enough to REPLACE the prior-scene reinjection.
+
+    The old test was `if paras:` — any non-blank line at all — so one stray sentence in a
+    chapter draft silently switched the whole S1 mechanism off. See `gather_recent`.
+    """
+    if len(paragraphs) >= _SUBSTANTIAL_DRAFT_MIN_PARAGRAPHS:
+        return True
+    return sum(len(p.split()) for p in paragraphs) >= _SUBSTANTIAL_DRAFT_MIN_WORDS
+
+
 async def gather_recent(
     book: BookClient, book_id: UUID, chapter_id: UUID, bearer: str, *,
     k: int = _RECENT_PARAGRAPHS,
@@ -497,24 +640,91 @@ async def gather_recent(
     scene winners, **STRICTLY position-bounded** (`story_order < current`;
     spoiler-safe, /review-impl H1). Returns ALL prior prose as paragraphs — the
     budget ladder protects the immediate-preceding one (PRIO_RECENT_IMMEDIATE) and
-    trims older ones (PRIO_RECENT_OLDER), so it never evicts canon/spoiler-safety."""
+    trims older ones (PRIO_RECENT_OLDER), so it never evicts canon/spoiler-safety.
+
+    **D-RECENT-STUB-SUPPRESSES-FALLBACK** — "is there an accepted draft?" used to be
+    `if paras:`, i.e. ANY non-blank line at all. A chapter whose draft holds one stray
+    sentence — a title the author typed, a note, a single line pasted to check that Save
+    works — therefore beat the fallback, and the whole S1 mechanism went dark while
+    looking healthy. Measured on the Mị Đế book: five drafted scenes, and every prompt's
+    `<recent>` block held the same 25-word test sentence instead of the preceding scenes'
+    prose. The reinjection had never once run.
+
+    So the question is not "is there text" but "is there enough text to BE the story so
+    far". Below the floor the two sources are UNIONED rather than exchanged: a genuine
+    stub is usually a heading or an opening line the author does want honoured, so
+    dropping it would trade one silent loss for another."""
     try:
         draft = await book.get_draft(book_id, chapter_id, bearer)
         text = draft.get("text_content") or ""
     except BookClientError:
         text = ""
     paras = [p.strip() for p in text.split("\n") if p.strip()]
-    if paras:
+    if _is_substantial_draft(paras):
         return paras[-k:]  # primary: the accepted draft tail
-    # Fallback: no accepted draft → prior generated scene winners (strictly prior).
+    # Fallback: no SUBSTANTIAL accepted draft → prior generated scene winners (strictly
+    # prior). Whatever stub the draft did hold is kept and placed FIRST, so an opening
+    # line or heading the author wrote still leads the "story so far" and the generated
+    # scenes follow it in reading order.
     if jobs_repo is not None and project_id is not None and story_order is not None:
         try:
             prior = await jobs_repo.prior_scene_drafts(project_id, chapter_id, story_order)
         except Exception:  # noqa: BLE001
             logger.warning("gather_recent prior-scene fallback failed", exc_info=True)
-            return []
-        return [p.strip() for t in prior for p in t.split("\n") if p.strip()]
-    return []
+            return paras[-k:]
+        recovered = [p.strip() for t in prior for p in t.split("\n") if p.strip()]
+        if recovered:
+            logger.info(
+                "gather_recent: S1 reinjection supplied %d paragraph(s) from %d prior "
+                "scene(s) (chapter draft held %d stub line(s), below the substantial floor)",
+                len(recovered), len(prior), len(paras),
+            )
+        return paras + recovered
+    return paras[-k:]
+
+
+async def gather_prior_chapters(
+    book: BookClient, book_id: UUID, bearer: str, *,
+    chapter_id: UUID | None, chapter_sort: int | None, k: int = 2,
+) -> list[tuple[str, str]]:
+    """D-PRIOR-CHAPTER-BLIND — the last `k` chapters BEFORE this one, as (title, prose).
+
+    The knowledge timeline (`gather_timeline`) is the designed carrier for "what happened
+    earlier", and it is the right one when extraction has run. When it has not — which is the
+    normal state of a book someone is still writing — it returns [] and the `<memory>` block
+    simply does not appear, so a new chapter is drafted blind to every chapter before it.
+    Measured on a real book: 9 written chapters, 10k words, and the tenth chapter's prompt
+    contained nothing from any of them.
+
+    STRICTLY position-bounded (`sort_order < chapter_sort`) for the same spoiler reason
+    `prior_scene_drafts` is: a chapter must never see its own future.
+
+    Returns the prose RAW. Compression happens in `pack`, through the same `compress_fn` the
+    current chapter used to be (wrongly) compressed with — previous chapters are what that
+    machinery is actually for.
+    """
+    if chapter_sort is None:
+        return []
+    try:
+        chapters = await book.list_chapters(book_id, bearer)
+    except BookClientError:
+        logger.warning("gather_prior_chapters: chapter list unavailable", exc_info=True)
+        return []
+    prior = [c for c in chapters
+             if c.get("sort_order") is not None
+             and int(c["sort_order"]) < int(chapter_sort)
+             and str(c.get("chapter_id")) != str(chapter_id)]
+    prior.sort(key=lambda c: int(c["sort_order"]))
+    out: list[tuple[str, str]] = []
+    for c in prior[-max(1, k):]:
+        try:
+            text = await book.chapter_blocks_text(book_id, UUID(str(c["chapter_id"])))
+        except Exception:  # noqa: BLE001 — a missing chapter must not fail the pack
+            logger.warning("gather_prior_chapters: blocks unavailable", exc_info=True)
+            continue
+        if text.strip():
+            out.append((c.get("title") or "", text))
+    return out
 
 
 async def gather_source_scene(

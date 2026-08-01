@@ -12,6 +12,44 @@ export function useWorkResolution(bookId: string | undefined, token: string | nu
   });
 }
 
+/**
+ * Onboarding — make sure this book HAS a composition Work, without the author ever meeting the
+ * concept.
+ *
+ * The hole this closes: the Studio offered "Chapter"/"Part" and nothing else, so an author could
+ * write for a long time with plan / beats / scenes / quality silently switched off. The only
+ * affordance that created a Work lived on gated panels a new author never opens. Dogfooded on a
+ * real book: composition_work=0, outline_node=0, plan_run=0, and nothing on screen said so.
+ *
+ * Covers BOTH populations in one move:
+ *   • a book from before this change → creates the Work on first visit;
+ *   • a book created after it → the `book.created` consumer already made a PENDING (null-project)
+ *     Work, which `resolveWork` deliberately EXCLUDES, so this reads as absent and the create call
+ *     — idempotent get-or-create — BACKFILLS that same row with the knowledge project. Minting the
+ *     project is JWT-only, which is exactly why the consumer could not finish the job itself.
+ *
+ * A synchronization effect (ensure an external resource exists), not a reaction to a user action —
+ * the distinction CLAUDE.md draws for when useEffect is legitimate.
+ *
+ * Fires at most ONCE per mount: `attempted` latches before the call, so a failure does not retry in
+ * a loop against a service that is down. StudioFrame is keyed by bookId, so a book switch remounts
+ * and gets a fresh attempt.
+ */
+export function useEnsureWork(bookId: string | undefined, token: string | null) {
+  const work = useWorkResolution(bookId, token);
+  const create = useCreateWork(bookId, token);
+  const [attempted, setAttempted] = useState(false);
+  const createMutate = create.mutate;
+
+  useEffect(() => {
+    if (attempted || !bookId || !token) return;
+    if (work.isLoading || work.isError) return;      // unknown ≠ absent — never provision on a blip
+    if (work.data?.status === 'found' || work.data?.status === 'candidates') return;
+    setAttempted(true);
+    createMutate();
+  }, [attempted, bookId, token, work.isLoading, work.isError, work.data?.status, createMutate]);
+}
+
 export function useCreateWork(bookId: string | undefined, token: string | null) {
   const qc = useQueryClient();
   return useMutation({

@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import logging
 
+from loreweave_obs import setup_logging
+
 import asyncpg
 
 logger = logging.getLogger(__name__)
@@ -324,21 +326,24 @@ async def _amain() -> None:
     dsn = os.environ.get("COMPOSITION_DB_URL") or os.environ.get("TEST_COMPOSITION_DB_URL")
     if not dsn:
         raise SystemExit("set COMPOSITION_DB_URL to the target composition DB")
-
-    # `logging.basicConfig` here installed a bare root handler, so this migration's
-    # `logger.info` lines came out as unstructured text with no service name and no
-    # trace id — invisible to the log pipeline every other line in this service
-    # feeds. It is the one blocking finding `logging-discipline-lint` reports (the
-    # rest of its output is `println!` WARNs in Rust drill binaries), and it kept
-    # that gate red on `main`.
+    # D-CI-RED-FOR-20-DAYS (2026-07-31): this single `logging.basicConfig` is the HARD
+    # violation in `logging-discipline-lint.sh`, which is step 24 of 28 in foundation-ci's
+    # lint job. It landed on 2026-07-11, and GitHub Actions stops a job at the first
+    # failing step — so the lint job has been RED for twenty days, and steps 25-28
+    # (tracing-completeness, runbook-drift, runbook-verification, template-fixture) have
+    # not run in that time either. One line took four gates down and kept them down.
     #
-    # Imported here rather than at module scope on purpose: this is the CLI entry
-    # point, and `run_arc_lift` is also called in-process by the service, which has
-    # already configured logging. A module-level import would be fine; configuring
-    # at import time would not.
-    from app.logging_config import setup_logging
-
-    setup_logging("INFO")
+    # `basicConfig` is banned because it installs a plain formatter on the root logger and
+    # wins over the shared JSON handler — a service whose logs bypass the trace-id
+    # correlation cannot be read alongside the rest of a request.
+    #
+    # The name passed is the SERVICE NAME (`loreweave_obs.setup_logging(service_name,
+    # *, level=...)`), not a level — the CLI stamps itself `composition-arc-lift` so a
+    # migration run is distinguishable from the service in the log stream. Importing at
+    # module scope is fine; CONFIGURING at import time would not be, and this call sits
+    # in the CLI entry point precisely because `run_arc_lift` is also invoked in-process
+    # by a service that has already configured logging.
+    setup_logging("composition-arc-lift")
     conn = await asyncpg.connect(dsn)
     try:
         applied = await run_arc_lift(conn)

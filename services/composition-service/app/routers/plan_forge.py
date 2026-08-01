@@ -87,6 +87,10 @@ class PlanCompileRequest(BaseModel):
     arc_id: str
     run_pipeline: bool = False
     model_ref: UUID | None = None
+    #: D-PLANFORGE-BEATS-UNWIRED — the story structure whose ordered beats the `beats` pass maps
+    #: chapters onto. None ⇒ keep the run's stored choice (and, if it has none, the recorded
+    #: platform default). The compiled package echoes what was used under `structure`.
+    structure_template_id: UUID | None = None
 
 
 class PlanPassRequest(BaseModel):
@@ -482,6 +486,94 @@ async def self_check_plan_run(
     return report
 
 
+class KeptEntry(BaseModel):
+    """A kept line the author gave a NAME to, so it can become a real row rather than a note.
+
+    The label is the ONE field the structured kinds need and that nobody may infer — declared here
+    so a client cannot smuggle extra keys past `extra='ignore'` (the rest-write-mirror-drops-fields
+    bug the models around this one already warn about)."""
+
+    quote: Annotated[str, StringConstraints(max_length=400)]
+    label: Annotated[str, StringConstraints(max_length=120)]
+
+
+class PlanKeptMaterial(BaseModel):
+    """`{planning kind: [exact quotes the author kept]}`.
+
+    Declared explicitly rather than accepting a bare dict: Pydantic's `extra='ignore'` would silently
+    DROP an undeclared field, which is the `rest-write-mirror-drops-fields` bug the request models
+    above already carry a warning about. Each quote is capped — it is the author's own line, not a
+    document, and an uncapped string here is a write-amplification surface.
+    """
+
+    kept: dict[str, list[Annotated[str, StringConstraints(max_length=400)] | KeptEntry]] = Field(
+        default_factory=dict,
+    )
+
+
+@router.post("/books/{book_id}/plan/runs/{run_id}/missing-material")
+async def find_missing_material(
+    book_id: UUID,
+    run_id: UUID,
+    model_ref: UUID | None = None,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """What the plan is missing, and what of it the author already wrote (GUI parity with
+    `plan_find_missing_material`). EDIT, not VIEW: it spends the author's LLM budget."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        out = await svc.find_missing_material(user_id, book_id, run_id, model_ref=model_ref)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if out is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return out
+
+
+@router.get("/books/{book_id}/plan/runs/{run_id}/missing-material")
+async def get_missing_material(
+    book_id: UUID,
+    run_id: UUID,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """The last material packet, WITHOUT searching. VIEW, not EDIT — this one spends nothing.
+
+    204 when there is none, so "never checked" is distinguishable from "checked and found nothing";
+    a `{}` would collapse those two into one.
+    """
+    await _gate_book(grant, book_id, user_id, GrantLevel.VIEW)
+    out = await svc.get_material_review(user_id, book_id, run_id)
+    if out is None:
+        return JSONResponse(status_code=204, content=None)
+    return out
+
+
+@router.post("/books/{book_id}/plan/runs/{run_id}/keep-material")
+async def keep_material(
+    book_id: UUID,
+    run_id: UUID,
+    body: PlanKeptMaterial,
+    user_id: UUID = Depends(get_current_user),
+    grant: GrantClient = Depends(get_grant_client_dep),
+    svc: PlanForgeService = Depends(get_plan_forge_service),
+):
+    """Write the kept lines into the run's spec, verbatim (GUI parity with `plan_keep_material`)."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    try:
+        kept = {k: [e if isinstance(e, str) else e.model_dump() for e in v]
+                for k, v in body.kept.items()}
+        out = await svc.keep_material(user_id, book_id, run_id, kept=kept)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if out is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return out
+
+
 @router.post("/books/{book_id}/plan/runs/{run_id}/compile")
 async def compile_plan_run(
     book_id: UUID,
@@ -498,6 +590,7 @@ async def compile_plan_run(
             arc_id=body.arc_id,
             run_pipeline=body.run_pipeline,
             model_ref=body.model_ref,
+            structure_template_id=body.structure_template_id,
         )
     except LookupError:
         raise HTTPException(status_code=404, detail="run not found")

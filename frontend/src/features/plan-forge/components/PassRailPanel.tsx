@@ -24,6 +24,11 @@ export function PassRailPanel(props: IDockviewPanelProps) {
   const { bookId, openPanel } = useStudioHost();
   const { accessToken } = useAuth();
   const rail = usePassRail(bookId, accessToken ?? null);
+  // Pass 6 emits the scene_plan and pass 7 re-emits a healed one; either is linkable. `status` is
+  // what the ledger reports for a pass that ran, so this asks the question the backend asks.
+  const scenesReady = (rail.ledger?.passes ?? []).some(
+    (p) => (p.pass_id === 'scenes' || p.pass_id === 'self_heal') && p.status === 'completed',
+  );
 
   // Cost-confirm (PS-6): running a pass is a paid Tier-A action, so it opens a confirm with an
   // explicit model choice before spending. Only one pass's confirm is open at a time.
@@ -240,13 +245,33 @@ export function PassRailPanel(props: IDockviewPanelProps) {
               </span>
             )}
             {rail.polling && <span className="animate-pulse text-accent">· working…</span>}
-            {/* §2.6 loop-connect — push the compiled plan into the book's outline (the manuscript). */}
+            {/* §2.6 loop-connect — push the compiled plan into the book's outline (the manuscript).
+                TWO links, because the backend has always had two: `skeleton` writes the arcs and
+                chapters, `scene_plan` writes the scenes beneath them. Only the first had a button.
+                Everything else existed — the service method, the route, the api function, the hook's
+                own `'skeleton' | 'scene_plan'` union — so an author who ran all seven passes got
+                arcs and chapters, no scenes, and a Scene Browser still reading "not planned". The
+                capability was complete everywhere except where a person could press it. */}
             <button
               type="button" data-testid="plan-passes-relink" disabled={rail.busy}
               onClick={() => void rail.relink('skeleton')}
               className="ml-auto rounded border border-border px-2 py-0.5 text-[10px] hover:bg-secondary disabled:opacity-40"
             >
-              {t('planPasses.linkOutline', { defaultValue: 'Link to outline →' })}
+              {t('planPasses.linkOutline', { defaultValue: 'Link arcs + chapters →' })}
+            </button>
+            {/* Enabled only once pass 6 has produced a scene_plan. The backend refuses with a clear
+                message otherwise, and a button whose only outcome is that message is not an
+                affordance — it is a trap. */}
+            <button
+              type="button" data-testid="plan-passes-relink-scenes"
+              disabled={rail.busy || !scenesReady}
+              title={scenesReady ? undefined : t('planPasses.linkScenesBlocked', {
+                defaultValue: 'Run the scenes pass first',
+              })}
+              onClick={() => void rail.relink('scene_plan')}
+              className="rounded border border-border px-2 py-0.5 text-[10px] hover:bg-secondary disabled:opacity-40"
+            >
+              {t('planPasses.linkScenes', { defaultValue: 'Link scenes →' })}
             </button>
           </div>
           {rail.relinkOutput && (

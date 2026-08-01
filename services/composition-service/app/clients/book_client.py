@@ -245,6 +245,54 @@ class BookClient:
                 return body
         return {}
 
+    async def chapter_blocks_text(self, book_id: UUID, chapter_id: UUID,
+                                  max_chars: int = 8000) -> str:
+        """The PUBLISHED prose of one chapter, via the internal per-block route.
+
+        D-PRIOR-CHAPTER-BLIND: the only carrier for "what happened in earlier chapters" was
+        `gather_timeline`, which reads extracted events out of knowledge-service. On a book
+        where nobody has run extraction that returns [], the `<memory>` block is absent, and a
+        new chapter is drafted with NO knowledge of the ones before it — coverage conditional
+        on data the author may never have created, the same shape as the canon guard skipping
+        a book with no bound cast.
+
+        `chapter_drafts` is NOT a fallback: it holds the in-progress editor draft and is empty
+        for an imported or already-published chapter (verified — a 10-chapter book with 10k
+        words had zero draft rows). The blocks ARE the prose.
+
+        Internal token, book-scoped, no user check — the CALLER must have gated the book
+        first, the same contract `canon_markers` and `get_chapter_sort_orders` carry. Any
+        failure degrades to "" so a missing summary never fails a pack.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/chapters/{chapter_id}/blocks"
+        headers = {"X-Internal-Token": self._internal_token}
+        tid = trace_id_var.get()
+        if tid:
+            headers["X-Trace-Id"] = tid
+        try:
+            resp = await self._http.get(url, headers=headers, params={"limit": 500})
+            if resp.status_code != 200:
+                logger.warning("book chapter-blocks → %d", resp.status_code)
+                return ""
+            body = resp.json()
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("book chapter-blocks unavailable: %s", exc)
+            return ""
+        items = body.get("items") or body.get("blocks") or []
+        if not isinstance(items, list):
+            return ""
+        parts: list[str] = []
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            txt = (it.get("text_content") or it.get("text") or "").strip()
+            if txt:
+                parts.append(txt)
+        # TAIL-bounded: a chapter's ending is what the next one continues from.
+        joined = "\n\n".join(parts)
+        return joined[-max_chars:] if len(joined) > max_chars else joined
+
+
     async def get_reader_language(self, book_id: UUID, user_id: UUID) -> str | None:
         """KG-ML M7 (C6) — the user's stored reader-language for this book (M3),
         via the INTERNAL resolver `GET /internal/books/{id}/reader-language?user_id=`

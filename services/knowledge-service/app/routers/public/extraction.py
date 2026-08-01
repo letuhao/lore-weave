@@ -817,52 +817,43 @@ async def _start_extraction_job_core(
                 detail=f"project already has an active extraction job ({j.job_id}, status={j.status})",
             )
 
-    # 2.5. K17.9 benchmark gate. Rejects when no run exists for the
-    # chosen model OR when the latest run didn't pass thresholds.
-    # Error messages are user-neutral (no CLI instructions) — the FE
-    # picker surfaces a targeted CTA per `error_code`: the no-run
-    # branch drives a "Run benchmark" button, the failed branch drives
-    # a "See report" link. Keeping ops commands out of the public API
-    # response avoids confusing end users if the 409 surfaces in a
-    # toast before the picker's badge logic catches it.
-    # E0-3 Phase 2b — the benchmark gate is OWNER + MODEL-scoped (R1,
-    # D-JOURNEY-KG-BENCHMARK-UX): it validates the embedding MODEL's quality, which
-    # is a per-model property, not per-project. A passing run for this model on ANY
-    # of the owner's projects (incl. the hidden benchmark sandbox the run actually
-    # executes on) satisfies it — so the run never has to (and never can) happen on
-    # this content-bearing build project. A collaborator inherits it via the
-    # dimension match above. `storage_embedding_model` is the project's model on the
-    # collaborator path and body's (== project's) for the owner.
+    # 2.5. K17.9 benchmark — ADVISORY since 2026-07-27, no longer a gate.
+    #
+    # It used to 409 when the embedding model had no passing golden-set run. The
+    # evidence for demoting it, measured on this instance:
+    #   * `project_embedding_benchmark_runs` held ZERO rows and `extraction_jobs` held
+    #     ZERO rows. The gate shipped 2026-04-19 and, in the three months since, KG
+    #     extraction never ran ONCE — through either door (both the REST route and the
+    #     MCP confirm effect call this same core, so both were closed).
+    #   * The golden set is 20 ENGLISH queries over a synthetic fixture. It was deciding
+    #     whether a Vietnamese novel may be extracted — it measures nothing about the
+    #     content, only the model's behaviour on someone else's corpus.
+    #   * It has a documented false-positive history: golden_set.yaml records a CLEAN
+    #     bge-m3 run scoring recall@3=1.0 / mrr=1.0 yet FAILING the flat
+    #     negative_control ceiling, which had to be overridden per dimension.
+    #   * `min_runs: 3` makes satisfying it slow, for a one-time per-model ceremony.
+    #
+    # A quality signal nobody can satisfy is not a quality signal; it is an outage with
+    # a good excuse. The benchmark itself is KEPT — harness, golden set, thresholds, the
+    # on-demand run endpoint and the status endpoint all still work as an opt-in
+    # diagnostic ("is this embedding model any good for retrieval?"). What is removed is
+    # the hard block. The result is recorded on the way past so the state is visible
+    # rather than silent — an un-benchmarked model is a fact worth logging, just not a
+    # reason to refuse the user's work.
     latest_benchmark = await benchmark_repo.get_latest_for_model(
         user_id, storage_embedding_model,
     )
     if latest_benchmark is None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "error_code": "benchmark_missing",
-                "message": (
-                    f"no passing benchmark run for embedding_model "
-                    f"{storage_embedding_model!r}; run the golden-set "
-                    "benchmark for this model before enabling extraction"
-                ),
-                "embedding_model": storage_embedding_model,
-            },
+        logger.info(
+            "extraction start: embedding_model %s has no benchmark run (advisory)",
+            storage_embedding_model,
         )
-    if not latest_benchmark.passed:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "error_code": "benchmark_failed",
-                "message": (
-                    "the most recent benchmark run for this embedding "
-                    "model did not pass the quality thresholds; "
-                    "extraction would produce low-quality results"
-                ),
-                "embedding_model": storage_embedding_model,
-                "run_id": latest_benchmark.run_id,
-                "recall_at_3": latest_benchmark.recall_at_3,
-            },
+    elif not latest_benchmark.passed:
+        logger.warning(
+            "extraction start: embedding_model %s last benchmark FAILED "
+            "(run=%s recall@3=%s) — proceeding, advisory only",
+            storage_embedding_model, latest_benchmark.run_id,
+            latest_benchmark.recall_at_3,
         )
 
     # 2.6. D-K16.11-01: advisory monthly-budget pre-check. When the user

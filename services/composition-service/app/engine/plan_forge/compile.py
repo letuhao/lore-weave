@@ -33,7 +33,19 @@ def compile_artifacts(
     because the spec has nowhere to declare a genre — absent, the package declares none
     rather than inventing one.
     """
-    arc = next((a for a in spec.get("arcs", []) if a["id"] == arc_id), None)
+    arcs = spec.get("arcs") or []
+    arc = next((a for a in arcs if a.get("id") == arc_id), None)
+    if arc is None and arcs:
+        # SAY WHICH IDS EXIST. A wrong id used to sail through here as `arc = None`, produce a
+        # package with no chapters, and fail three layers later as "there is nothing to link" —
+        # which names neither the cause nor the fix. Live in the 2026-07-29 dogfood: the spec's ids
+        # are `arc_01`/`arc_02` and the obvious guess, `arc_1`, is wrong. Nothing anywhere listed
+        # them, so the only way to find out was to query the artifact by hand.
+        available = ", ".join(str(a.get("id")) for a in arcs if a.get("id"))
+        raise ValueError(
+            f"no arc {arc_id!r} in this spec — it has: {available}. "
+            f"(Ids are the spec's own, not positional; `arc_1` and `arc_01` are different.)"
+        )
     arc_events = [e for e in spec.get("events", []) if e.get("arc_id") == arc_id]
 
     glossary_seeds: list[dict[str, Any]] = []
@@ -98,7 +110,11 @@ def compile_artifacts(
     # `summary` carries what they actually said about the arc in prose ("this is not a power arc; it
     # is a discovery-and-price arc"). That line is the single most load-bearing sentence in the
     # block — it is why they emphasised it — and it was going nowhere near the prompt.
-    premise_parts = [
+    # D-PLANFORGE-NO-PREMISE-KIND — the BOOK's premise, ahead of the arc's. Without it the passes
+    # only ever saw "Arc: <title> / Theme: …": the story's own premise had no kind, so it compiled
+    # into `mechanics` and was read as a law the story must obey.
+    book_premise = [str(x) for x in (spec.get("charter", {}).get("premise_notes") or []) if x]
+    premise_parts = [f"Premise: {p}" for p in book_premise[:6]] + [
         f"Arc: {arc['title']}" if arc else arc_id,
         f"Theme: {arc['theme']}" if arc and arc.get("theme") else "",
         f"Summary: {arc['summary']}" if arc and arc.get("summary") else "",
@@ -141,6 +157,15 @@ def compile_artifacts(
         ],
         "genre_tags": list(genre_tags or []),
         "chapters": chapters,
+        # THE AUTHOR'S UNPLACED WORDS. The kind matcher is advisory (see
+        # `ingest.SECTION_KIND_MAP`) and on a corpus it was not fitted to it recovers one kind out
+        # of nine and gets that one wrong. When it is wrong the structured extractors above produce
+        # nothing — and before this the paragraphs were simply gone, deleted by a regex that did not
+        # recognise a heading.
+        #
+        # They arrive as raw text on purpose. The passes read words; only the extractors need
+        # labels, and a label this matcher guessed is exactly what must not be trusted.
+        "author_notes": spec.get("author_notes") or [],
     }
 
     # `planner_state_init` and `working_memory_charter` were emitted here and read by NOTHING

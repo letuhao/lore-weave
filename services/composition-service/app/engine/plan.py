@@ -42,14 +42,10 @@ from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.adaptive_k import adaptive_k
 from app.engine.critic import parse_critique_json
+from app.engine.llm_json import call_json, enum_of
 
 logger = logging.getLogger(__name__)
 
-# Disable hidden thinking on reasoning-model planners (mirrors select.py).
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 _L2_CONCURRENCY = 4  # bounded chapter fan-out (don't open C calls at once)
 
@@ -156,6 +152,22 @@ def parse_chapter_map(
     """Apply the model's beat/intent assignments onto the existing chapters by
     index. Every chapter is returned (no drop — an omitted/invalid row keeps
     beat_role=None, intent=''). Only valid beat keys are accepted."""
+    # An EMPTY vocabulary is not a strict filter, it is a broken one: `beat in beat_keys` is then
+    # false for every beat the model returned, so all 10 chapters come back `beat_role=None`,
+    # `unmapped_beats` filters down to `[]`, and `shape_tension_curve` collapses to one neutral run
+    # — a flat ramp that reads as deliberate pacing. The checkpoint then reports a perfectly
+    # healthy arc while 100% of the model's structural output has been discarded.
+    #
+    # That is not hypothetical: it is exactly what this track found on the dogfood book (A0), and
+    # artifact 019f9d2f still stores its 50,52,55…72 curve. The root cause was fixed upstream, but
+    # nothing at THIS layer ever said the vocabulary was empty, so any future caller that gets it
+    # wrong reproduces the whole failure in silence. Absent ≠ zero — say it.
+    if not beat_keys:
+        logger.warning(
+            "parse_chapter_map: the beat vocabulary is EMPTY — every chapter will come back "
+            "unassigned and the tension curve will be a flat default ramp. This is a degraded "
+            "parse, not a story with no beats (%d chapter(s) affected).", len(chapters),
+        )
     obj = parse_critique_json(content) or {}
     by_index: dict[int, dict[str, Any]] = {}
     for row in obj.get("chapters") or []:
@@ -372,12 +384,32 @@ def parse_chapter_exit(content: str) -> ChapterExitState | None:
 
 def render_story_so_far(
     prev_exit: ChapterExitState | None, used_advances: list[str], *, max_advances: int = 24,
+    prev_last_scene: tuple[str, str] | None = None,
 ) -> str:
     """Build the threaded conditioning block: the PREVIOUS chapter's full exit state
     (fine-grained backbone) + the cumulative list of developments already spent (the
     coarse global anti-repeat signal). Empty string when there is nothing to thread
-    (chapter 1), which switches the L2 prompt back to the non-threaded shape."""
+    (chapter 1), which switches the L2 prompt back to the non-threaded shape.
+
+    `prev_last_scene` — (title, synopsis) of the scene the previous chapter ENDED on.
+
+    Everything else here is chapter-GRAINED: exit state summarises where the chapter left the
+    characters and world, and `advances` lists developments at the same altitude. None of it tells
+    the planner what the previous chapter's final SCENE actually dramatised, so the model opened the
+    next chapter by re-enacting it — technically continuing from the state, while replaying the beat.
+    `self_heal`'s first-ever run reported exactly that five times on one arc (CH03 S1 repeating
+    CH02 S2, CH04←CH03, CH05←CH04, CH08←CH07, CH09←CH08): a systematic seam, not an occasional slip.
+    Naming the scene is what makes "start AFTER this" a checkable instruction rather than a vibe.
+    """
     parts: list[str] = []
+    if prev_last_scene is not None:
+        title, synopsis = prev_last_scene
+        if str(title).strip() or str(synopsis).strip():
+            parts.append(
+                "THE PREVIOUS CHAPTER ENDED ON THIS SCENE — your first scene must begin AFTER it "
+                "and must NOT re-stage it (no second version of this moment, no recap of it as "
+                f"action):\n  {str(title).strip()} — {str(synopsis).strip()[:400]}"
+            )
     if prev_exit is not None and not prev_exit.is_empty():
         if prev_exit.characters:
             parts.append(f"Characters: {prev_exit.characters}")
@@ -397,29 +429,59 @@ async def _llm_json(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     system: str, user: str, max_tokens: int, trace_id: str | None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    schema: dict[str, Any] | None = None, schema_name: str = "decompose",
 ) -> str | None:
     """One blocking chat completion returning the raw content, or None on
-    error / non-completion / empty (the caller degrades)."""
-    try:
-        job = await llm.submit_and_wait(
-            user_id=user_id, operation="chat", model_source=model_source, model_ref=model_ref,
-            input={
-                "messages": [{"role": "system", "content": system},
-                             {"role": "user", "content": user}],
-                "response_format": {"type": "text"}, "temperature": 0.4,
-                "max_tokens": max_tokens, **_NO_THINK,
+    error / non-completion / empty (the caller degrades).
+
+    `schema` is enforced by the DECODER where the provider supports it (see `engine/llm_json.py`),
+    and falls back to free-form where it does not — so it can only ever add constraint, never remove
+    a code path the caller already relies on."""
+    return await call_json(
+        llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        max_tokens=max_tokens, schema=schema, schema_name=schema_name, temperature=0.4,
+        job_meta={"usage_purpose": "prose_plan", "extractor": "decompose"},
+        trace_id=trace_id, cancel_check=cancel_check,
+    )
+
+
+def chapter_map_schema(beat_keys: set[str], n_chapters: int) -> dict[str, Any] | None:
+    """The beat assignment, with the book's OWN beat vocabulary as a decoder-enforced enum.
+
+    This is the highest-value site in the service for enforcement. `parse_chapter_map` accepts a beat
+    only if it is in `beat_keys` and silently drops anything else — which is exactly how
+    D-PLANFORGE-BEATS-UNWIRED discarded 100% of the model's structural output while the checkpoint
+    reported a healthy arc. An enum makes the invalid beat unemittable rather than emitted-and-lost.
+
+    `None` when the vocabulary is empty: a closed set with nothing in it is not a constraint, it is
+    an unsatisfiable grammar, and the empty-vocabulary case already has its own loud warning."""
+    if not beat_keys:
+        return None
+    return {
+        "type": "object",
+        "properties": {
+            "chapters": {
+                "type": "array", "minItems": 1, "maxItems": max(1, n_chapters),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "index": {"type": "integer", "minimum": 0},
+                        "beat": enum_of(sorted(beat_keys)),
+                        "intent": {"type": "string"},
+                    },
+                    "required": ["index", "beat", "intent"],
+                    # CLOSED, and not merely for tidiness: a grammar cannot stop early in a valid
+                    # place, so an open shape that invites extra fields turns a tight token budget
+                    # into guaranteed-invalid output (live-observed as an unterminated string at a
+                    # too-small budget). `parse_chapter_map` reads exactly these three fields, so
+                    # anything else is generation spent on something nobody will read.
+                    "additionalProperties": False,
+                },
             },
-            job_meta={"usage_purpose": "prose_plan", "extractor": "decompose"}, trace_id=trace_id,
-            cancel_check=cancel_check,
-        )
-    except LLMError as exc:
-        logger.warning("decompose LLM error: %s", exc)
-        return None
-    if job.status != "completed":
-        logger.info("decompose status=%s → degraded", job.status)
-        return None
-    content = extract_judge_content(job.result)
-    return content if content.strip() else None
+        },
+        "required": ["chapters"],
+    }
 
 
 async def decompose(
@@ -491,7 +553,9 @@ async def decompose(
     sys1, usr1 = build_chapter_map_messages(premise, beats, chapters, source_language)
     l1 = await _llm_json(llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
                          system=sys1, user=usr1, max_tokens=l1_max_tokens, trace_id=trace_id,
-                         cancel_check=cancel_check)
+                         cancel_check=cancel_check,
+                         schema=chapter_map_schema(beat_keys, len(chapters)),
+                         schema_name="chapter_map")
     if l1 is not None:
         mapped, unmapped = parse_chapter_map(l1, chapters, beat_keys)
     else:
@@ -587,7 +651,7 @@ async def decompose(
         sel = await select_motif_for_chapter(
             ch, retriever,
             book_id=book_id, project_id=project_id, caller_id=UUID(str(user_id)),
-            genre_tags=genre_tags or [], language=source_language,
+            genre_tags=genre_tags or [], display_language=source_language,
             prev_effects=prev_effects,
             min_score=motif_min_score, high_threshold=high_threshold,
             connective_floor_margin=motif_connective_floor_margin,

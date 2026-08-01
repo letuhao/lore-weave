@@ -229,6 +229,7 @@
   "actionConfirm": {
     "label": "ยืนยันการดำเนินการ",
     "batch_count": "{{count}} รายการ",
+    "warning": "โปรดตรวจสอบการเปลี่ยนแปลงนี้ก่อนดำเนินการ",
     "warning_destructive": "นี่เป็นการดำเนินการที่ลบข้อมูลและส่งผลต่อเนื่อง — โปรดยืนยัน",
     "destructive_skipped": "การดำเนินการที่ลบข้อมูล {{count}} รายการจะถูกข้ามไป เว้นแต่คุณจะเปิดใช้งานด้านบน",
     "confirm": "ยืนยัน",
@@ -242,8 +243,7 @@
     "cancelled": "ยกเลิกแล้ว",
     "reprice": "ราคาเพิ่มขึ้นเป็น {{cost}} ตั้งแต่มีการประเมินไว้ — โปรดส่งคำขอใหม่อีกครั้งเพื่อยืนยันราคาใหม่",
     "reprice_title": "ราคาเปลี่ยนไป — ไม่ได้ดำเนินการ",
-    "reprice_detail": "ประเมินไว้ {{old}} ปัจจุบันคือ {{new}} ยังไม่มีการใช้จ่ายเกิดขึ้น — โปรดส่งคำขอใหม่อีกครั้งเพื่อยืนยันราคาใหม่",
-    "warning": "โปรดตรวจสอบการเปลี่ยนแปลงนี้ก่อนดำเนินการ"
+    "reprice_detail": "ประเมินไว้ {{old}} ปัจจุบันคือ {{new}} ยังไม่มีการใช้จ่ายเกิดขึ้น — โปรดส่งคำขอใหม่อีกครั้งเพื่อยืนยันราคาใหม่"
   },
   "batchConfirm": {
     "title": "ยืนยัน {{count}} การดำเนินการในขั้นตอนเดียว",
@@ -339,14 +339,11 @@
   "settings": {
     "title": "การตั้งค่าเซสชัน",
     "model": "โมเดล",
-    "system_prompt": "System Prompt",
     "prompt_placeholder": "กำหนดบทบาท บุคลิกภาพ หรือคำสั่งเฉพาะให้ AI...",
     "gen_params": "พารามิเตอร์การสร้าง",
     "max_tokens": "โทเคนสูงสุด",
-    "temperature": "Temperature",
     "temp_min": "0 (แม่นยำ)",
     "temp_max": "2 (สร้างสรรค์)",
-    "top_p": "Top P",
     "topp_min": "0 (แคบ)",
     "topp_max": "1 (หลากหลาย)",
     "default_mode": "โหมดเริ่มต้น",
@@ -358,7 +355,10 @@
     "yes": "ใช่",
     "no": "ไม่ใช่",
     "reset": "รีเซ็ตเป็นค่าเริ่มต้น",
-    "save_failed": "บันทึกไม่สำเร็จ: {{error}}"
+    "save_failed": "บันทึกไม่สำเร็จ: {{error}}",
+    "system_prompt": "คำสั่งระบบ",
+    "temperature": "อุณหภูมิ",
+    "top_p": "Top P"
   },
   "session_toast": {
     "create_failed": "สร้างแชทไม่สำเร็จ: {{error}}",
@@ -376,11 +376,11 @@
     "approve_once": "อนุมัติครั้งเดียว",
     "always_allow": "อนุญาตเสมอ",
     "deny": "ปฏิเสธ",
-    "never_allow": "Never allow",
     "approved": "อนุมัติแล้ว — กำลังดำเนินการ ✓",
     "always_allowed": "อนุญาตเสมอแล้ว — กำลังดำเนินการ ✓",
     "denied": "ปฏิเสธแล้ว",
-    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
+    "never_allowed": "ไม่อนุญาตโดยเด็ดขาด — คุณสามารถยกเลิกการตั้งค่านี้ได้ที่ การตั้งค่า → การอนุญาต",
+    "never_allow": "ไม่อนุญาตเสมอ"
   },
   "rack": {
     "label": "บริบท",
@@ -415,20 +415,18 @@
       "composition": "การประพันธ์",
       "translation": "การแปล",
       "jobs": "งาน",
-      "ui": "UI",
       "chat": "แชท",
-      "other": "อื่นๆ"
+      "other": "อื่นๆ",
+      "ui": "UI"
     }
   },
   "inspector": {
-    "title": "Agent runtime",
     "pinned": "เครื่องมือที่ปักหมุด",
-    "hot": "Hot seed",
     "activated": "เปิดใช้งานแล้ว",
     "skills": "ทักษะ",
     "last_search": "การค้นหา find_tools ล่าสุด",
     "advertised": "โฆษณา",
-    "advertised_sizes": "core {{core}} · frontend {{frontend}} · activated {{activated}}",
+    "advertised_sizes": "แกนหลัก {{core}} · ส่วนหน้า {{frontend}} · เปิดใช้งานแล้ว {{activated}}",
     "trail": "เส้นทางเฟส",
     "phase": {
       "idle": "ว่าง",
@@ -437,7 +435,9 @@
       "discovering": "กำลังค้นหา…",
       "activated": "เปิดใช้งานแล้ว",
       "tool_running": "กำลังใช้เครื่องมือ"
-    }
+    },
+    "title": "Agent runtime",
+    "hot": "เมล็ดพันธุ์ยอดนิยม"
   },
   "presets": {
     "custom": "กำหนดเอง",

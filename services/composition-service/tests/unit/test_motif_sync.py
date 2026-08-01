@@ -141,7 +141,10 @@ def ctx(monkeypatch):
 def test_app_builds_and_router_wired():
     """Importing app.main must not raise and the sync routes must be registered."""
     from app.main import app
-    paths = {r.path for r in app.routes}
+    # FastAPI 0.139 stopped flattening include_router into `app.routes` — see
+    # loreweave_obs.routes. `{r.path for r in app.routes}` now raises on the wrapper.
+    from loreweave_obs.routes import route_paths
+    paths = route_paths(app)
     assert "/v1/composition/motifs/{motif_id}/upstream-diff" in paths
     assert "/v1/composition/motifs/{motif_id}/sync" in paths
 

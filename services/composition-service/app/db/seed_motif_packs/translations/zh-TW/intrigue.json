@@ -1,0 +1,334 @@
+{
+  "intrigue.double_agent_reveal": {
+    "beats": {
+      "insider_acts": {
+        "intent": "內部成員對該人士深信不疑",
+        "label": "信任者的行動"
+      },
+      "note": {
+        "intent": "情報洩漏的精準度已非巧合所能解釋",
+        "label": "察覺微小的矛盾"
+      },
+      "trap": {
+        "intent": "投放誘餌式的虛假秘密",
+        "label": "設下確認陷阱"
+      },
+      "unmask": {
+        "intent": "確認內鬼身分並使其倒戈",
+        "label": "揭穿並反向掌控"
+      }
+    },
+    "effects": [
+      "內鬼身分被揭穿，隨即被收編或清除",
+      "家族或組織內部的信任結構被重新洗牌"
+    ],
+    "emotion_target": "懸疑",
+    "examples": [
+      "一場過於精確、不像是巧合的情報洩露；一個設下的假情報陷阱，足以證實誰在傳遞消息——以及消息傳向了誰。"
+    ],
+    "name": "雙面間諜揭露",
+    "preconditions": [
+      "一場過於精確的情報洩露，暗示一名值得信賴的內部人士已遭收買"
+    ],
+    "roles": {
+      "confidant": {
+        "constraints": [
+          "協助佈下誘餌"
+        ],
+        "label": "親信"
+      },
+      "mole": {
+        "constraints": [
+          "受人信任的內部人士"
+        ],
+        "label": "內鬼"
+      },
+      "protagonist": {
+        "constraints": [
+          "正靜靜地追查洩密源頭"
+        ],
+        "label": "懷疑者"
+      }
+    },
+    "summary": "情報洩漏的精準度已非巧合所能解釋；透過投放誘餌式的虛假秘密，足以證實誰在傳遞消息——以及對象是誰——進而反過來掌控這名內鬼。"
+  },
+  "intrigue.feigned_alliance": {
+    "beats": {
+      "betray": {
+        "intent": "在獲利最豐的時刻背棄盟約",
+        "label": "在轉折點背叛"
+      },
+      "offer": {
+        "intent": "提議一個盟友會接受的盟約",
+        "label": "提出同盟"
+      },
+      "realign": {
+        "intent": "將背叛轉化為新的立場優勢",
+        "label": "重新站隊"
+      },
+      "rely": {
+        "intent": "盟友投入資源或信任",
+        "label": "盟友產生依賴"
+      },
+      "share": {
+        "intent": "揭露足以讓人深信不疑的資訊",
+        "label": "分享部分真相"
+      }
+    },
+    "effects": [
+      "盟友在局勢最有利的轉折點被拋棄",
+      "策劃者藉此取得主導地位"
+    ],
+    "emotion_target": "緊張感",
+    "examples": [
+      "一份真摯的盟約，一個足以建立信任的共同秘密——直到背叛能帶來利益的那一刻為止。"
+    ],
+    "name": "虛假同盟",
+    "preconditions": [
+      "策劃者與目標之間存在一個看似合理的共同目標"
+    ],
+    "roles": {
+      "advantage": {
+        "constraints": [
+          "背叛所獲得的戰利品"
+        ],
+        "label": "追求的利益"
+      },
+      "false_ally": {
+        "constraints": [
+          "全然信賴這份盟約"
+        ],
+        "label": "受騙的盟友"
+      },
+      "schemer": {
+        "constraints": [
+          "提出一份虛假的盟約"
+        ],
+        "label": "策劃者"
+      }
+    },
+    "summary": "一份真誠的盟約與一個足以建立信任的共同秘密，直到轉折點來臨，背叛成為獲利的最佳時機。"
+  },
+  "intrigue.loyalty_test_trap": {
+    "beats": {
+      "act": {
+        "intent": "針對揭露的真相採取行動",
+        "label": "獎賞或清洗"
+      },
+      "observe": {
+        "intent": "注視誰會咬下誘餌",
+        "label": "觀察反應"
+      },
+      "stage": {
+        "intent": "設置一個帶有誘餌的機會",
+        "label": "佈下誘惑"
+      },
+      "verdict": {
+        "intent": "測試最終定奪信任或背叛",
+        "label": "忠誠的判定"
+      }
+    },
+    "effects": [
+      "受試者的真實忠誠度被揭露",
+      "掌權者據此給予賞賜或進行清洗"
+    ],
+    "emotion_target": "懸疑",
+    "examples": [
+      "一扇看似敞開的誘人門扉，實則是一場試煉；誰會踏入其中，將揭示觀察者所渴求的真相。"
+    ],
+    "name": "忠誠測試陷阱",
+    "preconditions": [
+      "掌權者懷疑存在隱藏的背叛行為"
+    ],
+    "roles": {
+      "loyalty_proof": {
+        "constraints": [
+          "測試所榨取的代價"
+        ],
+        "label": "忠誠的證明"
+      },
+      "power_holder": {
+        "constraints": [
+          "佈下誘惑的局"
+        ],
+        "label": "掌控者"
+      },
+      "suspect": {
+        "constraints": [
+          "受試者"
+        ],
+        "label": "被懷疑的叛徒"
+      }
+    },
+    "summary": "一扇看似敞開的誘人之門，實則是一場試煉；踏入其中的人，將揭示觀察者渴求的真相。"
+  },
+  "intrigue.planted_evidence_scheme": {
+    "beats": {
+      "act": {
+        "intent": "受害者落入陷阱，深信不疑",
+        "label": "受害者基於錯誤認知而行動"
+      },
+      "bait": {
+        "intent": "引誘受害者做出反應",
+        "label": "誘使受害者行動"
+      },
+      "counter": {
+        "intent": "事態的餘波被引導至對策劃者有利的方向",
+        "label": "反擊"
+      },
+      "plant": {
+        "intent": "將偽造的證據安置在必然會被發現的位置",
+        "label": "佈下偽證"
+      },
+      "reveal": {
+        "intent": "「證據」浮出水面，策劃者毫髮無傷",
+        "label": "可抵賴的揭露"
+      }
+    },
+    "effects": [
+      "受害者因虛假理由而名譽掃地或遭到定罪",
+      "策劃者的真面目隱藏在幕後"
+    ],
+    "emotion_target": "恐懼",
+    "examples": [
+      "一份偽造的帳目被悄悄放置在競爭對手會發現並「揭發」的地方——使其直接踏入那場將其推向毀滅的陷阱。"
+    ],
+    "name": "栽贓陷阱構架",
+    "preconditions": [
+      "策劃者能夠放置足以令權威信任的證據"
+    ],
+    "roles": {
+      "agent": {
+        "constraints": [
+          "在不知情的情況下傳遞誘餌"
+        ],
+        "label": "無意識的代理人"
+      },
+      "authority": {
+        "constraints": [
+          "根據顯而易見的證據進行判斷"
+        ],
+        "label": "裁決權威"
+      },
+      "schemer": {
+        "constraints": [
+          "佈下偽造的證據"
+        ],
+        "label": "策劃者"
+      },
+      "victim": {
+        "constraints": [
+          "基於錯誤認知而行動"
+        ],
+        "label": "目標受害者"
+      }
+    },
+    "summary": "將偽造的證據置於競爭對手必然會發現並「揭發」的地方，藉此誘使受害者基於錯誤認知採取行動，進而落入一個無法追溯真相的陷阱。"
+  },
+  "intrigue.scapegoat_substitution": {
+    "beats": {
+      "frame": {
+        "intent": "挑選一個易於指責的替罪羊",
+        "label": "栽贓弱者"
+      },
+      "must_pin": {
+        "intent": "罪名必須由某人承擔",
+        "label": "罪名必須落實"
+      },
+      "steer": {
+        "intent": "將調查引向替罪羊",
+        "label": "引導證據"
+      },
+      "walk_free": {
+        "intent": "真正的罪魁禍首逃脫了追查",
+        "label": "真兇逍遙法外"
+      }
+    },
+    "effects": [
+      "替罪羔羊承擔了罪名",
+      "真正的幕後黑手逃脫了責任"
+    ],
+    "emotion_target": "恐懼",
+    "examples": [
+      "當責任必須有人承擔時，高明的手法會確保罪名落在他人身上。"
+    ],
+    "name": "替罪羊轉移",
+    "preconditions": [
+      "一件罪行必須有人承擔，且真正的幕後黑手必須隱匿行蹤"
+    ],
+    "roles": {
+      "investigators": {
+        "constraints": [
+          "被引導至錯誤的目標"
+        ],
+        "label": "調查者"
+      },
+      "scapegoat": {
+        "constraints": [
+          "地位較低且易受指責的對象"
+        ],
+        "label": "替罪羊"
+      },
+      "schemer": {
+        "constraints": [
+          "真正的幕後黑手"
+        ],
+        "label": "策劃者"
+      }
+    },
+    "summary": "當罪名必須有人承擔時，高明的手法會確保責任落在無辜或地位較低的人身上，讓真正的幕後黑手逍遙法外。"
+  },
+  "intrigue.whisper_campaign": {
+    "beats": {
+      "isolate": {
+        "intent": "目標失去地位與聲望",
+        "label": "目標被孤立"
+      },
+      "seed": {
+        "intent": "植入一個單一的疑慮",
+        "label": "播下流言"
+      },
+      "spread": {
+        "intent": "疑慮在不知情的人口中不斷重覆",
+        "label": "流言擴散"
+      },
+      "withdraw": {
+        "intent": "目標的庇護者退出了",
+        "label": "贊助者撤回支持"
+      }
+    },
+    "effects": [
+      "目標陷入孤立並失去了贊助人",
+      "謠言的真正源頭始終隱匿"
+    ],
+    "emotion_target": "不安",
+    "examples": [
+      "一個被刻意植入的疑慮，在不知情的人口中不斷傳播，直到目標孤立無援。"
+    ],
+    "name": "流言攻勢",
+    "preconditions": [
+      "目標仰賴於贊助人或朝廷的青睞"
+    ],
+    "roles": {
+      "court": {
+        "constraints": [
+          "在無意間傳播流言"
+        ],
+        "label": "朝廷或董事會"
+      },
+      "schemer": {
+        "constraints": [
+          "編造流言的源頭"
+        ],
+        "label": "策劃者"
+      },
+      "target": {
+        "constraints": [
+          "因流言而陷入孤立"
+        ],
+        "label": "目標"
+      }
+    },
+    "summary": "一顆被刻意植入的疑慮，在不知情的人口中不斷傳播，最終使目標陷入孤立，直到其背後的贊助者撤回支持。"
+  }
+}

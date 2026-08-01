@@ -77,10 +77,10 @@
     "first": "На первую страницу"
   },
   "live": {
-    "on": "● live",
-    "onShort": "live",
     "reconnecting": "переподключение…",
-    "off": "offline"
+    "on": "● в эфире",
+    "onShort": "в эфире",
+    "off": "не в сети"
   },
   "controls": {
     "pause": "Пауза",
@@ -113,7 +113,6 @@
     "costSoFar": "Затраты на данный момент",
     "tokensIn": "Входящие токены",
     "tokensOut": "Исходящие токены",
-    "bestEffort": "best-effort",
     "models": "Модели",
     "parameters": "Параметры",
     "parametersHint": "динамические, из объекта параметров задания",
@@ -127,7 +126,8 @@
     "copied": "ID задания скопирован.",
     "copyFailed": "Не удалось скопировать.",
     "activity": "Активность (live)",
-    "errorTitle": "Ошибка"
+    "errorTitle": "Ошибка",
+    "bestEffort": "максимально возможный"
   },
   "activity": {
     "created": "Создано",

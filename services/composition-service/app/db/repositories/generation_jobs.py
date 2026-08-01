@@ -71,7 +71,10 @@ _PROMOTED_SCENE_PROSE_KIND = "promoted_scene_prose"
 #: `created_by`. Keep this list HERE (in the writer), never in the DDL CHECK: a new
 #: Work-less op must not need a migration (the
 #: `migration-check-constraint-must-backfill-all-historical-blocks` trap).
-UNBOUND_OPERATIONS = frozenset({"mine_motifs", "analyze_reference"})
+#: `translate_library` joins them: a motif/arc library is the USER's, not a book's — the
+#: job names ids and has no Work to hang on even when the targets are a book's shared
+#: tier (the book_id in its input is a tenancy filter, not a Work binding).
+UNBOUND_OPERATIONS = frozenset({"mine_motifs", "analyze_reference", "translate_library"})
 
 
 def _jsonb(value: dict[str, Any] | None) -> str | None:
@@ -496,6 +499,14 @@ class GenerationJobsRepo:
         ⚠ STRICTLY POSITION-BOUNDED (spoiler-safety, /review-impl H1): only scenes
         BEFORE the current one — a scene must never see its own future. Latest job
         per node (DISTINCT ON + created_at DESC). Empty text is filtered out.
+
+        ⚠ ARCHIVED-EXCLUDED (D-ARCHIVED-SCENE-PROSE-LEAK): a soft-deleted scene is not
+        part of the story, and this file had no `is_archived` filter anywhere. Live on
+        the Mị Đế book: five scenes were archived and rewritten, and the reinjection then
+        reported *"74 paragraph(s) from 8 prior scene(s)"* for a five-scene chapter — it
+        was feeding the DELETED drafts back in. That is how a discarded ending reappeared
+        in a freshly written scene, and it looks exactly like the model repeating itself.
+        Deleting a scene must actually remove it from what the next draft can see.
         Scope: INTRA-chapter only (`o.chapter_id`) — cross-chapter context comes
         from the canon/timeline KG lenses, not here. Package tenancy (25 PM-3):
         project_id filtered on BOTH the job AND the joined node (the kinds-bug
@@ -509,6 +520,10 @@ class GenerationJobsRepo:
             WHERE j.project_id = $1
               AND o.project_id = $1
               AND o.chapter_id = $2 AND o.kind = 'scene'
+              -- D-ARCHIVED-SCENE-PROSE-LEAK: a soft-DELETED scene is not part of
+              -- the story. Without this its prose is fed back as 'prior context'
+              -- and stitched into the published chapter. See the docstrings.
+              AND NOT o.is_archived
               AND o.story_order IS NOT NULL AND o.story_order < $3
               AND j.status = 'completed'
             ORDER BY o.id, j.created_at DESC
@@ -529,7 +544,10 @@ class GenerationJobsRepo:
         per draft so the persisted chapter carries scene markers). Unlike
         `prior_scene_drafts` there is NO upper position bound (we want the whole
         chapter's drafts to stitch). Latest job per node (DISTINCT ON +
-        created_at DESC); empty text filtered.
+        created_at DESC); empty text filtered; ARCHIVED SCENES EXCLUDED
+        (D-ARCHIVED-SCENE-PROSE-LEAK — this is the STITCH input, so without that filter
+        an author who deleted a scene and published the chapter would find the deleted
+        prose in the published text).
         Package tenancy (25 PM-3): project_id on BOTH the job AND the joined node."""
         query = """
         SELECT title, text FROM (
@@ -541,6 +559,10 @@ class GenerationJobsRepo:
             WHERE j.project_id = $1
               AND o.project_id = $1
               AND o.chapter_id = $2 AND o.kind = 'scene'
+              -- D-ARCHIVED-SCENE-PROSE-LEAK: a soft-DELETED scene is not part of
+              -- the story. Without this its prose is fed back as 'prior context'
+              -- and stitched into the published chapter. See the docstrings.
+              AND NOT o.is_archived
               AND o.story_order IS NOT NULL
               AND j.status = 'completed'
             ORDER BY o.id, j.created_at DESC
@@ -571,6 +593,10 @@ class GenerationJobsRepo:
             WHERE j.project_id = $1
               AND o.project_id = $1
               AND o.chapter_id = $2 AND o.kind = 'scene'
+              -- D-ARCHIVED-SCENE-PROSE-LEAK: a soft-DELETED scene is not part of
+              -- the story. Without this its prose is fed back as 'prior context'
+              -- and stitched into the published chapter. See the docstrings.
+              AND NOT o.is_archived
               AND o.story_order IS NOT NULL
               AND j.status = 'completed'
             ORDER BY o.id, j.created_at DESC

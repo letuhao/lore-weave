@@ -76,6 +76,49 @@ describe('MotifEditor', () => {
     expect((screen.getByTestId('motif-editor-name') as HTMLInputElement).value).toBe('Editing…');
   });
 
+  // ── F3: the SHARED book-tier edit (D-MOTIF-ADOPT-BOOK-COLLAB-TIER) ──────────────────────
+  //
+  // The backend has supported a collaborator editing a book's shared motif since the tier
+  // shipped; the FE never routed to it. Two things have to be right, and the second is the one
+  // that is easy to miss: the read a collaborator gets is REDACTED (`examples` arrives as `[]`,
+  // indistinguishable from empty), so echoing the whole object back would wipe the owner's
+  // source prose — content this caller was never allowed to see.
+
+  const SHARED: Motif = {
+    ...MOTIF,
+    owner_user_id: null,          // the B-3 redaction nulls it on a foreign row
+    book_id: 'bk1', book_shared: true,
+    examples: [],                 // redacted to empty — NOT actually empty on the server
+  };
+
+  it('a collaborator edit routes through ?book_id= — without it the server 404s on ownership', async () => {
+    const patch = vi.spyOn(motifApi, 'patch').mockResolvedValue({ ...SHARED, version: 8 });
+    wrap(<Harness motif={SHARED} />);
+    fireEvent.change(screen.getByTestId('motif-editor-name'), { target: { value: 'Collab edit' } });
+    fireEvent.click(screen.getByTestId('motif-editor-save'));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(patch.mock.calls[0][4]).toBe('bk1');
+  });
+
+  it('does NOT send `examples` back on a redacted row — it would wipe prose it never received', async () => {
+    const patch = vi.spyOn(motifApi, 'patch').mockResolvedValue({ ...SHARED, version: 8 });
+    wrap(<Harness motif={SHARED} />);
+    fireEvent.change(screen.getByTestId('motif-editor-name'), { target: { value: 'Collab edit' } });
+    fireEvent.click(screen.getByTestId('motif-editor-save'));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(patch.mock.calls[0][1]).not.toHaveProperty('examples');
+  });
+
+  it('my OWN motif still sends examples and no book_id — the guard is scoped to the redaction', async () => {
+    const patch = vi.spyOn(motifApi, 'patch').mockResolvedValue({ ...MOTIF, version: 8 });
+    wrap(<Harness />);
+    fireEvent.change(screen.getByTestId('motif-editor-name'), { target: { value: 'Mine' } });
+    fireEvent.click(screen.getByTestId('motif-editor-save'));
+    await waitFor(() => expect(patch).toHaveBeenCalled());
+    expect(patch.mock.calls[0][1]).toHaveProperty('examples');
+    expect(patch.mock.calls[0][4]).toBeFalsy();
+  });
+
   it('surfaces a 412 conflict instead of clobbering', async () => {
     vi.spyOn(motifApi, 'patch').mockRejectedValue(Object.assign(new Error('conflict'), { status: 412 }));
     wrap(<Harness />);

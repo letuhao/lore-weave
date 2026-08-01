@@ -108,7 +108,7 @@ export type ArcDecompileResult = {
 export type ArcExtractArgs = {
   code: string;
   name: string;
-  language?: string;
+  display_language?: string;
   visibility?: 'private' | 'unlisted';
 };
 

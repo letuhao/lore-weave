@@ -1,0 +1,450 @@
+{
+  "wuxia.contested_manual": {
+    "beats": {
+      "blood": {
+        "intent": "pertarungan diselesaikan dengan kekerasan dengan pengorbanan yang jauh melampaui nilai hadiahnya",
+        "label": "Darah demi kertas"
+      },
+      "converge": {
+        "intent": "faksi-faksi dengan klaim yang saling bersaing tiba di tempat yang sama",
+        "label": "Semua orang berdatangan"
+      },
+      "surface": {
+        "intent": "kabar mengenai risalah tersebut sampai ke telinga dunia persilatan",
+        "label": "Kitab muncul ke permukaan"
+      },
+      "unread": {
+        "intent": "pemenang mendapati teks tersebut tidak dapat digunakan tanpa hal-hal yang diasumsikan di dalamnya",
+        "label": "Memiliki bukanlah menguasai"
+      }
+    },
+    "effects": [
+      "pemegangnya kini menjadi sasaran, bukan lagi pemilik",
+      "prasyarat sejati untuk teknik tersebut telah menjadi masalah baru"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Sebelas orang tewas demi separuh bagian teks itu, dan pria yang berhasil membawanya pergi tidak mampu membaca aksara yang digunakan penulisnya."
+    ],
+    "name": "Kitab Suci yang Diperebutkan",
+    "preconditions": [
+      "dunia persilatan di mana sebuah teknik memberikan kedudukan yang nyata"
+    ],
+    "roles": {
+      "factions": {
+        "constraints": [
+          "masing-masing memiliki klaim yang sah"
+        ],
+        "label": "faksi-faksi yang datang mengerumuni"
+      },
+      "jianghu": {
+        "constraints": [
+          "akan menghakimi bagaimana kitab itu diperoleh"
+        ],
+        "label": "dunia persilatan yang lebih luas"
+      },
+      "manual": {
+        "constraints": [
+          "tidak lengkap atau bersifat bersyarat"
+        ],
+        "label": "risalah bela diri"
+      },
+      "seeker": {
+        "constraints": [
+          "tidak memiliki landasan dasar yang diasumsikan oleh teks tersebut"
+        ],
+        "label": "sang pemegang kitab"
+      }
+    },
+    "summary": "Setengah gulungan kitab muncul di sebuah penginapan atau dari bungkusan seorang penjarah makam, dan setiap aliran yang pernah mengeklaim sebagai keturunan penulisnya segera berbondong-bondong menuju jalan yang sama — karena perdebatan ini sebenarnya bukan tentang lembaran kertasnya, melainkan tentang garis keturunan siapa yang paling sah. Darah tumpah demi selembar kertas. Siapa pun yang berhasil membawanya pergi akan menyadari bahwa teks tersebut ditulis untuk raga yang dilatih dengan cara yang sama seperti murid-murid sang penulis, dan sekadar membacanya tidaklah sama dengan menguasainya."
+  },
+  "wuxia.escort_under_watch": {
+    "beats": {
+      "ambush": {
+        "intent": "serangan terjadi di tempat dan waktu yang sudah diprediksi",
+        "label": "Penyergapan sesuai jadwal"
+      },
+      "charge": {
+        "intent": "tanggung jawab atas pengiriman yang aman telah diberikan dan diterima",
+        "label": "Tugas diterima"
+      },
+      "deliver": {
+        "intent": "muatan tiba, namun dibayar dengan sesuatu yang lebih berharga bagi sang pengawal",
+        "label": "Tiba dengan pengorbanan"
+      },
+      "watched": {
+        "intent": "menjadi jelas bahwa rute tersebut telah dikompromikan sebelum keberangkatan",
+        "label": "Jalanan telah terjamah"
+      }
+    },
+    "effects": [
+      "janji telah ditepati, namun ada hal lain yang telah hilang",
+      "siapa yang membocorkan rute tersebut kini menjadi pertanyaan besar"
+    ],
+    "emotion_target": "tekad-yang-kelam",
+    "examples": [
+      "Mereka tahu jeram mana yang akan dilewati, kira-kira jam berapa, dan satu-satunya hal yang tersisa untuk diputuskan adalah apa yang rela ia tinggalkan di tepi sungai."
+    ],
+    "name": "Muatan yang Harus Tiba",
+    "preconditions": [
+      "sebuah muatan yang rute dan nilainya telah diketahui oleh pihak-pihak yang berkepentingan"
+    ],
+    "roles": {
+      "cargo": {
+        "constraints": [
+          "tidak dapat membela diri sendiri"
+        ],
+        "label": "apa yang harus tiba"
+      },
+      "consignor": {
+        "constraints": [
+          "tidak mengungkapkan segalanya"
+        ],
+        "label": "pihak yang mempercayakan muatan"
+      },
+      "escort": {
+        "constraints": [
+          "telah memberikan janji setia"
+        ],
+        "label": "pihak yang bertanggung jawab atas pengiriman"
+      },
+      "watchers": {
+        "constraints": [
+          "sudah mengetahui rutenya"
+        ],
+        "label": "mereka yang menunggu di jalan"
+      }
+    },
+    "summary": "Sesuatu harus dipindahkan dari titik ini ke titik sana — sebuah peti, seorang saksi, seorang pengantin, atau sebuah peti mati — menyusuri jalan yang rutenya telah diketahui oleh semua pihak yang berkepentingan. Penyergapan bukanlah sebuah kejutan melainkan sebuah jadwal yang sudah pasti, dan keberhasilan pengiriman hanya dapat dicapai dengan membayar menggunakan kepingan harga yang paling tidak sanggup dibayar oleh sang pengawal."
+  },
+  "wuxia.forbidden_shortcut": {
+    "beats": {
+      "offer": {
+        "intent": "seseorang yang jujur mengenai efeknya menyodorkan kitab yang telah dibakar itu ke hadapan sang praktisi",
+        "label": "Sebuah kitab terlarang ditawarkan"
+      },
+      "price": {
+        "intent": "perubahan tersebut menjadi nyata bagi para praktisi lain dan aliran ortodoks pun mencoret namanya",
+        "label": "Tubuh membacanya sebelum kata-kata sempat berucap"
+      },
+      "take": {
+        "intent": "metode iblis tersebut dipelajari dan memberikan hasil tepat seperti yang dijanjikan",
+        "label": "Dipraktikkan secara sembunyi-sembunyi"
+      },
+      "wall": {
+        "intent": "apa yang diajarkan sang guru tidak lagi cukup untuk menghadapi apa yang akan datang",
+        "label": "Jalan aliran sendiri telah menemui jalan buntu"
+      }
+    },
+    "effects": [
+      "kemampuan telah benar-benar meningkat dan tidak dapat ditarik kembali",
+      "sebuah harga kini mulai terakumulasi yang pada akhirnya dapat dilihat oleh orang lain"
+    ],
+    "emotion_target": "kengerian",
+    "examples": [
+      "Semuanya berjalan persis seperti yang dikatakan lelaki tua itu. Butuh dua musim dingin sebelum ada orang yang menyadari bahwa ia tidak lagi merasakan dingin."
+    ],
+    "name": "Metode yang Tak Lagi Dipraktikkan Siapa Pun",
+    "preconditions": [
+      "seorang praktisi yang terbentur dinding yang tidak dapat ditembus oleh jalan ortodoks"
+    ],
+    "roles": {
+      "method": {
+        "constraints": [
+          "bekerja tepat seperti yang diiklankan"
+        ],
+        "label": "metode terlarang"
+      },
+      "offerer": {
+        "constraints": [
+          "tidak berbohong tentang efeknya, hanya menyembunyikan harganya"
+        ],
+        "label": "sang penawar"
+      },
+      "practitioner": {
+        "constraints": [
+          "telah benar-benar kehabisan jalan ortodoks"
+        ],
+        "label": "sang pengembara di ambang keputusasaan"
+      }
+    },
+    "summary": "Sebuah kitab terlarang dari suatu aliran — jenis kitab yang dibakar oleh sekte-sekte lurus namun masih dibicarakan dalam bisikan — ditawarkan oleh seseorang yang tidak berbohong tentang kegunaannya. Kitab ini bekerja tepat seperti yang dijanjikan. Namun, harganya tidak diukur dengan tingkatan kultivasi: tubuh sang praktisi berubah sedemikian rupa hingga praktisi lain dapat membacanya dari seberang ruangan, sekte-sekte ortodoks yang melatih mereka akan mencoret nama mereka, dan sang praktisi akhirnya terjerumus ke sisi iblis dari garis batas yang tak pernah berniat mereka seberangi."
+  },
+  "wuxia.inherited_feud": {
+    "beats": {
+      "break": {
+        "intent": "sang pewaris harus memilih antara yang mati atau yang hidup",
+        "label": "Melanjutkan siklus atau memutuskannya"
+      },
+      "inherit": {
+        "intent": "perseteruan diwariskan bersamaan dengan jabatan dan senjata",
+        "label": "Dendam diwariskan"
+      },
+      "origin": {
+        "intent": "akar permasalahan ditelusuri dan ternyata tidak sebanding dengan daftar kematian yang ada",
+        "label": "Kesalahan asal ditemukan"
+      },
+      "side": {
+        "intent": "sebuah insiden membuat sikap netral menjadi mustahil",
+        "label": "Terpaksa memihak"
+      }
+    },
+    "effects": [
+      "permusuhan tersebut akan diperbarui dengan kesadaran penuh atau ditolak secara terbuka",
+      "sang pewaris menjadi asing dari salah satu pihak di keluarganya sendiri"
+    ],
+    "emotion_target": "melankolis",
+    "examples": [
+      "Empat generasi orang-orang mati, dan di dasar segalanya hanyalah sengketa tentang sebuah sumur yang telah mengering jauh sebelum mereka semua lahir."
+    ],
+    "name": "Dendam yang Lebih Tua dari Pemiliknya",
+    "preconditions": [
+      "permusuhan lama yang kembali berkobar, yang asal-usulnya tak ada satu pun orang yang masih hidup yang menyaksikannya"
+    ],
+    "roles": {
+      "elders": {
+        "constraints": [
+          "percaya bahwa mereka sedang menjaga amanah dari para leluhur"
+        ],
+        "label": "mereka yang menjaga dendam tetap hidup"
+      },
+      "inheritor": {
+        "constraints": [
+          "tidak memilih pihak tempat ia dilahirkan"
+        ],
+        "label": "sang pewaris dendam"
+      },
+      "wrong": {
+        "constraints": [
+          "lebih kecil atau lebih tua daripada yang dituntut oleh perseteruan tersebut"
+        ],
+        "label": "kesalahan asal"
+      }
+    },
+    "summary": "Sebuah perseteruan diwariskan melalui bilah pedang — dua klan, dua perguruan, dua keluarga yang telah saling membantai selama waktu yang tak lagi mampu diingat oleh siapa pun yang masih hidup. Terpaksa memihak, sang pewaris mencari akar dari kesalahan masa lalu dan mendapati bahwa luka itu terlalu kecil untuk dibayar dengan nyawa atau justru telah lama terbalaskan, sehingga ia harus memilih antara melanjutkan siklus atau mencari kebenaran."
+  },
+  "wuxia.recognition_between_equals": {
+    "beats": {
+      "meet": {
+        "intent": "sebuah pertemuan antara pihak-pihak yang tidak memiliki keterikatan satu sama lain",
+        "label": "Dua orang asing bertemu"
+      },
+      "recognize": {
+        "intent": "masing-masing menemukan sosok yang setara untuk pertama kalinya setelah bertahun-tahun",
+        "label": "Pengakuan sebelum nama"
+      },
+      "swear": {
+        "intent": "terjalin sebuah ikatan yang melampaui kesetiaan lama",
+        "label": "Bersumpah di balik segelas anggur"
+      },
+      "test": {
+        "intent": "kemampuan diukur sebagai sebuah ujian, bukan pertengkaran",
+        "label": "Pertukaran tanpa niat jahat"
+      }
+    },
+    "effects": [
+      "muncul sebuah kesetiaan baru yang tidak terikat pada garis faksi mana pun",
+      "keduanya memiliki hak atas satu sama lain yang tidak diakui oleh keluarga mereka sendiri"
+    ],
+    "emotion_target": "kehangatan",
+    "examples": [
+      "Tak satu pun dari mereka menanyakan nama lawan hingga cawan ketiga, dan pada saat itu, apa pun jawabannya sudah tidak lagi penting."
+    ],
+    "name": "Dua Orang Asing dengan Kemampuan Setara",
+    "preconditions": [
+      "dua pihak dengan kemahiran yang setara tanpa ikatan sebelumnya, masing-masing telah melihat kemampuan luar biasa pada lawan yang tidak dipamerkan"
+    ],
+    "roles": {
+      "first": {
+        "constraints": [
+          "menguji tanpa niat jahat"
+        ],
+        "label": "sang pemula"
+      },
+      "second": {
+        "constraints": [
+          "membalas dengan cara yang sama"
+        ],
+        "label": "orang asing yang sepadan"
+      },
+      "world": {
+        "constraints": [
+          "pada akhirnya akan menguji ikatan ini"
+        ],
+        "label": "kesetiaan tempat mereka dilahirkan"
+      }
+    },
+    "summary": "Dua orang yang tidak memiliki utang budi satu sama lain saling mengadu ketangkasan atau kata-kata sebagai sebuah ujian, bukan pertengkaran; masing-masing menemukan lawan pertama setelah bertahun-tahun yang tidak perlu dihadapi dengan kehati-hatian. Pengakuan muncul sebelum nama-nama terucap, dan ikatan yang terjalin di balik segelas anggur setelahnya akan bertahan lebih lama daripada kesetiaan mana pun yang pernah mereka miliki sejak lahir."
+  },
+  "wuxia.retired_blade_recalled": {
+    "beats": {
+      "arrive": {
+        "intent": "sesuatu dari masa lalu datang dan tidak dapat ditolak",
+        "label": "Masa lalu di ambang pintu"
+      },
+      "quiet": {
+        "intent": "seorang mantan pendekar hidup tanpa dikenali dan merasa damai",
+        "label": "Kehidupan yang tenang"
+      },
+      "raise": {
+        "intent": "pedang kembali dihunus karena pilihan lain jauh lebih buruk",
+        "label": "Sumpah yang terlanggar"
+      },
+      "recognized": {
+        "intent": "jurus yang digunakan teridentifikasi dan kehidupan tenang pun berakhir",
+        "label": "Dunia persilatan mengenali sang pendekar"
+      }
+    },
+    "effects": [
+      "permusuhan lama yang telah melampaui asal-usulnya kini bangkit kembali, dan mereka tahu di mana ia bersembunyi",
+      "identitas palsu tidak lagi mampu melindungi mereka"
+    ],
+    "emotion_target": "melankolis",
+    "examples": [
+      "Ia telah menjadi pengemudi perahu selama sembilan tahun, namun hanya butuh satu malam dan satu tebasan untuk membuat tiga provinsi menyadari siapa dirinya yang sebenarnya."
+    ],
+    "name": "Sang Penurun Pedang",
+    "preconditions": [
+      "masa lalu yang telah ditinggalkan namun tetap dapat dikenali orang lain melalui teknik bela diri"
+    ],
+    "roles": {
+      "arrival": {
+        "constraints": [
+          "tidak dapat diabaikan"
+        ],
+        "label": "masa lalu di ambang pintu"
+      },
+      "jianghu": {
+        "constraints": [
+          "mengingat teknik bela diri tersebut"
+        ],
+        "label": "dunia yang mengenali sang ahli"
+      },
+      "quiet_life": {
+        "constraints": [
+          "sangat dihargai secara tulus"
+        ],
+        "label": "kehidupan yang terancam"
+      },
+      "retired": {
+        "constraints": [
+          "telah bersumpah dan sungguh-sungguh"
+        ],
+        "label": "sang penurun pedang"
+      }
+    },
+    "summary": "Seseorang yang telah bersumpah meninggalkan dunia persilatan hidup tenang dengan identitas baru saat masa lalu datang mengetuk pintu — musuh lama, mantan murid, atau hutang yang menuntut balas. Sumpah itu dilanggar bukan demi kejayaan, melainkan karena pilihan lain jauh lebih buruk, dan dunia persilatan akan mengenali tangan yang kembali terhunus hanya dalam hitungan hari."
+  },
+  "wuxia.righteous_debt": {
+    "beats": {
+      "aid": {
+        "intent": "nasi dibagikan atau nama dibela, sebelum ada yang tahu siapa pemiliknya",
+        "label": "Seorang pengelana di jalanan ditolong"
+      },
+      "bind": {
+        "intent": "setelah sekali membela orang ini, sang penolong tidak boleh lagi berpaling",
+        "label": "Kode etik dunia persilatan mengikat sang penolong"
+      },
+      "call": {
+        "intent": "membela orang asing tersebut kini mengorbankan kepentingan pribadi sang penolong",
+        "label": "Penagihan datang pada saat yang paling genting"
+      },
+      "choose": {
+        "intent": "pilihan itu dibuat di tempat di mana para pengelana akan menceritakannya ke setiap kedai di sepanjang jalan",
+        "label": "Dibayar dengan reputasi, di hadapan orang-orang asing"
+      }
+    },
+    "effects": [
+      "kedudukan sang penolong di dunia persilatan ditentukan oleh pilihan tersebut",
+      "sebuah kepentingan nyata telah dikorbankan atau sebuah kode etik telah dilanggar"
+    ],
+    "emotion_target": "keteguhan hati",
+    "examples": [
+      "Ia pernah berbagi nasi dengan seorang pengemis di tengah hujan, dan sang pengemis kembali mengenakan sutra dengan pengawalan, tepat di saat yang paling tidak tepat."
+    ],
+    "name": "Hutang yang Dituntut Kode Etik",
+    "preconditions": [
+      "dunia persilatan di mana reputasi adalah mata uang yang mengikat"
+    ],
+    "roles": {
+      "debtor": {
+        "constraints": [
+          "ternyata memiliki beban yang berat bagi pemberi hutang"
+        ],
+        "label": "pihak yang ditolong"
+      },
+      "helper": {
+        "constraints": [
+          "bertindak sebelum mengetahui siapa sosok tersebut"
+        ],
+        "label": "sang penolong tanpa pamrih"
+      },
+      "interest": {
+        "constraints": [
+          "bersifat nyata dan substansial"
+        ],
+        "label": "harga dari sebuah kehormatan"
+      },
+      "witnesses": {
+        "constraints": [
+          "akan mengingat pilihan tersebut"
+        ],
+        "label": "saksi dari dunia persilatan"
+      }
+    },
+    "summary": "Seorang pengelana di jalanan ditolong tanpa pamrih — semangkuk nasi yang dibagikan di penginapan, luka yang dibalut, atau nama yang dibela di hadapan hakim — dan kode etik dunia persilatan mengikat sang PENOLONG, bukan yang ditolong: setelah sekali membela orang ini, ia tidak boleh lagi berpaling. Penagihan hutang itu datang pada saat yang paling genting, dan ia dibayar dengan reputasi di mata orang asing yang akan menceritakan pilihan tersebut di setiap penginapan dari sini hingga perbatasan provinsi."
+  },
+  "wuxia.tavern_provocation": {
+    "beats": {
+      "exchange": {
+        "intent": "satu demonstrasi singkat mengakhiri segala tanya",
+        "label": "Satu pertukaran menyelesaikannya"
+      },
+      "restraint": {
+        "intent": "pihak yang terhina menimbang apa konsekuensi dari sebuah jawaban",
+        "label": "Pengendalian diri diuji"
+      },
+      "slight": {
+        "intent": "sebuah ejekan dilakukan di tempat di mana hal itu tidak bisa diabaikan secara pribadi",
+        "label": "Penghinaan dilontarkan"
+      },
+      "travel": {
+        "intent": "kabar tersebut tersebar dan mengubah reputasi kedua belah pihak",
+        "label": "Cerita itu menyebar"
+      }
+    },
+    "effects": [
+      "kedudukan kedua belah pihak telah bergeser akibat kabar yang beredar, bukan karena hasil akhir pertikaian",
+      "seseorang di ruangan itu kini mengetahui sebuah kemampuan yang sebelumnya tidak pernah diperlihatkan"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Gelas itu tidak jatuh. Tak seorang pun di ruangan itu bisa mengatakan siapa yang bergerak setelahnya, mereka hanya tahu bahwa anggur itu tidak tumpah."
+    ],
+    "name": "Penghinaan di Kedai Umum",
+    "preconditions": [
+      "sebuah tempat umum di mana reputasi dibangun atau dihancurkan melalui desas-desus"
+    ],
+    "roles": {
+      "insulted": {
+        "constraints": [
+          "harus mempertimbangkan antara pengendalian diri dan reputasi"
+        ],
+        "label": "pihak yang terhina"
+      },
+      "provoker": {
+        "constraints": [
+          "sedang menguji, bukan sedang bertarung"
+        ],
+        "label": "pihak yang menghina"
+      },
+      "room": {
+        "constraints": [
+          "membawa cerita tersebut keluar ke khalayak luas"
+        ],
+        "label": "kerumunan yang akan menceritakannya kembali"
+      }
+    },
+    "summary": "Sebuah penghinaan dilontarkan di ruangan yang penuh dengan orang-orang yang akan menyebarkan berita tersebut — sebuah nama diejek, sebuah perguruan dihina, atau sebuah cangkir sengaja disenggol hingga tumpah. Pengendalian diri diuji di hadapan saksi mata, satu pertukaran singkat menyelesaikannya, dan kabar tentang apa yang terjadi menyebar lebih cepat dan lebih jauh daripada yang diharapkan oleh kedua belah pihak."
+  }
+}

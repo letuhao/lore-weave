@@ -73,8 +73,8 @@
       "number": "Число",
       "date": "Дата",
       "tags": "Теги",
-      "url": "URL",
-      "boolean": "Да / Нет"
+      "boolean": "Да / Нет",
+      "url": "URL"
     }
   },
   "stdform": {

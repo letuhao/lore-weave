@@ -1,0 +1,486 @@
+{
+  "romance.confession_interrupted": {
+    "beats": {
+      "cost": {
+        "intent": "die Ereignisse entwickeln sich unter der Annahme, dass die Worte niemals wahr waren",
+        "label": "Der Preis des Schweigens"
+      },
+      "interrupt": {
+        "intent": "ein Ereignis mit echtem Vorrang reißt den Moment ab",
+        "label": "Etwas Dringenderes tritt ein"
+      },
+      "pocket": {
+        "intent": "das Geständnis wird aufgeschoben und der Augenblick kehrt nicht zurück",
+        "label": "Die Worte bleiben ungesagt"
+      },
+      "ready": {
+        "intent": "das Geständnis ist endlich gefasst und wird eingeleitet",
+        "label": "Die Worte sind bereit"
+      }
+    },
+    "effects": [
+      "das Unausgesprochene verzerrt nun jede darauffolgende Entscheidung",
+      "die nächste Gelegenheit, es zu sagen, wird teurer zu stehen kommen als diese hier"
+    ],
+    "emotion_target": "Sehnsucht",
+    "examples": [
+      "Er hatte gerade erst ihren Namen ausgesprochen, als der Bote durch die Tür stürmte; als der Raum wieder leer war, war sie bereits auf dem Weg."
+    ],
+    "name": "Die Worte, die nicht ankamen",
+    "preconditions": [
+      "ein Gefühl, das bereit ist, ausgesprochen zu werden"
+    ],
+    "roles": {
+      "interruption": {
+        "constraints": [
+          "ist im gegenwärtigen Moment legitim dringlicher"
+        ],
+        "label": "das, was stattdessen eintritt"
+      },
+      "listener": {
+        "constraints": [
+          "hätte geantwortet, wenn sie es gehört hätte"
+        ],
+        "label": "die Person, die es nicht hört"
+      },
+      "speaker": {
+        "constraints": [
+          "hat sich endlich dazu entschlossen, auszusprechen, was sie fühlt"
+        ],
+        "label": "die Person, die es gleich sagen will"
+      }
+    },
+    "summary": "Das Geständnis ist endlich bereit, der Augenblick ist endlich gekommen, doch dann tritt etwas dazwischen, das dringlicher ist – ein Ruf, eine Verletzung, ein Abschied, eine bereits im Umlauf befindliche Lüge – und das Unausgesprochene verschwindet wieder in der Tasche. Der Preis dafür bemisst sich an dem, was geschieht, während die Worte noch ungesagt im Raum stehen."
+  },
+  "romance.contract_bond": {
+    "beats": {
+      "admit": {
+        "intent": "die Fassade aufrechtzuerhalten, wird schmerzhafter als das Geständnis",
+        "label": "Die Wahrheit ist teurer als die Lüge"
+      },
+      "breach": {
+        "intent": "die Bedingungen werden in kleinen, privaten Nuancen verletzt, die keine der Parteien meldet",
+        "label": "Die Regeln geraten ins Wanken"
+      },
+      "rules": {
+        "intent": "explizite Regeln definieren, was die Verbindung nicht werden darf",
+        "label": "Die Bedingungen werden festgelegt"
+      },
+      "strike": {
+        "intent": "ein Bündnis wird aus offen transaktionalen Gründen geschlossen",
+        "label": "Der Handel wird besiegelt"
+      }
+    },
+    "effects": [
+      "der transaktionale Rahmen beschreibt nicht mehr das, was tatsächlich existiert",
+      "das Ende der Vereinbarung hat nun einen emotionalen Preis, den niemand vorhergesehen hat"
+    ],
+    "emotion_target": "Sehnsucht",
+    "examples": [
+      "Klausel vier besagte getrennte Zimmer; bis zum Winter konnten sich beide nicht mehr erinnern, in welcher Nacht sie aufgehört hatten, sie einzuhalten."
+    ],
+    "name": "Die Vereinbarung, die aufhört, eine zu sein",
+    "preconditions": [
+      "ein Druck, der eine liebeslose Bindung zur rationalen Wahl macht"
+    ],
+    "roles": {
+      "lead": {
+        "constraints": [
+          "geht sie aus einem klar benannten, nicht-romantischen Grund ein"
+        ],
+        "label": "die Partei, die die Vereinbarung benötigt"
+      },
+      "partner": {
+        "constraints": [
+          "hat seine eigenen Beweggründe für die Zustimmung"
+        ],
+        "label": "der Vertragspartner"
+      },
+      "pressure": {
+        "constraints": [
+          "macht eine Ablehnung kostspieliger als die Zustimmung"
+        ],
+        "label": "die Familie, die Schuld oder die Institution, die den Zwang ausübt"
+      },
+      "watchers": {
+        "constraints": [
+          "müssen davon überzeugt werden, dass sie echt ist"
+        ],
+        "label": "diejenigen, für die die Vereinbarung vollzogen wird"
+      }
+    },
+    "summary": "Ein Bündnis wird aus Gründen geschlossen, die rein sachlicher Natur sind – eine Schuld, ein Erbe, das Ansehen einer Familie, ein Visum oder ein Vertrag – und die Bedingungen werden unmissverständlich festgelegt, damit niemand sie mit etwas anderem verwechselt. Doch dann werden die Regeln verletzt, Klausel für Klausel, bis das Eingeständnis der Wahrheit teurer ist, als die Vereinbarung es jemals wert war."
+  },
+  "romance.forced_proximity": {
+    "beats": {
+      "crack": {
+        "intent": "ein unbewusster Moment offenbart den Menschen hinter der Fassade",
+        "label": "Das Fallen der Maske"
+      },
+      "friction": {
+        "intent": "die räumliche Nähe zwingt Irritationen und Differenzen ans Licht",
+        "label": "Reibung unter Zwang"
+      },
+      "intimacy": {
+        "intent": "eine Nähe, die niemand beabsichtigt hat, wird für beide unumgänglich",
+        "label": "Unfreiwillige Intimität"
+      },
+      "trapped": {
+        "intent": "ein äußerer Umstand entzieht die Möglichkeit des Verlassens",
+        "label": "Eingeschlossen sein"
+      }
+    },
+    "effects": [
+      "die Distanz zwischen ihnen lässt sich nicht länger durch bloße Gewohnheit aufrechterhalten",
+      "jeder hat einen Teil des anderen gesehen, ohne dass dieser es preisgegeben hat"
+    ],
+    "emotion_target": "Sehnsucht",
+    "examples": [
+      "Die Straße wird weggeschwemmt und der einzige Unterschlupf ist ein einziger Raum mit einer Lampe; in der dritten Nacht ist der Streit verstummt und niemand von beiden möchte erklären, warum."
+    ],
+    "name": "Erzwungene Nähe",
+    "preconditions": [
+      "zwei Personen, die aus einem bestimmten Grund Distanz wahren müssen"
+    ],
+    "roles": {
+      "circumstance": {
+        "constraints": [
+          "sind externer Natur und nicht auf das Handeln einer der Parteien zurückzuführen"
+        ],
+        "label": "die Umstände, die sie gefangen halten"
+      },
+      "lead": {
+        "constraints": [
+          "kann den gemeinsamen Raum nicht verlassen"
+        ],
+        "label": "die Perspektivfigur"
+      },
+      "other": {
+        "constraints": [
+          "ist der Grund, warum das Verlassen wichtig ist"
+        ],
+        "label": "die Gegenpartei"
+      }
+    },
+    "summary": "Zwei Menschen, die sich niemals freiwillig für die Gesellschaft des anderen entschieden hätten, sind in einem Raum ohne Ausweg gefangen – ein Sturm, ein gemeinsames Projekt, ein verschlossenes Haus, ein einziges Bett – und die Reibung des Unvermögens, zu fliehen, trägt die Schutzmauern nieder, bis eine unfreiwillige Intimität an die Oberfläche bricht, die niemand geplant hat und die beide nicht mehr ignorieren können."
+  },
+  "romance.misunderstanding_rift": {
+    "beats": {
+      "conclude": {
+        "intent": "das Fragment wird durch Angst statt durch Nachfragen vervollständigt",
+        "label": "Der falsche Schluss festigt sich"
+      },
+      "glimpse": {
+        "intent": "etwas Reales, aber Unvollständiges wird aus dem Kontext heraus beobachtet",
+        "label": "Die Teilwahrheit wird erblickt"
+      },
+      "silence": {
+        "intent": "Stolz verhindert das Aussprechen der Frage, bis die Distanz zur neuen Normalität wird",
+        "label": "Das Schweigen verhärtet sich"
+      },
+      "truth": {
+        "intent": "der fehlende Kontext trifft ein, zu spät, um ihn zu klären",
+        "label": "Das vollständige Bild offenbart sich"
+      }
+    },
+    "effects": [
+      "die Bindung zwischen ihnen bleibt ungesagt und unrepariert",
+      "Vertrauen muss nun mühsam neu aufgebaut werden, statt es einfach vorauszusetzen",
+      "die Gewohnheit, nicht nachzufragen, entpuppt sich als das eigentliche Versagen"
+    ],
+    "emotion_target": "Herzschmerz",
+    "examples": [
+      "Sie sieht den Ring in der Hand einer anderen Frau und wendet sich ab, noch bevor der Satz, der alles erklärt hätte, beendet ist."
+    ],
+    "name": "Das Verfestigen des Missverständnisses",
+    "preconditions": [
+      "eine Bindung, die stark genug ist, dass sich ein Irrtum schmerzhaft anfühlt"
+    ],
+    "roles": {
+      "accused": {
+        "constraints": [
+          "besitzt eine Erklärung, nach der niemand fragt"
+        ],
+        "label": "die missverstandene Person"
+      },
+      "fragment": {
+        "constraints": [
+          "ist wahrhaftig wahr und wahrhaftig unvollständig"
+        ],
+        "label": "das Teilbeweisstück"
+      },
+      "witness": {
+        "constraints": [
+          "zieht einen Schluss, ohne nachzufragen"
+        ],
+        "label": "die Person, die das Fragment sieht"
+      }
+    },
+    "summary": "Eine Person erblickt ein Fragment der Wahrheit — eine Umarmung, einen Brief, eine Zahlung — und zieht den Schluss, den dieses Fragment nahelegt. Stolz oder Angst verhindern, dass die Frage gestellt wird; das Schweigen verhärtet sich wie Zement, und bis das vollständige Bild erscheint, geht es bei dem entstandenen Schaden nicht mehr um das Missverständnis an sich, sondern um das, was das Schweigen bewiesen hat."
+  },
+  "romance.past_lover_returns": {
+    "beats": {
+      "choose": {
+        "intent": "die Vergangenheit wird ordentlich abgeschlossen oder die Gegenwart wird aufgegeben",
+        "label": "Abschließen oder wiederaufrollen"
+      },
+      "compare": {
+        "intent": "die Gegenwart wird an einer Erinnerung gemessen, auf die sie keine Antwort hat",
+        "label": "Der erzwungene Vergleich"
+      },
+      "name": {
+        "intent": "was nie wirklich beendet wurde, wird endlich laut ausgesprochen",
+        "label": "Das Unabgeschlossene wird beim Namen genannt"
+      },
+      "return": {
+        "intent": "eine frühere Bindung taucht ohne Vorwarnung wieder auf",
+        "label": "Die Vergangenheit tritt zurück in das Leben"
+      }
+    },
+    "effects": [
+      "die frühere Geschichte wird endgültig beendet, statt sie nur ruhen zu lassen",
+      "die gegenwärtige Bindung weiß genau, woran sie ist"
+    ],
+    "emotion_target": "Melancholie",
+    "examples": [
+      "Sieben Jahre lang und er bestellte ihren Tee immer noch genau so, wie sie ihn aufgehört hatte ihn zu trinken, und das – nicht die Entschuldigung – war es, was den Abend ruinierte."
+    ],
+    "name": "Die Rückkehr des Alten",
+    "preconditions": [
+      "eine frühere Bindung, die ohne Abschluss endete"
+    ],
+    "roles": {
+      "lead": {
+        "constraints": [
+          "hat die frühere Verbindung nie formell beendet"
+        ],
+        "label": "die Person in der Zerreißprobe"
+      },
+      "present": {
+        "constraints": [
+          "wird verglichen, ohne der Prüfung zugestimmt zu haben"
+        ],
+        "label": "die gegenwärtige Bindung"
+      },
+      "returner": {
+        "constraints": [
+          "trägt das ungelöste Ende in sich"
+        ],
+        "label": "die Person, die zurückkehrt"
+      }
+    },
+    "summary": "Eine frühere Bindung taucht wieder auf, während das Unabgeschlossene noch immer ungelöst im Raum steht; die gegenwärtige Beziehung wird an einer Erinnerung gemessen, der sie nie zugestimmt hat, in einem Wettbewerb anzutreten. Was hier wirklich auf dem Prüfstand steht, ist nicht die Frage nach der Bevorzugung, sondern ob die alte Geschichte jemals wirklich beendet wurde oder lediglich im Unklaren liegen blieb."
+  },
+  "romance.protective_sacrifice": {
+    "beats": {
+      "absorb": {
+        "intent": "der Beschützer übernimmt die Last und verbirgt die Tat",
+        "label": "Es wird in der Stille aufgenommen"
+      },
+      "discover": {
+        "intent": "der Geliebte erfährt, was und wann gezahlt wurde",
+        "label": "Das Verheimlichen bricht auf"
+      },
+      "reckon": {
+        "intent": "die geliebte Person muss Dankbarkeit und Zorn zugleich empfinden",
+        "label": "Hingabe und Verrat zugleich"
+      },
+      "threat": {
+        "intent": "ein realer Preis droht die falsche Person zu treffen",
+        "label": "Das Unheil richtet sich auf den Geliebten"
+      }
+    },
+    "effects": [
+      "eine unbezahlbare Schuld steht nun zwischen ihnen",
+      "die Neigung des Beschützers, Entscheidungen im Alleingang zu treffen, wird zur Belastungsprobe"
+    ],
+    "emotion_target": "Herzschmerz",
+    "examples": [
+      "Die Gläubiger kamen im Frühling nicht mehr; es dauerte zwei Jahre, bis sie erfuhren, wessen Name ihren auf dem Schuldschein ersetzt hatte."
+    ],
+    "name": "Der Preis des Schweigens",
+    "preconditions": [
+      "eine Person ist bereit, ein Unheil abzufangen, das eigentlich der anderen gelten sollte"
+    ],
+    "roles": {
+      "beloved": {
+        "constraints": [
+          "wird nicht eingeweiht und hätte die Opferung abgelehnt"
+        ],
+        "label": "derjenige, der geschützt wird"
+      },
+      "protector": {
+        "constraints": [
+          "verheimlicht die Zahlung"
+        ],
+        "label": "derjenige, der zahlt"
+      },
+      "threat": {
+        "constraints": [
+          "ist real und hätte den Geliebten getroffen"
+        ],
+        "label": "das aufgenommene Unheil"
+      }
+    },
+    "summary": "Unheil richtet sich gegen den Geliebten, doch der andere nimmt es stillschweigend auf – eine beglichene Schuld, ein geopferter Ruf, eine Wunde, die unter dem Ärmel verborgen bleibt, ein Name, der weggeschrieben wurde. Das Verheimlichen soll schützen, wirkt aber wie ein Entzug von Wahrheit, sodass die Entdeckung zugleich als Hingabe und als Verrat empfunden wird."
+  },
+  "romance.rival_forces_the_question": {
+    "beats": {
+      "claim": {
+        "intent": "ein Dritter verfolgt offen das, was die Hauptfigur als sicher vorausgesetzt hat",
+        "label": "Ein Rivale stellt seinen Anspruch"
+      },
+      "jealousy": {
+        "intent": "das Gefühl bricht hervor, bevor die Hauptfigur Worte dafür findet",
+        "label": "Die Eifersucht kommt zuerst"
+      },
+      "stake": {
+        "intent": "die Hauptfigur spricht ihr Bekenntnis entweder laut aus oder gibt durch Schweigen nach",
+        "label": "Sich bekennen oder die Chance verlieren"
+      },
+      "untenable": {
+        "intent": "das Schweigen ist nun selbst eine Antwort",
+        "label": "Die Unverbindlichkeit wird unerträglich"
+      }
+    },
+    "effects": [
+      "der Status der Beziehung ist nun eindeutig, ungeachtet des Ausgangs",
+      "die Anwesenheit des Rivalen hat das, was man als selbstverständlich betrachtete, dauerhaft verändert"
+    ],
+    "emotion_target": "Angst",
+    "examples": [
+      "Er hatte sie nie mit einem besonderen Namen angesprochen – bis es jemand anderes tat, an einem Tisch voller Menschen, und das Wort wie das Zuschlagen einer Tür nach ihm klang."
+    ],
+    "name": "Der Rivale, der die Entscheidung erzwingt",
+    "preconditions": [
+      "eine Bindung zwischen ihnen, die bisher nie beim Namen genannt wurde"
+    ],
+    "roles": {
+      "beloved": {
+        "constraints": [
+          "ist frei in ihrer Entscheidung"
+        ],
+        "label": "die Person, um die es geht"
+      },
+      "lead": {
+        "constraints": [
+          "hat sich auf Unverbindlichkeit verlassen"
+        ],
+        "label": "die Person, die es nie aussprechen musste"
+      },
+      "rival": {
+        "constraints": [
+          "ist eine ernsthafte Option, kein bloßes Hindernis"
+        ],
+        "label": "der konkurrierende Anspruchsteller"
+      }
+    },
+    "summary": "Ein Dritter beansprucht jemanden für sich, dessen Rolle im Leben der Hauptfigur bisher nie benannt werden musste. Der Eifersucht eilt dem Geständnis voraus, die behagliche Unverbindlichkeit wird unerträglich, und die Hauptfigur muss sich entweder lautstark zu ihrem Anspruch bekennen oder mitansehen, wie die Antwort von jemand anderem gegeben wird."
+  },
+  "romance.slow_thaw": {
+    "beats": {
+      "mercies": {
+        "intent": "wiederholte, stille Güte, die nichts zurückverlangt",
+        "label": "Kleine Gesten, unbemerkt"
+      },
+      "pressure": {
+        "intent": "eine Krise erzwingt eine Reaktion, bevor die Schutzmauer wieder hochgezogen werden kann",
+        "label": "Druck bricht die Abwehr"
+      },
+      "refusal": {
+        "intent": "die verschlossene Person weist Kontakt als Selbstverständlichkeit zurück",
+        "label": "Ablehnung als gefestigte Gewohnheit"
+      },
+      "warmth": {
+        "intent": "beide erkennen im Rückblick, wie weit das Tauwetter bereits fortgeschritten war",
+        "label": "Wie viel Boden bereits gewonnen wurde"
+      }
+    },
+    "effects": [
+      "die verschlossene Gruppe kann nun nicht mehr bloße Gleichgültigkeit behaupten",
+      "die Veränderung ist für Außenstehende, die sie früher kannten, sichtbar"
+    ],
+    "emotion_target": "Zärtlichkeit",
+    "examples": [
+      "Er hatte sich nie bei ihr für den Tee bedankt, und er hatte ihn nie kalt werden lassen – das war alles."
+    ],
+    "name": "Langsames Auftauen",
+    "preconditions": [
+      "eine Gruppe, deren Kälte eher ein Schutzschild als ein Urteil ist"
+    ],
+    "roles": {
+      "cold": {
+        "constraints": [
+          "lehnt aus Prinzip ab, nicht aus Abneigung"
+        ],
+        "label": "die verschlossene Person"
+      },
+      "pressure": {
+        "constraints": [
+          "erzwingt eine unbedachte Reaktion"
+        ],
+        "label": "der Druck, der den Wandel offenbart"
+      },
+      "warm": {
+        "constraints": [
+          "bietet an, ohne eine Anerkennung zu verlangen"
+        ],
+        "label": "die Person, die beharrlich gibt"
+      }
+    },
+    "summary": "Eine distanzierte oder verschlossene Person taut nicht durch große Gesten auf, sondern durch eine langsame Annäherung – durch die Summe kleiner, stiller Zuwendungen, die nie thematisiert werden und ohne Erwartung dargebracht werden, bis ein Moment echten Drucks offenbart, wie viel Boden man im Stillen bereits gewonnen hat. Der Handlungsbogen ergibt sich aus der Akkumulation unscheinbarer Güte; die Auflösung erfolgt retrospektiv."
+  },
+  "romance.status_gap": {
+    "beats": {
+      "attraction": {
+        "intent": "eine Verbindung entsteht dort, wo die Welt sie verbietet",
+        "label": "Bindung jenseits der Grenze"
+      },
+      "enforce": {
+        "intent": "die Familie oder die Institution versucht, sie zum Wohle der Beteiligten zu trennen",
+        "label": "Die Grenze wird verteidigt"
+      },
+      "pay": {
+        "intent": "Der Preis wird gezahlt, abgelehnt oder jemand anderes leistet ihn für sie",
+        "label": "Bezahlen oder Zerbrechen"
+      },
+      "price": {
+        "intent": "das, was genau aufgegeben werden muss, wird konkret benannt",
+        "label": "Der Preis des Überschreitens"
+      }
+    },
+    "effects": [
+      "einer oder beide haben etwas aufgegeben, das nicht wiedererlangt werden kann",
+      "die Autorität derjenigen, die die Grenze bewachen, ist in jedem Fall besiegelt"
+    ],
+    "emotion_target": "Sehnsucht",
+    "examples": [
+      "Ihr Vater verbot es ihr nicht; er legte lediglich dar, was eine Heirat unter ihrem Stand für ihre Brüder bedeuten würde, und überließ es ihr, die Rechnung selbst zu ziehen."
+    ],
+    "name": "Jenseits der Grenze",
+    "preconditions": [
+      "eine soziale Grenze, die mit realer Macht durchgesetzt wird"
+    ],
+    "roles": {
+      "guardians": {
+        "constraints": [
+          "handeln aus Pflichtgefühl oder Zuneigung, nicht aus Bosheit"
+        ],
+        "label": "die Hüter der Grenze"
+      },
+      "higher": {
+        "constraints": [
+          "ihre Stellung ist real und ihr Verzicht wäre kostspielig"
+        ],
+        "label": "die Person, die an ihre Position gebunden ist"
+      },
+      "lower": {
+        "constraints": [
+          "hat am meisten zu gewinnen, aber den geringsten sozialen Status"
+        ],
+        "label": "die Person mit dem geringsten materiellen Verlust"
+      }
+    },
+    "summary": "Eine Bindung entsteht über eine Grenze hinweg, die die Welt erzwingt — Rang, Clan, Reichtum, Kaste, Spezies, Fraktion oder die falsche Seite eines Krieges — und die Durchsetzung erfolgt durch Menschen, die es gut meinen. Die Liebenden müssen den Preis für das Überschreiten dieser Grenze in etwas Greifbarem bemessen: ein Erbe, eine Familie, ein Amt oder ein Leben."
+  }
+}

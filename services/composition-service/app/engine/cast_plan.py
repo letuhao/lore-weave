@@ -23,17 +23,14 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
-
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 
 @dataclass
@@ -47,14 +44,44 @@ class ProposedChar:
     is_new: bool = False         # True = invented here (not named in the premise) → a planned introduction
 
 
+#: A long-running book's roster can be large; the principals are what stop re-invention.
+_MAX_KNOWN_CAST = 40
+
+
 def build_propose_cast_messages(
     premise: str, source_language: str = "auto", genre_tags: list[str] | None = None,
+    known_cast: list[str] | None = None, canon: str = "",
 ) -> tuple[str, str]:
-    """(system, user). Language-/genre-aware; names + values in the story's language."""
+    """(system, user). Language-/genre-aware; names + values in the story's language.
+
+    E6 — `known_cast` and `canon` are what this pass was missing, and their absence was not a
+    quality nit but a correctness one:
+
+    · KNOWN_CAST. `is_new` used to mean "not named in the PREMISE". The premise is one arc's
+      summary, so for a book with an established cast every character it does not happen to
+      mention read as new — the planner proposed INTRODUCING people who have been on the page for
+      thirty chapters, and invented fresh names for them. Anchored to the book's actual roster
+      instead, `is_new` means what it says.
+    · CANON. `package["canon"]` (the charter's consistency anchors) was compiled on every run and
+      read by nobody — the one block the author wrote to say "these things are fixed" went nowhere
+      near the prompt.
+
+    Both are OPTIONAL: a brand-new book has no roster and may have no anchors, and that case must
+    stay exactly as it was rather than gain an empty section that reads as "there is no cast".
+    """
     lang = "" if source_language in ("", "auto") else (
         f" Write all names and values in the language with code '{source_language}'."
     )
     genre = f" Genre: {', '.join(genre_tags)}." if genre_tags else ""
+    # `is_new` is defined against whatever roster the model was actually GIVEN. With a known cast
+    # it means "not in the book"; without one there is nothing to compare to but the premise, and
+    # claiming otherwise would ask for a judgement the prompt does not support.
+    is_new_rule = (
+        'and "is_new" (true ONLY if you invented them — i.e. they are named neither in the '
+        'premise nor in the EXISTING CAST below). '
+        if known_cast else
+        'and "is_new" (true ONLY if you invented them — i.e. not named in the premise). '
+    )
     system = (
         "You are a story-bible architect designing the CAST for a novel from its premise. "
         "Do TWO things: (1) EXTRACT every character NAMED in the premise — with their role "
@@ -65,11 +92,25 @@ def build_propose_cast_messages(
         "For EACH character return a JSON object: "
         '"name", "role" (protagonist/antagonist/mentor/rival/ally/foil/...), "archetype", '
         '"traits" (a short list), "relationships" (ties to other cast), "summary" (one line), '
-        'and "is_new" (true ONLY if you invented them — i.e. not named in the premise). '
+        + is_new_rule +
         'Return ONLY a JSON array [{"name":...,"role":...,"archetype":...,"traits":[...],'
         '"relationships":...,"summary":...,"is_new":bool}]. No prose around it.' + lang
     )
-    return system, "PREMISE:\n\n" + premise
+    # The roster goes in the USER message beside the premise, not the system prompt: it is data
+    # about THIS book, not a rule about how to behave. Capped — a long-running book's cast can be
+    # large, and the point is to stop re-invention, which the principals already achieve.
+    parts = ["PREMISE:\n\n" + premise]
+    if known_cast:
+        parts.append(
+            "EXISTING CAST — these characters ALREADY EXIST in this book. Use their names exactly "
+            "as written, do NOT rename or re-invent them, and mark them is_new=false:\n"
+            + "\n".join(f"- {n}" for n in known_cast[:_MAX_KNOWN_CAST])
+        )
+    if canon.strip():
+        parts.append(
+            "CANON — established facts this arc must not contradict:\n" + canon.strip()[:1500]
+        )
+    return system, "\n\n".join(parts)
 
 
 def parse_cast(content: str) -> list[ProposedChar]:
@@ -157,12 +198,14 @@ def cast_attributes(c: ProposedChar) -> dict[str, str]:
 async def propose_cast(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     premise: str, source_language: str = "auto", genre_tags: list[str] | None = None,
-    max_tokens: int = 4000, trace_id: str | None = None,  # a full cast JSON is verbose — undersizing truncates the array → parse fails
+    known_cast: list[str] | None = None, canon: str = "",
+    max_tokens: int = max_tokens_for("propose_cast"), trace_id: str | None = None,  # a full cast JSON is verbose — undersizing truncates the array → parse fails
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[ProposedChar]:
     """Propose the cast (named + invented-supporting) from the premise. Returns [] on any
     LLM/parse failure (degrade-safe — the caller keeps the empty-roster path)."""
-    system, user = build_propose_cast_messages(premise, source_language, genre_tags)
+    system, user = build_propose_cast_messages(
+        premise, source_language, genre_tags, known_cast=known_cast, canon=canon)
     try:
         job = await llm.submit_and_wait(
             user_id=user_id, operation="chat", model_source=model_source, model_ref=model_ref,
@@ -170,7 +213,7 @@ async def propose_cast(
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
                 "response_format": {"type": "text"}, "temperature": 0.4,
-                "max_tokens": max_tokens, **_NO_THINK,
+                "max_tokens": max_tokens, **no_thinking_fields(),
             },
             job_meta={"usage_purpose": "prose_plan", "extractor": "propose_cast"}, trace_id=trace_id,
             cancel_check=cancel_check,

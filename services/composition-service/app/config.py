@@ -106,7 +106,30 @@ class Settings(BaseSettings):
     # (keeping the last N immediate paragraphs verbatim) so long chapters don't
     # blow the prompt budget. ~4 chars/token → 6000 chars ≈ 1500 tokens.
     pack_compress_recent_threshold_chars: int = 6000
+    #: LOWER BOUND on how much of the current chapter's prose stays VERBATIM — a floor, not a
+    #: cap. It used to be the whole policy ("keep the last 2 paragraphs, LLM-summarise the
+    #: rest"), which is why it is still counted in paragraphs; `pack_recent_floor_share` is what
+    #: actually governs now, and this only guarantees the immediately-preceding prose survives
+    #: even on a tiny budget.
     pack_compress_keep_immediate: int = 2
+    #: D-RECENT-FLOOR-COMPRESSED — the share of the pack budget the current chapter's
+    #: already-written prose may hold VERBATIM before any of it is compressed.
+    #:
+    #: Those scenes are not "history": they are the chapter being written right now, and their
+    #: exact wording is the constraint the next scene has to stay consistent with. Compressing
+    #: them is compressing the answer. Measured 2026-08-01 on a real 4-scene chapter: with the
+    #: old paragraph rule, scene 2 was summarised into a state ledger that recorded the
+    #: character it introduced as `Condition: Unknown` — dropping the gender — and scene 3 then
+    #: contradicted it ("He is the anchor" → "She's a Scribe") at the seam.
+    #:
+    #: 0.6 leaves room for canon/cast/beat/lore, which are protected and must not be evicted to
+    #: make space for prose. Overflow is compressed OLDEST-FIRST and REPORTED, never silently.
+    pack_recent_floor_share: float = 0.6
+    #: How many chapters back the D-PRIOR-CHAPTER-BLIND fallback reads when the knowledge
+    #: timeline is empty. 2 because the chapter immediately before carries almost all of the
+    #: continuity a new chapter needs, and each one costs a book-service read plus its share of
+    #: one compress call.
+    pack_prior_chapters: int = 2
 
     # L1b timeline RECENT-WINDOW (LOOM-32 /review-impl MED#1) — the knowledge
     # timeline endpoint orders event_order ASC + LIMIT, so an unbounded query deep
@@ -123,14 +146,35 @@ class Settings(BaseSettings):
     # co-write parity; autonomous long-form sets 'chapter' on the Work.
     composition_assembly_mode_default: str = "per_scene"
     # Output CEILINGS for the two chapter-level paths (cap the proportional
-    # plan-sizing below — a long chapter is one pass and needs room, but never
-    # beyond the request field's le=8192). chapter-gen/stitch size their max_tokens
-    # from the plan's scene count × chapter_gen_per_scene_tokens, clamped here.
-    chapter_gen_max_tokens: int = 8192
-    stitch_max_tokens: int = 8192
+    # plan-sizing below). chapter-gen/stitch size their max_tokens from the plan's
+    # scene count × chapter_gen_per_scene_tokens, clamped here.
+    #
+    # Raised 8192 → 32768 (2026-07-30). A ceiling on a DRAFTING call is a runaway
+    # guard, not a budget: `max_tokens` cannot make prose shorter, it can only stop it
+    # mid-sentence with the tokens already paid for. What should govern length is the
+    # LENGTH directive in the prompt, which the model weighs against the scene it is
+    # actually writing. 8192 was reachable by a real book — a 5-scene Vietnamese chapter
+    # at ~900 words each needs ~12k tokens before any thinking — so it was shaping
+    # output rather than guarding against runaways.
+    chapter_gen_max_tokens: int = 32768
+    stitch_max_tokens: int = 32768
     # Per-scene output budget for the proportional chapter/stitch sizing (so a
     # multi-scene chapter gets room instead of a flat cap that silently truncates).
-    chapter_gen_per_scene_tokens: int = 700
+    # Raised 700→1200 (2026-07-26): the logs showed a chapter cut off mid-scene
+    # (finish_reason=length, truncated=true) — and the longest NATURAL chapter (1608
+    # words / ~3 scenes) was already sitting at the old 3×700 ceiling, so any chapter
+    # that ran a little longer got chopped (a broken ending). 1200/scene gives a
+    # 3-scene chapter ~2700 words of headroom to finish naturally; chapter_gen_max_
+    # tokens still bounds a runaway.
+    #
+    # Raised 1200 → 3000 (2026-07-30): 1200 is an ENGLISH-shaped number. A word is not a
+    # token, and the ratio is not close to 1 outside Latin script — a 900-word Vietnamese
+    # scene is ~2300 tokens before any thinking, so 1200/scene truncated every non-English
+    # chapter by more than half. The per-SCENE path now derives its ceiling from
+    # `target_words` × a per-script ratio (`cowrite.scene_output_budget`); this flat
+    # per-scene figure is the chapter path's coarser equivalent and must at least clear
+    # the same case.
+    chapter_gen_per_scene_tokens: int = 3000
     # FD-1 / narrative_thread S2 — cap on NEW promise threads a single generated
     # passage may open, so a verbose detector can't flood the ledger. The pass
     # itself is per-Work opt-in via `work.settings["narrative_thread_enabled"]`.
@@ -294,6 +338,17 @@ class Settings(BaseSettings):
     authoring_critic_severe_score: int = 1
     authoring_critic_warn_score: int = 2
     authoring_critic_estimate_usd: float = 0.01
+    # D5b — autonomous critic remediation. On a 'severe' verdict the default is to
+    # PAUSE for a human (07S). But an UNATTENDED run (background, no human) never
+    # gets that review, so the flawed chapter ships and later chapters stack on it
+    # (the 2026-07-26 investigation: ch5 severe → whole arc shipped with it). When
+    # enabled, the driver first auto-REVISES (re-draft against the named violations
+    # + re-critique) up to max_attempts, and only pauses if it still can't clear
+    # 'severe'. Deploy CEILING (default off — human-in-loop stays the default);
+    # a run opts in via params.critic_auto_revise ⇒ effective = AND(ceiling, param).
+    # Each attempt is a full re-draft + re-critique (real cost) — hence bounded.
+    authoring_auto_revise_enabled: bool = False
+    authoring_auto_revise_max_attempts: int = 1
 
 
 settings = Settings()  # type: ignore[call-arg]

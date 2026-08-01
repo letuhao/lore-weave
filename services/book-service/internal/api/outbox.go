@@ -59,6 +59,39 @@ func emitBookLifecycleChanged(ctx context.Context, tx pgx.Tx, bookID uuid.UUID) 
 	})
 }
 
+// BookCreatedEvent fires when a NOVEL is created, so composition can provision its Work without the
+// author ever meeting the concept.
+//
+// WHY THIS EXISTS. A book had no composition Work until someone clicked a CTA that only lived on
+// gated panels a new author never opens (PlaceGraph / ReferenceShelf / StyleVoiceStudio). So the
+// Writing Studio offered "Chapter"/"Part" — write straight into the manuscript — with no signal that
+// plan/beats/scenes/quality existed at all. An author could write several chapters before finding
+// out the whole composition layer was never switched on. Dogfooded 2026-07-28 on a real book:
+// composition_work=0, outline_node=0, plan_run=0, and nothing on screen said so.
+//
+// A Work is two Postgres rows (a knowledge project + the work row) and no Neo4j — cheap enough to
+// provision unconditionally rather than make the author ask for it.
+//
+// PAYLOAD CARRIES `kind` ON PURPOSE. There is NO single book-insert chokepoint — four paths write
+// `books` (REST createBook, MCP book_create, diary provisioning, world-bible). The two NOVEL paths
+// emit; the policy for which kinds deserve a Work lives in the CONSUMER, so a future kind is one
+// consumer edit rather than a hunt through emit sites. `owner_user_id` rides along because the
+// consumer provisions on the owner's behalf with no request context to read it from.
+//
+// aggregate_type='book' — the same stream book.lifecycle_changed already uses, so the relay needs no
+// change and composition's existing book consumer already reads it.
+const BookCreatedEvent = "book.created"
+
+// emitBookCreated writes book.created into the caller's tx, atomic with the INSERT. Atomicity is
+// free here (same DB), and it means a book can never exist without its provisioning signal.
+func emitBookCreated(ctx context.Context, tx pgx.Tx, bookID, ownerID uuid.UUID, kind string) error {
+	return insertOutboxEventTyped(ctx, tx, "book", BookCreatedEvent, bookID, map[string]any{
+		"book_id":       bookID,
+		"owner_user_id": ownerID,
+		"kind":          kind,
+	})
+}
+
 // emitChapterLifecycleForBook emits ONE per-chapter event (chapter.trashed / chapter.deleted /
 // chapter.restored) for each chapter a BULK book lifecycle transition just moved, in the caller's tx.
 //

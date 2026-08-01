@@ -1,0 +1,379 @@
+{
+  "survival.mercy_at_the_door": {
+    "beats": {
+      "answer": {
+        "intent": "keputusan dibuat dalam tekanan masa",
+        "label": "Pintu dibuka atau tidak"
+      },
+      "ask": {
+        "intent": "seorang orang luar meminta izin masuk dengan cerita yang tidak dapat disahkan",
+        "label": "Seseorang meminta untuk masuk"
+      },
+      "consequence": {
+        "intent": "hasilnya ditanggung sepenuhnya oleh individu yang membuat keputusan",
+        "label": "Natijahnya ditanggung oleh si pembuat keputusan"
+      },
+      "weigh": {
+        "intent": "kedua-dua pilihan terbukti mempunyai alasan yang munasabah",
+        "label": "Belas kasihan lawan logik angka"
+      }
+    },
+    "effects": [
+      "tahap toleransi kumpulan terhadap orang asing kini ditentukan oleh peristiwa tersebut sebagai teladan",
+      "pembuat keputusan memikul beban akibat daripada hasil yang berlaku secara peribadi"
+    ],
+    "emotion_target": "kesengsaraan",
+    "examples": [
+      "Dia masih lagi bercakap di sebalik pintu ketika mereka mengundi, dan selepas itu tiada siapa yang dapat bersetuju tentang berapa lama suara itu telah kedengaran."
+    ],
+    "name": "Seseorang Meminta Masuk",
+    "preconditions": [
+      "sebuah tempat perlindungan yang kukuh dan seorang orang asing yang kisahnya tidak dapat disahkan dalam waktu yang singkat"
+    ],
+    "roles": {
+      "decider": {
+        "constraints": [
+          "mesti memilih sebelum mengetahui kebenaran"
+        ],
+        "label": "si penjawab pintu"
+      },
+      "inside": {
+        "constraints": [
+          "menanggung risiko dalam apa jua keadaan"
+        ],
+        "label": "mereka yang sudah berada di dalam"
+      },
+      "outsider": {
+        "constraints": [
+          "ceritanya tidak dapat disahkan dalam masa yang singkat"
+        ],
+        "label": "si peminta"
+      }
+    },
+    "summary": "Seorang orang luar meminta izin untuk masuk dengan sebuah cerita yang mungkin benar atau mungkin tidak, dan kedua-dua jawapannya mempunyai alasan yang kukuh: membuka pintu membahayakan semua orang, manakala menutupnya pula akan menyebabkan kematian seseorang yang sedang meminta bantuan. Pilihan ini dibuat dalam tekanan masa dengan maklumat yang tidak lengkap, dan natijahnya — walau apa pun keputusannya — akan ditanggung sepenuhnya oleh individu yang membuat keputusan tersebut."
+  },
+  "survival.not_enough_for_everyone": {
+    "beats": {
+      "allocate": {
+        "intent": "seseorang membuat keputusan, berdasarkan apa jua prinsip yang mampu dipertahankan",
+        "label": "Pembahagian dilakukan"
+      },
+      "count": {
+        "intent": "kekurangan itu ditetapkan sebagai satu fakta matematik",
+        "label": "Kiraan menunjukkan kekurangan"
+      },
+      "name": {
+        "intent": "abstrak menjadi nyata melalui individu tertentu",
+        "label": "Kekurangan itu mempunyai nama"
+      },
+      "remember": {
+        "intent": "keputusan itu menjadi satu hakikat kekal bagi kumpulan tersebut",
+        "label": "Mereka yang tersisih terus teringat"
+      }
+    },
+    "effects": [
+      "hierarki sebenar kumpulan itu kini terserlah di mata semua ahli",
+      "mereka yang tersisih kini mempunyai dendam yang mempunyai nama"
+    ],
+    "emotion_target": "keputusasaan",
+    "examples": [
+      "Hanya ada sembilan dos untuk sebelas orang, dan pertengkaran itu hanya mengambil masa empat minit, dan tiada siapa lagi yang pernah membicarakannya lagi."
+    ],
+    "name": "Tidak Cukup Untuk Semua",
+    "preconditions": [
+      "sumber yang boleh dikira dan jumlah tuntutan yang melebihi unit yang ada"
+    ],
+    "roles": {
+      "allocator": {
+        "constraints": [
+          "terpaksa hidup bersama mereka yang tersisih"
+        ],
+        "label": "si pembuat keputusan"
+      },
+      "excluded": {
+        "constraints": [
+          "hadir secara nyata dan mempunyai nama"
+        ],
+        "label": "mereka yang tidak mendapat bahagian"
+      },
+      "resource": {
+        "constraints": [
+          "boleh dikira dan jelas tidak mencukupi"
+        ],
+        "label": "sumber yang terhad"
+      }
+    },
+    "summary": "Sesuatu sumber yang menjadi penentu kelangsungan hidup — air, insulin, tempat duduk, peluru, bahan api — dikira dan didapati tidak mencukupi, dan kekurangan itu melibatkan nyawa manusia. Pembahagian dilakukan oleh mereka yang terpaksa terus hidup bersama selepas itu, dan apa yang kumpulan itu pelajari tentang diri mereka sendiri dalam saat genting tersebut akan meninggalkan kesan yang jauh lebih lama daripada sumber itu sendiri."
+  },
+  "survival.one_of_us_is_compromised": {
+    "beats": {
+      "sign": {
+        "intent": "muncul bukti bahawa salah seorang ahli kumpulan tidak lagi selamat",
+        "label": "Tanda muncul"
+      },
+      "suspect": {
+        "intent": "kumpulan tertumpu kepada individu yang paling mencurigakan dan bukannya pelaku sebenar",
+        "label": "Syak wasangka memilih sasaran"
+      },
+      "untestable": {
+        "intent": "tiada cara yang boleh dipercayai untuk mengenal pasti siapa pelakunya",
+        "label": "Ujian gagal membuktikan"
+      },
+      "wrong": {
+        "intent": "keputusan dilaksanakan dan kesilapannya mula nyata",
+        "label": "Keputusan yang salah memakan diri"
+      }
+    },
+    "effects": [
+      "kumpulan telah bertindak secara kekal berdasarkan sekadar tekaan",
+      "ancaman sebenar masih ada dan kini lebih sukar untuk dikesan"
+    ],
+    "emotion_target": "paranoia",
+    "examples": [
+      "Mereka memerhatikan gerak-geri tangan satu sama lain selama tiga hari, namun akhirnya, lelaki yang tidak pernah diperhatikan itulah yang tidak bangun dengan sempurna."
+    ],
+    "name": "Salah Seorang Daripada Kita Telah Hilang",
+    "preconditions": [
+      "ancaman yang bersembunyi di dalam kumpulan dan sukar untuk disahkan"
+    ],
+    "roles": {
+      "accused": {
+        "constraints": [
+          "kelihatan bersalah atas sebab yang tidak berkaitan dengan kebenaran"
+        ],
+        "label": "suspek yang paling munasabah"
+      },
+      "compromised": {
+        "constraints": [
+          "mungkin tidak menyedarinya sendiri"
+        ],
+        "label": "individu yang sebenarnya telah terancam"
+      },
+      "group": {
+        "constraints": [
+          "tidak dapat mengesahkan apa yang perlu diketahui"
+        ],
+        "label": "kumpulan yang perlu membuat keputusan"
+      }
+    },
+    "summary": "Seseorang dalam kumpulan telah dijangkiti, berubah, menjadi pembelot, atau tidak lagi selamat, manakala ujian yang sepatutnya membuktikannya adalah tidak boleh dipercayai, lambat, atau tidak wujud sama sekali. Syak wasangka mengambil alih tugas yang tidak mampu dilaksanakan oleh bukti; kumpulan tersebut menyerang individu yang paling mencurigakan dan bukannya pelaku sebenar, dan keputusan yang salah itu membawa kesan yang lebih buruk daripada ancaman asal."
+  },
+  "survival.relic_of_before": {
+    "beats": {
+      "reveal": {
+        "intent": "keputusan itu mendedahkan sejauh mana sisa dunia lama masih mereka pegang",
+        "label": "Pilihan itu menceritakan keadaan mereka"
+      },
+      "spend": {
+        "intent": "satu harga sebenar dinyatakan untuk terus membawa objek itu",
+        "label": "Harga sebuah simpanan"
+      },
+      "surface": {
+        "intent": "sebuah objek dari dunia yang telah berakhir ditemui",
+        "label": "Relik muncul"
+      },
+      "worthless": {
+        "intent": "ketidakbergunaan dan maknanya dinyatakan secara jelas",
+        "label": "Tiada nilai dan tidak ternilai"
+      }
+    },
+    "effects": [
+      "sejauh mana kumpulan itu telah berubah daripada jati diri asal mereka kini menjadi nyata",
+      "terbentuknya jurang antara mereka yang sanggup berkorban demi makna dan mereka yang tidak"
+    ],
+    "emotion_target": "melankoli",
+    "examples": [
+      "Radio itu tidak akan berfungsi lagi dan beratnya menyamai bekalan air untuk dua hari, namun dia tetap memikulnya selama sembilan hari sebelum akhirnya meletakkannya."
+    ],
+    "name": "Sesuatu Dari Masa Silam",
+    "preconditions": [
+      "suatu pengiraan kelangsungan hidup yang cukup ketat sehingga perasaan mempunyai kos yang nyata"
+    ],
+    "roles": {
+      "keeper": {
+        "constraints": [
+          "tidak dapat mewajarkan pemilikan objek itu dari sudut kelangsungan hidup"
+        ],
+        "label": "si pemegang"
+      },
+      "pragmatist": {
+        "constraints": [
+          "bersifat tepat secara matematik"
+        ],
+        "label": "si pengira kos"
+      },
+      "relic": {
+        "constraints": [
+          "tidak mempunyai nilai praktikal"
+        ],
+        "label": "objek dari masa silam"
+      }
+    },
+    "summary": "Sebuah objek dari dunia yang telah berakhir muncul kembali — sekeping foto, radio yang masih berfungsi, sebalang makanan manis, atau sepasang kasut kanak-kanak — dan ia tidak bernilai mengikut segala perkiraan kelangsungan hidup, namun tidak ternilai harganya dari sudut lain. Apa yang sanggup dikorbankan orang demi menyimpannya menceritakan lebih banyak tentang keadaan mereka berbanding apa-apa senarai inventori."
+  },
+  "survival.rules_of_the_new_world": {
+    "beats": {
+      "break": {
+        "intent": "dunia yang akrab kelihatan jelas tidak lagi berkelakuan seperti sepatutnya",
+        "label": "Keadaan biasa mula terhenti"
+      },
+      "infer": {
+        "intent": "sebuah peraturan sementara dinyatakan secara lisan berdasarkan satu kejadian tunggal",
+        "label": "Peraturan dirumuskan"
+      },
+      "lesson": {
+        "intent": "sebuah kematian mendedahkan sempadan yang tidak pernah diketahui kewujudannya",
+        "label": "Pengajaran pertama menuntut nyawa"
+      },
+      "obey": {
+        "intent": "kumpulan itu terus hidup dengan mematuhi satu peraturan yang belum mereka fahami",
+        "label": "Bertahan hidup dengan mematuhinya"
+      }
+    },
+    "effects": [
+      "kumpulan tersebut memegang satu peraturan praktikal yang belum lagi difahami",
+      "kos untuk mempelajari setiap peraturan seterusnya kini diketahui adalah nyawa"
+    ],
+    "emotion_target": "gentar",
+    "examples": [
+      "Tiada siapa tahu mengapa mereka yang berlari telah ditewaskan manakala mereka yang kaku tidak disentuh, tetapi menjelang hari kedua, tiada siapa lagi yang berani berlari."
+    ],
+    "name": "Mempelajari Peraturan Melalui Pengajaran Pahit",
+    "preconditions": [
+      "sebuah dunia yang peraturan operasinya telah berubah tanpa sebarang amaran"
+    ],
+    "roles": {
+      "lost": {
+        "constraints": [
+          "mati ketika melakukan perkara biasa"
+        ],
+        "label": "mangsa yang mengajarkan pengajaran tersebut"
+      },
+      "rule": {
+        "constraints": [
+          "bersifat sementara dan belum terjelas"
+        ],
+        "label": "peraturan yang dirumuskan"
+      },
+      "survivor": {
+        "constraints": [
+          "hanya mempunyai satu petunjuk untuk dijadikan rujukan"
+        ],
+        "label": "pemerhati yang merumuskan peraturan"
+      },
+      "world": {
+        "constraints": [
+          "tidak memberi amaran mahupun peluang kedua"
+        ],
+        "label": "dunia yang telah berubah"
+      }
+    },
+    "summary": "Dunia biasa tidak lagi berfungsi mengikut hukum lamanya — si mati bangkit semula, langit berubah warna, rangkaian terputus, atau air pasang tidak surut — dan pengajaran pertama dibayar dengan nyawa seseorang. Daripada kematian itu, satu peraturan dirumuskan dan dinyatakan dengan jelas, dan kumpulan tersebut mampu bertahan sehingga ke bab seterusnya hanya sejauh mana mereka mematuhi peraturan yang belum dapat mereka jelaskan itu."
+  },
+  "survival.shelter_has_a_price": {
+    "beats": {
+      "decide": {
+        "intent": "keselamatan yang pasti ditimbang berbanding harga yang tidak mampu dibayar",
+        "label": "Bayar atau pergi"
+      },
+      "find": {
+        "intent": "sebuah tempat yang benar-benar selamat telah dicapai dan kelegaannya terasa nyata",
+        "label": "Tempat perlindungan ditemui"
+      },
+      "terms": {
+        "intent": "harga untuk terus tinggal menjadi jelas",
+        "label": "Syarat mula muncul"
+      },
+      "trust": {
+        "intent": "kumpulan tersebut komited untuk menetap dan melepaskan sesuatu demi melakukannya",
+        "label": "Kepercayaan diberikan"
+      }
+    },
+    "effects": [
+      "kumpulan tersebut sama ada telah tunduk kepada syarat yang ditetapkan atau terdedah semula kepada bahaya",
+      "apa yang sanggup diterima oleh setiap ahli kini diketahui oleh ahli yang lain"
+    ],
+    "emotion_target": "kegelisahan",
+    "examples": [
+      "Pintu gerbang tertutup rapat di belakang mereka dan makanan yang dihidangkan panas serta menyelerakan, namun menjelang pagi, seseorang mula menjelaskan tentang jadual kerja, dan tentang peraturan yang ditetapkan."
+    ],
+    "name": "Tempat Perlindungan Berbayar",
+    "preconditions": [
+      "sekumpulan orang yang tiada pilihan lain selain daripada tempat perlindungan yang ditawarkan"
+    ],
+    "roles": {
+      "arrivals": {
+        "constraints": [
+          "tidak mempunyai tempat lain untuk dituju"
+        ],
+        "label": "mereka yang tiba"
+      },
+      "holders": {
+        "constraints": [
+          "bukan penjahat, sekadar sudah lama menetap"
+        ],
+        "label": "pemilik tempat"
+      },
+      "shelter": {
+        "constraints": [
+          "benar-benar selamat"
+        ],
+        "label": "tempat perlindungan"
+      }
+    },
+    "summary": "Satu tempat perlindungan ditemui yang benar-benar selamat — dinding yang kukuh, makanan, kehangatan, dan kunci yang berfungsi — dan kelegaannya terasa nyata. Kemudian, syarat-syarat mula muncul: tenaga kerja, ketaatan, penyerahan seseorang, atau peraturan tentang siapa yang dibenarkan keluar. Kumpulan tersebut harus menimbang antara keselamatan yang pasti dengan harga yang tidak mampu mereka bayar selamanya."
+  },
+  "survival.someone_has_to_decide": {
+    "beats": {
+      "grant": {
+        "intent": "kepimpinan diakui secara terpaksa oleh mereka yang akan menyimpan rasa tidak puas hati kelak",
+        "label": "Kuasa diberikan, dendam disimpan"
+      },
+      "hold": {
+        "intent": "pilihan tersebut membuahkan hasil yang cukup baik sehingga tiada siapa yang membatalkannya",
+        "label": "Keputusan itu diterima"
+      },
+      "speak": {
+        "intent": "seorang individu tanpa kedudukan menyatakan apa yang akan dilakukan",
+        "label": "Seseorang melontarkannya dengan lantang"
+      },
+      "vacuum": {
+        "intent": "suatu keputusan diperlukan tetapi tiada autoriti yang wujud untuk membuatnya",
+        "label": "Tiada siapa yang memegang pimpinan"
+      }
+    },
+    "effects": [
+      "kini wujud seorang pemimpin yang legitimasi kuasanya hanya bersandarkan kepada satu peristiwa singkat",
+      "mereka yang hanya berdiam diri kini mempunyai alasan untuk membantah di kemudian hari"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Dia berkata «kita ikut ke utara» lalu mula melangkah, dan sebelas orang mengikutinya, dan begitulah sahaja prosesnya."
+    ],
+    "name": "Kuasa yang Tercipta dalam Sekelip Mata",
+    "preconditions": [
+      "sekumpulan orang tanpa autoriti yang sah sedang berhadapan dengan keputusan yang tidak boleh ditangguh"
+    ],
+    "roles": {
+      "decision": {
+        "constraints": [
+          "mesti dibuat sebelum sempat dibincangkan"
+        ],
+        "label": "keputusan yang tidak boleh ditangguh"
+      },
+      "group": {
+        "constraints": [
+          "memberikan kuasa dengan cara tidak membantah"
+        ],
+        "label": "mereka yang membiarkannya berlaku"
+      },
+      "leader": {
+        "constraints": [
+          "tidak mempunyai kedudukan untuk membuat keputusan"
+        ],
+        "label": "siapa sahaja yang mula bersuara"
+      }
+    },
+    "summary": "Tiada siapa yang memegang tampuk pimpinan dan keputusan tidak boleh ditangguh, maka seseorang telah membuatnya — bukan yang terkuat atau yang paling senior, tetapi sesiapa sahaja yang sanggup melontarkan kata-kata ketika yang lain masih saling berpandangan. Keputusan itu terbukti memadai, dan kuasa diberikan secara retrospektif oleh orang ramai yang akhirnya akan menyimpan rasa tidak puas hati terhadapnya."
+  }
+}

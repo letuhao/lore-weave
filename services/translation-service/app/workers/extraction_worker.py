@@ -33,6 +33,7 @@ from loreweave_llm.errors import (
 from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
 
 from ..config import settings
+from ..llm_budget import budget_for, budget_obj_for
 from ..llm_client import LLMClient
 from .block_batcher import build_batch_plan
 from .cost import resolve_job_cost_usd
@@ -1132,6 +1133,12 @@ async def _process_extraction_chapter(
     if strategy in TWO_STAGE_SHAPES:
         sweep_system = build_sweep_system_prompt(source_language)
         sweep_profile_hash = sweep_shape_hash(sweep_system)
+        # The sweep's output budget comes from the call-profile registry, not from the
+        # `_EXTRACTION_OUTPUT_CEILING` literal it used to read (D-LLM-BUDGET-SSOT). Only the
+        # KIND is read here — `truncation_is_fatal` is a property of STRUCTURED and does not
+        # depend on the sizing arguments, so this cannot disagree with the number the payload
+        # resolves below (which is where the call has to live for the gate to trace it).
+        _sweep_fatal = budget_obj_for("glossary_sweep").truncation_is_fatal
         for _wi, _wtext in enumerate(windows):
             _sweep_key = RawCacheKey(
                 owner_user_id=str(owner_user_id) if owner_user_id else "",
@@ -1171,7 +1178,16 @@ async def _process_extraction_chapter(
                             {"role": "user", "content": build_user_prompt(_wtext)},
                         ],
                         "temperature": 0.1,
-                        "max_tokens": _EXTRACTION_OUTPUT_CEILING,
+                        # `ceiling=out_budget` is not belt-and-braces — it is the bug the
+                        # flat literal had. `out_budget` is derived from THIS chapter's real
+                        # input size (context − max window tokens − known ctx − safety),
+                        # which the registry row cannot know; asking a small-context model
+                        # for a flat 8000 output tokens on top of its window is how a call
+                        # comes back LLM_CONTEXT_OVERFLOW. The batch path already sized
+                        # itself this way; the sweep, added later, did not.
+                        "max_tokens": budget_for("glossary_sweep",
+                                                 context_length=context_window,
+                                                 ceiling=out_budget),
                         **reasoning_fields(ReasoningDirective(
                             effort=reasoning_effort, passthrough=False, source="user")),
                     },
@@ -1190,21 +1206,41 @@ async def _process_extraction_chapter(
                 total_output_tokens += _usage.get("output_tokens") or 0
                 _msgs = _res.get("messages") or []
                 _sweep_raw = (_msgs[0].get("content") if _msgs else "") or ""
+                # D-LLM-BUDGET-SSOT: the sweep's profile is STRUCTURED, so
+                # `truncation_is_fatal` is True and this check is REQUIRED, not optional —
+                # `parse_sweep_mentions` salvages the complete-objects prefix of a clipped
+                # array, which means a truncated sweep looks exactly like a short one. The
+                # batch path below already recorded `finish_reason`; the sweep, added later,
+                # hard-coded None into the cache and never read it. `getattr` because a
+                # degraded/older gateway result may not carry the field, and a truncation
+                # DETECTOR that raises is worse than the truncation.
+                _sweep_finish = getattr(_job, "finish_reason", None)
+                _sweep_truncated = _sweep_fatal and _sweep_finish == "length"
                 _sweep_cache[_wi] = parse_sweep_mentions(_sweep_raw)
-                log.info("extraction: chapter %s window %d — sweep found %d mention(s)",
-                         chapter_id, _wi, len(_sweep_cache[_wi]))
-                # Cache only a NON-EMPTY sweep. An empty one is either a parse failure or a
-                # window the model gave up on, and caching it makes that failure permanent —
-                # a re-run is precisely how the user recovers it. Same rule the batch cache
+                log.info("extraction: chapter %s window %d — sweep found %d mention(s) "
+                         "finish=%s", chapter_id, _wi, len(_sweep_cache[_wi]),
+                         _sweep_finish or "?")
+                if _sweep_truncated:
+                    log.warning(
+                        "extraction: chapter %s window %d SWEEP TRUNCATED "
+                        "(finish_reason=length, out=%s tokens, context-derived clamp=%d, "
+                        "profile=glossary_sweep) — partial salvage only; mentions after the "
+                        "cut are LOST",
+                        chapter_id, _wi, _usage.get("output_tokens") or 0, out_budget,
+                    )
+                # Cache only a NON-EMPTY, NON-TRUNCATED sweep. An empty one is either a parse
+                # failure or a window the model gave up on, and a truncated one is missing
+                # mentions it will never regrow — caching either makes that failure permanent,
+                # and a re-run is precisely how the user recovers it. Same rule the batch cache
                 # applies by storing only OK/EMPTY_VALID outcomes.
-                if owner_user_id and _sweep_cache[_wi]:
+                if owner_user_id and _sweep_cache[_wi] and not _sweep_truncated:
                     await put_batch(
                         pool, _sweep_key, job_id=str(job_id), kinds_requested=[],
                         model_source=model_source, model_ref=str(model_ref),
                         reasoning_effort=_effort_band,
                         input_tokens=_usage.get("input_tokens") or 0,
                         output_tokens=_usage.get("output_tokens") or 0,
-                        finish_reason=None, raw_response=_sweep_raw,
+                        finish_reason=_sweep_finish, raw_response=_sweep_raw,
                         parsed_entities=[{"name": n, "evidence": e}
                                          for n, e in _sweep_cache[_wi]],
                         parse_status="ok", overwrite=_sweep_busted,

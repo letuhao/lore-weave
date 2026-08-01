@@ -449,11 +449,11 @@
     "cap": {
       "chat": "Chat / LLM",
       "embedding": "Embedding",
-      "tts": "Text-to-Speech",
-      "stt": "Speech-to-Text",
       "image_gen": "Gen Gambar",
       "moderation": "Moderasi",
-      "reranker": "Reranker"
+      "reranker": "Reranker",
+      "tts": "Teks-ke-Suara",
+      "stt": "Suara-ke-Teks"
     },
     "add": {
       "aria": "Tambah model",
@@ -500,7 +500,7 @@
       "pricing_hint": "Terisi otomatis saat pembuatan. Ubah jika tarif resmi penyedia berubah, atau periksa OpenRouter untuk estimasi langsung.",
       "pricing_check": "Periksa OpenRouter",
       "pricing_checking": "Memeriksa...",
-      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} in / ${{output}} out",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} masuk / ${{output}} keluar",
       "pricing_apply": "Terapkan",
       "pricing_not_found": "Model yang cocok tidak ditemukan di OpenRouter — harga tidak tersedia dari sumber ini.",
       "pricing_check_failed": "Gagal memeriksa harga OpenRouter",

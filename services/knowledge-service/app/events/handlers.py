@@ -1009,9 +1009,12 @@ async def handle_glossary_entity_updated(
         )
         return
 
-    # Resolve project + user via book_id (globally unique).
+    # Resolve project + user via book_id (globally unique). The embedding config rides
+    # along on the SAME read — the passage indexing below needs it, and re-querying the
+    # row we already hold would be a second round-trip per event for nothing.
     project_row = await pool.fetchrow(
-        "SELECT project_id, user_id FROM knowledge_projects WHERE book_id = $1 LIMIT 1",
+        "SELECT project_id, user_id, embedding_model, embedding_dimension "
+        "FROM knowledge_projects WHERE book_id = $1 LIMIT 1",
         book_id,
     )
     if project_row is None:
@@ -1065,6 +1068,79 @@ async def handle_glossary_entity_updated(
         "C4: glossary.entity_updated synced to Neo4j: entity=%s action=%s project=%s",
         glossary_entity_id, result.get("action"), project_id,
     )
+
+    # Index the entity's CONTENT for semantic retrieval. Separate from the :Entity
+    # MERGE above on purpose: that one is the SSOT→graph path and must not fail
+    # because indexing did.
+    await index_glossary_entity_passage(
+        book_id=book_id, user_id=user_id, project_id=project_id,
+        glossary_entity_id=glossary_entity_id,
+        embedding_model=project_row["embedding_model"],
+        embedding_dim=project_row["embedding_dimension"],
+    )
+
+
+async def index_glossary_entity_passage(
+    *, book_id: UUID, user_id: UUID, project_id: UUID, glossary_entity_id: UUID,
+    embedding_model: str | None, embedding_dim: int | None,
+) -> str:
+    """Build + index the `:Passage` for one glossary entity. Returns the outcome token
+    (see `sync_glossary_entity_passage`); never raises.
+
+    The entity's attribute VALUES are not in the event payload — the outbox carries
+    identity only — so they are fetched from glossary here. That keeps the event small
+    and leaves glossary the SSOT for its own content.
+    """
+    from app.clients.embedding_client import get_embedding_client
+    from app.clients.glossary_client import get_glossary_client
+    from app.config import settings
+    from app.db.neo4j import neo4j_session
+    from app.extraction.glossary_passage import (
+        render_glossary_passage,
+        sync_glossary_entity_passage,
+    )
+
+    if not settings.neo4j_uri:
+        return "no_neo4j"
+
+    # ONE guard around everything. The :Entity MERGE has already committed by the time
+    # this runs, and indexing is strictly additive — so an unwired client, a glossary
+    # outage or a Neo4j blip must degrade to a logged outcome, never propagate and
+    # re-deliver an event whose SSOT work is already done.
+    try:
+        items = await get_glossary_client().fetch_entities_by_ids(
+            book_id=book_id, entity_ids=[str(glossary_entity_id)],
+            include_attributes=True,
+        )
+        if not items:
+            return "not_found"
+        ent = items[0]
+
+        text = render_glossary_passage(
+            name=ent.cached_name or "", kind=ent.kind_code,
+            aliases=ent.cached_aliases, short_description=ent.short_description,
+            attributes=[a.model_dump() for a in ent.attributes],
+        )
+        lang = next((a.lang for a in ent.attributes if a.lang), "unknown")
+
+        async with neo4j_session() as session:
+            outcome = await sync_glossary_entity_passage(
+                session, get_embedding_client(),
+                user_id=str(user_id), project_id=str(project_id),
+                glossary_entity_id=str(glossary_entity_id), text=text,
+                embedding_model=embedding_model, embedding_dim=embedding_dim,
+                source_lang=lang,
+            )
+    except Exception:  # noqa: BLE001 — indexing must never break the SSOT sync
+        logger.warning(
+            "glossary passage indexing failed (entity=%s project=%s)",
+            glossary_entity_id, project_id, exc_info=True,
+        )
+        return "error"
+    logger.info(
+        "glossary passage %s: entity=%s project=%s", outcome, glossary_entity_id, project_id,
+    )
+    return outcome
 
 
 async def handle_glossary_entity_merged(

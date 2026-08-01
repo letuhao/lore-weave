@@ -1,0 +1,334 @@
+{
+  "intrigue.double_agent_reveal": {
+    "beats": {
+      "insider_acts": {
+        "intent": "hanedan/topluluk içerideki kişiye güvenir",
+        "label": "Güvenilen kişinin eylemleri"
+      },
+      "note": {
+        "intent": "tesadüf olamayacak kadar isabetli bir sızıntı",
+        "label": "Küçük bir tutarsızlık fark edilir"
+      },
+      "trap": {
+        "intent": "yem olarak sahte bir sır bırakılır",
+        "label": "Teyit etmek için kurulan tuzak"
+      },
+      "unmask": {
+        "intent": "köstebeği deşifre et ve onu kendi tarafına çek",
+        "label": "Maskeyi düşürme ve taraf değiştirme"
+      }
+    },
+    "effects": [
+      "köstebek kimliği belirlenir; ya taraf değiştirir ya da saf dışı bırakılır",
+      "topluluğun içindeki güven ilişkileri yeniden yapılandırılır"
+    ],
+    "emotion_target": "gerilim",
+    "examples": [
+      "Tesadüf olamayacak kadar isabetli bir sızıntı; yem olarak atılan sahte bir sır, haber taşıyanın kim olduğunu ve bilgiyi kime ilettiğini kanıtlar."
+    ],
+    "name": "Çift Taraflı Ajanın İfşası",
+    "preconditions": [
+      "fazlasıyla isabetli bir bilgi sızıntısı, güvenilen bir içeriden sızanın ele geçirildiğine işaret eder"
+    ],
+    "roles": {
+      "confidant": {
+        "constraints": [
+          "yem kurulmasına yardım eden"
+        ],
+        "label": "sırdaş"
+      },
+      "mole": {
+        "constraints": [
+          "güvenilir içerideki kişi"
+        ],
+        "label": "köstebek"
+      },
+      "protagonist": {
+        "constraints": [
+          "sızıntının peşinde sessizce avlanan"
+        ],
+        "label": "şüphelenen kişi"
+      }
+    },
+    "summary": "Tesadüf olamayacak kadar isabetli bir sızıntı; yem olarak bırakılan sahte bir sır, haberciyi —ve kime haber taşıdığını— ele verir ve ardından köstebeği taraf değiştirmeye zorlar."
+  },
+  "intrigue.feigned_alliance": {
+    "beats": {
+      "betray": {
+        "intent": "en yüksek kazanç sağlandığında anlaşmayı boz",
+        "label": "Kırılma noktasında ihanet et"
+      },
+      "offer": {
+        "intent": "müttefikin kabul edeceği bir ahit öner",
+        "label": "İttifak teklif et"
+      },
+      "realign": {
+        "intent": "ihaneti stratejik bir avantaja dönüştür",
+        "label": "Yeniden Konumlanma"
+      },
+      "rely": {
+        "intent": "müttefik kaynaklarını veya güvenini ortaya koyar",
+        "label": "Müttefik buna güvenir"
+      },
+      "share": {
+        "intent": "inanılmasını sağlayacak kadarını ifşa et",
+        "label": "Kısmi gerçek paylaş"
+      }
+    },
+    "effects": [
+      "müttefik, en büyük nüfuzun elde edileceği anda saf dışı bırakılır",
+      "planlayıcı üstünlüğü ele geçirir"
+    ],
+    "emotion_target": "gerilim",
+    "examples": [
+      "Samimi bir antlaşma, güven duyulacak kadar gerçek olan ortak bir sır — ta ki anlaşmayı bozmanın meyvesini toplayacağı ana dek."
+    ],
+    "name": "Muvazaalı İttifak",
+    "preconditions": [
+      "planlayıcı ile hedef, güven uyandıracak kadar gerçekçi, ortak bir amaca sahiptir"
+    ],
+    "roles": {
+      "advantage": {
+        "constraints": [
+          "ihanetin ödülü"
+        ],
+        "label": "hedeflenen avantaj"
+      },
+      "false_ally": {
+        "constraints": [
+          "ahide güvenir"
+        ],
+        "label": "aldatılmış müttefik"
+      },
+      "schemer": {
+        "constraints": [
+          "sahte bir ahit sunar"
+        ],
+        "label": "tezgahçı"
+      }
+    },
+    "summary": "Güven oluşturacak kadar gerçek görünen samimi bir ahit ve paylaşılan bir sır; ta ki kırılma noktasında ihanet etmenin meyvesini toplayana dek."
+  },
+  "intrigue.loyalty_test_trap": {
+    "beats": {
+      "act": {
+        "intent": "ortaya çıkan gerçek üzerine harekete geç",
+        "label": "Ödüllendir veya tasfiye et"
+      },
+      "observe": {
+        "intent": "yemi kimin yuttuğunu izle",
+        "label": "Tepkiyi gözlemle"
+      },
+      "stage": {
+        "intent": "yemlenmiş bir fırsat hazırla",
+        "label": "Bir ayartma kurgula"
+      },
+      "verdict": {
+        "intent": "test, güveni veya ihaneti neticelendirir",
+        "label": "Sadakat: Geçti veya kaldı"
+      }
+    },
+    "effects": [
+      "test edilen tarafın gerçek sadakati gün yüzüne çıkar",
+      "güç sahibi, duruma göre ödüllendirme yapar veya tasfiye eder"
+    ],
+    "emotion_target": "gerilim",
+    "examples": [
+      "Davetkar bir şekilde açık bırakılan bir kapı aslında bir testtir; içinden geçen kişi, gözlemcinin bilmesi gereken şeyi tam olarak ele verir."
+    ],
+    "name": "Sadakat Testi Tuzağı",
+    "preconditions": [
+      "güç sahibi, gizli bir sadakatsizlikten şüphelenmektedir"
+    ],
+    "roles": {
+      "loyalty_proof": {
+        "constraints": [
+          "testin ortaya çıkardığı şey"
+        ],
+        "label": "sadakat kanıtı"
+      },
+      "power_holder": {
+        "constraints": [
+          "ayartmayı kurgular"
+        ],
+        "label": "güç sahibi"
+      },
+      "suspect": {
+        "constraints": [
+          "test edilen taraf"
+        ],
+        "label": "şüphelenilen hain"
+      }
+    },
+    "summary": "Davetkar bir şekilde açık bırakılan bir kapı aslında bir testtir; kapıdan içeri giren kişi, gözlemcinin bilmesi gereken gerçeği tüm çıplaklığıyla ortaya çıkarır."
+  },
+  "intrigue.planted_evidence_scheme": {
+    "beats": {
+      "act": {
+        "intent": "mağdur tuzağa düşmek üzere harekete geçer",
+        "label": "Kurbanın yanlış inançla harekete geçmesi"
+      },
+      "bait": {
+        "intent": "kurbanı tepki vermeye teşvik et",
+        "label": "Kurbanı harekete geçirmek için yemle"
+      },
+      "counter": {
+        "intent": "yıkımın sonuçları düzenbazın lehine yönlendirilir",
+        "label": "Karşı hamle"
+      },
+      "plant": {
+        "intent": "tahrif edilmiş delili bulunacak bir yere bırak",
+        "label": "Sahte kanıtı yerleştir"
+      },
+      "reveal": {
+        "intent": "«kanıt» gün yüzüne çıkar, düzenbaz ise zarar görmeden kalır",
+        "label": "İnkar edilebilir ifşa"
+      }
+    },
+    "effects": [
+      "mağdur, asılsız gerekçelerle itibarsızlaştırılır veya mahkûm edilir",
+      "düzenbazın parmak izi gizli kalır"
+    ],
+    "emotion_target": "dehşet",
+    "examples": [
+      "Rakibin bulup «ifşa edeceği» bir yere tahrif edilmiş bir defter bırakılır; böylece rakip, doğrudan kendi suçunu kanıtlayan bir tuzağa çekilir."
+    ],
+    "name": "Tuzaklanmış Delil Düzeni",
+    "preconditions": [
+      "düzenbaz, yetkili makamların güvenini kazanacak bir kanıtı yerleştirebilir"
+    ],
+    "roles": {
+      "agent": {
+        "constraints": [
+          "yemi farkında olmadan taşır"
+        ],
+        "label": "bilgisiz aracı"
+      },
+      "authority": {
+        "constraints": [
+          "görünen kanıta göre hüküm verir"
+        ],
+        "label": "karar verici merci"
+      },
+      "schemer": {
+        "constraints": [
+          "sahte kanıtı yerleştirir"
+        ],
+        "label": "tezgah kuran"
+      },
+      "victim": {
+        "constraints": [
+          "yanlış inançla hareket eder"
+        ],
+        "label": "hedefteki kurban"
+      }
+    },
+    "summary": "Rakibin bulup «ifşa etmesini» sağlayacak şekilde sahte bir kanıt yerleştirilir; böylece kurban, yanlış bir inançla hareket ederek reddedilebilir bir tuzağa çekilir."
+  },
+  "intrigue.scapegoat_substitution": {
+    "beats": {
+      "frame": {
+        "intent": "suçlanabilir bir günah keçisi seç",
+        "label": "Zayıf tarafı kumpasla suçla"
+      },
+      "must_pin": {
+        "intent": "suçun birinin üzerine yapıştırılması gerekir",
+        "label": "Suç bir yere yıkılmalı"
+      },
+      "steer": {
+        "intent": "soruşturmayı günah keçisine doğru yönlendir",
+        "label": "Delillerin yönlendirilmesi"
+      },
+      "walk_free": {
+        "intent": "asıl suçlu fark edilmeden kaçar",
+        "label": "Asıl fail serbestçe dolaşır"
+      }
+    },
+    "effects": [
+      "günah keçisi suçlamayı üstlenir",
+      "asıl fail sorumluluktan kurtulur"
+    ],
+    "emotion_target": "dehşet",
+    "examples": [
+      "Suçun bir yere yıkılması gerektiğinde, kurnaz el suçun bir başkasının üzerine kalmasını sağlar."
+    ],
+    "name": "Günah Keçisi İkamesi",
+    "preconditions": [
+      "bir suç bir suçlu gerektirir ve asıl fail gizli kalmalıdır"
+    ],
+    "roles": {
+      "investigators": {
+        "constraints": [
+          "yanlış hedefe yönlendirilmiş"
+        ],
+        "label": "soruşturmacılar"
+      },
+      "scapegoat": {
+        "constraints": [
+          "suçlanmaya müsait, daha zayıf bir taraf"
+        ],
+        "label": "günah keçisi"
+      },
+      "schemer": {
+        "constraints": [
+          "asıl fail"
+        ],
+        "label": "tezgahçı"
+      }
+    },
+    "summary": "Suçlu bir şekilde suçlanacak birini bulmak gerektiğinde, kurnaz el, asıl fail serbestçe dolaşırken suçun daha zayıf bir tarafın üzerine yıkılmasını sağlar."
+  },
+  "intrigue.whisper_campaign": {
+    "beats": {
+      "isolate": {
+        "intent": "hedef itibarını kaybeder",
+        "label": "Hedef tecrit edilir"
+      },
+      "seed": {
+        "intent": "tek bir şüphe tohumu ek",
+        "label": "Dedikoduyu ek"
+      },
+      "spread": {
+        "intent": "şüphe, farkında olmayan ağızlarda tekrarlanır",
+        "label": "Dedikodu yayılır"
+      },
+      "withdraw": {
+        "intent": "hedefteki kişinin koruyucusu geri çekilir",
+        "label": "Hamisi desteğini çeker"
+      }
+    },
+    "effects": [
+      "hedef yalnızlaşır ve hamisini kaybeder",
+      "söylentinin asıl kaynağı gizli kalır"
+    ],
+    "emotion_target": "huzursuzluk",
+    "examples": [
+      "Kökeni bilinmeyen ağızlardan sürekli tekrarlanan tek bir şüphe tohumu, hedef kişi yapayalnız kalana dek yayılır."
+    ],
+    "name": "Fısıltı Kampanyası",
+    "preconditions": [
+      "hedef, bir haminin veya saray çevresinin itibarını kazanmaya muhtaçtır"
+    ],
+    "roles": {
+      "court": {
+        "constraints": [
+          "dedikoduyu farkında olmadan yayan"
+        ],
+        "label": "saray veya kurul"
+      },
+      "schemer": {
+        "constraints": [
+          "dedikoduyu kurgulayan"
+        ],
+        "label": "tezgahçı"
+      },
+      "target": {
+        "constraints": [
+          "dedikodu yüzünden tecrit edilen"
+        ],
+        "label": "hedef"
+      }
+    },
+    "summary": "Kaynağı bilinmeyen ağızlardan tekrarlanan tek bir şüphe tohumu, hedef kişiyi, hamisi desteğini çekene dek yalnızlığa terk eder."
+  }
+}

@@ -71,13 +71,29 @@ def pipeline_artifacts():
     return doc, spec, graph, compiled
 
 
-def test_ingest_seven_sections():
+def test_ingest_reads_every_top_level_heading():
+    """Nine, not seven: the `# <n>.` enumerator is no longer REQUIRED (2026-07-28).
+
+    Requiring it was fixture shape, not document shape — this project's real planning document uses
+    `# Bối cảnh`, `# Nhân vật`, `# Arc mở đầu` and parsed to ZERO sections, producing an empty spec
+    with no error. The two extra sections here are the fixture's own title block and its table of
+    contents, which the old regex skipped by accident rather than by decision.
+
+    The seven MATERIAL sections are unchanged, which is the property that actually matters: a
+    document written the old way still yields exactly the same planning material.
+    """
     doc = ingest_file(FIXTURE)
-    assert len(doc["sections"]) == 7
+    assert len(doc["sections"]) == 9
+    material = [s for s in doc["sections"] if s["kind"] not in ("other", "front_matter")]
+    assert len(material) == 7
     kinds = {s["kind"] for s in doc["sections"]}
     assert "character_seed" in kinds
     assert "planner_variables" in kinds
     assert "arc_overview" in kinds
+    # The TOC is UNDERSTOOD and ignored, not misread as material and not reported as a failure —
+    # a guard that fires on every well-organised document is a guard nobody reads.
+    assert "front_matter" in kinds
+    assert "MỤC LỤC" not in doc["unread"]["unclassified"]
 
 
 def test_propose_four_variables(pipeline_artifacts):
@@ -547,40 +563,64 @@ def test_ingest_markdown_matches_file():
     assert len(from_file["sections"]) == len(from_text["sections"])
 
 
-def test_normalize_female_protagonist_always():
+def test_normalize_never_rewrites_authored_content():
+    """The invariant that replaced three tests which each asserted the bug.
+
+    `post_normalize_spec` used to rename any placeholder protagonist to the Vietnamese literal
+    `Nữ chính` and — worse — REPLACE a mechanic's authored rules with two fixed Vietnamese sentences
+    whenever the rules were not Vietnamese enough and the name matched a yin-yang hint. Verified live
+    on 2026-07-29 doing exactly that to an English grimdark document. One book's specifics, applied
+    to every book, deleting what the author wrote.
+
+    The three old tests pinned each rewrite in place, so the suite was green while the engine
+    destroyed authored content. This asserts the property instead of the behaviour: whatever
+    deterministic normalization lands here later must not rename what the author named nor replace
+    what the author wrote.
+    """
     spec = {
-        "meta": {"open_questions": []},
-        "layers": {"characters": [{"name": "Female Protagonist", "role": "protagonist"}], "mechanics": []},
-    }
-    out = post_normalize_spec(spec)
-    assert out["layers"]["characters"][0]["name"] == "Nữ chính"
-
-
-def test_normalize_tbd_only_when_open_question_name():
-    base = {"layers": {"characters": [{"name": "[TBD]", "role": "protagonist"}], "mechanics": []}}
-    unchanged = post_normalize_spec({**base, "meta": {"open_questions": []}})
-    assert unchanged["layers"]["characters"][0]["name"] == "[TBD]"
-    renamed = post_normalize_spec({**base, "meta": {"open_questions": ["Tên nhân vật TBD"]}})
-    assert renamed["layers"]["characters"][0]["name"] == "Nữ chính"
-
-
-def test_normalize_en_yin_yang_rules_by_mechanic_name():
-    spec = {
-        "meta": {},
+        "meta": {"open_questions": ["Tên nhân vật TBD"]},
         "layers": {
-            "characters": [],
-            "mechanics": [
-                {
-                    "id": "mech_1",
-                    "name": "Âm Dương Hợp Hoan",
-                    "rules": ["absorb qi via partner", "intensity scales with intimacy"],
-                }
+            "characters": [
+                {"name": "Female Protagonist", "role": "protagonist"},
+                {"name": "[TBD]", "role": "protagonist"},
+                {"name": "Mira", "role": "protagonist"},
             ],
+            "mechanics": [{
+                "id": "mech_1",
+                "name": "Âm Dương Hợp Hoan",
+                "rules": ["Partners share body heat to survive the cold vacuum of the derelict.",
+                          "Resonance decays with distance and cannot be forced."],
+            }],
         },
     }
+    import copy
+    before = copy.deepcopy(spec)
     out = post_normalize_spec(spec)
-    joined = " ".join(out["layers"]["mechanics"][0]["rules"])
-    assert "Âm Dương" in joined
+
+    assert [c["name"] for c in out["layers"]["characters"]] == \
+        [c["name"] for c in before["layers"]["characters"]], "a character was renamed"
+    assert out["layers"]["mechanics"][0]["rules"] == before["layers"]["mechanics"][0]["rules"], \
+        "the author's mechanic rules were replaced"
+    for lit in ("Nữ chính", "hấp thụ linh khí", "PA/HA"):
+        assert lit not in json.dumps(out, ensure_ascii=False), f"one book's literal was injected: {lit}"
+
+
+def test_llm_pad_never_invents_a_cast():
+    """absent ≠ invented, on the DETERMINISTIC path — where no model can decline.
+
+    `_pad_traits_from_analyze` appended a fabricated protagonist named `Nữ chính`, wearing the
+    analyze step's consistency anchors as traits, whenever the model returned no characters. So a
+    document with no cast in it — including a paste of an LLM's own internal monologue, measured —
+    came back holding a character it never mentioned. It read as a model hallucination; it was this
+    line.
+    """
+    from app.engine.plan_forge.propose_llm import _pad_traits_from_analyze
+
+    spec = {"layers": {"characters": []}}
+    _pad_traits_from_analyze(
+        spec, {"consistency_anchors": ["a", "b"], "document_summary": "some summary"},
+    )
+    assert spec["layers"]["characters"] == [], "the engine invented a character from nothing"
 
 
 def test_spec_slice_bounded(pipeline_artifacts):

@@ -40,6 +40,21 @@ class Settings(BaseSettings):
     # C12c-a: glossary list is cheap pagination (no LLM) — shorter
     # timeout than the book client's chapter fetch.
     glossary_client_timeout_s: float = 10.0
+    # How many of the book's glossary names may ride in an extraction prompt's
+    # KNOWN_ENTITIES block. A deploy-time CEILING on prompt size, not a per-user
+    # choice: a small glossary is sent whole, a 3,000-entity one is truncated here.
+    # ~150 names costs roughly 1-2k tokens against a ~1.7k-token base prompt.
+    # Measured worth: with the block EMPTY the extractor scored 4/7 on the live
+    # Mị Đế passage; populated, 7/7.
+    #
+    # This is a BACKSTOP, not the normal path: `select_known_entities` ships only the
+    # canon a chunk actually mentions, so a 3,000-entity glossary typically contributes
+    # a couple of dozen names. The cap only bites on a chapter naming a huge cast.
+    known_entities_prompt_cap: int = 150
+    # (The canon READ is no longer bounded by a setting — it pages the whole glossary,
+    # see clients.CANON_PAGE_SIZE/CANON_MAX_PAGES. A flat fetch bound truncated an
+    # `ORDER BY mention_count DESC`, so it dropped the least-mentioned lore, which on a
+    # book being written is the newest lore.)
     # FD-27: provider-registry model-info fetch for the reasoning-model
     # advisory — a tiny metadata read, runs once per job. Best-effort.
     provider_registry_client_timeout_s: float = 5.0

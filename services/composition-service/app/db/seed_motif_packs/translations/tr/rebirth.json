@@ -1,0 +1,428 @@
+{
+  "rebirth.butterfly_divergence": {
+    "beats": {
+      "adapt": {
+        "intent": "kahraman, ilk kez herhangi bir ön bilgiye sahip olmadan hareket etmek zorundadır",
+        "label": "Hafızanın yerini muhakeme alır"
+      },
+      "intervene": {
+        "intent": "bir müdahale sonuç verir ve erken bir sonucu değiştirir",
+        "label": "Erken bir değişim gerçekleşir"
+      },
+      "mismatch": {
+        "intent": "hatırlanan bir olay gerçekleşmez veya yanlış gerçekleşir",
+        "label": "Senaryo uyumsuzlaşır"
+      },
+      "ripple": {
+        "intent": "sonuçlar, amaçlanan değişimin ötesinde birikmeye başlar",
+        "label": "Dalgalanma yayılır"
+      }
+    },
+    "effects": [
+      "ön bilgi artık güvenilir değildir ve geri döndürülemez",
+      "kahramanın yetkinliği artık bir varsayım olmaktan çıkıp bizzat kanıtlanmalıdır"
+    ],
+    "emotion_target": "kaygı",
+    "examples": [
+      "Bahar başından beri hazırlığını yaptığı tahıl isyanı bir türlü çıkmadı; pazar yerinde dururken, bundan sonra oradaki herkes gibi kendisinin de kör olduğunu anladı."
+    ],
+    "name": "Hafıza Uyumsuzluğu",
+    "preconditions": [
+      "belirli bir tarihte yapılan bir müdahalenin halihazırda değiştirdiği, hatırlanan bir olaylar dizisi"
+    ],
+    "roles": {
+      "changed": {
+        "constraints": [
+          "artık hafızanın öngöremeyeceği şekillerde hareket ederler"
+        ],
+        "label": "hayatları çoktan sapmış olanlar"
+      },
+      "returner": {
+        "constraints": [
+          "planlarını hatırladığı senaryo üzerine kurmuştur"
+        ],
+        "label": "haritayı kaybeden"
+      },
+      "script": {
+        "constraints": [
+          "kendi başarısıyla doğru orantılı olarak bozulur"
+        ],
+        "label": "hatırlanan gelecek"
+      }
+    },
+    "summary": "Erken bir müdahale işe yarar ve sonuçları, değiştirilmesi amaçlanan şeyin çok ötesine yayılır: ölmesi gerekenler evlenir, yıkılması gereken bir ev ayakta kalır, bir savaş bir mevsim geç başlar. Hatırlanan tarihler birer birer gerçekleşmemeye başlar; ta ki kahramanı dokunulmaz kılan o avantaj sessizce sona erene ve elindeki son haritayı da tüketmiş bir halde, herkes için olduğu kadar kendisi için de bilinmez olan bir geleceğe doğru yürüyene dek."
+  },
+  "rebirth.foreknowledge_leverage": {
+    "beats": {
+      "arrive": {
+        "intent": "hatırlanan olay tam olarak beklendiği gibi vuku bulur",
+        "label": "Olay zamanında gerçekleşir"
+      },
+      "bank": {
+        "intent": "kazanç cebe indirilir ve bu bilginin nasıl öğrenildiğine dair soru işareti zihinlere ekilir",
+        "label": "Kâr ve şüphe bir arada"
+      },
+      "position": {
+        "intent": "tüm gözlemciler için pervasızca görünen bir taahhütte bulunulur",
+        "label": "Pozisyon erkenden alınır"
+      },
+      "recall": {
+        "intent": "tarihi geçmiş bir gelecek olayı, kullanışlı bir kesinlikle hatırda canlanır",
+        "label": "Olay hatırlanır"
+      }
+    },
+    "effects": [
+      "maddi veya siyasi avantaj, herkesten önce güvence altına alınır",
+      "en az bir gözlemci, bunun nasıl bilinebileceğini merak etmeye başlar"
+    ],
+    "emotion_target": "beklenti",
+    "examples": [
+      "Basık arazileri kuru toprak fiyatına satın aldı, on bir ay boyunca alay konusu olmayı göğüsledi ve sonra yağmurlar başladı."
+    ],
+    "name": "O Gerçekleşmeden Önce Konumlanmak",
+    "preconditions": [
+      "tarihi belli ve kaçınılmaz sonuçları olan, hatırlanan bir gelecek olayı"
+    ],
+    "roles": {
+      "doubters": {
+        "constraints": [
+          "bildikleri çerçevede mantıklı çıkarımlar yapmaktadırlar"
+        ],
+        "label": "bunu pervasızlık olarak görenler"
+      },
+      "position": {
+        "constraints": [
+          "olay gerçekleşmeden önce mantıksız görünür"
+        ],
+        "label": "erken alınan pozisyon"
+      },
+      "returner": {
+        "constraints": [
+          "nasıl bildiğini açıklayamaz"
+        ],
+        "label": "olayı hatırlayan kişi"
+      }
+    },
+    "summary": "Hatırlanan bir olay henüz gelecekte bir yerlerde durmaktadır — alçak tarlaları yutacak olan sel, borçlarını geri çağıracak olan ev, sınavda çıkacak olan o soru, baharda gelecek olan kervan... Bu yüzden, dışarıdan bakan herkes için yıkım gibi görünen bir pozisyon aylar öncesinden alınır: değersiz bir arazi satın almak, iyi bir evlilik teklifini geri çevirmek, yükselen bir piyasanın en tepesinde satış yapmak. Olay zamanında gerçekleşir, alınan pozisyon meyvesini verir ve elde edilen kâr, bu bilginin nasıl bilinebileceği sorusundan ayrı düşünülemez."
+  },
+  "rebirth.inherited_debts": {
+    "beats": {
+      "answer": {
+        "intent": "yeni gelen kişi, kendi yöntemiyle öder, reddeder veya yeniden müzakere eder",
+        "label": "Borçlar yanıtlanır"
+      },
+      "become": {
+        "intent": "hesap verme biçimi, ödünç alınmış bu hayatı gerçekten kendisine ait kılar",
+        "label": "Hayatın içine yazılmak"
+      },
+      "claim": {
+        "intent": "önceki hayatın yükümlülükleri ve düşmanlıkları kendini gösterir",
+        "label": "Talepler gelir"
+      },
+      "mute": {
+        "intent": "asıl açıklama, suçlamadan daha ağır sonuçlar doğuracaktır",
+        "label": "Gerçek söylenemez"
+      }
+    },
+    "effects": [
+      "miras kalan yükümlülükler, yeni gelen kişinin kendi şartlarıyla çözüme kavuşur",
+      "yeni gelen kişi artık bu hayatın kiracısı değil, yazarıdır"
+    ],
+    "emotion_target": "gerilim",
+    "examples": [
+      "Üç adam, hiç almadığı bir borç için kapısına dayandı; o ise ya kendi el yazısıyla atılmış bir imzayı inkar edebileceğini ya da borcu ödeyebileceğini fark etti."
+    ],
+    "name": "Yaşanmamış Bir Hayatın Hesabı",
+    "preconditions": [
+      "protagonistin kendisine ait olmayan, geçmişten gelen yükümlülükleri olan ve bunlara tanıklık eden, işgal edilmiş bir beden ve kimlik"
+    ],
+    "roles": {
+      "claimants": {
+        "constraints": [
+          "haklı talepleri olan"
+        ],
+        "label": "önceki sahibinden alacağı olanlar"
+      },
+      "history": {
+        "constraints": [
+          "belgelenmiş ve tanıklanmış olan"
+        ],
+        "label": "miras kalan tarih"
+      },
+      "newcomer": {
+        "constraints": [
+          "eylemleri gerçekleştirmemiş olan"
+        ],
+        "label": "hayatı şu an üstlenen"
+      }
+    },
+    "summary": "Beden, beraberinde kendi tarihini de getirir: kapıda bekleyen ve el yazısı kendisininkine benzeyen notlar tutan alacaklılar, başkası tarafından verilmiş bir nişan sözü, yaşanmamış yıllar boyunca edinilmiş düşmanlar ve çoktan dolaşıma girmiş bir itibar. Gerçekler dile dökülemez durumdadır; bu yüzden borçlar ya ödenmeli, ya reddedilmeli ya da üstlenilmelidir — bu borçlara verilecek yanıt ise, ödünç alınmış bir hayatı kişinin kendi hayatına dönüştüren şeydir."
+  },
+  "rebirth.known_traitor_untouchable": {
+    "beats": {
+      "mute": {
+        "intent": "yapılacak herhangi bir uyarı, delilik ya da art niyet olarak algılanacaktır",
+        "label": "Suçlama İmkânsızdır"
+      },
+      "prepare": {
+        "intent": "zemin, neden belirtilmeden sessizce hazırlanır",
+        "label": "Sessizce Karşı Hamle Yapmak"
+      },
+      "recognize": {
+        "intent": "gelecekteki hainla, henüz hiçbir suç işlenmeden karşılaşılır",
+        "label": "Yüzü Tanımak"
+      },
+      "spring": {
+        "intent": "ihanet planlandığı vakitte gerçekleşir ancak başarısızlığa uğrar",
+        "label": "İhanet Hazırlanmış Zemine Düşer"
+      }
+    },
+    "effects": [
+      "hatırlanan olaylar dizisi geçmişteki bir noktada değiştirilmiştir: ihanet gerçekleşmiş ancak başarısız olmuştur",
+      "protagonist, bunu nasıl bildiğini açıklamadan durum etkisiz hale getirilmiştir",
+      "protagonistin hazırlıkları, kendi çevresinde onun hesapçı biri gibi görünmesine neden olmuştur"
+    ],
+    "emotion_target": "dehşet",
+    "examples": [
+      "Adam gülümseyerek şarabı bizzat doldurdu, kadın ise buna karşılık ona teşekkür ederken mührün hangi dolapta saklandığını not etti."
+    ],
+    "name": "Herkesin Hâlâ Güvendiği Hain",
+    "preconditions": [
+      "şu an için hiçbir suçu bulunmayan birinin ihanet edeceğine dair bilgi"
+    ],
+    "roles": {
+      "circle": {
+        "constraints": [
+          "bugün hainin yanında yer alırdı"
+        ],
+        "label": "ona güvenenler"
+      },
+      "returner": {
+        "constraints": [
+          "gelecekteki bir eylemin kanıtı olmadan suçlayamaz"
+        ],
+        "label": "bilen kişi"
+      },
+      "traitor": {
+        "constraints": [
+          "şu an için masum ve güvenilirdir"
+        ],
+        "label": "gelecekteki hain"
+      }
+    },
+    "summary": "Onları ele verecek olan kişi, avluda şarabı dolduran, herkes tarafından sevilen ve henüz hiçbir suç işlememiş olan kişidir; öyle bir suçlama yoktur ki delilik ya da art niyet gibi duyulmasın. Bu yüzden karşı hamle, yan yollardan ve açıklanmadan inşa edilir — bir mühür farklı bir dolaba taşınır, bir belge sessizce kopyalanır, alt rütbeli bir subay yanına çekilir — ta ki ihanet, her zamanki gününde gelip hazırlanan bir zemine düşene dek."
+  },
+  "rebirth.outsider_knowledge": {
+    "beats": {
+      "apply": {
+        "intent": "yerel bir kökeni olmayan bilginin açıkça kullanılması",
+        "label": "Kaynağı olabilecek bir yerde uygulanması"
+      },
+      "attribute": {
+        "intent": "dünya, kabul edebileceği bir neden atfeder",
+        "label": "Bir açıklama seçilir"
+      },
+      "bind": {
+        "intent": "kabul edilen atıf, artık sürdürülmesi gereken bir role dönüşür",
+        "label": "Açıklama, kişiyi bağlar"
+      },
+      "work": {
+        "intent": "sonuç, tanıkların önünde yadsınamazdır",
+        "label": "Apaçık bir şekilde işe yarar"
+      }
+    },
+    "effects": [
+      "protagonist artık başkaları tarafından biçilmiş bir rolün içindedir",
+      "bilginin gerçek kaynağı, sonuçları olan bir sırdır"
+    ],
+    "emotion_target": "huzursuzluk",
+    "examples": [
+      "Suyu kaynattı ve koruyucu ölmekten kurtuldu; ikinci haftanın sonunda herkes onun bir tanrı tarafından kutsandığına karar vermişti, ki bu herkes için daha kolay bir yoldu."
+    ],
+    "name": "Başka Bir Yerden Gelen Bilgi",
+    "preconditions": [
+      "bilgi birikiminin, kullanılan şeyi açıkça dışladığı bir ortam"
+    ],
+    "roles": {
+      "knowledge": {
+        "constraints": [
+          "etkisi kanıtlanabilir düzeydedir"
+        ],
+        "label": "ithal edilen bilgi"
+      },
+      "outsider": {
+        "constraints": [
+          "burada var olan bir kaynağa atıfta bulunamaz"
+        ],
+        "label": "imkansız olanı bilen"
+      },
+      "witnesses": {
+        "constraints": [
+          "olayı kendi dünya görüşlerine uydurmak zorundadırlar"
+        ],
+        "label": "işleyişine tanık olanlar"
+      }
+    },
+    "summary": "Bir şifa yöntemi, suyun kaynatılma biçimi, hesap kitap tutma metodu ya da başka bir dünyadan veya başka bir yüzyıldan kalma bir büyü veya aşılama tekniği; burada kimsenin kendi başına bulamayacağı bir yöntem, tanıkların önünde apaçık bir şekilde işe yarar. Elde edilen sonuç, bu dünyanın kavrayabileceği bir nedene dayandırılmalıdır — bir mucize, tanrısal bir lütuf, kayıp bir soy veya bir sapkınlık — ve dünyanın üzerinde uzlaştığı açıklama, bundan sonra oynanması gereken bir role dönüşür."
+  },
+  "rebirth.save_what_was_lost": {
+    "beats": {
+      "alive": {
+        "intent": "kaybedilen kişi oradadır ve sıradan bir haldedir",
+        "label": "Farkında olmadan yeniden hayatta"
+      },
+      "approach": {
+        "intent": "hatırlanan gün, henüz hiçbir şey değişmemişken yaklaşmaktadır",
+        "label": "Tarih yaklaşıyor"
+      },
+      "cost": {
+        "intent": "bedel, savunmasız bir yerden ödenir",
+        "label": "Bedel başka bir yere iner"
+      },
+      "intercept": {
+        "intent": "döngüyü kırmak için her şey feda edilir",
+        "label": "Müdahale"
+      }
+    },
+    "effects": [
+      "hatırlanan döngü belirli bir tarihte değiştirilmiştir: kişi, ölmesi gereken tarihin ötesinde hayattadır",
+      "karşılığında öngörülemeyen bir kayıp yaşanmıştır"
+    ],
+    "emotion_target": "keder",
+    "examples": [
+      "Onu dokuzunda nehir yolundan uzak tuttu ve bu işe yaradı; ancak gömülen kişi, onu uyarmak için koşan çocuktu."
+    ],
+    "name": "Yaklaşan O Tarih",
+    "preconditions": [
+      "tarihi ve oluş şekli bilinen, hafızaya kazınmış belirli bir ölüm"
+    ],
+    "roles": {
+      "cost": {
+        "constraints": [
+          "öngörülmediği için savunmasız kalmıştır"
+        ],
+        "label": "bedelin düştüğü yer"
+      },
+      "doomed": {
+        "constraints": [
+          "hayattadır ve farkında değildir"
+        ],
+        "label": "daha önce ölen"
+      },
+      "returner": {
+        "constraints": [
+          "tarihi ve oluş şeklini bilir"
+        ],
+        "label": "araya giren"
+      }
+    },
+    "summary": "Gömülmüş olan biri, geri dönüşün bir lütfuyla yeniden hayattadır; masada oturmuş pirinçten şikâyet etmektedir, takvimde ise ölüm tarihi yaklaşmaktadır ve henüz hiçbir şey değişmemiştir. Döngüyü kırmak için her şey feda edilir — gidilecek yoldan kaçınılır, hekim erkenden çağrılır, mektup yolda durdurulur — ve bu çaba sonuç verir; ancak bedel, kimsenin korumaya gerek duymadığı bir yerden tahsil edilir, çünkü engellenen bir ölüm, iptal edilmiş bir ölüm değildir."
+  },
+  "rebirth.second_chance_wake": {
+    "beats": {
+      "end": {
+        "intent": "önceki hayatın tanımlı bir kayıp veya ihanetle kapanması",
+        "label": "Hayatın sona ermesi"
+      },
+      "verify": {
+        "intent": "doğrulanabilir bir olgunun, geçmişe tam olarak ne kadar dönüldüğünü teyit etmesi",
+        "label": "Tarihin doğrulanması"
+      },
+      "vow": {
+        "intent": "belirlenmiş bir geleceğin, gerçekleşmesine asla izin verilmeyecek olan o sonuç olarak seçilmesi",
+        "label": "Değiştirme yemini"
+      },
+      "wake": {
+        "intent": "bilincin yıkımdan önce, imkansız görünen bir bedende veya dünyada yeniden uyanması",
+        "label": "Daha erken uyanış"
+      }
+    },
+    "effects": [
+      "protagonistin henüz yaşanmamış olaylar silsilesini bir anı olarak taşıması",
+      "protagonistin, mevcut yükümlülükleri kendisine ait olmayan bir bedende ve kimlikte uyanması",
+      "belirli ve tarihsel bir sonucun, artık her şeyin kıyaslandığı temel ölçüt haline gelmesi"
+    ],
+    "emotion_target": "inkar",
+    "examples": [
+      "Tavan, yangından önceki o tavandı; duvardaki takvim üç yıl yanlıştı ve elleri bir çocuğun elleriydi."
+    ],
+    "name": "Yıkımdan Önce Uyanış",
+    "preconditions": [
+      "tarihi ve detayları bilinen bir felaketle son bulan bir yaşam"
+    ],
+    "roles": {
+      "anchor": {
+        "constraints": [
+          "doğrulanabilir ve net bir olgudur"
+        ],
+        "label": "tarihi kanıtlayan gerçek"
+      },
+      "outcome": {
+        "constraints": [
+          "belirli ve tarihseldir"
+        ],
+        "label": "önlenmesi gereken sonuç"
+      },
+      "returner": {
+        "constraints": [
+          "sonrasına dair eksiksiz bir hafıza taşır"
+        ],
+        "label": "daha erken uyanan"
+      }
+    },
+    "summary": "Bir hayat sona erer — bir darağacında, bir yeminli kardeşin ellerinde ya da pişmanlıklarla dolu bir yatakta — ve bilinç; bir çocuğun ellerine sahip bir bedende, yangından önceki o tavanın altında, takvimi üç yıl yanlış gösteren bir zamanın içinde yeniden uyanır. İnkar duygusu yerini kontrole bırakır: tarih, henüz yaşlanmamış bir yüz, henüz oluşmamış bir yara izi... Bu kontrolün ardından, daha önce yaşanmış olan o sonun bu kez gerçekleşmesine izin vermeyeceğine dair bir yemin doğar."
+  },
+  "rebirth.slip_of_the_impossible": {
+    "beats": {
+      "choose": {
+        "intent": "protagonist ya gizlenmeyi ya da bir kişiye güvenmeyi seçmek zorundadır",
+        "label": "Yalanı büyüt ya da itiraf et"
+      },
+      "notice": {
+        "intent": "bir gözlemci durumu kaydeder ve sessizce izlemeye başlar",
+        "label": "Biri fark eder ve sessiz kalır"
+      },
+      "slip": {
+        "intent": "maskelenemeden önce imkânsız bir aşinalık kendini gösterir",
+        "label": "Bir refleks ele verir"
+      },
+      "thin": {
+        "intent": "her yeni sıradan an, mevcut açıklamayı zorlar",
+        "label": "Kurgu incelir"
+      }
+    },
+    "effects": [
+      "diğer taraftan birinin, özünde doğru olan bir şüpheye kapılması",
+      "protagonistin ya bir suç ortağı ya da bir gözlemcisi olması"
+    ],
+    "emotion_target": "kaygı",
+    "examples": [
+      "Kimse ona odayı daha göstermeden sol taraftaki sürgüye uzandı ve yaşlı uşağın gözleri akşamın geri kalanında ondan ayrılmadı."
+    ],
+    "name": "Açıklanamayan O İtiraf",
+    "preconditions": [
+      "kimliğine dair sahte bir hikâye sürdüren bir protagonist"
+    ],
+    "roles": {
+      "cover": {
+        "constraints": [
+          "her yeni hatada daha da incelir"
+        ],
+        "label": "kurgulanan hikâye"
+      },
+      "observer": {
+        "constraints": [
+          "hiçbir şey söylemez ve izlemeye devam eder"
+        ],
+        "label": "fark eden"
+      },
+      "returner": {
+        "constraints": [
+          "düşünmeden tepki verdi"
+        ],
+        "label": "hata yapan"
+      }
+    },
+    "summary": "Bir refleks her şeyi ele verir — hiç girilmemiş bir odadaki sürgüye uzanmak, burada henüz telaffuz edilmemiş bir isme irkilerek tepki vermek, bu diyarda hiç duyulmamış bir dilden bir kelime fısıldamak — ve birisi bunu görür. Suçlamazlar. Sadece izlemeye başlarlar; sonrasındaki her sıradan akşam, kurgulanan hikâyeyi biraz daha inceltir. Sonunda kişi, sürekli büyümek zorunda kalan bir yalan ile tepkisi kestirilemeyen birine her şeyi anlatmak arasında bir seçim yapmak zorunda kalır."
+  }
+}

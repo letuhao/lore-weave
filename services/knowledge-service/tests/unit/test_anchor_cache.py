@@ -11,8 +11,11 @@ from uuid import uuid4
 
 import pytest
 
+from fastapi import HTTPException
+from loreweave_internal_client import is_retryable_status
+
 import app.routers.internal_extraction as mod
-from app.extraction.anchor_loader import Anchor
+from app.extraction.anchor_loader import Anchor, AnchorPreloadUnavailable
 from app.routers.internal_extraction import _load_anchors_for_extraction
 
 
@@ -110,13 +113,32 @@ async def test_p_k13_0_01_exception_not_cached():
     pool_mock.acquire = MagicMock(return_value=acquire_ctx)
 
     with patch.object(mod, "get_knowledge_pool", return_value=pool_mock):
-        r1 = await _load_anchors_for_extraction(
-            user_id=user_id, project_id=project_id,
-        )
-        assert r1 == []
+        # W1 — a failed pre-load RAISES. It used to return [], which is
+        # indistinguishable from "this book has no glossary" and makes the resolver
+        # mint a duplicate node for every name in the chapter.
+        with pytest.raises(AnchorPreloadUnavailable):
+            await _load_anchors_for_extraction(
+                user_id=user_id, project_id=project_id,
+            )
 
     # Cache must NOT hold an entry for the failed call.
     assert (str(user_id), str(project_id)) not in mod._anchor_cache
+
+
+@pytest.mark.asyncio
+async def test_anchor_preload_failure_becomes_a_RETRYABLE_503():
+    """The HTTP contract W1 rests on: worker-ai retries a 503, so a transient
+    glossary outage costs one re-run instead of a hand-merge of duplicates."""
+    user_id, project_id = uuid4(), uuid4()
+
+    async def boom(**kw):
+        raise AnchorPreloadUnavailable("glossary unreachable")
+
+    with patch.object(mod, "_load_anchors_for_extraction", boom):
+        with pytest.raises(HTTPException) as ei:
+            await mod._anchors_or_retryable(user_id=user_id, project_id=project_id)
+    assert ei.value.status_code == 503
+    assert is_retryable_status(503), "503 must stay in worker-ai's retry set"
 
 
 @pytest.mark.asyncio

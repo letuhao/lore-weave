@@ -1,0 +1,224 @@
+{
+  "emotion_arc.dread_to_relief": {
+    "beats": {
+      "climax": {
+        "intent": "두려워하던 순간이 닥쳐옴",
+        "label": "절정"
+      },
+      "fear": {
+        "intent": "두려움을 공황 상태로 몰아넣음",
+        "label": "고조되는 공포"
+      },
+      "release": {
+        "intent": "위협이 지나가고 안도감이 찾아옴",
+        "label": "해소"
+      },
+      "unease": {
+        "intent": "낮은 단계의 두려움을 심어줌",
+        "label": "불안"
+      }
+    },
+    "effects": [
+      "서사 단위가 긴장의 해소와 함께 마무리됨"
+    ],
+    "emotion_target": "안도감",
+    "examples": [
+      "공포는 최악의 순간을 향해 계속해서 쌓여갔다. 그러다 믿기지 않게도, 모든 것이 끝났고 그들은 비로소 숨을 쉴 수 있었다."
+    ],
+    "name": "공포에서 안도로",
+    "preconditions": [
+      "서사 단위에 감정적 곡선이 필요함"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "불안감이 공포와 절정으로 치닫다가, 마침내 안도감으로 해소됩니다."
+  },
+  "emotion_arc.fall_then_rise": {
+    "beats": {
+      "comfort": {
+        "intent": "안정적인 정서적 기저를 구축함",
+        "label": "안락"
+      },
+      "loss": {
+        "intent": "캐릭터를 구덩이 속으로 떨어뜨림",
+        "label": "상실"
+      },
+      "struggle": {
+        "intent": "탈출을 위한 발버둥의 시작",
+        "label": "고난"
+      },
+      "triumph": {
+        "intent": "시작점보다 더 높은 곳으로 올라섬",
+        "label": "승리"
+      }
+    },
+    "effects": [
+      "서사가 카타르시스적 고양감과 함께 마무리됨"
+    ],
+    "emotion_target": "카타르시스",
+    "examples": [
+      "안정된 상태에서 파멸을 맞이하고, 다시 처절하게 기어올라 마침내 추락 전보다 더 높은 곳에 서게 됨."
+    ],
+    "name": "추락과 비상 (Man in a Hole)",
+    "preconditions": [
+      "서사 단위에 정서적 형상이 필요함"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "안락함이 상실과 고난으로 변하고, 마침내 고된 투쟁 끝에 승리를 거머쥐는 구조 — ‘구덩이에 빠진 인간’의 카타르시스 곡선입니다."
+  },
+  "emotion_arc.hope_to_heartbreak": {
+    "beats": {
+      "grief": {
+        "intent": "상실의 고통 속에 침잠함",
+        "label": "비탄"
+      },
+      "hope": {
+        "intent": "가녀린 희망을 품게 함",
+        "label": "희망의 점화"
+      },
+      "near": {
+        "intent": "목표를 손에 닿을 듯한 거리까지 가져다 놓음",
+        "label": "성공의 문턱"
+      },
+      "turn": {
+        "intent": "마지막 순간에 모든 것을 앗아감",
+        "label": "잔혹한 반전"
+      }
+    },
+    "effects": [
+      "서사가 비극적 상실감으로 귀결됨"
+    ],
+    "emotion_target": "비극적 상실감",
+    "examples": [
+      "손을 뻗으면 닿을 듯 가까웠으나, 모든 것이 사라지고 난 뒤 남은 것은 오직 슬퍼하는 일뿐이었다."
+    ],
+    "name": "희망에서 비극으로",
+    "preconditions": [
+      "서사 단위에 감정적 형상이 필요함"
+    ],
+    "roles": {
+      "pov": {
+        "label": "서술자 시점의 인물"
+      }
+    },
+    "summary": "희망이 피어올라 성공 직전까지 다다르지만, 잔혹한 반전이 찾아와 결국 슬픔으로 끝을 맺는다."
+  },
+  "emotion_arc.rise_then_fall": {
+    "beats": {
+      "ascent": {
+        "intent": "성공을 향한 도약",
+        "label": "상승"
+      },
+      "downfall": {
+        "intent": "높은 곳으로부터의 낙하",
+        "label": "추락"
+      },
+      "flaw": {
+        "intent": "치명적인 결함이 드러남",
+        "label": "결함의 발현"
+      },
+      "peak": {
+        "intent": "최고조에 도달함",
+        "label": "정점"
+      }
+    },
+    "effects": [
+      "서사 단위가 비극적 하강으로 귀결됨"
+    ],
+    "emotion_target": "비극",
+    "examples": [
+      "더 높이, 더 높이 올라갔으나, 결국 자신을 날아오르게 했던 바로 그 요소가 자신을 추락시키는 원인이 된다."
+    ],
+    "name": "상승과 추락 (이카루스)",
+    "preconditions": [
+      "서사 단위에 감정적 형상이 필요함"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "정점을 향해 올라가던 중, 내면의 결함이 수면 위로 드러나며 파멸을 가속하는 이카루스식 비극의 곡선."
+  },
+  "emotion_arc.steady_fall": {
+    "beats": {
+      "collapse": {
+        "intent": "바닥에 도달함",
+        "label": "붕괴"
+      },
+      "decline": {
+        "intent": "추락의 속도가 빨라짐",
+        "label": "하락"
+      },
+      "erosion": {
+        "intent": "한 단계씩 입지를 잃어감",
+        "label": "침식"
+      },
+      "start_high": {
+        "intent": "높은 위치에서 시작함",
+        "label": "정점에서의 시작"
+      }
+    },
+    "effects": [
+      "서사가 황량한 붕괴로 귀결됨"
+    ],
+    "emotion_target": "절망",
+    "examples": [
+      "버텨내는 듯했으나 결국 무너졌다 — 단 하나의 상실로는 설명할 수 없는, 느릿한 해체였다."
+    ],
+    "name": "지속적인 추락",
+    "preconditions": [
+      "서사 단위에 감정적 형상이 필요함"
+    ],
+    "roles": {
+      "pov": {
+        "label": "시점 캐릭터"
+      }
+    },
+    "summary": "정점에서 시작하여 점진적인 침식 끝에 붕괴로 — 절망을 향한 하강."
+  },
+  "emotion_arc.steady_rise": {
+    "beats": {
+      "arrival": {
+        "intent": "쟁취한 정점에 도달함",
+        "label": "도착"
+      },
+      "climb": {
+        "intent": "추진력을 쌓음",
+        "label": "지속적인 상승"
+      },
+      "start_low": {
+        "intent": "밑바닥에서 시작함",
+        "label": "낮은 시작"
+      },
+      "wins": {
+        "intent": "이득을 축적함",
+        "label": "반복되는 승리"
+      }
+    },
+    "effects": [
+      "서사 단위가 마땅히 누려야 할 승리로 귀결됨"
+    ],
+    "emotion_target": "승리",
+    "examples": [
+      "아무것도 없던 상태에서 조금씩, 그리고 더 많이 — 밑바닥이 먼 과거의 기억이 될 때까지, 모든 단계는 스스로의 힘으로 일궈낸 것이다."
+    ],
+    "name": "점진적 상승 (자수성가)",
+    "preconditions": [
+      "서사 단위에 감정적 형상이 필요함"
+    ],
+    "roles": {
+      "pov": {
+        "label": "서술자 시점의 인물"
+      }
+    },
+    "summary": "낮은 곳에서 시작해 반복되는 승리를 거쳐 마침내 정점에 도달하는, 자수성가형 승리의 곡선."
+  }
+}

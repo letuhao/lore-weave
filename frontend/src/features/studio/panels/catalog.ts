@@ -36,6 +36,7 @@ import { GlossaryPanel } from './GlossaryPanel';
 import { GlossaryOntologyPanel } from './GlossaryOntologyPanel';
 import { GlossaryUnknownPanel } from './GlossaryUnknownPanel';
 import { GlossaryAiSuggestionsPanel } from './GlossaryAiSuggestionsPanel';
+import { WorldSetupPanel } from './WorldSetupPanel';
 import { GlossaryMergeCandidatesPanel } from './GlossaryMergeCandidatesPanel';
 import { WikiPanel } from './WikiPanel';
 import { WikiEditorPanel } from './WikiEditorPanel';
@@ -195,6 +196,10 @@ export const STUDIO_PANELS: StudioPanelDef[] = [
   { id: 'glossary-unknown', component: GlossaryUnknownPanel, titleKey: 'panels.glossary-unknown.title', descKey: 'panels.glossary-unknown.desc', category: 'storyBible', guideBodyKey: 'panels.glossary-unknown.guideBody' },
   { id: 'glossary-ai-suggestions', component: GlossaryAiSuggestionsPanel, titleKey: 'panels.glossary-ai-suggestions.title', descKey: 'panels.glossary-ai-suggestions.desc', category: 'storyBible', guideBodyKey: 'panels.glossary-ai-suggestions.guideBody' },
   { id: 'glossary-merge-candidates', component: GlossaryMergeCandidatesPanel, titleKey: 'panels.glossary-merge-candidates.title', descKey: 'panels.glossary-merge-candidates.desc', category: 'storyBible', guideBodyKey: 'panels.glossary-merge-candidates.guideBody' },
+  // The deterministic world-building wizard (spec 2026-07-27): describe → review the
+  // plan → watch each entity get built → approve the relationships. The FSM lives in
+  // composition-service, so no agent tool-choice is involved.
+  { id: 'world-setup', component: WorldSetupPanel, titleKey: 'panels.world-setup.title', descKey: 'panels.world-setup.desc', category: 'storyBible', guideBodyKey: 'panels.world-setup.guideBody' },
   // 15_wiki_panels.md B1 — the wiki master-detail workspace (DOCK-2, same shared component the
   // classic WikiTab page renders). Palette + agent openable.
   { id: 'wiki', component: WikiPanel, titleKey: 'panels.wiki.title', descKey: 'panels.wiki.desc', category: 'storyBible', guideBodyKey: 'panels.wiki.guideBody', tourAnchor: 'studio-wiki-panel' },

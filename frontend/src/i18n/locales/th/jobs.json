@@ -113,11 +113,9 @@
     "costSoFar": "ค่าใช้จ่ายสะสม",
     "tokensIn": "Tokens ขาเข้า",
     "tokensOut": "Tokens ขาออก",
-    "bestEffort": "best-effort",
     "models": "โมเดล",
     "parameters": "พารามิเตอร์",
     "parametersHint": "แบบไดนามิก จากออบเจกต์ params ของงาน",
-    "jobId": "Job ID",
     "kind": "ประเภท",
     "service": "บริการ",
     "parent": "งานหลัก",
@@ -127,7 +125,9 @@
     "copied": "คัดลอก Job ID แล้ว",
     "copyFailed": "คัดลอกไม่สำเร็จ",
     "activity": "กิจกรรม (สด)",
-    "errorTitle": "ข้อผิดพลาด"
+    "errorTitle": "ข้อผิดพลาด",
+    "bestEffort": "พยายามอย่างเต็มที่",
+    "jobId": "ID งาน"
   },
   "activity": {
     "created": "สร้างแล้ว",

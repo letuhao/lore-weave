@@ -40,6 +40,7 @@ describe('useManuscriptJump', () => {
   it('has Work → outline source: searches composition, maps kind + breadcrumb path', async () => {
     work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
     searchOutline.mockResolvedValue({ items: [{ id: 's9', kind: 'scene', title: 'Bị phản bội', chapter_id: 'bc3', status: 'done', story_order: 1, path: ['Arc I', 'Ch 0003'] }] });
+    listChaptersPage.mockResolvedValue({ items: [], next_cursor: null });
     const { result } = renderHook(() => useManuscriptJump('b1', 't'));
     act(() => result.current.setQuery('phản'));
     await settle();
@@ -66,6 +67,52 @@ describe('useManuscriptJump', () => {
     await settle();
     expect(listChaptersPage).toHaveBeenCalledTimes(1);
     expect(listChaptersPage).toHaveBeenCalledWith('t', 'b1', expect.objectContaining({ q: 'dragon' }));
+  });
+
+  // ── D-STUDIO-CHAPTER-OUTSIDE-THE-PLAN ──────────────────────────────────────
+  //
+  // Found by dogfooding: create a chapter in a book that HAS a Work with a non-empty
+  // outline, and it is unreachable from the Writing Studio. The tree renders outline
+  // nodes only, and BOTH search paths (the rail's jump box and the ⌘P palette share
+  // this hook) queried the outline INSTEAD of book-service — so the chapter was absent
+  // from the tree, from the jump box, and from the palette. Verified live: "No matches."
+  //
+  // The outline is a PLAN; the chapters table is the MANUSCRIPT. A chapter can exist in
+  // one and not the other (imported, created from the editor, written by a tool), so the
+  // search has to read both.
+
+  it('has Work → ALSO finds a chapter that no outline node covers', async () => {
+    work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
+    searchOutline.mockResolvedValue({ items: [] });
+    listChaptersPage.mockResolvedValue({ items: [{ chapter_id: 'c9', sort_order: 1, title: 'Repro — mount race' }], next_cursor: null });
+    const { result } = renderHook(() => useManuscriptJump('b1', 't'));
+    act(() => result.current.setQuery('repro'));
+    await settle();
+    expect(listChaptersPage).toHaveBeenCalledWith('t', 'b1', expect.objectContaining({ q: 'repro' }));
+    expect(result.current.results).toHaveLength(1);
+    expect(result.current.results[0]).toMatchObject({ id: 'c9', kind: 'chapter', title: 'Repro — mount race' });
+  });
+
+  it('does NOT list a chapter twice when an outline node already covers it', async () => {
+    work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
+    searchOutline.mockResolvedValue({ items: [{ id: 'n1', kind: 'chapter', title: 'The Void', chapter_id: 'c9', status: 'done', story_order: 9, path: [] }] });
+    listChaptersPage.mockResolvedValue({ items: [{ chapter_id: 'c9', sort_order: 9, title: 'The Void' }], next_cursor: null });
+    const { result } = renderHook(() => useManuscriptJump('b1', 't'));
+    act(() => result.current.setQuery('void'));
+    await settle();
+    expect(result.current.results).toHaveLength(1);
+    expect(result.current.results[0].id).toBe('n1');   // the outline hit wins — it carries the breadcrumb
+  });
+
+  it('a chapter-search outage still returns the outline hits', async () => {
+    work.value = { data: { status: 'found', work: { project_id: 'p1' } }, isLoading: false };
+    searchOutline.mockResolvedValue({ items: [{ id: 'n2', kind: 'chapter', title: 'The Proof', chapter_id: null, status: 'outline', story_order: 4, path: [] }] });
+    listChaptersPage.mockRejectedValue(new Error('book-service down'));
+    const { result } = renderHook(() => useManuscriptJump('b1', 't'));
+    act(() => result.current.setQuery('proof'));
+    await settle();
+    expect(result.current.results).toHaveLength(1);
+    expect(result.current.results[0].id).toBe('n2');
   });
 
   it('stale-guard: a late response for an OLD query does not overwrite newer results', async () => {

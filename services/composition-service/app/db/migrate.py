@@ -172,8 +172,16 @@ CREATE TABLE IF NOT EXISTS entity_override (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_entity_override_work ON entity_override(work_id);
+-- F3 (2026-07-27): `overridden_fields` is AUTHORED content — the author's declaration of how an
+-- entity differs in this dị bản — and delete was a hard DELETE with no undo, while every sibling
+-- atom (canon_rule, outline_node, the derivative Work itself) soft-archives and offers restore.
+-- Losing a divergence irreversibly is a data-loss class, not a style inconsistency.
+ALTER TABLE entity_override ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT false;
+-- The unique must become PARTIAL, or an archived override would block the author from ever
+-- writing a new one for that same entity — turning a "soft" delete into a permanent block.
+DROP INDEX IF EXISTS uq_entity_override_work_target;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_entity_override_work_target
-  ON entity_override(work_id, target_entity_id);
+  ON entity_override(work_id, target_entity_id) WHERE NOT is_archived;
 
 -- ── structure_template: pluggable story-structure library (global built-ins + user-custom)
 CREATE TABLE IF NOT EXISTS structure_template (
@@ -255,9 +263,16 @@ CREATE TABLE IF NOT EXISTS scene_link (
   kind         TEXT NOT NULL DEFAULT 'setup_payoff' CHECK (kind IN ('setup_payoff','custom')),
   label        TEXT NOT NULL DEFAULT '',
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CONSTRAINT scene_link_distinct CHECK (from_node_id <> to_node_id),
-  UNIQUE (from_node_id, to_node_id, kind)
+  CONSTRAINT scene_link_distinct CHECK (from_node_id <> to_node_id)
 );
+-- F3 (2026-07-27): same treatment as entity_override — a scene link is the author's declared
+-- setup/payoff connection (with an authored `label`), and delete was hard with no undo.
+ALTER TABLE scene_link ADD COLUMN IF NOT EXISTS is_archived BOOLEAN NOT NULL DEFAULT false;
+-- Was an inline UNIQUE(from,to,kind); re-expressed as a PARTIAL index so an archived link does
+-- not permanently block re-declaring the same connection.
+ALTER TABLE scene_link DROP CONSTRAINT IF EXISTS scene_link_from_node_id_to_node_id_kind_key;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_scene_link_edge
+  ON scene_link(from_node_id, to_node_id, kind) WHERE NOT is_archived;
 CREATE INDEX IF NOT EXISTS idx_scene_link_project ON scene_link(project_id);
 CREATE INDEX IF NOT EXISTS idx_scene_link_from    ON scene_link(from_node_id);
 
@@ -697,6 +712,99 @@ ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS stakes       TEXT NOT NULL DEF
 ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS target_words INT
   CHECK (target_words IS NULL OR target_words > 0);
 ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS exit_state   JSONB;     -- SC12, {v:1,…}
+
+-- Intent-collection FSM (spec 2026-07-28) — which intent slots the AUTHOR has settled, per node:
+--   {"goal": "settled", "conflict": "absent"}
+-- A slot absent from the map is planner-owned. Two states are recorded, never three, because the
+-- third (unasked) IS absence:
+--   * settled — the author accepted or wrote this value;
+--   * absent  — the author said the story has not decided it. An AUTHORED STATEMENT, not a gap:
+--               never re-asked, never auto-filled. Collapsing it into "unasked" is what makes a
+--               fill loop re-ask what the story has no answer to, and the model then invents.
+--
+-- WHY PER-SLOT and not the existing node-level `source` ('authored' vs 'planforge'): an author who
+-- settles ONE slot on a planforge chapter must keep that slot AND still receive the planner's fresh
+-- values for the slots they never touched. Node-level provenance can only freeze or replace the
+-- whole node, so it would either lose the settled slot or wall off the rest of the re-plan.
+--
+-- This is what makes `outline_node` safe as the SSOT for settled intent: a re-plan ARCHIVES the
+-- chapter/scene nodes and inserts a fresh tree built purely from the plan output, so without a
+-- per-slot record the first re-plan would silently delete everything the author had settled.
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS intent_slots JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- INTENT-COLLECTION FSM (spec 2026-07-28) — the machine that ASKS for intent.
+--
+-- Measured 2026-07-28: 0 of 95 chapter nodes carried a single intent slot. The columns above have
+-- modelled chapter intent all along and NOTHING has ever written to them — there was no producer.
+-- This is that producer, and it is a state machine rather than a chat loop for one reason: a weak
+-- model is reliable only when every decision it makes is small enough for it to make. One slot per
+-- call, one retry, no loops, and every author-facing state BLOCKS (an unattended fill loop is
+-- exactly how a model invents canon).
+--
+-- Scoped to ONE outline_node, never the book: intent is per-chapter and per-scene, and a book-level
+-- run would be the ask-everything-upfront mistake the spec opens by correcting.
+-- ════════════════════════════════════════════════════════════════════════════
+CREATE TABLE IF NOT EXISTS intent_run (
+  run_id        UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id UUID NOT NULL,                    -- the author this run is a conversation WITH
+  book_id       UUID NOT NULL,                    -- tenancy scope key (E0 book gate at the route)
+  project_id    UUID NOT NULL,
+  node_id       UUID NOT NULL REFERENCES outline_node(id) ON DELETE CASCADE,
+  -- `advanced` is a REAL resting state, not a transient: it is where the run sits between two slots
+  -- with no LLM call in flight and no author blocked. Making it real keeps EVERY LLM call on exactly
+  -- one route (propose), so spend is visible per call instead of hidden inside an apply.
+  status        TEXT NOT NULL DEFAULT 'opened'
+                CHECK (status IN ('opened','proposing','awaiting_author','applying',
+                                  'advanced','proposal_failed','done','cancelled','failed')),
+  slot_plan     JSONB NOT NULL DEFAULT '[]'::jsonb,   -- the ordered slots in scope for THIS run
+  slot_cursor   TEXT,                                 -- which slot the current status is about
+  candidates    JSONB NOT NULL DEFAULT '[]'::jsonb,   -- the live proposal for slot_cursor
+  params        JSONB NOT NULL DEFAULT '{}'::jsonb,   -- model_source/model_ref (never a literal name), arm, n
+  error_detail  TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- One LIVE run per node. `opened` is deliberately INSIDE the predicate (unlike glossary-build's
+-- free `draft`): a second run on the same node would race the first one's writes onto the same
+-- columns, so the collision must land at create time, not on the first transition.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_intent_run_active_node ON intent_run(node_id)
+  WHERE status NOT IN ('done','cancelled','failed');
+CREATE INDEX IF NOT EXISTS idx_intent_run_owner_book ON intent_run(owner_user_id, book_id);
+
+-- The INSTRUMENT (spec §8). One row per slot VISITED — including the failed and the declined ones.
+-- A run that quietly omits its failures reports an acceptance rate it did not earn, which is the
+-- same shape as the empty-counted-as-degrade bug fixed earlier today; hence `outcome` is NOT NULL
+-- and `proposal_failed` is one of its values rather than an absent row.
+CREATE TABLE IF NOT EXISTS intent_slot_record (
+  record_id     UUID PRIMARY KEY DEFAULT uuidv7(),
+  run_id        UUID NOT NULL REFERENCES intent_run(run_id) ON DELETE CASCADE,
+  owner_user_id UUID NOT NULL,
+  book_id       UUID NOT NULL,
+  node_id       UUID NOT NULL,
+  slot          TEXT NOT NULL,
+  position      INT  NOT NULL,                    -- 1…N — Q1 reads acceptance against this
+  -- Q1's confound: position is entangled with constraint class (closed sets come first), so the
+  -- decay-is-fatigue vs decay-is-constraint question is only answerable with BOTH recorded.
+  constraint_class TEXT NOT NULL CHECK (constraint_class IN ('closed','canon_open','blank_open')),
+  arm           TEXT NOT NULL DEFAULT 'constrained_first'
+                CHECK (arm IN ('constrained_first','reversed')),
+  candidates    JSONB NOT NULL DEFAULT '[]'::jsonb,
+  verdicts      JSONB NOT NULL DEFAULT '[]'::jsonb,   -- metric A, scored by the AUTHOR (never a judge model)
+  author_value  TEXT,                                 -- what the author accepted or wrote
+  applied_value TEXT,                                 -- read BACK off the node after the write
+  -- `offered` is a distinct outcome, not a shade of `skipped`: it means the machine asked and the
+  -- author has not answered yet. Folding it into `skipped` would report an ABANDONED run as one the
+  -- author actively passed on — a difference the POC's acceptance rate is entirely built on.
+  outcome       TEXT NOT NULL
+                CHECK (outcome IN ('offered','applied','absent','proposal_failed','skipped')),
+  llm_calls     INT     NOT NULL DEFAULT 0,           -- proves the one-call/one-retry bound held
+  retried       BOOLEAN NOT NULL DEFAULT false,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT uq_intent_slot_record UNIQUE (run_id, slot)
+);
+CREATE INDEX IF NOT EXISTS idx_intent_slot_record_run ON intent_slot_record(run_id);
 """
 
 # C23 down-migration (round-trip proof only — the live schema is idempotent-forward
@@ -734,7 +842,13 @@ CREATE TABLE IF NOT EXISTS motif (
   book_id         UUID,                                   -- per-book label (D-MOTIF-ADOPT-PER-BOOK); NULL = global user/system tier
   book_shared     BOOLEAN NOT NULL DEFAULT false,         -- D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): true = the book's SHARED tier (visible to the book's VIEW-grantees, writable by EDIT-grantees, access = the book grant resolved at the caller — owner is attribution only); false = model-A private label / global / system
   code            TEXT NOT NULL,
-  language        TEXT NOT NULL DEFAULT 'en',             -- part of the dedup/embed key (R1.1.3)
+  -- MOTIF-I18N: the language the motif was AUTHORED in (parity with books/chapters.
+  -- original_language). It is NO LONGER part of the identity key — one motif = one row,
+  -- and every other language is a row in `motif_translation` resolved with fallback to
+  -- this one. Platform seed is 'en' for all 84. (Was `language`, which sat in
+  -- uq_motif_* and made "the same motif in 2 languages" two unrelated rows — see
+  -- docs/specs/2026-07-29-motif-i18n.md.)
+  original_language TEXT NOT NULL DEFAULT 'en',
   visibility      TEXT NOT NULL DEFAULT 'private'
                     CHECK (visibility IN ('private','unlisted','public')),
   kind            TEXT NOT NULL DEFAULT 'sequence'
@@ -793,22 +907,87 @@ CREATE TABLE IF NOT EXISTS motif (
 -- (idempotent; a no-op on a fresh DB where CREATE TABLE already declared it). The shape CHECK +
 -- the model-A re-narrow live in the ALTER block lower down (guarded for existing DBs).
 ALTER TABLE motif ADD COLUMN IF NOT EXISTS book_shared BOOLEAN NOT NULL DEFAULT false;
+-- EVERY statement after this rename must say `original_language`. The whole block runs as ONE
+-- `conn.execute`, i.e. one implicit transaction: four legacy index-repair statements further down
+-- still named `language`, so on any DB that actually HAD the old column the rename succeeded, the
+-- first of those indexes failed with `column "language" does not exist`, the transaction rolled
+-- back — and composition-service crash-looped on startup, restoring the old column each time so the
+-- next attempt failed identically. Invisible until a rebuild, because the running containers were
+-- on an image from before the rename existed.
+-- MOTIF-I18N rename (idempotent): on an EXISTING DB the column is still `language`.
+-- A rename carries the data and re-points every dependent index automatically, so it
+-- beats add+copy+drop. On a fresh DB the CREATE TABLE above already declared
+-- `original_language` and this is a no-op. The index RESHAPE (dropping the language
+-- column OUT of the identity keys) is data-dependent and lives in the marker-gated
+-- motif_i18n migration, not here.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'motif' AND column_name = 'language')
+     AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'motif' AND column_name = 'original_language') THEN
+    ALTER TABLE motif RENAME COLUMN language TO original_language;
+  END IF;
+END $$;
+
+-- ── motif_translation: the per-language VIEW of a motif's authored text.
+-- Structure/identity never appears here (code, kind, category, genre_tags, the
+-- roles[].key/actant, the beats[].key/tension_target/order, tension_target,
+-- annotations, info_asymmetry all live ONLY on the source row) — a translation can
+-- therefore never add, drop, or reshape a motif, only re-word it.
+--
+-- PK is (motif_id, language_code), deliberately NOT glossary's
+-- (…, source_content_hash): glossary caches SNAPSHOTS, which legitimately carry
+-- concurrent versions, so the hash belongs in its key. A motif has exactly one current
+-- text per language — hash-in-key would grow rows without bound and turn the fallback
+-- read into a "newest matching" subquery. Keeping the hash as a COLUMN preserves the
+-- staleness signal while the read stays one LEFT JOIN — the same shape motif already
+-- uses for vectors (embedded_summary_hash is a column, not a key).
+CREATE TABLE IF NOT EXISTS motif_translation (
+  motif_id       UUID NOT NULL REFERENCES motif(id) ON DELETE CASCADE,
+  language_code  TEXT NOT NULL,
+  name           TEXT NOT NULL,
+  summary        TEXT NOT NULL DEFAULT '',
+  emotion_target TEXT,
+  roles          JSONB NOT NULL DEFAULT '[]'::jsonb,   -- [{key,label,constraints}] — key MUST match source
+  beats          JSONB NOT NULL DEFAULT '[]'::jsonb,   -- [{key,label,intent}]      — key MUST match source
+  preconditions  JSONB NOT NULL DEFAULT '[]'::jsonb,   -- [{text}] positional
+  effects        JSONB NOT NULL DEFAULT '[]'::jsonb,
+  examples       JSONB NOT NULL DEFAULT '[]'::jsonb,
+  -- hash of the SOURCE translatable payload this translation was produced from.
+  -- Mismatch vs the live source = stale (still served, but flagged) — never silently wrong.
+  source_content_hash TEXT NOT NULL DEFAULT '',
+  -- 'authored' = human-written (the hand-written vi packs); NEVER machine-overwritten.
+  -- 'machine'  = produced by scripts/motif_translate.py or a user-paid job.
+  source         TEXT NOT NULL DEFAULT 'machine'
+                   CHECK (source IN ('authored','machine')),
+  translated_by  TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (motif_id, language_code)
+);
+CREATE INDEX IF NOT EXISTS idx_motif_translation_lang ON motif_translation(language_code);
 -- tenancy partials keyed incl. language (R1.1.3). A user's GLOBAL tier (book_id NULL) and
 -- PER-BOOK labels (book_id set, D-MOTIF-ADOPT-PER-BOOK = model A book-scoped filter) dedup
 -- INDEPENDENTLY, so the same source may be adopted globally AND into a book without a false
 -- code collision (the confirm path uses clone(), which raises on collision). The read
 -- predicate is UNCHANGED — book_id only narrows what the OWNER sees, never widens visibility.
+-- MOTIF-I18N: `language` is GONE from every identity key — a motif is one row per
+-- (tier, code) and its other languages are motif_translation rows. On an existing DB
+-- these names already exist with the old (…, language) shape, so `IF NOT EXISTS` here
+-- is a NO-OP by design; the marker-gated motif_i18n migration does the DROP+CREATE
+-- reshape after it has collapsed the duplicate rows. Fresh DBs are born in this shape.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user
-  ON motif(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
+  ON motif(owner_user_id, code) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
 -- model-A private book label: per-(owner,book) dedup, scoped to NOT shared. The SHARED tier
 -- (book_shared) dedups per-BOOK instead (uq_motif_book_shared) — one code+language per book
 -- across ALL collaborators, so two grantees can't fork the same shared code.
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user_book
-  ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL AND NOT book_shared;
+  ON motif(owner_user_id, book_id, code) WHERE book_id IS NOT NULL AND NOT book_shared;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_book_shared
-  ON motif(book_id, code, language) WHERE book_shared;
+  ON motif(book_id, code) WHERE book_shared;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_system
-  ON motif(code, language)                WHERE owner_user_id IS NULL;
+  ON motif(code)                          WHERE owner_user_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_owner  ON motif(owner_user_id) WHERE owner_user_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_book   ON motif(book_id)        WHERE book_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_book_shared ON motif(book_id)   WHERE book_shared;
@@ -816,8 +995,11 @@ CREATE INDEX IF NOT EXISTS idx_motif_public ON motif(visibility, updated_at DESC
 CREATE INDEX IF NOT EXISTS idx_motif_genre  ON motif USING GIN (genre_tags);
 -- retrieval pre-filter (genre ∩ + status + tier predicate) runs in SQL BEFORE loading
 -- vectors (audit data-R1). The composite supports the active-status list scan.
+-- MOTIF-I18N: retrieval no longer filters by language (one row per motif; the caller's
+-- display language is resolved AFTER selection, via motif_translation). Reshaped by the
+-- marker-gated migration on existing DBs — see the uq_motif_* note above.
 CREATE INDEX IF NOT EXISTS idx_motif_retrieve
-  ON motif(status, language) WHERE status = 'active';
+  ON motif(status) WHERE status = 'active';
 
 -- ── motif_link: composition + legal succession + variant (ATU + plot-graph). Cycle
 -- guard on precedes/composed_of (H-2) + user edges may not touch system motifs (H-2).
@@ -966,7 +1148,11 @@ CREATE TABLE IF NOT EXISTS arc_template (
   id            UUID PRIMARY KEY DEFAULT uuidv7(),
   owner_user_id UUID,                                     -- NULL = system (seed/migrate-only)
   code          TEXT NOT NULL,
-  language      TEXT NOT NULL DEFAULT 'en',
+  -- ARC-I18N: the language this template was AUTHORED in (parity with motif/books/
+  -- chapters). NOT part of identity — other languages are arc_template_translation
+  -- rows resolved with per-leaf fallback. It was inside all three unique keys, which
+  -- made the same arc in two languages two unrelated rows.
+  original_language TEXT NOT NULL DEFAULT 'en',
   visibility    TEXT NOT NULL DEFAULT 'private'
                   CHECK (visibility IN ('private','unlisted','public')),
   name          TEXT NOT NULL,
@@ -998,9 +1184,9 @@ CREATE TABLE IF NOT EXISTS arc_template (
   CONSTRAINT arc_template_user_owned CHECK (owner_user_id IS NOT NULL OR visibility <> 'private')
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_user
-  ON arc_template(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL;
+  ON arc_template(owner_user_id, code) WHERE owner_user_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_system
-  ON arc_template(code, language)                WHERE owner_user_id IS NULL;
+  ON arc_template(code)                WHERE owner_user_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_arc_template_owner  ON arc_template(owner_user_id) WHERE owner_user_id IS NOT NULL;
 -- D-ARC-TEMPLATE-BOOK-TIER (34a) — the book-SHARED collaboration tier, MIRRORING the proven
 -- motif.book_shared (model B): access = the book grant resolved at the caller (owner is attribution
@@ -1020,10 +1206,10 @@ END $$;
 -- clone of the same code coexist; the shared tier dedups PER BOOK. Create the replacement BEFORE
 -- dropping the old (no window with zero uniqueness).
 CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_user_nobook
-  ON arc_template(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
+  ON arc_template(owner_user_id, code) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
 DROP INDEX IF EXISTS uq_arc_template_user;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_arc_template_book_shared
-  ON arc_template(book_id, code, language) WHERE book_id IS NOT NULL AND book_shared;
+  ON arc_template(book_id, code) WHERE book_id IS NOT NULL AND book_shared;
 CREATE INDEX IF NOT EXISTS idx_arc_template_book ON arc_template(book_id) WHERE book_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_arc_template_public ON arc_template(visibility, updated_at DESC) WHERE visibility = 'public';
 CREATE INDEX IF NOT EXISTS idx_arc_template_genre  ON arc_template USING GIN (genre_tags);
@@ -1095,6 +1281,9 @@ END $$;
 ALTER TABLE arc_template ADD COLUMN IF NOT EXISTS imported_derived BOOLEAN NOT NULL DEFAULT false;
 -- D-MOTIF-SYNC-3WAY-BASE: the merge-base snapshot column (additive ALTER for an existing motif).
 ALTER TABLE motif ADD COLUMN IF NOT EXISTS adopted_base JSONB;
+-- MOTIF-I18N: these legacy repair statements are no-ops on a migrated DB, but they are
+-- LIVE code — if a condition ever fired while they still named `original_language` in the
+-- key they would resurrect the exact language-in-identity schema motif_i18n_v1 removed.
 -- D-MOTIF-ADOPT-PER-BOOK: the per-book label column + the book-scoped uniqueness partial
 -- (additive, for an already-created motif). On an EXISTING DB the base `CREATE UNIQUE INDEX
 -- IF NOT EXISTS uq_motif_user` above is a no-op (the index already exists with the OLD
@@ -1108,11 +1297,12 @@ BEGIN
   ) THEN
     DROP INDEX uq_motif_user;
     CREATE UNIQUE INDEX uq_motif_user
-      ON motif(owner_user_id, code, language) WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
+      ON motif(owner_user_id, code)
+      WHERE owner_user_id IS NOT NULL AND book_id IS NULL;
   END IF;
 END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_user_book
-  ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL;
+  ON motif(owner_user_id, book_id, code) WHERE book_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_motif_book ON motif(book_id) WHERE book_id IS NOT NULL;
 -- D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): the shared-tier marker + its per-book dedup, the
 -- orthogonality CHECK, and the re-narrowed model-A partial — all additive for an existing motif.
@@ -1132,11 +1322,12 @@ BEGIN
   ) THEN
     DROP INDEX uq_motif_user_book;
     CREATE UNIQUE INDEX uq_motif_user_book
-      ON motif(owner_user_id, book_id, code, language) WHERE book_id IS NOT NULL AND NOT book_shared;
+      ON motif(owner_user_id, book_id, code)
+      WHERE book_id IS NOT NULL AND NOT book_shared;
   END IF;
 END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_motif_book_shared
-  ON motif(book_id, code, language) WHERE book_shared;
+  ON motif(book_id, code) WHERE book_shared;
 CREATE INDEX IF NOT EXISTS idx_motif_book_shared ON motif(book_id) WHERE book_shared;
 CREATE OR REPLACE FUNCTION arc_template_publish_strip() RETURNS trigger AS $$
 BEGIN
@@ -1420,6 +1611,28 @@ CREATE INDEX IF NOT EXISTS idx_plan_artifact_run_kind
 ALTER TABLE plan_run ADD COLUMN IF NOT EXISTS pass_state JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE plan_run ADD COLUMN IF NOT EXISTS genre_tags JSONB NOT NULL DEFAULT '[]'::jsonb;
 
+-- D-PLANFORGE-BEATS-UNWIRED — the run's STORY STRUCTURE (which `structure_template` supplies the
+-- ordered beats pass 4 maps chapters onto).
+--
+-- Why this column has to exist: `compile` emitted `package["beats"] = []` unconditionally, so
+-- `beat_keys` was always empty, so `plan.py:parse_chapter_map` rejected EVERY beat_role the model
+-- returned (it only accepts a key present in `beat_keys`) and `unmapped_beats` could never be
+-- non-empty. Result: every chapter got `beat_role=NULL` and `shape_tension_curve` collapsed to one
+-- neutral run — a flat 50→72 ramp with no climax and no resolution. Verified on the shipped
+-- 10-chapter arc (run 019f9d2e…, artifact 019f9d2f-ff27…): 10/10 chapters NULL.
+--
+-- The library, the 6 seeded built-ins, the repo, the CRUD and the MCP tools all already existed —
+-- and the LEGACY planner wires them (`routers/plan.py` /outline/decompose REQUIRES a
+-- structure_template_id and passes `tmpl.beats`). The V2 rewrite simply dropped the connection.
+--
+-- NULLable ON PURPOSE: NULL = "the author has not chosen a structure", which compile resolves to a
+-- named built-in default AND RECORDS in the package (`package["structure"].source`). A stored
+-- default here would be a silent hidden default — the exact bug class the settings standard bans.
+-- No FK: built-ins are global rows and a template may be archived after a run compiled against it;
+-- losing the run's provenance would be worse than a dangling id. Resolution degrades to the
+-- default and says so.
+ALTER TABLE plan_run ADD COLUMN IF NOT EXISTS structure_template_id UUID;
+
 -- The two CHECK swaps. Both are ADDITIVE in effect (they only WIDEN the allowed
 -- set), but a CHECK cannot be widened in place — it must be dropped and re-added.
 -- Per `migration-check-constraint-must-backfill-all-historical-blocks`, the re-add
@@ -1445,7 +1658,10 @@ ALTER TABLE plan_artifact ADD CONSTRAINT plan_artifact_kind_chk CHECK (
     'heal_report', 'link_report',
     -- close-21-28 P-O1a: the rules-mode pre-flight collision report (a mid-book propose held the
     -- auto-compile). Widen-only; every kind above stays writable (the backfill-all rule).
-    'preflight'
+    'preflight',
+    -- the material keep-or-drop packet. Persisted because the search SPENDS the author's budget:
+    -- without it, closing the panel threw the result away and re-opening paid for it again.
+    'material_review'
   )
 );
 
@@ -1730,6 +1946,44 @@ ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS written_at       TIMESTAMPTZ;
 -- Clearing by `written_chapter_id` — "the nodes this chapter's prose used to back, and no longer
 -- does" — is correct in both cases and needs no chapter_id at all.
 ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS written_chapter_id UUID;
+
+-- ── D-SCENE-BEATS (2026-07-31): a scene's beats, so a scene can be DRAFTED IN PIECES.
+--
+-- The column was added on this rationale: "MEASURED across 10 live runs, a scene draft lands
+-- ~500 words whatever `target_words` asks (200→565, 400→673, 900→497/625, 1500→559/698), and
+-- gpt-4o produced 461 for a 1500 target — FEWER than the local gemma; so one beat's material
+-- genuinely runs out around 500 words."
+--
+-- CORRECTION (same day): those runs went through `select_draft`, which had no `target_words`
+-- parameter, so no LENGTH directive reached the model on any of them
+-- (D-LENGTH-DIRECTIVE-NEVER-SENT). Output uncorrelated with an ask that was never sent is not
+-- a measurement of a beat's capacity. The column stays for the plainer reason: an author can
+-- declare that a scene is written as several consecutive passages, each with its own brief,
+-- and the engine drafts it that way.
+--
+-- JSONB on the scene rather than a `kind='beat'` child node: the outline tree is fixed-depth
+-- (part→chapter→scene) and the FE's drag-reparent projection depends on that depth, so a
+-- fourth level would be a much wider change than the drafting one this exists to enable.
+-- NAMED `draft_beats`, not `beats`: this model ALREADY has `beat_role` (which structural
+-- beat this node IS, read by motif retrieval), and `structure_template.beats` is that same
+-- structural sense. A third meaning of "beat" — the units a scene is DRAFTED in — sharing the
+-- bare word on the very model that carries `beat_role` is the one-name-one-concept violation
+-- this repo's contract rules exist to prevent.
+ALTER TABLE outline_node ADD COLUMN IF NOT EXISTS draft_beats JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+-- The column shipped for one commit as `beats`; carry any dev/test DB across rather than
+-- leaving an orphan. Guarded both ways so it is a no-op on a fresh DB and on a re-run.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'outline_node' AND column_name = 'beats')
+     AND EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_name = 'outline_node' AND column_name = 'draft_beats') THEN
+    UPDATE outline_node SET draft_beats = beats
+     WHERE jsonb_array_length(COALESCE(beats, '[]'::jsonb)) > 0;
+    ALTER TABLE outline_node DROP COLUMN beats;
+  END IF;
+END $$;
 -- Partial: only the written nodes. The Hub reads this per book, and a mostly-unwritten book keeps
 -- the index tiny.
 CREATE INDEX IF NOT EXISTS idx_outline_node_written
@@ -1904,6 +2158,146 @@ CREATE INDEX IF NOT EXISTS idx_mcp_gate_tasks_owner ON mcp_gate_tasks (owner_use
 CREATE INDEX IF NOT EXISTS idx_mcp_gate_tasks_status ON mcp_gate_tasks (status, created_at);
 """
 
+# ── Glossary-build pipeline (spec 2026-07-27-glossary-kg-build-workflows, plan
+# 2026-07-27-glossary-build-pipeline). The deterministic planner/executor FSM that
+# replaced the chat rail's tool-choice for world building (Mị Đế dogfood pivot).
+# Tenancy: owner_user_id + book_id on every row, every query filters by them.
+# params carries model_source + model_ref (user-model UUID via provider-registry —
+# never a literal) + source_text + caps. Relations are stored by NAME on the item
+# (closed-set type) and resolved to entity ids only at the KG phase.
+_GLOSSARY_BUILD_SQL = """
+CREATE TABLE IF NOT EXISTS glossary_build_runs (
+  run_id          UUID PRIMARY KEY DEFAULT uuidv7(),
+  owner_user_id   UUID NOT NULL,
+  book_id         UUID NOT NULL,
+  params          JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status          TEXT NOT NULL DEFAULT 'draft' CHECK (
+    status IN ('draft','planning','plan_ready','building','proposing','proposed',
+               'kg_projecting','edges_ready','done','failed','cancelled')
+  ),
+  worklist        JSONB NOT NULL DEFAULT '[]'::jsonb,
+  edges           JSONB NOT NULL DEFAULT '[]'::jsonb,
+  error_message   TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_glossary_build_runs_owner_book
+  ON glossary_build_runs(owner_user_id, book_id, created_at DESC);
+-- One in-flight run per book (mirrors uq_authoring_runs_active_book).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_glossary_build_active_book
+  ON glossary_build_runs(book_id)
+  WHERE status IN ('planning','plan_ready','building','proposing','kg_projecting','edges_ready');
+
+CREATE TABLE IF NOT EXISTS glossary_build_items (
+  item_id         UUID PRIMARY KEY DEFAULT uuidv7(),
+  run_id          UUID NOT NULL REFERENCES glossary_build_runs(run_id) ON DELETE CASCADE,
+  owner_user_id   UUID NOT NULL,
+  book_id         UUID NOT NULL,
+  ordinal         INT NOT NULL,
+  name            TEXT NOT NULL,
+  kind            TEXT NOT NULL,
+  depth           TEXT NOT NULL DEFAULT 'standard' CHECK (depth IN ('standard','deep')),
+  status          TEXT NOT NULL DEFAULT 'pending' CHECK (
+    status IN ('pending','building','built','proposed','skipped')
+  ),
+  built           JSONB,
+  sections        JSONB,
+  relations       JSONB NOT NULL DEFAULT '[]'::jsonb,
+  proposed_entity_id UUID,
+  skip_reason     TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (run_id, ordinal)
+);
+CREATE INDEX IF NOT EXISTS idx_glossary_build_items_run
+  ON glossary_build_items(run_id, ordinal);
+"""
+
+
+# Error blocks (atom-edit Phase D) — the author marks a span of wrong prose and says what is
+# wrong with it; the co-writer proposes a grounded fix. Design + the sealed decisions:
+# docs/specs/2026-07-26-atom-edit/DESIGN-error-blocks.md
+#
+# Conceptually this row IS a human-authored self-heal `Finding` — same span/issue/fix triple the
+# LLM judge produces — so the existing locate -> satellite-edit -> splice -> review machinery is
+# reused rather than rebuilt.
+#
+# Scoping follows the house pattern (canon_rule / narrative_thread / generation_correction, NOT
+# the newer glossary_build_*): `book_id` is the tenancy scope key every query filters by, and
+# `created_by` is an actor stamp that is stored and NEVER filtered on (PM-5).
+_ERROR_BLOCK_SQL = """
+CREATE TABLE IF NOT EXISTS chapter_error_block (
+  id             UUID PRIMARY KEY DEFAULT uuidv7(),
+  created_by     UUID NOT NULL,   -- actor stamp (25 M3) — stored, never filtered on
+  project_id     UUID NOT NULL,
+  book_id        UUID NOT NULL,   -- tenancy scope key (25 M1/M2)
+  -- TARGET (discriminated). The chapter editor anchors to a persisted chapter draft; the compose
+  -- preview has no chapter identity yet (it is cleared unconditionally on accept), so it anchors
+  -- to its generation_job instead. A regenerate mints a NEW job, so old blocks orphan rather than
+  -- silently re-attaching to prose they were never about.
+  target_kind    TEXT NOT NULL CHECK (target_kind IN ('chapter_draft','draft_job')),
+  chapter_id     UUID,            -- cross-DB id (no FK — house convention, validated in app code)
+  draft_version  INT,             -- the OI-2 OCC token the offsets were computed against
+  job_id         UUID REFERENCES generation_job(id) ON DELETE CASCADE,
+  -- SPAN ANCHOR. `quote` is the anchor and the offsets are a HINT: prose drifts, so on read we
+  -- re-validate text[start:end] == quote and otherwise re-locate by quote. `source_fingerprint`
+  -- hashes the flattened text the offsets were computed over — a mismatch means the whole
+  -- coordinate space moved (e.g. a doc whose `_text` snapshots went missing flattens differently),
+  -- so every offset is suspect at once and only `quote` may be trusted.
+  start_offset   INT NOT NULL,    -- Unicode code points over tiptap_doc_to_text()
+  end_offset     INT NOT NULL,
+  quote          TEXT NOT NULL,
+  source_fingerprint TEXT NOT NULL,
+  -- THE FINDING. `source` is 'human' for everything Phase D writes; the other values exist so the
+  -- currently-EPHEMERAL machine findings (self-heal judge, critic, canon) can become durable in
+  -- this same ledger later without a migration + backfill + MCP contract change.
+  source         TEXT NOT NULL DEFAULT 'human'
+                 CHECK (source IN ('human','judge','critic','canon')),
+  kind           TEXT NOT NULL CHECK (
+    kind IN ('continuity','voice','pacing','fact','logic','style','other')
+  ),
+  note           TEXT NOT NULL,   -- the author's instruction ("she died in ch3")
+  desired        TEXT,            -- optional: what they want instead
+  -- LIFECYCLE. 'orphaned' is load-bearing: a mark whose text can no longer be found is SURFACED,
+  -- never dropped — a silently dropped mark is indistinguishable from a fixed one.
+  status         TEXT NOT NULL DEFAULT 'open' CHECK (
+    status IN ('open','proposed','resolved','dismissed','orphaned')
+  ),
+  proposal_id    TEXT,
+  resolution     TEXT,
+  version        INT NOT NULL DEFAULT 1,
+  is_archived    BOOLEAN NOT NULL DEFAULT false,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at    TIMESTAMPTZ,
+  CONSTRAINT chapter_error_block_target CHECK (
+       (target_kind = 'chapter_draft' AND chapter_id IS NOT NULL)
+    OR (target_kind = 'draft_job'     AND job_id     IS NOT NULL)
+  ),
+  CONSTRAINT chapter_error_block_span CHECK (end_offset > start_offset AND start_offset >= 0)
+);
+CREATE INDEX IF NOT EXISTS idx_chapter_error_block_chapter
+  ON chapter_error_block(project_id, chapter_id, status) WHERE NOT is_archived;
+CREATE INDEX IF NOT EXISTS idx_chapter_error_block_book
+  ON chapter_error_block(book_id);
+CREATE INDEX IF NOT EXISTS idx_chapter_error_block_job
+  ON chapter_error_block(job_id) WHERE job_id IS NOT NULL;
+-- Kill accidental duplicate marks (double-click, two devices) WITHOUT forbidding two genuinely
+-- different notes on the same span — an author may well mark one passage for two reasons.
+--
+-- COALESCE(chapter_id, job_id) closes a NULL HOLE found at /review-impl: on the draft_job arm
+-- `chapter_id` is NULL, and Postgres treats NULLs as DISTINCT in a unique index, so keying on
+-- `chapter_id` alone left the preview arm completely unguarded. Duplicates were creatable there,
+-- and the accept migration then set `chapter_id` and collided — inside a single transaction, so
+-- ONE duplicate lost the migration of EVERY mark on that draft. Keying on the effective target
+-- guards both arms with one index.
+DROP INDEX IF EXISTS uq_chapter_error_block_open;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_chapter_error_block_open
+  ON chapter_error_block(
+       project_id, COALESCE(chapter_id, job_id), start_offset, end_offset, md5(note))
+  WHERE status = 'open' AND NOT is_archived;
+"""
+
 
 async def _apply_base_schema(conn: asyncpg.Connection) -> None:
     """The base idempotent DDL — injected into the package re-key so its M0
@@ -1925,7 +2319,24 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
         if rekeyed:
             logger.info("composition migrate: package re-key pkg_rekey_v1 applied this boot")
         await conn.execute(_MOTIF_SCHEMA_SQL)          # F0: narrative motif library DDL (+ structure_node)
+        # MOTIF-I18N: collapse per-language motif rows into one source row + its
+        # motif_translation rows. Must precede _seed_motif_packs (which would
+        # otherwise re-create the very rows this removes) and follows the motif DDL
+        # (it needs motif_translation + the original_language rename).
+        from app.db.motif_i18n_migrate import run_motif_i18n
+        if await run_motif_i18n(conn):
+            logger.info("composition migrate: motif i18n motif_i18n_v1 applied this boot")
+        # ARC-I18N: the same reshape for arc_template — `language` out of all three
+        # unique keys + arc_template_translation. Unlike the motif one there is nothing
+        # to collapse (no seeded corpus, one language live), so this is a pure reshape;
+        # it runs here because the arc DDL below is the fresh-DB path and this is the
+        # existing-DB path, exactly as motif's pair does.
+        from app.db.arc_i18n_migrate import run_arc_i18n
+        if await run_arc_i18n(conn):
+            logger.info("composition migrate: arc i18n arc_i18n_v1 applied this boot")
         await conn.execute(_MCP_GATE_TASKS_SQL)        # M1c: the durable ext-tasks gate PERSISTENT store
+        await conn.execute(_GLOSSARY_BUILD_SQL)        # glossary-build pipeline FSM (spec 2026-07-27)
+        await conn.execute(_ERROR_BLOCK_SQL)           # atom-edit Phase D: author-marked error blocks
         # B3 (BA2): a CLEAN DB (fresh, or already drained of legacy arc rows) is auto-lifted here —
         # a safe CHECK-tighten with NOTHING to migrate — so fresh + throwaway-test DBs are born
         # consistent and never trip the guard below. Placed AFTER _MOTIF_SCHEMA_SQL because that is

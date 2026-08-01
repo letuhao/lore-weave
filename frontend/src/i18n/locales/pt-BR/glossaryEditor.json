@@ -8,6 +8,14 @@
   "select": "selecionar",
   "dismiss": "remover",
   "createNew": "Criar novo",
+  "createAs": "Criar «{{name}}» como...",
+  "kind": {
+    "character": "Personagem",
+    "location": "Local",
+    "organization": "Organização",
+    "concept": "Conceito",
+    "item": "Item"
+  },
   "filterEntities": "Filtrar entidades...",
   "noEntities": "Nenhuma entidade detectada neste capítulo",
   "showHighlights": "Mostrar destaques do glossário",
@@ -118,7 +126,8 @@
     "err_code_format": "O código deve conter apenas letras minúsculas, dígitos e sublinhados",
     "err_save": "Falha ao aplicar",
     "toast_merged": "Mapeadas {{count}} entidades de \"{{code}}\"",
-    "toast_reassigned": "Reatribuído \"{{name}}\""
+    "toast_reassigned": "Reatribuído \"{{name}}\"",
+    "same_code_note": "{{count}} entidades adicionais chegaram como «{{code}}» — resolva cada uma aqui."
   },
   "history": {
     "title": "Histórico de versões",
@@ -146,13 +155,5 @@
       "system": "sistema"
     },
     "error": "Não foi possível carregar o histórico de versões."
-  },
-  "createAs": "Criar «{{name}}» como...",
-  "kind": {
-    "character": "Personagem",
-    "location": "Local",
-    "organization": "Organização",
-    "concept": "Conceito",
-    "item": "Item"
   }
 }

@@ -116,6 +116,15 @@ export function useOutlineMutations(projectId: string | undefined, token: string
     mutationFn: (linkId: string) => compositionApi.deleteSceneLink(linkId, token!),
     onSuccess: invalidate,
   });
+  // F3 — the delete is a SOFT archive, so it owes an undo the AUTHOR can reach. It first shipped
+  // on the MCP surface only, which meant the co-writer could restore an edge and the person who
+  // deleted it could not; a soft delete reversible by nobody the author can reach is worse than
+  // the hard delete it replaced, because it looks recoverable. The caller renders it as the
+  // delete toast's Undo action.
+  const restoreSceneLink = useMutation({
+    mutationFn: (linkId: string) => compositionApi.restoreSceneLink(linkId, token!),
+    onSuccess: invalidate,
+  });
 
-  return { rename, setStatus, editCard, setBeatRole, addChild, archive, restore, reorder, createSceneLink, deleteSceneLink, invalidate };
+  return { rename, setStatus, editCard, setBeatRole, addChild, archive, restore, reorder, createSceneLink, deleteSceneLink, restoreSceneLink, invalidate };
 }

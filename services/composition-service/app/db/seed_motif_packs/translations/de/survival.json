@@ -1,0 +1,379 @@
+{
+  "survival.mercy_at_the_door": {
+    "beats": {
+      "answer": {
+        "intent": "Die Entscheidung fällt unter extremem Zeitdruck",
+        "label": "Die Tür öffnet sich oder sie bleibt zu"
+      },
+      "ask": {
+        "intent": "Ein Außenstehender ersucht mit einer unprüfbaren Geschichte um Einlass",
+        "label": "Jemand bittet um Einlass"
+      },
+      "consequence": {
+        "intent": "das Ergebnis lastet auf der Person, die die Entscheidung getroffen hat",
+        "label": "Die Schuld lastet auf dem Entscheider"
+      },
+      "weigh": {
+        "intent": "beide Handlungsoptionen erweisen sich als moralisch vertretbar",
+        "label": "Mitgefühl gegen Kalkül"
+      }
+    },
+    "effects": [
+      "die Schwelle der Gruppe gegenüber Fremden wird nun durch diesen Präzedenzfall festgelegt",
+      "der Entscheider trägt die persönliche Verantwortung für ein spezifisches Ergebnis"
+    ],
+    "emotion_target": "Angst und Verzweiflung",
+    "examples": [
+      "Sie sprach noch durch die Tür, als sie abstimmten, und danach konnte sich niemand darauf einigen, wie lange die Stimme schon zu hören war."
+    ],
+    "name": "Jemand bittet um Einlass",
+    "preconditions": [
+      "ein geschützter Ort und ein Außenstehender, dessen Schilderung nicht rechtzeitig überprüft werden kann"
+    ],
+    "roles": {
+      "decider": {
+        "constraints": [
+          "muss sich entscheiden, bevor Gewissheit herrscht"
+        ],
+        "label": "die Person an der Tür"
+      },
+      "inside": {
+        "constraints": [
+          "tragen in jedem Fall das Risiko"
+        ],
+        "label": "dieer bereits im Haus sind"
+      },
+      "outsider": {
+        "constraints": [
+          "ihre Geschichte lässt sich nicht rechtzeitig prüfen"
+        ],
+        "label": "die Bittsteller"
+      }
+    },
+    "summary": "Ein Außenstehender bittet um Einlass und liefert eine Geschichte, die wahr sein könnte oder auch nicht – beide Möglichkeiten sind vertretbar: Das Öffnen der Tür gefährdet alle, das Schließen der Tür lässt jemanden sterben, der um Hilfe bittet. Die Entscheidung muss unter Zeitdruck und bei unvollständiger Information getroffen werden, und die Konsequenz – wie auch immer sie ausfällt – lastet allein auf der Person, die die Entscheidung getroffen hat."
+  },
+  "survival.not_enough_for_everyone": {
+    "beats": {
+      "allocate": {
+        "intent": "jemand entscheidet nach einem Prinzip, das er irgendwie rechtfertigen kann",
+        "label": "Die Zuteilung erfolgt"
+      },
+      "count": {
+        "intent": "das Defizit wird als mathematische Tatsache etabliert",
+        "label": "Die Zählung fällt negativ aus"
+      },
+      "name": {
+        "intent": "die Abstraktion manifestiert sich in konkreten Personen",
+        "label": "Das Defizit hat Namen"
+      },
+      "remember": {
+        "intent": "die Entscheidung wird zu einer unumstößlichen Tatsache für die Gruppe",
+        "label": "Die Ausgeschlossenen werden es nicht vergessen"
+      }
+    },
+    "effects": [
+      "die wahre Hierarchie der Gruppe tritt für alle Mitglieder offen zutage",
+      "die Ausgeschlossenen tragen ein konkretes Unrecht mit sich herum"
+    ],
+    "emotion_target": "Verzweiflung",
+    "examples": [
+      "Es gab neun Dosen für elf Menschen; das Argument dauerte vier Minuten, und danach sprach niemand mehr darüber."
+    ],
+    "name": "Nicht genug für alle",
+    "preconditions": [
+      "eine zählbare Ressource und mehr Anspruchsteller als Einheiten"
+    ],
+    "roles": {
+      "allocator": {
+        "constraints": [
+          "muss danach mit den Ausgeschlossenen zusammenleben"
+        ],
+        "label": "die Person, die entscheiden muss"
+      },
+      "excluded": {
+        "constraints": [
+          "sind anwesend und werden beim Namen genannt"
+        ],
+        "label": "diejenigen, die leer ausgehen"
+      },
+      "resource": {
+        "constraints": [
+          "ist zählbar und eindeutig unzureichend"
+        ],
+        "label": "der knappe Rohstoff"
+      }
+    },
+    "summary": "Ein lebensnotwendiger Rohstoff — Wasser, Insulin, Sitzplätze, Munition, Treibstoff — wird gezählt, und es stellt sich heraus, dass er nicht ausreicht; das Defizit trägt Namen. Die Zuteilung erfolgt durch Menschen, die danach weiterhin miteinander leben müssen, und das, was die Gruppe in dieser Stunde über sich selbst erfährt, wiegt weitaus schwerer als der Mangel selbst."
+  },
+  "survival.one_of_us_is_compromised": {
+    "beats": {
+      "sign": {
+        "intent": "Es tauchen Hinweise auf, dass jemand in der Gruppe nicht mehr sicher ist",
+        "label": "Ein Anzeichen tritt auf"
+      },
+      "suspect": {
+        "intent": "Die Gruppe konzentriert sich auf die plausibelste Person statt auf die tatsächliche",
+        "label": "Der Verdacht wählt ein Ziel"
+      },
+      "untestable": {
+        "intent": "Es gibt keine verlässliche Methode, um die Person zu identifizieren",
+        "label": "Der Test versagt"
+      },
+      "wrong": {
+        "intent": "die Entscheidung wird vollzogen und ihr Fehler tritt zutage",
+        "label": "Die Fehlentscheidung trifft"
+      }
+    },
+    "effects": [
+      "die Gruppe hat aufgrund einer bloßen Vermutung unwiderruflich gehandelt",
+      "die tatsächliche Bedrohung ist weiterhin präsent und lässt sich nun nur noch schwerer aufdecken"
+    ],
+    "emotion_target": "Paranoia",
+    "examples": [
+      "Drei Tage lang beobachteten sie einander misstrauisch, doch am Ende war es der Mann, den niemand im Blick hatte, der nicht mehr richtig erwachte."
+    ],
+    "name": "Einer von uns ist bereits verloren",
+    "preconditions": [
+      "eine Bedrohung, die sich innerhalb der Gruppe verbirgt und sich jeder Überprüfung entzieht"
+    ],
+    "roles": {
+      "accused": {
+        "constraints": [
+          "wirkt aus Gründen verdächtig, die nichts mit der Wahrheit zu tun haben"
+        ],
+        "label": "der plausibelste Verdächtige"
+      },
+      "compromised": {
+        "constraints": [
+          "weiß es unter Umständen selbst nicht"
+        ],
+        "label": "die tatsächlich Kompromittierte"
+      },
+      "group": {
+        "constraints": [
+          "kann das Gewisse nicht verifizieren"
+        ],
+        "label": "die Gruppe, die entscheiden muss"
+      }
+    },
+    "summary": "Jemand in der Gruppe ist infiziert, verwandelt, ein Verräter oder auf andere Weise nicht mehr sicher – doch der Test, der dies beweisen könnte, ist unzuverlässig, zu langsam oder existiert gar nicht. Da Beweise fehlen, übernimmt der Verdacht die Regie; die Gruppe wendet sich gegen die plausibelste Person statt gegen die tatsächliche, und die Fehlentscheidung kostet mehr als die ursprüngliche Gefahr."
+  },
+  "survival.relic_of_before": {
+    "beats": {
+      "reveal": {
+        "intent": "die Entscheidung offenbart, wie viel von der alten Welt sie noch in sich tragen",
+        "label": "Die Entscheidung offenbart ihre Lage"
+      },
+      "spend": {
+        "intent": "ein realer Preis wird für das Mitführen des Objekts genannt",
+        "label": "Der Preis des Bewahrens"
+      },
+      "surface": {
+        "intent": "ein Objekt aus der untergangenen Welt wird gefunden",
+        "label": "Das Relikt taucht auf"
+      },
+      "worthless": {
+        "intent": "seine Nutzlosigkeit und seine Bedeutung werden ungeschminkt dargelegt",
+        "label": "Wertlos und unbezahlbar"
+      }
+    },
+    "effects": [
+      "wie weit die Gruppe sich von dem entfernt hat, was sie einmal war, wird nun deutlich",
+      "es entsteht eine Kluft zwischen jenen, die für die Bedeutung bezahlen würden, und jenen, die es nicht tun"
+    ],
+    "emotion_target": "Melancholie",
+    "examples": [
+      "Das Radio würde nie wieder funktionieren und wog so viel wie das Wasser für zwei Tage; er trug es neun Tage lang mit sich, bevor er es ablegte."
+    ],
+    "name": "Ein Relikt aus der Zeit davor",
+    "preconditions": [
+      "eine Überlebenslogik, die so streng ist, dass Sentimentalität einen messbaren Preis hat"
+    ],
+    "roles": {
+      "keeper": {
+        "constraints": [
+          "kann seinen Wert nicht mit Überlebenslogik rechtfertigen"
+        ],
+        "label": "derjenige, der ihn bewahren will"
+      },
+      "pragmatist": {
+        "constraints": [
+          "handelt rein nach mathematischer Logik"
+        ],
+        "label": "derjenige, der die Kosten kalkuliert"
+      },
+      "relic": {
+        "constraints": [
+          "besitzt keinen praktischen Nutzen"
+        ],
+        "label": "das Objekt aus der Zeit davor"
+      }
+    },
+    "summary": "Ein Gegenstand aus der untergangenen Welt taucht auf – ein Foto, ein funktionierendes Radio, ein Glas mit etwas Süßem, ein Kinderschuh – und nach jeder Überlebenslogik ist er wertlos, nach jeder anderen jedoch unbezahlbar. Was Menschen bereit sind zu opfern, um ihn zu behalten, sagt mehr über ihre Lage aus als jede Bestandsaufnahme."
+  },
+  "survival.rules_of_the_new_world": {
+    "beats": {
+      "break": {
+        "intent": "die vertraute Welt verhält sich sichtlich nicht mehr so, wie sie sollte",
+        "label": "Das Gewohnte versagt"
+      },
+      "infer": {
+        "intent": "eine vorläufige Regel wird aus einem einzelnen Ereignis laut ausgesprochen",
+        "label": "Die Regel wird abgeleitet"
+      },
+      "lesson": {
+        "intent": "ein Tod offenbart eine Grenze, von der niemand wusste, dass sie existiert",
+        "label": "Die erste Lektion kostet jemanden"
+      },
+      "obey": {
+        "intent": "die Gruppe überlebt dank einer Regel, die sie noch nicht erklären kann",
+        "label": "Überleben durch Befolgung der Regel"
+      }
+    },
+    "effects": [
+      "die Gruppe besitzt eine funktionierende Regel, die sie noch nicht durchschaut hat",
+      "der Preis für das Erlernen jeder weiteren Regel ist nun als ein Menschenleben bekannt"
+    ],
+    "emotion_target": "Grauen",
+    "examples": [
+      "Niemand wusste, warum diejenigen, die wegliefen, geholt wurden und die, die stillstanden, nicht, aber am zweiten Tag lief niemand mehr weg."
+    ],
+    "name": "Die Regeln auf die harte Tour lernen",
+    "preconditions": [
+      "eine Welt, deren Gesetzmäßigkeiten sich unbemerkt geändert haben"
+    ],
+    "roles": {
+      "lost": {
+        "constraints": [
+          "starb bei einer gewöhnlichen Handlung"
+        ],
+        "label": "die Person, deren Tod die Lehre war"
+      },
+      "rule": {
+        "constraints": [
+          "ist unerklärt und vorläufig"
+        ],
+        "label": "die abgeleitete Regel"
+      },
+      "survivor": {
+        "constraints": [
+          "verfügt nur über einen einzigen Anhaltspunkt"
+        ],
+        "label": "die Person, die die Regel ableitet"
+      },
+      "world": {
+        "constraints": [
+          "gibt weder Warnungen noch zweite Chancen"
+        ],
+        "label": "die veränderte Welt"
+      }
+    },
+    "summary": "Die gewohnte Welt folgt nicht mehr ihren alten Gesetzen – die Toten erwachen, der Himmel verändert sich, das Netzwerk bricht zusammen, die Flut zieht sich nicht zurück – und die erste Lektion wird mit einem Leben bezahlt. Aus diesem Tod wird eine Regel abgeleitet und laut ausgesprochen; die Gruppe überlebt bis zum nächsten Kapitel nur in dem Maße, in dem sie einer Regel gehorcht, die sie selbst noch nicht erklären kann."
+  },
+  "survival.shelter_has_a_price": {
+    "beats": {
+      "decide": {
+        "intent": "eine sichere Zuflucht wird gegen einen Preis abgewogen, den man unmöglich ewig bezahlen kann",
+        "label": "Bezahlen oder Aufbrechen"
+      },
+      "find": {
+        "intent": "ein wahrhaft sicherer Ort wird erreicht und die Erleichterung ist echt",
+        "label": "Zuflucht wird gefunden"
+      },
+      "terms": {
+        "intent": "der Preis für das Bleiben wird deutlich",
+        "label": "Die Bedingungen treten hervor"
+      },
+      "trust": {
+        "intent": "die Gruppe verpflichtet sich zu bleiben und gibt etwas auf, um dies zu tun",
+        "label": "Vertrauen wird gefasst"
+      }
+    },
+    "effects": [
+      "die Gruppe hat sich entweder den Bedingungen unterworfen oder ist wieder schutzlos ausgeliefert",
+      "was jedes Mitglied bereit war zu akzeptieren, ist nun für die anderen sichtbar"
+    ],
+    "emotion_target": "Unbehagen",
+    "examples": [
+      "Das Tor fiel hinter ihnen ins Schloss, das Essen war heiß und echt, und am nächsten Morgen erklärte jemand den Arbeitsplan – und die Regeln."
+    ],
+    "name": "Der Zufluchtsort mit Preis",
+    "preconditions": [
+      "eine Gruppe, die keine andere lebensfähige Alternative zu diesem Zufluchtsort hat"
+    ],
+    "roles": {
+      "arrivals": {
+        "constraints": [
+          "haben keinen anderen Ort, an den sie gehen können"
+        ],
+        "label": "die Ankommenden"
+      },
+      "holders": {
+        "constraints": [
+          "sind keine Schurken, sondern lediglich etabliert"
+        ],
+        "label": "die Hüter"
+      },
+      "shelter": {
+        "constraints": [
+          "ist wahrhaft sicher"
+        ],
+        "label": "die Zuflucht"
+      }
+    },
+    "summary": "Es wird ein Zufluchtsort gefunden, der wahrhaft sicher ist — Mauern, Nahrung, Wärme, ein funktionierendes Schloss — und die Erleichterung ist echt. Doch dann werden die Bedingungen deutlich: eine Arbeit, Gehorsam, eine ausgelieferte Person, eine Regel darüber, wer gehen darf. Die Gruppe muss die Sicherheit gegen einen Preis abwägen, den sie nicht unbegrenzt bezahlen kann."
+  },
+  "survival.someone_has_to_decide": {
+    "beats": {
+      "grant": {
+        "intent": "Die Führung wird von jenen abgetreten, die den Verzicht später bereuen werden",
+        "label": "Autorität verliehen, Groll gesammelt"
+      },
+      "hold": {
+        "intent": "die Wahl erweist sich als ausreichend erfolgreich, sodass niemand sie revidiert",
+        "label": "Die Entscheidung bleibt bestehen"
+      },
+      "speak": {
+        "intent": "eine Person ohne formelle Befugnis legt fest, was getan wird",
+        "label": "Jemand spricht es laut aus"
+      },
+      "vacuum": {
+        "intent": "eine Entscheidung ist erforderlich, aber es existiert keine Instanz, die sie treffen kann",
+        "label": "Niemand hat das Sagen"
+      }
+    },
+    "effects": [
+      "Es existiert nun eine Führungsperson, deren Legitimität allein auf einem einzigen Nachmittag beruht",
+      "Diejenigen, die gezögert haben, besitzen nun einen Grund für späteren Groll"
+    ],
+    "emotion_target": "Spannung",
+    "examples": [
+      "Er sagte: «Wir gehen nach Norden», und begann zu laufen; elf Leute folgten ihm, und das war der gesamte Prozess."
+    ],
+    "name": "Autorität aus dem Nichts",
+    "preconditions": [
+      "Eine Gruppe ohne etablierte Hierarchie steht vor einer Entscheidung, die keinen Aufschub duldet"
+    ],
+    "roles": {
+      "decision": {
+        "constraints": [
+          "musste getroffen werden, bevor sie diskutiert werden konnte"
+        ],
+        "label": "die Entscheidung, die nicht warten konnte"
+      },
+      "group": {
+        "constraints": [
+          "erteilten die Autorität, indem sie nicht widersprachen"
+        ],
+        "label": "diejenigen, die es geschehen ließen"
+      },
+      "leader": {
+        "constraints": [
+          "besaß keine Befugnis zu entscheiden"
+        ],
+        "label": "wer auch immer zuerst sprach"
+      }
+    },
+    "summary": "Niemand hat das Sagen und eine Entscheidung kann nicht warten, also trifft sie jemand – nicht der Stärkste oder der Ranghöchste, sondern wer auch immer bereit war, einen Satz laut auszusprechen, während alle anderen sich noch gegenseitig anstarrten. Die Entscheidung erweist sich als gut genug, und die Autorität wird denjenigen nachträglich verliehen, die sie später bereuen werden."
+  }
+}

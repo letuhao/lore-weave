@@ -1,0 +1,379 @@
+{
+  "survival.mercy_at_the_door": {
+    "beats": {
+      "answer": {
+        "intent": "quyết định được đưa ra dưới sức ép thời gian",
+        "label": "Cửa mở hoặc không"
+      },
+      "ask": {
+        "intent": "một kẻ bên ngoài xin vào với câu chuyện không kiểm được",
+        "label": "Có người xin vào"
+      },
+      "consequence": {
+        "intent": "hậu quả dính vào chính con người đã chọn",
+        "label": "Ghi vào sổ kẻ đã quyết"
+      },
+      "weigh": {
+        "intent": "cả hai câu trả lời đều được chỉ ra là bênh được",
+        "label": "Lòng thương đấu với con tính"
+      }
+    },
+    "effects": [
+      "ngưỡng cho người lạ vào của cả nhóm từ nay đã có tiền lệ",
+      "kẻ ra quyết định mang riêng lấy một hậu quả cụ thể"
+    ],
+    "emotion_target": "đau đớn",
+    "examples": [
+      "Cô ta vẫn còn nói vọng qua cánh cửa lúc họ biểu quyết, và về sau chẳng ai thống nhất được cái giọng ấy đã kéo dài bao lâu."
+    ],
+    "name": "Có Người Đang Xin Vào",
+    "preconditions": [
+      "một nơi có phòng thủ và một kẻ ngoài mà lời khai không kịp kiểm chứng"
+    ],
+    "roles": {
+      "decider": {
+        "constraints": [
+          "phải chọn trước khi kịp biết"
+        ],
+        "label": "kẻ ra mở cửa"
+      },
+      "inside": {
+        "constraints": [
+          "gánh rủi ro theo cả hai hướng"
+        ],
+        "label": "những người đã ở bên trong"
+      },
+      "outsider": {
+        "constraints": [
+          "câu chuyện của họ không kịp kiểm chứng"
+        ],
+        "label": "người đang xin"
+      }
+    },
+    "summary": "Một kẻ bên ngoài xin được vào với một câu chuyện có thể thật mà cũng có thể không, và cả hai câu trả lời đều bênh được: mở cửa là đánh cược cả nhóm, đóng cửa là giết một người đang van xin. Lựa chọn phải đưa ra dưới sức ép thời gian với thông tin thiếu, và hậu quả — ngả nào cũng vậy — được ghi vào sổ của chính kẻ đã quyết."
+  },
+  "survival.not_enough_for_everyone": {
+    "beats": {
+      "allocate": {
+        "intent": "có kẻ đứng ra quyết, theo bất cứ nguyên tắc nào họ bảo vệ được",
+        "label": "Chia phần"
+      },
+      "count": {
+        "intent": "phần thiếu được xác lập như một dữ kiện số học",
+        "label": "Đếm ra thì thiếu"
+      },
+      "name": {
+        "intent": "cái trừu tượng hóa thành những con người cụ thể",
+        "label": "Phần thiếu có tên người"
+      },
+      "remember": {
+        "intent": "quyết định ấy thành một dữ kiện vĩnh viễn của cả nhóm",
+        "label": "Kẻ bị gạt ra thì nhớ"
+      }
+    },
+    "effects": [
+      "trật tự thật của cả nhóm từ nay ai cũng nhìn thấy",
+      "những kẻ bị gạt ra có một mối oán với một cái tên gắn vào"
+    ],
+    "emotion_target": "tuyệt vọng",
+    "examples": [
+      "Có chín liều thuốc và mười một con người, cuộc cãi vã kéo bốn phút, rồi về sau chẳng ai nhắc lại lần nào nữa."
+    ],
+    "name": "Không Đủ Cho Tất Cả",
+    "preconditions": [
+      "một thứ đếm được và số người đòi nhiều hơn số phần"
+    ],
+    "roles": {
+      "allocator": {
+        "constraints": [
+          "rồi vẫn phải sống chung với những người bị gạt ra"
+        ],
+        "label": "kẻ buộc phải quyết"
+      },
+      "excluded": {
+        "constraints": [
+          "đang có mặt và có tên"
+        ],
+        "label": "những kẻ không được phần"
+      },
+      "resource": {
+        "constraints": [
+          "đếm được và rành rành là không đủ"
+        ],
+        "label": "thứ đang thiếu"
+      }
+    },
+    "summary": "Một thứ giữ mạng người — nước, thuốc, chỗ ngồi, đạn, dầu — được đếm ra và thiếu, và cái phần thiếu ấy có tên người gắn vào. Việc chia được quyết bởi chính những kẻ sau đó vẫn phải sống chung với nhau, và thứ cả nhóm học được về chính mình trong giờ khắc đó còn ở lại lâu hơn cái nguồn kia rất nhiều."
+  },
+  "survival.one_of_us_is_compromised": {
+    "beats": {
+      "sign": {
+        "intent": "có bằng chứng rằng một kẻ trong nhóm không còn an toàn",
+        "label": "Một dấu hiệu hiện ra"
+      },
+      "suspect": {
+        "intent": "cả nhóm dồn về kẻ dễ ngờ nhất thay vì kẻ thật",
+        "label": "Mối ngờ chọn lấy một cái đích"
+      },
+      "untestable": {
+        "intent": "không có cách nào đáng tin để xác định là ai",
+        "label": "Phép thử bỏ rơi họ"
+      },
+      "wrong": {
+        "intent": "quyết định được thi hành và cái sai của nó lộ ra",
+        "label": "Quyết định sai giáng xuống"
+      }
+    },
+    "effects": [
+      "cả nhóm đã ra tay không thể rút lại dựa trên một phỏng đoán",
+      "cái hỏng thật vẫn còn đó và giờ càng khó nêu ra hơn"
+    ],
+    "emotion_target": "hoang tưởng",
+    "examples": [
+      "Họ canh tay nhau suốt ba ngày, rốt cuộc chính gã chẳng ai buồn canh mới là kẻ sáng ra tỉnh dậy không còn bình thường."
+    ],
+    "name": "Trong Chúng Ta Đã Có Kẻ Không Còn Là Mình",
+    "preconditions": [
+      "một mối hiểm ẩn ngay trong nhóm và không chịu để kiểm chứng"
+    ],
+    "roles": {
+      "accused": {
+        "constraints": [
+          "dễ ngờ vì những lý do chẳng liên quan gì tới sự thật"
+        ],
+        "label": "kẻ dễ bị ngờ nhất"
+      },
+      "compromised": {
+        "constraints": [
+          "có khi chính hắn cũng không biết"
+        ],
+        "label": "kẻ thật sự đã hỏng"
+      },
+      "group": {
+        "constraints": [
+          "không thể kiểm chứng đúng cái điều mình cần biết"
+        ],
+        "label": "cả nhóm buộc phải quyết"
+      }
+    },
+    "summary": "Có kẻ trong nhóm đã nhiễm, đã hóa, đã đi báo, hoặc bằng cách nào đó không còn an toàn nữa, mà phép thử chứng minh được điều ấy thì không đáng tin, quá chậm, hoặc chẳng hề tồn tại. Mối ngờ làm thay phần việc mà chứng cứ không làm nổi, cả nhóm quay sang kẻ dễ ngờ nhất thay vì kẻ thật, và cái quyết định sai ấy tốn hơn cả chính mối hiểm kia."
+  },
+  "survival.relic_of_before": {
+    "beats": {
+      "reveal": {
+        "intent": "quyết định phơi ra họ còn giữ được bao nhiêu của thế giới cũ",
+        "label": "Lựa chọn ấy nói ra họ đang ở đâu"
+      },
+      "spend": {
+        "intent": "một cái giá thật được nêu ra cho việc mang nó đi tiếp",
+        "label": "Giữ nó tốn những gì"
+      },
+      "surface": {
+        "intent": "một vật của thế giới đã tắt được tìm thấy",
+        "label": "Món đồ trồi lên"
+      },
+      "worthless": {
+        "intent": "cả sự vô dụng lẫn ý nghĩa của nó đều được nói thẳng ra",
+        "label": "Vô giá trị mà lại vô giá"
+      }
+    },
+    "effects": [
+      "họ đã đi xa khỏi con người cũ của mình tới đâu, từ nay là chuyện nói thẳng ra",
+      "có một lằn ranh giữa những kẻ chịu trả giá cho ý nghĩa và những kẻ thì không"
+    ],
+    "emotion_target": "bùi ngùi",
+    "examples": [
+      "Cái đài sẽ chẳng bao giờ chạy lại được và nặng bằng hai ngày nước, hắn vác nó chín ngày rồi mới đặt xuống."
+    ],
+    "name": "Một Món Đồ Của Thuở Trước",
+    "preconditions": [
+      "một con tính sinh tồn chặt tới mức tình cảm cũng có giá đo được"
+    ],
+    "roles": {
+      "keeper": {
+        "constraints": [
+          "không biện minh nổi bằng lý lẽ sinh tồn"
+        ],
+        "label": "kẻ muốn giữ nó lại"
+      },
+      "pragmatist": {
+        "constraints": [
+          "về mặt số học thì đúng"
+        ],
+        "label": "kẻ đếm cái giá"
+      },
+      "relic": {
+        "constraints": [
+          "chẳng có giá trị thực dụng nào"
+        ],
+        "label": "món đồ của thuở trước"
+      }
+    },
+    "summary": "Một món đồ của cái thế giới đã tắt trồi lên — một tấm ảnh, một cái đài còn chạy, một hũ đồ ngọt, một chiếc giày trẻ con — và nó vô giá trị theo mọi con tính sinh tồn mà lại vô giá theo mọi thước đo còn lại. Người ta chịu bỏ ra bao nhiêu để giữ nó nói được nhiều điều về chỗ họ đang đứng hơn bất cứ bản kiểm kê nào."
+  },
+  "survival.rules_of_the_new_world": {
+    "beats": {
+      "break": {
+        "intent": "thế giới quen thuộc lộ rõ là không còn hành xử như lẽ ra phải thế",
+        "label": "Cái bình thường thôi vận hành"
+      },
+      "infer": {
+        "intent": "một luật tạm bợ được nói thành lời từ đúng một trường hợp",
+        "label": "Suy ra luật lệ"
+      },
+      "lesson": {
+        "intent": "một cái chết cho thấy có một ranh giới mà chẳng ai biết là có",
+        "label": "Bài học đầu đổi bằng một mạng"
+      },
+      "obey": {
+        "intent": "cả nhóm sống bằng một luật mà họ chưa cắt nghĩa nổi",
+        "label": "Sống nhờ tuân theo nó"
+      }
+    },
+    "effects": [
+      "cả nhóm nắm trong tay một luật dùng được nhưng chưa hiểu được",
+      "cái giá để học thêm mỗi luật mới từ nay đã biết là một mạng người"
+    ],
+    "emotion_target": "khiếp sợ",
+    "examples": [
+      "Chẳng ai biết vì sao kẻ bỏ chạy thì bị bắt còn kẻ đứng yên thì không, nhưng tới ngày thứ hai thì không ai chạy nữa."
+    ],
+    "name": "Học Luật Mới Bằng Máu",
+    "preconditions": [
+      "một thế giới mà luật vận hành đã đổi mà không hề báo trước"
+    ],
+    "roles": {
+      "lost": {
+        "constraints": [
+          "chết vì làm đúng cái việc bình thường"
+        ],
+        "label": "kẻ chết để dạy ra nó"
+      },
+      "rule": {
+        "constraints": [
+          "chưa cắt nghĩa được và còn tạm bợ"
+        ],
+        "label": "luật lệ được suy ra"
+      },
+      "survivor": {
+        "constraints": [
+          "chỉ có đúng một dữ kiện để lần ra"
+        ],
+        "label": "kẻ suy ra luật lệ"
+      },
+      "world": {
+        "constraints": [
+          "không báo trước và không cho lần thứ hai"
+        ],
+        "label": "thế giới đã đổi khác"
+      }
+    },
+    "summary": "Thế giới quen thuộc thôi vận hành theo luật cũ của nó — người chết biết đi, bầu trời đổi màu, mạng lưới tắt ngấm, thủy triều không chịu rút — và bài học đầu tiên phải trả bằng một mạng người. Từ cái chết ấy một luật lệ được suy ra và được nói thành lời, rồi cả nhóm sống được tới chương sau đúng bằng mức họ chịu tuân theo một luật mà chính họ chưa cắt nghĩa nổi."
+  },
+  "survival.shelter_has_a_price": {
+    "beats": {
+      "decide": {
+        "intent": "sự an toàn chắc chắn được cân với một cái giá không trả nổi",
+        "label": "Trả hay đi"
+      },
+      "find": {
+        "intent": "tới được một nơi an toàn thật sự và sự nhẹ nhõm là có thật",
+        "label": "Tìm được chỗ trú"
+      },
+      "terms": {
+        "intent": "cái giá để được ở lại trở nên rõ ràng",
+        "label": "Điều khoản hiện ra"
+      },
+      "trust": {
+        "intent": "cả nhóm quyết ở lại và phải bỏ ra thứ gì đó để được ở",
+        "label": "Trao lòng tin"
+      }
+    },
+    "effects": [
+      "cả nhóm hoặc đã cúi đầu trước các điều khoản, hoặc lại phơi ra ngoài trời",
+      "mỗi người chịu chấp nhận tới đâu thì những người còn lại đều đã biết"
+    ],
+    "emotion_target": "bất an",
+    "examples": [
+      "Cổng khép lại sau lưng họ, thức ăn nóng và có thật, rồi tới sáng thì có người giải thích về ca lao dịch, và về cái luật kia."
+    ],
+    "name": "Chỗ Trú Có Giá Của Nó",
+    "preconditions": [
+      "một nhóm người không còn lựa chọn nào khả dĩ ngoài chỗ trú được mời"
+    ],
+    "roles": {
+      "arrivals": {
+        "constraints": [
+          "không còn chỗ nào khác để đi"
+        ],
+        "label": "những kẻ vừa tới"
+      },
+      "holders": {
+        "constraints": [
+          "không phải ác nhân, chỉ là đã yên vị ở đó trước"
+        ],
+        "label": "những kẻ đang giữ nó"
+      },
+      "shelter": {
+        "constraints": [
+          "an toàn thật sự"
+        ],
+        "label": "chỗ trú"
+      }
+    },
+    "summary": "Tìm được một chỗ trú thật sự an toàn — có tường, có cái ăn, có hơi ấm, có ổ khóa còn dùng được — và sự nhẹ nhõm ấy là thật. Rồi các điều khoản hiện ra: một phần lao dịch, một sự phục tùng, một con người bị giao nộp, một luật về việc ai được phép đi. Cả nhóm phải cân một sự an toàn chắc chắn với cái giá mà họ không trả nổi mãi."
+  },
+  "survival.someone_has_to_decide": {
+    "beats": {
+      "grant": {
+        "intent": "quyền cầm đầu được nhường bởi những kẻ rồi sẽ tiếc vì đã nhường",
+        "label": "Trao quyền, ghim sẵn oán"
+      },
+      "hold": {
+        "intent": "lựa chọn ấy đủ ổn để chẳng ai lật lại",
+        "label": "Quyết định đứng vững"
+      },
+      "speak": {
+        "intent": "một người chẳng có tư cách gì tuyên bố sẽ làm gì",
+        "label": "Có kẻ nói thành lời"
+      },
+      "vacuum": {
+        "intent": "cần một quyết định mà không có quyền uy nào để đưa ra nó",
+        "label": "Chẳng ai cầm đầu"
+      }
+    },
+    "effects": [
+      "từ nay có một kẻ cầm đầu mà tính chính danh chỉ dựa trên một buổi chiều",
+      "những kẻ đã nhường có sẵn một mối oán để dùng về sau"
+    ],
+    "emotion_target": "căng thẳng",
+    "examples": [
+      "Hắn nói 'đi về phía bắc' rồi cất bước, mười một người đi theo, và toàn bộ cái gọi là quy trình chỉ có thế."
+    ],
+    "name": "Quyền Uy Dựng Trong Một Buổi Chiều",
+    "preconditions": [
+      "một nhóm chưa có quyền uy nào được lập, đối mặt một quyết định không đợi được"
+    ],
+    "roles": {
+      "decision": {
+        "constraints": [
+          "phải quyết trước khi kịp bàn"
+        ],
+        "label": "quyết định không đợi được"
+      },
+      "group": {
+        "constraints": [
+          "trao quyền bằng cách không phản đối"
+        ],
+        "label": "những người đã để yên cho chuyện đó"
+      },
+      "leader": {
+        "constraints": [
+          "không có tư cách gì để quyết"
+        ],
+        "label": "kẻ lên tiếng trước"
+      }
+    },
+    "summary": "Chẳng ai là người cầm đầu mà quyết định thì không đợi được, nên có kẻ đứng ra quyết — không phải kẻ mạnh nhất hay kẻ nhiều tuổi nhất, mà là kẻ chịu nói thành lời trong lúc những người còn lại vẫn đang nhìn nhau. Quyết định ấy hóa ra tạm ổn, và quyền uy được trao lại về sau bởi chính những người rồi sẽ oán vì đã trao."
+  }
+}

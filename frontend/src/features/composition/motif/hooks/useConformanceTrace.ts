@@ -23,10 +23,15 @@ export function useConformanceTrace(
     select: (d): ChapterConformance => d,
   });
 
-  // Regenerate → the EXISTING scene-generate route (spec 33 §5.1); the bound motif steers it
-  // via the packer (BE-M2). Replaces the removed regenerate-to-beat endpoint.
+  // Regenerate → the EXISTING scene-generate route (spec 33 §5.1); the bound motif steers it via
+  // the packer (BE-M2). Replaces the never-built regenerate-to-beat endpoint — and now sends the
+  // model the route requires, which the first migration omitted (every click 422'd). The view
+  // gates the button on the same `modelRef`, so this throw is a backstop, not the UX.
   const regenerateScene = useMutation({
-    mutationFn: (outlineNodeId: string) => motifApi.regenerateScene(projectId!, outlineNodeId, token!),
+    mutationFn: (outlineNodeId: string) => {
+      if (!modelRef) throw new Error('regenerate needs a model');
+      return motifApi.regenerateScene(projectId!, outlineNodeId, modelRef, token!);
+    },
     onSuccess: invalidate,
   });
 

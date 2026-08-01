@@ -21,13 +21,13 @@ const dim = (over: Partial<ConformanceDim> = {}): ConformanceDim =>
 
 describe('ConformanceSceneRow', () => {
   it('on-beat + calibrated → ✓, no advisory, no regenerate', () => {
-    render(<ConformanceSceneRow scene={scene()} onRegenerate={vi.fn()} />);
+    render(<ConformanceSceneRow scene={scene()} />);
     expect(screen.getByTestId('conformance-tone-n1').textContent).toContain('✓');
     expect(screen.queryByTestId('conformance-advisory-n1')).toBeNull();
     expect(screen.queryByTestId('conformance-regen-n1')).toBeNull();
   });
 
-  it('beat missed → ✗ + Regenerate to beat (drift affordance)', () => {
+  it('beat missed → ✗ + Regenerate to beat (the drift affordance)', () => {
     const onRegen = vi.fn();
     render(<ConformanceSceneRow scene={scene({ conformance: dim({ beat_realized: false }) })} onRegenerate={onRegen} />);
     expect(screen.getByTestId('conformance-tone-n1').textContent).toContain('✗');
@@ -35,20 +35,30 @@ describe('ConformanceSceneRow', () => {
     expect(onRegen).toHaveBeenCalledWith('n1');
   });
 
+  it('drift but NO handler → the button is not drawn at all', () => {
+    // `onRegenerate` is optional on purpose: the view only passes it when a model is resolved,
+    // because generation without one is a 422 at request validation. An affordance that cannot
+    // complete should not be drawn — this row shipped once as a button that could only fail, so
+    // the gate is the prop's presence rather than a disabled state nobody can explain.
+    render(<ConformanceSceneRow scene={scene({ conformance: dim({ beat_realized: false }) })} />);
+    expect(screen.getByTestId('conformance-tone-n1').textContent).toContain('✗');
+    expect(screen.queryByTestId('conformance-regen-n1')).toBeNull();
+  });
+
   it('calibrated=false stamps the advisory / unverified honesty note (R2.1)', () => {
-    render(<ConformanceSceneRow scene={scene({ conformance: dim({ calibrated: false }) })} onRegenerate={vi.fn()} />);
+    render(<ConformanceSceneRow scene={scene({ conformance: dim({ calibrated: false }) })} />);
     expect(screen.getByTestId('conformance-advisory-n1')).toBeInTheDocument();
   });
 
   it('null verdict → neutral "not checked", no tone / advisory / regenerate', () => {
-    render(<ConformanceSceneRow scene={scene({ conformance: null })} onRegenerate={vi.fn()} />);
+    render(<ConformanceSceneRow scene={scene({ conformance: null })} />);
     expect(screen.getByTestId('conformance-unchecked-n1')).toBeInTheDocument();
     expect(screen.queryByTestId('conformance-tone-n1')).toBeNull();
     expect(screen.queryByTestId('conformance-regen-n1')).toBeNull();
   });
 
   it('degraded judge (null booleans + error) → neutral "couldn\'t check", never a tone', () => {
-    render(<ConformanceSceneRow scene={scene({ conformance: { beat_realized: null, tension_band_match: null, calibrated: false, error: 'conformance_unavailable' } })} onRegenerate={vi.fn()} />);
+    render(<ConformanceSceneRow scene={scene({ conformance: { beat_realized: null, tension_band_match: null, calibrated: false, error: 'conformance_unavailable' } })} />);
     expect(screen.getByTestId('conformance-unchecked-n1')).toBeInTheDocument();
     expect(screen.queryByTestId('conformance-tone-n1')).toBeNull();
   });

@@ -94,6 +94,20 @@ __all__ = [
 _VALID_ACTANTS = {"subject", "object", "sender", "receiver", "helper", "opponent"}
 _VALID_KINDS = {"sequence", "situation", "hook", "emotion_arc", "trope", "pattern", "scheme"}
 
+#: The abstraction shape, with both closed sets enforced at the decoder. `beats` stays loose — its
+#: contents are the craft, and constraining prose is what this must never do.
+_ABSTRACTION_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "kind": {"type": "string", "enum": sorted(_VALID_KINDS)},
+        "summary": {"type": "string"},
+        "actants": {"type": "array", "items": {"type": "string", "enum": sorted(_VALID_ACTANTS)}},
+    },
+    "required": ["name", "kind", "summary"],
+    "additionalProperties": True,
+}
+
 # D-W8-MOTIF-BEAT-LLM-EXTRACTOR — how many of the user's visible motifs form the tag-beats
 # vocabulary. The whole seeded system catalog (~60) + a user's own motifs fits comfortably in
 # the classifier prompt (the engine lists code+name+summary per code); cap so a power user with
@@ -293,7 +307,7 @@ def _motif_args(spec: dict[str, Any], *, index: int, language: str) -> MotifCrea
     return MotifCreateArgs(
         code=_slug(spec.get("code"), f"mined.motif-{index}"),
         name=str(spec.get("name") or f"Mined Motif {index + 1}")[:500],
-        language=language,
+        original_language=language,
         kind=kind,
         summary=str(spec.get("summary") or "")[:20000],
         roles=roles,
@@ -385,7 +399,11 @@ async def mine_motifs(
             input={
                 "messages": [{"role": "system", "content": sys_a},
                              {"role": "user", "content": usr_a}],
-                "response_format": {"type": "text"}, "temperature": 0.3,
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "motif_abstraction", "schema": _ABSTRACTION_SCHEMA},
+                },
+                "temperature": 0.3,
                 "max_tokens": 1024,
             },
             job_meta={"extractor": "motif_mine", "pattern": list(pattern)},

@@ -15,6 +15,7 @@ import type {
   BookOntology,
   AdoptRequest,
   BookGenreCreate,
+  BookKind,
   BookKindCreate,
   BookAttributeCreate,
   SyncAvailable,
@@ -212,8 +213,8 @@ export const tieringApi = {
     });
   },
 
-  createBookKind(bookId: string, payload: BookKindCreate, token: string) {
-    return apiJson(`${BASE}/books/${bookId}/ontology/kinds`, {
+  createBookKind(bookId: string, payload: BookKindCreate, token: string): Promise<BookKind> {
+    return apiJson<BookKind>(`${BASE}/books/${bookId}/ontology/kinds`, {
       method: 'POST',
       body: JSON.stringify(payload),
       token,

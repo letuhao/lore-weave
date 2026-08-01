@@ -48,8 +48,19 @@ fi
 
 echo "[admin-registry-lint] info: registry declares ${#handlers[@]} handlers"
 
+# Build/vendor trees are excluded from BOTH scans below. An admin marker is a thing an author
+# wrote in this repo's source; it is never inside a dependency or a compiler output, so this
+# narrows nothing real. It is a LATENCY fix, and the latency was not cosmetic: the two bare
+# `grep -R services/` calls walked every `services/*/node_modules` and every Rust
+# `services/*/target`, which on a developer machine took this gate from 5s to 134s after the
+# 2026-08-02 merge added four Rust services — and once to a 900s TIMEOUT under
+# `gate-wiring-gate --run-all`, i.e. a red gate for a reason that has nothing to do with what
+# it checks. CI never saw it because a fresh checkout has neither directory.
+SKIP=(--exclude-dir=node_modules --exclude-dir=target --exclude-dir=dist
+      --exclude-dir=.venv --exclude-dir=__pycache__ --exclude-dir=.pytest_cache)
+
 # Scan for ADMIN-SQL / ADMIN-RPC markers.
-marker_hits=$(grep -RnE '//\s*ADMIN-(SQL|RPC):' services/ 2>/dev/null \
+marker_hits=$(grep -RnE "${SKIP[@]}" '//\s*ADMIN-(SQL|RPC):' services/ 2>/dev/null \
     | grep -vE '//\s*admin-registry-lint:exempt' \
     || true)
 if [[ -n "$marker_hits" ]]; then
@@ -74,7 +85,7 @@ if [[ -n "$marker_hits" ]]; then
 fi
 
 # Scan for AdminHandler-style methods.
-admin_handlers=$(grep -RnE 'func\s+\(\w+\s+\*AdminHandler\)\s+\w+' services/ 2>/dev/null \
+admin_handlers=$(grep -RnE "${SKIP[@]}" 'func\s+\(\w+\s+\*AdminHandler\)\s+\w+' services/ 2>/dev/null \
     | grep -vE '//\s*admin-registry-lint:exempt' \
     || true)
 if [[ -n "$admin_handlers" ]]; then

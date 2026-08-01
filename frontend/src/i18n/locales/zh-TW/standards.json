@@ -19,8 +19,12 @@
     "edit": "編輯",
     "delete": "刪除"
   },
-  "genres": { "new": "新增類型" },
-  "kinds": { "new": "新增種類" },
+  "genres": {
+    "new": "新增類型"
+  },
+  "kinds": {
+    "new": "新增種類"
+  },
   "toast": {
     "cloned": "已將「{{name}}」複製到你的標準",
     "cloneError": "無法複製「{{name}}」",
@@ -69,8 +73,8 @@
       "number": "數字",
       "date": "日期",
       "tags": "標籤",
-      "url": "URL",
-      "boolean": "是 / 否"
+      "boolean": "是 / 否",
+      "url": "URL"
     }
   },
   "stdform": {

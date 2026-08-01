@@ -26,8 +26,30 @@ func seedEntityOfKind(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID, code s
 		`INSERT INTO book_kinds(book_id, code, name, is_person) VALUES($1,$2,$2,$3)
 		 ON CONFLICT DO NOTHING RETURNING book_kind_id`, bookID, code, isPerson).Scan(&kindID)
 	if kindID == uuid.Nil {
+		// `ON CONFLICT DO NOTHING RETURNING` returns NO ROW on conflict, so this is the
+		// normal path whenever the kind already exists — and it does, permanently: the book
+		// id above is FIXED, this suite runs against a SHARED database, and the cleanup below
+		// removes the entity but never the `book_kinds` row.
+		//
+		// The existing kind's `is_person` is therefore whatever the FIRST run ever wrote, and
+		// nothing here checked it. When it disagrees, the enrichment guard correctly allows
+		// the request and the assertion reports "PP-4 BREACH: enriching a colleague = 200" —
+		// a privacy hole in production. MEASURED 2026-08-01: that fired once in three
+		// consecutive full-package runs of the same commit, i.e. it is flaky AND it blames
+		// the wrong thing. A test that misattributes its own state to a product defect costs
+		// more than the bug it was written for.
 		_ = pool.QueryRow(ctx,
 			`SELECT book_kind_id FROM book_kinds WHERE book_id=$1 AND code=$2`, bookID, code).Scan(&kindID)
+		var actualIsPerson bool
+		if err := pool.QueryRow(ctx,
+			`SELECT is_person FROM book_kinds WHERE book_kind_id=$1`, kindID).Scan(&actualIsPerson); err != nil {
+			t.Fatalf("seed %q: kind neither inserted nor found (book_kinds row missing): %v", code, err)
+		}
+		if actualIsPerson != isPerson {
+			t.Fatalf("seed %q: FIXTURE STATE, NOT A PRODUCT DEFECT — the shared database already "+
+				"holds this kind with is_person=%v while the test needs %v. Fix the row, do not "+
+				"read the assertion below as a PP-4 breach.", code, actualIsPerson, isPerson)
+		}
 	}
 	var eid string
 	if err := pool.QueryRow(ctx,

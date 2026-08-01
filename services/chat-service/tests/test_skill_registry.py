@@ -362,6 +362,70 @@ _KNOWN_LEGACY_TOOL_NAMES: frozenset[str] = frozenset({
     # Track D CD5 — superseded by the universal `web_search` (provider-registry). Demoted
     # in place, not renamed: the C-GW prefix gate binds a name to its provider.
     "glossary_web_search",
+
+    # ── composition (2026-07-27) ────────────────────────────────────────────────────────────
+    # This list is HAND-MAINTAINED, and that is its weakness: it covered only glossary, so it
+    # was blind to composition-service's 51 `visibility="legacy"` tools. The composition skill
+    # was consequently teaching FOURTEEN de-advertised names — including every atom-edit tool
+    # (outline_node_create/update/delete/restore, motif_create/patch/archive, motif_bind/unbind,
+    # scene_link_create/delete) — so the co-writer was told to edit outline nodes, motifs and
+    # scene links with tools it cannot discover. The lint passed the whole time.
+    #
+    # Deriving this set from the owning service's `visibility="legacy"` markers would be the
+    # real fix (a generated contract, like contracts/plan-artifacts.contract.json), but that is
+    # a cross-service change; tracked rather than silently skipped. Until then, KEEP THIS LIST
+    # IN SYNC when a composition tool is superseded.
+    "composition_outline_node_create", "composition_outline_node_update",
+    "composition_outline_node_delete", "composition_outline_node_restore",
+    "composition_motif_create", "composition_motif_patch", "composition_motif_archive",
+    "composition_motif_bind", "composition_motif_unbind",
+    "composition_scene_link_create", "composition_scene_link_delete",
+    "composition_write_prose", "composition_publish", "composition_get_prose",
+    "composition_canon_rule_create", "composition_canon_rule_update",
+    "composition_canon_rule_delete", "composition_canon_rule_restore",
+    "composition_structure_template_create", "composition_structure_template_update",
+    "composition_structure_template_archive", "composition_structure_template_restore",
+    "composition_structure_template_clone",
+
+    # ── book (2026-07-27) ───────────────────────────────────────────────────────────────────
+    # book_skill named FOURTEEN of these, plus `book_delete`, which has never been registered
+    # anywhere. Two distinct retirements:
+    #   * reads folded into the unified `book_list` (ls) / `book_read` (cat) pair;
+    #   * publish/unpublish, delete/trash, purge, book-create and the three PRICED media tools
+    #     became MANUAL UI actions on purpose ("the agent does not publish / delete / bill").
+    # This is not cosmetic: a skill that names a tool the agent can never discover sends it into
+    # a discovery loop hunting for it, burning the turn.
+    "book_get", "book_get_chapter", "book_list_chapters", "book_list_revisions",
+    "book_scene_list", "book_scene_get", "book_chapter_reorder", "book_chapter_set_part",
+    "book_structure_part_archive",
+    "book_create", "book_set_cover", "book_purge",
+    "book_chapter_delete", "book_chapter_purge",
+    "book_chapter_publish", "book_chapter_unpublish",
+    "book_audio_generate", "book_media_generate",
+})
+
+# Tool names a skill must never mention because NO tool of that name has ever existed. A skill
+# naming one is strictly worse than naming a legacy tool: there is not even a retired handler to
+# find, so the agent can only loop. `book_delete` sat in book_skill's "confirm-gated group" and
+# its trash-vs-purge section for as long as both existed.
+_NONEXISTENT_TOOL_NAMES: frozenset[str] = frozenset({
+    "book_delete",
+})
+
+# Tools a skill names ON PURPOSE in order to say they do NOT exist —
+# "**There is no `jobs_resume` or `jobs_retry` tool.**" That sentence is good prompt writing:
+# it stops the model hunting for a plausible-sounding tool, which is the very loop the
+# allowlist check below exists to prevent. The extractor cannot tell a mention from a
+# negation, so the negated names are listed here explicitly.
+#
+# Adding a name here is only legitimate when the prompt actually TELLS THE MODEL IT IS ABSENT.
+# If a skill merely mentions a tool that does not exist, that is the bug — fix the prompt.
+_DELIBERATELY_ABSENT_TOOL_NAMES: frozenset[str] = frozenset({
+    # jobs: "**There is no `jobs_resume` or `jobs_retry` tool.**"
+    "jobs_resume", "jobs_retry",
+    # settings: "don't invent a plausible-sounding tool name for it; there is no
+    # `settings_provider_create`, `settings_provider_update_secret`, or anything similar."
+    "settings_provider_create", "settings_provider_update_secret",
 })
 
 # Skills exempt from the domain-hot-seed check entirely: `admin` advertises its OWN
@@ -470,11 +534,70 @@ class TestSkillClaimsLint:
                 continue
             prompt = skill.prompt_loader()
             for token, _domain in sorted(_named_tool_domains(prompt)):
-                if token in _KNOWN_LEGACY_TOOL_NAMES:
+                if token in _NONEXISTENT_TOOL_NAMES:
+                    failures.append(
+                        f"{skill.code}: references '{token}', which is not a tool and never "
+                        f"was — the agent can only loop looking for it. Delete the mention."
+                    )
+                elif token in _KNOWN_LEGACY_TOOL_NAMES:
                     failures.append(
                         f"{skill.code}: references legacy tool '{token}' — point at "
                         f"its replacement instead (see docs/specs/2026-07-06-tool-"
                         f"catalog-simplification.md)."
+                    )
+        assert not failures, "\n" + "\n".join(failures)
+
+    def test_every_tool_a_skill_names_ACTUALLY_EXISTS(self):
+        """The ALLOWLIST half of the lint — the denylist above cannot catch a typo.
+
+        `_NONEXISTENT_TOOL_NAMES` is hand-maintained, so it only catches names someone already
+        thought to add. A misspelling (`composition_error_blocks_edit`) or a tool that was never
+        built sails straight through it, and the failure mode is the worst one this repo has: the
+        model is instructed to call something undiscoverable, so it loops hunting for it. That is
+        the exact bug class the 2026-07-27 sweep spent a phase clearing (19 retired references
+        across 6 skills).
+
+        So instead of trusting a list, derive the real catalog from the SERVICES THEMSELVES —
+        `scripts/deprecated-tool-scan.py` reads each MCP server's own registrations — and assert
+        every domain-shaped token a skill names is in it. Cross-service by necessity: the truth
+        about which tools exist lives in the owning services, not in chat-service.
+
+        Skipped (never silently passed) when the scanner is unreachable, so a partial checkout
+        cannot turn a real guard into a green no-op.
+        """
+        import importlib.util
+        from pathlib import Path
+
+        scanner = Path(__file__).resolve().parents[3] / "scripts" / "deprecated-tool-scan.py"
+        if not scanner.exists():
+            pytest.skip(f"tool scanner not found at {scanner} — cannot verify names")
+        spec = importlib.util.spec_from_file_location("_tool_scan", scanner)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        legacy, advertised = mod.build_catalog()
+        known = set(advertised) | set(legacy)
+        if len(known) < 100:  # a plausible catalog; guards against a silently-empty scan
+            pytest.skip(f"scanner returned only {len(known)} tools — refusing to assert on it")
+
+        failures = []
+        for skill in SYSTEM_SKILLS.values():
+            # DELIBERATELY does not honour _EXEMPT_SKILL_CODES. That set exempts `admin` and
+            # `co_write` from the HOT-DOMAIN check, because they reach their tools lazily via
+            # tool_list/tool_load instead of seeding them hot. Whether a tool is hot or lazy has
+            # nothing to do with whether it EXISTS — and a lazily-reached name that is wrong is
+            # strictly worse, because the model burns discovery turns hunting for it. Inheriting
+            # the exemption here left co_write, the skill that carries the newest tool, as the one
+            # skill this check did not cover; caught only by testing that the guard can fail.
+            for token, _domain in sorted(_named_tool_domains(skill.prompt_loader())):
+                if token in _DELIBERATELY_ABSENT_TOOL_NAMES:
+                    continue   # named precisely to tell the model it does NOT exist
+                if token not in known:
+                    failures.append(
+                        f"{skill.code}: names '{token}', which is NOT a registered tool in any "
+                        f"service. A model told to call a tool it can never discover will loop "
+                        f"hunting for it. Either fix the name, or — if the prompt is explicitly "
+                        f"telling the model this tool does NOT exist — add it to "
+                        f"_DELIBERATELY_ABSENT_TOOL_NAMES."
                     )
         assert not failures, "\n" + "\n".join(failures)
 

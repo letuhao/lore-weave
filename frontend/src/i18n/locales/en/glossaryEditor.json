@@ -118,6 +118,7 @@
     "new_kind_code_hint": "Lowercase letters, digits, and underscores only. Used as the stable identifier.",
     "merge_all": "Apply to all {{count}} entities that arrived as \"{{code}}\"",
     "merge_all_hint": "Creates a reusable alias so future extractions with this code resolve automatically.",
+    "same_code_note": "{{count}} more entities arrived as \"{{code}}\" — resolve each one here.",
     "cancel": "Cancel",
     "apply": "Apply",
     "saving": "Applying...",

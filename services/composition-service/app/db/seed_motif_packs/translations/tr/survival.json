@@ -1,0 +1,379 @@
+{
+  "survival.mercy_at_the_door": {
+    "beats": {
+      "answer": {
+        "intent": "karar, zaman baskısı altında verilir",
+        "label": "Kapı açılır ya da açılmaz"
+      },
+      "ask": {
+        "intent": "dışarıdan gelen biri, doğruluğu denetlenemeyen bir hikâye ile içeri girmeyi talep eder",
+        "label": "Biri içeri girmek için izin ister"
+      },
+      "consequence": {
+        "intent": "sonuç, seçimi yapan kişinin omuzlarına yüklenir",
+        "label": "Sorumluluk karar verene yüklenir"
+      },
+      "weigh": {
+        "intent": "her iki seçeneğin de savunulabilir olduğu ortaya çıkar",
+        "label": "Merhamet ile mantık arasındaki denge"
+      }
+    },
+    "effects": [
+      "grubun yabancıları kabul etme eşiği artık bir emsal teşkil eder",
+      "karar verici, ortaya çıkan sonucu şahsen üstlenir"
+    ],
+    "emotion_target": "ızdırap",
+    "examples": [
+      "Oylama yapıldığında kadın hâlâ kapının ardında konuşuyordu; sonrasında ise sesin ne kadar süredir devam ettiği konusunda kimse mutabık kalamadı."
+    ],
+    "name": "Kapıyı Çalan Biri Var",
+    "preconditions": [
+      "savunulabilir bir mekan ve hikayesi zamanında teyit edilemeyen bir yabancı"
+    ],
+    "roles": {
+      "decider": {
+        "constraints": [
+          "gerçeği bilmeden seçmek zorundadır"
+        ],
+        "label": "kapıyı açan kişi"
+      },
+      "inside": {
+        "constraints": [
+          "her iki durumda da riski göğüslemek zorundadırlar"
+        ],
+        "label": "içeridekiler"
+      },
+      "outsider": {
+        "constraints": [
+          "anlattığı hikâye zamanında teyit edilemez"
+        ],
+        "label": "kapıyı çalan"
+      }
+    },
+    "summary": "Dışarıdan gelen biri, doğru ya da yalan olabilecek bir hikâye ile içeri girmek ister; her iki seçenek de haklı gerekçelere dayanır: kapıyı açmak herkesi riske atar, kapıyı kapatmak ise kapıyı çalanın ölmesine neden olur. Karar, eksik bilgi ve zaman baskısı altında verilir; sonuç ne olursa olsun, sorumluluk kararı verene aittir."
+  },
+  "survival.not_enough_for_everyone": {
+    "beats": {
+      "allocate": {
+        "intent": "biri, savunabileceği hangi ilkeye dayanıyorsa ona göre karar verir",
+        "label": "Paylaştırma yapılır"
+      },
+      "count": {
+        "intent": "eksiklik matematiksel bir gerçek olarak ortaya konur",
+        "label": "Sayım yetersiz çıkar"
+      },
+      "name": {
+        "intent": "soyut bir kavram, somut insanlara dönüşür",
+        "label": "Eksikliğin isimleri vardır"
+      },
+      "remember": {
+        "intent": "verilen karar, grubun kaçınılmaz ve kalıcı bir gerçeği haline gelir",
+        "label": "Dışarıda bırakılanlar hatırlar"
+      }
+    },
+    "effects": [
+      "grubun gerçek hiyerarşisi artık herkes tarafından gün yüzüne çıkar",
+      "dışlananların artık somut bir ismi olan bir haklılık payı vardır"
+    ],
+    "emotion_target": "çaresizlik",
+    "examples": [
+      "Dokuz doz ve on bir kişi vardı; tartışma dört dakika sürdü ve bir daha kimse bu konuyu açmadı."
+    ],
+    "name": "Herkes İçin Yeterli Değil",
+    "preconditions": [
+      "sayılabilir bir kaynak ve bu kaynaktan daha fazla talep sahibi"
+    ],
+    "roles": {
+      "allocator": {
+        "constraints": [
+          "dışarıda bırakılanlarla birlikte yaşamak zorunda kalacaktır"
+        ],
+        "label": "karar vermek zorunda olan"
+      },
+      "excluded": {
+        "constraints": [
+          "orada oradadırlar ve isimleri bellidir"
+        ],
+        "label": "pay alamayanlar"
+      },
+      "resource": {
+        "constraints": [
+          "sayılabilir ve açıkça yetersizdir"
+        ],
+        "label": "eksik olan kaynak"
+      }
+    },
+    "summary": "İnsanları hayatta tutan bir kaynak —su, insülin, koltuk sayısı, mühimmat veya yakıt— sayılır ve yetersiz olduğu anlaşılır; üstelik bu eksikliğin her bir biriminin bir adı vardır. Paylaştırma işlemi, sonrasında bir arada yaşamaya devam etmek zorunda kalacak kişiler tarafından yapılır ve grubun o bir saat içinde kendisi hakkında öğrendikleri, kaynağın kendisinden çok daha uzun süre etkisini sürdürür."
+  },
+  "survival.one_of_us_is_compromised": {
+    "beats": {
+      "sign": {
+        "intent": "gruptan birinin artık güvenli olmadığına dair kanıtlar ortaya çıkar",
+        "label": "Bir işaret belirir"
+      },
+      "suspect": {
+        "intent": "grup, gerçek olan yerine en muhtemel görünenin üzerinde birleşir",
+        "label": "Şüphe bir hedef seçer"
+      },
+      "untestable": {
+        "intent": "kimin tehlikeli olduğunu belirleyecek güvenilir bir yol yoktur",
+        "label": "Test onları yanıltır"
+      },
+      "wrong": {
+        "intent": "karar uygulanır ve hatası gün yüzüne çıkar",
+        "label": "Yanlış karar verilir"
+      }
+    },
+    "effects": [
+      "grup, bir varsayıma dayanarak geri dönülemez bir eylemde bulunmuştur",
+      "asıl tehdit hâlâ oradadır ve artık fark edilmesi daha zordur"
+    ],
+    "emotion_target": "paranoya",
+    "examples": [
+      "Üç gün boyunca birbirlerinin ellerini izlediler; sonunda ise kimsenin izlemediği o adamın, sabah normal bir şekilde uyanamadığını gördüler."
+    ],
+    "name": "Aramızdan Biri Çoktan Gitti",
+    "preconditions": [
+      "grubun içine sızmış ve teyit edilmeye direnen bir tehdit"
+    ],
+    "roles": {
+      "accused": {
+        "constraints": [
+          "gerçekle ilgisi olmayan nedenlerden dolayı şüphe çekicidir"
+        ],
+        "label": "en muhtemel şüpheli"
+      },
+      "compromised": {
+        "constraints": [
+          "durumun farkında olmayabilir"
+        ],
+        "label": "asıl tehlike altındaki kişi"
+      },
+      "group": {
+        "constraints": [
+          "bilmesi gerekeni teyit edemez"
+        ],
+        "label": "karar vermek zorunda olan grup"
+      }
+    },
+    "summary": "Gruptan biri enfekte olmuş, dönüşmüş, ele verilmiş veya başka bir şekilde artık güvenli değildir; ancak bunu kanıtlayacak test ya güvenilmezdir, ya yavaştır ya da hiç yoktur. Kanıtın yapamadığını şüphe yapar; grup, gerçek olan yerine en muhtemel görünenin üzerine çöker ve verilen yanlış karar, asıl tehlikeden daha ağır bir bedele mal olur."
+  },
+  "survival.relic_of_before": {
+    "beats": {
+      "reveal": {
+        "intent": "verilen karar, eski dünyadan geriye ne kadar şey taşıdıklarını açığa çıkarır",
+        "label": "Seçim, nerede olduklarını ele verir"
+      },
+      "spend": {
+        "intent": "onu daha ileriye taşımak için ödenmesi gereken gerçek bedel söylenir",
+        "label": "Onu korumanın bedeli"
+      },
+      "surface": {
+        "intent": "yok olmuş dünyadan bir nesne bulunur",
+        "label": "Yadigâr gün yüzüne çıkar"
+      },
+      "worthless": {
+        "intent": "nesnenin işe yaramazlığı ve taşıdığı anlam açıkça belirtilir",
+        "label": "Değersiz ve paha biçilemez"
+      }
+    },
+    "effects": [
+      "grubun eski benliklerinden ne kadar uzaklaştığı artık gün gibi ortadadır",
+      "anlam uğruna feda etmeye hazır olanlar ile etmeyecek olanlar arasında bir uçurum oluşur"
+    ],
+    "emotion_target": "melankoli",
+    "examples": [
+      "Radyo asla tekrar çalışmayacaktı ve iki günlük su kadar ağırlığı vardı; yine de onu yere bırakmadan önce dokuz gün boyunca yanında taşıdı."
+    ],
+    "name": "Eskiden Kalan Bir Şey",
+    "preconditions": [
+      "duygusallığın ölçülebilir bir maliyeti olduğu kadar katı bir hayatta kalma hesabı"
+    ],
+    "roles": {
+      "keeper": {
+        "constraints": [
+          "hayatta kalma koşullarıyla bu isteğini haklı çıkaramaz"
+        ],
+        "label": "onu korumak isteyen"
+      },
+      "pragmatist": {
+        "constraints": [
+          "matematiksel olarak haklıdır"
+        ],
+        "label": "maliyeti hesaplayan"
+      },
+      "relic": {
+        "constraints": [
+          "pratik bir değeri yoktur"
+        ],
+        "label": "eskiden kalan nesne"
+      }
+    },
+    "summary": "Yok olmuş bir dünyadan kalma bir nesne gün yüzüne çıkar — bir fotoğraf, çalışan bir radyo, tatlı bir şey dolu bir kavanoz, bir çocuk ayakkabısı — ve bu nesne, hayatta kalma hesaplamalarına göre değersiz, ancak diğer tüm değerler açısından paha biçilemezdir. İnsanların onu korumak için neleri feda etmeye hazır olduğu, içinde bulundukları durumu herhangi bir envanter listesinden daha net anlatır."
+  },
+  "survival.rules_of_the_new_world": {
+    "beats": {
+      "break": {
+        "intent": "tanıdık dünya, gözle görülür şekilde olması gerektiği gibi davranmayı keser",
+        "label": "Sıradan olanın işleyişi bozulur"
+      },
+      "infer": {
+        "intent": "tek bir olaydan yola çıkarak geçici bir kural yüksek sesle dile getirilir",
+        "label": "Kural sezilir"
+      },
+      "lesson": {
+        "intent": "bir ölüm, varlığından kimsenin haberdar olmadığı bir sınırı kanıtlar",
+        "label": "İlk ders birinin canına mal olur"
+      },
+      "obey": {
+        "intent": "grup, henüz açıklayamadığı bir kural sayesinde hayatta kalır",
+        "label": "O kurala uyarak hayatta kalın"
+      }
+    },
+    "effects": [
+      "grubun elinde henüz kavranamamış ama işleyen bir kural vardır",
+      "öğrenilen her yeni kuralın bedelinin bir can olduğu artık bilinmektedir"
+    ],
+    "emotion_target": "dehşet",
+    "examples": [
+      "Koşanların neden alındığını, duranların neden alınmadığını kimse bilmiyordu; ancak ikinci günün sonunda kimse koşmadı."
+    ],
+    "name": "Kuralı Acı Yoldan Öğrenmek",
+    "preconditions": [
+      "işleyiş kuralları fark edilmeden değişmiş bir dünya"
+    ],
+    "roles": {
+      "lost": {
+        "constraints": [
+          "sıradan bir şey yaparken ölmüştür"
+        ],
+        "label": "ölümüyle ders alınmasını sağlayan kişi"
+      },
+      "rule": {
+        "constraints": [
+          "açıklanmamış ve geçicidir"
+        ],
+        "label": "çıkarılan kural"
+      },
+      "survivor": {
+        "constraints": [
+          "elinde değerlendirebileceği yalnızca tek bir veri noktası vardır"
+        ],
+        "label": "kuralı çıkaran kişi"
+      },
+      "world": {
+        "constraints": [
+          "ne uyarı verir ne de ikinci bir şans tanır"
+        ],
+        "label": "değişen dünya"
+      }
+    },
+    "summary": "Alışılmış dünya artık eski kurallarına göre işlemez hale gelir — ölüler ayağa kalkar, gökyüzü değişir, ağlar çöker, gelgit durur — ve ilk dersin bedeli birinin canıyla ödenir. Bu ölümden yola çıkarak bir kural çıkarılır ve yüksek sesle dile getirilir; grup, henüz açıklayamadıkları bu kurala ne ölçüde uyarlarsa bir sonraki bölüme o ölçüde sağ çıkarlar."
+  },
+  "survival.shelter_has_a_price": {
+    "beats": {
+      "decide": {
+        "intent": "belirli bir güvenliğin, ödenemeyecek bir bedelle tartılması",
+        "label": "Öde ya da git"
+      },
+      "find": {
+        "intent": "gerçekten güvenli bir yere ulaşılır ve hissedilen rahatlama çok derindir",
+        "label": "Sığınak bulunur"
+      },
+      "terms": {
+        "intent": "kalmanın bedeli netleşir",
+        "label": "Şartlar ortaya çıkar"
+      },
+      "trust": {
+        "intent": "grup kalmaya karar verir ve bunu yapmak için bir şeylerden vazgeçer",
+        "label": "Güven inşa edilir"
+      }
+    },
+    "effects": [
+      "grup ya şartlara boyun eğmiştir ya da yeniden dışarıya, tehlikeye maruz kalmıştır",
+      "her bir üyenin neleri kabul etmeye razı olduğu artık diğerleri tarafından bilinmektedir"
+    ],
+    "emotion_target": "huzursuzluk",
+    "examples": [
+      "Kapı arkalarından kapandı; yemek sıcak ve gerçekti. Sabah olduğunda ise birisi onlara iş çizelgesinden ve kurallardan bahsetti."
+    ],
+    "name": "Bedeli Olan Sığınak",
+    "preconditions": [
+      "sığınak dışında uygulanabilir bir alternatifi olmayan bir grup"
+    ],
+    "roles": {
+      "arrivals": {
+        "constraints": [
+          "başka gidecek yerleri yok"
+        ],
+        "label": "sığınanlar"
+      },
+      "holders": {
+        "constraints": [
+          "kötü karakter değiller, sadece yerleşik bir düzenin parçaları"
+        ],
+        "label": "sığınağı elinde tutanlar"
+      },
+      "shelter": {
+        "constraints": [
+          "gerçekten güvenli"
+        ],
+        "label": "sığınak"
+      }
+    },
+    "summary": "Gerçekten güvenli bir sığınak bulunur — duvarlar, yemek, sıcaklık, sağlam bir kilit — ve hissedilen rahatlama çok gerçektir. Ardından şartlar gün yüzüne çıkar: bir emek, bir itaat, teslim edilmesi gereken bir kişi veya kimlerin ayrılmasına izin verileceğine dair bir kural. Grup, sağlanan kesin güven ile sonsuza dek ödeyemeyecekleri bir bedel arasında bir seçim yapmak zorundadır."
+  },
+  "survival.someone_has_to_decide": {
+    "beats": {
+      "grant": {
+        "intent": "liderlik, kendisine boyun eğmekten ileride nefret edecek olan kişilerce zımnen kabul edilir",
+        "label": "Otorite tanındı, kin birikti"
+      },
+      "hold": {
+        "intent": "seçim, kimsenin kararından dönmesine gerek bırakmayacak kadar iyi sonuç verir",
+        "label": "Karar geçerliliğini korur"
+      },
+      "speak": {
+        "intent": "yetkisi olmayan bir kişi ne yapılacağını beyan eder",
+        "label": "Birisi bunu yüksek sesle söyler"
+      },
+      "vacuum": {
+        "intent": "bir karar verilmesi gerekiyor ancak bunu verecek bir otorite mevcut değil",
+        "label": "Kimsenin başında kimse yok"
+      }
+    },
+    "effects": [
+      "meşruiyeti yalnızca tek bir öğleden sonraya dayanan bir lider artık mevcuttur",
+      "kararı erteleyenlerin, ileride kullanabilecekleri bir haklılık gerekçesi/dargınlığı oluşur"
+    ],
+    "emotion_target": "gerilim",
+    "examples": [
+      "«Kuzeye gidiyoruz» dedi ve yürümeye başladı; ardından on bir kişi onu takip etti, bütün süreç bundan ibaretti."
+    ],
+    "name": "Bir Öğleden Sonra İnşa Edilen Otorite",
+    "preconditions": [
+      "yerleşik bir otoritesi olmayan ve ertelenemez bir kararla karşı karşıya kalan bir grup"
+    ],
+    "roles": {
+      "decision": {
+        "constraints": [
+          "tartışılmadan önce verilmiş olmalıydı"
+        ],
+        "label": "bekleyemeyecek kadar acil olan karar"
+      },
+      "group": {
+        "constraints": [
+          "itiraz etmeyerek otoriteyi tanıdılar"
+        ],
+        "label": "buna izin verenler"
+      },
+      "leader": {
+        "constraints": [
+          "karar verme yetkisi yoktu"
+        ],
+        "label": "ilk konuşan kişi"
+      }
+    },
+    "summary": "Kimsenin başında bir lider yoktur ve karar bekleyemez; bu yüzden birisi karar verir — bu kişi en güçlü ya da en kıdemli olan değil, herkes birbirine bakıp kalmışken yüksek sesle bir cümle kurmaya cesaret eden kişidir. Karar yeterince iyi sonuçlanır ve otorite, daha sonra bu durumdan rahatsızlık duyacak olan kişiler tarafından geriye dönük olarak tanınır."
+  }
+}

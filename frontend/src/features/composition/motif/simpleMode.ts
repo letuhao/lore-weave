@@ -22,14 +22,42 @@ export function motifTier(
   return 'public';
 }
 
-/** A motif is read-only to the caller unless the caller OWNS it. System +
- *  another user's public motif are clone-to-edit only (the kinds-bug lesson:
- *  a user never mutates a shared row, they clone-down). */
+/** A motif is read-only to the caller unless the caller OWNS it — OR it is a book's SHARED tier
+ *  row, which every EDIT-grantee of that book may edit (D-MOTIF-ADOPT-BOOK-COLLAB-TIER).
+ *
+ *  System and another user's PUBLIC motif stay clone-to-edit: that is the kinds-bug lesson, and
+ *  it still holds — a user never mutates a *global* row. But the lesson was being applied one
+ *  tier too wide. The LOCKED tenancy table says the per-book tier is writable by the owner AND
+ *  its grantees, and the backend has implemented exactly that (`PATCH ?book_id=` → `patch_shared`,
+ *  EDIT-gated on the book) since the collab tier shipped. The FE simply had no way to SEE it:
+ *  the B-3 redaction nulls `owner_user_id` on a foreign row, `motifTier` derives the tier from
+ *  precisely that field, so every shared row came back looking like `system` — the capability was
+ *  built on one side and invisible on the other (F3, 2026-07-28).
+ *
+ *  `book_shared` is the signal to use because it survives the redaction; `owner_user_id` does not.
+ *  Whether the caller actually holds EDIT is the SERVER's call, not a guess made here. */
 export function isReadOnly(
-  motif: Pick<Motif, 'owner_user_id' | 'visibility'>,
+  motif: Pick<Motif, 'owner_user_id' | 'visibility' | 'book_shared'>,
   meUserId: string | null,
 ): boolean {
+  if (motif.book_shared) return false;
   return motifTier(motif, meUserId) !== 'user';
+}
+
+/** Fields a NON-OWNER never receives (the server's `_PUBLIC_DETAIL_REDACT`) and therefore must
+ *  never send back. A redacted read hands them over as `[]`, indistinguishable from genuinely
+ *  empty, so echoing the whole object would wipe content the caller was not even allowed to see.
+ *  The server refuses such a write (400 MOTIF_REDACTED_FIELD_NOT_WRITABLE) — this keeps a legal
+ *  edit from tripping that refusal for a field the user never touched. */
+export const REDACTED_FIELDS = ['examples'] as const;
+
+/** True when this row reached us REDACTED — i.e. it is shared into a book by someone else.
+ *  Keyed on the redaction's own tell (`owner_user_id` nulled) rather than on a user-id compare,
+ *  because that is exactly the state the payload is in. */
+export function isRedactedForViewer(
+  motif: Pick<Motif, 'owner_user_id' | 'book_shared'>,
+): boolean {
+  return !!motif.book_shared && motif.owner_user_id == null;
 }
 
 // ── simple ↔ expert label registries (§6.1) — return i18n keys ────────────────

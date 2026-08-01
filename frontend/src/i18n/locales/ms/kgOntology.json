@@ -62,7 +62,6 @@
     "addEdgeType": "Tambah jenis edge",
     "code": "Kod",
     "label": "Label",
-    "temporalField": "temporal (valid_from + provenance)",
     "cardinality": "Kardinaliti",
     "addButton": "Tambah jenis edge",
     "addSectionTitle": "Tambah ke skema",
@@ -93,7 +92,8 @@
     "emptyTitle": "Skema ini kosong",
     "emptyHelp": "Mulakan dengan menambah jenis nod (watak, tempat, organisasi…), kemudian hubungkan mereka dengan jenis edge.",
     "deleteConfirmTitle": "Padam komponen ini?",
-    "deleteConfirmBody": "\"{{code}}\" dirujuk oleh {{count}} elemen graf. Memadam akan menyahgunakannya — data tetap boleh dicari. Padam juga?"
+    "deleteConfirmBody": "\"{{code}}\" dirujuk oleh {{count}} elemen graf. Memadam akan menyahgunakannya — data tetap boleh dicari. Padam juga?",
+    "temporalField": "temporal (valid_from + provenance)"
   },
   "canvas": {
     "list": "Senarai",

@@ -1,0 +1,450 @@
+{
+  "wuxia.contested_manual": {
+    "beats": {
+      "blood": {
+        "intent": "le conflit se règle par la force, avec un coût disproportionné par rapport au prix",
+        "label": "Le sang pour le papier"
+      },
+      "converge": {
+        "intent": "les factions aux revendications rivales arrivent au même endroit",
+        "label": "La convergence"
+      },
+      "surface": {
+        "intent": "la rumeur du traité atteint le monde martial",
+        "label": "Le manuel refait surface"
+      },
+      "unread": {
+        "intent": "le vainqueur découvre que le texte est inutilisable sans ce qu'il présuppose",
+        "label": "Posséder n'est pas maîtriser"
+      }
+    },
+    "effects": [
+      "le détenteur devient une cible plutôt qu'un possesseur",
+      "la véritable condition préalable à la technique devient le nouveau problème"
+    ],
+    "emotion_target": "tension",
+    "examples": [
+      "Onze hommes sont morts pour la seconde moitié du parchemin, et l'homme qui s'en est emparé était incapable de lire l'écriture dans laquelle il était rédigé."
+    ],
+    "name": "Le Manuel convoité",
+    "preconditions": [
+      "un monde d'arts martiaux où une technique confère un véritable prestige"
+    ],
+    "roles": {
+      "factions": {
+        "constraints": [
+          "chacune possède une prétention légitime"
+        ],
+        "label": "les factions convergentes"
+      },
+      "jianghu": {
+        "constraints": [
+          "jugera la manière dont le texte a été acquis"
+        ],
+        "label": "le monde martial"
+      },
+      "manual": {
+        "constraints": [
+          "est incomplet ou conditionnel"
+        ],
+        "label": "le traité d'arts martiaux"
+      },
+      "seeker": {
+        "constraints": [
+          "ne possède pas les bases que le texte présuppose"
+        ],
+        "label": "celui qui s'en saisit"
+      }
+    },
+    "summary": "Un fragment de parchemin refait surface dans une auberge ou dans le butin d'un pilleur de tombes, et toutes les écoles prétendant descendre de son auteur convergent simultanément sur la route — car le débat ne porte pas réellement sur les pages, mais sur la légitimité de leur lignée. Le sang coule pour du papier. Quiconque s'en empare découvre que le texte a été conçu pour un corps formé selon les méthodes des disciples de l'auteur, et le lire ne signifie pas le maîtriser."
+  },
+  "wuxia.escort_under_watch": {
+    "beats": {
+      "ambush": {
+        "intent": "l'attaque survient là et quand elle était attendue",
+        "label": "L'embuscade programmée"
+      },
+      "charge": {
+        "intent": "la responsabilité de la livraison en toute sécurité est donnée et acceptée",
+        "label": "La mission est acceptée"
+      },
+      "deliver": {
+        "intent": "la cargaison arrive, payée avec quelque chose que l'escorte estimait plus précieux",
+        "label": "Livraison à prix coûtant"
+      },
+      "watched": {
+        "intent": "il devient clair que l'itinéraire a été compromis avant même le départ",
+        "label": "La route est déjà connue"
+      }
+    },
+    "effects": [
+      "la parole donnée a été tenue, mais quelque chose d'autre a été perdu",
+      "l'identité de celui qui a livré l'itinéraire est désormais une question en suspens"
+    ],
+    "emotion_target": "détermination-sombre",
+    "examples": [
+      "Ils savaient quel gué, et à quelle heure approximative, et la seule chose qu'il restait à décider était ce qu'il était prêt à laisser sur la rive."
+    ],
+    "name": "La cargaison à destination",
+    "preconditions": [
+      "une cargaison dont l'itinéraire et la valeur sont connus des parties intéressées"
+    ],
+    "roles": {
+      "cargo": {
+        "constraints": [
+          "est incapable de se défendre"
+        ],
+        "label": "ce qui doit arriver"
+      },
+      "consignor": {
+        "constraints": [
+          "n'a pas tout révélé"
+        ],
+        "label": "celui qui a confié la charge"
+      },
+      "escort": {
+        "constraints": [
+          "a donné sa parole"
+        ],
+        "label": "celui qui est responsable de la livraison"
+      },
+      "watchers": {
+        "constraints": [
+          "connaissent déjà l'itinéraire"
+        ],
+        "label": "ceux qui attendent sur la route"
+      }
+    },
+    "summary": "Quelque chose doit être transporté d'un point A à un point B — un coffre, un témoin, une mariée, un cercueil — le long d'une route que tous les intéressés connaissent déjà. L'embuscade n'est pas une surprise mais un rendez-vous, et la livraison ne s'achète qu'en payant avec la monnaie que l'escorte peut le moins se permettre de dépenser."
+  },
+  "wuxia.forbidden_shortcut": {
+    "beats": {
+      "offer": {
+        "intent": "quelqu'un d'honnête sur ses effets met le livre brûlé à portée de main",
+        "label": "Un manuel proscrit est proposé"
+      },
+      "price": {
+        "intent": "la transformation devient lisible pour les autres pratiquants et les écoles orthodoxes renient son nom",
+        "label": "Le corps le lit avant les mots"
+      },
+      "take": {
+        "intent": "la méthode démoniaque est apprise et produit exactement ce qui était promis",
+        "label": "Elle est pratiquée en secret"
+      },
+      "wall": {
+        "intent": "ce que le maître a enseigné ne suffit plus face à ce qui approche",
+        "label": "L'enseignement de l'école s'essouffle"
+      }
+    },
+    "effects": [
+      "la capacité a véritablement augmenté et ne peut être restituée",
+      "un prix est en train de s'accumuler et finira par être visible de tous"
+    ],
+    "emotion_target": "effroi",
+    "examples": [
+      "Cela a fait tout ce que le vieil homme avait promis. Deux hivers s'écoulèrent avant que quiconque ne remarque qu'il ne ressentait plus le froid."
+    ],
+    "name": "La Voie que plus personne ne pratique",
+    "preconditions": [
+      "un pratiquant se heurte à un mur que la voie orthodoxe ne peut franchir"
+    ],
+    "roles": {
+      "method": {
+        "constraints": [
+          "fonctionne exactement comme annoncé"
+        ],
+        "label": "la méthode interdite"
+      },
+      "offerer": {
+        "constraints": [
+          "ne ment pas sur l'effet, il omet seulement le prix"
+        ],
+        "label": "celui qui la propose"
+      },
+      "practitioner": {
+        "constraints": [
+          "est véritablement épuisé par la voie orthodoxe"
+        ],
+        "label": "celui qui est au pied du mur"
+      }
+    },
+    "summary": "Un manuel proscrit par une école — le genre d'ouvrage que les sectes de justes brûlaient tout en continuant d'en murmurer l'existence — est proposé par quelqu'un qui ne ment pas sur ses effets. Il fonctionne exactement comme promis. Mais le prix ne se mesure pas en rang social : le corps se transforme de manière à ce que les autres pratiquants puissent le lire à l'autre bout d'une pièce, les écoles orthodoxes qui les ont formés renient leur nom, et le pratiquant finit par appartenir au côté démoniaque d'une ligne qu'il n'avait jamais l'intention de franchir."
+  },
+  "wuxia.inherited_feud": {
+    "beats": {
+      "break": {
+        "intent": "l'héritier doit choisir entre le poids des morts et la vie des vivants",
+        "label": "Poursuivre le cycle ou le briser"
+      },
+      "inherit": {
+        "intent": "une vendetta est héritée en même temps que le rang et l'épée",
+        "label": "La rancœur est transmise"
+      },
+      "origin": {
+        "intent": "le grief fondateur est retracé et s'avère ne pas justifier le compte des morts",
+        "label": "L'offense originelle est découverte"
+      },
+      "side": {
+        "intent": "un incident rend toute neutralité impossible",
+        "label": "Contraint de choisir un camp"
+      }
+    },
+    "effects": [
+      "la querelle est soit renouvelée en toute connaissance de cause, soit publiquement rompue",
+      "l'héritier se retrouve en rupture avec l'un des membres de sa propre lignée"
+    ],
+    "emotion_target": "mélancolie",
+    "examples": [
+      "Quatre générations d'hommes disparus, et au fond de tout cela, un litige pour un puits qui s'était tari bien avant la naissance de l'un d'entre eux."
+    ],
+    "name": "Une rancœur plus vieille que celui qui la porte",
+    "preconditions": [
+      "une vieille inimitié, ravivée, dont l'origine échappe à la mémoire de tout témoin vivant"
+    ],
+    "roles": {
+      "elders": {
+        "constraints": [
+          "croient rester fidèles à la mémoire des morts"
+        ],
+        "label": "ceux qui entretiennent la haine"
+      },
+      "inheritor": {
+        "constraints": [
+          "n'a pas choisi le camp dans lequel il est né"
+        ],
+        "label": "celui qui hérite de la rancœur"
+      },
+      "wrong": {
+        "constraints": [
+          "est plus infime ou plus ancienne que ne l'exige la vendetta"
+        ],
+        "label": "l'offense originelle"
+      }
+    },
+    "summary": "Une vendetta se transmet par le fer — deux maisons, deux écoles, deux familles qui s'entretuent depuis une éternité que plus personne ne peut véritablement dater. Contraint de choisir un camp, l'héritier part à la recherche de l'offense originelle et découvre qu'elle est soit trop dérisoire pour justifier tant de sang, soit déjà vengée ; il doit alors choisir entre perpétuer le cycle ou embrasser la vérité."
+  },
+  "wuxia.recognition_between_equals": {
+    "beats": {
+      "meet": {
+        "intent": "une rencontre entre des parties qui ne se doivent rien",
+        "label": "Rencontre de deux inconnus"
+      },
+      "recognize": {
+        "intent": "chacun trouve enfin son égal, une première depuis des années",
+        "label": "La reconnaissance avant les noms"
+      },
+      "swear": {
+        "intent": "un lien se tisse, transcendant les loyautés établies",
+        "label": "Lien scellé autour du vin"
+      },
+      "test": {
+        "intent": "la prouesse est mesurée comme un test plutôt que comme une querelle",
+        "label": "Un échange sans malveillance"
+      }
+    },
+    "effects": [
+      "une loyauté nouvelle naît, étrangère aux appartenances de clans",
+      "chacun détient désormais une prétention sur l'autre que leurs propres maisons n'ont pas autorisée"
+    ],
+    "emotion_target": "chaleur",
+    "examples": [
+      "Aucun d'eux n'interrogea l'autre sur son nom avant la troisième coupe, et à ce stade, l'importance de la réponse importait peu."
+    ],
+    "name": "Deux inconnus de même trempe",
+    "preconditions": [
+      "deux adversaires de force comparable n'ayant aucun lien préalable, ayant chacun décelé chez l'autre un potentiel inattendu"
+    ],
+    "roles": {
+      "first": {
+        "constraints": [
+          "tente l'autre sans malveillance"
+        ],
+        "label": "celui qui initie"
+      },
+      "second": {
+        "constraints": [
+          "répond sur le même ton"
+        ],
+        "label": "l'inconnu de même valeur"
+      },
+      "world": {
+        "constraints": [
+          "viendront tôt ou tard contester ce lien"
+        ],
+        "label": "les loyautés de leur naissance"
+      }
+    },
+    "summary": "Deux individus qui ne se doivent rien s'affrontent par les mots ou par le fer, non par querelle, mais pour se mesurer l'un à l'autre ; chacun découvre en l'autre le premier adversaire depuis des années qu'il n'a pas besoin de ménager. La reconnaissance mutuelle précède la connaissance des noms, et le lien forgé autour d'un verre de vin par la suite survivra à la plupart des loyautés dans lesquelles l'un ou l'autre est né."
+  },
+  "wuxia.retired_blade_recalled": {
+    "beats": {
+      "arrive": {
+        "intent": "un élément du passé surgit et ne peut être ignoré",
+        "label": "Le passé à la porte"
+      },
+      "quiet": {
+        "intent": "un ancien pratiquant vit, méconnu et serein",
+        "label": "La vie paisible"
+      },
+      "raise": {
+        "intent": "l'épée est saisie car l'alternative est pire",
+        "label": "La rupture du vœu"
+      },
+      "recognized": {
+        "intent": "la technique est identifiée et la vie paisible prend fin",
+        "label": "Le jianghu reconnaît la main"
+      }
+    },
+    "effects": [
+      "une vieille inimitié, ayant survécu bien au-delà de son origine, renaît et sait où ils se cachent",
+      "l'identité d'emprunt ne les protège plus"
+    ],
+    "emotion_target": "mélancolie",
+    "examples": [
+      "Il avait été passeur pendant neuf ans ; il n'aura fallu qu'une soirée et un seul coup de lame pour que trois provinces sachent qu'il ne l'était pas."
+    ],
+    "name": "Celui qui a déposé l'épée",
+    "preconditions": [
+      "un passé renoncé que d'autres peuvent encore identifier par la technique"
+    ],
+    "roles": {
+      "arrival": {
+        "constraints": [
+          "ne peut être éconduit"
+        ],
+        "label": "le passé à la porte"
+      },
+      "jianghu": {
+        "constraints": [
+          "se souvient de la technique"
+        ],
+        "label": "le monde qui reconnaît la main"
+      },
+      "quiet_life": {
+        "constraints": [
+          "est sincèrement chérie"
+        ],
+        "label": "la vie qui se perd"
+      },
+      "retired": {
+        "constraints": [
+          "a juré de ne plus jamais combattre et l'a dit sincèrement"
+        ],
+        "label": "celui qui a déposé l'arme"
+      }
+    },
+    "summary": "Quelqu'un qui a renoncé au monde des arts martiaux vit paisiblement sous une autre identité lorsque le passé frappe à sa porte — un vieil ennemi, un ancien disciple, une dette qui vous poursuit. Le vœu est rompu, non par soif de gloire, mais parce que l'alternative est pire encore, et le jianghu reconnaît la main en quelques jours seulement après qu'elle a été levée."
+  },
+  "wuxia.righteous_debt": {
+    "beats": {
+      "aid": {
+        "intent": "le riz est partagé ou un nom est défendu, avant que quiconque ne sache de qui il s'agit",
+        "label": "Un étranger sur la route reçoit une aide"
+      },
+      "bind": {
+        "intent": "ayant une fois pris la défense de cette personne, le bienfaiteur ne peut plus rester passif",
+        "label": "Le code des mondes de l'ombre lie le bienfaiteur"
+      },
+      "call": {
+        "intent": "soutenir l'étranger coûte désormais à l'aidant ses propres intérêts",
+        "label": "La créance survient à l'heure la plus critique"
+      },
+      "choose": {
+        "intent": "le choix est fait là où les voyageurs le porteront dans chaque auberge de la route",
+        "label": "Payé en réputation, devant des inconnus"
+      }
+    },
+    "effects": [
+      "le rang de l'aidant dans le jianghu est scellé par ce choix",
+      "un intérêt concret a été sacrifié ou un code a été transgressé"
+    ],
+    "emotion_target": "détermination",
+    "examples": [
+      "Il avait partagé son riz avec un mendiant sous la pluie ; le mendiant revint vêtu de soie et escorté, au moment le plus inopportun."
+    ],
+    "name": "La dette que dicte le code",
+    "preconditions": [
+      "un monde martial où la réputation est une monnaie d'échange"
+    ],
+    "roles": {
+      "debtor": {
+        "constraints": [
+          "s'avère être une dette coûteuse"
+        ],
+        "label": "celui qui a été aidé"
+      },
+      "helper": {
+        "constraints": [
+          "a agi avant de savoir qui était l'inconnu"
+        ],
+        "label": "celui qui a aidé sans calcul"
+      },
+      "interest": {
+        "constraints": [
+          "est réel et substantiel"
+        ],
+        "label": "le prix de l'honneur"
+      },
+      "witnesses": {
+        "constraints": [
+          "se souviendront de ce choix"
+        ],
+        "label": "les témoins du Jianghu"
+      }
+    },
+    "summary": "Un étranger sur la route reçoit une aide désintéressée — un bol de riz partagé dans une auberge, une plaie bandée, un nom défendu devant un magistrat — et le code des mondes de l'ombre lie le BIENFAITEUR, non le bénéficiaire : une fois que l'on s'est tenu aux côtés de cette personne, on ne peut plus rester en retrait. La créance est réclamée à l'heure la plus inopportune, et elle se paie en réputation auprès d'inconnus qui raconteront ce choix dans chaque auberge, de l'ici jusqu'à la frontière de la province."
+  },
+  "wuxia.tavern_provocation": {
+    "beats": {
+      "exchange": {
+        "intent": "une seule et brève démonstration met fin au débat",
+        "label": "Un échange règle l'affaire"
+      },
+      "restraint": {
+        "intent": "la personne offensée évalue le prix de sa riposte",
+        "label": "La retenue est mise à l'épreuve"
+      },
+      "slight": {
+        "intent": "une insulte est proférée de manière à ce qu'elle ne puisse être ignorée en privé",
+        "label": "L'affront est lancé"
+      },
+      "travel": {
+        "intent": "le récit se propage et altère la réputation de chacun",
+        "label": "Le récit se propage"
+      }
+    },
+    "effects": [
+      "le statut des deux parties a été modifié par la rumeur plutôt que par l'issue de l'affront",
+      "un témoin dans la salle découvre désormais une capacité qui n'était pas connue"
+    ],
+    "emotion_target": "tension",
+    "examples": [
+      "La coupe ne tomba pas. Personne dans la salle ne put dire, par la suite, lequel des deux avait bougé, seulement que le vin n'avait pas été renversé."
+    ],
+    "name": "Une insulte dans une taverne",
+    "preconditions": [
+      "un cadre public où la renommée se forge ou se brise par le simple bruit qui court"
+    ],
+    "roles": {
+      "insulted": {
+        "constraints": [
+          "doit peser le coût de sa retenue face à celui de sa réputation"
+        ],
+        "label": "celui qui est offensé"
+      },
+      "provoker": {
+        "constraints": [
+          "cherche à provoquer plutôt qu'à combattre"
+        ],
+        "label": "celui qui lance l'affront"
+      },
+      "room": {
+        "constraints": [
+          "diffuse le récit à l'extérieur"
+        ],
+        "label": "la foule qui relatera l'histoire"
+      }
+    },
+    "summary": "Un affront est lancé dans une pièce bondée de témoins qui porteront le récit — un nom moqué, une école insultée, une coupe renversée délibérément. La retenue est mise à l'épreuve devant les yeux de tous ; un bref échange règle l'affaire, et le récit de ce qui s'est passé se propage plus vite et plus loin que l'un ou l'autre des protagonistes ne l'aurait souhaité."
+  }
+}

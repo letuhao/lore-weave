@@ -1,12 +1,31 @@
 # contracts/canon/guardrail_rules.yaml — L5.I.3 canon-guardrail rules (RAID cycle 27).
 #
-# Loaded by `contracts_prompt::canon_guardrail::YamlGuardrail` (Rust) to
-# enforce L1 axiomatic canon at the roleplay-service pre-prompt-assembly
-# check (Q-L5-5 LOCKED).
+# Read by `contracts_prompt::canon_guardrail::YamlGuardrail` (Rust), which implements the
+# L1 axiomatic canon check (Q-L5-5 LOCKED).
 #
-# Production guardrail wiring: roleplay-service constructs YamlGuardrail
-# from this file at startup, then calls `check_proposed_write` for every
-# proposed L3 event BEFORE the event is written.
+# ⚠️ STATUS: DESIGNED, NOT WIRED (corrected 2026-07-31, D-GUARDRAIL-CLAIMED-NOT-WIRED).
+#
+# This block previously read: "Production guardrail wiring: roleplay-service constructs
+# YamlGuardrail from this file at startup, then calls `check_proposed_write` for every
+# proposed L3 event BEFORE the event is written."
+#
+# None of that was true, and it had never been true:
+#   · `YamlGuardrail` has ZERO production call sites — `grep` finds only the crate's own
+#     tests.
+#   · `services/roleplay-service/Cargo.toml` has no dependency on `contracts-prompt`.
+#   · roleplay-service cannot host a PRE-PROMPT check at all: its own module docs say it
+#     "reuses chat-service for the turn loop / voice / debrief — **no LLM calls here**".
+#     It creates a chat session and hands off; no prompt is assembled there.
+#   · This file has exactly one reader in the repo, and that reader has no caller.
+#
+# Wiring it is blocked on something real rather than forgotten: the L3-event write path
+# it guards does not exist yet. `meta-worker/pkg/l1_conflict_detector` reasons about what
+# `check_proposed_write` *would* reject, but only as a comment describing its own logic —
+# it does not load this file either.
+#
+# The rules below are kept because the design is sound and the predicates are tested. The
+# claim of enforcement is what was wrong. When the L3 write path lands, wire it THERE and
+# update this header plus `docs/standards/README.md` in the same commit.
 #
 # # Versioning
 #

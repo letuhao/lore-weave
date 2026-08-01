@@ -45,10 +45,24 @@ func sinkSetup(t *testing.T) (*MetaWriteSink, *pgxpool.Pool) {
 		t.Fatalf("connect: %v", err)
 	}
 	t.Cleanup(pool.Close)
+	// D-ADMINCLI-AUDIT-MIGRATION-LIST-STALE (2026-07-31). This list is hand-maintained,
+	// and 032 — the migration that ADDS 'started' to the result_kind CHECK, written
+	// precisely so this sink could persist a started-destructive row, and whose own
+	// comment says "Applies to the test/meta DB only" — was never added to it.
+	//
+	// So `TestSink_StartedDestructivePersisted` could never have passed: the code writes
+	// 'started', the constraint refused it, SQLSTATE 23514. Nobody noticed because
+	// `ADMINCLI_TEST_PG_URL` was set by no workflow, so the test had never run.
+	//
+	// Kept as an explicit ordered list rather than a directory glob: these migrations are
+	// order-dependent and the meta directory holds many that this suite has no business
+	// applying. The cost is that adding a migration means adding it HERE too — which is
+	// exactly what was missed, so the list now says so out loud.
 	for _, f := range []string{
 		"../../../../migrations/meta/013_meta_write_audit.up.sql",
 		"../../../../migrations/meta/015_admin_action_audit.up.sql",
 		"../../../../migrations/meta/027_meta_write_audit_scrub_version.up.sql",
+		"../../../../migrations/meta/032_admin_action_audit_started_kind.up.sql",
 	} {
 		sql, err := os.ReadFile(f)
 		if err != nil {

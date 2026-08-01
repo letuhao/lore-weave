@@ -1,5 +1,4 @@
 {
-  "title": "Wiki",
   "search": "Wikiを検索...",
   "searchEntities": "名前でエンティティを検索...",
   "noArticles": "Wiki記事がまだありません",
@@ -150,12 +149,12 @@
       "writeback": "保存"
     },
     "badge": {
-      "generated": "AI",
       "generatedHint": "AI生成・検証済み。",
       "needs_review": "要確認",
       "needs_reviewHint": "AI生成 — 確認のためフラグ付き。",
       "blocked": "ブロック",
-      "blockedHint": "AI生成 — 検証により公開がブロックされました。"
+      "blockedHint": "AI生成 — 検証により公開がブロックされました。",
+      "generated": "AI"
     },
     "flags": {
       "reviewTitle": "確認のためフラグ付き",
@@ -233,5 +232,6 @@
     "pendingChip_other": "提案 {{count}} 件",
     "pendingTitle": "承認待ちの提案（{{count}}）",
     "pendingTitle_other": "承認待ちの提案（{{count}}）"
-  }
+  },
+  "title": "Wiki"
 }

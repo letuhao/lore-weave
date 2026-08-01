@@ -383,7 +383,7 @@ async def _dispatch(ctx: MCPContext, tool_name: str, tool_args: dict) -> dict:
         "concept in your own words (mode=semantic), or both fused (mode=hybrid, default, best "
         "for most queries). granularity=chapter tells you WHICH chapters match; "
         "granularity=block drills into the matching passages with snippets. Follow up with "
-        "book_get_chapter to read. Prose ONLY — for a glossary entity use glossary_search; "
+        "book_read to read the chapter. Prose ONLY — for a glossary entity use glossary_search; "
         "for known facts about a character/place use memory_search."
     ),
     meta=require_meta(
@@ -666,12 +666,12 @@ async def kg_project_list(
     name="kg_project_set_embedding_model",
     description=(
         "Configure the project's EMBEDDING MODEL — the one-time setup that "
-        "kg_run_benchmark and kg_build_graph both require. Call this when a build "
+        "kg_run_benchmark and kg_build (target=\"graph\") both require. Call this when a build "
         "reports the project has no embedding model configured, instead of sending "
         "the user to the UI. Pass a provider-registry user_model UUID for one of your "
         "own embedding models (find one with settings_list_models). The vector "
         "dimension is probed automatically. Free, reversible, owner-only. Then call "
-        "kg_run_benchmark, then kg_build_graph."
+        "kg_run_benchmark, then kg_build (target=\"graph\")."
     ),
     meta=require_meta(
         "A", "project",
@@ -1813,7 +1813,7 @@ async def kg_build_wiki(
     name="kg_run_benchmark",
     description=(
         "Run the required embedding-quality benchmark for the current project's embedding "
-        "model. Build-KG (kg_build_graph) is BLOCKED until this passes — call this when a "
+        "model. Build-KG (kg_build target=\"graph\") is BLOCKED until this passes — call this when a "
         "build preview warns the benchmark is not passing, instead of sending the user to "
         "the UI. Cheap (embeddings only, no LLM cost) and runs immediately on a hidden "
         "sandbox. Returns passed + gate_failures; a pass enables Build-KG for this model."

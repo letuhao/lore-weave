@@ -1,5 +1,4 @@
 {
-  "title": "Jobs",
   "status": {
     "pending": "लंबित",
     "running": "चल रहा है",
@@ -17,11 +16,11 @@
     "glossary_translation": "शब्दावली अनुवाद",
     "video_gen": "वीडियो जनरेशन",
     "campaign": "अभियान",
-    "enrichment_job": "Lore enrichment",
     "book_import": "किताब इम्पोर्ट",
     "composition": {
       "generate": "रचना (Composition)"
-    }
+    },
+    "enrichment_job": "कथा विस्तार"
   },
   "summary": {
     "active": "सक्रिय",
@@ -109,7 +108,6 @@
     "elapsed": "बीता हुआ समय",
     "throughput": "थ्रूपुट",
     "throughputVal": "~{{n}} /घंटा",
-    "eta": "ETA",
     "costSoFar": "अब तक की लागत",
     "tokensIn": "इनपुट टोकन",
     "tokensOut": "आउटपुट टोकन",
@@ -127,7 +125,8 @@
     "copied": "जॉब ID कॉपी की गई।",
     "copyFailed": "कॉपी नहीं हो सका।",
     "activity": "गतिविधि (लाइव)",
-    "errorTitle": "त्रुटि"
+    "errorTitle": "त्रुटि",
+    "eta": "अनुमानित समय"
   },
   "activity": {
     "created": "निर्मित",
@@ -149,7 +148,8 @@
     "lane": {
       "translation": "अनुवाद",
       "knowledge": "ज्ञान",
-      "loreEnrichment": "Lore enrichment"
+      "loreEnrichment": "कथा विस्तार"
     }
-  }
+  },
+  "title": "नौकरियाँ"
 }

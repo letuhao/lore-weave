@@ -43,7 +43,16 @@ export type Motif = {
   book_id?: string | null;                 // per-book label (D-MOTIF-ADOPT-PER-BOOK); shared-tier rows carry it too
   book_shared?: boolean;                    // D-MOTIF-ADOPT-BOOK-COLLAB-TIER: a SHARED book-tier motif (badge it)
   code: string;
-  language: string;
+  /** MOTIF-I18N: the language the motif was AUTHORED in — like a book's. It is no
+   *  longer part of the motif's identity; other languages come from motif_translation. */
+  original_language: string;
+  /** Which language the text fields above are ACTUALLY in, and whether that is the
+   *  language we asked for. A motif with no translation renders in its original
+   *  language and says so — never silently. `text_stale` = translated from an older
+   *  version of the source text (still shown; right language beats fresh wording). */
+  text_language?: string;
+  text_fallback?: boolean;
+  text_stale?: boolean;
   visibility: MotifVisibility;
   kind: MotifKind;
   category: string | null;
@@ -74,7 +83,8 @@ export type Motif = {
  *  visibility, so a non-owner never receives authored prose or the author id.
  *  GET /v1/composition/motifs/catalog answers `{ items, total, limit, offset }`. */
 export type CatalogMotif = Pick<
-  Motif, 'id' | 'code' | 'language' | 'kind' | 'category' | 'name' | 'summary'
+  Motif, 'id' | 'code' | 'original_language' | 'text_language' | 'text_fallback'
+  | 'kind' | 'category' | 'name' | 'summary'
   | 'genre_tags' | 'tension_target' | 'emotion_target' | 'source'
   | 'abstraction_confidence'
 > & {
@@ -296,7 +306,7 @@ export type ArcConformance = {
 
 export type ConfirmDescriptor =
   | 'composition.motif_mine' | 'composition.arc_import' | 'composition.conformance_run'
-  | 'composition.motif_adopt';
+  | 'composition.motif_adopt' | 'composition.library_translate';
 
 export type CostEstimate = {
   confirm_token: string;
@@ -304,6 +314,60 @@ export type CostEstimate = {
   est_usd: number;
   est_tokens: number;
   quota_remaining: number | null;
+};
+
+// ── the user-paid motif translate (spec 2026-07-29-motif-i18n §5) ────────────
+// The platform's own motifs ship translated into every supported language for free.
+// A motif YOU authored is yours: we never translate it on our own initiative and never
+// spend a token on it behind your back — this is the path that lets you spend your own.
+
+/** The languages a translation can be bought in — the platform's supported reading
+ *  languages, mirroring the BE tool's `target_language` enum. A closed set on both
+ *  sides: a free string here would let a value through that no read ever asks for, so
+ *  the user pays for a row nobody can see (Frontend-Tool-Contract IN-rule). */
+export const MOTIF_TRANSLATE_LANGUAGES = [
+  'en', 'vi', 'ja', 'ko', 'zh-CN', 'zh-TW', 'es', 'pt-BR', 'fr', 'de',
+  'ru', 'id', 'ms', 'th', 'tr', 'ar', 'hi',
+] as const;
+export type MotifTranslateLanguage = typeof MOTIF_TRANSLATE_LANGUAGES[number];
+
+/** One motif's outcome. `fell_back` are leaves the model did not return (they keep
+ *  their source wording — never blank); `echoed` came back in the source language,
+ *  which we REPORT rather than silently re-spending to retry. */
+export type MotifTranslateOutcome = {
+  id: string;
+  code?: string;
+  status: 'translated' | 'already_original' | 'already_translated' | 'authored_kept'
+        | 'nothing_to_translate' | 'not_translatable' | 'model_failed' | 'failed'
+        | 'cancelled';
+  translated?: number;
+  fell_back?: string[];
+  dropped?: string[];
+  echoed?: string[];
+  error?: string;
+};
+
+/** One existing translation, text NOT included — the drawer needs the inventory, not
+ *  the wording. `stale` = the source text moved after this translation was made. */
+export type MotifTranslationRow = {
+  language_code: string;
+  source: 'authored' | 'machine';
+  translated_by: string | null;
+  updated_at: string | null;
+  stale: boolean;
+};
+
+export type TranslationInventory = {
+  original_language: string;
+  translations: MotifTranslationRow[];
+};
+
+export type MotifTranslateResult = {
+  kind: 'motif' | 'arc_template';
+  target_language: string;
+  requested: number;
+  written: number;
+  results: MotifTranslateOutcome[];
 };
 
 export type QuotaError = {
@@ -365,7 +429,8 @@ export type MineResult = {
 export type MotifCreateArgs = {
   code: string;
   name: string;
-  language?: string;
+  /** The language YOU are authoring in. We never machine-translate your motifs. */
+  original_language?: string;
   kind?: MotifKind;
   category?: string | null;
   summary?: string;
@@ -381,7 +446,12 @@ export type MotifCreateArgs = {
   visibility?: MotifVisibility;
 };
 
-export type MotifPatchArgs = Partial<Omit<MotifCreateArgs, 'code' | 'language'>> & {
+// `original_language` IS patchable: it was excluded while language sat inside the motif's
+// unique key, where changing it really would have re-keyed the row. MOTIF-I18N took it out
+// of every index — it is now just a claim about which language the author typed in, and a
+// wrong claim hands the wrong language to a prompt while reporting no fallback. `code`
+// stays immutable (clone to re-key).
+export type MotifPatchArgs = Partial<Omit<MotifCreateArgs, 'code'>> & {
   status?: MotifStatus;
 };
 

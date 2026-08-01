@@ -376,6 +376,10 @@ async def _finalize(pool: asyncpg.Pool, row_id: Any) -> None:
                 verdict=verdict,
                 judge_model=judge_model,
                 origin_event_id=ctx["origin_event_id"],
+                # D-JUDGE-DISTINCTNESS-UNRECORDED — the model that produced the
+                # translation, when the run context carries it. Absent ⇒ the persisted
+                # `judge_distinct` is null, i.e. UNVERIFIED rather than independent.
+                generator_model=ctx.get("model_ref"),
             )
             if ctx.get("emit_eval_judged"):
                 emit_args = (ctx.get("eval_payload") or {}, verdict)

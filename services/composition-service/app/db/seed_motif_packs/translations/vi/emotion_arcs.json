@@ -1,0 +1,224 @@
+{
+  "emotion_arc.dread_to_relief": {
+    "beats": {
+      "climax": {
+        "intent": "khoảnh khắc kinh hãi ập đến",
+        "label": "Cao trào"
+      },
+      "fear": {
+        "intent": "đẩy nỗi khiếp sợ tiến tới hoảng loạn",
+        "label": "Nỗi sợ dồn lên"
+      },
+      "release": {
+        "intent": "hiểm nguy qua đi; sự nhẹ nhõm ùa tới",
+        "label": "Buông ra"
+      },
+      "unease": {
+        "intent": "gieo một nỗi khiếp sợ âm ỉ",
+        "label": "Bất an"
+      }
+    },
+    "effects": [
+      "đơn vị kết lại ở căng thẳng được giải tỏa"
+    ],
+    "emotion_target": "relief",
+    "examples": [
+      "Nỗi sợ cứ dâng lên mãi tới đỉnh điểm tồi tệ nhất — rồi, không thể tin nổi, mọi thứ kết thúc và họ có thể thở phào."
+    ],
+    "name": "Từ khiếp sợ tới nhẹ nhõm",
+    "preconditions": [
+      "một đơn vị tự sự cần một hình hài cảm xúc"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Nỗi bất an dồn lên thành khiếp sợ rồi đến cao trào, sau đó buông ra thành sự nhẹ nhõm."
+  },
+  "emotion_arc.fall_then_rise": {
+    "beats": {
+      "comfort": {
+        "intent": "thiết lập một nền cảm xúc an ổn ban đầu",
+        "label": "Bình yên"
+      },
+      "loss": {
+        "intent": "đẩy nhân vật rơi xuống hố",
+        "label": "Mất mát"
+      },
+      "struggle": {
+        "intent": "cuộc leo lên bắt đầu",
+        "label": "Vật lộn"
+      },
+      "triumph": {
+        "intent": "vươn lên cao hơn cả lúc khởi đầu",
+        "label": "Khải hoàn"
+      }
+    },
+    "effects": [
+      "đơn vị kết lại ở sự thăng hoa thanh tẩy"
+    ],
+    "emotion_target": "catharsis",
+    "examples": [
+      "An ổn, rồi tan nát, rồi gắng sức ngoi lên — và cuối cùng đứng vững trên mảnh đất cao hơn cả trước khi sa ngã."
+    ],
+    "name": "Rơi xuống rồi vươn lên (Người dưới hố)",
+    "preconditions": [
+      "một đơn vị tự sự cần một hình hài cảm xúc"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Sự bình yên nhường chỗ cho mất mát và vật lộn, rồi đến một chiến thắng phải đánh đổi mới có được — đường cong thanh tẩy kiểu người-dưới-hố."
+  },
+  "emotion_arc.hope_to_heartbreak": {
+    "beats": {
+      "grief": {
+        "intent": "rơi vào nỗi mất mát",
+        "label": "Đau thương"
+      },
+      "hope": {
+        "intent": "nhóm lên một niềm hy vọng mong manh",
+        "label": "Hy vọng nhen lên"
+      },
+      "near": {
+        "intent": "đưa mục tiêu vào tầm với",
+        "label": "Cận kề thành công"
+      },
+      "turn": {
+        "intent": "giật phăng nó đi vào phút chót",
+        "label": "Khúc ngoặt tàn nhẫn"
+      }
+    },
+    "effects": [
+      "đơn vị kết lại ở nỗi tan vỡ"
+    ],
+    "emotion_target": "heartbreak",
+    "examples": [
+      "Gần đến mức gần như chạm được tay vào — rồi nó biến mất, và chẳng còn gì để làm ngoài đau buồn."
+    ],
+    "name": "Từ hy vọng tới tan vỡ",
+    "preconditions": [
+      "một đơn vị tự sự cần một hình hài cảm xúc"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Hy vọng được nhen lên hướng tới cận kề thành công, rồi một khúc ngoặt tàn nhẫn chấm dứt nó trong đau thương."
+  },
+  "emotion_arc.rise_then_fall": {
+    "beats": {
+      "ascent": {
+        "intent": "vươn lên hướng tới thành công",
+        "label": "Thăng tiến"
+      },
+      "downfall": {
+        "intent": "rơi xuống từ đỉnh cao",
+        "label": "Sụp đổ"
+      },
+      "flaw": {
+        "intent": "khiếm khuyết chí mạng tự phơi bày",
+        "label": "Khiếm khuyết lộ diện"
+      },
+      "peak": {
+        "intent": "chạm tới đỉnh",
+        "label": "Đỉnh cao"
+      }
+    },
+    "effects": [
+      "đơn vị kết lại ở sự rơi xuống bi kịch"
+    ],
+    "emotion_target": "tragedy",
+    "examples": [
+      "Càng lúc càng cao, cho đến khi chính thứ đã nâng họ lên lại trở thành thứ kéo họ ngã xuống."
+    ],
+    "name": "Vươn lên rồi rơi xuống (Icarus)",
+    "preconditions": [
+      "một đơn vị tự sự cần một hình hài cảm xúc"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Cuộc thăng tiến lên đỉnh cao, nơi một khiếm khuyết lộ diện và dẫn tới sự sụp đổ — đường cong bi kịch kiểu Icarus."
+  },
+  "emotion_arc.steady_fall": {
+    "beats": {
+      "collapse": {
+        "intent": "chạm tới tận đáy",
+        "label": "Sụp đổ"
+      },
+      "decline": {
+        "intent": "cú rơi tăng tốc",
+        "label": "Trượt dốc"
+      },
+      "erosion": {
+        "intent": "mất dần chỗ đứng từng bước một",
+        "label": "Những xói mòn"
+      },
+      "start_high": {
+        "intent": "bắt đầu từ trên đỉnh",
+        "label": "Khởi đầu cao"
+      }
+    },
+    "effects": [
+      "đơn vị kết lại ở sự sụp đổ ảm đạm"
+    ],
+    "emotion_target": "despair",
+    "examples": [
+      "Nó còn trụ được, rồi thì không — một sự tan rã chậm rãi mà không một mất mát đơn lẻ nào lý giải nổi."
+    ],
+    "name": "Rơi xuống đều đặn",
+    "preconditions": [
+      "một đơn vị tự sự cần một hình hài cảm xúc"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Từ khởi đầu cao vọi qua những xói mòn đến khi sụp đổ — cuộc trượt dài vào tuyệt vọng."
+  },
+  "emotion_arc.steady_rise": {
+    "beats": {
+      "arrival": {
+        "intent": "chạm tới đỉnh cao xứng đáng đạt được",
+        "label": "Cập bến"
+      },
+      "climb": {
+        "intent": "tạo dựng đà tiến",
+        "label": "Tiếp tục leo lên"
+      },
+      "start_low": {
+        "intent": "bắt đầu từ tận đáy",
+        "label": "Khởi đầu thấp"
+      },
+      "wins": {
+        "intent": "tích lũy thành quả",
+        "label": "Những chiến thắng nối tiếp"
+      }
+    },
+    "effects": [
+      "đơn vị kết lại ở chiến thắng xứng đáng"
+    ],
+    "emotion_target": "triumph",
+    "examples": [
+      "Tay trắng, rồi một chút, rồi nhiều hơn — mỗi bước đều phải đánh đổi mới có, cho đến khi tận đáy chỉ còn là ký ức xa xôi."
+    ],
+    "name": "Vươn lên đều đặn (Từ nghèo khó tới giàu sang)",
+    "preconditions": [
+      "một đơn vị tự sự cần một hình hài cảm xúc"
+    ],
+    "roles": {
+      "pov": {
+        "label": "nhân vật điểm nhìn"
+      }
+    },
+    "summary": "Từ khởi đầu thấp kém qua những chiến thắng nối tiếp đến khi cập bến — đường cong khải hoàn kiểu từ-nghèo-khó-tới-giàu-sang."
+  }
+}

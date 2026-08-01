@@ -89,6 +89,9 @@ def test_build_query_text():
     assert _build_query_text(None, ["loss"]) == "loss"
     assert _build_query_text(None, None) == ""
     assert _build_query_text("", ["", "x"]) == "x"      # drops empties
+    # the ARC-level seed (the premise) leads, so an arc retrieve has query text at all.
+    assert _build_query_text(None, None, "a premise") == "a premise"
+    assert _build_query_text("hook", ["loss"], "a premise") == "a premise hook loss"
 
 
 def test_summary_text_and_hash_stable():
@@ -217,8 +220,9 @@ class _FakeConn:
     """Returns canned rows for fetch(); records the SQL it was asked to run so the
     test can assert the pre-filter predicate + the candidate ceiling are in the query."""
 
-    def __init__(self, rows):
+    def __init__(self, rows, translations=None):
         self._rows = rows
+        self._translations = translations or []
         self.fetched_sql: list[str] = []
         self.fetched_args: list[tuple] = []
         self.executed: list[tuple] = []
@@ -226,6 +230,11 @@ class _FakeConn:
     async def fetch(self, sql, *args):
         self.fetched_sql.append(sql)
         self.fetched_args.append(args)
+        # MOTIF-I18N: resolving a display language issues a SECOND query, against
+        # motif_translation. Handing it the motif rows would feed the resolver garbage
+        # that happens to have the right column names — so the fake routes by table.
+        if "motif_translation" in sql:
+            return self._translations
         return self._rows
 
     async def execute(self, sql, *args):
@@ -245,28 +254,39 @@ class _FakeAcquire:
 
 
 class _FakePool:
-    def __init__(self, rows):
-        self.conn = _FakeConn(rows)
+    def __init__(self, rows, translations=None):
+        self.conn = _FakeConn(rows, translations)
 
     def acquire(self):
         return _FakeAcquire(self.conn)
 
 
 def _row(code, *, embedding, tension_target=3, genre_tags=("xianxia",),
-         mining_support=0, judge_score=None, owner=None):
-    """A motif row dict shaped like the retrieve SELECT (incl. embedding)."""
+         mining_support=0, judge_score=None, owner=None, stale_text=False,
+         embedding_model="m"):
+    """A motif row dict shaped like the retrieve SELECT (incl. embedding).
+
+    `embedded_summary_hash` is the REAL hash of this row's summary text, because the ranking
+    path now compares it (`_text_unchanged`). It used to be the literal `"h"`, which is why
+    no test here could ever have caught the stale-vector bug: a placeholder hash is
+    indistinguishable from a matching one when nothing reads it. `stale_text=True` opts into
+    the mismatch on purpose — that is a row whose text was edited after it was embedded."""
+    text = f"{code}\ns"                       # == motif_summary_text(name=code, summary="s")
     return {
-        "id": uuid.uuid4(), "owner_user_id": owner, "code": code, "language": "en",
+        "id": uuid.uuid4(), "owner_user_id": owner, "code": code, "original_language": "en",
         "visibility": "public" if owner is None else "private", "kind": "sequence",
         "category": None, "name": code, "summary": "s", "genre_tags": list(genre_tags),
         "roles": "[]", "beats": "[]", "preconditions": "[]", "effects": "[]",
         "info_asymmetry": None, "annotations": "{}", "tension_target": tension_target,
         "emotion_target": None, "examples": "[]", "abstraction_confidence": None,
         "source": "authored", "imported_derived": False, "source_ref": None,
-        "source_version": None, "embedding_model": "m", "embedding_dim": 3,
+        "source_version": None, "embedding_model": embedding_model, "embedding_dim": 3,
         "judge_score": judge_score, "mining_support": mining_support,
         "status": "active", "version": 1, "created_at": None, "updated_at": None,
-        "embedded_summary_hash": None if embedding is None else "h", "embedding": embedding,
+        "embedded_summary_hash": (
+            None if embedding is None else ("stale-hash" if stale_text else summary_hash(text))
+        ),
+        "embedding": embedding,
     }
 
 
@@ -318,7 +338,7 @@ async def test_retrieve_empty_prefilter_returns_empty(monkeypatch):
     retr = MotifRetriever(_FakePool([]))
     out = await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50,
     )
     assert out == []
 
@@ -336,7 +356,7 @@ async def test_retrieve_ranks_by_cosine(monkeypatch):
     retr = MotifRetriever(_FakePool(rows))
     out = await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50,
     )
     codes = [c.motif.code for c in out]
     assert codes[0] == "near"
@@ -352,7 +372,7 @@ async def test_retrieve_no_embedding_in_result(monkeypatch):
     retr = MotifRetriever(_FakePool([_row("a", embedding=[1.0, 0.0, 0.0])]))
     out = await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50,
     )
     assert out
     assert not hasattr(out[0].motif, "embedding")      # Motif model has no embedding field
@@ -371,7 +391,7 @@ async def test_retrieve_null_embedding_skipped_not_zero_ranked(monkeypatch):
     retr = MotifRetriever(_FakePool(rows))
     out = await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50,
     )
     codes = [c.motif.code for c in out]
     assert "scored" in codes
@@ -389,7 +409,7 @@ async def test_retrieve_min_score_floor(monkeypatch):
     retr = MotifRetriever(_FakePool(rows))
     out = await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50,
     )
     assert out == []
 
@@ -409,7 +429,7 @@ async def test_retrieve_deterministic_tiebreak(monkeypatch):
     retr = MotifRetriever(_FakePool(rows))
     out = await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50,
     )
     codes = [c.motif.code for c in out]
     assert codes == ["top", "aaa", "zzz"]              # mining_support wins, then code ASC
@@ -431,7 +451,7 @@ async def test_retrieve_query_embed_outage_degrades(monkeypatch):
     retr = MotifRetriever(_FakePool(rows))
     out = await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="climax", tension=90,
+        genre_tags=["xianxia"], display_language="en", beat_role="climax", tension=90,
     )
     assert out                                         # NOT [] — a bound, valid set
     assert out[0].motif.code == "hi_tension"           # genre+tension ordering
@@ -453,7 +473,7 @@ async def test_retrieve_degrade_skips_null_embedding(monkeypatch):
     retr = MotifRetriever(_FakePool(rows))
     await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="climax", tension=90,
+        genre_tags=["xianxia"], display_language="en", beat_role="climax", tension=90,
     )
     # degrade can still surface it on genre+tension (no vector needed), and it's queued.
     assert any(r["code"] == "null_vec" for r in retr.drain_backfill_queue())
@@ -469,11 +489,10 @@ async def test_retrieve_passes_ceiling_to_sql(monkeypatch):
     retr = MotifRetriever(pool)
     await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50,
     )
     sql = pool.conn.fetched_sql[0].lower()
     assert "status = 'active'" in sql
-    assert "language =" in sql
     assert "genre_tags &&" in sql                      # array-overlap pre-filter
     assert "limit" in sql                              # the candidate ceiling
     # the read predicate is present (system | public | owned).
@@ -482,8 +501,12 @@ async def test_retrieve_passes_ceiling_to_sql(monkeypatch):
 
 
 async def test_retrieve_genreless_omits_overlap_clause(monkeypatch):
-    """MD-2: a genre-less book ([]) must still retrieve — the && clause is OMITTED
-    (an empty array && is always false → would zero out retrieval)."""
+    """MD-2, as amended by D-MOTIF-HARD-FILTERS-HIDE-HALF-THE-LIBRARY.
+
+    The genre term now lives in the ORDER BY, never the WHERE. As a filter it could only subtract,
+    and on live data it subtracted 52% of the library — `'{}' && '{fantasy}'` is false, so every
+    untagged motif was unreachable by any genre-tagged book. As a RANK it still puts in-genre rows
+    at the front of the ceiling, which is what the bound is actually for."""
     from app.db.repositories.motif_retrieve import MotifRetriever
 
     _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
@@ -491,11 +514,124 @@ async def test_retrieve_genreless_omits_overlap_clause(monkeypatch):
     retr = MotifRetriever(pool)
     await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=[], language="en", beat_role="hook", tension=50,
+        genre_tags=[], display_language="en", beat_role="hook", tension=50,
     )
     sql = pool.conn.fetched_sql[0].lower()
-    assert "genre_tags &&" not in sql                  # omitted for a genre-less call
-    assert "status = 'active'" in sql                  # but still bounded by status/lang
+    where, _, order_by = sql.partition("order by")
+    assert "genre_tags &&" not in where, "genre must never gate the candidate set"
+    assert "genre_tags &&" in order_by, "…but it must still RANK it, so the ceiling stays relevant"
+    assert "status = 'active'" in where                # status/visibility still bound
+
+
+async def test_degrade_tiebreak_round_robins_across_packs(monkeypatch):
+    """A TIED rank must not let one pack take the whole cap.
+
+    The arc selector retrieves with no beat_role/tension/genre, so every candidate scores
+    `0.6*0.0 + 0.4*0.5 = 0.2` and the cap was handed out by the final tie-break, `code ASC`.
+    Measured live against the seeded library, that made the selector's entire library section
+    15/15 `cultivation.*` — and the model then reported, accurately, that the catalog was all
+    cultivation tropes. The catalog was not; the ORDERING was. Rank still dominates (see the
+    cosine tie-break test above); this only governs the tie."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    rows = [_row(f"{pack}.m{i}", embedding=None, genre_tags=())
+            for pack in ("aaa", "mmm", "zzz") for i in range(6)]
+    # No query text at all → the degrade path (this is exactly the arc-level call shape).
+    retr = MotifRetriever(_FakePool(rows))
+    out = await retr.retrieve(
+        uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=[], display_language="auto", beat_role=None, tension=None, limit=6,
+    )
+    assert all(c.match_reason.get("degraded") for c in out)      # confirms the tied path
+    packs = {c.motif.code.split(".")[0] for c in out}
+    assert packs == {"aaa", "mmm", "zzz"}, f"one pack monopolised the cap: {packs}"
+    # …and it is still deterministic: strict round-robin in code order.
+    assert [c.motif.code for c in out] == [
+        "aaa.m0", "mmm.m0", "zzz.m0", "aaa.m1", "mmm.m1", "zzz.m1",
+    ]
+
+
+async def test_arc_query_is_embedded_so_the_library_ranks_semantically(monkeypatch):
+    """`query=` must reach the embedded query text — otherwise an arc-level retrieve has
+    no vector and silently falls to the tied degrade path above."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    seen: list[str] = []
+
+    async def _fake_embed_query(text):
+        seen.append(text)
+        return [1.0, 0.0, 0.0]
+
+    monkeypatch.setattr("app.db.repositories.motif_retrieve.embed_query", _fake_embed_query)
+    retr = MotifRetriever(_FakePool([_row("romance.slow_thaw", embedding=[1.0, 0.0, 0.0])]))
+    out = await retr.retrieve(
+        uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=[], display_language="auto", beat_role=None, tension=None,
+        query="a physician's daughter and the heir who ruined her family",
+    )
+    assert seen == ["a physician's daughter and the heir who ruined her family"]
+    assert [c.match_reason.get("degraded") for c in out] == [None]   # cosine path, not degrade
+
+
+def test_node_query_text_joins_the_node_fields_the_suggest_call_was_discarding():
+    """Both node-level suggest surfaces passed `beat_role=None` and no query, so the cosine
+    path never ran for them at all — they ranked on genre+tension with cosine=0.0, while the
+    node carried title/synopsis/goal/conflict AND a beat_role the whole time."""
+    from types import SimpleNamespace
+
+    from app.db.repositories.motif_retrieve import node_query_text
+
+    node = SimpleNamespace(title="The Second Cup", synopsis="A washed cup contradicts the account.",
+                           goal="fix the question", conflict="", beat_role="inciting")
+    assert node_query_text(node) == (
+        "The Second Cup A washed cup contradicts the account. fix the question")
+    assert node_query_text(SimpleNamespace()) == ""                      # nothing to say
+    assert node_query_text(SimpleNamespace(title=None, synopsis="  ")) == ""   # blanks dropped
+
+
+async def test_edited_text_re_embeds_instead_of_ranking_on_the_old_vector(monkeypatch):
+    """A row whose text changed after it was embedded must NOT rank on the stale vector.
+
+    `patch()` cleared `embedded_summary_hash` with the comment "W3 re-embeds on next
+    retrieve", but the re-embed trigger is `vec is None` and freshness was decided by
+    `_shared_vector_fresh`, which reads the MODEL only. The hash was written and never read,
+    so the clear was a no-op and an edited motif stayed retrievable by the text it used to
+    have — for good. (`beats` are part of `motif_summary_text` too and did not even clear the
+    hash, so beat edits were doubly invisible.)"""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    _patch_platform_backfill_embed(monkeypatch, [0.6, 0.8, 0.0])   # what the NEW text embeds to
+    # The MODEL matches the platform ref, so the hash is the ONLY thing that can be stale here.
+    pool = _FakePool([_row("edited", embedding=[1.0, 0.0, 0.0], stale_text=True,
+                           embedding_model="platform-embed-v1")])
+    retr = MotifRetriever(pool)
+    out = await retr.retrieve(
+        uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50)
+
+    # It re-embedded (a persist fired) and ranked on the NEW vector — 0.6 against the query,
+    # NOT the stale vector's 1.0.
+    assert pool.conn.executed, "no re-embed persisted — the stale vector was used as-is"
+    assert "UPDATE motif SET embedding" in pool.conn.executed[0][0]
+    assert out and out[0].match_reason["cosine"] == pytest.approx(0.6)
+
+
+async def test_unedited_text_keeps_its_vector_and_does_not_re_embed(monkeypatch):
+    """The other half: a row whose hash still matches must NOT pay a re-embed on every read."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    _patch_platform_backfill_embed(monkeypatch, [0.6, 0.8, 0.0])
+    pool = _FakePool([_row("intact", embedding=[1.0, 0.0, 0.0],
+                           embedding_model="platform-embed-v1")])
+    retr = MotifRetriever(pool)
+    out = await retr.retrieve(
+        uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50)
+
+    assert not pool.conn.executed, "re-embedded an unchanged row — every read would pay for it"
+    assert out and out[0].match_reason["cosine"] == pytest.approx(1.0)
 
 
 async def test_retrieve_respects_limit(monkeypatch):
@@ -506,7 +642,7 @@ async def test_retrieve_respects_limit(monkeypatch):
     retr = MotifRetriever(_FakePool(rows))
     out = await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50, limit=5,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50, limit=5,
     )
     assert len(out) == 5
 
@@ -529,7 +665,7 @@ async def test_private_motif_embeds_with_owner_model_and_bills_owner(monkeypatch
     retr = MotifRetriever(_FakePool([row]))
     out = await retr.retrieve(
         caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50,
         user_model=("user_model", "user-embed-42"))
     assert [c.motif.code for c in out] == ["secret"]
     assert out[0].match_reason["section"] == "mine"
@@ -556,7 +692,7 @@ async def test_private_motif_without_user_model_degrades_never_platform_embeds(m
     retr = MotifRetriever(_FakePool([row]))
     out = await retr.retrieve(
         caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="climax", tension=90, user_model=None)
+        genre_tags=["xianxia"], display_language="en", beat_role="climax", tension=90, user_model=None)
     assert out[0].match_reason["section"] == "mine"
     assert out[0].match_reason.get("degraded") is True
     assert calls == []                          # …never called for a private motif
@@ -577,7 +713,7 @@ async def test_two_spaces_rank_against_their_own_query_no_cross_cosine(monkeypat
     retr = MotifRetriever(_FakePool([shared, private]))
     out = await retr.retrieve(
         caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50,
         user_model=("user_model", "user-embed-42"))
     by = {c.motif.code: c for c in out}
     assert by["mine"].match_reason["section"] == "mine"
@@ -606,7 +742,7 @@ async def test_shared_row_with_stale_user_vector_not_cross_cosined(monkeypatch):
     retr = MotifRetriever(_FakePool([row]))
     out = await retr.retrieve(
         caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50, user_model=None)
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50, user_model=None)
     assert out == []                                          # skipped — never cross-space cosined
     assert any(r["code"] == "published" for r in retr.drain_backfill_queue())
 
@@ -625,7 +761,118 @@ async def test_book_shared_motif_is_library_space_not_private(monkeypatch):
     retr = MotifRetriever(_FakePool([row]))
     out = await retr.retrieve(
         caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=50,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50,
         user_model=("user_model", "user-embed-42"))
     assert out[0].match_reason["section"] == "library"   # shared, not 'mine'
     assert calls == []                                   # never billed to the owner as private
+
+
+# ── D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL ──────────────────────────────────────────────────────
+# `language` is a concrete stored code (`en`/`vi`), but the callers' NEUTRAL default is the
+# sentinel `"auto"`, which no row can equal. `AND language = 'auto'` therefore matched 0 of the
+# 147 motifs in the live database, `retrieve` returned [], and the motifs pass emitted a bare
+# `{"motifs": []}` — so EVERY motif_plan artifact was empty and pass 6 planned every scene with no
+# motif layer, while the checkpoint looked perfectly healthy. The empty-genre clause already had
+# this guard (MD-2); language did not.
+
+def _tr(motif_id, language="vi", **text):
+    """A motif_translation row as the resolver reads it."""
+    row = {
+        "motif_id": motif_id, "language_code": language, "name": "", "summary": "",
+        "emotion_target": None, "roles": "[]", "beats": "[]", "preconditions": "[]",
+        "effects": "[]", "examples": "[]", "source_content_hash": "",
+    }
+    row.update(text)
+    return row
+
+
+async def test_language_is_absent_from_the_candidate_query_entirely(monkeypatch):
+    """MOTIF-I18N: language has left selection in BOTH its forms.
+
+    It was a WHERE clause (which zeroed retrieval outright when the caller sent the
+    neutral sentinel `auto`, because no row can equal 'auto'), then a pre-RANK term
+    (which fixed reachability but left both language rows of every motif competing for
+    the same 15 candidate slots). Neither is right, because the premise under both was
+    wrong: a motif is one row now, and the language you read it in is decided after
+    selection. So the candidate SQL must not mention language at all — an ORDER BY on it
+    would satisfy a naive `"language" in sql` assertion just as well as the old WHERE
+    did, which is why this asserts against the whole statement."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    pool = _FakePool([_row("m1", embedding=[1.0, 0.0, 0.0])])
+    out = await MotifRetriever(pool).retrieve(
+        uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=[], display_language="auto", beat_role="hook", tension=50, user_model=None)
+
+    sql = pool.conn.fetched_sql[0].lower()
+    # `original_language` legitimately appears in the PROJECTION (the row model carries it);
+    # what must be absent is any use of it to choose or order rows.
+    _, _, predicate = sql.partition("from motif")
+    assert "language" not in predicate, (
+        "selection must be language-blind — neither filtered nor ranked by it")
+    assert out, "a book with no declared language must still get motif candidates"
+
+
+async def test_display_language_rewords_the_motif_it_does_not_reselect(monkeypatch):
+    """The point of the whole re-architecture: asking for a language changes the WORDS,
+    never the SET. The candidate query runs identically; a second read overlays the
+    translation."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    row = _row("mystery.witness_who_lies", embedding=[1.0, 0.0, 0.0])
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    pool = _FakePool(
+        [row],
+        translations=[_tr(row["id"], "vi", name="Nhân chứng nói dối", summary="tóm tắt")],
+    )
+    out = await MotifRetriever(pool).retrieve(
+        uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=[], display_language="vi", beat_role="hook", tension=50)
+
+    assert [c.motif.code for c in out] == ["mystery.witness_who_lies"], (
+        "a language preference must not change which motifs are reachable")
+    got = out[0].motif
+    assert got.name == "Nhân chứng nói dối", "the translation was not applied"
+    assert got.text_language == "vi" and not got.text_fallback
+
+
+async def test_untranslated_motif_falls_back_to_its_original_language_and_says_so(monkeypatch):
+    """The dogfood bug in its exact shape — an English book's decomposer was briefed in
+    Vietnamese and NOTHING in the payload said so. A motif with no translation into the
+    wanted language must still surface (reachability), still carry readable text, and
+    declare that the text is not in the language that was asked for."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    pool = _FakePool([_row("only.english", embedding=[1.0, 0.0, 0.0])], translations=[])
+    out = await MotifRetriever(pool).retrieve(
+        uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=[], display_language="vi", beat_role="hook", tension=50)
+
+    assert [c.motif.code for c in out] == ["only.english"], "reachability was lost"
+    got = out[0].motif
+    assert got.name == "only.english", "the source text must survive, never blank"
+    assert got.text_language == "en" and got.text_fallback is True, (
+        "a fallback that does not announce itself is the bug this replaces")
+
+
+async def test_the_ceiling_placeholder_still_binds_after_the_clauses_move(monkeypatch):
+    """The clauses are built by position, so a mis-numbered `LIMIT $n` would silently bound the
+    query by the caller id. Assert the LIMIT really receives the ceiling."""
+    from app.db.repositories.motif_retrieve import MotifRetriever
+
+    caller = uuid.uuid4()
+    _patch_query_embed(monkeypatch, [1.0, 0.0, 0.0])
+    pool = _FakePool([_row("m1", embedding=[1.0, 0.0, 0.0])])
+    retr = MotifRetriever(pool)
+
+    await retr.retrieve(
+        caller, book_id=uuid.uuid4(), project_id=uuid.uuid4(),
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=50, user_model=None)
+
+    sql, args = pool.conn.fetched_sql[0], pool.conn.fetched_args[0]
+    limit_idx = int(sql.split("LIMIT $")[1].split()[0])
+    assert isinstance(args[limit_idx - 1], int), "LIMIT must bind the integer ceiling"
+
+

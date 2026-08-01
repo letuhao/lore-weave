@@ -247,12 +247,12 @@
     "card": {
       "sourcePrefix": "উৎস",
       "chapterLabel": "অধ্যায় {{index}}",
-      "chunkLabel": "Chunk {{index}}",
       "matchLabel": "ম্যাচ স্কোর",
       "openLabel": "{{score}} ম্যাচসহ {{sourceType}} ড্রয়ার ওপেন করুন",
       "hubBadge": "সারসংক্ষেপ",
       "hubHint": "এই চাঙ্কটি একটি সারসংক্ষেপ বা দীর্ঘ বায়ো অংশ; র‍্যাঙ্কিংয়ে এর গুরুত্ব কম হতে পারে তবে এটি সামনে আসতে পারে।",
-      "langHint": "উৎস ভাষা: {{lang}}"
+      "langHint": "উৎস ভাষা: {{lang}}",
+      "chunkLabel": "Chunk {{index}}"
     },
     "coverage": {
       "partial": "{{total}}টির মধ্যে {{count}}টি ফলাফল আপনার ভাষায় ({{lang}}); বাকিগুলো মূল ভাষায় দেখানো হচ্ছে।",
@@ -308,134 +308,95 @@
       "pivotal": "গুরুত্বপূর্ণ"
     },
     "row": {
-      "orderLabel": "Narrative order",
       "noOrder": "—",
-      "chapterLabel": "Chapter",
-      "chapterUnresolved": "Chapter id {{id}} — title unresolved",
-      "participantsMore": "+{{count}} more",
-      "confidenceLabel": "Confidence",
-      "timeLabel": "In-story time"
+      "chapterUnresolved": "অধ্যায় আইডি {{id}} — শিরোনাম অমীমাংসিত",
+      "timeLabel": "গল্পের সময়কাল",
+      "orderLabel": "আখ্যানের ক্রম",
+      "chapterLabel": "অধ্যায়",
+      "participantsMore": "+{{count}} জন আরও",
+      "confidenceLabel": "নির্ভরযোগ্যতা"
     },
     "detail": {
-      "summary": "Summary",
-      "noSummary": "No summary extracted.",
-      "participants": "Participants",
-      "sources": "Sources"
+      "noSummary": "কোনো সারাংশ পাওয়া যায়নি।",
+      "summary": "সারসংক্ষেপ",
+      "participants": "অংশগ্রহণকারী",
+      "sources": "উৎস"
     },
     "pagination": {
-      "range": "{{from}}–{{to}} of {{total}}",
-      "refreshing": "refreshing…",
-      "prev": "Previous",
-      "next": "Next",
-      "backToFirst": "Back to first page",
-      "pageSize": "Per page"
+      "backToFirst": "প্রথম পৃষ্ঠায় ফিরে যান",
+      "range": "{{total}}টির মধ্যে {{from}}–{{to}}",
+      "refreshing": "রिफ্রেস করা হচ্ছে…",
+      "prev": "আগের",
+      "next": "পরের",
+      "pageSize": "প্রতি পৃষ্ঠায়"
     },
     "localization": {
-      "sourceMarker": "Shown in source language — translation pending"
+      "sourceMarker": "মূল ভাষায় দেখানো হয়েছে — অনুবাদ প্রক্রিয়াধীন"
     },
     "search": {
-      "placeholder": "Search events…",
-      "label": "Search events",
-      "clear": "Clear search"
+      "placeholder": "ঘটনাগুলো খুঁজুন…",
+      "label": "ঘটনাগুলো খুঁজুন",
+      "clear": "সার্চ পরিষ্কার করুন"
     }
   },
   "entities": {
-    "loading": "Loading entities…",
-    "loadFailed": "Couldn't load entities: {{error}}",
-    "empty": "No entities extracted yet — they appear here as the extraction pipeline runs.",
-    "emptyForFilters": "No entities match these filters.",
+    "loadFailed": "এনটিটি লোড করা সম্ভব হয়নি: {{error}}",
+    "empty": "এখনো কোনো এনটিটি নিষ্কাশন করা হয়নি — এক্সট্রাকশন পাইপলাইন চলাকালীন এগুলো এখানে প্রদর্শিত হবে।",
+    "emptyForFilters": "এই ফিল্টারগুলোর সাথে মিলে এমন কোনো এনটিটি নেই।",
     "filters": {
-      "project": "Project",
-      "kind": "Kind",
-      "status": "Status",
-      "search": "Search",
-      "searchPlaceholder": "Name or alias (min 2 chars)",
-      "semantic": "Semantic search",
-      "semanticPlaceholder": "Describe what you're looking for (vector search)",
-      "anyProject": "Any project",
-      "anyKind": "Any kind",
-      "anyStatus": "Any status"
-    },
-    "status": {
-      "canonical": "Canonical",
-      "discovered": "Discovered",
-      "archived": "Archived"
+      "searchPlaceholder": "নাম বা ছদ্মনাম (ন্যূনতম ২টি অক্ষর)",
+      "semanticPlaceholder": "আপনি কী খুঁজছেন তা বর্ণনা করুন (ভেক্টর সার্চ)",
+      "project": "প্রকল্প",
+      "kind": "ধরণ",
+      "status": "অবস্থা",
+      "search": "খুঁজুন",
+      "semantic": "সিম্যান্টিক সার্চ",
+      "anyProject": "যেকোনো প্রকল্প",
+      "anyKind": "যেকোনো ধরণ",
+      "anyStatus": "যেকোনো স্ট্যাটাস"
     },
     "legend": {
-      "title": "Status",
-      "canonical": "in your glossary",
-      "discovered": "found, not yet promoted",
-      "archived": "hidden from retrieval"
+      "canonical": "আপনার গ্লসারি-তে",
+      "discovered": "পাওয়া গেছে, এখনও প্রমোটেড করা হয়নি",
+      "archived": "অনুসন্ধান থেকে লুকানো",
+      "title": "স্ট্যাটাস"
     },
     "anchor": {
       "badge": "⚓ {{pct}}",
-      "tooltip": "Anchor score {{pct}}% — how strongly this entity is grounded"
-    },
-    "table": {
-      "ariaLabel": "Entities",
-      "global": "Global",
-      "col": {
-        "name": "Name",
-        "kind": "Kind",
-        "project": "Project",
-        "mentions": "Mentions",
-        "confidence": "Confidence",
-        "updated": "Updated"
-      }
-    },
-    "pagination": {
-      "range": "{{from}}–{{to}} of {{total}}",
-      "refreshing": "refreshing…",
-      "prev": "Previous",
-      "next": "Next"
+      "tooltip": "অ্যাঙ্কর স্কোর {{pct}}% — এই সত্তাটি কতটা সুদৃঢ়ভাবে প্রতিষ্ঠিত"
     },
     "detail": {
-      "loading": "Loading entity…",
-      "loadFailed": "Couldn't load entity: {{error}}",
-      "close": "Close",
-      "edit": "Edit",
-      "merge": "Merge into another entity",
-      "metadata": "Metadata",
-      "description": "Description",
-      "descriptionSource": "From the linked glossary entry",
-      "aliases": "Aliases",
-      "relations": "Relations ({{count}})",
-      "truncated": "Showing {{shown}} of {{total}} — filter or search in the table",
-      "noRelations": "No relations yet — more will appear as extraction runs.",
+      "loadFailed": "সত্তাটি লোড করা সম্ভব হয়নি: {{error}}",
+      "merge": "অন্য একটি সত্তার সাথে মার্জ করুন",
+      "descriptionSource": "লিঙ্ক করা গ্লসারি এন্ট্রি থেকে",
+      "truncated": "{{total}}টির মধ্যে {{shown}}টি দেখানো হচ্ছে — টেবিল থেকে ফিল্টার বা সার্চ করুন",
+      "noRelations": "এখনো কোনো সম্পর্ক নেই — এক্সট্রাকশন রান সম্পন্ন হলে আরও দেখা যাবে।",
       "relationArrow": "→",
-      "pendingBadge": "Pending",
-      "pendingValidation": "Pass-1 quarantine — awaiting LLM validation",
-      "unlock": "Unlock (re-enable extractions)",
-      "unlockHint": "This entity is user-edited. Extractions won't re-append removed aliases until you unlock.",
-      "unlockConfirm": "Unlock this entity? Future extractions will be able to add aliases again.",
-      "unlockSuccess": "Unlocked.",
-      "unlockFailed": "Couldn't unlock: {{error}}",
+      "pendingValidation": "পাস-১ কোয়ারেন্টাইন — LLM যাচাইকরণের অপেক্ষায়",
+      "unlock": "আনলক করুন (পুনরায় এক্সট্রাকশন সক্ষম করুন)",
+      "unlockHint": "এই সত্তাটি ব্যবহারকারী দ্বারা সম্পাদিত। আপনি আনলক না করা পর্যন্ত এক্সট্রাকশনগুলো মুছে ফেলা ছদ্মনামগুলো (aliases) পুনরায় যুক্ত করবে না।",
+      "unlockConfirm": "এই সত্তাটি কি আনলক করবেন? ভবিষ্যতের এক্সট্রাকশনগুলো পুনরায় ছদ্মনাম যোগ করতে পারবে।",
       "field": {
-        "project": "Project",
-        "global": "Global",
-        "confidence": "Confidence",
-        "mentions": "Mentions",
-        "anchor": "Anchor score",
-        "scope": "পরিধি"
+        "scope": "পরিধি",
+        "project": "প্রকল্প",
+        "global": "গ্লোবাল",
+        "confidence": "আত্মবিশ্বাস",
+        "mentions": "উল্লেখ",
+        "anchor": "অ্যাঙ্কর স্কোর"
       },
-      "promote": "Promote to glossary",
-      "promoteHint": "Discovered entity. Promote it to create an AI-suggested glossary draft for review.",
-      "promotePending": "Promoting…",
-      "promoteSuccess": "Promoted — a glossary draft was created for review.",
-      "promoteFailed": "Couldn't promote: {{error}}",
-      "unpin": "Remove from context pin",
-      "unpinHint": "This entity is pinned into extraction context.",
-      "unpinSuccess": "Unpinned from context.",
-      "unpinFailed": "Couldn't unpin: {{error}}",
-      "facts": "Known facts ({{count}})",
-      "factSource": "Chapter {{chapter}}",
+      "promote": "গ্লসারিতে উন্নীত করুন",
+      "promoteHint": "এনটিটিটি শনাক্ত করা হয়েছে। পর্যালোচনার জন্য একটি AI-প্রস্তাবিত গ্লসারি ড্রাফট তৈরি করতে এটিকে প্রোমোট করুন।",
+      "promoteSuccess": "প্রোমোট করা হয়েছে — পর্যালোচনার জন্য একটি গ্লসারি ড্রাফট তৈরি করা হয়েছে।",
+      "unpin": "কনটেক্সট পিন থেকে সরান",
+      "unpinHint": "এই এনটিটিটি এক্সট্রাকশন কনটেক্সটে পিন করা আছে।",
+      "unpinSuccess": "কনটেক্সট থেকে আনপিন করা হয়েছে।",
       "factType": {
-        "decision": "Decision",
         "preference": "Preference",
         "milestone": "Milestone",
         "negation": "Negation",
         "statement": "বিবৃতি",
-        "commitment": "অঙ্গীকার"
+        "commitment": "অঙ্গীকার",
+        "decision": "সিদ্ধান্ত"
       },
       "addFact": "তথ্য যোগ করুন",
       "addFactTitle": "এই সত্তা সম্পর্কে একটি তথ্য যোগ করুন",
@@ -458,7 +419,22 @@
       "replaceFactSave": "পরিবর্তনটি সংরক্ষণ করুন",
       "replaceFactSuccess": "তথ্যটি পরিবর্তন করা হয়েছে",
       "markWrongUndo": "পূর্বাবস্থায় ফিরুন",
-      "markWrongUndoFailed": "পূর্বাবস্থায় ফিরতে ব্যর্থ হয়েছে: {{error}}"
+      "markWrongUndoFailed": "পূর্বাবস্থায় ফিরতে ব্যর্থ হয়েছে: {{error}}",
+      "loading": "এনটিটি লোড করা হচ্ছে…",
+      "close": "বন্ধ করুন",
+      "edit": "সম্পাদনা করুন",
+      "metadata": "মেটাডেটা",
+      "description": "বিবরণ",
+      "aliases": "উপনামসমূহ",
+      "relations": "সম্পর্কসমূহ ({{count}})",
+      "pendingBadge": "অপেক্ষমান",
+      "unlockSuccess": "আনলক করা হয়েছে।",
+      "unlockFailed": "আনলক করা সম্ভব হয়নি: {{error}}",
+      "promotePending": "প্রমোশন চলছে…",
+      "promoteFailed": "প্রমোশন করা সম্ভব হয়নি: {{error}}",
+      "unpinFailed": "আনপিন করা সম্ভব হয়নি: {{error}}",
+      "facts": "জানা তথ্য ({{count}})",
+      "factSource": "অধ্যায় {{chapter}}"
     },
     "edit": {
       "title": "এন্টটি সম্পাদনা করুন",
@@ -533,6 +509,30 @@
     "restore": {
       "success": "এনটিটিটি পুনরুদ্ধার করা হয়েছে।",
       "failed": "পুনরুদ্ধার করা সম্ভব হয়নি — {{error}}"
+    },
+    "loading": "এনটিটিগুলো লোড হচ্ছে…",
+    "status": {
+      "canonical": "ক্যানোনিকাল",
+      "discovered": "আবিষ্কৃত",
+      "archived": "আর্কাইভ করা"
+    },
+    "table": {
+      "ariaLabel": "এনটিটিসমূহ",
+      "global": "গ্লোবাল",
+      "col": {
+        "name": "নাম",
+        "kind": "ধরণ",
+        "project": "প্রজেক্ট",
+        "mentions": "উল্লেখ",
+        "confidence": "নিশ্চয়তা",
+        "updated": "আপডেট করা হয়েছে"
+      }
+    },
+    "pagination": {
+      "range": "{{from}}–{{to}} এর মধ্যে {{total}}",
+      "refreshing": "রিফ্রেশ করা হচ্ছে…",
+      "prev": "আগের",
+      "next": "পরের"
     }
   },
   "jobs": {
@@ -594,9 +594,9 @@
         "empty": "এখনো কোনো লগ নেই।",
         "loadNewer": "নতুনগুলো লোড করুন",
         "levels": {
-          "info": "INFO",
-          "warning": "WARN",
-          "error": "ERROR"
+          "info": "তথ্য",
+          "warning": "সতর্কতা",
+          "error": "ত্রুটি"
         }
       }
     },
@@ -646,12 +646,12 @@
       "loadingMore": "লোড হচ্ছে…",
       "stateFilter": {
         "all": "সবগুলো",
-        "disabled": "Static memory",
         "building": "নির্মাণাধীন",
         "paused": "স্থগিত",
         "ready": "প্রস্তুত",
         "failed": "ব্যর্থ",
-        "archived": "আর্কাইভ করা"
+        "archived": "আর্কাইভ করা",
+        "disabled": "স্থির মেমরি"
       },
       "sortOption": {
         "recent": "সম্প্রতি আপডেট করা",
@@ -663,15 +663,15 @@
       "showAllBooks": "সব বই দেখান"
     },
     "card": {
-      "staticMemory": "Static memory",
-      "archivedBadge": "archived",
       "open": "খুলুন",
       "edit": "এডিট",
       "archive": "আর্কাইভ",
       "restore": "রিস্টোর",
       "delete": "ডিলিট",
       "tuneExtraction": "Extraction টিউন করুন",
-      "bookId": "book_id"
+      "staticMemory": "স্থির মেমরি",
+      "archivedBadge": "আর্কাইভ করা",
+      "bookId": "বই আইডি"
     },
     "form": {
       "createTitle": "নতুন প্রজেক্ট",
@@ -688,7 +688,6 @@
         "general": "সাধারণ"
       },
       "bookId": "বুক ID (ঐচ্ছিক)",
-      "bookIdPlaceholder": "uuid",
       "description": "বিবরণ (ঐচ্ছিক)",
       "instructions": "নির্দেশনা (ঐচ্ছিক)",
       "instructionsPlaceholder": "স্টাইল নোট, ভয়েস, সীমাবদ্ধতা — এই প্রজেক্টের প্রতিটি চ্যাটের জন্য ইনজেক্ট করা হবে।",
@@ -707,7 +706,8 @@
         "errorAlreadyRunning": "এই প্রজেক্টের জন্য একটি বেঞ্চমার্ক ইতিমধ্যে চলছে। অপেক্ষা করে আবার চেষ্টা করুন।",
         "errorProviderFlake": "এমবেডিং প্রোভাইডার চলাকালীন ত্রুটি হয়েছে। দয়া করে আবার চেষ্টা করুন।",
         "errorGeneric": "বেঞ্চমার্ক ব্যর্থ হয়েছে: {{message}}"
-      }
+      },
+      "bookIdPlaceholder": "uuid"
     },
     "archiveDialog": {
       "title": "প্রজেক্ট আর্কাইভ করবেন?",

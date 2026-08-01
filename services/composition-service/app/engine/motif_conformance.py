@@ -32,12 +32,14 @@ import logging
 import random
 from typing import Any, Protocol
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.engine.adaptive_k import HIGH_WEIGHT_BEATS
 from app.engine.critic import parse_critique_json  # REUSE the tolerant fence-stripping parser
 from app.packer.profile import BookProfile
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +146,7 @@ async def judge_motif_conformance(
     expected_roles: list[str],
     passage: str,
     profile: BookProfile,
-    max_tokens: int = 512,
+    max_tokens: int = max_tokens_for("judge_motif_conformance"),
     trace_id: str | None = None,
 ) -> dict[str, Any]:
     """Run the binary conformance judge. Returns the judge-output dict (WITHOUT
@@ -171,10 +173,7 @@ async def judge_motif_conformance(
                 "temperature": 0.0,
                 "max_tokens": max_tokens,
                 # The judge emits tiny JSON — reasoning tokens are pure budget burn.
-                # reasoning_effort is the knob that actually works for LM Studio +
-                # Qwen3; chat_template_kwargs covers models honouring the template.
-                "reasoning_effort": "none",
-                "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
+                **no_thinking_fields(),
             },
             job_meta={"extractor": "motif_conformance"},
             trace_id=trace_id,

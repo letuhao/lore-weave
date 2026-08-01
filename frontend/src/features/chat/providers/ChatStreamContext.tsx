@@ -20,6 +20,13 @@ export type ChatStreamValue = ReturnType<typeof useChatMessages> & {
   pendingFacts: ReturnType<typeof usePendingFacts>;
   agentSurface: ReturnType<typeof useAgentSurface>;
   rack: ReturnType<typeof useContextRack>;
+  /** The book this chat is actually mounted on — from the surface's own context, never
+   *  from a model-supplied argument. An approval card writes to the book the AUTHOR is
+   *  looking at; letting a tool-call argument choose the target book means a wrong id
+   *  silently redirects a write (observed live: the model put an entity id in `book_id`,
+   *  so Apply POSTed to `/books/<entity-id>/…` and 403'd — the harmless failure of that
+   *  class; the harmful one writes to a real book that happens to match). */
+  ambientBookId: string | null;
 };
 
 const ChatStreamCtx = createContext<ChatStreamValue | null>(null);
@@ -158,7 +165,12 @@ export function ChatStreamProvider({
   }, [chat.onCompactionRef, t]);
 
   return (
-    <ChatStreamCtx.Provider value={{ ...chat, pendingFacts, agentSurface, rack }}>
+    <ChatStreamCtx.Provider value={{
+      ...chat, pendingFacts, agentSurface, rack,
+      // Editor → book → studio: the most specific surface the chat is mounted on wins.
+      ambientBookId:
+        editorContext?.book_id ?? bookContext?.book_id ?? studioContext?.book_id ?? null,
+    }}>
       {children}
     </ChatStreamCtx.Provider>
   );

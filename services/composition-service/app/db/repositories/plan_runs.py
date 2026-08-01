@@ -23,7 +23,8 @@ from app.db.models import PlanArtifact, PlanArtifactKind, PlanRun, PlanRunMode, 
 _SELECT_RUN = """
   id, created_by, book_id, work_id, status, mode, model_ref, source_checksum,
   source_markdown, active_job_id, error_detail, checkpoint_state,
-  pass_state, genre_tags, grounded_on, is_archived, created_at, updated_at
+  pass_state, genre_tags, grounded_on, structure_template_id, is_archived,
+  created_at, updated_at
 """
 
 # `a.`-prefixed so the artifact reads can join plan_run (the book-scope gate);
@@ -74,12 +75,16 @@ class PlanRunsRepo:
         # (Settings & Configuration Boundary — "would two users want different values?" ⇒ yes ⇒
         # it is a choice that rides the row, never an env flag).
         genre_tags: list[str] | None = None,
+        # D-PLANFORGE-BEATS-UNWIRED — the story structure this plan is written against. Same
+        # per-run reasoning as `genre_tags`: it is a creative choice that rides the row. NULL is a
+        # legitimate value ("not chosen"), which compile resolves to a RECORDED default.
+        structure_template_id: UUID | None = None,
     ) -> PlanRun:
         query = f"""
         INSERT INTO plan_run
           (created_by, book_id, mode, model_ref, source_checksum, source_markdown, status,
-           genre_tags)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+           genre_tags, structure_template_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
         RETURNING {_SELECT_RUN}
         """
         async with self._pool.acquire() as c:
@@ -93,6 +98,7 @@ class PlanRunsRepo:
                 source_markdown,
                 status,
                 json.dumps(list(genre_tags or [])),
+                structure_template_id,
             )
         return _row_run(row)
 
@@ -209,6 +215,11 @@ class PlanRunsRepo:
         # D-PLANFORGE-PROPOSE-BLIND — the grounding fingerprint + counts folded into this run's
         # propose. `None` means "leave it alone" (never "clear it") — same convention as the others.
         grounded_on: dict[str, Any] | None = None,
+        # D-PLANFORGE-BEATS-UNWIRED — the author's story-structure choice. `...` (unset) means
+        # "leave it alone"; an explicit `None` CLEARS it back to "no choice" so the author can undo
+        # a pick and fall back to the recorded default. A plain `None`-means-skip convention would
+        # make the choice one-way, which is not what an editable atom means.
+        structure_template_id: UUID | None = ...,
         clear_error: bool = False,
     ) -> PlanRun | None:
         sets: list[str] = ["updated_at = now()"]
@@ -251,6 +262,12 @@ class PlanRunsRepo:
         if grounded_on is not None:
             params.append(json.dumps(grounded_on))
             sets.append(f"grounded_on = ${len(params)}::jsonb")
+        if structure_template_id is not ...:
+            if structure_template_id is None:
+                sets.append("structure_template_id = NULL")
+            else:
+                params.append(structure_template_id)
+                sets.append(f"structure_template_id = ${len(params)}")
         query = f"""
         UPDATE plan_run SET {", ".join(sets)}
         WHERE id = $1 AND book_id = $2

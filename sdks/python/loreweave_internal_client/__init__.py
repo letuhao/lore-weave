@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from ._context_length import resolve_context_length
 from ._errors import RETRYABLE_STATUSES, InternalClientError, is_retryable_status
-from ._model_name import resolve_model_name
+from ._model_name import resolve_model_info, resolve_model_name
 from ._transport import (
     HEADER_INTERNAL_TOKEN,
     HEADER_TRACE_ID,
@@ -37,5 +37,6 @@ __all__ = [
     "build_timeout",
     "is_retryable_status",
     "resolve_context_length",
+    "resolve_model_info",
     "resolve_model_name",
 ]

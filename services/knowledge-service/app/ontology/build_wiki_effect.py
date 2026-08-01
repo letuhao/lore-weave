@@ -56,10 +56,14 @@ class BuildWikiParams(BaseModel):
 async def _resolve_entity_ids(params: BuildWikiParams, book_id: UUID, glossary_client) -> list[str]:
     if params.entity_ids:
         return params.entity_ids
-    # Wiki wants EVERY entity of the book, not just multi-chapter ones — each
-    # extracted entity has ≥1 chapter link, so min_frequency=1 includes them all
-    # (the default 2 is the extraction-ANCHOR semantics and silently drops every
-    # entity on a single-chapter book → spurious "no entities" → 422).
+    # Wiki wants EVERY entity of the book, not just multi-chapter ones. min_frequency
+    # must therefore be 0, not 1: the "each entity has ≥1 chapter link" premise holds
+    # only for entities the EXTRACTOR created. An entity the AUTHOR wrote by hand — the
+    # whole point of building a glossary before chapter 1 — has ZERO links, so
+    # min_frequency=1 still dropped it. Live-measured on the Mị Đế book: 0 entities at
+    # min_frequency=1, 16 at 0, i.e. the author's entire world produced an EMPTY wiki
+    # (and the spurious "no entities" → 422 this comment was written to prevent).
+    # The default 2 is extraction-ANCHOR semantics and belongs to neither caller.
     #
     # `status_filter` is deliberately NOT "active" (it used to say so, but the
     # handler ignored the param entirely — D-GLOSSARY-KNOWN-ENTITIES-STATUS-PARAM).
@@ -70,7 +74,7 @@ async def _resolve_entity_ids(params: BuildWikiParams, book_id: UUID, glossary_c
     # Paged (D-ANCHOR-PRELOAD-50-CAP): the un-limited call inherited the handler's
     # silent default of 50, so a book with more entities only ever got 50 wiki stubs.
     page = await glossary_client.list_all_entities(
-        book_id, status_filter=None, min_frequency=1,
+        book_id, status_filter=None, min_frequency=0,
     )
     if not page:
         return []

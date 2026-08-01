@@ -215,3 +215,98 @@ func newWorkerForRetryTest() *Worker {
 type discardWriter struct{}
 
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+// ── empty-completion detection ───────────────────────────────────────────────
+//
+// The bug this locks: a chat job whose provider answered with an EMPTY body was finalized
+// `completed` with no error_code and no finish_reason. Observed live as
+// `status=completed, input_tokens 0, output_tokens 0, content ""` — a call that produced
+// nothing, recorded as a success. Downstream could only guess, and the diary distiller
+// guessed wrong: it reported `model_no_output` and advised "a reasoning model? use a
+// non-reasoning distill model" for a job whose real problem was an empty upstream response.
+//
+// The two cases MUST stay distinguishable, so both directions are asserted here.
+func TestEmptyCompletion_TrueOnlyWhenNothingCameBack(t *testing.T) {
+	chat := func(msg map[string]any, extra ...func(map[string]any)) map[string]any {
+		r := map[string]any{"messages": []any{msg}, "usage": map[string]any{}}
+		for _, f := range extra {
+			f(r)
+		}
+		return r
+	}
+
+	cases := []struct {
+		name   string
+		result map[string]any
+		outTok int
+		want   bool
+	}{
+		{
+			// The VERBATIM payload captured from the live llm_jobs row that motivated this:
+			//   {"usage":{"input_tokens":0,"output_tokens":0},
+			//    "messages":[{"role":"assistant","content":""}]}
+			// status=completed, error_code NULL, finish_reason NULL.
+			name:   "nothing at all — the real captured row",
+			result: chat(map[string]any{"role": "assistant", "content": ""}),
+			outTok: 0, want: true,
+		},
+		{
+			name:   "whitespace-only content is still nothing",
+			result: chat(map[string]any{"role": "assistant", "content": "  \n\t "}),
+			outTok: 0, want: true,
+		},
+		{
+			// THE distinction. A reasoning model spends its budget thinking and returns empty
+			// `content` — but it really ran, really billed, and the caller's problem is
+			// model-fit, not a dead request. It must stay `completed`.
+			name: "reasoning model — empty content but real reasoning + tokens",
+			result: chat(map[string]any{
+				"role": "assistant", "content": "", "reasoning_content": "let me think…",
+			}),
+			outTok: 1305, want: false,
+		},
+		{
+			name:   "empty content but nonzero output tokens — the model ran",
+			result: chat(map[string]any{"role": "assistant", "content": ""}),
+			outTok: 7, want: false,
+		},
+		{
+			name: "tool-call reply — finish_reason is set, so never flagged",
+			result: chat(map[string]any{"role": "assistant", "content": ""},
+				func(r map[string]any) { r["finish_reason"] = "tool_calls" }),
+			outTok: 0, want: false,
+		},
+		{
+			name: "a non-string payload counts as real output",
+			result: chat(map[string]any{
+				"role": "assistant", "content": "", "tool_calls": []any{map[string]any{"id": "1"}},
+			}),
+			outTok: 0, want: false,
+		},
+		{
+			name:   "real text",
+			result: chat(map[string]any{"role": "assistant", "content": "hello"}),
+			outTok: 3, want: false,
+		},
+		{
+			// Embeddings/reranks use a listField aggregator, never "messages". This check must
+			// not judge shapes it does not understand.
+			name:   "non-chat result shape is never judged",
+			result: map[string]any{"embeddings": []any{}, "usage": map[string]any{}},
+			outTok: 0, want: false,
+		},
+		{
+			name:   "no messages key at all",
+			result: map[string]any{"usage": map[string]any{}},
+			outTok: 0, want: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := emptyCompletion(tc.result, tc.outTok); got != tc.want {
+				t.Fatalf("emptyCompletion(%v, %d) = %v, want %v", tc.result, tc.outTok, got, tc.want)
+			}
+		})
+	}
+}

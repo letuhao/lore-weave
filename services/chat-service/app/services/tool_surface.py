@@ -10,7 +10,9 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from app.services.token_budget import estimate_tokens, scale_by_window
 from app.services.tool_discovery import (
@@ -46,6 +48,15 @@ ACTIVATED_TOOLS_CAP = 64
 # via find_tools. Set LW_HOT_SEED_TOKEN_BUDGET=0 for the original pure-index design, or 4000
 # to restore the prior default.
 HOT_SEED_TOKEN_BUDGET = int(os.environ.get("LW_HOT_SEED_TOKEN_BUDGET", "2000"))  # ~4-6 tools hot; rest lazy
+# D-RAIL-OWN-BUDGET (2026-07-26, Mị Đế dogfood): a PINNED rail's step tools get their own,
+# larger ceiling — separate from the discovery hot-seed. The 2000-token seed budget is
+# surface economy against DISCOVERY sprawl (a weak model does worse with more tools); a
+# pinned rail is the opposite of sprawl — a curated, bounded recipe whose TEXT names every
+# step tool, so dropping one re-creates the "recipe names a tool the agent cannot see"
+# silent no-op (measured live all day: glossary_propose_entities was the perpetual drop).
+# 6000 tok fits a ~9-step rail with two large schemas; the budget remains a safety valve
+# for a pathological rail, not a routine constraint.
+RAIL_STEP_TOKEN_BUDGET = int(os.environ.get("LW_RAIL_STEP_TOKEN_BUDGET", "6000"))
 ACTIVATED_TOOLS_TOKEN_BUDGET = 6000  # cap the find_tools-accumulated set by tokens
 
 # Read/query verbs → the tools safe to keep hot (writes/proposes are discovered on
@@ -241,7 +252,10 @@ def discovery_seed_for_surface(
     binding_categories: list[str] | None = None,
     pinned_step_tools: list[str] | None = None,
     rail_done_step_tools: set[str] | None = None,
+    rail_repeat_done_step_tools: set[str] | None = None,
+    rail_next_step_tools: set[str] | None = None,
     sticky_domains: set[str] | None = None,
+    injected_skill_codes: list[str] | None = None,
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated).
 
@@ -396,17 +410,52 @@ def discovery_seed_for_surface(
         # candidate set first, so the not-done steps win the budget. A tool still owed by a
         # not-done step is NOT in this set (rail_gate_suppressions keeps it), so this never
         # hides a tool the agent still needs.
-        _rail_candidates = [t for t in pinned_step_tools if t not in (rail_done_step_tools or set())]
-        kept, dropped = budget_rail_tools(
-            catalog, _rail_candidates,
-            token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+        # D-RAIL-REPEAT-BUDGET (v2 of the done-exclusion): done steps are REORDERED to the
+        # back of the budget queue, not hard-dropped. The rail TEXT names every step tool;
+        # a done-but-repeatable step (save-cast — "add MORE characters") must still ride
+        # when room remains, it just can never starve a never-done step. Priority:
+        # never-done → repeat-done (the ones a user re-invokes) → one-shot-done (advertise-
+        # suppressed by the gate anyway — budget spent on them is pure waste). A done tool
+        # that loses the budget is reported like any other drop.
+        _done = rail_done_step_tools or set()
+        _repeat_done = (rail_repeat_done_step_tools or set()) & _done
+        _rail_candidates = (
+            [t for t in pinned_step_tools if t not in _done]
+            + [t for t in pinned_step_tools if t in _repeat_done]
+            + [t for t in pinned_step_tools if t in _done - _repeat_done]
         )
-        names = names | kept
+        # D-RAIL-NEXT-STEP-EXEMPT (2026-07-26, Mị Đế dogfood): the rail's NEXT step tools are
+        # budget-EXEMPT. Dropping by declared order still starved the step the agent needs NOW
+        # when earlier not-done steps ate the budget — live wedge: kg_propose_edge failed with
+        # "call kg_project_entities_to_nodes first" while that exact tool was budget-dropped,
+        # so the step-runner redrove a step whose tool the agent could not see, 8 times, and
+        # the model reported success anyway. The step being DRIVEN must always be on the wire.
+        _next_exempt = (rail_next_step_tools or set()) & set(_rail_candidates)
+        kept, dropped = budget_rail_tools(
+            catalog, [t for t in _rail_candidates if t not in _next_exempt],
+            token_budget=scale_by_window(RAIL_STEP_TOKEN_BUDGET, context_length),
+        )
+        names = names | kept | _next_exempt
         if dropped:
             logger.warning(
                 "pinned rail step tools dropped by the token budget: %s — the rail names "
                 "tools the agent cannot see", ", ".join(dropped),
             )
+    # D-SKILL-NAMED-TOOLS-RIDE (2026-07-26, Mị Đế dogfood — THE root cause of the
+    # entity_edit/propose_entities confusion): a skill PROMPT injected this turn can
+    # NAME tools directly ("Add new entities: `glossary_propose_entities`"), but the
+    # budgeted hot seed can drop exactly those tools under domain pressure — proven
+    # on the wire: the request's instructions named glossary_propose_entities while
+    # the 21 advertised tools carried only glossary_propose_entity_edit, so the
+    # model mapped the create intent onto the similarly-named edit tool, every turn.
+    # The authoring-time lint (test_every_skills_named_tools_are_in_its_hot_domains)
+    # guarantees named ⊆ hot_domains, but a runtime budget still breaks the
+    # invariant. Rule: an INJECTED instruction must never name a tool that is not
+    # on the wire — the named tools of every injected skill ride budget-exempt,
+    # exactly like a pinned rail's next-step tools. Bounded: a skill names a
+    # handful of tools, and only skills actually injected THIS turn contribute.
+    if injected_skill_codes:
+        names = names | skill_named_tools(injected_skill_codes, catalog)
     # CAT-4 Part D — a manually-pinned legacy tool rides every turn of THIS
     # session regardless of curated/auto mode; it bypasses find_tools entirely
     # (the whole point of the escape hatch is that the tool is otherwise
@@ -468,6 +517,43 @@ def effective_enabled_tools(
     return list(dict.fromkeys([*enabled_tools, *sorted(hot)]))
 
 
+# D-TOOL-LOAD-PERSISTS — how many of the most-recently-activated tools an AUTO-mode
+# turn re-advertises. Small on purpose: enough to keep the tool the model just
+# tool_load'ed alive across turns, small enough that a stale accumulation can't
+# re-inflate the surface.
+AUTO_ACTIVATED_TAIL = 6
+
+
+@lru_cache(maxsize=64)
+def _skill_prompt_named_tokens(skill_code: str) -> frozenset[str]:
+    """Backtick-quoted snake_case tokens a skill's PROSE names (candidate tool names).
+
+    Cached per skill code — prompts are static module constants. The catalog
+    intersection happens per call in `skill_named_tools` (the catalog can change)."""
+    from app.services.skill_registry import SYSTEM_SKILLS
+
+    skill = SYSTEM_SKILLS.get(skill_code)
+    if skill is None:
+        return frozenset()
+    try:
+        prompt = skill.prompt_loader()
+    except Exception:  # noqa: BLE001 — a skill that can't load contributes nothing
+        return frozenset()
+    return frozenset(re.findall(r"`([a-z][a-z0-9_]{3,})`", prompt))
+
+
+def skill_named_tools(skill_codes: list[str], catalog: list[dict]) -> set[str]:
+    """The REAL catalog tools directly named by these skills' prompts.
+
+    D-SKILL-NAMED-TOOLS-RIDE: an injected instruction must never name a tool that
+    is not on the wire — the caller unions this set budget-exempt."""
+    catalog_names = {tool_name(td) for td in catalog}
+    out: set[str] = set()
+    for code in skill_codes:
+        out |= _skill_prompt_named_tokens(code) & catalog_names
+    return out
+
+
 def assemble_initial_active_names(
     *,
     curated: bool,
@@ -490,9 +576,21 @@ def assemble_initial_active_names(
     # tools` is the union of the turn's visible workflows' step tools; intersecting keeps
     # in-flight rail tools and drops everything else. Default None → the original strict
     # auto behavior (hot-seed only), so a caller that doesn't supply the filter can't leak.
+    #
+    # D-TOOL-LOAD-PERSISTS amendment (2026-07-26, Mị Đế dogfood): PLUS the recency TAIL of
+    # the persisted set. tool_load now persists in auto mode too (stream_service — the
+    # measured failure: the model's freshly-loaded create tool evaporated every turn while
+    # the frontend edit tool stayed visible, so the create intent kept landing on the wrong
+    # tool). The tail is bounded (last AUTO_ACTIVATED_TAIL names, most-recent-last thanks to
+    # the LRU refresh), so a curated-then-flipped session leaks at most a handful of its
+    # most recently REQUESTED tools — not the whole accumulation the review note rejected.
     if not curated:
         wf = workflow_step_tools or set()
-        return set(hot_seed_names) | (set(activated_tools) & wf)
+        return (
+            set(hot_seed_names)
+            | (set(activated_tools) & wf)
+            | set(activated_tools[-AUTO_ACTIVATED_TAIL:])
+        )
     return set(enabled_tools) | set(activated_tools)
 
 
@@ -509,8 +607,18 @@ def merge_activated_tools(
     (most-recently-activated wins) instead of a raw COUNT of 64 — a count cap let
     64 verbose schemas re-inflate the surface. Without a catalog (legacy callers /
     tests) fall back to the count cap so behaviour is unchanged.
+
+    D-ACTIVATED-LRU-REFRESH (2026-07-26, Mị Đế dogfood): a RE-activated name must
+    move to the recency END. The old `dict.fromkeys([*current, *matched])` kept
+    the FIRST occurrence, so re-loading an already-activated tool left it at its
+    original (oldest) position — and the budget evicted it first. Live degradation
+    loop: gemma tool_load'ed glossary_propose_entities, the next turn's newer rail
+    activations pushed it over budget, it was evicted DESPITE being the most
+    recently requested, the model fell back to the always-visible edit tool whose
+    error said "tool_load it" — and the cycle repeated, forever, with the agent
+    never able to create an entity.
     """
-    merged = list(dict.fromkeys([*current, *sorted(matched)]))
+    merged = list(dict.fromkeys([*(nm for nm in current if nm not in matched), *sorted(matched)]))
     if catalog is not None:
         tok = {tool_name(td): _tool_tokens(td) for td in catalog}
         budget = scale_by_window(ACTIVATED_TOOLS_TOKEN_BUDGET, context_length)

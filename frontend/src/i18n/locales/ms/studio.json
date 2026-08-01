@@ -679,6 +679,11 @@
       "title": "Cadangan Aliran Kerja",
       "desc": "Semak aliran kerja yang dicadangkan oleh ejen",
       "guideBody": "Menyenaraikan resipi aliran kerja yang dicadangkan oleh ejen untuk dicipta, berdasarkan urutan berbilang langkah yang dikesan kerap anda ulangi. Buka panel ini untuk meluluskan cadangan — yang akan menghasilkan aliran kerja tersebut supaya ia boleh dijalankan — atau menolaknya. Di sinilah aliran kerja cadangan ejen menjadi realiti."
+    },
+    "world-setup": {
+      "title": "Tetapan Dunia",
+      "desc": "Bina barisan pelakon, dunia dan hubungan mereka daripada sebuah deskripsi",
+      "guideBody": "Tukarkan deskripsi cerita anda kepada lore sebenar yang boleh dijejak: ia merancang apa yang perlu dibina, anda meluluskan atau memendekkan senarai tersebut, kemudian setiap watak, faksi dan istilah akan ditulis satu demi satu (watak utama akan mendapat profil mendalam yang lengkap) dan difailkan untuk semakan anda. Akhirnya, ia akan menentukan bagaimana mereka semua berhubung dan meminta anda meluluskan hubungan tersebut sebelum menyimpannya."
     }
   },
   "sceneRail": {

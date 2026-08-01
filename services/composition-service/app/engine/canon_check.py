@@ -27,7 +27,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Awaitable, Callable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
+
+from loreweave_guard import GuardReport
 
 from loreweave_canon_check import (
     CanonCandidateBase,
@@ -37,6 +39,7 @@ from loreweave_canon_check import (
     gone_entities_referenced,
     parse_judge_verdicts,
 )
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +49,10 @@ __all__ = [
     "CanonViolation",
     "gone_cast_in_draft",
     "judge_canon",
+    "judge_plan_conflicts",
     "check_canon",
     "ReflectResult",
+    "canon_envelope",
     "reflect_revise",
 ]
 
@@ -123,7 +128,7 @@ def _build_judge_messages(
 async def judge_canon(
     judge, *, user_id: str, model_source: str, model_ref: str,
     draft: str, candidates: list[CanonViolation], source_language: str = "auto",
-    max_tokens: int = 1024, trace_id: str | None = None,
+    max_tokens: int | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[CanonViolation]:
     """Confirm the symbolic candidates with the LLM-judge (D2 — only the cheap
@@ -138,6 +143,14 @@ async def judge_canon(
         return []
     from loreweave_llm.errors import LLMError
 
+    # THE SIGNAL, not a constant. `budget_for` takes `target` (how many verdicts) and
+    # `language` (a Vietnamese `why` costs 2.6 tokens/word against English's 1.7) and until
+    # 2026-08-01 the VERDICT kind ignored both — `base = 0.0`, "the floor IS the model" — so
+    # every judge call here was the renamed constant this SDK's own docstring warns about.
+    # Resolved per call rather than as a default argument because the count is not knowable
+    # at import time.
+    max_tokens = max_tokens or max_tokens_for(
+        "judge_canon", target=len(candidates), language=source_language)
     system, user = _build_judge_messages(draft, candidates, source_language)
     req = build_judge_request(
         [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -157,6 +170,108 @@ async def judge_canon(
     verdicts = parse_judge_verdicts(extract_judge_text(job.result))
     apply_verdicts(candidates, verdicts)   # /review-impl #3 — surfaces the judge's why
     return candidates
+
+
+def _build_plan_conflict_messages(
+    draft: str, candidates: list[CanonViolation], source_language: str,
+) -> tuple[str, str]:
+    """(system, user) for the plan-liveness judge.
+
+    A DIFFERENT question from `judge_canon`'s, which is why it gets its own prompt rather than
+    a shared one. That judge asks *"this character is already gone — is the passage treating
+    them as present?"*. This one asks *"the passage appears to END this character — is that
+    real and permanent, here, now?"*, because the plan-liveness candidate was raised by an
+    extractor reading THIS passage, and `status_effects` cannot tell a death from a feint, a
+    dream, a vision, a prophecy, a near-miss, a metaphor, or somebody else's body.
+
+    Kept free of English-only illustrative phrasing (the multilingual-judge lesson): the list
+    of what does NOT count is abstract, so it does not bias a Vietnamese or CJK judge.
+    """
+    lang = "" if source_language in ("", "auto") else (
+        f" Write each `why` in the language with code '{source_language}'."
+    )
+    system = (
+        "You verify story continuity. For each listed character, the passage appears to end "
+        "their presence — death, departure, or destruction. Decide whether the passage "
+        "ACTUALLY establishes that as a real, permanent event happening now. It is NOT real "
+        "if the passage presents it as imagined, dreamed, foreseen, feared, remembered, "
+        "hypothetical, figurative, attempted-but-survived, or as happening to someone else. "
+        "Answer `violated: true` ONLY when the character truly and permanently ceases to be "
+        "present from this point on. Return ONLY a JSON object "
+        '{"verdicts":[{"entity_id":str,"violated":bool,"why":str}]}.' + lang
+    )
+    listed = "\n".join(f'- entity_id={c.entity_id} name="{c.name}"' for c in candidates)
+    user = f"CHARACTERS THE PASSAGE APPEARS TO END:\n{listed}\n\nPASSAGE:\n{draft}"
+    return system, user
+
+
+async def judge_plan_conflicts(
+    judge, *, user_id: str, model_source: str, model_ref: str,
+    draft: str, candidates: list[CanonViolation], source_language: str = "auto",
+    max_tokens: int | None = None, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> tuple[list[CanonViolation], bool]:
+    """Promote plan-liveness candidates from ADVISORY to HARD — or clear them.
+
+    The author's decision, verbatim: *judge confirms ⇒ HARD, no judge ⇒ advisory*. So this is
+    the only thing that may set `confirmed=True` on a `plan_liveness_conflict`, and the caller
+    must only reach it with a DISTINCT judge model (invariant 2 — no model is silently its own
+    judge; the drafter that wrote the death must not be the one that certifies it).
+
+    CC4: every LLM/parse failure leaves `confirmed=None`, i.e. the candidate stays advisory.
+    A judge that is down must not be able to BLOCK a publish, and must not clear one either.
+
+    Returns `(candidates, judged)`. `judged` is False when the call produced NO usable verdict
+    at all, and the second value exists because the first one cannot carry that fact: an
+    unjudged candidate and a candidate the judge declined to confirm are both `confirmed=None`.
+
+    MEASURED on real 500-word drafts, 2026-08-01, and it is why this returns a flag rather than
+    logging and moving on: a judge model spent 5,684 characters reasoning aloud in Vietnamese
+    and hit the output cap BEFORE emitting any JSON — `finish_reason='length'`, zero verdicts
+    parsed, every candidate left `confirmed=None`. The blocking tier had silently stopped
+    existing and the envelope read exactly as if the judge had looked and declined. Short
+    fixture passages never reproduced it: the earlier 3/3 live validation used three-sentence
+    excerpts, and it passed for that reason.
+    """
+    if not candidates:
+        return [], True
+    from loreweave_llm.errors import LLMError
+
+    # Sized per verdict and per language — see judge_canon above for why this is resolved
+    # here and not as a default argument.
+    max_tokens = max_tokens or max_tokens_for(
+        "judge_plan_conflict", target=len(candidates), language=source_language)
+    system, user = _build_plan_conflict_messages(draft, candidates, source_language)
+    req = build_judge_request(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        usage_purpose="canon_check", extractor="judge_plan_conflict", max_tokens=max_tokens,
+    )
+    try:
+        job = await judge.submit_and_wait(
+            user_id=user_id, operation="chat", model_source=model_source,
+            model_ref=model_ref, trace_id=trace_id, cancel_check=cancel_check, **req,
+        )
+    except LLMError as exc:
+        logger.warning("judge_plan_conflict degraded (LLM error): %s — advisory", exc)
+        return candidates, False
+    if getattr(job, "status", None) != "completed":
+        logger.info("judge_plan_conflict status=%s → advisory", getattr(job, "status", None))
+        return candidates, False
+    verdicts = parse_judge_verdicts(extract_judge_text(job.result))
+    if not verdicts:
+        # A COMPLETED job whose text yielded nothing. `status == completed` does not mean the
+        # model finished its sentence — a truncated reply is completed-and-useless, and
+        # `finish_reason` is the only thing that says which. Logged with the reason so the
+        # operator sees "length" (raise the budget, or pick a judge that answers directly)
+        # rather than a mystery.
+        logger.warning(
+            "judge_plan_conflict produced NO verdicts for %d candidate(s) "
+            "(finish_reason=%s) — the HARD tier did not run",
+            len(candidates), (job.result or {}).get("finish_reason"),
+        )
+        return candidates, False
+    apply_verdicts(candidates, verdicts)
+    return candidates, True
 
 
 async def check_canon(
@@ -192,6 +307,55 @@ class ReflectResult(BaseModel):
     # status it means "nothing was verified", which the FE + publish-gate surface
     # so dirty data doesn't silently strip canon protection.
     status: str = "checked"
+    # ── S1 · the honest primitive ────────────────────────────────────────────────────────
+    # PER-CHECK status (`loreweave_guard.CheckStatus`), because this guard is a COMPOSITE and
+    # a scalar makes it lie in one direction or the other: `status` above describes the
+    # gone-cast check ONLY, so a run where name-grounding fired and cast-liveness could not
+    # run has no honest single value.
+    #
+    # `status` is deliberately LEFT ALONE and still emits its legacy strings — they are
+    # persisted in `generation_job.result` and matched by SQL in OutlineRepo.chapter_scene_gate.
+    # Additive-then-switch (the S11 discipline): the new shape ships beside the old one, and
+    # nothing that reads the old one changes behaviour until its own measurement says it may.
+    checks: dict[str, str] = Field(default_factory=dict)
+    # ── S2 · one cast-liveness SSOT, per ENTITY ───────────────────────────────────────────
+    # `{entity_id: {"status", "source"}}`. `gone_cast_in_draft` answers only "which of these is
+    # marked gone AND named in the draft", so every entity it omits reads as fine — an entity
+    # the graph has never heard of is indistinguishable from one it knows is alive.
+    cast_liveness: dict[str, dict[str, str]] = Field(default_factory=dict)
+    #: Cast ids NO layer could speak to (KG silent, plan silent). The eval's
+    #: `unresolved_cast_reference` class reads this and was BLIND without it — the field had
+    #: zero occurrences anywhere in the service. A COUNT OF FACTS, not of failures: a book
+    #: early in its life legitimately has a cast the graph has not caught up with.
+    unresolved_refs: int = 0
+    #: Names the draft asserts are GONE that the cast name-index could not resolve to an
+    #: entity. NOT a count of failures — prose legitimately kills people who are not in the
+    #: plan's cast. It exists so "the check ran and found nothing" is distinguishable from "the
+    #: check found something it could not place": the live POC hit the second (glossary held the
+    #: cast with an empty `cached_name`) and a version without this field read as clean.
+    unlinked_gone_refs: list[str] = Field(default_factory=list)
+    #
+    # `status` describes the gone-cast check only, and on a book with no bound cast it read
+    # `skipped_no_cast` while `resolved=True` and `violations=[]` — honest field by field, and
+    # green to anything that looks at the two fields a caller naturally looks at. Measured
+    # 2026-08-01: a 4-scene, 8,116-word chapter generated with every scene reporting that, an
+    # invented character in three of them, and nothing anywhere saying "no check ran".
+    #
+    # A guard whose coverage is conditional on data the author may never have created must
+    # REPORT its coverage. Empty list = nothing was verified.
+    #
+    # S1: this is now DERIVED from `checks` (the CHECKED subset). Kept as a field rather than a
+    # property because callers assign to it, and because it is what three envelopes already
+    # ship — but there is one source of truth behind it now.
+    coverage: list[str] = Field(default_factory=list)
+    # Names in the draft that appear nowhere in what the model was shown. Advisory by
+    # construction — fiction introduces names — but `name_near_misses` is the sharper signal:
+    # a name 1-2 edits from one the story already uses ("Mira" ← "Mina") is a corruption.
+    unanchored_names: list[str] = Field(default_factory=list)
+    name_near_misses: list[dict] = Field(default_factory=list)
+    #: capitalised_latin | caseless_script | empty — a check that cannot see must say so
+    #: rather than report a clean result (the `realised_words` discipline).
+    name_check_method: str = ""
     text: str                                    # final draft (possibly revised)
     # Remaining violations the author should see: confirmed-HARD (confirmed=True)
     # AND ADVISORY (confirmed=None — symbolic-only, the judge was down/not-distinct
@@ -206,6 +370,103 @@ class ReflectResult(BaseModel):
     # pass produced text (no repair, or the reviser gave up). The engine ORs this
     # into the job's `truncated` flag so a truncating repair isn't a silent green.
     revise_finish_reason: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def guard_status(self) -> str:
+        """S1 — the HONEST headline, derived from `checks` by `loreweave_guard.GuardReport`.
+
+        Distinct from `status`, and it has to be: `status` is one check's verdict wearing the
+        guard's name. The measured consequence was `status="skipped_no_cast"` counting as a
+        checked chapter in `chapter_scene_gate`'s SQL, which lists only
+        `('skipped_no_position','degraded')` as unchecked — so the ONE state in which the guard
+        verified nothing at all was the one the publish gate treated as fine.
+
+        `computed_field` so it serialises: this rides in `generation_job.result` and the gate
+        SQL reads it back. A plain `@property` would be invisible to `model_dump`, which is
+        how a derived field becomes a field that exists only in Python.
+        """
+        return str(self._report().status)
+
+    def _report(self) -> GuardReport:
+        """The S1 primitive, built once per read.
+
+        Review finding, 2026-08-01: `loreweave_guard` was imported for its ENUM and its ranking
+        function while `GuardReport` itself — the shape the whole package argues for — had zero
+        production consumers, and `guard_status` / `coverage` were two hand-rolled restatements
+        of `.status` / `.covered`. A primitive that exists only in its own tests is the same
+        defect this file's S6 note names in the critic setting; it took a second reading to see
+        it here. `raw_verdict` is `resolved`, which is what makes `verdict` below answerable.
+        """
+        return GuardReport(checks=dict(self.checks), raw_verdict=self.resolved)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def verdict(self) -> bool | None:
+        """`resolved`, but ONLY if something actually verified it — else None.
+
+        `resolved` alone cannot carry this: it ships `True` on the `skipped_no_cast` early
+        return, where nothing ran. Every consumer therefore has to remember to AND it with a
+        status check, and `CanonGatePanel` was doing exactly that by hand in TypeScript
+        (`checked && canon.resolved && …`) — the rule restated in a second language, where no
+        Python test can hold it. This is that conjunction, computed once, on the side that has
+        the tests.
+
+        `resolved` stays untouched and keeps its legacy meaning: it is persisted and matched by
+        SQL in `chapter_scene_gate`, and the gate deliberately blocks on a contradiction found
+        during a DEGRADED run — a "did we find something" question, which is not the "did we
+        pass" question this field answers.
+        """
+        return self._report().verdict
+
+
+def canon_envelope(reflect: "ReflectResult") -> dict[str, Any]:
+    """The `result.canon` block, built ONCE.
+
+    Review finding, 2026-08-01: this dict was hand-written in SIX places — three in
+    `worker/operations.py`, three in `routers/engine.py` — with identical keys and identical
+    comments. The measured consequence is precise: S1's `guard_status` was added to all six,
+    and the `verdict` field added minutes earlier reached NONE of them, so a live run showed
+    `guard_status='checked'` beside an EMPTY verdict while `CanonGatePanel` had already been
+    changed to read it.
+
+    SIX, not four: the first sweep found four, and `test_there_is_no_FIFTH_hand_built_canon_
+    envelope` immediately red-flagged two more that the pattern had missed. Counting copies by
+    eye is how the count was wrong in the first place — hence the test, which is the real fix.
+
+    Deliberately NOT `reflect.model_dump()`: `text` is the draft (it does not belong in a
+    verdict envelope) and `revise_finish_reason` is ORed into the job's own `truncated` flag by
+    the caller rather than nested here. The projection is the point — but it is one projection.
+    """
+    return {
+        "violations": [v.model_dump() for v in reflect.violations],
+        "resolved": reflect.resolved,
+        # S1 — `resolved` AND something-actually-checked. The FE's green all-clear keys on this
+        # so the rule lives on the side that has tests for it.
+        "verdict": reflect.verdict,
+        "iterations": reflect.iterations,
+        # D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — WHAT RAN, and what it saw. `status` alone read
+        # green on a book with no bound cast; the whole 8,116-word chapter that exposed this was
+        # generated with `coverage` empty and nobody able to tell.
+        "coverage": reflect.coverage,
+        # S1 — the per-check block + its derived headline. Both ride the envelope:
+        # `chapter_scene_gate` reads `guard_status` back out of `generation_job.result`.
+        "checks": reflect.checks,
+        "guard_status": reflect.guard_status,
+        # S2 — the per-entity cast resolution + the count no layer could speak to.
+        # `unresolved_cast_reference` in the eval was BLIND on this field.
+        "cast_liveness": reflect.cast_liveness,
+        "unresolved_refs": reflect.unresolved_refs,
+        # The plan-liveness check's own gap list. Rides the envelope for the same reason
+        # `unresolved_refs` does: a FE that cannot see what the guard could not place will
+        # render its silence as an all-clear.
+        "unlinked_gone_refs": reflect.unlinked_gone_refs,
+        "unanchored_names": reflect.unanchored_names,
+        "name_near_misses": reflect.name_near_misses,
+        "name_check_method": reflect.name_check_method,
+        # LEGACY scalar, kept verbatim: it is persisted and matched by SQL.
+        "status": reflect.status,
+    }
 
 
 async def reflect_revise(

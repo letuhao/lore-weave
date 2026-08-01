@@ -32,6 +32,27 @@ use validate::{L3Classification, L3ToolArguments, L3ValidationError, validate_l3
 const HAIKU_INPUT_USD_PER_1M: f64 = 1.0;
 const HAIKU_OUTPUT_USD_PER_1M: f64 = 5.0;
 
+/// S7-4 — tokens to allow per zone classification. The tool returns one small JSON object per
+/// placeholder (an id, a handful of enum-ish fields, a short reason), so the output is
+/// `zones × this` and not a constant. 128 is generous for that shape; the point of deriving it
+/// is that a 200-zone fixture is not budgeted like a 3-zone one, which a flat cap cannot express.
+const L3_TOKENS_PER_ZONE: u32 = 128;
+
+/// Floor for the derived cap. A single-zone call still needs room for the tool-call envelope
+/// and the JSON scaffolding around the one object — sizing purely by zone count would starve it.
+const L3_MIN_OUTPUT_TOKENS: u32 = 512;
+
+/// Runaway guard. Derivation sizes the request; this bounds what a malformed or hostile
+/// placeholder list can ask for, so the two jobs stay separate — a ceiling that doubles as the
+/// sizing model is how a cap stops tracking what it caps.
+const L3_MAX_OUTPUT_TOKENS: u32 = 8_192;
+
+/// The output budget for an L3 call over `zones` placeholders.
+fn l3_output_budget(zones: usize) -> u32 {
+    let derived = (zones as u32).saturating_mul(L3_TOKENS_PER_ZONE);
+    derived.clamp(L3_MIN_OUTPUT_TOKENS, L3_MAX_OUTPUT_TOKENS)
+}
+
 /// Outcome of one L3 measurement run.
 #[derive(Debug)]
 pub struct L3MeasurementReport {
@@ -109,7 +130,17 @@ pub async fn call_l3_attempt(
         vec![prompt::submit_zone_classifications_tool()],
         StreamFormat::Openai,
     )
-    .with_tool_choice(prompt::forced_tool_choice());
+    .with_tool_choice(prompt::forced_tool_choice())
+    // S7 — an output CAP. This request sent none: `max_tokens` had zero occurrences anywhere
+    // in `services/tilemap-service/src`, and the SDK had no builder to set it with. The
+    // harness then read `finish_reason` off the terminal event, stored it, printed it, and
+    // compared it to nothing — so a run cut off mid-tool-call still reported
+    // `tool_use_success` on whatever classifications happened to parse first.
+    //
+    // S7-4 — DERIVED from the zone count, not a flat number. The tool returns one small JSON
+    // object per placeholder, so a 200-zone call and a 3-zone call do not want the same cap;
+    // a constant would over-budget the small case and clip the large one.
+    .with_max_tokens(l3_output_budget(placeholders.len()));
 
     let mut attempt = L3Attempt::default();
 
@@ -285,4 +316,33 @@ pub fn render_report(r: &L3MeasurementReport) -> String {
     }
     s.push_str("─────────────────────────────────────────────────────────\n");
     s
+}
+
+#[cfg(test)]
+mod s7_budget_tests {
+    use super::*;
+
+    #[test]
+    fn the_budget_tracks_the_zone_count() {
+        // The whole point of S7-4: a flat cap cannot tell a 3-zone call from a 60-zone one.
+        assert!(l3_output_budget(60) > l3_output_budget(10));
+        assert_eq!(l3_output_budget(60), 60 * L3_TOKENS_PER_ZONE);
+    }
+
+    #[test]
+    fn a_tiny_call_still_gets_room_for_the_envelope() {
+        // CONTROL for the test above: sizing PURELY by zone count would starve a 1-zone call
+        // of the tool-call envelope and JSON scaffolding around its single object.
+        assert_eq!(l3_output_budget(1), L3_MIN_OUTPUT_TOKENS);
+        assert_eq!(l3_output_budget(0), L3_MIN_OUTPUT_TOKENS);
+    }
+
+    #[test]
+    fn a_hostile_placeholder_list_cannot_ask_for_the_moon() {
+        // Derivation sizes the request; the ceiling bounds what a malformed or hostile input
+        // can demand. Two jobs, kept separate.
+        assert_eq!(l3_output_budget(100_000), L3_MAX_OUTPUT_TOKENS);
+        assert_eq!(l3_output_budget(usize::MAX), L3_MAX_OUTPUT_TOKENS,
+                   "saturating_mul must not wrap a huge count back into a small budget");
+    }
 }

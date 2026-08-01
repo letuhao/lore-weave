@@ -958,14 +958,24 @@ WHERE owner_user_id=$1`, owner); err != nil {
 
 	// ── platformLockSQL reset (reserve) ──
 	// Backdate again with the free tier near-exhausted: without the reset
-	// the next reserve would 402 (bAvail = 50 − 48 = 2 < 8); with it,
-	// free_tier_used zeroes and bAvail = 50 ≥ 8.
+	// the next reserve would 402 (bAvail = 50 − 48 = 2 < 5); with it,
+	// free_tier_used zeroes and bAvail = 50 ≥ 5.
+	//
+	// D-BILLING-FREETIER-TEST-DAILY-CAP (2026-07-31): this asked for 8, chosen only to
+	// exceed the free-tier remainder of 2 — and the OWNER DAILY cap is 10, of which this
+	// test has already spent 3 via the reconcile above. So the reserve 402'd on
+	// `daily_available: 7 < 8`, a limit that has nothing to do with the free tier, and the
+	// failure read as "the free-tier reset is broken". The test could never have passed.
+	// Nobody noticed because USAGE_BILLING_TEST_DB_URL was set by no workflow.
+	//
+	// 5 satisfies both constraints at once: > 2, so a missing reset still 402s and the
+	// assertion keeps its teeth; ≤ 7, so the unrelated daily cap stays out of the way.
 	if _, err := pool.Exec(ctx, `
 UPDATE platform_balances SET free_tier_used_usd = 48, free_tier_window_month = DATE '2000-01-01'
 WHERE owner_user_id=$1`, owner); err != nil {
 		t.Fatalf("re-backdate: %v", err)
 	}
-	if rr := callReservePlatform(t, srv, owner, uuid.New(), 8.0); rr.Code != http.StatusOK {
+	if rr := callReservePlatform(t, srv, owner, uuid.New(), 5.0); rr.Code != http.StatusOK {
 		t.Fatalf("reserve after a stale window must reset the free tier and admit the job: got %d (%s)",
 			rr.Code, rr.Body.String())
 	}

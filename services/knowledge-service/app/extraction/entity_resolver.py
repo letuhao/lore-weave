@@ -66,6 +66,10 @@ AnchorIndex = Mapping[tuple[str, str], Anchor]
 # Unmapped kinds (e.g. "other", or a tenant-custom kind) pass through
 # unchanged, producing a miss that falls through to `merge_entity` —
 # same behavior as having no anchor.
+#: Reserved pseudo-kind for the name-only fallback slot in the anchor index. Not a real
+#: kind — no extractor or glossary vocabulary may emit it, so it cannot collide.
+_ANY_KIND = "\x00any"
+
 _EXTRACTOR_TO_GLOSSARY_KIND: Mapping[str, str] = {
     "person": "character",
     "place": "location",
@@ -73,6 +77,22 @@ _EXTRACTOR_TO_GLOSSARY_KIND: Mapping[str, str] = {
     "concept": "terminology",
     # "organization" and "event" already match glossary kind_code.
 }
+
+#: The glossary kinds an extractor can actually EXPRESS — the image of the map above
+#: plus the pass-through codes. Load-bearing for the D-KG-KIND-VOCAB-FORK fallback: if
+#: an anchor's kind is in here and the extractor chose a DIFFERENT one, that was a real
+#: classification decision (a `place` Phoenix is not the `character` Phoenix) and the
+#: disagreement is meaningful. If the anchor's kind is NOT in here — `power_system`,
+#: say — the extractor had no way to name it, so its choice carries no information and
+#: cannot be evidence of a different entity.
+#:
+#: Approximated statically from the mapping rather than read from the project's KG
+#: schema. A project that adopts a wider schema (xianxia-harem adds technique/event/
+#: relationship) only makes MORE kinds expressible, which would narrow the fallback
+#: further — never widen it — so the static form stays on the safe side.
+_EXTRACTOR_EXPRESSIBLE_KINDS: frozenset[str] = frozenset(
+    _EXTRACTOR_TO_GLOSSARY_KIND.values()
+) | {"organization", "event", "other"}
 
 
 def normalize_kind_for_anchor_lookup(kind: str) -> str:
@@ -103,13 +123,21 @@ def build_anchor_index(
     separate lookup keys. On a collision within the same kind, the
     first anchor wins and a WARNING is logged — the operator can
     then go clean up the duplicate glossary row.
+
+    D-KG-KIND-VOCAB-FORK: the index ALSO carries a name-only fallback under the
+    ``(folded, _ANY_KIND)`` key, populated only when a folded name belongs to exactly
+    ONE anchor across every kind. See `resolve_or_merge_entity` for why.
     """
     index: dict[tuple[str, str], Anchor] = {}
+    by_name: dict[str, set[str]] = {}
+    first_by_name: dict[str, Anchor] = {}
     for a in anchors:
         for n in (a.name, *a.aliases):
             folded = _fold(n)
             if not folded:
                 continue
+            by_name.setdefault(folded, set()).add(a.canonical_id)
+            first_by_name.setdefault(folded, a)
             key = (folded, a.kind)
             existing = index.get(key)
             if existing is not None and existing.canonical_id != a.canonical_id:
@@ -122,6 +150,12 @@ def build_anchor_index(
                 )
                 continue
             index[key] = a
+    # Unambiguous names only: if a fold maps to two different anchors (a person and a
+    # place both called "Bloom"), the kind is the ONLY thing that tells them apart, so
+    # no fallback is registered and the strict lookup still governs.
+    for folded, ids in by_name.items():
+        if len(ids) == 1:
+            index[(folded, _ANY_KIND)] = first_by_name[folded]
     return index
 
 
@@ -166,7 +200,43 @@ async def resolve_or_merge_entity(
     pre-C17 behavior, but ops gets a clear log line.
     """
     lookup_kind = normalize_kind_for_anchor_lookup(kind)
-    anchor = index.get((_fold(name), lookup_kind))
+    folded = _fold(name)
+    anchor = index.get((folded, lookup_kind))
+    if anchor is None:
+        # D-KG-KIND-VOCAB-FORK — name-only fallback for an UNAMBIGUOUS name.
+        #
+        # The two sides run different, independently-extensible vocabularies: the
+        # extractor emits from the project's KG schema (general@v1 is
+        # artifact|concept|organization|other|person|place) while a glossary kind is
+        # whatever the author's book ontology defines. `_EXTRACTOR_TO_GLOSSARY_KIND`
+        # bridges the obvious pairs, but it cannot bridge what it has never seen —
+        # `power_system` has no extractor counterpart at all, so `concept` normalised to
+        # `terminology` and missed the anchor.
+        #
+        # Because entity identity is hash(user, project, name, kind), that miss does not
+        # degrade to "no anchor" — it MINTS A SECOND NODE beside the author's. Measured
+        # on the live Mị Đế chapter: Chân Linh, Vô Cấu Chân Linh and Thần hồn each forked
+        # a duplicate next to their anchored twins.
+        #
+        # A perfect mapping is unreachable (both vocabularies are user-extensible), so
+        # identity tolerates kind drift under TWO conditions, both required:
+        #
+        #   1. the folded name belongs to exactly ONE anchor across all kinds — a name
+        #      shared by anchors of different kinds registers no fallback key at all,
+        #      because there the kind is the only thing telling them apart;
+        #   2. the anchor's kind is one the extractor CANNOT express. If it could have
+        #      said `character` and said `place` instead, that is a real classification
+        #      decision and the disagreement means something. If the anchor is a
+        #      `power_system`, the extractor had no word for it and its `concept` is not
+        #      evidence of anything.
+        candidate = index.get((folded, _ANY_KIND))
+        if candidate is not None and candidate.kind not in _EXTRACTOR_EXPRESSIBLE_KINDS:
+            anchor = candidate
+            logger.info(
+                "K13.0 resolver: kind-vocabulary fallback matched %r "
+                "(extractor kind=%s → %s, anchor kind=%s is not expressible)",
+                name, kind, lookup_kind, anchor.kind,
+            )
     if anchor is not None:
         anchor_resolver_hits_total.labels(kind=lookup_kind).inc()
         return Entity(

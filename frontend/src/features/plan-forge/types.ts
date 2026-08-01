@@ -77,6 +77,13 @@ export interface PlanValidateRule {
   id: string;
   passed: boolean;
   message: string;
+  /** `hard` gates compile; `advisory` is reported and never blocks. The backend has always honoured
+   *  this and the transport used to DROP it, so the panel rendered a fixture rule about another
+   *  novel's variable exactly like "your plan has no events". */
+  tier?: 'hard' | 'advisory';
+  /** False ⇒ the rule is about an entity this book does not have. No verdict: a vacuous ✓ is as
+   *  dishonest as a meaningless ✗. */
+  applicable?: boolean;
 }
 export interface PlanValidateReport {
   passed: boolean;
@@ -201,6 +208,9 @@ export interface CompilePlanBody {
   arc_id: string;
   run_pipeline?: boolean;
   model_ref?: string;
+  /** D-PLANFORGE-BEATS-UNWIRED — the story structure whose ordered beats the `beats` pass maps
+   *  chapters onto. Omit to keep the run's stored choice (or the recorded platform default). */
+  structure_template_id?: string;
 }
 
 /** A job/run status is "settled" (poll can stop) unless it's actively running. */
@@ -260,4 +270,55 @@ export interface BootstrapProposal {
   error_detail: string | null;
   created_at: string;
   updated_at: string;
+}
+
+// ── Material review (find what the plan is missing, in the author's own words) ────────────────
+/** One line found VERBATIM in the author's document. `why` is the model's rationale, shown for
+ *  orientation only — it is never written anywhere. */
+export interface MaterialCandidate { quote: string; why: string }
+
+export interface MaterialReviewRow {
+  kind: string;
+  /** `absent` = the read was clean and this kind really is missing. `unknown` = the read itself was
+   *  incomplete, so absence is not established — say so when asking. */
+  status: 'absent' | 'unknown';
+  candidates: MaterialCandidate[];
+  /** How many returned lines were NOT in the document and were dropped as invented. A list that
+   *  looks clean can still come from a bad call. */
+  dropped_ungrounded: number;
+  note: string;
+}
+
+export interface MaterialAskRow { kind: string; status: 'absent' | 'unknown'; question: string }
+export interface MaterialUnavailableRow { kind: string; status: string; reason: string }
+
+export interface MaterialPacket {
+  version: number;
+  recovered: string[];
+  review: MaterialReviewRow[];
+  ask: MaterialAskRow[];
+  /** The search could not run. NEVER render these as questions — asking the author to rewrite what
+   *  they may already have written, because a model call failed, is the bug this bucket exists for. */
+  unavailable: MaterialUnavailableRow[];
+  read: {
+    failed: boolean;
+    unclassified: string[];
+    note: string;
+    /** Where the run's own two steps counted the same thing and disagreed — `{characters: {analyze,
+     *  spec}}`. The only completeness signal available without ground truth: a collapsed run
+     *  otherwise reads exactly like a small book. */
+    step_disagreement?: Record<string, { analyze: number; spec: number }>;
+  };
+  /** The plan has moved on since this was computed (a keep, a refine, a re-propose). The lines are
+   *  still the author's own words, so it is still shown — but never silently. */
+  stale?: boolean;
+  computed_at?: string | null;
+}
+
+export interface KeepMaterialResult {
+  run_id: string;
+  changed: boolean;
+  applied_to_slot: Record<string, number>;
+  carried_as_author_notes: Record<string, number>;
+  note?: string;
 }

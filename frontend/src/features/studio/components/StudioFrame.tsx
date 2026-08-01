@@ -16,6 +16,7 @@ import { usePaletteHotkeys, type PaletteKind } from '../palette/usePaletteHotkey
 import { revealManuscript } from '../palette/reveal';
 import { OPENABLE_STUDIO_PANELS, getStudioPanelDef } from '../panels/catalog';
 import { ManuscriptUnitProvider } from '../manuscript/unit/ManuscriptUnitProvider';
+import { useEnsureWork } from '@/features/composition/hooks/useWork';
 import type { JumpResult, ManuscriptNode } from '../manuscript/types';
 import { useStudioOnboarding } from '../onboarding/useStudioOnboarding';
 import { useStudioTour } from '../onboarding/useStudioTour';
@@ -44,6 +45,11 @@ function StudioFrameInner({ bookId, initialChapterId }: { bookId: string; initia
   const host = useStudioHost();
   const [bookTitle, setBookTitle] = useState('');
   const [bookLanguage, setBookLanguage] = useState<string | undefined>();
+
+  // Onboarding: the book's composition Work is ensured here, silently. Before this an author could
+  // write for a long time with plan / beats / scenes / quality switched off and nothing on screen
+  // saying so — the only affordance that created one lived on gated panels they never opened.
+  useEnsureWork(bookId, accessToken);
 
   const chrome = useStudioChrome(bookId);
   const [palette, setPalette] = useState<PaletteKind | null>(null);

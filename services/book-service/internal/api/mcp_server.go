@@ -223,7 +223,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 		"Create a new chapter — a unit of manuscript PROSE (the story text itself) — from plain text "+
 			"(or empty). Returns the new chapter_id. For the book's own description / summary / blurb "+
 			"(the book's own details, not chapter prose), use book_update_details instead — do NOT create a chapter for it. "+
-			"Reverse: book_chapter_delete (trash).",
+			"Reverse: trashing a chapter is a manual UI action — tell the user, do not look for a tool.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"new chapter", "add chapter", "write a chapter"}),
 		s.toolChapterCreate)
 
@@ -264,7 +264,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 			"(part_id, title) · reorder_parts (ordered_part_ids — the full active set, each once) · "+
 			"home_chapter (chapter_id + part_id, or part_id=\"unassigned\" to un-home) · reorder_chapters "+
 			"(chapter_ids — the complete new order for one language track). Every op is reversible (Undo). "+
-			"To DELETE a part, that is the separate lifecycle tool book_structure_part_archive.",
+			"To DELETE a part, use this same tool's archive op — there is no separate delete tool.",
 		lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
 			"create part", "add act", "add volume", "rename part", "reorder parts",
 			"move chapter to act", "put chapter in volume", "home chapter", "reorder chapters", "change reading order",
@@ -313,7 +313,7 @@ func (s *Server) newMCPServer() *mcp.Server {
 		"[Saved book] WRITE a chapter's story PROSE (its draft). THE tool for writing/replacing the "+
 			"text of a chapter — \"write chapter 1\", \"draft this scene\", \"put down the opening\". Put the "+
 			"prose in `body` as plain text (blank line between paragraphs) — do NOT hand-write editor/Tiptap "+
-			"JSON. The backend RESOLVES THE CHAPTER'S STATE FOR YOU: you do NOT call book_get_chapter first "+
+			"JSON. The backend RESOLVES THE CHAPTER'S STATE FOR YOU: you do NOT read the chapter first "+
 			"and you do NOT pass a version. Pick the chapter with `chapter` (its NUMBER like \"1\", or its "+
 			"TITLE), or omit it when the book has one chapter — NEVER guess a chapter id and NEVER reuse the "+
 			"book id or project id as a chapter id. It returns the chapter's new state (id, title, number, "+

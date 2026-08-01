@@ -1,0 +1,461 @@
+{
+  "revenge.betrayal_to_exile": {
+    "beats": {
+      "betrayal": {
+        "intent": "o aliado mais próximo vira as costas no pior momento",
+        "label": "A traição ocorre"
+      },
+      "fall": {
+        "intent": "o protagonista é despojado de tudo",
+        "label": "Queda e perda"
+      },
+      "trust": {
+        "intent": "um vínculo íntimo é criado para ser quebrado",
+        "label": "Confiança estabelecida"
+      },
+      "vow": {
+        "intent": "expulso, o sobrevivente jura retornar",
+        "label": "Exílio com um juramento"
+      }
+    },
+    "effects": [
+      "o protagonista perde seu prestígio e é banido",
+      "um juramento implacável de vingança é feito"
+    ],
+    "emotion_target": "luto",
+    "examples": [
+      "Na véspera do triunfo, o aliado mais próximo trai; despojado de tudo e banido, o sobrevivente jura retornar."
+    ],
+    "name": "Da Traição ao Exílio",
+    "preconditions": [
+      "o protagonista detém confiança, prestígio ou poder"
+    ],
+    "roles": {
+      "betrayer": {
+        "constraints": [
+          "íntimo, de confiança"
+        ],
+        "label": "o irmão de armas / traidor"
+      },
+      "lost_kin": {
+        "constraints": [
+          "vítimas da queda"
+        ],
+        "label": "os parentes ou aliados perdidos"
+      },
+      "protagonist": {
+        "constraints": [
+          "confiante, em ascensão"
+        ],
+        "label": "o sobrevivente traído"
+      },
+      "vengeance": {
+        "constraints": [
+          "jurado, impulsionador"
+        ],
+        "label": "o voto de vingança"
+      }
+    },
+    "summary": "Às vésperas do triunfo, o aliado mais próximo vira as costas; despojado de tudo e expulso, o sobrevivente jura retornar."
+  },
+  "revenge.blood_debt_collection": {
+    "beats": {
+      "confront": {
+        "intent": "apresentar provas irrefutáveis",
+        "label": "Confrontar com provas"
+      },
+      "exact": {
+        "intent": "fazê-los prestar contas",
+        "label": "Cobrar o preço"
+      },
+      "locate": {
+        "intent": "encontrar alguém que participou do crime",
+        "label": "Localizar o culpado"
+      },
+      "respond": {
+        "intent": "o culpado implora por clemência ou mantém-se desafiador",
+        "label": "O culpado implora ou desafia"
+      }
+    },
+    "effects": [
+      "um dos culpados é confrontado e responsabilizado",
+      "a corrente de acerto de contas avança em direção ao mentor principal"
+    ],
+    "emotion_target": "resolução-sombria",
+    "examples": [
+      "Um a um, o vingador encontra aqueles que compartilharam o crime e faz com que cada um responda por ele."
+    ],
+    "name": "Cobrança de Dívida de Sangue",
+    "preconditions": [
+      "múltiplas partes compartilham a culpa por um erro do passado, e os próprios segredos do inimigo revelaram quem de cada um cometeu o quê"
+    ],
+    "roles": {
+      "perpetrator": {
+        "constraints": [
+          "um entre vários"
+        ],
+        "label": "o culpado"
+      },
+      "protagonist": {
+        "constraints": [
+          "determinado, metódico"
+        ],
+        "label": "o vingador"
+      },
+      "wronged_dead": {
+        "constraints": [
+          "a causa pela qual se busca justiça"
+        ],
+        "label": "o morto injustiçado"
+      }
+    },
+    "summary": "Um a um, o vingador encontra aqueles que compartilharam o crime, confronta cada um com provas e os faz prestar contas."
+  },
+  "revenge.false_accusation": {
+    "beats": {
+      "condemned": {
+        "intent": "o protagonista é desonrado perante todos",
+        "label": "Condenado publicamente"
+      },
+      "evidence_hidden": {
+        "intent": "a verdade é suprimida; o ponto mais baixo",
+        "label": "Evidência ocultada"
+      },
+      "framed": {
+        "intent": "provas plantadas marcam o protagonista",
+        "label": "Incriminado por um crime"
+      },
+      "unmasked": {
+        "intent": "o verdadeiro culpado é trazido à luz",
+        "label": "A verdade revelada"
+      }
+    },
+    "effects": [
+      "o nome do protagonista é limpo",
+      "o verdadeiro culpado é exposto"
+    ],
+    "emotion_target": "indignação",
+    "examples": [
+      "Acusado de traição por provas plantadas, o réu suporta a desonra pública até que a mão por trás do crime seja trazida à luz."
+    ],
+    "name": "Falsa Acusação",
+    "preconditions": [
+      "o protagonista pode ser plausivelmente culpado por um crime"
+    ],
+    "roles": {
+      "clue": {
+        "constraints": [
+          "suprimida inicialmente"
+        ],
+        "label": "a testemunha ou pista oculta"
+      },
+      "framer": {
+        "constraints": [
+          "metódico e oculto"
+        ],
+        "label": "o articulador"
+      },
+      "judges": {
+        "constraints": [
+          "influenciado pelas aparências"
+        ],
+        "label": "o corpo julgador"
+      },
+      "protagonist": {
+        "constraints": [
+          "condenado publicamente"
+        ],
+        "label": "o falsamente acusado"
+      }
+    },
+    "summary": "Acusado de traição por provas plantadas, o inocente suporta a desonra pública até que a verdadeira mão por trás do crime seja revelada."
+  },
+  "revenge.mercy_or_vengeance": {
+    "beats": {
+      "at_mercy": {
+        "intent": "o assassino jaz indefeso",
+        "label": "Inimigo à mercê"
+      },
+      "choice": {
+        "intent": "o vingador deve decidir",
+        "label": "Escolha forçada"
+      },
+      "consequence": {
+        "intent": "a escolha redefine quem eles são",
+        "label": "A consequência se impõe"
+      },
+      "reason": {
+        "intent": "um motivo para não desferir o golpe aparece",
+        "label": "Surge um motivo para poupar"
+      }
+    },
+    "effects": [
+      "o protagonista é transformado por sua escolha",
+      "o ciclo de vingança é encerrado ou perpetuado"
+    ],
+    "emotion_target": "tensão-moral",
+    "examples": [
+      "Com o assassino indefeso, surge um motivo para poupá-lo; a escolha do vingador redefine quem ele se torna."
+    ],
+    "name": "Misericórdia ou Vingança",
+    "preconditions": [
+      "o protagonista tem o inimigo à sua mercê"
+    ],
+    "roles": {
+      "broken_enemy": {
+        "constraints": [
+          "à mercê do protagonista"
+        ],
+        "label": "o inimigo indefeso"
+      },
+      "moral_voice": {
+        "constraints": [
+          "um parente, a consciência ou uma testemunha"
+        ],
+        "label": "a voz da misericórdia"
+      },
+      "protagonist": {
+        "constraints": [
+          "detém o poder de pôr um fim a tudo"
+        ],
+        "label": "o vingador no limite"
+      }
+    },
+    "summary": "Com o assassino indefeso, surge um motivo para poupá-lo; a escolha do vingador redefine quem ele se tornou."
+  },
+  "revenge.patient_infiltration": {
+    "beats": {
+      "earn_trust": {
+        "intent": "escalar os postos do inimigo",
+        "label": "Conquistar a confiança interna"
+      },
+      "enter": {
+        "intent": "infiltrar-se no inimigo sob disfarce",
+        "label": "Entrar sob um nome falso"
+      },
+      "gather": {
+        "intent": "coletar segredos e provas discretamente",
+        "label": "Reunir meios de chantagem"
+      },
+      "strike": {
+        "intent": "voltar os segredos do inimigo contra ele mesmo",
+        "label": "Golpear por dentro"
+      }
+    },
+    "effects": [
+      "o inimigo é derrotado pelos seus próprios segredos",
+      "a verdadeira identidade do vingador é revelada no momento do golpe"
+    ],
+    "emotion_target": "tensão",
+    "examples": [
+      "Sob um nome falso, o vingador ascende pelas próprias fileiras do inimigo e, então, usa os segredos dele contra ele mesmo."
+    ],
+    "name": "Infiltração Paciente",
+    "preconditions": [
+      "o protagonista consegue se infiltrar no círculo inimigo sem ser reconhecido"
+    ],
+    "roles": {
+      "contact": {
+        "constraints": [
+          "um aliado discreto no interior"
+        ],
+        "label": "o contato interno"
+      },
+      "leverage": {
+        "constraints": [
+          "segredos, provas"
+        ],
+        "label": "os meios de chantagem reunidos"
+      },
+      "protagonist": {
+        "constraints": [
+          "ocultando sua identidade"
+        ],
+        "label": "o vingador disfarçado"
+      },
+      "target_house": {
+        "constraints": [
+          "poderosa, vigiada"
+        ],
+        "label": "a casa inimiga"
+      }
+    },
+    "summary": "Sob um nome emprestado, o vingador escala as próprias fileiras do inimigo, reúne meios de chantagem e, então, volta os segredos deles contra eles mesmos, de dentro para fora."
+  },
+  "revenge.pyrrhic_victory": {
+    "beats": {
+      "aftermath": {
+        "intent": "o vingador confronta o vazio deixado",
+        "label": "Desfecho vazio"
+      },
+      "confront": {
+        "intent": "o acerto de contas final chega",
+        "label": "Confronto final"
+      },
+      "cost": {
+        "intent": "o preço da perseguição emerge",
+        "label": "Custo oculto revelado"
+      },
+      "victory": {
+        "intent": "o inimigo cai",
+        "label": "Vitória alcançada"
+      }
+    },
+    "effects": [
+      "o arquinimigo é derrotado",
+      "o vingador encara o custo de sua vingança"
+    ],
+    "emotion_target": "melancolia",
+    "examples": [
+      "O inimigo finalmente cai — e, no silêncio que se segue, o vingador percebe o preço que os anos de ódio custaram."
+    ],
+    "name": "Vitória Pírrica",
+    "preconditions": [
+      "o protagonista se aproxima do fim de uma longa busca por vingança"
+    ],
+    "roles": {
+      "arch_enemy": {
+        "constraints": [
+          "o alvo final"
+        ],
+        "label": "o arquinimigo"
+      },
+      "protagonist": {
+        "constraints": [
+          "consumido pela longa perseguição"
+        ],
+        "label": "o vingador"
+      },
+      "revenge_attained": {
+        "constraints": [
+          "vazia uma vez obtida"
+        ],
+        "label": "a vingança alcançada"
+      }
+    },
+    "summary": "O inimigo finalmente cai e, no silêncio que se segue, o vingador percebe o custo de tantos anos de ódio."
+  },
+  "revenge.three_year_pact": {
+    "beats": {
+      "ascent": {
+        "intent": "crescimento árduo e obscuro",
+        "label": "Ascensão amarga"
+      },
+      "breakthrough": {
+        "intent": "o protagonista atravessa o limiar de sua força",
+        "label": "O Ponto de Virada"
+      },
+      "encounter": {
+        "intent": "um acaso abre um caminho para o poder",
+        "label": "Encontro fortuito"
+      },
+      "humiliation": {
+        "intent": "o exilado é derrotado e recebe um prazo fatal",
+        "label": "Humilhação"
+      },
+      "return": {
+        "intent": "retorno para derrubar aquele que o destruiu",
+        "label": "Retorno e Reversão"
+      }
+    },
+    "effects": [
+      "o protagonista retorna transformado e poderoso",
+      "aquele que o humilhou é derrubado"
+    ],
+    "emotion_target": "vingança",
+    "examples": [
+      "Com um prazo determinado para crescer ou morrer, o exilado treina na obscuridade e retorna para derrubar aquele que o destruiu."
+    ],
+    "name": "Pacto de Três Anos",
+    "preconditions": [
+      "o protagonista foi humilhado e derrotado",
+      "estabelece-se um prazo finito para ganhar força ou morrer"
+    ],
+    "roles": {
+      "ally": {
+        "constraints": [
+          "permanece ao lado durante a ascensão"
+        ],
+        "label": "o aliado leal"
+      },
+      "mentor": {
+        "constraints": [
+          "oculto e exigente"
+        ],
+        "label": "o mentor do deserto"
+      },
+      "protagonist": {
+        "constraints": [
+          "recebe um prazo para evoluir"
+        ],
+        "label": "o exilado"
+      },
+      "rival": {
+        "constraints": [
+          "seguro de sua vitória"
+        ],
+        "label": "aquele que o destruiu"
+      }
+    },
+    "summary": "Com um prazo para se fortalecer ou morrer, o exilado treina na obscuridade através da humilhação e de uma reviravolta fortuita, retornando para derrubar aquele que o destruiu."
+  },
+  "revenge.usurped_inheritance": {
+    "beats": {
+      "cast_out": {
+        "intent": "o verdadeiro herdeiro é deserdado",
+        "label": "Expulso como um impostor"
+      },
+      "reclaim": {
+        "intent": "a prova ressurge e o direito é restaurado",
+        "label": "Direito reivindicado"
+      },
+      "seek_proof": {
+        "intent": "o herdeiro caça a prova que sobreviveu",
+        "label": "Busca pela prova de linhagem"
+      },
+      "stolen": {
+        "intent": "o direito de nascimento é tomado por falsificação",
+        "label": "Direito legítimo roubado"
+      }
+    },
+    "effects": [
+      "o usurpador é exposto",
+      "o protagonista recupera sua herança de direito"
+    ],
+    "emotion_target": "vingança",
+    "examples": [
+      "Um direito de nascimento roubado e um testamento forjado deixam o verdadeiro herdeiro na miséria — até que a prova que ninguém conseguiu destruir ressurge."
+    ],
+    "name": "Herança Usurpada",
+    "preconditions": [
+      "o protagonista detém um direito legítimo que pode ser roubado"
+    ],
+    "roles": {
+      "birthright": {
+        "constraints": [
+          "a herança contestada"
+        ],
+        "label": "o direito de nascimento"
+      },
+      "protagonist": {
+        "constraints": [
+          "privado de seu que é de direito"
+        ],
+        "label": "o herdeiro despojado"
+      },
+      "retainer": {
+        "constraints": [
+          "guarda a prova"
+        ],
+        "label": "o fiel servidor"
+      },
+      "usurper": {
+        "constraints": [
+          "detém a reivindicação roubada"
+        ],
+        "label": "o usurpador"
+      }
+    },
+    "summary": "Um direito de nascimento roubado e um testamento forjado deixam o verdadeiro herdeiro na miséria, até que a prova que ninguém pôde destruir ressurge."
+  }
+}

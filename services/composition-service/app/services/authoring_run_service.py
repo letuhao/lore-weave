@@ -491,6 +491,41 @@ class CriticVerdict:
         return row
 
 
+def build_revise_guide(verdict: CriticVerdict) -> str:
+    """D5b — turn a severe verdict's violations into a REVISE directive the drafter
+    can act on: name each continuity/canon problem so the re-draft avoids it. Pure
+    (unit-tested). Falls back to the summary when the detail carries no violations."""
+    detail = verdict.detail or {}
+    problems = [
+        f"- {str(v.get('why') or '').strip()}"
+        for v in (detail.get("violations") or [])
+        if isinstance(v, dict) and v.get("violated", True) and str(v.get("why") or "").strip()
+    ]
+    body = "\n".join(problems) if problems else f"- {verdict.summary}".rstrip()
+    return (
+        "REVISE — the previous draft of this chapter had these continuity/canon "
+        "problems. Rewrite the chapter so NONE of them recur; keep every fact the "
+        "established story requires consistent:\n" + body
+    )
+
+
+def merge_guides(base: Any, add: str) -> str:
+    """Append the revise directive after any run-level author guide (both kept)."""
+    base_s = str(base or "").strip()
+    return f"{base_s}\n\n{add}" if base_s else add
+
+
+def auto_revise_max_attempts(params: dict[str, Any]) -> int:
+    """D5b effective policy = AND(deploy ceiling, per-run opt-in). Returns 0 (the
+    human-in-loop default) unless BOTH the ceiling is enabled AND the run opted in
+    via params.critic_auto_revise — the Settings-Boundary AND(deploy, user) rule."""
+    if not settings.authoring_auto_revise_enabled:
+        return 0
+    if not params.get("critic_auto_revise"):
+        return 0
+    return max(0, int(settings.authoring_auto_revise_max_attempts))
+
+
 class CriticSeam(Protocol):
     """ONE callable per drafted chapter unit (mirrors DraftingSeam): judge the
     continuity/craft of chapter C of book B AS the run's `created_by` actor
@@ -1383,6 +1418,90 @@ class AuthoringRunService:
                 run_id,
                 add_spent_usd=verdict.cost_usd, current_unit=run.current_unit + 1,
                 driver_id=self._driver_id,
+            )
+        # D5b — autonomous remediation: before pausing on 'severe', try a bounded
+        # auto-REVISE (re-draft against the named violations + re-critique). Only
+        # when the deploy ceiling allows it AND the run opted in (auto_revise_max_
+        # attempts). Stop as soon as the verdict clears 'severe'; otherwise fall
+        # through to the human-in-loop pause with the LAST verdict.
+        max_attempts = auto_revise_max_attempts(run.params)
+        attempt = 0
+        while row["severity"] == "severe" and attempt < max_attempts:
+            attempt += 1
+            # Re-claim at the boundary (a long re-draft must keep the heartbeat
+            # live, and a steal/stop here must abort like the critique claim).
+            if await self._runs.heartbeat_claim(run_id, self._driver_id) is None:
+                return False
+            revise_params = {
+                **run.params,
+                "guide": merge_guides(run.params.get("guide"), build_revise_guide(verdict)),
+            }
+            logger.info(
+                "D5b auto-revise attempt %d/%d for run %s unit %d (severe: %s)",
+                attempt, max_attempts, run_id, run.current_unit, verdict.summary,
+            )
+            try:
+                outcome = await self._seam.draft_chapter(
+                    created_by=run.created_by, book_id=run.book_id,
+                    chapter_id=chapter_id, plan_run_id=run.plan_run_id,
+                    params=revise_params,
+                )
+            except Exception:  # noqa: BLE001 — a revise draft error is never fatal; pause instead
+                logger.warning(
+                    "D5b auto-revise draft raised (run %s unit %d) — pausing",
+                    run_id, run.current_unit, exc_info=True,
+                )
+                break
+            if not outcome.ok:
+                break  # revise couldn't draft — pause with the last (severe) verdict
+            # Re-capture the revised post-revision (best-effort; a blip only loses
+            # the report's diff anchor) + bill the revise cost into run spend.
+            try:
+                new_post = await self._revisions.latest_revision_id(
+                    created_by=run.created_by, book_id=run.book_id, chapter_id=chapter_id,
+                )
+                if new_post is not None:
+                    await self._units.transition_unit(
+                        run_id, run.current_unit,
+                        from_statuses=("drafted",), to_status="drafted",
+                        post_revision_id=new_post,
+                    )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "D5b post-revision recapture failed (run %s unit %d)",
+                    run_id, run.current_unit, exc_info=True,
+                )
+            revise_cost = (
+                outcome.cost_usd if outcome.cost_usd and outcome.cost_usd > 0
+                else Decimal(str(settings.authoring_unit_estimate_usd))
+            )
+            await self._runs.record_unit_progress(
+                run_id, add_spent_usd=revise_cost,
+                current_unit=run.current_unit + 1, driver_id=self._driver_id,
+            )
+            # Re-critique the revised draft (same never-fatal discipline).
+            try:
+                verdict = await self._critic.critique(
+                    created_by=run.created_by, book_id=run.book_id,
+                    chapter_id=chapter_id, plan_run_id=run.plan_run_id,
+                    params=run.params,
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "D5b re-critique failed (run %s unit %d, non-fatal)",
+                    run_id, run.current_unit, exc_info=True,
+                )
+                verdict = CriticVerdict(severity="warn", summary="critic unavailable")
+            row = verdict.as_row()
+            await self._units.set_critic_verdict(run_id, run.current_unit, verdict=row)
+            if verdict.cost_usd and verdict.cost_usd > 0:
+                await self._runs.record_unit_progress(
+                    run_id, add_spent_usd=verdict.cost_usd,
+                    current_unit=run.current_unit + 1, driver_id=self._driver_id,
+                )
+            logger.info(
+                "D5b auto-revise attempt %d → severity=%s (run %s unit %d)",
+                attempt, row["severity"], run_id, run.current_unit,
             )
         if row["severity"] == "severe":
             paused = await self._runs.transition(

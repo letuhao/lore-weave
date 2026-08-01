@@ -97,12 +97,12 @@
     "col_input": "입력",
     "col_output": "출력",
     "col_cost": "비용",
-    "cell_ok": "200 OK",
     "cell_error": "에러",
     "cell_rejected": "거부됨",
     "collapse_details": "상세 정보 접기",
     "expand_details": "상세 정보 펼치기",
-    "no_logs": "사용 로그를 찾을 수 없습니다."
+    "no_logs": "사용 로그를 찾을 수 없습니다.",
+    "cell_ok": "200 OK"
   },
   "detail": {
     "load_failed": "상세 정보를 불러오지 못했습니다",
@@ -116,9 +116,9 @@
     "payload_view_aria": "페이로드 보기",
     "tab_input": "입력 (시스템 + 사용자)",
     "tab_output": "출력",
-    "tab_raw": "Raw JSON",
     "copy_aria": "클립보드에 복사",
     "copied": "복사됨",
-    "copy": "복사"
+    "copy": "복사",
+    "tab_raw": "Raw JSON"
   }
 }

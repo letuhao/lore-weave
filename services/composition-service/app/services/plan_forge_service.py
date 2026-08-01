@@ -28,7 +28,15 @@ from app.db.repositories.plan_runs import PlanRunsRepo
 from app.db.repositories.works import WorksRepo
 from app.work_resolution import ensure_work
 from app.engine.plan_forge.compile import compile_artifacts, mock_pipeline_result
-from app.engine.plan_forge.coverage import build_section_map_from_text, load_coverage_context
+from app.engine.plan_forge.coverage import (
+    build_section_map_from_text,
+    load_coverage_context,
+    spec_coverage_board,
+)
+from app.engine.plan_forge.material_review import apply_kept_material
+from app.engine.plan_forge.material_review import (
+    find_missing_material as engine_find_missing_material,
+)
 from app.engine.plan_forge.decompose import build_graph
 from app.engine.plan_forge.elaborate import consistency_audit
 from app.engine.plan_forge.eval_fidelity import evaluate_spec_fidelity, load_fidelity_config
@@ -37,9 +45,14 @@ from app.engine.plan_forge.interpret import interpret_feedback, interpret_rules
 from app.engine.plan_forge.llm import ProviderPlanForgeLLM
 from app.engine.plan_forge.propose import propose_spec
 from app.engine.plan_forge.self_check import run_self_check, run_self_check_on_document
+from app.engine.plan_forge.structure import resolve_structure
+from app.engine.arc_plan import shape_tension_curve
+from app.packer.profile import from_settings
 from app.engine.plan_forge.validate import _deep_merge, run_rules
 from app.worker.events import enqueue_job
 from app.worker.operations import run_plan_forge_propose, run_plan_forge_refine
+
+from loreweave_extraction.name_normalize import normalize_entity_name
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +77,12 @@ def _hard_rules_pass(rules_out: list[dict[str, Any]]) -> bool:
     docs/eval/plan-forge-story-grid-poc-2026-07-06.md) are reported but must
     NEVER block validate()/compile() -- only hard tier (the default) gates.
     """
-    return all(r["pass"] for r in rules_out if r.get("tier", "hard") == "hard")
+    return all(
+        r["pass"] for r in rules_out
+        # …and a rule that does not APPLY cannot fail. A hard rule scoped to an entity this book does
+        # not have would otherwise block a compile over another novel's variable.
+        if r.get("tier", "hard") == "hard" and r.get("applicable", True)
+    )
 
 
 def _work_project_id(work: CompositionWork) -> UUID:
@@ -82,8 +100,51 @@ def _work_project_id(work: CompositionWork) -> UUID:
 #: would otherwise silently keep a removed one (the silent-success bug /review-impl flagged).
 _PASS_LIST_REPLACE_FIELDS: dict[str, tuple[str, ...]] = {
     "cast_plan": ("cast", "roster"),
-    "beat_plan": ("beats",),
+    # `beat_plan`'s editable list is `chapters` — this said `"beats"`, a key `run_beats` has NEVER
+    # emitted (its output is {chapters, tension_curve, unmapped_beats}). So the wholesale-replace
+    # rule targeted nothing, the FE editor bound to nothing, and an author's beat edit was written
+    # to a field no pass reads — while still staling `scenes`+`self_heal` and forcing a paid re-run
+    # that could not change the outcome. Verified against live artifacts before changing it.
+    "beat_plan": ("chapters",),
+    # The remaining four kinds were absent entirely, so they fell through to `_deep_merge`'s
+    # id-upsert: an author (or the co-writer) could ADD a motif/entity/arc/scene but could never
+    # REMOVE one — a shorter list silently kept the deleted member and reported success. Since
+    # `plan_review_checkpoint` accepts edits for ANY pass, "delete" was a advertised-but-broken
+    # operation on 4 of the 6 atom kinds. Field names verified against live artifacts:
+    #   motif_plan {motifs|selected_motifs} · world_plan {entities} ·
+    #   char_arc_plan {character_arcs} · scene_plan {arc_title, chapters, motif_coverage,
+    #   unmapped_beats}  (scene_plan's scenes are nested under chapters, so replacing `chapters`
+    #   is what makes a scene deletion take).
+    "motif_plan": ("motifs", "selected_motifs"),
+    "world_plan": ("entities",),
+    "char_arc_plan": ("character_arcs",),
+    "scene_plan": ("chapters",),
 }
+
+
+def _recompute_tension_curve(merged: dict[str, Any]) -> dict[str, Any]:
+    """Re-derive `beat_plan.tension_curve` from the (possibly edited) chapter beat roles.
+
+    Pass 6 honours the stored curve VERBATIM (V2-C4) — deliberately, so a human's edit survives.
+    But that same property is a trap once `beat_role` is editable: change a chapter from `setup` to
+    `climax` and, without this, the curve still carries the OLD chapter's neutral target. The
+    author would see `climax` in the UI while the drafter aimed at 50. Re-deriving keeps the two
+    halves of the artifact from disagreeing, and it is the same pure function pass 4 used.
+    """
+    chapters = merged.get("chapters")
+    if not isinstance(chapters, list):
+        return merged
+    ordered = sorted(
+        (c for c in chapters if isinstance(c, dict)),
+        key=lambda c: c.get("ordinal") if isinstance(c.get("ordinal"), int) else 0,
+    )
+    curve = shape_tension_curve([c.get("beat_role") for c in ordered])
+    merged["tension_curve"] = [
+        {"chapter_index": t.chapter_index, "beat_role": t.beat_role,
+         "tension_target": t.tension_target}
+        for t in curve
+    ]
+    return merged
 
 
 def _merge_pass_edits(output_kind: str, content: dict[str, Any], edits: dict[str, Any]) -> dict[str, Any]:
@@ -97,6 +158,10 @@ def _merge_pass_edits(output_kind: str, content: dict[str, Any], edits: dict[str
     rest = {k: v for k, v in edits.items() if k not in replace}
     merged = _deep_merge(content, rest)
     merged.update(replace)  # wholesale — a shorter list DELETES; a longer one adds
+    # Only when the caller actually touched the chapters: an edit to, say, `unmapped_beats` alone
+    # must not silently rewrite a curve the author hand-tuned at this checkpoint.
+    if output_kind == "beat_plan" and "chapters" in replace:
+        merged = _recompute_tension_curve(merged)
     return merged
 
 
@@ -123,6 +188,18 @@ class PlanForgeService:
         self._works = works
         self._llm = llm
         self._proposals_repo: Any = None
+        self._structure_templates_repo: Any = None
+
+    @property
+    def _structure_templates(self):
+        """Lazy, for the same reason `_proposals` is: only `compile` reads the structure library,
+        and building it eagerly would mean threading a new argument through every construction site
+        (routers, deps, the worker's finalize hook) for a dependency most calls never touch."""
+        if self._structure_templates_repo is None:
+            from app.db.repositories.structure_templates import StructureTemplatesRepo
+
+            self._structure_templates_repo = StructureTemplatesRepo(self._runs._pool)
+        return self._structure_templates_repo
 
     @property
     def _proposals(self):
@@ -775,8 +852,18 @@ class PlanForgeService:
         rules_out = run_rules(spec, package)
         passed_rules = _hard_rules_pass(rules_out)
         fidelity_score = None
+        # CARRY THE TIER. `_hard_rules_pass` above honours it, and then this transport dropped it —
+        # so the panel received eleven flat pass/fail rows and rendered a fixture rule about another
+        # novel's PA variable exactly like "your plan has no events". The author could not tell which
+        # of five ✗ was theirs to fix, which is why the button reads as useless.
+        # `applicable: False` means the rule is about an entity this book does not have; it gets no
+        # verdict at all rather than a vacuous ✓ or a meaningless ✗.
         golden_rules: list[dict[str, Any]] = [
-            {"id": r["rule"], "passed": r["pass"], "message": r.get("detail", "")}
+            {
+                "id": r["rule"], "passed": r["pass"], "message": r.get("detail", ""),
+                "tier": r.get("tier", "hard"),
+                "applicable": r.get("applicable", True),
+            }
             for r in rules_out
         ]
         all_pass = passed_rules
@@ -1065,9 +1152,17 @@ class PlanForgeService:
         if proposal is None:
             raise ValueError(f"cast's seed proposal {proposal_id} no longer exists")
         if proposal.status != "applied":
+            # NAME THE PROPOSAL. Without the id this message sends the author to
+            # `POST /bootstrap/propose`, which mints a SECOND, competing proposal — approving and
+            # applying that one leaves the gate reading this same pass-opened proposal and refusing
+            # with the identical sentence. Walked into live during the 2026-07-29 dogfood: the loop
+            # is invisible because both the instruction and the failure are word-for-word the same.
             raise ValueError(
                 f"cast cannot be accepted while its glossary seed proposal is "
-                f"'{proposal.status}' — apply it first (PF-7)",
+                f"'{proposal.status}' — approve and apply THAT proposal (id {proposal.id}) via "
+                f"/plan/bootstrap/{proposal.id}/approve then /apply. Do NOT call bootstrap/propose "
+                f"again: it creates a different proposal and this gate only reads the one the cast "
+                f"pass opened (PF-7).",
             )
 
     async def _bind_roster(self, created_by: UUID, book_id: UUID, run: PlanRun) -> None:
@@ -1105,7 +1200,7 @@ class PlanForgeService:
             name = (member.get("name") or "").strip()
             if not role or not name:
                 continue
-            entity_id = roster.get(name.casefold())
+            entity_id = roster.get(normalize_entity_name(name))
             if not entity_id:
                 unbound.append(name)
                 continue
@@ -1142,7 +1237,7 @@ class PlanForgeService:
         )
 
     async def _roster_ids_by_name(self, book_id: UUID, run: PlanRun) -> dict[str, UUID]:
-        """name.casefold() → glossary_entity_id, from the applied seed proposal.
+        """normalize_entity_name(name) → glossary_entity_id, from the applied seed proposal.
 
         Read from the proposal's APPLY result, not from glossary directly: composition reads cast
         through the knowledge-gateway roster, never glossary (INV-KAL). The apply step is what
@@ -1167,7 +1262,7 @@ class PlanForgeService:
                 eid = row.get("entity_id")
                 if name and eid:
                     try:
-                        out[name.casefold()] = UUID(str(eid))
+                        out[normalize_entity_name(name)] = UUID(str(eid))
                     except (ValueError, TypeError):
                         continue
         return out
@@ -1281,6 +1376,102 @@ class PlanForgeService:
             out["apply_mode"] = apply_mode_hint
         return out
 
+    async def find_missing_material(
+        self, created_by: UUID, book_id: UUID, run_id: UUID, *, model_ref: UUID | None = None,
+    ) -> dict[str, Any] | None:
+        """What the plan is missing, and what of it the author ALREADY WROTE.
+
+        The board says what the read recovered; the search then looks for the rest in the author's
+        own document and returns verbatim, grounded lines. Measured (POC §6e Arm 1): the common case
+        is that the material is already there and the read missed it, so a loop that asks without
+        looking first asks an author to re-supply what they have given you.
+
+        Costs one LLM call per not-recovered kind (at most six, concurrent). Read-only: nothing is
+        written, and nothing is settled — the candidates come back for a keep-or-drop.
+        """
+        run = await self._runs.get_for_book(book_id, run_id)
+        if run is None:
+            return None
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
+        if spec_art is None:
+            raise ValueError("no spec for material search")
+        doc_md = await self._document_markdown(book_id, run_id)
+        if not doc_md:
+            # No source to search. Reported as its own state rather than as "nothing is missing":
+            # the board still holds, but every kind it did not recover is unresolvable from here.
+            board = spec_coverage_board(spec_art.content)
+            return {"version": 1, "recovered": board["recovered"], "review": [], "ask": [],
+                    "unavailable": [{"kind": k, "status": "unknown",
+                                     "reason": "the run has no source document to search"}
+                                    for k in board["absent"] + board["unknown"]],
+                    "read": board["read"]}
+        if self._llm is None:
+            raise ValueError("LLM unavailable — cannot search the document")
+        resolved = await self._resolve_model_ref(created_by, model_ref)
+        packet = await engine_find_missing_material(
+            self._llm, user_id=str(created_by), model_source="user_model",
+            model_ref=str(resolved), spec=spec_art.content, document_markdown=doc_md,
+        )
+        # PERSIST. The search SPENDS the author's budget, so throwing the result away when they
+        # close the panel means re-opening pays for it again — and a review surface you cannot leave
+        # and come back to is not a review surface. Stamped with the spec artifact it was computed
+        # from, so a later read can say STALE rather than quietly show a packet about an older plan.
+        packet["spec_artifact_id"] = str(spec_art.id)
+        await self._runs.save_artifact(created_by, run_id, "material_review", packet)
+        return packet
+
+    async def get_material_review(
+        self, created_by: UUID, book_id: UUID, run_id: UUID,
+    ) -> dict[str, Any] | None:
+        """The last material packet for this run — WITHOUT searching, and honest about staleness.
+
+        Free and instant: this is the read the panel does on mount, and it must never spend. The
+        search is the explicit action.
+
+        `stale` is true when the spec has moved on since the packet was computed (a keep, a refine, a
+        re-propose). A stale packet is still RETURNED rather than hidden — the candidates are still
+        the author's own words and still worth seeing — but it is labelled, because silently showing
+        a review of a plan that no longer exists is the same class of lie as every other one this
+        cycle removed.
+        """
+        art = await self._runs.latest_artifact(book_id, run_id, "material_review")
+        if art is None:
+            return None
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
+        packet = dict(art.content or {})
+        packet["stale"] = bool(
+            spec_art is not None and packet.get("spec_artifact_id") != str(spec_art.id)
+        )
+        packet["computed_at"] = art.created_at.isoformat() if art.created_at else None
+        return packet
+
+    async def keep_material(
+        self, created_by: UUID, book_id: UUID, run_id: UUID, *, kept: dict[str, list[Any]],
+    ) -> dict[str, Any] | None:
+        """Write what the author kept into the run's spec — deterministically, in their own words.
+
+        No model runs: these lines already passed a grounding gate precisely because they are the
+        author's text, and routing them through the LLM refine path would invite it to rewrite them.
+
+        Writes a NEW `spec` artifact rather than editing in place — `save_artifact` appends and
+        `latest_artifact` reads the newest, so the previous spec stays recoverable and this is
+        undoable by re-proposing.
+        """
+        run = await self._runs.get_for_book(book_id, run_id)
+        if run is None:
+            return None
+        spec_art = await self._runs.latest_artifact(book_id, run_id, "spec")
+        if spec_art is None:
+            raise ValueError("no spec to apply kept material to")
+        new_spec, report = apply_kept_material(spec_art.content, kept)
+        if not report["applied_to_slot"] and not report["carried_as_author_notes"]:
+            # Nothing changed — do NOT write a duplicate artifact just to report a no-op. Said out
+            # loud rather than returning a success that looks identical to a real one.
+            return {"run_id": str(run_id), "changed": False, **report,
+                    "note": "nothing was kept, or everything kept was already in the spec"}
+        await self._runs.save_artifact(created_by, run_id, "spec", new_spec)
+        return {"run_id": str(run_id), "changed": True, **report}
+
     async def self_check(
         self, created_by: UUID, book_id: UUID, run_id: UUID,
     ) -> dict[str, Any] | None:
@@ -1293,6 +1484,12 @@ class PlanForgeService:
         spec = spec_art.content
         gaps: list[dict[str, Any]] = []
         fidelity_score = None
+        # Computed unconditionally from the SPEC, so it survives everything below it: no source
+        # document (`doc_md` empty), no per-run rubric (`fidelity_score` None, `gaps` empty), or the
+        # own-document coverage raising. In each of those the old payload was `{"gaps": [], ...}` —
+        # "your plan is fine" delivered for "we computed nothing", which is the silent-degrade shape
+        # this whole cycle has been closing.
+        board = spec_coverage_board(spec)
         # 27 PF-19 — the gaps are against THIS RUN'S OWN document. Before this, "what is missing from
         # your plan" answered "what does your plan not have that the POC's novel does" — a fixture
         # constant with extra steps (DA-14), delivered to the user as advice.
@@ -1318,7 +1515,7 @@ class PlanForgeService:
             for r in run_rules(spec):
                 if not r["pass"]:
                     gaps.append({"path": r["rule"], "severity": "warn", "message": r.get("detail", "")})
-        return {"gaps": gaps, "fidelity_score": fidelity_score}
+        return {"gaps": gaps, "fidelity_score": fidelity_score, "coverage_board": board}
 
     # ── 27 PF-19 — fixture severing ─────────────────────────────────────────────────────────
     async def _document_markdown(self, book_id: UUID, run_id: UUID) -> str:
@@ -1521,6 +1718,12 @@ class PlanForgeService:
             "model_source": "user_model",
             "params": dict(params or {}),
             "force": force,
+            # The book's declared language. Omitting it left the worker's
+            # `input.get("source_language") or "auto"` fallback in charge, so every pass ran as
+            # "auto": motif retrieval matched no row (see D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL)
+            # and every LLM prompt lost its language clause. The Work has always carried this —
+            # `routers/plan.py` reads the same field — the pass path just never passed it on.
+            "source_language": from_settings(work.settings).source_language,
         }
         job, _ = await self._jobs.create(
             project_id,
@@ -1583,6 +1786,9 @@ class PlanForgeService:
         arc_id: str,
         run_pipeline: bool = False,
         model_ref: UUID | None = None,
+        # D-PLANFORGE-BEATS-UNWIRED — an at-compile override of the run's story structure, so the
+        # author can re-shape an arc without re-proposing it. Unset ⇒ use the run's stored choice.
+        structure_template_id: UUID | None = None,
     ) -> tuple[str, dict[str, Any]]:
         run = await self._runs.get_for_book(book_id, run_id)
         if run is None:
@@ -1609,6 +1815,40 @@ class PlanForgeService:
         package = compiled["planning_package"]
         if run.genre_tags:
             package["genre_tags"] = list(run.genre_tags)
+
+        # STORY STRUCTURE (D-PLANFORGE-BEATS-UNWIRED) — the beats pass 4 maps chapters onto.
+        #
+        # This line is the whole fix. `package["beats"]` was never populated by ANYTHING, so
+        # `beat_keys` was always empty and `parse_chapter_map` discarded every beat_role the model
+        # produced (it only accepts keys present in that set). Ten chapters, ten NULLs, a flat
+        # tension ramp, and `unmapped_beats: []` reporting perfect health — verified live on run
+        # 019f9d2e. The library and the beat rows already existed and were already the right shape;
+        # only the connection was missing (the legacy planner never lost it — routers/plan.py).
+        #
+        # `structure` is stored ALONGSIDE the beats, always, including on failure: a consumer that
+        # sees only `beats` cannot distinguish an author's choice from a fallback from a total
+        # miss, and that indistinguishability is exactly how this stayed invisible.
+        structure = await resolve_structure(
+            self._structure_templates,
+            created_by,
+            structure_template_id=structure_template_id or run.structure_template_id,
+        )
+        package["beats"] = structure.beats
+        package["structure"] = structure.to_package()
+        if not structure.beats:
+            logger.warning(
+                "compile: run %s has NO story structure (%s) — every chapter's beat_role will be "
+                "empty and the tension curve will be flat", run_id, structure.note,
+            )
+
+        # An at-compile override is the author's new choice — persist it, so a re-compile, the pass
+        # runner and the FE all agree on what this run is planned against. Skipped when nothing was
+        # overridden, so a plain re-compile never writes.
+        if structure_template_id is not None and structure_template_id != run.structure_template_id:
+            await self._runs.update_run(
+                book_id, run_id, structure_template_id=structure_template_id,
+            )
+
         await self._runs.save_artifact(
             created_by, run_id, "package",
             {"planning_package": package, **{k: v for k, v in compiled.items() if k != "planning_package"}},
@@ -1679,18 +1919,23 @@ class PlanForgeService:
         # exercised successfully in production. `chapter_id=event_id` is
         # the correlation key the auto-bootstrap gate (§6 M3) uses to
         # attach each event's resulting scene/beat plan back to the real
-        # chapter it creates. `beats: []` degrades the pipeline's L1
-        # beat-map stage to a no-op (beat_role stays None) — PlanForge's
-        # `arc_kind` (e.g. "discovery"/"power") is a THEME tag, not a
-        # `structure_template.kind`, so there is no beats list to source
-        # here without inventing a new mapping; the pipeline's own
-        # degrade-safe design (planning_pipeline.py) tolerates this.
+        # chapter it creates.
+        #
+        # `beats` USED to be hardcoded `[]` here, reasoning that PlanForge's `arc_kind`
+        # ("discovery"/"power") is a THEME tag rather than a `structure_template.kind`, so there was
+        # "no beats list to source without inventing a new mapping". That conclusion was wrong in a
+        # costly way: the beats never needed to be DERIVED from `arc_kind` at all — the author picks
+        # a structure from the library directly (`plan_run.structure_template_id`), exactly as the
+        # legacy `/outline/decompose` planner has always required. The comment's own hedge
+        # ("the pipeline's degrade-safe design tolerates this") is what let a total structural
+        # blackout look tolerable for months. It now carries the SAME resolved beats as the pass
+        # path, so the two compile routes cannot disagree about the story's shape.
         pipe_input = {
             "worker_op": "plan_pipeline",
             "model_source": "user_model",
             "model_ref": str(model_ref),
             "premise": package.get("premise", ""),
-            "beats": [],
+            "beats": structure.beats,
             "chapters": [
                 {
                     "chapter_id": ch["event_id"], "title": ch["title"],

@@ -1,0 +1,439 @@
+{
+  "mystery.assembled_confrontation": {
+    "beats": {
+      "assemble": {
+        "intent": "ilgili herkes tek bir odaya yerleştirilir",
+        "label": "Taraflar toplanır"
+      },
+      "consequence": {
+        "intent": "soru suçluluktan ziyade, artık bu durumla ne yapılacağı noktasına evrilir",
+        "label": "Bundan sonrası sonuçtur"
+      },
+      "deny": {
+        "intent": "adı geçen taraf suçlamayı reddeder ve en güçlü karşı argümanı sunar",
+        "label": "İnkâr"
+      },
+      "lay": {
+        "intent": "olaylar dizisi yalnızca sunulmuş gerçekler kullanılarak adım adım anlatılır",
+        "label": "Olay örgüsü serilir"
+      },
+      "prove": {
+        "intent": "yorum gerektirmeyen o tek nesne masaya konur",
+        "label": "Tartışmaya kapalı olan kanıt"
+      }
+    },
+    "effects": [
+      "sorumluluk kamuoyu önünde kesinleşir",
+      "gerçeğin bedeli suçlu olmayanların üzerine yıkılır"
+    ],
+    "emotion_target": "katarsis",
+    "examples": [
+      "Olayı onlara iki kez anlattı; ikinci seferde, odadaki tek bir kişinin saati bilebilecek durumda olduğu noktada durdu."
+    ],
+    "name": "Düğümün Çözülüşü",
+    "preconditions": [
+      "yeni bir kanıta ihtiyaç duymadan bir zincir kuracak kadar yerleşik gerçek"
+    ],
+    "roles": {
+      "assembled": {
+        "constraints": [
+          "her birinin şüphelenilmek için makul bir sebebi vardır"
+        ],
+        "label": "toplanan taraflar"
+      },
+      "culprit": {
+        "constraints": [
+          "itiraf etmeden önce inkâr eder"
+        ],
+        "label": "adı konan"
+      },
+      "investigator": {
+        "constraints": [
+          "yalnızca gösterilmiş olanları kullanır"
+        ],
+        "label": "gerçekleri bir bir ortaya döken"
+      },
+      "proof": {
+        "constraints": [
+          "etkisini göstermek için yoruma ihtiyaç duymaz"
+        ],
+        "label": "tartışmasız kanıt"
+      }
+    },
+    "summary": "Tüm hane halkı tek bir odada toplanır ve olaylar tüm şahitlerin önünde adım adım, yalnızca daha önce ortaya konmuş gerçeklere dayanarak —zaman çizelgesi, defter kayıtları, o saati kimin bilebileceği gibi— üzerinden geçilerek anlatılır. Kaçınılmaz olan o inkâr gelir ve hiçbir yoruma gerek duymayan o tek kanıtla yanıtlanır; böylece geriye kalan artık suçlunun kim olduğu değil, şimdi bu durumla ne yapılacağı sorusudur."
+  },
+  "mystery.false_lead": {
+    "beats": {
+      "collapse": {
+        "intent": "yanıltıcı iz, o izi kurgulayan kişi hakkında en güçlü kanıta dönüşür",
+        "label": "İpucu yukarı doğru çöker"
+      },
+      "commit": {
+        "intent": "kaynaklar, itibar veya duygular bu ipucuna bağlanır",
+        "label": "Soruşturma kararlılık gösterir"
+      },
+      "emerge": {
+        "intent": "deliller, alışılmadık bir düzen içinde tek bir kişide toplanır",
+        "label": "Kusursuz bir şüpheli belirir"
+      },
+      "seam": {
+        "intent": "delillerin bırakılmak yerine yerleştirildiğini gösteren bir çatlak ortaya çıkar",
+        "label": "Uyum fazla kusursuzdur"
+      }
+    },
+    "effects": [
+      "soruşturmacı itibarını kaybetmiştir ve artık çok daha kısıtlı imkanlarla ilerlemek zorundadır",
+      "kasıtlı bir kurgulayıcının varlığı artık kesinleşmiştir"
+    ],
+    "emotion_target": "huzursuzluk",
+    "examples": [
+      "İhtiyaç duydukları her belge, ilk aradıkları çekmecedeydi; işte bu durum, sonunda onun zihnini kurcalayan asıl şey oldu."
+    ],
+    "name": "Fazla Kusursuz Görünen İpucu",
+    "preconditions": [
+      "bir isim ortaya çıkarmak için baskı altında olan bir soruşturma"
+    ],
+    "roles": {
+      "arranger": {
+        "constraints": [
+          "ipucu takip edilirken perde arkasında kalır"
+        ],
+        "label": "bu kusursuz kurguyu hazırlayan"
+      },
+      "investigator": {
+        "constraints": [
+          "doğrulamadan önce yatırım yapar"
+        ],
+        "label": "bu ipucuna kendini adayan araştırmacı"
+      },
+      "suspect": {
+        "constraints": [
+          "olgular tarafından gerçekten suçlanmaktadır"
+        ],
+        "label": "fazla elverişli şüpheli"
+      }
+    },
+    "summary": "Delillerin kusursuzca örtüştiği bir şüpheli ortaya çıkar — mektuplar ilk aranan çekmecededir, borçlar kayıtlara geçmiştir, alibi ise zayıftır — ve soruşturma bu uyuma kamuoyu önünde, büyük maliyetlerle veya duygusal bir bağlılıkla inanır. Soruşturma yeni delillerden değil, bu uyumun fazla kusursuz olduğunun fark edilmesiyle çöker: birisi bu belgelerin tam da bu sırayla bulunmasını sağlamıştır ve asıl hedef de işte o kişidir."
+  },
+  "mystery.hidden_connection": {
+    "beats": {
+      "join": {
+        "intent": "tesadüfi bir ayrıntı, gerçeklerin aynı noktadan geldiğini ortaya çıkarır",
+        "label": "Ortak bir köken belirir"
+      },
+      "redraw": {
+        "intent": "bilinen gerçekler yeni merkez etrafında yeniden dizilir",
+        "label": "Vaka yeniden şekillenir"
+      },
+      "separate": {
+        "intent": "her iki bilgi de bilinmektedir ve aralarında hiçbir bağ yoktur",
+        "label": "İki gerçek birbiriyle alakasız durur"
+      }
+    },
+    "effects": [
+      "yeni bir delil ortaya çıkmadan davanın merkezi değişti",
+      "daha önce elenmiş şüpheliler yeniden inceleme kapsamına girdi"
+    ],
+    "emotion_target": "merak",
+    "examples": [
+      "Defterdeki banka ile mektuptaki köyün aslında birbirine sadece yüz adım mesafede olduğu anlaşıldı ve geri kalan her şey bu gerçek etrafında yeniden şekillendi."
+    ],
+    "name": "İki Gerçek, Tek Köken",
+    "preconditions": [
+      "daha önce hiç yan yana getirilmemiş, yerleşik gerçekler barındıran bir dosya"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "her iki gerçeğe de zaten vakıf olan"
+        ],
+        "label": "onları birleştiren kişi"
+      },
+      "origin": {
+        "constraints": [
+          "göz önünde olan ancak odağın dışında kalan"
+        ],
+        "label": "ortak köken"
+      },
+      "source": {
+        "constraints": [
+          "delil niteliğinde olmayan, tesadüfi bir unsur"
+        ],
+        "label": "birleşmeyi tetikleyen unsur"
+      }
+    },
+    "summary": "Dosyada birbiriyle alakasız duran iki unsur —iki isim, iki tarih, bir defterdeki tutar ve bir mektuptaki köy gibi— aslında aynı kökenden geldiği anlaşılır ve vakanın tüm yapısı bu yeni merkez etrafında yeniden şekillenir. Yeni bir şey bulunmaz; halihazırda eldeki bir gerçek, basitçe merkeze yerleşir ve daha önce aklanan kişiler yeniden inceleme kapsamına girer."
+  },
+  "mystery.impossible_circumstance": {
+    "beats": {
+      "bound": {
+        "intent": "cinayetin bilinen kısıtlamalar nedeniyle dışlandığı gösterilir",
+        "label": "İmkânsızlık dile getirilir"
+      },
+      "dissolve": {
+        "intent": "varsayım ortadan kalktığında olay örgüsü sıradan bir hal alır",
+        "label": "İmkânsızlık çözülür"
+      },
+      "enumerate": {
+        "intent": "her bir koşul, hissedilmek yerine test edilebilmesi için tek tek ortaya konur",
+        "label": "Kısıtlamalar listelenir"
+      },
+      "identify": {
+        "intent": "kimsenin aslında hiç kontrol etmediği bir kısıtlama bulunur",
+        "label": "Bir tanesi sadece bir varsayımdır"
+      }
+    },
+    "effects": [
+      "fail henüz bilinmese de yöntem artık gün yüzüne çıkmıştır",
+      "ortak varsayımdan kimin fayda sağladığı ise yeni bir sorudur"
+    ],
+    "emotion_target": "merak",
+    "examples": [
+      "Dört kişi kapının gece boyunca gözetlendiğine yemin etti; ancak her biri farklı bir geceye dair doğruyu söylüyordu."
+    ],
+    "name": "Gerçekleşmesi İmkânsızdı",
+    "preconditions": [
+      "orada bulunan herkes tarafından gerçek olarak kabul edilen bir dizi koşul"
+    ],
+    "roles": {
+      "assumption": {
+        "constraints": [
+          "hiç kimse tarafından doğrulanmamıştır"
+        ],
+        "label": "ortak varsayım"
+      },
+      "constraint": {
+        "constraints": [
+          "bir unsur yeniden sınıflandırılana dek geçerliliğini korur"
+        ],
+        "label": "imkânsızlık"
+      },
+      "investigator": {
+        "constraints": [
+          "kısıtlamaları yıkmak için onları dürüstçe ifade etmelidir"
+        ],
+        "label": "kısıtlamaları sıralayan kişi"
+      }
+    },
+    "summary": "Cinayet, gerçekleşmesini imkânsız kılan kısıtlamalarla çevrilidir — içeriden sürgülü bir oda, gece boyunca gözetlenen bir merdiven, yabancılar tarafından yeminle onaylanmış bir alibi veya mevcut saatler içinde katedilmesi mümkün olmayan bir mesafe. Bu kısıtlamalar dürüstçe, birer birer sıralanır; çözüm ise, aslında hiç doğrulanmamış olan ancak evdeki herkesin ortaklaşa kabul ettiği o varsayımın bulunmasıyla gelir."
+  },
+  "mystery.impossible_detail": {
+    "beats": {
+      "detail": {
+        "intent": "tek bir gerçek, masum okumayla açıklanamaz",
+        "label": "Bir detay uymayı reddeder"
+      },
+      "discover": {
+        "intent": "açıkça masum bir okumaya sahip olan bir şey keşfedilir",
+        "label": "Huzursuzluk keşfedilir"
+      },
+      "fix": {
+        "intent": "tekinsizlik, peşine düşülecek kadar kesin bir biçimde ifade edilir",
+        "label": "Soru netleşir"
+      },
+      "open": {
+        "intent": "birisi, olayın kapandığı yönündeki genel eğilime rağmen, sorunun cevabını bulmaya kararlı hale gelir",
+        "label": "Soruşturma başlar"
+      }
+    },
+    "effects": [
+      "artık cevapsız kalan belirli bir soru, olayların akışını yönetir hale gelir",
+      "en az bir taraf, bu sorunun sorulmamasını tercih eder"
+    ],
+    "emotion_target": "merak",
+    "examples": [
+      "Odadaki her şey yalnız başına içki içtiğini söylüyordu; yalnızca yıkanmış, kurulanmış ve yerine asılmış olan ikinci fincan bu duruma itiraz ediyordu."
+    ],
+    "name": "Orada Olmaması Gereken O Detay",
+    "preconditions": [
+      "kolayca kabul edilebilecek masum bir açıklaması olan bir olay"
+    ],
+    "roles": {
+      "authority": {
+        "constraints": [
+          "sıradan açıklamayı tercih ederler"
+        ],
+        "label": "konunun kapanmasını isteyenler"
+      },
+      "investigator": {
+        "constraints": [
+          "başkalarının yanından geçip gittiği şeyi görür"
+        ],
+        "label": "fark eden kişi"
+      },
+      "question": {
+        "constraints": [
+          "«kim yaptı» sorusundan daha keskindir"
+        ],
+        "label": "kapıyı aralayan soru"
+      },
+      "scene": {
+        "constraints": [
+          "çoğunlukla sıradan gerçekler sunar"
+        ],
+        "label": "huzursuzluğun kendisi"
+      }
+    },
+    "summary": "Bir huzursuzluk gün yüzüne çıkar — yerde bir ceset, bir hırsızlık, bir kaybolma, tutmayan bir defter — ve tüm sıradan gerçeklerin arasında, masum bir açıklamayla izah edilemeyecek küçük, fiziksel bir şey durmaktadır: yıkanıp yerine asılmış ikinci bir fincan, kapının yanlış tarafındaki bir anahtar, hava durumuna göre fazla kuru bir palto. İşte o tek yanlışlık, bir talihsizliği bir soruya dönüştüren şeydir; asıl soruşturma da zaten bu sorunun peşindedir."
+  },
+  "mystery.investigator_compromised": {
+    "beats": {
+      "bend": {
+        "intent": "verilen bir karar, delillerden ziyade çıkar çatışmasıyla açıklanabilir hale gelir",
+        "label": "Yargı eğilir"
+      },
+      "expose": {
+        "intent": "kişisel çıkar diğerleri tarafından öğrenilir",
+        "label": "Bağlantı gün yüzüne çıkar"
+      },
+      "reearn": {
+        "intent": "önceden varılmış tüm sonuçlar, şüpheci bir kitleye karşı yeniden kanıtlanmalıdır",
+        "label": "Her şey yeniden kanıtlanmalıdır"
+      },
+      "stake": {
+        "intent": "soruşturmacı, durumu kabul etmeksizin davayla bağlantılıdır",
+        "label": "Çıkar gizli kalır"
+      }
+    },
+    "effects": [
+      "önceden varılmış sonuçlar, yeniden kanıtlanana dek hiçbir otorite taşımaz",
+      "araştırmacının sürece dahil olmaya devam etmesi başlı başına bir tartışma konusu olur"
+    ],
+    "emotion_target": "huzursuzluk",
+    "examples": [
+      "Mesele aileyi tanıdığına dair yalan söylemesi değildi; mesele, kimsenin bunu sormayı akıl edememiş olması ve onun da üç hafta boyunca bu durumu öylece kabullenmiş olmasıydı."
+    ],
+    "name": "Soruşturmacının Çıkar Çatışması",
+    "preconditions": [
+      "vaka taraflarından biriyle önceden bağlantısı olan bir araştırmacı"
+    ],
+    "roles": {
+      "doubters": {
+        "constraints": [
+          "şüphe duymakta haklıdırlar"
+        ],
+        "label": "artık ondan şüphelenenler"
+      },
+      "investigator": {
+        "constraints": [
+          "çıkar çatışmasını kendisi seçmemiştir"
+        ],
+        "label": "taraflı soruşturmacı"
+      },
+      "stake": {
+        "constraints": [
+          "gerçektir ve soruşturmacıyı saf dışı bırakacak niteliktedir"
+        ],
+        "label": "kişisel çıkar"
+      }
+    },
+    "summary": "Soruları soran kişinin aslında davanın bir parçası olduğu ortaya çıkar —bir tarafa bağlılık, alacak verecek meselesi ya da olayın asıl sebebi olması gibi— ve bunu gizlemiştir. Yargı, taraflı olduğu fark edilmeden önce eğilip bükülür; bağlantı gün yüzüne çıktığında ise dosyaya girmiş tüm sonuçların, artık her şeyden şüphe duymaya hak kazanan insanların önünde yeniden kanıtlanması gerekir."
+  },
+  "mystery.second_death": {
+    "beats": {
+      "carry": {
+        "intent": "ölümü tetikleyen sorulardan kaynaklanan sorumluluk, araştırmacının izlediği yolu değiştirir",
+        "label": "Müfettiş bunu omuzlarında taşır"
+      },
+      "narrow": {
+        "intent": "sadece neyin geleceğini bilenler harekete geçebilirdi",
+        "label": "Çember daralır"
+      },
+      "provoke": {
+        "intent": "bir sorgu, artık bir yük haline gelen birine ulaşır",
+        "label": "Sorular hedefe çok yakındır"
+      },
+      "silence": {
+        "intent": "konuşmak üzere olan kişi ortadan kaldırılır",
+        "label": "Tanık susturulur"
+      }
+    },
+    "effects": [
+      "dosya artık birbiriyle henüz bağlantısız olsa da, kimlerin önceden haberdar olduğuna dair kesin gerçekler barındırmaktadır",
+      "şüpheli listesi, ölen tanığın ne söylemek üzere olduğunu bilenlerle sınırlanır",
+      "araştırmacı artık kendi seçmediği kişisel bir yükün altına girmiştir"
+    ],
+    "emotion_target": "dehşet",
+    "examples": [
+      "Ondan sabah gelmesini istemişti; ancak sabah gelmeden ölü bulundu; bu durum, vereceği cevaptan çok daha fazlasını ona anlatmıştı."
+    ],
+    "name": "Soruşturma İkinci Bir Ölümü Tetikler",
+    "preconditions": [
+      "konusu tarafından fark edilen bir soruşturma"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "tetikleyici unsurun sorumluluğunu taşır"
+        ],
+        "label": "soruları tetikleyen kişi"
+      },
+      "killer": {
+        "constraints": [
+          "neyin geleceğini bilmiş olmalıdır"
+        ],
+        "label": "susturmak için harekete geçen"
+      },
+      "silenced": {
+        "constraints": [
+          "faydalı bir şey söylemek üzereydi"
+        ],
+        "label": "ikinci kurban"
+      }
+    },
+    "summary": "Soruların sorulması birini bir başkası için tehlikeli hale getirir ve ardından ikinci bir ceset gelir; bu kişi genellikle sabah konuşmayı kabul eden ancak sabah gelmeden önce ölü bulunan kişidir. Hiç gerçekleşmeyen o mülakat, verilecek cevaptan daha çok şey anlatır: Sadece ne söyleneceğini bilenler harekete geçebilirdi; böylece şüpheli listesi daralır ve müfettiş artık kendi sorularının tetiklediği bir ölümü omuzlarında taşır."
+  },
+  "mystery.witness_who_lies": {
+    "beats": {
+      "contradict": {
+        "intent": "kontrol edilebilir bir ayrıntı anlatıyla uyuşmaz",
+        "label": "Küçük bir gerçek anlatıyla çelişir"
+      },
+      "press": {
+        "intent": "çelişki doğrudan tanığa yöneltilir",
+        "label": "Yalanın üzerine gidilir"
+      },
+      "reason": {
+        "intent": "tanık, davanın çehresini değiştirecek, suçla ilgisi olmayan başka bir şeyi itiraf eder",
+        "label": "Asıl bulgu sebeptir"
+      },
+      "testify": {
+        "intent": "bir tanık, büyük ölçüde tutarlı bir anlatı sunar",
+        "label": "İfade verilir"
+      }
+    },
+    "effects": [
+      "vaka dosyasında henüz bir yere bağlanmamış yeni bir gerçek —gizli bir ilişki— gün yüzüne çıkar",
+      "tanığın zaman çizelgesi düzeltilir ve bu durum başka birinin konumunu değiştirir"
+    ],
+    "emotion_target": "gerilim",
+    "examples": [
+      "Depoda olmadığını söyledi ama nerede olduğunu asla itiraf etmedi; gerçek ise ancak iki gün sonra bir hastanede olduğunun anlaşılmasıyla ortaya çıktı."
+    ],
+    "name": "Yalanı Suç Olmayan Tanık",
+    "preconditions": [
+      "suçla ilgisi olmayan ancak ifşa olursa zarar görecek bir sırrı olan bir tanık"
+    ],
+    "roles": {
+      "investigator": {
+        "constraints": [
+          "suçluluk varsayımında bulunmadan üzerine gitmelidir"
+        ],
+        "label": "sorgulayan"
+      },
+      "secret": {
+        "constraints": [
+          "yalan söyletilecek kadar utanç vericidir"
+        ],
+        "label": "ilgisiz sır"
+      },
+      "witness": {
+        "constraints": [
+          "bir konuda yalan söylüyordur ama konu bu değildir"
+        ],
+        "label": "yalan söyleyen tanık"
+      }
+    },
+    "summary": "Bir ifade, kontrol edilebilir küçük bir ayrıntıyla —bir fişin üzerindeki saat, hangi trenin çalıştığı veya hangi pencerenin avluya baktığı gibi— çelişir; bu çelişki üzerine gidildiğinde ise suçun itirafı değil, bambaşka bir itiraf gelir: bir borç, bir yasak aşk ya da adını vermeyecekleri bir hastanede geçirilen bir gece. Yalan gerçektir, sebebi ise suçla ilgisizdir; işte o ilgisiz sebep, davayı çözen asıl anahtardır."
+  }
+}

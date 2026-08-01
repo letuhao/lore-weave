@@ -162,7 +162,14 @@ func TestReArm_UsesLocalFireTime_NotRawInterval(t *testing.T) {
 	}
 	// Force it due at an arbitrary mid-day instant (10:37), then fire.
 	claimAt := time.Date(now.Year(), now.Month(), now.Day(), 10, 37, 0, 0, time.UTC)
-	pool.Exec(ctx, `UPDATE scheduled_agent_runs SET next_fire_at=$2 WHERE owner_user_id=$1`, owner, claimAt.Add(-time.Minute))
+	// The row must also be CLAIMED by this driver: `recordSuccess`'s UPDATE carries
+	// `AND locked_by = $4` (cold-review #3 — a lease-less driver must not overwrite the
+	// new holder's fresh lease). This test predates that guard and set only next_fire_at,
+	// so the UPDATE matched zero rows and next_fire_at kept the value the test had just
+	// written — reported as "re-arm landed at 10:36", i.e. the guard working correctly,
+	// read as the re-arm being broken. Nobody saw it because SCHEDULER_TEST_DB_URL was set
+	// by no workflow and the test had never run. D-SCHEDULER-REARM-TEST-UNCLAIMED.
+	pool.Exec(ctx, `UPDATE scheduled_agent_runs SET next_fire_at=$2, locked_by='t' WHERE owner_user_id=$1`, owner, claimAt.Add(-time.Minute))
 	// recordSuccess re-arms off `claimAt`; the result must be the next 21:00 UTC, NOT claimAt+24h (10:37).
 	d := NewDriver(pool, &fakeEnq{}, "t")
 	d.recordSuccess(ctx, mustID(t, pool, owner), claimAt)

@@ -44,30 +44,40 @@ if [[ -f "$repo_root/Cargo.toml" ]] && ! [[ -f "$repo_root/Cargo.lock" ]]; then
   violations=$((violations + 1))
 fi
 
-# Python: pyproject.toml needs uv.lock or poetry.lock.
-# Skip the existing-platform sdks/python (pre-cycle-7 grandfathered; SR10
-# pyproject lockfile coverage tracked separately as a non-blocking warning).
+# Python — 2026-07-31: this arm used to demand `uv.lock`/`poetry.lock` next to every
+# pyproject.toml, grandfathering exactly ONE literal path (`*/sdks/python/pyproject.toml`).
+# The repo has THREE pyprojects and ZERO lock files anywhere, so the rule only ever fired
+# on the two SDK sub-packages that happen to ship their own descriptor — the parent's
+# siblings, same tree, same install path (`PYTHONPATH=sdks/python`, no install). It named a
+# path where it meant a class, and nothing caught that because the lint was never wired.
+#
+# Lockfiles are not this repo's Python convention and never have been: services pin with
+# floor constraints in requirements.txt (178 dep lines, verified). Demanding a lock here
+# would be a rule invented by its own enforcement. So the arm now guards the convention
+# that IS load-bearing — every declared dependency carries a version constraint — which is
+# green today and genuinely red-able (add one bare `requests` line and it fails).
+py_unconstrained=0
+while IFS= read -r req; do
+  # Strip comments/blank/pip-flags (-r, -e, --index-url), then require a version operator.
+  while IFS= read -r dep; do
+    [[ -z "$dep" || "$dep" == \#* || "$dep" == -* ]] && continue
+    if [[ ! "$dep" =~ [=\<\>~!] ]]; then
+      echo "[dep-pinning] FAIL — $req declares '$dep' with no version constraint"
+      py_unconstrained=$((py_unconstrained + 1))
+    fi
+  done < <(sed 's/[[:space:]]*#.*//' "$req")
+done < <(find "$repo_root" -name 'requirements*.txt' -not -path '*/node_modules/*' -not -path '*/.venv/*' 2>/dev/null)
+violations=$((violations + py_unconstrained))
+
+# Same rule for the `dependencies = [...]` block of each pyproject.toml.
 while IFS= read -r py; do
-  dir=$(dirname "$py")
-  # Grandfather: existing platform code outside scope of foundation cycles.
-  # Extended 2026-07-26 to the STANDALONE per-package descriptors under
-  # sdks/python/<pkg>/. They belong to the same already-grandfathered shared
-  # distribution — each says so in its own header ("ships its own descriptor so
-  # it can be created without editing that shared file") — and they are imported
-  # via PYTHONPATH=sdks/python, never installed. A lock file for a package
-  # nothing installs pins nothing; the shared distribution is where SR10
-  # lockfile coverage belongs, and it is already tracked as the non-blocking
-  # warning noted above. Without this, loreweave_authn and
-  # loreweave_internal_client failed the gate purely for having split their
-  # descriptor out of the exempt file.
-  case "$py" in
-    */sdks/python/pyproject.toml) continue ;;
-    */sdks/python/*/pyproject.toml) continue ;;
-  esac
-  if [[ ! -f "$dir/uv.lock" ]] && [[ ! -f "$dir/poetry.lock" ]]; then
-    echo "[dep-pinning] FAIL — $py has neither uv.lock nor poetry.lock"
-    violations=$((violations + 1))
-  fi
+  while IFS= read -r dep; do
+    if [[ ! "$dep" =~ [=\<\>~!] ]]; then
+      echo "[dep-pinning] FAIL — $py declares '$dep' with no version constraint"
+      violations=$((violations + 1))
+    fi
+  done < <(awk '/^dependencies[[:space:]]*=[[:space:]]*\[/{f=1;next} f&&/^\]/{f=0} f' "$py" \
+             | sed 's/[[:space:]]*#.*//' | tr -d ' ",' | grep -v '^$')
 done < <(find "$repo_root" -name pyproject.toml -not -path '*/node_modules/*' -not -path '*/.venv/*' 2>/dev/null)
 
 # Docker: warn-only on tag-pinned FROM (no fail; many base images don't ship digest)

@@ -74,12 +74,12 @@
     "chapters": "Chapitres",
     "stage": "Étape",
     "status": "Statut",
-    "tokens": "Tokens (in/out)",
     "usd": "USD",
     "localFree": "🖥 {{kind}} · gratuit",
     "cloud": "☁ {{kind}}",
     "launching": "Lancement en cours…",
-    "launch": "Lancer la campagne"
+    "launch": "Lancer la campagne",
+    "tokens": "Tokens (en/sortie)"
   },
   "list": {
     "title": "Campagnes Auto-Draft",

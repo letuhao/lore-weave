@@ -376,6 +376,42 @@ def test_route_404_when_no_grant():
     assert r.status_code == 404  # OwnershipError → uniform no-oracle 404
 
 
+def test_route_403_maps_insufficient_grant():
+    """The 403 mapping, tested through the exception it maps — not through an enum
+    state that cannot exist.
+
+    This test used to build `below = [lvl for lvl in GrantLevel if not
+    lvl.at_least(VIEW) and lvl is not NONE]` and `pytest.skip` when it came back empty.
+    It is ALWAYS empty: the enum is NONE=0 < VIEW=1 with nothing between, and this
+    module's only gate needs VIEW — so `InsufficientGrant` is unreachable here and the
+    test skipped on every run since it was written. It named a guarantee (403 for an
+    under-tier grantee) and verified nothing, which is the same class as the fictional
+    guarantees this cycle is clearing out.
+
+    `_gate_book`'s InsufficientGrant → 403 branch is real code that a future route
+    needing EDIT/MANAGE will depend on, and a route that 404s an under-tier grantee
+    would be a no-oracle regression. So test the mapping directly: it runs every time,
+    and it stays valid whether or not a sub-VIEW tier is ever added.
+    """
+    from app.deps import get_grant_client_dep
+    from app.grant_client import GrantLevel
+    from app.grant_deps import InsufficientGrant
+
+    class _UnderTierGrant:
+        async def resolve_grant(self, book_id, user_id):
+            raise InsufficientGrant("grantee below the required tier")
+
+        async def resolve_access(self, book_id, user_id):
+            raise InsufficientGrant("grantee below the required tier")
+
+    c = _make_client(_FakeRepo(), GrantLevel.OWNER)  # replaced by the override below
+    c.app.dependency_overrides[get_grant_client_dep] = lambda: _UnderTierGrant()
+    r = c.get(f"/v1/composition/books/{BOOK}/plan-overlay")
+    assert r.status_code == 403, r.text
+    # 403, not 404: a grantee already knows the book exists, so there is no oracle to
+    # protect — collapsing this to 404 would lose that distinction silently.
+    assert r.json()["detail"] == "insufficient access"
+
 def test_no_grant_tier_sits_below_view_so_403_is_unreachable_on_this_route():
     """This replaced a test that **skipped on every run**, which is the honest
     version of what it was doing.
@@ -394,6 +430,11 @@ def test_no_grant_tier_sits_below_view_so_403_is_unreachable_on_this_route():
     unreachable — a fact about the enum, not about this route. So the assertion
     is now on the enum itself: **add a tier between NONE and VIEW and this reds**,
     at which point the 403 case becomes reachable and someone has to write it.
+
+    Pairs with `test_route_403_maps_insufficient_grant` above, which arrived from the
+    other branch of the same fix and does NOT contradict this one: it drives the 403
+    through an injected `InsufficientGrant`, proving the MAPPING; this proves no real
+    GrantLevel input can reach it. Both were needed to retire the same permanent skip.
     """
     from app.grant_client import GrantLevel
 

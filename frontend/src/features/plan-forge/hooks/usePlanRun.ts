@@ -2,6 +2,8 @@
 // self-check, validate, compile. No JSX. The poll is the ONE useEffect that syncs on the active
 // job (a synchronization concern, not a user-action reaction); user actions are explicit handlers.
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { compositionApi } from '@/features/composition/api';
+import type { StructureTemplate } from '@/features/composition/types';
 import { planForgeApi, isAck } from '../api';
 import {
   isRunPolling,
@@ -33,7 +35,15 @@ export interface UsePlanRun {
   resetRun: () => void;
   runSelfCheck: () => Promise<void>;
   runValidate: () => Promise<void>;
-  runCompile: (arcId: string, runPipeline?: boolean, modelRef?: string) => Promise<void>;
+  runCompile: (
+    arcId: string, runPipeline?: boolean, modelRef?: string, structureTemplateId?: string,
+  ) => Promise<void>;
+  /** D-PLANFORGE-BEATS-UNWIRED — the story-structure library (built-ins + the user's own), so the
+   *  compile affordance can offer a picker. The library, its 6 built-ins and a full CRUD panel all
+   *  already existed; nothing ever linked them to a plan run, so every compile silently used the
+   *  platform default. Degrade-safe: a failed load leaves the list empty and compile still works
+   *  (the run keeps its current structure) — a picker outage must not block compiling. */
+  structures: StructureTemplate[];
   // ── the Repair strip (M4-CP / ⑨) — shown only when self-check found gaps ──
   /** A one-line human summary of the last repair action (autofix rounds / diagnosis / refine). */
   repairOutput: string | null;
@@ -47,6 +57,7 @@ export interface UsePlanRun {
 
 export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
   const [run, setRun] = useState<PlanRunDetail | null>(null);
+  const [structures, setStructures] = useState<StructureTemplate[]>([]);
   const [selfCheck, setSelfCheck] = useState<PlanSelfCheck | null>(null);
   const [validation, setValidation] = useState<PlanValidateReport | null>(null);
   const [compileResult, setCompileResult] = useState<PlanCompileResult | null>(null);
@@ -80,6 +91,24 @@ export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
     return () => { cancelled = true; clearTimeout(timer); };
     // Re-arm on every run object change (a poll setRun produces a new object → next tick).
   }, [bookId, token, run]);
+
+  // Load the story-structure library once per token. A SYNCHRONIZATION effect (fetch external data
+  // on mount), not a reaction to a user action — the distinction the FE rules draw.
+  // Degrade-safe on purpose: a failure leaves the list empty and the picker shows only "keep
+  // current", so compiling still works. A picker outage must never block a compile.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const list = await compositionApi.listTemplates(token);
+        if (!cancelled) setStructures(list);
+      } catch {
+        if (!cancelled) setStructures([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token]);
 
   const createRun = useCallback(async (body: CreatePlanRunBody) => {
     if (!token) return;
@@ -168,7 +197,9 @@ export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
     }
   }, [bookId, token, run]);
 
-  const runCompile = useCallback(async (arcId: string, runPipeline?: boolean, modelRef?: string) => {
+  const runCompile = useCallback(async (
+    arcId: string, runPipeline?: boolean, modelRef?: string, structureTemplateId?: string,
+  ) => {
     if (!token || !run) return;
     setBusy(true);
     setError(null);
@@ -176,6 +207,9 @@ export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
       const body: CompilePlanBody = { arc_id: arcId };
       if (runPipeline !== undefined) body.run_pipeline = runPipeline;
       if (modelRef) body.model_ref = modelRef;
+      // Omitted (not sent as null) when unset, so a re-compile keeps whatever the run already
+      // chose — sending an explicit null would silently reset the author's structure to default.
+      if (structureTemplateId) body.structure_template_id = structureTemplateId;
       const r = await planForgeApi.compile(bookId, run.id, body, token);
       // A 202 ack means the pipeline runs async — re-fetch the run so its status reflects it;
       // an inline compile package is the result to show.
@@ -245,7 +279,7 @@ export function usePlanRun(bookId: string, token: string | null): UsePlanRun {
   }, [bookId, token, run]);
 
   return {
-    run, selfCheck, validation, compileResult, repairOutput, busy, polling, error,
+    run, selfCheck, validation, compileResult, repairOutput, busy, polling, error, structures,
     createRun, loadRun, resetRun, runSelfCheck, runValidate, runCompile,
     runAutofix, runRepairRefine, runExplain,
   };

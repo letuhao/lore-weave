@@ -449,8 +449,8 @@
     "cap": {
       "chat": "Chat / LLM",
       "embedding": "Embedding",
-      "tts": "Text-to-Speech",
-      "stt": "Speech-to-Text",
+      "tts": "Text-zu-Sprache",
+      "stt": "Sprache-zu-Text",
       "image_gen": "Bildgenerierung",
       "moderation": "Moderation",
       "reranker": "Reranker"
@@ -500,7 +500,6 @@
       "pricing_hint": "Wird bei der Erstellung vorausgefüllt. Falls sich der veröffentlichte Tarif des Anbieters geändert hat, bitte anpassen oder OpenRouter für eine aktuelle Schätzung prüfen.",
       "pricing_check": "OpenRouter prüfen",
       "pricing_checking": "Prüfung läuft...",
-      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} in / ${{output}} out",
       "pricing_apply": "Anwenden",
       "pricing_not_found": "Kein passendes Modell auf OpenRouter gefunden — Preisangaben von dieser Quelle nicht verfügbar.",
       "pricing_check_failed": "Fehler beim Abrufen der OpenRouter-Preise",
@@ -511,7 +510,8 @@
       "request_failed": "Anfrage fehlgeschlagen",
       "cancel": "Abbrechen",
       "saving": "Wird gespeichert...",
-      "submit": "Änderungen speichern"
+      "submit": "Änderungen speichern",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} in / ${{output}} out"
     },
     "toast": {
       "fetch_failed": "Modelle konnten nicht abgerufen werden: {{error}}",

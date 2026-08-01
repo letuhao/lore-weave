@@ -375,6 +375,12 @@ async def _run_operation(
             pool, llm, get_knowledge_client(),
             user_id=str(job.created_by), input=job.input or {},
         )
+    if op == "translate_library":
+        from app.engine.library_translate import run_translate_library
+        return await run_translate_library(
+            pool, llm, user_id=str(job.created_by), input=job.input or {},
+            cancel_check=cancel_check,
+        )
     if op == "analyze_reference":
         from app.engine.motif_deconstruct import run_analyze_reference
         return await run_analyze_reference(

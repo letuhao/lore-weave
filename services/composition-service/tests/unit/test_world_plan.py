@@ -131,6 +131,121 @@ def test_no_cast_still_builds_a_valid_prompt():
     assert system and user
 
 
+# ── E6b · the existing world + the canon anchors ───────────────────────────────
+#
+# The bug: `is_new` meant "not named in the PREMISE", and a premise is ONE arc's summary. Forty
+# chapters in, the capital the story has been set in since chapter three came back marked
+# `is_new` — a planned INTRODUCTION of a place the reader already knows, frequently under a new
+# name. The fix anchors `is_new` to the book's actual world instead.
+
+
+def test_known_world_redefines_is_new_against_the_BOOK_not_the_premise():
+    """The premise is one arc. Judging "new" against it re-invents the whole standing world."""
+    system, _ = build_propose_world_messages("P", known_world={"location": ["Hoa Sơn"]})
+    assert "named neither in the premise nor" in system
+    assert "in the EXISTING WORLD listed below" in system
+    # …and the premise-only wording is GONE when a roster exists — not merely accompanied by the
+    # new sentence, which would leave the model two conflicting definitions.
+    assert "true ONLY for entries you invented (not named in the premise)" not in system
+
+
+def test_without_a_roster_the_prompt_is_UNCHANGED_from_before_E6b():
+    """A fresh book has no world, and an empty "EXISTING WORLD" heading reads as "this book has
+    none" — a lie that would push the model to invent over the top of it."""
+    system, user = build_propose_world_messages("p", known_world={}, canon="")
+    assert "`is_new` is true ONLY for entries you invented (not named in the premise). " in system
+    assert "EXISTING WORLD" not in user and "CANON" not in user
+    assert user == "PREMISE:\np"
+    # A roster whose buckets are all empty is the same as no roster at all.
+    _, user2 = build_propose_world_messages("p", known_world={"location": [], "faction": []})
+    assert user2 == "PREMISE:\np"
+
+
+def test_the_existing_world_is_listed_BY_KIND_not_flattened():
+    """Telling the model "Hoa Sơn already exists" without saying it is a *location* is how a
+    mountain gets written as a person. The cast can be flat; a world cannot."""
+    _, user = build_propose_world_messages("p", known_world={
+        "location": ["Hoa Sơn"], "faction": ["Thanh Vân Môn"], "concept": ["Kiếm Đạo"],
+    })
+    assert "PLACES: Hoa Sơn" in user
+    assert "FACTIONS / ORGANISATIONS: Thanh Vân Môn" in user
+    assert "CONCEPTS: Kiếm Đạo" in user
+    assert "do NOT rename or re-invent them" in user
+    assert "is_new=false" in user
+    # Fixed order regardless of dict insertion order — the same book must build the same prompt.
+    _, other = build_propose_world_messages("p", known_world={
+        "concept": ["Kiếm Đạo"], "faction": ["Thanh Vân Môn"], "location": ["Hoa Sơn"],
+    })
+    assert other == user
+
+
+def test_a_kind_pass_3_may_not_propose_is_not_listed_back_to_it():
+    """WORLD_KINDS is a closed set. Listing a `character` under EXISTING WORLD would be an
+    instruction the model cannot obey — it is forbidden to return that kind."""
+    _, user = build_propose_world_messages("p", known_world={
+        "character": ["Lâm Uyển"], "location": ["Hoa Sơn"],
+    })
+    assert "Hoa Sơn" in user
+    assert "Lâm Uyển" not in user
+
+
+def test_the_roster_is_capped_PER_KIND_so_a_thin_bucket_survives_a_fat_one():
+    """A book with ninety locations and three factions must still show the factions. An overall
+    cap would spend the whole budget on locations and silently drop the rest."""
+    _, user = build_propose_world_messages("p", known_world={
+        "location": [f"L{i}" for i in range(200)],
+        "faction": ["Thanh Vân Môn"],
+    })
+    assert "L0" in user and "L39" in user
+    assert "L40" not in user and "L199" not in user
+    assert "Thanh Vân Môn" in user           # not starved by the fat bucket
+    assert len(user) < 4000
+
+
+def test_canon_anchors_reach_the_pass_that_does_the_INVENTING():
+    """Consistency anchors bite hardest here: "the empire fell in year 300" is a constraint on
+    invented factions and concepts, and this is the pass that invents them. It was compiled on
+    every run and read by nobody."""
+    _, user = build_propose_world_messages("p", canon="The empire fell in year 300.")
+    assert "CANON" in user and "The empire fell in year 300." in user
+    # Whitespace-only is not canon.
+    _, blank = build_propose_world_messages("p", canon="   \n  ")
+    assert "CANON" not in blank
+
+
+@pytest.mark.asyncio
+async def test_propose_world_FORWARDS_the_roster_and_canon_to_the_prompt(monkeypatch):
+    """The layer between the adapter and the builder. Mutation-checked: dropping `known_world=`
+    and `canon=` from this call left every builder test above green, because they call the builder
+    directly — the exact wired-here/dead-there shape this sweep exists to catch."""
+    import app.engine.world_plan as wp
+
+    seen: dict = {}
+    real = wp.build_propose_world_messages
+
+    def _spy(*a, **kw):
+        seen.update(kw)
+        return real(*a, **kw)
+
+    monkeypatch.setattr(wp, "build_propose_world_messages", _spy)
+
+    class _LLM:
+        async def submit_and_wait(self, **kw):
+            self.input = kw["input"]
+            return type("J", (), {"status": "failed", "result": None})()
+
+    llm = _LLM()
+    await propose_world(
+        llm, user_id="u", model_source="user_model", model_ref="m", premise="p",
+        known_world={"location": ["Hoa Sơn"]}, canon="The empire fell in year 300.",
+    )
+    assert seen["known_world"] == {"location": ["Hoa Sơn"]}
+    assert seen["canon"] == "The empire fell in year 300."
+    # …and they actually reached the wire, not just the builder call.
+    sent = "\n".join(m["content"] for m in llm.input["messages"])
+    assert "Hoa Sơn" in sent and "The empire fell in year 300." in sent
+
+
 # ── attribute mapping (the cast_attributes precedent) ─────────────────────────
 
 

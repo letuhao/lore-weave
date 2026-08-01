@@ -428,6 +428,7 @@
   "pacing": "tempo",
   "canon_consistency": "kanon",
   "dismiss": "kapat",
+  "overrideSlipBlocked": "Engellenen sürüm kabul edildi: bir «ya şöyle olsaydı» sürümü orijinal kanon değerine geri kaydı. Kabul etmeden önce yeniden oluşturun.",
   "overrideSlipExhausted": "Yeniden oluşturma sınırından sonra bile varyant sızmaya devam ediyor — incelemeniz için sunuldu (kabul artık engellenmiş değil).",
   "overrideSlipDetail": "{{name}} ({{field}}): beklenen “{{expected}}”, bulunan “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: “{{rule}}” delta kuralıyla çelişiyor",
@@ -972,6 +973,47 @@
       "degradedLibrary": "Uyumluluk sırasına göre sıralanmadı — ortak kütüphanenin gömme (embedding) modeli yapılandırılmadığı için bunlar puanlanmış eşleşmeler değil, tür bazlı yedek seçeneklerdir.",
       "sectionMine": "Motifleriniz",
       "sectionLibrary": "Kütüphaneden"
+    },
+    "language": {
+      "writtenIn": "Yazıldığı dil",
+      "authored": "el yazması çeviri",
+      "staleShort": "güncelliğini yitirmiş",
+      "missingYours": "{{lang}} dilinde mevcut değil — orijinal dile geri dönülüyor",
+      "systemFree": "Yerleşik motifler desteklenen her dilde sunulur — bu motif için henüz dilinize uygun bir çeviri bulunmuyor.",
+      "adoptFirst": "Çevirmek için bu motifi kütüphanenize ekleyin.",
+      "translateTo": "Şuraya çevir:",
+      "model": "Çeviri modeli",
+      "translate": "Çevir…",
+      "retranslate": "Yeniden çevir…",
+      "alreadyHave": "Zaten çevrildi",
+      "estimating": "Tahmin ediliyor…",
+      "youPay": "Kendi motifleriniz asla otomatik olarak çevrilmez; bu işlem sizin modeliniz üzerinden, sizin maliyetinizle gerçekleştirilir.",
+      "confirmWhat": "Bu motifi kendi modelinizi kullanarak {{lang}} diline çevirin.",
+      "echoed": "{{count}} alan çevrilmeden geri döndü — modeliniz bu dili tam olarak desteklemiyor olabilir.",
+      "again": "Başka bir dile çevir",
+      "quota": "Harcama limitine ulaşıldı.",
+      "failed": "Çeviri başarısız oldu.",
+      "outcome": {
+        "translated": "{{lang}} diline çevrildi.",
+        "already_original": "Bu motif zaten o dilde yazılmış.",
+        "already_translated": "Zaten çevrilmiş ve güncel — sizden ücret alınmadı.",
+        "authored_kept": "El yazması bir çeviri mevcut ve korunmuş.",
+        "nothing_to_translate": "Bu motifin çevrilecek bir metni yok.",
+        "not_translatable": "Bu motifi çevirme yetkisi size ait değil.",
+        "model_failed": "Modeliniz kullanılabilecek hiçbir veri döndürmedi — hiçbir şey kaydedilmedi.",
+        "failed": "Çeviri başarısız oldu.",
+        "cancelled": "Bu motif çevrilmeden önce iptal edildi — sizden herhangi bir ücret alınmadı."
+      },
+      "skipped": "Seçtiğiniz motiflerden {{count}} tanesi çeviri yetkiniz dahilinde değil ve dahil edilmedi."
+    },
+    "batch": {
+      "open": "Çevir…",
+      "selected": "{{count}} seçildi",
+      "excluded": "{{count}} çevrilecek öğeniz değil (yerleşik öğeler her dilde zaten ücretsizdir; önce halka açık bir tane benimseyin)",
+      "run": "{{count}} öğe çevrilsin…",
+      "overCap": "Çeviri görevi başına en fazla {{cap}} motif — {{over}} öğenin seçimini kaldırın.",
+      "confirmWhat": "Kendi modelinizi kullanarak {{count}} motif {{lang}} diline çevrilsin.",
+      "doneTitle": "{{total}} öğeden {{written}} tanesi {{lang}} diline çevrildi"
     }
   },
   "authoringRun": {
@@ -1093,5 +1135,10 @@
       "back": "← Çalıştırmalar listesine dön"
     }
   },
-  "overrideSlipBlocked": "Engellenen sürüm kabul edildi: bir «ya şöyle olsaydı» sürümü orijinal kanon değerine geri kaydı. Kabul etmeden önce yeniden oluşturun."
+  "canonUncheckedNoRules": "bu sahnedeki karakterler hakkında karşılaştırılacak bir bilgi henüz yok",
+  "canonUncheckedUnverifiedInput": "bu denetimin ihtiyaç duyduğu verilerin bir kısmı yüklenemedi, bu yüzden eksik",
+  "canonUncheckedUnparseable": "denetleyen model kullanılabilir bir yanıt döndürmedi",
+  "canonUncheckedFailed": "denetimin kendisi hata verdi",
+  "canonUncheckedOther": "bu denetim çalıştırılamadı",
+  "canonUncheckedWhich": "denetimlerinden {{count}} tanesi tamamlanmadı"
 }

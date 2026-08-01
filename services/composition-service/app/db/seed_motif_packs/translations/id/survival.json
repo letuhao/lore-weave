@@ -1,0 +1,379 @@
+{
+  "survival.mercy_at_the_door": {
+    "beats": {
+      "answer": {
+        "intent": "keputusan diambil di bawah tekanan waktu",
+        "label": "Pintu terbuka atau tetap tertutup"
+      },
+      "ask": {
+        "intent": "seorang pendatang meminta izin masuk dengan cerita yang tidak bisa dibuktikan kebenarannya",
+        "label": "Seseorang meminta masuk"
+      },
+      "consequence": {
+        "intent": "hasil akhirnya menjadi beban moral bagi si pengambil keputusan",
+        "label": "Konsekuensi ditanggung oleh sang pengambil keputusan"
+      },
+      "weigh": {
+        "intent": "kedua pilihan yang ada terbukti sama-sama masuk akal",
+        "label": "Belas kasih melawan logika"
+      }
+    },
+    "effects": [
+      "ambang batas kelompok dalam menerima orang asing kini ditentukan oleh preseden ini",
+      "si pengambil keputusan memikul konsekuensi spesifik secara pribadi"
+    ],
+    "emotion_target": "kepedihan",
+    "examples": [
+      "Dia masih terus berbicara di balik pintu saat mereka melakukan pemungutan suara, dan setelah itu tidak ada yang bisa sepakat berapa lama suara itu terdengar."
+    ],
+    "name": "Seseorang Meminta Masuk",
+    "preconditions": [
+      "sebuah tempat perlindungan yang aman dan seorang pendatang dengan cerita yang tidak dapat diverifikasi tepat waktu"
+    ],
+    "roles": {
+      "decider": {
+        "constraints": [
+          "harus memilih sebelum mengetahui kebenaran"
+        ],
+        "label": "sang penjawab pintu"
+      },
+      "inside": {
+        "constraints": [
+          "menanggung risiko dalam kondisi apa pun"
+        ],
+        "label": "mereka yang sudah berada di dalam"
+      },
+      "outsider": {
+        "constraints": [
+          "ceritanya tidak dapat diverifikasi tepat waktu"
+        ],
+        "label": "sang peminta"
+      }
+    },
+    "summary": "Seorang pendatang meminta izin masuk dengan sebuah cerita yang mungkin benar atau mungkin bohong, dan kedua pilihan tersebut sama-sama masuk akal: membuka pintu membahayakan semua orang, sementara menutup pintu akan membunuh seseorang yang sedang meminta bantuan. Pilihan harus diambil di bawah tekanan waktu dengan informasi yang tidak lengkap, dan konsekuensinya — apa pun pilihannya — akan ditanggung sepenuhnya oleh orang yang mengambil keputusan tersebut."
+  },
+  "survival.not_enough_for_everyone": {
+    "beats": {
+      "allocate": {
+        "intent": "seseorang memutuskan, dengan prinsip apa pun yang mampu mereka pertahankan",
+        "label": "Alokasi ditetapkan"
+      },
+      "count": {
+        "intent": "kekurangan ditetapkan sebagai fakta aritmatika",
+        "label": "Hitungan menunjukkan kekurangan"
+      },
+      "name": {
+        "intent": "abstraksi berubah menjadi sosok-sosok nyata",
+        "label": "Kekurangan itu memiliki nama"
+      },
+      "remember": {
+        "intent": "keputusan tersebut menjadi kenyataan pahit yang menetap bagi kelompok tersebut",
+        "label": "Mereka yang tersisih akan mengingat"
+      }
+    },
+    "effects": [
+      "hierarki nyata dalam kelompok kini terlihat jelas oleh semua orang di dalamnya",
+      "mereka yang tersisih memiliki dendam yang memiliki nama"
+    ],
+    "emotion_target": "keputusasaan",
+    "examples": [
+      "Hanya ada sembilan dosis untuk sebelas orang, perdebatan berlangsung selama empat menit, dan tak seorang pun pernah membicarakannya lagi."
+    ],
+    "name": "Tak Cukup untuk Semua",
+    "preconditions": [
+      "sumber daya yang dapat dihitung dan jumlah pemohon yang melebihi jumlah unit yang tersedia"
+    ],
+    "roles": {
+      "allocator": {
+        "constraints": [
+          "harus hidup bersama mereka yang tersisih"
+        ],
+        "label": "sang pengambil keputusan"
+      },
+      "excluded": {
+        "constraints": [
+          "hadir secara nyata dan disebutkan namanya"
+        ],
+        "label": "mereka yang tidak mendapatkannya"
+      },
+      "resource": {
+        "constraints": [
+          "dapat dihitung dan jelas-jelas tidak mencukupi"
+        ],
+        "label": "sumber daya yang langka"
+      }
+    },
+    "summary": "Sumber daya yang menyambung nyawa — air, insulin, kursi, amunisi, bahan bakar — dihitung dan ternyata kurang, dan kekurangan itu memiliki nama-nama yang melekat padanya. Alokasi ditentukan oleh orang-orang yang harus terus hidup berdampingan setelahnya, dan apa yang kelompok itu pelajari tentang dirinya sendiri dalam satu jam tersebut akan bertahan jauh lebih lama daripada sumber daya itu sendiri."
+  },
+  "survival.one_of_us_is_compromised": {
+    "beats": {
+      "sign": {
+        "intent": "muncul bukti bahwa salah satu anggota kelompok tidak lagi aman",
+        "label": "Muncul sebuah pertanda"
+      },
+      "suspect": {
+        "intent": "kelompok berfokus pada sosok yang paling masuk akal alih-alih pelaku yang sebenarnya",
+        "label": "Kecurigaan menetapkan target"
+      },
+      "untestable": {
+        "intent": "tidak ada cara yang andal untuk mengidentifikasi siapa pelakunya",
+        "label": "Tes gagal memberikan jawaban"
+      },
+      "wrong": {
+        "intent": "keputusan diambil dan kesalahan tersebut mulai terlihat nyata",
+        "label": "Keputusan yang salah berakibat fatal"
+      }
+    },
+    "effects": [
+      "kelompok telah mengambil tindakan yang tidak dapat ditarik kembali berdasarkan sekadar dugaan",
+      "ancaman yang sebenarnya masih ada di sana dan kini menjadi lebih sulit untuk diungkap"
+    ],
+    "emotion_target": "paranoia",
+    "examples": [
+      "Mereka saling mengawasi tangan satu sama lain selama tiga hari, dan pada akhirnya, pria yang tidak pernah diawasi oleh siapa punlah yang tidak bangun dengan benar."
+    ],
+    "name": "Salah Satu dari Kita Telah Tiada",
+    "preconditions": [
+      "sebuah ancaman yang bersembunyi di dalam kelompok dan mustahil untuk diverifikasi"
+    ],
+    "roles": {
+      "accused": {
+        "constraints": [
+          "terlihat mencurigakan karena alasan yang tidak ada hubungannya dengan kebenaran"
+        ],
+        "label": "tersangka yang paling masuk akal"
+      },
+      "compromised": {
+        "constraints": [
+          "mungkin tidak menyadarinya sendiri"
+        ],
+        "label": "sosok yang sebenarnya telah terkompromi"
+      },
+      "group": {
+        "constraints": [
+          "tidak dapat memverifikasi apa yang perlu mereka ketahui"
+        ],
+        "label": "kelompok yang harus mengambil keputusan"
+      }
+    },
+    "summary": "Seseorang di dalam kelompok telah terinfeksi, berubah, menjadi informan, atau dalam bentuk lain tidak lagi aman, sementara tes yang dapat membuktikannya tidak dapat diandalkan, lambat, atau bahkan tidak ada. Kecurigaan mengambil alih peran yang tidak bisa dijalankan oleh bukti; kelompok tersebut menyerang sosok yang paling masuk akal alih-alih pelaku yang sebenarnya, dan keputusan yang salah berakibat lebih fatal daripada ancaman yang sebenarnya."
+  },
+  "survival.relic_of_before": {
+    "beats": {
+      "reveal": {
+        "intent": "keputusan tersebut mengungkap seberapa besar sisa dunia lama yang masih mereka genggam",
+        "label": "Pilihan itu menunjukkan di mana mereka berada"
+      },
+      "spend": {
+        "intent": "sebuah harga nyata ditetapkan untuk terus membawanya",
+        "label": "Harga untuk mempertahankannya"
+      },
+      "surface": {
+        "intent": "sebuah benda dari dunia yang telah berakhir ditemukan",
+        "label": "Relik muncul"
+      },
+      "worthless": {
+        "intent": "ketidakbergunaan dan maknanya dinyatakan secara gamblang",
+        "label": "Tak bernilai sekaligus tak ternilai"
+      }
+    },
+    "effects": [
+      "sejauh mana kelompok tersebut telah berubah dari jati diri mereka yang dulu kini menjadi nyata",
+      "terjadi perpecahan antara mereka yang rela berkorban demi sebuah makna dan mereka yang tidak"
+    ],
+    "emotion_target": "melankolis",
+    "examples": [
+      "Radio itu tidak akan pernah berfungsi lagi dan beratnya setara dengan jatah air untuk dua hari, namun ia tetap membawanya selama sembilan hari sebelum akhirnya meletakkannya."
+    ],
+    "name": "Sesuatu dari Masa Lalu",
+    "preconditions": [
+      "sebuah kalkulasi kelangsungan hidup yang begitu ketat sehingga sentimen memiliki biaya yang nyata"
+    ],
+    "roles": {
+      "keeper": {
+        "constraints": [
+          "tidak dapat membenarkan kepemilikannya secara logika bertahan hidup"
+        ],
+        "label": "sosok yang ingin mempertahankannya"
+      },
+      "pragmatist": {
+        "constraints": [
+          "benar secara matematis"
+        ],
+        "label": "sosok yang menghitung kerugian"
+      },
+      "relic": {
+        "constraints": [
+          "tidak memiliki nilai praktis"
+        ],
+        "label": "benda dari masa lalu"
+      }
+    },
+    "summary": "Sebuah benda dari dunia yang telah berakhir muncul kembali — sebuah foto, radio yang masih menyala, stoples berisi sesuatu yang manis, atau sepatu anak kecil — dan benda itu tidak bernilai dalam segala perhitungan kelangsungan hidup, namun tak ternilai dalam segala hal lainnya. Apa yang rela dikorbankan orang demi mempertahankannya menunjukkan kondisi dunia mereka yang sebenarnya, lebih dari sekadar daftar inventaris mana pun."
+  },
+  "survival.rules_of_the_new_world": {
+    "beats": {
+      "break": {
+        "intent": "dunia yang akrab secara nyata berhenti berperilaku sebagaimana mestinya",
+        "label": "Hal yang biasa tak lagi berfungsi"
+      },
+      "infer": {
+        "intent": "sebuah aturan sementara dinyatakan secara lisan berdasarkan satu kejadian tunggal",
+        "label": "Aturan disimpulkan"
+      },
+      "lesson": {
+        "intent": "sebuah kematian menunjukkan adanya batasan yang tidak diketahui keberadaannya oleh siapa pun",
+        "label": "Pelajaran pertama menelan korban"
+      },
+      "obey": {
+        "intent": "kelompok tersebut bertahan hidup dengan sebuah aturan yang belum bisa mereka jelaskan",
+        "label": "Bertahan hidup dengan mematuhinya"
+      }
+    },
+    "effects": [
+      "kelompok tersebut memegang sebuah aturan praktis yang belum sepenuhnya dipahami",
+      "biaya untuk mempelajari setiap aturan baru kini diketahui adalah nyawa"
+    ],
+    "emotion_target": "ketakutan yang mencekam",
+    "examples": [
+      "Tak ada yang tahu mengapa mereka yang berlari ditangkap sementara mereka yang diam tidak, namun pada hari kedua, tak ada lagi yang berani berlari."
+    ],
+    "name": "Mempelajari Aturan dengan Cara yang Menyakitkan",
+    "preconditions": [
+      "sebuah dunia yang aturan mainnya telah berubah tanpa peringatan"
+    ],
+    "roles": {
+      "lost": {
+        "constraints": [
+          "tewas saat melakukan hal yang biasa dilakukan"
+        ],
+        "label": "sosok yang kematiannya menjadi pelajaran"
+      },
+      "rule": {
+        "constraints": [
+          "bersifat sementara dan belum terjelaskan"
+        ],
+        "label": "aturan yang disimpulkan"
+      },
+      "survivor": {
+        "constraints": [
+          "hanya memiliki satu petunjuk untuk dijadikan acuan"
+        ],
+        "label": "sosok yang menyimpulkan aturan"
+      },
+      "world": {
+        "constraints": [
+          "tidak memberikan peringatan maupun kesempatan kedua"
+        ],
+        "label": "dunia yang telah berubah"
+      }
+    },
+    "summary": "Dunia yang biasa tidak lagi berjalan sesuai aturan lamanya — mayat bangkit kembali, langit berubah warna, jaringan komunikasi mati, atau air laut tak kunjung surut — dan pelajaran pertama harus dibayar dengan nyawa seseorang. Dari kematian tersebut, sebuah aturan disimpulkan dan dinyatakan dengan lantang, dan kelompok tersebut dapat bertahan hingga bab berikutnya hanya sejauh mereka mematuhi aturan yang belum bisa mereka jelaskan."
+  },
+  "survival.shelter_has_a_price": {
+    "beats": {
+      "decide": {
+        "intent": "keamanan yang pasti ditimbang dengan harga yang tak sanggup mereka bayar",
+        "label": "Bayar atau pergi"
+      },
+      "find": {
+        "intent": "sebuah tempat yang benar-benar aman telah tercapai dan rasa lega yang dirasakan pun nyata",
+        "label": "Tempat perlindungan ditemukan"
+      },
+      "terms": {
+        "intent": "harga untuk tetap tinggal menjadi jelas",
+        "label": "Syarat mulai muncul"
+      },
+      "trust": {
+        "intent": "kelompok tersebut berkomitmen untuk menetap dan merelakan sesuatu demi melakukannya",
+        "label": "Kepercayaan diberikan"
+      }
+    },
+    "effects": [
+      "kelompok tersebut telah tunduk pada syarat yang ada atau kembali terpapar bahaya",
+      "apa yang bersedia diterima oleh setiap anggota kini diketahui oleh anggota lainnya"
+    ],
+    "emotion_target": "kegelisahan",
+    "examples": [
+      "Gerbang tertutup di belakang mereka, makanan terasa hangat dan nyata, lalu di pagi hari seseorang menjelaskan tentang jadwal kerja, dan tentang sebuah aturan."
+    ],
+    "name": "Tempat Perlindungan Berbayar",
+    "preconditions": [
+      "sekelompok orang yang tidak memiliki pilihan lain selain tempat perlindungan tersebut"
+    ],
+    "roles": {
+      "arrivals": {
+        "constraints": [
+          "tidak memiliki tempat tujuan lain"
+        ],
+        "label": "mereka yang tiba"
+      },
+      "holders": {
+        "constraints": [
+          "bukan penjahat, melainkan pihak yang sudah mapan"
+        ],
+        "label": "pemilik tempat"
+      },
+      "shelter": {
+        "constraints": [
+          "benar-benar aman"
+        ],
+        "label": "tempat perlindungan"
+      }
+    },
+    "summary": "Sebuah tempat bernaung ditemukan yang benar-benar aman — dinding yang kokoh, makanan, kehangatan, dan kunci yang berfungsi — dan rasa lega yang dirasakan pun nyata. Namun kemudian muncul syarat-syaratnya: sebuah kerja paksa, kepatuhan mutlak, seseorang yang harus diserahkan, atau aturan tentang siapa yang boleh pergi. Kelompok tersebut harus menimbang antara keamanan yang pasti dengan harga yang tidak sanggup mereka bayar selamanya."
+  },
+  "survival.someone_has_to_decide": {
+    "beats": {
+      "grant": {
+        "intent": "kepemimpinan diterima secara terpaksa oleh orang-orang yang nantinya akan menyesali keputusan tersebut",
+        "label": "Otoritas diberikan, dendam disimpan"
+      },
+      "hold": {
+        "intent": "pilihan tersebut berjalan cukup baik sehingga tidak ada yang membatalkannya",
+        "label": "Keputusan itu bertahan"
+      },
+      "speak": {
+        "intent": "seseorang tanpa kedudukan menyatakan apa yang akan dilakukan",
+        "label": "Seseorang mengucapkannya dengan lantang"
+      },
+      "vacuum": {
+        "intent": "sebuah keputusan diperlukan namun tidak ada otoritas yang berwenang untuk membuatnya",
+        "label": "Tak ada yang memegang kendali"
+      }
+    },
+    "effects": [
+      "kini muncul seorang pemimpin yang legitimasi kekuasaannya hanya bersandar pada satu peristiwa singkat",
+      "mereka yang memilih untuk mengalah kini memiliki alasan untuk menyimpan dendam di kemudian hari"
+    ],
+    "emotion_target": "ketegangan",
+    "examples": [
+      "Ia berkata «kita ke utara» dan mulai melangkah, lalu sebelas orang mengikutinya, dan begitulah seluruh prosesnya terjadi."
+    ],
+    "name": "Otoritas yang Lahir dalam Sekejap",
+    "preconditions": [
+      "sekelompok orang tanpa otoritas yang jelas sedang menghadapi keputusan yang tidak bisa ditunda"
+    ],
+    "roles": {
+      "decision": {
+        "constraints": [
+          "harus dibuat sebelum sempat didiskusikan"
+        ],
+        "label": "keputusan yang tak bisa menunggu"
+      },
+      "group": {
+        "constraints": [
+          "memberikan otoritas dengan cara tidak keberatan"
+        ],
+        "label": "mereka yang membiarkannya terjadi"
+      },
+      "leader": {
+        "constraints": [
+          "tidak memiliki wewenang untuk memutuskan"
+        ],
+        "label": "siapa pun yang bicara lebih dulu"
+      }
+    },
+    "summary": "Tak ada yang memegang kendali dan sebuah keputusan tidak bisa ditunda, maka seseorang mengambil tindakan — bukan yang terkuat atau yang paling senior, melainkan siapa pun yang cukup berani untuk mengucapkannya dengan lantang saat yang lain masih saling pandang. Keputusan itu ternyata cukup berhasil, dan otoritas pun diberikan secara retrospektif oleh orang-orang yang nantinya akan menyimpan dendam atas hal tersebut."
+  }
+}

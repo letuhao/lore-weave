@@ -289,10 +289,21 @@ ALWAYS_ON_CORE_NAMES: tuple[str, ...] = (
     # discoverable — so the model is never steered into the top-K trap.)
     TOOL_LIST_NAME,
     TOOL_LOAD_NAME,
-    "ui_navigate",
-    "ui_open_book",
-    "ui_show_panel",
-    "ui_watch_job",
+    # ui_navigate / ui_open_book / ui_show_panel / ui_watch_job REMOVED (2026-07-27).
+    #
+    # The agent GUI-control surface was deprecated in d389a3022 ("GUI control is user- and
+    # logic-driven; agent-driven nav only cost tokens"). That commit removed their SCHEMAS
+    # (`generic_frontend_tool_def` returns None for all four) and the ai-gateway handlers —
+    # but left the names here, which was not harmless:
+    #
+    #   `TestSkillClaimsLint` EXEMPTS anything in ALWAYS_ON_CORE_NAMES from its reachability
+    #   check, on the reasoning that an always-on tool can never be an unreachable claim. Once
+    #   these stopped being always-on, that exemption became a hole — and four skills went on
+    #   instructing the agent to call `ui_watch_job` / `ui_navigate`, tools that no longer
+    #   reach the wire, with the lint waving them through.
+    #
+    # A deprecated tool must disappear from EVERY list that describes the live surface, not
+    # just the one that emits schemas.
     # propose_record_edit REMOVED (auto-gate M5) — the generic record diff card is retired;
     # each domain edits via its own natural direct-write tool (audit-confirmed vestigial).
     "confirm_action",
@@ -441,16 +452,36 @@ SETUP_INTENT_SKILL = "glossary_shaping"
 
 
 def filter_intent_gated_setup_tools(
-    catalog: list[dict], injected_skill_codes: list[str] | set[str],
+    catalog: list[dict],
+    injected_skill_codes: list[str] | set[str],
+    rail_step_tools: "set[str] | frozenset[str] | None" = None,
 ) -> list[dict]:
     """Drop the high-impact world-setup tools from a turn catalog UNLESS the turn is
     world-setup intent (`glossary_shaping` injected). Applied at catalog assembly so the
     tool is simultaneously un-seeded, un-findable (find_tools), AND un-loadable (tool_load)
     — closing the tool_load leak that per-search-function filters missed. Returns the catalog
-    unchanged on a setup turn; returns a filtered copy otherwise. N5a-FULL."""
+    unchanged on a setup turn; returns a filtered copy otherwise. N5a-FULL.
+
+    ``rail_step_tools`` — the step tools of a workflow rail PINNED for this turn. They are
+    exempt, and the exemption is load-bearing rather than a loosening:
+
+    A pinned rail is an authored, ordered recipe rendered into the prompt BY TOOL NAME. When
+    this filter removed a tool the rail names, the two halves of the same intent signal came
+    apart — the guidance said "call ``glossary_adopt_standards``" while the capability floor
+    had made that name unseedable, unfindable AND unloadable. The model then did the only
+    thing left: it reasoned correctly, reached for the right tool, could not have it, and
+    retried forever (measured on the Mị Đế dogfood — 40,597 characters of one repeated
+    paragraph before the author hit Stop). The comment above this gate already states the
+    principle it needs — *"guidance and capability move as ONE signal"* — a pinned rail IS
+    that signal, so honour it here too rather than only via ``glossary_shaping``.
+
+    Scope stays tight: only the steps of a rail actually pinned this turn are exempt, so an
+    unrelated "write chapter 1" turn still cannot reach these tools — which is the over-reach
+    N5a-FULL exists to stop."""
     if SETUP_INTENT_SKILL in injected_skill_codes:
         return catalog
-    return [td for td in catalog if tool_name(td) not in INTENT_GATED_SETUP_TOOLS]
+    _exempt = INTENT_GATED_SETUP_TOOLS - set(rail_step_tools or ())
+    return [td for td in catalog if tool_name(td) not in _exempt]
 
 
 def hot_tool_names(catalog: list[dict], domains: set[str]) -> set[str]:

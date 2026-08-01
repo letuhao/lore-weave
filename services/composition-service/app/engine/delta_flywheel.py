@@ -112,6 +112,44 @@ class FlywheelDecision:
     reason: str
 
 
+@dataclass(frozen=True)
+class CanonDecision:
+    """Whether an approved chapter of a NON-derivative Work should extract into its own graph."""
+
+    dispatch: bool
+    project_id: UUID | None
+    reason: str
+
+
+def plan_canon_dispatch(
+    *, project_id: UUID | None, source_project_id: UUID | None,
+) -> CanonDecision:
+    """The GREENFIELD half — a canon Work's approved chapter extracts into its OWN project.
+
+    Deliberately NOT a loosening of `plan_flywheel_dispatch`. That function's invariants are
+    LOCKED and they exist to stop a DERIVATIVE writing into the SOURCE graph; a canon book
+    writing into its own project is not that leak, it is the intended behaviour, and blurring
+    one decision to cover both would put a delta rule in charge of a canon question.
+
+    WHY THIS EXISTS AT ALL. `plan_flywheel_dispatch`'s own docstring says a greenfield Work
+    "uses the event-driven path". MEASURED 2026-08-01: there is no such path. `extract-item` has
+    exactly one caller in the repo — the derivative branch of `approve_chapter` — so a book
+    written from scratch is NEVER extracted, its knowledge graph stays empty, and the canon
+    guard checks every scene against nothing. On the dogfood book: 15 chapters, 4 published,
+    a knowledge project that exists and shares the composition project's id, and **0**
+    `:EntityStatus` nodes. The guard, the judge and the publish gate were all built over a
+    store that nothing fills.
+
+    A null `project_id` is refused for the same reason the delta guard refuses one: a null
+    scope widens a knowledge write to ALL of a user's projects (the C23 leak).
+    """
+    if source_project_id is not None:
+        return CanonDecision(dispatch=False, project_id=project_id, reason="is_a_derivative")
+    if project_id is None:
+        return CanonDecision(dispatch=False, project_id=None, reason="unscoped_project")
+    return CanonDecision(dispatch=True, project_id=project_id, reason="canon_dispatch")
+
+
 def plan_flywheel_dispatch(
     *,
     delta_project_id: UUID | None,
@@ -135,15 +173,22 @@ def plan_flywheel_dispatch(
     Returns a FlywheelDecision; raises DeltaScopeError only at step 3 (a derivative
     that should dispatch but has a null delta project — a real defect, never a
     silent wrong-partition write)."""
+    # A DECLINED decision carries NO target. It used to echo `delta_project_id` back on every
+    # branch, which reads harmless and is not: a caller that reaches for the target of a decision
+    # that chose not to dispatch gets a real, writable project id instead of None, so a
+    # wrong-partition write is indistinguishable from a right one — including to a test. That is
+    # the C23 leak shape this module exists to prevent, sitting inside the module itself.
+    # (Found 2026-08-01 when injecting `target_project = decision.delta_project_id` into the
+    # canon path left the router's whole test file GREEN.)
     if source_project_id is None:
         return FlywheelDecision(
-            dispatch=False, delta_project_id=delta_project_id,
+            dispatch=False, delta_project_id=None,
             source_project_id=None, branch_point=branch_point,
             reason="not_a_derivative",
         )
     if not is_forward_of_branch(chapter_sort_order, branch_point):
         return FlywheelDecision(
-            dispatch=False, delta_project_id=delta_project_id,
+            dispatch=False, delta_project_id=None,
             source_project_id=source_project_id, branch_point=branch_point,
             reason="pre_branch_thinner_delta",
         )

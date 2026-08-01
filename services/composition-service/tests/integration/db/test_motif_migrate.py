@@ -13,7 +13,8 @@ Covered:
   - 4.3  get_visible IDOR (system | public | owner returned; a foreign-private NOT).
   - 4.4  motif_link cycle + same-tier guard (H-2).
   - 4.5  motif_application book-scope + outline_node∈project guard (H-5).
-  - 4.6  language is part of the dedup key (N-1: same code en+vi = 2 rows).
+  - 4.6  language is NOT part of the dedup key — MOTIF-I18N, one motif = one row
+         (same code en+vi under one owner = a unique violation, not 2 rows).
   - 4.7  one platform embedding model (single embedding_model column).
   - 4.8  B-3 publish-strip trigger (examples stripped + opaque lineage on publish).
 """
@@ -80,7 +81,7 @@ async def _seed_motif(
 
     return await c.fetchval(
         """
-        INSERT INTO motif (owner_user_id, code, language, visibility, source, name,
+        INSERT INTO motif (owner_user_id, code, original_language, visibility, source, name,
                            examples, source_ref)
         VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
         RETURNING id
@@ -111,22 +112,26 @@ async def test_motif_user_owned_check_and_partials(pool):
         # an ownerless NON-private (system/published) row IS allowed.
         await _seed_motif(c, owner=None, visibility="unlisted", code="sys_ok")
 
-        # uq_motif_user: same (owner, code, language) twice → unique violation.
+        # uq_motif_user: same (owner, code) twice → unique violation.
         await _seed_motif(c, owner=u1, code="dup", language="en")
         with pytest.raises(asyncpg.UniqueViolationError):
             await _seed_motif(c, owner=u1, code="dup", language="en")
-        # N-1: same code, DIFFERENT language → both insert (language in the key).
-        await _seed_motif(c, owner=u1, code="dup", language="vi")
+        # MOTIF-I18N — language is NO LONGER in the key, so a different authored language
+        # is the SAME motif, not a second one. (This block asserted the opposite until
+        # 2026-08-01; that behaviour is what the i18n migration deliberately removed, because
+        # it made one motif in two languages two unrelated rows with separate embeddings.)
+        with pytest.raises(asyncpg.UniqueViolationError):
+            await _seed_motif(c, owner=u1, code="dup", language="vi")
         # same code, DIFFERENT owner → both insert (per-user tier).
         await _seed_motif(c, owner=u2, code="dup", language="en")
 
-        # uq_motif_system: two system rows same (code, language) → unique violation.
+        # uq_motif_system: two system rows same code → unique violation.
         await _seed_motif(c, owner=None, code="syscode", visibility="public")
         with pytest.raises(asyncpg.UniqueViolationError):
             await _seed_motif(c, owner=None, code="syscode", visibility="public")
 
         n = await c.fetchval("SELECT count(*) FROM motif WHERE code = 'dup'")
-        assert n == 3  # (u1,en) (u1,vi) (u2,en)
+        assert n == 2  # (u1) (u2) — one row per owner, whatever the language
 
 
 async def test_get_visible_idor_predicate(pool):
@@ -229,7 +234,7 @@ async def _seed_arc(
 ):
     return await c.fetchval(
         """
-        INSERT INTO arc_template (owner_user_id, code, language, visibility, name,
+        INSERT INTO arc_template (owner_user_id, code, original_language, visibility, name,
                                   source, imported_derived, source_ref)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id
         """,

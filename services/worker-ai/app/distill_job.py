@@ -39,7 +39,13 @@ logger = logging.getLogger(__name__)
 # a reasoning model; the proper fix is Q8 dedicated-distill-model resolution to a NON-reasoning
 # model. A non-reasoning model (Qwen2.5) works — see the enum-repair in `_extract_json_object` for
 # the OTHER local-model quirk this smoke found (unquoted enum values).
-DISTILL_MAX_TOKENS = 4096
+# S7 — RE-EXPORTED, not restated. This number is spent here and RESERVED in
+# `distiller.resolve_distill_window`, which sizes the input chunk as
+# `ctx - PROMPT_OVERHEAD_TOKENS - OUTPUT_RESERVE_TOKENS`. They were two independent literals
+# for one decision and they disagreed by 2x (reserve 2048, cap 4096), so on a small-context
+# BYOK model chunk + prompt + output could exceed the window — the exact overflow
+# `resolve_distill_window` exists to prevent, on exactly the models it was written for.
+from app.distiller import OUTPUT_RESERVE_TOKENS as DISTILL_MAX_TOKENS  # noqa: F401,E402
 
 
 class _LLMSubmitter(Protocol):

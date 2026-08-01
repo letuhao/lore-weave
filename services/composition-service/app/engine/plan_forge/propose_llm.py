@@ -23,6 +23,7 @@ from app.engine.plan_forge.prompts import (
     materialize_user_prompt,
     repair_user_prompt,
 )
+from app.llm_budget import max_tokens_for
 
 
 def _checksum(text: str) -> str:
@@ -56,7 +57,17 @@ def _pad_traits_from_analyze(spec: dict[str, Any], analyze: dict[str, Any] | Non
     layers = spec.setdefault("layers", {})
     chars = layers.setdefault("characters", [])
     if not chars:
-        chars.append({"id": "char_main", "name": "Nữ chính", "role": "protagonist", "traits": []})
+        # A document with no cast in it gets NO cast out of it. This used to append a fabricated
+        # protagonist named `Nữ chính` and dress it in the analyze step's consistency anchors —
+        # inventing a character, deterministically, precisely when the model had correctly reported
+        # finding none. Measured 2026-07-29: an English premise and a paste of an LLM's own internal
+        # monologue both came back holding a Vietnamese-named protagonist neither document contains,
+        # and I first misread that as the MODEL hallucinating. It was this line.
+        #
+        # "absent ≠ invented" is the severing principle the prompts already state; the deterministic
+        # path has to obey it too, and it is the more dangerous place to break it because there is no
+        # model in the loop to decline.
+        return
     char = chars[0]
     traits = list(char.get("traits") or [])
     anchors = list(analyze.get("consistency_anchors") or [])
@@ -109,7 +120,7 @@ def _parse_with_repair(client: LMStudioClient, step: str, system: str, user: str
             step=repair_step,
             system="Output only valid JSON. No markdown.",
             user=repair_user_prompt(str(e), content),
-            max_tokens=12000,
+            max_tokens=max_tokens_for("plan_forge_chat"),
         )
         return extract_json_object(repair_content)
 

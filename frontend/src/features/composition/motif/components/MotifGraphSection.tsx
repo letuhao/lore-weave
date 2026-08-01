@@ -87,7 +87,7 @@ export function MotifGraphSection(
                   {rows.map((l: MotifLinkRow) => (
                     <li key={l.id} data-testid="motif-graph-edge" className="flex items-center gap-1.5 rounded bg-neutral-50 px-1.5 py-0.5 text-[11px] dark:bg-neutral-800/50">
                       <span className="text-neutral-400" title={l.direction === 'out' ? 'this → neighbor' : 'neighbor → this'}>{l.direction === 'out' ? '→' : '←'}</span>
-                      <span className="min-w-0 flex-1 truncate"><span className="font-medium">{l.neighbor_name}</span> <span className="text-neutral-400">{l.neighbor_code}</span></span>
+                      <span className="min-w-0 flex-1 truncate"><span className="font-medium">{l.neighbor.name}</span> <span className="text-neutral-400">{l.neighbor.code}</span></span>
                       {!readOnly && (
                         <button
                           type="button"

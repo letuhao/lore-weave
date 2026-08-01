@@ -183,6 +183,23 @@ def fingerprint(hit: tuple[str, int, str]) -> str:
 # ── BASELINE — today's known offenders (PERF-3 debt, tracked not fixed here).
 # Regenerate with `--regen`. Each entry is `rel::snippet`. Keep sorted.
 BASELINE: frozenset[str] = frozenset({
+    # ── Verified 2026-07-31 (D-QC-GATES-BUILT-BUT-NOT-WIRED). This lint had never run
+    # in CI; when it was first executed it reported these five, and all five are LINT
+    # PRECISION false positives, checked one at a time rather than baselined on sight:
+    #   · dek_shred_sweeper / reparse_sweeper — `batchSize` is a parameter of a background
+    #     sweeper (`RunDekShredSweeper(ctx, interval, batchSize)`), set by the server. No
+    #     client can influence it.
+    #   · mcp_worlds — clamped 3 lines above the query: `if limit <= 0 || limit > 100 { limit = 20 }`.
+    #   · entities_by_ids_handler — `if limit > 500 { limit = 500 }`.
+    #   · entity_handler — same clamp; the `limit+1` is the documented peek-ahead row.
+    # The regex sees `LIMIT $N` with a variable and cannot see a clamp 3-40 lines earlier.
+    # Baselined WITH the verification rather than left red, so a genuinely unclamped route
+    # still fails. Clearing these properly means teaching the lint to find the clamp.
+    "services/book-service/internal/api/dek_shred_sweeper.go::ORDER BY last_attempt_at ASC NULLS FIRST, requested_at ASC LIMIT $1`, batchSize)",
+    "services/book-service/internal/api/mcp_worlds.go::LIMIT $2 OFFSET $3`, ownerID, limit, offset)",
+    "services/book-service/internal/api/reparse_sweeper.go::LIMIT $1`, batchSize)",
+    "services/glossary-service/internal/api/entities_by_ids_handler.go::LIMIT $2 OFFSET $3`, bookID, limit+1, offset)",
+    "services/glossary-service/internal/api/entity_handler.go::LIMIT $3`, bookID, afterArg, limit+1)",
     # Go handler-layer list queries carrying today's PERF-3 debt. Many use a
     # server-set cap (batchSize/pipelineReadCap/*ListCap) and are safe; a few
     # (sharing listPublicInternal, statistics, usage-billing) are genuinely

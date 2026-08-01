@@ -1,0 +1,461 @@
+{
+  "revenge.betrayal_to_exile": {
+    "beats": {
+      "betrayal": {
+        "intent": "l'allié le plus proche se retourne au pire moment",
+        "label": "La trahison éclate"
+      },
+      "fall": {
+        "intent": "le protagoniste est dépouillé de tout",
+        "label": "Chute et dénuement"
+      },
+      "trust": {
+        "intent": "un lien intime est instauré pour être brisé",
+        "label": "L'alliance est scellée"
+      },
+      "vow": {
+        "intent": "chassé et déchu, le survivant jure de revenir",
+        "label": "L'exil et le serment"
+      }
+    },
+    "effects": [
+      "le protagoniste perd son rang et est banni",
+      "un serment de vengeance devient le moteur de l'intrigue"
+    ],
+    "emotion_target": "le chagrin",
+    "examples": [
+      "À la veille du triomphe, l'allié le plus proche se retourne contre lui ; dépouillé de tout et jeté au loin, le survivant jure de revenir."
+    ],
+    "name": "De la trahison à l'exil",
+    "preconditions": [
+      "le protagoniste jouit de la confiance, d'un statut ou du pouvoir"
+    ],
+    "roles": {
+      "betrayer": {
+        "constraints": [
+          "intime, digne de confiance"
+        ],
+        "label": "le frère d'armes / le traître"
+      },
+      "lost_kin": {
+        "constraints": [
+          "emportés lors de la chute"
+        ],
+        "label": "les proches ou alliés perdus"
+      },
+      "protagonist": {
+        "constraints": [
+          "crédule, en pleine ascension"
+        ],
+        "label": "le survivant trahi"
+      },
+      "vengeance": {
+        "constraints": [
+          "solennel, moteur de l'action"
+        ],
+        "label": "le vœu de vengeance"
+      }
+    },
+    "summary": "À la veille du triomphe, l'allié le plus proche se retourne contre son compagnon ; dépouillé de tout et banni, le survivant jure de revenir."
+  },
+  "revenge.blood_debt_collection": {
+    "beats": {
+      "confront": {
+        "intent": "présenter une preuve irréfutable",
+        "label": "Confronter par la preuve"
+      },
+      "exact": {
+        "intent": "les forcer à en répondre",
+        "label": "Exiger le prix"
+      },
+      "locate": {
+        "intent": "trouver l'un de ceux qui ont participé au crime",
+        "label": "Localiser les coupables"
+      },
+      "respond": {
+        "intent": "le coupable supplie ou se montre défiant",
+        "label": "Plaidoyer ou défi du coupable"
+      }
+    },
+    "effects": [
+      "l'un des coupables est tenu pour responsable",
+      "la chaîne de l'expiation progresse vers l'instigateur principal"
+    ],
+    "emotion_target": "résolution-sombre",
+    "examples": [
+      "L'avengeur traque l'un après l'autre ceux qui ont partagé le crime et les force chacun à en répondre."
+    ],
+    "name": "Le recouvrement de la dette de sang",
+    "preconditions": [
+      "plusieurs complices partagent la culpabilité d'un tort passé, et les propres secrets de l'ennemi ont révélé la part de chacun dans le crime"
+    ],
+    "roles": {
+      "perpetrator": {
+        "constraints": [
+          "l'un des complices"
+        ],
+        "label": "le coupable"
+      },
+      "protagonist": {
+        "constraints": [
+          "déterminé, méthodique"
+        ],
+        "label": "l'avengeur"
+      },
+      "wronged_dead": {
+        "constraints": [
+          "la cause pour laquelle le compte doit être réglé"
+        ],
+        "label": "la victime déchue"
+      }
+    },
+    "summary": "L'avengeur traque l'un après l'autre ceux qui ont partagé le crime, les confronte avec des preuves et les force à en assumer les conséquences."
+  },
+  "revenge.false_accusation": {
+    "beats": {
+      "condemned": {
+        "intent": "le protagoniste est couvert de honte devant tous",
+        "label": "La Condamnation publique"
+      },
+      "evidence_hidden": {
+        "intent": "la vérité est étouffée ; le point mort",
+        "label": "L'indice dissimulé"
+      },
+      "framed": {
+        "intent": "des preuves plantées désignent le protagoniste comme coupable",
+        "label": "Le Piège"
+      },
+      "unmasked": {
+        "intent": "le véritable coupable est trahi à la lumière",
+        "label": "Vérité mise à nu"
+      }
+    },
+    "effects": [
+      "le nom du protagoniste est réhabilité",
+      "le véritable coupable est démasqué"
+    ],
+    "emotion_target": "indignation",
+    "examples": [
+      "Accusé de trahison sur la base de preuves fabriquées, l'inculpé endure l'opprobre public jusqu'à ce que la main véritable soit trahie à la lumière."
+    ],
+    "name": "L'Accusation Calomnieuse",
+    "preconditions": [
+      "le protagoniste peut être raisonnablement accusé d'un crime"
+    ],
+    "roles": {
+      "clue": {
+        "constraints": [
+          "étouffé dans un premier temps"
+        ],
+        "label": "le témoin ou l'indice occulté"
+      },
+      "framer": {
+        "constraints": [
+          "discret et méthodique"
+        ],
+        "label": "le calomniateur"
+      },
+      "judges": {
+        "constraints": [
+          "influencée par les apparences"
+        ],
+        "label": "l'instance de jugement"
+      },
+      "protagonist": {
+        "constraints": [
+          "condamné publiquement"
+        ],
+        "label": "l'injustement accusé"
+      }
+    },
+    "summary": "Marqué du sceau de la trahison par des preuves fabriquées, l'accusé endure l'opprobre public jusqu'à ce que la main coupable soit enfin démasquée."
+  },
+  "revenge.mercy_or_vengeance": {
+    "beats": {
+      "at_mercy": {
+        "intent": "le meurtrier gît, sans défense",
+        "label": "L'ennemi à la merci"
+      },
+      "choice": {
+        "intent": "l'avengeur doit trancher",
+        "label": "Le choix imposé"
+      },
+      "consequence": {
+        "intent": "le choix redéfinit l'identité du protagoniste",
+        "label": "Le poids des conséquences"
+      },
+      "reason": {
+        "intent": "une raison de ne pas frapper apparaît",
+        "label": "Une raison d'épargner surgit"
+      }
+    },
+    "effects": [
+      "le protagoniste est transformé par sa décision",
+      "le cycle de la vengeance est brisé ou perpétué"
+    ],
+    "emotion_target": "tension-morale",
+    "examples": [
+      "Face à un meurtrier impuissant, une raison d'épargner surgit ; le choix de l'avenger redéfinit l'être qu'il devient."
+    ],
+    "name": "Miséricorde ou Vengeance",
+    "preconditions": [
+      "le protagoniste tient son ennemi à sa merci"
+    ],
+    "roles": {
+      "broken_enemy": {
+        "constraints": [
+          "à la merci du protagoniste"
+        ],
+        "label": "l'ennemi impuissant"
+      },
+      "moral_voice": {
+        "constraints": [
+          "un proche, la conscience ou un témoin"
+        ],
+        "label": "la voix de la clémence"
+      },
+      "protagonist": {
+        "constraints": [
+          "détient le pouvoir de mettre fin aux choses"
+        ],
+        "label": "l'avengeur au bord du gouffre"
+      }
+    },
+    "summary": "Le meurtrier est désormais impuissant et une raison d'épargner surgit ; le choix de l'avengeur redéfinit son identité."
+  },
+  "revenge.patient_infiltration": {
+    "beats": {
+      "earn_trust": {
+        "intent": "gravir les échelons de l'ennemi",
+        "label": "Gagner la confiance"
+      },
+      "enter": {
+        "intent": "s'infiltrer sous couverture chez l'ennemi",
+        "label": "Entrée sous une fausse identité"
+      },
+      "gather": {
+        "intent": "collecter discrètement secrets et preuves",
+        "label": "Accumuler des moyens de pression"
+      },
+      "strike": {
+        "intent": "retourner les secrets de l'ennemi contre lui-même",
+        "label": "Frapper de l'intérieur"
+      }
+    },
+    "effects": [
+      "l'ennemi est anéanti par ses propres secrets",
+      "la véritable identité du vengeur est révélée lors de l'assaut"
+    ],
+    "emotion_target": "tension",
+    "examples": [
+      "Sous une identité d'emprunt, le vengeur gravit les échelons de l'ennemi pour ensuite retourner ses propres secrets contre lui."
+    ],
+    "name": "Infiltration patiente",
+    "preconditions": [
+      "le protagoniste peut s'infiltrer sans être reconnu dans le cercle de l'ennemi"
+    ],
+    "roles": {
+      "contact": {
+        "constraints": [
+          "un allié discret au sein du groupe"
+        ],
+        "label": "le contact interne"
+      },
+      "leverage": {
+        "constraints": [
+          "secrets, preuves"
+        ],
+        "label": "les moyens de pression accumulés"
+      },
+      "protagonist": {
+        "constraints": [
+          "doit dissimuler son identité"
+        ],
+        "label": "le vengeur déguisé"
+      },
+      "target_house": {
+        "constraints": [
+          "puissante et protégée"
+        ],
+        "label": "la maison ennemie"
+      }
+    },
+    "summary": "Sous une identité d'emprunt, le vengeur s'infiltre dans les rangs de l'ennemi, accumule des moyens de pression, puis retourne leurs propres secrets contre eux de l'intérieur."
+  },
+  "revenge.pyrrhic_victory": {
+    "beats": {
+      "aftermath": {
+        "intent": "le vengeur prend conscience du vide laissé derrière lui",
+        "label": "Épilogue de vide"
+      },
+      "confront": {
+        "intent": "l'heure des comptes a sonné",
+        "label": "Confrontation finale"
+      },
+      "cost": {
+        "intent": "le prix de la traque surgit au grand jour",
+        "label": "Révélation du coût caché"
+      },
+      "victory": {
+        "intent": "l'ennemi succombe",
+        "label": "Victoire accomplie"
+      }
+    },
+    "effects": [
+      "l'ennemi juré est vaincu",
+      "le vengeur est confronté au prix de sa propre vengeance"
+    ],
+    "emotion_target": "mélancolie",
+    "examples": [
+      "L'ennemi tombe enfin — et dans le silence qui suit, le vengeur réalise ce que des années de haine lui ont coûté."
+    ],
+    "name": "Victoire à la Pyrrhus",
+    "preconditions": [
+      "le protagoniste touche au but après une longue quête de vengeance"
+    ],
+    "roles": {
+      "arch_enemy": {
+        "constraints": [
+          "la cible ultime"
+        ],
+        "label": "l'ennemi juré"
+      },
+      "protagonist": {
+        "constraints": [
+          "consumé par une quête de longue haleine"
+        ],
+        "label": "le vengeur"
+      },
+      "revenge_attained": {
+        "constraints": [
+          "dépouillée de tout sens une fois acquise"
+        ],
+        "label": "la vengeance obtenue"
+      }
+    },
+    "summary": "L'ennemi tombe enfin, et dans le silence qui s'ensuit, le vengeur réalise le prix que les années de haine ont coûté."
+  },
+  "revenge.three_year_pact": {
+    "beats": {
+      "ascent": {
+        "intent": "croissance laborieuse et dans l'ombre",
+        "label": "Ascension amère"
+      },
+      "breakthrough": {
+        "intent": "le protagoniste franchit le seuil de la puissance",
+        "label": "L'ascension"
+      },
+      "encounter": {
+        "intent": "un coup du sort ouvre une voie vers la puissance",
+        "label": "Rencontre fortuite"
+      },
+      "humiliation": {
+        "intent": "l'exilé est brisé et se voit imposer un délai",
+        "label": "L'humiliation"
+      },
+      "return": {
+        "intent": "retour pour renverser celui qui l'a brisé",
+        "label": "Retour et renversement"
+      }
+    },
+    "effects": [
+      "le protagoniste revient transformé et puissant",
+      "celui qui l'a brisé est renversé"
+    ],
+    "emotion_target": "vindication",
+    "examples": [
+      "Face à l'ultimatum de s'affermir ou de périr, l'exilé s'entraîne dans l'ombre et revient pour renverser celui qui l'a brisé."
+    ],
+    "name": "Le Pacte de trois ans",
+    "preconditions": [
+      "le protagoniste a été brisé et humilié",
+      "un délai limité pour s'affermir est fixé"
+    ],
+    "roles": {
+      "ally": {
+        "constraints": [
+          "reste présent durant l'ascension"
+        ],
+        "label": "l'allié fidèle"
+      },
+      "mentor": {
+        "constraints": [
+          "caché et exigeant"
+        ],
+        "label": "le mentor de l'ombre"
+      },
+      "protagonist": {
+        "constraints": [
+          "soumis à un délai pour s'élever"
+        ],
+        "label": "l'exilé"
+      },
+      "rival": {
+        "constraints": [
+          "sûr de sa victoire"
+        ],
+        "label": "celui qui l'a brisé"
+      }
+    },
+    "summary": "Face à un délai pour s'affermir ou périr, l'exilé s'entraîne dans l'ombre à travers l'humiliation et un coup du sort, avant de revenir pour renverser celui qui l'a brisé."
+  },
+  "revenge.usurped_inheritance": {
+    "beats": {
+      "cast_out": {
+        "intent": "le véritable héritier est renié",
+        "label": "Chassé comme un imposteur"
+      },
+      "reclaim": {
+        "intent": "la preuve refait surface et le droit est restauré",
+        "label": "Droit rétabli"
+      },
+      "seek_proof": {
+        "intent": "l'héritier traque la preuve qui a survécu",
+        "label": "Quête de la preuve de lignée"
+      },
+      "stolen": {
+        "intent": "le droit de naissance est saisi par la falsification",
+        "label": "Droit de naissance volé"
+      }
+    },
+    "effects": [
+      "l'usurpateur est démasqué",
+      "le protagoniste récupère son droit de naissance"
+    ],
+    "emotion_target": "vindication",
+    "examples": [
+      "Un droit de naissance volé et un testament falsifié plongent le véritable héritier dans la misère — jusqu'à ce que refasse surface la preuve que nul n'a pu détruire."
+    ],
+    "name": "Héritage usurpé",
+    "preconditions": [
+      "le protagoniste détient un droit légitime susceptible d'être volé"
+    ],
+    "roles": {
+      "birthright": {
+        "constraints": [
+          "l'héritage contesté"
+        ],
+        "label": "le droit de naissance"
+      },
+      "protagonist": {
+        "constraints": [
+          "privé de ce qui lui revient de droit"
+        ],
+        "label": "l'héritier dépossédé"
+      },
+      "retainer": {
+        "constraints": [
+          "gardien de la preuve"
+        ],
+        "label": "le fidèle serviteur"
+      },
+      "usurper": {
+        "constraints": [
+          "détenteur de la prétention volée"
+        ],
+        "label": "l'usurpateur"
+      }
+    },
+    "summary": "Un droit de naissance volé et un testament falsifié relèguent le véritable héritier à la mendicité, jusqu'à ce que ressurgisse la preuve que nul n'a pu détruire."
+  }
+}

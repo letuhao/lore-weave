@@ -1,5 +1,4 @@
-// W6 §3.4 (mockup 07-A) — one planned │ realized │ conformance row + regenerate-to-
-// beat. Reads the chapter reader's NESTED row shape ({planned, realized, conformance}
+// W6 §3.4 (mockup 07-A) — one planned │ realized │ conformance row + regenerate-to-beat. Reads the chapter reader's NESTED row shape ({planned, realized, conformance}
 // — routers/conformance.py). Conformance is co-encoded: glyph (✓/⚠/✗) + WORD + hue
 // (§5.3), never hue alone. A null verdict (no completed job / no bound motif) shows a
 // neutral "Not checked yet"; a degraded judge (booleans null) shows "Couldn't check".
@@ -15,9 +14,19 @@ const TONE_CLASS = {
   bad: 'text-red-700 dark:text-red-300',
 } as const;
 
+// 'Regenerate to beat' (restored 2026-07-28). Its first version POSTed to
+// `/works/{p}/scenes/{s}/regenerate-to-beat`, a route composition-service never served — the
+// button 404'd for as long as it shipped, and only in the `hasDrift` case, i.e. exactly when it
+// was wanted. `scripts/phantom-route-scan.py` found it; the unit test around it passed the whole
+// time because it clicked the button and asserted a `vi.fn()`.
+//
+// It now runs the real scene-generation endpoint with the `regenerate_to_beat` operation, and
+// `onRegenerate` is OPTIONAL: without a resolved model there is nothing to generate with, so the
+// caller passes nothing and the button does not render. An affordance that cannot complete should
+// not be drawn — that was the original lesson, and making the prop optional is what enforces it.
 export function ConformanceSceneRow(
   { scene, onRegenerate, onOpenScene }:
-  { scene: SceneConformance; onRegenerate: (nodeId: string) => void; onOpenScene?: (sceneId: string) => void },
+  { scene: SceneConformance; onRegenerate?: (nodeId: string) => void; onOpenScene?: (sceneId: string) => void },
 ) {
   const { t } = useTranslation('composition');
   const v = scene.conformance;
@@ -78,7 +87,7 @@ export function ConformanceSceneRow(
             {t('motif.conf.advisory', { defaultValue: 'Advisory — unverified self-report' })}
           </div>
         )}
-        {hasDrift && (
+        {hasDrift && onRegenerate && (
           <button
             type="button"
             data-testid={`conformance-regen-${scene.outline_node_id}`}

@@ -18,6 +18,7 @@ tags:
   - name: prose
   - name: outline
   - name: canon
+  - name: derivative
   - name: grounding
   - name: engine
 
@@ -37,8 +38,15 @@ paths:
       tags: [work]
       summary: Confirm-create a Work (ensure knowledge project + composition_work)
       description: >
-        PLANNED — not yet implemented (D-COMP-POST-WORK-CREATE). Needs a
-        knowledge ProjectCreate client; the M8 FE create-Work flow consumes it.
+        IMPLEMENTED and idempotent (`works.py::create_work_for_book`). Ensures a
+        book-typed knowledge project exists (resolve, else ProjectCreate), then
+        get-or-creates the composition_work row. A knowledge-service outage on a
+        greenfield Work degrades to a lazy null `project_id` + backfill marker
+        rather than a 502; a derivative (`source_work_id`) never takes that path.
+
+        This description read "PLANNED — not yet implemented
+        (D-COMP-POST-WORK-CREATE)" long after the route shipped, and that stale note
+        was read as a blocker by the F2 fixture work. Corrected 2026-07-30.
       parameters: [{ $ref: '#/components/parameters/BookId' }]
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Work' } } } }
@@ -170,10 +178,67 @@ paths:
   /scene-links/{link_id}:
     delete:
       tags: [outline]
+      summary: Soft-archive the scene link
+      description: >
+        SOFT since F3 (2026-07-27) — the edge carries an authored `label` and the author's
+        declared setup/payoff connection, so the row is archived rather than destroyed. The
+        undo is POST /scene-links/{link_id}/restore.
       parameters: [{ name: link_id, in: path, required: true, schema: { type: string, format: uuid } }]
       responses:
-        '204': { description: Deleted }
+        '204': { description: Archived }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /scene-links/{link_id}/restore:
+    post:
+      tags: [outline]
+      summary: Un-archive a soft-deleted scene link (F3 — the undo behind the delete toast)
+      description: >
+        The inverse of DELETE /scene-links/{link_id}. This route is what makes that delete's
+        promise keepable BY THE AUTHOR: the soft delete and its `op=restore` first shipped on
+        the MCP surface only, so for a while the agent could undo the deletion and the human
+        could not — worse than the hard delete it replaced, because it LOOKS recoverable.
+        EDIT grant derived from the ROW's project (the by-id route carries no project in the
+        path). Reachability is the delete toast — the caller deleted BY ID, so the FE holds it;
+        the list reads filter `NOT is_archived` and there is no archive browser.
+      parameters: [{ name: link_id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        '200':
+          description: Restored (idempotent — an already-live edge also returns 200)
+          content: { application/json: { schema: { type: object, properties: { id: { type: string, format: uuid }, restored: { type: boolean } } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: "SCENE_LINK_EXISTS — that edge was re-declared since; restoring this one would collide with the newer" }
+
+  /works/{project_id}/entity-overrides/{override_id}:
+    delete:
+      tags: [derivative]
+      summary: Soft-archive a dị bản's entity override
+      description: >
+        SOFT since F3 (2026-07-27) — `overridden_fields` is an authored JSONB delta (how this
+        derivative's entity differs from canon), so the row is archived, not destroyed.
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { name: override_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Archived }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /works/{project_id}/entity-overrides/{override_id}/restore:
+    post:
+      tags: [derivative]
+      summary: Un-archive a soft-deleted entity override (F3 — the author's undo)
+      description: >
+        The inverse of the DELETE above, and the human-reachable half of a promise that first
+        shipped agent-only. EDIT grant on the derivative's book. Reachability is the delete
+        toast; `list_overrides_for_work` filters `NOT is_archived`.
+      parameters:
+        - { $ref: '#/components/parameters/ProjectId' }
+        - { name: override_id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Restored (idempotent — an already-live override also returns 200)
+          content: { application/json: { schema: { type: object, properties: { id: { type: string, format: uuid }, restored: { type: boolean } } } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: "ENTITY_OVERRIDE_EXISTS — a newer override for that entity exists; restoring this one would collide" }
 
   /works/{project_id}/canon-rules:
     get:
@@ -361,7 +426,7 @@ paths:
         - { name: kinds, in: query, required: false, schema: { type: array, items: { type: string, enum: [composed_of, precedes, variant_of] } } }
         - { name: book_id, in: query, required: false, schema: { type: string, format: uuid } }
       responses:
-        '200': { description: Edge list, content: { application/json: { schema: { type: object, properties: { motif_id: { type: string, format: uuid }, count: { type: integer }, links: { type: array, items: { type: object } } } } } } }
+        '200': { description: Edge list, content: { application/json: { schema: { type: object, properties: { motif_id: { type: string, format: uuid }, count: { type: integer }, links: { type: array, items: { $ref: '#/components/schemas/MotifLinkRow' } } } } } } }
         '422': { description: bad direction }
     post:
       tags: [motif]
@@ -387,7 +452,7 @@ paths:
                 ord: { type: integer, nullable: true }
                 book_id: { type: string, format: uuid, nullable: true }
       responses:
-        '201': { description: Edge, content: { application/json: { schema: { type: object, properties: { id: { type: string, format: uuid }, from_motif_id: { type: string, format: uuid }, to_motif_id: { type: string, format: uuid }, kind: { type: string, enum: [composed_of, precedes, variant_of] }, ord: { type: integer, nullable: true }, created_at: { type: string, format: date-time, nullable: true } } } } } }
+        '201': { description: Edge, content: { application/json: { schema: { $ref: '#/components/schemas/MotifLinkEdge' } } } }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: duplicate / self-link / cycle / cross-tier edge }
 
@@ -419,6 +484,46 @@ components:
     VersionConflict: { description: 412 — version mismatch; body carries the current row }
     Upstream: { description: 502 — an upstream service (book) was unreachable }
   schemas:
+    # ── the motif graph wire shapes (BE-M3) ────────────────────────────────────
+    # These two were `items: { type: object }` — freeform, so neither side had a spec to
+    # conform to, and the frontend spent a release declaring the neighbour FLAT
+    # (`neighbor_name`) while the server sent it NESTED. Every edge rendered blank; the
+    # FE unit tests passed because their fixtures were written from the FE type instead
+    # of from the producer. Pinned here, and `motifLinkContract.test.ts` reds if the
+    # frontend's field list drifts from this block again.
+    MotifLinkNeighbor:
+      type: object
+      description: The stub of the motif at the OTHER end of the edge, joined server-side
+        so a list needs no second fetch.
+      required: [id, code, name]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+    MotifLinkRow:
+      type: object
+      description: One edge as GET /motifs/{motif_id}/links returns it — the edge itself
+        plus the NESTED neighbour stub. Note this is NOT the POST 201 shape (MotifLinkEdge),
+        which carries from/to ids and no neighbour.
+      required: [id, kind, ord, direction, neighbor]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [composed_of, precedes, variant_of] }
+        ord: { type: integer, nullable: true }
+        direction: { type: string, enum: [out, in], description: out = this→neighbour }
+        neighbor: { $ref: '#/components/schemas/MotifLinkNeighbor' }
+    MotifLinkEdge:
+      type: object
+      description: One edge as POST /motifs/{motif_id}/links returns it — the raw row, with
+        from/to ids and NO neighbour join.
+      required: [id, from_motif_id, to_motif_id, kind]
+      properties:
+        id: { type: string, format: uuid }
+        from_motif_id: { type: string, format: uuid }
+        to_motif_id: { type: string, format: uuid }
+        kind: { type: string, enum: [composed_of, precedes, variant_of] }
+        ord: { type: integer, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
     WorkResolution:
       type: object
       properties:

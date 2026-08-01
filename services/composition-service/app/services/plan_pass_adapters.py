@@ -35,6 +35,7 @@ from uuid import UUID
 
 from app.clients.llm_client import LLMClient
 from app.db.models import PlanPassId
+from app.engine import tension_conformance
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,14 @@ class PassContext:
     #: Per-pass knobs (k_ceiling, thresholds…). Fingerprinted WITH the pass, so changing one stales
     #: exactly that pass and everything downstream of it.
     params: dict[str, Any] = field(default_factory=dict)
+    #: E6 — the book's ALREADY-SEEDED character names, assembled by the worker from the applied
+    #: bootstrap proposals (the same rows the roster join reads). Empty on a fresh book, which is
+    #: the honest value: there is no established cast yet.
+    known_cast: list[str] = field(default_factory=list)
+    #: E6b — the same rows, the other half. The book's already-seeded LOCATIONS, FACTIONS and
+    #: CONCEPTS, keyed by glossary kind. Kept keyed rather than flattened: pass 3 must place each
+    #: name under the kind it already has, or a mountain gets written as a person.
+    known_world: dict[str, list[str]] = field(default_factory=dict)
     retriever: Any = None
     trace_id: str | None = None
     cancel_check: Callable[[], Awaitable[bool]] | None = None
@@ -84,6 +93,70 @@ class PassContext:
     def chapters(self) -> list[dict[str, Any]]:
         c = self.package.get("chapters")
         return c if isinstance(c, list) else []
+
+    @property
+    def canon(self) -> str:
+        """The charter's consistency anchors, as compile joined them.
+
+        E6 — this was compiled on EVERY run and read by nobody: `compile.py` builds it from
+        `charter.consistency_anchors`, and the only other mention in the codebase was a 200-char
+        `canon_excerpt` in telemetry. The one block an author writes to say "these things are
+        fixed" went nowhere near a prompt. A reader here rather than `package.get("canon")` in each
+        adapter, for the same reason as the others: a package-shape change then breaks LOUDLY in
+        one place instead of going quiet in several."""
+        return str(self.package.get("canon") or "")
+
+    @property
+    def author_notes(self) -> str:
+        """The author's own paragraphs that no extractor could place, as a labelled block.
+
+        **The same bug as `canon` above, one iteration later, and I shipped the amplification.**
+        `ingest` carries unclassified sections so the matcher cannot delete the author's prose;
+        `compile` copies them to `planning_package.author_notes`; and — verified on a live package —
+        **nothing read them.** Every mention in the repo was a comment, a docstring, or a count in
+        the UI. `ingest.py`'s own comment said "where the LLM passes read it", which was already
+        untrue; then `apply_kept_material` routed FOUR of the six kinds here and told the author and
+        the model it reached the passes. A stored-and-unread field is a bug, not a feature.
+
+        Rendered with an explicit heading rather than folded into `canon`: canon is what the author
+        has FIXED, these are words nobody could file. Merging them silently would promote an
+        unplaced note to an established fact.
+        """
+        notes = self.package.get("author_notes")
+        if not isinstance(notes, list) or not notes:
+            return ""
+        lines: list[str] = []
+        for n in notes:
+            if not isinstance(n, dict):
+                continue
+            text = str(n.get("text") or "").strip()
+            if not text:
+                continue
+            title = str(n.get("title") or "").strip()
+            lines.append(f"— {title}: {text}" if title else f"— {text}")
+        if not lines:
+            return ""
+        return "THE AUTHOR'S OWN NOTES (their words, unfiled — treat as authored, not as canon):\n" \
+            + "\n".join(lines)
+
+    @property
+    def grounding(self) -> str:
+        """`canon` plus the author's unfiled notes — what every package-reading pass should see.
+
+        One name, one home: the adapters ask for THIS rather than each remembering to concatenate,
+        which is how `author_notes` came to be threaded into zero of them.
+        """
+        parts = [p for p in (self.canon, self.author_notes) if p]
+        return "\n\n".join(parts)
+
+    @property
+    def structure(self) -> dict[str, Any]:
+        """Which story structure supplied `beats`, and whether the author chose it (compile's
+        `resolve_structure` provenance block). Read so the beats checkpoint can SAY what shaped the
+        arc — a defaulted structure that looks identical to a chosen one is how the flat-arc bug
+        stayed invisible."""
+        s = self.package.get("structure")
+        return s if isinstance(s, dict) else {}
 
 
 def _chapter_plans(ctx: PassContext, beat_roles: dict[int, str | None] | None = None) -> list[Any]:
@@ -127,11 +200,31 @@ async def run_motifs(ctx: PassContext) -> dict[str, Any]:
         candidate_limit=int(ctx.params.get("candidate_limit", 15)),
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
-    return {"motifs": [
+    out = {"motifs": [
         {"code": m.code, "name": m.name, "summary": m.summary,
          "why": m.why, "arc_role": m.arc_role}
         for m in selected
     ]}
+    if not selected:
+        # Absent ≠ zero, part two. The `degraded` flag above only covers "there was no retriever
+        # at all"; a retriever that ran and matched NOTHING emitted a bare `{"motifs": []}` — which
+        # renders, forever, as "this book has no motifs". That is exactly how
+        # D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL hid: `language="auto"` matched 0 of 147 rows, every
+        # motif_plan in the database was empty, and pass 6 planned every scene with no motif layer
+        # while the checkpoint looked healthy. An empty RESULT must be as loud as an empty LOOK.
+        # …and it must not blame the wrong stage. This sentence named the LIBRARY, and on live data
+        # it was wrong: retrieval returned 30 candidates, the model answered with codes that were
+        # not in the catalog, every one was dropped silently, and the author was told their library
+        # had nothing. A message that misattributes is worse than a vague one — it sends the reader
+        # to fix something that is not broken. `select_arc_motifs` now logs the dropped codes; this
+        # stays honest about not knowing which stage lost them.
+        out["warning"] = (
+            "no motif was selected for this arc — either the library had no candidate for its "
+            "language/genre, none scored above the similarity floor, or the model's choices did "
+            "not match the catalog it was given (the service log names the dropped codes). "
+            "Scenes will be planned with no motif layer."
+        )
+    return out
 
 
 # ── pass 2 · cast (BLOCKING) ─────────────────────────────────────────────────────────────────────
@@ -141,6 +234,11 @@ async def run_cast(ctx: PassContext) -> dict[str, Any]:
     proposed = await propose_cast(
         ctx.llm, user_id=ctx.user_id, model_source=ctx.model_source, model_ref=ctx.model_ref,
         premise=ctx.premise, source_language=ctx.source_language, genre_tags=ctx.genre_tags,
+        # E6 — without these the pass plans a book it cannot see: `is_new` was judged against the
+        # arc PREMISE, so an established character the premise happens not to mention came back as
+        # a brand-new invention (often under a fresh name), and the author's canon anchors were
+        # compiled and discarded.
+        known_cast=ctx.known_cast, canon=ctx.grounding,
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
     return {"cast": [
@@ -159,6 +257,11 @@ async def run_world(ctx: PassContext) -> dict[str, Any]:
         ctx.llm, user_id=ctx.user_id, model_source=ctx.model_source, model_ref=ctx.model_ref,
         premise=ctx.premise, source_language=ctx.source_language, genre_tags=ctx.genre_tags,
         cast_names=[c["name"] for c in cast if c.get("name")],
+        # E6b — the world-side of E6. Without the roster this pass judged `is_new` against one arc's
+        # premise, so an established capital came back as a fresh invention (often renamed); and
+        # the canon anchors, which constrain invented factions and concepts more than anything
+        # else, were compiled on every run and never reached the pass that does the inventing.
+        known_world=ctx.known_world, canon=ctx.grounding,
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
     return {"entities": [
@@ -183,7 +286,16 @@ async def run_beats(ctx: PassContext) -> dict[str, Any]:
         source_language=ctx.source_language,
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
-    return {
+    # EVERY chapter unassigned is not "this arc has no beats" — it is the beat mapping having
+    # failed wholesale (an empty vocabulary makes `beat in beat_keys` false for everything). The
+    # downstream shape is indistinguishable from success: `unmapped_beats` filters to `[]` and
+    # `shape_tension_curve` collapses to one neutral run, i.e. a smooth ramp that reads as
+    # deliberate pacing. This track already found it on the dogfood book, and artifact 019f9d2f
+    # still stores the resulting 50,52,55…72 curve. Said HERE because `beats` is the blocking
+    # checkpoint — the author is being asked to approve a story shape, and approving one that was
+    # never computed is the failure the whole checkpoint exists to prevent.
+    unassigned = bool(mapped) and not any(ch.beat_role for ch in mapped)
+    out: dict[str, Any] = {
         "chapters": [
             {"ordinal": ch.sort_order, "event_id": ch.chapter_id, "title": ch.title,
              "beat_role": ch.beat_role, "intent": ch.intent}
@@ -197,7 +309,30 @@ async def run_beats(ctx: PassContext) -> dict[str, Any]:
         # Surfaced, not swallowed: a beat the model could not place anywhere is a beat the story
         # will never hit. The human sees it AT the blocking checkpoint, which is the whole point.
         "unmapped_beats": list(unmapped_beats),
+        # D-S3-CHECKPOINT-STRUCTURED-EDITS — the CLOSED SET of roles a chapter may take, carried ON
+        # the artifact so the checkpoint editor can offer a picker instead of a free-text box.
+        # `beat_role` is exactly the kind of closed-set field that becomes a silent no-op when it is
+        # typed as a free string (the `panel_id` bug): a role outside this set is dropped by
+        # `parse_chapter_map` and by `band_for`, so an author who types one gets a neutral band and
+        # no warning. Self-describing beats making the FE re-derive it from the package.
+        "available_beats": [
+            {"key": b.get("key"), "label": b.get("label"), "purpose": b.get("purpose")}
+            for b in ctx.beats if isinstance(b, dict) and b.get("key")
+        ],
+        # WHICH structure shaped this arc, echoed onto the artifact so the checkpoint is
+        # self-explanatory. The author is being asked to approve a story shape; "approve this shape"
+        # is not answerable without knowing which shape was applied and whether anyone chose it.
+        # Carried here rather than fetched from the package by the FE for the same reason
+        # `available_beats` is: the artifact a reviewer opens should describe itself.
+        "structure": dict(ctx.structure),
     }
+    if unassigned:
+        out["warning"] = (
+            "the beat mapping produced NO role for any chapter — this arc's structure was not "
+            "computed, and the tension curve below is the flat default ramp rather than a planned "
+            "shape. Re-run this pass rather than approving it."
+        )
+    return out
 
 
 # ── pass 5 · character_arcs ──────────────────────────────────────────────────────────────────────
@@ -261,7 +396,18 @@ async def run_scenes(ctx: PassContext) -> dict[str, Any]:
         tension_curve=curve or None,
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
-    return _decompose_to_artifact(result)
+    art = _decompose_to_artifact(result)
+    # E7 — measure what the curve actually achieved. The target reaches the drafter as a prompt
+    # directive and `parse_scenes` is never told what the chapter was aiming at, so a chapter that
+    # missed by 22 points has until now been indistinguishable from one that hit exactly. Stamped
+    # ON the artifact (not merely logged) because pass 7's input IS this artifact — that is how
+    # `self_heal`, which knows nothing about the curve, can be checked for flattening it.
+    art["tension_conformance"] = tension_conformance.measure(
+        [{"chapter_index": c.chapter_index, "beat_role": c.beat_role,
+          "tension_target": c.tension_target} for c in curve],
+        art.get("chapters"),
+    )
+    return art
 
 
 # ── pass 7 · self_heal ───────────────────────────────────────────────────────────────────────────
@@ -283,6 +429,15 @@ async def run_self_heal(ctx: PassContext) -> dict[str, Any]:
         trace_id=ctx.trace_id, cancel_check=ctx.cancel_check,
     )
     out = _decompose_to_artifact(healed)
+    # E7 — re-measure the HEALED plan against the same targets pass 6 was given. `run_plan_self_heal`
+    # receives the DecomposeResult and nothing else: no curve, no targets, no beats. It rewrites
+    # scenes with no knowledge of the arc's pacing, so it can flatten what pass 6 achieved and
+    # nothing would say so. The targets come from pass 6's stamped report — pass 7 depends on
+    # ("scenes", "cast"), so reading them from the artifact costs no dependency change.
+    out["tension_conformance"] = tension_conformance.measure(
+        tension_conformance.curve_from_report(scenes_art.get("tension_conformance")),
+        out.get("chapters"),
+    )
     out["heal"] = {
         "findings": [
             {"chapter": f.chapter, "scene": f.scene, "type": f.type, "issue": f.issue,

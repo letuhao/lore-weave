@@ -428,6 +428,7 @@
   "pacing": "nhịp độ",
   "canon_consistency": "nhất quán canon",
   "dismiss": "bỏ qua",
+  "overrideSlipBlocked": "Chấp nhận bản bị chặn: một phiên bản giả định đã bị trượt về giá trị chính thống. Hãy tạo lại trước khi chấp nhận.",
   "overrideSlipExhausted": "Ghi đè vẫn trượt sau khi đạt giới hạn tạo lại — hiển thị để bạn xem xét (không còn chặn chấp nhận).",
   "overrideSlipDetail": "{{name}} ({{field}}): mong đợi “{{expected}}”, tìm thấy “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: mâu thuẫn với quy tắc delta “{{rule}}”",
@@ -645,22 +646,22 @@
       "needsBook": "Mở một cuốn sách để xem các motif của nó"
     },
     "search": "Search motifs",
-    "overuse": "\"{{name}}\" is already used in {{chapters}} — consider varying it.",
+    "overuse": "«{{name}}» đã được sử dụng trong {{chapters}} — hãy cân nhắc thay đổi để đa dạng hơn.",
     "list": {
-      "noMatch": "No motifs match — clear filters.",
+      "noMatch": "Không có motif nào khớp — hãy xóa các bộ lọc.",
       "truncated": "Đang hiển thị 100 mục đầu tiên — hãy thu hẹp phạm vi bằng tìm kiếm hoặc bộ lọc để xem các mục còn lại."
     },
     "error": {
-      "load": "Couldn't load — please retry."
+      "load": "Không thể tải — vui lòng thử lại."
     },
     "permission": {
-      "readOnly": "This is a shared template — clone it to make your own editable copy."
+      "readOnly": "Đây là mẫu được chia sẻ — hãy nhân bản để tạo bản sao có thể chỉnh sửa của riêng bạn."
     },
     "action": {
       "open": "Open",
       "adopt": "Adopt",
       "newMotif": "New motif",
-      "cloneToEdit": "Clone to edit",
+      "cloneToEdit": "Nhân bản để chỉnh sửa",
       "close": "Close",
       "cancel": "Cancel",
       "retry": "Retry",
@@ -672,10 +673,10 @@
       "tension": "Intensity"
     },
     "empty": {
-      "title": "Your motif library is ready",
-      "body": "Motifs are reusable plot shapes. The planner picks one per chapter so even a small model writes a solid scene. 12 starter motifs are already here — tu-tiên and báo-thù.",
-      "browseSystem": "Browse the 12 starters",
-      "hint": "No tokens needed — building a motif by hand is free."
+      "title": "Thư viện motif của bạn đã sẵn sàng",
+      "body": "Motif là các khuôn mẫu cốt truyện có thể tái sử dụng. Trình lập kế hoạch sẽ chọn một motif cho mỗi chương để ngay cả một mô hình nhỏ cũng có thể tạo nên một cảnh phim vững chắc. Đã có sẵn 12 motif khởi đầu — tu tiên và báo thù.",
+      "browseSystem": "Xem 12 motif khởi đầu",
+      "hint": "Không cần token — tự xây dựng motif là hoàn toàn miễn phí."
     },
     "facet": {
       "tier": "Tier",
@@ -694,33 +695,33 @@
     "create": {
       "title": "New motif",
       "name": "Name",
-      "code": "Code (a short id, e.g. cultivation.fortuitous_encounter)",
+      "code": "Mã (một ID ngắn, ví dụ: cultivation.fortuitous_encounter)",
       "kind": "Kind",
-      "summary": "Summary (this is what the planner matches on)",
-      "genres": "Genres (comma-separated)",
-      "beats": "Beats (the ordered shape)",
+      "summary": "Tóm tắt (đây là nội dung mà trình lập kế hoạch sẽ dùng để đối soát)",
+      "genres": "Thể loại (ngăn cách bằng dấu phẩy)",
+      "beats": "Nhịp độ (hình dáng theo thứ tự)",
       "beat": "beat",
       "beatLabel": "Beat label",
       "removeBeat": "Remove beat",
       "save": "Create motif",
       "saving": "Saving…",
       "err": {
-        "name": "A name is required",
-        "code": "A code is required",
-        "save": "Couldn't save — check the code isn't already used."
+        "name": "Yêu cầu phải có tên",
+        "code": "Yêu cầu phải có mã",
+        "save": "Không thể lưu — hãy kiểm tra xem mã này đã được sử dụng chưa."
       }
     },
     "adopt": {
       "title": "Adopt motif",
-      "body": "Adopt makes your own private editable copy. Choose where it goes.",
+      "body": "Tính năng Nhận diện sẽ tạo một bản sao riêng tư có thể chỉnh sửa của bạn. Hãy chọn nơi lưu trữ.",
       "targetLabel": "Adopt into",
       "toUser": "My library",
-      "whatItDoes": "Copy this motif into your library (a private, editable clone).",
+      "whatItDoes": "Sao chép motif này vào thư viện của bạn (một bản sao riêng tư, có thể chỉnh sửa).",
       "continue": "Continue",
       "estimating": "Estimating…"
     },
     "quota": {
-      "adopt": "You've adopted {{used}}/{{limit}} this period — archive some or wait."
+      "adopt": "Bạn đã nhận {{used}}/{{limit}} trong kỳ này — hãy lưu trữ bớt hoặc chờ đợi."
     },
     "cost": {
       "title": "Confirm cost",
@@ -731,27 +732,27 @@
       "confirming": "Working…"
     },
     "match": {
-      "why": "Why this motif?",
+      "why": "Tại sao chọn motif này?",
       "tension": "Tension fit",
       "genre": "Genre",
       "precond": "Setup",
       "cosine": "Similarity"
     },
     "role": {
-      "pickFor": "Pick cast for {{role}}",
+      "pickFor": "Chọn dàn diễn viên cho {{role}}",
       "unresolved": "⚠ pick…"
     },
     "binding": {
-      "freeForm": "No motif matched — this scene is free-form.",
-      "commitGenerate": "Commit + write this scene →",
+      "freeForm": "Không có motif nào khớp — cảnh này là dạng tự do.",
+      "commitGenerate": "Xác nhận + viết cảnh này →",
       "noWork": "Tạo kế hoạch để liên kết các mô-típ với các cảnh trong cuốn sách này."
     },
     "swap": {
       "title": "Swap motif",
-      "none": "No other matches."
+      "none": "Không có kết quả khớp nào khác."
     },
     "chain": {
-      "hint": "Next: \"{{name}}\" follows naturally.",
+      "hint": "Tiếp theo: «{{name}}» diễn ra một cách tự nhiên.",
       "action": "Chain it"
     },
     "conf": {
@@ -759,11 +760,11 @@
       "planned": "Planned",
       "realized": "Realized",
       "conformance": "Conformance",
-      "advisory": "Advisory — unverified self-report",
-      "regenerate": "Regenerate to beat",
+      "advisory": "Cảnh báo — báo cáo tự kê khai chưa được xác thực",
+      "regenerate": "Tạo lại để vượt qua",
       "rerun": "Re-run",
-      "rerunWhat": "Re-check every scene in this chapter against its planned beat.",
-      "empty": "Not generated yet — generate scenes to see conformance.",
+      "rerunWhat": "Kiểm tra lại mọi cảnh trong chương này so với nhịp truyện đã lập kế hoạch.",
+      "empty": "Chưa được tạo — hãy tạo các cảnh để xem mức độ phù hợp.",
       "tone": {
         "ok": "On beat",
         "warn": "Tension drift",
@@ -772,7 +773,7 @@
       "rerunNeedsModel": "Chọn một mô hình để chạy lại kiểm tra sự phù hợp"
     },
     "arc": {
-      "mobileNotice": "The timeline grid is available on a larger screen — here you can edit it as a list.",
+      "mobileNotice": "Lưới dòng thời gian có sẵn trên màn hình lớn — tại đây bạn có thể chỉnh sửa dưới dạng danh sách.",
       "place": "place",
       "chapters": "ch {{from}}-{{to}}",
       "moveLeft": "Move earlier",
@@ -886,12 +887,12 @@
     },
     "simple": {
       "actant": {
-        "subject": "the hero / who acts",
-        "sender": "who sets it in motion",
-        "object": "what's at stake",
-        "receiver": "who it's for",
-        "helper": "who lends a hand",
-        "opponent": "who stands in the way"
+        "subject": "người anh hùng / người thực hiện hành động",
+        "sender": "người khởi xướng",
+        "object": "thứ đang bị đe dọa",
+        "receiver": "người thụ hưởng",
+        "helper": "người hỗ trợ",
+        "opponent": "người cản trở"
       },
       "kind": {
         "sequence": "a plot shape",
@@ -906,10 +907,10 @@
         "tension_target": "intensity",
         "preconditions": "needs before",
         "effects": "leaves after",
-        "info_asymmetry": "who's in the dark"
+        "info_asymmetry": "ai là người không biết sự thật"
       },
-      "infoAsymmetry": "Who's in the dark",
-      "infoKnows": "{{who}} knows the truth",
+      "infoAsymmetry": "Ai là người không biết sự thật",
+      "infoKnows": "{{who}} biết sự thật",
       "infoDeceived": "{{who}} is fooled"
     },
     "expert": {
@@ -972,6 +973,47 @@
       "degradedLibrary": "Không được xếp hạng theo độ phù hợp — mô hình embedding của thư viện dùng chung chưa được cấu hình, vì vậy đây là các kết quả thay thế theo thể loại, không phải các kết quả khớp theo điểm số.",
       "sectionMine": "Mô típ của bạn",
       "sectionLibrary": "Từ thư viện"
+    },
+    "language": {
+      "writtenIn": "Viết bằng",
+      "authored": "bản dịch viết tay",
+      "staleShort": "lỗi thời",
+      "missingYours": "không có trong {{lang}} — sẽ chuyển về bản gốc",
+      "systemFree": "Các motif tích hợp sẵn được cung cấp bằng mọi ngôn ngữ được hỗ trợ — motif này hiện chưa có bản dịch cho ngôn ngữ của bạn.",
+      "adoptFirst": "Thêm motif này vào thư viện của bạn để dịch.",
+      "translateTo": "Dịch sang",
+      "model": "Mô hình dịch thuật",
+      "translate": "Dịch…",
+      "retranslate": "Dịch lại…",
+      "alreadyHave": "Đã dịch",
+      "estimating": "Đang ước tính…",
+      "youPay": "Các motif của riêng bạn sẽ không bao giờ được tự động dịch — quá trình này chạy trên mô hình của bạn và bạn sẽ chịu chi phí.",
+      "confirmWhat": "Dịch motif này sang {{lang}} bằng mô hình của bạn.",
+      "echoed": "{{count}} trường không được dịch — mô hình của bạn có thể không xử lý tốt ngôn ngữ này.",
+      "again": "Dịch sang ngôn ngữ khác",
+      "quota": "Đã đạt đến hạn mức chi tiêu.",
+      "failed": "Dịch thất bại.",
+      "outcome": {
+        "translated": "Đã dịch sang {{lang}}.",
+        "already_original": "Motif này vốn đã được viết bằng ngôn ngữ đó.",
+        "already_translated": "Đã được dịch và vẫn đang được sử dụng — bạn không bị tính phí.",
+        "authored_kept": "Đã có bản dịch viết tay và được giữ lại.",
+        "nothing_to_translate": "Motif này không có văn bản để dịch.",
+        "not_translatable": "Bạn không có quyền dịch motif này.",
+        "model_failed": "Mô hình của bạn không trả về kết quả nào có thể sử dụng được — không có dữ liệu nào được lưu.",
+        "failed": "Dịch thất bại.",
+        "cancelled": "Đã hủy trước khi motif này được dịch — bạn không bị tính phí cho mục này."
+      },
+      "skipped": "{{count}} motif bạn đã chọn không thuộc phạm vi dịch thuật của bạn và không được bao gồm."
+    },
+    "batch": {
+      "open": "Dịch…",
+      "selected": "Đã chọn {{count}}",
+      "excluded": "{{count}} mục không thuộc phạm vi dịch của bạn (các mục mặc định đã được miễn phí ở mọi ngôn ngữ; hãy áp dụng một bản công khai trước)",
+      "run": "Dịch {{count}}…",
+      "overCap": "Tối đa {{cap}} motif cho mỗi lượt dịch — vui lòng bỏ chọn {{over}} mục.",
+      "confirmWhat": "Dịch {{count}} motif sang {{lang}} bằng mô hình của bạn.",
+      "doneTitle": "Đã dịch {{written}}/{{total}} sang {{lang}}"
     }
   },
   "authoringRun": {
@@ -1093,5 +1135,10 @@
       "back": "← Quay lại danh sách lượt chạy"
     }
   },
-  "overrideSlipBlocked": "Chấp nhận bản bị chặn: một phiên bản giả định đã bị trượt về giá trị chính thống. Hãy tạo lại trước khi chấp nhận."
+  "canonUncheckedNoRules": "chưa biết gì về các nhân vật của cảnh này để đối chiếu",
+  "canonUncheckedUnverifiedInput": "một phần dữ liệu cần cho lần kiểm tra này không tải được nên kết quả chưa đầy đủ",
+  "canonUncheckedUnparseable": "mô hình thẩm định không trả về câu trả lời dùng được",
+  "canonUncheckedFailed": "bản thân lần kiểm tra bị lỗi",
+  "canonUncheckedOther": "lần kiểm tra này không chạy được",
+  "canonUncheckedWhich": "{{count}} mục kiểm tra chưa hoàn tất"
 }

@@ -261,14 +261,13 @@ services:
     class: web
     v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>100" }
     v3: { min_replicas: 2, max_replicas: 6 }
-
-  # ── seeded 2026-07-26: three services were on disk with no budget row, so
-  # capacity-budget-lint (L1.K.7 / SR08 I17) had been FAILing. Stub budgets only —
-  # same pattern as the Cycle-7 seeding above; tuning belongs to each service's own
-  # sub-program cycle. Classes derived from source, not guessed:
+  # ── 2026-07-31: three services shipped a Dockerfile without a budget row. SR08 I17 is
+  # enforced by capacity-budget-lint.sh, which had never been wired into CI — so the rule
+  # held on paper for the 50 services that predate them and caught none of these three.
+  # Stub budgets only; tuning belongs to each service's own sub-program cycle. Classes
+  # derived from source, not guessed:
   #   agent-registry-service · knowledge-gateway → http.Server / NestJS  ⇒ web
-  #   scheduler-service      → "claims due scheduled_agent_runs rows and
-  #                             enqueues onto existing consumers"        ⇒ worker
+  #   scheduler-service      → a leased tick driver                      ⇒ cron (see below)
   - name: agent-registry-service
     class: web
     v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>100" }
@@ -277,7 +276,12 @@ services:
     class: web
     v1: { min_replicas: 1, max_replicas: 4, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "rps>200" }
     v3: { min_replicas: 2, max_replicas: 12 }
+  # A per-user tick driver: fixed replicas, no autoscale — the tick is the workload.
+  # (main's independent seeding of this row proposed `worker` + `scheduled_agent_runs_due>100`.
+  # Kept as `cron` on merge 2026-08-02: `internal/scheduler/driver.go` is a `time.NewTicker`
+  # loop, so the workload is the interval, not a queue depth. The row is a stub either way —
+  # re-derive from real traffic before it sizes a cluster.)
   - name: scheduler-service
-    class: worker
-    v1: { min_replicas: 1, max_replicas: 2, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "scheduled_agent_runs_due>100" }
-    v3: { min_replicas: 2, max_replicas: 6 }
+    class: cron
+    v1: { min_replicas: 1, max_replicas: 1, cpu_per_replica: 0.5, memory_per_replica: 512Mi, scale_trigger: "none" }
+    v3: { min_replicas: 1, max_replicas: 2 }

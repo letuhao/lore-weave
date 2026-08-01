@@ -40,6 +40,8 @@ from app.services.authoring_run_service import (
     DraftOutcome,
     EngineDraftingSeam,
     TransitionConflictError,
+    auto_revise_max_attempts,
+    build_revise_guide,
     verdict_from_critique,
 )
 
@@ -1578,6 +1580,104 @@ async def test_critic_severe_pauses_run_with_breaker_and_stops_downstream():
     assert len(notify.calls) == 1
     assert "paused (critic_severe)" in notify.calls[0]["title"]
     assert notify.calls[0]["metadata"]["status"] == "paused"
+
+
+# ── D5b autonomous critic remediation (auto-revise) ─────────────────────────
+
+def test_build_revise_guide_names_each_violation():
+    v = CriticVerdict(
+        severity="severe", summary="2 canon violation(s)",
+        detail={"violations": [
+            {"why": "Silas was dissolving but reappears solid.", "violated": True},
+            {"why": "crossed the erased void that cannot be traversed.", "violated": True},
+            {"why": "a dismissed nit", "violated": False},  # dropped
+        ]},
+    )
+    g = build_revise_guide(v)
+    assert "REVISE" in g
+    assert "Silas was dissolving" in g and "erased void" in g
+    assert "a dismissed nit" not in g  # violated=False is not a problem to fix
+
+
+def test_build_revise_guide_falls_back_to_summary_when_no_violations():
+    v = CriticVerdict(severity="severe", summary="coherence=1", detail={"violations": []})
+    assert "coherence=1" in build_revise_guide(v)
+
+
+def test_auto_revise_gating_requires_ceiling_and_optin(monkeypatch):
+    from app.config import settings
+    # ceiling off → 0 regardless of the per-run opt-in
+    monkeypatch.setattr(settings, "authoring_auto_revise_enabled", False)
+    assert auto_revise_max_attempts({"critic_auto_revise": True}) == 0
+    # ceiling on but no opt-in → 0 (human-in-loop default preserved)
+    monkeypatch.setattr(settings, "authoring_auto_revise_enabled", True)
+    assert auto_revise_max_attempts({}) == 0
+    # ceiling on AND opt-in → the bound
+    monkeypatch.setattr(settings, "authoring_auto_revise_max_attempts", 2)
+    assert auto_revise_max_attempts({"critic_auto_revise": True}) == 2
+
+
+async def test_auto_revise_clears_severe_and_continues(monkeypatch):
+    """severe → auto re-draft against the violations → re-critique clears → the run
+    does NOT pause (repairs itself). One extra seam + critic call for the revise."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "authoring_auto_revise_enabled", True)
+    monkeypatch.setattr(settings, "authoring_auto_revise_max_attempts", 1)
+    critic = FakeCriticSeam(verdicts=[
+        CriticVerdict(severity="severe", summary="1 canon violation(s) [logic]",
+                      detail={"violations": [{"why": "state flip", "violated": True}]},
+                      cost_usd=Decimal("0.005")),
+        CriticVerdict(severity="ok", summary="clean", cost_usd=Decimal("0.005")),
+    ])
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    notify = NotifyRecorder()
+    svc, runs, _ = make_svc(seam=seam, critic=critic, notify=notify)
+    run = await _completed_run(svc, runs, scope=[CH1],
+                               params={"critic_auto_revise": True})
+    assert run.status == "report_ready"          # self-repaired, no human pause
+    assert len(seam.calls) == 2                   # initial draft + 1 revise re-draft
+    assert seam.calls[1]["params"].get("guide")   # the revise carried the violation guide
+    assert "state flip" in seam.calls[1]["params"]["guide"]
+    assert len(critic.calls) == 2                 # initial + re-critique
+    # never escalated to a human as a severe pause (the terminal "run complete"
+    # notification is expected — it's not a critic_severe interrupt)
+    assert not any("paused" in c["title"].lower() for c in notify.calls)
+    units = await svc._units.list_for_run(run.run_id)
+    assert units[0].critic_verdict["severity"] == "ok"   # the FINAL verdict stands
+
+
+async def test_auto_revise_exhausted_still_pauses(monkeypatch):
+    """severe that a bounded revise can't clear falls back to the human-in-loop
+    pause (07S) — the safety net, not silently shipping the flawed chapter."""
+    from app.config import settings
+    monkeypatch.setattr(settings, "authoring_auto_revise_enabled", True)
+    monkeypatch.setattr(settings, "authoring_auto_revise_max_attempts", 1)
+    sev = lambda: CriticVerdict(severity="severe", summary="still broken",
+                                detail={"violations": [{"why": "x", "violated": True}]})
+    critic = FakeCriticSeam(verdicts=[sev(), sev()])  # initial + re-critique both severe
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    notify = NotifyRecorder()
+    svc, runs, _ = make_svc(seam=seam, critic=critic, notify=notify)
+    run = await _completed_run(svc, runs, scope=[CH1],
+                               params={"critic_auto_revise": True})
+    assert run.status == "paused"
+    assert run.breaker_state["reason"] == "critic_severe"
+    assert len(seam.calls) == 2       # initial + the one (failed) revise attempt
+    assert len(critic.calls) == 2
+    assert len(notify.calls) == 1     # escalated to the human after the revise failed
+
+
+async def test_severe_without_optin_pauses_unchanged():
+    """Default (no opt-in) keeps the original human-in-loop pause — no auto-revise."""
+    critic = FakeCriticSeam(verdicts=[
+        CriticVerdict(severity="severe", summary="1 canon violation(s) [r1]"),
+    ])
+    seam = FakeSeam(default=DraftOutcome(ok=True, cost_usd=Decimal("0.01")))
+    svc, runs, _ = make_svc(seam=seam, critic=critic)
+    run = await _completed_run(svc, runs, scope=[CH1])
+    assert run.status == "paused"
+    assert len(seam.calls) == 1       # no revise re-draft
+    assert len(critic.calls) == 1
 
 
 async def test_critic_warn_and_ok_continue_run():

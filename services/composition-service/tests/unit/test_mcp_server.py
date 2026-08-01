@@ -24,7 +24,9 @@ from __future__ import annotations
 import socket
 import threading
 import time
+import types as _types
 import uuid
+import uuid as _uuidmod
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, patch
 
@@ -71,6 +73,14 @@ EXPECTED_TOOLS = {
     "composition_structure_template_edit", "composition_outline_node_edit",
     "composition_canon_rule_edit", "composition_entity_override_edit",
     "composition_scene_link_edit",
+    # atom-edit Phase D — the author's marked error blocks (op=list is the affordance gate:
+    # without a read the agent could never discover a block_id, and reading the marks IS the
+    # feature). Creating a block is the author's act, deliberately not exposed to the agent.
+    "composition_error_block_edit",
+    # F3 — the UNDO the soft delete promises. scene_link's delete previously returned
+    # `undo_hint: None` over a HARD delete; entity_override's was recoverable only while the
+    # activity strip held the payload. Both are now durably restorable.
+    "composition_scene_link_restore", "composition_entity_override_restore",
     "composition_write_prose",
     # ── S5 (D-DIVERGENCE-MCP-TOOLS) — the dị bản manage surface. ──
     "composition_list_derivatives",   # Tier R
@@ -116,8 +126,14 @@ EXPECTED_TOOLS = {
     # S3 unified (op-dispatch): motif_edit (create|patch|archive|restore),
     # motif_link_edit (create|delete), motif_bind_edit (bind|unbind)
     "composition_motif_edit", "composition_motif_link_edit", "composition_motif_bind_edit",
-    # Tier W (motif)
-    "composition_motif_adopt", "composition_motif_mine",
+    # Tier W (motif). `library_translate` is the user-paid translate — W, and NOT part of
+    # the unified `motif_edit` above precisely because it SPENDS: folding a cost-gated op
+    # into an auto-applied A-class tool would make one tool's ops disagree about whether
+    # they charge the user, which is the ambiguity the class marker removes. It carries
+    # BOTH libraries behind a `kind` discriminator (CAT-1/CAT-3) rather than shipping a
+    # near-identical arc twin — motif and arc_template already drifted apart once, on the
+    # very question this tool answers.
+    "composition_motif_adopt", "composition_motif_mine", "composition_library_translate",
     "composition_arc_import_analyze", "composition_conformance_run",
     # ── 23 structure layer — arc SPEC CRUD + outline reorder (SAME server) ──
     # Tier R (arc reads)
@@ -136,9 +152,11 @@ EXPECTED_TOOLS = {
     "composition_outline_node_move",
     # ── PlanForge (M4) plan_* tools ──
     # Tier R
-    "plan_validate", "plan_self_check",
+    "plan_validate", "plan_self_check", "plan_find_missing_material",
+    "plan_get_missing_material",
     # Tier A
     "plan_propose_spec", "plan_interpret_feedback", "plan_apply_revision",
+    "plan_keep_material",
     "plan_review_checkpoint", "plan_handoff_autofix", "plan_compile",
     # 27 V2-F1 — the compiler-pass surface. The agent CANNOT skip a checkpoint through these:
     # `plan_run_pass` refuses with its blockers named, and only `plan_review_checkpoint` (which a
@@ -149,6 +167,10 @@ EXPECTED_TOOLS = {
     "plan_bootstrap_propose", "plan_bootstrap_apply",
     # 28 AN-2/AN-3/AN-4 — the agent's three read surfaces (the gap layer AN-1 enumerates).
     "composition_package_tree", "composition_find_references", "composition_diagnostics",
+    # ── glossary-build pipeline (spec 2026-07-27) — the DELEGATION surface. One
+    # Tier-A tool with a closed-set `op`; the FSM makes every downstream call, so
+    # the agent never picks a per-entity tool (the Mị Đế dogfood failure).
+    "composition_glossary_build",
 }
 TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_get_outline_node",
@@ -160,10 +182,11 @@ TIER_R = {"composition_get_work", "composition_list_outline",
           "composition_arc_list", "composition_arc_get", "composition_arc_template_drift",
           "composition_arc_template_list", "composition_arc_template_get",  # O-3 reads
           "composition_conformance_status",
-          "plan_validate", "plan_self_check",
+          "plan_validate", "plan_self_check", "plan_find_missing_material",
+          "plan_get_missing_material",
           "composition_authoring_run_list", "composition_authoring_run_get"}
 TIER_W = {"composition_publish", "composition_generate", "composition_decompile_arcs",
-          "composition_motif_adopt", "composition_motif_mine",
+          "composition_motif_adopt", "composition_motif_mine", "composition_library_translate",
           "composition_arc_import_analyze", "composition_conformance_run",
           "composition_authoring_run_create", "composition_authoring_run_gate",
           "composition_authoring_run_start", "composition_authoring_run_resume",
@@ -320,6 +343,7 @@ def _node(**kw) -> OutlineNode:
         id=kw.get("id", uuid.uuid4()), created_by=TEST_USER, project_id=PROJECT, book_id=BOOK,
         kind=kw.get("kind", "scene"), rank="a0", title=kw.get("title", "S"),
         status=kw.get("status", "empty"), version=kw.get("version", 1),
+        chapter_id=kw.get("chapter_id"),
     )
 
 
@@ -358,6 +382,14 @@ async def _patched(*, grant_level=2, works_get=None, **repo_overrides):
             return _work()
 
     works = AsyncMock()
+    # D-COMPOSITION-ID-TRAP — scope_meta is the gate's CANONICALIZATION point: every
+    # tool re-binds its `pid` from `meta.project_id`. A bare AsyncMock returns an
+    # AsyncMock attribute here, so the project-scope check downstream compares a UUID
+    # against a mock and the tool 404s on a node it was just granted. Echo the id, as
+    # the real repo does for a project_id input.
+    works.scope_meta = AsyncMock(
+        side_effect=lambda p: _types.SimpleNamespace(book_id=BOOK, work_id=_uuidmod.uuid4(), project_id=p)
+    )
     works.get = AsyncMock(side_effect=works_get)
     works.create = AsyncMock(return_value=_work())
 
@@ -1668,7 +1700,11 @@ async def test_generate_scene_mints_confirm_token():
     from loreweave_mcp import verify_confirm_token
     from app.config import settings
 
-    scene = _node(id=uuid.uuid4(), kind="scene")
+    # D-SCENE-PROSE-NOWHERE-TO-LAND — the scene must be MATERIALISED (a real chapter
+    # behind it) for this to be the happy path at all. A plan-only scene (chapter_id
+    # NULL) is now refused at propose, because its prose could never reach the author:
+    # see test_scene_prose_nowhere_to_land.py for that half.
+    scene = _node(id=uuid.uuid4(), kind="scene", chapter_id=uuid.uuid4())
     outline = AsyncMock()
     outline.get_node = AsyncMock(return_value=scene)
     async with _patched(grant_level=2, OutlineRepo=outline):

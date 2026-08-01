@@ -9,7 +9,7 @@ import { resolveActiveWork } from '@/features/composition/workSelect';
 import { appendChildren, flatten, setExpanded, setLoading } from './tree';
 import { ROOT_KEY, emptyTree, type ManuscriptNode, type TreeState } from './types';
 import { partsApi, type Part } from './partsApi';
-import { buildPartsTree, chapterDisplayTitle } from './partsTree';
+import { appendUnplannedChapters, buildPartsTree, chapterDisplayTitle } from './partsTree';
 import { useBookStructure } from './useBookStructure';
 import { chooseManuscriptLens, showLensToggle, type ManuscriptLens } from './manuscriptLens';
 
@@ -224,14 +224,42 @@ export function useManuscriptTree(bookId: string, token: string | null) {
       // rendering "No chapters yet." over a book that has chapters.
       if (!projectId || !token) return;
       try {
-        const page = await compositionApi.listOutlineChildren(projectId, token, { parentId: null, cursor: null, limit: PAGE });
+        // D-STUDIO-CHAPTER-OUTSIDE-THE-PLAN — the outline is the PLAN, `chapters` is the
+        // MANUSCRIPT, and a chapter can live in one without the other (imported, created from
+        // the editor, written by a tool). Rendering outline nodes alone made such a chapter
+        // invisible in the rail — and to an author a chapter they cannot see is a chapter they
+        // have lost. Fetch the coverage set + the chapter list alongside the root so anything
+        // the plan does not claim lands in a "Not in the plan" bucket.
+        //
+        // Both extras are best-effort: they must never stop the outline itself from rendering.
+        // A failure degrades to the previous outline-only tree, and says so, rather than
+        // blanking the rail.
+        const [page, stats, chapters] = await Promise.all([
+          compositionApi.listOutlineChildren(projectId, token, { parentId: null, cursor: null, limit: PAGE }),
+          compositionApi.outlineStats(projectId, token).catch((e) => {
+            console.warn('manuscript: outline stats failed — cannot flag unplanned chapters', e);
+            return null;
+          }),
+          booksApi.listChaptersPage(token, bookId, { limit: PAGE }).catch((e) => {
+            console.warn('manuscript: chapter list failed — cannot flag unplanned chapters', e);
+            return null;
+          }),
+        ]);
         if (genRef.current !== gen) return;
         const nodes = page.items.filter((n) => n.kind !== 'beat').map(outlineToNode);
         if (nodes.length === 0) {
           setOutlineEmptyFallback(true); // re-runs resetAndLoad as 'chapters' (source flips)
           return;
         }
-        setTree((t) => appendChildren(t, ROOT_KEY, nodes, page.next_cursor));
+        // Only when BOTH reads landed: a missing coverage set would flag every chapter as
+        // unplanned, which is worse noise than the gap it fixes.
+        const unplanned = stats && chapters
+          ? chapters.items.filter((c) => !new Set(stats.linked_chapter_ids ?? []).has(c.chapter_id))
+          : [];
+        setTree((t) => appendUnplannedChapters(
+          appendChildren(t, ROOT_KEY, nodes, page.next_cursor),
+          unplanned,
+        ));
       } catch (e) {
         if (genRef.current === gen) setError((e as Error).message);
       }

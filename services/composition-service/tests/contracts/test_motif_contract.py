@@ -53,7 +53,7 @@ def test_motif_repo_signatures_frozen():
     assert _params(MotifRepo.archive) == ["self", "caller_id", "motif_id"]
     list_params = _params(MotifRepo.list_for_caller)
     assert list_params[:2] == ["self", "caller_id"]
-    for kw in ("scope", "genre", "kind", "status", "q", "language", "limit"):
+    for kw in ("scope", "genre", "kind", "status", "q", "display_language", "limit"):
         assert kw in list_params, f"list_for_caller missing kw '{kw}'"
     clone_params = _params(MotifRepo.clone)
     assert clone_params[:3] == ["self", "caller_id", "src_motif_id"]
@@ -65,7 +65,7 @@ def test_motif_retriever_signature_frozen():
     params = _params(MotifRetriever.retrieve)
     assert params[:2] == ["self", "caller_id"]
     for kw in (
-        "book_id", "project_id", "genre_tags", "language",
+        "book_id", "project_id", "genre_tags", "display_language",
         "beat_role", "tension", "prev_effects", "limit",
     ):
         assert kw in params, f"retrieve missing kw '{kw}'"
@@ -95,7 +95,7 @@ async def test_retriever_is_implemented_w3():
     retr = MotifRetriever(_Pool())  # type: ignore[arg-type]
     out = await retr.retrieve(
         uuid.uuid4(), book_id=uuid.uuid4(), project_id=uuid.uuid4(),
-        genre_tags=["xianxia"], language="en", beat_role="hook", tension=3,
+        genre_tags=["xianxia"], display_language="en", beat_role="hook", tension=3,
     )
     assert out == []
 
@@ -116,10 +116,27 @@ def test_create_args_forbid_extra_and_no_owner_or_embed_field():
 
 def test_patch_args_forbid_extra_and_immutable_identity():
     MotifPatchArgs(name="new")
-    # code/language/source/owner are identity/lineage — not patchable here.
-    for forbidden in ("code", "language", "source", "owner_user_id"):
+    # code/source/owner are identity/lineage — not patchable here.
+    for forbidden in ("code", "source", "owner_user_id"):
         with pytest.raises(Exception):
             MotifPatchArgs(**{forbidden: "x"})
+
+
+def test_original_language_is_patchable_because_it_is_no_longer_identity():
+    """It used to be pinned as immutable alongside `code`, and that was right WHILE
+    language sat inside `uq_motif_system(code, language)` — changing it really did re-key
+    the row. MOTIF-I18N took language out of every unique index: a motif is one row, and
+    `original_language` is a CLAIM about which language the author typed in.
+
+    A wrong claim is not a cosmetic problem. The FE create path never sent the field at
+    all, so every user-authored motif took the `en` default — a Vietnamese author's motif
+    then resolves as `text_language: "en"`, `text_fallback: false`, and hands Vietnamese
+    prose to an English prompt while reporting that everything is fine. That is the exact
+    silent wrong-language bug the whole i18n re-arch was written to kill, surviving in the
+    user tier. Correcting it has to be reachable.
+    """
+    args = MotifPatchArgs(original_language="vi")
+    assert args.model_dump(exclude_unset=True) == {"original_language": "vi"}
 
 
 # ── model round-trips + MotifCandidate shape ───────────────────────────────────

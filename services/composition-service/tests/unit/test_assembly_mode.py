@@ -12,8 +12,14 @@ import uuid
 import pydantic
 import pytest
 
+from app.config import settings
 from app.engine.assembly import ASSEMBLY_MODES, resolve_assembly_mode
 from app.routers.works import WorkPatch
+
+#: These tests size max_out from the plan, so they must track the CONFIGURED per-scene
+#: budget — hardcoding it went stale the moment 288aba7c raised it 700 → 1200 (a
+#: deliberate fix: a local gemma drafted an 83-word scene inside the old budget).
+_2_SCENES = 2 * settings.chapter_gen_per_scene_tokens
 
 # Reuse the engine-router TestClient fixture + ids (pack/stream/judge stubbed).
 from tests.unit.test_engine_router import (  # noqa: F401
@@ -123,7 +129,7 @@ def test_generate_auto_echoes_assembly_mode(ctx, monkeypatch):
         return Selection(winner=cand, winner_index=0, candidates=[cand],
                          rerank_reason="", rerank_measured=False)
 
-    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    monkeypatch.setattr("app.routers.engine.select_scene", fake_select)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
     assert r.status_code == 200
     assert r.json()["assembly_mode"] == "per_scene"
@@ -377,7 +383,7 @@ def test_chapter_generate_worker_enabled_enqueues_202(chap_ctx, monkeypatch):
     assert inp["worker_op"] == "chapter_generate" and inp["packed_prompt"] == "GROUNDING"
     assert inp["chapter_id"] == str(CHAPTER)
     assert inp["present_entity_ids"] == [str(ENT1), str(ENT2)]  # union cast (pov first)
-    assert inp["max_out"] == 1400  # plan-sized, carried for the worker
+    assert inp["max_out"] == _2_SCENES  # plan-sized, carried for the worker
     assert jobs._last_create["status"] == "pending"
     assert not [s for _, s, _ in jobs.updates if s == "completed"]
 
@@ -407,9 +413,10 @@ def test_chapter_generate_happy_path(chap_ctx):
     assert body["truncated"] is False  # clean stop (fake_diverge finish_reason None)
     # single pass — diverge called with k=1, and the union cast reached canon reflect
     assert state["diverge"]["k"] == 1
-    # max_out sized from the plan: 2 scenes × 700 = 1400 (< 8192 ceiling).
-    assert state["diverge"]["max_tokens"] == 1400
-    assert body["max_output_tokens"] == 1400
+    # max_out sized from the plan: 2 scenes × the per-scene budget (< 8192 ceiling).
+    assert state["diverge"]["max_tokens"] == _2_SCENES
+    assert body["max_output_tokens"] == _2_SCENES
+    assert _2_SCENES < settings.stitch_max_tokens  # the ceiling is not what's under test
     # chapter_sort double-fetch fix: the endpoint passes the sort it already
     # fetched as chapter_sort_hint (Bk stub returns 3) so pack() doesn't re-fetch.
     assert state["pack_req"].chapter_sort_hint == 3
@@ -553,8 +560,9 @@ def test_stitch_happy_path_persists(chap_ctx):
     assert body["text"] == "STITCHED CHAPTER" and body["assembly_mode"] == "per_scene_stitch"
     assert body["stitched"] is True and body["degraded"] is False
     assert body["truncated"] is False  # fake_stitch finish_reason "stop"
-    # max_out sized from the 2 scene drafts: 2 × 700 = 1400
-    assert state["stitch"]["max_tokens"] == 1400 and body["max_output_tokens"] == 1400
+    # max_out sized from the 2 scene drafts × the per-scene budget
+    assert state["stitch"]["max_tokens"] == _2_SCENES
+    assert body["max_output_tokens"] == _2_SCENES
     # the chapter's scene drafts reached the stitcher, each opening with its
     # `### <scene title>` line (F4 D-SCENEMARKER-EMIT)
     assert state["stitch"]["scene_drafts"] == [

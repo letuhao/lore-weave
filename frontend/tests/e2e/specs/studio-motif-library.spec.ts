@@ -79,7 +79,16 @@ test.describe('@s4 Studio · motif-library', () => {
     await lib.graphKind.selectOption('precedes');
     await lib.graphAddSubmit.click();
     const edge = lib.graphEdges.first();
-    await expect(edge).toBeVisible({ timeout: 10_000 });   // §2#2 CRUD — the edge renders
+    await expect(edge).toBeVisible({ timeout: 10_000 });   // §2#2 CRUD — the edge row exists
+
+    // …and it actually SAYS something. `toBeVisible()` alone passed for a whole release while
+    // both labels rendered as `undefined`: the FE type declared the neighbour FLAT
+    // (`neighbor_name`) while the server has always nested it under `neighbor`, so the <li>
+    // rendered an arrow and two empty spans — present, visible, and blank. Asserting the row
+    // exists is not asserting the row is USEFUL, and this live browser test walked straight
+    // past the bug. The neighbour's name and code are the entire content of the row.
+    await expect(edge).toContainText(motifB.name);
+    await expect(edge).toContainText(motifB.code);
 
     // delete it via the row's × (no dead button)
     await page.getByTestId('motif-graph-edge-delete').first().click();

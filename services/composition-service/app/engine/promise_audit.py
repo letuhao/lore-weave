@@ -26,18 +26,15 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.critic import parse_critique_json
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
-
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 
 def build_audit_messages(arc_text: str, source_language: str) -> tuple[str, str]:
@@ -104,7 +101,7 @@ def _parse_audit(content: str) -> dict[str, Any]:
 async def audit_promises(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     arc_text: str, source_language: str = "auto",
-    max_tokens: int = 1500, trace_id: str | None = None,
+    max_tokens: int = max_tokens_for("audit_promises"), trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Audit one arc's promises. On any LLM/parse failure returns empty lists +
@@ -116,8 +113,12 @@ async def audit_promises(
             input={
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
-                "response_format": {"type": "text"}, "temperature": 0.0,
-                "max_tokens": max_tokens, **_NO_THINK,
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "promise_audit", "schema": _AUDIT_SCHEMA},
+                },
+                "temperature": 0.0,
+                "max_tokens": max_tokens, **no_thinking_fields(),
             },
             job_meta={"usage_purpose": "promise_audit", "extractor": "promise_audit"}, trace_id=trace_id,
             cancel_check=cancel_check,
@@ -142,6 +143,27 @@ async def audit_promises(
 # dropped on truncated arcs.
 
 _VERDICTS = ("paid", "progressing", "abandoned", "absent")
+
+#: `verdict` closed at the decoder. An eval that mis-labels a verdict does not merely lose a row —
+#: it reports a DIFFERENT number, and the whole point of an audit is that its counts are trustworthy.
+_AUDIT_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "promises": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string"},
+                    "verdict": {"type": "string", "enum": list(_VERDICTS)},
+                },
+                "required": ["text", "verdict"],
+                "additionalProperties": True,
+            },
+        },
+    },
+    "required": ["promises"],
+}
 
 
 def build_extract_messages(premise: str, plan_text: str, source_language: str) -> tuple[str, str]:
@@ -239,7 +261,7 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
                 "response_format": {"type": "text"}, "temperature": 0.0,
-                "max_tokens": max_tokens, **_NO_THINK,
+                "max_tokens": max_tokens, **no_thinking_fields(),
             },
             job_meta={"usage_purpose": "promise_audit", "extractor": tag}, trace_id=trace_id,
             cancel_check=cancel_check,
@@ -256,7 +278,7 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
 async def extract_tracked_promises(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     premise: str, plan_text: str, source_language: str = "auto",
-    max_tokens: int = 800, trace_id: str | None = None,
+    max_tokens: int = max_tokens_for("extract_tracked_promises"), trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[str]:
     """Derive the fixed tracked-promise set from premise+plan. Returns [] on
@@ -274,7 +296,7 @@ async def extract_tracked_promises(
 async def score_promise_coverage(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     promises: list[str], arc_text: str, source_language: str = "auto",
-    max_tokens: int = 1500, trace_id: str | None = None,
+    max_tokens: int = max_tokens_for("score_promise_coverage"), trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Score one arc's prose against the FIXED promise set. On failure returns the

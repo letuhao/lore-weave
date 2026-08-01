@@ -23,23 +23,76 @@ function violationLabel(v: CanonViolation): string {
 
 export function CanonGatePanel({ canon, onRevise }: Props) {
   const { t } = useTranslation('composition');
-  const checked = canon.status === 'checked';
+  // S1 — prefer the DERIVED headline over the legacy scalar. `status` describes the gone-cast
+  // check only while wearing the guard's name, so a run whose name-grounding degraded reported
+  // 'checked' here and this panel drew a green all-clear over it. `guard_status` is the worst
+  // status across every check the guard ran; `?? status` keeps pre-S1 rows readable.
+  const checked = (canon.guard_status ?? canon.status) === 'checked';
   // Defensive: the backend excludes judge-cleared (confirmed===false), but never
   // trust the wire — only true=HARD, null/undefined=ADVISORY are shown.
   const hard = checked ? canon.violations.filter((v) => v.confirmed === true) : [];
   const advisory = checked ? canon.violations.filter((v) => v.confirmed !== true && v.confirmed !== false) : [];
-  // Gate the green "clear" line on the AUTHORITATIVE `resolved` field, not just an
-  // empty filtered list — the whole canon arc is "no silent false-green". If the
-  // backend ever reports resolved=false without an individual hard row, we must
-  // NOT show green (the panel renders empty rather than a false all-clear).
-  const clear = checked && canon.resolved && hard.length === 0 && advisory.length === 0;
+  // Gate the green "clear" line on the AUTHORITATIVE verdict, not just an empty filtered
+  // list — the whole canon arc is "no silent false-green". If the backend ever reports a
+  // failed verdict without an individual hard row, we must NOT show green (the panel renders
+  // empty rather than a false all-clear).
+  //
+  // `verdict` IS `resolved && something-was-checked`, computed server-side by
+  // `loreweave_guard.GuardReport`. This line used to restate that conjunction by hand, which
+  // put a rule with Python tests into TypeScript where none of them apply. `?? resolved` is
+  // the pre-S1 fallback, and it is still ANDed with `checked` above.
+  // `=== undefined`, NOT `??`. The two nullish values mean OPPOSITE things here: `undefined`
+  // is a pre-S1 row that never carried the field (fall back), while `null` is the server
+  // saying *nothing verified this* (must not fall back). `??` collapses them, and the first
+  // version of this line did exactly that — a green all-clear on an unverified scene, which
+  // is the bug the field was added to close, reintroduced by the operator that reads as safe.
+  const verdict = canon.verdict === undefined ? canon.resolved : canon.verdict;
+  const clear = checked && verdict === true && hard.length === 0 && advisory.length === 0;
 
+  // WHY it is unchecked, derived from `guard_status` — the per-check headline — and not from
+  // the legacy scalar. Two defects this replaces, both measured:
+  //   · the chain keyed on `canon.status`, the SAME field `checked` was moved off, so every
+  //     status added since (`no_rules`, `unverified_input`, `unparseable`, `no_subject`) fell
+  //     through to the final branch;
+  //   · that branch asserts "the canon service was unavailable" for ANYTHING unrecognised — a
+  //     cause it cannot know. A truncated JUDGE is not an outage, and telling the author to go
+  //     look at a healthy service is worse than saying nothing.
+  // The fallback now NAMES the status instead of inventing a reason for it.
+  const REASONS: Record<string, string> = {
+    no_subject: t('canonUncheckedNoCast', { defaultValue: 'no tracked characters in this scene' }),
+    no_position: t('canonUncheckedNoPosition', {
+      defaultValue: 'this scene has no reading-order position yet',
+    }),
+    no_rules: t('canonUncheckedNoRules', {
+      defaultValue: 'nothing is known yet about this scene’s characters to check against',
+    }),
+    unverified_input: t('canonUncheckedUnverifiedInput', {
+      defaultValue: 'part of what this check needed could not be loaded, so it is incomplete',
+    }),
+    unparseable: t('canonUncheckedUnparseable', {
+      defaultValue: 'the reviewing model did not return a usable answer',
+    }),
+    degraded: t('canonUncheckedDegraded', { defaultValue: 'the canon service was unavailable' }),
+    failed: t('canonUncheckedFailed', { defaultValue: 'the check itself errored' }),
+  };
+  // Pre-S1 rows carry only the legacy scalar; map its two known values onto the same reasons.
+  const LEGACY: Record<string, string> = {
+    skipped_no_cast: 'no_subject',
+    skipped_no_position: 'no_position',
+    degraded: 'degraded',
+  };
+  const reasonKey = canon.guard_status ?? LEGACY[canon.status] ?? canon.status;
+  // No raw enum in author-facing copy. The first version interpolated `reasonKey` into the
+  // sentence, so a novelist read "this check did not run (unparseable)" — developer vocabulary
+  // leaking into the product. The value still has to reach support, so it rides `title=`,
+  // which is where an untranslated internal token belongs.
   const uncheckedReason =
-    canon.status === 'skipped_no_cast'
-      ? t('canonUncheckedNoCast', { defaultValue: 'no tracked characters in this scene' })
-      : canon.status === 'skipped_no_position'
-        ? t('canonUncheckedNoPosition', { defaultValue: 'this scene has no reading-order position yet' })
-        : t('canonUncheckedDegraded', { defaultValue: 'the canon service was unavailable' });
+    REASONS[reasonKey] ?? t('canonUncheckedOther', { defaultValue: 'this check could not run' });
+  // Which half of the composite could not run. Named because "the guard is amber" without
+  // WHICH check is the same shape as the scalar this arc replaced.
+  const stalledChecks = Object.entries(canon.checks ?? {})
+    .filter(([, v]) => v !== 'checked' && v !== 'not_applicable')
+    .map(([k]) => k);
 
   const row = (v: CanonViolation, kind: 'hard' | 'advisory', i: number) => (
     <div
@@ -64,10 +117,22 @@ export function CanonGatePanel({ canon, onRevise }: Props) {
   );
 
   return (
-    <div data-testid="canon-gate-panel" data-status={canon.status} className="rounded border border-neutral-200 p-2 dark:border-neutral-700">
+    <div data-testid="canon-gate-panel" data-status={canon.status}
+      data-guard-status={canon.guard_status ?? canon.status} className="rounded border border-neutral-200 p-2 dark:border-neutral-700">
       {!checked && (
-        <div data-testid="canon-unchecked" className="rounded bg-amber-50 p-1.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+        <div data-testid="canon-unchecked" title={reasonKey}
+          className="rounded bg-amber-50 p-1.5 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300">
           <span className="font-medium">{t('canonUncheckedTitle', { defaultValue: 'Canon not verified' })}</span> — {uncheckedReason}
+          {stalledChecks.length > 0 && (
+            <span data-testid="canon-unchecked-which" className="opacity-80"
+              title={stalledChecks.join(', ')}>
+              {' '}
+              {t('canonUncheckedWhich', {
+                defaultValue: '{{count}} of its checks did not complete',
+                count: stalledChecks.length,
+              })}
+            </span>
+          )}
         </div>
       )}
 

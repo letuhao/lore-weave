@@ -1,0 +1,201 @@
+{
+  "A_baseline_broken": {
+    "asked_fields": [
+      "gender",
+      "role",
+      "social_class",
+      "affiliation",
+      "personality",
+      "description",
+      "goals",
+      "secrets"
+    ],
+    "prompt_tok": 280,
+    "secs": 15.5,
+    "usable_vs_real_schema": {
+      "ok": true,
+      "filled": 0,
+      "asked": 4,
+      "fill_rate": 0.0,
+      "chars_per_field": 0
+    }
+  },
+  "B_full_schema": {
+    "asked_fields": [
+      "term",
+      "definition",
+      "category",
+      "usage_note"
+    ],
+    "prompt_tok_total": 789,
+    "secs": 10.4,
+    "items": [
+      {
+        "name": "Chân Linh",
+        "ok": true,
+        "filled": 4,
+        "asked": 4,
+        "fill_rate": 1.0,
+        "chars_per_field": 111
+      },
+      {
+        "name": "Trận pháp",
+        "ok": true,
+        "filled": 4,
+        "asked": 4,
+        "fill_rate": 1.0,
+        "chars_per_field": 134
+      },
+      {
+        "name": "Luyện khí",
+        "ok": true,
+        "filled": 4,
+        "asked": 4,
+        "fill_rate": 1.0,
+        "chars_per_field": 123
+      }
+    ]
+  },
+  "C_full_plus_hints": {
+    "asked_fields": [
+      "term",
+      "definition",
+      "category",
+      "usage_note"
+    ],
+    "prompt_tok_total": 951,
+    "secs": 9.9,
+    "items": [
+      {
+        "name": "Chân Linh",
+        "ok": true,
+        "filled": 4,
+        "asked": 4,
+        "fill_rate": 1.0,
+        "chars_per_field": 89
+      },
+      {
+        "name": "Trận pháp",
+        "ok": true,
+        "filled": 4,
+        "asked": 4,
+        "fill_rate": 1.0,
+        "chars_per_field": 114
+      },
+      {
+        "name": "Luyện khí",
+        "ok": true,
+        "filled": 4,
+        "asked": 4,
+        "fill_rate": 1.0,
+        "chars_per_field": 86
+      }
+    ]
+  },
+  "D_focused_slice": {
+    "asked_fields": [
+      "term",
+      "definition"
+    ],
+    "prompt_tok_total": 762,
+    "secs": 8.7,
+    "items": [
+      {
+        "name": "Chân Linh",
+        "ok": true,
+        "filled": 2,
+        "asked": 2,
+        "fill_rate": 1.0,
+        "chars_per_field": 126
+      },
+      {
+        "name": "Trận pháp",
+        "ok": true,
+        "filled": 2,
+        "asked": 2,
+        "fill_rate": 1.0,
+        "chars_per_field": 127
+      },
+      {
+        "name": "Luyện khí",
+        "ok": true,
+        "filled": 2,
+        "asked": 2,
+        "fill_rate": 1.0,
+        "chars_per_field": 117
+      }
+    ]
+  },
+  "E_batch_same_kind": {
+    "asked_fields": [
+      "term",
+      "definition",
+      "category",
+      "usage_note"
+    ],
+    "prompt_tok": 268,
+    "secs": 5.4,
+    "returned": 3,
+    "items": [
+      {
+        "pos": 0,
+        "name": "Chân Linh",
+        "ok": true,
+        "filled": 4,
+        "asked": 4,
+        "fill_rate": 1.0,
+        "chars_per_field": 98
+      },
+      {
+        "pos": 1,
+        "name": "Trận pháp",
+        "ok": true,
+        "filled": 4,
+        "asked": 4,
+        "fill_rate": 1.0,
+        "chars_per_field": 89
+      },
+      {
+        "pos": 2,
+        "name": "Luyện khí",
+        "ok": true,
+        "filled": 4,
+        "asked": 4,
+        "fill_rate": 1.0,
+        "chars_per_field": 87
+      }
+    ]
+  },
+  "F_power_full": {
+    "asked_fields": [
+      "name",
+      "description",
+      "type",
+      "effects",
+      "rank",
+      "user",
+      "aliases"
+    ],
+    "prompt_tok": 271,
+    "secs": 3.8,
+    "ok": true,
+    "filled": 7,
+    "asked": 7,
+    "fill_rate": 1.0,
+    "chars_per_field": 88
+  },
+  "F_power_focused": {
+    "asked_fields": [
+      "name",
+      "description",
+      "effects"
+    ],
+    "prompt_tok": 260,
+    "secs": 3.3,
+    "ok": true,
+    "filled": 3,
+    "asked": 3,
+    "fill_rate": 1.0,
+    "chars_per_field": 146
+  }
+}

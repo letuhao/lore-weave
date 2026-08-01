@@ -73,6 +73,14 @@ export function useDivergenceSpecEditor(
     mutationFn: (id: string) => compositionApi.deleteEntityOverride(projectId!, id, token!),
     onSuccess: refresh,
   });
+  // F3 — the delete is a SOFT archive (`overridden_fields` is an authored delta), so it owes an
+  // undo the AUTHOR can reach. It first shipped on the MCP surface only: the co-writer could
+  // restore an override and the person who deleted it could not. The caller renders this as the
+  // delete toast's Undo; `listEntityOverrides` filters archived rows, so that toast IS the door.
+  const restoreOverride = useMutation({
+    mutationFn: (id: string) => compositionApi.restoreEntityOverride(projectId!, id, token!),
+    onSuccess: refresh,
+  });
 
   // Anchored source entities NOT already overridden — the "override another entity" options.
   const overriddenTargets = useMemo(
@@ -104,5 +112,6 @@ export function useDivergenceSpecEditor(
     addOverride,
     updateOverride,
     removeOverride,
+    restoreOverride,
   };
 }

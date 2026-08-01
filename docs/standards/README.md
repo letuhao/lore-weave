@@ -114,14 +114,15 @@ Shared, machine-readable interop SoT files (excluding per-service OpenAPI featur
 | `contracts/errors/canonical.go` | 4 canonical error classes (`user`/`system`/`transient`/`permanent`) | Go services; exhaustiveness tests |
 | `contracts/cache/keys.yaml` | cache-key namespace registry (kind, TTL, invalidation, sensitivity) | Go `KeyRegistry` (rejects unregistered kinds at runtime) |
 | `contracts/slo/latency.yaml` | platform user-HTTP p95 latency SLO per top-level endpoint (P2·D; complements the MMO `slo_targets.yaml`) | `scripts/slo-latency-lint.py` (shape/presence) + planned perf-nightly p95 assertion |
-| `contracts/canon/guardrail_rules.yaml` | L1 axiomatic canon-guardrail predicates | roleplay-service pre-prompt `check_proposed_write` |
+| `contracts/canon/guardrail_rules.yaml` | L1 axiomatic canon-guardrail predicates | ⚠️ **NOT WIRED** — `YamlGuardrail` has zero production call sites; roleplay-service does not depend on the crate and makes no LLM calls. Blocked on the L3-event write path, which does not exist yet. (Corrected 2026-07-31; the row previously claimed a roleplay-service pre-prompt check that had never existed.) |
+| [contracts/llm-budget.contract.json](../../contracts/llm-budget.contract.json) | LLM **output-budget** cross-language facts: the `max_tokens=0` omit sentinel, the truncated `finish_reason`, and the output-kind → `truncation_is_fatal` map | drift tests in all 3 SDKs — Python `sdks/python/tests/test_call_budget.py`, Go `sdks/go/loreweave_llm/budget_contract_test.go`, Rust `sdks/rust/loreweave_llm/tests/budget_contract.rs` — plus `services/glossary-service/internal/llmbudget`. Deliberately runtime-inert: it exists so an edit to any one language reds that language's test instead of drifting quietly (the omit rule had 4 independent implementations and 0 checks between them). |
 | `contracts/entity_status/v1.yaml` (+`.go`) | shared entity-status kernel wire mirror (gone-state, precedence) | Go + Rust in-process libs (byte-parity) |
 | `contracts/adminjwt/` (Go module) | shared RS256 admin-JWT claims/verify/break-glass | every admin surface; backs INV-T2/T6 |
 | `contracts/service_acl/matrix.yaml` | RPC allow-list between services (S11) | `service-acl-matrix-lint.sh` |
 | `contracts/admin/registry/*.yaml` | per-domain admin command registry (name, params, impact_class) | `admin-command-registry-lint.sh` + `adminjwt` gate |
 | `contracts/capacity/budgets.yaml`, `contracts/alerts/rules.yaml`, `contracts/incidents/severity_matrix.yaml`, `contracts/backup/policy.yaml`, `contracts/chaos/v1.yaml` | capacity / alert / incident-severity / backup / chaos SoTs (each + Go loader + lint) | respective ops modules |
 | [contracts/service_contracts.md](../../contracts/service_contracts.md) | narrative index of shared data types + which OpenAPI is authoritative per gateway path | orientation (human, not machine-loaded) |
-| `contracts/.spectral.yaml` | OpenAPI lint ruleset | Spectral CI over `contracts/api/**` |
+| `contracts/.spectral.yaml` | OpenAPI lint ruleset | ⚠️ **NOT WIRED** — `foundation-ci.yml` states the spectral ruleset is intentionally unwired (missing tool), tracked as DEFERRED 078. The ruleset file is real; the CI job is not. (Corrected 2026-07-31.) |
 
 ---
 

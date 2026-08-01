@@ -92,11 +92,11 @@
     "loadFailed": "리빙 월드 로드 실패: {{error}}",
     "empty": "이 월드에는 아직 작품이 없습니다 — 도서나 What-if를 시작하여 타임라인을 확장하세요.",
     "canonBadge": "정사",
-    "branchBadge": "What-if",
     "canonAria": "정사: {{title}}",
     "branchAria": "챕터 {{ch}}에서 분기된 What-if: {{title}}",
     "branchAt": "ch. {{ch}}에서 분기",
     "orphan": "· 외부 월드 소스",
-    "edgeLabel": "ch. {{ch}}"
+    "branchBadge": "만약에",
+    "edgeLabel": "제 {{ch}}장"
   }
 }

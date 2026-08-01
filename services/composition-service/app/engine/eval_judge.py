@@ -24,18 +24,16 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.critic import parse_critique_json
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 _DEFECT_KEYS = ("continuity_breaks", "dropped_threads", "contradictions", "repetition")
 
@@ -95,7 +93,7 @@ def _parse_verdict(content: str) -> dict[str, Any]:
 async def pairwise_judge(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     draft_a: str, draft_b: str, source_language: str = "auto",
-    max_tokens: int = 1024, trace_id: str | None = None,
+    max_tokens: int = max_tokens_for("pairwise_judge"), trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Run the pairwise comparison. On any LLM/parse failure returns a 'tie'
@@ -109,7 +107,7 @@ async def pairwise_judge(
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
                 "response_format": {"type": "text"}, "temperature": 0.0,
-                "max_tokens": max_tokens, **_NO_THINK,
+                "max_tokens": max_tokens, **no_thinking_fields(),
             },
             job_meta={"usage_purpose": "prose_eval", "extractor": "pairwise_judge"}, trace_id=trace_id,
             cancel_check=cancel_check,

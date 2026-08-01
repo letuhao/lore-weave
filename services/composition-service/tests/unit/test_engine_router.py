@@ -114,6 +114,10 @@ def ctx(monkeypatch):
     monkeypatch.setattr("app.routers.engine.pack", fake_pack)
     monkeypatch.setattr("app.routers.engine.stream_draft", fake_stream)
     monkeypatch.setattr("app.routers.engine.judge_prose", judge_stub)
+    # Registry unreachable by default → the reasoning classifier falls back to the request's
+    # model_kind/model_name hints, which is what the tests below pass explicitly. A test that
+    # wants the authoritative path overrides this (see the no-hints test).
+    monkeypatch.setattr("app.routers.engine.resolve_model_info", AsyncMock(return_value=None))
 
     from app.main import app
     from app.deps import (get_book_client_dep, get_canon_rules_repo, get_derivatives_repo,
@@ -349,8 +353,9 @@ def test_generate_reasoning_off_is_user_none(ctx):
     # T3.4 lock — the scene generate path must thread grounding_pins_repo into pack.
     assert captured["pack_grounding_pins_repo"] not in (None, "__missing__")
     assert '"reasoning_effort": "none"' in r.text
-    # /review-impl MED#1: the resolved effort must actually REACH stream_draft.
-    assert captured["reasoning_effort"] == "none"
+    # /review-impl MED#1: the resolved DIRECTIVE must actually REACH stream_draft. It used to
+    # be collapsed to a bare effort string here, which cannot carry chat_template_kwargs.
+    assert captured["reasoning"].effort == "none"
 
 
 def test_generate_reasoning_auto_on_effort_model_uses_scorer(ctx):
@@ -362,7 +367,7 @@ def test_generate_reasoning_auto_on_effort_model_uses_scorer(ctx):
     assert r.status_code == 200
     assert '"reasoning_source": "rule_based"' in r.text
     # draft_scene + 0 canon → medium, and it must reach stream_draft.
-    assert captured["reasoning_effort"] == "medium"
+    assert captured["reasoning"].effort == "medium"
 
 
 def test_generate_reasoning_auto_on_adaptive_model_passes_through(ctx):
@@ -374,8 +379,60 @@ def test_generate_reasoning_auto_on_adaptive_model_passes_through(ctx):
     assert r.status_code == 200
     assert '"reasoning_source": "adaptive"' in r.text
     assert '"reasoning_effort": null' in r.text
-    # passthrough → stream_draft must receive None (let the model self-decide).
-    assert captured["reasoning_effort"] is None
+    # passthrough → stream_draft must receive a passthrough directive (self-deciding model);
+    # nothing goes on the wire for it.
+    assert captured["reasoning"].passthrough is True and captured["reasoning"].effort is None
+
+
+def test_classification_does_not_depend_on_the_client_sending_hints(ctx, monkeypatch):
+    """The FE spreads model_kind/model_name CONDITIONALLY, so a generate fired before the model
+    metadata resolves omits them. While the classifier only picked an effort level that was
+    harmless; now that it also decides suppression, "no hint" would mean "not a local model" →
+    nothing sent → the drafter's chat template keeps thinking on → the empty draft returns.
+    The registry is authoritative and must be consulted."""
+    c, *_, captured = ctx
+    monkeypatch.setattr("app.routers.engine.resolve_model_info", AsyncMock(return_value={
+        "provider_kind": "lm_studio", "provider_model_name": "google/gemma-4-26b-a4b-qat"}))
+    body = _gen_body()
+    body.pop("model_kind", None)
+    body.pop("model_name", None)
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**body, "reasoning": "auto"})
+    assert r.status_code == 200
+    # gemma matches no reasoning-name pattern, but it IS local → suppress, not omit.
+    assert captured["reasoning"].effort == "none"
+    assert captured["reasoning"].source == "suppress_unclassified"
+
+
+def test_registry_capability_flags_override_the_name_heuristic(ctx, monkeypatch):
+    """`capability_flags.reasoning_control` is the SANCTIONED way to correct a model the name
+    heuristic gets wrong — and `infer_reasoning_control` has always checked it first. It was
+    unreachable from any server until the internal model-info route started returning the flags:
+    the only caller that could supply it was one that already had them client-side.
+
+    Here it corrects gemma in the ENABLE direction: without the flag it suppresses, with
+    `reasoning_control=effort` the rule-based scorer decides instead."""
+    c, *_, captured = ctx
+    monkeypatch.setattr("app.routers.engine.resolve_model_info", AsyncMock(return_value={
+        "provider_kind": "lm_studio", "provider_model_name": "google/gemma-4-26b-a4b-qat",
+        "capability_flags": {"reasoning_control": "effort"}}))
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate",
+               json={**_gen_body(), "reasoning": "auto"})
+    assert r.status_code == 200
+    assert captured["reasoning"].source == "rule_based"   # the scorer, not the suppressor
+    assert captured["reasoning"].effort == "medium"       # draft_scene + 0 canon
+
+
+def test_absent_capability_flags_do_not_disturb_the_classification(ctx, monkeypatch):
+    """The column is nullable and holds a bare JSON null on live rows; the route renders both as
+    {}. An empty mapping must mean "no override", never "override to nothing"."""
+    c, *_, captured = ctx
+    monkeypatch.setattr("app.routers.engine.resolve_model_info", AsyncMock(return_value={
+        "provider_kind": "lm_studio", "provider_model_name": "google/gemma-4-26b-a4b-qat",
+        "capability_flags": {}}))
+    r = c.post(f"/v1/composition/works/{PROJECT}/generate",
+               json={**_gen_body(), "reasoning": "auto"})
+    assert r.status_code == 200
+    assert captured["reasoning"].source == "suppress_unclassified"
 
 
 def test_generate_cancels_in_flight_job_s2(ctx):
@@ -418,7 +475,7 @@ def test_generate_auto_returns_reranked_winner_as_json(ctx, monkeypatch):
         return Selection(winner=cands[1], winner_index=1, candidates=cands,
                          rerank_reason="B tightest", rerank_measured=True)
 
-    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    monkeypatch.setattr("app.routers.engine.select_scene", fake_select)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
     assert r.status_code == 200
     body = r.json()  # JSON, NOT an SSE stream
@@ -447,7 +504,7 @@ def test_generate_auto_surfaces_truncated(ctx, monkeypatch):
         return Selection(winner=cands[0], winner_index=0, candidates=cands,
                          rerank_reason="", rerank_measured=False)
 
-    monkeypatch.setattr("app.routers.engine.select_draft", trunc_select)
+    monkeypatch.setattr("app.routers.engine.select_scene", trunc_select)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
     assert r.status_code == 200
     body = r.json()
@@ -473,7 +530,7 @@ def test_generate_auto_uses_adaptive_k_from_node_tension(ctx, monkeypatch):
         return Selection(winner=cands[0], winner_index=0, candidates=cands,
                          rerank_reason="", rerank_measured=False)
 
-    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    monkeypatch.setattr("app.routers.engine.select_scene", fake_select)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
     assert r.status_code == 200
     assert seen["k"] == 1  # tension 10 (low, 0..100) → K=1, not the fixed default 3
@@ -485,7 +542,7 @@ def test_generate_auto_select_failure_fails_job_502(ctx, monkeypatch):
     async def boom(llm, judge, **kw):
         raise RuntimeError("diverge produced no candidates")
 
-    monkeypatch.setattr("app.routers.engine.select_draft", boom)
+    monkeypatch.setattr("app.routers.engine.select_scene", boom)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
     assert r.status_code == 502
     assert any(s == "failed" for _, s, _ in jobs.updates)
@@ -500,7 +557,7 @@ def test_generate_auto_idempotent_replay_returns_existing(ctx, monkeypatch):
         called["n"] += 1
         raise AssertionError("must not run on replay")
 
-    monkeypatch.setattr("app.routers.engine.select_draft", fake_select)
+    monkeypatch.setattr("app.routers.engine.select_scene", fake_select)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate",
                json={**_gen_body(), "mode": "auto", "idempotency_key": "k1"})
     assert r.status_code == 200 and r.json()["replay"] is True
@@ -523,7 +580,7 @@ def test_generate_auto_worker_enabled_enqueues_202(ctx, monkeypatch):
         raise AssertionError("worker path must not run select_draft inline")
 
     monkeypatch.setattr("app.routers.engine.enqueue_job", fake_enqueue)
-    monkeypatch.setattr("app.routers.engine.select_draft", must_not_run)
+    monkeypatch.setattr("app.routers.engine.select_scene", must_not_run)
     r = c.post(f"/v1/composition/works/{PROJECT}/generate", json={**_gen_body(), "mode": "auto"})
     assert r.status_code == 202
     body = r.json()
@@ -533,6 +590,12 @@ def test_generate_auto_worker_enabled_enqueues_202(ctx, monkeypatch):
     inp = jobs._last_create["input"]
     assert inp["worker_op"] == "generate" and inp["packed_prompt"] == "GROUNDING"
     assert inp["reinjected_promise_count"] == 2  # echoed from the pack
+    # D-SCENE-BEATS slice 2 — the worker cannot re-read the node (no bearer), so a field the
+    # endpoint does not serialise here is a field the enqueued path can NEVER see. That is the
+    # same shape as D-LENGTH-DIRECTIVE-NEVER-SENT: stored on the node, dropped at a boundary.
+    from app.engine.cowrite import DEFAULT_SCENE_TARGET_WORDS
+    assert "draft_beats" in inp and inp["draft_beats"] == []
+    assert inp["target_words"] == DEFAULT_SCENE_TARGET_WORDS
     assert jobs._last_create["status"] == "pending"
     # no terminal update happened inline (the worker will complete it)
     assert not [s for _, s, _ in jobs.updates if s == "completed"]

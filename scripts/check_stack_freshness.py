@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -40,6 +41,45 @@ GIT_SHA_LABEL = "org.loreweave.git_sha"
 # invalidate its image. `services/<name>` always; shared dirs are diffed too
 # (cheap + precise under the SHA tier; the timestamp tier uses the service dir).
 SHARED_PATHS = ["sdks", "contracts"]
+
+COMPOSE_FILE = os.path.join("infra", "docker-compose.yml")
+
+
+def source_dir_map() -> dict[str, str]:
+    """compose service → the repo dir whose changes invalidate its image.
+
+    This used to be assumed: `services/<container-name>`, with anything that did not
+    match SKIPPED. That silently excluded every WORKER TWIN — `composition-worker`,
+    `translation-worker`, `lore-enrichment-worker`, `video-gen-worker` all build from
+    their SERVICE's directory — plus `frontend` and `cms-frontend`. Six first-party
+    build targets the guard never looked at, which is exactly how a `composition-worker`
+    running a 12-hour-old image shipped a plan path that no longer existed in source,
+    and how a composition image built mid-run served 12 of 17 motif locales while the
+    repo held all 17. In both cases /health was green and nothing errored.
+
+    The compose `build.dockerfile` IS the mapping, so read it rather than guess. Parsed
+    with a regex on purpose — this script has no third-party imports and runs in a
+    pre-commit context where `docker compose config` may be unavailable or slow. A
+    service the parse cannot resolve falls back to the old assumption, so a parse
+    failure degrades to the previous behaviour instead of skipping everything.
+    """
+    out: dict[str, str] = {}
+    try:
+        text = open(COMPOSE_FILE, encoding="utf-8").read()
+    except OSError:
+        return out
+    # `  <name>:` … `dockerfile: <path>` before the next top-level service key.
+    pattern = r"\n  ([a-z0-9-]+):\n((?:(?!\n  [a-z0-9-]+:).)*)"
+    for m in re.finditer(pattern, text, re.S):
+        svc, body = m.group(1), m.group(2)
+        df = re.search(r"dockerfile:\s*(\S+)", body)
+        if not df:
+            continue                      # pulled image (postgres/redis/…): nothing to diff
+        d = os.path.dirname(df.group(1).strip())
+        # A repo-root Dockerfile (`dockerfile: Dockerfile`) means the build context is
+        # the whole repo — too broad to diff usefully, so fall back to a same-named dir.
+        out[svc] = d if d else (svc if os.path.isdir(svc) else "")
+    return out
 
 # H0-critical internal routes that silently 404 on a stale image. host_env is the
 # env var carrying the host base URL; default is the documented host port.
@@ -203,14 +243,17 @@ def probe_route(base: str, path: str, token: str) -> bool:
 
 def check_drift(services: list[str]) -> list[tuple[str, str, str]]:
     rows = []
+    smap = source_dir_map()
     for svc in services:
-        # Only first-party COMPOSE-BUILT services have a source dir; pulled images
-        # (postgres/redis/neo4j/…) and name-mismatched workers have none → skip
-        # (they are not built from this repo, so "behind HEAD" is meaningless).
-        if not os.path.isdir(os.path.join("services", svc)):
+        # Only first-party COMPOSE-BUILT services have a source dir; a pulled image
+        # (postgres/redis/neo4j/…) has none → skip, since "behind HEAD" is meaningless
+        # for it. A WORKER TWIN resolves to its service's dir via source_dir_map, and
+        # is no longer skipped for merely being named differently.
+        src = smap.get(svc) or (f"services/{svc}" if os.path.isdir(os.path.join("services", svc)) else "")
+        if not src or not os.path.isdir(src):
             continue
         container = f"infra-{svc}-1"
-        paths = [f"services/{svc}"] + SHARED_PATHS
+        paths = [src] + SHARED_PATHS
         sha = image_git_sha(container)
         if sha:
             drift = sha_has_drift(sha, paths)
@@ -219,7 +262,7 @@ def check_drift(services: list[str]) -> list[tuple[str, str, str]]:
             created = image_created(container)
             # tier-1 proxy uses the SERVICE dir only (shared-path timestamps would
             # over-flag every service on any sdk change).
-            drift = decide_drift_by_time(created, last_commit_iso([f"services/{svc}"]))
+            drift = decide_drift_by_time(created, last_commit_iso([src]))
             # LE-061: flag the degraded-detection (unstamped) case so an operator
             # sees WHY a stale binary could slip the tier-1 proxy.
             detail = drift_note(False) + (

@@ -10,6 +10,7 @@
 //                 CatalogMotif into a Motif-shaped, public-tier row for the card
 //                 (the tier facet is N/A on this tab — every row is 'public').
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query';
 import { motifApi, type MotifListParams, type CatalogParams } from '../api';
 import type { CatalogMotif, Motif, MotifKind } from '../types';
@@ -39,7 +40,9 @@ function catalogToMotif(c: CatalogMotif): Motif {
     id: c.id,
     owner_user_id: CATALOG_OWNER_SENTINEL,   // non-null + ≠ viewer ⇒ tier 'public'
     code: c.code,
-    language: c.language,
+    original_language: c.original_language,
+    text_language: c.text_language,
+    text_fallback: c.text_fallback,
     visibility: 'public',
     kind: c.kind,
     category: c.category,
@@ -75,6 +78,14 @@ export function useMotifLibrary(
 
   const q = search.trim() || undefined;
 
+  // MOTIF-I18N: read the library in the UI language. This is a RE-WORDING, not a filter
+  // — the same motifs come back either way — so it is safe to send unconditionally, and
+  // a motif with no translation renders in its original language with text_fallback set.
+  // Wiring it here is the point: without a caller passing it, the whole translation layer
+  // is dead weight and a Vietnamese reader still gets English.
+  const { i18n } = useTranslation();
+  const display_language = i18n.language || undefined;
+
   // §2#9 scale — the /motifs route caps limit at 100 (le=100), so a >100 library paginates by
   // OFFSET via useInfiniteQuery ("Load more"). The FLAT-LIST scopes (my/system/drafts/catalog)
   // support offset; book/shared use the merged book endpoint (single page, partitioned client-side
@@ -83,14 +94,16 @@ export function useMotifLibrary(
   const flatScope = scope === 'my' || scope === 'system' || scope === 'drafts' || scope === 'catalog' || scope === 'archived';
 
   const fetchPage = async (offset: number): Promise<Motif[]> => {
-    if (scope === 'system') return (await motifApi.list({ scope: 'system', q, limit: PAGE, offset }, token!)).motifs;
-    if (scope === 'drafts') return (await motifApi.list({ scope: 'mine', status: 'draft', q, limit: PAGE, offset }, token!)).motifs;
-    if (scope === 'archived') return (await motifApi.list({ scope: 'mine', status: 'archived', q, limit: PAGE, offset }, token!)).motifs;  // S-08 — the restorable soft-deleted tier
-    if (scope === 'catalog') return (await motifApi.catalog({ q, limit: PAGE, offset }, token!)).items.map(catalogToMotif);
-    return (await motifApi.list({ scope: 'all', q, limit: PAGE, offset }, token!)).motifs;   // 'my'
+    if (scope === 'system') return (await motifApi.list({ scope: 'system', q, display_language, limit: PAGE, offset }, token!)).motifs;
+    if (scope === 'drafts') return (await motifApi.list({ scope: 'mine', status: 'draft', q, display_language, limit: PAGE, offset }, token!)).motifs;
+    if (scope === 'archived') return (await motifApi.list({ scope: 'mine', status: 'archived', q, display_language, limit: PAGE, offset }, token!)).motifs;  // S-08 — the restorable soft-deleted tier
+    if (scope === 'catalog') return (await motifApi.catalog({ q, display_language, limit: PAGE, offset }, token!)).items.map(catalogToMotif);
+    return (await motifApi.list({ scope: 'all', q, display_language, limit: PAGE, offset }, token!)).motifs;   // 'my'
   };
   const listQuery = useInfiniteQuery({
-    queryKey: ['composition', 'motifs', 'list', scope, q],
+    // display_language is IN the key — otherwise switching the UI language would serve
+    // the previous language's cached rows.
+    queryKey: ['composition', 'motifs', 'list', scope, q, display_language],
     queryFn: ({ pageParam }) => fetchPage(pageParam),
     initialPageParam: 0,
     // a full page ⇒ there may be more; the next offset is pages*PAGE. A short page ⇒ done.

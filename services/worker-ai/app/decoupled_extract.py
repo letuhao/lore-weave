@@ -19,7 +19,10 @@ a project with neither goes entity → trio → persist.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 TRIO_OPS = ("relation", "event", "fact")
 
@@ -577,6 +580,14 @@ def fold_filter_terminal(rs: dict[str, Any], task_key: str, job) -> dict[str, An
     try:
         local = _parse_verdicts(parse_filter_job(job), meta["n_items"])
     except Exception:  # noqa: BLE001 — a bad batch degrades to all-unjudged
+        # Log HERE, not only in finalize_filter's aggregate coverage. The coverage number
+        # says "some items went unjudged"; only this line says WHICH batch, and why. A
+        # silent swallow is what made this whole class invisible in the first place.
+        logger.warning(
+            "pass2 filter batch %s unparseable — its %s item(s) stay UNJUDGED and will be "
+            "resolved by partial_policy, not by a judge", task_key, meta.get("n_items"),
+            exc_info=True,
+        )
         local = {}
     verdicts = {meta["batch_start"] + k: v for k, v in local.items()}
     return fold_filter_task(rs, task_key, meta["category"], verdicts)
@@ -585,17 +596,52 @@ def fold_filter_terminal(rs: dict[str, Any], task_key: str, job) -> dict[str, An
 def finalize_filter(rs: dict[str, Any]) -> dict[str, Any]:
     """Compute the kept set per category (compute_filter_kept) + stitch the surviving
     items back into entities/relations/events. Facts are never filtered. Applied once,
-    when the filter fan-in completes (SM stage → persist)."""
+    when the filter fan-in completes (SM stage → persist).
+
+    D-FILTER-DECOUPLED-COVERAGE-DISCARDED (2026-07-31). This dropped `coverage` on the
+    floor (`kept, _coverage = ...`) and never wrote `filter_status`, while the SYNC path
+    in `pass2_filter.py` sets `filter_status="degraded"` + zeroed coverage on exactly the
+    same failure. The decoupled path is the one that actually runs.
+
+    Why that combination is the worst case rather than a missing metric: an item with no
+    verdict is `"unjudged"`, and `_apply_verdict` resolves unjudged through
+    `partial_policy`, which defaults to **`"keep"`**. Upstream, a batch whose job cannot be
+    parsed degrades to `local = {}` — *no* verdicts. So a total judge outage produced
+    "every candidate kept", with no coverage recorded and no status set: **byte-identical
+    to a run where the judge read everything and approved it.**
+
+    knowledge-service already has the consumer — `pass2_orchestrator` feeds
+    `knowledge_extraction_filter_coverage_ratio` and logs the status. The gauge, the log
+    line and the vocabulary all existed; this path simply never fed them. Recording
+    coverage also covers the unparseable-batch case, because a dropped batch is precisely
+    what pulls coverage below 1.0.
+    """
     from loreweave_extraction.pass2_filter import compute_filter_kept
     cfg = _filter_config(rs)
     cat_items = _filter_cat_items(rs)
     fv = rs.get("filter_verdicts", {})
     out = dict(rs)
     rs_key = {"entity": "entities", "relation": "relations", "event": "events"}
+    coverage: dict[str, float] = {}
     for category in cfg.categories:
         items = cat_items[category]
         n_input = rs.get("filter_n_input", {}).get(category, len(items))
         verdicts_by_idx = {int(k): v for k, v in fv.get(category, {}).items()}
-        kept, _coverage = compute_filter_kept(category, n_input, verdicts_by_idx, cfg, None)
+        kept, cat_coverage = compute_filter_kept(category, n_input, verdicts_by_idx, cfg, None)
         out[rs_key[category]] = _ser([items[i] for i in kept])
+        coverage[category] = cat_coverage
+    out["filter_coverage"] = coverage
+    # "applied" only when every category was fully judged. Anything less is `degraded` —
+    # the same vocabulary the sync path uses, so a consumer cannot tell which path ran.
+    # A category with no input is vacuously covered; `compute_filter_kept` would divide by
+    # zero otherwise, so treat an absent ratio as complete rather than as a failure.
+    out["filter_status"] = (
+        "applied" if all(c >= 1.0 for c in coverage.values()) else "degraded"
+    )
+    if out["filter_status"] == "degraded":
+        logger.warning(
+            "pass2 precision filter DEGRADED (decoupled): coverage=%s — unjudged items were "
+            "resolved by partial_policy=%r, so the kept set is not a judged result",
+            {k: f"{v:.0%}" for k, v in coverage.items()}, cfg.partial_policy,
+        )
     return out

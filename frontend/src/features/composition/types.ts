@@ -466,7 +466,20 @@ export type CanonResult = {
   violations: CanonViolation[];
   resolved: boolean;
   iterations: number;
+  // LEGACY scalar. It names the guard but describes ONE of its checks (gone-cast), so a run
+  // where name-grounding degraded still reports 'checked' here. Kept because it is persisted
+  // in generation_job.result and matched by SQL; read `guard_status` instead.
   status: 'checked' | 'skipped_no_cast' | 'skipped_no_position' | 'degraded' | string;
+  // S1 — the honest headline across every check the guard ran (`loreweave_guard.worst`).
+  // Optional: rows written before S1 don't carry it, so consumers fall back to `status`.
+  guard_status?: string;
+  // S1 — `resolved`, but only when something actually verified it; null when nothing did.
+  // `resolved` alone ships `true` on the no-cast early return, where no check ran.
+  verdict?: boolean | null;
+  // S1 — what EACH check did, keyed by name (`canon_cast`, `name_grounding`, `plan_liveness`).
+  // The panel names the specific check that could not run; without it the author is told the
+  // guard is amber and not which half of it.
+  checks?: Record<string, string>;
 };
 
 // V1 slice 3 — controlled-auto (diverge→converge) result. NON-streaming: the

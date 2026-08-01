@@ -8,6 +8,14 @@
   "select": "pilih",
   "dismiss": "abaikan",
   "createNew": "Buat baru",
+  "createAs": "Buat «{{name}}» sebagai…",
+  "kind": {
+    "character": "Karakter",
+    "location": "Lokasi",
+    "organization": "Organisasi",
+    "concept": "Konsep",
+    "item": "Item"
+  },
   "filterEntities": "Filter entitas...",
   "noEntities": "Tidak ada entitas yang terdeteksi di bab ini",
   "showHighlights": "Tampilkan sorotan glosarium",
@@ -118,7 +126,8 @@
     "err_code_format": "Kode harus berupa huruf kecil, angka, dan garis bawah saja",
     "err_save": "Gagal menerapkan",
     "toast_merged": "Memetakan {{count}} entitas dari \"{{code}}\"",
-    "toast_reassigned": "Menugaskan ulang \"{{name}}\""
+    "toast_reassigned": "Menugaskan ulang \"{{name}}\"",
+    "same_code_note": "{{count}} entitas lagi tiba sebagai «{{code}}» — selesaikan setiap entitas di sini."
   },
   "history": {
     "title": "Riwayat versi",
@@ -146,13 +155,5 @@
       "system": "sistem"
     },
     "error": "Tidak dapat memuat riwayat versi."
-  },
-  "createAs": "Buat «{{name}}» sebagai…",
-  "kind": {
-    "character": "Karakter",
-    "location": "Lokasi",
-    "organization": "Organisasi",
-    "concept": "Konsep",
-    "item": "Item"
   }
 }

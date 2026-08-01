@@ -145,7 +145,7 @@ async def test_template_edit_create_routes_and_coerces_subargs():
     assert isinstance(passed, srv.ArcTemplateCreateArgs)
     assert passed.code == "revenge" and passed.name == "Revenge Arc"
     # _present dropped omitted language=None → the sub-model default 'en' applies.
-    assert passed.language == "en" and passed.visibility == "private"
+    assert passed.original_language == "en" and passed.visibility == "private"
     assert res == {"id": TPL}
 
 

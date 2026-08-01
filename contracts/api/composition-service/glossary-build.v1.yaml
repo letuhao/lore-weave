@@ -1,0 +1,214 @@
+openapi: 3.1.0
+info:
+  title: Composition — glossary-build pipeline
+  version: "1.0.0"
+  description: |
+    The deterministic world-building FSM (spec docs/specs/2026-07-27-glossary-kg-build-workflows.md).
+    The agent does NOT choose per-entity tools: a caller drives this pipeline and the platform makes
+    every downstream write. Three human checkpoints: (1) approve/trim the planner's worklist,
+    (2) the existing glossary review inbox, (3) approve the resolved relationship edges.
+
+    Auth: JWT user + E0 book-grant at the route (VIEW to read, EDIT to mutate). A non-owner 404s.
+servers:
+  - url: http://composition-service:8000
+tags:
+  - name: glossary-build
+
+paths:
+  /v1/composition/glossary-build/runs:
+    post:
+      tags: [glossary-build]
+      summary: Create a build run (status=draft)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [book_id, params]
+              properties:
+                book_id: { type: string, format: uuid }
+                params:
+                  type: object
+                  required: [model_source, model_ref, source_text]
+                  properties:
+                    model_source: { type: string, example: user_model }
+                    model_ref:
+                      type: string
+                      description: user-model UUID — resolved via provider-registry, never a literal model name
+                    source_text: { type: string, description: the story description to build from }
+                    lang: { type: string, default: vi }
+                    max_items: { type: integer, default: 30 }
+                    kinds:
+                      type: array
+                      items: { type: string }
+                      description: closed set of allowed entity kinds (defaults to the pipeline's set)
+      responses:
+        "201": { $ref: "#/components/responses/Run" }
+        "403": { description: insufficient grant }
+        "422": { description: missing required params }
+    get:
+      tags: [glossary-build]
+      summary: List this user's runs for a book
+      parameters:
+        - { in: query, name: book_id, required: true, schema: { type: string, format: uuid } }
+        - { in: query, name: limit, schema: { type: integer, default: 20, minimum: 1, maximum: 50 } }
+      responses:
+        "200":
+          description: runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { $ref: "#/components/schemas/Run" } }
+
+  /v1/composition/glossary-build/runs/{run_id}:
+    get:
+      tags: [glossary-build]
+      summary: Read a run + its per-item progress
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "404": { description: run not found }
+
+  /v1/composition/glossary-build/runs/{run_id}/plan:
+    post:
+      tags: [glossary-build]
+      summary: Run the planner (draft → plan_ready). Enumerate-only; no entity detail here.
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "409": { description: run is not in draft }
+        "422": { description: planner produced no items }
+        "502": { description: planner LLM failure }
+
+  /v1/composition/glossary-build/runs/{run_id}/approve-plan:
+    post:
+      tags: [glossary-build]
+      summary: "[checkpoint 1] Approve (optionally trimmed) worklist → building"
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                worklist:
+                  type: array
+                  description: the human-trimmed worklist; omitted ⇒ approve the stored one as-is
+                  items: { $ref: "#/components/schemas/WorklistItem" }
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "409": { description: run is not in plan_ready }
+        "422": { description: nothing approved to build }
+
+  /v1/composition/glossary-build/runs/{run_id}/project-kg:
+    post:
+      tags: [glossary-build]
+      summary: "[after checkpoint 2] proposed → edges_ready (project nodes + resolve relation NAMES to ids)"
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "409": { description: run is not in proposed }
+        "502": { description: knowledge projection failed }
+        "503": { description: knowledge client not configured }
+
+  /v1/composition/glossary-build/runs/{run_id}/approve-edges:
+    post:
+      tags: [glossary-build]
+      summary: "[checkpoint 3] edges_ready → done (write the approved, resolved edges)"
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                edges:
+                  type: array
+                  description: the human-trimmed edge list; omitted ⇒ apply the stored resolved edges
+                  items: { $ref: "#/components/schemas/Edge" }
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "409": { description: run is not in edges_ready }
+
+  /v1/composition/glossary-build/runs/{run_id}/cancel:
+    post:
+      tags: [glossary-build]
+      summary: Cancel an in-flight run
+      parameters: [{ $ref: "#/components/parameters/RunId" }]
+      responses:
+        "200": { $ref: "#/components/responses/Run" }
+        "409": { description: run is not cancellable }
+
+components:
+  parameters:
+    RunId:
+      in: path
+      name: run_id
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    Run:
+      description: a build run
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Run" }
+  schemas:
+    WorklistItem:
+      type: object
+      required: [name, kind]
+      properties:
+        name: { type: string }
+        kind: { type: string }
+        depth:
+          type: string
+          enum: [standard, deep]
+          description: standard = one focused call; deep = outline→steer→distill (10x detail)
+        why: { type: string }
+    Edge:
+      type: object
+      properties:
+        source_name: { type: string }
+        source_id: { type: string, format: uuid }
+        target_name: { type: string }
+        target_id: { type: [string, "null"], format: uuid }
+        type: { type: string, description: closed-set relation type from the executor }
+        note: { type: string }
+        unresolved:
+          type: boolean
+          description: true ⇒ the target NAME matched no built entity; kept visible, never silently dropped
+    Item:
+      type: object
+      properties:
+        item_id: { type: string, format: uuid }
+        ordinal: { type: integer }
+        name: { type: string }
+        kind: { type: string }
+        depth: { type: string, enum: [standard, deep] }
+        status: { type: string, enum: [pending, building, built, proposed, skipped] }
+        skip_reason: { type: [string, "null"] }
+        proposed_entity_id: { type: [string, "null"], format: uuid }
+        relations: { type: array, items: { type: object } }
+        section_count: { type: integer }
+    Run:
+      type: object
+      properties:
+        run_id: { type: string, format: uuid }
+        book_id: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [draft, planning, plan_ready, building, proposing, proposed,
+                 kg_projecting, edges_ready, done, failed, cancelled]
+        params:
+          type: object
+          description: the run params WITHOUT source_text (never echoed back)
+        worklist: { type: array, items: { $ref: "#/components/schemas/WorklistItem" } }
+        edges: { type: array, items: { $ref: "#/components/schemas/Edge" } }
+        items: { type: array, items: { $ref: "#/components/schemas/Item" } }
+        error_message: { type: [string, "null"] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }

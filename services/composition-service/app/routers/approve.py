@@ -44,7 +44,11 @@ from app.deps import (
     get_knowledge_client_dep,
     get_works_repo,
 )
-from app.engine.delta_flywheel import DeltaScopeError, plan_flywheel_dispatch
+from app.engine.delta_flywheel import (
+    DeltaScopeError,
+    plan_canon_dispatch,
+    plan_flywheel_dispatch,
+)
 from app.engine.prose_doc import tiptap_doc_to_text
 from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
@@ -151,14 +155,27 @@ async def approve_chapter(
             detail={"code": "DELTA_PROJECT_UNSCOPED", "detail": str(exc)},
         )
 
+    canon = None
     if not decision.dispatch:
-        # Clean no-op: a canon/greenfield Work, or a pre-branch chapter (thinner
-        # delta). Never extract into the source/canon partition.
-        return {
-            "dispatched": False,
-            "reason": decision.reason,
-            "project_id": str(work.project_id) if work.project_id else None,
-        }
+        # A pre-branch derivative chapter stays a clean no-op — the delta is thinner and that
+        # is graceful, not an error.
+        #
+        # A CANON/GREENFIELD Work is different, and used to be the same. This branch returned
+        # `dispatched=false` for it on the strength of the delta module's docstring saying a
+        # greenfield Work "uses the event-driven path" — and MEASURED 2026-08-01 there is no
+        # such path. `extract-item` had exactly one caller in the repo, this one, behind this
+        # very check, so a book written from scratch was never extracted at all: its knowledge
+        # graph stayed empty and the canon guard, the judge and the publish gate all checked
+        # every scene against nothing. The dogfood book had 15 chapters and 0 `:EntityStatus`.
+        canon = plan_canon_dispatch(
+            project_id=work.project_id, source_project_id=deriv.source_project_id,
+        )
+        if not canon.dispatch:
+            return {
+                "dispatched": False,
+                "reason": canon.reason if canon.reason != "is_a_derivative" else decision.reason,
+                "project_id": str(work.project_id) if work.project_id else None,
+            }
 
     # Fetch the approved chapter's prose for extraction (JWT-forward; book-service
     # enforces ownership). Flatten the Tiptap draft to plain text.
@@ -178,41 +195,59 @@ async def approve_chapter(
     # Dispatch the EXISTING extraction trigger into the DERIVATIVE's delta project.
     # delta_project_id is asserted non-null above; assert once more locally so a
     # future refactor can't drop the guard (type-narrows for mypy too).
-    assert decision.delta_project_id is not None
+    # The delta path targets the derivative's own delta partition (G2); the canon path targets
+    # the book's own project. Both are "this Work's own graph" — never the source's.
+    #
+    # EVERYTHING the caller is told about this dispatch derives from these three, never from
+    # `decision.*` directly. The live smoke on throwaway book 019fbd8f… caught why: on a canon
+    # Work the delta decision's fields are all None, so the 200 reported
+    # `reason="not_a_derivative"` over a successful canon extraction and `source_project_id`
+    # as the string "None". The dispatch was right; every word describing it was wrong.
+    target_project = canon.project_id if canon is not None else decision.delta_project_id
+    dispatch_reason = canon.reason if canon is not None else decision.reason
+    source_project = None if canon is not None else decision.source_project_id
+    assert target_project is not None
     result = await knowledge.extract_item(
         user_id=user_id,
-        project_id=decision.delta_project_id,  # the DELTA partition (G2)
+        project_id=target_project,
         source_id=str(chapter_id),
         chapter_text=chapter_text,
         model_source=body.model_source,
         model_ref=body.model_ref,
         job_id=uuid.uuid4(),
+        chapter_index=chapter_sort_order,
+        # The SAME sort_order resolved above for the forward-of-branch decision. It is what
+        # gives every extracted Event an `event_order`, and without an event_order knowledge
+        # discards the status_effects — so the liveness store the canon guard reads stays
+        # empty no matter how well the extractor understood the death. Best-effort by design:
+        # None here (book-service unreachable) means positionless events, exactly as before.
     )
     if result is None:
         # Knowledge outage — the approval itself succeeds (the chapter is approved);
         # the flywheel just didn't enrich this round (it re-arms on re-approval).
         logger.warning(
-            "C27 flywheel: extract-item returned None for chapter=%s delta_project=%s "
-            "(knowledge unavailable) — approval stands, delta not enriched",
-            chapter_id, decision.delta_project_id,
+            "C27 flywheel: extract-item returned None for chapter=%s path=%s project=%s "
+            "(knowledge unavailable) — approval stands, graph not enriched",
+            chapter_id, dispatch_reason, target_project,
         )
         return {
             "dispatched": False,
             "reason": "knowledge_unavailable",
-            "project_id": str(decision.delta_project_id),
+            "project_id": str(target_project),
         }
 
     logger.info(
-        "C27 flywheel: approved derivative chapter=%s → extracted into delta "
-        "project=%s (entities=%s events=%s facts=%s)",
-        chapter_id, decision.delta_project_id,
+        "C27 flywheel: approved chapter=%s via %s → extracted into project=%s "
+        "(entities=%s events=%s facts=%s)",
+        chapter_id, dispatch_reason, target_project,
         result.get("entities_merged"), result.get("events_merged"),
         result.get("facts_merged"),
     )
     return {
         "dispatched": True,
-        "reason": decision.reason,
-        "project_id": str(decision.delta_project_id),
-        "source_project_id": str(decision.source_project_id),
+        "reason": dispatch_reason,
+        "project_id": str(target_project),
+        # None → JSON null. `str(None)` shipped the four-character string "None" to the client.
+        "source_project_id": str(source_project) if source_project is not None else None,
         "extraction": result,
     }

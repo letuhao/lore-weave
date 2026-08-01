@@ -1,0 +1,327 @@
+{
+  "hook.betrayal_hinted": {
+    "beats": {
+      "crack": {
+        "intent": "展現出一位值得信賴的人物隱藏的不忠",
+        "label": "疑慮的裂痕"
+      }
+    },
+    "effects": [
+      "讀者開始對該人物產生不信任感，並持續閱讀下去"
+    ],
+    "emotion_target": "不安",
+    "examples": [
+      "她最要好的朋友微笑著點頭表示贊同——隨後卻將第二把鑰匙悄悄滑進了自己的袖口。"
+    ],
+    "name": "背叛的預兆",
+    "preconditions": [
+      "場景進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角人物"
+      }
+    },
+    "summary": "在關鍵時刻，一位值得信賴的人物流露出一絲疑慮的裂痕。"
+  },
+  "hook.choice_forced": {
+    "beats": {
+      "corner": {
+        "intent": "強迫做出不可逆轉的決定",
+        "label": "逼入抉擇困境"
+      }
+    },
+    "effects": [
+      "讀者為了看見抉擇的結果而繼續閱讀"
+    ],
+    "emotion_target": "焦慮",
+    "examples": [
+      "兩扇門，一把鑰匙，而海水已淹沒到他的膝蓋。"
+    ],
+    "name": "被迫抉擇",
+    "preconditions": [
+      "場景正在進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角人物"
+      }
+    },
+    "summary": "視角人物在場景轉折處陷入困境，被迫做出一個無法挽回的決定。"
+  },
+  "hook.cliff_question": {
+    "beats": {
+      "cut": {
+        "intent": "在章節結束時留下一個尚未解決的危機",
+        "label": "在懸而未決的危機中切斷"
+      }
+    },
+    "effects": [
+      "讀者會被帶入下一章節"
+    ],
+    "emotion_target": "懸念",
+    "examples": [
+      "封印已經被打破——而後方的牢房竟然是空的。"
+    ],
+    "name": "懸念詰問",
+    "preconditions": [
+      "場景正在進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角角色"
+      }
+    },
+    "summary": "以一個懸而未決的危機作為結尾，將讀者拉入下一章節。"
+  },
+  "hook.countdown_started": {
+    "beats": {
+      "set_timer": {
+        "intent": "為目標設定一個有限的時間窗口",
+        "label": "設定最後期限"
+      }
+    },
+    "effects": [
+      "讀者能感受到時間的流逝並持續閱讀下去"
+    ],
+    "emotion_target": "期待感",
+    "examples": [
+      "三天。在那之後，無論是這份邀約——還是這座城市——都將不復存在。"
+    ],
+    "name": "倒數開始",
+    "preconditions": [
+      "場景正在進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角角色"
+      }
+    },
+    "summary": "設定了一個最後期限或計時器，將接下來的情節框架化為一場競賽。"
+  },
+  "hook.dialogue_bomb": {
+    "beats": {
+      "detonate": {
+        "intent": "以一句足以翻轉全局的對白收尾",
+        "label": "爆裂對白，隨即斷章"
+      }
+    },
+    "effects": [
+      "讓讀者感到震撼並迫不及待想繼續閱讀"
+    ],
+    "emotion_target": "震驚",
+    "examples": [
+      "「你應該問問你父親，」她說，「為什麼他要埋掉一口空棺材。」"
+    ],
+    "name": "對白炸彈",
+    "preconditions": [
+      "場景正在進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角人物"
+      }
+    },
+    "summary": "一句對白如炸彈般爆裂，並以此作為章節的終點。"
+  },
+  "hook.identity_teased": {
+    "beats": {
+      "tease": {
+        "intent": "暗示真實身分，但尚未揭曉",
+        "label": "身分暗示"
+      }
+    },
+    "effects": [
+      "讀者會為了揭開其真實身分而繼續閱讀"
+    ],
+    "emotion_target": "好奇",
+    "examples": [
+      "乞丐拉下兜帽，衛兵們隨即紛紛跪倒在地。"
+    ],
+    "name": "身分伏筆",
+    "preconditions": [
+      "場景正在進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角人物"
+      }
+    },
+    "summary": "對某人的真實姓名或身分進行暗示，並在章節結束前懸而未決。"
+  },
+  "hook.impending_threat": {
+    "beats": {
+      "inbound": {
+        "intent": "指明一個尚未降臨的危險",
+        "label": "威脅已在途中"
+      }
+    },
+    "effects": [
+      "讀者開始預期威脅的到來"
+    ],
+    "emotion_target": "恐懼",
+    "examples": [
+      "黎明時分，大軍便會抵達城門，而城門將無法抵擋。"
+    ],
+    "name": "迫近的威脅",
+    "preconditions": [
+      "場景正在進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角人物"
+      }
+    },
+    "summary": "一個具名的危險正朝著目標襲來，但尚未抵達。"
+  },
+  "hook.loss_imminent": {
+    "beats": {
+      "about_to_lose": {
+        "intent": "將一件珍愛之物置於即將失去的邊緣",
+        "label": "喪失在即"
+      }
+    },
+    "effects": [
+      "讀者因擔憂失去而持續閱讀"
+    ],
+    "emotion_target": "恐懼",
+    "examples": [
+      "醫者搖了搖頭。她說，剩下的藥劑只夠救一個孩子。"
+    ],
+    "name": "迫在眉睫的喪失",
+    "preconditions": [
+      "場景正在進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角人物"
+      }
+    },
+    "summary": "在情節轉折點，主角所珍視的事物即將被奪走。"
+  },
+  "hook.mystery_deepened": {
+    "beats": {
+      "contradict": {
+        "intent": "用一個新線索推翻既有的推論",
+        "label": "矛盾的線索"
+      }
+    },
+    "effects": [
+      "讀者重新對問題產生懷疑並繼續閱讀"
+    ],
+    "emotion_target": "好奇心",
+    "examples": [
+      "死者的筆跡很新鮮——而且日期是明天。"
+    ],
+    "name": "謎團加深",
+    "preconditions": [
+      "場景正在進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角人物"
+      }
+    },
+    "summary": "一個新的線索與章節結束時所推論的答案相矛盾。"
+  },
+  "hook.power_glimpsed": {
+    "beats": {
+      "flash": {
+        "intent": "展現能力而不進行解釋",
+        "label": "未解的異能閃現"
+      }
+    },
+    "effects": [
+      "讀者渴望得到解釋"
+    ],
+    "emotion_target": "期待感",
+    "examples": [
+      "在心跳加速的一瞬，那名驚恐店員的雙眼燃起了金光——隨即，燈熄滅了。"
+    ],
+    "name": "瞥見力量",
+    "preconditions": [
+      "場景進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角角色"
+      }
+    },
+    "summary": "在章節末尾，一種未經解釋的隱藏能力轉瞬即逝。"
+  },
+  "hook.revelation_drop": {
+    "beats": {
+      "half_reveal": {
+        "intent": "揭露秘密的一部分，並隱瞞其餘部分",
+        "label": "部分揭露後斷章"
+      }
+    },
+    "effects": [
+      "讀者為了得知真相而繼續閱讀"
+    ],
+    "emotion_target": "好奇心",
+    "examples": [
+      "他翻轉了項鍊墜。裡面的面孔竟是她自己。"
+    ],
+    "name": "真相斷點",
+    "preconditions": [
+      "場景正在進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角角色"
+      }
+    },
+    "summary": "在情節轉折處，揭露部分秘密並刻意隱瞞餘下的真相。"
+  },
+  "hook.sudden_reversal": {
+    "beats": {
+      "flip": {
+        "intent": "在場景結束時反轉其核心意涵",
+        "label": "末句意涵翻轉"
+      }
+    },
+    "effects": [
+      "讀者重新解讀場景並繼續閱讀"
+    ],
+    "emotion_target": "震驚",
+    "examples": [
+      "她終於信任了他——而這正是他苦等了三年所期待的。"
+    ],
+    "name": "突發性翻轉",
+    "preconditions": [
+      "場景正在進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角人物"
+      }
+    },
+    "summary": "最後一行的事實徹底翻轉了整個場景的意涵。"
+  },
+  "hook.unexpected_arrival": {
+    "beats": {
+      "walk_in": {
+        "intent": "引入一位不該出現在現場的人物",
+        "label": "不可能的現身"
+      }
+    },
+    "effects": [
+      "讀者必須立刻得知此人的身份及其出現的原因"
+    ],
+    "emotion_target": "緊張感",
+    "examples": [
+      "門開了，那個去年冬天才下葬的男人，就這樣走了進來。"
+    ],
+    "name": "不速之客",
+    "preconditions": [
+      "場景正在進行中"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角人物"
+      }
+    },
+    "summary": "在情勢最緊繃的時刻，一個不該出現在這裡的人闖入了現場。"
+  }
+}

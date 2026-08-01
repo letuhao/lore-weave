@@ -15,6 +15,8 @@ subset the worker needs.
 
 from __future__ import annotations
 
+from loreweave_llm.reasoning import looks_like_reasoning_model
+
 import asyncio
 import functools
 import json
@@ -30,7 +32,13 @@ from uuid import UUID, uuid4
 
 import asyncpg
 from opentelemetry import trace as _ot_trace
+from loreweave_extraction.name_normalize import normalize_entity_name
 from loreweave_jobs import JobStatus, emit_job_event_safe
+
+# This module otherwise reads os.environ directly (see `_decouple_enabled`), but the
+# KNOWN_ENTITIES prompt cap is a declared, typed setting — it belongs with the rest of
+# the deploy-time ceilings rather than as another bare env read.
+from app.config import settings
 
 from loreweave_extraction import (
     ContextBudget,
@@ -351,28 +359,17 @@ _MAX_RETRIES_PER_ITEM = 3
 # signal; a full chapter (thousands of chars) producing nothing is.
 _MIN_INPUT_CHARS_FOR_ZERO_OUTPUT_WARN = 40
 
-# FD-27 — best-effort reasoning-model name patterns (substring match, lowercased).
-# provider-registry has NO reasoning capability flag, so this is name-based and
-# WILL have false negatives on novel models — it drives an advisory WARNING, never
-# a hard block. Extraction suppresses thinking via a PROMPT preamble (~95% obey),
-# not a hard API param, so a reasoning model still carries elevated empty-output
-# risk worth flagging.
-_REASONING_MODEL_PATTERNS = (
-    "deepseek-r1", "deepseek-reasoner", "qwq", "glm-z", "minimax-m1", "magistral",
-    "thinking", "reasoner", "reasoning", "qwen3",
-)
-
-
-def _is_likely_reasoning_model(name: str | None) -> bool:
-    """Best-effort: does this model NAME look like a reasoning/thinking model?
-    Name heuristics only (no capability flag exists) — advisory, not a gate."""
-    if not name:
-        return False
-    n = name.lower()
-    # OpenAI o-series as a token (o1/o3/o4/o5) without matching e.g. gpt-4o.
-    if re.search(r"(?:^|[^a-z0-9])o[1345](?:-|$|[^a-z0-9])", n):
-        return True
-    return any(p in n for p in _REASONING_MODEL_PATTERNS)
+# FD-27 — "does this model look like a reasoning model?" drives an advisory WARNING about
+# elevated empty-output risk (extraction suppresses thinking with a PROMPT preamble, ~95%
+# obeyed, not a hard API param). provider-registry has no reasoning capability flag, so it
+# is name-based and WILL miss novel models — advisory, never a hard block.
+#
+# D-REASONING-MODEL-PATTERNS-DUPLICATED (2026-07-31): this held its own pattern tuple, and
+# `loreweave_llm.reasoning` held another one for the same question. They had already
+# drifted — this copy knew `glm-z`, `minimax-m1` and `deepseek-reasoner`; the SDK's knew the
+# hyphenated `qwen-3` this one missed. Both kept "working", which is why nobody noticed.
+# The union now lives in the SDK next to the rest of the model-family knowledge.
+_is_likely_reasoning_model = looks_like_reasoning_model
 
 # B2-B-b1 — sentinels distinguishing "caller omitted the arg" (use the module
 # global) from "caller passed None" (override DISABLES the pass). An `is not
@@ -1437,6 +1434,9 @@ async def _extract_and_persist(
     # known_entities (replaces the legacy hardcoded []). None ⇒ [] (back-compat:
     # chat_turn / glossary callers leave it unset → no pins).
     pinned_names: list[str] | None = None,
+    # The book's canon, fetched AND INDEXED once per job. Selection is PER CHUNK —
+    # only the entries this chunk actually mentions ship in KNOWN_ENTITIES.
+    canon_index: "CanonIndex | None" = None,
     # D-KG-WORKER-GRADED-EFFORT — the job's graded reasoning effort, threaded
     # into the SDK's core extraction LLM calls. Default "none" ⇒ no reasoning
     # wire fields (chat_turn / glossary callers omit it → unchanged).
@@ -1498,7 +1498,8 @@ async def _extract_and_persist(
             text=text,
             # C13 — force-inject the pinned glossary names. Replaces the legacy
             # hardcoded [] ("worker-ai has no glossary access"). None ⇒ [].
-            known_entities=list(pinned_names or []),
+            known_entities=_known_entities_for_chunk(
+                pinned_names, canon_index, text),
             user_id=str(user_id),
             project_id=str(project_id) if project_id else None,
             model_source="user_model",
@@ -1593,6 +1594,202 @@ async def _extract_and_persist(
     return persist_result, candidates
 
 
+#: Word-boundary lookarounds restricted to ASCII word chars, NOT `` / `\w`.
+#: Python's `\w` is Unicode-aware, so for a CJK or Vietnamese name the lookbehind sees
+#: the neighbouring letter as a word char and rejects every match. Same rule as
+#: knowledge-service's entity_detector (kept in sync by
+#: `test_surface_match_handles_a_CJK_neighbour`, which is the case that breaks first).
+_BOUNDARY_L = "(?<![A-Za-z0-9_])"
+_BOUNDARY_R = "(?![A-Za-z0-9_])"
+
+
+def _mentions(text: str, surface: str) -> bool:
+    if not surface:
+        return False
+    return re.search(
+        _BOUNDARY_L + re.escape(surface) + _BOUNDARY_R, text, re.IGNORECASE,
+    ) is not None
+
+
+#: ASCII word characters, as a set — the same class the lookarounds above spell out.
+#: `CanonIndex` applies the boundary rule by index instead of by regex, so it needs
+#: the class as data.
+_ASCII_WORD = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+)
+
+
+class CanonIndex:
+    """A book's whole canon vocabulary, indexed for one-pass per-chunk matching.
+
+    Built ONCE per extraction job; `present()` is then called per chunk.
+
+    Why this exists — measured, not assumed. The previous implementation ran one
+    `re.search` per canon surface form per chunk, so its cost scaled with the
+    GLOSSARY, not with the prose. At 20,000 entities / 34,935 real surface forms
+    against one 8k-character chunk that is **10.2 seconds** — and it is synchronous
+    work inside an async worker, so it does not merely run slowly, it stalls the
+    event loop for every other job on the process.
+
+    This inverts the loop: enumerate the chunk's own substrings and look each one up.
+    The text is a few thousand characters and the distinct surface-form LENGTHS are a
+    few dozen, so the work is bounded by the prose — adding entities costs a dict
+    insert at build time and nothing per chunk.
+
+    Behaviour is intended to be identical to the regex it replaces, including the
+    ASCII-only boundary rule (and therefore its known CJK substring false positive —
+    see `TestCjkBoundary`). `test_new_matcher_matches_the_regex_over_the_whole_corpus`
+    is the differential proof, not this comment.
+    """
+
+    __slots__ = ("_names", "_by_form", "_lengths_by_first")
+
+    def __init__(
+        self,
+        names: list[str],
+        by_form: dict[str, list[str]],
+        lengths_by_first: dict[str, tuple[int, ...]],
+    ) -> None:
+        self._names = names
+        self._by_form = by_form
+        self._lengths_by_first = lengths_by_first
+
+    @classmethod
+    def build(cls, canon: list[tuple[str, list[str]]] | None) -> "CanonIndex":
+        names: list[str] = []
+        by_form: dict[str, list[str]] = {}
+        lengths: dict[str, set[int]] = {}
+        for name, aliases in canon or ():
+            names.append(name)
+            for surface in (name, *(aliases or ())):
+                if not surface:
+                    continue
+                low = normalize_entity_name(surface)
+                # A surface form can belong to more than one entity (two entities
+                # legitimately share an alias). The regex checked every entity's own
+                # forms, so BOTH were selected; a form->single-name map would silently
+                # drop the second.
+                bucket = by_form.setdefault(low, [])
+                if name not in bucket:
+                    bucket.append(name)
+                lengths.setdefault(low[0], set()).add(len(low))
+        return cls(
+            names,
+            by_form,
+            {c: tuple(sorted(v)) for c, v in lengths.items()},
+        )
+
+    def __len__(self) -> int:
+        """Entity count — what the cap accounting reports as the drop."""
+        return len(self._names)
+
+    @property
+    def names(self) -> list[str]:
+        """Canon order. Selection walks this so output order is unchanged."""
+        return self._names
+
+    def present(self, text: str) -> set[str]:
+        """Canonical names whose name OR any alias appears in `text`.
+
+        ML-2: normalized through the SAME spine `build` uses, and that pairing is the
+        whole correctness condition. Folding only the index turned every traditional-Han
+        name into its simplified form while the text stayed traditional, so 土耳其軍樂隊 /
+        黃照芳 stopped being found at all — caught by `test_known_entities_scale`, which
+        plants exactly those. One side folded is worse than neither.
+        """
+        low = normalize_entity_name(text)
+        n = len(low)
+        by_form = self._by_form
+        lengths_by_first = self._lengths_by_first
+        found: set[str] = set()
+        prev_is_word = False
+        for i, ch in enumerate(low):
+            lengths = lengths_by_first.get(ch)
+            # Left boundary: a match cannot START here if the preceding character is
+            # an ASCII word char, so the whole position is skipped.
+            if lengths is not None and not prev_is_word:
+                for length in lengths:
+                    j = i + length
+                    if j > n:
+                        break  # ascending — every longer form overruns too
+                    if j < n and low[j] in _ASCII_WORD:
+                        continue  # right boundary
+                    hit = by_form.get(low[i:j])
+                    if hit:
+                        found.update(hit)
+            prev_is_word = ch in _ASCII_WORD
+        return found
+
+
+def _known_entities_for_chunk(
+    pinned: list[str] | None,
+    canon: "CanonIndex | None",
+    chunk_text: str,
+) -> list[str]:
+    """Per-chunk KNOWN_ENTITIES, with the drop reported rather than silently cut."""
+    names, dropped = select_known_entities(
+        list(pinned or []),
+        canon if canon is not None else CanonIndex.build(None),
+        chunk_text,
+        cap=settings.known_entities_prompt_cap,
+    )
+    if dropped:
+        logger.info(
+            "KNOWN_ENTITIES truncated at the %d-name cap — %d mentioned name(s) "
+            "did not make this chunk's prompt",
+            settings.known_entities_prompt_cap, dropped,
+        )
+    return names
+
+
+def select_known_entities(
+    pinned: list[str],
+    canon: CanonIndex,
+    chunk_text: str,
+    *,
+    cap: int,
+) -> tuple[list[str], int]:
+    """Choose the KNOWN_ENTITIES for ONE chunk. Returns (names, dropped_at_cap).
+
+    Selection, in priority order:
+      1. **pinned** — always, and they survive a truncation. A user pinned them exactly
+         so they stay anchored in chapters that never mention them.
+      2. **canon actually PRESENT in this chunk** — matched on the canonical name OR any
+         alias, because a chapter says "Thiếu chủ", not "Lâm Uyên". The alias matches but
+         the CANONICAL name is what ships, so the model is steered to the canon spelling
+         (which is what the prompt's "prefer exact matches" rule then acts on).
+
+    What it deliberately does NOT do is top the list up with unmentioned canon. The
+    first version of this shipped a flat 150-name cap ordered by mention count, which is
+    the wrong axis twice over: on a 3,000-entity glossary the 150 most-mentioned names
+    are not the ones in THIS chapter, and every name that is not in the text costs
+    prompt budget to say nothing. Presence is the signal; the cap is only a backstop for
+    a chapter that genuinely names a huge cast.
+
+    `canon` is a `CanonIndex` built ONCE per job, not the raw list — matching used to
+    cost 10.2s per chunk at 20k entities because the index was rebuilt (in effect) on
+    every call. The type is deliberately not `list | CanonIndex`: accepting both would
+    let a caller re-pay that cost silently, which is the exact bug being fixed.
+    """
+    if cap <= 0:
+        return [], len(pinned) + len(canon)
+    out = list(pinned[:cap])
+    seen = {n.casefold() for n in out}
+    dropped = max(0, len(pinned) - cap)
+    present = canon.present(chunk_text)
+    for name in canon.names:
+        if name not in present:
+            continue
+        if normalize_entity_name(name) in seen:
+            continue
+        if len(out) >= cap:
+            dropped += 1
+            continue
+        seen.add(normalize_entity_name(name))
+        out.append(name)
+    return out, dropped
+
+
 def _decouple_enabled() -> bool:
     """WX-T3b flag, read from the env (runner.py uses os.environ, not the pydantic
     settings object — matches the same EXTRACTION_DECOUPLE_ENABLED that app.main's
@@ -1608,6 +1805,9 @@ async def _start_decoupled_chunk(
     # C13 — pinned glossary names to force-inject into this chunk's
     # known_entities. [] ⇒ no pins (back-compat).
     pinned_names: list[str] | None = None,
+    # The book's canon, fetched AND INDEXED once per job. Selection is PER CHUNK —
+    # only the entries this chunk actually mentions ship in KNOWN_ENTITIES.
+    canon_index: "CanonIndex | None" = None,
     # P5 — the WFQ lease token acquired for this chunk (None when P5 off). Stashed in
     # resume_state so the decoupled consumer can release the exact slot at the chunk
     # terminal; released here on submit-failure (no chunk ends up in flight).
@@ -1651,7 +1851,8 @@ async def _start_decoupled_chunk(
         # C13 — force-inject the pinned glossary names into THIS chunk's
         # known_entities (the decoupled consumer threads it into the entity +
         # R/E/F extractor calls). Replaces the legacy hardcoded []. None ⇒ [].
-        chunk_text=text, known_entities=list(pinned_names or []),
+        chunk_text=text,
+        known_entities=_known_entities_for_chunk(pinned_names, canon_index, text),
         has_recovery=(eff_recovery is not None) and entities_requested,
         has_filter=(eff_filter is not None) and entities_requested,
         # C12 — the job's pass subset; reduced to the requested trio ops.
@@ -1934,6 +2135,46 @@ async def process_job(
                 job.job_id, len(job.pinned_entity_ids), len(pinned_names),
             )
 
+        # D-EXTRACT-KNOWN-ENTITIES-PINNED-ONLY — top the pinned set up with the book's
+        # OWN glossary vocabulary.
+        #
+        # C13 above replaced a hardcoded `[]` with the pinned names, which was the right
+        # direction and stopped one step short: pinning is a manual, per-entity user
+        # action, and the comment two paragraphs up concedes that nothing-pinned is "the
+        # common case". So in the common case the extraction prompt still declared
+        # KNOWN_ENTITIES = [] — telling the model this book has no canon — while its own
+        # rules lean on that list ("Known entities win ties", "prefer exact matches over
+        # new names") and Rule 8 biases toward OMITTING anything that looks like
+        # backstory. Authored lore is exactly what gets mentioned in recall.
+        #
+        # Measured directly against the model (gemma-4-26b, live Mị Đế passage, 1.7k-token
+        # prompt so nothing was lost in the middle): 4 of 7 authored terms extracted with
+        # the block empty, 7 of 7 with it populated, and a rules-free control prompt
+        # scored 5 — i.e. our own rules were WORSE than no rules until the canon list
+        # arrived. The model was never the limit; the missing wire was.
+        #
+        # Fetched ONCE per job; the PER-CHUNK selection (`select_known_entities`) then
+        # picks only the canon a given chunk actually mentions. The first version of this
+        # shipped a flat cap ordered by mention count and injected the same list into
+        # every chunk — wrong on a big book twice over: the most-mentioned 150 names are
+        # not the ones in THIS chapter, and an unmentioned name costs prompt budget to
+        # say nothing.
+        #
+        # The read is now PAGED (no fetch ceiling) and the result is INDEXED here, once.
+        # Both were real ceilings: a flat 2,000-row fetch ordered by mention count DESC
+        # dropped exactly the least-mentioned lore — which on a book being written is
+        # the newest lore — and rebuilding the match structure per chunk cost 10.2s per
+        # chunk at 20k entities, synchronously, on the worker's event loop.
+        canon_index = CanonIndex.build(None)
+        if book_id is not None:
+            canon_entries = await glossary_client.list_canon_entries(book_id)
+            canon_index = CanonIndex.build(canon_entries)
+            logger.info(
+                "Job %s: canon vocabulary loaded — %d entr(y|ies) indexed for "
+                "per-chunk KNOWN_ENTITIES selection",
+                job.job_id, len(canon_index),
+            )
+
         # B2-A — pin the effective config snapshot ONCE per job (a mid-job
         # filter reload won't change this job's config_hash). Used for the
         # per-chapter extraction_run telemetry; behaviour is unchanged because
@@ -2195,6 +2436,7 @@ async def process_job(
                         p3_book_parts=p3_book_parts, p3_is_last=p3_is_last,
                         # C13 — pinned names resolved once per job above.
                         pinned_names=pinned_names,
+                        canon_index=canon_index,
                         # P5 — the WFQ lease for this chunk; stashed in resume_state so the
                         # consumer releases it at the chunk terminal. None when P5 off.
                         p5_token=_p5_token,
@@ -2278,6 +2520,7 @@ async def process_job(
                     # C13 — pinned names resolved once per job above; injected
                     # into this window's known_entities.
                     pinned_names=pinned_names,
+                        canon_index=canon_index,
                     # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.
                     reasoning_effort=job.reasoning_effort,
                     # bug #34 — abort an in-flight LLM call on job cancellation.
@@ -2482,6 +2725,7 @@ async def process_job(
                     # included (the cost estimate's num_windows counts chat turns,
                     # so the injection must too). Resolved once per job above.
                     pinned_names=pinned_names,
+                        canon_index=canon_index,
                     # L7 (Milestone B) — advisory project schema (None ⇒ static).
                     schema=extraction_schema,
                     # D-KG-WORKER-GRADED-EFFORT — the job's stored graded effort.
@@ -2494,6 +2738,55 @@ async def process_job(
                     await _fail_job(pool, job.user_id, job.job_id, result.error)
                     await _update_project_status(pool, job.user_id, job.project_id, "failed")
                     return
+
+                # D-CHAT-TURN-RETRYABLE-SWALLOW: a RETRYABLE failure used to fall straight
+                # through to mark-processed + advance-cursor below — the turn was silently
+                # dropped and counted as done, so a transient outage lost memory with
+                # nothing going red. The chapters branch has had bounded retry-in-cursor
+                # since CM3b; chat had none. This mirrors it.
+                #
+                # It matters more now that the anchor pre-load fails CLOSED: an unreadable
+                # glossary returns a retryable 503, and swallowing that would drop the turn
+                # instead of re-driving it.
+                if result.error and result.retryable:
+                    retry_key = f"retry_chat_{turn['pending_id']}"
+                    cur = job.current_cursor or {}
+                    retries = cur.get(retry_key, 0) + 1
+                    if retries < _MAX_RETRIES_PER_ITEM:
+                        logger.warning(
+                            "Retryable error on chat turn %s (attempt %d/%d): %s",
+                            turn["pending_id"], retries, _MAX_RETRIES_PER_ITEM, result.error,
+                        )
+                        await _advance_cursor(
+                            pool, job.user_id, job.job_id,
+                            {**cur, retry_key: retries, "scope": "chat"},
+                            items_delta=0,
+                        )
+                        return  # stop this run, re-drive the same turn on the next poll
+                    # Exhausted: skip it EXPLICITLY — counted as skipped, not processed,
+                    # and said out loud, so a flapping dependency can't look like success.
+                    logger.warning(
+                        "Skipping chat turn %s after %d retries: %s",
+                        turn["pending_id"], retries, result.error,
+                    )
+                    await _append_log(
+                        pool, job.user_id, job.job_id, "error",
+                        f"Chat turn {turn['pending_id']} skipped after {retries} retries",
+                        context={
+                            "event": "retry_exhausted",
+                            "pending_id": str(turn["pending_id"]),
+                            "retries": retries,
+                            "error": result.error,
+                        },
+                    )
+                    await _mark_pending_processed(pool, job.user_id, turn["pending_id"])
+                    await _advance_cursor(
+                        pool, job.user_id, job.job_id,
+                        {"last_pending_id": str(turn["pending_id"]), "scope": "chat"},
+                        items_delta=0,
+                        skipped_delta=1,
+                    )
+                    continue
 
                 await _mark_pending_processed(pool, job.user_id, turn["pending_id"])
                 # D-EXTRACTION-SILENT-NOOP: a chat turn whose text is gone/empty

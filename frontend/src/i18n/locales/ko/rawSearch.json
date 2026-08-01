@@ -30,9 +30,9 @@
   "copied": "복사됨",
   "degraded": "검색 백엔드를 사용할 수 없어 일부 결과가 제한될 수 있습니다.",
   "content_view": {
-    "chapter_label": "Ch. {{n}}",
     "block_position": "블록 {{n}}",
     "passage_position": "구절 {{n}}",
-    "jump": "원문으로 이동"
+    "jump": "원문으로 이동",
+    "chapter_label": "제 {{n}}장"
   }
 }

@@ -28,20 +28,16 @@ import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.cowrite import build_selection_messages
 from app.packer.profile import BookProfile
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
-
-# Disable hidden thinking on reasoning-model judges/editors (mirrors plan.py/stitch.py).
-_NO_THINK = {
-    "reasoning_effort": "none",
-    "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
-}
 
 
 @dataclass
@@ -225,7 +221,7 @@ async def _chat(
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
                 "response_format": {"type": "text"}, "temperature": temperature,
-                "max_tokens": max_tokens, **_NO_THINK,
+                "max_tokens": max_tokens, **no_thinking_fields(),
             },
             job_meta={"usage_purpose": purpose, "extractor": "self_heal"}, trace_id=trace_id,
             cancel_check=cancel_check,
@@ -313,7 +309,7 @@ _VERIFY_SYSTEM = (
 
 async def _verify(
     llm: LLMClient, chapter: str, finding: Finding, *, canon: str | None,
-    max_tokens: int = 320, **kw,
+    max_tokens: int = max_tokens_for("self_heal_verify"), **kw,
 ) -> bool:
     """True ⇒ keep the finding (confirmed or verify degraded), False ⇒ drop (refuted).
     Fail-OPEN: a degraded/unparseable verify keeps the finding — the satellite edit is
@@ -663,7 +659,7 @@ def _is_convention_fix(edit_type: str) -> bool:
 async def propose_edits_direct(
     llm: LLMClient, chapter: str, *, user_id: str, model_source: str, model_ref: str,
     canon: str | None = None, source_language: str = "auto", prefilter: bool = True,
-    rerank: bool = False, max_tokens: int = 3000, temperature: float = 0.4,
+    rerank: bool = False, max_tokens: int = max_tokens_for("propose_edits_direct"), temperature: float = 0.4,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[list[EditProposal], SelfHealReport]:
@@ -736,7 +732,7 @@ async def propose_edits_direct(
 async def propose_self_heal(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     chapter: str, source_language: str = "auto", canon: str | None = None,
-    prefilter: bool = True, rerank: bool = False, max_tokens: int = 3000,
+    prefilter: bool = True, rerank: bool = False, max_tokens: int = max_tokens_for("propose_self_heal"),
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
     **_legacy: object,   # absorbs the old vote_k/verify/verify_k/etc. knobs (no longer used here)

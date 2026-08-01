@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/auth';
 import { ModelPicker } from '@/components/model-picker';
 import { booksApi } from '@/features/books/api';
+import { addTextSnapshots } from '@/lib/tiptap-utils';
 import { PolishPanel } from '@/features/composition/components/PolishPanel';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStudioPanel } from './useStudioPanel';
@@ -27,6 +28,21 @@ const CHAPTER_PICKER_LIMIT = 500;
 
 // Healed text (plain, paragraph-separated) → a TipTap doc for the draft store (body_format: 'json').
 // Mirrors the legacy ChapterEditorPage.handleApplyPolish conversion.
+//
+// F11 (atom-edit track, 2026-07-27) — MUST end in addTextSnapshots. book-service stores a `json`
+// body VERBATIM (normalizeBodyToTiptap passes it through; server.go patchDraft writes it as-is), so
+// nothing downstream re-stamps the doc. Without `_text` on each top-level block, every consumer that
+// reads `x.elem->>'_text'` via JSON_TABLE gets NULL — full-text search (search.go), chapter/block
+// extraction (server.go, migrate.go) — i.e. applying a Polish made the chapter INVISIBLE to search
+// and extraction. The normal editor save has always done this (TiptapEditor onUpdate); this one path
+// didn't. Same requirement ManuscriptUnitProvider states: "REQUIRED before persist".
+//
+// KNOWN RESIDUAL (not fixable here): rebuilding from FLAT text cannot restore heading nodes,
+// attrs.sceneId scene anchors, or marks — a heading's flattened `_text` carries no '#' marker, so
+// heading-ness is unrecoverable from the string. The real fix is to splice the accepted spans into
+// the LIVE document instead of rebuilding it, which needs a flat-offset→ProseMirror-position mapping
+// that does not exist today. Tracked in docs/specs/2026-07-26-atom-edit/DESIGN-error-blocks.md §11b;
+// error blocks avoid the whole class by applying through the editor's own transaction.
 function healedTextToDoc(text: string) {
   const content = text.split(/\n\n+/).map((para) => {
     const tx = para.trim();
@@ -34,7 +50,7 @@ function healedTextToDoc(text: string) {
       ? { type: 'paragraph', content: [{ type: 'text', text: tx }] }
       : { type: 'paragraph' };
   });
-  return { type: 'doc', content };
+  return addTextSnapshots({ type: 'doc', content });
 }
 
 export function QualityHealPanel(props: IDockviewPanelProps) {

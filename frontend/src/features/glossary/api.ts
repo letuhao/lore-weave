@@ -373,16 +373,11 @@ export const glossaryApi = {
    * unknown entity whose source_kind_code == alias_code (scoped to book_id if given)
    * onto that kind — the "merge" action.
    */
-  createKindAlias(
-    token: string,
-    payload: { alias_code: string; kind_id: string; reassign?: boolean; book_id?: string },
-  ): Promise<{ alias_id: string; alias_code: string; kind_id: string; reassigned: number }> {
-    return apiJson(`${BASE}/kind-aliases`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      token,
-    });
-  },
+  // createKindAlias — RETIRED (2026-07-28). `POST /kind-aliases` was removed by SS-4 Milestone C
+  // and live-probes at 405; only the GET survives. Its one caller was the unknown-review's
+  // "apply to all", which is why that option is no longer offered (see useUnknownReview). The
+  // alias write returns in SS-7 retargeted at the tiered model — re-add the binding then, against
+  // whatever shape that route lands with, rather than resurrecting this one.
 
   /** Move ONE entity onto a kind (ad-hoc triage; re-keys attributes by code). */
   reassignEntityKind(
@@ -400,67 +395,32 @@ export const glossaryApi = {
 
   // ── Kind CRUD ──────────────────────────────────────────────────────────────
 
-  createKind(token: string, payload: { code: string; name: string; icon?: string; color?: string; genre_tags?: string[] }) {
-    return apiJson<import('./types').EntityKind>(`${BASE}/kinds`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      token,
-    });
-  },
+  // createKind — RETIRED (2026-07-28). `POST /kinds` went the same way as the write family below
+  // (SS-4 → tiered kinds); live-probed at 405 while GET /kinds still works, which is exactly how
+  // it survived unnoticed. Minting a kind is `tieringApi.createBookKind` / `createUserKind`. There
+  // is no judgement call about which: `reassign-kind` validates its target against
+  // `book_kinds WHERE book_kind_id = $1 AND book_id = $2`, so the book tier is the only id space
+  // the very next call accepts.
 
-  patchKind(token: string, kindId: string, changes: Record<string, unknown>) {
-    return apiJson<import('./types').EntityKind>(`${BASE}/kinds/${kindId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(changes),
-      token,
-    });
-  },
-
-  deleteKind(token: string, kindId: string): Promise<void> {
-    return apiJson<void>(`${BASE}/kinds/${kindId}`, { method: 'DELETE', token });
-  },
-
-  reorderKinds(token: string, kindIds: string[]) {
-    return apiJson<{ reordered: number }>(`${BASE}/kinds/reorder`, {
-      method: 'PATCH',
-      body: JSON.stringify({ kind_ids: kindIds }),
-      token,
-    });
-  },
-
-  reorderAttrDefs(token: string, kindId: string, attrDefIds: string[]) {
-    return apiJson<{ reordered: number }>(`${BASE}/kinds/${kindId}/attributes/reorder`, {
-      method: 'PATCH',
-      body: JSON.stringify({ attr_def_ids: attrDefIds }),
-      token,
-    });
-  },
-
-  // ── Attribute Definition CRUD ─────────────────────────────────────────────
-
-  createAttrDef(token: string, kindId: string, payload: {
-    code: string; name: string; description?: string; field_type?: string; is_required?: boolean;
-    sort_order?: number; options?: string[]; genre_tags?: string[];
-    auto_fill_prompt?: string; translation_hint?: string;
-  }) {
-    return apiJson<import('./types').AttributeDefinition>(`${BASE}/kinds/${kindId}/attributes`, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-      token,
-    });
-  },
-
-  patchAttrDef(token: string, kindId: string, attrDefId: string, changes: Record<string, unknown>) {
-    return apiJson<import('./types').AttributeDefinition>(`${BASE}/kinds/${kindId}/attributes/${attrDefId}`, {
-      method: 'PATCH',
-      body: JSON.stringify(changes),
-      token,
-    });
-  },
-
-  deleteAttrDef(token: string, kindId: string, attrDefId: string): Promise<void> {
-    return apiJson<void>(`${BASE}/kinds/${kindId}/attributes/${attrDefId}`, { method: 'DELETE', token });
-  },
+  // ── RETIRED (2026-07-28): the flat `/kinds/{id}/…` write family ───────────
+  //
+  // patchKind · deleteKind · reorderKinds · reorderAttrDefs · createAttrDef · patchAttrDef ·
+  // deleteAttrDef all lived here with ZERO callers, aimed at routes the glossary service no
+  // longer serves: SS-4 moved kinds to the tiered model, so the writes are now
+  // `/system-kinds/…` (admin), `/user-kinds/{id}/attributes/…` (per-user) and
+  // `/books/{book_id}/kinds/…` (per-book) — the paths `tieringApi` already uses and the live
+  // UI already calls through `useBookOntology`. Only `GET /kinds` survives (see getKinds above).
+  //
+  // Kept as a comment rather than silently deleted because "an api function whose route 404s"
+  // is exactly the dead affordance this codebase forbids: the next person to need a kind write
+  // would otherwise find these, wire them, and ship a button that fails at runtime. Use
+  // `tieringApi`.
+  //
+  // ⚠ NOT yet fixed: `createKind` (above) and `createKindAlias` still point at removed routes
+  // and DO have a live caller — `useUnknownReview.resolve`, behind UnknownEntitiesPanel's
+  // "new kind" / "apply to all". Both were probed live and return **405**. Tracked as
+  // D-GLOSSARY-UNKNOWN-REVIEW-405; the fix needs a glossary-track decision about which tier a
+  // newly-minted kind belongs to, so it is not a rename.
 
   // ── Attribute Values ──────────────────────────────────────────────────────
 

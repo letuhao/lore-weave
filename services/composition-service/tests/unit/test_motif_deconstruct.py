@@ -193,8 +193,11 @@ async def test_imported_motif_and_arc_carry_the_request_language():
         model_source="platform_model", model_ref="m-ref", language="zh",
     )
     assert result["language"] == "zh"
-    assert motif_repo.created[0]["args"].language == "zh"
-    assert arc_repo.created[0]["args"].language == "zh"
+    assert motif_repo.created[0]["args"].original_language == "zh"
+    # ARC-I18N: the imported work's SOURCE language is still what the derived template
+    # is authored in — that mapping is unchanged; only the column name moved out of the
+    # identity key (`language` → `original_language`).
+    assert arc_repo.created[0]["args"].original_language == "zh"
 
 
 def test_scrub_verbatim_unit_drops_copied_example_and_blanks_beat():

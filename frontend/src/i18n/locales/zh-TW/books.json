@@ -43,9 +43,9 @@
       "glossary": "詞彙表",
       "kgOntology": "圖譜結構",
       "enrichment": "增補",
-      "wiki": "Wiki",
       "sharing": "分享",
-      "settings": "設定"
+      "settings": "設定",
+      "wiki": "維基"
     },
     "trash_confirm": {
       "title": "移至回收筒？",
@@ -220,6 +220,7 @@
       "selected": "已選 {{count}} 個",
       "activate": "啟用",
       "deactivate": "停用",
+      "reject": "拒絕",
       "clear": "清除選取",
       "done": "已將 {{count}} 個實體設為 {{status}}",
       "select_all_matching": "選擇全部 {{count}} 個相符項目",
@@ -229,8 +230,7 @@
       "delete_confirm": {
         "title": "刪除 {{count}} 個實體？",
         "description": "選取的 {{count}} 個實體將移至回收桶。"
-      },
-      "reject": "拒絕"
+      }
     },
     "clear_filters": "清除所有篩選",
     "deleted": "已刪除實體",
@@ -239,6 +239,7 @@
       "description": "建立第一個詞彙實體 — 角色、地點、物品等等。"
     },
     "untitled": "未命名",
+    "scope_label_title": "範圍 — 用於區分與其他同名實體",
     "alive_title": "存活 — 點擊標記為死亡",
     "dead_title": "死亡 — 點擊復活",
     "alive": "存活",
@@ -254,8 +255,7 @@
       "title": "刪除實體？",
       "description": "「{{title}}」將移至資源回收筒。",
       "confirm": "刪除"
-    },
-    "scope_label_title": "範圍 — 用於區分與其他同名實體"
+    }
   },
   "sharing": {
     "title": "可見性",
@@ -404,7 +404,6 @@
   },
   "kind_editor": {
     "modified": "已修改",
-    "ai": "AI",
     "required": "必填",
     "optional": "選填",
     "activate": "啟用",
@@ -470,7 +469,8 @@
       "title": "還原為預設？",
       "desc": "「{{name}}」將重設為原始名稱、圖示、顏色與屬性名稱。類型標籤與自訂屬性不受影響。",
       "confirm": "還原"
-    }
+    },
+    "ai": "AI"
   },
   "attr_editor": {
     "field_type": {
@@ -480,15 +480,14 @@
       "number": "數字",
       "date": "日期",
       "tags": "標籤",
-      "url": "URL",
-      "boolean": "布林"
+      "boolean": "布林",
+      "url": "URL"
     },
     "new_attr": "新屬性",
     "edit_attr": "編輯屬性",
     "system": "系統",
     "custom": "自訂",
     "modified": "已修改",
-    "ai": "AI",
     "core": "核心",
     "display_name": "顯示名稱",
     "field_type_label": "欄位類型",
@@ -528,6 +527,7 @@
       "title": "還原屬性名稱？",
       "desc": "將名稱從「{{from}}」還原為「{{to}}」。其他欄位不受影響。",
       "confirm": "還原"
-    }
+    },
+    "ai": "AI"
   }
 }

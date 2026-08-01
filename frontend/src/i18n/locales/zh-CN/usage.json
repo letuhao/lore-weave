@@ -97,12 +97,12 @@
     "col_input": "输入",
     "col_output": "输出",
     "col_cost": "成本",
-    "cell_ok": "200 OK",
     "cell_error": "错误",
     "cell_rejected": "已拒绝",
     "collapse_details": "收起详情",
     "expand_details": "展开详情",
-    "no_logs": "未找到使用日志。"
+    "no_logs": "未找到使用日志。",
+    "cell_ok": "200 OK"
   },
   "detail": {
     "load_failed": "无法加载详情",

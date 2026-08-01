@@ -65,7 +65,15 @@ describe('serverKeyForTool', () => {
     'ui_open_book',
     'confirm_action',
     'propose_edit',
-    'propose_record_edit',
+    // `propose_record_edit` was REMOVED from the backend's frontend-tool set on
+    // 2026-07-21 (auto-gate M5 — the generic record diff card was retired), and this
+    // list was not updated with it. The suite has been RED on this branch ever since;
+    // found 2026-07-31 while running the FE tests for an unrelated change.
+    //
+    // The mirror itself is fine: `FRONTEND_TOOL_NAMES` and
+    // `contracts/frontend-tools.contract.json` agree exactly, which is what the
+    // drift-pin below actually guards. Only this hand-written parametrize list, which
+    // nothing cross-checks against the contract, went stale.
     // frontend check has precedence over the glossary_ prefix.
     'glossary_confirm_action',
     'glossary_propose_entity_edit',

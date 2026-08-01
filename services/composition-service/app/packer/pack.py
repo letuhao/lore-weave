@@ -41,9 +41,10 @@ from app.packer import merge as M
 from app.packer import profile as profile_mod
 from app.packer import spoiler
 from app.packer.lenses import (
-    LensBundle, gather_arc, gather_canon, gather_lore, gather_motif, gather_open_promises,
-    gather_present, gather_recent, gather_references, gather_source_scene,
-    gather_structural, gather_timeline,
+    LensBundle, gather_arc, gather_canon, gather_carried_cast, gather_lore, gather_motif,
+    gather_must_survive,
+    gather_open_promises, gather_present, gather_recent, gather_references, gather_source_scene,
+    gather_prior_chapters, gather_structural, gather_timeline,
 )
 from app.db.repositories.references import reference_embed_model
 
@@ -123,6 +124,46 @@ class PackedContext:
     # excluded items are still listed (flagged) so the FE can un-exclude them, but
     # were NOT packed into `blocks`. Empty when no pins repo is wired.
     grounding_items: list[dict[str, Any]] = field(default_factory=list)
+    # D-RECENT-FLOOR-COMPRESSED — how many paragraphs of THIS CHAPTER's already-written prose
+    # had to be LLM-summarised because the verbatim floor did not fit the budget. >0 means the
+    # next scene is being written against a lossy account of its own chapter, which is exactly
+    # how "He is the anchor" became "She's a Scribe" one scene later. 0 on any budget that can
+    # hold the chapter, which is the normal case.
+    recent_floor_compressed: int = 0
+
+    def diagnostics(self) -> dict[str, Any]:
+        """S8 — what the pack DID, in one dict, so the job result can carry it.
+
+        Every number here was already computed and then thrown away: only
+        `grounding_available` and `reinjected_promise_count` reached a job, so the questions an
+        author or a debugger actually asks — *was anything dropped? was the chapter I am
+        continuing summarised away?* — had no answer anywhere after the request ended.
+
+        ⚠ `over_budget` DOES NOT MEAN CONTENT WAS LOST, and reading it that way inverts the
+        semantics (v1 of this slice did). It means the PROTECTED segments alone exceeded the
+        budget and were KEPT — the prompt is oversized, and nothing load-bearing was discarded.
+        The genuinely silent signals are `dropped_count` (lore/references/threads actually
+        discarded to fit) and `l4_dropped_no_position` (grounding dropped because its reading
+        position could not be resolved — a spoiler-safety drop, not a budget one).
+
+        `recent_floor_compressed > 0` is the sharpest of them: the scene is being written
+        against an LLM SUMMARY of its own chapter rather than the prose, which is how "He is
+        the anchor" became "She's a Scribe" one scene later.
+
+        One method, called from every assembly site, because this envelope is built in four
+        places and a field added to one of them has already been read back as None by a live
+        probe.
+        """
+        return {
+            "dropped_count": self.dropped_count,
+            "l4_dropped_no_position": self.l4_dropped_no_position,
+            "recent_floor_compressed": self.recent_floor_compressed,
+            "over_budget": self.over_budget,
+            "token_count": self.token_count,
+            "grounding_available": self.grounding_available,
+            "reinjected_promise_count": self.reinjected_promise_count,
+            "warnings": list(self.warnings),
+        }
 
 
 def _as_uuid(value: Any) -> UUID | None:
@@ -373,7 +414,7 @@ async def pack(
             and motif_node_id is not None and req.project_id is not None)
         else _empty_str()
     )
-    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises, (references, _seen_r), arc_text, motif_text = (
+    canon, (present, seen_p), (timeline, seen_t), (beat, threads, planned), recent, (lore, seen_l), open_promises, (references, _seen_r), arc_text, motif_text, carried_cast = (
         await asyncio.gather(
             gather_canon(canon_repo, req.project_id, story_order),
             gather_present(glossary, knowledge, book_id=req.book_id, user_id=req.user_id,
@@ -392,8 +433,18 @@ async def pack(
                               project_id=req.project_id, query=query, model=ref_model),
             arc_gated,
             motif_gated,
+            # D-GENERATED-FACT-HAS-NO-HOME — the previous scene's RECORDED cast. Cheap (one
+            # indexed row) and it runs on the same lens fan-out as everything else, so it
+            # cannot serialise the pack.
+            gather_carried_cast(outline_repo, project_id=req.project_id, node=node),
         )
     )
+
+    # PREVENTION half of the plan-liveness arc. NOT in the fan-out above: it needs `present`
+    # for the names, and `present` is produced by that same gather. One indexed query, run
+    # once the cast is known.
+    must_survive = await gather_must_survive(
+        outline_repo, present, project_id=req.project_id, node=node)
 
     # C25 — DERIVATIVE two-project base+delta merge (G2). Gather the inherited BASE
     # knowledge grounding from the SOURCE project, branch-FILTERED to ≤ branch_point
@@ -513,6 +564,8 @@ async def pack(
         extra_canon=extra_canon,  # C25 — added canon-rule scope from overrides
         references=references_kept,  # T3.6 — author reference passages (excludes dropped)
         source_scene=source_scene,  # M1 — inherited source prose for the adapt op (empty otherwise)
+        must_survive=must_survive,  # the plan-liveness CONSTRAINT (prevention half)
+        carried_cast=carried_cast,  # D-GENERATED-FACT-HAS-NO-HOME — the prior scene's record
     )
 
     # S2 — when the raw "story so far" is large (long chapter), COMPRESS the older
@@ -520,12 +573,43 @@ async def pack(
     # tail-trim it. Keep the last N immediate paragraphs verbatim. compress_fn is
     # fed only the spoiler-FILTERED timeline (tl_kept) + strictly-prior prose, so
     # it cannot leak future canon (/review-impl H2). Degrade-safe: "" → keep raw.
+    # D-RECENT-FLOOR-COMPRESSED — `<recent>` is ENTIRELY current-chapter prose (both of
+    # `gather_recent`'s sources are: this chapter's accepted draft, or this chapter's prior
+    # generated scenes). So the old rule — keep 2 paragraphs, LLM-summarise everything else
+    # past 6K chars — was compressing the chapter being written, which is the one thing that
+    # must stay verbatim: the next scene's job is to be consistent with its exact wording.
+    #
+    # Measured on a real 4-scene chapter: scene 2 became a state ledger recording the character
+    # it had just introduced as `Condition: Unknown`, the gender dropped in compression, and
+    # scene 3 contradicted it at the seam ("He is the anchor" → "She's a Scribe"). Nothing
+    # failed; a fact fell out and consistency broke unpredictably — the failure mode an
+    # incompressible floor exists to convert into a guarantee.
+    #
+    # So: keep as much as the budget can hold, NEWEST-first (the immediately-preceding prose is
+    # the most load-bearing), compress only the overflow, and SAY when that happened.
+    recent_floor_compressed = 0
     keep = max(1, settings.pack_compress_keep_immediate)
     recent_chars = sum(len(p) for p in bundle.recent)
+    counter_fn = counter or B.default_counter()
+    floor_tokens = max(0, int(budget_tokens * settings.pack_recent_floor_share))
+    fits = len(bundle.recent)
+    spent = 0
+    for i, para in enumerate(reversed(bundle.recent)):
+        spent += counter_fn(para)
+        if spent > floor_tokens and i + 1 > keep:
+            fits = i
+            break
+    keep = max(keep, fits)
     if (compress_fn is not None and len(bundle.recent) > keep
             and recent_chars > settings.pack_compress_recent_threshold_chars):
         older = bundle.recent[:-keep]
         immediate = bundle.recent[-keep:]
+        logger.info(
+            "recent floor: %d of %d paragraph(s) exceed %d floor tokens — compressing the "
+            "OLDEST %d (project=%s node=%s)",
+            len(older), len(bundle.recent), floor_tokens, len(older),
+            req.project_id, node.get("id"),
+        )
         timeline_texts = [
             t for t in (f'{e.get("title", "")}: {e.get("summary", "")}'.strip(": ").strip()
                         for e in tl_kept) if t
@@ -544,6 +628,35 @@ async def pack(
             )
             bundle.state_summary = summary
             bundle.recent = immediate
+            recent_floor_compressed = len(older)
+
+    # D-PRIOR-CHAPTER-BLIND — when the knowledge timeline carried nothing, the model has no
+    # account of the chapters BEFORE this one. That is the normal state of a book still being
+    # written (extraction has not run), and it is exactly the coverage-conditional-on-optional-
+    # data shape the canon guard had. Measured: a 9-chapter, 10k-word book whose tenth
+    # chapter's prompt contained not one word from any predecessor.
+    #
+    # The previous chapters are what compression is FOR — unlike the current chapter, which is
+    # now a verbatim floor. Same `compress_fn`, applied to the right material this time.
+    if not tl_kept and compress_fn is not None and chapter_id is not None:
+        prior_ch = await gather_prior_chapters(
+            book, req.book_id, req.bearer,
+            chapter_id=chapter_id, chapter_sort=scene_sort_order,
+            k=settings.pack_prior_chapters,
+        )
+        if prior_ch:
+            try:
+                prior_summary = await compress_fn(
+                    [f"{title}\n{text}" if title else text for title, text in prior_ch],
+                    [], (node.get("synopsis") or node.get("goal") or "").strip(),
+                )
+            except Exception:  # noqa: BLE001 — never fail a pack for a summary
+                logger.warning("prior-chapter compress raised", exc_info=True)
+                prior_summary = ""
+            if prior_summary:
+                logger.info("prior-chapter fallback: %d chapter(s) → %d-char summary "
+                            "(project=%s)", len(prior_ch), len(prior_summary), req.project_id)
+                bundle.timeline = [{"title": "Previously", "summary": prior_summary}]
 
     segs = assemble.build_segments(bundle, guide=req.guide, pinned_lore_ids=pinned_lore_ids,
                                    pinned_reference_ids=pinned_reference_ids)
@@ -584,6 +697,7 @@ async def pack(
         token_count=bres.total_tokens, dropped_count=bres.dropped_count,
         l4_dropped_no_position=l4.dropped_no_position,
         grounding_available=bundle.knowledge_seen, over_budget=bres.over_budget,
+        recent_floor_compressed=recent_floor_compressed,
         scene_sort_order=scene_sort_order,
         reinjected_promise_count=len(open_promises),  # FD-1 S4b — S3 fired-signal
         warnings=warnings,

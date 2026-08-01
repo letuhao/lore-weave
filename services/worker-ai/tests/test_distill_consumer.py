@@ -160,7 +160,30 @@ _MISSING = object()
 
 
 async def test_window_shrinks_for_a_small_context_model():
-    assert await _window_for(_Provider(8_000)) == 8_000 - 2_048 - 2_048  # 3904
+    """Derived from the CONSTANTS, not from their values at the time this was written.
+
+    It used to restate `- 2_048 - 2_048`, so when S7 raised the output reserve to match the
+    request cap (they had disagreed by 2x, letting chunk+prompt+output exceed the window on
+    exactly the small-context models this test is about) the test failed for pinning the bug.
+    """
+    from app.distiller import OUTPUT_RESERVE_TOKENS, PROMPT_OVERHEAD_TOKENS
+
+    assert await _window_for(_Provider(8_000)) == \
+        8_000 - PROMPT_OVERHEAD_TOKENS - OUTPUT_RESERVE_TOKENS
+
+
+async def test_the_window_LEAVES_ROOM_for_the_output_the_request_actually_asks_for():
+    """S7 — the reserve and the cap are one decision. When they were two literals they
+    disagreed by 2x and a 8k-context BYOK model was budgeted chunk+prompt+output = 10240
+    against an 8192 window: the exact overflow `resolve_distill_window` exists to prevent, on
+    exactly the models it was written for."""
+    from app.distill_job import DISTILL_MAX_TOKENS
+    from app.distiller import PROMPT_OVERHEAD_TOKENS
+
+    for ctx in (8_192, 16_384, 32_768):
+        window = await _window_for(_Provider(ctx))
+        assert window + PROMPT_OVERHEAD_TOKENS + DISTILL_MAX_TOKENS <= ctx, \
+            f"ctx={ctx}: chunk+prompt+output overflows the model window"
 
 
 async def test_window_defaults_when_ctx_unknown():

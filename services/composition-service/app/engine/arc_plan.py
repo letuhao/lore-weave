@@ -21,12 +21,14 @@ from dataclasses import dataclass
 # at the climax; the opening (hook/setup) is intentionally capped well below it; the
 # resolution drops. Keys cover the common web-novel / story-circle / 3-act beat names.
 _BANDS: dict[str, tuple[int, int]] = {
+    # ── generic / web-novel vocabulary ──
     "hook": (45, 65),
     "setup": (30, 50),
     "establishment": (35, 58),
     "inciting_incident": (52, 70),
     "rising_action": (55, 82),
     "rising_conflict": (55, 82),
+    "confrontation": (60, 85),       # Three-Act's middle
     "midpoint": (65, 82),
     "complications": (62, 86),
     "setback": (66, 90),
@@ -35,6 +37,59 @@ _BANDS: dict[str, tuple[int, int]] = {
     "falling_action": (40, 62),
     "resolution": (30, 52),
     "denouement": (25, 45),
+
+    # D-PLANFORGE-BEATS-UNWIRED — the OTHER seeded structures' vocabularies.
+    #
+    # Only the web-novel/3-act keys were mapped, so four of the six built-in templates
+    # (Hero's Journey, Save the Cat, Story Circle, Kishōtenketsu) had NO key in this dict — every
+    # beat fell to `_DEFAULT_BAND` and the curve came out flat. That is a quieter re-run of the very
+    # bug the beats wiring fixes: the roles would be assigned, and the SHAPE would still be a
+    # straight line. A structure the planner cannot shape is a structure in name only.
+    #
+    # ── Hero's Journey ──
+    "ordinary_world": (30, 50),
+    "call_to_adventure": (52, 70),
+    "refusal_of_the_call": (45, 62),
+    "meeting_the_mentor": (40, 58),
+    "crossing_the_threshold": (55, 72),
+    "tests_allies_enemies": (55, 82),
+    "approach": (62, 80),
+    "ordeal": (78, 94),              # the central brush with death — a crisis, not yet the climax
+    "reward": (50, 68),              # the deliberate exhale after the ordeal
+    "the_road_back": (62, 84),
+    "resurrection": (88, 100),       # THE climax of this vocabulary
+    "return_with_elixir": (30, 52),
+
+    # ── Save the Cat ──
+    "opening_image": (30, 48),
+    "theme_stated": (32, 50),
+    "catalyst": (52, 70),
+    "debate": (45, 62),
+    "break_into_two": (55, 72),
+    "b_story": (45, 62),
+    "fun_and_games": (55, 78),
+    "bad_guys_close_in": (66, 88),
+    "all_is_lost": (72, 92),
+    "dark_night": (70, 90),          # low EXTERNAL action, peak internal despair — keep it high
+    "break_into_three": (68, 86),
+    "finale": (88, 100),
+    "final_image": (28, 48),
+
+    # ── Story Circle ──
+    "you": (30, 50),
+    "need": (45, 64),
+    "go": (55, 72),
+    "search": (58, 80),
+    "find": (70, 88),
+    "take": (78, 94),                # "pay a heavy price" — the cost beat
+    "return": (60, 82),
+    "change": (32, 54),
+
+    # ── Kishōtenketsu (no conflict spine; the TURN carries the energy) ──
+    "ki": (30, 50),
+    "sho": (45, 65),
+    "ten": (78, 94),                 # the recontextualising twist — this vocabulary's peak
+    "ketsu": (35, 55),
 }
 _DEFAULT_BAND = (50, 72)
 
@@ -44,6 +99,16 @@ class ChapterTension:
     chapter_index: int          # 1-based, in story order
     beat_role: str | None
     tension_target: int         # 0..100 — the chapter's intended peak band
+
+
+def known_beat_keys() -> frozenset[str]:
+    """The beat keys this module can actually SHAPE a curve from.
+
+    Exported so a caller can warn when a structure's vocabulary is unknown to the shaper. Without
+    it, an unrecognised key degrades to the neutral band silently — the curve looks computed but is
+    flat, which is indistinguishable from the no-beats bug it replaced.
+    """
+    return frozenset(_BANDS)
 
 
 def band_for(beat_role: str | None) -> tuple[int, int]:

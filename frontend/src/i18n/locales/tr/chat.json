@@ -229,6 +229,7 @@
   "actionConfirm": {
     "label": "İşlemi onayla",
     "batch_count": "{{count}} öğe",
+    "warning": "Lütfen bu değişikliği uygulamadan önce gözden geçirin.",
     "warning_destructive": "Bu işlem yıkıcıdır ve zincirleme etki yaratır — lütfen onaylayın.",
     "destructive_skipped": "Yukarıdan etkinleştirmediğiniz sürece {{count}} yıkıcı işlem ATLANACAKTIR.",
     "confirm": "Onayla",
@@ -242,8 +243,7 @@
     "cancelled": "İptal edildi",
     "reprice": "Tahmin edilen maliyet {{cost}} seviyesine çıktı — yeni fiyattan tekrar onaylamak için tekrar isteyin.",
     "reprice_title": "Maliyet değişti — uygulanmadı",
-    "reprice_detail": "Tahmini {{old}}, şimdi {{new}}. Hiçbir harcama yapılmadı — yeni fiyattan tekrar onaylamak için tekrar isteyin.",
-    "warning": "Lütfen bu değişikliği uygulamadan önce gözden geçirin."
+    "reprice_detail": "Tahmini {{old}}, şimdi {{new}}. Hiçbir harcama yapılmadı — yeni fiyattan tekrar onaylamak için tekrar isteyin."
   },
   "batchConfirm": {
     "title": "{{count}} işlemi tek adımda onayla",
@@ -380,7 +380,7 @@
     "approved": "Onaylandı — çalışıyor ✓",
     "always_allowed": "Her zaman izin verildi — çalışıyor ✓",
     "denied": "Reddedildi",
-    "never_allowed": "Never allowed — you can undo this in Settings → Permissions"
+    "never_allowed": "Asla izin verilmez — bunu Ayarlar → İzinler kısmından geri alabilirsiniz"
   },
   "rack": {
     "label": "Bağlam",

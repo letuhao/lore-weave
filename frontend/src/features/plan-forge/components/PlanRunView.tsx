@@ -1,6 +1,7 @@
 // The read-out for a plan run: status + artifacts + self-check gaps + validate report + a compile
 // affordance (arc_id input). Render-only — all handlers come from the usePlanRun controller.
 import { useState } from 'react';
+import type { StructureTemplate } from '@/features/composition/types';
 import type {
   PlanCompileResult,
   PlanRunDetail,
@@ -17,7 +18,11 @@ interface Props {
   compileResult: PlanCompileResult | null;
   onSelfCheck: () => void;
   onValidate: () => void;
-  onCompile: (arcId: string) => void;
+  /** `structureTemplateId` omitted ⇒ keep whatever structure the run already uses. */
+  onCompile: (arcId: string, structureTemplateId?: string) => void;
+  /** The story-structure library (built-ins + the user's own) for the compile picker.
+   *  Optional: absent ⇒ the picker offers only "keep current". */
+  structures?: StructureTemplate[];
   /** PS-9 — open one artifact read-only in the json-editor (fed by BE-3). */
   onOpenArtifact: (artifactId: string) => void;
   // ⑨ Repair strip — appears ONLY when self-check found gaps (recovery tools are meaningless
@@ -30,11 +35,17 @@ interface Props {
 }
 
 export function PlanRunView({
-  run, polling, busy, selfCheck, validation, compileResult,
+  // Defaulted, not required: the picker is an affordance over degrade-safe data (the hook already
+  // swallows a failed library load), so an absent list must render "keep current" — never crash the
+  // whole compile panel over a decoration.
+  run, polling, busy, selfCheck, validation, compileResult, structures = [],
   onSelfCheck, onValidate, onCompile, onOpenArtifact,
   repairOutput, canRepair, onExplain, onApplyFix, onAutofix,
 }: Props) {
   const [pickedArcId, setPickedArcId] = useState('');
+  // '' = "keep current" — deliberately NOT pre-selected to a default, so opening the panel and
+  // hitting Compile can never silently re-shape a plan the author already structured.
+  const [pickedStructureId, setPickedStructureId] = useState('');
   // PS-6 — a paid repair action confirms before spending; one confirm at a time.
   const [pendingRepair, setPendingRepair] = useState<null | { label: string; run: () => void }>(null);
   // Derived default (same pattern as PlannerPanel's effectiveModelRef) — no
@@ -159,17 +170,62 @@ export function PlanRunView({
 
       {validation && (
         <div data-testid="plan-validation">
-          <p className="mb-1 text-[10px] uppercase text-muted-foreground">
-            Validate · {validation.passed ? 'passed' : 'failed'} · fidelity {validation.fidelity_score != null ? validation.fidelity_score.toFixed(2) : '—'}
-          </p>
-          <ul className="space-y-0.5">
-            {validation.rules.map((r) => (
+          {/* Three states, not two. A rule that does not APPLY to this book gets no verdict — a
+              vacuous ✓ (pa_not_realm on a book with no PA) misleads as much as a meaningless ✗
+              (vars_four on a book that never had PA/HA/CD/THR). And advisory rules are separated
+              from the blockers, because the whole complaint about this button was that five ✗ of
+              equal weight gave the author no way to tell which one was theirs to fix. */}
+          {(() => {
+            const rules = validation.rules;
+            const na = rules.filter((r) => r.applicable === false);
+            const rest = rules.filter((r) => r.applicable !== false);
+            const blockers = rest.filter((r) => (r.tier ?? 'hard') === 'hard' && !r.passed);
+            const advisory = rest.filter((r) => r.tier === 'advisory');
+            const okHard = rest.filter((r) => (r.tier ?? 'hard') === 'hard' && r.passed);
+            const row = (r: typeof rules[number], muted = false) => (
               <li key={r.id} className="rounded bg-muted/40 px-2 py-0.5">
-                <span className={r.passed ? 'text-success' : 'text-destructive'}>{r.passed ? '✓' : '✗'}</span>{' '}
-                <span className="text-muted-foreground">{r.id}</span> — {r.message}
+                <span className={muted ? 'text-muted-foreground' : r.passed ? 'text-success' : 'text-destructive'}>
+                  {muted ? '—' : r.passed ? '✓' : '✗'}
+                </span>{' '}
+                <span className="text-muted-foreground">{r.id}</span>
+                {r.message ? <> — {r.message}</> : null}
               </li>
-            ))}
-          </ul>
+            );
+            return (
+              <>
+                <p className="mb-1 text-[10px] uppercase text-muted-foreground">
+                  Validate · {validation.passed ? 'passed' : `${blockers.length} blocker(s)`} · fidelity{' '}
+                  {validation.fidelity_score != null ? validation.fidelity_score.toFixed(2) : '—'}
+                </p>
+                {blockers.length > 0 && (
+                  <ul data-testid="plan-validate-blockers" className="space-y-0.5">
+                    {blockers.map((r) => row(r))}
+                  </ul>
+                )}
+                {okHard.length > 0 && (
+                  <ul data-testid="plan-validate-passed" className="space-y-0.5">{okHard.map((r) => row(r))}</ul>
+                )}
+                {advisory.length > 0 && (
+                  <>
+                    <p className="mt-1 text-[10px] uppercase text-muted-foreground">Advisory — never blocks</p>
+                    <ul data-testid="plan-validate-advisory" className="space-y-0.5">
+                      {advisory.map((r) => row(r))}
+                    </ul>
+                  </>
+                )}
+                {na.length > 0 && (
+                  <>
+                    <p className="mt-1 text-[10px] uppercase text-muted-foreground">
+                      Not applicable to this book
+                    </p>
+                    <ul data-testid="plan-validate-na" className="space-y-0.5">
+                      {na.map((r) => row(r, true))}
+                    </ul>
+                  </>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -180,20 +236,46 @@ export function PlanRunView({
             No arcs found in this plan yet — run Self-check or Validate above to see what's missing.
           </p>
         ) : (
-          <div className="flex gap-2">
-            <select
-              data-testid="plan-arc-picker" value={arcId} onChange={(e) => setPickedArcId(e.target.value)}
-              className="flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs outline-none focus:border-ring"
-            >
-              {run.arcs.map((a) => (
-                <option key={a.id} value={a.id}>{a.title}</option>
-              ))}
-            </select>
-            <button
-              type="button" data-testid="plan-compile-btn" onClick={() => onCompile(arcId)}
-              disabled={busy || polling || !arcId}
-              className="rounded bg-primary px-2 py-1 text-primary-foreground hover:brightness-110 disabled:opacity-40"
-            >Compile</button>
+          <div className="space-y-1">
+            <div className="flex gap-2">
+              <select
+                data-testid="plan-arc-picker" value={arcId} onChange={(e) => setPickedArcId(e.target.value)}
+                className="flex-1 rounded border border-border bg-background px-1.5 py-1 text-xs outline-none focus:border-ring"
+              >
+                {run.arcs.map((a) => (
+                  <option key={a.id} value={a.id}>{a.title}</option>
+                ))}
+              </select>
+              <button
+                type="button" data-testid="plan-compile-btn"
+                onClick={() => onCompile(arcId, pickedStructureId || undefined)}
+                disabled={busy || polling || !arcId}
+                className="rounded bg-primary px-2 py-1 text-primary-foreground hover:brightness-110 disabled:opacity-40"
+              >Compile</button>
+            </div>
+            {/* D-PLANFORGE-BEATS-UNWIRED — the STORY STRUCTURE picker.
+                Until now a GUI author had no way to choose one, so every compile silently used the
+                platform default and the `beats` pass mapped chapters onto whatever that was. The
+                library, its 6 built-ins and a full CRUD panel all already existed — nothing linked
+                them to a plan run. Blank = keep whatever the run already uses. */}
+            <div className="flex items-center gap-2">
+              <label htmlFor="plan-structure-picker" className="text-[10px] text-muted-foreground">Structure</label>
+              <select
+                id="plan-structure-picker" data-testid="plan-structure-picker"
+                value={pickedStructureId} onChange={(e) => setPickedStructureId(e.target.value)}
+                disabled={busy || polling}
+                className="flex-1 rounded border border-border bg-background px-1.5 py-1 text-[11px] outline-none focus:border-ring disabled:opacity-40"
+              >
+                <option value="">
+                  {structures.length ? 'Keep current structure' : 'Loading structures…'}
+                </option>
+                {structures.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}{t.beats?.length ? ` · ${t.beats.length} beats` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         )}
         {compileResult && (

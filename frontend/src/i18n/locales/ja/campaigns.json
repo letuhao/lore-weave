@@ -75,11 +75,11 @@
     "stage": "ステージ",
     "status": "ステータス",
     "tokens": "トークン（入/出）",
-    "usd": "USD",
     "localFree": "🖥 {{kind}} · 無料",
     "cloud": "☁ {{kind}}",
     "launching": "開始中…",
-    "launch": "キャンペーンを開始"
+    "launch": "キャンペーンを開始",
+    "usd": "USD"
   },
   "list": {
     "title": "自動ドラフトキャンペーン",

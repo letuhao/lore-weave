@@ -1,0 +1,603 @@
+{
+  "cultivation.auction_house_treasure": {
+    "beats": {
+      "bidding_war": {
+        "intent": "rakipler fiyatı yukarı çeker",
+        "label": "Fiyat savaşı"
+      },
+      "outbid": {
+        "intent": "kahraman açık artırmada geride bırakılır ve alay konusu edilir",
+        "label": "Rakip fiyatı aşar"
+      },
+      "secret_win": {
+        "intent": "kahraman nesneyi beklenmedik bir yolla ele geçirir",
+        "label": "Gizli kazanma yolu"
+      },
+      "surface": {
+        "intent": "arzu edilen bir yadigar müzayedeye çıkar",
+        "label": "Nadir nesne gün yüzüne çıkar"
+      }
+    },
+    "effects": [
+      "kahraman hazineye sahip olur",
+      "zengin bir rakip herkesin önünde mağlup edilir"
+    ],
+    "emotion_target": "zafer",
+    "examples": [
+      "Müzayedede nadir bir yadigâr gün yüzüne çıkar; fiyatı artırılarak küçümsenen kahraman, kimsenin beklemediği bir yöntemle onu kazanır."
+    ],
+    "name": "Müzayede Eseri",
+    "preconditions": [
+      "açık bir rekabet yoluyla çok arzulanan bir kaynak erişilebilir hale gelir"
+    ],
+    "roles": {
+      "backer": {
+        "constraints": [
+          "gizli destek"
+        ],
+        "label": "gizli destekçi"
+      },
+      "protagonist": {
+        "constraints": [
+          "kaynakları kısıtlı"
+        ],
+        "label": "teklif veren"
+      },
+      "rival": {
+        "constraints": [
+          "kibirli, sınırsız imkânlı"
+        ],
+        "label": "zengin rakip"
+      },
+      "treasure": {
+        "constraints": [
+          "nadir, çok arzulanan"
+        ],
+        "label": "müzayededeki yadigar"
+      }
+    },
+    "summary": "Müzayedede nadir bir nesne gün yüzüne çıkar; kaynakları tükenen ve alay edilen kahraman, gizli bir destekçi veya beklenmedik bir yöntem sayesinde nesneyi kazanır."
+  },
+  "cultivation.bottleneck_resource_hunt": {
+    "beats": {
+      "acquire": {
+        "intent": "ölümcül bir menzilden kaynağı ele geçir",
+        "label": "Tehlikeli edinim"
+      },
+      "advance": {
+        "intent": "gücünü kullanarak seviye atlar",
+        "label": "Tüket ve ilerle"
+      },
+      "named": {
+        "intent": "ihtiyaç duyulan öz tanımlanır",
+        "label": "Kaynak belirlenir"
+      },
+      "stall": {
+        "intent": "ilerleme bir duvara çarpar",
+        "label": "Rütbe tıkanması"
+      }
+    },
+    "effects": [
+      "başkahraman gereken kaynağı ele geçirir",
+      "başkahraman bir rütbe yükselir"
+    ],
+    "emotion_target": "kararlılık",
+    "examples": [
+      "Bir eşikte tıkanıp kalan yetişir, korunan bir özü ölümcül bir menzile kadar avlar ve onun gücüyle seviye atlar."
+    ],
+    "name": "Darboğaz Kaynağı Avı",
+    "preconditions": [
+      "başkahraman bir darboğazda tıkanmıştır",
+      "belirli bir kaynağın bu tıkanıklığı aşacağı bilinmektedir"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "ölümcül, bölgeci"
+        ],
+        "label": "koruyucu canavar"
+      },
+      "protagonist": {
+        "constraints": [
+          "belirli bir kaynağa ihtiyaç duyar"
+        ],
+        "label": "takılıp kalmış yetişir"
+      },
+      "resource": {
+        "constraints": [
+          "nadir, korunan"
+        ],
+        "label": "ruh otu / çekirdek"
+      }
+    },
+    "summary": "Bir eşikte takılıp kalan yetişir, korunan bir özü ölümcül bir menzile kadar avlar ve onun gücüyle seviye atlar."
+  },
+  "cultivation.closed_door_breakthrough": {
+    "beats": {
+      "bottleneck": {
+        "intent": "durgunlaşan rütbenin direnmesi",
+        "label": "İçsel engelle karşılaşma"
+      },
+      "breakthrough": {
+        "intent": "hayatta kalmak ve eşiği aşmak",
+        "label": "Bir mertebe aşmak"
+      },
+      "crisis": {
+        "intent": "sınav, yetişicinin canına okur",
+        "label": "Ölümle burun buruna"
+      },
+      "insight": {
+        "intent": "bir idrakin engeli çatlatması",
+        "label": "Ani kavrayış"
+      },
+      "seclusion": {
+        "intent": "tıkanıklığı aşmak için geri çekilmek",
+        "label": "İnzivaya çekilme"
+      },
+      "tribulation": {
+        "intent": "gökyüzü yükselişi sınar",
+        "label": "İlahi sınav"
+      }
+    },
+    "effects": [
+      "kahraman bir mertebe veya rütbe atlar",
+      "itibarı ve gücü gözle görülür şekilde artar"
+    ],
+    "emotion_target": "beklenti",
+    "examples": [
+      "Durgun bir rütbeyi aşmak için inzivaya çekilen yetişici; önce içsel bir duvarla, sonra ilahi bir sınavla ve ölümle burun buruna gelerek bir mertebe yükselir."
+    ],
+    "name": "Kapalı Kapı Atılımı",
+    "preconditions": [
+      "kahraman bir gelişim darboğazına takılmıştır",
+      "el altında bir miktar kaynak veya içgörü mevcuttur"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "isteğe bağlı"
+        ],
+        "label": "kapıyı koruyan müttefik"
+      },
+      "protagonist": {
+        "constraints": [
+          "bir rütbe engelinin altında sıkışıp kalmış"
+        ],
+        "label": "tıkanmış yetişir"
+      },
+      "tribulation": {
+        "constraints": [
+          "tarafsız ve şiddeti artan"
+        ],
+        "label": "ilahi sınav"
+      }
+    },
+    "summary": "Durgunlaşan rütbesini aşmak için inzivaya çekilen yetişir, içsel bir engelle yüzleşir, ilahi bir sınavdan geçer, ölümün kıyısından döner ve yeni bir seviyeye yükselir."
+  },
+  "cultivation.dao_heart_temper": {
+    "beats": {
+      "confront": {
+        "intent": "yetiştirici, teselli edici yalanı reddetmek zorundadır",
+        "label": "Benlikle yüzleşme"
+      },
+      "emerge": {
+        "intent": "dao-kalbi sarsılmaz bir biçimde çelikleşir",
+        "label": "Kararlılıkla doğuş"
+      },
+      "false_memory": {
+        "intent": "bir illüzyon, en ağır suçluluk duygusunu yeniden canlandırır",
+        "label": "Sahte anı sınavı"
+      },
+      "surface": {
+        "intent": "yetiştiricinin şüphesi somut bir form kazanır",
+        "label": "İçsel iblisin yüzeye çıkışı"
+      }
+    },
+    "effects": [
+      "protagonistin kararlılığı çelikleşir ve berraklaşır",
+      "illüzyonlara veya baştan çıkarıcılıklara karşı olan hassasiyet ortadan kalkar"
+    ],
+    "emotion_target": "kararlılık",
+    "examples": [
+      "İllüzyon bir sınav, yetişicinin en ağır suçluluk duygusunu yeniden canlandırır; ancak teselli edici yalanı reddetmek, dao-kalbinin ayakta kalmasını sağlar."
+    ],
+    "name": "Dao-Kalbi Çelikleşmesi",
+    "preconditions": [
+      "protagonist çözülmemiş bir suçluluk duygusu veya bağlılık taşımaktadır"
+    ],
+    "roles": {
+      "dao_heart": {
+        "constraints": [
+          "tehlikede olan şey"
+        ],
+        "label": "dao-kalbi / sarsılmazlık"
+      },
+      "inner_demon": {
+        "constraints": [
+          "teselli edici bir çehre takınır"
+        ],
+        "label": "içsel iblis"
+      },
+      "protagonist": {
+        "constraints": [
+          "çözülmemiş bir suçluluk duygusu taşımaktadır"
+        ],
+        "label": "yetiştirici"
+      }
+    },
+    "summary": "İllüzyonvari bir sınavda, yetişicinin en derin suçluluk duygusunu yeniden canlandıran içsel bir iblis yüzeye çıkar; yalnızca teselli edici yalanı reddetmek, dao-kalbinin sarsılmadan kalmasını sağlar."
+  },
+  "cultivation.face_slap": {
+    "beats": {
+      "mockery": {
+        "intent": "gururlu varis, başkahramana küçümseyerek bakar",
+        "label": "Kibirli taraf alay eder"
+      },
+      "reveal": {
+        "intent": "başkahraman daha üstün bir tekniği sergiler",
+        "label": "Gizli güç açığa çıkar"
+      },
+      "reversal": {
+        "intent": "alay eden kişi topluluk önünde rezil edilir",
+        "label": "Aşağılamanın tersine dönmesi"
+      },
+      "underestimate": {
+        "intent": "kalabalık onu yetersiz görür",
+        "label": "Başkahraman küçümsenir"
+      }
+    },
+    "effects": [
+      "başkahramanın gerçek gücü tanıklar önünde ortaya çıkar",
+      "kibirli taraf aşağılanır ve bir düşmana dönüşür"
+    ],
+    "emotion_target": "tatmin",
+    "examples": [
+      "Kendini beğenmiş bir varis, 'çöp' olarak görülen kişiye küçümseyerek bakar; yarışmanın ortasında o çöp, üstün bir sanat icra eder ve varis topluluk önünde yerle bir olur."
+    ],
+    "name": "Aşağılama ve Dönüş",
+    "preconditions": [
+      "başkahraman topluluk önünde küçümsenir veya hakarete uğrar",
+      "başkahraman, görünen rütbesinin çok ötesinde gizli bir güce sahiptir"
+    ],
+    "roles": {
+      "arrogant": {
+        "constraints": [
+          "gururlu ve güçlü bir desteğe sahip"
+        ],
+        "label": "kibirli dâhi"
+      },
+      "protagonist": {
+        "constraints": [
+          "toplum önünde itibarsızlaştırılmış"
+        ],
+        "label": "küçümsenen kişi"
+      },
+      "witnesses": {
+        "constraints": [
+          "kamusal bir kitle"
+        ],
+        "label": "izleyen kalabalık"
+      }
+    },
+    "summary": "Kibirli bir taraf, küçümsenen başkahramanı alay eder; ancak kahraman gizli gücünü ortaya çıkararak aşağılamayı şahitlerin önünde alay edene geri döndürür."
+  },
+  "cultivation.fortuitous_encounter": {
+    "beats": {
+      "discovery": {
+        "intent": "her şeyi değiştiren o tesadüfi karşılaşma",
+        "label": "Yadigârın veya ustanın keşfi"
+      },
+      "inheritance": {
+        "intent": "bir borç veya sırla mühürlenmiş bir güç bahşetmek",
+        "label": "Bir bedel karşılığında mirası devralmak"
+      },
+      "isolation": {
+        "intent": "protagonisti yardım alamayacağı en dip noktasına sürüklemek",
+        "label": "Düşüşün ardından gelen yalnızlık"
+      },
+      "trial": {
+        "intent": "mentörün veya yadigârın liyakati sınaması",
+        "label": "Mirasın sınavı"
+      }
+    },
+    "effects": [
+      "kahraman gizli bir güç veya teknik kazanır",
+      "akıl hocasıyla bir borç veya gizli bir bağ kurulur"
+    ],
+    "emotion_target": "umut",
+    "examples": [
+      "Mühürlü bir uçuruma atılan zavallı, önce kendisini sınayan, ardından sadakat borcuna bağlayan yasaklı bir sanat hediye eden ölmek üzere olan bir usta ile karşılaşır."
+    ],
+    "name": "Tesadüfi Karşılaşma → Miras",
+    "preconditions": [
+      "kahraman zayıf, aşağılanmış veya sürgün edilmiş durumdadır",
+      "hiçbir müttefik mevcut değildir"
+    ],
+    "roles": {
+      "legacy": {
+        "constraints": [
+          "yasaklanmış veya eşsiz"
+        ],
+        "label": "devralınan sanat veya kan bağı"
+      },
+      "mentor": {
+        "constraints": [
+          "ölümün eşiğinde veya uykuda"
+        ],
+        "label": "ölmek üzere olan usta / yadigâr ruhu"
+      },
+      "protagonist": {
+        "constraints": [
+          "şu an için güçsüz veya itibarını kaybetmiş"
+        ],
+        "label": "yalnızlaştırılmış zayıf"
+      }
+    },
+    "summary": "Düşüşü veya sürgün edilmesiyle yalnızlığa terk edilmiş, aşağılanmış bir zayıf, bir yadigâr ya da ölmek üzere olan bir usta keşfeder; sınavlardan geçer ve ağır bir borç karşılığında gizli bir miras devralır."
+  },
+  "cultivation.life_and_death_duel": {
+    "beats": {
+      "challenge": {
+        "intent": "bir düello çağrısı yapılır",
+        "label": "Meydan okuma"
+      },
+      "reversal": {
+        "intent": "kesinlik duygusunun kapladığı o anda, avantajlı tarafın çöküşü",
+        "label": "Ölümcül geri dönüş"
+      },
+      "stakes": {
+        "intent": "bedel olarak ölüm belirlenir",
+        "label": "Bedel belirlenir"
+      },
+      "turn": {
+        "intent": "dengeler beklenmedik şekilde değişir",
+        "label": "Düellonun seyri"
+      }
+    },
+    "effects": [
+      "bir rakip, genellikle ölümcül olacak şekilde kesin bir yenilgiye uğrar",
+      "protagonistin toplumsal konumu kökten değişir"
+    ],
+    "emotion_target": "gerilim",
+    "examples": [
+      "Arenada ölümüne bir düello; favori gösterilen oğul, kazandığını sandığı o an yenilir."
+    ],
+    "name": "Ölüm Kalım Düellosu",
+    "preconditions": [
+      "kamuya açık, geri dönüşü olmayan ve yüksek riskli bir hesaplaşma vadedilir"
+    ],
+    "roles": {
+      "crowd": {
+        "constraints": [
+          "kamusal bir arena"
+        ],
+        "label": "izleyen kalabalık"
+      },
+      "protagonist": {
+        "constraints": [
+          "görünüşte güçsüz"
+        ],
+        "label": "meydan okuyan veya meydan okunan"
+      },
+      "rival": {
+        "constraints": [
+          "kendinden emin, desteklenen"
+        ],
+        "label": "gözde rakip"
+      }
+    },
+    "summary": "Arenada ölümüne bir düello yemini edilir; gözde evlat, kazandığına inandığı an kaybeder."
+  },
+  "cultivation.master_disciple_debt": {
+    "beats": {
+      "called": {
+        "intent": "usta, en zor zamanda geri ödeme talep eder",
+        "label": "Borcun tahsili"
+      },
+      "incur": {
+        "intent": "kolayca geri ödenemeyecek bir yükümlülük doğar",
+        "label": "Ödenemez borcun oluşması"
+      },
+      "loyalty_test": {
+        "intent": "müridin sadakati sınanır",
+        "label": "Sadakat sınavı"
+      },
+      "taught": {
+        "intent": "usta, kahramanı kurtarır veya ona yol gösterir",
+        "label": "Kurtarılma veya eğitim"
+      }
+    },
+    "effects": [
+      "kahramanı ustasına bağlayan, kaçınılmaz bir yükümlülük doğar",
+      "kahramanın sadakati ya kanıtlanır ya da bozulur"
+    ],
+    "emotion_target": "yükümlülük",
+    "examples": [
+      "Issız bir usta tarafından kurtarılan mürid, en umulmadık anda ödenmesi gereken ağır bir borç altına girer."
+    ],
+    "name": "Usta-Çırak Borcu",
+    "preconditions": [
+      "kahraman, hayatını değiştirecek bir yardım veya eğitim alır"
+    ],
+    "roles": {
+      "master": {
+        "constraints": [
+          "güçlü, tavizsiz"
+        ],
+        "label": "yalnız usta"
+      },
+      "obligation": {
+        "constraints": [
+          "bağlayıcı, ağır bedelli"
+        ],
+        "label": "borç / yükümlülük"
+      },
+      "protagonist": {
+        "constraints": [
+          "ustaya karşı borçlu"
+        ],
+        "label": "borçlu çırak"
+      }
+    },
+    "summary": "Yalnız bir usta tarafından kurtarılan veya eğitilen çırak, en imkânsız anda tahsil edilmek üzere, ödenmesi mümkün olmayan bir borcun altına girmiştir."
+  },
+  "cultivation.sect_entrance_trial": {
+    "beats": {
+      "arrive": {
+        "intent": "yabancı, hiçbir statüsü olmadan gelir",
+        "label": "Kimliği belirsiz şekilde varış"
+      },
+      "exceed": {
+        "intent": "test taşı parçalanır",
+        "label": "Ölçüyü aşma"
+      },
+      "recruited": {
+        "intent": "yaşlılar onları himayesine almak için birbiriyle yarışır",
+        "label": "Bedelli kabul edilme"
+      },
+      "underestimated": {
+        "intent": "kapıdaki mürid onu hafife alır",
+        "label": "Sınavda küçümsenme"
+      }
+    },
+    "effects": [
+      "başkahraman bir mevki ve bir koruyucu kazanır",
+      "sınavı yapan tarafla bir rekabetin tohumları atılır"
+    ],
+    "emotion_target": "zafer",
+    "examples": [
+      "Rütbesiz bir yabancı, sınav taşının sınırlarını paramparça eder; yaşlılar onu kendi saflarına katmak için mücadele eder."
+    ],
+    "name": "Tarikat Giriş Sınavı",
+    "preconditions": [
+      "bir oluşuma giriş için düzenlenen açık bir sınav veya test"
+    ],
+    "roles": {
+      "elder": {
+        "constraints": [
+          "yargılayan ve aday toplayan"
+        ],
+        "label": "tarikat büyüğü"
+      },
+      "gatekeeper": {
+        "constraints": [
+          "küçümseyici"
+        ],
+        "label": "kapıdaki mürid"
+      },
+      "protagonist": {
+        "constraints": [
+          "rütbesiz, beklenmedik"
+        ],
+        "label": "bilinmeyen yabancı"
+      }
+    },
+    "summary": "Rütbesiz bir yabancı, bir tarikatın giriş sınavında ölçüm aracını paramparça eder; yaşlılar, yüksek bedeller karşılığında onu bünyelerine katmak için bir yarışa tutuşur."
+  },
+  "cultivation.trash_to_genius": {
+    "beats": {
+      "affliction": {
+        "intent": "kahraman bir sakat gibi muamele görür",
+        "label": "Gizli kusur"
+      },
+      "explained": {
+        "intent": "kusur, nadir bir yapı olarak teşhis edilir",
+        "label": "Kusurun açıklanması"
+      },
+      "gift": {
+        "intent": "kusur, imkansız bir yükselişi tetikler",
+        "label": "Kusurun bir yeteneğe dönüşmesi"
+      },
+      "vindication": {
+        "intent": "küçümseyenlerin haksızlığı kanıtlanır",
+        "label": "Haklılığın kanıtlanması"
+      }
+    },
+    "effects": [
+      "başkahramanın gizli potansiyeli açığa çıkar",
+      "eski küçümseyenler onu tanımaya/kabul etmeye zorlanır"
+    ],
+    "emotion_target": "haklı çıkma",
+    "examples": [
+      "«Sakat» olarak adlandırılan bedenin nadir bir yapıya ev sahipliği yaptığı ortaya çıkar; kusur, yükselişin bizzat motoru haline gelir."
+    ],
+    "name": "Sıradandan Dehaya Haklı Çıkış",
+    "preconditions": [
+      "başkahraman yeteneksiz veya sakat olarak yaftalanır"
+    ],
+    "roles": {
+      "clan": {
+        "constraints": [
+          "statüye bağlı ve küçümseyici"
+        ],
+        "label": "küçümseyici klan"
+      },
+      "diagnostician": {
+        "constraints": [
+          "gerçek doğayı okuyabilen"
+        ],
+        "label": "bilge / teşhis koyucu"
+      },
+      "protagonist": {
+        "constraints": [
+          "yeteneksiz olduğu düşünülen"
+        ],
+        "label": "hor görülen 'sakat'"
+      }
+    },
+    "summary": "Felç edici bir kusur sanılarak hor görülen gizli bir rahatsızlığın, nadir bir yetenek olduğu anlaşılır; kusurun kendisi yükselişin motoru haline gelir ve kahraman haklılığını kanıtlar."
+  },
+  "cultivation.tribulation_ascension": {
+    "beats": {
+      "ascend": {
+        "intent": "yükselmek için hayatta kalmalı ya da yok olmalıdır",
+        "label": "Yüksel ya da düş"
+      },
+      "merit": {
+        "intent": "güç yükseliş eşiğine ulaşır",
+        "label": "Biriken liyakat"
+      },
+      "notice": {
+        "intent": "musibet toplanmaya başlar",
+        "label": "Göklerin dikkatini çekmek"
+      },
+      "tribulation": {
+        "intent": "dalga dalga dayanılması gerekir",
+        "label": "Yıldırım musibeti"
+      }
+    },
+    "effects": [
+      "başkahraman daha yüksek bir düzleme veya aleme yükselir",
+      "eski dünyadaki statüsü geride kalır"
+    ],
+    "emotion_target": "huşu",
+    "examples": [
+      "Biriken güç göklerin gazabını çeker; yükselmek için dokuz dalga halinde gelen felaketin sağ çıkılması gerekir."
+    ],
+    "name": "Musibet Yükselişi",
+    "preconditions": [
+      "başkahraman bir yükseliş eşiğine ulaşmıştır"
+    ],
+    "roles": {
+      "anchor": {
+        "constraints": [
+          "hattı korur"
+        ],
+        "label": "müttefik dayanak"
+      },
+      "protagonist": {
+        "constraints": [
+          "yükseliş eşiğinde"
+        ],
+        "label": "yükselen yetişir"
+      },
+      "tribulation": {
+        "constraints": [
+          "tırmanan, ölümcül"
+        ],
+        "label": "göksel musibet"
+      }
+    },
+    "summary": "Biriken güç göklerin gazabını üzerine çeker; yükselmek için bir müttefikin desteğiyle dokuz dalga yıldırım musibetinin sağ çıkılması gerekir."
+  }
+}

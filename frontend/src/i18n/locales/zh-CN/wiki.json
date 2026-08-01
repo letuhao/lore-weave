@@ -150,12 +150,12 @@
       "writeback": "保存中"
     },
     "badge": {
-      "generated": "AI",
       "generatedHint": "AI 生成，已通过验证。",
       "needs_review": "待审核",
       "needs_reviewHint": "AI 生成 — 已标记待审核。",
       "blocked": "已拦截",
-      "blockedHint": "AI 生成 — 已被验证机制拦截，无法发布。"
+      "blockedHint": "AI 生成 — 已被验证机制拦截，无法发布。",
+      "generated": "AI 生成"
     },
     "flags": {
       "reviewTitle": "标记待审核",

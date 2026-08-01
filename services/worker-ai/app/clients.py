@@ -49,6 +49,13 @@ __all__ = [
     "ProviderRegistryClient",
 ]
 
+#: Canon read paging. `known-entities` caps `limit` at 500 server-side, so the page
+#: size is that cap and the ceiling is expressed in pages. Kept EQUAL to
+#: knowledge-service's `KNOWN_ENTITIES_MAX_PAGE/PAGES` so the prompt layer and the
+#: anchor/persist layer never ground a book against different vocabularies.
+CANON_PAGE_SIZE = 500
+CANON_MAX_PAGES = 40
+
 
 class KnowledgeUnavailable(Exception):
     """P2 (D-REFLECTION-FACTS-RECALL-FAIL-CLOSED) — a TRANSPORT / non-200 failure recalling the
@@ -1187,6 +1194,77 @@ class GlossaryClient:
         except (httpx.HTTPError, ValueError, KeyError) as exc:
             logger.warning("glossary entities/by-ids failed: %s", exc)
             return []
+
+    async def list_canon_entries(
+        self, book_id: UUID,
+    ) -> list[tuple[str, list[str]]]:
+        """The book's canon as ``(name, aliases)`` pairs — the vocabulary a chunk's
+        KNOWN_ENTITIES block is SELECTED FROM (see `select_known_entities`).
+
+        Aliases ride along because a chapter rarely uses only canonical names: it says
+        "Thiếu chủ", not "Lâm Uyên". Selecting on the canonical name alone would miss the
+        mention and leave the canon out of the very chunk that needed it.
+
+        PAGED, because the handler's `limit` is capped at 500 server-side and the
+        previous flat fetch bound (2,000) truncated an `ORDER BY mention_count DESC` —
+        dropping the LEAST-mentioned lore, which on a book still being written is the
+        lore the author just added. Exactly the entries an extraction most needs to be
+        told already exist.
+
+        The page ceiling matches knowledge-service's anchor pre-load
+        (`KNOWN_ENTITIES_MAX_PAGE/PAGES`, 500x40) on purpose: the prompt layer and the
+        persist layer read the same endpoint for the same book, and a book that sat
+        between two different ceilings would be grounded and de-duplicated against
+        different vocabularies without anything saying so.
+
+        Best-effort: any failure returns what it has (or []) and extraction proceeds
+        rather than blocking — same posture as the pinned fetch above. A truncation is
+        logged, never silent."""
+        url = f"{self._base_url}/internal/books/{book_id}/known-entities"
+        out: list[tuple[str, list[str]]] = []
+        for page in range(CANON_MAX_PAGES):
+            try:
+                resp = await self._http.get(url, params={
+                    "min_frequency": "0",
+                    "limit": str(CANON_PAGE_SIZE),
+                    "offset": str(page * CANON_PAGE_SIZE),
+                })
+                if resp.status_code != 200:
+                    logger.warning(
+                        "glossary known-entities %d for %s (page %d) — returning %d row(s)",
+                        resp.status_code, book_id, page, len(out),
+                    )
+                    return out
+                rows = resp.json()
+                if not isinstance(rows, list):
+                    return out
+            except (httpx.HTTPError, ValueError, KeyError) as exc:
+                logger.warning(
+                    "glossary known-entities failed on page %d for %s: %s: %s — "
+                    "returning %d row(s)",
+                    page, book_id, type(exc).__name__, exc, len(out),
+                )
+                return out
+            for r in rows:
+                if not isinstance(r, dict):
+                    continue
+                name = str(r.get("name") or "").strip()
+                if not name:
+                    continue
+                raw = r.get("aliases")
+                aliases = [
+                    str(a).strip() for a in raw if str(a).strip()
+                ] if isinstance(raw, list) else []
+                out.append((name, aliases))
+            if len(rows) < CANON_PAGE_SIZE:
+                return out
+        logger.warning(
+            "glossary canon read hit the %d-page ceiling for %s (%d rows) — more "
+            "entities remain and will NOT be offered to the extractor",
+            CANON_MAX_PAGES, book_id, len(out),
+        )
+        return out
+
 
 
 class UsageBillingClient:

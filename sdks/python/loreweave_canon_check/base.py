@@ -36,6 +36,14 @@ __all__ = [
     "apply_verdicts",
     "gone_entities_referenced",
     "CanonCandidateBase",
+    "resolve_cast_liveness",
+    "unresolved_cast_refs",
+    "LIVENESS_ALIVE",
+    "LIVENESS_GONE",
+    "LIVENESS_UNKNOWN",
+    "LIVENESS_SOURCE_KG",
+    "LIVENESS_SOURCE_PLAN",
+    "LIVENESS_SOURCE_NONE",
 ]
 
 SPAN_PAD = 40  # chars of context either side of a match
@@ -248,3 +256,74 @@ class CanonCandidateBase(BaseModel):
     matched: str = ""                # the name form that matched
     confirmed: bool | None = None    # set by the judge; None = symbolic-only (advisory)
     why: str = ""
+
+
+# ── S2 · one cast-liveness SSOT, per ENTITY ──────────────────────────────────────────────
+
+#: What the platform can say about one cast member at one reading position.
+#: `unknown` is not a failure state — it is the only honest answer when nothing in the corpus
+#: mentions this entity, and it is DIFFERENT from `alive`.
+LIVENESS_ALIVE = "alive"
+LIVENESS_GONE = "gone"
+LIVENESS_UNKNOWN = "unknown"
+
+#: Which layer answered. `none` means nothing did.
+LIVENESS_SOURCE_KG = "kg"
+LIVENESS_SOURCE_PLAN = "plan"
+LIVENESS_SOURCE_NONE = "none"
+
+
+def resolve_cast_liveness(
+    entity_ids: list[str] | tuple[str, ...],
+    snapshot: dict[str, Any] | None,
+    *,
+    plan_status: dict[str, str] | None = None,
+) -> dict[str, dict[str, str]]:
+    """Per-ENTITY, per-FACT liveness. `{entity_id: {"status", "source"}}`.
+
+    THE BUG THIS EXISTS FOR. `gone_entities_referenced` above answers one question — "which
+    entities in the snapshot are marked gone and named in this text?" — and everything it does
+    not return is treated by every caller as fine. So an entity the knowledge graph has NEVER
+    HEARD OF takes the identical path to an entity the graph positively knows is alive. The
+    guard cannot tell "this character is alive" from "this character does not exist", and the
+    second is the interesting one: it is a reference to an undeclared identifier, which is what
+    PF-1 named as *"anonymous characters were uses of undeclared identifiers"*.
+
+    THE CASCADE is KG → plan → none, and it stops at the first layer that has an OPINION. A
+    plan-level status is weaker evidence than the graph's, so it only speaks where the graph is
+    silent; and when neither speaks the answer is `unknown`/`none` rather than a default.
+
+    ⚠ THE FIXTURE THAT MATTERS is a NON-EMPTY snapshot with no row for the subject — not an
+    empty snapshot. An empty one is indistinguishable from an outage and every implementation
+    passes it, which is why the first version of this test would have gone green while the bug
+    survived. A `None` snapshot here is an OUTAGE: everything is `unknown`/`none`, which is
+    correct and is also why the caller must not read `unknown` as `gone`.
+    """
+    rows = (snapshot or {}).get("entities") or []
+    by_id: dict[str, str] = {}
+    for ent in rows:
+        if not isinstance(ent, dict):
+            continue
+        eid, status = ent.get("entity_id"), ent.get("status")
+        # A row with no status is a row with no OPINION — it must not shadow the plan layer.
+        if eid and isinstance(status, str) and status:
+            by_id[str(eid)] = status
+
+    plan = {str(k): v for k, v in (plan_status or {}).items() if isinstance(v, str) and v}
+    out: dict[str, dict[str, str]] = {}
+    for raw in entity_ids or ():
+        eid = str(raw)
+        if eid in by_id:
+            out[eid] = {"status": by_id[eid], "source": LIVENESS_SOURCE_KG}
+        elif eid in plan:
+            out[eid] = {"status": plan[eid], "source": LIVENESS_SOURCE_PLAN}
+        else:
+            out[eid] = {"status": LIVENESS_UNKNOWN, "source": LIVENESS_SOURCE_NONE}
+    return out
+
+
+def unresolved_cast_refs(liveness: dict[str, dict[str, str]]) -> list[str]:
+    """The cast ids no layer could speak to. This is the eval's `unresolved_refs` signal, and
+    it is a COUNT OF FACTS, not of failures — a book early in its life legitimately has many."""
+    return sorted(k for k, v in (liveness or {}).items()
+                  if v.get("source") == LIVENESS_SOURCE_NONE)

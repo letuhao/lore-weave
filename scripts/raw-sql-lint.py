@@ -65,34 +65,41 @@ ALLOWLIST_PREFIXES: tuple[str, ...] = (
 # Known-current offenders, as "relpath:snippet-substring". The lint passes when
 # every flagged site is in the baseline; a NEW site (not listed) fails the run.
 # The audit (docs/standards/security.md §Enforcement) found the codebase clean,
-# so this is intentionally EMPTY — the lint's whole job is to catch the next
-# regression. If a legitimate exception ever appears, add a
-# "relpath::matched-line-substring" row here with a comment explaining why.
+# so this started EMPTY — the lint's whole job is to catch the next regression.
+# If a legitimate exception ever appears, add a "relpath::matched-line-substring"
+# row here with a comment explaining why.
+#
+# D-QC-GATES-BUILT-BUT-NOT-WIRED (2026-07-31): this lint had never run in CI. Its first
+# execution reported six sites; each was read before being listed, and all six are the
+# exception the module docstring already sanctions ("only allowlisted identifiers may be
+# interpolated"):
+#
+#   · package_rekey.py ×4 — a marker-gated MIGRATION. What it interpolates is TABLE and
+#     COLUMN identifiers, which SQL cannot bind as placeholders at all, drawn from
+#     module-level constant lists (_USER_ID_RENAMES, _OWNER_USER_ID_RENAMES,
+#     _BOOK_ID_TABLES, _ORPHAN_TABLES, _BATCH_TABLES, _SMALL_PROJECT_TABLES) — closed sets
+#     in the file, never user input. `{marker}` is the module's own `pkg_rekey_v1` constant.
+#     The builders are private with no caller outside the module, and they emit `DO $$ … $$`
+#     blocks, which in Postgres CANNOT take bind parameters at all — so `$1` is not an
+#     available alternative even where the position is a value rather than an identifier.
+#
+#     THE EXEMPTION IS GUARDED, not asserted: the reasoning rests entirely on those names
+#     staying literal, and a baseline row that outlived that fact would silently bless a
+#     real injection (non-vacuity NV-4 — an adjacent decision defeating the check).
+#     `tests/unit/test_package_rekey_constants.py` parses the module with `ast` and reds if
+#     any of them stops being a module-level tuple of string literals.
+#   · two knowledge `_smoke_*` dev scripts — not runtime; one of the two is inside a
+#     `print()` that emits a Cypher string for a human to paste.
+#
+# Listed WITH the verification rather than left red. A genuinely user-derived value
+# interpolated into SQL still fails, which is the whole point.
 BASELINE: frozenset[str] = frozenset({
-    # ── composition-service package re-key (2026-07-29) ───────────────────────
-    # Four sites in one BOOT-TIME MIGRATION builder. Traced before exempting:
-    #
-    #   * every interpolated value is a MODULE-LEVEL LITERAL — `_MARKER =
-    #     "pkg_rekey_v1"`, and the table names come from the literal tuples
-    #     `_USER_ID_RENAMES` / `_OWNER_USER_ID_RENAMES` / `_BOOK_ID_TABLES`;
-    #     the column names are literals at the call sites ("user_id", …).
-    #   * the builders are private and have NO caller outside this module (its
-    #     own integration test aside), and the public entries take
-    #     `(conn, apply_schema)` — no table name crosses a request boundary.
-    #   * they emit `DO $$ … $$` blocks, which in Postgres **cannot take bind
-    #     parameters at all**, so `$1` is not an available alternative even
-    #     where the position is a value rather than an identifier.
-    #
-    # THE EXEMPTION IS GUARDED, not asserted: the reasoning above rests entirely
-    # on those names staying literal, and a baseline row that outlived that fact
-    # would silently bless a real injection (non-vacuity NV-4 — an adjacent
-    # decision defeating the check). `tests/unit/test_package_rekey_constants.py`
-    # parses the module with `ast` and reds if any of them stops being a
-    # module-level tuple of string literals.
-    "services/composition-service/app/db/package_rekey.py::DELETE FROM package_migration WHERE marker =",
+    "services/composition-service/app/db/package_rekey.py::DELETE FROM package_migration WHERE marker = '{marker}';",
     "services/composition-service/app/db/package_rekey.py::WHERE table_name = '{table}' AND column_name = 'created_by'",
     "services/composition-service/app/db/package_rekey.py::WHERE table_name = '{t}' AND column_name = 'book_id'",
     "services/composition-service/app/db/package_rekey.py::WHERE table_name = '{table}' AND column_name = '{old}'",
+    "services/knowledge-service/scripts/_smoke_a2s1b2.py::print(f'CYPHER: MATCH (s:EntityStatus) WHERE s.project_id=\"{project_id}\" RETURN s.status, count(s)')",
+    "services/knowledge-service/scripts/_smoke_a2s1b2_fullchain.py::f'\"MATCH (s:EntityStatus) WHERE s.project_id=\\\\\"{proj}\\\\\" RETURN s.status AS status, count(s) AS n\"')",
 })
 
 # ── detection ─────────────────────────────────────────────────────────────

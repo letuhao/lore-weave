@@ -75,10 +75,39 @@ export function SceneLinksSection({ projectId, token, sceneId }: { projectId: st
       ? t('panels.scene-inspector.links.setup', { defaultValue: 'setup→payoff' })
       : t('panels.scene-inspector.links.custom', { defaultValue: 'custom' });
   const removeLabel = t('panels.scene-inspector.links.remove', { defaultValue: 'Remove link' });
+
+  // F3 — the delete is a SOFT archive, so it owes the author a way back. The list read filters
+  // `NOT is_archived`, so a removed edge is unlistable and there is no archive browser: THIS toast
+  // IS the door (the canon-rule precedent). We hold the id we just deleted, which is all restore
+  // needs. A 409 means the same edge was re-declared since — say so rather than silently failing,
+  // which would leave the author believing the undo worked.
+  const remove = (linkId: string) => {
+    m.deleteSceneLink.mutate(linkId, {
+      onSuccess: () => {
+        toast.success(t('panels.scene-inspector.links.removed', { defaultValue: 'Link removed.' }), {
+          action: {
+            label: t('panels.scene-inspector.links.undo', { defaultValue: 'Undo' }),
+            onClick: () => m.restoreSceneLink.mutate(linkId, {
+              onError: (e) => {
+                const status = (e as { status?: number }).status;
+                toast.error(status === 409
+                  ? t('panels.scene-inspector.links.undoDup', { defaultValue: 'That link was re-created since — nothing to restore.' })
+                  : t('panels.scene-inspector.links.undoFailed', { defaultValue: 'Could not restore the link.' }));
+              },
+            }),
+          },
+        });
+      },
+      onError: () => toast.error(
+        t('panels.scene-inspector.links.removeFailed', { defaultValue: 'Could not remove the link.' }),
+      ),
+    });
+  };
+
   const row = (l: SceneLink, dir: 'out' | 'in') => (
     <LinkRow key={l.id} link={l} dir={dir} kindLabel={kindLabel(l.kind)} removeLabel={removeLabel}
       title={titleOf(dir === 'out' ? l.to_node_id : l.from_node_id)}
-      onRemove={() => m.deleteSceneLink.mutate(l.id)} />
+      onRemove={() => remove(l.id)} />
   );
 
   return (

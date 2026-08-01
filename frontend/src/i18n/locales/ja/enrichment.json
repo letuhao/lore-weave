@@ -2,7 +2,14 @@
   "header": "拡充レビュー",
   "subtitle": "記述の不足したエンティティ向けにAIが提案した設定を確認し、承認したものをこの本の正典に昇格します。拡充された下書きは昇格するまで非公開のバリアントです。",
   "untitled": "無題",
-  "panel": { "compose": "作成", "proposals": "提案", "gaps": "不足", "sources": "出典", "jobs": "ジョブ", "settings": "プロファイル" },
+  "panel": {
+    "compose": "作成",
+    "proposals": "提案",
+    "gaps": "不足",
+    "sources": "出典",
+    "jobs": "ジョブ",
+    "settings": "プロファイル"
+  },
   "compose": {
     "title": "拡充を作成",
     "subtitle": "あなたのやり方で開始 — 書いた下書きを拡張するか、検出された不足を埋めます。作成したものは昇格するまで拡充バリアントです。",
@@ -42,10 +49,10 @@
       "dropzone": "ここにファイルをドロップ、またはクリックして選択",
       "accept": ".txt .md .pdf .docx .epub — スキャンPDFはOCRされます",
       "ready": "{{chars}} 文字{{ocr}}",
-      "ocr": "OCR",
       "processing": "抽出中…",
       "failed": "失敗",
-      "responsibility": "これらのファイルの権利を有しています（自己所有／許諾済み／パブリックドメイン）。法的助言ではありません。"
+      "responsibility": "これらのファイルの権利を有しています（自己所有／許諾済み／パブリックドメイン）。法的助言ではありません。",
+      "ocr": "OCR"
     },
     "intent": {
       "label": "何を作成しますか？",
@@ -77,11 +84,17 @@
       "select_model": "選択…",
       "max_spend": "上限額（トークン）",
       "no_cap": "上限なし",
-      "top_k": "Top-K",
       "technique": "手法",
-      "technique_opt": { "retrieval": "検索 (P1)", "fabrication": "創作 (P2)", "recook": "再構成 (P3)" },
+      "technique_opt": {
+        "retrieval": "検索 (P1)",
+        "fabrication": "創作 (P2)",
+        "recook": "再構成 (P3)"
+      },
       "eval_gate_warning": "P2/P3 は評価ゲート合格が必要 — 合格するまでジョブは拒否されます。",
-      "dimensions": { "auto": "自動 — 不足している全ディメンションを補完" }
+      "dimensions": {
+        "auto": "自動 — 不足している全ディメンションを補完"
+      },
+      "top_k": "Top-K"
     },
     "safety": "① ライセンス · ② 抽象化 · ③ 再生成ガード · ④ あなたが昇格 — 拡充は昇格するまでバリアントのままです。",
     "run_hint": "バックグラウンドジョブとして実行 — 完了すると提案タブに表示されます。",
@@ -124,7 +137,11 @@
       "injection": "プロンプトインジェクション",
       "regurgitation": "出典の再生"
     },
-    "severity": { "low": "低", "medium": "中", "high": "高" }
+    "severity": {
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    }
   },
   "prov": {
     "technique": "技法",
@@ -217,14 +234,20 @@
     "max_gaps": "最大件数",
     "max_spend": "上限支出（トークン）",
     "no_cap": "上限なし",
-    "top_k": "Top-K",
     "gate_note": "P2 創作 / P3 再構成 は評価ゲートの通過が必要（多様な審査）。",
-    "auto_enrich": "Auto-enrich",
     "enrich_one": "拡充",
     "enrich_one_hint": "下で生成＋埋め込みモデルを選択して拡充します。",
     "enriching": "キュー登録中…",
     "enqueued": "{{count}} 件の不足を拡充のためにキュー登録しました",
-    "col": { "entity": "エンティティ", "kind": "種別", "missing": "不足の次元", "rank": "順位", "action": "操作" }
+    "col": {
+      "entity": "エンティティ",
+      "kind": "種別",
+      "missing": "不足の次元",
+      "rank": "順位",
+      "action": "操作"
+    },
+    "top_k": "Top-K",
+    "auto_enrich": "自動拡充"
   },
   "sources": {
     "title": "出典",
@@ -295,7 +318,13 @@
     "markers_placeholder": "語 | 理由（1行に1つ）",
     "markers_hint": "1行に「語 | 理由」。時代錯誤チェックが検出する語です。空にするとチェックがオフになります。",
     "dimensions": "次元のオーバーライド",
-    "kind": { "character": "キャラクター", "location": "場所", "item": "アイテム", "faction": "勢力", "event": "イベント" },
+    "kind": {
+      "character": "キャラクター",
+      "location": "場所",
+      "item": "アイテム",
+      "faction": "勢力",
+      "event": "イベント"
+    },
     "add_dimension": "次元を追加",
     "no_extra_dims": "この種類の組み込み次元を使用します。",
     "dim_id": "ID",

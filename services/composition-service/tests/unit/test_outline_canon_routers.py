@@ -83,11 +83,19 @@ class StubSceneLinks:
         self.links = []
         self.create_raises = None
         self.deleted = True
+        # F3 — the delete became a SOFT archive, so the router now has a restore path whose two
+        # failure modes must be told apart. `scope_row` is what the by-id scope bootstrap reads:
+        # None = no such edge (404); is_archived=True after a failed restore = the partial unique
+        # refused it because that edge was re-declared (409, NOT 404); is_archived=False = someone
+        # else already restored it (idempotent 200).
+        self.restored = True
+        self.scope_row = {"project_id": PROJECT, "is_archived": True}
     async def list_by_project(self, p): return self.links
     async def create(self, p, f, t, **kw):
         if self.create_raises: raise self.create_raises
         return SceneLink(id=uuid.uuid4(), created_by=USER, project_id=PROJECT, from_node_id=f, to_node_id=t)
     async def delete(self, p, lid): return self.deleted
+    async def restore(self, p, lid): return self.restored
 
 
 class StubCanon:
@@ -160,8 +168,15 @@ def ctx(monkeypatch):
     # By-id DELETE (scene-link) + canon PATCH/DELETE resolve their scope from the
     # row itself via get_pool().fetchrow (PM-8 scope-bootstrap) before gating —
     # give both routers a fake pool that returns this project's row.
+    # F3: the scene-link routes read `is_archived` too (restore has to tell "no such edge" from
+    # "refused because it was re-declared"), so the scene_link probes answer from the stub's
+    # mutable `scope_row` rather than a fixed dict.
+    _links_holder = {}
+
     class _FakePool:
         async def fetchrow(self, query, *args):
+            if "scene_link" in query:
+                return _links_holder["links"].scope_row
             return {"project_id": PROJECT}
     monkeypatch.setattr("app.routers.outline.get_pool", lambda: _FakePool())
     monkeypatch.setattr("app.routers.canon.get_pool", lambda: _FakePool())
@@ -181,6 +196,7 @@ def ctx(monkeypatch):
             return GrantLevel.OWNER, "active"
 
     works, outline, links, canon, templates = StubWorks(), StubOutline(), StubSceneLinks(), StubCanon(), StubTemplates()
+    _links_holder["links"] = links
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_works_repo] = lambda: works
     app.dependency_overrides[get_outline_repo] = lambda: outline
@@ -204,11 +220,16 @@ def ctx_view_only(monkeypatch):
 
     class _FakePool:
         async def fetchrow(self, query, *args):
-            return {"project_id": PROJECT}
+            return {"project_id": PROJECT, "is_archived": True}
     monkeypatch.setattr("app.routers.canon.get_pool", lambda: _FakePool())
+    # F3 — the scene-link restore is an outline-router route with the same EDIT gate, and it
+    # reads the pool for its by-id scope bootstrap. Without this patch the VIEW-refusal test
+    # would hit the REAL pool and fail for the wrong reason (which proves nothing about the gate).
+    monkeypatch.setattr("app.routers.outline.get_pool", lambda: _FakePool())
 
     from app.main import app
-    from app.deps import get_canon_rules_repo, get_grant_client_dep, get_works_repo
+    from app.deps import (get_canon_rules_repo, get_grant_client_dep, get_scene_links_repo,
+                          get_works_repo)
     from app.grant_client import GrantLevel
     from app.middleware.jwt_auth import get_current_user
 
@@ -221,6 +242,7 @@ def ctx_view_only(monkeypatch):
     app.dependency_overrides[get_current_user] = lambda: USER
     app.dependency_overrides[get_works_repo] = lambda: StubWorks()
     app.dependency_overrides[get_canon_rules_repo] = lambda: StubCanon()
+    app.dependency_overrides[get_scene_links_repo] = lambda: StubSceneLinks()
     app.dependency_overrides[get_grant_client_dep] = lambda: _ViewGrant()
     with TestClient(app) as c:
         yield c
@@ -439,6 +461,55 @@ def test_scene_link_delete_204_and_404(ctx):
     assert c.delete(f"/v1/composition/scene-links/{uuid.uuid4()}").status_code == 204
     links.deleted = False
     assert c.delete(f"/v1/composition/scene-links/{uuid.uuid4()}").status_code == 404
+
+
+# ── F3: the scene-link DELETE is a soft archive, so it owes an undo the AUTHOR can reach ──
+#
+# The soft delete and its `op=restore` first shipped on the MCP surface ONLY: the row survived, the
+# co-writer could bring it back, and the person who deleted it could not — no REST route, and every
+# list read filters `NOT is_archived`, so the id was not even discoverable. That is worse than the
+# hard delete it replaced, because the delete now LOOKS recoverable. These pin the author's door.
+
+def test_scene_link_restore_200(ctx):
+    c, _, _, links, _ = ctx
+    r = c.post(f"/v1/composition/scene-links/{uuid.uuid4()}/restore")
+    assert r.status_code == 200 and r.json()["restored"] is True
+
+
+def test_scene_link_restore_404_when_no_such_edge(ctx):
+    c, _, _, links, _ = ctx
+    links.scope_row = None
+    assert c.post(f"/v1/composition/scene-links/{uuid.uuid4()}/restore").status_code == 404
+
+
+def test_scene_link_restore_409_when_the_edge_was_RE_DECLARED(ctx):
+    """The repo returns False for two very different situations and the author needs them apart.
+
+    A 404 here would read as "your link is gone" when in fact it is still archived and the reason
+    the undo failed is that an identical edge exists again — something the author can act on.
+    """
+    c, _, _, links, _ = ctx
+    links.restored = False
+    links.scope_row = {"project_id": PROJECT, "is_archived": True}  # still archived → collision
+    r = c.post(f"/v1/composition/scene-links/{uuid.uuid4()}/restore")
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "SCENE_LINK_EXISTS"
+
+
+def test_scene_link_restore_is_idempotent_when_someone_else_won(ctx):
+    """restore=False + the row already live = a concurrent restore landed first. The author's
+    intent is satisfied, so this is a 200, not an error."""
+    c, _, _, links, _ = ctx
+    links.restored = False
+    links.scope_row = {"project_id": PROJECT, "is_archived": False}
+    r = c.post(f"/v1/composition/scene-links/{uuid.uuid4()}/restore")
+    assert r.status_code == 200 and r.json()["restored"] is True
+
+
+def test_scene_link_restore_needs_EDIT_not_view(ctx_view_only):
+    """Restore MUTATES, so a VIEW-grant caller must be refused — the same gate the DELETE has."""
+    c = ctx_view_only
+    r = c.post(f"/v1/composition/scene-links/{uuid.uuid4()}/restore")
+    assert r.status_code == 403
 
 
 # ── canon ──

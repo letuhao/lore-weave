@@ -1,0 +1,59 @@
+{
+  "E4_steered_deep_build": {
+    "plan_ok": true,
+    "plan_secs": 5.2,
+    "plan_finish": "stop",
+    "sections": [
+      "Thông tin cơ bản & Diện mạo",
+      "Chỉ số linh năng học và sự am hiểu về trận pháp/luyện khí của nàng để phục vụ cho các mưu kế.",
+      "Tâm lý học & Thế giới quan",
+      "Mối quan hệ & Động cơ",
+      "Biến cố & Nút thắt",
+      "Điểm yếu & Sự tha hóa"
+    ],
+    "n_sections_built": 6,
+    "chars_per_section": 1151,
+    "total_chars": 6904,
+    "loop_secs": 31.7,
+    "finishes": [
+      "stop",
+      "stop",
+      "stop",
+      "stop",
+      "stop",
+      "stop"
+    ],
+    "details": [
+      {
+        "section": "Thông tin cơ bản & Diện mạo",
+        "chars": 1050,
+        "text": "Tô Thanh Dao sở hữu vẻ đẹp mang tính \"công nghiệp\" cao với những đường nét sắc sảo, lạnh lùng, không một chút dư thừa, luôn xuất hiện trong trang phục lụa cao cấp với tông màu xanh lạnh đặc trưng của Tô gia. Ánh mắt nàng luôn duy trì một sự tĩnh lặng đáng sợ, một sự tính toán ngầm được che đậy dưới lớp vỏ bọc của một đại tiểu thư đoan trang, khiến người đối diện khó lòng nắm bắt được nhịp tim hay cảm xúc thật. Nàng có thói quen vô thức xoay nhẹ chiếc nhẫn linh năng trên ngón trỏ mỗi khi đang phân tích các biến số trong một trận pháp hoặc một âm mưu, một hành vi giúp nàng duy trì sự tập trung tuyệt đối. Dù mang danh là hôn thê của thiên tài Lâm Uyên, nhưng khí chất của nàng lại không có sự ấm áp của tình nhân, mà là sự xa cách của một nhà chiến lược đang quan sát quân cờ. Sự mâu thuẫn nằm ở chỗ, dù vẻ ngoài luôn toát lên sự lý trí đến mức tàn nhẫn, nhưng đôi tay nàng đôi khi lại run rẩy nhẹ khi vô tình chạm phải những kỷ vật liên quan đến em gái đã khuất, cho thấy một vết nứt nhỏ trong hệ thống logic hoàn hảo mà nàng dày công xây dựng."
+      },
+      {
+        "section": "Chỉ số linh năng học và sự am hiểu về trận pháp/luyện khí của nàng để phục vụ cho các mưu kế.",
+        "chars": 1095,
+        "text": "Tô Thanh Dao sở hữu chỉ số linh năng học ở mức 8.5/10, không phải là thiên phú bộc phát như Lâm Uyên, nhưng nàng lại đạt điểm tuyệt đối về khả năng kiểm soát dòng chảy linh năng trong các cấu trúc phức tạp. Nàng là một chuyên gia về Trận pháp vi mô, có khả năng thiết lập các \"mạch ngầm\" linh năng ẩn trong trang phục hoặc vật dụng hàng ngày để thu thập thông tin hoặc điều hướng dòng chảy năng lượng của đối phương. Thay vì luyện khí để gia tăng sức mạnh cá nhân, nàng dành phần lớn thời gian để nghiên cứu về \"Linh năng phản hồi\", một kỹ thuật cho phép nàng dùng chính sự lương thiện hoặc các đòn tấn công của kẻ khác để kích hoạt các bẫy trận đã giăng sẵn. Thói quen ghi chép các biến số vật liệu vào một cuốn sổ tay bằng da rồng, nơi nàng phân tích tỉ mỉ sự tương tác giữa các loại khoáng thạch để tìm ra điểm yếu trong phòng ngự của các gia tộc lớn. Mâu thuẫn nội tâm của nàng nằm ở chỗ, dù sở hữu bộ óc của một bậc thầy trận pháp, nàng lại luôn cảm thấy bất an vì biết rằng mọi sự sắp đặt hoàn hảo của mình đều có thể bị phá vỡ bởi một biến số không thể lượng hóa: sự hy sinh vô điều kiện."
+      },
+      {
+        "section": "Tâm lý học & Thế giới quan",
+        "chars": 1089,
+        "text": "Trong thế giới của \"Mị Đế\", Tô Thanh Dao quan niệm rằng tình cảm là một loại \"nhiễu loạn dữ liệu\" khiến các quyết định chiến lược trở nên sai lệch, do đó nàng luôn cố gắng lượng hóa mọi mối quan hệ thành các giá trị lợi ích. Đối với nàng, \"lòng tốt\" không phải là một đức hạnh, mà là một sự lãng phí tài nguyên linh năng cực kỳ nguy hiểm, một lỗ hổng trong hệ thống phòng ngự của một kẻ muốn tồn tại ở đỉnh cao quyền lực. Nàng thường tự nhắc nhở bản thân bằng một câu châm ngôn của các bậc tiền bối: \"Cảm xúc là kẻ thù của sự tối ưu hóa\", nhằm trấn áp những dao động tâm lý mỗi khi nhìn thấy sự chính trực của Lâm Uyên. Nàng coi sự hy sinh của em gái mình là một bài học đắt giá về việc thiếu hụt sự chuẩn bị về mặt thực lực, từ đó củng cố niềm tin rằng chỉ có quyền lực và sự kiểm soát mới mang lại sự an toàn tuyệt đối. Tuy nhiên, mâu thuẫn nội tâm của nàng nảy sinh khi nàng nhận ra rằng, chính việc cố gắng loại bỏ mọi cảm xúc để trở nên lý trí lại khiến nàng trở nên cô độc một cách toán học, một trạng thái mà nàng không thể dùng bất kỳ công thức linh năng nào để giải mã hay bù đắp."
+      },
+      {
+        "section": "Mối quan hệ & Động cơ",
+        "chars": 1151,
+        "text": "Mối quan hệ của Tô Thanh Dao là một sự tính toán đầy đau đớn giữa lòng trung thành với Tô gia và sự khao khát mãnh liệt dành cho Lâm Trạch. Nàng yêu Lâm Trạch không phải vì sự hoàn hảo, mà vì sự khao khát vươn lên của hắn là thứ duy nhất khiến nàng cảm thấy sự sống động giữa một cuộc đời được lập trình sẵn bởi các quy tắc gia tộc. Tuy nhiên, nàng hiểu rằng tình yêu với một kẻ luôn sống dưới cái bóng của Lâm Uyên là một biến số rủi ro cao, buộc nàng phải chọn cách phản bội Lâm Uyên để dọn đường cho Lâm Trạch bước lên vị trí gia chủ. Lý do thực sự khiến nàng ra tay trong cái bẫy tử thần không chỉ là để giúp Lâm Trạch, mà còn là để loại bỏ \"biến số Lâm Uyên\" — kẻ duy nhất có thể phá vỡ mọi trật tự quyền lực mà nàng đang cố gắng thiết lập. Nàng thường có thói quen đứng từ xa quan sát Lâm Uyên và Lâm Trạch tương tác, một hành vi vừa để phân tích sự khác biệt về tiềm năng, vừa để tự tra tấn bản thân bằng sự tội lỗi đang âm ỉ. Mâu thuẫn nội tâm của nàng đạt đến đỉnh điểm khi nàng nhận ra mình đang dùng sự lý trí để thực hiện một hành vi cực kỳ cảm tính, biến mình thành một con tốt trong chính trò chơi quyền lực mà nàng đã dày công dàn dựng."
+      },
+      {
+        "section": "Biến cố & Nút thắt",
+        "chars": 1286,
+        "text": "Tô Thanh Dao đóng vai trò là \"kiến trúc sư\" đứng sau việc thiết lập trận pháp \"Thiên La Địa Võng\" tại khu vực tranh đoạt cơ duyên, sử dụng chính những kiến thức về linh năng phản hồi để biến sự lương thiện của Lâm Uyên thành mồi nhử. Nàng đã khéo léo lợi dụng nỗi đau mất em gái để tạo ra một sự lệch pha về nhận thức, khiến Lâm Uyên tin rằng việc tha mạng cho Huyết Vô Thường là một hành động nhân từ, trong khi thực chất đó là bước cuối cùng để kích hoạt bẫy chết chóc. Sự kiện em gái nàng bị sát hại đã trở thành một \"điểm kỳ dị\" trong hệ thống logic của Thanh Dao, khiến nàng tự thuyết phục bản thân rằng cái chết của Lâm Uyên là một sự hy sinh cần thiết để thiết lập một trật tự mới an toàn hơn. Nàng thường có thói quen ngồi trong bóng tối, lặng lẽ kiểm tra các thông số linh năng của trận pháp đã giăng, một hành vi lặp đi lặp lại để trấn an rằng mọi thứ vẫn nằm trong tầm kiểm soát. Tuy nhiên, mâu thuẫn nội tâm của nàng bùng nổ khi nàng nhận ra rằng, chính việc dùng cái chết của em gái làm lý do để phản bội Lâm Uyên đã biến nàng thành một kẻ sát nhân không kém gì Huyết Vô Thường. Nàng đứng giữa ranh giới mong manh của một người bảo vệ gia tộc và một kẻ phản bội tàn nhẫn, khi mà cái chết của Lâm Uyên chính là sự sụp đổ của niềm tin cuối cùng vào sự công bằng của thế giới."
+      },
+      {
+        "section": "Điểm yếu & Sự tha hóa",
+        "chars": 1233,
+        "text": "Điểm yếu chí mạng của Tô Thanh Dao nằm ở sự rạn nứt giữa hệ thống logic hoàn hảo và những tàn dư cảm xúc không thể lượng hóa, khiến nàng thường xuyên rơi vào trạng thái \"nghẽn linh năng\" khi đối mặt với những quyết định liên quan đến sự hy sinh. Nàng luôn cố gắng duy trì một ranh giới đạo đức cứng nhắc, nhưng thực tế lại liên tục bước qua nó bằng cách sử dụng các kỹ thuật thao túng tâm lý để biến người khác thành công cụ cho mục đích của gia tộc. Sự tha hóa của nàng không đến từ sự tàn ác bộc phát, mà là một quá trình \"tối ưu hóa\" tàn nhẫn, nơi nàng dần coi con người chỉ là những con số trong một phương trình quyền lực. Nàng có thói quen tự cô lập bản thân trong các phòng luyện khí biệt lập, nơi nàng có thể tự đối diện với sự trống rỗng sau mỗi kế hoạch thành công nhưng đầy máu và nước mắt. Mâu thuẫn nội tâm của nàng đạt đến giới hạn khi nàng nhận ra rằng, dù có đạt được quyền lực tối cao, nàng cũng chỉ là một thực thể rỗng tuếch, một cỗ máy được vận hành bởi những nỗi sợ hãi và sự hối tiếc không bao giờ có thể giải mã. Giới hạn đạo đức của nàng chính là điểm mà nàng sẵn sàng đánh đổi sự thanh thản của linh hồn để đổi lấy sự ổn định của cấu trúc quyền lực, một sự đánh đổi mà nàng luôn tự lừa dối mình là \"tất yếu\"."
+      }
+    ]
+  }
+}

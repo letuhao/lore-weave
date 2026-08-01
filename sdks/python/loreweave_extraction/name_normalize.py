@@ -25,11 +25,13 @@ names (vi ``ma``≠``má``; ``Müller``≠``Muller``). Accents are preserved.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 
 from ._han_simplified_table import T2S
 
 __all__ = [
+    "script_tokens",
     "nfkc_casefold",
     "fold_han_simplified",
     "normalize_entity_name",
@@ -86,3 +88,57 @@ def normalize_entity_name(name: str) -> str:
     if not isinstance(name, str):
         raise TypeError(f"name must be str, got {type(name).__name__}")
     return fold_han_simplified(nfkc_casefold(name))
+
+
+# ── script-agnostic overlap tokens (ML-3) ──────────────────────────────────
+# A word-token set is not an overlap test for every language. Chinese, Japanese and
+# Thai write without spaces, so `re.findall(r"\w{4,}", text)` returns ONE token for a
+# whole clause — and an intersection against it can only fire when the two strings are
+# byte-identical. Code written that way looks language-neutral (`\w` does match Han)
+# and is silently dead for exactly the users who have no spaces.
+#
+# So: word tokens for spaced scripts PLUS character n-grams for unspaced runs. Both,
+# deliberately — words give precise matches, n-grams give CJK coverage.
+#
+# BOTH widths 2 and 3. Most Chinese words are two characters (发布, 会议, 计划), so
+# 3-grams alone cannot match a two-character term.
+#
+# n-grams are computed PER RUN, never over a whitespace-squished string: squishing
+# manufactures n-grams that span a word boundary ("launch plan" → "hp", "hpl"), which a
+# document containing the two words non-adjacently never produced.
+#
+# NOTE — `loreweave_crypto._tokens` is the same SHAPE with an incompatible CONTRACT: it
+# feeds an encrypted blind index whose stored-⊇-query containment and n-gram widths are
+# frozen by the data already written. It is deliberately not merged with this; changing
+# a tokenizer under an existing index is a migration, not a refactor.
+_OVERLAP_NGRAMS = (2, 3)
+#: Runs of letters in a script that separates words with spaces.
+_SPACED_RUN = re.compile(r"[^\W\d_]{2,}", re.UNICODE)
+#: Runs in scripts that do NOT use spaces — Han, kana, hangul, Thai.
+_UNSPACED_RUN = re.compile(
+    r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff"
+    r"\uac00-\ud7af\u0e00-\u0e7f]{2,}"
+)
+
+
+def script_tokens(text: str, *, min_word: int = 4) -> set[str]:
+    """Overlap tokens for `text`, usable across spaced and unspaced scripts.
+
+    `min_word` bounds the SPACED side only (a 4-letter floor drops "the"/"and" noise);
+    an unspaced run contributes n-grams regardless of length, because a 2-character
+    Chinese term is a full word.
+    """
+    if not isinstance(text, str) or not text:
+        return set()
+    folded = nfkc_casefold(text)
+    out: set[str] = set()
+    for m in _SPACED_RUN.finditer(folded):
+        w = m.group(0)
+        if len(w) >= min_word:
+            out.add(w)
+    for m in _UNSPACED_RUN.finditer(folded):
+        run = fold_han_simplified(m.group(0))
+        for n in _OVERLAP_NGRAMS:
+            for i in range(len(run) - n + 1):
+                out.add(run[i:i + n])
+    return out

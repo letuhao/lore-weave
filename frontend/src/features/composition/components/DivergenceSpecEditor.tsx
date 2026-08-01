@@ -58,6 +58,32 @@ export function DivergenceSpecEditor({
   const canonDirty = canonDraft !== canonRules.join('\n');
   const fail = () => toast.error(t('divergence.editFailed', { defaultValue: 'Could not save — try again.' }));
 
+  // F3 — deleting an override soft-archives an AUTHORED delta (how this dị bản's entity differs
+  // from canon), so it owes a way back. `listEntityOverrides` filters archived rows and there is
+  // no archive browser: THIS toast is the author's only door. We still hold the id we just
+  // deleted, which is all restore needs. A 409 means a newer override for that entity exists —
+  // say so, rather than letting the author believe the undo landed.
+  const removeWithUndo = (overrideId: string) => {
+    ed.removeOverride.mutate(overrideId, {
+      onError: fail,
+      onSuccess: () => {
+        toast.success(t('divergence.overrideRemoved', { defaultValue: 'Override removed.' }), {
+          action: {
+            label: t('divergence.undo', { defaultValue: 'Undo' }),
+            onClick: () => ed.restoreOverride.mutate(overrideId, {
+              onError: (e) => {
+                const status = (e as { status?: number }).status;
+                toast.error(status === 409
+                  ? t('divergence.undoSuperseded', { defaultValue: 'A newer override for that entity exists — nothing to restore.' })
+                  : t('divergence.undoFailed', { defaultValue: 'Could not restore the override.' }));
+              },
+            }),
+          },
+        });
+      },
+    });
+  };
+
   const saveTaxonomy = (next: DivergenceTaxonomy) => {
     const prev = tax;
     setTax(next);
@@ -168,7 +194,7 @@ export function DivergenceSpecEditor({
               name={ed.entityByAnchor.get(o.target_entity_id)?.name ?? null}
               busy={ed.updateOverride.isPending || ed.removeOverride.isPending}
               onSave={(fields) => ed.updateOverride.mutate({ id: o.id, fields }, { onError: fail })}
-              onDelete={() => ed.removeOverride.mutate(o.id, { onError: fail })}
+              onDelete={() => removeWithUndo(o.id)}
             />
           ))
         )}

@@ -1,0 +1,603 @@
+{
+  "cultivation.auction_house_treasure": {
+    "beats": {
+      "bidding_war": {
+        "intent": "경쟁자들이 가격을 계속해서 끌어올립니다.",
+        "label": "입찰 전쟁"
+      },
+      "outbid": {
+        "intent": "주인공이 입찰 경쟁에서 밀려나며 조롱을 당한다",
+        "label": "경쟁자의 압도적 입찰"
+      },
+      "secret_win": {
+        "intent": "주인공이 예상치 못한 수단으로 물건을 손에 넣는다",
+        "label": "비밀스러운 승리 수단"
+      },
+      "surface": {
+        "intent": "모두가 갈망하는 유물이 경매에 나옵니다.",
+        "label": "희귀한 물건의 등장"
+      }
+    },
+    "effects": [
+      "주인공이 보물을 획득한다",
+      "부유한 라이벌이 공개적인 망신을 당한다"
+    ],
+    "emotion_target": "승리감",
+    "examples": [
+      "경매에 희귀한 유물이 등장한다. 주인공은 입찰 경쟁에서 밀려나 조롱을 받지만, 누구도 예상치 못한 방법으로 결국 그 유물을 차지한다."
+    ],
+    "name": "경매장의 보물",
+    "preconditions": [
+      "모두가 노리는 귀한 자원이 공개 경매를 통해 등장한다"
+    ],
+    "roles": {
+      "backer": {
+        "constraints": [
+          "정체를 숨긴 지원"
+        ],
+        "label": "숨겨진 후원자"
+      },
+      "protagonist": {
+        "constraints": [
+          "자금이 부족함"
+        ],
+        "label": "입찰자"
+      },
+      "rival": {
+        "constraints": [
+          "오만하며 자금력이 막강함"
+        ],
+        "label": "부유한 경쟁자"
+      },
+      "treasure": {
+        "constraints": [
+          "희귀하고 모두가 탐내는 물건"
+        ],
+        "label": "경매 대상 유물"
+      }
+    },
+    "summary": "희귀한 물건이 경매에 등장합니다. 주인공은 자금 부족으로 조롱을 받으며 밀려나지만, 숨겨진 후원자나 예상치 못한 수단을 통해 결국 낙찰에 성공합니다."
+  },
+  "cultivation.bottleneck_resource_hunt": {
+    "beats": {
+      "acquire": {
+        "intent": "치명적인 사정거리 안에서 자원을 탈취함",
+        "label": "위험한 획득"
+      },
+      "advance": {
+        "intent": "그 힘을 이용해 경지를 돌파한다",
+        "label": "흡수와 돌파"
+      },
+      "named": {
+        "intent": "필요한 정수가 무엇인지 확인됨",
+        "label": "자원의 발견"
+      },
+      "stall": {
+        "intent": "성장이 벽에 부딪혀 멈춤",
+        "label": "경지의 정체"
+      }
+    },
+    "effects": [
+      "주인공이 필요한 자원을 획득한다",
+      "주인공이 다음 단계로 승급한다"
+    ],
+    "emotion_target": "결연함",
+    "examples": [
+      "경지의 벽에 가로막힌 수사(修士)가, 수호자가 지키는 정수를 사투 끝에 손에 넣고 그 힘을 빌려 돌파한다."
+    ],
+    "name": "병목 자원 사냥",
+    "preconditions": [
+      "주인공이 경지의 벽에 가로막혀 있다",
+      "그 벽을 뚫기 위해 필요한 특정 자원이 존재한다"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "치명적이며, 영역 본능이 강함"
+        ],
+        "label": "수호수"
+      },
+      "protagonist": {
+        "constraints": [
+          "특정한 자원이 필요함"
+        ],
+        "label": "정체된 수사"
+      },
+      "resource": {
+        "constraints": [
+          "희귀하며, 수호자가 지키고 있음"
+        ],
+        "label": "영초 또는 내단"
+      }
+    },
+    "summary": "경지에 가로막힌 수사(修士)가 수호자가 지키는 정수를 사투 끝에 손에 넣어, 그 힘으로 돌파구를 마련한다."
+  },
+  "cultivation.closed_door_breakthrough": {
+    "beats": {
+      "bottleneck": {
+        "intent": "정체된 경지가 저항함",
+        "label": "내면의 벽에 부딪힘"
+      },
+      "breakthrough": {
+        "intent": "생존하여 한 단계 높은 경지로 나아가다",
+        "label": "경지를 돌파하다"
+      },
+      "crisis": {
+        "intent": "시련이 수사(修士)의 목숨을 위협하다",
+        "label": "사선(死線)을 넘나들다"
+      },
+      "insight": {
+        "intent": "깨달음이 벽을 허물어뜨림",
+        "label": "깨달음의 순간"
+      },
+      "seclusion": {
+        "intent": "병목 구간을 돌파하기 위해 은둔함",
+        "label": "폐관 수련에 돌입"
+      },
+      "tribulation": {
+        "intent": "하늘이 승천을 시험하다",
+        "label": "천겁의 시련"
+      }
+    },
+    "effects": [
+      "주인공이 새로운 경지나 단계에 도달한다",
+      "그들의 명성과 힘이 눈에 띄게 상승한다"
+    ],
+    "emotion_target": "기대감",
+    "examples": [
+      "정체된 경지를 돌파하기 위해 폐관 수련에 들어간 수사가 내면의 벽과 천겁(天劫)을 마주하고, 죽음의 문턱을 넘어서며 마침내 새로운 경지로 승천한다."
+    ],
+    "name": "폐관 수련을 통한 돌파",
+    "preconditions": [
+      "주인공이 수련의 병목 현상에 가로막혀 있다",
+      "수련에 필요한 자원이나 깨달음이 준비되어 있다"
+    ],
+    "roles": {
+      "guardian": {
+        "constraints": [
+          "선택 사항"
+        ],
+        "label": "문을 지키는 조력자"
+      },
+      "protagonist": {
+        "constraints": [
+          "경지의 벽에 가로막힌 상태"
+        ],
+        "label": "정체된 수련자"
+      },
+      "tribulation": {
+        "constraints": [
+          "무심하며 점차 격렬해짐"
+        ],
+        "label": "천겁"
+      }
+    },
+    "summary": "정체된 경지를 돌파하기 위해 은둔에 들어간 수련자가 내면의 벽에 직면하고, 천겁을 견뎌내며, 죽음의 문턱을 넘나든 끝에 새로운 경지에 오릅니다."
+  },
+  "cultivation.dao_heart_temper": {
+    "beats": {
+      "confront": {
+        "intent": "수행자는 안락한 거짓을 거부해야만 함",
+        "label": "자아와의 대면"
+      },
+      "emerge": {
+        "intent": "도심(道心)이 단련되어 확고해짐",
+        "label": "결연한 의지로 깨어남"
+      },
+      "false_memory": {
+        "intent": "환상이 최악의 죄책감을 재현함",
+        "label": "거짓 기억의 시련"
+      },
+      "surface": {
+        "intent": "수행자의 의구심이 형상화됨",
+        "label": "내면의 마물이 드러남"
+      }
+    },
+    "effects": [
+      "주인공의 결의가 단련되어 명징해짐",
+      "환상이나 유혹에 취약했던 점이 사라짐"
+    ],
+    "emotion_target": "결연함",
+    "examples": [
+      "환상 속의 시련이 수련자가 겪은 최악의 죄책감을 재현한다. 안락한 거짓을 거부함으로써만 도심을 지켜낼 수 있다."
+    ],
+    "name": "도심(道心)의 단련",
+    "preconditions": [
+      "주인공이 해결되지 않은 죄책감이나 집착을 품고 있음"
+    ],
+    "roles": {
+      "dao_heart": {
+        "constraints": [
+          "시련의 핵심이 되는 것"
+        ],
+        "label": "도심 / 결연함"
+      },
+      "inner_demon": {
+        "constraints": [
+          "위안을 주는 얼굴을 하고 있음"
+        ],
+        "label": "내면의 마물"
+      },
+      "protagonist": {
+        "constraints": [
+          "해소되지 않은 죄책감을 품고 있음"
+        ],
+        "label": "수행자"
+      }
+    },
+    "summary": "수행자의 가장 깊은 죄책감을 재현하는 환상 속의 시련에서 내면의 마물이 모습을 드러냅니다. 안락한 거짓을 거부해야만 비로소 도심을 지켜낼 수 있습니다."
+  },
+  "cultivation.face_slap": {
+    "beats": {
+      "mockery": {
+        "intent": "오만한 후계자가 주인공을 비웃음",
+        "label": "오만한 자의 조롱"
+      },
+      "reveal": {
+        "intent": "주인공이 더 높은 경지의 무공을 드러냄",
+        "label": "숨겨진 힘의 현현"
+      },
+      "reversal": {
+        "intent": "조롱하던 자가 대중 앞에서 처참하게 무너짐",
+        "label": "굴욕의 역전"
+      },
+      "underestimate": {
+        "intent": "군중이 주인공을 가치 없는 존재로 치부함",
+        "label": "주인공의 과소평가"
+      }
+    },
+    "effects": [
+      "주인공의 진정한 실력이 목격자들에게 드러남",
+      "오만한 자가 굴욕을 맛보며 적이 됨"
+    ],
+    "emotion_target": "카타르시스",
+    "examples": [
+      "거만한 후계자가 ‘폐물’이라며 비웃지만, 경연 도중 그 폐물이 상위의 경지를 드러내며 후계자를 대중 앞에서 무너뜨림"
+    ],
+    "name": "안면벽력(Face-Slap)의 반전",
+    "preconditions": [
+      "주인공이 대중 앞에서 과소평가당하거나 모욕을 당함",
+      "주인공이 겉으로 드러난 지위보다 훨씬 강력한 힘을 숨기고 있음"
+    ],
+    "roles": {
+      "arrogant": {
+        "constraints": [
+          "자만심이 강하며 배경이 든든함"
+        ],
+        "label": "오만한 천재"
+      },
+      "protagonist": {
+        "constraints": [
+          "대중에게 무시당함"
+        ],
+        "label": "과소평가된 자"
+      },
+      "witnesses": {
+        "constraints": [
+          "공개적인 관중"
+        ],
+        "label": "지켜보는 군중"
+      }
+    },
+    "summary": "오만한 자가 과소평가된 주인공을 조롱하지만, 주인공이 숨겨진 힘을 드러내며 목격자들 앞에서 그 굴욕을 조롱하던 자에게 그대로 되돌려준다."
+  },
+  "cultivation.fortuitous_encounter": {
+    "beats": {
+      "discovery": {
+        "intent": "모든 것을 뒤바꿀 운명적인 만남",
+        "label": "유물 또는 스승의 발견"
+      },
+      "inheritance": {
+        "intent": "부채나 비밀에 얽힌 힘을 부여함",
+        "label": "대가를 치르고 얻은 유산"
+      },
+      "isolation": {
+        "intent": "주인공을 도움의 손길이 닿지 않는 최악의 밑바닥으로 몰아넣음",
+        "label": "추락 이후의 고립"
+      },
+      "trial": {
+        "intent": "스승이나 유물이 자격을 시험함",
+        "label": "유산의 시험"
+      }
+    },
+    "effects": [
+      "주인공이 숨겨진 힘이나 기술을 얻음",
+      "스승과 맺어진 부채나 비밀스러운 인연이 형성됨"
+    ],
+    "emotion_target": "희망",
+    "examples": [
+      "봉인된 계곡에 버려진 약자가 죽어가는 고수를 우연히 만나 시험을 거친 뒤, 충성의 의무가 담긴 금단의 무공을 전수받음."
+    ],
+    "name": "우연한 만남 → 유산",
+    "preconditions": [
+      "주인공이 약하거나, 굴욕을 당했거나, 추방된 상태임",
+      "곁에 조력자가 아무도 없음"
+    ],
+    "roles": {
+      "legacy": {
+        "constraints": [
+          "금기시되거나 독보적인"
+        ],
+        "label": "계승된 무공 또는 혈통"
+      },
+      "mentor": {
+        "constraints": [
+          "죽음 직전이거나 잠들어 있는 상태"
+        ],
+        "label": "임종을 앞둔 스승 / 유물의 정령"
+      },
+      "protagonist": {
+        "constraints": [
+          "현재 무력하거나 명예를 잃은 상태"
+        ],
+        "label": "고립된 약자"
+      }
+    },
+    "summary": "추락이나 추방으로 인해 고립된 채 멸시받던 약자가 유물이나 임종 직전의 스승을 발견하고, 시험을 거쳐 막대한 대가를 치르는 대신 숨겨진 유산을 전수받는다."
+  },
+  "cultivation.life_and_death_duel": {
+    "beats": {
+      "challenge": {
+        "intent": "결투가 성립됨",
+        "label": "결투의 선포"
+      },
+      "reversal": {
+        "intent": "승리를 확신한 바로 그 순간, 승기를 잡았던 인물이 몰락한다",
+        "label": "치명적인 반전"
+      },
+      "stakes": {
+        "intent": "죽음이 대가로 걸림",
+        "label": "목숨을 건 도박"
+      },
+      "turn": {
+        "intent": "전세가 예상치 못하게 뒤바뀜",
+        "label": "결투의 전환"
+      }
+    },
+    "effects": [
+      "라이벌이 결정적인 패배를 당하며, 대개 치명적인 상처를 입는다",
+      "주인공의 위상이나 입지가 완전히 뒤바뀐다"
+    ],
+    "emotion_target": "긴장감",
+    "examples": [
+      "결투장에서 벌어지는 생사를 건 대결; 승기를 잡았다고 믿는 찰나, 유력한 후보였던 아들이 패배한다."
+    ],
+    "name": "생사를 건 결투",
+    "preconditions": [
+      "공개적이고 중대한 이해관계가 걸린 대결이 선포된다"
+    ],
+    "roles": {
+      "crowd": {
+        "constraints": [
+          "공개된 경기장"
+        ],
+        "label": "지켜보는 군중"
+      },
+      "protagonist": {
+        "constraints": [
+          "겉보기에 전력이 열세인"
+        ],
+        "label": "도전자 혹은 피도전자"
+      },
+      "rival": {
+        "constraints": [
+          "자신만만하며 뒷배가 있는"
+        ],
+        "label": "유력한 라이벌"
+      }
+    },
+    "summary": "경기장에서 목숨을 건 결투가 선포된다. 승리를 확신한 순간, 촉망받던 후계자는 패배를 맞이한다."
+  },
+  "cultivation.master_disciple_debt": {
+    "beats": {
+      "called": {
+        "intent": "스승이 가장 고통스러운 순간에 보답을 요구함",
+        "label": "은혜의 청구"
+      },
+      "incur": {
+        "intent": "쉽게 갚을 수 없는 의무가 형성됨",
+        "label": "갚을 수 없는 은혜의 발생"
+      },
+      "loyalty_test": {
+        "intent": "제자의 충심이 시험대에 오른다",
+        "label": "충성심의 시험"
+      },
+      "taught": {
+        "intent": "스승이 주인공을 구하거나 가르침을 베풂",
+        "label": "구원 또는 가르침"
+      }
+    },
+    "effects": [
+      "주인공은 스승과 끊을 수 없는 의무로 얽히게 된다",
+      "주인공의 충성심이 증명되거나, 혹은 꺾인다"
+    ],
+    "emotion_target": "의무감",
+    "examples": [
+      "은거 중인 스승에게 목숨을 구한 제자는, 가장 최악의 순간에 갚아야 할 막대한 은혜를 짊어지게 된다."
+    ],
+    "name": "사제 간의 은혜",
+    "preconditions": [
+      "주인공이 삶을 송두리째 바꿀 도움이나 가르침을 얻는다"
+    ],
+    "roles": {
+      "master": {
+        "constraints": [
+          "강력하며 엄격함"
+        ],
+        "label": "은둔 고수"
+      },
+      "obligation": {
+        "constraints": [
+          "구속력이 있으며 대가가 큼"
+        ],
+        "label": "은혜 / 의무"
+      },
+      "protagonist": {
+        "constraints": [
+          "스승에게 빚을 지고 있음"
+        ],
+        "label": "은혜를 입은 제자"
+      }
+    },
+    "summary": "은둔 고수에게 목숨을 구하거나 가르침을 받은 제자는 도저히 갚을 수 없는 은혜를 지게 되며, 그 빚은 가장 절박한 순간에 청구된다."
+  },
+  "cultivation.sect_entrance_trial": {
+    "beats": {
+      "arrive": {
+        "intent": "외부인이 아무런 배경 없이 등장함",
+        "label": "정체불명으로 등장"
+      },
+      "exceed": {
+        "intent": "시험용 석재가 파괴됨",
+        "label": "측정치를 초과함"
+      },
+      "recruited": {
+        "intent": "장로들이 그를 차지하기 위해 다툼",
+        "label": "이해관계가 얽힌 포섭"
+      },
+      "underestimated": {
+        "intent": "문지기 제자가 그를 무시함",
+        "label": "시험에서의 과소평가"
+      }
+    },
+    "effects": [
+      "주인공이 지위와 후원자를 얻음",
+      "시험을 주관한 세력과의 라이벌 관계가 형성됨"
+    ],
+    "emotion_target": "승리감",
+    "examples": [
+      "무명 외부인이 시험용 석판의 한계를 부수어버리자, 장로들이 그를 차지하기 위해 다툰다."
+    ],
+    "name": "문파 입문 시험",
+    "preconditions": [
+      "문파의 입문을 결정하는 공개 시험이나 테스트"
+    ],
+    "roles": {
+      "elder": {
+        "constraints": [
+          "심사 및 포섭"
+        ],
+        "label": "문파의 장로"
+      },
+      "gatekeeper": {
+        "constraints": [
+          "거만한"
+        ],
+        "label": "문지기 제자"
+      },
+      "protagonist": {
+        "constraints": [
+          "서열이 없는, 예상치 못한"
+        ],
+        "label": "정체를 알 수 없는 외부인"
+      }
+    },
+    "summary": "무명(無名)의 외부인이 문파의 입문 시험에서 측정 도구를 파괴하며 압도적인 재능을 드러냅니다. 장로들은 각자의 이해관계가 얽힌 채 그를 포섭하기 위해 다투기 시작합니다."
+  },
+  "cultivation.trash_to_genius": {
+    "beats": {
+      "affliction": {
+        "intent": "주인공이 불구 취급을 받음",
+        "label": "숨겨진 병증"
+      },
+      "explained": {
+        "intent": "결함이 희귀한 체질임이 밝혀짐",
+        "label": "병증의 실체"
+      },
+      "gift": {
+        "intent": "결함이 불가능한 성장의 원동력이 됨",
+        "label": "재능으로 승화된 결함"
+      },
+      "vindication": {
+        "intent": "멸시하던 자들이 틀렸음이 증명됨",
+        "label": "가치의 증명"
+      }
+    },
+    "effects": [
+      "주인공의 숨겨진 잠재력이 개화함",
+      "과거에 멸시하던 자들이 주인공을 인정할 수밖에 없게 됨"
+    ],
+    "emotion_target": "카타르시스",
+    "examples": [
+      "‘불구’라 불리던 육체가 희귀한 체질을 품고 있음이 밝혀짐; 그 결함 자체가 성장의 동력이 됨."
+    ],
+    "name": "폐급에서 천재로, 증명된 가치",
+    "preconditions": [
+      "주인공이 재능이 없거나 불구가 된 존재로 치부됨"
+    ],
+    "roles": {
+      "clan": {
+        "constraints": [
+          "무시하는 태도, 신분 중심적 사고"
+        ],
+        "label": "냉담한 가문"
+      },
+      "diagnostician": {
+        "constraints": [
+          "진정한 체질을 꿰뚫어 볼 수 있음"
+        ],
+        "label": "장로 또는 진단자"
+      },
+      "protagonist": {
+        "constraints": [
+          "재능이 없는 것으로 치부됨"
+        ],
+        "label": "멸시받는 ‘폐급’"
+      }
+    },
+    "summary": "치명적인 결함이라 멸시받던 숨겨진 병증이 사실은 희귀한 재능임이 밝혀집니다. 그 결함은 오히려 성장의 동력이 되고, 주인공은 마침내 자신의 가치를 증명해 냅니다."
+  },
+  "cultivation.tribulation_ascension": {
+    "beats": {
+      "ascend": {
+        "intent": "승천하여 살아남을 것인가, 아니면 파멸할 것인가",
+        "label": "승천 혹은 몰락"
+      },
+      "merit": {
+        "intent": "힘이 승천의 임계점에 도달함",
+        "label": "공덕의 축적"
+      },
+      "notice": {
+        "intent": "천겁이 몰려오기 시작함",
+        "label": "하늘의 감시"
+      },
+      "tribulation": {
+        "intent": "파도처럼 밀려오는 번개를 끊임없이 견뎌내야 함",
+        "label": "뇌겁의 시련"
+      }
+    },
+    "effects": [
+      "주인공이 더 높은 차원이나 경지로 승천함",
+      "기존 세계에서의 지위와 위상을 뒤로하고 떠남"
+    ],
+    "emotion_target": "경외감",
+    "examples": [
+      "축적된 힘이 하늘의 노여움을 사다. 승천하기 위해서는 아군과 함께 아홉 번의 뇌겁을 견뎌내야 한다."
+    ],
+    "name": "천겁의 승천",
+    "preconditions": [
+      "주인공이 승천의 문턱에 도달함"
+    ],
+    "roles": {
+      "anchor": {
+        "constraints": [
+          "전선을 사수하며 버팀"
+        ],
+        "label": "조력자이자 버팀목"
+      },
+      "protagonist": {
+        "constraints": [
+          "승천의 문턱에 다다른 상태"
+        ],
+        "label": "승천하는 수행자"
+      },
+      "tribulation": {
+        "constraints": [
+          "점점 거세지며 치명적인 위력을 가짐"
+        ],
+        "label": "천겁"
+      }
+    },
+    "summary": "축적된 힘이 하늘의 노여움을 부릅니다. 조력자의 도움을 받아 아홉 번의 뇌겁을 견뎌내야만 비로소 승천할 수 있습니다."
+  }
+}

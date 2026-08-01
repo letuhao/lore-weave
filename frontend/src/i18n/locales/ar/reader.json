@@ -43,8 +43,8 @@
         "desc": "لون الورق الدافئ"
       },
       "oled": {
-        "name": "OLED",
-        "desc": "أسود حقيقي لشاشات OLED"
+        "desc": "أسود حقيقي لشاشات OLED",
+        "name": "OLED"
       },
       "parchment": {
         "name": "رقّ",

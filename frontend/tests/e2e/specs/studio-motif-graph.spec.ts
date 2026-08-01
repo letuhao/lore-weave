@@ -45,6 +45,11 @@ test.describe('@s4 Studio · motif-graph canvas', () => {
     // the reactflow node for m1 (RF stamps data-id on .react-flow__node)
     const node = page.locator(`.react-flow__node[data-id="${m1}"]`);
     await expect(node).toBeVisible();
+    // …and it is LABELLED. The canvas renders `n.name` from the graph payload, so a shape
+    // drift would give a present, visible, blank node — `toBeVisible()` cannot tell those
+    // apart. That is not hypothetical: the sibling surface (MotifGraphSection, same feature)
+    // shipped exactly that for a release while its own e2e asserted only visibility.
+    await expect(node).toContainText(`GraphA ${stamp}`);
     const box = await node.boundingBox();
     expect(box).not.toBeNull();
 

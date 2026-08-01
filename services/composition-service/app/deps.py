@@ -22,6 +22,7 @@ from app.db.pool import get_pool
 from app.db.repositories.arc_template_repo import ArcTemplateRepo
 from app.db.repositories.authoring_runs import AuthoringRunsRepo, AuthoringRunUnitsRepo
 from app.db.repositories.canon_rules import CanonRulesRepo
+from app.db.repositories.error_blocks import ErrorBlocksRepo
 from app.db.repositories.daily_progress import DailyProgressRepo
 from app.db.repositories.derivatives import DerivativesRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
@@ -149,6 +150,11 @@ async def get_narrative_thread_repo() -> NarrativeThreadRepo:
 
 async def get_canon_rules_repo() -> CanonRulesRepo:
     return CanonRulesRepo(get_pool())
+
+
+async def get_error_blocks_repo() -> ErrorBlocksRepo:
+    """Atom-edit Phase D — the author's marked defects in a chapter's prose."""
+    return ErrorBlocksRepo(get_pool())
 
 
 async def get_grounding_pins_repo() -> GroundingPinsRepo:
@@ -293,3 +299,38 @@ async def get_kal_client_dep() -> KalClient:
 async def get_llm_client_dep() -> LLMClient:
     """Wired for the M6 engine + critic (built in M3)."""
     return get_llm_client()
+
+
+async def get_glossary_build_service():
+    """The deterministic glossary-build pipeline (spec 2026-07-27) — the
+    planner/executor FSM that replaced the chat agent's tool-choice for world
+    building. Real repo + LLM + glossary/knowledge clients; tests inject fakes."""
+    from app.services.glossary_build.service import GlossaryBuildService, Repo
+
+    return GlossaryBuildService(
+        Repo(get_pool()), get_llm_client(), get_glossary_client(),
+        knowledge=get_knowledge_client(),
+    )
+
+
+async def get_intent_fsm_service():
+    """The intent-collection FSM (spec 2026-07-28) — the missing PRODUCER of chapter/scene intent.
+
+    `structure_templates` supplies `beat_role`'s closed set (there is no global beat vocabulary —
+    the book's chosen template IS it) and `plan_runs` says which template the outline was actually
+    planned against. `kal` grounds the open slots in the book's real cast. Each is degrade-safe:
+    without them the run still works, it just asks less constrained questions — and the instrument
+    records the class it actually asked under, so a degraded run never reads as a constrained one."""
+    from app.db.repositories.outline import OutlineRepo
+    from app.db.repositories.plan_runs import PlanRunsRepo
+    from app.db.repositories.structure_templates import StructureTemplatesRepo
+    from app.services.intent_fsm.repo import IntentRepo
+    from app.services.intent_fsm.service import IntentFSMService
+
+    pool = get_pool()
+    return IntentFSMService(
+        IntentRepo(pool), OutlineRepo(pool), get_llm_client(),
+        plan_runs=PlanRunsRepo(pool),
+        structure_templates=StructureTemplatesRepo(pool),
+        kal=get_kal_client(),
+    )

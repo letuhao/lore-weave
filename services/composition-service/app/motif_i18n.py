@@ -1,0 +1,488 @@
+"""Motif i18n — the translatable payload, its hash, and language resolution.
+
+One motif = one row in its `original_language`; every other language is a
+`motif_translation` row. This module is the single definition of *what is text*
+(and therefore translatable) versus *what is structure* (and therefore lives only
+on the source row). The migration, the seeder, the read path, and
+`scripts/motif_translate.py` all import from here so the four can never drift —
+a drift here is exactly the class of bug that shipped a Vietnamese motif summary
+into an English book's scene prompt (docs/specs/2026-07-29-motif-i18n.md).
+
+Design notes worth keeping:
+
+* **Structure is never translated.** `code`, `kind`, `category` (a machine
+  taxonomy — `romance.proximity`), `genre_tags`, `roles[].key`, `roles[].actant`,
+  `beats[].key`, `beats[].tension_target`, `beats[].order`, `tension_target`,
+  `annotations`, `info_asymmetry`. A translation therefore cannot add, drop, or
+  reshape a motif — only re-word it.
+
+* **Resolution merges PER LEAF, not all-or-nothing.** A translation covering 5 of
+  6 beats renders the 6th in the original language rather than blank. This is the
+  same no-silent-drop posture `scripts/i18n_translate.py` takes (a key it cannot
+  translate ships as its English source, never empty).
+
+* **Fallback is always reported.** `resolve_text` returns `text_language` and
+  `text_fallback`, so no caller — model prompt or FE — can receive text without
+  knowing which language it is in. The bug this replaces was silent.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+from dataclasses import dataclass
+from typing import Any
+
+# ── what is translatable ───────────────────────────────────────────────────
+# A SPEC is the whole definition of "what is text" for one entity. Two entities use
+# this engine — motifs and arc templates — and they must be described, never
+# duplicated: the arc library had the identical identity defect (`language` inside
+# `uq_arc_template_*`) plus the identical read bug (`language` as a WHERE filter,
+# which can only SUBTRACT), so re-implementing resolution for it would have meant two
+# copies of the rule that exists to stop copies drifting.
+
+
+@dataclass(frozen=True)
+class TranslatableSpec:
+    """`scalars` are text columns on the row itself.
+
+    `lists` are JSONB arrays: `key` names the field that identifies an element across
+    languages (so a reordered translation still merges correctly), None = positional
+    match; `fields` are the translatable leaves inside each element — everything else
+    in the element is STRUCTURE and comes from the source, always.
+    """
+
+    scalars: tuple[str, ...]
+    lists: dict[str, dict[str, Any]]
+
+    @property
+    def fields(self) -> tuple[str, ...]:
+        return self.scalars + tuple(self.lists)
+
+
+MOTIF_SPEC = TranslatableSpec(
+    scalars=("name", "summary", "emotion_target"),
+    lists={
+        "roles":         {"key": "key", "fields": ("label", "constraints")},
+        "beats":         {"key": "key", "fields": ("label", "intent")},
+        "preconditions": {"key": None,  "fields": ("text",)},
+        "effects":       {"key": None,  "fields": ("text",)},
+        "examples":      {"key": None,  "fields": ("text",)},
+    },
+)
+
+# An arc template's `layout` is entirely machine values — `motif_code`, `thread`,
+# `span_start`/`span_end`, `ord`, `triggers`, `role_hints` — so it carries NO
+# translatable leaf and is absent here by design, not by omission. Same for
+# `chapter_span` and `genre_tags`. `threads[].key` and `arc_roster[].key`/`actant`
+# are join keys and a greimas role; translating either would break the binding.
+ARC_TEMPLATE_SPEC = TranslatableSpec(
+    scalars=("name", "summary"),
+    lists={
+        "threads":    {"key": "key", "fields": ("label",)},
+        "arc_roster": {"key": "key", "fields": ("label", "constraints")},
+    },
+)
+
+# Back-compat aliases: the motif spec IS the historical module-level contract, and
+# every existing caller (migration, seeder, read path, the dev-time tool) means motif.
+TRANSLATABLE_SCALARS: tuple[str, ...] = MOTIF_SPEC.scalars
+TRANSLATABLE_LISTS: dict[str, dict[str, Any]] = MOTIF_SPEC.lists
+TRANSLATABLE_FIELDS: tuple[str, ...] = MOTIF_SPEC.fields
+
+
+def _as_list(value: Any) -> list[dict[str, Any]]:
+    """JSONB columns arrive as a list, or as a JSON string from some drivers."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (ValueError, TypeError):
+            return []
+    if not isinstance(value, list):
+        return []
+    return [v for v in value if isinstance(v, dict)]
+
+
+def extract_translatable(row: Any, spec: TranslatableSpec = MOTIF_SPEC) -> dict[str, Any]:
+    """Project a row (dict or model) down to only its translatable leaves.
+
+    The result is what gets hashed, what gets handed to a translator, and the shape a
+    `*_translation` row stores.
+    """
+    get = row.get if isinstance(row, dict) else (lambda k, d=None: getattr(row, k, d))
+    out: dict[str, Any] = {}
+    for field in spec.scalars:
+        val = get(field)
+        out[field] = val if isinstance(val, str) else ("" if val is None else str(val))
+    for field, lspec in spec.lists.items():
+        key_field, leaves = lspec["key"], lspec["fields"]
+        elems = []
+        for elem in _as_list(get(field)):
+            projected: dict[str, Any] = {}
+            if key_field:
+                projected[key_field] = elem.get(key_field)
+            for leaf in leaves:
+                if leaf in elem:
+                    projected[leaf] = elem[leaf]
+            elems.append(projected)
+        out[field] = elems
+    return out
+
+
+def translatable_hash(payload: dict[str, Any]) -> str:
+    """Stable hash of a translatable payload — the staleness signal.
+
+    Canonical JSON (sorted keys, no whitespace drift) so the same content always
+    hashes the same regardless of dict ordering; see the repo's
+    etag-stable-hash-all-response-fields lesson.
+    """
+    blob = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def source_hash(row: Any, spec: TranslatableSpec = MOTIF_SPEC) -> str:
+    """Hash of a row's CURRENT translatable payload."""
+    return translatable_hash(extract_translatable(row, spec))
+
+
+# ── the on-disk translation-file shape ─────────────────────────────────────
+# A translation file is `{code: entry}`, and an entry keys its role/beat text BY
+# KEY rather than by position:
+#
+#   {"romance.forced_proximity": {
+#      "name": "…", "summary": "…", "emotion_target": "…",
+#      "roles":  {"lead":    {"label": "…", "constraints": ["…"]}},
+#      "beats":  {"trapped": {"label": "…", "intent": "…"}},
+#      "preconditions": ["…"], "effects": ["…"], "examples": ["…"]}}
+#
+# Keying by `key` (not index) is what makes a translation robust: a translator
+# reordering beats, or a source pack gaining one, cannot silently shift wording onto
+# the wrong beat. It also makes an unknown key a loud validation error instead of a
+# quiet mis-merge. The bare-string lists have no keys to drift onto, so they stay
+# positional — and merge tolerantly (a short list just falls back per element).
+
+
+class TranslationFileError(ValueError):
+    """A translation file that would mis-merge — always loud, never tolerated."""
+
+
+def build_translation_entry(
+    payload: dict[str, Any], spec: TranslatableSpec = MOTIF_SPEC
+) -> dict[str, Any]:
+    """Translatable payload → the on-disk entry shape (used by the converter/tool)."""
+    entry: dict[str, Any] = {}
+    for field in spec.scalars:
+        if payload.get(field):
+            entry[field] = payload[field]
+    for field, lspec in spec.lists.items():
+        elems = payload.get(field) or []
+        if lspec["key"]:
+            keyed = {}
+            for e in elems:
+                k = e.get(lspec["key"])
+                if k is None:
+                    continue
+                leaves = {lf: e[lf] for lf in lspec["fields"] if e.get(lf)}
+                if leaves:
+                    keyed[k] = leaves
+            if keyed:
+                entry[field] = keyed
+        else:
+            leaf = lspec["fields"][0]
+            texts = [e.get(leaf, "") for e in elems]
+            if any(texts):
+                entry[field] = texts
+    return entry
+
+
+def parse_translation_entry(
+    entry: dict[str, Any], source_payload: dict[str, Any], *, where: str = "",
+    spec: TranslatableSpec = MOTIF_SPEC,
+) -> dict[str, Any]:
+    """On-disk entry → the `motif_translation` column payload, validated.
+
+    `source_payload` is the motif's own translatable payload — it defines which
+    role/beat keys legitimately exist. A key the source does not have is a
+    TranslationFileError, never a silent drop: a drifted key is precisely how a
+    translation stops applying while the file on disk still looks complete.
+    """
+    if not isinstance(entry, dict):
+        raise TranslationFileError(f"{where}: entry must be an object, got {type(entry).__name__}")
+
+    out: dict[str, Any] = {}
+    for field in spec.scalars:
+        val = entry.get(field)
+        out[field] = val if isinstance(val, str) else ""
+
+    for field, lspec in spec.lists.items():
+        key_field, leaves = lspec["key"], lspec["fields"]
+        src_elems = source_payload.get(field) or []
+        given = entry.get(field)
+        if key_field:
+            given = given or {}
+            if not isinstance(given, dict):
+                raise TranslationFileError(
+                    f"{where}.{field}: must be an object keyed by {key_field}, "
+                    f"got {type(given).__name__}"
+                )
+            valid = {e.get(key_field) for e in src_elems}
+            unknown = sorted(str(k) for k in given if k not in valid)
+            if unknown:
+                raise TranslationFileError(
+                    f"{where}.{field}: unknown {key_field}(s) {unknown} — the source motif has "
+                    f"{sorted(str(v) for v in valid)}. A drifted key would silently fail to merge."
+                )
+            out[field] = [
+                {key_field: k, **{lf: v[lf] for lf in leaves if isinstance(v, dict) and v.get(lf)}}
+                for k, v in given.items()
+            ]
+        else:
+            leaf = leaves[0]
+            given = given or []
+            if not isinstance(given, list):
+                raise TranslationFileError(
+                    f"{where}.{field}: must be an array of strings, got {type(given).__name__}"
+                )
+            if len(given) > len(src_elems):
+                raise TranslationFileError(
+                    f"{where}.{field}: has {len(given)} entries but the source motif has "
+                    f"{len(src_elems)} — a longer list cannot be positionally matched."
+                )
+            out[field] = [{leaf: t} for t in given if isinstance(t, str)]
+    return out
+
+
+# ── the flat wire shape (entry ↔ {dotted key: string}) ─────────────────────
+# A translator — the dev-time script or the runtime engine — works on a FLAT map of
+# string leaves, because that is what makes key-set identity a checkable property:
+# the model is handed `{"beats.press.label": "…"}` and must hand back the same key
+# set. An entry-shaped payload would let a renamed beat hide inside a nested object.
+#
+# This lives HERE, not in either translator, because both must produce byte-identical
+# keys. `scripts/motif_translate.py` used to borrow `i18n_translate`'s generic
+# flatten; the runtime engine cannot import from `scripts/`, and two copies of a key
+# scheme is precisely the drift this module exists to prevent.
+
+_PATH_TOKEN_RE = re.compile(r"[^.\[\]]+|\[\d+\]")
+
+
+def flatten_entry(obj: Any, prefix: str = "") -> dict[str, str]:
+    """Translation entry → `{dotted.path: text}`, string leaves only.
+
+    Empty strings are dropped: there is nothing to translate, and carrying them
+    would make a legitimately-absent leaf look like a translation failure.
+    """
+    out: dict[str, str] = {}
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            out.update(flatten_entry(v, f"{prefix}.{k}" if prefix else k))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            out.update(flatten_entry(v, f"{prefix}[{i}]"))
+    elif isinstance(obj, str) and obj:
+        out[prefix] = obj
+    return out
+
+
+def unflatten_entry(flat: dict[str, Any]) -> Any:
+    """`{dotted.path: text}` → the nested entry shape. Inverse of `flatten_entry`."""
+    root: dict = {}
+    for key, val in flat.items():
+        parts = _PATH_TOKEN_RE.findall(key)
+        cur: Any = root
+        for i, part in enumerate(parts):
+            last = i == len(parts) - 1
+            is_index = part.startswith("[")
+            token: Any = int(part[1:-1]) if is_index else part
+            if last:
+                if is_index:
+                    while len(cur) <= token:
+                        cur.append(None)
+                    cur[token] = val
+                else:
+                    cur[token] = val
+                continue
+            nxt_is_index = parts[i + 1].startswith("[")
+            default: Any = [] if nxt_is_index else {}
+            if is_index:
+                while len(cur) <= token:
+                    cur.append(None)
+                if cur[token] is None:
+                    cur[token] = default
+                cur = cur[token]
+            else:
+                cur = cur.setdefault(token, default)
+    return root
+
+
+# ── the echo check ─────────────────────────────────────────────────────────
+# A leaf handed back in its source language, verbatim. It is structurally
+# indistinguishable from a real translation — present, non-empty, valid — so nothing
+# else in the pipeline can see it. This is the motif-corpus twin of the predicate in
+# `scripts/i18n_translate.py`; the two must agree, and a test binds them to one
+# calibration table (they cannot share an import — a repo script must not depend on a
+# service, and a service must not depend on `scripts/`).
+_PLACEHOLDER_RE = re.compile(r"\{\{.*?\}\}|\$t\([^)]*\)|<[^>]+>")
+_URL_RE = re.compile(r"https?://\S+|\w+://\S+")
+
+# Below this, a byte-identical value is a cognate, a proper noun, or a label with
+# nothing in it to translate — `Status` is a German word, `{{op}} {{status}}` has no
+# prose at all. Measured: raw byte-equality flagged 339 German strings of which one
+# was a real defect.
+#
+# That defence is a LATIN-script defence, and applying it to every target repeated the
+# same mistake one level down — a threshold justified by one class of input, quietly
+# applied to a class it does not describe. A Japanese string is not incidentally spelled
+# "Confirm cost". For a target that does not write in the Latin alphabet the bar is one
+# translatable word.
+#
+# AND THE CORPUS MATTERS AS MUCH AS THE TARGET. This module serves the NARRATIVE corpus —
+# motif and arc-template text, every string of it authored prose. `scripts/i18n_translate.py`
+# serves the UI-string corpus, which is full of product and technical names (`LM Studio`,
+# `API Key`, `Top-K`, `JSON`) that a translator is RIGHT to keep verbatim. Those two facts
+# need two calibrations, and running one rule over both is the same category error a third
+# time. Measured on the real corpora:
+#
+#   · Title-Case exemption — indispensable for the UI corpus (309 → 66 false hits), and
+#     worth exactly ZERO here: not one verbatim Title-Case string in 17 locales × 84
+#     motifs is legitimate. It cost only the detection of the field that matters most, a
+#     motif NAME left in English, which is the whole point of a translated library.
+#     So: no exemption in this module.
+#   · Latin bar — 1 flags 79 values here, and `tension` / `suspense` / `anticipation`
+#     really are French words. 2 flags exactly two, BOTH real (`grim-resolve`,
+#     `moral-tension` sitting in the hand-written Vietnamese). 3 flags none. So: 2.
+ECHO_MIN_WORDS = 2
+ECHO_MIN_WORDS_NON_LATIN = 1
+NON_LATIN_TARGETS = frozenset({
+    "ja", "ko", "zh-CN", "zh-TW", "ru", "ar", "hi", "bn", "th",
+})
+
+
+def prose_words(value: str) -> list[str]:
+    """The words a translator could actually have translated."""
+    return re.findall(r"[A-Za-z]{2,}", _URL_RE.sub("", _PLACEHOLDER_RE.sub("", value)))
+
+
+# The UI corpus's extra discriminator lives in `scripts/i18n_translate.py`: there, a
+# verbatim value is a defect only if it contains an all-lowercase word, because a pure
+# Title-Case/ALL-CAPS token string is a NAME (`LM Studio`, `API Key`, `Top-K`) and keeping
+# a name is a translator doing their job. It is absent here ON PURPOSE: this corpus has no
+# product names, and the exemption would hide exactly the motif titles a reader needs.
+
+
+def echo_min_words(lang: str | None) -> int:
+    """How much prose a verbatim value needs before it counts as a defect."""
+    return ECHO_MIN_WORDS_NON_LATIN if lang in NON_LATIN_TARGETS else ECHO_MIN_WORDS
+
+
+def is_untranslated_echo(src_val: str, out_val: Any, lang: str | None = None) -> bool:
+    """`out_val` is `src_val` verbatim, and long enough that that is a defect.
+
+    Pass `lang` when it is known. Omitting it keeps the conservative Latin bar, so a
+    caller that has not been updated under-reports rather than crying wolf.
+    """
+    if not isinstance(out_val, str) or out_val != src_val:
+        return False
+    # NO Title-Case exemption in the narrative corpus — see the calibration note above.
+    # A motif called "The Witness Who Lies" that comes back as "The Witness Who Lies" in
+    # a Japanese library is the defect, not a name being respected.
+    return len(prose_words(src_val)) >= echo_min_words(lang)
+
+
+# ── resolution ─────────────────────────────────────────────────────────────
+def _merge_list(field: str, src: list[dict], tr: list[dict],
+                spec: TranslatableSpec = MOTIF_SPEC) -> list[dict]:
+    """Overlay a translated list onto the source list, per leaf.
+
+    Structure always comes from `src`. An element the translation does not cover
+    (missing key, short list, absent leaf) keeps its source wording — never blank.
+    """
+    lspec = spec.lists[field]
+    key_field, leaves = lspec["key"], lspec["fields"]
+    if key_field:
+        by_key = {e.get(key_field): e for e in tr if e.get(key_field) is not None}
+        pick = lambda i, e: by_key.get(e.get(key_field), {})  # noqa: E731
+    else:
+        pick = lambda i, e: tr[i] if i < len(tr) else {}      # noqa: E731
+
+    merged = []
+    for i, elem in enumerate(src):
+        out = dict(elem)
+        overlay = pick(i, elem)
+        for leaf in leaves:
+            val = overlay.get(leaf)
+            if val not in (None, "", []):
+                out[leaf] = val
+        merged.append(out)
+    return merged
+
+
+def resolve_text(
+    source: Any,
+    translation: Any | None,
+    want_language: str | None,
+    *,
+    current_hash: str | None = None,
+    spec: TranslatableSpec = MOTIF_SPEC,
+) -> dict[str, Any]:
+    """Resolve a motif's display/prompt text into `want_language`.
+
+    Returns the resolved translatable fields plus three metadata keys:
+      `text_language` — the language the returned text is actually in
+      `text_fallback` — True when the caller asked for a language we do not have
+      `text_stale`    — True when a translation exists but was made from older source
+
+    Never raises, never blanks. Asking for the original language, or for a
+    language with no translation, both return the source text — the difference
+    being that only the latter sets `text_fallback`.
+    """
+    original = getattr(source, "original_language", None)
+    if isinstance(source, dict):
+        original = source.get("original_language", original)
+    original = original or "en"
+
+    sget = source.get if isinstance(source, dict) else (
+        lambda k, d=None: getattr(source, k, d))
+    # The merge target is the source's FULL elements, not its extracted payload. Merging
+    # onto the extracted one silently dropped every structure field a translated list
+    # carried — `beats[].tension_target` and `beats[].order` vanished from the resolved
+    # motif, in the fallback path too, so a book that asked for ANY language lost its beat
+    # pacing. Caught by a test that asserted structure survives translation.
+    full: dict[str, Any] = {f: sget(f) for f in spec.scalars}
+    for field in spec.lists:
+        full[field] = [dict(e) for e in _as_list(sget(field))]
+
+    if not want_language or want_language == original or translation is None:
+        return {
+            **full,
+            "text_language": original,
+            "text_fallback": bool(want_language) and want_language != original,
+            "text_stale": False,
+        }
+
+    tget = translation.get if isinstance(translation, dict) else (
+        lambda k, d=None: getattr(translation, k, d))
+    tr_payload = extract_translatable(translation, spec)
+
+    resolved: dict[str, Any] = {}
+    for field in spec.scalars:
+        val = tr_payload.get(field)
+        resolved[field] = val if val else full.get(field)
+    for field in spec.lists:
+        resolved[field] = _merge_list(field, full[field], tr_payload.get(field) or [], spec)
+
+    stored_hash = tget("source_content_hash") or ""
+    live_hash = (
+        current_hash if current_hash is not None
+        else translatable_hash(extract_translatable(source, spec))
+    )
+
+    return {
+        **resolved,
+        "text_language": tget("language_code") or want_language,
+        "text_fallback": False,
+        # A stale translation is still served — wrong-vintage wording in the right
+        # language beats correct wording in a language the reader cannot read — but
+        # it is reported so a re-translate can be scheduled and the FE can badge it.
+        "text_stale": bool(stored_hash) and stored_hash != live_hash,
+    }

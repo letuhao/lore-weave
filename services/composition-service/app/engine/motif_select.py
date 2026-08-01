@@ -109,7 +109,7 @@ def _pick_top1(cands: list[MotifCandidate]) -> MotifCandidate:
 async def select_motif_for_chapter(
     ch: "ChapterPlan", retriever: Any, *,
     book_id: UUID, project_id: UUID, caller_id: UUID,
-    genre_tags: list[str], language: str,
+    genre_tags: list[str], display_language: str,
     prev_effects: list[str],
     min_score: float,
     high_threshold: int,
@@ -134,7 +134,7 @@ async def select_motif_for_chapter(
     try:
         cands = await retriever.retrieve(
             caller_id, book_id=book_id, project_id=project_id,
-            genre_tags=genre_tags, language=language,
+            genre_tags=genre_tags, display_language=display_language,
             beat_role=ch.beat_role, tension=chapter_tension, prev_effects=prev_effects,
         )
     except MotifRetrieverError as exc:

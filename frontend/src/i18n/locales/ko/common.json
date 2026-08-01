@@ -111,7 +111,6 @@
     "receiving": "받는 중...",
     "error": "오류",
     "you": "사용자",
-    "ai": "AI",
     "thinking": "생각 중...",
     "startSpeaking": "말하기 시작...",
     "cancel": "취소",
@@ -140,7 +139,8 @@
     "presetNormalDesc": "균형 잡힌 설정 (기본값)",
     "presetPatientDesc": "대기 시간이 길어 천천히 말하는 분들에게 적합",
     "presetLearnerDesc": "긴 휴지기 허용, 언어 학습용",
-    "audioRetention": "음성 오디오는 재생을 위해 48시간 동안 저장된 후 자동으로 삭제됩니다."
+    "audioRetention": "음성 오디오는 재생을 위해 48시간 동안 저장된 후 자동으로 삭제됩니다.",
+    "ai": "AI"
   },
   "theme_name": {
     "dark": "다크",

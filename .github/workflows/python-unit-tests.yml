@@ -84,10 +84,18 @@ jobs:
         # the whole class at the root.
         run: python -m pip install --upgrade pip && python -m pip install "./sdks/python[test]"
       - name: install service dependencies
+        # WORKING-DIRECTORY IS LOAD-BEARING (2026-08-01). pip resolves a relative `-e` inside a
+        # requirements file against the CWD, NOT against the file's own directory. Run from the
+        # repo root, lore-enrichment's `-e ../../sdks/python` pointed OUTSIDE the checkout and
+        # pip refused the whole file:
+        #   ERROR: ../../sdks/python is not a valid editable requirement.
+        # That aborted the install step, so the service's entire suite never ran — a red job
+        # whose cause was two directory levels, not a test.
+        working-directory: "services/${{ matrix.service }}"
         run: |
-          python -m pip install -r "services/${{ matrix.service }}/requirements.txt"
-          if [ -f "services/${{ matrix.service }}/requirements-test.txt" ]; then
-            python -m pip install -r "services/${{ matrix.service }}/requirements-test.txt"
+          python -m pip install -r requirements.txt
+          if [ -f requirements-test.txt ]; then
+            python -m pip install -r requirements-test.txt
           fi
       - name: pytest (unit — integration/db SKIPs without a DB env)
         # No TEST_*_DB_URL / TEST_NEO4J_URI on purpose: the DB-gated integration tests skip,

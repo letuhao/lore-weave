@@ -30,7 +30,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		Description: "Read a BOOK's local ontology: its adopted/native genres, kinds, attribute " +
 			"definitions, and kind↔genre links. This is what entities in the book are described by. " +
 			"Use before proposing entities or shaping the book's schema. Every genre/kind/attribute " +
-			"row carries a `base_version` — copy it verbatim into glossary_book_patch to get " +
+			"row carries a `base_version` — copy it verbatim into glossary_ontology_upsert to get " +
 			"concurrent-edit detection.",
 		Meta: lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil)),
 	}, s.toolBookOntologyRead)

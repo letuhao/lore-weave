@@ -1,7 +1,7 @@
 // W6 §3.2 / §4.6 — the planner-binding controller CONSUMED BY W2's PlannerView (the
 // one documented seam, MD-1: W6 ships this hook + the MotifBinding* children; W2
 // imports + renders them — W6 never edits PlannerView.tsx). Owns: swap / rebindRole /
-// clearMotif / chainIt / regenerateScene, all invalidating the decompose-preview
+// clearMotif / chainIt, all invalidating the decompose-preview
 // query so the tree re-renders (NO useEffect for event handling). A failed swap
 // keeps the prior binding (no destructive optimism). No JSX.
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -61,16 +61,15 @@ export function useMotifBinding({ projectId, bookId, nodeId, token }: UseMotifBi
     onSuccess: invalidatePreview,
   });
 
-  const regenerateScene = useMutation({
-    mutationFn: (sceneId: string) =>
-      apiJson(`${BASE}/works/${projectId}/scenes/${sceneId}/regenerate-to-beat`, { method: 'POST', token: token! }),
-    onSuccess: invalidatePreview,
-  });
+  // NOTE: this hook does NOT own "regenerate to beat". It once had its own copy pointing at
+  // `/scenes/{id}/regenerate-to-beat` — a route that was never built — while the wired one lived
+  // in `useConformanceTrace`. Two half-finished copies of one feature is how the phantom survived
+  // review; there is one now.
 
   // §4.6 — the bind → COMMIT → GENERATE contract. W6 returns WHERE to go; W2 wires
   // it to the panel's selectTab('compose'|'assemble') + setSceneId (the seam). This
   // closes the H-8 dead-end: bind → generate → verify is ONE path, not three islands.
   const commitAndGenerate = (sceneId: string): CommitAndGenerateRoute => ({ tab: 'compose', sceneId });
 
-  return { swap, rebindRole, clearMotif, chainIt, regenerateScene, commitAndGenerate };
+  return { swap, rebindRole, clearMotif, chainIt, commitAndGenerate };
 }

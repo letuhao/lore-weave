@@ -50,6 +50,22 @@ export async function transcribeAudio(
   accessToken: string,
   signal?: AbortSignal,
 ): Promise<string> {
+  // D-STT-HARDCODED-WHISPER-FALLBACK (2026-07-31). This read
+  // `sttModelName || 'whisper-1'`. `sttModelName` defaults to '' in voicePrefs, so a user
+  // who has not picked an STT model silently sent OpenAI's whisper-1 through the proxy —
+  // a model they never chose, against whichever credential the request resolved to. That
+  // is both a hardcoded model name in runtime code (the ENFORCED provider rule) and a
+  // silent hidden default (SET-*: a setting must expose its effective value, never
+  // fabricate one). The proxy is transparent, so nothing downstream would have corrected
+  // it either.
+  //
+  // Refuse instead. "You have not chosen a speech-to-text model" is a fixable message;
+  // an unexplained charge for a model you did not pick is not.
+  if (!sttModelRef || !sttModelName) {
+    throw new Error(
+      'No speech-to-text model is configured — choose one in Voice settings before dictating.',
+    );
+  }
   const apiBase = import.meta.env.VITE_API_BASE || '';
   const params = new URLSearchParams({
     model_source: 'user_model',
@@ -58,7 +74,7 @@ export async function transcribeAudio(
   const formData = new FormData();
   formData.append('file', audioBlob, 'audio.wav');
   // OpenAI-compatible STT APIs require a 'model' field in multipart form
-  formData.append('model', sttModelName || 'whisper-1');
+  formData.append('model', sttModelName);
 
   const resp = await fetch(
     `${apiBase}/v1/model-registry/proxy/v1/audio/transcriptions?${params}`,

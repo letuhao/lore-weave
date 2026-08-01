@@ -45,7 +45,7 @@ def _arc_row(**kw) -> dict:
         "id": kw.get("id", uuid.uuid4()),
         "owner_user_id": kw.get("owner_user_id", USER),
         "code": kw.get("code", "arc.three-year-pact"),
-        "language": "en",
+        "original_language": kw.get("original_language", "en"),
         "visibility": kw.get("visibility", "private"),
         "name": kw.get("name", "Three-Year Pact"),
         "summary": kw.get("summary", ""),
@@ -193,18 +193,34 @@ async def test_list_scope_user_filters_owner_eq_caller():
     assert params[0] == USER
 
 
-async def test_list_appends_genre_status_language_q_filters():
+async def test_list_appends_genre_status_and_q_filters():
     conn = _FakeConn(rows=[])
     await _repo(conn).list_for_caller(
-        USER, scope="system", genre="xianxia", status="active",
-        language="en", q="pact", limit=25,
+        USER, scope="system", genre="xianxia", status="active", q="pact", limit=25,
     )
     sql, params = conn.calls[0]
     assert "= ANY(genre_tags)" in sql
     assert "ILIKE" in sql
-    assert "xianxia" in params and "active" in params and "en" in params
+    assert "xianxia" in params and "active" in params
     assert "%pact%" in params
     assert params[-1] == 25                  # LIMIT bound last
+
+
+async def test_a_display_language_never_becomes_a_where_clause():
+    """ARC-I18N. `language` used to be BOTH the stored language and the requested one,
+    and as a WHERE arm it could only ever SUBTRACT: asking for Vietnamese hid every arc
+    not stored in Vietnamese instead of showing it translated. With all 31 live rows
+    authored in `en`, that is an empty library — the same shape as
+    D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL, which had already fired once on motifs.
+
+    This asserts on the PREDICATE only: `original_language` is legitimately in the
+    projection, so a naive "language not in sql" would pass for the wrong reason."""
+    conn = _FakeConn(rows=[])
+    await _repo(conn).list_for_caller(USER, scope="all", display_language="vi")
+    sql, params = conn.calls[0]
+    predicate = sql.split("FROM arc_template", 1)[1]
+    assert "language" not in predicate, "display language re-words, it must never filter"
+    assert "vi" not in params
 
 
 # ── patch: owner-scoped + version guard ────────────────────────────────────────────
@@ -304,13 +320,13 @@ async def test_catalog_projection_is_allow_list_no_leak():
 
 async def test_list_public_filters_public_active_and_returns_total():
     row = {
-        "id": uuid.uuid4(), "code": "arc.x", "language": "en", "name": "X",
+        "id": uuid.uuid4(), "code": "arc.x", "original_language": "en", "name": "X",
         "summary": "", "genre_tags": ["xianxia"], "chapter_span": 30,
         "threads": '[{"key": "combat"}]', "source": "authored", "version": 1,
         "updated_at": None,
     }
     conn = _FakeConn(rows=[row], scalar=7)
-    items, total = await _repo(conn).list_public(genre="xianxia", q="x", language="en")
+    items, total = await _repo(conn).list_public(genre="xianxia", q="x")
     # the LIST query (calls[0]) carries the public+active filter + allow-list cols.
     list_sql, _ = conn.calls[0]
     assert "visibility = 'public'" in list_sql and "status = 'active'" in list_sql

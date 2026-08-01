@@ -52,7 +52,7 @@
   "guidedCueStart": "创建你的第一个场景，然后编写开场并点击“生成” — 或者在编辑器中从光标处“继续”。",
   "guidedStart": "开始写作",
   "compose": "创作",
-  "cowriter": "Co-writer",
+  "cowriter": "共同作者",
   "cw": {
     "insert": "作为草稿插入",
     "use_as_guide": "用作指南",
@@ -79,7 +79,7 @@
   "inline": {
     "mode": "写作模式",
     "mode_classic": "经典",
-    "mode_ai": "AI",
+    "mode_ai": "AI 模式",
     "continue": "继续",
     "continueFromCursor": "从光标处继续",
     "continueHint": "从你的光标处流式生成 AI 续写。",
@@ -428,6 +428,7 @@
   "pacing": "节奏",
   "canon_consistency": "设定一致性",
   "dismiss": "忽略",
+  "overrideSlipBlocked": "接受已拦截：一个“如果”版本的覆盖值已滑回正文数值。请在接受前重新生成。",
   "overrideSlipExhausted": "在达到重新生成上限后覆盖项仍在滑回 — 已提交供您审核（接受不再受阻）。",
   "overrideSlipDetail": "{{name}} ({{field}}): 预期为 “{{expected}}”，实际为 “{{found}}”",
   "deltaInconsistencyDetail": "{{name}}: 违反了差异规则 “{{rule}}”",
@@ -972,6 +973,47 @@
       "degradedLibrary": "未按匹配度排序 —— 由于共享库的嵌入模型尚未配置，这些是基于类型的备选方案，而非评分匹配项。",
       "sectionMine": "您的主题",
       "sectionLibrary": "来自库"
+    },
+    "language": {
+      "writtenIn": "书写语言为",
+      "authored": "手写翻译",
+      "staleShort": "已过时",
+      "missingYours": "并非 {{lang}} 语言 — 将回退至原文",
+      "systemFree": "内置主题提供所有支持语言的版本 — 当前主题尚未提供您所用语言的翻译。",
+      "adoptFirst": "将此主题添加到您的库中以进行翻译。",
+      "translateTo": "翻译为",
+      "model": "翻译模型",
+      "translate": "翻译…",
+      "retranslate": "重新翻译…",
+      "alreadyHave": "已翻译",
+      "estimating": "正在估算…",
+      "youPay": "您的专属动机（Motif）不会自动翻译 —— 这将使用您的模型进行处理，费用由您承担。",
+      "confirmWhat": "使用您的模型将此动机翻译为 {{lang}}。",
+      "echoed": "{{count}} 个字段未被翻译 —— 您的模型可能无法很好地处理该语言。",
+      "again": "翻译另一种语言",
+      "quota": "已达到消费限额。",
+      "failed": "翻译失败。",
+      "outcome": {
+        "translated": "已翻译为 {{lang}}。",
+        "already_original": "该动机已使用该语言编写。",
+        "already_translated": "已翻译且内容仍为最新 —— 您未被扣费。",
+        "authored_kept": "已存在手写翻译，并予以保留。",
+        "nothing_to_translate": "该动机没有需要翻译的文本。",
+        "not_translatable": "您无权翻译此动机。",
+        "model_failed": "您的模型未返回任何可用内容 — 未保存任何数据。",
+        "failed": "翻译失败。",
+        "cancelled": "在此主题翻译前已取消 — 您未被扣费。"
+      },
+      "skipped": "您选择的 {{count}} 个主题不属于您的翻译范围，因此未包含在内。"
+    },
+    "batch": {
+      "open": "翻译…",
+      "selected": "已选择 {{count}} 个",
+      "excluded": "{{count}} 个不属于您的翻译范围（内置内容在所有语言中均已免费；请先采用公开版本）",
+      "run": "翻译 {{count}} 个…",
+      "overCap": "每次翻译任务最多处理 {{cap}} 个 motif — 请取消选择 {{over}} 个。",
+      "confirmWhat": "使用您的模型将 {{count}} 个 motif 翻译为 {{lang}}。",
+      "doneTitle": "已将 {{total}} 个中的 {{written}} 个翻译为 {{lang}}"
     }
   },
   "authoringRun": {
@@ -1084,7 +1126,7 @@
       "cancel": "取消",
       "reverting": "正在还原…",
       "partialTitle": "还原中途停止",
-      "partialBody": "Unit {{index}} failed to restore ({{error}}). {{count}} unit(s) reverted successfully before the stop; the run is left open (same state as before) so you can retry.",
+      "partialBody": "单元 {{index}} 还原失败 ({{error}})。在停止前已成功还原 {{count}} 个单元；运行状态保持开启（与之前状态一致），以便您重试。",
       "successBody": "所有 {{count}} 个单元均已还原；运行已关闭。"
     },
     "mission": {
@@ -1093,5 +1135,10 @@
       "back": "← 返回运行列表"
     }
   },
-  "overrideSlipBlocked": "接受已拦截：一个“如果”版本的覆盖值已滑回正文数值。请在接受前重新生成。"
+  "canonUncheckedNoRules": "尚无本场景人物的资料可供比对",
+  "canonUncheckedUnverifiedInput": "本次检查所需的部分数据未能载入，结果并不完整",
+  "canonUncheckedUnparseable": "审校模型没有返回可用的答复",
+  "canonUncheckedFailed": "检查本身出错了",
+  "canonUncheckedOther": "本次检查无法执行",
+  "canonUncheckedWhich": "有 {{count}} 项检查未完成"
 }

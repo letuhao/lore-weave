@@ -84,13 +84,16 @@ EXCLUDE_DIRS = {
 # Delete each row as the module routes its own retrieved text through the
 # sanitizer (or, for the upstream ones, once verified end-to-end).
 BASELINE: frozenset[str] = frozenset({
+    # sanitized upstream — the module delegates its prompt building to a sibling that
+    # DOES sanitize, and per-file coverage cannot see across the call. Kept listed
+    # rather than cleared: security-conservative, same as the chat-service pair below.
+    "services/composition-service/app/services/glossary_build/engine.py",
     # sanitized upstream at the stream_service chokepoint (kctx.context)
     "services/chat-service/app/services/compact_service.py",
     "services/chat-service/app/services/composer.py",
     # genuine gaps — composition-service has no sanitizer anywhere
     "services/composition-service/app/engine/canon_check.py",
     "services/composition-service/app/engine/canon_reflect.py",
-    "services/composition-service/app/engine/cowrite.py",
     "services/composition-service/app/engine/critic.py",
     "services/composition-service/app/engine/motif_conformance.py",
     "services/composition-service/app/engine/motif_deconstruct.py",
@@ -98,6 +101,23 @@ BASELINE: frozenset[str] = frozenset({
     "services/composition-service/app/engine/self_heal.py",
     "services/composition-service/app/routers/engine.py",
     "services/composition-service/app/worker/operations.py",
+    # select.py — the diverge/converge core. Added 2026-08-01 when D-SCENE-BEATS slice 2
+    # gave it the word "passage" (a chunk of prose the model WRITES), which is a (b) marker
+    # meant for a RETRIEVED passage. The word is right for the feature and was not renamed
+    # to dodge the regex; the row is the honest alternative.
+    #
+    # In substance it belongs with the two rows above it, which it feeds: it has assembled
+    # prompts from `packed_prompt` — carrying `<lore>` from imported book text — since A1,
+    # and was invisible here only for lack of a marker word. Its content IS neutralised, by
+    # the packer at assembly (`app/packer/assemble.py` + `sanitize.py`), which per-file
+    # coverage cannot see.
+    #
+    # The one genuinely NEW untrusted flow it introduced — one passage's model output
+    # becoming the next passage's prompt, where a `<lore>` payload could steer a forged
+    # closing tag — is closed at the point the string is built (`cowrite.build_beat_scope`
+    # → `sanitize_prose_context`), not here. Putting an unused import in this file to turn
+    # the regex green would be a claim, not a defense.
+    "services/composition-service/app/engine/select.py",
     # genuine gap — passages selector doesn't neutralize like the wiki path
     "services/knowledge-service/app/context/selectors/passages.py",
     # sanitized upstream in knowledge wiki/context.py (IR spans neutralized)
@@ -151,10 +171,28 @@ RETRIEVED_TEXT = re.compile(
 # (`map(neutralize_injection, …)`) rather than calling it. None exists; if one
 # appears, it gets a BASELINE row with a note, which is the right amount of
 # friction for something that reads as unsanitized at a glance.
+# MERGE 2026-08-02 — the tightening above arrived on `main`, and it also DELETED the two
+# `from …sanitize import` alternatives this pattern used to carry. That silently un-covered
+# six composition-service modules (cowrite · cross_scene_check · error_block_heal ·
+# motif_plan · plan_forge/material_search · glossary_build/prompts), because composition does
+# not use `loreweave_grounding`'s sanitizer — it has its own, `app/packer/sanitize.py` (§13
+# SEC3: fullwidth-escape the assembly delimiters, then TAG directive spans rather than delete
+# them). Those six were matched by the import alternative alone, which is exactly the weakness
+# main was right to remove.
+#
+# So the call-forms are named explicitly rather than the import restored. Verified before
+# adding, not assumed: each of the six CALLS one of these (read at the call site), and
+# `app/packer/sanitize.py` is the ONLY definer of all four names in the repo
+# (`grep -rn "^def neutralize(" services sdks` → one hit), so no unrelated module can be
+# laundered by a same-named local helper.
 SANITIZER_REF = re.compile(
     r"\bneutralize_injection\s*\("
     r"|\bneutralize_proposal_text\s*\("
     r"|\bscan_injection\s*\("
+    r"|\bneutralize\s*\("
+    r"|\bsanitize_lore\s*\("
+    r"|\bsanitize_guide\s*\("
+    r"|\bsanitize_prose_context\s*\("
 )
 
 

@@ -45,7 +45,7 @@
     "advanced": "โมเดลขั้นสูง (ไม่บังคับ)",
     "embeddingWarnTitle": "การดำเนินการนี้จะลบกราฟความรู้ (knowledge graph) เดิมของโปรเจกต์",
     "embeddingWarnBody": "การเปลี่ยนโมเดล embedding จะเป็นการเริ่มสร้าง embedding ใหม่ทั้งหมด ยืนยันเพื่อดำเนินการต่อ หรือเลือกโปรเจกต์ที่ว่างอยู่",
-    "projectEmbedding": "Project embedding: {{model}} · reranker: {{rerank}}",
+    "projectEmbedding": "การฝังโปรเจกต์: {{model}} · reranker: {{rerank}}",
     "role": {
       "extractor": "Extractor (ความรู้) — จำเป็น",
       "translator": "Translator — จำเป็น",
@@ -75,11 +75,11 @@
     "stage": "ขั้นตอน",
     "status": "สถานะ",
     "tokens": "Tokens (เข้า/ออก)",
-    "usd": "USD",
     "localFree": "🖥 {{kind}} · ฟรี",
     "cloud": "☁ {{kind}}",
     "launching": "กำลังเริ่มแคมเปญ…",
-    "launch": "เริ่มแคมเปญ"
+    "launch": "เริ่มแคมเปญ",
+    "usd": "USD"
   },
   "list": {
     "title": "แคมเปญ Auto-Draft",

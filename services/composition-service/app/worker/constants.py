@@ -37,6 +37,10 @@ SUPPORTED_OPERATIONS: frozenset[str] = frozenset(
     {"decompose_preview", "plan_pipeline", "stitch_chapter", "generate", "chapter_generate",
      "selection_edit", "mine_motifs", "analyze_reference", "conformance_run", "self_heal_propose",
      "quality_report", "promise_coverage", "plan_forge_propose", "plan_forge_refine",
+     # The user-paid library translate (Tier-W, motif | arc_template). Retryable: the
+     # confirm effect persists the full envelope (kind + ids + target + model), and the
+     # engine re-checks tenancy on every run rather than trusting the proposal.
+     "translate_library",
      # 27 V2-C2 — ONE op runs ANY of the seven compiler passes; which one is `input['pass_id']`.
      # Seven ops would have meant seven dispatch branches drifting apart from one registry.
      "plan_pass"}

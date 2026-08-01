@@ -8,6 +8,14 @@
   "select": "选择",
   "dismiss": "忽略",
   "createNew": "创建新项",
+  "createAs": "将“{{name}}”创建为…",
+  "kind": {
+    "character": "角色",
+    "location": "地点",
+    "organization": "组织",
+    "concept": "概念",
+    "item": "物品"
+  },
   "filterEntities": "筛选实体...",
   "noEntities": "本章节未检测到实体",
   "showHighlights": "显示术语表高亮",
@@ -110,6 +118,7 @@
     "new_kind_code_hint": "仅限小写字母、数字和下划线。将用作稳定标识符。",
     "merge_all": "应用到所有以 \"{{code}}\" 形式出现的 {{count}} 个实体",
     "merge_all_hint": "创建一个可重复使用的别名，以便未来提取到该代码时自动解析。",
+    "same_code_note": "又有 {{count}} 个实体以 «{{code}}» 形式到达 — 请在此处逐一解决。",
     "cancel": "取消",
     "apply": "应用",
     "saving": "应用中...",
@@ -142,17 +151,9 @@
     },
     "actor": {
       "user": "你",
-      "pipeline": "AI",
-      "system": "系统"
+      "system": "系统",
+      "pipeline": "AI"
     },
     "error": "无法加载版本历史。"
-  },
-  "createAs": "将“{{name}}”创建为…",
-  "kind": {
-    "character": "角色",
-    "location": "地点",
-    "organization": "组织",
-    "concept": "概念",
-    "item": "物品"
   }
 }

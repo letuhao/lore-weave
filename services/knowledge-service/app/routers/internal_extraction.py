@@ -39,7 +39,11 @@ from app.ontology.extraction_projection import (
     build_extraction_schema,
     resolved_to_extraction_dict,
 )
-from app.extraction.anchor_loader import Anchor, load_glossary_anchors
+from app.extraction.anchor_loader import (
+    Anchor,
+    AnchorPreloadUnavailable,
+    load_glossary_anchors,
+)
 from loreweave_extraction.schema_projection import ExtractionSchema
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.extractors.entity import LLMEntityCandidate
@@ -99,6 +103,22 @@ class ExtractItemRequest(BaseModel):
 
     # Previously known entities for context enrichment
     known_entities: list[str] = Field(default_factory=list)
+
+    # FD-4 (066) — the chapter's reading-order ordinal (book-service sort_order). The SAME
+    # field `PersistPass2Request` already carries, and for the same reason: without it every
+    # extracted Event lands with `event_order = NULL`, and `pass2_writer` then discards its
+    # `status_effects` ("no place on the reading axis"), so no `:EntityStatus` is ever written.
+    #
+    # The two extraction entry points had diverged on exactly the field the liveness store
+    # needs. `persist_pass2` (the import/worker path) took it; this one (the AUTHORING path a
+    # book written from scratch uses) did not, so a book composed in the product could never
+    # populate the store its own canon guard reads. MEASURED live 2026-08-01 on a throwaway
+    # book: 8 events, every event_order NULL, 0 :EntityStatus, on prose whose own extracted
+    # summary read "Castor falls and dies at the Bridge of Ash".
+    #
+    # ge=0 for the same reason `PersistPass2Request.chapter_index` is: a 0-based sort_order
+    # must not 422 an otherwise-good extraction.
+    chapter_index: int | None = Field(default=None, ge=0)
 
 
 class ExtractItemResponse(BaseModel):
@@ -438,15 +458,21 @@ async def _load_anchors_for_extraction(
 ) -> list[Anchor]:
     """K13.0 Pass 0: pre-load glossary anchors before Pass 2 runs.
 
-    Returns an empty list (extraction proceeds without anchor bias) if:
+    Returns an empty list when there are legitimately NO anchors to load:
       - project_id is None (chat-only, no book)
       - no knowledge_projects row matches (user_id, project_id)
       - project has no book_id linked (Mode 1 project)
+
+    Raises `AnchorPreloadUnavailable` when the anchors could not be READ:
       - glossary_client.list_entities fails (circuit open, 5xx, …)
       - any Neo4j hiccup during the upsert loop
 
-    Per-entry failures inside load_glossary_anchors are already
-    isolated there; this helper only handles the outer envelope.
+    The split is the whole point. Both used to return [], so "this book has no
+    glossary" and "the glossary is unreachable" were indistinguishable to every
+    caller — and the second one silently produces duplicate entities.
+
+    Per-entry failures inside load_glossary_anchors are still isolated there; one
+    bad row must not fail a chapter.
 
     **P-K13.0-01:** results are cached per `(user_id, project_id)`
     with a 60s TTL so bulk extraction jobs don't re-run the glossary
@@ -482,15 +508,41 @@ async def _load_anchors_for_extraction(
             )
         _anchor_cache[cache_key] = anchors
         return anchors
-    except Exception:
+    except AnchorPreloadUnavailable:
+        raise
+    except Exception as exc:
         logger.warning(
-            "K13.0: anchor pre-load failed for project=%s — "
-            "extraction will run without anchor bias",
+            "K13.0: anchor pre-load failed for project=%s — refusing to extract "
+            "un-anchored",
             project_id, exc_info=True,
         )
         # Don't cache failures — a transient glossary outage
         # shouldn't lock in empty anchors for 60s.
-        return []
+        raise AnchorPreloadUnavailable(
+            f"anchor pre-load failed for project={project_id}: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+
+
+async def _anchors_or_retryable(
+    *, user_id: UUID, project_id: UUID | None,
+) -> list[Anchor]:
+    """Pre-load anchors, or fail the item with a RETRYABLE status.
+
+    The old posture was to swallow the failure and extract anyway. That trades a
+    cheap, automatic retry for expensive, manual cleanup: with no anchor index the
+    resolver cannot see that an entity already exists, so it mints a new node per
+    name and a human has to merge them back afterwards. 503 is deliberate —
+    worker-ai treats it as retryable and re-drives the item.
+    """
+    try:
+        return await _load_anchors_for_extraction(
+            user_id=user_id, project_id=project_id,
+        )
+    except AnchorPreloadUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc),
+        ) from exc
 
 
 # ── Endpoint ─────────────────────────────────────────────────────────
@@ -535,9 +587,9 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
         )
         job_logs_repo = None
 
-    # K13.0 — pre-load glossary anchors. Degrades to [] on any failure
-    # so extraction still runs (without duplicate-reduction benefit).
-    anchors = await _load_anchors_for_extraction(
+    # K13.0 — pre-load glossary anchors. FAILS CLOSED (503, retryable): running
+    # un-anchored mints duplicates that only a human can merge back.
+    anchors = await _anchors_or_retryable(
         user_id=body.user_id, project_id=body.project_id,
     )
 
@@ -587,6 +639,7 @@ async def extract_item(body: ExtractItemRequest) -> ExtractItemResponse:
                     job_id=str(body.job_id),
                     chapter_text=body.chapter_text,
                     known_entities=body.known_entities,
+                    chapter_index=body.chapter_index,  # FD-4 — event_order → status_effects
                     model_source=body.model_source,
                     model_ref=body.model_ref,
                     llm_client=llm_client,
@@ -699,7 +752,7 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
     # K13.0 — same anchor pre-load as extract-item. Cached per
     # (user_id, project_id) for 60s so a 100-chapter job doesn't
     # re-fetch the glossary 100 times.
-    anchors = await _load_anchors_for_extraction(
+    anchors = await _anchors_or_retryable(
         user_id=body.user_id, project_id=body.project_id,
     )
 

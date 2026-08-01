@@ -161,6 +161,80 @@ async def backfill_passages(project_id: UUID) -> dict:
     return {"project_id": str(project_id), **result}
 
 
+@router.post("/{project_id}/backfill-glossary-passages")
+async def backfill_glossary_passages(project_id: UUID) -> dict:
+    """Index every glossary entity of the project's book as a `:Passage`.
+
+    `source_type='glossary'` was a declared member of KNOWN_SOURCE_TYPES with NO
+    producer, so authored lore was never semantically retrievable — the composition
+    lore lens could only ever find chapter passages, i.e. prose already written. A book
+    whose glossary was built BEFORE chapter 1 therefore had an empty lore lens.
+
+    This backfills what the event path now maintains going forward. Idempotent: each
+    entity's passage carries a content hash, so re-running re-embeds only what changed.
+
+    Returns a per-outcome tally rather than a bare "ok" — `no_embedding_model: 14` is
+    the answer the caller needs to act on, and reporting it as success is precisely the
+    silent no-op this endpoint exists to end.
+    """
+    row = await get_knowledge_pool().fetchrow(
+        "SELECT user_id, book_id, embedding_model, embedding_dimension "
+        "FROM knowledge_projects WHERE project_id = $1 LIMIT 1",
+        project_id,
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="project not found",
+        )
+    if not settings.neo4j_uri:
+        return {"project_id": str(project_id), "skipped": "neo4j_unavailable"}
+    if row["book_id"] is None:
+        return {"project_id": str(project_id), "skipped": "no_linked_book"}
+
+    from app.clients.glossary_client import get_glossary_client
+    from app.events.handlers import index_glossary_entity_passage
+
+    # Enumerate via entity-ids, NOT known-entities: the latter is the extraction anchor
+    # list (frequency-filtered, and it reads the display name from the attribute coded
+    # `name`, which `terminology` does not have). Live-measured, it silently skipped 2 of
+    # 14 entities while reporting a complete-looking count.
+    listed = await get_glossary_client().list_entity_ids(row["book_id"])
+    if listed is None:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail="glossary-service unavailable",
+        )
+    entities, truncated = listed
+
+    outcomes: dict[str, int] = {}
+    for ent in entities:
+        raw_id = ent.get("entity_id")
+        if not raw_id:
+            continue
+        try:
+            entity_uuid = UUID(str(raw_id))
+        except ValueError:
+            continue
+        outcome = await index_glossary_entity_passage(
+            book_id=row["book_id"], user_id=row["user_id"],
+            project_id=project_id, glossary_entity_id=entity_uuid,
+            embedding_model=row["embedding_model"],
+            embedding_dim=row["embedding_dimension"],
+        )
+        outcomes[outcome] = outcomes.get(outcome, 0) + 1
+
+    logger.info(
+        "glossary passage backfill project=%s entities=%d outcomes=%s",
+        project_id, len(entities), outcomes,
+    )
+    return {
+        "project_id": str(project_id),
+        "entities_seen": len(entities),
+        "outcomes": outcomes,
+        # Never a silent cap — the caller must know the walk stopped early.
+        "truncated": truncated,
+    }
+
+
 class BackfillStatusRequest(BaseModel):
     """A2-S1b-2 — the model used to classify existing event summaries into
     coarse status. Mirrors the extraction model-selection shape."""

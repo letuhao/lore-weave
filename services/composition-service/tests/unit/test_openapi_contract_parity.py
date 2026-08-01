@@ -58,12 +58,16 @@ def _declared_ops(spec: dict[str, Any]) -> list[tuple[str, str]]:
 
 
 def _live_ops() -> set[tuple[str, str]]:
-    """(METHOD, full path) for every route actually mounted on the app."""
-    return {
-        (method.upper(), route.path)
-        for route in app.routes
-        for method in (getattr(route, "methods", None) or ())
-    }
+    """(METHOD, full path) for every route actually mounted on the app.
+
+    FastAPI 0.139 stopped copying included sub-routes into `app.routes`; it appends one
+    `_IncludedRouter` wrapper per include instead. Iterating `app.routes` directly saw FIVE
+    top-level routes out of 202 — so this parity check reported 31 real, served endpoints as
+    "declared but not served". It was not measuring the app, it was measuring the FastAPI
+    version. `route_ops` walks the wrappers and re-applies their prefixes.
+    """
+    from loreweave_obs.routes import route_ops
+    return route_ops(app)
 
 
 def test_every_declared_path_exists_on_the_app(spec: dict[str, Any]) -> None:

@@ -428,6 +428,7 @@
   "pacing": "ritmo",
   "canon_consistency": "canon",
   "dismiss": "descartar",
+  "overrideSlipBlocked": "Aceptar el error: una versión «qué pasaría si» se ha deslizado de vuelta al valor del canon. Regenerar antes de aceptar.",
   "overrideSlipExhausted": "La anulación persiste tras alcanzar el límite de regeneración — se ha mostrado para tu revisión (la aceptación ya no está bloqueada).",
   "overrideSlipDetail": "{{name}} ({{field}}): se esperaba «{{expected}}», se encontró «{{found}}»",
   "deltaInconsistencyDetail": "{{name}}: contradice la regla delta «{{rule}}»",
@@ -972,6 +973,47 @@
       "degradedLibrary": "No están clasificados por relevancia; el modelo de embedding de la biblioteca compartida no está configurado, por lo que estos son valores predeterminados por género, no coincidencias puntuadas.",
       "sectionMine": "Tus motivos",
       "sectionLibrary": "De la biblioteca"
+    },
+    "language": {
+      "writtenIn": "Escrito en",
+      "authored": "traducción manuscrita",
+      "staleShort": "desactualizado",
+      "missingYours": "no está en {{lang}} — se mostrará el original",
+      "systemFree": "Los motivos integrados se ofrecen en todos los idiomas compatibles; este aún no tiene traducción para tu idioma.",
+      "adoptFirst": "Añade este motivo a tu biblioteca para traducirlo.",
+      "translateTo": "Traducir a",
+      "model": "Modelo de traducción",
+      "translate": "Traducir…",
+      "retranslate": "Volver a traducir…",
+      "alreadyHave": "Ya traducido",
+      "estimating": "Calculando…",
+      "youPay": "Tus propios motivos nunca se traducen automáticamente; esto se ejecuta con tu modelo y a tu cargo.",
+      "confirmWhat": "Traducir este motivo a {{lang}} usando tu modelo.",
+      "echoed": "Se han devuelto {{count}} campo(s) sin traducir; es posible que tu modelo no gestione bien este idioma.",
+      "again": "Traducir a otro idioma",
+      "quota": "Límite de gasto alcanzado.",
+      "failed": "Error en la traducción.",
+      "outcome": {
+        "translated": "Traducido a {{lang}}.",
+        "already_original": "Este motivo ya está escrito en ese idioma.",
+        "already_translated": "Ya está traducido y sigue vigente; no se te ha cobrado.",
+        "authored_kept": "Existe una traducción escrita a mano y se ha mantenido.",
+        "nothing_to_translate": "Este motivo no tiene texto para traducir.",
+        "not_translatable": "No tienes permiso para traducir este motivo.",
+        "model_failed": "Tu modelo no devolvió nada útil; no se ha guardado nada.",
+        "failed": "Error en la traducción.",
+        "cancelled": "Cancelado antes de que este motivo fuera traducido; no se te ha cobrado por ello."
+      },
+      "skipped": "{{count}} de los motivos que elegiste no te pertenecen para traducir y no se han incluido."
+    },
+    "batch": {
+      "open": "Traducir…",
+      "selected": "{{count}} seleccionados",
+      "excluded": "{{count}} no son tuyos para traducir (los integrados ya son gratuitos en todos los idiomas; adopta uno público primero)",
+      "run": "Traducir {{count}}…",
+      "overCap": "Máximo {{cap}} motivos por tarea de traducción; deselecciona {{over}}.",
+      "confirmWhat": "Traducir {{count}} motivo(s) a {{lang}} usando tu modelo.",
+      "doneTitle": "{{written}} de {{total}} traducidos a {{lang}}"
     }
   },
   "authoringRun": {
@@ -1093,5 +1135,10 @@
       "back": "← Volver a la lista de ejecuciones"
     }
   },
-  "overrideSlipBlocked": "Aceptar el error: una versión «qué pasaría si» se ha deslizado de vuelta al valor del canon. Regenerar antes de aceptar."
+  "canonUncheckedNoRules": "todavía no se sabe nada de los personajes de esta escena con lo que contrastar",
+  "canonUncheckedUnverifiedInput": "parte de lo que necesitaba esta comprobación no se pudo cargar, así que está incompleta",
+  "canonUncheckedUnparseable": "el modelo revisor no devolvió una respuesta utilizable",
+  "canonUncheckedFailed": "la propia comprobación falló",
+  "canonUncheckedOther": "esta comprobación no se pudo ejecutar",
+  "canonUncheckedWhich": "{{count}} de sus comprobaciones no se completaron"
 }

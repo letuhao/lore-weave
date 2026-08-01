@@ -97,12 +97,12 @@
     "col_input": "輸入",
     "col_output": "輸出",
     "col_cost": "成本",
-    "cell_ok": "200 OK",
     "cell_error": "錯誤",
     "cell_rejected": "已拒絕",
     "collapse_details": "收合詳細資料",
     "expand_details": "展開詳細資料",
-    "no_logs": "找不到使用記錄。"
+    "no_logs": "找不到使用記錄。",
+    "cell_ok": "200 OK"
   },
   "detail": {
     "load_failed": "載入詳細資料失敗",

@@ -33,12 +33,10 @@ export function UnknownEntitiesPanel({ bookId, kinds, onClose }: Props) {
   }, [items]);
 
   const handleResolve = async (entity: UnknownEntity, r: ResolveResult) => {
+    // One outcome now: the bulk 'merged' branch went with the alias write (SS-4 removed it; it
+    // 405s, see useUnknownReview). It returns with SS-7.
     const outcome = await resolve(entity, r);
-    if (outcome.action === 'merged') {
-      toast.success(t('unknown.toast_merged', { count: outcome.count, code: outcome.code }));
-    } else {
-      toast.success(t('unknown.toast_reassigned', { name: outcome.name || t('unknown.unnamed') }));
-    }
+    toast.success(t('unknown.toast_reassigned', { name: outcome.name || t('unknown.unnamed') }));
     setActive(null);
   };
 

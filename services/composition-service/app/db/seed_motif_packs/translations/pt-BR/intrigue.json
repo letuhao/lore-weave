@@ -1,0 +1,334 @@
+{
+  "intrigue.double_agent_reveal": {
+    "beats": {
+      "insider_acts": {
+        "intent": "o grupo confia plenamente no infiltrado",
+        "label": "Ações do infiltrado"
+      },
+      "note": {
+        "intent": "um vazamento preciso demais para ser coincidência",
+        "label": "Pequena inconsistência notada"
+      },
+      "trap": {
+        "intent": "um segredo falso é plantado como isca",
+        "label": "Armadilha para confirmação"
+      },
+      "unmask": {
+        "intent": "confirmar o traidor e virá-lo",
+        "label": "Desmascarar e converter"
+      }
+    },
+    "effects": [
+      "o espião é identificado e recrutado ou eliminado",
+      "a confiança dentro do grupo é reestruturada"
+    ],
+    "emotion_target": "suspense",
+    "examples": [
+      "Um vazamento de informações preciso demais para ser coincidência; um segredo falso, lançado como isca, prova quem anda espalhando boatos — e para quem."
+    ],
+    "name": "Revelação do Agente Duplo",
+    "preconditions": [
+      "um vazamento de informações preciso demais para ser coincidência sugere que um aliado de confiança foi comprometido"
+    ],
+    "roles": {
+      "confidant": {
+        "constraints": [
+          "ajuda a preparar a isca"
+        ],
+        "label": "o confidente"
+      },
+      "mole": {
+        "constraints": [
+          "alguém de confiança do grupo"
+        ],
+        "label": "o infiltrado"
+      },
+      "protagonist": {
+        "constraints": [
+          "caçando o vazamento silenciosamente"
+        ],
+        "label": "quem suspeita"
+      }
+    },
+    "summary": "Um vazamento preciso demais para ser coincidência; um segredo falso usado como isca prova quem espalha as notícias — e para quem — e acaba por converter o traidor."
+  },
+  "intrigue.feigned_alliance": {
+    "beats": {
+      "betray": {
+        "intent": "romper o pacto quando for vantajoso",
+        "label": "Trair no ponto de virada"
+      },
+      "offer": {
+        "intent": "propor um pacto que o aliado aceitará",
+        "label": "Oferecer aliança"
+      },
+      "realign": {
+        "intent": "converter a traição em vantagem estratégica",
+        "label": "Realinhamento"
+      },
+      "rely": {
+        "intent": "o aliado compromete recursos ou confiança",
+        "label": "O aliado confia no pacto"
+      },
+      "share": {
+        "intent": "revelar o suficiente para ser acreditado",
+        "label": "Compartilhar verdade parcial"
+      }
+    },
+    "effects": [
+      "o aliado é descartado no momento de maior influência",
+      "o conspirador obtém a vantagem"
+    ],
+    "emotion_target": "tensão",
+    "examples": [
+      "Um pacto sincero, um segredo compartilhado apenas verdadeiro o suficiente para gerar confiança — até o momento em que romper o acordo se torna lucrativo."
+    ],
+    "name": "Aliança Fingida",
+    "preconditions": [
+      "o conspirador e o alvo compartilham um objetivo comum plausível"
+    ],
+    "roles": {
+      "advantage": {
+        "constraints": [
+          "o prêmio da traição"
+        ],
+        "label": "a vantagem buscada"
+      },
+      "false_ally": {
+        "constraints": [
+          "confia no pacto"
+        ],
+        "label": "o aliado enganado"
+      },
+      "schemer": {
+        "constraints": [
+          "oferece um pacto falso"
+        ],
+        "label": "o conspirador"
+      }
+    },
+    "summary": "Um pacto sincero e um segredo compartilhado, verdadeiros o suficiente para gerar confiança, até o momento em que a traição se torna vantajosa no ponto de virada."
+  },
+  "intrigue.loyalty_test_trap": {
+    "beats": {
+      "act": {
+        "intent": "agir com base na verdade revelada",
+        "label": "Recompensar ou purgar"
+      },
+      "observe": {
+        "intent": "vigiar quem morde a isca",
+        "label": "Observar a reação"
+      },
+      "stage": {
+        "intent": "armar uma oportunidade isca",
+        "label": "Preparar uma tentação"
+      },
+      "verdict": {
+        "intent": "o teste resolve a questão da confiança ou da traição",
+        "label": "Aprovação ou reprovação da lealdade"
+      }
+    },
+    "effects": [
+      "a verdadeira lealdade do testado é revelada",
+      "o detentor do poder recompensa ou expulsa conforme o resultado"
+    ],
+    "emotion_target": "suspense",
+    "examples": [
+      "Uma porta deixada propositalmente aberta é, na verdade, um teste; quem atravessa revela exatamente o que o observador precisava saber."
+    ],
+    "name": "Armadilha de Teste de Lealdade",
+    "preconditions": [
+      "quem detém o poder suspeita de uma deslealdade oculta"
+    ],
+    "roles": {
+      "loyalty_proof": {
+        "constraints": [
+          "o que o teste extrai"
+        ],
+        "label": "a prova de lealdade"
+      },
+      "power_holder": {
+        "constraints": [
+          "prepara a tentação"
+        ],
+        "label": "o detentor do poder"
+      },
+      "suspect": {
+        "constraints": [
+          "a parte testada"
+        ],
+        "label": "o traidor suspeito"
+      }
+    },
+    "summary": "Uma porta deixada propositalmente aberta é, na verdade, um teste; quem atravessa revela exatamente o que o observador precisava saber."
+  },
+  "intrigue.planted_evidence_scheme": {
+    "beats": {
+      "act": {
+        "intent": "a vítima morde a isca da armadilha",
+        "label": "A vítima age baseada na crença falsa"
+      },
+      "bait": {
+        "intent": "seduzir a vítima para que ela reaja",
+        "label": "Atrair a vítima para a ação"
+      },
+      "counter": {
+        "intent": "as consequências são direcionadas para o benefício do conspirador",
+        "label": "Contragolpe"
+      },
+      "plant": {
+        "intent": "colocar a evidência adulterada onde ela será encontrada",
+        "label": "Plantar a prova falsa"
+      },
+      "reveal": {
+        "intent": "a «prova» surge, deixando o conspirador intocado",
+        "label": "Revelação de negação plausível"
+      }
+    },
+    "effects": [
+      "a vítima é desacreditada ou condenada com base em falsas premissas",
+      "a mão do conspirador permanece oculta"
+    ],
+    "emotion_target": "pavor",
+    "examples": [
+      "Um livro de contabilidade adulterado é deixado onde o rival irá encontrar e «expor» — caminhando direto para a armadilha que o incrimina."
+    ],
+    "name": "Esquema de Evidência Plantada",
+    "preconditions": [
+      "o conspirador consegue plantar uma evidência que a autoridade aceitará como verdadeira"
+    ],
+    "roles": {
+      "agent": {
+        "constraints": [
+          "carrega a isca sem saber"
+        ],
+        "label": "o agente involuntário"
+      },
+      "authority": {
+        "constraints": [
+          "julga com base na prova visível"
+        ],
+        "label": "a autoridade decisora"
+      },
+      "schemer": {
+        "constraints": [
+          "planta a prova falsa"
+        ],
+        "label": "o articulador"
+      },
+      "victim": {
+        "constraints": [
+          "age baseada na crença falsa"
+        ],
+        "label": "a vítima visada"
+      }
+    },
+    "summary": "Uma prova adulterada é colocada onde o rival irá encontrá-la e «expor» o conteúdo, atraindo a vítima para agir com base em uma crença falsa e cair em uma armadilha de difícil rastreio."
+  },
+  "intrigue.scapegoat_substitution": {
+    "beats": {
+      "frame": {
+        "intent": "selecionar um bode expiatório culpável",
+        "label": "Armar para uma parte menor"
+      },
+      "must_pin": {
+        "intent": "a culpa deve recair sobre alguém",
+        "label": "A culpa deve ser atribuída"
+      },
+      "steer": {
+        "intent": "guiar o inquérito até o bode expiatório",
+        "label": "Evidências manipuladas"
+      },
+      "walk_free": {
+        "intent": "o verdadeiro culpado escapa da detecção",
+        "label": "O verdadeiro culpado escapa livre"
+      }
+    },
+    "effects": [
+      "o bode expiatório assume a culpa",
+      "o verdadeiro autor escapa da responsabilidade"
+    ],
+    "emotion_target": "pavor",
+    "examples": [
+      "Quando a culpa precisa recair sobre alguém, a mão astuta garante que ela caia sobre um inocente."
+    ],
+    "name": "Substituição do Bode Expiatório",
+    "preconditions": [
+      "um crime exige um culpado e o verdadeiro autor deve permanecer oculto"
+    ],
+    "roles": {
+      "investigators": {
+        "constraints": [
+          "induzidos ao alvo errado"
+        ],
+        "label": "os investigadores"
+      },
+      "scapegoat": {
+        "constraints": [
+          "uma parte menor e culpável"
+        ],
+        "label": "o bode expiatório"
+      },
+      "schemer": {
+        "constraints": [
+          "o verdadeiro culpado"
+        ],
+        "label": "o articulador"
+      }
+    },
+    "summary": "Quando a culpa precisa recair sobre alguém, a mão astuta garante que ela caia sobre uma parte menos relevante, enquanto o verdadeiro culpado escapa impune."
+  },
+  "intrigue.whisper_campaign": {
+    "beats": {
+      "isolate": {
+        "intent": "o alvo perde seu prestígio",
+        "label": "Alvo isolado"
+      },
+      "seed": {
+        "intent": "plantar uma única dúvida",
+        "label": "Semear o boato"
+      },
+      "spread": {
+        "intent": "a dúvida se repete por vozes involuntárias",
+        "label": "O boato se espalha"
+      },
+      "withdraw": {
+        "intent": "o protetor do alvo recua",
+        "label": "Patrono retira o apoio"
+      }
+    },
+    "effects": [
+      "o alvo fica isolado e perde seu patrono",
+      "a verdadeira origem do boato permanece oculta"
+    ],
+    "emotion_target": "desconforto",
+    "examples": [
+      "Uma única dúvida plantada, repetida por vozes que desconhecem sua origem, até que o alvo se veja sozinho."
+    ],
+    "name": "Campanha de Rumores",
+    "preconditions": [
+      "o alvo depende do prestígio de um patrono ou de uma corte"
+    ],
+    "roles": {
+      "court": {
+        "constraints": [
+          "propaga o boato sem saber"
+        ],
+        "label": "a corte ou o conselho"
+      },
+      "schemer": {
+        "constraints": [
+          "é o autor do boato"
+        ],
+        "label": "o conspirador"
+      },
+      "target": {
+        "constraints": [
+          "é isolado pelo boato"
+        ],
+        "label": "o alvo"
+      }
+    },
+    "summary": "Uma única dúvida plantada, repetida por vozes que desconhecem sua origem, isola o alvo até que seu patrono retire o apoio."
+  }
+}

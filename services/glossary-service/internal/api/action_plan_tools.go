@@ -25,6 +25,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/loreweave/grantclient"
 
+	"github.com/loreweave/glossary-service/internal/llmbudget"
 	"github.com/loreweave/glossary-service/internal/sanitize"
 	llm "github.com/loreweave/loreweave_llm"
 	plankit "github.com/loreweave/loreweave_mcp"
@@ -210,12 +211,22 @@ func (s *Server) runPlanner(ctx context.Context, client *llm.Client, userID, mod
 		Messages:        []llm.Message{{Role: "system", Content: sys}, {Role: "user", Content: user}},
 		Temperature:     0,
 		ReasoningEffort: llm.ReasoningNone, // don't burn the output budget on hidden thinking
+		// ...and then declare the budget that comment is protecting. This request had none:
+		// MaxTokens left 0 is the platform's "omit — let the model decide" sentinel, which is
+		// right for a translation and wrong for a call that parses JSON.
+		MaxTokens: llmbudget.MaxTokensFor("action_plan"),
 	}
 	cctx, cancel := context.WithTimeout(ctx, plannerTimeout)
 	defer cancel()
 	res, err := client.Complete(cctx, req, userID)
 	if err != nil {
 		return plankit.Plan{}, fmt.Errorf("planner model error: %w", err)
+	}
+	// A clip must never reach the repair round below — that round says "Your previous output
+	// was invalid", which misattributes a capacity failure as a syntax one and sends the model
+	// to fix grammar it never got wrong. See internal/llmbudget.
+	if llmbudget.Truncated(res.FinishReason) {
+		return plankit.Plan{}, llmbudget.TruncationError("action_plan", res.Usage.OutputTokens)
 	}
 	plan, verr := s.parseAndValidatePlan(bookID, goal, res.Text)
 	if verr == nil {
@@ -227,7 +238,9 @@ func (s *Server) runPlanner(ctx context.Context, client *llm.Client, userID, mod
 		return plankit.Plan{}, verr
 	}
 	// One repair round: show the model its prior output + the precise validation error.
+	// The repair re-emits the SAME object, so it needs the same room.
 	repair := req
+	repair.MaxTokens = llmbudget.MaxTokensFor("action_plan_repair")
 	repair.Messages = []llm.Message{
 		{Role: "system", Content: sys},
 		{Role: "user", Content: user},

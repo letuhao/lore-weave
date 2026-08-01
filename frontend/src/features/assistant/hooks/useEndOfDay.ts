@@ -33,18 +33,22 @@ export function useEndOfDay(bookId: string | null) {
     setError(null);
     setEntry(null);
     try {
-      // The distiller LLM is the user's chosen chat model — read it off the assistant session
-      // (Q8 server-side model resolution is a follow-up; for now the session carries it).
+      // Q8 (the follow-up this comment used to promise) — the SERVER resolves the distiller's
+      // model: the user's `distill` default, else their `chat` default. We deliberately send
+      // neither.
+      //
+      // This used to read the model off the assistant session, which pinned the distiller to
+      // the CHAT model and made the `distill` capability setting dead: changing it had no
+      // effect because the FE's value always won. That is not a cosmetic mismatch — chat and
+      // distill want different models. A reasoning-style chat model returns its whole answer
+      // as `reasoning_content` with an empty `content`, so the distiller logged
+      // "BLANK completion → model_no_output" and the day produced no diary entry at all, while
+      // the user's chosen non-reasoning distill model sat unused.
       const sess = await chatApi.listSessions(accessToken, 'active', bookId);
-      const assistant = sess.items.find((s) => s.session_kind === 'assistant') ?? sess.items[0];
-      if (!assistant) {
-        throw new Error('Say a few things first — the assistant needs a model to write your entry.');
+      if (!sess.items.some((s) => s.session_kind === 'assistant') && sess.items.length === 0) {
+        throw new Error('Say a few things first — there is nothing to write about yet.');
       }
-      const res = await assistantApi.endDay(accessToken, {
-        book_id: bookId,
-        model_source: assistant.model_source,
-        model_ref: assistant.model_ref,
-      });
+      const res = await assistantApi.endDay(accessToken, { book_id: bookId });
       const targetDate = res.entry_date;
       if (!targetDate) {
         // The server always echoes the day it enqueued. Its absence means we can't identify THIS

@@ -23,11 +23,13 @@ import re
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.packer.profile import BookProfile
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +138,7 @@ def build_critique_prompt(
 async def judge_prose(
     judge: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     passage: str, active_rules: list[dict[str, Any]], present_facts: list[str],
-    profile: BookProfile, max_tokens: int = 1536, trace_id: str | None = None,
+    profile: BookProfile, max_tokens: int = max_tokens_for("judge_prose"), trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Run the advisory critique. Returns the generation_job.critic dict. CC4:
@@ -152,13 +154,8 @@ async def judge_prose(
                              {"role": "user", "content": user}],
                 "response_format": {"type": "text"}, "temperature": 0.0,
                 "max_tokens": max_tokens,
-                # Disable hidden thinking: reasoning_effort="none" is the knob
-                # that actually works for LM Studio + Qwen3.6 (chat_template_kwargs
-                # alone is a no-op there). The critic emits JSON, so reasoning
-                # tokens are pure budget-burn. Kept chat_template_kwargs for models
-                # that honor the template flag instead.
-                "reasoning_effort": "none",
-                "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
+                # The critic emits JSON, so reasoning tokens are pure budget-burn.
+                **no_thinking_fields(),
             },
             job_meta={"usage_purpose": "prose_critic", "extractor": "judge_prose"}, trace_id=trace_id,
             cancel_check=cancel_check,

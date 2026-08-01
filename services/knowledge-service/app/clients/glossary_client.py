@@ -39,6 +39,23 @@ KNOWN_ENTITIES_MAX_PAGE = 500
 KNOWN_ENTITIES_MAX_PAGES = 40
 
 
+class GlossaryContextAttribute(BaseModel):
+    """One authored attribute value. Mirrors glossary-service's `contextAttribute`.
+
+    `field_type` rides along because a `tags` value arrives as a JSON-encoded array
+    string; `lang` because a passage indexed as "unknown" never gets the reader-language
+    ordering boost, which would bury a vi author's own lore under off-language hits.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    code: str = ""
+    label: str = ""
+    field_type: str = "text"
+    value: str = ""
+    lang: str = ""
+
+
 class GlossaryEntityForContext(BaseModel):
     """Mirror of glossary-service's selectForContext row (K2b)."""
 
@@ -52,6 +69,8 @@ class GlossaryEntityForContext(BaseModel):
     is_pinned: bool = False
     tier: str = ""
     rank_score: float = 0.0
+    # Present only when the caller asked for it (entities/by-ids include_attributes).
+    attributes: list[GlossaryContextAttribute] = Field(default_factory=list)
 
 
 class GlossaryClient:
@@ -383,8 +402,57 @@ class GlossaryClient:
                 return None
             return resp.json()
         except (httpx.HTTPError, ValueError) as exc:
-            logger.warning("glossary list-entities failed: %s", exc)
+            # Log the TYPE, not just str(exc): an httpx timeout stringifies to the
+            # EMPTY string, so this line read "glossary list-entities failed: " and said
+            # nothing. That mattered — this is the anchor pre-load, and its failure
+            # silently degrades a whole chapter's extraction into minting duplicates
+            # beside the author's canon (live-caught 2026-07-27, and it cost a long dig
+            # to identify precisely because the message was blank).
+            logger.warning(
+                "glossary list-entities failed: %s: %s",
+                type(exc).__name__, exc or "(no detail — likely a timeout)",
+            )
             return None
+
+    async def list_entity_ids(
+        self, book_id: UUID, *, page_size: int = 200, max_pages: int = 50,
+    ) -> tuple[list[dict], bool] | None:
+        """GET /internal/books/{book_id}/entity-ids — EVERY alive entity of the book.
+
+        Deliberately NOT `list_all_entities`: that walks `known-entities`, the extraction
+        ANCHOR list, which filters by chapter-mention frequency and reads the display name
+        from the attribute literally coded `name`. A kind that identifies itself otherwise
+        (`terminology` uses `term`) yields an empty name and drops out — live-measured, it
+        silently missed 2 of 14 entities while the count looked complete.
+
+        Returns ``(rows, truncated)``; None if the first page fails. `truncated` is True
+        only when `max_pages` ran out with more to come — never a silent cap.
+        """
+        rows: list[dict] = []
+        offset = 0
+        for _page in range(max_pages):
+            url = f"{self._base_url}/internal/books/{book_id}/entity-ids"
+            try:
+                resp = await self._http.get(
+                    url, params={"limit": page_size, "offset": offset},
+                )
+                if resp.status_code != 200:
+                    logger.warning("glossary entity-ids → %d", resp.status_code)
+                    return (rows, True) if rows else None
+                data = resp.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning("glossary entity-ids failed: %s", exc)
+                return (rows, True) if rows else None
+            rows.extend(data.get("items") or [])
+            next_offset = data.get("next_offset")
+            if next_offset is None:
+                return rows, False
+            offset = next_offset
+        logger.warning(
+            "glossary entity-ids: hit max_pages=%d for book=%s (%d rows)",
+            max_pages, book_id, len(rows),
+        )
+        return rows, True
 
     async def list_all_entities(
         self,
@@ -520,6 +588,7 @@ class GlossaryClient:
         book_id: UUID,
         entity_ids: list[str],
         language: str | None = None,
+        include_attributes: bool = False,
     ) -> list[GlossaryEntityForContext]:
         """POST /internal/books/{book_id}/entities/by-ids (mui #4).
 
@@ -528,6 +597,10 @@ class GlossaryClient:
         failure — the caller degrades to FTS.
 
         `language` (S6, optional): augment aliases with the per-language set.
+        `include_attributes` (optional): also return the authored attribute VALUES.
+        Off by default — the semantic selector only needs identity. The glossary
+        passage producer sets it, because a passage built from identity alone is
+        exactly the empty-lore bug it exists to fix.
         """
         if not entity_ids:
             return []
@@ -535,6 +608,8 @@ class GlossaryClient:
         body: dict = {"entity_ids": entity_ids}
         if language:
             body["language"] = language
+        if include_attributes:
+            body["include_attributes"] = True
         try:
             resp = await self._http.post(
                 url, json=body,

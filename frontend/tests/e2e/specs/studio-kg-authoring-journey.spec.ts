@@ -173,6 +173,12 @@ test.describe('@s7 Studio · KG entity authoring journey (blackbox)', () => {
     await expect(kg.graphView, 'STEP 7 — the graph must render (real nodes, not a blank canvas)').toBeVisible({ timeout: 15_000 });
     const firstNode = kg.graphNode().first();
     await expect(firstNode, 'STEP 7 — at least one graph node must render').toBeVisible({ timeout: 15_000 });
+    // "renders" has to mean it says the entity's NAME. `relmap-node` renders `{node.name}`,
+    // so a payload drift leaves a present, visible, unlabelled node and a visibility-only
+    // assertion waves it through — the failure the motif graph shipped for a release.
+    // Scoped to the authored hero rather than the first node, so it cannot pass on any node.
+    await expect(kg.graphNode().filter({ hasText: HERO }).first(),
+      'STEP 7 — the authored entity is LABELLED on the graph, not a blank node').toBeVisible({ timeout: 15_000 });
     await firstNode.click();
     await expect(
       kg.detail,

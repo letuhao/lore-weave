@@ -92,7 +92,11 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 		SELECT
 			e.entity_id,
 			k.code AS kind_code,
-			COALESCE(name_av.original_value, '')  AS entity_name,
+			-- D-GLOSSARY-KNOWN-ENTITIES-NAME-BLIND (same class): the name attribute
+			-- does not exist on every kind (terminology identifies itself with term),
+			-- so this rendered an empty name. cached_name is trigger-maintained and
+			-- already kind-aware.
+			COALESCE(NULLIF(name_av.original_value, ''), e.cached_name, '')  AS entity_name,
 			COALESCE(alias_av.original_value, '') AS aliases_raw,
 			COUNT(DISTINCT cl.chapter_id)         AS frequency,
 			MIN(cl.chapter_index)                 AS first_chapter_index,

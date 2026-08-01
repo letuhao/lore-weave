@@ -149,3 +149,75 @@ def test_plan_forge_worker_ops_registered():
 
 def test_plan_forge_llm_error_is_business_error():
     assert PlanForgeLLMError in _BUSINESS_ERRORS
+
+
+# ── the repetition loop: the failure that actually killed a live run ─────────────────────────────
+
+_LOOP = '{"document_summary": "' + ("0_" * 9000) + '"'   # 18k chars, unterminated — a real loop's shape
+
+
+@pytest.mark.asyncio
+async def test_a_degenerate_response_is_REGENERATED_not_repaired():
+    """A repetition loop handed to a repair prompt returns a minimal valid object that flows
+    downstream as if it were a real read of the author's document. Regenerate instead."""
+    from app.engine.plan_forge.propose_llm_async import _parse_with_repair
+
+    llm = _MockLLMClient([_LOOP, json.dumps({"document_summary": "ok", "arcs": [], "events": []})])
+    client = ProviderPlanForgeLLM(
+        llm, user_id="u", model_source="user_model", model_ref="m",  # type: ignore[arg-type]
+    )
+    out = await _parse_with_repair(client, "analyze", "sys", "usr", "analyze_repair")
+    assert out["document_summary"] == "ok"
+    steps = [e["step"] for e in client.io_log]
+    assert steps == ["analyze", "analyze_retry1"], f"repaired instead of regenerating: {steps}"
+
+
+@pytest.mark.asyncio
+async def test_regeneration_ESCALATES_the_anti_loop_penalty():
+    """The repetition penalty is the only lever that targets a repetition loop — a grammar cannot
+    forbid a loop inside a JSON string. Each regeneration must climb, not repeat the same call."""
+    from app.engine.plan_forge.propose_llm_async import _ANTI_LOOP_BASE, _parse_with_repair
+
+    llm = _MockLLMClient([_LOOP, _LOOP, json.dumps({"document_summary": "ok"})])
+    client = ProviderPlanForgeLLM(
+        llm, user_id="u", model_source="user_model", model_ref="m",  # type: ignore[arg-type]
+    )
+    out = await _parse_with_repair(client, "analyze", "sys", "usr", "analyze_repair")
+    assert out["document_summary"] == "ok"
+    penalties = [c["input"]["frequency_penalty"] for c in llm.calls]
+    assert penalties[0] == _ANTI_LOOP_BASE
+    assert penalties[1] > penalties[0] and penalties[2] > penalties[1], penalties
+
+
+@pytest.mark.asyncio
+async def test_an_UNFIXABLE_loop_fails_with_an_actionable_error():
+    """Measured live on the author's own 4,278-char document: attempt 1 returned 31,401 chars and the
+    single retry 26,420 — both loops — and the run died on a bare `ValueError: unbalanced JSON
+    braces`, because the retry's result was parsed with nothing around it. A failure has to say what
+    happened and what to do."""
+    from app.engine.plan_forge.propose_llm_async import _MAX_REGENERATIONS, _parse_with_repair
+
+    llm = _MockLLMClient([_LOOP] * (_MAX_REGENERATIONS + 1))
+    client = ProviderPlanForgeLLM(
+        llm, user_id="u", model_source="user_model", model_ref="m",  # type: ignore[arg-type]
+    )
+    with pytest.raises(PlanForgeLLMError) as ei:
+        await _parse_with_repair(client, "analyze", "sys", "usr", "analyze_repair")
+    msg = str(ei.value)
+    assert "repetition loop" in msg and "different planner model" in msg
+    assert len(llm.calls) == _MAX_REGENERATIONS + 1, "gave up early, or repaired the loop anyway"
+
+
+@pytest.mark.asyncio
+async def test_a_SMALL_unparseable_response_still_goes_to_repair():
+    """Regeneration must not swallow the case repair exists for: a short answer wrapped in prose is a
+    formatting slip, and one cheap repair call fixes it."""
+    from app.engine.plan_forge.propose_llm_async import _parse_with_repair
+
+    llm = _MockLLMClient(["here you go: {oops", json.dumps({"document_summary": "ok"})])
+    client = ProviderPlanForgeLLM(
+        llm, user_id="u", model_source="user_model", model_ref="m",  # type: ignore[arg-type]
+    )
+    out = await _parse_with_repair(client, "analyze", "sys", "usr", "analyze_repair")
+    assert out["document_summary"] == "ok"
+    assert [e["step"] for e in client.io_log] == ["analyze", "analyze_repair"]

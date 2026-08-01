@@ -37,10 +37,26 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "Anchor",
+    "AnchorPreloadUnavailable",
     "ProjectionResult",
     "load_glossary_anchors",
     "project_glossary_entities_to_nodes",
 ]
+
+
+class AnchorPreloadUnavailable(RuntimeError):
+    """The glossary could not be READ, so we do not know what already exists.
+
+    Distinct from an empty result, which is a real answer ("this book has no curated
+    entities"). This is the absence of an answer, and the two must never be conflated:
+    running extraction on an empty anchor index makes the resolver mint a fresh node
+    for every name in the chapter, and those duplicates are not automatically
+    reversible — a human has to merge them back by hand.
+
+    A failed read is transient by nature; a retried chapter costs one LLM call, a
+    silently un-anchored chapter costs manual cleanup. So this fails CLOSED.
+    """
+
 
 
 @dataclass(frozen=True)
@@ -77,11 +93,15 @@ async def load_glossary_anchors(
     for them. Behavior is preserved; callers may now opt in to a real filter.
 
     Degradation model:
-      - glossary_client returns None (circuit open / HTTP error) → log
-        at WARNING and return []. Extraction should still run without
-        anchors rather than abort.
-      - Empty list from glossary → return []. Normal state for a fresh
-        book with no curated entries yet.
+      - glossary_client returns None (circuit open / HTTP error) → raise
+        `AnchorPreloadUnavailable`. This USED to return [] "so extraction still
+        runs", which reads as resilience and is not: with no anchors the resolver
+        mints a new node for every name in the chapter, and un-merging them is
+        manual work. Retrying a chapter is cheap; hand-merging duplicates is not.
+      - Empty list from glossary → return []. This means the book genuinely has no
+        curated entries. It used to ALSO mean "it has entries, but none has been
+        mentioned in two chapters yet" — a silent failure indistinguishable from the
+        normal state, which is why the frequency gate below is now explicitly disabled.
       - Per-entry upsert failure (bad data, driver hiccup) → log
         exception and skip that entry so one bad row doesn't poison
         the whole pre-load.
@@ -93,16 +113,30 @@ async def load_glossary_anchors(
     # inheriting the handler's silent default of 50 — so a book with 300 curated
     # entities pre-loaded only 50 anchors and let the extractor mint DUPLICATE
     # nodes for the other 250. Page the whole set instead.
+    # D-ANCHOR-PRELOAD-FREQUENCY-GATE: `min_frequency` defaults to 2 in the client
+    # (mirroring the Go handler's `HAVING COUNT(chapter_links) >= 2`), and this call
+    # never overrode it — so an entity had to be MENTIONED IN TWO CHAPTERS before it
+    # could become an anchor. For a book being written from scratch every curated entity
+    # has zero chapter links, so the pre-load returned NOTHING and the extractor ran
+    # blind against the author's own glossary. Live-measured on Mị Đế: 0 anchors at the
+    # default, 12 at min_frequency=0.
+    #
+    # Frequency is the wrong signal here. It is a relevance heuristic for "what matters
+    # in this book so far" (the chat intent gate's question). An anchor's job is the
+    # opposite: tell the extractor THIS ALREADY EXISTS so it links instead of minting a
+    # duplicate — and for that, existence IS the signal. The human curated the entry;
+    # that is the strongest possible endorsement, and it is available before any prose
+    # is written. Anchors become an in-memory name→kind index (pass2_orchestrator), not
+    # prompt text, so the larger set costs no token budget, and the 60s TTL cache in
+    # internal_extraction amortises the bigger read across a whole extraction job.
     page = await glossary_client.list_all_entities(
-        book_id, status_filter=status_filter,
+        book_id, status_filter=status_filter, min_frequency=0,
     )
     if page is None:
-        logger.warning(
-            "K13.0: glossary list_all_entities failed for book=%s — "
-            "skipping anchor pre-load (extractor will mint-on-no-match)",
-            book_id,
+        raise AnchorPreloadUnavailable(
+            f"glossary entity read failed for book={book_id} — refusing to extract "
+            "un-anchored (the extractor would mint duplicates that need manual merge)"
         )
-        return []
     raw, truncated = page
     if truncated:
         logger.warning(

@@ -1,0 +1,379 @@
+{
+  "survival.mercy_at_the_door": {
+    "beats": {
+      "answer": {
+        "intent": "la decisión se toma bajo presión temporal",
+        "label": "La puerta se abre o se cierra"
+      },
+      "ask": {
+        "intent": "un extraño solicita entrada con un relato imposible de verificar",
+        "label": "Alguien pide entrar"
+      },
+      "consequence": {
+        "intent": "el desenlace recae sobre la persona que tomó la decisión",
+        "label": "La responsabilidad recae en quien decide"
+      },
+      "weigh": {
+        "intent": "se demuestra que ambas opciones son defendibles",
+        "label": "Compasión frente a aritmética"
+      }
+    },
+    "effects": [
+      "el umbral del grupo para admitir extraños queda marcado por este precedente",
+      "quien decide carga con las consecuencias de forma personal"
+    ],
+    "emotion_target": "angustia",
+    "examples": [
+      "Ella seguía hablando tras la puerta cuando votaron y, después, nadie lograba ponerse de acuerdo sobre cuánto tiempo había durado aquella voz."
+    ],
+    "name": "Alguien pide entrar",
+    "preconditions": [
+      "un lugar fortificado y un forastero cuyo relato no puede ser verificado a tiempo"
+    ],
+    "roles": {
+      "decider": {
+        "constraints": [
+          "debe elegir antes de conocer la verdad"
+        ],
+        "label": "quien responde a la puerta"
+      },
+      "inside": {
+        "constraints": [
+          "asumen el riesgo de cualquier forma"
+        ],
+        "label": "quienes ya están dentro"
+      },
+      "outsider": {
+        "constraints": [
+          "su historia no puede ser verificada a tiempo"
+        ],
+        "label": "quien pide entrar"
+      }
+    },
+    "summary": "Un extraño pide entrar con un relato que puede ser cierto o mentira, y ambas respuestas son defendibles: abrir la puerta pone en peligro a todos; cerrarla significa la muerte de quien llama. La elección se toma bajo presión temporal y con información incompleta, y la consecuencia —sea cual sea— recae sobre quien ha decidido."
+  },
+  "survival.not_enough_for_everyone": {
+    "beats": {
+      "allocate": {
+        "intent": "alguien decide, bajo el principio que sea capaz de defender",
+        "label": "Se realiza la asignación"
+      },
+      "count": {
+        "intent": "la escasez se establece como un hecho aritmético",
+        "label": "El recuento es insuficiente"
+      },
+      "name": {
+        "intent": "la abstracción se materializa en personas específicas",
+        "label": "La escasez tiene nombres"
+      },
+      "remember": {
+        "intent": "la decisión se convierte en un hecho permanente para el grupo",
+        "label": "Los excluidos lo recuerdan"
+      }
+    },
+    "effects": [
+      "la jerarquía real del grupo queda expuesta ante todos sus miembros",
+      "los excluidos guardan un agravio con nombre y apellido"
+    ],
+    "emotion_target": "desesperación",
+    "examples": [
+      "Había nueve dosis y once personas, la discusión duró cuatro minutos y nadie volvió a hablar del tema jamás."
+    ],
+    "name": "No hay para todos",
+    "preconditions": [
+      "un recurso cuantificable y más demandantes que unidades disponibles"
+    ],
+    "roles": {
+      "allocator": {
+        "constraints": [
+          "tendrá que convivir con los excluidos"
+        ],
+        "label": "quien debe decidir"
+      },
+      "excluded": {
+        "constraints": [
+          "están presentes y tienen nombre"
+        ],
+        "label": "quienes no lo reciben"
+      },
+      "resource": {
+        "constraints": [
+          "es cuantificable y claramente insuficiente"
+        ],
+        "label": "el recurso escaso"
+      }
+    },
+    "summary": "Un recurso vital —agua, insulina, asientos, munición, combustible— se contabiliza y se descubre que es insuficiente, y esa escasez tiene nombres propios. La asignación es realizada por personas que deberán seguir conviviendo entre sí después, y lo que el grupo descubre sobre sí mismo en esa hora perdurará mucho más que el propio recurso."
+  },
+  "survival.one_of_us_is_compromised": {
+    "beats": {
+      "sign": {
+        "intent": "surge evidencia de que alguien en el grupo ya no es una persona segura",
+        "label": "Aparece una señal"
+      },
+      "suspect": {
+        "intent": "el grupo se vuelca contra el más plausible en lugar del real",
+        "label": "La sospecha elige un objetivo"
+      },
+      "untestable": {
+        "intent": "no existe una forma fiable de identificar quién es",
+        "label": "La prueba les falla"
+      },
+      "wrong": {
+        "intent": "se ejecuta la decisión y su error se vuelve evidente",
+        "label": "La decisión errónea se consuma"
+      }
+    },
+    "effects": [
+      "el grupo ha actuado de forma irreversible basándose en una conjetura",
+      "la verdadera amenaza sigue presente y ahora es más difícil de denunciar"
+    ],
+    "emotion_target": "paranoia",
+    "examples": [
+      "Se observaron las manos los unos a los otros durante tres días y, al final, fue el hombre al que nadie había vigilado quien no despertó con normalidad."
+    ],
+    "name": "Uno de nosotros ya no es quien era",
+    "preconditions": [
+      "una amenaza que se oculta en el seno del grupo y resiste cualquier verificación"
+    ],
+    "roles": {
+      "accused": {
+        "constraints": [
+          "es un candidato lógico por razones ajenas a la verdad"
+        ],
+        "label": "el sospechoso más plausible"
+      },
+      "compromised": {
+        "constraints": [
+          "puede que ni siquiera lo sepa"
+        ],
+        "label": "el que está realmente comprometido"
+      },
+      "group": {
+        "constraints": [
+          "no puede verificar lo que necesita saber"
+        ],
+        "label": "el grupo que debe decidir"
+      }
+    },
+    "summary": "Alguien en el grupo está infectado, transformado, actúa como informante o, de cualquier otro modo, ha dejado de ser una persona segura, pero la prueba que podría confirmarlo es poco fiable, lenta o inexistente. La sospecha realiza el trabajo que la evidencia no puede; el grupo se vuelve contra el sospechoso más plausible en lugar del real, y la decisión errónea resulta más costosa que el compromiso mismo."
+  },
+  "survival.relic_of_before": {
+    "beats": {
+      "reveal": {
+        "intent": "la decisión revela cuánto del viejo mundo aún conservan",
+        "label": "La elección revela su realidad"
+      },
+      "spend": {
+        "intent": "se nombra un precio real por seguir cargando con él",
+        "label": "El coste de conservarlo"
+      },
+      "surface": {
+        "intent": "se encuentra un objeto del mundo que ha terminado",
+        "label": "La reliquia emerge"
+      },
+      "worthless": {
+        "intent": "se establece con claridad tanto su inutilidad como su significado",
+        "label": "Inútil e inestimable"
+      }
+    },
+    "effects": [
+      "queda en evidencia qué tan lejos ha llegado el grupo de lo que solía ser",
+      "surge una división entre quienes estarían dispuestos a pagar por el sentido y quienes no"
+    ],
+    "emotion_target": "melancolía",
+    "examples": [
+      "La radio nunca volvería a funcionar y pesaba tanto como dos días de agua, y él la cargó durante nueve días antes de soltarla."
+    ],
+    "name": "Algo de antes",
+    "preconditions": [
+      "un cálculo de supervivencia tan estricto que el sentimiento tiene un coste mensurable"
+    ],
+    "roles": {
+      "keeper": {
+        "constraints": [
+          "es incapaz de justificar su utilidad en términos de supervivencia"
+        ],
+        "label": "quien desea conservarlo"
+      },
+      "pragmatist": {
+        "constraints": [
+          "se rige por la lógica aritmética"
+        ],
+        "label": "quien calcula el coste"
+      },
+      "relic": {
+        "constraints": [
+          "carece de valor práctico"
+        ],
+        "label": "el objeto de antes"
+      }
+    },
+    "summary": "Un objeto del mundo que terminó sale a la luz —una fotografía, una radio que aún funciona, un frasco con algo dulce, el zapato de un niño— y carece de valor bajo cualquier cálculo de supervivencia, pero es inestimable bajo cualquier otro criterio. Lo que la gente esté dispuesta a sacrificar para conservarlo dice más sobre su situación actual que cualquier inventario."
+  },
+  "survival.rules_of_the_new_world": {
+    "beats": {
+      "break": {
+        "intent": "el mundo familiar deja de comportarse visiblemente como debería",
+        "label": "Lo cotidiano deja de funcionar"
+      },
+      "infer": {
+        "intent": "se enuncia en voz alta una regla provisional a partir de un único suceso",
+        "label": "Se infiere la regla"
+      },
+      "lesson": {
+        "intent": "una muerte demuestra la existencia de un límite que nadie conocía",
+        "label": "La primera lección cuesta una vida"
+      },
+      "obey": {
+        "intent": "el grupo sobrevive gracias a una regla que aún no puede explicar",
+        "label": "Sobrevivir obedeciéndola"
+      }
+    },
+    "effects": [
+      "el grupo posee una regla operativa que aún no comprende",
+      "se sabe que el precio de aprender cada nueva regla es una vida"
+    ],
+    "emotion_target": "pavor",
+    "examples": [
+      "Nadie sabía por qué se llevaban a los que corrían y no a los que se quedaban quietos, pero al segundo día, nadie volvió a correr."
+    ],
+    "name": "Aprender la regla por las malas",
+    "preconditions": [
+      "un mundo cuyas reglas de funcionamiento han cambiado sin previo aviso"
+    ],
+    "roles": {
+      "lost": {
+        "constraints": [
+          "murió haciendo algo cotidiano"
+        ],
+        "label": "quien enseñó la lección con su muerte"
+      },
+      "rule": {
+        "constraints": [
+          "es provisional y carece de explicación"
+        ],
+        "label": "la regla inferida"
+      },
+      "survivor": {
+        "constraints": [
+          "solo dispone de un único dato para trabajar"
+        ],
+        "label": "quien infiere la regla"
+      },
+      "world": {
+        "constraints": [
+          "no ofrece advertencias ni segundas oportunidades"
+        ],
+        "label": "el mundo transformado"
+      }
+    },
+    "summary": "El mundo ordinario deja de funcionar según sus viejas leyes —los muertos caminan, el cielo cambia, la red se apaga, la marea no baja— y la primera lección se paga con la vida de alguien. De esa muerte se infiere una regla que se enuncia en voz alta, y el grupo sobrevive hasta el siguiente capítulo precisamente en la medida en que obedecen una norma que aún no pueden explicar."
+  },
+  "survival.shelter_has_a_price": {
+    "beats": {
+      "decide": {
+        "intent": "se sopesa una seguridad inmediata frente a un precio que no se puede pagar indefinidamente",
+        "label": "Pagar o partir"
+      },
+      "find": {
+        "intent": "se alcanza un lugar genuinamente seguro y el alivio es real",
+        "label": "Se halla el refugio"
+      },
+      "terms": {
+        "intent": "el precio por permanecer se vuelve evidente",
+        "label": "Surgen las condiciones"
+      },
+      "trust": {
+        "intent": "el grupo se compromete a quedarse y renuncia a algo para lograrlo",
+        "label": "Se ofrece la confianza"
+      }
+    },
+    "effects": [
+      "el grupo ha aceptado las condiciones o ha vuelto a quedar a la intemperie",
+      "lo que cada miembro estaba dispuesto a aceptar sale a la luz ante los demás"
+    ],
+    "emotion_target": "inquietud",
+    "examples": [
+      "La puerta se cerró tras ellos y la comida estaba caliente y era real; pero a la mañana siguiente, alguien explicó el turno de trabajo y la regla."
+    ],
+    "name": "El refugio con precio",
+    "preconditions": [
+      "un grupo que no tiene otra alternativa viable que el refugio ofrecido"
+    ],
+    "roles": {
+      "arrivals": {
+        "constraints": [
+          "no tienen otro lugar a donde ir"
+        ],
+        "label": "los que llegan"
+      },
+      "holders": {
+        "constraints": [
+          "no son villanos, solo están establecidos"
+        ],
+        "label": "los que lo custodian"
+      },
+      "shelter": {
+        "constraints": [
+          "es genuinamente seguro"
+        ],
+        "label": "el refugio"
+      }
+    },
+    "summary": "Se halla un refugio genuinamente seguro —muros, comida, calor, un cerrojo que funciona— y el alivio es real. Entonces surgen las condiciones: un trabajo, una obediencia, una persona entregada, una regla sobre quién tiene permitido marcharse. El grupo debe sopesar una seguridad inmediata frente a un precio que no pueden pagar indefinidamente."
+  },
+  "survival.someone_has_to_decide": {
+    "beats": {
+      "grant": {
+        "intent": "el liderazgo es concedido por personas que resentirán haber cedido el mando",
+        "label": "Autoridad concedida, rencor acumulado"
+      },
+      "hold": {
+        "intent": "la elección funciona lo suficientemente bien como para que nadie la revierta",
+        "label": "La decisión se mantiene"
+      },
+      "speak": {
+        "intent": "una persona sin rango establece lo que se va a hacer",
+        "label": "Alguien lo dice en voz alta"
+      },
+      "vacuum": {
+        "intent": "se requiere una decisión y no existe una autoridad para tomarla",
+        "label": "Nadie está al mando"
+      }
+    },
+    "effects": [
+      "ahora existe un líder cuya legitimidad descansa en una sola tarde",
+      "quienes se dejaron llevar tienen un agravio a su disposición para más adelante"
+    ],
+    "emotion_target": "tensión",
+    "examples": [
+      "Él dijo «nos vamos al norte» y empezó a caminar, once personas le siguieron, y ese fue todo el proceso."
+    ],
+    "name": "Autoridad improvisada en una tarde",
+    "preconditions": [
+      "un grupo sin autoridad establecida ante una decisión que no puede esperar"
+    ],
+    "roles": {
+      "decision": {
+        "constraints": [
+          "debía tomarse antes de poder debatirse"
+        ],
+        "label": "la decisión que no podía esperar"
+      },
+      "group": {
+        "constraints": [
+          "otorgaron autoridad al no objetar"
+        ],
+        "label": "quienes permitieron que sucediera"
+      },
+      "leader": {
+        "constraints": [
+          "no tenía legitimidad para decidir"
+        ],
+        "label": "quien habló primero"
+      }
+    },
+    "summary": "Nadie está al mando y la decisión no puede esperar, así que alguien la toma; no el más fuerte ni el de mayor rango, sino quien se atrevió a pronunciar una frase en voz alta mientras los demás seguían mirándose unos a otros. La decisión resulta lo suficientemente buena como para que la gente le otorgue autoridad de forma retroactiva, aunque luego le guarden rencor."
+  }
+}

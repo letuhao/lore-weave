@@ -49,10 +49,10 @@
       "dropzone": "파일을 여기에 드롭하거나 클릭하여 탐색",
       "accept": ".txt .md .pdf .docx .epub — 스캔된 PDF는 OCR 처리됨",
       "ready": "{{chars}}자{{ocr}}",
-      "ocr": "OCR",
       "processing": "추출 중...",
       "failed": "실패",
-      "responsibility": "본인은 이 파일들에 대한 권리를 보유하고 있습니다 (소유 / 라이선스 / 퍼블릭 도메인). 법적 조언이 아닙니다."
+      "responsibility": "본인은 이 파일들에 대한 권리를 보유하고 있습니다 (소유 / 라이선스 / 퍼블릭 도메인). 법적 조언이 아닙니다.",
+      "ocr": "OCR"
     },
     "intent": {
       "label": "무엇을 만들고 싶으신가요?",
@@ -84,7 +84,6 @@
       "select_model": "선택...",
       "max_spend": "최대 사용량 (토큰)",
       "no_cap": "제한 없음",
-      "top_k": "Top-K",
       "technique": "기술",
       "technique_opt": {
         "retrieval": "검색 (P1)",
@@ -94,7 +93,8 @@
       "eval_gate_warning": "P2/P3는 검증 단계를 통과해야 합니다. 통과할 때까지 작업이 거부됩니다.",
       "dimensions": {
         "auto": "자동 — 모든 누락된 차원 보강"
-      }
+      },
+      "top_k": "Top-K"
     },
     "safety": "① 라이선스 · ② 추상화 · ③ 재현 방지 · ④ 사용자 승격 — 보강된 내용은 승격하기 전까지 변형본으로 유지됩니다.",
     "run_hint": "백그라운드 작업으로 실행됩니다. 준비가 되면 '제안' 목록에 나타납니다.",
@@ -234,7 +234,6 @@
     "max_gaps": "최대 공백 수",
     "max_spend": "최대 비용 (토큰)",
     "no_cap": "제한 없음",
-    "top_k": "Top-K",
     "gate_note": "P2 제작 / P3 재구성은 평가 게이트(다양한 심사위원)를 통과해야 합니다.",
     "auto_enrich": "자동 확장",
     "enrich_one": "확장",
@@ -247,7 +246,8 @@
       "missing": "누락된 차원",
       "rank": "순위",
       "action": "작업"
-    }
+    },
+    "top_k": "Top-K"
   },
   "sources": {
     "title": "출처",
@@ -327,7 +327,6 @@
     },
     "add_dimension": "차원 추가",
     "no_extra_dims": "이 유형에 대해 내장된 차원을 사용합니다.",
-    "dim_id": "id",
     "dim_label": "레이블",
     "dim_weight": "가중치",
     "dim_required": "필수 여부",
@@ -344,6 +343,7 @@
     "source": "출처: {{source}}",
     "source_seed": "시드",
     "source_ai_suggested": "AI 제안",
-    "source_manual": "수동"
+    "source_manual": "수동",
+    "dim_id": "id"
   }
 }

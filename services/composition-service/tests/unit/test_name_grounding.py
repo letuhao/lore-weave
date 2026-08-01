@@ -1,0 +1,253 @@
+"""D-CANON-GUARD-SKIPPED-WHOLE-CHAPTER — the guard that did not run, and the check that now does.
+
+The measurement, on a real chapter rather than a probe: FullArc book (10k words of existing
+prose, a 31-scene plan), four authored scenes, 8,116 words generated 2026-08-01. The drafter
+invented **"Mira"** — 7 mentions across 3 of the 4 scenes, given the mentor role that explains
+the chapter's central mechanic. The book contains **"Mina"** twice and **"Mira" zero times**;
+its cast is Cassius (36) and Silas (29).
+
+Every scene reported `canon=skipped_no_cast`, because `run_canon_reflect` returned a green
+before doing anything whenever the book had no bound glossary entities. "Nothing to check" was
+exactly backwards: a book whose cast was never extracted is the book where the model has
+nothing to anchor a name against.
+
+These tests hold two things: the check itself (including its negative control and its blind
+spot), and — more importantly — that it runs on the path that used to return early.
+"""
+from __future__ import annotations
+
+import pytest
+
+from app.engine.name_grounding import NEAR_MISS_MAX_DISTANCE, audit_names, extract_names
+
+GROUNDING = (
+    "<beat>goal=anchor the street</beat>\n"
+    "<present>Elara, the cartographer. Cassius, her master. Silas the Traveler. "
+    "Mina, a junior scribe.</present>\n"
+    "<recent>Elara knelt in the Void. Cassius had not followed her down. "
+    "Oakhaven was gone from every map.</recent>"
+)
+
+
+# ══ extraction ══
+
+def test_a_mid_sentence_capital_is_a_name():
+    assert "Elara" in extract_names("The room was cold. Elara did not move. Beside Elara, ash.")
+
+
+def test_a_sentence_opening_word_is_not_a_name():
+    """No stoplist: a proper name occurs capitalised MID-sentence, an ordinary word does not.
+    That one property does the work, and does not need to enumerate English."""
+    names = extract_names("The door opened. She waited. But nothing came. Then it did.")
+    assert names == set()
+
+
+def test_a_name_that_also_opens_a_sentence_still_counts():
+    assert "Cassius" in extract_names("Cassius spoke. The room went quiet, and Cassius sat.")
+
+
+def test_extraction_is_empty_on_empty_text():
+    assert extract_names("") == set()
+
+
+# ══ the finding this was built for ══
+
+def test_the_invented_name_from_the_real_chapter_is_reported():
+    """The case this module exists for, verbatim from the run that exposed it."""
+    a = audit_names("Elara knelt. Beside her, Mira lifted the quill.", GROUNDING)
+    assert a.method == "capitalised_latin"
+    assert "Mira" in a.unanchored
+
+
+def test_a_four_letter_name_gets_NO_near_miss_claim_even_though_one_looks_obvious():
+    """"Mira" IS one edit from "Mina" — and the claim is still withheld, on purpose.
+
+    The same run produced "Weaver's **Lane**" → near miss of "**Vane**": also length 4, also
+    distance 1, and a completely false accusation about a load-bearing character. No threshold
+    separates those two pairs, so claiming either means claiming both. Withdrawing the claim
+    costs an annotation; making it costs the author's trust in every annotation.
+
+    `Mira` is still REPORTED — as unanchored, which is the actionable half."""
+    a = audit_names("Elara knelt. Beside her, Mira lifted the quill. The Lane was empty.",
+                    GROUNDING + " Vane holds the Ledger.")
+    assert "Mira" in a.unanchored and "Lane" in a.unanchored
+    assert a.near_misses == []
+
+
+def test_a_near_miss_is_claimed_where_the_name_is_long_enough_to_mean_it():
+    """At seven characters a two-edit coincidence is no longer cheap."""
+    a = audit_names("She turned to Cassuis and waited.", GROUNDING)
+    hit = next(n for n in a.near_misses if n["name"] == "Cassuis")
+    assert hit["closest"] == "Cassius" and hit["distance"] <= 2
+
+
+def test_a_possessive_is_not_a_different_name_from_the_name():
+    """Measured: the first version reported `Elara’s` as a NEAR MISS of `Elara` — the check
+    accusing a name of being a corruption of itself — and `Don't`, `He's`, `You'll` as
+    invented characters. Roughly half of all its findings on the real chapter."""
+    a = audit_names("The ink took Elara’s hand. Cassius's shadow fell. He's gone, she said.",
+                    GROUNDING)
+    assert a.clean, f"{a.unanchored} {a.near_misses}"
+
+
+def test_a_wholly_new_name_is_unanchored_not_a_near_miss():
+    a = audit_names("Elara met Thornwick at the bridge.", GROUNDING)
+    assert "Thornwick" in a.unanchored
+    assert not any(n["name"] == "Thornwick" for n in a.near_misses)
+
+
+# ══ the negative control — a detector that only ever fires is not a detector ══
+
+def test_a_draft_using_only_known_names_is_clean():
+    a = audit_names(
+        "Elara knelt in the Void. Cassius watched. Silas had gone ahead to Oakhaven.",
+        GROUNDING)
+    assert a.clean, f"false positives: {a.unanchored} {a.near_misses}"
+
+
+def test_prose_with_no_names_at_all_is_clean():
+    a = audit_names("The ink bled from the air. Nothing moved. The cold did not lift.",
+                    GROUNDING)
+    assert a.clean
+
+
+def test_case_differences_do_not_manufacture_a_finding():
+    assert audit_names("ELARA screamed. elara wept.", GROUNDING).clean is True
+
+
+# ══ the blind spot, declared rather than hidden ══
+
+@pytest.mark.parametrize("lang", ["zh", "ja", "ko", "th", "zh-Hant"])
+def test_a_caseless_script_reports_that_it_cannot_see(lang):
+    """Capitalisation does not exist in these scripts. Reporting "clean" would be a silent
+    blind spot and reporting findings would be manufactured — so it reports the METHOD.
+    Same discipline `realised_words` follows."""
+    a = audit_names("妲己走進大殿。", GROUNDING, language=lang)
+    assert a.method == "caseless_script" and a.clean
+
+
+def test_no_grounding_names_claims_nothing():
+    """An empty book would make every name unanchored — true, useless, and a flood on exactly
+    the runs where the model was given nothing."""
+    a = audit_names("Elara met Cassius.", "no capitalised names here at all")
+    assert a.method == "empty" and a.clean
+
+
+def test_a_short_token_is_not_near_missed_into_anything():
+    """At 3 characters an edit distance of 2 relates almost any two words."""
+    a = audit_names("She saw Ash fall.", "<present>Ana</present> The road went on past Ana.")
+    assert not a.near_misses
+
+
+def test_the_near_miss_threshold_is_tight_enough_to_mean_something():
+    assert NEAR_MISS_MAX_DISTANCE <= 2
+
+
+# ══ THE REGRESSION: it must run where the old code returned early ══
+
+@pytest.mark.asyncio
+async def test_a_book_with_no_bound_cast_is_still_checked():
+    """The whole finding in one test. `run_canon_reflect` opened with
+
+        if not cast_glossary_ids:
+            return draft, ReflectResult(resolved=True, status="skipped_no_cast"), 0
+
+    so the 8,116-word chapter that exposed this was generated with ZERO checking, and the
+    invented character passed unremarked in three scenes."""
+    from types import SimpleNamespace
+
+    from app.engine.canon_reflect import run_canon_reflect
+
+    text, result, tokens = await run_canon_reflect(
+        knowledge=None, llm=None, user_id=__import__("uuid").uuid4(),
+        project_id=__import__("uuid").uuid4(),
+        cast_glossary_ids=[],                       # ← the branch that skipped everything
+        scene_sort_order=1,
+        draft="Elara knelt. Beside her, Mira lifted the quill.", packed_prompt=GROUNDING,
+        profile=SimpleNamespace(source_language="en"),
+        drafter_source="s", drafter_ref="m", judge_source=None, judge_ref=None,
+        prompt_estimate=0, max_output_tokens=100,
+    )
+    assert result.status == "skipped_no_cast"        # the gone-cast check still cannot run
+    assert result.coverage == ["name_grounding"], "…but SOMETHING must have run"
+    assert "Mira" in result.unanchored_names, "the invented name must be reported"
+    assert tokens == 0 and text == "Elara knelt. Beside her, Mira lifted the quill."
+
+
+@pytest.mark.asyncio
+async def test_coverage_is_empty_when_nothing_could_be_verified():
+    """An empty `coverage` is the honest report for a run that checked nothing — and it is
+    what a caller can act on, unlike `resolved=True` with `violations=[]`."""
+    from types import SimpleNamespace
+
+    from app.engine.canon_reflect import run_canon_reflect
+
+    _t, result, _n = await run_canon_reflect(
+        knowledge=None, llm=None, user_id=__import__("uuid").uuid4(),
+        project_id=__import__("uuid").uuid4(),
+        cast_glossary_ids=[], scene_sort_order=1,
+        draft="妲己走進大殿。", packed_prompt=GROUNDING,
+        profile=SimpleNamespace(source_language="zh"),
+        drafter_source="s", drafter_ref="m", judge_source=None, judge_ref=None,
+        prompt_estimate=0, max_output_tokens=100,
+    )
+    assert result.coverage == []
+    assert result.name_check_method == "caseless_script"
+    assert result.resolved is True, "still not a blocker — but now it says it verified nothing"
+
+
+def test_the_prompt_forbids_inventing_a_name_and_offers_the_alternative():
+    """A model writing fiction does not read a NAME as a "fact", so "never introduce facts
+    beyond what is given" did not cover it. Forbidding alone is also not enough — the passage
+    may genuinely need someone the context never named."""
+    from app.engine.cowrite import build_messages
+    from app.packer.profile import NEUTRAL
+
+    system = build_messages("ctx", NEUTRAL, "draft_scene")[0]["content"]
+    assert "do NOT invent a new proper name" in system.replace("Do NOT", "do NOT")
+    assert "role or description" in system, "must offer the unnamed-role alternative"
+
+
+# ══ noise filtering — measured on 19,494 words of real chapters, not invented ══
+
+def test_onomatopoeia_in_emphasis_is_not_a_name():
+    """The single biggest false-positive source on the real run: `*Thump. Thump.*`,
+    `*Scritch.*`, `*Shhh.*`, `*Tear. Silence.*` — seven of twelve findings, all emphasis."""
+    a = audit_names("The sound came again. *Thump. Thump.* Then *Scritch. Scritch.* below.",
+                    GROUNDING)
+    assert a.clean, f"{a.unanchored}"
+
+
+def test_an_interior_shout_in_emphasis_is_not_a_name():
+    a = audit_names("The pressure forced her down. *Take it,* the sensation screamed. "
+                    "She grasped the concept of *Self*.", GROUNDING)
+    assert a.clean, f"{a.unanchored}"
+
+
+def test_a_dialogue_opener_is_not_a_name():
+    a = audit_names('"Please," she choked out. "Hold. Stay." Elara did not move.', GROUNDING)
+    assert a.clean, f"{a.unanchored}"
+
+
+def test_a_plural_of_a_known_name_is_the_same_name():
+    """`Scribes` is not a near miss of `Scribe`; it is the plural. Two of the run's four
+    near-miss claims were this one case."""
+    a = audit_names("The Scribes had kept the secret for a century.",
+                    GROUNDING + " <lore>The Scribe lineage guards the maps.</lore>")
+    assert a.clean, f"{a.unanchored} {a.near_misses}"
+
+
+def test_the_filters_do_NOT_silence_a_real_invention():
+    """The control for all of the above. Over-filtering would turn this module back into the
+    thing it replaced — a check that cannot fail."""
+    a = audit_names('Elara knelt. Beside her, Mira lifted the quill. "Now," Mira said.',
+                    GROUNDING)
+    assert "Mira" in a.unanchored, "narrative-position invented name must still fire"
+
+
+def test_a_coined_concept_outside_quotes_still_fires():
+    """The one survivor on the real run, and it is a TRUE positive: the model coined "the
+    Unmaking", a capitalised concept appearing nowhere in what it was given."""
+    a = audit_names("She would introduce the concept of the Unmaking to a young world.",
+                    GROUNDING)
+    assert "Unmaking" in a.unanchored

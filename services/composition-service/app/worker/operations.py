@@ -20,9 +20,12 @@ from typing import Any
 from uuid import UUID
 
 import asyncpg
+from loreweave_extraction.name_normalize import normalize_entity_name
+from loreweave_llm import ReasoningDirective, directive_from_parts
 
 from app.clients.llm_client import LLMClient
 from app.config import settings
+from app.engine.cowrite import realised_words
 from app.worker.constants import SUPPORTED_OPERATIONS
 from loreweave_context import scale_by_window
 
@@ -46,6 +49,20 @@ logger = logging.getLogger("composition.worker.operations")
 class UnsupportedOperationError(RuntimeError):
     """The job's operation has no worker handler (a config/enqueue bug — the
     endpoint should only enqueue operations the worker can run)."""
+
+
+def _reasoning_of(input: dict[str, Any]) -> ReasoningDirective:
+    """Rebuild the reasoning directive the ENDPOINT resolved, from the job's stored parts.
+
+    Every worker handler used to re-derive this by hand (`None if
+    input["reasoning_passthrough"] else input["reasoning_effort"]`), which threw away
+    `chat_template_kwargs` and let the endpoint's decision arrive half-applied. One reader,
+    one shape."""
+    return directive_from_parts(
+        source=input.get("reasoning"),
+        effort=input.get("reasoning_effort"),
+        passthrough=input.get("reasoning_passthrough"),
+    )
 
 
 async def _maybe_narrative_threads(
@@ -239,6 +256,7 @@ async def run_stitch(
     config) into ``input``; drafts + profile are re-read from the DB here."""
     from app.db.repositories.generation_jobs import GenerationJobsRepo
     from app.db.repositories.works import WorksRepo
+    from app.engine.canon_check import canon_envelope
     from app.engine.canon_reflect import run_canon_reflect
     from app.engine.stitch import prepend_scene_headings, stitch_chapter
     from app.packer.profile import from_settings
@@ -261,7 +279,7 @@ async def run_stitch(
     drafts = prepend_scene_headings(rows)
 
     max_out = input["max_out"]
-    reasoning_effort = input.get("reasoning_effort")  # already None when passthrough
+    reasoning = _reasoning_of(input)
 
     # Model-context-aware input sizing — a flat 24K-char cap tuned for a mid-size
     # model shouldn't cap a genuinely bigger model at the same number.
@@ -271,7 +289,7 @@ async def run_stitch(
         llm, user_id=user_id, model_source=input["model_source"], model_ref=input["model_ref"],
         scene_drafts=drafts, chapter_intent=input["chapter_intent"], profile=profile,
         max_tokens=max_out, max_input_chars=_stitch_chars,
-        reasoning_effort=reasoning_effort, cancel_check=cancel_check,
+        reasoning=reasoning, cancel_check=cancel_check,
     )
     degraded = not stitched
     final_text = stitched or "\n\n".join(drafts)
@@ -283,6 +301,10 @@ async def run_stitch(
     revise_finish: str | None = None
     try:
         final_text, reflect, _ = await run_canon_reflect(
+            # CHAPTER-level: no single scene position, so no plan rung. Declared, not
+            # silently absent — the check reports NO_POSITION rather than passing for
+            # a reason nobody can see on the envelope.
+            plan_supported=False,
             knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
             cast_glossary_ids=input.get("cast_glossary_ids") or [],
             scene_sort_order=input.get("chapter_sort"),
@@ -291,11 +313,9 @@ async def run_stitch(
             judge_source=input.get("critic_source"), judge_ref=input.get("critic_ref"),
             prompt_estimate=0, max_output_tokens=max_out,
             max_iters=int(input.get("reflect_max_iters", 1) or 1),
-            reasoning_effort=reasoning_effort, cancel_check=cancel_check,
+            reasoning=reasoning, cancel_check=cancel_check,
         )
-        canon_v = {"violations": [v.model_dump() for v in reflect.violations],
-                   "resolved": reflect.resolved, "iterations": reflect.iterations,
-                   "status": reflect.status}
+        canon_v = canon_envelope(reflect)
         revise_finish = reflect.revise_finish_reason
     except Exception:  # noqa: BLE001 — canon reflect is advisory, never blocks
         logger.warning("stitch canon reflect failed (advisory) — keeping stitched draft", exc_info=True)
@@ -324,8 +344,9 @@ async def run_generate(
     can't stream)."""
     from app.db.repositories.works import WorksRepo
     from app.engine.adaptive_k import adaptive_k
+    from app.engine.canon_check import canon_envelope
     from app.engine.canon_reflect import run_canon_reflect
-    from app.engine.select import select_draft
+    from app.engine.select import select_scene
     from app.packer.profile import from_settings
 
     user_id = input["user_id"]
@@ -343,7 +364,7 @@ async def run_generate(
     max_out = input["max_out"]
     # reasoning: stored resolved — passthrough (adaptive model) → omit the effort.
     effort = input.get("reasoning_effort")
-    effort_arg = None if input.get("reasoning_passthrough") else effort
+    reasoning = _reasoning_of(input)
     # critic_*: the DISTINCT critic (anti-self-reinforcement) or None. select falls
     # back to the drafter when there's no distinct critic; reflect keeps None.
     critic_source = input.get("critic_source")
@@ -356,15 +377,21 @@ async def run_generate(
         high_threshold=settings.plan_high_tension_threshold,
     )
     try:
-        sel = await select_draft(
+        sel = await select_scene(
             llm, llm, user_id=user_id,
             drafter_source=model_source, drafter_ref=model_ref,
             judge_source=critic_source or model_source,
             judge_ref=critic_ref or model_ref,
             packed_prompt=packed_prompt, profile=profile, operation=operation, guide=guide,
             k=k, prompt_est=prompt_estimate, max_tokens=max_out,
-            temperature=settings.compose_diverge_temperature, reasoning_effort=effort_arg,
+            temperature=settings.compose_diverge_temperature, reasoning=reasoning,
             cancel_check=cancel_check,
+            # D-LENGTH-DIRECTIVE-NEVER-SENT: this was `select_draft`, which had no
+            # `target_words` parameter — so `input["target_words"]` was stored, used to size
+            # `max_out`, reported in the result envelope, and never reached the prompt.
+            target_words=input.get("target_words"),
+            # D-SCENE-BEATS slice 2: empty ⇒ one call, exactly as before.
+            draft_beats=input.get("draft_beats"),
         )
     except Exception as exc:  # noqa: BLE001 — mirror inline: diverge produced
         # nothing / transport → a TERMINAL job failure (run_job marks failed + ACK,
@@ -377,23 +404,123 @@ async def run_generate(
                              "status": "degraded"}
     revise_out_tokens = 0
     revise_finish: str | None = None
+    # The PLAN layer of the liveness cascade. Degrade-safe on purpose: a repo failure here
+    # must thin the cascade back to KG-only, never fail a draft the user has already paid for
+    # — the same F1 rule the exit-state write-back follows.
+    plan_status: dict[str, str] = {}
+    plan_cast: list[dict[str, Any]] = []
+    try:
+        _pch, _pso = input.get("chapter_id"), input.get("story_order")
+        if _pch and _pso is not None:
+            # Imported here, not reused from the alias 50 lines below: that one is bound
+            # AFTER this point in the function body, so referencing it would be a NameError
+            # on the first real run and green in every test that never reaches this branch.
+            from app.db.repositories.outline import OutlineRepo as _OutlineForPlan
+            plan_status = await _OutlineForPlan(pool).plan_liveness_after(
+                UUID(project_id), UUID(str(_pch)), int(_pso))
+            # Names for the plan-liveness join. `book_id` is NOT in the job input (measured on
+            # a real completed draft_scene row) — it comes off the work the worker already
+            # loaded, so this adds no read.
+            if plan_status and work is not None:
+                from app.clients.glossary_client import get_glossary_client
+                plan_cast = await get_glossary_client().entities_by_ids(
+                    work.book_id, list(plan_status),
+                    language=getattr(profile, "source_language", None))
+    except Exception:  # noqa: BLE001
+        logger.warning("plan liveness lookup failed (cascade falls back to KG)", exc_info=True)
     try:
         final_text, reflect, revise_out_tokens = await run_canon_reflect(
             knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
             cast_glossary_ids=cast_glossary_ids, scene_sort_order=input.get("scene_sort_order"),
+            plan_status=plan_status, plan_cast=plan_cast,
             draft=w.text, packed_prompt=packed_prompt, profile=profile,
             drafter_source=model_source, drafter_ref=model_ref,
             judge_source=critic_source, judge_ref=critic_ref,
             prompt_estimate=prompt_estimate, max_output_tokens=max_out,
             max_iters=int(input.get("reflect_max_iters", 1) or 1),
-            reasoning_effort=effort_arg, cancel_check=cancel_check,
+            reasoning=reasoning, cancel_check=cancel_check,
         )
-        canon = {"violations": [v.model_dump() for v in reflect.violations],
-                 "resolved": reflect.resolved, "iterations": reflect.iterations,
-                 "status": reflect.status}
+        canon = canon_envelope(reflect)
         revise_finish = reflect.revise_finish_reason
     except Exception:  # noqa: BLE001 — canon reflect must NEVER fail the generate (F1).
         logger.warning("generate canon reflect failed (advisory) — keeping winner", exc_info=True)
+
+    # D-CROSS-SCENE-CONTRADICTION — does this scene contradict the one before it?
+    #
+    # The only guard here that needs NO ground truth: it compares the text against itself, so
+    # it works on a book with no glossary, no canon and no extraction — the state that made
+    # every other check blind. Measured on a real chapter: scene 2 ended "He is the anchor…
+    # he has been waiting for someone to take his place" and scene 3 opened "She's a Scribe…
+    # she was a sentinel, waiting for the next hand". Nothing saw it.
+    #
+    # One call, against the IMMEDIATELY preceding scene only (seams are where a reader trips).
+    # Advisory + degrade-safe, like every other producer here: a contradiction can be right —
+    # a character lies, a reveal recasts an earlier scene — so it reports and the author judges.
+    cross_scene: dict[str, Any] = {"status": "not_run", "contradictions": [],
+                                   "linked": 0, "clean": False}
+    try:
+        from app.db.repositories.generation_jobs import GenerationJobsRepo as _Jobs
+        from app.db.repositories.outline import OutlineRepo as _Outline
+        from app.engine.cross_scene_check import check_chapter_consistency
+        from app.engine.exit_state import recorded_people
+
+        _ch, _so = input.get("chapter_id"), input.get("story_order")
+        prior_texts: list[str] = []
+        prior_people: list[dict[str, Any]] | None = None
+        if _ch and _so is not None:
+            prior_texts = await _Jobs(pool).prior_scene_drafts(
+                UUID(project_id), UUID(str(_ch)), int(_so))
+            # D-GENERATED-FACT-HAS-NO-HOME — the prior scene's OWN record of who it left
+            # standing, if it has one. Read here rather than serialised into `job_input`
+            # because `outline_node` is composition's own database: the worker's missing
+            # BEARER blocks book-service reads, not this one.
+            prior_people = recorded_people(await _Outline(pool).prior_scene_exit_state(
+                UUID(project_id), UUID(str(_ch)), int(_so)))
+        if prior_texts:
+            res = await check_chapter_consistency(
+                llm, user_id=user_id,
+                model_source=critic_source or model_source,
+                model_ref=critic_ref or model_ref,
+                scenes=[prior_texts[-1], final_text],
+                source_language=profile.source_language,
+                cancel_check=cancel_check,
+                earlier_recorded=prior_people,
+            )
+            cross_scene = {
+                "status": res.status, "pairs_checked": res.pairs_checked,
+                # `linked`/`unlinked_*` are not decoration: with 0 linked, an empty
+                # `contradictions` means "nobody could be matched across the seam", NOT
+                # "the scenes agree". Dropping them here would rebuild the false green
+                # this whole check exists to remove.
+                "linked": res.linked, "unlinked_earlier": res.unlinked_earlier,
+                "unlinked_later": res.unlinked_later, "clean": res.clean,
+                # WHICH earlier side was compared — a record a human may have corrected, or
+                # a fresh re-reading of the prose. Same reason `coverage` rides the canon
+                # result: a reader must not have to guess what was actually compared.
+                "earlier_source": res.earlier_source,
+                "contradictions": [dataclasses.asdict(c) for c in res.contradictions],
+            }
+        else:
+            cross_scene["status"] = "skipped_single_scene"
+    except Exception:  # noqa: BLE001 — a continuity judge must never fail a generate (F1)
+        logger.warning("cross-scene check failed (advisory)", exc_info=True)
+        cross_scene = {"status": "degraded", "contradictions": [],
+                       "linked": 0, "clean": False}
+
+    # D-GENERATED-FACT-HAS-NO-HOME — record what THIS scene left standing, so the next one
+    # gets it as a stated fact instead of having to find it in compressible prose.
+    #
+    # One extra extraction call per scene, over the scene's TAIL. That is the honest price and
+    # it is not shared with the seam check above, which reads the HEAD of the later scene —
+    # a different span answering a different question. Reusing it would record who ARRIVED
+    # instead of who was LEFT, which is not what `exit_state` means.
+    from app.services.exit_state_writeback import record_scene_exit_state
+    exit_state_record = await record_scene_exit_state(
+        pool, llm, user_id=user_id, outline_node_id=input.get("outline_node_id"),
+        final_text=final_text,
+        model_source=critic_source or model_source, model_ref=critic_ref or model_ref,
+        source_language=profile.source_language, cancel_check=cancel_check,
+    )
 
     # FD-1 narrative_thread S2: best-effort promise-ledger producer (gated per-work).
     await _maybe_narrative_threads(
@@ -416,7 +543,32 @@ async def run_generate(
 
     total_out = w.metering.output_tokens + revise_out_tokens
     truncated = (w.metering.finish_reason == "length") or (revise_finish == "length")
+    # D-SCENE-OUTPUT-BUDGET-FLAT / eval S10 — the LENGTH directive asked for `target_words`;
+    # report what came back. This assembly is a near-duplicate of the router's inline branch
+    # (routers/engine.py) and of the chapter path below — the envelope is built in FOUR places,
+    # which is why the first version of this field reached only one of them and the live probe
+    # read None. Consolidating them is S1/S2; until then the field goes on every path that can
+    # produce a scene draft, or the eval measures whichever branch it happened to hit.
+    _target_words = input.get("target_words")
+    _aw, _wcm = realised_words(final_text, input.get("source_language"))
     return {
+        "target_words": _target_words, "actual_words": _aw, "word_count_method": _wcm,
+        # D-SCENE-BEATS slice 2 — HOW the text was produced. `beat_words` is the whole point
+        # of the feature being measurable at all: it is what each passage actually yielded,
+        # so "did splitting the scene into beats reach the target" is answerable from the job
+        # row instead of by re-reading prose. `beats_failed` > 0 ⇒ the scene is INCOMPLETE
+        # against its plan, which the text alone cannot tell anyone.
+        # D-CROSS-SCENE-CONTRADICTION — `status` is part of the payload on purpose: a
+        # `degraded` continuity judge must not read like a clean one.
+        "cross_scene": cross_scene,
+        # D-GENERATED-FACT-HAS-NO-HOME — `recorded` · `author_owned` · `no_cast_extracted` ·
+        # `no_node` · `degraded` · `write_failed`. On the envelope because a write-back that
+        # silently did nothing is indistinguishable from one that worked, and this feature's
+        # whole value is that the NEXT scene can rely on the record being there.
+        "exit_state_record": exit_state_record,
+        "scene_assembly": sel.scene_assembly, "beats_drafted": sel.beats_drafted,
+        "beat_words": sel.beat_words, "beats_failed": sel.beats_failed,
+        "repeated_chars": sel.repeated_chars, "beats_over_ceiling": sel.beats_over_ceiling,
         "text": final_text, "input_tokens": w.metering.input_tokens,
         "output_tokens": total_out, "measured": w.metering.measured,
         "k": len(sel.candidates), "winner_index": sel.winner_index,
@@ -429,6 +581,9 @@ async def run_generate(
         "grounding_available": input.get("grounding_available"),
         "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
         "reinjected_promise_count": input.get("reinjected_promise_count"),
+        # S8 — the pack diagnostics the endpoint measured. Serialised into `job_input`
+        # because the worker has no bearer and cannot re-run pack().
+        "pack": input.get("pack"),
         "persisted": False,
         # W5: critic-merge patch for the consumer (popped off → the job's `critic`
         # column, NOT the result blob). None when conformance is off / not sampled /
@@ -449,6 +604,7 @@ async def run_chapter_generate(
     bearer. The endpoint already resolved chapter_sort/scenes/pack into ``input``."""
     from app.db.repositories.narrative_thread import NarrativeThreadRepo
     from app.db.repositories.works import WorksRepo
+    from app.engine.canon_check import canon_envelope
     from app.engine.canon_reflect import run_canon_reflect
     from app.engine.select import diverge
     from app.packer.profile import from_settings
@@ -467,7 +623,7 @@ async def run_chapter_generate(
     prompt_estimate = input["prompt_estimate"]
     max_out = input["max_out"]
     effort = input.get("reasoning_effort")
-    effort_arg = None if input.get("reasoning_passthrough") else effort
+    reasoning = _reasoning_of(input)
     critic_source = input.get("critic_source")
     critic_ref = input.get("critic_ref")
     cast_glossary_ids = input.get("present_entity_ids") or []
@@ -478,7 +634,7 @@ async def run_chapter_generate(
             llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
             packed_prompt=packed_prompt, profile=profile, operation=operation, guide=guide,
             k=1, prompt_est=prompt_estimate, max_tokens=max_out,
-            temperature=settings.compose_diverge_temperature, reasoning_effort=effort_arg,
+            temperature=settings.compose_diverge_temperature, reasoning=reasoning,
             cancel_check=cancel_check,
             target_words=input.get("target_words"),  # scene LENGTH directive (else drafts short)
         )
@@ -493,6 +649,10 @@ async def run_chapter_generate(
     revise_finish: str | None = None
     try:
         final_text, reflect, revise_out_tokens = await run_canon_reflect(
+            # CHAPTER-level: no single scene position, so no plan rung. Declared, not
+            # silently absent — the check reports NO_POSITION rather than passing for
+            # a reason nobody can see on the envelope.
+            plan_supported=False,
             knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
             cast_glossary_ids=cast_glossary_ids, scene_sort_order=input.get("scene_sort_order"),
             draft=winner.text, packed_prompt=packed_prompt, profile=profile,
@@ -500,11 +660,9 @@ async def run_chapter_generate(
             judge_source=critic_source, judge_ref=critic_ref,
             prompt_estimate=prompt_estimate, max_output_tokens=max_out,
             max_iters=int(input.get("reflect_max_iters", 1) or 1),
-            reasoning_effort=effort_arg, cancel_check=cancel_check,
+            reasoning=reasoning, cancel_check=cancel_check,
         )
-        canon_v = {"violations": [v.model_dump() for v in reflect.violations],
-                   "resolved": reflect.resolved, "iterations": reflect.iterations,
-                   "status": reflect.status}
+        canon_v = canon_envelope(reflect)
         revise_finish = reflect.revise_finish_reason
     except Exception:  # noqa: BLE001 — canon reflect must NEVER fail the generate (F1).
         logger.warning("chapter canon reflect failed (advisory) — keeping draft", exc_info=True)
@@ -538,6 +696,9 @@ async def run_chapter_generate(
         "grounding_available": input.get("grounding_available"),
         "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
         "reinjected_promise_count": input.get("reinjected_promise_count"),
+        # S8 — the pack diagnostics the endpoint measured. Serialised into `job_input`
+        # because the worker has no bearer and cannot re-run pack().
+        "pack": input.get("pack"),
         "max_output_tokens": max_out,
     }
 
@@ -556,7 +717,7 @@ async def run_selection_edit(llm: LLMClient, *, input: dict[str, Any]) -> dict[s
     prompt_estimate = input["prompt_estimate"]
     max_out = input["max_out"]
     effort = input.get("reasoning_effort")
-    effort_arg = None if input.get("reasoning_passthrough") else effort
+    reasoning = _reasoning_of(input)
 
     final: dict[str, Any] | None = None
     async for ev in stream_draft(
@@ -564,7 +725,7 @@ async def run_selection_edit(llm: LLMClient, *, input: dict[str, Any]) -> dict[s
         model_source=input["model_source"], model_ref=input["model_ref"],
         messages=messages, prompt_token_estimate=prompt_estimate,
         max_output_tokens=max_out, hard_cap_output=max_out * 2,
-        reasoning_effort=effort_arg,
+        reasoning=reasoning,
     ):
         if ev["type"] == "usage":
             final = ev
@@ -589,6 +750,8 @@ async def run_selection_edit(llm: LLMClient, *, input: dict[str, Any]) -> dict[s
         "truncated": m.finish_reason == "length" or bool(stream_error),
         "selection_edit": True,
         "grounding_available": input.get("grounding_available"),
+        # S8 — the selection-edit path measured the same pack and reported none of it.
+        "pack": input.get("pack"),
         "reasoning_source": input.get("reasoning"), "reasoning_effort": effort,
         "persisted": False,
     }
@@ -796,6 +959,17 @@ async def run_plan_pass(
             "cast": await _resolve_cast_entity_ids(pool, book_id, run, inputs["cast"]),
         }
 
+    # E6 — the book's ALREADY-SEEDED cast, for the passes that would otherwise plan blind. Same
+    # source as the roster join above (applied bootstrap proposals), because that is where a
+    # character becomes a FACT about the book rather than a proposal about it. Advisory: a read
+    # failure yields an empty roster and the pass behaves exactly as it did before E6, rather than
+    # failing a plan over context it would have been nice to have.
+    # One read, two consumers (E6 cast + E6b world). Splitting it into two loaders would mean two
+    # queries over the same proposals and two kind-filters free to drift apart.
+    known = await _known_entities(pool, book_id)
+    known_cast = _cast_of_known(known)
+    known_world = _world_of_known(known)
+
     retriever = None
     if pass_id == "motifs":
         from app.db.repositories.motif_retrieve import MotifRetriever
@@ -811,6 +985,7 @@ async def run_plan_pass(
         genre_tags=list(run.genre_tags or []),
         source_language=str(input.get("source_language") or "auto"),
         params=params, retriever=retriever,
+        known_cast=known_cast, known_world=known_world,
         trace_id=input.get("trace_id"), cancel_check=cancel_check,
     )
     body = await PASS_ADAPTERS[pass_id](ctx)
@@ -827,6 +1002,82 @@ async def run_plan_pass(
         "input_artifact_ids": pointers,
         "params": params,
     }
+
+
+#: An ENTITY row that states no kind is counted as cast — E6's behaviour (`if kind and kind !=
+#: "character"`), preserved deliberately so this refactor cannot silently re-route which pass sees
+#: a row.
+#:
+#: Checked against production rather than assumed: of 45 applied rows, 31 state `character`, 15
+#: state a world kind, and the 14 with no kind at all are not entities — `applied_results` is
+#: HETEROGENEOUS and also holds created-chapter rows (`{"title", "chapter_id"}`). Those carry no
+#: `name`, so the name guard below drops them and this default has never actually fired. It is a
+#: defensive path, not the common one, and the name guard is what is really doing the work: if a
+#: chapter row ever gained a `name`, every chapter in the book would arrive as a cast member.
+_KIND_WHEN_UNSTATED = "character"
+
+
+async def _known_entities(pool: asyncpg.Pool, book_id: UUID) -> dict[str, list[str]]:
+    """The book's already-seeded entity names, keyed by glossary kind (E6 cast + E6b world).
+
+    Read from the APPLIED bootstrap proposals — the same rows `_resolve_cast_entity_ids` uses, and
+    for the same reason: an applied proposal is where an entity stopped being a suggestion and
+    became a glossary entity. A pending one is a request, not a fact, and feeding it back as
+    "already exists" would teach the planner to skip introducing something that is not in the book.
+
+    Keyed rather than flattened because the two consumers need different slices AND pass 3 needs
+    the kind itself: a location listed to the cast pass invites the model to write it as a person,
+    and a location listed to the world pass without its kind invites the same mistake there.
+
+    Order is preserved and duplicates dropped within a kind (the same entity can appear in several
+    proposals across re-runs). Never raises: an empty map means "nothing established yet", which is
+    the correct answer for a fresh book and a safe one for a read failure.
+    """
+    from app.db.repositories.plan_bootstrap_proposals import PlanBootstrapProposalsRepo
+
+    try:
+        proposals = await PlanBootstrapProposalsRepo(pool).list_active_for_book(book_id)
+    except Exception:  # noqa: BLE001 — advisory context; never fail a pass over it
+        logger.warning("known-entities: could not load the seed proposals", exc_info=True)
+        return {}
+
+    by_kind: dict[str, list[str]] = {}
+    seen: dict[str, set[str]] = {}
+    for proposal in proposals:
+        if proposal.status != "applied":
+            continue
+        for row in (proposal.applied_results or {}).values():
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name") or "").strip()
+            if not name:
+                continue
+            kind = str(row.get("kind_code") or row.get("kind") or "").strip().casefold()
+            kind = kind or _KIND_WHEN_UNSTATED
+            folded = normalize_entity_name(name)
+            if folded in seen.setdefault(kind, set()):
+                continue
+            seen[kind].add(folded)
+            by_kind.setdefault(kind, []).append(name)
+    logger.info(
+        "known-entities: book=%s resolved %s",
+        book_id, {k: len(v) for k, v in sorted(by_kind.items())},
+    )
+    return by_kind
+
+
+def _cast_of_known(known: dict[str, list[str]]) -> list[str]:
+    """The cast slice (E6). Characters only — a seeded location under "EXISTING CAST" would invite
+    the planner to write it as a person."""
+    return list(known.get("character") or [])
+
+
+def _world_of_known(known: dict[str, list[str]]) -> dict[str, list[str]]:
+    """The world slice (E6b). Restricted to the kinds pass 3 may itself propose: listing a kind it
+    is forbidden to return would be an instruction it cannot obey."""
+    from app.engine.world_plan import WORLD_KINDS
+
+    return {k: list(v) for k, v in known.items() if k in WORLD_KINDS and v}
 
 
 async def _resolve_cast_entity_ids(
@@ -877,7 +1128,7 @@ async def _resolve_cast_entity_ids(
     out: list[dict[str, Any]] = []
     for m in members:
         name = str(m.get("name") or "").strip()
-        eid = by_name.get(name.casefold())
+        eid = by_name.get(normalize_entity_name(name))
         if eid:
             resolved += 1
             out.append({**m, "entity_id": eid})

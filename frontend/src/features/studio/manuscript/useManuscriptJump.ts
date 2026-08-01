@@ -72,8 +72,31 @@ export function useManuscriptJump(bookId: string, token: string | null) {
       try {
         let items: JumpResult[] = [];
         if (source === 'outline' && projectId) {
-          const r = await compositionApi.searchOutline(projectId, token, { q, limit: LIMIT });
-          items = r.items.map(outlineHitToResult);
+          // D-STUDIO-CHAPTER-OUTSIDE-THE-PLAN — search BOTH indexes, not the outline instead of
+          // book-service. The outline is a PLAN; the chapters table is the MANUSCRIPT, and a
+          // chapter can live in one without the other (imported, created from the editor, written
+          // by a tool). Querying only the outline made such a chapter unreachable from the whole
+          // studio: absent from the tree (which renders outline nodes), and — because the rail's
+          // jump box and the ⌘P palette both come through this hook — absent from both searches.
+          // Dogfooded live on a book with a 10-node outline: creating a chapter then searching its
+          // exact title returned "No matches."
+          const [outline, chapters] = await Promise.all([
+            compositionApi.searchOutline(projectId, token, { q, limit: LIMIT }),
+            // Best-effort: the outline is the primary index here, so a book-service blip degrades
+            // to the previous behaviour (outline-only) rather than emptying the palette. Logged,
+            // not swallowed silently.
+            booksApi.listChaptersPage(token, bookId, { q, limit: LIMIT }).catch((e) => {
+              console.warn('jump: chapter search failed, showing outline hits only', e);
+              return { items: [] as Chapter[] };
+            }),
+          ]);
+          items = outline.items.map(outlineHitToResult);
+          // An outline hit that already points at a chapter REPRESENTS it — and carries the
+          // breadcrumb path a bare chapter row cannot. Only chapters no hit covers are appended.
+          const covered = new Set(items.map((i) => i.chapterId).filter(Boolean));
+          items = items.concat(
+            chapters.items.filter((c) => !covered.has(c.chapter_id)).map(chapterToResult),
+          );
         } else if (source === 'chapters') {
           const r = await booksApi.listChaptersPage(token, bookId, { q, limit: LIMIT });
           items = r.items.map(chapterToResult);

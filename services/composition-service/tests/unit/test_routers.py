@@ -164,6 +164,10 @@ class StubDerivatives:
         self.delete_override_call = (work_id, book_id, override_id)
         return getattr(self, "delete_override_result", False)
 
+    async def restore_override(self, work_id, book_id, override_id, *, conn=None):
+        self.restore_override_call = (work_id, book_id, override_id)
+        return getattr(self, "restore_override_result", False)
+
 
 class _FakeTxn:
     async def __aenter__(self):
@@ -190,8 +194,16 @@ class _FakePool:
     """A no-op pool so the derive endpoint's txn-local writes run against stub repos
     (the repos ignore `conn` here — they just record what they were asked to write)."""
 
+    # F3 — the entity-override restore route also reads the pool directly, to tell "no such
+    # override" (404) from "a NEWER override for that entity exists, so un-archiving this one
+    # would collide" (409). `probe_row` is what that read returns; None = no row.
+    probe_row: dict | None = {"is_archived": True}
+
     def acquire(self):
         return _FakeAcquire()
+
+    async def fetchrow(self, query, *args):
+        return _FakePool.probe_row
 
 
 class StubKnowledge:
@@ -823,6 +835,62 @@ def test_delete_entity_override_204_and_404(ctx):
     derivatives.delete_override_result = False
     r = c.delete(f"/v1/composition/works/{PROJECT}/entity-overrides/{uuid.uuid4()}")
     assert r.status_code == 404
+
+
+# ── F3: the override DELETE is a soft archive, so it owes an undo the AUTHOR can reach ──
+#
+# `overridden_fields` is an authored JSONB delta — how this dị bản's entity differs from canon —
+# so the delete archives rather than destroys. But the reverse first shipped on the MCP surface
+# ONLY: the co-writer could restore an override and the person who deleted it could not, with
+# `list_overrides_for_work` filtering archived rows so the id was not even discoverable. A soft
+# delete nobody the author can reach can reverse is worse than the hard delete it replaced.
+
+def test_restore_entity_override_200(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.restore_override_result = True
+    oid = uuid.uuid4()
+    r = c.post(f"/v1/composition/works/{PROJECT}/entity-overrides/{oid}/restore")
+    assert r.status_code == 200 and r.json()["restored"] is True
+    assert derivatives.restore_override_call[2] == oid
+
+
+def test_restore_entity_override_404_when_no_such_row(ctx):
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.restore_override_result = False
+    _FakePool.probe_row = None
+    try:
+        r = c.post(f"/v1/composition/works/{PROJECT}/entity-overrides/{uuid.uuid4()}/restore")
+        assert r.status_code == 404
+    finally:
+        _FakePool.probe_row = {"is_archived": True}
+
+
+def test_restore_entity_override_409_when_a_NEWER_override_exists(ctx):
+    """The repo returns False for two different situations and the author needs them apart: a 404
+    reads as "your delta is gone" when in fact it is still archived and the undo was refused
+    because a newer override for that entity exists — something the author can act on."""
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.restore_override_result = False
+    _FakePool.probe_row = {"is_archived": True}   # still archived → the partial unique refused it
+    r = c.post(f"/v1/composition/works/{PROJECT}/entity-overrides/{uuid.uuid4()}/restore")
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "ENTITY_OVERRIDE_EXISTS"
+
+
+def test_restore_entity_override_is_idempotent_when_someone_else_won(ctx):
+    """restore=False + the row already live = a concurrent restore landed first. The author's
+    intent is satisfied, so this is a 200, not an error."""
+    c, works, _, _, derivatives = ctx
+    works.work = _deriv_work()
+    derivatives.restore_override_result = False
+    _FakePool.probe_row = {"is_archived": False}
+    try:
+        r = c.post(f"/v1/composition/works/{PROJECT}/entity-overrides/{uuid.uuid4()}/restore")
+        assert r.status_code == 200 and r.json()["restored"] is True
+    finally:
+        _FakePool.probe_row = {"is_archived": True}
 
 
 def test_list_entity_overrides_200(ctx):

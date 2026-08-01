@@ -428,6 +428,7 @@
   "pacing": "rythme",
   "canon_consistency": "canon",
   "dismiss": "ignorer",
+  "overrideSlipBlocked": "Acceptation du blocage : une version « et si » a glissé vers la valeur canonique. Régénérez avant d'accepter.",
   "overrideSlipExhausted": "L'écrasement persiste après la limite de régénération — signalé pour examen (l'acceptation n'est plus bloquée).",
   "overrideSlipDetail": "{{name}} ({{field}}): attendu « {{expected}} », trouvé « {{found}} »",
   "deltaInconsistencyDetail": "{{name}} : contredit la règle delta « {{rule}} »",
@@ -972,6 +973,47 @@
       "degradedLibrary": "Non classés par pertinence — le modèle d'embedding de la bibliothèque partagée n'est pas configuré ; il s'agit de suggestions par genre et non de correspondances évaluées.",
       "sectionMine": "Vos motifs",
       "sectionLibrary": "Depuis la bibliothèque"
+    },
+    "language": {
+      "writtenIn": "Écrit en",
+      "authored": "traduction manuscrite",
+      "staleShort": "obsolète",
+      "missingYours": "pas en {{lang}} — retour à l'original",
+      "systemFree": "Les motifs intégrés sont disponibles dans toutes les langues prises en charge — celui-ci n'a pas encore de traduction pour votre langue.",
+      "adoptFirst": "Ajoutez ce motif à votre bibliothèque pour le traduire.",
+      "translateTo": "Traduire en",
+      "model": "Modèle de traduction",
+      "translate": "Traduire…",
+      "retranslate": "Retraduire…",
+      "alreadyHave": "Déjà traduit",
+      "estimating": "Estimation en cours…",
+      "youPay": "Vos propres motifs ne sont jamais traduits automatiquement — cela s'exécute sur votre modèle, à vos frais.",
+      "confirmWhat": "Traduire ce motif en {{lang}} en utilisant votre modèle.",
+      "echoed": "{{count}} champ(s) n'ont pas été traduits — votre modèle ne gère peut-être pas bien cette langue.",
+      "again": "Traduire une autre langue",
+      "quota": "Limite de dépenses atteinte.",
+      "failed": "Échec de la traduction.",
+      "outcome": {
+        "translated": "Traduit en {{lang}}.",
+        "already_original": "Ce motif est déjà écrit dans cette langue.",
+        "already_translated": "Déjà traduit et toujours à jour — vous n'avez pas été débité.",
+        "authored_kept": "Une traduction manuscrite existe et a été conservée.",
+        "nothing_to_translate": "Ce motif ne contient aucun texte à traduire.",
+        "not_translatable": "Vous n'êtes pas l'auteur de ce motif, vous ne pouvez pas le traduire.",
+        "model_failed": "Votre modèle n'a renvoyé aucun résultat exploitable — rien n'a été enregistré.",
+        "failed": "Échec de la traduction.",
+        "cancelled": "Annulé avant la traduction de ce motif — vous n'avez pas été débité."
+      },
+      "skipped": "{{count}} des motifs que vous avez choisis ne vous appartiennent pas et ne sont pas inclus dans la traduction."
+    },
+    "batch": {
+      "open": "Traduire…",
+      "selected": "{{count}} sélectionnés",
+      "excluded": "{{count}} ne sont pas à vous traduire (les contenus intégrés sont déjà gratuits dans toutes les langues ; adoptez d'abord une version publique)",
+      "run": "Traduire {{count}}…",
+      "overCap": "Maximum {{cap}} motifs par tâche de traduction — désélectionnez {{over}} éléments.",
+      "confirmWhat": "Traduire {{count}} motif(s) en {{lang}} en utilisant votre modèle.",
+      "doneTitle": "{{written}} sur {{total}} traduits en {{lang}}"
     }
   },
   "authoringRun": {
@@ -1093,5 +1135,10 @@
       "back": "← Retour à la liste des sessions"
     }
   },
-  "overrideSlipBlocked": "Acceptation du blocage : une version « et si » a glissé vers la valeur canonique. Régénérez avant d'accepter."
+  "canonUncheckedNoRules": "on ne sait encore rien des personnages de cette scène pour pouvoir comparer",
+  "canonUncheckedUnverifiedInput": "une partie de ce dont cette vérification avait besoin n'a pas pu être chargée, elle est donc incomplète",
+  "canonUncheckedUnparseable": "le modèle de relecture n'a pas renvoyé de réponse exploitable",
+  "canonUncheckedFailed": "la vérification elle-même a échoué",
+  "canonUncheckedOther": "cette vérification n'a pas pu s'exécuter",
+  "canonUncheckedWhich": "{{count}} de ses vérifications ne se sont pas terminées"
 }

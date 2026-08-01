@@ -40,6 +40,31 @@ def _clear_overrides():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def _stub_anchor_preload():
+    """W1 — stub the anchor pre-load for the endpoint tests in this module.
+
+    The pre-load now FAILS CLOSED: if the glossary (or the pool behind it) cannot be
+    read, the endpoint returns a retryable 503 instead of extracting un-anchored and
+    minting duplicate entities nobody can un-merge automatically.
+
+    These tests do not initialise the knowledge pool, so before W1 the pre-load threw,
+    was swallowed, and quietly yielded `[]` — every one of them was passing THROUGH
+    the silent degrade that W1 removes. Stubbing it here makes that dependency
+    explicit; the pre-load's own contract (raise vs empty, and the 503 mapping) is
+    proven in `test_anchor_loader.py` / `test_anchor_cache.py`, not here.
+
+    A test that patches `_load_anchors_for_extraction` itself still wins — its patch
+    is applied inside this one.
+    """
+    with patch(
+        "app.routers.internal_extraction._load_anchors_for_extraction",
+        new_callable=AsyncMock,
+    ) as m:
+        m.return_value = []
+        yield m
+
+
 def _client() -> TestClient:
     from app.main import app
     return TestClient(app, raise_server_exceptions=False)
@@ -1496,3 +1521,74 @@ def test_embedding_adapter_raises_on_empty_vector():
     adapter = _EmbeddingAdapter(real, user_id=uuid4())
     with pytest.raises(RuntimeError, match="empty vector"):
         asyncio.run(adapter.embed(text="x", model_uuid="m"))
+
+
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+@patch("app.routers.internal_extraction._resolve_schemas_for_extract_item", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.get_llm_client")
+@patch("app.routers.internal_extraction.extract_pass2_chapter")
+@patch("app.routers.internal_extraction.settings")
+def test_extract_item_threads_the_chapter_ORDINAL_to_the_orchestrator(
+    mock_settings, mock_extract, mock_llm, mock_neo4j, mock_anchors, mock_resolve, mock_pool,
+):
+    """FD-4 — the reading ordinal must reach the writer, or liveness can never be written.
+
+    `pass2_writer` discards an event's `status_effects` when the event has no `event_order`
+    (M2: "no place on the reading axis"), and `event_order` is derived from `chapter_index`.
+    `/persist-pass2` — the import/worker path — has taken that field since 066. This endpoint,
+    the AUTHORING path a book written from scratch goes through, did not, so the two extraction
+    entry points diverged on exactly the field the liveness store needs.
+
+    MEASURED live 2026-08-01 on a throwaway book: three chapters approved, 6 entities and 8
+    events written, every `event_order` NULL, and **0** `:EntityStatus` — on prose whose own
+    extracted summary read "Castor falls and dies at the Bridge of Ash". The composition canon
+    guard, its LLM judge and the publish gate all read that empty store.
+
+    Pydantic silently ignores an unknown key, so a sender adding `chapter_index` to the payload
+    without this field would have gone on producing positionless events with no error anywhere
+    — which is how the first attempt at this fix passed its own unit tests and changed nothing
+    on the wire."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_extract.return_value = _MOCK_RESULT
+    mock_llm.return_value = MagicMock()
+    mock_anchors.return_value = []
+    mock_resolve.return_value = (None, None)
+    mock_pool.return_value = MagicMock()
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    resp = _post(_client(), _chapter_body(chapter_index=7))
+    assert resp.status_code == 200, resp.text
+    assert mock_extract.call_args.kwargs["chapter_index"] == 7
+
+
+@patch("app.routers.internal_extraction.get_knowledge_pool")
+@patch("app.routers.internal_extraction._resolve_schemas_for_extract_item", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction._load_anchors_for_extraction", new_callable=AsyncMock)
+@patch("app.routers.internal_extraction.neo4j_session")
+@patch("app.routers.internal_extraction.get_llm_client")
+@patch("app.routers.internal_extraction.extract_pass2_chapter")
+@patch("app.routers.internal_extraction.settings")
+def test_extract_item_without_an_ordinal_still_extracts(
+    mock_settings, mock_extract, mock_llm, mock_neo4j, mock_anchors, mock_resolve, mock_pool,
+):
+    """The counterweight: the field is OPTIONAL and every existing caller omits it. Requiring
+    it would 422 the chat/legacy senders — a positionless extraction is worse than a
+    positioned one, and far better than none."""
+    mock_settings.neo4j_uri = "bolt://localhost:7687"
+    mock_settings.internal_service_token = _TEST_TOKEN
+    mock_extract.return_value = _MOCK_RESULT
+    mock_llm.return_value = MagicMock()
+    mock_anchors.return_value = []
+    mock_resolve.return_value = (None, None)
+    mock_pool.return_value = MagicMock()
+    mock_session = AsyncMock()
+    mock_neo4j.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_neo4j.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    assert _post(_client(), _chapter_body()).status_code == 200
+    assert mock_extract.call_args.kwargs["chapter_index"] is None

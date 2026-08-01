@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -27,6 +27,10 @@ from app.events.book_lifecycle_consumer import (
 
 def _consumer(**kw) -> BookLifecycleConsumer:
     return BookLifecycleConsumer("redis://x", AsyncMock(), book_client=AsyncMock(), **kw)
+
+
+BOOK = uuid.uuid4()
+OWNER = uuid.uuid4()
 
 
 def test_the_mirror_listens_to_the_stream_the_relay_actually_ships_to():
@@ -126,5 +130,54 @@ def test_book_id_falls_back_to_aggregate_id_when_payload_is_malformed():
     assert _parse_payload({"payload": "not json"}) == {}
 
 
-def test_REQUIRED_EVENTS_is_exactly_the_lifecycle_event():
-    assert REQUIRED_EVENTS == frozenset({"book.lifecycle_changed"})
+def test_REQUIRED_EVENTS_names_every_event_this_consumer_is_depended_on_for():
+    """The set is a CONTRACT, not a summary: the constructor cross-checks it against the handled
+    events and raises, so adding a dependency without a handler is a red test rather than an event
+    acked into the void. It caught exactly that while `book.created` was being wired."""
+    assert REQUIRED_EVENTS == frozenset({"book.lifecycle_changed", "book.created"})
+
+
+@pytest.mark.asyncio
+async def test_book_created_provisions_a_pending_work_for_a_novel():
+    """Onboarding: a new book gets its Work vessel without the author ever meeting the concept.
+    PENDING (no project) because minting the knowledge project is JWT-only and a consumer holds no
+    user JWT — the first owner-authenticated path backfills it."""
+    c = _consumer()
+    c._provision_work = AsyncMock()
+    await c.handle("s", "1", {
+        "event_type": "book.created",
+        "payload": json.dumps({"book_id": str(BOOK), "owner_user_id": str(OWNER), "kind": "novel"}),
+    })
+    c._provision_work.assert_awaited_once()
+    # A create must never trigger the lifecycle mirror's re-read — different event, different job.
+    c._book_client.get_book_lifecycle.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_book_created_for_a_NON_novel_provisions_nothing():
+    """A diary is the assistant's private workspace and a bible is a reference shelf — neither is a
+    novel anyone plans. The kind policy lives in the consumer so a future kind is one edit here."""
+    c = _consumer()
+    repo = MagicMock()
+    repo.ensure_pending_for_book = AsyncMock(return_value=True)
+    with patch("app.events.book_lifecycle_consumer.WorksRepo", return_value=repo):
+        await c.handle("s", "1", {
+            "event_type": "book.created",
+            "payload": json.dumps({"book_id": str(BOOK), "owner_user_id": str(OWNER), "kind": "diary"}),
+        })
+    repo.ensure_pending_for_book.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_book_created_without_an_owner_is_LOUD_not_silently_skipped():
+    """Without an owner we cannot stamp `created_by`, and guessing one would mis-attribute the
+    Work. The emitter always sends it, so its absence is a real defect — say so, do not no-op."""
+    c = _consumer()
+    repo = MagicMock()
+    repo.ensure_pending_for_book = AsyncMock(return_value=True)
+    with patch("app.events.book_lifecycle_consumer.WorksRepo", return_value=repo):
+        await c.handle("s", "1", {
+            "event_type": "book.created",
+            "payload": json.dumps({"book_id": str(BOOK), "kind": "novel"}),
+        })
+    repo.ensure_pending_for_book.assert_not_called()

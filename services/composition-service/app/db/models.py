@@ -124,7 +124,13 @@ class EntityOverride(BaseModel):
     work_id: UUID
     target_entity_id: UUID
     overridden_fields: dict[str, Any] = Field(default_factory=dict)
+    is_archived: bool = False   # F3 — soft delete + restore
     created_at: datetime | None = None
+
+
+#: D-SCENE-BEATS — the most draft units one scene may carry. At the measured ~500 words per
+#: beat this is a 12,000-word scene; the point is to have a bound at all, not to be generous.
+MAX_DRAFT_BEATS = 24
 
 
 class StructureTemplate(BaseModel):
@@ -195,7 +201,31 @@ class OutlineNode(BaseModel):
     value_shift: int | None = None      # -100..100
     stakes: str = ""
     target_words: int | None = None     # > 0
+    #: D-SCENE-BEATS — the units this scene is DRAFTED in, in order. Empty = the legacy
+    #: single-beat scene (the eight intent fields above ARE the one beat), which is what every
+    #: existing scene is, so an empty list must keep behaving exactly as today.
+    #:
+    #: This was introduced with the rationale "a scene reaches its `target_words` by having
+    #: enough beats, not by asking one beat to stretch — measured, one beat carries ~500 words
+    #: in every model tried". That measurement was taken on a path where the LENGTH directive
+    #: never reached the prompt (D-LENGTH-DIRECTIVE-NEVER-SENT), so it did not measure a beat's
+    #: capacity. The field stands on the plainer ground: an author who wants a scene written as
+    #: several consecutive passages, each with its own brief, can say so.
+    #: BOUNDED. Every comparable list in this repo carries a cap (`MaxPlanOps=50`,
+    #: `maxDocExtractCandidates=200`) because an unbounded array reaches a PROMPT: at the
+    #: measured ~500 words/beat, 24 beats is already a 12,000-word scene, far past anything an
+    #: author writes, so a larger value is a mistake or an attack, not a long scene.
+    draft_beats: Annotated[list[dict[str, Any]], Field(max_length=MAX_DRAFT_BEATS)] = Field(
+        default_factory=list
+    )
     exit_state: dict[str, Any] | None = None
+    # Intent-collection FSM (spec 2026-07-28) — WHO settled each of the slots above:
+    # `{"goal": "settled", "conflict": "absent"}`; a slot absent from the map is planner-owned.
+    # Read back here because the distinction is invisible in the values themselves: a `goal` the
+    # PLANNER proposed and a `goal` the AUTHOR settled are both just a string in the column, and a
+    # consumer that cannot tell them apart either re-asks what the author already answered or
+    # presents a machine guess to the model as settled intent it must not contradict.
+    intent_slots: dict[str, Any] = Field(default_factory=dict)
     # ── SC11 amendment — the WRITTEN VERDICT (Phase 1). NOT authored: MAINTAINED. ──
     # "Is there prose behind this spec node?" reconciled from book-service's
     # `scenes.source_scene_id` (the sole authored anchor — DA-3 still holds, this is its
@@ -267,6 +297,68 @@ class StructureNode(BaseModel):
 # silently discard an author's correction).
 ExitStateSource = Literal["generator", "author"]
 
+#: The passage's own pronoun for a person, as a CLOSED set. Deliberately English-keyed even
+#: for a non-English book: the extractor is asked for a normalised value, so the comparison
+#: downstream stays a set membership rather than a language-aware judgement.
+#: KNOWN LIMIT — a language whose gendered reference is carried by kinship/status terms
+#: (Vietnamese anh/chị/ông/bà, Japanese honorifics) collapses to `none`, so the gender
+#: contradiction this enables cannot fire there. `cross_scene_check._GENDERED` already had
+#: exactly this limit; this does not widen it, and pretending otherwise would be the worse bug.
+CastPronoun = Literal["he", "she", "they", "none"]
+
+#: D-GENERATED-FACT-HAS-NO-HOME — cap the recorded cast. The rows reach a PROMPT (the packer
+#: renders them as the next scene's incompressible floor), so an unbounded list is a budget
+#: hole. 40 is the extractor's own row cap (`cross_scene_check.extract_people`), which keeps
+#: the two ends of this pipe from disagreeing about what "too many people" means.
+MAX_EXIT_CAST = 40
+
+
+class SceneCastRow(BaseModel):
+    """D-GENERATED-FACT-HAS-NO-HOME — ONE person as the finished scene actually referred to them.
+
+    Why structured rows and not a sentence in `characters`. The next scene must MATCH these
+    facts, and a summariser is free to drop the attribute that later gets contradicted — this
+    repo has already paid for that once. A field the next step must match is a floor, not a
+    summary, so it is stored as keys.
+
+    `who` is the passage's own words: a name when there is one, otherwise the noun phrase
+    ("the anchor"). That is honest about the case this exists for — a person the GENERATOR
+    invented has no glossary entity to point at, which is exactly why the fact had no home.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    who: _Title
+    pronoun: CastPronoun = "none"
+    role: _Title = ""
+
+
+class SceneExitStateIn(BaseModel):
+    """The AUTHORING wire shape (MCP scene create/update). Identical to the stored envelope
+    MINUS `source`.
+
+    `source` is a provenance fact the SERVER decides — a write that arrives through the
+    authoring door is authored, full stop. Leaving it on the wire made it caller-selectable,
+    which meant a generator write-back could be spoofed as an author correction (and, worse,
+    that a genuine author write was stamped `generator` by the field's own default, so the
+    "never discard an author's correction" rule it exists to serve could never have worked).
+    `extra='forbid'` turns a caller that still sends it into a 422 saying so, rather than a
+    value silently overridden.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    v: Literal[1] = 1
+    characters: _Short = ""
+    world: _Short = ""
+    plot: _Short = ""
+    advances: list[_Short] = Field(default_factory=list)
+    #: `None` (omitted) = leave whatever is stored alone; `[]` = clear it. The distinction is
+    #: load-bearing: an author editing `plot` on a scene the drafter has already recorded a
+    #: cast for would otherwise silently wipe that record, because a write here REPLACES the
+    #: whole envelope. A default of `[]` cannot express "I did not touch this".
+    cast: Annotated[list[SceneCastRow], Field(max_length=MAX_EXIT_CAST)] | None = None
+
 
 class SceneExitState(BaseModel):
     """22 SC12 — the versioned `{v:1,…}` envelope stored in `outline_node.exit_state`.
@@ -277,6 +369,12 @@ class SceneExitState(BaseModel):
     (engine/plan.py) pushed down to scene granularity: three typed buckets
     (Character / World / Plot) as compact strings + the NEW-developments list.
     extra='forbid' keeps a caller (LLM/router) from smuggling unversioned keys.
+
+    `v` stays 1 across the `cast` addition on purpose. Reads do NOT go through this model —
+    `OutlineNode.exit_state` is a plain dict — so a row written with `cast` is still readable
+    by a rolled-back image (it renders as an extra key, it does not raise). Bumping the
+    literal would have made every NEW row unparseable by the OLD validator instead, which is
+    the failure this envelope was versioned to avoid.
     """
 
     model_config = {"extra": "forbid"}
@@ -287,6 +385,11 @@ class SceneExitState(BaseModel):
     world: _Short = ""       # location + time at scene end
     plot: _Short = ""        # open threads / secrets / what's now revealed
     advances: list[_Short] = Field(default_factory=list)  # NEW developments (anti-repeat signal)
+    #: WHO the scene left standing, and how it referred to them. Written by the drafting seam
+    #: (`source='generator'`) or corrected by a human (`source='author'`).
+    cast: Annotated[list[SceneCastRow], Field(max_length=MAX_EXIT_CAST)] = Field(
+        default_factory=list
+    )
 
 
 class SceneLink(BaseModel):
@@ -297,6 +400,7 @@ class SceneLink(BaseModel):
     to_node_id: UUID
     kind: LinkKind = "setup_payoff"
     label: _Title = ""
+    is_archived: bool = False   # F3 — soft delete + restore
     created_at: datetime | None = None
 
 
@@ -449,6 +553,52 @@ class CorrectionStats(BaseModel):
     by_mode: list[ModeCorrectionStats]
 
 
+# ── Error blocks (atom-edit Phase D) ────────────────────────────────────────
+# The author marks a span of wrong prose and says what is wrong with it. Conceptually this row IS
+# a human-authored self-heal `Finding` (the same span/issue/fix triple the LLM judge emits), which
+# is why the existing locate → satellite-edit → splice → review machinery is reused rather than
+# rebuilt. Design: docs/specs/2026-07-26-atom-edit/DESIGN-error-blocks.md
+
+ErrorBlockTargetKind = Literal["chapter_draft", "draft_job"]
+ErrorBlockSource = Literal["human", "judge", "critic", "canon"]
+ErrorBlockKind = Literal["continuity", "voice", "pacing", "fact", "logic", "style", "other"]
+ErrorBlockStatus = Literal["open", "proposed", "resolved", "dismissed", "orphaned"]
+
+
+class ErrorBlock(BaseModel):
+    """One author-marked defect in a chapter's prose.
+
+    `quote` is the ANCHOR; `start_offset`/`end_offset` are a hint. Prose drifts, so a reader
+    re-validates `text[start:end] == quote` and otherwise re-locates by quote.
+    `source_fingerprint` hashes the flattened text the offsets were computed over — when it
+    differs the whole coordinate space moved at once, so no offset may be trusted.
+    """
+    id: UUID
+    created_by: UUID          # actor stamp — stored, never filtered on (PM-5)
+    project_id: UUID
+    book_id: UUID             # tenancy scope key (25 M1/M2)
+    target_kind: ErrorBlockTargetKind
+    chapter_id: UUID | None = None
+    draft_version: int | None = None
+    job_id: UUID | None = None
+    start_offset: int
+    end_offset: int
+    quote: str
+    source_fingerprint: str
+    source: ErrorBlockSource = "human"
+    kind: ErrorBlockKind
+    note: str
+    desired: str | None = None
+    status: ErrorBlockStatus = "open"
+    proposal_id: str | None = None
+    resolution: str | None = None
+    version: int = 1
+    is_archived: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    resolved_at: datetime | None = None
+
+
 class OutboxEvent(BaseModel):
     id: UUID
     aggregate_type: str = "composition"
@@ -522,7 +672,17 @@ class Motif(BaseModel):
     book_id: UUID | None = None                    # per-book label (D-MOTIF-ADOPT-PER-BOOK); NULL = global/system. Owner's full dump only — NOT in the public/non-owner projections.
     book_shared: bool = False                      # D-MOTIF-ADOPT-BOOK-COLLAB-TIER (model B): true = the book's SHARED tier (book-grant gated). Owner full dump only — never on the public catalog allow-list.
     code: _Code
-    language: _Lang = "en"
+    # MOTIF-I18N: the language this motif was AUTHORED in (books/chapters call it the
+    # same thing). NOT part of identity — other languages are motif_translation rows.
+    original_language: _Lang = "en"
+    # Read-path metadata, stamped when the caller asked for a display language. A
+    # consumer — model prompt or FE — must never receive text without knowing which
+    # language it is in; the bug this replaces briefed an English book in Vietnamese
+    # and said nothing. `text_stale` = a translation made from older source text
+    # (still served: right language, older wording beats wrong language).
+    text_language: _Lang | None = None
+    text_fallback: bool = False
+    text_stale: bool = False
     visibility: MotifVisibility = "private"
     kind: MotifKind = "sequence"
     category: _Code | None = None
@@ -598,7 +758,16 @@ class ArcTemplate(BaseModel):
     book_id: UUID | None = None
     book_shared: bool = False
     code: _Code
-    language: _Lang = "en"
+    # ARC-I18N: the language this template was AUTHORED in. NOT identity — it sat inside
+    # all three `uq_arc_template_*` keys, which made the same arc in two languages two
+    # unrelated rows. Other languages are arc_template_translation rows.
+    original_language: _Lang = "en"
+    # Read-path metadata, stamped when the caller asked for a display language. Same
+    # contract as Motif: a consumer must never receive text without knowing what
+    # language it is in.
+    text_language: _Lang | None = None
+    text_fallback: bool = False
+    text_stale: bool = False
     visibility: MotifVisibility = "private"
     name: _Title
     summary: _Long = ""
@@ -666,6 +835,9 @@ PlanArtifactKind = Literal[
     # v2 — one artifact kind per pass, plus the two reports (27 V2-A1).
     "motif_plan", "cast_plan", "world_plan", "beat_plan", "char_arc_plan", "scene_plan",
     "heal_report", "link_report",
+    #: The material keep-or-drop packet (board + grounded search), persisted so re-opening the panel
+    #: does not re-run a search the author already paid for.
+    "material_review",
     # close-21-28 P-O1a — the rules-mode pre-flight collision report.
     "preflight",
 ]
@@ -720,6 +892,10 @@ class PlanRun(BaseModel):
     # (fingerprint + counts). None ⇒ not grounded (blind / cold-start / ceiling-off) — an honest
     # default, never silently {} (a read-only-looking write-only bug).
     grounded_on: dict[str, Any] | None = None
+    # D-PLANFORGE-BEATS-UNWIRED — which `structure_template` supplies the ordered beats pass 4 maps
+    # chapters onto. None ⇒ the author has not chosen one; `compile` resolves a named built-in and
+    # RECORDS that choice in the package rather than defaulting silently.
+    structure_template_id: UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -835,7 +1011,9 @@ class ArcCandidate(BaseModel):
 class MotifCreateArgs(_ForbidExtra):
     code: _Code
     name: _Title
-    language: _Lang = "en"
+    # The language the AUTHOR is writing in. We never machine-translate a user's motif
+    # — theirs stays in the language they wrote it, exactly like their book.
+    original_language: _Lang = "en"
     kind: MotifKind = "sequence"
     category: _Code | None = None
     summary: _Long = ""
@@ -853,8 +1031,17 @@ class MotifCreateArgs(_ForbidExtra):
 
 
 class MotifPatchArgs(_ForbidExtra):
-    # every field optional (PATCH semantics); owner/code/language/source are NOT
-    # patchable here (identity/lineage are immutable post-create — clone to re-key).
+    # every field optional (PATCH semantics); owner/code/source are NOT patchable here
+    # (identity/lineage are immutable post-create — clone to re-key).
+    #
+    # `original_language` IS patchable, and used not to be: it was excluded back when
+    # language was part of the identity key, where changing it really would have re-keyed
+    # the row. MOTIF-I18N removed it from every unique index — language is a view now, and
+    # `original_language` is just a claim about which language the author typed in. A wrong
+    # claim is the silent wrong-language bug in the user tier (a vi motif labelled `en`
+    # reports `text_language: "en"`, `text_fallback: false`, and hands Vietnamese to an
+    # English prompt), so correcting it has to be possible.
+    original_language: _Lang | None = None
     name: _Title | None = None
     kind: MotifKind | None = None
     category: _Code | None = None
@@ -892,7 +1079,7 @@ class ArcRosterEntry(BaseModel):                   # one arc_roster[] entry (§1
 class ArcTemplateCreateArgs(_ForbidExtra):
     code: _Code
     name: _Title
-    language: _Lang = "en"
+    original_language: _Lang = "en"
     summary: _Long = ""
     genre_tags: list[_Key] = Field(default_factory=list)
     chapter_span: Annotated[int, Field(ge=1)] | None = None
@@ -904,8 +1091,14 @@ class ArcTemplateCreateArgs(_ForbidExtra):
 
 
 class ArcTemplatePatchArgs(_ForbidExtra):
-    # every field optional (PATCH semantics); owner/code/language/source are NOT
-    # patchable (identity/lineage are immutable post-create — clone to re-key).
+    # every field optional (PATCH semantics); owner/code/source are NOT patchable
+    # (identity/lineage are immutable post-create — clone to re-key).
+    #
+    # `original_language` IS patchable, for the same reason it is on a motif: it was
+    # excluded while language was part of the identity key, and ARC-I18N took it out.
+    # A wrong claim about the authoring language hands the wrong language to a prompt
+    # while reporting no fallback.
+    original_language: _Lang | None = None
     name: _Title | None = None
     summary: _Long | None = None
     genre_tags: list[_Key] | None = None

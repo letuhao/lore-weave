@@ -53,6 +53,7 @@ async def persist_translation_judge(
     verdict: FidelityVerdict,
     judge_model: str,
     origin_event_id: str,
+    generator_model: str | None = None,
 ) -> bool:
     """Persist a fidelity verdict as a `source='auto'` quality_scores row keyed to
     the chapter translation. The dedup key is ``judge:<outbox_id>`` so it does NOT
@@ -60,8 +61,25 @@ async def persist_translation_judge(
     translation.quality event (which dedups on the bare ``<outbox_id>``). The
     rationale + judge model + panel-safety note ride in the comment
     (``panel_safe=False`` — a single online judge, not a disjoint panel)."""
+    # D-JUDGE-DISTINCTNESS-UNRECORDED — the same tri-state the wiki judge records, for the
+    # same reason: `judge_model` alone cannot tell a score graded by an independent model
+    # from one graded by the model that produced the translation. `None` means the
+    # generator was not supplied, i.e. distinctness is UNVERIFIED — never "independent".
+    #
+    # Here the judge is picked off the Redis event payload (`eval_judge_model_ref`, a
+    # campaign's explicit choice), so recording what it was compared against is the only
+    # way the self-graded fraction ever becomes measurable.
+    judge_distinct: bool | None = None
+    if generator_model:
+        judge_distinct = str(judge_model) != str(generator_model)
     detail = json.dumps(
-        {"reason": verdict.reason, "judge_model": judge_model, "panel_safe": False},
+        {
+            "reason": verdict.reason,
+            "judge_model": judge_model,
+            "generator_model": generator_model,
+            "judge_distinct": judge_distinct,
+            "panel_safe": False,
+        },
         ensure_ascii=False,
     )
     return await persist_consumed_score(

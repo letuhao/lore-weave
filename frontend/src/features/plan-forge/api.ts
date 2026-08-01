@@ -7,6 +7,8 @@ import type {
   CompilePlanBody,
   CreatePlanRunBody,
   InterpretPlanBody,
+  KeepMaterialResult,
+  MaterialPacket,
   PlanCompileResult,
   PlanInterpretation,
   PlanRunAck,
@@ -178,6 +180,26 @@ export const planForgeApi = {
   bootstrapApply(bookId: string, proposalId: string, token: string): Promise<BootstrapProposal> {
     return apiJson<BootstrapProposal>(`${BASE}/books/${bookId}/plan/bootstrap/${proposalId}/apply`, {
       method: 'POST', token,
+    });
+  },
+  /** The LAST packet, without searching. Free — this is what the panel does on mount, so it must
+   *  never spend. `null` when the run was never checked, which is NOT the same as "found nothing". */
+  async getMissingMaterial(bookId: string, runId: string, token: string): Promise<MaterialPacket | null> {
+    const out = await apiJson<MaterialPacket | null>(
+      `${BASE}/books/${bookId}/plan/runs/${runId}/missing-material`, { token });
+    return out && Object.keys(out).length ? out : null;
+  },
+  findMissingMaterial(bookId: string, runId: string, token: string, modelRef?: string): Promise<MaterialPacket> {
+    const q = modelRef ? `?model_ref=${encodeURIComponent(modelRef)}` : '';
+    return apiJson<MaterialPacket>(`${BASE}/books/${bookId}/plan/runs/${runId}/missing-material${q}`, {
+      method: 'POST', token,
+    });
+  },
+  keepMaterial(
+    bookId: string, runId: string, kept: Record<string, string[]>, token: string,
+  ): Promise<KeepMaterialResult> {
+    return apiJson<KeepMaterialResult>(`${BASE}/books/${bookId}/plan/runs/${runId}/keep-material`, {
+      method: 'POST', token, body: JSON.stringify({ kept }),
     });
   },
 };

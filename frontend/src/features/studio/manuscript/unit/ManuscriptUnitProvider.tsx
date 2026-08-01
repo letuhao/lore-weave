@@ -138,6 +138,9 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   // Distinguishes a keystroke from Tiptap's mount-normalize (which re-emits the same text under a
   // normalized structure); the fork-identity reload uses this instead of the structural dirty flag.
   const loadedTextRef = useRef<string>('');
+  // D-EDITOR-MOUNT-EMPTY-AUTOSAVE — has the editor emitted the body we loaded yet? Until it
+  // has, an empty document is the un-seeded mount state, not a deletion. Reset per load.
+  const seededRef = useRef(false);
   const userEditedRef = useRef<boolean>(false);
 
   // #12 — the book's composition Work (scenes[] source). No Work → scenes stay [].
@@ -215,6 +218,7 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
       // is not mistaken for a user edit by the fork-identity reload below (isDirtyState false-fires on
       // the structural diff; the TEXT is the real-edit signal).
       loadedTextRef.current = textContent;
+      seededRef.current = false;
       userEditedRef.current = false;
       setState({
         chapterId, loadedBody: body, savedBody: body, workingBody: null,
@@ -271,6 +275,27 @@ export function ManuscriptUnitProvider({ bookId, children }: { bookId: string; c
   }, [loadChapter]);
 
   const setBody = useCallback((doc: JSONContent, text: string) => {
+    // D-EDITOR-MOUNT-EMPTY-AUTOSAVE — Tiptap emits an onUpdate from its EMPTY initial document
+    // BEFORE the loaded body is applied. The M-I guard below only recognises the OTHER mount
+    // emission (one whose content equals what was loaded), so the empty one fell through as a
+    // real edit, became `workingBody`, and AUTO_SAVE_DEBOUNCE_MS later overwrote the chapter
+    // with it. Measured live: open a chapter, touch nothing, 5 minutes later word_count 102 -> 0,
+    // and the persisted body was this editor's empty doc, custom paragraph attrs and all.
+    //
+    // `seededRef` is the discriminator: until the editor has emitted the content we loaded, an
+    // empty document is the un-seeded mount state, not an author clearing the chapter — there
+    // has been no opportunity to clear it. Afterwards, an empty doc IS a real deletion and is
+    // honoured (covered by the 'still accepts a REAL emptying' test).
+    //
+    // Chosen deliberately over widening the structural compare: the failure direction matters.
+    // Worst case here is declining to mark dirty; the alternative silently erases prose.
+    // The rule is simply "while un-seeded, an empty document is never an edit". It deliberately
+    // does NOT also require the loaded chapter to be non-empty: on a brand-new chapter that
+    // narrower form left the same false "● unsaved" on screen (harmless — saving empty over empty
+    // loses nothing — but it trains an author to ignore the one indicator that warns them).
+    const seeded = seededRef.current;
+    if (text === loadedTextRef.current) seededRef.current = true;
+    if (!seeded && text.trim() === '') return;
     // A REAL edit changes the text; a mount-normalize re-emits the loaded text. Only the former
     // should block the fork-identity reload (D-S5).
     if (text !== loadedTextRef.current) userEditedRef.current = true;

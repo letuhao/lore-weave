@@ -21,7 +21,9 @@ are each a test here.
 
 from __future__ import annotations
 
+import types as _types
 import uuid
+import uuid as _uuidmod
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -188,6 +190,14 @@ async def _patched(*, grant_level=2, works_get=None, **repo_overrides):
             return _work(user_id) if user_id == TEST_USER else None
 
     works = AsyncMock()
+    # D-COMPOSITION-ID-TRAP — scope_meta is the gate's CANONICALIZATION point: every
+    # tool re-binds its `pid` from `meta.project_id`. A bare AsyncMock returns an
+    # AsyncMock attribute here, so the project-scope check downstream compares a UUID
+    # against a mock and the tool 404s on a node it was just granted. Echo the id, as
+    # the real repo does for a project_id input.
+    works.scope_meta = AsyncMock(
+        side_effect=lambda p: _types.SimpleNamespace(book_id=BOOK, work_id=_uuidmod.uuid4(), project_id=p)
+    )
     works.get = AsyncMock(side_effect=works_get)
 
     async def _resolve(book_id, user_id):
@@ -1045,6 +1055,30 @@ async def test_motif_patch_shared_edit_gated():
     assert res["_meta"]["undo_hint"]["args"]["book_id"] == str(BOOK)
 
 
+def test_the_agent_patch_surface_cannot_EXPRESS_a_redacted_field():
+    """F3 — the read boundary is the write boundary, held here by CONSTRUCTION.
+
+    `examples` is redacted from a non-owner (imported source prose), and the shared book tier lets
+    any EDIT-grantee patch the row. On the REST surface those compose into silent destruction — the
+    redacted read returns `[]`, indistinguishable from genuinely empty, so a whole-object patch
+    wipes the owner's prose — which is why `_reject_redacted_writes` exists there.
+
+    The agent surface is safe for a different reason: `_MotifPatchToolArgs` simply has no
+    `examples` field, and `ForbidExtra` rejects it. That is a stronger guarantee than a runtime
+    check, but it is INCIDENTAL — nothing stopped someone from adding the field for convenience
+    and re-opening the hole. This pins it. Adding a redacted field to the tool args now reds here,
+    and the runtime guard in `composition_motif_patch` is the second layer if it ever does.
+    """
+    import app.mcp.server as srv
+    from app.routers.motif import _PUBLIC_DETAIL_REDACT
+
+    exposed = sorted(set(_PUBLIC_DETAIL_REDACT) & set(srv._MotifPatchToolArgs.model_fields))
+    assert not exposed, (
+        f"the motif patch tool now exposes redacted field(s) {exposed}. A non-owner cannot READ "
+        f"these, so letting an agent WRITE them lets a grantee wipe content they were never shown."
+    )
+
+
 async def test_motif_patch_shared_denied_without_edit():
     import app.mcp.server as srv
     from loreweave_mcp import NotAccessibleError
@@ -1265,6 +1299,14 @@ def client():
         from app import deps
 
         works = AsyncMock()
+        # D-COMPOSITION-ID-TRAP — scope_meta is the gate's CANONICALIZATION point: every
+        # tool re-binds its `pid` from `meta.project_id`. A bare AsyncMock returns an
+        # AsyncMock attribute here, so the project-scope check downstream compares a UUID
+        # against a mock and the tool 404s on a node it was just granted. Echo the id, as
+        # the real repo does for a project_id input.
+        works.scope_meta = AsyncMock(
+            side_effect=lambda p: _types.SimpleNamespace(book_id=BOOK, work_id=_uuidmod.uuid4(), project_id=p)
+        )
         works.get = AsyncMock(side_effect=lambda u, p: _work() if u == TEST_USER else None)
         outline = AsyncMock()
         book = AsyncMock()

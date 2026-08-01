@@ -112,10 +112,66 @@ jobs:
       # projection-drift-check → DATABASE_URL) are intentionally NOT wired —
       # see the Phase 0 report for the follow-up debt list.
       #
-      # I2 provider-gateway invariant (priority): no direct LLM SDK imports.
-      - run: bash scripts/lint-no-direct-llm-imports.sh
+      # I2 provider-gateway invariant (priority). `ai-provider-gate.py` SUPERSEDES
+      # `lint-no-direct-llm-imports.sh` (which only caught Python SDK imports) and adds
+      # the direct-endpoint rule, the local model families and the BYOK env-var rule.
+      # It ran ONLY as a pre-commit hook — and that hook needs `git config core.hooksPath
+      # .githooks` run once per checkout, so on any machine that skipped it, and in CI,
+      # the ENFORCED invariant was guarded only by the narrower superseded lint. That is
+      # how two POC files calling Ollama over httpx sat in a service directory unnoticed.
+      - run: python scripts/ai-provider-gate.py
       - run: bash scripts/dashboard-validator.sh
       - run: bash scripts/alert-rule-validator.sh
+      # A registered contract that nothing reads is a claim, not a contract (S12).
+      - run: python scripts/enforcement-claims-gate.py
+      # A gated test that no workflow arms has never run — 200 of them were found this
+      # way, in two sweeps, the second only because the first under-counted by 4x.
+      - run: python scripts/test-dsn-coverage-gate.py
+      # S10 — the seeded-defect INSTRUMENT gate. It does not score the engine; it asserts the
+      # suite can tell a working detector from one that always fires, that every non-blind
+      # class has a live seeder, and that a blind class is declared rather than silently
+      # measuring nothing. It ran nowhere until 2026-08-01 — the same "built but not wired"
+      # shape the 63-gate inventory found, in the slice whose whole job is measurement.
+      - run: python -m app.eval.gate
+        working-directory: services/composition-service
+
+      # ── D-QC-GATES-BUILT-BUT-NOT-WIRED (2026-07-31) ──────────────────────────
+      # An inventory of every gate script in scripts/ against every workflow found
+      # **63 gates, 18 wired**. Nine more ran only via the pre-commit hook — which needs
+      # `git config core.hooksPath .githooks` run once per checkout, so it is opt-in per
+      # machine and absent in CI. Thirty-six ran nowhere at all.
+      #
+      # This is not a backlog, it is the mechanism: the repo builds quality gates faster
+      # than it wires them, and an unwired gate is indistinguishable from no gate. Three of
+      # the unwired ones are RED right now with 17 real findings nobody has seen —
+      # including six modules building prompts from retrieved text with no injection
+      # sanitizer, the exact class hand-fixed this cycle as B2 while a detector for it sat
+      # unrun.
+      #
+      # Every gate below was executed and PASSES as of this commit, so wiring them is a
+      # pure regression lock with no triage debt. The three red ones are tracked separately;
+      # they are not silently skipped here.
+      - run: python scripts/injection-coverage-lint.py
+      - run: python scripts/pagination-cap-lint.py
+      - run: python scripts/raw-sql-lint.py
+      - run: python scripts/blocking-in-async-lint.py
+      - run: python scripts/context-budget-l3-lint.py
+      - run: python scripts/language-bias-gate.py
+      - run: python scripts/sdk-duplication-gate.py
+      - run: python scripts/slo-latency-lint.py
+      # NOT amaw-guardrail-gate.py — despite the name it is a Claude Code PreToolUse
+      # HOOK that reads a JSON payload from stdin, so in CI it blocks forever (measured:
+      # a 300s timeout). Classifying it as a lint by filename was the mistake; running it
+      # exactly as CI would is what caught it.
+      # Previously pre-commit-hook-only. The hook is opt-in per checkout; CI is not.
+      - run: python scripts/context-budget-defaults-lint.py
+      - run: python scripts/context-inspector-checklist-gate.py
+      - run: python scripts/db-safety-gate.py
+      - run: python scripts/design-draft-token-lint.py
+      - run: python scripts/i18n-completeness-gate.py
+      - run: python scripts/knowledge-access-gate.py
+      - run: python scripts/knowledge-http-surface-gate.py
+      - run: python scripts/tier-tag-gate.py
       - run: bash scripts/dependency-registry-lint.sh
       - run: bash scripts/admin-command-registry-lint.sh
       - run: bash scripts/logging-discipline-lint.sh
@@ -123,6 +179,70 @@ jobs:
       - run: bash scripts/runbook-drift-check.sh
       - run: bash scripts/runbook-verification-lint.sh
       - run: bash scripts/template-fixture-validator.sh
+
+      # ── QC round 2 (2026-07-31) ──────────────────────────────────────────────
+      # The first inventory counted 63 "gate scripts" by filename. The real number is
+      # 328 scripts, 252 referenced by no workflow or hook. Most of that tail is honest
+      # dev tooling — seeds, POCs, one-off migrations, the RAID track's cycle runners.
+      # The ENFORCEMENT class is ~30, and these are the ones that pass on the current
+      # tree. Each was executed before wiring, and each has a reachable `exit 1`.
+      - run: bash scripts/capacity-budget-lint.sh
+      - run: bash scripts/dep-pinning-lint.sh
+      - run: bash scripts/emit-migration-0013-lint.sh
+      - run: bash scripts/meta-actor-uuid-lint.sh
+      - run: bash scripts/meta-sensitive-read-bypass-lint.sh
+      - run: bash scripts/meta-write-discipline-lint.sh
+      - run: bash scripts/migration-idempotency-validator.sh
+      - run: bash scripts/outbox-event-emit-lint.sh
+      - run: bash scripts/pii-classify-lint.sh
+      - run: bash scripts/prompt-assembly-discipline-lint.sh
+      - run: bash scripts/read-audit-query-type-drift-lint.sh
+      - run: bash scripts/role-grant-validator.sh
+      - run: bash scripts/service-acl-matrix-lint.sh
+      - run: bash scripts/shard-allocation-validation.sh
+      - run: bash scripts/transitions-validation-lint.sh
+      - run: python scripts/phantom-route-scan.py
+      - run: python scripts/deprecated-tool-scan.py
+      # The static half of a LIVE gate. The live half drives real turns through a running
+      # chat-service; `--selfcheck` proves the gate itself still works (imports, contract
+      # parses, turn set non-empty) so it cannot rot while every run reads "no stack today".
+      - run: python scripts/context-inspector-trace-gate.py --selfcheck
+      # D-LLM-BUDGET-SSOT. The reasoning axis already adapts per call; the budget axis was
+      # ~40 flat literals, and BOTH draw from the same token allowance. HARD: no LLM call
+      # site may leave its output budget undeclared — "deliberately unbounded" is sayable
+      # (OutputKind.MIRROR), so only a site that never decided reds.
+      - run: python scripts/llm-budget-ssot-gate.py
+
+      # S1 GENERATION-SSOT. Enumerates generation PATHS, not modules — the paths that matter
+      # most contain no guard module at all (composition's two SSE generators mention `canon`
+      # zero times), and a module lint cannot see an absence. Reds on a phantom row, on a
+      # `guarded` claim with no emitted coverage field, on an untracked gap, and on the
+      # model-gateway caller count growing past its recorded baseline.
+      - run: python scripts/generation-guard-gate.py --verbose
+
+      # A gate must be able to FAIL, and the proof of that is a test. These suites exist
+      # and pass — 148 tests across 8 files — and not one of them ran anywhere. The gates'
+      # own teeth were as unwired as the gates were.
+      - run: python -m pytest scripts/test_ai_provider_gate.py scripts/test_check_stack_freshness.py
+               scripts/test_slice_manifest_validate.py scripts/test_tier_tag_gate.py
+               scripts/test_warp_base_pin.py scripts/test_warp_worktrees.py
+               scripts/test_deprecated_tool_scan.py scripts/test_gate_teeth_gate.py
+               scripts/test_llm_budget_ssot_gate.py scripts/perf/test_slo_assert.py
+               scripts/eval/tests/test_persist_claim_detector.py
+               scripts/test_generation_guard_gate.py
+               scripts/test_enforcement_claims_gate.py -q
+      - run: python scripts/gate-teeth-gate.py
+
+      # NOT wired, with the reason, because "it exists" is not "it enforces":
+      #   fe-door-scan.py          — no exit path at all; a REPORT, not a gate
+      #   timeout-discipline-lint.sh — ends in an unconditional `exit 0` (advisory)
+      #   log-density-detector.sh  — reads /var/log/lw/last-5m.log (runtime, not CI)
+      #   projection-drift-check.sh — needs DATABASE_URL against a live projection
+      #   check_stack_freshness.py — probes a running stack
+      #   perf/slo_assert.py       — needs a k6 summary JSON from a load run
+      # The first two are the ones worth naming twice: a script that cannot return
+      # non-zero is indistinguishable from no script, and wiring it would have read as
+      # +2 gates in this file while enforcing nothing.
 
   python:
     name: Python services (byte-compile)
@@ -157,6 +277,21 @@ jobs:
             fi
           done
           exit $fail
+
+      # D-SDK-UNIT-SUITE-UNWIRED (2026-07-31) — 973 tests in sdks/python/tests ran NOWHERE.
+      # `python-integration-tests.yml` names `sdks/python/**` as a path TRIGGER and then runs
+      # exactly one file from it (test_jobs_scheduler.py, on the Redis job); a trigger is not
+      # an execution. Found while wiring the LLM-budget drift lock, whose Python half would
+      # otherwise have been dead on arrival — a drift test that never runs is drift with
+      # extra steps.
+      #
+      # Unit-only: this is the pure-Python SDK suite (no DB, no Redis, no network). The
+      # integration files that DO need infra keep running in python-integration-tests.
+      - name: install the shared Python SDK (with the [test] extra)
+        run: python -m pip install -q "./sdks/python[test]"
+      - name: pytest — shared Python SDK unit suite
+        run: python -m pytest sdks/python/tests -q -p no:cacheprovider
+          --deselect sdks/python/tests/test_jobs_scheduler.py
 
   db-smoke:
     name: DB live-smoke (PgEventStore + publisher integration)

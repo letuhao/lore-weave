@@ -17,8 +17,11 @@ import type {
 
 export interface EndDayPayload {
   book_id: string;
-  model_source: string;
-  model_ref: string;
+  /** OPTIONAL — omit and the server resolves the user's `distill` default (then `chat`).
+   *  Sending the chat session's model here pins the distiller to the chat model, which is
+   *  what made the `distill` capability setting unreadable in practice. */
+  model_source?: string;
+  model_ref?: string;
   language?: string;
   entry_zone?: string;
 }

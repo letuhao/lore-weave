@@ -12,6 +12,7 @@ import { useMotifEditor } from '../hooks/useMotifEditor';
 import { useMotifSync } from '../hooks/useMotifSync';
 import { InfoAsymmetryCard } from './InfoAsymmetryCard';
 import { MotifEditorForm } from './MotifEditorForm';
+import { MotifTranslateAction } from './MotifTranslateAction';
 import { SyncDiffDrawer } from './SyncDiffDrawer';
 import { MotifGraphSection } from './MotifGraphSection';
 
@@ -61,6 +62,19 @@ export function MotifDetailDrawer({ motif, meUserId, readOnly, isLoading, isErro
           </h2>
           <div className="flex items-center gap-1">
             {/* WI-2 — owned motifs get an in-place editor; shared rows use clone-to-edit */}
+            {/* `token` is a term that used to close this door in SILENCE: a motif you own, no Edit
+                button, and no reason given — unlike the shared-template case just below, which
+                explains itself and offers Clone to edit. A missing affordance with no explanation
+                is the bug; a disabled one that says why is the fix. */}
+            {motif && !readOnly && !editing && !token && (
+              <span
+                data-testid="motif-detail-edit-unavailable"
+                title={t('motif.permission.noSession', { defaultValue: 'Editing is unavailable until your session reloads.' })}
+                className="rounded border border-neutral-200 px-2 py-0.5 text-xs text-neutral-400 dark:border-neutral-700 dark:text-neutral-500"
+              >
+                {t('motif.action.edit', { defaultValue: 'Edit' })}
+              </span>
+            )}
             {motif && !readOnly && !editing && token && (
               <button type="button" data-testid="motif-detail-edit" className="rounded border border-neutral-300 px-2 py-0.5 text-xs text-neutral-700 hover:bg-neutral-100 dark:border-neutral-600 dark:text-neutral-200 dark:hover:bg-neutral-800" onClick={() => setEditing(true)}>
                 {t('motif.action.edit', { defaultValue: 'Edit' })}
@@ -122,6 +136,22 @@ export function MotifDetailDrawer({ motif, meUserId, readOnly, isLoading, isErro
             {simple && motif.examples[0]?.text && (
               <blockquote className="border-l-2 border-amber-400 pl-2 text-xs italic text-neutral-600 dark:text-neutral-300">“{motif.examples[0].text}”</blockquote>
             )}
+
+            {/* MOTIF-I18N — which language this text is actually in, and (for a motif you
+                own) the paid translate. Above the summary because it QUALIFIES everything
+                below it: the whole point is that no reader sees this prose without knowing
+                what language it is in. */}
+            <MotifTranslateAction
+              motif={motif}
+              // The same predicate that opens the Edit door: what you may edit, you may
+              // translate. `readOnly` is already `isReadOnly(motif, meUserId)`, which is
+              // false for a book_shared row you collaborate on — so a collaborator gets
+              // the capability the server actually grants them, rather than an
+              // owner-only gate the backend never asked for.
+              canTranslate={!readOnly}
+              token={token ?? null}
+              bookId={motif.book_shared ? motif.book_id ?? null : null}
+            />
 
             <p className="text-xs text-neutral-600 dark:text-neutral-300">{motif.summary}</p>
 

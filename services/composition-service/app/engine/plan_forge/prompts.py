@@ -6,11 +6,15 @@ import json
 
 ANALYZE_SYSTEM = """You are a novel system architect for LoreWeave — a platform to craft novels with typed specs, planner state machines, and traceability.
 
-Read the user's planning document (natural language, may be Vietnamese). Extract structure into JSON only — no markdown, no prose outside JSON.
+Read the user's planning document (natural language, ANY language). Extract structure into JSON only — no markdown, no prose outside JSON.
 
 Output a single JSON object matching PlanAnalyze v1 with these keys:
 - version: 1
 - document_summary: one paragraph
+- characters: [{name, role, notes}] — EVERY person the source names, including one whose defining
+  trait is that they are barely described. Use the source's own name for each, stripped of any
+  decorative brackets the source puts around it; role in the source's own words if it states one,
+  else "".
 - consistency_anchors: string[] (the character baseline traits readers must track, AS THE SOURCE STATES THEM — in the source's own language)
 - variables: [{code, name, range, transition_rules[], not_coupled_to[]}] — every state variable the source DECLARES, and only those (none ⇒ [])
 - mechanics: [{name, rules[], planner_secrets[]}] — capture the source's mechanics/rules faithfully
@@ -29,7 +33,22 @@ Fidelity requirements — parse what the source says; emit nothing where it says
 Critical semantics:
 - An arc's kind, and how a variable moves, is WHAT THE SOURCE SAYS — never a default carried from another novel.
 - Preserve planner notes verbatim where found.
-- Keep the SOURCE's language for event titles and user-facing anchor text (do not translate them)."""
+- LANGUAGE — every human-readable string you emit is in the SOURCE's language. Names, titles,
+  summaries, rules, notes, questions: all of it. Do not translate, do not gloss, do not append a
+  parenthetical translation. The ONLY strings that are not the source's language are machine keys —
+  `id`, `arc_id`, `code`, and the `arc_kind` enum."""
+# WHY THE RULE IS GLOBAL, and why this note is out here rather than in the prompt.
+#
+# It used to enumerate which FIELDS keep the source language ("event titles and user-facing anchor
+# text"), which reads as permission to translate the rest. Measured on the third corpus (mainland
+# Chinese): `document_summary` came back entirely in English, and a mechanic came back as
+# `死物道 (Dead Matter Path)` — a parenthetical GLOSS rather than a translation, which is the shape a
+# reviewer skims past. Stated once over everything, with the machine keys carved out.
+#
+# The rationale lives here because a system prompt is instructions, not commit notes: my first draft
+# put this paragraph inside the prompt itself, and `test_no_prompt_names_one_LANGUAGE_as_the_expected_one`
+# caught it — a prompt that names one language in passing is exactly the fixture residue the same
+# test exists to keep out.
 
 MATERIALIZE_SYSTEM = """You are a novel system architect. Convert PlanAnalyze into NovelSystemSpec v1 — JSON only.
 
@@ -47,12 +66,20 @@ Structure:
 Fidelity requirements — carry the PlanAnalyze through faithfully; emit nothing the source didn't state (absent ≠ invented):
 - CONTINUITY (REQUIRED, HIGHEST-PRIORITY when an "EXISTING STATE" section is present): that section lists arcs, characters and systems the book ALREADY has. REFERENCE them by their exact existing name/title — never re-invent an existing character under a new name, never duplicate an existing arc title. **When EXISTING STATE lists cast, `layers.characters[].name` MUST be drawn from those existing names.** New arcs/characters are fine; contradicting or shadowing an existing one is a FAILURE. When no EXISTING STATE section is present, ignore this rule.
 - ARC COVERAGE (REQUIRED — highest priority): EVERY arc in `arcs` MUST have >= 1 event whose `arc_id` equals that arc's own id. Distribute events across ALL arcs in proportion to each arc's scope in the source — an arc that spans several chapters gets several events. NEVER put every event in one arc. An arc with zero events CANNOT be compiled and is a generation FAILURE.
+- CAST COVERAGE (REQUIRED): `layers.characters` MUST contain EVERY person in the analyze's
+  `characters` list — one row each, none merged, none dropped. That list is the cast; do not
+  re-derive it from `consistency_anchors`. A character the source barely describes is still a
+  character: analyze once carried no cast at all, materialize reconstructed it from the anchors, and
+  the one person with no anchor line — the one whose defining trait was that he is barely described —
+  vanished from every plan.
 - characters[].traits: the traits the analyze/source states for that character — empty if the source states none. Never invent a trait, and never carry one from another story.
 - baseline_notes: summarize the character's baseline FROM THE SOURCE, in the source's language.
 - character name: use the SOURCE's name for the character. If the source leaves them unnamed, use a neutral placeholder in the source's language — never a foreign-language placeholder or "TBD".
 - mechanics: from the source's own mechanics sections; planner_secrets only where the source marks something as not-to-reveal.
 - events: keep the source-language titles; synopsis as a condensed version of the source's own bullets, not a meta-summary.
-- Do NOT translate event titles.
+- LANGUAGE — every human-readable string you emit is in the SOURCE's language: names, titles,
+  summaries, rules, notes. No translations, no parenthetical glosses. The only exceptions are machine
+  keys (`id`, `arc_id`, `code`, the `arc_kind` and link `kind` enums).
 
 Rules:
 - coupled_to_realm must always be false for var_deltas

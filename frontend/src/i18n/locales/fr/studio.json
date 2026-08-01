@@ -679,6 +679,11 @@
       "title": "Workflow Proposals",
       "desc": "Examiner les workflows proposés par l'agent",
       "guideBody": "Affiche la liste des recettes de workflows que l'agent a suggéré de créer, sur la base de séquences multi-étapes qu'il a remarqué que vous répétez. Ouvrez ce panneau pour approuver une proposition — ce qui génère le workflow pour qu'il devienne exécutable — ou pour la rejeter. C'est ici qu'un workflow proposé par l'agent devient réellement concret."
+    },
+    "world-setup": {
+      "title": "Configuration de l'univers",
+      "desc": "Créez votre distribution, votre univers et leurs relations à partir d'une description",
+      "guideBody": "Transformez une description de votre histoire en un véritable univers structuré : il planifie ce qu'il faut créer, vous approuvez ou affinez la liste, puis chaque personnage, faction et terme est rédigé un par un (les plus importants bénéficient d'un profil détaillé) et classé pour votre examen. Enfin, il détermine comment ils sont tous liés et vous demande de valider ces relations avant de les enregistrer."
     }
   },
   "sceneRail": {

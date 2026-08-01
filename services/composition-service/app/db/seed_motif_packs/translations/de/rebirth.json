@@ -1,0 +1,428 @@
+{
+  "rebirth.butterfly_divergence": {
+    "beats": {
+      "adapt": {
+        "intent": "der Protagonist muss zum ersten Mal ohne Vorahnung handeln",
+        "label": "Einschätzung ersetzt Erinnerung"
+      },
+      "intervene": {
+        "intent": "eine Intervention greift und verändert ein frühes Ereignis",
+        "label": "Ein früher Eingriff gelingt"
+      },
+      "mismatch": {
+        "intent": "ein erinnerter Vorgang tritt nicht ein oder geschieht fehlerhaft",
+        "label": "Das Drehbuch passt nicht mehr"
+      },
+      "ripple": {
+        "intent": "die Konsequenzen häufen sich über die beabsichtigte Veränderung hinaus",
+        "label": "Das Echo breitet sich aus"
+      }
+    },
+    "effects": [
+      "Vorahnung ist nicht länger verlässlich und kann nicht wiederhergestellt werden",
+      "die Kompetenz des Protagonisten muss nun aktiv unter Beweis gestellt werden, statt sie nur vorauszusetzen"
+    ],
+    "emotion_target": "Angst",
+    "examples": [
+      "Der Getreideaufstand, auf den sie seit dem Frühling vorbereitet war, blieb schlichtweg aus, und sie stand auf dem Markt und begriff, dass sie von diesem Moment an ebenso blind war wie alle anderen um sie herum."
+    ],
+    "name": "Die Erinnerung passt nicht mehr",
+    "preconditions": [
+      "eine erinnerte Abfolge von Ereignissen, die durch ein Eingreifen zu einem bestimmten Zeitpunkt bereits verändert wurde"
+    ],
+    "roles": {
+      "changed": {
+        "constraints": [
+          "handeln nun auf eine Weise, die die Erinnerung nicht mehr vorhersagen kann"
+        ],
+        "label": "diejenigen, deren Leben bereits divergiert ist"
+      },
+      "returner": {
+        "constraints": [
+          "hat seine Pläne auf dem bekannten Drehbuch aufgebaut"
+        ],
+        "label": "derjenige, der die Orientierung verliert"
+      },
+      "script": {
+        "constraints": [
+          "zerfällt proportional zum eigenen Erfolg"
+        ],
+        "label": "die erinnerte Zukunft"
+      }
+    },
+    "summary": "Ein früher Eingriff zeigt Wirkung, und seine Konsequenzen breiten sich weit über das Ziel der Veränderung hinaus aus: Menschen, die eigentlich hätten sterben müssen, heiraten; ein Haus, das hätte einstürzen sollen, bleibt stehen; ein Krieg bricht eine Saison zu spät aus. Eines nach dem anderen versagen die bekannten Daten, bis der Vorteil, der den Protagonisten unantastbar gemacht hat, lautlos abgelaufen ist. Er steuert nun auf eine Zukunft zu, die ihm ebenso fremd ist wie allen anderen – nachdem er das letzte Stück seiner Landkarte verbraucht hat."
+  },
+  "rebirth.foreknowledge_leverage": {
+    "beats": {
+      "arrive": {
+        "intent": "das erinnerte Ereignis geschieht exakt wie erwartet",
+        "label": "Das Ereignis tritt pünktlich ein"
+      },
+      "bank": {
+        "intent": "der Gewinn ist gesichert und die Frage nach der Vorahnung wird gesät",
+        "label": "Gewinn und Argwohn zugleich"
+      },
+      "position": {
+        "intent": "es wird eine Verpflichtung eingegangen, die für jeden Beobachter leichtsinnig wirkt",
+        "label": "Die Position wird frühzeitig bezogen"
+      },
+      "recall": {
+        "intent": "ein zeitlich fixiertes zukünftiges Ereignis wird mit nutzbarer Präzision abgerufen",
+        "label": "Das Ereignis wird erinnert"
+      }
+    },
+    "effects": [
+      "ein materieller oder politischer Vorteil wird vor allen anderen gesichert",
+      "mindestens ein Beobachter fragt sich nun, wie man dies vorher hätte wissen können"
+    ],
+    "emotion_target": "Antizipation",
+    "examples": [
+      "Er kaufte die überfluteten Felder zum Preis von trockenen, ertrug elf Monate lang das Gelächter, und dann regnete es."
+    ],
+    "name": "Positioniert, bevor es geschieht",
+    "preconditions": [
+      "ein erinnerter zukünftiger Ereignis mit festem Datum und einer nutzbaren Konsequenz"
+    ],
+    "roles": {
+      "doubters": {
+        "constraints": [
+          "folgen einer korrekten Logik basierend auf ihrem Wissensstand"
+        ],
+        "label": "diejenigen, die es für leichtsinnig halten"
+      },
+      "position": {
+        "constraints": [
+          "wirkt vor dem Ereignis irrational"
+        ],
+        "label": "die frühzeitig bezogene Position"
+      },
+      "returner": {
+        "constraints": [
+          "kann nicht erklären, wie sie es weiß"
+        ],
+        "label": "diejenige Person, die sich erinnert"
+      }
+    },
+    "summary": "Ein erinnerter Vorfall liegt noch in der Zukunft – die Flut, die das tiefliegende Land überzieht, das Haus, das seine Kredite fällig stellt, die Frage, die in der Prüfung vorkommen wird, die Karawane, die im Frühling eintrifft – so wird bereits Monate im Voraus eine Position bezogen, die für alle Beobachter nach Ruin aussieht: der Kauf von wertlosem Land, die Ablehnung einer vorteilhaften Heirat, der Verkauf auf dem Höhepunkt eines steigenden Marktes. Das Ereignis tritt planmäßig ein, die Position zahlt sich aus, und der Gewinn ist untrennbar mit der Frage verbunden, wie man es hätte wissen können."
+  },
+  "rebirth.inherited_debts": {
+    "beats": {
+      "answer": {
+        "intent": "der Ankömmling zahlt, lehnt ab oder verhandelt nach seiner eigenen Art neu",
+        "label": "Die Schulden werden beglichen"
+      },
+      "become": {
+        "intent": "die Art und Weise des Antwortens macht das geliehene Leben wahrhaftig zu ihrem eigenen",
+        "label": "Eingeschrieben in das Leben"
+      },
+      "claim": {
+        "intent": "Verpflichtungen und Feindseligkeiten aus dem vorangegangenen Leben treten zutage",
+        "label": "Die Forderungen treffen ein"
+      },
+      "mute": {
+        "intent": "die wahre Erklärung wäre schlimmer als die Anschuldigung",
+        "label": "Die Wahrheit ist ungesagbar"
+      }
+    },
+    "effects": [
+      "die geerbten Verpflichtungen werden nach den eigenen Bedingungen des Neuankömmlings beglichen",
+      "der Neuankömmling ist nun der Urheber dieses Lebens und nicht mehr nur dessen Mieter"
+    ],
+    "emotion_target": "Spannung",
+    "examples": [
+      "Drei Männer kamen wegen einer Schuld, die sie nie aufgenommen hatte, und sie stellte fest, dass sie entweder eine Unterschrift in ihrer eigenen Handschrift leugnen oder sie bezahlen konnte."
+    ],
+    "name": "Die Abrechnung für ein fremdes Leben",
+    "preconditions": [
+      "ein besetzter Körper und eine Identität, deren bestehende Verpflichtungen nicht vom Protagonisten stammen, aber von Zeugen bezeugt werden"
+    ],
+    "roles": {
+      "claimants": {
+        "constraints": [
+          "haben legitime Ansprüche"
+        ],
+        "label": "die Anspruchsberechtigten des Vorgängers"
+      },
+      "history": {
+        "constraints": [
+          "ist dokumentiert und bezeugt"
+        ],
+        "label": "die geerbte Geschichte"
+      },
+      "newcomer": {
+        "constraints": [
+          "hat die Taten nicht selbst begangen"
+        ],
+        "label": "die Person, die das Leben nun trägt"
+      }
+    },
+    "summary": "Der Körper kehrt mit einer eigenen Geschichte zurück: Gläubiger stehen vor dem Tor mit Briefen in einer Handschrift, die der eigenen gleicht; eine Verlobung, die von jemand anderem beschlossen wurde; Feindschaften, die über Jahre hinweg aufgebaut wurden, die man selbst nicht gelebt hat; ein Ruf, der bereits im Umlauf ist. Die Wahrheit ist unaussprechlich, also müssen die Schulden beglichen, bestritten oder zu den eigenen gemacht werden – und die Art und Weise der Antwort ist es, die ein geliehenes Leben in ein eigenes verwandelt."
+  },
+  "rebirth.known_traitor_untouchable": {
+    "beats": {
+      "mute": {
+        "intent": "jede Warnung würde wie Wahnsinn oder Bosheit wirken",
+        "label": "Anklage ist unmöglich"
+      },
+      "prepare": {
+        "intent": "der Boden wird stillschweigend bereitet, ohne den Grund zu nennen",
+        "label": "Stille Gegenmaßnahmen"
+      },
+      "recognize": {
+        "intent": "der künftige Verräter begegnet einem, bevor eine Tat vorliegt",
+        "label": "Das Gesicht erkennen"
+      },
+      "spring": {
+        "intent": "der Verrat geschieht nach Plan und scheitert",
+        "label": "Der Verrat trifft auf bereiteten Boden"
+      }
+    },
+    "effects": [
+      "die bekannte Abfolge wurde an einem festgesetzten Punkt verändert: der Verrat trat ein und scheiterte",
+      "er wurde neutralisiert, ohne dass der Protagonist offenlegte, woher er sein Wissen hatte",
+      "die Vorbereitungen des Protagonisten lassen ihn im eigenen Kreis kalkulierend erscheinen"
+    ],
+    "emotion_target": "Grauen",
+    "examples": [
+      "Er schenkte den Wein selbst ein und lächelte dabei, und sie dankte ihm dafür und notierte sich, in welchem Schrank das Siegel aufbewahrt wurde."
+    ],
+    "name": "Der Verräter, dem alle noch vertrauen",
+    "preconditions": [
+      "das Wissen um einen Verrat durch eine Person, die derzeit noch unbescholten ist"
+    ],
+    "roles": {
+      "circle": {
+        "constraints": [
+          "würden sich heute auf die Seite des Verräters schlagen"
+        ],
+        "label": "die Vertrauensseligen"
+      },
+      "returner": {
+        "constraints": [
+          "kann nicht ohne Beweis für eine zukünftige Tat anklagen"
+        ],
+        "label": "der Wissende"
+      },
+      "traitor": {
+        "constraints": [
+          "ist derzeit unschuldig und wird geschätzt"
+        ],
+        "label": "der künftige Verräter"
+      }
+    },
+    "summary": "Derjenige, der sie ausliefern wird, steht bereits im Innenhof und schenkt den Wein ein; er ist beliebt und bisher schuldlos, und jede Anschuldigung würde wie Wahnsinn oder böswillige Verleumdung klingen. So wird die Gegenmaßnahme im Verborgenen und ohne Erklärung aufgebaut – ein Siegel, das in einen anderen Schrank gelegt wird; ein Dokument, das stillschweigend kopiert wird; ein junger Offizier, der gezielt gefördert wird – bis der Verrat an jenem Tag eintrifft, der ihm gehört, und auf einem Boden landet, der bereits für ihn bereitet wurde."
+  },
+  "rebirth.outsider_knowledge": {
+    "beats": {
+      "apply": {
+        "intent": "Wissen ohne lokalen Ursprung wird offen angewandt",
+        "label": "Anwendung, woher es nicht stammen kann"
+      },
+      "attribute": {
+        "intent": "die Welt weist eine Ursache zu, die sie akzeptieren kann",
+        "label": "Eine Erklärung wird gewählt"
+      },
+      "bind": {
+        "intent": "die anerkannte Zuschreibung wird zu einer Rolle, die fortan aufrechterhalten werden muss",
+        "label": "Die Erklärung bindet"
+      },
+      "work": {
+        "intent": "das Ergebnis ist vor den Augen der Zeugen unbestreitbar",
+        "label": "Es wirkt offensichtlich"
+      }
+    },
+    "effects": [
+      "der Protagonist nimmt nun eine Rolle ein, die ihm von anderen zugeschrieben wurde",
+      "die wahre Quelle des Wissens ist ein Geheimnis mit weitreichenden Folgen"
+    ],
+    "emotion_target": "Unbehagen",
+    "examples": [
+      "Er kochte das Wasser und der Bann wurde aufgehoben; bereits in der zweiten Woche hatten sie beschlossen, er stünde unter dem Schutz eines Gottes, was für alle Beteiligten die einfachere Erklärung war."
+    ],
+    "name": "Wissen aus einer anderen Welt",
+    "preconditions": [
+      "ein Setting, dessen Wissensstand das hier angewandte Wissen offensichtlich ausschließt"
+    ],
+    "roles": {
+      "knowledge": {
+        "constraints": [
+          "ist nachweislich wirksam"
+        ],
+        "label": "das importierte Wissen"
+      },
+      "outsider": {
+        "constraints": [
+          "kann keine Quelle anführen, die hier existiert"
+        ],
+        "label": "derjenige, der unmöglich weiß"
+      },
+      "witnesses": {
+        "constraints": [
+          "müssen es in ihr eigenes Weltbild integrieren"
+        ],
+        "label": "die Zeugen des Wirkens"
+      }
+    },
+    "summary": "Ein Heilmittel, eine Art das Wasser zu kochen, eine Methode der Abrechnung, ein Trick des Zaubers oder der Veredelung aus einer anderen Welt oder einem anderen Jahrhundert wird dort angewandt, wo niemand hier darauf hätte kommen können – und es wirkt offensichtlich vor den Augen der Zeugen. Das Ergebnis muss sodann einer Ursache zugeordnet werden, die diese Welt begreifen kann – ein Wunder, die Gunst der Götter, eine verlorene Abstammung, Häresie – und welche Erklärung die Welt auch annimmt, sie wird zu einer Rolle, die fortan gespielt werden muss."
+  },
+  "rebirth.save_what_was_lost": {
+    "beats": {
+      "alive": {
+        "intent": "die verlorene Person ist gegenwärtig und alltäglich",
+        "label": "Wieder am Leben, ohne es zu wissen"
+      },
+      "approach": {
+        "intent": "der erinnerte Tag rückt näher, ohne dass sich bisher etwas geändert hat",
+        "label": "Das Datum rückt näher"
+      },
+      "cost": {
+        "intent": "der Preis wird an einer ungeschützten Stelle gezahlt",
+        "label": "Der Preis trifft woanders ein"
+      },
+      "intercept": {
+        "intent": "alles wird aufgebracht, um die Abfolge zu durchbrechen",
+        "label": "Die Abfangung"
+      }
+    },
+    "effects": [
+      "die erinnerte Sequenz wurde an einem festgesetzten Punkt verändert: die Person lebt über das Datum hinaus, an dem sie eigentlich hätte sterben müssen",
+      "ein unvorhergesehener Verlust wurde als Gegenleistung erlitten"
+    ],
+    "emotion_target": "Trauer",
+    "examples": [
+      "Sie hielt ihn am neunten von der Flussstraße fern, und es funktionierte – doch es war der Junge, der ihn hatte warnen wollen, den sie stattdessen begruben."
+    ],
+    "name": "Das herannahende Datum",
+    "preconditions": [
+      "ein spezifischer, in Erinnerung gebliebener Tod mit bekanntem Datum und Todesart"
+    ],
+    "roles": {
+      "cost": {
+        "constraints": [
+          "war ungeschützt, da es nicht vorhersehbar war"
+        ],
+        "label": "wo der Preis stattdessen eintritt"
+      },
+      "doomed": {
+        "constraints": [
+          "ist am Leben und ahnungslos"
+        ],
+        "label": "der bereits Verstorbene"
+      },
+      "returner": {
+        "constraints": [
+          "kennt das Datum und die Art des Schicksals"
+        ],
+        "label": "der Abfangende"
+      }
+    },
+    "summary": "Jemand, der bereits begraben war, ist durch die Rückkehr wieder am Leben; er sitzt am Tisch und beschwert sich über den Reis, während das Datum seines Todes im Kalender näher rückt und sich noch nichts geändert hat. Alles wird aufgebracht, um die Abfolge zu durchbrechen — die Straße wurde gemieden, der Arzt wurde verfrüht gerufen, der Brief abgefangen — und es gelingt, doch der Preis wird an einem Ort gefordert, den niemand zu bewachen wusste, denn ein verhinderter Tod ist kein aufgehobener Tod."
+  },
+  "rebirth.second_chance_wake": {
+    "beats": {
+      "end": {
+        "intent": "das vorangegangene Leben schließt mit einem definierten Verlust oder Verrat",
+        "label": "Das Leben endet"
+      },
+      "verify": {
+        "intent": "ein überprüfbares Faktum bestätigt genau, wie weit die Zeit zurückliegt",
+        "label": "Die Verifizierung des Datums"
+      },
+      "vow": {
+        "intent": "ein bestimmtes zukünftiges Ereignis wird als das Ziel festgelegt, das unter allen Umständen verhindert werden muss",
+        "label": "Das Gelübde der Veränderung"
+      },
+      "wake": {
+        "intent": "das Bewusstsein kehrt vor dem Untergang zurück, in einem Körper oder einer Welt, die eigentlich unmöglich sein sollte",
+        "label": "Früheres Erwachen"
+      }
+    },
+    "effects": [
+      "der Protagonist besitzt die Erinnerung an eine Abfolge von Ereignissen, die noch nicht stattgefunden haben",
+      "der Protagonist befindet sich in einem Körper und einer Identität, deren bestehende Verpflichtungen ihm nicht gehören",
+      "ein spezifisches, datiertes Ereignis dient fortan als Maßstab für alles Kommende"
+    ],
+    "emotion_target": "Ungläubigkeit",
+    "examples": [
+      "Die Decke war diejenige von vor dem großen Brand, der Kalender an der Wand war drei Jahre falsch, und seine Hände waren die eines Jungen."
+    ],
+    "name": "Erwachen vor dem Untergang",
+    "preconditions": [
+      "ein Leben, das von einer bekannten, zeitlich fixierten Katastrophe geprägt ist"
+    ],
+    "roles": {
+      "anchor": {
+        "constraints": [
+          "ist überprüfbar und eindeutig"
+        ],
+        "label": "das Faktum, das das Datum beweist"
+      },
+      "outcome": {
+        "constraints": [
+          "ist spezifisch und zeitlich fixiert"
+        ],
+        "label": "das zu verhindernde Schicksal"
+      },
+      "returner": {
+        "constraints": [
+          "trägt die vollständige Erinnerung an das, was danach geschah"
+        ],
+        "label": "derjenige, der früher erwacht"
+      }
+    },
+    "summary": "Ein Leben endet – am Galgen, durch die Hand eines Schwurbruders, in einem Bett voller Reue – und das Bewusstsein kehrt zurück in einem Körper mit den Händen eines Jünglings, unter einer Decke aus der Zeit vor dem großen Feuer, neben einem Kalender, der drei Jahre danebenliegt. Ungläubigkeit weicht der Überprüfung: das Datum, ein noch unversehrtes Gesicht, eine Narbe, die es noch nicht gibt. Aus dieser Gewissheit erwächst das Gelübde, dass das bereits durchlebte Ende diesmal nicht eintreten darf."
+  },
+  "rebirth.slip_of_the_impossible": {
+    "beats": {
+      "choose": {
+        "intent": "der Protagonist muss sich entscheiden: entweder für die fortwährende Verheimlichung oder für das Geständnis gegenüber einer anderen Person",
+        "label": "Die Lüge vertiefen oder sich offenbaren"
+      },
+      "notice": {
+        "intent": "ein Beobachter registriert es und beginnt stillschweigend zu beobachten",
+        "label": "Jemand bemerkt es und schweigt"
+      },
+      "slip": {
+        "intent": "eine unmögliche Vertrautheit zeigt sich, bevor sie maskiert werden kann",
+        "label": "Ein Reflex verrät es"
+      },
+      "thin": {
+        "intent": "jeder weitere gewöhnliche Moment setzt die Erklärung unter Druck",
+        "label": "Die Tarnung bröckelt"
+      }
+    },
+    "effects": [
+      "eine andere Person hegt einen Verdacht, der im Kern der Wahrheit entspricht",
+      "der Protagonist hat entweder einen Komplizen oder einen Beobachter"
+    ],
+    "emotion_target": "Angst",
+    "examples": [
+      "Sie griff nach dem Riegel auf der linken Seite, noch bevor ihr jemand den Raum gezeigt hatte, und der Blick des alten Dieners wich ihr für den Rest des Abends nicht mehr von der Seite."
+    ],
+    "name": "Das unerklärliche Entrücken",
+    "preconditions": [
+      "ein Protagonist, der eine falsche Identität oder eine vorgetäuschte Lebensgeschichte aufrechterhält"
+    ],
+    "roles": {
+      "cover": {
+        "constraints": [
+          "wird mit jedem weiteren Fehltritt dünner"
+        ],
+        "label": "die Tarnung"
+      },
+      "observer": {
+        "constraints": [
+          "sagt nichts und beobachtet weiterhin"
+        ],
+        "label": "die Person, die es bemerkt hat"
+      },
+      "returner": {
+        "constraints": [
+          "hat reagiert, bevor sie nachdenken konnte"
+        ],
+        "label": "die Person, die sich verraten hat"
+      }
+    },
+    "summary": "Ein Reflex verrät es – das Greifen nach einem Riegel in einem Raum, den man nie betreten hat, das Zusammenzucken bei einem Namen, der hier noch nie ausgesprochen wurde, ein Wort aus einer Sprache, die in dieser Provinz völlig fremd ist – und eine Person bemerkt es. Sie ergreift keine Maßnahmen. Sie beginnt einfach nur, zu beobachten, und jeder gewöhnliche Abend danach lässt die Tarnung dünner werden, bis nur noch die Wahl bleibt zwischen einer Lüge, die ständig wachsen muss, und dem Geständnis gegenüber jemandem, dessen Reaktion unvorhersehbar bleibt."
+  }
+}

@@ -1,0 +1,208 @@
+# generation-paths.yaml — S1 · every path that hands GENERATED CONTENT to a user, and what
+# guard report (if any) rides with it.
+#
+# WHY A REGISTRY AND NOT A LINT OVER MODULES
+# ------------------------------------------
+# The obvious gate — "every module that runs a guard imports the guard primitive" — greens on
+# the paths that matter most, because they contain no guard module at all. Measured on this
+# repo 2026-08-01: composition's two SSE generators (`event_gen`, routers/engine.py:803 and
+# :1030) mention `canon` **zero times**. They stream user-visible prose with no canon guard and
+# nothing in the payload saying so. A module enumeration cannot see an absence.
+#
+# It also cannot reach Go or Rust. The two worst false-greens the red team found are
+# `wiki_staleness.go` (a failed KG-hash chunk is `continue`d, so "could not check" and "no
+# drift" produce the identical result) and `l4_retry.rs` (every zone gets a narration, some of
+# them a canonical placeholder, and the honesty lives in a `fallback_count` field nothing
+# obliges a consumer to read). Both are the same shape: **the degraded output is shaped exactly
+# like the successful one.**
+#
+# HOW TO USE IT
+# -------------
+# `scripts/generation-guard-gate.py` reads this file and reds on:
+#   · a PHANTOM row — the file or the symbol does not exist (the S12 lesson: a gate that greens
+#     because a document mentions a name is not a gate);
+#   · a row claiming `guarded` whose `coverage_field` does not actually appear in that file;
+#   · an `unguarded` row with no `owner` — an honest gap must be TRACKED, never silent;
+#   · the count of LLM-calling files NOT classified here growing past `discovery.baseline`.
+#
+# That last check is deliberately weak and deliberately VISIBLE. This registry does not claim
+# to cover every LLM call in the repo — 94 files call a model gateway, most of them extraction
+# or embedding rather than content generation. Claiming completeness I have not verified is the
+# exact "denominator derived from what I happened to look at" mistake this project has already
+# paid for twice. So the gap is measured, recorded, and prevented from growing.
+
+version: 1
+
+paths:
+  - id: composition.scene.auto.worker
+    service: composition-service
+    language: python
+    file: services/composition-service/app/worker/operations.py
+    symbol: run_generate
+    status: guarded
+    coverage_field: guard_status
+    # Emitted through the shared builder, not inline: the canon envelope lived in SIX
+    # hand-written copies until 2026-08-01, which is how `guard_status` reached all six
+    # and `verdict` reached none. The gate follows exactly this one declared hop.
+    via:
+      file: services/composition-service/app/engine/canon_check.py
+      symbol: canon_envelope
+    note: >-
+      The live path (COMPOSITION_WORKER_ENABLED=true in the shipped compose). Emits
+      canon.checks + canon.guard_status, cross_scene.status/earlier_source, and
+      exit_state_record.status.
+
+  - id: composition.scene.auto.inline
+    service: composition-service
+    language: python
+    file: services/composition-service/app/routers/engine.py
+    symbol: generate
+    status: guarded
+    coverage_field: guard_status
+    # Emitted through the shared builder, not inline: the canon envelope lived in SIX
+    # hand-written copies until 2026-08-01, which is how `guard_status` reached all six
+    # and `verdict` reached none. The gate follows exactly this one declared hop.
+    via:
+      file: services/composition-service/app/engine/canon_check.py
+      symbol: canon_envelope
+    note: >-
+      The fallback branch (worker flag off). Carries the canon block and the exit-state record;
+      it does NOT run the cross-scene check — tracked below as a separate gap, because a guard
+      that exists on one branch of a flag is invisible the moment the flag moves.
+
+  - id: composition.scene.cowrite.stream
+    service: composition-service
+    language: python
+    file: services/composition-service/app/routers/engine.py
+    symbol: event_gen
+    status: unguarded
+    owner: S1-part2
+    note: >-
+      MEASURED 2026-08-01 — the SSE generators mention `canon` zero times. User-visible prose,
+      no canon guard, no name grounding, no cross-scene check, and no field that says any of
+      that. This is the path a module-based lint cannot see, and it is why this file exists.
+
+  - id: composition.selection_edit.stream
+    service: composition-service
+    language: python
+    file: services/composition-service/app/routers/engine.py
+    symbol: selection_edit
+    status: unguarded
+    owner: S1-part2
+    note: >-
+      Rewrites an author-selected span. Same shape as the cowrite stream: generated text
+      reaches the manuscript with no guard report attached.
+
+  - id: composition.chapter.single_pass
+    service: composition-service
+    language: python
+    file: services/composition-service/app/worker/operations.py
+    symbol: run_chapter_generate
+    status: guarded
+    coverage_field: guard_status
+    # Emitted through the shared builder, not inline: the canon envelope lived in SIX
+    # hand-written copies until 2026-08-01, which is how `guard_status` reached all six
+    # and `verdict` reached none. The gate follows exactly this one declared hop.
+    via:
+      file: services/composition-service/app/engine/canon_check.py
+      symbol: canon_envelope
+    note: >-
+      Chapter-scoped, so there is no per-scene outline node: exit_state_record reports
+      `no_node` rather than looking like a scene that recorded nothing.
+
+  - id: composition.chapter.stitch
+    service: composition-service
+    language: python
+    file: services/composition-service/app/worker/operations.py
+    symbol: run_stitch
+    status: guarded
+    coverage_field: guard_status
+    # Emitted through the shared builder, not inline: the canon envelope lived in SIX
+    # hand-written copies until 2026-08-01, which is how `guard_status` reached all six
+    # and `verdict` reached none. The gate follows exactly this one declared hop.
+    via:
+      file: services/composition-service/app/engine/canon_check.py
+      symbol: canon_envelope
+
+  # ── glossary · wiki (Go) ─────────────────────────────────────────────────────────────────
+  - id: glossary.wiki.kg_drift_sweep
+    service: glossary-service
+    language: go
+    file: services/glossary-service/internal/api/wiki_staleness.go
+    symbol: sweepKgDrift
+    status: unguarded
+    owner: S1-part2
+    note: >-
+      A failed kg-hashes chunk is logged and `continue`d, and the entities in it then take the
+      same branch as "no drift" (`!ok` → skip). The sweep reports `flagged`; it reports nothing
+      about how many entities were never compared. "Could not check" and "nothing changed"
+      produce byte-identical output.
+
+  # ── tilemap · zone narration (Rust) ──────────────────────────────────────────────────────
+  - id: tilemap.l4.zone_narration
+    service: tilemap-service
+    language: rust
+    file: services/tilemap-service/src/harness/l4_retry.rs
+    symbol: L4Result
+    status: unguarded
+    owner: S1-part2
+    note: >-
+      Every zone comes back with a narration; some are `canonical_default_narration`. The
+      honesty is real but OPTIONAL — it lives in `fallback_count`, and nothing obliges a
+      consumer to read it before treating the set as generated content.
+
+  # ── commit-service · NPC combat decision (Rust) ──────────────────────────────────────────
+  - id: commit.combat.npc_decision
+    service: commit-service
+    language: rust
+    file: services/commit-service/src/llm_driver.rs
+    symbol: Dispatch
+    status: guarded
+    coverage_field: reject
+    note: >-
+      Arrived with the game-logic promotion (merge 2026-08-02) and classified rather than
+      absorbed into the discovery baseline, because it IS a model deciding something a player
+      sees. It is guarded by SHAPE, which is the property this registry cares about: the
+      degraded result is not shaped like the successful one. `Dispatch` carries
+      `payload: Option<CombatPayload>` beside `reject: Option<String>`, so "the model chose"
+      and "we fell back" are distinguishable by a consumer that reads either field — unlike
+      tilemap's `fallback_count`, which a consumer may ignore and still get a narration.
+      The model also cannot invent a target: `vocab.validate` checks the tool name against a
+      closed set and the argument against the ids actually OFFERED this turn, so a truncated
+      or off-vocabulary call resolves to a reject, never to a valid-looking payload.
+      GAP, tracked for S7 not fixed here — `with_max_tokens(256)` is a flat literal at the
+      call site. Rust has no `call_budget` equivalent (the seam is Python-only), so attributing
+      it needs the Rust half of S7, not an edit here. The 256 is a runaway guard, and the
+      vocabulary post-condition is why an undersized cap degrades to a reject rather than to a
+      wrong strike — but nothing says WHY 256 is the number.
+
+# The code-derived denominator this registry does NOT cover. Measured by the gate itself, so
+# the number cannot drift away from reality the way a hand-written count does.
+discovery:
+  # Files calling a model gateway, per language, on 2026-08-01. Most are extraction/embedding
+  # rather than content generation — that is WHY this is a growth guard and not a completeness
+  # claim. Raise a baseline only with a note saying which new paths were classified.
+  # These numbers come from the GATE'S OWN detector (`python scripts/generation-guard-gate.py
+  # --verbose`), never from a shell grep. The first draft wrote `rust: 25` from a slightly
+  # different pattern typed at a prompt, which would have masked one new Rust caller forever —
+  # a baseline is only a guard if the thing that checks it produced it.
+  baseline:
+    python: 59
+    go: 2
+    # 24 → 30 on the 2026-08-02 merge of `origin/main` (the game-logic promotion). The six new
+    # files are all `services/commit-service/src/`, and the raise is narrow because each was
+    # READ before being counted rather than accepted as a number:
+    #   · llm_driver.rs   — a real generation path. NOT absorbed into this number; it is
+    #                       classified above as `commit.combat.npc_decision`.
+    #   · main.rs         — the POC-2 turn runner. Constructs the `GatewayClient` and calls
+    #                       `decide`; assembles no prompt of its own, so it has no separate
+    #                       guard surface to declare.
+    #   · admission.rs · domain/payload.rs · lib.rs · producer.rs — no gateway call at all.
+    #                       They match the detector on the WORD (doc comments about the
+    #                       LLM-safety tier, an `LW_PRODUCER_KEY_LLM_DRIVER` env name). This is
+    #                       the detector being deliberately loose, which is the right trade for
+    #                       a growth guard — but it means the count is "files mentioning a
+    #                       model gateway", not "files calling one", and raising it must not be
+    #                       read as six new generation paths.
+    rust: 30
+    typescript: 8

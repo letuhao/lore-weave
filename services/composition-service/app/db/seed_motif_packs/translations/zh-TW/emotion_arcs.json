@@ -1,0 +1,224 @@
+{
+  "emotion_arc.dread_to_relief": {
+    "beats": {
+      "climax": {
+        "intent": "最恐懼的時刻降臨",
+        "label": "高潮"
+      },
+      "fear": {
+        "intent": "將恐懼感推向恐慌",
+        "label": "恐懼攀升"
+      },
+      "release": {
+        "intent": "危機解除；釋然感降臨",
+        "label": "釋放"
+      },
+      "unease": {
+        "intent": "埋下隱隱的恐懼種子",
+        "label": "不安"
+      }
+    },
+    "effects": [
+      "敘事單元以張力的釋放作為收尾"
+    ],
+    "emotion_target": "釋然",
+    "examples": [
+      "恐懼不斷堆疊，直到最糟糕的時刻——接著，不可思議地，一切都結束了，他們終於可以順暢地呼吸。"
+    ],
+    "name": "從恐懼到釋然",
+    "preconditions": [
+      "敘事單元需要具備情感輪廓"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角角色"
+      }
+    },
+    "summary": "不安感不斷堆疊至恐懼與高潮，隨後在釋然中得到釋放。"
+  },
+  "emotion_arc.fall_then_rise": {
+    "beats": {
+      "comfort": {
+        "intent": "建立穩定的情緒基調",
+        "label": "安逸"
+      },
+      "loss": {
+        "intent": "將角色推入深淵",
+        "label": "喪失"
+      },
+      "struggle": {
+        "intent": "開始向上攀爬",
+        "label": "掙扎"
+      },
+      "triumph": {
+        "intent": "以超越起點的高度重新站起",
+        "label": "勝利"
+      }
+    },
+    "effects": [
+      "單元以情感宣洩後的昇華作為結尾"
+    ],
+    "emotion_target": "宣洩",
+    "examples": [
+      "從安穩到毀滅，再到拼死掙扎——最終站在比墜落前更高的巔峰。"
+    ],
+    "name": "先墜落後崛起（陷入困境）",
+    "preconditions": [
+      "敘事單元需要具備情緒輪廓"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角角色"
+      }
+    },
+    "summary": "安逸轉為喪失與掙扎，最終迎來艱辛贏得的勝利——即「陷入困境」式的宣洩式曲線。"
+  },
+  "emotion_arc.hope_to_heartbreak": {
+    "beats": {
+      "grief": {
+        "intent": "陷入喪失的痛苦中",
+        "label": "悲慟"
+      },
+      "hope": {
+        "intent": "喚起脆弱的希望",
+        "label": "希望點燃"
+      },
+      "near": {
+        "intent": "讓目標近在眼前",
+        "label": "近在咫尺"
+      },
+      "turn": {
+        "intent": "在最後關頭將希望奪走",
+        "label": "殘酷轉折"
+      }
+    },
+    "effects": [
+      "敘事單元以心碎收尾"
+    ],
+    "emotion_target": "心碎",
+    "examples": [
+      "近在咫尺，觸手可及——接著一切化為烏有，剩下的唯有無盡的哀慟。"
+    ],
+    "name": "從希望到心碎",
+    "preconditions": [
+      "敘事單元需要一個情感輪廓"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角人物"
+      }
+    },
+    "summary": "希望在接近成功的曙光中被點燃，隨後遭遇殘酷的轉折，最終墜入悲慟。"
+  },
+  "emotion_arc.rise_then_fall": {
+    "beats": {
+      "ascent": {
+        "intent": "向著成功攀升",
+        "label": "攀升"
+      },
+      "downfall": {
+        "intent": "從高處墜落",
+        "label": "墜落"
+      },
+      "flaw": {
+        "intent": "致命缺陷浮出水面",
+        "label": "缺陷顯露"
+      },
+      "peak": {
+        "intent": "達到頂點",
+        "label": "巔峰"
+      }
+    },
+    "effects": [
+      "該單元以悲劇性的墜落收尾"
+    ],
+    "emotion_target": "悲劇",
+    "examples": [
+      "不斷攀升，直到那曾助其飛翔的事物，最終成為導致其墜落的禍根。"
+    ],
+    "name": "先升後墜（伊卡洛斯）",
+    "preconditions": [
+      "敘事單元需要一個情感輪廓"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角角色"
+      }
+    },
+    "summary": "攀升至巔峰，隨後缺陷顯露並導致墜落——即伊卡洛斯式的悲劇曲線。"
+  },
+  "emotion_arc.steady_fall": {
+    "beats": {
+      "collapse": {
+        "intent": "觸底",
+        "label": "崩塌"
+      },
+      "decline": {
+        "intent": "墜落速度加快",
+        "label": "衰落"
+      },
+      "erosion": {
+        "intent": "逐步喪失陣地",
+        "label": "侵蝕"
+      },
+      "start_high": {
+        "intent": "從巔峰狀態開始",
+        "label": "高點起步"
+      }
+    },
+    "effects": [
+      "該單元最終落入慘澹的崩塌狀態"
+    ],
+    "emotion_target": "絕望",
+    "examples": [
+      "它曾一度穩固，然後便不再——那是一種緩慢的瓦解，任何單一的喪失都無法解釋其原因。"
+    ],
+    "name": "緩步墜落",
+    "preconditions": [
+      "敘事單元需要一個情感輪廓"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角角色"
+      }
+    },
+    "summary": "從巔峰起步，歷經不斷的侵蝕，最終走向崩塌——一場墜入絕望的過程。"
+  },
+  "emotion_arc.steady_rise": {
+    "beats": {
+      "arrival": {
+        "intent": "達到實至名歸的高度",
+        "label": "抵達巔峰"
+      },
+      "climb": {
+        "intent": "建立勢頭與動能",
+        "label": "持續攀升"
+      },
+      "start_low": {
+        "intent": "從社會底層或困境中開始",
+        "label": "起點低微"
+      },
+      "wins": {
+        "intent": "累積成就與實力",
+        "label": "接連獲勝"
+      }
+    },
+    "effects": [
+      "敘事單元落點於實至名歸的勝利"
+    ],
+    "emotion_target": "凱旋",
+    "examples": [
+      "從一無所有，到小有成就，再到不斷壯大——每一步都實至名歸，直到起點已成往事。"
+    ],
+    "name": "穩步攀升（白手起家）",
+    "preconditions": [
+      "敘事單元需要具備情感輪廓"
+    ],
+    "roles": {
+      "pov": {
+        "label": "視角角色"
+      }
+    },
+    "summary": "從低谷起步，歷經接連不斷的勝利，最終抵達巔峰——這是一條白手起家的凱旋曲線。"
+  }
+}

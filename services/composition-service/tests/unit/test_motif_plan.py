@@ -47,12 +47,21 @@ class _Cand:
 
 
 class _Retriever:
-    def __init__(self, cands):
+    """`by_query` (optional) maps the `query=` value → the candidates to return, so a test
+    can distinguish the premise-seeded call from the unseeded fallback. Every call's kwargs
+    land in `calls`; `kw` stays the LAST call for the existing assertions."""
+
+    def __init__(self, cands, by_query=None):
         self._cands = cands
+        self._by_query = by_query
         self.kw = None
+        self.calls: list[dict] = []
 
     async def retrieve(self, caller_id, **kw):
         self.kw = kw
+        self.calls.append(kw)
+        if self._by_query is not None:
+            return self._by_query.get(kw.get("query"), [])
         return self._cands
 
 
@@ -73,9 +82,42 @@ async def test_select_arc_motifs_happy_and_retrieve_shape():
         premise="xianxia premise", genre_tags=["xianxia"], source_language="vi",
         model_source="user_model", model_ref="m")
     assert len(out) == 1 and out[0].code == "xau_hoa_my" and out[0].summary == "ugly→perfect"
-    # arc-level retrieve: NO beat / tension / query (the full-pool degrade path)
+    # arc-level retrieve: no beat / tension / prev_effects — but SEEDED WITH THE PREMISE.
     assert retr.kw["beat_role"] is None and retr.kw["tension"] is None and retr.kw["prev_effects"] is None
     assert retr.kw["genre_tags"] == ["xianxia"]
+    assert retr.kw["query"] == "xianxia premise"
+
+
+async def test_select_arc_motifs_seeds_retrieve_with_the_premise():
+    """Without the premise the arc retrieve has NO query text, so every candidate falls to
+    the degrade path where ranks tie and the cap goes to whichever pack sorts first — live,
+    that made the library section 15/15 `cultivation.*` regardless of what the book was
+    about. The premise was already in this function's signature, used only for the prompt."""
+    seeded = [_Cand("romance.slow_thaw", "Slow Thaw", "accumulated small mercies")]
+    retr = _Retriever(None, by_query={"a physician's daughter and the ruined heir": seeded})
+    llm = _LLM(json.dumps([{"code": "romance.slow_thaw", "why": "spine", "arc_role": "spine"}]))
+    out = await select_arc_motifs(
+        llm, retr, user_id="019d5e3c-7cc5-7e6a-8b27-1344e148bf7c", book_id=BOOK, project_id=PROJ,
+        premise="a physician's daughter and the ruined heir", genre_tags=[],
+        model_source="user_model", model_ref="m")
+    assert [m.code for m in out] == ["romance.slow_thaw"]
+    assert len(retr.calls) == 1                      # one call, and it carried the premise
+    assert retr.calls[0]["query"] == "a physician's daughter and the ruined heir"
+
+
+async def test_select_arc_motifs_falls_back_when_the_seeded_query_matches_nothing():
+    """Seeding adds a cosine floor (`motif_min_score`) that the unseeded degrade path does
+    not have, so a premise unlike anything in the library could return FEWER candidates than
+    before. It must only ever ADD reach: an empty seeded result retries unseeded."""
+    fallback = [_Cand("cultivation.face_slap", "Face Slap", "public reversal")]
+    retr = _Retriever(None, by_query={"an unmatchable premise": [], None: fallback})
+    llm = _LLM(json.dumps([{"code": "cultivation.face_slap", "why": "w", "arc_role": "r"}]))
+    out = await select_arc_motifs(
+        llm, retr, user_id="019d5e3c-7cc5-7e6a-8b27-1344e148bf7c", book_id=BOOK, project_id=PROJ,
+        premise="an unmatchable premise", genre_tags=[],
+        model_source="user_model", model_ref="m")
+    assert [m.code for m in out] == ["cultivation.face_slap"]
+    assert [c["query"] for c in retr.calls] == ["an unmatchable premise", None]
 
 
 async def test_select_arc_motifs_no_candidates_is_empty():
@@ -94,3 +136,54 @@ async def test_select_arc_motifs_degrades_on_non_completion():
         book_id=BOOK, project_id=PROJ, premise="p", genre_tags=["xianxia"],
         model_source="user_model", model_ref="m")
     assert out == []
+
+
+# ── the silent drop that read as an empty library ────────────────────────────────────────────────
+
+def test_an_INVENTED_code_is_reported_not_just_dropped():
+    """Live: retrieval handed the model 30 candidates, it answered with codes that were not in the
+    catalog, every one was dropped by a bare `continue`, and the pass reported "the library had no
+    candidate for its language/genre". A selection failure wearing a retrieval failure's message —
+    which sends the author to fix a library that is fine."""
+    from app.engine.motif_plan import parse_selected_motifs
+
+    by_code = {"real.one": {"code": "real.one", "name": "Real", "summary": "s"}}
+    dropped: list[str] = []
+    out = parse_selected_motifs(
+        '[{"code":"cultivation.dao_heart_temper","why":"w","arc_role":"spine"},'
+        ' {"code":"real.one","why":"w2","arc_role":"echo"}]',
+        by_code, dropped=dropped)
+    assert [m.code for m in out] == ["real.one"]          # never invents
+    assert dropped == ["cultivation.dao_heart_temper"]    # …and says what it threw away
+
+
+def test_a_CASE_or_WHITESPACE_near_miss_is_recovered_not_discarded():
+    """Catalog codes are machine-ugly (`3b.faceslap.1784257099`), so a model echoing them fumbles
+    case and padding. That is a near-miss, not an invention, and discarding it cost a real motif."""
+    from app.engine.motif_plan import parse_selected_motifs
+
+    by_code = {"3b.FaceSlap.1784257099": {"code": "3b.FaceSlap.1784257099", "name": "N", "summary": "s"}}
+    dropped: list[str] = []
+    out = parse_selected_motifs(
+        '[{"code":"  3b.faceslap.1784257099 ","why":"w","arc_role":"r"}]', by_code, dropped=dropped)
+    assert [m.code for m in out] == ["3b.FaceSlap.1784257099"]   # the REAL catalog code
+    assert dropped == []
+
+
+def test_recovery_never_becomes_invention():
+    """The tolerance must not widen into fuzzy matching — a code that merely LOOKS similar is still
+    an invention, and binding it would put a motif in the plan the model never chose."""
+    from app.engine.motif_plan import parse_selected_motifs
+
+    by_code = {"a.real.code": {"code": "a.real.code", "name": "N", "summary": "s"}}
+    dropped: list[str] = []
+    assert parse_selected_motifs('[{"code":"a.real.cod"}]', by_code, dropped=dropped) == []
+    assert dropped == ["a.real.cod"]
+
+
+def test_dropped_is_OPTIONAL_so_existing_callers_are_unchanged():
+    from app.engine.motif_plan import parse_selected_motifs
+
+    by_code = {"x": {"code": "x", "name": "N", "summary": "s"}}
+    assert len(parse_selected_motifs('[{"code":"x"}]', by_code)) == 1
+    assert parse_selected_motifs('[{"code":"nope"}]', by_code) == []

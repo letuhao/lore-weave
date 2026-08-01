@@ -220,6 +220,7 @@
       "selected": "{{count}}টি নির্বাচিত",
       "activate": "সক্রিয় করুন",
       "deactivate": "নিষ্ক্রিয় করুন",
+      "reject": "প্রত্যাখ্যান করুন",
       "clear": "পরিষ্কার করুন",
       "done": "{{count}}টি এনটিটি {{status}} করা হয়েছে",
       "select_all_matching": "সব {{count}}টি মিল থাকা নির্বাচন করুন",
@@ -229,8 +230,7 @@
       "delete_confirm": {
         "title": "{{count}}টি এনটিটি মুছে ফেলবেন?",
         "description": "নির্বাচিত {{count}}টি এনটিটি রিসাইকেল বিনের দিকে সরানো হবে।"
-      },
-      "reject": "প্রত্যাখ্যান করুন"
+      }
     },
     "clear_filters": "সব ফিল্টার পরিষ্কার করুন",
     "deleted": "এনটিটি মুছে ফেলা হয়েছে",
@@ -239,6 +239,7 @@
       "description": "আপনার প্রথম গ্লসারি এনটিটি তৈরি করুন — চরিত্র, স্থান, বস্তু এবং আরও অনেক কিছু।"
     },
     "untitled": "নামহীন",
+    "scope_label_title": "স্কোপ — একই নামের অন্যান্য সত্তা থেকে এটিকে আলাদা করতে সাহায্য করে",
     "alive_title": "জীবিত — মৃত হিসেবে চিহ্নিত করতে ক্লিক করুন",
     "dead_title": "মৃত — পুনরুজ্জীবিত করতে ক্লিক করুন",
     "alive": "জীবিত",
@@ -254,8 +255,7 @@
       "title": "এনটিটি মুছে ফেলবেন?",
       "description": "\"{{title}}\" রিসাইকেল বিনের দিকে সরানো হবে।",
       "confirm": "মুছে ফেলুন"
-    },
-    "scope_label_title": "স্কোপ — একই নামের অন্যান্য সত্তা থেকে এটিকে আলাদা করতে সাহায্য করে"
+    }
   },
   "sharing": {
     "title": "দৃশ্যমানতা",
@@ -340,9 +340,9 @@
     "discard": "পরিবর্তন বাতিল করুন",
     "save": "সেটিংস সেভ করুন",
     "world": {
-      "title": "World",
       "hint": "বইটিকে একটি 'world'-এ গ্রুপ করুন যাতে এটি ওয়ার্ল্ডের গ্রাফ এবং টাইমলাইনে অন্তর্ভুক্ত করা যায়।",
-      "open": "World-এ ওপেন করুন"
+      "open": "World-এ ওপেন করুন",
+      "title": "বিশ্ব"
     }
   },
   "translate": {
@@ -375,8 +375,6 @@
     "verifier_default": "ট্রান্সলেটর মডেল ব্যবহার করুন (ডিফল্ট)",
     "qa_depth": "QA গভীরতা",
     "qa_depth_rule_only": "শুধুমাত্র নিয়ম (দ্রুত)",
-    "qa_depth_standard": "Standard",
-    "qa_depth_thorough": "Thorough",
     "qa_rounds": "সর্বোচ্চ QA রাউন্ড",
     "force_retranslate": "পুনরায় অনুবাদ করতে বাধ্য করুন",
     "force_retranslate_hint": "যে অধ্যায়গুলোর ইতিমধ্যে অনুবাদ আছে সেগুলো পুনরায় অনুবাদ করুন (অন্যথায় সেগুলো স্কিপ করা হবে)।",
@@ -400,31 +398,26 @@
     "page_indicator": "পৃষ্ঠা {{page}} / {{pages}}",
     "prev": "আগের",
     "next": "পরের",
-    "page": "পৃষ্ঠা"
+    "page": "পৃষ্ঠা",
+    "qa_depth_standard": "মানক",
+    "qa_depth_thorough": "বিস্তারিত"
   },
   "kind_editor": {
     "modified": "পরিবর্তিত",
-    "ai": "AI",
     "required": "প্রয়োজনীয়",
     "optional": "ঐচ্ছিক",
     "activate": "সক্রিয় করুন",
     "deactivate": "নিষ্ক্রিয় করুন",
     "edit_attr": "অ্যাট্রিবিউট এডিট করুন",
     "delete_attr": "অ্যাট্রিবিউট ডিলিট করুন",
-    "title": "Entity Kinds",
     "kind_count": "{{count}}টি kind",
     "kind_count_other": "{{count}}টি kind",
     "new_kind": "নতুন Kind",
     "back": "Glossary-এ ফিরে যান",
-    "system_kinds": "System Kinds",
-    "user_kinds": "User Kinds",
-    "system_badge": "System",
-    "custom_badge": "Custom",
     "attr_count": "{{count}}টি অ্যাট্রিবিউট",
     "attr_count_other": "{{count}}টি অ্যাট্রিবিউট",
     "entity_count": "{{count}}টি এনটিটি",
     "entity_count_other": "{{count}}টি এনটিটি",
-    "system_tag": "system",
     "revert_to_default": "ডিফল্ট অবস্থায় ফিরিয়ে নিন",
     "revert_title_attr": "সব পরিবর্তন সিস্টেম ডিফল্টে ফিরিয়ে নিন",
     "delete_kind_tooltip": "Kind ডিলিট করুন",
@@ -440,8 +433,6 @@
     "attributes": "অ্যাট্রিবিউটস ({{count}})",
     "add_attribute": "অ্যাট্রিবিউট যোগ করুন",
     "no_attributes": "কোনো অ্যাট্রিবিউট সংজ্ঞায়িত করা নেই। একটি তৈরি করতে \"Add Attribute\"-এ ক্লিক করুন।",
-    "system_attributes": "System Attributes",
-    "user_attributes": "User Attributes",
     "select_kind": "দেখার এবং এডিট করার জন্য একটি Kind নির্বাচন করুন",
     "new_kind_title": "নতুন Entity Kind",
     "code": "কোড",
@@ -470,7 +461,16 @@
       "title": "ডিফল্ট অবস্থায় ফিরিয়ে আনবেন?",
       "desc": "\"{{name}}\" এর নাম, আইকন, রঙ এবং অ্যাট্রিবিউট নামগুলো তার মূল অবস্থায় ফিরিয়ে আনা হবে। জেনর ট্যাগ এবং কাস্টম অ্যাট্রিবিউটের ওপর এর কোনো প্রভাব পড়বে না।",
       "confirm": "ফিরিয়ে আনুন"
-    }
+    },
+    "ai": "AI",
+    "title": "সত্তার ধরন",
+    "system_kinds": "সিস্টেমের ধরন",
+    "user_kinds": "ব্যবহারকারীর ধরন",
+    "system_badge": "সিস্টেম",
+    "custom_badge": "কাস্টম",
+    "system_tag": "সিস্টেম",
+    "system_attributes": "সিস্টেম অ্যাট্রিবিউটস",
+    "user_attributes": "ব্যবহারকারীর অ্যাট্রিবিউটস"
   },
   "attr_editor": {
     "field_type": {
@@ -480,15 +480,14 @@
       "number": "সংখ্যা",
       "date": "তারিখ",
       "tags": "ট্যাগ",
-      "url": "URL",
-      "boolean": "বুলিয়ান"
+      "boolean": "বুলিয়ান",
+      "url": "URL"
     },
     "new_attr": "নতুন অ্যাট্রিবিউট",
     "edit_attr": "অ্যাট্রিবিউট এডিট করুন",
     "system": "সিস্টেম",
     "custom": "কাস্টম",
     "modified": "পরিবর্তিত",
-    "ai": "AI",
     "core": "কোর",
     "display_name": "ডিসপ্লে নাম",
     "field_type_label": "ফিল্ড টাইপ",
@@ -528,6 +527,7 @@
       "title": "অ্যাট্রিবিউট নাম কি ফিরিয়ে আনবেন?",
       "desc": "নাম \"{{from}}\" থেকে পুনরায় \"{{to}}\"-এ সেট করুন। অন্যান্য ফিল্ডের ওপর এর কোনো প্রভাব পড়বে না।",
       "confirm": "ফিরিয়ে আনুন"
-    }
+    },
+    "ai": "AI"
   }
 }

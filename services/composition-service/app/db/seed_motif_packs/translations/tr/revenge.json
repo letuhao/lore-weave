@@ -1,0 +1,461 @@
+{
+  "revenge.betrayal_to_exile": {
+    "beats": {
+      "betrayal": {
+        "intent": "en yakın müttefik en kritik anda taraf değiştirir",
+        "label": "İhanetin patlak vermesi"
+      },
+      "fall": {
+        "intent": "kahraman her şeyinden arındırılır",
+        "label": "Çöküş ve kayıp"
+      },
+      "trust": {
+        "intent": "bozulmak üzere olan samimi bir bağ kurulur",
+        "label": "Güven tesisi"
+      },
+      "vow": {
+        "intent": "dışlanan sağ kalan, geri döneceğine yemin eder",
+        "label": "Yeminle gelen sürgün"
+      }
+    },
+    "effects": [
+      "kahramanın tüm statüsü elinden alınır ve sürgün edilir",
+      "tüm gücüyle tutulan bir intikam yemini edilir"
+    ],
+    "emotion_target": "keder",
+    "examples": [
+      "Zaferin eşiğinde, en yakın müttefik sırt döner; her şeyinden arındırılıp sürgün edilen sağ kalan, geri döneceğine yemin eder."
+    ],
+    "name": "İhanetten Sürgüne",
+    "preconditions": [
+      "kahraman güvene, konuma veya güce sahiptir"
+    ],
+    "roles": {
+      "betrayer": {
+        "constraints": [
+          "samimi, güvenilen"
+        ],
+        "label": "yeminli kardeş / hain"
+      },
+      "lost_kin": {
+        "constraints": [
+          "çöküş anında yitirilen"
+        ],
+        "label": "kaybedilen akrabalar veya müttefikler"
+      },
+      "protagonist": {
+        "constraints": [
+          "güven dolu, yükselişte"
+        ],
+        "label": "ihanete uğrayan sağ kalan"
+      },
+      "vengeance": {
+        "constraints": [
+          "edilmiş, itici güç"
+        ],
+        "label": "intikam yemini"
+      }
+    },
+    "summary": "Zaferin eşiğinde en yakın müttefik sırtını döner; her şeyinden arındırılıp dışlanan sağ kalan, geri dönmek üzere yemin eder."
+  },
+  "revenge.blood_debt_collection": {
+    "beats": {
+      "confront": {
+        "intent": "inkâr edilemez bir kanıt sun",
+        "label": "Kanıtla yüzleş"
+      },
+      "exact": {
+        "intent": "her birini yaptıklarının hesabını vermeye zorlamak",
+        "label": "Bedeli tahsil et"
+      },
+      "locate": {
+        "intent": "suça ortak olan birini bul",
+        "label": "Suçluyu tespit et"
+      },
+      "respond": {
+        "intent": "suçlu ya yalvarır ya da dik durur",
+        "label": "Suçlunun tepkisi: Yalvarma veya meydan okuma"
+      }
+    },
+    "effects": [
+      "suçlulardan biri hesap vermek zorunda kalır",
+      "hesaplaşma zinciri, asıl failin üzerine doğru ilerler"
+    ],
+    "emotion_target": "kararlı-vakar",
+    "examples": [
+      "İntikamcı, suça ortak olanları birer birer bulur ve her birini yaptıklarının hesabını vermeye zorlar."
+    ],
+    "name": "Kan Borcu Tahsili",
+    "preconditions": [
+      "geçmişteki bir suçun suçluluğunu paylaşan birden fazla taraf vardır ve düşmanın kendi sırları, hangisinin ne yaptığını açıkça ortaya koymuştur"
+    ],
+    "roles": {
+      "perpetrator": {
+        "constraints": [
+          "birkaç kişiden biri"
+        ],
+        "label": "suçlu taraf"
+      },
+      "protagonist": {
+        "constraints": [
+          "tavizsiz, metodik"
+        ],
+        "label": "intikamcı"
+      },
+      "wronged_dead": {
+        "constraints": [
+          "hesabı sorulacak olan sebep"
+        ],
+        "label": "haksızlığa uğramış ölü"
+      }
+    },
+    "summary": "İntikamcı, suça ortak olanları birer birer bulur, her birini kanıtlarla yüzleşmeye zorlar ve hepsini hesap vermeye mecbur bırakır."
+  },
+  "revenge.false_accusation": {
+    "beats": {
+      "condemned": {
+        "intent": "kahraman herkesin önünde itibarını kaybeder",
+        "label": "Toplum önünde mahkûm edilme"
+      },
+      "evidence_hidden": {
+        "intent": "gerçekler bastırılır; en karanlık an",
+        "label": "Delilin gizlenmesi"
+      },
+      "framed": {
+        "intent": "yerleştirilen deliller kahramanı damgalar",
+        "label": "Suçla itham edilme"
+      },
+      "unmasked": {
+        "intent": "asıl failin gerçek yüzü ifşa edilir",
+        "label": "Gerçeğin gün yüzüne çıkışı"
+      }
+    },
+    "effects": [
+      "başkahramanın itibarının iade edilmesi",
+      "gerçek suçlunun deşifre edilmesi"
+    ],
+    "emotion_target": "haksızlığa uğramışlık hissi",
+    "examples": [
+      "Delil olarak yerleştirilen kanıtlar yüzünden hain ilan edilen suçlu, asıl failin gerçek yüzü gün yüzüne çıkana dek toplumsal aşağılamaya maruz kalır."
+    ],
+    "name": "İftira",
+    "preconditions": [
+      "başkahramanın bir suçtan makul bir şekilde sorumlu tutulabilmesi"
+    ],
+    "roles": {
+      "clue": {
+        "constraints": [
+          "başlangıçta bastırılmış"
+        ],
+        "label": "gizli tanık veya ipucu"
+      },
+      "framer": {
+        "constraints": [
+          "gizlenen, metodik"
+        ],
+        "label": "iftiracı"
+      },
+      "judges": {
+        "constraints": [
+          "görünüşe kanmış"
+        ],
+        "label": "yargılayıcı merci"
+      },
+      "protagonist": {
+        "constraints": [
+          "toplum önünde mahkûm edilmiş"
+        ],
+        "label": "iftiraya uğrayan"
+      }
+    },
+    "summary": "Delil olarak yerleştirilen sahte kanıtlarla hain ilan edilen suçlu, gerçek suçlu gün yüzüne çıkana dek toplumsal aşağılanmaya maruz kalır."
+  },
+  "revenge.mercy_or_vengeance": {
+    "beats": {
+      "at_mercy": {
+        "intent": "katil çaresiz bir halde yatmaktadır",
+        "label": "Düşman merhamete muhtaç"
+      },
+      "choice": {
+        "intent": "intikamcı karar vermek zorundadır",
+        "label": "Seçim kaçınılmaz"
+      },
+      "consequence": {
+        "intent": "seçim, karakterin özünü yeniden şekillendirir",
+        "label": "Sonuçlar ağırlığını koyar"
+      },
+      "reason": {
+        "intent": "darbeyi indirmemek için bir neden ortaya çıkar",
+        "label": "Bağışlamak için bir sebep belirir"
+      }
+    },
+    "effects": [
+      "protagonist, verdiği kararın etkisiyle değişime uğrar",
+      "intikam döngüsü ya son bulur ya da devam eder"
+    ],
+    "emotion_target": "ahlaki-gerilim",
+    "examples": [
+      "Katil çaresiz bir haldeyken, onu bağışlamak için bir sebep belirir; intikam peşindeki kişinin seçimi, kim olacağını yeniden şekillendirir."
+    ],
+    "name": "Merhamet ya da İntikam",
+    "preconditions": [
+      "protagonist, düşmanını çaresiz bir halde yakalamıştır"
+    ],
+    "roles": {
+      "broken_enemy": {
+        "constraints": [
+          "protagonistin merhametine kalmış"
+        ],
+        "label": "çaresiz düşman"
+      },
+      "moral_voice": {
+        "constraints": [
+          "akraba, vicdan ya da bir tanık"
+        ],
+        "label": "merhametin sesi"
+      },
+      "protagonist": {
+        "constraints": [
+          "son noktayı koyacak güce sahip"
+        ],
+        "label": "eşikteki intikamcı"
+      }
+    },
+    "summary": "Katil çaresiz kaldığında, onu bağışlamak için bir sebep belirir; intikam peşindeki kişinin seçimi, kimliğinin yeniden şekillenmesine yol açar."
+  },
+  "revenge.patient_infiltration": {
+    "beats": {
+      "earn_trust": {
+        "intent": "düşmanın rütbelerinde yüksel",
+        "label": "İçeride güven kazan"
+      },
+      "enter": {
+        "intent": "gizlice düşmanın içine sız",
+        "label": "Sahte bir isimle giriş yap"
+      },
+      "gather": {
+        "intent": "sırları ve kanıtları sessizce toplamak",
+        "label": "Kozları topla"
+      },
+      "strike": {
+        "intent": "düşmanın sırlarını ona karşı kullanmak",
+        "label": "İçeriden darbe vurmak"
+      }
+    },
+    "effects": [
+      "düşman, kendi sırlarının kurbanı olur",
+      "intikamcının gerçek kimliği darbe anında açığa çıkar"
+    ],
+    "emotion_target": "gerilim",
+    "examples": [
+      "İntikamcı, ödünç aldığı bir isimle düşmanının saflarına sızar, yükselir ve ardından onların sırlarını içten içe onlara karşı çevirir."
+    ],
+    "name": "Sabırlı Sızma",
+    "preconditions": [
+      "protagonist, düşmanın çevresine fark edilmeden sızabilmelidir"
+    ],
+    "roles": {
+      "contact": {
+        "constraints": [
+          "içeriden sessiz bir müttefik"
+        ],
+        "label": "içerideki bağlantı"
+      },
+      "leverage": {
+        "constraints": [
+          "sırlar, kanıtlar"
+        ],
+        "label": "toplanan kozlar"
+      },
+      "protagonist": {
+        "constraints": [
+          "kimliğini gizlemek"
+        ],
+        "label": "maskeli intikamcı"
+      },
+      "target_house": {
+        "constraints": [
+          "güçlü, korunaklı"
+        ],
+        "label": "düşman hanedanı"
+      }
+    },
+    "summary": "İntikamcı, ödünç aldığı bir isimle düşmanın kendi saflarına tırmanır, kozlarını toplar ve ardından onların sırlarını içeriden onlara karşı kullanır."
+  },
+  "revenge.pyrrhic_victory": {
+    "beats": {
+      "aftermath": {
+        "intent": "intikamcı, içindeki boşlukla yüzleşir",
+        "label": "Boşluktaki sonrasılık"
+      },
+      "confront": {
+        "intent": "nihai hesaplaşma gerçekleşir",
+        "label": "Son yüzleşme"
+      },
+      "cost": {
+        "intent": "takıntının bedeli gün yüzüne çıkar",
+        "label": "Gizli bedel açığa çıkar"
+      },
+      "victory": {
+        "intent": "düşman düşer",
+        "label": "Zafer kazanıldı"
+      }
+    },
+    "effects": [
+      "baş düşman yenilir",
+      "intikamcı, ödediği bedelle yüzleşir"
+    ],
+    "emotion_target": "melankoli",
+    "examples": [
+      "Düşman nihayet yere serilir — ve sonrasındaki sessizlikte, intikamcı yıllardır süren nefretin kendisine neye mal olduğunu görür."
+    ],
+    "name": "Pirus Zaferi",
+    "preconditions": [
+      "kahraman, uzun süren intikam takibinin sonuna yaklaşmaktadır"
+    ],
+    "roles": {
+      "arch_enemy": {
+        "constraints": [
+          "nihai hedef"
+        ],
+        "label": "baş düşman"
+      },
+      "protagonist": {
+        "constraints": [
+          "uzun süreli bir takıntıyla tükenmiş"
+        ],
+        "label": "intikam peşindeki kişi"
+      },
+      "revenge_attained": {
+        "constraints": [
+          "kazanıldığı an içi boşalmış"
+        ],
+        "label": "elde edilen intikam"
+      }
+    },
+    "summary": "Düşman nihayet yere serilir ve sonrasındaki sessizlikte, intikam peşindeki kişi yılların nefretinin bedelini görür."
+  },
+  "revenge.three_year_pact": {
+    "beats": {
+      "ascent": {
+        "intent": "gizli ve yıpratıcı gelişim",
+        "label": "Acı dolu yükseliş"
+      },
+      "breakthrough": {
+        "intent": "kahramanın güç eşiğini aşması",
+        "label": "Kırılma Noktası"
+      },
+      "encounter": {
+        "intent": "beklenmedik bir dönüm noktası güce giden yolu açar",
+        "label": "Tesadüfi karşılaşma"
+      },
+      "humiliation": {
+        "intent": "dışlanmış kişi yıkıma uğrar ve kendisine bir mühlet verilir",
+        "label": "Aşağılanma"
+      },
+      "return": {
+        "intent": "kendisini yıkan kişiyi alt etmek üzere geri dönüş",
+        "label": "Dönüş ve tersine dönme"
+      }
+    },
+    "effects": [
+      "kahramanın dönüşümü tamamlamış ve kudretli bir şekilde dönmesi",
+      "kendisini yıkan kişinin mağlup edilmesi"
+    ],
+    "emotion_target": "haklı çıkma",
+    "examples": [
+      "Güçlenmek ya da ölmek için kendisine bir zaman tanınan dışlanmış kişi, gizlilik içinde eğitim görür ve kendisini yıkan kişiyi alt etmek üzere geri döner."
+    ],
+    "name": "Üç Yıllık Ahit",
+    "preconditions": [
+      "kahramanın ruhsal veya fiziksel olarak yıkılmış ve aşağılanmış olması",
+      "güçlenmek için sınırlı bir zaman diliminin belirlenmiş olması"
+    ],
+    "roles": {
+      "ally": {
+        "constraints": [
+          "tırmanış boyunca yanında durur"
+        ],
+        "label": "sadık müttefik"
+      },
+      "mentor": {
+        "constraints": [
+          "gizli, talepkâr"
+        ],
+        "label": "yaban hayatının mentoru"
+      },
+      "protagonist": {
+        "constraints": [
+          "gelişmek için bir mühlet verilmiş"
+        ],
+        "label": "dışlanmış kişi"
+      },
+      "rival": {
+        "constraints": [
+          "zaferinden emin"
+        ],
+        "label": "onu yıkan kişi"
+      }
+    },
+    "summary": "Güçlenmek ya da yok olmak için kendisine bir zaman tanınan dışlanmış kişi; aşağılanma ve tesadüfi bir dönüm noktasıyla gizlilik içinde eğitim alır, ardından kendisini yıkan kişiyi devirmek üzere geri döner."
+  },
+  "revenge.usurped_inheritance": {
+    "beats": {
+      "cast_out": {
+        "intent": "gerçek varis reddedilir",
+        "label": "Sahtekar olarak dışlanma"
+      },
+      "reclaim": {
+        "intent": "kanıt gün yüzüne çıkar ve hak yeniden tesis edilir",
+        "label": "Hak geri alındı"
+      },
+      "seek_proof": {
+        "intent": "varis, hayatta kalan kanıtın peşine düşer",
+        "label": "Soy kanıtı arayışı"
+      },
+      "stolen": {
+        "intent": "doğum hakkı sahtecilikle ele geçirilir",
+        "label": "Meşru hakkın çalınması"
+      }
+    },
+    "effects": [
+      "gasbeden kişi ifşa olur",
+      "protagonist doğuştan gelen hakkını geri kazanır"
+    ],
+    "emotion_target": "haklılığın ispatı",
+    "examples": [
+      "Çalınmış bir doğum hakkı ve sahte bir vasiyet, gerçek varisi bir dilenciye dönüştürür — ta ki kimsenin yok edemediği o kanıt yeniden ortaya çıkana dek."
+    ],
+    "name": "Gasbedilmiş Miras",
+    "preconditions": [
+      "protagonist, çalınabilecek haklı bir hakka sahiptir"
+    ],
+    "roles": {
+      "birthright": {
+        "constraints": [
+          "tartışmalı miras"
+        ],
+        "label": "doğum hakkı"
+      },
+      "protagonist": {
+        "constraints": [
+          "hakkı elinden alınmış"
+        ],
+        "label": "mülksüzleştirilmiş varis"
+      },
+      "retainer": {
+        "constraints": [
+          "kanıtı koruyan"
+        ],
+        "label": "sadık hizmetkâr"
+      },
+      "usurper": {
+        "constraints": [
+          "çalınmış hakka sahip olan"
+        ],
+        "label": "gasbeden"
+      }
+    },
+    "summary": "Çalınmış bir doğum hakkı ve sahte bir vasiyet, gerçek varisi bir dilenciye dönüştürür; ta ki yok edilemeyen kanıt yeniden gün yüzüne çıkana dek."
+  }
+}

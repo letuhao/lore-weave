@@ -1,0 +1,224 @@
+{
+  "emotion_arc.dread_to_relief": {
+    "beats": {
+      "climax": {
+        "intent": "le moment redouté survient",
+        "label": "Climax"
+      },
+      "fear": {
+        "intent": "faire grimper l'angoisse jusqu'à la panique",
+        "label": "Montée de la peur"
+      },
+      "release": {
+        "intent": "le danger s'estompe ; le soulagement s'installe",
+        "label": "Dénouement"
+      },
+      "unease": {
+        "intent": "instiller une sourde appréhension",
+        "label": "Inquiétude"
+      }
+    },
+    "effects": [
+      "l'unité se conclut sur une tension relâchée"
+    ],
+    "emotion_target": "soulagement",
+    "examples": [
+      "La peur n'a cessé de croître jusqu'à l'irréparable — et puis, de manière incroyable, tout fut fini et ils purent enfin respirer."
+    ],
+    "name": "De l'appréhension au soulagement",
+    "preconditions": [
+      "une unité narrative nécessite une structure émotionnelle"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la première personne"
+      }
+    },
+    "summary": "L'inquiétude monte jusqu'à la peur et un point culminant, puis se dénoue dans le soulagement."
+  },
+  "emotion_arc.fall_then_rise": {
+    "beats": {
+      "comfort": {
+        "intent": "établir une base émotionnelle stable",
+        "label": "Confort"
+      },
+      "loss": {
+        "intent": "plonger le personnage dans le trou",
+        "label": "Perte"
+      },
+      "struggle": {
+        "intent": "le début de l'ascension",
+        "label": "Lutte"
+      },
+      "triumph": {
+        "intent": "émerger plus haut qu'au départ",
+        "label": "Triomphe"
+      }
+    },
+    "effects": [
+      "l'unité culmine sur un élan cathartique"
+    ],
+    "emotion_target": "catharsis",
+    "examples": [
+      "Une vie stable, puis ruinée, puis une lutte acharnée pour remonter — pour finir enfin debout, sur un terrain plus élevé qu'avant la chute."
+    ],
+    "name": "Chute puis ascension (L'homme au fond du trou)",
+    "preconditions": [
+      "une unité narrative nécessite une structure émotionnelle"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la vue"
+      }
+    },
+    "summary": "Le confort cède la place à la perte et à la lutte, pour finir en un triomphe arraché de haute lutte — la courbe cathartique de l'homme au fond du trou."
+  },
+  "emotion_arc.hope_to_heartbreak": {
+    "beats": {
+      "grief": {
+        "intent": "conduire à la perte",
+        "label": "Chagrin"
+      },
+      "hope": {
+        "intent": "éveiller un espoir fragile",
+        "label": "L'espoir s'enflamme"
+      },
+      "near": {
+        "intent": "rendre l'objectif tangible",
+        "label": "Succès imminent"
+      },
+      "turn": {
+        "intent": "tout lui arracher au dernier instant",
+        "label": "Revirement cruel"
+      }
+    },
+    "effects": [
+      "l'unité culmine dans le déchirement"
+    ],
+    "emotion_target": "déchirement",
+    "examples": [
+      "Si près qu'il pouvait le toucher — et puis tout s'est envolé, et il ne restait plus qu'à pleurer la perte."
+    ],
+    "name": "De l'espoir au déchirement",
+    "preconditions": [
+      "une unité narrative nécessite une structure émotionnelle"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la première personne"
+      }
+    },
+    "summary": "L'espoir s'enflamme à l'approche du succès, avant qu'un revirement cruel ne le plonge dans le chagrin."
+  },
+  "emotion_arc.rise_then_fall": {
+    "beats": {
+      "ascent": {
+        "intent": "s'élever vers le succès",
+        "label": "Ascension"
+      },
+      "downfall": {
+        "intent": "tomber des hauteurs",
+        "label": "Chute"
+      },
+      "flaw": {
+        "intent": "le défaut fatal se manifeste",
+        "label": "Émergence du vice"
+      },
+      "peak": {
+        "intent": "atteindre les hauteurs",
+        "label": "Apogée"
+      }
+    },
+    "effects": [
+      "l'unité aboutit à une descente tragique"
+    ],
+    "emotion_target": "tragédie",
+    "examples": [
+      "Toujours plus haut, jusqu'à ce que ce qui les portait devienne la cause même de leur perte."
+    ],
+    "name": "Ascension puis chute (Icare)",
+    "preconditions": [
+      "une unité narrative nécessite une structure émotionnelle"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la première personne"
+      }
+    },
+    "summary": "Une ascension vers un sommet où un vice fait surface et précipite la chute — la courbe tragique d'Icare."
+  },
+  "emotion_arc.steady_fall": {
+    "beats": {
+      "collapse": {
+        "intent": "toucher le fond",
+        "label": "Effondrement"
+      },
+      "decline": {
+        "intent": "la chute s'accélère",
+        "label": "Déclin"
+      },
+      "erosion": {
+        "intent": "perdre du terrain petit à petit",
+        "label": "Effritements"
+      },
+      "start_high": {
+        "intent": "commencer à un point culminant",
+        "label": "Sommet initial"
+      }
+    },
+    "effects": [
+      "l'unité aboutit à un effondrement sombre"
+    ],
+    "emotion_target": "désespoir",
+    "examples": [
+      "Cela a tenu, puis cela a lâché — un lent délitement qu'aucune perte isolée ne pouvait expliquer."
+    ],
+    "name": "Chute constante",
+    "preconditions": [
+      "une unité narrative nécessite une structure émotionnelle"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la première personne"
+      }
+    },
+    "summary": "D'un sommet initial vers l'effritement puis l'effondrement — la descente vers le désespoir."
+  },
+  "emotion_arc.steady_rise": {
+    "beats": {
+      "arrival": {
+        "intent": "atteindre le sommet mérité",
+        "label": "Aboutissement"
+      },
+      "climb": {
+        "intent": "bâtir l'élan",
+        "label": "Ascension continue"
+      },
+      "start_low": {
+        "intent": "commencer au plus bas",
+        "label": "Point de départ modeste"
+      },
+      "wins": {
+        "intent": "accumuler les acquis",
+        "label": "Succès successifs"
+      }
+    },
+    "effects": [
+      "l'unité culmine sur un triomphe mérité"
+    ],
+    "emotion_target": "triomphe",
+    "examples": [
+      "Rien, puis un peu, puis encore plus — chaque étape est conquise, jusqu'à ce que l'abîme ne soit plus qu'un lointain souvenir."
+    ],
+    "name": "Ascension constante (De rien à tout)",
+    "preconditions": [
+      "une unité narrative nécessite une structure émotionnelle"
+    ],
+    "roles": {
+      "pov": {
+        "label": "le personnage à la première personne"
+      }
+    },
+    "summary": "D'un point de départ précaire à travers une succession de succès jusqu'à l'aboutissement — la courbe triomphante de l'ascension sociale."
+  }
+}

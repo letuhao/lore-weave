@@ -1,5 +1,4 @@
 {
-  "title": "Wiki",
   "search": "Поиск в wiki...",
   "searchEntities": "Поиск сущностей по имени...",
   "noArticles": "Статьи в wiki пока нет",
@@ -150,12 +149,12 @@
       "writeback": "Сохранение"
     },
     "badge": {
-      "generated": "AI",
       "generatedHint": "Сгенерировано ИИ, пройдено проверку.",
       "needs_review": "Проверка",
       "needs_reviewHint": "Сгенерировано ИИ — требует проверки.",
       "blocked": "Заблокировано",
-      "blockedHint": "Сгенерировано ИИ — заблокировано публикацией из-за проверки."
+      "blockedHint": "Сгенерировано ИИ — заблокировано публикацией из-за проверки.",
+      "generated": "ИИ"
     },
     "flags": {
       "reviewTitle": "Требует проверки",
@@ -233,5 +232,6 @@
     "pendingChip_other": "{{count}} предложений",
     "pendingTitle": "Ожидающие предложения ({{count}})",
     "pendingTitle_other": "Ожидающие предложения ({{count}})"
-  }
+  },
+  "title": "Вики"
 }

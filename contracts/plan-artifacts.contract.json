@@ -1,0 +1,119 @@
+{
+  "_comment": "GENERATED \u2014 do not hand-edit. Snapshot of what plan_pass_adapters ACTUALLY emits, read by the frontend plan-forge contract test. Regenerate with WRITE_PLAN_ARTIFACT_CONTRACT=1 pytest tests/unit/test_plan_artifact_contract.py",
+  "artifacts": {
+    "beat_plan": {
+      "list_field": "chapters",
+      "optional_top_level_fields": [
+        "warning"
+      ],
+      "produced_by_pass": "beats",
+      "row_fields": [
+        "beat_role",
+        "event_id",
+        "intent",
+        "ordinal",
+        "title"
+      ],
+      "top_level_fields": [
+        "available_beats",
+        "chapters",
+        "structure",
+        "tension_curve",
+        "unmapped_beats",
+        "warning"
+      ]
+    },
+    "cast_plan": {
+      "list_field": "cast",
+      "produced_by_pass": "cast",
+      "row_fields": [
+        "archetype",
+        "attributes",
+        "is_new",
+        "name",
+        "role",
+        "summary"
+      ],
+      "top_level_fields": [
+        "cast"
+      ]
+    },
+    "char_arc_plan": {
+      "list_field": "character_arcs",
+      "produced_by_pass": "character_arcs",
+      "row_fields": [
+        "arc",
+        "introduce_at_chapter",
+        "name",
+        "role"
+      ],
+      "top_level_fields": [
+        "character_arcs"
+      ]
+    },
+    "motif_plan": {
+      "list_field": "motifs",
+      "optional_top_level_fields": [
+        "degraded",
+        "warning"
+      ],
+      "produced_by_pass": "motifs",
+      "row_fields": [
+        "arc_role",
+        "code",
+        "name",
+        "summary",
+        "why"
+      ],
+      "top_level_fields": [
+        "degraded",
+        "motifs",
+        "warning"
+      ]
+    },
+    "scene_plan": {
+      "list_field": "chapters",
+      "nested_list_field": "scenes",
+      "nested_row_fields": [
+        "present_entity_ids",
+        "present_entity_names_unresolved",
+        "suggested_k",
+        "synopsis",
+        "tension",
+        "title"
+      ],
+      "optional_top_level_fields": [
+        "heal"
+      ],
+      "produced_by_pass": "scenes,self_heal",
+      "row_fields": [
+        "chapter",
+        "exit_state",
+        "scenes",
+        "warning"
+      ],
+      "top_level_fields": [
+        "arc_title",
+        "chapters",
+        "heal",
+        "motif_coverage",
+        "tension_conformance",
+        "unmapped_beats"
+      ]
+    },
+    "world_plan": {
+      "list_field": "entities",
+      "produced_by_pass": "world",
+      "row_fields": [
+        "attributes",
+        "is_new",
+        "kind",
+        "name",
+        "summary"
+      ],
+      "top_level_fields": [
+        "entities"
+      ]
+    }
+  }
+}

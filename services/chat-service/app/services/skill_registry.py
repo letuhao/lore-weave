@@ -226,7 +226,15 @@ SYSTEM_SKILLS: dict[str, SkillDef] = {
         surfaces=frozenset({"book", "editor", "studio"}),
         prompt_loader=_load_composition,
         description="Build the outline, write/publish chapter prose, declare canon rules, and use the motif library.",
-        hot_domains=frozenset({"composition"}),
+        # `book` is a REAL dependency, not an incidental mention: saving and publishing chapter
+        # prose — half of what this skill is for — moved to book-service
+        # (`composition_write_prose` → `book_chapter_save_draft`, `composition_publish` →
+        # `book_chapter_publish`, `composition_get_prose` → `book_get_chapter`). The skill kept
+        # naming the retired composition names for so long that the gap was invisible; now that it
+        # names the real ones, the domain has to be declared or the claims are unreachable.
+        # Costs no extra tokens: `HOT_SEED_TOKEN_BUDGET` truncates a wider candidate set to the
+        # same cap rather than widening it (surface_hot_domains docstring).
+        hot_domains=frozenset({"composition", "book"}),
     ),
     "translation": SkillDef(
         code="translation",

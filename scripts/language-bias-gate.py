@@ -280,6 +280,26 @@ def main() -> int:
 # line-number-independent `rule|relpath|normalized-code` fingerprint, so the
 # gate passes today and fails only on a NEW occurrence.
 BASELINE = {
+    # ── 2026-07-30 convergence run (the gate had been RED, so a new violation could
+    # hide in the noise — one of the 19 offenders swept turned out to be a line I had
+    # written myself hours earlier). These three are the residue: two hashes and one
+    # non-prose fold. Each is a FALSE POSITIVE ON INTENT, kept visible rather than
+    # silenced with an inline pragma.
+    #
+    # A fingerprint over ids/versions/ints. `ensure_ascii` changes the BYTES of the
+    # digest and nothing about its correctness, so flipping it would invalidate every
+    # stored `outline_fingerprint`/`bindings_fingerprint` — a re-run for every arc — in
+    # exchange for nothing. There is no prose in the material.
+    'ml5-ensure-ascii|services/composition-service/app/engine/arc_conformance_orchestrate.py|json.dumps(material, sort_keys=True, default=str).encode("utf-8")',
+    # Same shape: a digest over a tool payload, used for cache identity. ALSO the
+    # concurrent session's single most active file this session — the atom-edit drift
+    # log records assuming a backend file was uncontested and being wrong twice, so it
+    # is not touched here. See D-LANGBIAS-STREAM-TOOL-HASH.
+    'ml5-ensure-ascii|services/chat-service/app/services/stream_service.py|json.dumps(tool_payload, sort_keys=True, default=str).encode()',
+    # `_is_read_tool(name)` folds an MCP TOOL NAME (`composition_motif_get`) — an ASCII
+    # identifier from our own registry, never user prose. The spine would be correct and
+    # pointless here.
+    'ml2-naive-normalize|services/chat-service/app/services/tool_surface.py|n = name.lower()',
     'ml2-naive-normalize|services/chat-service/app/client/known_entities_client.py|toks.add(name.strip().lower())',
     # compaction.py `term.lower()` is a SYMMETRIC dedup key (used only as a `seen`-set
     # membership key; the unchanged `term` is what's stored) — low-risk (CJK is a lower()

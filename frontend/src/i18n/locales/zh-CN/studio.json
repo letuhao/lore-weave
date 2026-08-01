@@ -146,6 +146,11 @@
       "desc": "审核 AI 起草的实体",
       "guideBody": "显示 AI 根据您的文稿自动起草的实体条目，等待您的审核。在这些建议正式成为术语表的一部分之前，请打开它进行接受、编辑或拒绝。"
     },
+    "world-setup": {
+      "title": "世界观设定",
+      "desc": "根据描述构建你的角色阵容、世界观及其关系网",
+      "guideBody": "将故事描述转化为真实且可追踪的设定：系统会规划需要构建的内容，由你审核或删减列表，随后逐一编写每个角色、阵营和术语（核心角色将获得详尽的深度档案）并提交供你审阅。最后，系统会梳理它们之间的关联，并在保存前请求你确认这些关系。"
+    },
     "glossary-merge-candidates": {
       "title": "合并候选",
       "desc": "审核并确认疑似重复的实体",
@@ -572,8 +577,8 @@
       "guideBody": "在此编写本书的去偏见配置 —— 设置预期的世界观、语言规范、时代和叙事语调，使丰富化和撰写的草稿与你的书籍基调保持一致，而非使用通用的默认设置。请在运行丰富化任务之前尽早完成此设置，以便生成的设定从一开始就符合你的书籍风格。"
     },
     "json-editor": {
-      "title": "JSON",
-      "desc": "资源的原始 JSON 视图"
+      "desc": "资源的原始 JSON 视图",
+      "title": "JSON"
     },
     "media-version-history": {
       "title": "版本历史",
@@ -1057,6 +1062,7 @@
     "loadingMore": "正在加载更多…",
     "count": "{{n}} 个章节",
     "statArcs": "{{n}} 个情节弧",
+    "statActs": "{{n}} 部",
     "statChapters": "{{n}} 章",
     "statScenes": "{{n}} 场",
     "window": "窗口 {{a}}–{{b}} / {{n}}",
@@ -1065,14 +1071,6 @@
     "chapterShort": "第",
     "startFirstChapter": "开始你的第一章",
     "creatingChapter": "正在创建…",
-    "unassignedBucket": "未分配",
-    "emptyActHint": "将章节拖动至此",
-    "restore": "还原",
-    "undo": "撤销",
-    "lensOutline": "大纲",
-    "lensToggle": "视图",
-    "reorderFailed": "无法重新排序",
-    "statActs": "{{n}} 部",
     "actShort": "部",
     "actTag": "部",
     "newAct": "新建部",
@@ -1083,16 +1081,23 @@
     "moveActUp": "上移部",
     "moveActDown": "下移部",
     "untitledAct": "（未命名部）",
+    "unassignedBucket": "未分配",
+    "emptyActHint": "将章节拖动至此",
     "trashedActs": "已删除的部",
+    "restore": "还原",
     "restoreActHint": "恢复此部（恢复后内容为空 — 请根据需要重新归档章节）",
     "actTrashed": "部 «{{name}}» 已移至回收站 — 其章节仍保留在书中",
     "partVsArc": "部用于对您的手稿进行分组。弧线则是叙事规划。",
+    "undo": "撤销",
     "lensParts": "部",
+    "lensOutline": "大纲",
+    "lensToggle": "视图",
     "createFailed": "无法创建该部",
     "renameFailed": "无法重命名该部",
     "trashFailed": "无法将该部移至回收站",
     "restoreFailed": "无法恢复该部",
     "moveFailed": "无法将章节移动到该部",
+    "reorderFailed": "无法重新排序",
     "partsUnavailable": "部暂时不可用 — 正在以章节列表形式展示。"
   },
   "intro": {
@@ -1608,7 +1613,6 @@
     "nameLabel": "结构名称",
     "namePlaceholder": "为您的结构命名…",
     "kindLabel": "类型（自定义文本标签）",
-    "beatKey": "key",
     "beatKeyLabel": "节拍键",
     "beatLabelLabel": "节拍标签",
     "moveUp": "向上移动节拍",
@@ -1631,7 +1635,8 @@
       "builtin": "内置",
       "mine": "我的",
       "archived": "已归档"
-    }
+    },
+    "beatKey": "关键点"
   },
   "search": {
     "modeLabel": "搜索模式",

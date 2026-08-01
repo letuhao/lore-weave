@@ -183,7 +183,68 @@ describe('PlanRunView — arc picker', () => {
     expect(picker.value).toBe('arc_1'); // defaults to the first arc, never blank
 
     screen.getByTestId('plan-compile-btn').click();
-    expect(onCompile).toHaveBeenCalledWith('arc_1');
+    // `undefined` structure = "keep whatever this run already uses" — the picker must not
+    // silently re-shape a plan just because the panel was opened.
+    expect(onCompile).toHaveBeenCalledWith('arc_1', undefined);
+  });
+
+  // ── D-PLANFORGE-BEATS-UNWIRED — the story-structure picker ─────────────────────────────────
+  // The structure library, its 6 built-ins and a full CRUD panel all already existed; nothing
+  // linked them to a plan run, so every compile silently used the platform default and the
+  // `beats` pass mapped chapters onto whatever that was.
+  const STRUCTURES = [
+    { id: 'tpl_web', name: 'Web Novel Arc', kind: 'web_novel',
+      beats: [{ key: 'hook', purpose: '' }, { key: 'climax', purpose: '' }] },
+    { id: 'tpl_stc', name: 'Save the Cat', kind: 'save_the_cat', beats: [{ key: 'setup', purpose: '' }] },
+  ];
+
+  it('offers the structure library and sends the chosen id to compile', () => {
+    const onCompile = vi.fn();
+    render(
+      <PlanRunView
+        run={{ ...RUN, arcs: [{ id: 'arc_1', title: 'Origins' }] }}
+        polling={false} busy={false} selfCheck={null} validation={null} compileResult={null}
+        structures={STRUCTURES}
+        onSelfCheck={noop} onValidate={noop} onCompile={onCompile}
+      />,
+    );
+    const picker = screen.getByTestId('plan-structure-picker') as HTMLSelectElement;
+    expect(picker.textContent).toContain('Web Novel Arc');
+    expect(picker.textContent).toContain('2 beats');   // the beat count is the useful signal
+    expect(picker.value).toBe('');                      // never pre-selected
+
+    fireEvent.change(picker, { target: { value: 'tpl_stc' } });
+    screen.getByTestId('plan-compile-btn').click();
+    expect(onCompile).toHaveBeenCalledWith('arc_1', 'tpl_stc');
+  });
+
+  it('leaving the structure picker alone keeps the run\'s current structure', () => {
+    const onCompile = vi.fn();
+    render(
+      <PlanRunView
+        run={{ ...RUN, arcs: [{ id: 'arc_1', title: 'Origins' }] }}
+        polling={false} busy={false} selfCheck={null} validation={null} compileResult={null}
+        structures={STRUCTURES}
+        onSelfCheck={noop} onValidate={noop} onCompile={onCompile}
+      />,
+    );
+    screen.getByTestId('plan-compile-btn').click();
+    expect(onCompile).toHaveBeenCalledWith('arc_1', undefined);
+  });
+
+  it('a failed/absent structure library still lets the author compile', () => {
+    // The hook swallows a library load failure, so the picker must degrade to "keep current"
+    // rather than blocking the compile behind a decoration.
+    const onCompile = vi.fn();
+    render(
+      <PlanRunView
+        run={{ ...RUN, arcs: [{ id: 'arc_1', title: 'Origins' }] }}
+        polling={false} busy={false} selfCheck={null} validation={null} compileResult={null}
+        onSelfCheck={noop} onValidate={noop} onCompile={onCompile}
+      />,
+    );
+    expect(screen.getByTestId('plan-structure-picker')).toBeInTheDocument();
+    expect((screen.getByTestId('plan-compile-btn') as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('an arc with no title falls back to showing its id, never a blank option', () => {

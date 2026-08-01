@@ -27,7 +27,15 @@ vi.mock('@/features/studio/palette/CommandPalette', () => ({ CommandPalette: () 
 
 // #12 — the hoist resolves the composition Work (react-query) for scenes[]; chrome-only test →
 // no Work, no QueryClient needed.
-vi.mock('@/features/composition/hooks/useWork', () => ({ useWorkResolution: () => ({ data: null }) }));
+// D-FE-WORK-MOCK-STALE (2026-07-31): the real module gained `useEnsureWork`, and this
+// factory was not updated with it — vitest fails a mocked module the moment the code
+// under test reaches for an export the factory does not define. Both this file and
+// BooksPage.createNavigate.test.tsx had been RED on this branch since that export
+// landed; found by running the WHOLE suite rather than the files near a change.
+vi.mock('@/features/composition/hooks/useWork', () => ({
+  useWorkResolution: () => ({ data: null }),
+  useEnsureWork: () => ({ data: null, isPending: false }),
+}));
 // #16 2.10 — progress-reporting also calls react-query's useQueryClient() internally; stub it
 // out for the same "chrome-only test, no QueryClient" reason as useWork above.
 vi.mock('@/features/composition/hooks/useProgress', () => ({
@@ -57,10 +65,29 @@ vi.mock('@/features/studio/host/StudioHostProvider', async (orig) => {
   };
 });
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
 import { WritingStudioPage } from '../WritingStudioPage';
 
+// D-FE-STUDIO-TEST-QUERYCLIENT (2026-07-31). This file mocked react-query-touching hooks
+// one at a time ("chrome-only test, no QueryClient"), so every hook the studio tree later
+// reached for had to be remembered and added here. It was not: the suite had been RED on
+// this branch with "No QueryClient set" long before this change came near it.
+//
+// Whack-a-mole against a growing tree cannot be won, and each miss reads as a product
+// failure rather than a missing stub. Wrap in a REAL QueryClient instead — retries off and
+// gcTime 0 so nothing retries or leaks between tests. The assertions are unchanged: they
+// are still about dock mount counts and focus calls, not about data.
+const withClient = (ui: React.ReactNode) => (
+  <QueryClientProvider
+    client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
+  >
+    {ui}
+  </QueryClientProvider>
+);
+
 const renderPage = (initialEntries: string[] = ['/']) => render(
-  <MemoryRouter initialEntries={initialEntries}><WritingStudioPage /></MemoryRouter>,
+  withClient(<MemoryRouter initialEntries={initialEntries}><WritingStudioPage /></MemoryRouter>),
 );
 
 beforeEach(() => { localStorage.clear(); dockMounts.n = 0; route.bookId = 'b1'; focusManuscriptUnit.mockClear(); });
@@ -81,7 +108,7 @@ describe('WritingStudioPage', () => {
     expect(dockMounts.n).toBe(1);
     // Simulate /books/b1/studio → /books/b2/studio without a full reload.
     route.bookId = 'b2';
-    rerender(<MemoryRouter><WritingStudioPage /></MemoryRouter>);
+    rerender(withClient(<MemoryRouter><WritingStudioPage /></MemoryRouter>));
     // The keyed StudioFrame remounts → dock re-created for the new book (guards review-impl #1/#2).
     expect(dockMounts.n).toBe(2);
   });

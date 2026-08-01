@@ -4,7 +4,7 @@ The signature is FROZEN in F0 so W2 (planner) builds against it concurrently and
 mocks retrieve() until W3 lands. The impl (W3):
 
   1. SQL PRE-FILTER (audit data-R1) — bound the candidate set in SQL BEFORE loading any
-     vector: status='active' AND language=$lang AND (genre_tags && $genres) AND the
+     vector: status='active' AND the
      R1.1 read predicate (system | public | owned). Cheap pre-rank (own-tier, popularity,
      quality, recency) + a HARD `LIMIT motif_candidate_ceiling` so the brute-force pass
      is O(ceiling), never O(table) even as the library grows.
@@ -38,6 +38,7 @@ from loreweave_vecmath import cosine_similarity as _cosine
 from app.clients.embedding_client import EmbeddingError
 from app.config import settings
 from app.db.models import ArcCandidate, ArcTemplate, Motif, MotifCandidate
+from app.db.repositories.motif_repo import apply_display_language, normalize_display_language
 from app.engine.motif_embed import (
     EmbedConfigError, _platform_embed_model, arc_summary_text, embed_motif_summary,
     embed_private_summary, embed_query, embed_query_with, is_strictly_private,
@@ -50,7 +51,7 @@ logger = logging.getLogger(__name__)
 # (loaded ONLY for the bounded candidate set; the vector never leaves this repo — the
 # returned Motif omits it, the reference_source rule).
 _RETRIEVE_COLS = """
-  id, owner_user_id, book_shared, code, language, visibility, kind, category, name, summary,
+  id, owner_user_id, book_shared, code, original_language, visibility, kind, category, name, summary,
   genre_tags, roles, beats, preconditions, effects, info_asymmetry, annotations,
   tension_target, emotion_target, examples, abstraction_confidence, source,
   imported_derived, source_ref, source_version, embedding_model, embedding_dim,
@@ -72,7 +73,7 @@ _VISIBLE_PREDICATE = "(owner_user_id IS NULL OR visibility = 'public' OR owner_u
 # 25 M5.2: threads→tracks, arc_roster→roster — alias back to the field names (as
 # arc_template_repo._SELECT_COLS does) so retrieve_arcs keeps working post-rename.
 _ARC_RETRIEVE_COLS = """
-  id, owner_user_id, code, language, visibility, name, summary, genre_tags,
+  id, owner_user_id, code, original_language, visibility, name, summary, genre_tags,
   chapter_span, tracks AS threads, layout, pacing, roster AS arc_roster, source, imported_derived,
   source_ref, source_version, embedding_model, embedding_dim, status, version,
   created_at, updated_at, embedded_summary_hash, embedding
@@ -95,13 +96,60 @@ _TENSION_BAND_MID = {1: 10.0, 2: 30.0, 3: 50.0, 4: 70.0, 5: 90.0}
 # docstring here); both now import the one shared implementation.
 
 
-def _build_query_text(beat_role: str | None, prev_effects: list[str] | None) -> str:
-    """Join the beat intent + the prior-motif effects into one short chapter-intent
-    string so the query vector reflects BOTH what this beat is for and the state that
-    precedes it. Mirrors the references router's auto-query seed; drops empties."""
-    parts: list[str] = [beat_role or ""]
+def _build_query_text(
+    beat_role: str | None, prev_effects: list[str] | None, query: str | None = None,
+) -> str:
+    """Join the free-text query + the beat intent + the prior-motif effects into one short
+    intent string so the query vector reflects BOTH what this beat is for and the state that
+    precedes it. Mirrors the references router's auto-query seed; drops empties.
+
+    `query` is the ARC-level seed (the premise) — see `select_arc_motifs`. Without it an
+    arc-level retrieve has no query text at all and every candidate falls to the degrade
+    path, where ranks tie and the cap is handed out by the tie-break (below)."""
+    parts: list[str] = [query or "", beat_role or ""]
     parts.extend(prev_effects or [])
     return " ".join(p for p in parts if p).strip()
+
+
+def node_query_text(node: Any) -> str:
+    """The retrieval query for a per-NODE motif suggest — the node's own text, joined.
+
+    Both node-level suggest surfaces (the `composition_motif_suggest` MCP tool and the
+    `/nodes/{id}/motif-candidates` route) called `retrieve(beat_role=None, …)` with no query
+    at all, so `_build_query_text` returned "" → no query vector → EVERY candidate took the
+    degrade path with `cosine=0.0`, ranked on genre+tension alone. The node was carrying
+    `title`, `synopsis`, `goal` and `conflict` the whole time — and `beat_role`, which the
+    call site was explicitly passing as None. Semantic suggest was never actually running."""
+    parts = [str(getattr(node, f, "") or "") for f in ("title", "synopsis", "goal", "conflict")]
+    return " ".join(p for p in parts if p.strip()).strip()
+
+
+def _pack_of(code: str) -> str:
+    """The pack/genre prefix of a motif code (`romance.slow_thaw` → `romance`). Codes
+    without a dot (user-authored rows) are their own pack."""
+    return code.split(".", 1)[0]
+
+
+def _round_robin_index(items: list[tuple[float, str, int, float, MotifCandidate]]) -> dict[int, int]:
+    """`id(candidate) → its 0-based position within its own PACK`, used as a tie-break so a
+    tied rank never lets one pack take the whole cap.
+
+    Why this exists: in the degrade path every candidate scores `0.6*genre + 0.4*tension`,
+    and with no genre supplied (measured live: 286 of 292 plan runs carry `genre_tags: []`)
+    and no chapter tension, genre=0.0 and tension=0.5 for EVERY row — so all 198 rows tie at
+    0.2 and the cap was handed out by the final tie-break, `code ASC`. `cultivation.*` sorts
+    first, so the arc selector's entire library section was 15/15 cultivation and the model
+    correctly reported that "the catalog consists entirely of cultivation-genre tropes". That
+    is an ORDERING artefact, not a library gap — removing the hard genre filter did not touch
+    it. Interleaving by pack at equal rank makes the tie honest. Rank still dominates, so the
+    cosine path is unaffected."""
+    seen: dict[str, int] = {}
+    out: dict[int, int] = {}
+    for _rank, code, _ms, _js, cand in sorted(items, key=lambda t: t[1]):
+        pack = _pack_of(code)
+        out[id(cand)] = seen.get(pack, 0)
+        seen[pack] = out[id(cand)] + 1
+    return out
 
 
 def _genre_overlap(motif_genres: list[str] | None, query_genres: list[str] | None) -> float:
@@ -147,6 +195,25 @@ def _precond_overlap(preconditions: list[dict[str, Any]] | None,
 
 def _tokens(text: str) -> set[str]:
     return {t for t in text.lower().split() if t}
+
+
+def _text_unchanged(stored_hash: str | None, current_text: str) -> bool:
+    """Does the stored vector still describe the row's CURRENT text?
+
+    `embedded_summary_hash` was written on every embed and then never read by the ranking
+    path — `_shared_vector_fresh` compares the MODEL only. So `patch()`'s
+    `embedded_summary_hash = NULL  # W3 re-embeds on next retrieve` was a no-op: the row kept
+    a non-NULL `embedding` with a matching `embedding_model`, the re-embed trigger is
+    `vec is None`, and it never fired. **Editing a motif's summary left it retrievable
+    forever by the text it used to have** — and `beats` (also part of `motif_summary_text`)
+    did not even clear the hash, so beat edits were doubly invisible.
+
+    Comparing the hash here fixes the whole class at the read side, which is where the
+    decision is actually made: any change to name, summary or beats now yields a different
+    hash and re-embeds on next touch. A NULL/absent hash is treated as stale (it is exactly
+    what `patch` writes to request a re-embed), and legacy rows embedded before hashes were
+    stored simply re-embed once."""
+    return bool(stored_hash) and stored_hash == summary_hash(current_text)
 
 
 def _shared_vector_fresh(stored_model: str | None, platform_ref: str | None) -> bool:
@@ -215,10 +282,11 @@ class MotifRetriever:
 
     async def retrieve(
         self, caller_id: UUID, *, book_id: UUID, project_id: UUID,
-        genre_tags: list[str], language: str,
+        genre_tags: list[str], display_language: str,
         beat_role: str | None, tension: int | None,
         prev_effects: list[str] | None = None, limit: int = 10,
         user_model: tuple[str, str] | None = None,
+        query: str | None = None,
     ) -> list[MotifCandidate]:
         """Tier-merged, SQL-pre-filtered, cosine-ranked motif candidates for a chapter's
         beat — split into TWO embedding SPACES (2026-07-17 tenancy re-design; mirrors
@@ -243,15 +311,17 @@ class MotifRetriever:
         min_score = settings.motif_min_score
         ceiling = settings.motif_candidate_ceiling
 
-        # (1) SQL pre-filter → BOUNDED candidate rows (with vectors). data-R1.
-        rows = await self._fetch_candidates(caller_id, genre_tags, language, ceiling)
+        # (1) SQL BOUND → candidate rows (with vectors). data-R1. Genre/language now PRE-RANK
+        #     rather than pre-filter, so this is empty only when the library itself is (or the
+        #     caller can see none of it) — not because a book's genre happened to be unrepresented.
+        rows = await self._fetch_candidates(caller_id, genre_tags, ceiling)
         if not rows:
-            return []  # no in-genre/in-language motif → W2 falls back to invent
+            return []  # nothing visible to rank → W2 falls back to invent
 
         # (2) Query vectors — ONE PER SPACE (platform + the caller's own model). Embed-DOWN
         #     → that space degrades (R4); EmbedConfigError (unset platform model) degrades
         #     the READ path too (the WRITE path is where a config gap fails closed).
-        qtext = _build_query_text(beat_role, prev_effects)
+        qtext = _build_query_text(beat_role, prev_effects, query)
         qvec_p = await self._embed_query_safe(qtext, None, caller_id)            # P-space
         qvec_u = await self._embed_query_safe(qtext, user_model, caller_id) if user_model else None
         platform_ref = self._platform_ref()
@@ -261,6 +331,7 @@ class MotifRetriever:
         mine: list[tuple[float, str, int, float, MotifCandidate]] = []
         library: list[tuple[float, str, int, float, MotifCandidate]] = []
         for r in rows:
+            motif = _row_to_motif(r)          # WITHOUT embedding (server-side only)
             genre_s = _genre_overlap(list(r["genre_tags"]), genre_tags)
             tension_s = _tension_band(r["tension_target"], tension)
             precond_s = _precond_overlap(_loads(r["preconditions"]), prev_effects)
@@ -273,6 +344,10 @@ class MotifRetriever:
             else:
                 section, qvec, bucket = "library", qvec_p, library
                 fresh = _shared_vector_fresh(r["embedding_model"], platform_ref)
+            # …and the vector must still describe the row's CURRENT text, not the text it had
+            # when it was embedded (see `_text_unchanged` — the hash was written, never read).
+            fresh = fresh and _text_unchanged(
+                r["embedded_summary_hash"], motif_summary_text(motif))
 
             # A stored vector counts only if it is in THIS row's space (keeps a P-vector off
             # a U-query); else treat as absent + (re-)embed inline in the row's own space.
@@ -302,7 +377,6 @@ class MotifRetriever:
                 rank = 0.6 * genre_s + 0.4 * tension_s
                 degraded = True
 
-            motif = _row_to_motif(r)  # WITHOUT embedding (server-side only)
             reason: dict[str, Any] = {
                 "tension": tension_s, "genre": genre_s,
                 "precond": precond_s, "cosine": cos, "section": section,
@@ -316,13 +390,37 @@ class MotifRetriever:
             ))
 
         # (4) Rank each SECTION independently (intra-space), cap PER section, concat
-        # mine-first. Deterministic tie-break: rank DESC, mining_support DESC, judge DESC,
-        # code ASC. No cross-space sort — a U-space 0.8 ≠ a P-space 0.8.
+        # mine-first. Deterministic tie-break: rank DESC, then PACK ROUND-ROBIN (so a tied
+        # rank cannot let one pack take the whole cap — see `_round_robin_index`), then
+        # mining_support DESC, judge DESC, code ASC. No cross-space sort — a U-space 0.8 ≠
+        # a P-space 0.8.
         def _top(items: list[tuple[float, str, int, float, MotifCandidate]]) -> list[MotifCandidate]:
-            items.sort(key=lambda t: (-t[0], -t[2], -t[3], t[1]))
+            # MOTIF-I18N: a `_dedupe_by_code` pass used to live here, because every system
+            # motif existed as an `en` row AND a `vi` row with the same code, so one pattern
+            # could occupy two of the 15 candidate slots and hand the planner the wrong
+            # language's text. There is now one row per motif, so there is nothing to dedupe
+            # — the duplication was the bug, and the dedupe was only ever its symptom-level
+            # mitigation. Display language is resolved AFTER selection.
+            nth = _round_robin_index(items)
+            items.sort(key=lambda t: (-t[0], nth[id(t[4])], -t[2], -t[3], t[1]))
             return [c for _rank, _code, _ms, _js, c in items[: max(0, limit)]]
 
-        return _top(mine) + _top(library)
+        # Selection is language-blind (one row per motif, multilingual vectors); the caller's
+        # reading language is applied HERE, at the very end, as a re-wording with fallback.
+        # Keeping it out of selection is the point: a language preference must never change
+        # WHICH motifs a book can reach, only how they are worded.
+        return await self._localize_candidates(_top(mine) + _top(library), display_language)
+
+    async def _localize_candidates(
+        self, cands: list[MotifCandidate], display_language: str | None,
+    ) -> list[MotifCandidate]:
+        if not cands or not normalize_display_language(display_language):
+            return cands
+        async with self._pool.acquire() as c:
+            motifs = await apply_display_language(c, [x.motif for x in cands], display_language)
+        return [
+            cand.model_copy(update={"motif": m}) for cand, m in zip(cands, motifs, strict=True)
+        ]
 
     async def _embed_and_persist_motif(
         self, row: asyncpg.Record | dict[str, Any], caller_id: UUID, *,
@@ -404,6 +502,7 @@ class MotifRetriever:
         mine: list[tuple[float, str, ArcCandidate]] = []
         library: list[tuple[float, str, ArcCandidate]] = []
         for r in rows:
+            arc = _row_to_arc(r)              # WITHOUT embedding (server-side only)
             genre_s = _genre_overlap(list(r["genre_tags"]), genre_tags)
             private = is_strictly_private(
                 owner_user_id=r["owner_user_id"], visibility=r.get("visibility"))
@@ -419,6 +518,12 @@ class MotifRetriever:
                 # published arc is re-embedded/skipped, never cross-space cosined.
                 section, qvec, bucket = "library", qvec_p, library
                 fresh = _shared_vector_fresh(r["embedding_model"], platform_ref)
+            # …and it must still describe the arc's CURRENT text (`_text_unchanged`): the arc
+            # repo clears `embedded_summary_hash` on a summary change with the same
+            # "re-embeds on next retrieve" comment the motif repo had, and it was equally a
+            # no-op until the read path started comparing the hash.
+            fresh = fresh and _text_unchanged(
+                r["embedded_summary_hash"], arc_summary_text(arc))
 
             # A stored vector is only usable if it is in THIS row's space; otherwise treat it
             # as absent and (re-)embed below. This is what keeps a P-vector off a U-query.
@@ -438,7 +543,6 @@ class MotifRetriever:
                 rank, degraded = cos, False
             else:
                 cos, rank, degraded = 0.0, genre_s, True  # genre order (R4 / unembedded / no U-model)
-            arc = _row_to_arc(r)
             reason: dict[str, Any] = {"genre": genre_s, "cosine": cos, "section": section}
             if degraded:
                 reason["degraded"] = True
@@ -546,30 +650,73 @@ class MotifRetriever:
             return None
 
     async def _fetch_candidates(
-        self, caller_id: UUID, genre_tags: list[str], language: str, ceiling: int,
+        self, caller_id: UUID, genre_tags: list[str], ceiling: int,
     ) -> list[asyncpg.Record]:
         """The BOUNDING query (data-R1). Loads `embedding` for the bounded set ONLY.
-        $1 caller_id · $2 language · $3 ceiling · $4 genres (only when non-empty).
+        $1 caller_id · $2 ceiling · genres, only when they can match.
 
         A genre-less book ([]) OMITS the `&&` clause (MD-2) — an empty array && is always
-        false and would zero out retrieval; a language+tier+ceiling bound still applies."""
-        params: list[Any] = [caller_id, language, max(0, ceiling)]
-        genre_clause = ""
-        if genre_tags:
-            params.append(list(genre_tags))
-            genre_clause = f"  AND genre_tags && ${len(params)}::text[]\n"
+        false and would zero out retrieval; the tier+ceiling bound still applies.
+
+        MOTIF-I18N (2026-07-29) — language has left this query ENTIRELY, in both its filter
+        and its pre-rank form. It no longer means anything here: there is one row per motif,
+        and the language a caller reads it in is resolved after selection from
+        `motif_translation`. The history is worth keeping, because the same mistake was made
+        twice in two different shapes:
+
+        · D-MOTIF-AUTO-LANGUAGE-ZEROES-RETRIEVAL — `language` was a concrete stored code
+          (`en`, `vi`) but the callers' neutral default was the sentinel `"auto"`, which no row
+          could ever equal. `AND language = 'auto'` matched ZERO of 147 motifs, `retrieve`
+          returned `[]`, and the pass emitted `{"motifs": []}` with no `degraded` flag —
+          indistinguishable from "this book legitimately has no motifs". Every `motif_plan`
+          artifact in the database had 0 motifs; pass 6 had never once seen a motif layer.
+        · D-MOTIF-HARD-FILTERS-HIDE-HALF-THE-LIBRARY — fixing the sentinel left the mechanism.
+          The vectors are all `platform-bge-m3`, which is MULTILINGUAL: equivalent text in
+          different languages lands in the same space, so cross-language cosine already worked.
+          `language = $lang` threw that away and hid 48 Vietnamese motifs from every English
+          book and vice versa. Moving it to a pre-RANK term fixed reachability but left both
+          rows of every motif in the candidate set, which then cost slots and leaked the wrong
+          language's text into the planner's prompt.
+
+        The actual defect under all three was the schema: language was part of a motif's
+        IDENTITY. A motif is a structural pattern, not prose — the language you read it in is a
+        view of it, and views do not belong in identity keys.
+
+        GENRE stayed, and stayed a pre-RANK term for the same reason a WHERE clause was wrong
+        for it: a filter can only ever SUBTRACT.
+
+        · `genre_tags && $genres` is array overlap, and `'{}' && '{fantasy}'` is FALSE — so
+          the 21 untagged motifs could never match any genre-tagged book, ever. Worse, 40 more are
+          tagged with what they ARE rather than what they suit (`hook`, `connective`, `emotion_arc`
+          — rows like "Cliff Question" and "Betrayal Hinted", which are genre-AGNOSTIC by design),
+          so reaching them required a book literally tagged `genre_tags=['hook']`. 61 of 118 active
+          motifs, 52% of the library, unreachable by construction. Measured per genre on live data:
+          fantasy 0 · scifi 0 · romance 0 · mystery 0 · thriller 0 · literary 0 — only xianxia (14)
+          and intrigue/court (6) matched anything at all.
+
+        So genre moves from PRE-FILTER to PRE-RANK. In-genre candidates still win the
+        ceiling, which is what the bound is actually for; nothing is excluded outright. The
+        quality gate was never the genre column — it is `motif_min_score` (0.30 cosine), which drops
+        a semantically distant motif whatever its tags say. And the ceiling is 500 against 118
+        active rows, so today this widens the candidate set without binding at all."""
+        params: list[Any] = [caller_id, max(0, ceiling)]
+        # `$3::text[]` is always bound (possibly to an empty array) so the ORDER BY can
+        # reference it unconditionally — a rank term that vanishes with its clause would silently
+        # re-order the ceiling depending on what the caller happened to supply.
+        params.append(list(genre_tags) if genre_tags else [])
+        genre_param = f"${len(params)}::text[]"
         sql = f"""
         SELECT {_RETRIEVE_COLS}
         FROM motif
         WHERE status = 'active'
-          AND language = $2
-{genre_clause}          AND {_VISIBLE_PREDICATE}
+          AND {_VISIBLE_PREDICATE}
         ORDER BY
           (owner_user_id = $1) DESC NULLS LAST,
+          (genre_tags && {genre_param}) DESC,
           mining_support DESC NULLS LAST,
           judge_score DESC NULLS LAST,
           updated_at DESC
-        LIMIT $3
+        LIMIT $2
         """
         async with self._pool.acquire() as c:
             return await c.fetch(sql, *params)

@@ -44,7 +44,8 @@ def _post(client, body, *, token=_TOKEN):
 def test_route_is_registered_on_app():
     """Prove the frozen path is mounted (a 404 would mean main.py wiring drift)."""
     from app.main import app
-    paths = {r.path for r in app.routes}
+    from loreweave_obs.routes import route_paths  # FastAPI 0.139: app.routes is not flat
+    paths = route_paths(app)
     assert "/internal/extraction/motif-beats" in paths
 
 

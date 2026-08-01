@@ -47,7 +47,13 @@ vi.mock('../../hooks/useBootstrap', () => ({
 
 const listRuns = vi.fn();
 vi.mock('../../api', () => ({
-  planForgeApi: { listRuns: (...a: unknown[]) => listRuns(...a) },
+  planForgeApi: {
+    listRuns: (...a: unknown[]) => listRuns(...a),
+    // The panel loads the last material packet on mount. A partial module mock is how a
+    // new api method breaks unrelated panel tests — stub it rather than making the hook
+    // defensive, which would hide a genuinely missing method.
+    getMissingMaterial: () => Promise.resolve(null),
+  },
 }));
 
 import { PlannerPanel } from '../PlannerPanel';
@@ -76,6 +82,6 @@ describe('PlannerPanel — bootstrap reset on recompile', () => {
     fireEvent.click(screen.getByTestId('plan-compile-btn'));
 
     expect(bootstrapReset).toHaveBeenCalledTimes(1);
-    expect(runCompile).toHaveBeenCalledWith('arc_1');
+    expect(runCompile).toHaveBeenCalledWith('arc_1', undefined, undefined, undefined);
   });
 });
