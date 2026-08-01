@@ -36,21 +36,80 @@ equals an abridged quote; claiming one is the T1 fabricated-citation failure).
 **Verified** — translation-service **1070 passed** (`-n auto --dist loadgroup`) · glossary-service
 `internal/api` ok · ai-provider-gate OK · doc-language-gate OK.
 
-**▶ NEXT — run the arms.** PO approved **all of A0–A6**, instrument first (done).
-Order per `/14` §7: freeze the slice (chapters 21–30) + known-entity snapshot + throwaway book +
-answer key → **A0 ×2 for the variance floor** → A1–A4 (prompt/shape) → read the card → A5 (EDC) → A6
-(GLiNER). `BTG-A41`: every arm must start from the SAME frozen known-entity snapshot or the
-comparison measures ordering, not the arm. Q5 yield + Q6 duplication are on the card as anti-gaming
-axes — every cost arm can be "won" by extracting less.
+**Cacheable-prefix, settled deterministically** (`prefix_cacheability.py` — string prefixes, no
+model, no timing noise), chars per chapter over the frozen slice:
+
+| shape | sent | cacheable | fresh after a perfect cache |
+|---|---|---|---|
+| A0 as shipped (3 batches) | 35,981 | 8,288 | 27,693 |
+| **A1 one call** | 16,212 | 9,806 | **6,405 (−76.9%)** |
+| A2 reorder only | 36,092 | **15,918** | 20,174 (−27.1%) |
+| A3 one call + reorder | 16,249 | 9,840 | 6,409 (−76.9%) |
+
+`BTG-A45` — **A1 subsumes A3.** With one call per chapter the whole system prompt is already
+byte-identical chapter to chapter, so reordering adds nothing on top; it is the **fallback** for when
+batching cannot be given up (there it lifts the within-chapter shared prefix 1,506 → 9,102, 6×). `14`
+predicted A3 would be the interesting arm — it is not. Upper bound, not a realised saving: LM Studio
+caches server-side and reports no cache tokens on the chat endpoint, so only wall-clock (and a paying
+provider's bill) can corroborate it.
+
+**Source correction (PO):** a claim in `provider-registry-service/internal/provider/prompt_cache.go`
+that prompt caching "won't help an A3B/A4B MoE model — LM Studio bug #1563" is **wrong and was
+removed**. Do not reintroduce it; it would have been used to discount A2/A3 on this stack.
+
+**ARMS RUN — full card in [`BOOK_TO_GAME/15`](../03_planning/BOOK_TO_GAME/15_extraction_poc_results.md).**
+Per chapter, 10 chapters/arm, no DB writes, harness imports the worker's own builders + parser +
+validator (only the call loop varies).
+
+| arm | in | out | calls | s | ents | Q1 grounded | Q4 strict |
+|---|---|---|---|---|---|---|---|
+| A0 baseline | 22,614 | 6,189 | 3.0 | 65.5 | 20.1 | 80.1% | 59.3% |
+| A0b rerun | 22,614 | 6,548 | 3.0 | 66.1 | 18.4 | 79.3% | 61.7% |
+| **A1** one call | **8,603** | **3,282** | 1.0 | **31.1** | 17.6 | 80.1% | 62.2% |
+| A2 reordered | 21,889 | 6,646 | 3.0 | 71.3 | 17.9 | 77.7% | 65.4% |
+| A3 one call+reorder | 8,610 | 3,235 | 1.0 | 30.5 | 17.5 | 77.7% | 63.0% |
+| **A4** + delta-only | 8,688 | 3,301 | 1.0 | 31.2 | 18.1 | **81.8%** | **67.5%** |
+
+- **`BTG-A46` variance floor is ~8.5% yield** (A0 vs A0b, same arm twice). Every *quality* delta on
+  the card sits at or below it; only the **cost** deltas (60%+) clear it. Do not read a 2pp move.
+- **`BTG-A47`** one call makes a parse failure **all-or-nothing** — A3 lost a whole chapter to one
+  malformed JSON. Shipping A1/A4 requires a retry; the token numbers hide this.
+- **`BTG-A50`** three harness bugs each reported a *plausible number, not an error* (wrong arg → "1
+  call, 7.6k input"; `kind` vs `kind_code` → "Q4 = 0.0%"; NULL `source_kind_code` → "no
+  organizations"). Caught only because A0 had a figure to reproduce (`BTG-A44`).
+
+**THE HEADLINE — `BTG-A49`: an entity's kind is fixed by the FIRST chapter that mentions it and is
+immune to every later chapter.** `findEntityCrossKind` returns the matched entity's kind and the
+caller merges into it (`mergeKindID = crossKindID`); nothing in the extraction path ever writes
+`kind_id` — the only route that does is `reassignEntityKind`, a **human curation endpoint**. Evidence:
+12 of 25 matched names are `organization` in the glossary and `location` in every fresh arm (right in
+11/12, incl. **終南山**); and accuracy is *lower* for recurring entities (41.7%) than one-off ones
+(66.7%) — more evidence buys nothing. ⇒ **`09`'s 64%, `10`'s 75%, and Q4's 43.8% all measured the
+STORE, not the model.** Per-call typing is ~100% lenient on the key's subset.
+
+- **`BTG-A48`** `10` §6 falsifier settled: **16 collapsed pairs (17.6%) vs 58 plain misfiles (63.7%)**
+  — `BTG-A28` FALSIFIED, and 17.6% lands on the metonymy literature's ~19% base rate (`BTG-A31` was
+  right). Fix is levers ④+② , **not** lever ① (split the pair). Morphology lint scores 96.9%
+  precision / 74.8% recall — a good flagger that must never rewrite (下虛門 = a **sect**, 黃門 = a
+  **clan**).
+
+**▶ NEXT**
+1. **Ship A4's shape** into `extraction_worker` — one call, delta instruction, raised output ceiling,
+   **plus a parse-failure retry** (`BTG-A47`).
+2. **Build re-decide-on-merge** (`BTG-A49`) — the real kind fix, and not a prompt change. Surface the
+   disagreement as a conflict instead of oldest-wins.
+3. Re-baseline every kind-quality claim after (2). Until then do not quote them as model accuracy.
+4. **A6 (GLiNER)** still unrun — `arm_a6_gliner.py` is written, gliner 0.2.28 installed `--no-deps`.
+   `BTG-A43`: adopting it means a `local-ner-service` behind a BYOK credential, not a library import.
 
 **⚠ Open**
-- The 100-chapter extraction is **cancelled at 57/100**; 872 entities kept. Resume = post a new job
-  with the remaining chapter_ids (entities already written are permanent).
-- Stored `provenance_status` rows are **pre-repair**; the re-score was computed, not written back. A
-  backfill is a decision, not a bug — the POC scores fresh runs.
-- Answer key for Q4 (kind conformance) is unwritten; authoring it also settles `10` §6's falsifier
-  (are the 41 place-suffix `organization` rows collapsed pairs or plain misfiles — `BTG-A31` favours
-  misfiles).
+- 100-chapter extraction **cancelled at 57/100**; 872 entities kept. Resume = new job with the
+  remaining chapter_ids.
+- Stored `provenance_status` rows are **pre-repair**; the re-score was computed, not written back.
+- A5 (EDC) first run was **mis-parameterised** (stage-1 sweep capped at 4k → 3 chapters truncated to
+  zero); re-run at 8k. Its first-run signal was interesting anyway: grounded **+6.4pp**.
+- Answer key was **agent-labelled at the PO's instruction**, not PO-labelled; criteria recorded in the
+  labelling script, 162 rows, auditable.
 
 ## 🔐 GAME CLIENT AUTH — login + register + recovery, one account with the novel app (2026-07-30)
 

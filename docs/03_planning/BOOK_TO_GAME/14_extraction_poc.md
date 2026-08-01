@@ -57,7 +57,24 @@ naming:
 | sampling | `reasoning_effort: none`, temperature fixed, same seed where the backend honours one |
 | kinds / attributes | the same 8 kinds, 59 attributes, same profile |
 | concurrency | **1**, so wall-clock measures the arm and not the scheduler |
-| writes | to a **throwaway book**, never the live glossary — arms must not contaminate each other's corpus |
+| writes | **none at all** — see below |
+
+**Revision, made while building the harness: there are no database writes.** The control above
+originally called for a throwaway book. Scoring entirely in memory is strictly better — there is
+nothing to contaminate, no cleanup to get wrong, and no path by which a stray write reaches the live
+glossary. It is possible precisely *because* the known-entity snapshot is frozen: nothing an arm
+discovers is allowed to reach the next chapter's prompt anyway, so there is nothing writeback would
+be for. The harness imports the worker's own builders, parser and provenance validator and
+reimplements only the **call loop**, which is the thing the arms vary; a harness that rebuilt the
+prompt would be measuring itself.
+
+> **`BTG-A44`.** **A0 is not a baseline, it is the harness's own correctness test.** If A0 does not
+> reproduce the shipped pipeline's measured per-chapter cost (~21.8k in / 6.8k out over 3 calls,
+> adjusted for this slice's shorter chapters), then the harness is not measuring the pipeline and
+> **no other arm's number means anything**. This caught its first bug immediately: the harness passed
+> the wrong third argument to `parse_and_validate_with_stats`, every batch returned zero entities, and
+> the run reported *1 call and 7.6k input* — which is a plausible-looking number, and would have been
+> read as a result rather than as a broken harness had A0 not had a figure to reproduce.
 
 Run-to-run variance on a non-deterministic backend is itself unmeasured, so **arm A0 runs twice**. If
 two identical runs differ by more than the gap between two arms, the gap is not a result. This has bitten
@@ -136,11 +153,40 @@ chapter text last, changing no content. Measures time-to-first-token and cached-
 local llama.cpp backend prefix caching is automatic; on a paid provider it needs explicit markers, and
 whether the saving survives the switch is part of what this arm answers.
 
+#### What A2 is worth, settled without an LLM
+
+Prefix caching is a claim about **string prefixes**, so it can be measured exactly —
+`prefix_cacheability.py`, no model, no timing noise. Per chapter, over the frozen slice:
+
+| shape | sent | cacheable prefix | fresh after a perfect cache |
+|---|---|---|---|
+| A0 as shipped, 3 batches | 35,981 | 8,288 | 27,693 |
+| **A1 one call** | 16,212 | 9,806 | **6,405** (−76.9%) |
+| A2 3 batches, reordered | 36,092 | **15,918** | 20,174 (−27.1%) |
+| A3 one call + reordered | 16,249 | 9,840 | 6,409 (−76.9%) |
+
+> **`BTG-A45`.** **A1 subsumes A3 — reordering buys nothing once there is one call per
+> chapter.** With a single call the entire system prompt is *already* byte-identical from
+> chapter to chapter (only the user message changes), so there is no ordering left to fix.
+> Reordering is worth 6× on the within-chapter shared prefix (1,506 → 9,102 chars) and is
+> therefore the **fallback** for the case where batching cannot be given up — not a
+> stacking improvement. `14` predicted A3 would be "the interesting one"; it is not.
+
+This must be read as an **upper bound on what caching could buy**, not a realised saving:
+it assumes a perfect prefix cache, and `usage.input_tokens` cannot corroborate it, because
+LM Studio caches server-side and reports no cache tokens on the OpenAI-compatible chat
+endpoint. A hit shows up only in wall-clock here, and in the bill on a provider that does
+report reads (typically ~90% cheaper than a fresh input token).
+
+So the **live** A2 arm answers a different question from the table: *does reordering cost
+any quality?* The content is identical and only the order changes, so if extraction gets
+worse, section order carries meaning and the caching win has a price.
+
 ### A3 — A1 + A2
-The combination is the interesting one: with one call there is no per-batch schema variance, so the
-**entire system prompt becomes a stable prefix across chapters**, advancing only when the known-entity
-list grows. Predicted fresh input per chapter approaches the chapter itself — ~4,800 chars against
-35,316 today.
+Kept as a **control**, not as a candidate. The measurement above already shows it lands on top of A1
+(6,409 vs 6,405 fresh chars per chapter), so its job is now to confirm that combining the two changes
+does not *degrade* anything — if A3's quality differs from A1's, the reordering is doing something the
+prefix arithmetic does not see.
 
 ### A4 — delta-only output
 **Attacks `13` §4** — 88% of entity writes are re-writes of entities the glossary already holds. Ask
@@ -162,6 +208,18 @@ path at all: run the encoder over the same 10 chapters and measure **agreement w
 against the same answer key. It answers one question — *is a second reader worth wiring in?* — and
 `12` §5 already warns the honest answer may be no, because its published numbers are English
 benchmarks and 文言文 is unmeasured.
+
+> **`BTG-A43`.** **A6 has a shape constraint the other arms do not, and it is worth knowing before
+> the measurement rather than after.** `import gliner` inside a service is a direct model-SDK import,
+> which the provider-gateway invariant forbids — and the invariant explicitly covers local backends
+> (`D-RERANK-NOT-BYOK` is the recorded case of getting this exactly wrong: rerank was first wired as
+> per-service `RERANK_URL`/`MODEL`/`TOKEN` config instead of resolving through provider-registry).
+> This repo already runs `local-rerank-service`, `local-stt-service` and `local-tts-service` on that
+> pattern, so if A6 wins, the production shape is **a sibling `local-ner-service` registered as a BYOK
+> provider credential with a `user_models` row**, reached through an `/internal/*` provider-registry
+> route — not a library call. The POC may import the library directly because a spike is not a
+> service, but the cost of adopting A6 is *a service*, and that belongs on the card next to its
+> accuracy.
 
 ## 6. What would make this POC a failure
 
