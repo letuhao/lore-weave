@@ -93,17 +93,25 @@ signals:
         FAILED downgrades, because treating an absent signal as failure would disable the
         blocking tier on every path that does not resolve identity.
 
-  - id: translation.injection_scan
-    field: injection_scan
+  - id: translation.source_injection_hits
+    # The name the gate made me settle. The in-memory report is `injection_scan`; what
+    # actually crosses the boundary — column, API field, badge — is `source_injection_hits`,
+    # and registering the first meant the emitter and the consumer named two different things
+    # for one concept. The gate refused the row and it was right to.
+    field: source_injection_hits
     emitter:
       file: services/translation-service/app/workers/decoupled_translate.py
-    unconsumed: >-
-      DoD-4, and the row's FIRST version overstated it — caught by auditing this file. It said
-      the scan is "recorded on resume_state and logged". `resume_state` exists only on the
-      DECOUPLED path, and `translation_decouple_enabled` defaults to FALSE, so on the path
-      that actually runs today the report is a log line and nothing else. Both paths scan; only
-      the flag-on one persists. Either way nothing acts on a hit, so a chapter carrying
-      directive-looking spans is translated identically to a clean one. DETECT is only a
-      defence if somebody is TOLD, and a log nobody greps is not that. The real step is a
-      column on `chapter_translations` plus a return from `translate_chapter` — a signature
-      change with callers, which is why it is a slice and not a line.
+    consumer:
+      file: frontend/src/features/translation/components/TranslationViewer.tsx
+      note: >-
+        The chapter's scan is persisted to `chapter_translations.source_injection_hits` by
+        BOTH chapter paths and rendered as an amber badge on the version the importer reads.
+        It used to live only in `resume_state`, which `_clear_resume_state` wipes the moment
+        the chapter finishes — i.e. exactly when the translation becomes readable — so the
+        record of the scan disappeared at the moment it became useful.
+        The column is NULLABLE and the badge tests `> 0`, not truthiness: `null` (nobody
+        looked) and `0` (looked, clean) are different answers, both falsy, and only one is an
+        answer. A `DEFAULT 0` would have written "clean" across every historical row.
+        Previous claim in this row, corrected: I said the table belonged to book-service and
+        called this a cross-service slice. It is translation-service's own table — I inferred
+        the owner from a COMMENT in `book_client.py` instead of reading the schema.

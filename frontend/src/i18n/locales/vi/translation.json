@@ -66,7 +66,10 @@
     "publish_anyway": "Vẫn xuất bản",
     "cancel": "Hủy",
     "glossary_stale": "Glossary đã đổi",
-    "glossary_stale_title": "Glossary đã thay đổi sau bản dịch này — có thể đã lỗi thời."
+    "glossary_stale_title": "Glossary đã thay đổi sau bản dịch này — có thể đã lỗi thời.",
+    "source_injection": "Nguồn bị gắn cờ ({{count}})",
+    "source_injection_other": "Nguồn bị gắn cờ ({{count}})",
+    "source_injection_title": "Văn bản nguồn nhập vào có những đoạn trông như câu lệnh. Bản dịch không bao giờ sửa nguồn, nên đây là cảnh báo chứ không phải chặn — hãy xem lại chương trước khi tin những gì mô hình nói về nó."
   },
   "confirm_name": {
     "button": "Sửa tên",

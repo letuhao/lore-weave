@@ -3614,6 +3614,61 @@ AUDIT AUDIT-17 (the fourth held signal · and where the fifth genuinely stops)
   SCORE      — 5 signals: 4 consumed, 1 held. The registry started this run at 5 held.
 ```
 
+### ✅ AUDIT-18 · the last held signal. Registry 5 held → **0**.
+
+```
+AUDIT AUDIT-18 (translation.source_injection_hits reaches the importer)
+
+  CORRECTION — I closed the previous turn saying this was a cross-service slice because
+              `chapter_translations` belongs to book-service. It does not. The table is
+              defined in **translation-service's own `migrate.py`**, and I had inferred the
+              owner from a COMMENT in `book_client.py` that mentions the name. Prose read as
+              behaviour — the defect this cycle has now hit seven times, and this one cost a
+              turn of not-doing-the-work on a wrong premise.
+
+  BUILT      — the shape was already in this table end to end, so it is mirrored rather than
+              invented: `is_glossary_stale` has a column, a model field, an API field, a
+              badge in `TranslationViewer`, and a BRANCH in `routers/actions.py`.
+                · `chapter_translations.source_injection_hits`, written by BOTH chapter paths.
+                  It previously lived only in `resume_state` — which `_clear_resume_state`
+                  wipes the moment the chapter finishes, i.e. exactly when the translation
+                  becomes readable. The record of the scan vanished at the moment it became
+                  useful.
+                · NULLABLE, and the badge tests `> 0` rather than truthiness. `null` (nobody
+                  looked) and `0` (looked, clean) are different answers, both falsy, and only
+                  one is an answer. A `DEFAULT 0` would have written "clean" over every
+                  historical row — the false-green this whole run is about, in a schema default.
+                · 18 locales; the title says plainly that this is a heads-up and not a block,
+                  because translation never rewrites its source.
+
+  THE NAME   — the gate refused the row twice and was right both times. First the FE named
+              the field `source_injection_hits` while the registry said `injection_scan`: two
+              names for one concept, across the exact boundary the registry exists to watch.
+              The in-memory report is `injection_scan`; what CROSSES is the count. Registered
+              under the name that crosses.
+
+  ALSO       — the gate's own PASS line claimed something about "held signals" unconditionally,
+              so at zero it described a set that no longer existed. Small, and exactly the
+              thing this gate is for.
+
+  SCORE      — **5 registered, 5 consumed, 0 held.** The registry opened this run at 5 held.
+              Three of the four wired today turned out to be BROKEN AT THE PRODUCER rather
+              than merely unread: a fix that never reached the publish gate, a field dropped
+              at a boundary, and a scan wiped the instant it mattered. That is the argument
+              for the mechanism, and none of it was visible from the emitting side.
+
+  PROVEN     — translation **1151 passed** · FE translation suite **52 passed** ·
+              `tsc --noEmit` clean · i18n parity 20 locale-dirs × 35 namespaces ·
+              guard-signal-consumption **5/5 consumed** + SELFTEST · guard-redability 10/10 ·
+              gate-teeth 61 · llm-budget PASS · estimator-ssot PASS · injection-coverage OK.
+
+  DRIFT      — a test asserted `pool.execute.call_count == num_chunks` as a proxy for "one
+              UPDATE per chunk". It held only while chunk rows were the ONLY write, so adding
+              a per-chapter write broke a test about chunk rows. Tightened to count by SQL,
+              and it now also asserts the scan is persisted exactly once with 0 for clean
+              text — the write I added is covered by the test my change broke.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |

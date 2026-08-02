@@ -366,6 +366,14 @@ async def translate_chapter(
         chapter_translation_id, len(chunks), chunk_size, context_window,
         injection.as_payload(),
     )
+    # PERSISTED, not just logged. A log line nobody greps is the same silence the scan was
+    # added to end — and this is the ONE fact the person who imported the book needs, on the
+    # row they already look at. Written even when clean (0), because 0 and NULL answer
+    # different questions.
+    await pool.execute(
+        "UPDATE chapter_translations SET source_injection_hits=$2 WHERE id=$1",
+        chapter_translation_id, injection.hits,
+    )
 
     session_history: list[dict] = []
     compact_memo: str = ""

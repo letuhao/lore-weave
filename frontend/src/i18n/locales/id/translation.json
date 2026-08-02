@@ -58,7 +58,10 @@
     "publish_anyway": "Terbitkan saja",
     "cancel": "Batal",
     "glossary_stale": "Glosarium diperbarui",
-    "glossary_stale_title": "Glosarium berubah setelah terjemahan ini — mungkin sudah kedaluwarsa."
+    "glossary_stale_title": "Glosarium berubah setelah terjemahan ini — mungkin sudah kedaluwarsa.",
+    "source_injection": "Sumber ditandai ({{count}})",
+    "source_injection_other": "Sumber ditandai ({{count}})",
+    "source_injection_title": "Teks sumber yang diimpor memuat bagian yang menyerupai instruksi. Terjemahan tidak pernah menulis ulang sumber — ini peringatan, bukan blokir."
   },
   "confirm_name": {
     "button": "Perbaiki nama",

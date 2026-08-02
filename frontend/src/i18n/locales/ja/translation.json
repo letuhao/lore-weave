@@ -66,7 +66,10 @@
     "publish_anyway": "それでも公開",
     "cancel": "キャンセル",
     "glossary_stale": "用語集が更新",
-    "glossary_stale_title": "この翻訳の後に用語集が変更されました — 古くなっている可能性があります。"
+    "glossary_stale_title": "この翻訳の後に用語集が変更されました — 古くなっている可能性があります。",
+    "source_injection": "原文に注意 ({{count}} 件)",
+    "source_injection_other": "原文に注意 ({{count}} 件)",
+    "source_injection_title": "取り込んだ原文に指示のような箇所があります。翻訳が原文を書き換えることはないため、これはブロックではなく注意喚起です。"
   },
   "confirm_name": {
     "button": "名前を修正",

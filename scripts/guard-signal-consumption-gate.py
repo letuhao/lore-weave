@@ -55,7 +55,12 @@ REGISTRY = ROOT / "contracts" / "guard-signals.yaml"
 #: worse than an unread field: it was DROPPED at the `EvalResult` boundary, so the
 #: structure built for persistence never carried it. Two for two: a signal with no
 #: reader hides whether its producer even works.
-UNCONSUMED_BASELINE = 1
+#: 1 → **0** (2026-08-02). Every signal in this registry now changes something a human
+#: or a gate can act on. The ratchet stays: it is not the count that mattered, it is
+#: that a SIXTH emitted-and-unread signal now fails instead of joining a list nobody
+#: reads in one sitting. Three of the four wired this day turned out to be broken at
+#: the producer, not merely unread — which is the argument for the whole mechanism.
+UNCONSUMED_BASELINE = 0
 
 
 def _strip_prose(src: str, path: Path) -> str:
@@ -264,8 +269,15 @@ def main() -> int:
         consumed = len(rows) - len(unconsumed)
         print(f"guard-signal-consumption-gate: PASS — {len(rows)} guard signal(s) registered; "
               f"{consumed} consumed, {len(unconsumed)} held at baseline.")
-        print("   Held signals are honest, not harmless: each names two states a reader can "
-              "now tell apart, and nothing yet acts on the difference.")
+        if unconsumed:
+            print("   Held signals are honest, not harmless: each names two states a "
+                  "reader can now tell apart, and nothing yet acts on the difference.")
+        else:
+            # Said only when it is TRUE. The old line printed the held-signal caveat
+            # unconditionally, so at zero it described a set that no longer existed —
+            # a small instance of exactly what this gate is for.
+            print("   Every registered signal changes something a human or a gate can "
+                  "act on. The ratchet stays: a SIXTH emitted-and-unread signal fails.")
     return rc
 
 

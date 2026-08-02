@@ -58,7 +58,10 @@
     "publish_anyway": "Yine de yayınla",
     "cancel": "İptal",
     "glossary_stale": "Sözlük güncellendi",
-    "glossary_stale_title": "Bu çeviriden sonra sözlük değişti — çeviri güncelliğini yitirmiş olabilir."
+    "glossary_stale_title": "Bu çeviriden sonra sözlük değişti — çeviri güncelliğini yitirmiş olabilir.",
+    "source_injection": "Kaynak işaretlendi ({{count}})",
+    "source_injection_other": "Kaynak işaretlendi ({{count}})",
+    "source_injection_title": "İçe aktarılan kaynak metin talimat benzeri bölümler içeriyor. Çeviri kaynağı asla yeniden yazmaz; bu bir uyarıdır, engel değil."
   },
   "confirm_name": {
     "button": "Bir ismi düzelt",

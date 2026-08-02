@@ -66,7 +66,10 @@
     "publish_anyway": "Publish anyway",
     "cancel": "Cancel",
     "glossary_stale": "Glossary updated",
-    "glossary_stale_title": "The glossary changed after this translation — it may be outdated."
+    "glossary_stale_title": "The glossary changed after this translation — it may be outdated.",
+    "source_injection": "Source flagged ({{count}})",
+    "source_injection_other": "Source flagged ({{count}})",
+    "source_injection_title": "The imported source text contains directive-looking spans. Translation never rewrites the source, so this is a heads-up, not a block — check the chapter before trusting anything the model said about it."
   },
   "confirm_name": {
     "button": "Fix a name",
