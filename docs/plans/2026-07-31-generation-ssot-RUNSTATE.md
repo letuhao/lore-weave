@@ -2810,6 +2810,66 @@ AUDIT AUDIT-2 (generation paths — 1 of 4 closed)
                same contract; the Python ones already have `canon_envelope` to hang off.
 ```
 
+### ◐ AUDIT-3 · DoD-1 — the two SSE streams. Skipping a guard is a position; silence is a defect.
+
+```
+AUDIT AUDIT-3 (generation paths — 3 of 4 closed)
+  BUILT      — `CheckStatus.NOT_RUN` + `canon_check.unguarded_envelope(reason)`, emitted by
+               both composition SSE generators on the persisted job result AND the terminal
+               frame.
+               The distinction that made this worth a vocabulary change: `NOT_APPLICABLE`
+               renders as NOTHING by its own docstring, because it means "not in this run's
+               scope". Using it here would have rebuilt the silence under a new name. `NOT_RUN`
+               means the guard was never wired on this path and no retry will change that —
+               ranked ABOVE `UNPARSEABLE` for exactly that reason: a structural absence reads
+               the same on every future run, an unusable judge answer is one response away
+               from being fine.
+               Note what was NOT built: the streams still do not run a canon check. That is a
+               defensible design position on an interactive surface — a multi-second judge pass
+               between keystrokes is a different product — and turning it into a feature is a
+               plan, not a fix. What was never defensible is saying nothing.
+
+  PROVEN     — `generation-guard-gate: PASS — 9 generation paths enumerated across 3
+               languages; 8 guarded, 1 tracked-unguarded.` (5/4 → 6/3 → 8/1 across this run.)
+               composition unit suite `3486 passed in 89.34s`.
+               The new tests reddened when the declaration was taken back out of ONE stream:
+                 AssertionError: an SSE terminal frame streams a completed draft with no
+                 canon field — the reader cannot tell it from a checked one
+                 AssertionError: unguarded_envelope( is called 1x — both streams must use it
+                 2 failed, 6 passed          restored byte-identical: True
+               `guard-redability-gate: PASS — 14/14`.
+
+  NOT PROVEN — nothing CONSUMES `guard_status: not_run` yet. `chapter_scene_gate` reads
+               `guard_status` out of `generation_job.result`, so a co-write job now carries a
+               readable value where it carried none — but I did not trace what that gate does
+               with `not_run`, and no FE surface renders it. Third instance of the
+               emitted-but-unconsumed shape this run. Debt row, not a claim.
+               I also did not run either stream live; the evidence is unit-level plus an AST
+               scan of the emitting frames.
+
+  DRIFT      — two.
+               · I fabricated `CanonViolation(entity=…, rule=…, detail=…)` in the parity
+                 fixture. The real model is `CanonCandidateBase` — `entity_id`, `name`,
+                 `matched`. It failed for a reason with nothing to do with its subject, and
+                 this repo already carries the lesson: derive a fixture from the PRODUCER
+                 schema, never from memory of it. Second time this run.
+               · The red-ability probe reported ANCHOR-GONE on text I could see in the file.
+                 The working tree is CRLF and my multi-line anchor was written with `\n`. That
+                 is a hole in `guard-redability-gate` itself, not in the probe: a case whose
+                 anchor "moved" for a line-ending reason reports that it tested nothing, which
+                 is a false accusation from a gate — and a false accusation is how a gate gets
+                 switched off. `_mutate` now normalises before matching; restore is still from
+                 the saved bytes, so the round trip stays lossless.
+
+  NEXT       — one row left: `tilemap.l4.zone_narration`. Measured while scoping it, and it
+               changes the severity the registry claims: the narrations never leave the
+               harness — the only consumers are two report formatters, and BOTH already print
+               `fallback_count`. The real gap is type-level and future-facing (an
+               `L4Narration` carries no provenance, so a consumer that persists one cannot
+               tell a model's work from a canonical default) and it is present identically in
+               L3. Fix both or neither.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -2838,6 +2898,7 @@ AUDIT AUDIT-2 (generation paths — 1 of 4 closed)
 | 2026-08-02 | **The distinct-critic rule compares `user_model_id`, not the RESOLVED provider model.** Two BYOK rows can point at the same underlying model. | A user with two gemma credentials picks one as drafter and one as critic, gets `CONFIGURED`, and a model grades its own prose — the exact failure S6 is named for, one level below where the check now looks. Closing it needs a provider-registry route exposing the underlying model for a `user_model_id` (only `/context-window` exists) plus a caching decision on a per-generation hot path. Gate #2 — cross-service contract. |
 | 2026-08-02 | `settings.model_roles` still has ZERO writers. S6 writes the legacy `critic_model_ref`/`_source` scalars, which the dual-read consumes. | The newer map remains a read-only contract with no producer, so the Book tier of the Chat & AI cascade still resolves a key nothing writes. Not blocking — the dual-read means the critic setting works — but the map is dead weight until something writes it or it is retired. |
 | 2026-08-02 | **`guardstatus.Report` is emitted and nothing consumes it.** `kg_status`/`kg_checked`/`kg_unchecked` ride the two sweep responses; no caller, gate or FE surface reads them. | The S8 shape again, and the second instance this run after `exclusion_unverified`: a fact made AVAILABLE rather than acted upon. It is strictly better than before — the field exists and is correct — but a degraded sweep still changes nothing downstream. The honest next step is the wiki UI showing "N articles not compared" or a gate that reds when a staleness sweep is published with a non-zero `kg_unchecked`. |
+| 2026-08-02 | **`guard_status: not_run` is emitted by both SSE streams and nothing consumes it.** `chapter_scene_gate` reads `guard_status` out of `generation_job.result` and now finds a value where it found none, but I did not trace what it does with this one, and no FE surface renders it. | Third instance of the emitted-but-unconsumed shape this run, after `exclusion_unverified` and `kg_status`. The pattern is worth naming: I keep closing the HONESTY half of a gap and leaving the ACTING half. The next step here is small and concrete — decide what `chapter_scene_gate` should do with `not_run`, and show the reason in the co-write UI. |
 | 2026-08-02 | **Rust has no check-status mirror.** `contracts/guard-status.contract.json` is read by Python and Go; `tilemap-service`'s `l4_retry.rs` still carries its honesty in an optional `fallback_count`. | The contract makes the Rust mirror cheap and machine-checkable, which is the point of writing it first — but cheap is not done. Until it exists, the DoD-1 claim covers two of three languages. |
 | 2026-08-02 | **45 of 59 CI gates carry no red-ability proof**, and `guard-redability-gate.py` did not move that number — it covers the guards this run wrote. | The ratchet's own PASS line says it out loud, so it is visible rather than implied. The gates it does cover are now proved against the real violation, which is a strictly stronger proof than the selftest convention the other 14 use. Un-parks one gate at a time: every new gate gets a sweep case. |
 | 2026-08-02 | **7 of the 11 sweep cases do not run in CI** — they drive service pytest suites and the `lints` job installs no service deps. | `--gates-only` prints what it skipped, so a partial sweep cannot read as a complete one. The real fix is a CI job that installs composition + chat + translation deps; that job would also un-skip work `python-integration-tests.yml` already does, so the honest move is to add the sweep there rather than build a third job. |
@@ -2997,3 +3058,12 @@ AUDIT AUDIT-2 (generation paths — 1 of 4 closed)
 - **2026-08-02 · `ok` from a DB-gated Go package is also what "everything skipped" prints.** I
   had the green and was about to move on; re-running with `-v` is what turned it into nine named
   PASS lines. The repo already has this lesson written down for Python suites.
+- **2026-08-02 · invented a pydantic model's fields for the second time this run.** The
+  envelope-parity fixture built `CanonViolation(entity=…, rule=…, detail=…)`; the real base is
+  `entity_id` / `name` / `matched`. It failed for a reason with nothing to do with its subject.
+  The lesson row for this already exists and I still wrote the shape I expected.
+- **2026-08-02 · my own red-ability gate made a false accusation, and the cause was CRLF.** A
+  multi-line anchor written with `\n` matches nothing in this repo's working tree, so the case
+  reported ANCHOR-GONE — "this tested nothing" — about text plainly present in the file. A gate
+  that cries wolf for an environment reason is how a gate gets switched off. `_mutate`
+  normalises before matching now.

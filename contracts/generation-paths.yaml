@@ -75,23 +75,38 @@ paths:
     language: python
     file: services/composition-service/app/routers/engine.py
     symbol: event_gen
-    status: unguarded
-    owner: S1-part2
+    status: guarded
+    coverage_field: guard_status
+    via:
+      file: services/composition-service/app/engine/canon_check.py
+      symbol: unguarded_envelope
     note: >-
-      MEASURED 2026-08-01 — the SSE generators mention `canon` zero times. User-visible prose,
-      no canon guard, no name grounding, no cross-scene check, and no field that says any of
-      that. This is the path a module-based lint cannot see, and it is why this file exists.
+      CLOSED 2026-08-02, and NOT by running the guard. Was: the SSE generators mention `canon`
+      zero times — user-visible prose with no canon guard, no name grounding, no cross-scene
+      check, and no field saying any of that. Skipping the guard on an interactive surface is a
+      real design position; the SILENCE was the defect, because a `done` frame with no canon
+      block and one from a fully-checked draft are identical bytes to a reader. The stream now
+      emits `canon: unguarded_envelope(<reason>)` on both the persisted job result and the
+      terminal frame — `guard_status: not_run` plus a `guard_reason` an author can act on.
+      `not_run` was added to the vocabulary for exactly this: `not_applicable` renders as
+      NOTHING by design and would have rebuilt the silence under a new name.
 
   - id: composition.selection_edit.stream
     service: composition-service
     language: python
     file: services/composition-service/app/routers/engine.py
     symbol: selection_edit
-    status: unguarded
-    owner: S1-part2
+    status: guarded
+    coverage_field: guard_status
+    via:
+      file: services/composition-service/app/engine/canon_check.py
+      symbol: unguarded_envelope
     note: >-
-      Rewrites an author-selected span. Same shape as the cowrite stream: generated text
-      reaches the manuscript with no guard report attached.
+      CLOSED 2026-08-02, same mechanism as the co-write stream above: it rewrites an
+      author-selected span in place, runs no guard, and now says so through the shared
+      `unguarded_envelope` builder rather than emitting nothing. Both call sites go through
+      that one builder, asserted by test — the six-hand-written-copies defect `canon_envelope`
+      was extracted from started as two dicts that agreed on the day they were written.
 
   - id: composition.chapter.single_pass
     service: composition-service

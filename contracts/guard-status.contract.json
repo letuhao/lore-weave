@@ -27,11 +27,13 @@
     "unverified_input",
     "unparseable",
     "degraded",
+    "not_run",
     "failed"
   ],
   "rank_worst_first": [
     "failed",
     "degraded",
+    "not_run",
     "unparseable",
     "unverified_input",
     "no_judge",

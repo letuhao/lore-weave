@@ -68,6 +68,16 @@ class CheckStatus(StrEnum):
     UNPARSEABLE = "unparseable"
     #: A dependency was unavailable (knowledge outage, LLM down). Could not verify.
     DEGRADED = "degraded"
+    #: This CODE PATH does not run the check at all. Not "out of scope for this subject"
+    #: (NOT_APPLICABLE, which renders as nothing) and not "it ran and found no corpus"
+    #: (NO_RULES) — the guard was never wired here, and no retry will change that.
+    #:
+    #: Added 2026-08-02 for the two composition SSE streams, which hand user-visible prose
+    #: to an author while mentioning `canon` zero times. Their defect was not that they skip
+    #: the guard — that is a real design position on an interactive path — but that they said
+    #: NOTHING, so a reader could not distinguish "checked and clean" from "never checked".
+    #: NOT_APPLICABLE would have re-created exactly that silence by design.
+    NOT_RUN = "not_run"
     #: The check raised. Distinct from DEGRADED: something is broken, not merely absent.
     FAILED = "failed"
 
@@ -77,6 +87,10 @@ class CheckStatus(StrEnum):
 _RANK: tuple[CheckStatus, ...] = (
     CheckStatus.FAILED,
     CheckStatus.DEGRADED,
+    # Above UNPARSEABLE deliberately. Both leave the reader with no verdict, but a guard that
+    # was never wired is a STRUCTURAL absence — it will read the same on every future run —
+    # whereas an unusable judge answer is one bad response away from being fine.
+    CheckStatus.NOT_RUN,
     CheckStatus.UNPARSEABLE,
     CheckStatus.UNVERIFIED_INPUT,
     CheckStatus.NO_JUDGE,

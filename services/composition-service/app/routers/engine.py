@@ -60,7 +60,7 @@ from app.engine.adaptive_k import adaptive_k
 from app.engine.chapter_gen import build_chapter_pack_node, union_cast
 from app.engine.prose_doc import text_to_tiptap_doc
 from app.engine.stitch import prepend_scene_headings, stitch_chapter
-from app.engine.canon_check import canon_envelope
+from app.engine.canon_check import canon_envelope, unguarded_envelope
 from app.engine.canon_reflect import run_canon_reflect
 from app.engine.critic_policy import CriticStatus, resolve_critic
 from app.engine.narrative_thread import detect_and_update_threads
@@ -884,7 +884,13 @@ async def generate(
             result = {"text": final["text"], "input_tokens": m.input_tokens,
                       "output_tokens": m.output_tokens, "measured": m.measured,
                       "capped": final.get("capped", False),
-                      "truncated": truncated, "finish_reason": m.finish_reason}
+                      "truncated": truncated, "finish_reason": m.finish_reason,
+                      # S1/DoD-1 — this path runs NO canon guard, and says so. Persisted on
+                      # the job as well as streamed, because `chapter_scene_gate` reads
+                      # `guard_status` back out of `generation_job.result`: a job with no
+                      # canon block at all is indistinguishable there from a checked one.
+                      "canon": unguarded_envelope(
+                          "the co-write stream does not run the canon guard: it is an interactive surface where the author is present and a judge pass between keystrokes would change the product. Approve the scene to have it checked.")}
             if stream_error:
                 result["error"] = stream_error
             empty = _empty_draft_error(final["text"], m.output_tokens, m.finish_reason)
@@ -900,6 +906,10 @@ async def generate(
                         "output_tokens": m.output_tokens, "measured": m.measured,
                         "capped": final.get("capped", False),
                         "truncated": truncated, "finish_reason": m.finish_reason,
+                        # The same declaration the job carries. A frame that omitted it would
+                        # leave the FE reading a completed draft with no guard field — which
+                        # is the state this change exists to remove.
+                        "canon": result["canon"],
                         **({"error": stream_error} if stream_error else {})})
         else:
             err = final.get("error") if final is not None else None
@@ -1100,7 +1110,10 @@ async def selection_edit(
             result = {"text": final["text"], "input_tokens": m.input_tokens,
                       "output_tokens": m.output_tokens, "measured": m.measured,
                       "truncated": truncated, "finish_reason": m.finish_reason,
-                      "selection_edit": True}
+                      "selection_edit": True,
+                      # S1/DoD-1 — see the co-write stream: declared, not silent.
+                      "canon": unguarded_envelope(
+                          "the selection-edit stream does not run the canon guard: it rewrites a span the author picked, in-place and interactively. Approve the scene to have the whole passage checked.")}
             if stream_error:
                 result["error"] = stream_error
             empty = _empty_draft_error(final["text"], m.output_tokens, m.finish_reason)
@@ -1115,6 +1128,7 @@ async def selection_edit(
             yield _sse({"type": "done", "job_id": str(job.id), "status": "completed",
                         "output_tokens": m.output_tokens, "measured": m.measured,
                         "truncated": truncated, "finish_reason": m.finish_reason,
+                        "canon": result["canon"],
                         **({"error": stream_error} if stream_error else {})})
         else:
             err = final.get("error") if final is not None else None

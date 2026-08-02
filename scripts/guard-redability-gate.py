@@ -143,6 +143,16 @@ CASES = [
      [sys.executable, "-m", "pytest", "tests/test_context_trace_contract.py", "-q",
       "-p", "no:cacheprovider"], CHAT),
 
+    ("S1 composition — an SSE stream stops declaring that no guard ran", SUITE,
+     COMP / "app" / "routers" / "engine.py",
+     replace('''                      "selection_edit": True,
+                      # S1/DoD-1 — see the co-write stream: declared, not silent.
+                      "canon": unguarded_envelope(
+                          "the selection-edit stream does not run the canon guard: it rewrites a span the author picked, in-place and interactively. Approve the scene to have the whole passage checked.")}''',
+             '                      "selection_edit": True}'),
+     [sys.executable, "-m", "pytest", "tests/unit/test_unguarded_declaration.py", "-q",
+      "-p", "no:cacheprovider"], COMP),
+
     ("S1 generation-paths — a row claims `guarded` with a coverage field the file lacks", GATE,
      ROOT / "contracts" / "generation-paths.yaml",
      replace("coverage_field: kg_status", "coverage_field: kg_status_that_does_not_exist"),
@@ -191,7 +201,13 @@ def _mutate(target: Path, op: str, payload) -> str | None:
         target.write_text(payload, encoding="utf-8")
     elif op == "replace":
         old, new, count = payload
-        src = target.read_text(encoding="utf-8")
+        # `newline=""` + an explicit unwrap, because this repo's working tree is CRLF and a
+        # multi-line anchor written with `\n` silently matches NOTHING there. That failure
+        # mode is indistinguishable from an anchor that genuinely moved, so it would surface
+        # as ANCHOR-GONE — a case reporting that it tested nothing, for a reason that has
+        # nothing to do with the guard. Measured the first time a case used a multi-line
+        # anchor. Restore is still from the SAVED BYTES, so the round trip is lossless.
+        src = target.read_text(encoding="utf-8").replace("\r\n", "\n")
         if old not in src:
             # NOT a pass. An anchor that has moved means this case is no longer injecting the
             # violation it names, and a sweep that skipped it would report full coverage while
