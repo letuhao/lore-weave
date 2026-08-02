@@ -39,6 +39,20 @@ class JudgePanel:
     extractor_exclude_ref: str | None = None
     filter_exclude_ref: str | None = None
     judge_model_refs: tuple[str, ...] = field(default_factory=tuple)
+    #: S13 — True when BOTH exclude refs came from the hardcoded production defaults below
+    #: rather than from this deployment's environment.
+    #:
+    #: Those defaults are `user_model_id`s, and this repo's own rule is that a
+    #: `user_model_id` is PER-MACHINE — a hardcoded table "sends the next developer to a 404
+    #: or to someone else's row". So on any deployment but the one they were minted on, the
+    #: exclusion set matches nothing, the real extractor stays in the panel grading its own
+    #: output, and `panel_safety` used to call that `safe=True, no generator in panel` — the
+    #: same words it uses for a genuinely clean panel.
+    #:
+    #: The defaults are KEPT: removing them would break the byte-identical guarantee
+    #: `panel_from_env` makes to existing callers. What changes is that a defaulted set can
+    #: no longer be mistaken for a verified one.
+    exclusion_is_defaulted: bool = False
 
     @property
     def excluded(self) -> set[str]:
@@ -65,7 +79,13 @@ def panel_from_env(env: Mapping[str, str] | None = None) -> JudgePanel:
     that switch to this produce byte-identical results.
     """
     e = env if env is not None else os.environ
+    # Whether the deployment SAID anything, tracked separately from the resolved value. The
+    # value alone cannot distinguish "this box's real extractor" from "a UUID minted on
+    # someone else's box", and that distinction is the difference between an exclusion that
+    # works and one that silently excludes nobody.
+    defaulted = "KNOWLEDGE_EXTRACTOR_MODEL" not in e and "KNOWLEDGE_FILTER_MODEL" not in e
     return JudgePanel(
         extractor_exclude_ref=e.get("KNOWLEDGE_EXTRACTOR_MODEL", DEFAULT_EXTRACTOR_REF),
         filter_exclude_ref=e.get("KNOWLEDGE_FILTER_MODEL", DEFAULT_FILTER_REF),
+        exclusion_is_defaulted=defaulted,
     )

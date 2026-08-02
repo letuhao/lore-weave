@@ -106,7 +106,13 @@ def score_dump(
     disjoint = [j for j in judges if j["uuid"] not in panel.excluded]
     res = disjoint_median_with_ci(disjoint, n_boot=n_boot)
 
-    safety = panel_safety(panel.excluded, [j["uuid"] for j in judges])
+    # S13 — forward whether the exclusion set was DEFAULTED. Without it, a panel whose refs
+    # came from another deployment's hardcoded UUIDs reports `safe=True, no generator in
+    # panel`, which is exactly what a genuinely clean panel reports.
+    safety = panel_safety(
+        panel.excluded, [j["uuid"] for j in judges],
+        exclusion_is_defaulted=panel.exclusion_is_defaulted,
+    )
 
     return EvalResult(
         variant_label=variant_label or dump_root.name,

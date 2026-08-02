@@ -19,6 +19,7 @@ from loreweave_eval import (
     FileSink,
     JudgePanel,
     panel_from_env,
+    panel_safety,
     score_dump,
 )
 
@@ -102,3 +103,59 @@ async def test_filesink_writes_json(tmp_path: Path) -> None:
     assert data["n_disjoint_judges"] == 2
     assert round(data["disjoint_median_f1"], 3) == 0.869
     assert len(data["per_judge"]) == 2
+
+
+# ── S13: a defaulted exclusion set cannot be mistaken for a verified one ──────────────────
+
+def test_a_DEFAULTED_exclusion_that_matched_nothing_is_reported_as_unverified():
+    """The defect the spec names: `panel.py`'s hardcoded UUIDs "silently fail to exclude a
+    deployment's real self-grader".
+
+    Those refs are `user_model_id`s, and this repo's rule is that they are PER-MACHINE. So
+    anywhere but the box they were minted on, the exclusion set matches nothing — and
+    `panel_safety` reported `no generator in panel`, which is exactly what it reports for a
+    genuinely clean panel. The two are now distinguishable.
+    """
+    panel = panel_from_env({})            # nothing configured → the hardcoded defaults
+    assert panel.exclusion_is_defaulted is True
+    safety = panel_safety(panel.excluded, ["judge-a", "judge-b"],
+                          exclusion_is_defaulted=panel.exclusion_is_defaulted)
+    assert safety.exclusion_unverified is True
+    assert "HARDCODED" in safety.reason
+
+
+def test_a_CONFIGURED_exclusion_is_not_flagged():
+    """The control. Without it the assertion above passes for an implementation that flags
+    every panel — which would be the permanent-amber failure, not a signal."""
+    panel = panel_from_env({"KNOWLEDGE_EXTRACTOR_MODEL": "ext-x",
+                            "KNOWLEDGE_FILTER_MODEL": "filt-y"})
+    assert panel.exclusion_is_defaulted is False
+    safety = panel_safety(panel.excluded, ["judge-a", "judge-b"],
+                          exclusion_is_defaulted=panel.exclusion_is_defaulted)
+    assert safety.exclusion_unverified is False
+
+
+def test_safe_STAYS_TRUE_because_a_permanently_false_flag_is_ignored():
+    """Deliberate, and the harder half of the decision.
+
+    Flipping `safe` here would make it False for every deployment that has not configured the
+    refs — i.e. the default state — and a flag that is always false stops being read. Then a
+    REAL self-grader in the panel arrives wearing the same colour as every ordinary run. So
+    `safe` keeps its meaning and `exclusion_unverified` carries the new fact.
+    """
+    panel = panel_from_env({})
+    safety = panel_safety(panel.excluded, ["judge-a", "judge-b"],
+                          exclusion_is_defaulted=panel.exclusion_is_defaulted)
+    assert safety.safe is True
+    assert safety.exclusion_unverified is True
+
+
+def test_a_REAL_self_grader_still_reports_unsafe_and_is_not_masked():
+    """The case the whole mechanism exists for must not be softened by the new axis."""
+    panel = panel_from_env({})
+    safety = panel_safety(panel.excluded,
+                          [DEFAULT_EXTRACTOR_REF, "judge-b", "judge-c"],
+                          exclusion_is_defaulted=panel.exclusion_is_defaulted)
+    assert safety.safe is False
+    assert safety.generators_in_panel == [DEFAULT_EXTRACTOR_REF]
+    assert safety.exclusion_unverified is False, "an exclusion that FIRED is verified by that"

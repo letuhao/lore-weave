@@ -107,7 +107,7 @@ Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
 **Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → `S3 ◐` → `S4 ✅` → `S9 ✅` → `S5 ✅` → **`S13`** → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → `S3 ◐` → `S4 ✅` → `S9 ✅` → `S5 ✅` → `S13 ✅` — **BOARD CLEAR** → `S9 → S5 → S13`.
 
 > **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
 > that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
@@ -141,7 +141,7 @@ when in fact most of the last two days went into defect work that was never on t
 | `S4` the plan half onto the spine | ✅ CLOSED 2026-08-02 | the gate was reading COMMENTS as behaviour (both directions); SCAN_DIRS 4→10 services surfaced 8 untracked modules, 7 in translation |
 | `S9` the shared guard SDK | ✅ CLOSED 2026-08-02 | **inverted, correctly**: no SDK extracted (1/3 adopters). The entry criterion was a spec sentence; it is now a CI gate that reds when the third service adopts |
 | `S5` one heal loop | ✅ CLOSED 2026-08-02 | the 10 stages enumerated once; each consumer accounts for EVERY stage (run it or give a reason) and the declaration is checked against code both ways |
-| `S13` cite the exemplars | ☐ | mostly documentation |
+| `S13` cite the exemplars | ✅ CLOSED 2026-08-02 | the named defect fixed: a defaulted self-grader exclusion that matched nothing reported `safe`. The citation half is Debt — a doc would be the re-derivation it warns against |
 
 **The join nobody had made:** what this session called *"155 — 28 budget call sites carrying no
 adaptive signal"* **IS S7 slice 4's unbuilt scope.** Spec §S7 already specifies the gate as
@@ -928,6 +928,75 @@ which the POST-RUN REVIEW found and fixed one layer up — except this one is a 
 the surface that would consume it (`model_roles`) is a read-only contract with no producer. That
 is what the slice has to build, and it is why shipping the label alone would produce a warning
 the author has no way to clear.
+
+### ✅ S13 — the self-grader exclusion excluded nobody, and said "safe"
+
+```
+AUDIT S13 (cite the exemplars)
+  BUILT      — `JudgePanel.exclusion_is_defaulted` + `PanelSafety.exclusion_unverified`, wired
+               through `panel_from_env` → `scorer` → `panel_safety`. Four tests.
+
+  PROVEN     — the defect the spec names, and it is the same shape as everything else on this
+               board: two states collapsed, and the dangerous one reports the safe answer.
+
+               `panel_safety` returned `safe=True, "N disjoint judges, no generator in panel"`
+               for BOTH of:
+                 · the panel genuinely contains no self-grader — the good case;
+                 · the exclusion refs are `panel.py`'s HARDCODED UUIDs from another
+                   deployment, so they match nothing — while this deployment's real extractor
+                   sits in the panel grading its own output.
+               Those refs are `user_model_id`s, and this repo's own rule (CLAUDE.md, verbatim)
+               is that they are PER-MACHINE: a hardcoded table "sends the next developer to a
+               404 or to someone else's row". So the second case is the EXPECTED state
+               everywhere except the one box the UUIDs were minted on — and it was reporting
+               the same word as success.
+
+               The defaults are KEPT, deliberately: `panel_from_env` promises callers
+               byte-identical results, and deleting them would break that. What changed is
+               that a defaulted set can no longer be mistaken for a verified one.
+
+               sdk `1191 passed, 9 skipped` (eval `39 passed`, +4).
+               composition `8 failed, 3939 passed, 8 skipped` (the tracked rows).
+               gates: FULL CI SWEEP `PASS: 52  FAIL: 0  of 52`.
+               RED-ABLE: dropping `exclusion_is_defaulted=defaulted` from `panel_from_env` —
+               i.e. the exact pre-S13 behaviour — fails the flag test and the unverified test.
+               Restored by re-editing. A CONTROL asserts a CONFIGURED panel is NOT flagged,
+               and a fourth test asserts a REAL self-grader still reports `safe=False`, so the
+               new axis cannot soften the case the mechanism exists for.
+
+  LIVE       — live infra unavailable: pure panel arithmetic with no runtime path. The historical
+               metric-of-record reproduction (F1 = 0.869 on the session-105 dump) still passes
+               unchanged, which is the closest thing to a live check this has — the published
+               baseline is byte-identical.
+
+  NOT PROVEN — the SECOND half of S13 — "cite the exemplars instead of re-deriving them" — is
+               NOT built, and writing a document would have been the wrong answer: the citation
+               list already exists in spec §S13, and producing a second copy is precisely the
+               re-derivation the slice warns against. What is genuinely missing is that the
+               code which SHOULD reuse those five exemplars (`judge_usefulness`'s κ floor +
+               `credit: None`, `judge_binding`'s never-silently-empty, `executive.py`'s
+               CheckStatus set, `extraction_worker`'s LLM_ERROR outcome) does not point at
+               them, and nothing checks that a re-implementation is not written beside one.
+               That is a real gap and it is bigger than a citation.
+               Nothing verifies the DEFAULT UUIDs still correspond to a real model anywhere —
+               only that they were defaulted rather than configured.
+               `exclusion_unverified` has no CONSUMER yet: it rides `EvalResult` and no report,
+               gate or FE surface reads it. This makes the fact available, not acted upon —
+               the S8 shape, and it is the honest description.
+
+  DRIFT      — I made `safe=False` for the unverified case, and it was wrong for a reason I
+               have been citing all run. With no env set that is the DEFAULT state, so every
+               deployment would report `safe=False` forever — and a flag that is always false
+               stops being read, at which point a REAL self-grader arrives wearing the same
+               colour as every ordinary run. That is the permanent-amber failure S1 exists to
+               prevent, re-created inside the slice about honest signals. The historical
+               baseline test reddening is what surfaced it; I nearly "fixed" the test instead.
+
+  NEXT       — the board is clear. What remains is not a slice: the three `NOT PROVEN` items
+               above, the Debt register (translation's 7 unsanitized modules, the
+               `user_model_id` critic comparison, `_TOKENS_PER_ITEM`), and the PARKED KG thread
+               the author will name the starting point for.
+```
 
 ### ✅ S5 — one heal loop: the stage protocol, and an opt-out that must give its reason
 
@@ -2615,6 +2684,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | Smoke debris: throwaway book `019fbd8f-008c-7cef-bf81-1d53a808361d` and its knowledge project `019fbd90-…` | Deliberately a throwaway (never the dogfood book), but it is real rows in the dev stack awaiting purge. |
 | 2026-08-02 | The `cross_scene_check` registry row is MISLABELLED. Its `why` describes "a contradiction list across one scene seam"; its only two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a cast ROSTER. | The row documents a call that does not exist, and the kind is wrong in a way that matters: VERDICT carries `truncation_is_fatal=False`, but a clipped roster silently DROPS PEOPLE — the same class as the `propose_world` dead pass. Not fixed here because changing the kind changes the budget (VERDICT 2048 → STRUCTURED 4096) and needs its own measurement. |
 | 2026-08-02 | `_TOKENS_PER_ITEM = 220` (SDK, generic) is what makes a full-roster `propose_world` reach the 32768 runaway ceiling. A world entity is plausibly half that. | Every STRUCTURED budget is sized off a per-item cost nobody has measured against a real completion. The right number is `output_tokens / items` from a live run; until then the big-roster budgets are over-generous rather than wrong. |
+| 2026-08-02 | **`exclusion_unverified` has no consumer.** It rides `EvalResult` and no report, gate or FE surface reads it. | The S8 shape: a fact made available rather than acted upon. The honest next step is a scored-run report line or a gate that reds when a published metric-of-record was computed with an unverified exclusion — at which point the distinction starts costing something and therefore starts being fixed. |
+| 2026-08-02 | **S13's "cite the exemplars" half is not built**, and a document would have been the wrong answer — the list already exists in spec §S13 and a second copy is the re-derivation the slice warns against. | What is genuinely missing: the code that SHOULD reuse the five named exemplars does not point at them, and nothing detects a re-implementation written beside one. Bigger than a citation, and it needs a mechanism rather than prose. |
 | 2026-08-02 | **translation-service folds IMPORTED third-party book text into prompts with no sanitizer** — 7 modules, surfaced by widening `injection-coverage-lint`'s SCAN_DIRS in S4. Plus 1 in worker-ai. | The least-trusted bytes on the platform, in the service that exists to process them, never scanned until now. Baselined with notes rather than fixed: routing them through `neutralize_injection` risks a TRANSLATION-FIDELITY bug (a sanitizer that mangles source text), which is the same reason those rows are `OutputKind.MIRROR`. Needs its own measurement, not a sweep. |
 | 2026-08-02 | **The `chat.*` / `composition.*` trace namespacing is NOT built** — composition emits nothing into the context trace (the only `TraceAccumulator` consumers are chat-service's `stream_service`, `compact_service`, `token_budget`). | Namespacing a vocabulary with no second surface to separate would be zero-consumer ceremony. **Un-parks when composition first emits a trace span** — at that moment `breakdown_categories` becomes a shared vocabulary asserted BOTH ways on the chat side, so extending it is a consumer-visible shape change and must be namespaced in the same commit. |
 | 2026-08-02 | **S11-2 moved COST and nobody measured it.** Counting ~40% more tokens on CJK/Vietnamese means ~40% more chunks per chapter, i.e. ~40% more LLM calls — for exactly the books this platform is for. | The safe direction for correctness (no window overflow) and the expensive one for spend. Shipped without a number. A real per-chapter cost delta needs one translation run before/after on a real chapter. |
@@ -2674,6 +2745,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
+| 2026-08-02 | **Re-created the permanent-amber failure inside the slice about honest signals.** I made `panel_safety` return `safe=False` when the exclusion set was defaulted and matched nothing. With no env configured that is the DEFAULT state, so every deployment would report `safe=False` forever — and a flag that is always false stops being read, at which point a REAL self-grader arrives wearing the same colour as every ordinary run. Exactly the failure S1 exists to prevent, which I have cited in four audits. The historical F1=0.869 baseline test reddening is what surfaced it, and I nearly "fixed" the test instead of the design. |
 | 2026-08-02 | **My "is this a real reason" check is a 40-character floor, and it false-positived immediately.** `error_block_heal`'s REJUDGE skip read "there was no judge pass to re-run" — true, complete, 34 characters. The tempting fix was lowering the floor, which would equally have admitted "n/a because". Expanded the reason instead and wrote the proxy's weakness into the test: a length floor cannot tell a short answer from a shrug, and pretending it can is how the next person games it. |
 | 2026-08-02 | **Prose-is-not-behaviour, for the FOURTH time in one run, and this time it would have been self-defeating.** My first S5 stage scan read raw text and reported `error_block_heal` as RUNNING `snap` — the reference is in its DOCSTRING, inside the sentence explaining why it does not call it. The declaration check would have been defeated by the very documentation that makes that module the exemplar. Same root as S3's `not_found` text scan and S4's injection lint. I now strip docstrings by reflex, four occurrences too late. |
 | 2026-08-02 | **Nearly manufactured the precondition for a sealed decision.** I started S9 intending to implement `GuardReport` in a second service to "make progress toward" the three-adopter criterion. That is fabricating evidence for a decision rather than letting its evidence arrive — the spec is explicit that translation and knowledge adopt it AS PART OF THEIR OWN SLICES, because an adoption performed to satisfy a counter proves nothing about three services independently converging. Caught by re-reading §S9 before writing code instead of after. |

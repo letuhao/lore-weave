@@ -159,16 +159,52 @@ class PanelSafety:
     generators_in_panel: list[str] = field(default_factory=list)
     safe: bool = False
     reason: str = ""
+    #: S13 — True when the exclusion refs came from the HARDCODED production defaults and
+    #: matched no judge in this run.
+    #:
+    #: `safe=True, "no generator in panel"` used to be returned for two different situations:
+    #: the panel genuinely contains no self-grader, and the exclusion refs are UUIDs from a
+    #: DIFFERENT deployment so they match nothing — while that deployment's real self-grader
+    #: sits in the panel, unexcluded, grading its own extraction. The second is the failure
+    #: the whole exclusion mechanism exists to prevent, and it reported the same word as
+    #: success.
+    #:
+    #: `user_model_id`s are PER-MACHINE (CLAUDE.md is explicit: a hardcoded table sends the
+    #: next developer to a 404 or to someone else's row), so a defaulted exclusion set is
+    #: expected to match nothing anywhere except the one box the UUIDs were minted on.
+    exclusion_unverified: bool = False
 
 
-def panel_safety(excluded_refs: Iterable[str], judge_uuids: Sequence[str]) -> PanelSafety:
+def panel_safety(
+    excluded_refs: Iterable[str],
+    judge_uuids: Sequence[str],
+    *,
+    exclusion_is_defaulted: bool = False,
+) -> PanelSafety:
     """Assess a panel given the exclusion set (extractor + filter refs from a
     JudgePanel) and the judge UUIDs actually used. ``excluded_refs`` is normally
-    ``panel.excluded``."""
+    ``panel.excluded``.
+
+    ``exclusion_is_defaulted`` — S13. True when the refs came from `panel.py`'s hardcoded
+    production UUIDs rather than from this deployment's environment. Optional and defaulting
+    to False so existing callers are unchanged; `panel_from_env` now reports it, and the
+    scorer passes it through.
+
+    It matters because a defaulted exclusion set that matches NOTHING is the failure mode this
+    whole mechanism exists to prevent, and it used to report `safe=True`. Those UUIDs are
+    `user_model_id`s, which are per-machine — so anywhere but the box they were minted on they
+    match nothing, and that deployment's real extractor can sit in the panel grading its own
+    output while the run is labelled disjoint.
+    """
     excluded = {r for r in excluded_refs if r}
     generators_in_panel = [u for u in judge_uuids if u in excluded]
     disjoint = [u for u in judge_uuids if u not in excluded]
     n_disjoint = len(disjoint)
+    # A defaulted exclusion set that matched nothing tells us nothing. Distinguished from a
+    # genuinely-clean panel, which is the same observation for the opposite reason.
+    unverified = bool(
+        exclusion_is_defaulted and excluded and judge_uuids and not generators_in_panel
+    )
     if generators_in_panel:
         safe = False
         reason = (
@@ -178,6 +214,27 @@ def panel_safety(excluded_refs: Iterable[str], judge_uuids: Sequence[str]) -> Pa
     elif n_disjoint < 2:
         safe = False
         reason = f"only {n_disjoint} disjoint judge(s) — need >= 2 for a robust median"
+    elif unverified:
+        # `safe` STAYS TRUE, deliberately, and this is the harder call of the two.
+        #
+        # Flipping it here felt right and is wrong: with no env set this is the DEFAULT state,
+        # so every deployment that has not configured the refs would report `safe=False`
+        # forever. A flag that is always false is ignored, and then the case it was meant to
+        # catch — a real self-grader in the panel — arrives wearing the same colour as every
+        # ordinary run. That is the permanent-amber failure S1 exists to prevent, and I was
+        # one edit from re-creating it inside the slice about honest signals.
+        #
+        # So `safe` keeps its meaning (the disjoint median is computable and no KNOWN
+        # generator sits in the panel) and the new fact gets its own axis:
+        # `exclusion_unverified`, plus a reason that says it out loud rather than leaving a
+        # caller to notice a boolean.
+        safe = True
+        reason = (
+            f"{n_disjoint} disjoint judges, none matched the exclusion set — but those refs "
+            f"are the HARDCODED production defaults, not this deployment's, so a self-grader "
+            f"here would look identical. Set KNOWLEDGE_EXTRACTOR_MODEL / "
+            f"KNOWLEDGE_FILTER_MODEL to make this check mean something."
+        )
     else:
         safe = True
         reason = f"{n_disjoint} disjoint judges, no generator in panel"
@@ -187,4 +244,5 @@ def panel_safety(excluded_refs: Iterable[str], judge_uuids: Sequence[str]) -> Pa
         generators_in_panel=generators_in_panel,
         safe=safe,
         reason=reason,
+        exclusion_unverified=unverified,
     )
