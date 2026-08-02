@@ -47,6 +47,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from loreweave_extraction.name_normalize import normalize_entity_name
+
 _TOKEN = re.compile(r"([A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ\-]+(?:['’](?:s|t|ll|re|ve|m|d))?)")
 _SENTENCE_START = re.compile(r"(?:^|[.!?;:\n\"“”‘’()\[\]—–\-]\s*)$")
 
@@ -253,10 +255,27 @@ def audit_names(draft: str, grounding: str, language: str | None = None,
         # where nothing was given. Report the method, claim nothing.
         return NameAudit(method="empty", truth_source="none")
     drafted = extract_names(draft, corpus=corpus)
-    lowered = {k.lower(): k for k in known}
+    # ML-2 — the equivalence key is NFKC + casefold + Han-simplified fold, not `.lower()`.
+    #
+    # Caught by `language-bias-gate`, RED since this module was written on 2026-08-01 and
+    # unnoticed because the gate set being run was a subset of CI's.
+    #
+    # WHAT THIS FIXES, stated honestly: nothing observable TODAY. I first wrote that `.lower()`
+    # would report an equivalent name as unanchored — a fabricated finding — and then measured
+    # it: over every name `_TOKEN` can produce (basic Latin + Latin-1 capitals, per the module
+    # docstring's "Script honesty" note), `.lower()` and `normalize_entity_name` agree on
+    # **0 disagreements**. The failure needs a full-width or Han name, and the extractor cannot
+    # emit one, so it is unreachable through this path.
+    #
+    # It is still the right primitive, for one reason: the extractor's alphabet is the ONLY
+    # thing making `.lower()` safe here. Widening `_TOKEN` — which the docstring already names
+    # as the obvious next step for CJK books — would silently make it wrong, in the check whose
+    # job is deciding whether the model invented a name. The pinning test asserts both halves:
+    # that the swap changed nothing now, and that the fold is what CJK/full-width needs.
+    lowered = {normalize_entity_name(k): k for k in known}
     unanchored, near = [], []
     for name in sorted(drafted):
-        low = name.lower()
+        low = normalize_entity_name(name)
         # `Scribes` is not a near miss of `Scribe`; it is the plural of it. Measured: this
         # single case accounted for two of the run's four near-miss claims.
         if low in lowered or low.rstrip("s") in lowered or (low + "s") in lowered:
@@ -266,7 +285,7 @@ def audit_names(draft: str, grounding: str, language: str | None = None,
             for k_low, k in lowered.items():
                 if len(k) < _NEAR_MISS_MIN_LEN:
                     continue
-                d = _edit_distance(name.lower(), k_low)
+                d = _edit_distance(low, k_low)
                 if d < best:
                     closest, best = k, d
         limit = 1 if len(name) < _NEAR_MISS_STRICT_UNDER else NEAR_MISS_MAX_DISTANCE

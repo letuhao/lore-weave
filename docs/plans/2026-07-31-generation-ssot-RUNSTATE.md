@@ -929,6 +929,58 @@ the surface that would consume it (`model_roles`) is a read-only contract with n
 is what the slice has to build, and it is why shipping the label alone would produce a warning
 the author has no way to clear.
 
+### ✅ CI-GATE SWEEP — the gate set I had been pasting was 8 of 51
+
+```
+AUDIT CI-GATE SWEEP (found while starting S9)
+  BUILT      — the full CI gate list, extracted from the workflows rather than remembered, and
+               every one executed. Plus the one real red it found: `name_grounding` folds
+               names with `normalize_entity_name` (NFKC + casefold + Han) instead of `.lower()`.
+
+  PROVEN     — 51 gates are invoked by `.github/workflows/*.yml`. I had been running EIGHT and
+               calling them "the gates" in every VERIFY block of this run.
+               First full sweep: `PASS: 49  FAIL: 2  of 51`.
+                 · `context-inspector-trace-gate.py` exit 2 — NOT a real failure. CI runs it
+                   `--selfcheck`; my sweep invoked it bare, so it correctly refused for lack of
+                   `JWT_SECRET`. My invocation was wrong, not the gate.
+                 · `language-bias-gate.py` exit 1 — REAL. Two bare `.lower()` calls on a name
+                   variable in `engine/name_grounding.py`, dated by `git log -L` to `8142bb05b`
+                   (2026-08-01) — THIS RUN's own commit. CI had been red on it since.
+               After the fix: `PASS: 51  FAIL: 0  of 51`, with each gate invoked the way its
+               workflow invokes it.
+               composition `8 failed, 3921 passed, 8 skipped` (the 8 are the tracked
+               test_motif_retrieve_db rows) · name_grounding `31 passed`.
+
+  NOT PROVEN — AND A RETRACTION, which is the more useful half of this entry.
+               I wrote into the code that `.lower()` "would report a name as UNANCHORED …
+               a fabricated finding", then measured it: over EVERY name `_TOKEN` can emit
+               (basic Latin + Latin-1 capitals) `.lower()` and `normalize_entity_name` produce
+               **0 disagreements**. The failure needs a full-width or Han name and this
+               extractor cannot emit one — it is unreachable through this path. So the fix buys
+               nothing observable today; what it buys is that widening `_TOKEN` for CJK books,
+               which the module docstring already names as the next step, no longer silently
+               breaks the guard. The comment and the tests now say exactly that.
+               Nothing was done about the OTHER 43 gates' findings beyond confirming they exit
+               0 — a passing gate is not an audited one.
+
+  DRIFT      — three, and they compound.
+               1. Eight gates is not fifty-one. Every VERIFY block in this run listed its gates
+                  honestly and checked an incomplete set, and that is how a CI red introduced
+                  on 2026-08-01 survived four more slices.
+               2. My first fix-proving test asserted a full-width name is anchored. It passed
+                  with `.lower()` still in place — TWICE vacuous: once because the fixture was
+                  sentence-initial so no name was extracted at all, and again because `_TOKEN`
+                  cannot match a full-width capital, so the fixture could never reach the
+                  code under test. The CONTROL caught the first; injecting the old `.lower()`
+                  caught the second. Neither would have been found by reading.
+               3. I asserted a live correctness bug from the GATE'S MESSAGE rather than from
+                  the code, and wrote it into a comment as established fact. Measuring took two
+                  minutes and reversed it. Same shape as the tilemap `tool_use_success`
+                  near-miss and the thinking-flag explanation the author corrected.
+
+  NEXT       — S9, whose entry criterion is mechanical and currently unmet.
+```
+
 ### ✅ S4 — the injection gate was reading COMMENTS as evidence about behaviour
 
 ```
@@ -2471,6 +2523,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
+| 2026-08-02 | **Wrote a live correctness bug into a code comment on the strength of a GATE'S MESSAGE, then measured it and had to retract.** `language-bias-gate` flags `.lower()` on a name var (ML-2), so I wrote that this guard would report an equivalent name as UNANCHORED — "a fabricated finding". Measured across every name `_TOKEN` can emit: **0 disagreements** between `.lower()` and the fold. The failure needs a full-width or Han name the extractor cannot produce. The fix is still right (it stops a future `_TOKEN` widening from silently breaking the guard) but the justification I shipped was fiction. |
+| 2026-08-02 | **A fix-proving test that was vacuous TWICE, in two different ways.** It asserted a full-width name reads as anchored: first vacuous because the fixture was sentence-initial so `_is_name` never extracted it; then STILL vacuous because `_TOKEN` cannot match a full-width capital at all, so the fixture could never reach the code under test. The control caught the first. Injecting the old `.lower()` back caught the second — the test passed with the bug restored. Neither was findable by reading it. |
 | 2026-08-02 | **I turned a CI gate RED with a comment, shipped it, and did not notice for four slices — because the gate set I kept pasting as "the gates" is a SUBSET of what CI runs.** The word "passage" in a comment I added in S7-4 made `injection-coverage-lint` exit 1 on `compress.py`. Six gates (ai-provider, generation-guard, enforcement-claims, db-safety, llm-budget, language-rule) is not the CI gate set. Every VERIFY block before S4 asserted its evidence honestly against an incomplete list. |
 | 2026-08-02 | **Nearly wrote up "the prose fix blinded the detector" when my injected NAME was wrong.** `_retrieved_passage = body` did not red the gate; the regex needs a word boundary and `_` is a word character. Measuring the regex directly settled it in a minute. Same reach-for-the-dramatic-reading shape as the tilemap `tool_use_success` near-miss. |
 | 2026-08-02 | **Asserted a security detector MUST catch something, on my own assumption, and started treating the mismatch as a regression I had caused.** An uppercase `"PASSAGE:"` inside a prompt template does not register — before or after my change. Checking the pre-fix behaviour showed it was always the boundary. Recorded as a known limit instead of widening a security regex to match what I had guessed. |
