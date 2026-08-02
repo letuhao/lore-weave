@@ -2,7 +2,7 @@
 
 > # ▶▶ NEXT SESSION STARTS HERE — IMPLEMENTATION
 >
-> **State:** design SEALED · **code written: NONE** · **committed: NOTHING** · branch `feat/game-logic`
+> **State:** design SEALED and COMMITTED (`d3bb441da`) · **code written: NONE** · branch `feat/game-logic` · **not pushed**
 >
 > ## Read in this order, then start
 >
