@@ -75,7 +75,8 @@ its reason, and the amendment row is written before the edit.**
 | **4** | The absent tables, written out | **DONE** | doc 41 §5 — nine tables `T1..T9`; `T3`/`T9` are wrong-shape, not merely missing |
 | **5** | Feature census | **DONE** | doc 41 §6 — 14 features; fog-of-war flagged a **tenancy defect** if shared |
 | **6** | The plugin/layer attachment model | **DONE** | doc 41 §4 — `SDF-A5..A12`; layers bind to `MapKind` (~1000×); no `Default` on `UpdatePolicy`/`LifecyclePolicy` |
-| **7** | Adjudicate every research finding | **partial** | 6 accepted as `SDF-R1..R6`; 4 routed to `SDF-Q1..Q4`; the rest folded into `SDF-A1..A12`. A row-by-row table is still owed |
+| **7** | Adjudicate every research finding | **DONE 2026-08-02** | §22 — all **66** rows adjudicated individually. **It found `SDF-F9`: eleven findings had been adopted NOWHERE** (8 folded into doc 41 on the pass · 1 became `SDF-Q18` · 2 routed to other tiers). The prose disposition *"the rest folded into `SDF-A1..A12`"* was a claim about 56 findings that nobody could check |
+| **10** | **Reconciliation** — fold §9–§13's axioms back into the normative §1–§8 | **DONE 2026-08-02** | doc 41 §1 §3 §4 §5 §6 §7 §8. Two `LayerDef` fields (`edges`, `projection`), a 7th determinism rule, a scope column on `T1..T9`, `SDF-R7..R9`. **Found that `SDF-A27` argued from a field that did not exist** — drift #6 |
 | **9** | **Feature census as a FALSIFICATION test** — present load counted, future load hypothesised | **DONE** | doc 41 §9 — 69 feature ids / 134 docs / 36 folders counted, plus 18 hypothesised. **Six features the model does NOT carry** (`SDF-F1..F6`), each now an open row `SDF-Q5..Q10`, plus `SDF-Q11` (reality scoping) |
 | **8** | Open register | **DONE for this pass** | doc 41 §8 — `SDF-Q1..Q4` + three non-vacuity obligations stated **in advance**, incl. one against the design's own highest-risk recommendation |
 
@@ -103,6 +104,7 @@ its reason, and the amendment row is written before the edit.**
 |---|---|---|
 | — | `D-WORLD-BASELINE-RETENTION` (`WDS-A5`/`A6` retention has no mechanism) | first pruner/retention job on either store |
 | — | `D-SPEC-CODE-ENUM-PARITY` | a layer-aware notion of enum identity |
+| **NEW** | **No gate catches a RETIRED AMENDMENT ROW cited as if live.** `amendment-rot-gate.py` check D covers a retired **identifier** (`ChannelTier`); an amendment id has no equivalent. Two live sites were found by hand on 2026-08-02 and corrected — `36_map_architecture.md:147` asserted `SPG-R2`'s narrowing **as fact, inside an axiom body**, and `MAP_001:183` carried it in a `//` comment **in the future tense** — for a row retired the same day it was written, three months earlier. **This is NV-3, *the scope never reaches it*.** The fix is small (the retired set is already enumerated in doc 36 §7 by its `~~strikethrough~~` + `⛔`), and it is **code**, which this session was asked not to write | **the next session that may touch `scripts/`** — the two doc sites are fixed, so this is about the class, not the instances |
 
 ---
 
@@ -115,6 +117,10 @@ its reason, and the amendment row is written before the edit.**
 | 3 | **`design-lint` caught me claiming a registration I had not made** — the doc header said *"registered 2026-08-02"* before `SDF` existed in either registry. `phantom-registration` exists because that defect shipped four times; it just caught a fifth. |
 | 4 | **I pasted the PO's Vietnamese verbatim into two English artifacts** — the exact defect CLAUDE.md names *by example* (*"most often a verbatim PO quote dropped into a design doc"*). `doc-language-gate` blocked the commit. Fixed by quoting the MEANING in English, **not** by adding a pragma: a PO quote is exposition, not subject matter, so the hatch does not apply. |
 | 5 | On resuming, I nearly re-committed work already landed — `63d122b36` and `dab52b446` are both ancestors of HEAD. Verified with `git merge-base --is-ancestor` before touching anything. |
+| 6 | **`SDF-A27` argued from a `LayerDef` field that did not exist.** Its second consequence — *"no new authoring surface, because `EdgePolicy` is already required at layer registration"* — was **true of `R-46`'s research and false of our own §4**, which I had written myself two rounds earlier and did not reopen. The argument was sound and the premise was fabricated by paraphrase. Caught by the reconciliation pass, **not by any gate** — nothing checks that a doc's prose agrees with its own struct. The field is now there, so the claim is true *because this edit made it true*, which is not the same as having been true. |
+| 7 | **The header understated the doc by 18 axioms.** It still read `SDF-A1..A12` / `F1..F6` / `Q1..Q11` after four analysis rounds took it to `A1..A30` / `F1..F9` / `Q1..Q18`. A reader trusting the header would have thought half the doc was not in it. |
+| 8 | **A summary line was wrong twice in one sentence.** §21 said *"Twelve of seventeen resolved. The five that remain"* and then listed **four**. The table says 13 and 4. Both halves were arithmetic on a table sitting directly above the sentence. |
+| 9 | **Slice 7 sat at `partial` for the entire arc, and I nearly closed the run without it.** The board said *"a row-by-row table is still owed"* in plain English. Doing it took one pass and found eleven unadopted findings — so the cost of the omission was not the table, it was the eleven. |
 
 
 ---
@@ -1466,10 +1472,157 @@ its actual value, which nothing had stated in scope terms.
 
 ### Where the register stands
 
-**Twelve of seventeen resolved.** The five that remain — `SDF-Q7` closed earlier, so: `Q12` (budget
-numbers), `Q15` (fan-out/occupant caps), `Q16` (geometric adjacency above `Locale`), `Q17` (the
-multi-reality tax) — **every one of them now needs a MEASUREMENT rather than an argument.**
+**Thirteen of seventeen resolved.** The four that remain — `Q12` (budget numbers), `Q15`
+(fan-out/occupant caps), `Q16` (geometric adjacency above `Locale`), `Q17` (the multi-reality tax) —
+**every one of them now needs a MEASUREMENT rather than an argument.**
+
+> ⚠ **Corrected on the §22 pass.** This paragraph read *"Twelve of seventeen… the five that remain"* and
+> then listed four — it was wrong twice in one sentence, in opposite directions. Counting the table gives
+> **13 resolved, 4 open**. A miscount in a summary line is how a register stops being an inventory.
 
 > That is the honest shape of a first pass reaching its limit: the design questions are answered, and what
 > is left is the arithmetic nobody has run. `Q12` additionally cannot be closed by this tier at all, since
 > its answer depends on a `PROG_001` parameter (`SDF-F8`).
+
+---
+
+## 22 · Slice 7 discharged — every research finding adjudicated, row by row
+
+> **Why this was owed.** The slice board carried slice 7 as **partial** for the whole arc, with the honest
+> note *"a row-by-row table is still owed."* The first pass adjudicated the fan-out **in prose** — six
+> accepted as `SDF-R1..R6`, four routed to `SDF-Q1..Q4`, *"the rest folded into `SDF-A1..A12`."* **That
+> last clause was the problem: it is a claim about 56 findings that nobody could check.**
+>
+> **What doing it found: `SDF-F9` — eleven findings had been adopted NOWHERE**, and not one of them had
+> been *rejected*. The doc had taken each one's **conclusion** and dropped the **rule underneath it**.
+> `R-51` is the clearest: *"do not use an archetype ECS"* was adopted; *"layer presence is a bit, never
+> part of the node's type"* — the mechanism that makes the conclusion implementable — was not.
+>
+> **Eight were folded into doc 41 on this pass** (§1 · §4 · §5 · §11.5), **two became `SDF-Q18`**, and
+> **one (`R-21`) is owed to sealed doc 36 with no amendment row** — eleven. *(`R-10` and `R-23` are also
+> unadopted here but are **correctly** out of scope, routed to combat and travel; they are dispositions,
+> not gaps.)* The table below is the evidence, and it is the artefact that made the gap visible: prose
+> could hold *"the rest folded in"*; a table with 66 rows cannot.
+
+**Legend.** `A→` adopted as an axiom · `R→` became an amendment against a sealed doc · `Q→` routed to an
+open row · `F→` became a finding · `≡` corroborates something already decided (no new surface) ·
+`⊘` dissolved — the design makes the problem not arise · `↗` another tier owns it · `✚` **folded in on
+THIS pass** (had no home) · `▪` recorded as a warning/gap only.
+
+### `World` (§9)
+
+| # | subject | disposition |
+|---|---|---|
+| `R-1` | live set must be a data structure, not an adjective | `≡` `M-1` from the opposite direction — upgrades `SDF-R1` from *my measurement* to *measurement + convergent prior art* |
+| `R-2` | Paradox: one immutable ID raster + N cheap overlays, shipped 15 years | `A→` `SDF-A5` + `SDF-A8`. **This is the PO's thesis already solved by a studio that lived it** |
+| `R-3` | SoA vs `HashMap`-per-cell vs 50-field struct (13–33× worse) | `A→` `SDF-A8` |
+| `R-4` | EU4 crashes past 32 768 provinces (`i16`); 84 B/cell flat vs 912 B JSON; point→cell needs no index | `✚` **id widths had no home** — now §5 `T1` (`u32` cells / `u64` `NodeId`). The byte figures feed `M-2` |
+| `R-5` | a general ECS is machinery we pay for and never use — our cells never change composition | `✚` the **refusal was never stated**; now §4 `SDF-A8` |
+
+### `Arena` (§10)
+
+| # | subject | disposition |
+|---|---|---|
+| `R-6` | ⭐ `Arena` (a place) ≠ `Encounter` (a fight); Foundry ships `scene` as an FK | `R→` `SDF-R4` · `T9` |
+| `R-7` | in-place combat is not replayable without a **closure** | `R→` `SDF-R4` — *"in-place means no separate SPACE, not no isolation boundary"* |
+| `R-8` | HARD RULE: combat data layers are **never** `SpaceNode`s | `≡` third route to `M-1`; the prohibition lives in `SDF-A5` + `SDF-A17`'s node budget |
+| `R-9` | four layer *shapes* (Field/Region/Effect/Derived) + Dave Mark's composition algebra | `A→` `SDF-A8` (Field/Effect/Derived). **`Region` was dropped** → `F→` `SDF-F6` → `⊘` `SDF-A24` (a shape is authoring, not storage). The algebra is partially covered by `SDF-A11`'s fold |
+| `R-10` | tick statuses on **encounter turn boundaries**, not the world tick (~37×) | `↗` combat tier (`COMB_*`) — duration in encounter time is not a space concern. Recorded, not adopted here |
+| `R-11` | `HashMap` seeding · f32/f64 not bit-reproducible · Foundry ties broken alphabetically | `A→` `SDF-A4` rules 1 + 6; the fixed-point half → `R→` `SDF-R2` |
+| `R-12` | Foundry does not specify how overlapping Regions resolve | `⊘` **dissolved by `SDF-A7`** — one writer per layer means two authors cannot contend for one value; the total order survives as `SDF-A4` rule 2 |
+
+### `Region` + `Locale` (§11) — the first agent to read our shipped code
+
+| # | subject | disposition |
+|---|---|---|
+| `R-13` | ⭐ a float `Transform` cannot express a discrete tile anchor and drifts under replay | `R→` `SDF-R2` |
+| `R-14` | ⭐ containment ≠ connectivity; `parent` cannot express traversal | `R→` `SDF-R3` · `T3` |
+| `R-15` | the memory outcome is decided by the DEFAULT, not the layer count | `A→` `SDF-A8` (the mix table is quoted verbatim in §4) |
+| `R-16` | no layer ticks; `Decay` computes on read; RimWorld's `snowGrid` is the anti-pattern | `A→` `SDF-A9` |
+| `R-17` | fog of war in the shared map is a **tenancy defect** by our own standard | `A→` §6 census + `PerObserver` storage |
+| `R-18` | HoMM3 bakes renderer state into the map file (not content-addressable); RimWorld's core does not dogfood its own extension point | `✚` **both halves had no home** — now §5 `T6` (*store semantics, derive presentation*; owed to doc 37) and §4 `SDF-A6` (*the core registers through the identical mechanism*) |
+| `R-19` | `LayerId` from an ordered append-only manifest; tombstone, never renumber | `A→` `SDF-A4` rule 2 + `SDF-A12` |
+| `R-20` | applied **our** non-vacuity standard to the design, unprompted | `A→` §8 obligation #1, quoted verbatim |
+
+### `Passage` (§12)
+
+| # | subject | disposition |
+|---|---|---|
+| `R-21` | ⭐ OSRM pays to build an edge-expanded graph; **because a `Passage` is a node, that is our native representation** | `▪` **the decision is already made; the better justification is owed to doc 36** and is not in any amendment row. Recorded here rather than silently kept |
+| `R-22` | OSM `:conditional` is our feature list; `;`-separated last-match-wins is the adjacent-decision shape | `A→` `SDF-A4` rule 4 + `SDF-A11`'s declared fold; *decode failure at write ⇒ rejected write* → `SDF-A15` |
+| `R-23` | CRP two-phase; recompute the whole metric table; do **not** build incremental invalidation | `↗` travel tier. Its *metric epoch* is cited by `SDF-A29`/`SDF-A4` rule 7 |
+| `R-24` | do not build contraction hierarchies — our graph is 10⁴ | `↗` travel tier (third agent to say it) |
+| `R-25` | EVE runs at **1 Hz**; we budget 10× that with less headroom | `≡` fifth route to `M-1` |
+| `R-26` | passage traffic is **measurable**, and measured centrality should drive content | `F→` `SDF-F4` → `A→` `SDF-A29` (projections) |
+
+### The plugin question (§13) — the PO's thesis, carried by its own agent
+
+| # | subject | disposition |
+|---|---|---|
+| `R-27` | design for **isolation between layers**, not for capacity | `A→` the frame of all of §4 |
+| `R-28` | three ecosystems shipped an attachment API and rewrote it | `A→` `SDF-A10` (declared lifecycle) + `SDF-A11` (invalidation) |
+| `R-29` | ⭐⭐ bind every layer to a `MapKind` — 200 rows vs 300 000 | `A→` `SDF-A5` · `R→` `SDF-R5`. **The highest-leverage finding in the fan-out** |
+| `R-30` | ~150 Unreal components doing nothing cost 1 ms | `A→` `SDF-A9` (no default) |
+| `R-31` | Stellaris fixed it by **aggregation**, and adding a key multiplies the groups | `≡` archetype fragmentation in a second paradigm |
+| `R-32` | epoch-stamped lazy invalidation, `O(depth ≤ 16)` | `A→` `SDF-A11` |
+| `R-33` | ownership enforced in three places; only the event-log validator matters | `A→` `SDF-A7` |
+| `R-34` | six determinism prohibitions + its own falsification leg | `A→` `SDF-A4` rules 1–5 + §8 obligation #2 |
+| `R-35` | retire a decoder, never delete it (DFU's chain is never pruned) | `A→` `SDF-A12` |
+
+### `Universe` (§14) — the only agent that computed rather than cited
+
+| # | subject | disposition |
+|---|---|---|
+| `R-36` | ⭐⭐ f64 covers **one** of our fifteen orders of magnitude | `R→` `SDF-R2`; emphatically validates `SPG-A5` |
+| `R-37` | ⭐ the integer `Transform` (`pos: [i64;3]`, `scale_exp: i8`) | `R→` `SDF-R2` — second agent, opposite direction |
+| `R-38` | Star Citizen built our `SpaceNode` independently and paid 14 months to retrofit it | `≡` validates `holder` specifically |
+| `R-39` | archetype ECS disqualified — `Optional` is the pathological shape, and it is ours | `✚` the **refusal had no home**; now §4 `SDF-A8` with all four reasons |
+| `R-40` | a JSONB bag crosses Postgres' ~2 032 B TOAST cliff at exactly our layer count | `A→` `SDF-A8` / `T5` (one sidecar per layer) |
+| `R-41` | Minecraft's `DataComponentMap` is the existence proof; GeoPackage's `scope`; **NeoForge's auto-vivifying accessor** | `A→` `scope` in `SDF-A6`. `✚` the **footgun had no home** — now §4: no accessor may materialise a layer as a side effect of reading it |
+| `R-42` | adding data to nodes is cheap; adding **nodes** is expensive | `A→` `SDF-A17` · `F→` `SDF-F7` |
+| `R-43` | `NodeId` should split authored (counter) from generated (content hash) | `Q→` **`SDF-Q18`, opened by this pass** |
+| `R-44` | do not build graph machinery | `↗` travel tier |
+
+### `Domain` (§15)
+
+| # | subject | disposition |
+|---|---|---|
+| `R-45` | ⭐⭐ RimWorld snapshots layers onto **cells** and re-derives — never transfers along node identity | `A→` `SDF-A10` |
+| `R-46` | Space Engineers ships four edges differing exactly in which layers cross | `A→` `SDF-A27` — **and the `edges` field it implies was missing from `LayerDef` until this pass** (§4) |
+| `R-47` | Merge not invertible · identity by heuristic is a security defect · partial Graft | `A→` `SDF-A16` + `SDF-A10` (the surviving `NodeId` travels in the event) |
+| `R-48` | 🔴 over-fragmented hulls make a fluid layer numerically unstable | `Q→` `SDF-Q1` → `A→` `SDF-A27` |
+| `R-49` | `Mobility` means *my transform is re-evaluated*; materialise **both** directions | `A→` `T8` frame-epoch index; the inverse-transform warning is carried in §3 phase 2 |
+| `R-50` | EnderIO: 14.1 GB of a 14.3 GB heap consumed by an invalidation listener graph | `⊘` **dissolved by `SDF-A11`** — epoch-stamped lazy invalidation registers no listeners, so there is nothing to leak |
+| `R-51` | layer presence is a **bit**, never part of the node's type; `Inert` must be the default | `✚` the **presence bit had no home**; now §4 + §5 `T1`. The tick half was already `SDF-A9` |
+| `R-52` | when a `Domain` dies, evacuate — never delete (EVE Asset Safety) | `Q→` `SDF-Q14` → `A→` `SDF-A20` |
+| `R-53` | Teller 1992: portals are first-class; membership maintained **on crossing**, never by search | `A→` `T3` + `T7` |
+
+### dungeon-gen + housing persistence (§16) — the thread `Domain` flagged as not returned
+
+| # | subject | disposition |
+|---|---|---|
+| `R-54` | ⭐⭐ FFXIV publishes **both** caps (600 placed / 400 drawn) and its bottleneck was **rehydration** | `A→` `SDF-A22` |
+| `R-55` | only two studios ever stated a reason for an object cap, **and they named different ones** | `▪` corrects an industry belief; informs `SDF-A22`'s framing |
+| `R-56` | three storage states + an 11-value stage enum; an absent chunk costs 4 bytes | `⊘` **superseded by `SDF-A1`** — with the live set as an *index*, an absent node costs **zero**, not four bytes. The stage enum survives inside `SDF-A2`'s S4→S5 split |
+| `R-57` | OpenMW's `preload()` answers membership **without materialising** | `A→` `T7` (the sorted id list *is* the node-set `SDF-A23` returns) |
+| `R-58` | interiors keyed by NAME, exteriors by GRID COORDINATE — two key spaces | `Q→` **`SDF-Q18`** (with `R-43`) |
+| `R-59` | door endpoints must stay resident while their `Domain` is unloaded; one-sided links are a classic mod bug | `R→` `SDF-R3` (bidirectional, first-class, resident at a lower tier) |
+| `R-60` | reset/expiry is lazy, per-node, on load — nothing ticks | `≡` sixth route to `M-1`; `A→` `SDF-A9`. Its data-loss warning informs `SDF-A20` |
+| `R-61` | No Man's Sky: past the cap the base regenerates **under** player content | `Q→` `SDF-Q4` → `A→` `SDF-A21` |
+| `R-62` | ⭐ Edgar: constraint-solving layout fails past ~30 rooms, so recursion is mandatory | `R→` `SDF-R6` |
+| `R-63` | generation **annotates stable nodes** — never moves or deletes them | `✚` **had no home**; now §1 under `SDF-A2` |
+| `R-64` | roguelikes store a dense per-tile array; rooms are generation scaffolding. Brogue = seed + input log | `≡` `SDF-A8` + `WDS-A1` |
+| `R-65` | containment compresses the budget; **budget by object CLASS, not flat count** | `A→` `SDF-A18` (containment half). `✚` the **class half had no home**; now §11.5 under `SDF-A22` |
+| `R-66` | Skyrim: ~40 interior cells per person, only because kit pieces snap to a grid | `R→` `SDF-R6` |
+
+### What the table says about the fan-out itself
+
+**Every one of the eight `✚` rows was cheap, uncontroversial, and already written down by an agent.** None
+was rejected; none was hard. They were lost in the step between *reading 66 findings* and *writing eight
+axioms*, and the only thing that recovered them was being made to account for each row separately.
+
+> **The generalisable lesson, and it is about how this project works rather than about maps:** a fan-out's
+> output is not the findings, it is the **adjudication**. A research report that is summarised rather than
+> adjudicated has been *read*, not *used* — and the difference is invisible until someone builds the
+> table. Slice 7 was marked `partial` honestly and then sat there for the whole arc, which is exactly how
+> long the eleven stayed lost.

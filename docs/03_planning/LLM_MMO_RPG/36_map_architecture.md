@@ -143,8 +143,24 @@ Three consequences are load-bearing:
 > mandatory sequence of rungs.
 
 Freedom **with** law, not freedom **from** law. `Universe → Domain` is legal because the matrix says
-so; `Universe → Universe` likewise. `MAP_001`'s `ChannelTier` is retired (`SPG-R1`) and
-`Channel.level_name: String` is narrowed to `MapKind` (`SPG-R2`).
+so; `Universe → Universe` likewise. `MAP_001`'s `ChannelTier` is retired (`SPG-R1`).
+
+> **⚠ Corrected 2026-08-02.** This paragraph used to end *"…and `Channel.level_name: String` is narrowed
+> to `MapKind` (`SPG-R2`)"* — stated as fact, in an axiom body, **for an amendment that was retired the
+> same day it was written** (§7; [REC-93](19_reconciliation_register.md)). `DP-A13` forbids exactly that
+> narrowing: the data plane is deliberately agnostic to level semantics so a reality can name its own
+> levels — `phủ` (*a prefecture*), `châu` (*a province*). <!-- doc-language-gate: ok — these two words ARE
+> the subject matter, not exposition: the decision under discussion is precisely that a reality keeps its
+> own level vocabulary, so replacing them with their English glosses would delete the example. Glossed
+> inline on first use, per the standard. Same two words appear verbatim at :459 and in DP-A13 itself. -->
+> **Two fields, two jobs** — `Channel.level_name` stays the reality's own word,
+> and the closed set lives one layer up on `map_layout.kind`, where `SPG-R1` already put it.
+>
+> **The rot survived three months because nothing looks for it.** [`amendment-rot-gate.py`](../../../scripts/amendment-rot-gate.py)
+> check D catches a retired **identifier** (`ChannelTier`) used as if live; **no check catches a retired
+> AMENDMENT ROW cited as if live.** That is the *"scope never reaches it"* shape from
+> [`non-vacuity.md`](../../standards/non-vacuity.md) NV-3 — and this is not the only site: `MAP_001:183`
+> carried the same claim in a `//` comment, in the future tense, and is corrected in the same pass.
 
 Prior art: HTML's content model (which elements may contain which) is the canonical typed-containment
 ruleset; `django-polymorphic-tree` ships the same idea for trees whose *"each node can be a different

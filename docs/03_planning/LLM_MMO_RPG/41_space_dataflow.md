@@ -4,14 +4,16 @@
      not redefined; registering `ML` in this track's id catalog would claim another track's
      namespace, which is the opposite of what the catalog is for. -->
 
-> **Prefix:** `SDF-*` (registered 2026-08-02 under a `_boundaries` claim; axioms `SDF-A1..A12`, decisions `SDF-D1..D6`,
-> findings `SDF-F1..F6`, open `SDF-Q1..Q11`).
+> **Prefix:** `SDF-*` (registered 2026-08-02 under a `_boundaries` claim; axioms `SDF-A1..A30`,
+> decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **all PROPOSED, none applied** —
+> open `SDF-Q1..Q18`, of which **thirteen are resolved and five remain**: four need a **measurement**
+> (§8.1) and one — `SDF-Q18`, opened by the slice-7 adjudication — is a design decision).
 >
 > **What this doc is for.** [Doc 36](36_map_architecture.md) settled the *shape* of space
 > (`MapKind`, the containment matrix, `SpaceNode`). [Doc 37](37_world_data_storage.md) settled where
 > its *bytes* live. **Neither says what happens between a manifest and a tick** — who writes what,
 > when, in what order, and what is forbidden to read. This doc is that, and it is modelled on
-> [`2026-08-02-actor-dataflow.md`](../../specs/2026-08-02-actor-dataflow.md), which is the standard.
+> [`2026-08-02-actor-dataflow.md`](../../specs/2026-08-02-actor-dataflow.md) — **which became a DERIVATION RECORD on 2026-08-02. The standards are now [`2026-08-02-actor-hub.md`](../../specs/2026-08-02-actor-hub.md) (the hub) and [`2026-08-02-engine-substrate.md`](../../specs/2026-08-02-engine-substrate.md) (the layer beneath).**
 >
 > **Origin.** PO, 2026-08-02, in substance: **the map is where everything in the game happens; every
 > new feature will probably attach one more data layer onto it; so if this is not designed well now, it
@@ -19,9 +21,22 @@
 >
 > **Status honesty.** This is a **first pass**. The actor dataflow reached its depth over many
 > sessions and four measured red-team rounds. This one has **one measurement** (§2) and **eight
-> research reports** ([RUN-STATE §9–16](../../plans/2026-08-02-space-substrate-RUN-STATE.md)). Its
-> open register (§8) is therefore longer than its axiom list, which is the correct shape for a first
-> pass and not a defect to hide.
+> research reports** ([RUN-STATE §9–16](../../plans/2026-08-02-space-substrate-RUN-STATE.md)).
+>
+> **What changed since that sentence was written, and what did not.** The open register opened at
+> `Q1..Q11` *longer than the axiom list* — the correct shape for a first pass. Four analysis rounds
+> (§10–§13) then closed thirteen rows and grew the axioms to thirty. **That is not the same as being
+> finished.** The four rows left (§8.1) are the ones no argument can close: **every one of them now needs
+> a MEASUREMENT**, and one of them (`SDF-Q12`) cannot be closed by this tier at all, because its answer
+> lives in a `PROG_001` parameter. The honest summary is that the *design* questions are answered and the
+> *arithmetic* has not been run.
+>
+> **Reading order.** §1–§8 are **normative** — the contract. §9–§13 are the **analyses that produced it**,
+> kept because the reasoning is the evidence. Where a §9–§13 axiom changed the contract, **the change was
+> folded back into §1–§8** on the reconciliation pass rather than left as an appendix; a doc that states
+> its contract in one place and amends it in another has two readings, which is the defect this whole arc
+> is about. Two `LayerDef` fields and one determinism rule arrived that way, and one of them exposed a
+> false claim — see §4.
 
 ---
 
@@ -92,6 +107,16 @@ and then **materialized per node, lazily, forever** (S5). Collapsing them is wha
 **S4 is `O(1)` in wall-clock per world. S5 is `O(nodes actually visited)` over the world's lifetime, and
 most nodes are never visited.**
 
+> **And the one rule S4 must obey, adopted on the slice-7 pass** (`R-63`): **generation ANNOTATES stable
+> nodes. It never moves or deletes them.** *Unexplored* — ~50 modules, ~5 000 rules, 24 cycle types —
+> builds a level as a **sequence of annotations over stable node identity**, which its authors note is
+> *"extremely friendly to event sourcing and deterministic replay"*; semantic edges are first-class and
+> **survive spatial rearrangement**, so a key stays linked to its lock through every rewrite even as
+> positions change. A generator that deletes and re-creates nodes makes every id in the log dangle, which
+> is `SDF-A12`'s *"retire, never delete"* arriving one stage earlier. **Cycles nest** in that system too —
+> *"a new cycle inside of an existing one"* — which is the recursion precedent `Domain → Domain` had been
+> missing.
+
 ### `SDF-A3` — three lifetimes, and doc 36 gave them one struct
 
 | | authored by | mutated by | lifetime | storage |
@@ -154,13 +179,13 @@ The determinism rule, stated once and identical to the actor spec's, because it 
 | phase | may READ | may WRITE | may EMIT |
 |---|---|---|---|
 | **0 · Intent** | ruleset · node state **as of the previous phase 5** | the command queue only | — |
-| **1 · Topology** | the command queue · containment matrix · portal set | `parent`, `portal`, node create/destroy | `Grafted` `Merged` `Breached` `Severed` |
+| **1 · Topology** | the command queue · containment matrix · **scale matrix** (`SDF-A19`) · portal set | `parent`, `portal`, node create/destroy · **invalidates every per-layer simulation group** (`SDF-A27`) | `Grafted` `Merged` `Breached` `Severed` |
 | **2 · Transform** | topology (post-phase-1) · `mobility` | `transform`, `frame_epoch` | `FrameMoved` |
-| **3 · Layer** | node state · **layers in strictly EARLIER `Phase`** | **only layers whose `owner` is this module** | `LayerChanged` |
-| **4 · Occupancy** | transform · portals · layer output | `occupancy`, the **live set** | `Traversed` `Materialized` `Dematerialized` |
+| **3 · Layer** | node state · **layers in strictly EARLIER `Phase`** · **projections at a PINNED version** (`SDF-A4` rule 7) | **only layers whose `owner` is this module** | `LayerChanged` |
+| **4 · Occupancy** | transform · portals · layer output · **a DECLARED adjacency relation** (`SDF-A25`) | `occupancy`, the **live set** | `Traversed` `Materialized` `Dematerialized` |
 | **5 · Commit** | everything | — | the ordered event stream |
 
-Five consequences, each traceable to a finding:
+Six consequences, each traceable to a finding:
 
 1. **Topology precedes transform** (`R-47`): Graft must be *one atomic event* that rewrites the edge,
    bumps `frame_epoch` on the whole subtree, and invalidates every cached world transform. Valkyrien
@@ -174,11 +199,17 @@ Five consequences, each traceable to a finding:
 4. **The live set is written in phase 4 and read in phase 0 of the next tick** — never mid-tick. This is
    what makes `SDF-A1` replay-safe.
 5. **The ruleset is read-only for the whole tick**, and an epoch switch is inter-tick. Same as `ACT`.
+6. **The simulation grouping is invalidated in phase 1 and consumed in phase 3** (`SDF-A27`, added on the
+   reconciliation pass). A layer's group is the connected components under its own `EdgePolicy`, so a
+   `Sever` in phase 1 can split an air group that phase 3 is about to equalise. **Recomputing it is a
+   subscriber to the topology event, never a scan** — which is only affordable because `SDF-A16` already
+   made every topology op an event.
 
-### `SDF-A4` — the six determinism prohibitions
+### `SDF-A4` — the determinism prohibitions: six adopted, one derived
 
-Adopted verbatim from `R-34`/`R-11`/`R-19`, because three agents independently converged and one of them
-is a bug we would certainly have shipped:
+Rules 1–6 are adopted **verbatim** from `R-34`/`R-11`/`R-19`, because three agents independently converged
+and one of them is a bug we would certainly have shipped. **Rule 7 is ours**, derived in §13.2 and added on
+the reconciliation pass — it is the only one with no external corroboration, and it is marked so:
 
 1. **No hash-ordered iteration in simulation.** `HashMap` order is randomly seeded per process — a
    different replay **in the same binary on the same machine**. `BTreeMap`, sorted `Vec`, or sort-on-iterate.
@@ -193,6 +224,11 @@ is a bug we would certainly have shipped:
 6. **Never break a tie by display name.** Foundry breaks initiative ties *alphabetically by name*; in a
    multilingual project collation is locale-dependent, so **the same operation yields a different order
    under a different locale.** This is an ML-4-shaped bug in a place nobody would look for one.
+7. **No read of a LIVE projection inside a tick** — *derived here, §13.2, no external corroboration.* A
+   `Derived` layer or a space view may read a projection (`SDF-A29`) only at a **version pinned for the
+   whole tick**, the same discipline as `R-23`'s metric epoch. A projection that advances mid-tick makes
+   two readers in one tick disagree, which is rule 2's failure arriving on the **read** path, where the
+   ruleset digest does not protect us.
 
 ---
 
@@ -220,8 +256,14 @@ pub struct LayerDef {
     storage:    StorageClass, // by density — SDF-A8
     update:     UpdatePolicy, // NO DEFAULT — SDF-A9
     lifecycle:  LifecyclePolicy, // NO DEFAULT — SDF-A10
+    edges:      EdgePolicyMatrix, // NO DEFAULT — SDF-A27. Per EDGE KIND:
+                              //   Propagates | Blocks. Determines this layer's
+                              //   simulation grouping. See §13.1.
     inherit:    Inheritance,  // SDF-A11
     scope:      Scope,        // ReadWrite | WriteOnly — R-41, GeoPackage
+    projection: ProjectionPolicy, // NO DEFAULT — SDF-A26. How this layer renders
+                              //   into a space view + its drop priority under
+                              //   budget. Declared by the OWNER, never the reader.
     schema:     SchemaVersion,
     visibility: Visibility,   // Public | OwnerOnly | PerObserver
 }
@@ -230,9 +272,38 @@ pub struct LayerDef {
 **No `Default` impl anywhere in it.** Omitting a field is a compile error. *"The default is what you get
 when someone doesn't think about it, and these are precisely the fields that must be thought about."*
 
+> **⚠ `edges` and `projection` were added on the reconciliation pass, and the second one was a defect.**
+> Both fields are demanded by axioms this doc derived *after* §4 was written (`SDF-A26` in §12.5,
+> `SDF-A27` in §13.1). `projection` announces itself — `SDF-A26` says *"`LayerDef` **gains**"*. **`edges`
+> did not.** `SDF-A27`'s second consequence argues *"no new authoring surface, because `EdgePolicy` is
+> already required at layer registration"* — **and against §4 as written, that was false.** The argument
+> was sound about `R-46`'s research and wrong about our own struct, which is the cheapest possible version
+> of *believing a table instead of opening the target*. The claim is now true because this edit made it
+> true; it was not true when it was written. Recorded in the run-state drift log.
+
+> **And one field deliberately NOT added: a clock.** `SDF-F1` implied `LayerDef` was missing one;
+> `SDF-A28` shows the clock is a property of the **node's nearest realm-declaring ancestor**, so a field
+> here would be a second source of truth for something the tree already knows. **The absence is the
+> decision** — see §13.1.
+
 `scope: ReadWrite | WriteOnly` is lifted from GeoPackage and is the single best idea in the research: **it
 lets a consumer that has never heard of layer 37 decide by policy, not by guessing, whether it may still
 safely read the node. Without it, "unknown layer" is undecidable.**
+
+**Two rules about the registry itself**, both from research that the first pass adopted the *conclusions*
+of and dropped the *rules* (found by the slice-7 adjudication, RUN-STATE §22):
+
+- **The core registers through the identical mechanism as a plugin — no privileged path** (`R-18`).
+  RimWorld ships **15 hardcoded grid fields on `Map`** *and* a working reflection-registered
+  `MapComponent` plugin path, **and the core does not use its own extension point** — so adding grid #16
+  requires recompiling `Map` while a mod adds one for free. *"If the core doesn't dogfood the extension
+  point, the extension point is decoration."* This is the repo's own **no-silent-no-op / the API
+  advertises only what the engine wires** discipline, arrived at from outside it.
+- **No accessor may materialise a layer as a side effect of reading it** (`R-41`). NeoForge's `getData()`
+  **allocates and attaches a default when absent** while `hasData()` does not — so one read-heavy path
+  using the auto-vivifying accessor materialises every layer on every node it touches, which is `SDF-A8`'s
+  entire memory argument defeated by an API-naming choice. **Make the allocating call impossible to type
+  by accident:** `get_or_default` says so in its name; `get_layer` never allocates.
 
 ### `SDF-A7` — one writer per layer, enforced by the EVENT-LOG VALIDATOR
 
@@ -244,6 +315,39 @@ not."*
 
 `Uniform` (0 bytes) · `Dense` · `Sparse` (paged) · `Rare` (**sorted `Vec`** — a determinism decision, not
 just a memory one) · `Interval` · `Derived` (never stored) · `BaselineOverlay` · `PerObserver`.
+
+**The set is CLOSED at eight, and two later analyses tried to extend it and were refused:**
+
+| the pressure | the answer | where |
+|---|---|---|
+| volume-keyed data (formations 陣法, auras, weather fronts) wants a `Shape` class | **refused.** A shape is an *authoring and command* concept that resolves to a node-set **at write time** and stores as ordinary `Sparse`. `SDF-A24` | §12.3 |
+| history-derived values (traffic, contestedness, *"who is usually here"*) want a history class | **refused.** They are **projections**, not layers — the tier already ships. `SDF-A29` | §13.2 |
+
+> **`Derived` reads only from a PINNED version.** `SDF-A29` lets a `Derived` recipe read a projection;
+> `SDF-A4` rule 7 requires the version be pinned for the tick. A recipe reading a projection that advanced
+> mid-tick is a replay divergence wearing a read-model's clothes.
+
+**Layer presence is a BIT on the node, never part of the node's TYPE** (`R-51`, adopted on the slice-7
+pass — three agents argued it and none of it had been written down). A fixed `SpaceNode` layout carries a
+`LayerMask` of presence bits; the data lives in per-layer side tables. Without the mask, *"which layers
+does this node have"* costs a probe into every sidecar.
+
+> **And the refusal that follows from it, stated because three independent agents reached it and the doc
+> recorded none of them: an archetype ECS is DISQUALIFIED for this design.** Not "not chosen" — 
+> disqualified, for four separate reasons, each sufficient on its own:
+>
+> | reason | evidence |
+> |---|---|
+> | `Optional` is the pathological query shape **and it is exactly ours** | flecs: *"a query that only has `Optional` terms will match all entities."* *"Give me every node plus whichever of the 50 layers it has"* is the worst case **by construction** (`R-39`) |
+> | a structural change costs `O(total bytes on the entity)` | toggling one layer on a 50-layer node copies the other 49 — measured **24 ns sparse-set vs 246 ns archetype** (`R-39`) |
+> | archetype count ratchets **monotonically upward** and taxes every unrelated query | Bevy: *"empty archetypes are not removed… persist until the world is dropped."* **For a persistent MMO this is disqualifying on its own** (`R-39`) |
+> | N optional layers ⇒ up to **2ⁿ** archetypes, and memory is **chunk-granular** | Unity: 100 000 entities with unique archetypes allocate **>1.5 GB**, *"most of it empty"* (`R-51`) |
+>
+> **The converse is why it does not cost us anything:** our cells never change composition — cell 41 203
+> has a biome for the world's lifetime — so the archetype *iteration* win is available with exactly one
+> archetype, and a general ECS would be machinery we pay for and never use (`R-5`). **The honest limit:
+> no public ECS benchmark exceeds 6 components, so this is mechanism plus adjacent measurement, not a
+> measurement of our case** (§8).
 
 | mix @ 256×256 | per Locale | × 1 000 |
 |---|---:|---:|
@@ -311,23 +415,64 @@ DFU's fix chain is never pruned, which is why a 2011 Minecraft world still loads
 
 Nothing below exists. This is the deliverable, not the prose around it.
 
-| # | table | why it does not exist yet | blocks |
-|---|---|---|---|
-| **T1** | `space_node` | `SpaceNode` is docs-only; **`MapKind` does not appear in any `.rs`** | everything |
-| **T2** | `space_node_live` — the live set (`SDF-A1`) | never designed; doc 36 has a field instead | the tick |
-| **T3** | `portal` — `(from, to, anchor, gate)` bidirectional | **`R-14`: containment ≠ connectivity, and we have no traversal relation at all** | travel, doors, `TVL_*` |
-| **T4** | `layer_registry` — one row per `LayerDef` | the whole layer model is new | every feature |
-| **T5** | `layer_<name>` — one sidecar per layer | *"adding a layer is `CREATE`, never `ALTER`"* | every feature |
-| **T6** | `world_baseline` — content-addressed bytes | [`WDS-A4`](37_world_data_storage.md) says copy `RulesetStore`; not built | S4 |
-| **T7** | `node_occupancy` — `(entity, node, local_pos)` | `R-53`: membership is maintained **incrementally on crossing**, never by search | AOI, combat siting |
-| **T8** | `frame_epoch` index | `R-49`: a cached world transform is `(Transform, frame_epoch_of_chain)` | moving frames |
-| **T9** | `encounter` (`R-6`) | **`Arena` and `Encounter` are different things**; doc 36 has only the node | `SPG-D1` |
+| # | table | **scope** (`SDF-A30`) | why it does not exist yet | blocks |
+|---|---|---|---|---|
+| **T1** | `space_node` | per-reality | `SpaceNode` is docs-only; **`MapKind` does not appear in any `.rs`** | everything |
+| **T2** | `space_node_live` — the live set (`SDF-A1`) | per-reality, **not persisted** | never designed; doc 36 has a field instead | the tick |
+| **T3** | `portal` — `(from, to, anchor, gate)` bidirectional | per-reality | **`R-14`: containment ≠ connectivity, and we have no traversal relation at all** | travel, doors, `TVL_*` |
+| **T4** | `layer_registry` — one row per `LayerDef` | **per-ruleset** (pinned per reality-epoch) | the whole layer model is new | every feature |
+| **T5** | `layer_<name>` — one sidecar per layer | per-reality | *"adding a layer is `CREATE`, never `ALTER`"* | every feature |
+| **T6** | `world_baseline` — content-addressed bytes | **shared by digest** across realities | [`WDS-A4`](37_world_data_storage.md) says copy `RulesetStore`; not built | S4 |
+| **T7** | `node_occupancy` — `(entity, node, local_pos)` | per-reality | `R-53`: membership is maintained **incrementally on crossing**, never by search | AOI, combat siting |
+| **T8** | `frame_epoch` index | per-reality, **not persisted** | `R-49`: a cached world transform is `(Transform, frame_epoch_of_chain)` | moving frames |
+| **T9** | `encounter` (`R-6`) | per-reality | **`Arena` and `Encounter` are different things**; doc 36 has only the node | `SPG-D1` |
 
 **T3 and T9 are the two the sealed design does not merely lack — it has the wrong shape for them.**
+
+> **The scope column is not bookkeeping — it is where `WDS-A1` pays.** It follows one rule (`SDF-A30`,
+> §13.2): **seed-derived → shared by digest · log-derived → per-reality · registry → per-ruleset.** So a
+> hundred realities forked from one book share **one** copy of `T6` — 14.9 MB at `Megaplanet` — and pay
+> per-reality only for divergence. Doc 37 says the node tree is per-reality and says nothing about the
+> other eight; that gap is `SDF-R9`.
+>
+> **The two `not persisted` rows carry an obligation, not a licence.** `T2` and `T8` are runtime state
+> over the log, so they must be **rebuildable identically on replay** — `SDF-A23`'s constraint stated one
+> table down. An incrementally-maintained index that survives a restart without a rebuild proof is a
+> replay divergence waiting for a crash.
+
+**Three column-level rules the first pass adopted the conclusions of and dropped** (slice-7 adjudication,
+RUN-STATE §22):
+
+- **`T1` · id widths are `u32` for cells and `u64` for `NodeId`, from day one** (`R-4`). **EU4
+  hard-crashes past 32 768 provinces** — an `i16` somewhere — and our test fixture already holds
+  **501 264** cells. A `u16` caps at 65 535. This costs nothing to decide now and is a migration later.
+- **`T6` · the baseline stores SEMANTICS, never presentation** (`R-18`). HoMM3 spends **4 of 7 tile bytes
+  — 57 % — on renderer state** (autotile variant + flip flags), so the same logical map has many valid
+  encodings, the file **is not content-addressable**, and a renderer change forces a map-format
+  migration. **Under [`WDS-A1`](37_world_data_storage.md) that is disqualifying**: store `terrain_type`,
+  derive the variant at render. Doc 37 does not say this; it is owed there alongside `SDF-R8`/`R9`.
+- **`T1` · a node carries a `LayerMask` of presence bits** (`R-51`, §4) — otherwise *"which layers does
+  this node have"* is a probe into every sidecar in `T5`.
+
+> **What `T1` still does not say, and it is now an open row.** How a `NodeId` is *allocated*. `R-43`
+> proposes splitting the space by the top bit — **authored** ids from a monotonic event-sourced counter,
+> **generated** ids as a truncated content hash of `(parent_id, generation_rule_ref, local_address)`, so
+> a generated node's identity is *derivable, never stored, and identical on every machine and every
+> replay*. `R-58` reaches the same seam from Bethesda's side: **interiors are keyed by NAME, exteriors by
+> GRID COORDINATE**, and an interior *"has no position in any worldspace"* — which says our `Locale` and
+> `Domain` may legitimately use **different addressing**. Two agents, one unanswered question:
+> **`SDF-Q18`.**
 
 ---
 
 ## 6 — Feature census: what touches a space node, and how
+
+> **There are TWO censuses in this doc and they do different jobs.** This one is the **mechanism** table:
+> for each feature that touches space *today*, which kind, which storage class, which phase — it is how you
+> check that a feature has a home. **§9 is the FALSIFICATION census**: all 69 feature ids counted, run
+> against §4 to find the features the model **cannot** carry (it found six). Read §6 to place a feature;
+> read §9 to break the model. Neither supersedes the other, and if they ever disagree §9 wins, because §9
+> was counted rather than listed.
 
 | feature | touches | as | phase |
 |---|---|---|---|
@@ -352,7 +497,12 @@ Nothing below exists. This is the deliverable, not the prose around it.
 
 ---
 
-## 7 — Amendments this doc raises against sealed doc 36
+## 7 — Amendments this doc raises against sealed docs 36 and 37
+
+**Status: all nine are PROPOSED and NONE is applied.** No sealed doc has been edited by this arc, and no
+doc claims otherwise — the mechanism is that this table is the only place they exist. `R1..R6` come from
+the first pass; **`R7..R9` were raised by the deep dives in §11–§13** and two of them target doc 37, which
+is why the section title changed.
 
 | # | target | change | evidence |
 |---|---|---|---|
@@ -362,6 +512,14 @@ Nothing below exists. This is the deliverable, not the prose around it.
 | `SDF-R4` | `SPG-D1` | in-place combat needs an **Encounter closure**; `Arena` and `Encounter` are different things | `R-6` · `R-7` |
 | `SDF-R5` | `SPG-A2` | layers bind to `MapKind`; `home_kinds` required, validated on write | `R-29` |
 | `SDF-R6` | `SPG-R5` | the 16×16 default gains a quantitative justification **and a cost**: layout solvers fall over at ~30 rooms (so recursion is mandatory), but over-fragmentation makes a continuous field numerically unstable | `R-62` (Edgar) · `R-48` (Barotrauma) |
+| **`SDF-R7`** | `SPG-A3` | the containment matrix answers *which* kinds may nest and **nothing bounds the size of what nests**. Add a **SCALE matrix** beside it: `allowed_scale(parent_kind, child_kind) → WorldScale` band, so `Domain → World` is legal *at `Pocket`*. Validated at manifest time, not at runtime | `SDF-A19` (§11.2) · `SDF-F7` — the matrix legalises an edge worth **up to 500× the authored world** and nothing prices it |
+| **`SDF-R8`** | doc 37 ([`WDS-*`](37_world_data_storage.md)) | **snapshot-compaction is absent.** `compact`, `truncate` and `fold-baseline` return **zero hits** in a doc committed on the same day. Without it `SDF-A17`'s bound is on *lifetime* edits, so a long-lived world eventually refuses its owner's edits permanently — worse than the `R-61` behaviour it was written to avoid | `SDF-A21` (§11.4). Carries a retention cost: the **original** baseline must be kept while any replay target predates the compaction — `WDS-A6` arriving a second time for a second reason |
+| **`SDF-R9`** | doc 37 | doc 37 scopes **the node tree** (*"per-reality Postgres"*) and is silent on the other eight tables. State the rule instead of the instance: **seed-derived shared by digest · log-derived per-reality · registry per-ruleset** | `SDF-A30` (§13.2). The payoff is concrete — a hundred realities forked from one book share one 14.9 MB baseline |
+
+**`SDF-R3` carries a rider added on the reconciliation pass.** `PortalSet` supplies **connective**
+adjacency; `SDF-A25` (§12.4) found there are **two** relations and the other one already exists — the
+generated mesh's `neighbors`, immutable and already sorted ascending. Doc 36 names neither. The amendment
+is therefore *"add `PortalSet` **and say which relation a spatial read means**"*, not *"add `PortalSet`"*.
 
 ---
 
@@ -385,6 +543,7 @@ Nothing below exists. This is the deliverable, not the prose around it.
 | `SDF-Q16` | **Does `Adjacency::Geometric` exist above `Locale`?** The mesh gives cell neighbours inside a `World`; region-level adjacency is likely **authored or derived once at S4**, per `R-2`'s Paradox evidence that area→region→superregion are grouping *files*. (§12.6) |
 | ~~`SDF-Q11`~~ | ~~reality scoping~~ **✅ RESOLVED §13.2 — `SDF-A30`**: **scope follows DERIVATION.** Seed-derived → shared by digest · log-derived → per-reality · registry → per-ruleset. So a hundred realities forked from one book share ONE baseline (14.9 MB) and pay only for divergence — `WDS-A1` delivering its actual value. ~~
 | `SDF-Q17` | **The multi-reality tax has no measurement for space**, where the actor track ran an entire red-team round on it. (§13.2) | Doc 37 says the node tree is per-reality and the baseline is shared by digest; §5 says neither. No multi-reality measurement exists for space. (§9.4) |
+| **`SDF-Q18`** ⚠ **NEW — opened by the slice-7 adjudication, §5** | **How is a `NodeId` allocated?** `R-43`: split the space by the top bit — authored ids from a monotonic event-sourced counter, generated ids as a truncated content hash of `(parent_id, generation_rule_ref, local_address)`, so a generated node's identity is **derivable, never stored, identical on every machine and every replay**. `R-58` arrives at the same seam from Bethesda: **interiors keyed by NAME, exteriors by GRID COORDINATE**, an interior having *"no position in any worldspace"* — so `Locale` and `Domain` may need **different addressing**. **This is the only one of the five that is a DESIGN decision rather than arithmetic**, and it went unrecorded for a whole pass because two agents raised it in two vocabularies and neither matched a section heading |
 | ~~`SDF-Q4`~~ | ~~delta store bound~~ **✅ RESOLVED §11.4 — `SDF-A21`**: bound + refuse + **COMPACT**. Refusing alone is worse than NMS; snapshot-compaction folds divergence into a new baseline `H'` so the bound is on *un-compacted* delta. **Not in doc 37 — a gap in a committed doc.** ~~ `R-61`: No Man's Sky caps at 15 000 edits / 256 buffers and past it **the base regenerates UNDER player-authored content** — and visiting another player's base consumes *your* buffers. Our divergence log is currently unbounded. |
 
 **Non-vacuity obligations, stated in advance** (three agents proposed these against their own
@@ -404,6 +563,82 @@ recommendations):
 published benchmark of a 50-layer scenario in any engine."* The storage argument is **mechanism plus
 adjacent measurement**, not a measurement of our case. Likewise *"every performance claim in these
 ecosystems is qualitative — if you need numbers, you will have to generate them."*
+
+### 8.1 — The four MEASUREMENTS that remain (`SDF-Q18` is the fifth open row and is not one of them)
+
+> **Why this subsection exists.** Thirteen rows closed by argument. These four did not, and the reason is
+> the same every time: **they are arithmetic, and nobody has run it.** Leaving them as prose questions
+> would make them indistinguishable from the thirteen that were genuinely settled — so each is written
+> here as a measurement with a **falsification condition**, which is the only form in which *"we don't
+> know yet"* is a spec statement rather than an omission.
+>
+> **The bar each row must clear, from [`non-vacuity.md`](../../standards/non-vacuity.md):** a measurement
+> whose every possible outcome leaves the design unchanged is not a measurement, it is a ritual. So each
+> row names **what result would change the design, and to what.** A row that cannot name one does not
+> belong here.
+
+#### `M-2` — the shared prerequisite, and it is smaller than the rows that need it
+
+**Both `SDF-Q12` and `SDF-Q17` are blocked on one number that does not exist: the measured size of a node
+row.** §11.6 used **96 B/node** and that figure is **computed, not measured** — it counts the fields in a
+`SpaceNode` and stops. It omits the layer sidecars (`T5`), the occupancy row (`T7`), index overhead, and
+Postgres per-row overhead, every one of which is real storage that a node budget must charge for.
+
+| | |
+|---|---|
+| **quantity** | bytes per node, *as stored*, for a representative mix — including sidecars, indexes and page overhead |
+| **method** | materialise `T1`+`T4`+`T5`+`T7` for one `Locale` subtree at the §4 layer mix (`Uniform` default, a handful of `Sparse`, one `Dense`), then read the size off the database rather than off the struct |
+| **falsifies** | if the measured figure is **≥2× the computed 96 B**, `SDF-A17`'s per-principal budget is being denominated in a unit that under-charges by half, and every number in §11.6 moves |
+| **owns** | the space tier. **No other tier is needed** — which is why this is the row to run first |
+
+#### The four rows
+
+| # | quantity to measure | the decision it changes | what would falsify the current lean |
+|---|---|---|---|
+| **`SDF-Q12`** budget numbers | nodes-per-principal, given `M-2` **and** a `PROG_001` statement of how many actors reach 神境 | whether `SDF-A19`'s `Pocket` bound (1 024) is affordable, or inner worlds need a scale **below** `Pocket` (a `GEO_001` band change) | the lean is *"genre makes 神境 rare, so it is fine."* It is falsified if `PROG_001`'s distribution puts inner worlds within reach of a **common** tier — at which point 16× is not enough and the band must move |
+| **`SDF-Q15`** view caps | prompt-assembly cost per included node (tokens **and** wall-clock) at the §12.5 producer mix | the fan-out and occupant caps in `ProjectionPolicy`, which are currently *declared* with no number behind them | the lean is that ancestors are already free (`≤16` by `DP-Ch1`) and only the portal ring and occupancy need caps. Falsified if **occupancy dominates** — a market square with 200 occupants would make the occupant cap, not the ring, the binding constraint |
+| **`SDF-Q16`** adjacency above `Locale` | how many features actually ask for `Region`-level adjacency, and what aggregating cell-neighbours into region-neighbours costs **once at S4** | whether `Adjacency::Geometric` is defined above `Locale` at all, or region adjacency is an **authored** relation | the lean is `R-2`'s Paradox evidence — area→region→superregion are authored *grouping files*, so adjacency is authored or derived once, never computed per query. Falsified if aggregation at S4 is cheap **and** more than a couple of features need it, in which case deriving it beats authoring it |
+| **`SDF-Q17`** the multi-reality tax | bytes and query cost added **per additional reality** forked from one book, at `M-2`'s row size | whether `SDF-A30`'s *"share the baseline, pay for divergence"* holds at N realities, or divergence dominates and the sharing is theoretical | the lean is that `T6` (14.9 MB) is the expensive artefact and divergence is small. Falsified if per-reality `T1`+`T5` growth **exceeds the shared baseline** at realistic N — the actor track ran a full red-team round on exactly this and space has run none |
+
+**Two things this table is careful not to claim.** `SDF-Q12` is **not** merely unmeasured — it is
+*unanswerable by this tier*, because half its input is a progression decision (`SDF-F8`). And `M-2`
+unblocks `Q12` only **partially**: it supplies the row size and not the distribution. `SDF-Q15`, `Q16` and
+`Q17` are fully within the space tier's power to settle.
+
+**Sequencing, stated so it is not rediscovered:** `M-2` first (nothing else needs another tier) → `Q17`
+and `Q15` next (independent of each other) → `Q16` (a count plus a cost, no new harness) → `Q12` last, and
+only after `PROG_001` states a distribution. **None of this is design work. It is arithmetic, and the
+design is what is waiting on it.**
+
+### 8.2 — `SDF-F9`: eleven research findings had been adopted NOWHERE, and the table is what found them
+
+The fan-out produced **66 findings** (`R-1..R-66`). The first pass adopted them into `SDF-A1..A12` and
+routed four to open rows — **and never wrote the row-by-row table**, which is why slice 7 stood at
+*partial* for the whole arc. Doing it (RUN-STATE §22) produced a result the prose had hidden:
+
+> **Eleven findings had no home at all — and the pattern is not that they were rejected. It is that they
+> were CONCLUSIONS the doc adopted while dropping the RULES underneath them.**
+
+`R-51` is the cleanest example: the doc took *"do not use an archetype ECS"* and left behind *"layer
+presence is a bit, never part of the node's type"* — the mechanism that makes the conclusion
+implementable. Same shape for `R-18` (the core must dogfood the registry), `R-41` (no auto-vivifying
+accessor), `R-4` (id widths), `R-63` (generation annotates, never moves).
+
+| disposition | findings | where |
+|---|---:|---|
+| folded into the contract **on this pass** | **8** | `R-63` → §1 · `R-5` `R-18` `R-39` `R-41` `R-51` → §4 · `R-4` → §5 · `R-65` → §11.5 |
+| **opened as a row**, because it is a real decision and not an omission | **2** | `R-43` + `R-58` → `SDF-Q18` |
+| **owed to a sealed doc** and recorded rather than silently kept | **1** | `R-21` — a *stronger justification for `Passage`-as-node than the one we wrote*, owed to doc 36, in no amendment row |
+
+*(Two further findings — `R-10` encounter-time status ticking, `R-23` metric-table recomputation — are
+**correctly** out of this tier's scope and routed to combat and travel. They are dispositions, not gaps,
+and are not part of the eleven.)*
+
+**Why this is a finding and not a cleanup note:** every one of the eight was cheap, uncontroversial, and
+already argued by an agent in writing. **None of them was rejected — they were simply never transcribed**,
+because a summary paragraph is lossy in a way a row-by-row table is not, and nothing forced the table to
+exist. That is the same defect as `SDF-A27` citing a `LayerDef` field that was not there (§4), reached from
+the other direction: **the doc believed its own summary.**
 
 ---
 
@@ -804,6 +1039,14 @@ distant).
 
 > **`SDF-A22` — the per-`Domain` object budget is TWO numbers: a placement cap (storage/persistence) and a
 > render cap (client), with a deterministic, published culling order between them.**
+
+**And each of the two is per CLASS, not a flat count** (`R-65`, adopted on the slice-7 pass — the first
+pass took the two-number split and dropped the bucketing under it). ESO runs **four** separate buckets
+(Traditional / Special / Collectible / Special Collectible) *because those classes have different runtime
+costs*; New World caps light sources separately by tier (4/6/8/10); FFXIV cut shadow-casting lights
+specifically for PS4. **A flat count is a cheap proxy for a real cost budget, and every studio that
+shipped one eventually added classes** — so the shape is *"caps: `Map<ObjectClass, u16>`"* from the start,
+even if it launches with one class.
 
 And the reason the split exists is the part worth carrying: Yoshida's binding constraint was
 **rehydration**, not steady state — at 1.5× the cap a server restart could *triple maintenance duration*,
