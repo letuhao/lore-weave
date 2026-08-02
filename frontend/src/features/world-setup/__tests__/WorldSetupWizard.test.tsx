@@ -252,3 +252,80 @@ describe('WorldSetupWizard', () => {
     expect(screen.queryByTestId('world-setup-lore-not-indexed')).toBeNull();
   });
 });
+
+// ── ACTIVE_RUN must have a way out (2026-08-03) ──────────────────────────────────────────
+//
+// The server allows one in-flight run per book and answers ACTIVE_RUN. The panel printed
+// that code and stopped: no run id, no resume, no cancel. Found on a real book — a run had
+// sat at `edges_ready` since 27 July, so `/plan` refused with ACTIVE_RUN while `/cancel`
+// refused with BAD_STATE (that half is fixed in the service). From the UI the book simply
+// could not be set up again, and nothing on screen said why or what to do.
+
+const ACTIVE_RUN_ERROR = {
+  body: { detail: { code: 'ACTIVE_RUN', message: 'this book already has a build run in progress' } },
+};
+
+describe('WorldSetupWizard — ACTIVE_RUN', () => {
+  it('offers the blocking run instead of only printing the code', async () => {
+    const user = userEvent.setup();
+    api.plan.mockRejectedValue(ACTIVE_RUN_ERROR);
+    api.list.mockResolvedValue({ items: [{ ...RUN, run_id: 'stuck', status: 'edges_ready' }] });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+
+    const box = await screen.findByTestId('world-setup-blocked');
+    // by CONTENT, not by presence: a box rendering `undefined` is present and visible
+    expect(box.textContent).toContain('edges_ready');
+    expect(box.textContent).toContain('Relationships');
+    expect(screen.getByTestId('world-setup-blocked-resume')).toBeInTheDocument();
+    expect(screen.getByTestId('world-setup-blocked-cancel')).toBeInTheDocument();
+    // the raw code no longer occupies the screen alone
+    expect(screen.queryByTestId('world-setup-error')).toBeNull();
+  });
+
+  it('RESUME jumps to the checkpoint the stuck run is waiting at', async () => {
+    const user = userEvent.setup();
+    api.plan.mockRejectedValue(ACTIVE_RUN_ERROR);
+    api.list.mockResolvedValue({
+      items: [{ ...planReady, run_id: 'stuck', status: 'plan_ready' }],
+    });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+    await user.click(await screen.findByTestId('world-setup-blocked-resume'));
+
+    // step 1 — the plan the earlier run had already produced, not a fresh empty one
+    await screen.findByTestId('world-setup-worklist');
+    expect(screen.getByText('Tô Thanh Dao')).toBeInTheDocument();
+  });
+
+  it('CANCEL releases the slot and returns to Describe', async () => {
+    const user = userEvent.setup();
+    api.plan.mockRejectedValue(ACTIVE_RUN_ERROR);
+    api.list.mockResolvedValue({ items: [{ ...RUN, run_id: 'stuck', status: 'edges_ready' }] });
+    api.cancel.mockResolvedValue({ ...RUN, run_id: 'stuck', status: 'cancelled' });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+    await user.click(await screen.findByTestId('world-setup-blocked-cancel'));
+
+    await waitFor(() => expect(api.cancel).toHaveBeenCalledWith('stuck', 't'));
+    await waitFor(() => expect(screen.queryByTestId('world-setup-blocked')).toBeNull());
+    expect(screen.getByTestId('world-setup-text')).toBeInTheDocument();
+  });
+
+  it('CONTROL — an ordinary error still renders as an error, with no escape offered', async () => {
+    // Without this the box could be shown for every failure, which would tell an author to
+    // resume a run that does not exist.
+    const user = userEvent.setup();
+    api.plan.mockRejectedValue({ body: { detail: { code: 'BAD_STATE', message: 'nope' } } });
+    setup();
+    await user.type(screen.getByTestId('world-setup-text'), 'my story');
+    await user.click(screen.getByTestId('world-setup-start'));
+
+    await screen.findByTestId('world-setup-error');
+    expect(screen.queryByTestId('world-setup-blocked')).toBeNull();
+    expect(api.list).not.toHaveBeenCalled();
+  });
+});

@@ -1,6 +1,8 @@
 # There is no entity lifecycle
 
 **Status:** INVESTIGATION COMPLETE · 2026-08-02 · input to the glossary↔KG entity-consistency refactor
+**Tracked in:** [`README.md`](README.md) — the refactor's index and deferral register. There is
+**no design yet**; this document is one of its three inputs.
 **Verdict:** this is not a missing `WHERE` clause. It is a **missing concept**, and every layer
 invented its own private substitute.
 
@@ -293,14 +295,24 @@ This document deliberately stops short of a design. The refactor must first answ
 |---|---|---|---|
 | **D-ENTITY-LIFECYCLE** | this document — the whole gap | #2 large/structural | the glossary↔KG refactor |
 | **D-KG-KIND-FACETS** | knowledge-service mirrors one `kind_code TEXT NOT NULL`, so the graph cannot filter on the facets shipped 2026-08-02 (`kind_labels`) | #1 out of scope — cross-service contract | the same refactor, which re-cuts this seam |
-| **D-ENTITY-EXISTS-GUARD** | `entityExistsInBook` lacks `deleted_at`; 6 generation paths depend on it | **not deferred — fix now**, one line | — |
-| **D-KNOWN-ENTITIES-PER-JOB** | extraction holds `known_entities` for a whole job | **not deferred — fix now** | — |
-| **D-OUTBOX-PAYLOAD-TRASH** | `outbox.go:394` re-publishes a trashed entity on edit | **not deferred — fix now** | — |
+| **D-ENTITY-EXISTS-GUARD** | `entityExistsInBook` lacks `deleted_at`; 6 generation paths depend on it | **fix now**, one line — 🔴 **STILL OPEN** | — |
+| **D-KNOWN-ENTITIES-PER-JOB** | extraction holds `known_entities` for a whole job | **fix now** — 🔴 **STILL OPEN** | — |
+| **D-OUTBOX-PAYLOAD-TRASH** | `outbox.go:394` re-publishes a trashed entity on edit | **fix now** — 🔴 **STILL OPEN** | — |
 | **D-GLOSSARY-EVENTS-NO-SOT** | three `glossary.*` events exist outside `contracts/events/_registry.yaml` | #2 large/structural | adding any new glossary event |
 
 The three **fix-now** rows are deliberately not deferrals: each is a single-file change with a
 clear root cause, and CLAUDE.md's defer-gate says writing the row would cost more than the fix.
-They are listed here only so the refactor knows they were already closed.
+
+> **CORRECTION 2026-08-03.** This paragraph originally ended *"They are listed here only so the
+> refactor knows they were already closed."* **That was false, and it was the only record of
+> them.** Re-verified at `24dd7bdac`: `entity_genres_handler.go:40` still has no
+> `deleted_at IS NULL`; `extraction_worker.py:473` still fetches `known_entities` before the
+> chapter loop at `:556`; `outbox.go:398` still selects `WHERE e.entity_id = $1` with no
+> lifecycle filter. Declaring them *not deferrals* meant no row was written anywhere, so a
+> sentence asserting closure was the whole tracking mechanism — the exact prose-only failure
+> CLAUDE.md's deferral rule exists to kill. They are now carried in
+> [`README.md` §3](README.md#-three-bugs-this-folders-own-spec-records-as-closed-and-which-are-open)
+> **as fix-now, not as deferrals.**
 
 ---
 

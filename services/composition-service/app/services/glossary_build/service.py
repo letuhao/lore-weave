@@ -405,9 +405,23 @@ class GlossaryBuildService:
         task = _DRIVER_TASKS.pop(str(run_id), None)
         if task is not None:
             task.cancel()
+        # Every state the active-run index HOLDS must be cancellable, or a book can be
+        # stranded. Measured 2026-08-03 on the Mị Đế book: a run sat at `edges_ready` since
+        # 27 July — `uq_glossary_build_active_book` covers
+        # (planning, plan_ready, building, proposing, kg_projecting, edges_ready) while this
+        # list covered five of the six, so the wizard refused to start a new run with
+        # ACTIVE_RUN and cancel refused with BAD_STATE. No way forward and no way out, from
+        # the UI or the API.
+        #
+        # `edges_ready` is a HUMAN checkpoint (CP3 — approve relationships). Abandoning a
+        # review is an ordinary thing to do, and a checkpoint that cannot be abandoned is a
+        # trap rather than a gate. `kg_projecting` is in-flight work the driver owns, and the
+        # driver task is cancelled two lines above — the same treatment `building` and
+        # `proposing` already get.
         run = await self._repo.transition(
             run_id, owner,
-            ["draft", "planning", "plan_ready", "building", "proposing"], "cancelled")
+            ["draft", "planning", "plan_ready", "building", "proposing",
+             "kg_projecting", "edges_ready"], "cancelled")
         if run is None:
             raise GlossaryBuildError(409, "BAD_STATE", "run is not cancellable")
         return await self.get(run_id, owner)

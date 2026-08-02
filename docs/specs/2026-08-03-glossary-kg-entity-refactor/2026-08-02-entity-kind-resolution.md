@@ -1,6 +1,9 @@
 # Entity kind: from *first writer wins* to a resolved vote over a hierarchy
 
-**Status:** DESIGN · 2026-08-02 · supersedes the open half of `BTG-A49` / `BTG-A66`
+**Status:** DESIGN · **M1–M3 SHIPPED 2026-08-02** (77 re-kinds applied, 399 entities carrying a
+facet, 33 a live conflict); **M4 open** — split across `D-KG-KIND-FACETS` (the KG mirror) and
+`D-KIND-FACETS-SURFACE` (API + FE badge), both tracked in [`README.md`](README.md).
+2026-08-02 · supersedes the open half of `BTG-A49` / `BTG-A66`
 **Services:** glossary-service (Go, owner) · translation-service (Python, the voter) ·
 knowledge-service (KG mirror, consumer) · frontend (consumer)
 

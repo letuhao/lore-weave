@@ -1,6 +1,11 @@
 # Entity identity under qualitative extraction — an architecture review
 
-**Date:** 2026-08-01 · **Status:** DIAGNOSIS (no code changed by this document) ·
+**Date:** 2026-08-01 · **Status:** DIAGNOSIS (no code changed by this document) · **PARKED**
+(author's call 2026-08-02: *"do not dive into KG now"*) · tracked as `D-ENTITY-IDENTITY-HASH` in
+[`README.md`](README.md), the glossary↔KG refactor's index — which is where it un-parks.
+**While it is parked, the dead-character feature does not work end-to-end: the store fills and
+nothing reads it.**
+
 **Trigger:** the author, on being shown that the canon gone-cast guard still cannot see a dead
 character: *"data structure rất nghiêm ngặt nhưng cả extract glossary và KG không phải là hàm
 định tính, và ở đây chúng ta đang ép buộc logic phi định tính phải tuân thủ định tính."*

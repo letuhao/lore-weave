@@ -640,3 +640,63 @@ async def test_a_failed_batch_falls_back_to_per_item_not_lost():
     await asyncio.sleep(0.05)
     final = await s.get(run["run_id"], OWNER)
     assert [i["status"] for i in final["items"]] == ["proposed", "proposed"]
+
+
+# ── a book must never be stranded by its own checkpoint (2026-08-03) ─────────
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stuck", ["kg_projecting", "edges_ready"])
+async def test_every_state_that_HOLDS_the_active_slot_is_cancellable(stuck):
+    """Found on the Mị Đế book: a run sat at `edges_ready` for a week and the book could
+    not start a new one.
+
+    `uq_glossary_build_active_book` covers six states — planning, plan_ready, building,
+    proposing, kg_projecting, edges_ready — and `cancel` accepted five of them. So a run
+    that reached the last two held the slot forever: `/plan` refused with ACTIVE_RUN and
+    `/cancel` refused with BAD_STATE. No way forward and no way out.
+
+    `edges_ready` is a HUMAN checkpoint (CP3 — approve relationships). A checkpoint that
+    cannot be abandoned is a trap, not a gate.
+    """
+    repo, gl = FakeRepo(), FakeGlossary()
+    s = GlossaryBuildService(repo, FakeLLMClient([]), gl)
+    run = await s.create_run(owner=OWNER, book_id=BOOK, params=PARAMS)
+    repo.runs[run["run_id"]]["status"] = stuck
+
+    out = await s.cancel(run["run_id"], OWNER)
+    assert out["status"] == "cancelled", f"a run at {stuck} could not be cancelled"
+
+
+@pytest.mark.asyncio
+async def test_the_cancellable_set_COVERS_the_active_index():
+    """The rule, not one example: whatever holds the slot must be releasable.
+
+    Pinned against the index's own state list so the two cannot drift again — adding a
+    seventh blocking state without making it cancellable reds here.
+    """
+    import re, pathlib
+    mig = (pathlib.Path(__file__).resolve().parents[2] / "app" / "db" / "migrate.py"
+           ).read_text(encoding="utf-8")
+    idx = re.search(r"uq_glossary_build_active_book.*?WHERE status IN \(([^)]*)\)",
+                    mig, re.DOTALL)
+    assert idx, "the active-run index changed shape — re-read it before trusting this test"
+    blocking = set(re.findall(r"'([a-z_]+)'", idx.group(1)))
+
+    svc = (pathlib.Path(__file__).resolve().parents[2] / "app" / "services"
+           / "glossary_build" / "service.py").read_text(encoding="utf-8")
+    body = svc[svc.index("async def cancel("):]
+    # The list ARGUMENT of the transition call, not "everything before the word
+    # cancelled" — that first draft cut at the word inside the comment above the call and
+    # read the prose as the code. Same mistake this repo has a rule about, made while
+    # writing the test for it.
+    call = re.search(r"self\._repo\.transition\((.*?)\)", body, re.DOTALL)
+    assert call, "the cancel transition changed shape — re-read it"
+    states = re.search(r"\[(.*?)\]", call.group(1), re.DOTALL)
+    assert states, "cancel no longer passes a list of from-states"
+    cancellable = set(re.findall(r"['\"]([a-z_]+)['\"]", states.group(1)))
+
+    missing = sorted(blocking - cancellable)
+    assert missing == [], (
+        f"these states hold the active-run slot but cannot be cancelled: {missing}. "
+        f"A book with a run in one of them can neither continue nor start over."
+    )
