@@ -1,8 +1,31 @@
 # ACTOR HUB — RUN STATE
 
-> # ▶▶ NEXT SESSION STARTS HERE — IMPLEMENTATION
+> # ▶▶ NEXT SESSION STARTS HERE — FEATURE #1 IS BUILT
 >
-> **State:** design SEALED and COMMITTED (`d3bb441da`) · **code written: NONE** · branch `feat/game-logic` · **not pushed**
+> **State:** **BUILT and COMMITTED (`89b639a45`)** · design sealed at `d3bb441da` · branch
+> `feat/game-logic` · **not pushed**
+>
+> | | |
+> |---|---|
+> | the hub | [`crates/actor-hub`](../../crates/actor-hub) — ordinals · `PluginSet` · the declaration registry · the contribution rows · the fold · `Actor` · the explain path |
+> | existence | [`crates/entity-existence`](../../crates/entity-existence) — `GoneState` moved DOWN out of `dp-kernel`; the public path is unchanged |
+> | the op set | `crates/ruleset-core/src/modifier.rs` — `ModifierOp` moved DOWN out of `game-rules`; no law changed |
+> | `U-9` · `U-10` | `scripts/hashed-substrate-float-gate.py` · `scripts/citation-gate.py`, both wired pre-commit, both with a passing `--self-test` |
+>
+> **Evidence:** 279 Rust tests green across the touched crates · `dp-kernel --lib` 315 unchanged · the Go
+> mirror still agrees · **20 bite-tests, every one red** · **three cold-start verifiers, 45 findings, all
+> closed** · 14 repo gates green.
+>
+> ## What the NEXT feature inherits
+>
+> **Eight seams, each a measured fact with a trigger and none with a design** —
+> [`seams-and-triggers.md`](../specs/2026-08-02-actor-hub/2026-08-02-seams-and-triggers.md) `S-11`..`S-18`.
+> **The acceptance test is the contract with feature #2:** declaring a plugin, attaching it, submitting its
+> rows and reading its numbers must all be possible **without touching a file in `crates/actor-hub/src/`**,
+> and `tests/adding_a_feature_touches_zero_files.rs` stops compiling if that stops being true.
+>
+> **The rule that governs the next round, unchanged:** *a plugin exists so that adding feature N+1 does not
+> touch feature #1 — not so feature #1 can specify feature N+1.*
 >
 > ## Read in this order, then start
 >
