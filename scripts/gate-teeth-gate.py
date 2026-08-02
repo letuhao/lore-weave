@@ -31,6 +31,7 @@ gates get commented out instead of fixed.
 """
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -142,8 +143,44 @@ def has_failure_path(path: Path) -> bool:
     return bool(_SET_E.search(src) and _PY_FAIL.search(src))
 
 
+#: Gates whose red-ability is proved by `guard-redability-gate.py` — it injects the real
+#: violation into real source and asserts the gate exits non-zero. That is a STRICTLY stronger
+#: proof than a selftest, which exercises a synthetic input the author chose: the sweep's first
+#: run found two gates that passed their own tests and stayed green when the actual violation
+#: was put in front of them.
+#:
+#: Read off the AST, not the text, and this is not a nicety. The sweep's module docstring NAMES
+#: `llm-budget-ssot-gate.py` while explaining what it found there — a text scan would certify a
+#: gate on the strength of prose describing it, which is the exact false-proof this file
+#: already caught twice (a `help=` string, a module docstring). The constants are read from the
+#: `CASES` assignment alone, so only a gate the sweep actually EXECUTES counts.
+def _redability_sweep_targets() -> frozenset[str]:
+    sweep = ROOT / "scripts" / "guard-redability-gate.py"
+    if not sweep.exists():
+        return frozenset()
+    try:
+        tree = ast.parse(sweep.read_text(encoding="utf-8", errors="ignore"))
+    except SyntaxError:
+        return frozenset()
+    cases = next((n for n in ast.walk(tree)
+                  if isinstance(n, ast.Assign)
+                  and any(isinstance(t, ast.Name) and t.id == "CASES" for t in n.targets)), None)
+    if cases is None:
+        return frozenset()
+    return frozenset(
+        c.value for c in ast.walk(cases)
+        if isinstance(c, ast.Constant) and isinstance(c.value, str)
+        and c.value.startswith("scripts/")
+    )
+
+
+_REDABILITY_PROVEN = _redability_sweep_targets()
+
+
 def teeth_proof(rel: str, path: Path) -> str | None:
     """How this gate proves it can go red, or None."""
+    if rel in _REDABILITY_PROVEN:
+        return "guard-redability-gate case (real violation, real source)"
     src = path.read_text(encoding="utf-8", errors="ignore")
     # This file is the ANALYZER: the word "selftest" is its vocabulary, so it matched its own
     # `return "built-in selftest"` string and certified itself. Third instance of that shape in

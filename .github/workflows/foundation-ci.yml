@@ -124,6 +124,15 @@ jobs:
       - run: bash scripts/alert-rule-validator.sh
       # A registered contract that nothing reads is a claim, not a contract (S12).
       - run: python scripts/enforcement-claims-gate.py
+      # …and a gate that cannot FAIL is a claim too. This one injects each guard's real
+      # violation into real source and asserts the guard goes red, because the defect that
+      # motivated it was invisible to every other kind of check: a `\b` corrupted into a
+      # literal 0x08 byte, so the detector matched nothing and reported PASS with the
+      # violation on the line above. `--gates-only` because the remaining cases drive service
+      # pytest suites, whose deps this job does not install — the script names the ones it
+      # skipped rather than counting them as covered.
+      - run: python scripts/guard-redability-gate.py --self-test
+      - run: python scripts/guard-redability-gate.py --gates-only
       # A gated test that no workflow arms has never run — 200 of them were found this
       # way, in two sweeps, the second only because the first under-counted by 4x.
       - run: python scripts/test-dsn-coverage-gate.py

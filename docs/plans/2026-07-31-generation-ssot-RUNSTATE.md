@@ -2665,6 +2665,82 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 - ~~the provider path is genuinely single~~ → two POC files called Ollama directly over httpx
   (deleted), and the gate that was supposed to catch them enforced half its own rule.
 
+### ✅ AUDIT-1 — every guard this run wrote, asked with the real violation in front of it
+
+```
+AUDIT AUDIT-1 (guard red-ability — the audit's own first finding, generalised)
+  BUILT      — `scripts/guard-redability-gate.py`: 11 cases that inject each guard's REAL
+               violation into REAL source, run the REAL guard, and assert it exits non-zero —
+               then restore the file from saved bytes, sha256-verified. Wired into
+               foundation-ci (`--self-test`, then `--gates-only`).
+               Two defects it found in `llm-budget-ssot-gate.py` are FIXED, not recorded.
+               `gate-teeth-gate.py` now counts a sweep case as a red-ability proof, read off
+               the sweep's `CASES` AST — a text scan would have certified a gate on the
+               strength of the sweep's own DOCSTRING naming it, which is the false-proof that
+               file has already caught twice.
+
+  PROVEN     — first run, before any fix:
+                 6/11 guards proved RED-ABLE against a real on-disk violation
+               after fixing two probes that were under-powered and two gates that were wrong:
+                 guard-redability-gate: PASS — 11/11 guard(s) proved RED-ABLE against a
+                 real on-disk violation.
+               The two REAL gate defects, each measured, not argued:
+                 · deleting `"max_tokens": max_tokens,` from `cast_plan.py:241` left the gate
+                   GREEN. A payload with a `**spread` and no budget key was excused as
+                   `opaque` — so the site was identified as a call site BY the very key the
+                   HARD rule is about, and removing the key removed the finding.
+                 · marking composition's VERDICT row `judge_prose` `signal_inert=True` left
+                   the gate GREEN while the service's own unit test went red. `signal_inert`
+                   is also an EXEMPTION from the no-signal ratchet, so an unverified one
+                   excuses call sites from signal they genuinely have. Only MIRROR can be
+                   inert; every other kind is moved by `context_length`, a fact this gate
+                   already stated in `_KIND_ALWAYS_READS` and did not enforce.
+               And the sweep reproduces the founding defect. Re-injecting the literal 0x08
+               byte into `test_critic_policy.py`'s regex:
+                 S6 critic — an EIGHTH hand-rolled copy   STILL-GREEN   <<<
+                 FAIL — 1 of 11 guard(s) did not go red against a real on-disk violation.
+                 sweep exit code: 1        restored byte-identical: True
+               Suites, after: composition 3938 passed, 8 failed (the tracked
+               `test_motif_retrieve_db` rows, unchanged), 8 skipped, 123.87s ·
+               translation 46 passed · chat trace-contract 13 passed · SDK 1013 passed,
+               9 skipped. Gates: `CI gate sweep: PASS 54  FAIL 0`;
+               `gate-teeth-gate: PASS — 59 CI-invoked gate(s), every one able to return
+               non-zero. 14 carry a red-ability proof; 45 held at baseline.`
+
+  NOT PROVEN — the sweep covers the guards THIS RUN wrote. It says nothing about the other
+               45 CI gates that carry no red-ability proof, and the ratchet did not move.
+               `--gates-only` runs 4 of the 11 cases in CI; the other 7 need a service's deps
+               and run only locally, which the script prints rather than counting as covered.
+               I also did not re-audit the two remaining inline-restated controls outside
+               composition — I fixed the two in the files that had actually broken.
+
+  DRIFT      — three, and the first is the whole point of the slice.
+               · My first sweep reported 5 guards "STILL GREEN". Two of those were MY PROBE
+                 being wrong, not the guard: `motif_plan` is not a subject of the injection
+                 lint at all (`retrieved=False`), and the guard-SDK gate needs THREE adopters
+                 where I had injected one. Had I stopped at the first table I would have
+                 written up two defects that do not exist — the mirror image of the bug I was
+                 hunting, and the reason each case now asserts the guard is GREEN before the
+                 injection as well as RED after it.
+               · I nearly left the sweep in the scratchpad as evidence. It would have been
+                 prose: a number in a transcript, with nothing to re-run it. The repo's own
+                 deferral rule already says this and I had to be reminded of it by writing
+                 the word "sweep" into a filename that `gate-teeth-gate`'s `_IS_GATE` regex
+                 does not match — my new CI gate was, for about ten minutes, outside the very
+                 inventory that exists to catch unwired and toothless gates.
+               · The `--self-test` I first sketched asserted only that a case reports RED.
+                 That is satisfied by a `run_case` hardwired to return "RED" — the exact shape
+                 this file exists to refuse, inside this file. It now pins all three outcomes,
+                 including ANCHOR-GONE, because a case whose anchor has moved is testing
+                 nothing and must not be allowed to read as coverage.
+
+  NEXT       — the DoD gaps this audit measured but did NOT close (rows in Debt below):
+               Go/Rust `GuardReport` (4 tracked-unguarded generation paths), the resolved
+               provider model behind the distinct-critic rule, 29 baselined budget sites,
+               22 baselined injection modules, and the 4 estimators / 6 finding types.
+               Each is a slice, not a fix.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -2692,6 +2768,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-02 | **The kernel estimator is itself ~0.78× tiktoken on Vietnamese** (my n=3 sample), where the spec cites a 2026-07-07 eval claiming the script-aware heuristic tracks o200k within 3-6%. | Under-counting is the direction that overflows a window. My sample is far too small to overturn a real-corpus measurement, so the tension is recorded rather than acted on — re-tuning the kernel's `_F_VIETNAMESE` on n=3 would be the "generalised from one prompt formulation" mistake this run already has twice. Needs the eval corpus re-run. |
 | 2026-08-02 | **The distinct-critic rule compares `user_model_id`, not the RESOLVED provider model.** Two BYOK rows can point at the same underlying model. | A user with two gemma credentials picks one as drafter and one as critic, gets `CONFIGURED`, and a model grades its own prose — the exact failure S6 is named for, one level below where the check now looks. Closing it needs a provider-registry route exposing the underlying model for a `user_model_id` (only `/context-window` exists) plus a caching decision on a per-generation hot path. Gate #2 — cross-service contract. |
 | 2026-08-02 | `settings.model_roles` still has ZERO writers. S6 writes the legacy `critic_model_ref`/`_source` scalars, which the dual-read consumes. | The newer map remains a read-only contract with no producer, so the Book tier of the Chat & AI cascade still resolves a key nothing writes. Not blocking — the dual-read means the critic setting works — but the map is dead weight until something writes it or it is retired. |
+| 2026-08-02 | **45 of 59 CI gates carry no red-ability proof**, and `guard-redability-gate.py` did not move that number — it covers the guards this run wrote. | The ratchet's own PASS line says it out loud, so it is visible rather than implied. The gates it does cover are now proved against the real violation, which is a strictly stronger proof than the selftest convention the other 14 use. Un-parks one gate at a time: every new gate gets a sweep case. |
+| 2026-08-02 | **7 of the 11 sweep cases do not run in CI** — they drive service pytest suites and the `lints` job installs no service deps. | `--gates-only` prints what it skipped, so a partial sweep cannot read as a complete one. The real fix is a CI job that installs composition + chat + translation deps; that job would also un-skip work `python-integration-tests.yml` already does, so the honest move is to add the sweep there rather than build a third job. |
 | 2026-08-02 | The output-budget window clamp is unexercised in production. | The dev model reports a 200k window, so the half-share never binds. It is proven only by unit test. The case that matters — a small-window BYOK model getting a 24750-token cap — has never been run. |
 
 ## Drift log — near-misses, wrong turns, bars I nearly lowered
@@ -2812,3 +2890,27 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
   honesty states. The real gaps were narrower and different: one missing *direction*, one missing
   *status*, and the checker pointed at the empty SSOT. Reading the code before proposing the fix
   changed the fix.
+- **2026-08-02 · a guard that could not fail, and its own control certified the silence.** The S6
+  distinct-critic guard was written by a generator script, and `\b` became a literal **0x08**
+  byte — so its regex required a control character no source file contains, matched nothing, and
+  reported PASS with an eighth copy of the rule on the line above. Its control was green because
+  it re-stated the pattern by hand instead of calling the detector. Only `cat -A` showed the `^H`.
+  **A control that re-implements the thing it controls tests the author's intent, not the code.**
+- **2026-08-02 · my first red-ability sweep accused two innocent guards.** Five reported "STILL
+  GREEN"; two of those were my PROBE being wrong — `motif_plan` is not a subject of the injection
+  lint at all, and the guard-SDK gate needs three adopters where I injected one. Writing that
+  table up as-is would have produced two defects that do not exist, hunting the exact bug class I
+  was hunting. Every case now asserts GREEN-before as well as RED-after.
+- **2026-08-02 · a gate whose call sites are found BY the thing it checks for.** Deleting
+  `"max_tokens": max_tokens,` from a real call site left `llm-budget-ssot-gate` green: a payload
+  with a `**spread` and no budget key was excused as `opaque`. The gate's own comment said it was
+  "one `**kwargs` away from being live" and treated that as a note. It was a hole.
+- **2026-08-02 · an exemption nothing verified, in the gate that exists to reject unverified
+  claims.** `signal_inert=True` excuses a row's call sites from the no-signal ratchet, and the
+  gate accepted the flag at face value — marking a VERDICT row inert kept CI green while the
+  service's own unit test went red. The fact that refutes it (`_KIND_ALWAYS_READS`: every
+  non-MIRROR kind reads `context_length`) was already written in the same file, two functions up.
+- **2026-08-02 · I nearly left the proof in the scratchpad.** A sweep run once, with its numbers
+  pasted into a transcript, is prose. Turning it into a file was not enough either: I named it
+  `…-sweep.py`, which `gate-teeth-gate`'s `_IS_GATE` regex does not match, so my new CI gate spent
+  ten minutes outside the inventory that exists to catch unwired and toothless gates.

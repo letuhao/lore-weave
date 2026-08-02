@@ -23,9 +23,15 @@ _APP = pathlib.Path(__file__).resolve().parents[2] / "app"
 _HEAL_MODULES = ("engine/self_heal.py", "engine/plan_heal.py")
 
 
-def _assigned_skip_reasons(rel: str) -> list[tuple[int, str]]:
-    """Every string LITERAL assigned to a `.skip_reason` attribute in `rel`."""
-    tree = ast.parse((_APP / rel).read_text(encoding="utf-8"))
+def _assigned_in_source(src: str) -> list[tuple[int, str]]:
+    """Every string LITERAL assigned to a `.skip_reason` attribute in `src`.
+
+    Takes SOURCE, not a path, so the control below can drive the same function the scan uses.
+    A control that re-states the detector inline is how a sibling guard in this suite once
+    certified its own silence — it matched its own restatement while the real scan, whose
+    regex had been corrupted, matched nothing.
+    """
+    tree = ast.parse(src)
     out: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
@@ -35,6 +41,10 @@ def _assigned_skip_reasons(rel: str) -> list[tuple[int, str]]:
         if targets and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
             out.append((node.lineno, node.value.value))
     return out
+
+
+def _assigned_skip_reasons(rel: str) -> list[tuple[int, str]]:
+    return _assigned_in_source((_APP / rel).read_text(encoding="utf-8"))
 
 
 @pytest.mark.parametrize("rel", _HEAL_MODULES)
@@ -49,14 +59,15 @@ def test_no_heal_module_assigns_a_RAW_skip_reason_string(rel):
 
 
 def test_the_scanner_can_actually_SEE_a_raw_assignment():
-    """The control. The assertion above expects an EMPTY list, which is exactly what a broken
-    scanner returns — so prove the scanner fires on the pattern it forbids."""
-    tree = ast.parse('f.skip_reason = "not_located"\n')
-    hits = [n for n in ast.walk(tree)
-            if isinstance(n, ast.Assign)
-            and any(isinstance(t, ast.Attribute) and t.attr == "skip_reason" for t in n.targets)
-            and isinstance(n.value, ast.Constant)]
-    assert len(hits) == 1, "the guard would not have seen a raw assignment"
+    """The control, driving `_assigned_in_source` — the same function the scan calls.
+
+    The assertion above expects an EMPTY list, which is exactly what a broken scanner returns.
+    Both halves are pinned: one source that must be flagged, and one that must not, because a
+    detector hardwired to report a hit satisfies the first on its own.
+    """
+    assert _assigned_in_source('f.skip_reason = "not_located"\n') == [(1, "not_located")]
+    assert _assigned_in_source("f.skip_reason = SkipReason.NOT_LOCATED\n") == [], \
+        "the scanner flags the enum form — it would red on the fix it is asking for"
 
 
 def test_the_undocumented_members_are_the_load_bearing_ones():

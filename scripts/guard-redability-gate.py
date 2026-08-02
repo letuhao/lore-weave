@@ -1,0 +1,309 @@
+#!/usr/bin/env python
+"""Every guard must go RED against a REAL violation sitting in REAL source.
+
+Why this exists
+---------------
+An audit of the generation-SSOT run found one of its twelve guards completely inert. The
+guard's own control was green, its logic read correctly, and it reported PASS with the
+violation it forbids on the line above it. The cause was not logic: the file had been written
+by a generator script and `\\b` had become a literal 0x08 backspace, so the pattern required a
+control character no source file contains.
+
+Nothing in the repo could have caught that, because every check available was a check on the
+author's *intent*: reading the code, reasoning about the regex, running a control that
+restated the pattern by hand. The only thing that catches it is putting the real violation on
+disk and asking the real guard.
+
+That is a general lesson and this is the general mechanism. The two failure shapes it exists
+to catch, both of which it DID catch on its first run:
+
+  · **Scope** — a guard that scans an enumerated list of files is default-uncovered (NV-2).
+    The critic guard scanned `routers/engine.py`; the eighth copy lived in `engine/canon_reflect.py`.
+  · **Corruption / self-defeat** — a guard whose detector cannot fire, whatever the input.
+
+…and two defects in `llm-budget-ssot-gate.py` that no unit test had reached:
+
+  · Deleting `"max_tokens": max_tokens,` from a real call site left the gate GREEN, because a
+    payload with a `**spread` and no budget key was excused as `opaque`. The site was
+    identified as a call site BY the key the rule is about.
+  · Marking a VERDICT row `signal_inert=True` left the gate GREEN, while the service's own
+    unit test went red — and `signal_inert` is also an EXEMPTION from the gate's ratchet.
+
+What a case proves
+------------------
+Each case asserts THREE things, in order, and all three are load-bearing:
+
+  1. the guard is GREEN on the clean tree (or "it went red" proves nothing — it was already red);
+  2. it is RED with the violation injected;
+  3. the file is restored BYTE-IDENTICALLY afterwards, verified by sha256.
+
+Restore is from saved bytes, never `git checkout <file>` — a checkout would discard unrelated
+real edits living in the same file.
+
+Usage
+-----
+    python scripts/guard-redability-gate.py               # every case
+    python scripts/guard-redability-gate.py --gates-only  # only cases needing no service deps
+    python scripts/guard-redability-gate.py --list        # what would run, and where
+"""
+from __future__ import annotations
+
+import hashlib
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+COMP = ROOT / "services" / "composition-service"
+TRANS = ROOT / "services" / "translation-service"
+KNOW = ROOT / "services" / "knowledge-service"
+CHAT = ROOT / "services" / "chat-service"
+
+#: A case whose guard is a plain script under `scripts/` needs nothing installed, so CI's
+#: `lints` job can run it. A case whose guard is a service's pytest suite needs that service's
+#: dependencies, which `lints` does not have — those run locally and in any job that installs
+#: them. The distinction is printed, never silently applied: a sweep that quietly ran 3 of 11
+#: and said "all guards red-able" would be the exact defect this file is about.
+GATE = "gate"
+PYTEST = "pytest"
+
+
+def append(text):
+    return ("append", text)
+
+
+def create(text):
+    return ("create", text)
+
+
+def replace(old, new, count=1):
+    return ("replace", (old, new, count))
+
+
+#: (name, tier, target(s), mutation, guard argv, guard cwd)
+CASES = [
+    ("S6 critic — an EIGHTH hand-rolled copy of the distinct rule", PYTEST,
+     COMP / "app" / "engine" / "select.py",
+     append("\n\ndef _redability_probe(critic_ref, drafter_ref):\n"
+            "    return str(critic_ref) != str(drafter_ref)\n"),
+     [sys.executable, "-m", "pytest", "tests/unit/test_critic_policy.py", "-q",
+      "-p", "no:cacheprovider", "-k", "re_inlines"], COMP),
+
+    ("S3 findings — a raw skip_reason string outside the enum", PYTEST,
+     COMP / "app" / "engine" / "plan_heal.py",
+     append('\n\ndef _redability_probe(f):\n    f.skip_reason = "not_locatd"\n'),
+     [sys.executable, "-m", "pytest", "tests/unit/test_finding_vocabulary.py", "-q",
+      "-p", "no:cacheprovider"], COMP),
+
+    ("S5 heal — a module quietly RUNS a stage it declared SKIPPED", PYTEST,
+     COMP / "app" / "engine" / "plan_heal.py",
+     append("\n\ndef _redability_probe(t):\n    return _snap_to_sentence(t)\n"),
+     [sys.executable, "-m", "pytest", "tests/unit/test_heal_protocol.py", "-q",
+      "-p", "no:cacheprovider"], COMP),
+
+    ("S7 budget — a caller re-introduces an int max_tokens literal", PYTEST,
+     COMP / "app" / "engine" / "select.py",
+     append("\n\ndef _redability_probe(c):\n    return c.chat(max_tokens=4242)\n"),
+     [sys.executable, "-m", "pytest", "tests/unit/test_llm_budget_registry.py", "-q",
+      "-p", "no:cacheprovider", "-k", "re_introduces"], COMP),
+
+    ("S7 budget — signal_inert=True on a row that DOES move", PYTEST,
+     COMP / "app" / "llm_budget.py",
+     replace('"judge_prose": CallProfile(OutputKind.VERDICT, 1536, 1536,',
+             '"judge_prose": CallProfile(OutputKind.VERDICT, 1536, 1536, signal_inert=True,'),
+     [sys.executable, "-m", "pytest", "tests/unit/test_llm_budget_registry.py", "-q",
+      "-p", "no:cacheprovider", "-k", "signal_inert or no_inert_row"], COMP),
+
+    ("S7 gate — the same inert claim, seen by the REPO gate", GATE,
+     COMP / "app" / "llm_budget.py",
+     replace('"judge_prose": CallProfile(OutputKind.VERDICT, 1536, 1536,',
+             '"judge_prose": CallProfile(OutputKind.VERDICT, 1536, 1536, signal_inert=True,'),
+     [sys.executable, "scripts/llm-budget-ssot-gate.py"], ROOT),
+
+    ("S7 gate — an LLM call site with its budget stripped", GATE,
+     COMP / "app" / "engine" / "cast_plan.py",
+     replace('"max_tokens": max_tokens, **no_thinking_fields(),', "**no_thinking_fields(),"),
+     [sys.executable, "scripts/llm-budget-ssot-gate.py"], ROOT),
+
+    ("S4 injection — a real subject module loses its sanitizer", GATE,
+     COMP / "app" / "engine" / "cowrite.py",
+     replace("sanitize_", "xanitize_", count=-1),
+     [sys.executable, "scripts/injection-coverage-lint.py"], ROOT),
+
+    ("S9 guard-SDK — a THIRD service adopts GuardReport", GATE,
+     [TRANS / "app" / "_redability_probe.py", KNOW / "app" / "_redability_probe.py"],
+     create('"""probe."""\nfrom typing import Any\n\n'
+            "GuardReport: Any = None\nCheckStatus: Any = None\n"),
+     [sys.executable, "scripts/guard-sdk-entry-gate.py"], ROOT),
+
+    ("S11 context-trace — a closed-set value added on ONE side", PYTEST,
+     ROOT / "sdks" / "python" / "loreweave_context" / "trace.py",
+     replace('"T5", "T6")', '"T5", "T6", "T7")'),
+     [sys.executable, "-m", "pytest", "tests/test_context_trace_contract.py", "-q",
+      "-p", "no:cacheprovider"], CHAT),
+
+    ("S7 translation — an inert MIRROR row that stops being inert", PYTEST,
+     TRANS / "app" / "llm_budget.py",
+     replace('"translate_chunk": CallProfile(OutputKind.MIRROR, signal_inert=True)',
+             '"translate_chunk": CallProfile(OutputKind.VERDICT, 512, 256, '
+             'signal_inert=True, why="probe")'),
+     [sys.executable, "-m", "pytest", "tests/test_llm_budget_registry.py", "-q",
+      "-p", "no:cacheprovider"], TRANS),
+]
+
+
+def _run(argv, cwd):
+    r = subprocess.run(argv, cwd=str(cwd), capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    return r.returncode, (r.stdout or "") + (r.stderr or "")
+
+
+def _mutate(target: Path, op: str, payload) -> str | None:
+    """Apply the injection. Returns an error string when the anchor is gone."""
+    if op == "append":
+        target.write_text(target.read_text(encoding="utf-8") + payload, encoding="utf-8")
+    elif op == "create":
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(payload, encoding="utf-8")
+    elif op == "replace":
+        old, new, count = payload
+        src = target.read_text(encoding="utf-8")
+        if old not in src:
+            # NOT a pass. An anchor that has moved means this case is no longer injecting the
+            # violation it names, and a sweep that skipped it would report full coverage while
+            # testing nothing — the failure mode the whole file exists to refuse.
+            return f"anchor gone from {target.name}: {old[:60]!r}"
+        target.write_text(src.replace(old, new) if count == -1
+                          else src.replace(old, new, count), encoding="utf-8")
+    return None
+
+
+def run_case(case) -> tuple[str, str, str]:
+    name, _tier, targets, (op, payload), argv, cwd = case
+    if isinstance(targets, Path):
+        targets = [targets]
+    saved = [(t, t.read_bytes() if t.exists() else None) for t in targets]
+
+    base_rc, base_out = _run(argv, cwd)
+    if base_rc != 0:
+        tail = (base_out.strip().splitlines() or [""])[-1]
+        return name, "BASELINE-RED", f"already failing before injection: {tail[:90]}"
+
+    err = None
+    try:
+        for target in targets:
+            err = _mutate(target, op, payload)
+            if err:
+                break
+        rc, out = (0, "") if err else _run(argv, cwd)
+    finally:
+        for target, original in saved:
+            if original is not None:
+                target.write_bytes(original)
+                assert hashlib.sha256(target.read_bytes()).hexdigest() == \
+                    hashlib.sha256(original).hexdigest(), f"RESTORE FAILED for {target}"
+            elif target.exists():
+                target.unlink()
+
+    if err:
+        return name, "ANCHOR-GONE", err
+    tail = ([ln for ln in out.strip().splitlines() if ln.strip()] or [""])[-1]
+    return name, ("RED" if rc != 0 else "STILL-GREEN"), tail[:90]
+
+
+def self_test() -> int:
+    """Prove this gate can tell a guard that FIRES from one that does not.
+
+    Every case here asserts `verdict == "RED"`, which is satisfied just as loudly by a
+    `run_case` hardwired to return "RED" — the check-that-cannot-fail shape this whole file
+    exists to refuse, and it would be indefensible to ship it inside this file of all files.
+
+    So both directions are driven against throwaway guards whose behaviour is known by
+    construction, plus the third outcome that must never be silently treated as a pass: a case
+    whose anchor has moved is testing nothing, and must say so rather than count as covered.
+
+    Deliberately free of service dependencies, so it runs in the same CI job as `--gates-only`.
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        target = tmp / "subject.py"
+        target.write_text("CLEAN = 1\n", encoding="utf-8")
+
+        reacting = tmp / "reacting_guard.py"
+        reacting.write_text(
+            "import sys, pathlib\n"
+            "src = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8')\n"
+            "sys.exit(1 if 'VIOLATION' in src else 0)\n", encoding="utf-8")
+        blind = tmp / "blind_guard.py"
+        blind.write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
+
+        checks = [
+            ("a guard that FIRES on the injected violation",
+             [sys.executable, str(reacting), str(target)], replace("CLEAN", "VIOLATION"), "RED"),
+            ("a guard that is BLIND to it (the 0x08 defect's shape)",
+             [sys.executable, str(blind)], replace("CLEAN", "VIOLATION"), "STILL-GREEN"),
+            ("a case whose anchor has MOVED (tests nothing, must not pass)",
+             [sys.executable, str(reacting), str(target)],
+             replace("A_STRING_THAT_IS_NOT_THERE", "X"), "ANCHOR-GONE"),
+        ]
+        for label, argv, mutation, expected in checks:
+            _, verdict, detail = run_case((label, GATE, target, mutation, argv, tmp))
+            if verdict != expected:
+                print(f"[redability] SELFTEST FAIL — {label}: expected {expected}, "
+                      f"got {verdict} ({detail})")
+                return 1
+            if target.read_text(encoding="utf-8") != "CLEAN = 1\n":
+                print(f"[redability] SELFTEST FAIL — {label} did not restore the subject")
+                return 1
+
+    print("[redability] SELFTEST PASS — reports RED on a guard that fires, STILL-GREEN on a "
+          "blind one, ANCHOR-GONE on a case that tests nothing; subject restored each time.")
+    return 0
+
+
+def main() -> int:
+    if "--self-test" in sys.argv:
+        return self_test()
+    gates_only = "--gates-only" in sys.argv
+    selected = [c for c in CASES if not gates_only or c[1] == GATE]
+    skipped = len(CASES) - len(selected)
+
+    if "--list" in sys.argv:
+        for name, tier, targets, _, argv, cwd in CASES:
+            t = targets if isinstance(targets, list) else [targets]
+            print(f"[{tier:6}] {name}")
+            print(f"          inject into: {', '.join(p.name for p in t)}")
+            print(f"          then run   : {' '.join(argv[1:])}  (cwd={cwd.name})")
+        return 0
+
+    results = [run_case(c) for c in selected]
+    width = max((len(n) for n, _, _ in results), default=1)
+    bad = [r for r in results if r[1] != "RED"]
+
+    for name, verdict, detail in results:
+        print(f"{name:<{width}}  {verdict}{'' if verdict == 'RED' else '   <<<'}")
+        print(f"{'':<{width}}    {detail}")
+
+    print()
+    if bad:
+        print(f"FAIL — {len(bad)} of {len(results)} guard(s) did not go red against a real "
+              f"on-disk violation.")
+        print("   A guard that cannot fail is worse than no guard: it reports coverage and")
+        print("   silences review. Fix the guard, or fix the case if the anchor moved.")
+        return 1
+
+    print(f"guard-redability-gate: PASS — {len(results)}/{len(results)} guard(s) proved "
+          f"RED-ABLE against a real on-disk violation.")
+    if skipped:
+        # Named, because an unrun case that goes unmentioned is how a partial sweep starts
+        # reading as a complete one — the same lie `llm-budget-ssot-gate` told about its own
+        # unscanned surface until it was made to name it.
+        print(f"  NOT RUN in this mode: {skipped} case(s) whose guard is a service pytest "
+              f"suite (needs that service's deps installed).")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

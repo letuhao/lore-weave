@@ -99,6 +99,22 @@ def test_an_unknown_drafter_does_not_silently_refuse_the_critic():
 
 # ── the reason this module exists: no EIGHTH hand-built copy ──────────────────────────────
 
+#: The detector, named so that the scan and its control are THE SAME CODE. Written as a
+#: literal pattern in source rather than emitted by a helper: the corrupted version of this
+#: guard was produced by a generator script, and `\b` did not survive the trip.
+_RULE_RE = re.compile(r"(critic|judge)[A-Za-z0-9_]*(ref|source)")
+
+
+def _reinlines_rule(node: ast.Compare) -> bool:
+    """True when `node` is the distinct-critic rule, hand-rolled instead of delegated."""
+    if not any(isinstance(o, (ast.Eq, ast.NotEq)) for o in node.ops):
+        return False
+    src = ast.unparse(node)
+    # a critic/judge ref compared against the DRAFTER's — the rule, re-inlined
+    if _RULE_RE.search(src) and "drafter" in src:
+        return True
+    return "critic" in src and "model_ref" in src
+
 def test_no_module_re_inlines_the_distinct_critic_rule():
     """`ast`, over the WHOLE app tree, because the first version of this guard scanned one file.
 
@@ -117,17 +133,9 @@ def test_no_module_re_inlines_the_distinct_critic_rule():
             tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
         except SyntaxError:
             continue
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Compare):
-                continue
-            src = ast.unparse(node)
-            if not any(isinstance(o, (ast.Eq, ast.NotEq)) for o in node.ops):
-                continue
-            # a critic/judge ref compared against the DRAFTER's — the rule, re-inlined
-            if re.search("(critic|judge)[A-Za-z0-9_]*(ref|source)", src) and "drafter" in src:
-                offenders.append(f"{path.relative_to(_APP).as_posix()}:{node.lineno}")
-            elif "critic" in src and "model_ref" in src:
-                offenders.append(f"{path.relative_to(_APP).as_posix()}:{node.lineno}")
+        offenders += [f"{path.relative_to(_APP).as_posix()}:{n.lineno}"
+                      for n in ast.walk(tree)
+                      if isinstance(n, ast.Compare) and _reinlines_rule(n)]
     assert offenders == [], (
         f"the distinct-critic rule is re-inlined at {offenders} — call resolve_critic() or "
         f"resolve_critic_refs(); that rule had EIGHT copies once"
@@ -135,14 +143,27 @@ def test_no_module_re_inlines_the_distinct_critic_rule():
 
 
 def test_the_ast_guard_can_actually_see_such_a_comparison():
-    """A control for the guard above. It asserts an EMPTY list, which is exactly the shape
-    that passes when the detector is broken — so prove the detector fires on the pattern it
-    claims to catch, rather than trusting a green from a scan that found nothing."""
-    tree = ast.parse("x = str(critic_ref) != str(drafter_ref)\n")
-    hits = [n for n in ast.walk(tree)
-            if isinstance(n, ast.Compare) and "critic" in ast.unparse(n)
-            and any(isinstance(o, (ast.Eq, ast.NotEq)) for o in n.ops)]
-    assert len(hits) == 1, "the guard would not have seen the very pattern it forbids"
+    """A control for the guard above — and it must call `_reinlines_rule`, not describe it.
+
+    The first version of this control re-stated the pattern by hand (`"critic" in
+    ast.unparse(n)`) instead of invoking the detector. That is precisely how this file once
+    reported PASS with an eighth copy in front of it: the real scan's regex had been written
+    by a generator that turned `\\b` into a literal 0x08 byte, so it required a control
+    character no source contains and matched nothing — while this control, matching its own
+    restatement, stayed green and certified the silence.
+
+    A control that re-implements the thing it is controlling tests the author's intent. Only
+    a control that calls the same code tests the code.
+    """
+    seen = ast.parse("x = str(critic_ref) != str(drafter_ref)\n")
+    assert [n for n in ast.walk(seen) if isinstance(n, ast.Compare) and _reinlines_rule(n)], \
+        "the detector would not have seen the very pattern it forbids"
+
+    # …and the negative half, or a detector hardwired to True would satisfy the line above.
+    clean = ast.parse("x = resolve_critic_refs(src, ref, drafter_ref).distinct\n")
+    assert [n for n in ast.walk(clean)
+            if isinstance(n, ast.Compare) and _reinlines_rule(n)] == [], \
+        "the detector fires on a call that DELEGATES the rule — it would flag the fix"
 
 
 # ── every status has author-facing words, and they differ ─────────────────────────────────

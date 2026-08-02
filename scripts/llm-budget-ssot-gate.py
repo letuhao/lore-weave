@@ -419,10 +419,20 @@ def scan() -> tuple[list[dict], list[dict]]:
                 for k, v in zip(payload.keys, payload.values):
                     if isinstance(k, ast.Constant) and k.value in _BUDGET_KEYS:
                         val = v
-                if val is None and any(k is None for k in payload.keys):
-                    # No explicit budget, but a spread COULD carry one — genuinely unknown.
-                    sites.append({"file": rel, "line": n.lineno, "verdict": "opaque"})
-                    continue
+                # …and the excuse for that dangerous half is now GONE, because a red-ability
+                # sweep fired the exact shot the comment above says the gate was "one
+                # `**kwargs` away from" taking. Deleting `"max_tokens": max_tokens,` from a
+                # real call site — leaving `**no_thinking_fields()` behind — left this gate
+                # GREEN. The site was identified as a call site BY the presence of the very
+                # key the HARD rule is about, so removing the key removed the finding: a
+                # check that cannot fail in the one direction that matters.
+                #
+                # "A spread COULD carry a budget" was true and irrelevant. Every spread in the
+                # repo today is `**no_thinking_fields()` (21 of 21 — `grep -rhoE '\*\*[a-z_]+
+                # \(\)' services/*/app`), which carries reasoning wire fields and no budget.
+                # So the honest reading of a spread with no budget key is ABSENT, and the fix
+                # for a genuine budget-in-a-spread is to make it explicit — not to grant every
+                # payload containing a `**` an exemption from the rule.
                 if val is None:
                     sites.append({"file": rel, "line": n.lineno, "verdict": "ABSENT"})
                 elif _attributed(val, names | param_budgets.get(id(n), set()), providers):
@@ -452,6 +462,29 @@ def scan() -> tuple[list[dict], list[dict]]:
                         sigs.append({"file": rel, "line": n.lineno,
                                      "fn": n.name, "arg": arg.arg, "default": d.value})
     return sites, sigs
+
+
+#: The kinds on which `signal_inert=True` can be TRUE. One, and it is derivable rather than
+#: surveyed: MIRROR returns the omit sentinel before the sizing model and before every clamp,
+#: so no argument reaches anything. Every other kind is moved by `context_length`, because the
+#: window clamp runs after the floor and pushes DOWN — the fact this file already states two
+#: functions below, in `_KIND_ALWAYS_READS`.
+#:
+#: Checking it matters because `signal_inert` is not only a claim, it is an EXEMPTION: an inert
+#: row's call sites are excused from the no-signal ratchet. An exemption whose reason nothing
+#: verifies is exactly the escape hatch NV-6 names.
+#:
+#: Measured, not reasoned: marking composition's VERDICT row `judge_prose` inert left this gate
+#: GREEN while the service's own unit test went red. The repo-wide mechanism was accepting a
+#: claim the service-local one refuted — and the repo-wide one is the mechanism that runs in CI.
+_INERT_CAPABLE_KINDS = frozenset({"MIRROR"})
+
+
+def unsound_inert_claims(rows: dict[str, dict]) -> list[str]:
+    """Rows claiming `signal_inert` on a kind that demonstrably responds to signal."""
+    return [f"{r['service']}:{code} declares signal_inert on {r['kind']}"
+            for code, r in sorted(rows.items())
+            if r["signal_inert"] and (r["kind"] or "") not in _INERT_CAPABLE_KINDS]
 
 
 def load_registry_rows() -> dict[str, dict]:
@@ -625,6 +658,18 @@ def main() -> int:
         else:
             print(f"   Progress — lower UNATTRIBUTED_BASELINE to {backlog} in "
                   f"{Path(__file__).name}.")
+        rc = 1
+
+    unsound = unsound_inert_claims(load_registry_rows())
+    if unsound:
+        print("\nFAIL — a row claims signal_inert on a kind that DOES respond to signal:\n")
+        for u in unsound:
+            print(f"   {u}")
+        print("\n   Only MIRROR short-circuits before the sizing model and the clamps. Every")
+        print("   other kind moves with `context_length` at least, so the flag is false there")
+        print("   — and it is also an exemption from the no-signal ratchet below, which is why")
+        print("   a wrong one is worse than no flag: it excuses call sites from signal they")
+        print("   genuinely have.")
         rc = 1
 
     signal_sites = scan_signal()
