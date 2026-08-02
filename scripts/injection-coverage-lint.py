@@ -42,10 +42,13 @@ Exit 0 = clean (or baseline-only). Exit 1 = a NEW unsanitized assembly module.
 """
 from __future__ import annotations
 
+import ast
+import io
 import os
 import re
 import subprocess
 import sys
+import tokenize
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -55,6 +58,23 @@ SCAN_DIRS = (
     "services/knowledge-service/app",
     "services/composition-service/app",
     "services/lore-enrichment-service/app",
+    # S4 (2026-08-02) — widened. The four above were the services someone happened to think
+    # of; the rule is about ANY module that folds untrusted text into a prompt.
+    #
+    # translation-service is the one that should have been here first: it processes IMPORTED
+    # third-party book text, which is the least trusted content on the platform, and the scan
+    # had never looked at it. Widening found SEVEN prompt-assembly modules there with no
+    # sanitizer reference (below), plus one in worker-ai.
+    #
+    # learning / video-gen / campaign / jobs come back CLEAN and are included anyway: the cost
+    # is a directory walk, and the value is that a first unsanitized assembly in any of them
+    # reds instead of arriving unnoticed the way translation's seven did.
+    "services/translation-service/app",
+    "services/worker-ai/app",
+    "services/learning-service/app",
+    "services/video-gen-service/app",
+    "services/campaign-service/app",
+    "services/jobs-service/app",
 )
 SCAN_EXTS = (".py",)
 EXCLUDE_DIRS = {
@@ -93,7 +113,9 @@ BASELINE: frozenset[str] = frozenset({
     "services/chat-service/app/services/composer.py",
     # genuine gaps — composition-service has no sanitizer anywhere
     "services/composition-service/app/engine/canon_check.py",
-    "services/composition-service/app/engine/canon_reflect.py",
+    # canon_reflect.py REMOVED 2026-08-02 (S4). It was listed as a "genuine gap" on the
+    # strength of markers that appear ONLY in a comment and a docstring — zero in code.
+    # The row described a hole the detector was reading out of prose.
     "services/composition-service/app/engine/critic.py",
     "services/composition-service/app/engine/motif_conformance.py",
     "services/composition-service/app/engine/motif_deconstruct.py",
@@ -120,9 +142,30 @@ BASELINE: frozenset[str] = frozenset({
     "services/composition-service/app/engine/select.py",
     # genuine gap — passages selector doesn't neutralize like the wiki path
     "services/knowledge-service/app/context/selectors/passages.py",
-    # sanitized upstream in knowledge wiki/context.py (IR spans neutralized)
-    "services/knowledge-service/app/wiki/generate.py",
+    # sanitized upstream in knowledge wiki/context.py (IR spans neutralized).
+    # wiki/generate.py REMOVED 2026-08-02 (S4) — same reason as canon_reflect.py above: its
+    # only marker was in a comment. wiki/prompt.py stays; its markers are real code.
     "services/knowledge-service/app/wiki/prompt.py",
+
+    # ── S4 2026-08-02: surfaced by widening SCAN_DIRS. NOT pre-existing rows moved here —
+    # these were never scanned, and every one is a genuine untracked hole.
+    #
+    # translation-service is the important entry. It builds prompts from IMPORTED book text,
+    # which is third-party content this platform did not write and cannot vouch for — the
+    # least trusted bytes in the system — and it references no sanitizer anywhere. Seven
+    # modules, listed rather than fixed here because routing them through
+    # `neutralize_injection` is a security change needing its own measurement (a sanitizer
+    # that mangles source text is a TRANSLATION-fidelity bug, which is exactly why the
+    # translate rows resolve to OutputKind.MIRROR elsewhere). Tracked in RUN-STATE Debt.
+    "services/translation-service/app/routers/translate.py",
+    "services/translation-service/app/workers/decoupled_block_translate.py",
+    "services/translation-service/app/workers/decoupled_translate.py",
+    "services/translation-service/app/workers/extraction_worker.py",
+    "services/translation-service/app/workers/session_translator.py",
+    "services/translation-service/app/workers/v3/bilingual_extractor.py",
+    "services/translation-service/app/workers/v3/corrector.py",
+    # worker-ai's distiller folds chapter chunks into a summarisation prompt.
+    "services/worker-ai/app/distill_job.py",
 })
 
 # ── detection ─────────────────────────────────────────────────────────────
@@ -196,22 +239,70 @@ SANITIZER_REF = re.compile(
 )
 
 
+def _code_lines(src: str) -> list[str]:
+    """`src` with COMMENT and DOCSTRING lines blanked. Everything else is untouched.
+
+    S4. Every one of this lint's three signals used to be matched against raw file text,
+    which reads PROSE as evidence about BEHAVIOUR — and it cuts both ways:
+
+      · FALSE POSITIVE, live: MEASURED 2026-08-02, three modules were flagged (or held a
+        BASELINE row calling them a "genuine gap") on the strength of markers appearing ONLY
+        in comments, with zero in code — `engine/compress.py`, `engine/canon_reflect.py`,
+        `wiki/generate.py`. `engine/select.py`'s own BASELINE row records the same event
+        happening before: a feature gave it the word "passage" in prose and the row was
+        written rather than rename the word to dodge the regex. That row was the right call
+        for the wrong reason — the regex should not have been reading the comment.
+
+      · FALSE NEGATIVE, and this is the dangerous half: `SANITIZER_REF` matched raw text too,
+        so a module whose ONLY mention of `neutralize(` was in a comment counted as
+        PROTECTED. Measured today: 0 such files — but nothing prevented one, and a security
+        gate silenced by a sentence is worse than no gate. This repo already has the rule
+        (`docs/standards/`: a claim in a docstring is not a mechanism) and the deferral
+        registry already had to grow a stripper for exactly this.
+
+    Regular string literals are DELIBERATELY kept: a prompt template containing "PASSAGE:" is
+    code doing the thing, not prose describing it.
+    """
+    lines = src.splitlines()
+    blank: set[int] = set()
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+            if tok.type == tokenize.COMMENT:
+                blank.add(tok.start[0])
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        pass  # unparseable → fall back to raw text, which is the conservative direction
+    try:
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Module, ast.FunctionDef,
+                                     ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            first = node.body[0] if node.body else None
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
+                    and isinstance(first.value.value, str):
+                blank.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
+    except (SyntaxError, ValueError):
+        pass
+    return ["" if i in blank else ln for i, ln in enumerate(lines, 1)]
+
+
 def classify_file(path: str) -> tuple[bool, bool, bool]:
     """Return (assembles_prompt, uses_retrieved_text, has_sanitizer) for a file."""
     assembles = retrieved = sanitized = False
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as fh:
-            for line in fh:
-                if not assembles and MESSAGE_ASSEMBLY.search(line):
-                    assembles = True
-                if not retrieved and RETRIEVED_TEXT.search(line):
-                    retrieved = True
-                if not sanitized and SANITIZER_REF.search(line):
-                    sanitized = True
-                if assembles and retrieved and sanitized:
-                    break
+            src = fh.read()
     except OSError:
-        pass
+        return False, False, False
+    for line in _code_lines(src):
+        if not assembles and MESSAGE_ASSEMBLY.search(line):
+            assembles = True
+        if not retrieved and RETRIEVED_TEXT.search(line):
+            retrieved = True
+        if not sanitized and SANITIZER_REF.search(line):
+            sanitized = True
+        if assembles and retrieved and sanitized:
+            break
     return assembles, retrieved, sanitized
 
 
@@ -293,6 +384,27 @@ def main() -> int:
     baselined = [rel for rel in flagged if rel in BASELINE]
 
     mode = "staged" if staged else "full"
+
+    # S4 — the baseline must be able to SHRINK, and only a full scan can tell.
+    #
+    # Every row here is documented as "a tracked hole". A row for a module that is no longer
+    # flagged is therefore a claim about a hole that does not exist — and it costs more than
+    # nothing: it is the exemption that would silence the gate if that module ever DID grow a
+    # real unsanitized assembly. Two such rows were found on 2026-08-02 (`canon_reflect.py`,
+    # `wiki/generate.py`), both listed as "genuine gaps" on the strength of a marker word that
+    # appeared only in a comment.
+    #
+    # A NOTE, not a failure: a stale row is a documentation defect, not a security one, and
+    # reddening CI for it would push the next person to delete rows to get green.
+    if not staged:
+        stale = sorted(BASELINE - set(flagged))
+        if stale:
+            print(f"NOTE — {len(stale)} BASELINE row(s) no longer flagged. Each claims a "
+                  f"tracked hole that the scan does not find; delete them:")
+            for rel in stale:
+                print(f"    {rel}")
+            print()
+
     if not new:
         extra = f" ({len(baselined)} baselined)" if baselined else ""
         print(f"injection-coverage-lint ({mode}): OK — every retrieved-text "

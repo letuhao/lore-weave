@@ -107,7 +107,7 @@ Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
 **Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → `S3 ◐` → **`S4`** → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → `S3 ◐` → `S4 ✅` → **`S9`** → `S9 → S5 → S13`.
 
 > **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
 > that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
@@ -138,7 +138,7 @@ when in fact most of the last two days went into defect work that was never on t
 | `S6` no model silently its own judge | ✅ CLOSED 2026-08-02 | the affordance shipped; 7 hand-rolled copies → one policy; the skip states now differ |
 | `S11` one context compiler | ✅ CLOSED 2026-08-02 | allocation layer + composition flipped (no-op ≥16K) · translation's estimator converged (it under-counted CJK/vi by a third) · the contract's two closed sets now machine-checked both ways |
 | `S3` one `Finding` | ◐ slice 1 ✅ | one closed `skip_reason` vocabulary (the docs were false and omitted the member a consumer reads); the `locator` union is untouched |
-| `S4` the plan half onto the spine | ☐ | the gate exists; the work is widening it |
+| `S4` the plan half onto the spine | ✅ CLOSED 2026-08-02 | the gate was reading COMMENTS as behaviour (both directions); SCAN_DIRS 4→10 services surfaced 8 untracked modules, 7 in translation |
 | `S9` the shared guard SDK | ☐ | **inverted** — converge three services first, extract after |
 | `S5` one heal loop | ☐ | |
 | `S13` cite the exemplars | ☐ | mostly documentation |
@@ -928,6 +928,104 @@ which the POST-RUN REVIEW found and fixed one layer up — except this one is a 
 the surface that would consume it (`model_roles`) is a read-only contract with no producer. That
 is what the slice has to build, and it is why shipping the label alone would produce a warning
 the author has no way to clear.
+
+### ✅ S4 — the injection gate was reading COMMENTS as evidence about behaviour
+
+```
+AUDIT S4 (injection-coverage-lint)
+  BUILT      — `_code_lines()`: the lint's three signals now match against source with
+               COMMENT and DOCSTRING lines blanked (regular string literals kept — a prompt
+               template IS code). `SCAN_DIRS` widened from 4 services to 10. Two stale
+               BASELINE rows deleted, 8 newly-surfaced ones added. A stale-row NOTE so the
+               baseline can shrink. Nine teeth tests, wired into foundation-ci.
+
+  PROVEN     — I FOUND THIS BY TURNING THE GATE RED MYSELF. `injection-coverage-lint` exits 1
+               on `engine/compress.py`, and the marker is the word "passage" at line 170 —
+               inside a COMMENT I wrote in commit 767f2fe2f (S7 slice 4). The gate is in CI.
+               I had not run it, because the gate set I had been pasting as "the gates" is a
+               SUBSET of what CI runs.
+
+               MEASURED, where the markers actually live, per file:
+                 compress.py            comment 1 · docstring 0 · CODE 0  ← flagged on prose
+                 canon_reflect.py       comment 1 · docstring 1 · CODE 0  ← BASELINE'd on prose
+                 wiki/generate.py       comment 1 · docstring 0 · CODE 0  ← BASELINE'd on prose
+                 select.py              comment 11 · docstring 1 · CODE 2  ← real, stays
+               Two BASELINE rows called their modules "genuine gaps — composition-service has
+               no sanitizer anywhere" on the strength of a comment. `select.py`'s own row
+               already records this happening once: a feature gave it the word "passage" in
+               prose and the row was written rather than rename the word to dodge the regex.
+               That was the right call for the wrong reason — the regex should not have been
+               reading prose.
+
+               AND THE DANGEROUS DIRECTION, which nobody had looked at: `SANITIZER_REF`
+               matched raw text too, so a module whose ONLY mention of `neutralize(` was in a
+               comment counted as PROTECTED. Measured: **0 files** exploit this today — but
+               nothing prevented it, and a security gate silenced by a sentence is worse than
+               no gate because it reports coverage. Now closed and pinned by two tests.
+
+               WIDENING FOUND REAL SURFACE: 8 modules never scanned — 7 in
+               translation-service, 1 in worker-ai. translation is the one that should have
+               been in `SCAN_DIRS` first: it builds prompts from IMPORTED third-party book
+               text, the least trusted bytes on the platform, and references no sanitizer
+               anywhere. Baselined with notes + a Debt row, not silently cleared.
+
+               gates: `injection-coverage-lint (full): OK — every retrieved-text
+               prompt-assembly module routes through the sanitizer (22 baselined)` ·
+               `gate-teeth-gate: PASS — 57 CI-invoked gate(s), every one able to return
+               non-zero. 12 carry a red-ability proof; 45 held at baseline` (ratcheted 46→45,
+               the meta-gate ASKED for it) · `ai-provider-gate OK` ·
+               `generation-guard-gate PASS` · `enforcement-claims-gate OK` ·
+               `db-safety-gate exit 0` · `llm-budget-ssot-gate PASS` · `[language-rule] PASS`.
+               scripts suite `340 passed`; the new teeth `9 passed`, none skipped.
+               RED-ABLE, and it discriminates: injecting a REAL code-level hole
+               (`passage = body` folded into a message, no sanitizer) reds with
+               `FAIL … services/composition-service/app/engine/compress.py`, exit 1, while
+               the prose-only marker stays green. Restored by re-editing.
+
+  LIVE       — live infra unavailable: a lint has no runtime path. Its behaviour is proven by
+               the six-case probe (real hole · comment-only marker · docstring-only marker ·
+               sanitizer-in-comment · real sanitizer · template string) rather than by a run.
+
+  NOT PROVEN — the 8 new rows are TRACKED, NOT FIXED. translation-service still folds imported
+               book text into prompts with no sanitizer; this slice makes that visible and
+               guards against a ninth, and it does not close one of them. Routing them through
+               `neutralize_injection` is a separate change with a real risk of its own — a
+               sanitizer that mangles source text is a TRANSLATION-FIDELITY bug, which is
+               precisely why those rows are `OutputKind.MIRROR` elsewhere.
+               The Go and Rust surfaces the spec also names (glossary, tilemap) are still
+               unscanned: this lint is Python-only and making it polyglot is a rewrite.
+               The spec's two structural classes — SECOND-ORDER ECHO (model output replayed
+               into the next turn) and DECLARED-BUT-UNIMPLEMENTED FENCING (tilemap's prompts
+               promise `<author_text>` tags its builders never emit) — are untouched; module
+               -level coverage cannot see either.
+               And the detector's real limit is now pinned rather than glossed: an UPPERCASE
+               marker inside a prompt template (`"PASSAGE:\n" + x`) does not register, because
+               `RETRIEVED_TEXT` matches identifier-shaped names.
+
+  DRIFT      — three, and the first is about my own process.
+               1. I turned a CI gate RED with a comment and shipped it, because the gate set I
+                  had been running and pasting all run — ai-provider, generation-guard,
+                  enforcement-claims, db-safety, llm-budget, language-rule — is a SUBSET of
+                  what CI runs. Six gates is not "the gates". Every VERIFY block before this
+                  one asserted its evidence honestly and against an incomplete list.
+               2. My first red-ability injection used `_retrieved_passage = body` and the gate
+                  stayed green. I was one step from writing up "the prose fix blinded the
+                  detector" — the regex needs a word boundary and `_` is a word character, so
+                  the NAME was wrong, not the gate. Measuring the regex directly settled it.
+               3. My teeth-test probe asserted an uppercase `"PASSAGE:"` template MUST flag.
+                  It does not, and never did — before or after my change. I had begun treating
+                  it as a regression I caused; checking the pre-fix behaviour showed it was
+                  always the boundary. Recorded as a known limit rather than "fixed" by
+                  widening a security regex on the strength of my own assumption.
+               Plus: my first stale-baseline test guarded on `hasattr(inj, "iter_files")` — a
+               name that does not exist — so it SKIPPED, and a skipped test reads as passing.
+               ROT-0 audited 200 tests for exactly that shape.
+
+  NEXT       — S9, which the spec INVERTS: do not extract a fourth guard SDK. Its entry
+               criterion is mechanical — three services carrying a structurally identical
+               `GuardReport` with no service-specific fields, proven by a test that imports
+               all three — and only composition has one today.
+```
 
 ### ◐ S3 slice 1 — one `skip_reason` vocabulary. The docs were already false.
 
@@ -2314,6 +2412,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | Smoke debris: throwaway book `019fbd8f-008c-7cef-bf81-1d53a808361d` and its knowledge project `019fbd90-…` | Deliberately a throwaway (never the dogfood book), but it is real rows in the dev stack awaiting purge. |
 | 2026-08-02 | The `cross_scene_check` registry row is MISLABELLED. Its `why` describes "a contradiction list across one scene seam"; its only two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a cast ROSTER. | The row documents a call that does not exist, and the kind is wrong in a way that matters: VERDICT carries `truncation_is_fatal=False`, but a clipped roster silently DROPS PEOPLE — the same class as the `propose_world` dead pass. Not fixed here because changing the kind changes the budget (VERDICT 2048 → STRUCTURED 4096) and needs its own measurement. |
 | 2026-08-02 | `_TOKENS_PER_ITEM = 220` (SDK, generic) is what makes a full-roster `propose_world` reach the 32768 runaway ceiling. A world entity is plausibly half that. | Every STRUCTURED budget is sized off a per-item cost nobody has measured against a real completion. The right number is `output_tokens / items` from a live run; until then the big-roster budgets are over-generous rather than wrong. |
+| 2026-08-02 | **translation-service folds IMPORTED third-party book text into prompts with no sanitizer** — 7 modules, surfaced by widening `injection-coverage-lint`'s SCAN_DIRS in S4. Plus 1 in worker-ai. | The least-trusted bytes on the platform, in the service that exists to process them, never scanned until now. Baselined with notes rather than fixed: routing them through `neutralize_injection` risks a TRANSLATION-FIDELITY bug (a sanitizer that mangles source text), which is the same reason those rows are `OutputKind.MIRROR`. Needs its own measurement, not a sweep. |
 | 2026-08-02 | **The `chat.*` / `composition.*` trace namespacing is NOT built** — composition emits nothing into the context trace (the only `TraceAccumulator` consumers are chat-service's `stream_service`, `compact_service`, `token_budget`). | Namespacing a vocabulary with no second surface to separate would be zero-consumer ceremony. **Un-parks when composition first emits a trace span** — at that moment `breakdown_categories` becomes a shared vocabulary asserted BOTH ways on the chat side, so extending it is a consumer-visible shape change and must be namespaced in the same commit. |
 | 2026-08-02 | **S11-2 moved COST and nobody measured it.** Counting ~40% more tokens on CJK/Vietnamese means ~40% more chunks per chapter, i.e. ~40% more LLM calls — for exactly the books this platform is for. | The safe direction for correctness (no window overflow) and the expensive one for spend. Shipped without a number. A real per-chapter cost delta needs one translation run before/after on a real chapter. |
 | 2026-08-02 | **The kernel estimator is itself ~0.78× tiktoken on Vietnamese** (my n=3 sample), where the spec cites a 2026-07-07 eval claiming the script-aware heuristic tracks o200k within 3-6%. | Under-counting is the direction that overflows a window. My sample is far too small to overturn a real-corpus measurement, so the tension is recorded rather than acted on — re-tuning the kernel's `_F_VIETNAMESE` on n=3 would be the "generalised from one prompt formulation" mistake this run already has twice. Needs the eval corpus re-run. |
@@ -2372,6 +2471,9 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
+| 2026-08-02 | **I turned a CI gate RED with a comment, shipped it, and did not notice for four slices — because the gate set I kept pasting as "the gates" is a SUBSET of what CI runs.** The word "passage" in a comment I added in S7-4 made `injection-coverage-lint` exit 1 on `compress.py`. Six gates (ai-provider, generation-guard, enforcement-claims, db-safety, llm-budget, language-rule) is not the CI gate set. Every VERIFY block before S4 asserted its evidence honestly against an incomplete list. |
+| 2026-08-02 | **Nearly wrote up "the prose fix blinded the detector" when my injected NAME was wrong.** `_retrieved_passage = body` did not red the gate; the regex needs a word boundary and `_` is a word character. Measuring the regex directly settled it in a minute. Same reach-for-the-dramatic-reading shape as the tilemap `tool_use_success` near-miss. |
+| 2026-08-02 | **Asserted a security detector MUST catch something, on my own assumption, and started treating the mismatch as a regression I had caused.** An uppercase `"PASSAGE:"` inside a prompt template does not register — before or after my change. Checking the pre-fix behaviour showed it was always the boundary. Recorded as a known limit instead of widening a security regex to match what I had guessed. |
 | 2026-08-02 | **Shipped a regression six unit tests could not see, and only the LIVE run caught it.** `class SkipReason(str, Enum)` satisfies `== "refuted"` and JSON-serialises correctly, so every test passed — but `str()` and f-strings return `"SkipReason.NOOP"`, so any consumer that FORMATS a skip_reason would emit the member path. The live probe printed `skip_reasons seen: ['SkipReason.NOOP']`. Every test I wrote used `==`, which is exactly the shape blind to it. `StrEnum` fixes it; the lesson is that comparison-only tests do not cover a value that leaves the process by three different routes. |
 | 2026-08-02 | **A guard that reddened on the comment explaining what it forbids.** My duplicate-name check scanned raw file text for `not_found` and failed on my own note recording that `not_found` had been removed. Prose is not usage — the distinction the deferral registry's stripper had to learn, met from the other side. Rewritten over the AST's string constants, where comments do not exist. |
 | 2026-08-02 | **I wrote a check that could not fail, into a test file, in the slice about machine-checking a contract.** A `@ts-expect-error` asserting `TraceTier` rejects `"T9"` — inert, because `tsconfig.json` excludes `src/**/__tests__` and `*.test.tsx`, so no test file is ever type-checked. It reads exactly like enforcement. Found ONLY because I widened the type to prove red-ability and `tsc` returned exit 0 — the injection I nearly skipped as unnecessary for a change this simple. Fifth check-that-cannot-fail this run, and the first I authored rather than found. |
