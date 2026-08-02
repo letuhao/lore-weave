@@ -40,6 +40,7 @@ from loreweave_canon_check import (
     parse_judge_verdicts,
 )
 from app.llm_budget import max_tokens_for
+from app.engine.finding import Locator, SkipReason
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,21 @@ def scene_at_order(scene_sort_order: int | None) -> int | None:
 class CanonViolation(CanonCandidateBase):
     kind: str = "gone_entity_present"
     glossary_entity_id: str | None = None
+
+    @property
+    def locator(self) -> Locator:
+        """The entity, plus the surface form that matched — or NOWHERE.
+
+        `plan_conflicts` returns `unlinked` for every asserted-gone name no index entry
+        matched, and that list is RETURNED rather than logged precisely because an assertion
+        the guard could not place is a hole in coverage. A candidate built for one of those
+        has no entity to point at, and saying so is the same answer `self_heal` gives when it
+        cannot find its quote: `placed=False`, with the quote kept so a human has a handle.
+        """
+        if not self.entity_id:
+            return Locator.nowhere(quote=self.matched or self.name or "",
+                                   why=SkipReason.NOT_LOCATED)
+        return Locator.entity(self.entity_id, matched=self.matched, quote=self.span)
 
 
 def gone_cast_in_draft(

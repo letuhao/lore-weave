@@ -35,7 +35,7 @@ from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.cowrite import build_selection_messages
 from app.packer.profile import BookProfile
-from app.engine.finding import SkipReason
+from app.engine.finding import Locator, SkipReason
 from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,20 @@ class Finding:
     #: One of `SkipReason` — a CLOSED vocabulary now (it used to be a free string whose
     #: trailing-comment list omitted the two members a consumer actually reads).
     skip_reason: str | None = None
+
+    @property
+    def locator(self) -> Locator:
+        """Where this finding is — including when the answer is NOWHERE.
+
+        `located=None` is not a missing value, it is an answer: the judge quoted text that
+        could not be found in the chapter. As an absent field it reached a human only by
+        making the `located` COUNT smaller, and the panel that reads that count said "the
+        prose is clean". `Locator.nowhere` makes the answer addressable, and it carries the
+        quote — which is the only handle a human has on a finding nothing could place.
+        """
+        if self.located is None:
+            return Locator.nowhere(quote=self.span, why=self.skip_reason or SkipReason.NOT_LOCATED)
+        return Locator.span(self.located[0], self.located[1], quote=self.span)
 
 
 @dataclass

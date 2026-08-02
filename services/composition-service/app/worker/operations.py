@@ -188,6 +188,18 @@ async def run_self_heal_propose(
             "located": report.located,
             "edits": report.edits_applied,
             "refuted": sum(1 for f in report.findings if f.skip_reason == "refuted"),
+            # S3 — the findings nothing could place, as LOCATORS rather than as a smaller
+            # `located` count. A judge that found six problems and placed none used to reach
+            # the author as `edits: 0`, and the panel's fall-through then said "No issues
+            # found — the prose is clean". A check that ran, found things, could not point at
+            # them and reported CLEAN is the defect this whole cycle has been closing.
+            #
+            # Refuted findings are EXCLUDED: a skeptical verify decided that one was not a
+            # problem, so it is not an unanswered question. Only the ones nobody could place.
+            "unplaced": [
+                f.locator.as_payload() for f in report.findings
+                if not f.locator.placed and f.skip_reason != "refuted"
+            ],
         },
     }
 

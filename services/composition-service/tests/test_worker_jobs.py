@@ -717,7 +717,46 @@ async def test_run_self_heal_propose_serializes(monkeypatch):
     assert out["proposals"][0]["after"] == "lão"
     assert out["proposals"][0]["tier"] == "deterministic"
     assert out["source_text"] == "ông đi." and out["draft_version"] == 7
-    assert out["stats"] == {"findings": 2, "located": 1, "edits": 1, "refuted": 1}
+    # A REFUTED finding is not unplaced: a skeptical verify decided it was not a problem, so
+    # it is an answered question, not a hole. The `unplaced` list is only the ones nobody
+    # could point at — see the next test.
+    assert out["stats"] == {"findings": 2, "located": 1, "edits": 1, "refuted": 1,
+                            "unplaced": []}
+
+
+async def test_run_self_heal_propose_reports_findings_NOTHING_could_place(monkeypatch):
+    """The count said `edits: 0` and the panel then said "the prose is clean".
+
+    A judge finding whose quote cannot be located in the chapter reached the author only by
+    making `located` smaller. `PolishPanel` renders neither `findings` nor `located`, so a run
+    that found three problems and placed none was indistinguishable from a clean chapter.
+    """
+    import app.engine.self_heal as sh
+    from app.engine.finding import SkipReason
+    from app.engine.self_heal import Finding, SelfHealReport
+    from app.worker.operations import run_self_heal_propose
+
+    async def _fake_propose(llm, *, user_id, model_source, model_ref, chapter, source_language,
+                            canon, prefilter, rerank, cancel_check=None):
+        rep = SelfHealReport(
+            findings=[
+                Finding(type="t", span="he smiled thinly", issue="i", fix="f",
+                        skip_reason=SkipReason.NOT_LOCATED),
+                Finding(type="t", span="refuted one", issue="i", fix="f",
+                        skip_reason=SkipReason.REFUTED),
+            ],
+            located=0, edits_applied=0, rejudge_before=2)
+        return [], rep
+
+    monkeypatch.setattr(sh, "propose_self_heal", _fake_propose)
+    out = await run_self_heal_propose(
+        object(), user_id="u",
+        input={"chapter_text": "x", "model_source": "user_model", "model_ref": "m"})
+    unplaced = out["stats"]["unplaced"]
+    assert len(unplaced) == 1, "the refuted one is answered; the not-located one is not"
+    assert unplaced[0]["placed"] is False
+    assert unplaced[0]["quote"] == "he smiled thinly", (
+        "the quote is the only handle a human has on a finding nothing could place")
 
 
 async def test_run_job_dispatches_quality_report(monkeypatch):

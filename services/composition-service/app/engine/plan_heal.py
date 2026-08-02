@@ -26,7 +26,7 @@ from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
-from app.engine.finding import SkipReason
+from app.engine.finding import Locator, SkipReason
 from app.clients.llm_client import LLMClient
 from app.engine.plan import DecomposeResult
 from app.llm_budget import unusable, max_tokens_for
@@ -45,6 +45,20 @@ class PlanFinding:
     #: One of `SkipReason`. This used to spell the not-located case `not_found` — the same
     #: concept `self_heal` called `not_located`, under a second name.
     skip_reason: str | None = None
+
+    @property
+    def locator(self) -> Locator:
+        """Chapter + scene, or NOWHERE when the scene index did not resolve.
+
+        `run_plan_self_heal` sets `skip_reason = NOT_LOCATED` when the chapter or scene index
+        is out of range — at which point `chapter`/`scene` are numbers that point at nothing,
+        and a consumer reading them as a position would send a human to a scene that does not
+        exist. The same two-states-one-shape problem `self_heal` had, arrived at from the
+        other side: there the position was absent, here it is present and meaningless.
+        """
+        if self.skip_reason == SkipReason.NOT_LOCATED:
+            return Locator.nowhere(quote=self.issue, why=self.skip_reason)
+        return Locator.scene_at(self.chapter, self.scene)
 
 
 @dataclass

@@ -126,10 +126,12 @@ when in fact most of the last two days went into defect work that was never on t
 ### The board — 7 closed, S7 open, 6 untouched
 
 > **The SLICES are not the DoD.** AUDIT-19 found three DoD clauses that did not hold as
-> written; **AUDIT-20 closed two of them** — DoD-3's truncation limb now has a gate and went
+> written; **AUDIT-20 + AUDIT-21 closed all three** — DoD-3's truncation limb now has a gate and went
 > 2/28 → 28/28, and DoD-2 has the static gate spec S6 asked for (which found a live
-> self-judging path in knowledge-service on its first run). **One remains: DoD-5's *"one
-> finding type"*, which IS S3 — ◐ below, five producers still carrying five locators.**
+> self-judging path in knowledge-service on its first run), and DoD-5's *"one finding
+> type"* now has one `Locator` across all five producers — with the consumer that needed
+> it: the Polish panel stopped calling a run CLEAN when the judge found things nothing
+> could place. **Read §7 against AUDIT-19 → 20 → 21, in that order.**
 > A slice closing means its scope shipped. Read §7 of the spec against AUDIT-19 + AUDIT-20,
 > not against this table.
 
@@ -145,7 +147,7 @@ when in fact most of the last two days went into defect work that was never on t
 | **`S7` one output budget** | **✅ CLOSED 2026-08-02** | slices 1·2·3 ✅ · slice 4 (budget-seam rot) ✅ — 28 no-signal sites → 9, and the 9 are named |
 | `S6` no model silently its own judge | ✅ CLOSED 2026-08-02 | the affordance shipped; 7 hand-rolled copies → one policy; the skip states now differ |
 | `S11` one context compiler | ✅ CLOSED 2026-08-02 | allocation layer + composition flipped (no-op ≥16K) · translation's estimator converged (it under-counted CJK/vi by a third) · the contract's two closed sets now machine-checked both ways |
-| `S3` one `Finding` | ◐ slice 1 ✅ | one closed `skip_reason` vocabulary (the docs were false and omitted the member a consumer reads); the `locator` union is untouched |
+| `S3` one `Finding` | ✅ CLOSED 2026-08-03 | one closed `skip_reason` vocabulary (the docs were false and omitted the member a consumer reads); and (AUDIT-21) one `Locator` across all five producers, with `UNLOCATED` as a first-class answer — which is what stopped the Polish panel reporting "clean" on a run whose findings nothing could place. The projection is additive: the five producers still STORE five shapes |
 | `S4` the plan half onto the spine | ✅ CLOSED 2026-08-02 | the gate was reading COMMENTS as behaviour (both directions); SCAN_DIRS 4→10 services surfaced 8 untracked modules, 7 in translation |
 | `S9` the shared guard SDK | ✅ CLOSED 2026-08-02 | **inverted, correctly**: no SDK extracted (1/3 adopters). The entry criterion was a spec sentence; it is now a CI gate that reds when the third service adopts |
 | `S5` one heal loop | ✅ CLOSED 2026-08-02 | the 10 stages enumerated once; each consumer accounts for EVERY stage (run it or give a reason) and the declaration is checked against code both ways |
@@ -3924,6 +3926,91 @@ AUDIT AUDIT-20 (DoD-2 + DoD-3's truncation limb)
 
   NEXT       — DoD-5's locator union (S3): the one limb left, and the only one that is a
                refactor rather than a gate.
+```
+
+### ✅ AUDIT-21 · S3 / DoD-5's LAST LIMB — and the panel was reporting "clean" on a run that found things
+
+```
+AUDIT AUDIT-21 (one locator, five producers, and the consumer that needed it)
+
+  BUILT      — `Locator` + `LocatorKind` in `app/engine/finding.py`, and a projection on every
+               one of the five producers: `self_heal.Finding`, `plan_heal.PlanFinding`,
+               `stitch._RepetitionFinding` / `_OverResolveFinding`,
+               `error_block_heal.MergedFinding`, `canon_check.CanonViolation`.
+               ADDITIVE, not a re-cut: every producer keeps the storage it has and gains a
+               read-only view. The spec's own note says a naive `span | scene_index | node_id`
+               union is not expressive enough (it cannot say WHICH LENS produced a finding),
+               so re-cutting the storage now would be re-cutting it twice — `trace_span_id` is
+               reserved on every kind and deliberately unused, because composition emits no
+               trace spans yet.
+
+               **The member the union is worth building for is `UNLOCATED.`** I did not set out
+               to add it — I went looking for the consumer first, because a union nobody reads
+               is the S8 ceremony this whole run has been deleting. What the search found:
+
+                 `PolishPanel` renders `"{{edits}} edits · {{refuted}} dropped by verify"`.
+                 It never renders `findings` or `located`. And with no proposals it falls
+                 through to **"No issues found — the prose is clean."**
+
+               A self-heal finding whose quoted span cannot be located in the chapter produces
+               no proposal. So a run that found six problems and placed none was
+               pixel-identical to a clean chapter. `located=None` is an ANSWER — the judge
+               quoted text that is not there — and as an absent field it reached a human only
+               by making a COUNT smaller. `plan_heal` has the same defect from the other side:
+               on a not-located finding it leaves `chapter`/`scene` populated with numbers that
+               address nothing, so a consumer reading them sends a human to a scene that does
+               not exist.
+
+               So the acting half, not just the shape: `stats.unplaced` carries those findings'
+               locators (each with the quote), the panel says how many could not be located and
+               lists them, and "clean" is now claimed only when there is nothing unplaced.
+               REFUTED findings are excluded — a skeptical verify decided that one was not a
+               problem, which is an answered question, not a hole.
+
+  PROVEN     — composition **3635 passed** (was 3611; +24 across `test_locator`,
+               `test_finding_locator_gate`, and the new worker-payload test) ·
+               FE composition **1060 passed / 155 files** · `tsc --noEmit` clean ·
+               gates: truncation-check · judge-resolution · llm-budget · guard-signal-consumption
+               · gate-teeth · generation-guard · enforcement-claims · estimator ·
+               injection-coverage · ai-provider — all PASS · i18n parity 20 × 35.
+               RED-ABLE against the real on-disk defect, restored from saved bytes
+               (`sha256 matches`, green again): drop `_OverResolveFinding.locator` →
+               `test_finding_locator_gate` REDs and names the class.
+               LIVE-7, in the DEPLOYED worker, through the real `run_self_heal_propose`:
+                 placed finding      -> `unplaced: []`
+                 unplaceable finding -> ONE locator, `placed:false`, quote preserved
+                 refuted finding     -> `unplaced: []`
+
+  NOT PROVEN — the panel is proven by component test and by the payload shape, NOT by a browser
+               smoke: I did not click through a real Polish run and look at the amber block.
+               The locator is carried into the plan-pass artifact alongside the raw
+               `chapter`/`scene`, and no consumer reads it there yet — additive by design, and
+               the honest name for that today is an unread field. `trace_span_id` likewise.
+               And the union covers composition only: knowledge-service's
+               `ExtractionCanonCandidate` is finding-shaped and has no projection, because the
+               gate that would demand one is scoped to composition's `app/engine`.
+
+  DRIFT      — three.
+               · **My own "does not claim clean" assertion was VACUOUS.** I wrote
+                 `queryByText(/prose is clean/)` and it passed — because `t()` returns the KEY
+                 in this test environment, so that copy never renders in ANY state, including
+                 the one the test was written to catch. It matched nothing and reported
+                 success. Rewritten against a `data-testid`, which is also the file's existing
+                 convention and the language-coupling lesson this repo already has.
+               · **The first EXEMPT row in the new gate was unnecessary**, and the staleness
+                 check I had just written is what said so. Left the registry empty and added
+                 `test_the_staleness_check_can_FAIL`, because at zero rows the staleness test
+                 cannot fail and would quietly become decoration.
+               · I started to unify the five locators before finding a consumer for them. The
+                 measurement that stopped it — no shared surface reads two producers' findings —
+                 is the same one that then found the "clean" claim. Building the union first
+                 and looking for a reader afterwards would have shipped exactly the
+                 emitted-and-unread shape the guard-signal registry exists to count.
+
+  NEXT       — **all three DoD limbs AUDIT-19 opened are now closed.** What remains on the
+               board is S3's own remainder, which is smaller than the limb: the locator is a
+               projection, so the five producers still STORE five shapes, and the plan-pass
+               artifact carries a locator nothing reads.
 ```
 
 ## Parked

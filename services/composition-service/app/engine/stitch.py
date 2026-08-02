@@ -43,6 +43,7 @@ from app.engine.prose_doc import ATX_HEADING_RE
 from app.reasoning import wire_fields
 from app.packer.profile import BookProfile
 from app.llm_budget import max_tokens_for
+from app.engine.finding import Locator
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,12 @@ class _RepetitionFinding:
     right_scene: int
     phrase: str
 
+    @property
+    def locator(self) -> Locator:
+        """A seam, not a scene. The repetition belongs to the JOIN — attributing it to either
+        side would name a scene that is individually fine."""
+        return Locator.seam(self.left_scene, self.right_scene, quote=self.phrase)
+
 
 @dataclass(frozen=True)
 class _OverResolveFinding:
@@ -103,6 +110,10 @@ class _OverResolveFinding:
 
     left_scene: int
     right_scene: int
+
+    @property
+    def locator(self) -> Locator:
+        return Locator.seam(self.left_scene, self.right_scene)
 
 
 def boundary_windows(n: int) -> list[tuple[int, int]]:
