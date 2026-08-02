@@ -92,6 +92,24 @@ PROFILES: dict[str, CallProfile] = {
     "select_score": CallProfile(OutputKind.VERDICT, 1536, 512, why="retrieval scoring"),
     "self_heal_verify": CallProfile(OutputKind.VERDICT, 1536, 320,
                                     why="did the proposed edit actually fix the finding"),
+    # A `{recommended, reasoning}` object read by REGEX, not json.loads — a clipped reason
+    # string still yields a usable answer, so VERDICT and not STRUCTURED. Its 400 was the
+    # last flat literal left in self_heal, hiding behind a helper whose other callers were
+    # already on the registry.
+    "self_heal_rerank": CallProfile(OutputKind.VERDICT, 1536, 400,
+                                    why="is this edit a rule fix (auto-tickable) or craft"),
+    # Replaces a HAND-ROLLED sizer, `_max_tokens_for(n) = 128 + 24n`, which is the exact thing
+    # this seam exists to absorb: a second sizing model, in a module, with no floor and no
+    # window clamp. `was=152` is that formula at n=1 — the smallest budget it ever produced,
+    # so the no-downgrade assertion is true for every batch it ever ran. The VERDICT floor
+    # (1536) exceeds the old formula for any batch under 58 edges, and a scene's succession
+    # candidates are bounded by its cast.
+    "succession_entailment": CallProfile(OutputKind.VERDICT, 1536, 152,
+                                         why="one entailed/not verdict per candidate edge"),
+    # The outline judge's findings list. STRUCTURED: `parse_plan_findings` reads a JSON array
+    # and a clipped array is unparseable, not short.
+    "plan_judge": CallProfile(OutputKind.STRUCTURED, 4096, 2000,
+                              why="per-scene plan findings (chapter/scene/type/issue/fix)"),
 
     # ── structured plans: a clipped array is UNPARSEABLE, not short. Headroom is deliberate.
     "propose_cast": CallProfile(OutputKind.STRUCTURED, 4096, 4000,
@@ -103,6 +121,15 @@ PROFILES: dict[str, CallProfile] = {
     "detect_and_update_threads": CallProfile(OutputKind.STRUCTURED, 4096, 1024,
                                              why="narrative threads opened/advanced/closed"),
     "audit_promises": CallProfile(OutputKind.STRUCTURED, 4096, 1500, why="promise audit rows"),
+    # L1 of the planning pipeline: one beat-role row per chapter. The count is known BEFORE
+    # the call (it is `len(chapters)`), which is what makes this a real `target` rather than
+    # an invented one — contrast `audit_promises`, whose length IS the output.
+    "chapter_beat_map": CallProfile(OutputKind.STRUCTURED, 4096, 2048,
+                                    why="one beat-role mapping per chapter"),
+    # plan-forge material search: at most `max_candidates` VERBATIM lines copied out of the
+    # author's document, so the caller's own bound is the target.
+    "material_search": CallProfile(OutputKind.STRUCTURED, 4096, 1500,
+                                   why="up to max_candidates verbatim document lines"),
     "extract_tracked_promises": CallProfile(OutputKind.STRUCTURED, 4096, 800,
                                             why="promises stated in the prose"),
     "score_promise_coverage": CallProfile(OutputKind.STRUCTURED, 4096, 1500,
@@ -121,6 +148,13 @@ PROFILES: dict[str, CallProfile] = {
     # ── edits: proportional to the span being rewritten; the edit is lost on truncation.
     "propose_edits_direct": CallProfile(OutputKind.EDIT, 3000, 3000, why="direct span edits"),
     "propose_self_heal": CallProfile(OutputKind.EDIT, 3000, 3000, why="self-heal edit proposals"),
+    # One rewritten synopsis line, not a chapter — hence far below the sibling EDIT rows.
+    "plan_heal_edit": CallProfile(OutputKind.EDIT, 2200, 700,
+                                  why="one scene synopsis rewritten in place"),
+    # One author-marked block rewritten. Its 1200 was a SIGNATURE DEFAULT, evaluated once at
+    # import, so no caller could ever size it to the block actually being edited.
+    "error_block_heal_edit": CallProfile(OutputKind.EDIT, 2200, 1200,
+                                         why="one author-marked block, rewritten"),
 
     # ── prose-shaped: compression output. Stops mid-sentence; recoverable.
     #

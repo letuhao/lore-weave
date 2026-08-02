@@ -62,7 +62,16 @@ ROOT = Path(__file__).resolve().parents[1]
 #: detector's blind spot ratchets the blind spot.
 #: 2026-07-31 M2 — 59 → **29** after composition-service adopted its registry: 18 signature
 #: defaults resolved (`sigs` is now 0 repo-wide) and 12 of the call sites they feed followed.
-UNATTRIBUTED_BASELINE = 29
+#: 2026-08-02 DoD-3 — 29 -> 30 -> **26**. It went UP first, and that is the honest part: the
+#: raw-body shape (Form 3) was added before anything was drained, which made ONE new site
+#: visible (`composition/app/routers/engine.py` — a persisted job record whose `max_out`
+#: comes off the API request). Draining a backlog whose denominator is still incomplete is
+#: how a count reads DONE while the surface it did not scan stays broken. Then: three
+#: literal/default origins converted (`self_heal_rerank` 400, `plan_heal` 2000/700,
+#: `error_block_heal` 1200), one hand-rolled sizer folded into the registry
+#: (`succession_entailment`), and `_helper_params_by_call` taught the gate the
+#: attributed-caller-plus-private-helper shape it could not see.
+UNATTRIBUTED_BASELINE = 26
 
 #: Budget calls that pass NO adaptive signal — no `target`, `language`, `reasoning` or
 #: `context_length`. Ratcheted, and it is a SECOND axis from the one above: a site here is
@@ -145,11 +154,28 @@ _STREAM = {"stream", "submit_and_await_event"}
 _PAYLOAD_KWARGS = ("input", "payload", "body")
 _BUDGET_KEYS = {"max_tokens", "max_output_tokens", "max_out", "max_completion_tokens"}
 
-#: A third shape this gate does NOT parse: a raw `POST /internal/llm/stream` with a JSON body
-#: (chat-service, lore-enrichment-service, video-gen-service). Named here, and named in the
-#: PASS line, because an unscanned surface that goes unmentioned is how "every one" becomes
-#: a false claim. Tracked for a follow-up rather than silently excluded.
-UNSCANNED_SURFACES = "raw POST /internal/llm/stream (chat, lore-enrichment, video-gen)"
+#: The THIRD shape, now parsed: a raw `POST /internal/llm/stream` whose body is a plain dict
+#: literal, bypassing the SDK entirely. It was named as unscanned rather than silently
+#: excluded — and when the surface was finally measured the note itself turned out to be two
+#: thirds wrong. chat-service and video-gen-service do NOT post raw bodies; both go through
+#: `loreweave_llm.Client` and were already scanned (as `_STREAM` / `_SUBMIT` sites). Only
+#: lore-enrichment-service hand-rolls the body — two sites, and ONE OF THEM HAD NO `max_tokens`
+#: KEY AT ALL: `eval/judge_binding.py`, the eval judge, running uncapped. A surface excluded
+#: with an honest label still hides whatever is inside it.
+#:
+#: Recognised by shape, not by import: a dict literal carrying BOTH `"operation"` and
+#: `"messages"` constant keys IS a provider-registry request. Requiring both is what keeps the
+#: SDK's `input={…}` payload (whose `operation` is a sibling kwarg, not a dict key) from being
+#: counted twice.
+#:
+#: Stated as SHAPE and not as "an HTTP body" because that is what it actually matches, and the
+#: difference immediately mattered: the first run surfaced `composition/app/routers/engine.py`,
+#: which is not an outbound body at all but a job-record `input` — a request assembled now,
+#: PERSISTED, and submitted by a worker later. Its `max_out` comes straight off the API
+#: request, so an external caller sets that job's output budget. A comment claiming "raw POST
+#: body" would have described something narrower than the code and made the find look like a
+#: false positive.
+_RAW_BODY_KEYS = ("operation", "messages")
 
 _SKIP_PARTS = ("/tests/", "/build/", "/.venv/", "/node_modules/")
 
@@ -341,6 +367,73 @@ def _param_defaults_by_call(tree: ast.AST, names: set[str], providers: set[str])
     return out
 
 
+def _helper_params_by_call(tree: ast.AST, names: set[str], providers: set[str],
+                           local_by_call: dict[int, set[str]]) -> dict[int, set[str]]:
+    """{id(call node inside helper H): H's budget params that EVERY caller passes attributed}.
+
+    The last shape this gate could not see, and after the literals were drained it was the
+    LARGEST remaining category — five of the twelve composition sites. The idiom:
+
+        async def _chat(llm, *, system, user, max_tokens, …):
+            job = await llm.submit_and_wait(… input={… "max_tokens": max_tokens})
+
+        async def score_promise_coverage(…, max_tokens: int | None = None):
+            max_tokens = max_tokens or max_tokens_for("score_promise_coverage", target=len(promises))
+            await _chat(llm, …, max_tokens=max_tokens)
+
+    The budget is attributed; it is attributed one function boundary away, in the caller, and
+    `submit_and_wait` lives in the callee. Neither existing binder crosses that: one reads
+    parameter DEFAULTS, the other is function-scoped precisely so a name cannot launder itself
+    from four hundred lines away.
+
+    Why this widening is not that laundering
+    ----------------------------------------
+    The binding requires **every** intra-module call site to pass an attributed argument for
+    that parameter. One caller with a flat literal and the helper stays unattributed — which
+    is exactly the case `_ssot_local_names_by_call`'s docstring names: `self_heal._chat` had a
+    caller passing a bare `400`. That literal is now a registry row, and had it still been
+    there this function would have refused the binding rather than swallowing it. It fails
+    CLOSED in every ambiguous direction too: a positional argument, a caller outside this
+    module, or a helper nobody calls all yield no binding.
+
+    Proven, not asserted: `guard-redability-gate` re-injects a flat literal at one caller and
+    checks the helper goes back to unattributed.
+    """
+    funcs = {n.name: n for n in ast.walk(tree)
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    calls: dict[str, list[tuple[ast.Call, set[str]]]] = {}
+    for enclosing in ast.walk(tree):
+        if not isinstance(enclosing, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for sub in ast.walk(enclosing):
+            if not isinstance(sub, ast.Call):
+                continue
+            fname = getattr(sub.func, "id", "")
+            if fname in funcs and fname != enclosing.name:
+                calls.setdefault(fname, []).append((sub, local_by_call.get(id(sub), set())))
+
+    out: dict[int, set[str]] = {}
+    for fname, sites in calls.items():
+        helper = funcs[fname]
+        params = {a.arg for a in helper.args.args + helper.args.kwonlyargs} & _BUDGET_KEYS
+        bound = set()
+        for p in params:
+            ok = True
+            for call, locals_here in sites:
+                arg = next((kw.value for kw in call.keywords if kw.arg == p), None)
+                if arg is None or not _attributed(arg, names | locals_here, providers):
+                    ok = False
+                    break
+            if ok:
+                bound.add(p)
+        if not bound:
+            continue
+        for sub in ast.walk(helper):
+            if isinstance(sub, ast.Call):
+                out.setdefault(id(sub), set()).update(bound)
+    return out
+
+
 def _classify_stream(rel: str, node: ast.Call, names: set[str], providers: set[str]) -> dict:
     """Budget verdict for the request-OBJECT shape: `client.stream(ChatRequest(max_tokens=…))`.
 
@@ -385,6 +478,33 @@ def scan() -> tuple[list[dict], list[dict]]:
             local_budgets = _ssot_local_names_by_call(tree, providers)
             for _cid, _bound in local_budgets.items():
                 param_budgets.setdefault(_cid, set()).update(_bound)
+            for _cid, _bound in _helper_params_by_call(
+                    tree, names, providers, local_budgets).items():
+                param_budgets.setdefault(_cid, set()).update(_bound)
+
+            # Form 3 — a RAW provider-registry body, hand-rolled as a dict and posted to
+            # `/internal/llm/stream` without the SDK. Same classification as the payload-dict
+            # shape; the only difference is how the site is recognised. See _RAW_BODY_KEYS for
+            # why both keys are required, and for what this surface was hiding while it was
+            # merely NAMED as unscanned.
+            for n in ast.walk(tree):
+                if not isinstance(n, ast.Dict):
+                    continue
+                keys = {k.value for k in n.keys if isinstance(k, ast.Constant)}
+                if not all(k in keys for k in _RAW_BODY_KEYS):
+                    continue
+                val = next((v for k, v in zip(n.keys, n.values)
+                            if isinstance(k, ast.Constant) and k.value in _BUDGET_KEYS), None)
+                if val is None:
+                    sites.append({"file": rel, "line": n.lineno, "verdict": "ABSENT"})
+                elif _attributed(val, names, providers):
+                    sites.append({"file": rel, "line": n.lineno, "verdict": "attributed"})
+                elif isinstance(val, ast.Constant) and val.value == 0:
+                    sites.append({"file": rel, "line": n.lineno, "verdict": "attributed"})
+                elif isinstance(val, ast.Constant):
+                    sites.append({"file": rel, "line": n.lineno, "verdict": "literal"})
+                else:
+                    sites.append({"file": rel, "line": n.lineno, "verdict": "unattributed"})
 
             for n in ast.walk(tree):
                 if not isinstance(n, ast.Call):
@@ -715,11 +835,11 @@ def main() -> int:
         # sites it scanned, printed as though it were true of the repo. The scanned surface
         # is now named, and so is the one that is not.
         print(f"llm-budget-ssot-gate: PASS — {len(sites)} LLM call site(s) scanned "
-              f"(payload-dict + request-object shapes); none leaves its budget undeclared.")
+              f"(payload-dict + request-object + raw-body shapes); none leaves its budget "
+              f"undeclared.")
         print(f"  {len(attributed)} traced to call_budget() · {backlog} held at baseline "
               f"({len(literal)} literal, {len(unattr)} unattributed, {len(sigs)} signature "
               f"defaults) · {len(opaque)} built off-site, not statically visible.")
-        print(f"  NOT scanned: {UNSCANNED_SURFACES}.")
         carrying = len(signal_sites) - len(no_signal) - len(inert_sites)
         print(f"  adaptive signal: {carrying}/{len(signal_sites)} budget calls carry one that "
               f"their KIND reads · {len(inert_sites)} declared signal_inert "

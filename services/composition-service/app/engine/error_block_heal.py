@@ -35,6 +35,7 @@ from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.db.models import ErrorBlock
 from app.engine.cowrite import SELECTION_MAX_CHARS, build_selection_messages
+from app.llm_budget import max_tokens_for
 from app.engine.self_heal import EditProposal, locate_span
 from app.packer.profile import BookProfile
 
@@ -252,7 +253,8 @@ async def propose_for_blocks(
     model_ref: str,
     grounding: str = "",
     max_expansion: float = DEFAULT_MAX_EXPANSION,
-    edit_max_tokens: int = 1200,
+    # `None`, not 1200: a signature default cannot see the block it is rewriting.
+    edit_max_tokens: int | None = None,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> ProposalResult:
@@ -294,7 +296,9 @@ async def propose_for_blocks(
         new = await _chat(
             llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
             system=messages[0]["content"], user=messages[1]["content"],
-            max_tokens=edit_max_tokens, trace_id=trace_id, cancel_check=cancel_check,
+            max_tokens=edit_max_tokens or max_tokens_for(
+                "error_block_heal_edit", target=len(original)),
+            trace_id=trace_id, cancel_check=cancel_check,
         )
         if not new:
             skipped.append(SkippedBlock(f.block_ids[0], "edit_failed", "the model returned nothing"))

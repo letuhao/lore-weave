@@ -29,6 +29,7 @@ from app.clients.eval_client import extract_judge_content
 from app.engine.finding import SkipReason
 from app.clients.llm_client import LLMClient
 from app.engine.plan import DecomposeResult
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +143,9 @@ def build_fix_scene_messages(
 async def run_plan_self_heal(
     llm: LLMClient, result: DecomposeResult, *, user_id: str, model_source: str, model_ref: str,
     source_language: str = "auto", max_edit_expansion: float = 1.6,
-    judge_max_tokens: int = 2000, edit_max_tokens: int = 700,
+    # `None`, not a number: a signature default is evaluated ONCE at import, so it can never
+    # read the outline it is about to judge. Resolved per call below.
+    judge_max_tokens: int | None = None, edit_max_tokens: int | None = None,
     trace_id: str | None = None, cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[DecomposeResult, PlanHealReport]:
     """Judge the outline, satellite-edit each flagged scene's synopsis IN PLACE, return the
@@ -151,7 +154,10 @@ async def run_plan_self_heal(
     kw = dict(user_id=user_id, model_source=model_source, model_ref=model_ref,
               trace_id=trace_id, cancel_check=cancel_check)
     sysj, usrj = build_plan_judge_messages(render_outline(result), source_language)
-    jc = await _chat(llm, system=sysj, user=usrj, max_tokens=judge_max_tokens,
+    jc = await _chat(llm, system=sysj, user=usrj,
+                     max_tokens=judge_max_tokens or max_tokens_for(
+                         "plan_judge",
+                         target=sum(len(c.scenes) for c in result.chapters)),
                      purpose="plan_judge", **kw)
     findings = parse_plan_findings(jc or "")
     report = PlanHealReport(findings=findings)
@@ -174,7 +180,9 @@ async def run_plan_self_heal(
             for j in (si - 1, si + 1) if 0 <= j < len(scenes)
         )
         syse, usre = build_fix_scene_messages(target.synopsis, f.issue, f.fix, neigh, source_language)
-        new = await _chat(llm, system=syse, user=usre, max_tokens=edit_max_tokens,
+        new = await _chat(llm, system=syse, user=usre,
+                          max_tokens=edit_max_tokens or max_tokens_for(
+                              "plan_heal_edit", target=len(target.synopsis)),
                           purpose="plan_fix_scene", **kw)
         if not new:
             f.skip_reason = SkipReason.EDIT_FAILED

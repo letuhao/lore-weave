@@ -167,11 +167,10 @@ def test_no_caller_re_introduces_a_budget_literal_the_registry_owns():
 #: The remaining helper-hop literals, held as a ratchet. Each is a budget passed to a helper
 #: that forwards to submit, so it never reaches the SSOT gate's payload scan — the same
 #: unscanned-surface class the gate names in its PASS line. Shrink this list, never grow it.
-_KNOWN_HELPER_LITERALS = [
-    "engine/planning_pipeline.py:98 =2048",
-    "engine/plan_forge/material_search.py:169 =1500",
-    "engine/self_heal.py:640 =400",
-]
+#: EMPTY as of 2026-08-02 (DoD-3). All three drained onto registry rows
+#: (`chapter_beat_map`, `material_search`, `self_heal_rerank`). An empty ratchet is the
+#: point of a ratchet; the test still runs, and the next literal anyone adds reds it.
+_KNOWN_HELPER_LITERALS: list[str] = []
 
 
 # ── a ceiling row bounds a call whose SIZE is the feature ─────────────────────────────────

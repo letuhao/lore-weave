@@ -37,6 +37,7 @@ import re
 from typing import Any
 
 from app.engine.llm_json import call_json
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +170,7 @@ async def search_material(
     raw = await call_json(
         llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
         messages=[{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}],
-        max_tokens=1500,
+        max_tokens=max_tokens_for("material_search", target=max_candidates),
         job_meta={"usage_purpose": "plan_forge", "extractor": f"material_search:{kind}"},
         # BARE schema: `call_json` wraps it with `json_format(schema_name, ...)` itself. Passing a
         # pre-wrapped one nests `json_schema` inside `json_schema`, the provider rejects it, and the

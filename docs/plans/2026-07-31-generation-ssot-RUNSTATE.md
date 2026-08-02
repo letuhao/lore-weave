@@ -3196,6 +3196,84 @@ AUDIT AUDIT-9 (guard-signals: glossary.kg_sweep_coverage — unconsumed → cons
                `injection_scan` (a column + a signature change). Then DoD 3, 4b, 4c, 5.
 ```
 
+### ◐ AUDIT-10 · DoD-3 — widen the denominator FIRST, and it immediately found an uncapped judge.
+
+```
+AUDIT AUDIT-10 (budget seam — the unscanned surface, then the backlog)
+  ORDER      — the scanner was widened BEFORE anything was drained, on purpose. Draining a
+               backlog whose denominator is still incomplete is how a count reads DONE while
+               the surface nobody scanned stays broken; this run already has that lesson
+               written down twice. The cost was honest and visible: the backlog went UP first.
+
+  FOUND      — the gate's PASS line had named `raw POST /internal/llm/stream (chat,
+               lore-enrichment, video-gen)` as NOT scanned. Measured, that note was two thirds
+               WRONG: chat and video-gen go through the SDK and were already scanned. Only
+               lore-enrichment hand-rolls a body — and one of its two sites, the C15 EVAL
+               JUDGE, had **no `max_tokens` key at all**. Uncapped, on a call whose consumer
+               parses strict JSON. An excluded surface with an accurate label is still an
+               excluded surface.
+                 · Form 3 added: a dict literal carrying BOTH `"operation"` and `"messages"`
+                   IS a provider-registry request. Stated as SHAPE, not "an HTTP body",
+                   because that is what it matches — and the difference mattered on the first
+                   run, which surfaced `composition/app/routers/engine.py`: not an outbound
+                   body but a PERSISTED job record whose `max_out` comes off the API request.
+                 · services/lore-enrichment-service/app/llm_budget.py — the service's first
+                   registry. Two rows, and they are different SHAPES: `generate_gap_completion`
+                   is an adoption (`was=4000`, the no-downgrade test applies);
+                   `eval_judge_usefulness` is a NARROWING (`was=None`). A row recording `was=0`
+                   would satisfy `budget_for >= was` for every conceivable value — a test that
+                   cannot fail wearing the costume of coverage. `was=None` obliges
+                   `narrowing_why`, so the exemption has to state its own reason.
+                 · The judge's kind is STRUCTURED, not VERDICT, and that is the judgement in
+                   the row: `parse_judge_verdict` accepts a JSON object or nothing, so a
+                   clipped verdict is not a shorter answer, it is the proposal silently
+                   dropping out of that judge's denominator.
+                 · …which obliges the finish_reason check the contract requires of a fatal
+                   kind. The raw-SSE surface had no way to make one, so
+                   `collect_stream_finish_reason` was added — and rather than paste a THIRD
+                   copy of the SSE frame walker beside the two already in that file, all three
+                   now share `_iter_frames`.
+
+  DRAINED    — two detectors, two blind spots, and the union is what the backlog actually is:
+               · budget gate: **29 → 30 → 26**. Three literal/default origins converted
+                 (`self_heal_rerank` 400, `plan_heal` 2000/700, `error_block_heal` 1200) and
+                 one HAND-ROLLED SIZER folded into the registry — `succession_entailment`'s
+                 `128 + 24n` was a second sizing model with no floor and no window clamp.
+               · registry test's `_KNOWN_HELPER_LITERALS`: **3 → 0**. These are budgets handed
+                 to a helper that forwards, so they never reach the gate's payload scan.
+                 `chapter_beat_map` and `material_search` both had a target the caller already
+                 held (`len(chapters)`, `max_candidates`).
+               · `_helper_params_by_call` — the gate could not see an attributed caller feeding
+                 a private helper, which after the literals were drained was the LARGEST
+                 remaining category (5 of 12 composition sites). The budgets were already
+                 correct; the gate was calling them debt.
+
+  PROVEN     — the widening is the dangerous half, so it gets the sweep case:
+                 attributed-before=True  unattributed-after=True
+                 -> PROVED — one literal caller still defeats the binding
+                 restored, sha256 verified
+               That is the exact shape `_ssot_local_names_by_call`'s docstring names as the
+               reason NOT to widen: one caller of an otherwise-attributed helper passing a flat
+               number. It is now case 20 in `guard-redability-gate` (8/8 gates-only).
+               Suites: composition **3580 passed, 403 skipped**; lore-enrichment 50 targeted.
+               `llm-budget-ssot-gate: PASS — 97 sites scanned` (was 94).
+
+  DRIFT      — three:
+               · `target=len(result.scenes)` on a `DecomposeResult` that has no `.scenes` — it
+                 has `.chapters`. Parses fine; would have raised AttributeError on the first
+                 real plan-heal run. Caught only by reading the dataclass.
+               · The CRLF anchor trap AGAIN — a multi-line probe anchor written with LF reports
+                 ANCHOR-GONE on text plainly in the file. Already fixed once in
+                 `guard-redability-gate`; hit again in a new probe.
+               · The `python - <<'PY'` heredoc double-escape, FOURTH time today. Two of the
+                 four I solved correctly by writing the script to a file first, then reached
+                 for the heredoc again. Knowing the failure has not stopped me repeating it.
+
+  NEXT       — 26 held: knowledge-service (10, incl. TWO more hand-rolled `_max_tokens_for`
+               sizers and no registry at all), translation (4), worker-ai (1), SDK (2), and 9
+               composition sites whose budget originates in a router/settings/API field.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |

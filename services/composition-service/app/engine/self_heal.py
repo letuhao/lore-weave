@@ -637,7 +637,10 @@ async def _rerank_edit(
     proposal, so uncertainty should default to 'let the human tick it', not auto-tick."""
     system = _RERANK_SYSTEM + (("\n\nSTORY BIBLE:\n" + canon.strip()) if canon and canon.strip() else "")
     user = f"ORIGINAL: «{proposal.before}»\nPROPOSED: «{proposal.after}»\nISSUE: {proposal.issue}"
-    content = await _chat(llm, system=system, user=user, max_tokens=400,
+    # `target=1`: one verdict for one proposal. The count this call expects, which is also
+    # exactly what the degrade path below fabricates when it fails.
+    content = await _chat(llm, system=system, user=user,
+                          max_tokens=max_tokens_for("self_heal_rerank", target=1),
                           purpose="self_heal_rerank", temperature=0.3, **kw)
     if content is None:
         return False, ""   # degrade → not pre-checked (human decides; nothing hidden)

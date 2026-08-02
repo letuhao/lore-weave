@@ -37,6 +37,7 @@ from app.engine.plan import (
     build_chapter_map_messages, parse_chapter_map,
 )
 from app.engine.plan_heal import PlanHealReport, run_plan_self_heal
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +96,9 @@ async def run_planning_pipeline(
     # ── L1 — beat map ONCE (feeds Stage 3 + Stage 4). Degrade → beat_role=None.
     mapped = chapters
     sys1, usr1 = build_chapter_map_messages(premise, beats, chapters, source_language)
-    l1 = await _llm_json(llm, system=sys1, user=usr1, max_tokens=2048, **mk)
+    l1 = await _llm_json(llm, system=sys1, user=usr1,
+                         max_tokens=max_tokens_for("chapter_beat_map", target=len(chapters)),
+                         **mk)
     if l1 is not None:
         beat_keys = {b.get("key") for b in beats if isinstance(b.get("key"), str)}
         mapped, _ = parse_chapter_map(l1, chapters, beat_keys)

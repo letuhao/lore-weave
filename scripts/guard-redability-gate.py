@@ -186,6 +186,19 @@ CASES = [
              "  - id: probe.sixth_unconsumed\n    field: exclusion_unverified\n    emitter:\n      file: sdks/python/loreweave_eval/calibration.py\n    unconsumed: a sixth, injected by the red-ability gate\n\n  - id: eval.exclusion_unverified"),
      [sys.executable, "scripts/guard-signal-consumption-gate.py"], ROOT),
 
+    # The widening that made this necessary: `_helper_params_by_call` binds a private helper's
+    # budget param from its callers. The gate's own source names the hazard — widening the
+    # detector is how a ratchet stops meaning anything — so the case is the exact shape the
+    # earlier tightening protected: ONE caller of an otherwise-attributed helper passing a flat
+    # number. If the binding ever swallows that, this reds.
+    ("DoD-3 budget — one literal caller no longer defeats an attributed helper", GATE,
+     ROOT / "services" / "composition-service" / "app" / "engine" / "promise_audit.py",
+     replace("system=system, user=user, max_tokens=max_tokens, trace_id=trace_id,\n"
+             "                          tag=\"promise_extract\", cancel_check=cancel_check)",
+             "system=system, user=user, max_tokens=400, trace_id=trace_id,\n"
+             "                          tag=\"promise_extract\", cancel_check=cancel_check)"),
+     [sys.executable, "scripts/llm-budget-ssot-gate.py"], ROOT),
+
     ("S1 generation-paths — a row claims `guarded` with a coverage field the file lacks", GATE,
      ROOT / "contracts" / "generation-paths.yaml",
      replace("coverage_field: kg_status", "coverage_field: kg_status_that_does_not_exist"),
