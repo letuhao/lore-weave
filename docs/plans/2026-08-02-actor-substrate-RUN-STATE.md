@@ -1131,10 +1131,16 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 | `[x]` **B11** | `U-10` — the citation gate for this round's own artifacts | `D-281`/`D-314` | **built:** `scripts/citation-gate.py`, wired pre-commit. **test** `--self-test` = 15 cases, every rule bites and none cries wolf; repo run = OK over 4 strict contracts. **bite 12** — a contract citation moved past end-of-file → `C2-past-eof`, exit 1. **bite 13** — a contract citation pointed at a file that does not exist → `C1-missing`, exit 1. **Its own self-test found a control character in the URL regex** (a stray `` from a ``) that made the github-URL exemption dead, so every `github.com/…/x.md` link would have been reported as a missing repo file. **Honest limit written into the gate:** it proves a citation RESOLVES, never that the line says what the sentence claims — of the round's three phantom citations it would have caught exactly ONE, **and the verifier re-measured that claim as exact**. **verifier** cold-start agent: **16 findings, 2 BLOCKING** — a reversed range walked through the very defect class the gate was built for, and dead `json`/`tsx` alternation branches made real files commit-blocking false positives. All fixed — `D-332`..`D-339`. **bite 15** — a probe carrying all five bypasses and three of the false positives: **5 findings, exit 1, and the three correct citations silent**; restored → OK |
 | `[x]` **B10** | SESSION + seam register | — | **done:** §6-BUILD carries per-slice evidence · `D-298`..`D-314` record every decision the implementation forced · `seams-and-triggers.md` gained `S-11`..`S-18`, each a measured fact with a trigger and none with a design · `_index.md` status moved off *"unbuilt"* and lists what landed · `docs/sessions/SESSION_HANDOFF.md` gained a **game-tier** section that leaves the other branch's NEXT block untouched. **verifier** — no separate agent: this slice's product IS the record the other two verifiers were measured against, and both re-measured its numbers (`D-339`: 25 findings and 6 newly-ambiguous citations, exactly as claimed) |
 
-**Bite-test protocol used:** **twenty mutations across two batched scripts**, each restoring its file
-before the next, with the guard's own command as the observer. **Every one went red.** Round 1 (11) is the
-per-slice board above; round 2 (9) re-runs the exact mutations the cold-start verifier had measured GREEN,
-and is the proof that the fixes closed the holes rather than describing them.
+**Bite-test protocol used — 22 mutations, counted exactly:** **11** in the round-1 batch (the per-slice
+board above) · **9** in the round-2 batch, which re-runs the exact mutations the cold-start verifier had
+measured **GREEN** and is the proof the fixes closed the holes rather than describing them · **2** on the
+two fields of the `CAPPED` record that round 3 found unguarded. Each restores its file before the next,
+with the guard's own command as the observer. **Every one went red.**
+
+**Separately, three LIVE PROBES against the two gates** — a file carrying every measured bypass, run
+through the real gate on the real tree, then deleted: `bite 15` (5 citation bypasses + 3 false positives),
+`bite 16` (4 more citation bypasses), `bite 17` (a float inside a rustdoc example). These are not counted
+among the 22: a probe exercises a gate on synthetic input, a bite breaks the shipped subject.
 
 **The batch is what made this affordable.** Running one bite per turn was the cost — not the rebuilds,
 which are ~2s incremental.
