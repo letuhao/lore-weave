@@ -107,7 +107,7 @@ Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
 **Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → **`S11 ◐ (slices 1-2 ✅)`** → `S3 → S4` → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → **`S3`** → `S4` → `S9 → S5 → S13`.
 
 > **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
 > that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
@@ -136,7 +136,7 @@ when in fact most of the last two days went into defect work that was never on t
 | `S12` every declared enforcement site resolves | ✅ | the gate went green on its own example 3× before it was real |
 | **`S7` one output budget** | **✅ CLOSED 2026-08-02** | slices 1·2·3 ✅ · slice 4 (budget-seam rot) ✅ — 28 no-signal sites → 9, and the 9 are named |
 | `S6` no model silently its own judge | ✅ CLOSED 2026-08-02 | the affordance shipped; 7 hand-rolled copies → one policy; the skip states now differ |
-| `S11` one context compiler | ◐ slices 1-2 ✅ | allocation layer + composition flipped (no-op ≥16K); translation's estimator converged onto the kernel (it under-counted CJK/vi by a third); contract namespacing remains |
+| `S11` one context compiler | ✅ CLOSED 2026-08-02 | allocation layer + composition flipped (no-op ≥16K) · translation's estimator converged (it under-counted CJK/vi by a third) · the contract's two closed sets now machine-checked both ways |
 | `S3` one `Finding` | ☐ | deliberately after S11 |
 | `S4` the plan half onto the spine | ☐ | the gate exists; the work is widening it |
 | `S9` the shared guard SDK | ☐ | **inverted** — converge three services first, extract after |
@@ -928,6 +928,77 @@ which the POST-RUN REVIEW found and fixed one layer up — except this one is a 
 the surface that would consume it (`model_roles`) is a read-only contract with no producer. That
 is what the slice has to build, and it is why shipping the label alone would produce a warning
 the author has no way to clear.
+
+### ✅ S11 slice 3 — the contract's two closed sets were never checked. S11 CLOSES.
+
+```
+AUDIT S11-3 (context-trace contract)
+  BUILT      — `phases` and `tiers` added to `contracts/context-trace.contract.json`, sourced
+               from `loreweave_context` rather than restated; `TraceTier` closed on the TS side
+               (it was a bare `string`); bidirectional parity tests on both sides, mirroring
+               the discipline `breakdown_categories` already had; and a producer-side test that
+               every emitted span's phase/tier is IN the closed set.
+
+  PROVEN     — the spec's namespacing item was MEASURED FIRST and turned out not to be the
+               work. `chat.*`/`composition.*` namespacing exists to let composition extend the
+               category vocabulary — and composition emits NOTHING into the trace: the only
+               `TraceAccumulator` consumers in the repo are chat-service's `stream_service`,
+               `compact_service` and `token_budget`. Namespacing now would be a vocabulary
+               with no second surface to separate, i.e. the zero-consumer ceremony S8 and S12
+               both exist to reject. Recorded in Debt with what un-parks it.
+
+               What IS wrong today is the spec's other sentence, and it is worse than stated:
+                 · `phase` — closed on BOTH sides (`PHASES` in Python, `'planner' | 'compiler'`
+                   in `TraceSpanFrame`) and cross-checked by NOTHING. A rename on either side
+                   would not red the other.
+                 · `tier` — `TIERS` in Python, and in TypeScript the literal declaration
+                   `tier: string; // T0..T6`. The COMMENT carried the constraint and the type
+                   carried none, so the Inspector would render `"T9"`, or any string at all,
+                   exactly as happily as a real tier. A closed-set value typed `string` on the
+                   consuming side is the defect the Frontend-Tool Contract exists to prevent —
+                   sitting inside the contract-checked payload itself.
+               `breakdown_categories` had the both-ways parity test all along; these two had
+               none, because the contract did not carry them to compare against.
+
+               suites: chat-service `1963 passed` · chat FE `74 files, 656 passed` ·
+               `tsc --noEmit` exit=0 · context-trace contract `13 passed`.
+               gates: `context-inspector-trace-gate --selfcheck: SELFCHECK PASS — contract
+               parses (13 frame fields, 6 span fields), 5 turns declared` ·
+               `ai-provider-gate OK` · `generation-guard-gate PASS` ·
+               `enforcement-claims-gate OK` · `db-safety-gate exit 0` ·
+               `[language-rule] PASS` · `i18n-completeness-gate OK`.
+               RED-ABLE: widening `TraceTier` back to `string` fails `tsc --noEmit` with
+               `src/features/chat/types.ts(250,7): error TS2322: Type 'boolean' is not
+               assignable to type '["S11: this union was widened to `string` and is no longer
+               closed", "TraceTier"]'`. Restored by re-editing.
+
+  NOT PROVEN — no LIVE trace was captured. The gate's live half needs a stack on :8090 plus
+               `JWT_SECRET`, and it said so rather than pretending: `Live half NOT run here`.
+               So the vocabulary is proven consistent across three declarations and one
+               producer, not proven against a frame a real turn emitted.
+               The parity is over the SET, not the MEANING: nothing checks that FE `T5` renders
+               what BE `T5` intends. `category` and `action` remain free strings on both sides
+               and are deliberately untouched — `category` overlaps `breakdown_categories`
+               without being the same vocabulary, and reconciling them is its own measurement.
+               And composition still emits no trace, so "one context compiler" remains true of
+               the BUDGET math (slices 1-2) and not of the TELEMETRY.
+
+  DRIFT      — I wrote a `@ts-expect-error` test for the closed union and it was INERT.
+               `tsconfig.json` excludes `src/**/__tests__` and `*.test.tsx`, so no test file is
+               ever type-checked: the annotation could neither pass nor fail, and it reads
+               exactly like enforcement. I caught it only because I widened the type to prove
+               red-ability and `tsc` came back exit 0 — the injection I nearly skipped because
+               the change looked too simple to need one. The assertion now lives in `types.ts`,
+               which tsc does compile. Fifth check-that-cannot-fail this run, and the first one
+               I wrote INTO a test file rather than found in someone else's code.
+               Second, smaller: my first instinct was to build the `chat.*`/`composition.*`
+               namespacing because the spec listed it. Grepping for `TraceAccumulator` took a
+               minute and showed there is no second surface to namespace FOR.
+
+  NEXT       — S3 (one `Finding`). Deliberately sequenced after S11, and slice 3 sharpens why:
+               the repo has ≥9 finding/verdict types, and this slice just demonstrated the cost
+               of a vocabulary declared in three places with no machine check between them.
+```
 
 ### ◐ S11 slice 2 — the estimators. "Four copies" was a hypothesis, and it was wrong.
 
@@ -2172,6 +2243,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | Smoke debris: throwaway book `019fbd8f-008c-7cef-bf81-1d53a808361d` and its knowledge project `019fbd90-…` | Deliberately a throwaway (never the dogfood book), but it is real rows in the dev stack awaiting purge. |
 | 2026-08-02 | The `cross_scene_check` registry row is MISLABELLED. Its `why` describes "a contradiction list across one scene seam"; its only two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a cast ROSTER. | The row documents a call that does not exist, and the kind is wrong in a way that matters: VERDICT carries `truncation_is_fatal=False`, but a clipped roster silently DROPS PEOPLE — the same class as the `propose_world` dead pass. Not fixed here because changing the kind changes the budget (VERDICT 2048 → STRUCTURED 4096) and needs its own measurement. |
 | 2026-08-02 | `_TOKENS_PER_ITEM = 220` (SDK, generic) is what makes a full-roster `propose_world` reach the 32768 runaway ceiling. A world entity is plausibly half that. | Every STRUCTURED budget is sized off a per-item cost nobody has measured against a real completion. The right number is `output_tokens / items` from a live run; until then the big-roster budgets are over-generous rather than wrong. |
+| 2026-08-02 | **The `chat.*` / `composition.*` trace namespacing is NOT built** — composition emits nothing into the context trace (the only `TraceAccumulator` consumers are chat-service's `stream_service`, `compact_service`, `token_budget`). | Namespacing a vocabulary with no second surface to separate would be zero-consumer ceremony. **Un-parks when composition first emits a trace span** — at that moment `breakdown_categories` becomes a shared vocabulary asserted BOTH ways on the chat side, so extending it is a consumer-visible shape change and must be namespaced in the same commit. |
 | 2026-08-02 | **S11-2 moved COST and nobody measured it.** Counting ~40% more tokens on CJK/Vietnamese means ~40% more chunks per chapter, i.e. ~40% more LLM calls — for exactly the books this platform is for. | The safe direction for correctness (no window overflow) and the expensive one for spend. Shipped without a number. A real per-chapter cost delta needs one translation run before/after on a real chapter. |
 | 2026-08-02 | **The kernel estimator is itself ~0.78× tiktoken on Vietnamese** (my n=3 sample), where the spec cites a 2026-07-07 eval claiming the script-aware heuristic tracks o200k within 3-6%. | Under-counting is the direction that overflows a window. My sample is far too small to overturn a real-corpus measurement, so the tension is recorded rather than acted on — re-tuning the kernel's `_F_VIETNAMESE` on n=3 would be the "generalised from one prompt formulation" mistake this run already has twice. Needs the eval corpus re-run. |
 | 2026-08-02 | **The distinct-critic rule compares `user_model_id`, not the RESOLVED provider model.** Two BYOK rows can point at the same underlying model. | A user with two gemma credentials picks one as drafter and one as critic, gets `CONFIGURED`, and a model grades its own prose — the exact failure S6 is named for, one level below where the check now looks. Closing it needs a provider-registry route exposing the underlying model for a `user_model_id` (only `/context-window` exists) plus a caching decision on a per-generation hot path. Gate #2 — cross-service contract. |
@@ -2229,6 +2301,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
+| 2026-08-02 | **I wrote a check that could not fail, into a test file, in the slice about machine-checking a contract.** A `@ts-expect-error` asserting `TraceTier` rejects `"T9"` — inert, because `tsconfig.json` excludes `src/**/__tests__` and `*.test.tsx`, so no test file is ever type-checked. It reads exactly like enforcement. Found ONLY because I widened the type to prove red-ability and `tsc` returned exit 0 — the injection I nearly skipped as unnecessary for a change this simple. Fifth check-that-cannot-fail this run, and the first I authored rather than found. |
 | 2026-08-02 | **Introduced a two-convention bug WHILE removing one — and the suite stayed green.** Swapping translation's `estimate_tokens` for the kernel left `split_chapter` still sizing its window from the old `_CJK_CHARS_PER_TOKEN = 1.5`, so a 100-token budget cut 150 CJK chars the new estimator counts as 158: 58% over, inside the module I was fixing for exactly that. It passed because the test asserting chunk COUNT was itself derived from the old constant. Caught by reading the function below the one I edited, not by a test. |
 | 2026-08-02 | **Edited a function twice while its module docstring described the behaviour I had just removed.** `chunk_splitter`'s header still advertised "CJK at ~1.5 chars/token" after the body became the kernel's. Stale prose is how the next reader re-derives the wrong model — the same shape as the `cross_scene_check` row whose `why` describes a call that no longer exists. |
 | 2026-08-02 | **Nearly shipped the S6 picker without the warning that makes it honest.** The spec asks for an affordance, and a select writing `critic_model_ref` satisfies that literally. But the state an author most often lands in is "I picked the model I already use", which the server silently refuses — so the setting would look applied and do nothing. That is the permanent-amber shape S1 exists to end, re-created by the slice written to close it. |

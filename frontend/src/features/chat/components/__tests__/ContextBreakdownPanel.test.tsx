@@ -27,7 +27,8 @@ import {
   CATEGORY_COLORS,
   CATEGORY_HEX,
 } from '../ContextBreakdownPanel';
-import type { ContextBudget } from '../../types';
+import type { ContextBudget, TraceTier } from '../../types';
+import { TRACE_PHASES, TRACE_TIERS } from '../../types';
 
 const fullBudget: ContextBudget = {
   used_tokens: 3676,
@@ -308,5 +309,50 @@ describe('ContextBreakdownPanel compact section', () => {
     expect(btn).toBeDisabled();
     fireEvent.click(btn);
     expect(c.onClearCompact).not.toHaveBeenCalled();
+  });
+});
+
+// ── S11: `phase` and `tier` are closed sets and must be checked BOTH ways ─────────────────
+//
+// `breakdown_categories` had this parity test; `phases` and `tiers` had none, because the
+// contract did not carry them. `phase` was a closed union on both sides with nothing
+// comparing them, and `tier` was typed `string` here against `TIERS` in Python — so the
+// Inspector would render "T9" without complaint.
+describe('context-trace contract — the closed vocabularies', () => {
+  const readContract = () => {
+    const rel = 'contracts/context-trace.contract.json';
+    const candidates = [resolve(process.cwd(), '..', rel), resolve(process.cwd(), rel)];
+    const contractPath = candidates.find((p) => existsSync(p));
+    expect(contractPath, `context-trace contract not found; tried: ${candidates.join(', ')}`).toBeDefined();
+    return JSON.parse(readFileSync(contractPath!, 'utf-8')) as {
+      phases?: string[];
+      tiers?: string[];
+    };
+  };
+
+  it('TRACE_PHASES matches the contract in BOTH directions', () => {
+    const contract = readContract();
+    expect(contract.phases, 'contract missing phases').toBeDefined();
+    expect([...TRACE_PHASES].sort()).toEqual([...contract.phases!].sort());
+  });
+
+  it('TRACE_TIERS matches the contract in BOTH directions', () => {
+    const contract = readContract();
+    expect(contract.tiers, 'contract missing tiers').toBeDefined();
+    expect([...TRACE_TIERS].sort()).toEqual([...contract.tiers!].sort());
+  });
+
+  it('the closure of the union is enforced where tsc can SEE it', () => {
+    // A `@ts-expect-error` here would be inert. `tsconfig.json` excludes
+    // `src/**/__tests__` and `*.test.tsx`, so no test file is ever type-checked — the
+    // annotation would read exactly like enforcement and could neither pass nor fail. The
+    // compile-time assertion therefore lives in `types.ts` (`_traceTierIsClosed`), which tsc
+    // does compile; widening the alias back to `string` makes `tsc --noEmit` fail with
+    // TS2322. Verified by doing it.
+    //
+    // What is checkable HERE is the runtime vocabulary, so that is what this asserts.
+    const good: TraceTier = 'T3';
+    expect(TRACE_TIERS).toContain(good);
+    expect(TRACE_TIERS).not.toContain('T9');
   });
 });

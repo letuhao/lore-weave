@@ -190,7 +190,7 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 
 **Order (author-set 2026-08-02):** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` →
 `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → **`S11 ◐ (slices 1-2 ✅)`** → `S3 → S4` → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → **`S3`** → `S4` → `S9 → S5 → S13`.
 
 ### ⛔ KG / extraction is PARKED — do not start it
 
