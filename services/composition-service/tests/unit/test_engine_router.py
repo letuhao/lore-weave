@@ -170,8 +170,22 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_knowledge_client_dep] = lambda: object()
     async def _resolve_context_length(model_source, model_ref):
         return None  # unresolved in tests — the flat default budget applies
+
+    async def _resolve_model_identity(model_source, model_ref):
+        """Unresolved, DELIBERATELY — these tests exercise the ref-level policy.
+
+        Returning `None` puts every resolution on the degrade path
+        (`identity_verified=False`), which is the state a router test should sit in: the
+        distinctness decisions asserted here are the ones that must hold with provider-registry
+        unreachable. The identity comparisons themselves are unit-tested against the policy in
+        `test_critic_policy.py`, where the resolver is a real (stubbed) function rather than an
+        outage.
+        """
+        return None
+
     app.dependency_overrides[get_llm_client_dep] = lambda: SimpleNamespace(
-        sdk=object(), resolve_context_length=_resolve_context_length)
+        sdk=object(), resolve_context_length=_resolve_context_length,
+        resolve_model_identity=_resolve_model_identity)
     with TestClient(app) as c:
         yield c, works, outline, canon, jobs, judge_stub, captured
     app.dependency_overrides.clear()

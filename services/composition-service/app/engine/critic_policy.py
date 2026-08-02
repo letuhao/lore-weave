@@ -40,12 +40,15 @@ boolean reads `.distinct`; a caller that has to TELL SOMEBODY reads `.status`.
 """
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any
 
-__all__ = ["CriticStatus", "CriticResolution", "resolve_critic"]
+__all__ = [
+    "CriticStatus", "CriticResolution", "resolve_critic", "resolve_critic_refs",
+    "resolve_critic_verified",
+]
 
 
 class CriticStatus(str, Enum):
@@ -74,6 +77,21 @@ class CriticResolution:
     #: caller has to remember to check.
     source: str | None = None
     ref: str | None = None
+    #: Did anything confirm that the critic is a DIFFERENT MODEL, rather than merely a
+    #: different row?
+    #:
+    #: `None`  — not attempted (the ref-only comparison; no resolver was supplied).
+    #: `True`  — both refs resolved to a provider identity and they differ.
+    #: `False` — a resolver was supplied and could not answer, so the refs differ and the
+    #:           MODELS are unknown.
+    #:
+    #: `False` deliberately does NOT flip `distinct` to False. Switching the blocking tier
+    #: off whenever provider-registry is briefly unreachable would be a new outage mode, and
+    #: it would be strictly worse than the state before this field existed. Same decision, and
+    #: the same reason, as `PanelSafety.exclusion_unverified` keeping `safe` True: a flag that
+    #: is false on every ordinary run stops being read, and then the real case arrives wearing
+    #: the same colour.
+    identity_verified: bool | None = None
 
     @property
     def distinct(self) -> bool:
@@ -115,3 +133,60 @@ def resolve_critic_refs(src: Any, ref: Any, drafter_ref: Any) -> CriticResolutio
     if drafter_ref is not None and str(ref) == str(drafter_ref):
         return CriticResolution(CriticStatus.SAME_AS_DRAFTER)
     return CriticResolution(CriticStatus.CONFIGURED, source=str(src), ref=str(ref))
+
+
+async def resolve_critic_verified(
+    settings: Mapping[str, Any] | None,
+    drafter_source: Any,
+    drafter_ref: Any,
+    identity_of: Callable[[str, str], Awaitable[str | None]],
+) -> CriticResolution:
+    """The same decision, made against WHICH MODEL each ref actually is.
+
+    The defect this closes
+    ----------------------
+    Everything above compares `user_model_id`s. A `user_model_id` identifies a ROW in one
+    user's model registry, not a model — the same weights reached through two BYOK credentials
+    are two rows. So a user picks one as drafter and the other as critic, the ids differ, the
+    rule answers CONFIGURED, and the model grades its own prose: the exact failure this policy
+    is named for, one level below where it was looking.
+
+    Not hypothetical, and not rare. Measured on the dev stack 2026-08-02:
+
+        lm_studio::google/gemma-4-26b-a4b-qat   5 active user_models rows
+        ollama::gemma3:12b                      5
+        lm_studio::text-embedding-bge-m3        6
+
+    — and the first of those is the model `scripts/dev-model.py` resolves for chat, i.e. the
+    default drafter. Any two of its five rows pass the ref comparison.
+
+    Identity is `(provider_kind, provider_model_name)` and deliberately excludes the endpoint:
+    two hosts serving the same weights are the same judge, because self-grading is a property
+    of the model and not of the box it runs on.
+
+    Degrading
+    ---------
+    The ref comparison runs FIRST and needs no network, so the same-row case is still caught
+    when provider-registry is down. When the resolver cannot answer, the result stays
+    CONFIGURED with `identity_verified=False` — see that field for why this does not fail
+    closed. It is never upgraded to "verified" on a partial answer: a `None` from either side
+    means unknown, not different.
+    """
+    base = resolve_critic(settings, drafter_ref)
+    if base.status is not CriticStatus.CONFIGURED:
+        # Nothing to verify: there is no critic, or it was already refused by the cheap check.
+        return base
+    if drafter_source is None or drafter_ref is None:
+        # The caller does not know its own drafter well enough to ask. Not a refusal — the
+        # ref comparison already passed — but not a verification either.
+        return replace(base, identity_verified=False)
+
+    critic_identity = await identity_of(str(base.source), str(base.ref))
+    drafter_identity = await identity_of(str(drafter_source), str(drafter_ref))
+    if critic_identity is None or drafter_identity is None:
+        return replace(base, identity_verified=False)
+    if critic_identity == drafter_identity:
+        # Two rows, one model. Fields blanked exactly as the ref-level refusal blanks them, so
+        # a caller that ignores `.distinct` still cannot send the refused model anywhere.
+        return CriticResolution(CriticStatus.SAME_AS_DRAFTER, identity_verified=True)
+    return replace(base, identity_verified=True)

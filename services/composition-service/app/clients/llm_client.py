@@ -158,6 +158,55 @@ class LLMClient:
         # negative max_tokens sent to the provider.
         return cw_int if cw_int > 0 else None
 
+    async def resolve_model_identity(self, model_source: str, model_ref: str) -> str | None:
+        """WHICH MODEL a `model_ref` actually is — `"<provider_kind>::<provider_model_name>"`.
+
+        The anti-self-reinforcement rule compares the critic against the drafter, and it used
+        to compare `user_model_id`s. Those are per-USER-ROW, not per-model: a user with two
+        BYOK credentials for the same gemma picks one as drafter and one as critic, the ids
+        differ, the rule says CONFIGURED, and the model grades its own prose. That is the exact
+        failure the rule is named for, one level below where the check was looking.
+
+        The identity is `(provider_kind, provider_model_name)` and DELIBERATELY not the
+        endpoint. Two lm_studio boxes serving the same weights are the same judge for this
+        purpose — self-grading is a property of the model, not of the host.
+
+        Best-effort, like `resolve_context_length`: `None` on any failure, never a fabricated
+        value. A caller must treat `None` as UNVERIFIED and must not read it as "distinct" —
+        `critic_policy` carries that distinction as its own status rather than leaving each
+        call site to remember it.
+        """
+        # `/internal/...`, NOT `/v1/model-registry/...`. The two live in different chi route
+        # groups on provider-registry and only the internal one carries this route; the sibling
+        # `resolve_context_length` above uses the other prefix, which is exactly the kind of
+        # near-miss that returns 404 and degrades to "unverified" forever without ever erroring.
+        url = (f"{settings.llm_gateway_internal_url}/internal/models/"
+               f"{model_source}/{model_ref}/info")
+        try:
+            resp = await self._http.get(
+                url, headers={"X-Internal-Token": settings.internal_service_token},
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("resolve_model_identity unreachable: %s", exc)
+            return None
+        if resp.status_code != 200:
+            logger.warning("resolve_model_identity → %d", resp.status_code)
+            return None
+        try:
+            body = resp.json()
+            kind = (body.get("provider_kind") or "").strip()
+            name = (body.get("provider_model_name") or "").strip()
+        except (ValueError, AttributeError) as exc:
+            logger.warning("resolve_model_identity bad JSON: %s", exc)
+            return None
+        # A half-resolved identity is NOT an identity. `"::gemma"` would compare equal to
+        # another row that also failed to report its kind, and the comparison this feeds
+        # decides whether a model is allowed to judge itself.
+        if not kind or not name:
+            logger.warning("resolve_model_identity incomplete: kind=%r name=%r", kind, name)
+            return None
+        return f"{kind}::{name}"
+
     async def resolve_planner_model(self, user_id: str) -> str | None:
         """D-PLANFORGE-DEFAULT-MODEL — mirrors glossary-service's `resolvePlannerModel`
         (glossary-service/internal/api/providerregistry_client.go): reuses provider-

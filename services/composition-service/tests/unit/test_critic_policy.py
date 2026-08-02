@@ -13,7 +13,9 @@ import uuid
 
 import pytest
 
-from app.engine.critic_policy import CriticResolution, CriticStatus, resolve_critic
+from app.engine.critic_policy import (
+    CriticResolution, CriticStatus, resolve_critic, resolve_critic_verified,
+)
 
 _APP = pathlib.Path(__file__).resolve().parents[2] / "app"
 #: The whole app tree, not a named file.
@@ -189,6 +191,113 @@ def test_the_message_lookup_is_closed(status):
     from app.routers.engine import _CRITIC_SKIP_WARNING
 
     assert isinstance(_CRITIC_SKIP_WARNING[status], str)
+
+
+# ── two ROWS, one MODEL — the level below where the rule was looking ──────────────────────
+
+def _identity_map(mapping: dict[tuple[str, str], str | None]):
+    """A resolver that answers from a table, and records what it was asked."""
+    asked: list[tuple[str, str]] = []
+
+    async def resolve(source: str, ref: str) -> str | None:
+        asked.append((source, ref))
+        return mapping.get((source, ref))
+
+    return resolve, asked
+
+
+_GEMMA = "lm_studio::google/gemma-4-26b-a4b-qat"
+_QWEN = "lm_studio::qwen/qwen3.6-35b-a3b"
+
+
+async def test_two_DIFFERENT_rows_pointing_at_ONE_model_is_still_self_judging():
+    """The defect, with the numbers that make it not-hypothetical.
+
+    Measured on the dev stack 2026-08-02:
+        lm_studio::google/gemma-4-26b-a4b-qat   5 active user_models rows
+        ollama::gemma3:12b                      5
+    and the first is the model `scripts/dev-model.py` resolves for chat — the default drafter.
+    Any two of its five rows have different `user_model_id`s, so the ref comparison answers
+    CONFIGURED and the model grades its own prose.
+    """
+    resolve, asked = _identity_map({
+        ("user_model", "row-A"): _GEMMA,
+        ("user_model", "row-B"): _GEMMA,   # a second credential for the SAME weights
+    })
+    r = await resolve_critic_verified(
+        {"critic_model_source": "user_model", "critic_model_ref": "row-B"},
+        "user_model", "row-A", resolve,
+    )
+    assert r.status is CriticStatus.SAME_AS_DRAFTER
+    assert r.distinct is False
+    assert r.identity_verified is True
+    assert (r.source, r.ref) == (None, None), "a refused critic must not leak its model"
+    assert len(asked) == 2, "both sides must be resolved — one is not a comparison"
+
+
+async def test_a_genuinely_different_model_still_resolves_and_is_marked_verified():
+    """The control. Without it every assertion above is satisfied by an implementation that
+    calls everything SAME_AS_DRAFTER, which would silently disable the blocking tier."""
+    resolve, _ = _identity_map({
+        ("user_model", "row-A"): _GEMMA,
+        ("user_model", "row-C"): _QWEN,
+    })
+    r = await resolve_critic_verified(
+        {"critic_model_source": "user_model", "critic_model_ref": "row-C"},
+        "user_model", "row-A", resolve,
+    )
+    assert r.status is CriticStatus.CONFIGURED
+    assert r.identity_verified is True
+    assert (r.source, r.ref) == ("user_model", "row-C")
+
+
+async def test_an_UNRESOLVABLE_identity_is_unverified_and_does_NOT_switch_the_tier_off():
+    """Deliberate, and the harder half.
+
+    Failing closed here would mean the critic stops running whenever provider-registry is
+    briefly unreachable — a new outage mode, strictly worse than the state before this check
+    existed. Same decision, same reason, as `PanelSafety.exclusion_unverified` keeping `safe`
+    True: a flag that is false on every ordinary run stops being read.
+    """
+    resolve, _ = _identity_map({})   # nothing resolves — an outage
+    r = await resolve_critic_verified(
+        {"critic_model_source": "user_model", "critic_model_ref": "row-C"},
+        "user_model", "row-A", resolve,
+    )
+    assert r.status is CriticStatus.CONFIGURED
+    assert r.distinct is True, "an outage must not disable the blocking tier"
+    assert r.identity_verified is False, "…but it must not read as verified either"
+
+
+async def test_a_HALF_resolved_pair_is_unknown_and_never_upgraded_to_verified():
+    """`None` from one side means unknown, not different. Treating it as different is how a
+    degraded check reports the reassuring answer — the shape this whole audit keeps finding."""
+    resolve, _ = _identity_map({("user_model", "row-A"): _GEMMA})   # the critic is unknown
+    r = await resolve_critic_verified(
+        {"critic_model_source": "user_model", "critic_model_ref": "row-C"},
+        "user_model", "row-A", resolve,
+    )
+    assert r.identity_verified is False
+
+
+async def test_the_SAME_ROW_case_is_caught_WITHOUT_asking_the_resolver():
+    """The cheap check runs first and needs no network, so the most obvious misconfiguration
+    is still refused when provider-registry is down."""
+    resolve, asked = _identity_map({})
+    r = await resolve_critic_verified(
+        {"critic_model_source": "user_model", "critic_model_ref": "same"},
+        "user_model", "same", resolve,
+    )
+    assert r.status is CriticStatus.SAME_AS_DRAFTER
+    assert asked == [], "the resolver was called for a decision already made"
+
+
+async def test_no_critic_at_all_does_not_call_the_resolver_either():
+    resolve, asked = _identity_map({})
+    r = await resolve_critic_verified({}, "user_model", "row-A", resolve)
+    assert r.status is CriticStatus.NOT_CONFIGURED
+    assert r.identity_verified is None, "nothing was attempted, which is not the same as False"
+    assert asked == []
 
 
 def test_resolution_is_frozen():

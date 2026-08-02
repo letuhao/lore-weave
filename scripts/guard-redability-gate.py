@@ -153,6 +153,13 @@ CASES = [
      [sys.executable, "-m", "pytest", "tests/unit/test_unguarded_declaration.py", "-q",
       "-p", "no:cacheprovider"], COMP),
 
+    ("S6 critic — two rows for ONE model stop being caught", SUITE,
+     COMP / "app" / "engine" / "critic_policy.py",
+     replace("    if critic_identity == drafter_identity:",
+             "    if False and critic_identity == drafter_identity:"),
+     [sys.executable, "-m", "pytest", "tests/unit/test_critic_policy.py", "-q",
+      "-p", "no:cacheprovider"], COMP),
+
     ("S1 tilemap — the engine's own default claims a model wrote it", SUITE,
      ROOT / "services" / "tilemap-service" / "src" / "harness" / "l4_validate.rs",
      replace("        source: Provenance::CanonicalDefault,",

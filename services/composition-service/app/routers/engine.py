@@ -62,7 +62,9 @@ from app.engine.prose_doc import text_to_tiptap_doc
 from app.engine.stitch import prepend_scene_headings, stitch_chapter
 from app.engine.canon_check import canon_envelope, unguarded_envelope
 from app.engine.canon_reflect import run_canon_reflect
-from app.engine.critic_policy import CriticStatus, resolve_critic
+from app.engine.critic_policy import (
+    CriticResolution, CriticStatus, resolve_critic_verified,
+)
 from app.engine.narrative_thread import detect_and_update_threads
 from app.engine.compress import compress
 from app.engine.cowrite import (
@@ -106,14 +108,30 @@ _CRITIC_SKIP_WARNING: dict[CriticStatus, str] = {
         "critique skipped: no critic model is set for this book, so nothing independently "
         "grades the prose. Set one in Composition → Settings → Critic model.",
     CriticStatus.SAME_AS_DRAFTER:
-        "critique skipped: the critic model is the SAME model that wrote this passage, so it "
-        "would be grading its own work. Choose a different model in Composition → Settings.",
+        "critique skipped: the critic is the SAME MODEL that wrote this passage, so it would "
+        "be grading its own work. This includes picking a different entry that points at the "
+        "same underlying model — on a typical setup several credentials resolve to one model. "
+        "Choose a genuinely different model in Composition → Settings.",
     CriticStatus.INCOMPLETE:
         "critique skipped: the critic model setting is incomplete (a model was recorded "
         "without its provider). Re-select the critic model in Composition → Settings.",
 }
 
 _MAX_OUTPUT_DEFAULT = 1024
+
+async def _resolved_critic(sdict, drafter_source, drafter_ref, llm) -> CriticResolution:
+    """Resolve the critic against WHICH MODEL each ref is, not which row.
+
+    One helper for seven call sites, for the same reason `resolve_critic` itself exists: this
+    rule had EIGHT hand-rolled copies, and the fix for that is not to hand-roll the awaited
+    version eight times. `llm.resolve_model_identity` is best-effort — a failure leaves the
+    resolution CONFIGURED with `identity_verified=False`, never switches the tier off.
+    """
+    return await resolve_critic_verified(
+        sdict, drafter_source, drafter_ref, llm.resolve_model_identity,
+    )
+
+
 
 
 def _sse(data: dict[str, Any]) -> str:
@@ -583,7 +601,7 @@ async def generate(
         # re-run pack()) + the scene signals the auto compute needs. worker_op is
         # the canonical dispatch key (operation is the free-form prose op).
         sdict = work.settings or {}
-        critic_res = resolve_critic(sdict, body.model_ref)
+        critic_res = await _resolved_critic(sdict, body.model_source, body.model_ref, llm)
         c_src, c_ref = critic_res.source, critic_res.ref
         distinct = critic_res.distinct
         job_input.update({
@@ -667,7 +685,7 @@ async def generate(
                                  "k": r.get("k"), "candidates": r.get("candidates", []),
                                  "assembly_mode": assembly_mode})
         sdict = work.settings or {}
-        critic_res = resolve_critic(sdict, body.model_ref)
+        critic_res = await _resolved_critic(sdict, body.model_source, body.model_ref, llm)
         c_src, c_ref = critic_res.source, critic_res.ref
         distinct = critic_res.distinct
         try:
@@ -1290,7 +1308,7 @@ async def generate_chapter(
         # persistence to the book draft is the separate bearer accept-step
         # (POST /jobs/{id}/persist). Same guard + idempotency as the inline path.
         sdict = work.settings or {}
-        critic_res = resolve_critic(sdict, body.model_ref)
+        critic_res = await _resolved_critic(sdict, body.model_source, body.model_ref, llm)
         c_src, c_ref = critic_res.source, critic_res.ref
         distinct = critic_res.distinct
         job_input = {
@@ -1363,7 +1381,7 @@ async def generate_chapter(
                              "canon": r.get("canon"), "assembly_mode": "chapter"})
 
     sdict = work.settings or {}
-    critic_res = resolve_critic(sdict, body.model_ref)
+    critic_res = await _resolved_critic(sdict, body.model_source, body.model_ref, llm)
     c_src, c_ref = critic_res.source, critic_res.ref
     distinct = critic_res.distinct
     try:
@@ -1529,7 +1547,7 @@ async def stitch_chapter_endpoint(
         # in-flight guard + idempotency as the inline path.
         chapter_sort = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
         sdict = work.settings or {}
-        critic_res = resolve_critic(sdict, body.model_ref)
+        critic_res = await _resolved_critic(sdict, body.model_source, body.model_ref, llm)
         c_src, c_ref = critic_res.source, critic_res.ref
         distinct = critic_res.distinct
         job_input = {
@@ -1619,7 +1637,7 @@ async def stitch_chapter_endpoint(
     # rewrite can re-introduce a gone character). Degrade-safe, never blocks (F1).
     chapter_sort = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
     sdict = work.settings or {}
-    critic_res = resolve_critic(sdict, body.model_ref)
+    critic_res = await _resolved_critic(sdict, body.model_source, body.model_ref, llm)
     c_src, c_ref = critic_res.source, critic_res.ref
     distinct = critic_res.distinct
     canon_v: dict[str, Any] = {"violations": [], "resolved": True, "iterations": 0,
@@ -1993,7 +2011,8 @@ async def critique(
     # Anti-self-reinforcement: the critic MUST be a distinct model. Resolved through the ONE
     # policy (`engine/critic_policy`) rather than restated here — this was the seventh copy of
     # the rule, and the only one written inverted, which is how it drifted furthest.
-    critic_res = resolve_critic(settings_dict, drafter_ref)
+    drafter_source = (job.input or {}).get("model_source")
+    critic_res = await _resolved_critic(settings_dict, drafter_source, drafter_ref, llm)
     if not critic_res.distinct:
         # Skip the LLM critique (advisory) but STILL surface + persist the deterministic
         # derivative findings + the GATE.

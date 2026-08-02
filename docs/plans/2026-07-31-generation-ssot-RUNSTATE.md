@@ -2926,6 +2926,63 @@ AUDIT AUDIT-4 (generation paths — the last row, and the honest severity)
                half is the only one with a live security surface behind it.
 ```
 
+### ✅ AUDIT-5 · DoD-2 — the self-judge rule was checking the wrong thing, and the box proves it
+
+```
+AUDIT AUDIT-5 (distinctness on the RESOLVED provider model)
+  BUILT      — `LLMClient.resolve_model_identity` → `"<provider_kind>::<provider_model_name>"`,
+               and `critic_policy.resolve_critic_verified`, which all SEVEN router call sites
+               now go through via one `_resolved_critic` helper.
+               `CriticResolution.identity_verified: bool | None` — None (not attempted) /
+               True (both sides resolved and differ) / False (a resolver answered "unknown").
+               Identity deliberately EXCLUDES the endpoint: two hosts serving the same weights
+               are the same judge, because self-grading is a property of the model.
+
+  PROVEN     — the debt row was wrong TWICE, and checking the code rather than the note is
+               what found it: (a) it said "only `/context-window` exists" — `GET
+               /internal/models/{model_source}/{model_ref}/info` has been there since FD-27;
+               (b) it assumed the endpoint was needed for identity. So the whole slice cost a
+               client method, not a cross-service contract.
+               The defect is the DOMINANT state on this box, not a hypothetical:
+                 lm_studio::google/gemma-4-26b-a4b-qat   5 active user_models rows
+                 ollama::gemma3:12b                      5
+                 lm_studio::text-embedding-bge-m3        6
+               — and the first is what `scripts/dev-model.py` resolves for chat, i.e. the
+               default drafter. Any two of its five rows passed the old check.
+               LIVE, two real rows through the real route on the running stack:
+                 gemma row B (same weights) -> status=same_as_drafter distinct=False verified=True
+                 qwen3.6 (different)        -> status=configured      distinct=True  verified=True
+                 identities: lm_studio::google/gemma-4-26b-a4b-qat | lm_studio::google/gemma-4-26b-a4b-qat
+               composition `3953 passed, 8 failed (the tracked test_motif_retrieve_db rows,
+               unchanged), 8 skipped`; unit-only `3492 passed`.
+               `guard-redability-gate: PASS — 16/16`.
+
+  NOT PROVEN — no caching, on purpose and unmeasured: two extra internal HTTP calls per
+               generation, against an operation that costs seconds of LLM time. Adding a TTL
+               cache without measuring is the kind of thing this run keeps catching, so it is
+               named here rather than built.
+               `identity_verified` is a FOURTH emitted-but-unconsumed signal — no response
+               field, no FE surface. The pattern is now explicit in the Debt register.
+               And nothing verifies the two `provider_kind`s came from the same registry
+               instance; a multi-registry deployment could in principle mint colliding names.
+               Out of scope and, on a single-registry platform, not reachable.
+
+  DRIFT      — two.
+               · I wrote the URL as `/v1/model-registry/models/...` by pattern-matching the
+                 sibling `resolve_context_length`. The route lives in the OTHER chi group,
+                 `/internal/...`. A 404 there degrades to `identity_verified=False` silently
+                 and forever — the check would have shipped, passed its tests, and verified
+                 nothing. Caught by curling the real route, not by reading.
+               · Adding the method broke TWO test stubs, and I fixed the first one as it
+                 failed and re-ran, instead of sweeping for all of them. The repo already has
+                 the lesson row: audit ALL call sites when widening a contract. The second
+                 stub cost a full 90-second suite run to find.
+
+  NEXT       — DoD 3 (29 baselined budget sites + the unscanned raw-stream shape) and DoD 4
+               (22 baselined injection modules, 7 of them in translation-service, which is the
+               only remaining item with a live security surface behind it).
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -2951,7 +3008,9 @@ AUDIT AUDIT-4 (generation paths — the last row, and the honest severity)
 | 2026-08-02 | **The `chat.*` / `composition.*` trace namespacing is NOT built** — composition emits nothing into the context trace (the only `TraceAccumulator` consumers are chat-service's `stream_service`, `compact_service`, `token_budget`). | Namespacing a vocabulary with no second surface to separate would be zero-consumer ceremony. **Un-parks when composition first emits a trace span** — at that moment `breakdown_categories` becomes a shared vocabulary asserted BOTH ways on the chat side, so extending it is a consumer-visible shape change and must be namespaced in the same commit. |
 | 2026-08-02 | **S11-2 moved COST and nobody measured it.** Counting ~40% more tokens on CJK/Vietnamese means ~40% more chunks per chapter, i.e. ~40% more LLM calls — for exactly the books this platform is for. | The safe direction for correctness (no window overflow) and the expensive one for spend. Shipped without a number. A real per-chapter cost delta needs one translation run before/after on a real chapter. |
 | 2026-08-02 | **The kernel estimator is itself ~0.78× tiktoken on Vietnamese** (my n=3 sample), where the spec cites a 2026-07-07 eval claiming the script-aware heuristic tracks o200k within 3-6%. | Under-counting is the direction that overflows a window. My sample is far too small to overturn a real-corpus measurement, so the tension is recorded rather than acted on — re-tuning the kernel's `_F_VIETNAMESE` on n=3 would be the "generalised from one prompt formulation" mistake this run already has twice. Needs the eval corpus re-run. |
-| 2026-08-02 | **The distinct-critic rule compares `user_model_id`, not the RESOLVED provider model.** Two BYOK rows can point at the same underlying model. | A user with two gemma credentials picks one as drafter and one as critic, gets `CONFIGURED`, and a model grades its own prose — the exact failure S6 is named for, one level below where the check now looks. Closing it needs a provider-registry route exposing the underlying model for a `user_model_id` (only `/context-window` exists) plus a caching decision on a per-generation hot path. Gate #2 — cross-service contract. |
+| ~~2026-08-02~~ | ~~The distinct-critic rule compares `user_model_id`~~ — **CLEARED 2026-08-02.** `resolve_critic_verified` compares `(provider_kind, provider_model_name)` via the already-shipped `/internal/models/{source}/{ref}/info`. The row was wrong twice: that route existed, and the endpoint was never needed for identity. | Verified live against two real gemma rows on this box, where FIVE `user_model_id`s share one model. |
+| 2026-08-02 | **`identity_verified` is the FOURTH emitted-but-unconsumed signal** this run, after `exclusion_unverified`, `kg_status`/`kg_unchecked` and `guard_status:not_run`. | The pattern is the finding: I keep closing the HONESTY half of a gap and leaving the ACTING half. Each is individually small — a response field, a badge, a gate condition — and together they are a habit. Worth one deliberate slice that wires all four, rather than four more rows. |
+| 2026-08-02 | **The identity resolve is uncached**: two extra internal HTTP calls per generation. | Against an operation costing seconds of LLM time, plausibly irrelevant — but that is a guess. Measure a generation's wall clock before and after adding a TTL cache; adding one now would be an unmeasured optimisation of exactly the kind this run keeps catching. |
 | 2026-08-02 | `settings.model_roles` still has ZERO writers. S6 writes the legacy `critic_model_ref`/`_source` scalars, which the dual-read consumes. | The newer map remains a read-only contract with no producer, so the Book tier of the Chat & AI cascade still resolves a key nothing writes. Not blocking — the dual-read means the critic setting works — but the map is dead weight until something writes it or it is retired. |
 | 2026-08-02 | **`guardstatus.Report` is emitted and nothing consumes it.** `kg_status`/`kg_checked`/`kg_unchecked` ride the two sweep responses; no caller, gate or FE surface reads them. | The S8 shape again, and the second instance this run after `exclusion_unverified`: a fact made AVAILABLE rather than acted upon. It is strictly better than before — the field exists and is correct — but a degraded sweep still changes nothing downstream. The honest next step is the wiki UI showing "N articles not compared" or a gate that reds when a staleness sweep is published with a non-zero `kg_unchecked`. |
 | 2026-08-02 | **`guard_status: not_run` is emitted by both SSE streams and nothing consumes it.** `chapter_scene_gate` reads `guard_status` out of `generation_job.result` and now finds a value where it found none, but I did not trace what it does with this one, and no FE surface renders it. | Third instance of the emitted-but-unconsumed shape this run, after `exclusion_unverified` and `kg_status`. The pattern is worth naming: I keep closing the HONESTY half of a gap and leaving the ACTING half. The next step here is small and concrete — decide what `chapter_scene_gate` should do with `not_run`, and show the reason in the co-write UI. |
@@ -3134,3 +3193,17 @@ AUDIT AUDIT-4 (generation paths — the last row, and the honest severity)
   content". True of the type system; the two actual consumers are report formatters and both
   already print it. The gap was type-level and future-facing. Closing it was still right — it is
   cheap now and not later — but writing it up as a live bug would have been fiction.
+- **2026-08-02 · wrote a URL by pattern-matching its sibling, into a check that fails silently.**
+  `resolve_model_identity` first pointed at `/v1/model-registry/models/...` because
+  `resolve_context_length` two functions above does. The route lives in the other chi group,
+  `/internal/...`. A 404 there degrades to `identity_verified=False` — permanently, quietly, and
+  with every test still green. Found by curling the real route on the running stack.
+- **2026-08-02 · fixed one broken test stub, re-ran, found the second.** Widening the LLM client
+  contract broke two `SimpleNamespace` stubs. I patched the one in the failure I was looking at
+  instead of grepping for every stub of that dependency, and paid a full 90-second suite run to
+  discover the other. The lesson row for this already exists: audit ALL call sites.
+- **2026-08-02 · a debt row I wrote was wrong in both of its claims.** It said closing the
+  identity gap needed a new provider-registry route and a caching decision. The route had existed
+  since FD-27, and identity never needed the endpoint. A row re-read at every PLAN, asserting
+  work that was already done — which is the same staleness the "verify the claim against code,
+  don't trust the handoff note" rule exists for, this time in a note I authored myself.
