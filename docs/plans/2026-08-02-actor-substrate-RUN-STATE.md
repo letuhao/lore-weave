@@ -15,14 +15,17 @@
 > **Evidence, every number re-derived at the moment of writing** — because the previous two versions of
 > this block were stale by the commit that contained them (`D-343`, `D-350`): **283 Rust tests** green
 > across the touched crates · `dp-kernel --lib` **315**, unchanged by the `GoneState` move · the Go mirror
-> `contracts/entity_status` **ok** · clippy clean · `cargo doc` **0 warnings** · **31 bite-tests, every one
-> red** · **14 repo gates green** · the two contracts are **202** and **157** lines.
+> `contracts/entity_status` **ok** · clippy clean · `cargo doc` **0 warnings** · **33 bite-tests, every one
+> red** · the **38** gate scripts the pre-commit hook wires all green · the two contracts are **202** and
+> **157** lines.
 >
-> **Five cold-start adversarial verifiers over four rounds, 77 findings, every one fixed or answered.**
-> Rounds 2, 3 and 4 all returned **REFUTED**. Round 3 found a live defect **inside round 2's own fix**;
-> round 4 found that round 3's gate repairs had made both gates **cry wolf on correct content** (~73 false
-> positives across `docs/`). **The two-consecutive-clean-rounds rule has not yet been met, and this header
-> does not claim it has** — it claims 77 findings closed and a bite for each.
+> **Six cold-start adversarial verifiers over five rounds, 81 findings, every one fixed or answered.**
+> **Rounds 2, 3, 4 and 5 all returned REFUTED**, and every one found its worst defect in the previous
+> round's fixes — never in the fold, which survived every mutation aimed at it. Round 3: a `CAPPED` record
+> reporting a value the fold never emitted. Round 4: round 3's gate repairs blocking commits on correct
+> content. Round 5: round 4 having *relabelled* ten of those false positives rather than removing them, and
+> the citation gate carrying **944** more of the same class. **The two-consecutive-clean-rounds rule has
+> NOT been met and this header does not claim it has** — it claims 81 findings closed and a bite for each.
 >
 > ## What the NEXT feature inherits
 >
@@ -1011,6 +1014,28 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 | **D-309** `[E]` | **`bound` on `DerivationRow` is kept, and the contradiction `R-19` raised is GONE rather than tolerated.** `D-279` flagged the row's inline bound as *"a THIRD ceiling model, in the round whose §8 is titled 'Ceilings — one model'"*. **The scope seal deleted §8**, so there is no longer a "one model" claim for it to contradict. What remains is stated exactly: the bound limits **the amount this row contributes**, not the quantity — which the shipped move-range derivation demonstrably needs (`clamp(base + speed / per_tile, 1, max)`) — and the quantity **ceiling model** stays `U-4`, another feature's. |
 | **D-310** `[E]` | **The fold's honest limit, written into the code rather than discovered later: a derivation reads a MODIFIER-ONLY value.** Three passes — check every row, resolve from modifier rows, turn derivations into contributions against those values, re-resolve and emit. **A derivation of a derivation is therefore inexpressible**, and that is the shipped shape (`resolve_block` runs its modifier loop and *then* derives `MoveRange` from the finalised `Speed`), chosen because the alternative is a dependency solver the hub has no basis to design. Registered as `S-13`. |
 
+### 6m. ROUND 5 — the wolf was RELABELLED, not removed, and the fix was to cut the rule's reach (2026-08-02)
+
+| # | Decision |
+|---|---|
+| **D-351** `[E]` | **🔴 BLOCKING: round 4 did not remove ten of the twenty-six `+`-idiom false positives — it MOVED THEM from `C2-bad-range` to `C3-unanchored`.** Allowing `+` as non-junk let the citation fall through to the *next* rule, which reported it unresolvable. **Every one of the ten is the link TEXT of a markdown link whose href is the fully anchored path on the same line**, so `C3`'s own justification — *"a reader cannot resolve it either"* — is factually false for all ten. The commit's VERIFY said *"the delta is the false positives removed"*; for these it was a relabel, and the gate still blocked. **Measured as a real commit blocker on a line copied verbatim out of existing repo prose.** |
+| **D-352** `[E]` | **🔴 AND THE FIX WAS NOT ANOTHER NARROWING — IT WAS CUTTING TWO WHOLE CLASSES OUT OF THE RULE'S REACH.** A citation **inside a fenced code block** is content, not a citation: a TypeScript snippet, a shell transcript, a JSON sample. A citation that **is the text of a markdown link** is resolvable by definition, because the href beside it *is* the resolution. **Measured: 539 + 398 findings, and the `--all` baseline fell 9 039 → 8 095 with the strict corpus still green and all ten blockers gone.** ⇒ **when a rule's justification is false for a whole class of its findings, narrow the SCOPE, do not add another exception** — four rounds of exceptions had left the wolf intact. |
+| **D-353** `[META]` | **🔴 AND THE STALE NUMBER RECURRED A THIRD TIME, IN THE COMMIT RECORDING ITS SECOND RECURRENCE.** `D-343` named it; `D-350` recorded it happening again; this commit updated the handoff **279 → 281** while its own VERIFY line said **283** — advancing to the *previous* commit's value. The same document also carried **three different bite counts** (31, 22, 33) one commit after one titled *"count the bites exactly"*, and a *"load-bearing"* link count that said three where there are four. ⇒ **every number in the handoff and the header is now derived by a script that reads the artifacts** (`cargo test`, the bite scripts, the max `D-` id, `wc -l` on the contracts, the hook's gate list). **Three recurrences is not carelessness; it is the absence of a mechanism, and the mechanism is: never type a number you did not just measure.** |
+
+**Nine more MAJOR, each fixed:**
+
+| finding | what it was |
+|---|---|
+| the two link arms disagreed **depending on whether `npm install` had run** | `C1`/`C3` resolve against `git ls-files`; `C4` called `Path.exists()`, which sees gitignored build output. One link, opposite verdicts, and an `--all` baseline that was not reproducible between machines — CI on a fresh clone would red what a developer sees green. ⇒ both arms now resolve against the same tree, with directories derived from path prefixes |
+| a false-positive guard that guarded nothing | `LINK_DEF_RE`'s `(?!\s*\|)` table lookahead can never change a verdict, because `^\s*\[` already refuses a line starting with `\|`. **Its self-test case went green with the lookahead deleted** — a new vacuity, shipped in the round about vacuity |
+| the repo-escape rule could be deleted with the suite green | every case counted findings, and the fallback *does-not-resolve* arm produces the same count. ⇒ four cases now assert the **verdict string**, not the count |
+| the float gate reddened on comments and strings **inside a doc example** | fenced lines were scanned RAW, so `// was 1.5 before` and `assert_eq!(s, "1.5")` were findings — in a gate whose docstring says the stripper exists because *"a gate that reds on its own documentation gets switched off"* |
+| `rust,ignore` was treated as compiled | only the FIRST info token was consulted. ⇒ **every** token must be compile-compatible |
+| the unterminated-fence residual was a **MISS**, documented as cry-wolf-only | a dangling fence made the NEXT block's opening fence read as a closing one, so a genuine `f64` doc-test went invisible. ⇒ fence state resets at every doc-block boundary |
+| `file://`, `ftp://` and `tel:` were dead repo files | four live `file:///` links in `docs/`. ⇒ an explicit scheme set, used by the link rules and the URL blanker alike |
+| two template placeholder links | widening the inline target class made a link whose target is the literal shape `L<N>_*.md` red in two template files that are *about* a naming shape |
+| two more self-test cases were double-guarded | each stayed green when the rule it named was deleted, because a second narrowing also caught it. ⇒ each now has a case only its own rule can satisfy |
+
 ### 6l. ROUND 4 — REFUTED, and the fix pass had made two gates CRY WOLF (2026-08-02)
 
 | # | Decision |
@@ -1143,15 +1168,15 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 > **ALL ELEVEN SLICES CLOSED.** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules
 > -p ruleset-loader` = **283 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
 > `GoneState` move) · the Go mirror `contracts/entity_status` **ok** · clippy clean · `cargo doc` **0
-> warnings** · **31 bite-tests, every one red** · **five cold-start verifiers over four rounds, 77
+> warnings** · **33 bite-tests, every one red** · **six cold-start verifiers over five rounds, 81
 > findings, every one fixed or answered** · every repo gate green including two that did not exist this
 > morning.
 >
-> **Rounds 2, 3 and 4 ALL returned REFUTED.** Round 3's sharpest finding was a live defect **inside round
-> 2's own fix** — a `CAPPED` record reporting a value the fold never emitted (`D-341`). Round 4's was that
-> round 3's gate repairs had made both gates **cry wolf on correct content**, ~73 false positives across
-> `docs/` (`D-348`). That is what the *two consecutive clean rounds* rule is for, and it is why this board
-> does not claim a clean round: **it claims 77 findings closed and a bite for each.**
+> **Rounds 2, 3, 4 and 5 ALL returned REFUTED**, each finding its worst defect in the previous round's
+> fixes: a `CAPPED` record reporting a value the fold never emitted (`D-341`) · gate repairs blocking
+> commits on correct content (`D-348`) · ten of those false positives **relabelled rather than removed**
+> (`D-351`). That is what the *two consecutive clean rounds* rule is for, and it is why this board does
+> not claim a clean round: **it claims 81 findings closed and a bite for each.**
 
 | # | Slice | Contract line | EVIDENCE — test · bite · verifier |
 |---|---|---|---|
@@ -1167,11 +1192,18 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 | `[x]` **B11** | `U-10` — the citation gate for this round's own artifacts | `D-281`/`D-314` | **built:** `scripts/citation-gate.py`, wired pre-commit. **test** `--self-test` = 15 cases, every rule bites and none cries wolf; repo run = OK over 4 strict contracts. **bite 12** — a contract citation moved past end-of-file → `C2-past-eof`, exit 1. **bite 13** — a contract citation pointed at a file that does not exist → `C1-missing`, exit 1. **Its own self-test found a control character in the URL regex** (a stray `` from a ``) that made the github-URL exemption dead, so every `github.com/…/x.md` link would have been reported as a missing repo file. **Honest limit written into the gate:** it proves a citation RESOLVES, never that the line says what the sentence claims — of the round's three phantom citations it would have caught exactly ONE, **and the verifier re-measured that claim as exact**. **verifier** cold-start agent: **16 findings, 2 BLOCKING** — a reversed range walked through the very defect class the gate was built for, and dead `json`/`tsx` alternation branches made real files commit-blocking false positives. All fixed — `D-332`..`D-339`. **bite 15** — a probe carrying all five bypasses and three of the false positives: **5 findings, exit 1, and the three correct citations silent**; restored → OK |
 | `[x]` **B10** | SESSION + seam register | — | **done:** §6-BUILD carries per-slice evidence · `D-298`..`D-314` record every decision the implementation forced · `seams-and-triggers.md` gained `S-11`..`S-18`, each a measured fact with a trigger and none with a design · `_index.md` status moved off *"unbuilt"* and lists what landed · `docs/sessions/SESSION_HANDOFF.md` gained a **game-tier** section that leaves the other branch's NEXT block untouched. **verifier** — no separate agent: this slice's product IS the record the other two verifiers were measured against, and both re-measured its numbers (`D-339`: 25 findings and 6 newly-ambiguous citations, exactly as claimed) |
 
-**Bite-test protocol used — 22 mutations, counted exactly:** **11** in the round-1 batch (the per-slice
-board above) · **9** in the round-2 batch, which re-runs the exact mutations the cold-start verifier had
-measured **GREEN** and is the proof the fixes closed the holes rather than describing them · **2** on the
-two fields of the `CAPPED` record that round 3 found unguarded. Each restores its file before the next,
-with the guard's own command as the observer. **Every one went red.**
+**Bite-test protocol — 33 mutations, ONE accounting.** An earlier version of this paragraph said 22
+while the header two screens up said 31 and the commit message implied 33: **three numbers, one document,
+one commit**, in the file whose parent commit is titled *"count the bites exactly"*. This is the count,
+and it is derived from the scripts rather than remembered:
+
+| batch | n | what it breaks |
+|---|---|---|
+| round-1 script | **11** | one per slice, the per-slice board above |
+| round-2 script | **9** | the exact mutations the cold-start verifier had measured **GREEN** |
+| round-3 ad-hoc | **2** | the two fields of the `CAPPED` record round 3 found unguarded |
+| round-4 ad-hoc | **11** | every round-4 fix, gates included |
+| **total** | **33** | each restores its file before the next, with the guard's own command as the observer. **Every one went red.** |
 
 **Separately, three LIVE PROBES against the two gates** — a file carrying every measured bypass, run
 through the real gate on the real tree, then deleted: `bite 15` (5 citation bypasses + 3 false positives),

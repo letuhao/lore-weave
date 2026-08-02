@@ -215,6 +215,12 @@ def _doc_fence_lines(raw_lines: list[str]) -> set[int]:
     for i, line in enumerate(raw_lines):
         stripped = line.strip()
         if not (stripped.startswith('///') or stripped.startswith('//!')):
+            # A doc BLOCK ends here, and so does any fence inside it. Without
+            # this reset an unterminated ```text block left the scanner "inside"
+            # for the rest of the file, so the NEXT block's opening fence read as
+            # a closing one and a genuine `let x: f64 = 1.5;` doc-test went
+            # INVISIBLE -- a miss, in a residual the docstring called cry-wolf-only.
+            in_fence, scanning = False, False
             continue
         # `lstrip('/')` alone left the `!` of a `//!` module doc in place, so the
         # fence never matched and EVERY module-level doc-test was invisible — in
@@ -231,11 +237,32 @@ def _doc_fence_lines(raw_lines: list[str]) -> set[int]:
             # this repo writes its contract blocks, so scanning them reported a
             # design note reading "the debuff factor was 1.5" as a float.
             info = body.lstrip('`~').strip().lower()
+            tokens = [t.strip() for t in info.split(',') if t.strip()] or [""]
             in_fence = True
-            scanning = info.split(',')[0] in COMPILED_FENCE_INFO
+            # EVERY token must be compatible with compilation. `rust,ignore` was
+            # treated as compiled because only the FIRST token was consulted, and
+            # rustdoc does not compile it.
+            scanning = all(t in COMPILED_FENCE_INFO for t in tokens)
             continue
         if scanning:
             out.add(i)
+    return out
+
+
+def _doc_code_lines(raw_lines: list[str], fenced: set[int]) -> dict[int, str]:
+    """The CODE of each fenced doc line, with comments and strings stripped.
+
+    Offsets are not preserved here and do not need to be: the finding reports the
+    line number and the raw line, and only the presence of a match matters.
+    """
+    out: dict[int, str] = {}
+    for i in sorted(fenced):
+        body = raw_lines[i].strip()
+        for marker in ("///", "//!"):
+            if body.startswith(marker):
+                body = body[len(marker):]
+                break
+        out[i] = strip_comments(body, keep_strings=False)
     return out
 
 
@@ -251,9 +278,15 @@ def scan_source(path: str, src: str) -> list[Finding]:
     # literal is still visible — and that is exactly the one to refuse.
     in_strings = strip_comments(src, keep_strings=True).splitlines()
     fenced = _doc_fence_lines(raw_lines)
+    # A doc-test line is blank after comment-stripping, so its CODE has to be
+    # recovered: drop the `///` / `//!` marker, then run the same stripper the
+    # rest of the file gets. Scanning the raw line instead reported `// was 1.5
+    # before` and `assert_eq!(s, "1.5")` inside an example as floats -- a gate
+    # reddening on its own documentation, which its docstring names as the way a
+    # gate gets switched off.
+    doc_code = _doc_code_lines(raw_lines, fenced)
     for i, line in enumerate(stripped):
-        # A doc-test line is blank after comment-stripping, so scan the RAW line.
-        subject = raw_lines[i] if i in fenced else line
+        subject = doc_code.get(i, line)
         matches = list(FLOAT_RE.finditer(subject))
         if not matches:
             continue
@@ -410,6 +443,32 @@ def self_test() -> int:
             "a code fence followed by a PROSE fence stops scanning",
             "//! ```\n//! let x: i64 = 1;\n//! ```\n//!\n//! ```text\n//! the ratio was 1.5\n//! ```",
             0,
+        ),
+        (
+            "a COMMENT inside a doc example is not code",
+            "/// ```\n/// let x = 1; // was 1.5 before\n/// ```",
+            0,
+        ),
+        (
+            "a STRING inside a doc example is not code",
+            '/// ```\n/// assert_eq!(s, "1.5");\n/// ```',
+            0,
+        ),
+        (
+            "...but real code beside a comment in a doc example still counts",
+            "/// ```\n/// let x: f64 = 1.5; // fine\n/// ```",
+            2,
+        ),
+        (
+            "```rust,ignore is NOT compiled, so it is prose",
+            "/// ```rust,ignore\n/// let x = 1.5;\n/// ```",
+            0,
+        ),
+        (
+            "an UNTERMINATED prose fence does not blind the next doc block",
+            "/// ```text\n/// a diagram nobody closed\npub struct A;\n"
+            "/// ```\n/// let x: f64 = 1.5;\n/// ```",
+            2,
         ),
         (
             "a tilde fence behaves like a backtick fence",

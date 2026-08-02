@@ -169,10 +169,12 @@ CITATION_RE = re.compile(
 )
 
 # A markdown link whose target is a relative path (not a URL, not an anchor).
-# CommonMark allows `[x](target "title")` and `[x](<target with spaces>)`. The
-# first version required the target to be followed immediately by `)`, so a dead
-# link written WITH a title was invisible, and a correct link written with angle
-# brackets was reported dead. Both measured.
+# CommonMark allows `[x](target "title")` and `[x](<target>)`. Both are matched.
+#
+# `[x](<target with spaces>)` is NOT — `[^>\s]+` stops at the space, so such a
+# link matches nothing and is silently unchecked. That is a MISS and it is named
+# here rather than claimed as support: an earlier version of this comment said
+# the angle-bracket form handled spaces, which it never did.
 # The scheme test is done in CODE, not by a lookahead before an optional `<`.
 # `<?(?!https?:…)` backtracks: the engine tries `<?` greedy, the lookahead fails,
 # it gives the `<` back, and the lookahead then passes because the next character
@@ -186,18 +188,28 @@ LINK_RE = re.compile(
 )
 
 
+# Schemes that name something outside this repository.
+EXTERNAL_SCHEMES = ("http", "https", "mailto", "file", "ftp", "ftps", "tel", "data")
+
+
 def _is_external(target: str) -> bool:
     """A URL, an anchor, or a mail link — not a path in this repository."""
     t = target.strip().lower()
+    # `file://`, `ftp://` and `tel:` were each reported as a dead repo file --
+    # twice over, since `URL_RE` did not blank them either. Four live `file:///`
+    # links exist in `docs/`.
     return (
-        t.startswith("http://") or t.startswith("https://")
-        or t.startswith("mailto:") or t.startswith("#") or t.startswith("//")
+        t.startswith("#") or t.startswith("//")
+        or any(t.startswith(f"{sch}:") for sch in EXTERNAL_SCHEMES)
     )
 
 # A URL. Blanked before the citation scan, because `example.com/a.md` and
 # `github.com/o/r/blob/main/docs/X.md` are paths on SOMEONE ELSE'S filesystem —
 # reporting them as missing repo files is the gate crying wolf on a correct link.
-URL_RE = re.compile(r"https?://\S+|(?<![\w.])github\.com/\S+")
+URL_RE = re.compile(
+    r"(?:https?|file|ftps?)://\S+"
+    r"|(?<![\w.])github\.com/\S+"
+)
 
 # A reference-style link DEFINITION: `[ref]: some/path.md`.
 #
@@ -210,8 +222,12 @@ URL_RE = re.compile(r"https?://\S+|(?<![\w.])github\.com/\S+")
 #
 # `[^…]` (a footnote) is excluded outright, and a `|` before the bracket (a table
 # row) likewise.
+# No `(?!\s*\|)` table guard: `^\s*\[` already refuses any line starting with
+# `|`, so the lookahead could never change a verdict — a false-positive guard,
+# shipped in the round about false positives, that guarded nothing. Its self-test
+# case went green with the lookahead deleted.
 LINK_DEF_RE = re.compile(
-    r"^(?!\s*\|)\s*\[(?!\^)[^\]]+\]:\s*"
+    r"^\s*\[(?!\^)[^\]]+\]:\s*"
     r"(?:<(?P<angled>[^>\s]+)>|(?P<plain>\S+))\s*$"
 )
 
@@ -239,7 +255,17 @@ PRAGMA_RE = re.compile(rf"<!--[^>]*{re.escape(PRAGMA)}\s*[-—:]\s*\S[^>]*-->")
 EXT_ONLY_RE = re.compile(rf"\.{SOURCE_EXT}$")
 
 
-def _check_link(rel: str, n: int, doc_dir: str, target: str, kind: str) -> list["Finding"]:
+# A template's placeholder link, e.g. `[L<N>_*.md](.../L<N>_*.md)`. Widening the
+# inline target class to `[^)\s]+` made these two live template files red; they
+# are documents ABOUT a naming shape, and the "link" is the shape.
+PLACEHOLDER_RE = re.compile(r"[<>*{}]")
+
+
+def _is_placeholder(target: str) -> bool:
+    return bool(PLACEHOLDER_RE.search(target))
+
+
+def _check_link(tree: "Tree", rel: str, n: int, doc_dir: str, target: str, kind: str) -> list["Finding"]:
     """One resolution rule for BOTH link forms.
 
     They had two: the inline rule reported `escapes the repository` for an
@@ -255,7 +281,13 @@ def _check_link(rel: str, n: int, doc_dir: str, target: str, kind: str) -> list[
     )
     if escaped:
         return [Finding("C4-link", rel, n, f"{kind} `{target}` escapes the repository")]
-    if not (REPO / joined).exists():
+    # Resolved against the same TREE the citation rules use, not against the host
+    # filesystem. `Path.exists()` sees gitignored build output, so one link gave
+    # opposite verdicts depending on whether `npm install` had been run — CI on a
+    # fresh clone reddened a link a developer saw as green, and the `--all`
+    # baseline was not reproducible between machines. That is exactly the
+    # two-answers-for-one-input defect this function was created to kill.
+    if not tree.knows(joined):
         return [Finding("C4-link", rel, n, f"{kind} `{target}` does not resolve")]
     return []
 
@@ -270,9 +302,14 @@ class Tree:
 
     def __init__(self, paths: list[str]):
         self.paths = paths
+        self._set = set(paths)
+        self._dirs: set[str] = set()
         self.by_name: dict[str, list[str]] = {}
         for p in paths:
             self.by_name.setdefault(p.rsplit("/", 1)[-1], []).append(p)
+            parts = p.split("/")
+            for k in range(1, len(parts)):
+                self._dirs.add("/".join(parts[:k]))
 
     @classmethod
     def from_git(cls) -> "Tree":
@@ -313,6 +350,15 @@ class Tree:
             parts.append(seg)
         return "/".join(parts)
 
+    def knows(self, path: str) -> bool:
+        """Is this exact repo-relative path in the tree — file OR directory?
+
+        Directories are not listed by `git ls-files`, so they are derived from the
+        prefixes of the paths that are. A link to a directory is a legitimate
+        markdown link.
+        """
+        return path in self._set or path in self._dirs
+
     def resolve(self, cited: str) -> list[str]:
         """Every tracked path the citation could mean."""
         cited = self.normalise(cited)
@@ -330,18 +376,46 @@ class Tree:
             return 0
 
 
+# A fenced code block. Everything inside one is CONTENT, not a citation: a
+# TypeScript snippet, a shell transcript, a JSON sample. Measured at 539 findings
+# across `docs/` before this was added, every one of them a false positive.
+FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
+
+# A markdown link. A citation appearing as the link TEXT is resolvable by
+# definition — the href beside it IS the resolution — so the C3-unanchored rule's
+# justification ("a reader cannot resolve it either") is false for every one.
+# Measured at 398 findings, including all ten remaining `+`-idiom blockers.
+LINK_SPAN_RE = re.compile(r"\[[^\]]*\]\([^)\s]+\)")
+
+
+def _link_text_spans(line: str) -> list[tuple[int, int]]:
+    """Character ranges of the `[…]` half of every inline markdown link."""
+    out = []
+    for m in LINK_SPAN_RE.finditer(line):
+        text_end = line.index("](", m.start())
+        out.append((m.start() + 1, text_end))
+    return out
+
+
 def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None) -> list[Finding]:
     """Findings in one document. `only_lines` restricts to added lines (1-based)."""
     lines = text.splitlines()
     out: list[Finding] = []
     doc_dir = rel.rsplit("/", 1)[0] if "/" in rel else ""
+    in_fence = False
 
     for i, line in enumerate(lines):
         n = i + 1
+        if FENCE_RE.match(line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
         if only_lines is not None and n not in only_lines:
             continue
         if _pragma_covers(lines, i):
             continue
+        link_text = _link_text_spans(line)
 
         # URLs first: a path inside one belongs to another host's filesystem.
         scan_line = URL_RE.sub(lambda m: " " * len(m.group(0)), line)
@@ -349,6 +423,11 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
             cited = m.group("path")
             start, end = m.group("start"), m.group("end")
             anchored = "/" in cited or "\\" in cited
+            # A citation that IS the text of a markdown link resolves through the
+            # href beside it. Reporting it "unresolvable" was the gate telling a
+            # reader that a link they can click does not work.
+            if not anchored and any(a <= m.start() < b for a, b in link_text):
+                continue
             if not anchored and start is None:
                 # A prose mention of a filename. See the module doc.
                 continue
@@ -431,21 +510,21 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
             # Must look like a path, or it is a markdown label and not a link.
             if not target or not ("/" in target or EXT_ONLY_RE.search(target)):
                 continue
-            out.extend(_check_link(rel, n, doc_dir, target, "reference definition"))
+            out.extend(_check_link(tree, rel, n, doc_dir, target, "reference definition"))
 
         for m in LINK_RE.finditer(line):
             raw = m.group("angled") or m.group("plain") or ""
             if _is_external(raw):
                 continue
             target = unquote(raw.split("#", 1)[0])
-            if not target:
+            if not target or _is_placeholder(target):
                 continue
             # Resolved as a REPO-RELATIVE string, never through the host
             # filesystem's idea of absoluteness. `Path.resolve()` made this rule
             # answer differently on Windows and Linux for the same input:
             # `[x](/etc/passwd)` red here and green in CI, `[x](C:/Windows)` the
             # reverse. A gate with two answers for one input is worse than none.
-            out.extend(_check_link(rel, n, doc_dir, target, "link target"))
+            out.extend(_check_link(tree, rel, n, doc_dir, target, "link target"))
     return out
 
 
@@ -638,15 +717,35 @@ def self_test() -> int:
         ("a dead reference-style link definition is caught", "[ref]: nowhere.md", 1),
         # F3 — the eleven false positives this rule produced on correct content.
         ("a budget table row is not a link definition", "[SYSTEM]: 1240 tokens (template-defined),", 0),
+        # ...and one that ONLY the trailing `\s*$` anchor refuses: a path-shaped
+        # first token followed by more prose is a sentence, not a definition.
+        ("a definition-shaped line with trailing prose is prose", "[note]: crates/x/resolve.rs is the entry", 0),
         ("a TypeScript index signature is not a link definition", "  [k: string]: unknown;", 0),
         ("a numeric range row is not a link definition", "[1024,16384]: 1024,", 0),
+        # A footnote's target ("see") also fails the path-shape filter, so this
+        # case is double-guarded. It is kept as behaviour, and the `(?!\^)` guard
+        # gets a case only it can satisfy: a footnote whose text IS path-shaped.
         ("a footnote is not a link definition", "[^1]: see the appendix", 0),
-        ("a table row is not a link definition", "| [x]: y | z |", 0),
+        ("a footnote whose text looks like a path is still not a link", "[^1]: crates/x/resolve.rs", 0),
+        # A table row still is not a link definition, but the reason is `^\s*\[`
+        # and NOT a dedicated guard — see the note on LINK_DEF_RE. Kept as a
+        # behaviour case, with its true mechanism named.
+        ("a table row is not a link definition (via the line anchor)", "| [x]: y | z |", 0),
         # F4 — an angle-bracketed URL was reported as a dead repo file, in BOTH
         # link rules, because the scheme lookahead backtracked past the `<`.
         ("an angle-bracketed URL definition is external", "[ref]: <https://example.com/x.md>", 0),
         ("an angle-bracketed URL link is external", "[x](<https://example.com/a.md>)", 0),
         ("an angle-bracketed mailto is external", "[x](<mailto:a@b.com>)", 0),
+        ("a file:// link is external", "[x](file:///c:/tmp/x.md)", 0),
+        ("a tel: link is external", "[x](tel:+123)", 0),
+        ("a template placeholder is not a link to check", "[L<N>_x.md](dir/L<N>_x.md)", 0),
+        # F1 — the two classes that produced the entire cry-wolf surface.
+        ("a citation inside a code fence is content, not a citation",
+         "```\nsee crates/nope/gone.rs:3\n```", 0),
+        ("a citation that is a link's TEXT resolves through its href",
+         "[`coverage.py:67+`](b.md)", 0),
+        ("...but a bare unanchored citation outside a link still reds",
+         "see resolve.rs:84", 1),
         ("a live reference-style link definition is fine", "[ref]: ../../scripts/citation-gate.py", 0),
         # F15
         ("a `..` segment is normalised", "see docs/x/../a/b.md", 0),
@@ -655,6 +754,8 @@ def self_test() -> int:
         ("an angle-bracket link to a real file is fine", "[x](<../../scripts/citation-gate.py>)", 0),
         # F9
         ("an absolute link escapes the repo", "[x](/etc/passwd)", 1),
+        ("a drive-qualified link escapes the repo", "[x](C:/Windows/system32)", 1),
+        ("a parent-escaping link escapes the repo", "[x](../../../../etc/passwd)", 1),
         # F10
         ("a pragma with no reason does not silence", f"see crates/nope/gone.rs:3 <!-- {PRAGMA} -->", 1),
         ("the pragma quoted in prose does not silence", f"the pragma is `{PRAGMA} — like this`\n\n\nsee crates/nope/gone.rs:3", 1),
@@ -665,6 +766,22 @@ def self_test() -> int:
         ok = got == expected
         failures += 0 if ok else 1
         print(f"  {'ok ' if ok else 'FAIL'} {name}: expected {expected}, got {got}")
+
+    # The repo-escape rule needs its VERDICT asserted, not just a finding count:
+    # both the escape arm and the does-not-resolve arm produce exactly one
+    # finding, so every count-only case stayed green with the whole rule deleted.
+    live0 = Tree.from_git()
+    for text, want in [
+        ("[x](/etc/passwd)", "escapes the repository"),
+        ("[x](C:/Windows/system32)", "escapes the repository"),
+        ("[x](../../../../etc/passwd)", "escapes the repository"),
+        ("[x](nowhere-at-all.md)", "does not resolve"),
+    ]:
+        got = scan_doc(live0, "docs/a/doc.md", text)
+        detail = got[0].detail if got else "<no finding>"
+        ok = want in detail
+        failures += 0 if ok else 1
+        print(f"  {'ok ' if ok else 'FAIL'} escape verdict for {text}: {detail[:60]}")
 
     # C2 needs a real file, so it is measured against this script itself.
     live = Tree.from_git()

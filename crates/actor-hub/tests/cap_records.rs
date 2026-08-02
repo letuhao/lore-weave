@@ -1,18 +1,20 @@
 //! The `CAPPED` records — what each site MEANS, and where two of them must agree.
 //!
-//! Split out of `fold_edges.rs` at `IMP-D3`'s 400-line ceiling. The seam is real:
-//! every case here is about substrate §7's second verb and the fact that
-//! `Capped::emitted` answers a different question at a row-level site than at a
-//! quantity-level one.
+//! Substrate §7's second verb: *a value bound by a clamp is **CAPPED**, with an
+//! event.* The subtlety these two tests exist for is that `Capped::emitted`
+//! answers a **different question** at a row-level site than at a quantity-level
+//! one, and an assertion written without that distinction reddens on correct
+//! behaviour the moment a fixture gains a derivation.
 //!
-//! These moved out of `src/fold.rs` when it passed `IMP-D3`'s 400-line ceiling,
-//! and the move made them stronger rather than merely shorter: an integration
-//! test can reach only the **public** surface, so nothing here can assert a
-//! property through a `pub(crate)` back door that a plugin author would not have.
+//! **New file, not a split.** An earlier header claimed both *"split out of
+//! `fold_edges.rs`"* and *"moved out of `src/fold.rs`"* — two provenances, both
+//! false, copy-pasted from the file these tests were written beside. `fold.rs`
+//! was untouched and `fold_edges.rs` GREW in the same commit. A review caught
+//! it, and the lesson is the one this round keeps relearning: **prose copied
+//! with code describes the place it came from, not the place it landed.**
 
 use actor_hub::*;
 use ruleset_core::{ModifierOp, OpKind, QuantityTable};
-
 
 fn q(raw: u16) -> QuantityOrdinal {
     QuantityOrdinal::new(raw).unwrap()
@@ -22,8 +24,8 @@ fn p(raw: u8) -> PluginOrdinal {
     PluginOrdinal::new(raw).unwrap()
 }
 
-/// A two-plugin reality. `hp`/`speed`/`move_range` belong to plugin 0,
-/// `qi` to plugin 1. The names are the author's; the hub never reads them.
+/// A two-plugin reality: `hp`/`speed`/`move_range` belong to plugin 0, `qi` to
+/// plugin 1. The names are the author's; the hub never reads them.
 fn fixture() -> (HubRegistry, PluginSet, [i32; MAX_DECLARED_QUANTITIES]) {
     let table = QuantityTable::assign(&["hp", "qi", "speed", "move_range"]).unwrap();
     let decls = vec![
@@ -57,22 +59,6 @@ fn m(target: u16, op: ModifierOp, layer: u8) -> ModifierRow {
     ModifierRow { target: q(target), op, source: p(0), fold_layer: FoldLayer(layer) }
 }
 
-// ── the gaps a cold-start review measured, each with the input it needed ─────
-//
-// Every test below exists because a mutation of the thing it guards left the
-// suite GREEN. The pattern in all six is the same and worth naming: the fixture
-// was too simple to distinguish the documented behaviour from a plausible wrong
-// one. One submitting plugin cannot show an ordering key that sorts by plugin;
-// two contributions cannot overflow an `i64`; a derivation whose source has no
-// modifiers cannot show which pass it reads.
-
-/// **The three-pass semantics, which is the fold's central documented claim and
-/// had no test that could see it.**
-///
-/// The module doc says pass 2 reads its source quantity's **pass-1** value —
-/// i.e. modifier rows applied, derivations not. Give the SOURCE quantity a
-/// modifier and the two readings diverge: reading `stored` (the mutation) gives
-/// `3 334`, reading pass-1 gives `4 001`.
 /// **The two ROW-level cap sites answer a different question, and that is
 /// pinned rather than assumed.**
 ///
