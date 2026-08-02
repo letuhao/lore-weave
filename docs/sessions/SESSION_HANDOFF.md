@@ -190,7 +190,7 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 
 **Order (author-set 2026-08-02):** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` →
 `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → **`S11 ◐ (slice 1 ✅)`** → `S3 → S4` → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → **`S11 ◐ (slices 1-2 ✅)`** → `S3 → S4` → `S9 → S5 → S13`.
 
 ### ⛔ KG / extraction is PARKED — do not start it
 
@@ -281,11 +281,26 @@ switch and would have capped a 1M-context model at 6000 where it was getting 300
 regression invisible to every test I'd written, because they were all about windows being too
 small.
 
-**Remaining S11 parts, none started:** FOUR `estimate_tokens` implementations still exist (SDK,
-knowledge, lore-enrichment, translation) — the crux is already settled, so this is convergence
-not measurement; the `context-trace.contract.json` `breakdown_categories` namespacing
-(`chat.*` / `composition.*`, asserted on BOTH sides so extending it is consumer-visible); and
-the plan half's cl100k-calibrated budget in `plan_forge/existing_state.py`.
+**Slice 2 is DONE**, and its premise was falsified first. "Four `estimate_tokens` copies" is
+wrong: they are four different INTENTS — the kernel's projection, knowledge-service's real
+tiktoken (the ground truth), lore-enrichment's deliberate **3.05×** over-estimate mirroring
+billing math (which must NOT be merged), and translation's local heuristic, the only genuine
+duplicate. Fourth spec bullet falsified by measurement this run.
+
+That duplicate was a live bug: measured against tiktoken it under-counted **0.70× Vietnamese /
+0.68× Chinese** — a third short on the two scripts this service exists to translate, with no
+Vietnamese class at all so it fell to the Latin ratio. A chunk it called 2000 tokens reached the
+model at ~2900, the same overflow its docstring claimed to have fixed. Three tests were pinning
+it (`== 100` for 150 CJK chars; real answer 150). Live on deployed code: **0 chunks over budget**
+across vi/zh/en, characters preserved.
+
+⚠ Recorded in Debt: counting ~40% more tokens means ~40% more chunks, i.e. ~40% more LLM calls
+per chapter for CJK/Vietnamese books — the safe direction for correctness, unmeasured for spend.
+
+**Remaining S11 part:** the `context-trace.contract.json` `breakdown_categories` namespacing
+(`chat.*` / `composition.*`). It is asserted on BOTH sides (BE ⊆ FE and FE ⊆ BE), so extending it
+is a consumer-visible shape change and cannot be done additively the way slices 1-2 were. The
+plan half's cl100k-calibrated budget in `plan_forge/existing_state.py` is also unchanged.
 
 **Full standing overview — board, off-board work, de-rot, loose ends:** RUN-STATE §*WHERE THE RUN
 STANDS*.

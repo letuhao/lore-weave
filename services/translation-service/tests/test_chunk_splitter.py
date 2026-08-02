@@ -1,8 +1,15 @@
 """
-Unit tests for chunk_splitter — V2 CJK-aware token estimation.
+Unit tests for chunk_splitter — S11 kernel-aligned token estimation.
+
+Several assertions here used to RESTATE the module's own constants (`== 100` for 150 CJK
+chars, `expected = 100/1.5 + 200/4.0`, `== 2` chunks). A test that recomputes the code's
+arithmetic cannot notice when that arithmetic is wrong, and it did not: measured against
+tiktoken `o200k_base` the estimator under-counted CJK by 33%. They now assert BANDS against
+the measurement, and `split_chapter` is asserted on the property it promises — no chunk over
+its budget — rather than on a chunk count derived from the constant under test.
 
 Covers:
-- estimate_tokens: CJK-aware (CJK chars at 1.5 c/t, Latin at 4.0 c/t)
+- estimate_tokens: the kernel's script-aware estimator, vs tiktoken as ground truth
 - _is_cjk: character classification
 - split_chapter: empty text, short text (1 chunk), paragraph-break split,
   Latin sentence-end split, CJK sentence-end split,
@@ -50,16 +57,30 @@ def test_estimate_tokens_latin():
     text = "a" * 400
     assert estimate_tokens(text) == 100
 
-def test_estimate_tokens_cjk():
-    """Pure CJK text: 150 chars / 1.5 = 100 tokens."""
-    text = "中" * 150
-    assert estimate_tokens(text) == 100
+def test_estimate_tokens_cjk_does_not_UNDER_count_the_real_tokenizer():
+    """S11. This asserted `== 100` for 150 CJK chars, restating the old 1.5 chars/token
+    constant. Measured against tiktoken `o200k_base`, 150 CJK chars really cost **150**
+    tokens — so the assertion pinned a 33% UNDER-count, and under-counting is the direction
+    that overflows a context window.
 
-def test_estimate_tokens_mixed():
-    """Mixed CJK + Latin: 100 CJK (66.7 tok) + 200 Latin (50 tok) = 116 tokens."""
+    Now asserted as a BAND against the measurement rather than as a restatement of whatever
+    constant the implementation happens to use, because a test that recomputes the code's own
+    arithmetic cannot fail when that arithmetic is wrong.
+    """
+    text = "中" * 150
+    got = estimate_tokens(text)
+    assert got >= 150, f"under-counts the real tokenizer ({got} < 150) — the old bug"
+    assert got <= 180, f"over-counts enough to waste a third of the window ({got})"
+
+def test_estimate_tokens_mixed_scripts_stay_above_the_measurement():
+    """Same rewrite, mixed script. The old version computed `expected` from the module's own
+    constants — it would have passed for ANY value those constants produced."""
     text = "中" * 100 + "a" * 200
-    expected = int(100 / _CJK_CHARS_PER_TOKEN + 200 / _LATIN_CHARS_PER_TOKEN)
-    assert estimate_tokens(text) == expected
+    got = estimate_tokens(text)
+    # tiktoken measures this fixture at 125; 200 identical Latin chars compress far better
+    # than prose does, so the over-count here is an artefact of a degenerate fixture and the
+    # floor is what matters.
+    assert got >= 125, f"under-counts the real tokenizer ({got} < 125)"
 
 def test_estimate_tokens_minimum_is_one():
     """A single Latin character must return at least 1 token."""
@@ -79,12 +100,23 @@ def test_estimate_tokens_cjk_vs_latin_comparison():
     text_latin = "a" * 100
     assert estimate_tokens(text_cjk) > estimate_tokens(text_latin)
 
-def test_estimate_tokens_cjk_3000_chars():
-    """3000 CJK chars should estimate ~2000 tokens (not ~857 like the old bug)."""
+def test_estimate_tokens_cjk_3000_chars_reaches_the_REAL_token_count():
+    """The history of this one assertion is the whole S11 slice.
+
+    v1 divided everything by 3.5 → 857 tokens for 3000 CJK chars, "catastrophically
+    underestimated" in its own words. v2 fixed it to 1.5 chars/token → 2000, and this test
+    was written to pin 2000 as correct. Measured against tiktoken `o200k_base`, 3000 CJK
+    chars really cost **3000** tokens — so v2 closed two thirds of the gap and the test
+    froze the remaining third as though it were the answer.
+
+    A chunk this splitter believed was 2000 tokens reached the model at 3000. That is the
+    same context-window overflow the v2 fix was written for, and it survived because the test
+    restated the fix's constant instead of measuring against the tokenizer.
+    """
     text = "中" * 3000
     tokens = estimate_tokens(text)
-    assert tokens == 2000  # 3000 / 1.5 = 2000
-    # Old bug: 3000 / 3.5 = 857 — catastrophically underestimated
+    assert tokens >= 3000, f"still under-counts the real 3000 tokens ({tokens})"
+    assert tokens <= 3600, f"over-counts by more than 20% ({tokens})"
 
 
 # ── split_chapter — edge cases ───────────────────────────────────────────────
@@ -103,13 +135,35 @@ def test_split_short_chapter_returns_single_chunk():
 
 # ── split_chapter — CJK awareness ───────────────────────────────────────────
 
-def test_split_cjk_chapter_uses_smaller_chunks():
-    """CJK text should be split into smaller character windows."""
-    # 300 CJK chars = 200 tokens at 1.5 c/t
+def test_split_cjk_chapter_keeps_every_chunk_INSIDE_the_token_budget():
+    """This asserted `== 2` chunks: 300 CJK chars cut at 150 chars each, because the splitter
+    sized windows with `_CJK_CHARS_PER_TOKEN = 1.5`.
+
+    Those chunks are ~150 REAL tokens against a 100-token budget — 50% over — and the test
+    froze that as the expected shape. It is the same class as the estimator tests above: an
+    assertion that restates the implementation's constant cannot notice the constant is wrong.
+
+    The property that actually matters is the one the module promises, so that is what is
+    asserted now: no chunk exceeds the budget it was given. The chunk COUNT is an output of
+    that promise, not the promise itself.
+    """
     cjk_text = "中" * 300
-    # Budget of 100 tokens → max_chars = 100 * 1.5 = 150 chars
     result = split_chapter(cjk_text, 100)
-    assert len(result) == 2  # 300 chars / 150 max = 2 chunks
+    assert result, "the splitter returned nothing"
+    assert "".join(result) == cjk_text, "characters were lost or duplicated"
+    for i, chunk in enumerate(result):
+        assert estimate_tokens(chunk) <= 100, (
+            f"chunk {i} is {estimate_tokens(chunk)} tokens against a 100-token budget"
+        )
+
+
+def test_a_LATIN_chapter_is_not_over_split_by_the_same_rule():
+    """The control. The assertion above is satisfiable by a splitter that cuts everything into
+    single characters, so pin that Latin text — which genuinely fits more chars per token —
+    still gets the larger window."""
+    latin = "a" * 300
+    cjk = "中" * 300
+    assert len(split_chapter(latin, 100)) < len(split_chapter(cjk, 100))
 
 def test_split_latin_chapter_uses_larger_chunks():
     """Latin text should use the full 4.0 chars-per-token ratio."""
@@ -200,3 +254,41 @@ def test_single_very_long_word_still_produces_chunks():
     result = split_chapter(text, 10)
     assert len(result) > 1
     assert all(c for c in result)
+
+
+# ── S11: this module must not grow a FIFTH token convention ──────────────────────────────
+
+def test_the_estimator_IS_the_kernels_not_a_local_copy():
+    """The repo had FOUR `estimate_tokens` implementations. This one is now the kernel's.
+
+    Asserted by EFFECT — identical output across scripts — rather than by inspecting the
+    import, because a future edit that re-inlines the arithmetic would keep the import and
+    still diverge. Vietnamese is in the set deliberately: it is the script this module had no
+    class for at all, in the service that translates Vietnamese novels.
+    """
+    from loreweave_context import estimate_tokens as kernel
+
+    for s in ("The sword left its sheath and the moonlight caught the steel.",
+              "Lạc Viên rút kiếm khỏi vỏ, ánh thép loé lên dưới trăng.",
+              "剑落下，庭院像往常一样安静了下来。",
+              "中" * 150,
+              ""):
+        assert estimate_tokens(s) == kernel(s), f"diverged from the kernel on {s[:24]!r}"
+
+
+def test_vietnamese_is_no_longer_counted_at_the_LATIN_ratio():
+    """The structural half of the bug. This module classified characters as CJK or "other",
+    so Vietnamese — whose diacritics tokenize far denser than English — fell through to the
+    Latin ratio of 4.0 chars/token.
+
+    The control is English: if the two came back equal per character, the Vietnamese class
+    would not be doing anything and this test would be pinning a coincidence.
+    """
+    vi = "Lạc Viên rút kiếm khỏi vỏ, ánh thép loé lên dưới trăng đêm nay"
+    en = "The sword left its sheath and moonlight caught the steel tonight"
+    vi_per_char = estimate_tokens(vi) / len(vi)
+    en_per_char = estimate_tokens(en) / len(en)
+    assert vi_per_char > en_per_char, (
+        f"Vietnamese ({vi_per_char:.3f} tok/char) is still counted no denser than English "
+        f"({en_per_char:.3f}) — the missing script class is back"
+    )

@@ -107,7 +107,7 @@ Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
 **Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → **`S11 ◐ (slice 1 ✅)`** → `S3 → S4` → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → **`S11 ◐ (slices 1-2 ✅)`** → `S3 → S4` → `S9 → S5 → S13`.
 
 > **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
 > that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
@@ -136,7 +136,7 @@ when in fact most of the last two days went into defect work that was never on t
 | `S12` every declared enforcement site resolves | ✅ | the gate went green on its own example 3× before it was real |
 | **`S7` one output budget** | **✅ CLOSED 2026-08-02** | slices 1·2·3 ✅ · slice 4 (budget-seam rot) ✅ — 28 no-signal sites → 9, and the 9 are named |
 | `S6` no model silently its own judge | ✅ CLOSED 2026-08-02 | the affordance shipped; 7 hand-rolled copies → one policy; the skip states now differ |
-| `S11` one context compiler | ◐ slice 1 ✅ | the allocation layer landed + composition flipped (measured no-op ≥16K); estimator convergence + contract namespacing remain |
+| `S11` one context compiler | ◐ slices 1-2 ✅ | allocation layer + composition flipped (no-op ≥16K); translation's estimator converged onto the kernel (it under-counted CJK/vi by a third); contract namespacing remains |
 | `S3` one `Finding` | ☐ | deliberately after S11 |
 | `S4` the plan half onto the spine | ☐ | the gate exists; the work is widening it |
 | `S9` the shared guard SDK | ☐ | **inverted** — converge three services first, extract after |
@@ -928,6 +928,110 @@ which the POST-RUN REVIEW found and fixed one layer up — except this one is a 
 the surface that would consume it (`model_roles`) is a read-only contract with no producer. That
 is what the slice has to build, and it is why shipping the label alone would produce a warning
 the author has no way to clear.
+
+### ◐ S11 slice 2 — the estimators. "Four copies" was a hypothesis, and it was wrong.
+
+```
+AUDIT S11-2 (token estimators)
+  BUILT      — translation-service's `chunk_splitter.estimate_tokens` now IS the kernel's
+               (`loreweave_context.estimate_tokens`), and `split_chapter` derives its
+               chars-per-token from that same estimator instead of a separate pair of
+               constants. Three assertions that restated the old constants were rewritten
+               against tiktoken as ground truth.
+
+  PROVEN     — THE SLICE'S PREMISE WAS FALSIFIED FIRST. "Converge the four `estimate_tokens`
+               implementations" assumes four copies of one thing. Measured, they are four
+               DIFFERENT intents, and one of them must not be touched:
+                 · SDK `loreweave_context` — script-aware pre-send projection (the kernel).
+                 · knowledge-service — real tiktoken `o200k_base`. The most accurate, and the
+                   ground truth the others should be judged against.
+                 · lore-enrichment — a deliberate OVER-estimate mirroring provider-registry's
+                   billing math. Measured **3.05x** tiktoken on Vietnamese, by design, because
+                   a spend guardrail must err high. The spec already says the 2 billing
+                   conventions stay separate; merging it would be a BILLING correctness change.
+                 · translation — a two-class local heuristic, and the only genuine duplicate.
+               So this is the FOURTH spec bullet in this run falsified by measurement.
+
+               THE DUPLICATE WAS ALSO A LIVE BUG. translation's estimator, against tiktoken:
+                 text          chars   tiktoken   translation   ratio
+                 Vietnamese      205         73            51   0.70x
+                 Chinese          35         34            23   0.68x
+                 English         134         28            33   1.18x
+               Under-counting by a third, on the two scripts this service exists to translate.
+               Its docstring claimed to have fixed *"the ~2.3x underestimation bug for CJK
+               text that caused context window overflow and hallucination"* — it had closed
+               two thirds of that gap and stopped. A chunk it believed was 2000 tokens reached
+               the model at ~2900. Vietnamese was worse for a structural reason: the module had
+               no Vietnamese class at all, so it was counted at the LATIN ratio.
+
+               THREE TESTS WERE PINNING THE UNDER-COUNT, and the arithmetic is exact:
+                 fixture           tiktoken   OLD (asserted)   NEW
+                 "中" x150              150      100  (-33%)   158
+                 "中" x3000            3000     2000  (-33%)  3150
+               `test_estimate_tokens_cjk_3000_chars` even documented the history — v1's 857 was
+               "catastrophically underestimated", v2's 2000 was pinned as the answer — while
+               the real number was 3000 the whole time. `test_estimate_tokens_mixed` computed
+               its `expected` FROM the module's own constants, so it would have passed for any
+               value they produced.
+
+               suites: translation `1139 passed` (was 1136) · SDK `1187 passed, 9 skipped`.
+               gates: `llm-budget-ssot-gate PASS` · `ai-provider-gate OK` ·
+               `generation-guard-gate PASS` · `enforcement-claims-gate OK` ·
+               `db-safety-gate exit 0` · `[language-rule] PASS` ·
+               `sdk-duplication-gate (full): OK — no new SDK-tier duplications`.
+               RED-ABLE: re-inlining the old two-class arithmetic fails FIVE tests, including
+               `test_the_estimator_IS_the_kernels_not_a_local_copy` (asserted by EFFECT across
+               scripts, so an edit that keeps the import and re-inlines the maths still reds)
+               and `test_vietnamese_is_no_longer_counted_at_the_LATIN_ratio`. Restored by
+               re-editing.
+
+               LIVE, deployed translation-service AND worker, both hash-verified (MATCH):
+                 text          chars  est tok  chunks  max chunk tok  OVER BUDGET
+                 Vietnamese     5800     1642       4            492            0
+                 Chinese        1400     1422       3            498            0
+                 English        5400     1350       3            490            0
+               budget 500/chunk, `chars_preserved=True` on every row. Zero over-budget chunks
+               is the property the old splitter could not hold.
+
+  NOT PROVEN — no live TRANSLATION was run. The chunking is proven on deployed code over real
+               prose; that smaller chunks produce better translations, or even that a
+               previously-overflowing chapter now succeeds, is not measured. The failure this
+               fixes (overflow → hallucination) is named in the module's own docstring, not
+               observed by me.
+               COST MOVED and nobody measured it: counting ~40% more tokens on CJK/Vietnamese
+               means ~40% more chunks, i.e. ~40% more LLM calls per chapter for exactly the
+               books this platform is for. That is the safe direction for correctness and the
+               expensive one for spend, and it is a real product consequence shipped without
+               a number.
+               The kernel estimator is itself 0.78x tiktoken on my Vietnamese sample — better
+               than 0.70x, still UNDER. The spec cites a 2026-07-07 eval claiming the
+               script-aware heuristic tracks o200k within 3-6%; my three-sentence sample
+               disagrees and is far too small to overturn a real corpus measurement, so I am
+               recording the tension rather than re-tuning the kernel on n=3.
+               knowledge-service and lore-enrichment are UNTOUCHED. The first is the ground
+               truth and needs no change; the second must not be changed. So "one estimator"
+               is not what shipped — what shipped is one PROJECTION estimator, with the
+               measurement and the billing convention deliberately beside it.
+
+  DRIFT      — I introduced a two-convention bug WHILE removing one, and it passed the suite.
+               Swapping `estimate_tokens` for the kernel left `split_chapter` sizing its
+               window from the old `_CJK_CHARS_PER_TOKEN = 1.5`, so a 100-token budget still
+               cut 150 CJK chars that the new estimator counts as 158 — 58% over the budget
+               the caller asked for, inside the module I was fixing for exactly this. The
+               suite stayed green because the test asserting chunk COUNT was itself derived
+               from the old constant. Caught by reading `split_chapter` after the swap, not by
+               a test.
+               Second: I ran the module docstring's claim ("CJK at ~1.5 chars/token") straight
+               past me twice while editing the function underneath it. Stale prose describing
+               behaviour that no longer exists is how the next reader re-derives the wrong
+               model — the same shape as the `cross_scene_check` row whose `why` describes a
+               call that does not exist.
+
+  NEXT       — S11 slice 3: the `context-trace.contract.json` `breakdown_categories`
+               namespacing (`chat.*` / `composition.*`). It is asserted on BOTH sides
+               (BE ⊆ FE and FE ⊆ BE), so extending it is a consumer-visible shape change and
+               cannot be done additively the way slices 1 and 2 were.
+```
 
 ### ◐ S11 slice 1 — the allocation layer the spec said "does not exist and must be written"
 
@@ -2068,6 +2172,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | Smoke debris: throwaway book `019fbd8f-008c-7cef-bf81-1d53a808361d` and its knowledge project `019fbd90-…` | Deliberately a throwaway (never the dogfood book), but it is real rows in the dev stack awaiting purge. |
 | 2026-08-02 | The `cross_scene_check` registry row is MISLABELLED. Its `why` describes "a contradiction list across one scene seam"; its only two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a cast ROSTER. | The row documents a call that does not exist, and the kind is wrong in a way that matters: VERDICT carries `truncation_is_fatal=False`, but a clipped roster silently DROPS PEOPLE — the same class as the `propose_world` dead pass. Not fixed here because changing the kind changes the budget (VERDICT 2048 → STRUCTURED 4096) and needs its own measurement. |
 | 2026-08-02 | `_TOKENS_PER_ITEM = 220` (SDK, generic) is what makes a full-roster `propose_world` reach the 32768 runaway ceiling. A world entity is plausibly half that. | Every STRUCTURED budget is sized off a per-item cost nobody has measured against a real completion. The right number is `output_tokens / items` from a live run; until then the big-roster budgets are over-generous rather than wrong. |
+| 2026-08-02 | **S11-2 moved COST and nobody measured it.** Counting ~40% more tokens on CJK/Vietnamese means ~40% more chunks per chapter, i.e. ~40% more LLM calls — for exactly the books this platform is for. | The safe direction for correctness (no window overflow) and the expensive one for spend. Shipped without a number. A real per-chapter cost delta needs one translation run before/after on a real chapter. |
+| 2026-08-02 | **The kernel estimator is itself ~0.78× tiktoken on Vietnamese** (my n=3 sample), where the spec cites a 2026-07-07 eval claiming the script-aware heuristic tracks o200k within 3-6%. | Under-counting is the direction that overflows a window. My sample is far too small to overturn a real-corpus measurement, so the tension is recorded rather than acted on — re-tuning the kernel's `_F_VIETNAMESE` on n=3 would be the "generalised from one prompt formulation" mistake this run already has twice. Needs the eval corpus re-run. |
 | 2026-08-02 | **The distinct-critic rule compares `user_model_id`, not the RESOLVED provider model.** Two BYOK rows can point at the same underlying model. | A user with two gemma credentials picks one as drafter and one as critic, gets `CONFIGURED`, and a model grades its own prose — the exact failure S6 is named for, one level below where the check now looks. Closing it needs a provider-registry route exposing the underlying model for a `user_model_id` (only `/context-window` exists) plus a caching decision on a per-generation hot path. Gate #2 — cross-service contract. |
 | 2026-08-02 | `settings.model_roles` still has ZERO writers. S6 writes the legacy `critic_model_ref`/`_source` scalars, which the dual-read consumes. | The newer map remains a read-only contract with no producer, so the Book tier of the Chat & AI cascade still resolves a key nothing writes. Not blocking — the dual-read means the critic setting works — but the map is dead weight until something writes it or it is retired. |
 | 2026-08-02 | The output-budget window clamp is unexercised in production. | The dev model reports a 200k window, so the half-share never binds. It is proven only by unit test. The case that matters — a small-window BYOK model getting a 24750-token cap — has never been run. |
@@ -2123,6 +2229,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
+| 2026-08-02 | **Introduced a two-convention bug WHILE removing one — and the suite stayed green.** Swapping translation's `estimate_tokens` for the kernel left `split_chapter` still sizing its window from the old `_CJK_CHARS_PER_TOKEN = 1.5`, so a 100-token budget cut 150 CJK chars the new estimator counts as 158: 58% over, inside the module I was fixing for exactly that. It passed because the test asserting chunk COUNT was itself derived from the old constant. Caught by reading the function below the one I edited, not by a test. |
+| 2026-08-02 | **Edited a function twice while its module docstring described the behaviour I had just removed.** `chunk_splitter`'s header still advertised "CJK at ~1.5 chars/token" after the body became the kernel's. Stale prose is how the next reader re-derives the wrong model — the same shape as the `cross_scene_check` row whose `why` describes a call that no longer exists. |
 | 2026-08-02 | **Nearly shipped the S6 picker without the warning that makes it honest.** The spec asks for an affordance, and a select writing `critic_model_ref` satisfies that literally. But the state an author most often lands in is "I picked the model I already use", which the server silently refuses — so the setting would look applied and do nothing. That is the permanent-amber shape S1 exists to end, re-created by the slice written to close it. |
 | 2026-08-02 | **A refactor that did nothing, reported like a run that worked.** My first replacement of the six hand-rolled `distinct` copies matched on `\r\n` and printed `8-indent copies: 0 · 4-indent copies: 0` — a clean no-op with a tidy summary. Only because the same command also printed the REMAINING count did I see it had changed nothing. A script that reports what it looked for, not what it changed, reads as success. |
 | 2026-08-02 | **Applied the new exemption to the wrong row, first try, inside the slice written to stop exactly that.** I marked `compress` `signal_inert` because `ceiling == floor == 512` and the ceiling is applied last. The probe reddened at once: the window clamp ALSO runs after the floor and pushes DOWN, so `context_length=8` gives 4. A ceiling bounds one direction. The flag would have excused a call site from a signal it is entitled to — the rot this slice pays down, re-created by its own exemption mechanism. Only the two-directional assert caught it; a one-directional one would have passed. |

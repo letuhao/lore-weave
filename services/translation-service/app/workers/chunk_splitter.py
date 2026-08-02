@@ -7,11 +7,16 @@ Splitting priority:
   3. Any whitespace
   4. Hard cut at max_chars (last resort — should rarely happen)
 
-Token estimation: CJK-aware heuristic.
-  - CJK characters (Chinese, Japanese kanji, Korean): ~1.5 chars/token
-  - Hiragana/Katakana: ~1.5 chars/token
-  - Latin/Cyrillic/other: ~4.0 chars/token
-  - Mixed text: computed per-character for accuracy
+Token estimation: the KERNEL's script-aware estimator (`loreweave_context.estimate_tokens`),
+not a local heuristic. S11 — this module used to carry its own two-class version (CJK 1.5
+chars/token, everything else 4.0) which measured 0.68-0.70x of tiktoken `o200k_base` on both
+Chinese and Vietnamese, i.e. it UNDER-counted by roughly a third on exactly the scripts this
+service translates. Vietnamese had no class at all and was counted at the Latin ratio.
+
+`split_chapter` now derives its chars-per-token from that same estimator rather than from a
+separate pair of constants, so the window it cuts and the budget it is cut against cannot
+drift apart. The old constants survive only as the empty-sample fallback and for
+backward-compatible imports.
 """
 
 # Characters that mark the end of a sentence in any supported language
@@ -51,17 +56,36 @@ def _is_cjk(char: str) -> bool:
 
 
 def estimate_tokens(text: str) -> int:
-    """CJK-aware token count estimate — fast, no model dependency.
+    """Script-aware token estimate — the KERNEL's, not a fourth local copy.
 
-    Counts CJK and non-CJK characters separately, applies different
-    chars-per-token ratios. This fixes the ~2.3x underestimation bug
-    for CJK text that caused context window overflow and hallucination.
+    S11. This module's own version counted two classes, CJK and "other", and its docstring
+    claimed to have fixed "the ~2.3x underestimation bug for CJK text that caused context
+    window overflow and hallucination". MEASURED against tiktoken `o200k_base` it had not:
+
+        text          chars   tiktoken   this module   ratio
+        Vietnamese      205         73            51   0.70x
+        Chinese          35         34            23   0.68x
+        English         134         28            33   1.18x
+
+    So a chunk the splitter believed was 2000 tokens really reached the model at ~2900 — a
+    43% overflow, which is the SAME failure the CJK fix was written for, still open on both
+    dense scripts. Vietnamese was the worse case for a structural reason: this module has no
+    Vietnamese class at all, so a language whose diacritics tokenize far denser than English
+    was counted at the LATIN ratio — in the service that translates Vietnamese novels.
+
+    `loreweave_context.estimate_tokens` carries the third class (CJK 1.05, Vietnamese 0.55,
+    Latin 0.25, other 0.45) and is the kernel's pre-send projection, so counting here now
+    agrees with what the packer and the compaction strategy count elsewhere. Under-counting
+    is the dangerous direction — it overflows a window — and this moves every script toward
+    the measurement rather than away from it.
+
+    The name stays put deliberately: five modules import `chunk_splitter.estimate_tokens`,
+    and re-pointing them one by one is churn that would let two conventions coexist for the
+    duration. One body, one edit, every consumer.
     """
-    if not text:
-        return 0
-    cjk = sum(1 for c in text if _is_cjk(c))
-    other = len(text) - cjk
-    return max(1, int(cjk / _CJK_CHARS_PER_TOKEN + other / _LATIN_CHARS_PER_TOKEN))
+    from loreweave_context import estimate_tokens as _kernel_estimate
+
+    return _kernel_estimate(text)
 
 
 def split_chapter(text: str, max_tokens: int) -> list[str]:
@@ -74,11 +98,22 @@ def split_chapter(text: str, max_tokens: int) -> list[str]:
     if not text:
         return []
 
-    # Use CJK-aware estimate: if text is CJK-heavy, fewer chars fit per token.
-    # Conservative: use _CJK_CHARS_PER_TOKEN for the whole text if >30% CJK.
+    # Chars-per-token MEASURED from this text with the same estimator the chunks will be
+    # judged by — not read off a separate pair of constants.
+    #
+    # S11: those constants (CJK 1.5, Latin 4.0) used to be shared with `estimate_tokens`, so
+    # sizing and counting agreed by accident. Once the estimator moved to the kernel they
+    # would have DIVERGED: a 100-token budget still cut 150 CJK chars, which the kernel counts
+    # as 158 — 58% over the budget the caller asked for. Two conventions inside one module is
+    # the exact defect this slice is closing, and it would have arrived as a side effect of
+    # closing it elsewhere.
+    #
+    # Deriving the ratio also fixes the sampling: the old rule was a 30% CJK threshold applied
+    # to the WHOLE text, so a chapter 29% CJK was sized entirely at the Latin ratio. A
+    # per-character estimate has no cliff.
     sample = text[:2000]
-    cjk_frac = sum(1 for c in sample if _is_cjk(c)) / max(1, len(sample))
-    chars_per_token = _CJK_CHARS_PER_TOKEN if cjk_frac > 0.3 else _LATIN_CHARS_PER_TOKEN
+    sample_tokens = estimate_tokens(sample)
+    chars_per_token = (len(sample) / sample_tokens) if sample_tokens else _LATIN_CHARS_PER_TOKEN
     max_chars = max(1, int(max_tokens * chars_per_token))
 
     if len(text) <= max_chars:
