@@ -26,6 +26,7 @@ from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
+from app.engine.finding import SkipReason
 from app.clients.llm_client import LLMClient
 from app.engine.plan import DecomposeResult
 
@@ -40,7 +41,9 @@ class PlanFinding:
     issue: str = ""
     fix: str = ""
     applied: bool = False
-    skip_reason: str | None = None   # not_found | edit_failed | edit_expanded
+    #: One of `SkipReason`. This used to spell the not-located case `not_found` — the same
+    #: concept `self_heal` called `not_located`, under a second name.
+    skip_reason: str | None = None
 
 
 @dataclass
@@ -158,11 +161,11 @@ async def run_plan_self_heal(
     for f in findings:
         ci, si = f.chapter - 1, f.scene - 1
         if not (0 <= ci < len(result.chapters)):
-            f.skip_reason = "not_found"
+            f.skip_reason = SkipReason.NOT_LOCATED
             continue
         scenes = result.chapters[ci].scenes
         if not (0 <= si < len(scenes)):
-            f.skip_reason = "not_found"
+            f.skip_reason = SkipReason.NOT_LOCATED
             continue
         target = scenes[si]
         # light neighbor context: the prior + next scene synopses in the chapter
@@ -174,11 +177,11 @@ async def run_plan_self_heal(
         new = await _chat(llm, system=syse, user=usre, max_tokens=edit_max_tokens,
                           purpose="plan_fix_scene", **kw)
         if not new:
-            f.skip_reason = "edit_failed"
+            f.skip_reason = SkipReason.EDIT_FAILED
             continue
         new = new.strip()
         if len(new) > max(40, len(target.synopsis)) * max_edit_expansion:
-            f.skip_reason = "edit_expanded"
+            f.skip_reason = SkipReason.EDIT_EXPANDED
             continue
         target.synopsis = new
         f.applied = True

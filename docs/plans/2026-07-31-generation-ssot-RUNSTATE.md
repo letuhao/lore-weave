@@ -107,7 +107,7 @@ Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
 **Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → **`S3`** → `S4` → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → `S3 ◐` → **`S4`** → `S9 → S5 → S13`.
 
 > **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
 > that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
@@ -137,7 +137,7 @@ when in fact most of the last two days went into defect work that was never on t
 | **`S7` one output budget** | **✅ CLOSED 2026-08-02** | slices 1·2·3 ✅ · slice 4 (budget-seam rot) ✅ — 28 no-signal sites → 9, and the 9 are named |
 | `S6` no model silently its own judge | ✅ CLOSED 2026-08-02 | the affordance shipped; 7 hand-rolled copies → one policy; the skip states now differ |
 | `S11` one context compiler | ✅ CLOSED 2026-08-02 | allocation layer + composition flipped (no-op ≥16K) · translation's estimator converged (it under-counted CJK/vi by a third) · the contract's two closed sets now machine-checked both ways |
-| `S3` one `Finding` | ☐ | deliberately after S11 |
+| `S3` one `Finding` | ◐ slice 1 ✅ | one closed `skip_reason` vocabulary (the docs were false and omitted the member a consumer reads); the `locator` union is untouched |
 | `S4` the plan half onto the spine | ☐ | the gate exists; the work is widening it |
 | `S9` the shared guard SDK | ☐ | **inverted** — converge three services first, extract after |
 | `S5` one heal loop | ☐ | |
@@ -928,6 +928,77 @@ which the POST-RUN REVIEW found and fixed one layer up — except this one is a 
 the surface that would consume it (`model_roles`) is a read-only contract with no producer. That
 is what the slice has to build, and it is why shipping the label alone would produce a warning
 the author has no way to clear.
+
+### ◐ S3 slice 1 — one `skip_reason` vocabulary. The docs were already false.
+
+```
+AUDIT S3-1 (skip_reason vocabulary)
+  BUILT      — `app/engine/finding.py`: `SkipReason`, a closed `StrEnum` adopted by both heal
+               pipelines, plus an `ast` guard that reds on any raw string assigned to a
+               `.skip_reason`.
+
+  PROVEN     — measured across the two producers, three defects in four lines of comment:
+                 self_heal.Finding      # not_located | overlap | edit_failed | edit_expanded
+                 plan_heal.PlanFinding  # not_found   | edit_failed | edit_expanded
+               1. `not_located` and `not_found` are ONE concept under two names — "the quoted
+                  text could not be located in the thing being edited".
+               2. The declared list is INCOMPLETE and the omission is load-bearing: `self_heal`
+                  also writes `refuted` and `noop`, and `worker/operations.py` counts
+                  `f.skip_reason == "refuted"` — the one member the documentation never named.
+               3. Both are free `str`, so a typo produces a finding that is silently
+                  un-countable: `refuted: 0` on a run where every finding was refuted.
+
+               NOT merged, deliberately: `glossary_build`'s `skip_reason` is a free-text
+               sentence shown to a human and persisted in a `TEXT` column ("the glossary
+               already has an entry with this name"). Same spelling, different concept — the
+               same call made for lore-enrichment's billing estimator in S11-2.
+
+               composition `8 failed, 3919 passed, 8 skipped` (was 3917; the 8 are the tracked
+               test_motif_retrieve_db rows).
+               gates: `ai-provider-gate OK` · `generation-guard-gate PASS` ·
+               `enforcement-claims-gate OK` · `db-safety-gate exit 0` ·
+               `llm-budget-ssot-gate PASS` · `[language-rule] PASS`.
+               RED-ABLE: re-introducing `f.skip_reason = "not_found"` fails BOTH the raw-string
+               guard (`[(180, 'not_found')] == []`) and the duplicate-name guard. Restored by
+               re-editing.
+
+               LIVE, $0 gemma-4-26b, deployed service AND worker hash-verified:
+                 findings 6 · located 6 · proposals 1 · skip_reasons seen [] ·
+                 OUTSIDE vocabulary []
+                 deterministic arm, all six members through the DEPLOYED module:
+                   not_located · overlap · edit_failed · edit_expanded · refuted · noop
+                   members whose str() != value : []
+
+  NOT PROVEN — the live run's vocabulary check was VACUOUS on both attempts: the model
+               produced no skips, and an empty set is trivially inside any vocabulary. That is
+               why the deterministic arm exists, and it is worth saying plainly that the
+               interesting half of that live run proved nothing. A run that actually exercises
+               `refuted` needs the verify tier enabled with a model that refutes.
+               This is S3 SLICE 1, and it is the SMALL half. The spec's actual S3 is one
+               `Finding` with a `locator` union (`span | scene_index | node_id`, with
+               `trace_span_id` reserved), and that is untouched: five composition finding types
+               still carry five different locators — char offsets, chapter+scene, seam pairs,
+               block ids. Nothing was unified except the outcome vocabulary.
+               `MergedFinding`, `_RepetitionFinding`, `_OverResolveFinding` and `CanonViolation`
+               have no `skip_reason` at all and were not touched.
+
+  DRIFT      — I shipped a regression and only the LIVE run caught it. `class SkipReason(str,
+               Enum)` satisfies `== "refuted"` and JSON-serialises to `"noop"`, so all six unit
+               tests passed — but `str()` and f-strings return `"SkipReason.NOOP"`. Any
+               consumer that FORMATS rather than compares would have started emitting the
+               member path. The live probe printed `skip_reasons seen: ['SkipReason.NOOP']`
+               and that is the only reason it was found; `StrEnum` fixes it. Every test I had
+               written used `==`, which is precisely the shape that cannot see this.
+               Second: my first duplicate-name guard scanned raw FILE TEXT for `not_found` and
+               reddened on my own comment explaining that `not_found` was removed. Prose is not
+               usage — the same distinction the deferral registry's stripper had to learn, met
+               from the other side. Rewritten over the AST's string constants.
+
+  NEXT       — S4 (the plan half onto the spine). Its gate already exists
+               (`scripts/injection-coverage-lint.py`); the work is widening `SCAN_DIRS` and
+               putting an expiry on the 15-row permanent baseline that today exempts every
+               composition engine module.
+```
 
 ### ✅ S11 slice 3 — the contract's two closed sets were never checked. S11 CLOSES.
 
@@ -2301,6 +2372,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
+| 2026-08-02 | **Shipped a regression six unit tests could not see, and only the LIVE run caught it.** `class SkipReason(str, Enum)` satisfies `== "refuted"` and JSON-serialises correctly, so every test passed — but `str()` and f-strings return `"SkipReason.NOOP"`, so any consumer that FORMATS a skip_reason would emit the member path. The live probe printed `skip_reasons seen: ['SkipReason.NOOP']`. Every test I wrote used `==`, which is exactly the shape blind to it. `StrEnum` fixes it; the lesson is that comparison-only tests do not cover a value that leaves the process by three different routes. |
+| 2026-08-02 | **A guard that reddened on the comment explaining what it forbids.** My duplicate-name check scanned raw file text for `not_found` and failed on my own note recording that `not_found` had been removed. Prose is not usage — the distinction the deferral registry's stripper had to learn, met from the other side. Rewritten over the AST's string constants, where comments do not exist. |
 | 2026-08-02 | **I wrote a check that could not fail, into a test file, in the slice about machine-checking a contract.** A `@ts-expect-error` asserting `TraceTier` rejects `"T9"` — inert, because `tsconfig.json` excludes `src/**/__tests__` and `*.test.tsx`, so no test file is ever type-checked. It reads exactly like enforcement. Found ONLY because I widened the type to prove red-ability and `tsc` returned exit 0 — the injection I nearly skipped as unnecessary for a change this simple. Fifth check-that-cannot-fail this run, and the first I authored rather than found. |
 | 2026-08-02 | **Introduced a two-convention bug WHILE removing one — and the suite stayed green.** Swapping translation's `estimate_tokens` for the kernel left `split_chapter` still sizing its window from the old `_CJK_CHARS_PER_TOKEN = 1.5`, so a 100-token budget cut 150 CJK chars the new estimator counts as 158: 58% over, inside the module I was fixing for exactly that. It passed because the test asserting chunk COUNT was itself derived from the old constant. Caught by reading the function below the one I edited, not by a test. |
 | 2026-08-02 | **Edited a function twice while its module docstring described the behaviour I had just removed.** `chunk_splitter`'s header still advertised "CJK at ~1.5 chars/token" after the body became the kernel's. Stale prose is how the next reader re-derives the wrong model — the same shape as the `cross_scene_check` row whose `why` describes a call that no longer exists. |

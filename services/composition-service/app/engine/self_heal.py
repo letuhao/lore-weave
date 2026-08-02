@@ -35,6 +35,7 @@ from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.cowrite import build_selection_messages
 from app.packer.profile import BookProfile
+from app.engine.finding import SkipReason
 from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,9 @@ class Finding:
     fix: str
     located: tuple[int, int] | None = None  # (start, end) offsets in the ORIGINAL chapter
     edited: bool = False
-    skip_reason: str | None = None          # not_located | overlap | edit_failed | edit_expanded
+    #: One of `SkipReason` — a CLOSED vocabulary now (it used to be a free string whose
+    #: trailing-comment list omitted the two members a consumer actually reads).
+    skip_reason: str | None = None
 
 
 @dataclass
@@ -438,7 +441,7 @@ async def _compute_edits(
                                   source_language=source_language, **kw):
                 survivors.append(f)
             else:
-                f.skip_reason = "refuted"
+                f.skip_reason = SkipReason.REFUTED
         findings = survivors
 
     # L1 — deterministic edits (no LLM): dup-word splice + full-recall pronoun findings.
@@ -457,7 +460,7 @@ async def _compute_edits(
     for f in findings:
         loc = f.located or locate_span(f.span, chapter)
         if loc is None:
-            f.skip_reason = "not_located"
+            f.skip_reason = SkipReason.NOT_LOCATED
             continue
         f.located = _snap_to_sentence(chapter, loc[0], loc[1])
         report.located += 1
@@ -470,7 +473,7 @@ async def _compute_edits(
     for f in located:
         s, e = f.located  # type: ignore[misc]
         if s < last_end:
-            f.skip_reason = "overlap"
+            f.skip_reason = SkipReason.OVERLAP
             continue
         chosen.append(f)
         last_end = e
@@ -491,11 +494,11 @@ async def _compute_edits(
         new = await _chat(llm, system=messages[0]["content"], user=messages[1]["content"],
                           max_tokens=edit_max_tokens, purpose="self_heal_edit", **kw)
         if not new:
-            f.skip_reason = "edit_failed"
+            f.skip_reason = SkipReason.EDIT_FAILED
             continue
         new = new.strip()
         if len(new) > max(40, len(original)) * max_edit_expansion:
-            f.skip_reason = "edit_expanded"   # the satellite guard — a span edit must stay local
+            f.skip_reason = SkipReason.EDIT_EXPANDED   # the satellite guard — a span edit must stay local
             continue
         f.edited = True
         report.edits_applied += 1
@@ -696,10 +699,10 @@ async def propose_edits_direct(
         report.findings.append(f)
         loc = locate_span(r["original"], chapter)
         if loc is None:
-            f.skip_reason = "not_located"   # must-quote: can't splice an unanchorable edit
+            f.skip_reason = SkipReason.NOT_LOCATED   # must-quote: can't splice an unanchorable edit
             continue
         if r["replacement"].strip() == chapter[loc[0]:loc[1]].strip():
-            f.skip_reason = "noop"   # the "fix" equals the text — the auditor emits ~25% of these;
+            f.skip_reason = SkipReason.NOOP   # the "fix" equals the text — the auditor emits ~25% of these;
             continue                 # drop them in CODE (free) so the human/re-ranker never sees a no-op
         f.located = loc
         report.located += 1

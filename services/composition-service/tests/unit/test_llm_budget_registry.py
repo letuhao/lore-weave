@@ -170,7 +170,7 @@ def test_no_caller_re_introduces_a_budget_literal_the_registry_owns():
 _KNOWN_HELPER_LITERALS = [
     "engine/planning_pipeline.py:98 =2048",
     "engine/plan_forge/material_search.py:169 =1500",
-    "engine/self_heal.py:637 =400",
+    "engine/self_heal.py:640 =400",
 ]
 
 
