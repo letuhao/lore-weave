@@ -1230,3 +1230,49 @@ to **exactly one `MapKind`** — the column is never ambiguous across all 69. `S
 Doc 37 is explicit that the node tree is *"per-reality Postgres"* while the baseline is content-addressed
 and shared by digest — §5 said neither, and **no multi-reality measurement exists for space** where the
 actor track ran a whole red-team round on it. `SDF-Q11`.
+
+
+---
+
+## 18 · `SDF-F3` worked — and a bigger finding was underneath it
+
+### `SDF-F7` — the matrix legalises an edge whose cost is unbounded, and nothing prices it
+
+Three sealed facts nobody had put in one sentence: the 內天地 interior is **granted at RUNTIME by a
+gameplay event** (doc 36:120 — *"not authored at world creation"*) · **`Domain → World` is legal**
+(doc 36:396 + footnote — *"an interior that contains an entire world"*) · a production `World` is
+**16 384 cells** (`GEO-D14`).
+
+| scenario | inner-world nodes | vs the authored world |
+|---|---:|---:|
+| bare `Domain` + ~8 chambers, 500 cultivators | 4 000 | 0.24× — fine |
+| inner world **contains a `World`**, 100 cultivators | 1 638 400 | **100×** |
+| …500 cultivators | 8 192 000 | **500×** |
+
+**It is a progression treadmill, so it grows monotonically with playtime.** `PCU`, `node budget` and
+`quota` return **zero hits** across the map docs.
+
+> **Not an argument to remove the edge** — it is the PO's stress case and doc 36 survived it deliberately.
+> It is an argument that **legalising an edge is not pricing it**, and the matrix does the first only.
+
+### The answer to `SDF-F3`
+
+**A layer's single-owner rule does not transfer.** A layer is one column; **the tree is one structure many
+features must legitimately modify.** So: a capability **per operation kind**, not ownership per node.
+
+- **`SDF-A14`** `TopologyCapability { module, ops, home_kinds, budget }` → `topology.foreign_write`.
+- **`SDF-A15`** invariants checked **centrally** — *"with six writers and five invariants there are thirty
+  places to get it wrong instead of five."*
+- **`SDF-A16`** one atomic event, **invertible from its own record** (VS #829's silent partial Graft; SE's
+  merge-to-static that Sever cannot undo).
+- **`SDF-A17`** a **node budget** charged to a principal, where a **Graft TRANSFERS the charge** — SE's
+  PCU rule verbatim. **Exceeding it is a REFUSED WRITE, never a silent prune** (`R-61`: No Man's Sky
+  overwrites the oldest buffers and bases end up buried). *A refused write is a design surface; a silent
+  prune is data loss with a UI.*
+
+> **`SDF-A17` gives `M-1` its missing half: the live set bounds what TICKS, the budget bounds what
+> EXISTS.** Doc 36 had neither.
+
+Not settled, each now an open row: the numbers (`SDF-Q12`) · whether a **dematerialised** subtree is
+charged (`SDF-Q13`) · **Limbo's budget is unowned by construction** since a Domain outlives its dead
+holder (`SDF-Q14` — a slow leak with a name).

@@ -374,7 +374,10 @@ Nothing below exists. This is the deliverable, not the prose around it.
 | `SDF-Q3` | **`Domain → World` (內天地) has NO PRIOR ART.** Two agents searched; the nearest analogue's implementation could not be obtained. *"You are designing this without precedent."* Depth- and cycle-checking on write is the minimum; the semantics are unsettled. |
 | `SDF-Q5` | **Which of `TDIL_001`'s four clocks does a decaying layer use?** (`SDF-F1`) |
 | `SDF-Q6` | **Border/adjacency has no index and no phase** — the shape every territory feature asks for. (`SDF-F2`) |
-| `SDF-Q7` | **Who may write TOPOLOGY?** Layers have an owner; the tree does not. `PROG_001` growing a 內天地 is a progression feature performing a Graft. (`SDF-F3`) |
+| ~~`SDF-Q7`~~ | ~~Who may write TOPOLOGY?~~ **✅ RESOLVED §10** — a `TopologyCapability` per `(module, op)`, enforced as `topology.foreign_write`; invariants checked centrally; ops atomic and invertible; **plus a node budget**, because working it found `SDF-F7` underneath |
+| `SDF-Q12` | **What are the budget numbers?** `cap` per principal is a product decision informed by a measurement that does not exist. (§10.7) |
+| `SDF-Q13` | **Is a DEMATERIALISED subtree charged?** `R-65` says an unmaterialised child should not consume its parent's *object* budget; whether that holds for the *node* budget is the difference between *"you may own ten worlds if you visit them rarely"* and *"you may own ten worlds."* (§10.7) |
+| `SDF-Q14` | **Limbo's budget is unowned by construction** — `R-52` says a Domain outlives its dead holder and reparents to Limbo, so its charge has no principal. A slow leak with a name. (§10.7) |
 | `SDF-Q8` | **History-derived layers** — traffic, schedules, contestedness. A layer class, or projections outside the layer system? I lean outside. (`SDF-F4`) |
 | `SDF-Q9` | **The space-side READ contract** — bounded, ordered, deterministic *"what is here"* for prompt assembly. §3 governs writes only. (`SDF-F5`) |
 | `SDF-Q10` | **Volume-keyed layers** (formations, auras, weather fronts) — `R-9`'s `Region` shape was dropped from §4. (`SDF-F6`) |
@@ -560,3 +563,138 @@ that the `space_node` tree is *"per-reality Postgres"* while the generated basel
 and shared by digest across realities**. So `T6` (baseline) is shared and `T1`, `T2`, `T4`, `T5`, `T7` are
 per-reality — and **the multi-reality tax the actor track measured in its own red-team round has no
 equivalent measurement here.** `SDF-Q11`.
+
+---
+
+## 10 — Who may write the tree, and who pays for it (`SDF-F3`, resolved)
+
+`SDF-F3` found that §4 gives every *layer* an `owner` enforced by `layer.foreign_write`, while **phase 1
+writes topology and nothing says who may.** Working it produced a second, larger finding underneath.
+
+### 10.1 `SDF-F7` — ⛔ the matrix legalises an edge whose cost is unbounded, and nothing prices it
+
+Three facts, each already sealed, that nobody has yet put in the same sentence:
+
+1. **The 內天地 interior is granted AT RUNTIME by a gameplay event** — doc 36:120, *"not authored at
+   world creation."* So a gameplay feature creates nodes during play.
+2. **`Domain → World` is legal** — doc 36:396 and its footnote: *"an interior that contains an entire
+   world."*
+3. **A production `World` is 16 384 cells** (`GEO-D14`).
+
+Compose them and the authored world stops being the thing that sizes the tree:
+
+| scenario | inner-world nodes | vs the authored world (16 384) |
+|---|---:|---:|
+| inner world is a bare `Domain` + ~8 chambers, 500 cultivators | 4 000 | 0.24× — fine |
+| inner world **contains a `World`**, 100 cultivators | 1 638 400 | **100×** |
+| …500 cultivators | 8 192 000 | **500×** |
+
+**And it is a treadmill, so it grows monotonically with playtime.** Nothing in the corpus budgets nodes —
+`PCU`, `node budget` and `quota` return **zero hits** across the map docs; the quotas that exist are
+gateway rate limits, a different thing entirely.
+
+> **This is not an argument to remove the edge.** `Domain → World` is the PO's stress case and doc 36
+> survived it deliberately. It is an argument that **legalising an edge is not the same as pricing it**,
+> and the matrix currently does the first and not the second.
+
+Corroborated by the research from the other direction: `R-42` (OpenUSD) — *"cost scales with prims
+populated, but much, much less so with the number of properties"* — **adding data to nodes is cheap;
+adding NODES is expensive.** `R-8` said the same for combat: *"if features may add nodes per zone, the
+tree explodes."* **`SDF-F7` is that rule meeting a feature that legitimately adds nodes.**
+
+### 10.2 `SDF-A13` — topology is multi-writer by nature; a layer's single-owner rule does not transfer
+
+A **layer is one column**, so one owner is natural and `layer.foreign_write` is exactly right. **The tree
+is one structure that many features must legitimately modify**, and the census proves it: progression
+grants an interior · `WA_003` Forge edits · `TVL_*` opens a passage · `COMB_*` carves an `Arena` ·
+seeding builds the initial tree · `GEO_*`/`TMP_*` generate it.
+
+⇒ **"One owner per node" is the wrong shape.** The right shape is a capability **per operation kind**.
+
+### 10.3 `SDF-A14` — `TopologyCapability` is per `(module, op)`, declared at registration, enforced on append
+
+```rust
+pub enum TopoOp { Create, Destroy, Graft, Merge, Breach, Sever, SetHolder }
+
+pub struct TopologyCapability {
+    module:     ModuleId,
+    ops:        TopoOpSet,   // bitset
+    home_kinds: KindSet,     // which kinds it may create/attach — mirrors SDF-A5
+    budget:     BudgetRef,   // SDF-A17
+}
+```
+
+Enforced by the event-log validator as **`topology.foreign_write`**, sibling to `layer.foreign_write` and
+load-bearing for the same reason (`R-33`): *it holds across process boundaries, across replay, and against
+a mod, which a type system does not.*
+
+Note `home_kinds` appears again. A progression feature may create a `Domain`; it may not create a
+`Universe`. That is the same closed-set narrowing `SDF-A5` buys for layers, applied to the tree.
+
+### 10.4 `SDF-A15` — the invariants are checked CENTRALLY, never by the caller
+
+The containment matrix · acyclicity · depth ≤ 16 (`DP-Ch1`'s DB `CHECK`) · `holder ∉ descendants(node)`
+(`R-52`) · frame/coordinate-root boundaries (`SDF-R2`).
+
+> **A caller that checks its own invariants is a caller that will get one of them wrong** — and with six
+> writers and five invariants there are thirty places to get it wrong instead of five.
+
+This is why `SDF-A14` grants *capability*, not *access*: a module says **what it wants**, the engine
+decides whether the tree may have it.
+
+### 10.5 `SDF-A16` — one atomic event, carrying enough to invert it
+
+From `R-47`, both halves shipped as bugs elsewhere:
+
+- **Partial application must be impossible.** Valkyrien Skies #829: a ship's transform updated and its
+  dimension binding did not — a **silent partial Graft**. So a Graft is *one* event that rewrites the
+  edge, bumps `frame_epoch` across the subtree, and invalidates every cached world transform.
+- **Merge must record what it changed so Sever can invert it.** Space Engineers: merge a ship to a
+  station → it converts to static; unmerge → **it stays static.** *An op that is not invertible from its
+  own event record is not event-sourced.*
+- **The surviving `NodeId` is named IN THE EVENT, never computed from geometry** — RimWorld picks by
+  region count, SE by mass; fine for temperature, **a security defect for ownership**, and a determinism
+  defect on ties.
+
+### 10.6 `SDF-A17` — a node budget, charged to a principal, and a Graft TRANSFERS the charge
+
+The answer to `SDF-F7`, and the prior art is exact. Space Engineers ships **PCU**: a per-world build
+budget (default 100 k, configurable to 500 k / 1 M) where **accepting a transferred grid consumes *your*
+budget**.
+
+```rust
+pub struct NodeBudget {
+    principal: Principal,   // Reality | Player | Faction | System
+    cap:       u32,
+    charged:   u32,         // live nodes attributed to this principal
+}
+```
+
+Four rules, each earning its place:
+
+1. **Every created node is charged to a principal.** A player's inner world charges the *player*, not the
+   reality — so one cultivator cannot consume the world's headroom.
+2. **A `Graft` transfers the charge to the new parent's principal**, and **fails if the receiver cannot
+   afford it.** This is SE's rule verbatim, and it is what stops budget laundering by re-parenting.
+3. **The budget is a ruleset value, not a constant** — a sandbox reality and a shared one want different
+   numbers, and `SDF-A4`'s determinism requires it be pinned.
+4. **Exceeding it is a REFUSED WRITE, never a silent prune.** `R-61` is the counter-example: No Man's Sky
+   silently overwrites the oldest delta buffers, and *"whatever was overwritten will result in respawned
+   terrain"* — bases buried or airborne. **A refused write is a design surface; a silent prune is data
+   loss with a UI.**
+
+> **`SDF-A17` also gives `SPG-A12`/`M-1` its missing half.** The live set bounds what *ticks*; the budget
+> bounds what *exists*. Neither substitutes for the other, and doc 36 had neither.
+
+### 10.7 What this does NOT settle
+
+- **The numbers.** `cap` per principal is a product decision informed by a measurement that does not
+  exist. `SDF-Q12`.
+- **Whether a player-owned subtree is charged while DEMATERIALISED.** `R-65` says an unmaterialised child
+  should not consume its parent's *object* budget (UO's *"a locked-down container counts as one
+  lockdown"*, EQ2's separately-budgeted Moving Crate). Whether the same holds for the *node* budget is
+  open — and it is the difference between "you may own ten worlds if you visit them rarely" and "you may
+  own ten worlds." `SDF-Q13`.
+- **Reclamation.** A destroyed node returns its charge; a node whose *principal* is destroyed (a dead
+  player) does not, because `R-52` says the Domain outlives its holder and reparents to Limbo. **Limbo's
+  budget is unowned by construction**, which is a slow leak with a name. `SDF-Q14`.
