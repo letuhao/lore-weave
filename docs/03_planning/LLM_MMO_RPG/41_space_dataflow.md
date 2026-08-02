@@ -13,7 +13,7 @@
 > (`MapKind`, the containment matrix, `SpaceNode`). [Doc 37](37_world_data_storage.md) settled where
 > its *bytes* live. **Neither says what happens between a manifest and a tick** — who writes what,
 > when, in what order, and what is forbidden to read. This doc is that, and it is modelled on
-> [`2026-08-02-actor-dataflow.md`](../../specs/2026-08-02-actor-dataflow.md) — **which became a DERIVATION RECORD on 2026-08-02. The standards are now [`2026-08-02-actor-hub.md`](../../specs/2026-08-02-actor-hub.md) (the hub) and [`2026-08-02-engine-substrate.md`](../../specs/2026-08-02-engine-substrate.md) (the layer beneath).**
+> [`2026-08-02-actor-dataflow.md`](../../specs/2026-08-02-actor-hub/analysis/2026-08-02-actor-dataflow.md) — **which became a DERIVATION RECORD on 2026-08-02. The standards are now [`2026-08-02-actor-hub.md`](../../specs/2026-08-02-actor-hub/2026-08-02-actor-hub.md) (the hub) and [`2026-08-02-engine-substrate.md`](../../specs/2026-08-02-actor-hub/2026-08-02-engine-substrate.md) (the layer beneath).**
 >
 > **Origin.** PO, 2026-08-02, in substance: **the map is where everything in the game happens; every
 > new feature will probably attach one more data layer onto it; so if this is not designed well now, it

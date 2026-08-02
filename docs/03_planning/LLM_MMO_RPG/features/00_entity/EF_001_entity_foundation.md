@@ -70,7 +70,7 @@ EF_001 owns the foundation; consumer features (PCS_001 / NPC_001 / Item / EnvObj
 | **NpcId** | Newtype `pub struct NpcId(pub Uuid)` | Owned by NPC_001; EF_001 declares the variant only. |
 | **ItemId** | Newtype `pub struct ItemId(pub Uuid)` | Owned by future Item feature; EF_001 declares the variant. V1 Item bodies remain stub-references (PL_005c V1 vertical-slice) until Item feature lands. |
 | **EnvObjectId** | Newtype `pub struct EnvObjectId(pub Uuid)` | Owned by future EnvObject feature; EF_001 declares the variant. V1: lightweight examine targets only (door, wall, table, statue, fixture). |
-| **LifecycleState** | Closed enum 4-state — `Existing \| Suspended \| Destroyed \| Removed` | See §6. PC death routes to `Destroyed` via PCS_001; admin removal (Heresy decanonize) routes to `Removed` via WA_002. |
+| **LifecycleState** | A **declared** state ordinal (`D-12`, 2026-08-02 — was a closed 4-state engine enum). `Existing \| Suspended \| Destroyed \| Removed` is one reality's vocabulary, not the engine's type. | See §6. The engine holds a state and validates transitions against the **declared** set; it does not know what any state means. |
 | **AffordanceSet** | Bit-set over `AffordanceFlag` | See §7. Closed core enum (6 V1 flags); per-entity-type defaults + per-instance overrides. |
 | **AffordanceFlag** | Closed enum — `be_spoken_to \| be_struck \| be_examined \| be_given \| be_received \| be_used` | 6 V1 flags map 1:1 with PL_005 5 InteractionKinds (+ Give bidirectional split). V1+ flags reserved: `be_collided_with \| be_shot_at \| be_cast_at \| be_embraced \| be_threatened \| be_traveled_to \| be_contained_in`. |
 | **EntityKind trait** | Rust trait with 5 methods (see §4) | Every aggregate body that wants to be addressable as an Entity MUST implement this. EF_001 owns the trait; consumer features implement. |
@@ -112,7 +112,7 @@ pub struct EntityBinding {
                                                 // enforces equality with entity_id variant per write
     pub location: EntityLocation,               // see below
     pub owner_node: NodeId,                     // writer-node binding (epoch-fenced; same model as PL_001 §3.6)
-    pub lifecycle_state: LifecycleState,        // Existing | Suspended | Destroyed | Removed
+    pub lifecycle_state: LifecycleState,        // a DECLARED state ordinal (D-12), not a closed enum
     pub affordance_overrides: Option<AffordanceSet>,  // None = use type default; Some = per-instance override
     pub last_moved_fiction_time: FictionTime,   // for movement audit + V1+ proximity computations
     pub last_lifecycle_change_fiction_time: FictionTime,
@@ -141,6 +141,13 @@ pub struct EntityBinding {
     /// V1 transfer paths: Author Forge (WA_003 `Forge:EditCellOwnership`) / body-substitution via
     /// PCS_001 mechanic / NPC death → orphan (set to None). V1+30d adds PC-to-PC trade + PC-buy-from-NPC.
     /// See [RES_001 §5.2](../00_resource/RES_001_resource_foundation.md#52-cell-ownership-q9-locked).
+    ///
+    /// ⚠ GENERALISE 2026-08-02 — `ITD-1` (`IR-24`). **This field is the ownership axis, discovered for
+    /// ONE entity type.** `WSA-F4` already reads it as *evidence* that the economy work reached past the
+    /// closed `EntityId` to get an owner reference. Once `owner: OwnerRef` lands on every binding (see the
+    /// `EntityLocation` note above), `cell_owner` is **one instance of a general field**, not a special
+    /// case — and the xuyên không rule below (ownership follows the BODY, not the soul) becomes an
+    /// ordinary statement about which entity holds the edge, rather than a bespoke rule for cells.
     pub cell_owner: Option<EntityRef>,
 
     /// Inventory capacity profile (RES_001 Q6 LOCKED — schema reservation V1; enforcement V1+30d).
@@ -152,6 +159,14 @@ pub struct EntityBinding {
 }
 
 /// Reserved schema for V1+30d inventory cap enforcement (Q6b LOCKED).
+///
+/// ⚠ 2026-08-02 (`IR-27`): these two become **declared derived quantities**, not manifest constants.
+/// `PL_007b` §4.3 already stated the intent — a capacity should be a *resolved* stat, so a strong actor
+/// or one wearing a bag-of-holding carries more — but pointed it at a reserved `StatSlot::CarryCapacity`,
+/// and `D-105` found `StatSlot` is two concepts sharing one array. `C-2a` replaces
+/// `CeilingBinding::Slot(StatSlot)` with `Derived(quantity_ordinal)`, which is the home this intent
+/// needed and unblocks it from a V1+ reservation. The accounting rule does not change; only where the
+/// limit comes from.
 pub struct CapacityProfile {
     pub max_slots: u32,                         // distinct ResourceKind count cap V1+30d
     pub max_weight: Option<u32>,                // V2 weight cap (per-kind weight metadata required)
@@ -159,11 +174,27 @@ pub struct CapacityProfile {
 
 /// EntityRef discriminator used by RES_001 ownership semantics + cascade rules.
 /// Mirrors EntityId variants; alias for clarity in resource ownership context.
+/// ⚠ PROPOSED 2026-08-02 — `ITD-3` (`IR-23`): PROMOTE this from "the discriminator RES_001 needed
+/// for cell ownership" to **the OWNER vocabulary for every entity**, and rename to `OwnerRef`.
+///
+///   * `Cell` -> `Place` per `WSA-R19` (the `Place(PlaceId)` variant §5 now declares).
+///   * `Faction` leaves **V3** and becomes **V1** — this is what a sect treasury needs, and it
+///     costs ONE variant. It does NOT need `ActorKind::Group`: a group is never an actor
+///     (it takes no turn, holds no quantity, has no lifecycle here) — it is only ever the
+///     SUBJECT OF AN OWNER EDGE. This closes `O-118b`, which `D-93` left open by name.
+///   * A `None` variant is ADDED. **Unowned is a state, not a missing value** — a corpse's gear,
+///     wilderness ore, a coin in the mud — and it is what makes `claim` a legal operation
+///     rather than an implicit side effect of picking something up.
+///
+/// ⚠ The NAME `EntityRef` is TAKEN: `crates/dp-kernel/src/entity_status.rs:126` defines an
+/// unrelated `EntityRef { entity_id, aggregate_type, reality_id }` (a platform status-lookup
+/// ref, "Mirrors `EntityRef` in Go"). One name, two tiers, unrelated meanings — `IO-1`.
+/// This is `D-21`'s "one word, three unrelated ladders" problem in a second vocabulary.
 pub enum EntityRef {
     Actor(ActorId),                             // PC + NPC (per NPC_001 ActorId enum)
-    Cell(ChannelId),                            // cell-as-entity (per PF_001 cell tier)
+    Cell(ChannelId),                            // cell-as-entity (per PF_001 cell tier); -> Place, WSA-R19
     Item(ItemInstanceId),                       // V1+30d (RES_001 Item kind)
-    Faction(FactionId),                         // V3 (RES_001 Faction tier)
+    Faction(FactionId),                         // V3 -> V1 per IR-23 (the group-treasury case)
 }
 
 pub enum EntityLocation {
@@ -174,10 +205,57 @@ pub enum EntityLocation {
 }
 ```
 
+> **⚠ PROPOSED 2026-08-02 — `ITD-1` (`IR-22`): `location` is answering TWO questions, and it needs a
+> sibling field.**
+> [`docs/specs/2026-08-02-item-data-structure.md`](../../../../specs/2026-08-02-item-data-structure.md) §1
+>
+> `HeldBy { holder }` is read everywhere as *"this actor **owns** this"*. It is not — it is *"this actor is
+> **carrying** this"*. Every interesting thing an ownership system must express lives in the **gap**:
+>
+> | the fiction | location | owner |
+> |---|---|---|
+> | a borrowed sword | `HeldBy(disciple)` | the master |
+> | a **stolen** sword | `HeldBy(thief)` | the victim — **this is what makes it theft** |
+> | a sect treasury | `InContainer(vault)` | the sect |
+> | a corpse's gear | `InCell(death_cell)` | **nobody** — unowned is a state, not a missing value |
+>
+> ⇒ **`entity_binding` gains `owner: OwnerRef`** beside `location`, where
+> `OwnerRef = None | Actor | Place | Item | Group`. `EntityLocation` itself is **unchanged** — its four
+> variants stay closed and correct.
+>
+> **This file already discovered the axis, for exactly one entity type.** `cell_owner` below is that
+> field, and `WSA-F4` reads it as *evidence*: RES_001 needed an owner reference and **reached past the
+> closed `EntityId` to get one** (§3.1's own `EntityRef`, which already enumerates
+> `Actor | Cell | Item | Faction`). It got the axis right and applied it to cells; **items — the things
+> ownership is actually about — were left with `HeldBy` doing both jobs.**
+>
+> **Independently confirmed by 6 of 7 sandbox games surveyed** (item-dataflow §10.0). The seventh, Rust,
+> omits ownership **deliberately** — a tool cupboard holds an authorization list and *"any player may
+> remove locks applied and left unlocked"* — because in Rust taking your neighbour's things is the intended
+> loop. ⇒ **this field is what makes *theft* a concept rather than an event.**
+>
+> ⚠ **New obligation this creates, and nothing covers it today (`IO-2`):** the owner edge is a
+> **reference** edge, not a parent edge. `SPG-A4`'s containment tree is guarded by `DP-Ch1`'s depth +
+> referential-integrity check on the **parent** relation, and `SPG-A5b` already warns that *"a reference
+> edge is not a parent edge and escapes that guard entirely."* **A owns B owns A is representable with
+> nothing to detect it.** Its check is `V2-4` (item-dataflow §17), which exists nowhere.
+>
+> ⚠ **Name collision, measured:** `EntityRef` is **taken** — `crates/dp-kernel/src/entity_status.rs:126`
+> defines a different `EntityRef { entity_id, aggregate_type, reality_id }`, a platform status-lookup ref
+> (`IO-1`). Rename one before either has call sites.
+
 **Rules:**
 - One row per `entity_id`. Primary key conflict = invariant violation.
 - `entity_type` MUST match `entity_id` variant (validated at write-time per DP-A14). Field is denormalized for SQL indexing only; readers SHOULD prefer the variant tag of `entity_id` over the `entity_type` field.
 - `location` transitions are atomic: an entity is in EXACTLY one place at a time.
+  > ⚠ **RELABELLED 2026-08-02 (`IR-25`) — THIS IS THE ANTI-DUPLICATION MECHANISM (`ITD-5`), not
+  > housekeeping.** Written as a bullet among bullets it reads as a tidiness rule, and a tidiness rule is
+  > weakenable by anyone optimising a read path. It is not: it is what makes item **duplication
+  > unrepresentable rather than merely invalid** — the same discipline `ITM-A5` applies to equipment being
+  > a slot assignment rather than a second location. It converges exactly with OpenMU's post-mortem fix
+  > after MU Online's economy was destroyed by duping: *"each item has its own row identifiable by a GUID
+  > as primary key. Therefore, there can only be one item with the same Id and only assigned to one
+  > account."* **Never weaken this for a cache.**
 - `lifecycle_state = Destroyed | Removed` → `location` is FROZEN at last value (audit trail); references to this entity from new EVT-T1 Submitted reject per §8.
 - **Scene-roster vs audit-location split:** for `lifecycle_state ∈ {Destroyed, Removed}` the `entity_binding.location` field continues to return last-known cell for AUDIT/forensic queries. UI / scene roster / participant_presence / `who-is-here` queries MUST gate on `lifecycle_state = Existing` BEFORE listing the entity in the cell — DP emits `MemberLeft` on the lifecycle transition (§13.5), so participant_presence already reflects the absence; the binding's frozen location is for audit-only reads (e.g., "where did Lý Minh die?").
 - `owner_node` resolution + handoff follows PL_001 §3.6 epoch-fence model unchanged (transferred wholesale).
@@ -202,6 +280,8 @@ pub struct LifecycleEvent {
     pub reason_kind: LifecycleReasonKind,
 }
 
+// DECLARED vocabulary (D-12), with ONE exception: `HolderCascade` is engine-owned,
+// because the cascade mechanism emits it. The variants below are this reality's set.
 pub enum LifecycleReasonKind {
     CanonicalSeed,                              // EntityBorn from RealityManifest
     RuntimeSpawn,                               // author Forge create / scheduled spawn
@@ -401,6 +481,29 @@ impl From<NpcId> for EntityId { ... }
 ---
 
 ## §6 LifecycleState state machine
+
+> **⚠ REFRAMED 2026-08-02 — `D-12` / [`2026-08-02-actor-data-structure.md`](../../../../specs/2026-08-02-actor-hub/analysis/2026-08-02-actor-data-structure.md) §5.3. Read this before the diagram.**
+>
+> **The state machine is MECHANISM; the states are VOCABULARY.** What follows is no longer *the*
+> lifecycle — it is **one reality's declared machine**, and the canonical example. A settlement declares
+> `thriving | declining | abandoned | razed` instead, and the engine runs that machine without knowing
+> what "abandoned" means.
+>
+> | the engine closes (mechanism) | the manifest declares (vocabulary) |
+> |---|---|
+> | holding a state · validating a transition against the declared set · rejecting one that is not in it · the **closed cascade-policy set** (`Drop \| Cascade \| Suspend \| Keep`) · the append-only log · atomicity of a transition with its cascade | which states exist · which transitions are legal and what triggers each · which cascade policy each state uses · the reason vocabulary |
+>
+> **`HolderCascade` is the one reason the engine owns**, because the cascade mechanism itself emits it.
+> Every other `LifecycleReasonKind` variant below is authored content.
+>
+> The **forbidden-transition** list in this section therefore stops being an engine law and becomes part
+> of what a machine declares: the engine's rule is only *"a transition not in the declared set is
+> rejected"*. That the example forbids `Destroyed → Suspended` is this reality's choice, not a property
+> of lifecycles.
+>
+> `D-13`: this is the same projection question as *"which pools does this actor have"* — an actor's
+> **archetype** names both the quantities it carries and the lifecycle machine it follows. Answering it
+> twice would produce two mechanisms that drift.
 
 ```
                  ┌──────────────────────────────────┐

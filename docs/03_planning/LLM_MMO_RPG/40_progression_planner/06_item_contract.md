@@ -5,6 +5,18 @@
 > 2031 lines, `ITM-A1..A9`, all `ITM-Q1..Q8` resolved 2026-07-26) — **the substrate exists and is
 > specified.** This document adds no item semantics. It reads `ItemDefDecl` field by field and asks
 > one question of each: **who produces this?**
+>
+> ⚠ **2026-08-02 (`IR-30`) — THE METHOD SURVIVES; THE SUBJECT MOVED.** *"The substrate exists and is
+> specified"* was true on 2026-07-31 and is no longer: the item round replaced `ITM-A2` (stackability is
+> **earned**, not declared), deleted the `EquipmentStats` seam (a contribution is **DATA, never CODE**),
+> and split **ownership from location**. Authority is now
+> [`docs/specs/2026-08-02-item-data-structure.md`](../../../specs/2026-08-02-item-data-structure.md) and
+> [`item-dataflow.md`](../../../specs/2026-08-02-item-dataflow.md) Part II (§14 is the declaration surface
+> this document should be re-derived against).
+>
+> **The method — read the schema field by field and ask *who produces this* of every one — is right, and
+> is the direct answer to doc 39's worst finding (*"23 schema positions had no producer at all"*).** It
+> was applied to a schema that has since changed. **Re-run it; do not rewrite it.**
 > **Applies** [`40.4`](04_enum_pool.md) `EPL-A2` · **retracts** one mechanism from
 > [`40.3`](03_generator_boundary.md).
 
@@ -61,11 +73,11 @@ pool · `V` = LLM vocabulary · `D` = derived structurally at tier 2.
 | `def_id: ItemDefId` | **D** | tier-2 generator; the identity of a base |
 | `display_name: I18nBundle` | **V** | LLM half of item's generator |
 | `description: I18nBundle` | **V** | LLM half — also the `Examine` text (`§7.2`) |
-| `class: ItemClass` | **E** | **engine-fixed, 8 variants.** A reality cannot add a 9th |
+| `class: ItemClass` | ~~**E**~~ → **P** | ⚠ **CORRECTED 2026-08-02 (`IR-28` / `IR-4`).** Was *"engine-fixed, 8 variants. A reality cannot add a 9th."* `D-98`: the engine's arithmetic does **not** differ per class — **it never reads the class at all** — so this is the item feature's vocabulary in costume. It becomes a declared **ROSTER** (`item_classes`) with the 8 as engine **defaults**. **This row is where an author would actually hit the wall**: a reality of `talisman` / `pill` / `spirit-stone` / `manual` had to spell them `Trinket` / `Consumable` / `Valuable` / `Document` |
 | `affordance_overrides` | **E** | `AffordanceSet` is EF_001's closed set |
 | `equip.slot: EquipSlotId` | **P** | `equip_slot_profile` — author-declared, **capped at 12** (`§6.1`) |
 | `equip.also_blocks` | **D** | follows from `two_handed`; consistency-checked by `ITM-C5` |
-| `equip.modifiers: Vec<StatModifier>` | **E** slot + **M** value | `StatSlot` is **DF07-owned, 10 V1 slots**; the number is item's magnitude policy |
+| `equip.modifiers: Vec<ModifierTemplate>` | **R** target + **M** value | ⚠ **CORRECTED 2026-08-02 (`IR-29` / `IR-2`).** Was *"`StatSlot` is **DF07-owned, 10 V1 slots**."* `D-10` opened the set, `D-100` measured it to be **combat's**, `D-105` found it is **two concepts sharing one array**, and `C-2a`/`b`/`c` are dismantling it. The target is now a **`QuantityOrdinal` the reality declared** — so it is a **reference into another module's pool (`R`)**, not an engine-fixed set, which also means the generator resolves it the same way it resolves `equip.requirements.kind_id`. The magnitude half is unchanged |
 | `equip.requirements` | **R** + **M** | `EquipRequirement::MinProgression{kind_id, min_raw_value}` — `kind_id` is **progression's** pool member; the threshold is a magnitude |
 | `equip.combat.reach` | **M** | |
 | `equip.combat.two_handed` | **D** | |

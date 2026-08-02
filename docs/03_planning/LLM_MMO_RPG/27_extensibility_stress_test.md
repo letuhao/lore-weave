@@ -310,7 +310,9 @@ satisfied too, because [QTY-A6](35_quantity_architecture.md) makes the width a *
 
 ## 7. XST-R1..R9 — recommendations, ordered by (value ÷ cost)
 
-Every item preserves: dense ordinal-indexed arrays, no hot-path map, no float, closed vocabularies,
+Every item preserves: dense ordinal-indexed arrays, no hot-path map, one byte representation per hashed
+value (was *"no float"* — reworded 2026-08-02, DF7-A4), closed **mechanisms** (`D-2`: vocabularies are
+the manifest's, not ours),
 deterministic replay.
 
 | Id | Recommendation | Fixes | Cost |

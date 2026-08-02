@@ -1,5 +1,7 @@
 # 02 — Invariants (Axioms)
 
+<!-- design-lint: ok prefix EV — `EV-*` are the event-causality round's ids, owned by docs/specs/2026-08-02-event-causality.md (79 occurrences there). They are CITED here, not declared. Registering EV in this track's id catalog would claim ownership of another document's namespace, which is the opposite of what the catalog is for — same reasoning as the ML allowlist in SESSION_HANDOFF.md. -->
+
 > **Status:** LOCKED. Every axiom here was decided in user-approved Phase 0 / Phase 1 / Option-C-redesign POST-REVIEWs (2026-04-25) and may not be changed without a superseding decision recorded in [`../decisions/locked_decisions.md`](../decisions/locked_decisions.md) and a cross-reference entry in [`99_open_questions.md`](99_open_questions.md).
 > **Stable IDs:** EVT-A1..EVT-A12. Never renumber. Retired IDs use `_withdrawn` suffix.
 > **Redesign note (2026-04-25):** Option C redesign reframed A4 / A7 / A8 to mechanism level + added A9..A12. Original Phase 1 axioms (commit `ce6ea97`) preserved by ID; substance evolved per the changelog in [`../decisions/locked_decisions.md`](../decisions/locked_decisions.md) and `_boundaries/99_changelog.md`.
@@ -26,10 +28,29 @@ Axioms are not principles. They are mechanically checked at design review.
 
 **Enforcement:**
 - **Design review** — every feature design must cite an EVT-T* category for each event type it emits or consumes.
-- **Runtime (V1+30d goal)** — DP wire format adds a `category` field per event; SDK validates against the EVT-T* allowlist.
-- **Schema lint (V2+ goal)** — codegen step extracts every emitted event type from feature crates and asserts EVT-T* mapping.
+- ~~**Runtime (V1+30d goal)** — DP wire format adds a `category` field per event; SDK validates against the EVT-T* allowlist.~~
+  ⚠️ **WITHDRAWN 2026-08-02 (rot `E-1`) — this was built and then REMOVED AS A SECURITY DEFECT.**
+  [`services/commit-service/src/admission.rs:47`](../../../../services/commit-service/src/admission.rs#L47):
+  `event_category` is *deliberately absent* (PID-D5) because it **used to ride the wire and select the
+  validator subset, so a proposal could elect its own trust tier** — an LLM-originated message writing
+  `"T1"` skipped the entire LLM-safety stage set. `producer.rs` records the same. The category is now
+  **derived from an HMAC-verified producer identity**, and `EvtCategory` has **0 occurrences** in
+  `crates/`; the shipped envelope (`contracts/events/envelope.go:48`,
+  `crates/dp-kernel/src/envelope.rs:46`) carries no category field.
+  ⇒ **The trust class is a property of the PRODUCER and is never carried by the message.** See
+  [`docs/specs/2026-08-02-event-causality.md`](../../../specs/2026-08-02-event-causality.md) `EV-3`.
+- **Schema lint (V2+ goal)** — codegen step extracts every emitted event type from feature crates and asserts EVT-T* mapping. ⚠️ **Unbuilt (rot `E-12`)** — the codegen that exists is `make eventgen` + `scripts/eventgen-validate.sh`, which validates the Go event registry and does **not** assert EVT-T* mapping.
 
-**Consequence:** Adding a 7th category is a deliberate process: open EVT-Q*, justify why no existing category fits, get user sign-off, add EVT-T13 (next free), lock. Renaming an existing category requires `_withdrawn` suffix per I15.
+**Consequence:** Adding a 7th category is a deliberate process: open EVT-Q*, justify why no existing category fits, get user sign-off, add **EVT-T12** (next free), lock. Renaming an existing category requires `_withdrawn` suffix per I15.
+⚠️ **CORRECTED 2026-08-02 (rot `E-25`)** — this said *"EVT-T13 (next free)"*. Reserved is T1..T11; **T12 was never allocated.** Under I15 stable-ID discipline the off-by-one would have permanently burned an id.
+
+> ⚠️ **CONTESTED 2026-08-02 (rot `E-31`, `EV-2`).** The closed-set property is **stale, not disproven**.
+> Its proof (`03_event_taxonomy.md:269-310`) ran against four features and one spike from April; the
+> domain has roughly tripled since. And there is now a concrete counterexample: **`StatusProposed`** —
+> the load-bearing event of the propose→adjudicate→apply design — is classifiable by **none** of the six
+> active categories. More structurally, `EVT-T*` discriminates on **origination** (a producer-side
+> property) while a world occurrence (a siege, a festival) is **subject-side**, which is why it has no
+> home here at all. Re-run the proof or state its scope honestly.
 
 **Cross-ref:** [`03_event_taxonomy.md`](03_event_taxonomy.md) for the full enumeration + closed-set proof.
 
@@ -182,6 +203,7 @@ DP-Ch27 already enforces this for bubble-up aggregators specifically. EVT-A9 gen
 
 **Enforcement:**
 - **Lint (Phase 3 EVT-V*)** — generation rule code (registered aggregator/scheduler hooks) must use the SDK-provided `dp::deterministic_rng(channel_id, channel_event_id)`. Direct `rand::thread_rng()` / `std::time::SystemTime::now()` / equivalent calls flagged.
+  ⚠️ **UNBUILT 2026-08-02 (rot `E-3`) — `deterministic_rng` has 0 occurrences** across `crates/`, `contracts/`, `services/`, `migrations/`. **The named lint has no subject and the named function does not exist**, while three documents cite it as *the* enforcement mechanism (here, `12_generation_framework.md:266`, `22_event_design_quickstart.md:167`). The RULE above stands and is right; only its stated enforcement is fiction. What would build it: the seeding coordinate must also carry wave depth and sub-index, or every reaction in one wave draws the same value — see `33_trigger_group_order.md` `TRG-A17`.
 - **Design review** — feature designs that propose new EVT-T5 Generated emitters must declare the RNG seeding strategy + cite EVT-A9.
 - **Replay test (Phase 4 EVT-L*)** — replay-test harness re-runs event log; output divergence triggers test failure.
 
@@ -196,7 +218,16 @@ DP-Ch27 already enforces this for bubble-up aggregators specifically. EVT-A9 gen
 
 ## EVT-A10 — Event as universal source of truth (NEW 2026-04-25)
 
-**Rule:** Every observable change to per-reality state has a corresponding **committed event** in the channel event log. Reading the channel event log + replaying through validators is **sufficient** to reconstruct any past state. State projections (cache rows, denormalized lookups, in-memory aggregates) are **derived**; events are authoritative. Features cannot sideline-write state without emitting an event.
+**Rule:** Every change to the **two SSOTs** has a corresponding **committed event** in the channel event log. Reading the channel event log + replaying through validators is **sufficient** to reconstruct any past state. State projections (cache rows, denormalized lookups, in-memory aggregates) are **derived**; events are authoritative. Features cannot sideline-write state without emitting an event.
+
+> ⚠️ **NARROWED 2026-08-02 (rot `E-14`).** This said *"every **observable** change to per-reality
+> state"*, which is too strong and is contradicted by design. `D-49`'s **phase 0 Resolve** folds modifier
+> rows, refreshes derived fields and evaluates expiry with *"no law runs, no input is admitted, **nothing
+> durable is written**"* — a whole class of observable per-tick change that deliberately emits no event
+> **because it is recomputed**. `D-36` gives the correct scope: **two SSOTs and only two** — the pinned
+> ruleset digest plus content manifest, and the event log. `D-39`/`D-53`: a derived copy is rebuildable,
+> carries `(reality_id, seq)`, and is discarded on divergence — it is not event-sourced.
+> **The axiom survives in spirit and is narrowed in fact.**
 
 This axiom realizes the original intent of Event Model: *"mọi tương tác với thế giới này đều sẽ thông qua event"* — every interaction with the world goes through events.
 
@@ -208,7 +239,7 @@ This axiom realizes the original intent of Event Model: *"mọi tương tác v�
 
 **Enforcement:**
 - **DP rulebook** — DP-R3 already prevents raw kernel-client imports; EVT-A10 strengthens this by requiring the SDK call to commit an event (not just write a projection cell).
-- **Schema lint** — projections derive from events; the codegen step verifies projection-update functions are called from event-replay handlers, not from arbitrary code paths.
+- **Schema lint** — projections derive from events; the codegen step verifies projection-update functions are called from event-replay handlers, not from arbitrary code paths. ⚠️ **Unbuilt (rot `E-12`)** — no such gate exists; `scripts/eventgen-validate.sh` validates the Go event registry only. Per `docs/standards/non-vacuity.md` a named-but-absent gate is a claim wearing the costume of evidence.
 - **Design review** — every feature design that proposes a state-change must cite the EVT-T* event that commits it.
 
 **Consequence:**

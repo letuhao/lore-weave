@@ -76,6 +76,15 @@ progression system.
 
 ### 1.1 And the growth path out of it is currently a spine break
 
+> **⚠ ANNOTATED 2026-08-02 — the sites are real; the COST is now zero.** Two things changed after this
+> table was written. **(a)** `Q0a` shipped on 2026-07-29 — the version-dispatched codec, `upcast v1→v2`
+> and the epoch switch — which is precisely the *"there is no migration story"* this table's last row
+> reports as missing. **(b)** No production reality exists, as §12 states in its own words: *"zero
+> production realities exist, so the clock is under our control."* Every row below describes damage to
+> artifacts that have not been written. Keep the table as the record of what the migration machinery is
+> **for**; do not quote it as a reason not to move a vocabulary. See `D-10` /
+> [`2026-08-02-actor-data-structure.md`](../../specs/2026-08-02-actor-hub/analysis/2026-08-02-actor-data-structure.md) §7.1.
+
 Moving `SLOT_COUNT` today costs ~13 sites across 6 source files — and worse:
 
 | Site | What happens |
@@ -150,6 +159,12 @@ Concretely: `evaluate_outcome` does not read `hp`. It reads the quantity bound t
 tests it against role `Vital`'s zero-behaviour. But `resolve_attack` reads slot `StrikePower`
 **directly**, because that slot is closed and the ruleset has nothing else to put there.
 
+> **⚠ THIS REVIEW NOTE'S PREMISE LAPSED 2026-08-02 (`D-10`).** It rests on *"an author cannot rebind a
+> closed derived slot"* — and under `D-10` there is no closed derived slot: the slot vocabulary is
+> declared. The note is kept because its *reasoning shape* is still the right test (a role with no
+> consumer is indirection), but its conclusion must be re-derived against a declared slot set, not
+> quoted. See [`2026-08-02-actor-data-structure.md`](../../specs/2026-08-02-actor-hub/analysis/2026-08-02-actor-data-structure.md) §7.1.
+>
 > **Review note (self-review, same session).** The first draft of this section gave roles to
 > `StrikePower`/`Armor`/`Speed`/`MoveRange` as well. That was **indirection with no consumer** — an
 > author cannot rebind a closed derived slot to anything, so the role added a layer and bought
@@ -300,6 +315,16 @@ so "the cost pool" was already contradicted by the shipped design's shape.
 > `crates/ruleset-loader/src/validate.rs` is where it would go. Rejected because a validator is a
 > runtime refusal while a role is a type-level total function, and doc 16's discipline prefers
 > structural over procedural. It is a close call and it is recorded so it is not re-litigated blind.
+
+> **⚠ THE "one role" ARGUMENT NEEDS RE-DERIVING — 2026-08-02 (`D-10`, `D-14`).** The paragraph below
+> rests on *"every other law input is an L1 derived slot the law names directly."* Under `D-10` the slot
+> vocabulary is declared, so there is no closed name for a law to reach for; and under `D-14` the combat
+> laws that do the reaching are being rewritten. `Vital`'s own justification — **cardinality**, that
+> `evaluate_outcome` needs exactly one answer and a declared flag is satisfiable zero times — survives
+> untouched and is the part worth keeping. The count *"one, not six"* does not: it was derived from the
+> shape of laws that are being replaced. **Re-derive it with the combat redesign, do not quote it.**
+> A second gap `D-4` exposed: this cardinality argument was made at **reality** scope, and an actor with
+> no pool bound to `Vital` leaves the role with no answer **for that actor** — a case it never considered.
 
 **One role, not six.** Every other law input is an L1 derived slot the law names directly
 (`resolve_attack` reads `StrikePower`, `Armor`, `Accuracy`, `Dodge`, `CritChance`, `CritMult`;

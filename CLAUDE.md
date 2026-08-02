@@ -229,8 +229,12 @@ A commit is a **task checkpoint, not a session boundary**. Once code is committe
 
 - **Do NOT** suggest opening a new session, "starting fresh", pausing, or "wrapping up" based on commit count, number of milestones done, elapsed time, or conversation length. None of these are reasons to stop.
 - This matters most during **`/loom`** multi-milestone runs: after each milestone commits, just present the close-out and continue to the next `/loom <…>` — never advise a new session in between.
-- Only mention context at all when it is **genuinely near full (>90% used)**. At normal usage (e.g. a 1M window with most of it free) context is a non-issue — say nothing about it.
-- If compaction is truly needed, run `/compact`. Do not ask the user to restart.
+- **Context budget is the HUMAN's to manage, not the agent's (LOCKED 2026-08-02).** Never mention
+  context level, never propose `/compact`, never pace or narrow work because context "is filling".
+  The agent's job is to keep the RUN-STATE file current so that a compaction — whenever the human
+  chooses to run one — loses nothing. Self-managed compaction produced the opposite of its purpose:
+  it interrupted the human with a budget they had not asked to see, and it truncated real work at a
+  boundary chosen by the agent rather than by the task.
 
 The legitimate stop points are the workflow's own PO checkpoints (CLARIFY end, POST-REVIEW) and the user explicitly saying they're done — nothing else.
 
@@ -433,13 +437,12 @@ re-arch spanning several services) is ONE classification + ONE continuous run �
 small tasks each with its own size→build→review→commit cycle. Undersizing on **breadth**
 is allowed (the gate warns, you proceed); undersizing below the **risk floor** is blocked.
 
-**Budget-driven checkpoint cadence (the big unlock).** On a large-context model, let the
-**context budget** — not file count — drive when to stop. Pass current context % as the
-5th arg: `size <S> <files> <logic> <side_effects> <context_pct>`.
-- **Ample budget (<~70%):** run continuously. Checkpoint/commit at genuine **risk boundaries**
-  (a new contract, a migration, a cross-service seam, a shippable milestone), **not** at
-  arbitrary file/sub-task counts.
-- **Filling (>~80%):** checkpoint/commit + `/compact` at the next risk boundary.
+**Risk-driven checkpoint cadence.** Let **risk boundaries** — not file count, and **not context
+level** — drive when to stop. The 5th arg to `size` is accepted for compatibility and is **not** a
+reason to stop, narrow, or compact anything; context is the human's to manage (see *Session
+continuity* above).
+- Run continuously. Checkpoint/commit at genuine **risk boundaries** (a new contract, a migration,
+  a cross-service seam, a shippable milestone), **not** at arbitrary file/sub-task counts.
 - **PO checkpoints (CLARIFY end + POST-REVIEW) are BATCHED per-milestone:** one CLARIFY for
   the effort's scope; POST-REVIEW at each shippable risk boundary — not per sub-task.
 - **Quality gates stay, applied per-milestone:** VERIFY evidence, 2-stage REVIEW, live-smoke

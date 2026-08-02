@@ -6,8 +6,10 @@ use crate::stats::{resolve_block, StatBlock, StatSlot};
 
 /// The combat-relevant view of a DF07 stat block.
 ///
-/// Slice 1 held these as `f64`, which **DF7-A4 forbids** ("no float anywhere
-/// in the stat path"). They are now the DF07 slots: integers, with
+/// Slice 1 held these as `f64`. **DF7-A4** (revised 2026-08-02) does not ban
+/// float outright — it requires one byte representation per value, and these
+/// numbers are integers on a fixed scale, so fixed-point is the fit that makes
+/// `NaN`/`-0.0`/rounding order not arise. They are now the DF07 slots: integers, with
 /// accuracy / dodge / crit as **per-mille** (0..1000). Every law below reads
 /// through this view, so swapping the SOURCE of the numbers — archetype today,
 /// a resolved snapshot with equipment and progression tomorrow — touches no
