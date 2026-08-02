@@ -51,7 +51,11 @@ REGISTRY = ROOT / "contracts" / "guard-signals.yaml"
 #: wiring it is what surfaced that the distinct-critic fix had never reached the place
 #: that decides whether a conflict blocks. A signal with no reader is not just inert —
 #: it hides the fact that its consumer was never built.
-UNCONSUMED_BASELINE = 2
+#: 2 → 1 (2026-08-02): `eval.exclusion_unverified` grew one — and again the wiring found
+#: worse than an unread field: it was DROPPED at the `EvalResult` boundary, so the
+#: structure built for persistence never carried it. Two for two: a signal with no
+#: reader hides whether its producer even works.
+UNCONSUMED_BASELINE = 1
 
 
 def _strip_prose(src: str, path: Path) -> str:

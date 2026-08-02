@@ -159,3 +159,45 @@ def test_a_REAL_self_grader_still_reports_unsafe_and_is_not_masked():
     assert safety.safe is False
     assert safety.generators_in_panel == [DEFAULT_EXTRACTOR_REF]
     assert safety.exclusion_unverified is False, "an exclusion that FIRED is verified by that"
+
+
+# ── the metric-of-record decision, in ONE place ───────────────────────────────────────────
+
+def test_an_unverified_exclusion_blocks_the_metric_of_record_even_though_the_panel_is_safe():
+    """The two states a single `panel_safe` boolean cannot tell apart.
+
+    `panel_safety` keeps `safe=True` when the exclusion set was defaulted and matched nothing,
+    and that is the right call — otherwise every unconfigured deployment would report unsafe.
+    But it means "safe" covers both a genuinely clean panel and one where a self-grader may be
+    sitting unexcluded because the refs belong to another machine. A caller reading one boolean
+    gets the reassuring answer for both."""
+    from loreweave_eval import metric_of_record_blockers
+    from loreweave_eval.scorer import EvalResult
+
+    clean = EvalResult(variant_label="v", panel_safe=True)
+    assert metric_of_record_blockers(clean) == []
+
+    unverified = EvalResult(variant_label="v", panel_safe=True, exclusion_unverified=True)
+    blockers = metric_of_record_blockers(unverified)
+    assert blockers, "a defaulted exclusion that matched nothing must not be quotable"
+    assert "self-grading" in blockers[0]
+
+
+def test_an_unsafe_panel_is_blocked_with_its_own_reason():
+    """The control for the branch above: without it, "always blocked" passes that test and no
+    result is ever quotable."""
+    from loreweave_eval import metric_of_record_blockers
+    from loreweave_eval.scorer import EvalResult
+
+    out = metric_of_record_blockers(
+        EvalResult(variant_label="v", panel_safe=False, panel_safety_reason="only 1 judge"))
+    assert out == ["only 1 judge"]
+
+
+def test_the_flag_survives_the_boundary_it_used_to_be_dropped_at():
+    """`EvalResult` is the structure the docstring calls "for persistence", and
+    `exclusion_unverified` never reached it — `score_dump` read it off `PanelSafety` and threw
+    it away. A field that dies at the boundary is not an unread signal, it is a lost one."""
+    from loreweave_eval.scorer import EvalResult
+
+    assert "exclusion_unverified" in EvalResult.__dataclass_fields__

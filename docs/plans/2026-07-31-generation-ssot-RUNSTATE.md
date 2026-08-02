@@ -3575,6 +3575,45 @@ AUDIT AUDIT-16 (translation's remaining unsanitized prompt assemblies)
                registry caught me making once already.
 ```
 
+### ✅ AUDIT-17 · `exclusion_unverified` gets a reader — and it was not merely unread.
+
+```
+AUDIT AUDIT-17 (the fourth held signal · and where the fifth genuinely stops)
+
+  FOUND      — the same shape as `identity_verified`, and that is now two for two: wiring a
+              signal did not just give it a reader, it revealed that the producer was broken.
+              `exclusion_unverified` was DROPPED at the `EvalResult` boundary. `score_dump`
+              read it off `PanelSafety` and threw it away, so the structure whose own docstring
+              says "for persistence" could not carry the fact at all. Not an unread signal — a
+              LOST one.
+
+  BUILT      — `metric_of_record_blockers(result)`, the ONE place that answers whether a number
+              may be quoted as the metric of record. The rule it encodes could not be expressed
+              by the boolean that existed: `panel_safety` keeps `safe=True` for a defaulted
+              exclusion that matched nothing — deliberately, since otherwise every unconfigured
+              deployment reports unsafe — so `panel_safe` covers BOTH a genuinely clean panel
+              and one whose exclusion refs belong to another machine, with a self-grader
+              possibly sitting in it ungraded. `user_model_id`s are per-machine; that is
+              exactly what a panel from another deployment looks like.
+              Forwarded to `EvalResult`, persisted to `eval_runs.exclusion_unverified` (its own
+              column, NOT folded into `panel_safe`), so the question is answerable from a
+              stored run rather than only from the in-memory result that computed it.
+              Three tests: the block, the CONTROL that still certifies, and one pinning the
+              field's survival across the boundary it used to die at.
+              `UNCONSUMED_BASELINE` 2 → 1.
+
+  WHERE THE LAST ONE STOPS — `injection_scan`, and this is a slice rather than a wire. The
+              Debt row's step is "a column on `chapter_translations` plus a return from
+              `translate_chapter`". Checked: **`chapter_translations` belongs to BOOK-SERVICE**,
+              not translation — translation reaches it through `book_client`. So telling the
+              importer means a Go migration, an API field, and an FE surface across two
+              services. Not started rather than half-built: four more emitters were added to
+              this signal today (DoD-4c) and a partial consumer would make the count look
+              better while the importer still hears nothing.
+
+  SCORE      — 5 signals: 4 consumed, 1 held. The registry started this run at 5 held.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |

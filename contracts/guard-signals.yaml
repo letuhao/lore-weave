@@ -34,12 +34,18 @@ signals:
     field: exclusion_unverified
     emitter:
       file: sdks/python/loreweave_eval/calibration.py
-    unconsumed: >-
-      S13. True whenever a deployment has not configured KNOWLEDGE_EXTRACTOR_MODEL /
-      KNOWLEDGE_FILTER_MODEL — i.e. the default state — so the panel's exclusion set may
-      match nobody while the run reports `safe`. No report line, no gate. The honest next
-      step is a gate that reds when a published metric-of-record was computed with an
-      unverified exclusion, at which point the distinction starts costing something.
+    consumer:
+      file: sdks/python/loreweave_eval/scorer.py
+      note: >-
+        `metric_of_record_blockers` refuses to certify a number computed with a defaulted
+        exclusion that matched nothing, even though `panel_safe` is True — deliberately True,
+        because otherwise every unconfigured deployment would report unsafe. One boolean
+        could not tell a clean panel from one whose refs belong to another machine; this
+        function is what makes the distinction reachable, and it is the ONE place the
+        question is answered. Wiring it found the field was not merely unread: `score_dump`
+        read it off `PanelSafety` and DROPPED it, so the structure whose own docstring says
+        "for persistence" could not carry it at all. It now reaches `EvalResult` and the
+        `eval_runs` row, so the question is answerable from a stored run.
 
   - id: glossary.kg_sweep_coverage
     field: kg_unchecked
