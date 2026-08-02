@@ -4013,6 +4013,94 @@ AUDIT AUDIT-21 (one locator, five producers, and the consumer that needed it)
                artifact carries a locator nothing reads.
 ```
 
+### ✅ AUDIT-22 · THE RUN'S OWN REGISTERS HAD GONE STALE — nine rows, and now a gate
+
+```
+AUDIT AUDIT-22 (the Debt register, audited against the code)
+
+  FOUND      — with the board clean I read the Debt register against the repo instead of
+               against memory, and **9 of 26 rows described a state that no longer exists.**
+               Six were claims about guard signals — `exclusion_unverified has no consumer`,
+               `guard_status: not_run … nothing consumes it`, `identity_verified is the FOURTH
+               emitted-but-unconsumed signal`, and three about the injection scan — all
+               already closed, three of them by the very audits sitting a few hundred lines
+               above in this same file.
+
+               This is the failure this run has been fixing everywhere ELSE. Its own history
+               records `D-PUBLISHER-DROPS-RULESET-PIN` cited as an open blocker in FOUR places
+               after it was fixed, including in the row of the task that fixed it. A register
+               read one row at a time cannot notice that it has stopped describing the repo.
+
+               The root cause is narrower than "rows go stale": **six of the nine restated a
+               fact that a machine already tracks.** `contracts/guard-signals.yaml` plus its
+               consumption gate is the SSOT for whether a signal has a reader, and the Debt
+               table was keeping a second copy of that state — so it could disagree with it,
+               and it did.
+
+  BUILT      — the nine rows struck through with what cleared each (struck, not deleted: what
+               a row SAID and what closed it is the useful record), plus a mechanism in the
+               gate that already owns the registry.
+
+               `stale_prose_claims` reds when a REGISTER ROW still calls a signal unconsumed
+               that `guard-signals.yaml` lists as consumed. Two scoping decisions, both
+               load-bearing:
+                 · only lines that start with `|` — a table ROW is a claim about NOW, an AUDIT
+                   paragraph is dated narrative about THEN. The first version reddened on three
+                   AUDIT blocks that correctly recorded a signal as unconsumed *on the day they
+                   were written*; reddening there would force rewriting the record to satisfy a
+                   gate, and a register that edits its own history is worth less than none.
+                 · `~~struck~~` spans stripped PER LINE. A document-wide `re.DOTALL` sub renamed
+                   every line number after the first strike, so the gate reported hits at lines
+                   whose text did not contain them.
+
+               Also: `test_finding_locator_entry.py` in knowledge-service. AUDIT-21 left
+               "knowledge has no locator projection" as a NOT PROVEN, and the right answer is
+               that it does not need one — it has ONE finding type, whose position already
+               reaches a human in the quarantine row. A union of one is ceremony, and the
+               argument for building it would be symmetry, which is not a consumer. So the
+               criterion is ASSERTED rather than remembered, exactly as S9 did with the
+               SDK-extraction criterion: the moment a SECOND finding type appears there, the
+               test reds and points at the union that already exists.
+
+  PROVEN     — the gate caught **two rows my own eye had missed**: I struck the head of a row
+               and left the stale claim in its second cell. That is the mechanism earning its
+               keep before it was even committed.
+               knowledge **4115 passed** · guard-signal-consumption PASS (6 registered, 6
+               consumed, 0 held) + SELFTEST · truncation-check · judge-resolution · llm-budget
+               · gate-teeth · generation-guard · enforcement-claims · estimator ·
+               injection-coverage · ai-provider · deferral-gate — all PASS.
+               The self-test proves all three cases at once: a live row REDS, a struck-through
+               row does NOT, and an AUDIT paragraph does NOT.
+
+  NOT PROVEN — the check covers ONE claim shape ("has no consumer" / "nothing consumes it")
+               about ONE registry. A row that goes stale about anything else — a count, a
+               file, a flag's default — is still only caught by someone reading. Three rows I
+               verified BY HAND this pass (`cross_scene_check` mislabelled, `_TOKENS_PER_ITEM`,
+               `model_roles` has no writer) are still open and still unmechanised.
+               And the numeric row I rewrote to cite `gate-teeth-gate` instead of freezing
+               "45 of 59" is a convention, not an enforced one: nothing stops the next row
+               from freezing a number.
+
+  DRIFT      — three.
+               · **My first predicate for the knowledge criterion counted the wrong classes.**
+                 I matched "Candidate" by NAME and got `CandidatePair` (two mentions considered
+                 for coreference) and `EntityCandidate` (a name the pattern detector surfaced).
+                 Neither is a finding about a position. The criterion would have fired on the
+                 day it was written, for the wrong reason — a false alarm that teaches people
+                 to raise the threshold. Judged by what the class IS now (`CanonCandidateBase`).
+               · I nearly built the locator union in knowledge for symmetry with composition.
+                 The composition slice earned its union by finding a consumer FIRST; copying
+                 the shape without repeating that step is how the emitted-and-unread pattern
+                 gets re-created in a second service.
+               · I wrote the stale-claim check before deciding what it should NOT match, and
+                 the first run's three AUDIT-block hits were the answer arriving as a failure
+                 rather than as a design. It cost one iteration; had I not looked at what the
+                 lines actually said, "fixing" them would have meant editing the record.
+
+  NEXT       — the register is current and one of its shapes is mechanised. What is left in it
+               is genuinely open work, not bookkeeping.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -4032,23 +4120,23 @@ AUDIT AUDIT-21 (one locator, five producers, and the consumer that needed it)
 | 2026-08-01 | Smoke debris: throwaway book `019fbd8f-008c-7cef-bf81-1d53a808361d` and its knowledge project `019fbd90-…` | Deliberately a throwaway (never the dogfood book), but it is real rows in the dev stack awaiting purge. |
 | 2026-08-02 | The `cross_scene_check` registry row is MISLABELLED. Its `why` describes "a contradiction list across one scene seam"; its only two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a cast ROSTER. | The row documents a call that does not exist, and the kind is wrong in a way that matters: VERDICT carries `truncation_is_fatal=False`, but a clipped roster silently DROPS PEOPLE — the same class as the `propose_world` dead pass. Not fixed here because changing the kind changes the budget (VERDICT 2048 → STRUCTURED 4096) and needs its own measurement. |
 | 2026-08-02 | `_TOKENS_PER_ITEM = 220` (SDK, generic) is what makes a full-roster `propose_world` reach the 32768 runaway ceiling. A world entity is plausibly half that. | Every STRUCTURED budget is sized off a per-item cost nobody has measured against a real completion. The right number is `output_tokens / items` from a live run; until then the big-roster budgets are over-generous rather than wrong. |
-| 2026-08-02 | **`exclusion_unverified` has no consumer.** It rides `EvalResult` and no report, gate or FE surface reads it. | The S8 shape: a fact made available rather than acted upon. The honest next step is a scored-run report line or a gate that reds when a published metric-of-record was computed with an unverified exclusion — at which point the distinction starts costing something and therefore starts being fixed. |
+| 2026-08-02 | ~~**`exclusion_unverified` has no consumer.**~~ — **CLEARED 2026-08-02** (AUDIT-17). `metric_of_record_blockers` in `loreweave_eval/scorer.py` refuses to certify a number computed with a defaulted exclusion, and the row is in `contracts/guard-signals.yaml` with that consumer. Wiring it found worse than an unread field: it was DROPPED at the `EvalResult` boundary, so the structure built for persistence never carried it. It rides `EvalResult` and no report, gate or FE surface reads it. | The S8 shape: a fact made available rather than acted upon. The honest next step is a scored-run report line or a gate that reds when a published metric-of-record was computed with an unverified exclusion — at which point the distinction starts costing something and therefore starts being fixed. |
 | 2026-08-02 | **S13's "cite the exemplars" half is not built**, and a document would have been the wrong answer — the list already exists in spec §S13 and a second copy is the re-derivation the slice warns against. | What is genuinely missing: the code that SHOULD reuse the five named exemplars does not point at them, and nothing detects a re-implementation written beside one. Bigger than a citation, and it needs a mechanism rather than prose. |
-| 2026-08-02 | **5 of translation's 7 unsanitized modules remain** (`routers/translate.py`, `decoupled_block_translate`, `extraction_worker`, `v3/bilingual_extractor`, `v3/corrector`). The two CHAPTER paths now DETECT-scan. | Each needs its own read: "apply the same call" across five modules is how a sweep gets one wrong, and two of them fold a translation as well as a source. They stay baselined, which is a mechanism rather than a note. |
-| 2026-08-02 | **The injection scan PERSISTS only on the flag-off-by-default path.** `translation_decouple_enabled` is False, so the live path logs and does not store. | Found by auditing my own registry row, which claimed otherwise. The real fix is a column on `chapter_translations` plus a return from `translate_chapter` — a signature change with one production caller and eight test call sites. A slice, not a line. |
-| 2026-08-02 | **A non-zero `injection_scan.hits` changes nothing.** The report rides `resume_state` and a log line; no UI, no job field a human reads, no metric. | FIFTH emitted-but-unconsumed signal this run. DETECT is only a defence if somebody is told — otherwise it is a log nobody greps. Smallest real step: surface it on the chapter's translation record so the importer sees it. |
+| 2026-08-02 | ~~**5 of translation's 7 unsanitized modules remain**~~ — **CLEARED 2026-08-02** (AUDIT-16, DoD-4c). Each of the five was read individually rather than swept; `injection-coverage-lint` now reports **6 DETECT-only modules** and OK. (`routers/translate.py`, `decoupled_block_translate`, `extraction_worker`, `v3/bilingual_extractor`, `v3/corrector`). The two CHAPTER paths now DETECT-scan. | Each needs its own read: "apply the same call" across five modules is how a sweep gets one wrong, and two of them fold a translation as well as a source. They stay baselined, which is a mechanism rather than a note. |
+| 2026-08-02 | ~~**The injection scan PERSISTS only on the flag-off-by-default path.**~~ — **CLEARED 2026-08-03.** The row was also WRONG about which path is live: this stack runs `TRANSLATION_DECOUPLE_ENABLED=true`. `record_source_injection` does the scan and the write in ONE call, so a chapter path cannot take one without the other, and `test_injection_persist` derives the path set from `chapter_worker`'s dispatch — SEVEN, not the two the previous fix counted. `translation_decouple_enabled` is False, so the live path logs and does not store. | Found by auditing my own registry row, which claimed otherwise. The real fix is a column on `chapter_translations` plus a return from `translate_chapter` — a signature change with one production caller and eight test call sites. A slice, not a line. |
+| 2026-08-02 | ~~**A non-zero `injection_scan.hits` changes nothing.**~~ — **CLEARED 2026-08-02** (AUDIT-18). `chapter_translations.source_injection_hits` is nullable, written by every chapter path, and rendered as an amber badge on the version the importer reads; the badge tests `> 0`, not truthiness, so `null` (nobody looked) and `0` (looked, clean) stay different answers. | ~~The report rides `resume_state` and a log line; no UI, no job field a human reads, no metric. FIFTH emitted-but-unconsumed signal this run — DETECT is only a defence if somebody is told.~~ The smallest real step it named is the one that shipped: the chapter's translation record carries it, and the importer sees it. |
 | ~~2026-08-02~~ | ~~translation-service folds IMPORTED third-party book text into prompts with no sanitizer~~ — 7 modules, surfaced by widening `injection-coverage-lint`'s SCAN_DIRS in S4. Plus 1 in worker-ai. | The least-trusted bytes on the platform, in the service that exists to process them, never scanned until now. Baselined with notes rather than fixed: routing them through `neutralize_injection` risks a TRANSLATION-FIDELITY bug (a sanitizer that mangles source text), which is the same reason those rows are `OutputKind.MIRROR`. Needs its own measurement, not a sweep. |
 | 2026-08-02 | **The `chat.*` / `composition.*` trace namespacing is NOT built** — composition emits nothing into the context trace (the only `TraceAccumulator` consumers are chat-service's `stream_service`, `compact_service`, `token_budget`). | Namespacing a vocabulary with no second surface to separate would be zero-consumer ceremony. **Un-parks when composition first emits a trace span** — at that moment `breakdown_categories` becomes a shared vocabulary asserted BOTH ways on the chat side, so extending it is a consumer-visible shape change and must be namespaced in the same commit. |
 | 2026-08-02 | **S11-2 moved COST and nobody measured it.** Counting ~40% more tokens on CJK/Vietnamese means ~40% more chunks per chapter, i.e. ~40% more LLM calls — for exactly the books this platform is for. | The safe direction for correctness (no window overflow) and the expensive one for spend. Shipped without a number. A real per-chapter cost delta needs one translation run before/after on a real chapter. |
 | 2026-08-02 | **The kernel estimator is itself ~0.78× tiktoken on Vietnamese** (my n=3 sample), where the spec cites a 2026-07-07 eval claiming the script-aware heuristic tracks o200k within 3-6%. | Under-counting is the direction that overflows a window. My sample is far too small to overturn a real-corpus measurement, so the tension is recorded rather than acted on — re-tuning the kernel's `_F_VIETNAMESE` on n=3 would be the "generalised from one prompt formulation" mistake this run already has twice. Needs the eval corpus re-run. |
 | ~~2026-08-02~~ | ~~The distinct-critic rule compares `user_model_id`~~ — **CLEARED 2026-08-02.** `resolve_critic_verified` compares `(provider_kind, provider_model_name)` via the already-shipped `/internal/models/{source}/{ref}/info`. The row was wrong twice: that route existed, and the endpoint was never needed for identity. | Verified live against two real gemma rows on this box, where FIVE `user_model_id`s share one model. |
-| 2026-08-02 | **`identity_verified` is the FOURTH emitted-but-unconsumed signal** this run, after `exclusion_unverified`, `kg_status`/`kg_unchecked` and `guard_status:not_run`. | The pattern is the finding: I keep closing the HONESTY half of a gap and leaving the ACTING half. Each is individually small — a response field, a badge, a gate condition — and together they are a habit. Worth one deliberate slice that wires all four, rather than four more rows. |
+| 2026-08-02 | ~~**`identity_verified` is the FOURTH emitted-but-unconsumed signal**~~ — **CLEARED 2026-08-02** (AUDIT-15). It gates the ADVISORY→HARD promotion in `canon_reflect`, and wiring it is what exposed that the distinct-critic fix had never reached the path that decides whether a conflict blocks a publish. The pattern this row named produced `contracts/guard-signals.yaml` + its consumption gate, which is now at **0 held**. this run, after `exclusion_unverified`, `kg_status`/`kg_unchecked` and `guard_status:not_run`. | The pattern is the finding: I keep closing the HONESTY half of a gap and leaving the ACTING half. Each is individually small — a response field, a badge, a gate condition — and together they are a habit. Worth one deliberate slice that wires all four, rather than four more rows. |
 | 2026-08-02 | **The identity resolve is uncached**: two extra internal HTTP calls per generation. | Against an operation costing seconds of LLM time, plausibly irrelevant — but that is a guess. Measure a generation's wall clock before and after adding a TTL cache; adding one now would be an unmeasured optimisation of exactly the kind this run keeps catching. |
 | 2026-08-02 | `settings.model_roles` still has ZERO writers. S6 writes the legacy `critic_model_ref`/`_source` scalars, which the dual-read consumes. | The newer map remains a read-only contract with no producer, so the Book tier of the Chat & AI cascade still resolves a key nothing writes. Not blocking — the dual-read means the critic setting works — but the map is dead weight until something writes it or it is retired. |
 | ~~2026-08-02~~ | ~~**`guardstatus.Report` is emitted and nothing consumes it.**~~ — **CLEARED 2026-08-02.** `useWikiStaleness.rescan` branches on `kg_unchecked` *and* on an explicit `kg_status === 'degraded'`: a gap downgrades `toast.success` to `toast.warning` and sets a `coverage` state the panel renders as a standing amber banner **above the empty state** — the exact spot where "0 findings" read as a clean book. `UNCONSUMED_BASELINE` 4 → 3. | Both halves proved red-able against the real files (`green-before=True red-after=True`), restored from saved bytes + sha256. Two fields read, not one, on purpose: today `degraded ⟺ unchecked > 0` only because `degradedSoFar` — the report that CAN be degraded with a zero count — never reaches the wire, its caller 500s instead. That is a coupling across two files, not an invariant, and the UI must not inherit it. |
-| 2026-08-02 | **`guard_status: not_run` is emitted by both SSE streams and nothing consumes it.** `chapter_scene_gate` reads `guard_status` out of `generation_job.result` and now finds a value where it found none, but I did not trace what it does with this one, and no FE surface renders it. | Third instance of the emitted-but-unconsumed shape this run, after `exclusion_unverified` and `kg_status`. The pattern is worth naming: I keep closing the HONESTY half of a gap and leaving the ACTING half. The next step here is small and concrete — decide what `chapter_scene_gate` should do with `not_run`, and show the reason in the co-write UI. |
+| 2026-08-02 | ~~**`guard_status: not_run` is emitted by both SSE streams and nothing consumes it.**~~ — **CLEARED 2026-08-02.** Registered as `composition.unguarded_stream` with `db/repositories/outline.py` as its consumer; the consumption gate verifies the consumer names the field in CODE, with comments and docstrings stripped. `chapter_scene_gate` reads `guard_status` out | ~~Third instance of the emitted-but-unconsumed shape this run. The pattern: I keep closing the HONESTY half of a gap and leaving the ACTING half.~~ That pattern is what produced `contracts/guard-signals.yaml` and its consumption gate — which now also reds when a REGISTER row like this one still calls a consumed signal unconsumed. Genuinely still open, and narrower than the row claimed: no FE surface renders the reason, so an author sees an unguarded stream without being told why. |
 | 2026-08-02 | **Rust has no check-status VOCABULARY mirror**, though the row it was blocking is closed. `L4Narration`/`L3Classification` now carry a per-item `Provenance`, which is a different fact from a `guard_status`: it says who made THIS item, not what the check could and could not verify. | So DoD-1 is satisfied in Python and Go by one mechanism and in Rust by another. Defensible — a narration has no corpus to be partially-checked over — but it means `contracts/guard-status.contract.json` is a two-language lock, and a future Rust path that DOES run a check has no mirror to reach for. Un-parks the first time a Rust path needs to say "I could not verify this" rather than "the engine wrote this". |
-| 2026-08-02 | **45 of 59 CI gates carry no red-ability proof**, and `guard-redability-gate.py` did not move that number — it covers the guards this run wrote. | The ratchet's own PASS line says it out loud, so it is visible rather than implied. The gates it does cover are now proved against the real violation, which is a strictly stronger proof than the selftest convention the other 14 use. Un-parks one gate at a time: every new gate gets a sweep case. |
+| 2026-08-02 | **Most CI gates carry no red-ability proof** — `gate-teeth-gate.py` prints the live split (63 gates / 18 proved as of 2026-08-03; it was 45 of 59 when this row was written). The NUMBER is deliberately not frozen here: the first version of this row was stale within a day, and a register that restates a number a command already prints is a second source of truth that drifts., and `guard-redability-gate.py` did not move that number — it covers the guards this run wrote. | The ratchet's own PASS line says it out loud, so it is visible rather than implied. The gates it does cover are now proved against the real violation, which is a strictly stronger proof than the selftest convention the other 14 use. Un-parks one gate at a time: every new gate gets a sweep case. |
 | 2026-08-02 | **7 of the 11 sweep cases do not run in CI** — they drive service pytest suites and the `lints` job installs no service deps. | `--gates-only` prints what it skipped, so a partial sweep cannot read as a complete one. The real fix is a CI job that installs composition + chat + translation deps; that job would also un-skip work `python-integration-tests.yml` already does, so the honest move is to add the sweep there rather than build a third job. |
 | 2026-08-02 | The output-budget window clamp is unexercised in production. | The dev model reports a 200k window, so the half-share never binds. It is proven only by unit test. The case that matters — a small-window BYOK model getting a 24750-token cap — has never been run. |
 

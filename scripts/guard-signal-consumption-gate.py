@@ -150,6 +150,72 @@ def load_registry() -> list[dict]:
     return rows
 
 
+#: Prose registers that describe guard signals, and that go stale. Both are read at PLAN time
+#: and both have been wrong about a signal that already had a consumer.
+PROSE_REGISTERS = (
+    "docs/plans/2026-07-31-generation-ssot-RUNSTATE.md",
+    "docs/sessions/SESSION_HANDOFF.md",
+)
+
+#: Ways a register says "nothing reads this". Matched against a WINDOW around each registered
+#: field name, so the claim has to be about that field rather than merely near it.
+_UNREAD_CLAIM = re.compile(
+    r"has no consumer|no consumer\b|nothing consumes it|emitted-but-unconsumed"
+    r"|emitted and nothing consumes|unconsumed signal",
+    re.IGNORECASE,
+)
+
+#: A struck-through row is a RECORD of what was once true, not a live claim. Stripped PER LINE
+#: rather than over the whole file: a document-wide `re.DOTALL` sub renames every line number
+#: after the first strike, so the gate reported hits at lines whose text did not contain them.
+#: Without the strip at all it would red on its own cleared rows, which is how a gate teaches
+#: people to delete history instead of striking it.
+_STRUCK = re.compile(r"~~.*?~~")
+
+#: Only TABLE ROWS are checked — a line starting with `|`, which in these documents is exactly
+#: the Debt / Parked / Drift registers. The AUDIT blocks are dated narrative about what was
+#: true when they were written, and three of them say `exclusion_unverified` had no consumer
+#: because on that day it did not. Reddening on those would force rewriting the record to
+#: satisfy a gate, and a register that edits its own history is worth less than no register.
+#: A row is a claim about NOW; a paragraph is a claim about THEN.
+_ROW = re.compile(r"^\s*\|")
+
+
+def stale_prose_claims(rows: list[dict]) -> list[str]:
+    """Rows in a prose register that still call a CONSUMED signal unconsumed.
+
+    Why this belongs in this gate rather than a new one: three of the seven stale Debt rows
+    found on 2026-08-03 were "signal X has no consumer" for an X this registry already lists
+    as consumed. The register was restating a fact a machine already tracks, so it could
+    disagree with it — and it did. The repo's own history has the same shape recorded at a
+    larger scale: `D-PUBLISHER-DROPS-RULESET-PIN` was cited as an open blocker in four places
+    after it was fixed, including in the row of the task that fixed it.
+
+    So: a prose register may POINT at this registry; it may not restate its state.
+    """
+    consumed = {r["field"] for r in rows if not r.get("unconsumed") and r.get("field")}
+    out: list[str] = []
+    for rel in PROSE_REGISTERS:
+        path = ROOT / rel
+        if not path.is_file():
+            continue
+        for i, raw in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(),
+                                1):
+            if not _ROW.match(raw):
+                continue
+            line = _STRUCK.sub("", raw)
+            if not _UNREAD_CLAIM.search(line):
+                continue
+            for field in sorted(consumed):
+                if re.search(rf"\b{re.escape(field)}\b", line):
+                    out.append(
+                        f"{rel}:{i}: still calls `{field}` unconsumed, and "
+                        f"contracts/guard-signals.yaml names its consumer. Strike the row "
+                        f"(`~~…~~`) with what cleared it, or point at the registry instead of "
+                        f"restating it.")
+    return out
+
+
 def check() -> tuple[list[str], list[dict]]:
     problems: list[str] = []
     rows = load_registry()
@@ -222,8 +288,36 @@ def self_test() -> int:
         finally:
             ROOT = saved
 
+    # …and the prose-register check must be able to fail, or clearing the seven stale rows
+    # it was written for would be the last thing it ever did.
+    rows = [{"field": "identity_verified", "consumer": {"file": "x"}}]
+    fixture = (
+        "| `identity_verified` is emitted and nothing consumes it. |\n"
+        "| ~~`identity_verified` has no consumer~~ — CLEARED, struck through. |\n"
+        "An AUDIT paragraph saying `identity_verified` has no consumer. Dated NARRATIVE, not\n"
+        "a row: it records what was true then, and reddening on it would force rewriting the\n"
+        "record to satisfy a gate.\n"
+    )
+    saved_registers = PROSE_REGISTERS
+    globals()["PROSE_REGISTERS"] = ("__selftest__.md",)
+    with tempfile.TemporaryDirectory() as td:
+        tmp = Path(td)
+        (tmp / "__selftest__.md").write_text(fixture, encoding="utf-8")
+        saved_root, ROOT = ROOT, tmp
+        try:
+            hits = stale_prose_claims(rows)
+        finally:
+            ROOT = saved_root
+            globals()["PROSE_REGISTERS"] = saved_registers
+    if len(hits) != 1:
+        print(f"[guard-signals] SELFTEST FAIL — expected exactly ONE stale claim (a live ROW). "
+              f"The struck-through row and the AUDIT paragraph must NOT count; "
+              f"got {len(hits)}: {hits}")
+        return 1
+
     print("[guard-signals] SELFTEST PASS — a docstring + comment mention is NOT a use, a "
-          "real branch is (non-vacuous).")
+          "real branch is; and a prose register that still calls a CONSUMED signal unconsumed "
+          "is caught, while a struck-through row is not (non-vacuous).")
     return 0
 
 
@@ -231,6 +325,7 @@ def main() -> int:
     if "--self-test" in sys.argv:
         return self_test()
     problems, rows = check()
+    problems += stale_prose_claims(rows)
     unconsumed = [r for r in rows if r.get("unconsumed")]
 
     if "--list" in sys.argv:
