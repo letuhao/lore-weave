@@ -199,6 +199,27 @@ CASES = [
              "                          tag=\"promise_extract\", cancel_check=cancel_check)"),
      [sys.executable, "scripts/llm-budget-ssot-gate.py"], ROOT),
 
+    # DoD-4b. The injection baseline EXPIRES when its reason does, not on a calendar. Five of
+    # its rows say "a sibling sanitizes this and per-file coverage cannot see across the call"
+    # — a standing exemption whose justification lives in ANOTHER file. Take the sanitize call
+    # out of that other file and the exemption must die with it, or it outlives its own reason.
+    ("DoD-4b injection — a baselined module's UPSTREAM stops sanitizing", GATE,
+     ROOT / "services" / "knowledge-service" / "app" / "wiki" / "context.py",
+     replace("neutralize_injection(", "_no_longer_neutralize("),
+     [sys.executable, "scripts/injection-coverage-lint.py"], ROOT),
+
+    # DoD-5. The estimator gate cannot force four implementations into one — two are already
+    # one, one is a deliberately separate BILLING convention, and knowledge's is strictly more
+    # accurate than the kernel. What it CAN stop is a fifth, so that is what gets proved: a
+    # real new `estimate_tokens` in a real production file must red it.
+    ("DoD-5 estimators — a FIFTH token estimator appears in a production module", GATE,
+     ROOT / "services" / "composition-service" / "app" / "llm_budget.py",
+     replace("def max_tokens_for(code: str, **kw) -> int:",
+             "def estimate_tokens(text: str) -> int:\n"
+             "    return len(text) // 4\n\n\n"
+             "def max_tokens_for(code: str, **kw) -> int:"),
+     [sys.executable, "scripts/estimator-ssot-gate.py"], ROOT),
+
     ("S1 generation-paths — a row claims `guarded` with a coverage field the file lacks", GATE,
      ROOT / "contracts" / "generation-paths.yaml",
      replace("coverage_field: kg_status", "coverage_field: kg_status_that_does_not_exist"),

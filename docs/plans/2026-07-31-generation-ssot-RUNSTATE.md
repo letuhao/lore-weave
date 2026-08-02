@@ -3424,6 +3424,58 @@ AUDIT AUDIT-13 (budget seam — the author's ruling)
                the file I had just written, not by any check.
 ```
 
+### ✅ AUDIT-14 · DoD-5 + DoD-4b — two clauses closed by MEASURING, not by refactoring.
+
+```
+AUDIT AUDIT-14 (one estimator · an expiring baseline)
+
+  DoD-5, MEASURED FIRST — and my own NEXT note was stale on two of its three items:
+              · `PASS_REGISTRY` "in 6 files" is ONE definition with four importers. Already
+                converged; the note was describing consumers as copies.
+              · translation's `estimate_tokens` ALREADY delegates to the kernel (S11).
+              · So the real inventory is FIVE estimators across FOUR languages, and they do
+                not want to be one:
+                  loreweave_context/tokens.py        the script-aware KERNEL
+                  translation/chunk_splitter.py      a DELEGATOR to it
+                  knowledge/token_counter.py         tiktoken BPE — STRICTLY more accurate
+                  lore-enrichment/jobs/tokens.py     the BILLING convention
+                  provider-registry/billing/estimate.go   that convention itself, in Go
+              The DoD line already says the billing convention stays separate. And folding
+              knowledge INTO the kernel would make a context-window count WORSE — the kernel
+              measured ~0.78x tiktoken on Vietnamese this run. Converging the other way moves
+              chunk sizes and therefore per-chapter LLM cost everywhere: a decision with a
+              price tag, not a tidy-up.
+
+  SO         — `scripts/estimator-ssot-gate.py`. It cannot force four into one, and says so.
+               What it stops is the FIFTH: every estimator is registered with the reason it is
+               not the kernel, an unregistered one fails, an empty reason fails, and a STALE
+               row fails too (a registry that only grows stops describing the repo). Wired
+               into CI with `--self-test`.
+
+  DoD-4b     — the injection baseline now EXPIRES, and deliberately NOT on a calendar: a date
+               reds CI on an arbitrary Tuesday for whoever happens to push, which teaches
+               people to bump the date. It expires when its REASON stops being true.
+               Five of the twenty rows say "a sibling sanitizes this and per-file coverage
+               cannot see across the call". That is a real argument AND a standing exemption
+               whose justification lives in another file — the escape-hatch-outliving-its-
+               reason shape (NV-6) with a security payload. Each such row now NAMES its
+               upstream and the lint verifies that file still sanitizes, every run.
+               `BASELINE` is a `dict[str, BaselineRow]`: `kind` + a required `wakes_when` +
+               `upstream` required exactly for the SANITIZED_UPSTREAM kind. A row with no exit,
+               an unverifiable claim, or a GENUINE_GAP row claiming an upstream all fail.
+
+  PROVEN     — both mechanised, both proved against a REAL on-disk violation:
+                 DoD-4b injection — a baselined module's UPSTREAM stops sanitizing      RED
+                 DoD-5 estimators — a FIFTH token estimator appears in a production module RED
+               `guard-redability-gate: PASS — 10/10` · `gate-teeth-gate: PASS — 61`.
+               While writing the rows I checked the one claim I could not see: `glossary_build`
+               has no sanitize call in `service.py` — it is in `prompts.py`. The claim held,
+               but I only know that because the mechanism made me name the file.
+
+  NEXT       — DoD-4c (five translation modules, each read individually), DoD-7 (re-measure,
+               do not trust the note), and the three held signals.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |

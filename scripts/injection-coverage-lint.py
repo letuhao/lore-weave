@@ -49,6 +49,7 @@ import re
 import subprocess
 import sys
 import tokenize
+from dataclasses import dataclass
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -103,68 +104,125 @@ EXCLUDE_DIRS = {
 # app/services/injection_defense.py and sanitizes at the retrieval chokepoint.
 # Delete each row as the module routes its own retrieved text through the
 # sanitizer (or, for the upstream ones, once verified end-to-end).
-BASELINE: frozenset[str] = frozenset({
-    # sanitized upstream — the module delegates its prompt building to a sibling that
-    # DOES sanitize, and per-file coverage cannot see across the call. Kept listed
-    # rather than cleared: security-conservative, same as the chat-service pair below.
-    "services/composition-service/app/services/glossary_build/engine.py",
-    # sanitized upstream at the stream_service chokepoint (kctx.context)
-    "services/chat-service/app/services/compact_service.py",
-    "services/chat-service/app/services/composer.py",
-    # genuine gaps — composition-service has no sanitizer anywhere
-    "services/composition-service/app/engine/canon_check.py",
-    # canon_reflect.py REMOVED 2026-08-02 (S4). It was listed as a "genuine gap" on the
-    # strength of markers that appear ONLY in a comment and a docstring — zero in code.
-    # The row described a hole the detector was reading out of prose.
-    "services/composition-service/app/engine/critic.py",
-    "services/composition-service/app/engine/motif_conformance.py",
-    "services/composition-service/app/engine/motif_deconstruct.py",
-    "services/composition-service/app/engine/narrative_thread.py",
-    "services/composition-service/app/engine/self_heal.py",
-    "services/composition-service/app/routers/engine.py",
-    "services/composition-service/app/worker/operations.py",
-    # select.py — the diverge/converge core. Added 2026-08-01 when D-SCENE-BEATS slice 2
-    # gave it the word "passage" (a chunk of prose the model WRITES), which is a (b) marker
-    # meant for a RETRIEVED passage. The word is right for the feature and was not renamed
-    # to dodge the regex; the row is the honest alternative.
-    #
-    # In substance it belongs with the two rows above it, which it feeds: it has assembled
-    # prompts from `packed_prompt` — carrying `<lore>` from imported book text — since A1,
-    # and was invisible here only for lack of a marker word. Its content IS neutralised, by
-    # the packer at assembly (`app/packer/assemble.py` + `sanitize.py`), which per-file
-    # coverage cannot see.
-    #
-    # The one genuinely NEW untrusted flow it introduced — one passage's model output
-    # becoming the next passage's prompt, where a `<lore>` payload could steer a forged
-    # closing tag — is closed at the point the string is built (`cowrite.build_beat_scope`
-    # → `sanitize_prose_context`), not here. Putting an unused import in this file to turn
-    # the regex green would be a claim, not a defense.
-    "services/composition-service/app/engine/select.py",
-    # genuine gap — passages selector doesn't neutralize like the wiki path
-    "services/knowledge-service/app/context/selectors/passages.py",
-    # sanitized upstream in knowledge wiki/context.py (IR spans neutralized).
-    # wiki/generate.py REMOVED 2026-08-02 (S4) — same reason as canon_reflect.py above: its
-    # only marker was in a comment. wiki/prompt.py stays; its markers are real code.
-    "services/knowledge-service/app/wiki/prompt.py",
+@dataclass(frozen=True)
+class BaselineRow:
+    """One tracked hole, and what would end it.
 
-    # ── S4 2026-08-02: surfaced by widening SCAN_DIRS. NOT pre-existing rows moved here —
-    # these were never scanned, and every one is a genuine untracked hole.
-    #
-    # translation-service is the important entry. It builds prompts from IMPORTED book text,
-    # which is third-party content this platform did not write and cannot vouch for — the
-    # least trusted bytes in the system — and it references no sanitizer anywhere. Seven
-    # modules, listed rather than fixed here because routing them through
-    # `neutralize_injection` is a security change needing its own measurement (a sanitizer
-    # that mangles source text is a TRANSLATION-fidelity bug, which is exactly why the
-    # translate rows resolve to OutputKind.MIRROR elsewhere). Tracked in RUN-STATE Debt.
-    "services/translation-service/app/routers/translate.py",
-    "services/translation-service/app/workers/decoupled_block_translate.py",
-    "services/translation-service/app/workers/extraction_worker.py",
-    "services/translation-service/app/workers/v3/bilingual_extractor.py",
-    "services/translation-service/app/workers/v3/corrector.py",
-    # worker-ai's distiller folds chapter chunks into a summarisation prompt.
-    "services/worker-ai/app/distill_job.py",
-})
+    `wakes_when` is required and checked non-empty: a row without it is a silence with no exit.
+
+    `upstream` is what makes this baseline EXPIRING rather than permanent. A "sanitized
+    upstream" row is an exemption whose justification lives in ANOTHER FILE, and per-file
+    coverage is why it cannot be seen from here. Naming that file lets the gate verify the
+    claim on every run — if the sibling ever stops sanitizing, the row dies with it and the
+    finding comes back. Without this the exemption would outlive its own reason, which is the
+    escape-hatch-cannot-reach-its-reason defect (NV-6) with a security payload.
+    """
+    kind: str                  # "GENUINE_GAP" | "SANITIZED_UPSTREAM"
+    wakes_when: str
+    upstream: str = ""         # required iff kind == "SANITIZED_UPSTREAM"
+
+
+GENUINE_GAP = "GENUINE_GAP"
+SANITIZED_UPSTREAM = "SANITIZED_UPSTREAM"
+
+BASELINE: dict[str, BaselineRow] = {
+    # ── sanitized upstream: the claim is checkable, and now checked ───────────────────────
+    "services/composition-service/app/services/glossary_build/engine.py": BaselineRow(
+        SANITIZED_UPSTREAM,
+        "the engine builds no prompt text itself; it would wake if it started assembling one",
+        upstream="services/composition-service/app/services/glossary_build/prompts.py"),
+    "services/chat-service/app/services/compact_service.py": BaselineRow(
+        SANITIZED_UPSTREAM,
+        "wakes if compaction ever reads retrieved text that did not come through the stream "
+        "chokepoint",
+        upstream="services/chat-service/app/services/stream_service.py"),
+    "services/chat-service/app/services/composer.py": BaselineRow(
+        SANITIZED_UPSTREAM,
+        "same chokepoint as compact_service; wakes if the composer gains its own retrieval",
+        upstream="services/chat-service/app/services/stream_service.py"),
+    "services/composition-service/app/engine/select.py": BaselineRow(
+        SANITIZED_UPSTREAM,
+        "its content is neutralised by the packer at assembly and by "
+        "`cowrite.build_beat_scope` -> `sanitize_prose_context`; wakes if select ever builds "
+        "prompt text from retrieved bytes directly instead of through cowrite",
+        upstream="services/composition-service/app/engine/cowrite.py"),
+    "services/knowledge-service/app/wiki/prompt.py": BaselineRow(
+        SANITIZED_UPSTREAM,
+        "consumes the IR that wiki/context.py already neutralized span by span; wakes if "
+        "prompt.py starts reading a source context.py did not build",
+        upstream="services/knowledge-service/app/wiki/context.py"),
+
+    # ── genuine gaps: composition-service references no sanitizer in these paths ──────────
+    "services/composition-service/app/engine/canon_check.py": BaselineRow(
+        GENUINE_GAP, "wakes when composition routes canon text through the packer sanitizer"),
+    "services/composition-service/app/engine/critic.py": BaselineRow(
+        GENUINE_GAP, "wakes when the critic's prompt assembly adopts `neutralize`"),
+    "services/composition-service/app/engine/motif_conformance.py": BaselineRow(
+        GENUINE_GAP, "wakes when motif prompts adopt `neutralize`"),
+    "services/composition-service/app/engine/motif_deconstruct.py": BaselineRow(
+        GENUINE_GAP, "wakes when the deconstruct chunk prompt adopts `neutralize`"),
+    "services/composition-service/app/engine/narrative_thread.py": BaselineRow(
+        GENUINE_GAP, "wakes when thread prompts adopt `neutralize`"),
+    "services/composition-service/app/engine/self_heal.py": BaselineRow(
+        GENUINE_GAP, "wakes when the judge/edit prompts adopt `neutralize` for canon text"),
+    "services/composition-service/app/routers/engine.py": BaselineRow(
+        GENUINE_GAP, "wakes when the router stops assembling prompt text inline"),
+    "services/composition-service/app/worker/operations.py": BaselineRow(
+        GENUINE_GAP, "wakes when the worker's prompt assembly adopts `neutralize`"),
+    "services/knowledge-service/app/context/selectors/passages.py": BaselineRow(
+        GENUINE_GAP,
+        "wakes when the passages selector neutralizes like the wiki path already does"),
+
+    # ── S4 2026-08-02: surfaced by widening SCAN_DIRS. Never scanned before; every one a
+    # genuine untracked hole. translation-service is the important entry — it builds prompts
+    # from IMPORTED book text, the least-trusted bytes on the platform, and references no
+    # sanitizer at all. Routing them through `neutralize_injection` is a security change that
+    # needs its own measurement: a sanitizer that mangles source text is a TRANSLATION-fidelity
+    # bug, which is why the translate rows resolve to OutputKind.MIRROR elsewhere.
+    "services/translation-service/app/routers/translate.py": BaselineRow(
+        GENUINE_GAP, "wakes when the sync translate route scans or neutralizes its source"),
+    "services/translation-service/app/workers/decoupled_block_translate.py": BaselineRow(
+        GENUINE_GAP, "wakes when the block worker scans its source text"),
+    "services/translation-service/app/workers/extraction_worker.py": BaselineRow(
+        GENUINE_GAP, "wakes when extraction scans the chapter text it folds into prompts"),
+    "services/translation-service/app/workers/v3/bilingual_extractor.py": BaselineRow(
+        GENUINE_GAP, "wakes when the v3 extractor scans BOTH sides it folds in"),
+    "services/translation-service/app/workers/v3/corrector.py": BaselineRow(
+        GENUINE_GAP, "wakes when the corrector scans the draft it is correcting"),
+    "services/worker-ai/app/distill_job.py": BaselineRow(
+        GENUINE_GAP, "wakes when the distiller scans the chapter chunks it folds in"),
+}
+
+
+def expired_rows() -> list[str]:
+    """Rows whose own justification no longer holds — the EXPIRY, checked every run.
+
+    Three ways a row dies: no `wakes_when` (a silence with no exit), a SANITIZED_UPSTREAM row
+    whose named sibling is gone or has stopped sanitizing, and a GENUINE_GAP row that names an
+    upstream (a row cannot claim both).
+    """
+    problems: list[str] = []
+    for rel, row in sorted(BASELINE.items()):
+        if not row.wakes_when.strip():
+            problems.append(f"{rel}: no `wakes_when` — a baseline row with no exit is a "
+                            f"permanent silence, not a tracked hole.")
+        if row.kind == SANITIZED_UPSTREAM:
+            if not row.upstream:
+                problems.append(f"{rel}: SANITIZED_UPSTREAM with no `upstream` named — the "
+                                f"claim is unverifiable, which is the same as untrue.")
+                continue
+            up = os.path.join(REPO_ROOT, row.upstream)
+            if not os.path.exists(up):
+                problems.append(f"{rel}: its upstream {row.upstream} no longer exists. The "
+                                f"exemption has outlived its reason.")
+            elif not _MUTATE_REF.search(_read(row.upstream)):
+                problems.append(f"{rel}: its upstream {row.upstream} NO LONGER SANITIZES. "
+                                f"This row was silencing the finding on that file's behalf; "
+                                f"the reason is gone, so the row is too.")
+        elif row.upstream:
+            problems.append(f"{rel}: a GENUINE_GAP row names an upstream. If a sibling "
+                            f"sanitizes it, the row's kind is SANITIZED_UPSTREAM.")
+    return problems
 
 # ── detection ─────────────────────────────────────────────────────────────
 
@@ -426,6 +484,16 @@ def main() -> int:
             print(f'    "{rel}",')
         return 0
 
+    # DoD-4b — the EXPIRY, before anything else. A row whose justification is gone is
+    # not a tracked hole any more, it is a silence, and it must not be able to green a
+    # run just because the module it covers still looks the same.
+    expired = expired_rows()
+    if expired:
+        print("injection-coverage-lint: FAIL — BASELINE row(s) whose reason no longer holds:")
+        for e in expired:
+            print("  " + e)
+        return 1
+
     new = [rel for rel in flagged if rel not in BASELINE]
     baselined = [rel for rel in flagged if rel in BASELINE]
 
@@ -443,7 +511,7 @@ def main() -> int:
     # A NOTE, not a failure: a stale row is a documentation defect, not a security one, and
     # reddening CI for it would push the next person to delete rows to get green.
     if not staged:
-        stale = sorted(BASELINE - set(flagged))
+        stale = sorted(set(BASELINE) - set(flagged))
         if stale:
             print(f"NOTE — {len(stale)} BASELINE row(s) no longer flagged. Each claims a "
                   f"tracked hole that the scan does not find; delete them:")
