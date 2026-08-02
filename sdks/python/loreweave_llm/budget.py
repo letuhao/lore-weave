@@ -125,7 +125,11 @@ class OutputKind(str, Enum):
 
 
 #: Hard runaway guard, not a budget. Sized so no legitimate call can reach it, so hitting
-#: it is a bug report rather than a quiet truncation.
+#: it is a bug report rather than a quiet truncation — which is what `clamped_to_ceiling`
+#: now makes true. It was a quiet truncation: `min(ceiling, resolved)` clamped and said
+#: nothing, so the sentence above described the intent and not the code. Composition's
+#: registry test pins WHICH rows reach it at their call site's own maximum target, so a
+#: new one is a red rather than a paragraph.
 DEFAULT_CEILING = 32768
 
 #: Output tokens per word, by language. Vietnamese/Thai and CJK tokenize far denser than
@@ -178,8 +182,26 @@ _FLOOR: dict[OutputKind, int] = {
     OutputKind.MIRROR: 0,          # 0 == "omit the cap" on the wire; see OutputKind.MIRROR
 }
 
-#: Default per-item cost for a STRUCTURED call when the caller knows the item count. A
-#: glossary/cast/beat row with a few short string fields lands around here.
+#: Default per-item cost for a STRUCTURED call when the caller knows the item count.
+#:
+#: A SAFETY NET, not an estimate — and it took a measurement to be able to say that.
+#: MEASURED 2026-08-03 against real completions on a local gemma, item counts taken
+#: from each site's PRODUCTION parser so the denominator is what the code would see:
+#:
+#:     cross_scene_check roster row    35.6
+#:     propose_world entity            97.4 / 103.5  (two runs, two roster shapes)
+#:     propose_cast character         125.8
+#:
+#: So 220 sits 1.7x-6x above every shape measured. It stays anyway, and the direction
+#: of error is the whole reason: over-budget never fails, while under-budget on a
+#: STRUCTURED call is FATAL — the response cannot stop in a valid place. Retuning a
+#: constant that every STRUCTURED budget multiplies by, from n=4, would trade a
+#: harmless over-budget for an unrecoverable one on an unmeasured shape.
+#:
+#: What the generosity DOES cost is recorded where it can red: `propose_world` reaches
+#: the runaway guard from `target ~ 60` at 220/item and would not until ~105 at the
+#: measured rate. Composition's registry test pins the set of rows that clamp, so the
+#: consequence is a check rather than this paragraph.
 _TOKENS_PER_ITEM = 220
 
 #: Words a judge is expected to spend on ONE verdict's `why`, and the JSON scaffolding around
@@ -216,6 +238,16 @@ class CallBudget:
     #: None means the caller did not say, so no window clamp could be applied — visible
     #: rather than silently unclamped.
     clamped_to_window: int | None = None
+    #: True ⇒ the RUNAWAY GUARD bound this budget.
+    #:
+    #: `DEFAULT_CEILING` is documented above as "sized so no legitimate call can reach it, so
+    #: hitting it is a bug report rather than a quiet truncation". It WAS a quiet truncation:
+    #: `min(ceiling, resolved)` clamped and said nothing, so the claim was true of the intent
+    #: and false of the code. Measured 2026-08-03 — `propose_world` reaches it from
+    #: `target ≈ 60`, and an established book passes that easily: its target is
+    #: `known + invented`, up to 129, and the known half is genuinely re-emitted (measured:
+    #: 9 of 9 came back).
+    clamped_to_ceiling: bool = False
 
 
 def _reasoning_multiplier(reasoning: ReasoningDirective | None) -> float:
@@ -307,6 +339,7 @@ def call_budget(
         window_cap = max(1, int(context_length * _MAX_WINDOW_SHARE))
         resolved = min(resolved, window_cap)
 
+    hit_ceiling = resolved > ceiling
     resolved = max(1, min(ceiling, resolved))
     return CallBudget(
         max_output_tokens=resolved,
@@ -326,4 +359,5 @@ def call_budget(
         truncation_is_fatal=(kind is OutputKind.STRUCTURED) or bool(truncation_is_fatal),
         source="default",
         clamped_to_window=window_cap,
+        clamped_to_ceiling=hit_ceiling,
     )

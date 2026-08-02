@@ -367,3 +367,56 @@ def test_a_request_cannot_walk_past_the_deploy_ceiling():
     assert narrowed_by_request(computed, request_asks_for_the_field_maximum) == deploy_ceiling
     # …and the old idiom, written out, is what it would have produced instead:
     assert (request_asks_for_the_field_maximum or computed) == 32768
+
+
+# ══ the runaway guard must stay a bug report ═════════════════════════════════════════════
+#
+# `DEFAULT_CEILING` documents itself as "sized so no legitimate call can reach it, so hitting
+# it is a bug report rather than a quiet truncation". It was a quiet truncation:
+# `min(ceiling, resolved)` clamped and said nothing. `clamped_to_ceiling` makes the state
+# visible; these tests are what make it MEAN something, by pinning the SET of rows that reach
+# it at their own call site's maximum target.
+#
+# The maxima below are the call sites' OWN constants, not numbers I chose:
+#   propose_world  `_MAX_KNOWN_WORLD` (40) x len(WORLD_KINDS) (3) + `_INVENTED_WORLD_PER_KIND`
+#                  (3) x 3  =  129, and the known half really is re-emitted — measured
+#                  2026-08-03, 9 of 9 shown entities came back in the response.
+#   propose_cast   `_MAX_KNOWN_CAST` + `_INVENTED_CAST_ALLOWANCE`
+
+def _site_maxima() -> dict[str, int]:
+    from app.engine.cast_plan import _INVENTED_CAST_ALLOWANCE, _MAX_KNOWN_CAST
+    from app.engine.world_plan import (
+        _INVENTED_WORLD_PER_KIND, _MAX_KNOWN_WORLD, WORLD_KINDS,
+    )
+    return {
+        "propose_world": _MAX_KNOWN_WORLD * len(WORLD_KINDS)
+        + _INVENTED_WORLD_PER_KIND * len(WORLD_KINDS),
+        "propose_cast": _MAX_KNOWN_CAST + _INVENTED_CAST_ALLOWANCE,
+    }
+
+
+def test_exactly_the_rows_that_reach_the_runaway_guard_are_the_declared_ones():
+    """Pins the SET, in both directions.
+
+    A NEW row that starts clamping reds here — it is a bug report by the ceiling's own
+    definition. A row that stops clamping also reds, so the list cannot quietly outlive the
+    condition, which is how the register this came from went stale in the first place.
+    """
+    clamping = sorted(code for code, target in _site_maxima().items()
+                      if budget_for(code, target=target).clamped_to_ceiling)
+    assert clamping == ["propose_world"], (
+        f"rows reaching the 32768 runaway guard at their call site's own maximum target: "
+        f"{clamping}.\n"
+        f"`propose_world` is the known one: at the SDK's generic 220 tokens/item it clamps "
+        f"from target ~60, while MEASURED item costs across four shapes are 35.6 / 97.4 / "
+        f"103.5 / 125.8 — so 220 is a safety net 1.7-6x above the data, not an estimate. "
+        f"Lowering it globally on n=4 would trade a harmless over-budget for a FATAL "
+        f"under-budget on an unmeasured shape, so the number stays and the consequence is "
+        f"pinned here instead."
+    )
+
+
+def test_a_row_well_inside_its_budget_does_NOT_report_a_ceiling_clamp():
+    """Without this the assertion above passes for a flag that is never set."""
+    assert not budget_for("propose_cast", target=8).clamped_to_ceiling
+    assert not budget_for("judge_canon", target=3).clamped_to_ceiling

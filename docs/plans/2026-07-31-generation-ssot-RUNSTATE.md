@@ -4186,6 +4186,91 @@ AUDIT AUDIT-23 (cross_scene_check — the measurement two Debt rows were waiting
                `settings.model_roles` has zero writers.
 ```
 
+### ✅ AUDIT-24 · MEASURED `_TOKENS_PER_ITEM`, AND THE ANSWER WAS "LEAVE IT" — with the reason
+
+```
+AUDIT AUDIT-24 (the per-item cost, and the runaway guard that was not a bug report)
+
+  ASKED      — the Debt row: *"Every STRUCTURED budget is sized off a per-item cost nobody has
+               measured against a real completion. The right number is `output_tokens / items`
+               from a live run; until then the big-roster budgets are over-generous rather than
+               wrong."* AUDIT-23 produced ONE number and refused to act on it. So: more shapes.
+
+  MEASURED   — four, live, local gemma, item counts from each site's PRODUCTION parser so the
+               denominator is what the code would have seen:
+                 cross_scene_check roster row     35.6
+                 propose_world entity             97.4 · 103.5   (two roster shapes)
+                 propose_cast character          125.8
+               **220 sits 1.7x-6x above every shape measured.**
+
+  DECIDED    — **leave it, and say why in the file.** The direction of error is the whole
+               argument: over-budget never fails, while under-budget on a STRUCTURED call is
+               FATAL — the response cannot stop in a valid place. Retuning a constant that
+               every STRUCTURED budget multiplies by, from n=4, trades a harmless
+               over-budget for an unrecoverable one on an unmeasured shape. That is the
+               generalised-from-one-prompt mistake this run has recorded twice, and the
+               correct output of a measurement is sometimes "the number stays".
+               So the constant is now DOCUMENTED FROM DATA rather than asserted: the four
+               measurements sit next to it, and it is named a safety net instead of an estimate.
+
+  AND FOUND  — the cost of the generosity, which is not spend. `DEFAULT_CEILING` documents
+               itself as *"sized so no legitimate call can reach it, so hitting it is a bug
+               report rather than a quiet truncation"*. **It was a quiet truncation.**
+               `min(ceiling, resolved)` clamped and said nothing, so that sentence described
+               the intent and not the code — the same prose-is-not-behaviour shape this run
+               keeps finding, in the module that defines the seam.
+               Measured: `propose_world` reaches the guard from `target ≈ 60`, and an
+               established book passes that easily — its target is `known + invented`, up to
+               129. At the measured rate it would not clamp until ~105.
+
+  AND CHECKED THE PREMISE — the call site claims the known roster is "the LOWER BOUND on the
+               array coming back", which is a claim about model behaviour and the reason the
+               target is that large. I expected it to be false (a model shown a roster usually
+               proposes NEW things) and it is **SUPPORTED**: handed 9 known entities, the
+               response returned all 9 plus 5 new. So the target is CORRECT and the clamp is a
+               consequence of the constant, not of a mis-sized target. One run, and it
+               reversed the fix I was about to write.
+
+  BUILT      — `CallBudget.clamped_to_ceiling`, mirroring `clamped_to_window`, plus the
+               consumer that stops it being a sixth emitted-and-unread field:
+               `test_exactly_the_rows_that_reach_the_runaway_guard_are_the_declared_ones` pins
+               the SET, computed from each call site's OWN cap constants (`_MAX_KNOWN_WORLD`,
+               `WORLD_KINDS`, `_INVENTED_WORLD_PER_KIND`, `_MAX_KNOWN_CAST`) rather than from
+               numbers I chose. It reds in both directions: a new row that starts clamping is a
+               bug report by the ceiling's own definition, and a row that stops clamping cannot
+               leave a stale entry behind — which is exactly how the register audited in
+               AUDIT-22 went stale.
+
+  PROVEN     — composition **3641 passed** · SDK **1020 passed**.
+               RED-ABLE: force `hit_ceiling = False` in the SDK and the registry test REDs,
+               naming `propose_world`; restored from saved bytes, sha256 matches, green again.
+               A companion assertion pins that a row well inside its budget reports NO clamp,
+               so the check cannot pass on a flag that is never set.
+
+  NOT PROVEN — four shapes on ONE model in ONE language. Nothing here says what an English
+               book or a cloud model costs per item, and the spread (35.6 to 125.8) is wide
+               enough that a fifth shape could sit outside it. The claim made is deliberately
+               local: 220 is above everything measured, and it is not being lowered.
+               `clamped_to_window` still has no reader — a sibling of the field this entry
+               gave one to, and now the more visible for it.
+
+  DRIFT      — three.
+               · **I had the fix half-written before I checked its premise.** I was going to
+                 cut `propose_world`'s target on the reasoning that a model shown a roster
+                 proposes new things rather than repeating it. Measuring took one run and said
+                 the opposite. Had I skipped it I would have under-budgeted a STRUCTURED call
+                 — the one direction of error this seam exists to prevent.
+               · A probe named `/tmp/re.py` shadowed the stdlib `re` and produced a circular-
+                 import traceback that looked like a service defect. Removing the file fixed
+                 it; the wasted turn was mine.
+               · My first instinct on seeing 220-vs-126 was to change 220. The whole reason
+                 that number is dangerous to touch is written two lines above it in the same
+                 file, and I read it only after wanting to edit it.
+
+  NEXT       — one Debt row left from the pre-audit set: `settings.model_roles` has zero
+               writers.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -4204,7 +4289,7 @@ AUDIT AUDIT-23 (cross_scene_check — the measurement two Debt rows were waiting
 | 2026-08-01 | The authored `create_node` path takes a caller-supplied `story_order` and never derives it from the chapter's slot. | This is the *writer* that produced the debt above; not fixing it means the drift recurs. |
 | 2026-08-01 | Smoke debris: throwaway book `019fbd8f-008c-7cef-bf81-1d53a808361d` and its knowledge project `019fbd90-…` | Deliberately a throwaway (never the dogfood book), but it is real rows in the dev stack awaiting purge. |
 | 2026-08-02 | ~~The `cross_scene_check` registry row is MISLABELLED.~~ — **CLEARED 2026-08-03** (AUDIT-23), and measuring it found worse than a label: a clipped roster parses to ZERO rows, which `compare_people` reported as `checked` and clean. The row now declares `truncation_fatal=True` (escalating above its kind, since it sizes like a verdict and truncates like a list), both call sites degrade, and the truncation gate reads the RESOLVED budget instead of the kind. Measured: 35.6 tokens/roster row, so the existing 2048 was never the problem. Original row:  Its `why` describes "a contradiction list across one scene seam"; its only two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a cast ROSTER. | The row documents a call that does not exist, and the kind is wrong in a way that matters: VERDICT carries `truncation_is_fatal=False`, but a clipped roster silently DROPS PEOPLE — the same class as the `propose_world` dead pass. Not fixed here because changing the kind changes the budget (VERDICT 2048 → STRUCTURED 4096) and needs its own measurement. |
-| 2026-08-02 | `_TOKENS_PER_ITEM = 220` (SDK, generic) is what makes a full-roster `propose_world` reach the 32768 runaway ceiling. A world entity is plausibly half that. | Every STRUCTURED budget is sized off a per-item cost nobody has measured against a real completion. The right number is `output_tokens / items` from a live run; until then the big-roster budgets are over-generous rather than wrong. |
+| 2026-08-02 | ~~`_TOKENS_PER_ITEM = 220` (SDK, generic) is what makes a full-roster `propose_world` reach the 32768 runaway ceiling.~~ — **MEASURED 2026-08-03** (AUDIT-24), and the answer is that the number STAYS: four shapes measured live at 35.6 / 97.4 / 103.5 / 125.8, so 220 is a safety net 1.7-6x above the data, and lowering it on n=4 would trade a harmless over-budget for a FATAL under-budget on an unmeasured shape. The measurements now sit beside the constant. What the row was right about is pinned by a test instead: `propose_world` DOES reach the runaway guard, `clamped_to_ceiling` makes that visible where it was a silent clamp, and the call site's premise (the known roster is re-emitted) was CHECKED and holds — 9 of 9 came back. Original row:  A world entity is plausibly half that. | Every STRUCTURED budget is sized off a per-item cost nobody has measured against a real completion. The right number is `output_tokens / items` from a live run; until then the big-roster budgets are over-generous rather than wrong. |
 | 2026-08-02 | ~~**`exclusion_unverified` has no consumer.**~~ — **CLEARED 2026-08-02** (AUDIT-17). `metric_of_record_blockers` in `loreweave_eval/scorer.py` refuses to certify a number computed with a defaulted exclusion, and the row is in `contracts/guard-signals.yaml` with that consumer. Wiring it found worse than an unread field: it was DROPPED at the `EvalResult` boundary, so the structure built for persistence never carried it. It rides `EvalResult` and no report, gate or FE surface reads it. | The S8 shape: a fact made available rather than acted upon. The honest next step is a scored-run report line or a gate that reds when a published metric-of-record was computed with an unverified exclusion — at which point the distinction starts costing something and therefore starts being fixed. |
 | 2026-08-02 | **S13's "cite the exemplars" half is not built**, and a document would have been the wrong answer — the list already exists in spec §S13 and a second copy is the re-derivation the slice warns against. | What is genuinely missing: the code that SHOULD reuse the five named exemplars does not point at them, and nothing detects a re-implementation written beside one. Bigger than a citation, and it needs a mechanism rather than prose. |
 | 2026-08-02 | ~~**5 of translation's 7 unsanitized modules remain**~~ — **CLEARED 2026-08-02** (AUDIT-16, DoD-4c). Each of the five was read individually rather than swept; `injection-coverage-lint` now reports **6 DETECT-only modules** and OK. (`routers/translate.py`, `decoupled_block_translate`, `extraction_worker`, `v3/bilingual_extractor`, `v3/corrector`). The two CHAPTER paths now DETECT-scan. | Each needs its own read: "apply the same call" across five modules is how a sweep gets one wrong, and two of them fold a translation as well as a source. They stay baselined, which is a mechanism rather than a note. |
