@@ -3325,6 +3325,42 @@ AUDIT AUDIT-11 (budget seam — knowledge-service)
                worker-ai 1, SDK 2, motif_mine/motif_deconstruct 3.
 ```
 
+### ◐ AUDIT-12 · DoD-3 — translation's window clamp was the FOURTH sizing model. 16 → 13.
+
+```
+AUDIT AUDIT-12 (budget seam — translation-service) · commit 30c20b1f9
+  FOUND      — `min(_TRANSLATION_MAX_OUTPUT_TOKENS, max(2048, window - prompt - 2048))`, in the
+               decoupled worker and again in the session translator. Counting composition's
+               `succession_entailment` and knowledge's three, that is FIVE independent sizing
+               models found in one day, in four services, none aware of the others.
+               It is a BETTER bound than the SDK's window share — it knows the actual prompt
+               size — so it survives as the `translate_batch` row's per-call ceiling (which can
+               only LOWER) rather than being replaced by a worse one.
+               PROSE, not MIRROR: the sibling rows send no cap because the source sets the
+               length; these two deliberately DO cap, and a MIRROR row short-circuits every
+               signal to return the omit sentinel.
+               Plus `fold` / `resummarize`, where the CEILING is the length control — both
+               bounded by the glossary rune cap, neither prompt carrying a length directive.
+
+  CAUGHT     — by a test, and it was a bug I introduced: `language=source_language` named a
+               variable that does not exist in that scope. The NameError was swallowed by the
+               best-effort try/except and every synthesis returned `failed` instead of
+               `synthesized`. Prompt and budget now share ONE resolved language.
+
+  PROVEN     — translation **1151 passed**. Gate PASS: unattributed 16 → 13, attributed 38.
+
+  BOARD      — 13 held, and the remainder is NOT more of the same:
+                 · composition motif_mine ×2 / motif_deconstruct ×1 — genuine literals, next.
+                 · composition select/self_heal/stitch/engine.py/glossary_build/intent_fsm — the
+                   budget originates in a ROUTER, a settings field, or the API request. A
+                   different category: not an undecided number, a number decided elsewhere.
+                 · `session_translator.translate_batch_with_retry` — a kernel with a caller in
+                   ANOTHER module, so the helper binder correctly refuses it.
+                 · `sdks/loreweave_llm/structured.py` — `max_output_tokens` is a REQUIRED
+                   parameter there ("no silent unbounded budget"). That IS the seam; it should
+                   be exempted by name rather than "drained".
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
