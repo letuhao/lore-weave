@@ -107,7 +107,7 @@ Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
 **Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → `S3 ◐` → `S4 ✅` → **`S9`** → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → `S3 ◐` → `S4 ✅` → `S9 ✅` → **`S5`** → `S9 → S5 → S13`.
 
 > **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
 > that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
@@ -139,7 +139,7 @@ when in fact most of the last two days went into defect work that was never on t
 | `S11` one context compiler | ✅ CLOSED 2026-08-02 | allocation layer + composition flipped (no-op ≥16K) · translation's estimator converged (it under-counted CJK/vi by a third) · the contract's two closed sets now machine-checked both ways |
 | `S3` one `Finding` | ◐ slice 1 ✅ | one closed `skip_reason` vocabulary (the docs were false and omitted the member a consumer reads); the `locator` union is untouched |
 | `S4` the plan half onto the spine | ✅ CLOSED 2026-08-02 | the gate was reading COMMENTS as behaviour (both directions); SCAN_DIRS 4→10 services surfaced 8 untracked modules, 7 in translation |
-| `S9` the shared guard SDK | ☐ | **inverted** — converge three services first, extract after |
+| `S9` the shared guard SDK | ✅ CLOSED 2026-08-02 | **inverted, correctly**: no SDK extracted (1/3 adopters). The entry criterion was a spec sentence; it is now a CI gate that reds when the third service adopts |
 | `S5` one heal loop | ☐ | |
 | `S13` cite the exemplars | ☐ | mostly documentation |
 
@@ -928,6 +928,79 @@ which the POST-RUN REVIEW found and fixed one layer up — except this one is a 
 the surface that would consume it (`model_roles`) is a read-only contract with no producer. That
 is what the slice has to build, and it is why shipping the label alone would produce a warning
 the author has no way to clear.
+
+### ✅ S9 — the entry criterion was a sentence in a spec. Now it is a gate.
+
+```
+AUDIT S9 (guard SDK — the inverted slice)
+  BUILT      — `scripts/guard-sdk-entry-gate.py` + five teeth, wired into foundation-ci.
+               NO SDK was extracted, and that is the slice's correct outcome.
+
+  PROVEN     — the criterion, MEASURED rather than recalled:
+                 `guard-sdk-entry-gate: OK — 1/3 services carry the GuardReport contract;
+                  NOT extracting is the correct state.  adopters: composition-service`
+                 composition-service: 3 modules (canon_check, canon_reflect, critic_policy)
+                 translation-service: 0 · knowledge-service: 0 · chat-service: 0
+               And the reason the spec inverted this slice, also measured — the repo already
+               has THREE verdict SDKs in live use:
+                 loreweave_grounding    9 non-test modules
+                 loreweave_eval        11 non-test modules
+                 loreweave_canon_check  4 non-test modules
+                 loreweave_guard        2 non-test modules
+               A fourth abstraction over three that already disagree adds a place to disagree.
+               Extracting from ONE implementation produces that implementation with an import.
+
+               So the buildable thing is not the SDK — it is the CRITERION. It was prose:
+               *"three services carry a structurally identical GuardReport … proven by a test
+               that imports all three."* Prose fails both ways here: forgotten (three services
+               drift apart and the extraction never happens) or acted on from memory before it
+               holds, which is the premature abstraction the inversion exists to prevent. This
+               repo already priced that lesson — nine of nineteen game-tier deferrals were
+               prose and nothing else.
+
+               The gate is QUIET below the threshold on purpose: a gate that reds for a
+               decision working as designed teaches people to silence it. It reds the moment a
+               third service adopts, because nobody re-reads a July spec sentence to discover
+               a condition became true.
+
+               gates: FULL CI SWEEP `PASS: 52  FAIL: 0  of 52` — every gate invoked the way
+               its workflow invokes it · `gate-teeth-gate: PASS — 58 CI-invoked gate(s), every
+               one able to return non-zero. 13 carry a red-ability proof; 45 held at baseline`
+               (the new gate ships WITH its proof, so the unproven count did not grow).
+               scripts suite `345 passed` (was 340; +5).
+               RED-ABLE: monkeypatching the ADOPTION SCAN so three services carry the contract
+               makes `main()` return 1. Deliberately not simulated by lowering the threshold —
+               that would assert `1 >= 1`, which is arithmetic, not the criterion. The 2-of-3
+               boundary is pinned separately, because an off-by-one here fires the extraction a
+               slice early.
+
+  LIVE       — live infra unavailable: a static criterion check with no runtime path. Its
+               input is the repo, and a test asserts the scan finds composition's REAL adopters
+               rather than returning a constant — without that, every threshold assertion in
+               the file would pass against an empty scan.
+
+  NOT PROVEN — the gate checks that the SYMBOLS are referenced, not that three implementations
+               are STRUCTURALLY IDENTICAL, which is what the spec's criterion actually says.
+               When the third adopter lands, "no service-specific fields" still needs a human
+               (or a stronger test that imports all three and compares dataclass fields — the
+               spec's own wording, and the honest next version of this gate).
+               Nothing was done for the three EXISTING verdict SDKs. The extraction is supposed
+               to fold `loreweave_canon_check` and `loreweave_grounding`'s verdict types in, or
+               the repo ships with four; that remains true and untouched.
+               And this slice moved no product behaviour at all. It converts a decision from
+               memory into a mechanism, which is worth doing and is not the same as building
+               the thing.
+
+  DRIFT      — I started this slice intending to implement `GuardReport` in a second service to
+               "make progress toward" the criterion. That is manufacturing the precondition for
+               a decision instead of letting the decision's own evidence arrive — the spec is
+               explicit that translation and knowledge adopt it AS PART OF THEIR OWN SLICES,
+               because an adoption done to satisfy a counter is not evidence that three services
+               independently agreed on a shape. Caught by re-reading §S9 before writing code
+               rather than after.
+
+  NEXT       — S5 (one heal loop) — three consumers, ten stages per the spec — then S13.
+```
 
 ### ✅ CI-GATE SWEEP — the gate set I had been pasting was 8 of 51
 
@@ -2523,6 +2596,7 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
+| 2026-08-02 | **Nearly manufactured the precondition for a sealed decision.** I started S9 intending to implement `GuardReport` in a second service to "make progress toward" the three-adopter criterion. That is fabricating evidence for a decision rather than letting its evidence arrive — the spec is explicit that translation and knowledge adopt it AS PART OF THEIR OWN SLICES, because an adoption performed to satisfy a counter proves nothing about three services independently converging. Caught by re-reading §S9 before writing code instead of after. |
 | 2026-08-02 | **Wrote a live correctness bug into a code comment on the strength of a GATE'S MESSAGE, then measured it and had to retract.** `language-bias-gate` flags `.lower()` on a name var (ML-2), so I wrote that this guard would report an equivalent name as UNANCHORED — "a fabricated finding". Measured across every name `_TOKEN` can emit: **0 disagreements** between `.lower()` and the fold. The failure needs a full-width or Han name the extractor cannot produce. The fix is still right (it stops a future `_TOKEN` widening from silently breaking the guard) but the justification I shipped was fiction. |
 | 2026-08-02 | **A fix-proving test that was vacuous TWICE, in two different ways.** It asserted a full-width name reads as anchored: first vacuous because the fixture was sentence-initial so `_is_name` never extracted it; then STILL vacuous because `_TOKEN` cannot match a full-width capital at all, so the fixture could never reach the code under test. The control caught the first. Injecting the old `.lower()` back caught the second — the test passed with the bug restored. Neither was findable by reading it. |
 | 2026-08-02 | **I turned a CI gate RED with a comment, shipped it, and did not notice for four slices — because the gate set I kept pasting as "the gates" is a SUBSET of what CI runs.** The word "passage" in a comment I added in S7-4 made `injection-coverage-lint` exit 1 on `compress.py`. Six gates (ai-provider, generation-guard, enforcement-claims, db-safety, llm-budget, language-rule) is not the CI gate set. Every VERIFY block before S4 asserted its evidence honestly against an incomplete list. |

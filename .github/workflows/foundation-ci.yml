@@ -231,7 +231,14 @@ jobs:
                scripts/eval/tests/test_persist_claim_detector.py
                scripts/test_generation_guard_gate.py
                scripts/test_enforcement_claims_gate.py
-               scripts/test_injection_coverage_lint.py -q
+               scripts/test_injection_coverage_lint.py
+               scripts/test_guard_sdk_entry_gate.py -q
+      # S9 — the guard-SDK extraction has an entry criterion (three services carrying a
+      # structurally identical GuardReport). It was a sentence in a spec, which fails both
+      # ways: forgotten, or acted on from memory before it holds. Quiet at 1/3; reds the
+      # moment the third service adopts, because nobody re-reads a July spec sentence to
+      # discover a condition became true.
+      - run: python scripts/guard-sdk-entry-gate.py
       - run: python scripts/gate-teeth-gate.py
 
       # NOT wired, with the reason, because "it exists" is not "it enforces":
