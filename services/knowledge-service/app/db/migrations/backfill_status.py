@@ -44,6 +44,7 @@ from app.db.neo4j_helpers import CypherSession, run_read
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entity_status import STATUS_VALUES, merge_entity_status
 from app.db.neo4j_repos.provenance import add_evidence
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +311,7 @@ def make_llm_classify_fn(
                 ],
                 "response_format": {"type": "text"},
                 "temperature": 0.0,
-                "max_tokens": 2048,
+                "max_tokens": max_tokens_for("backfill_event_status", target=len(events)),
             },
             job_meta={"usage_purpose": "kg_backfill"},
         )

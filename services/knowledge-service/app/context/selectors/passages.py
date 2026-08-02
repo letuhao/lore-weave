@@ -57,6 +57,7 @@ from app.db.neo4j_repos.passages import (
     SUPPORTED_PASSAGE_DIMS,
     find_passages_by_vector,
 )
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -535,6 +536,13 @@ _RERANK_TIMEOUT_S = 1.0
 # index is ≤ 3 digits + a comma, so ~5 tokens is generous. Plus object
 # wrapping overhead.
 def _rerank_max_tokens(n: int) -> int:
+    """The rerank CEILING for n passages — a LATENCY control, not a size guess.
+
+    This call runs under a 1.0s timeout, tighter than the L3 timeout wrapping it, and this
+    bound is what stops a rambling model from spending that second. It stays a function of n
+    and is now passed to `budget_for` as a per-call ceiling, so the SDK's floor/reasoning/
+    window model runs underneath it instead of being bypassed by it.
+    """
     return max(32, 8 + 5 * n)
 
 
@@ -651,7 +659,8 @@ async def rerank_passages(
                     "messages": [system, user],
                     "response_format": {"type": "json_object"},
                     "temperature": 0.0,
-                    "max_tokens": _rerank_max_tokens(n),
+                    "max_tokens": max_tokens_for(
+                        "rerank_passages", target=n, ceiling=_rerank_max_tokens(n)),
                 },
                 chunking=None,
                 job_meta={"usage_purpose": "passage_select", "extractor": "passage_rerank"},

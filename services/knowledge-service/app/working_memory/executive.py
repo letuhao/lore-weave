@@ -37,6 +37,7 @@ from loreweave_agent_control.state_merge import (  # noqa: F401 — re-export fo
     build_messages,
     merge_state,
 )
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ async def run_executive(
             input={
                 "messages": messages,
                 "temperature": 0.0,
-                "max_tokens": 500,
+                "max_tokens": max_tokens_for("working_memory_executive", target=1),
                 **_NO_THINKING,
             },
             chunking=None,

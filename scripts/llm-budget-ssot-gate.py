@@ -71,7 +71,11 @@ ROOT = Path(__file__).resolve().parents[1]
 #: `error_block_heal` 1200), one hand-rolled sizer folded into the registry
 #: (`succession_entailment`), and `_helper_params_by_call` taught the gate the
 #: attributed-caller-plus-private-helper shape it could not see.
-UNATTRIBUTED_BASELINE = 26
+#: 2026-08-02 (cont.) — 26 -> **16**. knowledge-service got its first registry, and what it
+#: had instead was THREE hand-rolled sizers in three modules, two of them byte-identical
+#: copies of each other (`motif_tag`/`thread_tag`), none aware of the rest: a second sizing
+#: model with no floor, no reasoning allowance and no window clamp.
+UNATTRIBUTED_BASELINE = 16
 
 #: Budget calls that pass NO adaptive signal — no `target`, `language`, `reasoning` or
 #: `context_length`. Ratcheted, and it is a SECOND axis from the one above: a site here is
@@ -103,7 +107,16 @@ UNATTRIBUTED_BASELINE = 26
 #: `context_length` could move it and the call site does not know the model's window).
 #: Every one is a call whose size is genuinely undiscoverable before the call, NOT a site
 #: nobody got to — which is why this number should be expected to move slowly, or not at all.
-NO_SIGNAL_BASELINE = 9
+#: 2026-08-02 (cont.) — **9 → 13**, and the growth is a WIDENED DENOMINATOR, not new debt.
+#: This axis counts sites that ARE attributed and still resolve to a constant. Ten
+#: knowledge-service sites became attributed in the same change; four of them
+#: (`regenerate_summary`, `pdf_page_caption`, `wiki_article`, `working_memory_executive`)
+#: are PROSE/STRUCTURED rows whose call site does not yet hold a truthful target, so they
+#: land here the moment they stop being invisible. Passing `language=` to make the number
+#: go down would be the exact theatre this axis was redesigned to reject — the kind
+#: discards it and no resolved budget changes. They stay counted until a real signal
+#: exists, which is the honest state and the one that keeps costing something.
+NO_SIGNAL_BASELINE = 13
 
 #: The kwargs that make a budget call adaptive. `floor`/`ceiling` are deliberately absent —
 #: they are per-call CONSTANTS from the registry, not per-call signal.

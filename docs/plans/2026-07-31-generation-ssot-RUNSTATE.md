@@ -3274,6 +3274,57 @@ AUDIT AUDIT-10 (budget seam — the unscanned surface, then the backlog)
                composition sites whose budget originates in a router/settings/API field.
 ```
 
+### ◐ AUDIT-11 · DoD-3 — knowledge-service had THREE sizing models and no registry. 26 → 16.
+
+```
+AUDIT AUDIT-11 (budget seam — knowledge-service)
+  FOUND      — not two sizers, three, and two of them byte-identical:
+                 passages.py   _rerank_max_tokens(n) = max(32, 8 + 5n)
+                 motif_tag.py  _max_tokens_for(n)    = 256 + 48n
+                 thread_tag.py _max_tokens_for(n)    = 256 + 48n   (a COPY)
+               Two modules carried the same formula and neither knew about the other. That is
+               the argument for a registry rather than for a shared helper: a helper would have
+               been a fourth place to look.
+
+  BUILT      — services/knowledge-service/app/llm_budget.py, ten rows. The per-item SHAPE each
+               sizer encoded survives as the row's `target`; what they were all missing is the
+               floor, the reasoning allowance and the window clamp around it.
+                 · `ceiling` is the row that proves the field earns its place. `rerank_passages`
+                   was tiny ON PURPOSE — the call runs under a 1.0s timeout, tighter than the L3
+                   timeout wrapping it, and the cap is what stops a rambling model spending that
+                   second. Adopting the STRUCTURED floor without a ceiling would have quietly
+                   deleted a LATENCY control while looking like a safe upgrade. It is passed
+                   PER CALL (`8 + 5n`), because the bound is a function of the batch.
+
+  CAUGHT     — `_MAX_OUTPUT_TOKENS` in regenerate_summaries is read TWICE: as the wire cap and
+               as the K20.6 `token_overflow` rejection threshold. Replacing only the cap would
+               have left the rejector policing 500 while the wire allowed 1024, so a legitimate
+               summary would come back rejected. It is now DERIVED from the same row instead of
+               restated. Textbook "an adjacent decision defeats it" (NV) — both edits
+               individually correct, the pair silently wrong.
+
+  PROVEN     — knowledge **4108 passed, 561 skipped** (`-n auto --dist loadgroup`).
+               `llm-budget-ssot-gate: PASS` — unattributed **26 → 16**, attributed 25 → 35.
+               One test failed first and it was the right one to fail:
+                 AttributeError: module 'app.extraction.thread_tag' has no attribute
+                 '_max_tokens_for'. Did you mean: 'max_tokens_for'?
+               `test_max_tokens_scales_above_the_old_fixed_cap` guarded the sizer's properties,
+               so it follows them onto the row rather than being deleted. Its monotonicity
+               assertion had to change shape: below the floor the budget is deliberately FLAT,
+               and asserting strict monotonicity from n=1 would assert against the safety net
+               rather than against the sizing model.
+
+  DECLARED   — the no-signal axis grew **9 → 13**, and it is a widened denominator, not new
+               debt: ten sites became ATTRIBUTED in this change and four of them land straight
+               on the second axis, because their call site holds no truthful `target` yet.
+               Passing `language=` to make the number go down is exactly the theatre that axis
+               was redesigned to reject — the kind discards it and no budget changes. They stay
+               counted.
+
+  NEXT       — 16 held: composition 6 (a router/settings/API-field origin each), translation 4,
+               worker-ai 1, SDK 2, motif_mine/motif_deconstruct 3.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |

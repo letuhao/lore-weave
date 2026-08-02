@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -32,12 +33,10 @@ _MAX_EVENTS_PER_CALL = 50
 
 # Size the output budget to the batch so a full batch's `{id: code}` JSON can't truncate
 # (the batch would otherwise degrade to untagged) — see thread_tag (D-THREAD-TAG-BATCH-TOKENS).
-_BASE_OUTPUT_TOKENS = 256
-_TOKENS_PER_EVENT = 48
-
-
-def _max_tokens_for(batch_len: int) -> int:
-    return _BASE_OUTPUT_TOKENS + _TOKENS_PER_EVENT * batch_len
+# The `_BASE_OUTPUT_TOKENS + _TOKENS_PER_EVENT * n` sizer that used to live here — and a
+# byte-identical copy of it in thread_tag.py — is now the `motif_tag` row in app/llm_budget.py.
+# The per-event shape survives as the row's `target`; the floor, reasoning allowance and
+# window clamp it never had come with it.
 
 
 def build_messages(events: list[dict[str, Any]], motifs: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -122,7 +121,8 @@ async def classify_event_motifs(
                 user_id=user_id, operation="chat", model_source=model_source,
                 model_ref=model_ref,
                 input={"messages": build_messages(batch, motifs),
-                       "temperature": 0.0, "max_tokens": _max_tokens_for(len(batch))},
+                       "temperature": 0.0,
+                       "max_tokens": max_tokens_for("motif_tag", target=len(batch))},
                 job_meta={"extractor": "realized_motif"},
             )
         except Exception as exc:

@@ -36,13 +36,22 @@ def test_retag_rows_none_assignment_becomes_null_clear():
 # ── D-THREAD-TAG-BATCH-TOKENS — _max_tokens_for scales with the batch ─────────────
 
 def test_max_tokens_scales_above_the_old_fixed_cap():
+    """Unchanged intent, new mechanism: the two hand-rolled `256 + 48n` sizers are now the
+    `motif_tag`/`thread_tag` registry rows. The properties this test guarded are the reason
+    those rows carry a `target` rather than a flat floor, so it follows them there."""
     from app.extraction import motif_tag, thread_tag
-    # A full batch now gets far more than the old fixed 1500 → its JSON can't truncate.
-    assert thread_tag._max_tokens_for(thread_tag._MAX_EVENTS_PER_CALL) > 1500
-    assert motif_tag._max_tokens_for(motif_tag._MAX_EVENTS_PER_CALL) > 1500
-    # Monotonic + a floor for an empty/tiny batch.
-    assert thread_tag._max_tokens_for(0) == thread_tag._BASE_OUTPUT_TOKENS
-    assert thread_tag._max_tokens_for(10) > thread_tag._max_tokens_for(1)
+    from app.llm_budget import max_tokens_for
+
+    # A full batch still gets far more than the old fixed 1500 → its JSON can't truncate.
+    assert max_tokens_for("thread_tag", target=thread_tag._MAX_EVENTS_PER_CALL) > 1500
+    assert max_tokens_for("motif_tag", target=motif_tag._MAX_EVENTS_PER_CALL) > 1500
+    # An empty batch falls back to the row's floor rather than to zero — the SDK's floor is a
+    # net under every kind, which is one of the three things the hand-rolled sizers lacked.
+    assert max_tokens_for("thread_tag", target=0) == 4096
+    # Monotonic ONCE THE TARGET CLEARS THE FLOOR. Below it the floor dominates and the budget
+    # is deliberately flat — asserting strict monotonicity from n=1 would be asserting against
+    # the safety net, not against the sizing model.
+    assert max_tokens_for("thread_tag", target=200) > max_tokens_for("thread_tag", target=10)
 
 
 # ── D-EXTRACTOR-PROMPT-INJECTION — _neutralize_event_dicts ────────────────────────
