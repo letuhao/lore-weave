@@ -39,6 +39,7 @@ from ..metrics import record_stage
 from .injection_report import scan_untrusted_source
 from .chunk_splitter import estimate_tokens, split_chapter
 from .llm_thinking import thinking_llm_fields
+from app.llm_budget import budget_for
 
 log = logging.getLogger(__name__)
 
@@ -1203,9 +1204,13 @@ async def translate_chapter_blocks(
         # Output-token budget for this batch: generous headroom (thinking is
         # disabled below, so reasoning shouldn't eat it), capped so
         # input+output stays within the model context window.
-        out_max = min(
-            _TRANSLATION_MAX_OUTPUT_TOKENS,
-            max(2048, context_window - batch.token_estimate - 2048),
+        out_max = budget_for(
+            "translate_batch",
+            context_length=context_window,
+            ceiling=min(
+                _TRANSLATION_MAX_OUTPUT_TOKENS,
+                max(2048, context_window - batch.token_estimate - 2048),
+            ),
         )
 
         # M5d/TD2: the per-batch SDK + validation-retry loop now lives in the

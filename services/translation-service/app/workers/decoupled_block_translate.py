@@ -28,6 +28,7 @@ from uuid import UUID
 from ..llm_client import LLMClient
 from .chunk_splitter import estimate_tokens
 from .session_translator import _parse_sdk_response, validate_translation_output
+from app.llm_budget import budget_for
 
 log = logging.getLogger("translation.decoupled.block")
 
@@ -427,9 +428,13 @@ async def _submit_next_batch(
     msg = rs["msg"]
     batch = rs["batches"][rs["batch_idx"]]
     messages = build_batch_messages(rs)
-    out_max = min(
-        _TRANSLATION_MAX_OUTPUT_TOKENS,
-        max(2048, rs["context_window"] - batch["token_estimate"] - 2048),
+    out_max = budget_for(
+        "translate_batch",
+        context_length=rs["context_window"],
+        ceiling=min(
+            _TRANSLATION_MAX_OUTPUT_TOKENS,
+            max(2048, rs["context_window"] - batch["token_estimate"] - 2048),
+        ),
     )
     submit = await llm_client.submit_job(
         user_id=msg["user_id"], operation="translation",

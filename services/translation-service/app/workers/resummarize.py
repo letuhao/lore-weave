@@ -25,6 +25,7 @@ from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
 
 from ..llm_client import LLMClient
 from .glossary_client import fetch_canonical_dirty, post_canonical
+from app.llm_budget import budget_for
 
 log = logging.getLogger(__name__)
 
@@ -82,9 +83,12 @@ async def _resummarize_one(
         )
         return resp is not None
 
+    # Resolved ONCE and shared: the prompt and the budget must agree on the language, and
+    # PROSE is the one kind that reads it (a CJK value needs more tokens for the same text).
+    lang = item.get("source_language") or fallback_language
     messages = _build_messages(
         item.get("entity_name", ""), item.get("attr_label", attr_code),
-        raw_values, item.get("source_language") or fallback_language,
+        raw_values, lang,
     )
     try:
         sdk_job = await llm_client.submit_and_wait(
@@ -97,7 +101,7 @@ async def _resummarize_one(
             input={
                 "messages": messages,
                 "temperature": 0.2,
-                "max_tokens": _RESUMMARIZE_OUTPUT_TOKENS,
+                "max_tokens": budget_for("resummarize_attribute_value", language=lang),
                 # Merge/dedup is not a reasoning task — DISABLE hidden thinking. Without this a
                 # reasoning model (e.g. gemma-4-26b-qat) spends the entire output budget on
                 # reasoning_content and returns EMPTY content (finish_reason=length) → every

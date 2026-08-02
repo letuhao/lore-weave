@@ -26,6 +26,7 @@ from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
 
 from ..llm_client import LLMClient
 from .glossary_client import fetch_fold_dirty, post_fold_snapshot
+from app.llm_budget import budget_for
 
 log = logging.getLogger(__name__)
 
@@ -88,7 +89,8 @@ async def _fold_one(
             input={
                 "messages": messages,
                 "temperature": 0.2,
-                "max_tokens": _FOLD_OUTPUT_TOKENS,
+                "max_tokens": budget_for("fold_canonical_description",
+                                         language=fallback_language),
                 # Synthesis, not reasoning — disable hidden thinking (a reasoning model would
                 # otherwise spend the whole budget on reasoning_content → empty output).
                 **reasoning_fields(ReasoningDirective(effort="none", passthrough=False, source="user")),

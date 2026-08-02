@@ -75,7 +75,13 @@ ROOT = Path(__file__).resolve().parents[1]
 #: had instead was THREE hand-rolled sizers in three modules, two of them byte-identical
 #: copies of each other (`motif_tag`/`thread_tag`), none aware of the rest: a second sizing
 #: model with no floor, no reasoning allowance and no window clamp.
-UNATTRIBUTED_BASELINE = 16
+#: 2026-08-02 (cont.) — 16 -> **13**. translation-service's FOURTH hand-rolled sizing model
+#: folded in: `min(_TRANSLATION_MAX_OUTPUT_TOKENS, max(2048, window - prompt - 2048))`,
+#: written out twice, is now the `translate_batch` row's per-call ceiling. Plus two rows
+#: where the CEILING is the length control rather than a safety net (`fold`,
+#: `resummarize` — both bounded by the glossary rune cap, neither prompt carrying a
+#: length directive).
+UNATTRIBUTED_BASELINE = 13
 
 #: Budget calls that pass NO adaptive signal — no `target`, `language`, `reasoning` or
 #: `context_length`. Ratcheted, and it is a SECOND axis from the one above: a site here is
