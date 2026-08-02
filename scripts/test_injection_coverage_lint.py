@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import os
 import pathlib
+import sys
 import tempfile
 
 import pytest
@@ -17,6 +18,14 @@ _SPEC = importlib.util.spec_from_file_location(
     "inj", pathlib.Path(__file__).resolve().parent / "injection-coverage-lint.py"
 )
 inj = importlib.util.module_from_spec(_SPEC)
+# Registered BEFORE exec, and it is load-bearing rather than tidy. The lint declares a
+# `@dataclass` under `from __future__ import annotations`, so its field types are strings and
+# `dataclasses._is_type` resolves them via `sys.modules[cls.__module__].__dict__`. Absent that
+# entry it dereferences None, and the failure lands at COLLECTION — which aborts the whole
+# `-q` batch this file shares with fourteen other gate-test files in `foundation-ci.yml`, so
+# none of them run. Found by an audit sweep on 2026-08-02; the same workflow's own comment
+# says "148 tests across 8 files, and not one of them ran anywhere".
+sys.modules[_SPEC.name] = inj
 _SPEC.loader.exec_module(inj)
 
 

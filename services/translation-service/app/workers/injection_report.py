@@ -45,7 +45,7 @@ from loreweave_grounding.sanitize import scan_injection
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["InjectionReport", "scan_untrusted_source"]
+__all__ = ["InjectionReport", "record_source_injection", "scan_untrusted_source"]
 
 
 @dataclass(frozen=True)
@@ -93,3 +93,36 @@ def scan_untrusted_source(text: str | None, *, where: str) -> InjectionReport:
         len(hits), where, ", ".join(patterns),
     )
     return InjectionReport(hits=len(hits), patterns=patterns)
+
+
+async def record_source_injection(pool, chapter_translation_id, text: str | None):
+    """Scan a chapter's imported source AND write the count where a human will see it.
+
+    Why the two halves are one function
+    -----------------------------------
+    They were two, and the live stack proved what that costs. `scan_untrusted_source` was
+    called on FIVE chapter paths and the number was persisted on TWO — and the path this
+    platform actually runs for a structured chapter (the DECOUPLED BLOCK pipeline, and the V3
+    pipeline that delegates to it) was one of the three that only logged. A real translation
+    of a chapter carrying `ignore all previous instructions` finished with the log line
+
+        untrusted source carries 1 directive-looking span(s) at block_translate:blocks[0..3]
+
+    and `source_injection_hits = NULL` on the row the importer reads: the detector fired, the
+    telling did not, and every unit test was green because each half was tested where it lived.
+
+    Detection is not a defence until somebody is told, so the scan and the telling are now the
+    same call and a path cannot take one without the other. `tests/test_injection_persist.py`
+    holds the denominator: it derives the chapter entry points from `chapter_worker`'s own
+    dispatch, so a SIXTH path fails rather than joining the silent three.
+
+    Written even when clean (`0`), because `0` and `NULL` answer different questions —
+    "scanned, nothing found" versus "nobody looked" — and the column is nullable to keep them
+    apart. Returns the report so a caller can also ride it on `resume_state`.
+    """
+    report = scan_untrusted_source(text, where=f"chapter_translation:{chapter_translation_id}")
+    await pool.execute(
+        "UPDATE chapter_translations SET source_injection_hits=$2 WHERE id=$1",
+        chapter_translation_id, report.hits,
+    )
+    return report

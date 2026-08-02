@@ -26,7 +26,7 @@ from uuid import UUID
 
 from ..llm_budget import budget_for
 from ..llm_client import LLMClient
-from .injection_report import scan_untrusted_source
+from .injection_report import record_source_injection
 from .chunk_splitter import estimate_tokens, split_chapter
 from .session_translator import (
     _build_messages,
@@ -167,17 +167,12 @@ async def start_chapter(
     # same finding N times is noise) and never mutated: this text IS the product. See
     # `injection_report` for why translation cannot use composition's neutralisers.
     # Recorded even when clean, so "nothing found" and "nobody looked" stay distinguishable.
-    _injection = scan_untrusted_source(
-        chapter_text, where=f"chapter_translation:{chapter_translation_id}",
-    )
-    rs["injection_scan"] = _injection.as_payload()
     # …and on the ROW, not only in `resume_state` — which `_clear_resume_state` wipes the
     # moment the chapter finishes, so the only record of the scan used to disappear exactly
-    # when the translation became readable.
-    await pool.execute(
-        "UPDATE chapter_translations SET source_injection_hits=$2 WHERE id=$1",
-        chapter_translation_id, _injection.hits,
-    )
+    # when the translation became readable. One call, so a path cannot take the scan without
+    # the telling; that split is what left three of the five chapter paths silent.
+    _injection = await record_source_injection(pool, chapter_translation_id, chapter_text)
+    rs["injection_scan"] = _injection.as_payload()
     await _submit_next(ex=pool, llm_client=llm_client,
                        chapter_translation_id=chapter_translation_id, rs=rs)
 

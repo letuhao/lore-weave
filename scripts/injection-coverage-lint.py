@@ -297,6 +297,7 @@ SANITIZER_REF = re.compile(
     r"|\bneutralize_proposal_text\s*\("
     r"|\bscan_injection\s*\("
     r"|\bscan_untrusted_source\s*\("
+    r"|\brecord_source_injection\s*\("
     r"|\bneutralize\s*\("
     r"|\bsanitize_lore\s*\("
     r"|\bsanitize_guide\s*\("
@@ -319,7 +320,13 @@ SANITIZER_REF = re.compile(
 #: Named separately so the PASS line cannot say "every module routes through the sanitizer"
 #: about a set where seven of them only look. That sentence would be the same
 #: two-states-collapsed-into-one defect this lint exists to catch, committed by the lint.
-DETECT_ONLY_REF = re.compile(r"\bscan_injection\s*\(|\bscan_untrusted_source\s*\(")
+#: `record_source_injection` is `scan_untrusted_source` PLUS the write that tells somebody,
+#: and it had to be named here the day it was introduced: the three chapter modules switched
+#: to it and this lint went RED on all three inside one commit. A detector keyed on function
+#: names is only as current as its list of names — which is the argument for the red arriving
+#: loudly, rather than a module quietly dropping out of the DETECT set and reading as covered.
+DETECT_ONLY_REF = re.compile(
+    r"\bscan_injection\s*\(|\bscan_untrusted_source\s*\(|\brecord_source_injection\s*\(")
 
 
 def _code_lines(src: str) -> list[str]:

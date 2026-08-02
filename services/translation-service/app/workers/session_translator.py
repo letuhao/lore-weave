@@ -36,7 +36,7 @@ from ..config import settings, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_US
 from ..llm_budget import budget_for
 from ..llm_client import LLMClient
 from ..metrics import record_stage
-from .injection_report import scan_untrusted_source
+from .injection_report import record_source_injection
 from .chunk_splitter import estimate_tokens, split_chapter
 from .llm_thinking import thinking_llm_fields
 from app.llm_budget import budget_for
@@ -357,22 +357,14 @@ async def translate_chapter(
     # text is the product, not context. `injection_report` carries why translation cannot
     # use composition's neutralisers. Reported on the same line as the chunk count so a
     # chapter's log record always states whether it was looked at.
-    injection = scan_untrusted_source(
-        chapter_text, where=f"chapter_translation:{chapter_translation_id}",
-    )
+    # Scan AND persist in one call: they were separate here, and separate is how three of the
+    # five chapter paths ended up scanning without telling anyone. See `record_source_injection`.
+    injection = await record_source_injection(pool, chapter_translation_id, chapter_text)
     log.info(
         "session_translator: chapter_translation=%s, %d chunks (chunk_size=%d, context=%d), "
         "injection_scan=%s",
         chapter_translation_id, len(chunks), chunk_size, context_window,
         injection.as_payload(),
-    )
-    # PERSISTED, not just logged. A log line nobody greps is the same silence the scan was
-    # added to end — and this is the ONE fact the person who imported the book needs, on the
-    # row they already look at. Written even when clean (0), because 0 and NULL answer
-    # different questions.
-    await pool.execute(
-        "UPDATE chapter_translations SET source_injection_hits=$2 WHERE id=$1",
-        chapter_translation_id, injection.hits,
     )
 
     session_history: list[dict] = []
@@ -1116,6 +1108,18 @@ async def translate_chapter_blocks(
         plan.caption_count, len(plan.batches), chapter_translation_id,
     )
 
+    # Extract all translatable text — for glossary scoring, and for the injection scan below.
+    all_chapter_text = "\n".join(
+        extract_translatable_text(entry.block)
+        for entry in plan.all_entries
+        if entry.action != "passthrough"
+    )
+    # DoD-4. This path had NO scan at all: `translate_chapter` (the TEXT sibling) had one and
+    # this one did not, so a book whose chapters are structured blocks — the ordinary case —
+    # was never screened. Above the empty-plan return, so a chapter that reaches here always
+    # gets an answer rather than the NULL that means nobody looked.
+    await record_source_injection(pool, chapter_translation_id, all_chapter_text)
+
     if not plan.batches:
         return blocks, 0, 0, 0, plan.translatable_count, {}
 
@@ -1124,13 +1128,6 @@ async def translate_chapter_blocks(
     # V2 P4: Fetch glossary context (once per chapter, stable across all batches)
     from .glossary_client import (
         fetch_translation_glossary, build_glossary_context, auto_correct_glossary,
-    )
-
-    # Extract all translatable text for glossary scoring
-    all_chapter_text = "\n".join(
-        extract_translatable_text(entry.block)
-        for entry in plan.all_entries
-        if entry.action != "passthrough"
     )
 
     raw_glossary = await fetch_translation_glossary(

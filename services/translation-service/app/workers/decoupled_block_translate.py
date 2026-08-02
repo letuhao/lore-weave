@@ -29,7 +29,7 @@ from ..llm_client import LLMClient
 from .chunk_splitter import estimate_tokens
 from .session_translator import _parse_sdk_response, validate_translation_output
 from app.llm_budget import budget_for
-from .injection_report import scan_untrusted_source
+from .injection_report import record_source_injection
 
 log = logging.getLogger("translation.decoupled.block")
 
@@ -130,12 +130,12 @@ def build_batch_messages(rs: dict[str, Any]) -> list[dict]:
             user_parts.append(
                 f"[Summary of previously translated content]\n{rs['rolling_summary']}\n"
             )
-        # DoD-4c. `combined` is this batch of IMPORTED blocks. Scanned per batch rather
-        # than per chapter because that is the unit this worker sees; the `where` carries
-        # the batch so two hits are two findings, not one repeated.
-        scan_untrusted_source(
-            combined, where=f"block_translate:blocks[{block_indices[0]}..{block_indices[-1]}]"
-            if block_indices else "block_translate:empty")
+        # The per-batch scan that used to live here is gone, and its removal is the fix, not a
+        # relaxation. This is a PURE message builder: no pool, no chapter_translation_id, and
+        # called again for every batch and every retry — so the most it could ever do was log
+        # the same chapter's directive several times into a stream nobody greps. The scan now
+        # happens once in `start_chapter_blocks`, over the same bytes these batches are cut
+        # from, and lands on the row the importer reads.
         user_parts.append(
             f"Translate the following {len(block_indices)} blocks "
             f"from {_lang_name(rs['source_lang'])} to {_lang_name(rs['target_code'])}:\n\n{combined}"
@@ -242,12 +242,20 @@ async def start_chapter_blocks(
         blocks, context_window_tokens=context_window, source_lang=source_lang,
         target_lang=target_code, extra_system_tokens=estimate_tokens(extra_system),
     )
-    if not plan.batches:
-        return False
-
+    # The translatable text of the whole chapter — the exact bytes the batches are cut from,
+    # so scanning it once covers every batch without reporting one directive N times.
     all_chapter_text = "\n".join(
         extract_translatable_text(e.block) for e in plan.all_entries if e.action != "passthrough"
     )
+    # DoD-4, and it is placed ABOVE the empty-plan return on purpose: a chapter that reaches
+    # this path has been read, so it gets an ANSWER (0) rather than the NULL that means nobody
+    # looked. This path is also where the decoupled V3 pipeline lands — `decoupled_v3_block_start`
+    # delegates here — so one call covers both.
+    await record_source_injection(pool, chapter_translation_id, all_chapter_text)
+
+    if not plan.batches:
+        return False
+
     raw_glossary = await fetch_translation_glossary(
         book_id=msg.get("book_id", ""), target_language=target_code,
         chapter_id=msg.get("chapter_id", ""),

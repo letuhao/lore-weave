@@ -125,6 +125,13 @@ when in fact most of the last two days went into defect work that was never on t
 
 ### The board — 7 closed, S7 open, 6 untouched
 
+> **The SLICES are not the DoD, and after AUDIT-19 they disagree.** Twelve slices are ✅ and
+> **three DoD clauses do not hold as written** — DoD-3's truncation limb (no gate at all; 28 of
+> 97 call sites on the generous reading), DoD-5's *"one finding type"* (that limb IS S3, which is
+> ◐ below), and DoD-2's missing static gate (the rule holds today; nothing keeps it holding).
+> A slice closing means its scope shipped. Read §7 of the spec against **AUDIT-19**, not against
+> this table.
+
 | slice | state | note |
 |---|---|---|
 | `S10` the eval instrument | ✅ | a real build slice, not a formality |
@@ -3424,7 +3431,15 @@ AUDIT AUDIT-13 (budget seam — the author's ruling)
                the file I had just written, not by any check.
 ```
 
-### ✅ AUDIT-14 · DoD-5 + DoD-4b — two clauses closed by MEASURING, not by refactoring.
+### ◐ AUDIT-14 · DoD-5 + DoD-4b — measured, not refactored. **Header CORRECTED by AUDIT-19.**
+
+> **This block claimed DoD-5 closed and only addressed ONE of its four limbs.** The clause is
+> *"one context-budget estimator …; one heal-stage protocol; one finding type; one pass
+> registry"*, and **"one finding type" is S3, which this file's own board marks ◐** — the
+> `skip_reason` vocabulary landed, the `locator` union did not, five producers still carry five
+> locators. Estimators, heal protocol and pass registry hold as written below. Left in place
+> rather than rewritten, because a header that overclaimed and a body that measured honestly is
+> the more useful record of how the overclaim happened.
 
 ```
 AUDIT AUDIT-14 (one estimator · an expiring baseline)
@@ -3667,6 +3682,134 @@ AUDIT AUDIT-18 (translation.source_injection_hits reaches the importer)
               a per-chapter write broke a test about chunk rows. Tightened to count by SQL,
               and it now also asserts the scan is persisted exactly once with 0 for clean
               text — the write I added is covered by the test my change broke.
+```
+
+### ⛔ AUDIT-19 · THE COMPLETENESS AUDIT — author-requested. The live run falsified a closed clause.
+
+```
+AUDIT AUDIT-19 (audit the whole spec + live-test what this run changed)
+
+  ASKED      — *"nếu đã xong hết todo list thì chúng ta cần audit compleness lại toàn bộ …
+               rồi đi làm live test toàn diện những gì chúng ta đã sửa."* So: re-derive every
+               DoD clause from CODE, not from this file's own ✅ marks, and then run the
+               things that only a live stack can answer.
+
+  BUILT      — three defects fixed, all found by the audit and none by the suite:
+
+               1. **DoD-4 was FALSE on the path this platform actually runs.** A real
+                  translation of a chapter carrying `Ignore all previous instructions …`
+                  finished with
+                      WARNING untrusted source carries 1 directive-looking span(s)
+                              at block_translate:blocks[0..3]
+                      chapter_translations.source_injection_hits = NULL
+                  The detector fired and the row said NOBODY LOOKED. AUDIT-18's commit
+                  message says "written by both chapter paths"; deriving the set from
+                  `chapter_worker`'s dispatch gives **SEVEN**, and the two that recorded were
+                  the two TEXT paths. `TRANSLATION_DECOUPLE_ENABLED=true` on this stack, and a
+                  structured chapter takes the DECOUPLED BLOCK pipeline — which scanned inside
+                  a PURE message builder with no pool and no `chapter_translation_id`, so the
+                  most it could ever do was log. The sync BLOCK path had no scan at all.
+                  FIX: `record_source_injection(pool, ct_id, text)` — scan and telling are ONE
+                  call, so a path cannot take one without the other. Both BLOCK paths record;
+                  the two v3 entry points delegate; the dirty-only re-translate re-scans the
+                  WHOLE source after the delegate, because the inner scan sees only the dirty
+                  slice and would stamp `0` ("screened, clean") on a chapter whose directive
+                  sits in an untouched block.
+
+               2. **`foundation-ci`'s gate-test batch was RED at HEAD and had been for a
+                  while.** `test_injection_coverage_lint.py` failed at COLLECTION — it loads a
+                  hyphenated module by spec without registering it in `sys.modules`, and the
+                  lint's `@dataclass` under `from __future__ import annotations` makes
+                  `dataclasses._is_type` dereference that missing entry. Collection abort =
+                  **all fifteen files skipped**, which is the state the same workflow's own
+                  comment describes: *"148 tests across 8 files, and not one of them ran"*.
+
+               3. …and behind it, **a stale test nobody could see fail.** `d214ddbd5`
+                  deliberately narrowed the gate so a `**spread` no longer buys `opaque` (that
+                  behaviour was hiding 27 sites, 46% of the backlog). `test_a_spread_payload_
+                  is_opaque` still pinned the old verdict. It has asserted the wrong thing for
+                  a day, invisibly, because the batch never got past collection.
+
+  PROVEN     — CI gate sweep **57 gates, 57 PASS**, each invoked the way its workflow invokes
+               it. One read FAIL(124) — `meta-write-discipline-lint.sh` hitting MY harness's
+               900s timeout; re-run unbounded it prints `[meta-write-discipline] PASS`. My
+               invocation, not the gate, same shape as the `--selfcheck` mistake in the first
+               sweep.
+               translation **1161 passed** (`-n auto --dist loadgroup`) · CI gate-test batch
+               **238 passed** (was: collection error, 0 run) · injection-coverage OK, 6
+               DETECT-only · llm-budget PASS · new `test_injection_persist.py` 9 passed.
+               RED-ABLE, against the real on-disk defect, restored from saved bytes + sha256
+               (`RESTORED: sha256 MATCHES`):
+                 drop the persist from `start_chapter_blocks` -> RED ("never records its scan")
+                 put a bare `scan_untrusted_source` back        -> RED ("scan-without-persist")
+
+               LIVE, deployed images hash-verified against source first — they were **STALE**
+               by ~14h, so an unverified live run would have tested yesterday's code:
+                 LIVE-2 · DoD-2  PASS. Two `user_model_id`s on this box resolve to ONE model
+                   (`lm_studio::google/gemma-4-26b-a4b-qat`); the rule refuses them
+                   (SAME_AS_DRAFTER, identity_verified=True), configures two genuinely
+                   different models, and keeps the tier ON with `identity_verified=False`
+                   when the registry cannot answer. A mock cannot produce this case.
+                 LIVE-4 · DoD-4  FAIL -> fixed -> PASS. DIRTY `source_injection_hits=1`,
+                   CLEAN `=0` (not NULL), in the DB **and** through the API the FE reads;
+                   `output_tokens=105`, so the model really ran. Throwaway book; all 8 debris
+                   chapters trashed afterwards.
+                 LIVE-1 · DoD-7 + DoD-3  PASS. The Mị Đế defect on a real ~500-word Vietnamese
+                   draft: 1 conflict, 0 unlinked; a draft that kills nobody -> clean; a plan
+                   that AGREES -> not a conflict. Budget `CallBudget(max_output_tokens=1536,
+                   source='default')` from the registry, not an int. Real gemma judge:
+                   `judged=True`, `confirmed=True` — the HARD tier is reachable, and it did NOT
+                   truncate at 500 words in Vietnamese, which is the case that killed it once.
+
+  NOT PROVEN — and this is the half that matters, because three DoD clauses do NOT hold as
+               written and the board says otherwise:
+
+               · **DoD-3 has three limbs and the gate enforces two.** "…an absent cap, or a
+                 **missing truncation check**". `finish_reason` appears in
+                 `llm-budget-ssot-gate.py` exactly once — in a DOCSTRING, describing the
+                 incident. Nothing counts it. Measured with the gate's own scanner, on the
+                 GENEROUS module-level reading (a module credited if it mentions
+                 `finish_reason` anywhere): **28 of 97 call sites**. The spec's §S7 asked for
+                 this explicitly — *"and on a missing `finish_reason == "length"` check"*.
+               · **DoD-5's "one finding type" is S3, and S3 is ◐.** Only the `skip_reason`
+                 vocabulary landed; the spec's actual S3 — one `Finding` with a
+                 `locator` union — is untouched, five producers still carry five locators.
+                 AUDIT-14's header says "DoD-5 … closed" and never addresses that limb.
+                 The other three limbs DO hold (heal protocol ✅, `PASS_REGISTRY` one
+                 definition ✅, estimator: 2 context-budget estimators — kernel + knowledge's
+                 tiktoken — argued, gated, and not "one").
+               · **DoD-2 holds today and nothing keeps it holding.** The spec's S6 asked for a
+                 static gate — *"every grading call site resolves through `resolve_judge`"* —
+                 plus a `purpose` discriminator and enforcement moved to provider-registry.
+                 None of the three exists. The rule had EIGHT hand-rolled copies and the
+                 eighth was found by an audit, not by a guard; a ninth would be found the same
+                 way.
+               Also unmeasured: the FE badge was verified through the API payload, not by
+               rendering; DoD-1's Rust half is a different mechanism (parked row, still true);
+               `guard-redability` is 21/21 of the guards THIS RUN wrote, 45 of 61 CI gates
+               still carry no red-ability proof.
+
+  DRIFT      — four, and the first is the one to keep.
+               · **My first LIVE-1 run reported three FAILs that were all MY PROBE.** The
+                 seed arm produced zero conflicts while both controls were clean — seed and
+                 control agreeing, which is the theatre shape I have a note about. Cause: I
+                 wrote `{"id", "aliases"}` and `{"kind": "entity_gone"}` from memory;
+                 `name_index` wants `entity_id`/`cached_aliases` and `asserted_gone` reads
+                 `status_effects[].{status,entity_ref}`. Had I not run the controls I would
+                 have filed "the deployed detector is dead" against working code.
+               · I called `budget_for(...) > 0` on an INT. It returns a `CallBudget` — the
+                 seam's entire point is that a call site cannot be handed a bare number, and I
+                 tested it as though it could.
+               · I nearly recorded the injection scan BEFORE delegating in the partial
+                 re-translate. The inner record is unconditional and would have overwritten
+                 it — the fix would have been present, ordered wrong, and green. The test
+                 asserts the ORDER for that reason.
+               · The CRLF anchor bit again (third time this run), and the heredoc
+                 double-escape (fourth). Both now cost a turn each, every time.
+
+  NEXT       — the three open DoD limbs above are REAL work, not bookkeeping: a truncation
+               axis on the budget gate (69 of 97 sites uncovered), S3's locator union, and a
+               static gate for the judge rule. None is blocked; each is a slice.
 ```
 
 ## Parked

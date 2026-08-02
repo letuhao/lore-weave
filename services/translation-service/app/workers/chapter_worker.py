@@ -742,6 +742,18 @@ async def _partial_retranslate_blocks(
         chapter_translation_id=chapter_translation_id, llm_client=llm_client,
         context_window=context_window,
     )
+    # The translator just recorded an injection scan over the DIRTY slice, because that is all
+    # it was given. The version this produces is the seed with those blocks overlaid, so its
+    # source is the WHOLE chapter — and a chapter whose directive sits in an untouched block
+    # would have been stamped `0`, i.e. "screened, clean", by a pass that never looked at it.
+    # Re-scan the full source and overwrite. After the call, not before: the inner record is
+    # unconditional and would otherwise win.
+    from .injection_report import record_source_injection
+    from .block_classifier import extract_translatable_text
+    await record_source_injection(
+        pool, chapter_translation_id,
+        "\n".join(extract_translatable_text(b) for b in blocks),
+    )
 
     # Overlay: copy the seed body, replace each dirty position with its freshly
     # translated block. translate_chapter_blocks returns result_blocks aligned 1:1
