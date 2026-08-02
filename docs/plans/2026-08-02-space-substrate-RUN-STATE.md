@@ -1276,3 +1276,64 @@ features must legitimately modify.** So: a capability **per operation kind**, no
 Not settled, each now an open row: the numbers (`SDF-Q12`) · whether a **dematerialised** subtree is
 charged (`SDF-Q13`) · **Limbo's budget is unowned by construction** since a Domain outlives its dead
 holder (`SDF-Q14` — a slow leak with a name).
+
+
+---
+
+## 19 · The growth cluster, analysed — five closed, one scoped, and the scoped one is the finding
+
+PO: *these questions are not mine to settle; dig into them and analyse.* Correct — they are engineering
+questions with researchable answers. **Six open rows turned out to be one question wearing six hats:
+what bounds the world's growth?**
+
+### The move that unlocked it — there are THREE budgets, not one
+
+`SDF-Q13` looked contradictory because the research said both things. It said both things because
+**"budget" meant three different costs**:
+
+| budget | denominated in | cost class | charged when |
+|---|---|---|---|
+| **node budget** | nodes | **storage** — a row exists | **always** |
+| **live set** | nodes | **CPU** — it ticks | only materialised |
+| **object budget** | entities in a `Domain` | **render + sim** | only materialised |
+
+⇒ `SDF-A18`. `R-65`'s evidence (UO's *"a locked-down container counts as one lockdown"*, EQ2's Moving
+Crate) is about the **object** budget. **Dematerialising frees CPU, not storage** — a row does not stop
+existing because nobody is looking at it. **This resolved `Q13` in the OPPOSITE direction to my earlier
+lean.**
+
+### The four other closures
+
+- **`Q3` → `SDF-A19`: scale-bound `Domain → World`, do not quota it.** The containment matrix says *which*
+  kinds nest; a **scale matrix** says *at what scale*. Bounded to `Pocket`: **16× cheaper**, genre-correct
+  (洞天福地 — a grotto-heaven *is* a pocket realm), and it fails at **design** time rather than mid-breakthrough.
+- **`Q14` → `SDF-A20`: Limbo is not a parent, it is a QUEUE WITH A DEADLINE.** A parent is unbounded; a
+  deadline is not. EVE Asset Safety is the shipped model (5 d @ 0.5 %, 20 d @ 15 %, abandonment forfeits).
+  It gives the deletion *a deadline, a price and a policy* rather than removing it.
+- **`Q4` → `SDF-A21`: bound + refuse + COMPACT.** Refusing alone is worse UX than NMS's silent prune,
+  because the player eventually cannot edit at all. Snapshot-compaction folds divergence into a new
+  baseline `H'` so the bound is on **un-compacted** delta. **Not in doc 37 — `compact`/`truncate`/`fold`
+  return zero hits. A gap in a doc committed two commits ago.**
+- **`Q2` → `SDF-A22`: TWO numbers**, placement + render, with a published deterministic culling order.
+  FFXIV is the only shipped game publishing both, and its real bottleneck was **rehydration** — which our
+  lazily-materialised tree dodges by construction.
+
+### `SDF-F8` — the one that does NOT close, and why that is the result
+
+Node budget is **storage**, so it is denominated in bytes. At the computed 96 B/node, 1 M nodes ≈ 91.5 MiB.
+Take 1 M per reality, reserve half for authored content, 1 000 active players ⇒ **500 nodes per player**.
+
+> **A `Pocket` inner world is 1 024 cells — DOUBLE that.** So `SDF-A19`'s 16× improvement is **still
+> insufficient if inner worlds are common.**
+
+It closes only if **神境 is rare** — and *"how many players reach the realm that grants an interior"* is a
+**`PROG_001` parameter that neither doc names.**
+
+> **The spatial budget's viability depends on a progression decision, and a rebalance could multiply the
+> map tier's storage by an order of magnitude with nobody noticing the coupling.**
+
+⇒ `SDF-Q12` **cannot be closed by the space tier alone.** That is not a deferral for lack of effort — it
+is the correct answer, and **it took doing the arithmetic to find it.** What would close it: a *measured*
+node-row size including layer sidecars (this used a computed 96 B), plus a `PROG_001` statement of
+expected realm distribution. The provisional numbers are stated **with their derivation** so they are
+falsifiable rather than authoritative.

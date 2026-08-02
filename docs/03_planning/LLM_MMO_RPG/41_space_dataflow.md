@@ -370,19 +370,19 @@ Nothing below exists. This is the deliverable, not the prose around it.
 | # | question |
 |---|---|
 | `SDF-Q1` | **What is the simulation grouping, and is it coarser than the structural nesting?** `R-48`: Barotrauma's devs document that over-fragmenting into many small linked hulls makes the fluid layer *numerically unstable* and propose collapsing them into one computational entity. A palace as a Domain-of-Domains with an atmosphere layer **is** that graph. Refusing rigid-body physics does not exempt us from designing the equalisation. |
-| `SDF-Q2` | **What is the per-Domain object budget, and is it split placement-vs-render?** `R-54`: FFXIV is the only shipped game that publishes both (600 placed / 400 drawn) and its real bottleneck was **rehydration**, not steady state. `R-65`: an unmaterialised child Domain must not consume its parent's budget. Neither is decided here. |
-| `SDF-Q3` | **`Domain → World` (內天地) has NO PRIOR ART.** Two agents searched; the nearest analogue's implementation could not be obtained. *"You are designing this without precedent."* Depth- and cycle-checking on write is the minimum; the semantics are unsettled. |
+| ~~`SDF-Q2`~~ | ~~per-Domain object budget~~ **✅ RESOLVED §11.5 — `SDF-A22`**: TWO numbers, placement + render, with a published deterministic culling order. FFXIV is the only shipped answer that publishes both, and its real bottleneck was **rehydration**, which our lazy tree dodges by construction. ~~ `R-54`: FFXIV is the only shipped game that publishes both (600 placed / 400 drawn) and its real bottleneck was **rehydration**, not steady state. `R-65`: an unmaterialised child Domain must not consume its parent's budget. Neither is decided here. |
+| ~~`SDF-Q3`~~ | ~~`Domain → World` has no prior art~~ **✅ RESOLVED §11.2 — `SDF-A19`**: SCALE-bound it, do not quota it. The matrix says which kinds nest; a **scale matrix** says at what scale. `Domain → World` is bounded to `Pocket` — 16× cheaper, genre-correct (洞天福地 *is* a pocket realm), and it fails at DESIGN time not runtime. ~~ Two agents searched; the nearest analogue's implementation could not be obtained. *"You are designing this without precedent."* Depth- and cycle-checking on write is the minimum; the semantics are unsettled. |
 | `SDF-Q5` | **Which of `TDIL_001`'s four clocks does a decaying layer use?** (`SDF-F1`) |
 | `SDF-Q6` | **Border/adjacency has no index and no phase** — the shape every territory feature asks for. (`SDF-F2`) |
 | ~~`SDF-Q7`~~ | ~~Who may write TOPOLOGY?~~ **✅ RESOLVED §10** — a `TopologyCapability` per `(module, op)`, enforced as `topology.foreign_write`; invariants checked centrally; ops atomic and invertible; **plus a node budget**, because working it found `SDF-F7` underneath |
-| `SDF-Q12` | **What are the budget numbers?** `cap` per principal is a product decision informed by a measurement that does not exist. (§10.7) |
-| `SDF-Q13` | **Is a DEMATERIALISED subtree charged?** `R-65` says an unmaterialised child should not consume its parent's *object* budget; whether that holds for the *node* budget is the difference between *"you may own ten worlds if you visit them rarely"* and *"you may own ten worlds."* (§10.7) |
-| `SDF-Q14` | **Limbo's budget is unowned by construction** — `R-52` says a Domain outlives its dead holder and reparents to Limbo, so its charge has no principal. A slow leak with a name. (§10.7) |
+| `SDF-Q12` ⚠ **SCOPED, NOT CLOSED — §11.6 / `SDF-F8`** | The arithmetic does **not** close: a `Pocket` inner world (1 024) is DOUBLE a provisional 500-node-per-player allowance, so `SDF-A19`'s 16× is still insufficient **if inner worlds are common**. It closes only if 神境 is rare — **which is a `PROG_001` parameter neither doc names.** The spatial budget's viability depends on a progression decision, and a rebalance could multiply the map tier's storage with nobody noticing the coupling. Originally: **what are the budget numbers?** `cap` per principal is a product decision informed by a measurement that does not exist. (§10.7) |
+| ~~`SDF-Q13`~~ | ~~is a dematerialised subtree charged~~ **✅ RESOLVED §11.1 — `SDF-A18`**: YES, and the research only looked contradictory because *budget* meant three costs. The node budget is **storage** (charged always); the live set and object budget are **CPU/render** (charged while materialised). Containment compresses the latter two, never the first. ~~ `R-65` says an unmaterialised child should not consume its parent's *object* budget; whether that holds for the *node* budget is the difference between *"you may own ten worlds if you visit them rarely"* and *"you may own ten worlds."* (§10.7) |
+| ~~`SDF-Q14`~~ | ~~Limbo's budget is unowned~~ **✅ RESOLVED §11.3 — `SDF-A20`**: Limbo is **not a parent, it is a QUEUE WITH A DEADLINE**, and the charge stays with the estate until resolved. EVE Asset Safety is the shipped model. ~~ — `R-52` says a Domain outlives its dead holder and reparents to Limbo, so its charge has no principal. A slow leak with a name. (§10.7) |
 | `SDF-Q8` | **History-derived layers** — traffic, schedules, contestedness. A layer class, or projections outside the layer system? I lean outside. (`SDF-F4`) |
 | `SDF-Q9` | **The space-side READ contract** — bounded, ordered, deterministic *"what is here"* for prompt assembly. §3 governs writes only. (`SDF-F5`) |
 | `SDF-Q10` | **Volume-keyed layers** (formations, auras, weather fronts) — `R-9`'s `Region` shape was dropped from §4. (`SDF-F6`) |
 | `SDF-Q11` | **Which of `T1..T9` are reality-scoped?** Doc 37 says the node tree is per-reality and the baseline is shared by digest; §5 says neither. No multi-reality measurement exists for space. (§9.4) |
-| `SDF-Q4` | **Does the delta store have a bound, and what happens at the bound?** `R-61`: No Man's Sky caps at 15 000 edits / 256 buffers and past it **the base regenerates UNDER player-authored content** — and visiting another player's base consumes *your* buffers. Our divergence log is currently unbounded. |
+| ~~`SDF-Q4`~~ | ~~delta store bound~~ **✅ RESOLVED §11.4 — `SDF-A21`**: bound + refuse + **COMPACT**. Refusing alone is worse than NMS; snapshot-compaction folds divergence into a new baseline `H'` so the bound is on *un-compacted* delta. **Not in doc 37 — a gap in a committed doc.** ~~ `R-61`: No Man's Sky caps at 15 000 edits / 256 buffers and past it **the base regenerates UNDER player-authored content** — and visiting another player's base consumes *your* buffers. Our divergence log is currently unbounded. |
 
 **Non-vacuity obligations, stated in advance** (three agents proposed these against their own
 recommendations):
@@ -698,3 +698,150 @@ Four rules, each earning its place:
 - **Reclamation.** A destroyed node returns its charge; a node whose *principal* is destroyed (a dead
   player) does not, because `R-52` says the Domain outlives its holder and reparents to Limbo. **Limbo's
   budget is unowned by construction**, which is a slow leak with a name. `SDF-Q14`.
+
+---
+
+## 11 — The growth question, analysed (`SDF-Q2`·`Q3`·`Q4`·`Q13`·`Q14` resolved; `Q12` scoped)
+
+> The PO cannot adjudicate these and should not have to — they are engineering questions with
+> researchable answers. Six open rows turn out to be **one question wearing six hats**: *what bounds the
+> world's growth?* Analysing them together resolves five. The sixth does not close, and **why it does not
+> close is the most useful thing in this section.**
+
+### 11.1 — The move that unlocks the cluster: there are THREE budgets, not one
+
+`SDF-Q13` (*is a dematerialised subtree charged?*) looked contradictory because the research said both
+things. It said both things because **"budget" was being used for three different costs**:
+
+| budget | denominated in | cost class | charged when | prior art |
+|---|---|---|---|---|
+| **Node budget** (`SDF-A17`) | nodes | **storage** — a row exists | **always**, materialised or not | SE `PCU` |
+| **Live set** (`SDF-A1`) | nodes | **CPU** — it ticks | only while **materialised** | measured, §2 |
+| **Object budget** (`SDF-Q2`) | entities inside a `Domain` | **render + sim** | only while **materialised** | FFXIV, UO, EQ2 |
+
+**`SDF-Q13` resolves immediately and in the opposite direction to my earlier lean.** `R-65`'s evidence —
+UO's *"a locked-down container counts as one lockdown"*, EQ2's separately-budgeted Moving Crate — is about
+the **object** budget. **Dematerialising frees CPU, not storage. A row does not stop existing because
+nobody is looking at it.**
+
+> **`SDF-A18` — the node budget is a STORAGE budget and is charged for the lifetime of the node,
+> materialised or not. The live set and the object budget are CPU/render budgets and are charged only
+> while materialised. Containment compresses the latter two and never the first.**
+
+That one distinction is what made the research look self-contradictory, and it is why `Q13` was open.
+
+### 11.2 — `SDF-Q3`: scale-bound the edge. Do not forbid it, and do not merely quota it
+
+`Domain → World` has no prior art (two agents searched). The instinct is a quota. **A quota is the wrong
+instrument** — it is arbitrary, it is a runtime failure rather than a design statement, and it tells an
+author nothing about what they may build.
+
+The right instrument is already in the repo and unused for this: **`WorldScale` is a closed set with a
+declared band** — `Pocket 1024 · Region 2025 · Continent 8281 · SuperContinent 12321 · Megaplanet 16384`,
+band `[1024, 16384]`.
+
+> **`SDF-A19` — the containment matrix says WHICH kinds may nest; a SCALE matrix says AT WHAT SCALE.**
+> `ScaleBound(parent_kind, child_kind) → max WorldScale`, validated on write beside the containment check.
+> **`Domain → World` is bounded to `Pocket`.**
+
+Three reasons this is better than a quota:
+
+1. **It is 16× cheaper by construction.** 500 cultivators × 1 024 = **512 000** nodes, against 8 192 000
+   for the unbounded case.
+2. **It is genre-correct rather than arbitrary.** An inner world in cultivation fiction *is* a pocket
+   realm — 洞天福地 (*a grotto-heaven, a blessed land*: a small, self-contained world). A 神境 cultivator
+   holding a **pocket realm** rather than a full planet is more faithful to the source, not less.
+3. **It fails at DESIGN time, not at runtime.** An author declaring a `Megaplanet` inside a `Domain` is
+   refused when the manifest is validated, with a reason. A quota refuses a player mid-breakthrough.
+
+### 11.3 — `SDF-Q14`: Limbo is not a parent. It is a queue with a deadline
+
+`R-52` says a `Domain` outlives its dead holder and reparents to a Limbo node — which leaves its node
+charge with no principal. **A parent is unbounded; a queue with a deadline is bounded.** That is the whole
+resolution.
+
+EVE's Asset Safety is the shipped model and it is precise: contents are **evacuated, never deleted** —
+5 days at **0.5 %** of value, 20 days at **15 %**, and a structure *abandoned* (unfuelled 7 days) loses
+asset safety entirely, its contents going to a **50/50 drop-or-destroy** roll.
+
+> **`SDF-A20` — a Limbo entry carries a RESOLUTION DEADLINE, and its node charge stays with the ESTATE
+> until resolved.** At the deadline the ruleset's policy runs — delivered to an heir, collapsed to a
+> summary, or released — and the charge is freed. **Limbo with a deadline is bounded; Limbo as a parent is
+> a leak with a name.**
+
+Note what this does *not* do: it does not delete a player's palace because they died. It gives the
+deletion a **deadline, a price and a policy**, which is exactly the shape `CLAUDE.md`'s destructive-ops
+rule asks for.
+
+### 11.4 — `SDF-Q4`: bound + refuse + **COMPACT**, and compaction is missing from doc 37
+
+`SDF-A17` rule 4 already says overflow is a **refused write, never a silent prune** — `R-61`'s No Man's
+Sky counter-example (buffers overwritten, bases buried or airborne) settles that.
+
+**But refusing alone is a worse experience than NMS's**, because a player eventually cannot edit their own
+world at all. The missing piece:
+
+> **`SDF-A21` — snapshot-compaction. Periodically fold a node's divergence into a NEW content-addressed
+> baseline `H'` and reset its log.** The bound is then on **un-compacted delta**, not on lifetime edits,
+> so a player may edit forever while any single log stays short.
+
+**This is not in doc 37** — `compact`, `truncate` and `fold baseline` return **zero hits**. It is a gap in
+a doc committed two commits ago, and it is the mechanism that makes `WDS-A1`'s baseline+divergence model
+survive contact with a persistent world.
+
+The determinism cost, stated because it is not free: **after compaction, replay from `t=0` needs either
+the ORIGINAL baseline plus the full log, or `H'` plus the tail.** So the old baseline must be retained
+while any replay target predates the compaction — which is `WDS-A6`'s *"a generator version may not be
+removed while a reality pins it"*, arriving a second time for a second reason.
+
+### 11.5 — `SDF-Q2`: adopt FFXIV's split, because it is the only shipped answer that publishes both numbers
+
+**600 placed / 400 drawn**, with a **published, deterministic culling order** (different floor → small →
+distant).
+
+> **`SDF-A22` — the per-`Domain` object budget is TWO numbers: a placement cap (storage/persistence) and a
+> render cap (client), with a deterministic, published culling order between them.**
+
+And the reason the split exists is the part worth carrying: Yoshida's binding constraint was
+**rehydration**, not steady state — at 1.5× the cap a server restart could *triple maintenance duration*,
+and servers crashed in testing. **Our recursive + lazily-materialised design dodges that specific
+bottleneck by construction**, because it never rehydrates the whole tree at once. That is `SPG-A12`
+earning its place for a reason nobody had written down.
+
+### 11.6 — `SDF-Q12`: the numbers do NOT close, and that is the finding
+
+The node budget is a **storage** budget (`SDF-A18`), so it is denominated in bytes. Using the Universe
+agent's computed node size (**96 B**, `SpaceNode` as declared, before layer sidecars):
+
+| nodes | node rows alone |
+|---:|---:|
+| 1 000 000 | ~91.5 MiB |
+| 10 000 000 | ~916 MiB |
+
+Take **1 M nodes per reality** as a sane footprint (~100 MB of node rows) and reserve half for authored
+content. With **1 000 active players**, that leaves **500 nodes per player**.
+
+> **An inner world bounded to `Pocket` is 1 024 cells. That is DOUBLE the per-player allowance.**
+
+So `SDF-A19`'s scale bound — a 16× improvement — **is still not sufficient if inner worlds are common.**
+The arithmetic closes only under one of three conditions:
+
+| condition | who owns it |
+|---|---|
+| 神境 is **rare** (say ≤5 % of players) | **`PROG_001`** — a progression parameter |
+| inner worlds get a scale **below `Pocket`** | `GEO_001` — would need a new band member |
+| the per-reality cap is much larger | infrastructure |
+
+**`SDF-F8` — the spatial budget's viability depends on a PROGRESSION parameter that neither doc names.**
+How many players reach the realm that grants an interior is a `PROG_001` decision, and it silently sets
+the space tier's storage footprint. Genre suggests 神境 is rare, which would make the design fine — but
+*"genre suggests"* is not a bound, and a progression rebalance could quietly multiply the map tier's
+storage by an order of magnitude with nobody noticing the coupling.
+
+> ⇒ **The dependency must be declared in both directions**, and `SDF-Q12` cannot be closed by the space
+> tier alone. That is not a deferral for lack of effort — it is the correct answer, and it took the
+> arithmetic to find it.
+
+**What would close it:** a measured node-row size including layer sidecars (this used a *computed* 96 B),
+plus a `PROG_001` statement of expected realm distribution. Neither exists. The provisional numbers above
+are stated **with their derivation** so they are falsifiable rather than authoritative.
