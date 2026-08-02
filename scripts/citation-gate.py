@@ -50,6 +50,14 @@ That residual is not a reason to skip the gate; it is a reason not to call a gre
 run an audit. The remaining half is a reader's job, and the hand audit that found
 those two remains the only thing that does it.
 
+WHAT STILL WALKS PAST IT, NAMED RATHER THAN IMPLIED
+---------------------------------------------------
+`SOURCE_EXT` is an enumerated list, so an extension nobody added is unchecked —
+the same NV-3 shape this file enforces elsewhere, kept because the alternative
+(any dotted token) reds on version strings and package names. HTML anchors
+(`<a href="x.md">`) and nested brackets in link text are not matched. **A green
+run is not an audit**, and neither is the sibling limit below.
+
 A bare filename with NO line number is deliberately NOT checked: those are prose
 mentions, and one of them in this very corpus is a *deliberate* reference to a
 DELETED file (`2026-08-02-handoffs-to-features.md`, whose deletion is the point
@@ -129,7 +137,10 @@ DOC_ROOT = "docs"
 # matched as `App.test.ts`, was reported missing, AND lost its line number. Same
 # for `js` before `json`. A review found both branches dead and both producing
 # commit-blocking false positives on files that demonstrably exist.
-SOURCE_EXT = r"(?:rs|py|go|tsx|ts|jsonl|json|js|md|ya?ml|toml|sql|sh|html|txt|lock)"
+SOURCE_EXT = (
+    r"(?:rs|py|go|tsx|ts|jsonl|json|jsx|mjs|cjs|js|md|ya?ml|toml|sql|sh|ps1"
+    r"|html|css|txt|lock|ini|tf|proto|c|h)"
+)
 
 # `path/to/file.ext` or `file.ext`, optionally `:N` or `:N-M`.
 CITATION_RE = re.compile(
@@ -165,6 +176,12 @@ LINK_RE = re.compile(
 # `github.com/o/r/blob/main/docs/X.md` are paths on SOMEONE ELSE'S filesystem —
 # reporting them as missing repo files is the gate crying wolf on a correct link.
 URL_RE = re.compile(r"https?://\S+|(?<![\w.])github\.com/\S+")
+
+# A reference-style link DEFINITION: `[ref]: some/path.md`. `LINK_RE` only sees
+# the inline form, so `see [the doc][ref]` plus `[ref]: nowhere.md` was invisible
+# — and the definition line is a bare filename with no line number, which the
+# prose guard drops. Checked as a link target, which is what it is.
+LINK_DEF_RE = re.compile(r"^\s*\[[^\]]+\]:\s*<?(?!https?:|#|mailto:)(?P<target>[^\s>]+)>?")
 
 PRAGMA = "citation-gate: ok"
 PRAGMA_LOOKBACK = 3
@@ -279,6 +296,18 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
                 # A prose mention of a filename. See the module doc.
                 continue
 
+            # Junk immediately after the line number. `types.rs:99+1` read as
+            # line 99 and `…:1e9` as line 1 — a typo silently became a valid
+            # citation, the same class `C2-bad-range` exists for. A trailing `.`
+            # or `-` is ordinary prose punctuation and is allowed.
+            tail = scan_line[m.end():m.end() + 1]
+            if start is not None and tail and (tail.isalnum() or tail in "_+"):
+                out.append(
+                    Finding("C2-bad-range", rel, n,
+                            f"`{m.group(0)}{tail}` has junk after its line number")
+                )
+                continue
+
             matches = tree.resolve(cited)
             # A doc-relative target is legitimate and common: `analysis/foo.md`
             # inside `docs/specs/x/` means `docs/specs/x/analysis/foo.md`.
@@ -332,6 +361,15 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
                         f"`{m.group(0)}` cites line {max(lo, hi)} of `{target}`, which has {have}",
                     )
                 )
+
+        for m in LINK_DEF_RE.finditer(line):
+            target = unquote(m.group("target").split("#", 1)[0])
+            if target:
+                joined = Tree.normalise(f"{doc_dir}/{target}" if doc_dir else target)
+                if not (REPO / joined).exists():
+                    out.append(
+                        Finding("C4-link", rel, n, f"reference definition `{target}` does not resolve")
+                    )
 
         for m in LINK_RE.finditer(line):
             target = unquote(m.group("target").split("#", 1)[0])
@@ -479,7 +517,7 @@ def main() -> int:
 def self_test() -> int:
     """Every rule against input that violates it AND input that must not trip it."""
     tree = Tree(["crates/sim-core/src/types.rs", "docs/a/b.md", "docs/a/b.json",
-                 "docs/a/c.tsx", ".github/w/gates.yml", "crates/x/resolve.rs",
+                 "docs/a/c.tsx", "docs/a/d.jsx", ".github/w/gates.yml", "crates/x/resolve.rs",
                  "crates/y/resolve.rs", "scripts/only_here.py",
                  # A REAL, uniquely-named file: the C2 cases need a line count,
                  # and `line_count` reads the filesystem rather than this list.
@@ -516,6 +554,14 @@ def self_test() -> int:
         ("a Windows-style path is a path, not a bare name", "see crates\\made\\up\\resolve.rs:1", 1),
         # F13
         ("a separator in a line number is refused", "see docs/a/b.md:9_99999", 1),
+        # F9b — trailing junk silently truncated the line number.
+        ("junk after a line number is refused", "see docs/a/b.md:99+1", 1),
+        ("an exponent after a line number is refused", "see docs/a/b.md:1e9", 1),
+        # F9a — the jsx branch was dead behind js, exactly as tsx was behind ts.
+        ("a .jsx citation is not truncated to .js", "see docs/a/d.jsx", 0),
+        # F9c — reference-style links were wholly uncovered.
+        ("a dead reference-style link definition is caught", "[ref]: nowhere.md", 1),
+        ("a live reference-style link definition is fine", "[ref]: ../../scripts/citation-gate.py", 0),
         # F15
         ("a `..` segment is normalised", "see docs/x/../a/b.md", 0),
         # F8

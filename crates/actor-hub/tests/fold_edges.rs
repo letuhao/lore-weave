@@ -316,3 +316,64 @@ fn a_derivations_own_clamps_are_reported() {
     let out = fold(a, &s, &r, &[], &[unbounded]);
     assert!(out.capped.iter().any(|c| c.site == CapSite::DerivedAmount));
 }
+
+/// **The negative direction of the accumulator saturation**, and the field the
+/// record carries — both of which the positive-only test could not see.
+///
+/// A review measured the hole: `emitted` was hardcoded to `i32::MAX` on the
+/// accumulator record, so a downward overflow produced **two CAPPED events for
+/// one quantity whose `emitted` fields contradicted each other** — and the one
+/// that lied was the one substrate §7 exists to make non-silent. Mutating either
+/// field of that record left the whole suite green.
+#[test]
+fn a_downward_saturation_reports_the_value_it_actually_emitted() {
+    let (r, a, mut s) = fixture();
+    s[0] = i32::MIN;
+    let rows = [
+        m(0, ModifierOp::Flat(i32::MIN), 10),
+        m(0, ModifierOp::Flat(i32::MIN), 10),
+        m(0, ModifierOp::Percent(i32::MAX), 20),
+    ];
+    let out = fold(a, &s, &r, &rows, &[]);
+    let value = out.value(q(0)).unwrap();
+    assert_eq!(value, i32::MIN, "an enormous negative value saturates at the BOTTOM of the slot");
+
+    let acc = out
+        .capped
+        .iter()
+        .find(|c| c.site == CapSite::Accumulator)
+        .expect("the i64 accumulator saturated and said nothing");
+    assert_eq!(
+        acc.emitted, value,
+        "the record must carry the value the fold actually emitted, not a hardcoded i32::MAX"
+    );
+    assert!(acc.wanted < 0, "and `wanted` must carry the sign of what was asked for");
+
+    // Every record for this quantity agrees about what was emitted. Two CAPPED
+    // events that contradict each other are worse than one, because a reader
+    // cannot tell which to believe.
+    for c in out.capped.iter().filter(|c| c.quantity == q(0)) {
+        assert_eq!(c.emitted, value, "cap records for one quantity disagree: {c:?}");
+    }
+}
+
+/// The same agreement in the positive direction, so the assertion above is not
+/// silently sign-specific.
+#[test]
+fn every_cap_record_for_one_quantity_agrees_on_what_was_emitted() {
+    let (r, a, mut s) = fixture();
+    s[0] = i32::MAX;
+    let rows = [
+        m(0, ModifierOp::Flat(i32::MAX), 10),
+        m(0, ModifierOp::Flat(i32::MAX), 10),
+        m(0, ModifierOp::Percent(i32::MAX), 20),
+    ];
+    let out = fold(a, &s, &r, &rows, &[]);
+    let value = out.value(q(0)).unwrap();
+    assert_eq!(value, i32::MAX);
+    assert!(out.capped.iter().any(|c| c.site == CapSite::Accumulator));
+    for c in out.capped.iter().filter(|c| c.quantity == q(0)) {
+        assert_eq!(c.emitted, value);
+        assert!(c.wanted > 0);
+    }
+}

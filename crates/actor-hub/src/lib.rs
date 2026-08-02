@@ -54,11 +54,19 @@
 //! features, and combat is a feature; a dependency in that direction becomes a
 //! cycle the day combat is rewritten as a plugin.
 
+// `fold` and `report` are PUBLIC modules, not private ones with re-exports.
+//
+// Their module docs ARE part of the contract a plugin author reads — the fold
+// formula, the three-pass limit, the totality argument, the `S-18` correction,
+// and substrate §7's two verbs. As private modules none of that reached
+// `cargo doc`, and three `[crate::fold]` links resolved to the 3-line *function*
+// instead. `D-311` argues the hub's SDK IS its public crate surface; a page a
+// plugin author cannot open is not on it.
 mod actor;
-mod fold;
+pub mod fold;
 mod ordinal;
 mod plugin_set;
-mod report;
+pub mod report;
 mod registry;
 mod rows;
 

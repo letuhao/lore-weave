@@ -36,8 +36,7 @@ sim-core = { path = "../sim-core" }
 # and sqlx with it. `dp_kernel::entity_status::GoneState` names the same type.
 entity-existence = { path = "../entity-existence" }
 
-[dev-dependencies]
-# The acceptance test (hub §6) builds a plugin from OUTSIDE the crate, exactly
-# as a feature written next year would — so it needs the declared quantity
-# table the same way a real reality does.
-ruleset-core = { path = "../ruleset-core" }
+# NO [dev-dependencies]. `ruleset-core` was listed there as well as above, with a
+# four-line justification, and the entry was inert: a runtime dependency is
+# already in scope for integration tests. Two declarations of one fact, and the
+# second one drifts.

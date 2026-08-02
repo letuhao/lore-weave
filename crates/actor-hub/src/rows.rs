@@ -1,9 +1,19 @@
 //! The contribution seam — **the whole plugin contract** (hub §4).
 //!
 //! ```text
-//! ModifierRow    { target: QuantityOrdinal, op, value, source, fold_layer }
-//! DerivationRow  { target: QuantityOrdinal, source: QuantityOrdinal, op, factor_milli, bound }
+//! ModifierRow    { target: QuantityOrdinal, op, source: PluginOrdinal, fold_layer }
+//! DerivationRow  { target: QuantityOrdinal, source_quantity: QuantityOrdinal, op,
+//!                  factor_milli, divisor, bound, source: PluginOrdinal, fold_layer }
 //! ```
+//!
+//! **This block is the amended §4** (contract, 2026-08-02). An earlier version of
+//! this file carried the pre-amendment text verbatim — a `value` field that does
+//! not exist, and `source` typed as a `QuantityOrdinal` when it is a
+//! `PluginOrdinal`. The amendment's own stated reason was that *"a reader
+//! following the only specification would otherwise read `source` as a quantity
+//! and be handed a plugin"*, which is precisely what this file, headed **"the
+//! whole plugin contract"**, was doing. **A correction sweeps a CONCEPT, not the
+//! location the finding pointed at.**
 //!
 //! | rule | why |
 //! |---|---|
@@ -112,7 +122,7 @@ pub struct ContributionBound {
 pub struct DerivationRow {
     pub target: QuantityOrdinal,
     /// The quantity this derivation READS. It reads the value resolved from
-    /// modifier rows — see [`crate::fold`] for the stated, single-pass limit.
+    /// modifier rows — see [`mod@crate::fold`] for the stated, single-pass limit.
     pub source_quantity: QuantityOrdinal,
     /// Which channel the computed amount lands in.
     pub op: OpKind,
@@ -143,6 +153,17 @@ impl DerivationRow {
     /// This is what a [`crate::Capped`] record needs in order to say what the
     /// author actually asked for: once the value has been squeezed into an `i32`
     /// the number is gone, and a report built from the result understates it.
+    ///
+    /// **The `saturating_mul` below CANNOT fire, and that is disclosed rather
+    /// than dressed up as a guard.** Both operands are `i32` widened into an
+    /// `i64`, so the product is at most `2^62`; `checked_mul` returns `Some` for
+    /// every `i32 × i32`, and replacing it with a plain `*` leaves the whole
+    /// suite green. It is **stronger** than the two `saturating_add`s in
+    /// [`mod@crate::fold`] — those need ~2^32 rows, this one is structurally
+    /// impossible — and those got a paragraph, so this one does too. What is a
+    /// real guard here is the `divisor == 0` branch, which submission also
+    /// refuses, and the `i32` squeeze in [`Self::amount_reported`], which fires
+    /// on ordinary input and is tested.
     pub fn raw_amount(&self, source_value: i32) -> i64 {
         if self.divisor == 0 {
             0
@@ -158,11 +179,19 @@ impl DerivationRow {
     /// the author's own [`ContributionBound`] — bit silently. They are separate
     /// sites because they mean different things: one is the representation
     /// failing, the other is the author's declaration working. Only the first is
-    /// a defect, and both are facts in the log rather than numbers nobody can
+    /// a defect; each is a fact in the log rather than a number nobody can
     /// explain.
     ///
-    /// When both bite, the **bound** is reported: it is the one that decided the
-    /// value the fold actually used.
+    /// **When both bite, only the bound is reported**, and the earlier claim that
+    /// *"both are facts in the log"* was false in exactly that case — a review
+    /// measured it with `factor_milli = 1_000_000, divisor = 1, source = i32::MAX,
+    /// bound = {0, 5}`: one record, `site = DerivedBound`.
+    ///
+    /// The precedence is kept, because the bound is what decided the value the
+    /// fold used (`b.max <= i32::MAX` always, so the squeeze can never be the
+    /// binding constraint) and `wanted` still carries the unclamped truth. What
+    /// changed is the sentence: **one site is reported, and it is the one that
+    /// decided the number.**
     pub fn amount_reported(&self, source_value: i32) -> (ModifierOp, Option<crate::CapSite>) {
         let raw = self.raw_amount(source_value);
         let clamped = raw.clamp(i32::MIN as i64, i32::MAX as i64) as i32;

@@ -45,8 +45,12 @@ SCOPE IS A DIRECTORY, NOT A FILE LIST
 -------------------------------------
 `docs/standards/non-vacuity.md` NV-3: an enumerated file list is
 **default-uncovered** — it says nothing about a file created tomorrow, which is
-exactly when a new `f64` field would arrive. So the scope is the crate's whole
-`src/` tree, recursively, and a new file is covered on its first line.
+exactly when a new `f64` field would arrive. So the scope is **each guarded
+crate's whole tree**, recursively, and a new file is covered on its first line.
+
+(That sentence used to say `src/`, and stayed saying it after the scope was
+widened — the correction landed in `GUARDED_TREES` and not in the paragraph
+describing it. Two statements of one fact, and the stale one sat below the fix.)
 
 WHAT IT LOOKS FOR
 -----------------
@@ -55,6 +59,32 @@ The `f32` / `f64` types, and the float-literal syntax that implies them
 first, because a gate that reds on its own documentation gets switched off. That
 is not a hypothetical: it is how `design-lint count` spent its entire first life,
 and this file's own module docstring names `f32` four times.
+
+DOC-TESTS ARE CODE, AND THEY ARE SCANNED
+----------------------------------------
+A rustdoc example inside a ``` fence compiles and runs under `cargo test`, so a
+`let x: f64 = 1.5;` in one is a float in this crate by every meaning that
+matters — and it is *the nearest example* the next author copies. Comments are
+blanked before the scan, which made every one of them invisible; fenced blocks
+inside doc comments are now extracted and scanned separately. Prose in a doc
+comment is still ignored, so a sentence mentioning `1.5` is not a finding.
+
+WHAT IT STILL CANNOT SEE, STATED RATHER THAN IMPLIED
+----------------------------------------------------
+A token scan has a floor, and pretending otherwise is worse than naming it:
+
+  * `include!("../../elsewhere.rs")` and `#[path = "../../elsewhere.rs"] mod x;`
+    pull a file OUTSIDE the guarded trees into a guarded crate. The gate reads
+    files, not the module graph.
+  * a float behind a type alias (`type Real = f64;` in another crate).
+  * `GUARDED_TREES` is itself an enumerated list, so a NEW crate that carries
+    hashed bytes is uncovered until someone adds it — the same NV-3 shape this
+    gate enforces for files. It `exit(2)`s when a guarded tree disappears; it
+    cannot notice one that should have been added.
+
+None of the three is reachable without resolving the module graph, which is
+`cargo`'s job. **They are residuals, not oversights, and a green run is not an
+audit.**
 
 TEST CODE IS IN SCOPE, AND THAT IS DELIBERATE
 ---------------------------------------------
@@ -153,6 +183,29 @@ def _pragma_covers(raw: list[str], kept_strings: list[str], idx: int) -> bool:
     )
 
 
+def _doc_fence_lines(raw_lines: list[str]) -> set[int]:
+    """Line indices inside a ``` fence within a doc comment.
+
+    A rustdoc example is compiled and run by `cargo test`. Comments are blanked
+    before the main scan, so without this every doc-test float was invisible —
+    including in a crate whose gate docstring says test code is deliberately in
+    scope. Only FENCED lines are returned: prose in a doc comment that happens to
+    mention `1.5` is not code and is not a finding.
+    """
+    inside, out = False, set()
+    for i, line in enumerate(raw_lines):
+        stripped = line.strip()
+        if not (stripped.startswith('///') or stripped.startswith('//!')):
+            continue
+        body = stripped.lstrip('/').strip()
+        if body.startswith('```'):
+            inside = not inside
+            continue
+        if inside:
+            out.add(i)
+    return out
+
+
 def scan_source(path: str, src: str) -> list[Finding]:
     """Findings in one file's source text. Pure — the self-test calls it directly."""
     raw_lines = src.splitlines()
@@ -164,8 +217,11 @@ def scan_source(path: str, src: str) -> list[Finding]:
     # KEEPING strings gives a view in which a pragma written inside a string
     # literal is still visible — and that is exactly the one to refuse.
     in_strings = strip_comments(src, keep_strings=True).splitlines()
+    fenced = _doc_fence_lines(raw_lines)
     for i, line in enumerate(stripped):
-        matches = list(FLOAT_RE.finditer(line))
+        # A doc-test line is blank after comment-stripping, so scan the RAW line.
+        subject = raw_lines[i] if i in fenced else line
+        matches = list(FLOAT_RE.finditer(subject))
         if not matches:
             continue
         if _pragma_covers(raw_lines, in_strings, i):
@@ -277,6 +333,21 @@ def self_test() -> int:
         ("an identifier ending in a digit is not a float", "let x1e5 = 3;", 0),
         ("a hex literal is not a float", "let x = 0xf32;", 0),
         ("pragma on the same line", f"pub rate: f64, // {PRAGMA} — reason", 0),
+        (
+            "a float inside a rustdoc example is code",
+            "/// ```\n/// let x: f64 = 1.5;\n/// ```\npub fn f() {}",
+            2,
+        ),
+        (
+            "prose in a doc comment mentioning a number is NOT code",
+            "/// The rate is 1.5 per tick, and f64 is banned here.\npub fn f() {}",
+            0,
+        ),
+        (
+            "a fenced doc example with no float is clean",
+            "/// ```\n/// let x: i64 = 1;\n/// ```\npub fn f() {}",
+            0,
+        ),
         (
             "a pragma inside a STRING does not silence anything",
             f'let msg = "{PRAGMA} - not really";\npub rate: f64,',

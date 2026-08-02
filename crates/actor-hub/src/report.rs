@@ -102,7 +102,15 @@ pub struct Explanation {
     pub quantity: QuantityOrdinal,
     pub base: i32,
     /// Every applied contribution, **ordered by `(fold_layer, source plugin,
-    /// submission index)`**.
+    /// kind, submission index)`** — where *kind* puts every literal
+    /// [`crate::ModifierRow`] before every [`crate::DerivationRow`] at the same
+    /// layer and plugin.
+    ///
+    /// That last component is easy to miss and is load-bearing: a derivation
+    /// submitted at index 0 sorts **after** a modifier submitted at index 100.
+    /// It is the shipped order — `resolve_block` runs its modifier loop and
+    /// *then* derives — and `a_modifier_orders_before_a_derivation_at_the_same_layer_and_plugin`
+    /// is what pins it.
     ///
     /// The arithmetic does not depend on this order — both channels are sums,
     /// and a sum is commutative, which is exactly why the design chose summed

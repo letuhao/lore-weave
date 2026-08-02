@@ -138,7 +138,11 @@ fn resolve(base: i32, ch: Channels) -> Resolved {
     // because after it the true value is gone and any `wanted` derived from the
     // result understates it.
     let product = sum.saturating_mul(factor);
-    let saturated = sum != 0 && factor != 0 && product / factor != sum;
+    // `factor != 0` guards the division and is load-bearing. A `sum != 0`
+    // conjunct was also here and could never change the answer — when `sum` is
+    // zero so is `product`, and `0 / factor == 0 == sum`. Removed rather than
+    // left as decoration inside the very expression that fixed a vacuity finding.
+    let saturated = factor != 0 && product / factor != sum;
     Resolved { value: product / PERMILLE, factor_milli: factor, saturated }
 }
 
@@ -154,15 +158,20 @@ struct Resolved {
 
 /// Saturate the accumulator into the `i32` slot, reporting a CAP when it bites.
 fn emit(q: QuantityOrdinal, r: Resolved, capped: &mut Vec<Capped>) -> i32 {
-    if r.saturated {
-        capped.push(Capped {
-            quantity: q,
-            site: CapSite::Accumulator,
-            wanted: r.value,
-            emitted: i32::MAX,
-        });
-    }
+    // The emitted value is computed ONCE and both records carry it.
+    //
+    // The first version hardcoded `emitted: i32::MAX` on the accumulator record,
+    // which is a lie in the negative direction: a saturating multiply that
+    // overflows downward emits `i32::MIN`, so one fold produced two CAPPED
+    // events for one quantity whose `emitted` fields **contradicted each
+    // other** — and the one that lied was the one substrate §7 exists to make
+    // non-silent. Measured by a review: `stored = i32::MIN` with two
+    // `Flat(i32::MIN)` and one `Percent(i32::MAX)` gives `value = i32::MIN` and
+    // an accumulator record claiming `i32::MAX`.
     let out = r.value.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+    if r.saturated {
+        capped.push(Capped { quantity: q, site: CapSite::Accumulator, wanted: r.value, emitted: out });
+    }
     if out as i64 != r.value {
         capped.push(Capped { quantity: q, site: CapSite::Emit, wanted: r.value, emitted: out });
     }

@@ -90,7 +90,7 @@ impl PluginSet {
     ///
     /// **Correction, after a review measured it:** an earlier version of this doc
     /// justified the order by saying *"the fold walks contributions from attached
-    /// plugins"*. It does not — [`crate::fold`] iterates quantity ordinals and
+    /// plugins"*. It does not — [`mod@crate::fold`] iterates quantity ordinals and
     /// never calls this method. The order is a property worth having and worth
     /// stating (a bitmask has no insertion order to depend on, so a re-fold
     /// cannot depend on how the actor was assembled), but attributing it to a

@@ -77,7 +77,22 @@ value(q) = clamp( floor(q),
 | `max(0, 1000 + Σ pct)` | **load-bearing** — it was once absent, and two −60 % debuffs gave a factor of −0.2 and a negative stat |
 | arithmetic | **`i64` accumulator, exactly one division at emit** |
 | `base(q)` | **the declaring plugin's declared initial value** — hub §3.4b |
-| `floor(q)` · `ceiling(q)` | **UNWRITTEN.** The hub needs only that the clamp exists; **the ceiling MODEL belongs to whichever feature declares a bounded quantity** (`U-4`) |
+| `floor(q)` · `ceiling(q)` | **NOT CONSULTED by the hub** — see the correction below. The clamp the fold applies is the representation's `i32` emit, reported as `CAPPED`; **the ceiling MODEL belongs to whichever feature declares a bounded quantity** (`U-4`) |
+
+> **⚠ CORRECTED 2026-08-02, at the build.** This row said the ceiling model is **UNWRITTEN**, and that is
+> **false against the tree**. `ruleset-core` ships `ResourceDecl { quantity, min, base, ceiling: CeilingBinding, … }`
+> (`ruleset-core/src/resource/mod.rs:122-137`), held by `ResourceTable` over **the same ordinal space** this
+> fold addresses, carried by every `Ruleset`, and already validated — `ResourceError::BadBounds` refuses a
+> `base` outside `[min, ceiling]`.
+>
+> **The true statement is narrower: the hub does not CONSULT it.** `HubRegistry` takes the initial value
+> from the attaching plugin's own `QuantityDecl`, and the fold clamps with nothing but the `i32` emit — so a
+> reality can declare `ceiling: Fixed(1000)` and the fold will resolve 10 500 with no `CAPPED` record.
+>
+> That is a **deliberate refusal, not an oversight**: reconciling `QuantityDecl.initial` against
+> `ResourceDecl.base` decides *what a pool is*, which is the resource feature's question. The consequence is
+> registered as `S-18` rather than hidden. **"UNWRITTEN" is the easiest claim to make without measuring, and
+> this one was made about a type in the hub's own direct dependency.**
 
 **This is `resolve_block` generalised from a fixed slot table to ordinals** — the fold that has already been
 debugged, since the `max(0, …)` floor exists because it was once missing.

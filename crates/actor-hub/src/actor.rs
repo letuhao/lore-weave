@@ -229,14 +229,13 @@ impl Actor {
 /// `commit-service` — a **different** `Actor`, the shipped combat one. Both
 /// numbers are stated because the hub's 128-byte array is the whole reason the
 /// design chose one `i32` per ordinal over a richer per-quantity struct.
-const ACTOR_SIZE: () = assert!(
+const _: () = assert!(
     core::mem::size_of::<Actor>() == 144,
     "the hub's Actor changed size. It is 8 (EntityId) + 1 (GoneState) + 4 (PluginSet) + \
      128 ([i32; MAX_DECLARED_QUANTITIES]) padded to 144. If this is deliberate — a new field, \
      a wider quantity ceiling — repin it AND add a row to the repin log above, because the \
      per-actor cost is the argument the whole quantity representation rests on."
 );
-const _: () = ACTOR_SIZE;
 
 #[cfg(test)]
 mod tests {
