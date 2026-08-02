@@ -3085,6 +3085,69 @@ AUDIT AUDIT-7 (guard signals nobody reads)
                translation's remaining five modules.
 ```
 
+### ✅ AUDIT-8 — auditing the six audit commits. Three defects, all mine, two in the gates.
+
+```
+AUDIT AUDIT-8 (review of AUDIT-1..7)
+  BUILT      — three fixes, and one claim upgraded from unverified to measured.
+               · `guard-redability-gate` gains MIN_PROVED — a per-mode floor on cases that
+                 actually RAN.
+               · …and an orphan check on REQUIRES_ENV keys.
+               · The `translation.injection_scan` registry row, corrected: it overstated.
+               · A 19th sweep case: the Go check-status mirror inventing a member.
+
+  PROVEN     — the method was to state falsifiable hypotheses and probe them, not to re-read
+               my own AUDIT blocks. Four hypotheses, two confirmed as defects:
+
+               1. **CONFIRMED — the gate written to catch checks-that-cannot-fail passes
+                  having verified nothing.** Forcing every case to skip:
+                    guard-redability-gate: PASS — 0/0 guard(s) proved RED-ABLE …  exit: 0
+                  `--gates-only` is what runs in CI, so retiering those cases to SUITE would
+                  have left CI green forever. Fixed; the floor is red-able:
+                    FAIL — only 0 case(s) actually ran in gates-only mode; the floor is 5.
+
+               2. **CONFIRMED — REQUIRES_ENV couples by case-name STRING.** A renamed case
+                  sheds its dependency requirement, its suite then SKIPS, and it is reported
+                  STILL-GREEN — the false accusation the mapping exists to prevent. Fixed:
+                    FAIL — REQUIRES_ENV names case(s) that do not exist
+
+               3. **REFUTED, and now measured rather than assumed.** AUDIT-3 recorded "I did
+                  not trace what `chapter_scene_gate` does with `not_run`". Evaluated against
+                  the REAL predicate on the real database:
+                    before: co-write job, NO canon key   -> no_envelope -> counted unchecked
+                    after:  co-write job, canon.not_run  -> not_run     -> counted unchecked
+                    control: a genuinely checked job     -> checked     -> NOT counted
+                  No behavioural change: the gate already treated a missing envelope as
+                  unchecked. The declaration changed what a READER can learn, not what the
+                  gate decides — which is exactly what it was supposed to do.
+
+               4. **CONFIRMED — my own registry row overstated.** It said the injection scan
+                  is "recorded on resume_state and logged". `resume_state` exists only on the
+                  DECOUPLED path and `translation_decouple_enabled` defaults to FALSE, so on
+                  the path that actually runs the report is a log line. An overstatement in
+                  the file whose entire purpose is not overstating. Corrected.
+
+               Also proved on disk for the first time: the Go polyglot lock.
+                 drift: Partial = "partial" is not in contracts/guard-status.contract.json
+               `guard-redability-gate: PASS — 19/19`; gates-only 7/7;
+               `gate-teeth-gate: PASS — 60 CI-invoked gate(s)`; signal gate SELFTEST PASS.
+
+  NOT PROVEN — I audited the GATES hardest because that is where I had least confidence, and
+               spot-checked the behaviour changes. I did not re-derive the Rust provenance
+               work or the Go sweep logic from scratch. And MIN_PROVED's floors (12 / 5) are
+               judgement, not measurement: low enough not to red on ordinary edits, and I have
+               no evidence about where the right line is.
+
+  DRIFT      — one, and it is mechanical rather than a misjudgement: writing Python source
+               INSIDE a `python - <<'PY'` heredoc double-escapes, so `\\n` and `\\t` land as
+               real characters and the file stops parsing. Third occurrence today. The fix is
+               to write the patch script to a scratchpad file and run it — which I did twice
+               and then forgot the third time.
+
+  NEXT       — unchanged: four unread signals, translation's five remaining modules, DoD 3,
+               DoD 5, DoD 7.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -3107,6 +3170,7 @@ AUDIT AUDIT-7 (guard signals nobody reads)
 | 2026-08-02 | **`exclusion_unverified` has no consumer.** It rides `EvalResult` and no report, gate or FE surface reads it. | The S8 shape: a fact made available rather than acted upon. The honest next step is a scored-run report line or a gate that reds when a published metric-of-record was computed with an unverified exclusion — at which point the distinction starts costing something and therefore starts being fixed. |
 | 2026-08-02 | **S13's "cite the exemplars" half is not built**, and a document would have been the wrong answer — the list already exists in spec §S13 and a second copy is the re-derivation the slice warns against. | What is genuinely missing: the code that SHOULD reuse the five named exemplars does not point at them, and nothing detects a re-implementation written beside one. Bigger than a citation, and it needs a mechanism rather than prose. |
 | 2026-08-02 | **5 of translation's 7 unsanitized modules remain** (`routers/translate.py`, `decoupled_block_translate`, `extraction_worker`, `v3/bilingual_extractor`, `v3/corrector`). The two CHAPTER paths now DETECT-scan. | Each needs its own read: "apply the same call" across five modules is how a sweep gets one wrong, and two of them fold a translation as well as a source. They stay baselined, which is a mechanism rather than a note. |
+| 2026-08-02 | **The injection scan PERSISTS only on the flag-off-by-default path.** `translation_decouple_enabled` is False, so the live path logs and does not store. | Found by auditing my own registry row, which claimed otherwise. The real fix is a column on `chapter_translations` plus a return from `translate_chapter` — a signature change with one production caller and eight test call sites. A slice, not a line. |
 | 2026-08-02 | **A non-zero `injection_scan.hits` changes nothing.** The report rides `resume_state` and a log line; no UI, no job field a human reads, no metric. | FIFTH emitted-but-unconsumed signal this run. DETECT is only a defence if somebody is told — otherwise it is a log nobody greps. Smallest real step: surface it on the chapter's translation record so the importer sees it. |
 | ~~2026-08-02~~ | ~~translation-service folds IMPORTED third-party book text into prompts with no sanitizer~~ — 7 modules, surfaced by widening `injection-coverage-lint`'s SCAN_DIRS in S4. Plus 1 in worker-ai. | The least-trusted bytes on the platform, in the service that exists to process them, never scanned until now. Baselined with notes rather than fixed: routing them through `neutralize_injection` risks a TRANSLATION-FIDELITY bug (a sanitizer that mangles source text), which is the same reason those rows are `OutputKind.MIRROR`. Needs its own measurement, not a sweep. |
 | 2026-08-02 | **The `chat.*` / `composition.*` trace namespacing is NOT built** — composition emits nothing into the context trace (the only `TraceAccumulator` consumers are chat-service's `stream_service`, `compact_service`, `token_budget`). | Namespacing a vocabulary with no second surface to separate would be zero-consumer ceremony. **Un-parks when composition first emits a trace span** — at that moment `breakdown_categories` becomes a shared vocabulary asserted BOTH ways on the chat side, so extending it is a consumer-visible shape change and must be namespaced in the same commit. |
@@ -3323,3 +3387,20 @@ AUDIT AUDIT-7 (guard signals nobody reads)
   a claim about the filesystem. `guard-signal-consumption-gate` reddened on it on its first
   run, which is the whole argument for the gate — but it is also the sixth time this cycle that
   prose was read as behaviour, and this one I committed while building the defence against it.
+- **2026-08-02 · the gate against checks-that-cannot-fail could not fail.** With every case
+  skipped, `guard-redability-gate` printed `PASS — 0/0 guard(s) proved RED-ABLE` and exited 0.
+  `--gates-only` is the mode CI runs, so retiering those cases would have left CI green
+  forever. Same shape as the 0x08 bug the file was written for, in the file written for it.
+  Found by probing my own gate rather than re-reading it.
+- **2026-08-02 · a mapping keyed by a display string.** `REQUIRES_ENV` couples a case to its
+  dependency by the case NAME. Rename the case and the requirement detaches silently — the
+  suite then skips and the case is reported inert, which is the false accusation the mapping
+  exists to prevent. An orphan check now reds.
+- **2026-08-02 · I overstated in the honesty registry.** The `injection_scan` row said the
+  report is "recorded on resume_state and logged". `resume_state` belongs to the decoupled
+  path, whose flag defaults to FALSE — so on the path that runs, it is a log line. Writing a
+  register whose purpose is not overstating, and overstating in it.
+- **2026-08-02 · third time in one day: Python source written inside a `python - <<'PY'`
+  heredoc double-escapes.** `\n` and `\t` land as real characters and the target stops parsing.
+  I solved it twice by writing the patch to a scratchpad file, then reached for the heredoc
+  again.

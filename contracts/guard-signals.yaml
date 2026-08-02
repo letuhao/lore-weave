@@ -81,7 +81,12 @@ signals:
     emitter:
       file: services/translation-service/app/workers/decoupled_translate.py
     unconsumed: >-
-      DoD-4. A chapter carrying directive-looking spans is scanned, recorded on
-      `resume_state` and logged — and translated identically to a clean one. DETECT is only
-      a defence if somebody is TOLD; a log nobody greps is not that. Smallest real step:
-      surface it on the chapter's translation record so the importer sees it.
+      DoD-4, and the row's FIRST version overstated it — caught by auditing this file. It said
+      the scan is "recorded on resume_state and logged". `resume_state` exists only on the
+      DECOUPLED path, and `translation_decouple_enabled` defaults to FALSE, so on the path
+      that actually runs today the report is a log line and nothing else. Both paths scan; only
+      the flag-on one persists. Either way nothing acts on a hit, so a chapter carrying
+      directive-looking spans is translated identically to a clean one. DETECT is only a
+      defence if somebody is TOLD, and a log nobody greps is not that. The real step is a
+      column on `chapter_translations` plus a return from `translate_chapter` — a signature
+      change with callers, which is why it is a slice and not a line.

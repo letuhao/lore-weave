@@ -138,6 +138,13 @@ CASES = [
      replace("sanitize_", "xanitize_", count=-1),
      [sys.executable, "scripts/injection-coverage-lint.py"], ROOT),
 
+    ("DoD-1 Go — the mirror invents a status the contract does not carry", SUITE,
+     ROOT / "services" / "glossary-service" / "internal" / "guardstatus" / "guardstatus.go",
+     replace('\tDegraded Status = "degraded"',
+             '\tDegraded Status = "degraded"\n\tPartial Status = "partial"'),
+     ["go", "test", "./internal/guardstatus/", "-count=1"],
+     ROOT / "services" / "glossary-service"),
+
     ("S9 guard-SDK — a THIRD service adopts GuardReport", GATE,
      [TRANS / "app" / "_redability_probe.py", KNOW / "app" / "_redability_probe.py"],
      create('"""probe."""\nfrom typing import Any\n\n'
@@ -206,10 +213,26 @@ CASES = [
 #: otherwise report as an inert guard. That is a false accusation, and a false accusation
 #: from a gate is how the gate gets switched off. Named here so an absent dependency is
 #: reported as NOT RUN, which is the honest answer and is never a pass.
+#:
+#: Keyed by the case NAME, and that coupling is checked below: a renamed case would silently
+#: shed its requirement and go straight back to being falsely accused.
 REQUIRES_ENV = {
     "S1 glossary — an outage and a clean sweep collapse back into one answer":
         "GLOSSARY_TEST_DB_URL",
 }
+
+#: The floor on cases that must actually RUN, per mode. MEASURED (full 18, gates-only 7) with
+#: headroom, so adding or retiering a case does not red while a COLLAPSE does.
+#:
+#: This exists because of a defect found by auditing this file: with every case skipped it
+#: printed
+#:
+#:     guard-redability-gate: PASS — 0/0 guard(s) proved RED-ABLE
+#:
+#: and exited 0. A gate that passes having verified nothing, inside the gate written to catch
+#: exactly that — the same shape as the 0x08 bug it was built for. `--gates-only` runs in CI,
+#: so a future edit that retiers those cases to SUITE would have left CI green forever.
+MIN_PROVED = {"full": 12, "gates-only": 5}
 
 
 def _run(argv, cwd):
@@ -339,6 +362,19 @@ def main() -> int:
     selected = [c for c in CASES if not gates_only or c[1] == GATE]
     skipped = len(CASES) - len(selected)
 
+    # A stale REQUIRES_ENV key is a silent detach: the case it named runs unguarded, its suite
+    # SKIPS for want of the dependency, and it is reported STILL-GREEN — the false accusation
+    # the mapping exists to prevent, reintroduced by a rename. Checked, not trusted.
+    names = {c[0] for c in CASES}
+    orphans = sorted(set(REQUIRES_ENV) - names)
+    if orphans:
+        print("guard-redability-gate: FAIL — REQUIRES_ENV names case(s) that do not exist:\n")
+        for o in orphans:
+            print(f"   {o!r}")
+        print("\n   A renamed case sheds its dependency requirement silently and is then")
+        print("   falsely accused of being inert. Re-key the entry.")
+        return 1
+
     if "--list" in sys.argv:
         for name, tier, targets, _, argv, cwd in CASES:
             t = targets if isinstance(targets, list) else [targets]
@@ -366,6 +402,17 @@ def main() -> int:
         return 1
 
     proved = len(results) - len(no_env)
+    mode = "gates-only" if gates_only else "full"
+    floor = MIN_PROVED[mode]
+    if proved < floor:
+        # The defect this file exists to catch, found in this file: with every case skipped it
+        # printed PASS 0/0 and exited 0 — a gate verifying nothing while reporting coverage.
+        print(f"guard-redability-gate: FAIL — only {proved} case(s) actually ran in {mode} "
+              f"mode; the floor is {floor}.")
+        print("   Cases were skipped or dropped, so this run proved almost nothing — and a")
+        print("   PASS here is read as 'every guard is red-able'. Restore the cases, or")
+        print("   provide the dependencies the NOT-RUN ones name.")
+        return 1
     print(f"guard-redability-gate: PASS — {proved}/{proved} guard(s) proved "
           f"RED-ABLE against a real on-disk violation.")
     if skipped:
