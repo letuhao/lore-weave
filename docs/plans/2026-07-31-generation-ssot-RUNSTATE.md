@@ -4271,6 +4271,87 @@ AUDIT AUDIT-24 (the per-item cost, and the runaway guard that was not a bug repo
                writers.
 ```
 
+### ✅ AUDIT-25 · `model_roles` had no writer — and the register had the reason wrong
+
+```
+AUDIT AUDIT-25 (the Book tier of a six-role cascade could hold two roles)
+
+  THE ROW    — *"`settings.model_roles` still has ZERO writers. S6 writes the legacy
+               `critic_model_ref`/`_source` scalars, which the dual-read consumes. … the map is
+               dead weight until something writes it or it is retired."*
+
+  VERIFIED   — the writer half is exactly right: the S6 settings affordance, the ONLY UI that
+               sets a critic, writes the scalars. So the branch the backend declares it
+               prefers was dead in production, exercised by unit tests alone.
+
+  BUT the reason was wrong. "Dead weight" implies the map is redundant with the scalars, and
+               it is not. `ModelRole` (chat-service `settings_resolution.py`) is *"the one
+               canonical closed set of model roles … shared as the key vocabulary across all
+               three model stores"* and has **six** members: chat, composer, planner,
+               embedding, rerank, critic. Two scalars can express **two** of them. So the Book
+               tier of a six-role cascade could hold two roles, and the shape designed to hold
+               all six was the thing never written. That is a capability gap wearing a
+               contract, not dead weight — and retiring the map would have made the limit
+               permanent.
+
+  AND FOUND  — a second reader had already drifted. `critic_policy.resolve_critic` read
+               `settings["critic_model_ref"]` DIRECTLY, so the moment anything wrote the map
+               a critic set through the UI would resolve to NOT_CONFIGURED — **the blocking
+               tier silently off** — while the internal endpoint reported the same critic
+               correctly. One concept, two readers, one of them out of date. The judge-
+               resolution gate written in AUDIT-20 does not catch this: it guards who may
+               JUDGE, not which KEY the setting was read from.
+
+  BUILT      — `engine/model_roles.py`: one reader, imported by both the internal endpoint and
+               `critic_policy`. The FE gets its mirror (`features/composition/modelRoles.ts`)
+               and the settings affordance now writes the map, reading through the same
+               fallback so a book saved before it still renders its model.
+               Clearing removes BOTH forms — the map entry and the legacy pair — because the
+               reader falls back to the scalar, so dropping only the map entry would make the
+               setting appear to un-clear itself on the next read.
+
+  PROVEN     — composition **3646 passed** (was 3641) · FE composition **1062 passed** ·
+               `tsc --noEmit` clean · judge-resolution, truncation-check, llm-budget,
+               guard-signal-consumption, gate-teeth, enforcement-claims, ai-provider, deferral
+               all PASS.
+               LIVE-9, deployed image, real provider-registry:
+                 critic in the MAP, different model      -> CONFIGURED, identity_verified True
+                 critic in the MAP, same MODEL two rows  -> refused, and the refusal verified
+                 CONTROL legacy scalar                   -> still CONFIGURED (old books work)
+                 CONTROL half-written map entry          -> INCOMPLETE, not CONFIGURED
+
+  NOT PROVEN — the map is now WRITTEN for two roles, and still nothing writes composer,
+               planner, embedding or rerank at the Book tier. The capability gap is now
+               expressible rather than closed; adding four selectors is a product decision, not
+               a refactor, and I did not make it.
+               No browser smoke: the write shape is proven by component test and the read by a
+               live engine call, not by clicking the panel.
+               And the `model_roles` NAME is used for an unrelated concept in
+               knowledge-service (`app/extraction/model_roles.py`, per-extractor role models).
+               Same spelling, different vocabulary — noticed, not merged, and not renamed.
+
+  DRIFT      — three.
+               · **My first shared reader silenced INCOMPLETE.** I routed the policy through
+                 the same normaliser the endpoint uses, which defaults a missing
+                 `model_source` to `user_model` — so a ref recorded without its source became
+                 CONFIGURED, a provider nobody selected. TWO pre-existing tests refused it.
+                 The endpoint wants a normalised map and the policy wants the raw truth; one
+                 function answering both had to answer one of them wrongly, and `role_ref`
+                 exists because of that.
+               · I nearly retired the map instead of writing it — the register's own framing
+                 ("dead weight") is what pointed that way, and it took reading the ROLE ENUM in
+                 another service to see the map was the only shape that could express four of
+                 the six. Second time this stretch a register row's stated reason was wrong
+                 while its observation was right.
+               · A `.format()` call over a TSX snippet containing `{ patchForRole, roleRef }`
+                 read the braces as format fields and raised. My tooling, not the code, but it
+                 is the third string-escaping accident of this run.
+
+  NEXT       — the pre-audit Debt set is now empty of rows that were verifiable-and-actionable.
+               What remains is either measured-and-recorded, parked by the author, or genuinely
+               external.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -4302,7 +4383,7 @@ AUDIT AUDIT-24 (the per-item cost, and the runaway guard that was not a bug repo
 | ~~2026-08-02~~ | ~~The distinct-critic rule compares `user_model_id`~~ — **CLEARED 2026-08-02.** `resolve_critic_verified` compares `(provider_kind, provider_model_name)` via the already-shipped `/internal/models/{source}/{ref}/info`. The row was wrong twice: that route existed, and the endpoint was never needed for identity. | Verified live against two real gemma rows on this box, where FIVE `user_model_id`s share one model. |
 | 2026-08-02 | ~~**`identity_verified` is the FOURTH emitted-but-unconsumed signal**~~ — **CLEARED 2026-08-02** (AUDIT-15). It gates the ADVISORY→HARD promotion in `canon_reflect`, and wiring it is what exposed that the distinct-critic fix had never reached the path that decides whether a conflict blocks a publish. The pattern this row named produced `contracts/guard-signals.yaml` + its consumption gate, which is now at **0 held**. this run, after `exclusion_unverified`, `kg_status`/`kg_unchecked` and `guard_status:not_run`. | The pattern is the finding: I keep closing the HONESTY half of a gap and leaving the ACTING half. Each is individually small — a response field, a badge, a gate condition — and together they are a habit. Worth one deliberate slice that wires all four, rather than four more rows. |
 | 2026-08-02 | **The identity resolve is uncached**: two extra internal HTTP calls per generation. | Against an operation costing seconds of LLM time, plausibly irrelevant — but that is a guess. Measure a generation's wall clock before and after adding a TTL cache; adding one now would be an unmeasured optimisation of exactly the kind this run keeps catching. |
-| 2026-08-02 | `settings.model_roles` still has ZERO writers. S6 writes the legacy `critic_model_ref`/`_source` scalars, which the dual-read consumes. | The newer map remains a read-only contract with no producer, so the Book tier of the Chat & AI cascade still resolves a key nothing writes. Not blocking — the dual-read means the critic setting works — but the map is dead weight until something writes it or it is retired. |
+| 2026-08-02 | ~~`settings.model_roles` still has ZERO writers.~~ — **CLEARED 2026-08-03** (AUDIT-25). The observation was right and the REASON was wrong: not dead weight, but the only shape that can express four of the six roles in `ModelRole`, so retiring it would have made the Book tier permanently 2-role. The settings affordance now writes the map, one reader (`engine/model_roles.py`) serves both the endpoint and `critic_policy` — which had already drifted to reading the legacy scalar directly, and would have resolved a map-written critic to NOT_CONFIGURED with the blocking tier silently off. Original row:  S6 writes the legacy `critic_model_ref`/`_source` scalars, which the dual-read consumes. | The newer map remains a read-only contract with no producer, so the Book tier of the Chat & AI cascade still resolves a key nothing writes. Not blocking — the dual-read means the critic setting works — but the map is dead weight until something writes it or it is retired. |
 | ~~2026-08-02~~ | ~~**`guardstatus.Report` is emitted and nothing consumes it.**~~ — **CLEARED 2026-08-02.** `useWikiStaleness.rescan` branches on `kg_unchecked` *and* on an explicit `kg_status === 'degraded'`: a gap downgrades `toast.success` to `toast.warning` and sets a `coverage` state the panel renders as a standing amber banner **above the empty state** — the exact spot where "0 findings" read as a clean book. `UNCONSUMED_BASELINE` 4 → 3. | Both halves proved red-able against the real files (`green-before=True red-after=True`), restored from saved bytes + sha256. Two fields read, not one, on purpose: today `degraded ⟺ unchecked > 0` only because `degradedSoFar` — the report that CAN be degraded with a zero count — never reaches the wire, its caller 500s instead. That is a coupling across two files, not an invariant, and the UI must not inherit it. |
 | 2026-08-02 | ~~**`guard_status: not_run` is emitted by both SSE streams and nothing consumes it.**~~ — **CLEARED 2026-08-02.** Registered as `composition.unguarded_stream` with `db/repositories/outline.py` as its consumer; the consumption gate verifies the consumer names the field in CODE, with comments and docstrings stripped. `chapter_scene_gate` reads `guard_status` out | ~~Third instance of the emitted-but-unconsumed shape this run. The pattern: I keep closing the HONESTY half of a gap and leaving the ACTING half.~~ That pattern is what produced `contracts/guard-signals.yaml` and its consumption gate — which now also reds when a REGISTER row like this one still calls a consumed signal unconsumed. Genuinely still open, and narrower than the row claimed: no FE surface renders the reason, so an author sees an unguarded stream without being told why. |
 | 2026-08-02 | **Rust has no check-status VOCABULARY mirror**, though the row it was blocking is closed. `L4Narration`/`L3Classification` now carry a per-item `Provenance`, which is a different fact from a `guard_status`: it says who made THIS item, not what the check could and could not verify. | So DoD-1 is satisfied in Python and Go by one mechanism and in Rust by another. Defensible — a narration has no corpus to be partially-checked over — but it means `contracts/guard-status.contract.json` is a two-language lock, and a future Rust path that DOES run a check has no mirror to reach for. Un-parks the first time a Rust path needs to say "I could not verify this" rather than "the engine wrote this". |

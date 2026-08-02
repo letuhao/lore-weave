@@ -8,6 +8,7 @@
 // the whole blob, so useSetWorkSettings merges) — the BE already consumes each.
 // Render-only; the merge-patch logic lives in useSetWorkSettings.
 import { useTranslation } from 'react-i18next';
+import { patchForRole, roleRef } from '../modelRoles';
 import { useSetWorkSettings } from '../hooks/useWork';
 import type { AssemblyMode } from '../types';
 
@@ -27,8 +28,12 @@ export function CompositionSettingsView({ projectId, bookId, settings, models, t
 
   const ntEnabled = settings.narrative_thread_enabled === true;
   const assemblyMode = (settings.assembly_mode as AssemblyMode) || 'per_scene';
-  const defaultModel = typeof settings.default_model_ref === 'string' ? settings.default_model_ref : '';
-  const criticModel = typeof settings.critic_model_ref === 'string' ? settings.critic_model_ref : '';
+  // Read through `modelRoles`, which prefers `settings.model_roles` and falls back to the
+  // legacy scalar — so a book saved before the map still shows its model, and one saved after
+  // it shows the same value from the new key. Reading only the scalar here would make a
+  // freshly saved setting render as empty.
+  const defaultModel = roleRef(settings, 'chat');
+  const criticModel = roleRef(settings, 'critic');
   // The state the server refuses, mirrored here so the author sees it BEFORE a generation
   // silently runs ungraded. The backend's `critic_policy` is the authority — this is the
   // affordance that lets the warning it returns be acted on.
@@ -49,7 +54,7 @@ export function CompositionSettingsView({ projectId, bookId, settings, models, t
           className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
           value={defaultModel}
           disabled={setSettings.isPending}
-          onChange={(e) => patch({ default_model_ref: e.target.value })}
+          onChange={(e) => patch(patchForRole(settings, 'chat', e.target.value))}
         >
           <option value="">{t('workSettings.noDefaultModel', { defaultValue: 'No default (pick per session)' })}</option>
           {models.map((m) => (
@@ -72,16 +77,11 @@ export function CompositionSettingsView({ projectId, bookId, settings, models, t
           className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
           value={criticModel}
           disabled={setSettings.isPending}
-          onChange={(e) =>
-            patch(
-              e.target.value
-                ? { critic_model_ref: e.target.value, critic_model_source: 'user_model' }
-                // Clearing must remove BOTH halves. Dropping only the ref would leave a
-                // dangling source, which the server reads as INCOMPLETE — a state the author
-                // never chose and cannot see.
-                : { critic_model_ref: null, critic_model_source: null },
-            )
-          }
+          // Clearing must remove BOTH forms — the map entry AND the legacy pair. The reader
+          // falls back to the scalar, so dropping only the map entry would make the setting
+          // appear to un-clear itself on the next read. `patchForRole` owns that, once, for
+          // both sides.
+          onChange={(e) => patch(patchForRole(settings, 'critic', e.target.value))}
         >
           <option value="">{t('workSettings.noCritic', { defaultValue: 'No critic — drafts are not independently graded' })}</option>
           {models.map((m) => (

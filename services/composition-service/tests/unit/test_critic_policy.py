@@ -304,3 +304,55 @@ def test_resolution_is_frozen():
     r = CriticResolution(CriticStatus.NOT_CONFIGURED)
     with pytest.raises(Exception):
         r.status = CriticStatus.CONFIGURED  # type: ignore[misc]
+
+
+# ══ the MAP form reaches the policy, not only the legacy scalar ══════════════════════════
+#
+# `work.settings` stores a per-role model two ways and the platform declares it prefers
+# `settings["model_roles"]`. Measured 2026-08-03: that key had ZERO writers, so the branch
+# reading it was dead in production and `resolve_critic` read `critic_model_ref` directly.
+# The moment the settings UI started writing the map — which it now does, because two scalars
+# cannot express a six-role vocabulary — a critic set through the UI would have resolved to
+# NOT_CONFIGURED here, with the blocking tier silently off, while the internal endpoint
+# reported the critic correctly. Two readers of one concept, one of them out of date.
+
+def test_a_critic_written_in_the_MAP_is_seen():
+    s = {"model_roles": {"critic": {"model_ref": "judge-1", "model_source": "user_model"}}}
+    r = resolve_critic(s, "drafter-1")
+    assert r.status is CriticStatus.CONFIGURED
+    assert (r.source, r.ref) == ("user_model", "judge-1")
+
+
+def test_the_MAP_wins_over_a_stale_legacy_scalar():
+    """Per-role precedence, in the direction the endpoint already documented."""
+    s = {
+        "critic_model_ref": "old-judge", "critic_model_source": "user_model",
+        "model_roles": {"critic": {"model_ref": "new-judge", "model_source": "user_model"}},
+    }
+    assert resolve_critic(s, "drafter-1").ref == "new-judge"
+
+
+def test_CONTROL_the_legacy_scalar_still_works_for_a_book_saved_before_the_map():
+    """The fallback is the whole reason the migration needs no data change."""
+    s = {"critic_model_ref": "judge-1", "critic_model_source": "user_model"}
+    assert resolve_critic(s, "drafter-1").ref == "judge-1"
+
+
+def test_a_HALF_WRITTEN_map_entry_is_INCOMPLETE_not_configured():
+    """The raw pair reaches the policy, un-normalised — and this is why.
+
+    `model_roles_from_settings` defaults a missing `model_source` to `user_model`, which is
+    right for the wire shape its consumers read. Routing the POLICY through that normaliser
+    turned a ref-without-source into CONFIGURED — a provider nobody selected — and two
+    pre-existing tests refused it. `role_ref` returns the raw pair for exactly this state.
+    """
+    s = {"model_roles": {"critic": {"model_ref": "judge-1"}}}
+    assert resolve_critic(s, "drafter-1").status is CriticStatus.INCOMPLETE
+
+
+def test_a_map_critic_that_IS_the_drafter_is_still_refused():
+    """Invariant 2 does not care which key the setting was stored under."""
+    s = {"model_roles": {"critic": {"model_ref": "same", "model_source": "user_model"}}}
+    r = resolve_critic(s, "same")
+    assert r.status is CriticStatus.SAME_AS_DRAFTER
+    assert (r.source, r.ref) == (None, None), "a refused critic must not leak its model"

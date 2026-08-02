@@ -42,6 +42,8 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
+
+from app.engine.model_roles import role_ref
 from enum import Enum
 from typing import Any
 
@@ -100,11 +102,17 @@ class CriticResolution:
 
 
 def resolve_critic(settings: Mapping[str, Any] | None, drafter_ref: Any) -> CriticResolution:
-    """Decide who critiques this generation, from a Work's settings blob."""
-    sdict = settings or {}
-    return resolve_critic_refs(
-        sdict.get("critic_model_source"), sdict.get("critic_model_ref"), drafter_ref
-    )
+    """Decide who critiques this generation, from a Work's settings blob.
+
+    Reads through `engine/model_roles.py` rather than reaching for `critic_model_ref`
+    directly. That scalar is the LEGACY form; `settings["model_roles"]["critic"]` is the
+    one the platform declares it prefers, and until 2026-08-03 this function could not see
+    it — so a book whose critic was written in the map would have resolved to
+    NOT_CONFIGURED, with the blocking tier silently off, while the internal endpoint
+    reported the critic correctly. One concept, two readers, one of them out of date.
+    """
+    src, ref = role_ref(settings, "critic")
+    return resolve_critic_refs(src, ref, drafter_ref)
 
 
 def resolve_critic_refs(src: Any, ref: Any, drafter_ref: Any) -> CriticResolution:
