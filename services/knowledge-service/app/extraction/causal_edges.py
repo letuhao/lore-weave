@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ async def infer_causal_edges(
         except Exception as exc:
             logger.warning("causal-edges window failed: %r", exc)
             continue
-        if getattr(job, "status", None) != "completed":
+        if (why := unusable(job, "causal_edges")):
             continue
         edges.update(parse_edges(
             _job_content(job), order_index=order_index, window_ids=window_ids))

@@ -32,7 +32,7 @@ from loreweave_llm.errors import LLMError
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.critic import parse_critique_json
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -134,8 +134,8 @@ async def audit_promises(
     except LLMError as exc:
         logger.warning("promise_audit LLM error: %s", exc)
         return _shape([], [], [], error="audit_unavailable")
-    if getattr(job, "status", None) != "completed":
-        return _shape([], [], [], error=f"audit_{getattr(job, 'status', None)}")
+    if (why := unusable(job, "audit_promises")):
+        return _shape([], [], [], error=f"audit_{why}")
     return _parse_audit(extract_judge_content(job.result))
 
 
@@ -259,6 +259,7 @@ def _parse_coverage(content: str, promises: list[str]) -> dict[str, Any]:
 
 
 async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_tokens, trace_id, tag,
+                code: str,
                 cancel_check: Callable[[], Awaitable[bool]] | None = None):
     """Shared single-shot, reasoning-disabled, degrade-safe call. Returns the
     parsed content string, or None on LLM/non-completed failure."""
@@ -277,8 +278,11 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
     except LLMError as exc:
         logger.warning("%s LLM error: %s", tag, exc)
         return None
-    if getattr(job, "status", None) != "completed":
-        logger.warning("%s non-completed: %s", tag, getattr(job, "status", None))
+    # `code`, not `tag`: the registry decides whether a truncation is fatal, and `tag` is a
+    # LOG label ("promise_extract") that is not a registry key. Passing the wrong one would
+    # raise KeyError at the first truncated response — i.e. in production, on the rare path.
+    if (why := unusable(job, code)):
+        logger.warning("%s unusable: %s", tag, why)
         return None
     return extract_judge_content(job.result)
 
@@ -298,7 +302,8 @@ async def extract_tracked_promises(
     system, user = build_extract_messages(premise, plan_text, source_language)
     content = await _chat(llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
                           system=system, user=user, max_tokens=max_tokens, trace_id=trace_id,
-                          tag="promise_extract", cancel_check=cancel_check)
+                          tag="promise_extract", code="extract_tracked_promises",
+                          cancel_check=cancel_check)
     if content is None:
         return []
     obj = parse_critique_json(content) or {}
@@ -323,7 +328,8 @@ async def score_promise_coverage(
     system, user = build_coverage_messages(promises, arc_text, source_language)
     content = await _chat(llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
                          system=system, user=user, max_tokens=max_tokens, trace_id=trace_id,
-                         tag="promise_coverage", cancel_check=cancel_check)
+                         tag="promise_coverage", code="score_promise_coverage",
+                         cancel_check=cancel_check)
     if content is None:
         return _coverage_shape(promises, ["absent"] * len(promises), error="coverage_unavailable")
     return _parse_coverage(content, promises)

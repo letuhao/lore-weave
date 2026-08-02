@@ -32,7 +32,7 @@ from dataclasses import dataclass
 
 from loreweave_llm.budget import CallBudget, OutputKind, call_budget
 
-__all__ = ["CallProfile", "PROFILES", "budget_for", "max_tokens_for", "profile_for"]
+__all__ = ["CallProfile", "unusable", "PROFILES", "budget_for", "max_tokens_for", "profile_for"]
 
 
 @dataclass(frozen=True)
@@ -127,3 +127,43 @@ def budget_for(code: str, *, target: int | None = None, language: str | None = N
 def max_tokens_for(code: str, **kw) -> int:
     """The `max_tokens` value for the wire."""
     return budget_for(code, **kw).max_output_tokens
+
+
+_STRUCTURED = OutputKind.STRUCTURED
+
+
+def unusable(job, code: str) -> str | None:
+    """Why this job's output must not be used — or ``None`` when it is fine.
+
+    Folds TWO questions, and every call site here already asked one of them. ``status !=
+    "completed"`` was checked everywhere; ``finish_reason == "length"`` was checked almost
+    nowhere — measured 2026-08-03, **2 of 28** STRUCTURED call sites, while the spec's S7
+    asked for exactly this ("and on a missing ``finish_reason == 'length'`` check").
+
+    They are the same question. The SDK already decides which kinds care —
+    ``truncation_is_fatal = (kind is OutputKind.STRUCTURED)`` — because a JSON or
+    grammar-constrained response **cannot stop early in a valid place**: a clipped array is
+    either unparseable or, worse, parseable with items silently missing. For those kinds a
+    truncated job is exactly as unusable as one that never completed, so it takes the branch
+    the site already wrote and needs no new judgement.
+
+    NOT fatal for PROSE / EDIT / VERDICT / MIRROR, and that is deliberate rather than lenient.
+    A clipped paragraph is short, not wrong. A clipped verdict fails to parse into a verdict
+    the caller already treats as absent, and `judge_plan_conflicts` reports that absence
+    through its `judged` flag — the fix for the incident that motivated all of this. Making
+    those fatal would convert working degradations into outages.
+
+    Returns a SHORT reason (``"status=failed"`` / ``"truncated"``) rather than a bool, because
+    several call sites fold it into a log line or an error code — a sentence there would turn an
+    error code into a paragraph. The long explanation belongs here, not in every caller.
+    """
+    status = getattr(job, "status", None)
+    if status != "completed":
+        # The bare status, not `f"status={status}"`. Two call sites fold this straight into an
+        # error CODE (`error=f"audit_{why}"`), and a test pinned `audit_failed` — so the
+        # prefixed form silently renamed a code that something downstream may key on. The new
+        # state simply joins the same vocabulary as `audit_truncated`.
+        return str(status or "unknown")
+    if getattr(job, "finish_reason", None) == "length" and profile_for(code).kind is _STRUCTURED:
+        return "truncated"
+    return None

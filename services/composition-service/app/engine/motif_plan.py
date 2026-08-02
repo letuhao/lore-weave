@@ -32,7 +32,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +193,7 @@ async def select_arc_motifs(
     except LLMError as exc:
         logger.warning("select_arc_motifs LLM error: %s", exc)
         return []
-    if job.status != "completed":
+    if (why := unusable(job, "select_arc_motifs")):
         logger.info("select_arc_motifs status=%s → degraded", job.status)
         return []
     dropped: list[str] = []

@@ -57,7 +57,7 @@ from app.db.neo4j_repos.passages import (
     SUPPORTED_PASSAGE_DIMS,
     find_passages_by_vector,
 )
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -681,7 +681,7 @@ async def rerank_passages(
         )
         return passages
 
-    if job.status != "completed":
+    if (why := unusable(job, "rerank_passages")):
         logger.warning(
             "K18.3 rerank: job ended status=%s model=%s — keeping MMR order",
             job.status, model,

@@ -80,7 +80,7 @@ from app.clients.llm_client import LLMClient
 from app.config import settings
 from app.db.models import Motif, MotifBeat, MotifCreateArgs, MotifRole
 from app.engine.critic import parse_critique_json
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -410,9 +410,9 @@ async def mine_motifs(
             },
             job_meta={"extractor": "motif_mine", "pattern": list(pattern)},
         )
-        if getattr(job, "status", None) != "completed":
+        if (why := unusable(job, "motif_abstraction")):
             logger.warning("mine: abstraction not completed for pattern=%s: %s",
-                           pattern, getattr(job, "status", None))
+                           pattern, why)
             candidates.append({
                 "pattern": list(pattern), "mining_support": support,
                 "judge_score": 0.0, "passed_gate": False,

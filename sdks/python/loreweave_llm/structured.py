@@ -154,6 +154,20 @@ async def structured_generate(
             f"generate job ended status={getattr(job, 'status', '?')} ({code})"
         )
 
+    # DoD-3, the third limb. The budget is already here and it already knows: a caller that
+    # asked for STRUCTURED output gets `truncation_is_fatal=True`, because a JSON response
+    # cannot stop early in a valid place — it comes back unparseable, or WORSE, parseable with
+    # items missing. Raising puts it on the same path as a job that never completed, which
+    # every caller of this function already handles; returning it would hand a repairer a
+    # truncated string to make well-formed and wrong.
+    if budget.truncation_is_fatal and getattr(job, "finish_reason", None) == "length":
+        raise StructuredGenerateError(
+            f"the response was TRUNCATED at the {budget.max_output_tokens}-token cap "
+            f"(finish_reason=length). A structured response cannot stop early in a valid "
+            f"place, so this is a failed call rather than a short one — raise the row's floor "
+            f"or pass a truthful `target` so the budget sizes for the whole shape."
+        )
+
     content = _content_of(job)
     if not content.strip():
         raise StructuredGenerateError(

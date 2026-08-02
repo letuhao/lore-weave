@@ -25,7 +25,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +143,7 @@ async def plan_character_arcs(
     except LLMError as exc:
         logger.warning("plan_character_arcs LLM error: %s", exc)
         return []
-    if job.status != "completed":
+    if (why := unusable(job, "plan_character_arcs")):
         logger.info("plan_character_arcs status=%s → degraded", job.status)
         return []
     arcs = parse_character_arcs(extract_judge_content(job.result), valid, len(beat_roles))

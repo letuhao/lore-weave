@@ -12,7 +12,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +156,13 @@ class ProviderPlanForgeLLM:
                                        cancel_check=cancel_check, schema=None)
             logger.warning("plan_forge LLM error step=%s: %s", step, exc)
             raise PlanForgeLLMError(str(exc)) from exc
-        if job.status != "completed":
-            raise PlanForgeLLMError(f"LLM job status={job.status}")
+        # This raise is what keeps the repair layer honest. `_parse_with_repair` catches a
+        # JSONDecodeError and spends a SECOND call asking the model to repair its own
+        # output — so a response clipped at 12,000 tokens would be handed to a repairer
+        # that cheerfully returns a well-formed object with items missing. Parseable and
+        # wrong is worse than unparseable. Truncation must not reach the salvage path.
+        if (why := unusable(job, "plan_forge_chat")):
+            raise PlanForgeLLMError(f"LLM job unusable: {why}")
         content = extract_judge_content(job.result)
         if not content.strip():
             raise PlanForgeLLMError("empty LLM response")

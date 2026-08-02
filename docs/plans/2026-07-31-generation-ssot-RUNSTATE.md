@@ -125,12 +125,13 @@ when in fact most of the last two days went into defect work that was never on t
 
 ### The board — 7 closed, S7 open, 6 untouched
 
-> **The SLICES are not the DoD, and after AUDIT-19 they disagree.** Twelve slices are ✅ and
-> **three DoD clauses do not hold as written** — DoD-3's truncation limb (no gate at all; 28 of
-> 97 call sites on the generous reading), DoD-5's *"one finding type"* (that limb IS S3, which is
-> ◐ below), and DoD-2's missing static gate (the rule holds today; nothing keeps it holding).
-> A slice closing means its scope shipped. Read §7 of the spec against **AUDIT-19**, not against
-> this table.
+> **The SLICES are not the DoD.** AUDIT-19 found three DoD clauses that did not hold as
+> written; **AUDIT-20 closed two of them** — DoD-3's truncation limb now has a gate and went
+> 2/28 → 28/28, and DoD-2 has the static gate spec S6 asked for (which found a live
+> self-judging path in knowledge-service on its first run). **One remains: DoD-5's *"one
+> finding type"*, which IS S3 — ◐ below, five producers still carrying five locators.**
+> A slice closing means its scope shipped. Read §7 of the spec against AUDIT-19 + AUDIT-20,
+> not against this table.
 
 | slice | state | note |
 |---|---|---|
@@ -3810,6 +3811,119 @@ AUDIT AUDIT-19 (audit the whole spec + live-test what this run changed)
   NEXT       — the three open DoD limbs above are REAL work, not bookkeeping: a truncation
                axis on the budget gate (69 of 97 sites uncovered), S3's locator union, and a
                static gate for the judge rule. None is blocked; each is a slice.
+```
+
+### ✅ AUDIT-20 · TWO OF AUDIT-19'S THREE OPEN LIMBS CLOSED — and the new gate found a bug on day one
+
+```
+AUDIT AUDIT-20 (DoD-2 + DoD-3's truncation limb)
+
+  ASKED      — the author, after AUDIT-19: clear what the audit found, then build and test
+               again. AUDIT-19 named three DoD limbs that did not hold. Two are now closed
+               with a mechanism; the third is measured and NOT started, said plainly below
+               rather than implied by an unqualified ✅.
+
+  BUILT      — **DoD-2. `scripts/judge-resolution-gate.py`** — the static gate spec S6 asked
+               for and nobody built. Two checks: no module outside `critic_policy` may compare
+               one model ref against another, and every judge-carrying module must resolve or
+               name the module that resolved for it. The denominator is derived from
+               `build_judge_request` calls, `judge_ref`-shaped parameters, AND judges passed by
+               KEYWORD — that last clause is the only reason `worker/operations.py`, the
+               unattended path, appears at all.
+
+               **It found a live violation on the day it was written.** knowledge-service's
+               extraction canon judge IS the extraction model: `pass2_orchestrator` hands
+               `_maybe_run_canon_check_gate` the extraction `model_ref`, which becomes the
+               judge's — so the model that produced the assertions was confirming the
+               contradictions in them, unlabelled, since 2026-07-06. Composition's copy of this
+               rule had been audited eight times and nobody had asked whether a SECOND service
+               had a judge at all.
+               Labelled, not refused, following the sealed S6 decision: a day-one refusal makes
+               every default-configured extraction unjudged, and this service has no critic
+               setting to clear a refusal with. `judged_by_self` rides the candidate, the
+               quarantine row a human reviews carries it in its message and its context, and it
+               is registered in `guard-signals.yaml` with that consumer.
+               `judge_is_self` lives in the SDK and documents what it CANNOT see — two
+               `user_model` rows that are one model — so the weaker test is visible at the call
+               site instead of being mistaken for the strong one.
+
+               **DoD-3's third limb. `scripts/truncation-check-gate.py`** — "a missing
+               `finish_reason == 'length'` check", which had no gate at all and which spec S7
+               asked for by name. The denominator comes from the SSOT rather than from what I
+               happened to look at: every `budget_for(code)` call whose registry row is
+               STRUCTURED, because the SDK already decides which kinds care.
+               **2 of 28 → 28 of 28.** Not 26 judgements — one helper, `unusable(job, code)`,
+               in the module that owns the per-operation facts, folding the truncation question
+               into the `status != "completed"` branch every site already had. 13 sites
+               rewritten mechanically · 6 shared helpers given the registry CODE they spend
+               (they carried a `purpose` LOG label, which is a different vocabulary) · 5
+               plan_forge sites covered by making `client.chat` RAISE · 4 delegated to a helper
+               whose contract already fixes the answer.
+               The plan_forge five are the ones that mattered: `_parse_with_repair` catches a
+               JSONDecodeError and spends a SECOND call asking the model to repair its own
+               output, so a clipped response was being handed to a repairer that returns
+               something well-formed and WRONG. Parseable-and-wrong is worse than unparseable.
+
+  PROVEN     — composition **3611 passed** · knowledge **4113 passed** · SDK **1020 passed** ·
+               CI gate-test batch **252 passed** (now including `test_judge_resolution_gate`) ·
+               gate-teeth **63** · llm-budget PASS · ai-provider OK · generation-guard 9/9 ·
+               enforcement-claims OK · estimator PASS · injection-coverage OK ·
+               guard-signal-consumption **6 registered, 6 consumed, 0 held**.
+
+               RED-ABLE, both, against the real on-disk defect, restored from saved bytes
+               (`sha256 matches`, gate green again):
+                 re-introduce the EIGHTH ref comparison in `canon_reflect`
+                     -> judge-resolution RED, and it names the comparison
+                 drop `unusable(...)` from `motif_tag`
+                     -> truncation RED, and it names the site
+
+               LIVE, deployed images hash-verified against source FIRST:
+                 LIVE-1 (the Mị Đế acceptance test) PASS and LIVE-2 (two rows, one model) PASS,
+                 both re-run on the rebuilt stack.
+                 LIVE-5 NEW: a 24-token `CallBudget` against a 40-item ask comes back
+                 `finish_reason=length` and now RAISES — "the response was TRUNCATED at the
+                 24-token cap" — where it used to return the clipped body. CONTROL at 1024
+                 tokens: `finish_reason=stop`, 646 chars, no raise.
+                 LIVE-6 NEW: knowledge's canon judge, run with a real gemma, reports
+                 `judged_by_self=True` when it is the extraction model and `False` for a
+                 different one.
+
+  NOT PROVEN — **DoD-5's "one finding type" is untouched.** That limb IS S3, whose scope is one
+               `Finding` with a `locator` union (`span | scene_index | node_id`, with
+               `trace_span_id` reserved). Five composition producers still carry five locators —
+               char offsets, chapter+scene, seam pairs, block ids — and `MergedFinding`,
+               `_RepetitionFinding`, `_OverResolveFinding` and `CanonViolation` were not
+               touched. It is a cross-cutting refactor of five producers AND their consumers,
+               not a gate, and starting it at the end of this stretch would half-land it.
+               Also unmeasured: `judged_by_self` is proven through the candidate and the log
+               line, not through a rendered review surface; and the truncation gate's DELEGATED
+               rows verify that the named module checks, not that each site actually reaches it.
+
+  DRIFT      — four.
+               · **My first judge-resolution detector could not catch the defect it was written
+                 for.** It keyed on the words "critic"/"judge" appearing in a comparison
+                 operand; the real historical copy reads `str(c_ref) != str(body.model_ref)`,
+                 and `c_ref` contains neither word. It passed my own review and failed the
+                 instant it met the source. Rewritten structurally — both operands look like a
+                 model ref — with the two legitimate comparisons named individually.
+               · **The truncation gate silently dropped a whole file from its denominator.** It
+                 prose-stripped before parsing; blanking a docstring leaves `if ...:` with an
+                 empty body, `ast.parse` raised `IndentationError`, and the loop `continue`d —
+                 so `self_heal.py` was skipped and its site reported unchecked while the check
+                 sat two functions away. Every signal it looks for is an AST node, which prose
+                 cannot produce, so it parses RAW source now.
+               · **LIVE-5's first run reported a PASS on arm A for the wrong reason.** I passed
+                 the raw SDK Client instead of the service client, `submit_and_wait` did not
+                 exist, and "it raised" was true of the wrong exception. The second check —
+                 does the message say TRUNCATED — is the only thing that caught it. The same
+                 shape as LIVE-1, an hour earlier.
+               · I nearly gave `call_json` a `code` parameter to satisfy the gate. Two of its
+                 three callers have no registry row, so satisfying it would have meant
+                 INVENTING rows: the gate shaping the code instead of checking it. The
+                 function's contract already fixes the answer — it exists to get JSON back.
+
+  NEXT       — DoD-5's locator union (S3): the one limb left, and the only one that is a
+               refactor rather than a gate.
 ```
 
 ## Parked

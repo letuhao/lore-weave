@@ -29,7 +29,7 @@ from app.clients.eval_client import extract_judge_content
 from app.engine.finding import SkipReason
 from app.clients.llm_client import LLMClient
 from app.engine.plan import DecomposeResult
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ def parse_plan_findings(content: str) -> list[PlanFinding]:
 
 
 async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_tokens, purpose,
-                trace_id, cancel_check) -> str | None:
+                code, trace_id, cancel_check) -> str | None:
     try:
         job = await llm.submit_and_wait(
             user_id=user_id, operation="chat", model_source=model_source, model_ref=model_ref,
@@ -115,7 +115,10 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
     except LLMError as exc:
         logger.warning("plan_heal %s LLM error: %s", purpose, exc)
         return None
-    if job.status != "completed":
+    # `code` is the REGISTRY key; `purpose` is the billing label. They are different
+    # vocabularies and only one of them can answer whether a truncation is fatal here.
+    if (why := unusable(job, code)):
+        logger.info("plan_heal %s unusable: %s", purpose, why)
         return None
     c = extract_judge_content(job.result)
     return c if c.strip() else None
@@ -158,7 +161,7 @@ async def run_plan_self_heal(
                      max_tokens=judge_max_tokens or max_tokens_for(
                          "plan_judge",
                          target=sum(len(c.scenes) for c in result.chapters)),
-                     purpose="plan_judge", **kw)
+                     purpose="plan_judge", code="plan_judge", **kw)
     findings = parse_plan_findings(jc or "")
     report = PlanHealReport(findings=findings)
     if not findings:
@@ -183,7 +186,7 @@ async def run_plan_self_heal(
         new = await _chat(llm, system=syse, user=usre,
                           max_tokens=edit_max_tokens or max_tokens_for(
                               "plan_heal_edit", target=len(target.synopsis)),
-                          purpose="plan_fix_scene", **kw)
+                          purpose="plan_fix_scene", code="plan_heal_edit", **kw)
         if not new:
             f.skip_reason = SkipReason.EDIT_FAILED
             continue

@@ -36,7 +36,7 @@ from app.clients.llm_client import LLMClient
 from app.engine.cowrite import build_selection_messages
 from app.packer.profile import BookProfile
 from app.engine.finding import SkipReason
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +212,7 @@ def locate_span(span: str, text: str) -> tuple[int, int] | None:
 
 async def _chat(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
-    system: str, user: str, max_tokens: int, purpose: str,
+    system: str, user: str, max_tokens: int, purpose: str, code: str,
     trace_id: str | None, cancel_check: Callable[[], Awaitable[bool]] | None,
     temperature: float = 0.3,
 ) -> str | None:
@@ -232,7 +232,9 @@ async def _chat(
     except LLMError as exc:
         logger.warning("self_heal %s LLM error: %s", purpose, exc)
         return None
-    if job.status != "completed":
+    # `code` is the registry key; `purpose` is the billing label. Only the first can say
+    # whether a clipped response here is a failure or merely a short one.
+    if (why := unusable(job, code)):
         logger.info("self_heal %s status=%s → degraded", purpose, job.status)
         return None
     content = extract_judge_content(job.result)
@@ -248,7 +250,7 @@ async def _judge(
     as 'all clean')."""
     system, user = build_judge_messages(chapter, source_language, canon)
     content = await _chat(llm, system=system, user=user, max_tokens=max_tokens,
-                          purpose="self_heal_judge", temperature=temperature, **kw)
+                          purpose="self_heal_judge", code="self_heal_judge", temperature=temperature, **kw)
     if content is None:
         return None
     return parse_findings(content)
@@ -327,7 +329,7 @@ async def _verify(
     system = _VERIFY_SYSTEM + ("\n\nSTORY BIBLE:\n" + canon.strip() if canon and canon.strip() else "")
     user = f"CHAPTER:\n\n{chapter}\n\nFINDING: {finding.issue}\nQUOTE: \"{finding.span}\""
     content = await _chat(llm, system=system, user=user, max_tokens=max_tokens,
-                          purpose="self_heal_verify", temperature=0.2, **kw)
+                          purpose="self_heal_verify", code="self_heal_verify", temperature=0.2, **kw)
     if content is None:
         return True  # degrade ⇒ fail-open
     m = re.search(r'"verdict"\s*:\s*"?\s*(CONFIRMED|REFUTED)', content, re.IGNORECASE)
@@ -496,7 +498,7 @@ async def _compute_edits(
         messages = build_selection_messages(original, profile, "rewrite", guide=guide,
                                             grounding=canon or "")
         new = await _chat(llm, system=messages[0]["content"], user=messages[1]["content"],
-                          max_tokens=edit_max_tokens, purpose="self_heal_edit", **kw)
+                          max_tokens=edit_max_tokens, purpose="self_heal_edit", code="self_heal_edit", **kw)
         if not new:
             f.skip_reason = SkipReason.EDIT_FAILED
             continue
@@ -645,7 +647,7 @@ async def _rerank_edit(
     # exactly what the degrade path below fabricates when it fails.
     content = await _chat(llm, system=system, user=user,
                           max_tokens=max_tokens_for("self_heal_rerank", target=1),
-                          purpose="self_heal_rerank", temperature=0.3, **kw)
+                          purpose="self_heal_rerank", code="self_heal_rerank", temperature=0.3, **kw)
     if content is None:
         return False, ""   # degrade → not pre-checked (human decides; nothing hidden)
     reason = ""
@@ -696,7 +698,7 @@ async def propose_edits_direct(
               trace_id=trace_id, cancel_check=cancel_check)
     system, user = build_direct_judge_messages(chapter, source_language, canon)
     content = await _chat(llm, system=system, user=user, max_tokens=max_tokens,
-                          purpose="self_heal_direct", temperature=temperature, **kw)
+                          purpose="self_heal_direct", code="propose_edits_direct", temperature=temperature, **kw)
     raw = parse_direct_findings(content or "")
     report = SelfHealReport(rejudge_before=len(raw))
 

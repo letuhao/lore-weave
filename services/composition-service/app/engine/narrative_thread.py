@@ -30,7 +30,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.db.repositories.narrative_thread import NarrativeThreadRepo
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -171,8 +171,8 @@ async def detect_and_update_threads(
     except LLMError as exc:
         logger.warning("narrative_thread detect degraded (LLM error): %s", exc)
         return ThreadUpdateResult(status="degraded")
-    if getattr(job, "status", None) != "completed":
-        logger.info("narrative_thread detect status=%s → no-op", getattr(job, "status", None))
+    if (why := unusable(job, "detect_and_update_threads")):
+        logger.info("narrative_thread detect unusable (%s) → no-op", why)
         return ThreadUpdateResult(status="degraded")
 
     opened_items, paid_ids = _parse(extract_judge_content(job.result))

@@ -93,6 +93,27 @@ def array_of(item: dict[str, Any], *, key: str = "items",
     return {"type": "object", "properties": {key: arr}, "required": [key]}
 
 
+def _unusable(job) -> str | None:
+    """Why this job's output cannot be used. No registry lookup: THIS FUNCTION IS the
+    structured kind.
+
+    `unusable(job, code)` elsewhere asks the registry whether truncation is fatal for the
+    call's OutputKind. Here the answer is fixed by the contract — `call_json` exists to
+    get JSON back — so taking a `code` parameter would only create a way to be told the
+    wrong one. Two of the three callers have no registry row at all, and inventing rows
+    to satisfy a parameter is how a gate starts shaping the code instead of checking it.
+
+    This module's own docstring is the argument: a grammar CANNOT stop early in a valid
+    place, so a schema-enforced call makes truncation worse, not better — "truncation
+    produces JSON that no parser can recover", live-observed here.
+    """
+    status = getattr(job, "status", None)
+    if status != "completed":
+        return f"job status={status}"
+    if getattr(job, "finish_reason", None) == "length":
+        return "truncated (finish_reason=length) — a clipped JSON body is not a short one"
+    return None
+
 async def call_json(
     llm: Any, *, user_id: str, model_source: str, model_ref: str,
     messages: list[dict[str, str]], max_tokens: int,
@@ -148,9 +169,14 @@ async def call_json(
                            job_meta.get("extractor") or schema_name, exc)
             return None
 
-    if getattr(job, "status", None) != "completed":
-        logger.info("call_json[%s]: job status=%s → degraded",
-                    job_meta.get("extractor") or schema_name, getattr(job, "status", None))
+    # `code` is the registry key, and it is required for the same reason this module
+    # exists: the schema makes truncation WORSE, not better. A grammar cannot stop early
+    # in a valid place — this file's own docstring says so — so a clipped response here is
+    # unparseable or silently short, and it takes the degrade path a non-completed job
+    # takes.
+    if (why := _unusable(job)):
+        logger.info("call_json[%s]: %s → degraded",
+                    job_meta.get("extractor") or schema_name, why)
         return None
     content = extract_judge_content(job.result)
     return content if content and content.strip() else None

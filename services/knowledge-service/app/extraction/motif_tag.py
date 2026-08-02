@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ async def classify_event_motifs(
         except Exception as exc:
             logger.warning("motif-tag classify batch failed: %r", exc)
             continue
-        if getattr(job, "status", None) != "completed":
+        if (why := unusable(job, "motif_tag")):
             logger.warning("motif-tag job not completed: %s", getattr(job, "status", "?"))
             continue
         out.update(parse_assignments(

@@ -584,14 +584,20 @@ async def _maybe_run_canon_check_gate(
         candidates = await check_extraction_canon(
             text, snapshot, llm=llm_client, user_id=user_id,
             model_source=model_source, model_ref=model_ref,
+            # Invariant 2: the judge is THIS model, so say so rather than let the verdict
+            # read as independent. Same ref by construction today — the gate has no critic
+            # setting of its own — which is exactly the fact that needs to be visible.
+            extraction_model_ref=model_ref,
         )
         for c in candidates:
             if not c.confirmed:
                 continue
+            self_note = (" [SELF-JUDGED: the model that extracted this chapter also "
+                         "confirmed the contradiction]" if c.judged_by_self else "")
             await _emit_log(
                 job_logs_repo, user_id, job_id,
                 f"Canon check: '{c.name}' referenced as active/present despite "
-                f"being marked gone at order {c.gone_from_order} -- {c.why}",
+                f"being marked gone at order {c.gone_from_order} -- {c.why}{self_note}",
                 context={
                     "event": "pass2_canon_flag",
                     "source_type": source_type,
@@ -600,6 +606,11 @@ async def _maybe_run_canon_check_gate(
                     "name": c.name,
                     "span": c.span,
                     "why": c.why,
+                    # Read by whoever reviews the quarantine row: a self-witnessed
+                    # confirmation is weaker evidence, and the reviewer is the only one in a
+                    # position to weigh it. Emitted on every flag, not only when true, so
+                    # "not self-judged" and "nobody asked" stay distinguishable.
+                    "judged_by_self": c.judged_by_self,
                 },
             )
     except Exception:

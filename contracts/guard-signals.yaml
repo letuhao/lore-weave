@@ -100,12 +100,20 @@ signals:
     # for one concept. The gate refused the row and it was right to.
     field: source_injection_hits
     emitter:
-      file: services/translation-service/app/workers/decoupled_translate.py
+      # Moved 2026-08-03. The write used to be inlined in `decoupled_translate`, and the gate
+      # caught the move the moment the column stopped being named there — which is the check
+      # working: the emitter row is a claim about where the fact is produced, and it was.
+      file: services/translation-service/app/workers/injection_report.py
     consumer:
       file: frontend/src/features/translation/components/TranslationViewer.tsx
       note: >-
         The chapter's scan is persisted to `chapter_translations.source_injection_hits` by
-        BOTH chapter paths and rendered as an amber badge on the version the importer reads.
+        every chapter path and rendered as an amber badge on the version the importer reads.
+        "Both chapter paths" was WRONG when this row was written: deriving the set from
+        `chapter_worker`'s dispatch gives SEVEN, the two that recorded were the two TEXT
+        paths, and a live translation on the BLOCK pipeline — the one this stack runs —
+        logged a real hit and stored NULL. `record_source_injection` now does the scan and
+        the write together so a path cannot take one without the other.
         It used to live only in `resume_state`, which `_clear_resume_state` wipes the moment
         the chapter finishes — i.e. exactly when the translation becomes readable — so the
         record of the scan disappeared at the moment it became useful.
@@ -115,3 +123,25 @@ signals:
         Previous claim in this row, corrected: I said the table belonged to book-service and
         called this a cross-service slice. It is translation-service's own table — I inferred
         the owner from a COMMENT in `book_client.py` instead of reading the schema.
+
+  - id: knowledge.judged_by_self
+    field: judged_by_self
+    emitter:
+      file: services/knowledge-service/app/extraction/canon_check.py
+    consumer:
+      file: services/knowledge-service/app/extraction/pass2_orchestrator.py
+      note: >-
+        Invariant 2 in the OTHER service. `_maybe_run_canon_check_gate` hands the canon judge
+        the extraction `model_ref`, so the model that produced the assertions was also
+        confirming the contradictions in them — a self-witness, unlabelled, since 2026-07-06.
+        Found on 2026-08-03 by building `judge-resolution-gate.py`, which is the point of
+        building it: composition's rule was audited eight times and nobody had asked whether
+        a second service had a judge at all.
+        Labelled, not refused, following the sealed S6 decision — a day-one refusal turns
+        every default-configured extraction into an unjudged one, and this service has no
+        critic setting to clear the refusal with. The quarantine row a human reviews now
+        carries the flag in its context and says so in the message, so the reviewer can weigh
+        a self-witnessed confirmation as the weaker evidence it is.
+        Emitted on EVERY flag rather than only when true: `false` (an independent judge) and
+        `null` (nobody asked) are different answers. Ref-level only — `judge_is_self` cannot
+        see two `user_model` rows that are one model, and says so at its definition.

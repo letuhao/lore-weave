@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ async def classify_event_threads(
         except Exception as exc:  # advisory — an LLM outage never fails tagging
             logger.warning("thread-tag classify batch failed: %r", exc)
             continue
-        if getattr(job, "status", None) != "completed":
+        if (why := unusable(job, "thread_tag")):
             logger.warning("thread-tag job not completed: %s", getattr(job, "status", "?"))
             continue
         assignments.update(parse_assignments(
