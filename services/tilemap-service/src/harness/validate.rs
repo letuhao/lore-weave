@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use serde::Deserialize;
 
 use super::prompt::L3Placeholder;
+use super::provenance::{self, Provenance};
 
 /// One classification entry parsed from the `submit_zone_classifications`
 /// tool-call arguments.
@@ -19,6 +20,12 @@ pub struct L3Classification {
     pub canon_ref: Option<String>,
     #[serde(default)]
     pub rationale: Option<String>,
+    /// Who produced this classification. Same rule as `L4Narration::source`: `rationale`
+    /// happens to CONTAIN the words "Canonical default" today, and parsing English out of a
+    /// free-text field is not a provenance check — it is a guess that would break the first
+    /// time the sentence is reworded or translated.
+    #[serde(default = "provenance::from_tool_call")]
+    pub source: Provenance,
 }
 
 /// The parsed `submit_zone_classifications` argument object.
@@ -286,6 +293,7 @@ pub fn canonical_default_classification(p: &L3Placeholder) -> L3Classification {
         rationale: Some(
             "Canonical default (LLM failed validation after max retries)".to_string(),
         ),
+        source: Provenance::CanonicalDefault,
     }
 }
 
@@ -325,6 +333,7 @@ mod tests {
             narrative_tag: tag.to_string(),
             canon_ref: None,
             rationale: None,
+            source: Provenance::Llm,
         }
     }
 

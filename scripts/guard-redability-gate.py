@@ -153,6 +153,12 @@ CASES = [
      [sys.executable, "-m", "pytest", "tests/unit/test_unguarded_declaration.py", "-q",
       "-p", "no:cacheprovider"], COMP),
 
+    ("S1 tilemap — the engine's own default claims a model wrote it", SUITE,
+     ROOT / "services" / "tilemap-service" / "src" / "harness" / "l4_validate.rs",
+     replace("        source: Provenance::CanonicalDefault,",
+             "        source: Provenance::Llm,"),
+     ["cargo", "test", "--test", "l4_mock"], ROOT / "services" / "tilemap-service"),
+
     ("S1 generation-paths — a row claims `guarded` with a coverage field the file lacks", GATE,
      ROOT / "contracts" / "generation-paths.yaml",
      replace("coverage_field: kg_status", "coverage_field: kg_status_that_does_not_exist"),

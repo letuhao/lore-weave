@@ -2870,6 +2870,62 @@ AUDIT AUDIT-3 (generation paths — 3 of 4 closed)
                L3. Fix both or neither.
 ```
 
+### ✅ AUDIT-4 · DoD-1 CLOSED — 9 of 9 generation paths guarded, across three languages.
+
+```
+AUDIT AUDIT-4 (generation paths — the last row, and the honest severity)
+  BUILT      — `harness::provenance::Provenance` (`llm` | `canonical_default`) on the ITEM:
+               `L4Narration.source` and `L3Classification.source`. `fallback_count` stays as
+               the aggregate; a test now pins the two against each other on a run producing
+               both kinds, so they cannot drift apart.
+               L3 was fixed in the same commit because the shape was identical there. Fixing
+               one consumer and leaving the other is a defect this run already recorded once,
+               with a name.
+               The serde default is a NAMED function (`provenance::from_tool_call`), not a
+               `Default` impl. A bare `Default` returning `Llm` is fail-OPEN: it would
+               silently attribute any future construction site that forgets the field to the
+               model. The name is there to say, at the point of use, that serde filling this
+               in IS the evidence a model produced it.
+
+  PROVEN     — `generation-guard-gate: PASS — 9 generation paths enumerated across 3
+               languages; 9 guarded, 0 tracked-unguarded.`  (5/4 at the start of this audit.)
+               Making the engine's own default claim a model wrote it:
+                 assertion failed: fallback_count=1 but 0 item(s) claim the engine made them
+                 assertion failed: the engine filled zone_b in and the item does not say so
+                 test result: FAILED. 7 passed; 2 failed        restored byte-identical: True
+               Full tilemap suite green: 467 + 13 + 16 + 10 + 9 + 8 + 5 + 5 + 4 + 3 + 13 = 553
+               tests, 0 failed, 1 ignored.
+               `guard-redability-gate: PASS — 15/15`.
+               The gate caught my OWN new file: `rust model-gateway callers grew 30 → 31`.
+               Raised with the reason, after reading it — `provenance.rs` declares one enum and
+               one function and makes no gateway call; it matches the detector on a word in its
+               module doc. One new file, zero new generation paths.
+
+  NOT PROVEN — **the severity the registry claimed for this row was wrong, and I checked
+               before building rather than after.** The narrations never leave the harness:
+               both consumers are report formatters and BOTH already print `fallback_count`.
+               So this closed a TYPE-LEVEL gap, not a live one — cheap precisely because it is
+               early, and it would be dishonest to describe it as a bug fix.
+               Rust still has no check-status vocabulary mirror. `Provenance` is a per-item
+               fact, not a `guard_status`, so the "every grading path returns a GuardReport"
+               reading of DoD-1 is satisfied in Python and Go and satisfied DIFFERENTLY here.
+               Recorded as debt rather than smoothed over.
+               And, as with the other three: nothing consumes `source` yet.
+
+  DRIFT      — one, and it is the same one three slices running.
+               I reached for `#[derive(Default)]` on `Provenance` first, because serde wanted a
+               default and the derive is one line. That default means `Llm` — the trusting
+               answer — for every construction site that ever forgets the field. It is the same
+               shape as the `!ok` branch I had just removed from the Go sweep and the silent
+               `done` frame I had just fixed in Python: when a value is missing, resolve to the
+               reassuring one. I keep having to catch this by re-reading rather than by a rule.
+
+  NEXT       — DoD-1 is closed. The remaining DoD gaps are 2 (resolved provider model), 3 (29
+               baselined budget sites + the unscanned raw-stream shape), 4 (22 baselined
+               injection modules) and 5 (4 estimators, 6 finding types). Item 4's translation
+               half is the only one with a live security surface behind it.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -2899,7 +2955,7 @@ AUDIT AUDIT-3 (generation paths — 3 of 4 closed)
 | 2026-08-02 | `settings.model_roles` still has ZERO writers. S6 writes the legacy `critic_model_ref`/`_source` scalars, which the dual-read consumes. | The newer map remains a read-only contract with no producer, so the Book tier of the Chat & AI cascade still resolves a key nothing writes. Not blocking — the dual-read means the critic setting works — but the map is dead weight until something writes it or it is retired. |
 | 2026-08-02 | **`guardstatus.Report` is emitted and nothing consumes it.** `kg_status`/`kg_checked`/`kg_unchecked` ride the two sweep responses; no caller, gate or FE surface reads them. | The S8 shape again, and the second instance this run after `exclusion_unverified`: a fact made AVAILABLE rather than acted upon. It is strictly better than before — the field exists and is correct — but a degraded sweep still changes nothing downstream. The honest next step is the wiki UI showing "N articles not compared" or a gate that reds when a staleness sweep is published with a non-zero `kg_unchecked`. |
 | 2026-08-02 | **`guard_status: not_run` is emitted by both SSE streams and nothing consumes it.** `chapter_scene_gate` reads `guard_status` out of `generation_job.result` and now finds a value where it found none, but I did not trace what it does with this one, and no FE surface renders it. | Third instance of the emitted-but-unconsumed shape this run, after `exclusion_unverified` and `kg_status`. The pattern is worth naming: I keep closing the HONESTY half of a gap and leaving the ACTING half. The next step here is small and concrete — decide what `chapter_scene_gate` should do with `not_run`, and show the reason in the co-write UI. |
-| 2026-08-02 | **Rust has no check-status mirror.** `contracts/guard-status.contract.json` is read by Python and Go; `tilemap-service`'s `l4_retry.rs` still carries its honesty in an optional `fallback_count`. | The contract makes the Rust mirror cheap and machine-checkable, which is the point of writing it first — but cheap is not done. Until it exists, the DoD-1 claim covers two of three languages. |
+| 2026-08-02 | **Rust has no check-status VOCABULARY mirror**, though the row it was blocking is closed. `L4Narration`/`L3Classification` now carry a per-item `Provenance`, which is a different fact from a `guard_status`: it says who made THIS item, not what the check could and could not verify. | So DoD-1 is satisfied in Python and Go by one mechanism and in Rust by another. Defensible — a narration has no corpus to be partially-checked over — but it means `contracts/guard-status.contract.json` is a two-language lock, and a future Rust path that DOES run a check has no mirror to reach for. Un-parks the first time a Rust path needs to say "I could not verify this" rather than "the engine wrote this". |
 | 2026-08-02 | **45 of 59 CI gates carry no red-ability proof**, and `guard-redability-gate.py` did not move that number — it covers the guards this run wrote. | The ratchet's own PASS line says it out loud, so it is visible rather than implied. The gates it does cover are now proved against the real violation, which is a strictly stronger proof than the selftest convention the other 14 use. Un-parks one gate at a time: every new gate gets a sweep case. |
 | 2026-08-02 | **7 of the 11 sweep cases do not run in CI** — they drive service pytest suites and the `lints` job installs no service deps. | `--gates-only` prints what it skipped, so a partial sweep cannot read as a complete one. The real fix is a CI job that installs composition + chat + translation deps; that job would also un-skip work `python-integration-tests.yml` already does, so the honest move is to add the sweep there rather than build a third job. |
 | 2026-08-02 | The output-budget window clamp is unexercised in production. | The dev model reports a 200k window, so the half-share never binds. It is proven only by unit test. The case that matters — a small-window BYOK model getting a 24750-token cap — has never been run. |
@@ -3067,3 +3123,14 @@ AUDIT AUDIT-3 (generation paths — 3 of 4 closed)
   reported ANCHOR-GONE — "this tested nothing" — about text plainly present in the file. A gate
   that cries wolf for an environment reason is how a gate gets switched off. `_mutate`
   normalises before matching now.
+- **2026-08-02 · reached for the fail-OPEN default, three slices in a row.** `#[derive(Default)]`
+  on `Provenance` is one line and serde wanted a default — and it means `Llm`, the trusting
+  answer, for every construction site that ever forgets the field. Identical in shape to the
+  `!ok` branch I had just deleted from the Go sweep and the silent `done` frame I had just fixed
+  in Python: when a value is missing, resolve to the reassuring one. Caught by re-reading each
+  time, never by a rule, which is the part worth recording.
+- **2026-08-02 · the registry overstated a severity and I checked before building.** The Rust row
+  said "nothing obliges a consumer to read `fallback_count` before treating the set as generated
+  content". True of the type system; the two actual consumers are report formatters and both
+  already print it. The gap was type-level and future-facing. Closing it was still right — it is
+  cheap now and not later — but writing it up as a live bug would have been fiction.

@@ -162,16 +162,24 @@ paths:
   - id: tilemap.l4.zone_narration
     service: tilemap-service
     language: rust
-    file: services/tilemap-service/src/harness/l4_retry.rs
-    symbol: L4Result
-    status: unguarded
-    owner: S1-part2
+    file: services/tilemap-service/src/harness/l4_validate.rs
+    symbol: L4Narration
+    status: guarded
+    coverage_field: source
     note: >-
-      Every zone comes back with a narration; some are `canonical_default_narration`. The
-      honesty is real but OPTIONAL — it lives in `fallback_count`, and nothing obliges a
-      consumer to read it before treating the set as generated content.
-
-  # ── commit-service · NPC combat decision (Rust) ──────────────────────────────────────────
+      CLOSED 2026-08-02, and the severity was re-measured first: the narrations never leave the
+      harness today — the only two consumers are report formatters and BOTH already print
+      `fallback_count`. So the gap was type-level, and cheap to close precisely because it is
+      early. Was: `fallback_count` is an AGGREGATE sitting beside the data, so a consumer
+      holding a `Vec<L4Narration>` held a mix of a model's work and engine boilerplate with
+      nothing on the items to separate them — and could not identify WHICH ones at any price.
+      Each item now carries `source: Provenance` (`llm` | `canonical_default`), defaulted on
+      deserialisation by a NAMED function rather than a `Default` impl, so a future construction
+      site that forgets the field cannot silently attribute the engine's work to a model. Fixed
+      identically in L3 (`validate.rs::L3Classification`), because the same shape was there and
+      fixing one consumer and leaving the other is a defect this run already recorded. Pinned by
+      `the_fallback_count_and_the_items_cannot_disagree`, which asserts the aggregate and the
+      per-item facts against each other on a run that produces both kinds.
   - id: commit.combat.npc_decision
     service: commit-service
     language: rust
@@ -224,5 +232,11 @@ discovery:
     #                       a growth guard — but it means the count is "files mentioning a
     #                       model gateway", not "files calling one", and raising it must not be
     #                       read as six new generation paths.
-    rust: 30
+    # 30 → 31 on 2026-08-02: `src/harness/provenance.rs`, added while closing the
+    # `tilemap.l4.zone_narration` row above. Read before counting, like the six before it:
+    # it declares one enum and one named serde default and makes NO gateway call at all — it
+    # matches the detector on the word, in the module doc explaining what the L3/L4 gateway
+    # loops produce. Same loose-detector trade as the commit-service six. One new file, zero
+    # new generation paths.
+    rust: 31
     typescript: 8

@@ -7,6 +7,7 @@ use std::collections::HashSet;
 use serde::Deserialize;
 
 use super::l4_prompt::ZoneNarrationInput;
+use super::provenance::{self, Provenance};
 use super::style::NarrationLanguage;
 
 /// One narration parsed from the `submit_zone_narrations` tool-call arguments.
@@ -14,6 +15,12 @@ use super::style::NarrationLanguage;
 pub struct L4Narration {
     pub zone_id: String,
     pub narration: String,
+    /// Who produced this narration. Defaulted when deserialised out of the model's tool call
+    /// — the LLM does not send it, and the fact that serde is filling it in IS the evidence
+    /// that a model wrote it. See `harness::provenance` for why the default is a named
+    /// function rather than a `Default` impl.
+    #[serde(default = "provenance::from_tool_call")]
+    pub source: Provenance,
 }
 
 /// The parsed `submit_zone_narrations` argument object.
@@ -230,6 +237,7 @@ pub fn canonical_default_narration(input: &ZoneNarrationInput) -> L4Narration {
     L4Narration {
         zone_id: input.zone_id.clone(),
         narration: text.chars().take(MAX_NARRATION_CHARS).collect(),
+        source: Provenance::CanonicalDefault,
     }
 }
 
@@ -249,6 +257,8 @@ mod tests {
         L4Narration {
             zone_id: id.to_string(),
             narration: text.to_string(),
+            // These fixtures stand in for the model's tool-call output.
+            source: Provenance::Llm,
         }
     }
 
