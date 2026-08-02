@@ -440,6 +440,12 @@ def self_test() -> int:
             2,
         ),
         (
+            "prose AFTER a closed code fence is not scanned",
+            "/// ```\n/// let x: i64 = 1;\n/// ```\n"
+            "/// the ratio was 1.5 in the old design",
+            0,
+        ),
+        (
             "a code fence followed by a PROSE fence stops scanning",
             "//! ```\n//! let x: i64 = 1;\n//! ```\n//!\n//! ```text\n//! the ratio was 1.5\n//! ```",
             0,

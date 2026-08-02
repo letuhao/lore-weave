@@ -120,6 +120,16 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # trade doc-language-gate makes and for the same measured reason.
 "$PY" "$ROOT/scripts/citation-gate.py" --staged
 
+# NEVER TYPE A NUMBER YOU DID NOT JUST MEASURE. The actor-hub handoff carried a
+# stale figure in FOUR consecutive commits, each time inside the commit that
+# recorded the previous recurrence -- and the row declaring the remedy ("every
+# number is now derived by a script") was written while no such script existed.
+# This is that script. CONDITIONAL because it runs `cargo test` twice (~40s):
+# it fires only when one of the two documents whose figures it governs is staged.
+if git diff --cached --name-only | grep -qE 'docs/sessions/SESSION_HANDOFF\.md|docs/plans/2026-08-02-actor-substrate-RUN-STATE\.md'; then
+  "$PY" "$ROOT/scripts/actor-hub-figures.py" --check
+fi
+
 # IMP-D3's 400-line ceiling, which had NO gate and decayed exactly as IMP-A7 predicts: doc 26
 # recorded domain.rs at 592 as already over, and by the time S2 came to split it it had reached 609
 # while everyone was working on something else. Nothing noticed because nothing was watching. Scope

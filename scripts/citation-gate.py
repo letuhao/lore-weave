@@ -287,6 +287,14 @@ def _check_link(tree: "Tree", rel: str, n: int, doc_dir: str, target: str, kind:
     # fresh clone reddened a link a developer saw as green, and the `--all`
     # baseline was not reproducible between machines. That is exactly the
     # two-answers-for-one-input defect this function was created to kill.
+    #
+    # **NARROWED, NOT CLOSED, and stated so rather than recorded as closed.**
+    # `Tree.from_git` folds in `--others --exclude-standard`, so an untracked-but-
+    # unignored file still differs between a clean clone and a working checkout.
+    # That residual is deliberate: without it, a citation to a file created by the
+    # SAME commit would not resolve, and every honest new-crate commit would be
+    # refused. The gitignored-build-output class — the one that actually bit — is
+    # gone.
     if not tree.knows(joined):
         return [Finding("C4-link", rel, n, f"{kind} `{target}` does not resolve")]
     return []
@@ -376,16 +384,39 @@ class Tree:
             return 0
 
 
-# A fenced code block. Everything inside one is CONTENT, not a citation: a
-# TypeScript snippet, a shell transcript, a JSON sample. Measured at 539 findings
-# across `docs/` before this was added, every one of them a false positive.
-FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
+# NO FENCE EXCLUSION, and its removal is a correction worth stating.
+#
+# A previous round excluded every fenced block, claiming *"539 findings, every one
+# of them a false positive"*. Re-measured by a review: **538 findings, of which
+# 155 carry a `:N` line number** — genuine `file:line` citations living in blocks
+# titled *"Current architecture (evidence)"*. One was a `C2-past-eof` on a 59-line
+# file **inside this gate's own blocking corpus**: the exact defect class the
+# module docstring names as the reason the gate exists. It also blinded **97 057
+# of 522 781 doc lines (18.6 %)** without saying so anywhere.
+#
+# The false positives it was aimed at were the NO-LINE-NUMBER class, which is now
+# handled directly and by its real name. **A scope cut justified by a number
+# nobody re-measured is the same defect as a claim nobody re-measured.**
 
 # A markdown link. A citation appearing as the link TEXT is resolvable by
 # definition — the href beside it IS the resolution — so the C3-unanchored rule's
 # justification ("a reader cannot resolve it either") is false for every one.
 # Measured at 398 findings, including all ten remaining `+`-idiom blockers.
-LINK_SPAN_RE = re.compile(r"\[[^\]]*\]\([^)\s]+\)")
+# Matches the same two forms `LINK_RE` does, including the CommonMark title.
+# An earlier version required `)` immediately after a space-free href, so a
+# titled link's text was still checked while a plain one's was not — the two
+# regexes disagreeing about what a link is.
+LINK_SPAN_RE = re.compile(r"\[[^\]]*\]\(<?[^)\s>]+>?(?:\s+[\"'\(][^)]*)?\)")
+
+
+# An inline code span. `` `[x](nowhere.md)` `` in prose ABOUT markdown is a
+# quotation, not a link — the same class the fence rule was aimed at, one
+# delimiter along, and it was left unnamed when fences were excluded.
+CODE_SPAN_RE = re.compile(r"`[^`]*`")
+
+
+def _code_span_ranges(line: str) -> list[tuple[int, int]]:
+    return [(m.start(), m.end()) for m in CODE_SPAN_RE.finditer(line)]
 
 
 def _link_text_spans(line: str) -> list[tuple[int, int]]:
@@ -402,15 +433,9 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
     lines = text.splitlines()
     out: list[Finding] = []
     doc_dir = rel.rsplit("/", 1)[0] if "/" in rel else ""
-    in_fence = False
 
     for i, line in enumerate(lines):
         n = i + 1
-        if FENCE_RE.match(line):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
         if only_lines is not None and n not in only_lines:
             continue
         if _pragma_covers(lines, i):
@@ -424,12 +449,30 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
             start, end = m.group("start"), m.group("end")
             anchored = "/" in cited or "\\" in cited
             # A citation that IS the text of a markdown link resolves through the
-            # href beside it. Reporting it "unresolvable" was the gate telling a
-            # reader that a link they can click does not work.
-            if not anchored and any(a <= m.start() < b for a, b in link_text):
-                continue
-            if not anchored and start is None:
-                # A prose mention of a filename. See the module doc.
+            # href beside it — so reporting it *unresolvable* was the gate telling
+            # a reader that a link they can click does not work.
+            #
+            # **It answers WHICH FILE and says nothing about WHICH LINE.** The
+            # first version `continue`d before the line-exists check, which
+            # silently disabled `C2` for every citation written as link text and
+            # hid three live broken ranges. So the skip is recorded and applied to
+            # the resolution arm only; `C2` still runs below.
+            is_link_text = any(a <= m.start() < b for a, b in link_text)
+            if start is None:
+                # **A citation with NO LINE NUMBER is a prose mention**, whether
+                # or not it carries a directory. Measured: 3 382 of the 8 095
+                # findings across `docs/` are this shape, and the dominant one is
+                # this repo's planning idiom -- a table row naming a file the plan
+                # proposes to CREATE ("| P1 | `services/x/test_new.py` | to WRITE |").
+                # That blocked a commit on correct content.
+                #
+                # The docstring already carved out BARE filenames with no line
+                # number for exactly this reason; nothing justified the asymmetry
+                # with anchored ones, and nothing stated it.
+                #
+                # **With a line number the meaning changes**: you are pointing at
+                # content that must already exist, and that is what this gate is
+                # for (`resource/table.rs:242-247`, past end of file).
                 continue
 
             # Junk immediately after the line number: `…:1e9` read as line 1,
@@ -455,18 +498,20 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
                 candidate = f"{doc_dir}/{cited}"
                 matches = tree.resolve(candidate)
             if not matches:
-                rule = "C1-missing" if anchored else "C3-unanchored"
-                out.append(Finding(rule, rel, n, f"`{m.group(0)}` matches no file in the tree"))
+                if not is_link_text:
+                    rule = "C1-missing" if anchored else "C3-unanchored"
+                    out.append(Finding(rule, rel, n, f"`{m.group(0)}` matches no file in the tree"))
                 continue
             if len(matches) > 1:
-                rule = "C1-ambiguous" if anchored else "C3-unanchored"
-                out.append(
-                    Finding(
-                        rule, rel, n,
-                        f"`{m.group(0)}` matches {len(matches)} files "
-                        f"({', '.join(sorted(matches)[:3])}…) — a reader cannot resolve it either",
+                if not is_link_text:
+                    rule = "C1-ambiguous" if anchored else "C3-unanchored"
+                    out.append(
+                        Finding(
+                            rule, rel, n,
+                            f"`{m.group(0)}` matches {len(matches)} files "
+                            f"({', '.join(sorted(matches)[:3])}…) — a reader cannot resolve it either",
+                        )
                     )
-                )
                 continue
             if start is None:
                 continue
@@ -502,13 +547,19 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
                     )
                 )
 
+        spans = _code_span_ranges(line)
+        for m in LINK_RE.finditer(line):
+            if any(a <= m.start() < b for a, b in spans):
+                continue
         for m in LINK_DEF_RE.finditer(line):
             raw = m.group("angled") or m.group("plain") or ""
             if _is_external(raw):
                 continue
             target = unquote(raw.split("#", 1)[0])
             # Must look like a path, or it is a markdown label and not a link.
-            if not target or not ("/" in target or EXT_ONLY_RE.search(target)):
+            if not target or _is_placeholder(target):
+                continue
+            if not ("/" in target or EXT_ONLY_RE.search(target)):
                 continue
             out.extend(_check_link(tree, rel, n, doc_dir, target, "reference definition"))
 
@@ -659,9 +710,13 @@ def self_test() -> int:
     tree = Tree(["crates/sim-core/src/types.rs", "docs/a/b.md", "docs/a/b.json",
                  "docs/a/c.tsx", "docs/a/d.jsx", ".github/w/gates.yml", "crates/x/resolve.rs",
                  "crates/y/resolve.rs", "scripts/only_here.py",
-                 # A REAL, uniquely-named file: the C2 cases need a line count,
-                 # and `line_count` reads the filesystem rather than this list.
-                 "scripts/citation-gate.py"])
+                 # REAL files: the C2 and extension cases need a line count, and
+                 # `line_count` reads the filesystem rather than this list -- so a
+                 # synthetic path would report 0 lines and red on line 1.
+                 "scripts/citation-gate.py",
+                 "contracts/frontend-tools.contract.json",
+                 "frontend/src/app/shell/AppShell.tsx",
+                 ".github/workflows/gates.yml"])
     real_lines = tree.line_count
 
     def count(text: str, rel: str = "docs/a/doc.md") -> list[Finding]:
@@ -669,7 +724,7 @@ def self_test() -> int:
 
     cases: list[tuple[str, str, int]] = [
         ("C1 a path that matches nothing", "see crates/nope/gone.rs:3", 1),
-        ("C1 a suffix match resolves", "see sim-core/src/types.rs", 0),
+        ("C1 a suffix match with no line number is a prose mention", "see sim-core/src/types.rs", 0),
         ("C3 a bare name matching two files", "see resolve.rs:84", 1),
         # F6 — the first version of this case carried NO line number, so it
         # exited at the prose guard and never reached `Tree.resolve` at all.
@@ -686,10 +741,10 @@ def self_test() -> int:
         ("C2 line zero", "see scripts/citation-gate.py:0", 1),
         ("C2 a valid range", "see scripts/citation-gate.py:1-2", 0),
         # F2 — dead alternation branches made these commit-blocking false positives.
-        ("a .json citation is not truncated to .js", "see docs/a/b.json", 0),
-        ("a .tsx citation is not truncated to .ts", "see docs/a/c.tsx", 0),
+        ("a .json citation is not truncated to .js", "see contracts/frontend-tools.contract.json:3", 0),
+        ("a .tsx citation is not truncated to .ts", "see frontend/src/app/shell/AppShell.tsx:3", 0),
         # F3 — a leading dot was truncated and the result reported missing.
-        ("a dotfile directory resolves", "see .github/w/gates.yml", 0),
+        ("a dotfile directory resolves", "see .github/workflows/gates.yml:3", 0),
         # F4 — a Windows path degraded to its basename and resolved elsewhere.
         ("a Windows-style path is a path, not a bare name", "see crates\\made\\up\\resolve.rs:1", 1),
         # F13
@@ -712,9 +767,29 @@ def self_test() -> int:
         ("a trailing + means 'and following' and is allowed", "see scripts/citation-gate.py:1+", 0),
         ("a trailing comma is ordinary punctuation", "see scripts/citation-gate.py:1, and", 0),
         # F9a — the jsx branch was dead behind js, exactly as tsx was behind ts.
-        ("a .jsx citation is not truncated to .js", "see docs/a/d.jsx", 0),
+        ("a .jsx citation keeps its extension and its line", "see crates/nope/gone.jsx:3", 1),
         # F9c — reference-style links were wholly uncovered.
         ("a dead reference-style link definition is caught", "[ref]: nowhere.md", 1),
+        # F4 — `Tree._dirs`: a link to a DIRECTORY is legitimate, and `git
+        # ls-files` never lists one. Deleting the `_dirs` population left the
+        # whole self-test green while changing 258 verdicts on the live corpus.
+        ("a link to a directory that exists resolves", "[x](../../scripts)", 0),
+        ("a link to a directory that does not exist is caught", "[x](../../nope-dir)", 1),
+        # F6 — a placeholder must be skipped by BOTH link arms, not one.
+        ("a placeholder inline link is skipped", "[x](docs/nope*.md)", 0),
+        ("a placeholder reference definition is skipped too", "[ref]: docs/nope*.md", 0),
+        # F3 — a citation with no line number is a prose mention, ANCHORED or not.
+        ("an anchored path with no line number is a plan naming a file to create",
+         "| P1 | `services/x/tests/test_probe_new.py` | Test to WRITE |", 0),
+        ("...but with a line number it must exist", "see services/x/nope.py:3", 1),
+        # F1 — a citation inside a fence is still a citation.
+        ("a real citation inside a code fence is still checked",
+         "```\nsee crates/nope/gone.rs:3\n```", 1),
+        # F2 — the link-text skip must not disable the LINE-EXISTS rule.
+        ("a link's text is not reported unresolvable",
+         "[`gone.rs:3`](../../scripts/citation-gate.py)", 0),
+        ("...but a link's text with a line past EOF still reds",
+         "[`citation-gate.py:99999`](../../scripts/citation-gate.py)", 1),
         # F3 — the eleven false positives this rule produced on correct content.
         ("a budget table row is not a link definition", "[SYSTEM]: 1240 tokens (template-defined),", 0),
         # ...and one that ONLY the trailing `\s*$` anchor refuses: a path-shaped
@@ -731,6 +806,12 @@ def self_test() -> int:
         # and NOT a dedicated guard — see the note on LINK_DEF_RE. Kept as a
         # behaviour case, with its true mechanism named.
         ("a table row is not a link definition (via the line anchor)", "| [x]: y | z |", 0),
+        # ...and one that ONLY the `^` anchor refuses: an indented table row whose
+        # target IS path-shaped and does NOT resolve, so every other narrowing
+        # would let it through. The previous case was double-guarded and stayed
+        # green with the anchor deleted -- a vacuous case replacing a vacuous case.
+        ("an indented table row with a dead path-shaped target is still not a link",
+         "  | [ref]: crates/nope/gone.rs | x |", 0),
         # F4 — an angle-bracketed URL was reported as a dead repo file, in BOTH
         # link rules, because the scheme lookahead backtracked past the `<`.
         ("an angle-bracketed URL definition is external", "[ref]: <https://example.com/x.md>", 0),
@@ -740,15 +821,13 @@ def self_test() -> int:
         ("a tel: link is external", "[x](tel:+123)", 0),
         ("a template placeholder is not a link to check", "[L<N>_x.md](dir/L<N>_x.md)", 0),
         # F1 — the two classes that produced the entire cry-wolf surface.
-        ("a citation inside a code fence is content, not a citation",
-         "```\nsee crates/nope/gone.rs:3\n```", 0),
         ("a citation that is a link's TEXT resolves through its href",
          "[`coverage.py:67+`](b.md)", 0),
         ("...but a bare unanchored citation outside a link still reds",
          "see resolve.rs:84", 1),
         ("a live reference-style link definition is fine", "[ref]: ../../scripts/citation-gate.py", 0),
         # F15
-        ("a `..` segment is normalised", "see docs/x/../a/b.md", 0),
+        ("a `..` segment is normalised", "see docs/x/../../scripts/citation-gate.py:3", 0),
         # F8
         ("a dead link with a title is still caught", "[x](nowhere.md 'title')", 1),
         ("an angle-bracket link to a real file is fine", "[x](<../../scripts/citation-gate.py>)", 0),
