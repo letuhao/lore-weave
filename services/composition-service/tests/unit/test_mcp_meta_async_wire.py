@@ -231,3 +231,76 @@ def test_cd2_marker_predicate_discriminates():
     assert _contains_any("parked in the triage inbox — NEVER written to the graph", _CD2_DRAFT_MARKERS)
     # the `draft` STATUS VALUE must never satisfy a Tier-W confirm requirement
     assert not _contains_any("status change (active | inactive | draft | rejected)", _CD2_CONFIRM_MARKERS)
+
+
+# ── the rules-mode empty-spec post-condition ──────────────────────────────────
+
+async def _propose(monkeypatch, *, arcs: list, is_async: bool = False) -> dict:
+    """Invoke plan_propose_spec with the grant + service stubbed out.
+
+    Only the RETURN SHAPE is under test — whether a run that parsed nothing can be
+    handed back as an unqualified success.
+    """
+    from uuid import UUID, uuid4
+
+    from app.mcp import server as srv
+
+    class _Run:
+        id = uuid4()
+
+    class _Svc:
+        async def create_run(self, *a, **kw):
+            return _Run(), is_async, (uuid4() if is_async else None)
+
+        async def get_run_detail(self, *a, **kw):
+            return {"id": str(_Run.id), "status": "proposed", "arcs": arcs}
+
+    monkeypatch.setattr(srv, "_plan_svc", lambda: _Svc())
+    monkeypatch.setattr(srv, "_gate", lambda *a, **kw: _noop())
+    monkeypatch.setattr(srv, "_ctx", lambda ctx: type("T", (), {"user_id": uuid4()})())
+    fn = getattr(srv.plan_propose_spec, "fn", srv.plan_propose_spec)
+    return await fn(
+        None, book_id=str(UUID("019f9f2d-f9f1-7037-ba78-8ccc3e19c956")),
+        source_markdown="# Arc 1: The Fall\n## Chapter 1\n### Beat 1\n", mode="rules",
+    )
+
+
+async def _noop():
+    return None
+
+
+async def test_a_rules_parse_that_matched_NOTHING_does_not_return_a_bare_success(monkeypatch):
+    """A run holding an empty spec must not read as a proposal.
+
+    This already happened twice on real documents. The sibling test above records the first:
+    `rules` read 6 of 17 live planning documents as nothing, including the author's own
+    (`rules | proposed | 4278` — an entirely empty spec, no error), and the response was to
+    make `llm` the default. That helps only when nobody names a mode.
+
+    Measured again 2026-08-02 on Mị Đế, where the model named `mode="rules"` itself: it sent a
+    clean 4-chapter outline headed `# Arc 1: …` / `## Chapter 1: …`, the matcher wanted the
+    literal `# 1. Arc Overview` section, 0 arcs parsed — and the tool returned run_id + the run
+    detail with nothing to distinguish it from a plan that worked. `validate.py` knew
+    ("spec_has_arc" → "no arcs parsed"), but that verdict lives behind a different tool the
+    model has to think to call. The agent told the author their plan was ready.
+    """
+    out = await _propose(monkeypatch, arcs=[])
+    assert out["problem"] == "no_arcs_parsed"
+    assert "# 1. Arc Overview" in out["guidance"], "the fix must name the shape it wants"
+    assert "mode='llm'" in out["guidance"], "and the escape hatch that reads any shape"
+
+
+async def test_a_rules_parse_that_FOUND_arcs_stays_a_plain_success(monkeypatch):
+    """The control. Without it, 'always warn' would satisfy the test above."""
+    out = await _propose(monkeypatch, arcs=[{"id": "a1", "title": "The Fall"}])
+    assert "problem" not in out and "guidance" not in out
+
+
+async def test_the_ASYNC_path_is_not_judged_on_an_arc_count_it_cannot_have_yet(monkeypatch):
+    """mode='llm' enqueues a job; the spec is written later, so 0 arcs at call time is normal.
+
+    Warning here would fire on every single llm proposal — the loudest possible false positive,
+    and the one that trains a model to ignore the field.
+    """
+    out = await _propose(monkeypatch, arcs=[], is_async=True)
+    assert "problem" not in out
