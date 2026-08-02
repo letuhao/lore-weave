@@ -3476,6 +3476,56 @@ AUDIT AUDIT-14 (one estimator · an expiring baseline)
                do not trust the note), and the three held signals.
 ```
 
+### ✅ AUDIT-15 · DoD-7 measured CLOSED, and wiring its held signal found the real gap.
+
+```
+AUDIT AUDIT-15 (the acceptance test · identity_verified reaches the publish gate)
+
+  DoD-7, MEASURED — not trusted from my own note. The acceptance test exists, runs in CI, and
+              has its control:
+                tests/unit/test_plan_conflict.py::test_the_MI_DE_defect_is_a_conflict
+                tests/unit/test_plan_conflict.py::test_CONTROL_a_scene_that_kills_NOBODY_is_clean
+              plus the wiring and the blocking tier:
+                test_the_violation_reaches_the_envelope_the_FE_reads
+                test_a_CONFIRMED_conflict_is_HARD_and_blocks_publish
+                test_a_judge_that_CLEARS_it_does_not_block
+              37 tests green. The Mị Đế defect is caught by a gate, not by a human reading
+              prose. **DoD-7 detection is CLOSED.** (Prevention remains disproven — recorded.)
+
+  THE GAP    — reading the blocking tier is what exposed it. Commit 90f513632 fixed the
+              distinct-critic rule to compare the RESOLVED PROVIDER MODEL, because five
+              `user_model_id` rows on this box are ONE model. The router adopted it. The path
+              that decides whether a conflict BLOCKS A PUBLISH did not — it compared REFS,
+              which cannot see two rows collapsing to one model. The fix shipped and never
+              reached the place it was for.
+
+  BUILT      — `identity_verified` now gates the ADVISORY → HARD promotion. Unverifiable
+              identity ⇒ the conflict stays advisory, the same direction the file already
+              takes for a judge that is down: a judge we cannot vouch for must not BLOCK.
+              `None` is deliberately NOT `False` — only an ATTEMPT that FAILED downgrades;
+              treating an absent signal as failure would disable the blocking tier on every
+              path that does not resolve identity, which is the false-green in reverse. Three
+              tests: the downgrade, the CONTROL that still blocks, and the None case.
+              `UNCONSUMED_BASELINE` 3 → 2.
+
+  DRIFT      — two, and the first is the serious one:
+              · **I nearly deleted a live guard by reading one caller.** I called
+                `canon_reflect`'s `resolve_critic_refs` a redundant NINTH copy and removed it,
+                reasoning that the caller blanks the refs when they are not distinct. True of
+                the ROUTER — the caller I had read. `app/worker/operations.py` passes
+                `judge_source=critic_source or model_source`: with no critic configured, the
+                DRAFTER's own refs arrive. Removing it would have let a model certify its own
+                death on every background generation — invariant 2, on the unattended path.
+                A pre-existing test caught it, not me. It is defence in depth, not duplication.
+              · I named the parameter `judge_identity_verified`, so the file never contained
+                the string `identity_verified` and the consumption gate correctly refused the
+                row: a consumer that does not name the field is not one. Renamed — one name
+                for one concept, which is the rule the gate is enforcing.
+
+  NEXT       — DoD-4c (five translation modules) and two held signals
+               (`exclusion_unverified`, `injection_scan`).
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |

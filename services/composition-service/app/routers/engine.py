@@ -764,6 +764,7 @@ async def generate(
                 draft=w.text, packed_prompt=pc.prompt, profile=pc.profile,
                 drafter_source=body.model_source, drafter_ref=str(body.model_ref),
                 judge_source=str(c_src) if distinct else None,
+                identity_verified=critic_res.identity_verified,
                 judge_ref=str(c_ref) if distinct else None,
                 prompt_estimate=prompt_estimate, max_output_tokens=_max_out,
                 # /review-impl #2 — clamp the per-work setting to a sane ceiling so
@@ -1422,6 +1423,7 @@ async def generate_chapter(
             packed_prompt=pc.prompt, profile=pc.profile,
             drafter_source=body.model_source, drafter_ref=str(body.model_ref),
             judge_source=str(c_src) if distinct else None,
+            identity_verified=critic_res.identity_verified,
             judge_ref=str(c_ref) if distinct else None,
             prompt_estimate=prompt_estimate, max_output_tokens=max_out,
             max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
@@ -1664,6 +1666,7 @@ async def stitch_chapter_endpoint(
             profile=profile,
             drafter_source=body.model_source, drafter_ref=str(body.model_ref),
             judge_source=str(c_src) if distinct else None,
+            identity_verified=critic_res.identity_verified,
             judge_ref=str(c_ref) if distinct else None,
             prompt_estimate=0, max_output_tokens=max_out,
             max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),

@@ -51,6 +51,7 @@ async def _check_plan_liveness(
     drafter_source: str, drafter_ref: str,
     judge_source: str | None, judge_ref: str | None, source_language: str | None,
     plan_supported: bool, trace_id: str | None, cancel_check,
+    identity_verified: bool | None = None,
 ) -> tuple[CheckStatus, list[str]]:
     """Does this draft kill someone the PLAN still needs? Appends any conflict to
     `result.violations` and returns `(CheckStatus, unlinked_names)`.
@@ -115,7 +116,14 @@ async def _check_plan_liveness(
         for c in conflicts
     ]
     judge_unusable = False
-    if candidates and judge_source and judge_ref:
+    # `identity_verified` is FALSE when provider-registry could not resolve what model a ref
+    # actually is (an outage, a deleted row). Two different `user_model_id`s are not two
+    # different models — five rows on this box resolve to one — so an unverified identity means
+    # we could not establish that the drafter is not certifying its own death. It stays
+    # ADVISORY rather than HARD, which is the same direction this function already takes for a
+    # judge that is down: a judge we cannot vouch for must not be able to BLOCK a publish.
+    may_promote = identity_verified is not False
+    if candidates and judge_source and judge_ref and may_promote:
         # ADVISORY → HARD, and ONLY here. The author's rule is *judge confirms ⇒ HARD, no
         # judge ⇒ advisory*, and the caller passes judge_source/ref only when a model DISTINCT
         # from the drafter is configured — the model that wrote the death must not be the one
@@ -126,6 +134,10 @@ async def _check_plan_liveness(
             trace_id=trace_id, cancel_check=cancel_check,
         )
         judge_unusable = not judged
+    elif candidates and judge_source and judge_ref:
+        # Configured, distinct by ref, and UNVERIFIABLE. Not the same state as "no judge
+        # configured", and until now the envelope could not tell them apart.
+        logger.info("plan-liveness: judge identity unverified — candidates stay advisory")
     result.violations.extend(candidates)
     if any(v.confirmed is True for v in candidates):
         # `reflect_revise` computed `resolved` BEFORE this check existed, from the gone-cast
@@ -177,6 +189,10 @@ async def run_canon_reflect(
     draft: str, packed_prompt: str, profile: Any,
     drafter_source: str, drafter_ref: str,
     judge_source: str | None, judge_ref: str | None,
+    # Whether provider-registry could confirm the judge is a DIFFERENT MODEL, not merely a
+    # different ROW. `None` ⇒ the caller did not resolve it; `False` ⇒ it tried and could
+    # not, which keeps a plan conflict advisory rather than publish-blocking.
+    identity_verified: bool | None = None,
     prompt_estimate: int, max_output_tokens: int,
     max_iters: int = 1, reasoning: ReasoningDirective | None = None,
     trace_id: str | None = None,
@@ -257,6 +273,18 @@ async def run_canon_reflect(
     # THE EIGHTH COPY, found by audit after S6 collapsed the seven in routers/engine.py.
     # The guard S6 shipped scans that one FILE, so this restatement was invisible to it —
     # an enumerated scope is default-uncovered (NV-2). Now one policy, one rule.
+    # KEPT, and I nearly deleted it. My reasoning was that this is a NINTH copy of the
+    # distinct-critic rule, strictly weaker than the caller's — a ref comparison cannot see two
+    # `user_model_id` rows collapsing to one model — and that the caller blanks the refs when
+    # they are not distinct anyway. The first half is true. The second is true OF THE ROUTER,
+    # which is the caller I had read. `app/worker/operations.py` passes
+    # `judge_source=critic_source or model_source`: on the worker path, no critic configured
+    # means the DRAFTER's own refs arrive here. Removing this would have let a model certify
+    # its own death on every background generation, which is invariant 2, on the path that
+    # runs unattended. A pre-existing test caught it.
+    #
+    # So this is defence in depth, not duplication — and the identity half below is what the
+    # caller adds ON TOP of it, not instead of it.
     distinct = resolve_critic_refs(judge_source, judge_ref, drafter_ref).distinct
     source_language = getattr(profile, "source_language", "auto")
 
@@ -330,6 +358,7 @@ async def run_canon_reflect(
         llm, result, user_id=user_id, plan_status=plan_status, plan_cast=plan_cast,
         drafter_source=drafter_source, drafter_ref=drafter_ref,
         judge_source=judge_source, judge_ref=judge_ref,
+        identity_verified=identity_verified,
         source_language=getattr(profile, "source_language", None),
         plan_supported=plan_supported, trace_id=trace_id, cancel_check=cancel_check,
     )

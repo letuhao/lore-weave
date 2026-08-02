@@ -47,7 +47,11 @@ REGISTRY = ROOT / "contracts" / "guard-signals.yaml"
 #:
 #: 4 → 3 (2026-08-02): `glossary.kg_sweep_coverage` grew one. The ratchet is doing the job it
 #: was written for — it made the four visible as a SET, and the set is what got worked down.
-UNCONSUMED_BASELINE = 3
+#: 3 → 2 (2026-08-02): `composition.critic_identity` grew one at the publish gate, and
+#: wiring it is what surfaced that the distinct-critic fix had never reached the place
+#: that decides whether a conflict blocks. A signal with no reader is not just inert —
+#: it hides the fact that its consumer was never built.
+UNCONSUMED_BASELINE = 2
 
 
 def _strip_prose(src: str, path: Path) -> str:

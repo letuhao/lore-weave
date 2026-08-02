@@ -75,11 +75,17 @@ signals:
     field: identity_verified
     emitter:
       file: services/composition-service/app/engine/critic_policy.py
-    unconsumed: >-
-      DoD-2. Distinguishes "a different model, confirmed" from "a different row, models
-      unknown". No response field, no FE surface, no gate — so a book critiqued entirely
-      during a provider-registry outage looks exactly like one critiqued by a verified
-      independent judge.
+    consumer:
+      file: services/composition-service/app/engine/canon_reflect.py
+      note: >-
+        `_check_plan_liveness` will not promote a plan-liveness conflict from ADVISORY to HARD
+        when `identity_verified` is False, so an unverifiable judge cannot block a publish.
+        Wiring it exposed the real defect: the distinct-critic fix compared the RESOLVED
+        PROVIDER MODEL, the router adopted it, and the path that decides whether a conflict
+        blocks a publish still compared refs — which cannot see five `user_model_id` rows
+        collapsing to one model. `None` is deliberately NOT `False`: only an ATTEMPT that
+        FAILED downgrades, because treating an absent signal as failure would disable the
+        blocking tier on every path that does not resolve identity.
 
   - id: translation.injection_scan
     field: injection_scan
