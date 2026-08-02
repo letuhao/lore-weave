@@ -52,6 +52,7 @@ const baseHook = () => ({
     row({ staleness_id: 's3', entity_id: 'e2', display_name: 'Lucy', reason_code: 'entity_changed', severity: 'content' }),
   ],
   count: 3, isLoading: false, dismiss, dismissing: null, dismissMany, rescan, rescanning: false,
+  coverage: null,
 });
 
 beforeEach(() => {
@@ -74,6 +75,43 @@ describe('KnowledgeUpdatesPanel', () => {
     useWikiStalenessMock.mockReturnValue({ ...baseHook(), rows: [], count: 0 });
     render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
     expect(screen.getByTestId('staleness-empty')).toBeTruthy();
+  });
+
+  // DoD-1 (Go) — the standing consumer of the sweep's `kg_unchecked`.
+  it('says nothing about coverage when the last sweep compared everything', () => {
+    render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
+    expect(screen.queryByTestId('staleness-coverage-gap')).toBeNull();
+  });
+
+  it('warns that the feed may be incomplete when the last sweep left articles uncompared', () => {
+    useWikiStalenessMock.mockReturnValue({
+      ...baseHook(),
+      coverage: { unchecked: 4 },
+    });
+    render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
+    expect(screen.getByTestId('staleness-coverage-gap').textContent).toContain('staleness.coverageGap:4');
+  });
+
+  it('shows the coverage warning ABOVE an EMPTY feed — the case where a degraded scan reads as a clean book', () => {
+    useWikiStalenessMock.mockReturnValue({
+      ...baseHook(),
+      rows: [], count: 0,
+      coverage: { unchecked: 7 },
+    });
+    render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
+    const gap = screen.getByTestId('staleness-coverage-gap');
+    const empty = screen.getByTestId('staleness-empty');
+    expect(gap.textContent).toContain('staleness.coverageGap:7');
+    // Position matters: an "all up to date" message with the caveat below the fold is the
+    // same lie with an extra scroll. DOCUMENT_POSITION_FOLLOWING === the empty state comes after.
+    expect(gap.compareDocumentPosition(empty) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('renders the coverage-unknown wording when the server reported no coverage at all', () => {
+    useWikiStalenessMock.mockReturnValue({ ...baseHook(), coverage: { unchecked: null } });
+    render(<KnowledgeUpdatesPanel bookId="b" open onClose={() => {}} onRegenerate={() => {}} />);
+    // NOT `coverageGap:null` — an unknown extent is a different sentence from a known zero.
+    expect(screen.getByTestId('staleness-coverage-gap').textContent).toContain('staleness.coverageUnknown');
   });
 
   it('lists all stale rows grouped', () => {

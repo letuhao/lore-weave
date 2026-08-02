@@ -3148,6 +3148,54 @@ AUDIT AUDIT-8 (review of AUDIT-1..7)
                DoD 5, DoD 7.
 ```
 
+### ✅ AUDIT-9 — the first of the four held signals grows a reader. Ratchet 4 → 3.
+
+```
+AUDIT AUDIT-9 (guard-signals: glossary.kg_sweep_coverage — unconsumed → consumed)
+  WHY THIS  — the registry made four unread signals visible as a SET, which was the point of
+  ONE FIRST   writing it. But a ratchet only stops a FIFTH; it does not fix the four. Picked the
+              smallest so the shape of a real consumer gets established once, cheaply, before
+              the three harder ones (a gate on a published metric, a publish-gate surface, a
+              DB column with eight call sites) argue about their own designs.
+
+  BUILT      — `kg_unchecked` now changes what the user sees, in two places:
+                 · useWikiStaleness.rescan — a coverage gap downgrades `toast.success` to
+                   `toast.warning`. An incomplete answer is not a success, and the green tick
+                   is what made an outage look like a clean book.
+                 · KnowledgeUpdatesPanel — a standing amber banner, rendered ABOVE the feed
+                   and above the EMPTY state. Position is load-bearing: "all up to date" with
+                   the caveat below the fold is the same lie with an extra scroll.
+               THREE states, not two: compared-everything · compared-N-of-M · coverage-not-
+               reported-at-all. The third exists because the wire may omit the field (an older
+               glossary during a rolling deploy) and `undefined > 0` is false.
+               19 files: hook, panel, types, 18 locales x 3 keys, 2 test files.
+
+  PROVEN     — both halves mutated on disk against the real test files, restored from saved
+               bytes with a sha256 check (never `git checkout <file>` — that discards the real
+               edits living in the same file):
+                 A. hook  — the branch that reads kg_unchecked: green-before=True red-after=True -> PROVED
+                 B. panel — the standing banner that renders it: green-before=True red-after=True -> PROVED
+                 restored, sha256 verified for every file touched
+               Full FE suite 845 files / 6344 tests PASS · tsc --noEmit clean ·
+               i18n-completeness-gate OK, 20 locale-dirs x 35 namespaces at `en` parity ·
+               guard-signal-consumption-gate PASS — 5 registered, 2 consumed, 3 held.
+
+  DRIFT      — two, both mine, both the same family as everything else this run:
+               · I nearly shipped the toast ALONE and called it a consumer. The gate would
+                 have agreed — it can prove the field is referenced in code, not that the
+                 reference is load-bearing — and the registry row would have been true while
+                 the defect survived: step away for four seconds and the panel is empty, green
+                 and silent again. Only reading catches this. No mechanism I have does.
+               · I typed the three new fields OPTIONAL, then "fixed" it by making them
+                 REQUIRED — which fixes nothing, because the type is a declaration and the wire
+                 is not bound by it. Caught on self-review, one step after writing the drift
+                 row congratulating myself for the first half.
+
+  NEXT       — three held signals: `exclusion_unverified` (a gate on a published metric),
+               `identity_verified` (DoD 7's publish-gate surface — same slice), and
+               `injection_scan` (a column + a signature change). Then DoD 3, 4b, 4c, 5.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -3180,7 +3228,7 @@ AUDIT AUDIT-8 (review of AUDIT-1..7)
 | 2026-08-02 | **`identity_verified` is the FOURTH emitted-but-unconsumed signal** this run, after `exclusion_unverified`, `kg_status`/`kg_unchecked` and `guard_status:not_run`. | The pattern is the finding: I keep closing the HONESTY half of a gap and leaving the ACTING half. Each is individually small — a response field, a badge, a gate condition — and together they are a habit. Worth one deliberate slice that wires all four, rather than four more rows. |
 | 2026-08-02 | **The identity resolve is uncached**: two extra internal HTTP calls per generation. | Against an operation costing seconds of LLM time, plausibly irrelevant — but that is a guess. Measure a generation's wall clock before and after adding a TTL cache; adding one now would be an unmeasured optimisation of exactly the kind this run keeps catching. |
 | 2026-08-02 | `settings.model_roles` still has ZERO writers. S6 writes the legacy `critic_model_ref`/`_source` scalars, which the dual-read consumes. | The newer map remains a read-only contract with no producer, so the Book tier of the Chat & AI cascade still resolves a key nothing writes. Not blocking — the dual-read means the critic setting works — but the map is dead weight until something writes it or it is retired. |
-| 2026-08-02 | **`guardstatus.Report` is emitted and nothing consumes it.** `kg_status`/`kg_checked`/`kg_unchecked` ride the two sweep responses; no caller, gate or FE surface reads them. | The S8 shape again, and the second instance this run after `exclusion_unverified`: a fact made AVAILABLE rather than acted upon. It is strictly better than before — the field exists and is correct — but a degraded sweep still changes nothing downstream. The honest next step is the wiki UI showing "N articles not compared" or a gate that reds when a staleness sweep is published with a non-zero `kg_unchecked`. |
+| ~~2026-08-02~~ | ~~**`guardstatus.Report` is emitted and nothing consumes it.**~~ — **CLEARED 2026-08-02.** `useWikiStaleness.rescan` branches on `kg_unchecked` *and* on an explicit `kg_status === 'degraded'`: a gap downgrades `toast.success` to `toast.warning` and sets a `coverage` state the panel renders as a standing amber banner **above the empty state** — the exact spot where "0 findings" read as a clean book. `UNCONSUMED_BASELINE` 4 → 3. | Both halves proved red-able against the real files (`green-before=True red-after=True`), restored from saved bytes + sha256. Two fields read, not one, on purpose: today `degraded ⟺ unchecked > 0` only because `degradedSoFar` — the report that CAN be degraded with a zero count — never reaches the wire, its caller 500s instead. That is a coupling across two files, not an invariant, and the UI must not inherit it. |
 | 2026-08-02 | **`guard_status: not_run` is emitted by both SSE streams and nothing consumes it.** `chapter_scene_gate` reads `guard_status` out of `generation_job.result` and now finds a value where it found none, but I did not trace what it does with this one, and no FE surface renders it. | Third instance of the emitted-but-unconsumed shape this run, after `exclusion_unverified` and `kg_status`. The pattern is worth naming: I keep closing the HONESTY half of a gap and leaving the ACTING half. The next step here is small and concrete — decide what `chapter_scene_gate` should do with `not_run`, and show the reason in the co-write UI. |
 | 2026-08-02 | **Rust has no check-status VOCABULARY mirror**, though the row it was blocking is closed. `L4Narration`/`L3Classification` now carry a per-item `Provenance`, which is a different fact from a `guard_status`: it says who made THIS item, not what the check could and could not verify. | So DoD-1 is satisfied in Python and Go by one mechanism and in Rust by another. Defensible — a narration has no corpus to be partially-checked over — but it means `contracts/guard-status.contract.json` is a two-language lock, and a future Rust path that DOES run a check has no mirror to reach for. Un-parks the first time a Rust path needs to say "I could not verify this" rather than "the engine wrote this". |
 | 2026-08-02 | **45 of 59 CI gates carry no red-ability proof**, and `guard-redability-gate.py` did not move that number — it covers the guards this run wrote. | The ratchet's own PASS line says it out loud, so it is visible rather than implied. The gates it does cover are now proved against the real violation, which is a strictly stronger proof than the selftest convention the other 14 use. Un-parks one gate at a time: every new gate gets a sweep case. |
@@ -3261,6 +3309,8 @@ AUDIT AUDIT-8 (review of AUDIT-1..7)
 | 2026-08-02 | **Nearly deleted five load-bearing overrides as redundancy.** The plan-forge repair sites restate `max_tokens_for("plan_forge_chat")`, which looked like duplication of the client default — but `LMStudioClient.chat` declares **8000** against the row's **12000**, so removing them would have cut a plan JSON by a third, and a clipped plan comes back unparseable rather than short. Reading the Protocol before editing is what stopped it, and it exposed the genuine version of the bug: `_parse_with_repair`'s own `8000` default, overridden only by `materialize`, so `analyze` and `refine_spec` had been running a third under the declared row. |
 | 2026-08-02 | **Reported a deployment failure that was my shell.** Seven image hash checks came back `MISMATCH` and I had begun treating the build as stale. Git Bash rewrites `/app/...` into `C:/Program Files/Git/app/...`; with `MSYS_NO_PATHCONV=1` all seven MATCH. The repo already has this lesson written down. I applied it only after producing the false report — which is the failure mode, not the path mangling. |
 | 2026-08-01 | **Built the fix list from a TRUNCATED terminal, then called it complete.** The failure list printed 20 of 33 rows; I swept the 6 files I could see and reported "one root, six files". The other 13 rows held two more files with the same root — and one of them was a PRODUCTION bug (`retrieve_arcs` selecting a dropped column, 500 on the shipped schema). Same shape as the ROT-1 miss: a denominator taken from what I happened to see rather than from the full set. |
+| 2026-08-02 | **Nearly called a toast a consumer.** My first sketch of the `kg_unchecked` wiring was a branch on the rescan toast and nothing else — which reads as satisfying the ratchet, since the gate can only prove the field is referenced in code, not that the reference is load-bearing. But a toast is gone in four seconds and the thing it warns about (a feed that may be missing rows) is not, so a user who steps away sees an empty "all up to date" panel with no trace that the scan was incomplete. The registry row would have been true and the defect would have survived. Fixed by holding the coverage in state and rendering it ABOVE the empty state. **The gate I wrote for this pattern cannot catch this; only reading can.** |
+| 2026-08-02 | **Typed the three new response fields OPTIONAL, which is the fail-open default in a new coat** — and then "fixed" it by making them REQUIRED, which fixes nothing. `kg_unchecked?: number` makes `undefined > 0` false, so a missing coverage report reads as full coverage: precisely the bug being closed, re-introduced through a `?`. Dropping the `?` is a *declaration*; the wire is still free to omit the field, and a rolling deploy against an older glossary is exactly when it would. Only caught on the self-review pass, one step after I had already written this row congratulating myself for the first half. The real fix is a runtime `typeof` and a THIRD state — coverage unknown ≠ coverage zero. Fourth reach for the trusting default this run (`#[derive(Default)]`, `!ok → continue`, the silent `done` frame, now this), and the first where my own correction was also fail-open. |
 
 
 - **2026-07-31 · caught in review of my own proposal.** My first S1–S5 proposal was scoped to

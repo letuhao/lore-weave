@@ -203,6 +203,11 @@
     "rescanPartial": "Scan terminé (recette ignorée — la connaissance n'a pas fourni de versions) — {{count}} nouveaux",
     "rescanPartial_other": "Scan terminé (recette ignorée — la connaissance n'a pas fourni de versions) — {{count}} nouveaux",
     "rescanFailed": "Échec du scan",
+    "rescanUnchecked": "Scan incomplet — {{count}} article n'a pas été comparé",
+    "rescanUnchecked_other": "Scan incomplet — {{count}} articles n'ont pas été comparés",
+    "coverageGap": "Le dernier scan n'a pas pu comparer {{count}} article (connaissance injoignable) ; cette liste peut être incomplète.",
+    "coverageGap_other": "Le dernier scan n'a pas pu comparer {{count}} articles (connaissance injoignable) ; cette liste peut être incomplète.",
+    "coverageUnknown": "Ce scan n'a pas indiqué l'étendue de la comparaison ; la liste peut être incomplète.",
     "ledgerNote": "Les changements de connaissances sont enregistrés ici automatiquement (un registre différé, pas en temps réel). Les signalements changent mais rien n'est régénéré de soi à soi — les jetons ne sont dépensés que lorsque vous cliquez sur Régénérer.",
     "reason": {
       "entity_changed": "Entrée du glossaire modifiée",

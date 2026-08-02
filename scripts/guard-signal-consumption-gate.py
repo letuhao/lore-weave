@@ -44,7 +44,10 @@ REGISTRY = ROOT / "contracts" / "guard-signals.yaml"
 
 #: Signals emitted with nothing acting on them. MEASURED 2026-08-02, from the audit that
 #: named the pattern. Lower it when one grows a consumer; it may never grow.
-UNCONSUMED_BASELINE = 4
+#:
+#: 4 → 3 (2026-08-02): `glossary.kg_sweep_coverage` grew one. The ratchet is doing the job it
+#: was written for — it made the four visible as a SET, and the set is what got worked down.
+UNCONSUMED_BASELINE = 3
 
 
 def _strip_prose(src: str, path: Path) -> str:

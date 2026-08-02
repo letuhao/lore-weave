@@ -202,6 +202,11 @@
     "rescanPartial": "スキャン完了（recipe はスキップ — knowledge がバージョン未提供） — 新規 {{count}} 件",
     "rescanPartial_other": "スキャン完了（recipe はスキップ — knowledge がバージョン未提供） — 新規 {{count}} 件",
     "rescanFailed": "再スキャンに失敗",
+    "rescanUnchecked": "スキャン未完了 — {{count}} 件の記事が比較されていません",
+    "rescanUnchecked_other": "スキャン未完了 — {{count}} 件の記事が比較されていません",
+    "coverageGap": "前回のスキャンで {{count}} 件の記事を比較できませんでした（knowledge に接続不可）。このリストは不完全な可能性があります。",
+    "coverageGap_other": "前回のスキャンで {{count}} 件の記事を比較できませんでした（knowledge に接続不可）。このリストは不完全な可能性があります。",
+    "coverageUnknown": "今回のスキャンは比較範囲を報告しなかったため、このリストは不完全な可能性があります。",
     "ledgerNote": "ナレッジの変更はここに自動記録されます（リアルタイムではなく遅延台帳）。フラグは立ちますが自動では再生成されません — トークンは「再生成」を押したときだけ消費されます。",
     "reason": {
       "entity_changed": "用語集の項目が変更",

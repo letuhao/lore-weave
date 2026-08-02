@@ -203,6 +203,11 @@
     "rescanPartial": "Neuer Scan abgeschlossen (Rezept übersprungen — Wissen lieferte keine Versionen) — {{count}} neue",
     "rescanPartial_other": "Neuer Scan abgeschlossen (Rezept übersprungen — Wissen lieferte keine Versionen) — {{count}} neue",
     "rescanFailed": "Neuer Scan fehlgeschlagen",
+    "rescanUnchecked": "Scan unvollständig — {{count}} Artikel wurde nicht verglichen",
+    "rescanUnchecked_other": "Scan unvollständig — {{count}} Artikel wurden nicht verglichen",
+    "coverageGap": "Der letzte Scan konnte {{count}} Artikel nicht vergleichen (Wissen nicht erreichbar); diese Liste ist möglicherweise unvollständig.",
+    "coverageGap_other": "Der letzte Scan konnte {{count}} Artikel nicht vergleichen (Wissen nicht erreichbar); diese Liste ist möglicherweise unvollständig.",
+    "coverageUnknown": "Dieser Scan hat nicht gemeldet, wie viel er verglichen hat; die Liste ist möglicherweise unvollständig.",
     "ledgerNote": "Wissensänderungen werden hier automatisch aufgezeichnet (ein verzögertes Protokoll, keine Echtzeit). Flags ändern sich, aber es erfolgt keine automatische Regeneration — Tokens werden nur verbraucht, wenn Sie auf „Regenerieren“ klicken.",
     "reason": {
       "entity_changed": "Glossareintrag geändert",

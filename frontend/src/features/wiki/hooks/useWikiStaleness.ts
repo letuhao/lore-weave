@@ -21,6 +21,13 @@ export function useWikiStaleness(bookId: string) {
   const queryClient = useQueryClient();
   const [dismissing, setDismissing] = useState<string | null>(null);
   const [rescanning, setRescanning] = useState(false);
+  // The last sweep's KG coverage, held so the panel can keep SAYING the scan was
+  // incomplete after the toast is gone. A toast is not a consumer — it is gone in four
+  // seconds, and the state it warns about (a list that may be missing rows) persists.
+  // `unchecked: null` = the server did not report coverage at all (a rollout skew against a
+  // glossary build older than guardstatus). Still a warning, because "I cannot tell you how
+  // much I compared" is not "I compared everything" — that equivalence is the entire bug.
+  const [coverage, setCoverage] = useState<{ unchecked: number | null } | null>(null);
 
   const query = useQuery<WikiStalenessRow[]>({
     queryKey: ['wiki-staleness', bookId],
@@ -71,11 +78,31 @@ export function useWikiStaleness(bookId: string) {
     try {
       const res = await wikiApi.sweepStaleness(bookId, accessToken);
       const found = res.flagged + res.kg_flagged;
-      toast.success(
-        res.recipe_swept
+      // DoD-1 (Go) — the consumer for `kg_unchecked`. `found === 0` used to mean one thing
+      // ("nothing drifted"); it now means two, and only this branch can tell them apart.
+      //
+      // Both fields, deliberately. On today's server `kg_status === 'degraded'` holds exactly
+      // when `kg_unchecked > 0` (guardstatus.Over), and the mid-sweep `degradedSoFar` report —
+      // the one that CAN be degraded with a zero count — never reaches the wire because its
+      // caller 500s. That is a coupling between two files, not a guarantee: reading the status
+      // too costs nothing and fails in the safe direction if the coupling ever breaks.
+      //
+      // The `typeof` is not defensive noise: the type says these are required and the WIRE
+      // does not, so an older glossary would leave `kg_unchecked` undefined and `undefined > 0`
+      // is false — the fail-open default wearing a required type. Absent ⇒ unknown ⇒ warn.
+      const unchecked = typeof res.kg_unchecked === 'number' ? res.kg_unchecked : null;
+      const degraded = unchecked === null || unchecked > 0 || res.kg_status === 'degraded';
+      setCoverage(degraded ? { unchecked } : null);
+      const message = degraded
+        ? unchecked === null
+          ? t('staleness.coverageUnknown')
+          : t('staleness.rescanUnchecked', { count: unchecked })
+        : res.recipe_swept
           ? t('staleness.rescanDone', { count: found })
-          : t('staleness.rescanPartial', { count: found }),
-      );
+          : t('staleness.rescanPartial', { count: found });
+      // An incomplete answer is not a success, and `toast.success` is the green tick that
+      // made the outage look like a clean book in the first place.
+      (degraded ? toast.warning : toast.success)(message);
       queryClient.invalidateQueries({ queryKey: ['wiki-staleness', bookId] });
       queryClient.invalidateQueries({ queryKey: ['wiki-articles', bookId] });
     } catch {
@@ -94,5 +121,8 @@ export function useWikiStaleness(bookId: string) {
     dismissMany,
     rescan,
     rescanning,
+    /** Non-null only while the last sweep left articles uncompared. The panel renders it
+     *  as a standing banner so an empty feed after a degraded scan cannot read as "clean". */
+    coverage,
   };
 }

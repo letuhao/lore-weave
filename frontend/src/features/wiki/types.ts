@@ -165,11 +165,25 @@ export interface WikiStalenessListResp {
 }
 
 /** W2 — result of an owner-triggered rescan. `recipe_swept=false` ⇒ knowledge was
- *  unreachable so only the kg-drift half ran. */
+ *  unreachable so only the kg-drift half ran.
+ *
+ *  The `kg_*` coverage triple is the honesty half of `kg_flagged`. A failed kg-hashes
+ *  chunk leaves its articles never compared, and before these fields a sweep during a
+ *  knowledge outage returned `kg_flagged: 0` — byte-identical to a book with no drift.
+ *  `kg_unchecked` says how many were NOT compared; `kg_status` says whether to trust the
+ *  number at all. Server side: services/glossary-service/internal/guardstatus. */
 export interface WikiStalenessSweepResp {
   flagged: number;
   kg_flagged: number;
   recipe_swept: boolean;
+  /** guardstatus.Status — the subset the Go sweep can produce. `(string & {})` keeps an
+   *  unknown value from being a type error; the UI branches on the COUNT plus an explicit
+   *  `degraded`, never on an exhaustive match, so a new member cannot silently read clean. */
+  kg_status: 'checked' | 'no_subject' | 'degraded' | 'not_applicable' | (string & {});
+  /** How many articles the kg half actually compared. */
+  kg_checked: number;
+  /** How many were in scope and could NOT be compared. > 0 ⇒ this scan is incomplete. */
+  kg_unchecked: number;
 }
 
 /** W6b-2b — the source change diff for one staleness row. `available:false` when no

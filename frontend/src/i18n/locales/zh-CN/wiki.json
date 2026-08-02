@@ -203,6 +203,11 @@
     "rescanPartial": "重新扫描完成 (跳过配方 — 知识库未提供版本) — {{count}} 项新变化",
     "rescanPartial_other": "重新扫描完成 (跳过配方 — 知识库未提供版本) — {{count}} 项新变化",
     "rescanFailed": "重新扫描失败",
+    "rescanUnchecked": "扫描不完整 — {{count}} 篇文章未被比对",
+    "rescanUnchecked_other": "扫描不完整 — {{count}} 篇文章未被比对",
+    "coverageGap": "上次扫描有 {{count}} 篇文章无法比对（知识服务不可达），因此此列表可能不完整。",
+    "coverageGap_other": "上次扫描有 {{count}} 篇文章无法比对（知识服务不可达），因此此列表可能不完整。",
+    "coverageUnknown": "本次扫描未报告比对范围，因此此列表可能不完整。",
     "ledgerNote": "知识变更会自动记录在此处（异步账本，非实时）。标记会发生变化，但不会自动重新生成 — 只有在您点击“重新生成”时才会消耗 Token。",
     "reason": {
       "entity_changed": "术语条目已更改",

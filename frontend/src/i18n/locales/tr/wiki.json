@@ -203,6 +203,11 @@
     "rescanPartial": "Yeniden tarama tamamlandı (tarif atlandı — bilgi versiyon sağlamadı) — {{count}} yeni",
     "rescanPartial_other": "Yeniden tarama tamamlandı (tarif atlandı — bilgi versiyon sağlamadı) — {{count}} yeni",
     "rescanFailed": "Yeniden tarama başarısız",
+    "rescanUnchecked": "Tarama eksik — {{count}} makale karşılaştırılmadı",
+    "rescanUnchecked_other": "Tarama eksik — {{count}} makale karşılaştırılmadı",
+    "coverageGap": "Son tarama {{count}} makaleyi karşılaştıramadı (bilgi servisine erişilemedi); bu liste eksik olabilir.",
+    "coverageGap_other": "Son tarama {{count}} makaleyi karşılaştıramadı (bilgi servisine erişilemedi); bu liste eksik olabilir.",
+    "coverageUnknown": "Bu tarama ne kadarını karşılaştırdığını bildirmedi; liste eksik olabilir.",
     "ledgerNote": "Bilgi değişiklikleri buraya otomatik olarak kaydedilir (gerçek zamanlı değil, ertelenmiş bir defterdir). Bayraklar değişir ancak siz Yeniden Oluştur'a basana kadar hiçbir şey kendiliğinden yeniden oluşturulmaz — jetonlar yalnızca siz Yeniden Oluştur'a bastığınızda harcanır.",
     "reason": {
       "entity_changed": "Sözlük girişi değişti",

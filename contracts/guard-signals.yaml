@@ -45,11 +45,16 @@ signals:
     field: kg_unchecked
     emitter:
       file: services/glossary-service/internal/api/wiki_staleness.go
-    unconsumed: >-
-      DoD-1 (Go). The sweep now reports how many articles it could NOT compare, on both
-      staleness-sweep responses. Nothing reads it: the wiki UI shows the flagged count and
-      says nothing about coverage, so a sweep during a knowledge outage still renders as a
-      clean book. Smallest real step: show "N articles not compared" beside the badge.
+    consumer:
+      file: frontend/src/features/wiki/hooks/useWikiStaleness.ts
+      note: >-
+        `rescan` branches on `kg_unchecked` (plus an explicit `kg_status === 'degraded'`, so
+        the UI does not inherit the server-side coupling that makes those two equivalent):
+        a gap downgrades the green `toast.success` to `toast.warning` and sets a `coverage`
+        state that KnowledgeUpdatesPanel renders as a standing amber banner above the feed —
+        above the EMPTY state in particular, which is where "0 findings" read as a clean
+        book. The toast alone would not have counted; it is gone in four seconds and the
+        incomplete list it warns about is not.
 
   - id: composition.unguarded_stream
     field: guard_status
