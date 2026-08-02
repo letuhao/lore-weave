@@ -94,6 +94,32 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # denylist. Scans the whole tree, so it does not need a staged-file trigger.
 "$PY" "$ROOT/scripts/crate-purity-gate.py"
 
+# NO FLOAT IN THE BYTES THAT BECOME A NAME (U-9, engine-substrate §3). A float
+# inside the hashed ruleset bytes lets two machines produce two digests for one
+# ruleset -- two realities with identical content and different NAMES. Server
+# authority cannot repair that: what breaks is the naming scheme, not the
+# gameplay. The property was structurally true and UNGUARDED, which the design
+# round wrote down as U-9 and then had no mechanism for. This is the mechanism.
+#
+# It is NOT a float ban -- DF7-A4 was revised in 2026-08 precisely because "float
+# cannot reproduce across targets" is FALSE for basic IEEE 754 ops, and world-gen
+# uses f64 across 41 files while hashing deterministically. Scope is narrow and
+# named: the crates whose bytes are hashed, plus the fold that ranges over them.
+# Whole-directory, so a file created tomorrow is covered on its first line (NV-3).
+"$PY" "$ROOT/scripts/hashed-substrate-float-gate.py"
+
+# A CITATION NOBODY CAN FOLLOW IS WORSE THAN NONE (U-10). It reports evidence and
+# silences review. Measured in the 2026-08-02 actor-hub round: design-lint's corpus
+# is hard-defaulted to docs/03_planning/LLM_MMO_RPG and pointing it at docs/specs
+# fails outright, so NONE of the ~45 citations those contracts carry was checked by
+# anything -- and that same round produced three phantom citations, TWO of them
+# inside correction blocks written to fix citation errors. The failure mode is not
+# carelessness; it is the absence of a mechanism.
+# Strict trees are scanned in full (a doc added there tomorrow is covered on its
+# first line, NV-3); everywhere else under docs/ is added-lines-only, the same
+# trade doc-language-gate makes and for the same measured reason.
+"$PY" "$ROOT/scripts/citation-gate.py" --staged
+
 # IMP-D3's 400-line ceiling, which had NO gate and decayed exactly as IMP-A7 predicts: doc 26
 # recorded domain.rs at 592 as already over, and by the time S2 came to split it it had reached 609
 # while everyone was working on something else. Nothing noticed because nothing was watching. Scope

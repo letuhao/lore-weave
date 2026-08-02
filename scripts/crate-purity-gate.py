@@ -117,6 +117,28 @@ PURE_CRATES: dict[str, dict[str, set[str]]] = {
                        # laws, so someone decided that, and the decision is here.
         },
     },
+    # Feature #1 of the game tier (2026-08-02). The fold is a function of
+    # (actor, declarations, rows) with one correct answer, so the same argument
+    # that made `game-rules` a crate applies verbatim: a hub that can read a
+    # file is a hub that can be slow, fallible and unreplayable.
+    #
+    # `game-rules` is DELIBERATELY ABSENT from the workspace set below. The hub
+    # sits beneath the features and combat is a feature; a dependency in that
+    # direction becomes a cycle the day combat is rewritten as a plugin. Its
+    # absence here is what refuses it — R1 is deny-by-default.
+    "actor-hub": {
+        "workspace": {
+            "ruleset-core",      # MAX_DECLARED_QUANTITIES, ModifierOp, the declared substrate
+            "sim-core",          # EntityId; zero dependencies
+            "entity-existence",  # GoneState — the shipped existence enum, leaf-extracted
+        },
+        "external": {
+            "serde",   # derive ONLY, on GoneState, which crosses the wire as a
+                       # platform status envelope. Same distinction as above:
+                       # serde_json / toml / bincode stay out by omission.
+            "blake3",  # via ruleset-core, as for game-rules.
+        },
+    },
 }
 
 # R3 — capabilities a law may not have. The rule is the CAPABILITY, not the

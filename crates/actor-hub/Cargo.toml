@@ -1,0 +1,43 @@
+# actor-hub — feature #1 of the game tier: the HUB that plugins attach to.
+#
+# Design contract: docs/specs/2026-08-02-actor-hub/2026-08-02-actor-hub.md
+# The layer beneath:  docs/specs/2026-08-02-actor-hub/2026-08-02-engine-substrate.md
+#
+# PURE, and for the same reason `game-rules` is (IMP-D2): the fold is a
+# function of (actor, declarations, rows) with one correct answer. A hub that
+# can read a file is a hub that can be slow, fallible and unreplayable.
+# Enforced by scripts/crate-purity-gate.py, not by this comment.
+#
+# It does NOT depend on `game-rules`. The hub sits BENEATH the features, and
+# combat is a feature — a dependency in that direction would become a cycle the
+# day combat is rewritten as a plugin. Shared mechanism types (`ModifierOp`)
+# therefore live in `ruleset-core`, below both.
+[package]
+name = "actor-hub"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The actor HUB (feature #1): identity, intrinsic quantities, existence, plugin attachment, and the fold. Knows nothing about what any contribution means."
+
+[lib]
+name = "actor_hub"
+path = "src/lib.rs"
+
+[dependencies]
+# MAX_DECLARED_QUANTITIES, QuantityTable, ModifierOp — the declared substrate.
+ruleset-core = { path = "../ruleset-core" }
+# EntityId. sim-core has ZERO dependencies of its own.
+sim-core = { path = "../sim-core" }
+# GoneState — the SHIPPED existence lattice (hub §3.3), extracted DOWN out of
+# `dp-kernel::entity_status` so a pure crate can hold it without taking tokio
+# and sqlx with it. `dp_kernel::entity_status::GoneState` names the same type.
+entity-existence = { path = "../entity-existence" }
+
+[dev-dependencies]
+# The acceptance test (hub §6) builds a plugin from OUTSIDE the crate, exactly
+# as a feature written next year would — so it needs the declared quantity
+# table the same way a real reality does.
+ruleset-core = { path = "../ruleset-core" }

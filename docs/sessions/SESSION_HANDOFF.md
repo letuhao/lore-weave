@@ -7,6 +7,37 @@
 > §MERGE RECONCILIATION below. Main's own session sections are preserved verbatim under
 > §FROM `origin/main` further down — they are a different track's history, not this run's.
 
+## ▶ GAME TIER — feature #1 is BUILT (branch `feat/game-logic`, 2026-08-02)
+
+> **Different branch from the block above.** That NEXT block belongs to
+> `feat/frontend-tools-mcp-migration` and is left untouched.
+
+**The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-310` decision record
+live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
+the two design contracts that are its only specification are in
+[`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).
+
+| what landed | where |
+|---|---|
+| the hub — ordinals · `PluginSet` · declaration registry · contribution rows · the fold · `Actor` · the explain path | `crates/actor-hub` (new, PURE) |
+| `GoneState`, moved DOWN out of `dp-kernel` so a pure crate can hold hub item 3 | `crates/entity-existence` (new). `dp_kernel::entity_status::GoneState` is unchanged |
+| `ModifierOp` + `OpKind`, moved DOWN out of `game-rules` for the same reason | `crates/ruleset-core/src/modifier.rs`. `game_rules::stats::ModifierOp` is unchanged |
+| `U-9` — no float in the bytes that become a ruleset's NAME | `scripts/hashed-substrate-float-gate.py`, wired pre-commit |
+| `U-10` — the citations in this round's own contracts now resolve mechanically | `scripts/citation-gate.py`, wired pre-commit |
+
+**Evidence:** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules -p ruleset-loader`
+= **270 passed, 0 failed** · clippy clean · **11 bite-tests, every one red** · every repo gate green
+(purity · closed-set · zero-digest · hot-path · float · file-ceiling · deferral · amendment-rot ·
+gate-wiring).
+
+**The frame that governs the next feature:** *a plugin exists so that adding feature N+1 does not touch
+feature #1 — not so feature #1 can specify feature N+1.* Five new seams the BUILD measured are
+registered in [`2026-08-02-seams-and-triggers.md`](../specs/2026-08-02-actor-hub/2026-08-02-seams-and-triggers.md)
+as `S-11`..`S-15`, each with a trigger and none with a design.
+
+---
+
 ## 🔀 MERGE RECONCILIATION — `origin/main` → this branch (2026-08-02)
 
 `origin/main` (67 commits — the **game-logic promotion** #162 plus a Dependabot sweep) merged

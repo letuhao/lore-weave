@@ -3,6 +3,15 @@
 version = 4
 
 [[package]]
+name = "actor-hub"
+version = "0.1.0"
+dependencies = [
+ "entity-existence",
+ "ruleset-core",
+ "sim-core",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -906,6 +915,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "breaker-core",
+ "entity-existence",
  "serde",
  "serde_json",
  "sha2 0.11.0",
@@ -997,6 +1007,13 @@ dependencies = [
  "sec1",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "entity-existence"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 # Actor Hub — feature #1
 
-**Round:** 2026-08-02 · **Status:** design sealed, unbuilt, uncommitted
+**Round:** 2026-08-02 · **Status:** design sealed · **feature #1 BUILT** — [`crates/actor-hub`](../../../crates/actor-hub)
 **Run state:** [`../../plans/2026-08-02-actor-substrate-RUN-STATE.md`](../../plans/2026-08-02-actor-substrate-RUN-STATE.md) — `D-1`..`D-295`
 
 > **Actor hub is feature #1 of roughly a thousand, across dozens of categories.**
@@ -39,6 +39,19 @@ domain · ceilings beyond the fold's clamp · archetypes · spawn · maps and pl
 
 **Each is a category with its own feature.** Feature #1 measured where it touches them
 ([`seams-and-triggers`](2026-08-02-seams-and-triggers.md)) and stopped.
+
+## Built
+
+| | |
+|---|---|
+| [`crates/actor-hub`](../../../crates/actor-hub) | the hub: ordinals · `PluginSet` · the declaration registry · the contribution rows · the fold · the `Actor` struct · the explain path |
+| [`crates/entity-existence`](../../../crates/entity-existence) | `GoneState`, moved DOWN out of `dp-kernel` so a pure crate can hold hub item 3. `dp_kernel::entity_status::GoneState` is unchanged |
+| `crates/ruleset-core/src/modifier.rs` | `ModifierOp`, moved DOWN out of `game-rules` for the same reason. `game_rules::stats::ModifierOp` is unchanged |
+| `scripts/hashed-substrate-float-gate.py` | `U-9` — no float in the bytes that become a ruleset's NAME |
+| `scripts/citation-gate.py` | `U-10` — the `file:line` citations in **these documents** now resolve mechanically. `D-281` measured that no repo gate could reach them |
+
+The slice board, with per-slice test output, bite-tests and verifier reports, is
+[§6-BUILD of the RUN-STATE](../../plans/2026-08-02-actor-substrate-RUN-STATE.md).
 
 ## Verification
 

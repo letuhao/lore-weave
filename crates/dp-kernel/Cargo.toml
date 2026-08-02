@@ -57,6 +57,11 @@ sha2 = "0.11"
 # from here; the async with_timeout/retry/Bulkhead primitives stay local.
 breaker-core = { path = "../breaker-core" }
 
+# 2026-08-02 — `GoneState` moved DOWN into this leaf crate so the actor hub (a
+# PURE crate) can hold the platform existence lattice without taking tokio and
+# sqlx with it. `entity_status` re-exports it; the public path is unchanged.
+entity-existence = { path = "../entity-existence" }
+
 # W2.5 / D-S6-BULKHEAD-SHUTTLE — `shuttle` is a custom cfg (RUSTFLAGS="--cfg
 # shuttle"), not a Cargo feature — declare it so the unexpected_cfgs lint stays
 # quiet on normal builds.

@@ -41,6 +41,7 @@ mod canon;
 mod classification;
 mod combat;
 mod provenance;
+mod modifier;
 mod never_reuse;
 mod quantity;
 mod progression;
@@ -59,6 +60,10 @@ pub use combat::CombatRules;
 // Q1 — L2 declared quantities (QTY-A5/A6): identities an author invents,
 // ordinals the engine assigns, both inside the hashed bytes.
 pub use never_reuse::OrdinalReuse;
+// 2026-08-02 (actor hub, feature #1) — `ModifierOp` moved DOWN from
+// `game-rules::stats::modifier` so the hub and the laws share ONE definition.
+// `game_rules::stats::ModifierOp` re-exports it; no law changed.
+pub use modifier::{ModifierOp, OpKind};
 pub use quantity::{
     QuantityError, QuantityName, QuantityTable, MAX_DECLARED_QUANTITIES, MAX_QUANTITY_NAME_LEN,
 };

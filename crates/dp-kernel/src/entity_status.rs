@@ -21,74 +21,23 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 
-/// Lifecycle state of a game entity. Wire format = canonical snake_case.
-/// Mirrors `GoneState` in `contracts/entity_status/gone_state.go`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum GoneState {
-    /// Entity is live and reachable.
-    Active,
-    /// Entity moved between realities or was disconnected from its parent.
-    Severed,
-    /// Entity's home reality was archived.
-    Archived,
-    /// Entity (or its reality) was hard-deleted. Terminal.
-    Dropped,
-    /// Entity's PII was crypto-shredded (GDPR Art. 17). Terminal.
-    UserErased,
-}
-
-impl GoneState {
-    /// Canonical snake_case string form.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Active => "active",
-            Self::Severed => "severed",
-            Self::Archived => "archived",
-            Self::Dropped => "dropped",
-            Self::UserErased => "user_erased",
-        }
-    }
-
-    /// True iff the entity is reachable for normal hot-path reads.
-    pub fn is_live(&self) -> bool {
-        matches!(self, Self::Active)
-    }
-
-    /// True iff the state never transitions back to `Active`.
-    pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Dropped | Self::UserErased)
-    }
-}
-
-/// Precedence rank — higher wins. Mirrors `precedence.go::precedenceRank`.
-fn precedence_rank(s: GoneState) -> u8 {
-    match s {
-        GoneState::Dropped => 5,
-        GoneState::UserErased => 4,
-        GoneState::Severed => 3,
-        GoneState::Archived => 2,
-        GoneState::Active => 1,
-    }
-}
-
-/// Returns whichever of `(a, b)` has stronger precedence.
-pub fn higher(a: GoneState, b: GoneState) -> GoneState {
-    if precedence_rank(a) >= precedence_rank(b) {
-        a
-    } else {
-        b
-    }
-}
-
-/// Reduce N candidates to the strongest. Empty = `Active`.
-pub fn reduce(states: &[GoneState]) -> GoneState {
-    let mut winner = GoneState::Active;
-    for s in states {
-        winner = higher(winner, *s);
-    }
-    winner
-}
+/// The existence lattice, re-exported from the pure leaf crate that now owns it.
+///
+/// **`dp_kernel::entity_status::GoneState` still names the same type** — this is
+/// a move, not a fork, and the path is deliberately unchanged. The same shape
+/// `resilience` already has with `breaker-core::CircuitBreaker`.
+///
+/// **Why it moved (2026-08-02, actor hub feature #1):** the hub contract's item
+/// 3 is EXISTENCE and names this exact enum. This crate carries tokio, sqlx and
+/// a `SystemTime` for the resolver below, so a pure crate cannot depend on it —
+/// and a copy of the enum would be a second SSOT for a precedence order that is
+/// also mirrored in Go. So the lattice moved DOWN.
+///
+/// **What did NOT move:** the 4-layer resolver, the cascade, [`EntityRef`], the
+/// envelope and the cache — all platform concerns, all still here. The parity
+/// and precedence tests also stayed, so they keep exercising the type through
+/// this re-export.
+pub use entity_existence::{GoneState, higher, reduce};
 
 // ── Refs + envelope ─────────────────────────────────────────────────────────
 

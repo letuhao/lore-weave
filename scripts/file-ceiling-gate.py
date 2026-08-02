@@ -60,6 +60,16 @@ TIER = [
     "crates/ruleset-core",
     "crates/ruleset-loader",
     "crates/sim-core",
+    # Added 2026-08-02 with the actor hub (feature #1). A tier directory, not a
+    # file list, so every module the hub grows tomorrow is covered on its first
+    # line. Registered in the same change that created the crates rather than
+    # after the fact — the `load.rs` note below is what that policy exists to
+    # avoid, and it applied here: `fold.rs` and `registry.rs` were BOTH over the
+    # ceiling on their first run and were SPLIT (their test modules became
+    # integration tests, which also narrowed them to the public surface) rather
+    # than allowlisted.
+    "crates/actor-hub",
+    "crates/entity-existence",
     "services/commit-service",
 ]
 
