@@ -13,7 +13,7 @@
 > `feat/frontend-tools-mcp-migration` and is left untouched.
 
 **The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
-per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-339` decision record
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-350` decision record
 live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
 the two design contracts that are its only specification are in
 [`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).
@@ -27,15 +27,16 @@ the two design contracts that are its only specification are in
 | `U-10` — the citations in this round's own contracts now resolve mechanically | `scripts/citation-gate.py`, wired pre-commit |
 
 **Evidence:** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules -p ruleset-loader`
-= **279 passed, 0 failed** · `cargo test -p dp-kernel --lib` **315 passed**, unchanged by the `GoneState`
+= **281 passed, 0 failed** · `cargo test -p dp-kernel --lib` **315 passed**, unchanged by the `GoneState`
 move · the Go mirror `contracts/entity_status` still agrees · clippy clean · **22 bite-tests, every one
 red** · every repo gate green (purity · closed-set · zero-digest · hot-path · **float** · **citation** ·
 file-ceiling · deferral · amendment-rot · gate-wiring).
 
-**Reviewed by four cold-start adversarial agents across three rounds — 62 findings, every one fixed or
-answered.** Round 2 returned REFUTED, and round 3 found a live defect **inside round 2's own fix** (a
-`CAPPED` record reporting a value the fold never emitted). That is why the stopping rule is *two
-consecutive clean rounds, never one*.
+**Reviewed by five cold-start adversarial agents across four rounds — 77 findings, every one fixed or
+answered.** **Rounds 2, 3 and 4 all returned REFUTED.** Round 3 found a live defect **inside round 2's own fix**
+(a `CAPPED` record reporting a value the fold never emitted); round 4 found that round 3's gate
+repairs had introduced **~73 false positives** across `docs/` and that a documented-total public
+method could panic. That is why the stopping rule is *two consecutive clean rounds, never one*.
 
 **The frame that governs the next feature:** *a plugin exists so that adding feature N+1 does not touch
 feature #1 — not so feature #1 can specify feature N+1.* Eight new seams the BUILD measured are

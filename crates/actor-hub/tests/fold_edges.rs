@@ -349,11 +349,23 @@ fn a_downward_saturation_reports_the_value_it_actually_emitted() {
     );
     assert!(acc.wanted < 0, "and `wanted` must carry the sign of what was asked for");
 
-    // Every record for this quantity agrees about what was emitted. Two CAPPED
-    // events that contradict each other are worse than one, because a reader
-    // cannot tell which to believe.
-    for c in out.capped.iter().filter(|c| c.quantity == q(0)) {
-        assert_eq!(c.emitted, value, "cap records for one quantity disagree: {c:?}");
+    // Every QUANTITY-LEVEL record agrees about what was emitted. Two such events
+    // contradicting each other is worse than one, because a reader cannot tell
+    // which to believe.
+    //
+    // Scoped to the quantity-level sites on purpose: a review showed the
+    // unscoped version was **false of the fold** the moment a derivation is
+    // present, because `DerivedBound`/`DerivedAmount` report the ROW's
+    // contributed amount rather than the quantity's value. See
+    // `derivation_cap_records_report_the_rows_amount_not_the_quantitys` below,
+    // which pins that difference rather than papering over it.
+    for c in out
+        .capped
+        .iter()
+        .filter(|c| c.quantity == q(0))
+        .filter(|c| matches!(c.site, CapSite::Accumulator | CapSite::Emit))
+    {
+        assert_eq!(c.emitted, value, "quantity-level cap records disagree: {c:?}");
     }
 }
 
@@ -372,7 +384,12 @@ fn every_cap_record_for_one_quantity_agrees_on_what_was_emitted() {
     let value = out.value(q(0)).unwrap();
     assert_eq!(value, i32::MAX);
     assert!(out.capped.iter().any(|c| c.site == CapSite::Accumulator));
-    for c in out.capped.iter().filter(|c| c.quantity == q(0)) {
+    for c in out
+        .capped
+        .iter()
+        .filter(|c| c.quantity == q(0))
+        .filter(|c| matches!(c.site, CapSite::Accumulator | CapSite::Emit))
+    {
         assert_eq!(c.emitted, value);
         assert!(c.wanted > 0);
     }

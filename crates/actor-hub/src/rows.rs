@@ -197,9 +197,20 @@ impl DerivationRow {
         let clamped = raw.clamp(i32::MIN as i64, i32::MAX as i64) as i32;
         let squeezed = clamped as i64 != raw;
         let bounded = match self.bound {
-            // `min` first, then `max` — but submission has already refused
-            // `min > max`, so the order cannot change the answer here.
-            Some(b) => clamped.clamp(b.min, b.max),
+            // `Ord::clamp` PANICS when `min > max`, and both fields of
+            // `ContributionBound` are `pub` — so `amount(42)` on a row nobody
+            // submitted took the island down, in a method whose own doc says
+            // *"a row that could panic is a row that could take the island
+            // down"* and whose sibling `divisor == 0` branch is defended for
+            // exactly that reason. Unreachable through `fold` (submission
+            // refuses it first), reachable through the public surface this
+            // crate's SDK argument says IS the plugin API.
+            //
+            // The FLOOR WINS, which is the shipped rule for a contradictory
+            // clamp (`resolve.rs::intersect_clamps`: *"the floor wins, which is
+            // deterministic and never panics"*). Refusal still happens at
+            // submission; this only makes the degradation predictable.
+            Some(b) => clamped.clamp(b.min, b.max.max(b.min)),
             None => clamped,
         };
         let site = if bounded != clamped {

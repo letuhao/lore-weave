@@ -55,7 +55,20 @@ pub struct Capped {
     /// saturated bound, not the number the author asked for — which is exactly
     /// why the site is recorded rather than the number alone.
     pub wanted: i64,
-    /// What the slot could hold.
+    /// What was actually emitted — **and like `wanted`, READ IT WITH `site`.**
+    ///
+    /// | site | `emitted` is |
+    /// |---|---|
+    /// | [`CapSite::Accumulator`] · [`CapSite::Emit`] | the **quantity's** resolved value |
+    /// | [`CapSite::DerivedAmount`] · [`CapSite::DerivedBound`] | the **row's** contributed amount |
+    ///
+    /// This doc used to be the single unqualified sentence *"What the slot could
+    /// hold."*, and a review caught what that hid: one fold can legitimately
+    /// carry `Accumulator{emitted: 2147483647}` and `DerivedBound{emitted: 5}`
+    /// for the same quantity, because they are answers to two different
+    /// questions. `wanted` two lines up already carried a *"read it with
+    /// `site`"* caveat; this field did not, and the difference was invisible
+    /// until a fixture gained a derivation.
     pub emitted: i32,
 }
 
@@ -66,6 +79,9 @@ pub struct Capped {
 /// mechanism/vocabulary discriminator's own test (substrate §9).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapSite {
+    // The first two are QUANTITY-level and the last two are ROW-level. That
+    // split is what `Capped::emitted`'s table above is about, and the only two
+    // members whose `emitted` values are required to agree are the first two.
     /// The `i64` accumulator saturated *before* the emit, so the true value is
     /// not representable and `wanted` is the saturated bound.
     Accumulator,
@@ -133,7 +149,7 @@ pub struct Explanation {
 /// caller decides what enters the ledger.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FoldReport {
-    /// `pub(crate)` so [`crate::fold`] can build one; **not `pub`**, because the
+    /// `pub(crate)` so [`mod@crate::fold`] can build one; **not `pub`**, because the
     /// distinction it carries — `None` is ABSENT, never `Some(0)` — must be read
     /// through [`FoldReport::value`] rather than indexed around.
     pub(crate) values: [Option<i32>; MAX_DECLARED_QUANTITIES],

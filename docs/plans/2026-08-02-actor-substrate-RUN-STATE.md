@@ -2,8 +2,8 @@
 
 > # ▶▶ NEXT SESSION STARTS HERE — FEATURE #1 IS BUILT
 >
-> **State:** **BUILT and COMMITTED (`89b639a45`)** · design sealed at `d3bb441da` · branch
-> `feat/game-logic` · **not pushed**
+> **State:** **BUILT and COMMITTED** · design sealed at `d3bb441da` · branch `feat/game-logic` ·
+> **not pushed**
 >
 > | | |
 > |---|---|
@@ -12,9 +12,17 @@
 > | the op set | `crates/ruleset-core/src/modifier.rs` — `ModifierOp` moved DOWN out of `game-rules`; no law changed |
 > | `U-9` · `U-10` | `scripts/hashed-substrate-float-gate.py` · `scripts/citation-gate.py`, both wired pre-commit, both with a passing `--self-test` |
 >
-> **Evidence:** 279 Rust tests green across the touched crates · `dp-kernel --lib` 315 unchanged · the Go
-> mirror still agrees · **20 bite-tests, every one red** · **three cold-start verifiers, 45 findings, all
-> closed** · 14 repo gates green.
+> **Evidence, every number re-derived at the moment of writing** — because the previous two versions of
+> this block were stale by the commit that contained them (`D-343`, `D-350`): **283 Rust tests** green
+> across the touched crates · `dp-kernel --lib` **315**, unchanged by the `GoneState` move · the Go mirror
+> `contracts/entity_status` **ok** · clippy clean · `cargo doc` **0 warnings** · **31 bite-tests, every one
+> red** · **14 repo gates green** · the two contracts are **202** and **157** lines.
+>
+> **Five cold-start adversarial verifiers over four rounds, 77 findings, every one fixed or answered.**
+> Rounds 2, 3 and 4 all returned **REFUTED**. Round 3 found a live defect **inside round 2's own fix**;
+> round 4 found that round 3's gate repairs had made both gates **cry wolf on correct content** (~73 false
+> positives across `docs/`). **The two-consecutive-clean-rounds rule has not yet been met, and this header
+> does not claim it has** — it claims 77 findings closed and a bite for each.
 >
 > ## What the NEXT feature inherits
 >
@@ -1003,6 +1011,33 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 | **D-309** `[E]` | **`bound` on `DerivationRow` is kept, and the contradiction `R-19` raised is GONE rather than tolerated.** `D-279` flagged the row's inline bound as *"a THIRD ceiling model, in the round whose §8 is titled 'Ceilings — one model'"*. **The scope seal deleted §8**, so there is no longer a "one model" claim for it to contradict. What remains is stated exactly: the bound limits **the amount this row contributes**, not the quantity — which the shipped move-range derivation demonstrably needs (`clamp(base + speed / per_tile, 1, max)`) — and the quantity **ceiling model** stays `U-4`, another feature's. |
 | **D-310** `[E]` | **The fold's honest limit, written into the code rather than discovered later: a derivation reads a MODIFIER-ONLY value.** Three passes — check every row, resolve from modifier rows, turn derivations into contributions against those values, re-resolve and emit. **A derivation of a derivation is therefore inexpressible**, and that is the shipped shape (`resolve_block` runs its modifier loop and *then* derives `MoveRange` from the finalised `Speed`), chosen because the alternative is a dependency solver the hub has no basis to design. Registered as `S-13`. |
 
+### 6l. ROUND 4 — REFUTED, and the fix pass had made two gates CRY WOLF (2026-08-02)
+
+| # | Decision |
+|---|---|
+| **D-348** `[META]` | **🔴 11 MAJOR, 4 MINOR — and the dominant failure was NEW: my round-3 repairs turned both gates into commit blockers on CORRECT content.** Measured across `docs/`: **9 016 → 9 102 findings, ~73 of the 96 new ones false positives.** `SOURCE_EXT` gained a bare `c` and `h`, which truncated `.cypher` → `.c`, `.conf` → `.c`, `.cpp` → `.c` (**36** findings on real files) · the trailing-junk rule refused `+`, which is this repo's idiom for *"line 125 and following"* (**26**) · `LINK_DEF_RE` accepted any `[label]: token`, so a budget table row, a TypeScript index signature **inside a code fence**, a numeric range and every footnote became dead links (**11**). **A gate that cries wolf gets switched off within a day — a sentence that appears in `citation-gate.py` three times, written by the author who then shipped this.** Fixed by narrowing each rule *and* by giving each false positive its own self-test case, so the cry-wolf direction is now guarded as hard as the miss direction. |
+| **D-349** `[E]` | **🔴 The doc-fence scanner added to close a hole had a hole and a wolf, and one MASKED the other.** `body = stripped.lstrip('/')` left the `!` of a `//!`, so **every module-level doc-test was invisible** — in a crate where `lib.rs`, `fold.rs`, `rows.rs`, `report.rs` and `ordinal.rs` all lead with `//!`, and where the function's own condition names `//!`. **Intent present, mechanism absent.** And any ```` ``` ```` toggled scanning, so a ```` ```text ```` block — *how this repo writes its contract diagrams* — had its prose read as code. **Fixing either alone exposed the other**, which is `NV-4` in both directions at once. The fence handler now needs **two** states (`in_fence` and `scanning`): the first single-flag fix made a non-compiled block's CLOSING fence look like a compiled block's OPENING one, and reported *"§3.4"*, *"1."*, *"2."* and *"−60 %"* as floats across five files. |
+| **D-350** `[E]` | **🔴 And the round-3 fix pass reproduced `D-343` — the stale-number defect — inside the commit that RECORDS `D-343`.** `SESSION_HANDOFF` was updated 270 → **279** while the same commit's own VERIFY line said **281**; `_index.md` and the handoff were both advanced to `D-1..D-339` while **§6k of that same commit adds `D-340`..`D-347`**. The `D-347` row even lists *"a stale `D-1..D-295` in `_index.md`"* among the things it fixed. ⇒ **advancing a number is not re-deriving it**, and the only reliable version of this fix is to read the value out of the artifact at the moment of writing. |
+
+<!-- citation-gate: ok — the rows below QUOTE the defective citations the round-4 fixes were measured against. They are specimens, not references: each one is here precisely because it does not resolve. -->
+
+**The other eight MAJOR findings, each fixed:**
+
+<!-- citation-gate: ok — the rows below QUOTE the defective citations the round-4 fixes were measured against. They are specimens, not references: each one is here precisely because it does not resolve. -->
+
+| finding | what it was |
+|---|---|
+| the agreement invariant is FALSE of the fold | `Capped::emitted` means the **quantity's** value at `Accumulator`/`Emit` and the **row's contributed amount** at `DerivedBound`/`DerivedAmount`. One fold legitimately carries `Accumulator{emitted: 2147483647}` and `DerivedBound{emitted: 5}` for one quantity. The `F1` fix reached two of four sites, and the test asserting *"every record agrees"* would have reddened on correct behaviour the moment a fixture gained a derivation. ⇒ the field's doc gained the same *"read it with `site`"* table `wanted` already had, the assertion is scoped to the quantity-level sites, and a new test **pins the difference** rather than papering over it |
+| a documented-total public method PANICS | `Ord::clamp` asserts `min <= max`; `ContributionBound`'s fields are `pub` and `amount()` is `pub`, so `amount(42)` on a contradictory bound took the process down — in a method whose own doc says *"a row that could panic is a row that could take the island down"* and whose sibling `divisor == 0` branch is defended for exactly that reason. ⇒ **the floor wins**, which is the shipped rule (`intersect_clamps`: *"deterministic and never panics"*); submission still refuses it, so this is a backstop and not a licence |
+<!-- citation-gate: ok — the rows below QUOTE the defective citations the round-4 fixes were measured against. They are specimens, not references: each one is here precisely because it does not resolve. -->
+| both new trailing-junk self-tests could NOT fail | they cited `docs/a/b.md`, which exists only in the fake tree, so `line_count` returned 0 and `C2-past-eof` fired **with or without the rule under test**. Deleting the rule left `--self-test` green. `NV-1`, in the file whose header enshrines `NV-1` |
+| an angle-bracketed URL was reported as a dead repo file | `<?(?!https?:…)` **backtracks**: the engine gives the `<` back and the lookahead then passes. Present in the regex added to fix `D-333`, and in the pre-existing `LINK_RE` too. ⇒ the scheme test moved into code (`_is_external`), used by both rules |
+<!-- citation-gate: ok — the rows below QUOTE the defective citations the round-4 fixes were measured against. They are specimens, not references: each one is here precisely because it does not resolve. -->
+| `\d` is Unicode-aware | `b.md:1٣` absorbed as line 13. ⇒ `[0-9]` |
+| the two link rules disagreed | an absolute target was *"escapes the repository"* to one and *"does not resolve"* to the other. ⇒ one `_check_link` for both |
+| the `mod@` sweep reached two of three | the third `[crate::fold]` sat inside `report.rs`, the file the same change made public, and `cargo doc` cannot flag it because an ambiguous link that resolves to *something* is not a warning. **The count in the justifying comment was the only thing that could have caught it, and it was wrong** |
+| the ▶ NEXT SESSION header was stale on six counts | sha two commits back · 279 tests (281) · 20 bites (22) · three verifiers/45 findings (five/77) · 14 gates (14, but the commit said 11) · and the two contract line counts, **both of which that commit had edited** |
+
 ### 6k. ROUND 3 — REFUTED AGAIN, and the defect was INSIDE round 2's own fix (2026-08-02)
 
 | # | Decision |
@@ -1106,16 +1141,17 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 (cold-start agent that did not write the code) · this row filled in.
 
 > **ALL ELEVEN SLICES CLOSED.** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules
-> -p ruleset-loader` = **281 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
+> -p ruleset-loader` = **283 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
 > `GoneState` move) · the Go mirror `contracts/entity_status` **ok** · clippy clean · `cargo doc` **0
-> warnings** · **22 bite-tests, every one red** · **four cold-start verifiers over three rounds, 62
+> warnings** · **31 bite-tests, every one red** · **five cold-start verifiers over four rounds, 77
 > findings, every one fixed or answered** · every repo gate green including two that did not exist this
 > morning.
 >
-> **Rounds 2 and 3 both returned REFUTED**, and round 3's sharpest finding was a live defect **inside round
-> 2's own fix** — a `CAPPED` record reporting a value the fold never emitted (`D-341`). That is what the
-> *two consecutive clean rounds* rule is for, and it is why this board does not claim a clean round: **it
-> claims 62 findings closed and the bites to prove each one.**
+> **Rounds 2, 3 and 4 ALL returned REFUTED.** Round 3's sharpest finding was a live defect **inside round
+> 2's own fix** — a `CAPPED` record reporting a value the fold never emitted (`D-341`). Round 4's was that
+> round 3's gate repairs had made both gates **cry wolf on correct content**, ~73 false positives across
+> `docs/` (`D-348`). That is what the *two consecutive clean rounds* rule is for, and it is why this board
+> does not claim a clean round: **it claims 77 findings closed and a bite for each.**
 
 | # | Slice | Contract line | EVIDENCE — test · bite · verifier |
 |---|---|---|---|

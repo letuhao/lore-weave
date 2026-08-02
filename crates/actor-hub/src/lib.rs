@@ -60,8 +60,12 @@
 // formula, the three-pass limit, the totality argument, the `S-18` correction,
 // and substrate §7's two verbs. As private modules none of that reached
 // `cargo doc`, and three `[crate::fold]` links resolved to the 3-line *function*
-// instead. `D-311` argues the hub's SDK IS its public crate surface; a page a
-// plugin author cannot open is not on it.
+// instead. All three now say `mod@crate::fold`; the first fix pass caught two and
+// left the one inside `report.rs` -- which `cargo doc` cannot flag, because an
+// ambiguous link that resolves to SOMETHING is not a warning. That is why the
+// count in this sentence is load-bearing rather than decorative.
+// `D-311` argues the hub's SDK IS its public crate surface; a page a plugin
+// author cannot open is not on it.
 mod actor;
 pub mod fold;
 mod ordinal;

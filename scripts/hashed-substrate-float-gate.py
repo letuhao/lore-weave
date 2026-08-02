@@ -81,6 +81,10 @@ A token scan has a floor, and pretending otherwise is worse than naming it:
     hashed bytes is uncovered until someone adds it — the same NV-3 shape this
     gate enforces for files. It `exit(2)`s when a guarded tree disappears; it
     cannot notice one that should have been added.
+  * inside the doc-fence scanner: `#[doc = "```\n…"]` attribute strings are not
+    reached, and an UNTERMINATED fence leaves the scanner "inside" for the rest
+    of the file, so trailing doc prose is scanned as code. The second is a
+    cry-wolf residual, not a miss, and it is bounded to one file.
 
 None of the three is reachable without resolving the module graph, which is
 `cargo`'s job. **They are residuals, not oversights, and a green run is not an
@@ -149,6 +153,15 @@ FLOAT_RE = re.compile(
     r"|(?<![\w.])\d[\d_]*\.(?:[\d_]+)?(?![\w.])"
 )
 
+# Fence info-strings rustdoc COMPILES. Everything else in a doc comment is
+# prose. `edition2018`/`edition2021` are compiled too but are vanishingly rare
+# here; an unlisted compiled attribute is a MISS, which is the safe direction for
+# a gate whose cry-wolf failure mode blocks correct commits.
+COMPILED_FENCE_INFO = {
+    "", "rust", "compile_fail", "should_panic", "no_run", "edition2015",
+    "edition2018", "edition2021", "edition2024",
+}
+
 PRAGMA = "hashed-substrate-float-gate: ok"
 PRAGMA_LOOKBACK = 3
 
@@ -192,16 +205,36 @@ def _doc_fence_lines(raw_lines: list[str]) -> set[int]:
     scope. Only FENCED lines are returned: prose in a doc comment that happens to
     mention `1.5` is not code and is not a finding.
     """
-    inside, out = False, set()
+    # TWO states, not one. A single `inside` flag made the CLOSING fence of a
+    # non-compiled block look like the OPENING fence of a compiled one -- so
+    # ```text ... ``` turned scanning ON for every doc line after it, and the
+    # gate reported "S3.4", "1.", "2." and "-60 %" as floats across five files.
+    # `in_fence` tracks whether a fence is open at all; `scanning` whether the
+    # open one is code.
+    in_fence, scanning, out = False, False, set()
     for i, line in enumerate(raw_lines):
         stripped = line.strip()
         if not (stripped.startswith('///') or stripped.startswith('//!')):
             continue
-        body = stripped.lstrip('/').strip()
-        if body.startswith('```'):
-            inside = not inside
+        # `lstrip('/')` alone left the `!` of a `//!` module doc in place, so the
+        # fence never matched and EVERY module-level doc-test was invisible — in
+        # a crate where `lib.rs`, `fold.rs`, `rows.rs`, `report.rs` and
+        # `ordinal.rs` all lead with `//!`. The condition above named `//!`; the
+        # body did not. Intent present, mechanism absent.
+        body = stripped.lstrip('/').lstrip('!').strip()
+        if body.startswith('```') or body.startswith('~~~'):
+            if in_fence:
+                in_fence, scanning = False, False
+                continue
+            # ONLY a fence rustdoc actually COMPILES is code. `text`, `ignore`,
+            # `console`, `json`, `diff` are prose blocks - and ```text is how
+            # this repo writes its contract blocks, so scanning them reported a
+            # design note reading "the debuff factor was 1.5" as a float.
+            info = body.lstrip('`~').strip().lower()
+            in_fence = True
+            scanning = info.split(',')[0] in COMPILED_FENCE_INFO
             continue
-        if inside:
+        if scanning:
             out.add(i)
     return out
 
@@ -336,6 +369,51 @@ def self_test() -> int:
         (
             "a float inside a rustdoc example is code",
             "/// ```\n/// let x: f64 = 1.5;\n/// ```\npub fn f() {}",
+            2,
+        ),
+        (
+            "a MODULE doc-test counts too — `//!`, the form every module doc uses",
+            "//! ```\n//! let x: f64 = 1.5;\n//! ```",
+            2,
+        ),
+        (
+            "a ```rust fence is compiled, so it is code",
+            "/// ```rust\n/// let x: f64 = 1.5;\n/// ```",
+            2,
+        ),
+        (
+            "a ```text fence is PROSE and must not be scanned",
+            "/// ```text\n/// the debuff factor was 1.5 in the old design\n/// ```",
+            0,
+        ),
+        (
+            "```ignore is prose too",
+            "/// ```ignore\n/// let x = 1.5;\n/// ```",
+            0,
+        ),
+        (
+            "a ```text fence in a MODULE doc is prose",
+            "//! ```text\n//! value(q) = 1.5 x base\n//! ```",
+            0,
+        ),
+        (
+            "a prose fence does not leave the scanner ON for what follows",
+            "//! ```text\n//! value(q) = clamp(...)\n//! ```\n//! see hub 3.4 and the 1. 2. 3. list",
+            0,
+        ),
+        (
+            "a prose fence followed by a CODE fence still scans the code one",
+            "//! ```text\n//! a diagram\n//! ```\n//!\n//! ```\n//! let x: f64 = 1.5;\n//! ```",
+            2,
+        ),
+        (
+            "a code fence followed by a PROSE fence stops scanning",
+            "//! ```\n//! let x: i64 = 1;\n//! ```\n//!\n//! ```text\n//! the ratio was 1.5\n//! ```",
+            0,
+        ),
+        (
+            "a tilde fence behaves like a backtick fence",
+            "/// ~~~\n/// let x: f64 = 1.5;\n/// ~~~",
             2,
         ),
         (

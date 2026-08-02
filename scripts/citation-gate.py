@@ -137,9 +137,15 @@ DOC_ROOT = "docs"
 # matched as `App.test.ts`, was reported missing, AND lost its line number. Same
 # for `js` before `json`. A review found both branches dead and both producing
 # commit-blocking false positives on files that demonstrably exist.
+# Longest-alternative-first, and NO bare single letters. `c` and `h` were in the
+# first version and truncated `.cypher` -> `.c`, `.conf` -> `.c`, `.cpp` -> `.c`,
+# `.hpp` -> `.h`, producing 36 commit-blocking false positives on correctly
+# written citations. The same ordered-alternation defect as `ts|tsx`, one more
+# level along. They are simply removed: this repo has no `.c`/`.h` worth citing,
+# and a MISS is the safe direction for a gate whose cry-wolf mode blocks work.
 SOURCE_EXT = (
-    r"(?:rs|py|go|tsx|ts|jsonl|json|jsx|mjs|cjs|js|md|ya?ml|toml|sql|sh|ps1"
-    r"|html|css|txt|lock|ini|tf|proto|c|h)"
+    r"(?:rs|pyi|py|go|tsx|ts|jsonl|json|jsx|mjs|cjs|js|md|ya?ml|toml|sql|sh|ps1"
+    r"|html|css|txt|lock|ini|tf|proto|cypher|conf)"
 )
 
 # `path/to/file.ext` or `file.ext`, optionally `:N` or `:N-M`.
@@ -156,7 +162,10 @@ CITATION_RE = re.compile(
     rf"(?P<path>\.?[A-Za-z0-9_][A-Za-z0-9_./\\-]*\.{SOURCE_EXT})"
     # `\d+` alone truncated `:9_99999` to line 9 — a typo became a valid
     # citation. Matching the separator makes it a syntax the gate REFUSES.
-    r"(?::(?P<start>\d[\d_]*)(?:-(?P<end>\d[\d_]*))?)?"
+    # `[0-9]`, not `\d`: Python's `\d` matches every Unicode decimal, so
+    # `b.md:1\u0663` was absorbed as line 13 — the typo-becomes-a-valid-citation
+    # class the trailing-junk rule exists for, one character along.
+    r"(?::(?P<start>[0-9][0-9_]*)(?:-(?P<end>[0-9][0-9_]*))?)?"
 )
 
 # A markdown link whose target is a relative path (not a URL, not an anchor).
@@ -164,24 +173,47 @@ CITATION_RE = re.compile(
 # first version required the target to be followed immediately by `)`, so a dead
 # link written WITH a title was invisible, and a correct link written with angle
 # brackets was reported dead. Both measured.
+# The scheme test is done in CODE, not by a lookahead before an optional `<`.
+# `<?(?!https?:…)` backtracks: the engine tries `<?` greedy, the lookahead fails,
+# it gives the `<` back, and the lookahead then passes because the next character
+# is `<`. So `[x](<https://example.com/a.md>)` was reported as a dead repo file.
+# Same defect in both link rules — see `_is_external`.
 LINK_RE = re.compile(
     r"\[[^\]]*\]\("
-    r"(?!https?:|#|mailto:)"
-    r"<?(?P<target>[^)\s>]+)>?"
+    r"(?:<(?P<angled>[^>\s]+)>|(?P<plain>[^)\s]+))"
     r"(?:\s+[\"'\(][^)]*)?"
     r"\)"
 )
+
+
+def _is_external(target: str) -> bool:
+    """A URL, an anchor, or a mail link — not a path in this repository."""
+    t = target.strip().lower()
+    return (
+        t.startswith("http://") or t.startswith("https://")
+        or t.startswith("mailto:") or t.startswith("#") or t.startswith("//")
+    )
 
 # A URL. Blanked before the citation scan, because `example.com/a.md` and
 # `github.com/o/r/blob/main/docs/X.md` are paths on SOMEONE ELSE'S filesystem —
 # reporting them as missing repo files is the gate crying wolf on a correct link.
 URL_RE = re.compile(r"https?://\S+|(?<![\w.])github\.com/\S+")
 
-# A reference-style link DEFINITION: `[ref]: some/path.md`. `LINK_RE` only sees
-# the inline form, so `see [the doc][ref]` plus `[ref]: nowhere.md` was invisible
-# — and the definition line is a bare filename with no line number, which the
-# prose guard drops. Checked as a link target, which is what it is.
-LINK_DEF_RE = re.compile(r"^\s*\[[^\]]+\]:\s*<?(?!https?:|#|mailto:)(?P<target>[^\s>]+)>?")
+# A reference-style link DEFINITION: `[ref]: some/path.md`.
+#
+# THE TARGET MUST LOOK LIKE A PATH — it needs a `/` or a known extension. The
+# first version accepted any token and produced eleven false positives on correct
+# content: `[SYSTEM]: 1240 tokens` in a budget table, `[k: string]: unknown;`
+# inside a TypeScript code block, `[1024,16384]: 1024,` in a findings table, and
+# every footnote `[^1]: text`. A label followed by a colon is a markdown idiom
+# long before it is a link.
+#
+# `[^…]` (a footnote) is excluded outright, and a `|` before the bracket (a table
+# row) likewise.
+LINK_DEF_RE = re.compile(
+    r"^(?!\s*\|)\s*\[(?!\^)[^\]]+\]:\s*"
+    r"(?:<(?P<angled>[^>\s]+)>|(?P<plain>\S+))\s*$"
+)
 
 PRAGMA = "citation-gate: ok"
 PRAGMA_LOOKBACK = 3
@@ -201,6 +233,31 @@ class Finding:
 # QUOTES the pragma — such as a document explaining this gate — silences its own
 # next three lines.
 PRAGMA_RE = re.compile(rf"<!--[^>]*{re.escape(PRAGMA)}\s*[-—:]\s*\S[^>]*-->")
+
+
+# A target that is a bare filename with a recognised extension, e.g. `nowhere.md`.
+EXT_ONLY_RE = re.compile(rf"\.{SOURCE_EXT}$")
+
+
+def _check_link(rel: str, n: int, doc_dir: str, target: str, kind: str) -> list["Finding"]:
+    """One resolution rule for BOTH link forms.
+
+    They had two: the inline rule reported `escapes the repository` for an
+    absolute target while the reference rule said `does not resolve` for the
+    identical input. Two arms of one gate answering differently is the shape
+    `Tree.normalise`'s own docstring was written to kill.
+    """
+    joined = Tree.normalise(f"{doc_dir}/{target}" if doc_dir else target)
+    escaped = (
+        joined.startswith("..")
+        or bool(re.match(r"^[A-Za-z]:", target))
+        or target.startswith("/")
+    )
+    if escaped:
+        return [Finding("C4-link", rel, n, f"{kind} `{target}` escapes the repository")]
+    if not (REPO / joined).exists():
+        return [Finding("C4-link", rel, n, f"{kind} `{target}` does not resolve")]
+    return []
 
 
 def _pragma_covers(lines: list[str], idx: int) -> bool:
@@ -296,12 +353,16 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
                 # A prose mention of a filename. See the module doc.
                 continue
 
-            # Junk immediately after the line number. `types.rs:99+1` read as
-            # line 99 and `…:1e9` as line 1 — a typo silently became a valid
-            # citation, the same class `C2-bad-range` exists for. A trailing `.`
-            # or `-` is ordinary prose punctuation and is allowed.
+            # Junk immediately after the line number: `…:1e9` read as line 1,
+            # a typo silently becoming a valid citation.
+            #
+            # `+` is NOT junk. `entity_resolver.py:125+` is this repo's established
+            # idiom for "line 125 and following" and appears 26 times; refusing it
+            # blocked commits on correct prose. `.`, `-`, `,`, `)` are ordinary
+            # punctuation. What is left is an alphanumeric or `_` glued to the
+            # number, which is never a citation anyone meant to write.
             tail = scan_line[m.end():m.end() + 1]
-            if start is not None and tail and (tail.isalnum() or tail in "_+"):
+            if start is not None and tail and (tail.isalnum() or tail == "_"):
                 out.append(
                     Finding("C2-bad-range", rel, n,
                             f"`{m.group(0)}{tail}` has junk after its line number")
@@ -363,16 +424,20 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
                 )
 
         for m in LINK_DEF_RE.finditer(line):
-            target = unquote(m.group("target").split("#", 1)[0])
-            if target:
-                joined = Tree.normalise(f"{doc_dir}/{target}" if doc_dir else target)
-                if not (REPO / joined).exists():
-                    out.append(
-                        Finding("C4-link", rel, n, f"reference definition `{target}` does not resolve")
-                    )
+            raw = m.group("angled") or m.group("plain") or ""
+            if _is_external(raw):
+                continue
+            target = unquote(raw.split("#", 1)[0])
+            # Must look like a path, or it is a markdown label and not a link.
+            if not target or not ("/" in target or EXT_ONLY_RE.search(target)):
+                continue
+            out.extend(_check_link(rel, n, doc_dir, target, "reference definition"))
 
         for m in LINK_RE.finditer(line):
-            target = unquote(m.group("target").split("#", 1)[0])
+            raw = m.group("angled") or m.group("plain") or ""
+            if _is_external(raw):
+                continue
+            target = unquote(raw.split("#", 1)[0])
             if not target:
                 continue
             # Resolved as a REPO-RELATIVE string, never through the host
@@ -380,11 +445,7 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
             # answer differently on Windows and Linux for the same input:
             # `[x](/etc/passwd)` red here and green in CI, `[x](C:/Windows)` the
             # reverse. A gate with two answers for one input is worse than none.
-            joined = Tree.normalise(f"{doc_dir}/{target}" if doc_dir else target)
-            escaped = joined.startswith("..") or re.match(r"^[A-Za-z]:", target) or target.startswith("/")
-            if escaped or not (REPO / joined).exists():
-                why = "escapes the repository" if escaped else "does not resolve"
-                out.append(Finding("C4-link", rel, n, f"link target `{target}` {why}"))
+            out.extend(_check_link(rel, n, doc_dir, target, "link target"))
     return out
 
 
@@ -554,13 +615,38 @@ def self_test() -> int:
         ("a Windows-style path is a path, not a bare name", "see crates\\made\\up\\resolve.rs:1", 1),
         # F13
         ("a separator in a line number is refused", "see docs/a/b.md:9_99999", 1),
-        # F9b — trailing junk silently truncated the line number.
-        ("junk after a line number is refused", "see docs/a/b.md:99+1", 1),
-        ("an exponent after a line number is refused", "see docs/a/b.md:1e9", 1),
+        # F9b — trailing junk silently truncated the line number. These cite a
+        # REAL file with enough lines: the first version used `docs/a/b.md`,
+        # which exists only in the fake tree, so `line_count` returned 0 and
+        # `C2-past-eof` fired with or without the rule under test. Both cases
+        # passed with the rule DELETED — a self-test that could not fail, in the
+        # file whose header enshrines NV-1.
+        ("an exponent after a line number is refused", "see scripts/citation-gate.py:1e9", 1),
+        ("a letter glued to a line number is refused", "see scripts/citation-gate.py:1abc", 1),
+        # F14 — Python's `\d` matches every Unicode decimal, so `:1٣` was
+        # absorbed as line 13 and passed. `[0-9]` stops at the ASCII digit and
+        # the trailing-junk rule then sees the rest.
+        ("a unicode digit glued to a line number is refused",
+         "see scripts/citation-gate.py:1٣", 1),
+        # ...and `+` is NOT junk: `file.py:125+` means "and following" and is used
+        # 26 times in this repo. Refusing it blocked commits on correct prose.
+        ("a trailing + means 'and following' and is allowed", "see scripts/citation-gate.py:1+", 0),
+        ("a trailing comma is ordinary punctuation", "see scripts/citation-gate.py:1, and", 0),
         # F9a — the jsx branch was dead behind js, exactly as tsx was behind ts.
         ("a .jsx citation is not truncated to .js", "see docs/a/d.jsx", 0),
         # F9c — reference-style links were wholly uncovered.
         ("a dead reference-style link definition is caught", "[ref]: nowhere.md", 1),
+        # F3 — the eleven false positives this rule produced on correct content.
+        ("a budget table row is not a link definition", "[SYSTEM]: 1240 tokens (template-defined),", 0),
+        ("a TypeScript index signature is not a link definition", "  [k: string]: unknown;", 0),
+        ("a numeric range row is not a link definition", "[1024,16384]: 1024,", 0),
+        ("a footnote is not a link definition", "[^1]: see the appendix", 0),
+        ("a table row is not a link definition", "| [x]: y | z |", 0),
+        # F4 — an angle-bracketed URL was reported as a dead repo file, in BOTH
+        # link rules, because the scheme lookahead backtracked past the `<`.
+        ("an angle-bracketed URL definition is external", "[ref]: <https://example.com/x.md>", 0),
+        ("an angle-bracketed URL link is external", "[x](<https://example.com/a.md>)", 0),
+        ("an angle-bracketed mailto is external", "[x](<mailto:a@b.com>)", 0),
         ("a live reference-style link definition is fine", "[ref]: ../../scripts/citation-gate.py", 0),
         # F15
         ("a `..` segment is normalised", "see docs/x/../a/b.md", 0),
