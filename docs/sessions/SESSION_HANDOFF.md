@@ -190,7 +190,7 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 
 **Order (author-set 2026-08-02):** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` →
 `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → **`S11`** → `S3 → S4` → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → **`S11 ◐ (slice 1 ✅)`** → `S3 → S4` → `S9 → S5 → S13`.
 
 ### ⛔ KG / extraction is PARKED — do not start it
 
@@ -263,12 +263,29 @@ for, one level below where the check now looks. No provider-registry route expos
 model for a `user_model_id`; closing it is a cross-service contract plus a caching decision on a
 per-generation hot path.
 
-### ▶ NEXT: **S11 — one context compiler**
+### ◐ IN PROGRESS: **S11 — one context compiler**
 
-The largest remaining slice. Its sealed rule is **additive-then-switch**: no existing
-`loreweave_context` consumer changes behaviour until its own measurement says it may
-(RUN-STATE invariant 6). Order also puts S11 *before* S4 by a sealed decision — migrating the
-plan half twice is the avoidable cost.
+**Slice 1 is DONE**: the allocation layer the spec said *"does not exist and must be written"*.
+
+`compute_target` (whole window) and `enforce_budget` (the grounding block) are ~25× apart in
+denominator and nothing sat between them, so composition sized its grounding with
+`scale_by_window(6000, window)` — whose contract is *"only ever grows"*. Measured, that asked a
+4096-window model for **146.5%** of its entire context and an 8192 one for **73.2%**, before the
+prompt and before the reply. `loreweave_context.allocate_context` + composition's
+`pack_budget_for` now compose the two: `scale_by_window` says how much we'd LIKE, the allocator
+says how much FITS. Live on the 200k dev model the flip is a **verified no-op** (6000 → 6000);
+it bites only at 4096/8192, and logs when it clamps.
+
+⚠ The trap, recorded in the drift log: adopting `allocate_context` ALONE reads as the obvious
+switch and would have capped a 1M-context model at 6000 where it was getting 30000 — a
+regression invisible to every test I'd written, because they were all about windows being too
+small.
+
+**Remaining S11 parts, none started:** FOUR `estimate_tokens` implementations still exist (SDK,
+knowledge, lore-enrichment, translation) — the crux is already settled, so this is convergence
+not measurement; the `context-trace.contract.json` `breakdown_categories` namespacing
+(`chat.*` / `composition.*`, asserted on BOTH sides so extending it is consumer-visible); and
+the plan half's cl100k-calibrated budget in `plan_forge/existing_state.py`.
 
 **Full standing overview — board, off-board work, de-rot, loose ends:** RUN-STATE §*WHERE THE RUN
 STANDS*.

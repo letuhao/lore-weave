@@ -107,7 +107,7 @@ Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
 **Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → **`S11`** → `S3 → S4` → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → **`S11 ◐ (slice 1 ✅)`** → `S3 → S4` → `S9 → S5 → S13`.
 
 > **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
 > that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
@@ -136,7 +136,7 @@ when in fact most of the last two days went into defect work that was never on t
 | `S12` every declared enforcement site resolves | ✅ | the gate went green on its own example 3× before it was real |
 | **`S7` one output budget** | **✅ CLOSED 2026-08-02** | slices 1·2·3 ✅ · slice 4 (budget-seam rot) ✅ — 28 no-signal sites → 9, and the 9 are named |
 | `S6` no model silently its own judge | ✅ CLOSED 2026-08-02 | the affordance shipped; 7 hand-rolled copies → one policy; the skip states now differ |
-| `S11` one context compiler | ☐ | the largest remaining |
+| `S11` one context compiler | ◐ slice 1 ✅ | the allocation layer landed + composition flipped (measured no-op ≥16K); estimator convergence + contract namespacing remain |
 | `S3` one `Finding` | ☐ | deliberately after S11 |
 | `S4` the plan half onto the spine | ☐ | the gate exists; the work is widening it |
 | `S9` the shared guard SDK | ☐ | **inverted** — converge three services first, extract after |
@@ -928,6 +928,102 @@ which the POST-RUN REVIEW found and fixed one layer up — except this one is a 
 the surface that would consume it (`model_roles`) is a read-only contract with no producer. That
 is what the slice has to build, and it is why shipping the label alone would produce a warning
 the author has no way to clear.
+
+### ◐ S11 slice 1 — the allocation layer the spec said "does not exist and must be written"
+
+```
+AUDIT S11-1 (allocation layer)
+  BUILT      — `loreweave_context.allocate_context` → `ContextAllocation`, and composition's
+               `pack_budget_for` composing it with `scale_by_window`. Composition's three
+               pack-budget call sites now ask how much grounding FITS, not merely how much
+               they would like.
+
+  PROVEN     — the defect is arithmetic, and it was never a subtle one:
+                 `scale_by_window(6000, window)` as a share of the window it must fit inside
+                   window 4096 → 6000 = 146.5%   ← the block alone exceeds the whole context
+                   window 8192 → 6000 =  73.2%   ← before the prompt, and before any output
+               `scale_by_window`'s contract is *"Never smaller than flat_default … this only
+               ever grows"*, which is right for the flat-constant problem it was written for
+               and wrong for an allocator, whose entire job is being able to say LESS.
+
+               THE COMPOSITION IS THE POINT, and getting it wrong in the other direction was
+               the trap: `allocate_context` alone CAPS at the default, which would have
+               revoked `scale_by_window`'s growth for a 1M-window model — fixing a
+               small-window bug by introducing a large-window one. So `scale_by_window`
+               answers "how much would we like" and `allocate_context` answers "how much
+               fits", and a test pins the 1M case at 30000.
+
+               MEASURED, which is what RUN-STATE invariant 6 REQUIRES before a consumer may
+               switch — `no existing loreweave_context consumer changes behaviour until its
+               own measurement says it may`:
+                 window    before   after   effect
+                   None      6000    6000   unchanged  (unresolved window ⇒ caller's number)
+                   4096      6000     512   REDUCED
+                   8192      6000    1444   REDUCED
+                  16384      6000    6000   unchanged
+                 200000      6000    6000   unchanged
+                1000000     30000   30000   unchanged  (the growth survives)
+
+               LIVE, on deployed code, both images rebuilt + hash-verified (budget.py and
+               engine.py MATCH in service AND worker):
+                 resolve_context_length → 200000 (live provider-registry)
+                 THE MODEL THIS STACK SERVES: before 6000 · after 6000 · clamped=False ·
+                   fits=True · source=window  ⇒ NO-OP (identical)
+                 counterfactual on the same deployed code:
+                   window  4096 → 512  clamped=True  fits=False
+                   window  8192 → 1444 clamped=True  fits=True
+                   window 16384 → 6000 unchanged
+               and the clamp is NOT silent — the run printed
+               `pack budget CLAMPED to the model's window: grounding 512 (wanted 6000) ·
+                window=4096 · output_reserve=4700 · fits=False`.
+
+               suites: composition `8 failed, 3911 passed, 8 skipped` (was 3900; +11 — the 8
+               are the tracked test_motif_retrieve_db rows) · SDK `1187 passed, 9 skipped`
+               (was 1174; +13).
+               gates: `llm-budget-ssot-gate PASS` · `ai-provider-gate OK` ·
+               `generation-guard-gate PASS` · `enforcement-claims-gate OK — 103 path(s)` ·
+               `db-safety-gate exit 0` · `[language-rule] PASS` ·
+               `context-budget-defaults-lint` clean.
+               RED-ABLE: passing `None` as the window inside `pack_budget_for` (so every
+               allocation degrades to flat) fails exactly the three small-window tests and
+               leaves the no-op ones green — which is the right signature, because a
+               regression here should look like "the fix stopped working", not like
+               "everything changed". Restored by re-editing.
+
+  NOT PROVEN — `PACK_OUTPUT_RESERVE_TOKENS = 4700` is REASONED (1000 words × 2.6 vi
+               tokens/word × the PROSE headroom), NOT measured against real scene replies. It
+               is also used because the TRUE output budget cannot be known at allocation
+               time: `scene_output_budget` needs the profile's language, and the profile comes
+               out of the pack this budget is sizing. That ordering is worked around, not
+               resolved.
+               `DEFAULT_OVERHEAD_SHARE = 0.25` is likewise read off the packer's segment list
+               rather than measured against real prompts.
+               NO LIVE GENERATION on a small-window model. The 4096/8192 rows are the deployed
+               code computing against those numbers, not a draft produced by an 8K model — so
+               "the request now fits" is arithmetic, not an observed success. A BYOK model
+               with a small window is the case that matters and this stack has none.
+               And this is S11 SLICE 1 only. The slice's other parts are untouched: FOUR
+               `estimate_tokens` implementations still exist (SDK, knowledge, lore-enrichment,
+               translation), the `context-trace.contract.json` `breakdown_categories`
+               namespacing (`chat.*` / `composition.*`) is not started, and the plan half's
+               cl100k-calibrated budget in `plan_forge/existing_state.py` is unchanged.
+
+  DRIFT      — I nearly adopted `allocate_context` on its own at the three call sites. It
+               reads as the obvious switch, it passes every small-window test, and it would
+               have silently capped a 1M-context model at 6000 where it had been getting
+               30000 — a regression invisible to exactly the tests I had just written, because
+               they were all about windows being too SMALL. Caught by running the numbers at
+               1M before editing, not by a test.
+               Second: my first `pack_budget_for` returned a bare int. That would have thrown
+               away `clamped` and `fits` at the moment of use, which is the S8 defect verbatim
+               — a number the pack computed, documented, and handed to nobody — inside the
+               slice about composing budgets honestly.
+
+  NEXT       — S11 slice 2: the four `estimate_tokens` copies. The spec's crux is already
+               settled (the script-aware heuristic tracks o200k within 3-6%; cl100k is the
+               outlier and tiktoken cannot be a kernel dependency), so that slice is
+               convergence work, not a measurement.
+```
 
 ### ✅ S6 — no model silently its own judge. The affordance shipped WITH the label.
 

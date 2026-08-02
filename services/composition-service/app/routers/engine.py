@@ -467,7 +467,12 @@ async def generate(
     # mid-size window must not cap a genuinely bigger model at the same number
     # (resolved once per request; best-effort, unresolvable ⇒ the flat defaults).
     _context_length = await llm.resolve_context_length(body.model_source, str(body.model_ref))
-    _pack_budget = scale_by_window(settings.pack_token_budget, _context_length)
+    # S11 — how much grounding FITS, not merely how much we would like. `scale_by_window`
+    # only ever GROWS a flat default, so an 8K model was asked for a 6000-token block
+    # (73% of its whole window) and a 4K one for 146%. Measured no-op at >=16K and on an
+    # unresolved window; see `pack_budget_for`.
+    _pack_alloc = B.pack_budget_for(_context_length, settings.pack_token_budget)
+    _pack_budget = _pack_alloc.grounding
     _compress_chars = scale_by_window(settings.compress_max_input_chars, _context_length)
 
     async def _compress_fn(older: list[str], timeline_texts: list[str], plan: str) -> str:
@@ -952,7 +957,12 @@ async def selection_edit(
     # Model-context-aware budget scaling — resolved once per request regardless of
     # whether scene_context grounding runs, since prompt_ceiling below always needs it.
     _context_length = await llm.resolve_context_length(body.model_source, str(body.model_ref))
-    _pack_budget = scale_by_window(settings.pack_token_budget, _context_length)
+    # S11 — how much grounding FITS, not merely how much we would like. `scale_by_window`
+    # only ever GROWS a flat default, so an 8K model was asked for a 6000-token block
+    # (73% of its whole window) and a 4K one for 146%. Measured no-op at >=16K and on an
+    # unresolved window; see `pack_budget_for`.
+    _pack_alloc = B.pack_budget_for(_context_length, settings.pack_token_budget)
+    _pack_budget = _pack_alloc.grounding
     _compress_chars = scale_by_window(settings.compress_max_input_chars, _context_length)
 
     grounding = ""
@@ -1177,7 +1187,12 @@ async def generate_chapter(
     # Model-context-aware budget scaling — a flat pack/compress budget tuned for a
     # mid-size window must not cap a genuinely bigger model at the same number.
     _context_length = await llm.resolve_context_length(body.model_source, str(body.model_ref))
-    _pack_budget = scale_by_window(settings.pack_token_budget, _context_length)
+    # S11 — how much grounding FITS, not merely how much we would like. `scale_by_window`
+    # only ever GROWS a flat default, so an 8K model was asked for a 6000-token block
+    # (73% of its whole window) and a 4K one for 146%. Measured no-op at >=16K and on an
+    # unresolved window; see `pack_budget_for`.
+    _pack_alloc = B.pack_budget_for(_context_length, settings.pack_token_budget)
+    _pack_budget = _pack_alloc.grounding
     _compress_chars = scale_by_window(settings.compress_max_input_chars, _context_length)
 
     async def _compress_fn(older: list[str], timeline_texts: list[str], plan: str) -> str:

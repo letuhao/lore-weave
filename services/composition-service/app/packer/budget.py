@@ -158,3 +158,72 @@ def enforce_budget(
         kept=kept, dropped_count=len(dropped), total_tokens=total,
         over_budget=protected_total > budget,
     )
+
+
+# ── S11 · the allocation layer: how much grounding actually FITS ──────────────────────────
+
+#: Tokens set aside for the scene reply when sizing the grounding block.
+#:
+#: REASONED, and the reasoning is the point: a default-target Vietnamese scene is
+#: `DEFAULT_SCENE_TARGET_WORDS` (1000) x 2.6 tokens/word x the PROSE headroom (2.0) — call it
+#: ~4700. NOT `SCENE_OUTPUT_CEILING` (32768): that is a runaway guard, and reserving it would
+#: clamp the grounding block to its floor on every model up to ~128K, which is a re-tuning of
+#: every book disguised as a safety fix.
+#:
+#: It is an ESTIMATE used only to decide how much room grounding may take, and it is needed
+#: BEFORE the real output budget can be computed — `scene_output_budget` wants the profile's
+#: language, and the profile comes out of the pack this budget is sizing. Reserving a typical
+#: reply rather than the true one is the honest way out of that ordering, and it errs toward
+#: reserving too much (smaller grounding) rather than too little (a truncated scene).
+PACK_OUTPUT_RESERVE_TOKENS = 4700
+
+
+def pack_budget_for(context_length: int | None, flat_default: int, *,
+                    output_reserve: int = PACK_OUTPUT_RESERVE_TOKENS):
+    """How many grounding tokens this model can actually afford.
+
+    Composes the two budget functions that were never composed. `scale_by_window` answers
+    *how much would we LIKE* — it grows a flat default for a genuinely bigger model and, by
+    its own contract, "only ever grows". `allocate_context` answers *how much FITS* once the
+    reply and the rest of the prompt are paid for. Neither alone is correct:
+
+      · `scale_by_window` alone leaves an 8K model asking for a 6000-token grounding block —
+        73% of its entire window before the prompt or the output. At 4096 it asks for 146%.
+      · `allocate_context` alone would CAP at the flat default and lose the growth a 1M-window
+        model should get.
+
+    MEASURED across real windows, with the two composed (reserve = 4700):
+        window   want    gets    effect
+          None   6000    6000    unchanged (window unknown ⇒ caller's number, untouched)
+          4096   6000     512    REDUCED — today's value is 146% of the window
+          8192   6000    1444    REDUCED — today's value is 73% of the window
+         16384   6000    6000    unchanged
+        200000   6000    6000    unchanged
+       1000000  30000   30000    unchanged (the growth survives)
+
+    So adopting this is a no-op on every window at or above 16K and on every unresolved one,
+    and only bites where the current number cannot work. That measurement is what RUN-STATE
+    invariant 6 requires before a consumer may switch.
+
+    Returns the full `ContextAllocation` rather than an int so the caller can report
+    `clamped`/`fits` instead of silently shrinking a book's grounding — the S8 rule that a
+    number the pack computed must be able to reach the job.
+    """
+    from loreweave_context import allocate_context, scale_by_window
+
+    alloc = allocate_context(
+        context_length,
+        grounding_default=scale_by_window(flat_default, context_length),
+        output_reserve=output_reserve,
+    )
+    if alloc.clamped:
+        # A book whose grounding was silently reduced looks, from the prose, exactly like a
+        # book that had little grounding to begin with — the same indistinguishability that
+        # let `propose_world` return zero entities for weeks. Say it happened.
+        logger.warning(
+            "pack budget CLAMPED to the model's window: grounding %d (wanted %d) · "
+            "window=%s · output_reserve=%d · fits=%s",
+            alloc.grounding, scale_by_window(flat_default, context_length),
+            alloc.window, alloc.output_reserve, alloc.fits,
+        )
+    return alloc
