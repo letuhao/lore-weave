@@ -547,10 +547,23 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
                     )
                 )
 
+        # Links inside an inline code span are a QUOTATION of markdown, not a
+        # link. The exclusion is applied HERE, to the link rules only.
+        #
+        # It is deliberately NOT applied to CITATIONS: this repo writes almost
+        # every citation in backticks (`resolve.rs:84`), so excluding code spans
+        # from the citation scan would blind the gate to nearly all of its
+        # subject. An earlier version of this block was a no-op loop that
+        # iterated the links, skipped the spans and then did nothing at all --
+        # the exclusion was written and never reached the check it was for.
         spans = _code_span_ranges(line)
-        for m in LINK_RE.finditer(line):
-            if any(a <= m.start() < b for a, b in spans):
-                continue
+        # NO code-span check on this arm, and its absence is the point.
+        # `LINK_DEF_RE` is anchored `^\s*\[`, so its match can only ever start at
+        # column 0 or after whitespace — never inside a backtick span. Adding the
+        # check here would be the third occurrence this round of a guard that
+        # cannot change a verdict (`(?!\s*\|)`, the table-row self-test, and this),
+        # and it went in before a bite-test caught it: the mutation removing it
+        # left the whole self-test green.
         for m in LINK_DEF_RE.finditer(line):
             raw = m.group("angled") or m.group("plain") or ""
             if _is_external(raw):
@@ -564,6 +577,8 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
             out.extend(_check_link(tree, rel, n, doc_dir, target, "reference definition"))
 
         for m in LINK_RE.finditer(line):
+            if any(a <= m.start() < b for a, b in spans):
+                continue
             raw = m.group("angled") or m.group("plain") or ""
             if _is_external(raw):
                 continue
@@ -778,6 +793,14 @@ def self_test() -> int:
         # F6 — a placeholder must be skipped by BOTH link arms, not one.
         ("a placeholder inline link is skipped", "[x](docs/nope*.md)", 0),
         ("a placeholder reference definition is skipped too", "[ref]: docs/nope*.md", 0),
+        # A markdown link QUOTED inside backticks is a quotation, not a link.
+        # The exclusion is on the LINK rules only -- applying it to citations
+        # would blind the gate, since this repo writes almost every citation in
+        # backticks. An earlier version wired it to a no-op loop that iterated
+        # the links, skipped the spans and then did nothing at all.
+        ("a link quoted inside backticks is not a link", "`[x](nowhere.md)`", 0),
+        ("...but the same link outside backticks still reds", "[x](nowhere.md)", 1),
+        ("a CITATION in backticks is still checked", "see `crates/nope/gone.rs:3`", 1),
         # F3 — a citation with no line number is a prose mention, ANCHORED or not.
         ("an anchored path with no line number is a plan naming a file to create",
          "| P1 | `services/x/tests/test_probe_new.py` | Test to WRITE |", 0),
