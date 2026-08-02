@@ -29,6 +29,7 @@ from ..llm_client import LLMClient
 from .chunk_splitter import estimate_tokens
 from .session_translator import _parse_sdk_response, validate_translation_output
 from app.llm_budget import budget_for
+from .injection_report import scan_untrusted_source
 
 log = logging.getLogger("translation.decoupled.block")
 
@@ -129,6 +130,12 @@ def build_batch_messages(rs: dict[str, Any]) -> list[dict]:
             user_parts.append(
                 f"[Summary of previously translated content]\n{rs['rolling_summary']}\n"
             )
+        # DoD-4c. `combined` is this batch of IMPORTED blocks. Scanned per batch rather
+        # than per chapter because that is the unit this worker sees; the `where` carries
+        # the batch so two hits are two findings, not one repeated.
+        scan_untrusted_source(
+            combined, where=f"block_translate:blocks[{block_indices[0]}..{block_indices[-1]}]"
+            if block_indices else "block_translate:empty")
         user_parts.append(
             f"Translate the following {len(block_indices)} blocks "
             f"from {_lang_name(rs['source_lang'])} to {_lang_name(rs['target_code'])}:\n\n{combined}"

@@ -3526,6 +3526,55 @@ AUDIT AUDIT-15 (the acceptance test · identity_verified reaches the publish gat
                (`exclusion_unverified`, `injection_scan`).
 ```
 
+### ✅ AUDIT-16 · DoD-4c — the five translation modules, read one at a time. DETECT 2 → 6.
+
+```
+AUDIT AUDIT-16 (translation's remaining unsanitized prompt assemblies)
+
+  WHY ONE AT A TIME — the Debt row said it: "apply the same call across five modules" is how a
+              sweep gets one wrong, and two of them fold a TRANSLATION as well as a source.
+              Read individually, the placements are NOT uniform:
+
+              · `v3/corrector.py` — folds TWO untrusted strings, and they are untrusted
+                DIFFERENTLY. The source is imported third-party text; the draft is model output
+                that may carry a directive the source planted OR one the model invented.
+                Separate `where` labels, so a hit names the side. Scanning only the source
+                would miss the second; one label would read as the same finding twice.
+              · `v3/bilingual_extractor.py` — same two-string shape, and the interesting part
+                is that its OUTPUT is JSON, not prose, so "the untrusted text is the product"
+                looks inapplicable. It is not: the extractor must return EXACT source
+                substrings as each pair's `source`, so a neutralised chapter would make every
+                harvested name fail to match the book. Same fidelity argument, different
+                product. DETECT.
+              · both scan inside `_build_messages`, the choke point reached by the sync path
+                AND the decoupled submit-kwargs path — a placement a new caller cannot bypass.
+              · `routers/translate.py` — scans `body.text` where the REQUEST's bytes enter.
+              · `decoupled_block_translate.py` — scans per BATCH, not per chapter, because the
+                batch is the unit this worker sees; the `where` carries the block range so two
+                hits are two findings rather than one repeated.
+              · `extraction_worker.py` — its two prompt sites BOTH reach the chapter through
+                `build_user_prompt`, so the scan goes there, before the `⟦B#⟧` block-hint
+                rewrite (scanning after would report the platform's own brackets as findings).
+
+  A THIRD KIND — that last placement means `extraction_worker.py` is covered by a file the
+              per-file lint cannot see, i.e. exactly the upstream case AUDIT-14 mechanised. But
+              its upstream DETECTS rather than mutates, so folding it into SANITIZED_UPSTREAM
+              would let a weaker promise wear a stronger label — the thing the MUTATE/DETECT
+              split exists to prevent. `DETECT_UPSTREAM` is its own kind, verified against the
+              detect-only references.
+
+  RESULT     — DETECT-covered **2 → 6**; four baseline rows deleted, one converted.
+               `injection-coverage-lint: OK (16 baselined)` · translation **1151 passed** ·
+               guard-redability 10/10 · gate-teeth 61.
+
+  HONEST     — this adds four more emitters to a signal nobody reads. `injection_scan` is the
+               last held row and its hits still change nothing: DETECT is only a defence if
+               somebody is TOLD. The scans are worth having anyway — they are what makes the
+               telling possible — but the count of unread signals did not go down here, and
+               calling this slice "translation is defended" would be the overstatement the
+               registry caught me making once already.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |

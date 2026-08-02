@@ -12,6 +12,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from app.workers.injection_report import scan_untrusted_source
 
 log = logging.getLogger(__name__)
 
@@ -288,6 +289,16 @@ def build_user_prompt(chapter_text: str, *, block_hints: bool = False) -> str:
     """Assemble the user prompt with chapter text. When ``block_hints``, the chapter is
     rendered as ⟦B#⟧-numbered paragraphs (the SAME segmentation the provenance validator
     uses) so the model can cite an ``evidence_block`` per quote — validated downstream."""
+    # DoD-4c. `extraction_worker` folds imported chapter text into a prompt at TWO sites (the
+    # glossary sweep and the batch extractor) and both reach it through here, so this is the
+    # placement a new call site cannot bypass. Scanned BEFORE the block-hint rewrite, which
+    # inserts `⟦B#⟧` markers of its own — scanning after would report the platform's own
+    # brackets alongside whatever the book contains.
+    #
+    # DETECT, never MUTATE: extraction must quote EXACT source spans as evidence, and a
+    # neutralised chapter would make every quote fail its provenance check. Same fidelity
+    # argument as translation, and the reason this whole service is DETECT-covered.
+    scan_untrusted_source(chapter_text, where="extraction:chapter")
     if block_hints:
         from app.workers.extraction_provenance import build_block_offset_map
 

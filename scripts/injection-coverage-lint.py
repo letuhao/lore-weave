@@ -124,6 +124,11 @@ class BaselineRow:
 
 GENUINE_GAP = "GENUINE_GAP"
 SANITIZED_UPSTREAM = "SANITIZED_UPSTREAM"
+#: A third kind, and it is deliberately NOT folded into the one above. The upstream covers this
+#: module by DETECTING, not by transforming — a strictly weaker promise, and the whole point of
+#: the MUTATE/DETECT split is that the two must not read alike. Verified against the
+#: detect-only references rather than the mutating ones.
+DETECT_UPSTREAM = "DETECT_UPSTREAM"
 
 BASELINE: dict[str, BaselineRow] = {
     # ── sanitized upstream: the claim is checkable, and now checked ───────────────────────
@@ -179,16 +184,11 @@ BASELINE: dict[str, BaselineRow] = {
     # sanitizer at all. Routing them through `neutralize_injection` is a security change that
     # needs its own measurement: a sanitizer that mangles source text is a TRANSLATION-fidelity
     # bug, which is why the translate rows resolve to OutputKind.MIRROR elsewhere.
-    "services/translation-service/app/routers/translate.py": BaselineRow(
-        GENUINE_GAP, "wakes when the sync translate route scans or neutralizes its source"),
-    "services/translation-service/app/workers/decoupled_block_translate.py": BaselineRow(
-        GENUINE_GAP, "wakes when the block worker scans its source text"),
     "services/translation-service/app/workers/extraction_worker.py": BaselineRow(
-        GENUINE_GAP, "wakes when extraction scans the chapter text it folds into prompts"),
-    "services/translation-service/app/workers/v3/bilingual_extractor.py": BaselineRow(
-        GENUINE_GAP, "wakes when the v3 extractor scans BOTH sides it folds in"),
-    "services/translation-service/app/workers/v3/corrector.py": BaselineRow(
-        GENUINE_GAP, "wakes when the corrector scans the draft it is correcting"),
+        DETECT_UPSTREAM,
+        "both of its prompt sites reach the chapter text through `build_user_prompt`, which "
+        "scans it; wakes if this worker ever assembles a prompt without going through there",
+        upstream="services/translation-service/app/workers/extraction_prompt.py"),
     "services/worker-ai/app/distill_job.py": BaselineRow(
         GENUINE_GAP, "wakes when the distiller scans the chapter chunks it folds in"),
 }
@@ -219,6 +219,14 @@ def expired_rows() -> list[str]:
                 problems.append(f"{rel}: its upstream {row.upstream} NO LONGER SANITIZES. "
                                 f"This row was silencing the finding on that file's behalf; "
                                 f"the reason is gone, so the row is too.")
+        elif row.kind == DETECT_UPSTREAM:
+            if not row.upstream:
+                problems.append(f"{rel}: DETECT_UPSTREAM with no `upstream` named.")
+            elif not os.path.exists(os.path.join(REPO_ROOT, row.upstream)):
+                problems.append(f"{rel}: its upstream {row.upstream} no longer exists.")
+            elif not DETECT_ONLY_REF.search(_read(row.upstream)):
+                problems.append(f"{rel}: its upstream {row.upstream} NO LONGER SCANS. The "
+                                f"detect coverage this row leans on is gone.")
         elif row.upstream:
             problems.append(f"{rel}: a GENUINE_GAP row names an upstream. If a sibling "
                             f"sanitizes it, the row's kind is SANITIZED_UPSTREAM.")

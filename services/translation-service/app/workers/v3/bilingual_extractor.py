@@ -20,6 +20,7 @@ import re
 from dataclasses import dataclass
 
 from ..session_translator import _parse_sdk_response, _lang_name, _SafeFormatMap
+from ..injection_report import scan_untrusted_source
 
 log = logging.getLogger(__name__)
 
@@ -55,6 +56,12 @@ def _build_messages(source_text: str, translated_text: str,
         "source_lang": _lang_name(source_lang),
         "target_lang": _lang_name(target_lang),
     }))
+    # DoD-4c. DETECT and not MUTATE even though the OUTPUT here is JSON rather than prose:
+    # the extractor must return EXACT source substrings as the `source` of each name pair, so
+    # a neutraliser that rewrote the text would make the harvested names fail to match the
+    # book they came from. Same fidelity argument as translation, different product.
+    scan_untrusted_source(source_text, where="v3_namepairs:source")
+    scan_untrusted_source(translated_text, where="v3_namepairs:translation")
     user = (
         f"SOURCE ({_lang_name(source_lang)}):\n{source_text}\n\n"
         f"TRANSLATION ({_lang_name(target_lang)}):\n{translated_text}"
