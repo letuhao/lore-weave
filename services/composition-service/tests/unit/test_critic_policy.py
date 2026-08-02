@@ -8,13 +8,24 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import re
 import uuid
 
 import pytest
 
 from app.engine.critic_policy import CriticResolution, CriticStatus, resolve_critic
 
-_ENGINE = pathlib.Path(__file__).resolve().parents[2] / "app" / "routers" / "engine.py"
+_APP = pathlib.Path(__file__).resolve().parents[2] / "app"
+#: The whole app tree, not a named file.
+#:
+#: This started as `app/routers/engine.py` — the file the seven copies happened to live in —
+#: and an AUDIT then found an EIGHTH in `app/engine/canon_reflect.py` that the guard could not
+#: see. That is NV-2 verbatim: an enumerated scope is DEFAULT-UNCOVERED, and the question it
+#: fails to answer is "what about a file created tomorrow?". The scope is now the tree.
+_SCANNED = sorted(
+    p for p in _APP.rglob("*.py")
+    if "__pycache__" not in p.as_posix() and not p.name.startswith("test_")
+)
 
 
 # ── the four states, and why each is its own state ────────────────────────────────────────
@@ -88,27 +99,38 @@ def test_an_unknown_drafter_does_not_silently_refuse_the_critic():
 
 # ── the reason this module exists: no EIGHTH hand-built copy ──────────────────────────────
 
-def test_there_is_no_eighth_hand_rolled_distinct_check():
-    """`ast`, not a regex, and the reason is recorded in this run's drift log: a regex over
-    call bodies passed its own injection because one match ran 19,993 characters and swallowed
-    the next call whole. Here the structure is a comparison inside a BoolOp, which is a parse
-    tree.
+def test_no_module_re_inlines_the_distinct_critic_rule():
+    """`ast`, over the WHOLE app tree, because the first version of this guard scanned one file.
 
-    Reds when someone re-inlines `str(critic_ref) != str(drafter_ref)` instead of calling the
-    policy — the drift that produced seven copies, six of which stayed in lockstep while the
-    seventh, written inverted, grew the defect S6 fixes.
+    A regex was rejected for a reason this run's drift log records: a regex over call bodies
+    passed its own injection because one match ran 19,993 characters and swallowed the next
+    call. The structure is a comparison inside a BoolOp — that is a parse tree.
+
+    And the scope matters as much as the tool. Pointed at `routers/engine.py` this passed while
+    `engine/canon_reflect.py` carried an eighth copy; an audit found it, not the guard.
     """
-    tree = ast.parse(_ENGINE.read_text(encoding="utf-8"))
-    offenders: list[int] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Compare):
+    offenders: list[str] = []
+    for path in _SCANNED:
+        if path.name == "critic_policy.py":
+            continue  # the policy IS the comparison
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8", errors="ignore"))
+        except SyntaxError:
             continue
-        src = ast.unparse(node)
-        if "critic" in src and any(isinstance(o, (ast.Eq, ast.NotEq)) for o in node.ops):
-            offenders.append(node.lineno)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Compare):
+                continue
+            src = ast.unparse(node)
+            if not any(isinstance(o, (ast.Eq, ast.NotEq)) for o in node.ops):
+                continue
+            # a critic/judge ref compared against the DRAFTER's — the rule, re-inlined
+            if re.search("(critic|judge)[A-Za-z0-9_]*(ref|source)", src) and "drafter" in src:
+                offenders.append(f"{path.relative_to(_APP).as_posix()}:{node.lineno}")
+            elif "critic" in src and "model_ref" in src:
+                offenders.append(f"{path.relative_to(_APP).as_posix()}:{node.lineno}")
     assert offenders == [], (
-        f"engine.py re-inlines a critic identity comparison at line(s) {offenders} — "
-        f"call resolve_critic() instead; that rule had seven copies once"
+        f"the distinct-critic rule is re-inlined at {offenders} — call resolve_critic() or "
+        f"resolve_critic_refs(); that rule had EIGHT copies once"
     )
 
 

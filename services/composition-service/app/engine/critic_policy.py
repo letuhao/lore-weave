@@ -82,19 +82,32 @@ class CriticResolution:
 
 
 def resolve_critic(settings: Mapping[str, Any] | None, drafter_ref: Any) -> CriticResolution:
-    """Decide who critiques this generation.
-
-    `settings` is the Work's settings blob; `drafter_ref` is the model writing the prose.
-
-    Compared as STRINGS because the two sides arrive differently typed — the setting comes out
-    of JSONB and the drafter ref off a request body or a job input, so one may be a `UUID` and
-    the other its text. An identity check between a `UUID` and its own `str` is False, which
-    would let a model judge itself while every test using matching types stayed green.
-    """
+    """Decide who critiques this generation, from a Work's settings blob."""
     sdict = settings or {}
-    src = sdict.get("critic_model_source")
-    ref = sdict.get("critic_model_ref")
+    return resolve_critic_refs(
+        sdict.get("critic_model_source"), sdict.get("critic_model_ref"), drafter_ref
+    )
 
+
+def resolve_critic_refs(src: Any, ref: Any, drafter_ref: Any) -> CriticResolution:
+    """The same decision from ALREADY-RESOLVED refs rather than a settings blob.
+
+    This overload exists because the rule had an EIGHTH copy that the S6 sweep missed.
+    `canon_reflect` receives `judge_source`/`judge_ref` that a router has already filtered,
+    and re-derived the predicate itself:
+
+        distinct = bool(judge_ref and judge_source and str(judge_ref) != str(drafter_ref))
+
+    Harmless the day it was written — the caller blanks the refs when they are not distinct,
+    so the re-check agreed — and it is exactly how the seventh copy drifted: a restatement
+    that agrees until one side changes. Found by an audit, not by the guard, because the guard
+    scanned one FILE.
+
+    Compared as STRINGS because the two sides arrive differently typed — a setting comes out of
+    JSONB and a drafter ref off a request body or a job input, so one may be a `UUID` and the
+    other its text. An identity check between a `UUID` and its own `str` is False, which would
+    let a model judge itself while every test using matching types stayed green.
+    """
     if not ref and not src:
         return CriticResolution(CriticStatus.NOT_CONFIGURED)
     if not ref or not src:

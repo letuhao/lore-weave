@@ -18,6 +18,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
 
+from app.engine.critic_policy import resolve_critic_refs
 from app.engine.canon_check import (
     CanonViolation,
     ReflectResult,
@@ -253,7 +254,10 @@ async def run_canon_reflect(
     # The judge must be a DISTINCT model (anti-self-reinforcement §4). No distinct
     # critic configured → symbolic-only (confirmed stays None → ADVISORY, never
     # auto-revised/hard-gated). source_language steers the judge's `why`.
-    distinct = bool(judge_ref and judge_source and str(judge_ref) != str(drafter_ref))
+    # THE EIGHTH COPY, found by audit after S6 collapsed the seven in routers/engine.py.
+    # The guard S6 shipped scans that one FILE, so this restatement was invisible to it —
+    # an enumerated scope is default-uncovered (NV-2). Now one policy, one rule.
+    distinct = resolve_critic_refs(judge_source, judge_ref, drafter_ref).distinct
     source_language = getattr(profile, "source_language", "auto")
 
     async def check_fn(text: str) -> list[CanonViolation]:
