@@ -53,6 +53,14 @@ class CallProfile:
     #: An upper bound for calls where the ceiling IS the length control. Rare and deliberate:
     #: see `compress`. `None` ⇒ the SDK's runaway guard.
     ceiling: int | None = None
+    #: ESCALATE the truncation cost above what the KIND implies. Only escalates —
+    #: `False` here can never turn off a STRUCTURED row's fatality.
+    #:
+    #: For a row whose output is a LIST that truncation destroys, while its SIZING is
+    #: verdict-shaped. `cross_scene_check` is the case that proved the two are separate
+    #: questions: forcing it to STRUCTURED for the fatality would drag in that kind's
+    #: 4096 floor for a call MEASURED at 499 output tokens.
+    truncation_fatal: bool = False
     why: str = ""
     #: True ⇒ NO per-call signal can change this row's resolved budget, by construction.
     #:
@@ -84,9 +92,21 @@ PROFILES: dict[str, CallProfile] = {
                                        why="one verdict + a short why per cast member"),
     "judge_prose": CallProfile(OutputKind.VERDICT, 1536, 1536, why="the critic's scored findings"),
     "pairwise_judge": CallProfile(OutputKind.VERDICT, 1536, 1024, why="A/B verdict + rationale"),
+    # MISLABELLED until 2026-08-03, and the label was the smaller half of the problem.
+    # Its two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a
+    # cast ROSTER — one row per person, capped at 40 by `extract_people` — not a
+    # contradiction list. Measured live on a 14-person passage: 499 output tokens, 14
+    # rows, **35.6 tokens/row**, so the 40-row worst case needs ~1424 and 2048 holds.
+    #
+    # The budget was never the bug. The KIND was: VERDICT means truncation is mild, and
+    # for a roster it is total. At a 120-token cap the same call returned
+    # `finish_reason=length` and `extract_people` parsed **0 rows** — an EMPTY roster,
+    # which is not the `None` both callers degrade on. `compare_people` turns an empty
+    # roster into `status="checked"`, zero contradictions: a CLEAN verdict on a scene
+    # whose cast it never read.
     "cross_scene_check": CallProfile(
-        OutputKind.VERDICT, 2048, 2048,
-        why="a contradiction list across one scene seam — usually EMPTY, but each entry quotes both sides, so a chapter that really did drift needs room to say so"),
+        OutputKind.VERDICT, 2048, 2048, truncation_fatal=True,
+        why="a cast ROSTER for one passage — one row per person, capped at 40. Sizes like a verdict (short, bounded) and truncates like a list (unparseable), which is why the fatality is declared rather than inherited from the kind"),
     "judge_motif_conformance": CallProfile(OutputKind.VERDICT, 1536, 512,
                                            why="did the draft realize its motif"),
     "select_score": CallProfile(OutputKind.VERDICT, 1536, 512, why="retrieval scoring"),
@@ -256,7 +276,8 @@ def budget_for(code: str, *, target: int | None = None, language: str | None = N
     kw = {} if p.ceiling is None else {"ceiling": p.ceiling}
     return call_budget(
         p.kind, target=target, language=language, reasoning=reasoning,
-        context_length=context_length, floor=p.floor, **kw,
+        context_length=context_length, floor=p.floor,
+        truncation_is_fatal=p.truncation_fatal, **kw,
     )
 
 
@@ -286,9 +307,6 @@ def max_tokens_for(code: str, **kw) -> int:
     """The `max_tokens` value for the wire. Convenience over `budget_for(...)` for the many
     call sites that only need the integer."""
     return budget_for(code, **kw).max_output_tokens
-
-
-_STRUCTURED = OutputKind.STRUCTURED
 
 
 def unusable(job, code: str) -> str | None:
@@ -323,6 +341,11 @@ def unusable(job, code: str) -> str | None:
         # prefixed form silently renamed a code that something downstream may key on. The new
         # state simply joins the same vocabulary as `audit_truncated`.
         return str(status or "unknown")
-    if getattr(job, "finish_reason", None) == "length" and profile_for(code).kind is _STRUCTURED:
+    # The RESOLVED budget, not the kind. The kind is only the default: a row may ESCALATE
+    # (`truncation_fatal=True`) when its output is a LIST that truncation destroys while its
+    # sizing is verdict-shaped. Asking the kind here left `cross_scene_check` uncovered after
+    # its row had already declared the fatality — one rule, two places, and they disagreed
+    # within an hour. `budget_for` is pure arithmetic, so resolving it here is free.
+    if getattr(job, "finish_reason", None) == "length" and budget_for(code).truncation_is_fatal:
         return "truncated"
     return None

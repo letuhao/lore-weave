@@ -129,9 +129,6 @@ def max_tokens_for(code: str, **kw) -> int:
     return budget_for(code, **kw).max_output_tokens
 
 
-_STRUCTURED = OutputKind.STRUCTURED
-
-
 def unusable(job, code: str) -> str | None:
     """Why this job's output must not be used — or ``None`` when it is fine.
 
@@ -164,6 +161,11 @@ def unusable(job, code: str) -> str | None:
         # prefixed form silently renamed a code that something downstream may key on. The new
         # state simply joins the same vocabulary as `audit_truncated`.
         return str(status or "unknown")
-    if getattr(job, "finish_reason", None) == "length" and profile_for(code).kind is _STRUCTURED:
+    # The RESOLVED budget, not the kind. The kind is only the default: a row may ESCALATE
+    # (`truncation_fatal=True`) when its output is a LIST that truncation destroys while its
+    # sizing is verdict-shaped. Asking the kind here left `cross_scene_check` uncovered after
+    # its row had already declared the fatality — one rule, two places, and they disagreed
+    # within an hour. `budget_for` is pure arithmetic, so resolving it here is free.
+    if getattr(job, "finish_reason", None) == "length" and budget_for(code).truncation_is_fatal:
         return "truncated"
     return None

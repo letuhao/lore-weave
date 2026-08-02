@@ -4101,6 +4101,91 @@ AUDIT AUDIT-22 (the Debt register, audited against the code)
                is genuinely open work, not bookkeeping.
 ```
 
+### ✅ AUDIT-23 · A DEBT ROW SAID "MISLABELLED". MEASURING IT FOUND A LIVE FALSE CLEAN.
+
+```
+AUDIT AUDIT-23 (cross_scene_check — the measurement two Debt rows were waiting on)
+
+  WHY NOW    — the register is current after AUDIT-22, so what is left in it is real work. The
+               `cross_scene_check` row said the fix was blocked on a measurement, and the
+               repo's own rule is that a missing MEASUREMENT is not "blocked" — it is a
+               measurement somebody has to run. This box has a free local model. So: run it.
+
+  MEASURED   — live, deployed image, real gemma, on a 14-person Vietnamese passage:
+                 499 output tokens · 14 rows parsed · **35.6 tokens per roster row**
+                 the extractor's own 40-row cap therefore needs **~1424**, and the row's 2048
+                 already holds. **The budget was never the bug.**
+               And, at a deliberately squeezed 120-token cap:
+                 `finish_reason=length` · `extract_people` parsed **0 rows**
+
+  FOUND      — that zero is the defect, and it is worse than the row claimed. The row said a
+               clipped roster "silently DROPS PEOPLE". It does not: the JSON never closes, the
+               tolerant parser returns `{}`, and the call yields an EMPTY roster. Empty is not
+               the `None` both callers degrade on — so `compare_people` turned it into
+               `status="checked"`, zero contradictions: **a CLEAN verdict on a seam whose cast
+               was never read.** The continuity guard's own false-green, reached through the
+               budget rather than through its logic.
+               `compress._cast_state` had the mirror of it: an empty roster builds an empty
+               "WHO IS IN THIS" block — a positive claim that the passage contains nobody —
+               and hands it to the next scene's drafter.
+
+  BUILT      — the KIND was the mislabel, not the number. `truncation_is_fatal` is a property
+               of the output SHAPE; `kind` is a sizing model; this row separates them — it
+               sizes like a VERDICT (short, bounded) and truncates like a LIST (unparseable).
+               Forcing it to STRUCTURED for the fatality would drag in that kind's 4096 floor
+               for a call measured at 499 tokens.
+                 · SDK: `call_budget(..., truncation_is_fatal=False)` — ESCALATE ONLY.
+                   `or`, never a replacement, so `False` can never switch a STRUCTURED row's
+                   fatality off. That direction is the caller-supplied-value-defeats-a-
+                   capability-default shape this repo has already paid for.
+                 · registry: `CallProfile.truncation_fatal`, and the row's `why` rewritten to
+                   describe the call that exists.
+                 · the gate's denominator now reads the RESOLVED budget instead of the kind —
+                   the kind was a proxy for the fact when the fact is one call away.
+                 · both call sites degrade instead of certifying.
+
+  PROVEN     — composition **3639 passed** (was 3635) · knowledge **4115** · SDK **1020** ·
+               truncation-check-gate **30 sites, 30 checking** (28 before — the two this found).
+               RED-ABLE in BOTH directions, restored from saved bytes (sha256 matches):
+                 drop the check                  -> gate REDs and names the site
+                 un-declare `truncation_fatal`   -> gate goes GREEN with the site now
+                                                    unchecked… and the registry test REDs,
+                                                    because it pins the escalating SET. Neither
+                                                    mechanism is sufficient alone; the second
+                                                    injection is what showed that.
+               LIVE-8, deployed image, real model, cap squeezed to force the state:
+                 truncated seam   -> `degraded`  (was: `checked`, clean)
+                 CONTROL real budget -> `checked`, linked=7, unlinked=2 — it really read the cast
+                 CONTROL empty passage -> `checked` with an empty roster, because "nobody is
+                                          here" is an ANSWER and must not become an outage
+
+  NOT PROVEN — 35.6 tokens/row is ONE item shape on ONE model in ONE language. It is not a
+               correction to the SDK's generic `_TOKENS_PER_ITEM = 220`, and that Debt row
+               stays open: changing a constant every STRUCTURED budget multiplies by, on n=1,
+               is the generalised-from-one-prompt mistake this run has recorded twice. What
+               the number DOES support is the local claim — this row's 2048 is adequate — and
+               it is recorded as such.
+               The escalation set has exactly one member, so the "only escalates" rule is
+               proved by unit test rather than by a second real user.
+
+  DRIFT      — three.
+               · **I changed the registry and forgot the reader.** `unusable` still asked
+                 `profile_for(code).kind is STRUCTURED` after the row had already declared the
+                 fatality — one rule in two places, disagreeing within the hour. The test I
+                 had just written is what caught it, on its first run.
+               · I nearly wrote the row as `OutputKind.STRUCTURED` and moved on. That would
+                 have been correct about the fatality and wrong about the budget — 4096 floor
+                 for a 499-token call — and nothing would have complained, because a budget
+                 that is too big never fails.
+               · The Debt row's stated mechanism ("drops people") was wrong, and I had carried
+                 it forward twice without checking. Measuring took one command. A register row
+                 is a hypothesis with a date on it, not a finding.
+
+  NEXT       — two Debt rows remain unmechanised and were verified open by hand this pass:
+               `_TOKENS_PER_ITEM = 220` (needs a multi-shape measurement, not this one) and
+               `settings.model_roles` has zero writers.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -4118,7 +4203,7 @@ AUDIT AUDIT-22 (the Debt register, audited against the code)
 | 2026-08-01 | The dogfood book carries **16 scenes on a second `story_order` convention** (book slots 11-15, numbered 1,2,3 — so on the global axis they sort *before chapter 1*). Written by this session's own eval/POC runs via the authored `create_node` path. | Position-gated lenses under-serve those 5 chapters. `resync_reading_order` is the right repair but is parent-keyed and those scenes are parentless, and its only caller is the chapter-reorder route. 16 rows. |
 | 2026-08-01 | The authored `create_node` path takes a caller-supplied `story_order` and never derives it from the chapter's slot. | This is the *writer* that produced the debt above; not fixing it means the drift recurs. |
 | 2026-08-01 | Smoke debris: throwaway book `019fbd8f-008c-7cef-bf81-1d53a808361d` and its knowledge project `019fbd90-…` | Deliberately a throwaway (never the dogfood book), but it is real rows in the dev stack awaiting purge. |
-| 2026-08-02 | The `cross_scene_check` registry row is MISLABELLED. Its `why` describes "a contradiction list across one scene seam"; its only two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a cast ROSTER. | The row documents a call that does not exist, and the kind is wrong in a way that matters: VERDICT carries `truncation_is_fatal=False`, but a clipped roster silently DROPS PEOPLE — the same class as the `propose_world` dead pass. Not fixed here because changing the kind changes the budget (VERDICT 2048 → STRUCTURED 4096) and needs its own measurement. |
+| 2026-08-02 | ~~The `cross_scene_check` registry row is MISLABELLED.~~ — **CLEARED 2026-08-03** (AUDIT-23), and measuring it found worse than a label: a clipped roster parses to ZERO rows, which `compare_people` reported as `checked` and clean. The row now declares `truncation_fatal=True` (escalating above its kind, since it sizes like a verdict and truncates like a list), both call sites degrade, and the truncation gate reads the RESOLVED budget instead of the kind. Measured: 35.6 tokens/roster row, so the existing 2048 was never the problem. Original row:  Its `why` describes "a contradiction list across one scene seam"; its only two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a cast ROSTER. | The row documents a call that does not exist, and the kind is wrong in a way that matters: VERDICT carries `truncation_is_fatal=False`, but a clipped roster silently DROPS PEOPLE — the same class as the `propose_world` dead pass. Not fixed here because changing the kind changes the budget (VERDICT 2048 → STRUCTURED 4096) and needs its own measurement. |
 | 2026-08-02 | `_TOKENS_PER_ITEM = 220` (SDK, generic) is what makes a full-roster `propose_world` reach the 32768 runaway ceiling. A world entity is plausibly half that. | Every STRUCTURED budget is sized off a per-item cost nobody has measured against a real completion. The right number is `output_tokens / items` from a live run; until then the big-roster budgets are over-generous rather than wrong. |
 | 2026-08-02 | ~~**`exclusion_unverified` has no consumer.**~~ — **CLEARED 2026-08-02** (AUDIT-17). `metric_of_record_blockers` in `loreweave_eval/scorer.py` refuses to certify a number computed with a defaulted exclusion, and the row is in `contracts/guard-signals.yaml` with that consumer. Wiring it found worse than an unread field: it was DROPPED at the `EvalResult` boundary, so the structure built for persistence never carried it. It rides `EvalResult` and no report, gate or FE surface reads it. | The S8 shape: a fact made available rather than acted upon. The honest next step is a scored-run report line or a gate that reds when a published metric-of-record was computed with an unverified exclusion — at which point the distinction starts costing something and therefore starts being fixed. |
 | 2026-08-02 | **S13's "cite the exemplars" half is not built**, and a document would have been the wrong answer — the list already exists in spec §S13 and a second copy is the re-derivation the slice warns against. | What is genuinely missing: the code that SHOULD reuse the five named exemplars does not point at them, and nothing detects a re-implementation written beside one. Bigger than a citation, and it needs a mechanism rather than prose. |

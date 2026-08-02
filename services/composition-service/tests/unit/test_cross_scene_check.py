@@ -160,3 +160,45 @@ def test_the_prompt_asks_for_extraction_not_for_a_verdict():
 def test_the_result_defaults_are_not_a_green():
     r = CrossSceneResult(status="degraded")
     assert r.clean is False
+
+
+# ══ a TRUNCATED roster is not an empty one ══════════════════════════════════════════════
+#
+# Measured live 2026-08-03: at a 120-token cap this extraction returns
+# `finish_reason=length` and `extract_people` parses ZERO rows — the JSON never closes, so
+# the tolerant parser returns {}. That empty list is not the `None` both callers degrade on,
+# and `compare_people` turns it into `status="checked"` with no contradictions: a CLEAN
+# verdict on a seam whose cast was never read.
+#
+# The registry row declares `truncation_fatal=True` for this (it sizes like a VERDICT and
+# truncates like a list), which is what makes `unusable` catch it.
+
+class _TruncatedLLM(_LLM):
+    async def submit_and_wait(self, **kw):
+        job = await super().submit_and_wait(**kw)
+        job.finish_reason = "length"
+        return job
+
+
+@pytest.mark.asyncio
+async def test_a_TRUNCATED_extraction_degrades_instead_of_reading_clean():
+    llm = _TruncatedLLM(['{"people": [{"who": "Alice", "name": "Alice"', '{"people": []}'])
+    r = await check_chapter_consistency(llm, user_id="u", model_source="s", model_ref="m",
+                                        scenes=["scene one", "scene two"])
+    assert r.status != "checked", (
+        "a seam whose roster was cut off must not report CHECKED — that is the exact false "
+        "green this guard exists to remove, arrived at through the budget instead of the logic"
+    )
+
+
+@pytest.mark.asyncio
+async def test_CONTROL_a_complete_but_EMPTY_roster_still_reads_as_checked():
+    """"nobody is in this passage" is an ANSWER, and must stay distinguishable from "cut off".
+
+    Without this control the test above would also pass if truncation handling had simply
+    broken every empty extraction — which would trade a false clean for a false outage.
+    """
+    llm = _LLM(['{"people": []}', '{"people": []}'])
+    r = await check_chapter_consistency(llm, user_id="u", model_source="s", model_ref="m",
+                                        scenes=["scene one", "scene two"])
+    assert r.status == "checked" and r.contradictions == []

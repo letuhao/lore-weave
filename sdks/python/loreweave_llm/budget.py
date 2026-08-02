@@ -233,6 +233,7 @@ def call_budget(
     context_length: int | None = None,
     floor: int | None = None,
     ceiling: int = DEFAULT_CEILING,
+    truncation_is_fatal: bool = False,
 ) -> CallBudget:
     """Resolve the output budget for one LLM call.
 
@@ -254,6 +255,9 @@ def call_budget(
         (``plan_forge``'s 8000-token plan JSON) keeps it without inflating every sibling —
         and it is what makes "adopting this is never a downgrade" enforceable instead of
         merely stated. Belongs in the service's call-profile registry, never at a call site.
+:param truncation_is_fatal: ESCALATE only. STRUCTURED is fatal by kind; pass True when
+        a row of another kind produces a LIST whose truncation destroys it. Passing
+        False can never turn the check off.
     :param ceiling: hard runaway guard.
     """
     # MIRROR short-circuits the whole sizing model: there is no target to size FROM, and
@@ -307,7 +311,19 @@ def call_budget(
     return CallBudget(
         max_output_tokens=resolved,
         reasoning=reasoning,
-        truncation_is_fatal=(kind is OutputKind.STRUCTURED),
+        # The kind decides by default, and a caller may only ESCALATE. `or`, never a
+        # replacement: allowing a caller to pass False would let a STRUCTURED site turn the
+        # check off, which is the caller-supplied-value-defeats-a-capability-default shape.
+        #
+        # The escalation exists because `truncation_is_fatal` is a property of the output
+        # SHAPE and `kind` is a sizing model, and one real row separates them:
+        # composition's `cross_scene_check` emits a cast ROSTER — a list, destroyed by
+        # truncation — while sizing like a verdict. Measured 2026-08-03: at a 120-token cap
+        # the response came back `finish_reason=length` and `extract_people` parsed **0 rows**,
+        # which `compare_people` then reported as `status="checked"`, clean. Forcing it to
+        # STRUCTURED for the fatality would drag in that kind's 4096 floor for a call measured
+        # at 499 tokens.
+        truncation_is_fatal=(kind is OutputKind.STRUCTURED) or bool(truncation_is_fatal),
         source="default",
         clamped_to_window=window_cap,
     )

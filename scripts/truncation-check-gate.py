@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""A clipped STRUCTURED response drops items silently — and almost nothing was checking.
+"""A clipped response that cannot stop in a valid place — and almost nothing was checking.
 
 Why
 ---
@@ -23,6 +23,11 @@ response cannot stop early in a valid place: it comes back unparseable, or worse
 with items missing. So the denominator is every `budget_for(code)` call whose REGISTRY ROW is
 STRUCTURED, read from the registries themselves.
 
+The denominator is the RESOLVED budget's `truncation_is_fatal`, not the kind: the kind is only
+its default, and a row may ESCALATE. One does — `cross_scene_check` sizes like a VERDICT and
+truncates like a list, and a gate keyed on the kind walked past a call whose empty result
+`compare_people` reports as a CHECKED, clean seam.
+
 A site is covered when it calls `unusable(job, code)` — one helper per service, in the module
 that owns the per-operation facts, which folds the truncation question into the
 `status != "completed"` branch every site already wrote. Same degrade, no new judgement.
@@ -36,6 +41,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import io
+import re
 import sys
 import tokenize
 from pathlib import Path
@@ -166,6 +172,31 @@ def covered(scope_src: str) -> bool:
     return False
 
 
+#: Rows that ESCALATE truncation fatality above their kind, read from each service's registry
+#: source rather than by importing it: the `lints` job is a bare checkout with no service deps,
+#: and importing `app.llm_budget` there would make this gate crash in CI while passing locally
+#: — the failure mode `llm-budget-ssot-gate` documents for its own parser.
+_ESCALATED = re.compile(r'"([a-z_0-9]+)"\s*:\s*CallProfile\((?:[^)]*?)truncation_fatal\s*=\s*True',
+                        re.DOTALL)
+
+
+def _escalated_codes() -> set[str]:
+    out: set[str] = set()
+    for p in sorted(ROOT.glob("services/*/app/llm_budget.py")):
+        out |= set(_ESCALATED.findall(p.read_text(encoding="utf-8", errors="ignore")))
+    return out
+
+
+_ESCALATED_CACHE: set[str] | None = None
+
+
+def _fatal_by_registry(code: str | None) -> bool:
+    global _ESCALATED_CACHE
+    if _ESCALATED_CACHE is None:
+        _ESCALATED_CACHE = _escalated_codes()
+    return bool(code) and code in _ESCALATED_CACHE
+
+
 def owns_a_job(scope_src: str) -> bool:
     """Does this scope RECEIVE the job, or only hand a number to something that does?
 
@@ -195,7 +226,13 @@ def audit() -> tuple[list[dict], list[dict]]:
     a code with NO job-owning scope at all fails rather than passing for lack of anyone to ask.
     """
     g = _load_budget_gate()
-    sites = [s for s in g.scan_signal() if s.get("kind") == "STRUCTURED"]
+    # The RESOLVED budget decides, not the kind — `truncation_is_fatal` is the SSOT and the
+    # kind is only its default. `cross_scene_check` is why: it sizes like a VERDICT and
+    # truncates like a list, and a gate keyed on the kind walked straight past a call whose
+    # empty result `compare_people` reports as a CHECKED, clean seam. Reading the kind was
+    # reading a proxy for the fact when the fact itself is one call away.
+    sites = [s for s in g.scan_signal()
+             if s.get("kind") == "STRUCTURED" or _fatal_by_registry(s.get("code"))]
     rows: list[dict] = []
     for s in sites:
         p = _resolve(s["file"])

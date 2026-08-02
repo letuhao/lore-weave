@@ -27,7 +27,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 from app.engine.cross_scene_check import build_extract_prompt, extract_people
 
 logger = logging.getLogger(__name__)
@@ -179,7 +179,12 @@ async def _cast_state(
     except LLMError as exc:
         logger.warning("cast-state extract failed (%s) — ledger only", exc)
         return ""
-    if getattr(job, "status", None) != "completed":
+    # A truncated roster parses to ZERO rows, which would build an EMPTY "WHO IS IN THIS"
+    # block — a positive claim that the passage has nobody in it, handed to the next
+    # scene's drafter. The registry row declares the fatality; degrading to the ledger
+    # says less, and saying less is right when the alternative is saying something false.
+    if (why := unusable(job, "cross_scene_check")):
+        logger.info("cast-state unusable (%s) — ledger only", why)
         return ""
     rows = extract_people(job.result)
     lines = []

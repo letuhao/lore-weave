@@ -56,12 +56,38 @@ def test_a_row_floor_can_raise_but_never_lower_the_kinds_safety_net():
 
 # ── the kind is the load-bearing half ─────────────────────────────────────────────────────
 
-def test_structured_rows_report_truncation_as_fatal():
+def test_truncation_fatality_is_the_KIND_or_an_explicit_escalation():
     """A clipped array is unparseable, not short — `cast_plan` records that biting for real.
-    A caller must be able to branch on this, which one flat integer could never express."""
+
+    STRUCTURED is fatal by kind. A row of another kind may ESCALATE, and exactly one does:
+    `cross_scene_check` emits a cast ROSTER while sizing like a verdict, and at a small cap it
+    returns zero rows that `compare_people` reports as a CHECKED, clean seam. The assertion is
+    written as `== (kind is STRUCTURED or row.truncation_fatal)` rather than being relaxed to
+    `>=`, so a row that escalates without saying so still fails.
+    """
     for code, p in PROFILES.items():
         fatal = budget_for(code).truncation_is_fatal
-        assert fatal is (p.kind is OutputKind.STRUCTURED), f"{code} ({p.kind}) reported {fatal}"
+        expected = (p.kind is OutputKind.STRUCTURED) or p.truncation_fatal
+        assert fatal is expected, f"{code} ({p.kind}) reported {fatal}, expected {expected}"
+
+
+def test_an_escalation_can_only_ESCALATE():
+    """`truncation_fatal=False` must never turn a STRUCTURED row's fatality off.
+
+    The direction matters: a caller-supplied value that can DEFEAT a capability default is a
+    shape this repo has already paid for. `or`, not a replacement.
+    """
+    from loreweave_llm.budget import call_budget
+    assert call_budget(OutputKind.STRUCTURED, truncation_is_fatal=False).truncation_is_fatal
+    assert call_budget(OutputKind.VERDICT, truncation_is_fatal=True).truncation_is_fatal
+    assert not call_budget(OutputKind.VERDICT).truncation_is_fatal
+
+
+def test_exactly_the_rows_that_declare_it_escalate():
+    """Pins the SET, so a second escalation is a decision someone makes on purpose."""
+    escalated = sorted(c for c, p in PROFILES.items()
+                       if p.truncation_fatal and p.kind is not OutputKind.STRUCTURED)
+    assert escalated == ["cross_scene_check"], escalated
 
 
 def test_every_row_carries_a_reason():

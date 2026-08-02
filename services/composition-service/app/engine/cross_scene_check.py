@@ -96,7 +96,7 @@ from loreweave_llm.errors import LLMError
 from app.clients.eval_client import extract_judge_content
 from app.engine.critic import parse_critique_json
 from app.packer.sanitize import neutralize
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -329,8 +329,15 @@ async def _extract_one(
     except LLMError as exc:
         logger.warning("cast extract degraded (LLM error): %s", exc)
         return None
-    if job.status != "completed":
-        logger.info("cast extract status=%s → degraded", job.status)
+    # `None` is the DEGRADE signal both callers already handle; `[]` means "this passage
+    # has nobody in it". Truncation used to produce the second while meaning the first:
+    # measured 2026-08-03, a clipped response parses to ZERO rows (the JSON never closes),
+    # and `compare_people` turns an empty roster into `status="checked"` with no
+    # contradictions — a CLEAN verdict on a seam whose cast was never read. The registry
+    # row declares `truncation_fatal=True` for exactly this, so `unusable` catches it here
+    # and it degrades instead of certifying.
+    if (why := unusable(job, "cross_scene_check")):
+        logger.info("cast extract unusable (%s) → degraded", why)
         return None
     return extract_people(job.result)
 
