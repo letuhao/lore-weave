@@ -107,7 +107,7 @@ Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
 **Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → `S3 ◐` → `S4 ✅` → `S9 ✅` → **`S5`** → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → `S3 ◐` → `S4 ✅` → `S9 ✅` → `S5 ✅` → **`S13`** → `S9 → S5 → S13`.
 
 > **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
 > that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
@@ -140,7 +140,7 @@ when in fact most of the last two days went into defect work that was never on t
 | `S3` one `Finding` | ◐ slice 1 ✅ | one closed `skip_reason` vocabulary (the docs were false and omitted the member a consumer reads); the `locator` union is untouched |
 | `S4` the plan half onto the spine | ✅ CLOSED 2026-08-02 | the gate was reading COMMENTS as behaviour (both directions); SCAN_DIRS 4→10 services surfaced 8 untracked modules, 7 in translation |
 | `S9` the shared guard SDK | ✅ CLOSED 2026-08-02 | **inverted, correctly**: no SDK extracted (1/3 adopters). The entry criterion was a spec sentence; it is now a CI gate that reds when the third service adopts |
-| `S5` one heal loop | ☐ | |
+| `S5` one heal loop | ✅ CLOSED 2026-08-02 | the 10 stages enumerated once; each consumer accounts for EVERY stage (run it or give a reason) and the declaration is checked against code both ways |
 | `S13` cite the exemplars | ☐ | mostly documentation |
 
 **The join nobody had made:** what this session called *"155 — 28 budget call sites carrying no
@@ -928,6 +928,84 @@ which the POST-RUN REVIEW found and fixed one layer up — except this one is a 
 the surface that would consume it (`model_roles`) is a read-only contract with no producer. That
 is what the slice has to build, and it is why shipping the label alone would produce a warning
 the author has no way to clear.
+
+### ✅ S5 — one heal loop: the stage protocol, and an opt-out that must give its reason
+
+```
+AUDIT S5 (heal stage protocol)
+  BUILT      — `app/engine/heal_protocol.py`: `HealStage` (the ten stages, enumerated once),
+               `StagePlan` per consumer, and `STAGE_PRIMITIVES` mapping each stage to the
+               symbols that implement it. Eighteen tests that check every declaration AGAINST
+               THE CODE, in both directions.
+
+  PROVEN     — the three consumers, MEASURED over code with docstrings stripped:
+                 stage     self_heal   plan_heal   error_block_heal
+                 judge        RUN         RUN           skip
+                 locate       RUN         skip          RUN
+                 snap         RUN         skip          skip
+                 vote         RUN         skip          skip
+                 verify       RUN         skip          skip
+                 rerank       RUN         skip          skip
+                 edit         RUN         RUN           RUN
+                 merge        RUN         skip          skip
+                 splice       RUN         skip          RUN
+                 rejudge      RUN         skip          skip
+               Exactly the `re-anchor → edit → splice` `error_block_heal` documents. It is the
+               consumer that already got reuse right: it composes self-heal's primitives and
+               records WHY for each omission. `plan_heal` skips the SAME six and says nothing —
+               indistinguishable from six nobody noticed. Writing those eight reasons down is
+               most of this slice's value, and one of them is an admission rather than a
+               design property (`plan_heal` skips REJUDGE because nobody built it, and the row
+               says so instead of dressing it up).
+
+               THE CHECKER MUST READ CODE, NOT TEXT, and that is not a detail. Measured:
+               `error_block_heal` names `_snap_to_sentence` in its DOCSTRING — inside the
+               sentence explaining why it does not call it. A text scan reports SNAP as RUN and
+               the declaration as a lie. The check would be defeated by the very documentation
+               that makes that module the exemplar. Fourth occurrence of prose-is-not-behaviour
+               this run (S3's `not_found` scan, S4's injection lint, the S4 marker audit).
+
+               composition `8 failed, 3939 passed, 8 skipped` (was 3921; +18 — the 8 are the
+               tracked test_motif_retrieve_db rows).
+               gates: FULL CI SWEEP `PASS: 52  FAIL: 0  of 52`.
+               RED-ABLE in BOTH directions, each restored by re-editing:
+                 · claim a stage not implemented → `error_block_heal declares [VERIFY] but
+                   references none of their primitives` (plus the run/skip overlap check)
+                 · really call a stage declared skipped → `error_block_heal declares [SNAP]
+                   SKIPPED but the code references their primitives`. That is the drift case
+                   that matters: it is the module silently widening an author's deliberate
+                   selection, which its own docstring warns about and nothing enforced.
+
+  LIVE       — live infra unavailable: the protocol is a declaration + a static check with no
+               runtime path of its own. The pipelines it describes are exercised by the
+               composition suite above; nothing in this slice changes their behaviour.
+
+  NOT PROVEN — THE PROTOCOL DESCRIBES, IT DOES NOT DRIVE. No consumer executes its `StagePlan`;
+               the three pipelines still hard-code their own stage order. So a stage cannot go
+               silently missing, and a stage also cannot be added by declaring it. The spec's
+               "extract the stage protocol" is satisfied in the checkable sense and not in the
+               executable one, and calling this "one heal loop" would overstate it — there are
+               still three loops, now with one vocabulary and honest opt-outs.
+               Stage membership is a module-level SYMBOL REFERENCE, not a call-graph proof: a
+               module that imports a primitive and never calls it reads as RUN. That is the same
+               granularity `error_block_heal`'s docstring uses, and it is weaker than "the stage
+               executes".
+               The reasons are unverified prose — the check enforces that one EXISTS and is not
+               a marker, never that it is TRUE.
+
+  DRIFT      — my "is this a reason" check is a 40-character floor, and it immediately produced
+               a false positive: `error_block_heal`'s REJUDGE skip read "there was no judge pass
+               to re-run" — true, complete, 34 characters. The tempting fix was lowering the
+               floor, which would equally have admitted "n/a because". I expanded the reason
+               instead and wrote the proxy's weakness into the test, because a length floor
+               cannot tell a short answer from a shrug and pretending otherwise is how the next
+               person games it.
+
+  NEXT       — S13 (cite the exemplars), the last slice on the board: lift the already-correct
+               implementations the spec names rather than re-deriving them, and fix
+               `loreweave_eval.panel.py:25`'s hardcoded `DEFAULT_EXTRACTOR_REF` UUID, which
+               silently fails to exclude a deployment's real self-grader.
+```
 
 ### ✅ S9 — the entry criterion was a sentence in a spec. Now it is a gate.
 
@@ -2596,6 +2674,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
+| 2026-08-02 | **My "is this a real reason" check is a 40-character floor, and it false-positived immediately.** `error_block_heal`'s REJUDGE skip read "there was no judge pass to re-run" — true, complete, 34 characters. The tempting fix was lowering the floor, which would equally have admitted "n/a because". Expanded the reason instead and wrote the proxy's weakness into the test: a length floor cannot tell a short answer from a shrug, and pretending it can is how the next person games it. |
+| 2026-08-02 | **Prose-is-not-behaviour, for the FOURTH time in one run, and this time it would have been self-defeating.** My first S5 stage scan read raw text and reported `error_block_heal` as RUNNING `snap` — the reference is in its DOCSTRING, inside the sentence explaining why it does not call it. The declaration check would have been defeated by the very documentation that makes that module the exemplar. Same root as S3's `not_found` text scan and S4's injection lint. I now strip docstrings by reflex, four occurrences too late. |
 | 2026-08-02 | **Nearly manufactured the precondition for a sealed decision.** I started S9 intending to implement `GuardReport` in a second service to "make progress toward" the three-adopter criterion. That is fabricating evidence for a decision rather than letting its evidence arrive — the spec is explicit that translation and knowledge adopt it AS PART OF THEIR OWN SLICES, because an adoption performed to satisfy a counter proves nothing about three services independently converging. Caught by re-reading §S9 before writing code instead of after. |
 | 2026-08-02 | **Wrote a live correctness bug into a code comment on the strength of a GATE'S MESSAGE, then measured it and had to retract.** `language-bias-gate` flags `.lower()` on a name var (ML-2), so I wrote that this guard would report an equivalent name as UNANCHORED — "a fabricated finding". Measured across every name `_TOKEN` can emit: **0 disagreements** between `.lower()` and the fold. The failure needs a full-width or Han name the extractor cannot produce. The fix is still right (it stops a future `_TOKEN` widening from silently breaking the guard) but the justification I shipped was fiction. |
 | 2026-08-02 | **A fix-proving test that was vacuous TWICE, in two different ways.** It asserted a full-width name reads as anchored: first vacuous because the fixture was sentence-initial so `_is_name` never extracted it; then STILL vacuous because `_TOKEN` cannot match a full-width capital at all, so the fixture could never reach the code under test. The control caught the first. Injecting the old `.lower()` back caught the second — the test passed with the bug restored. Neither was findable by reading it. |
