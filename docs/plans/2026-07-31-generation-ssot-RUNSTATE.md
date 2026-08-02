@@ -3042,6 +3042,49 @@ AUDIT AUDIT-6 (injection coverage — 2 of 22 rows cleared, and the OTHER 20 re-
                nothing reading them.
 ```
 
+### ✅ AUDIT-7 — the pattern itself gets a mechanism: five debt rows nothing was counting
+
+```
+AUDIT AUDIT-7 (guard signals nobody reads)
+  BUILT      — `contracts/guard-signals.yaml` + `scripts/guard-signal-consumption-gate.py`,
+               wired into foundation-ci with a `--self-test`.
+               Every honesty signal a guard emits is registered with either a CONSUMER (code
+               that changes behaviour on the value) or an `unconsumed:` reason. The gate reds
+               on a phantom emitter/consumer, on a row declaring both or neither, and on the
+               unconsumed count GROWING. `UNCONSUMED_BASELINE = 4`.
+
+  PROVEN     — the reason this is a mechanism and not a sixth debt row: five of this cycle's
+               six closed gaps landed the same way — the HONESTY half shipped and the ACTING
+               half did not — and each was individually defensible, so nothing counted them.
+               A register is read one row at a time. It reached five before it was named.
+                 guard-signal-consumption-gate: PASS — 5 guard signal(s) registered;
+                 1 consumed, 4 held at baseline.
+               Injecting a sixth: RED. `guard-redability-gate: PASS — 18/18`.
+               `[guard-signals] SELFTEST PASS — a docstring + comment mention is NOT a use,
+               a real branch is (non-vacuous).`
+               `gate-teeth-gate: PASS — 60 CI-invoked gate(s), every one able to return
+               non-zero. 15 carry a red-ability proof.`
+
+  NOT PROVEN — the gate checks that a consumer file NAMES the field in code. It cannot prove
+               the reference is load-bearing — a consumer row is a claim a reviewer can check,
+               while an `unconsumed` row is honest by construction. That asymmetry is the
+               design: the direction that can lie is the one a human signs.
+               And the four held rows are still four unread signals. This gate does not fix
+               them; it stops the fifth from becoming a sixth and puts a number on the habit.
+
+  DRIFT      — one, and the gate caught it on its FIRST run, on my own row.
+               I registered the `guard_status` consumer as
+               `engine/chapter_scene_gate.py`. No such file. The name comes from a COMMENT in
+               `canon_check.py` describing the concept, and I copied it into a claim about the
+               filesystem — the same prose-read-as-behaviour defect this cycle has now hit six
+               times, committed while writing the gate against it. The real consumer is a SQL
+               fragment in `db/repositories/outline.py`.
+
+  NEXT       — the four held signals, each a small concrete step named in its row. Then DoD 3
+               (29 baselined budget sites), DoD 5 (4 estimators / 6 finding types), DoD 7, and
+               translation's remaining five modules.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -3274,3 +3317,9 @@ AUDIT AUDIT-6 (injection coverage — 2 of 22 rows cleared, and the OTHER 20 re-
   NEUTRALISATION using a check that only LOOKS. A gate cleared by a defence weaker than the one
   it tracks is a ratchet cleared without the behaviour. The DETECT/MUTATE split is the fix, and
   the PASS line names the count so the two promises never read as one.
+- **2026-08-02 · read a comment as a filename, in the gate written to catch that.** The
+  signal registry's first `guard_status` consumer row named `engine/chapter_scene_gate.py`. No
+  such file: the name is a CONCEPT used in a comment in `canon_check.py`, and I copied it into
+  a claim about the filesystem. `guard-signal-consumption-gate` reddened on it on its first
+  run, which is the whole argument for the gate — but it is also the sixth time this cycle that
+  prose was read as behaviour, and this one I committed while building the defence against it.

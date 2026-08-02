@@ -131,6 +131,11 @@ jobs:
       # violation on the line above. `--gates-only` because the remaining cases drive service
       # pytest suites, whose deps this job does not install — the script names the ones it
       # skipped rather than counting them as covered.
+      # A guard signal nobody reads is a fact, not a guard. This repo shipped FIVE such
+      # signals in one day, each with its own defensible Debt row and nothing counting them.
+      # Ratchet, not wall: the number may shrink, never grow.
+      - run: python scripts/guard-signal-consumption-gate.py --self-test
+      - run: python scripts/guard-signal-consumption-gate.py
       - run: python scripts/guard-redability-gate.py --self-test
       - run: python scripts/guard-redability-gate.py --gates-only
       # A gated test that no workflow arms has never run — 200 of them were found this

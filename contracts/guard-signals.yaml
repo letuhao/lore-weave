@@ -1,0 +1,87 @@
+# guard-signals.yaml — every honesty signal a guard emits, and what READS it.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# The 2026-08-02 audit cycle closed six gaps, and five of them landed the same way: the
+# HONESTY half shipped and the ACTING half did not. Each was recorded as its own Debt row,
+# each row was individually defensible, and nothing counted them — so the pattern was visible
+# only to someone reading the whole register in one sitting. It reached five before it was
+# named.
+#
+# A signal nobody reads is not worthless: it is strictly better than the silence it replaced,
+# and every one of these was added because two states used to be indistinguishable. But it is
+# also not a working guard. `exclusion_unverified` can be True on every scored run forever and
+# no report will change. That is the S8 shape — a fact made AVAILABLE rather than acted upon —
+# and this repo has now committed it five times in one day.
+#
+# So the count becomes a ratchet. Not a wall: reddening CI on all five would leave no path to
+# green, which is how gates get commented out (`gate-teeth-gate`'s own lesson). The rule is
+# that the number may SHRINK and may never GROW. A sixth unconsumed signal fails.
+#
+# WHAT COUNTS AS A CONSUMER
+# -------------------------
+# Code that CHANGES BEHAVIOUR on the value: a branch, a gate condition, a rendered badge, an
+# alert. NOT a log line, and not a field that merely rides a payload to the next layer — both
+# of those are what "emitted" already means. The gate checks that the named consumer file
+# references the field in CODE (comments and docstrings are stripped); it cannot prove the
+# reference is load-bearing, so a consumer row is a claim a human made and a reviewer can
+# check, while an `unconsumed` row is honest by construction.
+
+version: 1
+
+signals:
+  - id: eval.exclusion_unverified
+    field: exclusion_unverified
+    emitter:
+      file: sdks/python/loreweave_eval/calibration.py
+    unconsumed: >-
+      S13. True whenever a deployment has not configured KNOWLEDGE_EXTRACTOR_MODEL /
+      KNOWLEDGE_FILTER_MODEL — i.e. the default state — so the panel's exclusion set may
+      match nobody while the run reports `safe`. No report line, no gate. The honest next
+      step is a gate that reds when a published metric-of-record was computed with an
+      unverified exclusion, at which point the distinction starts costing something.
+
+  - id: glossary.kg_sweep_coverage
+    field: kg_unchecked
+    emitter:
+      file: services/glossary-service/internal/api/wiki_staleness.go
+    unconsumed: >-
+      DoD-1 (Go). The sweep now reports how many articles it could NOT compare, on both
+      staleness-sweep responses. Nothing reads it: the wiki UI shows the flagged count and
+      says nothing about coverage, so a sweep during a knowledge outage still renders as a
+      clean book. Smallest real step: show "N articles not compared" beside the badge.
+
+  - id: composition.unguarded_stream
+    field: guard_status
+    emitter:
+      file: services/composition-service/app/engine/canon_check.py
+    consumer:
+      file: services/composition-service/app/db/repositories/outline.py
+      note: >-
+        Reads `latest.result -> 'canon' ->> 'guard_status'` in the scene-gate query and
+        branches the chapter's publishable state on it. The FIRST version of this row named
+        `engine/chapter_scene_gate.py` — a file that does not exist. That name comes from a
+        COMMENT in `canon_check.py` describing the concept, and it was propagated into a
+        claim about the filesystem. This gate caught it on its first run, which is the whole
+        argument for the gate. PARTIAL: the query consumed `guard_status` before `not_run`
+        existed, so what it does with THAT value is unverified — its own Debt row.
+
+  - id: composition.critic_identity
+    field: identity_verified
+    emitter:
+      file: services/composition-service/app/engine/critic_policy.py
+    unconsumed: >-
+      DoD-2. Distinguishes "a different model, confirmed" from "a different row, models
+      unknown". No response field, no FE surface, no gate — so a book critiqued entirely
+      during a provider-registry outage looks exactly like one critiqued by a verified
+      independent judge.
+
+  - id: translation.injection_scan
+    field: injection_scan
+    emitter:
+      file: services/translation-service/app/workers/decoupled_translate.py
+    unconsumed: >-
+      DoD-4. A chapter carrying directive-looking spans is scanned, recorded on
+      `resume_state` and logged — and translated identically to a clean one. DETECT is only
+      a defence if somebody is TOLD; a log nobody greps is not that. Smallest real step:
+      surface it on the chapter's translation record so the importer sees it.

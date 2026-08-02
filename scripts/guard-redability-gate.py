@@ -173,6 +173,12 @@ CASES = [
              "        source: Provenance::Llm,"),
      ["cargo", "test", "--test", "l4_mock"], ROOT / "services" / "tilemap-service"),
 
+    ("AUDIT — a SIXTH guard signal is emitted with nothing acting on it", GATE,
+     ROOT / "contracts" / "guard-signals.yaml",
+     replace("  - id: eval.exclusion_unverified",
+             "  - id: probe.sixth_unconsumed\n    field: exclusion_unverified\n    emitter:\n      file: sdks/python/loreweave_eval/calibration.py\n    unconsumed: a sixth, injected by the red-ability gate\n\n  - id: eval.exclusion_unverified"),
+     [sys.executable, "scripts/guard-signal-consumption-gate.py"], ROOT),
+
     ("S1 generation-paths — a row claims `guarded` with a coverage field the file lacks", GATE,
      ROOT / "contracts" / "generation-paths.yaml",
      replace("coverage_field: kg_status", "coverage_field: kg_status_that_does_not_exist"),
