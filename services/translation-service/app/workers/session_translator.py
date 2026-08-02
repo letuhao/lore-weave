@@ -36,6 +36,7 @@ from ..config import settings, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_US
 from ..llm_budget import budget_for
 from ..llm_client import LLMClient
 from ..metrics import record_stage
+from .injection_report import scan_untrusted_source
 from .chunk_splitter import estimate_tokens, split_chapter
 from .llm_thinking import thinking_llm_fields
 
@@ -351,9 +352,18 @@ async def translate_chapter(
     chunk_size = max(chunk_size, 100)  # floor to avoid degenerate splits
 
     chunks = split_chapter(chapter_text, chunk_size)
+    # Scanned ONCE per chapter, where the untrusted bytes enter, and NEVER mutated — this
+    # text is the product, not context. `injection_report` carries why translation cannot
+    # use composition's neutralisers. Reported on the same line as the chunk count so a
+    # chapter's log record always states whether it was looked at.
+    injection = scan_untrusted_source(
+        chapter_text, where=f"chapter_translation:{chapter_translation_id}",
+    )
     log.info(
-        "session_translator: chapter_translation=%s, %d chunks (chunk_size=%d, context=%d)",
+        "session_translator: chapter_translation=%s, %d chunks (chunk_size=%d, context=%d), "
+        "injection_scan=%s",
         chapter_translation_id, len(chunks), chunk_size, context_window,
+        injection.as_payload(),
     )
 
     session_history: list[dict] = []

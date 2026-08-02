@@ -2983,6 +2983,65 @@ AUDIT AUDIT-5 (distinctness on the RESOLVED provider model)
                only remaining item with a live security surface behind it).
 ```
 
+### ◐ AUDIT-6 · DoD-4 — translation cannot sanitize, so it detects; and the gate now says which
+
+```
+AUDIT AUDIT-6 (injection coverage — 2 of 22 rows cleared, and the OTHER 20 re-scoped)
+  BUILT      — `translation-service/app/workers/injection_report.py` +
+               `scan_untrusted_source`, wired into BOTH chapter paths (the legacy
+               `session_translator` and the decoupled worker), scanning once per chapter
+               where the untrusted bytes enter.
+               `injection-coverage-lint` now separates MUTATE coverage from DETECT coverage
+               and prints the detect-only set.
+
+  PROVEN     — the debt row said routing translation through `neutralize_injection` risks a
+               fidelity bug. Reading the sanitizers made that concrete and changed the shape
+               of the fix: in translation the untrusted text IS THE PRODUCT, so every
+               transformation corrupts it — escaping `<`/`>` changes characters the
+               translation must round-trip, bracketing a directive span writes editing marks
+               into the output ("you are now the head of this house" is dialogue), and even
+               the NFKC pre-normalisation is a silent rewrite of the author's text.
+               Composition had already learned half of this: `sanitize_prose_context` exists
+               because bracketing was wrong for prose it feeds itself.
+               So: DETECT, never mutate. The report has no return path carrying text, so a
+               caller CANNOT substitute a mutated chapter — the mistake is unavailable rather
+               than discouraged.
+                 injection-coverage-lint (full): OK — every retrieved-text prompt-assembly
+                 module routes through the sanitizer (20 baselined)
+                   2 module(s) are DETECT-only — the untrusted text is scanned and reported,
+                   NOT transformed, because it is the product
+               Stripping the scan back out:
+                 injection-coverage-lint: FAIL — prompt built from retrieved/external text
+                 with NO injection sanitizer (SEC-4 / ML-4)
+                   services/translation-service/app/workers/session_translator.py
+                 exit: 1        restored byte-identical: True
+               translation suite `1148 passed`; new file 9 tests.
+               `guard-redability-gate: PASS — 17/17`.
+
+  NOT PROVEN — **five of translation's seven rows are untouched** (`routers/translate.py`,
+               `decoupled_block_translate`, `extraction_worker`, `v3/bilingual_extractor`,
+               `v3/corrector`). The two wired are the chapter paths, which carry the bulk of
+               imported text; the others need their own read, because "apply the same call"
+               is how a sweep gets something wrong. They stay baselined, which is a mechanism.
+               And DETECT is a WEAKER guarantee, stated as one: the payload still reaches the
+               model. Nothing yet ACTS on a non-zero `hits` — the report rides `resume_state`
+               and a log line. Fifth emitted-but-unconsumed signal this run.
+
+  DRIFT      — one, and it is about the gate rather than the code.
+               Adding `scan_untrusted_source` to `SANITIZER_REF` would have cleared two
+               baseline rows on its own — a weaker defence quietly satisfying a check written
+               for a stronger one, which is a ratchet cleared without the behaviour it tracks.
+               I nearly shipped exactly that: the first version of this slice added the name
+               to the regex and stopped. The DETECT/MUTATE split is the fix, and the PASS line
+               now names the count, because a gate that reports coverage without reporting
+               what KIND is the same two-states-collapsed-into-one defect it exists to catch.
+
+  NEXT       — DoD 3 (29 baselined budget sites + the unscanned raw-stream shape), DoD 5
+               (4 estimators / 6 finding types), DoD 7, and the five remaining translation
+               rows. Plus the pattern that is now five instances deep: signals emitted and
+               nothing reading them.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -3004,7 +3063,9 @@ AUDIT AUDIT-5 (distinctness on the RESOLVED provider model)
 | 2026-08-02 | `_TOKENS_PER_ITEM = 220` (SDK, generic) is what makes a full-roster `propose_world` reach the 32768 runaway ceiling. A world entity is plausibly half that. | Every STRUCTURED budget is sized off a per-item cost nobody has measured against a real completion. The right number is `output_tokens / items` from a live run; until then the big-roster budgets are over-generous rather than wrong. |
 | 2026-08-02 | **`exclusion_unverified` has no consumer.** It rides `EvalResult` and no report, gate or FE surface reads it. | The S8 shape: a fact made available rather than acted upon. The honest next step is a scored-run report line or a gate that reds when a published metric-of-record was computed with an unverified exclusion — at which point the distinction starts costing something and therefore starts being fixed. |
 | 2026-08-02 | **S13's "cite the exemplars" half is not built**, and a document would have been the wrong answer — the list already exists in spec §S13 and a second copy is the re-derivation the slice warns against. | What is genuinely missing: the code that SHOULD reuse the five named exemplars does not point at them, and nothing detects a re-implementation written beside one. Bigger than a citation, and it needs a mechanism rather than prose. |
-| 2026-08-02 | **translation-service folds IMPORTED third-party book text into prompts with no sanitizer** — 7 modules, surfaced by widening `injection-coverage-lint`'s SCAN_DIRS in S4. Plus 1 in worker-ai. | The least-trusted bytes on the platform, in the service that exists to process them, never scanned until now. Baselined with notes rather than fixed: routing them through `neutralize_injection` risks a TRANSLATION-FIDELITY bug (a sanitizer that mangles source text), which is the same reason those rows are `OutputKind.MIRROR`. Needs its own measurement, not a sweep. |
+| 2026-08-02 | **5 of translation's 7 unsanitized modules remain** (`routers/translate.py`, `decoupled_block_translate`, `extraction_worker`, `v3/bilingual_extractor`, `v3/corrector`). The two CHAPTER paths now DETECT-scan. | Each needs its own read: "apply the same call" across five modules is how a sweep gets one wrong, and two of them fold a translation as well as a source. They stay baselined, which is a mechanism rather than a note. |
+| 2026-08-02 | **A non-zero `injection_scan.hits` changes nothing.** The report rides `resume_state` and a log line; no UI, no job field a human reads, no metric. | FIFTH emitted-but-unconsumed signal this run. DETECT is only a defence if somebody is told — otherwise it is a log nobody greps. Smallest real step: surface it on the chapter's translation record so the importer sees it. |
+| ~~2026-08-02~~ | ~~translation-service folds IMPORTED third-party book text into prompts with no sanitizer~~ — 7 modules, surfaced by widening `injection-coverage-lint`'s SCAN_DIRS in S4. Plus 1 in worker-ai. | The least-trusted bytes on the platform, in the service that exists to process them, never scanned until now. Baselined with notes rather than fixed: routing them through `neutralize_injection` risks a TRANSLATION-FIDELITY bug (a sanitizer that mangles source text), which is the same reason those rows are `OutputKind.MIRROR`. Needs its own measurement, not a sweep. |
 | 2026-08-02 | **The `chat.*` / `composition.*` trace namespacing is NOT built** — composition emits nothing into the context trace (the only `TraceAccumulator` consumers are chat-service's `stream_service`, `compact_service`, `token_budget`). | Namespacing a vocabulary with no second surface to separate would be zero-consumer ceremony. **Un-parks when composition first emits a trace span** — at that moment `breakdown_categories` becomes a shared vocabulary asserted BOTH ways on the chat side, so extending it is a consumer-visible shape change and must be namespaced in the same commit. |
 | 2026-08-02 | **S11-2 moved COST and nobody measured it.** Counting ~40% more tokens on CJK/Vietnamese means ~40% more chunks per chapter, i.e. ~40% more LLM calls — for exactly the books this platform is for. | The safe direction for correctness (no window overflow) and the expensive one for spend. Shipped without a number. A real per-chapter cost delta needs one translation run before/after on a real chapter. |
 | 2026-08-02 | **The kernel estimator is itself ~0.78× tiktoken on Vietnamese** (my n=3 sample), where the spec cites a 2026-07-07 eval claiming the script-aware heuristic tracks o200k within 3-6%. | Under-counting is the direction that overflows a window. My sample is far too small to overturn a real-corpus measurement, so the tension is recorded rather than acted on — re-tuning the kernel's `_F_VIETNAMESE` on n=3 would be the "generalised from one prompt formulation" mistake this run already has twice. Needs the eval corpus re-run. |
@@ -3207,3 +3268,9 @@ AUDIT AUDIT-5 (distinctness on the RESOLVED provider model)
   since FD-27, and identity never needed the endpoint. A row re-read at every PLAN, asserting
   work that was already done — which is the same staleness the "verify the claim against code,
   don't trust the handoff note" rule exists for, this time in a note I authored myself.
+- **2026-08-02 · nearly cleared a ratchet with a weaker defence than it was tracking.** The
+  first version of the translation fix added `scan_untrusted_source` to the lint's
+  `SANITIZER_REF` and stopped — which would have cleared two baseline rows written for
+  NEUTRALISATION using a check that only LOOKS. A gate cleared by a defence weaker than the one
+  it tracks is a ratchet cleared without the behaviour. The DETECT/MUTATE split is the fix, and
+  the PASS line names the count so the two promises never read as one.

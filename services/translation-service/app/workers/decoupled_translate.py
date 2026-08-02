@@ -26,6 +26,7 @@ from uuid import UUID
 
 from ..llm_budget import budget_for
 from ..llm_client import LLMClient
+from .injection_report import scan_untrusted_source
 from .chunk_splitter import estimate_tokens, split_chapter
 from .session_translator import (
     _build_messages,
@@ -162,6 +163,13 @@ async def start_chapter(
     # with the synchronous path. Redundant with `chunks` (a split of this) but the
     # split isn't guaranteed byte-lossless, and the storage cost is trivial.
     rs["chapter_text"] = chapter_text
+    # Scanned ONCE per chapter, here, where the untrusted bytes enter — not per chunk (the
+    # same finding N times is noise) and never mutated: this text IS the product. See
+    # `injection_report` for why translation cannot use composition's neutralisers.
+    # Recorded even when clean, so "nothing found" and "nobody looked" stay distinguishable.
+    rs["injection_scan"] = scan_untrusted_source(
+        chapter_text, where=f"chapter_translation:{chapter_translation_id}",
+    ).as_payload()
     await _submit_next(ex=pool, llm_client=llm_client,
                        chapter_translation_id=chapter_translation_id, rs=rs)
 

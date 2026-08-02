@@ -159,9 +159,7 @@ BASELINE: frozenset[str] = frozenset({
     # translate rows resolve to OutputKind.MIRROR elsewhere). Tracked in RUN-STATE Debt.
     "services/translation-service/app/routers/translate.py",
     "services/translation-service/app/workers/decoupled_block_translate.py",
-    "services/translation-service/app/workers/decoupled_translate.py",
     "services/translation-service/app/workers/extraction_worker.py",
-    "services/translation-service/app/workers/session_translator.py",
     "services/translation-service/app/workers/v3/bilingual_extractor.py",
     "services/translation-service/app/workers/v3/corrector.py",
     # worker-ai's distiller folds chapter chunks into a summarisation prompt.
@@ -232,11 +230,30 @@ SANITIZER_REF = re.compile(
     r"\bneutralize_injection\s*\("
     r"|\bneutralize_proposal_text\s*\("
     r"|\bscan_injection\s*\("
+    r"|\bscan_untrusted_source\s*\("
     r"|\bneutralize\s*\("
     r"|\bsanitize_lore\s*\("
     r"|\bsanitize_guide\s*\("
     r"|\bsanitize_prose_context\s*\("
 )
+
+#: Two coverage classes, because they are two different promises and merging them would let
+#: the weaker one quietly clear rows the stronger one was tracking.
+#:
+#: MUTATE — the untrusted text is transformed before assembly: delimiters escaped, directive
+#: spans bracketed. The model cannot act on the payload. This is what a composition module
+#: means by "covered".
+#:
+#: DETECT — the text is SCANNED and reported, and reaches the model unchanged. Weaker on
+#: purpose, and correct where mutation is not available: in translation the untrusted text is
+#: the PRODUCT, so escaping a bracket or bracketing a line of dialogue corrupts the author's
+#: chapter. A detect-covered module tells a human that a chapter carries directive-looking
+#: spans; it does not stop the model from reading them.
+#:
+#: Named separately so the PASS line cannot say "every module routes through the sanitizer"
+#: about a set where seven of them only look. That sentence would be the same
+#: two-states-collapsed-into-one defect this lint exists to catch, committed by the lint.
+DETECT_ONLY_REF = re.compile(r"\bscan_injection\s*\(|\bscan_untrusted_source\s*\(")
 
 
 def _code_lines(src: str) -> list[str]:
@@ -288,12 +305,18 @@ def _code_lines(src: str) -> list[str]:
 
 def classify_file(path: str) -> tuple[bool, bool, bool]:
     """Return (assembles_prompt, uses_retrieved_text, has_sanitizer) for a file."""
-    assembles = retrieved = sanitized = False
+    assembles, retrieved, sanitized, _detect = _classify(path)
+    return assembles, retrieved, sanitized
+
+
+def _classify(path: str) -> tuple[bool, bool, bool, bool]:
+    """(assembles_prompt, uses_retrieved_text, has_sanitizer, detect_only)."""
+    assembles = retrieved = sanitized = detect = False
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as fh:
             src = fh.read()
     except OSError:
-        return False, False, False
+        return False, False, False, False
     for line in _code_lines(src):
         if not assembles and MESSAGE_ASSEMBLY.search(line):
             assembles = True
@@ -301,9 +324,32 @@ def classify_file(path: str) -> tuple[bool, bool, bool]:
             retrieved = True
         if not sanitized and SANITIZER_REF.search(line):
             sanitized = True
-        if assembles and retrieved and sanitized:
-            break
-    return assembles, retrieved, sanitized
+        if not detect and DETECT_ONLY_REF.search(line):
+            detect = True
+    # DETECT-only means it scans and does NOTHING ELSE. A module that scans AND neutralises
+    # is MUTATE-covered — the stronger promise wins, and it must, or adding a scan beside a
+    # neutraliser would downgrade a module's reported coverage.
+    only_detect = detect and not _MUTATE_REF.search(_read(path))
+    return assembles, retrieved, sanitized, only_detect
+
+
+def _read(path: str) -> str:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+            return "\n".join(_code_lines(fh.read()))
+    except OSError:
+        return ""
+
+
+#: The sanitizer calls that TRANSFORM. `SANITIZER_REF` minus the scan-only names.
+_MUTATE_REF = re.compile(
+    r"\bneutralize_injection\s*\("
+    r"|\bneutralize_proposal_text\s*\("
+    r"|\bneutralize\s*\("
+    r"|\bsanitize_lore\s*\("
+    r"|\bsanitize_guide\s*\("
+    r"|\bsanitize_prose_context\s*\("
+)
 
 
 def flagged_files(files) -> list[str]:
@@ -409,6 +455,24 @@ def main() -> int:
         extra = f" ({len(baselined)} baselined)" if baselined else ""
         print(f"injection-coverage-lint ({mode}): OK — every retrieved-text "
               f"prompt-assembly module routes through the sanitizer{extra}")
+        # …and then the honest qualifier. A module that only SCANS is covered by this lint
+        # and makes a weaker promise: the payload reaches the model unchanged and a human is
+        # told. Printing the count is the difference between a gate that reports coverage and
+        # one that reports what KIND of coverage — and this file's own history is a module
+        # that satisfied it with an import.
+        if not staged:
+            # Scoped to actual SUBJECTS (assembles a prompt from retrieved text). Without
+            # this it also names `injection_report.py` — the reporter itself, which scans
+            # because scanning is its job and assembles no prompt at all.
+            detect_only = sorted(
+                rel for full, rel in iter_full_scan()
+                if (lambda c: c[0] and c[1] and c[3])(_classify(full))
+            )
+            if detect_only:
+                print(f"  {len(detect_only)} module(s) are DETECT-only — the untrusted text "
+                      f"is scanned and reported, NOT transformed, because it is the product:")
+                for rel in detect_only:
+                    print(f"    {rel}")
         return 0
 
     print("injection-coverage-lint: FAIL — prompt built from retrieved/external "

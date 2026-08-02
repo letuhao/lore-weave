@@ -126,6 +126,13 @@ CASES = [
      replace('"max_tokens": max_tokens, **no_thinking_fields(),', "**no_thinking_fields(),"),
      [sys.executable, "scripts/llm-budget-ssot-gate.py"], ROOT),
 
+    ("S4 injection — a translation worker stops scanning imported book text", GATE,
+     TRANS / "app" / "workers" / "session_translator.py",
+     replace("""    injection = scan_untrusted_source(
+        chapter_text, where=f"chapter_translation:{chapter_translation_id}",
+    )""", "    injection = None"),
+     [sys.executable, "scripts/injection-coverage-lint.py"], ROOT),
+
     ("S4 injection — a real subject module loses its sanitizer", GATE,
      COMP / "app" / "engine" / "cowrite.py",
      replace("sanitize_", "xanitize_", count=-1),
