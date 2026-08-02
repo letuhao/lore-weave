@@ -28,6 +28,11 @@ export function CompositionSettingsView({ projectId, bookId, settings, models, t
   const ntEnabled = settings.narrative_thread_enabled === true;
   const assemblyMode = (settings.assembly_mode as AssemblyMode) || 'per_scene';
   const defaultModel = typeof settings.default_model_ref === 'string' ? settings.default_model_ref : '';
+  const criticModel = typeof settings.critic_model_ref === 'string' ? settings.critic_model_ref : '';
+  // The state the server refuses, mirrored here so the author sees it BEFORE a generation
+  // silently runs ungraded. The backend's `critic_policy` is the authority — this is the
+  // affordance that lets the warning it returns be acted on.
+  const criticIsDrafter = criticModel !== '' && criticModel === defaultModel;
   const patch = (p: Record<string, unknown>) =>
     setSettings.mutate({ projectId, currentSettings: settings, patch: p });
 
@@ -51,6 +56,43 @@ export function CompositionSettingsView({ projectId, bookId, settings, models, t
             <option key={m.user_model_id} value={m.user_model_id}>{m.alias || m.provider_model_name}</option>
           ))}
         </select>
+      </label>
+
+      {/* critic model — S6. Until this row existed the ONLY way to configure a critic was to
+          hand-edit work.settings JSONB, so every book shipped with the blocking tier off and
+          nothing said so. `critic_model_source` is written alongside the ref because the
+          server treats a ref without its source as INCOMPLETE, not as configured. */}
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">{t('workSettings.criticModel', { defaultValue: 'Critic model (independent judge)' })}</span>
+        <span className="text-xs text-neutral-500">
+          {t('workSettings.criticModelHint', { defaultValue: 'A DIFFERENT model grades each draft against your canon, and can block a chapter that contradicts it. Without one, nothing independently checks the prose — a model cannot grade its own work.' })}
+        </span>
+        <select
+          data-testid="composition-settings-critic-model"
+          className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
+          value={criticModel}
+          disabled={setSettings.isPending}
+          onChange={(e) =>
+            patch(
+              e.target.value
+                ? { critic_model_ref: e.target.value, critic_model_source: 'user_model' }
+                // Clearing must remove BOTH halves. Dropping only the ref would leave a
+                // dangling source, which the server reads as INCOMPLETE — a state the author
+                // never chose and cannot see.
+                : { critic_model_ref: null, critic_model_source: null },
+            )
+          }
+        >
+          <option value="">{t('workSettings.noCritic', { defaultValue: 'No critic — drafts are not independently graded' })}</option>
+          {models.map((m) => (
+            <option key={m.user_model_id} value={m.user_model_id}>{m.alias || m.provider_model_name}</option>
+          ))}
+        </select>
+        {criticIsDrafter && (
+          <span data-testid="composition-settings-critic-same-as-drafter" className="text-xs text-amber-600">
+            {t('workSettings.criticSameAsDrafter', { defaultValue: 'This is the same model that writes the prose, so it would be grading its own work — the server will refuse it and skip the critique. Pick a different model.' })}
+          </span>
+        )}
       </label>
 
       {/* assembly mode — per_scene (granular) vs chapter (single-pass, more coherent long-form) */}

@@ -62,6 +62,7 @@ from app.engine.prose_doc import text_to_tiptap_doc
 from app.engine.stitch import prepend_scene_headings, stitch_chapter
 from app.engine.canon_check import canon_envelope
 from app.engine.canon_reflect import run_canon_reflect
+from app.engine.critic_policy import CriticStatus, resolve_critic
 from app.engine.narrative_thread import detect_and_update_threads
 from app.engine.compress import compress
 from app.engine.cowrite import (
@@ -87,6 +88,30 @@ from app.packer.profile import from_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/composition")
+
+#: Why the LLM critique did not run, in words the AUTHOR can act on.
+#:
+#: One sentence used to cover every case: *"critique skipped: no distinct critic model
+#: configured"*. It was returned both when no critic had ever been set and when the author had
+#: set one that happens to be the model already writing the prose — a misconfiguration with a
+#: concrete fix, described as an absence. Neither message told them the blocking tier was off
+#: or that a setting exists to turn it on.
+#:
+#: Keyed on the enum rather than built with an `if`, so a new `CriticStatus` member cannot be
+#: added without deciding what to tell the author about it — the lookup raises rather than
+#: falling through to a plausible default. Same reason the frontend-tool contract closes its
+#: enums: a string-dispatch default hides a missing case.
+_CRITIC_SKIP_WARNING: dict[CriticStatus, str] = {
+    CriticStatus.NOT_CONFIGURED:
+        "critique skipped: no critic model is set for this book, so nothing independently "
+        "grades the prose. Set one in Composition → Settings → Critic model.",
+    CriticStatus.SAME_AS_DRAFTER:
+        "critique skipped: the critic model is the SAME model that wrote this passage, so it "
+        "would be grading its own work. Choose a different model in Composition → Settings.",
+    CriticStatus.INCOMPLETE:
+        "critique skipped: the critic model setting is incomplete (a model was recorded "
+        "without its provider). Re-select the critic model in Composition → Settings.",
+}
 
 _MAX_OUTPUT_DEFAULT = 1024
 
@@ -553,8 +578,9 @@ async def generate(
         # re-run pack()) + the scene signals the auto compute needs. worker_op is
         # the canonical dispatch key (operation is the free-form prose op).
         sdict = work.settings or {}
-        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
-        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        critic_res = resolve_critic(sdict, body.model_ref)
+        c_src, c_ref = critic_res.source, critic_res.ref
+        distinct = critic_res.distinct
         job_input.update({
             "worker_op": "generate",
             "packed_prompt": pc.prompt, "scene_sort_order": pc.scene_sort_order,
@@ -636,8 +662,9 @@ async def generate(
                                  "k": r.get("k"), "candidates": r.get("candidates", []),
                                  "assembly_mode": assembly_mode})
         sdict = work.settings or {}
-        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
-        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        critic_res = resolve_critic(sdict, body.model_ref)
+        c_src, c_ref = critic_res.source, critic_res.ref
+        distinct = critic_res.distinct
         try:
             sel = await select_scene(
                 llm, llm, user_id=str(user_id),
@@ -1234,8 +1261,9 @@ async def generate_chapter(
         # persistence to the book draft is the separate bearer accept-step
         # (POST /jobs/{id}/persist). Same guard + idempotency as the inline path.
         sdict = work.settings or {}
-        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
-        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        critic_res = resolve_critic(sdict, body.model_ref)
+        c_src, c_ref = critic_res.source, critic_res.ref
+        distinct = critic_res.distinct
         job_input = {
             "model_source": body.model_source, "model_ref": str(body.model_ref),
             "operation": body.operation, "worker_op": "chapter_generate",
@@ -1306,8 +1334,9 @@ async def generate_chapter(
                              "canon": r.get("canon"), "assembly_mode": "chapter"})
 
     sdict = work.settings or {}
-    c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
-    distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+    critic_res = resolve_critic(sdict, body.model_ref)
+    c_src, c_ref = critic_res.source, critic_res.ref
+    distinct = critic_res.distinct
     try:
         cands = await diverge(
             llm, user_id=str(user_id), model_source=body.model_source,
@@ -1471,8 +1500,9 @@ async def stitch_chapter_endpoint(
         # in-flight guard + idempotency as the inline path.
         chapter_sort = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
         sdict = work.settings or {}
-        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
-        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        critic_res = resolve_critic(sdict, body.model_ref)
+        c_src, c_ref = critic_res.source, critic_res.ref
+        distinct = critic_res.distinct
         job_input = {
             "model_source": body.model_source, "model_ref": str(body.model_ref),
             "operation": "stitch_chapter", "worker_op": "stitch_chapter",
@@ -1560,8 +1590,9 @@ async def stitch_chapter_endpoint(
     # rewrite can re-introduce a gone character). Degrade-safe, never blocks (F1).
     chapter_sort = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
     sdict = work.settings or {}
-    c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
-    distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+    critic_res = resolve_critic(sdict, body.model_ref)
+    c_src, c_ref = critic_res.source, critic_res.ref
+    distinct = critic_res.distinct
     canon_v: dict[str, Any] = {"violations": [], "resolved": True, "iterations": 0,
                                "status": "degraded"}
     revise_finish: str | None = None
@@ -1929,20 +1960,27 @@ async def critique(
         if derivative_findings else None
     )
 
-    critic_src = settings_dict.get("critic_model_source")
-    critic_ref = settings_dict.get("critic_model_ref")
     drafter_ref = (job.input or {}).get("model_ref")
-    # Anti-self-reinforcement: the critic MUST be a distinct model. No critic
-    # configured, or same as the drafter → skip the LLM critique (advisory) + warn,
-    # but STILL surface + persist the deterministic derivative findings + the GATE.
-    if not critic_ref or not critic_src or str(critic_ref) == str(drafter_ref):
+    # Anti-self-reinforcement: the critic MUST be a distinct model. Resolved through the ONE
+    # policy (`engine/critic_policy`) rather than restated here — this was the seventh copy of
+    # the rule, and the only one written inverted, which is how it drifted furthest.
+    critic_res = resolve_critic(settings_dict, drafter_ref)
+    if not critic_res.distinct:
+        # Skip the LLM critique (advisory) but STILL surface + persist the deterministic
+        # derivative findings + the GATE.
         critic = ({"derivative_findings": derivative_findings, **gate}
                   if derivative_findings else None)
         if critic is not None:
             await jobs.update_status(job_id, job.status, critic=critic,
                                      target_revision_id=body.target_revision_id)
+        # `critic_status` is the field that makes this actionable, and it is why the policy
+        # returns a status rather than a boolean. The old single sentence — "no distinct
+        # critic model configured" — was returned for BOTH "you never set one" and "the one
+        # you set is the model already writing the prose". Those need different actions, and
+        # an author reading the first message about the second problem has no way to find it.
         return {"critic": critic,
-                "warning": "critique skipped: no distinct critic model configured"}
+                "critic_status": critic_res.status.value,
+                "warning": _CRITIC_SKIP_WARNING[critic_res.status]}
 
     # CC2: re-resolve the ACTIVE canon at critique time — a deleted/archived rule
     # is never enforced.
@@ -1950,7 +1988,8 @@ async def critique(
     active_rules = [{"rule_id": str(r.id), "text": r.text} for r in rules]
 
     critic = await judge_prose(
-        llm, user_id=str(user_id), model_source=str(critic_src), model_ref=str(critic_ref),
+        llm, user_id=str(user_id),
+        model_source=str(critic_res.source), model_ref=str(critic_res.ref),
         passage=passage, active_rules=active_rules, present_facts=[],
         profile=from_settings(settings_dict),
     )

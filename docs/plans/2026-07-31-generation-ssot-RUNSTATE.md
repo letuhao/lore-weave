@@ -107,7 +107,7 @@ Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
 **Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → **`S6(+UI)`** → `S11 → S3 → S4` → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → **`S11`** → `S3 → S4` → `S9 → S5 → S13`.
 
 > **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
 > that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
@@ -135,7 +135,7 @@ when in fact most of the last two days went into defect work that was never on t
 | `S8` the pack's diagnostics ride the job | ✅ | |
 | `S12` every declared enforcement site resolves | ✅ | the gate went green on its own example 3× before it was real |
 | **`S7` one output budget** | **✅ CLOSED 2026-08-02** | slices 1·2·3 ✅ · slice 4 (budget-seam rot) ✅ — 28 no-signal sites → 9, and the 9 are named |
-| `S6` no model silently its own judge | ☐ surveyed | **blocked on a UI slice** |
+| `S6` no model silently its own judge | ✅ CLOSED 2026-08-02 | the affordance shipped; 7 hand-rolled copies → one policy; the skip states now differ |
 | `S11` one context compiler | ☐ | the largest remaining |
 | `S3` one `Finding` | ☐ | deliberately after S11 |
 | `S4` the plan half onto the spine | ☐ | the gate exists; the work is widening it |
@@ -928,6 +928,92 @@ which the POST-RUN REVIEW found and fixed one layer up — except this one is a 
 the surface that would consume it (`model_roles`) is a read-only contract with no producer. That
 is what the slice has to build, and it is why shipping the label alone would produce a warning
 the author has no way to clear.
+
+### ✅ S6 — no model silently its own judge. The affordance shipped WITH the label.
+
+```
+AUDIT S6
+  BUILT      — `app/engine/critic_policy.py` (`resolve_critic` → `CriticResolution` carrying a
+               four-member `CriticStatus`), adopted at all SEVEN sites in `routers/engine.py`;
+               a per-status author-facing message map; and the UI row that makes any of it
+               reachable — a Critic model select in `CompositionSettingsView` writing
+               `critic_model_ref` + `critic_model_source` through the existing (merging) Work
+               PATCH, plus an inline warning when the chosen critic IS the drafter.
+
+  PROVEN     — the rule was hand-rolled SEVEN times: six copies of
+               `distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))` and a
+               seventh written INVERTED as the critique endpoint's guard. Six stayed in
+               lockstep; the seventh is where the defect grew — it collapsed TWO states into
+               one sentence, *"critique skipped: no distinct critic model configured"*,
+               returned both when no critic was ever set and when the author had set the model
+               already writing the prose. Different problems, different fixes, identical text.
+               The two existing route tests asserted `"skipped" in warning`, which is true of
+               BOTH, so nothing could see the conflation.
+
+               LIVE, on deployed code, both images rebuilt + hash-verified (critic_policy.py
+               and engine.py MATCH in service AND worker):
+                 no critic set      → not_configured  · "no critic model is set … Set one in
+                                                        Composition → Settings → Critic model."
+                 critic == drafter  → same_as_drafter · "the SAME model that wrote this
+                                                        passage … Choose a different model."
+                 ref without source → incomplete      · "a model was recorded without its
+                                                        provider … Re-select."
+                 DISTINCT critic    → configured      · the critique RUNS
+                 `distinct statuses across the four arms: 4 — PASS (they differ)`
+
+               suites: composition `8 failed, 3900 passed, 8 skipped` (was 3883; +17 — the 8
+               are the tracked test_motif_retrieve_db rows) · frontend composition
+               `155 files, 1057 passed` · `tsc --noEmit` exit=0.
+               gates: `llm-budget-ssot-gate PASS` · `ai-provider-gate OK` ·
+               `generation-guard-gate PASS` · `enforcement-claims-gate OK — 103 path(s)` ·
+               `db-safety-gate exit 0` · `[language-rule] PASS`.
+
+               RED-ABLE, restored by re-editing: pointing SAME_AS_DRAFTER's message at
+               NOT_CONFIGURED's text fails BOTH guards — the route test
+               (`both states still share one sentence`) and the uniqueness test
+               (`two statuses share a message — the conflation is back`).
+               An `ast` guard also reds if anyone re-inlines a critic identity comparison in
+               `engine.py`, and it carries a CONTROL proving the detector sees that pattern —
+               without it, an empty-list assertion passes just as well when the scan is broken.
+
+  NOT PROVEN — THE COMPARISON IS ON `user_model_id`, NOT ON THE RESOLVED PROVIDER MODEL. Two
+               BYOK rows can point at the SAME underlying model, so a user with two gemma
+               credentials gets `CONFIGURED` and a model grading its own prose — the precise
+               failure this slice is named for, one level below where it now looks. No route
+               exposes the underlying model for a `user_model_id` (provider-registry has
+               `/context-window` and nothing equivalent), so closing it needs a new
+               cross-service contract plus a caching decision on a per-generation hot path.
+               Tracked in Debt; deferred under gate #2, not waved through.
+               The live run is POLICY-level on deployed code, not a book-scoped HTTP run: the
+               four arms exercise the real deployed `resolve_critic` and the real message map,
+               while the endpoint's `critic_status` field is proven by route tests rather than
+               by a browser. No browser smoke on the new select at all, so the i18n keys are
+               asserted as chosen, not as rendering well in Vietnamese.
+               The FE `criticIsDrafter` warning compares against `default_model_ref`, the
+               book's DEFAULT drafter — a session that overrides the model per call can still
+               reach SAME_AS_DRAFTER without the UI predicting it. The server is the authority
+               and does refuse it; the UI is an early warning, not the check.
+               And `model_roles` still has ZERO writers: this slice writes the legacy scalars,
+               which the dual-read consumes, so the newer map remains a read-only contract with
+               no producer.
+
+  DRIFT      — I nearly shipped the UI row alone. The spec's requirement is the affordance, and
+               a select that writes `critic_model_ref` satisfies it literally — but the state
+               the author would most often land in is "I picked the model I already use", which
+               the server silently refuses. Shipping the picker without the same-as-drafter
+               warning would have produced a setting that looks applied and does nothing: the
+               permanent-amber shape S1 exists to end, re-created by the slice meant to close it.
+               Second: my first pass at replacing the six copies matched on `\r\n` and reported
+               `8-indent copies: 0 · 4-indent copies: 0` — a clean no-op that printed like a
+               successful run. Had I not printed the remaining count in the same breath I would
+               have moved on believing the refactor had landed.
+
+  NEXT       — S11 (one context compiler), the largest remaining slice. S6 hands it nothing
+               structural, but the `signal_inert`/`CriticStatus` pattern is now used twice in
+               two days — a row or a state DECLARING what it cannot do, checked by a probe
+               rather than trusted — and S11's additive-then-switch rule needs exactly that
+               shape to prove no existing `loreweave_context` consumer changed behaviour.
+```
 
 ### ✅ S7 slice 4 — the budget-seam rot. The ratchet was measuring the wrong thing.
 
@@ -1886,6 +1972,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | Smoke debris: throwaway book `019fbd8f-008c-7cef-bf81-1d53a808361d` and its knowledge project `019fbd90-…` | Deliberately a throwaway (never the dogfood book), but it is real rows in the dev stack awaiting purge. |
 | 2026-08-02 | The `cross_scene_check` registry row is MISLABELLED. Its `why` describes "a contradiction list across one scene seam"; its only two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a cast ROSTER. | The row documents a call that does not exist, and the kind is wrong in a way that matters: VERDICT carries `truncation_is_fatal=False`, but a clipped roster silently DROPS PEOPLE — the same class as the `propose_world` dead pass. Not fixed here because changing the kind changes the budget (VERDICT 2048 → STRUCTURED 4096) and needs its own measurement. |
 | 2026-08-02 | `_TOKENS_PER_ITEM = 220` (SDK, generic) is what makes a full-roster `propose_world` reach the 32768 runaway ceiling. A world entity is plausibly half that. | Every STRUCTURED budget is sized off a per-item cost nobody has measured against a real completion. The right number is `output_tokens / items` from a live run; until then the big-roster budgets are over-generous rather than wrong. |
+| 2026-08-02 | **The distinct-critic rule compares `user_model_id`, not the RESOLVED provider model.** Two BYOK rows can point at the same underlying model. | A user with two gemma credentials picks one as drafter and one as critic, gets `CONFIGURED`, and a model grades its own prose — the exact failure S6 is named for, one level below where the check now looks. Closing it needs a provider-registry route exposing the underlying model for a `user_model_id` (only `/context-window` exists) plus a caching decision on a per-generation hot path. Gate #2 — cross-service contract. |
+| 2026-08-02 | `settings.model_roles` still has ZERO writers. S6 writes the legacy `critic_model_ref`/`_source` scalars, which the dual-read consumes. | The newer map remains a read-only contract with no producer, so the Book tier of the Chat & AI cascade still resolves a key nothing writes. Not blocking — the dual-read means the critic setting works — but the map is dead weight until something writes it or it is retired. |
 | 2026-08-02 | The output-budget window clamp is unexercised in production. | The dev model reports a 200k window, so the half-share never binds. It is proven only by unit test. The case that matters — a small-window BYOK model getting a 24750-token cap — has never been run. |
 
 ## Drift log — near-misses, wrong turns, bars I nearly lowered
@@ -1939,6 +2027,8 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
+| 2026-08-02 | **Nearly shipped the S6 picker without the warning that makes it honest.** The spec asks for an affordance, and a select writing `critic_model_ref` satisfies that literally. But the state an author most often lands in is "I picked the model I already use", which the server silently refuses — so the setting would look applied and do nothing. That is the permanent-amber shape S1 exists to end, re-created by the slice written to close it. |
+| 2026-08-02 | **A refactor that did nothing, reported like a run that worked.** My first replacement of the six hand-rolled `distinct` copies matched on `\r\n` and printed `8-indent copies: 0 · 4-indent copies: 0` — a clean no-op with a tidy summary. Only because the same command also printed the REMAINING count did I see it had changed nothing. A script that reports what it looked for, not what it changed, reads as success. |
 | 2026-08-02 | **Applied the new exemption to the wrong row, first try, inside the slice written to stop exactly that.** I marked `compress` `signal_inert` because `ceiling == floor == 512` and the ceiling is applied last. The probe reddened at once: the window clamp ALSO runs after the floor and pushes DOWN, so `context_length=8` gives 4. A ceiling bounds one direction. The flag would have excused a call site from a signal it is entitled to — the rot this slice pays down, re-created by its own exemption mechanism. Only the two-directional assert caught it; a one-directional one would have passed. |
 | 2026-08-02 | **Widened the detector and nearly banked the smaller number.** My first `_ssot_local_names` bound names module-wide, and the unattributed backlog fell 29 → 26 — three sites this slice never touched, including `self_heal._chat`, a helper one of whose callers passes a flat `400`. The name matched, so a literal would have been laundered into `attributed` by an assignment four hundred lines away. Shrinking a backlog by loosening the thing that measures it is how a ratchet stops meaning anything, and it presents as progress. |
 | 2026-08-02 | **Nearly deleted five load-bearing overrides as redundancy.** The plan-forge repair sites restate `max_tokens_for("plan_forge_chat")`, which looked like duplication of the client default — but `LMStudioClient.chat` declares **8000** against the row's **12000**, so removing them would have cut a plan JSON by a third, and a clipped plan comes back unparseable rather than short. Reading the Protocol before editing is what stopped it, and it exposed the genuine version of the bug: `_parse_with_repair`'s own `8000` default, overridden only by `materialize`, so `analyze` and `refine_spec` had been running a third under the declared row. |

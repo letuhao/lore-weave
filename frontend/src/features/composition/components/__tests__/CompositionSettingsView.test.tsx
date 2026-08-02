@@ -80,3 +80,57 @@ describe('CompositionSettingsView (FE work settings)', () => {
     expect(screen.getByTestId('composition-settings-error')).toBeTruthy();
   });
 });
+
+// ── S6: the critic affordance ────────────────────────────────────────────────────────────
+//
+// Until this row existed, `critic_model_ref` appeared in `frontend/src` in __tests__ FILES
+// ONLY — fixtures handed components a value the product had no way to produce, so the suite
+// was green on a configuration no user could reach. These tests drive the real control.
+describe('CompositionSettingsView — critic model (S6)', () => {
+  const critic = () => screen.getByTestId('composition-settings-critic-model') as HTMLSelectElement;
+
+  it('reflects a persisted critic model', () => {
+    render(<CompositionSettingsView {...base} settings={{ critic_model_ref: 'm2' }} />);
+    expect(critic().value).toBe('m2');
+  });
+
+  it('defaults to "no critic" when nothing is set — and that is the state that ships', () => {
+    render(<CompositionSettingsView {...base} settings={{}} />);
+    expect(critic().value).toBe('');
+  });
+
+  it('picking a critic writes BOTH the ref and its source', () => {
+    // The server reads a ref without a source as INCOMPLETE, not as configured, so writing
+    // only half would leave the blocking tier off while the UI showed a chosen model.
+    render(<CompositionSettingsView {...base} settings={{}} />);
+    fireEvent.change(critic(), { target: { value: 'm1' } });
+    expect(mockSet.mutate).toHaveBeenCalledWith(expect.objectContaining({
+      patch: { critic_model_ref: 'm1', critic_model_source: 'user_model' },
+    }));
+  });
+
+  it('clearing the critic removes BOTH halves, never a dangling source', () => {
+    render(<CompositionSettingsView {...base} settings={{ critic_model_ref: 'm1', critic_model_source: 'user_model' }} />);
+    fireEvent.change(critic(), { target: { value: '' } });
+    expect(mockSet.mutate).toHaveBeenCalledWith(expect.objectContaining({
+      patch: { critic_model_ref: null, critic_model_source: null },
+    }));
+  });
+
+  it('warns when the critic IS the drafter — the state the server refuses', () => {
+    render(<CompositionSettingsView {...base} settings={{ default_model_ref: 'm1', critic_model_ref: 'm1' }} />);
+    expect(screen.getByTestId('composition-settings-critic-same-as-drafter')).toBeInTheDocument();
+  });
+
+  it('does NOT warn when the two models differ — the control', () => {
+    // Without this, the assertion above would pass just as well for a banner that is always
+    // rendered, which is the check-that-cannot-fail shape this run keeps finding.
+    render(<CompositionSettingsView {...base} settings={{ default_model_ref: 'm1', critic_model_ref: 'm2' }} />);
+    expect(screen.queryByTestId('composition-settings-critic-same-as-drafter')).toBeNull();
+  });
+
+  it('does NOT warn when both are unset — "empty equals empty" is not self-judging', () => {
+    render(<CompositionSettingsView {...base} settings={{}} />);
+    expect(screen.queryByTestId('composition-settings-critic-same-as-drafter')).toBeNull();
+  });
+});

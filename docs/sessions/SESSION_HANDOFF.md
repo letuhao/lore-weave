@@ -190,7 +190,7 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 
 **Order (author-set 2026-08-02):** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` →
 `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-`[budget-seam rot] ✅ → S7 ✅` → **`S6(+UI)`** → `S11 → S3 → S4` → `S9 → S5 → S13`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → **`S11`** → `S3 → S4` → `S9 → S5 → S13`.
 
 ### ⛔ KG / extraction is PARKED — do not start it
 
@@ -240,14 +240,35 @@ silently drops people from a clipped one) · `_TOKENS_PER_ITEM = 220` is unmeasu
 sends a full roster into the 32768 runaway ceiling · the output-window clamp is unexercised in
 production because the dev model reports a 200k window.
 
-### ▶ NEXT: **S6 — no model silently its own judge**
+### ✅ DONE: **S6 — no model silently its own judge**
 
-Surveyed already, and **blocked on an affordance rather than on code**: no surface sets a critic,
-`critic_model_ref` lives only in `work.settings` JSONB, and the FE suite is green on a
-configuration no user can produce (fixtures hand components `{critic_model_ref: 'x'}`; the only
-way to reach that state in the product is hand-editing JSONB). The spec is explicit — ship the UI
-in the same slice or the label is noise, because a warning the author cannot clear is the
-permanent-amber failure S1 exists to prevent. Survey detail in the RUN-STATE `AUDIT S6 (survey)`.
+The affordance shipped WITH the label, which is what the spec required. Full audit in the RUN-STATE.
+
+A Critic model row now exists in Composition → Settings, writing `critic_model_ref` +
+`critic_model_source` through the existing merging Work PATCH — before it, the only way to
+configure a critic was hand-editing JSONB, so every book shipped with the blocking tier off and
+nothing said so.
+
+**The rule had SEVEN hand-rolled copies** in `routers/engine.py` — six identical, one written
+inverted — now one `app/engine/critic_policy.py`. The inverted seventh is where the defect lived:
+it collapsed *"you never set a critic"* and *"the critic you set is the model already writing the
+prose"* into one sentence. Different problems, different fixes, identical text — and the two
+existing route tests asserted `"skipped" in warning`, true of both, so nothing could see it.
+Four states now, each with its own words and a pointer to where to fix it.
+
+**⚠ Carried as debt, not closed: the comparison is on `user_model_id`, not the resolved provider
+model.** Two BYOK rows can point at the same underlying model, so a user with two gemma
+credentials gets `configured` and a model grading its own prose — the exact failure S6 is named
+for, one level below where the check now looks. No provider-registry route exposes the underlying
+model for a `user_model_id`; closing it is a cross-service contract plus a caching decision on a
+per-generation hot path.
+
+### ▶ NEXT: **S11 — one context compiler**
+
+The largest remaining slice. Its sealed rule is **additive-then-switch**: no existing
+`loreweave_context` consumer changes behaviour until its own measurement says it may
+(RUN-STATE invariant 6). Order also puts S11 *before* S4 by a sealed decision — migrating the
+plan half twice is the avoidable cost.
 
 **Full standing overview — board, off-board work, de-rot, loose ends:** RUN-STATE §*WHERE THE RUN
 STANDS*.

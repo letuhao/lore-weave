@@ -1064,3 +1064,53 @@ def test_list_job_corrections(ctx):
     assert r.status_code == 200
     body = r.json()["corrections"]
     assert len(body) == 1 and body[0]["action"] == "edit"
+
+
+# ── S6: the two skip states must be DISTINGUISHABLE at the route ──────────────────────────
+
+def test_critique_skip_NAMES_which_state_it_is(ctx):
+    """The endpoint returned one sentence for two different problems.
+
+    The tests above assert `"skipped" in warning`, which is true of BOTH — so the conflation
+    was invisible to them. An author told "no distinct critic model configured" when they HAD
+    configured one has no way to discover that the fix is 'pick a different model'.
+    """
+    c, works, _, _, _, judge, _ = ctx
+
+    works.work = _work({})
+    none_r = c.post(f"/v1/composition/jobs/{JOB}/critique",
+                    json={"target_revision_id": str(uuid.uuid4())}).json()
+
+    works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(DRAFTER)})
+    same_r = c.post(f"/v1/composition/jobs/{JOB}/critique",
+                    json={"target_revision_id": str(uuid.uuid4())}).json()
+
+    judge.assert_not_called()
+    assert none_r["critic_status"] == "not_configured"
+    assert same_r["critic_status"] == "same_as_drafter"
+    assert none_r["warning"] != same_r["warning"], "both states still share one sentence"
+    # …and each says what to DO, not merely what happened.
+    assert "Settings" in none_r["warning"] and "Settings" in same_r["warning"]
+
+
+def test_critique_reports_an_INCOMPLETE_critic_setting_as_its_own_state(ctx):
+    """A ref with no source is a half-written setting, not an absent one — a bug report
+    rather than 'you never turned this on'."""
+    c, works, _, _, _, judge, _ = ctx
+    works.work = _work({"critic_model_ref": str(CRITIC)})   # source missing
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique",
+               json={"target_revision_id": str(uuid.uuid4())}).json()
+    judge.assert_not_called()
+    assert r["critic_status"] == "incomplete"
+
+
+def test_a_configured_critique_does_NOT_carry_a_skip_status(ctx):
+    """The CONTROL. Without it every assertion above would also pass for a route that stamped
+    a skip status on every response, including the ones that ran."""
+    c, works, _, canon, _, judge, _ = ctx
+    works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(CRITIC)})
+    canon.rules = []
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique",
+               json={"target_revision_id": str(uuid.uuid4())}).json()
+    assert r.get("critic_status") is None and r.get("warning") is None
+    judge.assert_called()
