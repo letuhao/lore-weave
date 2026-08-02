@@ -130,13 +130,18 @@ paths:
     language: go
     file: services/glossary-service/internal/api/wiki_staleness.go
     symbol: sweepKgDrift
-    status: unguarded
-    owner: S1-part2
+    status: guarded
+    coverage_field: kg_status
     note: >-
-      A failed kg-hashes chunk is logged and `continue`d, and the entities in it then take the
-      same branch as "no drift" (`!ok` → skip). The sweep reports `flagged`; it reports nothing
-      about how many entities were never compared. "Could not check" and "nothing changed"
-      produce byte-identical output.
+      CLOSED 2026-08-02. Was: a failed kg-hashes chunk was logged and `continue`d, and its
+      entities then took the same branch as "no drift" (`!ok` → skip), so "could not check"
+      and "nothing changed" produced byte-identical output. `sweepKgDrift` now returns a
+      `guardstatus.Report` — status + checked/unchecked counts — and both handlers emit
+      `kg_status`/`kg_checked`/`kg_unchecked` beside the existing `kg_flagged`. The Go
+      vocabulary is a machine-checked SUBSET of `loreweave_guard.CheckStatus` via
+      contracts/guard-status.contract.json, so this path cannot invent a status a consumer
+      is unable to interpret. Pinned by `TestSweepKgDrift_ACleanSweepAndAnOUTAGEAreNoLonger
+      IdenticalOutput`, which asserts the two arms DIFFER rather than asserting one of them.
 
   # ── tilemap · zone narration (Rust) ──────────────────────────────────────────────────────
   - id: tilemap.l4.zone_narration

@@ -49,6 +49,7 @@ Usage
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -60,12 +61,12 @@ KNOW = ROOT / "services" / "knowledge-service"
 CHAT = ROOT / "services" / "chat-service"
 
 #: A case whose guard is a plain script under `scripts/` needs nothing installed, so CI's
-#: `lints` job can run it. A case whose guard is a service's pytest suite needs that service's
-#: dependencies, which `lints` does not have — those run locally and in any job that installs
-#: them. The distinction is printed, never silently applied: a sweep that quietly ran 3 of 11
+#: `lints` job can run it. A SUITE case needs something that job does not have — a service's
+#: Python dependencies, or the Go toolchain — so it runs locally and in any job that provides
+#: them. The distinction is printed, never silently applied: a sweep that quietly ran 4 of 13
 #: and said "all guards red-able" would be the exact defect this file is about.
 GATE = "gate"
-PYTEST = "pytest"
+SUITE = "suite"   # needs a service's deps or another language's toolchain
 
 
 def append(text):
@@ -82,32 +83,32 @@ def replace(old, new, count=1):
 
 #: (name, tier, target(s), mutation, guard argv, guard cwd)
 CASES = [
-    ("S6 critic — an EIGHTH hand-rolled copy of the distinct rule", PYTEST,
+    ("S6 critic — an EIGHTH hand-rolled copy of the distinct rule", SUITE,
      COMP / "app" / "engine" / "select.py",
      append("\n\ndef _redability_probe(critic_ref, drafter_ref):\n"
             "    return str(critic_ref) != str(drafter_ref)\n"),
      [sys.executable, "-m", "pytest", "tests/unit/test_critic_policy.py", "-q",
       "-p", "no:cacheprovider", "-k", "re_inlines"], COMP),
 
-    ("S3 findings — a raw skip_reason string outside the enum", PYTEST,
+    ("S3 findings — a raw skip_reason string outside the enum", SUITE,
      COMP / "app" / "engine" / "plan_heal.py",
      append('\n\ndef _redability_probe(f):\n    f.skip_reason = "not_locatd"\n'),
      [sys.executable, "-m", "pytest", "tests/unit/test_finding_vocabulary.py", "-q",
       "-p", "no:cacheprovider"], COMP),
 
-    ("S5 heal — a module quietly RUNS a stage it declared SKIPPED", PYTEST,
+    ("S5 heal — a module quietly RUNS a stage it declared SKIPPED", SUITE,
      COMP / "app" / "engine" / "plan_heal.py",
      append("\n\ndef _redability_probe(t):\n    return _snap_to_sentence(t)\n"),
      [sys.executable, "-m", "pytest", "tests/unit/test_heal_protocol.py", "-q",
       "-p", "no:cacheprovider"], COMP),
 
-    ("S7 budget — a caller re-introduces an int max_tokens literal", PYTEST,
+    ("S7 budget — a caller re-introduces an int max_tokens literal", SUITE,
      COMP / "app" / "engine" / "select.py",
      append("\n\ndef _redability_probe(c):\n    return c.chat(max_tokens=4242)\n"),
      [sys.executable, "-m", "pytest", "tests/unit/test_llm_budget_registry.py", "-q",
       "-p", "no:cacheprovider", "-k", "re_introduces"], COMP),
 
-    ("S7 budget — signal_inert=True on a row that DOES move", PYTEST,
+    ("S7 budget — signal_inert=True on a row that DOES move", SUITE,
      COMP / "app" / "llm_budget.py",
      replace('"judge_prose": CallProfile(OutputKind.VERDICT, 1536, 1536,',
              '"judge_prose": CallProfile(OutputKind.VERDICT, 1536, 1536, signal_inert=True,'),
@@ -136,13 +137,25 @@ CASES = [
             "GuardReport: Any = None\nCheckStatus: Any = None\n"),
      [sys.executable, "scripts/guard-sdk-entry-gate.py"], ROOT),
 
-    ("S11 context-trace — a closed-set value added on ONE side", PYTEST,
+    ("S11 context-trace — a closed-set value added on ONE side", SUITE,
      ROOT / "sdks" / "python" / "loreweave_context" / "trace.py",
      replace('"T5", "T6")', '"T5", "T6", "T7")'),
      [sys.executable, "-m", "pytest", "tests/test_context_trace_contract.py", "-q",
       "-p", "no:cacheprovider"], CHAT),
 
-    ("S7 translation — an inert MIRROR row that stops being inert", PYTEST,
+    ("S1 generation-paths — a row claims `guarded` with a coverage field the file lacks", GATE,
+     ROOT / "contracts" / "generation-paths.yaml",
+     replace("coverage_field: kg_status", "coverage_field: kg_status_that_does_not_exist"),
+     [sys.executable, "scripts/generation-guard-gate.py"], ROOT),
+
+    ("S1 glossary — an outage and a clean sweep collapse back into one answer", SUITE,
+     ROOT / "services" / "glossary-service" / "internal" / "api" / "wiki_staleness.go",
+     replace("\t\tif !ok {\n\t\t\tunchecked++\n\t\t\tcontinue\n\t\t}\n\t\tif cur == a.storedHash {",
+             "\t\tif !ok || cur == a.storedHash {"),
+     ["go", "test", "./internal/api/", "-run", "TestSweepKgDrift", "-count=1"],
+     ROOT / "services" / "glossary-service"),
+
+    ("S7 translation — an inert MIRROR row that stops being inert", SUITE,
      TRANS / "app" / "llm_budget.py",
      replace('"translate_chunk": CallProfile(OutputKind.MIRROR, signal_inert=True)',
              '"translate_chunk": CallProfile(OutputKind.VERDICT, 512, 256, '
@@ -150,6 +163,17 @@ CASES = [
      [sys.executable, "-m", "pytest", "tests/test_llm_budget_registry.py", "-q",
       "-p", "no:cacheprovider"], TRANS),
 ]
+
+
+#: Cases whose guard is itself gated on a live dependency. Without the variable the suite
+#: SKIPS, so the guard is green before AND after the injection — which this file would
+#: otherwise report as an inert guard. That is a false accusation, and a false accusation
+#: from a gate is how the gate gets switched off. Named here so an absent dependency is
+#: reported as NOT RUN, which is the honest answer and is never a pass.
+REQUIRES_ENV = {
+    "S1 glossary — an outage and a clean sweep collapse back into one answer":
+        "GLOSSARY_TEST_DB_URL",
+}
 
 
 def _run(argv, cwd):
@@ -180,6 +204,9 @@ def _mutate(target: Path, op: str, payload) -> str | None:
 
 def run_case(case) -> tuple[str, str, str]:
     name, _tier, targets, (op, payload), argv, cwd = case
+    need = REQUIRES_ENV.get(name)
+    if need and not os.environ.get(need):
+        return name, "NO-ENV", f"needs {need} — the suite would SKIP, proving nothing"
     if isinstance(targets, Path):
         targets = [targets]
     saved = [(t, t.read_bytes() if t.exists() else None) for t in targets]
@@ -280,7 +307,9 @@ def main() -> int:
 
     results = [run_case(c) for c in selected]
     width = max((len(n) for n, _, _ in results), default=1)
-    bad = [r for r in results if r[1] != "RED"]
+    no_env = [r for r in results if r[1] == "NO-ENV"]
+    bad = [r for r in results if r[1] not in ("RED", "NO-ENV")]
+    skipped += len(no_env)
 
     for name, verdict, detail in results:
         print(f"{name:<{width}}  {verdict}{'' if verdict == 'RED' else '   <<<'}")
@@ -294,14 +323,15 @@ def main() -> int:
         print("   silences review. Fix the guard, or fix the case if the anchor moved.")
         return 1
 
-    print(f"guard-redability-gate: PASS — {len(results)}/{len(results)} guard(s) proved "
+    proved = len(results) - len(no_env)
+    print(f"guard-redability-gate: PASS — {proved}/{proved} guard(s) proved "
           f"RED-ABLE against a real on-disk violation.")
     if skipped:
         # Named, because an unrun case that goes unmentioned is how a partial sweep starts
         # reading as a complete one — the same lie `llm-budget-ssot-gate` told about its own
         # unscanned surface until it was made to name it.
-        print(f"  NOT RUN in this mode: {skipped} case(s) whose guard is a service pytest "
-              f"suite (needs that service's deps installed).")
+        print(f"  NOT RUN in this mode: {skipped} case(s) whose guard is a service/toolchain "
+              f"suite (needs service deps or another toolchain).")
     return 0
 
 

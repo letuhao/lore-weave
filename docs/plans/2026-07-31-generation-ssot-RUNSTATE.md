@@ -2741,6 +2741,75 @@ AUDIT AUDIT-1 (guard red-ability — the audit's own first finding, generalised)
                Each is a slice, not a fix.
 ```
 
+### ◐ AUDIT-2 · DoD-1 — the Go generation path. "Could not check" no longer reads as "clean".
+
+```
+AUDIT AUDIT-2 (generation paths — 1 of 4 closed)
+  BUILT      — the check-status vocabulary is now POLYGLOT, and glossary's KG-drift sweep is
+               the first non-Python path to use it.
+                 · contracts/guard-status.contract.json — generated FROM
+                   `loreweave_guard.CheckStatus` (Python stays SSOT), plus the rank order.
+                 · sdks/python/tests/test_guard_status_contract.py — the Python half of the
+                   lock. A member added or renamed reds until the contract is regenerated.
+                 · services/glossary-service/internal/guardstatus — the Go mirror: four
+                   members, machine-checked to be a SUBSET of the contract by a test that
+                   PARSES this package's consts rather than listing them, so a fifth added
+                   tomorrow is not invisible to it.
+                 · `sweepKgDrift` returns a `guardstatus.Report` instead of an int; both
+                   handlers emit `kg_status`/`kg_checked`/`kg_unchecked` beside `kg_flagged`.
+               NOT an SDK. The sealed S9 decision stands: what is shared here is a VOCABULARY
+               — eleven strings and an ordering — and a contract file plus a drift test is
+               exactly the mechanism for that.
+
+  PROVEN     — the defect, reproduced as a failing test before the fix and after reverting it:
+                 --- FAIL: TestSweepKgDrift_OmittedEntityIsNotDrift
+                     an uncompared entity must degrade the sweep, got "checked"
+                 --- FAIL: TestSweepKgDrift_ACleanSweepAndAnOUTAGEAreNoLongerIdenticalOutput
+                     a clean sweep and an outage still produce identical output:
+                     {Status:checked Flagged:0 Checked:1 Unchecked:0}
+               …that struct is the registry's claim, measured: both arms of the pair were the
+               same bytes. All nine sweep tests then run and pass — `-v`, because `ok` with no
+               names is also what a fully-skipped DB-gated package prints:
+                 --- PASS: TestSweepKgDrift_FlagsChangedNeighbourhoodAndIsIdempotent (0.29s)
+                 --- PASS: TestSweepKgDrift_DismissedSameHashNotResurrected (0.30s)
+                 --- PASS: TestSweepKgDrift_DismissedNewHashResurfaces (0.30s)
+                 --- PASS: TestSweepKgDrift_NoChangeNoRow (0.27s)
+                 --- PASS: TestSweepKgDrift_OmittedEntityIsNotDrift (0.24s)
+                 --- PASS: TestSweepKgDrift_ACleanSweepAndAnOUTAGEAreNoLongerIdenticalOutput
+                 --- PASS: TestSweepKgDrift_ABookWithNothingInScopeIsNotACleanSweep (0.24s)
+                 --- PASS: TestSweepKgDrift_NullStoredHashIsSkippedNotCrashed (0.26s)
+                 --- PASS: TestSweepKgDrift_KnowledgeDownDegradesToZero (0.32s)
+               Full glossary module: `go build ./...` + `go vet ./internal/...` clean, whole
+               `go test ./... -count=1` green against the real glossary DB.
+               `generation-guard-gate: PASS — 9 generation paths enumerated across 3
+               languages; 6 guarded, 3 tracked-unguarded.` (was 5/4.)
+               Sweep now 13 cases: `guard-redability-gate: PASS — 13/13`.
+
+  NOT PROVEN — three paths remain: the two composition SSE streams and the Rust zone
+               narration. Nothing here touched them. The Go `guardstatus.Report` is emitted
+               on the wire and NOTHING CONSUMES IT — same shape as `exclusion_unverified`
+               from S13, and it is a debt row rather than a claim. And the vocabulary lock is
+               one-directional today: Python→contract→Go. Rust has no mirror yet, so adding
+               one is a new test, not a free ride on this one.
+
+  DRIFT      — two.
+               · I wrote a bare `"not_applicable"` string into the handler for the branch
+                 where no owner id is supplied — a free-string closed-set value, in the change
+                 whose entire purpose is closing that hole, three files after declaring the
+                 rule. Caught on re-read, not by a check. It is a `guardstatus.NotApplicable`
+                 const now, which is what the parsing test can actually see.
+               · My first version of the mid-sweep error path computed a "checked" count as
+                 `inScope - flagged - unchecked`. That arithmetic is wrong (those are not
+                 disjoint) and, worse, it invents a coverage figure for a loop that did not
+                 finish — a confident number in the one field whose job is saying how much was
+                 verified. Replaced with `degradedSoFar`, which leaves `Checked` at zero.
+
+  NEXT       — the same shape in Rust (`l4_retry.rs`: honesty lives in an optional
+               `fallback_count`) and in the two composition SSE generators, which mention
+               `canon` zero times. The Rust one needs a `guardstatus` mirror crate reading the
+               same contract; the Python ones already have `canon_envelope` to hang off.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
@@ -2768,6 +2837,8 @@ AUDIT AUDIT-1 (guard red-ability — the audit's own first finding, generalised)
 | 2026-08-02 | **The kernel estimator is itself ~0.78× tiktoken on Vietnamese** (my n=3 sample), where the spec cites a 2026-07-07 eval claiming the script-aware heuristic tracks o200k within 3-6%. | Under-counting is the direction that overflows a window. My sample is far too small to overturn a real-corpus measurement, so the tension is recorded rather than acted on — re-tuning the kernel's `_F_VIETNAMESE` on n=3 would be the "generalised from one prompt formulation" mistake this run already has twice. Needs the eval corpus re-run. |
 | 2026-08-02 | **The distinct-critic rule compares `user_model_id`, not the RESOLVED provider model.** Two BYOK rows can point at the same underlying model. | A user with two gemma credentials picks one as drafter and one as critic, gets `CONFIGURED`, and a model grades its own prose — the exact failure S6 is named for, one level below where the check now looks. Closing it needs a provider-registry route exposing the underlying model for a `user_model_id` (only `/context-window` exists) plus a caching decision on a per-generation hot path. Gate #2 — cross-service contract. |
 | 2026-08-02 | `settings.model_roles` still has ZERO writers. S6 writes the legacy `critic_model_ref`/`_source` scalars, which the dual-read consumes. | The newer map remains a read-only contract with no producer, so the Book tier of the Chat & AI cascade still resolves a key nothing writes. Not blocking — the dual-read means the critic setting works — but the map is dead weight until something writes it or it is retired. |
+| 2026-08-02 | **`guardstatus.Report` is emitted and nothing consumes it.** `kg_status`/`kg_checked`/`kg_unchecked` ride the two sweep responses; no caller, gate or FE surface reads them. | The S8 shape again, and the second instance this run after `exclusion_unverified`: a fact made AVAILABLE rather than acted upon. It is strictly better than before — the field exists and is correct — but a degraded sweep still changes nothing downstream. The honest next step is the wiki UI showing "N articles not compared" or a gate that reds when a staleness sweep is published with a non-zero `kg_unchecked`. |
+| 2026-08-02 | **Rust has no check-status mirror.** `contracts/guard-status.contract.json` is read by Python and Go; `tilemap-service`'s `l4_retry.rs` still carries its honesty in an optional `fallback_count`. | The contract makes the Rust mirror cheap and machine-checkable, which is the point of writing it first — but cheap is not done. Until it exists, the DoD-1 claim covers two of three languages. |
 | 2026-08-02 | **45 of 59 CI gates carry no red-ability proof**, and `guard-redability-gate.py` did not move that number — it covers the guards this run wrote. | The ratchet's own PASS line says it out loud, so it is visible rather than implied. The gates it does cover are now proved against the real violation, which is a strictly stronger proof than the selftest convention the other 14 use. Un-parks one gate at a time: every new gate gets a sweep case. |
 | 2026-08-02 | **7 of the 11 sweep cases do not run in CI** — they drive service pytest suites and the `lints` job installs no service deps. | `--gates-only` prints what it skipped, so a partial sweep cannot read as a complete one. The real fix is a CI job that installs composition + chat + translation deps; that job would also un-skip work `python-integration-tests.yml` already does, so the honest move is to add the sweep there rather than build a third job. |
 | 2026-08-02 | The output-budget window clamp is unexercised in production. | The dev model reports a 200k window, so the half-share never binds. It is proven only by unit test. The case that matters — a small-window BYOK model getting a 24750-token cap — has never been run. |
@@ -2914,3 +2985,15 @@ AUDIT AUDIT-1 (guard red-ability — the audit's own first finding, generalised)
   pasted into a transcript, is prose. Turning it into a file was not enough either: I named it
   `…-sweep.py`, which `gate-teeth-gate`'s `_IS_GATE` regex does not match, so my new CI gate spent
   ten minutes outside the inventory that exists to catch unwired and toothless gates.
+- **2026-08-02 · wrote a free string into a closed set, inside the change that closes it.** The
+  handler branch with no owner id got `guardstatus.Report{Status: "not_applicable"}` — a bare
+  literal, three files after declaring that a Go path may implement a subset of the vocabulary
+  but never invent a member. Caught by re-reading, not by the test I had just written, because
+  the test parses CONSTS and a literal at a call site is not one.
+- **2026-08-02 · invented a coverage number for a loop that did not finish.** My first
+  mid-sweep error path computed `checked = inScope - flagged - unchecked`. Those sets are not
+  disjoint, so the arithmetic was wrong — but the real problem was shipping any figure at all in
+  the one field whose entire job is saying how much was actually verified.
+- **2026-08-02 · `ok` from a DB-gated Go package is also what "everything skipped" prints.** I
+  had the green and was about to move on; re-running with `-v` is what turned it into nine named
+  PASS lines. The repo already has this lesson written down for Python suites.

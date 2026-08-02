@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/loreweave/glossary-service/internal/guardstatus"
 )
 
 func setKgHash(t *testing.T, f *mergeFixture, articleID uuid.UUID, hash string) {
@@ -55,8 +56,8 @@ func TestSweepKgDrift_FlagsChangedNeighbourhoodAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
-	if n != 1 {
-		t.Fatalf("want 1 flagged, got %d", n)
+	if n.Flagged != 1 {
+		t.Fatalf("want 1 flagged, got %d", n.Flagged)
 	}
 	if got := pendingStaleness(t, f, art, "kg_drift"); got != 1 {
 		t.Fatalf("want 1 kg_drift row, got %d", got)
@@ -69,8 +70,8 @@ func TestSweepKgDrift_FlagsChangedNeighbourhoodAndIsIdempotent(t *testing.T) {
 
 	// the stored hash hasn't changed (no regen) → re-sweep inserts no duplicate.
 	n2, _ := f.srv.sweepKgDrift(f.ctx, f.bookID, owner)
-	if n2 != 0 {
-		t.Fatalf("re-sweep should flag 0, got %d", n2)
+	if n2.Flagged != 0 {
+		t.Fatalf("re-sweep should flag 0, got %d", n2.Flagged)
 	}
 }
 
@@ -90,8 +91,8 @@ func TestSweepKgDrift_DismissedSameHashNotResurrected(t *testing.T) {
 	f.srv.cfg.InternalServiceToken = "tok"
 	owner := uuid.New()
 
-	if n, err := f.srv.sweepKgDrift(f.ctx, f.bookID, owner); err != nil || n != 1 {
-		t.Fatalf("initial sweep: n=%d err=%v (want 1)", n, err)
+	if n, err := f.srv.sweepKgDrift(f.ctx, f.bookID, owner); err != nil || n.Flagged != 1 {
+		t.Fatalf("initial sweep: n=%d err=%v (want 1)", n.Flagged, err)
 	}
 	dismissStaleness(t, f, art, "kg_drift")
 	if isStale(t, f, art) {
@@ -103,8 +104,8 @@ func TestSweepKgDrift_DismissedSameHashNotResurrected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-sweep: %v", err)
 	}
-	if n2 != 0 {
-		t.Fatalf("dismissed same-hash must not re-insert, got %d", n2)
+	if n2.Flagged != 0 {
+		t.Fatalf("dismissed same-hash must not re-insert, got %d", n2.Flagged)
 	}
 	if got := pendingStaleness(t, f, art, "kg_drift"); got != 0 {
 		t.Fatalf("want 0 pending (stays dismissed), got %d", got)
@@ -127,9 +128,9 @@ func TestSweepKgDrift_DismissedNewHashResurfaces(t *testing.T) {
 
 	stub1 := kgStub(t, map[string]string{entity.String(): "NEW"}, http.StatusOK)
 	f.srv.cfg.KnowledgeServiceURL = stub1.URL
-	if n, err := f.srv.sweepKgDrift(f.ctx, f.bookID, owner); err != nil || n != 1 {
+	if n, err := f.srv.sweepKgDrift(f.ctx, f.bookID, owner); err != nil || n.Flagged != 1 {
 		stub1.Close()
-		t.Fatalf("initial sweep: n=%d err=%v (want 1)", n, err)
+		t.Fatalf("initial sweep: n=%d err=%v (want 1)", n.Flagged, err)
 	}
 	stub1.Close()
 	dismissStaleness(t, f, art, "kg_drift")
@@ -142,8 +143,8 @@ func TestSweepKgDrift_DismissedNewHashResurfaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("re-sweep: %v", err)
 	}
-	if n2 != 1 {
-		t.Fatalf("new current hash must re-surface, got %d", n2)
+	if n2.Flagged != 1 {
+		t.Fatalf("new current hash must re-surface, got %d", n2.Flagged)
 	}
 	if got := pendingStaleness(t, f, art, "kg_drift"); got != 1 {
 		t.Fatalf("want 1 pending (new hash), got %d", got)
@@ -162,8 +163,8 @@ func TestSweepKgDrift_NoChangeNoRow(t *testing.T) {
 	f.srv.cfg.KnowledgeServiceURL = stub.URL
 
 	n, _ := f.srv.sweepKgDrift(f.ctx, f.bookID, uuid.New())
-	if n != 0 {
-		t.Fatalf("matching hash should flag 0, got %d", n)
+	if n.Flagged != 0 {
+		t.Fatalf("matching hash should flag 0, got %d", n.Flagged)
 	}
 	if got := pendingStaleness(t, f, art, "kg_drift"); got != 0 {
 		t.Fatalf("want 0 kg_drift rows, got %d", got)
@@ -184,11 +185,87 @@ func TestSweepKgDrift_OmittedEntityIsNotDrift(t *testing.T) {
 	f.srv.cfg.KnowledgeServiceURL = stub.URL
 
 	n, _ := f.srv.sweepKgDrift(f.ctx, f.bookID, uuid.New())
-	if n != 0 {
-		t.Fatalf("an omitted entity must not flag, got %d", n)
+	if n.Flagged != 0 {
+		t.Fatalf("an omitted entity must not flag, got %d", n.Flagged)
 	}
 	if got := pendingStaleness(t, f, art, "kg_drift"); got != 0 {
 		t.Fatalf("want 0 kg_drift rows, got %d", got)
+	}
+	// …and the half this test used to be silent about. Not flagging is correct; reporting the
+	// same thing a fully-compared book reports is not. The entity was NEVER COMPARED, and
+	// before the report existed there was no field able to say so.
+	if n.Status != guardstatus.Degraded {
+		t.Fatalf("an uncompared entity must degrade the sweep, got %q", n.Status)
+	}
+	if n.Unchecked != 1 || n.Checked != 0 {
+		t.Fatalf("coverage must name the hole: %+v", n)
+	}
+}
+
+func TestSweepKgDrift_ACleanSweepAndAnOUTAGEAreNoLongerIdenticalOutput(t *testing.T) {
+	// THE defect, stated as a test. Both arms flag zero. Before the report, both returned the
+	// integer 0 and the caller had no way to tell "nothing has drifted" from "the knowledge
+	// service was down and nothing was compared" — the registry's own words for this row.
+	//
+	// Written as one test over two arms on purpose: asserting `degraded` alone passes for an
+	// implementation that degrades everything, which is the permanently-amber failure and not
+	// a signal. The pair is the property.
+	f := newMergeFixture(t, "00000000e0a7")
+	cleanupWikiArticles(t, f)
+	entity := f.mkEntity(t, "Seward", nil)
+	art := mkWikiArticle(t, f.pool, f.ctx, f.bookID, entity)
+	setKgHash(t, f, art, "OLD")
+	f.srv.cfg.InternalServiceToken = "tok"
+
+	clean := kgStub(t, map[string]string{entity.String(): "OLD"}, http.StatusOK)
+	defer clean.Close()
+	f.srv.cfg.KnowledgeServiceURL = clean.URL
+	compared, err := f.srv.sweepKgDrift(f.ctx, f.bookID, uuid.New())
+	if err != nil {
+		t.Fatalf("clean arm: %v", err)
+	}
+
+	// Same book, same article, same zero findings — knowledge is simply unreachable.
+	down := kgStub(t, nil, http.StatusServiceUnavailable)
+	defer down.Close()
+	f.srv.cfg.KnowledgeServiceURL = down.URL
+	outage, err := f.srv.sweepKgDrift(f.ctx, f.bookID, uuid.New())
+	if err != nil {
+		t.Fatalf("outage arm must degrade, not error: %v", err)
+	}
+
+	if compared.Flagged != 0 || outage.Flagged != 0 {
+		t.Fatalf("the premise is gone — both arms must flag zero: %+v / %+v", compared, outage)
+	}
+	if compared == outage {
+		t.Fatalf("a clean sweep and an outage still produce identical output: %+v", compared)
+	}
+	if compared.Status != guardstatus.Checked || compared.Checked != 1 {
+		t.Fatalf("clean arm should be a real answer over a real corpus: %+v", compared)
+	}
+	if outage.Status != guardstatus.Degraded || outage.Unchecked != 1 {
+		t.Fatalf("outage arm should name what it could not compare: %+v", outage)
+	}
+}
+
+func TestSweepKgDrift_ABookWithNothingInScopeIsNotACleanSweep(t *testing.T) {
+	// The third state the integer collapsed. No article carries a stored KG hash, so there was
+	// nothing to compare — which must not read as "I compared everything and it all matched".
+	f := newMergeFixture(t, "00000000e0a8")
+	cleanupWikiArticles(t, f)
+	entity := f.mkEntity(t, "Harker", nil)
+	mkWikiArticle(t, f.pool, f.ctx, f.bookID, entity) // no setKgHash → no baseline
+
+	n, err := f.srv.sweepKgDrift(f.ctx, f.bookID, uuid.New())
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if n.Status != guardstatus.NoSubject {
+		t.Fatalf("an empty scope must be no_subject, got %q (%+v)", n.Status, n)
+	}
+	if n.Unchecked != 0 {
+		t.Fatalf("nothing was in scope, so nothing is UNCHECKED — that would be a hole "+
+			"nobody can ever close: %+v", n)
 	}
 }
 
@@ -216,8 +293,8 @@ func TestSweepKgDrift_NullStoredHashIsSkippedNotCrashed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a null stored hash must not error the sweep: %v", err)
 	}
-	if n != 0 {
-		t.Fatalf("empty/null stored baseline must be skipped, got %d flagged", n)
+	if n.Flagged != 0 {
+		t.Fatalf("empty/null stored baseline must be skipped, got %d flagged", n.Flagged)
 	}
 }
 
@@ -236,8 +313,8 @@ func TestSweepKgDrift_KnowledgeDownDegradesToZero(t *testing.T) {
 	if err != nil {
 		t.Fatalf("knowledge-down should degrade to (0,nil), got err %v", err)
 	}
-	if n != 0 {
-		t.Fatalf("want 0 flagged on degrade, got %d", n)
+	if n.Flagged != 0 {
+		t.Fatalf("want 0 flagged on degrade, got %d", n.Flagged)
 	}
 	if got := pendingStaleness(t, f, art, "kg_drift"); got != 0 {
 		t.Fatalf("degrade must not flag, got %d", got)
