@@ -1404,3 +1404,72 @@ chooses a budget, never a set.** And the view's bounds mostly already exist — 
 Two new rows: `SDF-Q15` (fan-out/occupant caps — needs a measured prompt cost, same shape as `Q12`) and
 `SDF-Q16` (does geometric adjacency exist above `Locale`? `R-2` suggests region adjacency is **authored or
 derived once at S4**, not computed per query).
+
+
+---
+
+## 21 · The last four — and the register now closes on measurement, not on argument
+
+Two pairs, and both resolved by finding that **the containment tree is not the only tree** — and that the
+other trees **already exist in the repo, unnamed**.
+
+### `SDF-Q1` → `SDF-A27`: the simulation group is per-LAYER connected components
+
+`R-48` was the sharpest warning of the fan-out: Barotrauma's devs document that over-fragmenting into many
+small linked hulls makes the fluid layer **numerically unstable** — *"large spikes of water throwing the
+crew about"* — and propose collapsing them into one computational entity. **A palace as a Domain-of-Domains
+with an atmosphere layer is that graph**, so `SPG-R5`'s decision has a real cost.
+
+The instinct is a second, hand-authored coarser tree. **The right answer was already built:** `R-46`'s
+`EdgePolicy` matrix, from SE shipping four topology edges with four propagation sets.
+
+> **The group for layer `L` = connected components under `EdgePolicy(L) == Propagates`.**
+
+Per-layer, and it **must** be — air does not group like heat, because a closed door blocks air and conducts
+heat. No new authoring surface: an author saying *"this door blocks air"* has already declared the
+grouping. And the cure is automatic — a palace of 30 chambers with open archways is **one** air group.
+Barotrauma had to add `linked hulls` by hand.
+
+### `SDF-Q5` → `SDF-A28`: the node's realm clock, and `LayerDef` needs no clock field after all
+
+`SDF-F1` said `Decay` had four candidate clocks and named none, and that if a value advances *on
+observation* then **who observed it changes the answer**. **The repo already answered this and doc 41 had
+not looked:** `TDIL`:34 maps *"coordinate time t → realm_clock"* and :644 records the shipped mechanic —
+**天上一日人間一年 via channel `rate = 0.0027`**. The realm clock is **already a per-channel property**.
+
+So: a decaying layer advances on **the realm clock of its node's nearest realm-declaring ancestor, never
+the reader's**. An observer *samples*; it does not advance. `TDIL-A11`'s lazy advance stays exactly as
+specified — it advances the **channel's** clock.
+
+Two consequences: **`LayerDef` does NOT need a clock field** (a finding resolved by *deleting* the fix it
+appeared to demand — adding one would be a second source of truth for something the tree already knows);
+and the **內天地 gets richer, not harder** — an inner world declaring its own rate is *literally the
+Journey-to-the-West mechanic already supported*.
+
+### `SDF-Q8` → `SDF-A29`: history aggregates are PROJECTIONS, and the tier already ships
+
+`crates/projections`, `projection-golden`, `projection-reference` exist today, and doc 17 already specifies
+projections as *"derived; rebuildable from `event_log`."* **A layer is read AND written by the simulation;
+a projection is only read.** Putting a read-model in the layer store would give it a second rebuild
+semantics — the *"one home, one name"* violation this repo has paid for before. The safety rule: a
+projection read inside a tick must be against a **pinned version**, or it is `SDF-A4` rule 5 in a new
+costume.
+
+### `SDF-Q11` → `SDF-A30`: scope follows DERIVATION
+
+**Seed-derived → shared by digest · log-derived → per-reality · registry → per-ruleset.** That settles all
+nine tables at once, and it is more than bookkeeping: **a hundred realities forked from one book share ONE
+baseline (14.9 MB at `Megaplanet`) and pay per-reality only for divergence.** That is `WDS-A1` delivering
+its actual value, which nothing had stated in scope terms.
+
+---
+
+### Where the register stands
+
+**Twelve of seventeen resolved.** The five that remain — `SDF-Q7` closed earlier, so: `Q12` (budget
+numbers), `Q15` (fan-out/occupant caps), `Q16` (geometric adjacency above `Locale`), `Q17` (the
+multi-reality tax) — **every one of them now needs a MEASUREMENT rather than an argument.**
+
+> That is the honest shape of a first pass reaching its limit: the design questions are answered, and what
+> is left is the arithmetic nobody has run. `Q12` additionally cannot be closed by this tier at all, since
+> its answer depends on a `PROG_001` parameter (`SDF-F8`).

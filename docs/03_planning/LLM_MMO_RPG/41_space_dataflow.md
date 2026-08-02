@@ -369,21 +369,22 @@ Nothing below exists. This is the deliverable, not the prose around it.
 
 | # | question |
 |---|---|
-| `SDF-Q1` | **What is the simulation grouping, and is it coarser than the structural nesting?** `R-48`: Barotrauma's devs document that over-fragmenting into many small linked hulls makes the fluid layer *numerically unstable* and propose collapsing them into one computational entity. A palace as a Domain-of-Domains with an atmosphere layer **is** that graph. Refusing rigid-body physics does not exempt us from designing the equalisation. |
+| ~~`SDF-Q1`~~ | ~~simulation grouping~~ **✅ RESOLVED §13.1 — `SDF-A27`**: the group for layer `L` is the **connected components under `EdgePolicy(L) == Propagates`** — PER-LAYER, because air does not group like heat. No new authoring surface: an author saying *"this door blocks air"* has already declared the grouping. A palace of 30 chambers with open archways is **one** air group, automatically — Barotrauma had to hand-author `linked hulls` to get this. ~~ `R-48`: Barotrauma's devs document that over-fragmenting into many small linked hulls makes the fluid layer *numerically unstable* and propose collapsing them into one computational entity. A palace as a Domain-of-Domains with an atmosphere layer **is** that graph. Refusing rigid-body physics does not exempt us from designing the equalisation. |
 | ~~`SDF-Q2`~~ | ~~per-Domain object budget~~ **✅ RESOLVED §11.5 — `SDF-A22`**: TWO numbers, placement + render, with a published deterministic culling order. FFXIV is the only shipped answer that publishes both, and its real bottleneck was **rehydration**, which our lazy tree dodges by construction. ~~ `R-54`: FFXIV is the only shipped game that publishes both (600 placed / 400 drawn) and its real bottleneck was **rehydration**, not steady state. `R-65`: an unmaterialised child Domain must not consume its parent's budget. Neither is decided here. |
 | ~~`SDF-Q3`~~ | ~~`Domain → World` has no prior art~~ **✅ RESOLVED §11.2 — `SDF-A19`**: SCALE-bound it, do not quota it. The matrix says which kinds nest; a **scale matrix** says at what scale. `Domain → World` is bounded to `Pocket` — 16× cheaper, genre-correct (洞天福地 *is* a pocket realm), and it fails at DESIGN time not runtime. ~~ Two agents searched; the nearest analogue's implementation could not be obtained. *"You are designing this without precedent."* Depth- and cycle-checking on write is the minimum; the semantics are unsettled. |
-| `SDF-Q5` | **Which of `TDIL_001`'s four clocks does a decaying layer use?** (`SDF-F1`) |
+| ~~`SDF-Q5`~~ | ~~which clock~~ **✅ RESOLVED §13.1 — `SDF-A28`**: the **realm clock of the node's nearest realm-declaring ancestor**, never the reader's. Already shipped as a per-channel `time_flow_rate` (`TDIL`:644 — 天上一日人間一年). **`LayerDef` needs NO clock field** — a finding resolved by *deleting* the fix it seemed to demand. ~~ (`SDF-F1`) |
 | ~~`SDF-Q6`~~ | ~~border/adjacency has no index~~ **✅ RESOLVED §12.4 — `SDF-A25`**: there are **TWO adjacency relations** and only one was named. Geometric (the generated mesh's `neighbors`, immutable, **already sorted ascending**) vs Connective (the portal graph, mutable). A read must DECLARE which. The border query needs **no index and no cache** — one pass, ~6 000 tests, cheaper than the invalidation bookkeeping. ~~ — the shape every territory feature asks for. (`SDF-F2`) |
 | ~~`SDF-Q7`~~ | ~~Who may write TOPOLOGY?~~ **✅ RESOLVED §10** — a `TopologyCapability` per `(module, op)`, enforced as `topology.foreign_write`; invariants checked centrally; ops atomic and invertible; **plus a node budget**, because working it found `SDF-F7` underneath |
 | `SDF-Q12` ⚠ **SCOPED, NOT CLOSED — §11.6 / `SDF-F8`** | The arithmetic does **not** close: a `Pocket` inner world (1 024) is DOUBLE a provisional 500-node-per-player allowance, so `SDF-A19`'s 16× is still insufficient **if inner worlds are common**. It closes only if 神境 is rare — **which is a `PROG_001` parameter neither doc names.** The spatial budget's viability depends on a progression decision, and a rebalance could multiply the map tier's storage with nobody noticing the coupling. Originally: **what are the budget numbers?** `cap` per principal is a product decision informed by a measurement that does not exist. (§10.7) |
 | ~~`SDF-Q13`~~ | ~~is a dematerialised subtree charged~~ **✅ RESOLVED §11.1 — `SDF-A18`**: YES, and the research only looked contradictory because *budget* meant three costs. The node budget is **storage** (charged always); the live set and object budget are **CPU/render** (charged while materialised). Containment compresses the latter two, never the first. ~~ `R-65` says an unmaterialised child should not consume its parent's *object* budget; whether that holds for the *node* budget is the difference between *"you may own ten worlds if you visit them rarely"* and *"you may own ten worlds."* (§10.7) |
 | ~~`SDF-Q14`~~ | ~~Limbo's budget is unowned~~ **✅ RESOLVED §11.3 — `SDF-A20`**: Limbo is **not a parent, it is a QUEUE WITH A DEADLINE**, and the charge stays with the estate until resolved. EVE Asset Safety is the shipped model. ~~ — `R-52` says a Domain outlives its dead holder and reparents to Limbo, so its charge has no principal. A slow leak with a name. (§10.7) |
-| `SDF-Q8` | **History-derived layers** — traffic, schedules, contestedness. A layer class, or projections outside the layer system? I lean outside. (`SDF-F4`) |
+| ~~`SDF-Q8`~~ | ~~history-derived layers~~ **✅ RESOLVED §13.2 — `SDF-A29`**: they are **PROJECTIONS, not layers**, and the tier already ships (`crates/projections`). A layer is read AND written by the sim; a projection is only read. Reads must be against a **pinned** projection version, or it is `SDF-A4` rule 5 in a new costume. ~~ — traffic, schedules, contestedness. A layer class, or projections outside the layer system? I lean outside. (`SDF-F4`) |
 | ~~`SDF-Q9`~~ | ~~space-side read contract~~ **✅ RESOLVED §12.5 — `SDF-A26`**: the projection is declared **per LAYER by its owner**, never per reader — otherwise the prompt is a function of which features are loaded, which is `SDF-A4` rule 2 reappearing where nobody would look. The reader picks a **budget**, never a set. ~~ — bounded, ordered, deterministic *"what is here"* for prompt assembly. §3 governs writes only. (`SDF-F5`) |
 | ~~`SDF-Q10`~~ | ~~volume-keyed layers~~ **✅ RESOLVED §12.3 — `SDF-A24`, by DELETING a storage class rather than adding one**: a shape is an authoring/command concept that resolves to a node-set at WRITE time and stores as `Sparse`. The only case that defeats it is a topology change under the shape — and `SDF-A16` already makes that an event, so the re-resolve is a **subscriber, not a scan**. ~~ (formations, auras, weather fronts) — `R-9`'s `Region` shape was dropped from §4. (`SDF-F6`) |
 | `SDF-Q15` | **Fan-out and occupant caps** for the space view — same shape as `SDF-Q12`: needs a measured prompt-assembly cost that does not exist. (§12.6) |
 | `SDF-Q16` | **Does `Adjacency::Geometric` exist above `Locale`?** The mesh gives cell neighbours inside a `World`; region-level adjacency is likely **authored or derived once at S4**, per `R-2`'s Paradox evidence that area→region→superregion are grouping *files*. (§12.6) |
-| `SDF-Q11` | **Which of `T1..T9` are reality-scoped?** Doc 37 says the node tree is per-reality and the baseline is shared by digest; §5 says neither. No multi-reality measurement exists for space. (§9.4) |
+| ~~`SDF-Q11`~~ | ~~reality scoping~~ **✅ RESOLVED §13.2 — `SDF-A30`**: **scope follows DERIVATION.** Seed-derived → shared by digest · log-derived → per-reality · registry → per-ruleset. So a hundred realities forked from one book share ONE baseline (14.9 MB) and pay only for divergence — `WDS-A1` delivering its actual value. ~~
+| `SDF-Q17` | **The multi-reality tax has no measurement for space**, where the actor track ran an entire red-team round on it. (§13.2) | Doc 37 says the node tree is per-reality and the baseline is shared by digest; §5 says neither. No multi-reality measurement exists for space. (§9.4) |
 | ~~`SDF-Q4`~~ | ~~delta store bound~~ **✅ RESOLVED §11.4 — `SDF-A21`**: bound + refuse + **COMPACT**. Refusing alone is worse than NMS; snapshot-compaction folds divergence into a new baseline `H'` so the bound is on *un-compacted* delta. **Not in doc 37 — a gap in a committed doc.** ~~ `R-61`: No Man's Sky caps at 15 000 edits / 256 buffers and past it **the base regenerates UNDER player-authored content** — and visiting another player's base consumes *your* buffers. Our divergence log is currently unbounded. |
 
 **Non-vacuity obligations, stated in advance** (three agents proposed these against their own
@@ -986,3 +987,129 @@ the argument for reusing `DP-Ch1`'s depth rather than inventing a traversal limi
   `R-2`'s Paradox evidence (area → region → superregion as *authored grouping files*) suggests the honest
   answer is that region adjacency is **authored or derived once at S4**, not computed per query.
   `SDF-Q16`.
+
+---
+
+## 13 — The last four (`SDF-Q1`·`Q5`·`Q8`·`Q11` resolved)
+
+Two pairs, and both resolve by finding that **the containment tree is not the only tree** — and that the
+other trees already exist in the repo, unnamed.
+
+---
+
+### 13.1 · Pair A — the SIMULATION tree is not the containment tree (`Q1` + `Q5`)
+
+#### `SDF-Q1` → `SDF-A27`: the simulation group is the connected components under the layer's OWN edge policy
+
+`SDF-Q1` came from `R-48`, and it is the sharpest warning in the whole fan-out: Barotrauma's own developers
+document that over-fragmenting into many small linked hulls makes the fluid layer **numerically unstable**
+— *"large spikes of water throwing the crew about before it eventually equalises"* — and their proposed fix
+is to **collapse linked hulls into ONE computational entity**.
+
+**A palace as a `Domain` of `Domain`s with an atmosphere layer is exactly that graph.** `SPG-R5` made
+16×16 a default and said a palace is a Domain-of-Domains; this is the cost of that decision, and it is
+real.
+
+The instinct is a second, coarser hand-authored tree. **That is wrong, and the right answer is already
+built:** `R-46`'s `EdgePolicy` matrix — from Space Engineers shipping **four topology edges with four
+different propagation sets** (Landing Gear shares nothing · Connector shares power+items+terminal · Merge
+Block fuses everything *including* airtightness).
+
+> **`SDF-A27` — the simulation group for layer `L` is the CONNECTED COMPONENTS of the graph restricted to
+> edges where `EdgePolicy(L, edge_kind) == Propagates`.** It is computed once, cached, and invalidated by
+> topology ops — which `SDF-A16` already makes events, so the recompute is a subscriber, not a scan.
+
+Three things fall out, and the first is why this beats a hand-authored grouping:
+
+1. **The grouping is PER-LAYER, and it must be.** Air does not group like heat: a closed door blocks air
+   and conducts heat. Sound groups differently again. A single global "simulation tree" would be wrong for
+   every layer but one.
+2. **No new authoring surface.** `EdgePolicy` is already required at layer registration; the grouping is
+   derived from it. An author who says *"this door blocks air"* has already said *"these rooms are
+   different air groups"* without being asked a second question.
+3. **The over-fragmentation cure is automatic.** A palace of 30 chambers with open archways is **one** air
+   group, not 30 — because the archways propagate. Barotrauma had to add `linked hulls` by hand to get
+   this; we get it from a field that exists for another reason.
+
+#### `SDF-Q5` → `SDF-A28`: the node's realm clock, never the reader's — and the machinery already ships
+
+`SDF-F1` found that `SDF-A9`'s `Decay` stores `(value, as_of_tick)` against **four candidate clocks**
+(`TDIL_001`: realm · actor · soul · body), and that if a value advances **on observation**
+(`TDIL-A11 ObservationAdvance`) then **who observed it changes the answer** — a replay divergence the
+moment two observers differ.
+
+**The repo already answers this and doc 41 simply had not looked.** `TDIL_001`:34 maps *"coordinate time
+t → realm_clock"*, and :644 records the shipped mechanic:
+
+> **Multi-realm time — 天上一日人間一年 (*one day in heaven, one year among men*) via channel
+> `rate = 0.0027`.**
+
+**The realm clock is already a per-CHANNEL property with a `time_flow_rate`.** So:
+
+> **`SDF-A28` — a decaying layer advances on the REALM CLOCK OF ITS NODE'S NEAREST REALM-DECLARING
+> ANCESTOR. Never the reader's clock, and never an entity clock.** An observer's read *samples*; it does
+> not advance the value. `TDIL-A11`'s lazy channel advance stays exactly as specified — it advances the
+> **channel's** clock, and `Decay` is then a pure function of `(value, as_of, now)` with all three
+> node-side.
+
+Two consequences worth stating:
+
+- **`LayerDef` does NOT need a clock field.** `SDF-F1` implied one was missing; it is not — the clock is
+  determined by the node, so adding it to the layer would be a second source of truth for something the
+  tree already knows. **A finding resolved by deleting the fix it seemed to demand.**
+- **The 內天地 case gets richer, not harder.** An inner world that is a `World` may **declare its own
+  realm rate** — which is not a special case but *literally the Journey-to-the-West mechanic already
+  supported*. A day inside, a year outside, with no new machinery.
+
+---
+
+### 13.2 · Pair B — what is DERIVED, and at what scope (`Q8` + `Q11`)
+
+#### `SDF-Q8` → `SDF-A29`: history aggregates are PROJECTIONS, and the tier already exists
+
+`SDF-F4` found that `Derived { inputs: LayerSet }` is a function of *current layers*, while several
+features derive from **history**: `DL_001`'s *"who is usually here"*, *"how contested is this border"*, and
+— the load-bearing one — **`R-26`'s measured passage traffic**, which the research makes the input for
+emergent content (*"instrument passage traversals and let content systems subscribe to measured
+high-centrality passages; do not hand-place bandits"*).
+
+The choice was a new storage class or something outside the layer system. **Outside, and the home is
+already built:** `crates/projections`, `crates/projection-golden`, `crates/projection-reference` ship
+today, and doc 17 already specifies projections as *"denormalised read views; derived; rebuildable from
+`event_log`."*
+
+> **`SDF-A29` — a value derived from HISTORY is a PROJECTION, not a layer. A layer's `Derived` recipe may
+> READ a projection, but no projection is stored as a layer.**
+
+Why the boundary matters rather than being bookkeeping:
+
+- **A layer is read AND written by the simulation. A projection is only read.** Putting a read-model in
+  the layer store would give the layer store a second rebuild semantics and make it a projection engine —
+  the *"one home, one name"* violation this repo has paid for before.
+- **The determinism rule that makes it safe:** a projection read inside a tick must be against a
+  **pinned projection version**, never a live-updating one — the same discipline as `R-23`'s metric epoch.
+  A layer recipe reading a projection that advanced mid-tick is `SDF-A4` rule 5 in a new costume.
+
+#### `SDF-Q11` → `SDF-A30`: scope follows DERIVATION, not the node
+
+Doc 37 says the `space_node` tree is *"per-reality Postgres"* while the generated baseline is
+content-addressed and **shared by digest across realities**. §5's `T1..T9` said neither. The rule that
+settles all nine at once:
+
+> **`SDF-A30` — anything derived from a SEED is shared by digest. Anything derived from the LOG is
+> per-reality. The registry is per-RULESET, which is itself pinned per `(reality, epoch)`.**
+
+| table | derived from | scope |
+|---|---|---|
+| `T6` world baseline | seed + `CreativeSeed` + generator version | **shared by digest** |
+| `T4` layer registry | the ruleset | **per-ruleset** (pinned per reality-epoch) |
+| `T1` `space_node` · `T3` portal · `T5` layer sidecars · `T7` occupancy · `T9` encounter | the log | **per-reality** |
+| `T2` live set · `T8` frame-epoch index | runtime state over the log | **per-reality**, not persisted |
+
+**And the thing that makes this more than bookkeeping:** it means a hundred realities forked from one book
+share **one** copy of the expensive artefact (the baseline — 14.9 MB at `Megaplanet`) and pay per-reality
+only for **divergence**. That is `WDS-A1` delivering its actual value, which nothing had yet stated in
+scope terms.
+
+**What it does NOT settle:** the multi-reality tax has **no measurement** for space, where the actor track
+ran a whole red-team round on it. `SDF-Q17`.
