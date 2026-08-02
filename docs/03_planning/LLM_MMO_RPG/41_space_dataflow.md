@@ -373,14 +373,16 @@ Nothing below exists. This is the deliverable, not the prose around it.
 | ~~`SDF-Q2`~~ | ~~per-Domain object budget~~ **✅ RESOLVED §11.5 — `SDF-A22`**: TWO numbers, placement + render, with a published deterministic culling order. FFXIV is the only shipped answer that publishes both, and its real bottleneck was **rehydration**, which our lazy tree dodges by construction. ~~ `R-54`: FFXIV is the only shipped game that publishes both (600 placed / 400 drawn) and its real bottleneck was **rehydration**, not steady state. `R-65`: an unmaterialised child Domain must not consume its parent's budget. Neither is decided here. |
 | ~~`SDF-Q3`~~ | ~~`Domain → World` has no prior art~~ **✅ RESOLVED §11.2 — `SDF-A19`**: SCALE-bound it, do not quota it. The matrix says which kinds nest; a **scale matrix** says at what scale. `Domain → World` is bounded to `Pocket` — 16× cheaper, genre-correct (洞天福地 *is* a pocket realm), and it fails at DESIGN time not runtime. ~~ Two agents searched; the nearest analogue's implementation could not be obtained. *"You are designing this without precedent."* Depth- and cycle-checking on write is the minimum; the semantics are unsettled. |
 | `SDF-Q5` | **Which of `TDIL_001`'s four clocks does a decaying layer use?** (`SDF-F1`) |
-| `SDF-Q6` | **Border/adjacency has no index and no phase** — the shape every territory feature asks for. (`SDF-F2`) |
+| ~~`SDF-Q6`~~ | ~~border/adjacency has no index~~ **✅ RESOLVED §12.4 — `SDF-A25`**: there are **TWO adjacency relations** and only one was named. Geometric (the generated mesh's `neighbors`, immutable, **already sorted ascending**) vs Connective (the portal graph, mutable). A read must DECLARE which. The border query needs **no index and no cache** — one pass, ~6 000 tests, cheaper than the invalidation bookkeeping. ~~ — the shape every territory feature asks for. (`SDF-F2`) |
 | ~~`SDF-Q7`~~ | ~~Who may write TOPOLOGY?~~ **✅ RESOLVED §10** — a `TopologyCapability` per `(module, op)`, enforced as `topology.foreign_write`; invariants checked centrally; ops atomic and invertible; **plus a node budget**, because working it found `SDF-F7` underneath |
 | `SDF-Q12` ⚠ **SCOPED, NOT CLOSED — §11.6 / `SDF-F8`** | The arithmetic does **not** close: a `Pocket` inner world (1 024) is DOUBLE a provisional 500-node-per-player allowance, so `SDF-A19`'s 16× is still insufficient **if inner worlds are common**. It closes only if 神境 is rare — **which is a `PROG_001` parameter neither doc names.** The spatial budget's viability depends on a progression decision, and a rebalance could multiply the map tier's storage with nobody noticing the coupling. Originally: **what are the budget numbers?** `cap` per principal is a product decision informed by a measurement that does not exist. (§10.7) |
 | ~~`SDF-Q13`~~ | ~~is a dematerialised subtree charged~~ **✅ RESOLVED §11.1 — `SDF-A18`**: YES, and the research only looked contradictory because *budget* meant three costs. The node budget is **storage** (charged always); the live set and object budget are **CPU/render** (charged while materialised). Containment compresses the latter two, never the first. ~~ `R-65` says an unmaterialised child should not consume its parent's *object* budget; whether that holds for the *node* budget is the difference between *"you may own ten worlds if you visit them rarely"* and *"you may own ten worlds."* (§10.7) |
 | ~~`SDF-Q14`~~ | ~~Limbo's budget is unowned~~ **✅ RESOLVED §11.3 — `SDF-A20`**: Limbo is **not a parent, it is a QUEUE WITH A DEADLINE**, and the charge stays with the estate until resolved. EVE Asset Safety is the shipped model. ~~ — `R-52` says a Domain outlives its dead holder and reparents to Limbo, so its charge has no principal. A slow leak with a name. (§10.7) |
 | `SDF-Q8` | **History-derived layers** — traffic, schedules, contestedness. A layer class, or projections outside the layer system? I lean outside. (`SDF-F4`) |
-| `SDF-Q9` | **The space-side READ contract** — bounded, ordered, deterministic *"what is here"* for prompt assembly. §3 governs writes only. (`SDF-F5`) |
-| `SDF-Q10` | **Volume-keyed layers** (formations, auras, weather fronts) — `R-9`'s `Region` shape was dropped from §4. (`SDF-F6`) |
+| ~~`SDF-Q9`~~ | ~~space-side read contract~~ **✅ RESOLVED §12.5 — `SDF-A26`**: the projection is declared **per LAYER by its owner**, never per reader — otherwise the prompt is a function of which features are loaded, which is `SDF-A4` rule 2 reappearing where nobody would look. The reader picks a **budget**, never a set. ~~ — bounded, ordered, deterministic *"what is here"* for prompt assembly. §3 governs writes only. (`SDF-F5`) |
+| ~~`SDF-Q10`~~ | ~~volume-keyed layers~~ **✅ RESOLVED §12.3 — `SDF-A24`, by DELETING a storage class rather than adding one**: a shape is an authoring/command concept that resolves to a node-set at WRITE time and stores as `Sparse`. The only case that defeats it is a topology change under the shape — and `SDF-A16` already makes that an event, so the re-resolve is a **subscriber, not a scan**. ~~ (formations, auras, weather fronts) — `R-9`'s `Region` shape was dropped from §4. (`SDF-F6`) |
+| `SDF-Q15` | **Fan-out and occupant caps** for the space view — same shape as `SDF-Q12`: needs a measured prompt-assembly cost that does not exist. (§12.6) |
+| `SDF-Q16` | **Does `Adjacency::Geometric` exist above `Locale`?** The mesh gives cell neighbours inside a `World`; region-level adjacency is likely **authored or derived once at S4**, per `R-2`'s Paradox evidence that area→region→superregion are grouping *files*. (§12.6) |
 | `SDF-Q11` | **Which of `T1..T9` are reality-scoped?** Doc 37 says the node tree is per-reality and the baseline is shared by digest; §5 says neither. No multi-reality measurement exists for space. (§9.4) |
 | ~~`SDF-Q4`~~ | ~~delta store bound~~ **✅ RESOLVED §11.4 — `SDF-A21`**: bound + refuse + **COMPACT**. Refusing alone is worse than NMS; snapshot-compaction folds divergence into a new baseline `H'` so the bound is on *un-compacted* delta. **Not in doc 37 — a gap in a committed doc.** ~~ `R-61`: No Man's Sky caps at 15 000 edits / 256 buffers and past it **the base regenerates UNDER player-authored content** — and visiting another player's base consumes *your* buffers. Our divergence log is currently unbounded. |
 
@@ -845,3 +847,142 @@ storage by an order of magnitude with nobody noticing the coupling.
 **What would close it:** a measured node-row size including layer sidecars (this used a *computed* 96 B),
 plus a `PROG_001` statement of expected realm distribution. Neither exists. The provisional numbers above
 are stated **with their derivation** so they are falsifiable rather than authoritative.
+
+---
+
+## 12 — The read path, analysed (`SDF-Q6`·`Q9`·`Q10` resolved)
+
+> Three more open rows, and again one question wearing three hats: **§3 is a WRITE contract, so what
+> shape are the READS?** The growth cluster resolved by finding three budgets where I had one. This one
+> resolves by finding **one result type where I had three problems** — and by *deleting* a storage class
+> rather than adding one.
+
+### 12.1 — The asymmetry that makes reads a separate problem at all
+
+**A write names its target. A read must FIND its targets.**
+
+That is why §3's per-phase table covers writes completely and says nothing useful about reads: a write is
+localised by construction (a module writes *this* layer on *that* node), while every interesting read is
+**relational** — sets, neighbourhoods, overlaps.
+
+### 12.2 — `SDF-A23`: all three reads produce ONE result type; only the PRODUCER differs
+
+| read | the question | producer |
+|---|---|---|
+| `Q9` *"what is here"* | neighbourhood of one node | **interval** — subtree range + depth bound + portal ring |
+| `Q6` *"where do factions border"* | edge predicate over a set | **adjacency** — one pass over a set's neighbours |
+| `Q10` *"what is under this formation"* | overlap with a shape | **geometry** — a spatial resolve |
+
+All three yield **a sorted node-set**. Once they do, everything else is bitmap algebra: intersect the
+producer's output with `bitmap(layer = value)` and with a subtree interval, and the answer falls out.
+
+> **`SDF-A23` — every spatial read returns a NODE-SET in `NodeOrdinal` order. Producers differ; the result
+> type does not, and intersection is closed over it.**
+
+This is not a tidiness argument. It satisfies **`SDF-A4`'s determinism prohibitions structurally rather
+than by discipline**: a sorted set intersected in a fixed order and iterated in `NodeOrdinal` order cannot
+depend on hash order, allocation order, or which feature asked first. The alternative — each feature
+writing its own traversal — makes `SDF-A4` a rule that must be *remembered* in a dozen places.
+
+**The one constraint this imposes, stated because it is easy to violate:** any index a read consults must
+be a **pure derivation of committed state**, rebuilt identically on replay. An incrementally-maintained
+index that survives a restart without a rebuild proof is a replay divergence waiting for a crash.
+
+### 12.3 — `SDF-Q10` resolves by DELETING a storage class, not adding one
+
+`SDF-F6` said layers are node-keyed while formations (陣法), auras and weather fronts are **volume**-keyed,
+and that `R-9`'s `Shape` class had been dropped. The instinct is to add it back. **That is wrong.**
+
+> **`SDF-A24` — a shape is an AUTHORING and COMMAND concept, not a storage class.** It resolves to a
+> node-set **at write time** and stores as an ordinary `Sparse` layer. Re-resolution is an **explicit
+> event**, never an implicit per-read cost.
+
+Why this holds, checked against the cases that would break it:
+
+| case | does write-time resolution survive? |
+|---|---|
+| a formation over a Domain's cells | **yes** — cells do not come and go |
+| a moving weather front | **yes** — weather is `Scheduled{600}` at `Region` scale (~200 nodes); re-resolving 200 nodes every 600 ticks is nothing |
+| a blast radius in combat | **yes** — an `Arena` is a few hundred cells, resolved per use, transient |
+| a `Breach` opening a new way into the area | **no** — and that is exactly why re-resolution is an **event**: the topology op emits it |
+
+So the only case that defeats materialisation is a **topology change under the shape**, and `SDF-A16`
+already makes every topology op an event. **The re-resolve is a subscriber, not a scan.**
+
+**Net: `SDF-F6` is closed by removing a class from §4 rather than adding one** — which is the better
+outcome, because a storage class is a permanent surface and an authoring concept is not.
+
+### 12.4 — `SDF-Q6`: there are TWO adjacency relations and we have only named one
+
+This is the finding of the section, and it is `SPG-A4`'s containment-≠-connectivity distinction **arriving
+one level down**.
+
+A border query — *"where does faction X meet faction Y"* — needs to know what **adjacent** means. Our
+design has `Passage`/`PortalSet` (`SDF-R3`), which is **connective** adjacency: a way exists. But two
+`Locale`s can share a geographic border with **no road between them**, and for territory purposes they
+plainly *do* border each other — an army marches overland.
+
+**Both relations already exist in the repo and only one has been named:**
+
+| relation | source | mutable? | ordering |
+|---|---|---|---|
+| **Geometric** | the generated mesh — `neighbors: Vec<Vec<u32>>`, *"sorted ascending + deduped; symmetric"* (`world-gen/src/mesh.rs:38`), degree validated ∈ [3,12] by `geography.invalid_neighbor_degree` | **no** — part of the content-addressed baseline | **already sorted ascending** |
+| **Connective** | `PortalSet` (`T3`) | **yes** — topology ops mutate it | maintained sorted |
+
+> **`SDF-A25` — a spatial read that depends on adjacency must DECLARE which relation it means.**
+> `Adjacency::Geometric` (immutable, from the baseline) · `Adjacency::Connective` (mutable, the portal
+> graph) · `Adjacency::Either`.
+
+Paradox corroborates the split from the other side: it ships **`adjacencies.csv` separately from the
+province raster** precisely because *special* adjacency (straits, canals) is not derivable from
+geometric adjacency. We have the same two relations; we had simply not distinguished them.
+
+**And the border query itself needs no index and no cache:**
+
+```
+border(X) = { n ∈ X : ∃ m ∈ neighbours(n) with m ∉ X }
+```
+
+One pass over `X`'s set bits. At |X| = 1 000 and mean degree 6 that is **6 000 membership tests** —
+microseconds. **Do not cache it.** Caching costs an invalidation on every faction change, and the
+recompute is cheaper than the invalidation bookkeeping. *(Free bonus: because the mesh's `neighbors` are
+already sorted ascending, the result is deterministic with no extra sort.)*
+
+### 12.5 — `SDF-Q9`: the projection is declared per LAYER, never per reader
+
+*"What is here"*, assembled into a prompt for an LLM NPC, must be **deterministic** (replay) and
+**bounded** (cost). Doc 17's `R8` + `GDA-D17` solve the actor side, including *what gives way* under
+budget pressure. The space side has nothing.
+
+The trap to avoid is subtle: if each **reader** decides which layers to include, then the prompt's content
+is a function of **which features happen to be loaded** — which is exactly `SDF-A4` rule 2 (*installing a
+mod silently invalidates every replay*) reappearing on the read path, where nobody would look for it.
+
+> **`SDF-A26` — `LayerDef` gains a `projection: ProjectionPolicy` — how this layer renders into a space
+> view, and at what priority it is dropped under budget. Declared by the layer's OWNER, at registration,
+> with no default.** The reader chooses a *budget*, never a *set*.
+
+Consistent with the rest of §4's discipline: every field required, nothing inferred, and the closed set is
+the thing that makes the outcome stable across configurations.
+
+The view itself is a `SDF-A23` node-set with three producers composed and bounded:
+
+| section | producer | bound |
+|---|---|---|
+| this node | — | 1 |
+| ancestors | interval | **≤16** by `DP-Ch1`'s DB `CHECK` |
+| portal ring | connective adjacency | declared fan-out cap |
+| occupants | the occupancy index (`T7`) | declared cap, sorted by `NodeOrdinal` |
+
+Everything except the fan-out and occupant caps is **already bounded by an existing invariant**, which is
+the argument for reusing `DP-Ch1`'s depth rather than inventing a traversal limit.
+
+### 12.6 — What this does not settle
+
+- **The budget numbers** for fan-out and occupants — same shape as `SDF-Q12`, and same answer: they need a
+  measured prompt-assembly cost that does not exist. `SDF-Q15`.
+- **Whether `Adjacency::Geometric` exists above `Locale`.** The mesh gives cell neighbours inside a
+  `World`. Whether two `Region`s are geometrically adjacent is a question about aggregated boundaries, and
+  `R-2`'s Paradox evidence (area → region → superregion as *authored grouping files*) suggests the honest
+  answer is that region adjacency is **authored or derived once at S4**, not computed per query.
+  `SDF-Q16`.

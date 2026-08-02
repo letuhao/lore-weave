@@ -1337,3 +1337,70 @@ is the correct answer, and **it took doing the arithmetic to find it.** What wou
 node-row size including layer sidecars (this used a computed 96 B), plus a `PROG_001` statement of
 expected realm distribution. The provisional numbers are stated **with their derivation** so they are
 falsifiable rather than authoritative.
+
+
+---
+
+## 20 · The read-path cluster — three closed, and one of them by DELETING a design
+
+Same shape as §19: three open rows, one question. **§3 is a WRITE contract, so what shape are the READS?**
+
+**The asymmetry that makes reads a separate problem:** *a write names its target; a read must FIND its
+targets.* Writes are localised by construction; every interesting read is relational.
+
+### `SDF-A23` — all three reads produce ONE result type; only the producer differs
+
+`Q9` *what is here* → an **interval** producer · `Q6` *where do factions border* → an **adjacency**
+producer · `Q10` *what is under this shape* → a **geometry** producer. All three yield **a sorted
+node-set**, and after that it is bitmap algebra.
+
+This is not tidiness: it satisfies **`SDF-A4`'s determinism prohibitions structurally rather than by
+discipline.** A sorted set intersected in fixed order cannot depend on hash order, allocation order, or
+which feature asked first. The alternative makes `SDF-A4` a rule that must be *remembered* in a dozen
+traversals.
+
+### `SDF-Q10` closed by DELETING a storage class
+
+`SDF-F6` said shapes are volume-keyed and `R-9`'s `Shape` class had been dropped from §4. The instinct is
+to add it back. **Wrong.** `SDF-A24`: a shape is an **authoring/command** concept that resolves to a
+node-set at **write time** and stores as ordinary `Sparse`.
+
+Checked against every case that would break it — a formation over cells, a moving weather front
+(`Scheduled{600}` over ~200 `Region`s), a blast radius in a transient `Arena` — all survive. **The only
+defeater is a topology change under the shape, and `SDF-A16` already makes that an event, so the
+re-resolve is a subscriber, not a scan.**
+
+> Closing a finding by **removing** a permanent surface rather than adding one is the better outcome.
+
+### `SDF-Q6` — the finding: there are TWO adjacency relations and only one was named
+
+`SPG-A4`'s containment-≠-connectivity distinction, **arriving one level down.** Two `Locale`s can share a
+geographic border with **no road between them** — and for territory purposes they plainly border each
+other; an army marches overland.
+
+| relation | source | mutable | ordering |
+|---|---|---|---|
+| **Geometric** | the generated mesh — `neighbors: Vec<Vec<u32>>`, *"sorted ascending + deduped; symmetric"* (`world-gen/src/mesh.rs:38`); degree validated ∈[3,12] | **no** — part of the baseline | **already sorted** |
+| **Connective** | `PortalSet` (`T3`) | yes | maintained sorted |
+
+**Both already exist in the repo; only one had a name.** Paradox corroborates from the other side —
+`adjacencies.csv` ships *separately* from the province raster because special adjacency is not derivable
+from geometric adjacency.
+
+And the border query needs **no index and no cache**: one pass over the set's bits, ~6 000 membership
+tests at |X|=1000 — cheaper than the invalidation bookkeeping a cache would need. The mesh's neighbours
+being pre-sorted makes it deterministic for free.
+
+### `SDF-Q9` — the projection is declared per LAYER, never per reader
+
+The trap is subtle: if each **reader** picks which layers to include, the prompt's content is a function of
+**which features happen to be loaded** — `SDF-A4` rule 2 (*a mod silently invalidates every replay*)
+reappearing on the read path, where nobody would look for it.
+
+`SDF-A26`: `LayerDef` gains `projection`, declared by the layer's **owner**, no default. **The reader
+chooses a budget, never a set.** And the view's bounds mostly already exist — ancestors are capped at
+**≤16 by `DP-Ch1`'s DB CHECK**, which is why reusing that invariant beats inventing a traversal limit.
+
+Two new rows: `SDF-Q15` (fan-out/occupant caps — needs a measured prompt cost, same shape as `Q12`) and
+`SDF-Q16` (does geometric adjacency exist above `Locale`? `R-2` suggests region adjacency is **authored or
+derived once at S4**, not computed per query).
