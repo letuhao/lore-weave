@@ -5,7 +5,7 @@
      namespace, which is the opposite of what the catalog is for. -->
 
 > **Prefix:** `SDF-*` (registered 2026-08-02 under a `_boundaries` claim; axioms `SDF-A1..A12`, decisions `SDF-D1..D6`,
-> findings `SDF-F1..F5`, open `SDF-Q1..Q4`).
+> findings `SDF-F1..F6`, open `SDF-Q1..Q11`).
 >
 > **What this doc is for.** [Doc 36](36_map_architecture.md) settled the *shape* of space
 > (`MapKind`, the containment matrix, `SpaceNode`). [Doc 37](37_world_data_storage.md) settled where
@@ -372,6 +372,13 @@ Nothing below exists. This is the deliverable, not the prose around it.
 | `SDF-Q1` | **What is the simulation grouping, and is it coarser than the structural nesting?** `R-48`: Barotrauma's devs document that over-fragmenting into many small linked hulls makes the fluid layer *numerically unstable* and propose collapsing them into one computational entity. A palace as a Domain-of-Domains with an atmosphere layer **is** that graph. Refusing rigid-body physics does not exempt us from designing the equalisation. |
 | `SDF-Q2` | **What is the per-Domain object budget, and is it split placement-vs-render?** `R-54`: FFXIV is the only shipped game that publishes both (600 placed / 400 drawn) and its real bottleneck was **rehydration**, not steady state. `R-65`: an unmaterialised child Domain must not consume its parent's budget. Neither is decided here. |
 | `SDF-Q3` | **`Domain → World` (內天地) has NO PRIOR ART.** Two agents searched; the nearest analogue's implementation could not be obtained. *"You are designing this without precedent."* Depth- and cycle-checking on write is the minimum; the semantics are unsettled. |
+| `SDF-Q5` | **Which of `TDIL_001`'s four clocks does a decaying layer use?** (`SDF-F1`) |
+| `SDF-Q6` | **Border/adjacency has no index and no phase** — the shape every territory feature asks for. (`SDF-F2`) |
+| `SDF-Q7` | **Who may write TOPOLOGY?** Layers have an owner; the tree does not. `PROG_001` growing a 內天地 is a progression feature performing a Graft. (`SDF-F3`) |
+| `SDF-Q8` | **History-derived layers** — traffic, schedules, contestedness. A layer class, or projections outside the layer system? I lean outside. (`SDF-F4`) |
+| `SDF-Q9` | **The space-side READ contract** — bounded, ordered, deterministic *"what is here"* for prompt assembly. §3 governs writes only. (`SDF-F5`) |
+| `SDF-Q10` | **Volume-keyed layers** (formations, auras, weather fronts) — `R-9`'s `Region` shape was dropped from §4. (`SDF-F6`) |
+| `SDF-Q11` | **Which of `T1..T9` are reality-scoped?** Doc 37 says the node tree is per-reality and the baseline is shared by digest; §5 says neither. No multi-reality measurement exists for space. (§9.4) |
 | `SDF-Q4` | **Does the delta store have a bound, and what happens at the bound?** `R-61`: No Man's Sky caps at 15 000 edits / 256 buffers and past it **the base regenerates UNDER player-authored content** — and visiting another player's base consumes *your* buffers. Our divergence log is currently unbounded. |
 
 **Non-vacuity obligations, stated in advance** (three agents proposed these against their own
@@ -391,3 +398,165 @@ recommendations):
 published benchmark of a 50-layer scenario in any engine."* The storage argument is **mechanism plus
 adjacent measurement**, not a measurement of our case. Likewise *"every performance claim in these
 ecosystems is qualitative — if you need numbers, you will have to generate them."*
+
+---
+
+## 9 — The load: what the map must actually serve, present and future
+
+> **Purpose: this census is a FALSIFICATION TEST, not an inventory.** §4's layer model is a hypothesis.
+> The question is not *"can I list features"* but **"which feature does the model fail to carry?"** Six do.
+> They are `SDF-F1..F6` below and each is a hole in what §4 just claimed.
+>
+> **Present load, counted rather than estimated:** **69 distinct feature ids across 134 docs in 36
+> folders** under `features/`. The future column is *hypothesised from the genre commitments this project
+> has already made* (cultivation/wuxia, LLM-driven NPCs, multi-reality, emergent play, daily-life sim) —
+> it is deliberately speculative and marked so, because designing the layer model against only what
+> exists is how it becomes unable to carry what comes.
+
+### 9.1 The census
+
+`D` dense · `S` sparse · `R` rare · `I` interval (value at the shallowest node that has it) · `Ø` derived
+· `PO` per-observer · **`T`** = topology, not a layer at all.
+
+| feature | home kind | shape | update | on Sever |
+|---|---|---|---|---|
+| `GEO_001..004` geometry, political, settlement, route | `World` | D | Immutable | re-derive |
+| `TMP_001..009` tilemap | `Locale` | D/palette | Immutable | ride the cells |
+| `CSC_001` cell scene | `Domain` | S | EventDriven | ride the cells |
+| `MAP_001` layout | all | **T** | — | **explicit survivor** |
+| `PF_001` places | `Locale`·`Domain` | R | EventDriven | ride the cells |
+| `TVL_001..005` travel | **`Passage`** | **T** (`T3`) | EventDriven | explicit |
+| `COMB_001..006` combat | `Arena`/in place | **`T9`** | per-turn | n/a (transient) |
+| `ABL_001` abilities | — | not spatial | — | — |
+| `AIT_001` existence | all | **the live set (`T2`)** | S5 | engine |
+| `ACT_001`·`NPC_001..003`·`PCS_001` actors | via occupancy (`T7`) | R | EventDriven | explicit |
+| `RES_001` resources | `Locale` | S | EventDriven | sum |
+| `REP_001` reputation | `Region` | I | EventDriven | union |
+| `FAC_001` faction | `Region`·`Locale` | S | EventDriven | **see `SDF-F2`** |
+| `FF_001` family · `TIT_001` titles · `PLT_001..002` politics | `Region` | S/I | EventDriven | union |
+| `PROG_001` progression | **entity, not node** | — | — | **see `SDF-F3`** |
+| `DL_001` daily life | `Locale` | **Ø over history** | Lazy | **see `SDF-F4`** |
+| `TDIL_001` time dilation | `Region`+ | **`T`/clock** | — | **see `SDF-F1`** |
+| `WA_001..006` world authoring / Forge | all | admin writes | EventDriven | explicit |
+| `IDF_001..005` identity · `PO_001` | not spatial | — | — | — |
+| `PL_001..007` play loop | reads everything | **read path** | — | **see `SDF-F5`** |
+| **— hypothesised —** | | | | |
+| weather · seasons | `Region` | I | Scheduled(600) | copy to both |
+| hazards · traps | `Domain`·`Passage` | R | EventDriven | ride the cells |
+| patrols · spawn pressure | `Passage`·`Locale` | S | Scheduled | explicit |
+| ley-lines / spiritual density (靈脈) | `Region`→`Locale` | I + Ø | Immutable+Lazy | mean |
+| fog of war · knowledge | **per `(observer, node)`** | **PO** | EventDriven | **not shared state** |
+| ownership · permissions | `Domain` | S | EventDriven | **explicit — security** |
+| lighting · temperature · atmosphere | `Domain` | Ø/I | Decay-on-read | **mass-weighted mean** |
+| scent · tracks | `Locale` | S | Decay-on-read | mean |
+| pollution · corruption (魔氣) | `Region`→`Locale` | I+Ø | Scheduled | mean |
+| economy · prices · trade flow | `Locale` (settlements) | R | Scheduled | sum |
+| quest markers · narrative anchors | any | R | EventDriven | explicit |
+| sect / org territory (宗門) | `Region` | S | EventDriven | **see `SDF-F2`** |
+| formations / arrays (陣法) | `Domain`·`Arena` | S + volume | EventDriven | **see `SDF-F6`** |
+| destruction state | `Domain` | S | EventDriven | ride the cells |
+| population density | `Locale` | Ø | Lazy | sum |
+| danger level | any | Ø | Lazy | max |
+
+### 9.2 The six the model does NOT carry
+
+#### `SDF-F1` — `Decay`-on-read has **four candidate clocks and §4 named none**
+
+`SDF-A9` says a decaying layer stores `(value, as_of_tick)` and shifts on read. `TDIL_001` is a **4-clock
+relativity model** — realm · actor · soul · body — and carries `TDIL-A11 ObservationAdvance`: *"any
+observation of the channel — actor entry, cross-realm read, AIT materialization, `DL_001`
+read-evaluation — first lazily advances"* it.
+
+**Two things follow, and the second is the finding.** First, `ObservationAdvance` **is** my lazy-decay
+mechanism, arrived at independently by another feature — good corroboration. Second: **`now − as_of` is
+ambiguous.** A cave whose scent decays while its realm is time-dilated relative to the actor reading it
+has *two different elapsed spans*, and they disagree. Worse, if the value advances **on observation**,
+then **who observed it** changes the answer — which is a replay divergence the moment two observers
+differ.
+
+⇒ **`Decay` must name its clock in `LayerDef`, and the clock must be a property of the NODE's frame, not
+of the reader.** Unresolved: whether a layer may legally decay on a clock its home kind does not own.
+`SDF-Q5`.
+
+#### `SDF-F2` — **border and adjacency queries have no shape in the model**
+
+Faction territory, sect territory, political control: a per-node `faction_id` answers *"who owns this"* in
+`O(1)`. It does not answer the questions the features actually ask — ***"where do two factions border"***,
+*"which of my holdings is exposed"*, *"is this contiguous"*. Those are **edge predicates over the
+containment tree plus the portal graph**, and §4 has neither an index nor a phase for them.
+
+This is not hypothetical: `FAC_001`, `PLT_001/002`, `REP_001` and every hypothesised territory feature ask
+it, and the research corroborates that it is the expensive shape — Paradox ships **separate `adjacencies.csv`**
+alongside the province raster precisely because adjacency is not derivable cheaply from per-cell values.
+
+⇒ **A `Border` layer kind is missing** — derived, cached, invalidated by its source layer's epoch, and
+computed over the **portal graph** (`T3`), not over geometry. `SDF-Q6`.
+
+#### `SDF-F3` — a feature that MUTATES THE TREE has no owner, and progression is one
+
+§4 gives every *layer* an `owner: ModuleId` enforced by `layer.foreign_write`. **Phase 1 writes topology —
+and nothing says who may.**
+
+This is live, not theoretical: `PROG_001` + `SPG-A1` means **a cultivator advancing a realm grows their
+內天地** — a `Domain` whose parent is an entity, gaining children as the holder progresses. That is a
+progression feature performing a **Graft**. Likewise `WA_003` Forge (admin edits the tree), `TVL_*`
+(opening a passage), `COMB_*` (carving an `Arena`).
+
+⇒ **Topology ops need the same single-writer discipline as layers**, with a `topology.foreign_write`
+sibling. Otherwise the one graph everything else hangs from is the only unowned thing in the design.
+`SDF-Q7`.
+
+#### `SDF-F4` — `Derived` takes LAYERS as inputs; several features derive from **HISTORY**
+
+`SDF-A8`'s `Derived { inputs: LayerSet }` is a pure function of *other current layer values*. But:
+
+- *"who is usually here"* (`DL_001` schedules) is a function of **occupancy over time**;
+- *"how travelled is this passage"* — which `R-26` makes the **load-bearing input for emergent content**
+  (*"instrument passage traversals and let content systems subscribe to measured high-centrality
+  passages; do not hand-place bandits"*) — is a function of **traversal history**;
+- *"how contested is this border"* is a function of **conflict events**.
+
+None is expressible as a function of current layers.
+
+⇒ Either a **`Windowed { source: EventKind, window }`** storage class (a decaying counter fed by the event
+stream, which is `Decay` with an event source), **or** these are projections outside the layer system
+entirely. **I lean to the second** — they are read models, and putting them in the layer store makes the
+layer store a projection engine. `SDF-Q8`.
+
+#### `SDF-F5` — §3 is a WRITE contract; the LLM read path is unspecified and it is the one that must be bounded
+
+`PL_001..007` and every LLM-driven NPC decision need *"what is here"* — a view across many layers at one
+node and its neighbours, assembled into a prompt. That read must be **deterministic** (replay) **and
+bounded** (cost), and §3's table governs only writes.
+
+Doc 17's `R8` prompt assembly + `GDA-D17`'s budget exist for the **actor** side; there is no space-side
+equivalent. Without one, each feature invents its own traversal and the prompt's content becomes a
+function of iteration order — `SDF-A4`'s prohibitions apply to the read path too, and nothing states it.
+
+⇒ **A bounded, ordered, layer-aware read projection** — *"the space section of a prompt"* — with its own
+budget. `SDF-Q9`.
+
+#### `SDF-F6` — layers are keyed by NODE; some features are keyed by VOLUME
+
+Formations/arrays (陣法), area auras, weather fronts, blast radii, zones of control: these are **shapes
+that overlap nodes**, not values *on* nodes. `R-9`'s four-shape taxonomy has `Region` (sparse shape +
+predicate — Foundry's model) for exactly this, and **§4 dropped it**, keeping only node-keyed classes.
+
+⇒ **`StorageClass::Shape { geometry, plane }`** is missing, with the DOS2 ground-vs-volume split
+(`Ground` does not occlude; `Volume` does) and Foundry's elevation bounds. Note this interacts with
+`SDF-F2`: a shape layer's *"which nodes am I over"* is the same index question as a border. `SDF-Q10`.
+
+### 9.3 One thing the census confirms rather than breaks
+
+**Every non-hypothetical feature binds to ONE `MapKind`** — the column is never ambiguous. `SDF-A5`'s
+required `home_kinds` survives its first real load, and the ~1000× reduction it buys is available for all
+69 present features. That is the model's strongest result here, and it is worth stating because the rest
+of this section is the model failing.
+
+### 9.4 And one gap in what was just committed
+
+**`T1..T9` never says which tables are reality-scoped.** [Doc 37](37_world_data_storage.md) is explicit
+that the `space_node` tree is *"per-reality Postgres"* while the generated baseline is **content-addressed
+and shared by digest across realities**. So `T6` (baseline) is shared and `T1`, `T2`, `T4`, `T5`, `T7` are
+per-reality — and **the multi-reality tax the actor track measured in its own red-team round has no
+equivalent measurement here.** `SDF-Q11`.

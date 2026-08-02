@@ -76,6 +76,7 @@ its reason, and the amendment row is written before the edit.**
 | **5** | Feature census | **DONE** | doc 41 §6 — 14 features; fog-of-war flagged a **tenancy defect** if shared |
 | **6** | The plugin/layer attachment model | **DONE** | doc 41 §4 — `SDF-A5..A12`; layers bind to `MapKind` (~1000×); no `Default` on `UpdatePolicy`/`LifecyclePolicy` |
 | **7** | Adjudicate every research finding | **partial** | 6 accepted as `SDF-R1..R6`; 4 routed to `SDF-Q1..Q4`; the rest folded into `SDF-A1..A12`. A row-by-row table is still owed |
+| **9** | **Feature census as a FALSIFICATION test** — present load counted, future load hypothesised | **DONE** | doc 41 §9 — 69 feature ids / 134 docs / 36 folders counted, plus 18 hypothesised. **Six features the model does NOT carry** (`SDF-F1..F6`), each now an open row `SDF-Q5..Q10`, plus `SDF-Q11` (reality scoping) |
 | **8** | Open register | **DONE for this pass** | doc 41 §8 — `SDF-Q1..Q4` + three non-vacuity obligations stated **in advance**, incl. one against the design's own highest-risk recommendation |
 
 ---
@@ -1202,3 +1203,30 @@ seed+delta with a documented generator-version break."* Both wikis blocked (402/
 🕳️ LOTRO/SWTOR hook-model rationale — **no dev statement exists.**
 🕳️ No per-interior load-time measurement, and **no postmortem of an interior/instance system failing at
 scale**, anywhere.
+
+
+---
+
+## 17 · The load test — what the census broke
+
+Running §4's layer model against the **real** feature load (69 ids, 134 docs, 36 folders) plus a
+hypothesised future load found **six shapes it cannot carry**. Recorded here because a census that only
+confirms a model is not a test.
+
+| # | the feature that breaks it | what is missing |
+|---|---|---|
+| `SDF-F1` | **`TDIL_001`** — a 4-clock relativity model with `ObservationAdvance` | `Decay`-on-read stores `(value, as_of_tick)` and **§4 named no clock**. Worse: if a value advances *on observation*, **who observed it changes the answer** — a replay divergence the moment two observers differ |
+| `SDF-F2` | `FAC_001` · `PLT_001/002` · sect territory | **border/adjacency has no index and no phase.** A per-node `faction_id` answers *"who owns this"*, never *"where do two factions border"*. Paradox ships a separate `adjacencies.csv` for exactly this reason |
+| `SDF-F3` | **`PROG_001` × `SPG-A1`** — a cultivator advancing a realm **grows their 內天地** | that is a *progression feature performing a Graft*. Layers have an `owner` enforced by `layer.foreign_write`; **topology has none.** The one graph everything hangs from is the only unowned thing in the design |
+| `SDF-F4` | `DL_001` schedules · `R-26`'s measured passage traffic | `Derived{inputs: LayerSet}` is a function of *current layers*. *"How travelled is this passage"* — which `R-26` makes the load-bearing input for emergent content — is a function of **history** |
+| `SDF-F5` | `PL_001..007` + every LLM NPC decision | **§3 is a WRITE contract.** The read that assembles *"what is here"* into a prompt must be deterministic AND bounded, and nothing specifies it. Doc 17's `R8` covers the actor side only |
+| `SDF-F6` | formations (陣法) · auras · weather fronts | **layers are keyed by NODE; these are keyed by VOLUME.** `R-9`'s four-shape taxonomy had `Region` (sparse shape + predicate) for this and **§4 dropped it**, keeping only node-keyed classes |
+
+**What the census CONFIRMED, and it is the model's best result here:** every non-hypothetical feature binds
+to **exactly one `MapKind`** — the column is never ambiguous across all 69. `SDF-A5`'s required
+`home_kinds` survives its first real load, and the ~1000× reduction is available to all of them.
+
+**And a gap in what had just been committed:** `T1..T9` never says which tables are **reality-scoped**.
+Doc 37 is explicit that the node tree is *"per-reality Postgres"* while the baseline is content-addressed
+and shared by digest — §5 said neither, and **no multi-reality measurement exists for space** where the
+actor track ran a whole red-team round on it. `SDF-Q11`.
