@@ -24,7 +24,9 @@ def _llm(*replies: str):
     formats: list = []
     seq = list(replies)
 
-    async def call(messages, max_tokens, response_format=None):
+    # The seam takes a registry CODE, not a number — an engine that cannot be handed an
+    # integer cannot re-introduce a literal. `budget`/`target` mirror the real binding.
+    async def call(messages, *, budget, target=None, response_format=None):
         calls.append(messages)
         formats.append(response_format)
         return seq.pop(0) if seq else ""
@@ -179,7 +181,9 @@ async def test_a_provider_that_REJECTS_the_schema_still_gets_an_answer():
     post-filter that was always there catches what the grammar would have."""
     seen = []
 
-    async def call(messages, max_tokens, response_format=None):
+    # The seam takes a registry CODE, not a number — an engine that cannot be handed an
+    # integer cannot re-introduce a literal. `budget`/`target` mirror the real binding.
+    async def call(messages, *, budget, target=None, response_format=None):
         seen.append(response_format)
         if response_format is not None:
             raise RuntimeError("400 unsupported response_format")

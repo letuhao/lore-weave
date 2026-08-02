@@ -21,7 +21,8 @@ def fake_llm(responses: list[str]):
     """Sequential fake — records call count + last messages."""
     state = {"n": 0, "messages": []}
 
-    async def llm(messages, max_tokens):
+    # The seam takes a registry CODE, not a number (see app/services/glossary_build/service.py).
+    async def llm(messages, *, budget, target=None, language=None):
         state["messages"].append(list(messages))  # snapshot — the deep convo mutates in place
         i = min(state["n"], len(responses) - 1)
         state["n"] += 1

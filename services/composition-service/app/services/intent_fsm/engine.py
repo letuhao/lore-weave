@@ -202,11 +202,13 @@ async def propose(
     # post-filter stays regardless: a provider that ignores the field must not become a hole.
     fmt = candidates_response_format(spec.name, n=n, beats=beats)
     try:
-        raw_text = await llm(messages, 700, fmt)
+        raw_text = await llm(
+            messages, budget="intent_fsm_ask", target=1, response_format=fmt)
     except Exception:  # noqa: BLE001 — a provider that REJECTS the schema must not fail the slot
         logger.warning("intent_fsm: provider rejected the response schema for slot=%s; "
                        "falling back to free-form", spec.name, exc_info=True)
-        raw_text = await llm(messages, 700, None)
+        raw_text = await llm(
+            messages, budget="intent_fsm_ask", target=1, response_format=None)
     parsed = parse_json_block(raw_text)
     cands = clean_candidates(parsed, spec, choices=choices, n=n)
     if cands:
@@ -222,6 +224,7 @@ async def propose(
             "no markdown, no commentary."
         )},
     ]
-    cands = clean_candidates(parse_json_block(await llm(retry, 700, None)),
+    cands = clean_candidates(parse_json_block(await llm(
+        retry, budget="intent_fsm_ask", target=1, response_format=None)),
                              spec, choices=choices, n=n)
     return cands, 2, True

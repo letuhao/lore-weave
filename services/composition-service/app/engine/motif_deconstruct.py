@@ -83,6 +83,7 @@ from app.db.repositories.import_source_repo import ImportSourceRepo
 from app.db.repositories.motif_repo import MotifRepo
 from app.engine.critic import parse_critique_json
 from loreweave_context import scale_by_window
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -574,7 +575,7 @@ async def deconstruct_reference(
                 "messages": [{"role": "system", "content": system},
                              {"role": "user", "content": user}],
                 "response_format": {"type": "text"}, "temperature": 0.2,
-                "max_tokens": 2048,
+                "max_tokens": max_tokens_for("motif_deconstruct", target=len(ch.split())),
             },
             job_meta={"extractor": "motif_deconstruct", "chunk": i},
         )

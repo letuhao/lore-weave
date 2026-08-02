@@ -28,6 +28,7 @@ from typing import Any
 
 from loreweave_llm.models import Job, ReasoningEffort
 from loreweave_llm.reasoning import ReasoningDirective, reasoning_fields
+from .budget import CallBudget
 
 
 class StructuredGenerateError(Exception):
@@ -99,7 +100,7 @@ async def structured_generate(
     user_id: str,
     model_ref: str,
     messages: list[dict[str, str]],
-    max_output_tokens: int,
+    budget: CallBudget,
     model_source: str = "user_model",
     reasoning: ReasoningEffort | ReasoningDirective = "none",
     temperature: float = 0.3,
@@ -113,7 +114,12 @@ async def structured_generate(
       (Gemma-4, Qwen3, R1…) doesn't spend the whole ``max_output_tokens`` on hidden
       reasoning and return empty prose. Pass ``"medium"``/``"high"`` or a
       ``ReasoningDirective`` when graded effort is wanted.
-    - ``max_output_tokens`` is REQUIRED — no silent unbounded budget.
+    - ``budget`` is a ``CallBudget``, not an int, and it is REQUIRED. "Required" was already
+      true of the old ``max_output_tokens: int`` — and a required INT still let every caller
+      invent its own number, which is how a mechanism layer ends up with N sizing models
+      upstream of it. Taking the resolved object instead means the number provably came from
+      ``call_budget``, and the caller also gets ``truncation_is_fatal`` for free instead of
+      having to re-derive it from the kind.
     - Transport errors, a non-``completed`` job, or empty content all raise
       ``StructuredGenerateError`` (the empty case with a message that names the
       hidden-reasoning cause, not a downstream JSON error).
@@ -131,7 +137,7 @@ async def structured_generate(
             input={
                 "messages": messages,
                 "temperature": temperature,
-                "max_tokens": max_output_tokens,
+                "max_tokens": budget.max_output_tokens,
                 **wire,
             },
             chunking=None,

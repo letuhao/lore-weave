@@ -87,6 +87,7 @@ from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.packer.pack import OwnershipError, PackRequest, build_derivative_context, pack
 from app.packer.profile import from_settings
+from app.llm_budget import narrowed_by_request
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/composition")
@@ -585,8 +586,9 @@ async def generate(
     # writing; `max_tokens` cannot shorten prose, it can only STOP it mid-sentence with
     # the tokens already paid for. So this is deliberately generous, and an explicit
     # caller value still wins.
-    _max_out = body.max_output_tokens or scene_output_budget(
-        _scene_target, pc.profile.source_language, reasoning=reasoning)
+    _max_out = narrowed_by_request(
+        scene_output_budget(_scene_target, pc.profile.source_language, reasoning=reasoning),
+        body.max_output_tokens)
 
     # M4 — the worker decouples ONLY the AUTO compute (diverge→converge→reflect);
     # the cowrite STREAM path stays inline (a worker can't stream to the client).
@@ -1298,8 +1300,10 @@ async def generate_chapter(
     # Size the output budget from the plan (scene count) so a multi-scene chapter
     # gets room instead of a flat cap that silently truncates long-form; clamp to
     # the ceiling. An explicit body override still wins.
-    max_out = body.max_output_tokens or min(
-        len(scenes) * settings.chapter_gen_per_scene_tokens, settings.chapter_gen_max_tokens)
+    max_out = narrowed_by_request(
+        min(len(scenes) * settings.chapter_gen_per_scene_tokens,
+            settings.chapter_gen_max_tokens),
+        body.max_output_tokens)
 
     if settings.composition_worker_enabled:
         # M4 (Option A) — resolve the bearer context (pack, chapter_sort, critic)
@@ -1536,8 +1540,10 @@ async def stitch_chapter_endpoint(
         auto_source=str(work.settings.get("reasoning_engine", "rule_based")))
     # Size from the number of scene drafts being merged (the stitched chapter is
     # ~their combined length), clamped to the ceiling — long chapters need room.
-    max_out = body.max_output_tokens or min(
-        len(drafts) * settings.chapter_gen_per_scene_tokens, settings.stitch_max_tokens)
+    max_out = narrowed_by_request(
+        min(len(drafts) * settings.chapter_gen_per_scene_tokens,
+            settings.stitch_max_tokens),
+        body.max_output_tokens)
 
     if settings.composition_worker_enabled:
         # M4 (Option A) — resolve the bearer-only bits (chapter_sort, critic config)

@@ -930,7 +930,9 @@ async def translate_batch_with_retry(
     combined: str,
     block_indices: list[int],
     input_texts: dict[int, str],
-    out_max: int,
+    # `None` ⇒ the registry decides. This kernel has callers in TWO modules, so a bare
+    # required int meant the budget was settled somewhere no scanner follows.
+    out_max: int | None = None,
     max_retries: int,
     job_meta_base: dict,
     thinking_enabled: bool = False,
@@ -969,7 +971,7 @@ async def translate_batch_with_retry(
                 model_ref=model_ref,
                 input={
                     "messages": messages,
-                    "max_tokens": out_max,
+                    "max_tokens": out_max or budget_for("translate_batch"),
                     # D-TRANSLATE-REASONING-TOGGLE — per-job reasoning control. Default
                     # OFF (thinking_enabled=False) keeps the prior behavior; ON enables
                     # the local model's thinking via chat_template_kwargs.enable_thinking.

@@ -3361,6 +3361,69 @@ AUDIT AUDIT-12 (budget seam — translation-service) · commit 30c20b1f9
                    be exempted by name rather than "drained".
 ```
 
+### ✅ AUDIT-13 · DoD-3 — "required is not an exemption". 13 → 1, and 0 literals repo-wide.
+
+```
+AUDIT AUDIT-13 (budget seam — the author's ruling)
+  RULING     — I proposed exempting `sdks/loreweave_llm/structured.py` because its
+               `max_output_tokens` is a REQUIRED parameter, i.e. "that IS the seam".
+               Author: *"co bat buoc hay khong thi cung phai centralize de kiem soat"* —
+               required or not, it still has to be centralized to be controlled.
+               That was right, and the reason is sharper than my objection: a required INT
+               still lets every caller invent its own number. "Required" only guarantees that
+               SOMETHING was passed, never that it came from anywhere.
+
+  WHAT IT     · `structured_generate` takes a `CallBudget`, not an int. It cannot be handed a
+  CHANGED       number at all now, and the caller gets `truncation_is_fatal` for free instead
+                of re-deriving it.
+              · The injected LLM seams in `glossary_build` / `intent_fsm` take a registry
+                CODE. Same argument one level up: an engine that cannot be handed an integer
+                cannot re-introduce a literal.
+              · `body.max_output_tokens` may only NARROW. This was a REAL CONTROL HOLE, not a
+                tidiness issue: `body.max_output_tokens or min(computed, settings.<ceiling>)`
+                let the request beat the DEPLOY CEILING outright. Nothing had gone wrong only
+                because `SCENE_OUTPUT_CEILING` and both deploy ceilings are all 32768 today —
+                lower either for a small-context deployment, which is what a deploy ceiling is
+                FOR, and a request walks straight past it. `narrowed_by_request` is now the one
+                place a request field touches a budget, with a test that pins the 8192 case.
+
+  BLIND SPOTS FOUND (three more, on top of the raw-body surface in AUDIT-10)
+              · POSITIONAL budgets — `await llm(messages, 900)`. The gate reads payloads; the
+                registry test reads `max_tokens=` KEYWORDS. Seven literals in two services,
+                invisible to both. The seams are keyword-only now, so they cannot recur.
+              · SUFFIXED parameter names — `judge_max_tokens=2200`, `edit_max_tokens=1200`,
+                signature defaults sitting in the open while `sigs` read **0 repo-wide**.
+                Naming a parameter after WHICH call it sizes is the natural thing to do when
+                one function drives two, and it put both outside an exact-match check.
+              · A ONE-PASS helper binder. `_chat <- _judge <- _judge_vote <- _compute_edits <-
+                run_self_heal` is four hops; one pass resolves only the innermost, so a
+                correctly attributed budget reads as debt purely because its call chain is
+                deep. Iterated to a fixpoint.
+
+  ALSO       — `cowrite.scene_output_budget` was the SIXTH sizing model: its per-word table,
+               headroom factor and reasoning allowance were IDENTICAL to the SDK's, value for
+               value. Not a variant — a duplicate, missing only the floor and the window clamp.
+               It delegates now. Six independent sizing models, five services, one day.
+
+  PROVEN     — `llm-budget-ssot-gate: PASS — 97 sites scanned`
+                 50 traced to call_budget() · **1 held at baseline (0 literal, 1 unattributed,
+                 0 signature defaults)** · 46 built off-site, not statically visible.
+               composition **3608 passed** / 403 skipped · knowledge **4108** / 561 ·
+               translation **1151** · SDK **1017** / 9 · worker-ai **504**.
+               Widening re-proved red-able after every change:
+                 attributed-before=True  unattributed-after=True
+                 -> PROVED — one literal caller still defeats the binding
+               gate-teeth-gate PASS 60 · guard-redability-gate 8/8 gates-only.
+
+  THE ONE    — `self_heal.py:221`. Registry-derived at every origin; the binder resolves its
+               chain only partially. Left ON the ratchet rather than exempted — an exemption
+               is how a blind spot becomes permanent, which is the whole lesson of this block.
+
+  DRIFT      — I wrote `was=4000` for a row whose real constant was 3000, and inserted it
+               between another row and the comment explaining it. Both caught by re-reading
+               the file I had just written, not by any check.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |

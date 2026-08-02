@@ -426,6 +426,10 @@ async def _compute_edits(
     verify-vote → locate+snap → overlap-dedup → satellite-edit → merge mechanical edits.
     Returns the computed `EditProposal`s (offset-ascending, stable ids) + the report.
     `run_self_heal` splices all of them; `propose_self_heal` hands them to the review-gate."""
+    judge_max_tokens = judge_max_tokens or max_tokens_for(
+        "self_heal_judge", target=max(1, len(chapter) // 800))
+    edit_max_tokens = edit_max_tokens or max_tokens_for(
+        "self_heal_edit", target=len(chapter) // 20 or 1)
     findings = await _judge_vote(
         llm, chapter, source_language=source_language, max_tokens=judge_max_tokens,
         canon=canon, k=vote_k, min_votes=min_votes, temperature=vote_temperature, **kw) or []
@@ -775,8 +779,11 @@ async def propose_self_heal(
 async def run_self_heal(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     chapter: str, source_language: str = "auto", profile: BookProfile | None = None,
-    max_edit_expansion: float = 1.6, judge_max_tokens: int = 2200,
-    edit_max_tokens: int = 1200, rejudge: bool = True,
+    # `None`, not 2200/1200. A signature default is evaluated ONCE at import, so it can
+    # never see the chapter it is judging — and, being suffixed, neither of these was visible
+    # to the gate that exists to find exactly this.
+    max_edit_expansion: float = 1.6, judge_max_tokens: int | None = None,
+    edit_max_tokens: int | None = None, rejudge: bool = True,
     canon: str | None = None, vote_k: int = 1, min_votes: int = 2,
     verify: bool = False, verify_k: int = 1, prefilter: bool = False, vote_temperature: float = 0.7,
     trace_id: str | None = None,

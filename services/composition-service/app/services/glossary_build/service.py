@@ -28,6 +28,7 @@ from app.clients.llm_client import LLMClient
 # convention but one source of truth beats a drifting copy.
 from app.services.glossary_build import engine
 from app.services.glossary_build.prompts import BATCH_MAX, NARROW_THRESHOLD, select_fields
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger("app.services.glossary_build")
 
@@ -156,12 +157,15 @@ class GlossaryBuildService:
 
     # ── LLM binding: engine's injected callable → the platform job seam ──────
     def _llm_fn(self, *, user_id: str, model_source: str, model_ref: str):
-        async def call(messages: list[dict], max_tokens: int) -> str:
+        async def call(messages: list[dict], *, budget: str,
+                       target: int | None = None, language: str | None = None) -> str:
             job = await self._llm.submit_and_wait(
                 user_id=user_id, operation="chat",
                 model_source=model_source, model_ref=model_ref,
                 input={"messages": messages, "response_format": {"type": "text"},
-                       "temperature": 0.4, "max_tokens": max_tokens, **no_thinking_fields()},
+                       "temperature": 0.4,
+                       "max_tokens": max_tokens_for(budget, target=target, language=language),
+                       **no_thinking_fields()},
                 job_meta={"usage_purpose": "glossary_build"},
             )
             if getattr(job, "status", None) != "completed":

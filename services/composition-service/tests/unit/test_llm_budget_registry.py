@@ -311,3 +311,33 @@ def test_language_is_unread_by_the_structured_and_edit_branches():
     # about the branch and not about `max_tokens_for` ignoring its kwargs generally.
     assert (max_tokens_for("judge_canon", target=40, language="zh")
             != max_tokens_for("judge_canon", target=40))
+
+
+# ── the request may NARROW a budget, never raise it ───────────────────────────────────────
+
+def test_a_request_can_only_narrow_a_computed_budget():
+    from app.llm_budget import narrowed_by_request
+    assert narrowed_by_request(8000, 2000) == 2000      # narrows
+    assert narrowed_by_request(8000, 32768) == 8000     # cannot raise
+    assert narrowed_by_request(8000, None) == 8000      # absent = no narrowing
+    assert narrowed_by_request(8000, 0) == 8000         # 0/negative is not a budget
+
+
+def test_a_request_cannot_walk_past_the_deploy_ceiling():
+    """The defect this rule exists to close, expressed as the deployment that exposes it.
+
+    The router computed `min(scene_count * per_scene, settings.<deploy ceiling>)` and then let
+    `body.max_output_tokens` win OUTRIGHT. Nothing bad happened only because
+    SCENE_OUTPUT_CEILING (the request field's `le=` bound) and both deploy ceilings are all
+    32768 today. Lower a deploy ceiling for a small-context deployment — which is exactly what
+    a deploy ceiling is FOR — and the request walks straight past it.
+    """
+    from app.llm_budget import narrowed_by_request
+
+    deploy_ceiling = 8192          # an operator narrowing the platform
+    computed = min(4 * 3000, deploy_ceiling)
+    request_asks_for_the_field_maximum = 32768
+
+    assert narrowed_by_request(computed, request_asks_for_the_field_maximum) == deploy_ceiling
+    # …and the old idiom, written out, is what it would have produced instead:
+    assert (request_asks_for_the_field_maximum or computed) == 32768

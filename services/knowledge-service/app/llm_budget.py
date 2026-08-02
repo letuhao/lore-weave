@@ -81,6 +81,11 @@ PROFILES: dict[str, CallProfile] = {
                                     why="one caption for one PDF page image"),
     "wiki_article": CallProfile(OutputKind.PROSE, floor=4000, was=4000,
                                 why="one generated wiki article"),
+    # The KG schema proposal — a whole entity/relation schema object in one response.
+    # Reached through the SDK's `structured_generate`, which now REQUIRES a CallBudget rather
+    # than an int: a required int still let every caller invent its own number.
+    "schema_propose": CallProfile(OutputKind.STRUCTURED, floor=4096, was=3000,
+                                  why="one proposed KG schema object"),
     # The working-memory executive rewrites a session's charter+state as JSON. No
     # `response_format` is sent (lm_studio rejects json_object), so the prompt asks for JSON
     # and the code extracts it defensively — but the extraction still needs a COMPLETE object,

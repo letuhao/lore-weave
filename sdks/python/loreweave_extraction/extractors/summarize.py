@@ -29,6 +29,7 @@ from loreweave_context.budget import scale_by_window
 from loreweave_extraction._types import LLMClientProtocol
 from loreweave_extraction.errors import ExtractionError
 from loreweave_extraction.prompts import load_prompt
+from loreweave_llm.budget import OutputKind, call_budget
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +170,10 @@ async def _call_llm(
                 # text capped at 500 chars at the writer + LevelSummary
                 # Pydantic max_length=2000 → 1024 tokens output is
                 # generous even with reasoning-capable judges.
-                "max_tokens": 1024,
+                # Was a flat 1024. Same number today — `ceiling` pins it — but it now comes
+                # through the seam, so a change to the PROSE model reaches it instead of
+                # stopping at a literal nobody greps.
+                "max_tokens": call_budget(OutputKind.PROSE, ceiling=1024).max_output_tokens,
                 # Disable hidden reasoning — a reasoning model would otherwise
                 # spend the 1024-token budget thinking and return empty prose.
                 **_NO_THINKING,

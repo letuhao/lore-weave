@@ -81,7 +81,23 @@ ROOT = Path(__file__).resolve().parents[1]
 #: where the CEILING is the length control rather than a safety net (`fold`,
 #: `resummarize` — both bounded by the glossary rune cap, neither prompt carrying a
 #: length directive).
-UNATTRIBUTED_BASELINE = 13
+#: 2026-08-02 (final) — 13 -> **1**, after the author's ruling that a REQUIRED parameter is
+#: not an exemption: *"co bat buoc hay khong thi cung phai centralize de kiem soat"*. What
+#: that ruling changed, concretely: `structured_generate` now takes a `CallBudget` instead
+#: of a required int (a required INT still let every caller invent a number); the injected
+#: LLM seams in glossary_build/intent_fsm take a registry CODE, so they cannot be handed a
+#: number at all; and `body.max_output_tokens` may now only NARROW, never override, which
+#: was a real control hole — the deploy ceiling was only unreachable because three
+#: unrelated constants happened to be 32768.
+#: Detector work in the same pass: `_is_budget_param` (suffixed names — two signature
+#: defaults were hiding as `judge_max_tokens`/`edit_max_tokens`), an ITERATED helper
+#: binder (a four-hop chain resolved only its innermost layer in one pass), and a
+#: type-directed `.max_output_tokens` rule so an API can take the resolved OBJECT.
+#: THE ONE REMAINING: `self_heal.py:221` — `_chat`, whose budget arrives down a chain the
+#: binder resolves only partially. The value IS registry-derived at every origin; this is
+#: a detector limit, and it is left ON the ratchet rather than exempted, because an
+#: exemption is how a blind spot becomes permanent.
+UNATTRIBUTED_BASELINE = 1
 
 #: Budget calls that pass NO adaptive signal — no `target`, `language`, `reasoning` or
 #: `context_length`. Ratcheted, and it is a SECOND axis from the one above: a site here is
@@ -122,7 +138,10 @@ UNATTRIBUTED_BASELINE = 13
 #: go down would be the exact theatre this axis was redesigned to reject — the kind
 #: discards it and no resolved budget changes. They stay counted until a real signal
 #: exists, which is the honest state and the one that keeps costing something.
-NO_SIGNAL_BASELINE = 13
+#: 2026-08-02 (final) — **13 → 14**. Widened denominator again: the last drained sites
+#: became attributed and one of them (`session_translator`'s kernel default, which fires
+#: only when a caller supplies nothing) has no per-call fact to pass at that point.
+NO_SIGNAL_BASELINE = 14
 
 #: The kwargs that make a budget call adaptive. `floor`/`ceiling` are deliberately absent —
 #: they are per-call CONSTANTS from the registry, not per-call signal.
@@ -172,6 +191,17 @@ _SUBMIT = {"submit_and_wait", "submit_job"}
 _STREAM = {"stream", "submit_and_await_event"}
 _PAYLOAD_KWARGS = ("input", "payload", "body")
 _BUDGET_KEYS = {"max_tokens", "max_output_tokens", "max_out", "max_completion_tokens"}
+
+
+def _is_budget_param(name: str) -> bool:
+    """Is `name` a parameter carrying an OUTPUT budget?
+
+    Exact match, or a suffix of one. Deliberately NOT a substring match: `max_tokens_for` is
+    the resolver rather than a budget, and a hypothetical `prompt_max_tokens` would be an
+    INPUT packing budget — the different concept sharing a spelling that this gate's module
+    docstring says must not be swept in.
+    """
+    return name in _BUDGET_KEYS or any(name.endswith("_" + k) for k in _BUDGET_KEYS)
 
 #: The THIRD shape, now parsed: a raw `POST /internal/llm/stream` whose body is a plain dict
 #: literal, bypassing the SDK entirely. It was named as unscanned rather than silently
@@ -351,6 +381,14 @@ def _attributed(node: ast.AST, names: set[str], providers: set[str]) -> bool:
             fn = sub.func.attr if isinstance(sub.func, ast.Attribute) else getattr(sub.func, "id", "")
             if fn == "call_budget" or fn in providers:
                 return True
+        # `<anything>.max_output_tokens` — TYPE-directed, not a name guess. That attribute
+        # exists on exactly one class in this repo (`CallBudget`), so reading it is proof the
+        # value came through the seam no matter which variable holds it or how many function
+        # boundaries away it was resolved. This is what lets an API take the resolved OBJECT
+        # instead of an int: `structured_generate(budget: CallBudget)` cannot be handed a
+        # number at all, and the gate can still see that its payload is attributed.
+        if isinstance(sub, ast.Attribute) and sub.attr == "max_output_tokens":
+            return True
         if isinstance(sub, ast.Name) and (sub.id in names or sub.id in providers):
             return True
     return False
@@ -434,7 +472,11 @@ def _helper_params_by_call(tree: ast.AST, names: set[str], providers: set[str],
     out: dict[int, set[str]] = {}
     for fname, sites in calls.items():
         helper = funcs[fname]
-        params = {a.arg for a in helper.args.args + helper.args.kwonlyargs} & _BUDGET_KEYS
+        # `_is_budget_param`, not an exact-set intersection: `_compute_edits` names its two
+        # budgets `judge_max_tokens`/`edit_max_tokens`, so an exact match stopped the chain
+        # dead one hop from the top — the same blind spot that hid two signature defaults.
+        params = {a.arg for a in helper.args.args + helper.args.kwonlyargs
+                  if _is_budget_param(a.arg)}
         bound = set()
         for p in params:
             ok = True
@@ -497,9 +539,23 @@ def scan() -> tuple[list[dict], list[dict]]:
             local_budgets = _ssot_local_names_by_call(tree, providers)
             for _cid, _bound in local_budgets.items():
                 param_budgets.setdefault(_cid, set()).update(_bound)
-            for _cid, _bound in _helper_params_by_call(
-                    tree, names, providers, local_budgets).items():
-                param_budgets.setdefault(_cid, set()).update(_bound)
+            # ITERATED to a fixpoint. `_chat <- _judge <- _judge_vote <- _compute_edits <-
+            # run_self_heal` is four hops, and one pass can only resolve the innermost: each
+            # round teaches the binder one more layer, so a single pass leaves a correctly
+            # attributed budget looking like debt purely because of how deep its call chain is.
+            # Bounded by the number of functions, and it converges in 2-3 rounds in practice.
+            for _ in range(8):
+                grew = False
+                for _cid, _bound in _helper_params_by_call(
+                        tree, names, providers, local_budgets).items():
+                    before = len(param_budgets.get(_cid, ()))
+                    param_budgets.setdefault(_cid, set()).update(_bound)
+                    grew = grew or len(param_budgets[_cid]) != before
+                if not grew:
+                    break
+                # Feed what we learned back in, so the next round can see it.
+                for _cid, _bound in param_budgets.items():
+                    local_budgets.setdefault(_cid, set()).update(_bound)
 
             # Form 3 — a RAW provider-registry body, hand-rolled as a dict and posted to
             # `/internal/llm/stream` without the SDK. Same classification as the payload-dict
@@ -596,7 +652,13 @@ def scan() -> tuple[list[dict], list[dict]]:
                 pairs = list(zip(a.args[len(a.args) - len(a.defaults):], a.defaults))
                 pairs += list(zip(a.kwonlyargs, a.kw_defaults))
                 for arg, d in pairs:
-                    if arg.arg in _BUDGET_KEYS and isinstance(d, ast.Constant) \
+                    # SUFFIXED names too (`judge_max_tokens`, `edit_max_tokens`). The
+                    # exact-match set was the fourth blind spot this cycle found: a signature
+                    # default is the MOST common form of the defect, and naming the parameter
+                    # after WHICH call it sizes — the natural thing to do when one function
+                    # drives two — put it outside the check entirely. `run_self_heal` carried
+                    # 2200 and 1200 that way, and `sigs` read 0 repo-wide.
+                    if _is_budget_param(arg.arg) and isinstance(d, ast.Constant) \
                             and isinstance(d.value, int) and d.value != 0:
                         sigs.append({"file": rel, "line": n.lineno,
                                      "fn": n.name, "arg": arg.arg, "default": d.value})

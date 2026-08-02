@@ -19,6 +19,7 @@ import logging
 
 from loreweave_llm import StructuredGenerateError, parse_json_object, structured_generate
 from pydantic import BaseModel, Field, ValidationError
+from app.llm_budget import budget_for
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +135,7 @@ async def propose_schema(
             model_source=model_source,
             model_ref=model_ref,
             messages=build_messages(premise, genre),
-            max_output_tokens=_MAX_OUTPUT_TOKENS,
+            budget=budget_for("schema_propose", target=1),
             job_meta={"usage_purpose": "kg_schema_propose", "extractor": "schema_propose"},
         )
     except StructuredGenerateError as exc:  # transport / non-completed / empty

@@ -130,6 +130,54 @@ PROFILES: dict[str, CallProfile] = {
     # author's document, so the caller's own bound is the target.
     "material_search": CallProfile(OutputKind.STRUCTURED, 4096, 1500,
                                    why="up to max_candidates verbatim document lines"),
+    # A free-text deconstruction of ONE source chunk. PROSE: it stops mid-sentence rather
+    # than becoming unparseable, and its length tracks the chunk it is reading.
+    "motif_deconstruct": CallProfile(OutputKind.PROSE, 2048, 2048,
+                                     why="one chunk deconstructed into motif prose"),
+    # A json_schema-constrained abstraction object — STRUCTURED by the response_format the
+    # call site already sends, not by a guess about its shape.
+    "motif_abstraction": CallProfile(OutputKind.STRUCTURED, 4096, 1024,
+                                     why="one abstracted motif spec per mined pattern"),
+    "motif_mine_judge": CallProfile(OutputKind.VERDICT, 1536, 256,
+                                    why="a binary keep/drop score for one candidate"),
+
+    # ── glossary-build (app/services/glossary_build) ──────────────────────────────────────
+    # Every one of these was a POSITIONAL literal, invisible to both detectors.
+    "glossary_build_plan": CallProfile(OutputKind.STRUCTURED, 4096, 1600,
+                                       why="the planner's list of entities to build"),
+    "glossary_build_entity": CallProfile(OutputKind.STRUCTURED, 4096, 2200,
+                                         why="one entity's full attribute object"),
+    "glossary_build_batch": CallProfile(OutputKind.STRUCTURED, 4096, 2600,
+                                        why="a batch of entity objects of one kind"),
+    "glossary_build_outline": CallProfile(OutputKind.STRUCTURED, 4096, 900,
+                                          why="the section outline for a profile write-up"),
+    # PROSE: one section of an entity profile, written free-text and appended to a
+    # conversation. It stops mid-sentence rather than becoming unparseable.
+    "glossary_build_section": CallProfile(OutputKind.PROSE, 1024, 800,
+                                          why="one written section of an entity profile"),
+    "glossary_build_distill": CallProfile(OutputKind.STRUCTURED, 4096, 2200,
+                                          why="the profile distilled back into an object"),
+
+    # ── intent-FSM (app/services/intent_fsm) ──────────────────────────────────────────────
+    # One row, three call sites (ask / retry / repair) — they are the same call and the same
+    # 700, so giving them three codes would invent a distinction the code does not make.
+    "intent_fsm_ask": CallProfile(OutputKind.STRUCTURED, 4096, 700,
+                                  why="one slot's candidate set, grammar-constrained"),
+
+    # ── self-heal's two entry budgets ─────────────────────────────────────────────────────
+    # `run_self_heal(judge_max_tokens=2200, edit_max_tokens=1200)` were SIGNATURE DEFAULTS
+    # that no detector could see: the gate matched the parameter name EXACTLY, and naming a
+    # parameter after which call it sizes — the natural thing when one function drives two —
+    # put both outside the check. `sigs` read 0 repo-wide while these sat in the open.
+    "self_heal_judge": CallProfile(OutputKind.STRUCTURED, 4096, 2200,
+                                   why="the judge's findings list over one chapter"),
+    "self_heal_edit": CallProfile(OutputKind.EDIT, 2200, 1200,
+                                  why="one satellite edit to one flagged span"),
+    # The chapter stitch: scene drafts merged into one continuous chapter. PROSE, and the
+    # router still sizes it proportionally to the draft count — this row is the floor under
+    # that, and the budget a caller that supplies nothing now gets.
+    "stitch_chapter": CallProfile(OutputKind.PROSE, 2048, 2048,
+                                  why="the scene drafts merged into one chapter"),
     "extract_tracked_promises": CallProfile(OutputKind.STRUCTURED, 4096, 800,
                                             why="promises stated in the prose"),
     "score_promise_coverage": CallProfile(OutputKind.STRUCTURED, 4096, 1500,
@@ -210,6 +258,28 @@ def budget_for(code: str, *, target: int | None = None, language: str | None = N
         p.kind, target=target, language=language, reasoning=reasoning,
         context_length=context_length, floor=p.floor, **kw,
     )
+
+
+def narrowed_by_request(computed: int, requested: int | None) -> int:
+    """`computed`, narrowed by a caller-supplied `requested` — never raised by it.
+
+    The one place a REQUEST FIELD is allowed to touch an output budget, and the reason it is
+    a function rather than an idiom is that the idiom was `body.max_output_tokens or
+    <computed>`, repeated at four call sites, where the request won OUTRIGHT. It beat the
+    service's own sizing, and — the part that matters — it beat the DEPLOY CEILING
+    (`chapter_gen_max_tokens`, `stitch_max_tokens`). Nothing bad happened yet only because
+    `SCENE_OUTPUT_CEILING` and both of those settings are all 32768 today; lower either
+    setting for a small-context deployment and a request could walk straight past it.
+
+    A deploy ceiling a request can exceed is not a ceiling. Per the settings standard the
+    effective value is `AND(deploy_allows, user_asks)` — the user narrows WITHIN the ceiling,
+    never through it. A request asking for MORE than the service computed is honoured as
+    "no narrowing", not as an override: the model stops when the passage is done, so a bigger
+    cap would not have produced more text anyway — it would only have removed the guard.
+    """
+    if not requested or requested <= 0:
+        return computed
+    return min(computed, requested)
 
 
 def max_tokens_for(code: str, **kw) -> int:

@@ -27,6 +27,7 @@ from app.reasoning import wire_fields
 
 from app.packer.profile import BookProfile, style_directive
 from app.packer.sanitize import sanitize_guide, sanitize_prose_context
+from loreweave_llm.budget import OutputKind, call_budget
 
 logger = logging.getLogger(__name__)
 
@@ -449,13 +450,25 @@ def scene_output_budget(
     and you are billed for what it emitted), while under-provisioning truncates mid-sentence
     and you are billed for that too.
     """
-    words = target_words or DEFAULT_SCENE_TARGET_WORDS
-    lang = (source_language or "").split("-")[0].lower()
-    per_word = _TOKENS_PER_WORD.get(lang, _TOKENS_PER_WORD_DEFAULT)
-    prose = words * per_word * _OUTPUT_BUDGET_HEADROOM
-    effort = (getattr(reasoning, "effort", None) or "none").lower()
-    thinking = prose * _REASONING_ALLOWANCE.get(effort, _REASONING_ALLOWANCE_UNKNOWN)
-    return max(1, min(ceiling, int(prose + thinking)))
+    # DELEGATED, 2026-08-02. Everything below this line used to be computed here from
+    # LOCAL copies of the per-word table, the headroom factor and the reasoning allowance —
+    # and those copies were IDENTICAL to the SDK's, value for value. Not a variant: a
+    # duplicate, and the sixth independent sizing model this cycle found. What it was missing
+    # is what `call_budget` adds around the same arithmetic: the kind's floor (so a tiny
+    # target cannot resolve to a budget too small to hold a sentence) and the context-window
+    # clamp. Adoption can only RAISE the result, and only where the old formula fell under
+    # the PROSE floor of 1024 — pinned by the tests in test_scene_beats_drafting.py.
+    #
+    # The signature stays: `target_words`/`source_language`/`reasoning`/`ceiling` is what the
+    # callers hold, and it maps one-to-one onto the seam's `target`/`language`/`reasoning`/
+    # `ceiling`.
+    return call_budget(
+        OutputKind.PROSE,
+        target=target_words or DEFAULT_SCENE_TARGET_WORDS,
+        language=(source_language or "").split("-")[0].lower(),
+        reasoning=reasoning,
+        ceiling=ceiling,
+    ).max_output_tokens
 
 
 def build_messages(

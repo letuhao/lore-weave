@@ -42,6 +42,7 @@ from app.clients.llm_client import LLMClient
 from app.engine.prose_doc import ATX_HEADING_RE
 from app.reasoning import wire_fields
 from app.packer.profile import BookProfile
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +249,10 @@ def _format_seam_notes(
 async def stitch_chapter(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     scene_drafts: list[str], chapter_intent: str, profile: BookProfile,
-    max_tokens: int, max_input_chars: int,
+    # `None` ⇒ the `stitch_chapter` registry row. The router still sizes it proportionally
+    # to the draft count and narrows within the deploy ceiling; this is what a caller that
+    # supplies nothing now gets, instead of the number being settled off-module.
+    max_tokens: int | None = None, max_input_chars: int,
     reasoning: ReasoningDirective | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[str, str | None]:
@@ -260,6 +264,12 @@ async def stitch_chapter(
     drafts = [d for d in scene_drafts if d and d.strip()]
     if not drafts:
         return "", None
+    # Resolved HERE rather than in the signature: a default is evaluated once at import and
+    # could never see how many drafts it is merging. ~700 words per scene draft is the same
+    # proportional idea the router uses, expressed as a PROSE target the seam can size.
+    max_tokens = max_tokens or max_tokens_for(
+        "stitch_chapter", target=len(drafts) * 700,
+        language=profile.source_language, reasoning=reasoning)
     kept, elided = cap_scene_drafts(drafts, max_input_chars)
     if elided:
         logger.info("stitch input capped: kept %d/%d scene drafts (elided %d middle)",
