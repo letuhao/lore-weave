@@ -253,9 +253,47 @@ the most chapters, and summarise its first chapter."*
    … ends `interrupted` after 5 calls
 ```
 
-### What `tool_list` actually handed the model
+### ⚠️ CORRECTION (2026-08-04) — "no descriptions" was my measurement error
 
-35 names, alphabetically ordered, **no descriptions**. Checked against the live catalog:
+The claim below that `tool_list` returned **bare names** is **wrong**. It was an artifact of the SQL
+used to inspect the payload, which `string_agg`'d only the `name` field. The real payload per entry is:
+
+```json
+{"name": "book_audio_generate", "tier": "W", "deprecated": true,
+ "description": "Propose generating chapter audio narration (priced) … DEPRECATED: spending money on
+                 narration is a MANUAL UI action — the agent does not bill."}
+```
+
+**Measured properly: 3,393 tokens · 35 tools · 19 flagged `deprecated: true` (54%).**
+
+And it is worse for the theory, not better. `book_list_chapters` — the tool the model chose — arrived
+carrying `deprecated: true` **and** the sentence *"DEPRECATED: use `book_list` with kind=chapters — the
+one 'ls' tool, paged + self-terminating."* Meanwhile `book_list` was present, unflagged, its
+description opening *"List REFERENCES only (the 'ls') … `kind` selects what: books (default; the
+caller's library)"* — the exact answer, requiring no arguments at all.
+
+**The model was told the tool was retired, told what to use instead, and used the retired one anyway.**
+
+So the corrected diagnosis of this capture is **not** "guidance was missing" but:
+
+1. **`include_deprecated` defaults to `true`, and the cost is now measured.** ~1,840 of the 3,393
+   tokens (54%) describe tools the model must not use. The payload is **46% signal**. This is
+   `audits-01` §5.1's defect with a price tag.
+2. **Labeling is not filtering — and OQ5's premise is falsified on this evidence.** The 2026-07-09
+   decision was that a deprecated tool should be *labeled, not hidden* (reversing CAT-4). Here the
+   label was present, correct, actionable, and **ignored**. A `deprecated: true` field and a
+   "use X instead" sentence did not prevent selection.
+3. **This capture is a SELECTION failure, not an id-provenance failure.** `book_list` needs no
+   identifier. The earlier attribution of this trace to R17/G3 was over-reach on my part; G3 stands on
+   P8's evidence (a different dataset, different tools), not on this one.
+
+**What this trace actually argues for:** R14.1 (a hard result bound — 35 entries in one 3.4k-token
+dump is not a listing), fixing the `include_deprecated` default, and reconsidering OQ5 — because the
+first live test of "label, don't hide" failed.
+
+### What `tool_list` handed the model (original text, superseded on the "no descriptions" point)
+
+35 entries, alphabetically ordered. Checked against the live catalog:
 
 - **19 of the 35 are `visibility:"legacy"` — 54% of the payload is retired tools.**
 - **Not one of the 19 declares `superseded_by`.** Even a model that recognised them as retired could
