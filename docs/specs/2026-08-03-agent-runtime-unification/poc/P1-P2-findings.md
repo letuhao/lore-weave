@@ -905,6 +905,79 @@ and named it in the only field available.
 
 ---
 
+## P15 — Shape 5: drop the atomic tools, keep search + coarse capabilities *(PO, offered as a fallback — the evidence says it is not one)*
+
+The proposal: **delete the atomic edit tools.** Give the model only (a) search tools and (b) a handful
+of coarse capabilities that take a **plain-text instruction** and run a whole job to completion via a
+sub-agent — PlanForge end-to-end, world setup, glossary build. Tool count drops to a few dozen, the
+system prompt goes static, and deeper customisation moves to user-configured skills/workflows in the
+session settings, trading cache for flexibility.
+
+**It was offered as "only if we give up." The measurements do not support treating it that way.**
+
+### Why the evidence favours it
+
+The root-cause chain's head is **identifier resolution**: 57% of real tool errors are the model unable
+to name a thing. Sized against the catalog:
+
+| | current tools |
+|---|---|
+| total non-retired | **198** |
+| **require a caller-supplied id** | **112 (57%)** |
+| writes (tier A/W) — collapsible into coarse capabilities | **118** |
+| reads (tier R) | 80, of which **39 still require an id** |
+
+**The share of the surface demanding an id (57%) equals the share of failures that are about ids
+(57%).** A capability that takes **text** does not have the failure mode at all — it is eliminated by
+construction, not mitigated.
+
+### Tested on the target model — and it has a specific, real failure mode
+
+16-tool surface (8 domain searches + 8 `run_*` capabilities, ~1,549 tokens), a genuine multi-step
+Vietnamese request meaning *"my book Mị Đế is only an idea — build its world then plan the plot."*
+<!-- doc-language-gate: ok -- "Mị Đế" is the dogfood book's proper name, an identifier used across this repo -->
+
+| arm | system prompt | result |
+|---|---|---|
+| **F** | describes the tools normally | ❌ **0/3** — answers in fluent prose, `finish_reason: stop`, no tool call |
+| **G** | adds a hard rule: *"if the user asks you to BUILD, PLAN, SET UP… you MUST call a `run_*` tool. Prose instead of a tool call is a failure."* | ✅ **3/3** — `run_world_setup`, request passed verbatim, and world chosen before plot |
+
+**The native failure mode of a coarse surface is prose-instead-of-action.** A `run_*` tool taking free
+text is, to the model, nearly indistinguishable from *"just answer it yourself"* — narrow atomic tools
+at least coerce action through narrow semantics. This is **exactly** the incident the repo already
+recorded for `co_write`: *"6,948 characters of plan prose, `finish_reason=stop`, ZERO tool calls."*
+
+The mitigation is cheap and it works — but it must be a **gate, not a hope**, because the identical
+failure has already shipped once under the identical conditions.
+
+### Honest ledger
+
+**For:** eliminates the 57% failure class by construction · 118 writes collapse · ~20 tools is inside
+the measured comfort zone (arms A and C: 1 tool and 35 tools both perfect) · static system prompt
+satisfies R19 · the sub-agent boundary already exists — `subagent_runtime.py`'s `tool_scope` is
+**the one place in this repo where a capability genuinely owns a tool whitelist**, enforced at both
+advertise and execute time (audit §1d).
+
+**Against:** prose-instead-of-action is the default without steering (F: 0/3) · the **39 id-requiring
+reads must also be consolidated** to text-in/references-out, or the id class survives the refactor ·
+the problem *moves* into the sub-agents, which need their own scoped surfaces and their own
+correctness · fine-grained control is lost, and the PO's answer — user-configured skills/workflows per
+session — reintroduces prefix volatility for those sessions.
+
+### Where it sits among the four shapes
+
+This is **not a fifth option; it is shape 1 (fixed per use-case) made viable**, because it removes the
+reason the fixed set had to be large. Combined with shape 4's arrival channel for the long tail, it is
+the strongest candidate on the evidence:
+
+> a **small static core** (search per domain + coarse capabilities) — cache-stable, id-free, measured
+> to work — plus **arrival-in-conversation** (P12) for anything beyond it, plus **user curation**
+> (shape 3) as the explicit override.
+
+It should be evaluated as a leading design, not held in reserve.
+
+---
+
 ## 3 · What P1 and P2 settle, and what they do not
 
 | DESIGN question | settled by | answer |
