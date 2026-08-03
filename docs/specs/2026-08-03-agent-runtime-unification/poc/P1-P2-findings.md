@@ -438,6 +438,89 @@ nothing stops it. R13 makes changing a tool safe; **R17 makes creating one hones
 
 ---
 
+## P8 — 🔴 THE ROOT CAUSE: 57% of real tool failures are the model unable to name a thing
+
+Continuing the dig, two questions: which tools never succeed, and why.
+
+### Twelve tools ship with a 0% success rate
+
+Across all real usage, excluding breaker noise, counting only tools with ≥8 genuine attempts:
+
+| tool | successes / real attempts |
+|---|---|
+| **`glossary_propose_entity_edit`** | **0 / 101** |
+| `composition_list_outline` | 0 / 33 |
+| `composition_conformance_run` | 0 / 28 |
+| `translation_coverage` | 0 / 22 |
+| `settings_provider_inventory` | 0 / 22 |
+| `composition_get_mine_job` | 0 / 21 |
+| `jobs_get` | 0 / 19 |
+| `book_chapter_delete` | 0 / 19 |
+| `kg_propose_edge` | 0 / 17 |
+| `translation_job_status` | 0 / 13 |
+| `kg_build_graph` | 0 / 13 |
+| `composition_authoring_run_start` | 0 / 10 |
+
+Near-zero alongside them: `glossary_list_chapter_links` **1/264**, `composition_arc_suggest` 2/46,
+`glossary_get_entity` **14/197 (7%)**.
+
+**The liveness matrix reports 211/224 passing and the ship gate reports "0 tools blocked."** It
+measures whether a tool *can* execute under a synthetic probe, never whether it *ever* succeeds in
+real use. Twelve tools at 0% is the falsification.
+
+### They all fail the same way
+
+| tool | dominant failure |
+|---|---|
+| `glossary_propose_entity_edit` | 66× `entity_id must be a real UUID, got 'place…'` · 24× `book_id … got 'current…'` |
+| `translation_coverage` | 22× `book_id: Field required (you sent a dict)` |
+| `jobs_get` | 19× `service` + `job_id` Field required |
+| `settings_provider_inventory` | 22× missing `provider_credential_id` |
+| `glossary_list_chapter_links` | 201× `entity_id must be a UUID` |
+
+**Every one is an identifier the model could not obtain.** Measured over all 1,688 real tool errors:
+
+> **960 of 1,688 — 57% — are identifier-resolution failures.**
+
+### The vocabulary the model invents for "the thing we are discussing"
+
+| count | value it sent |
+|---|---|
+| 60 | `placeholder_id_1` |
+| 18 | `current_book_id_placeholder` |
+| 6 | `current_book_id` |
+| 5 | `placeholder_id` |
+| 2 | `0` |
+| 1 | `placeholder` |
+
+Plus `"all"` from the live capture. **The model is writing, into a UUID field, that it knows it needs
+the current book id and does not have it.** That is not a hallucination; it is a request for a
+capability the surface does not offer, expressed in the only channel available to it.
+
+Worst-affected arguments: `entity_id` (431), `book_id` (182), `job_id` (32),
+`provider_credential_id` (22).
+
+### The whole loop, end to end, with a number at every step
+
+| # | step | measure |
+|---|---|---|
+| 1 | tools require an id and never say where to get it | **60%** of the catalog (G3) |
+| 2 | → identifier-resolution failures | **57%** of all real tool errors |
+| 3 | → the model invents a placeholder | `placeholder_id_1`, `current_book_id_placeholder`, `"all"` |
+| 4 | → which fails deterministically, every time | **12 tools at 0%**, one at 0/101 |
+| 5 | → so it retries | **74%** of all calls are byte-identical repeats |
+| 6 | → breakers fire and *argue* instead of withholding | **58%** of "errors" are our own messages |
+| 7 | → the turn never terminates | `finish_reason: interrupted` |
+
+**This is one defect with six symptoms, and R17/G3 sits at the head of it.** Every other requirement
+in this document treats a step further down the chain.
+
+It also settles the PO's question about model strength definitively: a model that writes
+`current_book_id_placeholder` has understood the task, identified exactly what it lacks, and named it.
+**No increase in model capability fixes a missing capability in the surface.**
+
+---
+
 ## 3 · What P1 and P2 settle, and what they do not
 
 | DESIGN question | settled by | answer |
