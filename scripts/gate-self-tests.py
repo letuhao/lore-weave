@@ -152,12 +152,28 @@ def run_all(scripts: list[Path], run=None) -> int:
     failed = []
     for p in scripts:
         t0 = time.time()
-        out = runner(p)
+        # **A timeout is a FINDING about that gate, not the end of the run.**
+        # The timeout was configured and never caught, so one hanging gate
+        # aborted THIS driver -- the one the pre-commit hook runs across 47
+        # services -- with a raw traceback, and the gates after it were reported
+        # by nothing at all. The mutation harness carries this guard and says so
+        # in a comment about itself; the same rule was never written here.
+        try:
+            out = runner(p)
+        except subprocess.TimeoutExpired:
+            ms = int((time.time() - t0) * 1000)
+            print(f"  SLOW {p.name:<44} {ms:>6}ms -> no verdict in {CHILD_TIMEOUT_S}s")
+            failed.append(p.name)
+            continue
         ms = int((time.time() - t0) * 1000)
         ok = out.returncode == 0
         print(f"  {'ok  ' if ok else 'FAIL'} {p.name:<44} {ms:>6}ms")
         if not ok:
             failed.append(p.name)
+            # **The reason is PRINTED.** Swallowing it leaves a contributor with
+            # a gate name and no way to see what failed; the figures gate has a
+            # case for exactly this and this side had none, so suppressing the
+            # child's output here survived every mutation.
             for line in (out.stdout + out.stderr).splitlines():
                 if line.strip():
                     print(f"        {line}")
@@ -310,6 +326,46 @@ def self_test() -> int:
         print("  FAIL a green gate failed the run")
     else:
         print("  ok  a green gate passes")
+
+    # **A hanging gate is a FINDING, not the end of the run.** The timeout was
+    # configured and never caught here, so one gate that never returns aborted
+    # THIS driver -- the one the pre-commit hook runs -- with a raw traceback,
+    # and the gates after it were reported by nothing. The mutation harness
+    # carries the guard and its comment describes this exact failure; the rule
+    # was simply never written on this side.
+    def _hangs(_):
+        raise subprocess.TimeoutExpired("child", CHILD_TIMEOUT_S)
+
+    printed = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(printed), contextlib.redirect_stderr(io.StringIO()):
+            rc = run_all([Path("a-gate.py"), Path("b-gate.py")], run=_hangs)
+    except subprocess.TimeoutExpired:
+        failures += 1
+        rc, printed = None, io.StringIO()
+        print("  FAIL a hanging gate aborted the whole run")
+    if rc == 0:
+        failures += 1
+        print("  FAIL a hanging gate did not fail the run")
+    elif rc is not None:
+        seen = printed.getvalue().count("no verdict")
+        if seen != 2:
+            failures += 1
+            print(f"  FAIL {seen} gate(s) reported after a hang, want 2")
+        else:
+            print("  ok  a hanging gate is a finding and the run continues past it")
+
+    # ...and the failing child's OUTPUT is printed. Swallowing it leaves a
+    # contributor with a gate name and no way to see what failed; the figures
+    # gate has a case for exactly this and this side had none.
+    reason = io.StringIO()
+    with contextlib.redirect_stdout(reason), contextlib.redirect_stderr(io.StringIO()):
+        run_all([Path("a-gate.py")], run=lambda _: _Red())
+    if _Red.stdout not in reason.getvalue():
+        failures += 1
+        print("  FAIL a red gate's reason was not printed")
+    else:
+        print("  ok  a red gate's reason is printed, not just its name")
 
     if failures:
         print(f"\ngate-self-tests --self-test: {failures} rule(s) did not behave")

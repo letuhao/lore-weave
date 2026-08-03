@@ -325,6 +325,24 @@ def _pragma_covers(lines: list[str], idx: int) -> bool:
     return any(PRAGMA_RE.search(lines[k]) for k in range(lo, idx + 1))
 
 
+GIT_TIMEOUT_S = 120
+
+
+def _git(argv: list[str]) -> subprocess.CompletedProcess:
+    """A bounded `git` child, with a timeout reported as a failed run.
+
+    Every `git` call here was unbounded, so one that never returns hangs the
+    pre-commit hook with no output. A timeout is reported as a non-zero return
+    code, which every caller already handles.
+    """
+    try:
+        return subprocess.run(argv, cwd=REPO, capture_output=True, text=True,
+                              timeout=GIT_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            argv, 124, "", f"`{' '.join(argv)}` did not answer within {GIT_TIMEOUT_S}s")
+
+
 class Tree:
     """The repo's tracked files, indexed for suffix and basename lookup."""
 
@@ -341,9 +359,10 @@ class Tree:
 
     @classmethod
     def from_git(cls) -> "Tree":
-        out = subprocess.run(
-            ["git", "ls-files"], cwd=REPO, capture_output=True, text=True
-        )
+        # `_git` bounds the child. An unbounded `git` here hangs the pre-commit
+        # hook with no output at all -- the failure the sibling harness names in
+        # a comment about itself and nobody wrote on this side.
+        out = _git(["git", "ls-files"])
         if out.returncode != 0:
             print("citation-gate: `git ls-files` failed", file=sys.stderr)
             sys.exit(2)
@@ -351,10 +370,7 @@ class Tree:
         # Untracked-but-present files count too: a citation added in the same
         # commit that creates its target must resolve, or the gate would refuse
         # every honest new-crate commit.
-        extra = subprocess.run(
-            ["git", "ls-files", "--others", "--exclude-standard"],
-            cwd=REPO, capture_output=True, text=True,
-        )
+        extra = _git(["git", "ls-files", "--others", "--exclude-standard"])
         tracked += [p.strip().replace("\\", "/") for p in extra.stdout.splitlines() if p.strip()]
         return cls(tracked)
 
@@ -676,10 +692,7 @@ def _strict_docs() -> list[str]:
 
 
 def _staged_added_lines() -> dict[str, set[int]]:
-    out = subprocess.run(
-        ["git", "diff", "--cached", "-U0", "--", DOC_ROOT],
-        cwd=REPO, capture_output=True, text=True,
-    )
+    out = _git(["git", "diff", "--cached", "-U0", "--", DOC_ROOT])
     added: dict[str, set[int]] = {}
     current: str | None = None
     lineno = 0

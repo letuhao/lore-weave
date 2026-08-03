@@ -102,8 +102,7 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          "                if any(a <= mo.start() < b for a, b in spans):",
          "                if any(mo.group(0) in text[a:b] for a, b in spans):"),
         ("the 6-BUILD scope row deleted",
-         '    (RUN_STATE, "### 6-BUILD", END("slice-board"), frozenset({"rust_tests"})),',
-         ""),
+         '    (RUN_STATE, "### 6-BUILD", END("slice-board"),', ""),
         ("the _index.md scope row deleted",
          '    (INDEX, "# Actor Hub", END("index"),', "        ("),
         ("the red-build guard removed",
@@ -227,8 +226,55 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # CONTENT blanking, so an unterminated fence refused the commit while
         # naming a cause that was not the cause.
         ("an unpaired fence opener blankets the rest of the block again",
-         "    if in_fence is None and _unpaired_opener(lines) is not None:",
-         "    if False:"),
+         "    unpaired_at = None if in_fence is not None else _unpaired_opener(lines)",
+         "    unpaired_at = None"),
+        # R16/B1 -- the predicate asked about the DOCUMENT and the action masked
+        # every fence in it, so one unterminated fence un-fenced every correctly
+        # paired block above: three measured refusals on the shipped documents.
+        ("the unpaired mask covers the whole text again",
+         "        lines = lines[:unpaired_at] + [",
+         "        lines = lines[:0] + ["),
+        ("the unpaired scan stops seeing tilde fences",
+         "    open_mark, at = None, None", "    open_mark, at = '~~~', None"),
+        ("the caller's fence state stops suppressing the mask",
+         "    unpaired_at = None if in_fence is not None else _unpaired_opener(lines)",
+         "    unpaired_at = _unpaired_opener(lines)"),
+        # R16/M8 -- markdown's two indent forms, one cased and its twin not, in
+        # the round whose headline is exactly that.
+        ("the tab half of the indent rule",
+         'INDENT_CODE = re.compile(r"^(?: {4}|\\t)")',
+         'INDENT_CODE = re.compile(r"^(?: {4})")'),
+        ("the tab half of the blockquote prefix",
+         'QUOTE_PREFIX = re.compile(r"^[ \\t>]*")',
+         'QUOTE_PREFIX = re.compile(r"^[ >]*")'),
+        # R16/M9 -- "every scope ends on a NAMED sentinel" was made true by
+        # editing data, with nothing asserting the shape.
+        ("a scope end reverts to a heading",
+         '    (INDEX, "# Actor Hub", END("index"),',
+         '    (INDEX, "# Actor Hub", "\\n## Read this to REUSE",'),
+        # R16/M5 -- the `must_claim` surplus was recorded as closing the
+        # sentinel-moved-up hole and does not: it is keyed by measurement KEY,
+        # so a SECOND occurrence of a key already named is not surplus.
+        ("the orphaned tail is never scanned",
+         "    for (doc, start_marker), (tail, opens) in tails.items():",
+         "    for (doc, start_marker), (tail, opens) in []:"),
+        ("the tail runs to the next heading only",
+         'TAIL_END_RE = re.compile(r"^[ \\t>]*(?:#{1,6}[ \\t]|\\|)")',
+         'TAIL_END_RE = re.compile(r"^[ \\t>]*(?:#{1,6}[ \\t])")'),
+        # R16/minor 1 -- the detector's SHAPE was its own case's shape.
+        # R16 -- the widened shape STILL missed `**0\n> warnings**`, the
+        # slice board's copy of a claim measured FALSE at round 12 and corrected
+        # in the header block only. The sibling `contract_substrate_lines` pattern
+        # in that same file has carried the wrap tolerance from the start.
+        ("the bolded-figure shape loses its wrap tolerance",
+         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*\\n?[ \\t]*>?[ \\t]*[A-Za-z%][\\w%-]*)?\\*\\*")',
+         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*[A-Za-z%][\\w%-]*)?\\*\\*")'),
+        ("the bolded-figure shape narrows to a bare integer",
+         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*\\n?[ \\t]*>?[ \\t]*[A-Za-z%][\\w%-]*)?\\*\\*")',
+         '    r"\\*\\*\\d+\\*\\*")'),
+        ("the dp-kernel rule stops reading the slice board's phrasing",
+         r'    (r"`dp-kernel --lib` \*\*(\d+)(?: passed)?\*\*", "dp_kernel_lib_tests",',
+         r'    (r"`dp-kernel --lib` \*\*(\d+)\*\*", "dp_kernel_lib_tests",'),
         ("the unpaired-opener scan never finds one",
          "    return at if open_mark is not None else None", "    return None"),
         # O-R15-3 -- `must_claim` was a lower bound while its sibling
@@ -343,6 +389,24 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
     ],
     "gate-self-tests": [
         ("a red gate no longer fails the run", "    if failed:", "    if False:"),
+        # R16/M4 -- ONE hanging gate aborted THIS driver, the one the pre-commit
+        # hook runs, with a raw traceback; the gates after it were reported by
+        # nothing. The mutation harness carries the guard and its comment
+        # describes this exact failure, about itself. Never written here.
+        ("the driver's timeout handler removed",
+         "        except subprocess.TimeoutExpired:\n"
+         "            ms = int((time.time() - t0) * 1000)",
+         "        except ValueError:\n"
+         "            ms = int((time.time() - t0) * 1000)"),
+        ("a hanging gate stops failing the run",
+         '            print(f"  SLOW {p.name:<44} {ms:>6}ms -> no verdict in '
+         '{CHILD_TIMEOUT_S}s")\n            failed.append(p.name)',
+         '            print(f"  SLOW {p.name:<44} {ms:>6}ms -> no verdict in '
+         '{CHILD_TIMEOUT_S}s")',
+         ),
+        ("the failing child's reason is swallowed",
+         "            for line in (out.stdout + out.stderr).splitlines():",
+         "            for line in []:"),
         ("discovery stops excluding this driver and scratch copies",
          '        if p.name == SELF or p.name.startswith("."):\n            continue',
          "        if False:\n            continue"),
@@ -434,8 +498,8 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # hook runs `--self-test`, so an uninjectable writer meant 30 in-place
         # writes to the shipped crate sources on every commit.
         ("the rust writer stops being injectable",
-         "            (write or _write)(path, src.replace(find, repl, 1), like=raws[rel])",
-         "            _write(path, src.replace(find, repl, 1), like=raws[rel])"),
+         "            (write or _write)(path, mutated, like=raws[rel])",
+         "            _write(path, mutated, like=raws[rel])"),
         # B2 -- `--rust --only <nothing>` executed zero mutations and printed
         # "every Rust mutation reddened its test" with exit 0: the sole signal
         # of the CI job that mode exists for, reporting success having done
@@ -443,6 +507,28 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("the empty-filter guard stops seeing the rust table",
          "    rows_for = (lambda: RUST_MUTATIONS) if args.rust else (",
          "    rows_for = (lambda: []) if args.rust else ("),
+        # R16/M2 -- the parity table demanded a row aimed at EACH half and had
+        # one `any` across both, so three of its four properties were rowed on
+        # one side only. These four close the gap it was hiding.
+        ("the gate anchor search stops excluding the tables",
+         "    at = _find_one(text, find)", "    at = text.find(find)"),
+        ("the gate null-mutation check removed",
+         '        if _read(copy) == text:', "        if False:"),
+        ("the RUST anchor search stops excluding the tables",
+         "            at = _find_one(src, find)", "            at = src.find(find)"),
+        ("the RUST compile-failure guard removed",
+         '            if red and ("error[E" in noise or "could not compile" in noise):',
+         "            if False:"),
+        ("the RUST null-mutation check removed",
+         "            if mutated == src:", "            if False:"),
+        ("the unbounded-child sweep stops looking at the timeout",
+         '                     if not any(k.arg == "timeout" for k in n.keywords)]',
+         "                     if False]"),
+        ("the unbounded-child sweep stops looking for a handler",
+         "        elif not handles:", "        elif False:"),
+        ("the unbounded-child sweep covers no gate",
+         "    guarded = sorted(set(MUTATIONS) | {\"gate-self-tests\"})",
+         "    guarded = []"),
         ("the child environment is not forwarded",
          "            env=child_env))", "            env=None))"),
         ("the dirty-tree refusal removed",
@@ -544,12 +630,12 @@ RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
      "crates/actor-hub/src/registry.rs",
      "        self.check_layer(row.fold_layer)?;\n        if row.divisor == 0 {",
      "        let _ = self.check_layer(row.fold_layer);\n        if row.divisor == 0 {",
-     "a_derivation_on_an_undeclared_fold_layer_is_refused"),
+     "registry::a_derivation_on_an_undeclared_fold_layer_is_refused"),
     ("the zero-divisor refusal removed",
      "crates/actor-hub/src/registry.rs",
      "        if row.divisor == 0 {\n            return Err(RowRefusal::ZeroDivisor);\n        }",
      "        if false {\n            return Err(RowRefusal::ZeroDivisor);\n        }",
-     "a_zero_divisor_and_a_contradictory_bound_are_refused"),
+     "registry::a_zero_divisor_and_a_contradictory_bound_are_refused"),
     ("Accumulator.wanted reports the EMITTED value",
      "crates/actor-hub/src/fold.rs",
      "        capped.push(Capped { quantity: q, site: CapSite::Emit, wanted: r.value, emitted: out });",
@@ -570,24 +656,48 @@ RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
      "            (source_value as i64).saturating_mul(self.factor_milli as i64) / (self.divisor as i64)",
      "            (source_value as i64).saturating_mul(self.factor_milli as i64).div_euclid(self.divisor as i64)",
      "a_negative_derivation_truncates_toward_zero"),
-    # M10 -- `order_key`'s middle component is the submitting plugin. Layer and
-    # index each had a case; the plugin did not, so a constant survived the whole
+    # M10 -- `order_key`'s middle component is the submitting plugin. The LAYER
+    # half had a case and the plugin did not, so a constant survived the whole
     # 293-test suite. One plugin cannot show a key that sorts by plugin.
+    #
+    # **The row used to say the index half was cased too. It was not** -- a
+    # round-16 sweep proved `usize::MAX / 2 + i` -> `- i` a survivor, so the row
+    # asserting the coverage was itself the miss. Both halves are cased now.
     ("order_key stops sorting by submitting plugin",
      "crates/actor-hub/src/fold.rs",
      "    (c.fold_layer.get(), c.source.get(), idx)",
      "    (c.fold_layer.get(), 0, idx)",
      "contributions_at_one_layer_are_ordered_by_submitting_plugin"),
+    ("order_key reverses two derivations at one layer",
+     "crates/actor-hub/src/fold.rs",
+     "        RowRef::Derivation(i) => usize::MAX / 2 + i,",
+     "        RowRef::Derivation(i) => usize::MAX / 2 - i,",
+     "two_derivations_from_one_plugin_at_one_layer_keep_submission_order"),
+    # R16/minor 5 -- the SOURCE-before-TARGET precedence in this same function
+    # has a case; the LAYER-before-DIVISOR pair had none, so swapping them
+    # reported `ZeroDivisor` where the contract reports `UndeclaredFoldLayer`.
+    # A refusal REASON is the whole product of substrate §7.
+    ("the layer check moves after the divisor check",
+     "crates/actor-hub/src/registry.rs",
+     "        self.check_layer(row.fold_layer)?;\n"
+     "        if row.divisor == 0 {\n"
+     "            return Err(RowRefusal::ZeroDivisor);\n"
+     "        }",
+     "        if row.divisor == 0 {\n"
+     "            return Err(RowRefusal::ZeroDivisor);\n"
+     "        }\n"
+     "        self.check_layer(row.fold_layer)?;",
+     "registry::an_undeclared_layer_is_reported_before_a_zero_divisor"),
     ("an exact bound min==max wrongly refused",
      "crates/actor-hub/src/registry.rs",
      "            && b.min > b.max",
      "            && b.min >= b.max",
-     "an_exact_bound_is_legal_and_pins_the_contribution"),
+     "registry::an_exact_bound_is_legal_and_pins_the_contribution"),
     ("the table-length boundary weakened to >",
      "crates/actor-hub/src/registry.rs",
      "                if q.ordinal.index() >= table.len() {",
      "                if q.ordinal.index() > table.len() {",
-     "an_ordinal_exactly_at_the_table_length_is_refused"),
+     "registry::an_ordinal_exactly_at_the_table_length_is_refused"),
 ]
 
 
@@ -595,13 +705,20 @@ RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
 def _rust_dirty() -> list[str]:
     """Files this harness would mutate that already carry uncommitted changes."""
     files = sorted({rel for _, rel, _, _, _ in RUST_MUTATIONS})
-    out = subprocess.run(["git", "status", "--porcelain", "--", *files],
-                         cwd=REPO, capture_output=True, text=True)
+    try:
+        out = subprocess.run(["git", "status", "--porcelain", "--", *files],
+                             cwd=REPO, capture_output=True, text=True,
+                             timeout=CHILD_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        # Refusing is the safe direction: this answers "may I mutate the crate
+        # in place", and an unanswered question must not read as yes.
+        return ["<git status did not answer within "
+                f"{CHILD_TIMEOUT_S}s — refusing to mutate>"]
     return [l[3:].strip() for l in out.stdout.splitlines() if l.strip()]
 
 
 def run_rust(only: str | None = None, run=None, write=None,
-             baseline=None) -> tuple[int, str | None]:
+             baseline=None, rows=None, root=None) -> tuple[int, str | None]:
     """(survivors, refusal). **Two separate answers, because they were one.**
 
     The first version returned `2` as a refusal sentinel and `main` read the
@@ -610,12 +727,17 @@ def run_rust(only: str | None = None, run=None, write=None,
     doubles as an error code reports a defect that does not exist, which is the
     same class as a check reporting coverage it does not have.
     """
-    rows = [r for r in RUST_MUTATIONS if only is None or only.lower() in r[0].lower()]
+    # `rows=`/`root=` are injectable for the same reason `run=`/`write=` are:
+    # this half read the real crate through `REPO / rel`, so the two guards
+    # added to it could not be DRIVEN by a case at all -- and a guard that
+    # cannot be driven is how this half came to lack three its twin has.
+    rows = [r for r in (RUST_MUTATIONS if rows is None else rows)
+            if only is None or only.lower() in r[0].lower()]
+    root = root or REPO
     dirty = _rust_dirty()
     if dirty and run is None:
         return 0, ("refusing to mutate files that are already modified: "
                    f"{dirty}. Commit or stash them first.")
-    print(f"\ncrates/actor-hub  ({len(rows)} Rust mutation(s))")
     # The Rust half needs the same guard: a crate whose suite is already red
     # reddens every mutation for free.
     # **One decision, reached by both paths.** With the injected baseline and the
@@ -654,10 +776,16 @@ def run_rust(only: str | None = None, run=None, write=None,
     green = 0
     try:
         for label, rel, find, repl, test in rows:
-            path = REPO / rel
+            path = root / rel
             raws.setdefault(rel, _raw(path))
             src = originals.setdefault(rel, _read(path))
-            if src.count(find) != 1:
+            # `_find_one`, not a raw count: the twin has used the table-aware
+            # form since a self-mutating file found its own anchors twice, and
+            # this side kept counting raw. Rust sources carry no Python tables,
+            # so the two agree today -- which is exactly why the asymmetry
+            # survived, and exactly why it must not be left to luck.
+            at = _find_one(src, find)
+            if at < 0:
                 print(f"  DRIFT  {label:52} anchor occurs {src.count(find)}x")
                 green += 1
                 continue
@@ -667,7 +795,16 @@ def run_rust(only: str | None = None, run=None, write=None,
             # crate sources on every commit across 47 services**. The incident
             # the Python half mutates a copy to avoid -- a killed run leaving a
             # mutation on disk -- was on the automatic path.
-            (write or _write)(path, src.replace(find, repl, 1), like=raws[rel])
+            mutated = src[:at] + repl + src[at + len(find):]
+            # **The mutation must actually BE a mutation.** The twin checks this
+            # and this half did not, so a harness that had silently stopped
+            # mutating would have reported every Rust row red and looked like
+            # success -- the same false-green the check next to it exists for.
+            if mutated == src:
+                print(f"  NULL   {label:52} the replacement changes nothing")
+                green += 1
+                continue
+            (write or _write)(path, mutated, like=raws[rel])
             runner = run or (lambda t: subprocess.run(
                 ["cargo", "test", "-p", "actor-hub", "--test", "fold_survivors",
                  t, "--", "--exact"], cwd=REPO, capture_output=True, text=True,
@@ -692,13 +829,78 @@ def run_rust(only: str | None = None, run=None, write=None,
                 if _raw(path) != raws[rel]:
                     path.write_bytes(raws[rel])
             red = out.returncode != 0
+            # **RED for the RIGHT REASON.** A mutant that does not build makes
+            # `cargo test` non-zero without the test ever running, so the row
+            # reads as "the rule bites" when it is the type checker talking.
+            # Counted as a survivor, because a mutation that cannot run proves
+            # nothing about the rule it aims at -- the same direction the red
+            # baseline, the drifted anchor and the timeout are counted in.
+            noise = out.stderr or ""
+            if red and ("error[E" in noise or "could not compile" in noise):
+                print(f"  BROKE  {label:52} the mutant does not compile")
+                green += 1
+                continue
             print(f"  {'RED ' if red else 'GREEN'}  {label:52} -> {test}")
             green += 0 if red else 1
     finally:
         for rel in originals:
-            if _raw(REPO / rel) != raws[rel]:
-                (REPO / rel).write_bytes(raws[rel])
+            if _raw(root / rel) != raws[rel]:
+                (root / rel).write_bytes(raws[rel])
     return green, None
+
+
+def unbounded_children(text: str) -> list[str]:
+    """Functions in `text` that spawn a child nothing can interrupt.
+
+    **The DERIVED half of the parity mechanism.** The table beside it names four
+    properties by hand, so it cannot detect a new one-sided guard -- and the
+    round that added it shipped a driver with no timeout handler at all, which
+    is the same property, on a third file, going unnoticed for exactly that
+    reason. This asks the tree instead, so a function written tomorrow is
+    covered by construction.
+
+    Two ways to hang a pre-commit hook, and both are findings:
+
+      * a `subprocess.run` with no `timeout=` — nothing ever interrupts it;
+      * a function that spawns and has no `except subprocess.TimeoutExpired` —
+        the bound exists and its expiry is an uncaught traceback, which is worse
+        than no bound: the run dies mid-sweep and the rest is reported by
+        nothing.
+
+    Measured when it was written: FOUR such functions across the four scripts
+    this harness is responsible for, including `_rust_dirty` in this very file.
+    """
+    import ast
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return ["<unparseable>"]
+    out = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        spawns = [n for n in ast.walk(fn)
+                  if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                  and n.func.attr == "run"
+                  and getattr(n.func.value, "id", "") == "subprocess"]
+        if not spawns:
+            continue
+        # A nested function carries its own guard; attributing its spawns to the
+        # enclosing one would report a parent that is perfectly bounded.
+        inner = {id(n) for d in ast.walk(fn)
+                 if isinstance(d, (ast.FunctionDef, ast.AsyncFunctionDef)) and d is not fn
+                 for n in ast.walk(d)}
+        spawns = [n for n in spawns if id(n) not in inner] or spawns
+        unbounded = [n.lineno for n in spawns
+                     if not any(k.arg == "timeout" for k in n.keywords)]
+        handles = any(isinstance(h, ast.ExceptHandler) and h.type is not None
+                      and "TimeoutExpired" in ast.dump(h.type)
+                      for h in ast.walk(fn))
+        if unbounded:
+            out.append(f"{fn.name} spawns with no timeout= at line(s) {unbounded}")
+        elif not handles:
+            out.append(f"{fn.name} spawns with a timeout nothing catches")
+    return out
 
 
 def _outside_tables(text: str) -> list[tuple[int, int]]:
@@ -752,9 +954,17 @@ def _find_one(text: str, find: str) -> int:
 
 
 def _mutate_and_run(gate: str, find: str, repl: str, run=None,
-                    no_cargo: bool = False, label_hint: str = "") -> tuple[bool, str]:
-    """(went_red, note). The ORIGINAL is opened read-only; a copy is mutated."""
-    src = SCRIPTS / f"{gate}.py"
+                    no_cargo: bool = False, label_hint: str = "",
+                    root=None) -> tuple[bool, str]:
+    """(went_red, note). The ORIGINAL is opened read-only; a copy is mutated.
+
+    `root` is injectable so a case can point this at a file built to exercise
+    the anchor search. Without it the search could be reverted to a raw
+    `text.find` -- mutating the TABLE ROW that names a rule instead of the rule
+    -- and the whole suite stayed green: the sole survivor of a 101-row sweep.
+    """
+    root = root or SCRIPTS
+    src = root / f"{gate}.py"
     raw = _raw(src)
     text = _read(src)
     at = _find_one(text, find)
@@ -762,7 +972,7 @@ def _mutate_and_run(gate: str, find: str, repl: str, run=None,
         return False, (f"anchor occurs {text.count(find)}x outside the tables "
                        "— the table has drifted")
     # Beside the original so `REPO = Path(__file__).parent.parent` still resolves.
-    copy = SCRIPTS / f".bite-{gate}.py"
+    copy = root / f".bite-{gate}.py"
     try:
         _write(copy, text[:at] + repl + text[at + len(find):], like=raw)
         # **The mutation must actually be a mutation.** Nothing checked that the
@@ -996,6 +1206,7 @@ def self_test() -> int:
     # `red = True` in `run_rust`: **the harness could report every Rust mutation
     # RED unconditionally and its own self-test stayed green**, which makes "all
     # 9 red" unfalsifiable by the mechanism that produced it.
+    import tempfile
     rust_calls: list[str] = []
 
     class _RustR:
@@ -1031,6 +1242,48 @@ def self_test() -> int:
     else:
         print("  ok  a surviving Rust mutation is counted")
 
+    # **The two guards the Rust half did not have.** Both are driven over a
+    # temp tree through the `rows=`/`root=` injection added with them -- this
+    # half read the real crate unconditionally, so neither could be cased, and
+    # a guard that cannot be driven is how the asymmetry survived.
+    with tempfile.TemporaryDirectory() as d:
+        probe = Path(d) / "probe.rs"
+        probe.write_text("let a = 1;\nlet a = 1;\nlet b = 2;\n", encoding="utf-8")
+        twice = [("anchor twice", "probe.rs", "let a = 1;", "let z = 9;", "t")]
+        survivors, refusal = quietly(lambda: run_rust(
+            run=_rust_run(1), write=nowrite, rows=twice, root=Path(d)))
+        if survivors != 1 or refusal:
+            failures += 1
+            print(f"  FAIL a Rust anchor occurring twice must not be mutated: {survivors}")
+        else:
+            print("  ok  a Rust anchor occurring twice is drift, not a silent first-hit")
+
+        # ...and a mutant that does not COMPILE is not a bite either. The
+        # verifier that found this asked the question from outside, by hand.
+        class _Broke:
+            returncode, stdout = 101, ""
+            stderr = "error[E0308]: mismatched types"
+
+        one = [("compiles not", "probe.rs", "let a = 1;", "let a = ();", "t")]
+        probe.write_text("let a = 1;\nlet b = 2;\n", encoding="utf-8")
+        survivors, refusal = quietly(lambda: run_rust(
+            run=lambda _t: _Broke(), write=nowrite, rows=one, root=Path(d)))
+        if survivors != 1 or refusal:
+            failures += 1
+            print(f"  FAIL a non-compiling mutant must not read as a bite: {survivors}")
+        else:
+            print("  ok  a Rust mutant that does not compile is not counted as red")
+
+        null = [("changes nothing", "probe.rs", "let b = 2;", "let b = 2;", "t")]
+        probe.write_text("let a = 1;" + chr(10) + "let b = 2;" + chr(10), encoding="utf-8")
+        survivors, refusal = quietly(lambda: run_rust(
+            run=_rust_run(1), write=nowrite, rows=null, root=Path(d)))
+        if survivors != 1 or refusal:
+            failures += 1
+            print(f"  FAIL a NULL Rust mutation must not read as red: {survivors}")
+        else:
+            print("  ok  a Rust mutation that changes nothing is refused, not counted red")
+
     # The restore is not optional: `--rust` mutates the real crate in place.
     # **The write/restore round trip, proved on a TEMP file.** The previous
     # version kept the real writer on one real crate file, so `--self-test` --
@@ -1039,7 +1292,6 @@ def self_test() -> int:
     # site passes `run=`. Proving a round trip does not require touching the
     # shipped sources, and it covers a case the crate files cannot: **CRLF**,
     # whose re-application in `_write` has never had one.
-    import tempfile
     with tempfile.TemporaryDirectory() as d:
         for label, raw in (("LF", b"line one\nline TWO\n"),
                            ("CRLF", b"line one\r\nline TWO\r\n")):
@@ -1363,6 +1615,89 @@ def self_test() -> int:
 
     # ── PARITY: this file has two halves, and every round hardens one ────────
     #
+    # **The anchor search excludes the tables at the CALL SITE too.** Reverting
+    # it to a raw `text.find` mutates the TABLE ROW naming a rule instead of the
+    # rule -- so the child runs unmutated code, stays green, and the row reads as
+    # a surviving rule. It was the sole survivor of a 101-row sweep.
+    with tempfile.TemporaryDirectory() as d:
+        probe = Path(d) / "probe-gate.py"
+        probe.write_text(
+            'MUTATIONS = {"probe-gate": [("row", "guard = 1", "guard = 0")]}\n'
+            "def rule():\n"
+            "    guard = 1\n"
+            "    return guard\n", encoding="utf-8")
+        seen_text: list[str] = []
+
+        class _R0:
+            returncode, stdout, stderr = 0, "", ""
+
+        _mutate_and_run("probe-gate", "guard = 1", "guard = 9",
+                        run=lambda q: (seen_text.append(_read(q)), _R0())[1],
+                        root=Path(d))
+        body = seen_text[0] if seen_text else ""
+        if "guard = 9" not in body or '("row", "guard = 1"' not in body:
+            failures += 1
+            print("  FAIL the anchor search mutated the TABLE ROW, not the rule")
+        else:
+            print("  ok  the anchor search skips the table row that names the rule")
+
+    # **The derived half: no gate this harness drives may spawn a child that
+    # nothing can interrupt.** The table below is four hand-written rows and so
+    # detects no NEW one-sided guard; this asks the tree, over every script the
+    # harness has a table for plus the driver that runs them all. It found four
+    # when it was written, one of them in this file.
+    guarded = sorted(set(MUTATIONS) | {"gate-self-tests"})
+    hangs = [f"{g}.py: {w}" for g in guarded
+             for w in unbounded_children(_read(SCRIPTS / f"{g}.py"))]
+    if hangs:
+        failures += 1
+        for w in hangs:
+            print(f"  FAIL a child nothing can interrupt — {w}")
+    elif len(guarded) < 4 or "gate-bite-harness" not in guarded:
+        # **The subject set needs a FLOOR.** Emptying it left the sweep silent
+        # and printing "none of the 0 gates" -- a clean report about nothing,
+        # which is NV-3 in the rule written to close an NV-3 finding.
+        failures += 1
+        print(f"  FAIL the unbounded-child sweep covers only {guarded}")
+    else:
+        print(f"  ok  none of the {len(guarded)} gates spawn an uninterruptible child")
+
+    # ...and the sweep must SEE each shape SEPARATELY. One planted probe missing
+    # both a timeout and a handler is answered by either arm, so deleting either
+    # left it reported by the other and both mutations survived. Two probes, one
+    # per arm, each carrying the guard the other lacks.
+    probes = (
+        ("no timeout, but a handler",
+         "import subprocess\n"
+         "def spawns():\n"
+         "    try:\n"
+         "        return subprocess.run(['x'], capture_output=True)\n"
+         "    except subprocess.TimeoutExpired:\n"
+         "        return None\n"),
+        ("a timeout, but no handler",
+         "import subprocess\n"
+         "def spawns():\n"
+         "    return subprocess.run(['x'], capture_output=True, timeout=1)\n"),
+    )
+    for label, probe in probes:
+        if len(unbounded_children(probe)) != 1:
+            failures += 1
+            print(f"  FAIL the unbounded-child sweep missed a planted one ({label})")
+        else:
+            print(f"  ok  the unbounded-child sweep reports a planted one ({label})")
+    # ...and a function carrying BOTH guards is silent, or the rule is a blanket.
+    clean = ("import subprocess\n"
+             "def spawns():\n"
+             "    try:\n"
+             "        return subprocess.run(['x'], capture_output=True, timeout=1)\n"
+             "    except subprocess.TimeoutExpired:\n"
+             "        return None\n")
+    if unbounded_children(clean):
+        failures += 1
+        print("  FAIL a fully guarded spawn was reported")
+    else:
+        print("  ok  a spawn with both a timeout and a handler is silent")
+
     # Measured across rounds 10-15, six BLOCKING/MAJOR findings in one commit
     # were the same object: a guard added to the gate half and not the Rust
     # half, a sentinel cased at its producer and not its consumer, an
@@ -1371,42 +1706,60 @@ def self_test() -> int:
     #
     # Each row names a property both halves must have and the substring that
     # witnesses it. A new guard on one side with no twin fails here, by name.
-    own = _read(SCRIPTS / "gate-bite-harness.py")
+    # **`__file__`, not the name.** This read the ORIGINAL while the child
+    # under test IS the mutated copy beside it, so every witness below was
+    # searched in unmutated bytes -- the parity table could not see the mutation
+    # aimed at it, and `GATE_BITE_MUTATING` (whose whole job is to let the child
+    # skip the anchor its own mutation removed) was inert for the same reason.
+    own_full = _read(Path(__file__))
+    # **...and only the CODE, not the tables.** This file contains the parity
+    # table and the mutation rows, so every single-line witness was present
+    # whether or not the guard existed: seven of the eight survived deleting the
+    # guard they witness. `_outside_tables` already answers this question for
+    # anchors, and was not used by the check that needed it most.
+    own = "\n".join(own_full[a:b] for a, b in _outside_tables(own_full))
+    # Each row: the property, then (witness, mutation-row token) for each half.
+    # **The row token is separate from the witness.** Deriving it by cutting the
+    # witness at its first `(` matched neither half reliably -- the Rust
+    # baseline HAS two rows and the derived token found neither, so the check
+    # reported a pass for a reason unrelated to whether the row exists.
     parity = (
         ("a baseline before mutating",
-         "reason = baseline_is_green(",
-         "the UNMUTATED fold_survivors suite already fails"),
+         ("reason = baseline_is_green(", "reason = baseline_is_green("),
+         ("probe = baseline()", "probe = baseline()")),
         ("a caught timeout",
-         "except subprocess.TimeoutExpired:\n            # A timeout is a FINDING",
-         "  SLOW   {label:52} -> no verdict"),
+         ("except subprocess.TimeoutExpired:\n            # A timeout is a FINDING",
+          "# A timeout is a FINDING about that mutation"),
+         ("            except subprocess.TimeoutExpired:", "SLOW   {label:52} -> no verdict")),
         ("a drifted anchor counted, not skipped",
-         "anchor occurs {text.count(find)}x outside the tables",
-         "  DRIFT  {label:52} anchor occurs"),
+         ("anchor occurs {text.count(find)}x outside the tables", "at = _find_one(text, find)"),
+         ("            at = _find_one(src, find)", "at = _find_one(src, find)")),
         ("the child environment forwarded",
-         "capture_output=True, text=True, timeout=CHILD_TIMEOUT_S,\n            env=child_env))",
-         "timeout=CHILD_TIMEOUT_S, env=_child_env(no_cargo)))"),
+         ("capture_output=True, text=True, timeout=CHILD_TIMEOUT_S,\n            env=child_env))",
+          "env=child_env))"),
+         ("timeout=CHILD_TIMEOUT_S, env=_child_env(no_cargo)))",
+          "env=_child_env(no_cargo)))")),
+        ("a null mutation refused",
+         ("the copy is identical to the original", "if _read(copy) == text:"),
+         ("            if mutated == src:", "if mutated == src:")),
     )
-    for prop, gate_side, rust_side in parity:
-        missing = [n for n, w in (("the gate half", gate_side), ("the Rust half", rust_side))
-                   if w not in own]
-        if missing:
-            failures += 1
-            print(f"  FAIL {prop}: absent from {' and '.join(missing)}")
-    if not any(w not in own for _, a, b in parity for w in (a, b)):
-        print(f"  ok  both halves carry all {len(parity)} guards that either one has")
-
-    # ...and every guard in that table has a MUTATION ROW aimed at each half.
-    # A guard nobody can break is the shape this whole file exists to reject,
-    # and it is how the Rust baseline reached production uncased.
+    # **`all`, per half, not `any` across both.** The row check was `any(tok in
+    # rows for tok in (gate_tok, rust_tok))`, so one row covered both halves and
+    # three of the four properties passed on one half only.
     rows = "\n".join(r[1] + r[2] for r in MUTATIONS.get("gate-bite-harness", []))
     rows += "\n".join(r[2] + r[3] for r in RUST_MUTATIONS)
-    unrowed = [prop for prop, g, r in parity
-               if not any(tok in rows for tok in (g.split("(")[0], r.split("(")[0]))]
-    if unrowed:
-        failures += 1
-        print(f"  FAIL these guards have no mutation row: {unrowed}")
-    else:
-        print(f"  ok  every guard in the parity table has a mutation row")
+    for prop, gate_side, rust_side in parity:
+        for name, (witness, token) in (("the gate half", gate_side),
+                                       ("the Rust half", rust_side)):
+            if witness not in own:
+                failures += 1
+                print(f"  FAIL {prop}: absent from {name}")
+            elif token not in rows:
+                failures += 1
+                print(f"  FAIL {prop}: {name} has no mutation row aimed at it")
+    if not failures:
+        print(f"  ok  both halves carry all {len(parity)} guards, each with its own "
+              "mutation row")
 
     if failures:
         print(f"\ngate-bite-harness --self-test: {failures} rule(s) did not behave")

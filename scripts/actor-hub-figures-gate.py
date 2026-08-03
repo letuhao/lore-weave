@@ -142,7 +142,8 @@ SCOPES: tuple[tuple[str, str, str, frozenset[str]], ...] = (
     # seven -- because the check covered the header and the handoff and not the
     # board two screens below them. **A figure outside a checker's scope is a
     # figure nobody is reading**, which is `_index.md`'s defect one file along.
-    (RUN_STATE, "### 6-BUILD", END("slice-board"), frozenset({"rust_tests"})),
+    (RUN_STATE, "### 6-BUILD", END("slice-board"),
+     frozenset({"rust_tests", "dp_kernel_lib_tests"})),
     (INDEX, "# Actor Hub", END("index"),
      frozenset({"max_decision_id", "max_seam_id", "contract_hub_lines",
                 "contract_substrate_lines", "contract_seams_lines",
@@ -152,6 +153,11 @@ SCOPES: tuple[tuple[str, str, str, frozenset[str]], ...] = (
 
 class Unmeasurable(Exception):
     """A figure that cannot be measured HERE — never a reason to block a commit."""
+
+
+# A cold `cargo test` legitimately runs minutes; this is the hang bound, not a
+# performance budget.
+CARGO_TIMEOUT_S = 900
 
 
 def _cargo_passed(args: list[str], run=None, which=None) -> int:
@@ -165,8 +171,15 @@ def _cargo_passed(args: list[str], run=None, which=None) -> int:
     """
     if (which or shutil.which)("cargo") is None:
         raise Unmeasurable("cargo is not on PATH")
-    out = (run or (lambda a: subprocess.run(
-        ["cargo", "test", *a], cwd=REPO, capture_output=True, text=True)))(args)
+    try:
+        out = (run or (lambda a: subprocess.run(
+            ["cargo", "test", *a], cwd=REPO, capture_output=True, text=True,
+            timeout=CARGO_TIMEOUT_S)))(args)
+    except subprocess.TimeoutExpired:
+        # Unmeasurable, not a refusal: this hook fires on the repo-wide handoff
+        # for all 47 services, and a cold cargo build that runs long must not
+        # block a commit that never touched Rust.
+        raise Unmeasurable(f"the test run did not finish within {CARGO_TIMEOUT_S}s")
     if "test result: FAILED" in out.stdout or out.returncode != 0:
         raise Unmeasurable("the test run is not green, so its count means nothing")
     return sum(int(m) for m in re.findall(r"test result: ok\. (\d+) passed", out.stdout))
@@ -240,7 +253,12 @@ def measure(cargo=None) -> dict[str, object]:
 # **A claim shape with no subject anywhere is itself a finding** — see `_check`.
 CLAIMS: tuple[tuple[str, str, str], ...] = (
     (r"\*\*(\d+) passed, 0 failed\*\*", "rust_tests", "passing tests"),
-    (r"`dp-kernel --lib` \*\*(\d+)\*\*", "dp_kernel_lib_tests", "dp-kernel lib tests"),
+    # `(?: passed)?` because the slice board writes `**315 passed**` and the
+    # header writes `**315**`. One word, and the figure was ungoverned in a
+    # block whose headline says otherwise -- found by widening the bolded-figure
+    # detector, not by reading.
+    (r"`dp-kernel --lib` \*\*(\d+)(?: passed)?\*\*", "dp_kernel_lib_tests",
+     "dp-kernel lib tests"),
     (r"`D-1`\.\.`D-(\d+)`", "max_decision_id", "the highest decision id"),
     # **`S-1`, not `S-11`.** The pattern used to require the SEGMENT this round
     # added -- `S-11`..`S-18` -- to equal the register's head, while `D-398`
@@ -289,10 +307,32 @@ CLAIMS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-# A bolded integer -- the shape this project states every figure in. Anything
-# matching it inside a governed block and read by no `CLAIMS` row is a figure
-# nobody checks, which is the class three rounds found by hand.
-BOLD_INT_RE = re.compile(r"\*\*\d[\d\s]*\*\*")
+# A bolded figure -- the shape this project states every measurement in.
+# Anything matching it inside a governed block and read by no `CLAIMS` row is a
+# figure nobody checks, which is the class three rounds found by hand.
+#
+# **The SHAPE was the shape of its own case.** The first version matched
+# `**7**` and nothing else -- not `**7 widgets**`, not `**7.5**`, not
+# `**7,000**` -- so narrowing it back to `\d+` survived every mutation. That is
+# the same defect one level down: a checker's scope is a claim, and so is the
+# shape it recognises inside that scope. Widened, it finds two ungoverned
+# figures in the shipped blocks that the narrow form did not.
+#
+# A bolded YEAR (`**2026**`) is reported, deliberately. The block's own headline
+# says every bolded figure in it is emitted by a checker; a bolded year is not,
+# so the remedy is to unbold it. Exempting one would be an untested carve-out in
+# the rule whose whole finding was an untested carve-out. A DATE
+# (`**2026-08-03**`) does not match -- the hyphen ends the run.
+#
+# **And the WRAP tolerance its siblings already carry.** These documents wrap,
+# and `contract_substrate_lines` in this same file carries `\s*\n?>?\s*` written
+# for exactly that reason. Without it here, `**0\n> warnings**` -- the slice
+# board's copy of the very claim a round-12 verifier measured FALSE, and which
+# this round found and fixed one block over -- stayed invisible to the detector
+# that had just been widened to catch it. Two decisions, each correct, the later
+# one defeating the earlier: this file's own name for the class.
+BOLD_INT_RE = re.compile(
+    r"\*\*\d[\d,. \u00a0]*(?:[ \t]*\n?[ \t]*>?[ \t]*[A-Za-z%][\w%-]*)?\*\*")
 
 # An italicised quotation, and an inline HTML comment. See `_claimable`.
 QUOTE_RE = re.compile(r'\*"[^"]*"\*')
@@ -458,8 +498,23 @@ def _claimable(block: str, quotes: bool = True, in_fence: str | None = None,
     #
     # Not blanking a broken code sample can at worst report a figure inside it;
     # blanking refuses the commit. Cry-wolf is the severe direction.
-    if in_fence is None and _unpaired_opener(lines) is not None:
-        lines = [_MASK_FENCE if _fence_mark(l) is not None else l for l in lines]
+    # **The scope is the OPENER ONWARD, not the whole text.** The first version
+    # asked "is there an unpaired opener anywhere" and then masked EVERY fence
+    # marker in the text, so one unterminated fence at the bottom of
+    # `SESSION_HANDOFF` turned every correctly-paired code block above it into
+    # live prose -- in all three consumers of this function at once. Measured:
+    # three separate refusals on the shipped documents, one of them the very
+    # "the end sentinel has probably moved UP" misdiagnosis this masking was
+    # written to eliminate. A predicate about the document, an action about one
+    # fence: the two-scopes defect, inside the fix for it.
+    #
+    # Lines BEFORE the opener are fully paired by construction -- that is what
+    # makes the opener unpaired -- so they keep their fence semantics.
+    unpaired_at = None if in_fence is not None else _unpaired_opener(lines)
+    if unpaired_at is not None:
+        lines = lines[:unpaired_at] + [
+            _MASK_FENCE if _fence_mark(l) is not None else l
+            for l in lines[unpaired_at:]]
 
     out, open_mark = [], in_fence
     for line in lines:
@@ -500,6 +555,24 @@ def _claimable(block: str, quotes: bool = True, in_fence: str | None = None,
     return "\n".join(out)
 
 
+def _unpaired_note(text: str) -> str:
+    """The clause naming an unterminated fence, or "" when there is none.
+
+    A marker finding produced in a document carrying an unterminated fence is
+    almost never about the marker: the fence changes what is literal below it,
+    so the sentinel the reader is being sent to look at is fine. Naming the real
+    cause is the difference between an actionable refusal and one that points at
+    the wrong file -- which is the whole complaint against the version of the
+    masking this replaces.
+    """
+    at = _unpaired_opener(text.split(chr(10)))
+    if at is None:
+        return ""
+    return (f" — NOTE: an unterminated code fence opens at line {at + 1} of this "
+            "document; everything below it is literal text, which is the likely "
+            "cause here rather than the marker")
+
+
 def _scope_span(text: str, start_marker: str, end_marker: str
                 ) -> tuple[int, int] | str | None:
     """The block's span, `None` if an anchor is missing, or a REASON string.
@@ -533,7 +606,7 @@ def _scope_span(text: str, start_marker: str, end_marker: str
         lines = [text.count(chr(10), 0, k) + 1 for k in starts]
         return (f"the start marker `{start_marker.strip()}` occurs {len(starts)} "
                 f"times (lines {lines}) — the FIRST one wins, so the block may "
-                "not be the one you are looking at")
+                "not be the one you are looking at" + _unpaired_note(text))
     i = starts[0]
     # The marker is matched on its own line, so a leading newline in the literal
     # is noise -- it would put the match at the END of the previous line and the
@@ -550,7 +623,7 @@ def _scope_span(text: str, start_marker: str, end_marker: str
         lines = [text.count("\n", 0, k) + 1 for k in hits]
         return (f"the end marker `{end_marker.strip()}` occurs {len(hits)} times after "
                 f"`{start_marker}` (lines {lines}) — the FIRST one wins, so every "
-                "figure below it is silently ungoverned")
+                "figure below it is silently ungoverned" + _unpaired_note(text))
     return (i, hits[0])
 
 
@@ -671,6 +744,42 @@ def _at_line_start(text: str, at: int, needle: str) -> bool:
     """
     bol = text.rfind(chr(10), 0, at) + 1
     return not QUOTE_PREFIX.sub("", text[bol:at]).strip()
+
+
+HEADING_RE = re.compile(r"^[ \t>]*#{1,6}[ \t]")
+# A table row STARTS A REGISTER. This project writes current state in prose and
+# history in a table -- the slice board below `### 6-BUILD`'s sentinel records
+# what each slice measured at ITS close -- so a figure in a table below the
+# sentinel is a historical record, not an orphan. Ending the tail at the heading
+# alone reported two of them, which is cry-wolf on the correct document.
+TAIL_END_RE = re.compile(r"^[ \t>]*(?:#{1,6}[ \t]|\|)")
+
+
+def _orphaned_tail(text: str, span: tuple[int, int], end_marker: str) -> tuple[int, int]:
+    """The span between the end sentinel and the next heading.
+
+    **The `must_claim` surplus could not close this and the record said it did.**
+    That check is keyed by measurement KEY: a SECOND occurrence of a key the set
+    already names produces no surplus, and the missing-arm is satisfied by the
+    first occurrence — so moving the sentinel above a repeated figure was still
+    zero findings, for every key in every block, because every key is already in
+    its set. Measured as a reproduction of the finding it was recorded closing.
+
+    So the rule is positional instead. A sentinel closes a stretch of prose; the
+    next heading starts the next one. Text in between is inside a governed
+    section with nothing reading it, which is the shape a sentinel move creates
+    and the only shape it creates. Any heading level ends it — using
+    same-or-shallower would make `# Actor Hub`'s tail the rest of the file.
+    """
+    eol = text.find(chr(10), span[1] + len(end_marker.strip(chr(10))))
+    if eol < 0:
+        return (len(text), len(text))
+    start = at = eol + 1
+    for line in text[start:].split(chr(10)):
+        if TAIL_END_RE.match(line):
+            break
+        at += len(line) + 1
+    return (start, min(at, len(text)))
 
 
 def _read_doc(doc: str, read=None) -> str | None:
@@ -840,6 +949,7 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
     # stale figure outside every checker's scope -- was invisible.
     present: dict[tuple[str, str], set[str]] = {}
     claim_spans: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    tails: dict[tuple[str, str], tuple[str, str | None]] = {}
     blanks: dict[tuple[str, str], str] = {}
     scopes = scopes if scopes is not None else SCOPES
 
@@ -868,6 +978,9 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
                 "resolve, so this document was NOT checked"
             )
             continue
+        if span:
+            a, b = _orphaned_tail(full, span, end_marker)
+            tails[(doc, start_marker)] = (full[a:b], _fence_state(full[:a])[0])
         block = _claimable(block, in_fence=opens_fenced, in_comment=opens_commented)
         present[(doc, start_marker)] = set()
         claim_spans[(doc, start_marker)] = []
@@ -946,6 +1059,21 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
     # not forgotten: the message it used to print is strictly less informative
     # than "no longer states ['dp_kernel_lib_tests', ...]".
 
+    # **The prose between the sentinel and the next heading.** See
+    # `_orphaned_tail`: it is the region a sentinel move creates, and the only
+    # region it creates, so it is where a moved sentinel's orphans land.
+    for (doc, start_marker), (tail, opens) in tails.items():
+        for pattern, key, label in CLAIMS:
+            for mo in re.finditer(pattern, _claimable(tail, in_fence=opens)):
+                line = tail.count(chr(10), 0, mo.start()) + 1
+                problems.append(
+                    f"{doc}: `{mo.group(0)[:40]}` states {label} BELOW the end "
+                    f"sentinel of the block at `{start_marker}` (line {line} of the "
+                    "tail) and above the next heading or table — the sentinel "
+                    "closes its "
+                    "prose, so either move it down or move the figure in"
+                )
+
     # **A bolded integer inside a governed block that NO rule reads.** Three
     # separate rounds found one of these by hand -- the last was fixed by
     # DELETING the figures, which is an instance fix with no detector. The block
@@ -1016,6 +1144,49 @@ def self_test() -> int:
             for x in real + notes:
                 print(f"        {x}")
 
+    def check_doc(name: str, doc: str, expect_problems: int) -> None:
+        """Drive `_check` over a whole synthetic DOCUMENT, tail included."""
+        nonlocal failures
+        problems, _notes = _check(m, scopes=(("<probe>", "@@START", "@@END"),),
+                                  read=lambda _: doc)
+        real = [x for x in problems if not x.startswith("NO DOCUMENT")]
+        ok = len(real) == expect_problems
+        failures += 0 if ok else 1
+        print(f"  {'ok ' if ok else 'FAIL'} {name}: expected {expect_problems}, "
+              f"got {len(real)}")
+        if not ok:
+            for x in real:
+                print(f"        {x}")
+
+    # **The prose BELOW the sentinel and above the next heading.** The
+    # `must_claim` surplus was recorded as closing this and does not: it is keyed
+    # by measurement KEY, so a SECOND occurrence of a key the set already names
+    # is not surplus and the missing-arm is already satisfied by the first. Every
+    # key in every block is in its set, so the hole was open for all of them --
+    # measured as an exact reproduction of the finding it was recorded closing.
+    check_doc("a stale figure below the sentinel is caught",
+              "@@START\n**283 passed, 0 failed**\n@@END\n"
+              "the suite ran **11 passed, 0 failed** today\n\n## Next", 1)
+    check_doc("...a CORRECT one below it is caught too — it is ungoverned either way",
+              "@@START\n**283 passed, 0 failed**\n@@END\n"
+              "the suite ran **283 passed, 0 failed** today\n\n## Next", 1)
+    # The two stops, each measured on the shipped documents before it was added.
+    # A TABLE starts a register: the slice board below `### 6-BUILD`'s sentinel
+    # records what each slice measured AT ITS CLOSE, and ending the tail at the
+    # heading alone reported two of those as orphans -- cry-wolf on the correct
+    # document, from the pre-commit hook.
+    check_doc("a figure in a TABLE below the sentinel is a register, not an orphan",
+              "@@START\n**283 passed, 0 failed**\n@@END\n"
+              "| slice | evidence |\n|---|---|\n| B1 | **11 passed, 0 failed** |", 0)
+    check_doc("a figure below the next HEADING is out of the tail",
+              "@@START\n**283 passed, 0 failed**\n@@END\n\n## Next\n"
+              "the suite ran **11 passed, 0 failed** today", 0)
+    check_doc("a QUOTED historical figure in the tail is not an orphan",
+              "@@START\n**283 passed, 0 failed**\n@@END\n"
+              'round 5 said *"**11 passed, 0 failed**"*\n\n## Next', 0)
+    check_doc("a tail with no figure at all is silent",
+              "@@START\n**283 passed, 0 failed**\n@@END\nprose\n\n## Next", 0)
+
     check_block("a correct test count passes", "**283 passed, 0 failed**", 0)
     check_block("a stale test count is caught", "**281 passed, 0 failed**", 1)
     check_block("a correct decision range passes", "`D-1`..`D-372`", 0)
@@ -1085,6 +1256,23 @@ def self_test() -> int:
     # compare it against.
     check_block("an unpaired fence opener is literal text, not a blanket",
                 "```rust\nlet x = 1;\n\nthe count is **281 passed, 0 failed** today", 1)
+    # **...and it reaches only from the OPENER DOWN.** The predicate asks about
+    # the document and the first version's action masked every fence marker in
+    # it, so one unterminated fence at the bottom un-fenced every correctly
+    # paired block above -- three measured refusals on the shipped documents,
+    # one of them the misdiagnosis this masking exists to prevent. A CLOSED
+    # block above the opener keeps its fence semantics.
+    check_block("a CLOSED fence above an unpaired opener is still a fence",
+                "```\nthe count was **281 passed, 0 failed**\n```\n"
+                "prose\n```rust\nlet x = 1;", 0)
+    check_block("...and the text below that opener is still literal",
+                "```\nthe count was **281 passed, 0 failed**\n```\n"
+                "```rust\nlet x = 1;\nthe count is **281 passed, 0 failed**", 1)
+    # A `~~~` opener is an opener. `_unpaired_opener` delegates to `_advance`,
+    # which handles both characters -- but nothing asserted the tilde half, so
+    # narrowing the scan to backticks survived.
+    check_block("an unpaired ~~~ opener is literal text too",
+                "~~~\nthe count is **281 passed, 0 failed** today", 1)
     # A block that BEGINS INSIDE a fence is no longer expressible: a marker in a
     # fenced region is a MENTION by design, so the scope cannot start there. The
     # property that case was reaching for -- prefix fence state carried into the
@@ -1367,6 +1555,47 @@ def self_test() -> int:
     else:
         print("  ok  a marker after prose on the same line is not at line-start")
 
+    # **The mask must NOT apply when the CALLER already knows the fence state.**
+    # A window that BEGINS inside a fence has a genuine open marker above it, so
+    # the first marker inside the window is a CLOSER, not an unpaired opener --
+    # and masking it leaves the whole window fenced, hiding a live claim below.
+    # Dropping the `in_fence is None` conjunct survived every other case.
+    resumed = _claimable("was **281 passed, 0 failed**\n```\nis **281 passed, 0 failed**",
+                         in_fence="```")
+    if "is **281 passed, 0 failed**" not in resumed or "was **281" in resumed:
+        failures += 1
+        print("  FAIL a window resuming inside a fence lost the live claim below its closer")
+    else:
+        print("  ok  a window resuming inside a fence keeps the claim below its closer")
+
+    # **The TAB half of both indent rules.** `INDENT_CODE` and `QUOTE_PREFIX`
+    # each accept two literal forms and only the space form had a subject, so
+    # dropping `\t` from either left the suite green -- one literal form cased
+    # and its twin not, in the round whose headline is exactly that.
+    if _indented_blanked("\tsee <!-- x -->").strip():
+        failures += 1
+        print("  FAIL a TAB-indented line was not treated as a code block")
+    else:
+        print("  ok  a TAB-indented line is markdown's other literal form")
+    if not _at_line_start("prefix\n\t> mark", len("prefix\n\t> "), "mark"):
+        failures += 1
+        print("  FAIL a TAB before a blockquote marker was not tolerated")
+    else:
+        print("  ok  a TAB in the blockquote prefix is still line-start")
+
+    # **Every scope ENDS on a named sentinel.** `_index.md`'s scope was moved
+    # onto one and nothing asserted the shape, so reverting it to a heading --
+    # which is what made the block silently re-terminable by a second heading of
+    # the same text -- left the whole suite green. The property was made true by
+    # editing data, with no check to keep it true.
+    unsentinelled = [f"{sc[0]} @ {sc[1]}" for sc in SCOPES
+                     if not sc[2].startswith("<!-- actor-hub-figures:end ")]
+    if unsentinelled:
+        failures += 1
+        print(f"  FAIL these scopes do not end on a named sentinel: {unsentinelled}")
+    else:
+        print(f"  ok  all {len(SCOPES)} scopes end on a named `:end <block>` sentinel")
+
     # ── the marker rules, both markers, every route to a wrong block ─────────
     #
     # Written as a TABLE over (which marker, how it appears, what must happen),
@@ -1462,6 +1691,38 @@ def self_test() -> int:
         print(f"  FAIL a bolded figure nothing governs was not reported: {problems[:2]}")
     else:
         print("  ok  a bolded figure inside a governed block that no rule reads is reported")
+
+    # **The SHAPE the detector recognises is a claim too.** It matched `**7**`
+    # and nothing else -- the exact shape of the case above -- so narrowing it
+    # back to `\d+` survived. Every form here is one this project writes, and
+    # widening to them found two ungoverned figures in the shipped blocks.
+    for shape, want in (("**7 widgets**", True), ("**7.5**", True),
+                        ("**7,000**", True), ("**7 000**", True),
+                        ("**2026**", True), ("**2026-08-03**", False),
+                        # ...and the WRAP tolerance its siblings carry. The
+                        # slice board writes this one across a line break inside
+                        # a blockquote, and the widened shape still missed it.
+                        ("**0" + chr(10) + "> warnings**", True),
+                        ("**0" + chr(10) + "warnings**", True),
+                        ("**ok**", False), ("**passed**", False)):
+        got = bool(BOLD_INT_RE.fullmatch(shape))
+        if got != want:
+            failures += 1
+            print(f"  FAIL the bolded-figure shape {shape!r}: matched={got}, want={want}")
+        else:
+            print(f"  ok  the bolded-figure shape {shape!r} -> {'reported' if want else 'ignored'}")
+
+    # `dp-kernel --lib` **315 passed** -- the slice board's phrasing, one word
+    # past the pattern the header's phrasing fits, so the figure sat inside a
+    # governed block reading as checked and was not.
+    both = [t for t in ("`dp-kernel --lib` **315**", "`dp-kernel --lib` **315 passed**")
+            if not any(re.findall(pat, t) for pat, k, _l in CLAIMS
+                       if k == "dp_kernel_lib_tests")]
+    if both:
+        failures += 1
+        print(f"  FAIL the dp-kernel rule does not read these phrasings: {both}")
+    else:
+        print("  ok  the dp-kernel rule reads both the header's and the board's phrasing")
 
     # O-R15-3 -- `must_claim` must be EXACT. Its sibling enumeration is
     # re-derived from the tree; this one was a lower bound, so emptying any

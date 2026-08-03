@@ -15,6 +15,13 @@
 use actor_hub::*;
 use ruleset_core::{ModifierOp, OpKind, QuantityTable};
 
+// `#[path]` because this file IS the crate root, so a bare `mod registry;`
+// resolves to the SIBLING `tests/registry.rs` -- an auto-discovered test target
+// of its own, which it then compiles a second time into this binary. Measured:
+// 22 tests where 13 were expected, and the five moved here never ran.
+#[path = "fold_survivors/registry.rs"]
+mod registry;
+
 fn q(raw: u16) -> QuantityOrdinal {
     QuantityOrdinal::new(raw).unwrap()
 }
@@ -132,49 +139,6 @@ fn refusals_are_modifiers_then_derivations_each_in_submission_order() {
     );
 }
 
-/// **`check_derivation` really does check the fold layer.**
-///
-/// Turning its `self.check_layer(row.fold_layer)?` into `let _ = …` was green,
-/// while the identical deletion on the MODIFIER path went red — the same rule,
-/// tested on one of its two paths.
-#[test]
-fn a_derivation_on_an_undeclared_fold_layer_is_refused() {
-    let (r, a, s) = fixture();
-    // Layer 99 is declared by nobody.
-    let out = fold(a, &s, &r, &[], &[deriv(3, 2, 99)]);
-
-    assert_eq!(out.refused.len(), 1, "an undeclared fold layer was accepted");
-    assert_eq!(out.refused[0].row, RowRef::Derivation(0));
-    assert!(
-        matches!(out.refused[0].reason, RowRefusal::UndeclaredFoldLayer { .. }),
-        "expected UndeclaredFoldLayer, got {:?}",
-        out.refused[0].reason
-    );
-    assert_eq!(out.value(q(3)), Some(1), "a refused row must contribute nothing");
-}
-
-/// **A zero divisor and a contradictory bound are refused on the derivation
-/// path**, both of which sit beside the layer check that had no case.
-#[test]
-fn a_zero_divisor_and_a_contradictory_bound_are_refused() {
-    let (r, a, s) = fixture();
-    let zero = DerivationRow { divisor: 0, ..deriv(3, 2, 20) };
-    let contradictory = DerivationRow {
-        bound: Some(ContributionBound { min: 10, max: 5 }),
-        ..deriv(3, 2, 20)
-    };
-
-    let out = fold(a, &s, &r, &[], &[zero, contradictory]);
-
-    assert_eq!(out.refused.len(), 2);
-    assert!(matches!(out.refused[0].reason, RowRefusal::ZeroDivisor));
-    assert!(matches!(
-        out.refused[1].reason,
-        RowRefusal::ContradictoryBound { min: 10, max: 5 }
-    ));
-    assert_eq!(out.value(q(3)), Some(1), "neither refused row may contribute");
-}
-
 /// **`order_key`'s middle component is the SUBMITTING PLUGIN.**
 ///
 /// `M-13` states the intra-layer order as (fold layer, submitting plugin,
@@ -204,39 +168,6 @@ fn contributions_at_one_layer_are_ordered_by_submitting_plugin() {
         order,
         vec![0, 1],
         "at one fold layer the SUBMITTING PLUGIN orders the contributions,          ahead of submission index — plugin 1 submitted first and must sort second"
-    );
-}
-
-/// **An EXACT bound — `min == max` — is legal.**
-///
-/// `ContributionBound`'s own doc says *"inclusive on both ends. `min > max` is
-/// refused"*, so a bound pinning a contribution to one value is a supported
-/// declaration. Weakening the refusal to `>=` was green: the only case used
-/// `{min: 10, max: 5}`, strictly greater — the interesting half — and left the
-/// boundary itself inferred. **That is the exact shape this file's own module
-/// doc says it exists to eliminate**, and its sibling
-/// `an_ordinal_exactly_at_the_table_length_is_refused` is the same defect one
-/// file over. A round of 113 mutations did not find it; round 11 did.
-#[test]
-fn an_exact_bound_is_legal_and_pins_the_contribution() {
-    let (r, a, mut s) = fixture();
-    s[2] = 90_000;
-    let exact = DerivationRow {
-        bound: Some(ContributionBound { min: 7, max: 7 }),
-        ..deriv(3, 2, 20)
-    };
-
-    let out = fold(a, &s, &r, &[], &[exact]);
-
-    assert!(
-        out.refused.is_empty(),
-        "an exact bound min==max must NOT be refused: {:?}",
-        out.refused
-    );
-    assert_eq!(out.value(q(3)), Some(1 + 7), "the bound must pin the contribution to 7");
-    assert!(
-        out.capped.iter().any(|c| c.site == CapSite::DerivedBound),
-        "the bound bit and said nothing"
     );
 }
 
@@ -349,33 +280,34 @@ fn a_negative_derivation_truncates_toward_zero() {
     );
 }
 
-/// **An ordinal EQUAL to the declared table length is past the end.**
+/// **Two derivations at one (layer, plugin) keep SUBMISSION order.**
 ///
-/// The only case used ordinal 9 against a 4-entry table — five past the
-/// boundary — so weakening `>=` to `>` was green and a 4-entry table accepted
-/// ordinal 4. Off-by-one lives at the boundary, and only a test at the boundary
-/// can see it.
+/// `order_key`'s third component is `usize::MAX / 2 + i` for a derivation. The
+/// layer half of that key is cased and the plugin half is cased; the INDEX half
+/// is not, so flipping `+ i` to `- i` reverses two derivations that share a
+/// layer and a plugin and every one of the 294 tests stayed green.
+/// `Explanation.contributions` is public output, so the order is a promise.
+///
+/// Round 10 fixed one component of a three-part key and left its sibling — the
+/// same shape as the round that found this one.
 #[test]
-fn an_ordinal_exactly_at_the_table_length_is_refused() {
-    let table = QuantityTable::assign(&["hp", "qi", "speed", "move_range"]).unwrap();
-    let decls = vec![PluginDecl {
-        ordinal: p(0),
-        quantities: vec![QuantityDecl { ordinal: q(4), initial: 1 }],
-        fold_layers: vec![FoldLayer(10)],
-    }];
+fn two_derivations_from_one_plugin_at_one_layer_keep_submission_order() {
+    let (r, a, s) = fixture();
+    // Both target `move_range` (initial 1), both read `speed` (10 000), same
+    // layer, same plugin — so ONLY the submission index can separate them.
+    let mut first = deriv(3, 2, 20);
+    first.factor_milli = 1_000;
+    let mut second = deriv(3, 2, 20);
+    second.factor_milli = 2_000;
 
-    let err = HubRegistry::build(&table, &decls).expect_err("ordinal 4 in a 4-entry table was accepted");
-    assert!(
-        matches!(err, RegistryError::OrdinalPastDeclaredTable { ordinal: 4, declared: 4 }),
-        "expected OrdinalPastDeclaredTable{{4, 4}}, got {err:?}"
+    let out = fold(a, &s, &r, &[], &[first, second]);
+    let ex = out.explain(q(3)).expect("move_range must be present");
+    let order: Vec<RowRef> = ex.contributions.iter().map(|c| c.row).collect();
+
+    assert_eq!(
+        order,
+        vec![RowRef::Derivation(0), RowRef::Derivation(1)],
+        "two derivations at one (layer, plugin) must stay in submission order"
     );
-
-    // ...and the last VALID ordinal still builds, so the fix is a boundary and
-    // not a blanket refusal.
-    let ok = vec![PluginDecl {
-        ordinal: p(0),
-        quantities: vec![QuantityDecl { ordinal: q(3), initial: 1 }],
-        fold_layers: vec![FoldLayer(10)],
-    }];
-    assert!(HubRegistry::build(&table, &ok).is_ok(), "ordinal 3 is the last valid one");
 }
+

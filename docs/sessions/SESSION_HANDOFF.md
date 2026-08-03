@@ -13,7 +13,7 @@
 > `feat/frontend-tools-mcp-migration` and is left untouched.
 
 **The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
-per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-451` decision record
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-468` decision record
 live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
 the two design contracts that are its only specification are in
 [`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).
@@ -27,7 +27,7 @@ the two design contracts that are its only specification are in
 | `U-10` — the citations in this round's own contracts now resolve mechanically | `scripts/citation-gate.py`, wired pre-commit |
 
 **Evidence:** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules -p ruleset-loader`
-= **294 passed, 0 failed** · `dp-kernel --lib` **315** passed, unchanged by the `GoneState`
+= **296 passed, 0 failed** · `dp-kernel --lib` **315** passed, unchanged by the `GoneState`
 move · the Go mirror `contracts/entity_status` still agrees · `actor-hub` and `entity-existence` are clippy- and rustdoc-clean (the other three crates in that command carry a handful of pre-existing doc and clippy warnings, none of them this round's — counts deliberately not stated, because nothing here measures them and a figure with no measurement rule goes stale by construction; run the two commands if you want the numbers — a round-12 verifier measured the flat claim `clippy clean · cargo doc 0 warnings` FALSE, in the sentence that claims every figure in this block is emitted by a checker) ·
 every mutation in the committed
 mutation harness reds its gate's self-test (`python scripts/gate-bite-harness.py` — one mutation per
@@ -42,7 +42,7 @@ wires all green, and every `--self-test` among them runs pre-commit via
 > it had been rather than reading what it was.
 
 **Reviewed by cold-start adversarial agents, one round per fix pass — every finding fixed or answered.**
-**The per-round tallies are the source and live in [§6e..§6aa of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
+**The per-round tallies are the source and live in [§6e..§6ac of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
 no aggregate is repeated here.** An aggregate is not mechanically derivable, so it goes stale every time a
 round lands. **A number you cannot derive is a number you should not assert** — and this paragraph
 asserted three such numbers while saying so, which a round-11 verifier falsified in place by editing each
@@ -60,7 +60,7 @@ the number exposed a second layer: that citation was set in quotation marks and 
 **a paraphrase in quotation marks is why nobody checked the number** — a quotation is supposed to be frozen. Six commits carried the damage, from two
 different start points — `_index.md` from `2792717cd`, the RUN-STATE from `4f28c35e1`. The remedy is mechanical (`D-385`): the live range may
 appear only inside a current-state block. **The two-consecutive-clean-rounds rule is not met, and this
-block does not claim it is.** **Fifteen rounds; every one REFUTED.** Round 15 is fully discharged: the twin-guard class in `D-443`..`D-446`, its remaining six findings in `D-447`..`D-451`. The sharpest was the raw fallback reaching the marker search and not the content blanking — the same rule, two consumers, one fixed. Round 10: the round-9 mechanism tested SUBSTRING
+block does not claim it is.** **Sixteen rounds; every one REFUTED.** Round 15 is fully discharged: the twin-guard class in `D-443`..`D-446`, its remaining six findings in `D-447`..`D-451`. The sharpest was the raw fallback reaching the marker search and not the content blanking — the same rule, two consumers, one fixed. **Round 16 measured the answer to that class and found it satisfied by its own table:** the parity check searched the whole file, which CONTAINS the table, so seven of its eight witnesses were present whether or not the guard existed — and it read the original file while the child under test is the mutated copy. Its blocking finding was the round-15 fix reproducing the exact misdiagnosis it had been written to eliminate, because its predicate asked about the document while its subject was one fence. `D-452`..`D-468`. Round 10: the round-9 mechanism tested SUBSTRING
 membership where it needed a POSITION SPAN, so it was blind in two of the three files it guards —
 including the very line it had just repaired — and a wider mutation set found **nine actionable
 survivors in `crates/actor-hub`**, the crate nine rounds had called untouched. Round 11: the mutation
@@ -79,11 +79,13 @@ duplicate route closed and the move route open, the instance fixed and the class
 mutation harness now runs an UNMUTATED baseline first, because without one it cannot tell "every rule
 bites" from "the suite is already broken" — and CI is its only automatic runner.
 
-**Every figure in this block is emitted by `scripts/actor-hub-figures-gate.py`, which `--check`s them
-pre-commit whenever this file is staged.**
+**Every BOLDED figure in this block is emitted by `scripts/actor-hub-figures-gate.py`, which
+`--check`s them pre-commit whenever this file is staged — and the same script reports a bolded figure
+here that no rule of its reads, so the claim has a mechanism and not just a sentence.** Bolding is the
+scope because that is what the detector recognises; a number written as a word is outside both.
 
 **The frame that governs the next feature:** *a plugin exists so that adding feature N+1 does not touch
-feature #1 — not so feature #1 can specify feature N+1.* Eight new seams the BUILD measured are
+feature #1 — not so feature #1 can specify feature N+1.* The seams the BUILD measured are
 registered in [`2026-08-02-seams-and-triggers.md`](../specs/2026-08-02-actor-hub/2026-08-02-seams-and-triggers.md)
 which now holds `S-1`..`S-18`, each with a trigger and none with a design.
 
