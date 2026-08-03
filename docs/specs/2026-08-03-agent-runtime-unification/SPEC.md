@@ -642,6 +642,54 @@ Exactly EF's `add column → backfill → drop column`, applied to a tool. It co
 all-at-once, silently-breaking rename into a bounded, observable sequence — and R9.6's usage counters
 are what make *"nothing references it any more"* a fact rather than a hope.
 
+#### R13.6 — The codegen boundary: generate the CONTRACT, never the PROSE
+
+**Where the EF analogy stops, and it stops at the most important point.** EF's generated artifact is
+code read by a compiler, so verbosity is free. **Ours is partly prompt text read by an LLM on every
+turn, where every generated token is paid N times, forever.** A naive copy of EF therefore fails in a
+specific way the PO named: *bad codegen does not merely fail to improve things — it is worse than the
+hand-written version*, because a human at least compresses.
+
+The rule, and it is not negotiable in either direction:
+
+| Target | Read by | Optimise for | Verbosity |
+|---|---|---|---|
+| snapshot · migrations · typed clients · gates · the group tree | compiler / CI | completeness, explicitness | **free** |
+| skill bodies · rail text · tool descriptions · the group directory block | **the LLM, every turn** | token economy | **paid N×** |
+
+**The audit supports the split.** What is broken in the skill layer is the *binding* — a regex
+scraping backticks out of prose — not the prose itself, which is pedagogically good and
+human-compressed. So: **generate the binding, keep the prose.** R3 already draws this line
+(`allowed_tools` is data, the body is prose); R13.6 generalises it to every generated artifact.
+
+**Tooling, by class — and the class decides the tool:**
+
+- **Code (typed clients, models): do not string-template.** The standing critique is that mixing text
+  blocks with control logic *"reduces readability, expressiveness, reusability, and analyzability"*,
+  and practice has moved toward model/AST-based emitters. Use `datamodel-code-generator`
+  (JSON Schema → Pydantic v2 / dataclass / TypedDict) on the Python side and `quicktype` where a
+  cross-language model is wanted. On the Go side the official SDK **already derives schema from the
+  type**, so what we generate there is the *client*, not the model.
+- **Small, stable text artifacts** (the group tree block, gate stubs): a template engine is fine, and
+  here a **logic-less** one (Mustache/Handlebars) is preferable to Jinja — when the output lands in a
+  token budget, an engine that *constrains logic* is a feature. Go `text/template` covers the Go side.
+- **Prompt prose: not generated at all.** Hand-written, gate-checked against the manifest (R3).
+
+**And the gate that keeps this honest — R13.6.1.** Every generated artifact that enters a prompt
+carries a **token-budget assertion in CI**. The repo already measures (the group directory at ~188
+tokens live, `HOT_SEED_TOKEN_BUDGET`, the W1 frontend/MCP schema-token split); what is missing is the
+red. Without it, codegen bloat is invisible until someone reads a transcript — which is precisely how
+the 24,000-token-per-turn tax survived for weeks.
+
+Two assembly disciplines from the prompt-bloat literature map directly onto what we already do, and
+should be named so they stop being accidental:
+
+- **Task-relevant projection** — project metadata to what the task is likely to reference. This *is*
+  the hot-seed. It was right.
+- **Priority-ordered composition** — a prompt is typed blocks of differing marginal value, assembled
+  greedily under a fixed budget. This is the shape R4's `ToolSurface` should converge on, and it is
+  what turns the three separate budgets (§R7 context) into one ordered ceiling.
+
 ### R14 — Discovery cost must not scale with the catalog *(C1 — thousands of tools)*
 
 The discovery triad is a **constant-factor** optimisation over an approach that is **linear in catalog
@@ -728,7 +776,7 @@ handler; chat never routes `tool_list` there) and `test_tool_list_load.py:64-66`
 |---|---|---|
 | **0** | §4 — six fixes + two vacuous-test repairs | each fix's proof pasted into VERIFY evidence (§9); full suites green in the 5 touched services |
 | **1** | **R12 evals in CI** · R1 manifest · R2 `_meta` group/lane + R9.5 namespacing + cache hints · R7 enum · **R13.1 one registration path per language** | the four existing harnesses run in CI against a versioned golden set and block a PR on regression; manifest generated in CI; registration panics on a missing group in all 3 languages; schema is SDK-derived everywhere and hand-built `InputSchema` overrides are gone; `_meta` keys namespaced; catalog version hashes description + `_meta`; `GROUP_DIRECTORY`/prefix maps deleted as authored artifacts and derived — the ×3 and ×2 copies **gone**, not synced |
-| **1b** | **R13.2–R13.5 the migration chain** — generated diffs, typed clients, reference edges, rename-as-lifecycle | `mcp-migrations add` generates and classifies the diff; **CI reds on live-catalog ≠ snapshot with no migration entry**; in-repo consumers build against generated clients; a rename reports every broken edge by name. Proof: rename one real tool and show the gate naming its consumers *before* anything breaks at runtime |
+| **1b** | **R13.2–R13.6 the migration chain** — generated diffs, typed clients, reference edges, rename-as-lifecycle, the codegen boundary | `mcp-migrations add` generates and classifies the diff; **CI reds on live-catalog ≠ snapshot with no migration entry**; in-repo consumers build against generated clients; a rename reports every broken edge by name. **No prose is generated, and every generated artifact entering a prompt carries a CI token-budget assertion (R13.6.1)**. Proof: rename one real tool and show the gate naming its consumers *before* anything breaks at runtime; and show the budget gate redding on a deliberately bloated generated block |
 | **2** | **R10 tool error contract** (+ retire the breakers it obsoletes) | every tool result carries a closed-set classification decided in the wrapper; `terminal_permanent` names what to do instead; the `isError`/`outputSchema` envelope is specified and proven against a **strict** client; **at least four of the six orchestrator breakers deleted**, with the eval suite green across the deletion |
 | **3** | R3 skills declare tools — `allowed_tools` (policy) **and** reachability — + the three hard coverage gates | 100% of tools have exactly one group; every group owned by exactly one skill; the 30 orphans (incl. 17 `world_*`) either assigned or waived with a reason; user-skill frontmatter accepts both fields; the prose scraper is an assertion, not a mechanism |
 | **4** | **R9 layers** — artifact lifecycle fields + the declared policy mapping · R9.6 counters | every tool carries `lifecycle_state` + `owner`; tools gain versions/revisions like skills and workflows already have; **one** place maps artifact state → availability, and the seven `is_legacy_tool` filter sites read it instead of the flag; `pinned_legacy_tools` deleted; usage counters written and `sort=last_triggered` demonstrably works |
@@ -788,6 +836,7 @@ further boundary refinement.
 | **The error taxonomy is assigned by guesswork** | ten services, ~334 tools, and this repo already guesses from names in four places (12-verb async list, 43 intent regexes, read-verb substrings, prefix maps) | classification is set where the failure is *raised*, never mapped from a message string downstream. A wrapper that cannot classify returns `terminal_permanent` — the fail-safe direction, since a wrong "retryable" is what causes the loop |
 | **R12 lands as a green rubber stamp** | four harnesses currently pass; wiring passing tests into CI proves nothing and reads as coverage | the baseline is recorded from a run that **includes known-failing cases**, and Phase 1 does not close until one deliberately injected regression is shown to block a PR |
 | **The migration chain becomes another hand-maintained list** | the repo has already produced seven of those (`ALWAYS_HOT_WRITES`, prefix maps, `TOOL_POLICY`, …), every one added after an incident | the diff is **generated or it does not exist**. A migration entry a human typed is the failure mode, not the feature. Phase 1b's proof is a real rename whose consumer list the tool produced unaided |
+| 🔴 **Codegen makes the context problem WORSE** | EF's output is free; ours is partly prompt text paid on every turn. A generated skill body or a templated tool-description block would be more verbose than the hand-compressed prose it replaced, and the cost is per-turn and permanent — the single most likely way this spec does net harm | R13.6 forbids generating prose at all, and **R13.6.1 puts a token-budget assertion in CI on every generated artifact that enters a prompt**. If a codegen change grows the prompt, the build reds. This risk is the reason that gate exists rather than being a nice-to-have |
 | **R14 is designed for a catalog we do not have** | 312 tools today; "thousands" is a projection, and building for imagined scale is its own classic mistake | do not guess — **test it**: the Phase 6 DoD is a synthetic 3,000-tool catalog in the eval harness. If discovery cost stays flat there, the design holds; if it cannot be built, that is the finding |
 | **F17 reads as reversed rather than amended** | retrieval returning after `find_tools` was retired looks like the pendulum swinging back, which is how this domain got thirteen layers | R14.3 states the distinction explicitly (enumeration for the tree, retrieval for the leaves) and §8 records it as an amendment with the reason. A reversal nobody explains becomes the fourteenth layer |
 
@@ -906,3 +955,13 @@ in this domain are mechanised — one row is in a table, ~10 live as prose in a 
     the catalog. Provider-registry already resolves an embedding model, and `tool_discovery.py` already
     caches tool vectors — but that machinery was built for the de-advertised `find_tools`. Reuse or
     rebuild is a real fork.
+17. **Is the group-directory prompt block generated or hand-written?** It is the one artifact sitting
+    exactly on R13.6's line: its *content* is derived from the manifest (so it should be generated and
+    can never drift), but it is *read by the model every turn* (so every generated token is paid). If
+    generated, it needs R13.6.1's budget assertion from day one; if hand-written, it needs a gate that
+    it still matches the manifest. Both are defensible; drifting between them is not.
+18. **Which prompt artifacts get a budget, and what is the number?** R13.6.1 needs a ceiling per
+    artifact, not a global one. The repo has measured values to start from (group directory ~188 tok,
+    `HOT_SEED_TOKEN_BUDGET` 2000) but no others — and a budget picked without a measurement is the
+    same mistake as `ROUTER_CONFIDENCE_THRESHOLD = 0.35`, which the code itself records as *"NOT yet
+    empirically tuned"*.
