@@ -1,6 +1,6 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `9154d67fe` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-03
+**HEAD:** `d497ebf7a` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-03
 
 ## 📕 2026-08-03 — the dogfood run: a novel was planned and drafted through the real frontend
 
@@ -22,6 +22,38 @@ in the evidence doc below.
 | 3 | the same run then could not turn its 11 compiled chapters into book chapters: bootstrap was gated on `status === 'compiled'`, and Validate (which Agent Mode *requires*) walks out of that window | `9154d67fe` |
 | 4 | drafting failed with `NO_CHAPTER_PLAN` until the Pass Rail produced scene plans — **not a bug**, but nothing in the drafting UI says so. See NEXT-1 | — |
 
+## 📗 2026-08-03 — the agent-runtime audit, and the spec that has to retire twelve predecessors
+
+Design-only cycle, no runtime code touched. Six parallel read-only auditors over disjoint layers
+(tool surfacing · skills · rails/guards/state · MCP servers + federation · workflows + registry ·
+documented intent), plus one main-session read of `stream_service.py` so the 7,818-line spine was read
+once rather than six times. Output: [`docs/specs/2026-08-03-agent-runtime-unification/`](../specs/2026-08-03-agent-runtime-unification/)
+— `AUDIT.md`, `SPEC.md`, and the six layer reports with `file:line` on every claim.
+
+**The finding, in one line:** for tool availability the architecture never existed — **thirteen
+successive mechanisms since 2026-06-10, exactly one ever retired** — and beneath that, *no artifact
+anywhere assigns a tool to a skill*. Measured: 16 producers, 18 filters (**13 silent**), 8 answers to
+"is this tool available", 3 workflow selectors, and **4 mutually inconsistent tool counts**. Coverage:
+98/202 tools named by any skill (~49%), 30/223 in any workflow (13%).
+
+**Three findings verified beyond the reports, in the main session:**
+
+| | |
+|---|---|
+| `repeat` is **dropped in transit** | Go declares `Repeat string`, the seeds write `true`, `_ = json.Unmarshal` discards the type error. Measured end-to-end **after `363e22f43` shipped**: DB row `[true × 8]`, wire `repeat` 0× of 45 steps, with `gate` 45× / `done_when` 8× as controls. So `363e22f43`'s item-3 fix and its seed-SQL lint are **both inert**; its other three fixes hold. 13 rail steps are wrongly disarmed today |
+| the hot-seed and the prompt disagree | `surface_hot_domains` resolves skills **without** `lazy_bodies` (defaults False ⇒ full set); the injection path passes `lazy_skill_bodies=True` ⇒ `[]`. Tools ride the wire with no skill body teaching them |
+| `visibility:"legacy"` is a runtime filter, not an artifact state | read directly at **7 filter sites** with no policy layer; it has a per-session escape hatch (`pinned_legacy_tools`), no clock, and no retire — hence 114 legacy tools served forever |
+
+**PO decisions sealed:** D1 both lanes (chat + out-of-agent FSM) with a declared boundary · D2 the six
+cheap fixes are Phase 0 · D3 "lifecycle" is two orthogonal axes plus the missing policy layer between
+them (this one corrected a live defect in the spec's own R4).
+
+**Web research folded in** (MCP 2026-07-28 deprecation policy · SEP-1300 *rejected*, so `_meta.group`
+is a legitimate private extension · `allowed-tools` **is** an Agent Skills standard field but means
+*permission*, not *reachability* · the retry-storm and context-contamination results behind the
+infinite-loop symptom). 12 requirements, 8 phases; **R12 evals-in-CI goes first**, because every later
+phase deletes something and nothing can be deleted without a regression net.
+
 ### ▶ NEXT
 
 1. **`NO_CHAPTER_PLAN` is a dead end with no signpost.** Agent Mode's preflight shows 4/4 green
@@ -31,9 +63,15 @@ in the evidence doc below.
    stop in the authoring path.
 2. **`D-BOOTSTRAP-PREVIEW-LIES` is fix-now, not deferred** — one function, and the correct
    pattern is the other half of the same function. See the register row.
-3. The **tool-reachability refactor** ([`docs/specs/2026-08-03-tool-reachability-ssot.md`](../specs/2026-08-03-tool-reachability-ssot.md))
-   — written this session, deliberately not started. Four mechanisms, no SSOT; the commit fixed
-   each one and removed none of the fragmentation.
+3. **The agent-runtime unification spec is at its CLARIFY checkpoint with 12 open DESIGN questions**
+   ([`SPEC.md`](../specs/2026-08-03-agent-runtime-unification/SPEC.md) §10). The load-bearing ones:
+   does a `both`-lane tool count toward the FSM coverage ratchet · who is `owner` for a platform tool ·
+   what sunset window is honest for a tool only our own agent calls · **which four of the six
+   orchestrator breakers R10 deletes** (name them, or "net-negative" is unfalsifiable).
+   [`2026-08-03-tool-reachability-ssot.md`](../specs/2026-08-03-tool-reachability-ssot.md) is
+   **absorbed, not superseded** — its diagnosis is independent corroboration and three of its four
+   fixes hold; its banner must record that item 3 is inert, or the next reader will believe `repeat`
+   works.
 4. The **glossary↔KG refactor now has an acceptance case**, which it did not before:
    [`…-glossary-kg-entity-refactor/2026-08-03-dogfood-entity-consistency-evidence.md`](../specs/2026-08-03-glossary-kg-entity-refactor/2026-08-03-dogfood-entity-consistency-evidence.md)
    §1. A character the `cast` pass minted at 05:47 took the antagonist's defining act at 05:54,
