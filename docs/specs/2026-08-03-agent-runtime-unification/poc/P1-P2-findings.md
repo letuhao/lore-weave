@@ -559,6 +559,72 @@ It also settles the PO's question about model strength definitively: a model tha
 
 ---
 
+## P9 — R18: the prompt and the state machine are two hand-synced copies of the same facts
+
+The PO's reading of the description defect: it is not a wording problem, it is architectural — *the
+prompt and the state machine that manages lifecycle and workflow have no relationship to each other.*
+Tested on both halves.
+
+### Half one — lifecycle
+
+| | tools |
+|---|---|
+| lifecycle **STATE** says legacy (`_meta.visibility`) | **117** |
+| **PROSE** says deprecated (the description the model reads) | 49 |
+| **they agree** | **42** |
+| **legacy in state, prose silent** | **75 (64%)** |
+| legacy whose replacement is **only in prose**, absent from `_meta.superseded_by` | **70** |
+
+*(A first pass also reported 7 tools whose prose claimed deprecation while the state said current. All
+7 were false positives of the search pattern — they use "instead"/"superseded" as legitimate
+disambiguation, e.g. `book_search`: "for meaning-alike passages use `story_search` instead". Verified
+individually and withdrawn.)*
+
+**Only 36% of legacy tools say so in the text the model actually reasons over.** The state reaches the
+model as a boolean field on `tool_list`; the *semantics* it reads come from a description written
+independently. And for 70 tools the state machine **cannot answer "what replaces this?"** at all —
+the replacement exists only as a sentence someone typed.
+
+### Half two — workflows
+
+`notes_md` is prose injected into the prompt; `steps` is data the rail driver executes. They are
+authored separately, and **9 of 12 seeded rails disagree**:
+
+| rail | steps | steps never mentioned in the prose | tools named in prose that are not steps |
+|---|---|---|---|
+| **`vision-to-book`** (flagship, mode-binding pinned) | 9 | **5** | 3 |
+| `entity-triage` | 4 | 0 | **6** |
+| `translation-pass` | 3 | 0 | **4** |
+| `glossary-bootstrap` | 4 | **2** | 2 |
+| `chapter-compose` | 2 | 0 | 2 |
+
+The flagship rail has **five of its nine steps absent from the paragraph the model reads**, while
+naming three tools it never runs.
+
+### R18 — the prompt is a PROJECTION of state, never a parallel authoring surface
+
+Every case above is the same defect: **a machine-readable fact was re-typed by a human into the text
+the model reads, and nothing keeps the two in step.** Deprecation, replacement, step order, gates —
+all exist twice.
+
+> Anything the model reads that **asserts a machine fact** must be **generated from that state**.
+> Prose may **teach**; it may not **claim**.
+
+This sharpens R13.6, whose line was "generate the contract, never the prose". That line is not quite
+right, and this data shows where it bends:
+
+| kind of text | authored how | example |
+|---|---|---|
+| **facts about state** — deprecated, replacement, step list, gate, required args | **generated projection**, drift impossible by construction | *"DEPRECATED — use `book_list`"*, the rail step list |
+| **pedagogy** — how to think about a domain, when to prefer one approach | **hand-written**, gate-checked against the manifest (R3) | the glossary skill's guidance on ontology shaping |
+
+The 2026-07-09 decision (OQ5) that a deprecated tool should be *labeled rather than hidden* is not
+wrong in principle — but it silently assumed the label and the description agree. Measured: they agree
+36% of the time, and in the live capture the model read a correct label, a correct replacement, and
+used the retired tool anyway. **Labeling is a projection problem before it is a filtering problem.**
+
+---
+
 ## 3 · What P1 and P2 settle, and what they do not
 
 | DESIGN question | settled by | answer |
