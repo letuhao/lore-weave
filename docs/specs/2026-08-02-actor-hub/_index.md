@@ -1,7 +1,7 @@
 # Actor Hub — feature #1
 
 **Round:** 2026-08-02 · **Status:** design sealed · **feature #1 BUILT** — [`crates/actor-hub`](../../../crates/actor-hub)
-**Run state:** [`../../plans/2026-08-02-actor-substrate-RUN-STATE.md`](../../plans/2026-08-02-actor-substrate-RUN-STATE.md) — `D-1`..`D-393`
+**Run state:** [`../../plans/2026-08-02-actor-substrate-RUN-STATE.md`](../../plans/2026-08-02-actor-substrate-RUN-STATE.md) — `D-1`..`D-404`
 
 > **Actor hub is feature #1 of roughly a thousand, across dozens of categories.**
 > **Features are PLUGINS. The actor is the HUB.** The hub's job is to make adding feature #2 cheap —
@@ -13,11 +13,11 @@
 
 | file | lines | owns |
 |---|---|---|
-| [`2026-08-02-actor-hub.md`](2026-08-02-actor-hub.md) | 172 | the hub: identity · intrinsic quantities · existence · attachment · the fold · the contribution seam |
-| [`2026-08-02-engine-substrate.md`](2026-08-02-engine-substrate.md) | 142 | the layer beneath: the two SSOTs · rule identity · ordinals · the fold arithmetic · the mechanism/vocabulary discriminator |
-| [`2026-08-02-seams-and-triggers.md`](2026-08-02-seams-and-triggers.md) | 50 | ten **measured seams** to features that do not exist yet — a register, **not a design** |
+| [`2026-08-02-actor-hub.md`](2026-08-02-actor-hub.md) | 202 | the hub: identity · intrinsic quantities · existence · attachment · the fold · the contribution seam |
+| [`2026-08-02-engine-substrate.md`](2026-08-02-engine-substrate.md) | 157 | the layer beneath: the two SSOTs · rule identity · ordinals · the fold arithmetic · the mechanism/vocabulary discriminator |
+| [`2026-08-02-seams-and-triggers.md`](2026-08-02-seams-and-triggers.md) | 66 | ten **measured seams** to features that do not exist yet — a register, **not a design** |
 
-**364 lines total.** They were 1 107 before the scope seal; the cut is recorded in `D-292`..`D-295`.
+**425 lines total.** They were 1 107 before the scope seal; the cut is recorded in `D-292`..`D-295`.
 
 ## Read this to REUSE THE ANALYSIS — `analysis/`
 

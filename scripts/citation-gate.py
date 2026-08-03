@@ -798,6 +798,21 @@ def self_test() -> int:
         ("C4 a dead relative link", "[x](nowhere.md)", 1),
         ("a URL is not a path", "[x](https://example.com/a.md)", 0),
         ("a bare github URL is not a path", "see github.com/o/r/blob/main/docs/X.md", 0),
+        # m8 -- three rules whose comments each cite a specific past incident and
+        # which had no case at all. Every one was deletable with the suite green.
+        #
+        # `Tree.normalise` on backslashes: the documented bypass, verbatim. A
+        # Windows-separator path matched only its BASENAME and resolved uniquely
+        # against a wholly different directory, so a made-up path passed.
+        ("a backslash path is normalised, not resolved by basename",
+         r"see crates\made\up\layer.rs:41", 1),
+        # ...and `a/../b` collapsing, the other half of the same docstring: two
+        # rules of one gate disagreeing about what a path is.
+        ("a `..` segment is collapsed before resolution",
+         "see docs/../crates/nope/gone.rs:3", 1),
+        # `_is_external` recognising `//`: a protocol-relative URL is not a path
+        # in this repository.
+        ("a protocol-relative URL is external", "[x](//example.com/a.md)", 0),
         # `scan_line = URL_RE.sub(...)` had no case and, measured over all of
         # `docs/`, no subject either: 4 845 findings with it and 4 845 without.
         # A rule with neither is indistinguishable from a rule that does not

@@ -33,10 +33,79 @@ import argparse
 import subprocess
 import sys
 import time
+import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 SELF = Path(__file__).name
+
+# **REFERENCED BY CODE, not mentioned in prose.**
+#
+# The first predicate was `"--self-test" in src`, so a script whose only
+# relationship to the flag was a sentence in a comment was invoked, exited 0, and
+# counted as a green self-test. Measured on this tree, that was not hypothetical:
+# `gate-teeth-gate.py` names the flag in two comments -- including one saying a
+# gate should have *"a `def self_test` and a `--self-test` CLI flag"* -- has
+# neither, and was being counted green. The inverse is live too: a script that
+# mentions the flag and parses arguments strictly exits 2 and blocks the commit,
+# which is cry-wolf, the severe direction.
+#
+# The obvious tightening -- require an argparse registration -- was measured and
+# is WRONG: it drops `gatelib.py`, which has a real self-test dispatched through
+# `sys.argv`. A predicate keyed on one dispatch idiom is an enumerated list
+# wearing a regex.
+#
+# So: the flag must appear in the file with comments and docstrings REMOVED.
+# This repo already has that rule and learned it the hard way -- prose that
+# happens to live in a source file is still prose, which is what certified three
+# prose-only deferrals as covered until the stripper was fixed.
+FLAG = "--self-test"
+
+
+def _code_only(src: str) -> str:
+    """`src` with comments and docstrings blanked. Offsets are not preserved.
+
+    On a syntax error it returns `src` UNCHANGED -- deliberately the permissive
+    direction. Wrongly INCLUDING a script costs one wasted invocation; wrongly
+    excluding one silently drops a gate from every commit, which is the failure
+    this whole file exists to prevent.
+    """
+    import ast
+    import io as _io
+    import tokenize
+
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return src
+
+    lines = src.split("\n")
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                 ast.AsyncFunctionDef)):
+            continue
+        if not (node.body and isinstance(node.body[0], ast.Expr)
+                and isinstance(node.body[0].value, ast.Constant)
+                and isinstance(node.body[0].value.value, str)):
+            continue
+        doc = node.body[0].value
+        for i in range(doc.lineno - 1, (doc.end_lineno or doc.lineno)):
+            if 0 <= i < len(lines):
+                lines[i] = ""
+    stripped = "\n".join(lines)
+
+    try:
+        out, last = [], (1, 0)
+        for tok in tokenize.generate_tokens(_io.StringIO(stripped).readline):
+            if tok.type == tokenize.COMMENT:
+                continue
+            out.append(tok.string)
+        return " ".join(out)
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return stripped
+
+# A hanging self-test must not wedge a commit or burn the CI job to its cap.
+CHILD_TIMEOUT_S = 300
 
 # The floor exists because DISCOVERY CAN SILENTLY FIND NOTHING. A predicate that
 # stops matching -- a rename, a refactor of how the flag is registered -- would
@@ -54,7 +123,11 @@ def discover(root: Path | None = None) -> list[Path]:
     """
     root = root or (REPO / "scripts")
     found = []
-    for p in sorted(root.glob("*.py")):
+    # **RECURSIVE**, because the hook's trigger is: `^scripts/.*\.py$` matches
+    # `scripts/perf/slo_assert.py`, which has a real `--self-test` -- so staging
+    # it fired a driver that then did not look at it. The enumerated-list defect
+    # one directory level down.
+    for p in sorted(root.rglob("*.py")):
         # A DOT-PREFIXED file is not a gate. `gate-bite-harness` mutates a gate
         # by writing `.bite-<name>.py` beside the original -- same directory, so
         # `REPO` still resolves -- and that copy sat in the very directory this
@@ -65,7 +138,7 @@ def discover(root: Path | None = None) -> list[Path]:
         if p.name == SELF or p.name.startswith("."):
             continue
         try:
-            if "--self-test" in p.read_text(encoding="utf-8", errors="replace"):
+            if FLAG in _code_only(p.read_text(encoding="utf-8", errors="replace")):
                 found.append(p)
         except OSError:
             continue
@@ -75,7 +148,7 @@ def discover(root: Path | None = None) -> list[Path]:
 def run_all(scripts: list[Path], run=None) -> int:
     runner = run or (lambda p: subprocess.run(
         [sys.executable, str(p), "--self-test"], cwd=REPO,
-        capture_output=True, text=True))
+        capture_output=True, text=True, timeout=CHILD_TIMEOUT_S))
     failed = []
     for p in scripts:
         t0 = time.time()
@@ -150,6 +223,25 @@ def self_test() -> int:
             failures += 1
             print(f"  FAIL {required} advertises --self-test and was not discovered")
 
+    # `--self-test` must ROUTE to the cases. Deleting that branch left this
+    # file's own self-test green, because the fallthrough ran every other gate.
+    import argparse as _ap
+
+    def _parsed(argv):
+        q = _ap.ArgumentParser()
+        q.add_argument("--list", action="store_true")
+        q.add_argument("--self-test", action="store_true", dest="self_test")
+        return q.parse_args(argv)
+
+    for argv, want in ((["--self-test"], "self-test"), (["--list"], "list"), ([], "run")):
+        got = _route(_parsed(argv))
+        if got != want:
+            failures += 1
+            print(f"  FAIL {argv} routes to {got!r}, want {want!r}")
+    if all(_route(_parsed(a)) == w for a, w in
+           ((["--self-test"], "self-test"), (["--list"], "list"), ([], "run"))):
+        print("  ok  every flag routes to its own mode")
+
     # A file WITHOUT the flag must not be picked up, or every script in the
     # directory would be invoked with an argument it does not understand.
     import tempfile
@@ -157,16 +249,36 @@ def self_test() -> int:
         tmp = Path(d)
         (tmp / "has-flag.py").write_text('ap.add_argument("--self-test")', encoding="utf-8")
         (tmp / "no-flag.py").write_text("print(1)", encoding="utf-8")
+        # **MENTIONING the flag is not having one.** A script whose only
+        # relationship to `--self-test` is a sentence in its docstring was
+        # invoked, exited 0, and counted as a green self-test.
+        (tmp / "mentions-only.py").write_text(
+            '"""Run me with --self-test one day."""\nprint(1)\n', encoding="utf-8")
+        # ...in a COMMENT too, which is how a real gate in this tree was being
+        # counted green while having no self-test at all.
+        (tmp / "comment-only.py").write_text(
+            "# a gate should have a --self-test flag\nprint(1)\n", encoding="utf-8")
+        # ...and a REAL self-test dispatched WITHOUT argparse must still count:
+        # requiring `add_argument` dropped `gatelib.py`, a miss introduced by the
+        # fix for a false green.
+        (tmp / "argv-dispatch.py").write_text(
+            'import sys\nif "--self-test" in sys.argv:\n    pass\n', encoding="utf-8")
+        # ...and discovery is RECURSIVE, matching the hook trigger.
+        (tmp / "perf").mkdir()
+        (tmp / "perf" / "nested.py").write_text(
+            'ap.add_argument("--self-test")', encoding="utf-8")
         # A scratch copy of a gate, which carries the flag and must still be
         # skipped — `gate-bite-harness` writes exactly this shape beside the
         # original while it mutates it.
         (tmp / ".bite-has-flag.py").write_text('ap.add_argument("--self-test")', encoding="utf-8")
         got = {p.name for p in discover(tmp)}
-        if got != {"has-flag.py"}:
+        want = {"has-flag.py", "nested.py", "argv-dispatch.py"}
+        if got != want:
             failures += 1
-            print(f"  FAIL the predicate selected {got}, want just has-flag.py")
+            print(f"  FAIL the predicate selected {got}, want {want}")
         else:
-            print("  ok  neither a flagless script nor a dot-prefixed copy is invoked")
+            print("  ok  registration is required, mentioning is not enough, "
+                  "subdirectories are covered")
 
     # And a RED gate must fail the run, with its output shown. `run_all` is
     # driven for real with an injected runner -- the defect one directory over
@@ -206,6 +318,22 @@ def self_test() -> int:
     return 0
 
 
+def _route(args) -> str:
+    """Which mode `main` will take. Extracted so it can be ASSERTED.
+
+    Deleting `if args.self_test: return self_test()` left this file's own
+    self-test GREEN: the fallthrough ran every discovered gate, all of which
+    passed, so the run exited 0. The routing could not be tested in place --
+    calling `main(["--self-test"])` from inside `self_test` recurses -- so the
+    decision moved out to where a case can reach it.
+    """
+    if args.self_test:
+        return "self-test"
+    if args.list:
+        return "list"
+    return "run"
+
+
 def main(argv: list[str] | None = None, discover_fn=None) -> int:
     """`discover_fn` is injectable so the floor below can be DRIVEN. Its only
     assertion used to live inside `self_test`, where mutating a case cannot red
@@ -215,11 +343,12 @@ def main(argv: list[str] | None = None, discover_fn=None) -> int:
     ap.add_argument("--self-test", action="store_true", dest="self_test")
     args = ap.parse_args(argv)
 
-    if args.self_test:
+    mode = _route(args)
+    if mode == "self-test":
         return self_test()
 
     found = (discover_fn or discover)()
-    if args.list:
+    if mode == "list":
         for p in found:
             print(p.relative_to(REPO).as_posix())
         return 0

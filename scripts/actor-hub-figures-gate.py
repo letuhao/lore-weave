@@ -63,6 +63,7 @@ CRATES = ["actor-hub", "entity-existence", "ruleset-core", "game-rules", "rulese
 CONTRACTS = [
     ("docs/specs/2026-08-02-actor-hub/2026-08-02-actor-hub.md", "contract_hub_lines"),
     ("docs/specs/2026-08-02-actor-hub/2026-08-02-engine-substrate.md", "contract_substrate_lines"),
+    ("docs/specs/2026-08-02-actor-hub/2026-08-02-seams-and-triggers.md", "contract_seams_lines"),
 ]
 SEAMS = "docs/specs/2026-08-02-actor-hub/2026-08-02-seams-and-triggers.md"
 RUN_STATE = "docs/plans/2026-08-02-actor-substrate-RUN-STATE.md"
@@ -127,11 +128,21 @@ def _hook_gate_scripts(read=None) -> int:
     return len(set(re.findall(r"scripts/([A-Za-z0-9_-]+\.(?:py|sh))", body)))
 
 
-def measure() -> dict[str, object]:
+def measure(cargo=None) -> dict[str, object]:
+    """`cargo` is injectable so `--self-test` can assert WHICH ARGUMENTS the
+    measurements ask for, on a machine with no toolchain.
+
+    Three production rules were RED with cargo present and GREEN without it --
+    the FAILED-count parse, the crate list, and `dp-kernel`'s `--lib`. The only
+    automatic runner of the mutation harness is CI, which has no Rust, so those
+    three were covered nowhere. A rule whose coverage depends on the developer's
+    machine is not covered.
+    """
+    passed = cargo or _cargo_passed
     out: dict[str, object] = {}
     for name, fn in (
-        ("rust_tests", lambda: _cargo_passed(sum([["-p", c] for c in CRATES], []))),
-        ("dp_kernel_lib_tests", lambda: _cargo_passed(["-p", "dp-kernel", "--lib"])),
+        ("rust_tests", lambda: passed(sum([["-p", c] for c in CRATES], []))),
+        ("dp_kernel_lib_tests", lambda: passed(["-p", "dp-kernel", "--lib"])),
         ("max_decision_id", lambda: _max_id(RUN_STATE, "D")),
         ("max_seam_id", lambda: _max_id(SEAMS, "S")),
         ("hook_gate_scripts", _hook_gate_scripts),
@@ -152,6 +163,10 @@ def measure() -> dict[str, object]:
             out[key] = len((REPO / path).read_text(encoding="utf-8").splitlines())
         except OSError as e:
             out[key] = {"unmeasurable": f"{path}: {e.strerror}"}
+    counts = [out[k] for _, k in CONTRACTS]
+    out["contract_total_lines"] = (
+        sum(counts) if all(isinstance(c, int) for c in counts)
+        else {"unmeasurable": "a contract could not be read"})
     return out
 
 
@@ -178,6 +193,21 @@ CLAIMS: tuple[tuple[str, str, str], ...] = (
     # the wrap puts `> ` between "and" and the number. The coverage arm caught
     # this immediately: "NO DOCUMENT claims the substrate contract's lines".
     (r"and\s*\n?>?\s*\*\*(\d+)\*\*\s*\n?>?\s*lines", "contract_substrate_lines", "the substrate contract's lines"),
+    # M1 -- the same three files, stated again as a TABLE inside `_index.md`'s
+    # governed block, and every pattern above keys on PROSE. Measured: the block
+    # said 172 / 142 / 50 and "364 lines total" while the files were 202 / 157 /
+    # 66 -- **four stale figures inside the scope**, twenty lines from a prose
+    # sentence stating two of the same numbers correctly, in the file this
+    # script's own docstring calls "the file with the worst record for this exact
+    # defect". A checker's scope is a claim; so is the SHAPE it recognises inside
+    # that scope.
+    (r"\(2026-08-02-actor-hub\.md\)\s*\|\s*(\d+)\s*\|", "contract_hub_lines",
+     "the hub contract's lines, in the index table"),
+    (r"\(2026-08-02-engine-substrate\.md\)\s*\|\s*(\d+)\s*\|", "contract_substrate_lines",
+     "the substrate contract's lines, in the index table"),
+    (r"\(2026-08-02-seams-and-triggers\.md\)\s*\|\s*(\d+)\s*\|", "contract_seams_lines",
+     "the seams register's lines, in the index table"),
+    (r"\*\*(\d+) lines total\.\*\*", "contract_total_lines", "the three contracts' total lines"),
 )
 
 
@@ -186,7 +216,22 @@ QUOTE_RE = re.compile(r'\*"[^"]*"\*')
 COMMENT_RE = re.compile(r"<!--.*?-->")
 
 
-def _claimable(block: str, quotes: bool = True) -> str:
+FENCE_RE = re.compile(r"^\s*(?:>\s*)*(?:```|~~~)")
+
+
+def _fence_state(prefix: str) -> bool:
+    """True when `prefix` ends INSIDE a fenced block.
+
+    `>` is stripped first: this project writes whole headers as blockquotes, and
+    the gate's own docstring says so, yet the marker test was `lstrip()` only --
+    so a `> ```-fenced example of the header line was not recognised as a fence
+    at all and was reported as a live claim. Cry-wolf, in the exact region the
+    scope was drawn around.
+    """
+    return sum(1 for l in prefix.split("\n") if FENCE_RE.match(l)) % 2 == 1
+
+
+def _claimable(block: str, quotes: bool = True, in_fence: bool = False) -> str:
     """The block with everything that is NOT a live claim blanked out.
 
     **F6 — a quoted historical figure, a fenced example and an HTML comment each
@@ -206,23 +251,29 @@ def _claimable(block: str, quotes: bool = True) -> str:
     """
     lines = block.split("\n")
 
-    # **Fences are PAIRED, not toggled.** `_scope_text` cuts its window at a
-    # marker, so a fence can straddle the boundary; a toggle then flips ON at an
-    # unmatched opener and blanks EVERY REMAINING LINE of the block. That is a
-    # check whose scope stops reaching its subject halfway down -- and this repo
-    # recorded the same defect in `citation-gate` one round earlier ("fence
-    # parity blinded whole file tails on 8 live docs"). An UNPAIRED marker is
-    # treated as ordinary text, which keeps the tail live.
-    marks = [i for i, l in enumerate(lines)
-             if l.lstrip().startswith("```") or l.lstrip().startswith("~~~")]
-    fenced: set[int] = set()
-    for a, b in zip(marks[::2], marks[1::2]):
-        fenced.update(range(a, b + 1))
-
-    out, in_comment = [], False
-    for i, line in enumerate(lines):
+    # **Fence state comes from the CALLER, computed over the document prefix.**
+    #
+    # `_scope_text` cuts its window at a marker, so a fence can straddle the
+    # boundary and the window alone cannot say which side of one it starts on.
+    # Two versions guessed, and both were measurably wrong:
+    #
+    #   * TOGGLING from False blanked EVERY REMAINING LINE after an unmatched
+    #     opener -- a check whose scope stops reaching its subject halfway down.
+    #   * PAIRING markers 0-1, 2-3 was worse in the closer/opener/closer shape:
+    #     it blanks real prose AND exposes a genuine code block, where toggling
+    #     did neither.
+    #
+    # There is nothing to guess. The prefix says what the state is; `_fence_state`
+    # reads it, and inside the window a plain toggle is then exactly right --
+    # including for a fence that genuinely continues past the window's end.
+    out, in_comment, fenced = [], False, in_fence
+    for line in lines:
         stripped = line.lstrip()
-        if i in fenced:
+        if FENCE_RE.match(line):
+            fenced = not fenced
+            out.append(" " * len(line))
+            continue
+        if fenced:
             out.append(" " * len(line))
             continue
         # An HTML comment spans lines. `startswith("<!--")` blanked only the
@@ -233,11 +284,16 @@ def _claimable(block: str, quotes: bool = True) -> str:
             if "-->" in line:
                 in_comment = False
             continue
-        if stripped.startswith("<!--") and "-->" not in line:
+        # Inline `<!-- ... -->` spans first, so what remains is either no
+        # comment at all or an OPENING with no close on this line -- which is how
+        # a comment that starts mid-line (`superseded <!--`) gets caught. Testing
+        # `stripped.startswith("<!--")` missed exactly that, one line after the
+        # multi-line fix went in.
+        line = COMMENT_RE.sub(lambda mo: " " * len(mo.group(0)), line)
+        if "<!--" in line:
             in_comment = True
             out.append(" " * len(line))
             continue
-        line = COMMENT_RE.sub(lambda mo: " " * len(mo.group(0)), line)
         # An ITALICISED QUOTATION -- *"..."* -- is this repo's syntax for text
         # written elsewhere, so a figure inside one is a historical record and
         # not a live claim.
@@ -252,6 +308,23 @@ def _claimable(block: str, quotes: bool = True) -> str:
     return "\n".join(out)
 
 
+def _scope_span(text: str, start_marker: str, end_marker: str) -> tuple[int, int] | None:
+    """Character span of the current-state block, or None if its anchor moved."""
+    i = text.find(start_marker)
+    if i < 0:
+        return None
+    j = text.find(end_marker, i + len(start_marker))
+    return (i, j if j > 0 else len(text))
+
+
+def _read_doc(doc: str, read=None) -> str | None:
+    try:
+        return read(doc) if read else (REPO / doc).read_text(
+            encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
 def _scope_text(doc: str, start_marker: str, end_marker: str, read=None) -> str | None:
     """The current-state block, or None if its anchor has moved.
 
@@ -259,18 +332,40 @@ def _scope_text(doc: str, start_marker: str, end_marker: str, read=None) -> str 
     instead of reimplementing their logic — the defect that let twelve
     production rules be deleted with the self-test green.
     """
-    try:
-        text = read(doc) if read else (REPO / doc).read_text(encoding="utf-8", errors="replace")
-    except OSError:
+    text = _read_doc(doc, read=read)
+    if text is None:
         return None
-    i = text.find(start_marker)
-    if i < 0:
-        return None
-    j = text.find(end_marker, i + len(start_marker))
-    return text[i:j] if j > 0 else text[i:]
+    span = _scope_span(text, start_marker, end_marker)
+    return None if span is None else text[span[0]:span[1]]
 
 
-RANGE_RE = re.compile(r"`D-1`\.\.`D-(\d+)`")
+# `\s*\n?>?\s*` because these documents WRAP, and the sibling
+# `contract_substrate_lines` pattern already carries that tolerance for exactly
+# this reason -- a live range split over a line break escaped the first version
+# entirely. Two decisions, each correct, the later one defeating the earlier.
+#
+# **WHY ONLY THE `D-` RANGE, stated as a criterion rather than an instinct.**
+# The first version said "not generalised to the other claim shapes on purpose"
+# and argued only about `**283 passed**` -- which a review correctly called the
+# wrong argument, because `S-11`..`S-N` looks exactly like a moving pointer too.
+#
+# It is not, and the distinguishing property is the FIRST id. `D-1`..`D-N` runs
+# from the record's first entry, so it names the WHOLE record and therefore
+# tracks its head by construction. `S-11`..`S-18` runs from an interior id: it
+# names a SEGMENT -- the seams THIS ROUND added -- which is a fixed historical
+# fact that stays true when `S-19` lands.
+#
+# Measured, not argued: adding `S-11`..`S-N` to this table produces exactly ONE
+# finding across the three governed documents, and it is `B10`'s slice row
+# recording what that slice produced. **Cry-wolf on a correct statement** -- the
+# failure mode this gate has committed four times. So the rule is: a range
+# anchored at the record's FIRST id.
+def _range_re(prefix: str, first: int) -> "re.Pattern[str]":
+    return re.compile(rf"`{prefix}-{first}`\s*\n?>?\s*\.\.\s*\n?>?\s*`{prefix}-(\d+)`")
+
+
+RANGE_RE = _range_re("D", 1)
+RANGES = (("`D-1`..`D-N`", RANGE_RE, "max_decision_id"),)
 
 
 def _escaped_live_range(m: dict[str, object], scopes=None, read=None) -> list[str]:
@@ -300,19 +395,25 @@ def _escaped_live_range(m: dict[str, object], scopes=None, read=None) -> list[st
     historical row is a coincidence of value, not a pointer — and `D-351` says
     *"its own VERIFY line said 283"* about a different day.
     """
-    head = m.get("max_decision_id")
-    if not isinstance(head, int):
-        return []
     scopes = scopes if scopes is not None else SCOPES
     problems: list[str] = []
     for doc in sorted({d for d, _, _ in scopes}):
-        try:
-            text = read(doc) if read else (REPO / doc).read_text(
-                encoding="utf-8", errors="replace")
-        except OSError:
+        text = _read_doc(doc, read=read)
+        if text is None:
             continue
-        blocks = [b for d, sm, em in scopes if d == doc
-                  for b in [_scope_text(d, sm, em, read=read)] if b]
+        # **SPANS, not substrings.** The first version asked whether the matched
+        # text appeared ANYWHERE inside a current-state block:
+        #
+        #     if any(mo.group(0) in b for b in blocks): continue
+        #
+        # Two of the three governed documents legitimately carry the live range
+        # inside their block -- which is the design -- so that string test
+        # exempted every OTHER occurrence in those same files. Measured: replaying
+        # the original blanket replace against `_index.md` alone, including the
+        # very line this mechanism was written to repair, left the gate GREEN.
+        # A guard defeated by the thing it is guarding.
+        spans = [sp for d, sm, em in scopes if d == doc
+                 for sp in [_scope_span(text, sm, em)] if sp]
         # Fenced examples and HTML comments are blanked -- a code block
         # SHOWING the header line is not a claim, and reporting it would be the
         # cry-wolf failure this gate has hit four times.
@@ -324,19 +425,27 @@ def _escaped_live_range(m: dict[str, object], scopes=None, read=None) -> list[st
         # checked the number -- a quotation is supposed to be frozen. A quotation
         # containing this document's own moving head is either fabricated or
         # already stale.
-        text = _claimable(text, quotes=False)
-        for mo in RANGE_RE.finditer(text):
-            if int(mo.group(1)) != head:
+        scan = _claimable(text, quotes=False)
+        for label, pattern, key in RANGES:
+            head = m.get(key)
+            # A dict never equals an int, so this is not a guard that changes an
+            # outcome -- it is the early exit that says so. Without a measurable
+            # head there is nothing to compare against.
+            if not isinstance(head, int):
                 continue
-            if any(mo.group(0) in b for b in blocks):
-                continue
-            line = text.count("\n", 0, mo.start()) + 1
-            problems.append(
-                f"{doc}:{line}: `D-1`..`D-{head}` is the LIVE range, written outside "
-                "every current-state block. A decision row states the range that was "
-                "true WHEN IT WAS WRITTEN; only the header and the handoff track the "
-                "head. If this is a quotation, quote what the other document says."
-            )
+            for mo in pattern.finditer(scan):
+                if int(mo.group(1)) != head:
+                    continue
+                if any(a <= mo.start() < b for a, b in spans):
+                    continue
+                line = scan.count("\n", 0, mo.start()) + 1
+                problems.append(
+                    f"{doc}:{line}: {label} is the LIVE range, written outside "
+                    "every current-state block. A row states the range that was "
+                    "true WHEN IT WAS WRITTEN; only the header and the handoff "
+                    "track the head. If this is a quotation, quote what the "
+                    "other document says."
+                )
     return problems
 
 
@@ -349,6 +458,13 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
 
     for doc, start_marker, end_marker in scopes:
         block = _scope_text(doc, start_marker, end_marker, read=read)
+        # The fence state at the window's start, read from everything before it.
+        # The first version defined `_fence_state`, added the parameter, and
+        # never passed it -- so the fix was inert and its case was satisfied by
+        # a coincidence: the same NUMBER of findings, about different lines.
+        full = _read_doc(doc, read=read)
+        span = _scope_span(full, start_marker, end_marker) if full is not None else None
+        opens_fenced = _fence_state(full[:span[0]]) if (full is not None and span) else False
         if block is None:
             # **A moved anchor is a FINDING, not a silent pass.** The first
             # version set the text to "" and reported "the docs agree" against
@@ -357,7 +473,7 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
                 f"{doc}: the marker `{start_marker}` is gone, so this document was NOT checked"
             )
             continue
-        block = _claimable(block)
+        block = _claimable(block, in_fence=opens_fenced)
         for pattern, key, label in CLAIMS:
             want = m.get(key)
             for claimed in re.findall(pattern, block):
@@ -418,7 +534,8 @@ def self_test() -> int:
     failures = 0
     m = {"rust_tests": 283, "dp_kernel_lib_tests": 315, "max_decision_id": 372,
          "max_seam_id": 18, "hook_gate_scripts": 38,
-         "contract_hub_lines": 202, "contract_substrate_lines": 157}
+         "contract_hub_lines": 202, "contract_substrate_lines": 157,
+         "contract_seams_lines": 66, "contract_total_lines": 425}
 
     def check_block(name: str, text: str, expect_problems: int, expect_notes: int = 0) -> None:
         """Drive the REAL `_check` over one synthetic document."""
@@ -451,6 +568,20 @@ def self_test() -> int:
     # silently ungoverned. One case per ROW, not one per sentence.
     check_block("a stale substrate line count is caught",
                 "the two contracts are **202** and **150** lines", 1)
+    # M1 -- the TABLE form, which no pattern reached while four figures inside a
+    # governed block were stale. One case per row, and the passing direction too.
+    check_block("the index table's line counts pass when correct",
+                "| [x](2026-08-02-actor-hub.md) | 202 | ...\n"
+                "| [x](2026-08-02-engine-substrate.md) | 157 | ...\n"
+                "| [x](2026-08-02-seams-and-triggers.md) | 66 | ...\n"
+                "**425 lines total.**", 0)
+    check_block("a stale hub count in the index TABLE is caught",
+                "| [x](2026-08-02-actor-hub.md) | 172 | ...", 1)
+    check_block("a stale substrate count in the index TABLE is caught",
+                "| [x](2026-08-02-engine-substrate.md) | 142 | ...", 1)
+    check_block("a stale seams count in the index TABLE is caught",
+                "| [x](2026-08-02-seams-and-triggers.md) | 50 | ...", 1)
+    check_block("a stale TOTAL is caught", "**364 lines total.**", 1)
 
     # F6 — a QUOTED historical figure must not block. These blocks are exactly
     # where this project writes "it said X at round seven".
@@ -470,13 +601,46 @@ def self_test() -> int:
                 "<!--\nwas: **281 passed, 0 failed**\n-->", 0)
     check_block("an INLINE HTML comment is not a claim",
                 "the count is fine <!-- was **281 passed, 0 failed** --> today", 0)
-    # An UNPAIRED fence marker must not blind the rest of the block. A toggle
-    # blanked everything after it, so a stale figure below an unterminated fence
-    # was missed entirely.
-    check_block("an unterminated fence does not blind the tail",
-                "```rust\nlet x = 1;\n\nthe count is **281 passed, 0 failed** today", 1)
-    check_block("a block that BEGINS mid-fence does not blind the tail",
-                "let x = 1;\n```\n\nthe count is **281 passed, 0 failed** today", 1)
+    # ...and the line AFTER it is live. Not blanking the inline span leaves
+    # `in_comment` set -- the `-->` was consumed on the previous line -- so every
+    # following line goes blind. Counting findings on the comment line alone
+    # cannot see that: the whole line is blanked either way.
+    check_block("an inline comment does not blind the lines after it",
+                "fine <!-- was **281 passed, 0 failed** --> today\n"
+                "`dp-kernel --lib` **300**", 1)
+    # A fence OPENED inside the block and never closed keeps running to the end
+    # of the block, because that is what it does in the document. Reporting the
+    # figure below it would be cry-wolf on a code sample.
+    check_block("a fence opened and not closed covers the rest of the block",
+                "```rust\nlet x = 1;\n\nthe count is **281 passed, 0 failed** today", 0)
+    # ...and a block that BEGINS INSIDE a fence is the case neither guess could
+    # express. The state comes from the prefix, so the probe has to carry one:
+    # here the fence opens BEFORE the window's start marker, and its closer
+    # inside the window ends it -- after which the figure is live again.
+    problems, _ = _check(m, scopes=(("<probe>", "@@", "@@END"),),
+                         read=lambda _: "```rust\nlet x = 1;\n@@\nstill fenced "
+                                        "**281 passed, 0 failed**\n```\n"
+                                        "`dp-kernel --lib` **300**\n@@END")
+    real = [x for x in problems if not x.startswith("NO DOCUMENT")]
+    # **The IDENTITY of the finding, not its count.** Both the correct code and
+    # the unwired version report exactly ONE problem here -- the correct one
+    # about the line AFTER the closer, the broken one about the line before it.
+    # A case that counts findings cannot tell those apart, and the mutation that
+    # unwired the prefix state survived because the first version counted.
+    if len(real) != 1 or "dp-kernel" not in real[0]:
+        failures += 1
+        print(f"  FAIL a block beginning INSIDE a fence: want 1 problem about "
+              f"dp-kernel, got {real}")
+    else:
+        print("  ok  a block that begins inside a fence stays blanked until the closer")
+    # A blockquote fence is a fence. This project writes whole headers as
+    # blockquotes and the gate's own docstring says so, yet the marker test was
+    # `lstrip()` only -- so this was reported as a live claim.
+    check_block("a BLOCKQUOTE fence is a fence",
+                "> ```\n> the count was **281 passed, 0 failed**\n> ```", 0)
+    # A comment that OPENS mid-line, one line after the multi-line fix.
+    check_block("a comment opening MID-LINE is not a claim",
+                "superseded <!--\n**281 passed, 0 failed**\n-->", 0)
     check_block("an italicised QUOTATION is a historical record, not a claim",
                 'the header read it (*"**281 passed, 0 failed**"* at round six)', 0)
     # ...and the same figure OUTSIDE a quotation is still a live claim, so the
@@ -507,6 +671,21 @@ def self_test() -> int:
                 "@@\n`D-1`..`D-372`\n@@END", 0)
     escape_case("the live range OUTSIDE the block is a finding",
                 "@@\nnothing\n@@END\n\n| D-195 | it declares `D-1`..`D-372` |", 1)
+    # **B1 — the case the substring test could not fail.** The document carries
+    # the live range INSIDE its block, which is the design, AND an escaped copy
+    # outside it. `if any(mo.group(0) in b for b in blocks)` exempted the second
+    # because the identical string appeared in the first, so two of the three
+    # governed documents were unguarded -- including the very line the mechanism
+    # had just repaired.
+    escape_case("an escape in a document that LEGITIMATELY carries the live range",
+                "@@\n`D-1`..`D-372`\n@@END\n\n| D-195 | it declares `D-1`..`D-372` |", 1)
+    # The wrap tolerance itself: these documents wrap, and the blockquote form
+    # puts `> ` between the two halves. Without it a wrapped live range escapes
+    # entirely -- an adjacent decision (how the docs are written) defeating the
+    # rule, which is the shape the sibling contract-lines pattern already carries
+    # a tolerance for.
+    escape_case("a WRAPPED live range is still an escape",
+                "@@\nnothing\n@@END\n\n> | D-195 | it declares `D-1`..\n> `D-372` |", 1)
     escape_case("a HISTORICAL range outside the block is correct, and stays",
                 "@@\nnothing\n@@END\n\n| D-195 | it declares `D-1`..`D-109` |", 0)
     # ...and with no measurable head there is nothing to compare against, so the
@@ -617,6 +796,51 @@ def self_test() -> int:
           lambda: _cargo_passed([], which=lambda _: "cargo", run=lambda _: _Red()), "not green")
     guard("a document with no bold id is Unmeasurable",
           lambda: _max_id("x", "D", read=lambda _: "no ids here"), "no bold D- id")
+
+    # M6 -- the three rules that were RED with cargo and GREEN without. CI is the
+    # only automatic runner of the mutation harness and has no Rust toolchain, so
+    # these must be assertable with none.
+    class _Green:
+        returncode = 0
+        stdout = ("test result: ok. 5 passed; 0 failed\n"
+                  "test result: ok. 3 passed; 0 failed\n")
+
+    total = _cargo_passed([], which=lambda _: "cargo", run=lambda _: _Green())
+    if total != 8:
+        failures += 1
+        print(f"  FAIL passing counts must SUM across test binaries: got {total}, want 8")
+    else:
+        print("  ok  passing counts sum across every test binary")
+
+    class _Mixed:
+        returncode = 0
+        stdout = ("test result: ok. 5 passed; 0 failed\n"
+                  "test result: FAILED. 40 passed; 1 failed\n")
+
+    try:
+        _cargo_passed([], which=lambda _: "cargo", run=lambda _: _Mixed())
+        failures += 1
+        print("  FAIL a FAILED line among green ones must not be counted as passes")
+    except Unmeasurable:
+        print("  ok  a FAILED line among green ones is Unmeasurable, not 45")
+
+    calls: list[list[str]] = []
+    measure(cargo=lambda a: calls.append(list(a)) or 1)
+    # **Written out, not derived from `CRATES`.** The first version built the
+    # expectation with `sum([["-p", c] for c in CRATES], [])`, so truncating
+    # `CRATES` to one crate moved BOTH sides of the comparison and the case
+    # could not fail -- the subject-cannot-vary shape, in the file whose whole
+    # subject is that shape.
+    want_crates = ["-p", "actor-hub", "-p", "entity-existence", "-p", "ruleset-core",
+                   "-p", "game-rules", "-p", "ruleset-loader"]
+    if not calls or calls[0] != want_crates:
+        failures += 1
+        print(f"  FAIL the crate list is not what was measured: {calls[:1]}")
+    elif len(calls) < 2 or calls[1] != ["-p", "dp-kernel", "--lib"]:
+        failures += 1
+        print(f"  FAIL dp-kernel must be measured with --lib, got {calls[1:2]}")
+    else:
+        print(f"  ok  cargo is asked for all {len(CRATES)} crates, and dp-kernel with --lib")
 
     # The hook scan must ignore COMMENTED invocations, or a documented-but-
     # disabled gate would be counted as wired.
