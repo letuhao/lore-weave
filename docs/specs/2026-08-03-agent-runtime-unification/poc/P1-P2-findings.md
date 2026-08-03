@@ -625,6 +625,71 @@ used the retired tool anyway. **Labeling is a projection problem before it is a 
 
 ---
 
+## P10 — R19: the volatile tool surface sits in the cache PREFIX, and invalidates everything behind it
+
+The PO's architectural reading: tool *loading* has a lifecycle, but the tool *introduction in the
+prompt* has none — and a system prompt that changes every turn cannot be cached. The principle is
+right, and the mechanism is worse than stated: in the cache hierarchy the order is
+**`tools` → `system` → `messages`**. The tool block is the **first** cache block, so mutating it
+invalidates the system prompt and the conversation behind it. It is not that a volatile system prompt
+kills the cache — **the volatile tool surface sitting in front of it does.**
+
+Measured across 1,973 instrumented turns:
+
+| tool block between turns | n | avg cache hit | avg uncached tokens |
+|---|---|---|---|
+| **CHANGED** | 97 | **0.378** | **31,009** |
+| unchanged | 1,389 | 0.457 | 18,785 |
+
+**A changed tool block costs +65% uncached tokens (+12,224 per turn) and drops the hit rate by a
+sixth.** And this measures *between turns only* — **within** a turn the loop mutates the surface
+between passes (`tool_load` unions names in, suppressions accumulate), which is precisely where the
+2.03 average / 24.4 p99 pass multiplier lives. The real cost is larger than this table.
+
+### The design the PO proposes, and the tension it must resolve
+
+*Static system prompt; load the tool state machine into the conversation.* Cache-correct: an
+append-only suffix preserves the prefix. But it collides with a hard constraint worth stating plainly:
+
+> **A tool must be in the `tools` parameter to be callable.** Tool state can move into the
+> conversation; tool *schemas* cannot — a schema described in a user message does not let the model
+> emit a structured call for it.
+
+So the requirement is real but the naive form is not available. Three shapes, honestly:
+
+| # | shape | cache | scale (C1) | cost |
+|---|---|---|---|---|
+| **a** | stable `tools` per session, re-scoped only at session boundaries | **perfect** | poor — the set must be guessed up front | inflexible mid-session |
+| **b** | mutate `tools` per pass — **today** | **destroyed** | poor | measured above |
+| **c** | **stable `tools` = a small core + one generic invoke envelope**; discovery activates into *conversation state*, not into the schema block | **perfect** | **good** — the block never grows | the inner call loses native schema validation |
+
+**Shape (c) already exists in this repo.** `mcp-public-gateway`'s `invoke_tool` is exactly that
+envelope: a fixed advertised tool through which anything reachable can be called after activation. Its
+known cost is recorded in the audit — `invoke_tool.arguments` is `{type: object}` with no schema, so
+the edge relays unvalidated args, an accepted IN-3/IN-4 deviation.
+
+That trade is now quantifiable rather than aesthetic: a fixed envelope buys a **stable cache prefix at
+any catalog size** and pays in **argument validation**, which R17/G3 and the closed-set discipline
+would have to recover at the envelope boundary instead of at the schema.
+
+### R19 — the advertised tool block is cache-prefix state and must be treated as such
+
+- **The `tools` block is chosen once per session shape and does not mutate mid-turn.** Anything that
+  today changes it mid-turn — `tool_load` activation, oneshot de-advertise, rail gating, the failure
+  breaker — must move to *conversation state* (R18's projection), not to the schema block.
+- **`excluded_by` (R4) becomes a message, not a mutation.** This also fixes the P2 defect from the
+  other direction: a withheld tool is *stated* in conversation state rather than silently vanishing
+  from the schema.
+- **The cache-cost of any surface change is a measurable gate** — the same instrumentation as
+  R13.6.1, applied to the tool block.
+
+This reframes R14 once more. R14 argued discovery must not scale with the catalog; R19 adds that it
+must not **mutate the prefix** either. Those two together are what make shape (c) the leading
+candidate — and they are also why the current `tool_load`-mutates-the-surface design cannot be
+incrementally repaired.
+
+---
+
 ## 3 · What P1 and P2 settle, and what they do not
 
 | DESIGN question | settled by | answer |
