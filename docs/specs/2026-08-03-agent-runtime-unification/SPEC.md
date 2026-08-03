@@ -52,14 +52,29 @@ working.
 | **C1** | **The catalog is expected to reach thousands of tools.** Today 312. | The discovery triad was designed for ~200 and **structurally cannot survive 3,000** — see below. R14. |
 | **C2** | **This repo is maintained for years.** Adding or renaming an MCP tool must be routine, not an event. | Today a rename must be hand-propagated to `GROUP_DIRECTORY` ×3, two prefix maps, `TOOL_POLICY`, 43 intent regexes, skill prose and `workflows.steps[].tool` — **none of them compiler-checked**. R13. |
 
-**C1, measured.** Using this repo's own figure — the pre-fix whole-domain advertise was ~64 tools ≈
-24,000 tokens, i.e. **~375 tokens per tool schema**:
+**C1, measured directly.** DESIGN pulled the live federated catalog from ai-gateway (`tools/list`,
+2026-08-03): **315 tools, ~130k tokens of schema, 413 tokens per tool** — higher than the ~375 this
+section first estimated from the 2026-07-06 whole-domain figure.
 
-| catalog | full schemas | name+description index | tools per group (14 flat) |
+| catalog | full schemas | name+description index | tools per group (17 flat) |
 |---|---|---|---|
-| 312 (today) | 117k tok | 16k tok | 22 |
-| 1,000 | 375k tok | 50k tok | 71 |
-| **3,000** | **1,125k tok** | **150k tok** | **214** |
+| 315 (today, measured) | **130k tok** | 16k tok | 19 |
+| 1,000 | 413k tok | 50k tok | 59 |
+| **3,000** | **1,239k tok** | **150k tok** | **176** |
+
+**And the distribution is already lopsided today**, which matters more than the totals:
+
+| level-1 prefix | tools |
+|---|---|
+| `composition` | **107** — a third of the whole catalog |
+| `glossary` | 54 |
+| `book` | 35 |
+| `kg` | 31 |
+| `world` | 17 |
+| …12 more | ≤16 each |
+
+**17 level-1 prefixes exist; `GROUP_DIRECTORY` declares 14.** Three are already unaccounted for — the
+same silent-drop class the audit found, visible in the live data.
 
 Three things break, in order:
 
