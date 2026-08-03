@@ -63,6 +63,21 @@ jobs:
           go-version: "1.23"
           cache: false
 
+      # This job installed NOTHING, and eleven gates were reported FAILED for it.
+      # Nine of those eleven were the runner discovering an absent import, not a gate
+      # finding a defect: `generation-guard-gate` and `slo-latency-lint` print
+      # "PyYAML is required" and exit non-zero, and the six `scripts/test_*.py` gates
+      # (the meta-gates that prove the other gates can fail) `import pytest` at module
+      # scope. All nine pass locally. That is the worst possible shape for a gate suite
+      # — a wall of red whose cause is the runner, which is precisely how a suite stops
+      # being read. Keep this list minimal and NAME why each entry is here: the job is
+      # deliberately the one WITHOUT a live stack (see the header), so anything needing
+      # a database or a built binary still does not belong in it.
+      #   pyyaml — contracts/*.yaml parsers in several gates
+      #   pytest — the six meta-gates are pytest modules, run directly by the runner
+      - name: gate script dependencies
+        run: python -m pip install --upgrade pip && python -m pip install pyyaml pytest
+
       # The registry has to be honest before its verdicts mean anything: the
       # scope is still a predicate, every exemption carries a reason, every
       # KNOWN_RED row names a deferral, and this runner is wired.

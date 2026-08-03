@@ -17,26 +17,20 @@ import (
 func setupRevisionsDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	pool := openTestDB(t)
-	ctx := context.Background()
-	for _, fn := range []func(context.Context, *pgxpool.Pool) error{
-		migrate.Up, migrate.Seed, migrate.UpSnapshot, migrate.UpSoftDelete,
-		// UpExtraction adds glossary_entities.alive, which the rewritten (book-tier)
-		// snapshot function reads.
-		migrate.UpExtraction,
-		migrate.UpOutbox, migrate.UpEntityRevisions,
-		// G4 tier + cutover (shared DB: present in whatever chain runs first). The tier
-		// migration creates book_kinds/book_attributes (cutover FK targets) before the
-		// cutover repoints the entity layer + rewrites the snapshot to the book tier.
-		migrate.UpUserKinds, migrate.UpGenreKindAttr, migrate.SeedGenreKindAttr,
-		migrate.UpGlossaryCutoverG4, migrate.UpGlossaryCutoverG4Cache,
-		// G4e: IRREVERSIBLE drop of the retired legacy objects (runs LAST).
-		migrate.UpGlossaryDropLegacyG4,
-		// MERGE/M5: entity_attribute_values.confidence — the reconcile restore stamps it.
-		migrate.UpMergePolicy,
-	} {
-		if err := fn(ctx, pool); err != nil {
-			t.Fatalf("migrate: %v", err)
-		}
+	// migrate.RunChain, NOT a hand-copied list. The list this replaced STARTED with
+	// `migrate.Up`, which re-executes schemaSQL — and schemaSQL carries the ORIGINAL
+	// `trig_fn_entity_self_snapshot`, whose watch list predates `short_description`.
+	// Step 0013 CREATE-OR-REPLACEs that function with the version that watches it, so
+	// calling `Up` again after the chain has run silently DOWNGRADES the trigger for
+	// every test that follows in the package. Measured: TestK3_AutoRegenOnDescription
+	// Update passes alone (good function) and fails in the full package (old function),
+	// and the two databases differ by exactly that one predicate.
+	//
+	// `Up` is idempotent per-statement, so this looked safe. Idempotent is not the same
+	// as ORDER-INDEPENDENT: replaying an early step on top of a later one is a
+	// downgrade, and the ledger exists precisely so a step runs once, in order.
+	if err := migrate.RunChain(context.Background(), pool); err != nil {
+		t.Fatalf("migrate.RunChain: %v", err)
 	}
 	return pool
 }

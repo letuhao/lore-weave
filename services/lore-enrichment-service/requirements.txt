@@ -31,3 +31,11 @@ jieba>=0.42.1
 # OTel tracing is a no-op until OTEL_EXPORTER_OTLP_ENDPOINT is set. The SDK is
 # installed via the Dockerfile COPY of sdks/python (build context is repo root).
 # For host-side pytest: pip install -e ../../sdks/python (from the service dir).
+# PPL-A6.1 — the Answer-Set solver behind `app/pool/register.py::abduce`, which
+# computes the open-decision register. The import is deliberately lazy ("so the
+# module is importable without the solver"), and that laziness is exactly why the
+# dependency went undeclared for as long as it did: the module imports fine, so
+# nothing fails until abduce() is actually called. It was in NO requirements file
+# and NOT in the Dockerfile — it worked only on machines that happened to have it,
+# CI does not, and neither would the built image at the first real call.
+clingo>=5.7

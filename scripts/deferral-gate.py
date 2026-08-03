@@ -265,6 +265,22 @@ def mechanisms() -> dict[str, list[str]]:
 # when a row's id leaves the registry OR becomes mechanised, so every row here
 # is on a clock. A reason must say what the TRIGGER is, not restate the task.
 PROSE_ONLY: dict[str, str] = {
+    "D-GATE-ROT-LANGUAGE-BIAS": (
+        "TRIGGER: the first commit that touches either of the two persisted-bytes "
+        "classes - the json.dumps(...).encode() digest inputs (stream_service, "
+        "arc_conformance_orchestrate) or casefold() used as a persisted identity key "
+        "(plan_forge_service x3, world_plan, operations). Both are migrations, not "
+        "edits: flipping ensure_ascii changes every hash so it is a cache/dedup "
+        "invalidation decision, and normalizing an identity key orphans rows already "
+        "keyed the old way. Lost its mechanism 2026-08-03 when the KNOWN_RED row in "
+        "gate-wiring-gate.py was deleted, and the deletion was CORRECT: "
+        "language-bias-gate went green legitimately at e84214cc5 (16 offenders fixed, "
+        "3 baselined with a stated reason, 0 new), and gate-wiring-gate fails on a "
+        "KNOWN_RED row whose gate passes. No mechanism today because the remaining "
+        "classes are IN the 44-row baseline - the gate is a ratchet against NEW "
+        "offenders, so it cannot go red for debt it has already accepted, and "
+        "asserting the baseline still CONTAINS them would red when someone fixes one, "
+        "which is backwards"),
     "D-POOL-PROBE-IS-NOT-A-QUERY": (
         "TRIGGER: the first commit that threads a retrieval call into the pool loop "
         "— the moment probe() output would actually be used as a search. Measured "

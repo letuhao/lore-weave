@@ -22,9 +22,19 @@ func seedEntityOfKind(t *testing.T, pool *pgxpool.Pool, bookID uuid.UUID, code s
 	ctx := context.Background()
 	adoptTestBook(t, pool, bookID)
 	var kindID uuid.UUID
+	// UPSERT `is_person`, do not merely tolerate the existing row. The block below explains
+	// why the row is permanent; what it did NOT do is put it right, so the suite stayed red
+	// on any database where something had already created `colleague` with is_person=false —
+	// which every fresh CI database does, making this a guaranteed failure rather than the
+	// flake it was diagnosed as. Declaring the value the test needs is exactly what the
+	// t.Fatalf below asks a human to do by hand; a fixture that can state its precondition
+	// should state it. The book id is test-owned (00000000-0000-0000-0004-…), so nothing
+	// else's data is touched, and the fallback path is kept because it still catches the
+	// case where the row exists but the UPSERT could not set it.
 	_ = pool.QueryRow(ctx,
 		`INSERT INTO book_kinds(book_id, code, name, is_person) VALUES($1,$2,$2,$3)
-		 ON CONFLICT DO NOTHING RETURNING book_kind_id`, bookID, code, isPerson).Scan(&kindID)
+		 ON CONFLICT (book_id, code) DO UPDATE SET is_person = EXCLUDED.is_person
+		 RETURNING book_kind_id`, bookID, code, isPerson).Scan(&kindID)
 	if kindID == uuid.Nil {
 		// `ON CONFLICT DO NOTHING RETURNING` returns NO ROW on conflict, so this is the
 		// normal path whenever the kind already exists — and it does, permanently: the book

@@ -128,9 +128,18 @@ CASES = [
 
     ("S4 injection — a translation worker stops scanning imported book text", GATE,
      TRANS / "app" / "workers" / "session_translator.py",
-     replace("""    injection = scan_untrusted_source(
-        chapter_text, where=f"chapter_translation:{chapter_translation_id}",
-    )""", "    injection = None"),
+     # Re-anchored 2026-08-03: this worker used to call `scan_untrusted_source` directly, and
+     # the LIVE-4 fix merged the scan and the persist into `record_source_injection` — because
+     # three of the five chapter paths were scanning and never writing the result down. The
+     # injected violation is unchanged in meaning (the worker stops looking at imported book
+     # text); only the name of the call it stops making moved.
+     # `count=-1` — ALL of them, and that is the correction this case needed twice over. The
+     # first re-anchor killed only the per-chapter call and the gate reported STILL-GREEN,
+     # because the same worker calls `record_source_injection` a SECOND time on the decoupled
+     # block path (the very fan-out the LIVE-4 fix was written for: seven chapter entry points,
+     # not two). `injection-coverage-lint` asks "does this file call a scanner", so removing one
+     # of two proves nothing. Same shape, and same fix, as the sibling case below.
+     replace("record_source_injection", "_no_longer_record_source_injection", count=-1),
      [sys.executable, "scripts/injection-coverage-lint.py"], ROOT),
 
     ("S4 injection — a real subject module loses its sanitizer", GATE,
@@ -193,10 +202,17 @@ CASES = [
     # number. If the binding ever swallows that, this reds.
     ("DoD-3 budget — one literal caller no longer defeats an attributed helper", GATE,
      ROOT / "services" / "composition-service" / "app" / "engine" / "promise_audit.py",
+     # Anchored on the `code=` kwarg, which is UNIQUE in the file — the previous anchor carried
+     # `tag="promise_extract", cancel_check=cancel_check)` on the continuation line and went
+     # ANCHOR-GONE when the S-slice work inserted `code="extract_tracked_promises"` between them.
+     # An anchor that pins the shape of a line it does not need is an anchor that expires on the
+     # next edit to that line, and this gate reports ANCHOR-GONE rather than a pass precisely so
+     # that expiry cannot read as coverage. `max_tokens=max_tokens` appears twice in the file at
+     # two indentations; the second line disambiguates without depending on which comes first.
      replace("system=system, user=user, max_tokens=max_tokens, trace_id=trace_id,\n"
-             "                          tag=\"promise_extract\", cancel_check=cancel_check)",
+             "                          tag=\"promise_extract\", code=\"extract_tracked_promises\",",
              "system=system, user=user, max_tokens=400, trace_id=trace_id,\n"
-             "                          tag=\"promise_extract\", cancel_check=cancel_check)"),
+             "                          tag=\"promise_extract\", code=\"extract_tracked_promises\","),
      [sys.executable, "scripts/llm-budget-ssot-gate.py"], ROOT),
 
     # DoD-4b. The injection baseline EXPIRES when its reason does, not on a calendar. Five of

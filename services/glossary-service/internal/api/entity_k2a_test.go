@@ -13,128 +13,28 @@ import (
 	"github.com/loreweave/glossary-service/internal/migrate"
 )
 
-// runK2aMigrations applies the full migration chain through K2a.
-// Mirrors runMigrations in export_handler_test.go but also wires up the
-// knowledge-memory step under test.
+// runK2aMigrations applies the canonical migration chain to the test DB.
+//
+// It used to be a HAND-COPIED list of ~25 `migrate.UpXxx` calls that mirrored
+// `ledger.go`'s `chain` — two sources of truth for one ordering, where the copy has to
+// be remembered. It was not: the list stopped at `0054_kind_is_person` while the ledger
+// had reached 0059, so `glossary_entities.kind_labels` (0058) did not exist in any test
+// database and `loadEntityDetail` — which selects it — failed with a bare
+// "load failed" 500 on a FRESH database. The apply-edit test read that as a write
+// failure; the write had committed.
+//
+// The list's own comments record the same lesson being learned by hand, twice: the
+// `UpExtraction` note ("skipping it leaves the recalculate function unable to build a
+// snapshot") and the `UpKindIsPerson` one ("this column MUST exist in the shared test DB
+// or those paths error on a missing column"). A third occurrence is the point at which
+// copying stops being a style choice.
+//
+// `RunChain` IS the ledger, ledger-recorded and idempotent, so a step added tomorrow is
+// covered here with no edit — the property a copy can never have.
 func runK2aMigrations(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	ctx := context.Background()
-	if err := migrate.Up(ctx, pool); err != nil {
-		t.Fatalf("migrate.Up: %v", err)
-	}
-	if err := migrate.Seed(ctx, pool); err != nil {
-		t.Fatalf("migrate.Seed: %v", err)
-	}
-	if err := migrate.UpSnapshot(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpSnapshot: %v", err)
-	}
-	if err := migrate.UpSoftDelete(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpSoftDelete: %v", err)
-	}
-	// UpExtraction adds the `alive` column that the snapshot triggers
-	// reference. Skipping it leaves the recalculate function unable to
-	// build a snapshot because it can't read e.alive.
-	if err := migrate.UpExtraction(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpExtraction: %v", err)
-	}
-	if err := migrate.UpEvidenceChapterIndex(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpEvidenceChapterIndex: %v", err)
-	}
-	if err := migrate.UpKnowledgeMemory(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpKnowledgeMemory: %v", err)
-	}
-	// pg_trgm + GIN trigram indexes + glossary_aliases_text — required for the
-	// raw entity search (similarity()/% operators) and sort-by-name on cached_name.
-	if err := migrate.UpGlossarySearch(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpGlossarySearch: %v", err)
-	}
-	// Denormalized appearance counters + triggers (sort-by-appearance).
-	if err := migrate.UpEntityCounts(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpEntityCounts: %v", err)
-	}
-	// G4 genre·kind·attribute tiering: user_kinds → genre/kind/attr tier (creates
-	// book_kinds + book_attributes, the cutover's FK targets) → seed system standards
-	// → destructive cutover (repoints glossary_entities.kind_id → book_kinds and
-	// entity_attribute_values.attr_def_id → book_attributes, rewrites the snapshot to
-	// the book tier). Order matters: UpGenreKindAttr MUST precede the cutover. Because
-	// the test DB is shared and this DDL persists, the cutover must be present in
-	// whatever chain runs first — so it lives in this lowest-level shared helper.
-	if err := migrate.UpUserKinds(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpUserKinds: %v", err)
-	}
-	if err := migrate.UpGenreKindAttr(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpGenreKindAttr: %v", err)
-	}
-	if err := migrate.SeedGenreKindAttr(ctx, pool); err != nil {
-		t.Fatalf("migrate.SeedGenreKindAttr: %v", err)
-	}
-	if err := migrate.UpGlossaryCutoverG4(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpGlossaryCutoverG4: %v", err)
-	}
-	if err := migrate.UpGlossaryCutoverG4Cache(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpGlossaryCutoverG4Cache: %v", err)
-	}
-	// G4e: IRREVERSIBLE drop of the retired legacy objects (genre_groups,
-	// system_kind_attributes, genre_tags columns). Runs LAST so the shared test DB
-	// matches production after every consumer was retargeted off them (G4d).
-	if err := migrate.UpGlossaryDropLegacyG4(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpGlossaryDropLegacyG4: %v", err)
-	}
-	// 0030 — backs the generalized class-C confirm machinery's single-use ledger.
-	if err := migrate.UpConsumedTokens(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpConsumedTokens: %v", err)
-	}
-	// 0031 — System-tier soft-delete (G-C8): deprecated_at on system_genres/kinds/attributes.
-	if err := migrate.UpSystemSoftDelete(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpSystemSoftDelete: %v", err)
-	}
-	// 0032 — extraction FND/M1: normalized_name + uq_entity_dedup, uq_evidence_dedup,
-	// extraction_writeback_log. Runs after the G4 cutover-cache (adds cached_name, the
-	// generated normalized_name's base).
-	if err := migrate.UpExtractionConcurrency(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpExtractionConcurrency: %v", err)
-	}
-	// 0033 — extraction PROV/M3: evidence offset + provenance_status columns.
-	if err := migrate.UpEvidenceProvenance(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpEvidenceProvenance: %v", err)
-	}
-	// 0034 — extraction MERGE/M5: EAV confidence marker + attribute merge_strategy.
-	if err := migrate.UpMergePolicy(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpMergePolicy: %v", err)
-	}
-	// 0035 — D-GLOSSARY-MULTIROW-ATTR-VALUES: per-item child table + backfill.
-	if err := migrate.UpMultirowAttrValues(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpMultirowAttrValues: %v", err)
-	}
-	// 0040 — D-GLOSSARY-ST-DEDUP: convert normalized_name GENERATED→app-maintained.
-	// Required so the wired name-write paths' refreshEntityDedupKey UPDATE doesn't
-	// hit "column can only be updated to DEFAULT" against a still-generated column.
-	if err := migrate.UpStDedupAppMaintained(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpStDedupAppMaintained: %v", err)
-	}
-	// 0041 — M7: chapter_entity_links.mention_count (per-chapter mention frequency).
-	if err := migrate.UpChapterLinkMentionCount(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpChapterLinkMentionCount: %v", err)
-	}
-	// 0043 — #26/#7: the summarize mode's canonical layer on the EAV
-	// (canonical_value + canonical_dirty + canonical_synced_at).
-	if err := migrate.UpCanonicalSummary(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpCanonicalSummary: %v", err)
-	}
-	// 0051 — D-GLOSSARY-ENTITY-SCOPE: scope_label column + widened uq_entity_dedup.
-	// Safe to run here without 0044-0050 (bitemporal facts, unrelated K3-sensitive
-	// trigger changes) — this step only touches glossary_entities.scope_label and
-	// the uq_entity_dedup index already established by 0032 above. findEntityByNameOrAlias
-	// (extraction_handler.go) now unconditionally selects ge.scope_label, so every test
-	// reaching it through this shared helper needs the column present.
-	if err := migrate.UpEntityScopeLabel(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpEntityScopeLabel: %v", err)
-	}
-	// 0054 (C4/SD-C4) — book_kinds/system_kinds/user_kinds.is_person. The wiki-gen + enrichment
-	// PP-4 guards now filter `NOT ek.is_person` and the adopt clone selects sk/uk.is_person, so this
-	// column MUST exist in the shared test DB or those paths error on a missing column.
-	if err := migrate.UpKindIsPerson(ctx, pool); err != nil {
-		t.Fatalf("migrate.UpKindIsPerson: %v", err)
+	if err := migrate.RunChain(context.Background(), pool); err != nil {
+		t.Fatalf("migrate.RunChain: %v", err)
 	}
 }
 
