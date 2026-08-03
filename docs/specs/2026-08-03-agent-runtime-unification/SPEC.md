@@ -1065,6 +1065,79 @@ in this domain are mechanised — one row is in a table, ~10 live as prose in a 
 
 ## 10 · Open questions for DESIGN
 
+### 10.0 Audit of this list *(2026-08-04, post-POC)*
+
+**The POC did not merely answer questions — it made several obsolete**, because the leading design
+moved from shape 2 (lazy-load, volatile surface) to **1 + 4** (small static core of search + coarse
+capabilities, long tail arriving in the conversation). Questions written *about* the old architecture
+do not survive it.
+
+| status | questions | why |
+|---|---|---|
+| **MOOT or much smaller under 1+4** | 3, 5, 15, 16, 17, 18 | if the advertised set is ~20 tools and the system prompt is static, group granularity, a 312-tool `_meta.group` sweep, hierarchy depth, the group-directory block and its budget all shrink drastically. **Hierarchy and retrieval do not disappear — they move from the advertised surface to the search index**, which is a different and easier problem |
+| **ANSWERED by POC** | **10**, **14** | below |
+| **STILL LIVE, unchanged** | 1, 2, 6, 7, 8, 9, 11, 12, 13 | none depends on which shape wins |
+| **NEW, created by the POC** | N1, N2, N3 | below |
+
+#### Q14 — ANSWERED, and the answer invalidates R13.5's model
+
+Measured on the live catalog: **54 tools declare `superseded_by`, pointing at only 17 distinct
+targets — a 3.2 : 1 ratio.** The largest: six tools collapse into `composition_arc_edit`, five into
+`composition_authoring_run_manage`, five into `composition_outline_node_edit`.
+
+> **Renames here are not renames. They are many-to-one CONSOLIDATIONS.**
+
+R13.5 assumed 1:1 (*add the new name, deprecate the old, same capability*) and proposed a stable
+`tool_id` to carry identity across it. **That model does not survive six capabilities merging into
+one — which `tool_id` continues?** The corrected model:
+
+- a tool's `tool_id` is **its own** and never transfers;
+- `superseded_by` is a **many-to-one edge**, not an identity continuation;
+- **usage history aggregates along the edge** (R9.6's retire criterion sums the sources into the
+  target), it does not follow an id;
+- and the primary migration operation to design for is **consolidation**, not rename — which is also
+  exactly what shape 1+4 does at scale (118 writes → ~8 capabilities).
+
+Also measured: only **54 of 117** retired tools (46%) declare any replacement at all, so 63 have no
+edge — matching R17/G2's count exactly.
+
+#### Q10 — PARTIALLY answered; the ranking is measured, the list is not yet complete
+
+Breaker fires in production, by pattern:
+
+| fires | breaker |
+|---|---|
+| 595 | repeated-read |
+| 263 | noop-write (`created=false`) |
+| 157 | `find_tools` blank-intent *(historical — `find_tools` is de-advertised)* |
+| 122 | blank-args cap |
+| 26 | repeated-failure |
+
+**This inventory is incomplete and must not be treated as final**: the pattern set used here missed
+the `tool_list` category cap, which a separate measurement counted at **1,180 fires — the largest of
+all**. The ranking above is sound; the totals are not. Complete the inventory from the emitting call
+sites, not by matching message text, before Phase 2 names the deletions.
+
+What the data already shows: `noop_write_counts` (263) catches a **successful** call that changed
+nothing — an R8b post-condition, not an error, so R10's taxonomy cannot absorb it. `repeated-read`
+(595) and the `tool_list` cap (1,180) are both *"you already have this answer"* — precisely what R16's
+deterministic detector subsumes.
+
+#### New questions created by the POC
+
+- **N1 — how far do the reads consolidate?** Shape 1+4 needs ~20 advertised tools. 80 reads exist, 39
+  requiring ids. Does one search per domain (~12) plus coarse capabilities (~8) actually cover real
+  usage, or does the tail reappear?
+- **N2 — do sub-agents hold correctness when handed free text?** The coarse design *moves* the problem
+  behind `subagent_runtime.py`'s `tool_scope`; it does not delete it.
+- **N3 — what is the anti-prose gate?** Measured 0/3 without a hard directive and 3/3 with one. The
+  directive works; it must be enforced and regression-tested, because the identical failure already
+  shipped once as the `co_write` incident.
+
+---
+
+### The questions themselves
+
 1. **Where does `lane` live for a tool that is both?** `both` is expected to dominate; does the FSM
    lane's coverage ratchet count a `both` tool, or only `fsm`-exclusive ones? (Affects the day-1
    baseline materially.)
