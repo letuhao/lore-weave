@@ -773,6 +773,81 @@ special case at the surface level; R3's declared `tools` is what makes it checka
 
 ---
 
+## P12 — Shape 4 is viable: the model calls a capability delivered in the CONVERSATION
+
+Two arms against the real target model (`google/gemma-4-26b-a4b-qat`, LM Studio, direct — no platform
+in the way), same task: *"List my books."*
+
+| arm | `tools` parameter | where the capability's schema lives | result |
+|---|---|---|---|
+| **A** (control) | `book_list` natively | the `tools` block | ✅ `book_list{"kind":"books"}` — **2.6s** |
+| **B** (shape 4) | fixed core only: `tool_load`, `invoke_tool` | delivered as a **tool-result message** | ✅ `invoke_tool{"name":"book_list","arguments":{"kind":"books"}}` — **1.4s** |
+
+**Both correct. Arm B was faster.** So a capability whose schema arrives *in the conversation* and is
+invoked through a **fixed envelope** is usable by a mid-tier local model — which means the `tools`
+block can be **constant regardless of catalog size**. That satisfies C1 and R19 simultaneously, and
+it is the empirical basis for §1.4 shape 4.
+
+Note also what Arm A proves on its own: **given one well-described tool, this model selects and fills
+it perfectly.** The same model failed the live capture. The model was never the variable.
+
+## P13 — 🔴 The real cause of the live failure: the budget deleted the right answer, then the system told the model to pick from what was left
+
+Re-examining the capture with Arm A's result in hand raised a question: if `tool_list` only *lists*,
+how was `book_list_chapters` callable at all? The answer is in the second call's payload:
+
+> *"You already listed 'book' … **Its tools are now LOADED and callable**: `book_chapter_save_draft`,
+> `book_get`, `book_list_chapters`, `book_list_revisions`, `book_scene_get`, `book_steering_list`,
+> `book_update_details`. **Call one of them now**, or answer the user."*
+
+The repeat `tool_list` tripped `TOOL_LIST_CATEGORY_CAP` (F18), which **auto-loads the category**
+(`stream_service.py:2808-2830`) and passes the 35 loaded names through
+`budget_names_by_tokens`. Seven survived. **`book_list` — the correct answer — was not among them.
+Four of the seven are retired.**
+
+| survivor | tokens | |
+|---|---|---|
+| `book_get` | 314 | RETIRED |
+| `book_steering_list` | 310 | |
+| `book_list_revisions` | 341 | RETIRED |
+| `book_scene_get` | 353 | RETIRED |
+| `book_list_chapters` | 357 | RETIRED |
+| `book_update_details` | 523 | |
+| `book_chapter_save_draft` | 726 | |
+| **`book_list`** | **970** | **DROPPED — the right answer, and the largest** |
+
+**The corrected causal chain:**
+
+1. `tool_list(book)` → 35 entries with descriptions — correct behaviour
+2. the model lists again (listing does not activate; it needed them callable)
+3. F18 fires — the loop-breaker **auto-loads** the category
+4. the token budget trims 35 → 7 and **silently deletes `book_list`**
+5. the note **asserts** the survivors are "loaded and callable" and says *"call one of them now"*
+6. the model obeys, and the only remaining "list" verb is the retired `book_list_chapters`
+7. it needs a `book_id` nobody can give it → `"all"` → loop → `interrupted`
+
+**The model did exactly what it was instructed to do.** Four individually-reasonable mechanisms — the
+F18 breaker, the auto-load, the token budget, the helpful note — combined to remove the answer and
+then command a choice among what remained. This is the audit's silent-filter defect (B1,
+`budget_names_by_tokens` drops with no log) meeting R18's projection defect (a note *claiming* a
+machine fact) inside R16's breaker.
+
+### One hypothesis tested and REJECTED
+
+It looked as though the budget might systematically favour retired tools, since consolidation makes
+replacements larger. **Measured across the whole catalog, it does not:** retired tools are 317 tokens
+median against 338 for current — **1.07×, indistinguishable from noise** — and the retired share of the
+smallest 20/40/80 tools (35%/48%/40%) sits at the 37% base rate.
+
+What is real is narrower and still serious: **consolidated replacements are outliers.** `book_list` at
+970 tokens is **2.9× the catalog median** and 2.7× the deprecated tool it replaced. A size-ordered
+budget will therefore preferentially drop exactly the tools that catalog unification created — not
+because they are replacements, but because they are big. The 2026-07-22 unification and
+`budget_names_by_tokens` are each correct alone and defeat each other in combination: **NV-3, in
+production.**
+
+---
+
 ## 3 · What P1 and P2 settle, and what they do not
 
 | DESIGN question | settled by | answer |

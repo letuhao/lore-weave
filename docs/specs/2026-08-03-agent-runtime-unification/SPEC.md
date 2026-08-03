@@ -93,6 +93,40 @@ harder, the breakers fire sooner — but nothing changes the exponent.
 
 ---
 
+### 1.4 The original mistake — and the four shapes that remain *(PO, 2026-08-04)*
+
+**MCP's native architecture is "load the catalog once, into the system prompt."** That is coherent at
+the scale it was designed for: a few dozen tools against a ~20K system-prompt budget, which is what
+the mainstream chat clients actually ship. **We could not do that** — 315 tools at 413 tokens each is
+130K — **and we adopted the architecture anyway, then spent thirteen mechanisms compensating.**
+
+> Importing an architecture without importing its scale assumption is the root mistake. Everything in
+> `AUDIT.md` §5's timeline is downstream of it.
+
+That reframes this spec's job. It is not to fix the compensations; it is to **choose a shape that is
+sound at our scale** and rebuild on it. There are four, and they are the whole space:
+
+| # | shape | system prompt | tool surface | cost |
+|---|---|---|---|---|
+| **1** | **Fixed per use-case** — a surface declares its tool set up front and it never changes | static | static per surface | the set must be right up front; the long tail is unreachable |
+| **2** | **Lazy load** — accept dynamic context in both the system prompt and the state machine | **volatile** | volatile | **this is today.** Measured: 74% repeat calls, 72% organic failure, cache prefix destroyed |
+| **3** | **User-curated** — the person picks the tools for the session | static | static per session, human-chosen | needs a UI, and the user must know what they will need |
+| **4** | **State machine in the conversation** — system prompt fixed (or varying only with mode ask/write/plan), capability and guidance arrive as messages | **fixed** | fixed core; the rest arrives in-conversation | the inner call's schema validation must be recovered elsewhere |
+
+**Shape 2 is the one we have, and P1–P11 are its measured failure.** Shapes 1 and 3 are real and
+already half-present (curated pins are shape 3; `surface_hot_domains` is a weak shape 1). **Shape 4 is
+what R18/R19/R20 converge on**, and it is the only one that satisfies C1 (thousands of tools) without
+reintroducing prefix volatility.
+
+**These are not exclusive.** The likely answer is 1 + 4: a fixed per-mode core (shape 1, small,
+cache-stable, mode-scoped) plus arrival-in-conversation for everything else (shape 4), with shape 3
+available as an explicit user override. Shape 2 is retired.
+
+**This decision is not yet made** — it is DESIGN's job, and POCs P12/P13 (§10) exist to make it on
+evidence rather than on the reasoning above.
+
+---
+
 ## 2 · The boundary (D1)
 
 ### 2.1 What the contradiction actually was
@@ -562,6 +596,35 @@ remove the tool so the model physically cannot repeat it. That works, and it is 
 action space. The principled version is to isolate or branch the retry context. R11 adopts it, and
 `excluded_by` (R4) is what lets us tell the difference between *"withheld to break a loop"* and
 *"withheld because you may not have it."*
+
+### R15–R20 — the POC-derived requirements *(see [`poc/P1-P2-findings.md`](poc/P1-P2-findings.md))*
+
+Six requirements came from measurement rather than reasoning, and **R20 is the spine the rest hang
+from.** Full evidence in the POC document; stated here so the spec is self-contained.
+
+| id | requirement | measured basis |
+|---|---|---|
+| **R20** | **One arrival channel** — a capability and its guidance are delivered as one unit, at the same moment, in the same place | on 2 of 3 surfaces **zero skills are injected while tools are seeded**; `GROUP_DIRECTORY` advertises `plan` every turn on surfaces where no `plan` tool is reachable |
+| **R19** | The advertised tool block is **cache-prefix state**: chosen once per session shape, never mutated mid-turn | a changed tool block costs **+65% uncached tokens** and drops hit rate by a sixth |
+| **R18** | The prompt is a **projection** of state, never a parallel authoring surface. Prose may teach; it may not claim | lifecycle state and description prose agree **36%** of the time; 9 of 12 rails disagree with their own `notes_md` |
+| **R17** | **Guidance is a gate** — a tool without effective guidance does not register | **60%** of tools require an id and never name its producer; 20% are legacy with no `superseded_by` |
+| **R16** | **One deterministic loop detector**, over the stream, that **terminates** | 14 function-local counters, none aware of the others; the observed turn ended `interrupted`, not `stop` |
+| **R15** | A **surface must be able to complete what it advertises** | `/chat` has no book binding and no book hot-seed, yet accepts "list my books" |
+
+**R20 subsumes the old framing.** R3 (skills declare tools) becomes *how R20 is checked*; R15 is R20 at
+the surface level; R19's cache argument becomes a *consequence* of R20 rather than a motivation. The
+requirements below (R1–R14) are what make R20 mechanically enforceable — a manifest to name
+capabilities, a migration chain to change them safely, a bounded discovery to deliver them.
+
+**R10 is re-scoped, and the spec was wrong about it.** P2 measured that **58% of "errors" are our own
+breaker messages**, not tool failures — so R10's error contract addresses **42% of error volume and is
+not the loop fix**. The loop fix is R16 plus R4/R5 (withhold, do not argue). R10 still matters: an
+unactionable error guarantees the next iteration is uninformed (**R10.2a** — name the remedy, not only
+the violated constraint).
+
+**R14 is re-justified.** It was written as the budget fix; the budget claim was retracted (P2b). R14
+stands on C1 (scale) and on **selection accuracy** — `tool_list` returning 35 entries in a 3,393-token
+payload of which **54% are retired tools** is the measured failure.
 
 ### R13 — The tool-contract migration chain *(C2 — "adding an MCP tool is a nightmare")*
 
