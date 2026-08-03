@@ -16,6 +16,46 @@ mechanisms accumulated since 2026-06-10, **one retirement**, no composition, and
 that assigns a tool to a skill. Measured: 16 producers, 18 filters (13 silent), 8 answers to "is this
 tool available", 3 workflow selectors, 4 mutually inconsistent tool counts.
 
+### 1.0 The root cause, closed by experiment *(POC, 2026-08-04 — [`poc/`](poc/P1-P2-findings.md))*
+
+A DESIGN-phase POC drove the real frontend, autopsied 7,442 production tool calls, and ran
+single-variable experiments against the target model. **The loop has one root cause and it is now
+reproducible:**
+
+> The model is handed a tool list that **no longer contains the answer**, told the list is
+> **complete and callable**, and **instructed to choose from it**. It complies. Everything downstream —
+> the invented identifier, the repeat calls, the breaker messages, the `interrupted` turn — follows
+> from **one silent deletion**.
+
+Five arms, identical task, tool sets built from the real catalog:
+
+| arm | tool set | result |
+|---|---|---|
+| A | 1 tool (`book_list`) | ✅ 1/1 |
+| B | fixed envelope; schema delivered **in the conversation** | ✅ 1/1 |
+| C | all 35 `book_*` — **19 retired**, 7,921 tokens | ✅ **3/3** |
+| D | 16 current-only | ✅ 3/3 |
+| **E** | **exactly the 7 the token budget left** | ❌ **0/3** |
+
+**The only variable between 3/3 and 0/3 is whether the correct tool was on the wire.**
+`budget_names_by_tokens` dropped it — with no log, no note, no telemetry — and the F18 auto-load then
+announced *"these are now LOADED and callable — call one of them now."*
+
+**Hypotheses rejected by measurement, several of them this spec's own:**
+
+| claim | verdict |
+|---|---|
+| the model is too weak for this surface | ❌ correct in A, B, C, D |
+| too many tools to select from | ❌ 3/3 at 35 tools / 7,921 tokens |
+| deprecated tools drown the signal (this spec's earlier reading) | ❌ C and D identical — **OQ5's "label, don't hide" is vindicated** |
+| the budget systematically favours retired tools | ❌ 1.07×, indistinguishable from noise |
+| the context budget is exhausted | ❌ median utilisation **14.4%**; the P2b analysis was withdrawn |
+| **a silent filter removed the answer** | ✅ **confirmed, reproducible** |
+
+Two production numbers frame everything else: **57% of real tool errors are the model unable to name
+a thing** (and 57% of the surface demands a caller-supplied id), and **58% of "errors" are our own
+breaker messages** rather than tool failures.
+
 ### 1.1 PO decisions (2026-08-03) — sealed
 
 | # | Decision | Consequence |
@@ -113,17 +153,45 @@ sound at our scale** and rebuild on it. There are four, and they are the whole s
 | **3** | **User-curated** — the person picks the tools for the session | static | static per session, human-chosen | needs a UI, and the user must know what they will need |
 | **4** | **State machine in the conversation** — system prompt fixed (or varying only with mode ask/write/plan), capability and guidance arrive as messages | **fixed** | fixed core; the rest arrives in-conversation | the inner call's schema validation must be recovered elsewhere |
 
-**Shape 2 is the one we have, and P1–P11 are its measured failure.** Shapes 1 and 3 are real and
-already half-present (curated pins are shape 3; `surface_hot_domains` is a weak shape 1). **Shape 4 is
-what R18/R19/R20 converge on**, and it is the only one that satisfies C1 (thousands of tools) without
-reintroducing prefix volatility.
+**Shape 2 is the one we have, and the POC is its measured failure.** Shapes 1 and 3 are real and
+already half-present (curated pins are shape 3; `surface_hot_domains` is a weak shape 1).
 
-**These are not exclusive.** The likely answer is 1 + 4: a fixed per-mode core (shape 1, small,
-cache-stable, mode-scoped) plus arrival-in-conversation for everything else (shape 4), with shape 3
-available as an explicit user override. Shape 2 is retired.
+### The POC changed which shape leads
 
-**This decision is not yet made** — it is DESIGN's job, and POCs P12/P13 (§10) exist to make it on
-evidence rather than on the reasoning above.
+**Shape 1 was assumed impractical because the fixed set would have to be large. A fifth idea removes
+that reason** (PO, 2026-08-04): **drop the atomic edit tools.** Keep search tools plus a handful of
+coarse capabilities that take a **plain-text instruction** and run a whole job to completion through a
+sub-agent — PlanForge end-to-end, world setup, glossary build.
+
+Measured support:
+
+- **57% of current tools require a caller-supplied id**, and **57% of real errors are id-resolution
+  failures.** A capability taking *text* does not have that failure mode — **eliminated by
+  construction, not mitigated.**
+- **118 of 198** current tools are writes that collapse into coarse capabilities.
+- A 16-tool surface routed a real multi-step request correctly **3/3** on the target model.
+- ~20 tools is inside the measured comfort zone (arms A and C: 1 and 35 both perfect).
+- The sub-agent boundary already exists: `subagent_runtime.py`'s `tool_scope` is **the only place in
+  this repo where a capability genuinely owns a tool whitelist**, enforced at advertise *and* execute.
+
+Its two costs, both measured and both addressable:
+
+- **Prose-instead-of-action is the native failure mode** — 0/3 without a hard anti-prose directive,
+  3/3 with one. This is the `co_write` incident (*6,948 characters, zero tool calls*) reproduced on
+  demand, so the directive must be a **gate, not a hope**.
+- **The 39 id-requiring reads must also collapse** to text-in/references-out, or the 57% class
+  survives the refactor. That is a universal search — sound, and its choking risk is **not intrinsic**:
+  p50 result size is 171 tokens, and the hazard is concentrated in the **18 of 36 read tools that have
+  no `limit` parameter at all**, whose rule (OUT-2) is already written and already gated, with **14
+  offenders grandfathered as FLIP-PENDING**.
+
+**The leading design is therefore 1 + 4, with 3 as an explicit override:** a small static core
+(one search per domain + coarse capabilities) — cache-stable, id-free, measured to work — plus
+**arrival-in-conversation** for the long tail, plus **user curation** where the person wants it.
+**Shape 2 is retired.**
+
+**Still not decided:** how far the reads consolidate (whether ~20 is reachable), and whether
+sub-agents hold correctness when handed free text. Those are DESIGN's remaining POCs.
 
 ---
 
@@ -610,6 +678,13 @@ from.** Full evidence in the POC document; stated here so the spec is self-conta
 | **R17** | **Guidance is a gate** — a tool without effective guidance does not register | **60%** of tools require an id and never name its producer; 20% are legacy with no `superseded_by` |
 | **R16** | **One deterministic loop detector**, over the stream, that **terminates** | 14 function-local counters, none aware of the others; the observed turn ended `interrupted`, not `stop` |
 | **R15** | A **surface must be able to complete what it advertises** | `/chat` has no book binding and no book hot-seed, yet accepts "list my books" |
+| **R21** | **A waiver carries an expiry, not only a reason** | the same pattern three times: `_EXEMPT_SKILL_CODES` hid the `co_write` defect; `KNOWN_RED` rows outlive their deferrals; **14 FLIP-PENDING allows are measurably the choking hazard** |
+
+**R21 is the operating rule the POC kept re-discovering.** Three times today the shape was identical:
+*the correct rule was written, the gate was built, an exemption was granted so as not to block
+progress — and the exemption became permanent and then became the defect.* A waiver without an expiry
+is not a waiver; it is a silent amendment to the rule. Every allow-list in this spec (R6's ratchet,
+R17's 189 existing violations, OUT-2's 14) ships with a date, and passing it reds.
 
 **R20 subsumes the old framing.** R3 (skills declare tools) becomes *how R20 is checked*; R15 is R20 at
 the surface level; R19's cache argument becomes a *consequence* of R20 rather than a motivation. The
@@ -917,6 +992,8 @@ further boundary refinement.
 | 🔴 **Codegen makes the context problem WORSE** | EF's output is free; ours is partly prompt text paid on every turn. A generated skill body or a templated tool-description block would be more verbose than the hand-compressed prose it replaced, and the cost is per-turn and permanent — the single most likely way this spec does net harm | R13.6 forbids generating prose at all, and **R13.6.1 puts a token-budget assertion in CI on every generated artifact that enters a prompt**. If a codegen change grows the prompt, the build reds. This risk is the reason that gate exists rather than being a nice-to-have |
 | **R14 is designed for a catalog we do not have** | 312 tools today; "thousands" is a projection, and building for imagined scale is its own classic mistake | do not guess — **test it**: the Phase 6 DoD is a synthetic 3,000-tool catalog in the eval harness. If discovery cost stays flat there, the design holds; if it cannot be built, that is the finding |
 | **F17 reads as reversed rather than amended** | retrieval returning after `find_tools` was retired looks like the pendulum swinging back, which is how this domain got thirteen layers | R14.3 states the distinction explicitly (enumeration for the tree, retrieval for the leaves) and §8 records it as an amendment with the reason. A reversal nobody explains becomes the fourteenth layer |
+| 🔴 **The spec's own reasoning keeps being wrong in the same direction** | measured this session: **R14's justification had to be corrected three times**; P2b was withdrawn entirely; OQ5 was declared falsified and then vindicated; four of my own measurements were errors, **every one from reading a proxy instead of the artifact the consumer receives** | no requirement may rest on reasoning alone where a measurement is available. Each requirement in §3 now carries its measured basis, and where it has none it says so. This is NV-2 applied to the spec itself |
+| **The refactor is too large to land** | 21 requirements, 9 phases, 5 services, 3 languages, ~198 tools to re-home | Phases 0–1 are independently valuable and independently shippable: the six lies, the eval net, the manifest. **If the effort stops after Phase 1 the repo is still measurably better off** — that is the test each phase boundary must meet |
 
 ---
 
