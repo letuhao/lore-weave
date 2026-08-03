@@ -311,3 +311,73 @@ fn two_derivations_from_one_plugin_at_one_layer_keep_submission_order() {
     );
 }
 
+
+/// **The division TRUNCATES on positive input too — not half-up, not half-even.**
+///
+/// The negative direction is pinned (`a_negative_derivation_truncates_toward_zero`
+/// separates truncation from flooring) and the ceiling direction is caught by an
+/// existing case. **Half-rounding is neither**, and both data points the divisor
+/// case uses — `10 000 × 1/3 = 3 333.33` and `10 000 × 333/1000 = 3 330` — are
+/// invariant under it: one rounds down either way, the other is exact.
+///
+/// So `(n + d/2) / d` survived all 296 tests. One of three rounding modes was
+/// pinned, and the test asserting the divisor's whole reason for existing was
+/// the one that could not see it.
+#[test]
+fn a_positive_derivation_truncates_rather_than_rounding_half_up() {
+    let (r, a, s) = fixture();
+    // 10 000 × 2/3 = 6 666.67: **6 666 truncating, 6 667 rounding half-up.**
+    // `move_range` starts at 1, so the emitted value is 1 + the contribution.
+    let mut row = deriv(3, 2, 20);
+    row.factor_milli = 2;
+    row.divisor = 3;
+
+    let out = fold(a, &s, &r, &[], &[row]);
+
+    assert_eq!(
+        out.value(q(3)),
+        Some(1 + 6_666),
+        "10000×2/3 must truncate to 6 666, not round to 6 667"
+    );
+}
+
+/// **Both `Capped` records for one quantity, in the order the fold writes them.**
+///
+/// `emit` deliberately produces the accumulator record before the emit record,
+/// and `FoldReport.capped` is public output — but nothing asserted the sequence,
+/// so pushing them the other way round was green. The two records describe
+/// different sites of the same number; which one a reader meets first is the
+/// difference between *"the accumulation overflowed and was then clamped"* and
+/// *"the value was clamped, and separately the accumulator says it overflowed."*
+#[test]
+fn the_accumulator_record_precedes_the_emit_record_for_one_quantity() {
+    let (r, a, mut s) = fixture();
+    // Saturate the accumulator downward, so BOTH records fire for `hp`.
+    s[q(0).index()] = i32::MIN;
+    let flat = |v: i32| ModifierRow {
+        target: q(0),
+        op: ModifierOp::Flat(v),
+        source: p(0),
+        fold_layer: FoldLayer(10),
+    };
+    let pct = ModifierRow {
+        target: q(0),
+        op: ModifierOp::Percent(i32::MAX),
+        source: p(0),
+        fold_layer: FoldLayer(10),
+    };
+
+    let out = fold(a, &s, &r, &[flat(i32::MIN), flat(i32::MIN), pct], &[]);
+    let sites: Vec<CapSite> = out
+        .capped
+        .iter()
+        .filter(|c| c.quantity == q(0))
+        .map(|c| c.site)
+        .collect();
+
+    assert_eq!(
+        sites,
+        vec![CapSite::Accumulator, CapSite::Emit],
+        "both records must fire, accumulator first — got {sites:?}"
+    );
+}

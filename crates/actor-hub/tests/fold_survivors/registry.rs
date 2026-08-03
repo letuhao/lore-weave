@@ -14,7 +14,7 @@
 
 use super::{deriv, fixture, p, q};
 use actor_hub::*;
-use ruleset_core::QuantityTable;
+use ruleset_core::{ModifierOp, QuantityTable};
 
 /// **`check_derivation` really does check the fold layer.**
 ///
@@ -154,4 +154,114 @@ fn an_undeclared_layer_is_reported_before_a_zero_divisor() {
         matches!(r.check_derivation(a, &only_divisor), Err(RowRefusal::ZeroDivisor)),
         "the divisor check must still fire once the layer is legal"
     );
+}
+
+/// **The WHOLE refusal chain, one pair at a time.**
+///
+/// `D-459` closed the layer-before-divisor pair and its row claimed the sibling
+/// source-before-target pair already had a case. It does not — that case is on
+/// `check_modifier`, which writes the same two lines again. A round-17 sweep
+/// measured three of `check_derivation`'s five adjacent pairs as survivors:
+/// source/target, source-quantity/layer, and divisor/bound.
+///
+/// **That is `D-458`'s defect one row later** — a row asserting coverage it does
+/// not have, written in the same commit as the row recording exactly that.
+///
+/// So this pins the chain instead of a pair: a row violating EVERY condition,
+/// then each condition repaired in turn, each step naming the reason that must
+/// surface. Swapping any adjacent pair moves one of these answers.
+#[test]
+fn a_derivations_refusal_chain_reports_the_first_violation_at_every_step() {
+    let (r, _, _) = fixture();
+    // Only plugin 0 is attached, so plugin 1 is unattached and `qi` — the
+    // quantity plugin 1 owns — is absent. One fixture, six violations.
+    let a = PluginSet::EMPTY.attach(p(0));
+
+    let mut row = deriv(3, 2, 20);
+    row.source = p(1);
+    row.target = q(1);
+    row.source_quantity = q(1);
+    row.fold_layer = FoldLayer(99);
+    row.divisor = 0;
+    row.bound = Some(ContributionBound { min: 10, max: 5 });
+
+    let step = |row: &DerivationRow| r.check_derivation(a, row);
+
+    assert!(
+        matches!(step(&row), Err(RowRefusal::SourceNotAttached { .. })),
+        "the SOURCE PLUGIN is checked first; got {:?}",
+        step(&row)
+    );
+    row.source = p(0);
+    assert!(
+        matches!(step(&row), Err(RowRefusal::UndeclaredTarget { .. })),
+        "the TARGET is checked before the source quantity; got {:?}",
+        step(&row)
+    );
+    row.target = q(3);
+    assert!(
+        matches!(step(&row), Err(RowRefusal::UndeclaredSource { .. })),
+        "the SOURCE QUANTITY is checked before the fold layer; got {:?}",
+        step(&row)
+    );
+    row.source_quantity = q(2);
+    assert!(
+        matches!(step(&row), Err(RowRefusal::UndeclaredFoldLayer { .. })),
+        "the FOLD LAYER is checked before the divisor; got {:?}",
+        step(&row)
+    );
+    row.fold_layer = FoldLayer(20);
+    assert!(
+        matches!(step(&row), Err(RowRefusal::ZeroDivisor)),
+        "the DIVISOR is checked before the bound; got {:?}",
+        step(&row)
+    );
+    row.divisor = 1;
+    assert!(
+        matches!(step(&row), Err(RowRefusal::ContradictoryBound { min: 10, max: 5 })),
+        "the BOUND is the last refusal; got {:?}",
+        step(&row)
+    );
+    row.bound = None;
+    assert!(step(&row).is_ok(), "every violation repaired, yet still refused: {:?}", step(&row));
+}
+
+/// **The same chain on `check_modifier`.**
+///
+/// Its source-before-target pair is the one `D-459` pointed at when it claimed
+/// `check_derivation`'s was cased. It is cased — here, explicitly, alongside its
+/// twin, so the two are no longer distinguishable only by which function a
+/// reader happens to look at.
+#[test]
+fn a_modifiers_refusal_chain_reports_the_first_violation_at_every_step() {
+    let (r, _, _) = fixture();
+    let a = PluginSet::EMPTY.attach(p(0));
+
+    let mut row = ModifierRow {
+        target: q(1),
+        op: ModifierOp::Flat(1),
+        source: p(1),
+        fold_layer: FoldLayer(99),
+    };
+    let step = |row: &ModifierRow| r.check_modifier(a, row);
+
+    assert!(
+        matches!(step(&row), Err(RowRefusal::SourceNotAttached { .. })),
+        "the SOURCE PLUGIN is checked first; got {:?}",
+        step(&row)
+    );
+    row.source = p(0);
+    assert!(
+        matches!(step(&row), Err(RowRefusal::UndeclaredTarget { .. })),
+        "the TARGET is checked before the fold layer; got {:?}",
+        step(&row)
+    );
+    row.target = q(0);
+    assert!(
+        matches!(step(&row), Err(RowRefusal::UndeclaredFoldLayer { .. })),
+        "the FOLD LAYER is the last refusal; got {:?}",
+        step(&row)
+    );
+    row.fold_layer = FoldLayer(10);
+    assert!(step(&row).is_ok(), "every violation repaired, yet still refused: {:?}", step(&row));
 }

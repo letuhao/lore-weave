@@ -782,6 +782,22 @@ def _orphaned_tail(text: str, span: tuple[int, int], end_marker: str) -> tuple[i
     return (start, min(at, len(text)))
 
 
+SENTINEL_RE = re.compile(r"^<!-- actor-hub-figures:end [a-z0-9-]+ -->$")
+
+
+def _unsentinelled(scopes) -> list[str]:
+    """Scopes whose end anchor is not a NAMED `:end <block>` sentinel.
+
+    Extracted from the assertion so a case can drive it with a scope that
+    violates it. Inline, the assertion could be weakened to `startswith("<!--")`
+    -- which accepts any HTML comment, and "NAMED" is the whole point -- with
+    the suite green, because the only case reverted the DATA to a heading and a
+    heading fails either form. A rule tested only through data it happens to
+    have is a rule with half a test.
+    """
+    return [f"{sc[0]} @ {sc[1]}" for sc in scopes if not SENTINEL_RE.match(sc[2])]
+
+
 def _read_doc(doc: str, read=None) -> str | None:
     try:
         return read(doc) if read else (REPO / doc).read_text(
@@ -949,7 +965,14 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
     # stale figure outside every checker's scope -- was invisible.
     present: dict[tuple[str, str], set[str]] = {}
     claim_spans: dict[tuple[str, str], list[tuple[int, int]]] = {}
-    tails: dict[tuple[str, str], tuple[str, str | None]] = {}
+    # (text, open fence, open comment) -- **BOTH halves of the prefix state.**
+    # The first version took `_fence_state(...)[0]` and dropped the comment,
+    # two lines below the call that passes both for the block. An HTML comment
+    # opening in the block and closing in the tail therefore left the tail
+    # reading as live prose, and a figure inside it refused the commit: the
+    # cry-wolf direction, from the hook that fires repo-wide, in the rule added
+    # to close a hole. One half carried, its twin dropped.
+    tails: dict[tuple[str, str], tuple[str, str | None, bool]] = {}
     blanks: dict[tuple[str, str], str] = {}
     scopes = scopes if scopes is not None else SCOPES
 
@@ -980,7 +1003,7 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
             continue
         if span:
             a, b = _orphaned_tail(full, span, end_marker)
-            tails[(doc, start_marker)] = (full[a:b], _fence_state(full[:a])[0])
+            tails[(doc, start_marker)] = (full[a:b], *_fence_state(full[:a]))
         block = _claimable(block, in_fence=opens_fenced, in_comment=opens_commented)
         present[(doc, start_marker)] = set()
         claim_spans[(doc, start_marker)] = []
@@ -1062,9 +1085,10 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
     # **The prose between the sentinel and the next heading.** See
     # `_orphaned_tail`: it is the region a sentinel move creates, and the only
     # region it creates, so it is where a moved sentinel's orphans land.
-    for (doc, start_marker), (tail, opens) in tails.items():
+    for (doc, start_marker), (tail, opens, commented) in tails.items():
         for pattern, key, label in CLAIMS:
-            for mo in re.finditer(pattern, _claimable(tail, in_fence=opens)):
+            for mo in re.finditer(
+                    pattern, _claimable(tail, in_fence=opens, in_comment=commented)):
                 line = tail.count(chr(10), 0, mo.start()) + 1
                 problems.append(
                     f"{doc}: `{mo.group(0)[:40]}` states {label} BELOW the end "
@@ -1184,6 +1208,27 @@ def self_test() -> int:
     check_doc("a QUOTED historical figure in the tail is not an orphan",
               "@@START\n**283 passed, 0 failed**\n@@END\n"
               'round 5 said *"**11 passed, 0 failed**"*\n\n## Next', 0)
+    # **BOTH halves of the prefix state reach the tail.** The first version
+    # carried the fence and dropped the comment, two lines below the call that
+    # passes both for the block -- so a comment opening in the block and closing
+    # in the tail left the tail reading as live prose and a figure inside it
+    # refused the commit. The half that WAS carried had no case either: the
+    # whole expression could be replaced by `None` and the suite stayed green.
+    check_doc("a FENCE opening in the block and closing in the tail is not live",
+              "@@START\n**283 passed, 0 failed**\n```\n@@END\n"
+              "**11 passed, 0 failed**\n```\n\n## Next", 0)
+    check_doc("a COMMENT opening in the block and closing in the tail is not live",
+              "@@START\n**283 passed, 0 failed**\n<!--\n@@END\n"
+              "**11 passed, 0 failed**\n-->\n\n## Next", 0)
+    # ...and once each closes, the tail below it IS live again, so neither case
+    # passes by blanking the whole tail.
+    check_doc("...and the tail below the fence's closer is live again",
+              "@@START\n**283 passed, 0 failed**\n```\n@@END\n"
+              "```\n**11 passed, 0 failed**\n\n## Next", 1)
+    check_doc("...and the tail below the comment's closer is live again",
+              "@@START\n**283 passed, 0 failed**\n<!--\n@@END\n"
+              "-->\n**11 passed, 0 failed**\n\n## Next", 1)
+
     check_doc("a tail with no figure at all is silent",
               "@@START\n**283 passed, 0 failed**\n@@END\nprose\n\n## Next", 0)
 
@@ -1588,8 +1633,18 @@ def self_test() -> int:
     # which is what made the block silently re-terminable by a second heading of
     # the same text -- left the whole suite green. The property was made true by
     # editing data, with no check to keep it true.
-    unsentinelled = [f"{sc[0]} @ {sc[1]}" for sc in SCOPES
-                     if not sc[2].startswith("<!-- actor-hub-figures:end ")]
+    unsentinelled = _unsentinelled(SCOPES)
+    # ...and the predicate must REJECT the shapes it exists to reject, each of
+    # which is an HTML comment, so a `startswith("<!--")` weakening accepts all
+    # three while the shipped scopes stay green.
+    rejects = _unsentinelled((("d", "s", "<!-- not a sentinel -->"),
+                              ("d", "s", "<!-- actor-hub-figures:end -->"),
+                              ("d", "s", "## a heading")))
+    if len(rejects) != 3:
+        failures += 1
+        print(f"  FAIL the sentinel predicate accepted {3 - len(rejects)} non-sentinel(s)")
+    else:
+        print("  ok  an unnamed `:end` and a bare HTML comment are not sentinels")
     if unsentinelled:
         failures += 1
         print(f"  FAIL these scopes do not end on a named sentinel: {unsentinelled}")

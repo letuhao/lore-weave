@@ -101,8 +101,12 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("block membership degraded from a span to a substring",
          "                if any(a <= mo.start() < b for a, b in spans):",
          "                if any(mo.group(0) in text[a:b] for a, b in spans):"),
+        # Both LINES of the tuple: deleting the first left the continuation
+        # dangling, so the child died in the parser and no case ran -- the very
+        # question `D-467` asks of the Rust half, never asked of this one.
         ("the 6-BUILD scope row deleted",
-         '    (RUN_STATE, "### 6-BUILD", END("slice-board"),', ""),
+         '    (RUN_STATE, "### 6-BUILD", END("slice-board"),\n'
+         '     frozenset({"rust_tests", "dp_kernel_lib_tests"})),', ""),
         ("the _index.md scope row deleted",
          '    (INDEX, "# Actor Hub", END("index"),', "        ("),
         ("the red-build guard removed",
@@ -256,8 +260,21 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # sentinel-moved-up hole and does not: it is keyed by measurement KEY,
         # so a SECOND occurrence of a key already named is not surplus.
         ("the orphaned tail is never scanned",
-         "    for (doc, start_marker), (tail, opens) in tails.items():",
-         "    for (doc, start_marker), (tail, opens) in []:"),
+         "    for (doc, start_marker), (tail, opens, commented) in tails.items():",
+         "    for (doc, start_marker), (tail, opens, commented) in []:"),
+        # R17/M2 -- the scan took `_fence_state(...)[0]` and dropped the comment
+        # half, two lines below the call that passes both for the block.
+        ("the tail loses the prefix state entirely",
+         "            tails[(doc, start_marker)] = (full[a:b], *_fence_state(full[:a]))",
+         "            tails[(doc, start_marker)] = (full[a:b], None, False)"),
+        ("the tail keeps the fence half and drops the comment half",
+         "            tails[(doc, start_marker)] = (full[a:b], *_fence_state(full[:a]))",
+         "            tails[(doc, start_marker)] = (full[a:b], _fence_state(full[:a])[0], False)"),
+        # R17/m3 -- the sentinel assertion could be weakened to accept any HTML
+        # comment, because its only case reverted the DATA to a heading.
+        ("the sentinel shape accepts any HTML comment",
+         'SENTINEL_RE = re.compile(r"^<!-- actor-hub-figures:end [a-z0-9-]+ -->$")',
+         'SENTINEL_RE = re.compile(r"^<!--")'),
         ("the tail runs to the next heading only",
          'TAIL_END_RE = re.compile(r"^[ \\t>]*(?:#{1,6}[ \\t]|\\|)")',
          'TAIL_END_RE = re.compile(r"^[ \\t>]*(?:#{1,6}[ \\t])")'),
@@ -516,6 +533,8 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          '        if _read(copy) == text:', "        if False:"),
         ("the RUST anchor search stops excluding the tables",
          "            at = _find_one(src, find)", "            at = src.find(find)"),
+        ("the gate no-verdict guard removed",
+         "    if not ran:", "    if False:"),
         ("the RUST compile-failure guard removed",
          '            if red and ("error[E" in noise or "could not compile" in noise):',
          "            if False:"),
@@ -688,6 +707,46 @@ RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
      "        }\n"
      "        self.check_layer(row.fold_layer)?;",
      "registry::an_undeclared_layer_is_reported_before_a_zero_divisor"),
+    # R17/B1 -- `D-459` cased ONE of `check_derivation`'s five adjacent
+    # precedence pairs and its row claimed a second that was false: the
+    # source-before-target case is on `check_modifier`, which writes the same two
+    # lines again. Three were survivors. That is `D-458`'s defect -- a row
+    # asserting coverage it does not have -- one row later, same commit.
+    ('check_derivation reports the TARGET before the SOURCE',
+     'crates/actor-hub/src/registry.rs',
+     '        self.check_source(attached, row.source)?;\n        self.check_target(attached, row.target)?;\n        if !self.is_present(attached, row.source_quantity) {',
+     '        self.check_target(attached, row.target)?;\n        self.check_source(attached, row.source)?;\n        if !self.is_present(attached, row.source_quantity) {',
+     'registry::a_derivations_refusal_chain_reports_the_first_violation_at_every_step'),
+    ('check_derivation reports the LAYER before the SOURCE QUANTITY',
+     'crates/actor-hub/src/registry.rs',
+     '        if !self.is_present(attached, row.source_quantity) {\n            return Err(RowRefusal::UndeclaredSource { ordinal: row.source_quantity.get() });\n        }\n        self.check_layer(row.fold_layer)?;',
+     '        self.check_layer(row.fold_layer)?;\n        if !self.is_present(attached, row.source_quantity) {\n            return Err(RowRefusal::UndeclaredSource { ordinal: row.source_quantity.get() });\n        }',
+     'registry::a_derivations_refusal_chain_reports_the_first_violation_at_every_step'),
+    ('check_derivation reports the BOUND before the DIVISOR',
+     'crates/actor-hub/src/registry.rs',
+     '        if row.divisor == 0 {\n            return Err(RowRefusal::ZeroDivisor);\n        }\n        if let Some(b) = row.bound',
+     '        if let Some(b) = row.bound\n            && b.min > b.max\n        {\n            return Err(RowRefusal::ContradictoryBound { min: b.min, max: b.max });\n        }\n        if row.divisor == 0 {\n            return Err(RowRefusal::ZeroDivisor);\n        }\n        if let Some(b) = row.bound',
+     'registry::a_derivations_refusal_chain_reports_the_first_violation_at_every_step'),
+    ('check_modifier reports the TARGET before the SOURCE',
+     'crates/actor-hub/src/registry.rs',
+     '        self.check_source(attached, row.source)?;\n        self.check_target(attached, row.target)?;\n        self.check_layer(row.fold_layer)',
+     '        self.check_target(attached, row.target)?;\n        self.check_source(attached, row.source)?;\n        self.check_layer(row.fold_layer)',
+     'registry::a_modifiers_refusal_chain_reports_the_first_violation_at_every_step'),
+    # R17/m1 -- the negative direction separated truncation from flooring and
+    # the ceiling direction was caught; HALF-ROUNDING is neither, and both data
+    # points of the divisor case are invariant under it.
+    ('raw_amount rounds half-up instead of truncating',
+     'crates/actor-hub/src/rows.rs',
+     '            (source_value as i64).saturating_mul(self.factor_milli as i64) / (self.divisor as i64)',
+     '            ((source_value as i64).saturating_mul(self.factor_milli as i64)\n                + (self.divisor as i64) / 2)\n                / (self.divisor as i64)',
+     'a_positive_derivation_truncates_rather_than_rounding_half_up'),
+    # R17/m2 -- `FoldReport.capped` is public output and `emit` writes the two
+    # records deliberately; their sequence was asserted by nothing.
+    ('the Accumulator record is pushed AFTER the Emit record',
+     'crates/actor-hub/src/fold.rs',
+     '    if r.saturated {\n        capped.push(Capped { quantity: q, site: CapSite::Accumulator, wanted: r.value, emitted: out });\n    }\n    if out as i64 != r.value {',
+     '    if out as i64 != r.value {\n        capped.push(Capped { quantity: q, site: CapSite::Emit, wanted: r.value, emitted: out });\n    }\n    if r.saturated {\n        capped.push(Capped { quantity: q, site: CapSite::Accumulator, wanted: r.value, emitted: out });\n    }\n    if out as i64 != r.value {',
+     'the_accumulator_record_precedes_the_emit_record_for_one_quantity'),
     ("an exact bound min==max wrongly refused",
      "crates/actor-hub/src/registry.rs",
      "            && b.min > b.max",
@@ -999,6 +1058,22 @@ def _mutate_and_run(gate: str, find: str, repl: str, run=None,
             return False, f"the self-test did not finish within {CHILD_TIMEOUT_S}s"
     finally:
         copy.unlink(missing_ok=True)
+    # **RED for the RIGHT REASON, asked of THIS half too.** `D-467` added the
+    # question to `run_rust` and not to its twin, and one row of the shipped
+    # table was already answering it wrongly: deleting one line of a two-line
+    # tuple left the child unparseable, so python's parser reddened it and not
+    # one case ran. A mutant that cannot execute proves nothing about the rule
+    # it aims at, exactly as a mutant that cannot compile does.
+    #
+    # The test is "did the child reach its own reporting" -- a self-test prints
+    # an `ok`/`FAIL` line per case -- rather than a list of exception names,
+    # which would be the enumeration this file keeps being caught by.
+    ran = any(l.lstrip().startswith(("ok ", "FAIL"))
+              for l in (out.stdout or "").splitlines())
+    if not ran:
+        first = next((l.strip() for l in reversed((out.stderr or "").splitlines())
+                      if l.strip()), "no output at all")
+        return False, f"the child never reached a case — {first}"
     if out.returncode != 0:
         return True, ""
     return False, "self-test stayed GREEN"
@@ -1097,11 +1172,32 @@ def self_test() -> int:
         total = sum(len(v) for v in MUTATIONS.values())
         print(f"  ok  all {total} mutation anchors resolve exactly once")
 
+    # **A child that never reached a case did not answer.** One shipped row
+    # deleted the first line of a two-line tuple and left the continuation
+    # dangling, so python's parser reddened the child and not one case ran --
+    # counted RED, so `106/106` was 105 verdicts and one artifact. `D-467` asked
+    # this of the RUST half in the same commit and not of this one.
+    class _Unparseable:
+        returncode, stdout = 1, ""
+        stderr = "  File \"x.py\", line 147\nIndentationError: unexpected indent"
+
+    gate0, (_, find0, repl0) = "citation-gate", MUTATIONS["citation-gate"][0]
+    red, note = _mutate_and_run(gate0, find0, repl0, run=lambda _: _Unparseable())
+    if red or "never reached a case" not in note:
+        failures += 1
+        print(f"  FAIL a child that printed no case was counted as a bite: {red}, {note!r}")
+    else:
+        print("  ok  a mutant whose child never reached a case is not a bite")
+
     # A mutation that leaves the self-test GREEN must be reported as GREEN, and
     # one that reddens it as RED. Driven through the real `_mutate_and_run`.
+    # A self-test child PRINTS a case line. These stand-ins must too, or they
+    # are children that never reached a case -- which the guard below reports,
+    # correctly, and which would make every one of these cases pass for the
+    # wrong reason.
     class _R:
-        def __init__(self, rc):
-            self.returncode, self.stdout, self.stderr = rc, "", ""
+        def __init__(self, rc, stdout="  ok  some rule bit\n"):
+            self.returncode, self.stdout, self.stderr = rc, stdout, ""
 
     gate, (_, find, repl) = "citation-gate", MUTATIONS["citation-gate"][0]
     red, _ = _mutate_and_run(gate, find, repl, run=lambda _: _R(1))
@@ -1629,7 +1725,7 @@ def self_test() -> int:
         seen_text: list[str] = []
 
         class _R0:
-            returncode, stdout, stderr = 0, "", ""
+            returncode, stdout, stderr = 0, "  ok  some rule bit\n", ""
 
         _mutate_and_run("probe-gate", "guard = 1", "guard = 9",
                         run=lambda q: (seen_text.append(_read(q)), _R0())[1],
@@ -1739,6 +1835,9 @@ def self_test() -> int:
           "env=child_env))"),
          ("timeout=CHILD_TIMEOUT_S, env=_child_env(no_cargo)))",
           "env=_child_env(no_cargo)))")),
+        ("a mutant that never ran is not a bite",
+         ("the child never reached a case", "    if not ran:"),
+         ("the mutant does not compile", 'if red and ("error[E" in noise')),
         ("a null mutation refused",
          ("the copy is identical to the original", "if _read(copy) == text:"),
          ("            if mutated == src:", "if mutated == src:")),

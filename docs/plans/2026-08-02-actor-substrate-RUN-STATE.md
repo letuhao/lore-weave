@@ -13,7 +13,7 @@
 > | `U-9` · `U-10` | `scripts/hashed-substrate-float-gate.py` · `scripts/citation-gate.py`, both wired pre-commit, both with a passing `--self-test` |
 >
 > **Evidence, every number re-derived at the moment of writing** — because the previous two versions of
-> this block were stale by the commit that contained them (`D-343`, `D-350`): **296 Rust tests** green
+> this block were stale by the commit that contained them (`D-343`, `D-350`): **300 Rust tests** green
 > across the touched crates · `dp-kernel --lib` **315**, unchanged by the `GoneState` move · the Go mirror
 > `contracts/entity_status` **ok** · clippy and `cargo doc` counts deliberately not stated, because
 > nothing here measures them and a figure with no measurement rule goes stale by construction — a
@@ -1039,6 +1039,30 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 | **D-445** `[E]` | **🔴 And the survivor that took longest was a DUPLICATED RULE.** `run_rust` carried **two** `if baseline is not None:` blocks — the funnel added this round, and the injection block it was meant to replace — so the second re-evaluated and masked every mutation of the first. The same class as `D-413`'s duplicated fence logic, two rounds on. ⇒ one block. Then the remaining survivor was the same shape one level deeper: `baseline` injected the VERDICT, so the line reading the probe's return code was reachable only by seeding a red crate suite. ⇒ `baseline` injects the PROBE; one extraction, one path. |
 | **D-446** `[META]` | **A witness table is DATA wherever it is defined.** `_outside_tables` walked `tree.body` only, so the parity table — a local — counted as code and every anchor it names counted twice. ⇒ `ast.walk`, and `parity` joins the `*MUTATIONS` names. |
 
+### 6ad. ROUND 17 — a row claiming coverage, one row after the row about rows claiming coverage (2026-08-04)
+
+Round 16 recorded `D-458`: *"the row claiming the coverage was itself the miss."*
+`D-459` was written in the same commit, by the same pass, and did it again — it
+asserted that `check_derivation`'s source-before-target precedence already had a
+case. That case is on `check_modifier`, which writes the same two lines again.
+**Three of `check_derivation`'s five adjacent precedence pairs were survivors.**
+
+| # | Decision |
+|---|---|
+| **D-469** `[E]` | **🔴 `B1`. `D-459` claimed coverage that does not exist, and three of five precedence pairs were uncased.** Measured: swapping source/target in `check_derivation` is GREEN while the identical swap in `check_modifier` four lines up is RED — the case is on the twin, and the row read the twin as if it were the subject. Also GREEN: source-quantity before layer, and divisor before bound. **`RowRefusal` is what substrate §7 calls the whole product of a refusal**, and `D-459`'s own text says reporting the second of two is a wrong answer, not a cosmetic one. ⇒ the fix is not another pair-case, which is how this got here: **a row violating EVERY condition, then each repaired in turn**, each step naming the reason that must surface. One test pins all five pairs of `check_derivation` and a sibling pins all three of `check_modifier`, so the two functions are no longer distinguishable only by which one a reader happens to open. All five swaps now RED, none by compile error. |
+| **D-470** `[E]` | **`M1`. `D-467` asked *"did this mutant red for the RIGHT reason"* of the RUST half and not of its twin — and one shipped row was already answering it wrongly.** *"The 6-BUILD scope row deleted"* removed the first line of a two-line tuple and left the continuation dangling, so the child died in **python's parser** and not one case ran: counted RED, so **`106/106` was 105 verdicts and one artifact.** ⇒ two fixes, because there are two defects: the row deletes both lines, and `_mutate_and_run` now requires the child to have **reached a case at all** — a self-test prints one `ok`/`FAIL` line per case, so the test is "did it get that far", not a list of exception names, which would be the enumeration this file keeps being caught by. Parity gained the property. |
+| **D-471** `[E]` | **`M2`. The tail scan carried the fence half of the prefix state and dropped the comment half — two lines below the call that passes BOTH for the block.** Measured on one document shape: a fence opening in the block and closing in the tail gives 0 findings; the same shape with a comment gives **1** — a figure inside `<!-- … -->` refusing the commit, from the hook that fires repo-wide. **And the half that WAS carried had no case**: replacing the whole expression with `None` survived, while being load-bearing (dropping it turns a correct document into a false positive). One half carried, its twin dropped, and neither cased — in the rule round 16 added to close a hole. |
+| **D-472** `[E]` | **`m1`. One of three rounding modes was pinned.** The negative direction separates truncation from flooring and the ceiling direction is caught, but **half-rounding is neither**, and both data points of the divisor case — `10 000 × 1/3` and `10 000 × 333/1000` — are invariant under it: one rounds down either way, the other is exact. So `(n + d/2)/d` survived all 296 tests, and the test asserting the divisor's whole reason for existing was the one that could not see it. ⇒ `10 000 × 2/3 = 6 666.67`, which half-rounding moves. |
+| **D-473** `[E]` | **`m2`. `FoldReport.capped` is public output and `emit` writes its two records deliberately; the sequence was asserted by nothing.** Which record a reader meets first is the difference between *"the accumulation overflowed and was then clamped"* and *"the value was clamped, and separately the accumulator says it overflowed."* |
+| **D-474** `[E]` | **`m3`. The sentinel assertion could be weakened to accept any HTML comment, because its only case reverted the DATA to a heading — and a heading fails either form.** *"NAMED"* is the whole point of the rule. ⇒ the predicate is extracted so a case can drive it with scopes that violate it, and three shapes are asserted rejected: a bare comment, an `:end` with no block name, and a heading. **A rule tested only through data it happens to have is a rule with half a test.** |
+| **D-475** `[E]` | **`m4`, corrected rather than left standing.** The previous commit's message says the harness self-test emits **41** `ok` lines; it emits **43**. Nothing in the tree governs that number — no document states it — which is exactly why it went stale: it is a figure outside every checker's scope, which is the sentence this round's own slice board is built around. It is not added to a governed block, because a count of self-test cases changes on every commit that adds one; it is recorded here as wrong and not repeated. |
+
+**Drift.** `DR-11` — the fix for `D-459` was written from the verifier's phrasing
+(*"the sibling source-before-target pair has a case"*) without opening
+`check_derivation` to confirm which function the case was on. The claim was true
+of the twin. That is the same reading-instead-of-measuring the whole round is
+about, committed inside the row recording it.
+
 ### 6ac. ROUND 16 — the parity mechanism was satisfied by its own table (2026-08-03/04)
 
 Round 15 answered the twin-guard class with a PARITY table. Round 16 measured it:
@@ -1399,7 +1423,7 @@ recorded as OPEN in the previous commit and discharged in this one.
 (cold-start agent that did not write the code) · this row filled in.
 
 > **ALL ELEVEN SLICES CLOSED.** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules
-> -p ruleset-loader` = **296 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
+> -p ruleset-loader` = **300 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
 > `GoneState` move) · the Go mirror `contracts/entity_status` **ok** · clippy and `cargo doc` counts
 > deliberately not stated: nothing here measures them, so the figure goes stale by construction — a
 > round-12 verifier measured the flat claim FALSE, the header block was corrected, and this copy of the
