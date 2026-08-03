@@ -13,7 +13,7 @@
 > `feat/frontend-tools-mcp-migration` and is left untouched.
 
 **The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
-per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-442` decision record
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-446` decision record
 live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
 the two design contracts that are its only specification are in
 [`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).
@@ -42,7 +42,7 @@ wires all green, and every `--self-test` among them runs pre-commit via
 > it had been rather than reading what it was.
 
 **Reviewed by cold-start adversarial agents, one round per fix pass — every finding fixed or answered.**
-**The per-round tallies are the source and live in [§6e..§6z of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
+**The per-round tallies are the source and live in [§6e..§6aa of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
 no aggregate is repeated here.** An aggregate is not mechanically derivable, so it goes stale every time a
 round lands. **A number you cannot derive is a number you should not assert** — and this paragraph
 asserted three such numbers while saying so, which a round-11 verifier falsified in place by editing each

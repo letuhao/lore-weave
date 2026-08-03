@@ -368,6 +368,37 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          "            # A timeout is a FINDING about that mutation, not the end of the"),
         # M6 -- D-428's own fix was unguarded: without the exclusion every row of
         # this table goes red for a reason unrelated to the rule.
+        # B2 -- `baseline_is_green` got two rows and three cases this round; its
+        # TWIN, written in the same commit for the same reason, got none. A
+        # seeded red `fold_survivors` proved it: rc 2 with the guard, rc 0 and
+        # "every Rust mutation reddened its test" without.
+        ("the RUST baseline is never checked",
+         "        probe = baseline()", "        probe = None"),
+        ("the RUST baseline probe's verdict is discarded",
+         "    if probe is not None and probe.returncode != 0:",
+         "    if probe is not None and False:"),
+        # B3 -- the negative sentinel was guarded at its PRODUCER and not at its
+        # CONSUMER, so a red baseline could cancel a real survivor into rc 0.
+        ("the negative-baseline sentinel is ignored by main",
+         "    if any(v < 0 for v in results):", "    if False:"),
+        # M5 -- the forwarding to the MUTATION child got a sentinel case this
+        # round; the forwarding to the BASELINE child got none, so a baseline
+        # could pass in an environment the mutations never run in.
+        ("the baseline child runs in a different environment",
+         "        text=True, timeout=CHILD_TIMEOUT_S, env=_child_env(no_cargo)))",
+         "        text=True, timeout=CHILD_TIMEOUT_S))"),
+        # M6 -- the gate half counts a drifted anchor and a timeout as survivors
+        # and has cases for both; the Rust half counted them and had neither.
+        ("a drifted RUST anchor is not counted",
+         '                print(f"  DRIFT  {label:52} anchor occurs {src.count(find)}x")\n'
+         "                green += 1",
+         '                print(f"  DRIFT  {label:52} anchor occurs {src.count(find)}x")\n'
+         "                green += 0"),
+        ("a timed-out RUST child is not counted",
+         '                print(f"  SLOW   {label:52} -> no verdict in {CHILD_TIMEOUT_S}s")\n'
+         "                green += 1",
+         '                print(f"  SLOW   {label:52} -> no verdict in {CHILD_TIMEOUT_S}s")\n'
+         "                green += 0"),
         ("the leftover check stops excluding this file's copy",
          "    leftover = [q for q in SCRIPTS.glob(\".bite-*.py\") "
          "if q.name != Path(__file__).name]",
@@ -386,7 +417,7 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          "    rows_for = (lambda: RUST_MUTATIONS) if args.rust else (",
          "    rows_for = (lambda: []) if args.rust else ("),
         ("the child environment is not forwarded",
-         "            env=_child_env(no_cargo)))", "            env=None))"),
+         "            env=child_env))", "            env=None))"),
         ("the dirty-tree refusal removed",
          "    if dirty and run is None:", "    if False:"),
         ("a refused run reports survivors again",
@@ -542,7 +573,8 @@ def _rust_dirty() -> list[str]:
     return [l[3:].strip() for l in out.stdout.splitlines() if l.strip()]
 
 
-def run_rust(only: str | None = None, run=None, write=None) -> tuple[int, str | None]:
+def run_rust(only: str | None = None, run=None, write=None,
+             baseline=None) -> tuple[int, str | None]:
     """(survivors, refusal). **Two separate answers, because they were one.**
 
     The first version returned `2` as a refusal sentinel and `main` read the
@@ -559,24 +591,37 @@ def run_rust(only: str | None = None, run=None, write=None) -> tuple[int, str | 
     print(f"\ncrates/actor-hub  ({len(rows)} Rust mutation(s))")
     # The Rust half needs the same guard: a crate whose suite is already red
     # reddens every mutation for free.
-    if run is None:
-        if shutil.which("cargo") is None:
-            # **No toolchain is a SKIP, not a crash.** The baseline probe added
-            # with this guard called cargo unconditionally and raised
-            # `FileNotFoundError` on every machine without Rust -- including the
-            # one CI runs the gate half on, which is exactly the population the
-            # degrade-safety rule exists for. A guard that cannot run without
-            # the thing it guards is not degrade-safe.
-            return 0, "cargo is not on PATH, so the Rust mutations were not run"
+    # **One decision, reached by both paths.** With the injected baseline and the
+    # real probe each carrying their own `if`, a case drives one branch and a
+    # mutation targets the other -- so the guard had a row AND a case and still
+    # survived. The two paths now only decide WHETHER the baseline is red; what
+    # to do about it is written once.
+    # `baseline` injects the PROBE, not its verdict: injecting the verdict left
+    # `probe.returncode != 0` reachable only by seeding a red crate suite, so it
+    # kept a mutation row and a case and survived both. One extraction, one path.
+    if baseline is not None:
+        probe = baseline()
+    elif run is not None:
+        probe = None
+    elif shutil.which("cargo") is None:
+        # No toolchain is a SKIP, not a crash. The probe added with this guard
+        # called cargo unconditionally and raised `FileNotFoundError` on every
+        # machine without Rust -- a degrade-safety defect inside the
+        # degrade-safety guard.
+        return 0, "cargo is not on PATH, so the Rust mutations were not run"
+    else:
         try:
             probe = subprocess.run(
                 ["cargo", "test", "-p", "actor-hub", "--test", "fold_survivors"],
                 cwd=REPO, capture_output=True, text=True, timeout=CHILD_TIMEOUT_S)
         except (OSError, subprocess.TimeoutExpired) as e:
             return 0, f"the unmutated fold_survivors suite could not be run: {e}"
-        if probe.returncode != 0:
-            return len(rows) or 1, ("the UNMUTATED fold_survivors suite already fails "
-                                    "— every mutation below would be red for that reason")
+
+    if probe is not None and probe.returncode != 0:
+        return len(rows) or 1, ("the UNMUTATED fold_survivors suite already fails "
+                                "— every mutation below would be red for that reason")
+
+    print(f"\ncrates/actor-hub  ({len(rows)} Rust mutation(s))")
     originals: dict[str, str] = {}
     raws: dict[str, bytes] = {}
     green = 0
@@ -646,13 +691,18 @@ def _outside_tables(text: str) -> list[tuple[int, int]]:
     for line in text.split("\n"):
         offsets.append(offsets[-1] + len(line) + 1)
     starts, ends = [0], []
-    for node in tree.body:
+    # **Every WITNESS TABLE, wherever it is defined.** The first version walked
+    # `tree.body` only, so the `parity` table -- a local inside `self_test`,
+    # added to catch guards present in one half and not the other -- was treated
+    # as code, and every anchor it names counted twice. A table is data whether
+    # it sits at module level or inside a function.
+    for node in ast.walk(tree):
         names = []
         if isinstance(node, ast.Assign):
             names = [t.id for t in node.targets if isinstance(t, ast.Name)]
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
             names = [node.target.id]
-        if not any(n.endswith("MUTATIONS") for n in names):
+        if not any(n.endswith("MUTATIONS") or n == "parity" for n in names):
             continue
         ends.append(offsets[node.lineno - 1])
         starts.append(offsets[min(node.end_lineno, len(offsets) - 1)])
@@ -675,7 +725,7 @@ def _find_one(text: str, find: str) -> int:
 
 
 def _mutate_and_run(gate: str, find: str, repl: str, run=None,
-                    no_cargo: bool = False) -> tuple[bool, str]:
+                    no_cargo: bool = False, label_hint: str = "") -> tuple[bool, str]:
     """(went_red, note). The ORIGINAL is opened read-only; a copy is mutated."""
     src = SCRIPTS / f"{gate}.py"
     raw = _raw(src)
@@ -693,10 +743,14 @@ def _mutate_and_run(gate: str, find: str, repl: str, run=None,
         # mutating would report every rule RED-free and look like success.
         if _read(copy) == text:
             return False, "the copy is identical to the original — nothing was mutated"
+        # The child is told WHICH ROW is under test, so its own drift check can
+        # skip the anchor this mutation just removed.
+        child_env = dict(_child_env(no_cargo) or os.environ)
+        child_env["GATE_BITE_MUTATING"] = label_hint
         runner = run or (lambda p: subprocess.run(
             [sys.executable, str(p), "--self-test"], cwd=REPO,
             capture_output=True, text=True, timeout=CHILD_TIMEOUT_S,
-            env=_child_env(no_cargo)))
+            env=child_env))
         try:
             out = runner(copy)
         except subprocess.TimeoutExpired:
@@ -761,7 +815,8 @@ def run_gate(gate: str, run=None, only: str | None = None, no_cargo: bool = Fals
         return -(len(rows) or 1)
     green = 0
     for label, find, repl in rows:
-        red, note = _mutate_and_run(gate, find, repl, run=run, no_cargo=no_cargo)
+        red, note = _mutate_and_run(gate, find, repl, run=run, no_cargo=no_cargo,
+                                    label_hint=label)
         print(f"  {'RED ' if red else 'GREEN'}  {label}{'  <- ' + note if note else ''}")
         green += 0 if red else 1
     return green
@@ -784,6 +839,13 @@ def self_test() -> int:
     for gate, rows in MUTATIONS.items():
         text = _read(SCRIPTS / f"{gate}.py")
         for label, find, _ in rows:
+            if label and label == os.environ.get("GATE_BITE_MUTATING"):
+                # **The row being mutated right now.** When this file mutates
+                # ITSELF the mutation removes its own anchor, so this check reds
+                # -- and the parent records RED while the RULE was never
+                # exercised. Red for the wrong reason reads exactly like red for
+                # the right one, which is the defect this whole file rejects.
+                continue
             if _find_one(text, find) < 0:
                 failures += 1
                 print(f"  FAIL {gate}: anchor for '{label}' occurs "
@@ -1066,14 +1128,17 @@ def self_test() -> int:
     finally:
         _sp.run = real_run
         globals()["_child_env"] = real_child_env
-    if forwarded is not marker:
+    # The child's env is a COPY -- it carries the row hint -- so the assertion
+    # is that the sentinel's CONTENT travelled, not that the object did.
+    if not isinstance(forwarded, dict) or "LOREWEAVE_CHILD_ENV_MARKER" not in forwarded:
         failures += 1
         print(f"  FAIL --no-cargo's environment did not reach the child: {forwarded}")
     else:
         print("  ok  --no-cargo's environment reaches the child (sentinel observed)")
-    if not_forwarded is not None:
+    if not isinstance(not_forwarded, dict) or "LOREWEAVE_CHILD_ENV_MARKER" in not_forwarded:
         failures += 1
-        print("  FAIL without --no-cargo the child must inherit the environment")
+        print(f"  FAIL without --no-cargo the child must inherit the environment: "
+              f"{type(not_forwarded).__name__}")
     else:
         print("  ok  without --no-cargo the environment is inherited unchanged")
     # ...and the helper itself removes every entry carrying cargo.
@@ -1158,6 +1223,142 @@ def self_test() -> int:
         print("  FAIL a red baseline must not be counted as surviving rules")
     else:
         print("  ok  a red baseline is not reported as rules without cases")
+
+    # The RUST baseline, both directions.
+    survivors, refusal = quietly(lambda: run_rust(run=_rust_run(1), write=nowrite,
+                                                  baseline=lambda: _RustR(1)))
+    # BOTH halves of the answer: the refusal text AND the survivor count. The
+    # count is what `main` acts on, and asserting only the text let a mutation
+    # that discards the baseline's verdict keep the message while returning zero.
+    if not refusal or "already fails" not in refusal or survivors != len(RUST_MUTATIONS):
+        failures += 1
+        print(f"  FAIL a red Rust baseline was not reported: {refusal!r}, "
+              f"survivors={survivors} of {len(RUST_MUTATIONS)}")
+    else:
+        print("  ok  a red Rust baseline is reported instead of N free reds")
+    survivors, refusal = quietly(lambda: run_rust(run=_rust_run(1), write=nowrite,
+                                                  baseline=lambda: _RustR(0)))
+    if refusal or survivors:
+        failures += 1
+        print(f"  FAIL a green Rust baseline blocked the run: {refusal!r}")
+    else:
+        print("  ok  a green Rust baseline lets the Rust mutations speak")
+
+    # A drifted anchor and a timed-out child must each COUNT on the Rust side,
+    # exactly as they do on the gate side. Both were `green += 1` with no case.
+    def _boom_timeout(_):
+        raise subprocess.TimeoutExpired(cmd="cargo", timeout=CHILD_TIMEOUT_S)
+
+    slow, _ = quietly(lambda: run_rust(run=_boom_timeout, write=nowrite,
+                                       baseline=lambda: _RustR(0)))
+    if slow < 1:
+        failures += 1
+        print("  FAIL a timed-out Rust child was not counted as a non-verdict")
+    else:
+        print("  ok  a timed-out Rust child counts, and does not read as success")
+
+    real_rows = RUST_MUTATIONS[:]
+    globals()["RUST_MUTATIONS"] = [("drift probe", real_rows[0][1], "@@ NOT PRESENT @@",
+                                    "x", real_rows[0][4])]
+    try:
+        drift, _ = quietly(lambda: run_rust(run=_rust_run(1), write=nowrite,
+                                            baseline=lambda: _RustR(0)))
+    finally:
+        globals()["RUST_MUTATIONS"] = real_rows
+    if drift < 1:
+        failures += 1
+        print("  FAIL a drifted Rust anchor was not counted as a non-verdict")
+    else:
+        print("  ok  a drifted Rust anchor counts, and does not read as success")
+
+    # `main` must ACT on the negative sentinel: a red baseline cancelling a real
+    # survivor into rc 0 is the failure the sentinel exists to prevent.
+    real_run_gate = globals()["run_gate"]
+    for verdicts, want, why in (([-1], 1, "a red baseline alone"),
+                                ([-1, 1], 1, "a red baseline cancelling a survivor"),
+                                ([0, 0], 0, "two clean gates")):
+        # Padded: `main` iterates every gate table, so a short sequence
+        # runs out before the loop does.
+        seq = list(verdicts) + [0] * len(MUTATIONS)
+        globals()["run_gate"] = lambda *a, **k: seq.pop(0)
+        err = _io.StringIO()
+        try:
+            with contextlib.redirect_stdout(_io.StringIO()), contextlib.redirect_stderr(err):
+                rc = main(argv=["--no-cargo"])
+        finally:
+            globals()["run_gate"] = real_run_gate
+        if rc != want:
+            failures += 1
+            print(f"  FAIL {why}: rc={rc}, want {want}")
+        elif verdicts[0] < 0 and "proves NOTHING" not in err.getvalue():
+            failures += 1
+            print(f"  FAIL {why}: the summary did not say the run proves nothing")
+        else:
+            print(f"  ok  main acts on {why}")
+
+    # `baseline_is_green` must run its child in the SAME environment as the
+    # mutations, or a baseline can pass where the mutations never run.
+    seen_env: list[dict | None] = []
+    globals()["_child_env"] = lambda flag: marker if flag else None
+    _sp.run = lambda cmd, **kw: (seen_env.append(kw.get("env")), _R(0))[1]
+    try:
+        baseline_is_green(gate, no_cargo=True)
+    finally:
+        _sp.run = real_run
+        globals()["_child_env"] = real_child_env
+    if not seen_env or not isinstance(seen_env[0], dict) \
+            or "LOREWEAVE_CHILD_ENV_MARKER" not in seen_env[0]:
+        failures += 1
+        print(f"  FAIL the baseline child did not get the --no-cargo environment")
+    else:
+        print("  ok  the baseline child runs in the same environment as the mutations")
+
+    # ── PARITY: this file has two halves, and every round hardens one ────────
+    #
+    # Measured across rounds 10-15, six BLOCKING/MAJOR findings in one commit
+    # were the same object: a guard added to the gate half and not the Rust
+    # half, a sentinel cased at its producer and not its consumer, an
+    # environment asserted for one child and not the other. **Noticing that by
+    # reading is what has failed fifteen times**, so it is a check.
+    #
+    # Each row names a property both halves must have and the substring that
+    # witnesses it. A new guard on one side with no twin fails here, by name.
+    own = _read(SCRIPTS / "gate-bite-harness.py")
+    parity = (
+        ("a baseline before mutating",
+         "reason = baseline_is_green(",
+         "the UNMUTATED fold_survivors suite already fails"),
+        ("a caught timeout",
+         "except subprocess.TimeoutExpired:\n            # A timeout is a FINDING",
+         "  SLOW   {label:52} -> no verdict"),
+        ("a drifted anchor counted, not skipped",
+         "anchor occurs {text.count(find)}x outside the tables",
+         "  DRIFT  {label:52} anchor occurs"),
+        ("the child environment forwarded",
+         "capture_output=True, text=True, timeout=CHILD_TIMEOUT_S,\n            env=child_env))",
+         "timeout=CHILD_TIMEOUT_S, env=_child_env(no_cargo)))"),
+    )
+    for prop, gate_side, rust_side in parity:
+        missing = [n for n, w in (("the gate half", gate_side), ("the Rust half", rust_side))
+                   if w not in own]
+        if missing:
+            failures += 1
+            print(f"  FAIL {prop}: absent from {' and '.join(missing)}")
+    if not any(w not in own for _, a, b in parity for w in (a, b)):
+        print(f"  ok  both halves carry all {len(parity)} guards that either one has")
+
+    # ...and every guard in that table has a MUTATION ROW aimed at each half.
+    # A guard nobody can break is the shape this whole file exists to reject,
+    # and it is how the Rust baseline reached production uncased.
+    rows = "\n".join(r[1] + r[2] for r in MUTATIONS.get("gate-bite-harness", []))
+    rows += "\n".join(r[2] + r[3] for r in RUST_MUTATIONS)
+    unrowed = [prop for prop, g, r in parity
+               if not any(tok in rows for tok in (g.split("(")[0], r.split("(")[0]))]
+    if unrowed:
+        failures += 1
+        print(f"  FAIL these guards have no mutation row: {unrowed}")
+    else:
+        print(f"  ok  every guard in the parity table has a mutation row")
 
     if failures:
         print(f"\ngate-bite-harness --self-test: {failures} rule(s) did not behave")
