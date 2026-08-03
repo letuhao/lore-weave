@@ -804,9 +804,6 @@ def self_test() -> int:
         # `Tree.normalise` on backslashes: the documented bypass, verbatim. A
         # Windows-separator path matched only its BASENAME and resolved uniquely
         # against a wholly different directory, so a made-up path passed.
-        # Resolves to `crates/made/up/layer.rs` once normalised, so the CORRECT
-        # answer is silence. Unnormalised it degrades to a bare-name lookup and
-        # reports -- opposite verdicts, not the same count.
         # **A REAL file, and the CORRECT answer is silence.** The first version
         # cited a synthetic path, which produced exactly 1 finding whether the
         # separators were normalised or not -- correct and broken reporting the

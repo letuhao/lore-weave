@@ -120,17 +120,18 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("--print starts failing", "    if args.print_only:\n        return 0",
          "    if False:\n        return 0"),
         ("fence/comment/quote blanking removed (cry wolf)",
-         "        block = _claimable(block, in_fence=opens_fenced)", "        block = block"),
+         "        block = _claimable(block, in_fence=opens_fenced, in_comment=opens_commented)",
+         "        block = block"),
         # The prefix state must be PASSED, not merely computed. The first fix
         # defined `_fence_state`, added the parameter, and never wired it -- and
         # its case passed anyway, because the correct code and the unwired
         # version report the SAME NUMBER of findings about DIFFERENT lines.
         ("the prefix fence state computed and not passed",
-         "        block = _claimable(block, in_fence=opens_fenced)",
+         "        block = _claimable(block, in_fence=opens_fenced, in_comment=opens_commented)",
          "        block = _claimable(block)"),
         ("the fence state is GUESSED instead of taken from the prefix",
-         "    out, in_comment, open_mark = [], False, in_fence",
-         "    out, in_comment, open_mark = [], False, None"),
+         "    out, open_mark = [], in_fence",
+         "    out, open_mark = [], None"),
         # REMOVED: `is_mark or ...` vs `...` is an EQUIVALENT mutant once a
         # closer is required to carry no info string. The two differ only on the
         # CLOSING line -- an opener leaves `open_mark` set, so it is blanked
@@ -138,8 +139,22 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # nothing on it to be live. Deleting the row rather than contriving a
         # case, for the same reason the test-result regex row went.
         ("the prefix fence scan returns nothing",
-         "        open_mark, _ = _advance(open_mark, line)\n    return open_mark",
-         "        open_mark, _ = _advance(open_mark, line)\n    return None"),
+         "        open_mark, in_comment, _ = _scan_line(open_mark, in_comment, line)\n"
+         "    return open_mark, in_comment",
+         "        open_mark, in_comment, _ = _scan_line(open_mark, in_comment, line)\n"
+         "    return None, in_comment"),
+        # M2 -- the prefix scan had no comment tracking at all, so ONE fence
+        # marker inside an HTML comment above a block flipped it into a fence
+        # that never closed: a blinded slice board one way, and a refusal on a
+        # perfectly correct handoff the other, from the repo-wide hook.
+        ("the prefix comment state is dropped",
+         "        open_mark, in_comment, _ = _scan_line(open_mark, in_comment, line)\n"
+         "    return open_mark, in_comment",
+         "        open_mark, in_comment, _ = _scan_line(open_mark, in_comment, line)\n"
+         "    return open_mark, False"),
+        ("the scanner stops opening multi-line comments",
+         '    if "<!--" in COMMENT_RE.sub("", line):\n        return after, True, True',
+         "    if False:\n        return after, True, True"),
         ("a BLOCKQUOTE fence stops being a fence",
          'FENCE_RE = re.compile(r"^\\s*(?:>\\s*)*(?P<mark>`{3,}|~{3,})(?P<info>.*)$")',
          'FENCE_RE = re.compile(r"^\\s*(?P<mark>`{3,}|~{3,})(?P<info>.*)$")'),
@@ -156,15 +171,21 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          '            and not (FENCE_RE.match(line).group("info") or "").strip()):',
          "            and True):"),
         ("an inline code span counts as a fence opener",
-         '    if m.group("mark")[0] in m.group("info"):\n        return None',
+         '    if m.group("mark")[0] == "`" and "`" in m.group("info"):\n        return None',
          "    if False:\n        return None"),
+        # minor 6 -- the rule applied to BOTH fence characters, but CommonMark
+        # forbids backticks only in a BACKTICK fence's info string. `~~~ ~x~`
+        # was therefore not a fence at all and its contents were reported as
+        # live claims: cry-wolf on a shape the spec allows.
+        ("the info-string rule applies to tildes too",
+         '    if m.group("mark")[0] == "`" and "`" in m.group("info"):',
+         '    if m.group("mark")[0] in m.group("info"):'),
         # ...and the ORDER of the two states. Testing the fence first left both
         # flags stuck true on a fence marker inside a comment.
         ("the comment state is tested AFTER the fence again",
-         "        if in_comment:\n            out.append(\" \" * len(line))\n"
-         "            if \"-->\" in line:\n                in_comment = False\n"
-         "            continue\n        open_mark, is_mark = _advance(open_mark, line)",
-         "        open_mark, is_mark = _advance(open_mark, line)"),
+         '    if in_comment:\n        return open_mark, "-->" not in line, True\n'
+         "    after, is_mark = _advance(open_mark, line)",
+         "    after, is_mark = _advance(open_mark, line)"),
         # M2 -- a missing END marker silently widened the window to the whole
         # file: mass cry-wolf for the figures, total blindness for the escape
         # rule, and nothing reported.
@@ -172,7 +193,19 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          "    return None if j < 0 else (i, j)",
          "    return (i, j if j > 0 else len(text))"),
         ("the empty-block rule removed",
-         "        if doc in checked and not checked[doc]:", "        if False:"),
+         "        if (doc, start_marker) in checked and not checked[(doc, start_marker)]:",
+         "        if False:"),
+        # B1 -- the block end was the first incidental `---`, so an ordinary
+        # markdown edit silently ungoverned everything below it, and the
+        # empty-block rule caught only TOTAL collapse.
+        ("the block end goes back to the first horizontal rule",
+         'END = "<!-- actor-hub-figures:end -->"',
+         'END = "\\n---\\n"'),
+        # M1 -- `RUN_STATE` appears twice in SCOPES, so a per-document key let
+        # one block vouch for the other.
+        ("the empty-block key drops the start marker",
+         "                checked[(doc, start_marker)] = True",
+         '                checked[(doc, "")] = True'),
         # M1 -- the escape rule read only the three files with a current-state
         # block. Eight more carried the range and stayed green, two of them files
         # this same gate already opens.
@@ -180,9 +213,6 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          "    docs = sorted({d for d, _, _ in scopes} | "
          "(set(ESCAPE_DOCS) if scopes is SCOPES else set()))",
          "    docs = sorted({d for d, _, _ in scopes})"),
-        ("the multi-line comment state dropped",
-         '        if "<!--" in line:\n            in_comment = True',
-         '        if False:\n            in_comment = True'),
         ("the inline comment span not blanked",
          '        line = COMMENT_RE.sub(lambda mo: " " * len(mo.group(0)), line)',
          "        line = line"),
@@ -256,6 +286,32 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          '    if False:\n        print(f"gate-self-tests: discovery found only'),
         ("the discovery injection ignored", "    found = (discover_fn or discover)()",
          "    found = discover()"),
+    ],
+    # **This file mutates ITSELF.** Round 12 measured 19 of 19 mutations of its
+    # own new code surviving, because `--self-test` drives every helper with an
+    # injected runner and so cannot reach the rules about the real invocation.
+    # A harness that verifies other code and not itself is the regress it says
+    # it stops at, pointed the wrong way.
+    "gate-bite-harness": [
+        # M4 -- `--self-test` drives `run_rust` three times and the pre-commit
+        # hook runs `--self-test`, so an uninjectable writer meant 30 in-place
+        # writes to the shipped crate sources on every commit.
+        ("the rust writer stops being injectable",
+         "            (write or _write)(path, src.replace(find, repl, 1), like=raws[rel])",
+         "            _write(path, src.replace(find, repl, 1), like=raws[rel])"),
+        # B2 -- the gate branch guards an empty filter; the `--rust` branch, the
+        # sole signal of the CI job it exists for, did not.
+        ("the --rust empty-filter guard removed",
+         "        if not selected:", "        if False:"),
+        ("the child environment is not forwarded",
+         "            env=_child_env(no_cargo)))", "            env=None))"),
+        ("the dirty-tree refusal removed",
+         "    if dirty and run is None:", "    if False:"),
+        ("a refused run reports survivors again",
+         "        if refusal:\n            print(f\"gate-bite-harness: {refusal}\", "
+         "file=sys.stderr)\n            return 2",
+         "        if False:\n            print(f\"gate-bite-harness: {refusal}\", "
+         "file=sys.stderr)\n            return 2"),
     ],
     "citation-gate": [
         ("the pragma stops exempting", "        if _pragma_covers(lines, i):", "        if False:"),
@@ -396,7 +452,7 @@ def _rust_dirty() -> list[str]:
     return [l[3:].strip() for l in out.stdout.splitlines() if l.strip()]
 
 
-def run_rust(only: str | None = None, run=None) -> tuple[int, str | None]:
+def run_rust(only: str | None = None, run=None, write=None) -> tuple[int, str | None]:
     """(survivors, refusal). **Two separate answers, because they were one.**
 
     The first version returned `2` as a refusal sentinel and `main` read the
@@ -423,7 +479,13 @@ def run_rust(only: str | None = None, run=None) -> tuple[int, str | None]:
                 print(f"  DRIFT  {label:52} anchor occurs {src.count(find)}x")
                 green += 1
                 continue
-            _write(path, src.replace(find, repl, 1), like=raws[rel])
+            # `write` is injectable because `--self-test` drives this function
+            # three times, and the pre-commit hook runs `--self-test`: the first
+            # version therefore performed **30 in-place writes to the shipped
+            # crate sources on every commit across 47 services**. The incident
+            # the Python half mutates a copy to avoid -- a killed run leaving a
+            # mutation on disk -- was on the automatic path.
+            (write or _write)(path, src.replace(find, repl, 1), like=raws[rel])
             runner = run or (lambda t: subprocess.run(
                 ["cargo", "test", "-p", "actor-hub", "--test", "fold_survivors",
                  t, "--", "--exact"], cwd=REPO, capture_output=True, text=True,
@@ -434,14 +496,68 @@ def run_rust(only: str | None = None, run=None) -> tuple[int, str | None]:
                 # The ORIGINAL BYTES, not a re-encoding of the text: exact even
                 # for a file with mixed line endings, which no normalisation
                 # round trip can promise.
-                path.write_bytes(raws[rel])
+                #
+                # Restore when the file DIFFERS, never when the writer was
+                # injected: keying the restore on `write is None` meant a
+                # mutation of the injection itself wrote the file and then
+                # skipped putting it back -- which left `fold.rs` modified after
+                # a fully-green sweep, the exact class this whole mode exists to
+                # avoid, reintroduced by its own fix one round later.
+                if _raw(path) != raws[rel]:
+                    path.write_bytes(raws[rel])
             red = out.returncode != 0
             print(f"  {'RED ' if red else 'GREEN'}  {label:52} -> {test}")
             green += 0 if red else 1
     finally:
         for rel in originals:
-            (REPO / rel).write_bytes(raws[rel])
+            if _raw(REPO / rel) != raws[rel]:
+                (REPO / rel).write_bytes(raws[rel])
     return green, None
+
+
+def _outside_tables(text: str) -> list[tuple[int, int]]:
+    """Character spans of `text` that are NOT a `*MUTATIONS` table literal.
+
+    **A file that mutates itself finds every anchor twice** -- once in the rule
+    and once in the table row naming it -- so `count(find) != 1` reported drift
+    on rules that had not moved. The tables are DATA: mutating a row changes no
+    behaviour, and excluding them is what makes self-mutation mean anything.
+    """
+    import ast
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        return [(0, len(text))]
+    offsets = [0]
+    for line in text.split("\n"):
+        offsets.append(offsets[-1] + len(line) + 1)
+    starts, ends = [0], []
+    for node in tree.body:
+        names = []
+        if isinstance(node, ast.Assign):
+            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names = [node.target.id]
+        if not any(n.endswith("MUTATIONS") for n in names):
+            continue
+        ends.append(offsets[node.lineno - 1])
+        starts.append(offsets[min(node.end_lineno, len(offsets) - 1)])
+    ends.append(len(text))
+    return list(zip(starts, ends))
+
+
+def _find_one(text: str, find: str) -> int:
+    """The offset of `find` outside every table literal, or -1 if not exactly one."""
+    hits = []
+    for a, b in _outside_tables(text):
+        start = a
+        while True:
+            i = text.find(find, start, b)
+            if i < 0:
+                break
+            hits.append(i)
+            start = i + 1
+    return hits[0] if len(hits) == 1 else -1
 
 
 def _mutate_and_run(gate: str, find: str, repl: str, run=None,
@@ -450,12 +566,14 @@ def _mutate_and_run(gate: str, find: str, repl: str, run=None,
     src = SCRIPTS / f"{gate}.py"
     raw = _raw(src)
     text = _read(src)
-    if text.count(find) != 1:
-        return False, f"anchor occurs {text.count(find)}x — the table has drifted"
+    at = _find_one(text, find)
+    if at < 0:
+        return False, (f"anchor occurs {text.count(find)}x outside the tables "
+                       "— the table has drifted")
     # Beside the original so `REPO = Path(__file__).parent.parent` still resolves.
     copy = SCRIPTS / f".bite-{gate}.py"
     try:
-        _write(copy, text.replace(find, repl, 1), like=raw)
+        _write(copy, text[:at] + repl + text[at + len(find):], like=raw)
         # **The mutation must actually be a mutation.** Nothing checked that the
         # copy differed from the original, so a harness that had silently stopped
         # mutating would report every rule RED-free and look like success.
@@ -499,15 +617,16 @@ def self_test() -> int:
     # Every table entry's anchor must still occur exactly once. A drifted anchor
     # silently mutates nothing, and a table of no-ops passes every time.
     for gate, rows in MUTATIONS.items():
-        text = (SCRIPTS / f"{gate}.py").read_text(encoding="utf-8")
+        text = _read(SCRIPTS / f"{gate}.py")
         for label, find, _ in rows:
-            if text.count(find) != 1:
+            if _find_one(text, find) < 0:
                 failures += 1
-                print(f"  FAIL {gate}: anchor for '{label}' occurs {text.count(find)}x")
+                print(f"  FAIL {gate}: anchor for '{label}' occurs "
+                      f"{text.count(find)}x outside the tables")
     # ...and the Rust table, which mutates in place and so must not drift silently.
     for label, rel, find, _, _ in RUST_MUTATIONS:
         text = _read(REPO / rel)
-        if text.count(find) != 1:
+        if _find_one(text, find) < 0:
             failures += 1
             print(f"  FAIL {rel}: anchor for '{label}' occurs {text.count(find)}x")
     if not failures:
@@ -638,7 +757,6 @@ def self_test() -> int:
     # **A refusal is not a survivor count.** The first version returned `2` as a
     # sentinel and `main` printed "2 Rust mutation(s) SURVIVED" for a run in
     # which nothing executed.
-    survivors, refusal = run_rust(run=None, only="@@ NOTHING @@") if False else (0, None)
     fake_dirty = ["crates/actor-hub/src/fold.rs"]
     _real_dirty = globals()["_rust_dirty"]
     globals()["_rust_dirty"] = lambda: fake_dirty
@@ -656,29 +774,78 @@ def self_test() -> int:
     else:
         print("  ok  a dirty tree refuses, with no survivors invented")
 
-    # `--no-cargo` must reach the child. Nothing checked that the flag was
-    # forwarded, so the whole control could be inert.
-    seen_env: list[dict | None] = []
-    _mutate_and_run("citation-gate", find, repl,
-                    run=lambda p: seen_env.append(None) or _R(1), no_cargo=False)
-    envs: list[dict | None] = []
+    # **`--no-cargo` must REACH the child, observed at the call the child is
+    # actually made with.** The first version called `_child_env(True)` inside
+    # its own fake runner and asserted on that -- so it tested the helper and
+    # not the forwarding, and all three plumbing mutations survived while the
+    # comment above it claimed otherwise. Measured non-equivalence: 0.37 s with
+    # the flag, 38 s without.
+    calls: list[dict] = []
 
-    def _capture(p):
-        envs.append(_child_env(True))
+    def _spy(cmd, **kw):
+        calls.append(kw)
         return _R(1)
 
-    _mutate_and_run("citation-gate", find, repl, run=_capture, no_cargo=True)
-    stripped = envs[0]
-    if stripped is None or shutil.which("cargo", path=stripped.get("PATH", "")) is not None:
-        failures += 1
-        print("  FAIL --no-cargo left cargo reachable on the child's PATH")
-    else:
-        print("  ok  --no-cargo removes every PATH entry carrying cargo")
-    if _child_env(False) is not None:
+    import subprocess as _sp
+    real_run = _sp.run
+    _sp.run = _spy
+    try:
+        quietly(lambda: run_gate(gate, only="the pragma", no_cargo=True))
+        with_flag = calls[-1].get("env")
+        quietly(lambda: run_gate(gate, only="the pragma", no_cargo=False))
+        without = calls[-1].get("env")
+        quietly(lambda: main(argv=["--gate", gate, "--only", "the pragma", "--no-cargo"]))
+        via_main = calls[-1].get("env")
+    finally:
+        _sp.run = real_run
+
+    for label, env in (("run_gate", with_flag), ("main", via_main)):
+        if env is None or shutil.which("cargo", path=env.get("PATH", "")) is not None:
+            failures += 1
+            print(f"  FAIL --no-cargo did not reach the child via {label}")
+        else:
+            print(f"  ok  --no-cargo reaches the child via {label}")
+    if without is not None:
         failures += 1
         print("  FAIL without --no-cargo the child must inherit the environment")
     else:
         print("  ok  without --no-cargo the environment is inherited unchanged")
+
+    # ...and the child is invoked with the arguments the mode needs. Nothing
+    # asserted the cargo command shape, so dropping `-p actor-hub`, `--exact` or
+    # the test name were all survivors.
+    argv_seen: list[list[str]] = []
+
+    def _spy_argv(cmd, **kw):
+        # `_rust_dirty` shells out to `git status` first, so only the cargo
+        # invocation is the subject here.
+        if list(cmd)[:1] == ["cargo"]:
+            argv_seen.append(list(cmd))
+            return _R(1)
+        return real_run(cmd, **kw)
+
+    _sp.run = _spy_argv
+    try:
+        quietly(lambda: run_rust(only="a refused derivation", write=lambda *a, **k: None))
+    finally:
+        _sp.run = real_run
+    want = ["cargo", "test", "-p", "actor-hub", "--test", "fold_survivors",
+            "a_refused_derivation_is_recorded_with_its_row_index", "--", "--exact"]
+    if not argv_seen or argv_seen[0] != want:
+        failures += 1
+        print(f"  FAIL the cargo command is not what --rust needs: {argv_seen[:1]}")
+    else:
+        print("  ok  --rust invokes cargo with the crate, the test and --exact")
+
+    # B2 -- a filter that selects no Rust mutation must not report success. The
+    # gate branch had this guard and two cases; the `--rust` branch had neither,
+    # and it is the only signal of the CI job it exists for.
+    if quietly(lambda: main(argv=["--rust", "--only", "@@ MATCHES NOTHING @@"])) != 2:
+        failures += 1
+        print("  FAIL --rust with a filter matching nothing did not refuse")
+    else:
+        print("  ok  --rust refuses a filter that selects nothing")
+
 
     if failures:
         print(f"\ngate-bite-harness --self-test: {failures} rule(s) did not behave")
@@ -702,6 +869,16 @@ def main(argv: list[str] | None = None) -> int:
         return self_test()
 
     if args.rust:
+        # **The same empty-filter guard the gate branch has.** Without it,
+        # `--rust --only <nothing>` executed zero mutations and printed *"every
+        # Rust mutation reddened its test"* with exit 0 -- the sole signal of the
+        # CI job this mode exists for, reporting success having done nothing.
+        selected = [r for r in RUST_MUTATIONS
+                    if args.only is None or args.only.lower() in r[0].lower()]
+        if not selected:
+            print(f"gate-bite-harness: no Rust mutation matched {args.only!r} — a "
+                  "filter that selects nothing must not report success", file=sys.stderr)
+            return 2
         survivors, refusal = run_rust(only=args.only)
         if refusal:
             print(f"gate-bite-harness: {refusal}", file=sys.stderr)

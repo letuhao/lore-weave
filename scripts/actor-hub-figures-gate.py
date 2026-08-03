@@ -95,9 +95,23 @@ INDEX = "docs/specs/2026-08-02-actor-hub/_index.md"
 #
 # `end` is a marker, not a character count. A fixed 4000-char window put the
 # RUN-STATE arm's subjects OUTSIDE it, so half the check had nothing to compare.
+# The END is an EXPLICIT SENTINEL, not the first horizontal rule.
+#
+# `\n---\n` was a boundary the documents did not know they had. Inserting a rule
+# anywhere inside a block -- an utterly ordinary markdown edit -- silently
+# truncated the scope, and the "resolved but empty" rule only caught TOTAL
+# collapse: measured, a `---` in the middle of the handoff block left one claim
+# behind, so `checked` stayed true and **three governed figures went silently
+# ungoverned**. That is the worked example the rule was written from, still
+# passing after the rule was written.
+#
+# A sentinel is deletable too -- but deleting it fails the both-markers check
+# LOUDLY, which is the whole difference.
+END = "<!-- actor-hub-figures:end -->"
+
 SCOPES: tuple[tuple[str, str, str], ...] = (
-    (HANDOFF, "## ▶ GAME TIER", "\n---\n"),
-    (RUN_STATE, "> # ▶▶ NEXT SESSION STARTS HERE", "\n---\n"),
+    (HANDOFF, "## ▶ GAME TIER", END),
+    (RUN_STATE, "> # ▶▶ NEXT SESSION STARTS HERE", END),
     # The SLICE BOARD's own summary block. A stop-audit found it STALE at
     # round seven -- "81 findings over five rounds" when the count was 123 over
     # seven -- because the check covered the header and the handoff and not the
@@ -267,9 +281,12 @@ def _fence_mark(line: str) -> str | None:
     m = FENCE_RE.match(line)
     if not m:
         return None
-    # An info string may not contain the fence character (CommonMark), so a line
-    # carrying a second run of backticks is an INLINE code span, not a fence.
-    if m.group("mark")[0] in m.group("info"):
+    # A BACKTICK fence's info string may not contain a backtick (CommonMark),
+    # so a line carrying a second run of them is an INLINE code span, not a
+    # fence. A TILDE fence has no such restriction -- applying the rule to both
+    # meant `~~~ ~diagram~` was not recognised as a fence and its contents were
+    # reported as live claims. Cry-wolf, on a shape the spec allows.
+    if m.group("mark")[0] == "`" and "`" in m.group("info"):
         return None
     return m.group("mark")
 
@@ -298,22 +315,53 @@ def _advance(open_mark: str | None, line: str) -> tuple[str | None, bool]:
     return open_mark, True
 
 
-def _fence_state(prefix: str) -> str | None:
-    """True when `prefix` ends INSIDE a fenced block.
+def _fence_state(prefix: str) -> tuple[str | None, bool]:
+    """(open fence marker, inside an HTML comment) at the END of `prefix`.
 
-    `>` is stripped first: this project writes whole headers as blockquotes, and
-    the gate's own docstring says so, yet the marker test was `lstrip()` only --
-    so a `> ```-fenced example of the header line was not recognised as a fence
-    at all and was reported as a live claim. Cry-wolf, in the exact region the
-    scope was drawn around.
+    **It tracks comments too, and that is not decoration.** The previous version
+    scanned fences only, so ONE ```` ``` ```` line inside an HTML comment anywhere
+    above a block flipped it into a fence that never closed. Both directions were
+    measured on the real documents: a silently BLINDED slice board, and -- worse
+    -- a refusal on `SESSION_HANDOFF` whose markers are perfectly fine, from the
+    pre-commit hook that fires on it for every one of 47 services.
+
+    The comment-before-fence ordering was fixed in `_claimable` and not here, so
+    the two scanners disagreed about the same input. **A rule written twice is a
+    rule with half a test**, which is the finding one round earlier, in this same
+    pair of functions.
     """
-    open_mark: str | None = None
+    open_mark, in_comment = None, False
     for line in prefix.split("\n"):
-        open_mark, _ = _advance(open_mark, line)
-    return open_mark
+        open_mark, in_comment, _ = _scan_line(open_mark, in_comment, line)
+    return open_mark, in_comment
 
 
-def _claimable(block: str, quotes: bool = True, in_fence: str | None = None) -> str:
+def _scan_line(open_mark: str | None, in_comment: bool, line: str
+               ) -> tuple[str | None, bool, bool]:
+    """(fence, comment, whether the line is NOT live prose) after `line`.
+
+    The single scanner. `_fence_state` runs it over a document prefix to learn
+    where a window starts; `_claimable` runs it over the window to blank what is
+    not a claim. They used to be two loops that had to agree by inspection.
+    """
+    if in_comment:
+        return open_mark, "-->" not in line, True
+    after, is_mark = _advance(open_mark, line)
+    if is_mark or after is not None:
+        return after, False, True
+    # An HTML comment that OPENS here and does not close on this line. Inline
+    # `<!-- ... -->` spans are removed first, so what is left is either no
+    # comment or an unterminated opening -- which is how a comment starting
+    # mid-line is caught. The blanking of those inline spans is `_claimable`'s
+    # job; the STATE is this function's, and it used to live only in
+    # `_claimable`, so the prefix scan walked straight past an open comment.
+    if "<!--" in COMMENT_RE.sub("", line):
+        return after, True, True
+    return after, False, False
+
+
+def _claimable(block: str, quotes: bool = True, in_fence: str | None = None,
+               in_comment: bool = False) -> str:
     """The block with everything that is NOT a live claim blanked out.
 
     **F6 — a quoted historical figure, a fenced example and an HTML comment each
@@ -348,42 +396,24 @@ def _claimable(block: str, quotes: bool = True, in_fence: str | None = None) -> 
     # There is nothing to guess. The prefix says what the state is; `_fence_state`
     # reads it, and inside the window a plain toggle is then exactly right --
     # including for a fence that genuinely continues past the window's end.
-    out, in_comment, open_mark = [], False, in_fence
+    out, open_mark = [], in_fence
     for line in lines:
         stripped = line.lstrip()
-        # **The comment state is tested FIRST.** It was tested second, so a fence
-        # marker inside an HTML comment both flipped the fence parity AND stopped
-        # `-->` from ever clearing the comment -- both flags stuck, and the rest
-        # of the block went permanently blind. Two states, each correct alone,
-        # the ORDER between them defeating both.
-        if in_comment:
-            out.append(" " * len(line))
-            if "-->" in line:
-                in_comment = False
-            continue
-        open_mark, is_mark = _advance(open_mark, line)
-        if is_mark or open_mark is not None:
+        # **The comment state is tested FIRST**, inside `_scan_line`. It was
+        # tested second, so a fence marker inside an HTML comment both flipped
+        # the fence parity AND stopped `-->` from ever clearing the comment --
+        # both flags stuck, and the rest of the block went permanently blind.
+        # Two states, each correct alone, the ORDER between them defeating both.
+        open_mark, in_comment, opaque = _scan_line(open_mark, in_comment, line)
+        if opaque:
             out.append(" " * len(line))
             continue
         # An HTML comment spans lines. `startswith("<!--")` blanked only the
         # OPENING line, so the figures inside a multi-line comment stayed live
         # claims -- and an INLINE `<!-- ... -->` mid-line was not blanked at all.
-        if in_comment:
-            out.append(" " * len(line))
-            if "-->" in line:
-                in_comment = False
-            continue
-        # Inline `<!-- ... -->` spans first, so what remains is either no
-        # comment at all or an OPENING with no close on this line -- which is how
-        # a comment that starts mid-line (`superseded <!--`) gets caught. Testing
-        # `stripped.startswith("<!--")` missed exactly that, one line after the
-        # multi-line fix went in.
+        # The inline `<!-- ... -->` spans, blanked in place. Whether the line
+        # OPENS a multi-line comment is `_scan_line`'s answer, above.
         line = COMMENT_RE.sub(lambda mo: " " * len(mo.group(0)), line)
-        if "<!--" in line:
-            in_comment = True
-            out.append(" " * len(line))
-            continue
-        del stripped
         # An ITALICISED QUOTATION -- *"..."* -- is this repo's syntax for text
         # written elsewhere, so a figure inside one is a historical record and
         # not a live claim.
@@ -566,7 +596,11 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
     problems: list[str] = []
     notes: list[str] = []
     seen: set[str] = set()
-    checked: dict[str, bool] = {}
+    # Keyed by (document, START MARKER), because `RUN_STATE` appears twice.
+    # A per-document key let the header block vouch for the slice board, so
+    # collapsing the board -- the block added *because* a stop-audit found a
+    # stale figure outside every checker's scope -- was invisible.
+    checked: dict[tuple[str, str], bool] = {}
     scopes = scopes if scopes is not None else SCOPES
 
     for doc, start_marker, end_marker in scopes:
@@ -577,7 +611,11 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
         # a coincidence: the same NUMBER of findings, about different lines.
         full = _read_doc(doc, read=read)
         span = _scope_span(full, start_marker, end_marker) if full is not None else None
-        opens_fenced = _fence_state(full[:span[0]]) if (full is not None and span) else False
+        opens_fenced, opens_commented = (
+            _fence_state(full[:span[0]]) if (full is not None and span) else (None, False))
+        # `(None, False)`, not `(False, False)`: the fence half is a marker
+        # string, and a bool would raise `TypeError: 'bool' object is not
+        # subscriptable` inside a pre-commit hook the first time it was reached.
         if block is None:
             # **A moved anchor is a FINDING, not a silent pass.** The first
             # version set the text to "" and reported "the docs agree" against
@@ -587,12 +625,12 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
                 "resolve, so this document was NOT checked"
             )
             continue
-        block = _claimable(block, in_fence=opens_fenced)
-        checked[doc] = checked.get(doc, False)
+        block = _claimable(block, in_fence=opens_fenced, in_comment=opens_commented)
+        checked[(doc, start_marker)] = checked.get((doc, start_marker), False)
         for pattern, key, label in CLAIMS:
             want = m.get(key)
             for claimed in re.findall(pattern, block):
-                checked[doc] = True
+                checked[(doc, start_marker)] = True
                 # Keyed on the PATTERN, not the key: two rows share
                 # `hook_gate_scripts`, so a dead pattern with a live sibling was
                 # invisible to the coverage arm written to catch exactly that.
@@ -629,11 +667,11 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
     # collapsed scope by this test, so applying it to injected scopes would red
     # every cry-wolf case in the suite. The subject is the shipped documents.
     for doc, start_marker, _ in (scopes if scopes is SCOPES else ()):
-        if doc in checked and not checked[doc]:
+        if (doc, start_marker) in checked and not checked[(doc, start_marker)]:
             problems.append(
                 f"{doc}: the block at `{start_marker}` contains NO figure this "
-                "script governs — its end marker has probably moved up, which "
-                "silently shrinks the scope rather than reporting anything"
+                f"script governs — the `{END}` sentinel has probably moved up, "
+                "which silently shrinks the scope rather than reporting anything"
             )
 
     problems += _escaped_live_range(m, scopes=scopes, read=read)
@@ -784,6 +822,11 @@ def self_test() -> int:
     # live claim. Treating it as a closer exposed everything after it.
     check_block("a backtick line with text does not close a fence",
                 "```\n``` shell output follows\nthe count was **281 passed, 0 failed**\n```", 0)
+    # minor 6 -- a TILDE fence may carry tildes in its info string; CommonMark
+    # forbids backticks only in a backtick fence's. Applying the rule to both
+    # meant this was not a fence at all and its contents were live claims.
+    check_block("a ~~~ fence whose info contains a tilde is still a fence",
+                "~~~ ~diagram~\nthe count was **281 passed, 0 failed**\n~~~", 0)
     check_block("a ~~~ line inside a ``` fence does not close it",
                 "```\n~~~\nthe count was **281 passed, 0 failed**\n~~~\n```", 0)
     # ...and a fence marker inside an HTML COMMENT must not flip the fence at
@@ -858,6 +901,21 @@ def self_test() -> int:
                 "@@\nnothing\n@@END\n\n| D-195 | `D-1`..`D-372` |", 0,
                 meas={**m, "max_decision_id": {"unmeasurable": "no bold D- id"}})
 
+    # **`_claimable` preserves OFFSETS**, which is load-bearing and had no case:
+    # `_escaped_live_range` compares `mo.start()` in the BLANKED text against
+    # spans computed on the ORIGINAL, so blanking to `""` silently exempts every
+    # escape after the first blanked character.
+    for probe in ("plain\n```\nfenced\n```\ntail",
+                  "<!--\ncomment\n-->\ntail",
+                  'a *"quoted **281 passed, 0 failed**"* b',
+                  "crlf\r\nlines\r\nhere"):
+        if len(_claimable(probe)) != len(probe):
+            failures += 1
+            print(f"  FAIL _claimable changed the length of {probe!r}")
+            break
+    else:
+        print("  ok  _claimable preserves offsets, so span exclusion stays valid")
+
     # A missing END marker must be a FINDING. It used to widen the window to
     # the whole file: mass cry-wolf for the figure check, and total blindness for
     # the escape rule, whose exempt span then covered the entire document.
@@ -873,19 +931,91 @@ def self_test() -> int:
     # the same defect: inserting a `---` inside the handoff block truncates it
     # silently, and the gate then agrees with whatever survived. Driven against
     # the REAL scopes, because that is the only place the rule applies.
-    def _truncated(doc: str) -> str:
-        text = (REPO / doc).read_text(encoding="utf-8", errors="replace")
-        if doc != HANDOFF:
-            return text
-        i = text.find("## \u25b6 GAME TIER")
-        return text[:i] + "## \u25b6 GAME TIER\n\n---\n" + text[i:]
+    # These cases read the REAL documents, so they need the REAL measurement:
+    # `m` above is a synthetic probe (283/372/38) and comparing live documents
+    # against it reports disagreements that have nothing to do with the rule.
+    real_m = measure()
 
-    problems, _ = _check(m, read=_truncated)
+    def _seed_handoff(mutate):
+        def read(doc: str) -> str:
+            text = (REPO / doc).read_text(encoding="utf-8", errors="replace")
+            return mutate(text) if doc == HANDOFF else text
+        return read
+
+    # The sentinel moved UP to just after the heading: the block resolves and
+    # contains nothing.
+    def _collapse(text: str) -> str:
+        i = text.find("## \u25b6 GAME TIER")
+        return text[:i] + "## \u25b6 GAME TIER\n\n" + END + "\n" + text[i:]
+
+    problems, _ = _check(real_m, read=_seed_handoff(_collapse))
     if not any("contains NO figure" in x for x in problems):
         failures += 1
         print("  FAIL a block truncated to nothing did not produce a finding")
     else:
         print("  ok  a scope that shrank to nothing is a finding, not agreement")
+
+    # **And a horizontal rule INSIDE the block is now a non-event.** It used to
+    # be the block's end, so an ordinary markdown edit silently ungoverned
+    # everything below it -- measured: three of the five figures in the handoff
+    # block went invisible, with the gate reporting agreement. Counting findings
+    # on the collapse alone could not see that, because one claim survived.
+    def _rule_midway(text: str) -> str:
+        i = text.find("## \u25b6 GAME TIER")
+        j = text.find("**Evidence:**", i)
+        return text[:j] + "\n---\n\n" + text[j:]
+
+    problems, _ = _check(real_m, read=_seed_handoff(_rule_midway))
+    if problems:
+        failures += 1
+        print(f"  FAIL a `---` inside a block must not change anything: {problems}")
+    else:
+        print("  ok  a horizontal rule inside a block is not a scope boundary")
+
+    # ...and the figures BELOW that rule are still governed, which is the half
+    # that was actually broken.
+    def _rule_and_stale(text: str) -> str:
+        text = _rule_midway(text)
+        return text.replace("**293 passed, 0 failed**", "**999 passed, 0 failed**", 1)
+
+    problems, _ = _check(real_m, read=_seed_handoff(_rule_and_stale))
+    if not any("claims 999" in x for x in problems):
+        failures += 1
+        print("  FAIL a stale figure below a `---` was not caught")
+    else:
+        print("  ok  a figure below a horizontal rule is still governed")
+
+    # M2 -- a fence marker inside an HTML COMMENT in the document PREFIX. One
+    # such line above a block used to flip the prefix scan into a fence that
+    # never closed: a silently blinded slice board in one direction, and a
+    # refusal on a perfectly correct handoff in the other -- from the hook that
+    # fires on it for all 47 services.
+    def _commented_fence(text: str) -> str:
+        i = text.find("## ▶ GAME TIER")
+        return text[:i] + "<!--\n```\n-->\n\n" + text[i:]
+
+    problems, _ = _check(real_m, read=_seed_handoff(_commented_fence))
+    if problems:
+        failures += 1
+        print(f"  FAIL a commented-out fence above a block must change nothing: {problems}")
+    else:
+        print("  ok  a fence marker inside a comment does not blind the prefix scan")
+
+    # ...and the state it DOES carry still reaches the window: a genuinely open
+    # fence above the block still blanks it.
+    marker, commented = _fence_state("<!--\n```\n-->\n")
+    if marker is not None or commented:
+        failures += 1
+        print(f"  FAIL a closed comment left state behind: {marker!r}, {commented}")
+    else:
+        print("  ok  a comment containing a fence marker leaves no state behind")
+    marker, commented = _fence_state("```rust\nlet x = 1;\n")
+    if marker != "```":
+        failures += 1
+        print(f"  FAIL an open fence in the prefix was lost: {marker!r}")
+    else:
+        print("  ok  an open fence in the prefix reaches the window")
+
 
     # The escape rule must READ every document on its list, not only the three
     # with a current-state block. Eight files carried the range and were blind.
@@ -1061,13 +1191,19 @@ def self_test() -> int:
     # range without being on it. That is the mechanism the list itself is not.
     governed_escape = set(ESCAPE_DOCS) | {d for d, _, _ in SCOPES}
     missing_escape = []
-    for pattern in ("docs/specs/2026-08-02-*", "docs/plans/2026-08-02-*"):
-        for path in REPO.glob(pattern + "/**/*.md" if "specs" in pattern else pattern + ".md"):
-            rel = path.relative_to(REPO).as_posix()
-            if rel in governed_escape:
-                continue
-            if RANGE_RE.search(path.read_text(encoding="utf-8", errors="replace")):
-                missing_escape.append(rel)
+    # **Every markdown file under `docs/`.** The first version globbed
+    # `docs/specs/2026-08-02-*` and `docs/plans/2026-08-02-*`, and the ternary
+    # made the specs branch directory-only -- so `2026-08-02-item-data-structure.md`
+    # and `2026-08-02-item-dataflow.md`, **two of its own ten entries**, were
+    # unreachable by the assertion meant to police the list. A probe file one
+    # directory over, or dated a day later, was default-uncovered too. A pair of
+    # date-prefixed globs is an enumeration wearing a wildcard.
+    for path in REPO.glob("docs/**/*.md"):
+        rel = path.relative_to(REPO).as_posix()
+        if rel in governed_escape:
+            continue
+        if RANGE_RE.search(path.read_text(encoding="utf-8", errors="replace")):
+            missing_escape.append(rel)
     if missing_escape:
         failures += 1
         print(f"  FAIL these cite a `D-1`..`D-N` range and no rule reads them: "

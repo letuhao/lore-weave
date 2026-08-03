@@ -13,7 +13,7 @@
 > `feat/frontend-tools-mcp-migration` and is left untouched.
 
 **The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
-per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-414` decision record
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-423` decision record
 live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
 the two design contracts that are its only specification are in
 [`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).
@@ -28,7 +28,7 @@ the two design contracts that are its only specification are in
 
 **Evidence:** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules -p ruleset-loader`
 = **293 passed, 0 failed** · `dp-kernel --lib` **315** passed, unchanged by the `GoneState`
-move · the Go mirror `contracts/entity_status` still agrees · clippy clean · `cargo doc` **0 warnings** ·
+move · the Go mirror `contracts/entity_status` still agrees · `actor-hub` and `entity-existence` are clippy- and rustdoc-clean (the other three crates in that command carry **4** pre-existing doc warnings and **1** clippy warning, none of them this round's and none governed by any script here — a round-12 verifier measured the flat claim `clippy clean · cargo doc 0 warnings` FALSE, in the sentence that claims every figure in this block is emitted by a checker) ·
 every mutation in the committed
 mutation harness reds its gate's self-test (`python scripts/gate-bite-harness.py` — one mutation per
 PRODUCTION RULE, run it rather than trust this sentence) · the **39**
@@ -42,7 +42,7 @@ wires all green, and every `--self-test` among them runs pre-commit via
 > it had been rather than reading what it was.
 
 **Reviewed by cold-start adversarial agents, one round per fix pass — every finding fixed or answered.**
-**The per-round tallies are the source and live in [§6e..§6w of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
+**The per-round tallies are the source and live in [§6e..§6x of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
 no aggregate is repeated here.** An aggregate is not mechanically derivable, so it goes stale every time a
 round lands. **A number you cannot derive is a number you should not assert** — and this paragraph
 asserted three such numbers while saying so, which a round-11 verifier falsified in place by editing each
@@ -66,7 +66,9 @@ including the very line it had just repaired — and a wider mutation set found 
 survivors in `crates/actor-hub`**, the crate nine rounds had called untouched. Round 11: the mutation
 harness **dirtied the working tree on a fully-green run** — `write_text` rewriting every line ending —
 which is the exact incident its own docstring says it was shaped by, on the success path; and the CI
-wiring the previous round records was never actually made.
+wiring the previous round records was never actually made. Round 12: the fix for a silently-truncated
+scope was certified by a case built from the reported symptom, so **its own worked example still produced
+zero findings** — and the harness had been rewriting the shipped Rust sources 30 times per commit.
 
 **Every figure in this block is emitted by `scripts/actor-hub-figures-gate.py`, which `--check`s them
 pre-commit whenever this file is staged.**
@@ -75,6 +77,8 @@ pre-commit whenever this file is staged.**
 feature #1 — not so feature #1 can specify feature N+1.* Eight new seams the BUILD measured are
 registered in [`2026-08-02-seams-and-triggers.md`](../specs/2026-08-02-actor-hub/2026-08-02-seams-and-triggers.md)
 which now holds `S-1`..`S-18`, each with a trigger and none with a design.
+
+<!-- actor-hub-figures:end -->
 
 ---
 
