@@ -107,18 +107,46 @@ INDEX = "docs/specs/2026-08-02-actor-hub/_index.md"
 #
 # A sentinel is deletable too -- but deleting it fails the both-markers check
 # LOUDLY, which is the whole difference.
-END = "<!-- actor-hub-figures:end -->"
+def END(block: str) -> str:
+    """The end sentinel for one block, NAMED.
 
-SCOPES: tuple[tuple[str, str, str], ...] = (
-    (HANDOFF, "## ▶ GAME TIER", END),
-    (RUN_STATE, "> # ▶▶ NEXT SESSION STARTS HERE", END),
+    A single shared sentinel made "exactly once in the file" meaningless the
+    moment a second block wanted one: three legitimate markers, and the rule
+    that exists to catch a stray duplicate fired on all three. Naming each
+    block's marker keeps the rule file-wide and exact, and makes the message say
+    WHICH block a stray copy belongs to.
+    """
+    return f"<!-- actor-hub-figures:end {block} -->"
+
+# `must_claim` is what closes the LAST route to a silently shortened scope.
+#
+# The empty-block rule catches TOTAL collapse; moving the sentinel up by one
+# paragraph leaves a claim behind, so `checked` stays true and everything below
+# goes quietly ungoverned -- which is the defect the sentinel replaced, reached
+# by a third road after the duplicate road and the incidental-`---` road were
+# closed. Naming the figures a block MUST carry closes it by construction: the
+# question stops being "did anything match" and becomes "did THESE match".
+#
+# It is an enumeration, and that is the point: adding a governed figure to a
+# block means saying so here. Forgetting is a MISS, and the coverage arm still
+# catches a shape claimed by no document anywhere.
+SCOPES: tuple[tuple[str, str, str, frozenset[str]], ...] = (
+    (HANDOFF, "## ▶ GAME TIER", END("game-tier"),
+     frozenset({"rust_tests", "dp_kernel_lib_tests", "max_decision_id",
+                "max_seam_id", "hook_gate_scripts"})),
+    (RUN_STATE, "> # ▶▶ NEXT SESSION STARTS HERE", END("next-session"),
+     frozenset({"dp_kernel_lib_tests", "max_seam_id", "hook_gate_scripts",
+                "contract_hub_lines", "contract_substrate_lines"})),
     # The SLICE BOARD's own summary block. A stop-audit found it STALE at
     # round seven -- "81 findings over five rounds" when the count was 123 over
     # seven -- because the check covered the header and the handoff and not the
     # board two screens below them. **A figure outside a checker's scope is a
     # figure nobody is reading**, which is `_index.md`'s defect one file along.
-    (RUN_STATE, "### 6-BUILD", "| # | Slice |"),
-    (INDEX, "# Actor Hub", "\n## Read this to REUSE"),
+    (RUN_STATE, "### 6-BUILD", END("slice-board"), frozenset({"rust_tests"})),
+    (INDEX, "# Actor Hub", "\n## Read this to REUSE",
+     frozenset({"max_decision_id", "max_seam_id", "contract_hub_lines",
+                "contract_substrate_lines", "contract_seams_lines",
+                "contract_total_lines"})),
 )
 
 
@@ -361,7 +389,7 @@ def _scan_line(open_mark: str | None, in_comment: bool, line: str
 
 
 def _claimable(block: str, quotes: bool = True, in_fence: str | None = None,
-               in_comment: bool = False) -> str:
+               in_comment: bool = False, comments: bool = True) -> str:
     """The block with everything that is NOT a live claim blanked out.
 
     **F6 — a quoted historical figure, a fenced example and an HTML comment each
@@ -405,7 +433,9 @@ def _claimable(block: str, quotes: bool = True, in_fence: str | None = None,
         # both flags stuck, and the rest of the block went permanently blind.
         # Two states, each correct alone, the ORDER between them defeating both.
         open_mark, in_comment, opaque = _scan_line(open_mark, in_comment, line)
-        if opaque:
+        # `comments=False` keeps HTML comments visible: the scope SENTINEL is one,
+        # so the marker search must still see it while fenced regions are blanked.
+        if opaque and (comments or open_mark is not None or _fence_mark(line)):
             out.append(" " * len(line))
             continue
         # An HTML comment spans lines. `startswith("<!--")` blanked only the
@@ -413,7 +443,12 @@ def _claimable(block: str, quotes: bool = True, in_fence: str | None = None,
         # claims -- and an INLINE `<!-- ... -->` mid-line was not blanked at all.
         # The inline `<!-- ... -->` spans, blanked in place. Whether the line
         # OPENS a multi-line comment is `_scan_line`'s answer, above.
-        line = COMMENT_RE.sub(lambda mo: " " * len(mo.group(0)), line)
+        #
+        # `comments=False` leaves them alone, because the scope SENTINEL is an
+        # inline comment: the marker search needs fences blanked and comments
+        # visible, and blanking both erased the very thing it was looking for.
+        if comments:
+            line = COMMENT_RE.sub(lambda mo: " " * len(mo.group(0)), line)
         # An ITALICISED QUOTATION -- *"..."* -- is this repo's syntax for text
         # written elsewhere, so a figure inside one is a historical record and
         # not a live claim.
@@ -448,55 +483,38 @@ def _scope_span(text: str, start_marker: str, end_marker: str
         span -- the normal way to DOCUMENT a marker, and what this gate's own
         decision record does -- silently truncated the scope.
     """
-    i = text.find(start_marker)
-    if i < 0:
+    # **The START marker gets the same two rules.** It had NEITHER: a raw
+    # `find`, so documenting `### 6-BUILD` in an inline code span moved the block
+    # 260 lines up, and the contributor was then told the END marker was
+    # duplicated -- cry-wolf and a misdiagnosis pointing at the wrong file. The
+    # end marker was hardened and the start marker was not, which is this round's
+    # whole shape in one line.
+    starts = _marker_hits(text, start_marker, 0)
+    if not starts:
         return None
+    if len(starts) > 1:
+        lines = [text.count(chr(10), 0, k) + 1 for k in starts]
+        return (f"the start marker `{start_marker.strip()}` occurs {len(starts)} "
+                f"times (lines {lines}) — the FIRST one wins, so the block may "
+                "not be the one you are looking at")
+    i = starts[0]
     # The marker is matched on its own line, so a leading newline in the literal
     # is noise -- it would put the match at the END of the previous line and the
     # standalone test would compare against that line instead.
-    needle = end_marker.strip(chr(10))
-    hits = [k for k in _all_occurrences(text, needle, i + len(start_marker))
-            if _at_line_start(text, k, needle)]
+    # **Fenced examples do not count.** `_claimable` blanks fenced regions and
+    # preserves offsets, so searching its output means the decision record can
+    # SHOW a marker in a code block without terminating anything -- which it
+    # must, because this gate's own record documents these markers. Comments are
+    # deliberately left intact: the sentinel IS one.
+    hits = _marker_hits(text, end_marker, i + len(start_marker))
     if not hits:
         return None
     if len(hits) > 1:
         lines = [text.count("\n", 0, k) + 1 for k in hits]
-        return (f"the end marker `{end_marker}` occurs {len(hits)} times after "
+        return (f"the end marker `{end_marker.strip()}` occurs {len(hits)} times after "
                 f"`{start_marker}` (lines {lines}) — the FIRST one wins, so every "
                 "figure below it is silently ungoverned")
     return (i, hits[0])
-
-
-def _all_occurrences(text: str, needle: str, start: int) -> list[int]:
-    out, at = [], start
-    while True:
-        at = text.find(needle, at)
-        if at < 0:
-            return out
-        out.append(at)
-        at += 1
-
-
-def _at_line_start(text: str, at: int, needle: str) -> bool:
-    """True when `needle` BEGINS its line, whitespace aside.
-
-    A marker quoted in prose or shown in an inline code span is a MENTION, and a
-    raw `text.find` cannot tell the two apart -- so writing the sentinel in a
-    sentence, which is exactly what documenting it looks like, truncated the
-    scope.
-
-    **Line-start, not whole-line.** Two of the four markers are structural
-    PREFIXES -- `| # | Slice |` heads a table row that continues, and
-    `## Read this to REUSE` is a heading -- so requiring the line to hold
-    nothing else refused both, which is the cry-wolf direction.
-
-    The residual is stated rather than hidden: a sentinel shown inside a FENCED
-    example still counts, because this function reads raw text. It then trips
-    the exactly-once rule and is reported LOUDLY, which is the safe way to be
-    wrong.
-    """
-    bol = text.rfind(chr(10), 0, at) + 1
-    return not text[bol:at].strip()
 
 
 def _escape_corpus() -> list[Path]:
@@ -507,12 +525,11 @@ def _escape_corpus() -> list[Path]:
 def _escape_derivation(governed: set[str], head: int, corpus=None) -> list[str]:
     """Documents citing `D-1`..`D-<head>` that no rule reads.
 
-    **It asks the question the RULE asks.** The first version asked whether a
+    **It asks the question the RULE asks.** An earlier version asked whether a
     document cited *a* range at all, and other rounds keep their own `D-`
-    registers -- `command-interaction`, `event-causality`, `story-seed` -- so it
-    reported ten documents whose numbering has nothing to do with this one. The
-    rule only ever fires on numeric EQUALITY with this document's head, so the
-    completeness check must use the same test or it is checking something else.
+    registers, so it reported ten documents whose numbering has nothing to do
+    with this one. The rule fires only on numeric EQUALITY with this document's
+    head, so the completeness check must use the same test.
 
     `corpus` is injectable because in a pristine tree the answer is the empty
     list, so an assertion on it alone is default-satisfied -- which is how both
@@ -530,6 +547,76 @@ def _escape_derivation(governed: set[str], head: int, corpus=None) -> list[str]:
         if any(int(m) == head for m in RANGE_RE.findall(text)):
             out.append(rel)
     return out
+
+
+def _marker_hits(text: str, marker: str, start: int) -> list[int]:
+    """Offsets where `marker` is a real marker, not a mention.
+
+    Two filters and a fallback:
+
+      * **fence-blanked first**, so the decision record can SHOW a marker in a
+        code block without terminating anything -- which it must, since this
+        gate's own record documents these markers;
+      * **line-start**, so a marker written in prose or an inline code span is a
+        mention;
+      * **and a RAW fallback when blanking finds none.** An UNTERMINATED fence
+        inside a block blanks everything after it including the end marker, and
+        the block then stops resolving -- a refusal on malformed-but-harmless
+        markdown, which is the cry-wolf direction. Falling back means the worst
+        case is the behaviour that existed before fences were considered.
+    """
+    needle = marker.strip(chr(10))
+    for haystack in (_claimable(text, quotes=False, comments=False), text):
+        hits = [k for k in _all_occurrences(haystack, needle, start)
+                if _at_line_start(haystack, k, needle)]
+        if hits:
+            return hits
+    return []
+
+
+def _all_occurrences(text: str, needle: str, start: int) -> list[int]:
+    out, at = [], start
+    while True:
+        at = text.find(needle, at)
+        if at < 0:
+            return out
+        out.append(at)
+        at += 1
+
+
+QUOTE_PREFIX = re.compile(r"^[ \t>]*")
+
+
+def _line_bounds(text: str, at: int) -> tuple[int, int]:
+    bol = text.rfind(chr(10), 0, at) + 1
+    eol = text.find(chr(10), at)
+    return bol, (len(text) if eol < 0 else eol)
+
+
+def _at_line_start(text: str, at: int, needle: str) -> bool:
+    r"""True when `needle` BEGINS its line, past any blockquote/indent prefix.
+
+    **One rule, applied to BOTH markers.** The end marker had it and the start
+    marker had a raw `find`, so documenting `### 6-BUILD` in an inline code span
+    moved the block 260 lines up -- and the message then blamed the END marker,
+    pointing the reader at the wrong file. Hardening one and not the other is
+    this round's shape in a single line.
+
+    **Line-start, not whole-line**: two markers are structural PREFIXES -- a
+    heading carries its title (`## GAME TIER — feature #1 is BUILT`) and a table
+    header continues -- so requiring the line to hold nothing else refuses every
+    real document, which is the cry-wolf direction.
+
+    **`>` is not whitespace**, and the RUN-STATE's governed block is a blockquote
+    from end to end, so the sentinel written where it belongs -- inside the quote
+    -- was not recognised. `FENCE_RE` in this same file already tolerates
+    `(?:>\s*)*`; this did not, and nothing had tried it yet.
+
+    A marker shown inside a FENCED example is handled by the caller, which
+    searches fence-blanked text rather than by a rule here.
+    """
+    bol = text.rfind(chr(10), 0, at) + 1
+    return not QUOTE_PREFIX.sub("", text[bol:at]).strip()
 
 
 def _read_doc(doc: str, read=None) -> str | None:
@@ -635,7 +722,7 @@ def _escaped_live_range(m: dict[str, object], scopes=None, read=None) -> list[st
     # range that was TRUE"* -- so the scope now matches the rule. Cry-wolf risk
     # is near zero by construction: it fires only on numeric EQUALITY with this
     # document's head, and no other register in the tree is near it.
-    docs = sorted({d for d, _, _ in scopes} | (set(ESCAPE_DOCS) if scopes is SCOPES else set()))
+    docs = sorted({sc[0] for sc in scopes} | (set(ESCAPE_DOCS) if scopes is SCOPES else set()))
     for doc in docs:
         text = _read_doc(doc, read=read)
         if text is None:
@@ -651,8 +738,8 @@ def _escaped_live_range(m: dict[str, object], scopes=None, read=None) -> list[st
         # the original blanket replace against `_index.md` alone, including the
         # very line this mechanism was written to repair, left the gate GREEN.
         # A guard defeated by the thing it is guarding.
-        spans = [sp for d, sm, em in scopes if d == doc
-                 for sp in [_scope_span(text, sm, em)] if isinstance(sp, tuple)]
+        spans = [sp for sc in scopes if sc[0] == doc
+                 for sp in [_scope_span(text, sc[1], sc[2])] if isinstance(sp, tuple)]
         # Fenced examples and HTML comments are blanked -- a code block
         # SHOWING the header line is not a claim, and reporting it would be the
         # cry-wolf failure this gate has hit four times.
@@ -697,10 +784,10 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
     # A per-document key let the header block vouch for the slice board, so
     # collapsing the board -- the block added *because* a stop-audit found a
     # stale figure outside every checker's scope -- was invisible.
-    checked: dict[tuple[str, str], bool] = {}
+    present: dict[tuple[str, str], set[str]] = {}
     scopes = scopes if scopes is not None else SCOPES
 
-    for doc, start_marker, end_marker in scopes:
+    for doc, start_marker, end_marker, *rest in scopes:
         block = _scope_text(doc, start_marker, end_marker, read=read)
         # The fence state at the window's start, read from everything before it.
         # The first version defined `_fence_state`, added the parameter, and
@@ -726,11 +813,11 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
             )
             continue
         block = _claimable(block, in_fence=opens_fenced, in_comment=opens_commented)
-        checked[(doc, start_marker)] = checked.get((doc, start_marker), False)
+        present[(doc, start_marker)] = set()
         for pattern, key, label in CLAIMS:
             want = m.get(key)
             for claimed in re.findall(pattern, block):
-                checked[(doc, start_marker)] = True
+                present[(doc, start_marker)].add(key)
                 # Keyed on the PATTERN, not the key: two rows share
                 # `hook_gate_scripts`, so a dead pattern with a live sibling was
                 # invisible to the coverage arm written to catch exactly that.
@@ -762,17 +849,25 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
     # `---` above it produced ZERO findings. `--self-test` asserted this for the
     # real documents; production did not, so it held only at the moment someone
     # ran the self-test.
-    # Only for the REAL scopes. A probe block whose single figure is correctly
-    # blanked -- a fenced example, a quotation -- is indistinguishable from a
-    # collapsed scope by this test, so applying it to injected scopes would red
-    # every cry-wolf case in the suite. The subject is the shipped documents.
-    for doc, start_marker, _ in (scopes if scopes is SCOPES else ()):
-        if (doc, start_marker) in checked and not checked[(doc, start_marker)]:
+    # **The figures each block MUST carry.** Moving the sentinel up by one
+    # paragraph leaves a claim behind, so the empty-block rule -- which catches
+    # only TOTAL collapse -- stays silent while everything below goes ungoverned.
+    # Asking "did THESE match" instead of "did anything match" closes that.
+    for doc, start_marker, _e, *rest in (scopes if scopes is SCOPES else ()):
+        missing = sorted((rest[0] if rest else frozenset()) - present.get((doc, start_marker), set()))
+        if missing:
             problems.append(
-                f"{doc}: the block at `{start_marker}` contains NO figure this "
-                f"script governs — the `{END}` sentinel has probably moved up, "
-                "which silently shrinks the scope rather than reporting anything"
+                f"{doc}: the block at `{start_marker}` no longer states {missing} — "
+                "its end sentinel has probably moved UP, which shortens the scope "
+                "silently instead of reporting anything"
             )
+
+    # REMOVED: a "the block contains no governed figure at all" rule. Every real
+    # scope now declares the figures it MUST state, and `must_claim` reports the
+    # missing ones by name -- so the older rule could no longer produce a finding
+    # the new one does not, and a mutation deleting it stayed green. Superseded,
+    # not forgotten: the message it used to print is strictly less informative
+    # than "no longer states ['dp_kernel_lib_tests', ...]".
 
     problems += _escaped_live_range(m, scopes=scopes, read=read)
 
@@ -813,8 +908,8 @@ def self_test() -> int:
     def check_block(name: str, text: str, expect_problems: int, expect_notes: int = 0) -> None:
         """Drive the REAL `_check` over one synthetic document."""
         nonlocal failures
-        problems, notes = _check(m, scopes=(("<probe>", "@@", "@@END"),),
-                                 read=lambda _: f"@@\n{text}\n@@END")
+        problems, notes = _check(m, scopes=(("<probe>", "@@START", "@@END"),),
+                                 read=lambda _: f"@@START\n{text}\n@@END")
         # The coverage arm reports every claim shape with no subject anywhere;
         # a single-block probe cannot carry them all, so they are filtered out
         # and covered by their own case below.
@@ -889,26 +984,10 @@ def self_test() -> int:
     # figure below it would be cry-wolf on a code sample.
     check_block("a fence opened and not closed covers the rest of the block",
                 "```rust\nlet x = 1;\n\nthe count is **281 passed, 0 failed** today", 0)
-    # ...and a block that BEGINS INSIDE a fence is the case neither guess could
-    # express. The state comes from the prefix, so the probe has to carry one:
-    # here the fence opens BEFORE the window's start marker, and its closer
-    # inside the window ends it -- after which the figure is live again.
-    problems, _ = _check(m, scopes=(("<probe>", "@@", "@@END"),),
-                         read=lambda _: "```rust\nlet x = 1;\n@@\nstill fenced "
-                                        "**281 passed, 0 failed**\n```\n"
-                                        "`dp-kernel --lib` **300**\n@@END")
-    real = [x for x in problems if not x.startswith("NO DOCUMENT")]
-    # **The IDENTITY of the finding, not its count.** Both the correct code and
-    # the unwired version report exactly ONE problem here -- the correct one
-    # about the line AFTER the closer, the broken one about the line before it.
-    # A case that counts findings cannot tell those apart, and the mutation that
-    # unwired the prefix state survived because the first version counted.
-    if len(real) != 1 or "dp-kernel" not in real[0]:
-        failures += 1
-        print(f"  FAIL a block beginning INSIDE a fence: want 1 problem about "
-              f"dp-kernel, got {real}")
-    else:
-        print("  ok  a block that begins inside a fence stays blanked until the closer")
+    # A block that BEGINS INSIDE a fence is no longer expressible: a marker in a
+    # fenced region is a MENTION by design, so the scope cannot start there. The
+    # property that case was reaching for -- prefix fence state carried into the
+    # window -- is asserted directly on `_fence_state` and `_claimable` below.
     # A blockquote fence is a fence. This project writes whole headers as
     # blockquotes and the gate's own docstring says so, yet the marker test was
     # `lstrip()` only -- so this was reported as a live claim.
@@ -968,7 +1047,7 @@ def self_test() -> int:
         one call deep, and the mutation harness found it on its first run.
         """
         nonlocal failures
-        problems, _ = _check(meas or m, scopes=(("<probe>", "@@", "@@END"),),
+        problems, _ = _check(meas or m, scopes=(("<probe>", "@@START", "@@END"),),
                              read=lambda _: doc)
         got = [x for x in problems if "LIVE range" in x]
         ok = len(got) == want
@@ -978,9 +1057,9 @@ def self_test() -> int:
             print(f"        {g}")
 
     escape_case("the live range inside the current-state block is correct",
-                "@@\n`D-1`..`D-372`\n@@END", 0)
+                "@@START\n`D-1`..`D-372`\n@@END", 0)
     escape_case("the live range OUTSIDE the block is a finding",
-                "@@\nnothing\n@@END\n\n| D-195 | it declares `D-1`..`D-372` |", 1)
+                "@@START\nnothing\n@@END\n\n| D-195 | it declares `D-1`..`D-372` |", 1)
     # **B1 — the case the substring test could not fail.** The document carries
     # the live range INSIDE its block, which is the design, AND an escaped copy
     # outside it. `if any(mo.group(0) in b for b in blocks)` exempted the second
@@ -988,25 +1067,25 @@ def self_test() -> int:
     # governed documents were unguarded -- including the very line the mechanism
     # had just repaired.
     escape_case("an escape in a document that LEGITIMATELY carries the live range",
-                "@@\n`D-1`..`D-372`\n@@END\n\n| D-195 | it declares `D-1`..`D-372` |", 1)
+                "@@START\n`D-1`..`D-372`\n@@END\n\n| D-195 | it declares `D-1`..`D-372` |", 1)
     # The wrap tolerance itself: these documents wrap, and the blockquote form
     # puts `> ` between the two halves. Without it a wrapped live range escapes
     # entirely -- an adjacent decision (how the docs are written) defeating the
     # rule, which is the shape the sibling contract-lines pattern already carries
     # a tolerance for.
     escape_case("a WRAPPED live range is still an escape",
-                "@@\nnothing\n@@END\n\n> | D-195 | it declares `D-1`..\n> `D-372` |", 1)
+                "@@START\nnothing\n@@END\n\n> | D-195 | it declares `D-1`..\n> `D-372` |", 1)
     escape_case("a HISTORICAL range outside the block is correct, and stays",
-                "@@\nnothing\n@@END\n\n| D-195 | it declares `D-1`..`D-109` |", 0)
+                "@@START\nnothing\n@@END\n\n| D-195 | it declares `D-1`..`D-109` |", 0)
     # ...and with no measurable head there is nothing to compare against, so the
     # rule must stay SILENT rather than guess. Cry-wolf here would fire on every
     # machine without the artifact.
     escape_case("a FENCED example of the header is not an escape",
-                "@@\nnothing\n@@END\n\n```\n`D-1`..`D-372`\n```", 0)
+                "@@START\nnothing\n@@END\n\n```\n`D-1`..`D-372`\n```", 0)
     escape_case("a QUOTATION carrying the live head IS an escape, by design",
                 '@@\nnothing\n@@END\n\n| D-195 | it declares *"`D-1`..`D-372`"* |', 1)
     escape_case("an unmeasurable head accuses nobody",
-                "@@\nnothing\n@@END\n\n| D-195 | `D-1`..`D-372` |", 0,
+                "@@START\nnothing\n@@END\n\n| D-195 | `D-1`..`D-372` |", 0,
                 meas={**m, "max_decision_id": {"unmeasurable": "no bold D- id"}})
 
     # **`_claimable` preserves OFFSETS**, which is load-bearing and had no case:
@@ -1024,11 +1103,36 @@ def self_test() -> int:
     else:
         print("  ok  _claimable preserves offsets, so span exclusion stays valid")
 
+    # **The prefix state must REACH the window**, and the only route left is a
+    # comment: a marker inside a fence is no longer a marker, so the fence
+    # version of this case became inexpressible and the rule lost its driver.
+    # `_marker_hits` keeps comments visible precisely so the sentinel is found,
+    # which leaves an unterminated comment above a block both possible and
+    # load-bearing.
+    problems, _ = _check(
+        m, scopes=(("<probe>", "@@START", "@@END"),),
+        read=lambda _: "<!--\nsuperseded\n@@START\n**281 passed, 0 failed**\n@@END")
+    real = [x for x in problems if not x.startswith("NO DOCUMENT")]
+    if real:
+        failures += 1
+        print(f"  FAIL a block opening inside a comment must be blanked: {real}")
+    else:
+        print("  ok  the prefix comment state reaches the window and blanks it")
+
+    # ...and the FENCE half, asserted directly: a marker inside a fence is no
+    # longer a marker, so there is no document shape that can carry this through
+    # `_check`. The parameter still has to work.
+    if _claimable("**281 passed, 0 failed**", in_fence="```").strip():
+        failures += 1
+        print("  FAIL a window opening inside a fence was not blanked")
+    else:
+        print("  ok  the prefix fence state reaches the window and blanks it")
+
     # A missing END marker must be a FINDING. It used to widen the window to
     # the whole file: mass cry-wolf for the figure check, and total blindness for
     # the escape rule, whose exempt span then covered the entire document.
-    problems, _ = _check(m, scopes=(("<probe>", "@@", "NO SUCH END"),),
-                         read=lambda _: "@@\n**281 passed, 0 failed**\n@@END")
+    problems, _ = _check(m, scopes=(("<probe>", "@@START", "NO SUCH END"),),
+                         read=lambda _: "@@START\n**281 passed, 0 failed**\n@@END")
     if not any("do not both" in x for x in problems):
         failures += 1
         print(f"  FAIL a missing END marker must be a finding, got {problems}")
@@ -1055,14 +1159,17 @@ def self_test() -> int:
     def _collapse(text: str) -> str:
         # MOVED, not duplicated: two markers is a different finding with its own
         # message, so adding one here would assert the wrong rule.
-        text = text.replace(END + "\n", "", 1)
+        text = text.replace(END("game-tier") + "\n", "", 1)
         i = text.find("## \u25b6 GAME TIER")
-        return text[:i] + "## \u25b6 GAME TIER\n\n" + END + "\n" + text[i:]
+        return text[:i] + "## \u25b6 GAME TIER\n\n" + END("game-tier") + "\n" + text[i:]
 
     problems, _ = _check(real_m, read=_seed_handoff(_collapse))
-    if not any("contains NO figure" in x for x in problems):
+    # Either message is a correct answer: `must_claim` names WHICH figures went
+    # missing, the empty-block rule says the block holds none at all. A total
+    # collapse trips both, and the more informative one wins the race.
+    if not any(("contains NO figure" in x) or ("no longer states" in x) for x in problems):
         failures += 1
-        print("  FAIL a block truncated to nothing did not produce a finding")
+        print(f"  FAIL a block truncated to nothing did not produce a finding: {problems[:2]}")
     else:
         print("  ok  a scope that shrank to nothing is a finding, not agreement")
 
@@ -1106,7 +1213,7 @@ def self_test() -> int:
     # the incidental `---` inherited it exactly.
     def _second_sentinel(text: str) -> str:
         j = text.find("**Evidence:**", text.find("## \u25b6 GAME TIER"))
-        return text[:j] + END + "\n\n" + text[j:]
+        return text[:j] + END("game-tier") + "\n\n" + text[j:]
 
     problems, _ = _check(real_m, read=_seed_handoff(_second_sentinel))
     if not any("occurs 2 times" in x for x in problems):
@@ -1119,7 +1226,7 @@ def self_test() -> int:
     # is what documenting it looks like.
     def _mentioned(text: str) -> str:
         j = text.find("**Evidence:**", text.find("## \u25b6 GAME TIER"))
-        return text[:j] + "the marker is `" + END + "` here\n\n" + text[j:]
+        return text[:j] + "the marker is `" + END("game-tier") + "` here\n\n" + text[j:]
 
     problems, _ = _check(real_m, read=_seed_handoff(_mentioned))
     if problems:
@@ -1131,7 +1238,7 @@ def self_test() -> int:
     # The range is written BOTH ways in this project; requiring backticks made
     # the un-backticked form invisible to the rule and to its own coverage check.
     escape_case("an UN-BACKTICKED live range is still an escape",
-                "@@\nnothing\n@@END\n\n| D-195 | it declares D-1..D-372 |", 1)
+                "@@START\nnothing\n@@END\n\n| D-195 | it declares D-1..D-372 |", 1)
 
     # The corpus is RECURSIVE. Narrowing it to `docs/*.md` left the derivation
     # unable to see any of the documents it exists to police.
@@ -1141,6 +1248,55 @@ def self_test() -> int:
         print("  FAIL the escape corpus does not reach nested documents")
     else:
         print(f"  ok  the escape corpus walks {len(corpus)} documents, nested included")
+
+    # ── the marker rules, both markers, every route to a wrong block ─────────
+    #
+    # Written as a TABLE over (which marker, how it appears, what must happen),
+    # because the recurring defect in this run is hardening one marker and not
+    # the other, or closing one route to premature termination and not the next.
+    def _append(doc: str, extra: str):
+        def read(d: str) -> str:
+            text = (REPO / d).read_text(encoding="utf-8", errors="replace")
+            return text + "\n" + extra + "\n" if d == doc else text
+        return read
+
+    marker_cases = (
+        ("a STRAY duplicate end sentinel is loud",
+         HANDOFF, END("game-tier"), "occurs 2 times"),
+        ("a STRAY duplicate start marker is loud",
+         RUN_STATE, "### 6-BUILD", "occurs 2"),
+        ("an end sentinel shown in a FENCE is a mention",
+         RUN_STATE, "```\n" + END("next-session") + "\n```", None),
+        ("a start marker shown in a FENCE is a mention",
+         RUN_STATE, "```\n### 6-BUILD\n```", None),
+        ("an end sentinel MENTIONED inline is a mention",
+         HANDOFF, "the marker is `" + END("game-tier") + "` here", None),
+        ("a start marker MENTIONED inline is a mention",
+         RUN_STATE, "| D-9 | the block starts at `### 6-BUILD` |", None),
+        ("a repeating structural row is no longer an end marker",
+         RUN_STATE, "| # | Slice | Done when |", None),
+    )
+    for name, doc, extra, want in marker_cases:
+        got = [x for x in _check(real_m, read=_append(doc, extra))[0] if doc in x]
+        ok = (want is None and not got) or (want is not None and any(want in x for x in got))
+        failures += 0 if ok else 1
+        print(f"  {'ok ' if ok else 'FAIL'} {name}" + ("" if ok else f": {got[:1]}"))
+
+    # ...and the LAST route to a silently shortened scope: MOVING the one
+    # sentinel up. The block still holds a claim, so the empty-block rule stays
+    # quiet; naming the figures each block must carry is what catches it.
+    def _move_up(text: str) -> str:
+        sentinel = END("game-tier")
+        text = text.replace(sentinel + "\n", "", 1)
+        j = text.find("**Evidence:**", text.find("## \u25b6 GAME TIER"))
+        return text[:j] + sentinel + "\n\n" + text[j:]
+
+    problems, _ = _check(real_m, read=_seed_handoff(_move_up))
+    if not any("no longer states" in x for x in problems):
+        failures += 1
+        print(f"  FAIL a MOVED sentinel left the scope short and silent: {problems[:2]}")
+    else:
+        print("  ok  a moved sentinel is caught by the figures the block must state")
 
     # **DEGRADE-SAFE, asserted.** With every figure unmeasurable -- a machine
     # with no Rust toolchain, which is most of them -- the check must be SILENT
@@ -1227,8 +1383,8 @@ def self_test() -> int:
     # An unmeasurable figure is a NOTE, not a block -- production behaviour, which
     # the inline copy asserted the OPPOSITE of and nothing noticed.
     unmeasurable = {**m, "rust_tests": {"unmeasurable": "cargo is not on PATH"}}
-    problems, notes = _check(unmeasurable, scopes=(("<probe>", "@@", "@@END"),),
-                             read=lambda _: "@@\n**283 passed, 0 failed**\n@@END")
+    problems, notes = _check(unmeasurable, scopes=(("<probe>", "@@START", "@@END"),),
+                             read=lambda _: "@@START\n**283 passed, 0 failed**\n@@END")
     real = [x for x in problems if not x.startswith("NO DOCUMENT")]
     if real or len(notes) != 1:
         failures += 1
@@ -1238,7 +1394,7 @@ def self_test() -> int:
 
     # A moved anchor is a FINDING, not a silent pass.
     problems, _ = _check(m, scopes=(("<probe>", "NO SUCH MARKER", "@@END"),),
-                         read=lambda _: "@@\n**281 passed, 0 failed**\n@@END")
+                         read=lambda _: "@@START\n**281 passed, 0 failed**\n@@END")
     if not any("marker" in x for x in problems):
         failures += 1
         print("  FAIL a moved anchor did not produce a finding")
@@ -1246,8 +1402,8 @@ def self_test() -> int:
         print("  ok  a moved anchor is a finding, not a silent pass")
 
     # The coverage arm: a claim shape with no subject anywhere.
-    problems, _ = _check(m, scopes=(("<probe>", "@@", "@@END"),),
-                         read=lambda _: "@@\nnothing here\n@@END")
+    problems, _ = _check(m, scopes=(("<probe>", "@@START", "@@END"),),
+                         read=lambda _: "@@START\nnothing here\n@@END")
     if not any(x.startswith("NO DOCUMENT") for x in problems):
         failures += 1
         print("  FAIL the coverage arm did not fire on a block with no claims")
@@ -1380,7 +1536,7 @@ def self_test() -> int:
     # enumerated list is default-uncovered; this asserts that no document under
     # `docs/specs/2026-08-02-*` or `docs/plans/2026-08-02-*` cites a `D-1`..`D-N`
     # range without being on it. That is the mechanism the list itself is not.
-    governed_escape = set(ESCAPE_DOCS) | {d for d, _, _ in SCOPES}
+    governed_escape = set(ESCAPE_DOCS) | {sc[0] for sc in SCOPES}
     # **Every markdown file under `docs/`.** The first version globbed
     # `docs/specs/2026-08-02-*` and `docs/plans/2026-08-02-*`, and the ternary
     # made the specs branch directory-only -- so `2026-08-02-item-data-structure.md`
@@ -1416,7 +1572,7 @@ def self_test() -> int:
 
     # Every document this script MUST govern is actually in SCOPES. Iterating
     # SCOPES alone cannot notice a deleted row -- it just iterates one fewer.
-    governed = {d for d, _, _ in SCOPES}
+    governed = {sc[0] for sc in SCOPES}
     for required in (HANDOFF, RUN_STATE, INDEX):
         if required not in governed:
             failures += 1
@@ -1428,7 +1584,7 @@ def self_test() -> int:
         print(f"  ok  all {len(SCOPES)} required blocks are in scope")
 
     # And the REAL documents must each carry at least one governed claim.
-    for doc, start_marker, end_marker in SCOPES:
+    for doc, start_marker, end_marker, *_ in SCOPES:
         block = _scope_text(doc, start_marker, end_marker)
         if block is None:
             failures += 1

@@ -175,6 +175,38 @@ fn a_zero_divisor_and_a_contradictory_bound_are_refused() {
     assert_eq!(out.value(q(3)), Some(1), "neither refused row may contribute");
 }
 
+/// **`order_key`'s middle component is the SUBMITTING PLUGIN.**
+///
+/// `M-13` states the intra-layer order as (fold layer, submitting plugin,
+/// submission index). Layer and index each had a case; the plugin did not, so
+/// replacing `c.source.get()` with a constant survived the whole suite. One
+/// plugin cannot show an ordering key that sorts by plugin — the fixture has to
+/// submit from two, with submission order inverted against plugin order.
+#[test]
+fn contributions_at_one_layer_are_ordered_by_submitting_plugin() {
+    let (r, a, s) = fixture();
+    // Both plugins write `hp` on layer 10, and plugin 1 submits FIRST — so
+    // submission order and plugin order disagree, which is the only arrangement
+    // that can tell the two keys apart.
+    let from_one = ModifierRow {
+        target: q(0),
+        op: ModifierOp::Flat(7),
+        source: p(1),
+        fold_layer: FoldLayer(10),
+    };
+    let from_zero = ModifierRow { op: ModifierOp::Flat(3), source: p(0), ..from_one };
+
+    let out = fold(a, &s, &r, &[from_one, from_zero], &[]);
+
+    let ex = out.explain(q(0)).expect("no explanation for a folded quantity");
+    let order: Vec<u8> = ex.contributions.iter().map(|c| c.source.get()).collect();
+    assert_eq!(
+        order,
+        vec![0, 1],
+        "at one fold layer the SUBMITTING PLUGIN orders the contributions,          ahead of submission index — plugin 1 submitted first and must sort second"
+    );
+}
+
 /// **An EXACT bound — `min == max` — is legal.**
 ///
 /// `ContributionBound`'s own doc says *"inclusive on both ends. `min > max` is

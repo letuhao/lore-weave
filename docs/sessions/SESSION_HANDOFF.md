@@ -13,7 +13,7 @@
 > `feat/frontend-tools-mcp-migration` and is left untouched.
 
 **The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
-per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-431` decision record
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-442` decision record
 live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
 the two design contracts that are its only specification are in
 [`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).
@@ -27,8 +27,8 @@ the two design contracts that are its only specification are in
 | `U-10` — the citations in this round's own contracts now resolve mechanically | `scripts/citation-gate.py`, wired pre-commit |
 
 **Evidence:** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules -p ruleset-loader`
-= **293 passed, 0 failed** · `dp-kernel --lib` **315** passed, unchanged by the `GoneState`
-move · the Go mirror `contracts/entity_status` still agrees · `actor-hub` and `entity-existence` are clippy- and rustdoc-clean (the other three crates in that command carry **4** pre-existing doc warnings and **1** clippy warning, none of them this round's and none governed by any script here — a round-12 verifier measured the flat claim `clippy clean · cargo doc 0 warnings` FALSE, in the sentence that claims every figure in this block is emitted by a checker) ·
+= **294 passed, 0 failed** · `dp-kernel --lib` **315** passed, unchanged by the `GoneState`
+move · the Go mirror `contracts/entity_status` still agrees · `actor-hub` and `entity-existence` are clippy- and rustdoc-clean (the other three crates in that command carry a handful of pre-existing doc and clippy warnings, none of them this round's — counts deliberately not stated, because nothing here measures them and a figure with no measurement rule goes stale by construction; run the two commands if you want the numbers — a round-12 verifier measured the flat claim `clippy clean · cargo doc 0 warnings` FALSE, in the sentence that claims every figure in this block is emitted by a checker) ·
 every mutation in the committed
 mutation harness reds its gate's self-test (`python scripts/gate-bite-harness.py` — one mutation per
 PRODUCTION RULE, run it rather than trust this sentence) · the **39**
@@ -42,7 +42,7 @@ wires all green, and every `--self-test` among them runs pre-commit via
 > it had been rather than reading what it was.
 
 **Reviewed by cold-start adversarial agents, one round per fix pass — every finding fixed or answered.**
-**The per-round tallies are the source and live in [§6e..§6y of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
+**The per-round tallies are the source and live in [§6e..§6z of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
 no aggregate is repeated here.** An aggregate is not mechanically derivable, so it goes stale every time a
 round lands. **A number you cannot derive is a number you should not assert** — and this paragraph
 asserted three such numbers while saying so, which a round-11 verifier falsified in place by editing each
@@ -72,7 +72,12 @@ zero findings** — and the harness had been rewriting the shipped Rust sources 
 Round 13: the SENTINEL that replaced the incidental `---` inherited the same defect, because a
 *second* marker truncates a block exactly as the first one did; the 30 writes were still happening
 (one of four call sites injected the no-op writer); and a case seeding a Rust test count had made the
-gate refuse commits from every contributor without cargo.
+gate refuse commits from every contributor without cargo. **Round 14 named the shape rather than
+another instance of it:** a verifier measured that every blocking finding for five rounds had been
+*the previous fix with one token substituted* — the end marker hardened and the start marker not, the
+duplicate route closed and the move route open, the instance fixed and the class left undetected. The
+mutation harness now runs an UNMUTATED baseline first, because without one it cannot tell "every rule
+bites" from "the suite is already broken" — and CI is its only automatic runner.
 
 **Every figure in this block is emitted by `scripts/actor-hub-figures-gate.py`, which `--check`s them
 pre-commit whenever this file is staged.**
@@ -82,7 +87,7 @@ feature #1 — not so feature #1 can specify feature N+1.* Eight new seams the B
 registered in [`2026-08-02-seams-and-triggers.md`](../specs/2026-08-02-actor-hub/2026-08-02-seams-and-triggers.md)
 which now holds `S-1`..`S-18`, each with a trigger and none with a design.
 
-<!-- actor-hub-figures:end -->
+<!-- actor-hub-figures:end game-tier -->
 
 ---
 

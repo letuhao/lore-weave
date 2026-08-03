@@ -102,9 +102,10 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          "                if any(a <= mo.start() < b for a, b in spans):",
          "                if any(mo.group(0) in text[a:b] for a, b in spans):"),
         ("the 6-BUILD scope row deleted",
-         '    (RUN_STATE, "### 6-BUILD", "| # | Slice |"),', ""),
+         '    (RUN_STATE, "### 6-BUILD", END("slice-board"), frozenset({"rust_tests"})),',
+         ""),
         ("the _index.md scope row deleted",
-         '    (INDEX, "# Actor Hub", "\\n## Read this to REUSE"),', ""),
+         '    (INDEX, "# Actor Hub", "\\n## Read this to REUSE",', "        ("),
         ("the red-build guard removed",
          '    if "test result: FAILED" in out.stdout or out.returncode != 0:',
          "    if False:"),
@@ -199,28 +200,57 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # ...and a marker MENTIONED in prose or an inline code span -- which is
         # what documenting it looks like -- must not terminate anything.
         ("a marker mentioned mid-line terminates the block",
-         "            if _at_line_start(text, k, needle)]", "            if True]"),
-        ("the empty-block rule removed",
-         "        if (doc, start_marker) in checked and not checked[(doc, start_marker)]:",
-         "        if False:"),
+         "        hits = [k for k in _all_occurrences(haystack, needle, start)\n"
+         "                if _at_line_start(haystack, k, needle)]",
+         "        hits = [k for k in _all_occurrences(haystack, needle, start)]"),
+        # B2 -- the END marker was hardened and the START marker had a raw
+        # `find`, so documenting it inline moved the block 260 lines up and the
+        # message blamed the wrong marker.
+        ("the start marker goes back to a raw find",
+         "    starts = _marker_hits(text, start_marker, 0)",
+         "    starts = [text.find(start_marker)] if start_marker in text else []"),
+        ("a duplicated START marker is accepted",
+         "    if len(starts) > 1:", "    if False:"),
+        # M2 -- a fenced EXAMPLE of a marker must not terminate anything, or the
+        # record documenting this gate cannot show its own markers.
+        ("a fenced example of a marker terminates the block",
+         "    for haystack in (_claimable(text, quotes=False, comments=False), text):",
+         "    for haystack in (text,):"),
+        # M1 -- the last route to a silently shortened scope: MOVING the one
+        # sentinel up leaves a claim behind, so the empty-block rule stays quiet.
+        ("the required-figures rule removed",
+         "        missing = sorted((rest[0] if rest else frozenset()) - "
+         "present.get((doc, start_marker), set()))",
+         "        missing = []"),
+        # The empty-block rule is gone -- `must_claim` supersedes it -- so this
+        # row now targets the rule that replaced it.
+        ("the required-figures rule stops reporting",
+         "        if missing:", "        if False:"),
         # B1 -- the block end was the first incidental `---`, so an ordinary
         # markdown edit silently ungoverned everything below it, and the
         # empty-block rule caught only TOTAL collapse.
         ("the block end goes back to the first horizontal rule",
-         'END = "<!-- actor-hub-figures:end -->"',
-         'END = "\\n---\\n"'),
+         '    return f"<!-- actor-hub-figures:end {block} -->"',
+         '    return "\\n---\\n"'),
+        # Each block's sentinel is NAMED, or "exactly once in the file" stops
+        # meaning anything the moment a second block wants one: three
+        # legitimate markers, and the duplicate rule fires on all three.
+        ("the end sentinels stop being named per block",
+         '    return f"<!-- actor-hub-figures:end {block} -->"',
+         '    return "<!-- actor-hub-figures:end -->"'),
         # M1 -- `RUN_STATE` appears twice in SCOPES, so a per-document key let
-        # one block vouch for the other.
-        ("the empty-block key drops the start marker",
-         "                checked[(doc, start_marker)] = True",
-         '                checked[(doc, "")] = True'),
+        # one block vouch for the other. `checked` is gone (superseded by
+        # `must_claim`); the key that matters now is `present`.
+        ("the required-figures key drops the start marker",
+         "                present[(doc, start_marker)].add(key)",
+         '                present[(doc, "")] = present.get((doc, ""), set()) | {key}'),
         # M1 -- the escape rule read only the three files with a current-state
         # block. Eight more carried the range and stayed green, two of them files
         # this same gate already opens.
         ("the escape rule reads only the SCOPES documents",
-         "    docs = sorted({d for d, _, _ in scopes} | "
+         "    docs = sorted({sc[0] for sc in scopes} | "
          "(set(ESCAPE_DOCS) if scopes is SCOPES else set()))",
-         "    docs = sorted({d for d, _, _ in scopes})"),
+         "    docs = sorted({sc[0] for sc in scopes})"),
         ("the inline comment span not blanked",
          '        line = COMMENT_RE.sub(lambda mo: " " * len(mo.group(0)), line)',
          "        line = line"),
@@ -320,16 +350,41 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
     # A harness that verifies other code and not itself is the regress it says
     # it stops at, pointed the wrong way.
     "gate-bite-harness": [
+        # B1 -- the harness never ran an unmutated BASELINE, so it could not
+        # tell "every rule bites" from "the suite is already broken": CI's
+        # `--no-cargo` job reported 47 of 47 red while three NULL mutations were
+        # also red, and the defect was found by a human doing it by hand.
+        ("the baseline is never run",
+         "    reason = baseline_is_green(gate, run=run, no_cargo=no_cargo)",
+         "    reason = None"),
+        ("a red baseline is reported as surviving rules",
+         "        return -(len(rows) or 1)", "        return len(rows) or 1"),
+        # M5 -- `CHILD_TIMEOUT_S` was configured and never caught, so a slow
+        # child aborted the run with a raw traceback.
+        ("the timeout handler removed",
+         "        except subprocess.TimeoutExpired:\n"
+         "            # A timeout is a FINDING about that mutation, not the end of the",
+         "        except ValueError:\n"
+         "            # A timeout is a FINDING about that mutation, not the end of the"),
+        # M6 -- D-428's own fix was unguarded: without the exclusion every row of
+        # this table goes red for a reason unrelated to the rule.
+        ("the leftover check stops excluding this file's copy",
+         "    leftover = [q for q in SCRIPTS.glob(\".bite-*.py\") "
+         "if q.name != Path(__file__).name]",
+         "    leftover = list(SCRIPTS.glob(\".bite-*.py\"))"),
         # M4 -- `--self-test` drives `run_rust` three times and the pre-commit
         # hook runs `--self-test`, so an uninjectable writer meant 30 in-place
         # writes to the shipped crate sources on every commit.
         ("the rust writer stops being injectable",
          "            (write or _write)(path, src.replace(find, repl, 1), like=raws[rel])",
          "            _write(path, src.replace(find, repl, 1), like=raws[rel])"),
-        # B2 -- the gate branch guards an empty filter; the `--rust` branch, the
-        # sole signal of the CI job it exists for, did not.
-        ("the --rust empty-filter guard removed",
-         "        if not selected:", "        if False:"),
+        # B2 -- `--rust --only <nothing>` executed zero mutations and printed
+        # "every Rust mutation reddened its test" with exit 0: the sole signal
+        # of the CI job that mode exists for, reporting success having done
+        # nothing. One guard now, mode-aware, ahead of any work.
+        ("the empty-filter guard stops seeing the rust table",
+         "    rows_for = (lambda: RUST_MUTATIONS) if args.rust else (",
+         "    rows_for = (lambda: []) if args.rust else ("),
         ("the child environment is not forwarded",
          "            env=_child_env(no_cargo)))", "            env=None))"),
         ("the dirty-tree refusal removed",
@@ -457,6 +512,14 @@ RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
      "            (source_value as i64).saturating_mul(self.factor_milli as i64) / (self.divisor as i64)",
      "            (source_value as i64).saturating_mul(self.factor_milli as i64).div_euclid(self.divisor as i64)",
      "a_negative_derivation_truncates_toward_zero"),
+    # M10 -- `order_key`'s middle component is the submitting plugin. Layer and
+    # index each had a case; the plugin did not, so a constant survived the whole
+    # 293-test suite. One plugin cannot show a key that sorts by plugin.
+    ("order_key stops sorting by submitting plugin",
+     "crates/actor-hub/src/fold.rs",
+     "    (c.fold_layer.get(), c.source.get(), idx)",
+     "    (c.fold_layer.get(), 0, idx)",
+     "contributions_at_one_layer_are_ordered_by_submitting_plugin"),
     ("an exact bound min==max wrongly refused",
      "crates/actor-hub/src/registry.rs",
      "            && b.min > b.max",
@@ -494,6 +557,26 @@ def run_rust(only: str | None = None, run=None, write=None) -> tuple[int, str | 
         return 0, ("refusing to mutate files that are already modified: "
                    f"{dirty}. Commit or stash them first.")
     print(f"\ncrates/actor-hub  ({len(rows)} Rust mutation(s))")
+    # The Rust half needs the same guard: a crate whose suite is already red
+    # reddens every mutation for free.
+    if run is None:
+        if shutil.which("cargo") is None:
+            # **No toolchain is a SKIP, not a crash.** The baseline probe added
+            # with this guard called cargo unconditionally and raised
+            # `FileNotFoundError` on every machine without Rust -- including the
+            # one CI runs the gate half on, which is exactly the population the
+            # degrade-safety rule exists for. A guard that cannot run without
+            # the thing it guards is not degrade-safe.
+            return 0, "cargo is not on PATH, so the Rust mutations were not run"
+        try:
+            probe = subprocess.run(
+                ["cargo", "test", "-p", "actor-hub", "--test", "fold_survivors"],
+                cwd=REPO, capture_output=True, text=True, timeout=CHILD_TIMEOUT_S)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return 0, f"the unmutated fold_survivors suite could not be run: {e}"
+        if probe.returncode != 0:
+            return len(rows) or 1, ("the UNMUTATED fold_survivors suite already fails "
+                                    "— every mutation below would be red for that reason")
     originals: dict[str, str] = {}
     raws: dict[str, bytes] = {}
     green = 0
@@ -630,9 +713,52 @@ def _mutate_and_run(gate: str, find: str, repl: str, run=None,
     return False, "self-test stayed GREEN"
 
 
+def baseline_is_green(gate: str, run=None, no_cargo: bool = False) -> str | None:
+    """None when the gate's UNMUTATED self-test passes; the reason otherwise.
+
+    **A mutation run against a red baseline reports total success.** Every row
+    goes RED whatever the mutation does -- including a mutation that changes
+    nothing -- so "all N mutations reddened their self-test" becomes a statement
+    about the suite being broken rather than about the rules biting.
+
+    This is not hypothetical and it is not a near miss. A previous round shipped
+    a case that failed on any machine without a Rust toolchain; CI runs this
+    harness with `--no-cargo`, which is exactly such a machine; and the harness
+    reported **47 of 47 red** while three semantically NULL mutations were also
+    red. The defect was found by a human running those null mutations by hand,
+    and nothing replaced the human -- so the fix closed the instance and left the
+    class with no detector at all.
+
+    Running the baseline is that detector, and it costs one child per gate.
+    """
+    src = SCRIPTS / f"{gate}.py"
+    runner = run or (lambda p: subprocess.run(
+        [sys.executable, str(p), "--self-test"], cwd=REPO, capture_output=True,
+        text=True, timeout=CHILD_TIMEOUT_S, env=_child_env(no_cargo)))
+    try:
+        out = runner(src)
+    except subprocess.TimeoutExpired:
+        return f"the unmutated self-test did not finish within {CHILD_TIMEOUT_S}s"
+    if out.returncode != 0:
+        first = next((l.strip() for l in (out.stdout or "").splitlines()
+                      if l.strip().startswith("FAIL")), "")
+        return (f"the UNMUTATED self-test already fails (rc={out.returncode})"
+                + (f": {first}" if first else "")
+                + " — every mutation below would be red for that reason")
+    return None
+
+
 def run_gate(gate: str, run=None, only: str | None = None, no_cargo: bool = False) -> int:
     rows = [r for r in MUTATIONS[gate] if only is None or only.lower() in r[0].lower()]
     print(f"\n{gate}" + (f"  ({len(rows)}/{len(MUTATIONS[gate])} matching {only!r})" if only else ""))
+    reason = baseline_is_green(gate, run=run, no_cargo=no_cargo)
+    if reason:
+        # NEGATIVE, so the summary can say what actually happened. Reporting a
+        # red baseline as "those rules have no case and can be deleted with the
+        # suite green" is a false statement about the rules, and it points the
+        # reader at the wrong file.
+        print(f"  BASELINE  {reason}")
+        return -(len(rows) or 1)
     green = 0
     for label, find, repl in rows:
         red, note = _mutate_and_run(gate, find, repl, run=run, no_cargo=no_cargo)
@@ -726,6 +852,20 @@ def self_test() -> int:
     # m7 -- the reporting path. Every one of these was deletable with the suite
     # green, including "the mutation is never applied at all": a harness that had
     # stopped mutating reported every rule fine and looked like success.
+    # **A TIMEOUT is a finding about that mutation, not the end of the run.**
+    # `CHILD_TIMEOUT_S` was configured and never caught, so the documented local
+    # invocation aborted at mutation 11 of 42 with a raw traceback and 47
+    # mutations never executed -- reported by nothing.
+    def _times_out(_):
+        raise subprocess.TimeoutExpired(cmd="probe", timeout=CHILD_TIMEOUT_S)
+
+    red, note = _mutate_and_run(gate, find, repl, run=_times_out)
+    if red or "did not finish" not in note:
+        failures += 1
+        print(f"  FAIL a timed-out child must be a finding, not a crash: {note!r}")
+    else:
+        print("  ok  a timed-out child is reported, and the run continues")
+
     same, note = _mutate_and_run(gate, find, find)
     if same or "nothing was mutated" not in note:
         failures += 1
@@ -733,17 +873,24 @@ def self_test() -> int:
     else:
         print("  ok  a replacement that changes nothing is reported, not run")
 
-    if quietly(lambda: run_gate(gate, run=lambda _: _R(0), only="the pragma")) == 0:
+    # The injected runner answers by PATH: the unmutated original is green and
+    # only the `.bite-` copy carries the verdict under test. A runner that
+    # answered the same for both would fail the baseline and never reach the
+    # rows -- which is the guard working, not the case.
+    def _by_path(rc):
+        return lambda path: _R(rc if Path(path).name.startswith(".bite-") else 0)
+
+    if quietly(lambda: run_gate(gate, run=_by_path(0), only="the pragma")) == 0:
         failures += 1
         print("  FAIL run_gate did not count a surviving mutation")
     else:
         print("  ok  run_gate counts survivors")
-    if quietly(lambda: run_gate(gate, run=lambda _: _R(1), only="the pragma")) != 0:
+    if quietly(lambda: run_gate(gate, run=_by_path(1), only="the pragma")) != 0:
         failures += 1
         print("  FAIL run_gate counted a reddened mutation as a survivor")
     else:
         print("  ok  run_gate does not count a reddened mutation")
-    if quietly(lambda: run_gate(gate, run=lambda _: _R(1), only="@@ MATCHES NOTHING @@")) != 0:
+    if quietly(lambda: run_gate(gate, run=_by_path(1), only="@@ MATCHES NOTHING @@")) != 0:
         failures += 1
         print("  FAIL an empty filter must select nothing, not report success")
     else:
@@ -796,34 +943,61 @@ def self_test() -> int:
         print("  ok  a surviving Rust mutation is counted")
 
     # The restore is not optional: `--rust` mutates the real crate in place.
-    # This one keeps the REAL writer -- proving the restore needs real bytes --
-    # but on a SINGLE mutation rather than all ten.
-    before = {rel: _raw(REPO / rel) for _, rel, _, _, _ in RUST_MUTATIONS}
-    quietly(lambda: run_rust(run=_rust_run(1), only="a refused derivation"))
-    after = {rel: _raw(REPO / rel) for rel in before}
-    if after != before:
-        failures += 1
-        changed = [r for r in before if before[r] != after[r]]
-        print(f"  FAIL --rust left the tree modified: {changed}")
-    else:
-        print(f"  ok  --rust restores all {len(before)} crate file(s) byte for byte")
+    # **The write/restore round trip, proved on a TEMP file.** The previous
+    # version kept the real writer on one real crate file, so `--self-test` --
+    # which the pre-commit hook runs on every staged `scripts/*.py` -- still
+    # wrote `fold.rs` twice, bypassing the dirty-tree refusal because that call
+    # site passes `run=`. Proving a round trip does not require touching the
+    # shipped sources, and it covers a case the crate files cannot: **CRLF**,
+    # whose re-application in `_write` has never had one.
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        for label, raw in (("LF", b"line one\nline TWO\n"),
+                           ("CRLF", b"line one\r\nline TWO\r\n")):
+            f = Path(d) / f"probe-{label}.txt"
+            f.write_bytes(raw)
+            original = _raw(f)
+            _write(f, _read(f).replace("TWO", "THREE", 1), like=original)
+            mutated = _raw(f)
+            f.write_bytes(original)
+            if mutated == original:
+                failures += 1
+                print(f"  FAIL {label}: the mutation did not change the file")
+            elif label == "CRLF" and b"\r\n" not in mutated:
+                failures += 1
+                print("  FAIL CRLF: the newline convention was not re-applied")
+            elif _raw(f) != original:
+                failures += 1
+                print(f"  FAIL {label}: the restore was not byte-exact")
+            else:
+                print(f"  ok  {label}: mutate and restore is byte-exact")
 
-    # **Counting the WRITES, not comparing the content.** The restore makes the
-    # content identical either way, so the byte-for-byte case is blind to a run
-    # that wrote 30 times and put everything back. This counts.
-    seen_writes: list[str] = []
+    # ...and NOTHING under `crates/` is written by a self-test run.
+    crate_writes: list[str] = []
     real_write = globals()["_write"]
-    globals()["_write"] = lambda path, text, like=None: seen_writes.append(str(path))
+    real_bytes = Path.write_bytes
+
+    def _spy_write(path, text, like=None):
+        crate_writes.append(str(path))
+        return real_write(path, text, like=like)
+
+    def _spy_bytes(self, data):
+        crate_writes.append(str(self))
+        return real_bytes(self, data)
+
+    globals()["_write"] = _spy_write
+    Path.write_bytes = _spy_bytes
     try:
         quietly(lambda: run_rust(run=_rust_run(1), write=nowrite))
     finally:
         globals()["_write"] = real_write
-    into_crates = [w for w in seen_writes if "actor-hub" in w and "src" in w]
+        Path.write_bytes = real_bytes
+    into_crates = [w for w in crate_writes if "actor-hub" in w and "src" in w]
     if into_crates:
         failures += 1
-        print(f"  FAIL an injected-writer run still wrote {len(into_crates)} crate file(s)")
+        print(f"  FAIL a self-test run wrote {len(into_crates)} crate file(s)")
     else:
-        print("  ok  an injected-writer run writes no crate source at all")
+        print("  ok  a self-test run writes no crate source, by any route")
 
     # **A refusal is not a survivor count.** The first version returned `2` as a
     # sentinel and `main` printed "2 Rust mutation(s) SURVIVED" for a run in
@@ -854,8 +1028,13 @@ def self_test() -> int:
     calls: list[dict] = []
 
     def _spy(cmd, **kw):
+        # rc=0 for the BASELINE child (the unmutated original), rc=1 for the
+        # mutated copy. A spy that fails everything fails the baseline, so
+        # `run_gate` returns before launching the child this case observes --
+        # and `calls[-1]` is then the baseline's own call site, which forwards
+        # correctly, so the case passes while proving nothing.
         calls.append(kw)
-        return _R(1)
+        return _R(0 if not any(".bite-" in str(a) for a in cmd) else 1)
 
     import subprocess as _sp
     real_run = _sp.run
@@ -870,17 +1049,40 @@ def self_test() -> int:
     finally:
         _sp.run = real_run
 
-    for label, env in (("run_gate", with_flag), ("main", via_main)):
-        if env is None or shutil.which("cargo", path=env.get("PATH", "")) is not None:
-            failures += 1
-            print(f"  FAIL --no-cargo did not reach the child via {label}")
-        else:
-            print(f"  ok  --no-cargo reaches the child via {label}")
-    if without is not None:
+    # **Assert the FORWARDING, not cargo's absence.** Checking that the child's
+    # PATH has no cargo is vacuous on a machine that has none -- which is
+    # precisely the machine CI runs this on, so in the only automatic runner the
+    # assertion could not fail. A sentinel proves the value travelled.
+    marker = {"PATH": "", "LOREWEAVE_CHILD_ENV_MARKER": "1"}
+    real_child_env = globals()["_child_env"]
+    globals()["_child_env"] = lambda flag: marker if flag else None
+    calls.clear()
+    _sp.run = _spy
+    try:
+        quietly(lambda: run_gate(gate, only="the pragma", no_cargo=True))
+        forwarded = calls[-1].get("env") if calls else "no child was launched"
+        quietly(lambda: run_gate(gate, only="the pragma", no_cargo=False))
+        not_forwarded = calls[-1].get("env") if calls else "no child was launched"
+    finally:
+        _sp.run = real_run
+        globals()["_child_env"] = real_child_env
+    if forwarded is not marker:
+        failures += 1
+        print(f"  FAIL --no-cargo's environment did not reach the child: {forwarded}")
+    else:
+        print("  ok  --no-cargo's environment reaches the child (sentinel observed)")
+    if not_forwarded is not None:
         failures += 1
         print("  FAIL without --no-cargo the child must inherit the environment")
     else:
         print("  ok  without --no-cargo the environment is inherited unchanged")
+    # ...and the helper itself removes every entry carrying cargo.
+    stripped_env = real_child_env(True)
+    if stripped_env is None or shutil.which("cargo", path=stripped_env.get("PATH", "")):
+        failures += 1
+        print("  FAIL _child_env left cargo reachable")
+    else:
+        print("  ok  _child_env removes every PATH entry carrying cargo")
 
     # ...and the child is invoked with the arguments the mode needs. Nothing
     # asserted the cargo command shape, so dropping `-p actor-hub`, `--exact` or
@@ -890,7 +1092,8 @@ def self_test() -> int:
     def _spy_argv(cmd, **kw):
         # `_rust_dirty` shells out to `git status` first, so only the cargo
         # invocation is the subject here.
-        if list(cmd)[:1] == ["cargo"]:
+        # The MUTATION invocation, not the baseline probe that now precedes it.
+        if list(cmd)[:1] == ["cargo"] and "--exact" in list(cmd):
             argv_seen.append(list(cmd))
             return _R(1)
         return real_run(cmd, **kw)
@@ -902,7 +1105,11 @@ def self_test() -> int:
         _sp.run = real_run
     want = ["cargo", "test", "-p", "actor-hub", "--test", "fold_survivors",
             "a_refused_derivation_is_recorded_with_its_row_index", "--", "--exact"]
-    if not argv_seen or argv_seen[0] != want:
+    if shutil.which("cargo") is None:
+        # No toolchain: `run_rust` refuses before invoking anything, which is
+        # the degrade-safe answer and leaves this case nothing to observe.
+        print("  ok  --rust's cargo argv: not observable without a toolchain (skipped)")
+    elif not argv_seen or argv_seen[0] != want:
         failures += 1
         print(f"  FAIL the cargo command is not what --rust needs: {argv_seen[:1]}")
     else:
@@ -917,6 +1124,40 @@ def self_test() -> int:
     else:
         print("  ok  --rust refuses a filter that selects nothing")
 
+    # ...and a filter that DOES match must not be refused. Without this the
+    # guard could simply never see the Rust table and both directions would look
+    # identical, because "matched nothing" and "cannot see the table" produce the
+    # same answer for a filter that matches nothing.
+    err = _io.StringIO()
+    with contextlib.redirect_stdout(_io.StringIO()), contextlib.redirect_stderr(err):
+        main(argv=["--rust", "--only", "a refused derivation"])
+    if "no mutation matched" in err.getvalue():
+        failures += 1
+        print("  FAIL a --rust filter that MATCHES was refused as empty")
+    else:
+        print("  ok  a --rust filter that matches is not refused")
+
+
+    # **The baseline guard**, both directions. Without it the harness cannot
+    # distinguish "every rule bites" from "the suite is already broken", and CI's
+    # `--no-cargo` job is the only automatic runner -- so a red baseline there
+    # reported 47 of 47 red while three NULL mutations were also red.
+    if baseline_is_green(gate, run=lambda _: _R(0)) is not None:
+        failures += 1
+        print("  FAIL a green baseline was reported as red")
+    else:
+        print("  ok  a green baseline lets the mutations speak")
+    why = baseline_is_green(gate, run=lambda _: _R(1))
+    if not why or "UNMUTATED" not in why:
+        failures += 1
+        print(f"  FAIL a red baseline was not reported: {why!r}")
+    else:
+        print("  ok  a red baseline is reported instead of 47 free reds")
+    if quietly(lambda: run_gate(gate, run=lambda _: _R(1), only="the pragma")) >= 0:
+        failures += 1
+        print("  FAIL a red baseline must not be counted as surviving rules")
+    else:
+        print("  ok  a red baseline is not reported as rules without cases")
 
     if failures:
         print(f"\ngate-bite-harness --self-test: {failures} rule(s) did not behave")
@@ -939,17 +1180,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.self_test:
         return self_test()
 
+    gates = [args.gate] if args.gate else sorted(MUTATIONS)
+    unknown = [g for g in gates if g not in MUTATIONS]
+    if unknown:
+        print(f"gate-bite-harness: no mutation table for {unknown}", file=sys.stderr)
+        return 2
+    # **The empty-filter guard runs FIRST.** Running the gates and then noticing
+    # that nothing was selected spends a baseline child per gate to answer a
+    # question that needed no work at all -- and reports the wrong exit code.
+    rows_for = (lambda: RUST_MUTATIONS) if args.rust else (
+        lambda: [r for g in gates for r in MUTATIONS[g]])
+    total = len([r for r in rows_for()
+                 if args.only is None or args.only.lower() in r[0].lower()])
+    if not total:
+        print(f"gate-bite-harness: no mutation matched {args.only!r} — a filter that "
+              "selects nothing must not report success", file=sys.stderr)
+        return 2
+
     if args.rust:
-        # **The same empty-filter guard the gate branch has.** Without it,
-        # `--rust --only <nothing>` executed zero mutations and printed *"every
-        # Rust mutation reddened its test"* with exit 0 -- the sole signal of the
-        # CI job this mode exists for, reporting success having done nothing.
-        selected = [r for r in RUST_MUTATIONS
-                    if args.only is None or args.only.lower() in r[0].lower()]
-        if not selected:
-            print(f"gate-bite-harness: no Rust mutation matched {args.only!r} — a "
-                  "filter that selects nothing must not report success", file=sys.stderr)
-            return 2
         survivors, refusal = run_rust(only=args.only)
         if refusal:
             print(f"gate-bite-harness: {refusal}", file=sys.stderr)
@@ -961,19 +1209,13 @@ def main(argv: list[str] | None = None) -> int:
         print("\ngate-bite-harness: every Rust mutation reddened its test")
         return 0
 
-    gates = [args.gate] if args.gate else sorted(MUTATIONS)
-    unknown = [g for g in gates if g not in MUTATIONS]
-    if unknown:
-        print(f"gate-bite-harness: no mutation table for {unknown}", file=sys.stderr)
-        return 2
-    survivors = sum(run_gate(g, only=args.only, no_cargo=args.no_cargo) for g in gates)
-    total = sum(len([r for r in MUTATIONS[g]
-                     if args.only is None or args.only.lower() in r[0].lower()])
-                for g in gates)
-    if not total:
-        print(f"gate-bite-harness: no mutation matched {args.only!r} — a filter that "
-              "selects nothing must not report success", file=sys.stderr)
-        return 2
+    results = [run_gate(g, only=args.only, no_cargo=args.no_cargo) for g in gates]
+    if any(v < 0 for v in results):
+        print("\ngate-bite-harness: a gate's UNMUTATED self-test is already red, so "
+              "this run proves NOTHING about whether its rules bite. Fix the suite "
+              "first.", file=sys.stderr)
+        return 1
+    survivors = sum(results)
     if survivors:
         print(f"\ngate-bite-harness: {survivors}/{total} mutations SURVIVED — those "
               "rules have no case and can be deleted with the suite green",

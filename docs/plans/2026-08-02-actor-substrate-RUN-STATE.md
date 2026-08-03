@@ -13,7 +13,7 @@
 > | `U-9` · `U-10` | `scripts/hashed-substrate-float-gate.py` · `scripts/citation-gate.py`, both wired pre-commit, both with a passing `--self-test` |
 >
 > **Evidence, every number re-derived at the moment of writing** — because the previous two versions of
-> this block were stale by the commit that contained them (`D-343`, `D-350`): **293 Rust tests** green
+> this block were stale by the commit that contained them (`D-343`, `D-350`): **294 Rust tests** green
 > across the touched crates · `dp-kernel --lib` **315**, unchanged by the `GoneState` move · the Go mirror
 > `contracts/entity_status` **ok** · clippy clean · `cargo doc` **0 warnings** · every mutation in
 > `scripts/gate-bite-harness.py` reds its gate's self-test (run it; no count is asserted here, because a
@@ -120,7 +120,7 @@
 > **WRONG** (correct it) · **UNDECIDED** (decide it) · **UNWRITTEN** (build it) · **PREMATURE** (a real
 > question needing a feature that does not exist — give it a named trigger, do not answer it).
 
-<!-- actor-hub-figures:end -->
+<!-- actor-hub-figures:end next-session -->
 
 ---
 
@@ -1027,6 +1027,22 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 | **D-309** `[E]` | **`bound` on `DerivationRow` is kept, and the contradiction `R-19` raised is GONE rather than tolerated.** `D-279` flagged the row's inline bound as *"a THIRD ceiling model, in the round whose §8 is titled 'Ceilings — one model'"*. **The scope seal deleted §8**, so there is no longer a "one model" claim for it to contradict. What remains is stated exactly: the bound limits **the amount this row contributes**, not the quantity — which the shipped move-range derivation demonstrably needs (`clamp(base + speed / per_tile, 1, max)`) — and the quantity **ceiling model** stays `U-4`, another feature's. |
 | **D-310** `[E]` | **The fold's honest limit, written into the code rather than discovered later: a derivation reads a MODIFIER-ONLY value.** Three passes — check every row, resolve from modifier rows, turn derivations into contributions against those values, re-resolve and emit. **A derivation of a derivation is therefore inexpressible**, and that is the shipped shape (`resolve_block` runs its modifier loop and *then* derives `MoveRange` from the finalised `Speed`), chosen because the alternative is a dependency solver the hub has no basis to design. Registered as `S-13`. |
 
+### 6z. ROUND 14 — the verifier named the shape: every fix was the last one with a token swapped (2026-08-02)
+
+| # | Decision |
+|---|---|
+| **D-432** `[META]` | **🔴 THE FINDING THAT MATTERS IS THE SHAPE, and a verifier stated it outright: *every BLOCKING and most MAJOR findings are the previous fix with one token substituted*.** The END marker was hardened and the START marker was not · the DUPLICATE route to premature termination was closed and the MOVE route left open · the INSTANCE of a red baseline was fixed and the CLASS left with no detector · the leftover exclusion was added and left unguarded · the writes were counted at ONE call site and not across the run. **Five rounds of fixing the instance in front of me.** This round is written against the classes, and the entries below say which class each closes. |
+| **D-433** `[META]` | **🔴 BLOCKING. The mutation harness could not tell *"every rule bites"* from *"the suite is already broken"* — and CI is its only automatic runner.** It never ran an UNMUTATED baseline: `_mutate_and_run` checks that the copy DIFFERS, never that the original is GREEN. Reproduced by re-introducing `D-427`'s defect: **47 of 47 red, harness rc 0**, with three semantically NULL mutations also red. `D-427` was found by a human running null mutations by hand, and **nothing replaced the human**. ⇒ `baseline_is_green` runs the unmutated self-test first, costs one child per gate, and returns a NEGATIVE count so the summary stops saying *"those rules have no case"* about a broken suite. |
+| **D-434** `[E]` | **🔴 BLOCKING. `_scope_span`'s START marker had NEITHER of the two rules the END marker got.** A raw `find`, so documenting `### 6-BUILD` in an inline code span moved the block 260 lines up — and the message then blamed the END marker for being duplicated, pointing the reader at the wrong file with a remedy (delete a table header) that would have been wrong. ⇒ **one function, `_marker_hits`, for both markers**: fence-blanked text so a fenced EXAMPLE is a mention, line-start so prose and inline spans are mentions, exactly-once so a stray copy is loud — and a raw fallback so an unterminated fence, which blanks everything after it, cannot refuse a whole document. |
+| **D-435** `[E]` | **The exactly-once rule and the line-start rule each introduced a FRESH cry-wolf**, in a file whose docstring counts four prior cry-wolves as its worst recurring defect. The window was the rest of the FILE, so a fenced example 900 lines below the block it supposedly ends made **the decision record unable to show its own sentinel**; `> ` is not whitespace, so the sentinel written inside the RUN-STATE's blockquote — where it belongs — was not recognised; and `| # | Slice |` is a REPEATING structural shape, so adding a second slice table refused the commit. ⇒ fence-blanked search, a blockquote-tolerant prefix, and **that block ends on a sentinel too**. Every sentinel is now NAMED per block, because one shared marker makes *"exactly once"* meaningless the moment a second block wants one. |
+| **D-436** `[E]` | **And the LAST route to a silently shortened scope: MOVING the single sentinel up.** The empty-block rule catches only TOTAL collapse; one paragraph higher leaves a claim behind, so it stays quiet while everything below goes ungoverned — the defect the sentinel replaced, reached by a third road after the incidental-`---` road and the duplicate road were closed. ⇒ each block DECLARES the figures it must state (`must_claim`), so the question stops being *"did anything match"* and becomes *"did THESE match"*. It supersedes the empty-block rule, which is deleted rather than left as a rule that can no longer fail. |
+| **D-437** `[META]` | **🔴 BLOCKING. `--self-test` still wrote the shipped Rust sources — and the case certifying otherwise was structurally blind.** It counted only its OWN `run_rust` call and passed `write=nowrite`, so `(write or _write)` short-circuits and the monkeypatched writer is unreachable **by construction**: a per-call assertion certifying a run the pre-commit hook never performs. ⇒ the round trip is proved on a TEMP file — which also gives `_write`'s CRLF re-application its first case — and a second case spies `_write` AND `Path.write_bytes` to require zero writes under `crates/` by any route. |
+| **D-438** `[META]` | **🔴 BLOCKING. All five rows of the self-mutation table were vacuous, and the fix for that was itself unguarded.** `D-428` excluded this file's own `.bite-` copy from the leftover check; removing that exclusion was a SURVIVOR, and with it removed a semantically-null mutation goes red again — so the remedy for *"19 of 19 harness mutations surviving"* could return to being incapable of failing and nothing would notice. ⇒ a mutation row for the exclusion itself. |
+| **D-439** `[E]` | **`--no-cargo`'s control was machine-dependent and therefore vacuous in CI.** The case asserted cargo's ABSENCE from the child's PATH — already true on the machine CI runs this on, so in the only automatic runner it could not fail. ⇒ a sentinel environment proves the value TRAVELLED, and a separate case proves the helper strips what it claims. Also fixed: the Rust baseline probe I added with `D-433` called cargo unconditionally and raised `FileNotFoundError` on every machine without Rust — a degrade-safety defect **inside the degrade-safety round's own new guard**. |
+| **D-440** `[E]` | **`CHILD_TIMEOUT_S` was configured and never caught**, so the documented local invocation aborted at mutation 11 of 42 with a raw traceback and **47 mutations never ran, reported by nothing**. It had no case and no mutation row; both now exist, and a timed-out child is a finding about that mutation rather than the end of the run. |
+| **D-441** `[E]` | **A tenth Rust survivor: `order_key`'s middle component is the SUBMITTING PLUGIN, and nothing tested it.** `M-13` states the order as (fold layer, plugin, submission index); layer and index had cases, the plugin did not, so a constant survived the whole suite. **One plugin cannot show a key that sorts by plugin** — the fixture has to submit from two with submission order inverted against plugin order. Pinned and bitten. |
+| **D-442** `[META]` | **And two claims of mine were false.** *"All repo gates OK"* — `gate-wiring-gate --run-all` was red at the previous commit. Two bolded figures inside the governed handoff block were ungoverned five lines above the sentence claiming every figure there is emitted by a checker — the **third** recurrence of that class in that block, in text that itself replaced a sentence a verifier had already falsified. ⇒ the counts are gone rather than corrected: nothing measures them, and a figure with no measurement rule goes stale by construction. |
+
 ### 6y. ROUND 13 — the sentinel reproduced the defect it replaced (2026-08-02)
 
 | # | Decision |
@@ -1319,7 +1335,7 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 (cold-start agent that did not write the code) · this row filled in.
 
 > **ALL ELEVEN SLICES CLOSED.** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules
-> -p ruleset-loader` = **293 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
+> -p ruleset-loader` = **294 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
 > `GoneState` move) · the Go mirror `contracts/entity_status` **ok** · clippy clean · `cargo doc` **0
 > warnings** · every mutation in `scripts/gate-bite-harness.py` reds its gate's self-test · **every
 > cold-start round is recorded in §6e..§6v with its own tally, and no aggregate is repeated here** ·
@@ -1348,6 +1364,8 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 > read it (*"81 findings over five rounds"* at round seven), because the gate covered the header and the
 > handoff and not the board two screens below them. **A figure outside a checker's scope is a figure
 > nobody is reading.**
+
+<!-- actor-hub-figures:end slice-board -->
 
 | # | Slice | Contract line | EVIDENCE — test · bite · verifier |
 |---|---|---|---|
