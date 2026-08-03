@@ -1,7 +1,7 @@
 # Actor Hub — feature #1
 
 **Round:** 2026-08-02 · **Status:** design sealed · **feature #1 BUILT** — [`crates/actor-hub`](../../../crates/actor-hub)
-**Run state:** [`../../plans/2026-08-02-actor-substrate-RUN-STATE.md`](../../plans/2026-08-02-actor-substrate-RUN-STATE.md) — `D-1`..`D-446`
+**Run state:** [`../../plans/2026-08-02-actor-substrate-RUN-STATE.md`](../../plans/2026-08-02-actor-substrate-RUN-STATE.md) — `D-1`..`D-451`
 
 > **Actor hub is feature #1 of roughly a thousand, across dozens of categories.**
 > **Features are PLUGINS. The actor is the HUB.** The hub's job is to make adding feature #2 cheap —
@@ -18,6 +18,8 @@
 | [`2026-08-02-seams-and-triggers.md`](2026-08-02-seams-and-triggers.md) | 66 | **18** measured seams to features that do not exist yet — a register, **not a design** |
 
 **425 lines total.** They were 1 107 before the scope seal; the cut is recorded in `D-292`..`D-295`.
+
+<!-- actor-hub-figures:end index -->
 
 ## Read this to REUSE THE ANALYSIS — `analysis/`
 

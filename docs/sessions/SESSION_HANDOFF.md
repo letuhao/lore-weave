@@ -13,7 +13,7 @@
 > `feat/frontend-tools-mcp-migration` and is left untouched.
 
 **The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
-per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-446` decision record
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-451` decision record
 live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
 the two design contracts that are its only specification are in
 [`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).
@@ -60,7 +60,7 @@ the number exposed a second layer: that citation was set in quotation marks and 
 **a paraphrase in quotation marks is why nobody checked the number** — a quotation is supposed to be frozen. Six commits carried the damage, from two
 different start points — `_index.md` from `2792717cd`, the RUN-STATE from `4f28c35e1`. The remedy is mechanical (`D-385`): the live range may
 appear only inside a current-state block. **The two-consecutive-clean-rounds rule is not met, and this
-block does not claim it is.** **Fifteen rounds; every one REFUTED.** Round 15's twin-guard class is closed (`D-443`..`D-446`); **six of its findings are measured, reproduced and NOT fixed** — see [§6ab of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md), which lists them with their reproductions. They are OPEN, not deferred: none clears the defer gate. Round 10: the round-9 mechanism tested SUBSTRING
+block does not claim it is.** **Fifteen rounds; every one REFUTED.** Round 15 is fully discharged: the twin-guard class in `D-443`..`D-446`, its remaining six findings in `D-447`..`D-451`. The sharpest was the raw fallback reaching the marker search and not the content blanking — the same rule, two consumers, one fixed. Round 10: the round-9 mechanism tested SUBSTRING
 membership where it needed a POSITION SPAN, so it was blind in two of the three files it guards —
 including the very line it had just repaired — and a wider mutation set found **nine actionable
 survivors in `crates/actor-hub`**, the crate nine rounds had called untouched. Round 11: the mutation

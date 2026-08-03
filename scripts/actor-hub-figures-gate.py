@@ -143,7 +143,7 @@ SCOPES: tuple[tuple[str, str, str, frozenset[str]], ...] = (
     # board two screens below them. **A figure outside a checker's scope is a
     # figure nobody is reading**, which is `_index.md`'s defect one file along.
     (RUN_STATE, "### 6-BUILD", END("slice-board"), frozenset({"rust_tests"})),
-    (INDEX, "# Actor Hub", "\n## Read this to REUSE",
+    (INDEX, "# Actor Hub", END("index"),
      frozenset({"max_decision_id", "max_seam_id", "contract_hub_lines",
                 "contract_substrate_lines", "contract_seams_lines",
                 "contract_total_lines"})),
@@ -289,6 +289,11 @@ CLAIMS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+# A bolded integer -- the shape this project states every figure in. Anything
+# matching it inside a governed block and read by no `CLAIMS` row is a figure
+# nobody checks, which is the class three rounds found by hand.
+BOLD_INT_RE = re.compile(r"\*\*\d[\d\s]*\*\*")
+
 # An italicised quotation, and an inline HTML comment. See `_claimable`.
 QUOTE_RE = re.compile(r'\*"[^"]*"\*')
 COMMENT_RE = re.compile(r"<!--.*?-->")
@@ -341,6 +346,23 @@ def _advance(open_mark: str | None, line: str) -> tuple[str | None, bool]:
             and not (FENCE_RE.match(line).group("info") or "").strip()):
         return None, True
     return open_mark, True
+
+
+# A fence marker rewritten so `_fence_mark` no longer recognises it. Same
+# length is not required -- these lines are blanked either way -- but keeping the
+# text visible makes a debug dump readable.
+_MASK_FENCE = "<!-- fence -->"
+
+
+def _unpaired_opener(lines: list[str]) -> int | None:
+    """Index of a fence opener with no closer, or None if every one is paired."""
+    open_mark, at = None, None
+    for i, line in enumerate(lines):
+        after, is_mark = _advance(open_mark, line)
+        if is_mark and open_mark is None:
+            at = i
+        open_mark = after
+    return at if open_mark is not None else None
 
 
 def _fence_state(prefix: str) -> tuple[str | None, bool]:
@@ -424,6 +446,21 @@ def _claimable(block: str, quotes: bool = True, in_fence: str | None = None,
     # There is nothing to guess. The prefix says what the state is; `_fence_state`
     # reads it, and inside the window a plain toggle is then exactly right --
     # including for a fence that genuinely continues past the window's end.
+    # **An UNPAIRED opener inside the block is literal text.**
+    #
+    # `_marker_hits` already falls back to raw text when blanking hides every
+    # marker; the same input hitting the CONTENT blanking had no such fallback,
+    # so an unterminated fence blanked the rest of the block, `must_claim` fired,
+    # and the commit was refused with a diagnosis naming a cause that was not the
+    # cause -- "its end sentinel has probably moved UP" about a sentinel nobody
+    # touched. The fix was applied to one of the two consumers of the same rule,
+    # which is the defect this round exists to stop repeating.
+    #
+    # Not blanking a broken code sample can at worst report a figure inside it;
+    # blanking refuses the commit. Cry-wolf is the severe direction.
+    if in_fence is None and _unpaired_opener(lines) is not None:
+        lines = [_MASK_FENCE if _fence_mark(l) is not None else l for l in lines]
+
     out, open_mark = [], in_fence
     for line in lines:
         stripped = line.lstrip()
@@ -549,6 +586,24 @@ def _escape_derivation(governed: set[str], head: int, corpus=None) -> list[str]:
     return out
 
 
+INDENT_CODE = re.compile(r"^(?: {4}|\t)")
+
+
+def _indented_blanked(text: str) -> str:
+    """`text` with 4-space/tab indented lines blanked, offsets preserved.
+
+    Markdown has two literal forms and this file handled one. A marker shown in
+    an indented block is a MENTION exactly as a fenced one is; treating it as a
+    terminator refused a commit for documenting the marker.
+
+    A line inside a list item is also indented, so this is deliberately narrow:
+    it only ever REMOVES candidate markers, and `_marker_hits` falls back to raw
+    text when that removes them all.
+    """
+    return chr(10).join(
+        " " * len(l) if INDENT_CODE.match(l) else l for l in text.split(chr(10)))
+
+
 def _marker_hits(text: str, marker: str, start: int) -> list[int]:
     """Offsets where `marker` is a real marker, not a mention.
 
@@ -566,7 +621,12 @@ def _marker_hits(text: str, marker: str, start: int) -> list[int]:
         case is the behaviour that existed before fences were considered.
     """
     needle = marker.strip(chr(10))
-    for haystack in (_claimable(text, quotes=False, comments=False), text):
+    # An INDENTED (4-space) code block is markdown's OTHER literal form. Fenced
+    # examples were excluded and indented ones were not, so showing the sentinel
+    # indented -- which is how a plain-text example is written -- reported it as
+    # a duplicate and refused the commit. One literal form handled, its twin not.
+    for haystack in (_indented_blanked(_claimable(text, quotes=False, comments=False)),
+                     text):
         hits = [k for k in _all_occurrences(haystack, needle, start)
                 if _at_line_start(haystack, k, needle)]
         if hits:
@@ -585,12 +645,6 @@ def _all_occurrences(text: str, needle: str, start: int) -> list[int]:
 
 
 QUOTE_PREFIX = re.compile(r"^[ \t>]*")
-
-
-def _line_bounds(text: str, at: int) -> tuple[int, int]:
-    bol = text.rfind(chr(10), 0, at) + 1
-    eol = text.find(chr(10), at)
-    return bol, (len(text) if eol < 0 else eol)
 
 
 def _at_line_start(text: str, at: int, needle: str) -> bool:
@@ -785,6 +839,8 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
     # collapsing the board -- the block added *because* a stop-audit found a
     # stale figure outside every checker's scope -- was invisible.
     present: dict[tuple[str, str], set[str]] = {}
+    claim_spans: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    blanks: dict[tuple[str, str], str] = {}
     scopes = scopes if scopes is not None else SCOPES
 
     for doc, start_marker, end_marker, *rest in scopes:
@@ -814,8 +870,12 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
             continue
         block = _claimable(block, in_fence=opens_fenced, in_comment=opens_commented)
         present[(doc, start_marker)] = set()
+        claim_spans[(doc, start_marker)] = []
+        blanks[(doc, start_marker)] = block
         for pattern, key, label in CLAIMS:
             want = m.get(key)
+            for mo in re.finditer(pattern, block):
+                claim_spans[(doc, start_marker)].append(mo.span())
             for claimed in re.findall(pattern, block):
                 present[(doc, start_marker)].add(key)
                 # Keyed on the PATTERN, not the key: two rows share
@@ -849,6 +909,23 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
     # `---` above it produced ZERO findings. `--self-test` asserted this for the
     # real documents; production did not, so it held only at the moment someone
     # ran the self-test.
+    # **The set must be EXACT, not a lower bound.** `must_claim` is an
+    # enumeration and its sibling enumeration in this same file (`ESCAPE_DOCS`)
+    # is re-derived from the tree; this one was not, so emptying any scope's set
+    # left the suite green -- and a governed figure ADDED to a block was never
+    # named, which is what leaves a block's tail unprotected when the sentinel
+    # later moves above it. Reporting the surplus closes both: the day a figure
+    # appears, the set is told to grow.
+    for doc, start_marker, _e, *rest in (scopes if scopes is SCOPES else ()):
+        want = rest[0] if rest else frozenset()
+        surplus = sorted(present.get((doc, start_marker), set()) - want)
+        if surplus:
+            problems.append(
+                f"{doc}: the block at `{start_marker}` now states {surplus}, which "
+                "its `must_claim` set does not name — add them, or a later sentinel "
+                "move will orphan them silently"
+            )
+
     # **The figures each block MUST carry.** Moving the sentinel up by one
     # paragraph leaves a claim behind, so the empty-block rule -- which catches
     # only TOTAL collapse -- stays silent while everything below goes ungoverned.
@@ -868,6 +945,23 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
     # the new one does not, and a mutation deleting it stayed green. Superseded,
     # not forgotten: the message it used to print is strictly less informative
     # than "no longer states ['dp_kernel_lib_tests', ...]".
+
+    # **A bolded integer inside a governed block that NO rule reads.** Three
+    # separate rounds found one of these by hand -- the last was fixed by
+    # DELETING the figures, which is an instance fix with no detector. The block
+    # is `_claimable`-blanked first, so a quoted or fenced number is not a claim.
+    for (doc, start_marker), spans in claim_spans.items():
+        text = blanks.get((doc, start_marker), "")
+        for mo in BOLD_INT_RE.finditer(text):
+            if any(a <= mo.start() < b for a, b in spans):
+                continue
+            line = text.count(chr(10), 0, mo.start()) + 1
+            problems.append(
+                f"{doc}: `{mo.group(0)}` inside the block at `{start_marker}` "
+                f"(line {line} of the block) is read by no rule here — govern it "
+                "or stop stating it, because this block claims every figure in it "
+                "is checked"
+            )
 
     problems += _escaped_live_range(m, scopes=scopes, read=read)
 
@@ -979,11 +1073,18 @@ def self_test() -> int:
     check_block("an inline comment does not blind the lines after it",
                 "fine <!-- was **281 passed, 0 failed** --> today\n"
                 "`dp-kernel --lib` **300**", 1)
-    # A fence OPENED inside the block and never closed keeps running to the end
-    # of the block, because that is what it does in the document. Reporting the
-    # figure below it would be cry-wolf on a code sample.
-    check_block("a fence opened and not closed covers the rest of the block",
-                "```rust\nlet x = 1;\n\nthe count is **281 passed, 0 failed** today", 0)
+    # **An UNPAIRED opener is LITERAL TEXT, and the reasoning is a comparison
+    # of two cry-wolves rather than a preference.** Blanking the tail refuses
+    # the commit through `must_claim` with a diagnosis naming a cause that is
+    # not the cause -- "the sentinel has moved UP" about a sentinel nobody
+    # touched, which points at the wrong file and implies a wrong remedy. Not
+    # blanking reports "claims 281, measured 294" about a figure that IS in
+    # the document and DOES disagree: an accurate statement the author can act
+    # on, by fixing the figure or by closing the fence. An earlier version of
+    # this case asserted the opposite, before the refusal path existed to
+    # compare it against.
+    check_block("an unpaired fence opener is literal text, not a blanket",
+                "```rust\nlet x = 1;\n\nthe count is **281 passed, 0 failed** today", 1)
     # A block that BEGINS INSIDE a fence is no longer expressible: a marker in a
     # fenced region is a MENTION by design, so the scope cannot start there. The
     # property that case was reaching for -- prefix fence state carried into the
@@ -1249,6 +1350,23 @@ def self_test() -> int:
     else:
         print(f"  ok  the escape corpus walks {len(corpus)} documents, nested included")
 
+    # The `>` tolerance had NO SUBJECT: every shipped marker is at column 0, so
+    # dropping `>` from `QUOTE_PREFIX` left all four scopes byte-identical and
+    # the suite green -- NV-1, in the round that cites NV-1. The RUN-STATE's
+    # governed block IS a blockquote, so a marker written inside it is the shape
+    # the tolerance exists for.
+    quoted = "> # \u25b6\u25b6 NEXT SESSION STARTS HERE"
+    if not _at_line_start("prefix\n" + quoted, len("prefix\n") + 2, quoted):
+        failures += 1
+        print("  FAIL a blockquote-prefixed marker was not recognised")
+    else:
+        print("  ok  a marker inside a blockquote is still at the start of its line")
+    if _at_line_start("prefix\nsee " + quoted, len("prefix\nsee "), quoted):
+        failures += 1
+        print("  FAIL a marker after prose was treated as line-start")
+    else:
+        print("  ok  a marker after prose on the same line is not at line-start")
+
     # ── the marker rules, both markers, every route to a wrong block ─────────
     #
     # Written as a TABLE over (which marker, how it appears, what must happen),
@@ -1265,6 +1383,10 @@ def self_test() -> int:
          HANDOFF, END("game-tier"), "occurs 2 times"),
         ("a STRAY duplicate start marker is loud",
          RUN_STATE, "### 6-BUILD", "occurs 2"),
+        ("an end sentinel shown INDENTED is a mention",
+         HANDOFF, "    " + END("game-tier"), None),
+        ("a start marker shown INDENTED is a mention",
+         RUN_STATE, "    ### 6-BUILD", None),
         ("an end sentinel shown in a FENCE is a mention",
          RUN_STATE, "```\n" + END("next-session") + "\n```", None),
         ("a start marker shown in a FENCE is a mention",
@@ -1297,6 +1419,67 @@ def self_test() -> int:
         print(f"  FAIL a MOVED sentinel left the scope short and silent: {problems[:2]}")
     else:
         print("  ok  a moved sentinel is caught by the figures the block must state")
+
+    # **An UNTERMINATED fence must not refuse the commit**, and must not do it
+    # with a diagnosis naming a cause that is not the cause. The marker search
+    # got a raw fallback and the CONTENT blanking did not, so this input
+    # resolved its markers, blanked the block anyway, tripped `must_claim` and
+    # reported "its end sentinel has probably moved UP" about a sentinel nobody
+    # had touched.
+    def _unterminated_inside(text: str) -> str:
+        j = text.find("**Evidence:**", text.find("## ▶ GAME TIER"))
+        return text[:j] + "```rust\nlet x = 1;\n\n" + text[j:]
+
+    problems, _ = _check(real_m, read=_seed_handoff(_unterminated_inside))
+    if problems:
+        failures += 1
+        print(f"  FAIL an unterminated fence inside a block refused the commit: {problems[:2]}")
+    else:
+        print("  ok  an unterminated fence inside a block changes nothing")
+
+    # ...and a figure BELOW it is still governed, which is the half that must not
+    # be traded away for the half above.
+    def _unterminated_and_stale(text: str) -> str:
+        return _unterminated_inside(text).replace("the **39**", "the **11**", 1)
+
+    problems, _ = _check(real_m, read=_seed_handoff(_unterminated_and_stale))
+    if not any("claims 11" in x for x in problems):
+        failures += 1
+        print(f"  FAIL a stale figure below an unterminated fence was missed: {problems[:2]}")
+    else:
+        print("  ok  a figure below an unterminated fence is still governed")
+
+    # O-R15-4 -- a bolded figure inside a governed block that no rule reads.
+    # Three rounds found one of these by hand; the last was fixed by DELETING
+    # the figures, which is an instance fix with no detector.
+    def _ungoverned_bold(text: str) -> str:
+        j = text.find("**Evidence:**", text.find("## ▶ GAME TIER"))
+        return text[:j] + "and **7** brand new widgets\n\n" + text[j:]
+
+    problems, _ = _check(real_m, read=_seed_handoff(_ungoverned_bold))
+    if not any("read by no rule" in x for x in problems):
+        failures += 1
+        print(f"  FAIL a bolded figure nothing governs was not reported: {problems[:2]}")
+    else:
+        print("  ok  a bolded figure inside a governed block that no rule reads is reported")
+
+    # O-R15-3 -- `must_claim` must be EXACT. Its sibling enumeration is
+    # re-derived from the tree; this one was a lower bound, so emptying any
+    # scope's set left the suite green and a figure ADDED to a block was never
+    # named -- which is what leaves the block's tail unprotected later.
+    thin = tuple((sc[0], sc[1], sc[2], frozenset()) if sc[1] == "### 6-BUILD" else sc
+                 for sc in SCOPES)
+    real_scopes = globals()["SCOPES"]
+    globals()["SCOPES"] = thin
+    try:
+        problems, _ = _check(real_m, scopes=thin)
+    finally:
+        globals()["SCOPES"] = real_scopes
+    if not any("does not name" in x for x in problems):
+        failures += 1
+        print(f"  FAIL an emptied must_claim set was not reported: {problems[:2]}")
+    else:
+        print("  ok  a must_claim set that no longer names what its block states is reported")
 
     # **DEGRADE-SAFE, asserted.** With every figure unmeasurable -- a machine
     # with no Rust toolchain, which is most of them -- the check must be SILENT

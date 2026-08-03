@@ -105,7 +105,7 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          '    (RUN_STATE, "### 6-BUILD", END("slice-board"), frozenset({"rust_tests"})),',
          ""),
         ("the _index.md scope row deleted",
-         '    (INDEX, "# Actor Hub", "\\n## Read this to REUSE",', "        ("),
+         '    (INDEX, "# Actor Hub", END("index"),', "        ("),
         ("the red-build guard removed",
          '    if "test result: FAILED" in out.stdout or out.returncode != 0:',
          "    if False:"),
@@ -214,8 +214,35 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # M2 -- a fenced EXAMPLE of a marker must not terminate anything, or the
         # record documenting this gate cannot show its own markers.
         ("a fenced example of a marker terminates the block",
-         "    for haystack in (_claimable(text, quotes=False, comments=False), text):",
+         "    for haystack in (_indented_blanked(_claimable(text, quotes=False, comments=False)),\n"
+         "                     text):",
          "    for haystack in (text,):"),
+        # O-R15-6 -- markdown has TWO literal forms and this file handled one, so
+        # showing the sentinel INDENTED reported it as a duplicate and refused.
+        ("an indented example of a marker terminates the block",
+         "    return chr(10).join(\n"
+         '        " " * len(l) if INDENT_CODE.match(l) else l for l in text.split(chr(10)))',
+         "    return text"),
+        # O-R15-1 -- the raw fallback reached the marker search and not the
+        # CONTENT blanking, so an unterminated fence refused the commit while
+        # naming a cause that was not the cause.
+        ("an unpaired fence opener blankets the rest of the block again",
+         "    if in_fence is None and _unpaired_opener(lines) is not None:",
+         "    if False:"),
+        ("the unpaired-opener scan never finds one",
+         "    return at if open_mark is not None else None", "    return None"),
+        # O-R15-3 -- `must_claim` was a lower bound while its sibling
+        # enumeration is re-derived from the tree.
+        ("the must_claim surplus is not reported",
+         "        surplus = sorted(present.get((doc, start_marker), set()) - want)",
+         "        surplus = []"),
+        # O-R15-4 -- no detector for a bolded figure inside a governed block
+        # that no rule reads; three rounds found one by hand.
+        ("an ungoverned bolded figure is not reported",
+         "        for mo in BOLD_INT_RE.finditer(text):", "        for mo in []:"),
+        ("the claim spans are never recorded",
+         "                claim_spans[(doc, start_marker)].append(mo.span())",
+         "                pass"),
         # M1 -- the last route to a silently shortened scope: MOVING the one
         # sentinel up leaves a claim behind, so the empty-block rule stays quiet.
         ("the required-figures rule removed",
@@ -1141,13 +1168,34 @@ def self_test() -> int:
               f"{type(not_forwarded).__name__}")
     else:
         print("  ok  without --no-cargo the environment is inherited unchanged")
-    # ...and the helper itself removes every entry carrying cargo.
-    stripped_env = real_child_env(True)
-    if stripped_env is None or shutil.which("cargo", path=stripped_env.get("PATH", "")):
+    # ...and the helper itself removes every entry carrying cargo -- asserted
+    # against a SYNTHETIC PATH, because asserting cargo's absence is vacuous on
+    # a machine that has none, and that is precisely the machine CI runs this
+    # on. The assertion three lines above was fixed for exactly this reason and
+    # this one was left; one token substituted, in the fix for one-token
+    # substitution.
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        one, two = Path(d) / "a", Path(d) / "b"
+        for slot in (one, two):
+            slot.mkdir()
+            exe = slot / ("cargo.exe" if os.name == "nt" else "cargo")
+            exe.write_text("", encoding="utf-8")
+            exe.chmod(0o755)
+        keep = Path(d) / "keep"
+        keep.mkdir()
+        real_path = os.environ.get("PATH", "")
+        os.environ["PATH"] = os.pathsep.join(str(x) for x in (one, keep, two))
+        try:
+            stripped = real_child_env(True)
+            left = [x for x in stripped["PATH"].split(os.pathsep) if x]
+        finally:
+            os.environ["PATH"] = real_path
+    if left != [str(keep)]:
         failures += 1
-        print("  FAIL _child_env left cargo reachable")
+        print(f"  FAIL _child_env kept {left}, want only the cargo-free entry")
     else:
-        print("  ok  _child_env removes every PATH entry carrying cargo")
+        print("  ok  _child_env removes EVERY entry carrying cargo, keeping the rest")
 
     # ...and the child is invoked with the arguments the mode needs. Nothing
     # asserted the cargo command shape, so dropping `-p actor-hub`, `--exact` or
