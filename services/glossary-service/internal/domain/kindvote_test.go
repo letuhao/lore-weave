@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// Every case below is a MEASURED one from 封神演義 (docs/specs/2026-08-02-entity-kind-resolution.md
+// Every case below is a MEASURED one from 封神演義 (docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-02-entity-kind-resolution.md
 // §1), not an invented example. The vote counts are the real ones.
 
 var (

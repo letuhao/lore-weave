@@ -1,6 +1,54 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `37e453255` + merge of `origin/main` (`1dc1509ed`) · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-02
+**HEAD:** `9154d67fe` · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-03
+
+## 📕 2026-08-03 — the dogfood run: a novel was planned and drafted through the real frontend
+
+The session's subject was not a feature. It was **using the product as an author would**, on the
+Mị Đế book, and fixing whatever stopped that. Four commits, all live-verified on the deployed
+stack, not on mocks.
+
+**What now works end-to-end that did not this morning** — propose (llm) → compile → validate →
+bootstrap → Pass Rail 6/7 with two human checkpoints → 35 linked scenes → three level-4 chapters
+drafted, on a local model, **$0.15 total**. The prose is in the book; a reading of all three is
+in the evidence doc below.
+
+**The four things that were in the way, in the order they blocked:**
+
+| # | what | commit |
+|---|---|---|
+| 1 | a glossary-build run stuck since **27 July** made World Setup unusable, and two of the states the active-run index counts had **no exit at all** | `b05cfcf7e` |
+| 2 | asked to plan an arc, the co-writer wrote 6948 characters and called **zero tools** — four independent mechanisms decide whether a tool reaches the wire and the request fell through all four | `363e22f43` |
+| 3 | the same run then could not turn its 11 compiled chapters into book chapters: bootstrap was gated on `status === 'compiled'`, and Validate (which Agent Mode *requires*) walks out of that window | `9154d67fe` |
+| 4 | drafting failed with `NO_CHAPTER_PLAN` until the Pass Rail produced scene plans — **not a bug**, but nothing in the drafting UI says so. See NEXT-1 | — |
+
+### ▶ NEXT
+
+1. **`NO_CHAPTER_PLAN` is a dead end with no signpost.** Agent Mode's preflight shows 4/4 green
+   and the run then fails on the first unit, because "the chapters have scene plans" is not one
+   of the things preflight checks. The Pass Rail that produces them is in a different panel. A
+   fifth preflight row naming the missing pass would close it — small, and it is the last hard
+   stop in the authoring path.
+2. **`D-BOOTSTRAP-PREVIEW-LIES` is fix-now, not deferred** — one function, and the correct
+   pattern is the other half of the same function. See the register row.
+3. The **tool-reachability refactor** ([`docs/specs/2026-08-03-tool-reachability-ssot.md`](../specs/2026-08-03-tool-reachability-ssot.md))
+   — written this session, deliberately not started. Four mechanisms, no SSOT; the commit fixed
+   each one and removed none of the fragmentation.
+4. The **glossary↔KG refactor now has an acceptance case**, which it did not before:
+   [`…-glossary-kg-entity-refactor/2026-08-03-dogfood-entity-consistency-evidence.md`](../specs/2026-08-03-glossary-kg-entity-refactor/2026-08-03-dogfood-entity-consistency-evidence.md)
+   §1. A character the `cast` pass minted at 05:47 took the antagonist's defining act at 05:54,
+   and `canon_consistency` scored **5/5** on all three chapters. A design that cannot prevent
+   that has not addressed the refactor.
+
+### Not fixed, and not tracked anywhere else
+
+- **Book search is broken for Vietnamese diacritics** on a Vietnamese-first product: `eval` → 19
+  results, `Đế` → 0, `Mị Đế` → 0. Found by trying to open the book by name.
+- **The baked frontend serves a stale `index.html`** after a rebuild — the browser requests the
+  old bundle hash and nginx answers with the SPA fallback, so the page is blank with a MIME-type
+  console error and no other symptom. Cache-bust or clear the SW to recover.
+
+---
 
 > **MERGE 2026-08-02** — `origin/main` (67 commits: the game-logic promotion + a Dependabot
 > sweep) merged in. 14 files conflicted; the reconciliation notes live in
@@ -505,7 +553,7 @@ fuzzy input one observed failure at a time.
 have NO confidence gate; the KG has no "unresolved" state; the fork is unmeasured; `CheckStatus`
 cannot say "cast unresolvable" as distinct from `NO_RULES`) and the ordered recommendation
 (C → D → A → B):**
-[`docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`](../specs/2026-08-01-entity-identity-under-qualitative-extraction.md)
+[`docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-01-entity-identity-under-qualitative-extraction.md`](../specs/2026-08-03-glossary-kg-entity-refactor/2026-08-01-entity-identity-under-qualitative-extraction.md)
 
 ⚠ **Next measurement before any fix** (recorded in §6 of that doc): confirm that the status
 lands on the forked node *because the ENTITY step forked*, not because `_resolve_status_entity_id`
@@ -2224,7 +2272,7 @@ right — an unattached chapter is not a state a book should be able to reach.
 
 | ID | What | Gate | Target |
 |---|---|---|---|
-| `D-CHAT-CONTROL-PLANE` | `stream_service.py` is 7,074 lines with **16 independent caps/breakers/gates**, no shared lifecycle, precedence implicit in code order. Needs a **tool-availability SSOT** (8 places answer "is this tool available?" today), a **`TurnState`** owning rail-cursor/active-tools/counters, guards lifted to policies over it, and **cross-mechanism invariant tests** (*"a pinned rail's step tools are always reachable"* — the test that fails today). Plus the anti-rot rule: a new control mechanism must declare what it blocks and register as an availability stage. | #2 large/structural | before the next feature that adds a control mechanism to the turn loop |
+| `D-CHAT-CONTROL-PLANE` | `stream_service.py` is 7,074 lines with **16 independent caps/breakers/gates**, no shared lifecycle, precedence implicit in code order. Needs a **tool-availability SSOT** (8 places answer "is this tool available?" today), a **`TurnState`** owning rail-cursor/active-tools/counters, guards lifted to policies over it, and **cross-mechanism invariant tests** (*"a pinned rail's step tools are always reachable"* — the test that fails today). Plus the anti-rot rule: a new control mechanism must declare what it blocks and register as an availability stage. **Debt itemised (7 rows, ids `2026-07-30-01` … `2026-08-03-07`) in [`docs/specs/2026-08-03-glossary-kg-entity-refactor/DEBT-REGISTER.md` §B](../specs/2026-08-03-glossary-kg-entity-refactor/DEBT-REGISTER.md).** Audited 2026-08-03: nothing built; the file is now **7,818** lines not 7,074; the anti-rot rule has **no row in `docs/standards/README.md`**; and this deferral is **prose-only** — `docs/sessions/SESSION_HANDOFF.md` has no `deferral-registry` block, so `deferral-gate.py` cannot see it and the trigger below is enforced by nobody noticing (not yet fired, verified). | #2 large/structural | before the next feature that adds a control mechanism to the turn loop |
 
 ---
 
@@ -4480,7 +4528,7 @@ overlap a section above (checked: zero shared headings).
 
 ## 🗳️ ENTITY KIND: FIRST-WRITER-WINS → A RESOLVED VOTE (2026-08-02)
 
-Spec: `docs/specs/2026-08-02-entity-kind-resolution.md`. PO chose **all three** directions
+Spec: `docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-02-entity-kind-resolution.md`. PO chose **all three** directions
 (vote · sub-kinds · facets) plus re-kind-by-mode. **M1–M3 shipped; M4 is the remainder.**
 
 **The estimator.** `entity_kind_votes(entity_id, kind_id, votes)` — one ledger, two jobs: the
@@ -6612,9 +6660,12 @@ UI"* and **there is no UI**, so an agent calling it today writes a row **no huma
 | **D-CHAT-TURN-RETRYABLE-SWALLOW** | 🔴 Found reviewing W1. In `runner.py`'s **chat-turn** branch a `retryable` persist failure falls straight through to `_mark_pending_processed` + `_advance_cursor` — the turn is silently SKIPPED and counted as processed. The chapters branch has the bounded-retry cursor pattern; chat has none. | #2 — needs the chapters branch's retry-accounting replicated, not a one-liner. Pre-existing; W1 makes 503 newly reachable here. |
 | **D-KG-CJK-SUBSTRING-FALSE-POSITIVE** | Surface matching uses ASCII-only boundary lookarounds, so a short CJK name matches INSIDE a longer word (`林` selected from `森林`). Confirmed live + pinned by `TestCjkBoundary`; shared with knowledge-service's `entity_detector`. | #2 — the real fix is CJK segmentation (jieba is already a knowledge-service dep) or a min-length/aliased-only rule, applied to BOTH matchers together. Documented, not silent. |
 | **D-GLOSSARY-PROJECTION-FAILURE-CONFLATION** | `project_glossary_entities_to_nodes` still returns an all-zero `ProjectionResult` for BOTH "glossary empty" and "glossary unreachable" — the same conflation W1 removed from the extraction path. Lower severity: it is a foreground tool with a visible result, not a background mint. | #1 out of scope of this cycle (tool contract + its caller's messaging), but the fix shape is now established. |
-| **D-ENTITY-LIFECYCLE** | 🔴 **The system has no entity lifecycle.** Four services keep four private notions of "gone" (`deleted_at`, `status`, `alive`, KG `archived_at`, translation `is_glossary_stale`) and none is connected to any other. `grep -rn "deleted_at\|entity_deleted" services/knowledge-service/app` returns **0** — the knowledge layer has never been told the concept exists, so a trashed entity still reads as **`canonical`** in the graph and still reaches generation. Full investigation, with per-call-site evidence: [`docs/specs/2026-08-02-entity-lifecycle-architecture-gap.md`](../specs/2026-08-02-entity-lifecycle-architecture-gap.md). | #2 large/structural — this is a **re-architecture**, not a filter fix: KAL was built after glossary against an undefined lifecycle and invented its own. PO 2026-08-02: rebuild it as a correct architecture and re-wire it, rather than patching filters, and it is **game-tier critical** — the game generates narrative from canon, so a retraction the graph never hears about becomes world state. Trigger: the glossary↔KG entity-consistency refactor. |
-| **D-KG-KIND-FACETS** | knowledge-service mirrors ONE `kind_code TEXT NOT NULL`, so the graph cannot filter on the secondary kind labels shipped 2026-08-02 (`glossary_entities.kind_labels`, 399 entities carrying one). | #1 out of scope — a cross-service contract change, and the refactor above re-cuts exactly this seam, so doing it first is likely wasted. Trigger: that refactor. |
-| **D-GLOSSARY-EVENTS-NO-SOT** | `contracts/events/_registry.yaml` calls itself the *"AUTHORITATIVE list of every event_type"* and contains **zero** `glossary.*` entries; the real list is a Go `const` block (`outbox.go:45,51,530`) hand-mirrored by every consumer with no generator and no drift gate. | #2 large/structural — registering one event means backfilling all three plus `go_struct` + `make eventgen` + the CI validator. Trigger: adding any new glossary event (i.e. `glossary.entity_deleted`, which D-ENTITY-LIFECYCLE needs). |
+| **D-ENTITY-LIFECYCLE** | 🔴 **The system has no entity lifecycle.** Four services keep four private notions of "gone" (`deleted_at`, `status`, `alive`, KG `archived_at`, translation `is_glossary_stale`) and none is connected to any other. `grep -rn "deleted_at\|entity_deleted" services/knowledge-service/app` returns **0** — the knowledge layer has never been told the concept exists, so a trashed entity still reads as **`canonical`** in the graph and still reaches generation. Full investigation, with per-call-site evidence: [`docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-02-entity-lifecycle-architecture-gap.md`](../specs/2026-08-03-glossary-kg-entity-refactor/2026-08-02-entity-lifecycle-architecture-gap.md). | #2 large/structural — this is a **re-architecture**, not a filter fix: KAL was built after glossary against an undefined lifecycle and invented its own. PO 2026-08-02: rebuild it as a correct architecture and re-wire it, rather than patching filters, and it is **game-tier critical** — the game generates narrative from canon, so a retraction the graph never hears about becomes world state. Trigger: the glossary↔KG entity-consistency refactor — **indexed in [`docs/specs/2026-08-03-glossary-kg-entity-refactor/README.md`](../specs/2026-08-03-glossary-kg-entity-refactor/README.md)**, which carries the full register, the three inputs, and **three fix-now bugs the spec wrongly recorded as closed**. |
+| **D-KG-KIND-FACETS** | knowledge-service mirrors ONE `kind_code TEXT NOT NULL`, so the graph cannot filter on the secondary kind labels shipped 2026-08-02 (`glossary_entities.kind_labels`, 399 entities carrying one). | #1 out of scope — a cross-service contract change, and the refactor above re-cuts exactly this seam, so doing it first is likely wasted. This is the **KG half of the kind spec's M4**; the API + FE half is `D-KIND-FACETS-SURFACE`. Trigger: that refactor ([index](../specs/2026-08-03-glossary-kg-entity-refactor/README.md)). |
+| **D-GLOSSARY-EVENTS-NO-SOT** | `contracts/events/_registry.yaml` calls itself the *"AUTHORITATIVE list of every event_type"* and contains **zero** `glossary.*` entries; the real list is a Go `const` block (`outbox.go:45,51,530`) hand-mirrored by every consumer with no generator and no drift gate. | #2 large/structural — registering one event means backfilling all three plus `go_struct` + `make eventgen` + the CI validator. Trigger: adding any new glossary event (i.e. `glossary.entity_deleted`, which D-ENTITY-LIFECYCLE needs) — so of the refactor's rows, **this one fires first** ([index](../specs/2026-08-03-glossary-kg-entity-refactor/README.md)). |
+| **D-GLOSSARY-KG-REFACTOR-DESIGN** | 🔴 *(2026-08-03)* **The glossary↔KG entity-consistency refactor has three completed investigations and NO DESIGN.** [`docs/specs/2026-08-03-glossary-kg-entity-refactor/`](../specs/2026-08-03-glossary-kg-entity-refactor/README.md) holds all three — lifecycle (*"deliberately stops short of a design"*), identity (DIAGNOSIS, parked), kind resolution (M1–M3 shipped, M4 open). They converge on one missing concept: nothing owns what an entity **is**, or when it stops being one — and kind is *part of* the identity hash while lifecycle is *a state on* what the hash names, so any one fix re-cuts the other two. Nothing sequences them, nothing says what lands first, nothing defines done. | #2 large/structural — **this row is the entry point; the four rows around it cannot be worked before it.** The index §5 lists the seven questions the design must answer and the sequencing constraint both inputs already agree on: **measure before designing** (identity §5 step C — how many minted entities fold-collide with an existing anchor under a looser comparison — is *"the honest size of the problem, and nothing currently computes it"*). Trigger: the author starting this track. |
+| **D-ENTITY-IDENTITY-HASH** | 🔴 *(2026-08-03 — promoted from a park register)* KG entity identity is `hash(user, project, name, kind)` over **two LLM outputs**, joined with strict equality and no name fallback, so an anchor miss does not degrade — **it MINTS** a duplicate only a human can merge. Measured 2026-08-01: **21 of 21** `:EntityStatus` rows in the whole dev graph are unreachable by the guard's FK lookup, across 5 projects. **Consequence to state plainly: the dead-character feature does not work end-to-end — the store fills and nothing reads it.** [Spec](../specs/2026-08-03-glossary-kg-entity-refactor/2026-08-01-entity-identity-under-qualitative-extraction.md). | #2 large/structural **and parked by author decision 2026-08-02** (*"tôi không khuyến khích lao đầu vào KG ngay bây giờ"*). Until now this lived **only** as a Parked row inside the generation-SSOT RUNSTATE — it would have vanished when that run closed, which is why it is here. Trigger: the refactor above, or the author un-parking it. |
+| **D-KIND-FACETS-SURFACE** | *(2026-08-03)* the API-field + FE-badge half of the kind spec's **M4**. Secondary kind labels are shipped in the DB and applied to real data (**399 entities carry a facet, 33 a live conflict**, 西岐 = organization **+** location) and are invisible to every consumer. | #3 naturally-next-phase — ship it with `D-KG-KIND-FACETS` so all three surfaces (KG mirror, API, FE) move together rather than drifting into a fourth unsynced shape. |
 | **D-RUST-LLM-BUDGET-SEAM** | `call_budget` is Python-only, so every Rust LLM call site sets its cap with a literal — `commit-service/src/llm_driver.rs` `.with_max_tokens(256)` (arrived with the 2026-08-02 merge) and tilemap's L3 harness. The Python gate cannot see them, so the backlog number understates the repo. | #2 large/structural — needs a Rust equivalent of the seam (an `OutputKind` + a per-service profile registry), which is the Rust half of **S7**. Recorded in the `commit.combat.npc_decision` row of `contracts/generation-paths.yaml` so it is greppable from the code, not only from here. |
 | **D-EPOCH-EVENT-PROJECTION-CLASSIFICATION** | `ruleset.epoch_activated` was allowlisted in `projection-coverage-lint` as an administrative transcription by the branch that MERGED main, reading `epoch_commit.rs` — not by the event's author. | #4 blocked on a product/ownership decision: the game track's owner should confirm the classification (or add a projection arm). Harmless if right, a silently-unprojected event if wrong. |
 | **D-PUSH-LIVE-SMOKE** | The M5 closed-tab VAPID push not proven live (mechanics unit-proven; routes live-smoked; SSRF guard live-verified). | #4 blocked-on-external: needs a deploy with a VAPID keypair + HTTPS + a browser push service (FCM/autopush) — none bootable at dev. Do the closed-tab content-free E2E there. |

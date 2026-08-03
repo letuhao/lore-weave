@@ -2,6 +2,9 @@
 
 **Status:** DEFERRED — gate #2 (large / structural). Written 2026-07-30 from a live dogfood.
 **Trigger to do it:** before the next feature that adds a *control* mechanism to the turn loop.
+**Debt tracked in:** [`2026-08-03-glossary-kg-entity-refactor/DEBT-REGISTER.md` §B](2026-08-03-glossary-kg-entity-refactor/DEBT-REGISTER.md#b--chat-service-control-plane--d-chat-control-plane)
+— 7 open items, ids `2026-07-30-01` … `2026-08-03-07`. Nothing in §3 has been built; the trigger
+above has **not** fired (verified 2026-08-03), and it is **prose-only** — no gate can see it.
 
 ---
 

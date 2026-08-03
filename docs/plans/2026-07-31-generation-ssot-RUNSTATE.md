@@ -110,7 +110,7 @@ lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … ch�
 `[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → `S3 ◐` → `S4 ✅` → `S9 ✅` → `S5 ✅` → `S13 ✅` — **BOARD CLEAR** → `S9 → S5 → S13`.
 
 > **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
-> that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
+> that includes `docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
 > real diagnosis and it points at a large refactor; it is **not** what to do next.
 > *"tôi không khuyến khích lao đầu vào KG ngay bây giờ … cách làm đúng bây giờ nên là làm phần
 > 'Budget seam rot' trước và rồi resume slice 7 và các slice còn lại."*
@@ -4356,12 +4356,19 @@ AUDIT AUDIT-25 (the Book tier of a six-role cascade could hold two roles)
 
 | date | item | why parked, and what un-parks it |
 |---|---|---|
-| 2026-08-02 | **The whole KG/extraction identity thread** — [`docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`](../specs/2026-08-01-entity-identity-under-qualitative-extraction.md) | **Author's call**, explicit: do not dive into KG now. The diagnosis stands (all 21 `:EntityStatus` rows in the graph are unreachable by the guard's FK lookup; identity is `hash(name, kind)` over LLM output), and its own §5 says step **C — measure the fork** must come before anything else. Un-parked when the board reaches a natural stop, or when the author calls it. **Consequence to state plainly: the dead-character feature does NOT work end-to-end while this is parked.** The store fills; nothing reads it. |
+| 2026-08-02 | **The whole KG/extraction identity thread** — [`docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-01-entity-identity-under-qualitative-extraction.md`](../specs/2026-08-03-glossary-kg-entity-refactor/2026-08-01-entity-identity-under-qualitative-extraction.md) | **Author's call**, explicit: do not dive into KG now. The diagnosis stands (all 21 `:EntityStatus` rows in the graph are unreachable by the guard's FK lookup; identity is `hash(name, kind)` over LLM output), and its own §5 says step **C — measure the fork** must come before anything else. Un-parked when the board reaches a natural stop, or when the author calls it. **Consequence to state plainly: the dead-character feature does NOT work end-to-end while this is parked.** The store fills; nothing reads it. — **2026-08-03: promoted out of this register** to `D-ENTITY-IDENTITY-HASH` (Deferred Items + [`DEBT-REGISTER.md` `2026-08-01-01`](../specs/2026-08-03-glossary-kg-entity-refactor/DEBT-REGISTER.md)), because a Parked row inside a finished run's RUNSTATE would have vanished with the run. Still parked; now it survives. |
 | 2026-08-02 | **`:EntityStatus` / dead-cast guard, end-to-end** | **Author, 2026-08-02: the root is that there has never been a real ENTITY LIFECYCLE** — *"ngay từ đầu chúng ta đã sai vì không có lifecycle thực sự cho entity"*. So this is not "correct code blocked by a parked join": `alive`/gone was built on a model that was never designed, and the FK unreachability documented in the entity-identity spec is a symptom, not the disease. **Do not attempt to fix it by repairing the join.** It belongs to a larger refactor that **already has its own document**; the author will name the starting point when it begins. Nothing to look up or design in the meantime. |
 | 2026-08-02 | **Backfill of the 15 already-written dogfood chapters** | The canon flywheel catches from the next approval forward. Backfilling is a separate decision (irreversible-into-canon, unmeasured per-chapter cost) and is not blocking the board. |
 | 2026-08-01 | **Test-suite restoration execution** — [`docs/plans/2026-08-01-test-suite-restoration.md`](2026-08-01-test-suite-restoration.md) | Plan written and every number in it measured; execution is a separate run. knowledge's 561 skips are a *local-dev* gap, not a CI coverage hole (CI arms every gated suite), which is why it does not block. |
 
 ## Debt taken on
+
+> **2026-08-03 — this register is authoritative for the rows below and is NOT copied elsewhere.**
+> It is now pointed at from
+> [`docs/specs/2026-08-03-glossary-kg-entity-refactor/DEBT-REGISTER.md` §C1](../specs/2026-08-03-glossary-kg-entity-refactor/DEBT-REGISTER.md#c1--already-homed--pointer-only),
+> which carries **§C2: 8 further items this register never held** — §3.1 carry-forward rows of the
+> spec whose owning slice closed without discharging them (B1→S11, S12-widen, B4→S9, B4→S6), plus
+> §5's whole migration surface, which was never a slice. Those have no other home.
 
 | date | debt | the honest cost |
 |---|---|---|

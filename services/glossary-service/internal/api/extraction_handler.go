@@ -731,7 +731,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		skipped int
 	)
 
-	// Kind resolution (spec 2026-08-02-entity-kind-resolution.md). Loaded ONCE per request:
+	// Kind resolution (spec docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-02-entity-kind-resolution.md). Loaded ONCE per request:
 	// the hierarchy is book-local and tiny, and the inverse of kindMap is needed so the outbox
 	// event can carry the RESOLVED kind rather than the one this batch happened to propose.
 	kindParents, kperr := s.loadKindParents(ctx, tx, bookID)

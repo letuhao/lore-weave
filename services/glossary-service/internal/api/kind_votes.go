@@ -9,7 +9,7 @@ import (
 	"github.com/loreweave/glossary-service/internal/domain"
 )
 
-// The DB half of entity-kind resolution (spec 2026-08-02-entity-kind-resolution.md). The
+// The DB half of entity-kind resolution (spec docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-02-entity-kind-resolution.md). The
 // estimator itself is a pure function in internal/domain so it can be tested without a pool;
 // this file only loads its inputs and writes its output.
 

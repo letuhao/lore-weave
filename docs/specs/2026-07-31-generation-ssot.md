@@ -1,6 +1,13 @@
 # Generation SSOT — one spine for PLAN and PROSE
 
 **Date:** 2026-07-31 · **Status:** SPEC v2 (post-red-team) · **Size:** multi-milestone program
+**⚠ Execution state lives elsewhere.** The slice board is **CLEAR** — S1–S13 closed 2026-08-01 →
+08-03 — but this document was never updated as the run consumed it, so §4/§6 read as if nothing
+is built and **§S6's stated blocker is false at HEAD**. Live board:
+[`docs/plans/2026-07-31-generation-ssot-RUNSTATE.md`](../plans/2026-07-31-generation-ssot-RUNSTATE.md).
+Residue: [`2026-08-03-glossary-kg-entity-refactor/DEBT-REGISTER.md` §C](2026-08-03-glossary-kg-entity-refactor/DEBT-REGISTER.md#c--generation-ssot-residue--2026-07-31-generation-ssotmd)
+— 13 rows homed in the RUNSTATE, plus **8 carry-forward items whose owning slice closed without
+discharging them.**
 **Trigger:** a dogfood defect that no test, no judge, and no gate could see.
 **Companion audit:** `d:\Works\source\inkos\INKOS-ANALYSIS-FOR-LOREWEAVE.md` (F1, F4, F5 are the
 same disease seen from three other services).

@@ -7,7 +7,7 @@ import (
 )
 
 // entityKindVotesSQL -- chain step 0058. The observation ledger + the kind hierarchy.
-// Spec: docs/specs/2026-08-02-entity-kind-resolution.md
+// Spec: docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-02-entity-kind-resolution.md
 //
 // An entity's kind was decided by whichever extraction batch named it FIRST and never
 // revisited: findEntityCrossKind is oldest-wins and returns the STORED kind, so every later

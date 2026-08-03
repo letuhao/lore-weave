@@ -2,7 +2,7 @@ package domain
 
 import "github.com/google/uuid"
 
-// Entity-kind resolution — spec `docs/specs/2026-08-02-entity-kind-resolution.md`.
+// Entity-kind resolution — spec `docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-02-entity-kind-resolution.md`.
 //
 // An entity's kind used to be decided by whichever extraction batch named it FIRST and was
 // never revisited: `findEntityCrossKind` is oldest-wins and returns the STORED kind, so an
