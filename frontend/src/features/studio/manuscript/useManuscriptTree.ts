@@ -377,6 +377,28 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     await resetAndLoad();
   }, [token, bookId, resetAndLoad]);
 
+  // Chapter CRUD is deliberately kept next to the tree's part mutators so every write is followed
+  // by a server-backed reload.  `chapterId` is the book-service id even when the visible node came
+  // from an outline (outline nodes carry it separately from their composition id).
+  const renameChapter = useCallback(async (chapterId: string, title: string) => {
+    if (!token) return;
+    await booksApi.patchChapter(token, bookId, chapterId, { title });
+    await resetAndLoad();
+  }, [token, bookId, resetAndLoad]);
+
+  // DELETE is the reversible book-service lifecycle transition (trash), not the manage-only purge.
+  const trashChapter = useCallback(async (chapterId: string) => {
+    if (!token) return;
+    await booksApi.trashChapter(token, bookId, chapterId);
+    await resetAndLoad();
+  }, [token, bookId, resetAndLoad]);
+
+  const restoreChapter = useCallback(async (chapterId: string) => {
+    if (!token) return;
+    await booksApi.restoreChapter(token, bookId, chapterId);
+    await resetAndLoad();
+  }, [token, bookId, resetAndLoad]);
+
   // S-02b — reorder acts by swapping the target with its neighbour and rewriting the whole
   // order (partsApi.reorder wants EVERY active id). Boundary move (up at top / down at bottom)
   // is a no-op. `parts` is already in sort order (the list route orders by sort_order).
@@ -402,6 +424,7 @@ export function useManuscriptTree(bookId: string, token: string | null) {
     source, lens, showToggle, selectLens, partsUnavailable,
     rows, total, counts, error, partsMode, parts, trashedActs,
     toggleExpand, loadMore, collapseAll, reload: resetAndLoad,
-    createAct, renameAct, trashAct, moveChapterToAct, moveAct, restoreAct,
+    createAct, renameAct, trashAct, moveChapterToAct, renameChapter, trashChapter, restoreChapter,
+    moveAct, restoreAct,
   };
 }

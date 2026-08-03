@@ -2461,6 +2461,21 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		writeJSON(w, http.StatusOK, result)
 		return
 
+	case "embedding":
+		// Embedding models must be verified through /v1/embeddings. Sending
+		// them to /v1/chat/completions produces a misleading model-not-found
+		// response from OpenAI-compatible routers such as LiteLLM.
+		result := s.verifyEmbedding(ctx, providerKind, endpointBaseURL, secret, providerModelName)
+		result["latency_ms"] = time.Since(start).Milliseconds()
+		result["capability"] = "embedding"
+		if verified, _ := result["verified"].(bool); verified {
+			VerifyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
+		} else {
+			VerifyRequestsTotal.WithLabelValues(OutcomeProviderError).Inc()
+		}
+		writeJSON(w, http.StatusOK, result)
+		return
+
 	case "rerank":
 		// C3 (BL-10): real /v1/rerank round-trip via the user's BYOK credential —
 		// proves the model actually ranks (a chat ping would not).
@@ -2565,23 +2580,68 @@ func canEmbed(caps map[string]any) bool {
 }
 
 // detectPrimaryCapability determines which verification strategy to use based on capability_flags.
-// Priority: stt > tts > image_gen > video_gen > chat (default)
+// Priority: stt > tts > image_gen > video_gen > embedding > rerank > web_search > chat.
 func detectPrimaryCapability(caps map[string]any) string {
-	// C3 (BL-10): include rerank so its verify path does a real /v1/rerank
-	// round-trip instead of falling through to the chat ping.
-	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen", "rerank", "web_search"} {
+	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen", "embedding", "rerank", "web_search"} {
 		if v, ok := caps[cap]; ok {
 			if b, ok := v.(bool); ok && b {
 				return cap
 			}
 		}
 	}
-	// Inventory-discovered rerank (C2) may carry the capability as the `_capability`
-	// metadata string rather than a boolean flag — recognize that form too.
-	if c, _ := caps["_capability"].(string); c == "rerank" || c == "web_search" {
+	// Inventory discovery stores the canonical capability in _capability.
+	// Accept the historical short form "embed" as "embedding" as well.
+	switch c, _ := caps["_capability"].(string); c {
+	case "embed":
+		return "embedding"
+	case "embedding", "rerank", "web_search", "stt", "tts", "image_gen", "video_gen":
 		return c
 	}
 	return "chat"
+}
+
+// verifyEmbedding performs a real, minimal embedding round-trip. It deliberately
+// uses the canonical provider.Embed dispatcher so verification and production
+// embedding calls share URL construction, authentication and response parsing.
+func (s *Server) verifyEmbedding(
+	ctx context.Context,
+	providerKind, baseURL, secret, modelName string,
+) map[string]any {
+	client := &http.Client{Timeout: 60 * time.Second}
+	adapter, err := provider.ResolveAdapter(providerKind, client)
+	if err != nil {
+		return map[string]any{
+			"verified": false,
+			"error":    "failed to resolve provider adapter: " + err.Error(),
+		}
+	}
+
+	result, err := provider.Embed(
+		ctx,
+		adapter,
+		client,
+		baseURL,
+		secret,
+		modelName,
+		[]string{"LoreWeave embedding verification"},
+	)
+	if err != nil {
+		return map[string]any{"verified": false, "error": err.Error()}
+	}
+	if result == nil || len(result.Embeddings) == 0 || result.Dimension <= 0 {
+		return map[string]any{
+			"verified": false,
+			"error":    "provider returned no valid embedding vector",
+		}
+	}
+
+	return map[string]any{
+		"verified":      true,
+		"model":         result.Model,
+		"vector_count":  len(result.Embeddings),
+		"dimension":     result.Dimension,
+		"prompt_tokens": result.PromptTokens,
+	}
 }
 
 // verifyRerank exercises a REAL /v1/rerank round-trip with a tiny fixed

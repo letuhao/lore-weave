@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 import { compositionApi } from '@/features/composition/api';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { TiptapEditor, type TiptapEditorHandle } from '@/components/editor/TiptapEditor';
@@ -102,6 +103,10 @@ export function EditorPanel(props: IDockviewPanelProps) {
   }, [props.api, label]);
 
   const chapterId = unit?.state.chapterId ?? null;
+  // The bus changes before the hoisted draft finishes flushing a dirty chapter. Keep the editor
+  // covered during that transition so stale prose is never presented as the newly selected chapter.
+  const requestedChapterId = useStudioBusSelector((s) => s.activeChapterId ?? null);
+  const chapterIsLoading = unit?.state.saveState === 'loading' || (!!requestedChapterId && requestedChapterId !== chapterId);
 
   // Register the studio editor as the propose_edit write-back target (Lane C). Cleared on unmount
   // / chapter change so a stale handle never receives a write. #16 P1: also hand over the
@@ -482,7 +487,11 @@ export function EditorPanel(props: IDockviewPanelProps) {
       </div>
       <ProvenanceTag />
       <div className="flex min-h-0 flex-1">
-        <div ref={editorContainerRef} className="min-h-0 min-w-0 flex-1 overflow-auto">
+        <div
+          ref={editorContainerRef}
+          className="relative min-h-0 min-w-0 flex-1 overflow-auto"
+          aria-busy={chapterIsLoading || undefined}
+        >
           <TiptapEditor
             ref={editorRef}
             content={state.loadedBody}
@@ -506,6 +515,19 @@ export function EditorPanel(props: IDockviewPanelProps) {
               )
               : undefined}
           />
+          {chapterIsLoading && (
+            <div
+              data-testid="studio-editor-loading"
+              role="status"
+              aria-live="polite"
+              className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-[1px]"
+            >
+              <div className="inline-flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs text-muted-foreground shadow-lg">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden="true" />
+                <span>{t('editor.loadingChapter', { defaultValue: 'Loading chapter…' })}</span>
+              </div>
+            </div>
+          )}
         </div>
         {/* #16 2.2 — focus mode hides the flanking panels (matches legacy's side-panel-hiding
             behavior) so the writer's attention stays on the manuscript. */}

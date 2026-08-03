@@ -39,7 +39,12 @@ export function FormDialog({ open, onOpenChange, title, description, children, f
             tall forms instead of pushing it below the viewport fold. The
             body and footer are SIBLINGS (not nested) so the pinned footer
             never overlaps scrolled content. */}
-        <Dialog.Content className={cn('fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-full -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border bg-background shadow-lg', SIZE_CLASSES[size])}>
+        {/* Forms may contain partially completed work; clicking the backdrop must not
+            silently discard it. Explicit close controls and Escape remain available. */}
+        <Dialog.Content
+          className={cn('fixed left-1/2 top-1/2 z-50 flex max-h-[85vh] w-full -translate-x-1/2 -translate-y-1/2 flex-col rounded-lg border bg-background shadow-lg', SIZE_CLASSES[size])}
+          onInteractOutside={(event) => event.preventDefault()}
+        >
           <div className="flex-shrink-0 px-6 pt-6">
             <Dialog.Title className="font-serif text-lg font-semibold">{title}</Dialog.Title>
             {/* Gate-5-I2: always render Description so Radix doesn't

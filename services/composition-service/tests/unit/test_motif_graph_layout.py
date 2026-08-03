@@ -14,7 +14,6 @@ import pytest
 
 from app.db.repositories.motif_graph_layout import MotifGraphLayoutRepo
 
-pytestmark = pytest.mark.asyncio
 
 
 class _FakeConn:

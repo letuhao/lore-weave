@@ -79,9 +79,7 @@ __all__ = [
 # Mirrors the vector indexes created by the K11.3 schema runner.
 # Tuple (not set) for stable iteration; lookup is O(n) on n=4 so
 # no hash overhead matters.
-SUPPORTED_VECTOR_DIMS: tuple[int, ...] = (384, 1024, 1536, 3072)
-
-
+SUPPORTED_VECTOR_DIMS: tuple[int, ...] = (384, 1024, 1536, 2560, 3072)
 class Entity(BaseModel):
     """Pydantic projection of an `:Entity` node.
 

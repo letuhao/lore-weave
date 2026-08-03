@@ -13,7 +13,6 @@ import pytest
 from app.services.intent_fsm import engine
 from app.services.intent_fsm.slots import spec
 
-pytestmark = pytest.mark.asyncio
 
 _BEATS = [{"key": "hook"}, {"key": "midpoint"}, {"key": "climax"}]
 

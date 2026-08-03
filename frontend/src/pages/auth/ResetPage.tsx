@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, CheckCircle } from 'lucide-react';
 import { apiJson } from '@/api';
+import { passwordMeetsPolicy } from '@/lib/password-policy';
 import { AuthCard } from './AuthCard';
 
 export function ResetPage() {
@@ -16,7 +17,9 @@ export function ResetPage() {
   const [done, setDone] = useState(false);
 
   const schema = z.object({
-    password: z.string().min(8, t('validation.password_min')),
+    password: z.string().min(8, t('validation.password_min')).refine(passwordMeetsPolicy, {
+      message: t('validation.password_policy'),
+    }),
     confirmPassword: z.string().min(1, t('validation.password_required')),
   }).refine((d) => d.password === d.confirmPassword, {
     message: t('validation.password_mismatch'),

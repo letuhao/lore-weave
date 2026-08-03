@@ -200,6 +200,7 @@ async def test_complete_job_stamps_all_skipped_error_message():
     conn.fetchrow = AsyncMock(return_value={
         "job_id": uuid.uuid4(), "cost_spent_usd": 0,
         "items_skipped": 12, "items_total": 12,
+        "tokens_in": 0, "tokens_out": 0,
     })
     _acq = MagicMock()
     _acq.__aenter__ = AsyncMock(return_value=conn)
@@ -227,6 +228,7 @@ async def test_complete_job_flags_zero_llm_call_noop(caplog):
         "job_id": uuid.uuid4(), "cost_spent_usd": 0,
         "items_skipped": 0, "items_total": 2,
         "items_processed": 2, "llm_calls_made": 0,
+        "tokens_in": 0, "tokens_out": 0,
     })
     _acq = MagicMock()
     _acq.__aenter__ = AsyncMock(return_value=conn)

@@ -439,7 +439,6 @@ export function ProvidersTab() {
       {showAddDialog && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setShowAddDialog(false)}
           onKeyDown={(e) => { if (e.key === 'Escape') setShowAddDialog(false); }}
           role="dialog"
           aria-modal="true"
@@ -528,7 +527,6 @@ export function ProvidersTab() {
       {editProvider && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          onClick={() => setEditProvider(null)}
           onKeyDown={(e) => { if (e.key === 'Escape') setEditProvider(null); }}
           role="dialog"
           aria-modal="true"

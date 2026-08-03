@@ -13,13 +13,18 @@ import { useJobsDashboard } from '../../hooks/useJobsDashboard';
 import { useJobLive, useJobsConnection } from '../../context/JobsStreamProvider';
 import { effectiveJob } from '../../lib';
 import { jobKey, type Job } from '../../types';
+import { findJobModelPricing } from '../../modelPricing';
+import type { TokenModelPricing } from '../../modelPricing';
+import { useUserModels } from '@/components/model-picker/useUserModels';
 
 function JobCard({
   job: base,
   onOpenDetail,
+  pricing,
 }: {
   job: Job;
   onOpenDetail?: (service: string, jobId: string) => void;
+  pricing?: TokenModelPricing | null;
 }) {
   const { t } = useTranslation('jobs');
   const job = effectiveJob(base, useJobLive(jobKey(base)));
@@ -56,7 +61,7 @@ function JobCard({
       </span>
       <JobProgress progress={job.progress} detailStatus={job.detail_status} />
       <div className="flex items-center justify-between">
-        <JobCostTokens job={job} />
+        <JobCostTokens job={job} pricing={pricing} />
         <JobControls service={job.service} jobId={job.job_id} controlCaps={job.control_caps} compact />
       </div>
     </div>
@@ -73,6 +78,7 @@ export function JobsMobile({ onOpenDetail }: { onOpenDetail?: (service: string, 
   const { t } = useTranslation('jobs');
   const d = useJobsDashboard();
   const conn = useJobsConnection();
+  const { models: pricingModels } = useUserModels({ includeInactive: true });
 
   const activeItems: Job[] = d.active.data?.pages.flatMap((p) => p.items) ?? [];
   const historyItems: Job[] = d.history.data?.items ?? [];
@@ -99,7 +105,7 @@ export function JobsMobile({ onOpenDetail }: { onOpenDetail?: (service: string, 
           {activeItems.length === 0 ? (
             <p className="text-sm text-muted-foreground">{t('list.noActive', { defaultValue: 'No active jobs.' })}</p>
           ) : (
-            activeItems.map((j) => <JobCard key={jobKey(j)} job={j} onOpenDetail={onOpenDetail} />)
+            activeItems.map((j) => <JobCard key={jobKey(j)} job={j} onOpenDetail={onOpenDetail} pricing={findJobModelPricing(j, pricingModels)} />)
           )}
         </div>
       )}
@@ -113,7 +119,7 @@ export function JobsMobile({ onOpenDetail }: { onOpenDetail?: (service: string, 
         ) : historyItems.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t('list.empty', { defaultValue: 'No jobs yet.' })}</p>
         ) : (
-          historyItems.map((j) => <JobCard key={jobKey(j)} job={j} onOpenDetail={onOpenDetail} />)
+          historyItems.map((j) => <JobCard key={jobKey(j)} job={j} onOpenDetail={onOpenDetail} pricing={findJobModelPricing(j, pricingModels)} />)
         )}
       </div>
 

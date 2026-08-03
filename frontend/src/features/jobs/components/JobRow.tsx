@@ -12,6 +12,7 @@ import { JOB_GRID } from './jobGrid';
 import { useJobLive } from '../context/JobsStreamProvider';
 import { effectiveJob, formatRelative, formatDuration } from '../lib';
 import { isTerminal, jobKey, type Job } from '../types';
+import type { TokenModelPricing } from '../modelPricing';
 
 /** One desktop grid row. Reads its own live overlay (subscribes to just this key),
  *  deep-links campaigns to their monitor, and lazy-expands children under a parent.
@@ -25,10 +26,12 @@ export function JobRow({
   job: base,
   nested,
   onOpenDetail,
+  pricing,
 }: {
   job: Job;
   nested?: boolean;
   onOpenDetail?: (service: string, jobId: string) => void;
+  pricing?: TokenModelPricing | null;
 }) {
   const { t } = useTranslation('jobs');
   const job = effectiveJob(base, useJobLive(jobKey(base)));
@@ -111,7 +114,7 @@ export function JobRow({
         </div>
 
         {/* col 5 — cost · tokens */}
-        <JobCostTokens job={job} />
+        <JobCostTokens job={job} pricing={pricing} />
 
         {/* col 6 — started + duration */}
         <div className="text-xs text-muted-foreground">
@@ -150,7 +153,7 @@ export function JobRow({
         </div>
       </div>
 
-      {expanded && hasChildren && <JobChildrenTable parentJobId={job.job_id} />}
+      {expanded && hasChildren && <JobChildrenTable parentJobId={job.job_id} pricing={pricing} />}
     </div>
   );
 }

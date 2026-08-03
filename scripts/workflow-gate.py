@@ -27,11 +27,13 @@ from pathlib import Path
 
 STATE_FILE = Path(".workflow-state.json")
 AUDIT_LOG = Path("docs/audit/AUDIT_LOG.jsonl")
-# MCP_QUERY resolved relative to THIS script's location so the bridge works
-# regardless of cwd (commit hooks may invoke from worktrees, CI runners, etc.).
-# Phase 7 review-impl MED-3 fix: was Path("scripts/mcp-query.py") cwd-relative,
-# silently no-op'd when invoked outside repo root.
-MCP_QUERY = Path(__file__).parent / "mcp-query.py"
+# NOTE (2026-08-03): AMAW L3 used to bridge high-signal events to a ContextHub MCP
+# server via scripts/mcp-query.py. That integration was never actually exercised —
+# the server was listed in config but no agent called it — so it has been removed
+# along with mcp-query.py, amaw-guardrail-gate.py, amaw-context-inject.py and
+# seed-amaw-guardrails.py. AMAW still logs to AUDIT_LOG.jsonl, which is the part
+# that was carrying its weight. Do not re-add an MCP bridge here without a
+# consumer that demonstrably reads it.
 
 PHASES = [
     "clarify", "design", "review-design", "plan", "build",
@@ -56,10 +58,9 @@ INITIAL_STATE = {
     "started_at": None,
     "last_transition": None,
     # AMAW v3.0 L3 deepen — flag set by `amaw-enable` verb (called by /amaw slash cmd).
-    # When True, cmd_complete writes events to AUDIT_LOG.jsonl and selectively bridges
-    # high-signal events (sprint_complete, pragmatic_stop, REJECTED reviews) to
-    # ContextHub via mcp-query.py add_lesson. Default v2.2 mode → flag stays False,
-    # no MCP autocalls, no AUDIT_LOG entries.
+    # When True, cmd_complete writes events (sprint_complete, pragmatic_stop, REJECTED
+    # reviews) to AUDIT_LOG.jsonl. Default v2.2 mode → flag stays False, no AUDIT_LOG
+    # entries.
     "amaw_enabled": False,
     "amaw_enabled_at": None,
 }
@@ -160,39 +161,6 @@ def _had_rejected_review(task_slug: str, phase: str, since: str | None = None) -
                 and str(ev.get("status", "")).strip().upper() == "REJECTED"):
             return True
     return False
-
-
-def _bridge_to_contexthub(lesson_type: str, title: str, content: str, tags: list[str]) -> None:
-    """Best-effort: shell out to mcp-query.py add_lesson. Never raises.
-
-    Bridge failures are logged to stderr but do NOT block phase completion —
-    the workflow state machine must remain deterministic regardless of MCP
-    availability.
-    """
-    if not MCP_QUERY.exists():
-        print(f"WARN: bridge skipped — {MCP_QUERY} not found", file=sys.stderr)
-        return
-    try:
-        # Subprocess timeout MUST exceed mcp-query.py's internal HTTP timeout (60s)
-        # so we don't kill an in-flight add_lesson whose embedding is still generating.
-        # Phase 7 review fix: was 45s → 75s. 60s HTTP + 15s safety buffer.
-        result = subprocess.run(
-            [
-                sys.executable, str(MCP_QUERY), "add_lesson",
-                "--type", lesson_type,
-                "--title", title,
-                "--content", content,
-                "--tags", ",".join(tags),
-            ],
-            capture_output=True, text=True, timeout=75,
-        )
-        if result.returncode == 0:
-            print(f"OK: bridged lesson {result.stdout.strip()}", file=sys.stderr)
-        else:
-            stderr_tail = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "(no stderr)"
-            print(f"WARN: bridge exit {result.returncode}: {stderr_tail}", file=sys.stderr)
-    except (subprocess.SubprocessError, OSError) as e:
-        print(f"WARN: bridge exception: {e}", file=sys.stderr)
 
 
 def _check_live_smoke_evidence(evidence: str) -> None:
@@ -481,7 +449,7 @@ def cmd_complete(args: list[str]) -> None:
     if phase == "verify":
         _check_live_smoke_evidence(evidence)
 
-    # AMAW L3 — log to AUDIT_LOG and selectively bridge to ContextHub.
+    # AMAW L3 — log phase events to AUDIT_LOG.
     # No-op for default v2.2 (amaw_enabled=False).
     if state.get("amaw_enabled"):
         # Defensive re-normalize (DEFERRED #001, Adversary r1 WARN-2): state["task"]
@@ -498,7 +466,8 @@ def cmd_complete(args: list[str]) -> None:
             "action": "phase_complete",
             "evidence": evidence,
         })
-        # Selective bridge — only high-signal events become lessons.
+        # High-signal events get a second, distinctly-actioned AUDIT_LOG entry so they
+        # are greppable without replaying every phase_complete row.
         if phase == "retro":
             _log_audit({
                 "ts": completed_at,
@@ -508,19 +477,15 @@ def cmd_complete(args: list[str]) -> None:
                 "action": "sprint_complete",
                 "evidence": evidence,
             })
-            _bridge_to_contexthub(
-                lesson_type="general_note",
-                title=f"Sprint complete: {task_slug}",
-                content=f"Phase: retro\nCompleted: {completed_at}\nEvidence: {evidence}",
-                tags=["amaw", "sprint", task_slug],
-            )
         elif phase in ("review-design", "review-code") and _had_rejected_review(task_slug, phase, state.get("amaw_enabled_at")):
-            _bridge_to_contexthub(
-                lesson_type="general_note",
-                title=f"Adversary REJECTED: {task_slug} {phase}",
-                content=f"Phase: {phase}\nCompleted: {completed_at}\nEvidence: {evidence}",
-                tags=["amaw", "adversary-rejection", task_slug],
-            )
+            _log_audit({
+                "ts": completed_at,
+                "task": task_slug,
+                "phase": phase,
+                "agent": "main",
+                "action": "adversary_rejection",
+                "evidence": evidence,
+            })
 
 
 def _normalize_slug(raw: str) -> str:
@@ -528,10 +493,10 @@ def _normalize_slug(raw: str) -> str:
     non-[a-z0-9] characters to a single dash, strip leading/trailing dashes.
     Idempotent — normalizing an already-normalized slug is a no-op.
 
-    The slug flows into the downstream tag list as `["amaw", "sprint", slug]`,
-    which `_bridge_to_contexthub` comma-joins and `mcp-query.py` comma-splits
-    back — so an un-normalized slug containing a comma (or space, slash, etc.)
-    would silently fragment into extra tags. EVERY entry point that lets a
+    The slug is the `task` key on every AUDIT_LOG.jsonl row, so it must stay a
+    stable, punctuation-free join key — an un-normalized slug makes the same task
+    appear under several spellings when the log is grepped or aggregated. EVERY
+    entry point that lets a
     user supply a slug must call this: `cmd_amaw_enable` (write side) and
     `cmd_pragmatic_stop` (independent arg), plus `cmd_complete` re-normalizes
     defensively on the read side (Adversary r1 BLOCK + WARN-2).
@@ -547,9 +512,9 @@ def _normalize_slug(raw: str) -> str:
     # non-string `task` (int, null); str() keeps this total instead of raising
     # AttributeError deep in the bridge path.
     slug = re.sub(r"[^a-z0-9]+", "-", str(raw).lower()).strip("-")
-    # 64-char cap (human-review finding A2): the slug becomes a ContextHub tag
-    # and a lesson title; a pathologically long task name should not produce an
-    # unbounded tag. Re-strip in case the cut landed mid-dash.
+    # 64-char cap (human-review finding A2): the slug becomes an AUDIT_LOG key;
+    # a pathologically long task name should not produce an unbounded field.
+    # Re-strip in case the cut landed mid-dash.
     slug = slug[:64].strip("-")
     return slug or "unnamed-task"
 
@@ -572,92 +537,7 @@ def cmd_amaw_enable(args: list[str]) -> None:
     slug = state.get("task") or "(unnamed)"
     print(f"OK: AMAW mode enabled for task '{slug}'")
     print(f"  AUDIT_LOG: {AUDIT_LOG}")
-    print(f"  Bridge target: ContextHub via {MCP_QUERY}")
     print(f"  Triggers: retro→sprint_complete; REJECTED reviews; pragmatic-stop")
-
-
-def cmd_amaw_pre_commit(_args: list[str]) -> None:
-    """AMAW-mode addition to pre-commit hook. No-op for default v2.2.
-
-    Calls mcp-query.py check_guardrails when amaw_enabled. If guardrails
-    return BLOCKED → exit 1 (block commit). If MCP unreachable → warn + exit 0
-    (don't block commits on infra failures).
-    """
-    # No state file = no task in flight = nothing to gate (DEFERRED #004).
-    # MUST check before load_state(), which auto-creates .workflow-state.json
-    # from INITIAL_STATE — an agent committing outside any tracked task would
-    # otherwise leave a stale state file behind (confusing [ ] markers on the
-    # next `status`).
-    #
-    # Exit SILENTLY here — unlike cmd_pre_commit, which prints a visible
-    # "No workflow state found" warning (Adversary r1 WARN-2). In the hook
-    # chain `pre-commit && amaw-pre-commit`, cmd_pre_commit runs first and
-    # already surfaces that warning; a second one here would just be noise.
-    #
-    # Single-threaded assumption (Adversary r1 WARN-3): a concurrent `reset`
-    # racing between this exists() check and load_state() is out of scope for
-    # a local single-user dev tool.
-    if not STATE_FILE.exists():
-        sys.exit(0)
-    state = load_state()
-    if not state.get("amaw_enabled"):
-        # Default v2.2 mode — no-op
-        sys.exit(0)
-    if not MCP_QUERY.exists():
-        print(f"WARN: amaw-pre-commit skipped — {MCP_QUERY} not found", file=sys.stderr)
-        sys.exit(0)
-    # Phase 7 review-impl MED-1 fix: call helper with --format json so we parse
-    # structured response instead of scraping summary-mode strings (fragile).
-    # MED-2 fix: 4xx response → exit 1 (block commit) — wrong shape = something
-    # broken at rule layer, safer to block than fail-open.
-    try:
-        # Note: --format MUST follow the subcommand. argparse subparser default
-        # overrides top-level if --format is placed before the verb.
-        result = subprocess.run(
-            [sys.executable, str(MCP_QUERY), "check_guardrails", "git commit", "--format", "json"],
-            capture_output=True, text=True, timeout=15,
-        )
-    except (subprocess.SubprocessError, OSError) as e:
-        print(f"WARN: amaw-pre-commit guardrail check skipped (exception: {e})", file=sys.stderr)
-        sys.exit(0)
-
-    if result.returncode == 2:
-        # Server down / 5xx — don't block commit on infrastructure failure
-        print(f"WARN: amaw-pre-commit guardrail check skipped — ContextHub unreachable (exit 2)", file=sys.stderr)
-        sys.exit(0)
-    if result.returncode == 1:
-        # 4xx / user-input error — BLOCK commit. Something structurally broken
-        # with the rule layer or the request; safer to block until investigated.
-        print(f"BLOCKED: amaw-pre-commit guardrail check returned 4xx (structural error — investigate before commit):", file=sys.stderr)
-        print(result.stdout, file=sys.stderr)
-        print(result.stderr, file=sys.stderr)
-        sys.exit(1)
-
-    # returncode == 0 — parse JSON verdict
-    try:
-        verdict = json.loads(result.stdout) if result.stdout.strip() else {}
-    except json.JSONDecodeError:
-        print(f"WARN: amaw-pre-commit got non-JSON response from check_guardrails — passing through:\n{result.stdout}", file=sys.stderr)
-        sys.exit(0)
-
-    # Verdict source is `pass: bool`. Treat absence as CLEAR (no rule layer = no block).
-    # Matched rules live in `matched_rules` (verified against live ContextHub response
-    # 2026-05-15); `violated`/`rules` kept as fallback for other server versions.
-    pass_field = verdict.get("pass")
-    matched = verdict.get("matched_rules") or verdict.get("violated") or verdict.get("rules") or []
-    if pass_field is False or (isinstance(matched, list) and len(matched) > 0 and pass_field is not True):
-        prompt = verdict.get("prompt", "")
-        print(f"BLOCKED by guardrails: pass={pass_field}, matched_rules={len(matched) if isinstance(matched, list) else matched}", file=sys.stderr)
-        if prompt:
-            print(f"  {prompt}", file=sys.stderr)
-        for rule in (matched if isinstance(matched, list) else []):
-            req = rule.get("requirement") if isinstance(rule, dict) else rule
-            print(f"  - {req}", file=sys.stderr)
-        sys.exit(1)
-
-    rules_checked = verdict.get("rules_checked", "unknown")
-    print(f"OK: amaw-pre-commit guardrails CLEAR (pass={pass_field}, rules_checked={rules_checked})")
-    sys.exit(0)
 
 
 def cmd_pragmatic_stop(args: list[str]) -> None:
@@ -684,12 +564,6 @@ def cmd_pragmatic_stop(args: list[str]) -> None:
         "action": "pragmatic_stop",
         "reason": reason,
     })
-    _bridge_to_contexthub(
-        lesson_type="workaround",
-        title=f"Pragmatic stop: {task_slug}",
-        content=f"Phase: {state.get('current_phase')}\nTimestamp: {ts}\nReason: {reason}",
-        tags=["amaw", "pragmatic-stop", task_slug],
-    )
     print(f"OK: pragmatic stop recorded for task '{task_slug}'")
 
 
@@ -862,14 +736,13 @@ COMMANDS = {
     "reset": cmd_reset,
     # AMAW v3.0 L3 deepen
     "amaw-enable": cmd_amaw_enable,
-    "amaw-pre-commit": cmd_amaw_pre_commit,
     "pragmatic-stop": cmd_pragmatic_stop,
 }
 
 
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
-        print("Usage: workflow-gate.py {size|phase|complete|check|slices|skip|pre-commit|status|reset|amaw-enable|amaw-pre-commit|pragmatic-stop} [args]")
+        print("Usage: workflow-gate.py {size|phase|complete|check|slices|skip|pre-commit|status|reset|amaw-enable|pragmatic-stop} [args]")
         print()
         print("Commands:")
         print("  size <XS|S|M|L|XL> <files> <logic> <effects>  Classify task size")
@@ -884,9 +757,8 @@ def main() -> None:
         print("  reset                                          Reset for new task")
         print()
         print("AMAW v3.0 L3 (opt-in, fired by /amaw slash command):")
-        print("  amaw-enable [task-slug]                        Enable AMAW mode + AUDIT_LOG + bridge")
-        print("  amaw-pre-commit                                Hook: check_guardrails (no-op default v2.2)")
-        print("  pragmatic-stop <task-slug> <reason>            Record pragmatic stop + bridge to lesson")
+        print("  amaw-enable [task-slug]                        Enable AMAW mode + AUDIT_LOG")
+        print("  pragmatic-stop <task-slug> <reason>            Record a pragmatic stop in AUDIT_LOG")
         sys.exit(1)
 
     cmd = sys.argv[1]

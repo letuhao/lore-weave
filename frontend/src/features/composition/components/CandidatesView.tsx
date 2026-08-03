@@ -24,7 +24,7 @@ type Props = {
 export function CandidatesView({ gen, busy, onAcceptText, onCorrect, onRegenerate, onReject }: Props) {
   const { t } = useTranslation('composition');
 
-  const useCandidate = (i: number) => {
+  const acceptCandidate = (i: number) => {
     if (i !== gen.winner_index) {
       // pick-different: the author overruled the reranker → the one direct,
       // non-circular reranker correction.
@@ -54,7 +54,7 @@ export function CandidatesView({ gen, busy, onAcceptText, onCorrect, onRegenerat
             index={i}
             isWinner={i === gen.winner_index}
             disabled={busy}
-            onUse={() => useCandidate(i)}
+            onUse={() => acceptCandidate(i)}
             onEdit={editCandidate}
           />
         ))}

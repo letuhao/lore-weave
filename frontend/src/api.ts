@@ -8,6 +8,8 @@
 // 8 call-sites defaulting to http://localhost:3000, the gateway's *container* port,
 // which the browser cannot reach → silently broke chat/stats/media/import when
 // VITE_API_BASE was unset).
+import { beginOperation } from '@/lib/operationTracker';
+
 const base = () => import.meta.env.VITE_API_BASE || '';
 
 /** Same base URL `apiJson` uses — exported for callers that bypass
@@ -105,6 +107,9 @@ export async function apiJson<T>(
   init: RequestInit & { token?: string | null } = {},
   retried = false,
 ): Promise<T> {
+  const method = (init.method ?? 'GET').toUpperCase();
+  const endOperation = beginOperation(method === 'GET' || method === 'HEAD' ? 'read' : 'write');
+  try {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(init.headers as Record<string, string>),
@@ -201,4 +206,7 @@ export async function apiJson<T>(
     });
   }
   return body as T;
+  } finally {
+    endOperation();
+  }
 }

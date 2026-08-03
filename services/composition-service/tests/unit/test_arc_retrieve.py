@@ -13,7 +13,6 @@ import pytest
 
 from app.clients.embedding_client import EmbeddingError
 
-pytestmark = pytest.mark.asyncio
 
 
 class _FakeConn:

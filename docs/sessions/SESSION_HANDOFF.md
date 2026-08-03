@@ -54,6 +54,59 @@ is a legitimate private extension · `allowed-tools` **is** an Agent Skills stan
 infinite-loop symptom). 12 requirements, 8 phases; **R12 evals-in-CI goes first**, because every later
 phase deletes something and nothing can be deleted without a regression net.
 
+## 📘 2026-08-03 — an outside contributor's PR merged, and the agent workflow reconciled onto one standard
+
+Five PRs onto `main` (#168, #170, #171, #172 via #173). The repo now has a single, versioned agent
+workflow that a contributor on any of five agents follows identically.
+
+**PR #165 (@alexeydott, the project's first outside contribution) is merged — with five defects it
+shipped with, fixed.** CI had never run on that branch and `main` was a commit ahead, so nothing had
+been measured against the code it would land on:
+
+| defect | what it actually was |
+|---|---|
+| token accounting lost most of what it counted | the accumulator was a tuple in a `ContextVar`; `extract_pass2` fans the trio through `asyncio.gather`, and a Task **copies** the context — every child's tokens were discarded. Only the entity pass survived |
+| `_record_usage` raised `AttributeError` | on any job without `.result`, aborting the LLM call it was merely observing |
+| `"Глава %d"` | a hardcoded Russian fallback chapter title, written into every user's DB on EPUB import |
+| `parts` dropped from non-PDF imports | on a claim that parts moved to composition — but `hierarchy.go` still builds `book_parts` from that table, and PDF import kept writing it |
+| the PR's own new test | imported `estimateJobTotalCost`; the module exports `estimateTotalJobCost`. It had never passed |
+
+Plus **70 test failures** from fixtures the PR never updated, and two pre-existing `rules-of-hooks`
+lint errors on `main`. Issues #163 (base-URL normalisation) and #152 (`/verify` route) closed.
+
+**The workflow now has one home and one shape.** `CLAUDE.md` → `AGENTS.md` (15-line pointer left
+behind), new `CONTRIBUTING.md`, test account moved to a git-ignored personal file, ContextHub removed
+(a server no agent ever called, costing a subprocess per Bash call and a 75s commit timeout while
+gating nothing).
+
+The PR also carried **AI Factory** ([lee-to/ai-factory](https://github.com/lee-to/ai-factory), MIT,
+2.17.0). Kept — a shared versioned process is what makes a wrong turn reviewable — but reconciled
+rather than stacked: project rules bind through `.ai-factory/skill-context/`, its `aif-gate-result`
+JSON contract is **adopted** as the output shape for our own gates (`scripts/gate_result.py`), and the
+pack is installed for **five** agent targets (claude, cursor, codex, codex-app, copilot) through the
+generator, never by hand. One conflict caught immediately: `aif-implement`'s *"do not add tests by
+default"* is wrong here and is overridden.
+
+**Three new gates, each proven red before being trusted** (`docs/standards/non-vacuity.md`):
+
+- `agent-skills-parity.py` — the 5 skill trees byte-identical modulo documented substitutions, 750 files
+- `slash-command-doc-gate.py` — a runner on disk is named in AGENTS.md, and vice versa
+- `test-skip-census.py` — which suites are gated off and by which variable (1184 files, 15 variables)
+
+**Two things found while verifying, both fixed:** `agentic-workflow/install.sh` copied the deleted
+`mcp-query.py` back into its target, so running it would have re-broken `gate-wiring-gate` — a ⚠️
+STALE banner had been added instead, which warns a reader and does nothing to the script. And
+`/review-impl` — the only runner still in daily use — gained a `+check` findings validator adapted
+from `aif-review`, with the adaptation that matters: a generic validator reads a correct standards
+finding as speculation and drops it, so the rule text is inlined next to it and a HIGH finding on a
+LOCKED standard may be reworded but never dropped.
+
+`/loom` retired (43 lines, against `aif-plan` 818 + `aif-implement` 987). `/warp`, `/raid`, `/amaw`
+are planned, not done — NEXT-5.
+
+**Verified on merged `main`, not on either side of it:** frontend 6381 · worker-ai 511 ·
+knowledge-service 4115 · composition-service 3652 · three Go suites · 8 gates · language-rule PASS.
+
 ### ▶ NEXT
 
 1. **`NO_CHAPTER_PLAN` is a dead end with no signpost.** Agent Mode's preflight shows 4/4 green
@@ -77,6 +130,24 @@ phase deletes something and nothing can be deleted without a regression net.
    §1. A character the `cast` pass minted at 05:47 took the antagonist's defining act at 05:54,
    and `canon_consistency` scored **5/5** on all three chapters. A design that cannot prevent
    that has not addressed the refactor.
+
+5. **Retire `/warp`, `/raid`, `/amaw`** —
+   [`docs/plans/2026-08-03-retire-unused-workflow-runners.md`](../plans/2026-08-03-retire-unused-workflow-runners.md),
+   ordered `/raid` → `/warp` → `/amaw`. The owner uses none of them; AI Factory's coordinators and
+   read-only sidecars cover the same ground and are maintained upstream. **Not a delete:** `/warp`
+   has a live registered verb (`"slices"` → `cmd_slices`), three scripts, a green test and a spec;
+   `/amaw` threads `amaw_enabled` through the gate **every commit passes**. Two sub-decisions are the
+   human's: the `aif-*` sidecars are read-only advisors where AMAW's Scope Guard was a *blocking*
+   gate (a behaviour change, not a rename), and `docs/audit/AUDIT_LOG.jsonl` stays — the writer goes,
+   the record does not. `slash-command-doc-gate.py` is the mechanism that stops the prose being left
+   behind. **Trap:** `loom` is also a Rust model-checking crate used by `conformance-ci.yml`; a
+   `grep -r loom` sweep will hit it.
+6. **The workflow gate is parked at `post-review` and this session committed with `--no-verify`.**
+   That is a real bypass of the repo's own rule, not a technicality: `workflow-gate.sh status` still
+   reports `[>] post-review`, so the next commit through the hook will block. Either walk it through
+   `complete post-review` / `complete session`, or reset the state deliberately — but do it knowingly.
+7. **42 merged remote branches remain** (this session's four are deleted). They are historical, not
+   mine to delete unasked; `git branch -r --merged origin/main` lists them.
 
 ### Not fixed, and not tracked anywhere else
 

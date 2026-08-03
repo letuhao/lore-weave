@@ -69,7 +69,7 @@ the workflow-gate; only this orchestrator track does (one `.workflow-state.json`
 9.  POST-REVIEW   HUMAN STOP + WAIT — the junction you control (NOT auto). Suggest /review-impl for load-bearing code.
 10. SESSION       Overwrite the ▶ NEXT block in SESSION_HANDOFF; land in the same commit.
 11. COMMIT        Stage changed files only; message names slices + reconcile. Push only on explicit approval.
-12. RETRO         add_lesson if notable.
+12. RETRO         record the lesson in the repo (standard/spec/handoff) if notable.
 ```
 
 ## BUILD + RECONCILE — coordinator pseudo-flow

@@ -34,7 +34,6 @@ from app.engine import cowrite, select
 from app.engine.select import Selection
 from app.packer.profile import NEUTRAL
 
-pytestmark = pytest.mark.asyncio
 
 
 class CapturingLLM:

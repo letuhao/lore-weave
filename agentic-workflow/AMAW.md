@@ -85,7 +85,7 @@ AMAW uses an append-only `docs/audit/AUDIT_LOG.jsonl` as the single source of tr
 | 9. POST-REVIEW | Human checkpoint | **Scope Guard** | Final conservative gate; CLEAR or BLOCKED |
 | 10. SESSION | Main | Scribe | SESSION_PATCH + DEFERRED.md updates |
 | 11. COMMIT | Main | Main | Git commit; commit event in AUDIT_LOG |
-| 12. RETRO | Main | Audit Logger | `add_lesson` to ContextHub MCP (project_id=`mmo-rpg-zone-map-design-non-human-in-loop`); sprint_complete event |
+| 12. RETRO | Main | Audit Logger | `sprint_complete` event appended to `docs/audit/AUDIT_LOG.jsonl` |
 
 ---
 
@@ -272,42 +272,21 @@ Beyond default v2.2:
 
 Nothing else changes structurally from v2.2.
 
-## Repo integration (lore-weave-zone-map-design)
+## Repo integration (LoreWeave)
 
-ContextHub MCP is already provisioned for this repo:
-- Server: `http://localhost:3000/mcp` (stack at `D:/Works/source/free-context-hub`, 8 containers via docker-compose)
-- Project: `mmo-rpg-zone-map-design-non-human-in-loop` (slash → dash slug normalization)
-- Workspace root: `/workspaces/source/lore-weave-zone-map-design` (mounted via `D:/Works:/workspaces` bind)
-- MCP tools available: `search_lessons`, `add_lesson`, `check_guardrails`, `search_code_tiered`, `index_project`, etc. (32 tools total)
+**AMAW's durable memory is `docs/audit/AUDIT_LOG.jsonl`** — an append-only, committed JSONL file.
+It is the cross-session record: `grep` it by `task` slug or by `action`.
 
-**RETRO phase action:** call `add_lesson` with `lesson_payload.project_id = "mmo-rpg-zone-map-design-non-human-in-loop"`. Lessons accumulate across AMAW runs as durable cross-session memory.
+There used to be more. A ContextHub MCP server was wired in on 2026-05-15 to give AMAW a
+searchable lesson store (`scripts/mcp-query.py`, an AUDIT_LOG→`add_lesson` bridge in
+`workflow-gate.py`, `search_lessons`/`check_guardrails` pre-loads in the sub-agent prompts, and an
+`amaw-pre-commit` link in the hook chain). **All of it was removed on 2026-08-03.** It was never
+actually exercised: the hooks were fail-open wrappers around a server no agent called, so they
+cost a subprocess on every Bash call and a 75-second commit timeout while gating nothing.
 
-**CLARIFY phase action:** call `search_lessons` with the same project_id at task start to load prior decisions/preferences before running the Scribe deferred-item scan.
-
----
-
-## L3 ContextHub integration (deepened 2026-05-15)
-
-AMAW's MCP integration was deepened from shallow (~15-20%) to ~70-80% via 4 components:
-
-1. **`scripts/mcp-query.py`** — stdlib REST CLI wrapper for ContextHub. Sub-agents shell out to it via `python scripts/mcp-query.py <verb>` instead of relying on MCP-tool-inheritance.
-2. **AUDIT_LOG → ContextHub bridge** in `workflow-gate.py`: when `amaw_enabled=True`, `cmd_complete` writes events to `docs/audit/AUDIT_LOG.jsonl` AND selectively bridges high-signal events (sprint_complete, REJECTED reviews, pragmatic_stop) to `add_lesson`. Default v2.2 mode → silent.
-3. **Sub-agent prompts (Adversary / Scope Guard / Scribe)** include Step 0 calls to `mcp-query.py search_lessons` / `check_guardrails` for captured-rules awareness — see templates above.
-4. **Pre-commit hook chain** — `.claude/settings.json` runs `workflow-gate.sh pre-commit && workflow-gate.sh amaw-pre-commit`. Second gate is no-op for default v2.2; calls `check_guardrails` when AMAW mode active.
-
-**Activation:** `/amaw` slash command runs `bash scripts/workflow-gate.sh amaw-enable [task-slug]` which sets `state['amaw_enabled']=True`. All L3 behaviors gate on this flag.
-
-**Selective bridge triggers** (low-noise design: ~3-5 lessons per task):
-- `complete retro <evidence>` → bridge as `general_note` with title `Sprint complete: <task>`
-- `complete review-design` or `complete review-code` with "REJECTED" in evidence → bridge as `general_note` with title `Adversary REJECTED: <task> <phase>`
-- `pragmatic-stop <task> <reason>` → bridge as `workaround` with title `Pragmatic stop: <task>`
-
-**Failure modes (best-effort):**
-- ContextHub down → bridge prints warning to stderr, workflow continues. Phase still marks complete.
-- `add_lesson` slow (embedding generation 15-60s) → 60s timeout in mcp-query.py; if exceeded, bridge emits warning but server may still complete the insert async (verify with `list_lessons`).
-
-**See:** `docs/specs/2026-05-15-amaw-l3-deepen.md` (spec) and `docs/plans/2026-05-15-amaw-l3-deepen.md` (implementation plan).
-
+It is recorded here rather than deleted because "configuration that looks like a capability" is
+the failure worth remembering — the integration existed, was documented, and did nothing, and
+nobody noticed for eleven weeks.
 ---
 
 ## Related

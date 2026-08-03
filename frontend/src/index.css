@@ -463,3 +463,11 @@
   .lw-error-block { background-color: rgb(251 113 133 / 0.10); border-bottom-color: rgb(251 113 133 / 0.8); }
   .lw-error-block--proposed { background-color: rgb(251 191 36 / 0.10); border-bottom-color: rgb(251 191 36 / 0.8); }
 }
+
+/* App-wide request feedback. The bar moves continuously because the total
+   duration of an API operation is not known in advance. */
+@keyframes global-operation-progress {
+  0% { transform: translateX(-120%); }
+  50% { transform: translateX(210%); }
+  100% { transform: translateX(420%); }
+}

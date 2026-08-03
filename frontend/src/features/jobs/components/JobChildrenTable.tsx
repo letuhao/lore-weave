@@ -3,10 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { JobRow } from './JobRow';
 import { useJobsList } from '../hooks/useJobsList';
 import { jobKey, type Job } from '../types';
+import type { TokenModelPricing } from '../modelPricing';
 
 /** Children of a parent job, lazy-loaded via ?parent= when the row expands.
  *  Rendered as nested grid rows (same column layout as the parent table). */
-export function JobChildrenTable({ parentJobId }: { parentJobId: string }) {
+export function JobChildrenTable({ parentJobId, pricing }: { parentJobId: string; pricing?: TokenModelPricing | null }) {
   const { t } = useTranslation('jobs');
   const q = useJobsList({ parent: parentJobId });
   const items: Job[] = q.data?.pages.flatMap((p) => p.items) ?? [];
@@ -28,7 +29,7 @@ export function JobChildrenTable({ parentJobId }: { parentJobId: string }) {
   return (
     <div>
       {items.map((j) => (
-        <JobRow key={jobKey(j)} job={j} nested />
+        <JobRow key={jobKey(j)} job={j} nested pricing={pricing} />
       ))}
       {q.hasNextPage && (
         <button

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	htmlpkg "html"
 	"io"
 	"log/slog"
 	"net/http"
@@ -33,14 +34,14 @@ type amqpPublisher interface {
 }
 
 type ImportProcessor struct {
-	Cfg     *config.Config
-	Redis   *redis.Client
-	BookDB  *pgxpool.Pool
-	Minio   *minio.Client
+	Cfg    *config.Config
+	Redis  *redis.Client
+	BookDB *pgxpool.Pool
+	Minio  *minio.Client
 
 	amqpCh            amqpPublisher
-	parseClient       *ParseClient        // P1 — initialised lazily in Run()
-	materializeClient *MaterializeClient  // 26 IX-12 — initialised lazily in Run()
+	parseClient       *ParseClient       // P1 — initialised lazily in Run()
+	materializeClient *MaterializeClient // 26 IX-12 — initialised lazily in Run()
 }
 
 func (t *ImportProcessor) Name() string { return "import-processor" }
@@ -184,10 +185,34 @@ func (t *ImportProcessor) processImport(ctx context.Context, payload importReque
 		return 0, fmt.Errorf("minio read: %w", err)
 	}
 
-	// 2. Convert via pandoc-server
-	html, err := t.callPandoc(ctx, fileData, payload.FileFormat)
-	if err != nil {
-		return 0, fmt.Errorf("pandoc: %w", err)
+	// 2. Convert to HTML. EPUBs generated from FB2 contain one XHTML document
+	// per source chapter and an NCX navigation map. Pandoc flattens those
+	// documents into one stream, losing the user's chapter boundaries, so build
+	// explicit heading boundaries from the EPUB navigation map instead.
+	var html string
+	if payload.FileFormat == "epub" {
+		epubChapters, epubErr := extractEPUBChapters(fileData)
+		if epubErr != nil {
+			return 0, fmt.Errorf("epub structure: %w", epubErr)
+		}
+		var b strings.Builder
+		for i, ch := range epubChapters {
+			title := strings.TrimSpace(ch.Title)
+			if title == "" {
+				// English, like every other persisted artifact this repo writes. This
+				// title is stored in `chapters.title` and shown to whoever imported the
+				// book, whatever language they read in — a localized literal here would
+				// be wrong for all but one of them.
+				title = fmt.Sprintf("Chapter %d", i+1)
+			}
+			fmt.Fprintf(&b, "<h1>%s</h1>%s", htmlpkg.EscapeString(title), ch.HTML)
+		}
+		html = b.String()
+	} else {
+		html, err = t.callPandoc(ctx, fileData, payload.FileFormat)
+		if err != nil {
+			return 0, fmt.Errorf("pandoc: %w", err)
+		}
 	}
 
 	// 3. P1 — structural decomposition via knowledge-service /internal/parse
@@ -434,11 +459,11 @@ func (t *ImportProcessor) writeBackSceneLinks(ctx context.Context, bookID, owner
 // inside the caller's tx (INV-O12: an emit that cannot be written must roll the mutation back).
 //
 // THE CENSUS THAT WAS WRONG TWICE. `scenes.source_scene_id` is written in FIVE places, not three:
-//   1. book-service parse.go        — the .txt import INSERT
-//   2. book-service reparse.go      — via FOUR emit sites (publish, kg-index, mcp-publish, sweeper)
-//   3. worker-infra import (here)   — the HTML/txt import INSERT      <- emitted NOTHING
-//   4. worker-infra import_pdf      — the PDF import INSERT           <- emitted NOTHING
-//   5. worker-infra IX-12 write-back— the decompile back-link fill    <- emitted NOTHING
+//  1. book-service parse.go        — the .txt import INSERT
+//  2. book-service reparse.go      — via FOUR emit sites (publish, kg-index, mcp-publish, sweeper)
+//  3. worker-infra import (here)   — the HTML/txt import INSERT      <- emitted NOTHING
+//  4. worker-infra import_pdf      — the PDF import INSERT           <- emitted NOTHING
+//  5. worker-infra IX-12 write-back— the decompile back-link fill    <- emitted NOTHING
 //
 // (3) and (4) matter because they set the link from a parser-recovered anchor, and the IX-12
 // write-back at (5) only fills NULLs — so a scene that arrives ALREADY ANCHORED is never touched

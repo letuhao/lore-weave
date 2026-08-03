@@ -316,8 +316,16 @@ The complete design lives in [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/
 
 LoreWeave is open to everyone — developers, writers, translators, and artists.
 
-- **License**: [AGPL-3.0-or-later](LICENSE)
-- **Issues**: bug reports, feature requests, and discussions welcome
+**→ Start with [CONTRIBUTING.md](CONTRIBUTING.md)** — setup, repo layout, the rules that matter, and
+how to open a PR. It is written so you only need the slice of the monorepo you are working on.
+
+- **[AGENTS.md](AGENTS.md)** — the deep rulebook: invariants, standards, and the bug lore behind
+  them. Also what AI coding assistants should load (any vendor; `CLAUDE.md` points here).
+- **What to work on** — the Deferred Items in
+  [docs/sessions/SESSION_HANDOFF.md](docs/sessions/SESSION_HANDOFF.md) are the honest backlog, each
+  with why it was postponed. Best source of contributable work.
+- **License**: [AGPL-3.0-or-later](LICENSE) — contributions are under the same terms
+- **Issues**: bug reports, feature requests, and discussions welcome — in any language
 
 ---
 

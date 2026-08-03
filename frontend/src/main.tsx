@@ -4,6 +4,9 @@ import { App } from './App';
 import { registerServiceWorker } from './pwa/registerSW';
 import './i18n';
 import './index.css';
+import { installFetchTracker } from './lib/operationTracker';
+
+installFetchTracker();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -56,9 +56,7 @@ logger = logging.getLogger(__name__)
 
 # Mirror the entity-vector index dims (KSA §3.4.B). New dims added
 # here must also get a matching CREATE VECTOR INDEX in neo4j_schema.cypher.
-SUPPORTED_PASSAGE_DIMS: tuple[int, ...] = (384, 1024, 1536, 3072)
-
-
+SUPPORTED_PASSAGE_DIMS: tuple[int, ...] = (384, 1024, 1536, 2560, 3072)
 class Passage(BaseModel):
     """Pydantic projection of a `:Passage` node.
 

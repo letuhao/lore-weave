@@ -235,11 +235,13 @@ services/auth-service/tmp/
 # Never committed — see docs/specs/2026-05-15-tilemap-phase-0b-gateway-tooluse.md D7.
 .local/
 
-.claude/worktrees/romantic-franklin
-
-.claude/worktrees/cranky-margulis
-
-.claude/worktrees/strange-gagarin
+# Agent worktrees. This was previously an ENUMERATED list of three generated names
+# (romantic-franklin, cranky-margulis, strange-gagarin) — i.e. default-uncovered: the
+# fourth worktree, created tomorrow, would have been committed. Exactly the
+# "scope never reaches it" vacuity shape from docs/standards/non-vacuity.md.
+# The directory itself is transient state; the tracked agent config next to it
+# (.claude/commands/, .claude/skills/) is shared tooling and stays committed.
+.claude/worktrees/
 
 node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/results.json
 
@@ -259,6 +261,22 @@ chat-history/
 .claude/scheduled_tasks.lock
 
 chat.txt
+
+# --- Per-developer agent + environment state ---------------------------------
+# These are machine-local. Tracking them leaks one developer's session state and
+# credentials into everyone else's checkout; worse, the values (local DB UUIDs,
+# user_model_ids, ports) are meaningless elsewhere and actively mislead.
+# The SHARED counterparts stay committed on purpose:
+#   .claude/commands/, .claude/skills/  — team tooling
+#   .raid/active-task.yaml              — read by scripts/raid/task_config.py, per-branch by design
+#   .mcp.json, .cursor/.mcp.json        — placeholder tokens only, no secrets
+
+# Agent session memory / rolling notes (remember plugin).
+.remember/
+
+# Your filled-in local test environment. The .example.md template IS committed —
+# copy it, fill it, and it stays here. See docs/dev/LOCAL_TEST_ENV.example.md.
+docs/dev/LOCAL_TEST_ENV.md
 
 geo-review-2026-05-21/
 
@@ -332,3 +350,19 @@ frontend/dist-s01/
 
 frontend/dist-jamie/
 services/publisher/pub.exe~
+
+
+# ── Agent workflow: what is SHARED vs what is YOURS ─────────────────────────
+# The agent workflow IS committed on purpose (see docs/standards/agent-workflow.md):
+# when several people and several agents work the same repo, a shared, versioned
+# process is what makes a wrong turn reviewable instead of invisible. Committed:
+# AGENTS.md, CLAUDE.md, .claude/, .cursor/, .codex/, .agents/, .github/skills/,
+# .ai-factory/, .githooks/, scripts/*-gate.py.
+#
+# Personal layer — never committed. Put your own overrides here and they stay
+# yours without forking anyone else's process:
+.ai-factory/skill-context.local/
+.claude/settings.local.json
+.codex/config.local.toml
+.vscode/settings.json
+AGENTS.local.md

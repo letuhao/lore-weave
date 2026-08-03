@@ -1,7 +1,21 @@
 # Agentic Workflow Bundle (lore-weave-zone-map-design fork)
 
 **Bundle version 2.3** — default v2.2 workflow + opt-in AMAW v3.0 extension
-**Repo-tailored:** session paths, planning paths, ContextHub MCP `project_id`, and `scripts/workflow-gate.{sh,py}` dual-impl all wired for `lore-weave-zone-map-design`.
+**Repo-tailored:** session paths, planning paths, and the `scripts/workflow-gate.{sh,py}` dual-impl are wired for LoreWeave.
+
+> ## Reconciled with the parent repo — 2026-08-03
+>
+> **LoreWeave removed its ContextHub MCP integration** (it was configuration that looked like a
+> capability — no agent ever called it). This bundle shipped for a while carrying the removed
+> pieces, and `install.sh` copied them into its target: running it against LoreWeave would have
+> reinstated `scripts/mcp-query.py` and re-broken `scripts/gate-wiring-gate.py`.
+>
+> That is fixed. `mcp-query.py` is gone, and `workflow-gate.{py,sh}`, `.claude/settings.json` and
+> both slash commands are resynced from the parent repo's cleaned copies. AMAW's durable memory is
+> `docs/audit/AUDIT_LOG.jsonl` — `grep` it by `task` slug or by `action`.
+>
+> A bundle that duplicates the parent repo drifts by construction. **Resync before publishing**,
+> and prefer changing the parent copy first.
 
 A drop-in structured workflow for AI coding agents (Claude Code, Cursor, Codex, etc.).
 Prevents agents from skipping phases, undersizing tasks, and committing without verification.
@@ -20,7 +34,7 @@ agentic-workflow/
 ├── README.md                    # This file — setup guide
 ├── WORKFLOW.md                  # Default v2.2 workflow (paste into CLAUDE.md)
 ├── AMAW.md                      # Opt-in AMAW v3.0 extension spec
-├── CLAUDE.md.snippet            # Minimal snippet for existing CLAUDE.md
+├── AGENTS.md.snippet            # Minimal snippet for an existing AGENTS.md
 ├── install.sh                   # One-line installer
 ├── scripts/
 │   ├── workflow-gate.sh         # Bash wrapper (delegates to .py)
@@ -43,10 +57,8 @@ This bundle has been customized for the **lore-weave-zone-map-design** repo. Dif
 | `install.sh` | Also creates `docs/specs/` + `docs/plans/` (in addition to `docs/audit/` + `docs/deferred/`). |
 | `WORKFLOW.md` Phase 10 | Names two session paths: `docs/sessions/SESSION_PATCH.md` (main) vs `docs/03_planning/<TRACK>/SESSION_HANDOFF.md` (design tracks). |
 | `WORKFLOW.md` Phase 1 + 4 | Spec + plan paths can also live under `docs/03_planning/<TRACK>/` for legacy track work. |
-| `CLAUDE.md.snippet` | Includes a "Repo-specific paths" block listing all canonical doc locations + ContextHub `project_id`. |
-| `AMAW.md` | New "Repo integration" section: ContextHub MCP server, project_id, workspace mount path, RETRO+CLARIFY MCP call instructions. |
-| `.claude/commands/amaw.md` | RETRO step explicitly names ContextHub `project_id = "mmo-rpg-zone-map-design-non-human-in-loop"`. |
-| **L3 deepen (2026-05-15)** | `scripts/mcp-query.py` — stdlib REST CLI wrapper for ContextHub. `workflow-gate.py` extended with `amaw-enable` / `amaw-pre-commit` / `pragmatic-stop` verbs + `_bridge_to_contexthub` helper that selectively bridges high-signal AMAW events (sprint_complete, REJECTED reviews, pragmatic_stop) to `add_lesson` for cross-session searchable memory. Sub-agent prompts (Adversary / Scope Guard / Scribe) gain Step 0 calls to `mcp-query.py search_lessons` / `check_guardrails`. Pre-commit hook chain runs `pre-commit && amaw-pre-commit`. All L3 behaviors gate on `state['amaw_enabled']` flag (set by `/amaw` slash command); default v2.2 mode → silent. See `docs/specs/2026-05-15-amaw-l3-deepen.md`. |
+| `AGENTS.md.snippet` | A "Repo-specific paths" block listing the canonical doc locations. Named for `AGENTS.md`, which replaced `CLAUDE.md` as the parent repo's guide on 2026-08-03. |
+| **L3 deepen (2026-05-15), since removed** | Added a ContextHub bridge: `scripts/mcp-query.py`, `_bridge_to_contexthub`, an `amaw-pre-commit` verb and sub-agent `search_lessons`/`check_guardrails` pre-loads. All of it was removed on 2026-08-03 — it was never exercised, and the hooks were fail-open wrappers around a server no agent called, costing a subprocess per Bash call and a 75s commit timeout while gating nothing. |
 
 ## Quick Start (3 steps)
 

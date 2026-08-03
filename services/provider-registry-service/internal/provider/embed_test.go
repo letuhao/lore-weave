@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -152,5 +153,50 @@ func TestEmbedOpenAI_V1SuffixStripped(t *testing.T) {
 	}
 	if result.Dimension != 3 {
 		t.Fatalf("expected dim 3, got %d", result.Dimension)
+	}
+}
+
+func TestEmbedOpenAISplitsProviderBatchLimit(t *testing.T) {
+	var batchSizes []int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Input []string `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		batchSizes = append(batchSizes, len(in.Input))
+		data := make([]map[string]any, len(in.Input))
+		for i := range in.Input {
+			data[i] = map[string]any{"embedding": []any{float64(i), 1.0}, "index": i}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data":  data,
+			"model": "qwen3-embedding-4b",
+			"usage": map[string]any{"prompt_tokens": len(in.Input)},
+		})
+	}))
+	defer srv.Close()
+
+	texts := make([]string, 65)
+	for i := range texts {
+		texts[i] = "text"
+	}
+	result, err := embedOpenAI(t.Context(), srv.Client(), srv.URL, "", "qwen3-embedding-4b", texts)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got, want := len(result.Embeddings), len(texts); got != want {
+		t.Fatalf("embedding count = %d, want %d", got, want)
+	}
+	if got, want := result.PromptTokens, len(texts); got != want {
+		t.Fatalf("prompt tokens = %d, want %d", got, want)
+	}
+	if got, want := len(batchSizes), 3; got != want {
+		t.Fatalf("request count = %d, want %d", got, want)
+	}
+	if batchSizes[0] != 32 || batchSizes[1] != 32 || batchSizes[2] != 1 {
+		t.Fatalf("batch sizes = %v, want [32 32 1]", batchSizes)
 	}
 }

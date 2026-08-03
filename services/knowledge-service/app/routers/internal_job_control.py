@@ -98,6 +98,8 @@ async def reconcile_jobs(
             # can't afford), so this backstop leaves them None — the projection's
             # COALESCE keeps whatever the live 'running' event set (best-effort heal).
             "cost_usd": (float(j.cost_spent_usd) if j.cost_spent_usd is not None else None),
+            "tokens_in": j.tokens_in,
+            "tokens_out": j.tokens_out,
             "error": ({"code": "extraction_failed", "message": (j.error_message or "")[:500]}
                       if j.status == "failed" else None),
             "occurred_at": j.updated_at.isoformat() if j.updated_at else None,

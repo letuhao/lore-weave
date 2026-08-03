@@ -169,6 +169,7 @@ _SELECT_COLS = """
   job_id, user_id, project_id, scope, scope_range, status,
   llm_model, embedding_model, max_spend_usd,
   items_total, items_processed, current_cursor, cost_spent_usd,
+  tokens_in, tokens_out,
   started_at, paused_at, completed_at, created_at, updated_at,
   error_message, campaign_id,
   billing_user_id, billing_embedding_model, billing_llm_model,
@@ -244,6 +245,8 @@ class ExtractionJob(BaseModel):
     # section only when this field is populated.
     current_chapter_title: str | None = None
     cost_spent_usd: Decimal = Decimal("0")
+    tokens_in: int = 0
+    tokens_out: int = 0
 
     started_at: datetime | None = None
     paused_at: datetime | None = None

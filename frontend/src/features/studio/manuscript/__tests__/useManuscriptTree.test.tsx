@@ -15,9 +15,17 @@ vi.mock('@tanstack/react-query', async (importOriginal) => {
 });
 
 const listChaptersPage = vi.fn();
+const patchChapter = vi.fn();
+const trashChapter = vi.fn();
+const restoreChapter = vi.fn();
 const listOutlineChildren = vi.fn();
 const outlineStats = vi.fn(() => Promise.resolve({ arcs: 0, chapters: 0, scenes: 0 }));
-vi.mock('@/features/books/api', () => ({ booksApi: { listChaptersPage: (...a: unknown[]) => listChaptersPage(...a) } }));
+vi.mock('@/features/books/api', () => ({ booksApi: {
+  listChaptersPage: (...a: unknown[]) => listChaptersPage(...a),
+  patchChapter: (...a: unknown[]) => patchChapter(...a),
+  trashChapter: (...a: unknown[]) => trashChapter(...a),
+  restoreChapter: (...a: unknown[]) => restoreChapter(...a),
+} }));
 vi.mock('@/features/composition/api', () => ({ compositionApi: {
   listOutlineChildren: (...a: unknown[]) => listOutlineChildren(...a),
   outlineStats: (...a: unknown[]) => outlineStats(...a),
@@ -42,6 +50,9 @@ const isNode = (r: ManuscriptRow, id: string) => r.type === 'node' && r.node.id 
 
 beforeEach(() => {
   listChaptersPage.mockReset();
+  patchChapter.mockReset();
+  trashChapter.mockReset();
+  restoreChapter.mockReset();
   listOutlineChildren.mockReset();
   // The outline branch now reads the chapter list + outline stats too (it has to, to know which
   // chapters the plan does NOT claim). A bare mockReset() returns `undefined`, and a promise
@@ -56,6 +67,9 @@ beforeEach(() => {
   restorePart.mockResolvedValue({});
   reorderParts.mockResolvedValue({ items: [] });
   listParts.mockResolvedValue({ items: [] }); // default: flat mode
+  patchChapter.mockResolvedValue({});
+  trashChapter.mockResolvedValue({});
+  restoreChapter.mockResolvedValue({});
   work.value = { data: { status: 'none' }, isLoading: false };
   structure.value = { data: { kinds_present: { parts: false, outline: false } }, isLoading: false }; // default: no parts
 });
@@ -72,6 +86,24 @@ describe('useManuscriptTree', () => {
     expect(result.current.total).toBe(10);
     expect(result.current.rows.some((r) => isNode(r, 'c1'))).toBe(true);
     expect(result.current.rows.some((r) => r.type === 'more')).toBe(true); // next_cursor → paging affordance
+  });
+
+  it('renames and trashes a chapter through book-service, then exposes restore for Undo', async () => {
+    listChaptersPage.mockResolvedValue({
+      items: [{ chapter_id: 'c1', sort_order: 1, title: 'A', original_filename: 'a.txt' }],
+      next_cursor: null, total: 1,
+    });
+    const { result } = renderHook(() => useManuscriptTree('b1', 't'));
+    await waitFor(() => expect(result.current.rows.some((r) => isNode(r, 'c1'))).toBe(true));
+
+    await act(async () => { await result.current.renameChapter('c1', 'Renamed'); });
+    expect(patchChapter).toHaveBeenCalledWith('t', 'b1', 'c1', { title: 'Renamed' });
+
+    await act(async () => { await result.current.trashChapter('c1'); });
+    expect(trashChapter).toHaveBeenCalledWith('t', 'b1', 'c1');
+
+    await act(async () => { await result.current.restoreChapter('c1'); });
+    expect(restoreChapter).toHaveBeenCalledWith('t', 'b1', 'c1');
   });
 
   // F11 — a Work whose outline is EMPTY (chapters never decomposed) must NOT show "No chapters yet."

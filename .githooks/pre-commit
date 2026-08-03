@@ -192,6 +192,22 @@ fi
 # walked past. Unconditional, and cheap (docs-only scan).
 "$PY" "$ROOT/scripts/amendment-rot-gate.py"
 
+# agent-skills-parity — the committed agent workflow is installed THREE times, once
+# per agent target (codex / codex-app / copilot), as generated renderings of one
+# source. Hand-edit one copy and two contributors running two different agents
+# follow two different processes on the same repo, each copy looking self-consistent.
+# Nobody reviews three near-identical 150-file trees in a PR, so it is checked
+# mechanically. Unconditional: the trigger is "someone touched a skill tree", and
+# the whole point is to catch the edit nobody was watching.
+"$PY" "$ROOT/scripts/agent-skills-parity.py"
+
+# slash-command-doc-gate — the runners a contributor can type, and the guide that
+# tells them which to type, drifting apart in both directions. `/raid` and `/warp`
+# sat undocumented long enough to fall out of use unnoticed, and a retirement is
+# precisely the change that leaves the prose behind: deleting the file is the easy
+# half. Unconditional and cheap (two files).
+"$PY" "$ROOT/scripts/slash-command-doc-gate.py"
+
 # Q0b B3's asserted trigger. Greens while the RulesetEpochActivated emit path is
 # unbuilt; reds the day any producer appears, printing the three unresolved
 # constraints (DP-A16 lease, the S5 chokepoint, dp::channel_pause) so the path

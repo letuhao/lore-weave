@@ -377,6 +377,10 @@ ALTER TABLE extraction_jobs
 -- DEFAULT 0 so every pre-existing + omitting job reads 0, never NULL.
 ALTER TABLE extraction_jobs
   ADD COLUMN IF NOT EXISTS llm_calls_made INT NOT NULL DEFAULT 0;
+-- Jobs GUI usage hint: cumulative provider-reported token counts for extraction LLM calls.
+ALTER TABLE extraction_jobs
+  ADD COLUMN IF NOT EXISTS tokens_in BIGINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS tokens_out BIGINT NOT NULL DEFAULT 0;
 
 -- C12 — target-typed extraction. `targets` selects which Pass-2 passes a
 -- build runs (entities/relations/events/facts/summaries). NOT NULL with a

@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { apiJson } from '@/api';
+import { passwordMeetsPolicy } from '@/lib/password-policy';
 import { AuthCard } from './AuthCard';
 
 export function RegisterPage() {
@@ -18,7 +19,9 @@ export function RegisterPage() {
   const schema = z.object({
     displayName: z.string().max(100).optional(),
     email: z.string().min(1, t('validation.email_required')).email(t('validation.email_invalid')),
-    password: z.string().min(8, t('validation.password_min')),
+    password: z.string().min(8, t('validation.password_min')).refine(passwordMeetsPolicy, {
+      message: t('validation.password_policy'),
+    }),
     confirmPassword: z.string().min(1, t('validation.password_required')),
   }).refine((d) => d.password === d.confirmPassword, {
     message: t('validation.password_mismatch'),
@@ -32,7 +35,10 @@ export function RegisterPage() {
   const onSubmit = async (data: z.infer<typeof schema>) => {
     setError('');
     try {
-      const res = await apiJson<{ access_token: string; refresh_token: string }>('/v1/auth/register', {
+      const res = await apiJson<{
+        email: string;
+        verification_required?: boolean;
+      }>('/v1/auth/register', {
         method: 'POST',
         body: JSON.stringify({
           email: data.email,
@@ -40,8 +46,15 @@ export function RegisterPage() {
           ...(data.displayName?.trim() ? { display_name: data.displayName.trim() } : {}),
         }),
       });
-      setTokens(res.access_token, res.refresh_token);
-      navigate('/books');
+      // Registration creates the account but deliberately does not issue
+      // tokens. Sign in explicitly so the session is established from the
+      // same credentials and the server remains the source of truth.
+      const login = await apiJson<{ access_token: string; refresh_token: string }>('/v1/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email: data.email.trim(), password: data.password }),
+      });
+      setTokens(login.access_token, login.refresh_token);
+      navigate(res.verification_required ? '/verify' : '/books');
     } catch (err) {
       setError((err as Error).message);
     }

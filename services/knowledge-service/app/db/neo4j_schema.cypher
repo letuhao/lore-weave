@@ -212,11 +212,11 @@ FOR (s:ExtractionSource) ON (s.user_id, s.source_type, s.source_id);
 // ─────────────────────────────────────────────────────────────────
 // VECTOR INDEXES — per-embedding-dimension semantic search
 //
-// One index per supported dimension. KSA §3.4.B documents the four
-// dimensions Track 2 supports:
+// One index per supported dimension. Track 2 supports:
 //   384  — small models (e.g. all-MiniLM-L6-v2)
 //   1024 — medium (bge-m3, voyage-3, cohere-embed-v3)
 //   1536 — large (text-embedding-3-small)
+//   2560 — high-dimensional embedding models
 //   3072 — extra-large (text-embedding-3-large)
 //
 // Cosine similarity for all four. Vector indexes can ONLY be
@@ -247,6 +247,15 @@ FOR (e:Entity) ON (e.embedding_1536)
 OPTIONS {
   indexConfig: {
     `vector.dimensions`: 1536,
+    `vector.similarity_function`: 'cosine'
+  }
+};
+
+CREATE VECTOR INDEX entity_embeddings_2560 IF NOT EXISTS
+FOR (e:Entity) ON (e.embedding_2560)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 2560,
     `vector.similarity_function`: 'cosine'
   }
 };
@@ -320,6 +329,15 @@ FOR (p:Passage) ON (p.embedding_1536)
 OPTIONS {
   indexConfig: {
     `vector.dimensions`: 1536,
+    `vector.similarity_function`: 'cosine'
+  }
+};
+
+CREATE VECTOR INDEX passage_embeddings_2560 IF NOT EXISTS
+FOR (p:Passage) ON (p.embedding_2560)
+OPTIONS {
+  indexConfig: {
+    `vector.dimensions`: 2560,
     `vector.similarity_function`: 'cosine'
   }
 };

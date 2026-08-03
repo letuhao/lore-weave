@@ -10,3 +10,4 @@ export { LanguageDisplay } from './LanguageDisplay';
 export { LanguageSelector } from './LanguageSelector';
 export { LanguagePicker } from './LanguagePicker';
 export { FloatingActionBar, FloatingActionDivider } from './FloatingActionBar';
+export { GlobalOperationProgress } from './GlobalOperationProgress';

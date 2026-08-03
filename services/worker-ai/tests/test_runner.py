@@ -120,9 +120,14 @@ def _mock_pool(book_id=_TEST_BOOK_ID):
     # the happy path emits; tests inspect `pool.acquired_conn.fetchrow`.
     # P4 carries the final cost on the terminal event — _complete_job/_fail_job read
     # row["cost_spent_usd"] from the RETURNING row, so the mock must supply it.
+    # The terminal events also carry the job's cumulative provider token counts, which
+    # _complete_job/_fail_job read off the same RETURNING row — a real DB always returns
+    # them (the columns are NOT NULL DEFAULT 0), so the fake must too.
     conn.fetchrow = AsyncMock(return_value={
         "job_id": "00000000-0000-0000-0000-000000000001",
         "cost_spent_usd": Decimal("0.004"),
+        "tokens_in": 0,
+        "tokens_out": 0,
     })
     _acq = MagicMock()
     _acq.__aenter__ = AsyncMock(return_value=conn)
@@ -152,8 +157,12 @@ def _mock_knowledge_client():
 def _mock_llm_client():
     """Phase 4b-gamma: LLMClient is required by process_job/poll_and_run
     but is never invoked in tests because _extract_and_persist is
-    patched. A MagicMock placeholder is enough."""
-    return MagicMock()
+    patched. A MagicMock placeholder is enough — except for take_usage, which
+    process_job unpacks as a 2-tuple; a bare MagicMock iterates empty and would
+    raise "not enough values to unpack" before the assertion under test runs."""
+    client = MagicMock()
+    client.take_usage.return_value = (0, 0)
+    return client
 
 
 # ── D-KG-WORKER-GRADED-EFFORT — sync path threads job effort to the SDK ─────
@@ -1804,6 +1813,8 @@ async def test_get_running_jobs_pulls_embedding_dimension(monkeypatch):
         "max_spend_usd": Decimal("10"), "items_total": 5,
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
+        # Cumulative provider tokens — NOT NULL DEFAULT 0, so a real row always has them.
+        "tokens_in": 0, "tokens_out": 0,
         "campaign_id": None,
         "billing_user_id": None,
         "billing_embedding_model": None,
@@ -1841,6 +1852,8 @@ async def test_get_running_jobs_handles_null_embedding_dimension():
         "max_spend_usd": None, "items_total": None,
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
+        # Cumulative provider tokens — NOT NULL DEFAULT 0, so a real row always has them.
+        "tokens_in": 0, "tokens_out": 0,
         "campaign_id": None,
         "billing_user_id": None,
         "billing_embedding_model": None,
@@ -1877,6 +1890,8 @@ async def test_get_running_jobs_threads_billing_identity():
         "max_spend_usd": None, "items_total": None,
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
+        # Cumulative provider tokens — NOT NULL DEFAULT 0, so a real row always has them.
+        "tokens_in": 0, "tokens_out": 0,
         "campaign_id": None,
         "billing_user_id": collab,
         "billing_embedding_model": "collab-emb",
@@ -1915,6 +1930,8 @@ async def test_get_running_jobs_threads_pinned_entity_ids():
         "max_spend_usd": None, "items_total": None,
         "items_processed": 0, "current_cursor": None,
         "cost_spent_usd": Decimal("0"),
+        # Cumulative provider tokens — NOT NULL DEFAULT 0, so a real row always has them.
+        "tokens_in": 0, "tokens_out": 0,
         "campaign_id": None,
         "billing_user_id": None,
         "billing_embedding_model": None,

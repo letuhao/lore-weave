@@ -118,9 +118,6 @@ EXEMPT: dict[str, str] = {
     "scripts/test_tier_tag_gate.py": "pytest self-test OF tier-tag-gate; runs with the python suite",
     "scripts/workflow-gate.py": "the WORKFLOW state machine, invoked explicitly by /loom and by the "
                         "pre-commit hook's phase check — not a code gate over the tree",
-    "scripts/amaw-guardrail-gate.py": "a Claude Code PreToolUse HOOK, not a tree gate: it reads a "
-                        "JSON payload from stdin (`json.loads(sys.stdin.read())`) and is invoked "
-                        "per tool-call by the agent runtime. Scanned as a gate it blocks forever",
     "scripts/workflow-gate.sh": "a thin wrapper around workflow-gate.py (which is exempt for "
                         "the same reason): it takes a SUBCOMMAND and prints usage with rc=1 "
                         "when given none, so there is nothing for a tree-scan to run",

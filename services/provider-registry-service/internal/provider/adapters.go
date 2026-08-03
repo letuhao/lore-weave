@@ -726,8 +726,24 @@ type openaiAdapter struct {
 
 const openaiBaseURL = "https://api.openai.com"
 
+// normalizeOpenAICompatibleBase accepts both common forms of an
+// OpenAI-compatible base URL:
+//
+//   https://provider.example
+//   https://provider.example/v1
+//
+// Adapters append canonical /v1/... paths themselves. Stripping one trailing
+// /v1 prevents requests such as /v1/v1/models and /v1/v1/chat/completions.
+func normalizeOpenAICompatibleBase(raw string) string {
+	base := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if strings.HasSuffix(strings.ToLower(base), "/v1") {
+		base = base[:len(base)-len("/v1")]
+	}
+	return strings.TrimRight(base, "/")
+}
+
 func (a *openaiAdapter) ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error) {
-	base := strings.TrimRight(endpointBaseURL, "/")
+	base := normalizeOpenAICompatibleBase(endpointBaseURL)
 	if base == "" {
 		base = openaiBaseURL
 	}
@@ -956,7 +972,7 @@ func classifyOpenAIModel(id string) string {
 }
 
 func (a *openaiAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any) (map[string]any, Usage, error) {
-	base := strings.TrimRight(endpointBaseURL, "/")
+	base := normalizeOpenAICompatibleBase(endpointBaseURL)
 	if base == "" {
 		base = openaiBaseURL
 	}
@@ -997,7 +1013,7 @@ func (a *openaiAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret
 }
 
 func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
-	base := strings.TrimRight(endpointBaseURL, "/")
+	base := normalizeOpenAICompatibleBase(endpointBaseURL)
 	if base == "" {
 		base = openaiBaseURL
 	}

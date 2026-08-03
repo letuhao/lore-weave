@@ -43,7 +43,7 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
   const host = useStudioHost();
   // S-13 — the "Use in decompose" EXIT: open the studio decompose panel pre-selected on this
   // structure. Closes the D-S01-USE-IN-DECOMPOSE loop (replaces S-01b's honest interim hint).
-  const useInDecompose = useCallback(
+  const openInDecompose = useCallback(
     (id: string) => host.openPanel('decompose', { params: { templateId: id }, focus: true }),
     [host],
   );
@@ -154,7 +154,7 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
             <Hint>{t('structTpl.pickHint', { defaultValue: 'Pick a structure to view its beats — or create a new one.' })}</Hint>
           ) : s.selected.owner_user_id == null ? (
             <BuiltinDetail tpl={s.selected} t={t} cloning={s.cloning} onClone={() => s.clone(s.selected!.id)}
-              onUseInDecompose={() => useInDecompose(s.selected!.id)} />
+              onUseInDecompose={() => openInDecompose(s.selected!.id)} />
           ) : s.selected.is_archived ? (
             <ArchivedDetail tpl={s.selected} t={t} onRestore={() => s.restore(s.selected!.id)} />
           ) : (
@@ -164,7 +164,7 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
               saving={s.saving} saveError={s.saveError}
               onSave={(patch) => s.save(s.selected!.id, s.selected!.version ?? 1, patch)}
               onArchive={() => askArchive(s.selected!.id, s.selected!.name)}
-              onUseInDecompose={() => useInDecompose(s.selected!.id)}
+              onUseInDecompose={() => openInDecompose(s.selected!.id)}
               onDirty={trackDirty}
             />
           )}

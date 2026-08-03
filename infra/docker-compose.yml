@@ -1902,7 +1902,7 @@ services:
   #   OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
   #     docker compose --profile observability up
   # Then open Grafana at http://localhost:3200 (Explore → Tempo). Host
-  # port 3200, not 3000 — 3000 is ContextHub MCP. Services keep a no-op
+  # port 3200, not 3000 — 3000 is the api-gateway-bff container port. Services keep a no-op
   # tracer while OTEL_EXPORTER_OTLP_ENDPOINT is unset, so they boot fine
   # with the profile off — no service depends_on the collector.
   otel-collector:

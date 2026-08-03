@@ -175,10 +175,11 @@ jobs:
       - run: python scripts/language-bias-gate.py
       - run: python scripts/sdk-duplication-gate.py
       - run: python scripts/slo-latency-lint.py
-      # NOT amaw-guardrail-gate.py — despite the name it is a Claude Code PreToolUse
-      # HOOK that reads a JSON payload from stdin, so in CI it blocks forever (measured:
-      # a 300s timeout). Classifying it as a lint by filename was the mistake; running it
-      # exactly as CI would is what caught it.
+      # Do not add an agent HOOK to this list because its filename ends in -gate.py.
+      # A PreToolUse hook reads a JSON payload from stdin, so as a CI step it blocks
+      # forever (measured: a 300s timeout on the since-removed amaw-guardrail-gate.py).
+      # Classifying it as a lint by filename was the mistake; running it exactly as CI
+      # would is what caught it. scripts/gate-wiring-gate.py now tracks the exemptions.
       # Previously pre-commit-hook-only. The hook is opt-in per checkout; CI is not.
       - run: python scripts/context-budget-defaults-lint.py
       - run: python scripts/context-inspector-checklist-gate.py

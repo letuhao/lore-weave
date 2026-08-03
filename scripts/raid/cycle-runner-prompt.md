@@ -70,7 +70,7 @@ Per RAID_WORKFLOW.md §3 + §4 (per-phase detail):
 9. **POST-REVIEW:** spawn second Scope Guard for AUTO final gate. CLEAR/BLOCKED.
 10. **SESSION:** spawn Auditor sub-agent (haiku-4-5) to write AUDIT_LOG row + CYCLE_LOG row update.
 11. **COMMIT:** stage all changed files (no `-A`); commit with CYCLE_DECOMPOSITION.md §6 template message; include CYCLE_LOG update in same commit.
-12. **RETRO:** Auditor sub-agent writes reflection row to AUDIT_LOG. If non-obvious decision/workaround: `python scripts/mcp-query.py add_lesson ...` (best-effort; skip if ContextHub unavailable).
+12. **RETRO:** Auditor sub-agent writes reflection row to AUDIT_LOG. If non-obvious decision/workaround: record it in the repo — amend the standard/spec it belongs to, or note it in the cycle log.
 
 ## Phase-transition state updates (mandatory)
 
@@ -157,10 +157,11 @@ include code diffs or test output.
 
 ## Bash hygiene rules (prevent permission-prompt spam)
 
-The `amaw-guardrail-gate.py` PreToolUse hook scans EVERY Bash command for risky
-patterns and forces a user prompt on a match. Even in `bypassPermissions` mode,
-PreToolUse hook output `permissionDecision: "ask"` is honored. To keep cycles
-running fast, follow these hygiene rules:
+The `amaw-guardrail-gate.py` PreToolUse hook that used to scan every Bash command
+was removed on 2026-08-03 along with the ContextHub MCP integration it consulted.
+These hygiene rules are kept anyway: they still reduce permission-prompt spam,
+because a compound command cannot match a single allowlist entry and therefore
+prompts. To keep cycles running fast:
 
 - **One command per Bash call.** Do NOT chain with `&&`, `||`, `;`, or `|`
   unless absolutely required (e.g., piping git output to head is fine because
