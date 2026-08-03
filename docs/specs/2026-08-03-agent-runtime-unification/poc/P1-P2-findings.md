@@ -848,6 +848,63 @@ production.**
 
 ---
 
+## P14 — 🔴 ROOT CAUSE, closed by single-variable experiment
+
+Five arms against `google/gemma-4-26b-a4b-qat` (LM Studio, direct), identical task — *"List my
+books."* — temperature 0.2, tool sets built from the **real** catalog.
+
+| arm | tool set given | result |
+|---|---|---|
+| A | 1 tool (`book_list`) | ✅ **1/1** |
+| B | fixed envelope; schema delivered **in the conversation** | ✅ **1/1** |
+| **C** | **all 35 `book_*` tools — 19 retired, 7,921 tokens** | ✅ **3/3** |
+| D | 16 current-only (retired removed), 4,661 tokens | ✅ 3/3 |
+| **E** | **exactly the 7 the token budget left** | ❌ **0/3** |
+
+Arm E's three attempts: one silence, then
+`book_list_revisions{"book_id":"book_list"}` and `book_list_revisions{"book_id":"books"}`. **In the
+second, the model put the NAME OF THE MISSING TOOL into the argument** — the same shape as `"all"`,
+`placeholder_id_1`, `current_book_id_placeholder`. It reached for what it needed, could not call it,
+and named it in the only field available.
+
+**The only variable between 3/3 success and 0/3 failure is whether `book_list` was on the wire.**
+
+### Hypotheses tested and REJECTED — three of them mine
+
+| hypothesis | verdict |
+|---|---|
+| the model is too weak for this surface | ❌ **rejected** — A, B, C, D all correct |
+| 35 tools is too many to select from | ❌ **rejected** — Arm C, 3/3, at 7,921 tokens |
+| 54% retired tools drowned the signal | ❌ **rejected** — C and D are identical |
+| the model picked the alphabetical neighbour | ❌ **rejected** — with `book_list` present it never did |
+| `tool_list` returned bare names | ❌ already corrected — it returns full descriptions |
+| **the correct tool was silently removed by the token budget** | ✅ **confirmed, reproducible** |
+
+### What this does to the spec — corrections, not confirmations
+
+1. **OQ5 is VINDICATED, not falsified.** My P6 claim that "labeling failed" was wrong. Labeled
+   deprecated tools were correctly ignored in 6/6 trials. *Label, don't hide* works — provided the
+   replacement is actually present.
+2. **R14.1's bounded-results rule loses this justification.** 35 tools in one payload is demonstrably
+   fine at this scale. R14 stands on **C1 (thousands of tools)** and **R19 (prefix stability)** —
+   **not** on selection accuracy today. This is the third time R14's justification has had to be
+   corrected; the requirement survives, the reasoning kept being wrong.
+3. **The silent budget is the defect.** `budget_names_by_tokens` dropping the answer with **no log, no
+   note, no telemetry** (audit B1 — "13 of 18 filters are silent") is the whole failure. R4's
+   `excluded_by` and R5's *guards register what they withhold* are the fix, and they are now backed by
+   a reproducible experiment rather than an argument.
+4. **R18 is reinforced.** The auto-load note *asserted* "these are loaded and callable — call one of
+   them now" from a state that had already deleted the answer. A projection would have been unable to
+   make that claim.
+
+### The corrected one-line diagnosis
+
+> The model was handed a list that no longer contained the answer, told the list was complete, and
+> instructed to choose from it. **It complied.** Everything downstream — the invented identifier, the
+> repeat calls, the breaker messages, the `interrupted` turn — follows from that one silent deletion.
+
+---
+
 ## 3 · What P1 and P2 settle, and what they do not
 
 | DESIGN question | settled by | answer |
