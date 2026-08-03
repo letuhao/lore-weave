@@ -978,6 +978,70 @@ It should be evaluated as a leading design, not held in reserve.
 
 ---
 
+## P16 — Universal search: the choking risk is real, concentrated, and already has a rule nobody enforced
+
+The PO's proposal for the 39 id-requiring reads: replace them with a **universal search** — text in,
+no ids. And the stated risk: *the tool returns a pile of tokens and the model chokes.* Claude Code's
+grep/glob works over millions of lines, so the pattern is proven — but only with its three properties:
+**references not content**, a **hard result cap**, and an explicit **detail dial**.
+
+### Measured: result sizes across 3,437 successful calls
+
+| | tokens |
+|---|---|
+| p50 | **171** |
+| p90 | 2,374 |
+| p99 | **12,776** |
+| max | **25,429** |
+
+**The median is healthy; the tail is the hazard.** And the tail is concentrated in exactly the
+list/read tools a universal search would replace:
+
+| tool | calls | avg tokens | lifetime |
+|---|---|---|---|
+| `glossary_book_ontology_read` | **261** | **6,219** | ~1.6M |
+| `glossary_list_system_standards` | **155** | **5,913** | ~0.9M |
+| `jobs_list` | 9 | 7,416 | |
+| `tool_list` | 567 | 1,581 | **max 25,429** |
+
+### The cause is not size — it is the absence of a bound
+
+| bounded | unbounded |
+|---|---|
+| `jobs_list` — `limit=10, detail=summary, cursor` | **`glossary_book_ontology_read` — none** |
+| `story_search` — `limit=10, detail=summary` | **`glossary_list_system_standards` — none** |
+| | `settings_list_models`, `tool_list` — none |
+
+**18 of 36 current list/search/read tools (50%) have no `limit` parameter at all.** `book_list` is a
+partial case: the parameter exists but **defaults to `None`**, i.e. unbounded unless the model thinks
+to bound it.
+
+**And the rule already exists.** OUT-2 in `mcp-tool-io.md` requires a list tool to default
+`detail=summary` with `limit<=25`, and `scripts/context-budget-defaults-lint.py` enforces it — while
+seeding **14 existing offenders as FLIP-PENDING ALLOW**. So: the rule is written, the gate is wired,
+fourteen violations are grandfathered, **and the grandfathered set is measurably the choking hazard.**
+This is the ratchet pattern working as designed for new code and never being paid down.
+
+### What this settles for the universal-search design
+
+The proposal is sound, and its risk is **not intrinsic** — it is the absence of three properties the
+repo has already specified and half-applied:
+
+1. **references, not bodies** — `book_list`'s own description states the rule (*"List REFERENCES only
+   (the 'ls') — never bodies"*); it is simply not universal;
+2. **a hard cap with a default**, not an optional parameter defaulting to `None`;
+3. **an explicit detail dial** (`summary` | `full`), which `jobs_list` and `story_search` already have
+   and 18 tools do not.
+
+A universal search built with all three is Claude Code's grep, and the p50 of 171 tokens says the
+shape works when the bound is present. Built without them it inherits `glossary_book_ontology_read`'s
+6,219-token average at 261 calls — the exact failure the PO anticipated.
+
+**The action is not new design. It is paying down the 14 FLIP-PENDING waivers before they become the
+foundation of a universal search.**
+
+---
+
 ## 3 · What P1 and P2 settle, and what they do not
 
 | DESIGN question | settled by | answer |
