@@ -166,6 +166,10 @@ CLAIMS: tuple[tuple[str, str, str], ...] = (
 )
 
 
+# An italicised quotation. See `_claimable`.
+QUOTE_RE = re.compile(r'\*"[^"]*"\*')
+
+
 def _claimable(block: str) -> str:
     """The block with everything that is NOT a live claim blanked out.
 
@@ -173,6 +177,11 @@ def _claimable(block: str) -> str:
     refused a commit.** These blocks are precisely where this project writes
     *"the handoff said X at round seven"*, and the board block does exactly that
     today. Blanking preserves offsets so nothing else shifts.
+
+    **An UNQUOTED historical figure is treated as a live claim, deliberately.**
+    Nothing distinguishes *"the handoff said 281"* from *"the count is 281"*
+    except the quotation marks, so the gate requires them rather than guessing.
+    Writing a past figure as `*"..."*` is what this project already does.
 
     Blockquote lines (`>`) are NOT blanked: the RUN-STATE header is written
     entirely as a blockquote, so blanking them would empty the scope — which the
@@ -186,10 +195,20 @@ def _claimable(block: str) -> str:
             in_fence = not in_fence
             out.append(" " * len(line))
             continue
-        if in_fence or stripped.startswith("<!--") or "said **" in line or "read it (*" in line:
+        if in_fence or stripped.startswith("<!--"):
             out.append(" " * len(line))
             continue
-        out.append(line)
+        # An ITALICISED QUOTATION -- *"..."* -- is this repo's syntax for text
+        # written elsewhere, so a figure inside one is a historical record and
+        # not a live claim.
+        #
+        # **A SYNTAX rule, not a content one.** The first version matched the
+        # literal strings `said **` and `read it (*` -- the two phrasings that
+        # happened to be in the corpus that afternoon. That blanks a REAL claim
+        # the day someone writes "the spec said **283 passed**" and misses a
+        # quotation the day they write "reported". Offsets are preserved either
+        # way, so line numbers stay valid.
+        out.append(QUOTE_RE.sub(lambda mo: " " * len(mo.group(0)), line))
     return "\n".join(out)
 
 
@@ -314,11 +333,29 @@ def self_test() -> int:
     # F6 — a QUOTED historical figure must not block. These blocks are exactly
     # where this project writes "it said X at round seven".
     check_block("a quoted historical figure is not a claim",
-                "> Round 5's handoff said **281 passed, 0 failed**, superseded at round 6.", 0)
+                '> Round 5 said *"**281 passed, 0 failed**"*, superseded at round 6.', 0)
+    # ...and an UNQUOTED historical figure IS a claim, deliberately. There is no
+    # syntax that distinguishes "the handoff said 281" from "the count is 281",
+    # so the gate requires the quotation marks rather than guessing -- which is
+    # what the two content heuristics it replaced were doing.
+    check_block("an UNQUOTED historical figure is treated as a claim, by design",
+                "> Round 5's handoff said **281 passed, 0 failed**.", 1)
     check_block("a fenced example is not a claim",
                 "```\nAt the seal the log ran `D-1`..`D-353`.\n```", 0)
     check_block("an HTML comment is not a claim",
                 "<!-- was: **281 passed, 0 failed** -->", 0)
+    check_block("an italicised QUOTATION is a historical record, not a claim",
+                'the header read it (*"**281 passed, 0 failed**"* at round six)', 0)
+    # ...and the same figure OUTSIDE a quotation is still a live claim, so the
+    # rule is syntax and not a licence.
+    check_block("the same figure outside a quotation is still a claim",
+                "the header says **281 passed, 0 failed** today", 1)
+    check_block("an italicised QUOTATION is a historical record, not a claim",
+                'the header read it (*"**281 passed, 0 failed**"* at round six)', 0)
+    # ...and the same words OUTSIDE a quotation are still a live claim, so the
+    # rule is a syntax rule and not a licence.
+    check_block("the same figure outside a quotation is still a claim",
+                "the header says **281 passed, 0 failed** today", 1)
 
     # An unmeasurable figure is a NOTE, not a block -- production behaviour, which
     # the inline copy asserted the OPPOSITE of and nothing noticed.
