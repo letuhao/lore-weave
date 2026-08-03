@@ -91,14 +91,36 @@ jobs:
 
       # ...and a self-test's claim that "every rule bites" is a claim like any
       # other. This mutates each gate's production rules one at a time and
-      # requires the self-test to go RED. It found two rules with no case on its
-      # first run, and a third defect in itself.
+      # requires the self-test to go RED. It has found a survivor in every round
+      # since it was written, including in its own fixes.
       #
-      # NOT in the pre-commit hook: locally it takes ~11 minutes, essentially all
-      # of it `cargo test` inside the figures gate's self-test. This runner has
-      # no Rust toolchain, so those measurements degrade to NOTEs — and measured
-      # with cargo stripped from PATH, **all 29 mutations still red, in 8.3s**.
-      # Equally strong here, 80x faster. That measurement is why this is
-      # unconditional rather than path-filtered.
+      # `--no-cargo` STRIPS the toolchain from the child's environment rather
+      # than assuming this image lacks one. The previous version of this step
+      # asserted "this runner has no Rust toolchain", which is verified by
+      # nothing and is false on `ubuntu-latest` — so its timing justification was
+      # void, and the sibling claim that "CI checks it" would have been the
+      # false branch. The harness now decides the condition. Measured under it:
+      # every gate mutation red in well under a minute.
+      #
+      # NOT in the pre-commit hook: with a toolchain present it takes ~11
+      # minutes, essentially all of it `cargo test` inside the figures gate's
+      # self-test.
       - name: every gate's rules, mutated
-        run: python scripts/gate-bite-harness.py
+        run: python scripts/gate-bite-harness.py --no-cargo
+
+  # The Rust half is a SEPARATE job because it needs the opposite environment:
+  # it mutates `crates/actor-hub` in place and asserts that a named test reds,
+  # so it requires a toolchain rather than the absence of one. It was built in
+  # one round and wired in none — "defined, given a parameter, and never wired",
+  # which is the defect that round's own commit message names.
+  rust-mutations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: crates/actor-hub, mutated
+        run: python scripts/gate-bite-harness.py --rust

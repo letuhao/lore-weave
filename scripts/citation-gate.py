@@ -804,8 +804,17 @@ def self_test() -> int:
         # `Tree.normalise` on backslashes: the documented bypass, verbatim. A
         # Windows-separator path matched only its BASENAME and resolved uniquely
         # against a wholly different directory, so a made-up path passed.
+        # Resolves to `crates/made/up/layer.rs` once normalised, so the CORRECT
+        # answer is silence. Unnormalised it degrades to a bare-name lookup and
+        # reports -- opposite verdicts, not the same count.
+        # **A REAL file, and the CORRECT answer is silence.** The first version
+        # cited a synthetic path, which produced exactly 1 finding whether the
+        # separators were normalised or not -- correct and broken reporting the
+        # same COUNT, the defect this project fixed in the fence case one file
+        # over and reintroduced here. Unnormalised, this degrades to a
+        # bare-name lookup and reports; normalised, it resolves and is silent.
         ("a backslash path is normalised, not resolved by basename",
-         r"see crates\made\up\layer.rs:41", 1),
+         r"see scripts\citation-gate.py:1", 0),
         # ...and `a/../b` collapsing, the other half of the same docstring: two
         # rules of one gate disagreeing about what a path is.
         ("a `..` segment is collapsed before resolution",

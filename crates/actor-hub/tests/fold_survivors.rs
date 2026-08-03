@@ -175,6 +175,39 @@ fn a_zero_divisor_and_a_contradictory_bound_are_refused() {
     assert_eq!(out.value(q(3)), Some(1), "neither refused row may contribute");
 }
 
+/// **An EXACT bound — `min == max` — is legal.**
+///
+/// `ContributionBound`'s own doc says *"inclusive on both ends. `min > max` is
+/// refused"*, so a bound pinning a contribution to one value is a supported
+/// declaration. Weakening the refusal to `>=` was green: the only case used
+/// `{min: 10, max: 5}`, strictly greater — the interesting half — and left the
+/// boundary itself inferred. **That is the exact shape this file's own module
+/// doc says it exists to eliminate**, and its sibling
+/// `an_ordinal_exactly_at_the_table_length_is_refused` is the same defect one
+/// file over. A round of 113 mutations did not find it; round 11 did.
+#[test]
+fn an_exact_bound_is_legal_and_pins_the_contribution() {
+    let (r, a, mut s) = fixture();
+    s[2] = 90_000;
+    let exact = DerivationRow {
+        bound: Some(ContributionBound { min: 7, max: 7 }),
+        ..deriv(3, 2, 20)
+    };
+
+    let out = fold(a, &s, &r, &[], &[exact]);
+
+    assert!(
+        out.refused.is_empty(),
+        "an exact bound min==max must NOT be refused: {:?}",
+        out.refused
+    );
+    assert_eq!(out.value(q(3)), Some(1 + 7), "the bound must pin the contribution to 7");
+    assert!(
+        out.capped.iter().any(|c| c.site == CapSite::DerivedBound),
+        "the bound bit and said nothing"
+    );
+}
+
 /// **`Accumulator.wanted` carries the EXACT pre-clamp total, not its sign.**
 ///
 /// The only assertions on this field were `< 0` and `> 0`, so replacing it with
@@ -249,7 +282,7 @@ fn a_bound_whose_floor_bites_is_reported() {
     };
     let out = fold(a, &s, &r, &[], &[floored]);
 
-    assert_eq!(out.value(q(3)), Some(1), "the floor must have raised -5 000 to 0");
+    assert_eq!(out.value(q(3)), Some(1), "the floor must have raised -5 000 000 to 0");
     let cap = out
         .capped
         .iter()

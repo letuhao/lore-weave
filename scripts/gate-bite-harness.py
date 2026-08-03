@@ -40,6 +40,41 @@ CHILD_TIMEOUT_S = 300
 REPO = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO / "scripts"
 
+
+def _read(path: Path) -> str:
+    """Text with `\n` newlines, for MATCHING. Never used to restore.
+
+    Two requirements pull opposite ways and both are load-bearing:
+
+      * **Restoring must be byte-exact.** `Path.read_text` + `Path.write_text`
+        silently rewrites every line ending on Windows -- `write_text` opens in
+        text mode, so `\n` becomes `\r\n`. A clean, fully-green `--rust` run
+        left three Rust source files modified end to end: **the harness
+        committing the very incident its module docstring says it was shaped
+        by**, on the SUCCESS path rather than the interrupted one.
+      * **Matching must be newline-agnostic.** The first fix made both sides
+        byte-exact, and four `\n`-written anchors immediately stopped matching
+        the CRLF crate files -- reported as drift, which is the harness telling
+        the truth about a defect the fix had just introduced.
+
+    So: match on normalised text, restore from the original BYTES.
+    """
+    return _raw(path).decode("utf-8").replace("\r\n", "\n")
+
+
+def _raw(path: Path) -> bytes:
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
+def _write(path: Path, text: str, like: bytes | None = None) -> None:
+    """Write `text`, re-applying the newline convention of `like` if given."""
+    data = text.encode("utf-8")
+    if like is not None and b"\r\n" in like:
+        data = text.replace("\n", "\r\n").encode("utf-8")
+    with open(path, "wb") as fh:
+        fh.write(data)
+
 # gate -> [(label, find, replace)]. `find` must occur EXACTLY once: an anchor
 # that has drifted is reported as a failure, not silently skipped, or the table
 # rots into a list of no-ops that all pass.
@@ -94,14 +129,57 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          "        block = _claimable(block, in_fence=opens_fenced)",
          "        block = _claimable(block)"),
         ("the fence state is GUESSED instead of taken from the prefix",
-         "    out, in_comment, fenced = [], False, in_fence",
-         "    out, in_comment, fenced = [], False, False"),
-        ("the prefix fence parity dropped",
-         '    return sum(1 for l in prefix.split("\\n") if FENCE_RE.match(l)) % 2 == 1',
-         "    return False"),
+         "    out, in_comment, open_mark = [], False, in_fence",
+         "    out, in_comment, open_mark = [], False, None"),
+        # REMOVED: `is_mark or ...` vs `...` is an EQUIVALENT mutant once a
+        # closer is required to carry no info string. The two differ only on the
+        # CLOSING line -- an opener leaves `open_mark` set, so it is blanked
+        # either way -- and a valid closer is a bare run of backticks with
+        # nothing on it to be live. Deleting the row rather than contriving a
+        # case, for the same reason the test-result regex row went.
+        ("the prefix fence scan returns nothing",
+         "        open_mark, _ = _advance(open_mark, line)\n    return open_mark",
+         "        open_mark, _ = _advance(open_mark, line)\n    return None"),
         ("a BLOCKQUOTE fence stops being a fence",
-         'FENCE_RE = re.compile(r"^\\s*(?:>\\s*)*(?:```|~~~)")',
-         'FENCE_RE = re.compile(r"^\\s*(?:```|~~~)")'),
+         'FENCE_RE = re.compile(r"^\\s*(?:>\\s*)*(?P<mark>`{3,}|~{3,})(?P<info>.*)$")',
+         'FENCE_RE = re.compile(r"^\\s*(?P<mark>`{3,}|~{3,})(?P<info>.*)$")'),
+        # M9 -- a marker is not a toggle. Counting every one flipped the state on
+        # a longer outer fence (the idiom for DOCUMENTING a fence) and exposed
+        # its contents as live claims: cry-wolf, the severe direction.
+        ("a fence closes on ANY marker, not the same one",
+         "    if (mark[0] == open_mark[0] and len(mark) >= len(open_mark)",
+         "    if (True or (mark[0] == open_mark[0] and len(mark) >= len(open_mark))"),
+        # ...and the CommonMark rule that a CLOSER carries no info string. A
+        # backtick line WITH text is fence content; treating it as a closer
+        # exposed everything after it as live claims.
+        ("a closer may carry an info string again",
+         '            and not (FENCE_RE.match(line).group("info") or "").strip()):',
+         "            and True):"),
+        ("an inline code span counts as a fence opener",
+         '    if m.group("mark")[0] in m.group("info"):\n        return None',
+         "    if False:\n        return None"),
+        # ...and the ORDER of the two states. Testing the fence first left both
+        # flags stuck true on a fence marker inside a comment.
+        ("the comment state is tested AFTER the fence again",
+         "        if in_comment:\n            out.append(\" \" * len(line))\n"
+         "            if \"-->\" in line:\n                in_comment = False\n"
+         "            continue\n        open_mark, is_mark = _advance(open_mark, line)",
+         "        open_mark, is_mark = _advance(open_mark, line)"),
+        # M2 -- a missing END marker silently widened the window to the whole
+        # file: mass cry-wolf for the figures, total blindness for the escape
+        # rule, and nothing reported.
+        ("a missing end marker widens the scope to the whole file",
+         "    return None if j < 0 else (i, j)",
+         "    return (i, j if j > 0 else len(text))"),
+        ("the empty-block rule removed",
+         "        if doc in checked and not checked[doc]:", "        if False:"),
+        # M1 -- the escape rule read only the three files with a current-state
+        # block. Eight more carried the range and stayed green, two of them files
+        # this same gate already opens.
+        ("the escape rule reads only the SCOPES documents",
+         "    docs = sorted({d for d, _, _ in scopes} | "
+         "(set(ESCAPE_DOCS) if scopes is SCOPES else set()))",
+         "    docs = sorted({d for d, _, _ in scopes})"),
         ("the multi-line comment state dropped",
          '        if "<!--" in line:\n            in_comment = True',
          '        if False:\n            in_comment = True'),
@@ -205,13 +283,14 @@ def _child_env(no_cargo: bool) -> dict[str, str] | None:
     """
     if not no_cargo:
         return None
-    exe = shutil.which("cargo")
     env = dict(os.environ)
-    if exe:
-        home = os.path.dirname(exe)
-        env["PATH"] = os.pathsep.join(
-            d for d in env["PATH"].split(os.pathsep)
-            if os.path.normcase(os.path.normpath(d)) != os.path.normcase(home))
+    # **Every** entry, not the first one `shutil.which` happened to return. A
+    # GitHub runner carries cargo on two (`~/.cargo/bin` and a toolchain dir), so
+    # removing one left the child finding it anyway -- a control that did not
+    # control, with nothing checking the result.
+    kept = [d for d in env.get("PATH", "").split(os.pathsep)
+            if d and shutil.which("cargo", path=d) is None]
+    env["PATH"] = os.pathsep.join(kept)
     return env
 
 
@@ -295,6 +374,11 @@ RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
      "            (source_value as i64).saturating_mul(self.factor_milli as i64) / (self.divisor as i64)",
      "            (source_value as i64).saturating_mul(self.factor_milli as i64).div_euclid(self.divisor as i64)",
      "a_negative_derivation_truncates_toward_zero"),
+    ("an exact bound min==max wrongly refused",
+     "crates/actor-hub/src/registry.rs",
+     "            && b.min > b.max",
+     "            && b.min >= b.max",
+     "an_exact_bound_is_legal_and_pins_the_contribution"),
     ("the table-length boundary weakened to >",
      "crates/actor-hub/src/registry.rs",
      "                if q.ordinal.index() >= table.len() {",
@@ -312,25 +396,34 @@ def _rust_dirty() -> list[str]:
     return [l[3:].strip() for l in out.stdout.splitlines() if l.strip()]
 
 
-def run_rust(only: str | None = None, run=None) -> int:
+def run_rust(only: str | None = None, run=None) -> tuple[int, str | None]:
+    """(survivors, refusal). **Two separate answers, because they were one.**
+
+    The first version returned `2` as a refusal sentinel and `main` read the
+    return value as a survivor count, so a refused run -- nothing executed, no
+    mutations applied -- printed *"2 Rust mutation(s) SURVIVED"*. A count that
+    doubles as an error code reports a defect that does not exist, which is the
+    same class as a check reporting coverage it does not have.
+    """
     rows = [r for r in RUST_MUTATIONS if only is None or only.lower() in r[0].lower()]
     dirty = _rust_dirty()
     if dirty and run is None:
-        print(f"gate-bite-harness: refusing to mutate files that are already "
-              f"modified: {dirty}. Commit or stash them first.", file=sys.stderr)
-        return 2
+        return 0, ("refusing to mutate files that are already modified: "
+                   f"{dirty}. Commit or stash them first.")
     print(f"\ncrates/actor-hub  ({len(rows)} Rust mutation(s))")
     originals: dict[str, str] = {}
+    raws: dict[str, bytes] = {}
     green = 0
     try:
         for label, rel, find, repl, test in rows:
             path = REPO / rel
-            src = originals.setdefault(rel, path.read_text(encoding="utf-8"))
+            raws.setdefault(rel, _raw(path))
+            src = originals.setdefault(rel, _read(path))
             if src.count(find) != 1:
                 print(f"  DRIFT  {label:52} anchor occurs {src.count(find)}x")
                 green += 1
                 continue
-            path.write_text(src.replace(find, repl, 1), encoding="utf-8")
+            _write(path, src.replace(find, repl, 1), like=raws[rel])
             runner = run or (lambda t: subprocess.run(
                 ["cargo", "test", "-p", "actor-hub", "--test", "fold_survivors",
                  t, "--", "--exact"], cwd=REPO, capture_output=True, text=True,
@@ -338,31 +431,35 @@ def run_rust(only: str | None = None, run=None) -> int:
             try:
                 out = runner(test)
             finally:
-                path.write_text(src, encoding="utf-8")
+                # The ORIGINAL BYTES, not a re-encoding of the text: exact even
+                # for a file with mixed line endings, which no normalisation
+                # round trip can promise.
+                path.write_bytes(raws[rel])
             red = out.returncode != 0
             print(f"  {'RED ' if red else 'GREEN'}  {label:52} -> {test}")
             green += 0 if red else 1
     finally:
-        for rel, src in originals.items():
-            (REPO / rel).write_text(src, encoding="utf-8")
-    return green
+        for rel in originals:
+            (REPO / rel).write_bytes(raws[rel])
+    return green, None
 
 
 def _mutate_and_run(gate: str, find: str, repl: str, run=None,
                     no_cargo: bool = False) -> tuple[bool, str]:
     """(went_red, note). The ORIGINAL is opened read-only; a copy is mutated."""
     src = SCRIPTS / f"{gate}.py"
-    text = src.read_text(encoding="utf-8")
+    raw = _raw(src)
+    text = _read(src)
     if text.count(find) != 1:
         return False, f"anchor occurs {text.count(find)}x — the table has drifted"
     # Beside the original so `REPO = Path(__file__).parent.parent` still resolves.
     copy = SCRIPTS / f".bite-{gate}.py"
     try:
-        copy.write_text(text.replace(find, repl, 1), encoding="utf-8")
+        _write(copy, text.replace(find, repl, 1), like=raw)
         # **The mutation must actually be a mutation.** Nothing checked that the
         # copy differed from the original, so a harness that had silently stopped
         # mutating would report every rule RED-free and look like success.
-        if copy.read_text(encoding="utf-8") == text:
+        if _read(copy) == text:
             return False, "the copy is identical to the original — nothing was mutated"
         runner = run or (lambda p: subprocess.run(
             [sys.executable, str(p), "--self-test"], cwd=REPO,
@@ -390,6 +487,13 @@ def run_gate(gate: str, run=None, only: str | None = None, no_cargo: bool = Fals
 def self_test() -> int:
     """The harness's own rules. It cannot verify itself by mutation — that is
     the regress this file stops at — so its cases are direct."""
+    import contextlib
+    import io as _io
+
+    def quietly(fn):
+        with contextlib.redirect_stdout(_io.StringIO()), contextlib.redirect_stderr(_io.StringIO()):
+            return fn()
+
     failures = 0
 
     # Every table entry's anchor must still occur exactly once. A drifted anchor
@@ -402,7 +506,7 @@ def self_test() -> int:
                 print(f"  FAIL {gate}: anchor for '{label}' occurs {text.count(find)}x")
     # ...and the Rust table, which mutates in place and so must not drift silently.
     for label, rel, find, _, _ in RUST_MUTATIONS:
-        text = (REPO / rel).read_text(encoding="utf-8")
+        text = _read(REPO / rel)
         if text.count(find) != 1:
             failures += 1
             print(f"  FAIL {rel}: anchor for '{label}' occurs {text.count(find)}x")
@@ -465,13 +569,6 @@ def self_test() -> int:
     else:
         print("  ok  a replacement that changes nothing is reported, not run")
 
-    import contextlib
-    import io as _io
-
-    def quietly(fn):
-        with contextlib.redirect_stdout(_io.StringIO()), contextlib.redirect_stderr(_io.StringIO()):
-            return fn()
-
     if quietly(lambda: run_gate(gate, run=lambda _: _R(0), only="the pragma")) == 0:
         failures += 1
         print("  FAIL run_gate did not count a surviving mutation")
@@ -492,6 +589,96 @@ def self_test() -> int:
         print("  FAIL main() must refuse a filter that matched no mutation")
     else:
         print("  ok  main() refuses a filter that matched no mutation")
+
+    # ── M3: round 10 added `--no-cargo`, `--rust`, the dirty refusal, the
+    # timeout and the applied-mutation check, and gave a case to ONE of them.
+    # Thirteen of fifteen mutations of that new code survived. The sharpest was
+    # `red = True` in `run_rust`: **the harness could report every Rust mutation
+    # RED unconditionally and its own self-test stayed green**, which makes "all
+    # 9 red" unfalsifiable by the mechanism that produced it.
+    rust_calls: list[str] = []
+
+    class _RustR:
+        def __init__(self, rc):
+            self.returncode, self.stdout, self.stderr = rc, "", ""
+
+    def _rust_run(rc):
+        def go(test):
+            rust_calls.append(test)
+            return _RustR(rc)
+        return go
+
+    survivors, refusal = quietly(lambda: run_rust(run=_rust_run(1)))
+    if survivors or refusal or not rust_calls:
+        failures += 1
+        print(f"  FAIL a reddened Rust mutation must not count: {survivors}, {refusal}")
+    else:
+        print(f"  ok  a reddened Rust mutation is not a survivor ({len(rust_calls)} run)")
+
+    rust_calls.clear()
+    survivors, refusal = quietly(lambda: run_rust(run=_rust_run(0)))
+    if survivors != len(RUST_MUTATIONS) or refusal:
+        failures += 1
+        print(f"  FAIL a GREEN Rust mutation must be a survivor: got {survivors} of "
+              f"{len(RUST_MUTATIONS)}")
+    else:
+        print("  ok  a surviving Rust mutation is counted")
+
+    # The restore is not optional: `--rust` mutates the real crate in place.
+    before = {rel: _raw(REPO / rel) for _, rel, _, _, _ in RUST_MUTATIONS}
+    quietly(lambda: run_rust(run=_rust_run(1)))
+    after = {rel: _raw(REPO / rel) for rel in before}
+    if after != before:
+        failures += 1
+        changed = [r for r in before if before[r] != after[r]]
+        print(f"  FAIL --rust left the tree modified: {changed}")
+    else:
+        print(f"  ok  --rust restores all {len(before)} crate file(s) byte for byte")
+
+    # **A refusal is not a survivor count.** The first version returned `2` as a
+    # sentinel and `main` printed "2 Rust mutation(s) SURVIVED" for a run in
+    # which nothing executed.
+    survivors, refusal = run_rust(run=None, only="@@ NOTHING @@") if False else (0, None)
+    fake_dirty = ["crates/actor-hub/src/fold.rs"]
+    _real_dirty = globals()["_rust_dirty"]
+    globals()["_rust_dirty"] = lambda: fake_dirty
+    try:
+        survivors, refusal = quietly(lambda: run_rust())
+        rc = quietly(lambda: main(argv=["--rust"]))
+    finally:
+        globals()["_rust_dirty"] = _real_dirty
+    if survivors != 0 or not refusal or "refusing" not in refusal:
+        failures += 1
+        print(f"  FAIL a dirty tree must refuse with ZERO survivors: {survivors}, {refusal}")
+    elif rc != 2:
+        failures += 1
+        print(f"  FAIL a refused --rust must exit 2, not report survivors: rc={rc}")
+    else:
+        print("  ok  a dirty tree refuses, with no survivors invented")
+
+    # `--no-cargo` must reach the child. Nothing checked that the flag was
+    # forwarded, so the whole control could be inert.
+    seen_env: list[dict | None] = []
+    _mutate_and_run("citation-gate", find, repl,
+                    run=lambda p: seen_env.append(None) or _R(1), no_cargo=False)
+    envs: list[dict | None] = []
+
+    def _capture(p):
+        envs.append(_child_env(True))
+        return _R(1)
+
+    _mutate_and_run("citation-gate", find, repl, run=_capture, no_cargo=True)
+    stripped = envs[0]
+    if stripped is None or shutil.which("cargo", path=stripped.get("PATH", "")) is not None:
+        failures += 1
+        print("  FAIL --no-cargo left cargo reachable on the child's PATH")
+    else:
+        print("  ok  --no-cargo removes every PATH entry carrying cargo")
+    if _child_env(False) is not None:
+        failures += 1
+        print("  FAIL without --no-cargo the child must inherit the environment")
+    else:
+        print("  ok  without --no-cargo the environment is inherited unchanged")
 
     if failures:
         print(f"\ngate-bite-harness --self-test: {failures} rule(s) did not behave")
@@ -515,7 +702,10 @@ def main(argv: list[str] | None = None) -> int:
         return self_test()
 
     if args.rust:
-        survivors = run_rust(only=args.only)
+        survivors, refusal = run_rust(only=args.only)
+        if refusal:
+            print(f"gate-bite-harness: {refusal}", file=sys.stderr)
+            return 2
         if survivors:
             print(f"\ngate-bite-harness: {survivors} Rust mutation(s) SURVIVED",
                   file=sys.stderr)
