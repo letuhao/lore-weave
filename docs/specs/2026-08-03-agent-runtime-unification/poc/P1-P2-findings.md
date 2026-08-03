@@ -303,6 +303,41 @@ satisfy the request it accepted.
 This is the same shape as R4's `excluded_by`, one level up: **not "why can't I see this tool" but "why
 can't this surface do this at all"** — and it should be answerable by the same mechanism.
 
+### The model was not being stupid — it reasoned correctly and we refused to answer
+
+The PO asked why the model does not stop and reason about the missing parameter: is it a weak model, or
+does the response never tell it why the call failed? The raw payload settles it:
+
+```json
+{"tool": "book_list_chapters", "args": {"book_id": "all"},
+ "error": "book_id must be a UUID", "result": null, "iteration": 2}
+```
+
+It passed **`book_id: "all"`** — not a hallucinated UUID, but an attempt to express *"all my books"*
+from a surface that offered no way to enumerate them.
+
+**And it learned `"all"` from us.** `tool_list`'s own closed set is
+`CATEGORY_ENUM = sorted(GROUP_DIRECTORY) + ["all"]`, so call #1 taught the model that `"all"` is this
+platform's sentinel for *everything*. It then generalised that convention to a domain tool. **The
+model correctly applied a convention we taught it one call earlier** — inconsistent conventions across
+meta-tools and domain tools are a defect that produces confident wrong calls.
+
+The reply it received states the type constraint and nothing else: not what a valid `book_id` looks
+like, not where to obtain one, not that `book_list` exists, not that there is no `"all"` mode.
+`result: null`.
+
+> **There is no "stop and reason" because the response contains nothing to reason from.** The model is
+> not stuck for want of capability; it is stuck because every iteration returns the same zero bits.
+
+One sentence would have ended the turn: *"book_id must be a UUID. There is no 'all' mode — call
+`book_list` to get your books and their ids, then call this per book."* That is R10.2 stated as a
+concrete, measured requirement rather than a style preference, and it is why R10 — while **not** the
+loop fix (P2) — still matters: an unactionable error guarantees the next iteration is uninformed.
+
+**Requirement refinement — R10.2a:** a `retryable_modified` error must name the **remedy**, not only
+the violated constraint, and where the remedy is another tool it must name that tool. An error that
+cannot change the model's next action is indistinguishable from silence.
+
 ### R16 — one deterministic loop detector, in the stream, that TERMINATES
 
 The PO's reading of the same trace, and the evidence supports it exactly: **the anti-loop machinery
