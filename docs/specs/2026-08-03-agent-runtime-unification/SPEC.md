@@ -1136,6 +1136,101 @@ deterministic detector subsumes.
 
 ---
 
+### 10.1 Cleared, in order *(2026-08-04, after the red team, the eight module interrogations, and the plan decision)*
+
+Read [`ARCHITECTURE.md`](ARCHITECTURE.md) §0.3–§0.11 first — most of these are dissolved by the
+membrane (the new runtime starts empty, so there is no sweep to plan) or by plan/execute separation.
+
+| Q | verdict | why |
+|---|---|---|
+| **1** lane for a `both` tool | **WITHDRAWN as a field** | a workflow is a plan *template*, not a rail (§0.4); **any** declaration can be a step, so a per-declaration `lane` enum has no consumer. The real ordering fact is the `accepts`/`emits` DAG (C-4/C-6). D1 stands — two runtimes — but a *declaration* no longer carries a lane. **Deletes a required registration field** |
+| **2** R4 in chat-service or shared SDK | **ANSWERED — neither: share the DATA** | three assemblers in two languages (chat-service Py, ai-gateway TS, public gateway TS) and Pydantic AI is Python-only, so a shared *code* primitive covers 1 of 3. **Fork the assembler, share the manifest.** The anti-fork clause (§2.3) binds the policy, and the policy becomes data |
+| **3** group granularity (`composition` = 53) | **LIVE, now decidable by data** | not taste: **a group boundary is where the `accepts`/`emits` DAG is sparse.** Decide per admission, not in a sweep |
+| **4** the 17 `world_*` orphans | **DISSOLVED** | one-at-a-time admission — a declaration is given its group when it is admitted. There is no orphan population to triage |
+| **5** `_meta.group` rollout over 312 tools | **WITHDRAWN** | the new runtime starts empty and the old one keeps its prefix inference. **There is no backfill sweep.** One of the membrane's largest savings |
+| **6** who is `owner` | **MUST DECIDE NOW — it bites at brick 1** | S7-M1: M4 gates on C-1…C-12, none of which requires an identity, so *the first admitted declaration has no id*. **Recommendation: the owning service plus a CODEOWNERS entry**, on a single-maintainer project. Adopted as **C-0** |
+| **7** sunset window | **REFRAMED — two windows, because two populations** | agents need a *usage* gate; third-party keys need a *calendar*. Neither is implementable today: **zero `Sunset`/`Deprecation` headers repo-wide, unversioned `/mcp`, and `_meta` has no `deprecated_at`, so 114 tools have no t=0.** The prerequisite is a clock, not a number |
+| **8** where the policy mapping lives | **ANSWERED — a generated contract** | follows Q2. Three hosts, two languages: a resolver in one SDK cannot be imported by the other two |
+| **9** retire or re-home the 114 legacy | **DISSOLVED — they are the same operation** | re-homing *is* re-declaring under the new contract, which *is* admission. Until then they stay on the old runtime **as the control group** (§7) |
+| **10** which four breakers R10 deletes | **ANSWERED — none. All six are CONVERTED** | §0.5: a guardrail's output becomes a plan-state transition, and its **fire-rate becomes the property-3 metric**. Q10's own instinct was right — `noop_write_counts` is a C-8 post-condition, not an error. **The net-negative is real but comes from elsewhere:** rail gating, the 43 intent regexes, mid-turn mutation, the `lane` field, and the Q5 sweep |
+| **11** where error classification lives | **ANSWERED — a shared result builder** | as Q11 itself proposed, and now carrying more: S1 showed the contract defines *failure* and never defines *success*, so the envelope carries a **typed outcome enum**, not just an error class |
+| **12** does R11 change what we persist | **ANSWERED by §0.11** | the artifact holds full fidelity outside the context; the projection is what the model sees. **The audit trail and the model's view are now different objects by construction** |
+| **13** live stack or static scan | **BOTH, live authoritative** — as guessed | but the finding is larger: **the liveness generator runs nowhere in CI**, and the only test is byte-equality across its three copies. *The repo tests that its manifest is consistently copied, never that it is current* |
+| **14** identity across a rename | **ANSWERED, and extended** | renames here are **many-to-one consolidations** — re-measured today: **53 edges → 16 targets (3.3:1), and 61 of 114 declare no successor at all.** S7-M6 adds: consolidation targets dispatch on an `op`, so `superseded_by` **must be structured, not a string** |
+| **15** group hierarchy depth | **WITHDRAWN** | measured: two-level disclosure never recovered its gain and collapsed one configuration **0.9126 → 0.6398** (BUILD-VS-BUY §1). Flat only |
+| **16** retrieval backend, in the request path | **LIVE, with a gate attached** | the buy covers it (`DeferredLoadingToolset` + `ToolSearch`), **but** its non-Anthropic fallback is semantic top-K — what F17 retired — and the published gains were **"absent on Chinese"**. Must be measured on our own CJK corpus before adoption |
+| **17** group-directory block generated or hand-written | **WITHDRAWN** | the hierarchy is gone (Q15) and the new runtime starts empty. There is no such block at brick 1 |
+| **18** which prompt artifacts get a budget | **ANSWERED in scope** | **the working-memory projection** (§0.11) is the artifact that enters the prompt every turn, so it is the one that needs a budget on day one — plus the §0.11 requirement that it be **stable between plan events**. Note the existing numbers are wrong: the group block was cited at ~188 tokens and **measured at 392** |
+| **N1** how far reads consolidate | **DISSOLVED** | A2 is dead (the honest decomposition is **76**, not ~20) and admission is one at a time, so no target count is needed |
+| **N2** sub-agent correctness on free text | **WITHDRAWN with A4** | the mechanism is one row — `lore-scout`, two read tools — and production says the opposite in a comment: *"NEVER mixing kinds in a call (that is the E2 collapse)"* |
+| **N3** the anti-prose gate | **ANSWERED** | `tool_choice` is plumbed to LM Studio but chat hardcodes `"auto"`; and `commit-service` proves `required` is **advisory** — its real gate is a **deterministic non-LLM fallback**. The gate is a fallback, never a directive |
+
+### 10.2 The last four, settled *(2026-08-04)*
+
+**Q6 — `owner`. DECIDED, and it unblocks brick 1.**
+Verified: there is **no CODEOWNERS file in this repo** and **no `owner` key in the meta builders**.
+The field is genuinely absent.
+
+> **`owner` = the owning service, DERIVED from the manifest, never authored.** The human link lives in
+> **one** new `CODEOWNERS` file mapping service → person.
+
+R9.4 required *"a person or a rotation, never a wiki row"* for accountability. On a single-maintainer
+project the person is constant, so as a *person* the field carries no information — as a *service* it
+tells you where the code is, and it is checkable. When the project grows, **CODEOWNERS is the one place
+that changes, not 315 declarations.** Adopted as part of **C-0**.
+
+**Q7 — sunset. DECIDED for agents, BLOCKED for third parties.**
+Measured over tools with ≥5 calls (n=70), the largest gap between consecutive uses:
+
+| max gap | tools |
+|---|---|
+| 0–10 days | 37 |
+| 10–20 days | 26 |
+| 20–30 days | 5 |
+| 45 days | 1 |
+| 57 days | 1 |
+
+> **Agent population: retire after 90 days with no use.** At N=30 this wrongly retires **2 of 70
+> actively-used tools (2.9%)**; at N=60, zero.
+
+**The limit must travel with the number: the corpus spans ~126 days, so it cannot observe a gap longer
+than itself.** The 57-day observation sits near that ceiling; nothing beyond ~120 days is validated,
+and **N must be revisited as the corpus lengthens.**
+
+**Third-party population: still blocked, and not on a number.** There is no clock and no channel —
+**zero `Sunset`/`Deprecation` headers repo-wide, an unversioned `/mcp`, and no `deprecated_at` in
+`_meta`, so 114 retired tools have no t=0.** Picking a window before those exist would be a calendar we
+cannot honour, which Q7 itself rules out.
+
+**Q3 — group granularity. NOT DECIDABLE TODAY, and it does not need to be.**
+The evidence is insufficient and §0.12 forbids manufacturing a verdict from it: **18 of 53 composition
+tools have ever been called**, across 33 sessions, and the strongest co-occurring pair appears in
+**5 sessions**.
+
+> The question answers itself as a byproduct: under one-at-a-time admission a declaration receives its
+> group **when it is admitted**, and C-4/C-6 make the `accepts`/`emits` DAG exist **by construction**.
+> By the time enough declarations are admitted for the boundary to matter, the graph that decides it
+> will be there. **Measure then; do not guess now.**
+
+*(Also recorded: 35 of 53 composition tools have never been called — further evidence for the A9
+steel-man, and for retire-by-data once the counters cover all three lanes.)*
+
+**Q16 — retrieval. DECIDED structurally, GATED behaviourally.**
+
+> **Reuse, do not rebuild:** `tool_discovery.py` already caches tool vectors and provider-registry
+> already resolves an embedding model. **But it does not enter the request path** until it is measured
+> on our own CJK corpus.
+
+The published gains for this class of mechanism were **"absent on Chinese"**, and the bought
+component's non-Anthropic fallback is semantic top-K — precisely what F17 retired after a 40-iteration,
+53.8-second, zero-length answer. Adopting it unmeasured would repeat that incident with an imported
+justification.
+
+---
+
+**All 18 questions plus N1–N3 are now cleared. Q3 and Q7's third-party half are deferred with a stated
+mechanism and a trigger, not left open.**
+
 ### The questions themselves
 
 1. **Where does `lane` live for a tool that is both?** `both` is expected to dominate; does the FSM
