@@ -32,13 +32,18 @@ rather than verified — inside the mechanism written to end it.** It also:
     (stale twice, `D-347` and `D-350`);
   * counted a FAILING ``cargo test`` as zero passes and then told the developer
     to rewrite the doc to match a broken build;
-  * had no ``--self-test`` of its own, unlike both sibling gates.
+  * had no ``--self-test`` of its own, unlike both sibling gates;
+  * and was named ``actor-hub-figures.py`` -- **which `gate-wiring-gate`'s
+    filename predicate does not recognise**, so `--run-all` never executed it and
+    the degradation message's promise *"CI checks it"* was FALSE. Renamed to
+    ``-gate.py``, which is the shape that predicate keys on. A promise about
+    another mechanism is a claim like any other.
 
 Every one of those is fixed below, and each has a case in ``--self-test``.
 
-    python scripts/actor-hub-figures.py            # measure + check (the default)
-    python scripts/actor-hub-figures.py --print    # measurements only, never fails
-    python scripts/actor-hub-figures.py --self-test
+    python scripts/actor-hub-figures-gate.py            # measure + check (the default)
+    python scripts/actor-hub-figures-gate.py --print    # measurements only, never fails
+    python scripts/actor-hub-figures-gate.py --self-test
 """
 
 from __future__ import annotations

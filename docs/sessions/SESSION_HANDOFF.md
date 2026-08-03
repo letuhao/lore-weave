@@ -13,7 +13,7 @@
 > `feat/frontend-tools-mcp-migration` and is left untouched.
 
 **The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
-per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-372` decision record
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-374` decision record
 live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
 the two design contracts that are its only specification are in
 [`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).
@@ -46,7 +46,7 @@ correct content. Round 5: ten of those false positives *relabelled* rather than 
 aimed at the wrong class, and a stale-number remedy declared *"mechanised"* by a script that did not
 exist. **The two-consecutive-clean-rounds rule is not met, and this block does not claim it is.**
 
-**Every figure in this block is emitted by `scripts/actor-hub-figures.py`, which `--check`s them
+**Every figure in this block is emitted by `scripts/actor-hub-figures-gate.py`, which `--check`s them
 pre-commit whenever this file is staged.**
 
 **The frame that governs the next feature:** *a plugin exists so that adding feature N+1 does not touch
