@@ -48,9 +48,17 @@ fn p(raw: u8) -> PluginOrdinal {
 /// never heard of.
 ///
 /// It is a cultivation system: a `qi` pool, a `realm` tier index, and a
-/// `breath_rate` derived from `realm`. **None of those words appear anywhere in
-/// `crates/actor-hub/src/`** — the hub knows three ordinals, two fold layers and
+/// `breath_rate` derived from `realm`. **The hub's source names none of them as
+/// a CONCEPT** — `qi` and `cultivation` occur there only as fixture strings in
+/// its own unit tests, never as a type, a field or a branch, and `realm` and
+/// `breath_rate` not at all. The hub knows three ordinals, two fold layers and
 /// nothing else.
+///
+/// The earlier wording was *"none of those words appear anywhere in
+/// `crates/actor-hub/src/`"*, and a round-18 measurement falsified it: `qi` five
+/// times, `cultivation` twice, one of them live code
+/// (`actor.rs`: `QuantityTable::assign(&["hp", "qi", "speed"])`). The decoupling
+/// this test proves is real; the sentence asserting it was not.
 struct Cultivation {
     ordinal: PluginOrdinal,
     qi: QuantityOrdinal,

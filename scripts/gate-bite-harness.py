@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -107,8 +108,17 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("the 6-BUILD scope row deleted",
          '    (RUN_STATE, "### 6-BUILD", END("slice-board"),\n'
          '     frozenset({"rust_tests", "dp_kernel_lib_tests"})),', ""),
+        # **`D-470` fixed the row above and not this one, in the same
+        # table.** Deleting only the first line of a two-line tuple left
+        # `(\n frozenset({...})),` -- a 1-tuple holding a frozenset -- so the
+        # child reached 62 cases, raised `TypeError`, printed ZERO `FAIL` lines
+        # and was still reported RED. The instance fixed, the class left, and
+        # the very next row of the same table the counter-example.
         ("the _index.md scope row deleted",
-         '    (INDEX, "# Actor Hub", END("index"),', "        ("),
+         '    (INDEX, "# Actor Hub", END("index"),\n'
+         '     frozenset({"max_decision_id", "max_seam_id", "contract_hub_lines",\n'
+         '                "contract_substrate_lines", "contract_seams_lines",\n'
+         '                "contract_total_lines"})),', ""),
         ("the red-build guard removed",
          '    if "test result: FAILED" in out.stdout or out.returncode != 0:',
          "    if False:"),
@@ -267,14 +277,19 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("the tail loses the prefix state entirely",
          "            tails[(doc, start_marker)] = (full[a:b], *_fence_state(full[:a]))",
          "            tails[(doc, start_marker)] = (full[a:b], None, False)"),
-        ("the tail keeps the fence half and drops the comment half",
-         "            tails[(doc, start_marker)] = (full[a:b], *_fence_state(full[:a]))",
-         "            tails[(doc, start_marker)] = (full[a:b], _fence_state(full[:a])[0], False)"),
+        # RETIRED: "the tail keeps the fence half and drops the comment half".
+        # A round-18 measurement proved the comment half CANNOT VARY while every
+        # scope ends on a sentinel -- 0 of 11 prefix shapes -- so the row and its
+        # case were certifying coverage that does not exist. The disclosure lives
+        # beside the code. The FENCE half keeps its row, above.
         # R17/m3 -- the sentinel assertion could be weakened to accept any HTML
         # comment, because its only case reverted the DATA to a heading.
         ("the sentinel shape accepts any HTML comment",
          'SENTINEL_RE = re.compile(r"^<!-- actor-hub-figures:end [a-z0-9-]+ -->$")',
          'SENTINEL_RE = re.compile(r"^<!--")'),
+        ("the tail terminator loses its blockquote prefix",
+         'TAIL_END_RE = re.compile(r"^[ \\t>]*(?:#{1,6}[ \\t]|\\|)")',
+         'TAIL_END_RE = re.compile(r"^(?:#{1,6}[ \\t]|\\|)")'),
         ("the tail runs to the next heading only",
          'TAIL_END_RE = re.compile(r"^[ \\t>]*(?:#{1,6}[ \\t]|\\|)")',
          'TAIL_END_RE = re.compile(r"^[ \\t>]*(?:#{1,6}[ \\t])")'),
@@ -284,10 +299,15 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # in the header block only. The sibling `contract_substrate_lines` pattern
         # in that same file has carried the wrap tolerance from the start.
         ("the bolded-figure shape loses its wrap tolerance",
-         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*\\n?[ \\t]*>?[ \\t]*[A-Za-z%][\\w%-]*)?\\*\\*")',
-         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*[A-Za-z%][\\w%-]*)?\\*\\*")'),
+         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*\\n?[ \\t]*>?[ \\t]*[A-Za-z%][\\w%-]*){0,3}\\*\\*")',
+         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*[A-Za-z%][\\w%-]*){0,3}\\*\\*")'),
+        # R18/M4 -- the shape admitted ONE word, so `**301 Rust tests**` was
+        # invisible on both arms: not compared, and not surplus either.
+        ("the bolded-figure shape admits only one word again",
+         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*\\n?[ \\t]*>?[ \\t]*[A-Za-z%][\\w%-]*){0,3}\\*\\*")',
+         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*\\n?[ \\t]*>?[ \\t]*[A-Za-z%][\\w%-]*)?\\*\\*")'),
         ("the bolded-figure shape narrows to a bare integer",
-         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*\\n?[ \\t]*>?[ \\t]*[A-Za-z%][\\w%-]*)?\\*\\*")',
+         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*\\n?[ \\t]*>?[ \\t]*[A-Za-z%][\\w%-]*){0,3}\\*\\*")',
          '    r"\\*\\*\\d+\\*\\*")'),
         ("the dp-kernel rule stops reading the slice board's phrasing",
          r'    (r"`dp-kernel --lib` \*\*(\d+)(?: passed)?\*\*", "dp_kernel_lib_tests",',
@@ -534,12 +554,38 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("the RUST anchor search stops excluding the tables",
          "            at = _find_one(src, find)", "            at = src.find(find)"),
         ("the gate no-verdict guard removed",
-         "    if not ran:", "    if False:"),
-        ("the RUST compile-failure guard removed",
-         '            if red and ("error[E" in noise or "could not compile" in noise):',
-         "            if False:"),
+         "    if out.returncode != 0 and not bit:", "    if False:"),
+        ("a reached case counts as a failing one again",
+         '    bit = sum(1 for l in lines if l.lstrip().startswith("FAIL"))',
+         '    bit = sum(1 for l in lines if l.lstrip().startswith(("ok ", "FAIL")))'),
+        ("the RUST named-test guard removed",
+         "            if red and not named_failed:", "            if False:"),
+
+
+        ("the RUST named-test guard removed",
+         "            if red and not named_failed:", "            if False:"),
+        ("the RUST named-test check reads any failure",
+         '            named_failed = f"test {test} ... FAILED" in (out.stdout or "")',
+         '            named_failed = "FAILED" in (out.stdout or "")'),
         ("the RUST null-mutation check removed",
          "            if mutated == src:", "            if False:"),
+        ("the label rule stops checking dotted tokens",
+         "            if len(parts) > 1:\n"
+         "                if not any(all(q in line for q in parts) "
+         "for line in body.split(chr(10))):",
+         "            if len(parts) > 1:\n                if False:"),
+        ("the label rule stops checking plain tokens",
+         "            elif tok not in body and tok not in scope:",
+         "            elif False:"),
+        ("the label rule covers no row",
+         "    bad = mislabelled_rows(all_rows + [canary])", "    bad = []"),
+        ("the label rule's stray filter passes everything",
+         '    strays = [b for b in bad if "canary" not in b]', "    strays = []"),
+        ("the label rule stops requiring its canary",
+         "    if len(bad) != 1:", "    if False:"),
+        ("the label rule treats every token as a filename",
+         "            if tok.endswith(LABEL_FILE_EXT):",
+         "            if True:"),
         ("the unbounded-child sweep stops looking at the timeout",
          '                     if not any(k.arg == "timeout" for k in n.keywords)]',
          "                     if False]"),
@@ -655,21 +701,31 @@ RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
      "        if row.divisor == 0 {\n            return Err(RowRefusal::ZeroDivisor);\n        }",
      "        if false {\n            return Err(RowRefusal::ZeroDivisor);\n        }",
      "registry::a_zero_divisor_and_a_contradictory_bound_are_refused"),
-    ("Accumulator.wanted reports the EMITTED value",
+    # **The label said `Accumulator` and the anchor mutated the EMIT push.**
+    # Renamed to what it touches, and the accumulator half -- which the label
+    # had been standing in for, and which nothing pinned -- gets its own row.
+    ("the Emit record's wanted reports the EMITTED value",
      "crates/actor-hub/src/fold.rs",
      "        capped.push(Capped { quantity: q, site: CapSite::Emit, wanted: r.value, emitted: out });",
      "        capped.push(Capped { quantity: q, site: CapSite::Emit, wanted: out as i64, emitted: out });",
-     "the_accumulator_record_carries_the_exact_wanted_total"),
+     "capping::the_accumulator_record_carries_the_exact_wanted_total"),
+    ("the Accumulator record's wanted reports the EMITTED value",
+     "crates/actor-hub/src/fold.rs",
+     "        capped.push(Capped { quantity: q, site: CapSite::Accumulator,"
+     " wanted: r.value, emitted: out });",
+     "        capped.push(Capped { quantity: q, site: CapSite::Accumulator,"
+     " wanted: out as i64, emitted: out });",
+     "capping::the_accumulator_record_carries_the_saturated_total_not_the_emitted_value"),
     ("pre_emit collapses onto value",
      "crates/actor-hub/src/fold.rs",
      "            pre_emit,\n            value,",
      "            pre_emit: value as i64,\n            value,",
-     "pre_emit_differs_from_value_when_the_emit_clamps"),
+     "capping::pre_emit_differs_from_value_when_the_emit_clamps"),
     ("a bound that raises reports nothing",
      "crates/actor-hub/src/rows.rs",
      "        let site = if bounded != clamped {",
      "        let site = if bounded < clamped {",
-     "a_bound_whose_floor_bites_is_reported"),
+     "capping::a_bound_whose_floor_bites_is_reported"),
     ("division floors instead of truncating",
      "crates/actor-hub/src/rows.rs",
      "            (source_value as i64).saturating_mul(self.factor_milli as i64) / (self.divisor as i64)",
@@ -746,7 +802,7 @@ RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
      'crates/actor-hub/src/fold.rs',
      '    if r.saturated {\n        capped.push(Capped { quantity: q, site: CapSite::Accumulator, wanted: r.value, emitted: out });\n    }\n    if out as i64 != r.value {',
      '    if out as i64 != r.value {\n        capped.push(Capped { quantity: q, site: CapSite::Emit, wanted: r.value, emitted: out });\n    }\n    if r.saturated {\n        capped.push(Capped { quantity: q, site: CapSite::Accumulator, wanted: r.value, emitted: out });\n    }\n    if out as i64 != r.value {',
-     'the_accumulator_record_precedes_the_emit_record_for_one_quantity'),
+     'capping::the_accumulator_record_precedes_the_emit_record_for_one_quantity'),
     ("an exact bound min==max wrongly refused",
      "crates/actor-hub/src/registry.rs",
      "            && b.min > b.max",
@@ -887,16 +943,22 @@ def run_rust(only: str | None = None, run=None, write=None,
                 # avoid, reintroduced by its own fix one round later.
                 if _raw(path) != raws[rel]:
                     path.write_bytes(raws[rel])
+            # **The NAMED TEST must have FAILED**, which `rc != 0` does not
+            # say: a mutant that breaks an unrelated test, or a `--exact` name
+            # that no longer matches anything, both move the return code. The
+            # gate half asks the same question one line down; this is its twin.
+            named_failed = f"test {test} ... FAILED" in (out.stdout or "")
             red = out.returncode != 0
-            # **RED for the RIGHT REASON.** A mutant that does not build makes
-            # `cargo test` non-zero without the test ever running, so the row
-            # reads as "the rule bites" when it is the type checker talking.
-            # Counted as a survivor, because a mutation that cannot run proves
-            # nothing about the rule it aims at -- the same direction the red
-            # baseline, the drifted anchor and the timeout are counted in.
-            noise = out.stderr or ""
-            if red and ("error[E" in noise or "could not compile" in noise):
-                print(f"  BROKE  {label:52} the mutant does not compile")
+            # REMOVED: a `BROKE` guard reading `error[E` / `could not compile`
+            # from stderr. **`named_failed` is strictly stronger** -- a mutant
+            # that does not build cannot print `test <name> ... FAILED`, so
+            # every input the compile guard would catch is caught one line
+            # above it. Written this morning, measured unreachable this
+            # afternoon, and a check that cannot fail is worse than no check.
+            # The property it defended is not lost; it moved to a stronger
+            # question. Its two rows and two cases went with it.
+            if red and not named_failed:
+                print(f"  WRONG  {label:52} -> {test} did not fail")
                 green += 1
                 continue
             print(f"  {'RED ' if red else 'GREEN'}  {label:52} -> {test}")
@@ -960,6 +1022,109 @@ def unbounded_children(text: str) -> list[str]:
         elif not handles:
             out.append(f"{fn.name} spawns with a timeout nothing catches")
     return out
+
+
+# A CODE-SHAPED token: a `.`/`::` path, a `snake_case` name, or a `CamelCase`
+# one. An English word carries none of those, so the rule cannot fire on prose.
+LABEL_CODE_RE = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*(?:(?:\.|::)[A-Za-z_][A-Za-z0-9_]*)+"
+    r"|[a-z][a-z0-9]*(?:_[a-z0-9]+)+"
+    r"|[A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+")
+# `_index.md` is a FILENAME, not a member access. Measured: without this the
+# rule reports it, which is the cry-wolf direction on a correct row.
+LABEL_FILE_EXT = (".md", ".py", ".rs", ".sh", ".json", ".yaml", ".yml", ".toml",
+                  ".jsonl")
+DEF_LINE_RE = re.compile(
+    r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+)?(?:fn|def|class|impl)\s")
+
+
+def _enclosing_def(text: str, at: int) -> str:
+    """The definition `at` sits in — back to its `fn`/`def`, on to the next."""
+    lines = text.split(chr(10))
+    seen, line_of = 0, 0
+    for i, l in enumerate(lines):
+        if seen + len(l) + 1 > at:
+            line_of = i
+            break
+        seen += len(l) + 1
+    start = next((k for k in range(line_of, -1, -1) if DEF_LINE_RE.match(lines[k])), 0)
+    indent = len(lines[start]) - len(lines[start].lstrip())
+    end = len(lines)
+    for k in range(start + 1, len(lines)):
+        if DEF_LINE_RE.match(lines[k]) and (len(lines[k]) - len(lines[k].lstrip())) <= indent:
+            end = k
+            break
+    return chr(10).join(lines[start:end])
+
+
+def mislabelled_rows(rows) -> list[str]:
+    """Rows whose LABEL names a symbol their ANCHOR does not touch.
+
+    **The class fix four rounds have failed to make.** Every blocking finding
+    since round 15 has been a row asserting coverage of something ADJACENT to
+    what it mutates -- a sibling function, a sibling record, the other half of a
+    two-line tuple -- and each round's remedy was to write a better row. Writing
+    is the thing that keeps failing, so this reads the row instead.
+
+    Two questions, because a label names things two ways:
+
+      * a **dotted** token (`Accumulator.wanted`) names a member OF a thing, so
+        both halves must meet on ONE line of the anchor. The row that produced
+        this rule is labelled `Accumulator.wanted` and mutates the **Emit**
+        push, where `wanted` appears and `Accumulator` does not;
+      * a **plain** token (`check_derivation`, `order_key`) names the subject,
+        which the anchor need not contain literally -- an anchor inside a
+        function rarely repeats its own name -- so it may appear in the
+        anchor or in the **enclosing definition**.
+
+    Measured across all 132 shipped rows before wiring: 1 finding, and it was
+    the defect. `rows` is `(label, path, find, repl)`, injectable so a case can
+    drive it with a row built to violate it.
+    """
+    out = []
+    for label, rel, find, repl in rows:
+        body = find + chr(10) + repl
+        try:
+            text = (REPO / rel).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            out.append(f"{label!r}: its file {rel} cannot be read")
+            continue
+        text = text.replace(chr(13) + chr(10), chr(10))
+        at = text.find(find)
+        scope = _enclosing_def(text, at) if at >= 0 else ""
+        for tok in LABEL_CODE_RE.findall(label):
+            if tok.endswith(LABEL_FILE_EXT):
+                continue
+            parts = re.split(r"\.|::", tok)
+            if len(parts) > 1:
+                if not any(all(q in line for q in parts) for line in body.split(chr(10))):
+                    out.append(
+                        f"{label!r}: `{tok}` names a member, but its two halves "
+                        "never meet on one line of the anchor — the row is "
+                        "aimed at a sibling")
+            elif tok not in body and tok not in scope:
+                out.append(
+                    f"{label!r}: `{tok}` appears neither in the anchor nor in "
+                    "the definition around it")
+    return out
+
+
+def canary_verdict(bad: list[str]) -> list[str]:
+    """What to report, given the subject set always carries ONE known-bad row.
+
+    Two clauses, and the second is the one that matters: an EMPTY result means
+    the rule examined nothing, which is precisely what `bad = []` produced and
+    what a floor on the row COUNT walked straight past. Extracted because that
+    clause is unreachable while the rule works, so only an injected input can
+    drive it -- the same reason `run_rust` gained `rows=`/`root=`.
+    """
+    strays = [b for b in bad if "canary" not in b]
+    if strays:
+        return strays
+    if len(bad) != 1:
+        return [f"the canary was not reported (got {len(bad)}) — the rule "
+                "examined nothing, so its verdict is about no rows at all"]
+    return []
 
 
 def _outside_tables(text: str) -> list[tuple[int, int]]:
@@ -1065,15 +1230,25 @@ def _mutate_and_run(gate: str, find: str, repl: str, run=None,
     # one case ran. A mutant that cannot execute proves nothing about the rule
     # it aims at, exactly as a mutant that cannot compile does.
     #
-    # The test is "did the child reach its own reporting" -- a self-test prints
-    # an `ok`/`FAIL` line per case -- rather than a list of exception names,
-    # which would be the enumeration this file keeps being caught by.
-    ran = any(l.lstrip().startswith(("ok ", "FAIL"))
-              for l in (out.stdout or "").splitlines())
-    if not ran:
+    # **A bite is a FAILING CASE, not a non-zero exit.** The first version asked
+    # whether the child REACHED a case, and the very next row of the same table
+    # was the counter-example: a mangled tuple let the child reach 62 cases,
+    # raise `TypeError`, print ZERO `FAIL` lines, and be reported RED. Reaching
+    # a case is not answering; a self-test prints one `ok`/`FAIL` line per case,
+    # so the question is whether one of them said FAIL.
+    #
+    # The failure direction is safe: a child that reds without printing a FAIL
+    # line is counted as a SURVIVOR, so the harness under-claims rather than
+    # over-claims. It is deliberately not a list of exception names, which would
+    # be the enumeration this file keeps being caught by.
+    lines = (out.stdout or "").splitlines()
+    ran = sum(1 for l in lines if l.lstrip().startswith(("ok ", "FAIL")))
+    bit = sum(1 for l in lines if l.lstrip().startswith("FAIL"))
+    if out.returncode != 0 and not bit:
         first = next((l.strip() for l in reversed((out.stderr or "").splitlines())
                       if l.strip()), "no output at all")
-        return False, f"the child never reached a case — {first}"
+        return False, (f"the child exited non-zero with NO failing case "
+                       f"(reached {ran}) — {first}")
     if out.returncode != 0:
         return True, ""
     return False, "self-test stayed GREEN"
@@ -1181,13 +1356,28 @@ def self_test() -> int:
         returncode, stdout = 1, ""
         stderr = "  File \"x.py\", line 147\nIndentationError: unexpected indent"
 
+    # ...and the shape that made the FIRST version of this guard useless: a
+    # child that REACHES many cases, passes them all, then raises. It exits
+    # non-zero having proven nothing, and "did it reach a case" says yes.
+    class _CrashedLate:
+        returncode = 1
+        stdout = "  ok  rule one\n  ok  rule two\n"
+        stderr = "TypeError: unsupported operand type(s) for -: 'set' and 'str'"
+
     gate0, (_, find0, repl0) = "citation-gate", MUTATIONS["citation-gate"][0]
     red, note = _mutate_and_run(gate0, find0, repl0, run=lambda _: _Unparseable())
-    if red or "never reached a case" not in note:
+    if red or "NO failing case" not in note:
         failures += 1
         print(f"  FAIL a child that printed no case was counted as a bite: {red}, {note!r}")
     else:
         print("  ok  a mutant whose child never reached a case is not a bite")
+
+    red, note = _mutate_and_run(gate0, find0, repl0, run=lambda _: _CrashedLate())
+    if red or "NO failing case" not in note:
+        failures += 1
+        print(f"  FAIL a child that passed every case and then crashed was a bite: {note!r}")
+    else:
+        print("  ok  a child that reaches cases, passes them, then raises is not a bite")
 
     # A mutation that leaves the self-test GREEN must be reported as GREEN, and
     # one that reddens it as RED. Driven through the real `_mutate_and_run`.
@@ -1195,9 +1385,16 @@ def self_test() -> int:
     # are children that never reached a case -- which the guard below reports,
     # correctly, and which would make every one of these cases pass for the
     # wrong reason.
+    # A RED self-test child prints a FAIL line; a GREEN one prints only `ok`.
+    # A stand-in that reds with no FAIL line is a child that crashed, which the
+    # guard below now reports as a survivor -- so these must agree, or every
+    # case here passes for a reason unrelated to the rule under test.
     class _R:
-        def __init__(self, rc, stdout="  ok  some rule bit\n"):
-            self.returncode, self.stdout, self.stderr = rc, stdout, ""
+        def __init__(self, rc, stdout=None):
+            self.returncode = rc
+            self.stdout = stdout if stdout is not None else (
+                "  FAIL some rule did not bite\n" if rc else "  ok  some rule bit\n")
+            self.stderr = ""
 
     gate, (_, find, repl) = "citation-gate", MUTATIONS["citation-gate"][0]
     red, _ = _mutate_and_run(gate, find, repl, run=lambda _: _R(1))
@@ -1312,7 +1509,12 @@ def self_test() -> int:
     def _rust_run(rc):
         def go(test):
             rust_calls.append(test)
-            return _RustR(rc)
+            r = _RustR(rc)
+            # A real `cargo test --exact <name>` that reds prints this line. A
+            # stand-in that reds without it is a run whose NAMED test did not
+            # fail, which the guard now counts as a survivor.
+            r.stdout = f"test {test} ... FAILED" if rc else f"test {test} ... ok"
+            return r
         return go
 
     # **`write=` on every call that does not need real bytes.** The first
@@ -1354,21 +1556,39 @@ def self_test() -> int:
         else:
             print("  ok  a Rust anchor occurring twice is drift, not a silent first-hit")
 
-        # ...and a mutant that does not COMPILE is not a bite either. The
-        # verifier that found this asked the question from outside, by hand.
-        class _Broke:
+        # **A mutant is a bite only when the NAMED TEST fails.** Three
+        # shapes, each of which `rc != 0` alone calls a bite:
+        #   * a mutant that does not build -- no test line at all;
+        #   * a mutant that breaks a DIFFERENT test;
+        #   * a `--exact` name that no longer matches anything.
+        # This replaces a `BROKE` guard that read compiler noise from stderr:
+        # measured unreachable once this question was asked, because a mutant
+        # that does not build cannot print `test <name> ... FAILED`.
+        class _NoTestLine:
             returncode, stdout = 101, ""
             stderr = "error[E0308]: mismatched types"
 
+        class _OtherFailed:
+            returncode = 101
+            stdout = "test some_other_test ... FAILED"
+            stderr = ""
+
+        # **The probe must carry the anchor ONCE.** The previous case left it
+        # on two lines, so `_find_one` reported DRIFT and both the shipped code
+        # and the mutant returned the same count -- two cases passing for a
+        # reason unrelated to the guard they were written to prove.
+        probe.write_text("let a = 1;" + chr(10) + "let b = 2;" + chr(10),
+                         encoding="utf-8")
         one = [("compiles not", "probe.rs", "let a = 1;", "let a = ();", "t")]
-        probe.write_text("let a = 1;\nlet b = 2;\n", encoding="utf-8")
-        survivors, refusal = quietly(lambda: run_rust(
-            run=lambda _t: _Broke(), write=nowrite, rows=one, root=Path(d)))
-        if survivors != 1 or refusal:
-            failures += 1
-            print(f"  FAIL a non-compiling mutant must not read as a bite: {survivors}")
-        else:
-            print("  ok  a Rust mutant that does not compile is not counted as red")
+        for name, fake in (("does not build", _NoTestLine),
+                           ("breaks a DIFFERENT test", _OtherFailed)):
+            survivors, refusal = quietly(lambda: run_rust(
+                run=lambda _t: fake(), write=nowrite, rows=one, root=Path(d)))
+            if survivors != 1 or refusal:
+                failures += 1
+                print(f"  FAIL a mutant that {name} must not read as a bite: {survivors}")
+            else:
+                print(f"  ok  a Rust mutant that {name} is not counted as red")
 
         null = [("changes nothing", "probe.rs", "let b = 2;", "let b = 2;", "t")]
         probe.write_text("let a = 1;" + chr(10) + "let b = 2;" + chr(10), encoding="utf-8")
@@ -1727,6 +1947,7 @@ def self_test() -> int:
         class _R0:
             returncode, stdout, stderr = 0, "  ok  some rule bit\n", ""
 
+
         _mutate_and_run("probe-gate", "guard = 1", "guard = 9",
                         run=lambda q: (seen_text.append(_read(q)), _R0())[1],
                         root=Path(d))
@@ -1736,6 +1957,82 @@ def self_test() -> int:
             print("  FAIL the anchor search mutated the TABLE ROW, not the rule")
         else:
             print("  ok  the anchor search skips the table row that names the rule")
+
+    # **A row's LABEL must name what its ANCHOR touches.** Four rounds
+    # running, the blocking finding was a row asserting coverage of something
+    # adjacent to what it mutates, and each round's remedy was to write a better
+    # row. Reading the row instead: measured over all 132 shipped rows before it
+    # was wired, ONE finding, and it was the defect.
+    all_rows = [(r[0], f"scripts/{g}.py", r[1], r[2])
+                for g, v in MUTATIONS.items() for r in v]
+    all_rows += [(r[0], r[1], r[2], r[3]) for r in RUST_MUTATIONS]
+    # **A CANARY row, so the check can never be vacuous.** The shipped rows are
+    # clean, so `bad = mislabelled_rows(all_rows)` -> `bad = []` changed nothing
+    # and survived: a rule reporting "all N rows are fine" about a set it never
+    # examined. The subject set therefore always carries ONE known-bad row, and
+    # the check is "exactly the canary" rather than "nothing" -- NV-3 closed by
+    # construction rather than by a floor, which the same mutation walked past.
+    canary = ("Accumulator.wanted is the canary", "crates/actor-hub/src/fold.rs",
+              "        capped.push(Capped { quantity: q, site: CapSite::Emit,"
+              " wanted: r.value, emitted: out });", "")
+    bad = mislabelled_rows(all_rows + [canary])
+    if len(all_rows) < 100:
+        failures += 1
+        print(f"  FAIL the label rule saw only {len(all_rows)} rows")
+    # **ASSERTED PRESENT, not forgiven.** Forgiving the canary and then asking
+    # `if bad:` let an EMPTY result pass, so `bad = []` survived the very rule
+    # the canary was added to make non-vacuous. The check is now "exactly one
+    # finding, and it is the canary" -- which no empty answer satisfies.
+    verdict = canary_verdict(bad)
+    if verdict:
+        failures += 1
+        for b in verdict:
+            print(f"  FAIL a row aimed at a sibling — {b}")
+    else:
+        print(f"  ok  all {len(all_rows)} rows' labels name what their anchors "
+              "touch, and the canary is reported")
+
+    # ...and BOTH clauses of that verdict, driven directly, because the
+    # empty-result clause is unreachable while the rule works -- which is how
+    # `strays or len(bad) != 1` -> `strays` survived a whole sweep.
+    for name, given, want in (("an empty result", [], True),
+                              ("the canary alone", ["'x': canary"], False),
+                              ("the canary plus a stray", ["'x': canary", "'y': real"], True),
+                              ("a stray alone", ["'y': real"], True)):
+        if bool(canary_verdict(given)) != want:
+            failures += 1
+            print(f"  FAIL the canary verdict on {name}: {canary_verdict(given)}")
+        else:
+            print(f"  ok  the canary verdict on {name} -> "
+                  f"{'reported' if want else 'silent'}")
+
+    # ...and the rule must SEE each shape. Both probes are the real defects it
+    # was built from: a label naming a member whose halves live on different
+    # lines, and a label naming a function the anchor's neighbourhood does not
+    # contain.
+    probes = (
+        ("a member named across two records",
+         ("Accumulator.wanted reports the EMITTED value", "crates/actor-hub/src/fold.rs",
+          "        capped.push(Capped { quantity: q, site: CapSite::Emit,"
+          " wanted: r.value, emitted: out });", "")),
+        ("a function the anchor's neighbourhood never mentions",
+         ("check_derivation stops checking the layer", "crates/actor-hub/src/fold.rs",
+          "    let out = r.value.clamp(i32::MIN as i64, i32::MAX as i64) as i32;", "")),
+    )
+    for name, row in probes:
+        if len(mislabelled_rows([row])) != 1:
+            failures += 1
+            print(f"  FAIL the label rule missed {name}")
+        else:
+            print(f"  ok  the label rule reports {name}")
+    # ...and stays silent on a filename, which LOOKS dotted and is not a member.
+    ok_row = ("the _index.md scope row deleted", "scripts/actor-hub-figures-gate.py",
+              '    (INDEX, "# Actor Hub", END("index"),', "")
+    if mislabelled_rows([ok_row]):
+        failures += 1
+        print("  FAIL the label rule read a FILENAME as a member access")
+    else:
+        print("  ok  a filename in a label is not read as a member access")
 
     # **The derived half: no gate this harness drives may spawn a child that
     # nothing can interrupt.** The table below is four hand-written rows and so
@@ -1836,8 +2133,8 @@ def self_test() -> int:
          ("timeout=CHILD_TIMEOUT_S, env=_child_env(no_cargo)))",
           "env=_child_env(no_cargo)))")),
         ("a mutant that never ran is not a bite",
-         ("the child never reached a case", "    if not ran:"),
-         ("the mutant does not compile", 'if red and ("error[E" in noise')),
+         ("with NO failing case", "    if out.returncode != 0 and not bit:"),
+         ("if red and not named_failed", "            if red and not named_failed:")),
         ("a null mutation refused",
          ("the copy is identical to the original", "if _read(copy) == text:"),
          ("            if mutated == src:", "if mutated == src:")),
@@ -1867,6 +2164,24 @@ def self_test() -> int:
     return 0
 
 
+def _self_test_guarded(fn, name: str) -> int:
+    """Run a self-test, reporting an ESCAPING EXCEPTION as a failing case.
+
+    **A self-test that dies has failed, and it must say so in its own
+    vocabulary.** Four rules in this repo read RED for eighteen rounds purely
+    because deleting them made the child raise: the harness saw a non-zero exit
+    and called it a bite, while not one case had disagreed. `run_rust`'s
+    compile-failure guard was written for exactly this on the Rust side; the
+    Python side had nothing.
+    """
+    try:
+        return fn()
+    except BaseException as e:  # noqa: BLE001 - a crash IS the finding here
+        print(f"  FAIL {name} raised before finishing: {type(e).__name__}: {e}")
+        print(f"{chr(10)}{name}: 1 rule(s) did not behave")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--gate", help="one gate name (default: all with a table)")
@@ -1879,7 +2194,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     if args.self_test:
-        return self_test()
+        return _self_test_guarded(self_test, "gate-bite-harness --self-test")
 
     gates = [args.gate] if args.gate else sorted(MUTATIONS)
     unknown = [g for g in gates if g not in MUTATIONS]

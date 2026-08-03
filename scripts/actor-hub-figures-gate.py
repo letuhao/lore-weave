@@ -135,8 +135,9 @@ SCOPES: tuple[tuple[str, str, str, frozenset[str]], ...] = (
      frozenset({"rust_tests", "dp_kernel_lib_tests", "max_decision_id",
                 "max_seam_id", "hook_gate_scripts"})),
     (RUN_STATE, "> # ▶▶ NEXT SESSION STARTS HERE", END("next-session"),
-     frozenset({"dp_kernel_lib_tests", "max_seam_id", "hook_gate_scripts",
-                "contract_hub_lines", "contract_substrate_lines"})),
+     frozenset({"rust_tests", "dp_kernel_lib_tests", "max_seam_id",
+                "hook_gate_scripts", "contract_hub_lines",
+                "contract_substrate_lines"})),
     # The SLICE BOARD's own summary block. A stop-audit found it STALE at
     # round seven -- "81 findings over five rounds" when the count was 123 over
     # seven -- because the check covered the header and the handoff and not the
@@ -257,6 +258,12 @@ CLAIMS: tuple[tuple[str, str, str], ...] = (
     # header writes `**315**`. One word, and the figure was ungoverned in a
     # block whose headline says otherwise -- found by widening the bolded-figure
     # detector, not by reading.
+    # The header block writes the Rust total as `**300 Rust tests**` and the
+    # evidence lines write it as `**300 passed, 0 failed**`. Only the second
+    # had a rule, so the first was ungoverned in a block whose headline says
+    # otherwise -- found by widening the bolded-figure detector, not by
+    # reading it.
+    (r"\*\*(\d+) Rust tests\*\*", "rust_tests", "passing tests"),
     (r"`dp-kernel --lib` \*\*(\d+)(?: passed)?\*\*", "dp_kernel_lib_tests",
      "dp-kernel lib tests"),
     (r"`D-1`\.\.`D-(\d+)`", "max_decision_id", "the highest decision id"),
@@ -331,8 +338,14 @@ CLAIMS: tuple[tuple[str, str, str], ...] = (
 # this round found and fixed one block over -- stayed invisible to the detector
 # that had just been widened to catch it. Two decisions, each correct, the later
 # one defeating the earlier: this file's own name for the class.
+#
+# **And it admitted ONE word.** `**315 passed**` matched; `**300 Rust tests**`
+# did not -- a governed figure sitting in a governed block, invisible on BOTH
+# arms, because the missing key is not compared and an unmatched shape is not
+# surplus either. `{0,3}` because that is what this project writes; a figure
+# needing four words is a sentence, not a figure.
 BOLD_INT_RE = re.compile(
-    r"\*\*\d[\d,. \u00a0]*(?:[ \t]*\n?[ \t]*>?[ \t]*[A-Za-z%][\w%-]*)?\*\*")
+    r"\*\*\d[\d,. \u00a0]*(?:[ \t]*\n?[ \t]*>?[ \t]*[A-Za-z%][\w%-]*){0,3}\*\*")
 
 # An italicised quotation, and an inline HTML comment. See `_claimable`.
 QUOTE_RE = re.compile(r'\*"[^"]*"\*')
@@ -965,6 +978,19 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
     # stale figure outside every checker's scope -- was invisible.
     present: dict[tuple[str, str], set[str]] = {}
     claim_spans: dict[tuple[str, str], list[tuple[int, int]]] = {}
+    # **NV-1 DISCLOSURE — the comment half cannot vary today.** `_unsentinelled`
+    # requires every scope to end on a line matching `SENTINEL_RE`, which ends
+    # ` -->`, and `_scan_line` closes any open comment on a line containing
+    # `-->`. So `full[:a]` -- which always ends on the end-marker line -- can
+    # never leave a comment open, on any conforming document. Measured: 0 of 11
+    # prefix shapes. **Two individually-correct decisions, the first defeating
+    # the second**, which is this file's own name for the class.
+    #
+    # It is kept, and its mutation row is NOT, because a row would certify
+    # coverage that does not exist -- the defect four rounds running. The fence
+    # half IS live and IS cased. If the sentinel rule ever changes, this is
+    # already correct rather than a second bug to find.
+    #
     # (text, open fence, open comment) -- **BOTH halves of the prefix state.**
     # The first version took `_fence_state(...)[0]` and dropped the comment,
     # two lines below the call that passes both for the block. An HTML comment
@@ -1199,6 +1225,17 @@ def self_test() -> int:
     # records what each slice measured AT ITS CLOSE, and ending the tail at the
     # heading alone reported two of those as orphans -- cry-wolf on the correct
     # document, from the pre-commit hook.
+    # m1 -- the `[ \t>]*` prefix had no subject: every probe wrote its table and
+    # its heading at column 0, while the slice-board block is a BLOCKQUOTE from
+    # end to end, so the form its own tail would need was the untested one.
+    # Third occurrence of "two literal forms and only one had a subject".
+    check_doc("a BLOCKQUOTED table row below the sentinel stops the tail",
+              "@@START\n**283 passed, 0 failed**\n@@END\n"
+              "> | slice | evidence |\n> |---|---|\n> | B1 | **11 passed, 0 failed** |", 0)
+    check_doc("a BLOCKQUOTED heading below the sentinel stops the tail",
+              "@@START\n**283 passed, 0 failed**\n@@END\n"
+              ">  ### Next\n**11 passed, 0 failed**", 0)
+
     check_doc("a figure in a TABLE below the sentinel is a register, not an orphan",
               "@@START\n**283 passed, 0 failed**\n@@END\n"
               "| slice | evidence |\n|---|---|\n| B1 | **11 passed, 0 failed** |", 0)
@@ -1228,6 +1265,23 @@ def self_test() -> int:
     check_doc("...and the tail below the comment's closer is live again",
               "@@START\n**283 passed, 0 failed**\n<!--\n@@END\n"
               "-->\n**11 passed, 0 failed**\n\n## Next", 1)
+
+    # m2 -- the scan's REACH was uncased in two directions: restricting it to
+    # the first block was green (three of four real tails carry no figure), and
+    # restricting `CLAIMS` to its first row was green (one of thirteen shapes was
+    # exercised there). A scope is a claim; so is the set of shapes inside it.
+    two_blocks = (("<probe>", "@@START", "@@END"),
+                  ("<probe>", "%%START", "%%END"))
+    doc2 = ("@@START\n**283 passed, 0 failed**\n@@END\nprose\n\n## A\n"
+            "%%START\n`D-1`..`D-372`\n%%END\n"
+            "the seams run `S-1`..`S-15` today\n\n## B")
+    problems, _ = _check(m, scopes=two_blocks, read=lambda _: doc2)
+    real = [x for x in problems if not x.startswith("NO DOCUMENT")]
+    if len(real) != 1 or "S-1" not in real[0]:
+        failures += 1
+        print(f"  FAIL the tail of the SECOND block, on a NON-first claim shape: {real}")
+    else:
+        print("  ok  the scan reaches every block's tail and every claim shape")
 
     check_doc("a tail with no figure at all is silent",
               "@@START\n**283 passed, 0 failed**\n@@END\nprose\n\n## Next", 0)
@@ -1637,14 +1691,21 @@ def self_test() -> int:
     # ...and the predicate must REJECT the shapes it exists to reject, each of
     # which is an HTML comment, so a `startswith("<!--")` weakening accepts all
     # three while the shipped scopes stay green.
+    # **Each shape must fail for its OWN reason.** The first version's
+    # "an `:end` with no block name" was `<!-- actor-hub-figures:end -->`, which
+    # fails on the missing SPACE rather than the missing name -- so the `+`
+    # quantifier the row is about stayed unpinned, and so did the `$` anchor.
+    # A rule tested only through data it happens to have is a rule with half a
+    # test, which is the sentence that row is written around.
     rejects = _unsentinelled((("d", "s", "<!-- not a sentinel -->"),
-                              ("d", "s", "<!-- actor-hub-figures:end -->"),
+                              ("d", "s", "<!-- actor-hub-figures:end  -->"),
+                              ("d", "s", "<!-- actor-hub-figures:end x --> junk"),
                               ("d", "s", "## a heading")))
-    if len(rejects) != 3:
+    if len(rejects) != 4:
         failures += 1
-        print(f"  FAIL the sentinel predicate accepted {3 - len(rejects)} non-sentinel(s)")
+        print(f"  FAIL the sentinel predicate accepted {4 - len(rejects)} non-sentinel(s)")
     else:
-        print("  ok  an unnamed `:end` and a bare HTML comment are not sentinels")
+        print("  ok  an EMPTY name, a trailing tail and a bare comment are not sentinels")
     if unsentinelled:
         failures += 1
         print(f"  FAIL these scopes do not end on a named sentinel: {unsentinelled}")
@@ -1752,6 +1813,12 @@ def self_test() -> int:
     # back to `\d+` survived. Every form here is one this project writes, and
     # widening to them found two ungoverned figures in the shipped blocks.
     for shape, want in (("**7 widgets**", True), ("**7.5**", True),
+                        # TWO and THREE words. The shape admitted ONE, so
+                        # `**301 Rust tests**` sat in a governed block invisible
+                        # on both arms -- not compared, and not surplus either.
+                        ("**301 Rust tests**", True),
+                        ("**7 brand new widgets**", True),
+                        ("**7 one two three four**", False),
                         ("**7,000**", True), ("**7 000**", True),
                         ("**2026**", True), ("**2026-08-03**", False),
                         # ...and the WRAP tolerance its siblings carry. The
@@ -2103,6 +2170,24 @@ def self_test() -> int:
     return 0
 
 
+def _self_test_guarded(fn, name: str) -> int:
+    """Run a self-test, reporting an ESCAPING EXCEPTION as a failing case.
+
+    **A self-test that dies has failed, and it must say so in its own
+    vocabulary.** Four rules in this repo read RED for eighteen rounds purely
+    because deleting them made the child raise: the harness saw a non-zero exit
+    and called it a bite, while not one case had disagreed. `run_rust`'s
+    compile-failure guard was written for exactly this on the Rust side; the
+    Python side had nothing.
+    """
+    try:
+        return fn()
+    except BaseException as e:  # noqa: BLE001 - a crash IS the finding here
+        print(f"  FAIL {name} raised before finishing: {type(e).__name__}: {e}")
+        print(f"{chr(10)}{name}: 1 rule(s) did not behave")
+        return 1
+
+
 def main(argv: list[str] | None = None, measure_fn=None) -> int:
     """`measure_fn` is injectable so `--self-test` can drive THIS function with a
     seeded stale measurement. The first version short-circuited before the
@@ -2116,7 +2201,7 @@ def main(argv: list[str] | None = None, measure_fn=None) -> int:
     args = ap.parse_args(argv)
 
     if args.self_test:
-        return self_test()
+        return _self_test_guarded(self_test, "actor-hub-figures --self-test")
 
     m = (measure_fn or measure)()
     print(json.dumps(m, indent=2, default=str))

@@ -710,6 +710,24 @@ def _staged_added_lines() -> dict[str, set[int]]:
     return added
 
 
+def _self_test_guarded(fn, name: str) -> int:
+    """Run a self-test, reporting an ESCAPING EXCEPTION as a failing case.
+
+    **A self-test that dies has failed, and it must say so in its own
+    vocabulary.** Four rules in this repo read RED for eighteen rounds purely
+    because deleting them made the child raise: the harness saw a non-zero exit
+    and called it a bite, while not one case had disagreed. `run_rust`'s
+    compile-failure guard was written for exactly this on the Rust side; the
+    Python side had nothing.
+    """
+    try:
+        return fn()
+    except BaseException as e:  # noqa: BLE001 - a crash IS the finding here
+        print(f"  FAIL {name} raised before finishing: {type(e).__name__}: {e}")
+        print(f"{chr(10)}{name}: 1 rule(s) did not behave")
+        return 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--staged", action="store_true")
@@ -718,7 +736,7 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.self_test:
-        return self_test()
+        return _self_test_guarded(self_test, "citation-gate --self-test")
 
     tree = Tree.from_git()
     findings: list[Finding] = []

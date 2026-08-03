@@ -390,6 +390,24 @@ def _route(args) -> str:
     return "run"
 
 
+def _self_test_guarded(fn, name: str) -> int:
+    """Run a self-test, reporting an ESCAPING EXCEPTION as a failing case.
+
+    **A self-test that dies has failed, and it must say so in its own
+    vocabulary.** Four rules in this repo read RED for eighteen rounds purely
+    because deleting them made the child raise: the harness saw a non-zero exit
+    and called it a bite, while not one case had disagreed. `run_rust`'s
+    compile-failure guard was written for exactly this on the Rust side; the
+    Python side had nothing.
+    """
+    try:
+        return fn()
+    except BaseException as e:  # noqa: BLE001 - a crash IS the finding here
+        print(f"  FAIL {name} raised before finishing: {type(e).__name__}: {e}")
+        print(f"{chr(10)}{name}: 1 rule(s) did not behave")
+        return 1
+
+
 def main(argv: list[str] | None = None, discover_fn=None) -> int:
     """`discover_fn` is injectable so the floor below can be DRIVEN. Its only
     assertion used to live inside `self_test`, where mutating a case cannot red
@@ -401,7 +419,7 @@ def main(argv: list[str] | None = None, discover_fn=None) -> int:
 
     mode = _route(args)
     if mode == "self-test":
-        return self_test()
+        return _self_test_guarded(self_test, "gate-self-tests --self-test")
 
     found = (discover_fn or discover)()
     if mode == "list":
