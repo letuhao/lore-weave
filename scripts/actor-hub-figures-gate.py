@@ -59,9 +59,10 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 CRATES = ["actor-hub", "entity-existence", "ruleset-core", "game-rules", "ruleset-loader"]
+# (path, measurement key). Keyed, not positional -- see `measure`.
 CONTRACTS = [
-    "docs/specs/2026-08-02-actor-hub/2026-08-02-actor-hub.md",
-    "docs/specs/2026-08-02-actor-hub/2026-08-02-engine-substrate.md",
+    ("docs/specs/2026-08-02-actor-hub/2026-08-02-actor-hub.md", "contract_hub_lines"),
+    ("docs/specs/2026-08-02-actor-hub/2026-08-02-engine-substrate.md", "contract_substrate_lines"),
 ]
 SEAMS = "docs/specs/2026-08-02-actor-hub/2026-08-02-seams-and-triggers.md"
 RUN_STATE = "docs/plans/2026-08-02-actor-substrate-RUN-STATE.md"
@@ -139,9 +140,18 @@ def measure() -> dict[str, object]:
             out[name] = fn()
         except Unmeasurable as e:
             out[name] = {"unmeasurable": str(e)}
-    lines = [len((REPO / c).read_text(encoding="utf-8").splitlines()) for c in CONTRACTS]
-    out["contract_lines"] = dict(zip([c.rsplit("/", 1)[-1] for c in CONTRACTS], lines))
-    out["contract_hub_lines"], out["contract_substrate_lines"] = lines
+    # **Each contract measured under its OWN name.** The first version unpacked
+    # a positional pair -- `hub, substrate = lines` -- OUTSIDE the try, so adding
+    # a third contract raised `ValueError: too many values to unpack` as a raw
+    # traceback inside a hook that fires on the repo-wide `SESSION_HANDOFF`:
+    # `D-364`'s cargo crash again, one line along. The dict `contract_lines` was
+    # also emitted and compared by nothing, which is `F5`'s defect surviving its
+    # own fix.
+    for path, key in CONTRACTS:
+        try:
+            out[key] = len((REPO / path).read_text(encoding="utf-8").splitlines())
+        except OSError as e:
+            out[key] = {"unmeasurable": f"{path}: {e.strerror}"}
     return out
 
 
@@ -153,7 +163,12 @@ CLAIMS: tuple[tuple[str, str, str], ...] = (
     (r"`D-1`\.\.`D-(\d+)`", "max_decision_id", "the highest decision id"),
     (r"`S-11`\.\.`S-(\d+)`", "max_seam_id", "the highest seam id"),
     (r"the \*\*(\d+)\*\*\s*\n?gate scripts", "hook_gate_scripts", "hook gate scripts"),
-    (r"\*\*(\d+)\*\* gate scripts", "hook_gate_scripts", "hook gate scripts"),
+    # There was a second, wider `\*\*(\d+)\*\* gate scripts` row here. It was
+    # deletable with the suite green, and NOT because it lacked a case: its
+    # pattern is a strict SUBSTRING of the row above, matching the same span of
+    # the same sentence. The coverage arm cannot see an alias -- the pattern is
+    # not dead, it is shadowed -- so the only remedy is not to write two rows
+    # over one subject.
     # F5 — `contract_lines` was measured, printed as JSON and **never compared**,
     # while the block one line above it says "every figure above is emitted by
     # this script, which --checks them". Six measured, five compared, in the
@@ -166,11 +181,12 @@ CLAIMS: tuple[tuple[str, str, str], ...] = (
 )
 
 
-# An italicised quotation. See `_claimable`.
+# An italicised quotation, and an inline HTML comment. See `_claimable`.
 QUOTE_RE = re.compile(r'\*"[^"]*"\*')
+COMMENT_RE = re.compile(r"<!--.*?-->")
 
 
-def _claimable(block: str) -> str:
+def _claimable(block: str, quotes: bool = True) -> str:
     """The block with everything that is NOT a live claim blanked out.
 
     **F6 — a quoted historical figure, a fenced example and an HTML comment each
@@ -188,16 +204,40 @@ def _claimable(block: str) -> str:
     coverage assertion would then catch, but by making the gate useless rather
     than correct.
     """
-    out, in_fence = [], False
-    for line in block.split("\n"):
+    lines = block.split("\n")
+
+    # **Fences are PAIRED, not toggled.** `_scope_text` cuts its window at a
+    # marker, so a fence can straddle the boundary; a toggle then flips ON at an
+    # unmatched opener and blanks EVERY REMAINING LINE of the block. That is a
+    # check whose scope stops reaching its subject halfway down -- and this repo
+    # recorded the same defect in `citation-gate` one round earlier ("fence
+    # parity blinded whole file tails on 8 live docs"). An UNPAIRED marker is
+    # treated as ordinary text, which keeps the tail live.
+    marks = [i for i, l in enumerate(lines)
+             if l.lstrip().startswith("```") or l.lstrip().startswith("~~~")]
+    fenced: set[int] = set()
+    for a, b in zip(marks[::2], marks[1::2]):
+        fenced.update(range(a, b + 1))
+
+    out, in_comment = [], False
+    for i, line in enumerate(lines):
         stripped = line.lstrip()
-        if stripped.startswith("```") or stripped.startswith("~~~"):
-            in_fence = not in_fence
+        if i in fenced:
             out.append(" " * len(line))
             continue
-        if in_fence or stripped.startswith("<!--"):
+        # An HTML comment spans lines. `startswith("<!--")` blanked only the
+        # OPENING line, so the figures inside a multi-line comment stayed live
+        # claims -- and an INLINE `<!-- ... -->` mid-line was not blanked at all.
+        if in_comment:
+            out.append(" " * len(line))
+            if "-->" in line:
+                in_comment = False
+            continue
+        if stripped.startswith("<!--") and "-->" not in line:
+            in_comment = True
             out.append(" " * len(line))
             continue
+        line = COMMENT_RE.sub(lambda mo: " " * len(mo.group(0)), line)
         # An ITALICISED QUOTATION -- *"..."* -- is this repo's syntax for text
         # written elsewhere, so a figure inside one is a historical record and
         # not a live claim.
@@ -208,7 +248,7 @@ def _claimable(block: str) -> str:
         # the day someone writes "the spec said **283 passed**" and misses a
         # quotation the day they write "reported". Offsets are preserved either
         # way, so line numbers stay valid.
-        out.append(QUOTE_RE.sub(lambda mo: " " * len(mo.group(0)), line))
+        out.append(QUOTE_RE.sub(lambda mo: " " * len(mo.group(0)), line) if quotes else line)
     return "\n".join(out)
 
 
@@ -228,6 +268,76 @@ def _scope_text(doc: str, start_marker: str, end_marker: str, read=None) -> str 
         return None
     j = text.find(end_marker, i + len(start_marker))
     return text[i:j] if j > 0 else text[i:]
+
+
+RANGE_RE = re.compile(r"`D-1`\.\.`D-(\d+)`")
+
+
+def _escaped_live_range(m: dict[str, object], scopes=None, read=None) -> list[str]:
+    """`D-1`..`D-<head>` written OUTSIDE a current-state block.
+
+    **This is the one defect four rounds of this gate could not see, because it
+    lives in exactly the region the gate was scoped OUT of.** `D-358` bounded the
+    figure check to the two current-state blocks so that a decision row could
+    keep the number that was true when it was written. Correct — and it left the
+    rest of the document unguarded, so a blanket find-and-replace of
+    `` `D-1`..`D-N` `` rewrote **six** historical statements to the live head:
+
+      * `D-195` quotes another document — the item RUN-STATE — which says
+        `D-109` in every commit it has ever had. The replace made this document
+        attribute a sentence to it that it does not contain.
+      * `D-196`'s next clause is *"The 85 it has not seen"*, and 194-109 = 85.
+        The replace moved the number and left the arithmetic behind.
+      * `D-358`'s worked EXAMPLE — inside the row whose entire subject is this
+        gate crying wolf on correct historical statements.
+
+    The range is a moving pointer at this document's own head, so a row that
+    states it is stale the moment the next decision lands. Two places may hold
+    the live value: the header and the handoff, both of which a session rewrites.
+    Everywhere else, write the range that was TRUE.
+
+    Not generalised to the other claim shapes on purpose. `**283 passed**` in a
+    historical row is a coincidence of value, not a pointer — and `D-351` says
+    *"its own VERIFY line said 283"* about a different day.
+    """
+    head = m.get("max_decision_id")
+    if not isinstance(head, int):
+        return []
+    scopes = scopes if scopes is not None else SCOPES
+    problems: list[str] = []
+    for doc in sorted({d for d, _, _ in scopes}):
+        try:
+            text = read(doc) if read else (REPO / doc).read_text(
+                encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        blocks = [b for d, sm, em in scopes if d == doc
+                  for b in [_scope_text(d, sm, em, read=read)] if b]
+        # Fenced examples and HTML comments are blanked -- a code block
+        # SHOWING the header line is not a claim, and reporting it would be the
+        # cry-wolf failure this gate has hit four times.
+        #
+        # **Quotations are NOT blanked, and that is deliberate.** Everywhere else
+        # in this file `*"..."*` marks a historical record; here it is the exact
+        # costume the defect wore. `D-195` presented the live head inside what
+        # read as a quotation of another document, and that is *why* nobody
+        # checked the number -- a quotation is supposed to be frozen. A quotation
+        # containing this document's own moving head is either fabricated or
+        # already stale.
+        text = _claimable(text, quotes=False)
+        for mo in RANGE_RE.finditer(text):
+            if int(mo.group(1)) != head:
+                continue
+            if any(mo.group(0) in b for b in blocks):
+                continue
+            line = text.count("\n", 0, mo.start()) + 1
+            problems.append(
+                f"{doc}:{line}: `D-1`..`D-{head}` is the LIVE range, written outside "
+                "every current-state block. A decision row states the range that was "
+                "true WHEN IT WAS WRITTEN; only the header and the handoff track the "
+                "head. If this is a quotation, quote what the other document says."
+            )
+    return problems
 
 
 def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], list[str]]:
@@ -275,11 +385,19 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
                         f"{doc}: claims {claimed} for {label}, measured {want}"
                     )
 
+    problems += _escaped_live_range(m, scopes=scopes, read=read)
+
     # A claim shape that matches NOTHING anywhere is a rule with no subject.
     # Half of the first version's check was exactly this and nobody noticed,
     # because a vacuous arm and a passing arm look identical from outside.
     for pattern, key, label in CLAIMS:
-        if pattern not in seen and not isinstance(m.get(key), dict):
+        # No measurability guard. `seen` records what the DOCUMENTS contain, and
+        # whether this machine has a Rust toolchain has nothing to do with
+        # whether a document makes the claim. The guard it replaces could only
+        # fire when a claim was BOTH absent from every document AND unmeasurable
+        # here -- and in that case the coverage gap is real and worth reporting.
+        # It was deletable with the suite green because it had no subject.
+        if pattern not in seen:
             problems.append(
                 f"NO DOCUMENT claims {label}: this arm of the check has no subject "
                 "and proves nothing (docs/standards/non-vacuity.md, NV-3)"
@@ -300,8 +418,7 @@ def self_test() -> int:
     failures = 0
     m = {"rust_tests": 283, "dp_kernel_lib_tests": 315, "max_decision_id": 372,
          "max_seam_id": 18, "hook_gate_scripts": 38,
-         "contract_hub_lines": 202, "contract_substrate_lines": 157,
-         "contract_lines": {"a.md": 202, "b.md": 157}}
+         "contract_hub_lines": 202, "contract_substrate_lines": 157}
 
     def check_block(name: str, text: str, expect_problems: int, expect_notes: int = 0) -> None:
         """Drive the REAL `_check` over one synthetic document."""
@@ -329,6 +446,11 @@ def self_test() -> int:
     check_block("a stale gate-script count is caught", "the **37**\ngate scripts", 1)
     check_block("a stale contract line count is caught", "the two contracts are **200** and **157** lines", 1)
     check_block("correct contract line counts pass", "the two contracts are **202** and **157** lines", 0)
+    # Both halves of that sentence are governed by DIFFERENT rows, and only the
+    # first had a case: deleting the substrate row left the suite green and 157
+    # silently ungoverned. One case per ROW, not one per sentence.
+    check_block("a stale substrate line count is caught",
+                "the two contracts are **202** and **150** lines", 1)
 
     # F6 — a QUOTED historical figure must not block. These blocks are exactly
     # where this project writes "it said X at round seven".
@@ -344,18 +466,59 @@ def self_test() -> int:
                 "```\nAt the seal the log ran `D-1`..`D-353`.\n```", 0)
     check_block("an HTML comment is not a claim",
                 "<!-- was: **281 passed, 0 failed** -->", 0)
+    check_block("a MULTI-LINE HTML comment is not a claim",
+                "<!--\nwas: **281 passed, 0 failed**\n-->", 0)
+    check_block("an INLINE HTML comment is not a claim",
+                "the count is fine <!-- was **281 passed, 0 failed** --> today", 0)
+    # An UNPAIRED fence marker must not blind the rest of the block. A toggle
+    # blanked everything after it, so a stale figure below an unterminated fence
+    # was missed entirely.
+    check_block("an unterminated fence does not blind the tail",
+                "```rust\nlet x = 1;\n\nthe count is **281 passed, 0 failed** today", 1)
+    check_block("a block that BEGINS mid-fence does not blind the tail",
+                "let x = 1;\n```\n\nthe count is **281 passed, 0 failed** today", 1)
     check_block("an italicised QUOTATION is a historical record, not a claim",
                 'the header read it (*"**281 passed, 0 failed**"* at round six)', 0)
     # ...and the same figure OUTSIDE a quotation is still a live claim, so the
     # rule is syntax and not a licence.
     check_block("the same figure outside a quotation is still a claim",
                 "the header says **281 passed, 0 failed** today", 1)
-    check_block("an italicised QUOTATION is a historical record, not a claim",
-                'the header read it (*"**281 passed, 0 failed**"* at round six)', 0)
-    # ...and the same words OUTSIDE a quotation are still a live claim, so the
-    # rule is a syntax rule and not a licence.
-    check_block("the same figure outside a quotation is still a claim",
-                "the header says **281 passed, 0 failed** today", 1)
+
+    # The live range escaping its block -- F1's mechanism, both directions.
+    def escape_case(name: str, doc: str, want: int, meas=None) -> None:
+        """Driven through `_check`, NOT through `_escaped_live_range` directly.
+
+        The first version called the rule directly, so deleting its call site in
+        `_check` left the whole suite green -- the rule tested, its WIRING not.
+        That is the same defect as a self-test reimplementing the loop it tests,
+        one call deep, and the mutation harness found it on its first run.
+        """
+        nonlocal failures
+        problems, _ = _check(meas or m, scopes=(("<probe>", "@@", "@@END"),),
+                             read=lambda _: doc)
+        got = [x for x in problems if "LIVE range" in x]
+        ok = len(got) == want
+        failures += 0 if ok else 1
+        print(f"  {'ok ' if ok else 'FAIL'} {name}: expected {want}, got {len(got)}")
+        for g in got if not ok else []:
+            print(f"        {g}")
+
+    escape_case("the live range inside the current-state block is correct",
+                "@@\n`D-1`..`D-372`\n@@END", 0)
+    escape_case("the live range OUTSIDE the block is a finding",
+                "@@\nnothing\n@@END\n\n| D-195 | it declares `D-1`..`D-372` |", 1)
+    escape_case("a HISTORICAL range outside the block is correct, and stays",
+                "@@\nnothing\n@@END\n\n| D-195 | it declares `D-1`..`D-109` |", 0)
+    # ...and with no measurable head there is nothing to compare against, so the
+    # rule must stay SILENT rather than guess. Cry-wolf here would fire on every
+    # machine without the artifact.
+    escape_case("a FENCED example of the header is not an escape",
+                "@@\nnothing\n@@END\n\n```\n`D-1`..`D-372`\n```", 0)
+    escape_case("a QUOTATION carrying the live head IS an escape, by design",
+                '@@\nnothing\n@@END\n\n| D-195 | it declares *"`D-1`..`D-372`"* |', 1)
+    escape_case("an unmeasurable head accuses nobody",
+                "@@\nnothing\n@@END\n\n| D-195 | `D-1`..`D-372` |", 0,
+                meas={**m, "max_decision_id": {"unmeasurable": "no bold D- id"}})
 
     # An unmeasurable figure is a NOTE, not a block -- production behaviour, which
     # the inline copy asserted the OPPOSITE of and nothing noticed.
@@ -400,13 +563,35 @@ def self_test() -> int:
         print("  FAIL main() returned 0 with a seeded stale measurement")
     else:
         print("  ok  main() returns non-zero when a figure disagrees")
-    with contextlib.redirect_stdout(_io.StringIO()), contextlib.redirect_stderr(_io.StringIO()):
-        rc_ok = main(argv=[], measure_fn=lambda: measure())
+    # ...and zero when they agree. **The reason is PRINTED on failure.** The
+    # first version redirected both streams into a bin and reported only
+    # "returned non-zero on the real, agreeing documents" -- a message that
+    # ASSERTS the thing that just turned out to be false, names "rules" rather
+    # than the document, and throws away the list that says which figure is
+    # stale. Reproduced by seeding one stale number in the handoff: the run was
+    # red with an empty stderr and no way to find out why.
+    real_out, real_err = _io.StringIO(), _io.StringIO()
+    with contextlib.redirect_stdout(real_out), contextlib.redirect_stderr(real_err):
+        rc_ok = main(argv=[], measure_fn=measure)
     if rc_ok != 0:
         failures += 1
-        print("  FAIL main() returned non-zero on the real, agreeing documents")
+        print("  FAIL a governed document carries a STALE figure. `main()` said:")
+        for line in real_err.getvalue().splitlines():
+            if line.strip():
+                print(f"        {line}")
     else:
         print("  ok  main() returns zero when everything agrees")
+
+    # `--print` must NEVER fail, whatever the documents say: it is the "show me
+    # the measurements" mode a developer runs to FIX a stale figure. Deleting
+    # `if args.print_only: return 0` left the suite green.
+    with contextlib.redirect_stdout(_io.StringIO()), contextlib.redirect_stderr(_io.StringIO()):
+        rc_print = main(argv=["--print"], measure_fn=lambda: stale)
+    if rc_print != 0:
+        failures += 1
+        print("  FAIL --print returned non-zero; it must never fail")
+    else:
+        print("  ok  --print never fails, even with a stale figure")
 
     # The measurement helpers' guards, each driven directly.
     def guard(name: str, fn, want: str) -> None:

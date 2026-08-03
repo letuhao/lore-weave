@@ -76,3 +76,29 @@ jobs:
 
       - name: run every gate
         run: python scripts/gate-wiring-gate.py --run-all
+
+      # ...and every gate's OWN self-test, which `--run-all` does not reach: it
+      # invokes each gate with NO ARGUMENTS, so it exercises normal mode only.
+      # A review measured the consequence — the non-vacuity cases these gates
+      # cite as proof that "every rule bites" ran nowhere automatically, so
+      # deleting a case, or one silently starting to fail, reddened nothing.
+      # The pre-commit hook runs this too; CI is what covers a `--no-verify`.
+      #
+      # Discovered, never enumerated: the first remedy named three gates and
+      # reached three of sixteen.
+      - name: every gate's self-test
+        run: python scripts/gate-self-tests.py
+
+      # ...and a self-test's claim that "every rule bites" is a claim like any
+      # other. This mutates each gate's production rules one at a time and
+      # requires the self-test to go RED. It found two rules with no case on its
+      # first run, and a third defect in itself.
+      #
+      # NOT in the pre-commit hook: locally it takes ~11 minutes, essentially all
+      # of it `cargo test` inside the figures gate's self-test. This runner has
+      # no Rust toolchain, so those measurements degrade to NOTEs — and measured
+      # with cargo stripped from PATH, **all 29 mutations still red, in 8.3s**.
+      # Equally strong here, 80x faster. That measurement is why this is
+      # unconditional rather than path-filtered.
+      - name: every gate's rules, mutated
+        run: python scripts/gate-bite-harness.py

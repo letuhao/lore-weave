@@ -59,8 +59,14 @@ measured the cost: of 3 576 suppressed findings, **308 carry explicit
 modify/delete/existing language** and are genuinely dead — including a contract
 described as *"frozen"* that does not exist. **That is a MISS, and it is the
 deliberate half of the trade**: the cry-wolf direction blocks work, the miss
-direction does not. An AMBIGUOUS citation is exempted no longer, because the
-create story is false by construction when the path already matches two files.
+direction does not.
+
+**That MISS covers the ambiguous case too, and this paragraph used to say the
+opposite.** A round added a rule re-arming ambiguous citations — *"a plan cannot
+propose to CREATE a path that already matches five files"* — sound reasoning
+which measurement then contradicted (below, in `scan_doc`); the next round
+reverted the rule and left this sentence standing, so the docstring asserted a
+behaviour the code did not have. A prose exemption is a claim like any other.
 
 
 `SOURCE_EXT` is an enumerated list, so an extension nobody added is unchecked —
@@ -438,42 +444,6 @@ def _code_span_ranges(line: str) -> list[tuple[int, int]]:
     return [(m.start(), m.end()) for m in CODE_SPAN_RE.finditer(line)]
 
 
-def _ambiguous_ok(tree: "Tree", cited: str, anchored: bool) -> bool:
-    """True when a no-line-number citation must STILL be checked.
-
-    The prose-mention rule is justified by this repo's planning idiom — a row
-    naming a file the plan proposes to CREATE. **That story is false by
-    construction when the path already matches two or more existing files**: a
-    plan cannot propose to create something that exists five times over. A review
-    measured 873 such findings suppressed by the blanket rule.
-
-    So an AMBIGUOUS citation stays checked even without a line number. A MISSING
-    one is still exempt — that is where the create idiom lives, and the residual
-    (a genuinely dead reference to a file nobody created) is a MISS, which is the
-    safe direction for a gate whose cry-wolf mode blocks correct commits. The
-    residual is named in the module docstring rather than left to be discovered.
-    """
-    # **REVERTED, and the measurement is why.** This rule was added because a
-    # review pointed out that "a plan proposes to CREATE it" is false by
-    # construction for a path matching several existing files. That reasoning is
-    # correct and the CLASS it re-armed is not what it predicted.
-    #
-    # Measured over `docs/`: 873 findings, and the top twenty cited paths are
-    # `app/main.py` (63), `mcp/server.py` (63), `app/db/migrate.py` (61),
-    # `internal/api/server.go` (48)... **per-service paths in a 47-service
-    # monorepo, used as context-elided shorthand** — "already mounted at
-    # `app/main.py:228`" in a paragraph that has already named the service. The
-    # finding's own text, *"a reader cannot resolve it either"*, is false for
-    # every one: the enclosing paragraph resolves it. And it blocked a real
-    # commit on one added line of ordinary prose.
-    #
-    # ⇒ a no-line-number citation is a prose mention, **ambiguous or not**. The
-    # residual — a genuinely dead reference with no line number — is named in the
-    # module docstring. **A rule whose justification is sound and whose measured
-    # class contradicts it is still wrong; the measurement wins.**
-    return False
-
-
 def _link_text_spans(line: str) -> list[tuple[int, int]]:
     """Character ranges of the `[…]` half of every inline markdown link."""
     out = []
@@ -513,7 +483,32 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
             # hid three live broken ranges. So the skip is recorded and applied to
             # the resolution arm only; `C2` still runs below.
             is_link_text = any(a <= m.start() < b for a, b in link_text)
-            if start is None and not _ambiguous_ok(tree, cited, anchored):
+            # **A no-line-number citation is a prose mention, AMBIGUOUS OR
+            # NOT.** A round narrowed this: a path matching several existing
+            # files cannot be one a plan proposes to CREATE, so the create idiom
+            # cannot justify exempting it. The reasoning is sound and the class
+            # it re-armed is not what it predicted. Re-measured at HEAD by
+            # flipping this condition and diffing the real scanner's output over
+            # all of `docs/`: **909 findings, every one `C1-ambiguous`**, and the
+            # top cited paths are `app/main.py` (78), `app/db/migrate.py` (64),
+            # `mcp/server.py` (64), `app/mcp/server.py` (51),
+            # `internal/api/server.go` (48) — **per-service shorthand in a
+            # 47-service monorepo**, in paragraphs that have already named the
+            # service. The finding's own text, *"a reader cannot resolve it
+            # either"*, is false for every one of them. It blocked a real commit
+            # on one added line of ordinary prose.
+            #
+            # The residual — a genuinely dead reference with no line number — is
+            # a MISS, named in the module docstring. **A rule whose justification
+            # is sound and whose measured class contradicts it is still wrong;
+            # the measurement wins.**
+            #
+            # It was reverted by making a helper `return False` while keeping its
+            # three parameters and its original docstring, which left a function
+            # that read nothing, decided nothing, and could be deleted whole with
+            # the suite green — plus a docstring still arguing the reverted case.
+            # A dead branch is not a record of a decision; this comment is.
+            if start is None:
                 # **A citation with NO LINE NUMBER is a prose mention**, whether
                 # or not it carries a directory. Measured: 3 382 of the 8 095
                 # findings across `docs/` are this shape, and the dominant one is
@@ -803,6 +798,16 @@ def self_test() -> int:
         ("C4 a dead relative link", "[x](nowhere.md)", 1),
         ("a URL is not a path", "[x](https://example.com/a.md)", 0),
         ("a bare github URL is not a path", "see github.com/o/r/blob/main/docs/X.md", 0),
+        # `scan_line = URL_RE.sub(...)` had no case and, measured over all of
+        # `docs/`, no subject either: 4 845 findings with it and 4 845 without.
+        # A rule with neither is indistinguishable from a rule that does not
+        # work — so it gets a case rather than a coincidence. A `file:line`
+        # INSIDE a URL is a path on somebody else's filesystem, and reporting it
+        # unresolvable would be crying wolf on a working link.
+        ("a file:line INSIDE a URL belongs to another host",
+         "see https://example.com/crates/nope/gone.rs:3 for the upstream", 0),
+        ("...and the same citation outside a URL is still checked",
+         "see crates/nope/gone.rs:3 for the upstream", 1),
         ("an anchor-only link is not a path", "[x](#section)", 0),
         (f"the pragma on the line", f"see crates/nope/gone.rs:3 <!-- {PRAGMA} — reason -->", 0),
         (f"the pragma two lines above", f"<!-- {PRAGMA} — reason -->\n\nsee crates/nope/gone.rs:3", 0),

@@ -120,17 +120,22 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # trade doc-language-gate makes and for the same measured reason.
 "$PY" "$ROOT/scripts/citation-gate.py" --staged
 
-# A SELF-TEST NOBODY RUNS IS NOT A SELF-TEST. The ~60 non-vacuity cases across the
-# three game-tier gates are the artefact this round cites as proof that "every
-# rule bites" -- and a review found NONE of them ran automatically: the hook runs
-# each gate's normal mode, and `gate-wiring-gate --run-all` invokes gates with no
-# arguments. Deleting a case, or one silently starting to fail, reddened nothing.
+# A SELF-TEST NOBODY RUNS IS NOT A SELF-TEST. The non-vacuity cases in these gates
+# are the artefact this round cites as proof that "every rule bites" -- and a
+# review found NONE of them ran automatically: the hook runs each gate's normal
+# mode, and `gate-wiring-gate --run-all` invokes gates with no arguments.
+# Deleting a case, or one silently starting to fail, reddened nothing.
 #
-# Conditional on the gate itself being staged, which is when a case can rot.
-if git diff --cached --name-only | grep -qE 'scripts/(citation-gate|hashed-substrate-float-gate|actor-hub-figures-gate)\.py'; then
-  "$PY" "$ROOT/scripts/citation-gate.py" --self-test
-  "$PY" "$ROOT/scripts/hashed-substrate-float-gate.py" --self-test
-  "$PY" "$ROOT/scripts/actor-hub-figures-gate.py" --self-test
+# The first remedy NAMED THREE GATES here. A cold-start round then measured it:
+# fifteen `scripts/*.py` advertise `--self-test` and this line reached three of
+# them, leaving twelve in exactly the state the remedy calls intolerable -- and a
+# sixteenth written tomorrow default-uncovered. Which is NV-3, the shape the
+# comment ten lines below forbids by name. So the scope is a DIRECTORY and a
+# PREDICATE, and the driver discovers rather than remembers.
+#
+# Conditional on some gate being staged, which is when a case can rot.
+if git diff --cached --name-only | grep -qE '^scripts/.*\.py$'; then
+  "$PY" "$ROOT/scripts/gate-self-tests.py"
 fi
 
 # NEVER TYPE A NUMBER YOU DID NOT JUST MEASURE. The actor-hub handoff carried a

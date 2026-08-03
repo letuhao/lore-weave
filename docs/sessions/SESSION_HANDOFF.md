@@ -13,7 +13,7 @@
 > `feat/frontend-tools-mcp-migration` and is left untouched.
 
 **The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
-per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-383` decision record
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-393` decision record
 live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
 the two design contracts that are its only specification are in
 [`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).
@@ -29,9 +29,12 @@ the two design contracts that are its only specification are in
 **Evidence:** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules -p ruleset-loader`
 = **283 passed, 0 failed** · `cargo test -p dp-kernel --lib` **315 passed**, unchanged by the `GoneState`
 move · the Go mirror `contracts/entity_status` still agrees · clippy clean · `cargo doc` **0 warnings** ·
-**33 bite-tests, every one red** (20 scripted + 13 ad-hoc) · the **38**
+every mutation in the committed
+mutation harness reds its gate's self-test (`python scripts/gate-bite-harness.py` — one mutation per
+PRODUCTION RULE, run it rather than trust this sentence) · the **39**
 gate scripts the pre-commit hook
-wires all green, including the two added this round.
+wires all green, and every `--self-test` among them runs pre-commit via
+`scripts/gate-self-tests.py`, which DISCOVERS them rather than naming them.
 
 > **Every number in this block was RE-DERIVED from the artifacts, not advanced from the previous
 > version.** That distinction is not pedantry: this exact block carried a stale figure in three
@@ -39,7 +42,7 @@ wires all green, including the two added this round.
 > it had been rather than reading what it was.
 
 **Reviewed by cold-start adversarial agents, one round per fix pass — every finding fixed or answered.**
-**The per-round tallies are the source and live in [§6e..§6r of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
+**The per-round tallies are the source and live in [§6e..§6u of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
 no aggregate is repeated here.** An aggregate is not mechanically derivable, so it goes stale every time a
 round lands — which it did **seven times** in this run, twice inside blocks a checker was governing.
 **A number you cannot derive is a number you should not assert.** **Every round after the first has returned REFUTED, and every one found its worst defect in the
@@ -47,7 +50,15 @@ PREVIOUS round's fixes** — never in the fold, which survived every mutation ai
 record reporting a value the fold never emitted. Round 4: round 3's gate repairs blocking commits on
 correct content. Round 5: ten of those false positives *relabelled* rather than removed. Round 6: the round-5 cut
 aimed at the wrong class, and a stale-number remedy declared *"mechanised"* by a script that did not
-exist. **The two-consecutive-clean-rounds rule is not met, and this block does not claim it is.**
+exist. Round 8: a self-test that reimplemented the loop it tested, so twelve production rules could be
+deleted green. **Round 9: a blanket find-and-replace of `` `D-1`..`D-N` `` — run to advance the two LIVE
+citations — rewrote six HISTORICAL statements to the live head, including this document's citation of
+another document and the worked example inside the row that exists to defend worked examples.** Restoring
+the number exposed a second layer: that citation was set in quotation marks and was never verbatim, and
+**a paraphrase in quotation marks is why nobody checked the number** — a quotation is supposed to be frozen. It began at round 7 and
+recurred in each of the two commits that followed. The remedy is mechanical (`D-385`): the live range may
+appear only inside a current-state block. **The two-consecutive-clean-rounds rule is not met, and this
+block does not claim it is.**
 
 **Every figure in this block is emitted by `scripts/actor-hub-figures-gate.py`, which `--check`s them
 pre-commit whenever this file is staged.**
