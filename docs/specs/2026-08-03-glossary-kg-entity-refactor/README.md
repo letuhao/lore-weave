@@ -2,14 +2,15 @@
 
 **Status:** 🔴 **NO DESIGN EXISTS.** Three investigations are complete; none of them is a design,
 and each says so in its own header. This folder is the monitor surface until a design doc lands
-here as `<date>-entity-consistency-design.md`.
+here as `<date>-entity-consistency-design.md`. A fourth document was added 2026-08-03 — it is
+**evidence, not a design**, and it states the bar that design has to clear.
 **Opened:** 2026-08-03 · **Evidence re-verified at:** `24dd7bdac`
 **Umbrella deferral:** `D-GLOSSARY-KG-REFACTOR-DESIGN` (see the register below)
 
 > 📒 **[`DEBT-REGISTER.md`](DEBT-REGISTER.md)** — date-numbered (`YYYY-MM-DD-NN`) register of every
 > open item across **three** pending refactors: this one, the
 > [chat-service control plane](../2026-07-30-chat-service-control-plane-refactor.md), and the
-> [generation SSOT](../2026-07-31-generation-ssot.md). **37 open · 14 of them have no other home.**
+> [generation SSOT](../2026-07-31-generation-ssot.md). **40 open · 17 of them have no other home.**
 > Added 2026-08-03 at the author's request, because debt from a finished run was surviving only
 > inside that run's own RUNSTATE.
 
@@ -33,16 +34,25 @@ rows below all point at this refactor rather than at each other.
 
 ---
 
-## 2 · The three inputs
+## 2 · The inputs — three investigations, and one piece of evidence
 
 | doc | status | what it is | what it explicitly does NOT do |
 |---|---|---|---|
 | [**2026-08-01 · entity identity under qualitative extraction**](2026-08-01-entity-identity-under-qualitative-extraction.md) | DIAGNOSIS · **PARKED by the author 2026-08-02** | measured: **21 of 21** `:EntityStatus` rows in the whole dev graph are unreachable by the guard's FK lookup, across 5 projects. Proposes an order **C → D → A → B** (measure the fork · add the missing `CheckStatus` · make "unresolved" first-class · separate identity from the name) | no cost analysis; §6 flags the status-attach mechanism as a **hypothesis reasoned from code, not measured** |
 | [**2026-08-02 · entity-kind resolution**](2026-08-02-entity-kind-resolution.md) | DESIGN · **M1–M3 SHIPPED**, M4 open | the one document here that is a design and that has landed: `entity_kind_votes`, hysteresis, hierarchy + refinement, the 173-row backfill (77 re-kinds applied on 封神演義, 399 entities carrying a facet, 33 a live conflict) | does not make `kind_id` nullable or multi-valued; does not re-open `BTG-A28`; does not touch the extraction prompt |
 | [**2026-08-02 · there is no entity lifecycle**](2026-08-02-entity-lifecycle-architecture-gap.md) | INVESTIGATION COMPLETE | per-call-site audit across 7 services; §5 is a list of six questions the refactor must answer; §7 re-derives every headline claim from a grep so the next session need not re-investigate | **deliberately stops short of a design** (§5, first line) |
+| [**2026-08-03 · dogfood entity-consistency evidence**](2026-08-03-dogfood-entity-consistency-evidence.md) | EVIDENCE · added 2026-08-03 | what the gap costs the READER. An end-to-end authoring run through the real frontend: a `rival` minted by the `cast` pass at 05:47 took the antagonist's defining act at 05:54, and the critic scored `canon_consistency = 5/5` on all three chapters. Also: a materialise preview that claimed 12 new glossary entries when all 12 existed, and 3-of-8 defensible relationship edges | not a design and not an investigation — it proposes nothing. It exists to be the **acceptance case** |
 
 **Read them in this order:** lifecycle (the widest map) → identity (the deepest root) → kind
-(the one worked example of a fix that landed).
+(the one worked example of a fix that landed) → **dogfood evidence** (what all three cost in
+finished prose — read last, because it only lands once the first three have named the mechanism).
+
+**The evidence doc is the bar.** The three investigations each end without a design, so there is no
+statement anywhere of what "fixed" would mean. §1 of the evidence is that statement, in the only
+terms the author can check: *a character invented seven minutes earlier absorbed the betrayal the
+plan assigns to someone else, and every automated signal said the chapter was clean.* A design that
+cannot prevent that has not addressed this refactor, however much of the identity/kind/lifecycle
+machinery it rebuilds.
 
 ---
 
@@ -60,6 +70,9 @@ detail; that one is the index.
 | ⬜ **D-GLOSSARY-EVENTS-NO-SOT** | `contracts/events/_registry.yaml` calls itself the *"AUTHORITATIVE list of every event_type"* and holds **zero** `glossary.*` entries; the real list is a Go `const` block hand-mirrored by every consumer, with no generator and no drift gate | #2 large/structural | **adding any new glossary event** — i.e. `glossary.entity_deleted`, which D-ENTITY-LIFECYCLE needs. This one fires *first* |
 | ⬜ **D-ENTITY-IDENTITY-HASH** | *(new 2026-08-03)* identity is `hash(user, project, name, kind)` over LLM output; an anchor miss mints a duplicate that only a human can merge. **Consequence to state plainly: the dead-character feature does not work end-to-end while this is parked — the store fills and nothing reads it** | #2 large/structural, and **parked by author decision 2026-08-02** (*"do not dive into KG now"*) | this refactor, or the author un-parking it. Its own §5 says step **C (measure the fork)** must precede everything |
 | ⬜ **D-KIND-FACETS-SURFACE** | *(new 2026-08-03)* the rest of the kind spec's **M4** — the API field and the FE badge for secondary labels. Shipped in the DB and applied to real data; invisible to every consumer | #3 naturally-next-phase | after `D-KG-KIND-FACETS`, so all three surfaces move together |
+| ⬜ **D-CANON-CHECK-BLIND-TO-ROLE** | *(new 2026-08-03, [evidence §1](2026-08-03-dogfood-entity-consistency-evidence.md))* a character the `cast` pass minted at 05:47 took, at 05:54, the betrayal the same plan assigns to someone else — and `canon_consistency` scored **5/5** on all three chapters. A **role assignment** has nowhere to live that a check can fail on. **This is the refactor's acceptance case** | #2 large/structural — it needs the identity seam this refactor re-cuts | this refactor. Its shape is the design's own test: fix the design, then re-run this book |
+| ⬜ **D-BOOTSTRAP-PREVIEW-LIES** | *(new 2026-08-03, [evidence §2](2026-08-03-dogfood-entity-consistency-evidence.md))* the materialise preview dedupes glossary seeds against prior *proposals* only — never the book — and defaults every kind to `character`. Offered 12 "new" entries that all existed, under kinds they do not have. The write is safe (upsert-by-name); the **human-approval gate** is not | **NOT deferred — fix-now shaped**: one function, and the chapter half beside it already does it right | do it whenever this folder is next opened; it does not need the design |
+| ⬜ **D-KG-EDGE-TYPING-UNCHECKED** | *(new 2026-08-03, [evidence §3](2026-08-03-dogfood-entity-consistency-evidence.md))* 8 relationship edges proposed, **3 defensible**: a `power_system` `enemy_of` a person, and an `event` `betrayed`-ing the two characters who are the betrayers. The kinds that reject both are already stored; the proposer does not read them | #2 large/structural — edge typing is exactly the seam `D-KG-KIND-FACETS` moves | this refactor, after the kind mirror lands |
 
 ### 🔴 Three bugs this folder's own spec records as CLOSED, and which are OPEN
 

@@ -39,11 +39,22 @@ Full context: [`README.md`](README.md). All rows also appear in the **Deferred I
 | ★ **2026-08-03-02** | `D-ENTITY-EXISTS-GUARD` — `entity_genres_handler.go:40` has no `deleted_at IS NULL`; guards 6 paths, one of which fires a **paid LLM call** on deleted content and caches it | **fix-now**, open · *re-verified* |
 | ★ **2026-08-03-03** | `D-KNOWN-ENTITIES-PER-JOB` — `extraction_worker.py:473` fetches before the chapter loop at `:556`; a deleted entity is re-emitted for the rest of the job | **fix-now**, open · *re-verified* |
 | ★ **2026-08-03-04** | `D-OUTBOX-PAYLOAD-TRASH` — `outbox.go:398` re-publishes a trashed entity on edit; knowledge-service re-embeds it, silently reversing the deletion | **fix-now**, open · *re-verified* |
+| ★ **2026-08-03-05** | `D-CANON-CHECK-BLIND-TO-ROLE` — a `cast_plan` names Lâm Trạch the trap-setter; the drafting run gave the trap to `Lâm Diệp`, a `rival` **minted seven minutes earlier** by the `cast` pass, and the critic scored **`canon_consistency = 5/5`** on all three chapters. Nothing holds a role assignment where a check can fail on it: the plan has it as free text, the glossary has two untyped `character` rows, the graph has neither. **Kind was correct on both entities — this is not a kind bug** | open · [evidence §1](2026-08-03-dogfood-entity-consistency-evidence.md) |
+| ★ **2026-08-03-06** | `D-BOOTSTRAP-PREVIEW-LIES` — `bootstrap_service.propose()` dedupes glossary seeds against *prior proposals only*, never against the book, while the chapter half of the same function does query the book. Offered **12 "NEW GLOSSARY ENTRIES"** that all existed, each rendered `Character` (real kinds: `power_system`, `organization`, `event`, `item`). Apply is safe — upsert-by-name preserved the kinds — so this is a **human-approval gate showing a claim that is wrong on both novelty and kind**, not corruption | open · [evidence §2](2026-08-03-dogfood-entity-consistency-evidence.md) |
+| ★ **2026-08-03-07** | `D-KG-EDGE-TYPING-UNCHECKED` — the relationship proposer offered 8 edges, **3 defensible**: one category error (a `power_system` `enemy_of` a person) and two reversed (`event` `betrayed` the two characters who *are* the betrayers). Every fact needed to reject them is already in the glossary kinds the proposer does not consult | open · [evidence §3](2026-08-03-dogfood-entity-consistency-evidence.md) |
 
-The last three were declared *"not deferrals — fix now"* and then described as *"already closed."*
+**02 · 03 · 04** were declared *"not deferrals — fix now"* and then described as *"already closed."*
 That sentence was their entire tracking mechanism, and it was false. They are **fix-now**, not
 deferrals: this register exists so they cannot be lost a second time, **not** to license
 deferring them.
+
+**05 · 06 · 07** are the 2026-08-03 dogfood rows, and they are a different kind of item: each was
+observed in *output a reader would see*, not in code. Their evidence lives in
+[`2026-08-03-dogfood-entity-consistency-evidence.md`](2026-08-03-dogfood-entity-consistency-evidence.md),
+which also records what the same run proved WORKS — a defect list with no baseline is not evidence.
+**05 is the acceptance case for this whole refactor:** a design that cannot prevent it has not
+addressed the problem. 06 is small and self-contained (fix-now-shaped, one function); 07 needs the
+kind-typing this refactor is already re-cutting, so it waits on the design.
 
 ---
 

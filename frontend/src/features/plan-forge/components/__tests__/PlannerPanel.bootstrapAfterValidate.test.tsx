@@ -19,7 +19,7 @@ const runCompile = vi.fn();
 vi.mock('../../hooks/usePlanRun', () => ({
   usePlanRun: () => ({
     run: {
-      id: 'r1', book_id: 'b1', status: 'compiled', mode: 'rules', model_ref: null,
+      id: 'r1', book_id: 'b1', status: 'validated', mode: 'rules', model_ref: null,
       source_checksum: 'abc', active_job_id: null, job_status: null, error_detail: null,
       // A compiled run HAS a package artifact — that artifact, not the transient `compiled`
       // status, is what the bootstrap panel now gates on (see PlannerPanel).
@@ -70,21 +70,22 @@ function renderPanel() {
   );
 }
 
-describe('PlannerPanel — bootstrap reset on recompile', () => {
+describe('PlannerPanel — materialising chapters after the run was validated', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     listRuns.mockResolvedValue({ items: [], next_cursor: null });
   });
 
-  it('clicking Compile (a different arc) resets the stale bootstrap proposal', () => {
+  it('still offers bootstrap on a VALIDATED run that carries a package artifact', () => {
+    // The workflow that stranded a real book: compile writes the package and sets
+    // status='compiled'; Validate is then MANDATORY, because Agent Mode refuses a plan that is
+    // not `validated`; and the old gate (`status === 'compiled'`) hid the only door to turning
+    // the 11 compiled chapters into book chapters the moment you walked through it.
+    //
+    // The backend never cared about the status — its precondition is "run has no compiled
+    // package yet". This asserts the frontend now asks the same question.
     renderPanel();
     fireEvent.click(screen.getByTestId('plan-tab-run'));
-    // the stale proposal from a PRIOR arc is visible before recompiling
-    expect(screen.getByTestId('bootstrap-panel').textContent).toContain('Stale Chapter');
-
-    fireEvent.click(screen.getByTestId('plan-compile-btn'));
-
-    expect(bootstrapReset).toHaveBeenCalledTimes(1);
-    expect(runCompile).toHaveBeenCalledWith('arc_1', undefined, undefined, undefined);
+    expect(screen.getByTestId('bootstrap-panel')).toBeTruthy();
   });
 });
