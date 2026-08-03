@@ -119,6 +119,69 @@ breaker output. The median session is healthy; the failure is a tail that consum
 
 ---
 
+## P2b — Where does the context budget actually go? **The static surface, not the conversation.**
+
+The PO asked whether the budget is consumed by stuffing tool input/output into the session and keeping
+it there as conversation. Measured over 2,029 messages carrying `context_breakdown`:
+
+| category | avg tokens / message | share | lifetime total |
+|---|---|---|---|
+| **`mcp_tool_schemas`** | **11,725** | **41%** | 23.8M |
+| **`skills`** | **9,162** | **32%** | 18.6M |
+| `history` (the actual conversation) | 4,424 | 15% | 9.0M |
+| `frontend_tool_schemas` | 2,137 | 7% | 4.3M |
+| **`tool_results`** | **1,146** | **4%** | 2.3M |
+
+**Answer: no.** Tool output is 4% and conversation history is 15%. `tool_result_token_cap` and
+compaction are working — that part of the system was fixed and stayed fixed.
+
+**80% of every turn is tool schemas plus skill bodies** — the static surface, re-sent in full on every
+pass, before the conversation contributes a word.
+
+### Why this compounds with P2
+
+P2 measured that **74% of tool calls are byte-identical repeats**, and each repeat is another
+tool-loop pass. Each pass re-sends the static surface.
+
+> The loop does not merely waste calls — **it re-pays the 80% on every iteration.**
+> Loop × static surface. Two problems we had been treating separately **multiply**.
+
+This is the complete explanation of *"local patching cannot save the repo"*: cutting the loop without
+cutting the surface still pays 23k per pass; cutting the surface without cutting the loop still pays
+it N times.
+
+### Two surprises in the same data
+
+**1 · Schema cost does not rise with tool-call count — it falls.**
+
+| tool calls in the turn | messages | avg `mcp_tool_schemas` |
+|---|---|---|
+| 0 | 1,359 | **13,033** |
+| 1–2 | 304 | 9,573 |
+| 3–5 | 171 | 11,259 |
+| 6+ | 195 | 6,377 |
+
+Turns that call *nothing* carry the **largest** tool surface (rail and curated modes narrow it for the
+turns that do work). **We pay ~13k tokens of tool schema on conversational turns that never call a
+tool.** No requirement currently covers this; it is the cheapest large saving on the board.
+
+**2 · `skills` is 32% of all context while `lazy_skill_bodies` defaults to True.**
+
+That flag exists precisely to *not* inject skill bodies. 9,162 tokens per message says it is not
+achieving its purpose — consistent with `AUDIT.md` §2.3, where the hot-seed and the prompt are
+computed under opposite `lazy_bodies` assumptions. The audit found the *mechanism*; this is its
+*price*.
+
+### Consequences for the spec
+
+1. **R14 is the budget fix, not only the scale fix** — it attacks 41% directly.
+2. **A 32% slice has no requirement covering it.** Skill-body injection needs the same
+   budgeted, explained treatment R4 gives tools.
+3. **New rule: a turn that offers no tools must not pay for tool schemas.** Currently the reverse is
+   true.
+
+---
+
 ## 3 · What P1 and P2 settle, and what they do not
 
 | DESIGN question | settled by | answer |
