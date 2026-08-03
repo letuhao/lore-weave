@@ -1036,6 +1036,25 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 | **D-445** `[E]` | **🔴 And the survivor that took longest was a DUPLICATED RULE.** `run_rust` carried **two** `if baseline is not None:` blocks — the funnel added this round, and the injection block it was meant to replace — so the second re-evaluated and masked every mutation of the first. The same class as `D-413`'s duplicated fence logic, two rounds on. ⇒ one block. Then the remaining survivor was the same shape one level deeper: `baseline` injected the VERDICT, so the line reading the probe's return code was reachable only by seeding a red crate suite. ⇒ `baseline` injects the PROBE; one extraction, one path. |
 | **D-446** `[META]` | **A witness table is DATA wherever it is defined.** `_outside_tables` walked `tree.body` only, so the parity table — a local — counted as code and every anchor it names counted twice. ⇒ `ast.walk`, and `parity` joins the `*MUTATIONS` names. |
 
+### 6ab. OPEN FROM ROUND 15 — measured, reproduced, NOT fixed (2026-08-02)
+
+Round 15 returned 3 BLOCKING / 6 MAJOR / 5 MINOR. `D-443`..`D-446` closed the
+twin-guard class and the mechanisms around it. **These are the rest, and they are
+open.** Every one carries the verifier's reproduction; none is speculative.
+
+| # | Open item |
+|---|---|
+| **O-R15-1** `[BLOCKING]` | **The raw fallback in `_marker_hits` was applied to the MARKER SEARCH and not to `_claimable`'s CONTENT BLANKING.** An unterminated fence inside a governed block now resolves its markers, blanks the content anyway, trips `must_claim`, and refuses the commit — accusing the author of moving a sentinel they did not touch. The docstring's claim *"the worst case is the behaviour that existed before fences were considered"* is FALSE: the old message was accurate, the new one is not. Latent today (0 fence markers in any governed prefix) but the hook fires on the repo-wide handoff. **This is the twin defect again, one function along, in the fix for it.** |
+| **O-R15-2** `[MAJOR]` | **`must_claim` protects only the block SUFFIX below its last named figure** — 79 % of the slice board, 60 % of the RUN-STATE header. Reproduced: a governed figure added near the end, sentinel moved above it, stale ⇒ **0 findings** where the control gives 1. `D-436`'s *"closes it by construction"* is true for a suffix. |
+| **O-R15-3** `[MAJOR]` | **`must_claim` is an enumeration with NO derivation check**, while its sibling enumeration in the same file (`ESCAPE_DOCS`) has one. Emptying any scope's set leaves the suite green. The check is ~6 lines: report `present − must_claim` per scope. |
+| **O-R15-4** `[MAJOR]` | **No detector for the class `D-442` fixed by deletion**: a bolded integer inside a governed block matched by no `CLAIMS` span. Reports 0 today, would have reported 2 at the previous commit. |
+| **O-R15-5** `[MAJOR]` | **`_child_env`'s remaining assertion is vacuous on the machine CI runs it on** — three lines below the one `D-439` fixed for exactly that reason. `is None` → `is not None` is RED with cargo present, GREEN with it stripped. |
+| **O-R15-6** `[MINOR]` | The `>` tolerance added in `D-435` has no subject: the sentinel ships at column 0, so removing `>` from `QUOTE_PREFIX` changes nothing and the suite stays green (NV-1, in the round citing NV-1) · a **4-space indented** code block containing the sentinel gives 4 findings (fenced examples handled, indented not) · the raw fallback re-admits a fenced marker as a terminator when the real one is absent · `_index.md` still ends on a heading, so *"each scope's end is a NAMED sentinel"* is false as written · `_line_bounds` is dead code. |
+
+**Not deferred — open.** None clears the defer gate: all are small, in-scope, and
+root-cause-clear. They are recorded here because the run stopped with them
+measured and unfixed, which is a different thing from their being acceptable.
+
 ### 6z. ROUND 14 — the verifier named the shape: every fix was the last one with a token swapped (2026-08-02)
 
 | # | Decision |
