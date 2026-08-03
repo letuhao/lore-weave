@@ -119,7 +119,65 @@ breaker output. The median session is healthy; the failure is a tail that consum
 
 ---
 
-## P2b — Where does the context budget actually go? **The static surface, not the conversation.**
+## ⚠️ RETRACTION AND CORRECTION (2026-08-04)
+
+**P2b as first written is withdrawn.** The PO challenged it on two grounds — that skills and tool
+schemas are a *fixed* per-turn cost that does not balloon, and that against a large window they are a
+small share — and then said the measurement itself looked wrong. Both objections were correct, and
+checking them exposed a sampling bias worse than the framing error.
+
+**What was wrong:**
+
+1. **Sampling bias.** `context_breakdown` exists on only **2,029 of 5,720 messages (35%)**, and the
+   coverage is **zero before July 2026** — the instrumentation did not exist. A freshly driven turn
+   (session `019fc893-…`, 3 tool calls, 2026-08-04) wrote **no `context_breakdown` and no
+   `input_tokens` at all**. The aggregate was therefore a July-only, partially-instrumented sample.
+2. **Cumulative spend was reported as context occupancy.** Summing a *fixed* per-turn cost across
+   2,029 messages and calling the result "80% of every turn" conflates what we *pay* with what the
+   window *holds*. The two diverge exactly when the tool loop re-sends the same prompt.
+3. **The tail metric was misread.** `pct` and `raw_tokens` are **cumulative across tool-loop passes**,
+   not context size. The worst observed turn showed `pct` 4.69 (469%) against a `context_size` of
+   **33,918** — i.e. ~28 passes over the same 34k prompt, **96% of it served from cache**. It was
+   never a full window.
+
+**What the PO was right about, confirmed:** tool schemas are fixed per session — in **112 of 119**
+sessions with ≥4 messages, `mcp_tool_schemas` varies by under 25% (mean spread 1,165 tokens). They do
+not balloon. Median context utilisation is **14.4%** of target. **There is no context-pressure
+problem in the median case.**
+
+**Therefore withdrawn:** "80% of every turn is schemas and skills", "≈28% of all context ever was
+schemas on zero-tool turns", and "R14 is the budget fix". None survive the sampling check.
+
+**Standing finding, retained:** the loop is a **pass-count, latency and call-count** problem, not a
+context-occupancy problem. Bounding passes (R11) matters; R14 remains justified by C1 and by
+selection accuracy, **not** by context pressure.
+
+**A real defect surfaced by the correction:** the context telemetry is partial and undated —
+35% coverage, nothing before July, and nothing on a turn driven today. Any future budget decision
+(R13.6.1's per-artifact ceilings, DESIGN Q18) rests on instrumentation that currently cannot support
+it. Fixing the telemetry is a prerequisite for those, not a nicety.
+
+---
+
+## P2 — re-checked against the sampling bias, and it **strengthens**
+
+The same bias check was applied to P2, which reads `tool_calls` rather than `context_breakdown`. The
+concern was that sessions named `G-off`, `G-step_lock-*`, `M-per_turn`, `ds-M0-outage-*` are
+**deliberate experiments that exist to trigger the breakers**, so P2 might have measured its own test
+harness. Segmented:
+
+| session kind | calls | errors | error rate | of which breaker output |
+|---|---|---|---|---|
+| **organic** | 3,813 | 2,749 | **72.1%** | **1,928** |
+| experiment | 3,632 | 1,259 | 34.7% | 415 |
+
+**Organic sessions fail at twice the rate of the experiments**, and **70% of organic errors are our
+own breaker messages** — so **more than half of every tool call in real use is the model arguing with
+a breaker.** P2's conclusion is not an artifact of the harness; the harness was the healthier half.
+
+---
+
+## P2b (ORIGINAL, SUPERSEDED BY THE RETRACTION ABOVE) — kept for the audit trail
 
 The PO asked whether the budget is consumed by stuffing tool input/output into the session and keeping
 it there as conversation. Measured over 2,029 messages carrying `context_breakdown`:
