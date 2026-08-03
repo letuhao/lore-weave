@@ -122,6 +122,32 @@ def _is_read_tool(name: str) -> bool:
     return any(v in n for v in _READ_VERBS)
 
 
+def budget_names_by_tokens_ex(
+    catalog: list[dict],
+    names: set[str] | list[str],
+    *,
+    token_budget: int,
+) -> tuple[set[str], list[str]]:
+    """CP-0.2 — :func:`budget_names_by_tokens`, but it also returns what it DROPPED.
+
+    Returns ``(kept, dropped)``, matching :func:`budget_rail_tools` twenty lines below, whose own
+    docstring already states the principle: whatever gets dropped is *"REPORTED so the caller can log
+    it rather than pretend"*. That was true for rails and silently untrue for every other surface.
+
+    **Why this is the founding defect of the runtime rebuild.** In POC arm E the budgeter deleted the
+    one tool the model needed, mid-turn, and returned only the survivors — so the tool was gone from
+    the surface and gone from the record simultaneously. The model then failed the task 3/3 while
+    looking, in every log we had, as though it had simply chosen not to call the tool. A narrowing
+    the caller cannot see is indistinguishable from a decision the model made.
+
+    The behaviour of the kept set is UNCHANGED: this is the same function with its second return
+    value no longer discarded, so the surface cannot shift as a side effect of instrumenting it.
+    """
+    kept = _budget_names_impl(catalog, names, token_budget=token_budget)
+    dropped = sorted(n for n in set(names) if n not in kept)
+    return kept, dropped
+
+
 def budget_names_by_tokens(
     catalog: list[dict],
     names: set[str] | list[str],
@@ -136,7 +162,21 @@ def budget_names_by_tokens(
     schema in `catalog` (core/frontend tools, counted elsewhere) pass through
     free. At least one budgeted tool is always kept (a single oversized schema
     can't zero the seed).
+
+    Kept unchanged, returning only the survivors, so its nine call sites and their tests stay
+    untouched — an instrument must not move the thing it measures. Callers that need to RECORD the
+    narrowing use :func:`budget_names_by_tokens_ex`, which wraps this and reports the dropped names.
     """
+    return _budget_names_impl(catalog, names, token_budget=token_budget)
+
+
+def _budget_names_impl(
+    catalog: list[dict],
+    names: set[str] | list[str],
+    *,
+    token_budget: int,
+) -> set[str]:
+    """The selection itself — one body, so the reporting variant cannot drift from the plain one."""
     want = set(names)
     defs = {tool_name(td): td for td in catalog if tool_name(td) in want}
     kept: set[str] = {n for n in want if n not in defs}  # non-catalog → passthrough

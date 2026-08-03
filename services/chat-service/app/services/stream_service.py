@@ -17,6 +17,7 @@ import json
 from collections import Counter
 import logging
 import re
+import time as _time  # CP-0.3 — dispatch latency; was a function-local import in _emit_chat_turn
 from dataclasses import dataclass
 from typing import AsyncGenerator
 from uuid import UUID, uuid4
@@ -46,6 +47,7 @@ from app.services.canon_capture import CaptureContext, maybe_capture_canon, pers
 from app.services.context_autodetect import resolve_context_pressure
 from app.services.entity_presence import EntityPresence, detect_entity_presence
 from app.services.injection_defense import neutralize_injection
+from app.services import instrument
 from app.services.reasoning_loop_detector import ReasoningLoopDetector
 from app.config import settings
 from app.db.suspended_runs import (
@@ -2140,6 +2142,81 @@ async def _stream_with_tools(
                 # every mode (the nested run is clamped read-only, so it's safe).
                 if subagent_tool is not None and subagent_depth == 0:
                     advertised = list(advertised) + [subagent_tool]
+                # ── CP-0.1 / CP-0.2 · THE INSTRUMENT, at the one chokepoint every pass goes through ──
+                # Emitted on EVERY pass, deliberately unlike the `schema_tokens` chunk above, which
+                # reports once per turn (`schema_tokens_reported`). Once-per-turn is precisely the
+                # shape that cannot see the defect this exists for: the tool is present on pass 1 and
+                # gone on pass 2, so a single sample — whichever pass it lands on — shows a set that
+                # looks entirely unremarkable. The difference between passes IS the finding.
+                #
+                # Emitted for a tool-FREE pass too (`names: []`). "The model was offered nothing" and
+                # "the model was never asked" are different facts, and only one of them is a defect.
+                _adv_names: list[str] = []
+                for _td in (advertised or []):
+                    _fn = _td.get("function") if isinstance(_td, dict) else None
+                    _nm = _fn.get("name") if isinstance(_fn, dict) else None
+                    if _nm:
+                        _adv_names.append(_nm)
+                # Every narrowing that ran on this pass registers with WHO decided and WHY. An
+                # exclusion with no {tool, stage, reason} is a defect, not a policy (§0.3) — and
+                # each stage below is a real suppression already happening today, unrecorded.
+                _withheld_now: list[dict] = []
+                if discovery:
+                    if _oneshot_mode == "existence":
+                        _withheld_now += [
+                            {"tool": t, "stage": "oneshot_existence",
+                             "reason": "target resource already exists in this turn's context"}
+                            for t in sorted(_suppress) if t in ONESHOT_CREATE_TOOLS
+                        ]
+                    elif _oneshot_mode in ("per_turn", "session"):
+                        _withheld_now += [
+                            {"tool": t, "stage": f"oneshot_{_oneshot_mode}",
+                             "reason": "one-shot create already succeeded this turn"}
+                            for t in sorted(oneshot_suppress)
+                        ]
+                    if _rail_gate_mode != "off" and rail_progress:
+                        _withheld_now += [
+                            {"tool": t, "stage": "rail_gate",
+                             "reason": f"rail step already satisfied (mode={_rail_gate_mode})"}
+                            for t in sorted(_rail_suppress) if _rail_suppress
+                        ]
+                    if failure_suppress:
+                        _withheld_now += [
+                            {"tool": t, "stage": "failure_breaker",
+                             "reason": "repeated-failure breaker gave up on this tool"}
+                            for t in sorted(failure_suppress)
+                        ]
+                    if suppress_tool_list:
+                        _withheld_now.append({
+                            "tool": TOOL_LIST_NAME, "stage": "suppress_tool_list",
+                            "reason": "discovery de-advertised for this surface",
+                        })
+                if permission_mode in ("ask", "plan") and not discovery:
+                    _filtered_out = sorted(
+                        {
+                            _f.get("name")
+                            for _t in (tools or [])
+                            if isinstance(_f := _t.get("function"), dict) and _f.get("name")
+                        }
+                        - set(_adv_names)
+                    )
+                    _withheld_now += [
+                        {"tool": t, "stage": f"permission_mode_{permission_mode}",
+                         "reason": f"write tool not offered in '{permission_mode}' mode"}
+                        for t in _filtered_out
+                    ]
+                # Held, not yielded yet: the existing `schema_tokens` chunk must stay the FIRST
+                # side-channel chunk of a tool-bearing turn (test_first_pass_reports_split_schema_
+                # tokens asserts that position). An instrument that reorders the stream it observes
+                # has changed the thing it measures, so this one waits its turn.
+                _adv_ev_pending = {
+                    "names": _adv_names,
+                    "tool_choice": "auto" if advertised else None,
+                    "withheld": _withheld_now,
+                }
+                if not advertised:
+                    # A tool-free pass has no schema_tokens chunk to follow, so it emits here.
+                    yield {"advertised": _adv_ev_pending}
                 if advertised:
                     request_kwargs["tools"] = advertised
                     request_kwargs["tool_choice"] = "auto"
@@ -2166,6 +2243,10 @@ async def _stream_with_tools(
                             "frontend_tool_schemas": _fe_tok,
                             "mcp_tool_schemas": _mcp_tok,
                         }}
+                    # CP-0.1/0.2 — now, after schema_tokens has kept its first-chunk position. Every
+                    # pass emits one, which is the whole point: the once-per-turn `schema_tokens`
+                    # above cannot see a surface that CHANGES between passes.
+                    yield {"advertised": _adv_ev_pending}
                     # W6 — advertised-surface snapshot at the SAME chokepoint:
                     # split the advertised names core/frontend/activated, group
                     # by owning MCP server, and reuse the W1 token measurement
@@ -3328,6 +3409,10 @@ async def _stream_with_tools(
                             "tools_used": payload.get("tools_used", []),
                             "undo": {"available": False},
                         }
+                    # CP-0.3 — a subagent run IS a real execution (it dispatched tools of its own),
+                    # so it is `tool`, not `meta`. `meta` is reserved for the runtime answering out
+                    # of its own catalog without anything running.
+                    instrument.stamp_tool_call(tool_chunk, source=instrument.SOURCE_TOOL)
                     yield {"tool_call": tool_chunk}
                     continue
 
@@ -4287,6 +4372,12 @@ async def _stream_with_tools(
                 # frontend tool, which suspends for the human gate.
                 # T4c: on an admin surface, pass the RS256 admin token so
                 # glossary_admin_* route to /mcp/admin (no X-User-Id; INV-T2).
+                # CP-0.3 — the ONE call in this file where a tool genuinely executes. `source='tool'`
+                # is defined by having passed through here, not by inspecting the result: that is
+                # what makes the "our prose vs a real tool" split exact rather than a text match
+                # over breaker phrasing (the earlier attempt at that produced a lower bound which
+                # then got reported as a population count).
+                _dispatch_t0 = _time.monotonic()
                 envelope = await knowledge_client.mcp_execute_tool(
                     user_id=user_id, session_id=session_id, project_id=project_id,
                     # Studio context binding — forward the turn's ambient book so book-scoped
@@ -4295,6 +4386,7 @@ async def _stream_with_tools(
                     tool_name=c["name"], tool_args=args_obj,
                     admin_token=admin_token,
                 )
+                _dispatch_ms = int((_time.monotonic() - _dispatch_t0) * 1000)
                 # ext-tasks (T1c(3)) — a capability-gated domain tool opened a durable
                 # human gate (returned a task HANDLE, surfaced by mcp_execute_tool as
                 # envelope["task"]). Suspend exactly like a frontend tool, but mark it a
@@ -4502,6 +4594,11 @@ async def _stream_with_tools(
                                 if undo else {"available": False}
                             ),
                         }
+                # CP-0.3 — latency is the DISPATCH duration, not the branch's wall time: the gap
+                # between them is our own overhead, and folding it in would flatter the tool.
+                instrument.stamp_tool_call(
+                    tool_chunk, source=instrument.SOURCE_TOOL, latency_ms=_dispatch_ms,
+                )
                 yield {"tool_call": tool_chunk}
 
             if (
@@ -5962,6 +6059,14 @@ async def _persist_terminal_assistant(
     finish_reason: str,
     is_error: bool,
     error_detail: str | None,
+    # CP-0 — the instrument. Optional at the signature so no caller can fail to compile, but
+    # `outcome` is derived rather than left NULL when a caller omits it: a terminal path that
+    # records no outcome is the exact hole CP-0.4 exists to close, and defaulting to NULL would
+    # reproduce it under a new column name.
+    outcome: str | None = None,
+    advertised_tools: list[dict] | None = None,
+    withheld_tools: list[dict] | None = None,
+    runtime_variant: str = instrument.RUNTIME_LEGACY,
 ) -> bool:
     """DBT-CHAT-PERSIST — persist an assistant reply that ended WITHOUT a clean
     finish (an error mid-stream, a user interrupt, or an abandoned/expired
@@ -5978,13 +6083,34 @@ async def _persist_terminal_assistant(
     user message stands alone and a blank assistant bubble would be noise.
     """
     if not content and not reasoning and not tool_calls_history:
+        # CP-0.4, KNOWN HOLE, DELIBERATELY NOT CLOSED HERE. This is a terminal path that records
+        # nothing at all — an empty turn leaves no row, so it has no outcome, and it is invisible to
+        # every query CP-0 installs. It is one of the four silent exits, and they close as ONE
+        # mechanism at CP-3 (a plan that ends anywhere but done_when names what is live and hands it
+        # to a human), not as four patches. Closing it here would mean writing a blank assistant
+        # bubble into the UI, which is a product change this checkpoint has no business making.
+        # Logged so the hole is countable in the meantime rather than merely known.
+        logger.info(
+            "CP-0.4 silent-exit: empty terminal turn recorded nowhere (session %s, msg %s, "
+            "reason=%s). Closes at CP-3.6 with the other three silent exits.",
+            session_id, msg_id, finish_reason,
+        )
         return False
     parts: dict = {}
     if reasoning:
         parts["reasoning"] = reasoning
         parts["reasoning_length"] = len(reasoning)
     content_parts = json.dumps(parts) if parts else None
+    # CP-0.3 — the chokepoint. Every recorded call carries a source, a declaration identity and a
+    # runtime variant by the time it is persisted, whichever of the 30-odd mint sites produced it.
+    if tool_calls_history:
+        tool_calls_history = [
+            instrument.ensure_tool_call_instrumented(tc) for tc in tool_calls_history
+        ]
     tool_calls_json = json.dumps(tool_calls_history) if tool_calls_history else None
+    _outcome = outcome or instrument.outcome_for_finish_reason(finish_reason, is_error=is_error)
+    _advertised_json = json.dumps(advertised_tools) if advertised_tools else None
+    _withheld_json = json.dumps(withheld_tools) if withheld_tools else None
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
@@ -5998,20 +6124,32 @@ async def _persist_terminal_assistant(
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, model_ref, parent_message_id, branch_id, tool_calls,
-                       is_error, error_detail, finish_reason)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,0,$9::jsonb,$10,$11,$12)
+                       is_error, error_detail, finish_reason,
+                       outcome, advertised_tools, withheld_tools, runtime_variant)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,0,$9::jsonb,$10,$11,$12,
+                            $13,$14::jsonb,$15::jsonb,$16)
                     ON CONFLICT (message_id) DO UPDATE SET
                       content = EXCLUDED.content,
                       content_parts = EXCLUDED.content_parts,
                       tool_calls = EXCLUDED.tool_calls,
                       is_error = EXCLUDED.is_error,
                       error_detail = EXCLUDED.error_detail,
-                      finish_reason = EXCLUDED.finish_reason
+                      finish_reason = EXCLUDED.finish_reason,
+                      outcome = EXCLUDED.outcome,
+                      -- CP-0.1/0.2 — COALESCE, not overwrite. This row is upserted several times per
+                      -- turn (a checkpoint at each tool boundary, then the terminal handler), and a
+                      -- later caller that does not carry the recorder must not erase what an earlier
+                      -- one recorded. Losing the advertised history to a bookkeeping write would
+                      -- reproduce the last-write-wins defect the jsonb array exists to avoid.
+                      advertised_tools = COALESCE(EXCLUDED.advertised_tools, chat_messages.advertised_tools),
+                      withheld_tools = COALESCE(EXCLUDED.withheld_tools, chat_messages.withheld_tools),
+                      runtime_variant = EXCLUDED.runtime_variant
                     RETURNING (xmax = 0) AS inserted
                     """,
                     msg_id, session_id, user_id, content, content_parts, seq,
                     model_ref, parent_message_id, tool_calls_json,
                     is_error, error_detail, finish_reason,
+                    _outcome, _advertised_json, _withheld_json, runtime_variant,
                 )
                 # Only bump the session counter on a genuine INSERT (xmax=0), never
                 # when ON CONFLICT took the UPDATE branch (already counted).
@@ -6022,8 +6160,9 @@ async def _persist_terminal_assistant(
                         session_id,
                     )
         logger.info(
-            "terminal-persist: saved %s assistant reply for session %s (msg %s, %d chars)",
-            finish_reason, session_id, msg_id, len(content),
+            "terminal-persist: saved %s assistant reply for session %s (msg %s, %d chars, "
+            "outcome=%s, runtime=%s)",
+            finish_reason, session_id, msg_id, len(content), _outcome, runtime_variant,
         )
         return True
     except Exception:  # noqa: BLE001 — best-effort; runs on error/cancel paths
@@ -6070,6 +6209,10 @@ async def _materialize_abandoned_suspend(pool: asyncpg.Pool, susp) -> bool:
         finish_reason="interrupted",
         is_error=False,
         error_detail=None,
+        # CP-0.4 — an ABANDONED frontend-tool suspend: the confirm card expired, or its resume was
+        # refused. The user was asked and never answered, so this is the user walking away, not a
+        # fault. Deliberately not `failed`: the turn did exactly what it should have and then waited.
+        outcome=instrument.OUTCOME_ABANDONED_BY_USER,
     )
 
 
@@ -6182,6 +6325,10 @@ async def _emit_chat_turn(
     full_content: list[str] = []
     full_reasoning: list[str] = []
     tool_calls_history: list[dict] = []
+    # CP-0.1/0.2 — the turn's instrument. Created here, at the top of the turn, because a recorder
+    # created lazily at the first advertise would miss a turn that was narrowed to nothing before
+    # the model ever saw a surface — which is precisely the case worth catching.
+    _advertised = instrument.AdvertisedToolsRecorder()
     # W1 — advertised tool-schema tokens, reported once by the tool loop's
     # first pass ({"schema_tokens": ...} chunk); folded into the contextBudget
     # frame + the persisted context_breakdown at finish.
@@ -6552,6 +6699,30 @@ async def _emit_chat_turn(
                         reasoning="".join(full_reasoning),
                         tool_calls_history=tool_calls_history or None,
                         finish_reason="streaming", is_error=False, error_detail=None,
+                        # CP-0.4 — a mid-turn checkpoint records `crashed` PESSIMISTICALLY. If the
+                        # process dies now, this is what the row keeps, and that is the correct
+                        # reading: nothing else will ever run to correct it. The clean finish and
+                        # every terminal handler overwrite it. The failure mode this avoids is the
+                        # opposite default — a checkpoint that writes 'completed' optimistically and
+                        # leaves a dead turn looking successful, which is the one shape of wrongness
+                        # nobody ever investigates.
+                        outcome=instrument.OUTCOME_CRASHED,
+                        advertised_tools=_advertised.advertised_json(),
+                        withheld_tools=_advertised.withheld_json(),
+                    )
+                continue
+            # CP-0.1/0.2 — one entry per model pass, appended. This chunk carries no user-visible
+            # payload and emits no SSE line: it exists so the record of what the model was holding
+            # survives the turn, which is the one thing no column answers today.
+            _adv_ev = chunk_data.get("advertised")
+            if _adv_ev is not None:
+                _advertised.record_pass(
+                    _adv_ev.get("names") or [],
+                    tool_choice=_adv_ev.get("tool_choice"),
+                )
+                for _w in (_adv_ev.get("withheld") or []):
+                    _advertised.record_withheld(
+                        _w["tool"], stage=_w["stage"], reason=_w["reason"],
                     )
                 continue
             # W1 — tool-schema token measurement from the loop's first pass.
@@ -6675,6 +6846,12 @@ async def _emit_chat_turn(
                 reasoning="".join(full_reasoning),
                 tool_calls_history=[*tool_calls_history, _pending_record],
                 finish_reason="awaiting_input", is_error=False, error_detail=None,
+                # CP-0.4 — asking the user is a SUCCESS state (§0.5), not a stall. A model that
+                # stops to ask when it does not know is doing the thing we want; counting it as a
+                # failure would score the correct behaviour as the defect.
+                outcome=instrument.OUTCOME_AWAITING_INPUT,
+                advertised_tools=_advertised.advertised_json(),
+                withheld_tools=_advertised.withheld_json(),
             )
             # close any open assistant/reasoning message first
             for line in emitter.close_message():
@@ -6746,8 +6923,15 @@ async def _emit_chat_turn(
                 content_parts = json.dumps(parts) if parts else None
                 # K21-B: tool-call history for UI replay — NULL when the
                 # turn made no tool calls.
+                # CP-0.3 — the clean-finish chokepoint, the sibling of the one in
+                # _persist_terminal_assistant. Both INSERT sites pass through it, so there is no
+                # route from a mint site to the tool_calls column that skips the source stamp.
                 tool_calls_json = (
-                    json.dumps(tool_calls_history) if tool_calls_history else None
+                    json.dumps([
+                        instrument.ensure_tool_call_instrumented(_tc)
+                        for _tc in tool_calls_history
+                    ])
+                    if tool_calls_history else None
                 )
 
                 # ── W1: finalize the per-turn context frame payload ─────────
@@ -6903,8 +7087,10 @@ async def _emit_chat_turn(
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
-                       context_breakdown, response_id, exclude_from_memory, local_date, finish_reason)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15, 'stop')
+                       context_breakdown, response_id, exclude_from_memory, local_date, finish_reason,
+                       outcome, advertised_tools, withheld_tools, runtime_variant)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15, 'stop',
+                            $16,$17::jsonb,$18::jsonb,$19)
                     ON CONFLICT (message_id) DO UPDATE SET
                       content = EXCLUDED.content,
                       content_parts = EXCLUDED.content_parts,
@@ -6918,13 +7104,24 @@ async def _emit_chat_turn(
                       local_date = EXCLUDED.local_date,
                       finish_reason = 'stop',
                       is_error = false,
-                      error_detail = NULL
+                      error_detail = NULL,
+                      -- CP-0.4 — the clean finish is the ONE path that may assert completion, and it
+                      -- overwrites whatever a mid-turn checkpoint left here (a 'crashed' derived from
+                      -- 'streaming'). The reverse never happens: a checkpoint COALESCEs instead.
+                      outcome = EXCLUDED.outcome,
+                      advertised_tools = COALESCE(EXCLUDED.advertised_tools, chat_messages.advertised_tools),
+                      withheld_tools = COALESCE(EXCLUDED.withheld_tools, chat_messages.withheld_tools),
+                      runtime_variant = EXCLUDED.runtime_variant
                     RETURNING (xmax = 0) AS inserted
                     """,
                     msg_id, session_id, user_id, final_text, content_parts, seq,
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
                     json.dumps(_ctx_payload), _final_response_id, _exclude_mem,
                     _local_date,  # DBT-11 — bucket by the user's LOCAL day (resolved before acquire)
+                    instrument.OUTCOME_COMPLETED,
+                    json.dumps(_advertised.advertised_json()) if _advertised.advertised_json() else None,
+                    json.dumps(_advertised.withheld_json()) if _advertised.withheld_json() else None,
+                    instrument.RUNTIME_LEGACY,
                 )
                 _did_insert = bool(_ins_row and _ins_row["inserted"])
                 if _exclude_mem and parent_message_id:
@@ -7066,6 +7263,16 @@ async def _emit_chat_turn(
                         reasoning="".join(full_reasoning),
                         tool_calls_history=tool_calls_history,
                         finish_reason="interrupted", is_error=False, error_detail=None,
+                        # CP-0.4 — `finish_reason` stays 'interrupted' (the FE badge and every
+                        # existing reader depend on it; nothing is deleted). `outcome` is where the
+                        # truth goes: CancelledError/GeneratorExit here means the user stopped the
+                        # turn or the client went away, which is NOT a failure. Fusing the two is
+                        # what made the run's own `interrupted` baseline uninterpretable — a metric
+                        # containing both "the user changed their mind" and "we lost the turn"
+                        # cannot move in a direction that means anything.
+                        outcome=instrument.OUTCOME_ABANDONED_BY_USER,
+                        advertised_tools=_advertised.advertised_json(),
+                        withheld_tools=_advertised.withheld_json(),
                     )
                 )
             except BaseException:  # noqa: BLE001 — cleanup must never mask the cancel
@@ -7093,6 +7300,9 @@ async def _emit_chat_turn(
                 reasoning="".join(full_reasoning),
                 tool_calls_history=tool_calls_history,
                 finish_reason="error", is_error=True, error_detail=safe_msg,
+                outcome=instrument.OUTCOME_FAILED,
+                advertised_tools=_advertised.advertised_json(),
+                withheld_tools=_advertised.withheld_json(),
             )
         for line in emitter.error(safe_msg):
             yield line
