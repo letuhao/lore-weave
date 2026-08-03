@@ -378,6 +378,66 @@ budget attaches to.
 
 ---
 
+## P7 — R17: guidance becomes a GATE, and 60% of the catalog fails it today
+
+The PO's conclusion from the live capture, and it is the right one: *guidance must be forced into a
+gate rather than left to authorship — after the refactor, an MCP tool without effective guidance must
+be blocked.*
+
+The **mechanism already exists**: `MustValidateToolMeta` panics at registration on a missing `tier`,
+Python's `require_meta` raises, and `tier-tag-gate.py` runs in CI. What is missing is the **predicate**.
+
+### The predicate, and it must be mechanical
+
+| id | rule | rationale |
+|---|---|---|
+| **G1** | a description of substance | trivially checkable |
+| **G2** | `visibility: legacy` ⇒ `superseded_by` is **mandatory** | a retired tool that cannot name its replacement is a trap, and `tool_list` shows it |
+| **G3** | **every REQUIRED id-shaped argument must name the tool that produces it** — unless it is `ambient_*` (server-resolved) | this single rule would have prevented today's loop |
+| G4 | closed-set arg ⇒ `enum` | existing `CLOSED_SET_ARGS` discipline |
+| G5 | belongs to exactly one group **and** is named by a skill | R3's coverage gates — someone must teach it |
+
+### Measured against the live catalog (315 tools)
+
+| rule | failures | share |
+|---|---|---|
+| **G3 — required id arg names no producer** | **189** | **60%** |
+| G2 — legacy without `superseded_by` | 63 | 20% |
+| G1 — description missing/too short | 1 | 0% |
+
+**Descriptions are not the problem. Argument provenance is.** Only one tool in the whole catalog has a
+thin description, while **60% demand an identifier and never say where to obtain one**. That is
+precisely the gap the live capture walked into: `book_list_chapters.book_id` says the value must be a
+UUID and nothing about `book_list`, so the model invented `"all"`.
+
+Sample failures: `book_audio_generate.book_id`, `book_chapter_bulk_create.book_id`,
+`book_chapter_create.book_id`.
+
+### How it ships without dying on day one
+
+The lesson from R6 applies exactly: a gate that reds on 60% of the catalog gets switched off. So:
+
+- **New or modified tools: HARD FAIL at registration.** No new violation can enter — the pattern
+  `context-budget-defaults-lint.py` already uses with its FLIP-PENDING allow-list.
+- **Existing 189: a ratchet** with a recorded baseline that may only shrink, each waiver carrying a
+  reason.
+- **G3 is the priority**, because it is the measured cause of the observed failure and because the
+  remedy is one sentence per argument.
+
+### Why this is the right level to intervene
+
+Everything else in this document treats a symptom: the loop detector ends a bad turn (R16), the error
+contract makes a failure informative (R10), the surface gate stops advertising the unachievable (R15).
+**R17 stops the unusable tool from existing.** It is the only requirement here that operates *before*
+the model is ever involved — which is also why it is the cheapest.
+
+And it reframes the PO's original complaint precisely. *"Adding an MCP tool is a nightmare"* has a
+converse that the data now supports: **adding one is currently too easy.** A tool can ship with no
+group, no skill, no producer for its own required arguments, and no replacement when retired — and
+nothing stops it. R13 makes changing a tool safe; **R17 makes creating one honest.**
+
+---
+
 ## 3 · What P1 and P2 settle, and what they do not
 
 | DESIGN question | settled by | answer |
