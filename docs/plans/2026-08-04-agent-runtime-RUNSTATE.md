@@ -184,13 +184,24 @@ commit precedes the build commits in `git log`, which is the check):
 
 | # | item | state |
 |---|---|---|
-| 0.1 | `chat_messages.advertised_tools` — **`jsonb`, array per pass** (a scalar loses the mid-turn deletion the field exists to catch) | ⬜ |
-| 0.2 | `chat_messages.withheld_tools` — `{tool, stage, reason}`; `budget_names_by_tokens` returns `(kept, dropped)` **as its sibling 20 lines below already does** | ⬜ |
-| 0.3 | `tool_calls[].source ∈ {tool, breaker, meta}` + `latency_ms` — no migration needed (jsonb) | ⬜ |
-| 0.4 | mandatory outcome on **every** terminal path, incl. cancel and crash (`finish_reason` covers **9.4%** today) | ⬜ |
-| 0.5 | **freeze the baseline** — snapshot `tools/list` into `contracts/`, script arms A–E. They were built from a live catalog and **are not reproducible today** | ⬜ |
-| 0.6 | measure the **binding format** on our own model (§0.11 — do not import the YAML benchmark) | ⬜ |
-| 0.7 | **`runtime_variant` + the declaration identity on every recorded call** — without these the comparison in §"the measurement unit" **cannot be computed at all**, however much data accumulates | ⬜ |
+| 0.1 | `chat_messages.advertised_tools` — **`jsonb`, array per pass** (a scalar loses the mid-turn deletion the field exists to catch) | 🔨 built — recorded at the advertise chokepoint, every pass, tool-free passes included |
+| 0.2 | `chat_messages.withheld_tools` — `{tool, stage, reason}`; `budget_names_by_tokens` returns `(kept, dropped)` **as its sibling 20 lines below already does** | 🔨 built — `budget_names_by_tokens_ex` added rather than the original changed (9 call sites); 4 suppression stages register |
+| 0.3 | `tool_calls[].source ∈ {tool, breaker, meta}` + `latency_ms` — no migration needed (jsonb) | 🔨 built — `tool` stamped at the single real-dispatch site, so it is structural; the other 31 mint sites separate by a closed primitive-name set, never by prose-matching |
+| 0.4 | mandatory outcome on **every** terminal path, incl. cancel and crash (`finish_reason` covers **9.4%** today) | 🔨 built — closed vocabulary + `abandoned_by_user`; **one known hole left open**: an empty terminal turn writes no row, deferred to CP-3.6 with the other three silent exits, and logged so it is countable meanwhile |
+| 0.5 | **freeze the baseline** — snapshot `tools/list` into `contracts/`, script arms A–E. They were built from a live catalog and **are not reproducible today** | 🔨 built — 315 tools pinned, `sha256 eec0470b…`; arm E reproduces (`book_list` **absent**, 29 dropped) |
+| 0.6 | measure the **binding format** on our own model (§0.11 — do not import the YAML benchmark) | 🔨 harness built, **measurement running** — the local model needed two load attempts; result not yet in |
+| 0.7 | **`runtime_variant` + the declaration identity on every recorded call** — without these the comparison in §"the measurement unit" **cannot be computed at all**, however much data accumulates | 🔨 built — `DEFAULT 'legacy'` is the fail-safe direction: an unlabelled turn is attributed to the OLD runtime |
+
+**Verifiers deployed 2026-08-04** (α V-CODE · β V-LIVE · γ V-METRIC, one message, concurrent, each
+given only its committed prompt). Verdicts land in `verification/CP-0-v-*.md`. **`🔨 built` is not
+`✅`** — nothing here is closed until three independent verdicts say so, and a `PASS` without a
+stated falsifier is recorded as `CANNOT DETERMINE`, which does not close.
+
+**One finding already, from building 0.5 rather than from a review:** `superseded_by` is the *only*
+retirement key present in `_meta` anywhere in the 315-tool surface — **there is no `deprecated_at`
+field at all**. 54 tools are structurally marked; **75** once description prose is counted, so **21
+retirements are visible only to a human reader.** That is a prerequisite the third-party sunset
+window was already blocked on, now measured.
 
 ### The measurement unit is the DECLARATION, not the runtime
 
