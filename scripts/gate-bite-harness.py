@@ -190,8 +190,16 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # file: mass cry-wolf for the figures, total blindness for the escape
         # rule, and nothing reported.
         ("a missing end marker widens the scope to the whole file",
-         "    return None if j < 0 else (i, j)",
-         "    return (i, j if j > 0 else len(text))"),
+         "    if not hits:\n        return None",
+         "    if False:\n        return None"),
+        # B1 -- deletion was never the defect; PREMATURE TERMINATION was, and a
+        # SECOND marker does it exactly as the first incidental `---` did.
+        ("a second end marker silently shortens the block",
+         "    if len(hits) > 1:", "    if False:"),
+        # ...and a marker MENTIONED in prose or an inline code span -- which is
+        # what documenting it looks like -- must not terminate anything.
+        ("a marker mentioned mid-line terminates the block",
+         "            if _at_line_start(text, k, needle)]", "            if True]"),
         ("the empty-block rule removed",
          "        if (doc, start_marker) in checked and not checked[(doc, start_marker)]:",
          "        if False:"),
@@ -251,8 +259,27 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # design, and the honest response is to delete the row.
         # m4 -- the wrap tolerance the sibling pattern already carried.
         ("the range pattern loses its line-wrap tolerance",
-         'rf"`{prefix}-{first}`\\s*\\n?>?\\s*\\.\\.\\s*\\n?>?\\s*`{prefix}-(\\d+)`"',
-         'rf"`{prefix}-{first}`\\.\\.`{prefix}-(\\d+)`"'),
+         'r"\\s*\\n?>?\\s*\\.\\.\\s*\\n?>?\\s*"',
+         'r"\\.\\."'),
+        # minor 1 -- the backticks were REQUIRED, so the un-backticked form (seven
+        # occurrences in the RUN-STATE alone) was invisible to the rule and to the
+        # coverage assertion, which shares the regex.
+        ("the range pattern requires backticks again",
+         '    t = "`?"', '    t = "`"'),
+        # M3 -- the derivation must ask the question the RULE asks. Asking "does
+        # this cite A range" reported ten documents belonging to other rounds'
+        # own `D-` registers; asking "does it cite THE LIVE one" is the rule.
+        ("the escape derivation stops matching the head",
+         "        if any(int(m) == head for m in RANGE_RE.findall(text)):",
+         "        if RANGE_RE.search(text):"),
+        ("the escape derivation walks only the docs root",
+         '    return sorted(REPO.glob("docs/**/*.md"))',
+         '    return sorted(REPO.glob("docs/*.md"))'),
+        # REMOVED: the degrade-safety assertion is a CASE, not a production
+        # rule, and mutating a case cannot red the suite it belongs to -- the
+        # same mis-target as the discovery floor two rounds ago. The production
+        # behaviour it guards (an unmeasurable figure is a NOTE, never a block)
+        # is covered by "the unmeasurable branch skipped", which reds.
         ("the substrate contract row deleted",
          '    (r"and\\s*\\n?>?\\s*\\*\\*(\\d+)\\*\\*\\s*\\n?>?\\s*lines", "contract_substrate_lines", "the substrate contract\'s lines"),',
          ""),
@@ -492,6 +519,10 @@ def run_rust(only: str | None = None, run=None, write=None) -> tuple[int, str | 
                 timeout=CHILD_TIMEOUT_S))
             try:
                 out = runner(test)
+            except subprocess.TimeoutExpired:
+                print(f"  SLOW   {label:52} -> no verdict in {CHILD_TIMEOUT_S}s")
+                green += 1
+                continue
             finally:
                 # The ORIGINAL BYTES, not a re-encoding of the text: exact even
                 # for a file with mixed line endings, which no normalisation
@@ -583,7 +614,15 @@ def _mutate_and_run(gate: str, find: str, repl: str, run=None,
             [sys.executable, str(p), "--self-test"], cwd=REPO,
             capture_output=True, text=True, timeout=CHILD_TIMEOUT_S,
             env=_child_env(no_cargo)))
-        out = runner(copy)
+        try:
+            out = runner(copy)
+        except subprocess.TimeoutExpired:
+            # A timeout is a FINDING about that mutation, not the end of the
+            # run. The timeout was configured and never caught, so the
+            # documented local invocation aborted at mutation 11 of 42 with a
+            # raw traceback -- and the 47 that never executed were reported by
+            # nothing at all.
+            return False, f"the self-test did not finish within {CHILD_TIMEOUT_S}s"
     finally:
         copy.unlink(missing_ok=True)
     if out.returncode != 0:
@@ -662,7 +701,13 @@ def self_test() -> int:
         _mutate_and_run(gate, find, repl, run=_boom)
     except RuntimeError:
         pass
-    leftover = list(SCRIPTS.glob(".bite-*.py"))
+    # **Excluding this file's own copy.** When the harness mutates ITSELF the
+    # child runs as `.bite-gate-bite-harness.py`, and a bare glob finds it --
+    # so an UNMUTATED exact copy already failed this check, and all five rows of
+    # the self-mutation table were RED for a reason that had nothing to do with
+    # the rule under test. A control the table itself could not distinguish from
+    # success.
+    leftover = [q for q in SCRIPTS.glob(".bite-*.py") if q.name != Path(__file__).name]
     if leftover:
         failures += 1
         print(f"  FAIL a crashed run left {[p.name for p in leftover]} on disk")
@@ -727,7 +772,14 @@ def self_test() -> int:
             return _RustR(rc)
         return go
 
-    survivors, refusal = quietly(lambda: run_rust(run=_rust_run(1)))
+    # **`write=` on every call that does not need real bytes.** The first
+    # version injected it on ONE of four, so `--self-test` -- which the
+    # pre-commit hook runs -- still performed 30 in-place writes to the shipped
+    # crate sources, the exact number the commit message states as the defect it
+    # fixed. The certifying case could not see it: it compares CONTENT, which
+    # the content-keyed restore guarantees by construction.
+    nowrite = lambda *a, **k: None
+    survivors, refusal = quietly(lambda: run_rust(run=_rust_run(1), write=nowrite))
     if survivors or refusal or not rust_calls:
         failures += 1
         print(f"  FAIL a reddened Rust mutation must not count: {survivors}, {refusal}")
@@ -735,7 +787,7 @@ def self_test() -> int:
         print(f"  ok  a reddened Rust mutation is not a survivor ({len(rust_calls)} run)")
 
     rust_calls.clear()
-    survivors, refusal = quietly(lambda: run_rust(run=_rust_run(0)))
+    survivors, refusal = quietly(lambda: run_rust(run=_rust_run(0), write=nowrite))
     if survivors != len(RUST_MUTATIONS) or refusal:
         failures += 1
         print(f"  FAIL a GREEN Rust mutation must be a survivor: got {survivors} of "
@@ -744,8 +796,10 @@ def self_test() -> int:
         print("  ok  a surviving Rust mutation is counted")
 
     # The restore is not optional: `--rust` mutates the real crate in place.
+    # This one keeps the REAL writer -- proving the restore needs real bytes --
+    # but on a SINGLE mutation rather than all ten.
     before = {rel: _raw(REPO / rel) for _, rel, _, _, _ in RUST_MUTATIONS}
-    quietly(lambda: run_rust(run=_rust_run(1)))
+    quietly(lambda: run_rust(run=_rust_run(1), only="a refused derivation"))
     after = {rel: _raw(REPO / rel) for rel in before}
     if after != before:
         failures += 1
@@ -754,6 +808,23 @@ def self_test() -> int:
     else:
         print(f"  ok  --rust restores all {len(before)} crate file(s) byte for byte")
 
+    # **Counting the WRITES, not comparing the content.** The restore makes the
+    # content identical either way, so the byte-for-byte case is blind to a run
+    # that wrote 30 times and put everything back. This counts.
+    seen_writes: list[str] = []
+    real_write = globals()["_write"]
+    globals()["_write"] = lambda path, text, like=None: seen_writes.append(str(path))
+    try:
+        quietly(lambda: run_rust(run=_rust_run(1), write=nowrite))
+    finally:
+        globals()["_write"] = real_write
+    into_crates = [w for w in seen_writes if "actor-hub" in w and "src" in w]
+    if into_crates:
+        failures += 1
+        print(f"  FAIL an injected-writer run still wrote {len(into_crates)} crate file(s)")
+    else:
+        print("  ok  an injected-writer run writes no crate source at all")
+
     # **A refusal is not a survivor count.** The first version returned `2` as a
     # sentinel and `main` printed "2 Rust mutation(s) SURVIVED" for a run in
     # which nothing executed.
@@ -761,7 +832,7 @@ def self_test() -> int:
     _real_dirty = globals()["_rust_dirty"]
     globals()["_rust_dirty"] = lambda: fake_dirty
     try:
-        survivors, refusal = quietly(lambda: run_rust())
+        survivors, refusal = quietly(lambda: run_rust(write=nowrite))
         rc = quietly(lambda: main(argv=["--rust"]))
     finally:
         globals()["_rust_dirty"] = _real_dirty

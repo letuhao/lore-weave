@@ -428,20 +428,108 @@ def _claimable(block: str, quotes: bool = True, in_fence: str | None = None,
     return "\n".join(out)
 
 
-def _scope_span(text: str, start_marker: str, end_marker: str) -> tuple[int, int] | None:
-    """Character span of the current-state block, or None if EITHER anchor moved.
+def _scope_span(text: str, start_marker: str, end_marker: str
+                ) -> tuple[int, int] | str | None:
+    """The block's span, `None` if an anchor is missing, or a REASON string.
 
-    **The end marker used to be optional.** A missing one silently widened the
-    window to the whole file -- mass cry-wolf for the figure check, and total
-    blindness for the escape rule, whose exempt span then covered the entire
-    document. Only the START marker was reported. A scope with one asserted end
-    and one guessed end is half a scope.
+    **A sentinel fixed the wrong half of the problem.** Deleting the end marker
+    was never the defect -- terminating EARLY was, and a second marker does that
+    exactly as the first incidental `---` did. Measured on the shipped handoff:
+    one extra sentinel mid-block takes the scope from **5 governed figures to 1**,
+    and four seeded-stale figures below it produce **zero** findings where the
+    control produces four.
+
+    Two rules, because there were two ways in:
+
+      * the end marker must occur **exactly once** after the start -- a second
+        one is a finding, not a shorter block;
+      * it is only a terminator on a line **of its own**. `_scope_span` reads raw
+        text, so writing the marker inside a fenced example or an inline code
+        span -- the normal way to DOCUMENT a marker, and what this gate's own
+        decision record does -- silently truncated the scope.
     """
     i = text.find(start_marker)
     if i < 0:
         return None
-    j = text.find(end_marker, i + len(start_marker))
-    return None if j < 0 else (i, j)
+    # The marker is matched on its own line, so a leading newline in the literal
+    # is noise -- it would put the match at the END of the previous line and the
+    # standalone test would compare against that line instead.
+    needle = end_marker.strip(chr(10))
+    hits = [k for k in _all_occurrences(text, needle, i + len(start_marker))
+            if _at_line_start(text, k, needle)]
+    if not hits:
+        return None
+    if len(hits) > 1:
+        lines = [text.count("\n", 0, k) + 1 for k in hits]
+        return (f"the end marker `{end_marker}` occurs {len(hits)} times after "
+                f"`{start_marker}` (lines {lines}) — the FIRST one wins, so every "
+                "figure below it is silently ungoverned")
+    return (i, hits[0])
+
+
+def _all_occurrences(text: str, needle: str, start: int) -> list[int]:
+    out, at = [], start
+    while True:
+        at = text.find(needle, at)
+        if at < 0:
+            return out
+        out.append(at)
+        at += 1
+
+
+def _at_line_start(text: str, at: int, needle: str) -> bool:
+    """True when `needle` BEGINS its line, whitespace aside.
+
+    A marker quoted in prose or shown in an inline code span is a MENTION, and a
+    raw `text.find` cannot tell the two apart -- so writing the sentinel in a
+    sentence, which is exactly what documenting it looks like, truncated the
+    scope.
+
+    **Line-start, not whole-line.** Two of the four markers are structural
+    PREFIXES -- `| # | Slice |` heads a table row that continues, and
+    `## Read this to REUSE` is a heading -- so requiring the line to hold
+    nothing else refused both, which is the cry-wolf direction.
+
+    The residual is stated rather than hidden: a sentinel shown inside a FENCED
+    example still counts, because this function reads raw text. It then trips
+    the exactly-once rule and is reported LOUDLY, which is the safe way to be
+    wrong.
+    """
+    bol = text.rfind(chr(10), 0, at) + 1
+    return not text[bol:at].strip()
+
+
+def _escape_corpus() -> list[Path]:
+    """Every markdown file the escape derivation examines."""
+    return sorted(REPO.glob("docs/**/*.md"))
+
+
+def _escape_derivation(governed: set[str], head: int, corpus=None) -> list[str]:
+    """Documents citing `D-1`..`D-<head>` that no rule reads.
+
+    **It asks the question the RULE asks.** The first version asked whether a
+    document cited *a* range at all, and other rounds keep their own `D-`
+    registers -- `command-interaction`, `event-causality`, `story-seed` -- so it
+    reported ten documents whose numbering has nothing to do with this one. The
+    rule only ever fires on numeric EQUALITY with this document's head, so the
+    completeness check must use the same test or it is checking something else.
+
+    `corpus` is injectable because in a pristine tree the answer is the empty
+    list, so an assertion on it alone is default-satisfied -- which is how both
+    narrowing the glob and deleting the report survived.
+    """
+    out = []
+    for path in (corpus or _escape_corpus)():
+        try:
+            rel = path.relative_to(REPO).as_posix()
+        except ValueError:
+            rel = path.name
+        if rel in governed:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if any(int(m) == head for m in RANGE_RE.findall(text)):
+            out.append(rel)
+    return out
 
 
 def _read_doc(doc: str, read=None) -> str | None:
@@ -463,7 +551,7 @@ def _scope_text(doc: str, start_marker: str, end_marker: str, read=None) -> str 
     if text is None:
         return None
     span = _scope_span(text, start_marker, end_marker)
-    return None if span is None else text[span[0]:span[1]]
+    return None if not isinstance(span, tuple) else text[span[0]:span[1]]
 
 
 # `\s*\n?>?\s*` because these documents WRAP, and the sibling
@@ -488,7 +576,16 @@ def _scope_text(doc: str, start_marker: str, end_marker: str, read=None) -> str 
 # failure mode this gate has committed four times. So the rule is: a range
 # anchored at the record's FIRST id.
 def _range_re(prefix: str, first: int) -> "re.Pattern[str]":
-    return re.compile(rf"`{prefix}-{first}`\s*\n?>?\s*\.\.\s*\n?>?\s*`{prefix}-(\d+)`")
+    # **The backticks are OPTIONAL.** This project writes the range both ways,
+    # and the un-backticked form occurs seven times in the RUN-STATE alone --
+    # every one invisible to the rule AND to the coverage assertion, which
+    # shares this regex and so could never report a form the rule misses. A
+    # checker and its own completeness check keyed on one pattern are one
+    # claim wearing two hats.
+    t = "`?"
+    return re.compile(
+        rf"{t}{prefix}-{first}{t}" + r"\s*\n?>?\s*\.\.\s*\n?>?\s*"
+        + rf"{t}{prefix}-" + r"(\d+)" + rf"{t}")
 
 
 RANGE_RE = _range_re("D", 1)
@@ -555,7 +652,7 @@ def _escaped_live_range(m: dict[str, object], scopes=None, read=None) -> list[st
         # very line this mechanism was written to repair, left the gate GREEN.
         # A guard defeated by the thing it is guarding.
         spans = [sp for d, sm, em in scopes if d == doc
-                 for sp in [_scope_span(text, sm, em)] if sp]
+                 for sp in [_scope_span(text, sm, em)] if isinstance(sp, tuple)]
         # Fenced examples and HTML comments are blanked -- a code block
         # SHOWING the header line is not a claim, and reporting it would be the
         # cry-wolf failure this gate has hit four times.
@@ -611,6 +708,9 @@ def _check(m: dict[str, object], scopes=None, read=None) -> tuple[list[str], lis
         # a coincidence: the same NUMBER of findings, about different lines.
         full = _read_doc(doc, read=read)
         span = _scope_span(full, start_marker, end_marker) if full is not None else None
+        if isinstance(span, str):
+            problems.append(f"{doc}: {span}")
+            span = None
         opens_fenced, opens_commented = (
             _fence_state(full[:span[0]]) if (full is not None and span) else (None, False))
         # `(None, False)`, not `(False, False)`: the fence half is a marker
@@ -841,6 +941,14 @@ def self_test() -> int:
     check_block("a BLOCKQUOTE fence is a fence",
                 "> ```\n> the count was **281 passed, 0 failed**\n> ```", 0)
     # A comment that OPENS mid-line, one line after the multi-line fix.
+    # M2 -- a comment must stay open until `-->`, and its OPENING line must be
+    # opaque. Both rules were deletable green because every case used a one-line
+    # body and put no figure on the opening line.
+    check_block("a MULTI-line comment body stays closed to the end",
+                "<!--\nsuperseded, was `dp-kernel --lib` **300**\n"
+                "and also **281 passed, 0 failed**\n-->", 0)
+    check_block("a figure on the comment's OPENING line is not a claim",
+                "<!-- superseded: `dp-kernel --lib` **300**\nstill inside\n-->", 0)
     check_block("a comment opening MID-LINE is not a claim",
                 "superseded <!--\n**281 passed, 0 failed**\n-->", 0)
     check_block("an italicised QUOTATION is a historical record, not a claim",
@@ -945,6 +1053,9 @@ def self_test() -> int:
     # The sentinel moved UP to just after the heading: the block resolves and
     # contains nothing.
     def _collapse(text: str) -> str:
+        # MOVED, not duplicated: two markers is a different finding with its own
+        # message, so adding one here would assert the wrong rule.
+        text = text.replace(END + "\n", "", 1)
         i = text.find("## \u25b6 GAME TIER")
         return text[:i] + "## \u25b6 GAME TIER\n\n" + END + "\n" + text[i:]
 
@@ -975,15 +1086,79 @@ def self_test() -> int:
     # ...and the figures BELOW that rule are still governed, which is the half
     # that was actually broken.
     def _rule_and_stale(text: str) -> str:
+        # **A figure measurable with NO toolchain.** Seeding a Rust test count
+        # made this case fail on any machine without cargo -- so the gate refused
+        # commits from exactly the contributors its own docstring says it must
+        # never block, and CI's `--no-cargo` mutation job went vacuous because
+        # every row was red before any mutation was applied.
         text = _rule_midway(text)
-        return text.replace("**293 passed, 0 failed**", "**999 passed, 0 failed**", 1)
+        return text.replace("the **39**", "the **11**", 1)
 
     problems, _ = _check(real_m, read=_seed_handoff(_rule_and_stale))
-    if not any("claims 999" in x for x in problems):
+    if not any("claims 11" in x for x in problems):
         failures += 1
         print("  FAIL a stale figure below a `---` was not caught")
     else:
         print("  ok  a figure below a horizontal rule is still governed")
+
+    # A SECOND end marker must be a finding, not a shorter block. Deletion was
+    # never the defect; premature termination was, and the sentinel that replaced
+    # the incidental `---` inherited it exactly.
+    def _second_sentinel(text: str) -> str:
+        j = text.find("**Evidence:**", text.find("## \u25b6 GAME TIER"))
+        return text[:j] + END + "\n\n" + text[j:]
+
+    problems, _ = _check(real_m, read=_seed_handoff(_second_sentinel))
+    if not any("occurs 2 times" in x for x in problems):
+        failures += 1
+        print(f"  FAIL a duplicated end marker was not reported: {problems[:2]}")
+    else:
+        print("  ok  a second end marker is a finding, not a shorter block")
+
+    # ...and a marker MENTIONED in an inline code span is not a terminator, which
+    # is what documenting it looks like.
+    def _mentioned(text: str) -> str:
+        j = text.find("**Evidence:**", text.find("## \u25b6 GAME TIER"))
+        return text[:j] + "the marker is `" + END + "` here\n\n" + text[j:]
+
+    problems, _ = _check(real_m, read=_seed_handoff(_mentioned))
+    if problems:
+        failures += 1
+        print(f"  FAIL a marker mentioned inline must not terminate: {problems[:2]}")
+    else:
+        print("  ok  a marker mentioned inside a line is not a terminator")
+
+    # The range is written BOTH ways in this project; requiring backticks made
+    # the un-backticked form invisible to the rule and to its own coverage check.
+    escape_case("an UN-BACKTICKED live range is still an escape",
+                "@@\nnothing\n@@END\n\n| D-195 | it declares D-1..D-372 |", 1)
+
+    # The corpus is RECURSIVE. Narrowing it to `docs/*.md` left the derivation
+    # unable to see any of the documents it exists to police.
+    corpus = {p.relative_to(REPO).as_posix() for p in _escape_corpus()}
+    if RUN_STATE not in corpus or INDEX not in corpus:
+        failures += 1
+        print("  FAIL the escape corpus does not reach nested documents")
+    else:
+        print(f"  ok  the escape corpus walks {len(corpus)} documents, nested included")
+
+    # **DEGRADE-SAFE, asserted.** With every figure unmeasurable -- a machine
+    # with no Rust toolchain, which is most of them -- the check must be SILENT
+    # on the real documents. A case that seeds a cargo-dependent figure breaks
+    # this and turns the pre-commit hook into a refusal for every contributor
+    # without cargo; it also makes CI's `--no-cargo` mutation run vacuous,
+    # because every mutation is red before it is applied.
+    blind = {k: {"unmeasurable": "no toolchain"} for k in real_m}
+    problems, notes = _check(blind)
+    if problems:
+        failures += 1
+        print(f"  FAIL with nothing measurable the check must be silent: {problems[:2]}")
+    elif not notes:
+        failures += 1
+        print("  FAIL an unmeasurable run produced no NOTE either — it checked nothing quietly")
+    else:
+        print(f"  ok  with no toolchain the check degrades to {len(notes)} note(s), zero refusals")
+
 
     # M2 -- a fence marker inside an HTML COMMENT in the document PREFIX. One
     # such line above a block used to flip the prefix scan into a fence that
@@ -1009,6 +1184,22 @@ def self_test() -> int:
         print(f"  FAIL a closed comment left state behind: {marker!r}, {commented}")
     else:
         print("  ok  a comment containing a fence marker leaves no state behind")
+    # ...and an UNTERMINATED comment in the prefix carries into the window: the
+    # scanner returns both halves of the state, and dropping the comment half
+    # left every figure below an open comment live.
+    marker, commented = _fence_state("<!--" + chr(10) + "superseded" + chr(10))
+    if commented is not True:
+        failures += 1
+        print(f"  FAIL an unterminated comment in the prefix was lost: {commented}")
+    else:
+        print("  ok  an unterminated comment in the prefix reaches the window")
+    blanked = _claimable("**281 passed, 0 failed**", in_comment=True)
+    if blanked.strip():
+        failures += 1
+        print("  FAIL a window opening inside a comment was not blanked")
+    else:
+        print("  ok  a window opening inside a comment is blanked")
+
     marker, commented = _fence_state("```rust\nlet x = 1;\n")
     if marker != "```":
         failures += 1
@@ -1190,7 +1381,6 @@ def self_test() -> int:
     # `docs/specs/2026-08-02-*` or `docs/plans/2026-08-02-*` cites a `D-1`..`D-N`
     # range without being on it. That is the mechanism the list itself is not.
     governed_escape = set(ESCAPE_DOCS) | {d for d, _, _ in SCOPES}
-    missing_escape = []
     # **Every markdown file under `docs/`.** The first version globbed
     # `docs/specs/2026-08-02-*` and `docs/plans/2026-08-02-*`, and the ternary
     # made the specs branch directory-only -- so `2026-08-02-item-data-structure.md`
@@ -1198,18 +1388,31 @@ def self_test() -> int:
     # unreachable by the assertion meant to police the list. A probe file one
     # directory over, or dated a day later, was default-uncovered too. A pair of
     # date-prefixed globs is an enumeration wearing a wildcard.
-    for path in REPO.glob("docs/**/*.md"):
-        rel = path.relative_to(REPO).as_posix()
-        if rel in governed_escape:
-            continue
-        if RANGE_RE.search(path.read_text(encoding="utf-8", errors="replace")):
-            missing_escape.append(rel)
+    missing_escape = _escape_derivation(governed_escape, real_m['max_decision_id'])
     if missing_escape:
         failures += 1
         print(f"  FAIL these cite a `D-1`..`D-N` range and no rule reads them: "
               f"{sorted(missing_escape)}")
     else:
-        print(f"  ok  all {len(governed_escape)} documents citing the range are read")
+        print(f"  ok  no document outside the {len(governed_escape)} governed ones "
+              "cites the live range")
+
+    # **And the walk is driven with a seeded probe**, because in a pristine tree
+    # nothing is missing and the assertion above is DEFAULT-SATISFIED: narrowing
+    # the glob back to `docs/*.md`, or deleting the report entirely, both left it
+    # green. NV-1 inside the fix for NV-3.
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        probe = Path(d) / "seeded-probe.md"
+        probe.write_text(f"| x | it declares `D-1`..`D-{real_m['max_decision_id']}` |",
+                         encoding="utf-8")
+        seeded = _escape_derivation(governed_escape, real_m['max_decision_id'],
+                                    corpus=lambda: [probe])
+        if not seeded:
+            failures += 1
+            print("  FAIL a seeded document citing the live range was not reported")
+        else:
+            print("  ok  a document citing the live range and read by nothing is reported")
 
     # Every document this script MUST govern is actually in SCOPES. Iterating
     # SCOPES alone cannot notice a deleted row -- it just iterates one fewer.

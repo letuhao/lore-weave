@@ -13,7 +13,7 @@
 > `feat/frontend-tools-mcp-migration` and is left untouched.
 
 **The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
-per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-423` decision record
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-431` decision record
 live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
 the two design contracts that are its only specification are in
 [`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).
@@ -42,7 +42,7 @@ wires all green, and every `--self-test` among them runs pre-commit via
 > it had been rather than reading what it was.
 
 **Reviewed by cold-start adversarial agents, one round per fix pass — every finding fixed or answered.**
-**The per-round tallies are the source and live in [§6e..§6x of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
+**The per-round tallies are the source and live in [§6e..§6y of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
 no aggregate is repeated here.** An aggregate is not mechanically derivable, so it goes stale every time a
 round lands. **A number you cannot derive is a number you should not assert** — and this paragraph
 asserted three such numbers while saying so, which a round-11 verifier falsified in place by editing each
@@ -69,6 +69,10 @@ which is the exact incident its own docstring says it was shaped by, on the succ
 wiring the previous round records was never actually made. Round 12: the fix for a silently-truncated
 scope was certified by a case built from the reported symptom, so **its own worked example still produced
 zero findings** — and the harness had been rewriting the shipped Rust sources 30 times per commit.
+Round 13: the SENTINEL that replaced the incidental `---` inherited the same defect, because a
+*second* marker truncates a block exactly as the first one did; the 30 writes were still happening
+(one of four call sites injected the no-op writer); and a case seeding a Rust test count had made the
+gate refuse commits from every contributor without cargo.
 
 **Every figure in this block is emitted by `scripts/actor-hub-figures-gate.py`, which `--check`s them
 pre-commit whenever this file is staged.**
