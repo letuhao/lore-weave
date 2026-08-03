@@ -73,6 +73,12 @@ INDEX = "docs/specs/2026-08-02-actor-hub/_index.md"
 SCOPES: tuple[tuple[str, str, str], ...] = (
     (HANDOFF, "## ▶ GAME TIER", "\n---\n"),
     (RUN_STATE, "> # ▶▶ NEXT SESSION STARTS HERE", "\n---\n"),
+    # The SLICE BOARD's own summary block. A stop-audit found it STALE at
+    # round seven -- "81 findings over five rounds" when the count was 123 over
+    # seven -- because the check covered the header and the handoff and not the
+    # board two screens below them. **A figure outside a checker's scope is a
+    # figure nobody is reading**, which is `_index.md`'s defect one file along.
+    (RUN_STATE, "### 6-BUILD", "| # | Slice |"),
     (INDEX, "# Actor Hub", "\n## Read this to REUSE"),
 )
 

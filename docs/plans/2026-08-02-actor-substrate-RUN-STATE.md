@@ -1017,6 +1017,13 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 | **D-309** `[E]` | **`bound` on `DerivationRow` is kept, and the contradiction `R-19` raised is GONE rather than tolerated.** `D-279` flagged the row's inline bound as *"a THIRD ceiling model, in the round whose §8 is titled 'Ceilings — one model'"*. **The scope seal deleted §8**, so there is no longer a "one model" claim for it to contradict. What remains is stated exactly: the bound limits **the amount this row contributes**, not the quantity — which the shipped move-range derivation demonstrably needs (`clamp(base + speed / per_tile, 1, max)`) — and the quantity **ceiling model** stays `U-4`, another feature's. |
 | **D-310** `[E]` | **The fold's honest limit, written into the code rather than discovered later: a derivation reads a MODIFIER-ONLY value.** Three passes — check every row, resolve from modifier rows, turn derivations into contributions against those values, re-resolve and emit. **A derivation of a derivation is therefore inexpressible**, and that is the shipped shape (`resolve_block` runs its modifier loop and *then* derives `MoveRange` from the finalised `Speed`), chosen because the alternative is a dependency solver the hub has no basis to design. Registered as `S-13`. |
 
+### 6q. THE STOP-AUDIT FOUND THE BOARD'S OWN SUMMARY STALE — outside every checker's scope (2026-08-02)
+
+| # | Decision |
+|---|---|
+| **D-371** `[META]` | **🔴 A STOP-AUDIT ASKED TO SEE THE SLICE BOARD ITSELF, AND THE BOARD'S SUMMARY BLOCK SAID *"81 findings over five rounds"* AT ROUND SEVEN — where the count is 123 over seven.** The header block two screens above it was correct; the handoff was correct; `_index.md` was correct. **The board was wrong because it was the one current-state block no checker covered** — `actor-hub-figures` governed the header, the handoff and `_index.md`, and stopped there. **This is `F7`'s shape one file along** (`_index.md`, uncovered, the file stale twice) and the sixth recurrence of the stale-figure defect in one round. ⇒ the board block is now a fourth `SCOPES` entry, and the bite reds: staling it to *281 passed* is refused. **A figure outside a checker's scope is a figure nobody is reading — including the author who wrote the checker.** |
+| **D-372** `[META]` | **And the lesson generalises past this file: A CHECKER'S SCOPE IS ITSELF A CLAIM, AND IT NEEDS THE SAME TREATMENT AS THE CLAIMS IT CHECKS.** Four times this round a check was correct and its **reach** was not — the float gate's `src/`-only tree, the citation gate's enumerated `SOURCE_EXT`, the figures gate's two documents, and now its three blocks. Each was written as *"the scope is X"* and never asked *"what does X leave out, and who reads that?"* ⇒ `--self-test` now asserts **each governed document's block contains at least one governed claim**, so a scope that reaches nothing reds instead of passing. It is the only mechanical answer available: coverage cannot be inferred from a green run. |
+
 ### 6p. ROUND 7 — the remedy claimed coverage it did not have, and could not run without cargo (2026-08-02)
 
 | # | Decision |
@@ -1205,15 +1212,24 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 > **ALL ELEVEN SLICES CLOSED.** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules
 > -p ruleset-loader` = **283 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
 > `GoneState` move) · the Go mirror `contracts/entity_status` **ok** · clippy clean · `cargo doc` **0
-> warnings** · **33 bite-tests, every one red** · **six cold-start verifiers over five rounds, 81
-> findings, every one fixed or answered** · every repo gate green including two that did not exist this
+> warnings** · **33 bite-tests, every one red** · **eight cold-start verifiers over seven rounds, 123
+> findings, every one fixed or answered** · every repo gate green including three that did not exist this
 > morning.
 >
-> **Rounds 2, 3, 4 and 5 ALL returned REFUTED**, each finding its worst defect in the previous round's
+> **Rounds 2 through 7 ALL returned REFUTED**, each finding its worst defect in the previous round's
 > fixes: a `CAPPED` record reporting a value the fold never emitted (`D-341`) · gate repairs blocking
 > commits on correct content (`D-348`) · ten of those false positives **relabelled rather than removed**
-> (`D-351`). That is what the *two consecutive clean rounds* rule is for, and it is why this board does
-> not claim a clean round: **it claims 81 findings closed and a bite for each.**
+> (`D-351`) · a scope cut that removed 155 real citations while the dominant 3 382 went untouched
+> (`D-354`) · and a figures gate that **claimed coverage of six figures while comparing two** and could
+> crash a commit on any machine without a Rust toolchain (`D-363`, `D-364`). **Never once in the fold**,
+> which has survived every mutation aimed at it. That is what the *two consecutive clean rounds* rule is
+> for, and it is why this board does not claim a clean round: **it claims 123 findings closed and a bite
+> for each.**
+>
+> **This block is itself governed** by `scripts/actor-hub-figures.py` — it was STALE when a stop-audit
+> read it (*"81 findings over five rounds"* at round seven), because the gate covered the header and the
+> handoff and not the board two screens below them. **A figure outside a checker's scope is a figure
+> nobody is reading.**
 
 | # | Slice | Contract line | EVIDENCE — test · bite · verifier |
 |---|---|---|---|
