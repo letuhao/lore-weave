@@ -690,6 +690,89 @@ incrementally repaired.
 
 ---
 
+## P11 — 🔴 The architectural inversion: skills are static, tools are dynamic, and nothing joins them
+
+The PO's central diagnosis, and it is the correct frame for everything above:
+
+> Skill and workflow are **fixed** — they have no state machine for their own context. Tools are
+> **loaded dynamically**. So a skill introduces tools that may never be loaded, and it cannot say when
+> they will be. The model is told about a capability it does not have and cannot obtain. This has been
+> hit repeatedly and never fixed, because **the architecture was never designed to do it.**
+
+### Ground truth, from the running service
+
+```
+lazy_skill_bodies = True
+chat    hot_domains=['knowledge']                                    skills_injected=[]
+book    hot_domains=['book','glossary','knowledge','story']          skills_injected=['co_write']
+studio  hot_domains=['book','composition','glossary','knowledge','story']  skills_injected=[]
+```
+
+**On two of the three surfaces, zero skills are injected while tools ARE seeded.** The studio — the
+primary authoring workbench — carries five domains of tools and **not one line of guidance**. Chat
+carries no guidance and only `knowledge`, which is why the live capture had to discover the book
+domain from scratch.
+
+Meanwhile `GROUP_DIRECTORY` sits in the system prompt **every turn**, introducing the `plan` domain
+and instructing *"propose_spec → plan_compile"*. `plan` is in no surface's hot domains, and
+`plan_forge` is injected on none of them. **The static layer advertises a capability the dynamic layer
+does not provide, and neither can see the other.**
+
+### The two layers have different models of TIME, and that is the defect
+
+| | skill / workflow | tools |
+|---|---|---|
+| when decided | once, at turn start | per turn **and per pass** |
+| where it lives | system prompt (or nowhere) | the `tools` parameter |
+| how it changes | rewritten by a human | mutated by `tool_load`, gates, breakers |
+| can it reference the other? | names tools as **strings** | knows nothing of skills |
+
+A skill saying *"call `plan_propose_spec`"* is making a claim about a **future dynamic state** from
+inside a **static artifact**, with no mechanism to check it and no way to tell the model *when* the
+claim becomes true. Every patch so far — `D-SKILL-NAMED-TOOLS-RIDE`, the backtick scraper,
+`ALWAYS_HOT_WRITES`, the intent-gated filter — is an attempt to make the static layer guess the
+dynamic one correctly. **They are patches on a missing joint, which is why none of them held.**
+
+### The inversion, against a working reference
+
+The PO's observation about other agentic harnesses is the key: there, **skills are what arrive late,
+into the conversation** — and this session is an existence proof. Calling `ToolSearch` returned a
+`<functions>` block **as a message**, followed by *"Tool loaded."*, after which the tool was callable.
+The schema arrived **in the conversation**; the system prompt did not change.
+
+| | reference harness | LoreWeave |
+|---|---|---|
+| tool **connections** | fixed at session start | fixed at session start |
+| tool **schemas** | revealed **into the conversation** on demand | **mutated into the `tools` block** per pass |
+| **skills** | loaded **into the conversation** on demand | injected into the system prompt — **or not at all** |
+| do the two layers meet? | **yes — both land in the same place** | **no — two mechanisms, two places** |
+
+*(Stated carefully: what is directly observable is that the schema is delivered as a message and the
+tool then becomes callable. Whether the harness also updates an API-level tool list behind that is not
+observable from inside, and the claim here does not depend on it.)*
+
+**So: was lazy-loading MCP tools wrong from the start?** Not by itself. What is wrong is
+**lazy-loading tools while statically injecting skills, and joining them with a string.** The
+reference design makes *both* layers late and puts *both* in the conversation, so a skill body and a
+tool schema are visible to each other because they are in the same stream. LoreWeave made tools late
+and skills early, and then spent thirteen mechanisms trying to make the early one predict the late one.
+
+### R20 — one arrival channel: capability and its guidance land together, in the conversation
+
+- **A capability and its instructions are delivered as one unit, at the same moment, in the same
+  place.** No skill may name a tool it does not deliver with itself; no tool may arrive without the
+  guidance that teaches it. This is `tool_discovery.py:438`'s own stated principle — *"guidance and
+  capability move as ONE signal"* — finally given a mechanism instead of a keyword list.
+- **The conversation is the arrival channel; the system prompt holds only what never changes.** This
+  subsumes R19's cache argument as a consequence rather than a motivation.
+- **The static layer stops making claims about dynamic state** (R18): `GROUP_DIRECTORY` cannot
+  advertise a domain the surface will not provide.
+
+R20 is the joint the architecture never had. R15 (a surface must complete what it advertises) is its
+special case at the surface level; R3's declared `tools` is what makes it checkable.
+
+---
+
 ## 3 · What P1 and P2 settle, and what they do not
 
 | DESIGN question | settled by | answer |
