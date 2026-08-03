@@ -317,6 +317,26 @@ def _mutate(target: Path, op: str, payload) -> str | None:
     return None
 
 
+#: Signatures of "this environment cannot run the command", as distinct from "the guard is
+#: broken". Deliberately NARROW: each entry is a collection/import failure, never an assertion
+#: failure, so a real red can never be laundered into NOT-RUN. `pytest` reports a conftest that
+#: will not import as an ERROR during collection and exits 2 — the assertion-failure exit is 1,
+#: and its output says `assert`, not `ImportError`.
+_ENVIRONMENTAL = (
+    "ModuleNotFoundError",
+    "ImportError while loading conftest",
+    "error: no required module provides package",   # go build, missing module
+    "cannot find package",
+    "no such file or directory",
+    "is not recognized as an internal or external command",
+)
+
+
+def _is_environmental(out: str) -> bool:
+    low = out.lower()
+    return any(sig.lower() in low for sig in _ENVIRONMENTAL)
+
+
 def run_case(case) -> tuple[str, str, str]:
     name, _tier, targets, (op, payload), argv, cwd = case
     need = REQUIRES_ENV.get(name)
@@ -329,6 +349,18 @@ def run_case(case) -> tuple[str, str, str]:
     base_rc, base_out = _run(argv, cwd)
     if base_rc != 0:
         tail = (base_out.strip().splitlines() or [""])[-1]
+        # "Red before injection" has TWO causes and they deserve different verdicts. One is a
+        # broken guard — the thing this file exists to report. The other is that the command
+        # could not RUN here: a SUITE-tier case shells out to `pytest` inside a service, and
+        # `.github/workflows/gates.yml` is deliberately the job WITHOUT a live stack or any
+        # service's dependencies, so pytest cannot even import that service's conftest. Calling
+        # that BASELINE-RED accuses the guard of a defect it does not have, and this file's own
+        # REQUIRES_ENV note says why that matters: "a false accusation from a gate is how the
+        # gate gets switched off". Measured 2026-08-03: `S6 critic` reported BASELINE-RED in CI
+        # for months while passing on every developer machine, because the machines happen to
+        # have the deps.
+        if _is_environmental(base_out):
+            return name, "NOT-RUN", f"the guard command cannot run here: {tail[:90]}"
         return name, "BASELINE-RED", f"already failing before injection: {tail[:90]}"
 
     err = None
@@ -435,8 +467,11 @@ def main() -> int:
 
     results = [run_case(c) for c in selected]
     width = max((len(n) for n, _, _ in results), default=1)
-    no_env = [r for r in results if r[1] == "NO-ENV"]
-    bad = [r for r in results if r[1] not in ("RED", "NO-ENV")]
+    # NOT-RUN joins NO-ENV: both mean "this environment could not exercise the guard", which is
+    # never a pass and never an accusation. They are counted as skipped and printed, because a
+    # skip that prints is a known limit and a skip that is silent is a claim of coverage.
+    no_env = [r for r in results if r[1] in ("NO-ENV", "NOT-RUN")]
+    bad = [r for r in results if r[1] not in ("RED", "NO-ENV", "NOT-RUN")]
     skipped += len(no_env)
 
     for name, verdict, detail in results:

@@ -183,6 +183,14 @@ TOO_SLOW: dict[str, str] = {
 #                         names and span excerpts reached an LLM judge prompt
 #                         unsanitized. Fixed, and the lint tightened from
 #                         "mentions the sanitizer" to "calls it".
+#: Gates that WRITE to the working tree while they run. They must not share the tree with a
+#: concurrent reader, so the runner executes them serially, after everything else.
+#: `guard-redability-gate` injects a real violation into real source and restores it from saved
+#: bytes; that is its mechanism, not a bug, and the isolation belongs to the RUNNER.
+MUTATES_TREE: frozenset[str] = frozenset({
+    "scripts/guard-redability-gate.py",
+})
+
 KNOWN_RED: dict[str, tuple[str, str]] = {
     # EMPTY, and that is the point: this list SHRINKS. `--run-all` fails when a row's gate
     # turns green, which is what forces the deletion instead of letting an acknowledgement
@@ -366,9 +374,30 @@ def run_all() -> int:
             print(f"  {n:<44} SKIP           needs a live stack: {NEEDS_STACK[n]}")
 
     runnable = [n for n in names if n not in NEEDS_STACK and n not in TOO_SLOW]
+
+    # MUTATORS RUN ALONE, AND LAST. `guard-redability-gate` proves a guard can fail by writing a
+    # real violation into real source, running the guard, and restoring the bytes. That is the
+    # whole point of it — and it means that for a few milliseconds per case the working tree is
+    # WRONG ON PURPOSE. Running it inside the thread pool let every other gate read those bytes.
+    #
+    # It produced exactly the failure you would predict and it was misread for weeks: CI
+    # reported `llm-budget-ssot-gate: a row claims signal_inert on a kind that DOES respond to
+    # signal` — which is, verbatim, the violation guard-redability injects into `llm_budget.py`
+    # in its "S7 gate" case. Three gates flapped this way (`llm-budget-ssot-gate`, `design-lint`,
+    # and guard-redability accusing ITSELF of BASELINE-RED when its baseline probe read a tree
+    # another case had mid-mutation). All three pass standalone, which is why it read as a
+    # local/CI divergence rather than a race.
+    #
+    # Keyed on a declared SET, not a name guess: a second mutating gate added tomorrow joins it
+    # here, and `--self-test` asserts every name in it is a real gate.
+    mutators = [n for n in runnable if n in MUTATES_TREE]
+    parallel = [n for n in runnable if n not in MUTATES_TREE]
     workers = min(8, (os.cpu_count() or 4))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        results = list(pool.map(_run, runnable))
+        parallel_results = list(pool.map(_run, parallel))
+    mutator_results = [_run(n) for n in mutators]        # serial, after the pool has drained
+    runnable = parallel + mutators
+    results = parallel_results + mutator_results
 
     for n, (ok, secs, out) in zip(runnable, results):
         expected_red = n in KNOWN_RED
@@ -427,6 +456,14 @@ def self_test() -> int:
     _, stale = wiring_report()
     if stale:
         fails.append(f"rows for files that no longer exist: {', '.join(stale)}")
+
+    # A MUTATES_TREE name that is not a real gate is a silent LOSS of isolation: the runner
+    # would find nothing to serialise, put every gate back in the pool, and the race this set
+    # exists to prevent returns with no message anywhere. Same shape as the REQUIRES_ENV orphan
+    # check in guard-redability-gate, and for the same reason.
+    for n in sorted(MUTATES_TREE):
+        if not (REPO / n).exists():
+            fails.append(f"MUTATES_TREE names {n}, which does not exist — isolation lost silently")
 
     # Every KNOWN_RED row must name a deferral id, or "tracked" means nothing.
     for n, (did, why) in KNOWN_RED.items():
