@@ -52,6 +52,17 @@ those two remains the only thing that does it.
 
 WHAT STILL WALKS PAST IT, NAMED RATHER THAN IMPLIED
 ---------------------------------------------------
+**A dead reference with no line number to a file that exists nowhere.** The
+prose-mention rule exempts it, because this repo's planning idiom names files a
+plan proposes to CREATE and refusing those blocked real commits. A review
+measured the cost: of 3 576 suppressed findings, **308 carry explicit
+modify/delete/existing language** and are genuinely dead — including a contract
+described as *"frozen"* that does not exist. **That is a MISS, and it is the
+deliberate half of the trade**: the cry-wolf direction blocks work, the miss
+direction does not. An AMBIGUOUS citation is exempted no longer, because the
+create story is false by construction when the path already matches two files.
+
+
 `SOURCE_EXT` is an enumerated list, so an extension nobody added is unchecked —
 the same NV-3 shape this file enforces elsewhere, kept because the alternative
 (any dotted token) reds on version strings and package names. HTML anchors
@@ -180,8 +191,11 @@ CITATION_RE = re.compile(
 # it gives the `<` back, and the lookahead then passes because the next character
 # is `<`. So `[x](<https://example.com/a.md>)` was reported as a dead repo file.
 # Same defect in both link rules — see `_is_external`.
+# The label must be NON-EMPTY. `edge_types[](source/target)` is an array type
+# followed by a parenthetical, and an empty-label link read it as a dead link to
+# `source/target`. CommonMark permits an empty label; this repo never writes one.
 LINK_RE = re.compile(
-    r"\[[^\]]*\]\("
+    r"\[[^\]]+\]\("
     r"(?:<(?P<angled>[^>\s]+)>|(?P<plain>[^)\s]+))"
     r"(?:\s+[\"'\(][^)]*)?"
     r"\)"
@@ -406,7 +420,12 @@ class Tree:
 # An earlier version required `)` immediately after a space-free href, so a
 # titled link's text was still checked while a plain one's was not — the two
 # regexes disagreeing about what a link is.
-LINK_SPAN_RE = re.compile(r"\[[^\]]*\]\(<?[^)\s>]+>?(?:\s+[\"'\(][^)]*)?\)")
+# The target class is `[^)\s]+`, the SAME as `LINK_RE`'s plain arm. It was
+# `[^)\s>]+`, so any `>` in the href split the two regexes and the same citation
+# got opposite verdicts depending on a character in the LINK it sat in:
+# `[`resolve.rs:84`](b.md)` was silent while `[`resolve.rs:84`](dir/L<N>_x.md)`
+# reddened — and `_is_placeholder` had already declared that href a template.
+LINK_SPAN_RE = re.compile(r"\[[^\]]*\]\(<[^>\s]+>|\[[^\]]*\]\([^)\s]+(?:\s+[\"'\(][^)]*)?\)")
 
 
 # An inline code span. `` `[x](nowhere.md)` `` in prose ABOUT markdown is a
@@ -417,6 +436,29 @@ CODE_SPAN_RE = re.compile(r"`[^`]*`")
 
 def _code_span_ranges(line: str) -> list[tuple[int, int]]:
     return [(m.start(), m.end()) for m in CODE_SPAN_RE.finditer(line)]
+
+
+def _ambiguous_ok(tree: "Tree", cited: str, anchored: bool) -> bool:
+    """True when a no-line-number citation must STILL be checked.
+
+    The prose-mention rule is justified by this repo's planning idiom — a row
+    naming a file the plan proposes to CREATE. **That story is false by
+    construction when the path already matches two or more existing files**: a
+    plan cannot propose to create something that exists five times over. A review
+    measured 873 such findings suppressed by the blanket rule.
+
+    So an AMBIGUOUS citation stays checked even without a line number. A MISSING
+    one is still exempt — that is where the create idiom lives, and the residual
+    (a genuinely dead reference to a file nobody created) is a MISS, which is the
+    safe direction for a gate whose cry-wolf mode blocks correct commits. The
+    residual is named in the module docstring rather than left to be discovered.
+    """
+    # **ANCHORED only.** A BARE name in prose — `lib.rs`, `mod.rs` — matches
+    # dozens of files by construction, and mentioning one is not a citation.
+    # Dropping this condition took the corpus from 4 848 findings to 11 377, of
+    # which 6 532 were bare prose mentions: the cry-wolf failure, reintroduced by
+    # the fix for an over-cut. Measured before committing, not after.
+    return anchored and len(tree.resolve(cited)) > 1
 
 
 def _link_text_spans(line: str) -> list[tuple[int, int]]:
@@ -458,7 +500,7 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
             # hid three live broken ranges. So the skip is recorded and applied to
             # the resolution arm only; `C2` still runs below.
             is_link_text = any(a <= m.start() < b for a, b in link_text)
-            if start is None:
+            if start is None and not _ambiguous_ok(tree, cited, anchored):
                 # **A citation with NO LINE NUMBER is a prose mention**, whether
                 # or not it carries a directory. Measured: 3 382 of the 8 095
                 # findings across `docs/` are this shape, and the dominant one is
@@ -724,7 +766,7 @@ def self_test() -> int:
     """Every rule against input that violates it AND input that must not trip it."""
     tree = Tree(["crates/sim-core/src/types.rs", "docs/a/b.md", "docs/a/b.json",
                  "docs/a/c.tsx", "docs/a/d.jsx", ".github/w/gates.yml", "crates/x/resolve.rs",
-                 "crates/y/resolve.rs", "scripts/only_here.py",
+                 "crates/y/resolve.rs", "crates/z/x/resolve.rs", "scripts/only_here.py",
                  # REAL files: the C2 and extension cases need a line count, and
                  # `line_count` reads the filesystem rather than this list -- so a
                  # synthetic path would report 0 lines and red on line 1.
@@ -833,8 +875,20 @@ def self_test() -> int:
         # target IS path-shaped and does NOT resolve, so every other narrowing
         # would let it through. The previous case was double-guarded and stayed
         # green with the anchor deleted -- a vacuous case replacing a vacuous case.
-        ("an indented table row with a dead path-shaped target is still not a link",
-         "  | [ref]: crates/nope/gone.rs | x |", 0),
+        # A case only the `^` anchor can satisfy. The previous attempt
+        # (`  | [ref]: … | x |`) matched NEITHER regex with or without the
+        # anchor -- the trailing `\s*$` refused it -- so it was a vacuous case
+        # replacing a vacuous case, twice over. This one has the definition
+        # shape and nothing before it except prose, so ONLY the anchor refuses it.
+        ("a definition-shaped fragment mid-sentence is not a link definition",
+         "see this: [ref]: crates/nope/gone.rs", 0),
+        # F9 — the ambiguity restoration is ANCHORED-only. A bare name in prose
+        # matches dozens of files by construction; dropping this condition took
+        # the corpus from 4 848 to 11 377 findings, 6 532 of them prose mentions.
+        ("an ANCHORED ambiguous path with no line number is still checked",
+         "see x/resolve.rs", 1),
+        ("a BARE ambiguous name with no line number stays a prose mention",
+         "resolve.rs is the fold", 0),
         # F4 — an angle-bracketed URL was reported as a dead repo file, in BOTH
         # link rules, because the scheme lookahead backtracked past the `<`.
         ("an angle-bracketed URL definition is external", "[ref]: <https://example.com/x.md>", 0),
@@ -843,7 +897,18 @@ def self_test() -> int:
         ("a file:// link is external", "[x](file:///c:/tmp/x.md)", 0),
         ("a tel: link is external", "[x](tel:+123)", 0),
         ("a template placeholder is not a link to check", "[L<N>_x.md](dir/L<N>_x.md)", 0),
+        # F15 — an EMPTY link label made an array type read as a dead link.
+        ("an array type followed by a parenthetical is not a link",
+         "edge_types[](source/target) is the shape", 0),
         # F1 — the two classes that produced the entire cry-wolf surface.
+        # F8 — the titled-link form of `LINK_SPAN_RE` had NO case, though the
+        # behaviour genuinely differs: under the untitled-only regex this reds.
+        ("a citation in the text of a TITLED link resolves through its href too",
+         "[`resolve.rs:84`](b.md 'title')", 0),
+        # F8 — the `is_link_text` guard on the AMBIGUOUS arm had no case; only
+        # the not-matches arm did. `resolve.rs` matches two files in the fixture.
+        ("an ambiguous citation in link text is not reported either",
+         "[`resolve.rs:84`](b.md)", 0),
         ("a citation that is a link's TEXT resolves through its href",
          "[`coverage.py:67+`](b.md)", 0),
         ("...but a bare unanchored citation outside a link still reds",

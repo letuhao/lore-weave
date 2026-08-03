@@ -1,7 +1,7 @@
 # Actor Hub — feature #1
 
 **Round:** 2026-08-02 · **Status:** design sealed · **feature #1 BUILT** — [`crates/actor-hub`](../../../crates/actor-hub)
-**Run state:** [`../../plans/2026-08-02-actor-substrate-RUN-STATE.md`](../../plans/2026-08-02-actor-substrate-RUN-STATE.md) — `D-1`..`D-362`
+**Run state:** [`../../plans/2026-08-02-actor-substrate-RUN-STATE.md`](../../plans/2026-08-02-actor-substrate-RUN-STATE.md) — `D-1`..`D-370`
 
 > **Actor hub is feature #1 of roughly a thousand, across dozens of categories.**
 > **Features are PLUGINS. The actor is the HUB.** The hub's job is to make adding feature #2 cheap —
@@ -28,7 +28,7 @@ binds anyone.**
 | file | what it is worth reusing for |
 |---|---|
 | [`analysis/2026-08-02-actor-dataflow.md`](analysis/2026-08-02-actor-dataflow.md) | **the derivation record** — how every decision was reached, which claims were retracted and why, 23 diagrams, and the drift log of 22 recorded mistakes. **Read it to understand HOW, never to know WHAT** |
-| [`analysis/2026-08-02-actor-data-structure.md`](analysis/2026-08-02-actor-data-structure.md) | the earliest decision record (`D-1`..`D-362` era) plus the first red-team round. **Predates the plugin frame entirely** |
+| [`analysis/2026-08-02-actor-data-structure.md`](analysis/2026-08-02-actor-data-structure.md) | the earliest decision record (`D-1`..`D-370` era) plus the first red-team round. **Predates the plugin frame entirely** |
 | [`analysis/2026-08-02-value-model-analysis.md`](analysis/2026-08-02-value-model-analysis.md) | **for any feature that needs a NUMBER that spans orders of magnitude** — power creep as a domain error rather than a width error, the log domain and its measured limits, permille pools, a unified ceiling model, band deltas, and the industry precedent for numeric squishes. **Cut from the contract because it serves features that do not exist; kept because it will be needed the day one does** |
 | [`analysis/2026-08-02-feature-notes.md`](analysis/2026-08-02-feature-notes.md) | **for combat, progression and ownership** — measured findings about shipped code with the reasoning attached: a damage floor that lets attrition beat scale, a validator that states a genre claim as a law, a currency requirement no existing representation meets. **These were once written as PROPOSALS, which was a scope violation. They are notes** |
 
