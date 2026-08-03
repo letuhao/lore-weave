@@ -453,12 +453,25 @@ def _ambiguous_ok(tree: "Tree", cited: str, anchored: bool) -> bool:
     safe direction for a gate whose cry-wolf mode blocks correct commits. The
     residual is named in the module docstring rather than left to be discovered.
     """
-    # **ANCHORED only.** A BARE name in prose — `lib.rs`, `mod.rs` — matches
-    # dozens of files by construction, and mentioning one is not a citation.
-    # Dropping this condition took the corpus from 4 848 findings to 11 377, of
-    # which 6 532 were bare prose mentions: the cry-wolf failure, reintroduced by
-    # the fix for an over-cut. Measured before committing, not after.
-    return anchored and len(tree.resolve(cited)) > 1
+    # **REVERTED, and the measurement is why.** This rule was added because a
+    # review pointed out that "a plan proposes to CREATE it" is false by
+    # construction for a path matching several existing files. That reasoning is
+    # correct and the CLASS it re-armed is not what it predicted.
+    #
+    # Measured over `docs/`: 873 findings, and the top twenty cited paths are
+    # `app/main.py` (63), `mcp/server.py` (63), `app/db/migrate.py` (61),
+    # `internal/api/server.go` (48)... **per-service paths in a 47-service
+    # monorepo, used as context-elided shorthand** — "already mounted at
+    # `app/main.py:228`" in a paragraph that has already named the service. The
+    # finding's own text, *"a reader cannot resolve it either"*, is false for
+    # every one: the enclosing paragraph resolves it. And it blocked a real
+    # commit on one added line of ordinary prose.
+    #
+    # ⇒ a no-line-number citation is a prose mention, **ambiguous or not**. The
+    # residual — a genuinely dead reference with no line number — is named in the
+    # module docstring. **A rule whose justification is sound and whose measured
+    # class contradicts it is still wrong; the measurement wins.**
+    return False
 
 
 def _link_text_spans(line: str) -> list[tuple[int, int]]:
@@ -885,10 +898,15 @@ def self_test() -> int:
         # F9 — the ambiguity restoration is ANCHORED-only. A bare name in prose
         # matches dozens of files by construction; dropping this condition took
         # the corpus from 4 848 to 11 377 findings, 6 532 of them prose mentions.
-        ("an ANCHORED ambiguous path with no line number is still checked",
-         "see x/resolve.rs", 1),
-        ("a BARE ambiguous name with no line number stays a prose mention",
+        # Both directions of the reverted ambiguity rule: NEITHER form is a
+        # citation without a line number. `x/resolve.rs` is the shape that
+        # blocked a commit as per-service shorthand.
+        ("an anchored ambiguous path with no line number is a prose mention",
+         "see x/resolve.rs", 0),
+        ("a bare ambiguous name with no line number is a prose mention",
          "resolve.rs is the fold", 0),
+        ("...but WITH a line number an ambiguous path is still refused",
+         "see x/resolve.rs:3", 1),
         # F4 — an angle-bracketed URL was reported as a dead repo file, in BOTH
         # link rules, because the scheme lookahead backtracked past the `<`.
         ("an angle-bracketed URL definition is external", "[ref]: <https://example.com/x.md>", 0),

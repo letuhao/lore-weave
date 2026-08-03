@@ -13,7 +13,7 @@
 > `feat/frontend-tools-mcp-migration` and is left untouched.
 
 **The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
-per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-374` decision record
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-381` decision record
 live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
 the two design contracts that are its only specification are in
 [`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).
@@ -38,9 +38,12 @@ wires all green, including the two added this round.
 > consecutive commits (`D-343`, `D-350`, `D-351`), each time because a fix pass moved the number to what
 > it had been rather than reading what it was.
 
-**Reviewed by seven cold-start adversarial agents across six rounds — 93 findings, every one fixed or
-answered.** **Rounds 2 through 6 ALL returned REFUTED, and every one found its worst defect in the PREVIOUS
-round's fixes** — never in the fold, which survived every mutation aimed at it. Round 3: a `CAPPED`
+**Reviewed by cold-start adversarial agents, one round per fix pass — every finding fixed or answered.**
+**The per-round tallies are the source and live in [§6e..§6r of the RUN-STATE](../plans/2026-08-02-actor-substrate-RUN-STATE.md);
+no aggregate is repeated here.** An aggregate is not mechanically derivable, so it goes stale every time a
+round lands — which it did **seven times** in this run, twice inside blocks a checker was governing.
+**A number you cannot derive is a number you should not assert.** **Every round after the first has returned REFUTED, and every one found its worst defect in the
+PREVIOUS round's fixes** — never in the fold, which survived every mutation aimed at it. Round 3: a `CAPPED`
 record reporting a value the fold never emitted. Round 4: round 3's gate repairs blocking commits on
 correct content. Round 5: ten of those false positives *relabelled* rather than removed. Round 6: the round-5 cut
 aimed at the wrong class, and a stale-number remedy declared *"mechanised"* by a script that did not

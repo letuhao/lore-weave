@@ -120,6 +120,19 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # trade doc-language-gate makes and for the same measured reason.
 "$PY" "$ROOT/scripts/citation-gate.py" --staged
 
+# A SELF-TEST NOBODY RUNS IS NOT A SELF-TEST. The ~60 non-vacuity cases across the
+# three game-tier gates are the artefact this round cites as proof that "every
+# rule bites" -- and a review found NONE of them ran automatically: the hook runs
+# each gate's normal mode, and `gate-wiring-gate --run-all` invokes gates with no
+# arguments. Deleting a case, or one silently starting to fail, reddened nothing.
+#
+# Conditional on the gate itself being staged, which is when a case can rot.
+if git diff --cached --name-only | grep -qE 'scripts/(citation-gate|hashed-substrate-float-gate|actor-hub-figures-gate)\.py'; then
+  "$PY" "$ROOT/scripts/citation-gate.py" --self-test
+  "$PY" "$ROOT/scripts/hashed-substrate-float-gate.py" --self-test
+  "$PY" "$ROOT/scripts/actor-hub-figures-gate.py" --self-test
+fi
+
 # NEVER TYPE A NUMBER YOU DID NOT JUST MEASURE. The actor-hub handoff carried a
 # stale figure in FOUR consecutive commits, each time inside the commit that
 # recorded the previous recurrence -- and the row declaring the remedy ("every
