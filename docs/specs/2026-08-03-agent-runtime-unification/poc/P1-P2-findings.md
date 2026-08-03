@@ -240,6 +240,109 @@ computed under opposite `lazy_bodies` assumptions. The audit found the *mechanis
 
 ---
 
+## P6 — A live capture: every finding in this spec, in one three-call trace
+
+Driven through the real frontend, 2026-08-04, session `019fc893-096d-7193-abd8-7a0b23e81702`, plain
+`/chat` (no book binding), Gemma-4 26B-A4B. One Vietnamese request: *"list my books, tell me which has
+the most chapters, and summarise its first chapter."*
+
+```
+1. tool_list(category="book")   ok   -> 35 bare names, alphabetical, no descriptions
+2. tool_list(category="book")   ok   -> (repeat; empty)
+3. book_list_chapters           FAIL -> "book_id must be a UUID"
+   … ends `interrupted` after 5 calls
+```
+
+### What `tool_list` actually handed the model
+
+35 names, alphabetically ordered, **no descriptions**. Checked against the live catalog:
+
+- **19 of the 35 are `visibility:"legacy"` — 54% of the payload is retired tools.**
+- **Not one of the 19 declares `superseded_by`.** Even a model that recognised them as retired could
+  not find the replacement.
+- The correct tool, `book_list`, sits at **position 18**. The tool the model chose,
+  `book_list_chapters`, sits at **position 19 — adjacent** — and is itself one of the retired 19.
+
+The model was asked to *list books*, was handed an alphabetical wall in which *list books* and *list
+chapters* are neighbours, and took the wrong neighbour.
+
+### The causal link the PO supplied: the chat surface cannot resolve a book id at all
+
+Verified in code:
+
+- `_ALWAYS_HOT_ON_BOOK_BOUND_SURFACE` is applied only `if book_scoped or editor or studio`
+  (`tool_discovery.py:413-414`), so a plain `/chat` turn hot-seeds **no `book` domain whatsoever**.
+- `context_ids["book_id"]` is read from `session_row["book_id"]` (`stream_service.py:5143`), which is
+  **NULL** off the studio. So `_inject_context_ids` — the deterministic repair built precisely for
+  "the model cannot transcribe a UUID" — **has nothing to inject on this surface.**
+
+**This is a surface-capability gap, not a tool bug.** On `/chat` the model must both *discover* the
+book tools and *resolve* an id with no server assistance, and discovery answers with 54% retired names
+and no descriptions.
+
+### Every requirement, visible at once
+
+| observed | finding it confirms |
+|---|---|
+| 35 names, no descriptions, alphabetical | R14.1 bounded results · R14.2 hierarchy — the flat dump is unusable at 35, let alone at scale |
+| 19/35 retired, 0 with `superseded_by` | R9 — `legacy` is a runtime filter with no policy and no clock. And `include_deprecated` defaulted **true**, the live confirmation of `AUDIT.md`/audits-01 §5.1 |
+| picked the retired neighbour of the right tool | P1 — naming carries no semantics, so adjacency decides |
+| `tool_list` called twice, second empty | P2 — the discovery tool is the top loop source |
+| *"book_id must be a UUID"* with no path to one | R10.2 — an error that names the constraint but not the remedy |
+| `/chat` has no book binding and no book hot-seed | **new: a surface may advertise an intent it cannot fulfil** |
+| ends `interrupted` after 5 calls | R11 — the turn never terminates on its own |
+
+### The requirement this adds
+
+**R15 — a surface must be able to complete what it advertises.** If a surface exposes a domain's
+tools (or the prompt invites requests about that domain), it must also expose the path to the
+identifiers those tools require — either a hot-seeded resolver tool or a server-side binding. Today
+`/chat` has neither for `book`, and the failure is silent: nothing reports that the surface cannot
+satisfy the request it accepted.
+
+This is the same shape as R4's `excluded_by`, one level up: **not "why can't I see this tool" but "why
+can't this surface do this at all"** — and it should be answerable by the same mechanism.
+
+### R16 — one deterministic loop detector, in the stream, that TERMINATES
+
+The PO's reading of the same trace, and the evidence supports it exactly: **the anti-loop machinery
+died here.** The turn ended `finish_reason: interrupted` after 5 calls — **not `stop`**. Nothing
+concluded the turn; it was cut off. The breakers fired (`tool_list` repeat), emitted prose, were
+ignored, and the run was killed from outside rather than terminated from inside.
+
+That is rot, and it has a precise shape:
+
+1. **Not centralised.** There are **14 function-local counters** inside a 7,818-line function
+   (`stream_service.py:1863-1957`) — `blank_tool_args_streak`, `read_call_results`,
+   `noop_write_counts`, `fail_by_tool_error`, `failure_suppress`, `listed_categories`,
+   `rail_nudge_counts`, `reasoning_loop_interventions`, and more. Each was added for one incident.
+   None can see the others. All reset on a confirm suspend/resume (audits-03).
+2. **No deterministic duplicate detection over the stream.** Detection is per-mechanism and
+   *ad hoc*: identical-args hashing here, error-signature keying there, a category counter elsewhere.
+   Nothing computes *"this turn is repeating itself"* as one fact over the whole assembled context.
+3. **It argues instead of withholding** (P2), so its output re-enters the context it is trying to
+   break out of — the contamination mechanism, self-inflicted.
+4. **It does not terminate.** A loop detector whose success condition is *"someone kills the run"*
+   has no success condition. `interrupted` is the tell.
+
+**The requirement:** exactly one loop detector, deterministic, computed over the streaming turn state,
+with a defined terminal outcome:
+
+- **one owner** — the detector is a single component, not a counter in a closure; every existing
+  breaker either becomes an input to it or is deleted (P2's Q10);
+- **deterministic** — a content-addressed signature over emitted calls *and* assembled context, so
+  "we have been here before" is a computed fact, not a heuristic per subsystem;
+- **survives suspend/resume** — it is turn state, not stack state, so a confirm gate does not reset it
+  (today all 14 counters do);
+- **withholds, not argues** — its action is `excluded_by` (R4/R5), never a tool result;
+- **terminates** — on detection the turn ends with an honest `finish_reason` and a user-visible
+  reason, never `interrupted`. *A loop breaker that cannot end the turn is not a breaker.*
+
+This is the deterministic core the 14 heuristics were each approximating, and it is what R11's retry
+budget attaches to.
+
+---
+
 ## 3 · What P1 and P2 settle, and what they do not
 
 | DESIGN question | settled by | answer |
