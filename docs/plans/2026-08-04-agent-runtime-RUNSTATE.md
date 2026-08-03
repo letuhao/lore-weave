@@ -170,10 +170,17 @@ Scale ladder, and it sets which verifiers must sign:
 | **β** one layer coherent | it works end-to-end, live | ✅ | ✅ | — |
 | **γ** an architecture claim is testable | the number is trustworthy | ✅ | ✅ | ✅ |
 
-### L0 · INSTRUMENT — `CP-0` **(γ) · BLOCKS EVERYTHING**
+### L0 · INSTRUMENT — `CP-0` **(γ) · BLOCKS EVERYTHING** · 🟡 **OPEN 2026-08-04**
 
 Nothing below is observable without it. **A brick laid before its instrument is a brick nobody can see
 fall.**
+
+**Verifier prompts, committed at opening — before any CP-0 code existed** (protocol clause 3; the
+commit precedes the build commits in `git log`, which is the check):
+[`V-CODE`](../specs/2026-08-03-agent-runtime-unification/verification/CP-0-V-CODE-PROMPT.md) ·
+[`V-LIVE`](../specs/2026-08-03-agent-runtime-unification/verification/CP-0-V-LIVE-PROMPT.md) ·
+[`V-METRIC`](../specs/2026-08-03-agent-runtime-unification/verification/CP-0-V-METRIC-PROMPT.md) ·
+[the rules they run under](../specs/2026-08-03-agent-runtime-unification/verification/README.md)
 
 | # | item | state |
 |---|---|---|
@@ -281,11 +288,13 @@ cleared. Seven defects in the design itself were found and fixed **before any co
 including one (`binding-invalid` re-running a non-idempotent producer) that was a recipe for duplicate
 data.
 
-**Build: not started. `CP-0` is the gate and nothing may precede it.**
+**Build: `CP-0` opened 2026-08-04.** Its three verifier prompts are committed and nothing else is —
+the build starts from a position where the checks that can fail it already exist and cannot be
+retrofitted to whatever gets built.
 
 | checkpoint | scale | state |
 |---|---|---|
-| **CP-0** instrument + frozen baseline | γ | ⬜ **NEXT — blocks all** |
+| **CP-0** instrument + frozen baseline | γ | 🟡 **OPEN** — [prompts committed](../specs/2026-08-03-agent-runtime-unification/verification/), items 0.1–0.7 building |
 | CP-1 membrane, empty | β | ⬜ |
 | CP-2 runtime | β | ⬜ |
 | CP-3 plan | γ | ⬜ |
