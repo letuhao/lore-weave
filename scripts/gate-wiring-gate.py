@@ -416,8 +416,21 @@ def run_all() -> int:
     if failures:
         print(f"\ngate-wiring-gate: {len(failures)} gate(s) FAILED and are not tracked:\n")
         for n, out in failures:
-            head = next((l for l in out.splitlines() if l.strip()), "")
+            # The FIRST non-empty line is usually the gate's BANNER, not its finding — every
+            # gate here opens by saying what it scanned. Printing only that told CI readers
+            # "design-lint: scanned 385 .md files under …" and nothing about WHY it was red,
+            # which cost a full CI round-trip per diagnosis (the real answer was one broken
+            # link, on line 5475 of a file the banner never mentions). Print a bounded TAIL as
+            # well: a gate's verdict is at the end, and lines that mention a path or a finding
+            # keyword are the ones a reader can act on.
+            lines = [l.rstrip() for l in out.splitlines() if l.strip()]
+            head = lines[0] if lines else ""
             print(f"  {n}: {head[:110]}")
+            keyed = [l for l in lines[1:] if any(
+                k in l.lower() for k in ("finding", "error", "fail", "missing", "does not exist",
+                                         "broken", "unregistered", "drift", ".md:", ".py:", ".go:"))]
+            for l in (keyed or lines[1:])[-6:]:
+                print(f"      {l.strip()[:160]}")
         print("\nFix it, or add a KNOWN_RED row naming a tracked deferral. A gate that "
               "is red and unacknowledged is how a whole suite becomes background noise.")
         rc = 1

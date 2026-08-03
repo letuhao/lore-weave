@@ -5472,7 +5472,11 @@ world zone).
 
 ### What got reviewed
 
-Read [`lore-weave-game/docs/plans/2026-05-23-flatworld-region-tree-data-architecture.md`](../../../../lore-weave-game/docs/plans/2026-05-23-flatworld-region-tree-data-architecture.md)
+Read `docs/plans/2026-05-23-flatworld-region-tree-data-architecture.md` **in the separate
+`lore-weave-game` repository** (not a link: it was written as `../../../../lore-weave-game/…`,
+which resolves only on a machine that happens to have that repo checked out as a sibling — it
+did on the author's, so the relative link looked fine for weeks and was broken for everyone
+else and for CI)
 in full. PO answered six load-bearing alignment questions:
 
 1. **Repo relationship:** world map (game menu, strategy layer) + tilemap
