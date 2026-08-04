@@ -13,7 +13,7 @@
 > | `U-9` · `U-10` | `scripts/hashed-substrate-float-gate.py` · `scripts/citation-gate.py`, both wired pre-commit, both with a passing `--self-test` |
 >
 > **Evidence, every number re-derived at the moment of writing** — because the previous two versions of
-> this block were stale by the commit that contained them (`D-343`, `D-350`): **301 Rust tests** green
+> this block were stale by the commit that contained them (`D-343`, `D-350`): **302 Rust tests** green
 > across the touched crates · `dp-kernel --lib` **315**, unchanged by the `GoneState` move · the Go mirror
 > `contracts/entity_status` **ok** · clippy and `cargo doc` counts deliberately not stated, because
 > nothing here measures them and a figure with no measurement rule goes stale by construction — a
@@ -1039,6 +1039,75 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 | **D-445** `[E]` | **🔴 And the survivor that took longest was a DUPLICATED RULE.** `run_rust` carried **two** `if baseline is not None:` blocks — the funnel added this round, and the injection block it was meant to replace — so the second re-evaluated and masked every mutation of the first. The same class as `D-413`'s duplicated fence logic, two rounds on. ⇒ one block. Then the remaining survivor was the same shape one level deeper: `baseline` injected the VERDICT, so the line reading the probe's return code was reachable only by seeding a red crate suite. ⇒ `baseline` injects the PROBE; one extraction, one path. |
 | **D-446** `[META]` | **A witness table is DATA wherever it is defined.** `_outside_tables` walked `tree.body` only, so the parity table — a local — counted as code and every anchor it names counted twice. ⇒ `ast.walk`, and `parity` joins the `*MUTATIONS` names. |
 
+### 6ag. ROUND 19 ADDENDUM — the fix for an enumeration was exponential, and every check still said GREEN (2026-08-04)
+
+Not a verifier finding. Found by the **wall clock**: the post-fix sweep of round
+19 was still on its first table after 53 minutes, which was the only symptom the
+apparatus ever produced.
+
+`D-496` removed the `{0,3}` word bound from the bolded-figure shape because the
+bound was an enumeration. That was the right call and the replacement was
+catastrophic: three star-quantified space runs inside one repeated group, so a
+run of words can be split many ways and **every split is re-explored when the
+closing `**` never arrives**.
+
+| # | Decision |
+|---|---|
+| **D-502** `[E]` | **🔴 The bolded-figure shape was EXPONENTIAL, and it read GREEN on every arm this apparatus owns.** Measured on an unpaired `**`: n=10 **0.001s**, n=20 **0.89s**. On the four real governed blocks: **0.00s → 6.64s**, taking the gate's whole `--self-test` from seconds to **189.5s**. rc stayed 0, all sixteen shape cases still passed, `--check` still agreed with the artifacts. **Only the wall clock moved.** ⇒ the repair is ONE token: the separator between two words is **mandatory**, because an optional one lets `ab` be re-parsed as `a`+`b` and that ambiguity is the whole defect. Measured after: **0.9ms** on a 5 000-word probe, the worst governed block **7.272s → 0.00003s**, the finding set **identical on 4/4 blocks** and the same **94** figures across the whole run-state document. |
+| **D-503** `[E]` | **THREE repairs that LOOK unambiguous were written, believed, and measured wrong.** An alternation separator — still exponential (n=20, **0.89s**, no better than the defect), because a greedy `[ \t]+` still gives its characters back. One disjoint character class per separator — still exponential (n=24, **4.72s**), the empty-separator re-parse. A two-phase span/body split — linear, but its span half was **redundant**, which is `D-505`. **A regex being readable is not a proof that it is linear**, and reading it four times produced four wrong answers. Only the growth curve ever settled it. |
+| **D-504** `[E]` | **The class: this apparatus can see a HANG and cannot see a SLOWDOWN.** Its one timing alarm is the harness's `SLOW` marker, which fires when a child exceeds the 300s child bound. **189.5s is not 300s**, so a 60× regression sat below every alarm for a full round while reporting full coverage. ⇒ a **budget** is what separates slow from hung, and the gate now carries two probes with one. The 24 is not a round number: it is read off the MEASURED growth of the mutation the case exists to catch — ~4× per two words, so 24 costs the mutant **~4s** against a 0.5s budget, while 28 costs it a minute and 40 **hangs** the child. A probe that is too strong is as useless here as one too weak, because a hang is not a failing case. |
+| **D-505** `[E]` | **🔴 The bite test refused to certify the fix's own mechanism, and it was right.** Two of the five bolded-figure rows survived. *The span half:* the mutation restoring the old regex made the child exceed 300s, so the verdict was **SLOW, not FAIL** — `D-478` declining to accept a hang as a bite, applied to my own new work an hour after I wrote the row. Measuring instead of arguing showed the half bought **nothing**: with a mandatory separator one regex is already linear (**0.9ms** at 5 000 words; the identical 94 figures), so the piece is REMOVED rather than cased — a component no case can honestly guard should not exist. *The bound:* `{0,3}` on the new shape permits **four** words, and the existing four-word cases matched it, so the anti-enumeration row went GREEN. ⇒ a **twelve-word** case: a case has to outrun the numbers a mutation would plausibly pick, not just the last one that was tried. |
+
+**Drift.** `DRB-15` — the exponential form was shipped in round 19 and passed
+every gate, every case and the pre-commit hook; what caught it was noticing that
+a background job was slow. Had the sweep been left to run unattended it would
+have finished, GREEN, in some number of hours, and the regression would have
+been recorded as a successful verification round. `DRB-16` — the repair for
+`D-502` shipped with a comment asserting *"linearity needs BOTH halves, and
+neither half is sufficient alone."* That sentence was written in the same hour as
+the finding it belongs to, was never measured, and was **false**; the bite test
+found it within the hour. Four consecutive readings of a regex produced four
+wrong answers about its complexity, and every correct answer in this section
+came from a growth curve.
+
+**And the rule caught its own author, in the sentence describing it.** Writing
+the handoff narrative for this finding, I put `**189.5s**` inside the governed
+handoff block — a bolded figure no rule reads, in a block that claims every
+figure in it is checked. `O-R15-4`'s detector reported it on the next run. The
+remedy is the one its comment already prescribes: unbold it. A measurement
+quoted in prose is not a governed figure, and the difference is exactly the
+bold.
+
+### 6af. ROUND 19 — two decisions in one commit, the second feeding the first what it rejects (2026-08-04)
+
+Round 18 wrote `D-478` (*a bite is a FAILING CASE, because a mutant that cannot
+execute proves nothing*) and `D-489` (*a self-test that dies prints a `FAIL`
+line*) **in the same commit**. The second hands the first exactly the input it
+was written to reject. **NV shape #3 — an adjacent decision defeats it** — which
+the standard names as the hardest, and both halves were mine, one screen apart.
+
+| # | Decision |
+|---|---|
+| **D-492** `[E]` | **🔴 `B1`. `120/120` was 118 verdicts and two artifacts, by `D-470`'s own arithmetic, in the commit that fixed `D-470`.** The crash wrapper printed the word `FAIL`, which is precisely the token the harness counts as a case disagreeing — so a child that DIED read as a rule that BIT again. ⇒ **`CRASH` is not `FAIL`**: the gate still exits non-zero, so a human and the driver both see red, and only the harness's *"did a case disagree"* question gets the honest answer. Cased with a child that reaches cases, passes them, and is then caught crashing. |
+| **D-493** `[E]` | **...and the two rules that had been standing on that artifact DID have cases — the cases just crashed.** `guard`, `check_block`, `check_doc` and the missing-end-marker case all called into the rule and let the exception escape, so for eighteen rounds a traceback stood in for a disagreement. ⇒ **an exception inside a case is a failure OF THAT CASE**: attributed, named, and the run continues — the same argument the harness already makes about a timeout being a finding about one mutation rather than the end of the sweep. Both rules now red by disagreement. |
+| **D-494** `[E]` | **🔴 `B2`. The label rule examines 11 of 140 rows, and the defect it was built for is not one of them** — because round 18's remedy was to RENAME the label, which deleted the dot the rule keys on and moved BOTH rows out of scope. **The fix removed its own subject.** Widening the token shape was measured and rejected: keying on *declared identifiers* cry-wolfs on `guard`, `scan`, `first`, `line`; keying on capitals reaches five rows and still reports `TOTAL`. ⇒ a **derived sibling rule** instead: if two rows in one file have anchors differing by exactly one CAPITALISED token, each label must name its own. That is `D-476`'s exact shape. Measured before wiring: 2 sibling pairs shipped, 0 findings, and the verifier's swap-the-anchors probe reports **both** halves. Lower-case differences are excluded because requiring them produced three findings on three correct rows. |
+| **D-495** `[E]` | **`B2`'s sub-defect: the label rule used a raw `text.find` in the file that mutates itself** — landing on the TABLE ROW naming a rule instead of the rule, so the "enclosing definition" spanned the whole table and the one file the rule cannot police was the one it lives in. `_find_one` exists for exactly this. |
+| **D-496** `[E]` | **`M3`. The word bound was itself an enumeration, and it lasted ONE round.** A planted `**999 Rust integration tests pass**` — four words — sat in the governed block with the gate silent and rc 0: `D-479`'s shape one word further along. ⇒ unbounded, measured to add **zero** findings on all four shipped blocks. A bolded SENTENCE is still excluded by SHAPE rather than by counting — any punctuation after the digits ends the run, cased both ways. |
+| **D-497** `[E]` | **`m4`. A byte-identical row shipped TWICE**, so `120` counted 120 rules where there were 119, and `--only` matched both — against a governed block that says *"one mutation per PRODUCTION RULE"*. ⇒ deduped, and the property is checked, with a planted duplicate proving the check can see one. |
+| **D-498** `[E]` | **`m5`. The FLOOR-WINS degradation is documented at length and enforced by that paragraph alone.** Ceiling-wins survived all 301 tests. `ContributionBound`'s fields are `pub` and `amount_reported` is `pub`, so the path is reachable from the surface this crate's own SDK argument calls the plugin API. |
+| **D-499** `[E]` | **Two canary mechanisms, one bug, twice — so the mechanism is now shared rather than re-derived.** `canary_verdict` gained an `expect` count and the sibling rule uses it; re-deriving it had produced the identical *unreachable second clause* defect in two consecutive commits. Six inputs drive it, including the pair form, so `expect` has a subject at something other than its default. |
+
+| **D-500** `[E]` | **🔴 The CRASH/FAIL split turned FIVE MORE rules into honest survivors, all the same shape: a case that calls its own subject and lets the exception escape.** For nineteen rounds the escaping exception WAS the evidence, because a non-zero exit read as a bite; the moment that stopped, every such case became a survivor at once. `measure()` — whose entire design is that an unobtainable figure is an `Unmeasurable`, never a crash — was the stand-in for the cargo-absent guard; the harness's own timeout case let `TimeoutExpired` escape the call it was written to prove catches it. ⇒ **a case owns the exception its subject raises**, named and attributed, and the run continues. |
+| **D-501** `[E]` | **And the last two were the canary lesson, on the third and fourth rule beside it.** The duplicate-row check could be deleted because the table is clean, and the label rule's `_find_one` could revert to a raw `find` because no case had an anchor placed where the two differ. ⇒ a canary in the duplicate set; and a probe whose anchor lives ONLY in a table and whose label names a token that lives ONLY in the table region — the single placement where table-aware and raw searching give opposite answers. **Its first version was itself a second occurrence of its own anchor**, so it passed for the wrong reason; the literal is split now. |
+
+**Drift.** `DRB-13` — repairing the bolded-figure comment, I spliced on an index
+from a `find` that returned **-1**, which duplicated 1 959 lines onto the end of
+the gate. The self-test stayed green, because the duplicate re-defined every
+symbol identically. Caught by a mutation row reporting its anchor twice — not by
+reading, and not by the suite. `DRB-14` — three fixes in this round were written,
+believed, and only then measured; two of them (the sibling canary, the widened
+token shape) were wrong on first measurement.
+
 ### 6ae. ROUND 18 — the class fix, after four rounds of writing better rows (2026-08-04)
 
 Four rounds running, the blocking finding was **a row asserting coverage of
@@ -1055,7 +1124,7 @@ stops writing rows and starts reading them.
 | **D-477** `[E]` | **🔴 THE CLASS FIX: a row's LABEL must name what its ANCHOR touches, checked mechanically.** A code-shaped token in a label — one carrying `_`, an interior capital, or a `.`/`::` — must be reachable from the anchor. A **dotted** token names a member, so both halves must meet on ONE line of the anchor; a **plain** token names the subject, so it may appear in the anchor or in the enclosing definition. **Measured over all 132 shipped rows before it was wired: one finding, and it was `D-476`. Zero false positives.** An English word carries none of those shapes, so the rule cannot fire on prose; a FILENAME is excluded, because `_index.md` looks dotted and is not a member — and reporting it would have been the cry-wolf direction on a correct row. |
 | **D-478** `[E]` | **🔴 `B2`. `D-470` fixed one row and left its sibling in the same table — and the sibling is the counter-example to its own guard.** *"The `_index.md` scope row deleted"* still mangles a two-line tuple: the child reaches **62** cases, raises `TypeError`, prints **ZERO** `FAIL` lines, and is reported RED. `D-470`'s guard asks *did the child reach A case*; reaching is not answering. ⇒ **a bite is a FAILING CASE**, and the Rust twin asks whether the **NAMED TEST** failed rather than whether the process exited non-zero. Both directions cased, including the exact shape that defeated the first version: a child that reaches cases, passes them all, then raises. |
 | **D-479** `[E]` | **🔴 `B3`. A stale, live, derivable figure inside a governed block — the class the whole gate exists for.** *"(172 lines) and … (142)"* were true at `d3bb441da` and are **202**/**157** at HEAD; they sat **34 lines below** a copy of the same two numbers that IS governed and IS correct, and survived two commits and two review rounds. A third shape — unbolded, parenthesised — that neither `CLAIMS` nor the bolded-figure detector reached. ⇒ rewritten into the shape the rule already reads, so the copy is **governed** rather than merely corrected. |
-| **D-480** `[E]` | **`M4`. The bolded-figure detector admitted ONE word.** `**315 passed**` matched; `**301 Rust tests**` did not — a governed figure sitting in a governed block, invisible on **both** arms, because a key that is never matched is neither compared nor reported as surplus. ⇒ `{0,3}` words, and the header block's rust-test phrasing gets a `CLAIMS` row and joins its `must_claim` set. `D-460`'s lesson — *"a checker's scope is a claim, and so is the SHAPE it recognises inside that scope"* — one word further along. |
+| **D-480** `[E]` | **`M4`. The bolded-figure detector admitted ONE word.** `**315 passed**` matched; `**302 Rust tests**` did not — a governed figure sitting in a governed block, invisible on **both** arms, because a key that is never matched is neither compared nor reported as surplus. ⇒ `{0,3}` words, and the header block's rust-test phrasing gets a `CLAIMS` row and joins its `must_claim` set. `D-460`'s lesson — *"a checker's scope is a claim, and so is the SHAPE it recognises inside that scope"* — one word further along. |
 | **D-481** `[E]` | **`M1`. `D-474`'s three rejected shapes rejected one of them for the wrong reason.** *"An `:end` with no block name"* was written `<!-- actor-hub-figures:end -->`, which fails on the missing SPACE, not the missing name — so the `+` quantifier the row is about stayed unpinned, and so did the `$` anchor. Both were survivors. ⇒ an EMPTY name (`:end  -->`) and a trailing tail. **A rule tested only through data it happens to have is a rule with half a test** — `D-474`'s own sentence, applied to `D-474`. |
 | **D-482** `[E]` | **`M2`. The compile-failure guard has two literals and only one had a subject.** Dropping `"could not compile"` was green; dropping `"error[E"` reds. And the uncased half is the only one that catches a mutant that fails to **PARSE** — which is `D-470`'s entire subject, on the Rust twin. Third occurrence of *"two literal forms and only one cased"*. |
 | **D-483** `[E]` | **`M3`, disclosed rather than papered over.** `D-471` carried BOTH halves of the prefix state into the tail. The comment half **cannot vary on any conforming document**: `_unsentinelled` requires every scope to end on a line ending ` -->`, and `_scan_line` closes an open comment on any line containing `-->`. Measured: 0 of 11 prefix shapes. **Two individually-correct decisions, the first defeating the second.** ⇒ the code stays (it is correct, and free); its **mutation row and case are RETIRED**, because a row certifying coverage that does not exist is the defect this whole round is about. NV-1 disclosure written beside it. |
@@ -1466,7 +1535,7 @@ recorded as OPEN in the previous commit and discharged in this one.
 (cold-start agent that did not write the code) · this row filled in.
 
 > **ALL ELEVEN SLICES CLOSED.** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules
-> -p ruleset-loader` = **301 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
+> -p ruleset-loader` = **302 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
 > `GoneState` move) · the Go mirror `contracts/entity_status` **ok** · clippy and `cargo doc` counts
 > deliberately not stated: nothing here measures them, so the figure goes stale by construction — a
 > round-12 verifier measured the flat claim FALSE, the header block was corrected, and this copy of the

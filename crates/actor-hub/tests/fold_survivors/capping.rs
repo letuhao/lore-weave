@@ -192,3 +192,34 @@ fn the_accumulator_record_carries_the_saturated_total_not_the_emitted_value() {
         "the two fields must differ here, or this case cannot see the mutation"
     );
 }
+
+/// **A contradictory bound degrades FLOOR-WINS, and that is documented at
+/// length in the code with no case behind it.**
+///
+/// `Ord::clamp` panics when `min > max`, and both fields of
+/// `ContributionBound` are `pub` — so `amount_reported` on a row nobody
+/// submitted took the island down. The fix chose the floor, matching
+/// `resolve.rs::intersect_clamps` (*"the floor wins, which is deterministic and
+/// never panics"*). Submission still refuses such a row; this only makes the
+/// degradation predictable.
+///
+/// Swapping it to ceiling-wins survived all 301 tests: the paragraph naming the
+/// shipped rule was the whole of its enforcement.
+#[test]
+fn a_contradictory_bound_lets_the_floor_win() {
+    let mut row = deriv(3, 2, 20);
+    row.factor_milli = 1_000;
+    row.divisor = 1;
+    // min 5 > max 1 — refused at submission, reachable through the public
+    // surface this crate's own SDK argument says IS the plugin API.
+    row.bound = Some(ContributionBound { min: 5, max: 1 });
+
+    let (op, site) = row.amount_reported(100);
+
+    assert_eq!(
+        op,
+        ModifierOp::Flat(5),
+        "a contradictory bound must degrade to its FLOOR, not its ceiling"
+    );
+    assert_eq!(site, Some(CapSite::DerivedBound), "the bound is what decided the number");
+}

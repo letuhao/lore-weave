@@ -711,7 +711,7 @@ def _staged_added_lines() -> dict[str, set[int]]:
 
 
 def _self_test_guarded(fn, name: str) -> int:
-    """Run a self-test, reporting an ESCAPING EXCEPTION as a failing case.
+    """Run a self-test, reporting an ESCAPING EXCEPTION as a CRASH.
 
     **A self-test that dies has failed, and it must say so in its own
     vocabulary.** Four rules in this repo read RED for eighteen rounds purely
@@ -723,7 +723,17 @@ def _self_test_guarded(fn, name: str) -> int:
     try:
         return fn()
     except BaseException as e:  # noqa: BLE001 - a crash IS the finding here
-        print(f"  FAIL {name} raised before finishing: {type(e).__name__}: {e}")
+        # **`CRASH`, not `FAIL`, and the difference is load-bearing.** The first
+        # version printed `FAIL`, which is exactly the token the mutation
+        # harness counts as a case disagreeing -- so a child that DIED read as a
+        # rule that BIT, which is the artifact the failing-case rule was written
+        # in the same commit to end. Two decisions, each correct alone, the
+        # later one defeating the earlier.
+        #
+        # The exit code is still non-zero, so a human and `gate-self-tests`
+        # both see a red gate; only the harness's "did a case disagree"
+        # question gets the honest answer, which is no.
+        print(f"  CRASH {name} raised before finishing: {type(e).__name__}: {e}")
         print(f"{chr(10)}{name}: 1 rule(s) did not behave")
         return 1
 

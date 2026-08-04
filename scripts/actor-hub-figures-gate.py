@@ -54,6 +54,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
@@ -342,10 +343,41 @@ CLAIMS: tuple[tuple[str, str, str], ...] = (
 # **And it admitted ONE word.** `**315 passed**` matched; `**300 Rust tests**`
 # did not -- a governed figure sitting in a governed block, invisible on BOTH
 # arms, because the missing key is not compared and an unmatched shape is not
-# surplus either. `{0,3}` because that is what this project writes; a figure
-# needing four words is a sentence, not a figure.
+# surplus either.
+#
+# **And the bound was itself an enumeration.** `{0,3}` lasted one round: a
+# planted `**999 Rust integration tests pass**` -- four words -- sat in the
+# governed block with the gate silent and rc 0, which is `D-479`'s shape one
+# word further along. Unbounded now, measured to add ZERO findings on all
+# four shipped blocks. A bolded SENTENCE is excluded by SHAPE rather than by
+# counting: any punctuation after the digits ends the run.
+#
+# **And the unbounded form was EXPONENTIAL.** Removing the bound left three
+# star-quantified space runs inside one repeated group, so a run of words can
+# be split many ways and every split is re-explored when the closing `**` never
+# arrives. Measured: n=10 0.001s, n=20 0.89s on an unpaired `**`; 0.00s -> 6.64s
+# on the real governed blocks; and this gate's whole `--self-test` at **189.5s**.
+# It stayed GREEN throughout -- rc 0, every case passing -- because only the WALL
+# CLOCK moved, and the one timing alarm the apparatus owns fires on the 300s hang
+# bound. A 60x slowdown is invisible to a check that can only see a hang.
+#
+# THREE forms that LOOK unambiguous were measured and rejected. An alternation
+# separator: still exponential -- a greedy `[ \t]+` gives its characters back.
+# One disjoint character class per separator: still exponential -- an EMPTY
+# separator lets `ab` be re-parsed as `a` + `b`. And a two-phase span/body split,
+# whose SPAN half was **redundant** once the separator was mandatory -- measured,
+# one regex is 0.9ms on a 5 000-word probe and finds the identical 94 figures in
+# the whole run-state document. Its own bite test is what said so: the mutation
+# restoring the old regex made the child exceed its 300s bound, and a HANG is not
+# a failing case, so the half could not be guarded by anything meaningful. A
+# comment here claimed *"linearity needs BOTH halves"* -- written, believed, and
+# never measured, which is the finding directly above, one step later.
+#
+# So the whole repair is ONE token: the separator between two words is MANDATORY.
+_FIGURE_WORD = r"[A-Za-z%][\w%-]*"
 BOLD_INT_RE = re.compile(
-    r"\*\*\d[\d,. \u00a0]*(?:[ \t]*\n?[ \t]*>?[ \t]*[A-Za-z%][\w%-]*){0,3}\*\*")
+    r"\*\*\d[\d,. \u00a0]*(?:[ \t\n>]*" + _FIGURE_WORD
+    + r"(?:[ \t\n>]+" + _FIGURE_WORD + r")*)?\*\*")
 
 # An italicised quotation, and an inline HTML comment. See `_claimable`.
 QUOTE_RE = re.compile(r'\*"[^"]*"\*')
@@ -1180,8 +1212,13 @@ def self_test() -> int:
     def check_block(name: str, text: str, expect_problems: int, expect_notes: int = 0) -> None:
         """Drive the REAL `_check` over one synthetic document."""
         nonlocal failures
-        problems, notes = _check(m, scopes=(("<probe>", "@@START", "@@END"),),
-                                 read=lambda _: f"@@START\n{text}\n@@END")
+        try:
+            problems, notes = _check(m, scopes=(("<probe>", "@@START", "@@END"),),
+                                     read=lambda _: f"@@START\n{text}\n@@END")
+        except Exception as e:  # noqa: BLE001 - see `guard`
+            failures += 1
+            print(f"  FAIL {name}: _check raised {type(e).__name__}: {e}")
+            return
         # The coverage arm reports every claim shape with no subject anywhere;
         # a single-block probe cannot carry them all, so they are filtered out
         # and covered by their own case below.
@@ -1197,8 +1234,13 @@ def self_test() -> int:
     def check_doc(name: str, doc: str, expect_problems: int) -> None:
         """Drive `_check` over a whole synthetic DOCUMENT, tail included."""
         nonlocal failures
-        problems, _notes = _check(m, scopes=(("<probe>", "@@START", "@@END"),),
-                                  read=lambda _: doc)
+        try:
+            problems, _notes = _check(m, scopes=(("<probe>", "@@START", "@@END"),),
+                                      read=lambda _: doc)
+        except Exception as e:  # noqa: BLE001 - see `guard`
+            failures += 1
+            print(f"  FAIL {name}: _check raised {type(e).__name__}: {e}")
+            return
         real = [x for x in problems if not x.startswith("NO DOCUMENT")]
         ok = len(real) == expect_problems
         failures += 0 if ok else 1
@@ -1519,8 +1561,16 @@ def self_test() -> int:
     # A missing END marker must be a FINDING. It used to widen the window to
     # the whole file: mass cry-wolf for the figure check, and total blindness for
     # the escape rule, whose exempt span then covered the entire document.
-    problems, _ = _check(m, scopes=(("<probe>", "@@START", "NO SUCH END"),),
-                         read=lambda _: "@@START\n**281 passed, 0 failed**\n@@END")
+    # **This case OWNS its exception.** Deleting the guard makes `_scope_span`
+    # index an empty list, so the call below RAISES rather than disagreeing --
+    # the run died here, the crash wrapper reported it, and the harness read
+    # that as the rule biting. The case existed for eighteen rounds and never
+    # once disagreed with anything.
+    try:
+        problems, _ = _check(m, scopes=(("<probe>", "@@START", "NO SUCH END"),),
+                             read=lambda _: "@@START\n**281 passed, 0 failed**\n@@END")
+    except Exception as e:  # noqa: BLE001 - the crash IS the finding
+        problems = [f"raised {type(e).__name__}: {e}"]
     if not any("do not both" in x for x in problems):
         failures += 1
         print(f"  FAIL a missing END marker must be a finding, got {problems}")
@@ -1534,7 +1584,22 @@ def self_test() -> int:
     # These cases read the REAL documents, so they need the REAL measurement:
     # `m` above is a synthetic probe (283/372/38) and comparing live documents
     # against it reports disagreements that have nothing to do with the rule.
-    real_m = measure()
+    # **`measure()` must never raise.** Every figure it cannot obtain is an
+    # `Unmeasurable`, which is the whole degrade-safety design -- so a raw
+    # exception here is a finding, and for nineteen rounds it was instead the
+    # EVIDENCE for the cargo-absent guard: delete that guard, this line raises,
+    # and the harness read the traceback as the rule biting.
+    try:
+        real_m = measure()
+    except Exception as e:  # noqa: BLE001 - the crash IS the finding
+        failures += 1
+        print(f"  FAIL measure() raised {type(e).__name__}: {e} — every figure "
+              "it cannot obtain must be an Unmeasurable, never a crash")
+        real_m = {k: {"unmeasurable": "measure() raised"} for k in
+                  ("rust_tests", "dp_kernel_lib_tests", "max_decision_id",
+                   "max_seam_id", "hook_gate_scripts", "contract_hub_lines",
+                   "contract_substrate_lines", "contract_seams_lines",
+                   "contract_total_lines")}
 
     def _seed_handoff(mutate):
         def read(doc: str) -> str:
@@ -1712,6 +1777,27 @@ def self_test() -> int:
     else:
         print(f"  ok  all {len(SCOPES)} scopes end on a named `:end <block>` sentinel")
 
+    def expect(name: str, fn, want) -> None:
+        """Assert `fn()` == `want`, attributing an exception to THIS case.
+
+        Without the attribution the exception escapes, kills the run, and the
+        crash wrapper reports it -- which the mutation harness then reads as a
+        rule that bit. Every rule whose removal RAISES rather than disagrees
+        needs its case to own that exception, or the rule has no case at all.
+        """
+        nonlocal failures
+        try:
+            got = fn()
+        except Exception as e:  # noqa: BLE001 - the crash IS the finding
+            failures += 1
+            print(f"  FAIL {name}: raised {type(e).__name__}: {e}")
+            return
+        if got != want:
+            failures += 1
+            print(f"  FAIL {name}: got {got!r}, want {want!r}")
+        else:
+            print(f"  ok  {name}")
+
     # ── the marker rules, both markers, every route to a wrong block ─────────
     #
     # Written as a TABLE over (which marker, how it appears, what must happen),
@@ -1818,7 +1904,20 @@ def self_test() -> int:
                         # on both arms -- not compared, and not surplus either.
                         ("**301 Rust tests**", True),
                         ("**7 brand new widgets**", True),
-                        ("**7 one two three four**", False),
+                        # FOUR words and more: the `{0,3}` bound was an
+                        # enumeration and a four-word figure walked through it
+                        # in the governed block, one round after it was set.
+                        ("**7 one two three four**", True),
+                        ("**999 Rust integration tests pass**", True),
+                        # TWELVE words. A four-word case only reds a bound of
+                        # three, and `D-496`'s whole point is that ANY bound is
+                        # an enumeration — so the case has to outrun the numbers
+                        # a mutation would plausibly pick, not just the last one.
+                        ("**7 one two three four five six seven eight nine ten eleven**", True),
+                        # ...and a bolded SENTENCE is still not a figure: any
+                        # punctuation after the digits ends the run.
+                        ("**7 widgets, and then some**", False),
+                        ("**7 widgets. Also this**", False),
                         ("**7,000**", True), ("**7 000**", True),
                         ("**2026**", True), ("**2026-08-03**", False),
                         # ...and the WRAP tolerance its siblings carry. The
@@ -1833,6 +1932,40 @@ def self_test() -> int:
             print(f"  FAIL the bolded-figure shape {shape!r}: matched={got}, want={want}")
         else:
             print(f"  ok  the bolded-figure shape {shape!r} -> {'reported' if want else 'ignored'}")
+
+    # **A rule that still passes, 60x slower, is a defect this apparatus
+    # cannot see.** The bolded-figure matcher went exponential and NOTHING
+    # noticed: rc stayed 0, every shape case above still passed, `--check`
+    # still agreed with the artifacts, and the one timing alarm here fires
+    # on a 300s HANG -- so 189.5s sat below it. A budget is what separates
+    # slow from hung, so these two probes carry one.
+    #
+    # TWO probes, because linearity has two independent halves and one probe
+    # would leave the other unguarded. The first needs the SPAN to stop at
+    # the next `*`; the second needs the BODY separator to be MANDATORY.
+    # Each reds under exactly one of the two mutations that restore them.
+    for probe, budget_s, what in (
+            # TWENTY-FOUR words. The count is chosen from the MEASURED growth of
+            # the mutation this case exists to catch -- about fourfold per two
+            # words, so 24 costs the mutant ~4s against a 0.5s budget, while 28
+            # would cost it a minute and 40 would HANG the child. A hang is not a
+            # failing case (`D-478`), so a probe that is too strong is as useless
+            # here as one that is too weak.
+            ("**1 " + " ".join(["ab"] * 24),
+             0.5, "an unpaired `**` and 24 words"),
+            ("**1 " + " ".join(["ab"] * 24) + ", x**",
+             0.5, "a 24-word figure that fails at a comma")):
+        started = time.monotonic()
+        BOLD_INT_RE.findall(probe)
+        took = time.monotonic() - started
+        if took > budget_s:
+            failures += 1
+            print(f"  FAIL the bolded-figure matcher took {took:.2f}s on "
+                  f"{what} (budget {budget_s}s) — it is backtracking, and a "
+                  "rule this slow still reads GREEN everywhere else")
+        else:
+            print(f"  ok  the bolded-figure matcher stays linear on {what} "
+                  f"({took * 1000:.1f}ms)")
 
     # `dp-kernel --lib` **315 passed** -- the slice board's phrasing, one word
     # past the pattern the header's phrasing fits, so the figure sat inside a
@@ -2021,6 +2154,7 @@ def self_test() -> int:
 
     # The measurement helpers' guards, each driven directly.
     def guard(name: str, fn, want: str) -> None:
+        """Assert `fn` degrades with an `Unmeasurable`, never a crash."""
         nonlocal failures
         try:
             fn()
@@ -2028,6 +2162,18 @@ def self_test() -> int:
             ok = want in str(e)
             failures += 0 if ok else 1
             print(f"  {'ok ' if ok else 'FAIL'} {name}: {e}")
+            return
+        except Exception as e:  # noqa: BLE001 - the crash IS what this asserts against
+            # **An exception inside a case is a failure OF THAT CASE.** Deleting
+            # the guard this case defends makes the call raise a DIFFERENT
+            # exception, which used to escape here, kill the run, and be counted
+            # as a bite by the crash wrapper -- so the rule read RED for
+            # eighteen rounds while this case never disagreed with anything.
+            # Attributing it is the same argument the mutation harness makes
+            # about a timeout: a finding about ONE case, not the end of the run.
+            failures += 1
+            print(f"  FAIL {name}: raised {type(e).__name__}: {e} — the whole "
+                  "point is that it degrades instead")
             return
         failures += 1
         print(f"  FAIL {name}: no Unmeasurable raised")
@@ -2171,7 +2317,7 @@ def self_test() -> int:
 
 
 def _self_test_guarded(fn, name: str) -> int:
-    """Run a self-test, reporting an ESCAPING EXCEPTION as a failing case.
+    """Run a self-test, reporting an ESCAPING EXCEPTION as a CRASH.
 
     **A self-test that dies has failed, and it must say so in its own
     vocabulary.** Four rules in this repo read RED for eighteen rounds purely
@@ -2183,7 +2329,17 @@ def _self_test_guarded(fn, name: str) -> int:
     try:
         return fn()
     except BaseException as e:  # noqa: BLE001 - a crash IS the finding here
-        print(f"  FAIL {name} raised before finishing: {type(e).__name__}: {e}")
+        # **`CRASH`, not `FAIL`, and the difference is load-bearing.** The first
+        # version printed `FAIL`, which is exactly the token the mutation
+        # harness counts as a case disagreeing -- so a child that DIED read as a
+        # rule that BIT, which is the artifact the failing-case rule was written
+        # in the same commit to end. Two decisions, each correct alone, the
+        # later one defeating the earlier.
+        #
+        # The exit code is still non-zero, so a human and `gate-self-tests`
+        # both see a red gate; only the harness's "did a case disagree"
+        # question gets the honest answer, which is no.
+        print(f"  CRASH {name} raised before finishing: {type(e).__name__}: {e}")
         print(f"{chr(10)}{name}: 1 rule(s) did not behave")
         return 1
 

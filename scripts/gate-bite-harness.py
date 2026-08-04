@@ -299,16 +299,29 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # in the header block only. The sibling `contract_substrate_lines` pattern
         # in that same file has carried the wrap tolerance from the start.
         ("the bolded-figure shape loses its wrap tolerance",
-         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*\\n?[ \\t]*>?[ \\t]*[A-Za-z%][\\w%-]*){0,3}\\*\\*")',
-         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*[A-Za-z%][\\w%-]*){0,3}\\*\\*")'),
-        # R18/M4 -- the shape admitted ONE word, so `**301 Rust tests**` was
-        # invisible on both arms: not compared, and not surplus either.
-        ("the bolded-figure shape admits only one word again",
-         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*\\n?[ \\t]*>?[ \\t]*[A-Za-z%][\\w%-]*){0,3}\\*\\*")',
-         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*\\n?[ \\t]*>?[ \\t]*[A-Za-z%][\\w%-]*)?\\*\\*")'),
+         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t\\n>]*"',
+         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*"'),
+        # R19/M3 -- the word bound was an ENUMERATION, and a four-word
+        # figure walked through it in the governed block ONE ROUND after it
+        # was set. Measured: unbounded adds zero findings on all four blocks.
+        ("the bolded-figure shape re-bounds the word run",
+         '    + r"(?:[ \\t\\n>]+" + _FIGURE_WORD + r")*)?\\*\\*")',
+         '    + r"(?:[ \\t\\n>]+" + _FIGURE_WORD + r"){0,3})?\\*\\*")'),
         ("the bolded-figure shape narrows to a bare integer",
-         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*\\n?[ \\t]*>?[ \\t]*[A-Za-z%][\\w%-]*){0,3}\\*\\*")',
-         '    r"\\*\\*\\d+\\*\\*")'),
+         'BOLD_INT_RE = re.compile(\n'
+         '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t\\n>]*" + _FIGURE_WORD\n'
+         '    + r"(?:[ \\t\\n>]+" + _FIGURE_WORD + r")*)?\\*\\*")',
+         'BOLD_INT_RE = re.compile(r"\\*\\*\\d+\\*\\*")'),
+        # R20/1 -- LINEARITY. The shipped shape was exponential and every case
+        # still passed, so the only witness is the wall clock. One token: with
+        # an OPTIONAL separator a single word can be re-parsed as two, and that
+        # ambiguity alone is worth ~4s on the 24-word probe against a 0.5s
+        # budget. A two-phase span/body split was tried here too and removed --
+        # its span half was redundant, and the mutation restoring the old regex
+        # HUNG the child rather than failing a case, so nothing could guard it.
+        ("the bolded-figure word separator becomes optional",
+         '    + r"(?:[ \\t\\n>]+"',
+         '    + r"(?:[ \\t\\n>]*"'),
         ("the dp-kernel rule stops reading the slice board's phrasing",
          r'    (r"`dp-kernel --lib` \*\*(\d+)(?: passed)?\*\*", "dp_kernel_lib_tests",',
          r'    (r"`dp-kernel --lib` \*\*(\d+)\*\*", "dp_kernel_lib_tests",'),
@@ -548,7 +561,8 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # one `any` across both, so three of its four properties were rowed on
         # one side only. These four close the gap it was hiding.
         ("the gate anchor search stops excluding the tables",
-         "    at = _find_one(text, find)", "    at = text.find(find)"),
+         '    at = _find_one(text, find)\n    if at < 0:',
+         '    at = text.find(find)\n    if at < 0:'),
         ("the gate null-mutation check removed",
          '        if _read(copy) == text:', "        if False:"),
         ("the RUST anchor search stops excluding the tables",
@@ -558,8 +572,6 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("a reached case counts as a failing one again",
          '    bit = sum(1 for l in lines if l.lstrip().startswith("FAIL"))',
          '    bit = sum(1 for l in lines if l.lstrip().startswith(("ok ", "FAIL")))'),
-        ("the RUST named-test guard removed",
-         "            if red and not named_failed:", "            if False:"),
 
 
         ("the RUST named-test guard removed",
@@ -582,10 +594,27 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("the label rule's stray filter passes everything",
          '    strays = [b for b in bad if "canary" not in b]', "    strays = []"),
         ("the label rule stops requiring its canary",
-         "    if len(bad) != 1:", "    if False:"),
+         "    if len(bad) != expect:", "    if False:"),
         ("the label rule treats every token as a filename",
          "            if tok.endswith(LABEL_FILE_EXT):",
          "            if True:"),
+        ("the duplicate-row check is never consulted",
+         '    dupes = [f"{k[0]} | {k[1]}" for k, n in rowset.items() if n > 1]',
+         "    dupes = []"),
+        ("the sibling rule stops requiring the label to name its token",
+         "                if not (_label_words(t) & _label_words(lab)):",
+         "                if False:"),
+        ("the sibling rule accepts a lower-case difference too",
+         '            if not (x[:1].isupper() and y[:1].isupper()):',
+         "            if False:"),
+        ("the sibling rule covers no row",
+         "    swappable = interchangeable_rows(sibs + canaries)", "    swappable = []"),
+        ("the sibling rule stops expecting a PAIR",
+         "    sib_verdict = canary_verdict(swappable, expect=2)",
+         "    sib_verdict = canary_verdict(swappable, expect=0)"),
+        ("the label rule's anchor search stops excluding the tables",
+         '        at = _find_one(text, find)\n        scope = _enclosing_def(text, at)',
+         '        at = text.find(find)\n        scope = _enclosing_def(text, at)'),
         ("the unbounded-child sweep stops looking at the timeout",
          '                     if not any(k.arg == "timeout" for k in n.keywords)]',
          "                     if False]"),
@@ -803,6 +832,13 @@ RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
      '    if r.saturated {\n        capped.push(Capped { quantity: q, site: CapSite::Accumulator, wanted: r.value, emitted: out });\n    }\n    if out as i64 != r.value {',
      '    if out as i64 != r.value {\n        capped.push(Capped { quantity: q, site: CapSite::Emit, wanted: r.value, emitted: out });\n    }\n    if r.saturated {\n        capped.push(Capped { quantity: q, site: CapSite::Accumulator, wanted: r.value, emitted: out });\n    }\n    if out as i64 != r.value {',
      'capping::the_accumulator_record_precedes_the_emit_record_for_one_quantity'),
+    # R19/m5 -- the FLOOR-WINS degradation is documented at length in the code
+    # and enforced by that paragraph alone: ceiling-wins survived all 301 tests.
+    ("a contradictory bound lets the CEILING win",
+     "crates/actor-hub/src/rows.rs",
+     "            Some(b) => clamped.clamp(b.min, b.max.max(b.min)),",
+     "            Some(b) => clamped.clamp(b.min.min(b.max), b.max),",
+     "capping::a_contradictory_bound_lets_the_floor_win"),
     ("an exact bound min==max wrongly refused",
      "crates/actor-hub/src/registry.rs",
      "            && b.min > b.max",
@@ -1090,7 +1126,11 @@ def mislabelled_rows(rows) -> list[str]:
             out.append(f"{label!r}: its file {rel} cannot be read")
             continue
         text = text.replace(chr(13) + chr(10), chr(10))
-        at = text.find(find)
+        # `_find_one`, not `text.find`: this file mutates ITSELF, so a raw
+        # find lands on the TABLE ROW naming the rule instead of the rule, and
+        # the "enclosing definition" then spans the whole table. Same defect,
+        # same file, as the one `_find_one` was written for.
+        at = _find_one(text, find)
         scope = _enclosing_def(text, at) if at >= 0 else ""
         for tok in LABEL_CODE_RE.findall(label):
             if tok.endswith(LABEL_FILE_EXT):
@@ -1109,7 +1149,7 @@ def mislabelled_rows(rows) -> list[str]:
     return out
 
 
-def canary_verdict(bad: list[str]) -> list[str]:
+def canary_verdict(bad: list[str], expect: int = 1) -> list[str]:
     """What to report, given the subject set always carries ONE known-bad row.
 
     Two clauses, and the second is the one that matters: an EMPTY result means
@@ -1121,10 +1161,60 @@ def canary_verdict(bad: list[str]) -> list[str]:
     strays = [b for b in bad if "canary" not in b]
     if strays:
         return strays
-    if len(bad) != 1:
-        return [f"the canary was not reported (got {len(bad)}) — the rule "
-                "examined nothing, so its verdict is about no rows at all"]
+    if len(bad) != expect:
+        return [f"the canary was not reported (got {len(bad)}, want {expect}) — "
+                "the rule examined nothing, so its verdict is about no rows at all"]
     return []
+
+
+def _label_words(text: str) -> set[str]:
+    """The lower-cased words of an identifier or a label — humps and `_` split."""
+    return {w.lower() for w in
+            re.findall(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+", text) if len(w) > 2}
+
+
+def interchangeable_rows(rows) -> list[str]:
+    """Sibling rows a swap of their anchors would leave indistinguishable.
+
+    **The shape `mislabelled_rows` cannot reach, and the shape `D-476` was.**
+    Two `Capped` pushes differ by exactly one token — `CapSite::Emit` against
+    `CapSite::Accumulator` — and a label sat on the wrong one. Round 18 fixed
+    that by RENAMING the label, which deleted the dot the token rule keys on and
+    moved BOTH rows out of its scope: the remedy removed its own subject.
+
+    So this asks a question no token regex can. If two rows in one file have
+    anchors differing in exactly one CAPITALISED token, each label must name its
+    own token — otherwise the rows are interchangeable and swapping them is
+    silent. Capitalised, because the alternative was measured: lower-case
+    differences are incidental variable names (`hits`/`starts`, `text`/`src`)
+    and requiring those produced three findings on three correct rows, which is
+    the cry-wolf direction.
+
+    Measured before wiring: 2 sibling pairs shipped, 0 findings; swapping the
+    two `Capped` anchors while keeping the shipped labels reports both halves.
+    """
+    tok = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+    out = []
+    for i, (label_a, rel_a, find_a) in enumerate(rows):
+        for label_b, rel_b, find_b in rows[i + 1:]:
+            if rel_a != rel_b:
+                continue
+            ta, tb = tok.findall(find_a), tok.findall(find_b)
+            if len(ta) != len(tb):
+                continue
+            diff = [(x, y) for x, y in zip(ta, tb) if x != y]
+            if len(diff) != 1:
+                continue
+            x, y = diff[0]
+            if not (x[:1].isupper() and y[:1].isupper()):
+                continue
+            for lab, t in ((label_a, x), (label_b, y)):
+                if not (_label_words(t) & _label_words(lab)):
+                    out.append(
+                        f"{lab!r}: its anchor differs from a sibling row's only "
+                        f"by `{t}`, which the label does not name — swap the two "
+                        "anchors and nothing here would notice")
+    return out
 
 
 def _outside_tables(text: str) -> list[tuple[int, int]]:
@@ -1364,6 +1454,17 @@ def self_test() -> int:
         stdout = "  ok  rule one\n  ok  rule two\n"
         stderr = "TypeError: unsupported operand type(s) for -: 'set' and 'str'"
 
+    # ...and the shape a wrapper introduced in the SAME commit as this
+    # guard: a self-test that dies is now caught and reported, and the
+    # first version reported it with the word `FAIL` -- precisely the
+    # token counted as a case disagreeing. `CRASH` is a different event.
+    class _CaughtCrash:
+        returncode = 1
+        stdout = ("  ok  rule one\n"
+                  "  CRASH some-gate --self-test raised before finishing: "
+                  "ValueError: max() iterable argument is empty\n")
+        stderr = ""
+
     gate0, (_, find0, repl0) = "citation-gate", MUTATIONS["citation-gate"][0]
     red, note = _mutate_and_run(gate0, find0, repl0, run=lambda _: _Unparseable())
     if red or "NO failing case" not in note:
@@ -1378,6 +1479,13 @@ def self_test() -> int:
         print(f"  FAIL a child that passed every case and then crashed was a bite: {note!r}")
     else:
         print("  ok  a child that reaches cases, passes them, then raises is not a bite")
+
+    red, note = _mutate_and_run(gate0, find0, repl0, run=lambda _: _CaughtCrash())
+    if red or "NO failing case" not in note:
+        failures += 1
+        print(f"  FAIL a CAUGHT crash was counted as a case disagreeing: {note!r}")
+    else:
+        print("  ok  a crash the gate CAUGHT and reported is still not a bite")
 
     # A mutation that leaves the self-test GREEN must be reported as GREEN, and
     # one that reddens it as RED. Driven through the real `_mutate_and_run`.
@@ -1451,7 +1559,13 @@ def self_test() -> int:
     def _times_out(_):
         raise subprocess.TimeoutExpired(cmd="probe", timeout=CHILD_TIMEOUT_S)
 
-    red, note = _mutate_and_run(gate, find, repl, run=_times_out)
+    # **This case OWNS the exception.** Deleting the handler it defends makes
+    # the call RAISE, which escaped, killed the run, and was read as the rule
+    # biting -- so the case never once disagreed with anything.
+    try:
+        red, note = _mutate_and_run(gate, find, repl, run=_times_out)
+    except BaseException as e:  # noqa: BLE001 - the escape IS the finding
+        red, note = True, f"escaped as {type(e).__name__}"
     if red or "did not finish" not in note:
         failures += 1
         print(f"  FAIL a timed-out child must be a finding, not a crash: {note!r}")
@@ -1995,13 +2109,20 @@ def self_test() -> int:
     # ...and BOTH clauses of that verdict, driven directly, because the
     # empty-result clause is unreachable while the rule works -- which is how
     # `strays or len(bad) != 1` -> `strays` survived a whole sweep.
-    for name, given, want in (("an empty result", [], True),
-                              ("the canary alone", ["'x': canary"], False),
-                              ("the canary plus a stray", ["'x': canary", "'y': real"], True),
-                              ("a stray alone", ["'y': real"], True)):
-        if bool(canary_verdict(given)) != want:
+    for name, given, expect, want in (
+            ("an empty result", [], 1, True),
+            ("the canary alone", ["'x': canary"], 1, False),
+            ("the canary plus a stray", ["'x': canary", "'y': real"], 1, True),
+            ("a stray alone", ["'y': real"], 1, True),
+            # ...and the PAIR form the sibling rule uses. Without it the
+            # `expect` parameter has no subject at anything but its default,
+            # which is the shape that let `len(...) != 2` survive.
+            ("one canary where two are due", ["'x': canary"], 2, True),
+            ("both canaries", ["'x': canary", "'y': canary"], 2, False)):
+        if bool(canary_verdict(given, expect=expect)) != want:
             failures += 1
-            print(f"  FAIL the canary verdict on {name}: {canary_verdict(given)}")
+            print(f"  FAIL the canary verdict on {name}: "
+                  f"{canary_verdict(given, expect=expect)}")
         else:
             print(f"  ok  the canary verdict on {name} -> "
                   f"{'reported' if want else 'silent'}")
@@ -2025,6 +2146,27 @@ def self_test() -> int:
             print(f"  FAIL the label rule missed {name}")
         else:
             print(f"  ok  the label rule reports {name}")
+    # **The anchor search must EXCLUDE the tables**, and only a row whose
+    # anchor also appears in a table row can tell the two apart: with a raw
+    # `find` the "enclosing definition" becomes the whole table, which contains
+    # every token any label could name, so nothing is ever reported. This file
+    # mutates itself, so its own table is exactly that situation.
+    # The anchor is SPLIT so this line is not itself a second occurrence --
+    # which the first version was, putting the anchor outside the tables after
+    # all and making the case pass for the wrong reason.
+    only_in_table = '        ("the sibling rule ' + 'covers no row",'
+    # The label names `must_claim`, which appears in the TABLE region and
+    # nowhere near the rule -- so a raw `find` puts it in scope and reports
+    # nothing, while the table-aware search reports it. That difference is the
+    # whole point of `_find_one`, and only a token with this placement can see it.
+    table_row = ("the must_claim surplus is not reported",
+                 "scripts/gate-bite-harness.py", only_in_table, "")
+    if len(mislabelled_rows([table_row])) != 1:
+        failures += 1
+        print("  FAIL an anchor inside a TABLE was not searched outside it")
+    else:
+        print("  ok  the anchor search excludes the tables, so the scope is the rule")
+
     # ...and stays silent on a filename, which LOOKS dotted and is not a member.
     ok_row = ("the _index.md scope row deleted", "scripts/actor-hub-figures-gate.py",
               '    (INDEX, "# Actor Hub", END("index"),', "")
@@ -2033,6 +2175,73 @@ def self_test() -> int:
         print("  FAIL the label rule read a FILENAME as a member access")
     else:
         print("  ok  a filename in a label is not read as a member access")
+
+    # **One mutation per PRODUCTION RULE**, which the governed handoff block
+    # asserts and nothing checked: a byte-identical row shipped TWICE, so the
+    # total counted 120 rules where there were 119. `--only` matched both.
+    rowset: dict[tuple, int] = {}
+    for gate_name, table in MUTATIONS.items():
+        for r in table:
+            rowset[(gate_name, r[0], r[1], r[2])] = rowset.get(
+                (gate_name, r[0], r[1], r[2]), 0) + 1
+    for r in RUST_MUTATIONS:
+        rowset[(r[1], r[0], r[2], r[3])] = rowset.get((r[1], r[0], r[2], r[3]), 0) + 1
+    # A CANARY in the subject set, so `if dupes:` cannot be deleted: the table
+    # is clean, so an empty result passed either way. The same NV-3 the label
+    # and sibling rules each needed, on the third rule beside them.
+    rowset[("<canary>", "the duplicate canary", "a", "b")] = 2
+    dupes = [f"{k[0]} | {k[1]}" for k, n in rowset.items() if n > 1]
+    dupe_verdict = canary_verdict(dupes, expect=1)
+    if dupe_verdict:
+        failures += 1
+        for d in dupe_verdict:
+            print(f"  FAIL a row is written twice — {d}")
+    else:
+        print(f"  ok  all {len(rowset) - 1} rows are distinct, and the canary is not")
+
+    # **...and the shape a token regex cannot reach.** See
+    # `interchangeable_rows`: two anchors differing by one capitalised token,
+    # with labels that do not name their own. That IS `D-476`, and round 18's
+    # remedy — renaming the label — moved both rows out of the token rule's
+    # scope, so the rule built for the defect no longer examines it.
+    sibs = [(r[0], f"scripts/{g}.py", r[1]) for g, v in MUTATIONS.items() for r in v]
+    sibs += [(r[0], r[1], r[2]) for r in RUST_MUTATIONS]
+    # **Two CANARY rows, so this call can never be vacuous.** `swappable = []`
+    # survived otherwise: a clean report about a set the rule never examined --
+    # the same NV-3 the label rule's canary closed one commit earlier, in the
+    # rule written beside it.
+    # A file of their own, so they pair with each other and not with the real
+    # rows that share those anchors -- which produced four findings, two of
+    # them about correct rows.
+    canaries = [("the FIRST canary", "<canary>", "let x = CapSite::Emit;"),
+                ("the SECOND canary", "<canary>", "let x = CapSite::Accumulator;")]
+    swappable = interchangeable_rows(sibs + canaries)
+    # The SAME verdict helper as the label rule's. Re-deriving it produced the
+    # identical unreachable-clause defect twice in two commits.
+    sib_verdict = canary_verdict(swappable, expect=2)
+    if sib_verdict:
+        failures += 1
+        for w in sib_verdict:
+            print(f"  FAIL two rows are interchangeable — {w}")
+    else:
+        print(f"  ok  no two of the {len(sibs)} rows are interchangeable, and the "
+              "canary pair is")
+
+    # ...and the rule must SEE the defect it was built from: swap the two
+    # `Capped` anchors, keep the shipped labels, and BOTH halves must report.
+    swapped = []
+    for lab, rel, find in sibs:
+        if "CapSite::Emit, wanted: r.value" in find and "Emit record" in lab:
+            find = find.replace("CapSite::Emit", "CapSite::Accumulator")
+        elif "CapSite::Accumulator, wanted: r.value" in find and "Accumulator record" in lab:
+            find = find.replace("CapSite::Accumulator", "CapSite::Emit")
+        swapped.append((lab, rel, find))
+    if len(interchangeable_rows(swapped)) != 2:
+        failures += 1
+        print("  FAIL swapping the two Capped anchors was not reported "
+              f"({len(interchangeable_rows(swapped))} finding(s))")
+    else:
+        print("  ok  swapping two sibling anchors reports BOTH labels")
 
     # **The derived half: no gate this harness drives may spawn a child that
     # nothing can interrupt.** The table below is four hand-written rows and so
@@ -2165,7 +2374,7 @@ def self_test() -> int:
 
 
 def _self_test_guarded(fn, name: str) -> int:
-    """Run a self-test, reporting an ESCAPING EXCEPTION as a failing case.
+    """Run a self-test, reporting an ESCAPING EXCEPTION as a CRASH.
 
     **A self-test that dies has failed, and it must say so in its own
     vocabulary.** Four rules in this repo read RED for eighteen rounds purely
@@ -2177,7 +2386,17 @@ def _self_test_guarded(fn, name: str) -> int:
     try:
         return fn()
     except BaseException as e:  # noqa: BLE001 - a crash IS the finding here
-        print(f"  FAIL {name} raised before finishing: {type(e).__name__}: {e}")
+        # **`CRASH`, not `FAIL`, and the difference is load-bearing.** The first
+        # version printed `FAIL`, which is exactly the token the mutation
+        # harness counts as a case disagreeing -- so a child that DIED read as a
+        # rule that BIT, which is the artifact the failing-case rule was written
+        # in the same commit to end. Two decisions, each correct alone, the
+        # later one defeating the earlier.
+        #
+        # The exit code is still non-zero, so a human and `gate-self-tests`
+        # both see a red gate; only the harness's "did a case disagree"
+        # question gets the honest answer, which is no.
+        print(f"  CRASH {name} raised before finishing: {type(e).__name__}: {e}")
         print(f"{chr(10)}{name}: 1 rule(s) did not behave")
         return 1
 
