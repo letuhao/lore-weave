@@ -452,6 +452,36 @@ picking one. Three options, stated with their costs, for the PO:
 question blocks **CP-4**, where a bound is first claimed. Recorded here so it cannot be discovered
 inside CP-4.
 
+### 🔴 A CIRCULAR DEPENDENCY IN THE CHECKPOINT ORDER — raised, NOT resolved by me
+
+**CP-0 cannot close as written, and not because of anything the build did.**
+
+| | |
+|---|---|
+| CP-0 is **BLOCKS ALL** | so CP-1 cannot start until CP-0 closes |
+| CP-0.7 requires `runtime_variant` **"for A/B; the declaration is the comparison unit"** | A/B needs **two arms** |
+| the second arm is `agentruntime` | which **only CP-1 builds** |
+
+**CP-0 cannot close → CP-1 cannot start → the second arm never exists → CP-0 cannot close.** Seven
+verification rounds have correctly reported `runtime_variant = legacy` on 100% of rows as an
+unsatisfied requirement, and it will read that way after every future round, because the value that
+would satisfy it cannot be produced by this checkpoint.
+
+**Two readings, and I am not entitled to pick:**
+
+1. **CP-0.7 means "the field is recorded on every call, with a fail-safe default"** — satisfied
+   today (100% coverage, `legacy` chosen so unlabelled rows can never flatter the new arm). The A/B
+   it *enables* is evaluated where a second arm exists: **CP-4**, per this file's own
+   *"the measurement unit is the DECLARATION"* section.
+2. **CP-0.7 means "a non-vacuous A/B is demonstrated"** — unsatisfiable at CP-0 by construction, and
+   the run terminates here.
+
+**Why I am not choosing.** I withdrew `C1–C6` and the 0.4 scope narrowing after a verifier ruled
+them criteria weakened by the builder after failing. Reading 1 is *plausible* and *convenient*, and
+those two facts together are exactly the pattern that produced both withdrawals. **A verifier rules
+on this, or it stays open.** If reading 2 holds, that is a finding about the checkpoint order in the
+goal — a design question for the PO — and not something more building can fix.
+
 ### ▶ ROUND 5 — the five-round defect is **CLOSED IN PRODUCTION**, and two of my "fixes" were not fixes
 
 **The number that mattered went to zero.** V-LIVE repeated its own accounting exactly as it had
