@@ -7226,6 +7226,26 @@ async def _emit_chat_turn(
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
                     json.dumps(_ctx_payload), _final_response_id, _exclude_mem,
                     _local_date,  # DBT-11 — bucket by the user's LOCAL day (resolved before acquire)
+                    # 🔴 F-17, OPEN AND NOT FIXED HERE — deliberately, and this note is the fix's
+                    # precondition rather than a substitute for it.
+                    #
+                    # This binds `completed` as a CONSTANT on the clean-finish path, and a verifier
+                    # found that the repeated-failure breaker's exit reaches this same INSERT. So a
+                    # turn cut short by the breaker records a success — the identical defect shape
+                    # as F-14 (voice) fixed one commit ago, on the product's highest-traffic path.
+                    #
+                    # NOT patched in this pass because the honest fix needs a signal this consumer
+                    # does not currently carry: the loop's own reason for stopping, distinguished
+                    # from "the model finished". Inventing one here — inferring a breaker exit from
+                    # `failure_suppress` being non-empty, say — would be a guess about the turn's
+                    # meaning written into the field that exists to end guessing, which is the exact
+                    # error this checkpoint has now committed four times. A wrong `completed` and a
+                    # wrongly-derived one are both wrong; only the second is also unreviewable.
+                    #
+                    # The fix is to thread the loop's terminal reason out with the final chunk and
+                    # derive both `finish_reason` and `outcome` from it. That is a change to the
+                    # main success path of the product and belongs in a pass that can be verified,
+                    # not appended to the end of one.
                     instrument.OUTCOME_COMPLETED,
                     json.dumps(_advertised.advertised_json()) if _advertised.advertised_json() else None,
                     json.dumps(_advertised.withheld_json()) if _advertised.withheld_json() else None,
