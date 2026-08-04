@@ -581,8 +581,8 @@ async def voice_stream_response(
                 INSERT INTO chat_messages
                   (message_id, session_id, owner_user_id, role, content, content_parts,
                    sequence_num, model_ref, branch_id, local_date,
-                   finish_reason, outcome, runtime_variant)
-                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8, 'stop', $9, $10)
+                   finish_reason, outcome, runtime_variant, advertised_tools)
+                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8, 'stop', $9, $10, $11::jsonb)
                 """,
                 msg_id, session_id, user_id, final_text, json.dumps(parts), seq, model_ref,
                 _local_date,  # DBT-11 — same turn as the user msg above (resolved before acquire)
@@ -592,6 +592,16 @@ async def voice_stream_response(
                 # whose entire premise is "every terminal path". A verifier found it by enumerating
                 # paths rather than by reading the one file the instrument was built in.
                 instrument.OUTCOME_COMPLETED, instrument.RUNTIME_LEGACY,
+                # CP-0.1 — the voice pipeline runs ONE tool-free pass by design (it routes through
+                # `_stream_via_gateway`, which offers no tools at all). Leaving this NULL fused the
+                # two states the column exists to separate: "the model was offered nothing" and
+                # "no model pass was ever recorded here". A voice turn is the former, and saying so
+                # explicitly is what stops a future reader from counting it as an instrumentation
+                # hole — or, worse, from silently excluding voice turns from a denominator.
+                json.dumps([{
+                    "pass": 1, "tool_choice": None, "names": [], "count": 0,
+                    "note": "voice pipeline — tool-free by design",
+                }]),
             )
             _mc_row = await conn.fetchrow(
                 "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), "
