@@ -34,7 +34,7 @@ this run carried four of them.
 | class | **v3 — organic** | v2 | v1 | originally | claim |
 |---|---|---|---|---|---|
 | **carry-forward, over REAL errors** | **6.0%** (99/1,649) | *39.4%* | *12.6%* | *61.8%* | strictly lower |
-| **identifier resolution** — of real errors | **35.3%** (857/2,430) | 34.9% | 34.9% | *≈57%* | strictly lower |
+| **identifier resolution** — of real errors, **same definition as class 1** | **50.3%** (841/1,673) | *35.3%* | *34.9%* | *≈57%* | strictly lower |
 | **not-a-real-dispatch** — lower bound | **41.6%** (1,185/2,850) | *45.3%* | *16.1%* | *65.7%* | ⛔ not scoreable across arms |
 | **turns with NO RECORDED outcome**, windowed | **0.0%** (0/269) | *4.9%* | *90.7%* | *never frozen* | ⛔ already met |
 
@@ -130,13 +130,27 @@ anyone noticed.
 | **the run's claim** *(gate)* | **pooled across all admitted declarations**, new vs frozen baseline | pooling is the only thing that reaches n at 10²–10³ calls/week |
 | **per declaration** *(published, not a gate)* | matched pair vs its baseline predecessor | ships with `asserted_bound: unknown`; tightens with use. §6.2 already forbids it as a precondition |
 
-**What the pooled comparison needs**, at the newly frozen baselines (two-proportion, α=.05, 80%):
+### 🔴 WHAT THE POOLED COMPARISON NEEDS — **and the honest answer is that it cannot be had**
 
-| target | needs per arm | at organic traffic (mean **624**, median **114** calls/wk, ~40% failing) |
+*(This table previously published 12.6% / 16.1% / 90.7% under the words "at the newly frozen
+baselines" — numbers this same file had already superseded thirty lines above. V-METRIC found the
+contradiction. Replaced with the round-5 figures and their consequence.)*
+
+| target | needs per arm | supply |
 |---|---|---|
-| carry-forward **12.6% → 6.3%** | ≈ **334 failures** | ~1 burst week, or ~7 quiet ones |
-| not-a-real-dispatch **16.1% → 8%** | ≈ **270 failures** | comparable |
-| no-interpretable-outcome **90.7% → <5%** | ≈ **30 turns** | days — but this is **coverage**, not quality |
+| **carry-forward 6.0% → 3.0%** | **≈ 748 failures** | unscripted supply is **49.4 real errors/week**, and **the frozen side holds 548 in total** |
+| not-a-real-dispatch | — | ⛔ self-marked **not scoreable across arms** at any n |
+| no-recorded-outcome | — | ⛔ already **0.0%** — unimprovable |
+| identifier resolution | ≈ **97/arm** — **the only reachable bound** | ❌ and it is the one class that **fails C7** |
+
+> **`548 < 748`. Halving carry-forward is not detectable against this baseline — not slowly, but
+> *ever*.** The frozen control group does not contain enough failures, and no amount of future
+> traffic changes a frozen number.
+
+**And the cost came from getting it right.** Correcting carry-forward from 39.4% to **6.0%** raised
+the requirement from ~83 per arm to **748**: the cleaner the class, the rarer the event, the larger
+the sample needed. Every honest correction in this checkpoint has made the claim *harder* to prove,
+which is what tells us the corrections were real.
 
 **Traffic is bursty by a factor of 100** (weekly organic calls over ten weeks: 6 · 1 · 157 · 126 ·
 72 · 1,828 · 2,431 · 1,494 · 102 · 21). **So no date may be committed — only a sample size.** A
@@ -404,8 +418,22 @@ inside CP-4.
 derived it — catalogue size from the turn's **own** `tool_list` output (`count: 307`),
 set-differenced against every name ever advertised or withheld:
 
-> **`307 − (32 ∪ 286) = 0`. Round 4: 254 unaccounted. At pass 3 the partition is exact —
-> 32 advertised + 285 withheld = 317 = 307 catalogue + 10 kit tools, zero overlap.**
+> **`307 − (32 ∪ 286) = 0`. Round 4: 254 unaccounted.**
+
+**🔴 REFUTED by V-METRIC round 5, and I had already reported it as a win.** The `307` is
+`13 + 294` — advertised **pass-objects** plus withheld **records**. It is a count of *rows*, not of
+tools, so the arithmetic never described a partition. V-METRIC found it by reproducing `307` the
+same way and then asking what the number was made of. Three separate failures:
+
+1. `32 ∪ 286 = 317`, not 307;
+2. **not disjoint** — 28 `(message, pass, tool)` triples are advertised *and* withheld in the same
+   pass (`token_budget`), 15 of 28 turns overlapping at turn level;
+3. **not zero unaccounted** — the frozen catalogue is **315**, and 5 tools are in neither list.
+
+**What does survive**, independently checked: `advertised_tools` is sound — **201/201** recorded
+calls appear in their own turn's advertised set, **zero in neither**. And pass-1 `hot_seed` entries
+genuinely exist where round 4 found none. The arming fix is real; the *accounting* that celebrated
+it was not.
 
 Pass-1 withheld entries now exist (8, `hot_seed`) where round 4 found **zero**. And the defect this
 whole effort was founded on is caught live and legibly: advertised drops **32 → 31 at pass 6**, with

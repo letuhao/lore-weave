@@ -180,12 +180,20 @@ FROM (
   SELECT organic,
          (error ILIKE '%not found%' OR error ILIKE '%invalid%id%' OR error ILIKE '%uuid%'
           OR error ILIKE '%placeholder%' OR error ILIKE '%does not exist%'
-          OR error ILIKE '%missing required%') AS id_err
+          -- REMOVED '%missing required%': of the 27 rows it uniquely added, ~19 are missing
+          -- CONTENT arguments (['body'], ['items'], ['args']) — the error text itself says they
+          -- are not ids. A class named "identifier resolution" must not count them.
+          ) AS id_err
   FROM _calls
   WHERE NOT ok
-    AND tool NOT IN ('tool_list','tool_load','find_tools','conversation_search',
-                     'chat_search_sessions','load_skill','workflow_list','workflow_load')
-    AND COALESCE(error, '') NOT ILIKE '%already ran this turn%'
+    -- ONE definition of "a real error", shared with class 1. This denominator previously used a
+    -- SECOND, weaker one and so retained 763 rows (30.9%) of our own breaker prose — inflating the
+    -- denominator and DEFLATING the rate, in the direction that looked like less of a problem.
+    -- Two classes in one file disagreeing about what "real error" means is how that survived.
+    AND NOT (error ILIKE '%already ran this turn%' OR error ILIKE '%You have already called%'
+             OR error ILIKE '%times this turn%' OR error ILIKE '%this turn%'
+             OR tool IN ('tool_list','tool_load','find_tools','conversation_search',
+                         'chat_search_sessions','load_skill','workflow_list','workflow_load'))
 ) x GROUP BY organic ORDER BY organic;
 
 -- ── CLASS 4 · TERMINAL OUTCOME ────────────────────────────────────────────────────────────────
