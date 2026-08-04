@@ -112,14 +112,29 @@ class TestTheInstrumentIsActuallyWired:
         # The sink must be armed by PRODUCTION CODE that runs before the narrowing. So this asserts
         # on the source of the arming, positionally, and then exercises the mechanism.
         src = _stream_src()
-        for call in ("discovery_seed_names = discovery_seed_for_surface(",
-                     "resume_seed_names = discovery_seed_for_surface("):
+        # The invariant is "armed before the FIRST narrowing of the turn", and the first narrowing
+        # is CATALOG ASSEMBLY — not the seed call. Pointing this gate at the seed call is how the
+        # intent gate came to register nothing while the gate stayed green: it was armed before the
+        # stage being fixed rather than before the earliest one.
+        for call in ("discovery_catalog = filter_intent_gated_setup_tools(",
+                     "resume_discovery_catalog = filter_intent_gated_setup_tools("):
             idx = src.find(call)
             assert idx != -1, f"call site vanished: {call}"
-            before = src[max(0, idx - 1200): idx]
+            before = src[max(0, idx - 900): idx]
             assert "surface_withheld.set(" in before, (
-                f"the sink is not armed before {call.split('=')[0].strip()} — every narrowing it "
-                f"makes will register nowhere, which has now happened four different ways"
+                f"the sink is not armed before {call.split('=')[0].strip()} — the FIRST narrowing "
+                f"of the turn, so everything it drops registers nowhere"
+            )
+        # And nothing may re-arm between there and the seed call: a second set() discards the
+        # records the first one collected, which made the previous fix a no-op where it was armed.
+        for seed in ("discovery_seed_names = discovery_seed_for_surface(",
+                     "resume_seed_names = discovery_seed_for_surface("):
+            i = src.find(seed)
+            assert i != -1
+            gate = max(src.rfind("filter_intent_gated_setup_tools(", 0, i), 0)
+            assert "surface_withheld.set(" not in src[gate:i], (
+                "a re-arm between catalog assembly and the seed call discards the intent gate's "
+                "records"
             )
         # And the turn must ADOPT that sink rather than replace it, or the records are discarded.
         assert "_surface_sink = instrument.surface_withheld.get()" in src, (
@@ -1046,6 +1061,16 @@ class TestExpiredSuspendsAreResolved:
         )
         assert "finish_reason = 'awaiting_input'" in sql
         assert instrument.OUTCOME_ABANDONED_BY_USER in args
+        # F-38 — the two columns must move together. A row saying `abandoned` in one and
+        # `awaiting_input` in the other cannot be read at all, and the published figure read the
+        # wrong half for 84.6% of that bucket.
+        assert "finish_reason = 'abandoned_expired'" in sql, (
+            "outcome moved without finish_reason — the self-contradiction the lockstep gate rejects"
+        )
+        # EXISTS must not be invertible to NOT EXISTS, which would stamp exactly the LIVE cards.
+        assert "AND EXISTS (SELECT 1 FROM chat_suspended_runs" in sql, (
+            "inverting this predicate targets the runs that have NOT expired"
+        )
         assert "outcome_source = 'reconciler'" in sql, (
             "a swept row must never be mistakable for one a terminal path recorded"
         )
@@ -1071,3 +1096,29 @@ class TestExpiredSuspendsAreResolved:
         assert not any("DELETE" in v.upper() for v in sql_literals), (
             "resolving an outcome must not destroy the record that justifies it"
         )
+
+
+class TestOutcomeSourceIsTwoDirectional:
+    """`outcome_source` only bites if BOTH sides declare themselves.
+
+    Measured: nothing wrote 'path'. Both writers emitted 'reconciler', so a NULL meant either "a
+    terminal path wrote this" or "a sweep wrote it before the column existed" — and 64.8% of
+    outcomed rows read as path-written when they were not. A one-directional marker can REFUTE a
+    claim of path-coverage; it cannot support one, which is the same limit as `source_inferred`.
+    """
+
+    def test_the_terminal_paths_declare_themselves(self):
+        src = _stream_src()
+        assert src.count("outcome_source = 'path'") >= 2, (
+            "the upsert branches must claim authorship, or a swept row is indistinguishable from a "
+            "path-written one on re-read"
+        )
+        assert src.count("'path')") >= 2, "and the INSERT branches too"
+
+    def test_the_two_writers_never_claim_the_same_authorship(self):
+        import inspect
+        sweep = inspect.getsource(instrument.reconcile_crashed_turns)
+        resolver = inspect.getsource(instrument.resolve_expired_suspends)
+        for name, s in (("reconciler", sweep), ("resolver", resolver)):
+            assert "'path'" not in s, f"{name} must never claim a terminal path wrote its row"
+            assert "outcome_source = 'reconciler'" in s

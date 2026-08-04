@@ -247,6 +247,7 @@ SELECT CASE WHEN organic THEN 'organic' ELSE 'raw' END AS scope,
        count(*) AS assistant_turns,
        count(*) FILTER (WHERE mapped = 'completed')         AS completed,
        count(*) FILTER (WHERE mapped = 'awaiting_input')    AS awaiting_input,
+       count(*) FILTER (WHERE mapped = 'abandoned_by_user') AS abandoned_by_user,
        count(*) FILTER (WHERE mapped = 'failed')            AS failed,
        count(*) FILTER (WHERE mapped = 'crashed')           AS crashed,
        count(*) FILTER (WHERE mapped = 'interrupted')       AS interrupted_recorded,
@@ -257,6 +258,14 @@ FROM (
   SELECT (m.session_id IN (SELECT session_id FROM _organic)) AS organic,
          CASE WHEN m.is_error THEN 'failed'
               WHEN m.finish_reason = 'stop' THEN 'completed'
+              -- 🔴 `outcome` OVERRIDES `finish_reason` here, and the gap it closes was 84.6%.
+              -- The instrument was repaired in the `outcome` column while this class kept reading
+              -- `finish_reason`, so 33 of 39 turns counted as `awaiting_input` — a state this
+              -- codebase calls a SUCCESS — were turns the instrument itself records as DEAD (their
+              -- suspended run expired; input can never arrive). Flattering direction, and the exact
+              -- defect the run is named for: repaired in the column, left standing in the number.
+              WHEN m.outcome IS NOT NULL AND m.finish_reason = 'awaiting_input'
+                THEN m.outcome
               WHEN m.finish_reason = 'awaiting_input' THEN 'awaiting_input'
               WHEN m.finish_reason = 'error' THEN 'failed'
               WHEN m.finish_reason = 'streaming' THEN 'crashed'

@@ -575,7 +575,14 @@ async def resolve_expired_suspends(pool) -> int:
         async with pool.acquire() as conn:
             resolved = await conn.fetchval(
                 "WITH t AS (UPDATE chat_messages m "
-                "  SET outcome = $1, outcome_source = 'reconciler' "
+                # F-38 — `finish_reason` MOVES WITH `outcome`. Leaving it at 'awaiting_input'
+                # while the outcome says abandoned is the self-contradicting row the lockstep gate
+                # exists to reject — and that gate reads only stream_service.py, so it could not
+                # see this. A row whose two columns disagree is worse than either being wrong: a
+                # reader cannot tell which half to believe, and the published class-4 figure read
+                # the WRONG half for 84.6% of that bucket.
+                "  SET outcome = $1, outcome_source = 'reconciler', "
+                "      finish_reason = 'abandoned_expired' "
                 "  WHERE m.finish_reason = 'awaiting_input' "
                 "    AND m.outcome IS DISTINCT FROM $1 "
                 "    AND EXISTS (SELECT 1 FROM chat_suspended_runs r "

@@ -5937,6 +5937,13 @@ async def stream_response(
                 # prompt naming them, so filtering one out splits guidance from capability and
                 # leaves an instruction the model cannot satisfy (see the filter's docstring —
                 # this is the Mị Đế 40k-character loop).
+                # CP-0.2 — ARMED HERE, before the FIRST narrowing of the turn, which is catalog assembly.
+                # It was armed before `discovery_seed_for_surface` — 73 lines too late — so the intent
+                # gate's records went to a sink that did not exist yet, and `set([])` afterwards would have
+                # discarded them even if it had. Sixth recurrence of arm-after-use, and the fifth is named
+                # in the sibling docstring directly below. The rule that prevents a seventh: THE SINK IS
+                # ARMED AT THE TOP OF THE TURN, not before the stage someone happens to be fixing.
+                instrument.surface_withheld.set([])
                 discovery_catalog = filter_intent_gated_setup_tools(
                     catalog, injected_skill_codes, set(pinned_step_tools or ()),
                 )
@@ -6004,13 +6011,9 @@ async def stream_response(
                     for p in (_rail_progress_objs or [])
                     if getattr(p, "next_step", None) is not None
                 }
-                # CP-0.2 — ARM THE SINK HERE, before the first narrowing. Arming it inside
-                # _emit_chat_turn was 435 lines and one stack frame too late: that function is an
-                # async generator, so its body does not begin until the consumer's `async for`,
-                # which is strictly AFTER this call. `get()` returned the default and every
-                # hot-seed narrowing registered nothing — the fourth distinct mechanism by which
-                # this same narrowing has gone unrecorded.
-                instrument.surface_withheld.set([])
+                # NOT re-armed here: the sink is armed before catalog assembly above. Setting a
+                # fresh list at this point would DISCARD the intent gate's records — which is how
+                # the previous fix managed to be a no-op even where it was armed.
                 discovery_seed_names = discovery_seed_for_surface(
                     discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                     pins=tool_pins,
@@ -6286,9 +6289,9 @@ async def _persist_terminal_assistant(
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, model_ref, parent_message_id, branch_id, tool_calls,
                        is_error, error_detail, finish_reason,
-                       outcome, advertised_tools, withheld_tools, runtime_variant)
+                       outcome, advertised_tools, withheld_tools, runtime_variant, outcome_source)
                     VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,0,$9::jsonb,$10,$11,$12,
-                            $13,$14::jsonb,$15::jsonb,$16)
+                            $13,$14::jsonb,$15::jsonb,$16,'path')
                     ON CONFLICT (message_id) DO UPDATE SET
                       content = EXCLUDED.content,
                       content_parts = EXCLUDED.content_parts,
@@ -6297,6 +6300,11 @@ async def _persist_terminal_assistant(
                       error_detail = EXCLUDED.error_detail,
                       finish_reason = EXCLUDED.finish_reason,
                       outcome = EXCLUDED.outcome,
+                      -- CP-0.4 — a terminal path SAYS SO. Nothing wrote 'path', so a swept row and
+                      -- a path-written row were distinguishable only by the sweep's own marker —
+                      -- one-directional, and 64.8% of outcomed rows read as path-written when they
+                      -- were not. The distinction only bites if BOTH sides declare themselves.
+                      outcome_source = 'path',
                       -- CP-0.1/0.2 — COALESCE, not overwrite. This row is upserted several times per
                       -- turn (a checkpoint at each tool boundary, then the terminal handler), and a
                       -- later caller that does not carry the recorder must not erase what an earlier
@@ -7279,9 +7287,9 @@ async def _emit_chat_turn(
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
                        context_breakdown, response_id, exclude_from_memory, local_date, finish_reason,
-                       outcome, advertised_tools, withheld_tools, runtime_variant)
+                       outcome, advertised_tools, withheld_tools, runtime_variant, outcome_source)
                     VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15, $20,
-                            $16,$17::jsonb,$18::jsonb,$19)
+                            $16,$17::jsonb,$18::jsonb,$19,'path')
                     ON CONFLICT (message_id) DO UPDATE SET
                       content = EXCLUDED.content,
                       content_parts = EXCLUDED.content_parts,
@@ -7300,6 +7308,7 @@ async def _emit_chat_turn(
                       -- overwrites whatever a mid-turn checkpoint left here (a 'crashed' derived from
                       -- 'streaming'). The reverse never happens: a checkpoint COALESCEs instead.
                       outcome = EXCLUDED.outcome,
+                      outcome_source = 'path',
                       advertised_tools = COALESCE(EXCLUDED.advertised_tools, chat_messages.advertised_tools),
                       withheld_tools = COALESCE(EXCLUDED.withheld_tools, chat_messages.withheld_tools),
                       runtime_variant = EXCLUDED.runtime_variant
@@ -7998,6 +8007,8 @@ async def resume_stream_response(
             # precisely because a resume re-derives its surface from scratch (WS-3); dropping
             # the exemption here would strand a rail at its FIRST confirm gate — the same
             # failure WS-3 was written to fix, re-entered through the capability floor.
+            # CP-0.2 — same arming, resume path: before catalog assembly, not after it.
+            instrument.surface_withheld.set([])
             resume_discovery_catalog = filter_intent_gated_setup_tools(
                 catalog, resume_injected_skills, set(susp.pinned_step_tools or ()),
             )
@@ -8012,8 +8023,9 @@ async def resume_stream_response(
             # session curated pins when enabled_tools is non-empty (story 04 S2).
             # Resume superset includes the studio hot domains — a suspend raised on the
             # studio compose surface must resume with its composition family still hot.
-            # CP-0.2 — same arming, resume path (see the note at the fresh-turn call site).
-            instrument.surface_withheld.set([])
+            # NOT re-armed here: the sink was armed before catalog assembly above, and setting a
+            # fresh list would DISCARD the intent gate's records — which is how the previous fix
+            # managed to be a no-op even where it was armed.
             resume_seed_names = discovery_seed_for_surface(
                 resume_discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                 pins=tool_pins,
