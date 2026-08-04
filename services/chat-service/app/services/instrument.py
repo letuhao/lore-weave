@@ -23,6 +23,7 @@ import json
 import logging
 from contextvars import ContextVar
 from typing import Any, Iterable, Literal
+from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
@@ -279,12 +280,36 @@ class AdvertisedToolsRecorder:
     must survive a later pass that happens not to consider the tool.
     """
 
-    __slots__ = ("_passes", "_withheld", "_seen")
+    __slots__ = ("_passes", "_withheld", "_seen", "_segment")
 
     def __init__(self) -> None:
         self._passes: list[dict] = []
         self._withheld: list[dict] = []
         self._seen: set[tuple[str, str]] = set()
+        # F-48 — the SEGMENT this recorder owns, and it exists because one SQL expression had to
+        # satisfy two requirements that pull in opposite directions:
+        #
+        #   * a RESUME builds a FRESH recorder for the same `message_id`, and must not erase what
+        #     the previous one wrote — the founding-defect artefact. That argues for concatenation.
+        #   * a MID-TURN CHECKPOINT writes with the SAME recorder that will write again at the
+        #     terminal path, and must not duplicate. That argues against concatenation.
+        #
+        # Unconditional concatenation satisfied the first and broke the second: a 3-pass turn with
+        # 2 checkpoints stored 7 entries numbered [1,2,1,2,1,2,3], and `pass 1` then denoted two
+        # different sets in one array. The delta-encoding the column exists for — "which tool
+        # disappeared between pass N and N+1" — has no answer once the array is non-monotone.
+        #
+        # Stamping the writer resolves both: a write REPLACES its own segment and touches no other.
+        # Re-writing is idempotent; a resume's segment differs, so its entries are appended beside
+        # the earlier ones rather than merged into them, and `(segment, pass)` is unique by
+        # construction. A random id is deliberate — a counter would need coordination across
+        # requests that do not share memory, and guessing a predecessor's count is exactly the kind
+        # of assumption this checkpoint has been punished for.
+        self._segment: str = uuid4().hex[:12]
+
+    @property
+    def segment(self) -> str:
+        return self._segment
 
     def record_pass(
         self,
@@ -301,6 +326,11 @@ class AdvertisedToolsRecorder:
         Sorting here at least makes the *record* comparable between turns; CP-2.3 fixes the surface.
         """
         entry: dict[str, Any] = {
+            # F-48 — `pass` is unique only WITHIN a segment. Across a resume the same number is
+            # re-issued by a fresh recorder, so any consumer reconstructing the sequence must group
+            # by `segment` first. Both are written on every entry so that grouping is possible from
+            # the stored value alone, without knowing how the row was assembled.
+            "segment": self._segment,
             "pass": len(self._passes) + 1,
             "tool_choice": tool_choice,
             "names": sorted(names),
@@ -343,6 +373,11 @@ class AdvertisedToolsRecorder:
             return
         self._seen.add(key)
         self._withheld.append({
+            # F-48 — same segment stamp as the advertised entries, for the same reason: the merge
+            # replaces a segment's contribution rather than appending it, and without this marker a
+            # mid-turn checkpoint multiplied every withholding it had recorded so far (measured at
+            # ~215 `domain_not_selected` entries per extra copy).
+            "segment": self._segment,
             "tool": tool, "stage": stage, "reason": reason,
             # The pass this narrowing APPLIES TO — the one just recorded, not the next one.
             #
@@ -436,6 +471,59 @@ class AdvertisedToolsRecorder:
         return out or None
 
 
+def segment_merge_sql(column: str) -> str:
+    """F-48 · the `ON CONFLICT DO UPDATE` expression for a segment-stamped jsonb array.
+
+    **A write replaces its own segment and never touches another's.** Both prior behaviours were
+    wrong in opposite directions, and each was introduced as the fix for the other:
+
+    ===============================  ==========================  ==========================
+    behaviour                        resume (fresh recorder)     checkpoint (same recorder)
+    ===============================  ==========================  ==========================
+    ``COALESCE`` / last-write-wins   🔴 ERASES the earlier pass  ✅ correct
+    ``||`` unconditional concat      ✅ correct                  🔴 DUPLICATES every pass
+    segment-scoped replace (this)    ✅ correct                  ✅ correct
+    ===============================  ==========================  ==========================
+
+    The middle row is the one that shipped. It was a real fix for a real erasure — a declined
+    confirm card took a row from 2 passes to 1 and destroyed the founding-defect artefact — and it
+    broke the other case silently, because a duplicated array still parses, still renders, and still
+    looks like a longer version of the truth.
+
+    Three properties this expression holds, each of which the concatenation did not:
+
+    * **idempotent** — writing the same recorder's state N times leaves the array identical to
+      writing it once, so the number of checkpoints a turn happens to write cannot change the record;
+    * **monotone within a segment** — ``pass`` is strictly increasing per segment, so
+      *"what disappeared between pass N and N+1"* has an answer again;
+    * **non-destructive across segments** — a resume's entries land beside the earlier ones,
+      distinguishable by ``segment`` rather than colliding on a re-issued ``pass`` number.
+
+    Rows written before the segment stamp existed carry no ``segment`` key. ``IS DISTINCT FROM``
+    keeps them: a historical entry is never attributed to a segment it predates, so the fix cannot
+    retroactively delete data it does not understand. The explicit ``EXCLUDED -> 0 ->> 'segment' IS
+    NULL`` branch preserves the old concatenating behaviour for any writer that has not been
+    migrated — **fail toward keeping the record**, not toward pruning it.
+    """
+    if not column.isidentifier():  # defensive: this string is interpolated into SQL
+        raise ValueError(f"not a column identifier: {column!r}")
+    return f"""
+                      {column} = CASE
+                        WHEN EXCLUDED.{column} IS NULL THEN chat_messages.{column}
+                        WHEN chat_messages.{column} IS NULL THEN EXCLUDED.{column}
+                        -- An unstamped writer keeps the previous append-only behaviour.
+                        WHEN EXCLUDED.{column} -> 0 ->> 'segment' IS NULL
+                          THEN chat_messages.{column} || EXCLUDED.{column}
+                        ELSE COALESCE((
+                               SELECT jsonb_agg(e ORDER BY ord)
+                               FROM jsonb_array_elements(chat_messages.{column})
+                                    WITH ORDINALITY AS _seg(e, ord)
+                               WHERE e ->> 'segment'
+                                     IS DISTINCT FROM EXCLUDED.{column} -> 0 ->> 'segment'
+                             ), '[]'::jsonb) || EXCLUDED.{column}
+                      END"""
+
+
 def outcome_for_finish_reason(finish_reason: str | None, *, is_error: bool = False) -> str:
     """Map a legacy ``finish_reason`` onto the CP-0.4 vocabulary.
 
@@ -478,6 +566,17 @@ def outcome_for_finish_reason(finish_reason: str | None, *, is_error: bool = Fal
             # cancel and a lost turn, so the historical value genuinely does not distinguish them.
             # Re-labelling it here would invent a fact about rows that never recorded one.
             return OUTCOME_INTERRUPTED
+        # 🔴 F-45, and the mechanism is worth more than the line. `resolve_expired_suspends` began
+        # writing this value in the SAME COMMIT that taught the class-4 metric about
+        # `awaiting_input` — two halves of one fix, each correct alone, cancelling each other:
+        # the sweep eliminated the exact state the metric had just learned to read, so every swept
+        # row fell through to `unrecorded`, the number CP-0 exists to drive to zero.
+        #
+        # This shim was the THIRD reader and gave a third answer (`interrupted`, via `case _`), so
+        # one row had three verdicts depending on who asked. A value written by one site and known
+        # to none of its readers is not a vocabulary extension, it is a fork.
+        case "abandoned_expired":
+            return OUTCOME_ABANDONED_BY_USER
         case _:
             return OUTCOME_INTERRUPTED
 
@@ -485,6 +584,37 @@ def outcome_for_finish_reason(finish_reason: str | None, *, is_error: bool = Fal
 Outcome = Literal[
     "completed", "awaiting_input", "abandoned_by_user", "failed", "crashed", "interrupted",
 ]
+
+# ── F-45 · the declared `finish_reason` vocabulary ──────────────────────────────────────────────
+#
+# **F-45 was not a missing branch. It was a missing VOCABULARY.** `resolve_expired_suspends` began
+# writing `finish_reason = 'abandoned_expired'` in the same commit that taught the class-4 baseline
+# metric to read `finish_reason = 'awaiting_input'`. Each change was correct in isolation and they
+# cancelled: the sweep eliminated the only state the metric had just learned to recognise, so every
+# swept row fell through to `unrecorded` — the number CP-0 exists to drive to zero. A third reader,
+# `outcome_for_finish_reason`, gave a third answer via its `case _` fallback. **One row, three
+# readers, three verdicts**, and nothing anywhere said the word was new.
+#
+# The set below is what makes that recurrence checkable rather than lucky. Split by who produces it,
+# because the two halves have different failure modes:
+#
+#   * PROVIDER values arrive from outside and may grow without warning — the fallback exists for
+#     them, and a new one is a mislabelled row, recoverable later from `outcome`.
+#   * OURS are written by this codebase. A new one that no reader knows is F-45 again, and a gate
+#     asserts that every `finish_reason` literal written under `app/` appears here.
+#
+# Adding a value to `_OURS` is therefore a deliberate act that fails the build until the readers
+# agree — which is the entire difference between extending a vocabulary and forking one.
+FINISH_REASONS_PROVIDER = frozenset({
+    "stop", "length", "tool_calls", "max_tokens", "content_filter", "error",
+})
+FINISH_REASONS_OURS = frozenset({
+    "streaming",          # a mid-turn checkpoint; terminal handler has not run
+    "awaiting_input",     # suspended on a confirm card
+    "abandoned_expired",  # the suspend's window closed — written by resolve_expired_suspends
+    "interrupted",        # historical: fuses user-cancel with lost-turn, kept for the FE badge
+})
+KNOWN_FINISH_REASONS = FINISH_REASONS_PROVIDER | FINISH_REASONS_OURS
 
 
 async def reconcile_crashed_turns(pool, *, older_than_minutes: int = 5) -> dict[str, int]:

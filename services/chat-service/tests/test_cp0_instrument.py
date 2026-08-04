@@ -297,6 +297,12 @@ class TestWithheldRegisters:
         rec.record_pass(["book_list"])
         rec.record_withheld("glossary_search", stage="failure_breaker", reason="gave up after 3")
         assert rec.withheld_json() == [{
+            # F-48 — WHO WROTE IT. Not decoration either: the persistence merge replaces a
+            # segment's own contribution and leaves every other segment alone, so an entry that
+            # does not name its writer falls back to append-only and is duplicated by the next
+            # checkpoint. Asserted against `rec.segment` rather than a literal, so the value stays
+            # opaque while the binding stays exact.
+            "segment": rec.segment,
             "tool": "glossary_search", "stage": "failure_breaker", "reason": "gave up after 3",
             # WHEN, not only who and why. Without it a verifier found 19 of 303 withheld tools also
             # advertised on every pass and could not tell a contradiction from a sequence — dropped
@@ -642,6 +648,80 @@ class TestF19NormalTerminationsAreNotInterrupted:
         assert instrument.outcome_for_finish_reason("some_future_word") == \
             instrument.OUTCOME_INTERRUPTED
         assert instrument.outcome_for_finish_reason(None) != instrument.OUTCOME_COMPLETED
+
+
+class TestF45TheVocabularyCannotFORKAgain:
+    """F-45 — a value one site writes and no reader knows.
+
+    `resolve_expired_suspends` began writing `finish_reason='abandoned_expired'` in the SAME COMMIT
+    that taught the class-4 baseline metric to read `finish_reason='awaiting_input'`. Each half was
+    a correct fix; together they cancelled, because the sweep eliminated the exact state the metric
+    had just learned to recognise. Every swept row then counted as `unrecorded` — the number CP-0
+    exists to drive to zero — and the frozen 0.0% held only because its rows had been swept by the
+    PREVIOUS build. The figure would have drifted upward with no code change at all.
+
+    Three readers gave three answers for one row. These gates make the fork impossible rather than
+    unlikely: the vocabulary is declared once, and both the writers and the readers are checked
+    against the declaration.
+    """
+
+    def test_the_swept_row_reads_the_same_way_through_the_shim(self):
+        """REJECTS the third verdict. Before this, `abandoned_expired` fell to `case _` and read
+        `interrupted` — so the shim and the sweep disagreed about a row the sweep had just written.
+        """
+        assert instrument.outcome_for_finish_reason("abandoned_expired") == \
+            instrument.OUTCOME_ABANDONED_BY_USER
+
+    def test_every_finish_reason_this_codebase_WRITES_is_declared(self):
+        """The gate that would have caught F-45 the day it shipped.
+
+        A literal assigned under `app/` and absent from `KNOWN_FINISH_REASONS` is a word invented by
+        a write path that no reader has been taught. Provider words are exempt by construction —
+        they arrive from outside and the fallback exists for them — which is why the declaration is
+        split into `_PROVIDER` and `_OURS` rather than being one bag.
+        """
+        import re as _re
+        written: set[str] = set()
+        for path in sorted(_APP.rglob("*.py")):
+            src = path.read_text(encoding="utf-8")
+            for m in _re.finditer(r"""finish_reason\s*=\s*['"]([a-z_]+)['"]""", src):
+                written.add(m.group(1))
+        undeclared = written - instrument.KNOWN_FINISH_REASONS
+        assert not undeclared, (
+            f"finish_reason value(s) written but declared nowhere: {sorted(undeclared)}. "
+            f"Add them to instrument.FINISH_REASONS_OURS and teach every reader — a value one site "
+            f"writes and no reader knows is F-45."
+        )
+
+    def test_every_declared_value_maps_to_a_real_outcome(self):
+        """A declared word must resolve through the shim to something in the CP-0 vocabulary. The
+        declaration is not a comment: if adding a value here does not force a decision about what it
+        MEANS, it is bookkeeping."""
+        for fr in sorted(instrument.KNOWN_FINISH_REASONS):
+            assert instrument.outcome_for_finish_reason(fr) in set(
+                instrument.__dict__[k] for k in dir(instrument) if k.startswith("OUTCOME_")
+            ), f"{fr!r} does not map to a CP-0 outcome"
+
+    def test_ours_and_provider_do_not_overlap(self):
+        """An overlap would let a value be treated as externally-supplied (exempt from the write
+        gate) while this codebase is the thing writing it — the exemption swallowing the rule."""
+        assert not (instrument.FINISH_REASONS_OURS & instrument.FINISH_REASONS_PROVIDER)
+
+    def test_the_class_4_metric_no_longer_pins_outcome_to_one_finish_reason(self):
+        """REJECTS the defective half directly, in the artifact where it lived.
+
+        `WHEN m.outcome IS NOT NULL AND m.finish_reason = 'awaiting_input'` made a class named
+        *"turns with no recorded outcome"* depend on a vocabulary it does not own. A row that HAS an
+        outcome cannot belong to that class, whatever word sits beside it.
+        """
+        sql = (Path(__file__).resolve().parents[3] / "contracts" / "agent-runtime-baseline"
+               / "baseline-metrics.sql").read_text(encoding="utf-8")
+        assert "WHEN m.outcome IS NOT NULL THEN m.outcome" in sql, (
+            "class 4 must read `outcome` unconditionally, not for one finish_reason"
+        )
+        assert "m.outcome IS NOT NULL AND m.finish_reason" not in sql, (
+            "class 4 still pins the outcome branch to a finish_reason literal — F-45's mechanism"
+        )
 
     def test_the_clean_finish_writes_both_fields_from_one_signal(self):
         """REJECTS: a row that contradicts itself. Pinning finish_reason='stop' while outcome
@@ -1141,26 +1221,45 @@ class TestAResumeNeverErasesTheTurnItResumes:
     replacing what the recorder had appended.
     """
 
-    def test_the_upsert_concatenates_rather_than_replaces(self):
-        src = _stream_src()
-        assert "COALESCE(EXCLUDED.advertised_tools" not in src, (
-            "a resume still replaces the pass history it should extend"
-        )
-        assert src.count("chat_messages.advertised_tools || EXCLUDED.advertised_tools") >= 2, (
-            "both upsert paths must concatenate"
-        )
-        assert src.count("chat_messages.withheld_tools || EXCLUDED.withheld_tools") >= 2, (
-            "withheld records are narrowings that HAPPENED; a later pass cannot un-happen them"
-        )
+    def test_both_upsert_sites_use_the_ONE_merge_expression(self):
+        """🔴 REWRITTEN. The previous two gates here counted substrings of the merge SQL, and they
+        were green over F-48 — an array storing `[1,1,2,1,2,3,1]` contains every substring they
+        looked for. `||` in the source says nothing about what the column ends up holding.
 
-    def test_a_null_on_either_side_still_preserves_the_other(self):
-        """The concatenation must not turn a NULL into data loss: a checkpoint that carries no
-        recorder must leave what is already stored intact, which is what COALESCE got right."""
+        What is checkable without a database is the property that made F-45 possible: **the same
+        rule maintained in two hand-written copies**. The class-4 predicate and the expired-suspend
+        sweep drifted apart inside a single commit for exactly that reason. So this asserts there is
+        ONE generator and both sites use it — the behaviour itself is proven against real Postgres
+        in `test_cp0_merge_db.py`, which is where a jsonb expression can actually be executed.
+        """
         src = _stream_src()
         for col in ("advertised_tools", "withheld_tools"):
-            i = src.index(f"WHEN EXCLUDED.{col} IS NULL THEN chat_messages.{col}")
-            j = src.index(f"WHEN chat_messages.{col} IS NULL THEN EXCLUDED.{col}", i)
-            assert j > i, f"{col}: both NULL branches must precede the concatenation"
+            generated = instrument.segment_merge_sql(col)
+            assert src.count(f'instrument.segment_merge_sql("{col}")') >= 2, (
+                f"{col}: both upsert sites must interpolate the shared merge expression"
+            )
+            # And no hand-written copy may survive beside it: a second implementation is how the
+            # two halves of one fix came to cancel each other.
+            assert f"chat_messages.{col} || EXCLUDED.{col}" not in src, (
+                f"{col}: a hand-written merge still exists alongside the generated one"
+            )
+            assert "jsonb_array_elements" in generated
+
+    def test_the_merge_preserves_a_row_when_the_incoming_side_is_null(self):
+        """A checkpoint that carries no recorder must leave what is stored intact — the one thing
+        the original COALESCE got right, and the thing both later rewrites could have dropped.
+        Asserted on the generated expression, so there is one place for it to be true."""
+        for col in ("advertised_tools", "withheld_tools"):
+            sql = instrument.segment_merge_sql(col)
+            i = sql.index(f"WHEN EXCLUDED.{col} IS NULL THEN chat_messages.{col}")
+            j = sql.index(f"WHEN chat_messages.{col} IS NULL THEN EXCLUDED.{col}", i)
+            assert j > i, f"{col}: both NULL branches must precede the merge"
+
+    def test_the_merge_generator_refuses_a_non_identifier(self):
+        """It interpolates into SQL. The guard is not theatre: this is the only string in the
+        instrument that is not a bound parameter."""
+        with pytest.raises(ValueError):
+            instrument.segment_merge_sql("advertised_tools; DROP TABLE chat_messages --")
 
 
 class TestP1RegistrationIsUnconditional:

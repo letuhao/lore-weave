@@ -6284,7 +6284,7 @@ async def _persist_terminal_assistant(
                     session_id,
                 )
                 row = await conn.fetchrow(
-                    """
+                    f"""
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, model_ref, parent_message_id, branch_id, tool_calls,
@@ -6305,26 +6305,18 @@ async def _persist_terminal_assistant(
                       -- one-directional, and 64.8% of outcomed rows read as path-written when they
                       -- were not. The distinction only bites if BOTH sides declare themselves.
                       outcome_source = 'path',
-                      -- CP-0.1/0.2 — COALESCE, not overwrite. This row is upserted several times per
-                      -- turn (a checkpoint at each tool boundary, then the terminal handler), and a
-                      -- later caller that does not carry the recorder must not erase what an earlier
-                      -- one recorded. Losing the advertised history to a bookkeeping write would
-                      -- reproduce the last-write-wins defect the jsonb array exists to avoid.
-                      -- 🔴 CONCATENATE, never replace. Measured live: declining a confirm card
-                      -- took a row from 2 passes to 1 and ERASED the pass-1→pass-2 deletion — the
-                      -- exact founding-defect artefact this column exists to preserve. A resume
-                      -- builds a FRESH recorder, so COALESCE took the new (shorter) array and the
-                      -- row then told a coherent, plausible, WRONG story about the turn.
-                      -- `AdvertisedToolsRecorder`'s own docstring says "appended, never replaced";
-                      -- the persistence layer was replacing what the recorder had appended.
-                      advertised_tools = CASE
-                        WHEN EXCLUDED.advertised_tools IS NULL THEN chat_messages.advertised_tools
-                        WHEN chat_messages.advertised_tools IS NULL THEN EXCLUDED.advertised_tools
-                        ELSE chat_messages.advertised_tools || EXCLUDED.advertised_tools END,
-                      withheld_tools = CASE
-                        WHEN EXCLUDED.withheld_tools IS NULL THEN chat_messages.withheld_tools
-                        WHEN chat_messages.withheld_tools IS NULL THEN EXCLUDED.withheld_tools
-                        ELSE chat_messages.withheld_tools || EXCLUDED.withheld_tools END,
+                      -- CP-0.1/0.2 — this row is upserted several times per turn (a checkpoint at
+                      -- each tool boundary, then the terminal handler) AND across turns (a resume
+                      -- builds a fresh recorder for the same message_id). Those two need opposite
+                      -- things from a merge, which is why both previous versions were wrong:
+                      -- COALESCE erased the resumed turn's earlier passes, and the concatenation
+                      -- that fixed it duplicated every pass a checkpoint had already written.
+                      -- The expression is built ONE PLACE — `instrument.segment_merge_sql` — and
+                      -- interpolated at both upsert sites, because two hand-maintained copies of a
+                      -- merge rule is how the class-4 predicate and the sweep came to contradict
+                      -- each other in the same commit (F-45).
+                      {instrument.segment_merge_sql("advertised_tools")},
+                      {instrument.segment_merge_sql("withheld_tools")},
                       runtime_variant = EXCLUDED.runtime_variant
                     RETURNING (xmax = 0) AS inserted
                     """,
@@ -7295,7 +7287,7 @@ async def _emit_chat_turn(
                 # us whether this was a genuine INSERT so message_count is bumped
                 # exactly once (a checkpoint already counted it).
                 _ins_row = await conn.fetchrow(
-                    """
+                    f"""
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
@@ -7322,21 +7314,15 @@ async def _emit_chat_turn(
                       -- 'streaming'). The reverse never happens: a checkpoint COALESCEs instead.
                       outcome = EXCLUDED.outcome,
                       outcome_source = 'path',
-                      -- 🔴 CONCATENATE, never replace. Measured live: declining a confirm card
-                      -- took a row from 2 passes to 1 and ERASED the pass-1→pass-2 deletion — the
-                      -- exact founding-defect artefact this column exists to preserve. A resume
-                      -- builds a FRESH recorder, so COALESCE took the new (shorter) array and the
-                      -- row then told a coherent, plausible, WRONG story about the turn.
-                      -- `AdvertisedToolsRecorder`'s own docstring says "appended, never replaced";
-                      -- the persistence layer was replacing what the recorder had appended.
-                      advertised_tools = CASE
-                        WHEN EXCLUDED.advertised_tools IS NULL THEN chat_messages.advertised_tools
-                        WHEN chat_messages.advertised_tools IS NULL THEN EXCLUDED.advertised_tools
-                        ELSE chat_messages.advertised_tools || EXCLUDED.advertised_tools END,
-                      withheld_tools = CASE
-                        WHEN EXCLUDED.withheld_tools IS NULL THEN chat_messages.withheld_tools
-                        WHEN chat_messages.withheld_tools IS NULL THEN EXCLUDED.withheld_tools
-                        ELSE chat_messages.withheld_tools || EXCLUDED.withheld_tools END,
+                      -- F-48 — segment-scoped replace, from `instrument.segment_merge_sql`. The
+                      -- terminal handler re-sends the recorder's FULL list, and every mid-turn
+                      -- checkpoint sent it too; unconditional concatenation therefore stored each
+                      -- pass once per write. Measured on the real recorder: a 3-pass turn with 2
+                      -- checkpoints stored 7 entries numbered [1,2,1,2,1,2,3]. Replacing only this
+                      -- writer's own segment makes the write idempotent while still preserving a
+                      -- RESUME's separate segment, which is what the concatenation was protecting.
+                      {instrument.segment_merge_sql("advertised_tools")},
+                      {instrument.segment_merge_sql("withheld_tools")},
                       runtime_variant = EXCLUDED.runtime_variant
                     RETURNING (xmax = 0) AS inserted
                     """,

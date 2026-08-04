@@ -257,15 +257,29 @@ SELECT CASE WHEN organic THEN 'organic' ELSE 'raw' END AS scope,
 FROM (
   SELECT (m.session_id IN (SELECT session_id FROM _organic)) AS organic,
          CASE WHEN m.is_error THEN 'failed'
-              WHEN m.finish_reason = 'stop' THEN 'completed'
               -- 🔴 `outcome` OVERRIDES `finish_reason` here, and the gap it closes was 84.6%.
               -- The instrument was repaired in the `outcome` column while this class kept reading
               -- `finish_reason`, so 33 of 39 turns counted as `awaiting_input` — a state this
               -- codebase calls a SUCCESS — were turns the instrument itself records as DEAD (their
               -- suspended run expired; input can never arrive). Flattering direction, and the exact
               -- defect the run is named for: repaired in the column, left standing in the number.
-              WHEN m.outcome IS NOT NULL AND m.finish_reason = 'awaiting_input'
-                THEN m.outcome
+              --
+              -- 🔴 F-45 — THIS BRANCH WAS PINNED TO `finish_reason = 'awaiting_input'`, and the
+              -- commit that added it ALSO taught the sweep to write `finish_reason =
+              -- 'abandoned_expired'`. The two shipped together and cancelled: the branch's only
+              -- qualifying state was the one the sweep now eliminates, so every swept row fell
+              -- through to ELSE and counted as `unrecorded` — the single number this class exists
+              -- to drive to zero. The frozen 0.0% survived only because its 33 rows had been swept
+              -- by the PREVIOUS build; with no code change at all the figure drifts upward as new
+              -- suspends expire. A metric that decays while the system improves.
+              --
+              -- The generalisation is the fix, not another value in the list. `outcome` IS the
+              -- recorded outcome, so a row that HAS one cannot belong to a class named "turns with
+              -- no recorded outcome" — whatever `finish_reason` says, and whatever new words the
+              -- write paths learn next. The old branch made this class depend on a vocabulary it
+              -- does not own and cannot see change.
+              WHEN m.outcome IS NOT NULL THEN m.outcome
+              WHEN m.finish_reason = 'stop' THEN 'completed'
               WHEN m.finish_reason = 'awaiting_input' THEN 'awaiting_input'
               WHEN m.finish_reason = 'error' THEN 'failed'
               WHEN m.finish_reason = 'streaming' THEN 'crashed'
@@ -279,6 +293,32 @@ FROM (
 ) x GROUP BY organic ORDER BY organic;
 -- (An earlier draft UNIONed the organic rows back in, double-counting them. The PERCENTAGE was
 -- unaffected — which is exactly why it survived a glance, and why counts are printed beside it.)
+
+-- ── 4b · THE CLASS'S OWN BLIND SPOT — because `ELSE 'unrecorded'` swallows anything new ────────
+--
+-- F-45 was not a wrong branch. It was a SILENT one: a write path invented `abandoned_expired`, no
+-- reader knew the word, and the catch-all absorbed it into the headline figure with no signal that
+-- the vocabulary had moved. The next new `finish_reason` would do exactly the same thing, and the
+-- only reason this one was ever found is that a verifier read two files side by side.
+--
+-- So the artifact reports what it cannot explain. Any row landing in `unrecorded` is listed here
+-- with its actual `finish_reason`, which turns "0.0%, trust me" into a claim with a residual
+-- attached. **A non-empty result is not necessarily a defect** — a genuinely un-outcomed row
+-- belongs in this class. It is a defect when the value is one some write path is producing
+-- deliberately, which is a question a human answers by looking, not one this file may assume.
+\echo '== 4b · finish_reason values counted as UNRECORDED (the class-4 residual, itemised) =='
+SELECT COALESCE(m.finish_reason, '(null)') AS finish_reason,
+       count(*) AS rows,
+       min(m.created_at)::date AS first_seen,
+       max(m.created_at)::date AS last_seen
+FROM chat_messages m
+WHERE m.role = 'assistant'
+  AND m.created_at >= TIMESTAMPTZ '2026-07-19'
+  AND m.outcome IS NULL
+  AND NOT m.is_error
+  AND (m.finish_reason IS NULL
+       OR m.finish_reason NOT IN ('stop','awaiting_input','error','streaming','interrupted'))
+GROUP BY 1 ORDER BY rows DESC;
 
 -- ── 5 · WHAT THE TRAFFIC CAN ACTUALLY SUPPORT ─────────────────────────────────────────────────
 -- The input to the acceptance arithmetic. Reported here rather than asserted in prose, because the
