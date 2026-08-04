@@ -398,6 +398,53 @@ picking one. Three options, stated with their costs, for the PO:
 question blocks **CP-4**, where a bound is first claimed. Recorded here so it cannot be discovered
 inside CP-4.
 
+### ▶ ROUND 5 — the five-round defect is **CLOSED IN PRODUCTION**, and two of my "fixes" were not fixes
+
+**The number that mattered went to zero.** V-LIVE repeated its own accounting exactly as it had
+derived it — catalogue size from the turn's **own** `tool_list` output (`count: 307`),
+set-differenced against every name ever advertised or withheld:
+
+> **`307 − (32 ∪ 286) = 0`. Round 4: 254 unaccounted. At pass 3 the partition is exact —
+> 32 advertised + 285 withheld = 317 = 307 catalogue + 10 kit tools, zero overlap.**
+
+Pass-1 withheld entries now exist (8, `hot_seed`) where round 4 found **zero**. And the defect this
+whole effort was founded on is caught live and legibly: advertised drops **32 → 31 at pass 6**, with
+a matching entry naming `book_update_details`, its stage (`failure_breaker`) and a reason.
+
+**The overlap went to zero WITHOUT deleting evidence** — the test that distinguishes a fix from a
+cover-up: withheld volume went **up**, 178 → 294, while overlap went to 0. Deletion would have moved
+it down. *(V-LIVE states its own blind spot: it cannot see an entry dropped when a tool is withheld
+at stage X and advertised at stage Y in the same pass. It never observed that case. My
+`(tool, stage, pass)` dedupe fix addresses the reachable version of it.)*
+
+**Two of my changes were wrong, in opposite directions:**
+
+- **the double-count never existed.** Round 4's *"18 entries for 17 iterations"* was V-LIVE's own
+  misread — measured against distinct **call ids**, the excess is **0 across all 37 rows**; that row
+  has 18 entries and **18 distinct ids**, because one iteration legitimately carried two calls. My
+  dedupe was a fix for a phantom, and a fix for a phantom has **only downside**: it cannot improve a
+  correct record, and every bug in it silently deletes a real one — as mine did, collapsing
+  `book_read(ch=1)` with `book_read(ch=2)`. **Unwired.**
+- **the voice literal** — retracted last commit; a fabricated record is worse than an absent one.
+
+**Runs C and D still FAIL, and both are the same hole:** a cancel before the first token, and a
+`docker kill` 2 s in, both write **nothing** — no assistant row, no `crashed`, no reconciliation
+after restart. `crashed` only survives if a checkpoint was written, and a checkpoint needs a tool
+call. The service names it in its own logs (*"CP-0.4 silent-exit … Closes at CP-3.6"*).
+
+**`abandoned_by_user` is confirmed broken with no available fix:** a closed tab and a stop-button
+press produce rows **identical on every semantic field**. The three that differ record how far the
+turn got, not why it ended. **No discriminator exists in the recorded data** — this needs a client
+signal, and inventing one server-side would be exactly the guess this run keeps catching.
+
+**Out of scope, reported, and worth acting on:** a pending tool-approval is stamped
+`source: "breaker"` — a wrong attribution *in the field CP-0 exists to make trustworthy*.
+
+**The container was stale for the FIFTH round running** — `Up 41 minutes`, restarted but never
+rebuilt; its `instrument.py` blob matched `8aa01a77a`, **four commits behind**, missing both decisive
+fixes. After rebuild: 107/107 identical. **This is the first round whose results describe the frozen
+artifact.**
+
 ### ▶ ROUND 4 — `FAIL` · V-CODE and V-LIVE (V-METRIC not re-run: blocked on the acceptance decision)
 
 **🔴 I rebuilt the defect I was fixing, under a new name.** V-LIVE opened a second browser tab, the

@@ -151,15 +151,23 @@ RUNTIME_PRIMITIVES = frozenset({
 
 
 def dedupe_recorded_calls(calls: list[dict]) -> list[dict]:
-    """Collapse a call recorded twice under different ids.
+    """🔴 **NOT WIRED, AND DELIBERATELY SO. It fixes a bug that never existed.**
 
-    Measured live: 18 entries for 17 distinct iterations, one breaker result duplicated at iteration
-    16 under two different call ids. The id differs, so an id-keyed dedupe cannot see it; what makes
-    it a duplicate is that the same tool produced the same outcome in the same iteration.
+    I added this after a verifier reported *"18 entries for 17 distinct iterations"* as a
+    double-count. Re-measured against the right signature — entries versus distinct CALL IDS — the
+    excess is **zero across all 37 rows**, including the flagged one: 18 entries, **18 distinct
+    ids**, 17 iterations, because one iteration legitimately carried two calls. The verifier
+    retracted it as its own misread.
 
-    This inflates every per-call denominator by a little, in a direction nobody would question — a
-    slightly higher call count makes a failure RATE slightly lower. Order is preserved and the first
-    occurrence wins, so the surviving record is the one whose id the transcript already references.
+    So the over-count was never real, and the "fix" could only ever destroy data: my first key
+    omitted `args`, collapsing `book_read(chapter=1)` and `book_read(chapter=2)` into one. I
+    corrected the key rather than asking whether the function should exist — which is the more
+    useful mistake to notice. **A fix for a phantom defect has only downside**: it cannot improve a
+    correct record, and every bug in it silently deletes a real one.
+
+    Kept, unwired, with its test, because the *shape* is right if a genuine duplicate is ever
+    measured — and because deleting it would erase the record of why it must not be re-wired without
+    that measurement first.
     """
     seen: set[tuple] = set()
     out: list[dict] = []
