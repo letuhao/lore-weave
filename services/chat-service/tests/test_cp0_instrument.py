@@ -729,3 +729,50 @@ class TestP1TheCandidateSelectionRegisters:
             "the reason must carry the domains, or the record cannot be reconciled against a "
             "query-dependent surface"
         )
+
+
+class TestP2SourceIsAssignedStructurally:
+    """P2 — a call's `source` is assigned structurally, never inferred.
+
+    RED, and this gate exists to keep it measurable rather than asserted. Live: 110 of 201 recorded
+    calls carry `source_inferred`, meaning the chokepoint classified them by name rather than the
+    mint site declaring what it was.
+
+    The distinction that matters, and why the residual is not simply a bug: `source='tool'` IS
+    structural today — assigned at the two sites where a dispatch really runs, so it can never be
+    inferred onto something that did not dispatch. What remains inferred is the meta/breaker SPLIT,
+    decided by a lookup over a closed set of primitive names this service defines. That is not a
+    guess about prose, but it is not the mint site declaring itself either.
+
+    Closing it means classifying ~29 mint sites individually. That is a mechanical change to the
+    tool loop, and this checkpoint has twice produced regressions from large edits made at the end
+    of a long pass — the voice initialiser that broke nine tests, and F-19, which inflated the very
+    metric CP-0 exists to drive down. So it is scoped, gated, and left for a pass with room to
+    verify it.
+    """
+
+    def test_the_tool_half_of_the_split_is_structural_and_cannot_be_inferred(self):
+        """The load-bearing half holds: nothing can acquire `tool` except by passing a dispatch."""
+        chunk = instrument.ensure_tool_call_instrumented(
+            {"id": "1", "tool": "book_read", "ok": False, "error": "x"}
+        )
+        assert chunk["source"] != instrument.SOURCE_TOOL
+        assert chunk["source_inferred"] is True
+
+    def test_an_inferred_row_is_always_marked_as_inferred(self):
+        """P2's residual must stay COUNTABLE. An inferred row that does not say so is
+        indistinguishable from a declared one, and the gap stops being measurable."""
+        for name, expected in (("tool_list", instrument.SOURCE_META),
+                               ("glossary_propose_entities", instrument.SOURCE_BREAKER)):
+            c = instrument.ensure_tool_call_instrumented({"id": "1", "tool": name})
+            assert c["source"] == expected
+            assert c.get("source_inferred") is True, (
+                f"{name} was classified without marking itself inferred — P2's residual becomes "
+                f"invisible the moment an inferred row looks declared"
+            )
+
+    def test_a_declared_source_never_acquires_the_inferred_mark(self):
+        c = instrument.stamp_tool_call({"id": "1", "tool": "tool_list"},
+                                       source=instrument.SOURCE_META)
+        instrument.ensure_tool_call_instrumented(c)
+        assert "source_inferred" not in c
