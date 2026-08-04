@@ -949,7 +949,16 @@ that cannot answer its own question.
 **V-METRIC signs CP-0 or the run does not start.** Its specific job: prove each field answers a
 question that has no answer today, and prove the baseline is reproducible **from the snapshot alone**.
 
-### L1 · FRAMEWORK — `CP-1` (β) · the membrane, empty
+### L1 · FRAMEWORK — `CP-1` (β) · the membrane, empty · 🟡 **BUILT AND VERIFIED, BLOCKED ON ONE PO DECISION**
+
+**Six of seven items carry an independent PASS.** The seventh (1.4) is half done: M4 passes, and its
+**P4 half has no subject at this checkpoint** — no INSERT is reachable from the new runtime, so the
+property has nothing to be true or false about. Two V-LIVE rounds returned `CANNOT DETERMINE` for the
+same structural reason. **All three resolutions change a criterion, and the builder may not** — see
+the decision block below. Verifier prompts:
+[`V-CODE`](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-V-CODE-PROMPT.md) ·
+[`V-LIVE`](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-V-LIVE-PROMPT.md);
+verdicts `CP-1-v-code{,-round2..5}.md` and `CP-1-v-live{,-round2}.md`.
 
 **Where it lives — decided 2026-08-04:** a **package inside chat-service, `app/agentruntime/`**, not a
 new service (SPEC §6) and not a shared SDK (two of the three assemblers are TypeScript, so a Python
@@ -1191,7 +1200,7 @@ retrofitted to whatever gets built.
 | checkpoint | scale | state |
 |---|---|---|
 | **CP-0** instrument + frozen baseline | γ | ✅ **CLOSED 2026-08-04 on 0.5/0.6/0.7** — the three that ever passed. **0.1–0.4 reassigned to CP-1.7 / CP-2.6 / CP-3.6 / CP-1.4**, where each is structural rather than retrofitted. **Verification stopped after 11 rounds** (~27 verifier deployments). The legacy instrument stays live as a control-group diagnostic, with F-45 · F-48 · F-49 recorded open |
-| CP-1 membrane, empty | β | ⬜ **NEXT** — opens with P1 (1.7) and P4 (1.4) inherited, under the same verification protocol at a scope that can converge |
+| CP-1 membrane, empty | β | 🟡 **BUILT · 6 of 7 items independently PASS · BLOCKED ON A PO DECISION.** 7 verifier deployments (V-CODE ×5, V-LIVE ×2). **P1 closed at round 4** after three of the builder's own gates died — wrong direction, then unable to fire, then a law sampled at five points — and only closed when the invariant moved into **production code** as a post-condition. **1.4's P4 half has no subject here** and all three ways to resolve it change a criterion |
 | CP-2 runtime | β | ⬜ |
 | CP-3 plan | γ | ⬜ |
 | CP-4 declarations | γ | ⬜ |
