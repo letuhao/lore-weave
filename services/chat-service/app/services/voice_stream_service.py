@@ -40,6 +40,7 @@ from app.services.text_normalizer import TextNormalizer
 from app.services.stream_service import _stream_via_gateway
 from app.services.working_memory import resolve_anchor
 from app.storage.minio_client import upload_file
+from app.services import instrument  # CP-0.4 — outcome vocabulary
 from loreweave_context import build_system_message
 
 logger = logging.getLogger(__name__)
@@ -579,11 +580,18 @@ async def voice_stream_response(
                 """
                 INSERT INTO chat_messages
                   (message_id, session_id, owner_user_id, role, content, content_parts,
-                   sequence_num, model_ref, branch_id, local_date)
-                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8)
+                   sequence_num, model_ref, branch_id, local_date,
+                   finish_reason, outcome, runtime_variant)
+                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8, 'stop', $9, $10)
                 """,
                 msg_id, session_id, user_id, final_text, json.dumps(parts), seq, model_ref,
                 _local_date,  # DBT-11 — same turn as the user msg above (resolved before acquire)
+                # CP-0.4 — the voice pipeline is a SECOND terminal path, and it wrote a row with no
+                # outcome at all. It reaches this INSERT only on a clean finish, so `completed` is
+                # the honest value; the failure was that a whole pipeline was invisible to a column
+                # whose entire premise is "every terminal path". A verifier found it by enumerating
+                # paths rather than by reading the one file the instrument was built in.
+                instrument.OUTCOME_COMPLETED, instrument.RUNTIME_LEGACY,
             )
             _mc_row = await conn.fetchrow(
                 "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), "

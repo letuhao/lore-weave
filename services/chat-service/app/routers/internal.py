@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from app.config import settings
 from app.deps import get_db
 from app.middleware.trace_id import trace_id_var
+from app.services import instrument  # CP-0.4 — outcome vocabulary
 
 logger = logging.getLogger(__name__)
 
@@ -924,9 +925,16 @@ async def proactive_turn(body: ProactiveTurnTrigger, db: asyncpg.Pool = Depends(
                 str(body.user_id), book_id, model_source, str(model_ref))
             session_id = sess["session_id"]
             msg = await conn.fetchrow(
-                """INSERT INTO chat_messages (session_id, owner_user_id, role, content, sequence_num, initiated_by)
-                   VALUES ($1, $2, 'assistant', $3, 0, 'assistant_proactive') RETURNING message_id""",
-                session_id, str(body.user_id), content)
+                # CP-0.4 — the proactive check-in is a THIRD terminal path writing an assistant row.
+                # It is generated, complete and delivered by the time it lands here, so `completed`
+                # is honest; leaving it NULL made an entire message class unreadable to the outcome
+                # column and would have shown up later as an unexplained gap in the denominator.
+                """INSERT INTO chat_messages (session_id, owner_user_id, role, content, sequence_num,
+                                              initiated_by, finish_reason, outcome, runtime_variant)
+                   VALUES ($1, $2, 'assistant', $3, 0, 'assistant_proactive', 'stop', $4, $5)
+                   RETURNING message_id""",
+                session_id, str(body.user_id), content,
+                instrument.OUTCOME_COMPLETED, instrument.RUNTIME_LEGACY)
 
     # R3 (D-PROACTIVE-DELIVERY) — AFTER the turn is committed, push a content-free notification so an
     # opted-in user is actually reached even without opening the app. Best-effort (the message stands

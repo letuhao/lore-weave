@@ -116,6 +116,42 @@ class TestTheInstrumentIsActuallyWired:
                                             "kg_project_create"} - set(kept)
         assert all(e["stage"] == "hot_seed" and e["reason"] for e in sink)
 
+    def test_every_assistant_row_insert_anywhere_writes_an_outcome(self):
+        """REJECTS: a whole pipeline invisible to the column whose premise is 'every terminal path'.
+
+        Two terminal paths wrote assistant rows with no outcome and went unnoticed for three rounds:
+        the VOICE pipeline (`voice_stream_service.py`) and the PROACTIVE check-in
+        (`routers/internal.py`). Neither is exotic and neither is deferred anywhere — they were
+        simply in files the instrument was not built in, and every gate I wrote read only the file
+        it was built in.
+
+        So this one scans the WHOLE app package. The unit is "an INSERT that creates an assistant
+        row", wherever it lives, because that is the actual population the claim is about.
+        """
+        offenders = []
+        for path in sorted(_APP.rglob("*.py")):
+            src = path.read_text(encoding="utf-8")
+            start = 0
+            while (idx := src.find("INSERT INTO chat_messages", start)) != -1:
+                stmt = src[idx: idx + 1400]
+                # Match the COLUMN LIST ONLY — the parenthesised names before VALUES — not the
+                # surrounding text. The first version of this gate scanned a 1400-char window and
+                # was satisfied by a COMMENT containing the word "outcome", so removing the column
+                # left it green. That is the third time a gate of mine has matched prose instead of
+                # code, and it is why the window is now bounded by the statement's own syntax.
+                head = stmt.split("VALUES", 1)[0]
+                cols = head[head.find("(") + 1: head.rfind(")")] if "(" in head else ""
+                cols = " ".join(line.split("--")[0] for line in cols.splitlines())
+                # Only statements that create an ASSISTANT row; a user-message INSERT has no outcome
+                # to carry, and demanding one would be a gate that cannot be satisfied.
+                if "'assistant'" in stmt and "outcome" not in cols:
+                    offenders.append(f"{path.name}:{src.count(chr(10), 0, idx) + 1}")
+                start = idx + 1
+        assert not offenders, (
+            f"assistant-row INSERT(s) with no outcome column: {offenders}. Every terminal path that "
+            f"writes a row must record how the turn ended, in whatever file it happens to live."
+        )
+
     def test_every_real_dispatch_is_stamped_as_a_real_dispatch(self):
         """REJECTS: a genuine tool execution filed as our own prose.
 
