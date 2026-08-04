@@ -87,6 +87,12 @@ async def _audio_cleanup_loop():
 async def lifespan(app: FastAPI):
     pool = await create_pool(settings.database_url)
     await run_migrations(pool)
+    # P3 — the kill path. A process that died mid-turn could not record its outcome; the process
+    # that starts can. Bounded by age so a live turn is never stamped. Best-effort by construction:
+    # it must never block startup, and it reports its counts because a reconciler that runs
+    # silently is indistinguishable from one with no callers.
+    from app.services.instrument import reconcile_crashed_turns
+    await reconcile_crashed_turns(pool)
     try:
         await ensure_bucket()
     except Exception:

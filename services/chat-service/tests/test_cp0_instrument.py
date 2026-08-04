@@ -824,3 +824,52 @@ class TestP1TheLastTwoUnregisteredNarrowings:
         src = _stream_src()
         assert "absent from this turn's catalog index" in src
         assert "not offered in restricted mode" in src
+
+
+class TestP3TheKillPathReconciler:
+    """P3's last shape — the only terminal path a turn cannot record for itself.
+
+    A `docker kill` leaves no turn to run a handler: a verifier confirmed the row stays
+    non-terminal through restart, reload, 22 polls and a later completed turn. The process that
+    died cannot write its outcome; the process that STARTS can.
+    """
+
+    def test_the_reconciler_has_a_caller(self):
+        """REJECTS the state `sweep_expired_runs` is in — a docstring claiming it runs periodically
+        and ZERO callers. A reconciler nobody calls is worse than none: it reads as coverage."""
+        main = (_APP / "main.py").read_text(encoding="utf-8")
+        assert "reconcile_crashed_turns" in main, "the reconciler is not wired into startup"
+        assert main.index("run_migrations(pool)") < main.index("reconcile_crashed_turns"), (
+            "it must run after migrations — the outcome column has to exist first"
+        )
+
+    def test_it_never_stamps_a_turn_that_might_still_be_live(self):
+        """REJECTS: manufacturing a crash that did not happen. Erring late leaves a row briefly
+        unrecorded; erring early INVENTS A FACT, which is the failure this checkpoint has committed
+        most often."""
+        import inspect
+        src = inspect.getsource(instrument.reconcile_crashed_turns)
+        assert "older_than_minutes" in src and "interval" in src, (
+            "the age bound is what separates a crashed turn from a live one"
+        )
+        assert src.count("created_at <") >= 2, (
+            "BOTH shapes — the streaming checkpoint and the reply-less user row — need the bound"
+        )
+
+    def test_it_only_claims_rows_with_no_outcome_and_no_reply(self):
+        import inspect
+        src = inspect.getsource(instrument.reconcile_crashed_turns)
+        assert src.count("outcome IS NULL") >= 2, "it must never overwrite a recorded outcome"
+        assert "NOT EXISTS" in src, (
+            "a user row WITH an assistant reply is not an orphan; claiming it would relabel a "
+            "turn that completed"
+        )
+
+    def test_it_cannot_block_startup_and_cannot_be_silent(self):
+        import inspect
+        src = inspect.getsource(instrument.reconcile_crashed_turns)
+        assert "except Exception" in src, "reconciliation must never block a service from starting"
+        assert "logger.info" in src and "return {" in src, (
+            "it must report what it stamped — a reconciler that runs silently is indistinguishable "
+            "from one with no callers"
+        )

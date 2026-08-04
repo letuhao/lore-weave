@@ -485,3 +485,62 @@ def outcome_for_finish_reason(finish_reason: str | None, *, is_error: bool = Fal
 Outcome = Literal[
     "completed", "awaiting_input", "abandoned_by_user", "failed", "crashed", "interrupted",
 ]
+
+
+async def reconcile_crashed_turns(pool, *, older_than_minutes: int = 5) -> dict[str, int]:
+    """P3 · the kill path — the one terminal shape a turn cannot record for itself.
+
+    Every other fix in this checkpoint runs INSIDE the turn. A `docker kill` leaves no turn to run
+    one: the row stays non-terminal through restart, reload and every later turn, which a verifier
+    confirmed over 22 polls. The process that died cannot write its own outcome — but the process
+    that STARTS can, and that asymmetry is the whole mechanism.
+
+    Two shapes, both bounded by age so a turn in flight is never touched:
+
+    * an assistant row still at ``finish_reason='streaming'`` — a mid-turn checkpoint whose terminal
+      handler never ran. Nothing in this codebase has ever read those rows back, which is why they
+      accumulated silently;
+    * a user row with **no assistant reply at all** and no outcome — the empty-turn shape, where the
+      kill landed before any content existed to checkpoint.
+
+    ``older_than_minutes`` is the safety margin, not a tuning knob: below it a row may belong to a
+    live turn, and stamping one would manufacture a crash that did not happen. Erring toward
+    stamping late leaves a row briefly unrecorded; erring early **invents a fact**, which is the
+    failure mode this checkpoint has committed most often.
+
+    Returns the counts so the caller can log them. **Not silent**: a reconciler that runs and says
+    nothing is indistinguishable from one with no callers — which is precisely the state
+    ``sweep_expired_runs`` is in, with a docstring claiming it runs periodically and zero callers.
+    """
+    stamped_assistant = 0
+    stamped_user = 0
+    try:
+        async with pool.acquire() as conn:
+            stamped_assistant = await conn.fetchval(
+                "WITH t AS (UPDATE chat_messages SET outcome = $1 "
+                "  WHERE role = 'assistant' AND outcome IS NULL "
+                "    AND finish_reason = 'streaming' "
+                f"    AND created_at < now() - interval '{int(older_than_minutes)} minutes' "
+                "  RETURNING 1) SELECT count(*) FROM t",
+                OUTCOME_CRASHED,
+            ) or 0
+            stamped_user = await conn.fetchval(
+                "WITH t AS (UPDATE chat_messages u SET outcome = $1 "
+                "  WHERE u.role = 'user' AND u.outcome IS NULL "
+                f"    AND u.created_at < now() - interval '{int(older_than_minutes)} minutes' "
+                "    AND NOT EXISTS (SELECT 1 FROM chat_messages a "
+                "                    WHERE a.session_id = u.session_id AND a.role = 'assistant' "
+                "                      AND a.sequence_num > u.sequence_num) "
+                "  RETURNING 1) SELECT count(*) FROM t",
+                OUTCOME_CRASHED,
+            ) or 0
+    except Exception:  # noqa: BLE001 — startup must never be blocked by reconciliation
+        logger.warning("CP-0.4 crash reconciler failed", exc_info=True)
+        return {"assistant": 0, "user": 0}
+    if stamped_assistant or stamped_user:
+        logger.info(
+            "CP-0.4 crash reconciler: stamped %d assistant + %d user rows left non-terminal by a "
+            "process that died before it could record its own outcome",
+            stamped_assistant, stamped_user,
+        )
+    return {"assistant": stamped_assistant, "user": stamped_user}
