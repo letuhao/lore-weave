@@ -2312,6 +2312,23 @@ async def _stream_with_tools(
                     # Ask mode filtered everything out — run the pass tool-free
                     # (an empty tools array 400s on some providers).
                     offered_tools = False
+            # CP-0.1 — a pass that offers NO tools is still a pass, and it was recording nothing.
+            # The advertise chunk lives inside `if offered_tools:`, so the three ways a pass can run
+            # tool-free — the D7 forced-final answer, a provider that rejected tools (D8), and ask
+            # mode filtering everything out — left a hole in the per-pass array exactly where the
+            # surface CHANGED most sharply. The pass count then under-reports, and a tool present on
+            # pass 1 and absent on a tool-free pass 2 reads as "still offered", which is the
+            # opposite of the truth and the same failure mode as a scalar column.
+            if not offered_tools:
+                yield {"advertised": {
+                    "names": [],
+                    "tool_choice": None,
+                    "withheld": [{
+                        "tool": "*", "stage": "pass_offered_no_tools",
+                        "reason": ("forced final answer (D7)" if last_iter
+                                   else "provider rejected tools (D8) or ask-mode filtered all"),
+                    }],
+                }}
             # M3 — one observability/cancel job id PER pass (each pass is a
             # separate gateway stream; the active pass is what a disconnect aborts).
             stream_job_id = str(uuid4())

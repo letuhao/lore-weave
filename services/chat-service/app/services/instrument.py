@@ -157,6 +157,15 @@ def ensure_tool_call_instrumented(chunk: dict) -> dict:
         name = chunk.get("tool") or ""
         chunk["source"] = SOURCE_META if name in RUNTIME_PRIMITIVES else SOURCE_BREAKER
         chunk["source_inferred"] = True
+    # CP-0.3 — `latency_ms` was null on every meta and breaker result, which made the field mean
+    # "dispatch latency" rather than "how long this call cost the turn". A `meta` call is not free:
+    # `tool_list` and `find_tools` read a 315-tool catalog, and a breaker still costs a model pass
+    # to produce and another to react to. Recording 0 for a result our own code minted WITHOUT
+    # measuring it would be a fabricated number, so the honest value is an explicit null with a
+    # reason — the field then reads as "not measured here", never as "instant".
+    if chunk.get("latency_ms") is None:
+        chunk["latency_ms"] = None
+        chunk.setdefault("latency_unmeasured", chunk["source"])
     chunk.setdefault("declaration", chunk.get("tool"))
     chunk.setdefault("runtime_variant", RUNTIME_LEGACY)
     chunk.setdefault("latency_ms", None)
