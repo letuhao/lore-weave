@@ -178,11 +178,28 @@ SELECT CASE WHEN organic THEN 'organic' ELSE 'raw-only' END AS scope,
        round(100.0 * count(*) FILTER (WHERE id_err) / NULLIF(count(*), 0), 1) AS pct
 FROM (
   SELECT organic,
-         (error ILIKE '%not found%' OR error ILIKE '%invalid%id%' OR error ILIKE '%uuid%'
-          OR error ILIKE '%placeholder%' OR error ILIKE '%does not exist%'
-          -- REMOVED '%missing required%': of the 27 rows it uniquely added, ~19 are missing
-          -- CONTENT arguments (['body'], ['items'], ['args']) — the error text itself says they
-          -- are not ids. A class named "identifier resolution" must not count them.
+         -- Three clauses removed after decomposition; each was admitting rows the class's own
+         -- name excludes, and together they were 90+ of 841.
+         --
+         --   '%does not exist%'  — 85 rows of `unknown kind: <X>`, admitted ONLY because OUR OWN
+         --                         appended help text says "that category does not exist in this
+         --                         book yet". The failing object is an ontology CATEGORY, not an
+         --                         identifier. This is the round-5 defect — our prose driving a
+         --                         metric — relocated from the denominator to the numerator.
+         --   '%invalid%id%'      — matches `invalid arguments — Input should be a valid list`,
+         --                         because **`valid` ends in `id`**. A substring that spells an
+         --                         identifier by accident is not an identifier test.
+         --   '%missing required%'— removed earlier: ~19 of 27 were missing CONTENT args
+         --                         (['body'], ['items'], ['args']).
+         --
+         -- What remains names an identifier explicitly, or names the failure mode this class was
+         -- built from (`placeholder_id_1`, the 0/101 specimen).
+         (error ILIKE '%not found%'
+          OR error ILIKE '%uuid%'
+          OR error ILIKE '%placeholder%'
+          OR error ILIKE '%invalid id%' OR error ILIKE '%invalid_id%'
+          OR error ILIKE '%invalid % id%'
+          OR error ILIKE '%_id%' AND error ILIKE '%invalid%'
           ) AS id_err
   FROM _calls
   WHERE NOT ok

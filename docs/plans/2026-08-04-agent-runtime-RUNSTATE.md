@@ -34,7 +34,7 @@ this run carried four of them.
 | class | **v3 — organic** | v2 | v1 | originally | claim |
 |---|---|---|---|---|---|
 | **carry-forward, over REAL errors** | **6.0%** (99/1,649) | *39.4%* | *12.6%* | *61.8%* | strictly lower |
-| **identifier resolution** — of real errors, **same definition as class 1** | **50.3%** (841/1,673) | *35.3%* | *34.9%* | *≈57%* | strictly lower |
+| **identifier resolution** — of real errors, **same definition as class 1** | **47.0%** (786/1,673) ⚠️ *residual: verifier identified ≥90 non-belonging rows; 55 removed, ~35 unresolved* | *50.3%* | *35.3%* | *≈57%* | strictly lower |
 | **not-a-real-dispatch** — lower bound | **41.6%** (1,185/2,850) | *45.3%* | *16.1%* | *65.7%* | ⛔ not scoreable across arms |
 | **turns with NO RECORDED outcome**, windowed | **0.0%** (0/269) | *4.9%* | *90.7%* | *never frozen* | ⛔ already met |
 
