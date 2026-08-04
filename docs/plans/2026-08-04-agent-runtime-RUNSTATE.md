@@ -1027,6 +1027,50 @@ stale.
 uncontaminated — **that is luck, not process.** V-LIVE attributed the drift to the parallel V-CODE
 agent; it was mine, and the record says so.
 
+### ✅ ROUNDS 3–4 — **1.7 PASSES.** Six of seven items now verified; one PO decision remains
+
+| round | 1.7 | what killed it |
+|---|---|---|
+| 1 | PASS | *(the gate checked the wrong direction and nobody had looked yet)* |
+| 2 | **FAIL** | the gate **could not fire** — `".append(" in ast.dump(fn)` is never true |
+| 3 | **FAIL** | a conservation law **sampled at five points against one fixture**, defeated by a silent drop on `assemble()`'s own `rules == ()` branch |
+| 4 | ✅ **PASS** | *"the first round where I could not produce a silent narrowing on any path the shipped code takes"* |
+
+**What finally worked was not a better test.** Three rounds died because **a test enumerates the
+shapes its author thought of, and the author is the person who just wrote the defect.** The law
+moved into production code as a post-condition on every real assembly:
+
+> `offered + registered == admitted`
+
+The verifier's decisive check: it injected a drop on a branch **no test drives** (`len(rules) >= 2`)
+— invisible to CI, and an `AssertionError` at runtime the first time that branch executes. **A
+coverage gap no longer converts into a silently smaller surface.**
+
+**And the first injection still did not go red**, which is the sharper half: the post-condition was
+correct and **unreachable**, because every no-rules test ran at n≤1 where a `[:1]` drop is
+indistinguishable from a no-op. **A post-condition is only as reachable as the fixtures that reach
+it.** Fixed by adding the no-rules path at n=3 — the smallest fixture that can tell a drop from a
+no-op.
+
+**Three findings that outlive the item:**
+
+- **F3, introduced by my own fix.** The law counted the *whole* log at that pass, so a log shared
+  within one pass raised on **correct** code with a negative loss — while the module's docstring
+  blesses sharing, and the covering test survived only by spanning two passes. **A conservation law
+  over a shared counter must count its own contribution**, or it fails the honest caller and passes
+  the careless one.
+- **Neither round-4 change was red-able.** Disabling the post-condition and reverting
+  `declarations()` each left 63/63 green — both fixes real, both unguarded. Gates added for each.
+- **The prose overstated for the fourth time**, in two places at once: `assemble` claimed to be
+  *"the only place a declaration can be removed"* while `discover` removes them 80 lines below and
+  says so; and `narrowing.py` still carried *"there is no second path, and `Surface` cannot be built
+  from a name list"* — **both halves false, and the identical sentence had been corrected 60 lines
+  away in another file.** Third document in this run with the same failure. The post-condition's
+  three real residuals are now written beside it rather than implied away.
+
+**Item state after round 4:** 1.1 ✅ · 1.2 ✅ · 1.3 🟡 *(positive control; no subject until CP-4)* ·
+1.4 🔴 **P4 half only — PO decision** · 1.5 ✅ · 1.6 ✅ · 1.7 ✅
+
 ### 🔴 THE DECISION CP-1 CANNOT MAKE FOR ITSELF — P4 and the β roster
 
 **Two independent V-LIVE rounds returned `CANNOT DETERMINE` for the same reason, established four
