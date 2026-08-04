@@ -873,3 +873,47 @@ class TestP3TheKillPathReconciler:
             "it must report what it stamped — a reconciler that runs silently is indistinguishable "
             "from one with no callers"
         )
+
+
+class TestTheReconcilerCannotImpersonateATerminalPath:
+    """P3's provenance — the finding that a repair which cannot be told from the thing it repairs
+    makes the property it 'satisfies' unfalsifiable.
+
+    Measured: the sweep stamped 223 rows back to 2026-04-03, and with ONE `outcome` column a
+    reader could not distinguish "the terminal path recorded this" from "a startup sweep guessed
+    it three days later". P3 then read as satisfied because the record was repaired instead of the
+    path. A sweep is not a terminal path.
+    """
+
+    def test_a_swept_row_is_distinguishable_from_a_path_recorded_one(self):
+        import inspect
+        src = inspect.getsource(instrument.reconcile_crashed_turns)
+        assert src.count("outcome_source = 'reconciler'") >= 2, (
+            "both sweep shapes must mark their own writes, or P3 becomes unfalsifiable"
+        )
+        ddl = (_APP / "db" / "migrate.py").read_text(encoding="utf-8")
+        assert "ADD COLUMN IF NOT EXISTS outcome_source" in ddl
+        assert "'path', 'reconciler'" in ddl, "the vocabulary must be closed"
+
+    def test_it_does_not_claim_a_session_that_continued(self):
+        """REJECTS: manufacturing a dated discontinuity. 86 of 223 swept rows sat in sessions with
+        LATER activity — the user moved on, which is not a crash."""
+        import inspect
+        src = inspect.getsource(instrument.reconcile_crashed_turns)
+        assert src.count("NOT EXISTS") >= 2, (
+            "one guard finds orphans; the second must exclude sessions that continued"
+        )
+        assert "n.sequence_num > u.sequence_num" in src
+
+    def test_the_fingerprint_does_not_hash_a_column_no_class_reads(self):
+        """REJECTS: a pin breakable WITHOUT TRAFFIC. Hashing `outcome` meant a startup sweep
+        invalidated the freeze while every published number stayed identical — round 3's
+        'fingerprint was theatre' defect inverted: covering more than the numbers depend on turns
+        an unrelated write into a false drift signal."""
+        from pathlib import Path as _P
+        sql = (_P(__file__).resolve().parents[3] / "contracts" / "agent-runtime-baseline"
+               / "baseline-metrics.sql").read_text(encoding="utf-8")
+        pin = sql[sql.index("corpus_md5"):sql.index("== 0 ·")] if "== 0 ·" in sql else sql
+        assert "coalesce(outcome,'')" not in pin, (
+            "the fingerprint still hashes `outcome`, which no class reads"
+        )

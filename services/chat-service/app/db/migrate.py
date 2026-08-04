@@ -356,6 +356,14 @@ ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS outcome TEXT
 -- assignment invalidates the control group. The comparison unit is the DECLARATION (matched pairs
 -- of one capability against its frozen-baseline predecessor), which is why the declaration identity
 -- rides on each tool_calls[] entry rather than on the turn.
+-- 🔴 WHO recorded the outcome. Without this, a swept row and a path-recorded row are the SAME
+-- ROW, so P3 ("every terminal path writes an outcome") reads as satisfied when what actually
+-- happened is that a startup sweep repaired the record three days later. A sweep is not a terminal
+-- path. The metric looked perfect BECAUSE the repair was indistinguishable from the thing it
+-- repaired — measured: 86 of 223 swept rows were in sessions that continued afterwards.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS outcome_source TEXT
+  CHECK (outcome_source IS NULL OR outcome_source IN ('path', 'reconciler'));
+
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS runtime_variant TEXT NOT NULL DEFAULT 'legacy'
   CHECK (runtime_variant IN ('legacy', 'agentruntime'));
 

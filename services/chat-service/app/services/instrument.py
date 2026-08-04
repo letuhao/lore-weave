@@ -517,7 +517,7 @@ async def reconcile_crashed_turns(pool, *, older_than_minutes: int = 5) -> dict[
     try:
         async with pool.acquire() as conn:
             stamped_assistant = await conn.fetchval(
-                "WITH t AS (UPDATE chat_messages SET outcome = $1 "
+                "WITH t AS (UPDATE chat_messages SET outcome = $1, outcome_source = 'reconciler' "
                 "  WHERE role = 'assistant' AND outcome IS NULL "
                 "    AND finish_reason = 'streaming' "
                 f"    AND created_at < now() - interval '{int(older_than_minutes)} minutes' "
@@ -525,12 +525,19 @@ async def reconcile_crashed_turns(pool, *, older_than_minutes: int = 5) -> dict[
                 OUTCOME_CRASHED,
             ) or 0
             stamped_user = await conn.fetchval(
-                "WITH t AS (UPDATE chat_messages u SET outcome = $1 "
+                "WITH t AS (UPDATE chat_messages u SET outcome = $1, outcome_source = 'reconciler' "
                 "  WHERE u.role = 'user' AND u.outcome IS NULL "
                 f"    AND u.created_at < now() - interval '{int(older_than_minutes)} minutes' "
                 "    AND NOT EXISTS (SELECT 1 FROM chat_messages a "
                 "                    WHERE a.session_id = u.session_id AND a.role = 'assistant' "
                 "                      AND a.sequence_num > u.sequence_num) "
+                # 🔴 AND the session must not have CONTINUED. Measured: 86 of 223 rows this swept
+                # sat in sessions with later activity — the user simply moved on, which is not a
+                # crash. Claiming those manufactured a dated discontinuity reaching back to
+                # 2026-04-03 out of turns nobody lost.
+                "    AND NOT EXISTS (SELECT 1 FROM chat_messages n "
+                "                    WHERE n.session_id = u.session_id "
+                "                      AND n.sequence_num > u.sequence_num) "
                 "  RETURNING 1) SELECT count(*) FROM t",
                 OUTCOME_CRASHED,
             ) or 0

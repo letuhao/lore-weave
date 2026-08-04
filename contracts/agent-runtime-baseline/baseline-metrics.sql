@@ -33,7 +33,12 @@
 SELECT (SELECT count(*) FROM chat_messages) AS messages,
        (SELECT max(created_at) FROM chat_messages) AS newest,
        md5(
-         (SELECT string_agg(message_id::text || coalesce(finish_reason,'') || coalesce(outcome,'')
+         -- `outcome` is deliberately NOT hashed. No class below reads it, and including it made
+         -- the pin breakable WITHOUT TRAFFIC: a startup reconciler stamping old rows invalidated
+         -- the freeze while every published number stayed identical. A fingerprint must cover what
+         -- the numbers DEPEND on — hashing more than that turns an unrelated write into a false
+         -- drift signal, which is round 3's "theatre" defect inverted.
+         (SELECT string_agg(message_id::text || coalesce(finish_reason,'')
                             || is_error::text || coalesce(tool_calls::text,''), ',' ORDER BY message_id)
           FROM chat_messages)
          || (SELECT string_agg(session_id::text || coalesce(title,''), ',' ORDER BY session_id)
