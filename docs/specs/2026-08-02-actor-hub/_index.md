@@ -1,7 +1,7 @@
 # Actor Hub — feature #1
 
 **Round:** 2026-08-02 · **Status:** design sealed · **feature #1 BUILT** — [`crates/actor-hub`](../../../crates/actor-hub)
-**Run state:** [`../../plans/2026-08-02-actor-substrate-RUN-STATE.md`](../../plans/2026-08-02-actor-substrate-RUN-STATE.md) — `D-1`..`D-513`
+**Run state:** [`../../plans/2026-08-02-actor-substrate-RUN-STATE.md`](../../plans/2026-08-02-actor-substrate-RUN-STATE.md) — `D-1`..`D-515`
 
 > **Actor hub is feature #1 of roughly a thousand, across dozens of categories.**
 > **Features are PLUGINS. The actor is the HUB.** The hub's job is to make adding feature #2 cheap —
@@ -20,6 +20,15 @@
 **428 lines total.** They were 1 107 before the scope seal; the cut is recorded in `D-292`..`D-295`.
 
 <!-- actor-hub-figures:end index -->
+
+### Supplementary — written after the completeness audit
+
+| file | owns |
+|---|---|
+| [`2026-08-04-unmechanised-laws.md`](2026-08-04-unmechanised-laws.md) | the laws the three contracts above STATE and nothing enforces. Two mechanisms to build now (`A-1` the vocabulary leak detector, `A-2` a source citation must name what DEFINES the thing), five specified and deliberately unbuilt because a check with no failing input is worse than none, and three refusals restated so they stop being re-litigated |
+
+It is **not** counted in the line total above: that figure governs the three
+sealed contracts, and this file is a supplement to them rather than a fourth.
 
 ## Read this to REUSE THE ANALYSIS — `analysis/`
 
