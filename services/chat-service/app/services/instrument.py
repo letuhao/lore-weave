@@ -64,7 +64,20 @@ TOOL_CALL_SOURCES = (SOURCE_TOOL, SOURCE_BREAKER, SOURCE_META, SOURCE_UNCLASSIFI
 # is closed so that an unhandled path cannot quietly invent a value.
 OUTCOME_COMPLETED = "completed"
 OUTCOME_AWAITING_INPUT = "awaiting_input"      # asked the user something — a SUCCESS state (§0.5)
-OUTCOME_ABANDONED_BY_USER = "abandoned_by_user"  # cancelled — not a failure, and needs its own state
+#: Cancelled — not a failure, and it needed its own state because `interrupted` fused "the user
+#: changed their mind" with "we lost the turn".
+#:
+#: 🔴 **MEASURED DEFECT, 2026-08-04: this value reproduces that fusion one layer down.** A verifier
+#: opened a second browser tab, the connection dropped, and the turn was recorded
+#: `abandoned_by_user` with no user cancel. A deliberate stop and a dead transport both arrive as
+#: `CancelledError` and nothing here distinguishes them — so this value currently means "the stream
+#: ended from the client side", which is NOT what its name claims.
+#:
+#: Distinguishing them needs a signal only the client has (an explicit stop, versus a socket that
+#: went away). Until that exists, **do not report this as a user-intent metric**; it is a
+#: client-side-termination metric wearing a more confident name, and that is exactly the error this
+#: whole column was introduced to correct.
+OUTCOME_ABANDONED_BY_USER = "abandoned_by_user"
 OUTCOME_FAILED = "failed"
 OUTCOME_CRASHED = "crashed"
 OUTCOME_INTERRUPTED = "interrupted"            # retained, deprecated — see below

@@ -398,6 +398,36 @@ picking one. Three options, stated with their costs, for the PO:
 question blocks **CP-4**, where a bound is first claimed. Recorded here so it cannot be discovered
 inside CP-4.
 
+### ▶ ROUND 4 — `FAIL` · V-CODE and V-LIVE (V-METRIC not re-run: blocked on the acceptance decision)
+
+**🔴 I rebuilt the defect I was fixing, under a new name.** V-LIVE opened a second browser tab, the
+turn's connection dropped, and the row recorded **`abandoned_by_user` with no user cancel**.
+`interrupted` was declared a defect in this document because it fused *"the user changed their
+mind"* with *"we lost the turn"*. `abandoned_by_user` fuses *"the user pressed stop"* with *"the
+transport died"* — **the same fusion, one layer down, in the field built to end it.** Both arrive as
+`CancelledError`, and nothing distinguishes them today, so the honest state is that **run C's
+distinction is not yet real** and I am not claiming it.
+
+| finding | state |
+|---|---|
+| the `pass` off-by-one | ✅ **fixed exactly** — removed at 6/9/12/15/18, now stamped 6/9/12/15/18; each tool's advertised range ends at exactly `withheld_at_pass − 1` |
+| the 11/178 overlap | ❌ **untouched, and no stamp value can fix it** — the same eleven tools by name across three rounds (6.3% → 6.2% → 6.2%). They are advertised on *every* pass **and** withheld. That is a contradiction in the writer, not in the timestamp |
+| surface-assembly narrowing | ❌ **4th round.** **Zero** withheld entries stamped at pass 1 across all 16 assistant rows, while **256–286 of a 307-tool catalogue** were dropped there every turn. **254 tools unaccounted for** — derived from the turn's own `tool_list` result, not from my number |
+| the proactive check-in | ✅ fixed — `outcome='completed'`, gate proven load-bearing by disabling it |
+| the voice pipeline | ⚠️ **unreachable** — fails at *"STT model not configured"* and writes **no row at all**. Untestable ≠ passing |
+| tool-free pass record | ⚠️ **CANNOT DETERMINE** — emitter confirmed in the running container, **zero instances DB-wide**; the gate needs 19 consecutive write passes to reach |
+| `latency_unmeasured` | ✅ resolved in substance — the null is now explained rather than silent |
+| `tool_calls` double-count | ❌ new — 18 entries for 17 distinct iterations, one breaker entry duplicated under two call ids |
+
+**The container was stale for the FOURTH round running**, and this time the evidence is exact: the
+container's `instrument.py` hashed to the value **round 3 recorded as its freshly-built artifact**.
+It had never been rebuilt since. 102 of 107 files matched and the 5 that differed were exactly the 5
+CP-0 files — which is what proves the method rather than the suspicion.
+
+> **Note on ordering, again:** V-LIVE judged `8aa01a77a`; the sink-arming fix is `88ac07fca`. So
+> claim 4's `FAIL` is against the pre-fix code and **the fix is unverified live** — the fifth time
+> this narrowing has been declared fixed. It does not get to be green here.
+
 ### ▶ ROUND 3 — the first `PASS`, and the founding defect finally caught in production
 
 | role | R1 | R2 | **R3** |
