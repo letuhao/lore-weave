@@ -5982,6 +5982,13 @@ async def stream_response(
                     for p in (_rail_progress_objs or [])
                     if getattr(p, "next_step", None) is not None
                 }
+                # CP-0.2 — ARM THE SINK HERE, before the first narrowing. Arming it inside
+                # _emit_chat_turn was 435 lines and one stack frame too late: that function is an
+                # async generator, so its body does not begin until the consumer's `async for`,
+                # which is strictly AFTER this call. `get()` returned the default and every
+                # hot-seed narrowing registered nothing — the fourth distinct mechanism by which
+                # this same narrowing has gone unrecorded.
+                instrument.surface_withheld.set([])
                 discovery_seed_names = discovery_seed_for_surface(
                     discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                     pins=tool_pins,
@@ -6416,8 +6423,13 @@ async def _emit_chat_turn(
     _advertised = instrument.AdvertisedToolsRecorder()
     # CP-0.2 — arm the request-scoped sink so narrowings decided OUTSIDE this function (surface
     # assembly, two frames up) still register. Drained into the recorder at each advertise.
-    _surface_sink: list[dict] = []
-    instrument.surface_withheld.set(_surface_sink)
+    # ADOPT, never replace: surface assembly ran before this generator's body started and its
+    # narrowings are already in the sink. Setting a fresh list here would discard exactly the
+    # records this field exists to carry.
+    _surface_sink = instrument.surface_withheld.get()
+    if _surface_sink is None:
+        _surface_sink = []
+        instrument.surface_withheld.set(_surface_sink)
     # W1 — advertised tool-schema tokens, reported once by the tool loop's
     # first pass ({"schema_tokens": ...} chunk); folded into the contextBudget
     # frame + the persisted context_breakdown at finish.
@@ -7897,6 +7909,8 @@ async def resume_stream_response(
             # session curated pins when enabled_tools is non-empty (story 04 S2).
             # Resume superset includes the studio hot domains — a suspend raised on the
             # studio compose surface must resume with its composition family still hot.
+            # CP-0.2 — same arming, resume path (see the note at the fresh-turn call site).
+            instrument.surface_withheld.set([])
             resume_seed_names = discovery_seed_for_surface(
                 resume_discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                 pins=tool_pins,

@@ -341,15 +341,19 @@ commit precedes the build commits in `git log`, which is the check):
 exit condition — an adversarial verifier's job is to keep finding things, and mine did, correctly,
 six times.
 
-Two rules, and the second is the one that was missing:
+One rule, and it is the one that was missing:
 
-1. **A finding assigned to a LATER checkpoint does not block this one.** It is scope, not debt. The
-   empty-turn silent exit belongs to CP-3.6 by design; CP-0.4's *"every terminal path"* has been
-   corrected to *"every terminal path that writes a row"*, because a path that writes no row cannot
-   carry a column, and making it write one **is** CP-3.6's mechanism.
-2. **CP-0 is an INSTRUMENT checkpoint. It closes when the instrument records honestly — not when
-   the thing it measures is good, and not when a bound is provable.** Whether the four classes can
-   settle the run's claim is a question CP-0 *answers*; it is not a bar CP-0 must clear.
+> **CP-0 is an INSTRUMENT checkpoint. It closes when the instrument records honestly — not when the
+> thing it measures is good, and not when a bound is provable.** Whether the four classes can settle
+> the run's claim is a question CP-0 *answers*; it is not a bar CP-0 must clear.
+
+*(A second rule stood here — "a finding assigned to a later checkpoint does not block this one",
+restating the 0.4 narrowing in present tense **in the section that decides closure**, days after
+that narrowing was withdrawn two passages above. Round 4 V-CODE found it. It reads as an editing
+miss rather than a hedge, and it is exactly how a withdrawn criterion gets quietly re-adopted:
+retract it in the item row, leave it standing in the rule that closes the checkpoint. Deleted. The
+exit condition is items 0.1–0.7 as frozen at `aa9ef87c4`, and **0.4 reads "every terminal path,
+incl. cancel and crash"**.)*
 
 ### 🔴 C1–C6 IS WITHDRAWN — round 3 V-CODE convicted it, using this document
 

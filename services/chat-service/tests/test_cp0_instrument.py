@@ -57,9 +57,18 @@ class TestTheInstrumentIsActuallyWired:
         gate.** It now reads every module that budgets, and the largest of those sites trims a
         315-tool catalog to a 2,000-token hot seed on EVERY turn.
         """
+        # Any CALL FORM, not just the `=` assignment. The prior version forbade
+        # "= budget_names_by_tokens(" only, so `return budget_names_by_tokens(...)` slipped through
+        # — the boundary was drawn around one syntax rather than around the function.
+        import re as _re
         for name, src in (("stream_service", _stream_src()), ("tool_surface", _surface_src())):
-            assert "= budget_names_by_tokens(" not in src, (
-                f"{name}: a production site still uses the variant that discards its drops"
+            # Any call form — but not the definition itself, and not the `_ex` sibling.
+            calls = [
+                m for m in _re.finditer(r"(?<![_\w])budget_names_by_tokens\(", src)
+                if not src[max(0, m.start() - 4): m.start()].endswith("def ")
+            ]
+            assert not calls, (
+                f"{name}: {len(calls)} production call(s) to the variant that discards its drops"
             )
         assert "_budget_withheld" in _stream_src(), "the budgeter's drops must be accumulated"
         assert '"stage": "token_budget"' in _stream_src(), "drops must register with a stage"
@@ -95,10 +104,32 @@ class TestTheInstrumentIsActuallyWired:
         from app.services import instrument as _inst
         from app.services.tool_surface import _budget_and_register
 
+        # DO NOT ARM THE SINK HERE. The previous version of this test called
+        # `surface_withheld.set(...)` itself — supplying the exact precondition production was
+        # failing to supply — so it passed while the real path recorded nothing. A behavioural gate
+        # that stages its own precondition is a source gate wearing a costume.
+        #
+        # The sink must be armed by PRODUCTION CODE that runs before the narrowing. So this asserts
+        # on the source of the arming, positionally, and then exercises the mechanism.
+        src = _stream_src()
+        for call in ("discovery_seed_names = discovery_seed_for_surface(",
+                     "resume_seed_names = discovery_seed_for_surface("):
+            idx = src.find(call)
+            assert idx != -1, f"call site vanished: {call}"
+            before = src[max(0, idx - 1200): idx]
+            assert "surface_withheld.set(" in before, (
+                f"the sink is not armed before {call.split('=')[0].strip()} — every narrowing it "
+                f"makes will register nowhere, which has now happened four different ways"
+            )
+        # And the turn must ADOPT that sink rather than replace it, or the records are discarded.
+        assert "_surface_sink = instrument.surface_withheld.get()" in src, (
+            "the turn replaces the armed sink instead of adopting it, discarding assembly-time "
+            "narrowings"
+        )
+
         sink: list[dict] = []
         token = _inst.surface_withheld.set(sink)
         try:
-            # No explicit sink argument — exactly how both production call sites invoke it.
             kept = _budget_and_register(
                 None, "hot_seed", catalog,
                 {"book_list", "book_read", "glossary_search", "kg_project_create"},
@@ -479,6 +510,14 @@ class TestOutcome:
             ddl, re.S,
         )
         assert block, "the outcome CHECK constraint was not found — it must not be silently dropped"
+        # Three of the four CP-0 columns had NO existence assertion anywhere: deleting their
+        # ADD COLUMN lines left every gate green. A vocabulary check over one column is not a
+        # schema check.
+        for _col in ("advertised_tools", "withheld_tools", "runtime_variant", "outcome"):
+            assert f"ADD COLUMN IF NOT EXISTS {_col}" in ddl, (
+                f"chat_messages.{_col} has no DDL — the instrument cannot record into a column "
+                f"that is never created"
+            )
         in_db = {v.strip().strip("'") for v in block.group(1).split(",")}
         assert in_db == set(instrument.OUTCOMES), (
             f"vocabulary drift: python={set(instrument.OUTCOMES) - in_db} db={in_db - set(instrument.OUTCOMES)}"
