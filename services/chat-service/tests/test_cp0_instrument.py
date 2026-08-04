@@ -13,9 +13,68 @@ from __future__ import annotations
 
 import pytest
 
+from pathlib import Path
+
 from app.services import instrument
 from app.services.instrument import AdvertisedToolsRecorder
 from app.services.tool_surface import budget_names_by_tokens, budget_names_by_tokens_ex
+
+_APP = Path(__file__).resolve().parents[1] / "app"
+
+
+def _stream_src() -> str:
+    return (_APP / "services" / "stream_service.py").read_text(encoding="utf-8")
+
+
+# ── The wiring gates ────────────────────────────────────────────────────────────────────────────
+#
+# These assert over CALL SITES rather than over behaviour, and that is deliberate. The defect they
+# reject is not a wrong value — it is a correct mechanism with no production caller, which every
+# behavioural test passes because the mechanism itself works perfectly in isolation. A capability
+# claimed in a docstring is not a capability; count the callers.
+
+
+class TestTheInstrumentIsActuallyWired:
+    def test_the_token_budgeter_reports_its_drops_in_production(self):
+        """REJECTS: the exact defect this checkpoint shipped and a verifier caught.
+
+        `budget_names_by_tokens_ex` was added, unit-tested, and documented as the fix for arm E —
+        and had ZERO production callers. Every real site still called the plain variant and threw
+        the dropped names away, so the column existed and stayed empty for the one narrowing it was
+        built for. The unit tests all passed, because the function was never the problem.
+
+        The budgeter decides at ACTIVATION time, several call sites away from the advertise
+        chokepoint where the other four stages register — which is exactly how it got missed.
+        """
+        src = _stream_src()
+        assert "_budget_withheld" in src, "the budgeter's drops must be accumulated"
+        # Every activation-path budget call must use the reporting variant.
+        assert "= budget_names_by_tokens(" not in src, (
+            "a production site is still using the variant that discards its drops"
+        )
+        assert src.count("budget_names_by_tokens_ex(") >= 4, (
+            "expected every activation-path budget call to report; found fewer"
+        )
+        assert '"stage": "token_budget"' in src, "drops must register with a stage"
+
+    def test_every_real_dispatch_is_stamped_as_a_real_dispatch(self):
+        """REJECTS: a genuine tool execution filed as our own prose.
+
+        Shipped once already: the approved Tier-A RESUME path dispatches for real, was left
+        unstamped, and so was classified `breaker` — inverting the one distinction the field exists
+        to make, on the highest-consequence calls in the product (writes a human has just approved).
+
+        Ties the count of real dispatch sites to the count of `tool` stamps, so ADDING a dispatch
+        without stamping it fails here rather than silently biasing the split forever.
+        """
+        src = _stream_src()
+        dispatches = src.count("await knowledge_client.mcp_execute_tool(")
+        stamps = src.count("source=instrument.SOURCE_TOOL")
+        assert dispatches >= 2, "expected at least the in-loop and resume dispatch sites"
+        assert stamps >= dispatches, (
+            f"{dispatches} real dispatch sites but only {stamps} 'tool' stamps — at least one "
+            f"genuine execution is being recorded as our own breaker prose"
+        )
 
 
 # ── CP-0.1 · one entry per pass, because the DIFFERENCE between passes is the finding ──────────
@@ -128,9 +187,10 @@ class TestToolCallSource:
     def test_an_unstamped_record_is_never_silently_called_a_tool(self):
         """REJECTS: the highest-consequence default in this checkpoint.
 
-        65.7% of what the model sees as a tool error is our own prose. Defaulting an unlabelled
-        record to 'tool' would re-merge exactly those two populations and would do it invisibly —
-        the split would still render, and it would be a fiction.
+        A majority of what the model sees as a tool error is our own prose (recomputed 57.7%,
+        2,315/4,010; the once-quoted 65.7% had no derivation and is withdrawn). Defaulting an
+        unlabelled record to 'tool' would re-merge exactly those two populations and would do it
+        invisibly — the split would still render, and it would be a fiction.
         """
         chunk = instrument.ensure_tool_call_instrumented(
             {"id": "1", "tool": "book_chapter_save_draft", "ok": False, "error": "nope"}
@@ -139,12 +199,20 @@ class TestToolCallSource:
         assert chunk["source"] == instrument.SOURCE_BREAKER
         assert chunk["source_inferred"] is True, "an inferred row must be distinguishable"
 
-    def test_a_runtime_primitive_is_meta_not_a_tool_failure(self):
-        """REJECTS: counting discovery calls as tool traffic. `tool_list` alone is 1,744 calls whose
-        'failures' are our own breaker cap — folding those into a tool failure rate would swamp it.
+    def test_a_runtime_primitive_is_meta_and_meta_still_counts_as_not_a_tool(self):
+        """REJECTS: a redefinition disguised as an improvement.
+
+        `meta` is a reporting sub-class, never a deduction. The same 1,337 `tool_list`/`find_tools`
+        failures the old runtime counted as tool errors become `meta` here — moving the class 33pp
+        on IDENTICAL rows. Measuring the new runtime on `breaker` alone against a blended baseline
+        would show a large win before a single request is served. The measured class is
+        `source != 'tool'`, and this test pins `meta` inside it.
         """
         chunk = instrument.ensure_tool_call_instrumented({"id": "1", "tool": "tool_list"})
         assert chunk["source"] == instrument.SOURCE_META
+        assert chunk["source"] != instrument.SOURCE_TOOL, (
+            "meta must remain inside the 'not a real dispatch' class"
+        )
 
     def test_an_explicit_stamp_is_never_overwritten_by_the_chokepoint(self):
         """REJECTS: the chokepoint second-guessing the dispatch site. Only the dispatch site knows
@@ -224,6 +292,32 @@ class TestOutcome:
     def test_an_error_is_failed_whatever_the_provider_said(self):
         assert instrument.outcome_for_finish_reason("stop", is_error=True) == \
             instrument.OUTCOME_FAILED
+
+    def test_outcome_never_moves_without_finish_reason_moving_with_it(self):
+        """REJECTS: a column that disagrees with its neighbour.
+
+        Shipped once already: a statement set `finish_reason='interrupted'` on an abandoned suspend
+        and left `outcome='awaiting_input'` — a SUCCESS state — on the same row, so an abandoned run
+        counted as a turn that correctly stopped to ask. A missing value is a hole; a contradictory
+        one answers confidently and wrongly, and nobody re-checks a column that has an answer.
+        """
+        src = _stream_src()
+        # A window, not a quote-delimited match: these statements are built from adjacent Python
+        # string literals, so a pattern that stops at the first quote reads only the fragment before
+        # `'interrupted'` and reports every statement as broken. The window spans the whole clause.
+        needle = "UPDATE chat_messages SET"
+        start = 0
+        checked = 0
+        while (idx := src.find(needle, start)) != -1:
+            stmt = src[idx: idx + 260]
+            clause = stmt.split("WHERE")[0]
+            if "finish_reason" in clause:
+                checked += 1
+                assert "outcome" in clause, (
+                    f"this statement moves finish_reason without moving outcome: {clause!r}"
+                )
+            start = idx + len(needle)
+        assert checked, "found no finish_reason UPDATE at all — the gate would pass vacuously"
 
     def test_the_vocabulary_matches_the_database_constraint(self):
         """REJECTS: the two halves drifting. The column has a CHECK constraint; a value this module

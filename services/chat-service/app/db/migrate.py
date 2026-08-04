@@ -365,9 +365,11 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_runtime_variant
   WHERE tool_calls IS NOT NULL;
 
 -- CP-0.3 (`tool_calls[].source` + `latency_ms`) needs no DDL — tool_calls is already JSONB. It is
--- enforced at the write site instead, where a missing source is a hard error rather than a default:
--- defaulting an unlabelled result to 'tool' would silently re-merge the exact two populations the
--- field exists to separate (65.7% of what the model sees as a tool error is our own prose).
+-- enforced at the write site instead: defaulting an unlabelled result to 'tool' would silently
+-- re-merge the exact two populations the field exists to separate. The measured class is
+-- `source != 'tool'` (recomputed 57.7%, 2,315/4,010, itself 57.5% harness traffic) — NOT `breaker`
+-- alone, because splitting `meta` out moves the same rows by 33pp and would manufacture an
+-- improvement out of a redefinition. See instrument.py for the derivation and the trap.
 
 -- ARCH-1 C6 — suspended runs for AG-UI frontend-tool-calls. When the model
 -- calls a frontend tool (e.g. propose_edit), the turn pauses: the in-flight

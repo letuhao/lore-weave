@@ -44,6 +44,7 @@ OUT_DIR = REPO / "eval" / "arms" / "results"
 MODEL = os.environ.get("ARMS_MODEL", "gemma-4-26b-a4b-it-uncensored-apex-quality")
 BASE_URL = os.environ.get("ARMS_BASE_URL", "http://localhost:1234/v1")
 TEMPERATURE = 0.2
+CALL_TIMEOUT_S = int(os.environ.get("ARMS_TIMEOUT_S", "900"))
 
 # The identifier the model must carry from step 1 to step 2. Deliberately a real-shaped UUID: the
 # production failures are UUID-shaped, and a short friendly token would be easier to copy than the
@@ -132,12 +133,16 @@ def call(system: str) -> dict:
         "model": MODEL, "temperature": TEMPERATURE,
         "messages": [{"role": "system", "content": system}, {"role": "user", "content": TASK}],
         "tools": TOOLS, "tool_choice": "auto",
+        # Bounded because this model emits reasoning tokens before the call, and an unbounded
+        # generation makes the sweep take hours. Generous enough that truncation before the tool
+        # call would be visible as `no_call` rather than being mistaken for a refusal to act.
+        "max_tokens": 600,
     }
     req = urllib.request.Request(
         f"{BASE_URL}/chat/completions", data=json.dumps(body).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=300) as resp:
+    with urllib.request.urlopen(req, timeout=CALL_TIMEOUT_S) as resp:
         return json.loads(resp.read())
 
 

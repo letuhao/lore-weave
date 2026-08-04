@@ -1925,6 +1925,13 @@ async def _stream_with_tools(
         # per-turn total so a repeat switches to auto-load+steer and a persistent spammer gets
         # tool_list de-advertised (suppress_tool_list is read at the advertise chokepoint below).
         listed_categories: dict[str, int] = {}
+        # CP-0.2 — drops made by the TOKEN BUDGETER, accumulated here and flushed into the next
+        # `advertised` chunk. This is the narrowing the column was built for and the one it first
+        # shipped without: the other stages (oneshot, rail gate, failure breaker, permission mode)
+        # decide at advertise time and were easy to catch there, while the budgeter decides at
+        # ACTIVATION time — a different moment, several call sites away — so instrumenting the
+        # advertise chokepoint alone captured every narrowing except the one that founded this work.
+        _budget_withheld: list[dict] = []
         tool_list_total = 0
         suppress_tool_list = False
         # ── P-1 step-runner state (Track C) ──────────────────────────────────────
@@ -2191,6 +2198,14 @@ async def _stream_with_tools(
                             "tool": TOOL_LIST_NAME, "stage": "suppress_tool_list",
                             "reason": "discovery de-advertised for this surface",
                         })
+                # CP-0.2 — the token budgeter's drops, accumulated at ACTIVATION time and flushed
+                # here. Outside the `if discovery:` block on purpose: the budgeter runs on the
+                # activation path regardless of which advertise branch this pass takes, and gating
+                # it on `discovery` would silently drop the narrowing again on every other surface.
+                # Drained, not copied, so a drop registers against the pass that caused it.
+                if _budget_withheld:
+                    _withheld_now += _budget_withheld
+                    _budget_withheld = []
                 if permission_mode in ("ask", "plan") and not discovery:
                     _filtered_out = sorted(
                         {
@@ -2889,7 +2904,7 @@ async def _stream_with_tools(
                     if listed_categories.get(_norm_cat, 0) >= TOOL_LIST_CATEGORY_CAP:
                         from app.services.tool_surface import (
                             HOT_SEED_TOKEN_BUDGET,
-                            budget_names_by_tokens,
+                            budget_names_by_tokens_ex,
                             merge_activated_tools,
                         )
                         _load_payload, loaded = tool_load_result(
@@ -2897,9 +2912,19 @@ async def _stream_with_tools(
                             unavailable_providers=provider_availability(
                                 knowledge_client.get_catalog_meta()),
                         )
-                        names_to_activate = budget_names_by_tokens(
+                        names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                             discovery_catalog or [], loaded,
                             token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                        # CP-0.2 — register what the budget deleted. Arm E: the budgeter
+                        # dropped the one tool the model needed and returned only the
+                        # survivors, so the tool left the surface and the record at the same
+                        # instant. `find_tools` is cited as the backstop, which is exactly
+                        # why it must be recorded: a backstop nobody can see fire is a claim.
+                        _budget_withheld.extend(
+                            {"tool": _n, "stage": "token_budget",
+                             "reason": "did not fit the activation token budget"}
+                            for _n in _dropped_by_budget
                         )
                         active_tool_names.update(names_to_activate)
                         if curated and activation_state is not None:
@@ -2996,16 +3021,26 @@ async def _stream_with_tools(
                     )
                     from app.services.tool_surface import (
                         HOT_SEED_TOKEN_BUDGET,
-                        budget_names_by_tokens,
+                        budget_names_by_tokens_ex,
                     )
                     # review-impl #1 (WS-1a): tool_load returns FULL schemas — unlike find_tools
                     # (names only). A tool_load(category="all"/big) would re-inject the exact
                     # catalog bloat the discovery layer exists to prevent. Bound the RETURNED
                     # schemas (not just activation) by the same token ceiling the hot-seed uses;
                     # a single-/few-name load always fits, only a large category truncates.
-                    names_to_activate = budget_names_by_tokens(
+                    names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                         discovery_catalog or [], loaded,
                         token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                    )
+                    # CP-0.2 — register what the budget deleted. Arm E: the budgeter
+                    # dropped the one tool the model needed and returned only the
+                    # survivors, so the tool left the surface and the record at the same
+                    # instant. `find_tools` is cited as the backstop, which is exactly
+                    # why it must be recorded: a backstop nobody can see fire is a claim.
+                    _budget_withheld.extend(
+                        {"tool": _n, "stage": "token_budget",
+                         "reason": "did not fit the activation token budget"}
+                        for _n in _dropped_by_budget
                     )
                     if len(names_to_activate) < len(loaded):
                         _keep = set(names_to_activate)
@@ -3092,12 +3127,22 @@ async def _stream_with_tools(
                     if step_tools and discovery:
                         from app.services.tool_surface import (
                             HOT_SEED_TOKEN_BUDGET,
-                            budget_names_by_tokens,
+                            budget_names_by_tokens_ex,
                             merge_activated_tools,
                         )
-                        names_to_activate = budget_names_by_tokens(
+                        names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                             discovery_catalog or [], step_tools,
                             token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                        # CP-0.2 — register what the budget deleted. Arm E: the budgeter
+                        # dropped the one tool the model needed and returned only the
+                        # survivors, so the tool left the surface and the record at the same
+                        # instant. `find_tools` is cited as the backstop, which is exactly
+                        # why it must be recorded: a backstop nobody can see fire is a claim.
+                        _budget_withheld.extend(
+                            {"tool": _n, "stage": "token_budget",
+                             "reason": "did not fit the activation token budget"}
+                            for _n in _dropped_by_budget
                         )
                         active_tool_names.update(names_to_activate)
                         # Persist the step tools REGARDLESS of curated mode. A workflow is an
@@ -3262,11 +3307,21 @@ async def _stream_with_tools(
                     if payload.get("enumerated"):
                         from app.services.tool_surface import (
                             HOT_SEED_TOKEN_BUDGET,
-                            budget_names_by_tokens,
+                            budget_names_by_tokens_ex,
                         )
-                        names_to_activate = budget_names_by_tokens(
+                        names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                             discovery_catalog or [], matched,
                             token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                        # CP-0.2 — register what the budget deleted. Arm E: the budgeter
+                        # dropped the one tool the model needed and returned only the
+                        # survivors, so the tool left the surface and the record at the same
+                        # instant. `find_tools` is cited as the backstop, which is exactly
+                        # why it must be recorded: a backstop nobody can see fire is a claim.
+                        _budget_withheld.extend(
+                            {"tool": _n, "stage": "token_budget",
+                             "reason": "did not fit the activation token budget"}
+                            for _n in _dropped_by_budget
                         )
                     else:
                         names_to_activate = set(matched)
@@ -6232,9 +6287,16 @@ async def _mark_suspend_abandoned(pool: asyncpg.Pool, susp) -> None:
         if row is None:
             await _materialize_abandoned_suspend(pool, susp)
         elif row["finish_reason"] == "awaiting_input":
+            # CP-0.4 — `outcome` moves WITH `finish_reason`. Updating one and not the other left
+            # `awaiting_input` — a SUCCESS state — on a run the same statement was declaring
+            # abandoned, so an abandoned suspend would have been counted as a turn that correctly
+            # stopped to ask. A column that disagrees with its neighbour is worse than a missing one:
+            # it answers confidently and wrongly. The user was asked and never came back, which is
+            # `abandoned_by_user`, not a failure.
             await pool.execute(
-                "UPDATE chat_messages SET finish_reason = 'interrupted' WHERE message_id = $1",
-                susp.message_id,
+                "UPDATE chat_messages SET finish_reason = 'interrupted', outcome = $2 "
+                "WHERE message_id = $1",
+                susp.message_id, instrument.OUTCOME_ABANDONED_BY_USER,
             )
         # else: already resolved — leave it.
     except Exception:  # noqa: BLE001 — best-effort recovery path
@@ -7642,6 +7704,11 @@ async def resume_stream_response(
                         _tool_name, _k, exc_info=True,
                     )
         if _decision in ("approved_once", "approved_always"):
+            # CP-0.3 — the SECOND real dispatch in this service. Missing it filed a genuine,
+            # user-approved Tier-A WRITE as `breaker`, i.e. as our own refusal prose — inverting the
+            # one distinction the field exists to make, and doing it on the highest-consequence
+            # calls in the product (the ones that change data after a human said yes).
+            _resume_t0 = _time.monotonic()
             envelope = await knowledge_client.mcp_execute_tool(
                 user_id=user_id, session_id=session_id,
                 project_id=str(project_id) if project_id else None,
@@ -7651,6 +7718,7 @@ async def resume_stream_response(
                 tool_name=_tool_name, tool_args=_tool_args,
                 admin_token=admin_token,
             )
+            _resume_ms = int((_time.monotonic() - _resume_t0) * 1000)
             _ok = bool(envelope.get("success"))
             _tool_payload = envelope.get("result") if _ok else {"error": envelope.get("error")}
             working.append({
@@ -7681,17 +7749,23 @@ async def resume_stream_response(
                         if _undo else {"available": False}
                     ),
                 }
+            instrument.stamp_tool_call(
+                _chunk, source=instrument.SOURCE_TOOL, latency_ms=_resume_ms,
+            )
             pre_tool_chunks = [_chunk]
         else:
             working.append({
                 "role": "tool", "tool_call_id": tool_call_id,
                 "content": tool_result_content({"error": "denied by user"}),
             })
-            pre_tool_chunks = [{
+            # Explicitly `breaker`, not left to inference: a user denial is OUR refusal, and this is
+            # the branch where the two are one line apart. Stating it removes the only place where a
+            # reader could mistake the classifier's default for a decision.
+            pre_tool_chunks = [instrument.stamp_tool_call({
                 "id": tool_call_id, "iteration": 0, "tool": _tool_name,
                 "args": _tool_args, "ok": False,
                 "result": None, "error": "denied by user",
-            }]
+            }, source=instrument.SOURCE_BREAKER)]
 
     resume_discovery_catalog: list[dict] | None = None
     resume_extra_frontend: list[dict] | None = None

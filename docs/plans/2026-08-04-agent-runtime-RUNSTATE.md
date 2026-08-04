@@ -192,10 +192,72 @@ commit precedes the build commits in `git log`, which is the check):
 | 0.6 | measure the **binding format** on our own model (§0.11 — do not import the YAML benchmark) | 🔨 harness built, **measurement running** — the local model needed two load attempts; result not yet in |
 | 0.7 | **`runtime_variant` + the declaration identity on every recorded call** — without these the comparison in §"the measurement unit" **cannot be computed at all**, however much data accumulates | 🔨 built — `DEFAULT 'legacy'` is the fail-safe direction: an unlabelled turn is attributed to the OLD runtime |
 
-**Verifiers deployed 2026-08-04** (α V-CODE · β V-LIVE · γ V-METRIC, one message, concurrent, each
-given only its committed prompt). Verdicts land in `verification/CP-0-v-*.md`. **`🔨 built` is not
-`✅`** — nothing here is closed until three independent verdicts say so, and a `PASS` without a
-stated falsifier is recorded as `CANNOT DETERMINE`, which does not close.
+### ▶ VERDICTS — CP-0 is **NOT CLOSED**. Two of three returned `FAIL`.
+
+| role | verdict | the finding that decided it |
+|---|---|---|
+| [V-CODE](../specs/2026-08-03-agent-runtime-unification/verification/CP-0-v-code.md) | **FAIL** | `budget_names_by_tokens_ex` had **zero production callers** — the reporting budgeter shipped, unit-tested and documented, while all four real sites still discarded their drops |
+| [V-METRIC](../specs/2026-08-03-agent-runtime-unification/verification/CP-0-v-metric.md) | **FAIL** | all four baseline numbers ruled unsound; **authority exercised — any `PASS` resting on them is void** |
+| V-LIVE | running | — |
+
+**What the builder changed in response** (intent is not a permitted answer; only the artifact):
+
+- the budgeter now reports at all four production sites, and a **call-site gate** rejects the
+  recurrence — the defect was a correct mechanism with no caller, which every behavioural test
+  passes because the mechanism was never the problem;
+- the **approved Tier-A resume dispatch** was being filed `breaker` — a real, human-approved WRITE
+  recorded as our own refusal prose, inverting the field's one distinction on the highest-
+  consequence calls in the product. Stamped, and the gate ties dispatch-site count to stamp count;
+- an `UPDATE` moved `finish_reason` to `interrupted` while leaving `outcome='awaiting_input'` — a
+  **success state on an abandoned run**. A column that contradicts its neighbour is worse than a
+  missing one: it answers confidently and nobody re-checks it.
+
+**Claims withdrawn, not defended:**
+
+- **`65.7%` is withdrawn.** It had no derivation anywhere in the repo; the documents that actually
+  measured said 58% / 58.5%. Recomputed: **57.7% (2,315/4,010)** — and I had compiled the unsourced
+  figure into a migration comment, the instrument, and three test docstrings.
+- **My own classifier was manufacturing a win.** Routing `tool_list`/`find_tools` failures to `meta`
+  moves the class **33pp on identical rows** — the new arm would have shown ~41pp better *before
+  serving a request*. The measured class is now fixed as **`source != 'tool'`**, with `meta` a
+  reporting sub-class, never a deduction. Pinned by a test.
+- **the arms do not reproduce as published** (C 17 vs 19 retired · D 18 vs 16 · E 6 vs 7). Scores
+  replay (A 1/1, E 0/3) but **arm E's published signature does not** — the model now emits
+  `book_list_chapters{"book_id":"all"}`, so the `named_missing_tool_in_args` detector reads False.
+  The snapshot pins a catalog that had **already drifted** before it was frozen.
+
+### 🔴 THE FINDING THAT OUTRANKS THE CHECKPOINT — the run's arithmetic does not close
+
+V-METRIC's decision 4, and it is the one this file exists to surface rather than discover late:
+
+| | measured |
+|---|---|
+| `book_list` calls in the **entire corpus** | **43** (~3.9/week) |
+| time to detect −10pp on carry-forward, at that rate | **5.0 years** |
+| time to detect it on identifier resolution | **12.2 years** |
+| the ≈13 admissions/week target | needs **377** successful calls/week against **191** mean / **47** median available |
+| P(29 consecutive successes for `book_list`) | **0.0026** |
+| the baseline failure population that is **test-harness traffic** | **57.5%** (2,304/4,010) — 1,180 `tool_list` fires from **four sessions titled "F17 monitor verify"** |
+| matched-pair join for brick 2 | **cannot be built** — zero of 315 frozen tools declare `superseded_by: book_list` |
+
+**This does not mean build differently. It means the acceptance arithmetic in the ACTIVE GOAL is
+not reachable as written, and must be re-derived before CP-4 admits anything on a per-declaration
+bound.** A run that discovers this after four checkpoints is a run that wasted them.
+
+### ▶ PROCESS FAILURE, recorded against myself
+
+**I edited `stream_service.py` and the tests while the verifiers were running.** V-METRIC flagged it:
+the three γ verifiers were not judging the same artifact, and its verdict is explicitly against
+commit `327c3e1ed` rather than the tree. **A checkpoint must be frozen at a commit before its
+verifiers are deployed**, and re-verification must run against a single stated SHA. That rule is now
+part of the protocol above, learned the expensive way.
+
+**Also true and unresolved:** the instrument has **produced zero rows** — every new column is empty
+across 5,720 messages, and **no test asserts a row reaches Postgres.** Source can show the writes
+exist; it cannot show the values are right.
+
+**`🔨 built` is not `✅`.** Nothing here is closed, and a `PASS` without a stated falsifier is
+recorded as `CANNOT DETERMINE`, which does not close either.
 
 **One finding already, from building 0.5 rather than from a review:** `superseded_by` is the *only*
 retirement key present in `_meta` anywhere in the 315-tool surface — **there is no `deprecated_at`

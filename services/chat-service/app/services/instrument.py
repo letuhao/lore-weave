@@ -26,11 +26,29 @@ logger = logging.getLogger(__name__)
 
 # ── CP-0.3 · where a result came from ──────────────────────────────────────────────────────────
 #
-# 65.7% of what the model sees as a tool error is OUR OWN PROSE — a loop breaker, a permission
-# refusal, an argument-repair failure — minted by chat-service in the exact `{id, tool, ok, result,
-# error}` shape a real tool result uses, with no field marking the difference. The model therefore
-# retries what was never retryable and blames the tool. Until this field exists, that entire
-# fraction of the error signal is uninterpretable, and so is any claim to have reduced it.
+# A large share of what the model sees as a tool error is OUR OWN PROSE — a loop breaker, a
+# permission refusal, an argument-repair failure — minted by chat-service in the exact
+# `{id, tool, ok, result, error}` shape a real tool result uses, with no field marking the
+# difference. The model retries what was never retryable and blames the tool.
+#
+# **The number, stated honestly.** An earlier "65.7%" circulated through this spec with NO
+# derivation behind it; the documents that actually measured said 58% / 58.5%. Recomputed against
+# `loreweave_chat` by an independent verifier: **57.7% (2,315/4,010)** — and that population is
+# itself 57.5% test-harness traffic, so the organic figure is lower again. Any figure quoted here
+# must name its query; a number that survives only by being repeated is how the 65.7% got compiled
+# into a migration comment in the first place.
+#
+# ── THE CLASS DEFINITION, AND WHY IT IS `source != 'tool'` ─────────────────────────────────────
+#
+# Splitting `meta` out of `breaker` is useful for diagnosis and is a TRAP for measurement. The same
+# 1,337 `tool_list`/`find_tools` failures that the old runtime counted as tool errors become `meta`
+# under this classifier — which moves the class by 33pp on IDENTICAL ROWS. Comparing the new
+# runtime's `breaker` rate against the old runtime's blended rate would show a ~41pp improvement
+# before a single request is served: not a result, an artefact of redefinition.
+#
+# So the measured class is **`source != 'tool'`** — everything that was not a real dispatch — and
+# `meta` is a REPORTING sub-class within it, never a deduction from it. The baseline must be
+# recomputed under this same classifier before any comparison is drawn.
 SOURCE_TOOL = "tool"            # a real dispatch ran and this is what it returned
 SOURCE_BREAKER = "breaker"      # our code declined, capped, or repaired — no tool ran
 SOURCE_META = "meta"            # a runtime primitive answered (discovery, skill load, recall)
