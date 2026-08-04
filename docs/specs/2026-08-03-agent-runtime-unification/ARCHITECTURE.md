@@ -992,21 +992,41 @@ validation** — an `Admitted[D]` type whose only producer is the contract check
 > criterion no mechanism can report is not a strict criterion; it is an **unfalsifiable** one, and
 > CP-0 spent eleven rounds on the cost of those.
 >
-> **What replaces it, stated as what is actually enforceable:**
+> **🔴 AMENDED AGAIN 2026-08-04, and this time the CODE is the evidence.** The first amendment
+> replaced *"compile error"* with a five-row table of *"what is actually enforceable"*. **Three of
+> those five rows were also false**, and V-CODE found them; the builder then reproduced every one by
+> **execution**, not by reading:
 >
-> | | guarantee | how it is enforced |
+> | row as first written | probe | result |
 > |---|---|---|
-> | 1 | `admit()` is the **only** producer of an `Admitted` | a module-private token that `__init__` requires and only `admit()` holds |
-> | 2 | an admitted object **cannot be mutated** into a different one | frozen + `__slots__`: no attribute assignment, no `__dict__` |
-> | 3 | it **cannot be round-tripped** into existence | `__reduce__` / `__copy__` / `__deepcopy__` refuse |
-> | 4 | a **forged** instance is unusable | `object.__new__` cannot be prevented, but it leaves every slot unset, so any read raises rather than returning a plausible value |
-> | 5 | the single construction site **stays** single | a gate counts construction sites; more than one reds CI |
+> | 1 · `admit()` is the only producer | `from …admission import _TOKEN; Admitted(d, v, _TOKEN)` | 🔴 **succeeds** — a single-underscore name is a convention, and `import` does not honour it |
+> | 2 · cannot be mutated | `object.__setattr__(a, "declaration", other)` | 🔴 **succeeds** — frozen blocks `a.x = …`, not the two-argument form the class's own `__init__` uses |
+> | 3 · cannot be round-tripped | `copy` / `deepcopy` / `pickle.dumps` | ✅ all raise |
+> | 4 · a forged instance is unusable | `object.__new__` then `object.__setattr__` ×2 | 🔴 **succeeds** — the slots can simply be filled |
+> | 5 · the construction site stays single | gate over the package | ✅ holds |
 >
-> **The residual, named rather than hidden:** row 4 is the honest boundary. A determined caller *can*
-> allocate an `Admitted` without passing the check — what it cannot do is get a **usable** one, and
-> what it cannot do **silently** is get one past the gate in row 5. That is weaker than "impossible"
-> and stronger than a validator with 14 call sites against 58 constructions, which is the thing being
-> replaced. **V-CODE is asked to settle this boundary independently rather than accept this table.**
+> Subclassing is unrestricted as well. **So the honest statement is that Python cannot make this
+> unforgeable, and no wording of this clause will change that.** Twice now this section has described
+> a boundary stronger than the language provides; the fault is the same both times — asserting a
+> property rather than probing for it.
+>
+> **M4 is therefore DEFENCE IN DEPTH, and the load-bearing layer is the third one, not the type:**
+>
+> | | layer | what it actually gives |
+> |---|---|---|
+> | 1 | **accident boundary** — the type | `Admitted(...)` raises; `copy`/`pickle` raise. Stops the *unintentional* producer, which is the 14-against-58 shape being replaced. It stops nothing deliberate. |
+> | 2 | **detection boundary** — the gate | a bypass must either name a private symbol or call `object.__setattr__` on an `Admitted`. Both are greppable, so the gate makes a deliberate bypass **loud in a diff** rather than impossible in a process. |
+> | 3 | **correctness boundary — REVALIDATION at both ends** | the manifest **writer** re-runs the contract check on every row it writes, and the **reader** re-runs it on every row it loads. This is the only layer that does not depend on the type being trustworthy. |
+>
+> **Layer 3 is the correction that matters, and it closes a defect the type was hiding.** Because
+> `build()` trusted the type, any object carrying a `.declaration` attribute wrote a manifest row —
+> reproduced: a four-line duck-typed class put `sneaky` into a generated manifest. And because
+> `load()` trusted the file, a row **typed into the JSON by hand** was served to the assembler having
+> passed no clause at all. Neither hole is about `Admitted`; both are about **a boundary asserting a
+> guarantee its neighbour was supposed to provide.**
+>
+> The rule this leaves, and it generalises past this clause: **a type may express an invariant; it may
+> not be the only thing enforcing one across a persistence boundary.** JSON on disk has no types.
 
 ### 6.2 Not a gate — the behavioural bound, which tightens
 
