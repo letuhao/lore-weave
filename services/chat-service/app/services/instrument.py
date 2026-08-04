@@ -149,6 +149,33 @@ RUNTIME_PRIMITIVES = frozenset({
 })
 
 
+def dedupe_recorded_calls(calls: list[dict]) -> list[dict]:
+    """Collapse a call recorded twice under different ids.
+
+    Measured live: 18 entries for 17 distinct iterations, one breaker result duplicated at iteration
+    16 under two different call ids. The id differs, so an id-keyed dedupe cannot see it; what makes
+    it a duplicate is that the same tool produced the same outcome in the same iteration.
+
+    This inflates every per-call denominator by a little, in a direction nobody would question — a
+    slightly higher call count makes a failure RATE slightly lower. Order is preserved and the first
+    occurrence wins, so the surviving record is the one whose id the transcript already references.
+    """
+    seen: set[tuple] = set()
+    out: list[dict] = []
+    for c in calls:
+        key = (c.get("iteration"), c.get("tool"), c.get("ok"), c.get("source"), str(c.get("error")))
+        if key in seen:
+            logger.info(
+                "CP-0.3: dropping a duplicate recorded call (tool=%s iteration=%s) — same tool, "
+                "same outcome, same iteration, different id",
+                c.get("tool"), c.get("iteration"),
+            )
+            continue
+        seen.add(key)
+        out.append(c)
+    return out
+
+
 def ensure_tool_call_instrumented(chunk: dict) -> dict:
     """The chokepoint: no recorded call reaches persistence without CP-0.3/0.7 fields.
 
@@ -313,7 +340,38 @@ class AdvertisedToolsRecorder:
         return self._passes or None
 
     def withheld_json(self) -> list[dict] | None:
-        return self._withheld or None
+        """The CP-0.2 value, **reconciled against what was actually advertised**.
+
+        A withholding claims *"the model could not see this tool on that pass"*. Three rounds of
+        live verification found the same eleven tools recorded as withheld **while advertised on
+        every pass** (6.3% → 6.2% → 6.2%, unchanged, the same names each time). No timestamp fixes
+        that, because it is not a sequencing error: an intermediate stage genuinely decided to drop
+        the tool, and a *later* stage genuinely put it back — the always-hot write allowlist and the
+        core set both do this by design. The stage's decision was real; the CLAIM built from it was
+        false, because the model could see the tool.
+
+        So the final advertised set wins. A stage's intent is not evidence about what the model
+        held; only the wire is. Entries are dropped rather than annotated because a consumer asking
+        *"what was hidden from the model?"* must be able to trust the answer without re-deriving it
+        — which is the entire reason this column exists rather than a log line.
+
+        The dropped decisions are not lost: they remain visible in the per-stage counters a caller
+        can compute from `passes`, and a stage that is *always* overridden this way is itself a
+        finding worth surfacing — it means a narrowing mechanism that never actually narrows.
+        """
+        if not self._withheld:
+            return None
+        if not self._passes:
+            return self._withheld
+        by_pass = {p["pass"]: set(p["names"]) for p in self._passes}
+        out = [
+            w for w in self._withheld
+            # Keep it only if the tool was genuinely absent from the pass it was stamped against.
+            # An unknown pass (stamped before any pass was recorded) keeps the entry: absence of
+            # evidence is not evidence the tool was visible.
+            if w["tool"] not in by_pass.get(w.get("pass"), set())
+        ]
+        return out or None
 
 
 def outcome_for_finish_reason(finish_reason: str | None, *, is_error: bool = False) -> str:

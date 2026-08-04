@@ -320,6 +320,34 @@ class TestWithheldRegisters:
             rec.record_withheld("book_get", stage="rail_gate", reason="step satisfied")
         assert len(rec.withheld_json()) == 1
 
+    def test_a_tool_the_model_could_see_is_not_reported_as_withheld(self):
+        """REJECTS: the contradiction three live rounds found and no timestamp could fix.
+
+        The same eleven tools were recorded as withheld while advertised on EVERY pass — 6.3%,
+        6.2%, 6.2% across rounds 2-4, the same names each time. It is not a sequencing error: an
+        intermediate stage really did drop the tool and a later stage really did put it back (the
+        always-hot write allowlist does exactly this). The stage's decision was real; the CLAIM was
+        false, because the model could see the tool.
+
+        A consumer asking "what was hidden from the model?" must be able to trust the answer without
+        re-deriving it against advertised_tools — otherwise the column is a log line with a schema.
+        """
+        rec = AdvertisedToolsRecorder()
+        rec.record_pass(["book_list", "glossary_search"])
+        # A stage drops it; a later stage restores it — the model ends up holding it.
+        rec.record_withheld("glossary_search", stage="hot_seed", reason="did not fit the budget")
+        rec.record_withheld("kg_project_create", stage="hot_seed", reason="did not fit the budget")
+
+        withheld = rec.withheld_json() or []
+        names = {w["tool"] for w in withheld}
+        assert "glossary_search" not in names, (
+            "a tool present in the pass's advertised set was still reported as withheld"
+        )
+        assert "kg_project_create" in names, (
+            "a genuinely absent tool must still be reported — the reconciliation must not swallow "
+            "real withholdings"
+        )
+
     def test_two_different_stages_dropping_the_same_tool_are_two_findings(self):
         """REJECTS: over-deduplication. Two mechanisms independently hiding the same tool is a
         different (and worse) fact than one mechanism doing it, and collapsing them hides the

@@ -6189,9 +6189,9 @@ async def _persist_terminal_assistant(
     # CP-0.3 — the chokepoint. Every recorded call carries a source, a declaration identity and a
     # runtime variant by the time it is persisted, whichever of the 30-odd mint sites produced it.
     if tool_calls_history:
-        tool_calls_history = [
+        tool_calls_history = instrument.dedupe_recorded_calls([
             instrument.ensure_tool_call_instrumented(tc) for tc in tool_calls_history
-        ]
+        ])
     tool_calls_json = json.dumps(tool_calls_history) if tool_calls_history else None
     _outcome = outcome or instrument.outcome_for_finish_reason(finish_reason, is_error=is_error)
     _advertised_json = json.dumps(advertised_tools) if advertised_tools else None
@@ -7035,10 +7035,10 @@ async def _emit_chat_turn(
                 # _persist_terminal_assistant. Both INSERT sites pass through it, so there is no
                 # route from a mint site to the tool_calls column that skips the source stamp.
                 tool_calls_json = (
-                    json.dumps([
+                    json.dumps(instrument.dedupe_recorded_calls([
                         instrument.ensure_tool_call_instrumented(_tc)
                         for _tc in tool_calls_history
-                    ])
+                    ]))
                     if tool_calls_history else None
                 )
 
