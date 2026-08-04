@@ -703,14 +703,23 @@ class TestP1TheCandidateSelectionRegisters:
                                               "parameters": {"type": "object", "properties": {}}}}
             for n in ("book_read", "book_list", "world_map_create", "translation_job_status")
         ]
+        # DO NOT PASS withheld_sink. Neither production call site does — both rely on the
+        # ContextVar fallback — so a gate that passes it explicitly stages the exact precondition
+        # production fails to supply, and deleting the fallback leaves it GREEN. That is the fifth
+        # recurrence of this one defect, and it is written as a warning in the sibling gate's
+        # docstring nine lines above. Exercise the path production actually takes.
         sink: list[dict] = []
-        discovery_seed_for_surface(
-            catalog,
-            pins=SessionToolPins(effective_enabled=[], effective_skills=[],
-                                 curated_mode=False,
-                                 activation_state={"activated_tools": [], "dirty": False}),
-            editor=False, book_scoped=True, withheld_sink=sink,
-        )
+        token = _inst.surface_withheld.set(sink)
+        try:
+            discovery_seed_for_surface(
+                catalog,
+                pins=SessionToolPins(effective_enabled=[], effective_skills=[],
+                                     curated_mode=False,
+                                     activation_state={"activated_tools": [], "dirty": False}),
+                editor=False, book_scoped=True,
+            )
+        finally:
+            _inst.surface_withheld.reset(token)
         stages = {e["stage"] for e in sink}
         assert "domain_not_selected" in stages, (
             "the largest narrowing in the system still registers nothing — it does not look like "

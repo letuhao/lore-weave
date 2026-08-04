@@ -931,10 +931,18 @@ async def proactive_turn(body: ProactiveTurnTrigger, db: asyncpg.Pool = Depends(
                 # column and would have shown up later as an unexplained gap in the denominator.
                 """INSERT INTO chat_messages (session_id, owner_user_id, role, content, sequence_num,
                                               initiated_by, finish_reason, outcome, runtime_variant)
-                   VALUES ($1, $2, 'assistant', $3, 0, 'assistant_proactive', 'stop', $4, $5)
+                   VALUES ($1, $2, 'assistant', $3, 0, 'assistant_proactive', $6, $4, $5)
                    RETURNING message_id""",
                 session_id, str(body.user_id), content,
-                instrument.OUTCOME_COMPLETED, instrument.RUNTIME_LEGACY)
+                instrument.OUTCOME_COMPLETED, instrument.RUNTIME_LEGACY,
+                # 🔴 NOT 'stop'. My claim that this INSERT is single-condition was FALSE:
+                # `_generate_proactive_content` swallows every exception and returns None, and
+                # `_clean_proactive_text` rejects junk, so the path degrades to _PROACTIVE_STATIC —
+                # a provider outage and a grounded generation commit THE SAME ROW. Asserting a
+                # provider terminal reason on a branch where no provider spoke is the exact class
+                # of defect F-19 was. `outcome` stays `completed` (the message WAS delivered);
+                # `finish_reason` now says which of the two produced it.
+                "stop" if content != _PROACTIVE_STATIC else "static_fallback")
 
     # R3 (D-PROACTIVE-DELIVERY) — AFTER the turn is committed, push a content-free notification so an
     # opted-in user is actually reached even without opening the app. Best-effort (the message stands

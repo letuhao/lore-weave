@@ -434,6 +434,7 @@ async def voice_stream_response(
     tts_chars = 0  # WS-4.2b — TTS is metered by CHARACTERS spoken (not tokens)
     _voice_suspended = False  # CP-0.4 — set when the turn breaks on an un-voiceable confirm
     _voice_tool_calls: list[dict] = []  # CP-0.3 — recorded calls for this turn
+    _voice_finish_reason: str | None = None  # F-19 — the loop's own terminal reason
     sentence_index = 0
     skipped_count = 0
     # Collect audio segments during streaming — upload AFTER assistant message is saved (FK requirement)
@@ -494,6 +495,13 @@ async def voice_stream_response(
                 # so every such turn recorded a success. Flagged for the terminal write.
                 _voice_suspended = True
                 break
+            # F-19, SECOND PIPELINE. Voice RECEIVES the terminal reason on its chunks and discarded
+            # it — `_voice_suspended` is a two-valued flag standing in for a >=4-valued terminal
+            # space, so a truncation or a content-filter refusal recorded `completed`/'stop'. The
+            # F-19 fix reached the text loop and stopped there; a defect fixed in one of two
+            # pipelines is fixed in neither, because the column mixes both.
+            if chunk_data.get("finish_reason"):
+                _voice_finish_reason = chunk_data["finish_reason"]
             _tc = chunk_data.get("tool_call")
             if _tc:
                 # CP-0.3 — RECORD it, not just announce it. This file contained zero occurrences of
@@ -613,7 +621,7 @@ async def voice_stream_response(
                 # here was the same defect as the `advertised_tools` literal retracted from this
                 # very file — a confident value for something never checked.
                 (instrument.OUTCOME_AWAITING_INPUT if _voice_suspended
-                 else instrument.OUTCOME_COMPLETED),
+                 else instrument.outcome_for_finish_reason(_voice_finish_reason or "stop")),
                 instrument.RUNTIME_LEGACY,
                 # CP-0.1 — NULL, deliberately, and this is a RETRACTION.
                 #
@@ -630,7 +638,7 @@ async def voice_stream_response(
                 # advertise chokepoint. An honest gap beats an invented answer.
                 None,
                 # finish_reason follows outcome rather than asserting 'stop'.
-                "awaiting_input" if _voice_suspended else "stop",
+                "awaiting_input" if _voice_suspended else (_voice_finish_reason or "stop"),
                 json.dumps(_voice_tool_calls) if _voice_tool_calls else None,
             )
             _mc_row = await conn.fetchrow(
