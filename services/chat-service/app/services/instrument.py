@@ -19,6 +19,7 @@ question nobody knows to ask.
 
 from __future__ import annotations
 
+import json
 import logging
 from contextvars import ContextVar
 from typing import Any, Iterable, Literal
@@ -163,7 +164,24 @@ def dedupe_recorded_calls(calls: list[dict]) -> list[dict]:
     seen: set[tuple] = set()
     out: list[dict] = []
     for c in calls:
-        key = (c.get("iteration"), c.get("tool"), c.get("ok"), c.get("source"), str(c.get("error")))
+        # ARGS ARE PART OF THE KEY, and leaving them out was a data-loss bug I shipped while fixing
+        # an over-count. Without them `book_read(chapter=1)` and `book_read(chapter=2)` — two real,
+        # different calls in one iteration — collapse to one, and the resulting under-count is
+        # invisible and moves a failure RATE in the flattering direction, exactly like the
+        # over-count it replaced.
+        #
+        # This repository already contains the correct key 25 lines from where the bug was:
+        # `_collapse_identical_tool_calls` keys on (name, canonical args) and explicitly preserves
+        # batches of DIFFERENT requests. Same rule here, plus the fields that distinguish a
+        # duplicated RECORD from a repeated CALL.
+        try:
+            _args = json.dumps(c.get("args") or {}, sort_keys=True, ensure_ascii=False)
+        except (TypeError, ValueError):
+            _args = repr(c.get("args"))
+        key = (
+            c.get("iteration"), c.get("tool"), _args,
+            c.get("ok"), c.get("source"), str(c.get("error")),
+        )
         if key in seen:
             logger.info(
                 "CP-0.3: dropping a duplicate recorded call (tool=%s iteration=%s) — same tool, "
@@ -297,7 +315,17 @@ class AdvertisedToolsRecorder:
         timeless. A narrowing is an EVENT; stamping the pass it happened on is what lets it be
         reconciled against the advertised array instead of merely contradicting it.
         """
-        key = (tool, stage)
+        # Deduped per (tool, stage, PASS), not per (tool, stage).
+        #
+        # First-wins across the whole turn combined with the advertised-set reconciliation below to
+        # DELETE A TRUE WITHHOLDING: a tool dropped by a stage on pass 1 but restored (so kept, per
+        # the reconciliation) and then genuinely gone on pass 2 recorded nothing at all, because the
+        # pass-2 entry was suppressed as a duplicate of the pass-1 one that had already been
+        # reconciled away. Two mechanisms each defensible alone, silently destructive together.
+        #
+        # Including the pass keeps the original intent — a stage dropping a tool on five passes is
+        # not five findings — while making each pass's claim independently true or false.
+        key = (tool, stage, len(self._passes))
         if key in self._seen:
             return
         self._seen.add(key)
@@ -355,9 +383,17 @@ class AdvertisedToolsRecorder:
         *"what was hidden from the model?"* must be able to trust the answer without re-deriving it
         — which is the entire reason this column exists rather than a log line.
 
-        The dropped decisions are not lost: they remain visible in the per-stage counters a caller
-        can compute from `passes`, and a stage that is *always* overridden this way is itself a
-        finding worth surfacing — it means a narrowing mechanism that never actually narrows.
+        **Correction: an earlier version of this docstring claimed the dropped decisions "remain
+        visible in the per-stage counters a caller can compute from `passes`". That was false** —
+        `passes` entries carry `{pass, tool_choice, names, count}` and no stage or reason, and the
+        unreconciled list reaches no INSERT. The decisions are genuinely discarded. Saying otherwise
+        was a mitigation I asserted without checking, which is the same error as the number that
+        circulated with no derivation behind it.
+
+        What this therefore is: a **narrower, honest** claim. The column answers *"was this tool
+        absent from the model's surface on that pass"* — nothing about which stage wanted it gone.
+        A future need for per-stage narrowing rates requires a second field, not a reinterpretation
+        of this one.
         """
         if not self._withheld:
             return None

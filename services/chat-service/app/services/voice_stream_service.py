@@ -592,16 +592,20 @@ async def voice_stream_response(
                 # whose entire premise is "every terminal path". A verifier found it by enumerating
                 # paths rather than by reading the one file the instrument was built in.
                 instrument.OUTCOME_COMPLETED, instrument.RUNTIME_LEGACY,
-                # CP-0.1 — the voice pipeline runs ONE tool-free pass by design (it routes through
-                # `_stream_via_gateway`, which offers no tools at all). Leaving this NULL fused the
-                # two states the column exists to separate: "the model was offered nothing" and
-                # "no model pass was ever recorded here". A voice turn is the former, and saying so
-                # explicitly is what stops a future reader from counting it as an instrumentation
-                # hole — or, worse, from silently excluding voice turns from a denominator.
-                json.dumps([{
-                    "pass": 1, "tool_choice": None, "names": [], "count": 0,
-                    "note": "voice pipeline — tool-free by design",
-                }]),
+                # CP-0.1 — NULL, deliberately, and this is a RETRACTION.
+                #
+                # I previously bound a hand-typed `[{"pass":1,"names":[],"count":0,
+                # "note":"tool-free by design"}]` here, justified by a comment asserting that voice
+                # routes through `_stream_via_gateway` and offers no tools. **That is false.** This
+                # same file fetches the full catalog via `get_tool_definitions` and hands it to
+                # `_stream_with_tools`. The literal was a confident, well-formed, WRONG record — the
+                # one failure mode this entire column exists to prevent, and strictly worse than the
+                # NULL it replaced, because a NULL is visibly absent while a fabricated value is
+                # never re-checked.
+                #
+                # NULL until the voice path records what it ACTUALLY advertised, at its own
+                # advertise chokepoint. An honest gap beats an invented answer.
+                None,
             )
             _mc_row = await conn.fetchrow(
                 "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), "

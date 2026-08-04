@@ -348,6 +348,48 @@ class TestWithheldRegisters:
             "real withholdings"
         )
 
+    def test_a_real_withholding_survives_the_reconciliation(self):
+        """REJECTS: two defensible mechanisms that are silently destructive together.
+
+        The advertised-set reconciliation drops an entry whose tool was in fact advertised. The
+        (tool, stage) dedupe was first-wins across the whole turn. Together they DELETED A TRUE
+        WITHHOLDING: dropped on pass 1 but restored (so reconciled away), then genuinely gone on
+        pass 2 — and the pass-2 entry was suppressed as a duplicate of the one already deleted, so
+        the column recorded nothing at all.
+        """
+        rec = AdvertisedToolsRecorder()
+        rec.record_pass(["book_list", "glossary_search"])          # pass 1 — restored, so visible
+        rec.record_withheld("glossary_search", stage="hot_seed", reason="budget")
+        rec.record_pass(["book_list"])                             # pass 2 — genuinely gone
+        rec.record_withheld("glossary_search", stage="hot_seed", reason="budget")
+
+        withheld = rec.withheld_json() or []
+        assert any(w["tool"] == "glossary_search" and w["pass"] == 2 for w in withheld), (
+            "a tool genuinely absent on pass 2 was not recorded — the pass-1 reconciliation and the "
+            "turn-wide dedupe destroyed it between them"
+        )
+
+    def test_dedupe_never_collapses_two_different_calls(self):
+        """REJECTS: an under-count shipped while fixing an over-count.
+
+        The first key omitted `args`, so `book_read(chapter=1)` and `book_read(chapter=2)` — two
+        real, different calls in one iteration — collapsed to one. An under-count moves a failure
+        RATE in the flattering direction, exactly like the over-count it replaced, and is harder to
+        notice because the row simply is not there.
+        """
+        calls = [
+            {"iteration": 3, "tool": "book_read", "args": {"chapter": 1}, "ok": True,
+             "source": "tool", "error": None},
+            {"iteration": 3, "tool": "book_read", "args": {"chapter": 2}, "ok": True,
+             "source": "tool", "error": None},
+        ]
+        assert len(instrument.dedupe_recorded_calls(calls)) == 2, (
+            "two genuinely different calls were collapsed into one"
+        )
+        # A true duplicate — same everything — still collapses.
+        dup = [dict(calls[0]), dict(calls[0])]
+        assert len(instrument.dedupe_recorded_calls(dup)) == 1
+
     def test_two_different_stages_dropping_the_same_tool_are_two_findings(self):
         """REJECTS: over-deduplication. Two mechanisms independently hiding the same tool is a
         different (and worse) fact than one mechanism doing it, and collapsing them hides the
