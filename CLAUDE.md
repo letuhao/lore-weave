@@ -379,11 +379,32 @@ LoreWeave is a hobby project with **no fixed deadline**. This shapes how reviews
 **Default mode (v2.2):** human-in-loop with PO checkpoints at CLARIFY end + POST-REVIEW.
 **Opt-in (AMAW v3.0) — HUMAN-INITIATED ONLY:** AMAW is an automated sub-agent flow that the agent **never** proposes, announces, or invokes on its own. It activates **only** when the human explicitly types `/amaw` (or asks for it) for a task. Do **not** suggest `/amaw` at CLARIFY, before BUILD, or anywhere else — even for L+ / load-bearing work (data migrations, schema changes, security-critical paths). If the human wants the cold-start sub-agent reviews, they will turn it on; otherwise stay in default v2.2. (Token cost ~$1-5/task is the human's call to make.)
 
-### 12 phases
+### 13 phases — and phase 0 is the one this project learned the hard way
 
 ```
-CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC → POST-REVIEW → SESSION → COMMIT → RETRO
+AUDIT-EXISTING → CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC → POST-REVIEW → SESSION → COMMIT → RETRO
 ```
+
+**Phase 0 · AUDIT-EXISTING — before designing anything, find what already claims
+to model it.** Ask three questions and answer each with a command, not a memory:
+
+1. **What already models this concept?** `grep` the tables, the crates, the
+   projectors, the planning docs. A name from a different track counts.
+2. **Does it have a PRODUCER?** A model nothing writes to is a dead end, however
+   complete it looks. `scripts/orphan-model-gate.py` asks this mechanically.
+3. **Does it CONFLICT with a decision this round will make?** A pre-existing
+   model built before a rule was sealed will contradict it silently.
+
+**The failure this exists to stop, measured 2026-08-04.** The actor-hub round
+designed feature #1 without auditing what already modelled an actor. Seven of the
+ten shipped projection tables were `pc_*` / `npc_*` — with a projector, a
+rebuilder, a golden fixture, an independent oracle and a benchmark, and **no
+producer at all**: every `pc.created` / `npc.created` in the tree was a fixture or
+a test. They also encoded game vocabulary in engine tables (`name`, `stats JSONB`,
+a hardcoded status set) — the exact shape `D-2` forbids — with a
+`// TODO(cycle 17+ L4): pc.stats_changed` beside them, an invitation to make an
+opaque blob a second SSOT for an actor's numbers. Two months, and nobody asked.
+`0017` removed them, and the gate found **five more orphans on its first run**.
 
 | Phase | Default v2.2 role | AMAW role (opt-in) |
 |---|---|---|

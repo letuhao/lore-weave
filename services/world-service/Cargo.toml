@@ -102,8 +102,6 @@ reqwest = { workspace = true }
 rebuilder = { path = "../../crates/rebuilder" }
 dp-kernel = { path = "../../crates/dp-kernel" }
 projections-canon = { path = "../../crates/projections/canon" }
-projections-npc = { path = "../../crates/projections/npc" }
-projections-pc = { path = "../../crates/projections/pc" }
 projections-region = { path = "../../crates/projections/region" }
 projections-session = { path = "../../crates/projections/session" }
 projections-world-kv = { path = "../../crates/projections/world_kv" }

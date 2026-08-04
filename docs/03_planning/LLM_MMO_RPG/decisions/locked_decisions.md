@@ -33,8 +33,8 @@ As user confirms items, they move here with the answer and any rationale.
 | MV10 | Auto-freeze inactive reality | 2026-04-23 | **30 days no activity** (configurable) | Stored in config. |
 | MV11 | Auto-archive frozen reality | 2026-04-23 | **90 days frozen** (configurable) | Stored in config. |
 | MV5 | Cross-reality travel | 2026-04-23 | **Deferred to world-travel feature** | Full feature spec is a separate doc. V1–V2 assume no travel. BUT: some primitives cannot be deferred — see §"MV5 primitives" below. |
-| PC-A1 | PC creation mode | 2026-04-23 | Full custom + templates | [04 §3.1](../04_player_character/03_creation.md) |
-| PC-A2 | Play as existing glossary character | 2026-04-23 | Supported | [04 §3.2](../04_player_character/03_creation.md) |
+| PC-A1 | PC creation mode | 2026-04-23 | Full custom + templates | [04 §3.1](../_superseded/04_player_character/03_creation.md) |
+| PC-A2 | Play as existing glossary character | 2026-04-23 | Supported | [04 §3.2](../_superseded/04_player_character/03_creation.md) |
 | PC-A3 | Canon validation at PC creation | 2026-04-23 | None — paradox allowed | Runtime enforcement via World Rule feature (DF4) |
 | PC-B1 | PC death behavior | 2026-04-23 | Per-reality rule; death is just an event | V1 default: permadeath; configurable by World Rules (DF4) |
 | PC-B2 | Offline PC in world | 2026-04-23 | Visible, vulnerable; user should `/hide`; LLM does not act | Details in Daily Life feature (DF1) |

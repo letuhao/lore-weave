@@ -2362,8 +2362,6 @@ version = "0.1.0"
 dependencies = [
  "dp-kernel",
  "projections-canon",
- "projections-npc",
- "projections-pc",
  "projections-region",
  "projections-session",
  "projections-world-kv",
@@ -2379,8 +2377,6 @@ dependencies = [
  "dp-kernel",
  "projection-golden",
  "projections-canon",
- "projections-npc",
- "projections-pc",
  "projections-region",
  "projections-session",
  "projections-world-kv",
@@ -2390,24 +2386,6 @@ dependencies = [
 
 [[package]]
 name = "projections-canon"
-version = "0.1.0"
-dependencies = [
- "dp-kernel",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "projections-npc"
-version = "0.1.0"
-dependencies = [
- "dp-kernel",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "projections-pc"
 version = "0.1.0"
 dependencies = [
  "dp-kernel",
@@ -4764,8 +4742,6 @@ dependencies = [
  "meta-rs",
  "pgvector",
  "projections-canon",
- "projections-npc",
- "projections-pc",
  "projections-region",
  "projections-session",
  "projections-world-kv",

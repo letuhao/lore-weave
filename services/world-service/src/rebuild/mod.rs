@@ -32,13 +32,9 @@ use serde::Serialize;
 /// into `jsonb_populate_record(NULL::<table>, …)`, so an un-allowlisted name
 /// must never reach the SQL.
 pub const PROJECTION_TABLES: &[&str] = &[
-    "pc_projection",
-    "pc_inventory_projection",
-    "pc_relationship_projection",
-    "npc_projection",
-    "npc_session_memory_projection",
-    "npc_pc_relationship_projection",
-    "npc_session_memory_embedding",
+    // The seven `pc_*` / `npc_*` tables were REMOVED 2026-08-04 — see
+    // `all_projections` for why. This list SHRANK, which is the direction a
+    // vocabulary enumeration is supposed to move.
     "region_projection",
     "world_kv_projection",
     "session_participants",
@@ -63,7 +59,7 @@ pub fn is_known_projection_table(table: &str) -> bool {
 /// session_participants ← session.*; npc_pc_relationship ← npc.relationship_*;
 /// pc_* ← pc.*; region ← region.*; world_kv ← world.kv_*; canon ← canon.*). Add
 /// a table here if a new cross-aggregate fan-out is introduced.
-pub const MULTI_AGGREGATE_TABLES: &[&str] = &["npc_session_memory_projection"];
+pub const MULTI_AGGREGATE_TABLES: &[&str] = &[];
 
 /// Returns true if `table` must be rebuilt with the global-order path rather
 /// than the per-aggregate-parallel path.
@@ -112,20 +108,25 @@ impl RebuildStats {
 /// process lifetime).
 ///
 /// All projections run over every event; the writer applies ONLY the updates
-/// targeting the requested table, so rebuilding e.g. `pc_projection` replays
-/// `pc.*` through `PcProjection` and drops every other projection's output.
+/// targeting the requested table, so rebuilding e.g. `region_projection` replays
+/// `region.*` through `RegionProjection` and drops every other projection's
+/// output.
+///
+/// **The seven `pc.*` / `npc.*` projections were REMOVED 2026-08-04.** They had
+/// no producer: every occurrence of `pc.created`, `pc.moved`, `npc.created` in
+/// the tree was a fixture, a bench input or a test — no production code emitted
+/// one, so seven of the ten L3.A tables could only ever be rebuilt from events
+/// that nothing wrote. They also encoded game vocabulary (`name`, `stats`,
+/// `status IN (...)`) in engine tables, which `D-2` forbids: *the engine closes
+/// on MECHANISM; the manifest closes on VOCABULARY.* Actor quantities come from
+/// the fold (`crates/actor-hub`), addressed by ordinal and explainable, and a
+/// second opaque `stats` blob would have become a competing SSOT the day
+/// anyone implemented the `pc.stats_changed` TODO that sat beside it.
 pub fn all_projections() -> Vec<&'static dyn SendSyncProjection> {
     fn leak<T: SendSyncProjection + 'static>(p: T) -> &'static dyn SendSyncProjection {
         &*Box::leak(Box::new(p))
     }
     vec![
-        leak(projections_pc::PcProjection),
-        leak(projections_pc::PcInventoryProjection),
-        leak(projections_pc::PcRelationshipProjection),
-        leak(projections_npc::NpcProjection),
-        leak(projections_npc::NpcSessionMemoryProjection),
-        leak(projections_npc::NpcPcRelationshipProjection),
-        leak(projections_npc::NpcSessionMemoryEmbeddingProjection),
         leak(projections_region::RegionProjection),
         leak(projections_session::SessionParticipantsProjection),
         leak(projections_world_kv::WorldKvProjection),
@@ -179,24 +180,28 @@ mod tests {
     #[test]
     fn all_projections_present_and_named() {
         let ps = all_projections();
-        assert_eq!(ps.len(), 11, "all L3.B projections registered");
+        assert_eq!(ps.len(), 4, "all L3.B projections registered");
     }
 
     #[test]
     fn projection_table_allowlist() {
-        assert!(is_known_projection_table("pc_projection"));
+        assert!(is_known_projection_table("region_projection"));
         assert!(is_known_projection_table("canon_projection"));
         assert!(!is_known_projection_table("reality_registry"));
-        assert!(!is_known_projection_table("pc_projection; DROP TABLE x"));
+        // The removed vocabulary must NOT be re-admitted by accident.
+        assert!(!is_known_projection_table("pc_projection"));
+        assert!(!is_known_projection_table("npc_projection"));
+        assert!(!is_known_projection_table("region_projection; DROP TABLE x"));
     }
 
     #[test]
     fn multi_aggregate_dispatch() {
-        // The one multi-aggregate table goes global-order; single-aggregate
-        // tables keep the per-aggregate-parallel path.
-        assert!(needs_global_order("npc_session_memory_projection"));
-        assert!(!needs_global_order("npc_projection"));
+        // NO shipped table is multi-aggregate today — the only one that was
+        // went out with the `npc` projections. Every table therefore keeps the
+        // per-aggregate-parallel path, and the global-order path stays because
+        // the SHAPE recurs the moment two aggregates share a table.
         assert!(!needs_global_order("session_participants"));
+        assert!(!needs_global_order("region_projection"));
         // Every multi-aggregate table must also be a known projection table.
         for t in MULTI_AGGREGATE_TABLES {
             assert!(is_known_projection_table(t), "{t} not in PROJECTION_TABLES");

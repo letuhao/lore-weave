@@ -1,4 +1,26 @@
-# 04_player_character — Index
+> # ⚠ SUPERSEDED — 2026-08-04
+>
+> **This module is not a decision and must not be built from.** It models a
+> player character with a `name`, a `stats` blob and a hardcoded status set —
+> a shape the actor-hub round sealed AGAINST on 2026-08-02:
+>
+> > `D-2` — *The engine closes on MECHANISM; the manifest closes on VOCABULARY.*
+> > **A hardcoded noun is a manifest that cannot grow.**
+>
+> The living contract is [`docs/specs/2026-08-02-actor-hub/`](../../../../specs/2026-08-02-actor-hub/_index.md):
+> an actor belongs to a **reality**, holds identity · intrinsic quantities ·
+> existence · attachment · the fold, and its numbers are **folded from plugin
+> contributions addressed by ordinal**, never stored as an opaque blob.
+>
+> The seven `pc_*` / `npc_*` projection tables this module described were
+> dropped by `contracts/migrations/per_reality/0017`, measured to have **no
+> producer**: every `pc.*` / `npc.*` occurrence in the tree was a fixture, a
+> bench input or a test.
+>
+> It is kept for archaeology only — the reasoning cost real effort, and a later
+> feature may want to see which questions were already asked.
+
+# _superseded/04_player_character — Index
 
 > **Purpose:** Player Character semantics for the LLM MMO RPG track — three-layer identity (User/PC/Session), PC vs NPC rules, creation/lifecycle/social/canon semantics, and forward-links to DF1..DF15 registry. Split from `04_PLAYER_CHARACTER_DESIGN.ARCHIVED.md` on 2026-04-24 via `scripts/chunk_doc.py`. `VERIFY OK`, sha256=`d6a842683a7530e389886a72455e742745775cd3b0420770f2649da237a63d1f`, 18 777 bytes, 11 chunks.
 
@@ -58,6 +80,6 @@ For the full rules see [`../AGENT_GUIDE.md`](../AGENT_GUIDE.md).
 
 ```bash
 cd d:/Works/source/lore-weave-game
-python scripts/chunk_doc.py split docs/03_planning/LLM_MMO_RPG/04_player_character/chunk_rules.json --force
-python scripts/chunk_doc.py verify docs/03_planning/LLM_MMO_RPG/04_player_character/chunk_rules.json
+python scripts/chunk_doc.py split docs/03_planning/LLM_MMO_RPG/_superseded/04_player_character/chunk_rules.json --force
+python scripts/chunk_doc.py verify docs/03_planning/LLM_MMO_RPG/_superseded/04_player_character/chunk_rules.json
 ```

@@ -125,6 +125,15 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # reached a citation in a `//!` header until this.
 "$PY" "$ROOT/scripts/source-citation-gate.py"
 
+# A PROJECTION WITH NO PRODUCER IS A DEAD END, NOT A FEATURE. Measured
+# 2026-08-04: seven of the ten L3.A projection tables handled events that NO
+# production code emitted -- a projector, a table, a rebuilder, a golden fixture,
+# an independent oracle and a benchmark, everything except an input. They sat
+# that way for two months and encoded pre-D-2 game vocabulary while they did.
+# 0017 removed them; this gate is the mechanism, and it found five more orphans
+# on its first run. Phase 0 made mechanical.
+"$PY" "$ROOT/scripts/orphan-model-gate.py"
+
 # A CITATION NOBODY CAN FOLLOW IS WORSE THAN NONE (U-10). It reports evidence and
 # silences review. Measured in the 2026-08-02 actor-hub round: design-lint's corpus
 # is hard-defaulted to docs/03_planning/LLM_MMO_RPG and pointing it at docs/specs

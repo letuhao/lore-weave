@@ -62,17 +62,13 @@ const META_COLS: &[&str] = &[
     "last_verified_at",
 ];
 
-/// The 11 L3.A projection tables the schema model knows. The differential harness
+/// The projection tables the schema model knows. **Seven `pc_*` / `npc_*`
+/// tables were removed 2026-08-04** — vocabulary with no producer; see
+/// `world-service::rebuild::all_projections`. This list SHRANK, which is the
+/// direction such an enumeration is supposed to move. The differential harness
 /// asserts this set equals the tables production actually emits across the golden
 /// fixtures (the table-set drift guard — catches a stale or missing table).
 pub const KNOWN_TABLES: &[&str] = &[
-    "pc_projection",
-    "pc_inventory_projection",
-    "pc_relationship_projection",
-    "npc_projection",
-    "npc_session_memory_projection",
-    "npc_pc_relationship_projection",
-    "npc_session_memory_embedding",
     "region_projection",
     "session_participants",
     "world_kv_projection",
@@ -83,82 +79,6 @@ pub const KNOWN_TABLES: &[&str] = &[
 /// from the per-reality DDL. Returns None for a non-projection / unknown table.
 fn table_schema(table: &str) -> Option<(&'static [&'static str], &'static [&'static str])> {
     Some(match table {
-        "pc_projection" => (
-            &["pc_id"],
-            &[
-                "pc_id",
-                "user_id",
-                "name",
-                "current_region_id",
-                "status",
-                "stats",
-                "last_event_version",
-            ],
-        ),
-        "pc_inventory_projection" => (
-            &["pc_id", "item_code"],
-            &[
-                "pc_id",
-                "item_code",
-                "quantity",
-                "metadata",
-                "origin_reality_id",
-            ],
-        ),
-        "pc_relationship_projection" => (
-            &["pc_id", "other_entity_type", "other_entity_id"],
-            &[
-                "pc_id",
-                "other_entity_type",
-                "other_entity_id",
-                "score",
-                "labels",
-            ],
-        ),
-        "npc_projection" => (
-            &["npc_id"],
-            &[
-                "npc_id",
-                "glossary_entity_id",
-                "current_region_id",
-                "mood",
-                "core_beliefs",
-                "flexible_state",
-                "last_event_version",
-            ],
-        ),
-        "npc_session_memory_projection" => (
-            &["npc_id", "session_id"],
-            &[
-                "npc_id",
-                "session_id",
-                "reality_id",
-                "aggregate_id",
-                "summary",
-                "facts",
-                "session_started_at",
-                "session_ended_at",
-                "interaction_count",
-                "archive_status",
-            ],
-        ),
-        "npc_pc_relationship_projection" => (
-            &["npc_id", "other_entity_id"],
-            &[
-                "npc_id",
-                "other_entity_id",
-                "other_entity_type",
-                "reality_id",
-                "trust_level",
-                "familiarity_count",
-                "last_session_id",
-                "relationship_labels",
-            ],
-        ),
-        "npc_session_memory_embedding" => (
-            &["npc_id", "session_id"],
-            &["npc_id", "session_id", "embedding", "content_hash"],
-        ),
         "region_projection" => (
             &["region_id"],
             &[
@@ -235,24 +155,8 @@ impl Kind {
 /// emits EXACTLY this set (catching a wrong/extra/missing target or wrong kind).
 fn event_targets(event_type: &str) -> Option<&'static [(&'static str, Kind)]> {
     Some(match event_type {
-        "npc.created" => &[("npc_projection", Kind::Insert)],
-        "npc.said" => &[
-            ("npc_projection", Kind::Update),
-            ("npc_session_memory_projection", Kind::Update),
-        ],
-        "npc.relationship_changed" => &[("npc_pc_relationship_projection", Kind::Upsert)],
-        "npc.memory_embedded" => &[("npc_session_memory_embedding", Kind::Insert)],
-        "session.started" => &[("npc_session_memory_projection", Kind::Insert)],
-        "session.ended" => &[("npc_session_memory_projection", Kind::Update)],
         "session.participant_joined" => &[("session_participants", Kind::Insert)],
         "session.participant_left" => &[("session_participants", Kind::Update)],
-        "pc.spawned" => &[
-            ("pc_projection", Kind::Insert),
-            ("pc_inventory_projection", Kind::Insert),
-        ],
-        "pc.moved" => &[("pc_projection", Kind::Update)],
-        "pc.item_acquired" => &[("pc_inventory_projection", Kind::Insert)],
-        "pc.relationship_changed" => &[("pc_relationship_projection", Kind::Upsert)],
         "region.created" => &[("region_projection", Kind::Insert)],
         "region.ambient_changed" => &[("region_projection", Kind::Update)],
         "world.kv_set" => &[("world_kv_projection", Kind::Insert)],
@@ -448,35 +352,6 @@ pub fn reference_project(env: &EventEnvelope) -> Option<Vec<ProjectionUpdate>> {
     let get = |k: &str| p.get(k).cloned().unwrap_or(Value::Null);
 
     Some(match env.event_type.as_str() {
-        // npc.relationship_changed → UPSERT npc_pc_relationship_projection. The row
-        // is keyed (npc_id = the aggregate, other_entity_id). session_id maps to the
-        // DDL column last_session_id ("the session it last changed in"); labels →
-        // relationship_labels; reality_id comes from the envelope.
-        "npc.relationship_changed" => vec![ProjectionUpdate::Upsert {
-            table: "npc_pc_relationship_projection".into(),
-            pk: json!({ "npc_id": env.aggregate_id, "other_entity_id": get("other_entity_id") }),
-            fields: json!({
-                "other_entity_type": get("other_entity_type"),
-                "reality_id": env.reality_id,
-                "trust_level": get("trust_level"),
-                "familiarity_count": get("familiarity_count"),
-                "last_session_id": get("session_id"),
-                "relationship_labels": get("labels"),
-            }),
-            meta,
-        }],
-        // pc.relationship_changed → UPSERT pc_relationship_projection, keyed
-        // (pc_id, other_entity_type, other_entity_id); score + labels direct.
-        "pc.relationship_changed" => vec![ProjectionUpdate::Upsert {
-            table: "pc_relationship_projection".into(),
-            pk: json!({
-                "pc_id": env.aggregate_id,
-                "other_entity_type": get("other_entity_type"),
-                "other_entity_id": get("other_entity_id"),
-            }),
-            fields: json!({ "score": get("score"), "labels": get("labels") }),
-            meta,
-        }],
         // canon.entry.created → INSERT canon_projection. source_event_id = the
         // writing event; cascaded_from_reality_id / overridden_by_l3_event_id are
         // null on a direct authored entry; last_synced_at = the sync time (applied).
@@ -537,8 +412,6 @@ pub fn reference_project(env: &EventEnvelope) -> Option<Vec<ProjectionUpdate>> {
 /// The event types [`reference_project`] reproduces (for the anti-drift coverage
 /// test in the differential harness).
 pub const REPRODUCED_EVENTS: &[&str] = &[
-    "npc.relationship_changed",
-    "pc.relationship_changed",
     "canon.entry.created",
     "canon.entry.updated",
     "canon.entry.promoted",

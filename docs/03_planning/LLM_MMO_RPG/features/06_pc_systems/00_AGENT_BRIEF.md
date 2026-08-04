@@ -257,7 +257,7 @@ The hot-path check at turn submission ("is this PC's `pc_mortality_state == Aliv
 
 ### O7. Authentication / user accounts (auth-service)
 
-PcId is per-reality-per-PC. UserId-to-PcId mapping (which user owns which PCs across realities) is auth-service / `04_player_character/` territory. PCS_001 does not own user accounts.
+PcId is per-reality-per-PC. UserId-to-PcId mapping (which user owns which PCs across realities) is auth-service / `_superseded/04_player_character/` territory. PCS_001 does not own user accounts.
 
 ### O8. Existing locked / drafted feature designs
 

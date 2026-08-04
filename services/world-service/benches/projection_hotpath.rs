@@ -66,14 +66,6 @@ fn representative_events() -> Vec<(&'static str, EventEnvelope)> {
         };
     }
     vec![
-        fx!("npc.said", "npc.said.json"),
-        fx!("npc.relationship_changed", "npc.relationship_changed.json"),
-        fx!("npc.memory_embedded", "npc.memory_embedded.json"),
-        fx!("npc.created", "npc.created.json"),
-        fx!("pc.moved", "pc.moved.json"),
-        fx!("pc.relationship_changed", "pc.relationship_changed.json"),
-        fx!("pc.item_acquired", "pc.item_acquired.json"),
-        fx!("pc.spawned", "pc.spawned.json"),
         fx!("canon.entry.created", "canon.entry.created.json"),
         fx!("region.created", "region.created.json"),
         fx!("session.started", "session.started.json"),

@@ -23,8 +23,8 @@
 | `MV1..MV12` | Multiverse primitives | [`03_multiverse/`](../03_multiverse/_index.md) (across chunks) + [`decisions/locked_decisions.md`](../decisions/locked_decisions.md) | MV13+ | MV8 = DB subtree split threshold · MV12 = reality time model (page-turn fiction-time, 2026-04-25) |
 | `WA-1..WA-4` · `WA4-D1..D5` | World Authoring features + heuristics | [`catalog/cat_02_WA_world_authoring.md`](../catalog/cat_02_WA_world_authoring.md) + [`03_multiverse/01_four_layer_canon.md`](../03_multiverse/01_four_layer_canon.md) | next free | WA-4 = L1/L2 category heuristic |
 | `DF1..DF15` | Deferred Big Features (DF12 withdrawn) | [`decisions/deferred_DF01_DF15.md`](../decisions/deferred_DF01_DF15.md) | DF16+ if new | DF4 = World Rules · DF5 = Session/Group Chat |
-| `PC-A1..A3` · `PC-B1..B3` · `PC-C1..C3` · `PC-D1..D3` · `PC-E1..E3` | Player Character semantics | [`04_player_character/`](../04_player_character/_index.md) (per-letter chunk) | next free per letter | PC-D1 = No parties; sessions replace |
-| `PCS-*` | PC Systems schema slots | [`04_player_character/08_data_model.md`](../04_player_character/08_data_model.md) | next free | PCS stats slots |
+| `PC-A1..A3` · `PC-B1..B3` · `PC-C1..C3` · `PC-D1..D3` · `PC-E1..E3` | Player Character semantics | [`_superseded/04_player_character/`](../_superseded/04_player_character/_index.md) (per-letter chunk) | next free per letter | PC-D1 = No parties; sessions replace |
+| `PCS-*` | PC Systems schema slots | [`_superseded/04_player_character/08_data_model.md`](../_superseded/04_player_character/08_data_model.md) | next free | PCS stats slots |
 | `A1..A6` | Category A (LLM reasoning) problems | [`01_problems/A_llm_reasoning.md`](../01_problems/A_llm_reasoning.md) | A7+ | A4 = Retrieval quality (OPEN) |
 | `B1..B5` | Category B (Distributed systems) | [`01_problems/B_distributed_systems.md`](../01_problems/B_distributed_systems.md) | B6+ | |
 | `C1..C6` (problems) | Category C (Product / UX) problems — distinct from SA+DE `C1..C5` | [`01_problems/C_product_ux.md`](../01_problems/C_product_ux.md) | C7+ | C2 = Narrative pacing (ACCEPTED) |

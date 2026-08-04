@@ -100,6 +100,6 @@ Add `V4` items (4 items): world travel (DF6), echo visit, dimensional rifts, ric
 - [01_OPEN_PROBLEMS.md](../01_problems/_index.md) — risks indexed by category
 - [02_STORAGE_ARCHITECTURE.md](../02_storage/_index.md) — IF-* detail
 - [03_MULTIVERSE_MODEL.md](../03_multiverse/_index.md) — WA-3, EM-1 to EM-6 detail
-- [04_PLAYER_CHARACTER_DESIGN.md](../04_player_character/_index.md) — PO, PCS, SOC detail; DF1–DF8 registry
+- [04_PLAYER_CHARACTER_DESIGN.md](../_superseded/04_player_character/_index.md) — PO, PCS, SOC detail; DF1–DF8 registry
 - [OPEN_DECISIONS.md](../decisions/_index.md) — all locked + pending decisions
 - [../References/SillyTavern_Feature_Comparison.md](../../References/SillyTavern_Feature_Comparison.md) — inspirations for PL-*, NPC-*, CC-8

@@ -4,29 +4,15 @@
 use dp_kernel::{EventEnvelope, ProjectionRunner, ProjectionUpdate};
 
 /// Run an envelope through every L3.B projection (the same set the rebuilder
-/// uses) and return the concatenated delta — so a fan-out event (e.g. npc.said →
-/// npc_projection + npc_session_memory_projection) yields its full set.
+/// uses) and return the concatenated delta — so a fan-out event yields its
+/// full set.
 fn full_delta(env: &EventEnvelope) -> Vec<ProjectionUpdate> {
-    let pc = projections_pc::PcProjection;
-    let pc_inv = projections_pc::PcInventoryProjection;
-    let pc_rel = projections_pc::PcRelationshipProjection;
-    let npc = projections_npc::NpcProjection;
-    let npc_mem = projections_npc::NpcSessionMemoryProjection;
-    let npc_pc_rel = projections_npc::NpcPcRelationshipProjection;
-    let npc_emb = projections_npc::NpcSessionMemoryEmbeddingProjection;
     let region = projections_region::RegionProjection;
     let session = projections_session::SessionParticipantsProjection;
     let world_kv = projections_world_kv::WorldKvProjection;
     let canon = projections_canon::CanonProjection;
 
     ProjectionRunner::new()
-        .with_projection(&pc)
-        .with_projection(&pc_inv)
-        .with_projection(&pc_rel)
-        .with_projection(&npc)
-        .with_projection(&npc_mem)
-        .with_projection(&npc_pc_rel)
-        .with_projection(&npc_emb)
         .with_projection(&region)
         .with_projection(&session)
         .with_projection(&world_kv)
@@ -69,8 +55,8 @@ fn every_fixture_matches_apply_one() {
     // without a fixture, this assert fails until one is added.
     assert_eq!(
         count,
-        21,
-        "expected 21 golden fixtures in {}, found {count} — a fixture was added or removed without updating this pin (every handled event type must keep a fixture)",
+        10,
+        "expected 10 golden fixtures in {}, found {count} — a fixture was added or removed without updating this pin (every handled event type must keep a fixture)",
         fixtures_dir().display()
     );
 }
@@ -79,10 +65,13 @@ fn every_fixture_matches_apply_one() {
 fn oracle_bites_on_value_difference() {
     // Prove the harness is not a rubber-stamp: the same event with a DIFFERENT
     // value must NOT match the fixture's expected delta.
-    let bytes = std::fs::read(fixtures_dir().join("npc.created.json")).unwrap();
+    // Retargeted 2026-08-04 off `npc.created.json`, deleted with the npc
+    // projections. **The property is the harness's non-vacuity and it must
+    // survive**, so the fixture changed and the test did not.
+    let bytes = std::fs::read(fixtures_dir().join("region.created.json")).unwrap();
     let fx = projection_golden::load(&bytes).unwrap();
     let mut env = fx.envelope.clone();
-    env.payload["initial_mood"] = serde_json::json!("DEFINITELY-WRONG");
+    env.payload["display_name"] = serde_json::json!("DEFINITELY-WRONG");
     assert_ne!(
         full_delta(&env),
         fx.expected_updates,

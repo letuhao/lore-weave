@@ -53,7 +53,7 @@ So: PCS_001 follows the **parallel agent pattern** established by 07_event_model
 
 ## Kernel touchpoints (shared across PCS features)
 
-- `04_player_character/` (entire subfolder) — PC-A1..E3 decisions already locked
+- `_superseded/04_player_character/` (entire subfolder) — PC-A1..E3 decisions already locked
 - `decisions/locked_decisions.md` — PC-A1..E3 + PC-C3 "simple state-based" + F4 "minimal RPG mechanics"
 - `02_storage/R08_npc_memory_split.md` — `npc_pc_relationship` edge carries PC-side state too
 - `02_storage/SR11_turn_ux_reliability.md` — TurnState + PresenceState apply per-PC

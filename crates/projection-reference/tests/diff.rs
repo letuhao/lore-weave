@@ -12,25 +12,11 @@ use std::path::{Path, PathBuf};
 /// Run an envelope through the FULL production projection set (the same 11 arms the
 /// rebuilder uses) — identical to the C2 golden harness `full_delta`.
 fn production(env: &EventEnvelope) -> Vec<ProjectionUpdate> {
-    let pc = projections_pc::PcProjection;
-    let pc_inv = projections_pc::PcInventoryProjection;
-    let pc_rel = projections_pc::PcRelationshipProjection;
-    let npc = projections_npc::NpcProjection;
-    let npc_mem = projections_npc::NpcSessionMemoryProjection;
-    let npc_pc_rel = projections_npc::NpcPcRelationshipProjection;
-    let npc_emb = projections_npc::NpcSessionMemoryEmbeddingProjection;
     let region = projections_region::RegionProjection;
     let session = projections_session::SessionParticipantsProjection;
     let world_kv = projections_world_kv::WorldKvProjection;
     let canon = projections_canon::CanonProjection;
     ProjectionRunner::new()
-        .with_projection(&pc)
-        .with_projection(&pc_inv)
-        .with_projection(&pc_rel)
-        .with_projection(&npc)
-        .with_projection(&npc_mem)
-        .with_projection(&npc_pc_rel)
-        .with_projection(&npc_emb)
         .with_projection(&region)
         .with_projection(&session)
         .with_projection(&world_kv)
@@ -76,7 +62,10 @@ fn production_is_conformant_for_every_fixture() {
         );
         checked += 1;
     }
-    assert!(checked >= 20, "expected >= 20 fixtures, checked {checked}");
+    // The floor SHRANK with the npc/pc fixtures (2026-08-04). It is a floor,
+    // not a pin: it exists so a harness that silently stops loading fixtures
+    // cannot pass, and 10 is the count that remains after the removal.
+    assert!(checked >= 10, "expected >= 10 fixtures, checked {checked}");
 }
 
 /// The reproduction reference must MATCH the production output exactly for every
@@ -149,38 +138,50 @@ fn reproduced_events_all_have_fixtures() {
 // a real envelope, constructs a BUGGY production-like update (a class C2 cannot
 // catch), and asserts the conformance oracle / reproduction FLAGS it.
 
-fn npc_rel_env() -> EventEnvelope {
+// Retargeted 2026-08-04. These bites hung off `npc.relationship_changed`,
+// deleted with the npc projections. **The property is that the oracle can
+// DISAGREE**, and the vocabulary was incidental to it, so the fixtures moved
+// and the tests did not.
+fn region_env() -> EventEnvelope {
     let (_, env) = load_envelopes()
         .into_iter()
-        .find(|(_, e)| e.event_type == "npc.relationship_changed")
-        .expect("npc.relationship_changed fixture");
+        .find(|(_, e)| e.event_type == "region.created")
+        .expect("region.created fixture");
+    env
+}
+
+fn canon_env() -> EventEnvelope {
+    let (_, env) = load_envelopes()
+        .into_iter()
+        .find(|(_, e)| e.event_type == "canon.entry.created")
+        .expect("canon.entry.created fixture");
     env
 }
 
 #[test]
 fn bite_conformance_flags_hallucinated_column() {
-    let env = npc_rel_env();
+    let env = region_env();
     // A buggy arm writes to a column that does NOT exist in the DDL.
-    let buggy = vec![ProjectionUpdate::Upsert {
-        table: "npc_pc_relationship_projection".into(),
-        pk: json!({ "npc_id": env.aggregate_id, "other_entity_id": env.payload["other_entity_id"] }),
-        fields: json!({ "trust_lvl": 5 }), // typo: trust_lvl, not trust_level
+    let buggy = vec![ProjectionUpdate::Update {
+        table: "region_projection".into(),
+        pk: json!({ "region_id": env.aggregate_id }),
+        fields: json!({ "display_nam": "x" }), // typo: display_nam
         meta: dp_kernel::VerificationMeta::from_envelope(&env),
     }];
     let violations = check_conformance(&env, &buggy);
     assert!(
         violations.iter().any(|v| v.rule == "unknown-column"),
-        "conformance should flag the hallucinated column trust_lvl: {violations:?}"
+        "conformance should flag the hallucinated column display_nam: {violations:?}"
     );
 }
 
 #[test]
 fn bite_conformance_flags_wrong_pk() {
-    let env = npc_rel_env();
-    let buggy = vec![ProjectionUpdate::Upsert {
-        table: "npc_pc_relationship_projection".into(),
-        pk: json!({ "npc_id": env.aggregate_id }), // missing other_entity_id → not the real PK
-        fields: json!({ "trust_level": 5 }),
+    let env = region_env();
+    let buggy = vec![ProjectionUpdate::Update {
+        table: "region_projection".into(),
+        pk: json!({ "code": env.payload["code"] }), // `code` is not the PK; `region_id` is
+        fields: json!({ "display_name": env.payload["display_name"] }),
         meta: dp_kernel::VerificationMeta::from_envelope(&env),
     }];
     let violations = check_conformance(&env, &buggy);
@@ -192,25 +193,25 @@ fn bite_conformance_flags_wrong_pk() {
 
 #[test]
 fn bite_conformance_flags_wrong_key_read() {
-    let env = npc_rel_env();
-    // A buggy arm reads the WRONG payload key for trust_level (writes a wrong value
-    // into a REAL column). The direct-field check (payload.trust_level vs written)
-    // catches it — the exact class C2 (same-author fixtures) cannot.
-    let bad_value: Value = json!(99999);
+    let env = region_env();
+    // A buggy arm writes a wrong VALUE into a REAL column. The direct-field
+    // check (payload key vs written) catches it — the exact class C2
+    // (same-author fixtures) cannot.
+    let bad_value: Value = json!("DEFINITELY-WRONG");
     assert_ne!(
-        bad_value, env.payload["trust_level"],
+        bad_value, env.payload["display_name"],
         "test setup: value must differ"
     );
-    let buggy = vec![ProjectionUpdate::Upsert {
-        table: "npc_pc_relationship_projection".into(),
-        pk: json!({ "npc_id": env.aggregate_id, "other_entity_id": env.payload["other_entity_id"] }),
-        fields: json!({ "trust_level": bad_value }),
+    let buggy = vec![ProjectionUpdate::Update {
+        table: "region_projection".into(),
+        pk: json!({ "region_id": env.aggregate_id }),
+        fields: json!({ "display_name": bad_value }),
         meta: dp_kernel::VerificationMeta::from_envelope(&env),
     }];
     let violations = check_conformance(&env, &buggy);
     assert!(
         violations.iter().any(|v| v.rule == "direct-field-mismatch"),
-        "conformance should flag the wrong-key trust_level value: {violations:?}"
+        "conformance should flag the wrong display_name value: {violations:?}"
     );
 }
 
@@ -218,25 +219,28 @@ fn bite_conformance_flags_wrong_key_read() {
 fn bite_reproduction_disagrees_with_wrong_key_arm() {
     // review #2 — prove the REPRODUCTION differential (not just the conformance
     // oracle) can DISAGREE. Construct what a buggy arm that read the WRONG payload
-    // key would emit (trust_level ← familiarity_count instead of trust_level) and
+    // key would emit (`value` <- `attribute_path` instead of `value`) and
     // assert the contract-derived reference (reading the RIGHT key) differs. This is
     // the exact class the same-author C2 fixtures cannot catch.
-    let env = npc_rel_env();
-    let reference = reference_project(&env).expect("npc.relationship_changed is reproduced");
+    let env = canon_env();
+    let reference = reference_project(&env).expect("canon.entry.created is reproduced");
     assert_ne!(
-        env.payload["trust_level"], env.payload["familiarity_count"],
+        env.payload["value"], env.payload["attribute_path"],
         "test setup: the two keys must carry different values to distinguish a swap"
     );
-    let wrong_key_arm = vec![ProjectionUpdate::Upsert {
-        table: "npc_pc_relationship_projection".into(),
-        pk: json!({ "npc_id": env.aggregate_id, "other_entity_id": env.payload["other_entity_id"] }),
-        fields: json!({
-            "other_entity_type": env.payload["other_entity_type"],
-            "reality_id": env.reality_id,
-            "trust_level": env.payload["familiarity_count"], // BUG: wrong payload key read
-            "familiarity_count": env.payload["familiarity_count"],
-            "last_session_id": env.payload["session_id"],
-            "relationship_labels": env.payload["labels"],
+    let wrong_key_arm = vec![ProjectionUpdate::Insert {
+        table: "canon_projection".into(),
+        row: json!({
+            "canon_entry_id": env.payload["canon_entry_id"],
+            "book_id": env.payload["book_id"],
+            "attribute_path": env.payload["attribute_path"],
+            "value": env.payload["attribute_path"], // BUG: wrong payload key read
+            "canon_layer": env.payload["canon_layer"],
+            "lock_level": env.payload["lock_level"],
+            "source_event_id": env.event_id,
+            "cascaded_from_reality_id": serde_json::Value::Null,
+            "overridden_by_l3_event_id": serde_json::Value::Null,
+            "last_synced_at": env.recorded_at,
         }),
         meta: dp_kernel::VerificationMeta::from_envelope(&env),
     }];
@@ -254,11 +258,11 @@ fn bite_reproduction_disagrees_with_wrong_key_arm() {
 
 #[test]
 fn bite_conformance_flags_wrong_table() {
-    let env = npc_rel_env();
-    // The relationship event wrongly projects to the npc base table.
+    let env = region_env();
+    // The region event wrongly projects to a table it does not own.
     let buggy = vec![ProjectionUpdate::Update {
-        table: "npc_projection".into(),
-        pk: json!({ "npc_id": env.aggregate_id }),
+        table: "world_kv_projection".into(),
+        pk: json!({ "region_id": env.aggregate_id }),
         fields: json!({ "last_event_version": 1 }),
         meta: dp_kernel::VerificationMeta::from_envelope(&env),
     }];

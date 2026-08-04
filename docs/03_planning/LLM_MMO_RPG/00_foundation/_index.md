@@ -42,7 +42,7 @@ For the full rules see [`../AGENT_GUIDE.md`](../AGENT_GUIDE.md).
 - **AGENT_GUIDE.md** (LLM_MMO_RPG root) — per-subfolder workflow rules.
 - **SESSION_HANDOFF.md** (LLM_MMO_RPG root) — append-only session log.
 - **02_storage/** + **03_multiverse/** — the kernel. Foundation is a distillation of these two; any authoritative change originates there.
-- **01_problems/** + **04_player_character/** + **05_llm_safety/** + **catalog/** + **decisions/** — feature-design subfolders. These are OK to load in full alongside foundation.
+- **01_problems/** + **_superseded/04_player_character/** + **05_llm_safety/** + **catalog/** + **decisions/** — feature-design subfolders. These are OK to load in full alongside foundation.
 
 ---
 
