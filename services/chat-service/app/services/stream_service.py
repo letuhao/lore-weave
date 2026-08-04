@@ -6310,8 +6310,21 @@ async def _persist_terminal_assistant(
                       -- later caller that does not carry the recorder must not erase what an earlier
                       -- one recorded. Losing the advertised history to a bookkeeping write would
                       -- reproduce the last-write-wins defect the jsonb array exists to avoid.
-                      advertised_tools = COALESCE(EXCLUDED.advertised_tools, chat_messages.advertised_tools),
-                      withheld_tools = COALESCE(EXCLUDED.withheld_tools, chat_messages.withheld_tools),
+                      -- 🔴 CONCATENATE, never replace. Measured live: declining a confirm card
+                      -- took a row from 2 passes to 1 and ERASED the pass-1→pass-2 deletion — the
+                      -- exact founding-defect artefact this column exists to preserve. A resume
+                      -- builds a FRESH recorder, so COALESCE took the new (shorter) array and the
+                      -- row then told a coherent, plausible, WRONG story about the turn.
+                      -- `AdvertisedToolsRecorder`'s own docstring says "appended, never replaced";
+                      -- the persistence layer was replacing what the recorder had appended.
+                      advertised_tools = CASE
+                        WHEN EXCLUDED.advertised_tools IS NULL THEN chat_messages.advertised_tools
+                        WHEN chat_messages.advertised_tools IS NULL THEN EXCLUDED.advertised_tools
+                        ELSE chat_messages.advertised_tools || EXCLUDED.advertised_tools END,
+                      withheld_tools = CASE
+                        WHEN EXCLUDED.withheld_tools IS NULL THEN chat_messages.withheld_tools
+                        WHEN chat_messages.withheld_tools IS NULL THEN EXCLUDED.withheld_tools
+                        ELSE chat_messages.withheld_tools || EXCLUDED.withheld_tools END,
                       runtime_variant = EXCLUDED.runtime_variant
                     RETURNING (xmax = 0) AS inserted
                     """,
@@ -7309,8 +7322,21 @@ async def _emit_chat_turn(
                       -- 'streaming'). The reverse never happens: a checkpoint COALESCEs instead.
                       outcome = EXCLUDED.outcome,
                       outcome_source = 'path',
-                      advertised_tools = COALESCE(EXCLUDED.advertised_tools, chat_messages.advertised_tools),
-                      withheld_tools = COALESCE(EXCLUDED.withheld_tools, chat_messages.withheld_tools),
+                      -- 🔴 CONCATENATE, never replace. Measured live: declining a confirm card
+                      -- took a row from 2 passes to 1 and ERASED the pass-1→pass-2 deletion — the
+                      -- exact founding-defect artefact this column exists to preserve. A resume
+                      -- builds a FRESH recorder, so COALESCE took the new (shorter) array and the
+                      -- row then told a coherent, plausible, WRONG story about the turn.
+                      -- `AdvertisedToolsRecorder`'s own docstring says "appended, never replaced";
+                      -- the persistence layer was replacing what the recorder had appended.
+                      advertised_tools = CASE
+                        WHEN EXCLUDED.advertised_tools IS NULL THEN chat_messages.advertised_tools
+                        WHEN chat_messages.advertised_tools IS NULL THEN EXCLUDED.advertised_tools
+                        ELSE chat_messages.advertised_tools || EXCLUDED.advertised_tools END,
+                      withheld_tools = CASE
+                        WHEN EXCLUDED.withheld_tools IS NULL THEN chat_messages.withheld_tools
+                        WHEN chat_messages.withheld_tools IS NULL THEN EXCLUDED.withheld_tools
+                        ELSE chat_messages.withheld_tools || EXCLUDED.withheld_tools END,
                       runtime_variant = EXCLUDED.runtime_variant
                     RETURNING (xmax = 0) AS inserted
                     """,

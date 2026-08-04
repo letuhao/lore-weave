@@ -1122,3 +1122,42 @@ class TestOutcomeSourceIsTwoDirectional:
         for name, s in (("reconciler", sweep), ("resolver", resolver)):
             assert "'path'" not in s, f"{name} must never claim a terminal path wrote its row"
             assert "outcome_source = 'reconciler'" in s
+
+
+class TestAResumeNeverErasesTheTurnItResumes:
+    """The most serious defect found in this checkpoint, and nobody asked for it.
+
+    Measured live: declining a confirm card took a row from 2 passes to 1 and ERASED the
+    pass-1→pass-2 deletion — the exact founding-defect artefact `advertised_tools` exists to
+    preserve. An executed tool call (`source='tool'`, `ok=true`) was replaced by a breaker entry.
+    One UI click; same `message_id`; minutes apart.
+
+    The row afterwards told a COHERENT, PLAUSIBLE, WRONG story — which is worse than a gap, because
+    nothing about it invites a second look. And it means any `advertised_tools` reading taken after
+    a resume measures the RESUME, not the turn.
+
+    Cause: a resume builds a fresh recorder, so the upsert's COALESCE took the new, shorter array.
+    `AdvertisedToolsRecorder` promises "appended, never replaced" — the persistence layer was
+    replacing what the recorder had appended.
+    """
+
+    def test_the_upsert_concatenates_rather_than_replaces(self):
+        src = _stream_src()
+        assert "COALESCE(EXCLUDED.advertised_tools" not in src, (
+            "a resume still replaces the pass history it should extend"
+        )
+        assert src.count("chat_messages.advertised_tools || EXCLUDED.advertised_tools") >= 2, (
+            "both upsert paths must concatenate"
+        )
+        assert src.count("chat_messages.withheld_tools || EXCLUDED.withheld_tools") >= 2, (
+            "withheld records are narrowings that HAPPENED; a later pass cannot un-happen them"
+        )
+
+    def test_a_null_on_either_side_still_preserves_the_other(self):
+        """The concatenation must not turn a NULL into data loss: a checkpoint that carries no
+        recorder must leave what is already stored intact, which is what COALESCE got right."""
+        src = _stream_src()
+        for col in ("advertised_tools", "withheld_tools"):
+            i = src.index(f"WHEN EXCLUDED.{col} IS NULL THEN chat_messages.{col}")
+            j = src.index(f"WHEN chat_messages.{col} IS NULL THEN EXCLUDED.{col}", i)
+            assert j > i, f"{col}: both NULL branches must precede the concatenation"
