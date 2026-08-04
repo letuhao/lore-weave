@@ -1,0 +1,42 @@
+== 0 · POPULATION ==
+ calls_raw | calls_organic | failures_raw | failures_organic 
+-----------+---------------+--------------+------------------
+      7463 |          6243 |         4015 |             2835
+
+== 1 · CARRY-FORWARD (strict: success STRICTLY EARLIER) ==
+  scope  | failures | carry_strict | pct_strict | carry_loose | pct_loose 
+---------+----------+--------------+------------+-------------+-----------
+ organic |     2835 |          357 |       12.6 |        1302 |      45.9
+ raw     |     4015 |          357 |        8.9 |        2482 |      61.8
+
+== 2 · NOT-A-REAL-DISPATCH, as a share of failures (LOWER BOUND pre-CP-0) ==
+  scope   | failures | not_real_dispatch |  pct  | of_which_meta 
+----------+----------+-------------------+-------+---------------
+ raw-only |     1180 |              1180 | 100.0 |          1180
+ organic  |     2835 |               456 |  16.1 |           157
+
+== 3 · IDENTIFIER RESOLUTION, as a share of REAL errors ==
+  scope  | real_errors | id_errors | pct  
+---------+-------------+-----------+------
+ organic |        2415 |       842 | 34.9
+
+== 4 · TERMINAL OUTCOME, through the CP-0.4 shim ==
+  scope  | assistant_turns | completed | awaiting_input | failed | crashed | unclassified | pct_unclassified 
+---------+-----------------+-----------+----------------+--------+---------+--------------+------------------
+ raw     |               4 |         4 |              0 |      0 |       0 |            0 |              0.0
+ organic |            2664 |       214 |             31 |      2 |       1 |         2416 |             90.7
+
+== 5 · WEEKLY TRAFFIC (the ceiling on any bound) ==
+    week    | calls | failures 
+------------+-------+----------
+ 2026-08-03 |    21 |        8
+ 2026-07-27 |   102 |       64
+ 2026-07-20 |  1494 |     1169
+ 2026-07-13 |  2431 |      528
+ 2026-07-06 |  1828 |      966
+ 2026-06-29 |    72 |       17
+ 2026-06-22 |   126 |       38
+ 2026-06-15 |   157 |       41
+ 2026-06-08 |     1 |        0
+ 2026-06-01 |     6 |        1
+

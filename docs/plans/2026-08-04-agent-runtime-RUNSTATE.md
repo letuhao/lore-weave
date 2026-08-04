@@ -25,12 +25,70 @@ run**, and every live run requires its **instrument** to be verified independent
 **The claim, stated so an independent party can falsify it.** On the same task family, the new runtime
 must beat the frozen old-runtime baseline on all four measured classes:
 
-| class | old-runtime baseline (frozen at CP-0) | claim |
+**🔴 FROZEN 2026-08-04, and three of the four numbers changed.** Derivation:
+[`contracts/agent-runtime-baseline/baseline-metrics.sql`](../../contracts/agent-runtime-baseline/baseline-metrics.sql)
+— every class now states its predicate, numerator and denominator, and reports the raw population
+beside the decontaminated one. **A number without its query is a rumour with a decimal point**, and
+this run carried four of them.
+
+| class | **frozen baseline (organic)** | as previously stated | claim |
+|---|---|---|---|
+| **carry-forward** — failure on a tool that **already** succeeded, success **strictly earlier** | **12.6%** (357/2,835) | *61.8%* | strictly lower |
+| **identifier resolution** — of real (non-breaker) errors | **34.9%** (842/2,415) | *≈57%* | strictly lower |
+| **not-a-real-dispatch** counted as a tool error — **lower bound** | **16.1%** (456/2,835) | *65.7%* | strictly lower |
+| **turns with no interpretable outcome** | **90.7%** (2,416/2,664) | *never frozen* | strictly lower |
+
+**🔴 THE HEADLINE NUMBER WAS MEASURING SOMETHING ELSE.** `61.8%` counted a failure as carry-forward
+whenever the tool succeeded **anywhere in the session, including afterwards** — crediting a failure
+against a success that had not happened yet. The claim was always *"already succeeded"*. Under the
+strict reading the same corpus gives **8.9% raw / 12.6% organic** — the run's primary target was
+**~5× overstated**, and the loose query would have handed us a 33pp "improvement" for free.
+
+**The other two moved for one reason: contamination.** 1,180 of 4,015 raw failures — **29.4% of
+every failure in the corpus** — are `tool_list` breaker fires from **four harness sessions**, and
+that bucket is **100% not-a-real-dispatch**. It was inflating exactly the classes it dominated.
+
+**`interrupted` is now frozen, and it is the worst number here: 90.7% of assistant turns have no
+interpretable outcome at all.** Not a regression — a measurement that had never been taken. It is
+also the one class where CP-0's instrument can move the number by construction rather than by
+improving anything, so it is reported as **coverage**, never as a quality win.
+
+### ▶ THE ACCEPTANCE ARITHMETIC — re-derived 2026-08-04, because the first one could not close
+
+V-METRIC's decision 4: at this product's traffic, a **per-declaration** bound on `book_list` needs
+**5.0 years** to detect −10pp on carry-forward and **12.2 years** on identifier resolution. That is
+not a slow plan, it is an unfalsifiable one, and four checkpoints would have been spent before
+anyone noticed.
+
+**The fix is not more traffic — it is the right unit.** Attribution stays per declaration; the
+*claim* pools across every admitted declaration.
+
+| | unit | why |
 |---|---|---|
-| **carry-forward** — a failure on a declaration that already succeeded this session | **61.8%** of failures (2,477/4,010) | strictly lower |
-| **identifier resolution** — of real (non-breaker) errors | **≈57%** | strictly lower |
-| **our own prose counted as tool error** | **65.7%** of failures | strictly lower |
-| **turns ending `interrupted`** | to be frozen at CP-0 | strictly lower, and **`interrupted` is a defect, not an outcome** (§0.5) |
+| **the run's claim** *(gate)* | **pooled across all admitted declarations**, new vs frozen baseline | pooling is the only thing that reaches n at 10²–10³ calls/week |
+| **per declaration** *(published, not a gate)* | matched pair vs its baseline predecessor | ships with `asserted_bound: unknown`; tightens with use. §6.2 already forbids it as a precondition |
+
+**What the pooled comparison needs**, at the newly frozen baselines (two-proportion, α=.05, 80%):
+
+| target | needs per arm | at organic traffic (mean **624**, median **114** calls/wk, ~40% failing) |
+|---|---|---|
+| carry-forward **12.6% → 6.3%** | ≈ **334 failures** | ~1 burst week, or ~7 quiet ones |
+| not-a-real-dispatch **16.1% → 8%** | ≈ **270 failures** | comparable |
+| no-interpretable-outcome **90.7% → <5%** | ≈ **30 turns** | days — but this is **coverage**, not quality |
+
+**Traffic is bursty by a factor of 100** (weekly organic calls over ten weeks: 6 · 1 · 157 · 126 ·
+72 · 1,828 · 2,431 · 1,494 · 102 · 21). **So no date may be committed — only a sample size.** A
+schedule built on the mean would be wrong by an order of magnitude in either direction.
+
+**Three consequences, binding:**
+
+1. **`≈13 admissions/week` is withdrawn.** It needs 377 successful calls/week against 191 mean / 47
+   median available. Throughput is now reported as an observation, never targeted.
+2. **Brick 2's matched pair cannot be built**: zero of the 315 frozen tools declare
+   `superseded_by: book_list`. **CP-4 must establish the supersession edge before admitting it**, or
+   the first declaration produces data that cannot be joined to anything.
+3. **The pooled gate cannot open until ≥2 declarations are admitted.** One declaration pooled with
+   itself is the per-declaration bound wearing a different name.
 
 **Two rules that make the claim honest:**
 
