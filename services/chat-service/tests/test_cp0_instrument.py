@@ -219,8 +219,31 @@ class TestWithheldRegisters:
             # WHEN, not only who and why. Without it a verifier found 19 of 303 withheld tools also
             # advertised on every pass and could not tell a contradiction from a sequence — dropped
             # at activation then re-added later is coherent history, but only if it is timestamped.
-            "pass": 2,
+            # The pass it APPLIES TO — the one just recorded. `len + 1` was measured off by one
+            # against five live removals (dropped at 6, stamped 7), which made a withholding look
+            # simultaneous with an advertisement it had actually preceded.
+            "pass": 1,
         }]
+
+    def test_a_withholding_belongs_to_the_pass_it_shaped_not_the_next_one(self):
+        """REJECTS: the off-by-one that made the `pass` field decorative.
+
+        Measured live: a tool removed from pass 6 was stamped 7, consistently across five removals.
+        An entry stamped one pass late reads as simultaneous with an advertisement it preceded —
+        which is exactly the contradiction the field exists to resolve, so the stamp was worse than
+        no stamp: it looked like an answer.
+        """
+        rec = AdvertisedToolsRecorder()
+        rec.record_pass(["a", "b"])                      # pass 1
+        rec.record_pass(["a"])                           # pass 2 — 'b' removed here
+        rec.record_withheld("b", stage="failure_breaker", reason="gave up")
+        assert rec.withheld_json()[0]["pass"] == 2, "belongs to the pass it shaped"
+
+        pre = AdvertisedToolsRecorder()
+        pre.record_withheld("c", stage="hot_seed", reason="budget")
+        assert pre.withheld_json()[0]["pass"] == 1, (
+            "a narrowing decided during surface assembly shaped pass 1"
+        )
 
     def test_the_same_stage_dropping_a_tool_twice_is_one_withholding(self):
         """REJECTS: a count that measures how many passes the turn took rather than how much was

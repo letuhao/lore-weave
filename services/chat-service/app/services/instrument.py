@@ -254,9 +254,18 @@ class AdvertisedToolsRecorder:
         self._seen.add(key)
         self._withheld.append({
             "tool": tool, "stage": stage, "reason": reason,
-            # The pass this narrowing was recorded against — i.e. the pass ABOUT to be built. Passes
-            # already recorded are complete, so the next one is len()+1.
-            "pass": len(self._passes) + 1,
+            # The pass this narrowing APPLIES TO — the one just recorded, not the next one.
+            #
+            # `len + 1` was off by exactly one, measured live and consistently across five
+            # removals: a tool dropped from pass 6 was stamped 7. The drain happens immediately
+            # AFTER `record_pass` for the same pass, so by the time this runs the pass it belongs to
+            # is already counted. An off-by-one here is not cosmetic — it is what makes a withheld
+            # entry look simultaneous with an advertisement it actually preceded, which is precisely
+            # the contradiction the field was added to resolve.
+            #
+            # `max(..., 1)` covers a narrowing decided during surface assembly, before any pass
+            # exists: it belongs to the first pass, which is the one it shaped.
+            "pass": max(len(self._passes), 1),
         })
 
     def record_withheld_many(self, tools: Iterable[str], *, stage: str, reason: str) -> None:

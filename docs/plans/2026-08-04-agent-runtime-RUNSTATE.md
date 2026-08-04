@@ -394,6 +394,43 @@ picking one. Three options, stated with their costs, for the PO:
 question blocks **CP-4**, where a bound is first claimed. Recorded here so it cannot be discovered
 inside CP-4.
 
+### ▶ ROUND 3 — the first `PASS`, and the founding defect finally caught in production
+
+| role | R1 | R2 | **R3** |
+|---|---|---|---|
+| V-CODE | FAIL | FAIL | **FAIL** — ruled against me on *both* rulings I asked for |
+| V-METRIC | FAIL | FAIL | **FAIL** — corrections partly *right* for the first time; 3 classes still mis-select |
+| **V-LIVE** | FAIL | FAIL | ✅ **PASS** — all four runs, two open defects |
+
+**The result CP-0 was built to produce.** Run A recorded **five silent mid-turn removals across 19
+passes** — `book_list_chapters` gone at pass 6, `book_list_revisions` at 9, `book_get` at 12,
+`book_update_details` at 15, `book_steering_list` at 18 — each with a matching `failure_breaker`
+withheld entry and a legible *two-failures-then-breaker* pattern in `tool_calls`. Round 2 had only
+ever observed **additions**. **This is the arm-E defect, in production, with both states preserved
+and the deletion recoverable from the record alone.**
+
+**Cancel fix holds:** zero `interrupt-persist failed` across four cancels, against **100%** in round
+2. A cancel at 4.1 s preserved 478 characters as `abandoned_by_user`.
+
+**My stated deferral boundary was wrong — narrower than I claimed, in the safe direction.** A cancel
+at 7.0 s with **five executed tool calls and zero text** *is* recorded; my "before any text" claim
+predicted it would not be. The true unrecorded window is only **before the first streamed chunk of
+any kind**. I was conservative rather than optimistic, but I was still guessing where I should have
+measured.
+
+**Two defects stay open, and one is mine from this round:**
+
+- **the `pass` field did not fix the contradiction** — 11 of 178 withheld tools are stamped `pass: 3`
+  *and* present in `advertised_tools` at pass 3. Round 2: 19/303 (6.3%). Round 3: 11/178 (6.2%).
+  **Unchanged.** The stamp was also **systematically one pass late** (removed at 6, stamped 7, five
+  for five) — now fixed, which may or may not resolve the overlap; that is for round 4 to say, not me.
+- **`latency_ms` null on all `meta`/`breaker` calls**, and `crashed` cannot distinguish *died* from
+  *still running* — observed reading `crashed` on a healthy turn.
+
+**The container was stale for the THIRD round running** — it was still executing the pre-fix
+`asyncio.shield` line that round 3 existed to re-test. Caught by whole-file hash before anything was
+driven. **A rebuild is now a precondition of V-LIVE, not a step in it.**
+
 ### ▶ VERDICTS — rounds 1 and 2, six verdicts, all `FAIL`
 
 | role | verdict | the finding that decided it |
