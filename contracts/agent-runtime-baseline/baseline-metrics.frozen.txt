@@ -1,40 +1,41 @@
 == PIN · corpus fingerprint (numbers below are valid ONLY for this fingerprint) ==
  messages |            newest             |            corpus_md5            
 ----------+-------------------------------+----------------------------------
-     5766 | 2026-08-04 01:03:56.580788+00 | 7fa0764949af13d461784b8222f0a887
+     5772 | 2026-08-04 01:40:14.234179+00 | 9546bb2c9338d126a2b69018121ae29e
 
 == 0 · POPULATION ==
  calls_raw | calls_organic | failures_raw | failures_organic 
 -----------+---------------+--------------+------------------
-      7467 |          6247 |         4015 |             2835
+      7488 |          6268 |         4030 |             2850
 
 == 1 · CARRY-FORWARD (strict: success STRICTLY EARLIER) ==
-  scope  | failures | carry_strict | pct_strict | carry_loose | pct_loose 
----------+----------+--------------+------------+-------------+-----------
- organic |     2835 |         1116 |       39.4 |        1302 |      45.9
- raw     |     4015 |         2296 |       57.2 |        2482 |      61.8
+        scope        | failures | carry_strict | pct_strict | carry_loose | pct_loose 
+---------------------+----------+--------------+------------+-------------+-----------
+ organic             |     2850 |         1116 |       39.2 |        1302 |      45.7
+ organic_real_errors |     1649 |           99 |        6.0 |         261 |      15.8
+ raw                 |     4030 |         2296 |       57.0 |        2482 |      61.6
 
 == 2 · NOT-A-REAL-DISPATCH, as a share of failures (LOWER BOUND pre-CP-0) ==
   scope   | failures | not_real_dispatch |  pct  | of_which_meta 
 ----------+----------+-------------------+-------+---------------
  raw-only |     1180 |              1180 | 100.0 |          1180
- organic  |     2270 |              1028 |  45.3 |             0
+ organic  |     2850 |              1185 |  41.6 |           157
 
 == 3 · IDENTIFIER RESOLUTION, as a share of REAL errors ==
   scope  | real_errors | id_errors | pct  
 ---------+-------------+-----------+------
- organic |        2415 |       842 | 34.9
+ organic |        2430 |       857 | 35.3
 
 == 4 · TERMINAL OUTCOME, through the CP-0.4 shim, WINDOWED on column age ==
-  scope  | assistant_turns | completed | awaiting_input | failed | crashed | unclassified | pct_unclassified 
----------+-----------------+-----------+----------------+--------+---------+--------------+------------------
- raw     |               4 |         4 |              0 |      0 |       0 |            0 |              0.0
- organic |             266 |       219 |             31 |      2 |       1 |           13 |              4.9
+  scope  | assistant_turns | completed | awaiting_input | failed | crashed | interrupted_recorded | unrecorded | pct_unrecorded 
+---------+-----------------+-----------+----------------+--------+---------+----------------------+------------+----------------
+ raw     |               4 |         4 |              0 |      0 |       0 |                    0 |          0 |            0.0
+ organic |             269 |       222 |             31 |      2 |       1 |                   13 |          0 |            0.0
 
 == 5 · WEEKLY TRAFFIC (the ceiling on any bound) ==
     week    | calls | failures 
 ------------+-------+----------
- 2026-08-03 |    25 |        8
+ 2026-08-03 |    46 |       23
  2026-07-27 |   102 |       64
  2026-07-20 |  1494 |     1169
  2026-07-13 |  2431 |      528

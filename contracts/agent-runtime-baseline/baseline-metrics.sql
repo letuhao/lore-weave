@@ -24,9 +24,21 @@
 -- substitute is a fingerprint: if these three values differ from the frozen run, the numbers below
 -- are NOT comparable to it and nothing may be concluded from the difference.
 \echo '== PIN · corpus fingerprint (numbers below are valid ONLY for this fingerprint) =='
-SELECT count(*) AS messages, max(created_at) AS newest,
-       md5(string_agg(message_id::text, ',' ORDER BY message_id)) AS corpus_md5
-FROM chat_messages;
+-- Hashes the FIELDS THE DERIVATION READS, not the primary-key set. The first version hashed only
+-- message_id, so a verifier mutated finish_reason/tool_calls/is_error inside a rolled-back
+-- transaction — moving class 4 from 4.9% to 0.0% — and the fingerprint did not change one
+-- character. It certified that the same ROWS existed, which is not what any number here depends on.
+-- chat_sessions.title is included because the ENTIRE decontamination rests on it and it was not
+-- covered at all.
+SELECT (SELECT count(*) FROM chat_messages) AS messages,
+       (SELECT max(created_at) FROM chat_messages) AS newest,
+       md5(
+         (SELECT string_agg(message_id::text || coalesce(finish_reason,'') || coalesce(outcome,'')
+                            || is_error::text || coalesce(tool_calls::text,''), ',' ORDER BY message_id)
+          FROM chat_messages)
+         || (SELECT string_agg(session_id::text || coalesce(title,''), ',' ORDER BY session_id)
+             FROM chat_sessions)
+       ) AS corpus_md5;
 
 -- ── CONTAMINATION, declared before anything is counted ────────────────────────────────────────
 -- Excluded, and why each one is not a judgement call:
@@ -76,7 +88,18 @@ FROM _calls;
 -- Reported alongside the loose reading, so the 4.7pp difference stays visible instead of becoming
 -- an improvement someone claims later by writing a more correct query.
 \echo '== 1 · CARRY-FORWARD (strict: success STRICTLY EARLIER) =='
+-- 🔴 Classes 1 and 2 were measuring THE SAME 1,017 ROWS and pooling them as two independent
+-- targets. 91.1% of "carry-forward" failures were our own repeat-breaker prose — the model calling
+-- a tool that had already succeeded IS what trips the repeat breaker, so the breaker's own refusal
+-- became the evidence of carry-forward. It also moved with an integer constant (REPEAT_READ_CAP=2),
+-- which means the metric could be "improved" by editing one line and changing nothing real.
+-- Carry-forward is now measured over REAL errors only, and reported both ways.
 WITH f AS (SELECT * FROM _calls WHERE NOT ok),
+     fr AS (SELECT * FROM _calls WHERE NOT ok
+              AND NOT (error ILIKE '%already ran this turn%' OR error ILIKE '%You have already called%'
+                       OR error ILIKE '%times this turn%' OR error ILIKE '%this turn%'
+                       OR tool IN ('tool_list','tool_load','find_tools','conversation_search',
+                                   'chat_search_sessions','load_skill','workflow_list','workflow_load'))),
      s AS (SELECT * FROM _calls WHERE ok)
 SELECT scope,
        count(*)                                    AS failures,
@@ -96,6 +119,12 @@ FROM (
                    AND (s.created_at, s.ord) < (f.created_at, f.ord) AND s.organic),
          EXISTS (SELECT 1 FROM s WHERE s.session_id = f.session_id AND s.tool = f.tool AND s.organic)
   FROM f WHERE f.organic
+  UNION ALL
+  SELECT 'organic_real_errors', fr.*,
+         EXISTS (SELECT 1 FROM s WHERE s.session_id = fr.session_id AND s.tool = fr.tool
+                   AND (s.created_at, s.ord) < (fr.created_at, fr.ord) AND s.organic),
+         EXISTS (SELECT 1 FROM s WHERE s.session_id = fr.session_id AND s.tool = fr.tool AND s.organic)
+  FROM fr WHERE fr.organic
 ) x
 GROUP BY scope ORDER BY scope;
 
@@ -124,11 +153,19 @@ FROM (
          (error ILIKE '%already ran this turn%' OR error ILIKE '%Do not ask to run it again%'
           OR error ILIKE '%You have already called%' OR error ILIKE '%times this turn%'
           OR error ILIKE '%this turn%'
-          OR error ILIKE '%repeated%' OR error ILIKE '%blocked%' OR error ILIKE '%not permitted%'
-          OR error ILIKE '%budget%' OR error ILIKE '%cap%'
+          -- REMOVED: '%budget%', '%not permitted%', '%blocked%'. They caught 21 REAL dispatches
+          -- that failed pydantic validation — `Extra inputs are not permitted` is a pydantic
+          -- constant, so every extra_forbidden failure in the product was misclassified as our
+          -- prose, and `%budget%` matched because a CALLER'S OWN ARGUMENT is named budget_usd.
+          OR error ILIKE '%repeated%'
           OR tool IN ('tool_list','tool_load','find_tools','conversation_search',
                       'chat_search_sessions','load_skill','workflow_list','workflow_load')) AS ours
-  FROM _calls WHERE NOT ok AND NOT (args = '{}'::jsonb)   -- blank-arg probes, as declared
+  -- The blank-arg exclusion removed 288 UNSCRIPTED rows, the largest block being 157x
+-- "find_tools has been called with no intent ... STOP" — which is our own middleware prose, i.e.
+-- THE CLASS'S OWN SUBJECT deleted from its own numerator. A decontamination rule that removes the
+-- thing being counted is not decontamination. Blank-arg probes are excluded only where they are
+-- also scripted.
+FROM _calls WHERE NOT ok AND NOT (args = '{}'::jsonb AND NOT organic)
 ) x GROUP BY organic ORDER BY organic;
 
 -- ── CLASS 3 · IDENTIFIER RESOLUTION ───────────────────────────────────────────────────────────
@@ -170,9 +207,10 @@ SELECT CASE WHEN organic THEN 'organic' ELSE 'raw' END AS scope,
        count(*) FILTER (WHERE mapped = 'awaiting_input')    AS awaiting_input,
        count(*) FILTER (WHERE mapped = 'failed')            AS failed,
        count(*) FILTER (WHERE mapped = 'crashed')           AS crashed,
-       count(*) FILTER (WHERE mapped = 'interrupted')       AS unclassified,
-       round(100.0 * count(*) FILTER (WHERE mapped = 'interrupted') / NULLIF(count(*), 0), 1)
-         AS pct_unclassified
+       count(*) FILTER (WHERE mapped = 'interrupted')       AS interrupted_recorded,
+       count(*) FILTER (WHERE mapped = 'unrecorded')        AS unrecorded,
+       round(100.0 * count(*) FILTER (WHERE mapped = 'unrecorded') / NULLIF(count(*), 0), 1)
+         AS pct_unrecorded
 FROM (
   SELECT (m.session_id IN (SELECT session_id FROM _organic)) AS organic,
          CASE WHEN m.is_error THEN 'failed'
@@ -180,7 +218,11 @@ FROM (
               WHEN m.finish_reason = 'awaiting_input' THEN 'awaiting_input'
               WHEN m.finish_reason = 'error' THEN 'failed'
               WHEN m.finish_reason = 'streaming' THEN 'crashed'
-              ELSE 'interrupted' END AS mapped
+              -- 'interrupted' is a RECORDED outcome, not an absent one. Counting it as
+              -- unclassified made the genuine interruption rate wear the label "we failed to
+              -- classify this", inflating 0.0% to 4.9%.
+              WHEN m.finish_reason = 'interrupted' THEN 'interrupted'
+              ELSE 'unrecorded' END AS mapped
   FROM chat_messages m WHERE m.role = 'assistant'
     AND m.created_at >= TIMESTAMPTZ '2026-07-19'   -- after finish_reason existed
 ) x GROUP BY organic ORDER BY organic;

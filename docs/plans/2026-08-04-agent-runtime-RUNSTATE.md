@@ -31,12 +31,44 @@ must beat the frozen old-runtime baseline on all four measured classes:
 beside the decontaminated one. **A number without its query is a rumour with a decimal point**, and
 this run carried four of them.
 
-| class | **frozen baseline (organic)** | v1 of this table | originally | claim |
-|---|---|---|---|---|
-| **carry-forward** — success **strictly earlier**, ordered **within the turn** | **39.4%** (1,116/2,835) | *12.6%* | *61.8%* | strictly lower |
-| **identifier resolution** — of real errors | **34.9%** (842/2,415) | 34.9% | *≈57%* | strictly lower |
-| **not-a-real-dispatch** — **lower bound** | **45.3%** (1,028/2,270) | *16.1%* | *65.7%* | ⛔ **see below — not scoreable** |
-| **turns with no interpretable outcome**, windowed on column age | **4.9%** (13/266) | *90.7%* | *never frozen* | ⛔ **already met — withdrawn as a target** |
+| class | **v3 — organic** | v2 | v1 | originally | claim |
+|---|---|---|---|---|---|
+| **carry-forward, over REAL errors** | **6.0%** (99/1,649) | *39.4%* | *12.6%* | *61.8%* | strictly lower |
+| **identifier resolution** — of real errors | **35.3%** (857/2,430) | 34.9% | 34.9% | *≈57%* | strictly lower |
+| **not-a-real-dispatch** — lower bound | **41.6%** (1,185/2,850) | *45.3%* | *16.1%* | *65.7%* | ⛔ not scoreable across arms |
+| **turns with NO RECORDED outcome**, windowed | **0.0%** (0/269) | *4.9%* | *90.7%* | *never frozen* | ⛔ already met |
+
+**🔴 CLASSES 1 AND 2 WERE THE SAME 1,017 ROWS, pooled as two independent targets.** 91.1% of what
+v2 called *carry-forward* was **our own repeat-breaker prose** — the model re-calling a tool that had
+already succeeded **is** what trips the repeat breaker, so the breaker's refusal became the evidence
+for the very thing it was refusing. Worse, the metric **moved with an integer constant**
+(`REPEAT_READ_CAP = 2`): a one-line edit would have "improved" it while changing nothing real.
+Measured over real errors: **6.0%** — the run's founding number, correctly scoped, is **~10× smaller
+than published**.
+
+**Three more corrections, all from round 3:**
+
+- **The fingerprint was theatre.** It hashed the primary-key set, so a verifier mutated
+  `finish_reason`/`tool_calls`/`is_error` in a rolled-back transaction — moving class 4 from 4.9% to
+  0.0% — and the hash **did not change one character**. It certified that the same *rows* existed,
+  which is what nothing here depends on. `chat_sessions.title`, on which the entire decontamination
+  rests, was not covered at all. Now hashes the fields actually read, both tables.
+- **My `%this turn%` suspicion was wrong** — the verifier checked it *for* me: 93 rows, all
+  middleware. The real over-capture was in clauses nobody flagged: `%budget%`, `%not permitted%` and
+  `%blocked%` caught **real dispatches that failed pydantic validation** — `Extra inputs are not
+  permitted` is a **pydantic constant**, so every `extra_forbidden` failure in the product was
+  filed as our prose. Removed.
+- **The blank-arg exclusion deleted the class's own subject** — 288 unscripted rows, the largest
+  block 157× *"find_tools has been called with no intent … STOP"*, which is our own prose. A
+  decontamination that removes the thing being counted is not decontamination.
+- **`interrupted` is a RECORDED outcome, not an absent one.** All 13 "unclassified" rows carried it.
+  True unrecorded rate: **0.0%**; 4.9% was the genuine interruption rate wearing the label *"we
+  failed to classify this"*.
+
+**C7 — adopted, and proposed by the verifier, not by me:** *each class's predicate must select the
+population its name states, demonstrated by decomposing the numerator.* It is **red on classes 1, 2
+and 4** as of round 3, which is exactly why it is worth having — and it is the criterion that would
+have caught all three of my failed corrections.
 
 **Corpus fingerprint** — these numbers are valid *only* for `messages=5766 · newest=2026-08-04
 01:03:56Z · md5=7fa0764949af13d461784b8222f0a887`. There is no `AS OF` in Postgres, so freezing the
