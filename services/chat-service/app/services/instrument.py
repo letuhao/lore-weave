@@ -459,6 +459,20 @@ def outcome_for_finish_reason(finish_reason: str | None, *, is_error: bool = Fal
             return OUTCOME_FAILED
         case "streaming":
             return OUTCOME_CRASHED
+        # 🔴 F-19. These three are NORMAL terminations that the `case _` fail-safe was sending to
+        # `interrupted` — the value this module calls "the number to drive to zero". Anthropic
+        # always receives max_tokens, so `length` is a routine truncation, not a lost turn; a
+        # turn that stops to call tools has not failed either. Mapping them to the deprecated
+        # bucket did not just mislabel: it INFLATED the one metric CP-0 exists to drive down,
+        # and it shipped inside my own fix for a different constant.
+        #
+        # `content_filter` is a real refusal — the request was not carried out — so it is `failed`,
+        # not `completed`. Three provider words, three different meanings; the fail-safe collapsed
+        # all of them into a fourth.
+        case "length" | "tool_calls" | "max_tokens":
+            return OUTCOME_COMPLETED
+        case "content_filter":
+            return OUTCOME_FAILED
         case "interrupted":
             # Deliberately NOT abandoned_by_user. The old code wrote 'interrupted' for both a user
             # cancel and a lost turn, so the historical value genuinely does not distinguish them.

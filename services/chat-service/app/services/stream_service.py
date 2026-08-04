@@ -7204,7 +7204,7 @@ async def _emit_chat_turn(
                        sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
                        context_breakdown, response_id, exclude_from_memory, local_date, finish_reason,
                        outcome, advertised_tools, withheld_tools, runtime_variant)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15, 'stop',
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15, $20,
                             $16,$17::jsonb,$18::jsonb,$19)
                     ON CONFLICT (message_id) DO UPDATE SET
                       content = EXCLUDED.content,
@@ -7217,7 +7217,7 @@ async def _emit_chat_turn(
                       response_id = EXCLUDED.response_id,
                       exclude_from_memory = EXCLUDED.exclude_from_memory,
                       local_date = EXCLUDED.local_date,
-                      finish_reason = 'stop',
+                      finish_reason = EXCLUDED.finish_reason,
                       is_error = false,
                       error_detail = NULL,
                       -- CP-0.4 — the clean finish is the ONE path that may assert completion, and it
@@ -7252,6 +7252,11 @@ async def _emit_chat_turn(
                     json.dumps(_advertised.advertised_json()) if _advertised.advertised_json() else None,
                     json.dumps(_advertised.withheld_json()) if _advertised.withheld_json() else None,
                     instrument.RUNTIME_LEGACY,
+                    # F-19 — `finish_reason` and `outcome` now derive from THE SAME signal. Pinning
+                    # 'stop' here while the outcome varied made the row contradict itself, which is
+                    # worse than either value alone being wrong: a reader cannot tell which half to
+                    # believe. This is the verifier's satisfiable gate, applied.
+                    _loop_finish_reason or "stop",
                 )
                 _did_insert = bool(_ins_row and _ins_row["inserted"])
                 if _exclude_mem and parent_message_id:

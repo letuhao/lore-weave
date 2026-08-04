@@ -599,3 +599,39 @@ class TestOutcome:
         assert in_db == set(instrument.OUTCOMES), (
             f"vocabulary drift: python={set(instrument.OUTCOMES) - in_db} db={in_db - set(instrument.OUTCOMES)}"
         )
+
+
+class TestF19NormalTerminationsAreNotInterrupted:
+    """REJECTS: a fail-safe applied where the path is already classified.
+
+    My fix for one constant shipped a regression in a live population. The `case _` default sends
+    unrecognised provider words to `interrupted` — correct for an UNCLASSIFIED path, wrong on the
+    clean-finish path where the turn demonstrably ended normally. Anthropic always receives
+    `max_tokens`, so `length` is a routine truncation; mapping it to the deprecated bucket INFLATED
+    the one metric CP-0 exists to drive to zero, from inside a fix for something else.
+    """
+
+    def test_a_truncated_turn_completed(self):
+        assert instrument.outcome_for_finish_reason("length") == instrument.OUTCOME_COMPLETED
+
+    def test_a_turn_that_stopped_to_call_tools_completed(self):
+        assert instrument.outcome_for_finish_reason("tool_calls") == instrument.OUTCOME_COMPLETED
+
+    def test_a_refusal_is_failed_not_interrupted(self):
+        """`content_filter` means the request was NOT carried out — a failure, not a lost turn.
+        Three provider words with three meanings; the fail-safe collapsed them into a fourth."""
+        assert instrument.outcome_for_finish_reason("content_filter") == instrument.OUTCOME_FAILED
+
+    def test_a_genuinely_unknown_word_still_fails_safe(self):
+        """The fail-safe must survive the fix — an unrecognised word is still not a success."""
+        assert instrument.outcome_for_finish_reason("some_future_word") == \
+            instrument.OUTCOME_INTERRUPTED
+        assert instrument.outcome_for_finish_reason(None) != instrument.OUTCOME_COMPLETED
+
+    def test_the_clean_finish_writes_both_fields_from_one_signal(self):
+        """REJECTS: a row that contradicts itself. Pinning finish_reason='stop' while outcome
+        varied left a reader unable to tell which half to believe — worse than either being wrong.
+        """
+        src = _stream_src()
+        assert "finish_reason = EXCLUDED.finish_reason" in src
+        assert "$15, 'stop'," not in src, "the clean-finish INSERT still pins a literal 'stop'"
