@@ -25,6 +25,54 @@ run**, and every live run requires its **instrument** to be verified independent
 **The claim, stated so an independent party can falsify it.** On the same task family, the new runtime
 must beat the frozen old-runtime baseline on all four measured classes:
 
+## ✅ THE CLAIM IS NOW A PROPERTY CLAIM — **PO decision, 2026-08-04 (option C)**
+
+**The rate-based claim is withdrawn.** It could not be settled on this corpus and no amount of
+building changes that: **522 unscripted real errors against 743 needed per arm**, on a control group
+that is *frozen* and therefore cannot grow; two of its four classes ruled **unscoreable across arms
+at any n**; and the strongest surviving class needs only ~58/arm but is the one that cannot be
+compared. Those four rate targets are retained **below, as published observations** — never as gates.
+
+**In its place: six invariants, each falsifiable at n = 1.**
+
+> **The runtime may NARROW, never INVENT, and never SILENTLY** (`ARCHITECTURE.md` §0.1).
+> A property claim is falsified by **one** counter-example, so no sample size is needed — which is
+> exactly why it fits a corpus that cannot supply one.
+
+**The trap this design had to avoid, named by V-METRIC:** *"C is the only option that could work, but
+the property it names is already certified by C2, making the gate self-satisfying."* A property the
+system already holds gates nothing. **So every P below is one the CURRENT runtime demonstrably
+VIOLATES, with the measured violation cited.** That is also what makes it a comparison: the legacy
+runtime breaks each one, on evidence, and the new runtime must hold it.
+
+| | property — falsified by one counter-example | legacy violates it, measured |
+|---|---|---|
+| **P1** | every tool absent from a pass's advertised set **registers** `{tool, stage, reason, pass}` | **477 of 1,565** withheld records unreconcilable (30.5%); the partition claim **refuted** |
+| **P2** | a call's `source` is assigned **structurally**, never inferred | **110 of 201** carry `source_inferred` |
+| **P3** | **every** terminal path writes an outcome | cancel-before-first-token and kill-mid-turn write **nothing** (runs C/D) |
+| **P4** | **no** CP-0 column is bound to a **constant** at any INSERT | V-CODE found **4 sites**; two fixed, the gate is still red |
+| **P5** | a step's `emits` binds to the next step's `accepts` **without the model retyping it** | the 0/101 tool sending `placeholder_id_1` ×60 |
+| **P6** | a declaration named by a live plan step is **advertised while that step is current** | 12 rails point at **30 dead tools** behind a gate that fails open |
+
+**Why this is a stronger claim than the rate, not a weaker one.** A rate says *"fewer failures than
+before"* and needs hundreds of samples to distinguish from noise. **A property says the failure class
+cannot occur, and one occurrence refutes it.** P1–P6 are also the properties the rate targets were
+*proxies* for: the 61.8% carry-forward class **is** P5 failing; the 65.7% prose-as-error class **is**
+P2 failing. We are measuring the mechanism instead of its shadow.
+
+**Consequences, binding:**
+
+1. **CP-0 closes on P1–P4** — the four the instrument itself must hold — not on a bound. **P1 and P3
+   are red today**, so CP-0 does **not** close yet, and this decision does not close it by fiat.
+2. **CP-4 admits a declaration when P1–P6 hold for it**, with `asserted_bound: unknown` published
+   alongside. **The `≈13 admissions/week` throughput target stays withdrawn.**
+3. **The frozen baseline keeps its job** — it is now the evidence that each violation was real,
+   rather than an arm in a comparison it cannot support.
+4. **A property proven by a test admits nothing** (§0.12). P1–P6 are gated in production traffic;
+   tests may only *reject*.
+
+---
+
 **🔴 FROZEN 2026-08-04, and three of the four numbers changed.** Derivation:
 [`contracts/agent-runtime-baseline/baseline-metrics.sql`](../../contracts/agent-runtime-baseline/baseline-metrics.sql)
 — every class now states its predicate, numerator and denominator, and reports the raw population
