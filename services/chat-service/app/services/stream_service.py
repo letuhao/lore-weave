@@ -6175,9 +6175,45 @@ async def _persist_terminal_assistant(
         # to a human), not as four patches. Closing it here would mean writing a blank assistant
         # bubble into the UI, which is a product change this checkpoint has no business making.
         # Logged so the hole is countable in the meantime rather than merely known.
+        # ── P3 · CLOSED HERE, and the earlier deferral was a wrong assumption of mine ──────────
+        # I recorded this as unfixable-before-CP-3.6 because writing a row means a blank assistant
+        # bubble in the UI. That assumed the outcome needs an ASSISTANT row. It does not: `outcome`
+        # is a column on `chat_messages`, not a property of a role, and the USER'S row already
+        # exists for every one of these turns — it is what makes them *orphaned* rather than absent.
+        #
+        # So the turn's fate is stamped on the message that is already there. No bubble is created,
+        # no product behaviour changes, and the two paths that recorded NOTHING — a cancel before
+        # the first token, and a process death before any checkpoint — now record what happened to
+        # the user's request. That is P3's whole claim: every terminal path writes an outcome.
+        #
+        # What this does NOT do is give the turn a reply. Materialising abandoned work into
+        # something a human can resume is still CP-3.6's mechanism, and still one mechanism rather
+        # than four patches. This closes the RECORDING hole, which is CP-0's half of it.
+        _orphan_outcome = outcome or instrument.outcome_for_finish_reason(
+            finish_reason, is_error=is_error
+        )
+        if parent_message_id:
+            try:
+                async with pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE chat_messages SET outcome = $2 "
+                        "WHERE message_id = $1 AND outcome IS NULL",
+                        parent_message_id, _orphan_outcome,
+                    )
+                logger.info(
+                    "CP-0.4 orphaned turn: no assistant row, outcome '%s' stamped on the user "
+                    "message (session %s, parent %s)",
+                    _orphan_outcome, session_id, parent_message_id,
+                )
+                return False
+            except Exception:  # noqa: BLE001 — best-effort; this runs on error/cancel paths
+                logger.warning(
+                    "CP-0.4 orphan-stamp failed (session %s, parent %s)",
+                    session_id, parent_message_id, exc_info=True,
+                )
         logger.info(
-            "CP-0.4 silent-exit: empty terminal turn recorded nowhere (session %s, msg %s, "
-            "reason=%s). Closes at CP-3.6 with the other three silent exits.",
+            "CP-0.4 silent-exit: empty terminal turn with NO parent to stamp (session %s, msg %s, "
+            "reason=%s) — the one remaining shape, and it is countable.",
             session_id, msg_id, finish_reason,
         )
         return False

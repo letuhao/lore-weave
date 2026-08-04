@@ -49,7 +49,7 @@ runtime breaks each one, on evidence, and the new runtime must hold it.
 |---|---|---|
 | **P1** | every tool absent from a pass's advertised set **registers** `{tool, stage, reason, pass}` | **477 of 1,565** withheld records unreconcilable (30.5%); the partition claim **refuted** |
 | **P2** | a call's `source` is assigned **structurally**, never inferred | **110 of 201** carry `source_inferred` |
-| **P3** | **every** terminal path writes an outcome | cancel-before-first-token and kill-mid-turn write **nothing** (runs C/D) |
+| **P3** | **every** terminal path writes an outcome | ~~cancel-before-first-token and kill-mid-turn write **nothing**~~ → **recording hole CLOSED**: the outcome is stamped on the **user's** row, which already exists. Awaits live verification |
 | **P4** | **no** CP-0 column is bound to a **constant** at any INSERT | V-CODE found **4 sites**; two fixed, the gate is still red |
 | **P5** | a step's `emits` binds to the next step's `accepts` **without the model retyping it** | the 0/101 tool sending `placeholder_id_1` ×60 |
 | **P6** | a declaration named by a live plan step is **advertised while that step is current** | 12 rails point at **30 dead tools** behind a gate that fails open |
@@ -62,8 +62,20 @@ P2 failing. We are measuring the mechanism instead of its shadow.
 
 **Consequences, binding:**
 
-1. **CP-0 closes on P1–P4** — the four the instrument itself must hold — not on a bound. **P1 and P3
-   are red today**, so CP-0 does **not** close yet, and this decision does not close it by fiat.
+1. **CP-0 closes on P1–P4** — the four the instrument itself must hold — not on a bound.
+
+**▶ THE PATH TO CLOSURE, stated concretely because "still open" is not a plan:**
+
+| | what remains | who closes it |
+|---|---|---|
+| **P1** | the 477 unreconcilable records are **historical** (332 predate the field, 145 are the `len+1` era) and V-METRIC ruled them **inert — `baseline-metrics.sql` reads `withheld` zero times**. V-LIVE measured **0 same-pass overlap** on rows written after the fix. **P1 may already hold on new rows** | **V-LIVE** — the only party that can distinguish "holds now" from "holds in source" |
+| **P2** | 110/201 `source_inferred`. Closing it means stamping at each mint site rather than classifying at the chokepoint | builder, then V-CODE |
+| **P3** | **recording hole closed this commit.** The remaining shape is a turn with **no parent to stamp** — countable, and logged | **V-LIVE** |
+| **P4** | 1 of 4 sites left (`internal.py:937`); the satisfiable gate is red at one binding | builder, then V-CODE |
+| **P5 · P6** | CP-3 and CP-2 respectively — **not CP-0's to close** | — |
+
+**So CP-0 closes when V-LIVE confirms P1 and P3 on live rows, and P2/P4 are finished in source.**
+That is a finite list, and none of it waits on a decision any more.
 2. **CP-4 admits a declaration when P1–P6 hold for it**, with `asserted_bound: unknown` published
    alongside. **The `≈13 admissions/week` throughput target stays withdrawn.**
 3. **The frozen baseline keeps its job** — it is now the evidence that each violation was real,

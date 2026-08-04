@@ -635,3 +635,36 @@ class TestF19NormalTerminationsAreNotInterrupted:
         src = _stream_src()
         assert "finish_reason = EXCLUDED.finish_reason" in src
         assert "$15, 'stop'," not in src, "the clean-finish INSERT still pins a literal 'stop'"
+
+
+class TestP3EveryTerminalPathRecordsAnOutcome:
+    """P3 — the property claim's third invariant, falsified by ONE unrecorded terminal path.
+
+    Two paths recorded nothing at all: a cancel before the first token, and a process death before
+    any checkpoint. I deferred both on the assumption that an outcome needs an ASSISTANT row, and
+    that writing one means a blank bubble. The assumption was wrong — `outcome` is a column on
+    `chat_messages`, not a property of a role, and the USER's row already exists for exactly these
+    turns. That is what makes them orphaned rather than absent.
+    """
+
+    def test_the_empty_turn_path_stamps_the_parent_rather_than_recording_nothing(self):
+        src = _stream_src()
+        skip = src.index("if not content and not reasoning and not tool_calls_history:")
+        window = src[skip: skip + 2600]
+        assert "UPDATE chat_messages SET outcome" in window, (
+            "an empty terminal turn still records nothing — P3 is falsified by this path alone"
+        )
+        assert "outcome IS NULL" in window, (
+            "the stamp must not overwrite an outcome a later path already recorded"
+        )
+
+    def test_the_orphan_stamp_derives_its_value_and_never_asserts_one(self):
+        """The same discipline as every other outcome site: derived from the signal, never a
+        literal. Four defects in this checkpoint were confident values for unobserved things."""
+        src = _stream_src()
+        skip = src.index("if not content and not reasoning and not tool_calls_history:")
+        window = src[skip: skip + 2600]
+        assert "instrument.outcome_for_finish_reason(" in window
+        assert "_orphan_outcome = outcome or" in window, (
+            "an explicitly-passed outcome must win over the derived fallback"
+        )
