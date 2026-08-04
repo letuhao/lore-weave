@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import functools
 import re
 import shutil
 import subprocess
@@ -161,6 +162,10 @@ class Unmeasurable(Exception):
 # performance budget.
 CARGO_TIMEOUT_S = 900
 
+# Keyed on the argument list; see `_cargo_passed` for why an injected
+# runner must never touch it.
+_CARGO_CACHE: dict[tuple[str, ...], tuple[str, object]] = {}
+
 
 def _cargo_passed(args: list[str], run=None, which=None) -> int:
     """Passing tests, or `Unmeasurable` if the toolchain is absent or the build is red.
@@ -171,20 +176,48 @@ def _cargo_passed(args: list[str], run=None, which=None) -> int:
     after which the script told the developer *"do not advance the number"* —
     i.e. to rewrite the doc to match a broken build.
     """
+    # **The same argument list, run again, is not a second measurement.**
+    # Profiled: four identical `cargo test` invocations inside one process,
+    # 19.5s of a 33s self-test. The repo cannot change mid-process, so the
+    # second answer is the first one, bought again.
+    #
+    # **The bypass is the load-bearing half.** `--self-test` drives this with
+    # INJECTED runners, precisely to assert which arguments each measurement
+    # asks for on a machine with no toolchain; a shared cache would hand one
+    # case another case's answer, and the cases would stop being independent.
+    # So an injected `run` or `which` never reads and never writes the cache.
+    cacheable = run is None and which is None
+    key = tuple(args)
+    if cacheable and key in _CARGO_CACHE:
+        kind, payload = _CARGO_CACHE[key]
+        if kind == "unmeasurable":
+            raise Unmeasurable(payload)
+        return payload
+
+    def _remember(kind, payload):
+        if cacheable:
+            _CARGO_CACHE[key] = (kind, payload)
+        return payload
+
     if (which or shutil.which)("cargo") is None:
-        raise Unmeasurable("cargo is not on PATH")
+        raise Unmeasurable(_remember("unmeasurable", "cargo is not on PATH"))
     try:
         out = (run or (lambda a: subprocess.run(
             ["cargo", "test", *a], cwd=REPO, capture_output=True, text=True,
             timeout=CARGO_TIMEOUT_S)))(args)
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired:  # noqa: PERF203 - remembered below
         # Unmeasurable, not a refusal: this hook fires on the repo-wide handoff
         # for all 47 services, and a cold cargo build that runs long must not
         # block a commit that never touched Rust.
-        raise Unmeasurable(f"the test run did not finish within {CARGO_TIMEOUT_S}s")
+        raise Unmeasurable(_remember(
+            "unmeasurable",
+            f"the test run did not finish within {CARGO_TIMEOUT_S}s"))
     if "test result: FAILED" in out.stdout or out.returncode != 0:
-        raise Unmeasurable("the test run is not green, so its count means nothing")
-    return sum(int(m) for m in re.findall(r"test result: ok\. (\d+) passed", out.stdout))
+        raise Unmeasurable(_remember(
+            "unmeasurable",
+            "the test run is not green, so its count means nothing"))
+    return _remember("ok", sum(
+        int(m) for m in re.findall(r"test result: ok\. (\d+) passed", out.stdout)))
 
 
 def _max_id(path: str, prefix: str, read=None) -> int:
@@ -495,6 +528,13 @@ def _scan_line(open_mark: str | None, in_comment: bool, line: str
     return after, False, False
 
 
+# **Pure, so memoised on its ARGUMENTS.** Profiled, the self-test spent 12.4s
+# re-deriving these three over four documents that cannot change while the
+# process runs -- 3 616 calls here and 2.68 MILLION to `_scan_line` beneath
+# them. The key includes the document text, so an edited document is a
+# different entry: there is no invalidation to forget, which is the failure
+# a path-keyed cache would have brought with it.
+@functools.lru_cache(maxsize=4096)
 def _claimable(block: str, quotes: bool = True, in_fence: str | None = None,
                in_comment: bool = False, comments: bool = True) -> str:
     """The block with everything that is NOT a live claim blanked out.
@@ -618,6 +658,7 @@ def _unpaired_note(text: str) -> str:
             "cause here rather than the marker")
 
 
+@functools.lru_cache(maxsize=4096)
 def _scope_span(text: str, start_marker: str, end_marker: str
                 ) -> tuple[int, int] | str | None:
     """The block's span, `None` if an anchor is missing, or a REASON string.
@@ -704,6 +745,14 @@ def _escape_derivation(governed: set[str], head: int, corpus=None) -> list[str]:
     return out
 
 
+# A file-read cache lived here and was REMOVED. The profiler blamed
+# `TextIOWrapper.read` for 10.1s while reporting 0.709s cumulative for the
+# same row -- an impossible pair, and the tell that the row was noise.
+# Measured best-of-three with cargo absent: 2.94s with the cache, 2.98s
+# without. And no case could tell them apart, because the documents cannot
+# change while the process runs, so dropping `mtime` from its key left the
+# self-test GREEN. **Bought nothing, guardable by nothing, so it is gone**
+# rather than cased -- the same call as the two-phase span half above.
 INDENT_CODE = re.compile(r"^(?: {4}|\t)")
 
 
@@ -722,7 +771,15 @@ def _indented_blanked(text: str) -> str:
         " " * len(l) if INDENT_CODE.match(l) else l for l in text.split(chr(10)))
 
 
+# The cached form returns a TUPLE and the wrapper copies it into a list.
+# Handing the same list to every caller would be a defect that only shows up
+# when one of them mutates it -- which timing never reveals.
 def _marker_hits(text: str, marker: str, start: int) -> list[int]:
+    return list(_marker_hits_cached(text, marker, start))
+
+
+@functools.lru_cache(maxsize=4096)
+def _marker_hits_cached(text: str, marker: str, start: int) -> tuple[int, ...]:
     """Offsets where `marker` is a real marker, not a mention.
 
     Two filters and a fallback:
@@ -745,11 +802,11 @@ def _marker_hits(text: str, marker: str, start: int) -> list[int]:
     # a duplicate and refused the commit. One literal form handled, its twin not.
     for haystack in (_indented_blanked(_claimable(text, quotes=False, comments=False)),
                      text):
-        hits = [k for k in _all_occurrences(haystack, needle, start)
-                if _at_line_start(haystack, k, needle)]
+        hits = tuple(k for k in _all_occurrences(haystack, needle, start)
+                     if _at_line_start(haystack, k, needle))
         if hits:
             return hits
-    return []
+    return ()
 
 
 def _all_occurrences(text: str, needle: str, start: int) -> list[int]:

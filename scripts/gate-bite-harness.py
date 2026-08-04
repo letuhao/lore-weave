@@ -213,9 +213,9 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # ...and a marker MENTIONED in prose or an inline code span -- which is
         # what documenting it looks like -- must not terminate anything.
         ("a marker mentioned mid-line terminates the block",
-         "        hits = [k for k in _all_occurrences(haystack, needle, start)\n"
-         "                if _at_line_start(haystack, k, needle)]",
-         "        hits = [k for k in _all_occurrences(haystack, needle, start)]"),
+         "        hits = tuple(k for k in _all_occurrences(haystack, needle, start)\n"
+         "                     if _at_line_start(haystack, k, needle))",
+         "        hits = tuple(_all_occurrences(haystack, needle, start))"),
         # B2 -- the END marker was hardened and the START marker had a raw
         # `find`, so documenting it inline moved the block 260 lines up and the
         # message blamed the wrong marker.
@@ -298,6 +298,27 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # slice board's copy of a claim measured FALSE at round 12 and corrected
         # in the header block only. The sibling `contract_substrate_lines` pattern
         # in that same file has carried the wrap tolerance from the start.
+        # R21 -- the two CACHES. A cache cannot make a check fail; it can only
+        # make it answer from the wrong place, which is why it needs a witness
+        # rather than a code review. A third cache (file reads, keyed on
+        # path+mtime+size) was REMOVED instead of cased: nothing could tell it
+        # apart, because the documents do not change while the process runs, and
+        # measured best-of-three it was worth 0.04s of 2.94s.
+        ("the cargo memo forgets that an injected runner is not the real one",
+         "    cacheable = run is None and which is None",
+         "    cacheable = True"),
+        ("the blanking cache drops an argument from its key",
+         "@functools.lru_cache(maxsize=4096)\ndef _claimable(",
+         "@functools.lru_cache(maxsize=4096)\n"
+         "def _claimable_keyed(block, quotes=True, in_fence=None, in_comment=False,\n"
+         "                     comments=True):\n"
+         "    return _claimable_real(block, quotes, in_fence, in_comment, comments)\n"
+         "\n"
+         "\ndef _claimable(block, quotes=True, in_fence=None, in_comment=False,\n"
+         "               comments=True):\n"
+         "    return _claimable_keyed(block)\n"
+         "\n"
+         "\ndef _claimable_real("),
         ("the bolded-figure shape loses its wrap tolerance",
          '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t\\n>]*"',
          '    r"\\*\\*\\d[\\d,. \\u00a0]*(?:[ \\t]*"'),

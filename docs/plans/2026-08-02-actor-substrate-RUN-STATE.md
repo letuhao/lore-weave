@@ -1039,6 +1039,29 @@ standard (13 and 12 survived-my-attack entries). **Three of 2B's hardest finding
 | **D-445** `[E]` | **🔴 And the survivor that took longest was a DUPLICATED RULE.** `run_rust` carried **two** `if baseline is not None:` blocks — the funnel added this round, and the injection block it was meant to replace — so the second re-evaluated and masked every mutation of the first. The same class as `D-413`'s duplicated fence logic, two rounds on. ⇒ one block. Then the remaining survivor was the same shape one level deeper: `baseline` injected the VERDICT, so the line reading the probe's return code was reachable only by seeding a red crate suite. ⇒ `baseline` injects the PROBE; one extraction, one path. |
 | **D-446** `[META]` | **A witness table is DATA wherever it is defined.** `_outside_tables` walked `tree.body` only, so the parity table — a local — counted as code and every anchor it names counted twice. ⇒ `ast.walk`, and `parity` joins the `*MUTATIONS` names. |
 
+### 6ah. THE GATES WERE SLOW FOR REASONS THAT WERE NOT CHECKING (2026-08-04)
+
+PO, on seeing the verification cost: *a gate is necessary against rot, but an
+inefficient gate is stagnation.* Profiled rather than guessed, and every second
+removed here was **the same answer computed again** — no rule weakened, no case
+dropped, and the self-test's output is byte-identical.
+
+| # | Decision |
+|---|---|
+| **D-506** `[E]` | **`cargo test` ran FOUR times with identical arguments inside one process.** The repository cannot change mid-process, so runs two through four were the first answer, bought again. ⇒ memoised on the argument list. **The bypass is the load-bearing half:** `--self-test` drives these measurements with INJECTED runners precisely to assert *which arguments each one asks for* on a machine with no toolchain, and a shared cache would hand one case another case's answer. An injected `run` or `which` therefore never reads and never writes the cache — bitten by removing the condition and watching the cases collide. |
+| **D-507** `[E]` | **The pure text functions were re-deriving the same four documents 91 times** — 3 616 calls to `_claimable` and **2.68 million** to `_scan_line` beneath it. ⇒ memoised **on their arguments**, whose first element IS the document text. That is the whole safety argument: **an edited document is a different key, so there is no invalidation to forget and no identity to go stale** — a path-keyed cache would have had both problems. `_marker_hits` returns a mutable list, so the cached form returns a tuple and the wrapper copies; handing every caller the same list is a defect no timing would ever reveal. |
+| **D-508** `[E]` | **The numbers, measured the same way on both sides — and the first set was WRONG.** The profiled run said 33.0s, which is cProfile's overhead, and `read` showed 10.1s of `tottime` against 0.709s of `cumtime` — an impossible pair that should have been read as *the profiler is lying about this row* rather than as a finding. Re-measured by running the **committed** gate and the new one from the same directory, back to back: with cargo present **26.8s → 13.1s**; with cargo absent — the environment the mutation harness's only automatic runner has — **8.5s → 3.3s**. So the Python checking saves 5.2s and the toolchain saves the rest. The full 126-mutation sweep now runs in **10.0 minutes**, all 126 red. **A profiler is a hypothesis generator, not a measurement**, which is `D-503`'s lesson wearing different clothes: only the before/after under identical conditions settled it. |
+
+| **D-509** `[E]` | **🔴 A third cache SURVIVED its own bite test, and was removed rather than cased.** The file-read cache, keyed on `(path, mtime, size)`, went GREEN when its key was mutated to drop the mtime — and correctly so: **the documents cannot change while the process runs**, so nothing inside a self-test can tell a fresh read from a cached one. Measured best-of-three with cargo absent, it was worth **2.94s against 2.98s** — inside the noise, because the profiler row that motivated it reported `tottime` 10.1s and `cumtime` 0.709s for the same function, which is impossible. **Bought nothing, guardable by nothing, so it is gone** — the identical call made on the two-phase span half (`D-505`) six hours earlier, for the identical reason. The two caches that *earn* their place each have a mutation row now: `the cargo memo forgets that an injected runner is not the real one`, and `the blanking cache drops an argument from its key`. |
+| **D-510** `[E]` | **The first bite of these caches was RED FOR THE WRONG REASON, and only a control showed it.** Running the mutated copy out of a scratch directory made two of three go red with `FileNotFoundError` from `measure()` — an artifact of *where the file sat*, not a disagreement, and it would have certified both caches on evidence about pathnames. ⇒ the probe now writes beside the original **and runs an UNMUTATED copy from the same place first**: if the location were doing the work, the control would red too. A bite test needs a control for exactly the reason a rule needs a canary. |
+
+**Drift.** `DRB-17` — splitting `_marker_hits` into a cached tuple form and a
+copying wrapper moved a line that a mutation row anchors on, and the harness's
+own anchor-drift detector caught it on the next sweep, refusing to report
+anything until the row was retargeted. The optimisation was three lines and it
+still broke a witness; **the drift check is what made that a two-minute fix
+instead of a silently weakened row.**
+
 ### 6ag. ROUND 19 ADDENDUM — the fix for an enumeration was exponential, and every check still said GREEN (2026-08-04)
 
 Not a verifier finding. Found by the **wall clock**: the post-fix sweep of round
