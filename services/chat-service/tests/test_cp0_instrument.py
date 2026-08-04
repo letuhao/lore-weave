@@ -647,15 +647,27 @@ class TestP3EveryTerminalPathRecordsAnOutcome:
     turns. That is what makes them orphaned rather than absent.
     """
 
-    def test_the_empty_turn_path_stamps_the_parent_rather_than_recording_nothing(self):
+    def test_the_empty_turn_path_stamps_the_user_row_rather_than_recording_nothing(self):
         src = _stream_src()
         skip = src.index("if not content and not reasoning and not tool_calls_history:")
-        window = src[skip: skip + 2600]
+        window = src[skip: skip + 4200]
         assert "UPDATE chat_messages SET outcome" in window, (
             "an empty terminal turn still records nothing — P3 is falsified by this path alone"
         )
         assert "outcome IS NULL" in window, (
             "the stamp must not overwrite an outcome a later path already recorded"
+        )
+        # It must anchor on the SESSION, not on parent_message_id. Measured live: that id is a
+        # UUIDv4 present in no row on this path, so the UPDATE matched nothing — 0 of 3,154 user
+        # rows carried an outcome — while the log reported "no parent to stamp". The guard reported
+        # the absence of a row it had failed to look for.
+        assert "role = 'user'" in window and "session_id = $1" in window, (
+            "the orphan stamp must find the user row by session; parent_message_id does not "
+            "resolve on this path"
+        )
+        assert "RETURNING message_id" in window, (
+            "the stamp must report whether it actually matched a row, or a silent no-op reads as "
+            "a success — which is exactly how this shipped broken the first time"
         )
 
     def test_the_orphan_stamp_derives_its_value_and_never_asserts_one(self):
@@ -663,7 +675,7 @@ class TestP3EveryTerminalPathRecordsAnOutcome:
         literal. Four defects in this checkpoint were confident values for unobserved things."""
         src = _stream_src()
         skip = src.index("if not content and not reasoning and not tool_calls_history:")
-        window = src[skip: skip + 2600]
+        window = src[skip: skip + 4200]
         assert "instrument.outcome_for_finish_reason(" in window
         assert "_orphan_outcome = outcome or" in window, (
             "an explicitly-passed outcome must win over the derived fallback"

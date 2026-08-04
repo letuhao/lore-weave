@@ -6192,25 +6192,43 @@ async def _persist_terminal_assistant(
         _orphan_outcome = outcome or instrument.outcome_for_finish_reason(
             finish_reason, is_error=is_error
         )
-        if parent_message_id:
-            try:
-                async with pool.acquire() as conn:
-                    await conn.execute(
-                        "UPDATE chat_messages SET outcome = $2 "
-                        "WHERE message_id = $1 AND outcome IS NULL",
-                        parent_message_id, _orphan_outcome,
-                    )
+        # 🔴 NOT `parent_message_id`. Measured live: that id is a UUIDv4 present in NO row on this
+        # path, so the UPDATE matched nothing and 0 of 3,154 user rows ever carried an outcome —
+        # while the log confidently reported "no parent to stamp" and the parent plainly existed,
+        # 0.3s earlier in the same session. The guard reported the absence of a row it had failed
+        # to look for.
+        #
+        # Anchored on the SESSION instead, which is the identifier this path actually holds: the
+        # newest user message with no outcome yet. `ORDER BY sequence_num DESC LIMIT 1` in a
+        # subquery, so a session with several unanswered user turns stamps the one this turn was
+        # for, not all of them.
+        try:
+            async with pool.acquire() as conn:
+                _stamped = await conn.fetchval(
+                    "UPDATE chat_messages SET outcome = $2 "
+                    "WHERE message_id = ("
+                    "  SELECT message_id FROM chat_messages "
+                    "  WHERE session_id = $1 AND role = 'user' AND outcome IS NULL "
+                    "  ORDER BY sequence_num DESC LIMIT 1) "
+                    "RETURNING message_id",
+                    session_id, _orphan_outcome,
+                )
+            if _stamped is not None:
                 logger.info(
-                    "CP-0.4 orphaned turn: no assistant row, outcome '%s' stamped on the user "
-                    "message (session %s, parent %s)",
-                    _orphan_outcome, session_id, parent_message_id,
+                    "CP-0.4 orphaned turn: no assistant row, outcome '%s' stamped on user "
+                    "message %s (session %s)",
+                    _orphan_outcome, _stamped, session_id,
                 )
                 return False
-            except Exception:  # noqa: BLE001 — best-effort; this runs on error/cancel paths
-                logger.warning(
-                    "CP-0.4 orphan-stamp failed (session %s, parent %s)",
-                    session_id, parent_message_id, exc_info=True,
-                )
+            logger.info(
+                "CP-0.4 orphaned turn: no un-outcomed user message to stamp (session %s) — the "
+                "one remaining shape, and it is countable rather than silent.",
+                session_id,
+            )
+        except Exception:  # noqa: BLE001 — best-effort; this runs on error/cancel paths
+            logger.warning(
+                "CP-0.4 orphan-stamp failed (session %s)", session_id, exc_info=True,
+            )
         logger.info(
             "CP-0.4 silent-exit: empty terminal turn with NO parent to stamp (session %s, msg %s, "
             "reason=%s) — the one remaining shape, and it is countable.",

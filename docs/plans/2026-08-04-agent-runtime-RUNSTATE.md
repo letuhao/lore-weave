@@ -47,9 +47,9 @@ runtime breaks each one, on evidence, and the new runtime must hold it.
 
 | | property — falsified by one counter-example | legacy violates it, measured |
 |---|---|---|
-| **P1** | every tool absent from a pass's advertised set **registers** `{tool, stage, reason, pass}` | **477 of 1,565** withheld records unreconcilable (30.5%); the partition claim **refuted** |
+| **P1** | every tool absent from a pass's advertised set **registers** `{tool, stage, reason, pass}` | 🔴 **FALSIFIED LIVE — 237 of 315 in neither bucket (164 live).** A stage **upstream of `hot_seed`** selects ~100 of 315 **by query relevance** and registers nothing |
 | **P2** | a call's `source` is assigned **structurally**, never inferred | **110 of 201** carry `source_inferred` |
-| **P3** | **every** terminal path writes an outcome | ~~cancel-before-first-token and kill-mid-turn write **nothing**~~ → **recording hole CLOSED**: the outcome is stamped on the **user's** row, which already exists. Awaits live verification |
+| **P3** | **every** terminal path writes an outcome | 🔴 **FALSIFIED LIVE — my stamp never fired.** `parent_message_id` is a UUIDv4 in **no** row on this path; **0 of 3,154** user rows carried an outcome. Re-anchored on the session; **unverified** |
 | **P4** | **no** CP-0 column is bound to a **constant** at any INSERT | V-CODE found **4 sites**; two fixed, the gate is still red |
 | **P5** | a step's `emits` binds to the next step's `accepts` **without the model retyping it** | the 0/101 tool sending `placeholder_id_1` ×60 |
 | **P6** | a declaration named by a live plan step is **advertised while that step is current** | 12 rails point at **30 dead tools** behind a gate that fails open |
@@ -68,7 +68,7 @@ P2 failing. We are measuring the mechanism instead of its shadow.
 
 | | what remains | who closes it |
 |---|---|---|
-| **P1** | the 477 unreconcilable records are **historical** (332 predate the field, 145 are the `len+1` era) and V-METRIC ruled them **inert — `baseline-metrics.sql` reads `withheld` zero times**. V-LIVE measured **0 same-pass overlap** on rows written after the fix. **P1 may already hold on new rows** | **V-LIVE** — the only party that can distinguish "holds now" from "holds in source" |
+| **P1** | 🔴 **a narrowing stage nobody instrumented.** The pass-1 candidate pool is **query-dependent** — 87 tools for one message, 101 for another, differing by 17 names (`jobs_*`/`translation_*` appear only when the text mentions them). Something picks ~100 of 315 **before** `hot_seed` and registers nothing. Decisive: `world_map_create` is unrecorded at passes 1–2, then carries a `token_budget` withheld record at pass 3 — **the runtime's own record proves it was a candidate all along**. *(The 477 unreconcilable records are separately historical (332 predate the field, 145 are the `len+1` era) and inert.)* Same-pass overlap **is** 0 everywhere — that part held | **builder** — instrument the candidate-selection stage, then V-LIVE |
 | **P2** | 110/201 `source_inferred`. Closing it means stamping at each mint site rather than classifying at the chokepoint | builder, then V-CODE |
 | **P3** | **recording hole closed this commit.** The remaining shape is a turn with **no parent to stamp** — countable, and logged | **V-LIVE** |
 | **P4** | 1 of 4 sites left (`internal.py:937`); the satisfiable gate is red at one binding | builder, then V-CODE |
