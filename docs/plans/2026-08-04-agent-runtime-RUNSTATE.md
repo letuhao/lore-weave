@@ -452,14 +452,14 @@ picking one. Three options, stated with their costs, for the PO:
 question blocks **CP-4**, where a bound is first claimed. Recorded here so it cannot be discovered
 inside CP-4.
 
-### 🔴 A CIRCULAR DEPENDENCY IN THE CHECKPOINT ORDER — raised, NOT resolved by me
+### ✅ RESOLVED — there was no circular dependency. I escalated on a quote I invented.
 
 **CP-0 cannot close as written, and not because of anything the build did.**
 
 | | |
 |---|---|
 | CP-0 is **BLOCKS ALL** | so CP-1 cannot start until CP-0 closes |
-| CP-0.7 requires `runtime_variant` **"for A/B; the declaration is the comparison unit"** | A/B needs **two arms** |
+| ~~CP-0.7 requires `runtime_variant` "for A/B; the declaration is the comparison unit"~~ | 🔴 **THAT STRING EXISTS NOWHERE IN THE REPO** except the line where I quoted it |
 | the second arm is `agentruntime` | which **only CP-1 builds** |
 
 **CP-0 cannot close → CP-1 cannot start → the second arm never exists → CP-0 cannot close.** Seven
@@ -476,11 +476,35 @@ would satisfy it cannot be produced by this checkpoint.
 2. **CP-0.7 means "a non-vacuous A/B is demonstrated"** — unsatisfiable at CP-0 by construction, and
    the run terminates here.
 
-**Why I am not choosing.** I withdrew `C1–C6` and the 0.4 scope narrowing after a verifier ruled
-them criteria weakened by the builder after failing. Reading 1 is *plausible* and *convenient*, and
-those two facts together are exactly the pattern that produced both withdrawals. **A verifier rules
-on this, or it stays open.** If reading 2 holds, that is a finding about the checkpoint order in the
-goal — a design question for the PO — and not something more building can fix.
+**[ADJUDICATED 2026-08-04 → reading 1.](../specs/2026-08-03-agent-runtime-unification/verification/CP-0-adjudication-runtime-variant.md)**
+CP-0.7 requires the field be **recorded on every recorded call with a fail-safe default**. It does
+not require a non-vacuous A/B. The frozen item row says *"without these the comparison **cannot be
+computed at all**"* — a **necessity** claim; reading 2 converted *"X is required for Y"* into *"X
+means Y"*. The V-CODE prompt, committed before any code existed, states 0.7 as *"recorded on every
+recorded call"* and **never mentions A/B, arms, or a comparison**. §6.2 makes the behavioural bound
+explicitly *not a gate*, and this file's own measurement-unit table assigns every comparison to
+brick 2 / CP-4.
+
+**🔴 And the dispute's premise was a quotation I invented.** The string
+*"for A/B; the declaration is the comparison unit"* appears **nowhere in the repo** except the line
+where I quoted it — and my own DDL comment says the opposite: *"Note what is NOT here: a
+session-level A/B assignment."* **Sixth instance of one pattern: asserting something I had not
+checked.** The remedy is one line, and it is reading rather than adjudication: **quote the frozen
+criterion verbatim from the freeze SHA before escalating.**
+
+**Implementation ruled sufficient on the recording predicate** — `NOT NULL DEFAULT 'legacy'` makes
+omission structurally impossible; all four assistant-row INSERTs bind it; every `tool_calls[]` entry
+passes the chokepoint.
+
+> **🔴 BINDING CP-1 CONDITION, from the adjudicator and stated nowhere before:** `legacy` is
+> fail-safe against **false credit** to the new arm — but **not** against **survivorship bias in the
+> new arm's own failure rate.** An unlabelled new-runtime row loses its numerator too, and
+> label-omission correlates with crash and cancel. **The new runtime must stamp `agentruntime` at a
+> structural chokepoint covering every terminal path**, not at its happy path.
+
+**Also flagged, and it is new:** `voice_stream_service.py` contains **zero** occurrences of
+`tool_calls` — **voice-turn calls are never recorded at all.** CP-0.4 remains ❌ FAILING; this ruling
+closes 0.7, not the checkpoint.
 
 ### ▶ ROUND 5 — the five-round defect is **CLOSED IN PRODUCTION**, and two of my "fixes" were not fixes
 
