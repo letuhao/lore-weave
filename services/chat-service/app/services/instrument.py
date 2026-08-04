@@ -524,23 +524,23 @@ async def reconcile_crashed_turns(pool, *, older_than_minutes: int = 5) -> dict[
                 "  RETURNING 1) SELECT count(*) FROM t",
                 OUTCOME_CRASHED,
             ) or 0
-            stamped_user = await conn.fetchval(
-                "WITH t AS (UPDATE chat_messages u SET outcome = $1, outcome_source = 'reconciler' "
-                "  WHERE u.role = 'user' AND u.outcome IS NULL "
-                f"    AND u.created_at < now() - interval '{int(older_than_minutes)} minutes' "
-                "    AND NOT EXISTS (SELECT 1 FROM chat_messages a "
-                "                    WHERE a.session_id = u.session_id AND a.role = 'assistant' "
-                "                      AND a.sequence_num > u.sequence_num) "
-                # 🔴 AND the session must not have CONTINUED. Measured: 86 of 223 rows this swept
-                # sat in sessions with later activity — the user simply moved on, which is not a
-                # crash. Claiming those manufactured a dated discontinuity reaching back to
-                # 2026-04-03 out of turns nobody lost.
-                "    AND NOT EXISTS (SELECT 1 FROM chat_messages n "
-                "                    WHERE n.session_id = u.session_id "
-                "                      AND n.sequence_num > u.sequence_num) "
-                "  RETURNING 1) SELECT count(*) FROM t",
-                OUTCOME_CRASHED,
-            ) or 0
+            # 🔴 THE USER-ROW BRANCH IS REMOVED, not narrowed. It fired on the largest
+            # population and had NO EVIDENCE behind it: `crashed` was a literal over at least five
+            # conditions, and the decisive one needs no race at all — `DELETE /v1/chat/{s}/messages
+            # /{m}` lets a user delete an assistant reply, after which the preceding user row is
+            # stamped `crashed` at the next boot, irreversibly, because nothing re-derives a user
+            # row's outcome. A person tidying their history would have been recorded as a crash.
+            #
+            # It also ignored `branch_id` while the table's key is
+            # (session_id, sequence_num, branch_id), so every edit-and-regenerate orphan was masked.
+            #
+            # I could have added a third guard. But a branch that cannot tell a crash from a
+            # deletion is not a narrow branch, it is a guess — and this checkpoint's most expensive
+            # defects were all confident values for things never observed. The remaining branch has
+            # evidence (`finish_reason='streaming'` is written by exactly one site) and is currently
+            # VACUOUS, which is the honest state: it drains the pre-CP-0 backlog once, then stamps
+            # nothing, because the dying process now records its own outcome.
+
     except Exception:  # noqa: BLE001 — startup must never be blocked by reconciliation
         logger.warning("CP-0.4 crash reconciler failed", exc_info=True)
         return {"assistant": 0, "user": 0}

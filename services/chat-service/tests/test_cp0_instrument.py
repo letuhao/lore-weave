@@ -827,51 +827,71 @@ class TestP1TheLastTwoUnregisteredNarrowings:
 
 
 class TestP3TheKillPathReconciler:
-    """P3's last shape — the only terminal path a turn cannot record for itself.
+    """P3's kill path. These gates CALL the function — the previous four were
+    `inspect.getsource` substring counts, and none of them ran it.
 
-    A `docker kill` leaves no turn to run a handler: a verifier confirmed the row stays
-    non-terminal through restart, reload, 22 polls and a later completed turn. The process that
-    died cannot write its outcome; the process that STARTS can.
+    The measured consequence: deleting `await reconcile_crashed_turns(pool)` from main.py left the
+    caller test GREEN, because `from ... import reconcile_crashed_turns` supplied both the substring
+    AND the ordering. The gate named `sweep_expired_runs` as the state it rejects — zero callers,
+    docstring claiming otherwise — while sitting in exactly that state. Substring gates cannot tell
+    an import from a call.
     """
 
-    def test_the_reconciler_has_a_caller(self):
-        """REJECTS the state `sweep_expired_runs` is in — a docstring claiming it runs periodically
-        and ZERO callers. A reconciler nobody calls is worse than none: it reads as coverage."""
+    def test_main_awaits_it_rather_than_merely_importing_it(self):
+        """REJECTS an import satisfying a caller check. Matches the AWAIT, not the name."""
+        import re as _re
         main = (_APP / "main.py").read_text(encoding="utf-8")
-        assert "reconcile_crashed_turns" in main, "the reconciler is not wired into startup"
-        assert main.index("run_migrations(pool)") < main.index("reconcile_crashed_turns"), (
-            "it must run after migrations — the outcome column has to exist first"
+        assert _re.search(r"await\s+reconcile_crashed_turns\s*\(", main), (
+            "no awaited call — an import is not a caller, which is the exact state this gate was "
+            "written to reject and was itself in"
         )
 
-    def test_it_never_stamps_a_turn_that_might_still_be_live(self):
-        """REJECTS: manufacturing a crash that did not happen. Erring late leaves a row briefly
-        unrecorded; erring early INVENTS A FACT, which is the failure this checkpoint has committed
-        most often."""
-        import inspect
-        src = inspect.getsource(instrument.reconcile_crashed_turns)
-        assert "older_than_minutes" in src and "interval" in src, (
-            "the age bound is what separates a crashed turn from a live one"
+    async def _run(self, pool):
+        return await instrument.reconcile_crashed_turns(pool)
+
+    def test_it_executes_and_reports_what_it_stamped(self):
+        """RUNS it against a stub connection, asserting the SQL it issues and the counts it
+        returns. A short-circuited body, an inverted predicate and a flipped outcome all go red
+        here; none of them moved the substring gates."""
+        import asyncio
+
+        issued: list[tuple] = []
+
+        class _Conn:
+            async def fetchval(self, sql, *args):
+                issued.append((sql, args))
+                return 3
+
+        class _Acquire:
+            async def __aenter__(self): return _Conn()
+            async def __aexit__(self, *a): return False
+
+        class _Pool:
+            def acquire(self): return _Acquire()
+
+        out = asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+            self._run(_Pool())
         )
-        assert src.count("created_at <") >= 2, (
-            "BOTH shapes — the streaming checkpoint and the reply-less user row — need the bound"
+        assert out["assistant"] == 3, "it must report what it stamped, not a hardcoded zero"
+        assert issued, "the function issued no SQL — a short-circuited body passes every substring gate"
+        sql, args = issued[0]
+        assert instrument.OUTCOME_CRASHED in args, "the outcome must be bound, not spelled inline"
+        assert "outcome IS NULL" in sql, "it must never overwrite a recorded outcome"
+        assert "outcome_source = 'reconciler'" in sql, "a swept row must be distinguishable"
+        assert "now() - interval" in sql, (
+            "the age bound must SUBTRACT — inverting it to now() + interval claims live turns"
+        )
+        assert "finish_reason = 'streaming'" in sql, (
+            "it must act only on the evidence-bearing shape"
         )
 
-    def test_it_only_claims_rows_with_no_outcome_and_no_reply(self):
+    def test_it_no_longer_guesses_at_user_rows(self):
+        """REJECTS the branch that fired without evidence: a user deleting an assistant reply had
+        their own row stamped `crashed` at next boot, irreversibly, no race required."""
         import inspect
         src = inspect.getsource(instrument.reconcile_crashed_turns)
-        assert src.count("outcome IS NULL") >= 2, "it must never overwrite a recorded outcome"
-        assert "NOT EXISTS" in src, (
-            "a user row WITH an assistant reply is not an orphan; claiming it would relabel a "
-            "turn that completed"
-        )
-
-    def test_it_cannot_block_startup_and_cannot_be_silent(self):
-        import inspect
-        src = inspect.getsource(instrument.reconcile_crashed_turns)
-        assert "except Exception" in src, "reconciliation must never block a service from starting"
-        assert "logger.info" in src and "return {" in src, (
-            "it must report what it stamped — a reconciler that runs silently is indistinguishable "
-            "from one with no callers"
+        assert "role = 'user'" not in src, (
+            "the evidence-free user-row branch is back — it cannot tell a crash from a deletion"
         )
 
 
@@ -888,22 +908,26 @@ class TestTheReconcilerCannotImpersonateATerminalPath:
     def test_a_swept_row_is_distinguishable_from_a_path_recorded_one(self):
         import inspect
         src = inspect.getsource(instrument.reconcile_crashed_turns)
-        assert src.count("outcome_source = 'reconciler'") >= 2, (
-            "both sweep shapes must mark their own writes, or P3 becomes unfalsifiable"
+        assert src.count("outcome_source = 'reconciler'") >= 1, (
+            "the sweep must mark its own writes, or P3 becomes unfalsifiable"
         )
         ddl = (_APP / "db" / "migrate.py").read_text(encoding="utf-8")
         assert "ADD COLUMN IF NOT EXISTS outcome_source" in ddl
         assert "'path', 'reconciler'" in ddl, "the vocabulary must be closed"
 
-    def test_it_does_not_claim_a_session_that_continued(self):
-        """REJECTS: manufacturing a dated discontinuity. 86 of 223 swept rows sat in sessions with
-        LATER activity — the user moved on, which is not a crash."""
+    def test_it_acts_only_where_evidence_exists(self):
+        """The session-continued guard is gone because the branch needing it is gone.
+
+        86 of 223 swept rows sat in sessions with LATER activity, and a delete of an assistant
+        reply produced the same shape as a crash. Rather than add a third guard to a branch that
+        could not tell them apart, the branch was removed. What remains acts on
+        `finish_reason='streaming'` — written by exactly ONE site — and is currently VACUOUS,
+        which is the honest state: the dying process now records its own outcome, so the sweep
+        drains the pre-CP-0 backlog once and then stamps nothing."""
         import inspect
         src = inspect.getsource(instrument.reconcile_crashed_turns)
-        assert src.count("NOT EXISTS") >= 2, (
-            "one guard finds orphans; the second must exclude sessions that continued"
-        )
-        assert "n.sequence_num > u.sequence_num" in src
+        assert "finish_reason = 'streaming'" in src, "the evidence-bearing shape must remain"
+        assert "role = 'user'" not in src, "the evidence-free branch must stay removed"
 
     def test_the_fingerprint_does_not_hash_a_column_no_class_reads(self):
         """REJECTS: a pin breakable WITHOUT TRAFFIC. Hashing `outcome` meant a startup sweep
