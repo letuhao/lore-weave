@@ -20,6 +20,7 @@ question nobody knows to ask.
 from __future__ import annotations
 
 import logging
+from contextvars import ContextVar
 from typing import Any, Iterable, Literal
 
 logger = logging.getLogger(__name__)
@@ -160,6 +161,34 @@ def ensure_tool_call_instrumented(chunk: dict) -> dict:
     chunk.setdefault("runtime_variant", RUNTIME_LEGACY)
     chunk.setdefault("latency_ms", None)
     return chunk
+
+
+#: Request-scoped sink for narrowings that happen OUTSIDE the turn function.
+#:
+#: Threading an explicit ``withheld_sink`` argument failed twice, in the same way both times: the
+#: mechanism was built, and the call sites did not pass it. The surface-assembly budget calls live
+#: in a *different function* from the recorder — two frames up and before the turn exists — so
+#: "just pass the sink" meant editing call sites that a gate reading the wrong file never checked.
+#:
+#: A ContextVar removes the parameter from the problem. It is inherited by asyncio tasks, so it is
+#: naturally per-request, and a NEW narrowing site added anywhere in the call tree registers without
+#: anyone remembering to wire it. The failure mode inverts: forgetting now means recording too much,
+#: in the wrong turn's bucket, which is loud — rather than recording nothing, which is silent and
+#: has now cost three verification rounds.
+surface_withheld: ContextVar[list | None] = ContextVar("lw_surface_withheld", default=None)
+
+
+def record_surface_withheld(tool: str, *, stage: str, reason: str) -> None:
+    """Register a narrowing from anywhere in the request, with no plumbing.
+
+    A no-op when nothing has begun a turn (a background job, a test importing the module), which is
+    correct: there is no turn for the record to belong to, and inventing one would attribute a
+    narrowing to a turn that never saw it.
+    """
+    sink = surface_withheld.get()
+    if sink is None:
+        return
+    sink.append({"tool": tool, "stage": stage, "reason": reason})
 
 
 class AdvertisedToolsRecorder:

@@ -75,6 +75,47 @@ class TestTheInstrumentIsActuallyWired:
             f"expected every surface-assembly budget call to register; found {calls}"
         )
 
+    def test_a_surface_narrowing_registers_without_anyone_wiring_it(self):
+        """REJECTS: the defect that survived THREE rounds by moving one frame inward each time.
+
+        R1: the reporting budgeter had no callers. R2: four `tool_surface` sites still discarded.
+        R3: those sites called the registering helper — and its `withheld_sink` argument had no
+        callers, so the `is not None` guard never fired. Each round I fixed the layer named and the
+        hole reappeared one level down, and a source-reading gate stayed green over all three.
+
+        So this gate stops reading source. It runs the real budgeter with a real over-budget catalog
+        and asserts the narrowing ARRIVES — which is false for every one of those three states,
+        including the two that passed the string checks above.
+        """
+        catalog = [
+            {"type": "function", "function": {"name": n, "description": "x" * 800,
+                                              "parameters": {"type": "object", "properties": {}}}}
+            for n in ("book_list", "book_read", "glossary_search", "kg_project_create")
+        ]
+        from app.services import instrument as _inst
+        from app.services.tool_surface import _budget_and_register
+
+        sink: list[dict] = []
+        token = _inst.surface_withheld.set(sink)
+        try:
+            # No explicit sink argument — exactly how both production call sites invoke it.
+            kept = _budget_and_register(
+                None, "hot_seed", catalog,
+                {"book_list", "book_read", "glossary_search", "kg_project_create"},
+                token_budget=200,
+            )
+        finally:
+            _inst.surface_withheld.reset(token)
+
+        assert len(kept) < 4, "the budget must actually drop something or this proves nothing"
+        assert sink, (
+            "a surface narrowing registered NOWHERE when the caller omitted the sink — this is the "
+            "arm-E defect, and it is what shipped green past three rounds of source review"
+        )
+        assert {e["tool"] for e in sink} == {"book_list", "book_read", "glossary_search",
+                                            "kg_project_create"} - set(kept)
+        assert all(e["stage"] == "hot_seed" and e["reason"] for e in sink)
+
     def test_every_real_dispatch_is_stamped_as_a_real_dispatch(self):
         """REJECTS: a genuine tool execution filed as our own prose.
 

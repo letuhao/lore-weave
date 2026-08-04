@@ -239,12 +239,18 @@ def _budget_and_register(
     narrowing unrecorded, which is visible at the call site, rather than silently unrecordable.
     """
     kept, dropped = budget_names_by_tokens_ex(catalog, names, token_budget=token_budget)
-    if sink is not None and dropped:
-        sink.extend(
-            {"tool": n, "stage": stage,
-             "reason": f"did not fit the {stage} token budget ({token_budget} tok)"}
-            for n in dropped
-        )
+    reason = f"did not fit the {stage} token budget ({token_budget} tok)"
+    if dropped:
+        if sink is not None:
+            sink.extend({"tool": n, "stage": stage, "reason": reason} for n in dropped)
+        else:
+            # No explicit sink: fall back to the request-scoped one. This branch is why the hole
+            # closed. `withheld_sink` was optional and BOTH production call sites omitted it, so the
+            # `is not None` guard never fired and three rounds of verification found the same
+            # narrowing unrecorded. Registration must not depend on a caller remembering.
+            from app.services.instrument import record_surface_withheld
+            for n in dropped:
+                record_surface_withheld(n, stage=stage, reason=reason)
     return kept
 
 

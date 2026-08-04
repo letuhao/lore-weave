@@ -6397,6 +6397,10 @@ async def _emit_chat_turn(
     # created lazily at the first advertise would miss a turn that was narrowed to nothing before
     # the model ever saw a surface — which is precisely the case worth catching.
     _advertised = instrument.AdvertisedToolsRecorder()
+    # CP-0.2 — arm the request-scoped sink so narrowings decided OUTSIDE this function (surface
+    # assembly, two frames up) still register. Drained into the recorder at each advertise.
+    _surface_sink: list[dict] = []
+    instrument.surface_withheld.set(_surface_sink)
     # W1 — advertised tool-schema tokens, reported once by the tool loop's
     # first pass ({"schema_tokens": ...} chunk); folded into the contextBudget
     # frame + the persisted context_breakdown at finish.
@@ -6788,6 +6792,13 @@ async def _emit_chat_turn(
                     _adv_ev.get("names") or [],
                     tool_choice=_adv_ev.get("tool_choice"),
                 )
+                # Drain the request-scoped sink: surface-assembly narrowings ran BEFORE the first
+                # pass, so they belong to it. Drained rather than copied, so each registers once.
+                while _surface_sink:
+                    _sw = _surface_sink.pop(0)
+                    _advertised.record_withheld(
+                        _sw["tool"], stage=_sw["stage"], reason=_sw["reason"],
+                    )
                 for _w in (_adv_ev.get("withheld") or []):
                     _advertised.record_withheld(
                         _w["tool"], stage=_w["stage"], reason=_w["reason"],
