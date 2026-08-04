@@ -8,10 +8,19 @@ next; two were placed where they could not run at all — one 73 lines after the
 instrumented, one inside a branch that stage never takes. There was no place to stand from which
 the whole surface was visible.
 
-**So P1 is not enforced here. It is made unavailable to violate.** A caller of this module cannot
-express "drop these and say nothing", because the only operation that removes a declaration takes
-the stage and the reason as required arguments and writes the record in the same statement that
-computes the removal. There is no second path, and `Surface` cannot be built from a name list.
+**So P1 is not enforced here. It is made hard to violate, and the residual is named.** A caller
+cannot express *"drop these and say nothing"* through `NarrowingRule`, because the stage and the
+reason are required arguments and the record is written in the same statement that computes the
+removal — and `SurfaceAssembler.assemble` checks `offered + registered == admitted` before it
+returns.
+
+🔴 **An earlier version of this paragraph ended *"there is no second path, and `Surface` cannot be
+built from a name list"*. Both halves were false.** `discover(kind=…)` is a second removal path (it
+registers, but it exists), and `Surface` is an ordinary frozen dataclass that anyone can call. The
+sentence 60 lines away in `surface.py` had already been corrected to say so; **this copy was left
+standing through four verification rounds**, which is the same erratum-not-applied-everywhere
+failure that this run has now made in three separate documents. What is true: every *shipped*
+removal registers, and the gate keeps `Surface` single-sited so a second construction reds CI.
 
 That is the concrete meaning of §0.1's *"the membrane is construction, not filtering"* for this
 property: not a gate over a filter, but the absence of a filter to gate.

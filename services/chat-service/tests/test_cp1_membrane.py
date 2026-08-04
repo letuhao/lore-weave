@@ -32,6 +32,7 @@ from app.agentruntime import (
     UntrustedRow,
     admit,
     build,
+    declarations,
     derive_owning_service,
     discover,
     generate,
@@ -113,6 +114,17 @@ class TestTheManifestStartsEmpty:
         }), encoding="utf-8")
         with pytest.raises(UntrustedRow):
             load(path=p)
+
+    def test_the_EXPORTED_row_reader_refuses_a_malformed_document(self):
+        """🔴 `declarations()` is the only row-reader in `__all__`, and it kept the silent
+        `.get("declarations", [])` while `rows_of` — not exported — raised. So the package's public
+        API answered `[]` for a broken document and its internal one answered honestly.
+
+        Round 4 found that reverting it left 63/63 green: the fix was real and unguarded. This is
+        the guard, and it names the exported surface rather than the internal helper, because that
+        is where the silent answer was reachable from."""
+        with pytest.raises(ValueError, match="malformed"):
+            declarations({})
 
     def test_a_hand_broken_reference_is_refused_on_load(self, tmp_path):
         """M5 resolves at generation — and an edit afterwards can break what generation proved."""
@@ -445,6 +457,46 @@ class TestANarrowingCannotHappenSilently:
     def test_a_pass_number_below_one_is_refused(self):
         with pytest.raises(ValueError, match="1-based"):
             self._assembler().assemble(pass_number=0)
+
+    def test_the_POST_CONDITION_itself_fires(self):
+        """🔴 A gate nobody has watched go red is the thing this checkpoint keeps shipping.
+
+        Round 4 found that disabling the post-condition left 63/63 green — it was doing real work
+        and nothing proved it. This drives a silent drop through the real `assemble()` by making
+        `_narrow` remove a row without recording, which is exactly the shape three of my own gates
+        failed to catch. If the law is ever deleted or weakened, this reds.
+        """
+        a = self._assembler(3)
+        rule = NarrowingRule("token_budget", "over budget", lambda r: True)   # keeps everything
+        original = SurfaceAssembler._narrow
+
+        def silent(self, rows, rule, *, pass_number):    # drops one, records nothing
+            return list(rows)[1:]
+
+        SurfaceAssembler._narrow = silent
+        try:
+            with pytest.raises(AssertionError, match="with no .*record"):
+                a.assemble(pass_number=1, rules=[rule])
+        finally:
+            SurfaceAssembler._narrow = original
+
+    def test_a_log_SHARED_WITHIN_ONE_PASS_does_not_break_the_law(self):
+        """🔴 F3 — the hole the fix itself opened, found by round 4 and fixed here.
+
+        `withheld` counted every log entry at that pass, so a log shared inside one pass —
+        discover-then-assemble, two assemblers in a turn, a retry — made `registered` too large and
+        the law raised on CORRECT code, reporting a negative loss. The module's own docstring
+        blesses sharing a log, and the test that covered it survived only because it happened to
+        span two passes. **A conservation law over a shared counter must count its own
+        contribution**, or it fails the honest caller and passes the careless one.
+        """
+        log = NarrowingLog()
+        doc = build([admit(_tool("book_list")), admit(_tool("book_get")),
+                     admit(_skill("world_setup", ("book_list",)))])
+        discover(doc, kind="skill", log=log, pass_number=1)      # records 2 at pass 1
+        s = SurfaceAssembler(doc, log=log).assemble(pass_number=1)
+        assert s.count == 3 and s.withheld == ()
+        assert len(log) == 2, "the shared log must still hold discovery's own narrowings"
 
     def test_assembling_with_NO_RULES_offers_everything_admitted(self):
         """🔴 THE COVERAGE GAP THAT MADE A CORRECT POST-CONDITION SILENT.

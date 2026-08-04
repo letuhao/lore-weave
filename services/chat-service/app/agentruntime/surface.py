@@ -113,33 +113,51 @@ class SurfaceAssembler:
         return len(self._rows)
 
     def assemble(self, *, pass_number: int, rules: Sequence[NarrowingRule] = ()) -> Surface:
-        """The single assembly point. **The only place a declaration can be removed.**
+        """Assemble one pass's surface.
 
-        Each rule is applied through `_narrow`, which computes the removal and writes its record in
-        the same statement. There is no branch that drops without recording, because there is no
-        second place that drops at all.
+        **This is the only place THIS CLASS removes a declaration**, and `_narrow` writes the record
+        in the same statement that computes the removal. It is *not* the only removal site in the
+        module — `discover(kind=…)` is another, and it registers too. An earlier version of this
+        docstring said "the only place a declaration can be removed", which four rounds of
+        verification left standing while the function 80 lines below did exactly that. Corrected
+        rather than defended: the guarantee is *every* removal registers, not that there is one.
         """
         if pass_number < 1:
             raise ValueError("pass_number is 1-based; a narrowing stamped at pass 0 belongs to no pass")
+
+        # 🔴 F3 — count only what THIS assembly recorded, not every entry at this pass.
+        #
+        # The first version read `self._log.for_pass(pass_number)`, which is the whole log. A log
+        # shared within one pass — discover-then-assemble, two assemblers in a turn, a retry — made
+        # `registered` too large, so the law reported a NEGATIVE loss and raised on correct code.
+        # The module's own docstring blesses sharing a log; the test that covers it survived only
+        # because it happened to span two passes. **A conservation law over a shared counter must
+        # count its own contribution**, or it fails the honest caller and passes the careless one.
+        _log_mark = len(self._log.entries)
         kept = self._rows
         for rule in rules:
             kept = self._narrow(kept, rule, pass_number=pass_number)
-        withheld = tuple(e.as_record() for e in self._log.for_pass(pass_number))
+        mine = [e for e in self._log.entries[_log_mark:] if e.pass_number == pass_number]
+        withheld = tuple(e.as_record() for e in mine)
 
-        # 🔴 THE CONSERVATION LAW, ENFORCED HERE RATHER THAN ONLY IN A TEST.
+        # 🔴 THE CONSERVATION LAW, ENFORCED IN PRODUCTION CODE RATHER THAN ONLY IN A TEST.
         #
         #     offered + registered == admitted
         #
-        # Three rounds of verification each killed a *test* that was supposed to hold this
-        # property: one checked the wrong direction, one could not fire at all, and the third was
-        # a law sampled at five points against one fixture — a verifier defeated it with a silent
-        # drop on the `rules == ()` branch of THIS method, the very place the docstring calls "the
-        # only place a declaration can be removed".
+        # Three rounds each killed a *test* meant to hold this: one checked the wrong direction, one
+        # could not fire at all, and the third was a law sampled at five points against one fixture,
+        # defeated by a silent drop on the `rules == ()` branch of this very method. A test
+        # enumerates the shapes its author thought of, and the author is the person who just wrote
+        # the defect. Evaluated here, it needs no enumeration.
         #
-        # The lesson is not "write a better test". A test enumerates the shapes its author thought
-        # of, and the author is the person who just wrote the defect. A post-condition evaluated on
-        # every real assembly has no enumeration to be incomplete: whatever future code removes a
-        # row, by whatever shape, arrives here with the arithmetic broken.
+        # **What it does NOT do, stated because a verifier had to tell me twice:**
+        #   · its baseline is `self._rows`, so mutating that list before assembly is invisible;
+        #   · it conserves CARDINALITY, not identity — fabricated records balance a real drop;
+        #   · it protects this method only. A path that never calls `assemble` is not covered by it,
+        #     which is why `discover` carries its own registration and why the gate counts `Surface`
+        #     construction sites.
+        # Those are the residuals, not disclaimers: each is a real way to lose a declaration, and
+        # naming them is what stops the next reader trusting this line further than it goes.
         if len(kept) + len(withheld) != len(self._rows):
             raise AssertionError(
                 f"narrowing lost {len(self._rows) - len(kept) - len(withheld)} declaration(s) "
