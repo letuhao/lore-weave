@@ -306,10 +306,15 @@ class TestWithheldRegisters:
         rec.record_withheld("b", stage="failure_breaker", reason="gave up")
         assert rec.withheld_json()[0]["pass"] == 2, "belongs to the pass it shaped"
 
+        # A narrowing recorded when NO pass has happened yet is stamped None, not 1. Stamping 1
+        # invented a pass that never existed on turns that never advertised — 145 such records were
+        # found live, and they are unreconcilable by construction: the reconciliation looks up that
+        # pass's advertised names, finds none, and keeps the entry, so a fabricated stamp reads as a
+        # confirmed withholding.
         pre = AdvertisedToolsRecorder()
         pre.record_withheld("c", stage="hot_seed", reason="budget")
-        assert pre.withheld_json()[0]["pass"] == 1, (
-            "a narrowing decided during surface assembly shaped pass 1"
+        assert pre.withheld_json()[0]["pass"] is None, (
+            "a narrowing with no pass recorded must say so, not claim pass 1"
         )
 
     def test_the_same_stage_dropping_a_tool_twice_is_one_withholding(self):

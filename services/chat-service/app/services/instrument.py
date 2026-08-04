@@ -348,9 +348,18 @@ class AdvertisedToolsRecorder:
             # entry look simultaneous with an advertisement it actually preceded, which is precisely
             # the contradiction the field was added to resolve.
             #
-            # `max(..., 1)` covers a narrowing decided during surface assembly, before any pass
-            # exists: it belongs to the first pass, which is the one it shaped.
-            "pass": max(len(self._passes), 1),
+            # `None` when NO pass has been recorded yet — not `1`.
+            #
+            # `max(len, 1)` fabricated a pass 1 for narrowings on turns where no pass was ever
+            # recorded, producing 145 records stamped at a pass that does not exist. Unreconcilable
+            # by construction: the reconciliation looks up that pass's advertised names, finds
+            # nothing, and keeps the entry — so an invented stamp reads as a confirmed withholding.
+            #
+            # A narrowing decided before any pass DOES usually belong to the first one, and when a
+            # pass 1 later arrives the drain re-stamps against it. But a turn that never advertises
+            # has no pass for the record to belong to, and saying `1` there is the same class of
+            # error as the voice literal: a confident value for something never observed.
+            "pass": len(self._passes) or None,
         })
 
     def record_withheld_many(self, tools: Iterable[str], *, stage: str, reason: str) -> None:
