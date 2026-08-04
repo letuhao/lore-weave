@@ -13,7 +13,7 @@
 > `feat/frontend-tools-mcp-migration` and is left untouched.
 
 **The actor hub — feature #1 of roughly a thousand — is implemented.** Its run state, slice board,
-per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-510` decision record
+per-slice evidence (test output · bite-test · verifier report) and the `D-1`..`D-513` decision record
 live in **[`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`](../plans/2026-08-02-actor-substrate-RUN-STATE.md)**;
 the two design contracts that are its only specification are in
 [`docs/specs/2026-08-02-actor-hub/`](../specs/2026-08-02-actor-hub/_index.md).

@@ -3,7 +3,11 @@
 //! ```text
 //! 1  IDENTITY             EntityId                      — shipped: sim-core/src/types.rs:17
 //! 2  INTRINSIC QUANTITIES [i32; MAX_DECLARED_QUANTITIES] — 128 B; the domain says how to read a slot
-//! 3  EXISTENCE            GoneState                     — shipped: dp-kernel/src/entity_status.rs
+//! 3  EXISTENCE            GoneState                     — shipped: entity-existence/src/lib.rs
+//!                                                         (`dp_kernel::entity_status` re-exports it;
+//!                                                          citing the re-export named a file that no
+//!                                                          longer defines the type — hub §3.3's own trap,
+//!                                                          in the source copy nobody re-read)
 //! 4  ATTACHMENT           PluginSet — a u32 bitmask over plugin ordinals
 //! 5  THE FOLD             aggregate contributions, and know NOTHING about what they mean
 //! ```

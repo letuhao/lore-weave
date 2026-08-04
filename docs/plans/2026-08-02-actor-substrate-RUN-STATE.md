@@ -21,7 +21,7 @@
 > kept it · every mutation in
 > `scripts/gate-bite-harness.py` reds its gate's self-test (run it; no count is asserted here, because a
 > hand-typed one went stale eight times) · the **39** gate scripts the pre-commit hook wires all green ·
-> the two contracts are **202** and **157** lines.
+> the two contracts are **205** and **157** lines.
 >
 > **Cold-start adversarial verifiers, one round per fix pass — every finding fixed or answered. The
 > per-round tallies are the source (§6e..§6ac); no aggregate is repeated here, because an aggregate is not
@@ -55,7 +55,7 @@
 > ## Read in this order, then start
 >
 > 1. **[`docs/specs/2026-08-02-actor-hub/_index.md`](../specs/2026-08-02-actor-hub/_index.md)** — what each file is for
-> 2. **The two contracts** — [`actor-hub.md`](../specs/2026-08-02-actor-hub/2026-08-02-actor-hub.md) and [`engine-substrate.md`](../specs/2026-08-02-actor-hub/2026-08-02-engine-substrate.md) — the two contracts are **202** and **157** lines. **These are the spec. Nothing else is.**
+> 2. **The two contracts** — [`actor-hub.md`](../specs/2026-08-02-actor-hub/2026-08-02-actor-hub.md) and [`engine-substrate.md`](../specs/2026-08-02-actor-hub/2026-08-02-engine-substrate.md) — the two contracts are **205** and **157** lines. **These are the spec. Nothing else is.**
 > 3. **§6 of this file** — the slice board
 >
 > **Do NOT read `analysis/` to find out what to build.** It is 9 700 lines of derivation and it binds nobody.
@@ -1146,7 +1146,7 @@ stops writing rows and starts reading them.
 | **D-476** `[E]` | **🔴 `B1`. A row labelled `Accumulator.wanted` mutates the EMIT record, and the field it names survived all 300 tests.** The test it points at reads `c.site == CapSite::Emit`; the accumulator's `wanted` is asserted **only by sign** anywhere in the suite. Replacing it with the emitted value understates by ~4.3 × 10⁹ and makes the two sites indistinguishable — which `report.rs` says is *"exactly why the site is recorded rather than the number alone"*. **Round 17 rewrote this very line** (`D-473` moved the two pushes) and did not ask what reads its fields. ⇒ a case pinning the saturated total, and the row renamed to the record it touches. |
 | **D-477** `[E]` | **🔴 THE CLASS FIX: a row's LABEL must name what its ANCHOR touches, checked mechanically.** A code-shaped token in a label — one carrying `_`, an interior capital, or a `.`/`::` — must be reachable from the anchor. A **dotted** token names a member, so both halves must meet on ONE line of the anchor; a **plain** token names the subject, so it may appear in the anchor or in the enclosing definition. **Measured over all 132 shipped rows before it was wired: one finding, and it was `D-476`. Zero false positives.** An English word carries none of those shapes, so the rule cannot fire on prose; a FILENAME is excluded, because `_index.md` looks dotted and is not a member — and reporting it would have been the cry-wolf direction on a correct row. |
 | **D-478** `[E]` | **🔴 `B2`. `D-470` fixed one row and left its sibling in the same table — and the sibling is the counter-example to its own guard.** *"The `_index.md` scope row deleted"* still mangles a two-line tuple: the child reaches **62** cases, raises `TypeError`, prints **ZERO** `FAIL` lines, and is reported RED. `D-470`'s guard asks *did the child reach A case*; reaching is not answering. ⇒ **a bite is a FAILING CASE**, and the Rust twin asks whether the **NAMED TEST** failed rather than whether the process exited non-zero. Both directions cased, including the exact shape that defeated the first version: a child that reaches cases, passes them all, then raises. |
-| **D-479** `[E]` | **🔴 `B3`. A stale, live, derivable figure inside a governed block — the class the whole gate exists for.** *"(172 lines) and … (142)"* were true at `d3bb441da` and are **202**/**157** at HEAD; they sat **34 lines below** a copy of the same two numbers that IS governed and IS correct, and survived two commits and two review rounds. A third shape — unbolded, parenthesised — that neither `CLAIMS` nor the bolded-figure detector reached. ⇒ rewritten into the shape the rule already reads, so the copy is **governed** rather than merely corrected. |
+| **D-479** `[E]` | **🔴 `B3`. A stale, live, derivable figure inside a governed block — the class the whole gate exists for.** *"(172 lines) and … (142)"* were true at `d3bb441da` and are **205**/**157** at HEAD; they sat **34 lines below** a copy of the same two numbers that IS governed and IS correct, and survived two commits and two review rounds. A third shape — unbolded, parenthesised — that neither `CLAIMS` nor the bolded-figure detector reached. ⇒ rewritten into the shape the rule already reads, so the copy is **governed** rather than merely corrected. |
 | **D-480** `[E]` | **`M4`. The bolded-figure detector admitted ONE word.** `**315 passed**` matched; `**302 Rust tests**` did not — a governed figure sitting in a governed block, invisible on **both** arms, because a key that is never matched is neither compared nor reported as surplus. ⇒ `{0,3}` words, and the header block's rust-test phrasing gets a `CLAIMS` row and joins its `must_claim` set. `D-460`'s lesson — *"a checker's scope is a claim, and so is the SHAPE it recognises inside that scope"* — one word further along. |
 | **D-481** `[E]` | **`M1`. `D-474`'s three rejected shapes rejected one of them for the wrong reason.** *"An `:end` with no block name"* was written `<!-- actor-hub-figures:end -->`, which fails on the missing SPACE, not the missing name — so the `+` quantifier the row is about stayed unpinned, and so did the `$` anchor. Both were survivors. ⇒ an EMPTY name (`:end  -->`) and a trailing tail. **A rule tested only through data it happens to have is a rule with half a test** — `D-474`'s own sentence, applied to `D-474`. |
 | **D-482** `[E]` | **`M2`. The compile-failure guard has two literals and only one had a subject.** Dropping `"could not compile"` was green; dropping `"error[E"` reds. And the uncased half is the only one that catches a mutant that fails to **PARSE** — which is `D-470`'s entire subject, on the Rust twin. Third occurrence of *"two literal forms and only one cased"*. |
@@ -1886,4 +1886,98 @@ Far cheaper now than after copy-at-spawn is built.
 
 ## 11. Completeness ledger
 
-*(Filled at the end: what was claimed, what was proven, what was left.)*
+**Audited 2026-08-04, at PO request, against the SEALED boundary and not against a
+fresh one.** The PO's condition — *pin the business boundary and the
+responsibilities first, or the audit goes nowhere* — is why §11.1 quotes rather
+than restates. A completeness audit whose frame is invented during the audit
+measures the auditor's memory.
+
+### 11.1 The frame — what "complete" is being measured against
+
+| | |
+|---|---|
+| **The thing** | *"Features are PLUGINS. The actor is the HUB."* The hub holds a being's identity and what is **intrinsic** to it, tracks **which plugins are attached**, and **folds** their contributions. **It knows nothing about what any contribution means.** |
+| **The purpose** | *"Actor hub is feature #1 of roughly a thousand. Its job is to make adding feature #2 cheap — not to pre-empt it."* |
+| **The membership test** | **身外之物** *(a thing outside the body)* — strip the actor naked and move them to another world; what travels is the hub's, what stays behind is a plugin's. It ranks **quantities and state**; it does not rank identity or record lifecycle. |
+| **The surface** | five things: identity · intrinsic quantities · existence · attachment · the fold. |
+| **The layer beneath** | the substrate *"closes on mechanism and owns no vocabulary"* — canon, ordinals, the fold formula, two verbs. |
+| **The acceptance test** | *"Adding a feature must touch ZERO files in actor core"*, honest up to the declared widths. |
+
+**The dangerous direction is EXCESS, not absence.** A missing obligation blocks
+feature #2; a *present* one that belongs to a plugin becomes vocabulary the
+engine can never remove. So §11.5 audits both ways.
+
+### 11.2 Claimed and proven
+
+| Obligation | Contract | Implementation | Witness |
+|---|---|---|---|
+| Identity is an `EntityId` the hub does not interpret | hub §3.1 | `pub use sim_core::EntityId` | `a_new_actor_has_identity_is_live_and_has_no_quantities` |
+| One `i32` per ordinal; how to read a slot is declared, not stored | hub §3.2 | `actor.rs` `[i32; MAX_DECLARED_QUANTITIES]` | `the_actor_is_the_pinned_size` · `an_absent_quantity_is_none_not_zero` |
+| Existence is **carried**, never adjudicated | hub §3.3 | `Actor { existence: GoneState }`, `set_existence` | `existence_is_platform_state_and_is_carried_not_adjudicated` |
+| Attachment is a `u32` bitmask; **`granted` is not a field** | hub §3.4 | `plugin_set.rs` | 7 `plugin_set::tests` · `an_unattached_plugins_quantity_is_absent_not_zero` |
+| Every quantity begins at **its declaring plugin's** initial value; an unattached plugin's quantity is ABSENT | hub §3.4b | `HubRegistry` + `Actor::attach` | `attaching_initialises_exactly_its_own_quantities` · `a_detached_features_quantities_vanish_rather_than_reading_zero` |
+| A contribution is DATA; a row addresses an ORDINAL | hub §4 | `ModifierRow` / `DerivationRow` | `a_feature_the_hub_has_never_heard_of_declares_attaches_and_folds` |
+| A condition is a **declared threshold**, not a grammar | hub §4 | `ContributionBound` | `a_bound_clamps_the_contribution_not_the_quantity` · `an_exact_bound_is_legal_and_pins_the_contribution` |
+| A `DerivationRow` **contributes, never sets** | hub §4 | `fold.rs` two-pass | `a_derivation_contributes_and_does_not_discard_a_modifier` |
+| Stable total order by fold-layer ordinal | hub §4 | `fold.rs` sort key | `contributions_are_ordered_by_layer_then_plugin_then_index` · `the_result_is_independent_of_row_order` |
+| **`U-7`** every submitted `fold_layer` names a DECLARED layer | hub §4 | `HubRegistry::check_layer` | `a_row_naming_an_undeclared_fold_layer_is_refused` · `a_row_for_an_undeclared_layer_is_refused_with_its_reason` |
+| The fold formula, percent **summed** not chained | substrate §5 | `fold.rs` | `flat_and_percent_combine_by_the_formula` |
+| `max(0, 1000 + Σpct)` — the load-bearing floor | substrate §5 | `fold.rs` | `two_heavy_debuffs_floor_at_zero_and_never_go_negative` |
+| `i64` accumulator, one division at emit, truncating | substrate §5 | `fold.rs` | `the_emit_division_truncates_toward_zero` · `the_accumulator_saturates_rather_than_wrapping` · `a_negative_derivation_truncates_toward_zero` |
+| **REFUSED** with a record, and the fold continues | substrate §7 | `RowRefusal` | `a_malformed_row_is_refused_and_the_fold_continues` · `a_refused_derivation_is_recorded_with_its_row_index` |
+| **CAPPED** with a record that says what was emitted | substrate §7 | `report.rs` | `a_saturated_value_is_capped_with_a_record` · `the_accumulator_record_carries_the_saturated_total_not_the_emitted_value` |
+| No float in the hashed substrate (**`U-9`**) | substrate §3 | `hashed-substrate-float-gate` | gate self-test + repo run |
+| Adding a feature touches zero files, honest to the widths | hub §6 | integration test compiled against the public surface only | `a_second_feature_is_added_without_touching_the_first` · `the_thirty_third_plugin_is_a_refusal_not_a_silent_failure` |
+| The explain path reconstructs the number from the public surface | substrate §7 | `FoldReport` | `the_explain_path_reconstructs_the_number` · `the_author_can_explain_its_own_number_from_the_public_surface` |
+
+**91 tests in `actor-hub`**, 302 across the five crates, and **every one of the 20
+Rust mutation rows reds the test named for it.**
+
+### 11.3 Deliberately not built — and each one is a SEAM, not a gap
+
+Hub §7 and substrate §10 name what feature #1 refuses to decide: which entity
+kinds exist · what a status means · every quantity's name, unit and initial value
+· value representations beyond one `i32` · domains · scales · pools and
+regeneration · ceiling models · band deltas · currency · per-feature ruleset
+structure. **Each is registered in `seams-and-triggers.md` with a measured fact
+and a trigger, and none carries a design.** `S-15` is the sharpest of them:
+after attach initialises a quantity, **nothing in the hub ever writes it again**
+— no damage, no regeneration, no expenditure, no progression verb. That is the
+boundary working, not an omission.
+
+### 11.4 Left — stated in the contract, not met by the hub, and carried by a named seam
+
+| What the contract says | Status | Carried by |
+|---|---|---|
+| *"Every derived copy carries `(reality_id, seq)`"* | **not met** — `FoldReport` carries neither, because a pure crate has access to neither | `S-16` |
+| An ordinal is *"assigned once and never reused"* | met for **quantities** (`never_reuse.rs`); **plugin ordinals are convention only** | `S-12` |
+| `floor(q)` / `ceiling(q)` in the fold formula | **deliberately not consulted** — a reality may declare `ceiling: Fixed(1000)` and the fold will resolve 10 500 with no `CAPPED` record | `S-18` |
+| The clamp channel is not a fold layer | **unwritten** | `U-2` / `S-14` |
+| A bare `EntityId` is a dangling handle | **detectable only if a caller threads the `Gen`** | `U-8` / `S-17` |
+| `EntityId` ↔ `EntityRef` | **zero conversion sites** | `S-9` |
+| Ordinals carry no digest, so reality A's `3` equals reality B's `3` | **true** | `S-11` |
+| Derivations resolve in **one pass** against modifier-only values | true, and it is the shipped shape | `S-13` |
+
+**Nothing in this table is undiscovered.** Every row was measured during the
+build and written down before this audit asked.
+
+### 11.5 Findings of this audit
+
+| # | Finding |
+|---|---|
+| **D-511** `[E]` | **🔴 The contract's own honest measurement is now FALSE, and feature #1 is what falsified it.** Hub §3.3 states `GoneState` is *"fully built and consumed by nothing yet — 27 of its 51 grep lines are its own tests, and the 3 outside the defining file are comments."* That was true at the seal. The build then made `Actor` hold it, expose `existence()` and `set_existence()` — measured now: **86 grep lines across 6 files**, and the hub is a real consumer. The sentence that followed it (*"adopting it is free rather than entrenched"*) was an argument for a decision already taken, so the decision stands; **the measurement must not**. This is the fourth time this round a statement was invalidated by the commit that discharged it. |
+| **D-512** `[E]` | **A stale citation inside the hub's own source, of the exact class the contract documents one paragraph away.** `actor-hub/src/actor.rs:6` names `dp-kernel/src/entity_status.rs` as where `GoneState` is *shipped*; that file is now `pub use entity_existence::{GoneState, …}` at `:40` — a re-export, not the definition, which is `entity-existence/src/lib.rs:33`. Hub §3.3 records this precise trap for the contract's copy of the citation and fixed it there. **The source copy was not looked at**, and `citation-gate` governs four DOCUMENTS, so no mechanism reaches a citation living in a `//!` header. |
+| **D-513** `[E]` | **🔴 *"The hub never inspects `fold_layer` semantically"* is the contract's own leak detector, and it is enforced by NOTHING.** Measured: no branch on a specific layer or quantity value exists in `actor-hub/src` today — the only sightings are a doc comment and a test. So the property holds **structurally, and unguarded**, which is *verbatim* the situation substrate §3 recognised for floats — *"structurally true today, and unguarded"* — and answered with `U-9`'s gate. The identical shape, one contract over, got no gate and no seam. The rule states its own failure condition (*"if the hub ever needs to know what a layer MEANS, a plugin's vocabulary has leaked in"*), which is what makes it gateable rather than merely aspirational. |
+
+### 11.6 Verdict
+
+**Feature #1 is complete against its sealed boundary**: every obligation in §11.2
+has an implementation and a named witness, every refusal in §11.3 is a seam
+rather than a gap, and §11.4's shortfalls were all measured and registered before
+being asked for. **No excess was found** — the hub's source contains no plugin's
+noun outside test fixture data, and it does not read `ResourceDecl`.
+
+**What the audit adds is three defects of the RECORD, not of the code**
+(`D-511`..`D-513`), and their shared shape is the one this whole round keeps
+meeting: **a true statement that its own discharge made false, and a property
+that holds because nobody has broken it yet.**
