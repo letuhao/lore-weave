@@ -142,7 +142,14 @@ def check_contract(declaration: Declaration) -> str:
 
 
 def identity_of(declaration: Declaration) -> Identity:
-    """C-0 for an admitted declaration. Derives rather than reads the owner, every time."""
+    """C-0 for an admitted declaration. Derives rather than reads the owner, every time.
+
+    ⚠️ `Identity.contract_version` is **the constant this build carries**, not the version any
+    particular declaration was admitted against. It is a property of the *running code*, and the
+    manifest deliberately does **not** use it for a row: a row records `admitted_against`, taken
+    from the `Admitted` object that captured it at admission time. Binding this constant per-row was
+    a live P4 violation — see `manifest._row`.
+    """
     return Identity(
         id=declaration.id,
         owning_service=derive_owning_service(declaration.source_path),

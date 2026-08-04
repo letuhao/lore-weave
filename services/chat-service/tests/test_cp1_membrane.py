@@ -374,6 +374,45 @@ class TestAnUnresolvedReferenceStopsGeneration:
 
 # ── 1.6 · C-0 — identity, with the owner DERIVED ────────────────────────────────────────────────
 
+class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
+    """P4 at CP-1's own persistence boundary — the manifest.
+
+    🔴 I had reported P4 as *"no subject at CP-1"* because the new runtime reaches no DB INSERT.
+    That was reasoning from where I expected the property to live rather than from what it says. A
+    verifier named this in round 2 (*"`Admitted.contract_version` remains a dead field while the row
+    writes the module constant"*) and I did not act on it for three rounds.
+
+    The consequence is §6.4's mechanism defeated in silence: a **breaking** contract amendment is
+    supposed to put prior declarations into a re-admission queue, which is computed by comparing what
+    a row was admitted against with what the contract now says. If the row re-states the CURRENT
+    constant, every historical row claims conformance to a contract it was never checked against and
+    the queue is permanently empty — a migration that can never find work.
+    """
+
+    def test_a_row_records_the_version_it_was_ADMITTED_against(self, monkeypatch):
+        """The falsifier, and it needs two different versions to exist at once — which is exactly
+        the situation the field is for. Admit under one contract version, generate under another."""
+        from app.agentruntime import contract as _c
+
+        a = admit(_tool("book_list"))
+        assert a.contract_version == _c.CONTRACT_VERSION
+
+        monkeypatch.setattr(_c, "CONTRACT_VERSION", "9.9.9")
+        row = build([a])["declarations"][0]
+        assert row["admitted_against"] == "1.0.0", (
+            "the row re-stated the constant current at WRITE time, so a breaking amendment would "
+            "make every historical row claim conformance it was never checked for"
+        )
+
+    def test_the_row_does_not_carry_a_write_time_constant_at_all(self):
+        """REJECTS the reintroduction. A field whose value is the module constant on every row
+        carries no information — it is the build's version wearing a per-row costume."""
+        row = build([admit(_tool("book_list"))])["declarations"][0]
+        assert "contract_version" not in row, (
+            "a per-row field bound to the current constant is P4's exact shape"
+        )
+
+
 class TestIdentityIsDerivedNotAuthored:
     """REJECTS: a declaration that states its own owner.
 

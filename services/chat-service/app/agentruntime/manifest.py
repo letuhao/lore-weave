@@ -104,7 +104,25 @@ def _row(admitted: Admitted[Declaration]) -> dict:
         # C-0: derived from where the code lives, never read from the declaration.
         "owning_service": ident.owning_service,
         "lifecycle": ident.lifecycle,
-        "contract_version": ident.contract_version,
+        # 🔴 P4, AND IT HAD A SUBJECT AT THIS CHECKPOINT AFTER ALL.
+        #
+        # This wrote `ident.contract_version`, and `identity_of` hardcodes the module constant — so
+        # every row claimed the contract version **current at write time**, while the version the
+        # declaration was actually checked against was captured on `Admitted` and thrown away. A
+        # column bound to a constant at the INSERT with the real signal sitting one attribute away:
+        # the exact shape P4 names, at this package's own persistence boundary.
+        #
+        # The consequence is §6.4's mechanism, defeated silently. That clause says a **breaking**
+        # amendment puts prior declarations into a re-admission queue. Computing that queue means
+        # comparing what a row was admitted against with what the contract now says — and if the row
+        # re-states the current constant, every historical row claims conformance to a contract it
+        # was never checked against, and the queue is permanently empty — a migration that can
+        # never find work.
+        #
+        # I had reported P4 as having "no subject at CP-1" because the new runtime reaches no DB
+        # INSERT. That was reasoning from where I expected the property to live rather than from
+        # what it says: the manifest IS this checkpoint's write boundary.
+        "admitted_against": admitted.contract_version,
         "members": list(d.members),
     }
 
