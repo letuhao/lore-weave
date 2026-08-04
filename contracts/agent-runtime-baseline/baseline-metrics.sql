@@ -17,6 +17,17 @@
 
 \pset footer off
 
+-- ── THE INPUT PIN ─────────────────────────────────────────────────────────────────────────────
+-- Decision 2 failed on exactly this: freezing the OUTPUT of an unfrozen input is not freezing.
+-- The catalog snapshot has a content hash; this derivation reads a live, mutable database, so its
+-- numbers can move under it with no diff anywhere. There is no `AS OF` in Postgres, so the honest
+-- substitute is a fingerprint: if these three values differ from the frozen run, the numbers below
+-- are NOT comparable to it and nothing may be concluded from the difference.
+\echo '== PIN · corpus fingerprint (numbers below are valid ONLY for this fingerprint) =='
+SELECT count(*) AS messages, max(created_at) AS newest,
+       md5(string_agg(message_id::text, ',' ORDER BY message_id)) AS corpus_md5
+FROM chat_messages;
+
 -- ── CONTAMINATION, declared before anything is counted ────────────────────────────────────────
 -- Excluded, and why each one is not a judgement call:
 --   * sessions titled 'F17 monitor verify' — a 4-session harness run that alone contributes 1,180
@@ -31,15 +42,21 @@ WHERE COALESCE(s.title, '') NOT ILIKE '%F17 monitor verify%'
 
 -- One row per recorded tool call, both populations, so every class below shares one definition of
 -- "a call" and cannot drift between metrics.
+-- WITH ORDINALITY is load-bearing and its absence invalidated the first version of this file.
+-- Every element of a turn's tool_calls array carries the MESSAGE's created_at, so a predicate
+-- written as `success.created_at < failure.created_at` can NEVER fire within a turn — it silently
+-- measured "succeeded in an earlier MESSAGE" while its own comment claimed "already succeeded".
+-- The array position IS the intra-turn order; (created_at, ord) is the real clock.
 CREATE OR REPLACE TEMP VIEW _calls AS
-SELECT m.message_id, m.session_id, m.created_at,
+SELECT m.message_id, m.session_id, m.created_at, o.ord,
        (tc->>'tool')                          AS tool,
        COALESCE((tc->>'ok')::boolean, false)  AS ok,
        tc->>'error'                           AS error,
        tc->>'source'                          AS source,      -- NULL for every pre-CP-0 row
+       COALESCE(tc->'args', '{}'::jsonb)      AS args,
        (m.session_id IN (SELECT session_id FROM _organic)) AS organic
 FROM chat_messages m
-CROSS JOIN LATERAL jsonb_array_elements(m.tool_calls) AS tc
+CROSS JOIN LATERAL jsonb_array_elements(m.tool_calls) WITH ORDINALITY AS o(tc, ord)
 WHERE m.tool_calls IS NOT NULL;
 
 \echo '== 0 · POPULATION =='
@@ -70,13 +87,13 @@ SELECT scope,
 FROM (
   SELECT 'raw' AS scope, f.*,
          EXISTS (SELECT 1 FROM s WHERE s.session_id = f.session_id AND s.tool = f.tool
-                   AND s.created_at < f.created_at) AS strict,
+                   AND (s.created_at, s.ord) < (f.created_at, f.ord)) AS strict,
          EXISTS (SELECT 1 FROM s WHERE s.session_id = f.session_id AND s.tool = f.tool) AS loose
   FROM f
   UNION ALL
   SELECT 'organic', f.*,
          EXISTS (SELECT 1 FROM s WHERE s.session_id = f.session_id AND s.tool = f.tool
-                   AND s.created_at < f.created_at AND s.organic),
+                   AND (s.created_at, s.ord) < (f.created_at, f.ord) AND s.organic),
          EXISTS (SELECT 1 FROM s WHERE s.session_id = f.session_id AND s.tool = f.tool AND s.organic)
   FROM f WHERE f.organic
 ) x
@@ -101,12 +118,17 @@ FROM (
   SELECT organic,
          tool IN ('tool_list','tool_load','find_tools','conversation_search',
                   'chat_search_sessions','load_skill','workflow_list','workflow_load') AS is_meta,
+         -- The single largest error string in the corpus was MISSING from the first version:
+         -- "You have already called 'X' ... N times this turn" (495 rows). It is our own
+         -- middleware prose, and omitting it understated this class by 26pp.
          (error ILIKE '%already ran this turn%' OR error ILIKE '%Do not ask to run it again%'
+          OR error ILIKE '%You have already called%' OR error ILIKE '%times this turn%'
+          OR error ILIKE '%this turn%'
           OR error ILIKE '%repeated%' OR error ILIKE '%blocked%' OR error ILIKE '%not permitted%'
           OR error ILIKE '%budget%' OR error ILIKE '%cap%'
           OR tool IN ('tool_list','tool_load','find_tools','conversation_search',
                       'chat_search_sessions','load_skill','workflow_list','workflow_load')) AS ours
-  FROM _calls WHERE NOT ok
+  FROM _calls WHERE NOT ok AND NOT (args = '{}'::jsonb)   -- blank-arg probes, as declared
 ) x GROUP BY organic ORDER BY organic;
 
 -- ── CLASS 3 · IDENTIFIER RESOLUTION ───────────────────────────────────────────────────────────
@@ -136,7 +158,12 @@ FROM (
 --
 -- NULL maps to `interrupted` because that is what the shim does with an unrecognised value, and
 -- reporting NULLs as anything else would flatter the baseline by pretending we knew.
-\echo '== 4 · TERMINAL OUTCOME, through the CP-0.4 shim =='
+-- 🔴 COLUMN-AGE ARTIFACT, and the first version of this class did not control for it.
+-- `finish_reason` shipped 2026-07-19. Before that date every row is unclassified BY CONSTRUCTION
+-- (the column did not exist), so a corpus-wide 90.7% measures the column's age, not the runtime's
+-- behaviour — and the acceptance target "<5%" is ALREADY MET by rows written after it landed.
+-- Windowed below. The pre-column rows are reported separately, never blended in.
+\echo '== 4 · TERMINAL OUTCOME, through the CP-0.4 shim, WINDOWED on column age =='
 SELECT CASE WHEN organic THEN 'organic' ELSE 'raw' END AS scope,
        count(*) AS assistant_turns,
        count(*) FILTER (WHERE mapped = 'completed')         AS completed,
@@ -155,6 +182,7 @@ FROM (
               WHEN m.finish_reason = 'streaming' THEN 'crashed'
               ELSE 'interrupted' END AS mapped
   FROM chat_messages m WHERE m.role = 'assistant'
+    AND m.created_at >= TIMESTAMPTZ '2026-07-19'   -- after finish_reason existed
 ) x GROUP BY organic ORDER BY organic;
 -- (An earlier draft UNIONed the organic rows back in, double-counting them. The PERCENTAGE was
 -- unaffected — which is exactly why it survived a glance, and why counts are printed beside it.)
@@ -165,5 +193,5 @@ FROM (
 \echo '== 5 · WEEKLY TRAFFIC (the ceiling on any bound) =='
 SELECT date_trunc('week', created_at)::date AS week,
        count(*) AS calls, count(*) FILTER (WHERE NOT ok) AS failures
-FROM _calls WHERE organic AND created_at > now() - interval '10 weeks'
+FROM _calls WHERE organic AND created_at > TIMESTAMPTZ '2026-05-25'  -- absolute, not now()-relative
 GROUP BY 1 ORDER BY 1 DESC;

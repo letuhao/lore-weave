@@ -31,12 +31,42 @@ must beat the frozen old-runtime baseline on all four measured classes:
 beside the decontaminated one. **A number without its query is a rumour with a decimal point**, and
 this run carried four of them.
 
-| class | **frozen baseline (organic)** | as previously stated | claim |
-|---|---|---|---|
-| **carry-forward** — failure on a tool that **already** succeeded, success **strictly earlier** | **12.6%** (357/2,835) | *61.8%* | strictly lower |
-| **identifier resolution** — of real (non-breaker) errors | **34.9%** (842/2,415) | *≈57%* | strictly lower |
-| **not-a-real-dispatch** counted as a tool error — **lower bound** | **16.1%** (456/2,835) | *65.7%* | strictly lower |
-| **turns with no interpretable outcome** | **90.7%** (2,416/2,664) | *never frozen* | strictly lower |
+| class | **frozen baseline (organic)** | v1 of this table | originally | claim |
+|---|---|---|---|---|
+| **carry-forward** — success **strictly earlier**, ordered **within the turn** | **39.4%** (1,116/2,835) | *12.6%* | *61.8%* | strictly lower |
+| **identifier resolution** — of real errors | **34.9%** (842/2,415) | 34.9% | *≈57%* | strictly lower |
+| **not-a-real-dispatch** — **lower bound** | **45.3%** (1,028/2,270) | *16.1%* | *65.7%* | ⛔ **see below — not scoreable** |
+| **turns with no interpretable outcome**, windowed on column age | **4.9%** (13/266) | *90.7%* | *never frozen* | ⛔ **already met — withdrawn as a target** |
+
+**Corpus fingerprint** — these numbers are valid *only* for `messages=5766 · newest=2026-08-04
+01:03:56Z · md5=7fa0764949af13d461784b8222f0a887`. There is no `AS OF` in Postgres, so freezing the
+*output* of a live database is not freezing; a differing fingerprint means the numbers are not
+comparable and nothing may be concluded from the difference.
+
+**🔴 I got the correction wrong, in the direction that flattered the fix.** V-METRIC round 2:
+
+- **carry-forward was understated 3.1×.** `_calls` stamped every element of a turn's `tool_calls`
+  array with the **message's** timestamp, so `success.created_at < failure.created_at` **can never
+  fire within a turn** — the predicate silently measured *"succeeded in an earlier message"* while
+  its own comment claimed *"already succeeded"*. The array position **is** the intra-turn clock.
+  Fixed with `WITH ORDINALITY`: **39.4%**.
+- **not-a-real-dispatch missed the single largest error string in the corpus** — *"You have already
+  called 'X' … N times this turn"*, 495 rows, unambiguously our own middleware prose. **16.1% →
+  45.3%.**
+- **90.7% was a column-age artifact.** `finish_reason` shipped **2026-07-19**; every earlier row is
+  unclassified *by construction*. Windowed: **4.9%** — the `<5%` target was already met by rows
+  sitting in the database.
+- **The decontamination did not do what its own header claimed.** Blank-argument probes were
+  declared excluded with **no predicate excluding them**, and ~39.6% of the "organic" denominator is
+  still harness traffic.
+
+### ⛔ ONE CLASS IS NOT SCOREABLE ACROSS ARMS AT ANY SAMPLE SIZE
+
+The baseline can only be derived from **error-prose signatures** (pre-CP-0 rows have no `source`),
+while the new runtime classifies **structurally and completely**. Those are different instruments,
+so *not-a-real-dispatch* cannot be compared between arms — no `n` fixes that. It is retained as a
+**within-arm** diagnostic and **removed from the acceptance set**. Two of the four original classes
+therefore no longer gate anything, and that is a finding about the metric, not about the runtime.
 
 **🔴 THE HEADLINE NUMBER WAS MEASURING SOMETHING ELSE.** `61.8%` counted a failure as carry-forward
 whenever the tool succeeded **anywhere in the session, including afterwards** — crediting a failure
@@ -79,6 +109,27 @@ anyone noticed.
 **Traffic is bursty by a factor of 100** (weekly organic calls over ten weeks: 6 · 1 · 157 · 126 ·
 72 · 1,828 · 2,431 · 1,494 · 102 · 21). **So no date may be committed — only a sample size.** A
 schedule built on the mean would be wrong by an order of magnitude in either direction.
+
+### 🔴 THE POOLED DESIGN DOES NOT CLOSE EITHER — round 2, decision 4
+
+The power arithmetic above is correct and **the design built on it still fails**, for three reasons
+that no sample size repairs:
+
+| | measured |
+|---|---|
+| `book_list` in the **unscripted** corpus | **42 calls / 11 failures** → 0.99 failures/wk → **6.5 years** to n=334 — *worse* than the 5.0 that got the per-declaration bound withdrawn |
+| share of all product failures the pool must carry to close in 8 weeks | **≈36%**. `book_list` is **0.85%** |
+| my "624 calls/wk" reachability figure | **2.7× inflated** by scripted sweeps. Unscripted: **228/wk**, 116 failures/wk |
+
+**And the structural objection is the one that matters:** a pooled rate is a **mixture whose weights
+are the admission order** — chosen by the party being measured. Admitting high-traffic, low-failure
+declarations first moves the pooled number without improving anything. **Pooling relocated the
+problem from "too little data" to "the builder picks the weights."**
+
+> **Consequence: no acceptance gate is armed at CP-0.** The instrument may be built and verified; the
+> claim it was meant to settle **cannot be settled on this corpus**, and saying so is the honest
+> output of CP-0 rather than a failure of it. What replaces it is an open question for the PO, not a
+> number I get to choose — and it must be settled before CP-4, not discovered inside it.
 
 **Three consequences, binding:**
 
