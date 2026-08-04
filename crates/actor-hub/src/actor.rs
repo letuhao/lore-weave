@@ -1,9 +1,9 @@
 //! The hub itself — hub §3, all five things in one struct.
 //!
 //! ```text
-//! 1  IDENTITY             EntityId                      — shipped: sim-core/src/types.rs:17
+//! 1  IDENTITY             EntityId                      — shipped: sim-core/src/types.rs#EntityId
 //! 2  INTRINSIC QUANTITIES [i32; MAX_DECLARED_QUANTITIES] — 128 B; the domain says how to read a slot
-//! 3  EXISTENCE            GoneState                     — shipped: entity-existence/src/lib.rs
+//! 3  EXISTENCE            GoneState                     — shipped: entity-existence/src/lib.rs#GoneState
 //!                                                         (`dp_kernel::entity_status` re-exports it;
 //!                                                          citing the re-export named a file that no
 //!                                                          longer defines the type — hub §3.3's own trap,

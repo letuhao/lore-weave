@@ -1700,6 +1700,17 @@ def self_test() -> int:
     else:
         print("  ok  a horizontal rule inside a block is not a scope boundary")
 
+    # **The seed is derived from the MEASUREMENT, never hardcoded.** It read
+    # `"the **39**"`, and the day the hook gained a gate the live count became
+    # 41 -- so `str.replace` matched nothing, did nothing, and the case lost
+    # its subject, failing with no hint that its SEED rather than its RULE had
+    # broken. A literal seed is an adjacent decision waiting to defeat the
+    # case, which is NV shape #3 occurring inside a self-test.
+    _hook_n = real_m.get("hook_gate_scripts")
+    live_hook = f"the **{_hook_n}**" if isinstance(_hook_n, int) else None
+    if live_hook is None:
+        print("  NOTE the hook count is unmeasurable here; two seeded cases skipped")
+
     # ...and the figures BELOW that rule are still governed, which is the half
     # that was actually broken.
     def _rule_and_stale(text: str) -> str:
@@ -1709,8 +1720,16 @@ def self_test() -> int:
         # never block, and CI's `--no-cargo` mutation job went vacuous because
         # every row was red before any mutation was applied.
         text = _rule_midway(text)
-        return text.replace("the **39**", "the **11**", 1)
+        # `live_hook` is never None where this runs -- the guard below skips
+        # both cases when the count cannot be measured.
+        return text.replace(live_hook or "the **39**", "the **11**", 1)
 
+    # **A seed that does not apply is a FAILURE, not a silent no-op.** Without
+    # this the case reports "the rule did not fire" when what actually
+    # happened is that nothing was seeded for it to fire on.
+    if live_hook and "the **11**" not in _rule_and_stale(_read_doc(HANDOFF) or ""):
+        failures += 1
+        print(f"  FAIL the seed {live_hook!r} did not apply — the case has no subject")
     problems, _ = _check(real_m, read=_seed_handoff(_rule_and_stale))
     if not any("claims 11" in x for x in problems):
         failures += 1
@@ -1928,7 +1947,8 @@ def self_test() -> int:
     # ...and a figure BELOW it is still governed, which is the half that must not
     # be traded away for the half above.
     def _unterminated_and_stale(text: str) -> str:
-        return _unterminated_inside(text).replace("the **39**", "the **11**", 1)
+        return _unterminated_inside(text).replace(
+            live_hook or "the **39**", "the **11**", 1)
 
     problems, _ = _check(real_m, read=_seed_handoff(_unterminated_and_stale))
     if not any("claims 11" in x for x in problems):

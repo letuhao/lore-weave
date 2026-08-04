@@ -108,6 +108,23 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # Whole-directory, so a file created tomorrow is covered on its first line (NV-3).
 "$PY" "$ROOT/scripts/hashed-substrate-float-gate.py"
 
+# THE HUB MAY ORDER BY AN ORDINAL, NEVER READ ITS MEANING (A-1). actor-hub.md §4
+# states its own failure condition -- "if the hub ever needs to know what a layer
+# MEANS, a plugin's vocabulary has leaked in" -- and until the completeness audit
+# (D-513) nothing checked it: the property held structurally and unguarded, which
+# is verbatim what substrate §3 recognised for floats one contract over. Keyed on
+# the ACCESSOR rather than on variable names, because the first version's own bite
+# test walked through it with a one-letter binding.
+"$PY" "$ROOT/scripts/hub-vocabulary-gate.py"
+
+# A CITATION IN SOURCE MUST NAME WHAT DEFINES THE THING (A-2). D-512: actor.rs
+# cited dp-kernel/src/entity_status.rs for GoneState, which had MOVED -- and the
+# two obvious checks were measured against that defect and both MISS it. The file
+# resolves, and it mentions the symbol 38 times. Only "does it DEFINE it" catches,
+# because the one line is a `pub use`. citation-gate governs documents; nothing
+# reached a citation in a `//!` header until this.
+"$PY" "$ROOT/scripts/source-citation-gate.py"
+
 # A CITATION NOBODY CAN FOLLOW IS WORSE THAN NONE (U-10). It reports evidence and
 # silences review. Measured in the 2026-08-02 actor-hub round: design-lint's corpus
 # is hard-defaulted to docs/03_planning/LLM_MMO_RPG and pointing it at docs/specs

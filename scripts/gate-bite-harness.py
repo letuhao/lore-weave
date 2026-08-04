@@ -665,6 +665,87 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          "            # A dead branch is not a record of a decision; this comment is.\n"
          "            if False:"),
     ],
+    # A-1, the vocabulary leak detector. One row per production rule, plus the
+    # two structural decisions the rules stand on: the accessor key (a name key
+    # let the gate's OWN bite test walk through it with a one-letter binding)
+    # and brace-counted test-block exclusion (cutting at the first occurrence
+    # makes every line below a mid-file `mod tests` default-uncovered).
+    "hub-vocabulary-gate": [
+        ("the construction rule stops seeing a literal address",
+         'rf"\\b{ADDRESS}(?:::new)?\\(\\s*\\d"',
+         'rf"\\b{ADDRESS}(?:::new)?\\(\\s*ZZ"'),
+        ("the comparison rule stops seeing the accessor",
+         'rf"{ACCESSOR}(?:\\s+as\\s+\\w+)?\\s*(?:==|!=|<=|>=|<|>)\\s*-?\\d"',
+         'rf"{ACCESSOR}(?:\\s+as\\s+\\w+)?\\s*(?:==|!=|<=|>=|<|>)\\s*ZZ"'),
+        ("the mirrored comparison stops being read",
+         'rf"-?\\d+\\s*(?:==|!=|<=|>=|<|>)\\s*[\\w.]*{ACCESSOR}"',
+         'rf"ZZ\\s*(?:==|!=|<=|>=|<|>)\\s*[\\w.]*{ACCESSOR}"'),
+        ("the accessor key reverts to a NAME key — the defect its own bite found",
+         'ACCESSOR = r"\\.(?:get|index)\\(\\)"',
+         'ACCESSOR = r"(?:fold_layer|layer|ordinal)\\w*(?:\\.get\\(\\))?"'),
+        ("test blocks are cut at the first occurrence instead of brace-counted",
+         "    out = list(src)\n    for m in re.finditer(r\"#\\[cfg\\(test\\)\\]\", src):",
+         "    cut = src.find(\"#[cfg(test)]\")\n"
+         "    if cut >= 0:\n"
+         "        return src[:cut] + \"\\n\" * src[cut:].count(\"\\n\")\n"
+         "    out = list(src)\n    for m in re.finditer(r\"#\\[cfg\\(test\\)\\]\", src):"),
+        ("the pragma stops exempting",
+         "    if PRAGMA in raw[idx]:\n        return True",
+         "    if False:\n        return True"),
+        ("the pragma's comment block becomes a fixed one-line window",
+         "        if not stripped.startswith((\"//\", \"/*\", \"*\")):\n            return False",
+         "        if k < idx - 1:\n            return False\n"
+         "        if not stripped.startswith((\"//\", \"/*\", \"*\")):\n            return False"),
+        # **This row mutates a RULE, not the arm that reads it.** The first
+        # version deleted the cry-wolf arm's own `if shipped:` and stayed GREEN
+        # — necessarily so: an arm whose subject is clean can always be deleted
+        # with the suite green, which makes it a check of the CHECK rather than
+        # of the rule. What gives that arm its subject is a rule that
+        # OVER-matches, so that is what is mutated here: dropping the literal
+        # requirement makes rule 1 report every mention of an address type,
+        # including every type in every signature, and the shipped tree lights
+        # up. The arm is the only thing that sees it.
+        ("the construction rule stops requiring a literal (cry wolf)",
+         'rf"\\b{ADDRESS}(?:::new)?\\(\\s*\\d"', 'rf"\\b{ADDRESS}"'),
+    ],
+    # A-2, the source-citation gate. `D-512` is the row that matters: the two
+    # obvious checks were measured against the actual defect and both MISS it.
+    "source-citation-gate": [
+        # **A MENTION counting as a definition** is the check `D-512` proved
+        # insufficient, so that is the mutation. The first attempt added `use` to
+        # the KINDS list, which changed nothing at all: in `pub use x::{GoneState}`
+        # the symbol sits inside braces and never follows the keyword, so the row
+        # was GREEN because the mutant and the original behave identically.
+        ("a mention starts counting as a definition",
+         "    kinds = r\"(?:enum|struct|trait|type|const|fn|static|mod|union)\"",
+         "    kinds = r\"(?:enum|struct|trait|type|const|fn|static|mod|union)\"\n"
+         "    return sym in text"),
+        ("a longer name starts counting as the symbol",
+         'rf"\\bpub(?:\\([^)]*\\))?\\s+{kinds}\\s+{re.escape(sym)}\\b"',
+         'rf"\\bpub(?:\\([^)]*\\))?\\s+{kinds}\\s+{re.escape(sym)}"'),
+        ("resolution stops trying the crate-relative root",
+         '    for cand in (REPO / path, REPO / "crates" / path):',
+         "    for cand in (REPO / path,):"),
+        ("citations are read outside comments too",
+         '        if not stripped.startswith(("//", "/*", "*")):\n            continue',
+         "        if False:\n            continue"),
+        # The pragma has TWO branches and the rows must reach both. Every case
+        # put the pragma in the block ABOVE, so the same-line branch could be
+        # deleted with the suite green until a case for it existed.
+        ("the pragma stops exempting on the line itself",
+         "    if PRAGMA in raw[idx]:\n        return True",
+         "    if False:\n        return True"),
+        ("the pragma's comment block becomes a fixed one-line window",
+         "        if not stripped.startswith((\"//\", \"/*\", \"*\")):\n            return False",
+         "        if k < idx - 1:\n            return False\n"
+         "        if not stripped.startswith((\"//\", \"/*\", \"*\")):\n            return False"),
+        # NOT a row on the subject arm. `D-517`: an arm whose subject is
+        # non-empty can be deleted with the suite green, so what gives that arm
+        # its meaning is a rule mutation that EMPTIES the subject.
+        ("the citation pattern stops matching a symbol at all",
+         r'CITE_RE = re.compile(r"(?P<path>[A-Za-z0-9_./-]+\.rs)#(?P<sym>[A-Za-z_][A-Za-z0-9_]*)")',
+         r'CITE_RE = re.compile(r"(?P<path>[A-Za-z0-9_./-]+\.rs)##(?P<sym>[A-Za-z_][A-Za-z0-9_]*)")'),
+    ],
 }
 
 
@@ -1915,10 +1996,20 @@ def self_test() -> int:
         return real_run(cmd, **kw)
 
     _sp.run = _spy_argv
+    # **The tree is reported CLEAN for the duration of this case**, because
+    # `run_rust` refuses on a dirty one — and the tree is ALWAYS dirty at the
+    # moment that matters, since the pre-commit hook runs this with the change
+    # staged. Without the swap the case observes nothing, reports `[]`, and
+    # fails on the first commit that stages a file `RUST_MUTATIONS` touches:
+    # the SUBJECT would be the developer's git state rather than the argv.
+    _real_dirty_here = globals()["_rust_dirty"]
+    globals()["_rust_dirty"] = lambda: []
+    _sp.run = _spy_argv
     try:
         quietly(lambda: run_rust(only="a refused derivation", write=lambda *a, **k: None))
     finally:
         _sp.run = real_run
+        globals()["_rust_dirty"] = _real_dirty_here
     want = ["cargo", "test", "-p", "actor-hub", "--test", "fold_survivors",
             "a_refused_derivation_is_recorded_with_its_row_index", "--", "--exact"]
     if shutil.which("cargo") is None:

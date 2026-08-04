@@ -33,7 +33,7 @@
 //! model "UNWRITTEN" and that is FALSE against the tree.** `ruleset-core` — this
 //! crate's own direct dependency — already ships a per-ordinal bound:
 //! `ResourceDecl { quantity, min, base, ceiling: CeilingBinding, … }` in
-//! `ruleset-core/src/resource/mod.rs`, held by `ResourceTable` over **the same
+//! `ruleset-core/src/resource/mod.rs#ResourceDecl`, held by `ResourceTable` over **the same
 //! ordinal space** this fold addresses, carried by every `Ruleset`, and already
 //! validated (`ResourceError::BadBounds` refuses a `base` outside `[min,
 //! ceiling]`). What is true is narrower, and is what this fold does:

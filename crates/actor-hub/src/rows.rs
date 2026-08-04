@@ -25,7 +25,7 @@
 //!
 //! ## `fold_layer`, not `layer`
 //!
-//! `ruleset-loader/src/layer.rs:22` already ships an unrelated `Layer` whose
+//! `ruleset-loader/src/layer.rs#Layer` already ships an unrelated `Layer` whose
 //! `ALL` is documented at `:44` as *"Ascending priority — the fold order."*
 //! **One name, two concepts, avoided** (`S-10`).
 //!
@@ -38,7 +38,7 @@
 //! A `DerivationRow`'s amount is **computed** from another quantity's resolved
 //! value, so the row stores the *channel* ([`OpKind`]) and the
 //! *ratio*, and the op is rebuilt once the amount is known. See
-//! `ruleset-core/src/modifier.rs` for why that is the same enum's discriminant
+//! `ruleset-core/src/modifier.rs#OpKind` for why that is the same enum's discriminant
 //! rather than a second `Flat | Percent`.
 
 use ruleset_core::{ModifierOp, OpKind};

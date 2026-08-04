@@ -91,7 +91,7 @@ pub use rows::{ContributionBound, DerivationRow, FoldLayer, ModifierRow};
 
 // The contribution ops, re-exported so a plugin author submitting rows does not
 // also need a direct `ruleset-core` dependency. One definition — see
-// `ruleset-core/src/modifier.rs` for why it lives beneath both the hub and the
+// `ruleset-core/src/modifier.rs#ModifierOp` for why it lives beneath both the hub and
 // laws rather than in either.
 pub use ruleset_core::{ModifierOp, OpKind};
 
