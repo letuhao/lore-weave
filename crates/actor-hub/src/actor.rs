@@ -4,10 +4,8 @@
 //! 1  IDENTITY             EntityId                      — shipped: sim-core/src/types.rs#EntityId
 //! 2  INTRINSIC QUANTITIES [i32; MAX_DECLARED_QUANTITIES] — 128 B; the domain says how to read a slot
 //! 3  EXISTENCE            GoneState                     — shipped: entity-existence/src/lib.rs#GoneState
-//!                                                         (`dp_kernel::entity_status` re-exports it;
-//!                                                          citing the re-export named a file that no
-//!                                                          longer defines the type — hub §3.3's own trap,
-//!                                                          in the source copy nobody re-read)
+//!                                                         (`source-citation-gate` now holds this: the
+//!                                                          `#Symbol` must be DEFINED there, not re-exported)
 //! 4  ATTACHMENT           PluginSet — a u32 bitmask over plugin ordinals
 //! 5  THE FOLD             aggregate contributions, and know NOTHING about what they mean
 //! ```
@@ -360,6 +358,20 @@ mod tests {
         assert!(!a.existence().is_terminal());
         a.set_existence(GoneState::UserErased);
         assert!(a.existence().is_terminal());
+
+        // **The second half of this test's own name, which nothing witnessed.**
+        // A verifier swapped the assignment for `higher(self.existence, state)`
+        // -- real adjudication, forbidden two lines above `set_existence` -- and
+        // all 91 tests passed, because every transition above moves UPWARD
+        // through a lattice `higher` preserves. A DOWNWARD move is the only
+        // input that separates carrying from adjudicating (`D-529`).
+        a.set_existence(GoneState::Active);
+        assert_eq!(
+            a.existence(),
+            GoneState::Active,
+            "the hub CARRIES the state it is given; adjudicating here makes it \
+             the authority on erasure, which hub §3.3 assigns to the platform"
+        );
     }
 
     /// The five things, folded — item 5 reached through items 1..4.

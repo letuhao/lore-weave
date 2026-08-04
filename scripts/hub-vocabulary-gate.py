@@ -49,6 +49,23 @@ WHAT IS EXCLUDED, AND WHY EACH EXCLUSION IS SAFE
 * comments — `mana` and `hp` are how the rule is EXPLAINED. Blanked in place by
   `gatelib.strip_comments`, so line numbers stay true.
 
+WHAT THIS GATE CANNOT SEE -- STATED, NOT DISCOVERED
+---------------------------------------------------
+A line regex cannot know a receiver TYPE, and every remaining escape is a
+consequence of that. Measured by a cold-start verifier against this file:
+
+  * a named constant -- `const TREASURE: u8 = 3; ... l.get() == TREASURE`.
+    Indistinguishable from `>= MAX_PLUGINS`, which MUST stay silent.
+  * laundering -- `fn raw(l: FoldLayer) -> u8 { l.get() }` then `raw(l) == 3`.
+  * a slice or iterator -- `[3u8, 7u8].contains(&l.get())`.
+  * a conversion -- `FoldLayer::from(3)`, `3u8.into()`, `u8::from(l.get())`.
+
+These are NOT caught, and the ledger says so rather than claiming the
+property is enforced. **A check that reports coverage it does not have is
+worse than no check**, which is the standard this file is built under; the
+honest statement is that the DIRECT spellings are mechanised and the
+laundered ones remain a review question.
+
 THE ESCAPE HATCH MUST BE ABLE TO REACH ITS REASON (NV-6)
 ---------------------------------------------------------
 The pragma is `hub-vocabulary-gate: ok — <reason>`, honoured anywhere in the
@@ -116,6 +133,19 @@ RULES: tuple[tuple[str, re.Pattern[str], str], ...] = (
         re.compile(rf"-?\d+\s*(?:==|!=|<=|>=|<|>)\s*[\w.]*{ACCESSOR}"),
         "the same comparison written the other way round",
     ),
+    (
+        "matches on an address",
+        re.compile(rf"\b(?:match|matches!)\s*\(?[\w.]*{ACCESSOR}"),
+        "a match arm per ordinal is a vocabulary table -- spec shape 3, "
+        "which the first version never implemented",
+    ),
+    (
+        "reads an address through its tuple field",
+        re.compile(r"\b(?!self\b)\w+\.0\s*(?:==|!=|<=|>=|<|>)\s*-?\d"),
+        "`FoldLayer` has a public tuple field, so `l.0 == 3` reaches past the "
+        "accessor. `self.0` is excluded: a type reading its OWN representation "
+        "is not reaching into an address, and `self.0 == 0` ships today",
+    ),
 )
 
 
@@ -177,15 +207,25 @@ def _pragma_covers(raw: list[str], idx: int) -> bool:
 
 
 def scan_source(path: str, src: str) -> list[Finding]:
+    """Scanned as ONE STRING, not line by line.
+
+    A per-line scan cannot see a comparison wrapped across two lines, and a
+    verifier found exactly that: `l.get()` on one line and `== 3` on the next
+    was silent. `\s` spans newlines, so the whole file is one subject and
+    the line number is computed from the match offset.
+    """
     raw = src.split("\n")
-    code = strip_comments(strip_test_blocks(src), False).split("\n")
+    code = strip_comments(strip_test_blocks(src), False)
+    seen: set[int] = set()
     out: list[Finding] = []
-    for i, line in enumerate(code):
-        for rule, rx, _why in RULES:
-            if rx.search(line) and not _pragma_covers(raw, i):
-                out.append(Finding(path, i + 1, rule, raw[i]))
-                break
-    return out
+    for rule, rx, _why in RULES:
+        for m in rx.finditer(code):
+            i = code.count("\n", 0, m.start())
+            if i in seen or _pragma_covers(raw, i):
+                continue
+            seen.add(i)
+            out.append(Finding(path, i + 1, rule, raw[i]))
+    return sorted(out, key=lambda f: f.line)
 
 
 def _rust_files(staged_only: bool) -> list[Path]:
@@ -285,6 +325,20 @@ def self_test() -> int:
     case("a match arm per ordinal is caught by the construction rule",
          "fn f() { match l { FoldLayer(40) => (), _ => () } }", 1)
 
+    # ── the three COMPILING leaks a cold-start verifier planted ──────────
+    case("a match on the accessor -- spec shape 3, never implemented",
+         "fn f(l: FoldLayer) -> i64 { match l.get() { 3 => 100, _ => 0 } }", 1)
+    case("a match on index() is the same leak",
+         "fn f(q: QuantityOrdinal) -> &str { match q.index() { 0 => \"hp\", _ => \"?\" } }", 1)
+    case("the public tuple field reaches past the accessor",
+         "fn f(l: FoldLayer) -> bool { l.0 == 3 }", 1)
+    case("a matches! on the accessor",
+         "fn f(l: FoldLayer) -> bool { matches!(l.get(), 3) }", 1)
+    # ...and a comparison WRAPPED across two lines, which a per-line scan
+    # could not see at all.
+    case("a wrapped comparison is not invisible",
+         "fn f(l: FoldLayer) -> bool {\n    l.get()\n        == 3\n}", 1)
+
     # ── and one per SILENCE, which is the half that gets gates switched off ──
     case("a width constant is arithmetic, not a name",
          "fn f() { if raw >= MAX_PLUGINS { return None } }", 0)
@@ -295,6 +349,8 @@ def self_test() -> int:
     # switched off rather than fixed.
     case("a divisor guard is arithmetic", "fn f() { if row.divisor == 0 { } }", 0)
     case("a bitmask emptiness test is arithmetic", "fn f() { if self.0 == 0 { } }", 0)
+    case("a type reading its own representation is not a leak",
+         "impl PluginSet { fn empty(&self) -> bool { self.0 == 0 } }", 0)
     case("a saturation probe is arithmetic", "fn f() { if factor != 0 { } }", 0)
     case("a doc comment may name an ordinal",
          "//! reality A's `QuantityOrdinal::new(3)` is `hp`\nfn f() { }", 0)

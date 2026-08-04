@@ -58,10 +58,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from gatelib import strip_comments  # noqa: E402
+
 REPO = Path(__file__).resolve().parent.parent
 
 # A directory, recursive — never an enumerated file list (NV-3).
-GUARDED_TREE = "crates/actor-hub/src"
+# The WHOLE crate, not just `src`. `hashed-substrate-float-gate` records this
+# exact scope failing once -- a file-ceiling split moved ~800 lines out of
+# `src` into `tests`, and a probe there went unseen. A citation in a test or
+# an example rots exactly the way one in `src` does.
+GUARDED_TREE = "crates/actor-hub"
 
 PRAGMA = "source-citation-gate: ok"
 
@@ -71,10 +78,34 @@ CITE_RE = re.compile(r"(?P<path>[A-Za-z0-9_./-]+\.rs)#(?P<sym>[A-Za-z_][A-Za-z0-
 
 # What COUNTS as defining a symbol. `pub use` is deliberately absent — it is the
 # whole point.
+#
+# **Comments and strings are STRIPPED first.** A cold-start verifier broke the
+# first version with one ordinary sentence: a line in the RE-EXPORTING file
+# saying the module once held `pub enum GoneState` made this report OK on a
+# citation that was still wrong. Documenting where a type USED to live is the
+# most likely thing to write in a file that re-exports it, so the defect and
+# its camouflage arrive together -- the *"prose that happens to live in a
+# source file"* class this repo has been bitten by three times.
+#
+# **A VARIANT, a FIELD and a METHOD count too.** These contracts cite
+# `GoneState::Active` and `ResourceDecl.base` in prose and the convention gave
+# no way to spell either, so citing one was REPORTED -- the cry-wolf direction.
 def _defines(text: str, sym: str) -> bool:
+    body = strip_comments(text, False)
+    esc = re.escape(sym)
     kinds = r"(?:enum|struct|trait|type|const|fn|static|mod|union)"
-    return re.search(rf"\bpub(?:\([^)]*\))?\s+{kinds}\s+{re.escape(sym)}\b", text) is not None \
-        or re.search(rf"\bmacro_rules!\s+{re.escape(sym)}\b", text) is not None
+    if re.search(rf"\bpub(?:\([^)]*\))?\s+{kinds}\s+{esc}\b", body):
+        return True
+    if re.search(rf"\bmacro_rules!\s+{esc}\b", body):
+        return True
+    # A struct FIELD, public or private -- a citation may point at an internal.
+    if re.search(rf"^\s*(?:pub(?:\([^)]*\))?\s+)?{esc}\s*:", body, re.M):
+        return True
+    # An enum VARIANT on its own line.
+    if re.search(rf"^\s*{esc}\s*(?:,|\(|\{{|=)", body, re.M):
+        return True
+    # A method, inherent or on a trait.
+    return re.search(rf"\bfn\s+{esc}\s*[(<]", body) is not None
 
 
 def _resolve(path: str) -> Path | None:
@@ -115,9 +146,17 @@ def scan_source(path: str, src: str, resolve=None) -> list[Finding]:
     out: list[Finding] = []
     for i, line in enumerate(raw):
         stripped = line.strip()
-        if not stripped.startswith(("//", "/*", "*")):
-            continue
-        for m in CITE_RE.finditer(line):
+        # **A TRAILING comment carries a citation too.** Requiring the LINE to
+        # start with a comment marker left `let x = 1; // see a.rs#Sym`
+        # default-uncovered, which a verifier found by writing exactly that.
+        if stripped.startswith(("//", "/*", "*")):
+            comment = line
+        else:
+            at = line.find("//")
+            if at < 0:
+                continue
+            comment = line[at:]
+        for m in CITE_RE.finditer(comment):
             cite = f"{m.group('path')}#{m.group('sym')}"
             if _pragma_covers(raw, i):
                 continue
@@ -243,6 +282,30 @@ def self_test() -> int:
                             ("restricted pub", "pub(crate) struct Inner(u8);", "Inner")):
         case(f"a {kind} definition is silent",
              f"//! see a/src/lib.rs#{sym}", 0, fake(decl))
+
+    # ── the escapes a cold-start verifier found, each now a case ─────────
+    case("a definition inside a doc comment does not count",
+         "//! see a/src/lib.rs#GoneState", 1,
+         fake("/// once held `pub enum GoneState { Active }`\npub use x::GoneState;"))
+    case("a commented-out definition does not count",
+         "//! see a/src/lib.rs#GoneState", 1,
+         fake("// pub enum GoneState { Active }\npub use x::GoneState;"))
+    case("a definition inside a string literal does not count",
+         "//! see a/src/lib.rs#GoneState", 1,
+         fake('let s = "pub enum GoneState { Active }";\npub use x::GoneState;'))
+    # ...and the shapes these contracts actually cite in prose, which the first
+    # version REPORTED.
+    case("an enum VARIANT is a definition",
+         "//! see a/src/lib.rs#Active", 0,
+         fake("pub enum GoneState {\n    Active,\n}"))
+    case("a struct FIELD is a definition",
+         "//! see a/src/lib.rs#base", 0,
+         fake("pub struct ResourceDecl {\n    pub base: i32,\n}"))
+    case("a METHOD is a definition",
+         "//! see a/src/lib.rs#attach", 0,
+         fake("impl Actor {\n    pub fn attach(&mut self) {}\n}"))
+    case("a trailing comment carries a citation too",
+         "let x = 1; // see a/src/lib.rs#GoneState", 1, fake("pub use x::GoneState;"))
 
     # ── the cry-wolf direction ───────────────────────────────────────────
     case("a citation with NO symbol is out of scope, deliberately",

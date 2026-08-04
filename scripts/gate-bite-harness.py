@@ -721,14 +721,17 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          "    kinds = r\"(?:enum|struct|trait|type|const|fn|static|mod|union)\"\n"
          "    return sym in text"),
         ("a longer name starts counting as the symbol",
-         'rf"\\bpub(?:\\([^)]*\\))?\\s+{kinds}\\s+{re.escape(sym)}\\b"',
-         'rf"\\bpub(?:\\([^)]*\\))?\\s+{kinds}\\s+{re.escape(sym)}"'),
+         'rf"\\bpub(?:\\([^)]*\\))?\\s+{kinds}\\s+{esc}\\b"',
+         'rf"\\bpub(?:\\([^)]*\\))?\\s+{kinds}\\s+{esc}"'),
+        # A definition that lives only in a COMMENT is the shape a verifier used
+        # to make `D-512` pass: one ordinary sentence in the re-exporting file.
+        ("the definition search stops stripping comments",
+         "    body = strip_comments(text, False)", "    body = text"),
         ("resolution stops trying the crate-relative root",
          '    for cand in (REPO / path, REPO / "crates" / path):',
          "    for cand in (REPO / path,):"),
-        ("citations are read outside comments too",
-         '        if not stripped.startswith(("//", "/*", "*")):\n            continue',
-         "        if False:\n            continue"),
+        ("a trailing comment stops carrying a citation",
+         '            at = line.find("//")', '            at = -1  #'),
         # The pragma has TWO branches and the rows must reach both. Every case
         # put the pragma in the block ABOVE, so the same-line branch could be
         # deleted with the suite green until a case for it existed.
@@ -786,6 +789,42 @@ def _child_env(no_cargo: bool) -> dict[str, str] | None:
 # `finally` and refuses to start if any file it would touch is already dirty --
 # so an interrupted run is detectable rather than silently mixed into a diff.
 RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
+    # ── actor.rs / plugin_set.rs / ordinal.rs / report.rs ────────────────
+    # A cold-start verifier measured that the 21 rows here touched ONLY
+    # fold.rs, registry.rs and rows.rs -- so identity, existence, attachment
+    # and the report surface were entirely unmutated, and D-521's fixed point
+    # ("every witness has a mutation row") was false as written. These six
+    # close the four files that had none.
+    ("the hub ADJUDICATES existence instead of carrying it",
+     "crates/actor-hub/src/actor.rs",
+     "        self.existence = state;",
+     "        self.existence = entity_existence::higher(self.existence, state);",
+     "existence_is_platform_state_and_is_carried_not_adjudicated", "--lib"),
+    ("attach initialises EVERY declared quantity, not only its own",
+     "crates/actor-hub/src/actor.rs",
+     "            if registry.owner_of(q) == Some(p)",
+     "            if registry.owner_of(q).is_some()",
+     "attaching_initialises_exactly_its_own_quantities", "--lib"),
+    ("detach clears the wrong bit",
+     "crates/actor-hub/src/plugin_set.rs",
+     "        Self(self.0 & !p.bit())",
+     "        Self(self.0)",
+     "detach_removes_only_its_own_bit", "--lib"),
+    ("membership answers from the whole mask, not the plugin's bit",
+     "crates/actor-hub/src/plugin_set.rs",
+     "        self.0 & p.bit() != 0",
+     "        self.0 != 0",
+     "attach_then_contains", "--lib"),
+    ("the quantity width bound is off by one",
+     "crates/actor-hub/src/ordinal.rs",
+     "        if (raw as usize) < MAX_DECLARED_QUANTITIES {",
+     "        if (raw as usize) <= MAX_DECLARED_QUANTITIES {",
+     "quantity_ordinal_refuses_past_the_declared_width", "--lib"),
+    ("an ABSENT quantity reads as zero through the report",
+     "crates/actor-hub/src/report.rs",
+     "        self.values[q.index()]",
+     "        Some(self.values[q.index()].unwrap_or(0))",
+     "an_absent_quantity_is_none_not_zero", "fold"),
     ("a refused derivation is dropped, not recorded",
      "crates/actor-hub/src/fold.rs",
      "            Err(reason) => refused.push(Refused { row: RowRef::Derivation(i), reason }),",
@@ -957,7 +996,7 @@ RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
 
 def _rust_dirty() -> list[str]:
     """Files this harness would mutate that already carry uncommitted changes."""
-    files = sorted({rel for _, rel, _, _, _ in RUST_MUTATIONS})
+    files = sorted({r[1] for r in RUST_MUTATIONS})
     try:
         out = subprocess.run(["git", "status", "--porcelain", "--", *files],
                              cwd=REPO, capture_output=True, text=True,
@@ -1028,7 +1067,16 @@ def run_rust(only: str | None = None, run=None, write=None,
     raws: dict[str, bytes] = {}
     green = 0
     try:
-        for label, rel, find, repl, test in rows:
+        for row in rows:
+            # **The target is per ROW, not hardcoded.** It was `--test
+            # fold_survivors` for every row, so a row naming a test that lives
+            # anywhere else would run a cargo command that matches NOTHING and
+            # read as GREEN -- the mutation surviving because its witness was
+            # never executed. A verifier measured that the 21 rows here touched
+            # only three files; closing the other four needs `--lib` and
+            # `--test fold`, so the enumeration had to go.
+            label, rel, find, repl, test = row[:5]
+            target = row[5] if len(row) > 5 else "fold_survivors"
             path = root / rel
             raws.setdefault(rel, _raw(path))
             src = originals.setdefault(rel, _read(path))
@@ -1058,8 +1106,9 @@ def run_rust(only: str | None = None, run=None, write=None,
                 green += 1
                 continue
             (write or _write)(path, mutated, like=raws[rel])
-            runner = run or (lambda t: subprocess.run(
-                ["cargo", "test", "-p", "actor-hub", "--test", "fold_survivors",
+            sel = ["--lib"] if target == "--lib" else ["--test", target]
+            runner = run or (lambda t, sel=sel: subprocess.run(
+                ["cargo", "test", "-p", "actor-hub", *sel,
                  t, "--", "--exact"], cwd=REPO, capture_output=True, text=True,
                 timeout=CHILD_TIMEOUT_S))
             try:
@@ -1530,7 +1579,7 @@ def self_test() -> int:
                 print(f"  FAIL {gate}: anchor for '{label}' occurs "
                       f"{text.count(find)}x outside the tables")
     # ...and the Rust table, which mutates in place and so must not drift silently.
-    for label, rel, find, _, _ in RUST_MUTATIONS:
+    for label, rel, find in ((r[0], r[1], r[2]) for r in RUST_MUTATIONS):
         text = _read(REPO / rel)
         if _find_one(text, find) < 0:
             failures += 1
