@@ -217,6 +217,37 @@ class SessionToolPins:
     pinned_legacy: list[str] = field(default_factory=list)
 
 
+def _budget_and_register(
+    sink: list[dict] | None,
+    stage: str,
+    catalog: list[dict],
+    names: set[str] | list[str],
+    *,
+    token_budget: int,
+) -> set[str]:
+    """CP-0.2 — budget a set AND register what the budget deleted, in one call.
+
+    Exists because the first fix was scoped to the wrong file. The four activation-path budget calls
+    in ``stream_service`` were converted to the reporting variant while these four — the SURFACE
+    ASSEMBLY calls, which run on **every turn** rather than only after a ``tool_load`` — went on
+    discarding their drops. The largest of them trims a 315-tool catalog to a **2,000-token** hot
+    seed, so it is not a smaller instance of the arm-E defect; it is the bigger one, and it fires
+    unconditionally.
+
+    ``sink`` is optional so a caller with nowhere to put the record still gets identical selection
+    behaviour. That is a real hole and it is the honest one: dropping the ``sink`` argument makes a
+    narrowing unrecorded, which is visible at the call site, rather than silently unrecordable.
+    """
+    kept, dropped = budget_names_by_tokens_ex(catalog, names, token_budget=token_budget)
+    if sink is not None and dropped:
+        sink.extend(
+            {"tool": n, "stage": stage,
+             "reason": f"did not fit the {stage} token budget ({token_budget} tok)"}
+            for n in dropped
+        )
+    return kept
+
+
 def budget_rail_tools(
     catalog: list[dict],
     ordered_names: list[str],
@@ -296,6 +327,8 @@ def discovery_seed_for_surface(
     rail_next_step_tools: set[str] | None = None,
     sticky_domains: set[str] | None = None,
     injected_skill_codes: list[str] | None = None,
+    # CP-0.2 — where this function's narrowings register. Optional; see _budget_and_register.
+    withheld_sink: list[dict] | None = None,
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated).
 
@@ -333,7 +366,8 @@ def discovery_seed_for_surface(
     # FIX (context-explosion): token-budget the hot-seed instead of seeding the
     # WHOLE domain(s). Cuts the always-advertised base ~24K → ~4K (scaled up for a
     # session model with a larger real context_length via scale_by_window).
-    raw_hot_seed = budget_names_by_tokens(
+    raw_hot_seed = _budget_and_register(
+        withheld_sink, 'hot_seed',
         catalog, hot_tool_names(catalog, hot_domains),
         token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
     )
@@ -380,7 +414,8 @@ def discovery_seed_for_surface(
             # drift risk the standalone constant carried.
             from app.services.skill_registry import SYSTEM_SKILLS
             plan_domains = set(SYSTEM_SKILLS["plan_forge"].hot_domains)
-            plan_hot = budget_names_by_tokens(
+            plan_hot = _budget_and_register(
+                withheld_sink, 'hot_seed_plan_forge',
                 catalog, hot_tool_names(catalog, plan_domains),
                 token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
             )
@@ -421,7 +456,8 @@ def discovery_seed_for_surface(
             if _skill and _skill.hot_domains and _skill_visible(_skill, active_surface):
                 extra_domains |= set(_skill.hot_domains) - covered_domains
         if extra_domains:
-            extra_hot = budget_names_by_tokens(
+            extra_hot = _budget_and_register(
+                withheld_sink, 'hot_seed_skill',
                 catalog, hot_tool_names(catalog, extra_domains),
                 token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
             )
@@ -536,6 +572,7 @@ def effective_enabled_tools(
     catalog: list[dict],
     hot_domains: set[str],
     context_length: int | None = None,
+    withheld_sink: list[dict] | None = None,
 ) -> list[str]:
     """When glossary skill is active in curated mode, auto-union glossary hot tools.
 
@@ -550,7 +587,8 @@ def effective_enabled_tools(
         return list(enabled_tools)
     # FIX (context-explosion): budget the auto-unioned hot set too, so curated
     # sessions with the glossary skill don't re-inflate the whole domain.
-    hot = budget_names_by_tokens(
+    hot = _budget_and_register(
+        withheld_sink, 'hot_seed_glossary',
         catalog, hot_tool_names(catalog, hot_domains),
         token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
     )

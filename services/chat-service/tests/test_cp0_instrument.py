@@ -26,6 +26,10 @@ def _stream_src() -> str:
     return (_APP / "services" / "stream_service.py").read_text(encoding="utf-8")
 
 
+def _surface_src() -> str:
+    return (_APP / "services" / "tool_surface.py").read_text(encoding="utf-8")
+
+
 # ── The wiring gates ────────────────────────────────────────────────────────────────────────────
 #
 # These assert over CALL SITES rather than over behaviour, and that is deliberate. The defect they
@@ -45,17 +49,31 @@ class TestTheInstrumentIsActuallyWired:
 
         The budgeter decides at ACTIVATION time, several call sites away from the advertise
         chokepoint where the other four stages register — which is exactly how it got missed.
+
+        Round 2 note, and it is the more useful lesson: the first version of THIS GATE read only
+        `stream_service.py`. Four discarding sites lived in `tool_surface.py`, written in exactly
+        the string form the gate forbids — so the gate was green over a live instance of the defect
+        it names, purely because of the file it was pointed at. **A gate's scope is part of the
+        gate.** It now reads every module that budgets, and the largest of those sites trims a
+        315-tool catalog to a 2,000-token hot seed on EVERY turn.
         """
-        src = _stream_src()
-        assert "_budget_withheld" in src, "the budgeter's drops must be accumulated"
-        # Every activation-path budget call must use the reporting variant.
-        assert "= budget_names_by_tokens(" not in src, (
-            "a production site is still using the variant that discards its drops"
+        for name, src in (("stream_service", _stream_src()), ("tool_surface", _surface_src())):
+            assert "= budget_names_by_tokens(" not in src, (
+                f"{name}: a production site still uses the variant that discards its drops"
+            )
+        assert "_budget_withheld" in _stream_src(), "the budgeter's drops must be accumulated"
+        assert '"stage": "token_budget"' in _stream_src(), "drops must register with a stage"
+        surface = _surface_src()
+        assert "_budget_and_register(" in surface, (
+            "surface-assembly budgeting must register its drops"
         )
-        assert src.count("budget_names_by_tokens_ex(") >= 4, (
-            "expected every activation-path budget call to report; found fewer"
+        # Count CALLS, excluding the definition. The first version counted both, so the `def` line
+        # paid for one missing call site — the same class of arithmetic slack that let the dispatch
+        # gate stay green over a real defect. A gate that counts must count only the thing it means.
+        calls = surface.count("_budget_and_register(") - surface.count("def _budget_and_register(")
+        assert calls >= 4, (
+            f"expected every surface-assembly budget call to register; found {calls}"
         )
-        assert '"stage": "token_budget"' in src, "drops must register with a stage"
 
     def test_every_real_dispatch_is_stamped_as_a_real_dispatch(self):
         """REJECTS: a genuine tool execution filed as our own prose.
@@ -64,16 +82,39 @@ class TestTheInstrumentIsActuallyWired:
         unstamped, and so was classified `breaker` — inverting the one distinction the field exists
         to make, on the highest-consequence calls in the product (writes a human has just approved).
 
-        Ties the count of real dispatch sites to the count of `tool` stamps, so ADDING a dispatch
-        without stamping it fails here rather than silently biasing the split forever.
+        **This gate was itself defective in round 1 and the defect is the instructive part.** It
+        compared two COUNTS — dispatch sites vs `SOURCE_TOOL` stamps — with no positional
+        correspondence. Three dispatches, three stamps, green. But one of the stamps belonged to the
+        subagent path (not a dispatch at all) and it offset a genuine dispatch that had no stamp:
+        the ext-task provide-input call, which recorded *nothing whatsoever*. A counting gate is
+        satisfied by a coincidence; it was green over a live instance of the defect it names.
+
+        Now POSITIONAL: each dispatch must have a stamp within the following window of source. A
+        surplus stamp somewhere else in the file can no longer pay for a missing one here.
         """
         src = _stream_src()
-        dispatches = src.count("await knowledge_client.mcp_execute_tool(")
-        stamps = src.count("source=instrument.SOURCE_TOOL")
-        assert dispatches >= 2, "expected at least the in-loop and resume dispatch sites"
-        assert stamps >= dispatches, (
-            f"{dispatches} real dispatch sites but only {stamps} 'tool' stamps — at least one "
-            f"genuine execution is being recorded as our own breaker prose"
+        needle = "await knowledge_client.mcp_execute_tool("
+        starts, i = [], 0
+        while (idx := src.find(needle, i)) != -1:
+            starts.append(idx)
+            i = idx + len(needle)
+        assert len(starts) >= 3, (
+            f"expected at least 3 real dispatch sites (in-loop, approval resume, ext-task); "
+            f"found {len(starts)}"
+        )
+        # Each dispatch owns the region from itself to the NEXT dispatch, and that region must
+        # contain its stamp. A fixed byte window would be arbitrary — the in-loop dispatch stamps
+        # ~220 lines later, at the yield — while region-ownership is the actual invariant: a stamp
+        # cannot be claimed by two dispatches, so a surplus elsewhere cannot cover a deficit here.
+        bounds = starts[1:] + [len(src)]
+        unstamped = [
+            src.count("\n", 0, s) + 1
+            for s, end in zip(starts, bounds)
+            if "source=instrument.SOURCE_TOOL" not in src[s:end]
+        ]
+        assert not unstamped, (
+            f"real dispatch(es) at line(s) {unstamped} have no SOURCE_TOOL stamp nearby — a genuine "
+            f"execution is being recorded as our own breaker prose, or not recorded at all"
         )
 
 

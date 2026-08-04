@@ -7599,6 +7599,7 @@ async def resume_stream_response(
     # acknowledges the REAL outcome. The provide-input tool is domain-unique
     # (<prefix>_task_provide_input, gateway-routable — see the routing fix), derived from
     # the gate tool's provider prefix. Accept outcomes confirm; anything else declines.
+    _task_chunk: dict | None = None
     if is_task:
         _task = susp.pending_tool_call.get("task") or {}
         _gate = str(susp.pending_tool_call.get("name") or "")
@@ -7606,13 +7607,25 @@ async def resume_stream_response(
         _accepted = outcome in (
             "applied_saved", "action_done", "accept", "applied", "approved_once", "confirmed",
         )
+        # CP-0.3 — the THIRD real dispatch, and until now the only one recording NOTHING: it fed
+        # `working` and never produced a tool_calls entry, so a durable human-gated task resolving
+        # left no trace in the turn's history at all. Not merely unclassified — absent.
+        _task_t0 = _time.monotonic()
         _tenv = await knowledge_client.mcp_execute_tool(
             user_id=user_id, session_id=session_id, project_id=project_id,
             tool_name=_provide_tool,
             tool_args={"task_id": _task.get("taskId"), "accepted": _accepted},
             admin_token=admin_token,
         )
+        _task_ms = int((_time.monotonic() - _task_t0) * 1000)
         _tres = _tenv.get("result") if _tenv.get("success") else {"error": _tenv.get("error")}
+        _task_chunk = instrument.stamp_tool_call({
+            "id": tool_call_id, "iteration": 0, "tool": _provide_tool,
+            "args": {"task_id": _task.get("taskId"), "accepted": _accepted},
+            "ok": bool(_tenv.get("success")),
+            "result": _tenv.get("result") if _tenv.get("success") else None,
+            "error": None if _tenv.get("success") else _tenv.get("error"),
+        }, source=instrument.SOURCE_TOOL, latency_ms=_task_ms)
         working.append({
             "role": "tool", "tool_call_id": tool_call_id,
             "content": tool_result_content(_tres if _tres is not None else {}),
@@ -7625,7 +7638,10 @@ async def resume_stream_response(
     #                     self-corrects (no execution).
     # The executed call is surfaced via pre_tool_chunks (tool_call + activity
     # events + persisted history) — C-ACTIVITY parity, undo unchanged.
-    pre_tool_chunks: list[dict] | None = None
+    # CP-0.3 — carry the ext-task dispatch into the recorded history. `pre_tool_chunks` is the
+    # existing channel for "a tool ran before the loop re-entered"; the task path simply never used
+    # it, which is why its execution was invisible rather than mislabelled.
+    pre_tool_chunks: list[dict] | None = [_task_chunk] if _task_chunk is not None else None
     if is_approval:
         _appr = _approval_args if isinstance(_approval_args, dict) else {}
         _tool_name = str(_appr.get("tool") or susp.pending_tool_call.get("name") or "")
