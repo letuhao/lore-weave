@@ -207,16 +207,28 @@ class AdvertisedToolsRecorder:
         self._passes.append(entry)
 
     def record_withheld(self, tool: str, *, stage: str, reason: str) -> None:
-        """Register one withholding. ``stage`` is WHO narrowed, ``reason`` is WHY.
+        """Register one withholding. ``stage`` is WHO narrowed, ``reason`` is WHY, ``pass`` is WHEN.
 
         Deduplicated on ``(tool, stage)`` so a tool dropped by the same stage on five passes is one
         withholding rather than five — otherwise the count measures pass depth instead of narrowing.
+
+        **``pass`` is not decoration and its absence was a defect.** A verifier found 19 of 303
+        withheld tools *simultaneously advertised on every pass* and had no way to tell whether that
+        was a contradiction or a sequence: dropped at activation, then re-added by a later stage, is
+        a perfectly coherent history — and indistinguishable from a bug when the record is
+        timeless. A narrowing is an EVENT; stamping the pass it happened on is what lets it be
+        reconciled against the advertised array instead of merely contradicting it.
         """
         key = (tool, stage)
         if key in self._seen:
             return
         self._seen.add(key)
-        self._withheld.append({"tool": tool, "stage": stage, "reason": reason})
+        self._withheld.append({
+            "tool": tool, "stage": stage, "reason": reason,
+            # The pass this narrowing was recorded against — i.e. the pass ABOUT to be built. Passes
+            # already recorded are complete, so the next one is len()+1.
+            "pass": len(self._passes) + 1,
+        })
 
     def record_withheld_many(self, tools: Iterable[str], *, stage: str, reason: str) -> None:
         for t in tools:

@@ -171,10 +171,15 @@ class TestWithheldRegisters:
         """REJECTS: a bare name list. 'glossary_search was dropped' is not actionable; the stage is
         what says which mechanism to go fix."""
         rec = AdvertisedToolsRecorder()
+        rec.record_pass(["book_list"])
         rec.record_withheld("glossary_search", stage="failure_breaker", reason="gave up after 3")
-        assert rec.withheld_json() == [
-            {"tool": "glossary_search", "stage": "failure_breaker", "reason": "gave up after 3"}
-        ]
+        assert rec.withheld_json() == [{
+            "tool": "glossary_search", "stage": "failure_breaker", "reason": "gave up after 3",
+            # WHEN, not only who and why. Without it a verifier found 19 of 303 withheld tools also
+            # advertised on every pass and could not tell a contradiction from a sequence — dropped
+            # at activation then re-added later is coherent history, but only if it is timestamped.
+            "pass": 2,
+        }]
 
     def test_the_same_stage_dropping_a_tool_twice_is_one_withholding(self):
         """REJECTS: a count that measures how many passes the turn took rather than how much was

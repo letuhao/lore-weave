@@ -6100,6 +6100,12 @@ async def stream_response(
         yield line
 
 
+#: Strong references to in-flight cancel-path writes. asyncio holds only a WEAK reference to a task
+#: created with create_task, so a write detached during cancellation can be garbage-collected
+#: mid-flight — losing exactly the turn the detach existed to save. Discarded on completion.
+_DETACHED_CANCEL_WRITES: set = set()
+
+
 async def _persist_terminal_assistant(
     pool: asyncpg.Pool,
     *,
@@ -7316,7 +7322,18 @@ async def _emit_chat_turn(
         # cancelled; await-only (no yield) is safe inside GeneratorExit cleanup.
         if not _persisted:
             try:
-                await asyncio.shield(
+                # CP-0.4 — DETACH, then shield. `await asyncio.shield(coro)` is not enough here and
+                # measured as failing on EVERY cancel: this handler is already unwinding a
+                # CancelledError, so the next `await` re-raises it immediately — frequently before
+                # the wrapped coroutine has been scheduled at all. The write was abandoned and the
+                # except branch below logged "interrupt-persist failed", which is why every cancel
+                # produced that line while the only surviving row came from a later fallback.
+                #
+                # Creating the task FIRST schedules it independently of this task's fate, and the
+                # strong reference keeps it from being garbage-collected mid-flight (a bare
+                # create_task result is weakly held by the loop). Then shield the await, so being
+                # cancelled again costs us the acknowledgement, never the write.
+                _cancel_write = asyncio.create_task(
                     _persist_terminal_assistant(
                         pool,
                         msg_id=msg_id, session_id=session_id, user_id=user_id,
@@ -7336,6 +7353,17 @@ async def _emit_chat_turn(
                         advertised_tools=_advertised.advertised_json(),
                         withheld_tools=_advertised.withheld_json(),
                     )
+                )
+                _DETACHED_CANCEL_WRITES.add(_cancel_write)
+                _cancel_write.add_done_callback(_DETACHED_CANCEL_WRITES.discard)
+                await asyncio.shield(_cancel_write)
+            except asyncio.CancelledError:
+                # Expected, and NOT a failure: we were cancelled again while waiting for the
+                # acknowledgement. The detached task owns the write and is still running. Logging
+                # this as a failure is what made every cancel look broken when most were not.
+                logger.info(
+                    "interrupt-persist detached for session %s (write continues after cancel)",
+                    session_id,
                 )
             except BaseException:  # noqa: BLE001 — cleanup must never mask the cancel
                 logger.warning(
