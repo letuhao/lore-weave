@@ -211,7 +211,7 @@ def scan_source(path: str, src: str) -> list[Finding]:
 
     A per-line scan cannot see a comparison wrapped across two lines, and a
     verifier found exactly that: `l.get()` on one line and `== 3` on the next
-    was silent. `\s` spans newlines, so the whole file is one subject and
+    was silent. A whitespace class spans newlines, so the file is one subject and
     the line number is computed from the match offset.
     """
     raw = src.split("\n")

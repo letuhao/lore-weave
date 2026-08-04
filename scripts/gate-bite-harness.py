@@ -799,27 +799,31 @@ RUST_MUTATIONS: list[tuple[str, str, str, str, str]] = [
      "crates/actor-hub/src/actor.rs",
      "        self.existence = state;",
      "        self.existence = entity_existence::higher(self.existence, state);",
-     "existence_is_platform_state_and_is_carried_not_adjudicated", "--lib"),
-    ("attach initialises EVERY declared quantity, not only its own",
-     "crates/actor-hub/src/actor.rs",
-     "            if registry.owner_of(q) == Some(p)",
-     "            if registry.owner_of(q).is_some()",
-     "attaching_initialises_exactly_its_own_quantities", "--lib"),
+     "actor::tests::existence_is_platform_state_and_is_carried_not_adjudicated",
+     "--lib"),
+    # A row for `owner_of(q) == Some(p)` was written here, MEASURED, and
+    # REMOVED: it survived, and correctly so. `actor.rs` says the guard is not
+    # observable until a feature can move a quantity after attach, so
+    # re-initialising an already-attached plugin's quantity writes the value
+    # that is already there. A row that cannot red makes "N survivors"
+    # permanently non-zero, which trains everyone to stop reading the number --
+    # the cry-wolf failure of mutation testing. Its trigger is `S-15`'s: the
+    # first feature that defines how its own quantity moves.
     ("detach clears the wrong bit",
      "crates/actor-hub/src/plugin_set.rs",
      "        Self(self.0 & !p.bit())",
      "        Self(self.0)",
-     "detach_removes_only_its_own_bit", "--lib"),
+     "plugin_set::tests::detach_removes_only_its_own_bit", "--lib"),
     ("membership answers from the whole mask, not the plugin's bit",
      "crates/actor-hub/src/plugin_set.rs",
      "        self.0 & p.bit() != 0",
      "        self.0 != 0",
-     "attach_then_contains", "--lib"),
+     "plugin_set::tests::attach_then_contains", "--lib"),
     ("the quantity width bound is off by one",
      "crates/actor-hub/src/ordinal.rs",
      "        if (raw as usize) < MAX_DECLARED_QUANTITIES {",
      "        if (raw as usize) <= MAX_DECLARED_QUANTITIES {",
-     "quantity_ordinal_refuses_past_the_declared_width", "--lib"),
+     "ordinal::tests::quantity_ordinal_refuses_past_the_declared_width", "--lib"),
     ("an ABSENT quantity reads as zero through the report",
      "crates/actor-hub/src/report.rs",
      "        self.values[q.index()]",
@@ -1135,6 +1139,17 @@ def run_rust(only: str | None = None, run=None, write=None,
             # that no longer matches anything, both move the return code. The
             # gate half asks the same question one line down; this is its twin.
             named_failed = f"test {test} ... FAILED" in (out.stdout or "")
+            # **A run that selected NO TEST is not a verdict.** `--exact` with a
+            # bare name matches nothing under `--lib`, where the printed name is
+            # `actor::tests::<name>` -- so five rows added to close four empty
+            # files ran `0 passed; 0 failed; 27 filtered out`, and every one read
+            # as the mutation SURVIVING. It survived nothing: its witness never
+            # executed. This is `D-478` on the Rust side -- a bite is a FAILING
+            # CASE, and no case at all is neither red nor green.
+            if "0 passed; 0 failed" in (out.stdout or ""):
+                print(f"  NOTEST {label:52} -> `{test}` selected nothing")
+                green += 1
+                continue
             red = out.returncode != 0
             # REMOVED: a `BROKE` guard reading `error[E` / `could not compile`
             # from stderr. **`named_failed` is strictly stronger** -- a mutant

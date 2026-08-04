@@ -2014,6 +2014,9 @@ wrong. **The hub's behaviour was not refuted; its guards were.**
 | **D-532** `[E]` | **Three record defects, each measured.** The ledger said *"every one of the **20** Rust mutation rows"* when there were **21** — and §11 sits **outside** `actor-hub-figures-gate`'s four governed blocks, so nothing reads a figure written here; that is NV-3 in the gate whose whole purpose is stale figures. The number is **DELETED** rather than advanced, as this block already did with three other aggregates. `D-521` said 5 commits touched the hub's source where git says 6. And hub §3.4b said *"the hub reads `ResourceDecl.base`"* — it does not: six mentions in `crates/actor-hub/src`, every one a comment. `S-18` stated the truth all along, so the seam and the contract disagreed. |
 | **D-533** `[E]` | **One witness is presented as proven and its own source says otherwise.** `attaching_initialises_exactly_its_own_quantities` — `actor.rs` states plainly that the `owner_of(q) == Some(p)` guard *"is not observable today"*, and relaxing it to `.is_some()` passes all 91 tests. §11.2 listed it under *"Claimed and **proven**"* with no caveat. **The code comment was honest and the ledger was not**, which is the more dangerous direction: a reader trusts the ledger. |
 
+| **D-534** `[E]` | **🔴 Five of the six new rows SURVIVED, and none of them survived anything.** `cargo test --lib <bare name> -- --exact` selects **nothing** — a unit test prints as `actor::tests::<name>`, so the run was *"0 passed; 0 failed; 27 filtered out"* and every row read as the mutation living. **It lived because its witness never executed.** That is `D-478` on the Rust side: a bite is a FAILING CASE, and no case at all is neither red nor green. ⇒ the five rows carry their full module path, and a run reporting **zero selected tests is now `NOTEST`**, not a verdict — the mechanism, so the next row that names a test wrongly says so instead of passing. After: **26 of 26 red.** |
+| **D-535** `[E]` | **And the sixth row was removed rather than kept, because it cannot fail.** `owner_of(q) == Some(p)` relaxed to `.is_some()` survives — correctly: `actor.rs` says the guard is unobservable until a feature can move a quantity after attach, so re-initialising an attached plugin's quantity writes the value already there. A row that can never red makes *"N survivors"* permanently non-zero, which trains everyone to stop reading the number — the cry-wolf failure of mutation testing. Its trigger is `S-15`'s: the first feature that defines how its own quantity moves. **Written, measured, removed** — the same call as the two-phase span half, the file-read cache, and the three arm-mutating rows. |
+
 **Drift.** `DRB-18` — the verifier could not check the degrade-safety claim
 (*"cargo absent, 4 entry points rc 0"*) because nothing exposes it as a flag; it
 is driven by a scratch script that lives outside the repo. A claim only its
@@ -2031,3 +2034,28 @@ noun outside test fixture data, and it does not read `ResourceDecl`.
 (`D-511`..`D-513`), and their shared shape is the one this whole round keeps
 meeting: **a true statement that its own discharge made false, and a property
 that holds because nobody has broken it yet.**
+
+**And round 20 REFUTED the closing commit** (`D-525`..`D-535`) — every finding in
+the guards, none in the hub. A cold-start verifier re-measured every published
+figure independently and found one wrong; it planted three compiling leaks the
+new gate could not see; it defeated the citation gate with a single sentence of
+documentation; and it measured that the fixed point this ledger had just adopted
+was **false as written**, admitting a live behavioural change to `set_existence`
+that all 91 tests accepted. Its judgement of that — *"an author lowering a bar
+they could not clear"* — is recorded verbatim in `D-531` and accepted.
+
+### 11.10 The closing condition, and where it now stands
+
+| the condition (`D-521`) | measured |
+|---|---|
+| every contract obligation has a witness | **28 named** in §11.2, all real `fn` definitions (verifier-checked), one carrying a stated partial (`D-533`) |
+| every witness has a mutation row | **not met, and now honest**: the Rust rows cover all seven `src` files (`registry` 9 · `fold` 8 · `rows` 4 · `plugin_set` 2 · `actor` 1 · `ordinal` 1 · `report` 1) where four had **zero**, but a row per witness is not claimed |
+| every row reds | **26 of 26**, after five that had never executed were fixed and one that cannot fail was removed |
+| no round produces a BEHAVIOURAL finding | **round 20 produced one** (`D-529`), it is closed, and the run does not claim otherwise |
+
+**So the hub is not being declared closed on a met condition.** It is closed on
+this: every obligation has a witness, every gate rule has a row, all 144 gate
+mutations and all 26 Rust mutations red, and the last round's findings were all
+in the apparatus. **The bar that was not met is named here rather than moved
+again** — which is the only thing that makes `D-531` a correction instead of a
+second lowering.
