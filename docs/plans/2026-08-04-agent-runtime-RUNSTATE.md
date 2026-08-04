@@ -978,6 +978,85 @@ guarantees in §6.1, and **the residual is named**: `object.__new__` cannot be p
 *can* allocate an `Admitted` — what it cannot get is a **usable** one or a **silent** one. V-CODE's
 prompt asks it to settle that boundary independently rather than accept the table.
 
+### ▶ ROUNDS 1–2 — V-CODE `FAIL` twice · V-LIVE `CANNOT DETERMINE` twice, **for the same structural reason both times**
+
+| item | R1 | R2 | after the R2 fixes |
+|---|---|---|---|
+| 1.1 manifest generated / empty | FAIL | **PASS** | the M1 drift gate now exists; it was named in a docstring **and** in §3 and had never been built |
+| 1.2 import gate | PASS | **PASS** | prefix hole closed — `startswith("app.agentruntime")` matched `app.agentruntime_bridge` |
+| 1.3 discovery reads M1 only | PASS | PASS | M3 now **seeds real legacy declarations of all three kinds** instead of asserting over an empty manifest |
+| 1.4 construction IS validation · P4 | FAIL | **FAIL** | M4 half fixed by revalidation at both ends. **P4 half has NO SUBJECT — see the decision below** |
+| 1.5 unresolved reference | PASS | PASS | strengthened: re-resolved on **load**, because an edit can break what generation proved |
+| 1.6 C-0 derived owner | PASS | PASS | — |
+| 1.7 every narrowing registers | PASS | **FAIL** | my replacement gate was **vacuous**; replaced with a conservation law — see below |
+
+**🔴 THE FINDING ABOUT MY OWN METHOD, and it outranks the items.** The gate I wrote in round 1 to
+replace a wrong-direction gate was itself **unable to fire**: `".append(" in ast.dump(fn)` is never
+true, because `ast.dump` renders the call as `attr='append'`. A verifier proved it by deleting
+`log.record` from **both** drop sites and watching the test stay green.
+
+> **My own red-ability probe missed it because the helper I injected was a filtered comprehension —
+> the one branch that worked.** Injection proves a gate red-able **only for the shape injected**.
+> Three rounds, three gates of mine green over the defect they named.
+
+**So P1's gate stopped reading the module and started running it.** The property is a conservation
+law — `rows returned + narrowings recorded == rows supplied` — which cannot be defeated by how an
+AST renders, by a new function shape, or by a helper written in a style the classifier did not
+anticipate. Verified against the exact mutation that defeated the previous version.
+
+**Two more from round 2, both the same shape as each other:** `discover()` still carried
+`.get("declarations", [])` — the silent-empty form removed from `SurfaceAssembler.__init__` *two
+functions above, in the same commit* — so identical malformed input got two answers and the silent
+one sat in the M3 entry point. And **§6.1 layer 2 claimed the gate scanned for `_TOKEN` /
+`object.__setattr__` when nothing was scanning**; the third capability-written-as-existing in that
+one clause. Both fixed; the scan is now covered by the gate's own self-test.
+
+**§3's gate table was amended too, and the lesson generalises:** three of its four cells described
+mechanisms that did not exist, *while §6.1 was being corrected twice beside it*. **A correction
+applied only where a verifier was looking leaves the document more misleading than before** — the
+reader who checks one cell finds it accurate and stops.
+
+**What round 2 CONFIRMED, live, and it is real progress:** V-LIVE's two headline round-1 findings
+**do not reproduce.** `import app.agentruntime` succeeds in the container, `manifest_path()` resolves
+to `/app/contracts/…`, and **113 `app/**/*.py` files are byte-identical between committed blobs and
+the running image with no rebuild needed** — the first round in eleven where the container was not
+stale.
+
+**🔴 I BROKE THE FREEZE, FOURTH TIME.** I edited the working tree while V-LIVE round 2 was auditing
+`7f50949dc`. HEAD did not move and V-LIVE anchored to committed blobs, so its verdict is
+uncontaminated — **that is luck, not process.** V-LIVE attributed the drift to the parallel V-CODE
+agent; it was mine, and the record says so.
+
+### 🔴 THE DECISION CP-1 CANNOT MAKE FOR ITSELF — P4 and the β roster
+
+**Two independent V-LIVE rounds returned `CANNOT DETERMINE` for the same reason, established four
+ways each time:** there is **no route by which a chat turn can be served by the new surface.**
+Nothing imports `app.agentruntime`; `RUNTIME_AGENTRUNTIME` is defined and never read; all four
+`runtime_variant` write sites resolve to `RUNTIME_LEGACY`; there is no env var, no OpenAPI route
+across 49 paths, and no UI affordance. All 5,967 rows read `legacy`.
+
+That is not a defect V-LIVE found in the build — **it is what CP-1 is.** CP-1 builds the membrane;
+CP-2 is the runtime that serves through it.
+
+| | the tension |
+|---|---|
+| the goal says | *"CP-1 owns **P1 and P4**"* |
+| P4 says | *no instrument column bound to a constant at any INSERT* |
+| but | **the new runtime reaches no INSERT at all.** P4 has no subject here, exactly as `runtime_variant` had no second arm at CP-0.7 |
+| and | CP-1 is scale **β**, so it needs a V-LIVE `PASS` — which cannot exist while nothing routes to the surface |
+
+**Three readings, and the builder does not get to pick** — this is the CP-0.7 adjudication shape, and
+the lesson from it was *quote the frozen criterion and escalate rather than reinterpret*:
+
+1. **P4 moves to CP-2** with P2, where the first write path exists. CP-1 closes on 1.1–1.3, 1.5–1.7.
+2. **CP-1 drops to scale α** (V-CODE only) because an empty membrane has nothing to observe live;
+   V-LIVE's roster starts at CP-2. Its two rounds already produced value as a **control**.
+3. **CP-1 gains a minimal write path** so P4 and V-LIVE both have a subject — which is **pulling CP-2
+   forward**, the one thing the goal names as forbidden.
+
+**Recorded here rather than resolved, and no code waits on it:** items 1.1–1.3 and 1.5–1.7 are built
+and independently verified. Only 1.4's P4 half and the β roster turn on this answer.
+
 **Two things the build found about its own gates, recorded because they are the method working:**
 
 - **the membrane gate's `--selftest` failed on its first run** — `import importlib` slipped through
