@@ -369,6 +369,35 @@ def discovery_seed_for_surface(
                     "catalog — it seeds nothing", _cat,
                 )
         hot_domains = set(hot_domains) | set(binding_categories)
+    # ── P1 · THE NARROWING NOBODY INSTRUMENTED ────────────────────────────────────────────────
+    # Live measurement: 237 of the frozen 315 catalogue tools were in NEITHER the advertised nor
+    # the withheld set. Every stage I had instrumented — hot_seed, rail gate, oneshot, failure
+    # breaker, permission mode — sits BELOW this line. The selection that decides which DOMAINS
+    # are candidates at all sits above it, and registered nothing.
+    #
+    # It is query-dependent, which is what made it visible: 87 candidate tools for one message and
+    # 101 for another, differing by 17 names — `jobs_*` and `translation_*` appear only when the
+    # message text mentions them. So ~100 of 315 are chosen by relevance and the other ~215 are
+    # dropped before any budget runs. The decisive case is `world_map_create`: absent from both
+    # records at passes 1-2, then carrying a `token_budget` withheld record at pass 3 — the
+    # runtime's own record proving it had been a candidate all along.
+    #
+    # Registered here as `domain_not_selected`. This is the LARGEST narrowing in the system and it
+    # was the last one found, because it does not look like a filter — it looks like a set being
+    # built. A narrowing that never says no is the hardest kind to see.
+    _selected = hot_tool_names(catalog, hot_domains)
+    _unselected = sorted({tool_name(td) for td in catalog} - set(_selected))
+    if _unselected:
+        _reason = f"domain not in this turn's hot set ({', '.join(sorted(hot_domains)) or 'none'})"
+        if withheld_sink is not None:
+            withheld_sink.extend(
+                {"tool": n, "stage": "domain_not_selected", "reason": _reason}
+                for n in _unselected
+            )
+        else:
+            from app.services.instrument import record_surface_withheld
+            for n in _unselected:
+                record_surface_withheld(n, stage="domain_not_selected", reason=_reason)
     # FIX (context-explosion): token-budget the hot-seed instead of seeding the
     # WHOLE domain(s). Cuts the always-advertised base ~24K → ~4K (scaled up for a
     # session model with a larger real context_length via scale_by_window).

@@ -680,3 +680,52 @@ class TestP3EveryTerminalPathRecordsAnOutcome:
         assert "_orphan_outcome = outcome or" in window, (
             "an explicitly-passed outcome must win over the derived fallback"
         )
+
+
+class TestP1TheCandidateSelectionRegisters:
+    """P1 — falsified live at 237 of 315 tools in neither bucket, and this is why.
+
+    Every narrowing previously instrumented sits BELOW domain selection. The stage that decides
+    which domains are candidates at all sat above them and registered nothing — and it is
+    query-dependent, so the surface silently differs between two messages by 17 tool names.
+
+    The decisive live case: `world_map_create` absent from both records at passes 1-2, then
+    carrying a `token_budget` withheld record at pass 3 — the runtime's own record proving it had
+    been a candidate all along.
+    """
+
+    def test_tools_outside_the_hot_domains_register_as_withheld(self):
+        from app.services import instrument as _inst
+        from app.services.tool_surface import SessionToolPins, discovery_seed_for_surface
+
+        catalog = [
+            {"type": "function", "function": {"name": n, "description": "d",
+                                              "parameters": {"type": "object", "properties": {}}}}
+            for n in ("book_read", "book_list", "world_map_create", "translation_job_status")
+        ]
+        sink: list[dict] = []
+        discovery_seed_for_surface(
+            catalog,
+            pins=SessionToolPins(effective_enabled=[], effective_skills=[],
+                                 curated_mode=False,
+                                 activation_state={"activated_tools": [], "dirty": False}),
+            editor=False, book_scoped=True, withheld_sink=sink,
+        )
+        stages = {e["stage"] for e in sink}
+        assert "domain_not_selected" in stages, (
+            "the largest narrowing in the system still registers nothing — it does not look like "
+            "a filter, it looks like a set being built, which is why it was the last one found"
+        )
+        for e in sink:
+            if e["stage"] == "domain_not_selected":
+                assert e["tool"] and e["reason"], "a withholding needs its tool and its reason"
+
+    def test_it_names_the_hot_set_that_excluded_them(self):
+        """The reason must say WHICH hot set excluded the tool. 'not selected' alone cannot be
+        acted on; the domain list is what makes the narrowing reviewable."""
+        src = _surface_src()
+        assert "domain not in this turn's hot set" in src
+        assert "', '.join(sorted(hot_domains))" in src, (
+            "the reason must carry the domains, or the record cannot be reconciled against a "
+            "query-dependent surface"
+        )
