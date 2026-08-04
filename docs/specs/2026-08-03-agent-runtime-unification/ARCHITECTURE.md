@@ -981,7 +981,32 @@ failing C-0…C-17 does not start the service.
 **Prerequisite, verified missing:** M4 is Python-only today. `NewToolMeta`
 (`sdks/go/loreweave_mcp/meta.go:184`) builds a map and validates nothing, and `MustValidateToolMeta`
 has **14 call sites** against **58** `NewToolMeta` uses in glossary alone. **Construction must *be*
-validation** — an `Admitted[D]` type with a private field, so a bypass is a compile error.
+validation** — an `Admitted[D]` type whose only producer is the contract check.
+
+> **🔴 AMENDED 2026-08-04, before CP-1's first line of code.** This clause read *"…with a private
+> field, **so a bypass is a compile error**"*. **That guarantee does not exist in this repository and
+> could not have been delivered.** Python has no compile-time access control, and — checked rather
+> than assumed — **no type checker runs on chat-service at all**: there is no `mypy`/`pyright` config,
+> no `pyproject.toml` or `setup.cfg` in the service, and no type-check job in any workflow that covers
+> it. The only occurrence of the word `mypy` in `scripts/` is a cache directory in an ignore list. A
+> criterion no mechanism can report is not a strict criterion; it is an **unfalsifiable** one, and
+> CP-0 spent eleven rounds on the cost of those.
+>
+> **What replaces it, stated as what is actually enforceable:**
+>
+> | | guarantee | how it is enforced |
+> |---|---|---|
+> | 1 | `admit()` is the **only** producer of an `Admitted` | a module-private token that `__init__` requires and only `admit()` holds |
+> | 2 | an admitted object **cannot be mutated** into a different one | frozen + `__slots__`: no attribute assignment, no `__dict__` |
+> | 3 | it **cannot be round-tripped** into existence | `__reduce__` / `__copy__` / `__deepcopy__` refuse |
+> | 4 | a **forged** instance is unusable | `object.__new__` cannot be prevented, but it leaves every slot unset, so any read raises rather than returning a plausible value |
+> | 5 | the single construction site **stays** single | a gate counts construction sites; more than one reds CI |
+>
+> **The residual, named rather than hidden:** row 4 is the honest boundary. A determined caller *can*
+> allocate an `Admitted` without passing the check — what it cannot do is get a **usable** one, and
+> what it cannot do **silently** is get one past the gate in row 5. That is weaker than "impossible"
+> and stronger than a validator with 14 call sites against 58 constructions, which is the thing being
+> replaced. **V-CODE is asked to settle this boundary independently rather than accept this table.**
 
 ### 6.2 Not a gate — the behavioural bound, which tightens
 
