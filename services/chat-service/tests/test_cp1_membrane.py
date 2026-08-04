@@ -254,10 +254,27 @@ class TestDiscoveryReturnsNothingForLegacyDeclarations:
 
         doc = json.loads((_REPO / "contracts" / "agent-runtime-manifest.json").read_text("utf-8"))
         surfaced = {r["id"] for r in discover(doc)}
+
+        def leaks(names: list[str]) -> list[str]:
+            return sorted(surfaced & set(names))
+
         for kind, names in (("tool", legacy_tools), ("skill", legacy_skills),
                             ("workflow", legacy_workflows)):
-            leaked = sorted(surfaced & set(names))
-            assert not leaked, f"legacy {kind}(s) reachable through the new discovery: {leaked}"
+            assert not leaks(names), (
+                f"legacy {kind}(s) reachable through the new discovery: {leaks(names)}"
+            )
+
+        # 🔴 POSITIVE CONTROL, and round 3's finding is why it is here. With an empty manifest
+        # `surfaced` is empty, so `∅ ∩ X = ∅` for ANY X — a verifier substituted 315 fictional
+        # names and got an identical pass. The assertion above therefore measures nothing TODAY;
+        # it is armed for CP-4. Without this control the row would read as a live check.
+        planted = {"id": legacy_tools[0], "kind": "tool", "owning_service": "book-service",
+                   "lifecycle": "admitted", "contract_version": "1.0.0", "members": []}
+        planted_surfaced = {r["id"] for r in discover({"declarations": [planted]})}
+        assert planted_surfaced & set(legacy_tools), (
+            "the leak detector cannot detect a leak: a legacy tool placed directly in the manifest "
+            "was not flagged, so the assertions above would pass through a real breach"
+        )
 
 
 # ── 1.4 · M4 — construction IS validation ───────────────────────────────────────────────────────
@@ -428,6 +445,20 @@ class TestANarrowingCannotHappenSilently:
     def test_a_pass_number_below_one_is_refused(self):
         with pytest.raises(ValueError, match="1-based"):
             self._assembler().assemble(pass_number=0)
+
+    def test_assembling_with_NO_RULES_offers_everything_admitted(self):
+        """🔴 THE COVERAGE GAP THAT MADE A CORRECT POST-CONDITION SILENT.
+
+        `assemble()` now enforces `offered + registered == admitted` on every real assembly — but
+        an injected silent drop on the `rules == ()` branch still left the suite green, because
+        every no-rules test here ran against a manifest of **0 or 1** declarations, where
+        `kept[:1]` is indistinguishable from `kept`. The law was right and nothing drove it.
+
+        A post-condition is only as reachable as the fixtures that reach it. This is the no-rules
+        path at n=3, which is the smallest fixture that can tell a drop from a no-op.
+        """
+        s = self._assembler(3).assemble(pass_number=1)
+        assert s.count == 3 and s.withheld == ()
 
     def test_CONSERVATION_nothing_leaves_the_manifest_without_a_record(self):
         """🔴 REWRITTEN TWICE, and the second rewrite is the lesson.

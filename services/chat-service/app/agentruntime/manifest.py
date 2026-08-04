@@ -219,4 +219,16 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
 
 
 def declarations(doc: dict | None = None, *, path: Path | None = None) -> list[dict]:
-    return list((doc if doc is not None else load(path=path)).get("declarations", []))
+    """The rows, through the one reader.
+
+    🔴 THIS WAS THE THIRD COPY of `.get("declarations", [])`, and the worst-placed one: `rows_of`
+    was written to be "ONE PLACE" while this function — **the only row-reader in `__all__`** — kept
+    the silent form. So the package's public API returned `[]` for a malformed document while its
+    internal one raised. The docstring claiming one place was written over a count of two, and a
+    verifier found the third by executing `declarations({})`.
+
+    The rule that keeps failing here is not about `.get`. It is that **a consolidation is a count,
+    not a sentence** — the claim "one place" is checkable in seconds and was not checked.
+    """
+    from .surface import rows_of
+    return rows_of(doc if doc is not None else load(path=path))

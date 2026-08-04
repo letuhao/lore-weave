@@ -837,9 +837,9 @@ Four mechanical properties, each with its own gate:
 
 | # | property | mechanism | gate (red-able) |
 |---|---|---|---|
-| **M1** | a separate registry that starts empty | `contracts/agent-runtime-manifest.json`, generated **only** from new-style declarations — tools, skills and workflows in one manifest | manifest row count == admitted count; drift reds CI |
+| **M1** | a separate registry that starts empty | `contracts/agent-runtime-manifest.json`, generated **only** from new-style declarations — tools, skills and workflows in one manifest | ✅ **built:** `agentruntime-membrane-gate.py` compares the committed file to what the generator produces (at CP-1: `build([])`), re-runs the contract over every row, and reds CI on drift. *Was "row count == admitted count", describing nothing that existed* |
 | **M2** | the new surface reads M1 and nothing else | the assembler (P4) takes the manifest as its **only** catalog argument; no import of the legacy catalog, skill-registry or workflow-seed modules | an import-graph gate: the new assembler's transitive imports must not include any legacy source. Break it, watch CI red |
-| **M3** | discovery reads M1 only | same input, same argument | a test that seeds a legacy-only declaration of **each of the three kinds** and asserts discovery returns zero rows for all three |
+| **M3** | discovery reads M1 only | same input, same argument | 🟡 **built, and armed for a subject it does not yet have:** the test reads all three real legacy registries and asserts every name is absent from discovery. With an empty manifest the intersection is empty *whatever* the left side holds, so it is a **positive control** (a planted leak is caught) rather than a live measurement until CP-4 admits a row |
 | **M4** | a non-compliant declaration cannot register | the registration entry point **refuses to boot** on an incomplete contract — the existing `require_meta` chokepoint already panics on a missing tier; this extends it to all of P2 | remove one required clause, watch the service fail to start |
 | **M5** | **a reference to a non-admitted declaration is unresolvable** | skill members and workflow steps are foreign keys into M1, resolved at generation | point a workflow step at an unadmitted name; generation fails. *(Today: 12 rails → 30 dead tools, gate fails open)* |
 
@@ -854,14 +854,21 @@ Four mechanical properties, each with its own gate:
 >
 > | # | the cell said | what exists |
 > |---|---|---|
-> | **M1** | *"manifest row count == admitted count; drift reds CI"* | ✅ **now true, and it was not.** `agentruntime-membrane-gate.py` compares the committed manifest to what the generator produces. At CP-1 that is `build([])`; CP-4 gives the comparison a real right-hand side. Proven red-able by typing a well-formed row into the JSON |
-> | **M3** | *"a test that seeds a legacy-only declaration of **each of the three kinds**"* | ✅ **now true, and it was not.** The first version asserted over an *empty* manifest — proving an empty catalog is empty. It now reads all three legacy registries (315 tools, the loadable skill codes, the compiled workflow ids) and asserts every name is absent, with a non-vacuity floor so an empty registry cannot pass it silently |
+> | **M1** | *"manifest row count == admitted count; drift reds CI"* | ✅ **now true, and it was not.** Proven red-able by typing a well-formed row into the JSON |
+> | **M3** | *"a test that seeds a legacy-only declaration of **each of the three kinds**"* | 🟡 **built, and honestly a POSITIVE CONTROL rather than a measurement.** Round 3: with an empty manifest the intersection is empty *whatever* the legacy list holds — substituting 315 fictional names gives the identical result. It **would** fire on a real leak, so it is armed for CP-4; today it has no subject, and the earlier ✅ overstated that. The "non-vacuity floor" guarded the wrong side |
 > | **M4** | *"the registration entry point **refuses to boot** on an incomplete contract"* | 🔴 **STILL FALSE, and it is not CP-1's to make true.** Nothing imports `app.agentruntime`, so there is no boot to refuse — the check runs where a declaration is *admitted*, not at service start. Wiring an import so the phrase becomes true would be pulling CP-2 forward. **Recorded as unmet rather than reworded** |
 > | **M5** | *"point a workflow step at an unadmitted name; generation fails"* | ✅ true, and strengthened: the reference is re-resolved on **load** as well, because an edit can break what generation proved |
 >
 > **The pattern worth carrying, since it has now cost three rounds:** a correction applied to the
 > clause a verifier quoted, and not to the other places making the same claim, leaves the document
 > *more* misleading than before — the reader who checks one cell finds it accurate and stops.
+>
+> **🔴 AND THEN I DID IT AGAIN, IN THIS BLOCK.** Round 3 found that the table cells above were
+> **never edited** — this amendment was *appended beneath them*, so `"seeds"` and
+> `"row count == admitted count"` still read verbatim as criteria. **An erratum below a wrong line
+> does not correct the wrong line**; it adds a second claim and lets the reader pick. The cells are
+> now edited in place, and this block is kept only as the history of what they said. Writing the
+> lesson down was not the same as applying it, which is the whole finding.
 
 ---
 

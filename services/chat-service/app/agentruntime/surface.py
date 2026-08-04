@@ -124,10 +124,33 @@ class SurfaceAssembler:
         kept = self._rows
         for rule in rules:
             kept = self._narrow(kept, rule, pass_number=pass_number)
+        withheld = tuple(e.as_record() for e in self._log.for_pass(pass_number))
+
+        # 🔴 THE CONSERVATION LAW, ENFORCED HERE RATHER THAN ONLY IN A TEST.
+        #
+        #     offered + registered == admitted
+        #
+        # Three rounds of verification each killed a *test* that was supposed to hold this
+        # property: one checked the wrong direction, one could not fire at all, and the third was
+        # a law sampled at five points against one fixture — a verifier defeated it with a silent
+        # drop on the `rules == ()` branch of THIS method, the very place the docstring calls "the
+        # only place a declaration can be removed".
+        #
+        # The lesson is not "write a better test". A test enumerates the shapes its author thought
+        # of, and the author is the person who just wrote the defect. A post-condition evaluated on
+        # every real assembly has no enumeration to be incomplete: whatever future code removes a
+        # row, by whatever shape, arrives here with the arithmetic broken.
+        if len(kept) + len(withheld) != len(self._rows):
+            raise AssertionError(
+                f"narrowing lost {len(self._rows) - len(kept) - len(withheld)} declaration(s) "
+                f"with no {{tool, stage, reason, pass}} record: {len(self._rows)} admitted, "
+                f"{len(kept)} offered, {len(withheld)} registered at pass {pass_number}. "
+                f"An exclusion with no record is a defect, not a policy (ARCHITECTURE §0.3)."
+            )
         return Surface(
             names=tuple(sorted(r["id"] for r in kept)),
             pass_number=pass_number,
-            withheld=tuple(e.as_record() for e in self._log.for_pass(pass_number)),
+            withheld=withheld,
         )
 
     def _narrow(
