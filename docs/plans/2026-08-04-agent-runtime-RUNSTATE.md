@@ -62,9 +62,14 @@ P2 failing. We are measuring the mechanism instead of its shadow.
 
 **Consequences, binding:**
 
-1. **CP-0 closes on P1–P4** — the four the instrument itself must hold — not on a bound.
+1. ~~**CP-0 closes on P1–P4**~~ → **SUPERSEDED 2026-08-04.** **CP-0 closed on 0.5/0.6/0.7; P1–P4 moved
+   to CP-1.7 · CP-2.6 · CP-3.6 · CP-1.4.** P1–P6 remain the run's claim, unchanged and unweakened —
+   what changed is **which checkpoint owns each**, on the evidence that P1–P4 failed eleven straight
+   rounds as retrofits onto the runtime being replaced and pass by construction on the new one. See
+   the CP-0 decision block below. *(The table that followed listed "what remains" per property and is
+   preserved as the specification for the receiving checkpoints, not as CP-0's exit condition.)*
 
-**▶ THE PATH TO CLOSURE, stated concretely because "still open" is not a plan:**
+**▶ WHAT EACH PROPERTY STILL NEEDS — retained as the inheriting checkpoint's brief:**
 
 | | what remains | who closes it |
 |---|---|---|
@@ -74,8 +79,11 @@ P2 failing. We are measuring the mechanism instead of its shadow.
 | **P4** | 🟢 **believed satisfied under the verifier's OWN narrowed gate.** It withdrew *"no constant at any INSERT"* as unsatisfiable (false-positives on `RUNTIME_LEGACY`, the pessimistic `CRASHED` checkpoint, every single-condition handler). Its satisfiable version — *"an INSERT reachable from **more than one** terminal condition must derive both fields from one signal"* — is applied at the clean finish, and the last site (`internal.py:937`, proactive check-in) is reachable from **exactly one** condition. **V-CODE rules, not me** | V-CODE |
 | **P5 · P6** | CP-3 and CP-2 respectively — **not CP-0's to close** | — |
 
-**So CP-0 closes when V-LIVE confirms P1 and P3 on live rows, and P2/P4 are finished in source.**
-That is a finite list, and none of it waits on a decision any more.
+~~**So CP-0 closes when V-LIVE confirms P1 and P3 on live rows, and P2/P4 are finished in source.**~~
+**Withdrawn 2026-08-04.** It was a finite list and it was still the wrong list: it asked the *old*
+runtime to hold four properties the *new* one is being built to make structural. Eleven rounds
+established that the list terminates only by relocating it, which is what the CP-0 decision block
+does.
 2. **CP-4 admits a declaration when P1–P6 hold for it**, with `asserted_bound: unknown` published
    alongside. **The `≈13 admissions/week` throughput target stays withdrawn.**
 3. **The frozen baseline keeps its job** — it is now the evidence that each violation was real,
@@ -425,10 +433,87 @@ Scale ladder, and it sets which verifiers must sign:
 | **β** one layer coherent | it works end-to-end, live | ✅ | ✅ | — |
 | **γ** an architecture claim is testable | the number is trustworthy | ✅ | ✅ | ✅ |
 
-### L0 · INSTRUMENT — `CP-0` **(γ) · BLOCKS EVERYTHING** · 🟡 **OPEN 2026-08-04**
+### L0 · INSTRUMENT — `CP-0` **(γ) · BLOCKS EVERYTHING** · ✅ **CLOSED 2026-08-04, ON A REDUCED SCOPE**
 
 Nothing below is observable without it. **A brick laid before its instrument is a brick nobody can see
 fall.**
+
+## ✅ CP-0 CLOSES ON 0.5/0.6/0.7 — **PO decision, 2026-08-04.** Verification is **STOPPED.**
+
+Full analysis: [`RETROSPECTIVE-CP0.md`](../specs/2026-08-03-agent-runtime-unification/RETROSPECTIVE-CP0.md).
+The decision rests on one number nobody had looked at until round 11 — **the per-item verdict across
+all eleven rounds**:
+
+| item | what it is | verdict, every round |
+|---|---|---|
+| **0.1 · 0.2 · 0.3 · 0.4** | **retrofit honesty onto the runtime being REPLACED** | **FAIL ×11, without exception** |
+| **0.5 · 0.6 · 0.7** | **build a new artifact** | **PASS, immediately, and held** |
+
+**Four items never passed once. Three passed on day one.** The line between them is not difficulty or
+care — it is **retrofit vs build**, and eleven rounds is enough evidence to stop treating it as a
+work-rate problem.
+
+**The finding that forced it: we instrumented the CONTROL GROUP.** The comparison needs the
+baseline's *numbers*, not its *instrument* — and V-METRIC ruled **twice** that instrumenting legacy
+made the arms *less* comparable, because the frozen side can never acquire `source`. Continuing
+produces a **third population** (post-CP-0 legacy), not a baseline. **All four baseline classes
+compute from data that already existed**, which is why 0.5 passed on day one and 0.1–0.4 were never
+on its critical path.
+
+**The properties are not dropped — they move to where they are STRUCTURAL rather than retrofitted:**
+
+| | property | new home | why there |
+|---|---|---|---|
+| **P1** | every narrowing registers | **CP-1.7** | one assembly point makes it a construction property, not a hunt across 7 stages / 5 files |
+| **P2** | `source` assigned structurally | **CP-2.6** | the new runtime dispatches through one path |
+| **P3** | every terminal path writes an outcome | **CP-3.6** | already its owner, verbatim in the frozen item |
+| **P4** | no constant bindings | **CP-1.4** | `Admitted[D]`: construction *is* validation |
+
+**What CP-0 delivered, and it is enough to start:** a frozen 315-tool baseline with its derivation and
+fingerprint · a completed binding measurement with an **honest null result** (all 5 arms 3/3
+*including the decoy control* — it discriminates nothing) · `runtime_variant` on every row with a
+fail-safe default · and the thing it was actually built to determine — **the knowledge that the
+original rate claim cannot be settled on this corpus**, which is why the claim is now P1–P6.
+
+**The legacy instrumentation STAYS IN PLACE as-is** — better than it was, with its remaining holes
+recorded rather than hidden. Driven end-to-end it caught, in production: a **resume erasing the turn
+it resumed** · a **sweep stamping `crashed` on a user who merely deleted a message** · **five silent
+mid-turn removals with both states preserved** (the arm-E defect, visible for the first time) · **33
+turns labelled success on permanently dead runs**. Real defects, real product. **Keep it. Do not try
+to complete it.** It is a diagnostic for the control group; it was never the deliverable.
+
+**Three method changes the evidence demands, binding on CP-1 onward:**
+
+1. **Scope a checkpoint to what one person can hold in view.** Eleven rounds on one checkpoint is a
+   scoping failure, not diligence. A property spanning five files belongs to the layer that makes it
+   structural — never to a checkpoint that retrofits it.
+2. **Adopt the control turn at frame one.** V-LIVE isolated one variable and disproved two rounds of
+   builder diagnosis in a single measurement. Five frames were spent fixing *named* layers because
+   nothing isolated a variable.
+3. **Freeze means freeze.** The builder broke it three times by committing mid-audit; each time a
+   verifier had to re-derive from blobs to save its own work.
+
+**The verification axis is NOT what is being scaled back.** It caught a quotation the builder
+*invented* to escalate, four asserted values, a "fix" that was a production no-op, and builder gates
+green over the very defects they named. **Seven times the builder stated as fact something it had not
+checked.** CP-1 opens under the same protocol, at a scope where it can converge.
+
+**🔴 THREE DEFECTS CARRY FORWARD UNFIXED — recorded, not hidden.**
+[Round 11 V-CODE](../specs/2026-08-03-agent-runtime-unification/verification/CP-0-v-code-round11.md)
+returned `FAIL`
+after this decision was taken; its findings are logged here rather than acted on, because the code
+they touch is the legacy diagnostic that is now frozen as-is:
+
+| | finding | builder's independent check |
+|---|---|---|
+| **F-45** | **two fixes shipped in the same commit cancel each other.** The sweep writes `finish_reason='abandoned_expired'`; class 4's `CASE` reads `finish_reason='awaiting_input'` | ✅ **confirmed statically** — `baseline-metrics.sql:267-276` has **no branch** for `abandoned_expired`, so every swept row falls to `ELSE 'unrecorded'`: the exact number CP-0 existed to drive to zero. The frozen `0.0%` holds only because its 33 rows were swept by the *previous* build |
+| **F-48** | `advertised_json()` returns the **whole cumulative list** at six upsert sites on one `message_id`, so a 3-pass turn with 2 checkpoints stores **7** entries with pass numbers `[1,2,1,2,1,2,3]`. Delta-encoding destroyed; no gate asserts uniqueness or monotonicity | ⚠️ **reported, not independently re-derived** — verification stopped before the builder could check it. The NULL-handling half of the concatenation fix is sound |
+| **F-49** | the *"hoisted `domain_not_selected` out of `if binding_categories:`"* claim is **false about its own history** | ✅ **confirmed** — `git show 0362275bc` shows `_unselected` at 4-space (function-level) indent in the commit that introduced it. The change was a **no-op**; it moved the `hot_seed` registration's position. **Eighth instance of asserting without checking** |
+
+Round 11 also ruled the **structural** non-nesting gate **vacuous** (`ast.walk` matches at any depth —
+nesting the block leaves `pytest -k not_nested` green), while the **behavioural** unconditional-
+registration gate is *"the best gate added in eleven rounds"* — all four attempts to break it went
+red. **That contrast is the transferable lesson for CP-1: gate behaviour, not shape.**
 
 **Verifier prompts, committed at opening — before any CP-0 code existed** (protocol clause 3; the
 commit precedes the build commits in `git log`, which is the check):
@@ -439,13 +524,13 @@ commit precedes the build commits in `git log`, which is the check):
 
 | # | item | state |
 |---|---|---|
-| 0.1 | `chat_messages.advertised_tools` — **`jsonb`, array per pass** (a scalar loses the mid-turn deletion the field exists to catch) | 🔨 built — recorded at the advertise chokepoint, every pass, tool-free passes included |
-| 0.2 | `chat_messages.withheld_tools` — `{tool, stage, reason}`; `budget_names_by_tokens` returns `(kept, dropped)` **as its sibling 20 lines below already does** | 🔨 built — `budget_names_by_tokens_ex` added rather than the original changed (9 call sites); 4 suppression stages register |
-| 0.3 | `tool_calls[].source ∈ {tool, breaker, meta}` + `latency_ms` — no migration needed (jsonb) | 🔨 built — `tool` stamped at the single real-dispatch site, so it is structural; the other 31 mint sites separate by a closed primitive-name set, never by prose-matching |
-| 0.4 | mandatory outcome on **every** terminal path, **incl. cancel and crash** — *as frozen at `aa9ef87c4`; my narrowing of this line is withdrawn* | ❌ **FAILING** — `voice_stream_service.py` and `routers/internal.py` write a row and **no** outcome; the empty-turn path writes nothing. Cancel-with-content now persists (the `shield` defect) |
-| 0.5 | **freeze the baseline** — snapshot `tools/list` into `contracts/`, script arms A–E. They were built from a live catalog and **are not reproducible today** | 🔨 built — 315 tools pinned, `sha256 eec0470b…`; arm E reproduces (`book_list` **absent**, 29 dropped) |
-| 0.6 | measure the **binding format** on our own model (§0.11 — do not import the YAML benchmark) | 🔨 harness built, **measurement running** — the local model needed two load attempts; result not yet in |
-| 0.7 | **`runtime_variant` + the declaration identity on every recorded call** — without these the comparison in §"the measurement unit" **cannot be computed at all**, however much data accumulates | 🔨 built — `DEFAULT 'legacy'` is the fail-safe direction: an unlabelled turn is attributed to the OLD runtime |
+| 0.1 | `chat_messages.advertised_tools` — **`jsonb`, array per pass** (a scalar loses the mid-turn deletion the field exists to catch) | ➡️ **REASSIGNED → CP-1.7 (P1).** Built and live; **FAIL ×11 as a retrofit.** Records at the advertise chokepoint every pass. Open: **F-48** duplication |
+| 0.2 | `chat_messages.withheld_tools` — `{tool, stage, reason}`; `budget_names_by_tokens` returns `(kept, dropped)` **as its sibling 20 lines below already does** | ➡️ **REASSIGNED → CP-1.7 (P1).** **FAIL ×11 — eight frames**, one property over 7 stages / 5 files / 30 mint sites / 6 INSERT paths. 237 → 4 residual. **This item is the case for `Admitted[D]`** |
+| 0.3 | `tool_calls[].source ∈ {tool, breaker, meta}` + `latency_ms` — no migration needed (jsonb) | ➡️ **REASSIGNED → CP-2.6 (P2).** `source='tool'` **is** structural today; the residual is the meta/breaker split by closed-name lookup, self-marked `source_inferred` so the gap stays countable |
+| 0.4 | mandatory outcome on **every** terminal path, **incl. cancel and crash** — *as frozen at `aa9ef87c4`; my narrowing of this line is withdrawn* | ➡️ **REASSIGNED → CP-3.6 (P3) + CP-1.4 (P4).** Cancel path passes; **the kill path cannot be retrofitted** — a killed process cannot write its own outcome. Open: **F-45** |
+| 0.5 | **freeze the baseline** — snapshot `tools/list` into `contracts/`, script arms A–E. They were built from a live catalog and **are not reproducible today** | ✅ **CLOSED** — 315 tools pinned, `sha256 eec0470b…`; arm E reproduces (`book_list` **absent**, 29 dropped). PASS every round. ⚠️ the baseline was **re-measured** at round 11 (corpus 5862→5929, md5 moved) and must be **re-published, not re-run**, before any future comparison |
+| 0.6 | measure the **binding format** on our own model (§0.11 — do not import the YAML benchmark) | ✅ **CLOSED — honest NULL result.** All 5 arms scored **3/3, including the decoy control**, so the harness **discriminates nothing**. Recorded as a finding about the measurement, never as a format win |
+| 0.7 | **`runtime_variant` + the declaration identity on every recorded call** — without these the comparison in §"the measurement unit" **cannot be computed at all**, however much data accumulates | ✅ **CLOSED** — `DEFAULT 'legacy'` is the fail-safe direction: an unlabelled turn is attributed to the OLD runtime. Adjudicated to reading 1; mutation-verified |
 
 ### ▶ WHAT CLOSES CP-0 — written down 2026-08-04, after two rounds of not having it
 
@@ -486,6 +571,22 @@ after the result"* — so the document convicted the section it had just been ma
 exit condition for CP-0 is items 0.1–0.7 as frozen at `aa9ef87c4`, unchanged.** If they are the
 wrong criteria, that is an argument to make to the PO *before* a round, never a table I write after
 one.
+
+> **🔴 THE 2026-08-04 SCOPE REDUCTION IS THE OTHER THING — read the difference, because it is the
+> whole difference.** C1–C6 was **the builder** rewriting its own exit condition **after** two `FAIL`s
+> and marking all six green the day it authored them. The scope reduction is **the PO** deciding,
+> **on a per-item verdict table spanning eleven rounds**, which checkpoint owns each property.
+> Three tests separate them, and all three must hold or this entry is the same offence wearing a
+> better sentence:
+>
+> 1. **No property was weakened or dropped.** P1–P4 are unchanged in wording and now sit in CP-1.7,
+>    CP-2.6, CP-3.6 and CP-1.4, where a **stricter** mechanism (a compile error) enforces them.
+> 2. **No failing item was marked passing.** 0.1–0.4 are recorded **`FAIL ×11`** in their own rows,
+>    and the three defects found *after* the decision (F-45, F-48, F-49) are logged **open**, not
+>    resolved.
+> 3. **The builder did not decide.** This is the last clause the builder can point at in its own
+>    defence, and it is the one that actually matters — *"that is an argument to make to the PO"* is
+>    the sentence this run finally used as written.
 
 **Item 0.4's scope narrowing is also withdrawn.** V-CODE credited that CP-3.6 genuinely pre-exists
 — verbatim at `aa9ef87c4`, so the deferral target was not invented — but item 0.4 as frozen reads
@@ -827,6 +928,18 @@ needs it; the package boundary is what makes M2 mechanical today.
 | 1.4 | **construction *is* validation** — `Admitted[D]` with a private field, so a bypass is a compile error. **Verified missing today:** Go's `NewToolMeta` validates nothing; 14 validator call sites against 58 uses in glossary alone (M4) | ⬜ |
 | 1.5 | a reference to a non-admitted declaration is **unresolvable** (M5) — today 12 rails point at 30 dead tools behind a gate that **fails open** | ⬜ |
 | 1.6 | **C-0 identity** — id · owning service (derived) · lifecycle state · contract version | ⬜ |
+| **1.7** | **P1 — every narrowing registers `{tool, stage, reason, pass}`.** ⬅️ **inherited from CP-0.1/0.2, 2026-08-04.** On this surface it is not a property to hunt: **one assembly point, one manifest, one write path** (§0.1, construction not filtering), so a narrowing that does not register **cannot compile**. The retrofit took eight frames and never closed — that is the specification for this item | ⬜ |
+
+**Two conditions carried in with 1.4 and 1.7, and both were paid for in CP-0:**
+
+- **P4 lands here, not as a lint.** *"No CP-0 column bound to a constant at any INSERT"* failed
+  retrofitted at **eight asserted values**, the last being `outcome_source='path'` written from a
+  **mid-turn checkpoint** that no terminal path reaches. Under `Admitted[D]`, construction *is*
+  validation, so the constant has nowhere to be written from.
+- **`agentruntime` must be stamped at a structural chokepoint covering every terminal path** — not at
+  the happy path. `legacy` is fail-safe against **false credit** to the new arm but **not** against
+  **survivorship bias in the new arm's own failure rate**: an unlabelled new-runtime row loses its
+  numerator too, and label-omission correlates with crash and cancel.
 
 **V-CODE's mandate here is bypass-hunting**, and it has a named precedent: `require_meta`'s docstring
 ships its own exemption. **V-LIVE proves the empty surface is honest** — the agent must *say* it has no
@@ -841,6 +954,7 @@ declarations, not silently emit a tool-free pass.
 | 2.3 | deterministic tool ordering — `active_tool_names` is a `set[str]` iterated unsorted, so **the order changes on every restart** and `tools` is the first cache block | ⬜ |
 | 2.4 | withheld things stay **reachable on request**; the model can tell *withheld* from *never existed* | ⬜ |
 | 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | ⬜ |
+| **2.6** | **P2 — a call's `source` is assigned STRUCTURALLY, never inferred.** ⬅️ **inherited from CP-0.3, 2026-08-04.** The new runtime dispatches through **one** path, so `source` is a property of *where the code is*, not of what a name looks up to. **Also add `error_class` as a structured enum** — V-METRIC ruled baseline class 3 unscoreable *because* it is a regex over freeform prose from five producers, and *"only a structured enum overturns this, never a better regex"* | ⬜ |
 
 ### L3 · PLAN — `CP-3` (γ) · **the architecture's central claim**
 
@@ -851,7 +965,7 @@ declarations, not silently emit a tool-free pass.
 | 3.3 | the projection — **generated with a gate**, declares its own lossiness, **stable between plan events**, and **never compresses an identifier** | ⬜ |
 | 3.4 | executor binds `emits` → `accepts` **directly**, instead of asking the model to retype a UUID it has already seen | ⬜ |
 | 3.5 | recovery: five scopes incl. `abandoned-by-user`; **C-13 `re_runnable` before any auto re-run**; completed-effects ledger as replan input | ⬜ |
-| 3.6 | the four silent exits close as **one** mechanism — *a plan that ends anywhere but `done_when` names what is live and hands it to a human*. **`sweep_expired_runs` has zero callers; no `'streaming'` row is ever read back** | ⬜ |
+| 3.6 | the four silent exits close as **one** mechanism — *a plan that ends anywhere but `done_when` names what is live and hands it to a human*. **`sweep_expired_runs` has zero callers; no `'streaming'` row is ever read back** | ⬜ **+ P3 inherited from CP-0.4, 2026-08-04.** Retrofit closed the *recording* hole; **the kill path is structurally unclosable at CP-0** — a killed process cannot write its own outcome, so this needs an out-of-process owner, which is what 3.6 already is. Two measured shapes carry in: a cancel **before the first streamed chunk of any kind** writes no row at all, and `abandoned_by_user` **cannot be distinguished from a dropped transport** in recorded data — that needs a **client signal**, and inventing one server-side is the guess this run keeps catching. Carries **F-45** |
 | 3.7 | approval binds to the **SPEC hash over gated steps**; a permission **pre-flight** at plan time (every input is static) | ⬜ |
 
 **CP-3 is where the 61.8% is tested, and it is the checkpoint most likely to fail.** V-METRIC's
@@ -895,8 +1009,8 @@ retrofitted to whatever gets built.
 
 | checkpoint | scale | state |
 |---|---|---|
-| **CP-0** instrument + frozen baseline | γ | 🔴 **FAILED VERIFICATION 2026-08-04 — 3 of 3 `FAIL`.** Defects fixed; **re-verification required against a frozen SHA**, and the acceptance arithmetic must be re-derived first |
-| CP-1 membrane, empty | β | ⬜ |
+| **CP-0** instrument + frozen baseline | γ | ✅ **CLOSED 2026-08-04 on 0.5/0.6/0.7** — the three that ever passed. **0.1–0.4 reassigned to CP-1.7 / CP-2.6 / CP-3.6 / CP-1.4**, where each is structural rather than retrofitted. **Verification stopped after 11 rounds** (~27 verifier deployments). The legacy instrument stays live as a control-group diagnostic, with F-45 · F-48 · F-49 recorded open |
+| CP-1 membrane, empty | β | ⬜ **NEXT** — opens with P1 (1.7) and P4 (1.4) inherited, under the same verification protocol at a scope that can converge |
 | CP-2 runtime | β | ⬜ |
 | CP-3 plan | γ | ⬜ |
 | CP-4 declarations | γ | ⬜ |
@@ -907,8 +1021,13 @@ retrofitted to whatever gets built.
 
 | | kind | blocks? |
 |---|---|---|
+| **F-45** — `abandoned_expired` reads `unrecorded` in class 4 | **a live defect in the frozen diagnostic**, confirmed statically by the builder | **CP-3.6** — and it silently drifts class 4 off 0.0% with no code change |
+| **F-48** — `advertised_tools` stores the cumulative list at six upsert sites | **reported by V-CODE r11, not independently re-derived** — verification stopped first | CP-1.7 (the new surface writes once) |
+| **F-49** — the "hoist" that was a no-op | **closed as a false claim**, not a code defect | no |
+| class 3's predicate | **an unresolvable measurement** — a regex over prose from five producers | CP-2.6 needs `error_class` |
+| `sweep_expired_runs` has zero callers | **dead code with a live consumer expectation** | CP-3.6 |
 | is a plan also a **user-facing document** in the product sense? | product decision | no |
-| binding format on our own model | **an unrun measurement** — belongs to CP-0 | CP-3 |
+| ~~binding format on our own model~~ | ✅ **measured, null result** — all 5 arms 3/3 incl. the decoy control | no |
 | `ARCHITECTURE.md` §0.2 sits after §0.12 | reading order, one pass | no |
 | third-party sunset window | blocked on prerequisites: no `Sunset` header, unversioned `/mcp`, **114 tools with no `deprecated_at`** | CP-4 |
 
