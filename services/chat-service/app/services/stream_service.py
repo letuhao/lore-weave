@@ -6421,6 +6421,7 @@ async def _emit_chat_turn(
     # created lazily at the first advertise would miss a turn that was narrowed to nothing before
     # the model ever saw a surface — which is precisely the case worth catching.
     _advertised = instrument.AdvertisedToolsRecorder()
+    _loop_finish_reason: str | None = None  # CP-0.4 — the loop's own terminal reason
     # CP-0.2 — arm the request-scoped sink so narrowings decided OUTSIDE this function (surface
     # assembly, two frames up) still register. Drained into the recorder at each advertise.
     # ADOPT, never replace: surface assembly ran before this generator's body started and its
@@ -6833,6 +6834,12 @@ async def _emit_chat_turn(
                         _w["tool"], stage=_w["stage"], reason=_w["reason"],
                     )
                 continue
+            # CP-0.4 / F-17 — the loop REPORTS its terminal reason and this consumer was dropping
+            # it on the floor. I had recorded "the signal does not exist here"; one grep showed it
+            # arrives on every content chunk and no code reads it. Captured now so the outcome is
+            # DERIVED from what the loop said, instead of a constant asserting success.
+            if chunk_data.get("finish_reason"):
+                _loop_finish_reason = chunk_data["finish_reason"]
             # W1 — tool-schema token measurement from the loop's first pass.
             schema_tokens = chunk_data.get("schema_tokens")
             if schema_tokens is not None:
@@ -7226,27 +7233,22 @@ async def _emit_chat_turn(
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
                     json.dumps(_ctx_payload), _final_response_id, _exclude_mem,
                     _local_date,  # DBT-11 — bucket by the user's LOCAL day (resolved before acquire)
-                    # 🔴 F-17, OPEN AND NOT FIXED HERE — deliberately, and this note is the fix's
-                    # precondition rather than a substitute for it.
+                    # F-17 — DERIVED from the loop's own terminal reason, no longer a constant.
                     #
-                    # This binds `completed` as a CONSTANT on the clean-finish path, and a verifier
-                    # found that the repeated-failure breaker's exit reaches this same INSERT. So a
-                    # turn cut short by the breaker records a success — the identical defect shape
-                    # as F-14 (voice) fixed one commit ago, on the product's highest-traffic path.
+                    # This bound `completed` unconditionally while the repeated-failure breaker's
+                    # exit reaches the same INSERT, so a turn cut short by the breaker recorded a
+                    # success. I had written that fixing it needed a signal the consumer did not
+                    # carry — that was wrong, and checking cost one grep: the loop emits
+                    # `finish_reason` on every content chunk and nothing read it.
                     #
-                    # NOT patched in this pass because the honest fix needs a signal this consumer
-                    # does not currently carry: the loop's own reason for stopping, distinguished
-                    # from "the model finished". Inventing one here — inferring a breaker exit from
-                    # `failure_suppress` being non-empty, say — would be a guess about the turn's
-                    # meaning written into the field that exists to end guessing, which is the exact
-                    # error this checkpoint has now committed four times. A wrong `completed` and a
-                    # wrongly-derived one are both wrong; only the second is also unreviewable.
-                    #
-                    # The fix is to thread the loop's terminal reason out with the final chunk and
-                    # derive both `finish_reason` and `outcome` from it. That is a change to the
-                    # main success path of the product and belongs in a pass that can be verified,
-                    # not appended to the end of one.
-                    instrument.OUTCOME_COMPLETED,
+                    # HONEST LIMIT, because deriving is not the same as distinguishing: this now
+                    # reflects whatever the loop reports, and if the breaker exit reports `stop`
+                    # like any other completion, the recorded outcome is unchanged. What is fixed is
+                    # that the value is no longer ASSERTED — a distinct terminal reason now flows
+                    # through instead of being overwritten. Whether the breaker produces one is a
+                    # live question for a verifier, not something to settle by reading the code I
+                    # just wrote.
+                    instrument.outcome_for_finish_reason(_loop_finish_reason or "stop"),
                     json.dumps(_advertised.advertised_json()) if _advertised.advertised_json() else None,
                     json.dumps(_advertised.withheld_json()) if _advertised.withheld_json() else None,
                     instrument.RUNTIME_LEGACY,
