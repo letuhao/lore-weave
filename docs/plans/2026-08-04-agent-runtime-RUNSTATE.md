@@ -198,7 +198,7 @@ commit precedes the build commits in `git log`, which is the check):
 |---|---|---|
 | [V-CODE](../specs/2026-08-03-agent-runtime-unification/verification/CP-0-v-code.md) | **FAIL** | `budget_names_by_tokens_ex` had **zero production callers** — the reporting budgeter shipped, unit-tested and documented, while all four real sites still discarded their drops |
 | [V-METRIC](../specs/2026-08-03-agent-runtime-unification/verification/CP-0-v-metric.md) | **FAIL** | all four baseline numbers ruled unsound; **authority exercised — any `PASS` resting on them is void** |
-| V-LIVE | running | — |
+| [V-LIVE](../specs/2026-08-03-agent-runtime-unification/verification/CP-0-v-live.md) | **FAIL** | drove the real UI on a throwaway book; **found the deployed container did not contain the code**, rebuilt, then caught the budgeter hole independently |
 
 **What the builder changed in response** (intent is not a permitted answer; only the artifact):
 
@@ -225,6 +225,32 @@ commit precedes the build commits in `git log`, which is the check):
   replay (A 1/1, E 0/3) but **arm E's published signature does not** — the model now emits
   `book_list_chapters{"book_id":"all"}`, so the `named_missing_tool_in_args` detector reads False.
   The snapshot pins a catalog that had **already drifted** before it was frozen.
+
+**What V-LIVE established, driving the real UI (login form, real composer, real red stop button) on
+`[THROWAWAY] CP-0 v-live 2026-08-04`** — and it is the strongest evidence CP-0 has, because it is
+the only evidence about *values* rather than about writes:
+
+| | result |
+|---|---|
+| **A · clean** | `PASS` — `advertised_tools` is a genuine per-pass array; a turn going 27→27→27→**26** records both states, diff = `book_list` |
+| **B · withheld** | **`FAIL`** — `tool_load(composition)` stored *"Loaded 9 of 107 tools (token budget)"* with `withheld_tools = NULL`. Reproduced on `knowledge`: 8 of 36, NULL again |
+| **C · cancelled** | `PASS` — `outcome='abandoned_by_user'`, with `interrupted` confined to the provider's `finish_reason` |
+| **D · killed** | `PASS, with a hole` — a kill after a checkpoint writes `outcome='crashed'` *while the container is dead*; a **text-only** turn killed before any tool call leaves **no row at all** |
+
+**The control that makes B decisive, and that I could not have constructed for myself:** on the same
+build, the *repeated-failure breaker* stage records perfectly — `[{tool: book_list, stage:
+failure_breaker, …}]`. So the column, the write path and persistence are all sound; **only the
+budgeter's drops never arrive.** One non-null `withheld_tools` row across 15 instrumented turns.
+
+> **This is F-1 again, found independently and from the outside.** V-LIVE rebuilt the container from
+> the tree *before* the fix landed, so its `FAIL` is against the pre-fix build. The `tool_load` site
+> is now instrumented — **and that fix is UNVERIFIED LIVE.** It is a claim until a re-run says
+> otherwise, and this row does not get to be green because the builder believes it works.
+
+Two more from V-LIVE worth keeping: **`latency_ms` is null for every `meta` result** (they carry an
+honest `source_inferred: true`), and **four of the seven withholding stages have no UI path at all** —
+so a UI-driven verifier can only ever exercise two of them. That is a limit on what V-LIVE can prove
+about this column, permanently, and it belongs next to the column rather than in a footnote.
 
 ### 🔴 THE FINDING THAT OUTRANKS THE CHECKPOINT — the run's arithmetic does not close
 
@@ -367,7 +393,7 @@ retrofitted to whatever gets built.
 
 | checkpoint | scale | state |
 |---|---|---|
-| **CP-0** instrument + frozen baseline | γ | 🟡 **OPEN** — [prompts committed](../specs/2026-08-03-agent-runtime-unification/verification/), items 0.1–0.7 building |
+| **CP-0** instrument + frozen baseline | γ | 🔴 **FAILED VERIFICATION 2026-08-04 — 3 of 3 `FAIL`.** Defects fixed; **re-verification required against a frozen SHA**, and the acceptance arithmetic must be re-derived first |
 | CP-1 membrane, empty | β | ⬜ |
 | CP-2 runtime | β | ⬜ |
 | CP-3 plan | γ | ⬜ |
