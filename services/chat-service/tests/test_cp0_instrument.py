@@ -785,3 +785,42 @@ class TestP2SourceIsAssignedStructurally:
                                        source=instrument.SOURCE_META)
         instrument.ensure_tool_call_instrumented(c)
         assert "source_inferred" not in c
+
+
+class TestP1TheLastTwoUnregisteredNarrowings:
+    """P1's deterministic residual — 4 of 315, the same four in both live runs.
+
+    They cleared domain selection (their domain WAS in the hot set) and vanished between there and
+    the wire. Two narrowings lived in four lines of the advertise loop, both downstream of every
+    stage previously instrumented:
+
+      * a name in the ACTIVE SET with no catalog entry — `_add(None)` returns at its first line,
+        so the tool leaves the wire without a word. Deterministic, because a catalog miss is a
+        property of the CATALOG rather than of the query, which is exactly why the residual was the
+        same four tools both times.
+      * ask/plan mode dropping every non-tier-R tool. The permission-mode registration at the
+        advertise chokepoint covers the other branch only, so on a discovery surface this
+        registered nowhere.
+    """
+
+    def test_both_narrowings_register(self):
+        src = _stream_src()
+        for stage in ("catalog_miss", "permission_tier"):
+            assert f'stage="{stage}"' in src, f"{stage} narrowing still silent"
+
+    def test_the_catalog_miss_registers_before_the_early_return_swallows_it(self):
+        """REJECTS: registering AFTER the `continue`. `_add(None)` returns at its first line, so a
+        record placed downstream of it never runs — the failure mode that made this invisible."""
+        src = _stream_src()
+        i = src.index("        td = catalog_index.get(name)")
+        window = src[i: i + 1800]
+        miss = window.index('stage="catalog_miss"')
+        cont = window.index("continue", miss)
+        assert miss < cont, "the record must be written before control leaves the branch"
+
+    def test_a_registered_narrowing_names_what_excluded_it(self):
+        """`reason` must be actionable. 'dropped' cannot be acted on; 'absent from the catalog
+        index' and the tier name both point at where to look."""
+        src = _stream_src()
+        assert "absent from this turn's catalog index" in src
+        assert "not offered in restricted mode" in src

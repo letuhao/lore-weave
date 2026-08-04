@@ -1388,10 +1388,32 @@ def _advertise_discovery_tools(
         if name in suppress_names:
             continue
         td = catalog_index.get(name)
+        if td is None:
+            # P1 residual — TWO unregistered narrowings lived in these four lines, and they are the
+            # last frame of a defect that has now occupied six.
+            #
+            # This one: a name in the ACTIVE SET with no catalog entry. `_add(None)` returns at its
+            # first line, so the tool leaves the wire without a word — and it is downstream of
+            # domain selection, so `domain_not_selected` never sees it either. That is exactly the
+            # shape V-LIVE measured: four glossary tools, the SAME four in both runs, in a domain
+            # that WAS selected, in neither bucket. Deterministic, because a catalog miss is a
+            # property of the catalog rather than of the query.
+            instrument.record_surface_withheld(
+                name, stage="catalog_miss",
+                reason="in the active set but absent from this turn's catalog index",
+            )
+            continue
         if (
-            restricted and td is not None and tool_tier(td) != "R"
+            restricted and tool_tier(td) != "R"
             and not (plan and _is_plan_tool(name))
         ):
+            # And this one: ask/plan mode drops every non-tier-R tool here, silently. The
+            # permission-mode registration at the advertise chokepoint covers the OTHER branch
+            # only, so on a discovery surface this narrowing registered nowhere.
+            instrument.record_surface_withheld(
+                name, stage="permission_tier",
+                reason=f"tier {tool_tier(td)!r} not offered in restricted mode",
+            )
             continue
         _add(td)
     return out
