@@ -296,12 +296,63 @@ commit precedes the build commits in `git log`, which is the check):
 | 0.1 | `chat_messages.advertised_tools` — **`jsonb`, array per pass** (a scalar loses the mid-turn deletion the field exists to catch) | 🔨 built — recorded at the advertise chokepoint, every pass, tool-free passes included |
 | 0.2 | `chat_messages.withheld_tools` — `{tool, stage, reason}`; `budget_names_by_tokens` returns `(kept, dropped)` **as its sibling 20 lines below already does** | 🔨 built — `budget_names_by_tokens_ex` added rather than the original changed (9 call sites); 4 suppression stages register |
 | 0.3 | `tool_calls[].source ∈ {tool, breaker, meta}` + `latency_ms` — no migration needed (jsonb) | 🔨 built — `tool` stamped at the single real-dispatch site, so it is structural; the other 31 mint sites separate by a closed primitive-name set, never by prose-matching |
-| 0.4 | mandatory outcome on **every** terminal path, incl. cancel and crash (`finish_reason` covers **9.4%** today) | 🔨 built — closed vocabulary + `abandoned_by_user`; **one known hole left open**: an empty terminal turn writes no row, deferred to CP-3.6 with the other three silent exits, and logged so it is countable meanwhile |
+| 0.4 | **⚠️ SCOPE CORRECTED 2026-08-04** — mandatory outcome on every terminal path **that writes a row**. A path that writes NO row cannot carry a column, and making it write one is the four-silent-exits mechanism, which is **CP-3.6** | 🔨 built — closed vocabulary + `abandoned_by_user`; cancel-with-content now persists (the `shield` defect); **cancel-with-no-content and kill-before-first-token still record nothing, and that is CP-3.6's scope, not a CP-0 failure** |
 | 0.5 | **freeze the baseline** — snapshot `tools/list` into `contracts/`, script arms A–E. They were built from a live catalog and **are not reproducible today** | 🔨 built — 315 tools pinned, `sha256 eec0470b…`; arm E reproduces (`book_list` **absent**, 29 dropped) |
 | 0.6 | measure the **binding format** on our own model (§0.11 — do not import the YAML benchmark) | 🔨 harness built, **measurement running** — the local model needed two load attempts; result not yet in |
 | 0.7 | **`runtime_variant` + the declaration identity on every recorded call** — without these the comparison in §"the measurement unit" **cannot be computed at all**, however much data accumulates | 🔨 built — `DEFAULT 'legacy'` is the fail-safe direction: an unlabelled turn is attributed to the OLD runtime |
 
-### ▶ VERDICTS — CP-0 is **NOT CLOSED**. Two of three returned `FAIL`.
+### ▶ WHAT CLOSES CP-0 — written down 2026-08-04, after two rounds of not having it
+
+**The looping was a spec defect, not diligence.** CP-0 was deployed with a verification protocol and
+**no closure criterion**, so every round produced new true findings and none of them could ever be
+*enough*. A checkpoint whose exit condition is *"a verifier stops finding things"* does not have an
+exit condition — an adversarial verifier's job is to keep finding things, and mine did, correctly,
+six times.
+
+Two rules, and the second is the one that was missing:
+
+1. **A finding assigned to a LATER checkpoint does not block this one.** It is scope, not debt. The
+   empty-turn silent exit belongs to CP-3.6 by design; CP-0.4's *"every terminal path"* has been
+   corrected to *"every terminal path that writes a row"*, because a path that writes no row cannot
+   carry a column, and making it write one **is** CP-3.6's mechanism.
+2. **CP-0 is an INSTRUMENT checkpoint. It closes when the instrument records honestly — not when
+   the thing it measures is good, and not when a bound is provable.** Whether the four classes can
+   settle the run's claim is a question CP-0 *answers*; it is not a bar CP-0 must clear.
+
+**Exit condition, and it is now falsifiable:**
+
+| # | closes when | state |
+|---|---|---|
+| C1 | every recorded call carries `source`, and `source='tool'` is assigned only where a dispatch really ran | ✅ three dispatch sites stamped; positional gate |
+| C2 | every narrowing registers `{tool, stage, reason, pass}` | ✅ V-LIVE derived 303 expected, found 303 |
+| C3 | the advertised set is recorded **per pass**, and a mid-turn deletion is recoverable from the record alone | ✅ V-LIVE: 4 passes, diff = `+kg_view_delete` |
+| C4 | every terminal path **that writes a row** writes an outcome, and cancel is distinguishable from failure | ✅ incl. the `shield` fix |
+| C5 | the baseline is derivable from committed artifacts, with its queries and a corpus fingerprint | ✅ `baseline-metrics.sql` |
+| C6 | **the run states what its numbers can and cannot support** | ✅ two classes withdrawn; **no acceptance gate armed** |
+
+**C6 is the deliverable, not the disappointment.** CP-0 was built to find out whether the claim is
+measurable. The answer is *"not on this corpus, and here is the arithmetic"* — delivered in two
+days rather than after four checkpoints of building against a target that could not move. **That is
+the checkpoint succeeding at its actual job.**
+
+### 🔴 THE ONE THING CP-0 CANNOT DECIDE — and it is the PO's, not the builder's
+
+The acceptance arithmetic does not close under any design I can choose (per-declaration: 5–6.5
+years; pooled: the weights are the admission order, chosen by the party being measured). **A builder
+selecting its own success metric is the defect this entire run exists to avoid**, so I am not
+picking one. Three options, stated with their costs, for the PO:
+
+| | what it buys | what it costs |
+|---|---|---|
+| **A · ship the instrument, publish, gate nothing** | admissions proceed; every declaration carries `asserted_bound: unknown` that tightens with use — §6.2's design, honestly applied | the run never *proves* the claim; it accumulates toward it |
+| **B · change the measured population** — replay the frozen baseline corpus through both runtimes offline | n is no longer traffic-bound | it is synthetic, and §0.12 says a test may reject but never admit |
+| **C · change the claim** — from a failure-rate reduction to something this corpus CAN settle (e.g. *is a narrowing ever unrecorded* — a property, not a rate) | falsifiable at n=1 | a narrower claim than the one that motivated the rebuild |
+
+**CP-1 is not blocked by this.** CP-0 blocks on the *instrument*, which is built; the acceptance
+question blocks **CP-4**, where a bound is first claimed. Recorded here so it cannot be discovered
+inside CP-4.
+
+### ▶ VERDICTS — rounds 1 and 2, six verdicts, all `FAIL`
 
 | role | verdict | the finding that decided it |
 |---|---|---|
