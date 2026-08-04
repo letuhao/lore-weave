@@ -133,10 +133,22 @@ def _violations_in(path: Path) -> list[tuple[int, str]]:
 #
 #   Admitted - ARCHITECTURE 6.1 row 5. `admit()` is the ONLY producer; a second
 #     construction site is that guarantee gone, and it reads as ordinary code.
-#   Surface  - CP-1.7 / P1. `assemble()` is the only place a declaration can be
-#     dropped, and it writes the record in the same statement. A Surface built
-#     anywhere else can carry `names` that its `withheld` does not account for -
-#     which is precisely the shape P1 failed eleven rounds on.
+#   Surface  - CP-1.7 / P1. A Surface built outside `assemble()` can carry `names`
+#     that its `withheld` does not account for, bypassing the post-condition that
+#     enforces `offered + registered == admitted`.
+#
+# WHAT THIS CHECK IS WORTH, MEASURED RATHER THAN ASSERTED. It counts a plain
+# in-package `Surface(...)` call. Executed on four spellings by a verifier: an
+# attribute call (`_m.Surface(...)`), an alias, and any construction OUTSIDE this
+# package all pass. So it raises the COST of a second site; it does not make one
+# impossible, and no sentence here may say otherwise.
+#
+# THE THIRD COPY LIVED HERE. This comment used to say "assemble() is the only
+# place a declaration can be dropped" - false, because `discover(kind=)` drops
+# them too (it registers, but it drops). The same sentence was corrected in
+# surface.py, then found again in narrowing.py a round later, then found HERE a
+# round after that. Three files, three rounds, one claim: a correction applied
+# where the verifier was looking, and nowhere else.
 SINGLE_SITED = {"Admitted": 1, "Surface": 1}
 
 

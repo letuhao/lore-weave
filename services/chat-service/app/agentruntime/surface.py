@@ -72,9 +72,20 @@ class Surface:
     and anyone can call it. The gate counts construction sites instead, so a second one reds CI
     rather than quietly producing a surface whose `withheld` does not account for its `names`.
 
-    Carries the withheld set **alongside** the offered one, not in a log: a narrowing recorded
-    somewhere the caller must go and find is a narrowing that gets dropped at the first persistence
-    boundary, which is how the legacy column came to be empty for the one stage it was built for.
+    `withheld` is **what THIS assembly kept from the model**, not everything logged at this pass.
+    The distinction is not bookkeeping:
+
+    🔴 An earlier version made it *everything at that pass*, and a verifier showed what that
+    produces — `discover(kind="skill")` filters a **query**, so its rows appear withheld at pass 1
+    while the assembler advertises the very same declarations at pass 1. **That is the exact
+    contradiction `pass_number` was added to make detectable** (a verifier once found 11 of 178
+    withheld tools simultaneously advertised on every pass), and I had recreated it — then written
+    a test that asserted the contradictory state as correct.
+
+    A query filter and a surface narrowing are different facts. `withheld` answers *"what could the
+    model not see on this pass"*; the shared `NarrowingLog` holds the turn's whole record, stage by
+    stage, and is where a caller looks for anything wider. Keeping them separate is what stops the
+    column meaning two things at once.
     """
 
     names: tuple[str, ...]

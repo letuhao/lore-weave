@@ -498,6 +498,40 @@ class TestANarrowingCannotHappenSilently:
         assert s.count == 3 and s.withheld == ()
         assert len(log) == 2, "the shared log must still hold discovery's own narrowings"
 
+        # 🔴 AND THE TWO FACTS MUST STAY TELLABLE APART. Round 5 caught the earlier version of
+        # this test asserting a state where the same declaration is recorded WITHHELD at pass 1 and
+        # ADVERTISED at pass 1 — the exact contradiction `pass_number` exists to make detectable,
+        # recreated by me and then blessed by my own test. A query filter is not a withholding from
+        # the model. `withheld` answers "what could the model not see"; the log holds the turn's
+        # whole record, and `stage` is what keeps the two legible.
+        assert {e.stage for e in log.for_pass(1)} == {"discovery_kind_filter"}
+        assert set(s.names) & {e.declaration_id for e in log.for_pass(1)}, (
+            "the declarations discovery filtered out ARE advertised by the assembler — that is "
+            "coherent only while the two records are distinguishable by stage"
+        )
+
+    def test_over_registration_is_refused_too(self):
+        """The law is `!=`, not `<`, and round 5 found that weakening it to one-directional was
+        invisible to the whole suite. Fabricated records are the other way to break conservation:
+        they balance a real drop, so a law that only watches for shortfall can be satisfied by
+        inventing the evidence for the loss it is meant to catch."""
+        a = self._assembler(3)
+        original = SurfaceAssembler._narrow
+
+        def double_record(self, rows, rule, *, pass_number):
+            kept = original(self, rows, rule, pass_number=pass_number)
+            self._log.record("__ghost__", stage="s", reason="r", pass_number=pass_number)
+            return kept
+
+        SurfaceAssembler._narrow = double_record
+        try:
+            with pytest.raises(AssertionError, match="lost -1"):
+                a.assemble(pass_number=1, rules=[
+                    NarrowingRule("token_budget", "over budget", lambda r: True),
+                ])
+        finally:
+            SurfaceAssembler._narrow = original
+
     def test_assembling_with_NO_RULES_offers_everything_admitted(self):
         """🔴 THE COVERAGE GAP THAT MADE A CORRECT POST-CONDITION SILENT.
 

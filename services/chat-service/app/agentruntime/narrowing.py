@@ -14,13 +14,24 @@ reason are required arguments and the record is written in the same statement th
 removal — and `SurfaceAssembler.assemble` checks `offered + registered == admitted` before it
 returns.
 
+**What that check does not cover, because a verifier had to find each of these:** its baseline is
+the assembler's own input list, so mutating that before assembly is invisible; it conserves
+**cardinality, not identity**, so fabricated records balance a real drop; and it guards `assemble`
+only — `discover` carries its own registration for that reason.
+
 🔴 **An earlier version of this paragraph ended *"there is no second path, and `Surface` cannot be
 built from a name list"*. Both halves were false.** `discover(kind=…)` is a second removal path (it
 registers, but it exists), and `Surface` is an ordinary frozen dataclass that anyone can call. The
 sentence 60 lines away in `surface.py` had already been corrected to say so; **this copy was left
 standing through four verification rounds**, which is the same erratum-not-applied-everywhere
-failure that this run has now made in three separate documents. What is true: every *shipped*
-removal registers, and the gate keeps `Surface` single-sited so a second construction reds CI.
+failure that this run has now made in three separate documents.
+
+**What is true:** every *shipped* removal registers — `_narrow` and `discover` are the only two, and
+both write the record in the loop that computes it. 🔴 *And the sentence that replaced the false one
+was itself an over-claim of the same shape, caught one round later: it said the gate keeps `Surface`
+single-sited "so a second construction reds CI". Executed on four spellings, only a plain in-package
+call reds — an attribute call, an alias, and any site outside the package all pass.* The gate raises
+the cost of a second construction site; it does not make one impossible.
 
 That is the concrete meaning of §0.1's *"the membrane is construction, not filtering"* for this
 property: not a gate over a filter, but the absence of a filter to gate.
