@@ -846,6 +846,23 @@ Four mechanical properties, each with its own gate:
 **M2 is the load-bearing one.** M1, M3 and M4 are enforceable by tests; M2 is what makes those tests
 *meaningful*, because it removes the possibility of the path rather than checking that it is unused.
 
+> **🔴 AMENDED 2026-08-04 — three of the four gate columns above described mechanisms that did not
+> exist.** §6.1 was amended twice for the same fault while this table sat unread beside it; a
+> verifier found that the corrections had been applied only where it was looking. **The table is
+> what CP-1 was built against, so a wrong cell is not a documentation slip — it is a criterion
+> nobody could have satisfied.** What is true after CP-1:
+>
+> | # | the cell said | what exists |
+> |---|---|---|
+> | **M1** | *"manifest row count == admitted count; drift reds CI"* | ✅ **now true, and it was not.** `agentruntime-membrane-gate.py` compares the committed manifest to what the generator produces. At CP-1 that is `build([])`; CP-4 gives the comparison a real right-hand side. Proven red-able by typing a well-formed row into the JSON |
+> | **M3** | *"a test that seeds a legacy-only declaration of **each of the three kinds**"* | ✅ **now true, and it was not.** The first version asserted over an *empty* manifest — proving an empty catalog is empty. It now reads all three legacy registries (315 tools, the loadable skill codes, the compiled workflow ids) and asserts every name is absent, with a non-vacuity floor so an empty registry cannot pass it silently |
+> | **M4** | *"the registration entry point **refuses to boot** on an incomplete contract"* | 🔴 **STILL FALSE, and it is not CP-1's to make true.** Nothing imports `app.agentruntime`, so there is no boot to refuse — the check runs where a declaration is *admitted*, not at service start. Wiring an import so the phrase becomes true would be pulling CP-2 forward. **Recorded as unmet rather than reworded** |
+> | **M5** | *"point a workflow step at an unadmitted name; generation fails"* | ✅ true, and strengthened: the reference is re-resolved on **load** as well, because an edit can break what generation proved |
+>
+> **The pattern worth carrying, since it has now cost three rounds:** a correction applied to the
+> clause a verifier quoted, and not to the other places making the same claim, leaves the document
+> *more* misleading than before — the reader who checks one cell finds it accurate and stops.
+
 ---
 
 ## 4 · P2 — the declaration contract, every clause traced to a measured failure
@@ -1015,7 +1032,7 @@ validation** — an `Admitted[D]` type whose only producer is the contract check
 > | | layer | what it actually gives |
 > |---|---|---|
 > | 1 | **accident boundary** — the type | `Admitted(...)` raises; `copy`/`pickle` raise. Stops the *unintentional* producer, which is the 14-against-58 shape being replaced. It stops nothing deliberate. |
-> | 2 | **detection boundary** — the gate | a bypass must either name a private symbol or call `object.__setattr__` on an `Admitted`. Both are greppable, so the gate makes a deliberate bypass **loud in a diff** rather than impossible in a process. |
+> | 2 | **detection boundary** — the gate | a bypass must either name a private symbol or call `object.__setattr__` on an `Admitted`. **The gate performs that scan repo-wide** — `_TOKEN`, `_AdmissionToken` and `object.__setattr__` in any module mentioning `agentruntime`, everywhere except `admission.py` itself — so a deliberate bypass is **loud in the diff that introduces it**. 🔴 *Round 2 caught this row describing a scan nothing performed: "both are greppable" was true, and no mechanism did the grepping. A capability written as though it existed — the third instance in this one clause, which is why the scan is now covered by the gate's own self-test rather than by this sentence.* |
 > | 3 | **correctness boundary — REVALIDATION at both ends** | the manifest **writer** re-runs the contract check on every row it writes, and the **reader** re-runs it on every row it loads. This is the only layer that does not depend on the type being trustworthy. |
 >
 > **Layer 3 is the correction that matters, and it closes a defect the type was hiding.** Because

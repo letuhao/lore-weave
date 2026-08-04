@@ -23,6 +23,28 @@ from typing import Callable, Iterable, Sequence
 
 from .narrowing import NarrowingLog
 
+def rows_of(manifest_doc: dict) -> list[dict]:
+    """The declarations in a manifest document, or a refusal.
+
+    🔴 ONE PLACE, because two hand-written copies of this drifted inside a single commit. The
+    assembler was fixed to reject a missing `declarations` key while `discover` — two functions
+    below, same file, same commit — kept `.get("declarations", [])`. So `SurfaceAssembler({})`
+    raised and `discover({})` returned `[]`: the identical malformed input, two answers, and the
+    silent one sat in the M3 entry point.
+
+    A missing key is a **broken document**, not an empty catalog. Serving it as empty erases the
+    difference between *"nothing is admitted"* and *"we could not read the catalog"*, which is the
+    one confusion `Surface.is_empty` exists to prevent.
+    """
+    rows = manifest_doc.get("declarations")
+    if not isinstance(rows, list):
+        raise ValueError(
+            "manifest document has no `declarations` list. An empty catalog is `[]`; a missing key "
+            "is a malformed document, and serving it as empty would hide the difference."
+        )
+    return list(rows)
+
+
 # A rule is a KEEP predicate over a manifest row, carrying the two fields P1 requires. The stage and
 # the reason are part of the rule rather than of the call site, so a rule cannot be applied without
 # them — this is where "every narrowing registers" stops being a discipline.
@@ -79,17 +101,7 @@ class SurfaceAssembler:
     __slots__ = ("_rows", "_log")
 
     def __init__(self, manifest_doc: dict, *, log: NarrowingLog | None = None) -> None:
-        # `.get("declarations", [])` was a THIRD silent drop: a malformed or wrong-shaped document
-        # became an empty surface with no signal, which is indistinguishable from "nothing is
-        # admitted" — the one confusion `Surface.is_empty` exists to prevent. A missing key is a
-        # broken document, not an empty catalog.
-        rows = manifest_doc.get("declarations")
-        if not isinstance(rows, list):
-            raise ValueError(
-                "manifest document has no `declarations` list. An empty catalog is `[]`; a missing "
-                "key is a malformed document, and serving it as empty would hide the difference."
-            )
-        self._rows: list[dict] = list(rows)
+        self._rows: list[dict] = rows_of(manifest_doc)
         self._log = log if log is not None else NarrowingLog()
 
     @property
@@ -157,7 +169,7 @@ def discover(
     the *places rows are removed*, so it was green over a second narrowing path. **P1 is a property
     of the module, not of one function in it.**
     """
-    rows = list(manifest_doc.get("declarations", []))
+    rows = rows_of(manifest_doc)
     if kind is None:
         return rows
     if log is None:

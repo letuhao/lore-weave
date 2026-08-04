@@ -152,6 +152,77 @@ def _construction_sites(type_name: str) -> list[tuple[Path, int]]:
 
 MANIFEST = REPO / "contracts" / "agent-runtime-manifest.json"
 
+# ARCHITECTURE 6.1 layer 2 - the DETECTION boundary, and it has to be a real scan.
+#
+# The clause claims a deliberate bypass of `Admitted` is "loud in a diff" because it
+# must name a private symbol or call object.__setattr__. A verifier checked whether
+# anything performed that scan and found NOTHING did: the claim was a description of
+# what a gate COULD do, written as though it did. That is the same defect the same
+# clause was amended twice to remove, one row below the correction. So it is a scan now.
+#
+# Scope is the whole repo EXCEPT admission.py, which legitimately holds the token and
+# uses object.__setattr__ in its own __init__ - the boundary is "outside the module
+# that defines it", not "nowhere".
+_ADMISSION_REL = "services/chat-service/app/agentruntime/admission.py"
+BYPASS_SIGNALS = {
+    "_TOKEN": "imports or names the private admission token",
+    "_AdmissionToken": "names the admission token type",
+}
+
+
+def _forgery_violations_in(path: Path) -> list[tuple[int, str]]:
+    """Token-naming and frozen-bypass signals in one file. Separate from the walk so the
+    self-test can fire it on synthetic files - a scan nobody has watched go red is the
+    thing this gate exists to stop other people shipping."""
+    out: list[tuple[int, str]] = []
+    try:
+        src = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return out
+    if "agentruntime" not in src and "Admitted" not in src:
+        return out
+    try:
+        tree = ast.parse(src, filename=str(path))
+    except SyntaxError:
+        return out
+    for node in ast.walk(tree):
+        names: list[str] = []
+        if isinstance(node, ast.ImportFrom):
+            names = [a.name for a in node.names]
+        elif isinstance(node, ast.Name):
+            names = [node.id]
+        elif isinstance(node, ast.Attribute):
+            names = [node.attr]
+        for n in names:
+            if n in BYPASS_SIGNALS:
+                out.append((node.lineno, f"{BYPASS_SIGNALS[n]} ({n})"))
+        # object.__setattr__(...) - the frozen-dataclass bypass. `frozen` blocks
+        # `a.x = ...` and not this form, which is how an Admitted is mutated or a
+        # forged one is filled.
+        if (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "__setattr__"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "object"):
+            out.append((node.lineno, "object.__setattr__ in a module that touches agentruntime"))
+    return out
+
+
+def _forgery_scan() -> int:
+    """Every place outside `admission.py` that names the token, or mutates an Admitted."""
+    failures = 0
+    for path in sorted(REPO.rglob("*.py")):
+        rel = path.relative_to(REPO).as_posix()
+        if rel == _ADMISSION_REL or "/.venv/" in rel or "/node_modules/" in rel:
+            continue
+        for lineno, what in _forgery_violations_in(path):
+            print(f"FAIL {rel}:{lineno}: {what}", file=sys.stderr)
+            print("     admit() is the only producer of an Admitted; a deliberate bypass must be "
+                  "visible in the diff that introduces it (ARCHITECTURE 6.1 layer 2)",
+                  file=sys.stderr)
+            failures += 1
+    return failures
+
 
 def _manifest_drift() -> int:
     """M1 — the committed manifest must be what the GENERATOR would produce, not what a text
@@ -245,6 +316,7 @@ def main(argv: list[str] | None = None) -> int:
             failures += 1
 
     failures += _manifest_drift()
+    failures += _forgery_scan()
 
     for type_name, expected in sorted(SINGLE_SITED.items()):
         sites = _construction_sites(type_name)
@@ -299,11 +371,32 @@ def _selftest() -> int:
         if _violations_in(p):
             failed.append("false positive on a legal module")
 
+    # ARCHITECTURE 6.1 layer 2. The clause claims a deliberate bypass is loud in a diff;
+    # these are the shapes that claim rests on, and each one is watched going red here.
+    forgery_cases = [
+        ("token import", "from app.agentruntime.admission import _TOKEN, Admitted\n"),
+        ("token type import", "from app.agentruntime.admission import _AdmissionToken\n"),
+        ("frozen bypass", "from app.agentruntime import Admitted\n"
+                          "def f(a):\n    object.__setattr__(a, 'declaration', None)\n"),
+    ]
+    for label, src in forgery_cases:
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "probe.py"
+            p.write_text(src, encoding="utf-8")
+            if not _forgery_violations_in(p):
+                failed.append(f"forgery scan: {label}")
+
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "unrelated.py"
+        p.write_text("object.__setattr__(x, 'y', 1)\n", encoding="utf-8")
+        if _forgery_violations_in(p):
+            failed.append("forgery scan fires on a module that never touches agentruntime")
+
     if failed:
         print("SELFTEST FAILED - the gate did not fire on: " + ", ".join(failed), file=sys.stderr)
         return 1
-    print(f"agentruntime-membrane-gate selftest OK - fires on {len(cases)} bypass shapes, "
-          f"silent on a legal module")
+    print(f"agentruntime-membrane-gate selftest OK - fires on {len(cases)} import shapes + "
+          f"{len(forgery_cases)} forgery shapes, silent on a legal module")
     return 0
 
 

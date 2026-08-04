@@ -221,6 +221,44 @@ class TestDiscoveryReturnsNothingForLegacyDeclarations:
         doc = json.loads((_REPO / "contracts" / "agent-runtime-manifest.json").read_text("utf-8"))
         assert legacy_id not in {r["id"] for r in discover(doc)}
 
+    def test_REAL_legacy_declarations_of_all_three_kinds_return_zero_rows(self):
+        """🔴 M3 as §3 actually words it: *"a test that SEEDS a legacy-only declaration of each of
+        the three kinds and asserts discovery returns zero rows for all three."*
+
+        The previous version asserted over an EMPTY manifest, which proves that an empty catalog is
+        empty — true, and not the claim. This reads the three legacy registries and asserts every
+        name in them is absent from the new surface. The names are **read from the legacy source**
+        rather than typed here, so the test stays honest as those registries change; inventing the
+        names would test a fiction.
+
+        This is also the only test in the file that touches legacy modules, and that is correct:
+        the membrane forbids the PACKAGE from importing them, not the test that proves the
+        separation. The gate scans `app/agentruntime/**`, not `tests/`.
+        """
+        from app.services.intent_workflows import _COMPILED
+        from app.services.skill_registry import LOADABLE_SKILL_CODES
+
+        snapshot = json.loads(
+            (_REPO / "contracts" / "agent-runtime-baseline" / "tools-list.snapshot.json")
+            .read_text("utf-8"))
+        legacy_tools = [t["name"] for t in (snapshot.get("tools") or snapshot)]
+        legacy_skills = sorted(LOADABLE_SKILL_CODES)
+        legacy_workflows = [wf_id for wf_id, _ in _COMPILED]
+
+        # NV-1: if any registry were empty the assertion below would pass vacuously.
+        assert len(legacy_tools) >= 300 and legacy_skills and legacy_workflows, (
+            f"a legacy registry came back empty — this test would prove nothing: "
+            f"{len(legacy_tools)} tools, {len(legacy_skills)} skills, "
+            f"{len(legacy_workflows)} workflows"
+        )
+
+        doc = json.loads((_REPO / "contracts" / "agent-runtime-manifest.json").read_text("utf-8"))
+        surfaced = {r["id"] for r in discover(doc)}
+        for kind, names in (("tool", legacy_tools), ("skill", legacy_skills),
+                            ("workflow", legacy_workflows)):
+            leaked = sorted(surfaced & set(names))
+            assert not leaked, f"legacy {kind}(s) reachable through the new discovery: {leaked}"
+
 
 # ── 1.4 · M4 — construction IS validation ───────────────────────────────────────────────────────
 
@@ -391,43 +429,76 @@ class TestANarrowingCannotHappenSilently:
         with pytest.raises(ValueError, match="1-based"):
             self._assembler().assemble(pass_number=0)
 
-    def test_every_place_that_removes_a_row_also_records(self):
-        """🔴 REWRITTEN — the previous version collected the *callers of* `log.record` and asserted
-        the set was `{_narrow}`. That is the wrong direction: it verifies that everything which
-        RECORDS is `_narrow`, and says nothing about anything that DROPS without recording. It was
-        green while `discover()` filtered by kind and registered nothing — a second silent
-        narrowing path, found by a verifier's enumeration rather than by this gate.
+    def test_CONSERVATION_nothing_leaves_the_manifest_without_a_record(self):
+        """🔴 REWRITTEN TWICE, and the second rewrite is the lesson.
 
-        So it now enumerates the DROP sites — every function that returns a strict subset of a
-        collection it iterated — and asserts each one records. `P1 is a property of the module, not
-        of one function in it.`
+        v1 collected the *callers of* `log.record` and asserted the set was `{_narrow}` — the wrong
+        direction entirely: it checked that everything which RECORDS is `_narrow`, and said nothing
+        about anything that DROPS without recording. It was green while `discover()` filtered
+        silently.
+
+        v2 tried to enumerate drop sites from the AST and was **VACUOUS**: `".append(" in
+        ast.dump(fn)` is never true, because `ast.dump` renders the call as `attr='append'`. That
+        branch was dead code, so the check only ever saw filtered comprehensions — and neither real
+        drop site is one. A verifier proved it by deleting `log.record` from BOTH sites and watching
+        the test stay green. **My own red-ability probe missed it because the function I injected
+        was a comprehension** — I had unknowingly probed the one branch that worked.
+
+        So this stops reading the module and **runs it**. The property P1 actually asserts is a
+        conservation law:
+
+            rows returned  +  narrowings recorded  ==  rows supplied
+
+        Nothing vanishes without a record. That cannot be defeated by how an AST renders, by a new
+        function shape, or by a helper written in a style the classifier did not anticipate — a
+        silent drop breaks the arithmetic whatever it looks like.
         """
-        import ast
         import inspect
         from app.agentruntime import surface as mod
-        tree = ast.parse(inspect.getsource(mod))
-        offenders: list[str] = []
-        for fn in ast.walk(tree):
-            if not isinstance(fn, ast.FunctionDef):
+
+        doc = build([
+            admit(_tool("book_list")),
+            admit(_tool("book_get")),
+            admit(_skill("world_setup", ("book_list",))),
+        ])
+        supplied = len(doc["declarations"])
+        checked: list[str] = []
+
+        # Every module-level function whose first parameter is a manifest document. Enumerated by
+        # SIGNATURE, so a narrowing helper added tomorrow is covered the day it is written — an
+        # explicit list would be default-uncovered, the mistake this repo has a standard about.
+        for name, fn in vars(mod).items():
+            if not inspect.isfunction(fn) or name.startswith("_"):
                 continue
-            body = ast.dump(fn)
-            # A function that iterates rows and conditionally keeps them is a narrowing site.
-            drops = ("for " in inspect.getsource(mod).split("def " + fn.name)[1][:1200]
-                     and ".append(" in body and "If(" in body)
-            comprehension_filter = any(
-                isinstance(n, (ast.ListComp, ast.GeneratorExp)) and n.generators[0].ifs
-                for n in ast.walk(fn)
-            )
-            if not (drops or comprehension_filter):
+            params = list(inspect.signature(fn).parameters)
+            if not params or params[0] != "manifest_doc":
                 continue
-            records = any(
-                isinstance(n, ast.Attribute) and n.attr == "record" for n in ast.walk(fn)
-            )
-            if not records:
-                offenders.append(fn.name)
-        assert not offenders, (
-            f"these remove declarations without registering the narrowing: {offenders}"
-        )
+            for kind in ("tool", "skill", None):
+                log = NarrowingLog()
+                kwargs: dict = {}
+                if "log" in params:
+                    kwargs["log"] = log
+                if "kind" in params:
+                    kwargs["kind"] = kind
+                elif kind is not None:
+                    continue
+                returned = fn(doc, **kwargs)
+                assert len(returned) + len(log) == supplied, (
+                    f"{name}(kind={kind!r}) lost {supplied - len(returned) - len(log)} "
+                    f"declaration(s) with no {{tool, stage, reason, pass}} record"
+                )
+                checked.append(f"{name}({kind})")
+
+        # The assembler is the other entry point, and it takes rules rather than a manifest.
+        log = NarrowingLog()
+        surface = SurfaceAssembler(doc, log=log).assemble(pass_number=1, rules=[
+            NarrowingRule("token_budget", "over budget", lambda r: r["id"] == "book_list"),
+        ])
+        assert surface.count + len(log) == supplied, "the assembler lost a declaration silently"
+        checked.append("assemble")
+
+        # NV-1: if nothing was enumerated, the conservation law was never applied to anything.
+        assert len(checked) >= 3, f"the enumeration found almost nothing to check: {checked}"
 
 
 class TestAnEmptySurfaceIsAStatementNotAGap:
