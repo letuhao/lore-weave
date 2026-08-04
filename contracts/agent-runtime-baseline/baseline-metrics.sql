@@ -194,12 +194,24 @@ FROM (
          --
          -- What remains names an identifier explicitly, or names the failure mode this class was
          -- built from (`placeholder_id_1`, the 0/101 specimen).
+         -- 🔴 UNRESOLVED, AND DELIBERATELY LEFT SO. Three attempts to close the verifier's
+         -- ~35-row residual moved this number 47.0% -> 62.1% -> 54.7% — over-capturing, then
+         -- under-, then over- again. That swing IS the finding: I cannot author this predicate
+         -- reliably, and continuing to adjust it until it lands near a verifier's figure is
+         -- precisely how the original 65.7% survived four rounds.
+         --
+         -- What IS defensible and stands: the two groups decomposition proved do not belong were
+         -- removed — 85 rows of `unknown kind` admitted by our OWN help text ("that category does
+         -- not exist"), and the rows admitted because `valid` ends in `id`. A third attempt using
+         -- `%_id%` walked into the same trap from the other side: `_` is a LIKE WILDCARD, so it
+         -- matched "val<id>" and counted `memory_remember — 'fact_text': Field required` as an
+         -- identifier failure. Content is not an identifier.
+         --
+         -- Remaining clauses are the ones whose failing OBJECT is unambiguously an identifier.
+         -- The residual belongs to a verifier round, not to another guess from me.
          (error ILIKE '%not found%'
           OR error ILIKE '%uuid%'
           OR error ILIKE '%placeholder%'
-          OR error ILIKE '%invalid id%' OR error ILIKE '%invalid_id%'
-          OR error ILIKE '%invalid % id%'
-          OR error ILIKE '%_id%' AND error ILIKE '%invalid%'
           ) AS id_err
   FROM _calls
   WHERE NOT ok

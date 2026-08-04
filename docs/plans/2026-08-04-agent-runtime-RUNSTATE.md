@@ -34,7 +34,7 @@ this run carried four of them.
 | class | **v3 — organic** | v2 | v1 | originally | claim |
 |---|---|---|---|---|---|
 | **carry-forward, over REAL errors** | **6.0%** (99/1,649) | *39.4%* | *12.6%* | *61.8%* | strictly lower |
-| **identifier resolution** — of real errors, **same definition as class 1** | **47.0%** (786/1,673) ⚠️ *residual: verifier identified ≥90 non-belonging rows; 55 removed, ~35 unresolved* | *50.3%* | *35.3%* | *≈57%* | strictly lower |
+| **identifier resolution** — of real errors, same definition as class 1 | **40.4%** (676/1,673) 🔴 **PREDICATE UNRESOLVED — see below** | *50.3%* | *35.3%* | *≈57%* | strictly lower |
 | **not-a-real-dispatch** — lower bound | **41.6%** (1,185/2,850) | *45.3%* | *16.1%* | *65.7%* | ⛔ not scoreable across arms |
 | **turns with NO RECORDED outcome**, windowed | **0.0%** (0/269) | *4.9%* | *90.7%* | *never frozen* | ⛔ already met |
 
@@ -64,6 +64,19 @@ than published**.
 - **`interrupted` is a RECORDED outcome, not an absent one.** All 13 "unclassified" rows carried it.
   True unrecorded rate: **0.0%**; 4.9% was the genuine interruption rate wearing the label *"we
   failed to classify this"*.
+
+**🔴 CLASS 3'S PREDICATE IS UNRESOLVED, AND I STOPPED RATHER THAN CONVERGE.** Three attempts to
+close the verifier's ~35-row residual moved it **47.0% → 62.1% → 54.7%** — over-capturing, then
+under, then over again. **That swing is the finding.** I cannot author this predicate reliably, and
+adjusting it until it lands near a verifier's number is exactly how the original 65.7% survived four
+rounds. Reverted to the only version decomposition defends (`not found` · `uuid` · `placeholder`) at
+**40.4%**, with the numerator's residual explicitly open for a verifier to rule on.
+
+**The third attempt is the instructive one:** I replaced `%invalid%id%` (which matched
+`invalid arguments — Input should be a valid list`, because **`valid` ends in `id`**) with `%_id%` —
+and **`_` is a LIKE wildcard**, so it matched `val`**`id`**, `prov`**`id`**`ed`, and counted
+`memory_remember — 'fact_text': Field required` as an identifier failure. I walked into the same
+accidental-substring trap from the other side, in the patch for it.
 
 **C7 — adopted, and proposed by the verifier, not by me:** *each class's predicate must select the
 population its name states, demonstrated by decomposing the numerator.* It is **red on classes 1, 2

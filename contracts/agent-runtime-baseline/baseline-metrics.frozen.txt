@@ -24,7 +24,7 @@
 == 3 · IDENTIFIER RESOLUTION, as a share of REAL errors ==
   scope  | real_errors | id_errors | pct  
 ---------+-------------+-----------+------
- organic |        1673 |       786 | 47.0
+ organic |        1673 |       676 | 40.4
 
 == 4 · TERMINAL OUTCOME, through the CP-0.4 shim, WINDOWED on column age ==
   scope  | assistant_turns | completed | awaiting_input | failed | crashed | interrupted_recorded | unrecorded | pct_unrecorded 
