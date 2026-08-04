@@ -432,6 +432,7 @@ async def voice_stream_response(
     # both the DB row AND the SSE `finish-message` the FE reads carry real tokens.
     last_usage = None
     tts_chars = 0  # WS-4.2b — TTS is metered by CHARACTERS spoken (not tokens)
+    _voice_suspended = False  # CP-0.4 — set when the turn breaks on an un-voiceable confirm
     sentence_index = 0
     skipped_count = 0
     # Collect audio segments during streaming — upload AFTER assistant message is saved (FK requirement)
@@ -486,6 +487,11 @@ async def voice_stream_response(
                     completion_tokens=int(_susp.get("output_tokens", 0) or 0),
                 )
                 yield _sse("error", {"errorText": "That needs a confirmation I can't do by voice — try it in text chat."})
+                # CP-0.4 — this turn did NOT complete: the model asked for a confirmation voice
+                # cannot render, so the user's request was not carried out. The INSERT below bound
+                # `outcome=completed` unconditionally and this `break` falls straight through to it,
+                # so every such turn recorded a success. Flagged for the terminal write.
+                _voice_suspended = True
                 break
             _tc = chunk_data.get("tool_call")
             if _tc:
@@ -582,7 +588,7 @@ async def voice_stream_response(
                   (message_id, session_id, owner_user_id, role, content, content_parts,
                    sequence_num, model_ref, branch_id, local_date,
                    finish_reason, outcome, runtime_variant, advertised_tools)
-                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8, 'stop', $9, $10, $11::jsonb)
+                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8, $12, $9, $10, $11::jsonb)
                 """,
                 msg_id, session_id, user_id, final_text, json.dumps(parts), seq, model_ref,
                 _local_date,  # DBT-11 — same turn as the user msg above (resolved before acquire)
@@ -591,7 +597,15 @@ async def voice_stream_response(
                 # the honest value; the failure was that a whole pipeline was invisible to a column
                 # whose entire premise is "every terminal path". A verifier found it by enumerating
                 # paths rather than by reading the one file the instrument was built in.
-                instrument.OUTCOME_COMPLETED, instrument.RUNTIME_LEGACY,
+                # CP-0.4 — DERIVED, never a constant. A verifier found this bound to
+                # `completed` unconditionally while a `break` above reaches it after telling the
+                # user their request could not be carried out by voice. `awaiting_input` is the
+                # honest state there: the model asked for something and stopped. Binding a literal
+                # here was the same defect as the `advertised_tools` literal retracted from this
+                # very file — a confident value for something never checked.
+                (instrument.OUTCOME_AWAITING_INPUT if _voice_suspended
+                 else instrument.OUTCOME_COMPLETED),
+                instrument.RUNTIME_LEGACY,
                 # CP-0.1 — NULL, deliberately, and this is a RETRACTION.
                 #
                 # I previously bound a hand-typed `[{"pass":1,"names":[],"count":0,
@@ -606,6 +620,8 @@ async def voice_stream_response(
                 # NULL until the voice path records what it ACTUALLY advertised, at its own
                 # advertise chokepoint. An honest gap beats an invented answer.
                 None,
+                # finish_reason follows outcome rather than asserting 'stop'.
+                "awaiting_input" if _voice_suspended else "stop",
             )
             _mc_row = await conn.fetchrow(
                 "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), "

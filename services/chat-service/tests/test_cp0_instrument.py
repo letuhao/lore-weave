@@ -306,11 +306,13 @@ class TestWithheldRegisters:
         rec.record_withheld("b", stage="failure_breaker", reason="gave up")
         assert rec.withheld_json()[0]["pass"] == 2, "belongs to the pass it shaped"
 
-        # A narrowing recorded when NO pass has happened yet is stamped None, not 1. Stamping 1
-        # invented a pass that never existed on turns that never advertised — 145 such records were
-        # found live, and they are unreconcilable by construction: the reconciliation looks up that
-        # pass's advertised names, finds none, and keeps the entry, so a fabricated stamp reads as a
-        # confirmed withholding.
+        # A narrowing recorded when NO pass has happened yet is stamped None, not 1 — fabricating a
+        # pass that never existed is strictly worse than admitting none.
+        #
+        # ATTRIBUTION CORRECTED: an earlier version of this comment blamed `max(len,1)` for 145 live
+        # records. Those are pass 3 on 2-pass turns (the earlier `len+1` era), not pass 1 on turns
+        # that never advertised. This assertion is a correctness floor, not a fix for those rows —
+        # and the branch is unreachable in production, since both call sites run after `record_pass`.
         pre = AdvertisedToolsRecorder()
         pre.record_withheld("c", stage="hot_seed", reason="budget")
         assert pre.withheld_json()[0]["pass"] is None, (

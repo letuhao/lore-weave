@@ -34,7 +34,7 @@ this run carried four of them.
 | class | **v3 — organic** | v2 | v1 | originally | claim |
 |---|---|---|---|---|---|
 | **carry-forward, over REAL errors** | **6.0%** (99/1,649) | *39.4%* | *12.6%* | *61.8%* | strictly lower |
-| **identifier resolution** — of real errors, same definition as class 1 | **40.4%** (676/1,673) 🔴 **PREDICATE UNRESOLVED — see below** | *50.3%* | *35.3%* | *≈57%* | strictly lower |
+| ~~identifier resolution~~ | **40.4%** (676/1,673) — verifier's optimum **49.9%** | *50.3%* | *35.3%* | *≈57%* | ⛔ **LEAVES THE ACCEPTANCE SET** |
 | **not-a-real-dispatch** — lower bound | **41.6%** (1,185/2,850) | *45.3%* | *16.1%* | *65.7%* | ⛔ not scoreable across arms |
 | **turns with NO RECORDED outcome**, windowed | **0.0%** (0/269) | *4.9%* | *90.7%* | *never frozen* | ⛔ already met |
 
@@ -105,7 +105,34 @@ comparable and nothing may be concluded from the difference.
   declared excluded with **no predicate excluding them**, and ~39.6% of the "organic" denominator is
   still harness traffic.
 
-### ⛔ ONE CLASS IS NOT SCOREABLE ACROSS ARMS AT ANY SAMPLE SIZE
+### ⛔ TWO CLASSES ARE NOT SCOREABLE ACROSS ARMS AT ANY SAMPLE SIZE
+
+**Class 3 joins class 2, by the verifier's ruling on a decision I handed it after failing three
+times.** It ended the guessing with a move nobody made in six rounds: **the 1,673-row denominator is
+backed by only 200 distinct error strings.** It never needed a cleverer `LIKE` — it needed **one
+exhaustive read**. Adjudicating all 200 gives **49.9%** (834/1,673), with totality and disjointness
+proven.
+
+**My 40.4% under-counts by 158 rows and over-counts nothing** — round 6's numerator RED is
+**withdrawn in full**. My three attempts were **recall** failures that I had diagnosed as
+**precision** failures, which is why more tuning would never have converged. Stopping was right; the
+diagnosis was wrong.
+
+It still cannot leave this corpus, three ways: 158 rows rest on **fitted verbatim product
+sentences**; the vocabulary **already changed mid-corpus** (`errChapterNotInBook` split 33 rows off
+on 2026-07-26, so a *product improvement* moved the metric invisibly); and **239 of 361 unresolved
+rows sit behind a deliberate anti-oracle** — `jobs_skill.py` and `mcp_server.go` merge *"doesn't
+exist"* with *"not yours"* **on purpose**, making the numerator a permanent blend with authorization
+failures.
+
+> **Root cause, and the CP-0 gap it names:** class 3 is a regex over freeform prose from five
+> producers. CP-0 added `source`, `latency_ms` and `runtime_variant` but **no `error_class`**. Only a
+> structured enum overturns this — never a better regex.
+
+**And the sharpest consequence:** class 3 needs only **~58 per arm**, the smallest requirement in the
+set. **The only reachable bound is the only class that cannot be compared across arms.**
+
+### ⛔ CLASS 2 IS NOT SCOREABLE ACROSS ARMS AT ANY SAMPLE SIZE
 
 The baseline can only be derived from **error-prose signatures** (pre-CP-0 rows have no `source`),
 while the new runtime classifies **structurally and completely**. Those are different instruments,

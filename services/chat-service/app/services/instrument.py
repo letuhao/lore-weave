@@ -331,8 +331,13 @@ class AdvertisedToolsRecorder:
         # pass-2 entry was suppressed as a duplicate of the pass-1 one that had already been
         # reconciled away. Two mechanisms each defensible alone, silently destructive together.
         #
-        # Including the pass keeps the original intent — a stage dropping a tool on five passes is
-        # not five findings — while making each pass's claim independently true or false.
+        # 🔴 AND IT CHANGES THE SEMANTICS, which an earlier comment here denied. That comment said
+        # including the pass "keeps the original intent — a stage dropping a tool on five passes is
+        # not five findings". Measured: 1 pass -> 1 entry, 6 -> 6, 10 -> 10. `withheld_tools` now
+        # FANS OUT by pass count for every persistent narrowing. That is the correct trade — a
+        # per-pass claim must be independently true or false, and turn-level dedupe is what let two
+        # mechanisms delete a real withholding between them — but it is a change, not a preservation,
+        # and any consumer counting rows is counting pass-instances rather than narrowings.
         key = (tool, stage, len(self._passes))
         if key in self._seen:
             return
@@ -350,15 +355,19 @@ class AdvertisedToolsRecorder:
             #
             # `None` when NO pass has been recorded yet — not `1`.
             #
-            # `max(len, 1)` fabricated a pass 1 for narrowings on turns where no pass was ever
-            # recorded, producing 145 records stamped at a pass that does not exist. Unreconcilable
-            # by construction: the reconciliation looks up that pass's advertised names, finds
-            # nothing, and keeps the entry — so an invented stamp reads as a confirmed withholding.
+            # 🔴 ATTRIBUTION CORRECTED. An earlier version of this comment blamed `max(len, 1)`
+            # for 145 records "stamped at a pass that does not exist", claiming they were pass 1 on
+            # turns that never advertised. **That is false on all three observable properties**: the
+            # cited measurement says the 145 are *pass 3 on 2-pass turns*, at stage `token_budget`,
+            # i.e. the earlier `len + 1` off-by-one — which was already fixed. I re-attached a true
+            # count to the wrong cause and wrote it into the guard, which is the same defect class
+            # as the voice literal: an assertion about something I had not checked.
             #
-            # A narrowing decided before any pass DOES usually belong to the first one, and when a
-            # pass 1 later arrives the drain re-stamps against it. But a turn that never advertises
-            # has no pass for the record to belong to, and saying `1` there is the same class of
-            # error as the voice literal: a confident value for something never observed.
+            # What is true, and all that is claimed: `None` is the correct representation when no
+            # pass exists, strictly better than fabricating `1`. It is also UNREACHABLE in
+            # production today — both call sites run immediately after `record_pass`, so
+            # `len(_passes) >= 1` always. It changes no live behaviour and is kept as a correctness
+            # floor, not as a fix for an observed defect.
             "pass": len(self._passes) or None,
         })
 
