@@ -47,9 +47,9 @@ runtime breaks each one, on evidence, and the new runtime must hold it.
 
 | | property — falsified by one counter-example | legacy violates it, measured |
 |---|---|---|
-| **P1** | every tool absent from a pass's advertised set **registers** `{tool, stage, reason, pass}` | 🔴 **FALSIFIED LIVE — 237 of 315 in neither bucket (164 live).** A stage **upstream of `hot_seed`** selects ~100 of 315 **by query relevance** and registers nothing |
+| **P1** | every tool absent from a pass's advertised set **registers** `{tool, stage, reason, pass}` | 🟡 **237 → 4.** `domain_not_selected` closed the query-dependent hole; `world_map_create` now sits in **exactly one bucket at all 8 passes**. Residual: **4 named tools, deterministic** — see below |
 | **P2** | a call's `source` is assigned **structurally**, never inferred | **110 of 201** carry `source_inferred` |
-| **P3** | **every** terminal path writes an outcome | 🔴 **FALSIFIED LIVE — my stamp never fired.** `parent_message_id` is a UUIDv4 in **no** row on this path; **0 of 3,154** user rows carried an outcome. Re-anchored on the session; **unverified** |
+| **P3** | **every** terminal path writes an outcome | 🟡 **cancel path PASSES** — verified at its worst (8 older un-outcomed rows, stamped the right one, overwrote none). **Kill path still FAILS**: a killed process cannot write its own outcome — see below |
 | **P4** | **no** CP-0 column is bound to a **constant** at any INSERT | V-CODE found **4 sites**; two fixed, the gate is still red |
 | **P5** | a step's `emits` binds to the next step's `accepts` **without the model retyping it** | the 0/101 tool sending `placeholder_id_1` ×60 |
 | **P6** | a declaration named by a live plan step is **advertised while that step is current** | 12 rails point at **30 dead tools** behind a gate that fails open |
