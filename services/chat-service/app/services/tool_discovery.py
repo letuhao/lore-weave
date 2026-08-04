@@ -481,6 +481,26 @@ def filter_intent_gated_setup_tools(
     if SETUP_INTENT_SKILL in injected_skill_codes:
         return catalog
     _exempt = INTENT_GATED_SETUP_TOOLS - set(rail_step_tools or ())
+    # P1 · THE SEVENTH FRAME, and the last one upstream. This drops tools at CATALOG ASSEMBLY —
+    # before domain selection, before the hot seed, before the advertise loop, i.e. before every
+    # stage instrumented so far. A verifier's accounting landed on exactly this set twice: the four
+    # in neither bucket are `INTENT_GATED_SETUP_TOOLS` minus `glossary_adopt_standards`, which a
+    # rail exempted. `catalog_miss` could never see them, because they ARE in the catalog index —
+    # they are removed from the catalog handed to it.
+    #
+    # A narrowing this early is the easiest to mistake for "not a candidate". It is a candidate: the
+    # gate exists precisely because these tools would otherwise be offered, and one injected skill
+    # makes them appear. Registering it is what separates "the runtime chose not to offer this and
+    # here is why" from "this tool does not exist", which is the distinction P1 is entirely about.
+    _dropped = sorted(n for n in (tool_name(td) for td in catalog) if n in _exempt)
+    if _dropped:
+        from app.services.instrument import record_surface_withheld
+        for _n in _dropped:
+            record_surface_withheld(
+                _n, stage="intent_gate",
+                reason="world-setup tool withheld unless the turn has world-setup intent "
+                       "(inject the glossary_shaping skill, or name it in a rail step)",
+            )
     return [td for td in catalog if tool_name(td) not in _exempt]
 
 

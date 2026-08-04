@@ -941,3 +941,61 @@ class TestTheReconcilerCannotImpersonateATerminalPath:
         assert "coalesce(outcome,'')" not in pin, (
             "the fingerprint still hashes `outcome`, which no class reads"
         )
+
+
+class TestP1TheIntentGateRegisters:
+    """P1's seventh and most upstream frame — a drop at CATALOG ASSEMBLY.
+
+    A verifier's accounting landed on this exact set twice: the four tools in neither bucket are
+    `INTENT_GATED_SETUP_TOOLS` minus the one a rail exempted. `catalog_miss` could never see them,
+    because they ARE in the catalog index — they are removed from the catalog handed to it.
+
+    A narrowing this early is the easiest to mistake for "not a candidate". It IS a candidate: the
+    gate exists because these tools would otherwise be offered, and one injected skill makes them
+    appear. That distinction — "the runtime chose not to offer this, and here is why" versus "this
+    tool does not exist" — is the whole of P1.
+    """
+
+    def test_the_gate_registers_what_it_drops(self):
+        from app.services import instrument as _inst
+        from app.services.tool_discovery import (
+            INTENT_GATED_SETUP_TOOLS, filter_intent_gated_setup_tools,
+        )
+        catalog = [
+            {"type": "function", "function": {"name": n, "description": "d",
+                                              "parameters": {"type": "object", "properties": {}}}}
+            for n in sorted(INTENT_GATED_SETUP_TOOLS) + ["book_read"]
+        ]
+        sink: list[dict] = []
+        token = _inst.surface_withheld.set(sink)
+        try:
+            kept = filter_intent_gated_setup_tools(catalog, injected_skill_codes=[])
+        finally:
+            _inst.surface_withheld.reset(token)
+
+        assert len(kept) < len(catalog), "the gate must actually drop something here"
+        names = {e["tool"] for e in sink if e["stage"] == "intent_gate"}
+        assert names == set(INTENT_GATED_SETUP_TOOLS), (
+            f"registered {names}, expected every gated tool it removed"
+        )
+        assert all(e["reason"] for e in sink), "a withholding without a reason cannot be acted on"
+
+    def test_a_rail_exempted_tool_is_neither_dropped_nor_registered(self):
+        """REJECTS over-registration: a tool the rail exempts is still OFFERED, so recording it as
+        withheld would be the advertised-and-withheld contradiction in a new place."""
+        from app.services import instrument as _inst
+        from app.services.tool_discovery import filter_intent_gated_setup_tools
+        catalog = [
+            {"type": "function", "function": {"name": "glossary_plan", "description": "d",
+                                              "parameters": {"type": "object", "properties": {}}}}
+        ]
+        sink: list[dict] = []
+        token = _inst.surface_withheld.set(sink)
+        try:
+            kept = filter_intent_gated_setup_tools(
+                catalog, injected_skill_codes=[], rail_step_tools={"glossary_plan"},
+            )
+        finally:
+            _inst.surface_withheld.reset(token)
+        assert len(kept) == 1, "a rail-exempted tool stays in the catalog"
+        assert not sink, "and must NOT be recorded as withheld — it was offered"
