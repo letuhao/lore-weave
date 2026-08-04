@@ -959,13 +959,34 @@ needs it; the package boundary is what makes M2 mechanical today.
 
 | # | item | state |
 |---|---|---|
-| 1.1 | `contracts/agent-runtime-manifest.json`, generated, **starts empty** (M1) | ⬜ |
-| 1.2 | **import-graph gate** — the new assembler cannot reach any legacy catalog module (M2) | ⬜ |
-| 1.3 | discovery reads M1 only; a legacy-only declaration of **each of the three kinds** returns zero rows (M3) | ⬜ |
-| 1.4 | **construction *is* validation** — `Admitted[D]` with a private field, so a bypass is a compile error. **Verified missing today:** Go's `NewToolMeta` validates nothing; 14 validator call sites against 58 uses in glossary alone (M4) | ⬜ |
-| 1.5 | a reference to a non-admitted declaration is **unresolvable** (M5) — today 12 rails point at 30 dead tools behind a gate that **fails open** | ⬜ |
-| 1.6 | **C-0 identity** — id · owning service (derived) · lifecycle state · contract version | ⬜ |
-| **1.7** | **P1 — every narrowing registers `{tool, stage, reason, pass}`.** ⬅️ **inherited from CP-0.1/0.2, 2026-08-04.** On this surface it is not a property to hunt: **one assembly point, one manifest, one write path** (§0.1, construction not filtering), so a narrowing that does not register **cannot compile**. The retrofit took eight frames and never closed — that is the specification for this item | ⬜ |
+| 1.1 | `contracts/agent-runtime-manifest.json`, generated, **starts empty** (M1) | 🔨 built — committed as `declarations: []`; a **missing** manifest reads as empty, never as fall-back; `build()` takes `Admitted`, so there is no generate-from-raw path |
+| 1.2 | **import-graph gate** — the new assembler cannot reach any legacy catalog module (M2) | 🔨 built — `scripts/agentruntime-membrane-gate.py`, **an allowlist** (stdlib + itself, `ALLOWED_EXTERNAL = {}`). Wired into `lint-foundation.yml`; **default mode runs its own `--selftest` first**, so CI cannot pass a gate that has not been shown to fire |
+| 1.3 | discovery reads M1 only; a legacy-only declaration of **each of the three kinds** returns zero rows (M3) | 🔨 built — `discover()` takes the same manifest argument as the assembler; asserted per kind and against three real legacy tool names |
+| 1.4 | **construction *is* validation** — `Admitted[D]` whose only producer is the contract check (M4). **Verified missing today:** Go's `NewToolMeta` validates nothing; 14 validator call sites against 58 uses in glossary alone | 🔨 built — module-private token · frozen + `__slots__` · `__reduce__`/`__copy__`/`__deepcopy__` refuse · a forged `object.__new__` instance raises on first read · one construction site, gated. **§6.1's "compile error" was amended first** — see below |
+| 1.5 | a reference to a non-admitted declaration is **unresolvable** (M5) — today 12 rails point at 30 dead tools behind a gate that **fails open** | 🔨 built — resolved at **generation**, so an unresolved member means **no manifest is written at all** and the failure cannot be reached at runtime |
+| 1.6 | **C-0 identity** — id · owning service (derived) · lifecycle state · contract version | 🔨 built — `Declaration` has **no `owning_service` field to author**; it is derived from `source_path`, and an underivable owner is a **violation, not an `unknown`** |
+| **1.7** | **P1 — every narrowing registers `{tool, stage, reason, pass}`.** ⬅️ **inherited from CP-0.1/0.2, 2026-08-04.** On this surface it is not a property to hunt: **one assembly point, one manifest, one write path** (§0.1, construction not filtering). The retrofit took eight frames and never closed — that is the specification for this item | 🔨 built — `stage` and `reason` are **required fields of the rule**, so a narrowing cannot be expressed without them; `_narrow` is the only place a row is dropped **and** the only place `log.record` is called, asserted structurally |
+
+**🔴 §6.1 PROMISED A GUARANTEE THIS REPOSITORY CANNOT PRODUCE — amended before CP-1's first line.**
+It read *"an `Admitted[D]` type with a private field, **so a bypass is a compile error**"*. Python has
+no compile-time access control, and — **checked, not assumed** — **no type checker runs on
+chat-service at all**: no `mypy`/`pyright` config, no `pyproject.toml` or `setup.cfg` in the service,
+no type-check job in any workflow covering it. The one occurrence of `mypy` under `scripts/` is a
+cache directory inside an ignore list. **A criterion no mechanism can report is unfalsifiable, not
+strict** — and this run has already measured what those cost. Replaced with the five enforceable
+guarantees in §6.1, and **the residual is named**: `object.__new__` cannot be prevented, so a caller
+*can* allocate an `Admitted` — what it cannot get is a **usable** one or a **silent** one. V-CODE's
+prompt asks it to settle that boundary independently rather than accept the table.
+
+**Two things the build found about its own gates, recorded because they are the method working:**
+
+- **the membrane gate's `--selftest` failed on its first run** — `import importlib` slipped through
+  the *stdlib* branch, because the forbidden-module check ran *after* the allowance. A denylist that
+  runs second is a denylist that never runs. Fixed, and the ordering is now commented at the site.
+- **a docstring claimed `Surface` was "constructible only by `SurfaceAssembler.assemble`", which was
+  false** — it is an ordinary frozen dataclass. Rather than weaken the sentence, the gate now counts
+  construction sites for `Surface` as well as `Admitted`, so a second one reds CI. **The claim was
+  made true instead of quieter.**
 
 **Two conditions carried in with 1.4 and 1.7, and both were paid for in CP-0:**
 

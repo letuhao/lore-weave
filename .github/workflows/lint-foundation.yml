@@ -80,6 +80,18 @@ jobs:
           - language-bias-gate
           - sdk-duplication-gate
           - slo-latency-lint
+          # CP-1 / M2 — the agent-runtime membrane. ARCHITECTURE §3 forbids a CODE
+          # PATH from the legacy catalog to the new surface, not merely a wrong
+          # result: "old declarations are not hidden, they are ABSENT". A
+          # behavioural test can only show the path was not taken on the inputs it
+          # tried, and "invisibility implemented as a filter" has leaked or
+          # silently deleted the wrong thing thirteen times in this repository.
+          # So the new package may import the standard library and itself, and
+          # nothing else — an ALLOWLIST, because a denylist is default-permitted
+          # and a legacy module written tomorrow would be reachable until someone
+          # remembered it. Its default mode runs --selftest, which fires the gate
+          # on five bypass shapes before it is trusted to pass.
+          - agentruntime-membrane-gate
           # Context Budget Law §13c — the §11a Inspector coverage manifest stays
           # un-gameable: every checklist item must bind to an existing proving test.
           # Static (no suite execution); the referenced tests' green-ness is enforced
