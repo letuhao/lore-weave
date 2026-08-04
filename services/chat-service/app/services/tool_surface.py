@@ -369,6 +369,20 @@ def discovery_seed_for_surface(
                     "catalog — it seeds nothing", _cat,
                 )
         hot_domains = set(hot_domains) | set(binding_categories)
+    # FIX (context-explosion): token-budget the hot-seed instead of seeding the
+    # WHOLE domain(s). Cuts the always-advertised base ~24K → ~4K (scaled up for a
+    # session model with a larger real context_length via scale_by_window).
+    raw_hot_seed = _budget_and_register(
+        withheld_sink, 'hot_seed',
+        catalog, hot_tool_names(catalog, hot_domains),
+        token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+    )
+    # 🔴 EIGHTH FRAME, and it was MY OWN registration hiding inside a branch. This block
+    # sat under `if binding_categories:` — so on every turn without binding categories it
+    # never ran, and the tools it was written to record went unregistered exactly as before.
+    # A control turn disproved the intent-gate diagnosis; this is what the control was
+    # pointing at. Registration must be UNCONDITIONAL and placed after every mutation of
+    # `hot_domains`, never inside the branch that happened to be open when it was written.
     # ── P1 · THE NARROWING NOBODY INSTRUMENTED ────────────────────────────────────────────────
     # Live measurement: 237 of the frozen 315 catalogue tools were in NEITHER the advertised nor
     # the withheld set. Every stage I had instrumented — hot_seed, rail gate, oneshot, failure
@@ -398,14 +412,7 @@ def discovery_seed_for_surface(
             from app.services.instrument import record_surface_withheld
             for n in _unselected:
                 record_surface_withheld(n, stage="domain_not_selected", reason=_reason)
-    # FIX (context-explosion): token-budget the hot-seed instead of seeding the
-    # WHOLE domain(s). Cuts the always-advertised base ~24K → ~4K (scaled up for a
-    # session model with a larger real context_length via scale_by_window).
-    raw_hot_seed = _budget_and_register(
-        withheld_sink, 'hot_seed',
-        catalog, hot_tool_names(catalog, hot_domains),
-        token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
-    )
+
     eff_pins = pins.effective_enabled
     if pins.curated_mode:
         # In curated mode the hot set only enters via this union; the studio surface's

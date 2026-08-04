@@ -1161,3 +1161,67 @@ class TestAResumeNeverErasesTheTurnItResumes:
             i = src.index(f"WHEN EXCLUDED.{col} IS NULL THEN chat_messages.{col}")
             j = src.index(f"WHEN chat_messages.{col} IS NULL THEN EXCLUDED.{col}", i)
             assert j > i, f"{col}: both NULL branches must precede the concatenation"
+
+
+class TestP1RegistrationIsUnconditional:
+    """P1's EIGHTH frame — my own registration hiding inside a branch.
+
+    A control turn (world-setup intent, where the intent filter provably does not fire) left the
+    residual unchanged at 4, disproving the intent-gate diagnosis. This is what it was pointing at:
+    the `domain_not_selected` block sat under `if binding_categories:`, so on every turn WITHOUT
+    binding categories it never ran — and the tools it was written to record went unregistered
+    exactly as before the fix.
+
+    Eight frames, and the last two were both my fix placed where it could not run: once after the
+    stage it instruments, once inside a branch that stage does not take.
+    """
+
+    def test_it_registers_on_a_turn_with_no_binding_categories(self):
+        """The condition under which it silently did nothing. No binding_categories, no sticky
+        domains — the ordinary turn."""
+        from app.services import instrument as _inst
+        from app.services.tool_surface import SessionToolPins, discovery_seed_for_surface
+
+        catalog = [
+            {"type": "function", "function": {"name": n, "description": "d",
+                                              "parameters": {"type": "object", "properties": {}}}}
+            for n in ("book_read", "glossary_search", "world_map_create", "kg_project_create")
+        ]
+        sink: list[dict] = []
+        token = _inst.surface_withheld.set(sink)
+        try:
+            discovery_seed_for_surface(
+                catalog,
+                pins=SessionToolPins(effective_enabled=[], effective_skills=[],
+                                     curated_mode=False,
+                                     activation_state={"activated_tools": [], "dirty": False}),
+                editor=False, book_scoped=True,
+                binding_categories=None,   # <- the branch that used to gate the whole block
+            )
+        finally:
+            _inst.surface_withheld.reset(token)
+        assert any(e["stage"] == "domain_not_selected" for e in sink), (
+            "no registration on a turn without binding categories — the eighth frame, and the "
+            "condition under which every prior measurement was taken"
+        )
+
+    def test_the_block_is_not_nested_under_a_conditional(self):
+        """Structural, because the behavioural test above can only prove ONE branch. Asserts the
+        registration sits at function level — the property that makes it unconditional."""
+        import ast, inspect
+        from app.services import tool_surface
+        src = inspect.getsource(tool_surface.discovery_seed_for_surface)
+        tree = ast.parse(src.lstrip())
+        fn = tree.body[0]
+
+        def _mentions(node) -> bool:
+            return any(
+                isinstance(n, ast.Constant) and n.value == "domain_not_selected"
+                for n in ast.walk(node)
+            )
+
+        top = [st for st in fn.body if _mentions(st)]
+        assert top, (
+            "the registration is not at function level — it is nested inside a branch, which is "
+            "exactly how it came to never run"
+        )
