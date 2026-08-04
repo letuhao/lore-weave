@@ -79,8 +79,19 @@ def _root(module: str) -> str:
 
 
 def _is_internal(module: str, *, from_file: Path) -> bool:
-    """A relative import, or an absolute one naming this package."""
-    return module.startswith(PACKAGE_MODULE) or module.startswith("agentruntime")
+    """A relative import, or an absolute one naming this package.
+
+    🔴 THE TRAILING DOT IS THE GATE. This read `module.startswith(PACKAGE_MODULE)`, so
+    `app.agentruntime_bridge` and `app.agentruntimeX` were both treated as INTERNAL and
+    waved through - a sibling module one underscore away could import the entire
+    legacy catalog and re-export it, defeating M2 completely while the gate stayed
+    green. A prefix test on a dotted namespace must anchor on the separator, or it
+    matches names that merely start with the same letters.
+    """
+    for root in (PACKAGE_MODULE, "agentruntime"):
+        if module == root or module.startswith(root + "."):
+            return True
+    return False
 
 
 def _violations_in(path: Path) -> list[tuple[int, str]]:
@@ -139,6 +150,58 @@ def _construction_sites(type_name: str) -> list[tuple[Path, int]]:
     return sites
 
 
+MANIFEST = REPO / "contracts" / "agent-runtime-manifest.json"
+
+
+def _manifest_drift() -> int:
+    """M1 — the committed manifest must be what the GENERATOR would produce, not what a text
+    editor left behind.
+
+    ARCHITECTURE §3 names this gate ("manifest row count == admitted count; drift reds CI") and
+    `manifest.py` referred to it in a docstring — and **it did not exist**. A capability named in
+    prose is not a capability; this repository has a standing rule about exactly that, and the
+    finding here is that the rule caught its author.
+
+    CP-1 admits nothing, so the check is concrete: the committed document must equal what
+    `build([])` produces. **That is not vacuous** — typing a row into the JSON reds it, which is the
+    one bypass the write-side `Admitted` type cannot see, because JSON on disk has no types. When
+    CP-4 admits the first declaration this comparison gains a real right-hand side; until then it
+    holds the file at the only state the membrane can prove.
+    """
+    if not MANIFEST.exists():
+        print(f"FAIL: {MANIFEST.relative_to(REPO).as_posix()} is missing - M1 has no artifact",
+              file=sys.stderr)
+        return 1
+    sys.path.insert(0, str(REPO / "services" / "chat-service"))
+    try:
+        from app.agentruntime import build, validate_document
+    except Exception as exc:  # pragma: no cover - import failure IS the finding
+        print(f"FAIL: cannot import app.agentruntime: {exc!r}", file=sys.stderr)
+        print("     the package must import cleanly from a bare interpreter; a path expression "
+              "that counts directory levels encodes the CHECKOUT layout, not the deployed one",
+              file=sys.stderr)
+        return 1
+    import json as _json
+    try:
+        doc = _json.loads(MANIFEST.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"FAIL: manifest is not valid JSON: {exc}", file=sys.stderr)
+        return 1
+    try:
+        validate_document(doc, source="contracts/agent-runtime-manifest.json")
+    except Exception as exc:
+        print(f"FAIL: manifest row failed the contract: {exc}", file=sys.stderr)
+        return 1
+    expected = build([])
+    if doc != expected:
+        print("FAIL: manifest drift - the committed file is not what the generator produces",
+              file=sys.stderr)
+        print(f"     expected {expected}", file=sys.stderr)
+        print(f"     found    {doc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--selftest", action="store_true",
@@ -181,6 +244,8 @@ def main(argv: list[str] | None = None) -> int:
                   file=sys.stderr)
             failures += 1
 
+    failures += _manifest_drift()
+
     for type_name, expected in sorted(SINGLE_SITED.items()):
         sites = _construction_sites(type_name)
         if len(sites) != expected:
@@ -215,6 +280,10 @@ def _selftest() -> int:
         ("third-party import", "import httpx\n"),
         ("dynamic import", "import importlib\n"),
         ("dynamic call", "def f(n):\n    return __import__(n)\n"),
+        # The prefix hole a verifier found: one underscore away from the package name,
+        # waved through as "internal" by a startswith with no separator anchor.
+        ("sibling-prefix module", "from app.agentruntime_bridge import legacy_catalog\n"),
+        ("sibling-prefix bare", "import app.agentruntimeX\n"),
     ]
     failed = []
     for label, src in cases:

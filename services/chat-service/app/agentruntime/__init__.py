@@ -31,7 +31,16 @@ from .contract import (
     derive_owning_service,
     identity_of,
 )
-from .manifest import UnresolvedReference, build, declarations, generate, load
+from .manifest import (
+    UnresolvedReference,
+    UntrustedRow,
+    build,
+    declarations,
+    generate,
+    load,
+    manifest_path,
+    validate_document,
+)
 from .narrowing import Narrowing, NarrowingLog
 from .surface import NarrowingRule, Surface, SurfaceAssembler, discover
 
@@ -39,7 +48,8 @@ __all__ = [
     "Admitted", "admit", "try_admit",
     "CONTRACT_VERSION", "ContractViolation", "Declaration", "Identity",
     "derive_owning_service", "identity_of",
-    "UnresolvedReference", "build", "declarations", "generate", "load",
+    "UnresolvedReference", "UntrustedRow", "build", "declarations", "generate", "load",
+    "manifest_path", "validate_document",
     "Narrowing", "NarrowingLog",
     "NarrowingRule", "Surface", "SurfaceAssembler", "discover",
 ]

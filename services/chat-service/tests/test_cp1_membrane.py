@@ -12,7 +12,11 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 import pickle
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -25,6 +29,7 @@ from app.agentruntime import (
     NarrowingRule,
     SurfaceAssembler,
     UnresolvedReference,
+    UntrustedRow,
     admit,
     build,
     derive_owning_service,
@@ -78,11 +83,48 @@ class TestTheManifestStartsEmpty:
             ["book_get", "book_list"]
 
     def test_build_cannot_be_handed_an_unadmitted_declaration(self):
-        """The membrane in one signature. `build` takes Admitted, and the only way to hold one is
-        to have passed the contract check — so there is no 'generate from raw declarations' path
-        for anyone to reach for."""
-        with pytest.raises((AttributeError, TypeError)):
+        """🔴 REWRITTEN — this test was GREEN FOR THE WRONG REASON and a verifier caught it.
+
+        It accepted `AttributeError`, which is what duck typing raises when a bare `Declaration`
+        has no `.declaration` attribute. `build()` never checked anything; the test was reading a
+        coincidence of attribute names as a boundary. Now it names the exception the boundary
+        actually raises, so removing the check reds it.
+        """
+        with pytest.raises(UntrustedRow):
             build([_tool()])                                    # a bare Declaration
+
+    def test_an_object_that_merely_LOOKS_admitted_is_refused(self):
+        """The defect the previous test was blind to, reproduced: four lines of duck type put a row
+        into a generated manifest, because `build()` trusted the type instead of checking it."""
+        class Fake:
+            declaration = _tool("sneaky")
+        with pytest.raises(UntrustedRow):
+            build([Fake()])
+
+    def test_a_row_TYPED_IN_BY_HAND_is_refused_on_load(self, tmp_path):
+        """§6.1 layer 3, the read end. Admission is a property of a ROW, not of the process that
+        happened to write the file — and JSON on disk has no types. Before this, a row typed
+        straight into the manifest was served to the assembler having passed no clause."""
+        p = tmp_path / "m.json"
+        p.write_text(json.dumps({
+            "manifest_version": 1, "contract_version": "1.0.0",
+            "declarations": [{"id": "Not An Id", "kind": "tool", "owning_service": "book-service",
+                              "lifecycle": "admitted", "contract_version": "1.0.0", "members": []}],
+        }), encoding="utf-8")
+        with pytest.raises(UntrustedRow):
+            load(path=p)
+
+    def test_a_hand_broken_reference_is_refused_on_load(self, tmp_path):
+        """M5 resolves at generation — and an edit afterwards can break what generation proved."""
+        p = tmp_path / "m.json"
+        p.write_text(json.dumps({
+            "manifest_version": 1, "contract_version": "1.0.0",
+            "declarations": [{"id": "world_setup", "kind": "skill", "owning_service": "chat-service",
+                              "lifecycle": "admitted", "contract_version": "1.0.0",
+                              "members": ["deleted_tool"]}],
+        }), encoding="utf-8")
+        with pytest.raises(UnresolvedReference):
+            load(path=p)
 
 
 # ── 1.2 · M2 — the import graph, the load-bearing property ──────────────────────────────────────
@@ -154,7 +196,24 @@ class TestDiscoveryReturnsNothingForLegacyDeclarations:
 
     @pytest.mark.parametrize("kind", ["tool", "skill", "workflow"])
     def test_an_empty_manifest_yields_zero_rows_for_every_kind(self, kind):
-        assert discover(load(path=Path("nonexistent.json")), kind=kind) == []
+        assert discover(load(path=Path("nonexistent.json")), kind=kind, log=NarrowingLog()) == []
+
+    def test_filtering_by_kind_without_a_log_is_refused(self):
+        """REJECTS the silent drop point a verifier's enumeration found. `discover(kind=…)` returns
+        fewer rows than the manifest holds — that is a narrowing, and P1 does not exempt a function
+        for being on the discovery side."""
+        doc = build([admit(_tool("book_list"))])
+        with pytest.raises(ValueError, match="narrowing"):
+            discover(doc, kind="skill")
+
+    def test_filtering_by_kind_registers_what_it_removed(self):
+        log = NarrowingLog()
+        doc = build([admit(_tool("book_list")), admit(_skill("world_setup", ("book_list",)))])
+        assert [r["id"] for r in discover(doc, kind="skill", log=log)] == ["world_setup"]
+        assert log.records() == [{
+            "tool": "book_list", "stage": "discovery_kind_filter",
+            "reason": "kind is 'tool', discovery asked for 'skill'", "pass": 1,
+        }]
 
     @pytest.mark.parametrize("legacy_id", ["book_list", "glossary_search", "tool_list"])
     def test_a_real_legacy_tool_name_is_not_discoverable(self, legacy_id):
@@ -332,20 +391,43 @@ class TestANarrowingCannotHappenSilently:
         with pytest.raises(ValueError, match="1-based"):
             self._assembler().assemble(pass_number=0)
 
-    def test_the_drop_and_the_record_are_the_same_statement(self):
-        """The structural claim, checked structurally because that is what it is: `_narrow` is the
-        only place `self._log.record` is called AND the only place a row is excluded. Splitting
-        them is the eight-frame defect in miniature."""
+    def test_every_place_that_removes_a_row_also_records(self):
+        """🔴 REWRITTEN — the previous version collected the *callers of* `log.record` and asserted
+        the set was `{_narrow}`. That is the wrong direction: it verifies that everything which
+        RECORDS is `_narrow`, and says nothing about anything that DROPS without recording. It was
+        green while `discover()` filtered by kind and registered nothing — a second silent
+        narrowing path, found by a verifier's enumeration rather than by this gate.
+
+        So it now enumerates the DROP sites — every function that returns a strict subset of a
+        collection it iterated — and asserts each one records. `P1 is a property of the module, not
+        of one function in it.`
+        """
         import ast
         import inspect
         from app.agentruntime import surface as mod
         tree = ast.parse(inspect.getsource(mod))
-        recorders = {
-            fn.name for fn in ast.walk(tree) if isinstance(fn, ast.FunctionDef)
-            for n in ast.walk(fn)
-            if isinstance(n, ast.Attribute) and n.attr == "record"
-        }
-        assert recorders == {"_narrow"}, f"a second site can now drop or record: {recorders}"
+        offenders: list[str] = []
+        for fn in ast.walk(tree):
+            if not isinstance(fn, ast.FunctionDef):
+                continue
+            body = ast.dump(fn)
+            # A function that iterates rows and conditionally keeps them is a narrowing site.
+            drops = ("for " in inspect.getsource(mod).split("def " + fn.name)[1][:1200]
+                     and ".append(" in body and "If(" in body)
+            comprehension_filter = any(
+                isinstance(n, (ast.ListComp, ast.GeneratorExp)) and n.generators[0].ifs
+                for n in ast.walk(fn)
+            )
+            if not (drops or comprehension_filter):
+                continue
+            records = any(
+                isinstance(n, ast.Attribute) and n.attr == "record" for n in ast.walk(fn)
+            )
+            if not records:
+                offenders.append(fn.name)
+        assert not offenders, (
+            f"these remove declarations without registering the narrowing: {offenders}"
+        )
 
 
 class TestAnEmptySurfaceIsAStatementNotAGap:
@@ -364,6 +446,78 @@ class TestAnEmptySurfaceIsAStatementNotAGap:
             NarrowingRule("token_budget", "over budget", lambda r: False),
         ])
         assert s.is_empty and len(s.withheld) == 1
+
+
+class TestThePackageImportsWhereItIsDEPLOYEDNotWhereItIsWritten:
+    """🔴 REJECTS a defect the whole 49-test suite was structurally blind to.
+
+    `import app.agentruntime` raised `IndexError` **in the running container**: `manifest.py` did
+    `Path(__file__).resolve().parents[4]` at MODULE level, and the image flattens
+    `services/chat-service/` to `/app`, so there were not four parents above it. Every submodule
+    failed, in a fresh interpreter, before any code ran. A live verifier found it.
+
+    **No test here could have.** Tests execute from the source tree, where the arithmetic is correct
+    by construction — so the suite proved the layout it ran in, not the layout that ships. A path
+    expression that counts directory levels encodes the *checkout*, and the deployed tree is a
+    different one.
+
+    This package imports only the standard library and itself (M2), which is what makes the
+    regression testable at all: it can be copied to any depth and imported there.
+    """
+
+    def _import_at(self, tmp_path: Path, depth: int) -> subprocess.CompletedProcess:
+        root = tmp_path
+        for i in range(depth):
+            root = root / f"d{i}"
+        pkg = root / "app" / "agentruntime"
+        pkg.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(_REPO / "services" / "chat-service" / "app" / "agentruntime", pkg)
+        (root / "app" / "__init__.py").write_text("", encoding="utf-8")
+        return subprocess.run(
+            [sys.executable, "-c",
+             "import app.agentruntime as m; "
+             "print(m.load()['declarations'], m.manifest_path())"],
+            cwd=root, capture_output=True, text=True,
+        )
+
+    @pytest.mark.parametrize("depth", [0, 1, 4])
+    def test_it_imports_at_any_depth(self, tmp_path, depth):
+        """depth=0 is the container's shape: `/app/app/agentruntime`, with nothing above it."""
+        r = self._import_at(tmp_path, depth)
+        assert r.returncode == 0, f"import failed at depth {depth}:\n{r.stderr}"
+
+    def test_with_no_manifest_anywhere_it_loads_EMPTY_rather_than_raising(self, tmp_path):
+        """The fail-safe direction, at the one place it is easiest to get wrong. A missing manifest
+        is a legitimate state — it means *no declarations* — so it must never be an import-time
+        crash, and must never become *fall back to the catalog with 315 in it*."""
+        r = self._import_at(tmp_path, 0)
+        assert r.returncode == 0 and r.stdout.startswith("[]"), r.stderr
+
+    def test_an_explicit_override_is_honoured(self, tmp_path):
+        """Deployment resolves the path; the code does not guess it."""
+        m = tmp_path / "elsewhere.json"
+        m.write_text(json.dumps(build([admit(_tool("book_list"))])), encoding="utf-8")
+        env = {**os.environ, "LOREWEAVE_AGENT_RUNTIME_MANIFEST": str(m)}
+        r = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, sys.argv[1]); "
+             "from app.agentruntime import load; print([d['id'] for d in load()['declarations']])",
+             str(_REPO / "services" / "chat-service")],
+            capture_output=True, text=True, env=env,
+        )
+        assert r.returncode == 0 and "book_list" in r.stdout, r.stderr
+
+
+class TestTheAssemblerRefusesAMalformedDocument:
+    """A missing `declarations` key was served as an EMPTY surface — indistinguishable from
+    'nothing is admitted', which is the one confusion `is_empty` exists to prevent."""
+
+    def test_a_document_without_declarations_is_refused(self):
+        with pytest.raises(ValueError, match="malformed"):
+            SurfaceAssembler({"manifest_version": 1})
+
+    def test_an_explicitly_empty_catalog_is_accepted(self):
+        assert SurfaceAssembler({"declarations": []}).assemble(pass_number=1).is_empty
 
 
 class TestTheLogIsIndependentOfTheAssembler:

@@ -9,27 +9,36 @@ answer.
 A validator you must remember to call is a validator that is 76% not called, and no amount of
 discipline fixes that shape — which is why the mechanism has to be the *type*, not a function.
 
-**THE GUARANTEE, STATED AS WHAT IS ACTUALLY ENFORCEABLE.** §6.1 originally said a bypass would be a
-*compile error*. It would not: Python has no compile-time access control, and **no type checker runs
-on this service** — no `mypy`/`pyright` config, no `pyproject.toml`, no type-check job. The spec was
-amended before this file was written rather than after a verifier found the gap. Five guarantees,
-and one honest residual:
+**🔴 WHAT THIS TYPE DOES NOT DO, first, because two drafts of §6.1 got it wrong in the same
+direction.** The clause first promised a *compile error* (there is no compile step and no type
+checker on this service), and then five "actually enforceable" guarantees — **three of which a
+verifier falsified, and the builder then reproduced by execution:**
 
-1. **`admit()` is the only producer** — `__init__` requires a module-private token that nothing else
-   can name. `Admitted(decl)` raises.
-2. **It cannot be mutated into a different declaration** — frozen, with `__slots__`, so there is no
-   attribute assignment and no `__dict__` to reach around it.
-3. **It cannot be round-tripped into existence** — `__reduce__`, `__copy__` and `__deepcopy__`
-   refuse. Pickle and `copy` are the two standard ways a "private" constructor is bypassed by
-   accident rather than malice.
-4. **A forged instance is unusable** — `object.__new__(Admitted)` cannot be prevented by any Python
-   mechanism, and is not claimed to be. It leaves every slot **unset**, so the first read raises
-   `AttributeError` instead of returning a plausible value. The failure is loud and immediate, which
-   is the property that matters: this checkpoint's expensive defects were all quiet wrong answers.
-5. **The construction site stays single** — `scripts/agentruntime-membrane-gate.py` counts them.
+* `_TOKEN` is a single-underscore module attribute, so `from …admission import _TOKEN` works and
+  `Admitted(d, v, _TOKEN)` **succeeds**. `import` does not honour naming conventions.
+* `object.__setattr__(a, "declaration", other)` **succeeds** — `frozen=True` blocks `a.x = …`, not
+  the two-argument form this class's own `__init__` uses.
+* `object.__new__(Admitted)` followed by two `object.__setattr__` calls yields a **fully usable**
+  forgery. Subclassing is unrestricted too.
 
-**The residual is row 4 and it is named, not hidden.** A caller can *allocate* an `Admitted` without
-passing the check. What it cannot do is get a **usable** one, or a **silent** one.
+**No wording fixes that. Python cannot make this unforgeable**, and asserting otherwise is what both
+earlier drafts did instead of probing.
+
+**So M4 is defence in depth (§6.1), and this type is only the first layer:**
+
+1. **accident boundary — this file.** `Admitted(decl, ver)` raises; `copy`, `deepcopy` and `pickle`
+   raise. That stops the *unintentional* producer, which is the entire 14-call-sites-against-58-
+   constructions shape being replaced. It stops nothing deliberate, and does not claim to.
+2. **detection boundary — the gate.** A bypass must name a private symbol or call
+   `object.__setattr__` on an `Admitted`. Both are greppable, so a deliberate bypass is **loud in a
+   diff** rather than impossible in a process.
+3. **correctness boundary — revalidation, in `manifest.py`.** The writer re-runs the contract on
+   every row it writes and the reader on every row it loads. **This is the load-bearing layer**, and
+   it is the one that does not depend on this type being trustworthy.
+
+Layer 3 exists because trusting the type hid two real defects: `build()` wrote a row for any object
+with a `.declaration` attribute, and `load()` served whatever JSON was on disk. **A type may express
+an invariant; it may not be the only thing enforcing one across a persistence boundary.**
 """
 from __future__ import annotations
 

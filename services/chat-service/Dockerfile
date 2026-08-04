@@ -34,6 +34,14 @@ RUN set -eu; \
     echo "pip: all 5 attempts failed"; exit 1
 COPY services/chat-service/app/ ./app/
 
+# CP-1 / M1 — the agent-runtime manifest is a shipped ARTIFACT, not a build-time nicety.
+# `load()` treats an absent manifest as EMPTY, which is the correct fail-safe and is also
+# indistinguishable from a correctly-empty one — so while CP-1 admits nothing, omitting the file
+# looks exactly like shipping it. That stops being true at CP-4, when the first declaration is
+# admitted and an absent file would silently serve an empty surface instead of the real one.
+# Copy it now, while the two states still agree and the mistake is cheap.
+COPY contracts/agent-runtime-manifest.json ./contracts/agent-runtime-manifest.json
+
 ENV PORT=8090
 EXPOSE 8090
 
