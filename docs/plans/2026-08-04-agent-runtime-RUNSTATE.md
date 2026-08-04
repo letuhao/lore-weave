@@ -504,11 +504,48 @@ returned `FAIL`
 after this decision was taken; its findings are logged here rather than acted on, because the code
 they touch is the legacy diagnostic that is now frozen as-is:
 
-| | finding | builder's independent check |
+| | finding | outcome |
 |---|---|---|
-| **F-45** | **two fixes shipped in the same commit cancel each other.** The sweep writes `finish_reason='abandoned_expired'`; class 4's `CASE` reads `finish_reason='awaiting_input'` | ✅ **confirmed statically** — `baseline-metrics.sql:267-276` has **no branch** for `abandoned_expired`, so every swept row falls to `ELSE 'unrecorded'`: the exact number CP-0 existed to drive to zero. The frozen `0.0%` holds only because its 33 rows were swept by the *previous* build |
-| **F-48** | `advertised_json()` returns the **whole cumulative list** at six upsert sites on one `message_id`, so a 3-pass turn with 2 checkpoints stores **7** entries with pass numbers `[1,2,1,2,1,2,3]`. Delta-encoding destroyed; no gate asserts uniqueness or monotonicity | ⚠️ **reported, not independently re-derived** — verification stopped before the builder could check it. The NULL-handling half of the concatenation fix is sound |
-| **F-49** | the *"hoisted `domain_not_selected` out of `if binding_categories:`"* claim is **false about its own history** | ✅ **confirmed** — `git show 0362275bc` shows `_unselected` at 4-space (function-level) indent in the commit that introduced it. The change was a **no-op**; it moved the `hot_seed` registration's position. **Eighth instance of asserting without checking** |
+| **F-45** | **two fixes shipped in the same commit cancel each other.** The sweep writes `finish_reason='abandoned_expired'`; class 4's `CASE` reads `finish_reason='awaiting_input'` | ✅ **FIXED `6d48f7acc`** — class 4 now reads `outcome` **unconditionally**: a row that HAS a recorded outcome cannot belong to a class named *"turns with no recorded outcome"*, whatever word sits beside it. **The verifier's NUMBER does not reproduce**, and that is recorded rather than quietly dropped — see below |
+| **F-48** | `advertised_json()` returns the **whole cumulative list** at six upsert sites on one `message_id`, so a 3-pass turn with 2 checkpoints stores **7** entries. Delta-encoding destroyed; no gate asserts uniqueness or monotonicity | ✅ **CONFIRMED AND FIXED `6d48f7acc`** — reproduced on the real engine (old **7**, `[1,1,2,1,2,3,1]`; new **4**) **and found in production data**: 4 rows carry duplicated passes, the worst a 5-pass turn stored as **13** entries `1,1,2,3,1,2,3,4,1,2,3,4,5` |
+| **F-49** | the *"hoisted `domain_not_selected` out of `if binding_categories:`"* claim is **false about its own history** | ✅ **CLOSED as a false claim, no code defect** — `git show 0362275bc` shows `_unselected` at 4-space (function-level) indent in the commit that introduced it. The change was a **no-op**; it moved the `hot_seed` registration's position. **Eighth instance of asserting without checking** |
+
+**🔴 F-45's MECHANISM WAS REAL AND ITS NUMBER WAS NOT — measured, both predicates, same corpus.**
+Round 11 predicted drift toward **~9.6%**. On the same 360-row population the old and new predicates
+both return **0.0%**, because `finish_reason='abandoned_expired'` has been written **zero times**:
+the 33 existing rows already carry `outcome='abandoned_by_user'`, and the sweep's own idempotency
+guard (`outcome IS DISTINCT FROM $1`) excludes them permanently. **The defect was latent, not
+active.** Reporting it as a fix that moved a number would have been the flattering version of a true
+finding, which is the failure mode this run has committed most often.
+
+**And the consequence for the freeze is the good one:** the class-4 change moves the frozen figure by
+**nothing**. It is a robustness fix, not a re-measurement, so **the freeze is not broken by it**.
+
+**The root cause was a VOCABULARY, not a missing branch**, and the fix is shaped accordingly:
+`instrument.KNOWN_FINISH_REASONS`, split by **who produces the value** — provider words may grow
+without warning, ours may not — with a gate asserting every `finish_reason` literal written under
+`app/` is declared. Plus **class 4b**, a query that itemises whatever lands in `unrecorded`, so the
+artifact reports its own blind spot instead of letting `ELSE` swallow the next new word.
+
+**The four damaged rows are NOT repaired, deliberately.** One (`3b996c7f`) has `pass 1` three times
+with **two distinct payloads** — a resume, where the number genuinely denotes two different sets.
+Three of the four are losslessly dedupable and the fourth is not, so none are touched: deduping would
+delete a real observation to make the array look tidy.
+
+**The gates were the weakest part and are replaced.** The two substring gates over the merge SQL were
+**green over F-48** — an array holding `[1,1,2,1,2,3,1]` contains every substring they looked for.
+They are deleted in favour of [`test_cp0_merge_db.py`](../../services/chat-service/tests/test_cp0_merge_db.py):
+13 tests against **real Postgres**, including a **control** asserting the old expression really does
+store 7 (without it the new tests would pass just as happily had the defect never existed), plus
+uniqueness, monotonicity, idempotence, resume-preservation and the historical-row case. Both new
+gates were **proven red-able by injection** and reverted by hand — never by `git checkout <file>`,
+which would have discarded the real edits in the same file.
+
+> **⬅️ CP-1.7 inherits the design conclusion, not just the fix.** One expression had to serve two
+> callers needing **opposite** things — a resume (must not erase → concatenate) and a checkpoint
+> (must not duplicate → replace). Each shipped fix was the other's defect. On the new surface there
+> is **one write path**, so the conflict does not arise; that is the concrete form *"construction,
+> not filtering"* takes for this column.
 
 Round 11 also ruled the **structural** non-nesting gate **vacuous** (`ast.walk` matches at any depth —
 nesting the block leaves `pytest -k not_nested` green), while the **behavioural** unconditional-
@@ -1021,9 +1058,10 @@ retrofitted to whatever gets built.
 
 | | kind | blocks? |
 |---|---|---|
-| **F-45** — `abandoned_expired` reads `unrecorded` in class 4 | **a live defect in the frozen diagnostic**, confirmed statically by the builder | **CP-3.6** — and it silently drifts class 4 off 0.0% with no code change |
-| **F-48** — `advertised_tools` stores the cumulative list at six upsert sites | **reported by V-CODE r11, not independently re-derived** — verification stopped first | CP-1.7 (the new surface writes once) |
-| **F-49** — the "hoist" that was a no-op | **closed as a false claim**, not a code defect | no |
+| ~~**F-45**~~ | ✅ **fixed `6d48f7acc`** — mechanism real, predicted drift **did not reproduce** (0 swept rows); frozen figure unmoved | no |
+| ~~**F-48**~~ | ✅ **fixed `6d48f7acc`** — confirmed on the real engine **and in production data** (4 rows, worst 13 entries for 5 passes) | no |
+| **the 4 damaged rows** | **historical residue, deliberately unrepaired** — one carries two distinct payloads under one `pass`, so dedupe would delete a real observation | no |
+| ~~**F-49**~~ | **closed as a false claim**, not a code defect | no |
 | class 3's predicate | **an unresolvable measurement** — a regex over prose from five producers | CP-2.6 needs `error_class` |
 | `sweep_expired_runs` has zero callers | **dead code with a live consumer expectation** | CP-3.6 |
 | is a plan also a **user-facing document** in the product sense? | product decision | no |
