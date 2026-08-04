@@ -93,6 +93,10 @@ async def lifespan(app: FastAPI):
     # silently is indistinguishable from one with no callers.
     from app.services.instrument import reconcile_crashed_turns
     await reconcile_crashed_turns(pool)
+    # And the turns stuck at `awaiting_input` whose suspended run has expired — input can never
+    # arrive, so a success label on them is a lie the column tells about itself.
+    from app.services.instrument import resolve_expired_suspends
+    await resolve_expired_suspends(pool)
     try:
         await ensure_bucket()
     except Exception:

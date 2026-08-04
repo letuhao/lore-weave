@@ -551,3 +551,45 @@ async def reconcile_crashed_turns(pool, *, older_than_minutes: int = 5) -> dict[
             stamped_assistant, stamped_user,
         )
     return {"assistant": stamped_assistant, "user": stamped_user}
+
+
+async def resolve_expired_suspends(pool) -> int:
+    """CP-0.4 · the `awaiting_input` turns that can never receive input.
+
+    Measured: 5 of 8 such rows are unreachable. `load_suspended_run` filters on
+    ``expires_at > now()``, so once a run expires the card can never be resumed — while the message
+    still advertises ``awaiting_input``, which this module classifies as a SUCCESS state. A turn
+    permanently waiting for input that cannot arrive, labelled as one that correctly stopped to ask.
+
+    The evidence is in the data rather than in a guess, which is what separates this from the
+    reconciler branch removed for guessing: ``expires_at <= now()`` is a fact the row carries about
+    itself. So the outcome moves to ``abandoned_by_user`` — the user was asked and the window closed
+    — and ``outcome_source`` marks it as swept, never as the terminal path having recorded it.
+
+    Deliberately does NOT delete the runs. `sweep_expired_runs` in ``db/suspended_runs.py`` does
+    that and has **zero callers** despite a docstring claiming it is *"called periodically from the
+    lifespan"* — the exact state this checkpoint has now found three times. Deleting the evidence
+    before anything reads it is how those rows became unexplainable in the first place.
+    """
+    try:
+        async with pool.acquire() as conn:
+            resolved = await conn.fetchval(
+                "WITH t AS (UPDATE chat_messages m "
+                "  SET outcome = $1, outcome_source = 'reconciler' "
+                "  WHERE m.finish_reason = 'awaiting_input' "
+                "    AND m.outcome IS DISTINCT FROM $1 "
+                "    AND EXISTS (SELECT 1 FROM chat_suspended_runs r "
+                "                WHERE r.message_id = m.message_id AND r.expires_at <= now()) "
+                "  RETURNING 1) SELECT count(*) FROM t",
+                OUTCOME_ABANDONED_BY_USER,
+            ) or 0
+    except Exception:  # noqa: BLE001 — startup must never be blocked
+        logger.warning("CP-0.4 expired-suspend resolver failed", exc_info=True)
+        return 0
+    if resolved:
+        logger.info(
+            "CP-0.4 expired-suspend resolver: %d turn(s) were advertising 'awaiting_input' with an "
+            "expired run — input could never arrive, so they are recorded abandoned_by_user",
+            resolved,
+        )
+    return resolved

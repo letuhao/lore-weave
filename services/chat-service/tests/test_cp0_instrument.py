@@ -999,3 +999,75 @@ class TestP1TheIntentGateRegisters:
             _inst.surface_withheld.reset(token)
         assert len(kept) == 1, "a rail-exempted tool stays in the catalog"
         assert not sink, "and must NOT be recorded as withheld — it was offered"
+
+
+class TestExpiredSuspendsAreResolved:
+    """CP-0.4 — `awaiting_input` on a turn whose run has expired is a SUCCESS LABEL ON A DEAD TURN.
+
+    Measured: 5 of 8 such rows can never receive input. `load_suspended_run` filters on
+    `expires_at > now()`, so once the run expires the card is unreachable — while the message still
+    advertises `awaiting_input`, which this module classifies as a success state.
+
+    These gates CALL the function. Four earlier reconciler gates were substring counts and none ran
+    it; deleting its caller left them green.
+    """
+
+    def test_it_is_wired_with_an_await_not_merely_imported(self):
+        import re as _re
+        main = (_APP / "main.py").read_text(encoding="utf-8")
+        assert _re.search(r"await\s+resolve_expired_suspends\s*\(", main), (
+            "an import is not a caller — `sweep_expired_runs` has sat in this repo with zero "
+            "callers and a docstring claiming otherwise, which is the state this rejects"
+        )
+
+    def test_it_acts_only_on_evidence_the_row_carries_about_itself(self):
+        import asyncio
+        issued: list[tuple] = []
+
+        class _Conn:
+            async def fetchval(self, sql, *args):
+                issued.append((sql, args)); return 5
+
+        class _Acquire:
+            async def __aenter__(self): return _Conn()
+            async def __aexit__(self, *a): return False
+
+        class _Pool:
+            def acquire(self): return _Acquire()
+
+        n = asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+            instrument.resolve_expired_suspends(_Pool())
+        )
+        assert n == 5, "it must report what it resolved, not a hardcoded zero"
+        sql, args = issued[0]
+        assert "expires_at <= now()" in sql, (
+            "the only admissible evidence — a fact the row carries about itself, not an inference. "
+            "The reconciler branch removed this checkpoint was removed for lacking exactly this"
+        )
+        assert "finish_reason = 'awaiting_input'" in sql
+        assert instrument.OUTCOME_ABANDONED_BY_USER in args
+        assert "outcome_source = 'reconciler'" in sql, (
+            "a swept row must never be mistakable for one a terminal path recorded"
+        )
+
+    def test_it_does_not_delete_the_evidence(self):
+        """REJECTS deleting the suspended run. `sweep_expired_runs` does that and has zero callers;
+        deleting the row before anything reads it is how these turns became unexplainable."""
+        import ast, inspect
+        # Read the CODE, not the prose. The docstring explains what it declines to do, so a naive
+        # substring scan matches its own explanation — the same class of error as the gate that was
+        # satisfied by a comment containing the word "outcome".
+        fn = ast.parse(inspect.getsource(instrument.resolve_expired_suspends)).body[0]
+        body = ast.get_source_segment(
+            inspect.getsource(instrument.resolve_expired_suspends),
+            fn,
+        ) or ""
+        literals = [
+            n.value for n in ast.walk(fn)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)
+        ]
+        sql_literals = [v for v in literals if "chat_messages" in v or "chat_suspended_runs" in v]
+        assert sql_literals, "no SQL found to inspect"
+        assert not any("DELETE" in v.upper() for v in sql_literals), (
+            "resolving an outcome must not destroy the record that justifies it"
+        )
