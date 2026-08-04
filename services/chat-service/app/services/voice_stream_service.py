@@ -433,6 +433,7 @@ async def voice_stream_response(
     last_usage = None
     tts_chars = 0  # WS-4.2b — TTS is metered by CHARACTERS spoken (not tokens)
     _voice_suspended = False  # CP-0.4 — set when the turn breaks on an un-voiceable confirm
+    _voice_tool_calls: list[dict] = []  # CP-0.3 — recorded calls for this turn
     sentence_index = 0
     skipped_count = 0
     # Collect audio segments during streaming — upload AFTER assistant message is saved (FK requirement)
@@ -495,6 +496,13 @@ async def voice_stream_response(
                 break
             _tc = chunk_data.get("tool_call")
             if _tc:
+                # CP-0.3 — RECORD it, not just announce it. This file contained zero occurrences of
+                # `tool_calls`: voice turns dispatched tools and persisted none of them, so every
+                # voice tool call was absent from the column the instrument is built on — not
+                # mislabelled, ABSENT. The surrounding turn was instrumented while the calls inside
+                # it were invisible, which is the shape of hole hardest to notice, because the row
+                # looks complete.
+                _voice_tool_calls.append(instrument.ensure_tool_call_instrumented(dict(_tc)))
                 yield _sse("tool-call", {"tool": _tc.get("name") or _tc.get("tool") or "tool"})
                 continue  # a tool_call chunk has no speakable content
 
@@ -587,8 +595,9 @@ async def voice_stream_response(
                 INSERT INTO chat_messages
                   (message_id, session_id, owner_user_id, role, content, content_parts,
                    sequence_num, model_ref, branch_id, local_date,
-                   finish_reason, outcome, runtime_variant, advertised_tools)
-                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8, $12, $9, $10, $11::jsonb)
+                   finish_reason, outcome, runtime_variant, advertised_tools, tool_calls)
+                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8, $12, $9, $10, $11::jsonb,
+                        $13::jsonb)
                 """,
                 msg_id, session_id, user_id, final_text, json.dumps(parts), seq, model_ref,
                 _local_date,  # DBT-11 — same turn as the user msg above (resolved before acquire)
@@ -622,6 +631,7 @@ async def voice_stream_response(
                 None,
                 # finish_reason follows outcome rather than asserting 'stop'.
                 "awaiting_input" if _voice_suspended else "stop",
+                json.dumps(_voice_tool_calls) if _voice_tool_calls else None,
             )
             _mc_row = await conn.fetchrow(
                 "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), "
