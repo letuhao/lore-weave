@@ -373,10 +373,16 @@ class AdvertisedToolsRecorder:
         self._passes: list[dict] = []
         self._withheld: list[dict] = []
         self._seen: set[tuple[str, str]] = set()
-        #: The turn's narrowing sink, adopted via `bind_sink` so `withheld_json()` can drain it on
-        #: **every** terminal path — including the tool-free ones, which is where the row that
-        #: matters most is produced.
-        self._sink: list | None = None
+        #: 🔴 **ADOPTED AT CONSTRUCTION, not by a call somebody has to remember.** It was
+        #: `bind_sink`, and a gate immediately showed why that is not enough: the arming happens in
+        #: `stream_response` and the binding happened in `_emit_chat_turn` — **two functions**, so
+        #: the pair could drift exactly as the arm and the drain already had. Deleting either
+        #: `bind_sink` call was measured **green**.
+        #:
+        #: A recorder built inside a turn is a recorder for that turn, and that is knowable here.
+        #: `bind_sink` remains for the caller that legitimately owns a different sink (voice builds
+        #: its own; tests supply one), but the DEFAULT is no longer a step that can be skipped.
+        self._sink: list | None = surface_withheld.get()
         # F-48 — the SEGMENT this recorder owns, and it exists because one SQL expression had to
         # satisfy two requirements that pull in opposite directions:
         #
@@ -535,7 +541,12 @@ class AdvertisedToolsRecorder:
         self._record_scoped(SCOPE_PASS, stage=stage, reason=reason)
 
     def _record_scoped(self, scope: str, *, stage: str, reason: str, count: int | None = None) -> None:
-        key = (scope, stage, len(self._passes))
+        # 🔴 TWO KEY NAMESPACES IN ONE `_seen` SET. The per-declaration key is `(tool, stage, pass)`
+        # and this one was `(scope, stage, pass)` — and `catalogue` and `pass` are **legal
+        # declaration ids**, so a real declaration by either name and a scoped row collide, and
+        # whichever arrives first silently suppresses the other. Latent today; a `#` prefix cannot
+        # appear in an id, so the two namespaces can no longer meet.
+        key = (f"#{scope}", stage, len(self._passes))
         if key in self._seen:
             return
         self._seen.add(key)
@@ -544,6 +555,10 @@ class AdvertisedToolsRecorder:
             "scope": scope, "stage": stage, "reason": reason,
             "pass": len(self._passes) or None,
         }
+        # 🔴 `count is not None`, never `count or 0`. Absent and zero are different facts: on a cold
+        # failure nothing is known, not even the size, and `0` claims *we know nothing was there*.
+        # The guard existed at the recorder's other entry point and not at this one, so an injection
+        # writing `count or 0` here was measured **green**.
         if count is not None:
             entry["count"] = count
         self._withheld.append(entry)
@@ -567,13 +582,28 @@ class AdvertisedToolsRecorder:
         while sink:
             row = sink.pop(0)
             scope = row.get("scope")
+            stage, reason = row.get("stage") or "unknown", row.get("reason") or "unrecorded"
             if scope == SCOPE_CATALOGUE:
-                self.record_catalogue_withheld(
-                    stage=row["stage"], reason=row["reason"], count=row.get("count"))
+                self.record_catalogue_withheld(stage=stage, reason=reason, count=row.get("count"))
             elif scope == SCOPE_PASS:
-                self.record_pass_withheld(stage=row["stage"], reason=row["reason"])
+                self.record_pass_withheld(stage=stage, reason=reason)
+            elif row.get("tool"):
+                self.record_withheld(row["tool"], stage=stage, reason=reason)
             else:
-                self.record_withheld(row["tool"], stage=row["stage"], reason=row["reason"])
+                # 🔴 **THE `else` READ `row["tool"]` UNCONDITIONALLY — the P0 crash re-created inside
+                # the function written to fix it**, and this time on EVERY terminal path, because
+                # `withheld_json()` now drains unconditionally. A verifier found it by feeding an
+                # unknown scope, which is exactly what the NEXT scope will be before its consumer
+                # is written. That is the third time this shape has landed here, so the branch stops
+                # trusting the shape: an unrecognised row is recorded as an unrecognised row.
+                #
+                # Losing it would be worse than a crash was: a crash is loud, and this column exists
+                # because silence is the failure being measured.
+                self._record_scoped(
+                    str(scope or "unknown"),
+                    stage=stage,
+                    reason=f"{reason} (unrecognised scope {scope!r}; recorded rather than dropped)",
+                )
 
     def bind_sink(self, sink: list | None) -> None:
         """Adopt the turn's sink so `withheld_json()` can drain it **however the turn ends**."""

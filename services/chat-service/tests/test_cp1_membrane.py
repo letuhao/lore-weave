@@ -468,6 +468,18 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
             "admitted_against varied, which this checkpoint cannot make happen"
         )
 
+        # 🔴 **AND THE PREVIOUS FIX STILL DID NOT MAKE THIS RED WHEN THE MECHANISM LANDS.** A
+        # verifier BUILT the §6.4 carry-forward, proved it produces `queue=['book_get']` and drains
+        # to `[]` — and this test **passed**, because it only ever calls `build` with EVERY
+        # declaration re-admitted, so `queue == []` is true on both sides of the transition. My
+        # docstring and §0.14.1c both claimed it "reds the day the mechanism lands". It did not.
+        #
+        # I had fixed what the verifier pointed AT (an amend that did nothing) and not what it
+        # MEANT. The claim is about the carry-forward path, so the test must drive the carry-forward
+        # path: re-admit ONE of two, which is the only shape that can put a row in the queue.
+        with pytest.raises(UntrustedRow, match="IS NOT BUILT"):
+            build([admit(_tool("book_list"))], previous=after)
+
     def test_A_DECLARATION_CANNOT_SILENTLY_LEAVE_THE_MANIFEST(self, monkeypatch):
         """§1 says the plan deletes nothing; §6.4 says a declaration entering the re-admission queue
         does so *without leaving the runtime*. That mechanism is unbuilt, and a verifier measured the

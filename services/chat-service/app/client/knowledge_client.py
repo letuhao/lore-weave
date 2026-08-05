@@ -721,7 +721,18 @@ class KnowledgeClient:
             self._register_catalogue_outage(
                 self._ADMIN_CATALOG_KEY, "no admin token presented")
             return []
-        if self._admin_tool_definitions is not None:
+        # 🔴 **THE SIXTH BRANCH THAT RETURNS `[]`, and it was the only one nobody had counted.**
+        # This cache is process-wide, has **no TTL and no invalidation**, and an *empty successful*
+        # fetch was stored in it — so one zero-tool answer from `/mcp/admin` pinned **every** admin
+        # turn for the life of the process, the transport was never re-dialled after recovery, and
+        # nothing registered. The five branches audited last round all announce their failure; this
+        # one succeeds once and then withholds the catalogue silently forever, which is a worse
+        # shape than any of them.
+        #
+        # An empty catalogue is not a cacheable answer here: `[]` and "we have not fetched yet" are
+        # the same state as far as a later turn is concerned, and treating them as different is what
+        # made the emptiness permanent.
+        if self._admin_tool_definitions:
             return self._admin_tool_definitions
         if streamablehttp_client is None or ClientSession is None:
             logger.warning(
@@ -779,6 +790,11 @@ class KnowledgeClient:
             }
             for t in listed.tools
         ]
+        if not tools:
+            # A successful fetch that returned nothing IS a whole-catalogue narrowing for this turn,
+            # and it is the one shape that used to become permanent by being cached.
+            self._register_catalogue_outage(
+                self._ADMIN_CATALOG_KEY, "admin catalogue returned zero tools")
         self._admin_tool_definitions = tools
         return tools
 

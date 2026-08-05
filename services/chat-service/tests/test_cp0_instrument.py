@@ -1471,6 +1471,68 @@ class TestU2ACatalogueOutageIsRegistered:
         assert rows[0]["pass"] is None, "no pass ran; fabricating 1 would claim one did"
         assert not sink, "drained, not copied — a second read must not duplicate it"
 
+    def test_EVERY_TERMINAL_WRITE_BINDS_THE_DRAINED_VALUE__not_a_literal_None(self):
+        """🔴 *"Round 10 made the row arrive, and nothing in the tree would notice if it stopped."*
+
+        A verifier deleted `bind_sink` from `stream_response` — **green**. From
+        `voice_stream_response` — **green**. Bound `None` at the suspend, cancel, error and **clean
+        finish** write sites — **all four green, 261 tests passing.** The mechanism worked and was
+        held up by nothing.
+
+        So this reads the parse tree at every site that persists the column and asserts the bound
+        expression is the RECORDER'S, never a literal. A behaviour test cannot reach all four
+        terminal paths from a unit suite; what it can do is make "someone quietly binds `None`
+        again" impossible to do silently.
+        """
+        import ast
+        from pathlib import Path
+
+        offenders, sites = [], 0
+        for mod in ("stream_service.py", "voice_stream_service.py"):
+            path = Path(__file__).resolve().parents[1] / "app" / "services" / mod
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                # The keyword form: `withheld_tools=<expr>`
+                if isinstance(node, ast.keyword) and node.arg == "withheld_tools":
+                    sites += 1
+                    if not any(isinstance(n, ast.Call) and getattr(n.func, "attr", None)
+                               == "withheld_json" for n in ast.walk(node.value)):
+                        offenders.append(f"{mod}:{node.value.lineno} withheld_tools=<not the recorder>")
+        assert sites >= 3, (
+            f"only {sites} `withheld_tools=` binding(s) found — the column lost a writer, which is "
+            f"how three of four turn shapes came to persist NULL"
+        )
+        assert not offenders, (
+            f"a terminal write binds something other than the recorder's own value: {offenders}. "
+            f"A verifier bound `None` at four of these and the suite stayed green."
+        )
+
+    def test_A_RECORDER_ADOPTS_THE_TURNS_SINK_WITHOUT_ANYONE_REMEMBERING_TO(self):
+        """🔴 Deleting `bind_sink` was measured **green at both entry points**, and a gate written
+        to catch that immediately showed the deeper problem: the arming is in `stream_response` and
+        the binding was in `_emit_chat_turn` — **two functions**, so the pair could drift apart
+        exactly as the arm and the drain already had, twice.
+
+        So adoption moved into `__init__`. A recorder built inside a turn is a recorder for that
+        turn, and that is knowable at construction. This drives it rather than reading it: build a
+        recorder in an armed context and require the row to reach the column with no wiring call at
+        all."""
+        import contextvars
+
+        def run():
+            instrument.arm_turn_surface()
+            instrument.record_catalogue_unavailable(stage="catalogue_unavailable", reason="boom")
+            rec = instrument.AdvertisedToolsRecorder()          # no bind_sink, deliberately
+            return rec.withheld_json()
+
+        rows = contextvars.copy_context().run(run)
+        assert rows, "a recorder built inside an armed turn did not adopt its sink"
+        assert rows[0]["scope"] == instrument.SCOPE_CATALOGUE
+
+        # ...and a recorder built OUTSIDE a turn adopts nothing, rather than inventing a turn.
+        assert contextvars.copy_context().run(
+            lambda: instrument.AdvertisedToolsRecorder().withheld_json()) is None
+
     def test_a_PASS_that_offered_no_tools_is_not_a_tool_named_star(self):
         """🔴 §0.14.3 rejects the `tool: \"*\"` sentinel **by name**, and the code minted one two
         thousand lines away. A sentinel makes every consumer that counts tools return a wrong answer
@@ -1596,6 +1658,32 @@ def _called_name(node):
     return None
 
 
+def _narrowing_helpers_multi(by_name):
+    """Names that reach a narrowing, over a name → [functions] index.
+
+    Over-approximating on purpose: if **any** function with a given name narrows, the name counts.
+    A gate that guesses may guess toward more scrutiny, never less — and the previous version keyed
+    on the bare name with `setdefault`, so a same-named helper in a later module silently erased an
+    earlier narrowing one (`_jsonb` and `_sse` collide today).
+    """
+    reaching = {
+        name for name, fns in by_name.items()
+        if any(isinstance(n, ast.Call) and _called_name(n) in _NARROWING_CALLS
+               for fn in fns for n in ast.walk(fn))
+    }
+    changed = True
+    while changed:
+        changed = False
+        for name, fns in by_name.items():
+            if name in reaching:
+                continue
+            if any(isinstance(n, ast.Call) and _called_name(n) in reaching
+                   for fn in fns for n in ast.walk(fn)):
+                reaching.add(name)
+                changed = True
+    return reaching
+
+
 def _narrowing_helpers(all_fns):
     """Names of functions that reach a narrowing, **transitively, to a fixed point.**
 
@@ -1651,33 +1739,46 @@ def _turn_entry_calls():
                 trees[f"{sub}/{path.name}"] = ast.parse(path.read_text(encoding="utf-8"))
             except SyntaxError:                       # pragma: no cover - a broken file is its own bug
                 continue
-    all_fns = {}
+    # 🔴 `tree.body` ONLY — so a **method**, a nested function and a lambda were all invisible, and
+    # a verifier routed the admin door through a class method with the gate at `5 passed` and three
+    # suites exactly at baseline while the admin turn lost both halves of U-2. `ast.walk` sees every
+    # function in the module regardless of nesting.
+    #
+    # And the key was the bare NAME across all modules (`setdefault`), so two same-named helpers in
+    # different files collapsed into one — measured: `_jsonb` and `_sse` collide today. Keyed by
+    # module now, with a name index kept separately for the call-graph closure, which can only
+    # over-approximate (a name that narrows in ANY module is treated as narrowing) — the safe
+    # direction for a gate.
+    by_name: dict[str, list] = {}
     for tree in trees.values():
-        for f in tree.body:
+        for f in ast.walk(tree):
             if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                all_fns.setdefault(f.name, f)
-    reaching = _narrowing_helpers(all_fns)
+                by_name.setdefault(f.name, []).append(f)
+    reaching = _narrowing_helpers_multi(by_name)
     # A router that DELEGATES to an armed entry point is covered by it. Without this the sweep
     # demands an arm from `send_message` (which calls `stream_response`) and a second arming is the
     # thing that discards what the first collected. Transitive, same fixed point as `reaching`.
     arming = {
-        name for name, fn in all_fns.items()
+        name for name, fns in by_name.items()
         if any(isinstance(n, ast.Call) and _called_name(n) == "arm_turn_surface"
-               for n in ast.walk(fn))
+               for fn in fns for n in ast.walk(fn))
     }
     changed = True
     while changed:
         changed = False
-        for name, fn in all_fns.items():
+        for name, fns in by_name.items():
             if name in arming:
                 continue
-            if any(isinstance(n, ast.Call) and _called_name(n) in arming for n in ast.walk(fn)):
+            if any(isinstance(n, ast.Call) and _called_name(n) in arming
+                   for fn in fns for n in ast.walk(fn)):
                 arming.add(name)
                 changed = True
 
     out = {}
     for mod, tree in trees.items():
-        for fn in tree.body:
+        for fn in ast.walk(tree):
+            # `ast.walk`, not `tree.body`: a verifier routed the admin door through a CLASS METHOD
+            # and the gate reported `5 passed` with three suites exactly at baseline.
             if not isinstance(fn, ast.AsyncFunctionDef):
                 continue
             narrowings = sorted(_narrowings_in(fn, reaching))
@@ -1728,11 +1829,14 @@ def _turn_entry_calls():
 #: Entry points that reach a narrowing but are NOT turns — each needs a stated reason, because
 #: "it is not a turn" is exactly what would be said about a turn nobody armed.
 _NOT_A_TURN = {
-    # `_stream_with_tools` is the shared inner generator: it runs INSIDE a turn that has already
-    # armed, and arming again would discard what surface assembly collected.
-    "services/stream_service.py::_stream_with_tools",
-    "services/stream_service.py::_emit_chat_turn",
-    "services/stream_service.py::_run_subagent_call",
+    # 🔴 THREE ENTRIES WERE DELETED FROM HERE, and their deletion is the finding.
+    # `_stream_with_tools`, `_emit_chat_turn` and `_run_subagent_call` were exempted **pre-emptively**
+    # — discovery never produced them, so nothing exercised the exemption, and if one had later
+    # BECOME a turn this list would have absolved it in silence. An allow-list nobody checks is a
+    # permanent hole with a reason attached to it, which reads like care and behaves like a
+    # blindfold. `test_NO_ALLOW_LIST_ENTRY_IS_STALE` now refuses an entry the sweep cannot see.
+    #
+    # `_compute_rail_drive_context` IS discovered and IS genuinely inside an armed turn.
     "services/stream_service.py::_compute_rail_drive_context",
     # `/v1/chat/tools/catalog` — the UI's tool-picker feed. It fetches and filters the catalogue,
     # so the sweep finds it, but **no model is offered anything**: there is no turn for a narrowing
@@ -1820,6 +1924,22 @@ class TestTheTurnSinkIsArmedBeforeAnythingNarrows:
                 f"{fn}: a narrowing call is aliased at {aliases}; this gate matches by called name, "
                 f"so an alias walks past the ordering check below"
             )
+
+    def test_NO_ALLOW_LIST_ENTRY_IS_STALE(self):
+        """🔴 An allow-list nobody checks is a permanent hole with a reason attached to it.
+
+        A verifier found three `_NOT_A_TURN` entries that discovery does not even produce — they
+        were pre-emptive exemptions nothing exercised, so if one of them later BECAME a turn the
+        list would silently absolve it. The failure mode is the same as a `# noqa` for a warning
+        that no longer fires: it looks like care and behaves like a blindfold.
+        """
+        discovered = set(_turn_entry_calls())
+        stale = sorted(_NOT_A_TURN - discovered)
+        assert not stale, (
+            f"{stale} are exempted and not discovered — nothing exercises the exemption, so it "
+            f"cannot be trusted to still be correct. Delete the entry, or find out why the sweep "
+            f"stopped seeing it."
+        )
 
     def test_no_narrowing_precedes_the_arming__INCLUDING_THROUGH_A_HELPER(self):
         for fn, (arms, _, narrowings, _a, _c) in _turn_entry_calls().items():

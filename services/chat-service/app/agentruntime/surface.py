@@ -37,11 +37,29 @@ def rows_of(manifest_doc: dict) -> list[dict]:
     one confusion `Surface.is_empty` exists to prevent.
     """
     rows = manifest_doc.get("declarations")
-    if not isinstance(rows, list):
+    # `_is_exactly`, not `isinstance` — this was the one type decision in the module the identity
+    # sweep did not reach, found by asking which sites still spelled it the old way.
+    if not _is_exactly(rows, list):
         raise ValueError(
             "manifest document has no `declarations` list. An empty catalog is `[]`; a missing key "
             "is a malformed document, and serving it as empty would hide the difference."
         )
+    # 🔴 **THE BOUNDS STOPPED AT THE PIPELINE AND THE DATA WALKED IN.** Every stage parameter is
+    # exact-typed, and then `AllowList.keep` asks `row.get("id") in self.names` — so an `id` whose
+    # `__eq__` returns True defeated an allow-list of one name and put an **unlisted declaration on
+    # the wire with no record at all**, which is arm E reached through the row instead of the rule.
+    # A manifest row is an input exactly as much as a stage is; `load()` validates the file, and
+    # this validates whatever reached here by any other door (`SurfaceAssembler` and `discover` are
+    # both exported and neither went through `load`).
+    for i, r in enumerate(rows):
+        if not _is_exactly(r, dict):
+            raise ValueError(f"declarations[{i}] is a {type(r).__name__}, not a plain object")
+        if not _is_exactly(r.get("id"), str) or not r.get("id"):
+            raise ValueError(
+                f"declarations[{i}].id is {r.get('id')!r}; a declaration id must be a non-empty "
+                f"plain string. An id with a custom __eq__ decides membership in every allow-list "
+                f"and deny-list it is compared against (§0.14.1)."
+            )
     return list(rows)
 
 
@@ -477,8 +495,20 @@ class SurfaceAssembler:
         verification left standing while the function 80 lines below did exactly that. Corrected
         rather than defended: the guarantee is *every* removal registers, not that there is one.
         """
+        _plain(pass_number, int, "pass_number")
         if pass_number < 1:
             raise ValueError("pass_number is 1-based; a narrowing stamped at pass 0 belongs to no pass")
+        # 🔴 **MATERIALISE FIRST, OR WHAT IS VALIDATED IS NOT WHAT RUNS.** `validate_pipeline`
+        # consumed one iteration and the loop below took another, so an object yielding different
+        # stages on its second pass was checked as one pipeline and executed as a different one: a
+        # verifier's four-line rogue class narrowed the surface, registered three records, and
+        # **balanced the conservation law**. The accidental form is worse than the adversarial one —
+        # passing a bare **generator** made the entire pipeline a silent no-op, a `Filter` keeping
+        # one declaration returning all four.
+        #
+        # Every bound in this module checks a *value*; a value that changes between the check and
+        # the use is not bounded at all, and no amount of type-exactness fixes a TOCTOU.
+        pipeline = list(pipeline)
         # Rejected at CONSTRUCTION of the assembly, not at use: a rank-dependent stage over an
         # unordered collection selects an arbitrary subset.
         validate_pipeline(pipeline)
@@ -609,8 +639,14 @@ def discover(
     of the module, not of one function in it.**
     """
     rows = rows_of(manifest_doc)
+    _plain(pass_number, int, "pass_number")
     if kind is None:
         return rows
+    # 🔴 `kind` IS AN OPERAND. It is compared against every row, so a custom `__eq__` makes this a
+    # regex stage with zero new operators — the §0.14.1 route, in the one narrowing function that
+    # is not a stage kind. And its `__repr__` is interpolated into `reason`, so it writes the
+    # caller's own text into a **persisted** record.
+    _plain(kind, str, "kind")
     if log is None:
         raise ValueError(
             "discover(kind=…) removes declarations, which is a narrowing: pass `log=` so it "

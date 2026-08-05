@@ -1263,6 +1263,43 @@ it up and none can forget to.*
 
 ---
 
+## 🔴 R10 — **FAIL ×2**, and the one-sentence version is a verifier's
+
+> *"Round 10 made the row arrive, and nothing in the tree would notice if it stopped."*
+
+Prompt committed first, two V-CODE on frozen `a43c24fcc`. Verdicts:
+[round10-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round10-v-code-a.md) ·
+[round10-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round10-v-code-b.md).
+
+**R9's fixes are real and were measured so:** the drain reaches the persisted value on six
+`stream_response` shapes plus voice; `absorb`+drain is idempotent; `_is_exactly` survived metaclass
+`__eq__`/`__hash__`, a `__class__` property, `__instancecheck__` and real `__class__` assignment;
+R9's B1–B5 are all **CLOSED**; the three `_register_catalogue_outage` injections that were green
+last round now red. **What failed is everything holding them up.**
+
+| # | finding | response |
+|---|---|---|
+| **🔴 A** | **deleting `bind_sink` from either entry point: GREEN. Binding `None` at the suspend, cancel, error and *clean finish* write sites: all four GREEN, 261 tests passing.** The mechanism worked and was held up by nothing | adoption moved **into `__init__`** — a recorder built inside a turn is a recorder for that turn — because a gate written for this immediately showed the deeper problem: the arm was in `stream_response` and the bind in `_emit_chat_turn`, **two functions**, free to drift exactly as the arm and the drain already had, twice. Plus a parse-tree gate that every `withheld_tools=` binding is the recorder's own value |
+| **🔴 B** | **the pipeline was iterated TWICE** — `validate_pipeline` consumed one iteration and the loop took another, so **what was validated was not what ran**: a rogue stage narrowed, registered, and balanced the conservation law. The accidental form is worse — a bare **generator** made the whole pipeline a silent no-op | `pipeline = list(pipeline)`. *A value that changes between the check and the use is not bounded at all, and no amount of type-exactness fixes a TOCTOU* |
+| **🔴 B** | **`absorb`'s `else` read `row["tool"]` unconditionally — the P0 crash re-created inside the function written to fix it**, and now on *every* terminal path because the drain became unconditional | an unrecognised row is **recorded as unrecognised**, not dropped and not fatal. Losing it is worse than crashing: silence is the thing being measured |
+| **🔴 B** | **the P4 defect-assertion test still passed when the mechanism landed.** A verifier BUILT §6.4's carry-forward, proved `queue=['book_get'] → []`, and the test stayed green — because it only ever re-admits *everything*, so `queue == []` holds on both sides. My docstring and §0.14.1c both claimed it reds | it now drives the carry-forward path. **I had fixed what the verifier pointed AT and not what it MEANT** — the round-9 fix caught an amend-no-op and missed the claim entirely |
+| **A** | **route nine + five more**: class method, `getattr`, lambda, outside-module, subpackage, sync `def`. Route nine routed the **admin door alone** through a method: gate `5 passed`, three suites *exactly at baseline*, admin turn loses both halves of U-2 | discovery walks the whole tree, not `tree.body`; the closure runs over a name→**[functions]** index, so a same-named helper cannot erase a narrowing one (`_jsonb`, `_sse` collide today) |
+| **A** | **three `_NOT_A_TURN` entries were STALE** — exempted pre-emptively, discovery never produced them, so nothing exercised the exemption | deleted, and a gate refuses an entry the sweep cannot see. *An allow-list nobody checks is a permanent hole with a reason attached to it* |
+| **A** | **a SIXTH catalogue branch**: the admin cache has no TTL and stored `[]` from a *successful* empty fetch — one zero-tool answer pinned every admin turn for the process's life, never re-dialled, registering nothing | `[]` is no longer a cacheable answer, and a zero-tool fetch registers |
+| **A** | the empty-turn branch **computed `withheld_json()` and wrote only `SET outcome`** — the value calculated and dropped, on exactly the turn shape an outage produces | the orphan stamp carries the column too |
+| **B** | four more unbounded operands, incl. **`row["id"]` with `__eq__`→True defeating `AllowList` and putting an unlisted declaration on the wire with no record** | `rows_of` validates row shape; `pass_number` and `kind` bounded. *The bounds stopped at the pipeline and the data walked in* |
+| **B/A** | `count or 0` guarded at one of two sites · a second dispatch over the same enum missing `catalogue` · one `_seen` set with two key namespaces colliding on the legal ids `catalogue`/`pass` · `previous={"declarations": None}` disabling the loss guard | all four closed; the second dispatch now routes through `absorb`, so one place knows the enum |
+
+**2198 tests pass; gate green.** ⚠️ Builder's evidence.
+
+**Still open, recorded not fixed:** `stream_response` has **no `try` across 1,129 lines** from the
+arm to the emit, and there is no `finally` on the generator — so an abort in the first few SSE lines
+writes **0 INSERTs** and the row dies in the sink. Voice has the same shape and no
+`_persist_terminal_assistant` sibling. That is a turn-lifecycle change, not an instrument one, and it
+belongs with CP-2's terminal-path work rather than being bolted on here.
+
+---
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -1271,7 +1308,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | step | what happens | verifiers | closes when |
 |---|---|---|---|
 | ~~R9~~ | ran 2026-08-06 → **FAIL ×2**, 13 findings, all fixed. See the block above | `V-CODE` ×2 on `86ae72592` | — |
-| **R10** | verify **R9's delta**: the drain reaching the column on all four turn shapes · voice's recorder and column · the widened arm-order gate · the five catalogue branches · the operand bounds and the single identity helper · the removed backfill · the P4 test's honesty | `V-CODE` ×2, fresh, one message, frozen artifact | clean ⇒ **CP-1 closes**, CP-0 re-confirmed |
+| ~~R10~~ | ran 2026-08-06 → **FAIL ×2**, 10 findings, all fixed. See the block above | `V-CODE` ×2 on `a43c24fcc` | — |
+| **R11** | verify **R10's delta**: sink adoption at construction · the materialised pipeline · `absorb`'s unknown-scope branch · the P4 test on the carry-forward path · the whole-tree gate sweep and the stale-exemption check · the admin cache · the orphan stamp's column · the row-shape bound | `V-CODE` ×2, fresh, one message, frozen artifact | clean ⇒ **CP-1 closes**, CP-0 re-confirmed |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
 | **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |

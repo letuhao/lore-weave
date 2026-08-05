@@ -186,7 +186,18 @@ def build(
     A writer that trusts its argument is the write-end of the boundary `UntrustedRow` describes.
     """
     origin: dict[str, str] = {}
-    for i, r in enumerate((previous or {}).get("declarations", []) or []):
+    _prev_rows = (previous or {}).get("declarations", [])
+    if previous is not None and not isinstance(_prev_rows, list):
+        # `previous={"declarations": None}` silently disabled the loss guard below — the `or []`
+        # turned a malformed document into an empty one, which is the same "serve a broken thing as
+        # empty" the assembler's own `rows_of` refuses by name. Unreachable through `generate()`,
+        # reachable through the exported `build()`.
+        raise UntrustedRow(
+            f"previous.declarations is {_prev_rows!r}, not a list. A malformed prior document is "
+            f"not an empty one, and treating it as empty disables the check that a declaration "
+            f"cannot silently leave the manifest."
+        )
+    for i, r in enumerate(_prev_rows or []):
         if not isinstance(r, dict) or not r.get("id"):
             raise UntrustedRow(f"previous.declarations[{i}] has no id; it cannot carry an origin")
         stamp = r.get("contract_version")

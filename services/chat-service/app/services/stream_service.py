@@ -6286,13 +6286,21 @@ async def _persist_terminal_assistant(
         try:
             async with pool.acquire() as conn:
                 _stamped = await conn.fetchval(
-                    "UPDATE chat_messages SET outcome = $2 "
+                    # 🔴 `withheld_tools` TOO. The caller computes `withheld_json()` and hands it in,
+                    # and this branch wrote only the outcome — so the value was **calculated and
+                    # dropped** on exactly the turn shape a catalogue outage produces (no content,
+                    # no tool calls, because the model had nothing to work with). Measured by a
+                    # verifier: `wrote_row=False, carries_outage=False`. The orphan-stamp mechanism
+                    # exists so a turn with no assistant row still records what happened to it; a
+                    # narrowing is part of what happened to it.
+                    "UPDATE chat_messages SET outcome = $2, "
+                    f"       {instrument.segment_merge_sql('withheld_tools')} "
                     "WHERE message_id = ("
                     "  SELECT message_id FROM chat_messages "
                     "  WHERE session_id = $1 AND role = 'user' AND outcome IS NULL "
                     "  ORDER BY sequence_num DESC LIMIT 1) "
                     "RETURNING message_id",
-                    session_id, _orphan_outcome,
+                    session_id, _orphan_outcome, _withheld_json,
                 )
             if _stamped is not None:
                 logger.info(
@@ -6977,14 +6985,17 @@ async def _emit_chat_turn(
                 # advertises never reaches this line and is exactly the turn a catalogue outage
                 # produces. See `AdvertisedToolsRecorder.absorb`.
                 _advertised.absorb(_surface_sink)
-                for _w in (_adv_ev.get("withheld") or []):
-                    if _w.get("scope") == instrument.SCOPE_PASS or _w.get("tool") == "*":
-                        _advertised.record_pass_withheld(
-                            stage=_w["stage"], reason=_w["reason"])
-                        continue
-                    _advertised.record_withheld(
-                        _w["tool"], stage=_w["stage"], reason=_w["reason"],
-                    )
+                # 🔴 ONE DISPATCH, NOT TWO. This branch handled `pass` and the legacy `"*"` and
+                # **not `catalogue`** — a second dispatch over the same enum, drifting from the
+                # first the moment a scope was added. Latent only because no catalogue row travels
+                # this channel today, which is exactly what "latent" meant about the P0 as well.
+                # Routed through the recorder's own `absorb`, so there is one place that knows the
+                # enum.
+                _legacy = [
+                    {**_w, "scope": instrument.SCOPE_PASS} if _w.get("tool") == "*" else _w
+                    for _w in (_adv_ev.get("withheld") or [])
+                ]
+                _advertised.absorb(_legacy)
                 continue
             # CP-0.4 / F-17 — the loop REPORTS its terminal reason and this consumer was dropping
             # it on the floor. I had recorded "the signal does not exist here"; one grep showed it
