@@ -150,6 +150,19 @@ per tick"*. It is acyclic because a capability is missing, not because it was de
 
 | # | slice | evidence | state |
 |---|---|---|---|
+> 🔵 **Checked before opening `M1`, because getting it wrong would rebuild `D-3` one layer up:**
+> `ruleset-core` and `actor-hub` are **not two parallel declaration systems — they are layered, and
+> the layering is already correct.** `actor-hub` depends on `ruleset-core`;
+> `ruleset-core::QuantityTable` holds the **names** (hashed, pinned) and `ResourceDecl` holds a
+> pool's semantics against a `QTY-A5` ordinal; `actor-hub::QuantityDecl` is `{ ordinal, initial }`
+> with **no name**, and `PluginDecl` carries *"no name, no kind, and no behaviour, because the hub
+> knows nothing about what any of it means."* That is `D-2` running as designed: **the manifest
+> closes on VOCABULARY, the engine closes on MECHANISM.**
+> ⇒ **`M1` invents no plugin vocabulary.** The quantities are the ruleset's; the hub attaches and
+> folds them. **But `QuantityTable::EMPTY` is the shipped default** (*"the engine declares
+> nothing"*), so `M1` must also **populate a reality's quantity table** — that is content, and it is
+> a real sub-task rather than a given.
+
 | `M1.0` | **inventory what the legacy combat domain actually holds, and mark each: DELETE · re-declare · genuinely load-bearing.** The default is DELETE; anything claimed load-bearing needs a reason a reader can check | — | [ ] |
 | `M1.1` | declare the quantities the DESIGN needs — **derived from the design, never read off the old field list.** A quantity named because a struct field was named is the port this milestone refuses | — | [ ] |
 | `M1.2` | `commit-service` depends on `actor-hub`; the domain resolves an actor through the hub's fold | — | [ ] |
