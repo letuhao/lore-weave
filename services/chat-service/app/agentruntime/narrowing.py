@@ -57,14 +57,25 @@ class Narrowing:
     stage: str
     reason: str
     pass_number: int
+    #: §0.14.1a rule 6 — a RANK-DEPENDENT narrowing must say where in the ranking this landed and
+    #: what the ranking was. Without them `{stage: token_budget, reason: over budget}` says *that*
+    #: it was cut and cannot answer "why this one and not that one" — the only question a person
+    #: debugging a missing tool actually has. `None` on stages whose decision is per-row, where the
+    #: question does not arise.
+    rank: int | None = None
+    ordered_by: tuple[tuple[str, str], ...] | None = None
 
     def as_record(self) -> dict:
-        return {
+        out = {
             "tool": self.declaration_id,
             "stage": self.stage,
             "reason": self.reason,
             "pass": self.pass_number,
         }
+        if self.rank is not None:
+            out["rank"] = self.rank
+            out["ordered_by"] = [list(k) for k in (self.ordered_by or ())]
+        return out
 
 
 @dataclass(slots=True)
@@ -78,8 +89,11 @@ class NarrowingLog:
 
     entries: list[Narrowing] = field(default_factory=list)
 
-    def record(self, declaration_id: str, *, stage: str, reason: str, pass_number: int) -> None:
-        self.entries.append(Narrowing(declaration_id, stage, reason, pass_number))
+    def record(
+        self, declaration_id: str, *, stage: str, reason: str, pass_number: int,
+        rank: int | None = None, ordered_by: tuple[tuple[str, str], ...] | None = None,
+    ) -> None:
+        self.entries.append(Narrowing(declaration_id, stage, reason, pass_number, rank, ordered_by))
 
     def records(self) -> list[dict]:
         return [e.as_record() for e in self.entries]

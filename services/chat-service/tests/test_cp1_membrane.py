@@ -28,7 +28,12 @@ from app.agentruntime import (
     ContractViolation,
     Declaration,
     NarrowingLog,
-    NarrowingRule,
+    AllowList,
+    DenyList,
+    Filter,
+    OrderBy,
+    TakeWhileBudget,
+    TopK,
     SurfaceAssembler,
     UnresolvedReference,
     UntrustedRow,
@@ -504,8 +509,8 @@ class TestANarrowingCannotHappenSilently:
 
     def test_a_dropped_declaration_produces_a_full_record(self):
         a = self._assembler()
-        s = a.assemble(pass_number=1, rules=[
-            NarrowingRule("token_budget", "over budget", lambda r: r["id"] != "tool_1"),
+        s = a.assemble(pass_number=1, pipeline=[
+            Filter("token_budget", "over budget", field="id", op="not_in", value=("tool_1",)),
         ])
         assert "tool_1" not in s.names
         assert a.log.records() == [
@@ -516,8 +521,8 @@ class TestANarrowingCannotHappenSilently:
         """A narrowing the caller must go and find in a log is a narrowing that gets dropped at the
         first persistence boundary — which is how the legacy column came to be empty for the one
         stage it was built for."""
-        s = self._assembler().assemble(pass_number=1, rules=[
-            NarrowingRule("intent_gate", "not this intent", lambda r: r["id"] == "tool_0"),
+        s = self._assembler().assemble(pass_number=1, pipeline=[
+            Filter("intent_gate", "not this intent", field="id", op="eq", value="tool_0"),
         ])
         assert {w["tool"] for w in s.withheld} == {"tool_1", "tool_2"}
 
@@ -526,16 +531,16 @@ class TestANarrowingCannotHappenSilently:
         needs are arguments of the rule, so a rule cannot be applied without them."""
         for stage, reason in (("", "r"), ("s", "")):
             with pytest.raises(ValueError, match="stage and its reason"):
-                NarrowingRule(stage, reason, lambda r: True)
+                Filter(stage, reason, field="id", op="not_in", value=())
 
     def test_every_pass_is_recorded_separately(self):
         """REJECTS a timeless record. A verifier found 19 of 303 withheld declarations
         simultaneously advertised on every pass and could not tell a contradiction from a
         sequence — dropped at one stage then restored by a later one is coherent history."""
         a = self._assembler()
-        rule = NarrowingRule("failure_breaker", "failed twice", lambda r: r["id"] != "tool_2")
-        a.assemble(pass_number=1, rules=[rule])
-        a.assemble(pass_number=2, rules=[rule])
+        rule = Filter("failure_breaker", "failed twice", field="id", op="not_in", value=("tool_2",))
+        a.assemble(pass_number=1, pipeline=[rule])
+        a.assemble(pass_number=2, pipeline=[rule])
         assert [e.pass_number for e in a.log.entries] == [1, 2]
 
     def test_a_pass_number_below_one_is_refused(self):
@@ -551,16 +556,18 @@ class TestANarrowingCannotHappenSilently:
         failed to catch. If the law is ever deleted or weakened, this reds.
         """
         a = self._assembler(3)
-        rule = NarrowingRule("token_budget", "over budget", lambda r: True)   # keeps everything
+        rule = Filter("token_budget", "over budget", field="id", op="not_in", value=())   # keeps everything
         original = SurfaceAssembler._narrow
 
-        def silent(self, rows, rule, *, pass_number):    # drops one, records nothing
+        # Signature mirrors the real `_narrow`, including `ordered_by` — a stub that omits a
+        # parameter the caller passes is a stub that lies about the contract.
+        def silent(self, rows, stage, *, pass_number, ordered_by=None):
             return list(rows)[1:]
 
         SurfaceAssembler._narrow = silent
         try:
             with pytest.raises(AssertionError, match="with no .*record"):
-                a.assemble(pass_number=1, rules=[rule])
+                a.assemble(pass_number=1, pipeline=[rule])
         finally:
             SurfaceAssembler._narrow = original
 
@@ -602,16 +609,16 @@ class TestANarrowingCannotHappenSilently:
         a = self._assembler(3)
         original = SurfaceAssembler._narrow
 
-        def double_record(self, rows, rule, *, pass_number):
-            kept = original(self, rows, rule, pass_number=pass_number)
+        def double_record(self, rows, stage, *, pass_number, ordered_by=None):
+            kept = original(self, rows, stage, pass_number=pass_number, ordered_by=ordered_by)
             self._log.record("__ghost__", stage="s", reason="r", pass_number=pass_number)
             return kept
 
         SurfaceAssembler._narrow = double_record
         try:
             with pytest.raises(AssertionError, match="lost -1"):
-                a.assemble(pass_number=1, rules=[
-                    NarrowingRule("token_budget", "over budget", lambda r: True),
+                a.assemble(pass_number=1, pipeline=[
+                    Filter("token_budget", "over budget", field="id", op="not_in", value=()),
                 ])
         finally:
             SurfaceAssembler._narrow = original
@@ -692,8 +699,8 @@ class TestANarrowingCannotHappenSilently:
 
         # The assembler is the other entry point, and it takes rules rather than a manifest.
         log = NarrowingLog()
-        surface = SurfaceAssembler(doc, log=log).assemble(pass_number=1, rules=[
-            NarrowingRule("token_budget", "over budget", lambda r: r["id"] == "book_list"),
+        surface = SurfaceAssembler(doc, log=log).assemble(pass_number=1, pipeline=[
+            Filter("token_budget", "over budget", field="id", op="eq", value="book_list"),
         ])
         assert surface.count + len(log) == supplied, "the assembler lost a declaration silently"
         checked.append("assemble")
@@ -714,8 +721,8 @@ class TestAnEmptySurfaceIsAStatementNotAGap:
         """`is_empty` must mean 'nothing was admitted', which a caller can tell apart from
         'everything was withheld' by reading `withheld` — one is silence, the other is a decision."""
         doc = build([admit(_tool("book_list"))])
-        s = SurfaceAssembler(doc).assemble(pass_number=1, rules=[
-            NarrowingRule("token_budget", "over budget", lambda r: False),
+        s = SurfaceAssembler(doc).assemble(pass_number=1, pipeline=[
+            Filter("token_budget", "over budget", field="id", op="in", value=()),
         ])
         assert s.is_empty and len(s.withheld) == 1
 
@@ -799,8 +806,8 @@ class TestTheLogIsIndependentOfTheAssembler:
         log = NarrowingLog()
         doc = build([admit(_tool("book_list"))])
         for p in (1, 2):
-            SurfaceAssembler(doc, log=log).assemble(pass_number=p, rules=[
-                NarrowingRule("token_budget", "over budget", lambda r: False),
+            SurfaceAssembler(doc, log=log).assemble(pass_number=p, pipeline=[
+                Filter("token_budget", "over budget", field="id", op="in", value=()),
             ])
         assert len(log) == 2 and log.stages() == {"token_budget"}
 
@@ -882,3 +889,101 @@ class TestCanonicalSerialisation:
                 for m in re.finditer(pat, src):
                     offenders.append(f"{f.name}:{src[:m.start()].count(chr(10)) + 1} {pat}")
         assert not offenders, f"a second canonicalisation: {offenders}"
+
+
+# ── 1.8a · narrowing stages are data, and the ordering is explicit ──────────────────────────────
+
+
+class TestStageKindsAreDataNotClosures:
+    """§0.14.1 — REJECTS the shape the old `keep: Callable` could not hold, and the shapes a
+    careless replacement would re-admit.
+
+    `budget_names_by_tokens` is a **running accumulator over a sort order**, not a per-row
+    predicate — and **6 of the 9 rule fixtures here were already named `token_budget`**, so the
+    fixtures encoded a shape the type could not express. A closure is also not content-addressable:
+    two entirely different narrowings hash the same, so a pipeline of lambdas has no identity.
+    """
+
+    def _doc(self, n=4):
+        return {"declarations": [
+            {"id": f"t{i}", "kind": "tool", "cost": i + 1, "lane": "read"} for i in range(n)
+        ]}
+
+    def test_a_budget_walks_the_ranking_and_cuts_the_tail(self):
+        s = SurfaceAssembler(self._doc()).assemble(pass_number=1, pipeline=[
+            OrderBy(keys=(("lane", "asc"),)),
+            TakeWhileBudget("token_budget", "over budget", budget=6),
+        ])
+        assert s.names == ("t0", "t1", "t2")            # 1+2+3 fits, 4 does not
+
+    def test_a_rank_dependent_stage_without_an_order_is_REFUSED(self):
+        """A budget over an unordered collection selects an arbitrary subset — the legacy defect
+        where `active_tool_names` is a `set` iterated unsorted, and `tools` is the first
+        prompt-cache block. Rejected at construction of the assembly, not at use."""
+        for stage in (TopK("s", "r", k=1), TakeWhileBudget("s", "r", budget=1)):
+            with pytest.raises(ValueError, match="no order_by precedes it"):
+                SurfaceAssembler(self._doc()).assemble(pass_number=1, pipeline=[stage])
+
+    def test_the_record_says_WHY_THIS_ONE_and_not_that_one(self):
+        """§0.14.1a rule 6. `{stage: token_budget, reason: over budget}` says *that* a declaration
+        was cut; it cannot answer the only question a person debugging a missing tool has."""
+        a = SurfaceAssembler(self._doc())
+        s = a.assemble(pass_number=1, pipeline=[
+            OrderBy(keys=(("lane", "asc"),)),
+            TakeWhileBudget("token_budget", "over budget", budget=6),
+        ])
+        cut = s.withheld[0]
+        assert cut["tool"] == "t3" and cut["rank"] == 3
+        assert cut["ordered_by"] == [["lane", "asc"], ["id", "asc"]]
+
+    def test_a_per_row_stage_records_no_rank_because_the_question_does_not_arise(self):
+        s = SurfaceAssembler(self._doc()).assemble(pass_number=1, pipeline=[
+            Filter("intent_gate", "off-intent", field="id", op="not_in", value=("t1",)),
+        ])
+        assert "rank" not in s.withheld[0]
+
+    def test_id_is_appended_as_the_final_ordering_component_always(self):
+        """Equal keys are not an edge case: an embedding failure yields all-zero relevance on every
+        row, and U-2 shows that failure is reachable. Without a total order the budget's victim is
+        whatever the iteration happened to produce."""
+        assert OrderBy(keys=(("lane", "asc"),)).effective_keys() == (("lane", "asc"), ("id", "asc"))
+        # ...and it is not appended twice when the caller already named it.
+        assert OrderBy(keys=(("id", "desc"),)).effective_keys() == (("id", "desc"),)
+
+    def test_cost_may_not_be_the_primary_ordering_component(self):
+        """Cheapest-first optimises COUNT, not usefulness — a cheap useless declaration outranks an
+        expensive essential one, and `book_list`, arm E's victim, is what loses to volume."""
+        with pytest.raises(ValueError, match="may not be the primary"):
+            OrderBy(keys=(("cost", "asc"), ("lane", "asc")))
+        OrderBy(keys=(("lane", "asc"), ("cost", "asc")))   # legal as a tie-break
+
+    def test_a_missing_ordering_field_is_a_REJECTION_not_a_fallback(self):
+        """Silently falling back to id-order reorders the whole surface and cuts different
+        declarations — arm E, arrived at by a default."""
+        with pytest.raises(ValueError, match="rejection, not a fallback"):
+            SurfaceAssembler(self._doc()).assemble(pass_number=1, pipeline=[
+                OrderBy(keys=(("relevance", "desc"),)),
+            ])
+
+    def test_a_missing_cost_is_a_rejection_too(self):
+        doc = {"declarations": [{"id": "t0", "kind": "tool", "lane": "read"}]}
+        with pytest.raises(ValueError, match="rejection, not a fallback"):
+            SurfaceAssembler(doc).assemble(pass_number=1, pipeline=[
+                OrderBy(keys=(("lane", "asc"),)),
+                TakeWhileBudget("token_budget", "over budget", budget=10),
+            ])
+
+    def test_the_operator_set_is_closed(self):
+        """An unbounded operator set is a closure with extra steps. A stage needing a fourth is a
+        finding to bring back to §0.14.1, not a licence to add one."""
+        assert Filter.OPS == ("eq", "in", "not_in")
+        with pytest.raises(ValueError, match="unknown op"):
+            Filter("s", "r", field="id", op="regex", value="^b")
+
+    def test_no_stage_kind_carries_a_callable(self):
+        """The whole point: a closure has no content identity, so a pipeline built from lambdas
+        cannot be content-addressed and two different narrowings hash the same."""
+        import dataclasses
+        for kind in (Filter, AllowList, DenyList, OrderBy, TopK, TakeWhileBudget):
+            for f in dataclasses.fields(kind):
+                assert "Callable" not in str(f.type), f"{kind.__name__}.{f.name} is a closure"

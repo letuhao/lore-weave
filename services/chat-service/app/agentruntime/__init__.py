@@ -42,7 +42,19 @@ from .manifest import (
     validate_document,
 )
 from .narrowing import Narrowing, NarrowingLog
-from .surface import NarrowingRule, Surface, SurfaceAssembler, discover, rows_of
+from .surface import (
+    AllowList,
+    DenyList,
+    Filter,
+    OrderBy,
+    Surface,
+    SurfaceAssembler,
+    TakeWhileBudget,
+    TopK,
+    discover,
+    rows_of,
+    validate_pipeline,
+)
 
 __all__ = [
     "Admitted", "admit", "try_admit",
@@ -51,5 +63,6 @@ __all__ = [
     "UnresolvedReference", "UntrustedRow", "build", "declarations", "generate", "load",
     "manifest_path", "validate_document",
     "Narrowing", "NarrowingLog",
-    "NarrowingRule", "Surface", "SurfaceAssembler", "discover", "rows_of",
+    "AllowList", "DenyList", "Filter", "OrderBy", "TopK", "TakeWhileBudget",
+    "Surface", "SurfaceAssembler", "discover", "rows_of", "validate_pipeline",
 ]

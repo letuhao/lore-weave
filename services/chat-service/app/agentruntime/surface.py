@@ -19,7 +19,7 @@ started this work.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Iterable, Sequence
+from typing import Any, Iterable, Sequence
 
 from .narrowing import NarrowingLog
 
@@ -45,20 +45,209 @@ def rows_of(manifest_doc: dict) -> list[dict]:
     return list(rows)
 
 
-# A rule is a KEEP predicate over a manifest row, carrying the two fields P1 requires. The stage and
-# the reason are part of the rule rather than of the call site, so a rule cannot be applied without
-# them — this is where "every narrowing registers" stops being a discipline.
+# ── CP-1.8a · narrowing stages are DATA, and the ordering is explicit ────────────────────────────
+#
+# `NarrowingRule.keep` was `Callable[[dict], bool]` — a per-row decision — and the stage that
+# motivated this whole design is not one. `budget_names_by_tokens` is a RUNNING ACCUMULATOR OVER A
+# SORT ORDER: it walks declarations in a ranking and stops when a budget is spent. No per-row
+# predicate produces that, and **6 of the 9 rule fixtures in the test suite were already named
+# `token_budget`** — the fixtures encoded a shape the type could not hold.
+#
+# A closure is also not content-addressable, so a pipeline built from closures has no identity: two
+# entirely different narrowings hash the same. Data has an identity; a lambda does not.
+#
+# Each kind is its OWN dataclass rather than `{kind, params}`. A `params` dict would be the same
+# blank that `order_by(key, …)` was before §0.14.1a — a placeholder wearing the shape of a design.
+
+
 @dataclass(frozen=True, slots=True)
-class NarrowingRule:
+class _Narrowing:
+    """Shared by every kind that REMOVES declarations. `stage` says who decided, `reason` says why,
+    and they are fields of the stage rather than of the call site — so a narrowing cannot be applied
+    without them. This is where "every narrowing registers" stops being a discipline."""
+
     stage: str
     reason: str
-    keep: Callable[[dict], bool]
 
     def __post_init__(self) -> None:
         if not self.stage or not self.reason:
             raise ValueError(
-                "a narrowing rule must name its stage and its reason; an exclusion with no "
+                "a narrowing stage must name its stage and its reason; an exclusion with no "
                 "{tool, stage, reason} is a defect, not a policy (ARCHITECTURE §0.3)"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class Filter(_Narrowing):
+    """Per-row membership — the only shape the old `keep` predicate covered.
+
+    **Three operators, deliberately.** Regex or arbitrary comparison would re-admit the closure
+    problem under a new name: an unbounded operator set is a closure with extra steps. A stage that
+    needs a fourth is **a finding to bring back to §0.14.1**, not a licence to add one here.
+    """
+
+    field: str = ""
+    op: str = "eq"
+    value: Any = None
+
+    OPS = ("eq", "in", "not_in")
+
+    def __post_init__(self) -> None:
+        # NOT `super().__post_init__()`. `@dataclass(slots=True)` REBUILDS the class, so the
+        # zero-arg `super()` closes over the pre-rebuild class and raises `TypeError: obj is not an
+        # instance or subtype of type`. Named explicitly, which also survives the next reorder.
+        _Narrowing.__post_init__(self)
+        if self.op not in self.OPS:
+            raise ValueError(f"unknown op {self.op!r}; expected one of {self.OPS}")
+        if not self.field:
+            raise ValueError("a filter must name the field it reads")
+
+    def keep(self, row: dict) -> bool:
+        got = row.get(self.field)
+        if self.op == "eq":
+            return got == self.value
+        if self.op == "in":
+            return got in self.value
+        return got not in self.value
+
+
+@dataclass(frozen=True, slots=True)
+class AllowList(_Narrowing):
+    """Explicit set membership — the always-hot core."""
+
+    names: tuple[str, ...] = ()
+
+    def keep(self, row: dict) -> bool:
+        return row.get("id") in self.names
+
+
+@dataclass(frozen=True, slots=True)
+class DenyList(_Narrowing):
+    """Explicit set exclusion — the retirement list."""
+
+    names: tuple[str, ...] = ()
+
+    def keep(self, row: dict) -> bool:
+        return row.get("id") not in self.names
+
+
+@dataclass(frozen=True, slots=True)
+class OrderBy:
+    """**Not a narrowing** — it establishes the ranking that rank-dependent kinds consume, so it
+    carries no `stage`/`reason`.
+
+    §0.14.1a is the design, and it exists because a `key` parameter was a blank standing in for one.
+    **Rank is what a budget cuts on**, so whatever fills that blank decides which declarations reach
+    the model — arm E was a ranking outcome.
+
+    Three rules, each of which the legacy ranking breaks:
+
+    * **every field must be PRESENT on the row.** A missing field is a REJECTION, not a fallback:
+      silently falling back to id-order reorders the whole surface and cuts different declarations.
+    * **`id` is appended as the final component, always.** Equal keys are not an edge case — an
+      embedding failure yields all-zero relevance on every row, and U-2 shows that failure is
+      reachable. Without a total order the budget's victim is whatever the iteration produced.
+    * **`cost` may never be the primary component.** Cheapest-first optimises COUNT, not usefulness:
+      a cheap useless declaration outranks an expensive essential one, and `book_list` — arm E's
+      victim — is exactly what loses to volume.
+    """
+
+    keys: tuple[tuple[str, str], ...] = ()
+
+    DIRECTIONS = ("asc", "desc")
+    #: The final tie-break, appended implicitly. Never omit it: see the class docstring.
+    TIE_BREAK = ("id", "asc")
+
+    def __post_init__(self) -> None:
+        if not self.keys:
+            raise ValueError("order_by must name at least one field")
+        for i, pair in enumerate(self.keys):
+            field, direction = pair
+            if direction not in self.DIRECTIONS:
+                raise ValueError(f"keys[{i}]: unknown direction {direction!r}")
+            if field == "cost" and i == 0:
+                raise ValueError(
+                    "`cost` may not be the primary ordering component: cheapest-first optimises "
+                    "the NUMBER of declarations offered, not their usefulness (§0.14.1a)"
+                )
+
+    def effective_keys(self) -> tuple[tuple[str, str], ...]:
+        if any(f == self.TIE_BREAK[0] for f, _ in self.keys):
+            return self.keys
+        return self.keys + (self.TIE_BREAK,)
+
+    def sort(self, rows: list[dict]) -> list[dict]:
+        out = list(rows)
+        # Stable sorts applied least-significant-first give the lexicographic order of the key list.
+        for field, direction in reversed(self.effective_keys()):
+            for r in out:
+                if field not in r:
+                    raise ValueError(
+                        f"order_by names {field!r}, which row {r.get('id')!r} does not carry. A "
+                        f"missing field is a rejection, not a fallback — falling back to id-order "
+                        f"would reorder the surface and cut different declarations (§0.14.1a)."
+                    )
+            out.sort(key=lambda r: r[field], reverse=(direction == "desc"))
+        return out
+
+
+@dataclass(frozen=True, slots=True)
+class TopK(_Narrowing):
+    """Drops beyond rank *k*. Rank-dependent: requires an `OrderBy` before it."""
+
+    k: int = 0
+
+    def __post_init__(self) -> None:
+        # NOT `super().__post_init__()`. `@dataclass(slots=True)` REBUILDS the class, so the
+        # zero-arg `super()` closes over the pre-rebuild class and raises `TypeError: obj is not an
+        # instance or subtype of type`. Named explicitly, which also survives the next reorder.
+        _Narrowing.__post_init__(self)
+        if self.k < 0:
+            raise ValueError("top_k needs a non-negative k")
+
+
+@dataclass(frozen=True, slots=True)
+class TakeWhileBudget(_Narrowing):
+    """The accumulator: walks the ranking and drops the tail once `budget` is spent.
+
+    **`budget` is a value in the pipeline, never an ambient read.** The legacy budget is
+    `os.environ` read at import, which makes it a property of the container that no record captures
+    — so the same recorded inputs stop producing the same surface. The boundary module reads it and
+    passes it in, so it travels with the pipeline that used it.
+    """
+
+    budget: int = 0
+    cost_field: str = "cost"
+
+    def __post_init__(self) -> None:
+        # NOT `super().__post_init__()`. `@dataclass(slots=True)` REBUILDS the class, so the
+        # zero-arg `super()` closes over the pre-rebuild class and raises `TypeError: obj is not an
+        # instance or subtype of type`. Named explicitly, which also survives the next reorder.
+        _Narrowing.__post_init__(self)
+        if self.budget < 0:
+            raise ValueError("take_while_budget needs a non-negative budget")
+
+
+#: Kinds whose decision depends on POSITION in a ranking rather than on the row alone.
+RANK_DEPENDENT = (TopK, TakeWhileBudget)
+
+
+def validate_pipeline(stages) -> None:
+    """A pipeline containing a rank-dependent kind MUST establish its order first.
+
+    A budget or a top-*k* over an **unordered** collection selects an arbitrary subset — which is
+    the legacy defect where `active_tool_names` is a `set` iterated unsorted, and `tools` is the
+    first prompt-cache block. Checkable from the pipeline value alone, which is what makes it worth
+    stating, and rejected **at construction** rather than at use.
+    """
+    ordered = False
+    for s in stages:
+        if isinstance(s, OrderBy):
+            ordered = True
+        elif isinstance(s, RANK_DEPENDENT) and not ordered:
+            raise ValueError(
+                f"{type(s).__name__} depends on rank, and no order_by precedes it. Applied to an "
+                f"unordered collection it selects an arbitrary subset (§0.14.1)."
             )
 
 
@@ -123,7 +312,7 @@ class SurfaceAssembler:
     def admitted_count(self) -> int:
         return len(self._rows)
 
-    def assemble(self, *, pass_number: int, rules: Sequence[NarrowingRule] = ()) -> Surface:
+    def assemble(self, *, pass_number: int, pipeline: Sequence[object] = ()) -> Surface:
         """Assemble one pass's surface.
 
         **This is the only place THIS CLASS removes a declaration**, and `_narrow` writes the record
@@ -135,6 +324,9 @@ class SurfaceAssembler:
         """
         if pass_number < 1:
             raise ValueError("pass_number is 1-based; a narrowing stamped at pass 0 belongs to no pass")
+        # Rejected at CONSTRUCTION of the assembly, not at use: a rank-dependent stage over an
+        # unordered collection selects an arbitrary subset.
+        validate_pipeline(pipeline)
 
         # 🔴 F3 — count only what THIS assembly recorded, not every entry at this pass.
         #
@@ -146,8 +338,13 @@ class SurfaceAssembler:
         # count its own contribution**, or it fails the honest caller and passes the careless one.
         _log_mark = len(self._log.entries)
         kept = self._rows
-        for rule in rules:
-            kept = self._narrow(kept, rule, pass_number=pass_number)
+        ordered_by: tuple[tuple[str, str], ...] | None = None
+        for stage in pipeline:
+            if isinstance(stage, OrderBy):
+                kept = stage.sort(kept)
+                ordered_by = stage.effective_keys()
+                continue
+            kept = self._narrow(kept, stage, pass_number=pass_number, ordered_by=ordered_by)
         mine = [e for e in self._log.entries[_log_mark:] if e.pass_number == pass_number]
         withheld = tuple(e.as_record() for e in mine)
 
@@ -183,21 +380,52 @@ class SurfaceAssembler:
         )
 
     def _narrow(
-        self, rows: Iterable[dict], rule: NarrowingRule, *, pass_number: int,
+        self, rows: Iterable[dict], stage, *, pass_number: int,
+        ordered_by: tuple[tuple[str, str], ...] | None = None,
     ) -> list[dict]:
         """Compute a removal AND register it. These are one statement on purpose.
 
         Splitting them is the eight-frame defect in miniature: the drop happens in one file and the
         registration is expected in another, and every later change moves one without the other.
+
+        **A rank-dependent stage records the RANK and the KEY it was ranked by** (§0.14.1a rule 6).
+        `{stage: token_budget, reason: over budget}` says *that* a declaration was cut; it cannot
+        answer **"why this one and not that one"**, which is the only question a person debugging a
+        missing tool actually has. A reason that does not distinguish the dropped from the kept is
+        not yet actionable.
         """
+        rows = list(rows)
         kept: list[dict] = []
-        for row in rows:
-            if rule.keep(row):
-                kept.append(row)
-            else:
-                self._log.record(
-                    row["id"], stage=rule.stage, reason=rule.reason, pass_number=pass_number,
-                )
+
+        if isinstance(stage, TopK):
+            kept, dropped = rows[: stage.k], rows[stage.k:]
+        elif isinstance(stage, TakeWhileBudget):
+            used, cut_at = 0, len(rows)
+            for i, row in enumerate(rows):
+                cost = row.get(stage.cost_field)
+                if not isinstance(cost, int):
+                    raise ValueError(
+                        f"take_while_budget reads {stage.cost_field!r}, which row {row.get('id')!r} "
+                        f"does not carry as an integer. A missing cost is a rejection, not a "
+                        f"fallback (§0.14.1a)."
+                    )
+                if used + cost > stage.budget and i > 0:
+                    cut_at = i
+                    break
+                used += cost
+            kept, dropped = rows[:cut_at], rows[cut_at:]
+        else:
+            dropped = []
+            for row in rows:
+                (kept if stage.keep(row) else dropped).append(row)
+
+        rank_dependent = isinstance(stage, RANK_DEPENDENT)
+        for row in dropped:
+            self._log.record(
+                row["id"], stage=stage.stage, reason=stage.reason, pass_number=pass_number,
+                rank=(rows.index(row) if rank_dependent else None),
+                ordered_by=(ordered_by if rank_dependent else None),
+            )
         return kept
 
 
