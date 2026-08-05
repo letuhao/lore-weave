@@ -9,6 +9,61 @@
 
 ---
 
+## 0. DEFINITION OF DONE — three axes and an independent verdict
+
+> **The goal is to CLEAR the command substrate**, not to reach `M1`. `M1` is a step inside it.
+>
+> **Why it is written as pasted evidence:** the `/goal` evaluator **reads the transcript only — it
+> cannot run a command or open a file.** It is therefore satisfied by the agent *claiming* a check
+> passed. `/goal` enforces persistence, not honesty. Every clause below forces the proof INTO the
+> transcript, because a clause that does not is a clause the author grades themselves.
+
+### Axis 1 — CODE (static: does it hold without running?)
+
+| | |
+|---|---|
+| `A1.1` | `cargo test -p actor-hub -p commit-service -p world-service` green, run fresh, **counts pasted** |
+| `A1.2` | the game-server TypeScript suite green, **pasted** |
+| `A1.3` | a full pre-commit gate run green, **tail pasted** |
+| `A1.4` | greps pasted: `commit-service::domain::Actor` carries **no** `hp` / `max_hp` / `av` / `stats`; `actor_hub::` **is** used by commit-service; **no `match` on a verb name** survives in command core |
+| `A1.5` | **the acceptance test exists and runs**: declaring a verb is rows only, and a test asserts **zero files in command core** changed — the actor hub's own test, one level up |
+| `A1.6` | **NON-VACUITY, per check**: break it, paste the **RED**, restore, paste the **GREEN**. A check with no pasted red **is not a check** |
+
+### Axis 2 — RUN (does it actually execute?)
+
+| | |
+|---|---|
+| `A2.1` | a **live smoke on a real stack**: a command submitted → a committed fact on the log → projected to the wire. **Paste the actual ids and payload**, not a description of them |
+| `A2.2` | the **refusal path fires on a real refusal** and commits a fact carrying its reason ordinal — pasted. A substrate that only proves its happy path has proved half of `CMD-5` |
+| `A2.3` | the **cue channel carries the outcome** and the consumer renders it — pasted |
+| `A2.4` | if the stack genuinely cannot boot, say `live infra unavailable: <reason>` explicitly — **and then this goal is NOT met.** The token is for honesty, not for credit |
+
+### Axis 3 — DATA MEASURE (numbers off a real run, not off the design)
+
+| | |
+|---|---|
+| `A3.1` | **determinism**: the same input replayed twice, **both digests pasted and byte-identical** |
+| `A3.2` | the digest **MOVES** when the ruleset changes and **does NOT** move when only provenance changes — **both pasted.** One without the other proves nothing |
+| `A3.3` | the fold produces a value **through a populated quantity table** — table size and resolved value pasted |
+| `A3.4` | counts pasted: quantities declared · verbs declared · **which doors the verb actually used** (expected: `Delta` only — if more, the closure rule was broken and that must be argued, not assumed) |
+
+### The independent verifier
+
+| | |
+|---|---|
+| `V.1` | a **cold-start reviewer that did not write the code**, given the diff and told to **REFUTE** it, with its verdict pasted **in full — including what it could NOT break.** An absent finding is evidence and is part of the result |
+| `V.2` | a **mechanical oracle**: at least one result computed by a **DIFFERENT method** and shown to agree, pasted. Two implementations of one method is not an oracle |
+
+### What does NOT satisfy this goal
+
+- **Renaming a legacy field into a quantity of the same name.** `quantity[0] = "hp"` passes every
+  structural check and changes nothing — it is `D-2`'s failure surviving a refactor that looks like
+  progress.
+- **Claiming a check passed without pasting its output.**
+- **A mock standing in for the live path** on Axis 2.
+- **The author reviewing themselves in a different hat** on `V.1`.
+- **A check that cannot fail**, however green.
+
 ## 1. The commitment
 
 Two milestones, in this order, and the order is **derived rather than chosen** (§2):
