@@ -1,6 +1,6 @@
 # Command Hub — the scope contract
 
-**Status:** design contract, **awaiting PO seal** · **Date:** 2026-08-06
+**Status:** design contract — **SEALED by the PO 2026-08-06** · **Date:** 2026-08-06
 **Companions:** [structure](2026-08-02-command-interaction-structure.md) ·
 [dataflow](2026-08-02-command-interaction-dataflow.md) *(the derivation record — how each line was
 reached)* · [RUN-STATE](../plans/2026-08-06-game-tier-build-RUN-STATE.md)
@@ -128,7 +128,13 @@ spaces. Exceeding one is a **version bump, visible and costed**, not a silent fa
 | the six doors that are prose | **the features that own them** — buildable, not blocked |
 | the wire shape of an offer | **the first real command**, and not before it |
 
-**And one that is open because it is genuinely undecided, not delegated:** six types are named
-across the 08-02 documents and never defined — `ChanceSpec`, `InputKind`, arity's home, a pair's
-`subject`, the two-role `EffectRow`, `RefKindMask` (`O-CI-16`). Every `success` row in a real
-manifest rests on an invented shape. **Nothing can be built against a name.**
+**And one that is open because it is genuinely undecided, not delegated:** `O-CI-16` counted **six**
+types named across the 08-02 documents and never defined. §2's eviction takes **one** of them —
+`InputKind` is `ConsiderationRow`'s input field, so it leaves with the chooser. **Five remain, and
+all five are the substrate's own:** `ChanceSpec` (the roll), arity's home, a pair's `subject`, the
+two-role `EffectRow`, and `RefKindMask`. Every `success` row in a real manifest rests on an invented
+shape. **Nothing can be built against a name.**
+
+> A boundary that shrinks a problem by one and reports it as five is doing its job. A boundary that
+> shrinks it by one and still reports six has been drawn and then not applied — which is how this
+> project's registers went stale four times this week.
