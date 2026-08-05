@@ -53,6 +53,19 @@ runtime breaks each one, on evidence, and the new runtime must hold it.
 | **P4** | **no** CP-0 column is bound to a **constant** at any INSERT | V-CODE found **4 sites**; two fixed, the gate is still red |
 | **P5** | a step's `emits` binds to the next step's `accepts` **without the model retyping it** | the 0/101 tool sending `placeholder_id_1` ×60 |
 | **P6** | a declaration named by a live plan step is **advertised while that step is current** | 12 rails point at **30 dead tools** behind a gate that fails open |
+| **P7** | **the surface is a FUNCTION of its recorded inputs** — replaying the recorded revisions reproduces the recorded surface | 🔴 **unrecordable today.** `manifest_revision` is accepted by the recorder and **supplied by no caller**; the rule set is a `Callable`, so it has no content identity; the record holds outputs and not inputs. Legacy's own surface is query-dependent (**87 vs 101 candidates** for two messages) |
+| **P8** | **the record is idempotent** — writing the same fact twice leaves it unchanged | 🔴 **measured on the NEW package 2026-08-05**: `assemble` called twice at one pass writes the narrowing twice. Third recurrence of the F-48 class, in a third file |
+
+**🔴 P7 AND P8 ADDED 2026-08-05 (PO), AND THEY CLOSE A GENUS THE CLAIM SET WAS MISSING.** P1–P6 are
+without exception **disclosure** properties — *tell the truth about what you did.* **Not one says
+"do the same thing twice."** Disclosure without determinism produces an honest record of a chaotic
+process, which is exactly what CP-0 delivered. See [`ARCHITECTURE.md` §0.13](../specs/2026-08-03-agent-runtime-unification/ARCHITECTURE.md).
+
+**The consequence for P4, and it explains two failed attempts:** P4 is the only one of the six that
+is secretly about determinism — *a column bound to a constant* is a value independent of its input,
+the degenerate case of a function. It was filed with the disclosure properties, which is why siting
+it at CP-1 returned something else **twice**: first "no subject" (wrong reason), then §6.4's
+re-admission stamp (a real defect, correctly fixed, wrong label).
 
 **Why this is a stronger claim than the rate, not a weaker one.** A rate says *"fewer failures than
 before"* and needs hundreds of samples to distinguish from noise. **A property says the failure class
@@ -1149,6 +1162,8 @@ and independently verified. Only 1.4's P4 half and the β roster turn on this an
   construction sites for `Surface` as well as `Admitted`, so a second one reds CI. **The claim was
   made true instead of quieter.**
 
+| **1.8** | **P8 + the shape P7 needs — the CHEAP moment is now, before CP-4 admits a row.** ⬅️ **added 2026-08-05 (PO).** Four parts: `NarrowingRule` becomes **data, not a closure** (a `Callable` has no content identity, so no `policy_revision` can exist); `manifest_revision` is a content hash **and is recorded**; the **purity boundary is named** and gate-enforced (ambient reads confined to one module); and the **narrowing log is idempotent** — measured broken today. **Retrofitting a revision id onto records that already exist is the CP-0 lesson in miniature** | ⬜ |
+
 **Two conditions carried in with 1.4 and 1.7, and both were paid for in CP-0:**
 
 - **P4 lands here, not as a lint.** *"No CP-0 column bound to a constant at any INSERT"* failed
@@ -1174,6 +1189,7 @@ declarations, not silently emit a tool-free pass.
 | 2.4 | withheld things stay **reachable on request**; the model can tell *withheld* from *never existed* | ⬜ |
 | 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | ⬜ |
 | **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | ⬜ |
+| **2.9** | **P7 armed — the replay gate, and it is the DRIFT question, not fidelity.** ⬅️ **added 2026-08-05 (PO).** `policy_revision` · `code_revision` (from the `GIT_SHA` that `build-stack.sh` already computes) · `prompt_hash` + per-cache-block hashes · and **`seed`, which this repository passes NOWHERE today** — so the model call is currently unreproducible even in principle, while local models support it. Gate: *does today's code produce the recorded surface from the recorded inputs?* — needs the record alone, runs every commit. **Fidelity replay** (did the record match the code of that day) needs `code_revision` + that code, and is for incidents, not CI | ⬜ |
 | **2.8** | **`runtime_variant='agentruntime'` stamped at a structural chokepoint covering EVERY terminal path** — not at the happy path. `legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship bias in the new arm's own failure rate**: an unlabelled new-runtime row loses its numerator too, and label-omission correlates with crash and cancel | ⬜ |
 | **2.6** | **P2 — a call's `source` is assigned STRUCTURALLY, never inferred.** ⬅️ **inherited from CP-0.3, 2026-08-04.** The new runtime dispatches through **one** path, so `source` is a property of *where the code is*, not of what a name looks up to. **Also add `error_class` as a structured enum** — V-METRIC ruled baseline class 3 unscoreable *because* it is a regex over freeform prose from five producers, and *"only a structured enum overturns this, never a better regex"* | ⬜ |
 

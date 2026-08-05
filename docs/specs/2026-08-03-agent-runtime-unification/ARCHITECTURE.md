@@ -67,7 +67,100 @@ contract violation.
 
 ---
 
-### 0.3 The Ceiling Test — every mechanism must pass it *(PO, 2026-08-04)*
+### 0.13 The other half of §0.1 — the substrate must be a FUNCTION *(PO, 2026-08-05)*
+
+*Numbered by order of adoption, placed here by order of reading: it is §0.1's twin and the two are
+unreadable apart.*
+
+> **Below the model call, the same inputs produce the same surface — and the record carries enough
+> input to reconstruct the output.** Above the model call, nothing is promised.
+
+**Why this was missing, and it is the whole finding.** §0.1 and P1–P6 are, without exception,
+**disclosure** properties: *register the narrowing · assign `source` structurally · write an outcome
+on every terminal path · bind no constants · bind `emits`→`accepts` · advertise while the step is
+current.* Every one says **"tell the truth about what you did."** Not one says **"do the same thing
+twice."**
+
+Disclosure without determinism yields an **honest record of a chaotic process**. You can read exactly
+what happened and still not make it happen again — which is precisely what CP-0 delivered: a good
+instrument, and a claim that could not be settled.
+
+> **We already had this pattern and used it once.** CP-3.1 specifies *"plans table — SPEC
+> **versioned + hashed**, STATE **event-sourced**"* — content-addressed input plus an event log,
+> exactly the mechanism below. It was applied to plans and never generalised to the runtime that
+> executes them.
+
+**The tell is P4.** Of the six properties it is the only one secretly about determinism — *a column
+bound to a constant* is a value that does not depend on its input, the degenerate case of a function
+— and it is the only one that never found a home. Two attempts to site it at CP-1 returned something
+else each time, because a property filed under the wrong genus makes its hunter bring back the wrong
+animal.
+
+#### 0.13.1 The gap is bounded, not guessed — ten ways a substrate stops being a function
+
+| source | in this system |
+|---|---|
+| ambient — env, filesystem, clock, randomness | **yes**, confined to `manifest.py` **by accident**; nothing holds it there |
+| **process state** — hash seed, unordered `set` iteration | **yes, legacy**: `active_tool_names: set[str]` reaches the wire unsorted, and `tools` is the FIRST prompt-cache block |
+| **unrecorded parameters** | **yes**: manifest, rule set and budget never enter the record |
+| **closures** — not content-addressable | **yes**: `NarrowingRule.keep` is an arbitrary `Callable` |
+| iteration order | partly handled (`sorted(names)`) |
+| **accumulated state** | **yes, measured**: `assemble` called twice at one pass writes the record twice |
+| concurrency | **never audited** |
+| external services — model, database | genuinely non-deterministic; must be quarantined, not denied |
+| time — expiry, TTL | present in the legacy suspend path |
+| identity generation — `uuid4` | present in the CP-0 recorder |
+
+#### 0.13.2 Four layers
+
+**A · Input closure.** Everything that affects the surface is named and **content-addressed**:
+`manifest_revision`, `policy_revision`, `budget_revision`, `code_revision`. The last is nearly free —
+`scripts/build-stack.sh` already computes `GIT_SHA` and labels images with it, machinery built to
+catch a stale container, which is the same question asked from the other side.
+
+**B · Pure core, effect shell.** One named module may read ambient state; everything else receives it
+as a parameter. Enforced by the membrane gate, which already walks the import graph.
+
+**C · Effect quarantine.** The non-deterministic seams — the model call, the database — are named,
+and **the record marks where determinism ends.** A reader must not have to infer the boundary.
+
+**D · Replay, and there are TWO questions.** Conflating them is what made replay look expensive:
+
+| | asks | needs | used for |
+|---|---|---|---|
+| **fidelity** | did the record match what the code **at that time** would produce? | `code_revision` + that code | audit, incident |
+| **drift** | does **today's** code produce the same surface for that input? | the record alone | **a CI gate, every commit** |
+
+**E · Each stage declares its determinism class** — `pure · reads_ambient · effectful` — and the gate
+enforces the declaration. This is the symmetry that was missing: **C-13 requires every *tool* to
+declare `re_runnable`, while the runtime declares nothing.** We demanded more of the thing being
+anchored than of the anchor.
+
+#### 0.13.3 The model call is not a black box
+
+Sampling is probabilistic **and seedable**, and this repository passes **no seed at all** — checked,
+not assumed: `seed` appears nowhere on the provider path. Recording
+`{model_ref, seed, temperature, top_p, prompt_hash, block_hashes}` buys four things: prompt drift
+becomes **detectable** (today a prompt can change with nobody noticing); `block_hashes` show **which
+cache block broke**, and `tools` is the first one, so this is a cost property as well as a
+correctness one; a local model becomes genuinely replayable; a cloud model becomes at least
+**diffable**.
+
+#### 0.13.4 What this changes about CP-0 — and it does not reopen it
+
+CP-0's retrospective concluded the rate claim could not be settled on this corpus, and attributed it
+to **sample size** (548 frozen failures against 743 needed). Under this clause that attribution is
+**incomplete**:
+
+> **The frozen baseline was supposed to be the deterministic control arm. It was not.**
+> `budget_names_by_tokens` was query-dependent — **87 candidate tools for one message and 101 for
+> another** — so the control varied per input. **No sample size fixes a control that moves.**
+
+CP-0 stays closed and the legacy instrument stays frozen as-is; nothing here is a retrofit
+instruction. What changes is what CP-2 and CP-4 must not repeat: **an A/B whose control is not a
+function is not an A/B.** Two more CP-0 artefacts are re-read by this clause — `manifest_revision`
+was accepted by the recorder and **never supplied by any caller**, and the record captured outputs
+without inputs, which is why arm E could only ever be diagnosed by running it live.
 
 **The question:** is what we are about to build an *enabler* for a stronger model, or a *block* that
 buys a weak model a few points while capping a strong one?
