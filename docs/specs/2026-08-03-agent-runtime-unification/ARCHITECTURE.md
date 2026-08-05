@@ -143,6 +143,114 @@ None of these needs the retracted thesis. Ordered by value per line, measured ra
 doing them early, two are cross-service, and `block_hashes` **cannot be computed correctly in
 chat-service at all** — the cache breakpoint is owned by provider-registry *after* a schema
 translation, so a chat-service-side hash can be green while the cached bytes changed.
+### 0.14 The designs for what §0.13.4 named *(2026-08-05)*
+
+*§0.13.4 named four things worth building and designed none of them. This section is the design, and
+it is written under one rule earned the hard way: **every sentence below states a REQUIREMENT, not a
+capability.** Four times in this document a mechanism was described as though it already existed —
+"a bypass is a compile error", five "actually enforceable" rows of which three were false, a scan
+nothing performed, and a gate that "already walks the import graph". If a line here reads as though
+something works, it is a defect in the line.*
+
+#### 0.14.1 Narrowing stages must be data, and the ordering must be explicit
+
+**The problem a keep-predicate cannot express.** `NarrowingRule.keep` is `Callable[[dict], bool]` —
+a per-row decision. The stage that motivated all of this, `budget_names_by_tokens`, is **a running
+accumulator over a sort order**: it walks declarations in a ranking and stops when a budget is spent.
+No per-row predicate produces that, and **6 of the 9 existing rule fixtures are already named
+`token_budget`** — the fixtures encode a shape the type cannot hold.
+
+**A narrowing stage must therefore be one of a closed set of KINDS**, each with declared parameters
+and each carrying `stage` and `reason` as it does today:
+
+| kind | parameters | what it does |
+|---|---|---|
+| `filter` | `field`, `op`, `value` | per-row membership or comparison — the only shape today's `keep` covers |
+| `allow_list` · `deny_list` | `names` | explicit set membership, for the always-hot core and the retirement list |
+| **`order_by`** | `key`, `direction` | **not a narrowing.** It establishes the ranking that rank- and budget-dependent kinds consume |
+| `top_k` | `k` | drops beyond rank *k* |
+| `take_while_budget` | `budget`, `cost_field` | the accumulator: walks the ranking, drops the tail once `budget` is exhausted |
+
+**`order_by` is the load-bearing addition, and it is not decoration.** A budget or a top-*k* applied
+to an **unordered** collection selects an arbitrary subset — which is exactly the legacy defect where
+`active_tool_names` is a `set` iterated unsorted, and `tools` is the first prompt-cache block. So:
+
+> **A pipeline containing `top_k` or `take_while_budget` MUST contain an `order_by` before it.**
+> A pipeline that does not must be rejected at construction, not at use.
+
+That rule is checkable from the pipeline value alone, which is what makes it worth stating.
+
+**The expressiveness that is lost, stated rather than minimised.** Arbitrary predicates are gone. If
+a real narrowing stage in this repository cannot be expressed by the kinds above, **that is a finding
+to record and bring back here — not a reason to add a closure escape hatch.** A single `Callable`
+parameter would restore every problem this design exists to remove.
+
+#### 0.14.2 One canonical serialisation, and it decides a Unicode form for the whole surface
+
+**Why this is one decision and not two.** U-1 (§0.13.2) requires the token estimator to normalise,
+because the same grapheme costs **1.44× more in NFD than NFC** and that number is both the sort key
+and the accumulator in a budget cliff. Content-addressing requires a fixed form for the same reason:
+two byte-sequences that render identically must not produce two digests. **Both need the same answer,
+and giving them different answers would be worse than giving neither.**
+
+> **NFC, everywhere, normalised at the boundary where external text enters** — not at each use site.
+> NFC is what the web and most editors emit, so it is the form that requires the fewest conversions.
+
+**The canonical form, stated so a second implementation is a diff and not a discovery:**
+
+| rule | why |
+|---|---|
+| keys sorted, UTF-8, no insignificant whitespace | the ordinary requirements |
+| **strings NFC-normalised before hashing** | §0.14.2's whole point |
+| **floats forbidden in any hashed structure** | formatting varies by platform and version; the repo has already paid for digest bugs |
+| **a version prefix inside the hashed bytes** | a future change to this table becomes a *different digest*, not a silent collision. Without it, a serializer change is indistinguishable from a content change |
+| **exactly one implementation, gate-enforced** | the repo currently carries **18 distinct canonical-JSON implementations, 5 flag variants and 0 shared helpers**, with a precedent of digests permanently baselined because a serializer froze |
+
+#### 0.14.3 A degraded catalogue must narrow loudly — U-2 is a P1 counter-example
+
+`get_tool_definitions` returns `[]` on any exception with only a `logger.warning`, so a gateway
+hiccup withholds **the entire catalogue** and registers nothing. **P1 is falsifiable at n=1 and this
+is the n.**
+
+**Two halves, and shipping only the first would repeat the defect that started this work:**
+
+1. **The row must record it.** One withholding entry per absent declaration is the literal reading and
+   the wrong one — it turns one outage into hundreds of rows saying the same thing. The record must
+   instead carry a **single stage entry naming the cause and the count**, from which the absent set is
+   derivable. *(A narrowing whose record is unreadable is not registered in any useful sense.)*
+2. **The model must be told.** V-LIVE observed the failure this prevents: with `book_list` withheld,
+   the model stated it **"does not exist at all"** while the same row recorded it as withheld with a
+   stage and a reason. **The row was honest and the screen was not.** An empty surface the model
+   cannot distinguish from an empty world produces confident fabrication.
+
+**What this section does NOT decide:** whether a degraded turn should serve a **last-known-good**
+catalogue with a staleness marker. That is better product behaviour and it adds state and a staleness
+policy, so it is a separate decision — and it must not be smuggled in as part of this fix.
+
+#### 0.14.4 The purity boundary — one module, and an honest statement of what the gate cannot see
+
+**Requirement:** every ambient read in `app/agentruntime/` — environment, filesystem, clock,
+randomness — must occur in **one named module**, and every other module must receive those values as
+parameters. Ambient reads are confined to `manifest.py` today, **structurally rather than by
+accident**, which is what makes the boundary cheap to hold rather than expensive to create.
+
+**The gate must reject, in any module that is not the boundary:** `os.environ` · `open` ·
+`Path.exists` / `Path.read_*` / `Path.write_*` · `time.*` · `datetime.now` · `random.*` · `uuid.*`.
+
+**What it cannot see, and this must be written beside it rather than discovered later:** the check is
+by **direct name**. An ambient read reached through an intermediate helper, or through a callable
+passed in as an argument, is invisible to it. **The gate raises the cost of crossing the boundary; it
+does not make crossing impossible**, and no sentence in this document may claim otherwise.
+
+> **Note on the existing gate, because this is the fourth instance of the same error in this file:**
+> `scripts/agentruntime-membrane-gate.py` **cannot currently see a single one of these.** It permits
+> the whole standard library, and every ambient capability in Python is in the standard library — it
+> is green on `os`, `time`, `random`, `uuid` and `open()`. §0.13's claim that the boundary was
+> "enforced by the membrane gate, which already walks the import graph" was false when written. The
+> walk is real; the check does not exist yet.
+
+---
+
 
 ---
 
