@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from app.agentruntime import (
+    CONTRACT_VERSION,
     Admitted,
     ContractViolation,
     Declaration,
@@ -39,6 +40,7 @@ from app.agentruntime import (
     identity_of,
     load,
     try_admit,
+    validate_document,
 )
 
 _REPO = Path(__file__).resolve().parents[3]
@@ -132,7 +134,7 @@ class TestTheManifestStartsEmpty:
         p.write_text(json.dumps({
             "manifest_version": 1, "contract_version": "1.0.0",
             "declarations": [{"id": "world_setup", "kind": "skill", "owning_service": "chat-service",
-                              "lifecycle": "admitted", "contract_version": "1.0.0",
+                              "lifecycle": "admitted", "admitted_against": "1.0.0",
                               "members": ["deleted_tool"]}],
         }), encoding="utf-8")
         with pytest.raises(UnresolvedReference):
@@ -389,20 +391,55 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
     the queue is permanently empty — a migration that can never find work.
     """
 
-    def test_a_row_records_the_version_it_was_ADMITTED_against(self, monkeypatch):
-        """The falsifier, and it needs two different versions to exist at once — which is exactly
-        the situation the field is for. Admit under one contract version, generate under another."""
-        from app.agentruntime import contract as _c
+    def test_two_rows_CAN_carry_different_stamps(self):
+        """🔴 THE TEST THAT WOULD HAVE CAUGHT MY FIRST FIX, and did not exist.
 
-        a = admit(_tool("book_list"))
-        assert a.contract_version == _c.CONTRACT_VERSION
+        My first attempt moved the constant read one call earlier — `admit()` took it from
+        `check_contract()`, whose only success return is `CONTRACT_VERSION`. Same value, every row.
+        A verifier printed `{'1.0.0'}` across all of them. **A field that cannot differ between two
+        rows records nothing about either**, and the test I wrote asserted a hardcoded `"1.0.0"`,
+        so it was satisfied by exactly the defect it was meant to reject.
 
-        monkeypatch.setattr(_c, "CONTRACT_VERSION", "9.9.9")
-        row = build([a])["declarations"][0]
-        assert row["admitted_against"] == "1.0.0", (
-            "the row re-stated the constant current at WRITE time, so a breaking amendment would "
-            "make every historical row claim conformance it was never checked for"
+        This asserts the property that matters — the values CAN differ — and it needs no literal.
+        """
+        first = build([admit(_tool("book_list"))])
+        assert {r["admitted_against"] for r in first["declarations"]} == {CONTRACT_VERSION}
+
+        # A contract amendment. The already-admitted row must keep the stamp it was written with.
+        bumped = json.loads(json.dumps(first))
+        bumped["declarations"][0]["admitted_against"] = "0.9.0"
+        after = build([admit(_tool("book_list")), admit(_tool("book_get"))], previous=bumped)
+        stamps = {r["id"]: r["admitted_against"] for r in after["declarations"]}
+        assert stamps == {"book_list": "0.9.0", "book_get": CONTRACT_VERSION}, (
+            f"regeneration restamped a prior admission: {stamps}. §6.4's re-admission queue is the "
+            f"rows whose stamp is not current — restamping empties it at every regeneration, and "
+            f"the M1 drift gate FORCES regeneration, so the queue would be empty whenever CI is green"
         )
+
+    def test_the_readmission_queue_is_derivable_from_the_file_alone(self):
+        """§6.4's mechanism, exercised rather than asserted. A breaking amendment must be able to
+        name which declarations need re-admitting — from the manifest, with no side channel."""
+        doc = build([admit(_tool("book_list")), admit(_tool("book_get"))])
+        doc["declarations"][0]["admitted_against"] = "0.9.0"          # admitted before the bump
+        queue = [r["id"] for r in doc["declarations"] if r["admitted_against"] != CONTRACT_VERSION]
+        assert queue == ["book_get"] or queue == ["book_list"], queue
+        assert len(queue) == 1, "the queue must name exactly the stale row, not all or none"
+
+    def test_the_stamp_is_VALIDATED_not_merely_present(self):
+        """A field nothing checks is a field anything can say. A verifier fed this `null`,
+        `"banana"`, `"99.0.0"` and the OLD field name; all four were accepted."""
+        good = build([admit(_tool("book_list"))])
+        for bad in (None, "banana", "1.0", 1.0):
+            doc = json.loads(json.dumps(good))
+            doc["declarations"][0]["admitted_against"] = bad
+            with pytest.raises(UntrustedRow, match="admitted_against"):
+                validate_document(doc)
+        # ...and the removed name must not slip back in as a substitute.
+        doc = json.loads(json.dumps(good))
+        doc["declarations"][0].pop("admitted_against")
+        doc["declarations"][0]["contract_version"] = "1.0.0"
+        with pytest.raises(UntrustedRow, match="admitted_against"):
+            validate_document(doc)
 
     def test_the_row_does_not_carry_a_write_time_constant_at_all(self):
         """REJECTS the reintroduction. A field whose value is the module constant on every row
@@ -438,9 +475,16 @@ class TestIdentityIsDerivedNotAuthored:
         with pytest.raises(ContractViolation, match="owning service"):
             admit(Declaration(id="x", kind="tool", source_path="tools/misc/x.py"))
 
-    def test_identity_carries_all_four_C0_fields(self):
+    def test_identity_carries_the_fields_it_can_actually_derive(self):
+        """🔴 Was `..._all_four_C0_fields`, and the fourth was `contract_version` — the running
+        build's constant, asserted only for truthiness. Round 2 called it a dead field; round 6
+        found the first fix had moved the deadness one type over rather than ending it. Removed
+        from `Identity`, because a field kept because deleting it feels lossy is a field the next
+        reader will trust. C-0's contract-version stamp lives on the manifest ROW, as
+        `admitted_against`, where it can differ between rows and therefore mean something."""
         ident = identity_of(_tool())
-        assert ident.id and ident.owning_service and ident.lifecycle and ident.contract_version
+        assert ident.id and ident.owning_service and ident.lifecycle
+        assert not hasattr(ident, "contract_version")
 
 
 # ── 1.7 · P1 — every narrowing registers ────────────────────────────────────────────────────────

@@ -65,12 +65,19 @@ class Declaration:
 
 @dataclass(frozen=True, slots=True)
 class Identity:
-    """C-0, assembled — never authored as a block."""
+    """C-0, assembled — never authored as a block.
+
+    🔴 **`contract_version` was removed from here, not relocated.** It held the running build's
+    constant, the manifest stopped using it once the row learned to record `admitted_against`, and
+    its only remaining reader was a test asserting it was truthy. Round 2 named it a dead field;
+    the first fix moved the deadness one type over instead of ending it. **A field kept because
+    removing it feels lossy is a field the next reader will trust.** The build's version is
+    `CONTRACT_VERSION`, available directly and belonging to the module rather than to an identity.
+    """
 
     id: str
     owning_service: str
     lifecycle: str
-    contract_version: str
 
 
 def derive_owning_service(source_path: str) -> str:
@@ -142,17 +149,9 @@ def check_contract(declaration: Declaration) -> str:
 
 
 def identity_of(declaration: Declaration) -> Identity:
-    """C-0 for an admitted declaration. Derives rather than reads the owner, every time.
-
-    ⚠️ `Identity.contract_version` is **the constant this build carries**, not the version any
-    particular declaration was admitted against. It is a property of the *running code*, and the
-    manifest deliberately does **not** use it for a row: a row records `admitted_against`, taken
-    from the `Admitted` object that captured it at admission time. Binding this constant per-row was
-    a live P4 violation — see `manifest._row`.
-    """
+    """C-0 for an admitted declaration. Derives rather than reads the owner, every time."""
     return Identity(
         id=declaration.id,
         owning_service=derive_owning_service(declaration.source_path),
         lifecycle=declaration.lifecycle,
-        contract_version=CONTRACT_VERSION,
     )

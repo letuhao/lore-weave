@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Iterable
 
@@ -29,6 +30,7 @@ from .contract import CONTRACT_VERSION, Declaration, check_contract, identity_of
 
 MANIFEST_VERSION = 1
 
+_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 _MANIFEST_REL = Path("contracts") / "agent-runtime-manifest.json"
 _ENV_VAR = "LOREWEAVE_AGENT_RUNTIME_MANIFEST"
 
@@ -85,7 +87,7 @@ class UntrustedRow(Exception):
     """
 
 
-def _row(admitted: Admitted[Declaration]) -> dict:
+def _row(admitted: Admitted[Declaration], *, carried: dict[str, str] | None = None) -> dict:
     # §6.1 layer 3, the WRITE end. `isinstance` first — the type is an accident boundary, so this
     # rejects the duck type — and then the contract is re-run, because holding an `Admitted` is
     # evidence about the past and this row is a claim about now.
@@ -122,19 +124,45 @@ def _row(admitted: Admitted[Declaration]) -> dict:
         # I had reported P4 as having "no subject at CP-1" because the new runtime reaches no DB
         # INSERT. That was reasoning from where I expected the property to live rather than from
         # what it says: the manifest IS this checkpoint's write boundary.
-        "admitted_against": admitted.contract_version,
+        # An already-admitted id keeps the stamp it was written with; only a NEW admission takes
+        # the running build's version. This is the half that makes the value able to differ.
+        "admitted_against": (carried or {}).get(d.id, admitted.contract_version),
         "members": list(d.members),
     }
 
 
-def build(admitted: Iterable[Admitted[Declaration]]) -> dict:
+def build(
+    admitted: Iterable[Admitted[Declaration]], *, previous: dict | None = None,
+) -> dict:
     """The manifest document for a set of admitted declarations. Pure; writes nothing.
 
     Takes `Admitted`, not `Declaration`, and that is the membrane in one signature: an unadmitted
     declaration cannot reach this function, because the only way to hold the argument type is to
     have passed the contract check.
+
+    🔴 `previous` IS WHAT MAKES `admitted_against` A FACT INSTEAD OF A RESTATEMENT.
+
+    My first attempt at P4 moved the constant read one call earlier and called it fixed: `admit()`
+    took the version from `check_contract()`, whose only success return is `CONTRACT_VERSION`. Same
+    constant, same value on every row — a verifier printed `{'1.0.0'}` across all of them. **A field
+    that cannot differ between two rows records nothing about either.**
+
+    The value can only vary if a row **keeps the stamp it was written with**. So an id already in
+    `previous` carries its own `admitted_against` forward, and only a genuinely new admission is
+    stamped with the running build's version. After a contract amendment the manifest then holds two
+    different values, and §6.4's re-admission queue is exactly the rows whose stamp is not current —
+    derivable by any reader, from the file alone.
+
+    Without this, regeneration rewrote every stamp; and the M1 drift gate **forces** regeneration, so
+    the queue was empty at every point where CI was green. The gate and the mechanism were working
+    against each other, which no naming of the field would have fixed.
     """
-    rows = [_row(a) for a in admitted]
+    carried = {
+        r["id"]: r["admitted_against"]
+        for r in (previous or {}).get("declarations", [])
+        if isinstance(r, dict) and r.get("id") and r.get("admitted_against")
+    }
+    rows = [_row(a, carried=carried) for a in admitted]
     ids = {r["id"] for r in rows}
     for r in rows:
         for m in r["members"]:
@@ -156,8 +184,11 @@ def generate(admitted: Iterable[Admitted[Declaration]], *, path: Path | None = N
 
     The M1 gate (*manifest row count == admitted count*) is the drift check on exactly that.
     """
-    doc = build(admitted)
     target = path or manifest_path()
+    # Read the existing manifest so already-admitted rows keep their stamp. Regenerating from
+    # scratch is what made `admitted_against` unable to differ between rows — and therefore unable
+    # to answer the one question §6.4 asks of it.
+    doc = build(admitted, previous=load(path=target) if target and target.exists() else None)
     if target is None:
         raise UntrustedRow(
             "no manifest location: pass `path=`, or set "
@@ -225,6 +256,18 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
             ))
         except Exception as exc:
             raise UntrustedRow(f"{source}: declarations[{i}] failed the contract — {exc}") from exc
+        # 🔴 The stamp is validated, because a field nothing checks is a field anything can say.
+        # A verifier fed this `null`, `"banana"`, `"99.0.0"` and the OLD field name; all four were
+        # accepted, and four hand-built fixtures still carried the removed name and passed — which
+        # was itself the proof that neither name was being validated.
+        stamp = r.get("admitted_against")
+        if not isinstance(stamp, str) or not _VERSION.match(stamp):
+            raise UntrustedRow(
+                f"{source}: declarations[{i}].admitted_against is {stamp!r}; a row must record the "
+                f"contract version it was admitted against, as MAJOR.MINOR.PATCH. §6.4's "
+                f"re-admission queue is derived from it, so an unreadable stamp empties the queue "
+                f"silently."
+            )
         if r["id"] in ids:
             raise UntrustedRow(f"{source}: duplicate declaration id {r['id']!r}")
         ids.add(r["id"])
