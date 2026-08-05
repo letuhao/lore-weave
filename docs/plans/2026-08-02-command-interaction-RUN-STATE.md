@@ -304,6 +304,18 @@ errors in my own measurements.** Two open rows closed with arguments (`O-CI-2`, 
 
 These are not the command layer's to fix, and the command layer **multiplies** each of them.
 
+> ✅ **ESCALATED 2026-08-06 — all four re-measured at HEAD first, and all four CONFIRMED.**
+> Two were **smaller than their label** and got fixed with bite-tested mechanisms rather than a
+> row; two are genuinely structural and left the round with a registry row **plus** a `PROSE_ONLY`
+> entry in `deferral-gate.py` naming what wakes them.
+>
+> | | disposition |
+> |---|---|
+> | **`FATAL-1`** | **FIXED.** Confirmed 8 Rust variants vs 6 TS — and worse than recorded: the comment on `DomainEvent` claimed *"the closed `type` set is asserted in the tests"* and **no test anywhere touched it** (they assert `OutcomeKind` and `DiscardReason`). Root cause: the two languages were joined **to each other**, with no `$defs` between them. Added `turn.schema.json#/$defs/DomainEvent` + `EncounterOutcome`, the two missing TS variants and their `renderEvent` arms, and a mirror test on **each** side against the contract. Bites: removing a variant from the contract reds **both** languages; a ninth Rust variant fails to compile (`E0004`) |
+> | **`R1-1`** | **SPLIT — strip fixed, semantics escalated.** `EVENT_COLUMNS` now selects `ruleset_digest` and `decode_event` reads it instead of hardcoding `None`; `every_decoded_column_is_selected` reds if it leaves the SELECT. That removes the `NV-4`: `None` now means only *legitimately absent*. **What F3 should DO with an absent pin is a design decision**, not an edit → `D-REPLAY-PIN-REFUSAL-UNDEFINED` |
+> | **`R1-2`** | **ESCALATED** → `D-RNG-COORDS-SNAPSHOT-ONLY`. Re-verified: three sites, all under `commit-service/src/domain/`. No mechanism, and the reason is stated rather than skipped — a grep-shaped check **passes today** and keeps passing while the defect stands |
+> | **`R1-11`** | **ESCALATED** → `D-NO-INPUT-LOG`. Re-verified empty. The subject is an **absent artifact**, so nothing in the tree can disagree with a check — `NV-2`, the same shape as `D-S04-1` |
+
 | | |
 |---|---|
 | **R1-1** | the replay reader **strips the pin**, and a stripped pin is byte-identical to a legitimate `NULL` ⇒ **the F3 refusal can never fire** (`NV-4`). Five new ordinal spaces would rest on it |

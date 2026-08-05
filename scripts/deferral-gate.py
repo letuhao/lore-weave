@@ -265,6 +265,43 @@ def mechanisms() -> dict[str, list[str]]:
 # when a row's id leaves the registry OR becomes mechanised, so every row here
 # is on a clock. A reason must say what the TRIGGER is, not restate the task.
 PROSE_ONLY: dict[str, str] = {
+    "D-REPLAY-PIN-REFUSAL-UNDEFINED": (
+        "TRIGGER: the first comparison site — a rebuild that resolves a ruleset and "
+        "has a pin to disagree with it. Escalated out of the 2026-08-02 command round "
+        "(R1-1). Migration 0016's own COMMENT ON COLUMN promises that replay compares "
+        "the stored digest against the ruleset it resolves under and refuses a "
+        "mismatch (F3). No comparison exists. The STRIP half is fixed 2026-08-06: "
+        "EVENT_COLUMNS now selects ruleset_digest and decode_event reads it instead of "
+        "hardcoding None, guarded by every_decoded_column_is_selected, which reds if "
+        "the column leaves the SELECT. What remains is a DESIGN decision and not an "
+        "edit: the column is nullable and NULL legitimately means no pinned simulation "
+        "produced this event, so F3 must decide whether an absent pin refuses the "
+        "rebuild or admits it and marks it unverifiable. No mechanism today because "
+        "F3 DOES NOT EXIST TO BE TESTED — a check would have no possible violation, "
+        "the NV-2 shape"),
+    "D-RNG-COORDS-SNAPSHOT-ONLY": (
+        "TRIGGER: either coordinate reaching a persisted event shape, or the first "
+        "verification replay that needs to re-derive a roll. Escalated out of the "
+        "command round (R1-2). session_seed and next_action_idx are both RNG "
+        "coordinates fed to role_rng, and both live only in CombatState / "
+        "IslandCheckpoint — re-verified 2026-08-06, three sites, all under "
+        "services/commit-service/src/domain/, never in an envelope, a payload or a "
+        "migration. The checkpoint is authoritative for two values that determine "
+        "every future roll and the log cannot reproduce them, so the P-F rule (a "
+        "snapshot disagreeing with the log is discarded) would discard the only copy. "
+        "No mechanism because a grep-shaped check PASSES TODAY and would keep passing "
+        "for as long as the defect stands — the wrong colour, which is worse than "
+        "no check"),
+    "D-NO-INPUT-LOG": (
+        "TRIGGER: the first commit that writes an input record, or a "
+        "verification-replay harness landing. Escalated out of the command round "
+        "(R1-11). Verification replay's stated input does not exist: grep for "
+        "input_log / inputs_log across crates, services and migrations returns empty, "
+        "re-verified 2026-08-06. Recovery replay folds committed events and is "
+        "unaffected; verification replay has nothing to re-run, which is why O-CI-2 "
+        "could never have been closed by argument. No mechanism because the subject is "
+        "an ABSENT ARTIFACT — nothing in the tree can disagree with a check, the same "
+        "NV-2 shape as D-S04-1's unbuilt service"),
     "D-POOL-PROBE-IS-NOT-A-QUERY": (
         "TRIGGER: the first commit that threads a retrieval call into the pool loop "
         "— the moment probe() output would actually be used as a search. Measured "

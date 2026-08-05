@@ -51,10 +51,17 @@ shrinks — a name that becomes produced FAILS, which is what forces the deletio
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+# The `#[cfg(test)]` stripper was written HERE and then found to be needed by
+# `hot-path-gate` too, so it lives in `gatelib` now — one copy, one set of
+# bites. See `strip_rust_test_items` below.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from gatelib import blank_rust_test_items  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -144,31 +151,21 @@ def strip_rust_test_items(text: str) -> str:
     Brace-matched rather than regex-matched, because a `mod tests` body contains
     braces and a lazy pattern stops at the first `}` it meets — which would strip
     one function and leave the rest of the module readable as production.
+
+    **MOVED to `gatelib.blank_rust_test_items` on 2026-08-06**, when
+    `hot-path-gate` was found to have the identical hole — a `#[cfg(test)]`
+    mirror test raised nine `string-keyed-lookup` findings against the island
+    step path. Twice is a class, and this repo's own history is that a helper
+    written twice is buggy the second time.
+
+    The shared version also fixes a bug this copy had: the `#[cfg(test)] use …;`
+    arm only fired when there was **no brace anywhere in the rest of the file**,
+    which is nearly never — so a test-only `use` brace-matched through the NEXT
+    production item and stripped it. And it BLANKS rather than deletes, so line
+    numbers survive and the text either side of the gap is never joined into a
+    match that was not in the source.
     """
-    out, i = [], 0
-    for m in CFG_TEST_RE.finditer(text):
-        if m.start() < i:
-            continue  # already inside a stripped item
-        out.append(text[i:m.start()])
-        j = text.find("{", m.end())
-        if j == -1:
-            # `#[cfg(test)] use ...;` and friends — drop to end of statement.
-            k = text.find("\n", m.end())
-            i = len(text) if k == -1 else k
-            continue
-        depth, k = 0, j
-        while k < len(text):
-            if text[k] == "{":
-                depth += 1
-            elif text[k] == "}":
-                depth -= 1
-                if depth == 0:
-                    k += 1
-                    break
-            k += 1
-        i = k
-    out.append(text[i:])
-    return "".join(out)
+    return blank_rust_test_items(text)
 
 
 def scan(files: list[Path], known: dict[str, str] | None = None) -> list[Finding]:

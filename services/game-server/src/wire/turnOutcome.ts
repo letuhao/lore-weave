@@ -162,16 +162,44 @@ export function projectTurnOutcome(ev: CommittedEvent): TurnOutcome | null {
 
 // ── D1/D2: structured domain facts ──────────────────────────────────────────
 
-/** A committed combat fact. Mirrors `commit-service::domain::CombatEvent`; the
- *  two are joined only by this shape, so the closed `type` set is asserted in
- *  the tests rather than trusted. */
+/** A committed combat fact. Mirrors `commit-service::domain::CombatEvent`.
+ *
+ *  The closed `type` set is asserted against
+ *  `turn.schema.json#/$defs/DomainEvent` — **the contract, never the other
+ *  language.** That sentence used to read *"asserted in the tests rather than
+ *  trusted"* and it was FALSE: the tests asserted `OutcomeKind` and
+ *  `DiscardReason`, and nothing anywhere touched this set. Under that comment
+ *  the two sides drifted to **8 variants against 6** — `status_expired` and
+ *  `encounter_ended` are emitted by the server and had no arm here, so
+ *  `renderEvent` returned `undefined` for a fact the log really contains.
+ *  A comment claiming coverage is worse than no comment: it stops the reader
+ *  looking. */
 export type DomainEvent =
   | { type: 'struck'; attacker: string; target: string; damage: number; hp_left: number }
   | { type: 'missed'; attacker: string; target: string }
   | { type: 'defended'; actor: string }
   | { type: 'moved'; actor: string; stance: string }
   | { type: 'fled'; actor: string }
-  | { type: 'downed'; target: string };
+  | { type: 'downed'; target: string }
+  | { type: 'status_expired'; actor: string }
+  | { type: 'encounter_ended'; outcome: EncounterOutcome };
+
+/** Terminal result of an encounter. Mirrors `game_rules::combat::EncounterOutcome`. */
+export type EncounterOutcome = 'victory' | 'defeat' | 'disengaged';
+
+/** Every `DomainEvent` discriminant, in one place a test can read.
+ *  Kept beside the union because a union's members are not enumerable at
+ *  runtime — the reason the drift above could not be caught by types alone. */
+export const DOMAIN_EVENT_TYPES = [
+  'struck',
+  'missed',
+  'defended',
+  'moved',
+  'fled',
+  'downed',
+  'status_expired',
+  'encounter_ended',
+] as const satisfies readonly DomainEvent['type'][];
 
 export function asDomainEvents(raw: unknown): DomainEvent[] {
   return Array.isArray(raw) ? (raw as DomainEvent[]) : [];
@@ -193,6 +221,13 @@ export function renderEvent(e: DomainEvent): string {
       return `${e.actor} flees`;
     case 'downed':
       return `${e.target} goes down`;
+    case 'status_expired':
+      // The server emits this rather than lapsing silently, precisely so the
+      // client can render it. Dropping it here re-silenced the fact the Rust
+      // variant's own doc comment exists to make audible.
+      return `${e.actor} recovers`;
+    case 'encounter_ended':
+      return `the encounter ends (${e.outcome})`;
   }
 }
 

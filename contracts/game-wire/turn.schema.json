@@ -79,6 +79,25 @@
         },
         "user_message": { "type": "string", "description": "Pre-localized (CWC-D7)." }
       }
+    },
+    "DomainEventType": {
+      "type": "string",
+      "description": "The closed discriminant set of a committed combat fact, as it appears in the COMMITTED PAYLOAD (not on the wire — ResolvedDetail.events carries these already rendered to strings). Rust `commit-service::domain::CombatEvent` produces it; TypeScript `game-server/wire/turnOutcome.ts` consumes it, and both check against THIS rather than against each other. Added 2026-08-06 because they had no contract between them and had silently diverged 8 to 6: `status_expired` and `encounter_ended` had no consumer arm, so `renderEvent` returned undefined for facts the server really emits. NOTE THE SCOPE — this contracts the TAG SET only. The per-variant payload fields are still uncontracted, which is why this is a string enum and not an object: an object def would have to close `additionalProperties`, and closing it against a `type`-only property list would make the schema wrong for every variant that carries fields.",
+      "enum": [
+        "struck",
+        "missed",
+        "defended",
+        "moved",
+        "fled",
+        "downed",
+        "status_expired",
+        "encounter_ended"
+      ]
+    },
+    "EncounterOutcome": {
+      "type": "string",
+      "description": "Terminal result carried by `encounter_ended`. Mirrors `game-rules::combat::EncounterOutcome`.",
+      "enum": ["victory", "defeat", "disengaged"]
     }
   }
 }

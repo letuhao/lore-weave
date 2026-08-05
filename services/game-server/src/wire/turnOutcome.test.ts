@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 import {
+  DOMAIN_EVENT_TYPES,
   projectTurnOutcome,
   toU64String,
   type CommittedEvent,
@@ -26,6 +27,7 @@ const schema = JSON.parse(
   $defs: {
     TurnOutcome: { properties: { kind: { enum: OutcomeKind[] } } };
     DiscardDetail: { properties: { reason: { enum: string[] } } };
+    DomainEventType: { enum: string[] };
   };
 };
 
@@ -38,6 +40,17 @@ test('kind values are exactly the schema enum — the Rust producer emits the sa
   // Kill-mutation: add a 4th TS kind (or rename one) without touching the
   // schema — this reds, and so does the Rust side's mirror of it.
   assert.equal(allowed.length, 3);
+});
+
+test('domain-event types are exactly the schema enum — the Rust CombatEvent emits the same set', () => {
+  // FATAL-1. This assertion did not exist while a comment on `DomainEvent`
+  // claimed it did, and under that comment the two sides drifted to 8 Rust
+  // variants against 6 TypeScript ones. Kill-mutation: drop `encounter_ended`
+  // from DOMAIN_EVENT_TYPES (or from the schema) and this reds — as does the
+  // Rust-side mirror in commit-service/src/domain/payload.rs.
+  const allowed = schema.$defs.DomainEventType.enum;
+  assert.deepEqual([...DOMAIN_EVENT_TYPES].sort(), [...allowed].sort());
+  assert.equal(allowed.length, 8, 'CombatEvent has EIGHT variants');
 });
 
 test('discard reasons are exactly the 5-variant sim-core set', () => {

@@ -111,14 +111,52 @@ fn decode_event(row: &sqlx::postgres::PgRow) -> Result<EventEnvelope, String> {
         recorded_at: row.try_get("recorded_at").map_err(col_err)?,
         payload: row.try_get("payload").map_err(col_err)?,
         metadata: row.try_get("metadata").map_err(col_err)?,
-        ruleset_digest: None,
+        // `R1-1`. This read `None`, unconditionally, while `EVENT_COLUMNS` did
+        // not select the column — so the replay reader STRIPPED the pin, and a
+        // stripped pin is byte-identical to a legitimately absent one (the
+        // column is nullable for events no pinned simulation produced).
+        //
+        // That is `NV-4`: the F3 refusal migration `0016` promises — *"Replay
+        // compares this against the ruleset it resolves under; a mismatch is
+        // refused"* — could never fire on this path, not because it was
+        // unimplemented but because **the input it compares had been destroyed
+        // and re-labelled as valid**. An adjacent decision defeated the guard.
+        //
+        // Reading it does NOT implement F3. It restores the input F3 needs, and
+        // makes `None` mean only what it is supposed to mean. What the refusal
+        // should DO when the pin is absent is a design question, escalated out
+        // of the command round rather than guessed at here.
+        ruleset_digest: row.try_get("ruleset_digest").map_err(col_err)?,
     })
 }
 
 /// The `events` SELECT column list (timestamps rendered to RFC3339 text, matching
 /// [`EventEnvelope`]'s `String` fields). Shared so the per-aggregate and global
 /// queries return the identical row shape `decode_event` expects.
-const EVENT_COLUMNS: &str = r#"event_id, event_type, event_version, aggregate_id, aggregate_type, aggregate_version, reality_id, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS occurred_at, to_char(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS recorded_at, payload, metadata"#;
+const EVENT_COLUMNS: &str = r#"event_id, event_type, event_version, aggregate_id, aggregate_type, aggregate_version, reality_id, to_char(occurred_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS occurred_at, to_char(recorded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS recorded_at, payload, metadata, ruleset_digest"#;
+
+#[cfg(test)]
+mod pin_column_tests {
+    use super::EVENT_COLUMNS;
+
+    /// `R1-1`. Every column `decode_event` reads must be SELECTed.
+    ///
+    /// `ruleset_digest` is the one that was not, and its absence was invisible
+    /// because the decoder filled the gap with `None` instead of failing —
+    /// which is also a legitimate value. Kill-mutation: drop a name from
+    /// `EVENT_COLUMNS` and this reds; drop it from `decode_event` and the row
+    /// stops decoding against a real database.
+    #[test]
+    fn every_decoded_column_is_selected() {
+        for col in [
+            "event_id", "event_type", "event_version", "aggregate_id", "aggregate_type",
+            "aggregate_version", "reality_id", "occurred_at", "recorded_at", "payload",
+            "metadata", "ruleset_digest",
+        ] {
+            assert!(EVENT_COLUMNS.contains(col), "`{col}` is decoded but never selected");
+        }
+    }
+}
 
 /// A position in a reality's GLOBAL event order `(recorded_at, event_id)`.
 #[derive(Debug, Clone)]

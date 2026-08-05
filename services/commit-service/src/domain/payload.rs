@@ -117,3 +117,111 @@ mod entity_str {
         s.parse::<u64>().map(EntityId).map_err(serde::de::Error::custom)
     }
 }
+
+/// The wire tag of one `CombatEvent`, by an EXHAUSTIVE match.
+///
+/// This function exists to be un-skippable rather than to be called: adding a
+/// ninth variant to [`CombatEvent`] fails to compile **here**, which forces the
+/// author to the contract. The alternative — a hand-written list beside the
+/// enum — is what `closed-set-gate` exists to catch, because Rust makes you
+/// HANDLE every variant but cannot make an array CONTAIN every variant.
+#[cfg(test)]
+fn wire_tag(e: &CombatEvent) -> &'static str {
+    match e {
+        CombatEvent::Struck { .. } => "struck",
+        CombatEvent::Missed { .. } => "missed",
+        CombatEvent::Defended { .. } => "defended",
+        CombatEvent::Moved { .. } => "moved",
+        CombatEvent::Fled { .. } => "fled",
+        CombatEvent::Downed { .. } => "downed",
+        CombatEvent::StatusExpired { .. } => "status_expired",
+        CombatEvent::EncounterEnded { .. } => "encounter_ended",
+    }
+}
+
+#[cfg(test)]
+mod mirror_tests {
+    use super::*;
+    use sim_core::EntityId;
+
+    /// `FATAL-1`. The `CombatEvent` tags must be exactly
+    /// `turn.schema.json#/$defs/DomainEvent`'s closed enum.
+    ///
+    /// **There was no such assertion**, while a comment on the TypeScript
+    /// consumer claimed the set was *"asserted in the tests rather than
+    /// trusted"*. It was not: the tests asserted `OutcomeKind` and
+    /// `DiscardReason`. Under that comment the two sides reached **8 against
+    /// 6** — `status_expired` and `encounter_ended` had no consumer arm, so
+    /// `renderEvent` returned `undefined` for facts the log really contains.
+    ///
+    /// Kill-mutation: delete a variant's arm from the schema enum, or add a
+    /// ninth variant — the first reds here, the second stops compiling in
+    /// [`wire_tag`].
+    #[test]
+    fn combat_event_tags_match_the_schema_enum() {
+        let schema: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../contracts/game-wire/turn.schema.json"
+        ))
+        .expect("schema parses");
+        let allowed: Vec<String> = schema["$defs"]["DomainEventType"]["enum"]
+            .as_array()
+            .expect("DomainEventType is a closed enum in the schema")
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+
+        let e = EntityId(1);
+        // One value per variant. Constructed rather than listed, so the tag
+        // comes from `wire_tag`'s exhaustive match and not from a second list
+        // that could drift from the first.
+        let all = [
+            CombatEvent::Struck {
+                attacker: e,
+                target: e,
+                damage: 1,
+                hp_left: 1,
+                crit: false,
+                capped: false,
+            },
+            CombatEvent::Missed { attacker: e, target: e },
+            CombatEvent::Defended { actor: e },
+            CombatEvent::Moved { actor: e, stance: Stance::Hold },
+            CombatEvent::Fled { actor: e },
+            CombatEvent::Downed { target: e },
+            CombatEvent::StatusExpired { actor: e },
+            CombatEvent::EncounterEnded { outcome: game_rules::combat::EncounterOutcome::Victory },
+        ];
+
+        assert_eq!(all.len(), allowed.len(), "schema and Rust enum must have the same arity");
+        for ev in &all {
+            let tag = wire_tag(ev);
+            assert!(allowed.contains(&tag.to_string()), "{tag} is not in the schema enum");
+            // The tag the match names and the tag serde emits must agree —
+            // otherwise the exhaustive match guards a string nobody sends.
+            let json = serde_json::to_value(ev).unwrap();
+            assert_eq!(json["type"].as_str().unwrap(), tag, "serde tag disagrees with wire_tag");
+        }
+    }
+
+    /// The `EncounterOutcome` strings must also be inside the contract, since
+    /// `encounter_ended` carries one and the consumer switches on it.
+    #[test]
+    fn encounter_outcomes_match_the_schema_enum() {
+        let schema: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../../contracts/game-wire/turn.schema.json"
+        ))
+        .unwrap();
+        let allowed: Vec<String> = schema["$defs"]["EncounterOutcome"]["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        use game_rules::combat::EncounterOutcome::*;
+        assert_eq!(allowed.len(), 3);
+        for o in [Victory, Defeat, Disengaged] {
+            let wire = serde_json::to_value(o).unwrap();
+            assert!(allowed.contains(&wire.as_str().unwrap().to_string()), "{wire:?} missing");
+        }
+    }
+}
