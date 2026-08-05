@@ -31,6 +31,25 @@ WHAT IT CHECKS
                          than one, is a finding.
   C2 line-exists         `:N` / `:N-M` must be within the file. This is the
                          `resource/table.rs:242-247` defect exactly.
+                         Reaches THREE forms, and for months reached only one:
+                         (a) bare prose `path.rs:259`;
+                         (b) a citation written as a link's TEXT, resolved
+                             through the href beside it when that href names
+                             the SAME file — `[rng.rs:14](…/combat/rng.rs#L14)`
+                             is this corpus's dominant form, and its short
+                             label is ambiguous on its own, so the resolution
+                             arm skipped it and C2 had nothing to count lines
+                             in. Measured: 396 of 986 such citations silent;
+                         (c) the `#L259` fragment OF a link target, which was
+                             discarded outright (`raw.split("#", 1)[0]`).
+                         (b) and (c) hid two live past-EOF citations in `docs/`
+                         while the summary line read "every file:line citation
+                         resolves" — the claim wearing the costume. Closing
+                         both moved the repo-wide baseline 4865 → 4868: the
+                         other 393 were correct, merely unchecked.
+                         An href naming a DIFFERENT file than the label does
+                         NOT resolve it; counting `b.md`'s lines to judge
+                         `resolve.rs:84` answers a question nobody asked.
   C3 unanchored          a BARE filename WITH a line number (`resolve.rs:84`) is
                          only checkable if exactly one file in the tree has that
                          name. Zero or several is a finding, because a reader
@@ -460,13 +479,84 @@ def _code_span_ranges(line: str) -> list[tuple[int, int]]:
     return [(m.start(), m.end()) for m in CODE_SPAN_RE.finditer(line)]
 
 
-def _link_text_spans(line: str) -> list[tuple[int, int]]:
-    """Character ranges of the `[…]` half of every inline markdown link."""
+def _link_text_spans(line: str) -> list[tuple[int, int, str]]:
+    """Character ranges of the `[…]` half of every inline link, WITH its href.
+
+    **The href is carried because a citation written as link text resolves
+    THROUGH it** — which the comment in `scan_doc` has always claimed and the
+    code never did. Without it, the resolution arm is skipped for link text and
+    `C2` has no file whose lines it could count, so a label naming a file that
+    is ambiguous on its own is silently unchecked.
+
+    That is not a corner: it is this corpus's DOMINANT citation form.
+    `[rng.rs:14](../../crates/game-rules/src/combat/rng.rs#L14)` puts a bare
+    `rng.rs` in the label and the disambiguating path right beside it, unused.
+    Measured before this fix: **396 of 986 link-text citations carrying a line
+    number were silent**, and two of them cite past the end of the very file
+    their own href names.
+    """
     out = []
     for m in LINK_SPAN_RE.finditer(line):
         text_end = line.index("](", m.start())
-        out.append((m.start() + 1, text_end))
+        # BOTH arms of `LINK_SPAN_RE`: the angled arm does not include the
+        # closing `)`, so slicing to `m.end() - 1` truncated a real href by one
+        # character and made it resolve to nothing.
+        raw = line[text_end + 2:m.end()]
+        if raw.endswith(")"):
+            raw = raw[:-1]
+        raw = raw.strip()
+        if raw.startswith("<"):
+            raw = raw[1:].split(">", 1)[0]
+        else:
+            # A CommonMark title (`[x](target "title")`) is not part of the target.
+            parts = raw.split()
+            raw = parts[0] if parts else ""
+        out.append((m.start() + 1, text_end, raw))
     return out
+
+
+# The `#L259` half of a link target. `L12-L20` and `L12-20` are both written.
+HREF_LINE_RE = re.compile(r"^L(?P<a>[0-9]+)(?:-L?(?P<b>[0-9]+))?$")
+
+
+def _check_href_line(
+    tree: "Tree", rel: str, n: int, doc_dir: str, target: str, frag: str,
+    already: set[str] | None = None,
+) -> list["Finding"]:
+    """`#L259` in a link target names a LINE, and nothing ever checked it.
+
+    `scan_doc` discards the fragment (`raw.split("#", 1)[0]`) before resolving,
+    so a link could point at line 99999 of a 316-line file and the gate printed
+    *"every file:line citation resolves"*. It is the same past-EOF class `C2`
+    exists for, entered by the other door — and the gate's own summary line was
+    the claim wearing the costume.
+    """
+    m = HREF_LINE_RE.match(frag)
+    if not m:
+        return []
+    joined = Tree.normalise(f"{doc_dir}/{target}" if doc_dir else target)
+    # A target that does not resolve is already `C4-link`; reporting it twice
+    # would make one defect look like two.
+    if not tree.knows(joined):
+        return []
+    # The label beside this href already reported the same file's line range —
+    # `[consumer.py:258](…/consumer.py#L258)` is one defect, written twice.
+    if already and joined in already:
+        return []
+    have = tree.line_count(joined)
+    lo = int(m.group("a"))
+    hi = int(m.group("b")) if m.group("b") else lo
+    where = f"link target `{target}#{frag}`"
+    if lo < 1:
+        return [Finding("C2-bad-range", rel, n, f"{where} starts at line {lo}; lines are 1-based")]
+    if m.group("b") and hi < lo:
+        return [Finding("C2-bad-range", rel, n, f"{where} is a reversed range ({lo} > {hi})")]
+    if max(lo, hi) > have:
+        return [
+            Finding("C2-past-eof", rel, n,
+                    f"{where} cites line {max(lo, hi)} of `{joined}`, which has {have}")
+        ]
+    return []
 
 
 def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None) -> list[Finding]:
@@ -482,6 +572,11 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
         if _pragma_covers(lines, i):
             continue
         link_text = _link_text_spans(line)
+        # Targets this line's CITATION arm has already reported a line-range
+        # finding for. `[consumer.py:258](…/consumer.py#L258)` is ONE defect
+        # written twice; without this the fix reports it twice and a reader
+        # counting findings counts the gate's own redundancy as defects.
+        line_reported: set[str] = set()
 
         # URLs first: a path inside one belongs to another host's filesystem.
         scan_line = URL_RE.sub(lambda m: " " * len(m.group(0)), line)
@@ -498,7 +593,8 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
             # silently disabled `C2` for every citation written as link text and
             # hid three live broken ranges. So the skip is recorded and applied to
             # the resolution arm only; `C2` still runs below.
-            is_link_text = any(a <= m.start() < b for a, b in link_text)
+            is_link_text = any(a <= m.start() < b for a, b, _h in link_text)
+            href_beside = next((h for a, b, h in link_text if a <= m.start() < b), "")
             # **A no-line-number citation is a prose mention, AMBIGUOUS OR
             # NOT.** A round narrowed this: a path matching several existing
             # files cannot be one a plan proposes to CREATE, so the create idiom
@@ -563,6 +659,29 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
             if not matches and doc_dir:
                 candidate = f"{doc_dir}/{cited}"
                 matches = tree.resolve(candidate)
+            # **The href beside a link-text citation IS its resolution.** The
+            # comment above says so; until now the code only used it as a reason
+            # to stay SILENT, never as an answer. Applied when the label alone
+            # does not settle on exactly one file — which is the common case,
+            # because a label is written short (`rng.rs:14`) precisely BECAUSE
+            # the full path is one character to the right.
+            if is_link_text and len(matches) != 1 and href_beside and not _is_external(href_beside):
+                hp = unquote(href_beside.split("#", 1)[0])
+                # **Only when the href names THE SAME FILE as the label.** The
+                # first version of this fix used any href, and the existing
+                # self-test refused it — correctly. In `[`resolve.rs:84`](b.md)`
+                # the label cites line 84 of `resolve.rs` while the href points
+                # at a DOCUMENT; counting `b.md`'s lines to judge `resolve.rs:84`
+                # answers a question nobody asked and reds correct prose. A link
+                # whose text cites a file it does not link to is a different
+                # shape, and this arm must not pretend to resolve it.
+                same_file = bool(hp) and hp.rsplit("/", 1)[-1].rsplit("\\", 1)[-1] == (
+                    cited.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+                )
+                if same_file and not _is_placeholder(hp):
+                    joined = Tree.normalise(f"{doc_dir}/{hp}" if doc_dir else hp)
+                    if tree.knows(joined):
+                        matches = [joined]
             if not matches:
                 if not is_link_text:
                     rule = "C1-missing" if anchored else "C3-unanchored"
@@ -594,6 +713,8 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
             # and dropped `start` entirely — so `types.rs:99999-2` passed, which
             # is the EXACT past-EOF class this rule was built for, and `:0`
             # passed too although line 0 is not a line.
+            if lo < 1 or (end is not None and hi < lo) or max(lo, hi) > have:
+                line_reported.add(target)
             if lo < 1:
                 out.append(
                     Finding("C2-bad-range", rel, n, f"`{m.group(0)}` starts at line {lo}; lines are 1-based")
@@ -649,8 +770,10 @@ def scan_doc(tree: Tree, rel: str, text: str, only_lines: set[int] | None = None
             if _is_external(raw):
                 continue
             target = unquote(raw.split("#", 1)[0])
+            frag = raw.split("#", 1)[1] if "#" in raw else ""
             if not target or _is_placeholder(target):
                 continue
+            out.extend(_check_href_line(tree, rel, n, doc_dir, target, frag, line_reported))
             # Resolved as a REPO-RELATIVE string, never through the host
             # filesystem's idea of absoluteness. `Path.resolve()` made this rule
             # answer differently on Windows and Linux for the same input:
@@ -998,6 +1121,40 @@ def self_test() -> int:
          "[`coverage.py:67+`](b.md)", 0),
         ("...but a bare unanchored citation outside a link still reds",
          "see resolve.rs:84", 1),
+        # ── the markdown-link blind spot ────────────────────────────────────
+        # Measured before the fix: 396 of 986 link-text citations carrying a
+        # line number were SILENT, because the label's bare name is ambiguous
+        # and the resolution arm skipped link text instead of reading the href
+        # one character to the right. Two of the silent ones cite past the end
+        # of the file their own href names — real, in `docs/`, for months.
+        # `gates.yml` is ALREADY ambiguous in this fixture (`.github/w/` and
+        # `.github/workflows/`), and the second one is a real file with a real
+        # line count. Reusing that collision rather than inventing one matters:
+        # the first attempt added a second `citation-gate.py` to the tree and
+        # broke `C3 a bare name matching one file resolves` — a self-test entry
+        # that changes another case's SUBJECT is how a suite starts measuring
+        # itself instead of the code.
+        ("an ambiguous label resolves through an href naming THE SAME file",
+         "[`gates.yml:99999`](../../.github/workflows/gates.yml)", 1),
+        ("...and stays silent when that line really exists",
+         "[`gates.yml:3`](../../.github/workflows/gates.yml)", 0),
+        # The narrowing the existing suite forced: an href pointing at a
+        # DIFFERENT file is not a resolution of the label. Counting `b.md`'s
+        # lines to judge `resolve.rs:84` answers a question nobody asked.
+        ("an href naming a DIFFERENT file does not resolve the label",
+         "[`resolve.rs:99999`](../../scripts/citation-gate.py)", 0),
+        # The `#L` fragment was discarded outright (`raw.split('#', 1)[0]`),
+        # so a link could point at line 99999 of a 1 000-line file while the
+        # gate printed "every file:line citation resolves".
+        ("a `#L` fragment past end-of-file is caught",
+         "[the encoder](../../scripts/citation-gate.py#L99999)", 1),
+        ("a `#L` fragment inside the file is fine",
+         "[the encoder](../../scripts/citation-gate.py#L3)", 0),
+        ("a reversed `#L` range is refused",
+         "[the encoder](../../scripts/citation-gate.py#L90-L10)", 1),
+        # ONE defect written twice must not read as two.
+        ("label and href naming the same bad line report ONCE",
+         "[`gates.yml:99999`](../../.github/workflows/gates.yml#L99999)", 1),
         ("a live reference-style link definition is fine", "[ref]: ../../scripts/citation-gate.py", 0),
         # F15
         ("a `..` segment is normalised", "see docs/x/../../scripts/citation-gate.py:3", 0),
