@@ -165,11 +165,11 @@ and each carrying `stage` and `reason` as it does today:
 
 | kind | parameters | what it does |
 |---|---|---|
-| `filter` | `field`, `op`, `value` | per-row membership or comparison — the only shape today's `keep` covers |
+| `filter` | `field`, **`op ∈ {eq, in, not_in}`**, `value` | per-row membership — the only shape today's `keep` covers. **Three operators, deliberately.** Regex or arbitrary comparison would re-admit the closure problem under a new name; a stage that needs a fourth is **a finding to bring back here** |
 | `allow_list` · `deny_list` | `names` | explicit set membership, for the always-hot core and the retirement list |
 | **`order_by`** | **`keys: [(field, direction)]`** — see §0.14.1a, which is the design | **not a narrowing.** It establishes the ranking that rank- and budget-dependent kinds consume |
 | `top_k` | `k` | drops beyond rank *k* |
-| `take_while_budget` | `budget`, `cost_field` | the accumulator: walks the ranking, drops the tail once `budget` is exhausted |
+| `take_while_budget` | **`budget` (a value in the pipeline, never an ambient read)**, `cost_field` | the accumulator: walks the ranking, drops the tail once `budget` is exhausted. **Today's budget is `os.environ` read at import** (`LW_HOT_SEED_TOKEN_BUDGET`), which makes it a property of the container that no record captures — the boundary module (§0.14.4) must read it and **pass it in**, so it travels with the pipeline that used it |
 
 **`order_by` is the load-bearing addition, and it is not decoration.** A budget or a top-*k* applied
 to an **unordered** collection selects an arbitrary subset — which is exactly the legacy defect where
@@ -229,6 +229,29 @@ reaches the ranking.
    actually has. This is P1 extended where P1 is currently thin: a reason that does not distinguish
    the dropped from the kept is not yet actionable.
 
+##### 0.14.1b Who computes `relevance` — the scoring stage is an EFFECT, not a pipeline kind
+
+*Rule 1 above says a key may be **injected by a recorded scoring stage**, and then did not say what
+that stage is. It is the largest of the blanks, because relevance is the only key that would make a
+budget cut defensible, and computing it requires the **second model call** — the embedding call that
+sits ABOVE the surface.*
+
+**Requirements:**
+
+1. **Scoring runs BEFORE the pipeline and is not one of its kinds.** The pipeline kinds are pure
+   functions of row data; scoring calls a model. Mixing them would put an effect inside the thing
+   whose whole value is being an effect-free function of its inputs.
+2. **The score is written onto the row as ordinary data**, so the pipeline reads a field and cannot
+   tell how it was produced.
+3. **The scoring stage records what it did** — model reference, and the fact that it ran — because a
+   ranking derived from a model call that nobody recorded is a ranking nobody can explain.
+4. **If scoring did not run, a pipeline that orders by `relevance` MUST be rejected, not degraded.**
+   By rule 2 of §0.14.1a a missing field is a rejection; this is that rule at its most load-bearing,
+   because the failure is **reachable and silent**: U-2 shows the upstream call can fail, and an
+   embedding failure yields **all-zero relevance on every row**, which is not a missing field — it is
+   a present field carrying no information. **Both must be rejections.** A caller that wants to
+   proceed without relevance must say so by choosing a pipeline that does not name it.
+
 **The expressiveness that is lost, stated rather than minimised.** Arbitrary predicates are gone. If
 a real narrowing stage in this repository cannot be expressed by the kinds above, **that is a finding
 to record and bring back here — not a reason to add a closure escape hatch.** A single `Callable`
@@ -242,8 +265,17 @@ and the accumulator in a budget cliff. Content-addressing requires a fixed form 
 two byte-sequences that render identically must not produce two digests. **Both need the same answer,
 and giving them different answers would be worse than giving neither.**
 
-> **NFC, everywhere, normalised at the boundary where external text enters** — not at each use site.
-> NFC is what the web and most editors emit, so it is the form that requires the fewest conversions.
+> **NFC, everywhere, normalised where external text ENTERS the package** — not at each use site.
+> NFC is what the web and most editors emit, so it is the form requiring the fewest conversions.
+
+**"Where it enters" must name places, or it is the same blank as `key` was.** There are exactly two:
+**(a)** `manifest.load` — every string on every row read from disk, since a hand-edited or
+tool-generated manifest may arrive in any form; and **(b)** any ingestion of an external declaration
+catalogue, which is where the per-user MCP overlay — **arbitrary third-party text** — arrives. **Both
+are inside the boundary module of §0.14.4**, which is what makes "normalise once at entry"
+enforceable rather than aspirational. `estimate_tokens` must then be able to assume NFC rather than
+normalise defensively; **a normaliser called at every use site is a normaliser someone will forget at
+one of them.**
 
 **The canonical form, stated so a second implementation is a diff and not a discovery:**
 
@@ -263,10 +295,24 @@ is the n.**
 
 **Two halves, and shipping only the first would repeat the defect that started this work:**
 
-1. **The row must record it.** One withholding entry per absent declaration is the literal reading and
-   the wrong one — it turns one outage into hundreds of rows saying the same thing. The record must
-   instead carry a **single stage entry naming the cause and the count**, from which the absent set is
-   derivable. *(A narrowing whose record is unreadable is not registered in any useful sense.)*
+1. **The row must record it — and doing so exposes a real conflict with P1's record shape.** P1's
+   record is `{tool, stage, reason, pass}` — **per declaration**. A whole-catalogue outage has no
+   single `tool`, and the two obvious escapes are both wrong: one entry per absent declaration turns
+   one outage into hundreds of identical rows (registered, unreadable), and a `tool: "*"` sentinel
+   makes every consumer that counts tools return a wrong answer while looking correct.
+
+   **So the record gains a `scope`**, and this is a deliberate extension of P1 rather than a
+   workaround inside it:
+
+   | `scope` | shape | when |
+   |---|---|---|
+   | `declaration` | `{scope, tool, stage, reason, pass}` — today's record, with the field made explicit | a named declaration was narrowed |
+   | `catalogue` | `{scope, stage, reason, count, pass}` — **no `tool`** | the source of declarations was unavailable, so the absent set is not enumerable and `count` is what is honestly known |
+
+   **`count` and not the names, because the names are not knowable.** When the catalogue fetch fails
+   there is no list to enumerate — claiming one would be inventing the very thing the outage
+   destroyed. *(A narrowing whose record is unreadable is not registered in any useful sense; a
+   narrowing whose record is fabricated is worse.)*
 2. **The model must be told.** V-LIVE observed the failure this prevents: with `book_list` withheld,
    the model stated it **"does not exist at all"** while the same row recorded it as withheld with a
    stage and a reason. **The row was honest and the screen was not.** An empty surface the model
@@ -279,8 +325,11 @@ policy, so it is a separate decision — and it must not be smuggled in as part 
 #### 0.14.4 The purity boundary — one module, and an honest statement of what the gate cannot see
 
 **Requirement:** every ambient read in `app/agentruntime/` — environment, filesystem, clock,
-randomness — must occur in **one named module**, and every other module must receive those values as
-parameters. Ambient reads are confined to `manifest.py` today, **structurally rather than by
+randomness — must occur in **`app/agentruntime/ambient.py`**, and every other module must receive
+those values as parameters. **Naming the module is the design**; "one named module" was a blank of
+the same kind as `key`. Today's ambient reads live in `manifest.py` (`os.environ`, `Path.exists`) and
+move there, which also puts the budget of §0.14.1 and the NFC normalisation entry points of §0.14.2
+behind one door rather than three. Ambient reads are confined to `manifest.py` today, **structurally rather than by
 accident**, which is what makes the boundary cheap to hold rather than expensive to create.
 
 **The gate must reject, in any module that is not the boundary:** `os.environ` · `open` ·
