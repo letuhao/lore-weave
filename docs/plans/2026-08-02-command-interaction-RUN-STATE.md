@@ -389,6 +389,17 @@ one author's 29 ❌. That is the number `D-9` did not have when it was taken.
    record is flat, already-evaluated machinery). It is `D-9`'s deferral **with a price tag attached
    for the first time**. **② `O-71`/`C-0`** — one variant, one codec arm, one acyclicity check;
    asked for by the red team and **all four** blind authors, and `O-CI-10` is blocked on it.
+   > 🔵 **RE-MEASURED 2026-08-06 — ② is smaller and ③ is not behind it.**
+   > [dataflow §11.6](../specs/2026-08-02-command-interaction-dataflow.md). `O-71` is **two
+   > arrows** and the register treats them as one. Quantity → another quantity's **VALUE**,
+   > signed, is **SHIPPED** — `DerivationRow` carries `source_quantity: QuantityOrdinal` and
+   > `factor_milli: i32`, folded in three passes. Quantity → another quantity's **CEILING** is
+   > what is missing (`CeilingBinding` is `Slot | Fixed`, two variants). **`O-CI-10` and
+   > `O-CI-12` need the shipped arrow, not the missing one, so neither is blocked**; `F-2` is
+   > about this round's own unbuilt `EffectRow` and is *buildable*, which CLAUDE.md's
+   > anti-laziness rule names as the difference between *blocked* and *not yet written*. The
+   > constraint that replaces the blocker is narrower and real: **derivations read pass-1
+   > values, so there is no derivation chain.**
    **③ `O-CI-10`** pair state. **④ `F-6`** unbounded target sets — *"being seen"* is load-bearing in
    two genres and **no proposal on the table reaches it**.
 4. **Ship L5 (Present) first if anything ships.** XS, and it **fixes `FATAL-1` as a side effect** —

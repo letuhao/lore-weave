@@ -539,8 +539,44 @@ primitive rather than a patch:
 | **`F-3`** — no verb parameter (`cast fireball`) | untouched. A pair is state, not a content argument |
 | **`F-6`** — multi-target / area effects | untouched. Bounded arity is exactly what makes §11.2 cheap, and *"everyone in the room"* is unbounded by construction |
 | **Arrow A** — a world-owned record with a stored condition | untouched, and see §11.4 |
-| **`F-2`/`O-71`** — a derived magnitude | **required by this.** A pair value is useless if `magnitude` cannot read it. §11.2 is *blocked on `O-71`*, which is the third independent line arriving at the same unblocker |
+| **`F-2`/`O-71`** — a derived magnitude | ~~**required by this.** A pair value is useless if `magnitude` cannot read it. §11.2 is *blocked on `O-71`*~~ → 🔵 **MEASURED 2026-08-06 and the "blocked" is WRONG. See §11.6.** The arrow this needs is **shipped**; what is missing is a *different* arrow that this does not need |
 | triples | `believes(A, "B did X")` is arity 3. Two-role verbs cover most cases; **the arity of the projection is an open question**, not a solved one |
+
+### 11.6 🔵 `O-71` is TWO arrows, and one of them shipped — measured at HEAD
+
+Three rows in this document say they are *blocked on `O-71`*. The claim was carried from the actor
+round's register and never re-measured against code. Measured:
+
+| the arrow | status at HEAD |
+|---|---|
+| quantity → another quantity's **VALUE**, signed | ✅ **SHIPPED.** `DerivationRow { target: QuantityOrdinal, source_quantity: QuantityOrdinal, op, factor_milli: i32, divisor, bound }` — [rows.rs:121-135](../../crates/actor-hub/src/rows.rs#L121). `factor_milli` is **`i32`**, so the *signed* half of `C-0` is already in the type. Consumed by a real three-pass fold — [fold.rs:62-64](../../crates/actor-hub/src/fold.rs#L62) |
+| quantity → another quantity's **CEILING** | ❌ **MISSING.** `CeilingBinding` is exactly two variants, `Slot(StatSlot) \| Fixed(i32)` — [resource/mod.rs:66-81](../../crates/ruleset-core/src/resource/mod.rs#L66). No `Quantity(ord)`. This is the `O-71` that is genuinely unbuilt |
+
+**So the three rows resolve differently from one another, and none is blocked by the missing arrow:**
+
+- **`O-CI-10`** — §11.2 projects pair values into a scratch block, then needs *a magnitude that can
+  read a projected value.* That is `DerivationRow`, which exists and is signed. **Not blocked.**
+- **`O-CI-12`** — per-archetype weighting *"needs a derived magnitude"*. The derived magnitude
+  **exists.**
+- **`F-2`/`AF-6`** — *"`EffectRow` is static in EVERY field."* `EffectRow` is **this round's own
+  unbuilt table**. Giving it the shape `DerivationRow` already ships is a design choice, not a
+  dependency. CLAUDE.md names this exactly: *"missing infrastructure is NOT blocked — it is unbuilt
+  work to implement"*, and *"saying 'blocked' when you mean 'I'd have to build it' is the lazy
+  tell."*
+
+**Three caveats, because the correction must not overshoot the way the claim it corrects did:**
+
+1. **Nothing in production constructs a `DerivationRow`** — outside tests, the only construction is
+   `crates/actor-hub/examples/two_plugins_fold.rs`. Per `D-11` (*zero production realities exist*)
+   that is expected, but *"shipped"* here means **the engine can**, not **a reality does**.
+2. **Derivations read pass-1 values only** — pass 1 resolves modifier rows, pass 2 turns derivations
+   into contributions from *pass-1* values, pass 3 re-resolves and emits. **There is no derivation
+   chain.** If §11.2's projected pair value must itself be derived, it cannot then feed another
+   derivation. That is a real constraint on where the projection lands — and it is a **different
+   question** from `O-71`, which is the point of this section.
+3. **Only `factor_milli`'s signedness was measured.** `C-0`'s wider programme — `C-1`, `C-2`, the
+   re-key of the slot table to `QuantityOrdinal` — was **not** measured here, and nothing above
+   should be read as saying `C-0` is discharged.
 
 ### 11.4 Arrow A is smaller than it looked, and may not violate `D-29` at all
 
@@ -557,9 +593,9 @@ measured** — 14 of one author's 29 ❌. That is the number `D-9` never had whe
 
 | # | |
 |---|---|
-| **O-CI-10** | **Instance-level pair state is the round's central absence** (§11). Resolution proposed: a bind-time projection (§11.2). **Blocked on `O-71`** — a pair value the magnitude cannot read buys nothing |
+| **O-CI-10** | **Instance-level pair state is the round's central absence** (§11). Resolution proposed: a bind-time projection (§11.2). ~~**Blocked on `O-71`**~~ → 🔵 **NOT blocked — measured at HEAD, §11.6.** `DerivationRow` reads another quantity's resolved value with a **signed** `factor_milli`, so the magnitude this row needs exists. **What replaces the blocker is a narrower, real constraint:** derivations read **pass-1** values, and there is no derivation chain — so *where the projection lands in the fold* is the open question, not whether a magnitude can read it |
 | **O-CI-11** | **The projection's ARITY is open.** Pairs cover most findings; `believes(A, "B did X")` is a triple. Bounded-arity projection generalises to n-tuples at `O(arity^n)`, which stops being cheap fast |
-| **O-CI-12** | **`considerations` on the verb means every actor scores every verb identically** — a coward and a hero weigh `flee` the same. Per-archetype weighting needs a derived magnitude (`O-71`) or a per-archetype overlay. Found by the political author, not by any reviewer |
+| **O-CI-12** | **`considerations` on the verb means every actor scores every verb identically** — a coward and a hero weigh `flee` the same. ~~Per-archetype weighting needs a derived magnitude (`O-71`)~~ → 🔵 **the derived magnitude EXISTS** (§11.6); the open part is only the per-archetype overlay. Found by the political author, not by any reviewer |
 | **O-CI-13** | **Out-of-fiction controls leave the ruleset** (§10.1). Where they go — transport, session, a non-hashed table — is undesigned |
 
 ## 4. The verb row, revised
