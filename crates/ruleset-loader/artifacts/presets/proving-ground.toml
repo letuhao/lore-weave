@@ -1,0 +1,81 @@
+# proving-ground — a PRESET layer (priority 10) that declares the three pools
+# the engine's laws need, and nothing else.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# `Ruleset::engine_default()` declares NO quantities and NO pools, and QTY-A10(c)
+# is why it must stay that way: a pool shipped in the engine default would enter
+# every reality in existence and could never be removed. So a runnable reality
+# has to declare its own, and until `M1` nothing did — the demo binaries ran on
+# `engine_default` and the actor's numbers were struct fields with engine names
+# on them.
+#
+# THE POINT OF THE NAMES
+# ----------------------
+# `vitality`, `swiftness` and `breath` are CONTENT. They appear in this file and
+# in nothing else: no crate, no service, no test fixture in `src/`. The engine
+# asks for a ROLE — "the pool whose exhaustion ends participation" — and this
+# file answers with a quantity. `scripts/engine-vocabulary-gate.py` is what keeps
+# that true rather than merely intended.
+#
+# They are deliberately NOT the names of the fields they replaced (`hp`, `av`,
+# `turn_slots`). A rename would have satisfied every structural check and
+# changed nothing, which is the exact failure the PO named:
+#
+#   > "quantity[0] = \"hp\" would have satisfied M1 as first written."
+#
+# Different names make a surviving name-coincidence impossible: if anything
+# still resolved a number by matching an engine identifier, it would find
+# nothing here and go red.
+#
+# ORDINALS ARE ASSIGNED, NEVER AUTHORED (QTY-A5). The order below fixes them —
+# vitality 0, swiftness 1, breath 2 — and a later layer adding a quantity
+# appends rather than renumbers.
+
+quantities = ["vitality", "swiftness", "breath"]
+
+# --- the pool an engine law reads to decide the encounter is over -----------
+#
+# `ceiling_slot`, not `ceiling_fixed`: QTY-A8 distinguishes RAISING a ceiling
+# from filling toward it, and a realm/progression raising `max_hp` must move
+# this pool's ceiling without editing this row. A fixed number here could only
+# ever be edited.
+[[resources]]
+quantity = "vitality"
+role = "vital"
+min = 0
+base = 100
+ceiling_slot = "max_hp"
+regen_type = "none"
+zero_behaviour = "clamp"
+
+# --- the pool that orders turns --------------------------------------------
+#
+# HSR action value: LOWEST acts, and the engine writes it from
+# `action_value(speed)` on every reset. The ceiling is fixed because this meter
+# is not something a realm raises — it is a countdown the tempo law owns, and
+# 10000 is `action_value`'s own numerator, i.e. the value a speed of 1 would
+# produce. Anything a law can actually write stays inside it.
+[[resources]]
+quantity = "swiftness"
+role = "initiative"
+min = 0
+base = 100
+ceiling_fixed = 10000
+regen_type = "none"
+zero_behaviour = "clamp"
+
+# --- the pool an action spends to be taken at all ---------------------------
+#
+# IAS-D6's turn economy. `block_costs` is the shipped ZeroBehaviour whose doc
+# reads "refuse any action whose cost this pool cannot pay" — written before
+# anything used it, and this is what it was written for. One action per actor
+# per turn; a reality that grants two says `base = 2` here rather than in code.
+[[resources]]
+quantity = "breath"
+role = "action_budget"
+min = 0
+base = 1
+ceiling_fixed = 1
+regen_type = "none"
+zero_behaviour = "block_costs"

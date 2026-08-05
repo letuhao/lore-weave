@@ -40,7 +40,8 @@ pub mod vocabulary;
 pub mod wire;
 
 pub use domain::{
-    Actor, CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatState, Stance,
+    Actor, BindingError, CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatState,
+    HubBinding, RealityRules, Stance,
 };
 // S2 — the laws moved to `crates/game-rules` (IMP-A5). Re-exported under their
 // original paths so every `commit_service::combat::…` / `::stats::…` import

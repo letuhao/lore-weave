@@ -109,12 +109,30 @@ fn hex(d: &[u8; 32]) -> String {
 ///   Refusing it belongs on the path that writes the pin, and that path does
 ///   not exist yet: see
 ///   `an_empty_table_must_never_be_pinned_and_nothing_enforces_it_yet`.
+/// * `4cbff832…` → `f0bd1bdf…`, **2026-08-06, `M1` the engine-role binding**.
+///   The answer: **no number changed and no law changed** —
+///   `RULESET_SCHEMA_VERSION` went 5 → 6 and `ResourceDecl` gained `role`.
+///
+///   **The engine default pays ZERO extra encoded bytes**, and that is worth
+///   saying because it is not what the size assertion suggests: the struct grew
+///   256 B, and the ENCODED form grew by one byte *per declared pool*. The
+///   engine declares none (`ResourceTable::EMPTY`, and `QTY-A10(c)` is why it
+///   must stay that way), so `0..n` is empty and nothing new is written. **The
+///   digest moved purely because the schema version is the first field in the
+///   stream** — which is exactly what that field is for: an encoding change can
+///   never be mistaken for a rules change.
+///
+///   Why the field was added at all, when the same module refuses `deps` and
+///   `tags`: those have no consumer, and this one has three engine laws reading
+///   it in the commit that introduced it. See `EngineRole`'s doc for the full
+///   argument, including why the role is declared rather than inferred from
+///   `CeilingBinding`.
 #[test]
 fn v1_engine_default_digest_is_pinned() {
     let d = Ruleset::engine_default().digest();
     assert_eq!(
         hex(&d.0),
-        "4cbff832d13382c89cb6f2470f15c96568e2fbb250d2e4e215073ef419beab2f",
+        "f0bd1bdf3dae11edbd48cb07873052d307c3c9890a13d3466ef495af0b1cd387",
         "the engine-default ruleset digest moved — a rules value, the canonical \
          encoding, the schema version, or LAW_VERSION changed. That is a rules \
          change for EVERY reality; confirm it was intended before repinning, and \

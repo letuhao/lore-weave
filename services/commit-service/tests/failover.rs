@@ -15,6 +15,8 @@
 //! Gated on `LOREWEAVE_TEST_PG_URL`; skips cleanly when unset. Requires
 //! migration 0015. Append-only against random reality UUIDs.
 
+mod hub_fixture;
+
 use std::sync::Arc;
 
 use sqlx::postgres::PgPoolOptions;
@@ -22,9 +24,11 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use commit_service::manager::{AdoptOutcome, Manager};
-use commit_service::{Actor, CombatDomain, CombatPayload, Ruleset, CombatState};
+use commit_service::combat::Side;
+use commit_service::{Actor, CombatDomain, CombatPayload, CombatState, RealityRules};
 use dp_kernel::envelope::EventEnvelope;
 use sim_core::{
+
     RulesetEpoch,
     Admitted, Class, DiscardReason, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane,
     Outcome, Producer, QueuedInput, SeenWindow, Seq,
@@ -46,10 +50,10 @@ async fn pool(url: &str) -> Arc<PgPool> {
 fn build_island() -> Island<CombatDomain> {
     // F1 — the island runs the reality's RESOLVED ruleset, pinned by a real
     // content digest. Was `RulesetDigest([0u8; 32])`, which pinned nothing.
-    let rules = Arc::new(Ruleset::engine_default());
+    let rules = Arc::new(RealityRules::proving_ground());
     let mut state = CombatState::default();
-    state.actors.insert(EntityId(1), Actor::new(&rules, 100));
-    state.actors.insert(EntityId(2), Actor::new(&rules, 100_000));
+    state.actors.insert(EntityId(1), hub_fixture::actor(&rules, EntityId(1), Side::A, 100));
+    state.actors.insert(EntityId(2), hub_fixture::actor(&rules, EntityId(2), Side::B, 100_000));
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0xFA1_10,
@@ -174,6 +178,7 @@ async fn a_dead_writer_is_replaced_without_applying_anything_twice() {
     let AdoptOutcome::Adopted { recovered_ids, turn_number } = outcome else {
         panic!("an expired lease must be claimable — this IS failover, got {outcome:?}");
     };
+
     assert!(recovered_ids >= 1, "B recovered what A committed");
     assert_eq!(turn_number, 1, "and resumed the turn counter instead of rewinding to 0");
 

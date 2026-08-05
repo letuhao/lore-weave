@@ -14,7 +14,8 @@ use std::sync::Arc;
 
 use commit_service::pg_binding::PgBindingStore;
 use commit_service::ruleset_boot::RulesetBoot;
-use commit_service::{Actor, CombatDomain, CombatState};
+use commit_service::combat::Side;
+use commit_service::{Actor, CombatDomain, CombatState, RealityRules};
 use ruleset_loader::{parse_layer, Layer, RulesetStore};
 use sim_core::{EntityId, Island, IslandId, RulesetEpoch, SeenWindow};
 use sqlx::postgres::PgPoolOptions;
@@ -72,9 +73,13 @@ pub async fn boot_for(meta_dsn: &str, tag: &str) -> RulesetBoot {
     }
 }
 
-pub fn island(rules: Arc<ruleset_core::Ruleset>, epoch: RulesetEpoch, channel: i64) -> Island<CombatDomain> {
+pub fn island(rules: Arc<RealityRules>, epoch: RulesetEpoch, channel: i64) -> Island<CombatDomain> {
     let mut state = CombatState::default();
-    state.actors.insert(EntityId(1), Actor::new(&rules, 100));
+    state.actors.insert(EntityId(1), {
+        let mut a = Actor::spawn(&rules, EntityId(1), Side::A);
+        a.set_vital(&rules, 100);
+        a
+    });
     let mut isle = Island::new(
         IslandId(channel as u64),
         0x53A5_71DE,

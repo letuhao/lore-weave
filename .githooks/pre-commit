@@ -117,6 +117,14 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # test walked through it with a one-letter binding.
 "$PY" "$ROOT/scripts/hub-vocabulary-gate.py"
 
+# THE ENGINE CLOSES ON MECHANISM; THE MANIFEST CLOSES ON VOCABULARY (D-2, M1).
+# `M1` moved an actor's numbers into the reality's declared quantities, so the
+# engine holds ordinals and resolves a ROLE. Nothing checked that: the property
+# was structurally true and unguarded, which is the same shape D-513 found one
+# contract down. The forbidden words are PARSED OUT of the shipped presets rather
+# than listed here, so adding a quantity extends the gate in the same edit.
+"$PY" "$ROOT/scripts/engine-vocabulary-gate.py"
+
 # A CITATION IN SOURCE MUST NAME WHAT DEFINES THE THING (A-2). D-512: actor.rs
 # cited dp-kernel/src/entity_status.rs for GoneState, which had MOVED -- and the
 # two obvious checks were measured against that defect and both MISS it. The file

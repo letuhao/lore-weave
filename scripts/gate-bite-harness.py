@@ -670,6 +670,32 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
     # let the gate's OWN bite test walk through it with a one-letter binding)
     # and brace-counted test-block exclusion (cutting at the first occurrence
     # makes every line below a mid-file `mod tests` default-uncovered).
+    # `D-2`, the ENGINE side of the same leak `hub-vocabulary-gate` guards
+    # from the hub side. One row per structural decision the gate stands on:
+    # the vocabulary being READ from the presets rather than listed (a list
+    # here would be a second declaration and would drift from the first), the
+    # word boundary (a substring match cries wolf on `breathe`), both blanking
+    # passes, and the pragma's block window.
+    "engine-vocabulary-gate": [
+        ('the vocabulary is hardcoded instead of read from the presets',
+         '    out: dict[str, list[str]] = {}\n    tree = REPO / PRESET_TREE',
+         '    return {}\n    out: dict[str, list[str]] = {}\n    tree = REPO / PRESET_TREE'),
+        ('the word boundary is dropped, so a substring cries wolf',
+         'pattern = re.compile(r"\\b(" + "|".join(sorted(map(re.escape, vocab))) + r")\\b")',
+         'pattern = re.compile(r"(" + "|".join(sorted(map(re.escape, vocab))) + r")")'),
+        ('comments stop being blanked, so an EXPLANATION reads as a leak',
+         '    body = strip_comments(blank_rust_test_items(src), keep_strings=True)',
+         '    body = blank_rust_test_items(src)'),
+        ('test items stop being blanked, so a fixture reads as a leak',
+         '    body = strip_comments(blank_rust_test_items(src), keep_strings=True)',
+         '    body = strip_comments(src, keep_strings=True)'),
+        ('the pragma stops exempting',
+         '    if PRAGMA in raw[line_no - 1]:\n        return True',
+         '    if False:\n        return True'),
+        ("the pragma's block window becomes unbounded, silencing a whole file",
+         '    while j >= 0 and raw[j].lstrip().startswith(("//", "///", "//!", "#[", "*")):',
+         '    while j >= 0:'),
+    ],
     "hub-vocabulary-gate": [
         ("the construction rule stops seeing a literal address",
          'rf"\\b{ADDRESS}(?:::new)?\\(\\s*\\d"',

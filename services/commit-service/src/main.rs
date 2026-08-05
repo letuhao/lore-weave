@@ -13,8 +13,9 @@
 use std::sync::Arc;
 
 use commit_service::admission::{admit_t6, AdmissionOutcome, DedupCache};
+use commit_service::combat::Side;
 use commit_service::{
-    decide, Actor, CombatDomain, CombatState, DecisionContext, Ruleset,
+    decide, Actor, CombatDomain, CombatState, DecisionContext, RealityRules,
     Vocabulary, COMBAT_V1_JSON,
 };
 use loreweave_llm::{GatewayClient, ModelSource, ReasoningEffort};
@@ -106,12 +107,27 @@ async fn main() -> anyhow::Result<()> {
     // made two realities with different rules stamp indistinguishable events,
     // and nothing forced the digest passed to describe the rules passed. There
     // is no longer a digest argument to get wrong.
-    let ruleset = std::sync::Arc::new(Ruleset::engine_default());
+    // `M1` — the PROVING-GROUND preset, not `engine_default`. The engine default
+    // declares no quantities and no pools (QTY-A10(c) is why it must not), so it
+    // binds none of the three engine roles and a domain built on it has laws
+    // with no numbers. `RealityRules::resolve` refuses exactly that, here, where
+    // the message is readable.
+    let ruleset = std::sync::Arc::new(RealityRules::resolve(
+        ruleset_loader::proving_ground().map_err(|e| anyhow::anyhow!("{e}"))?,
+    )?);
 
     let mut state = CombatState::default();
-    state.actors.insert(npc, Actor::new(&ruleset, 100));
-    state.actors.insert(hostiles[0], Actor::new(&ruleset, 40));
-    state.actors.insert(hostiles[1], Actor::new(&ruleset, 40));
+    state.actors.insert(npc, Actor::spawn(&ruleset, npc, Side::A));
+    for h in hostiles {
+        // Spawned at the reality's declared opening value, then WOUNDED by the
+        // feature — which is the division of labour `M1` establishes: content
+        // declares what a being starts with, the feature decides what happens
+        // to it afterwards. Before `M1` this was a constructor argument, so a
+        // caller could hand an actor a ceiling nothing had declared.
+        let mut a = Actor::spawn(&ruleset, h, Side::B);
+        a.set_vital(&ruleset, 40);
+        state.actors.insert(h, a);
+    }
 
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
@@ -138,11 +154,11 @@ async fn main() -> anyhow::Result<()> {
 
     println!("== POC-2 LLM decision vertical — {} turns ==", args.turns);
     for turn in 0..args.turns {
-        if !isle.state().actors[&npc].alive() {
+        if !isle.state().actors[&npc].alive(&ruleset) {
             println!("turn {turn}: encounter over (npc downed or fled)");
             break;
         }
-        let ctx = DecisionContext::from_state(isle.state(), npc, &hostiles);
+        let ctx = DecisionContext::from_state(isle.state(), &ruleset, npc, &hostiles);
         if ctx.candidates.is_empty() {
             println!("turn {turn}: encounter over (no live hostiles)");
             break;
@@ -226,7 +242,7 @@ async fn main() -> anyhow::Result<()> {
         // Scripted hostile retaliation (same Decision SHAPE, ScriptDriver
         // tier — AGT-A3: swapping the driver changes cost, not contract).
         for h in hostiles {
-            if isle.state().actors.get(&h).map(|a| a.alive()).unwrap_or(false) {
+            if isle.state().actors.get(&h).map(|a| a.alive(&ruleset)).unwrap_or(false) {
                 input_seq += 1;
                 let hp = serde_json::json!({
                     "producer_service": "poc2-script-driver",
@@ -289,6 +305,6 @@ async fn main() -> anyhow::Result<()> {
     println!("cost                  : $0 on a local BYOK model; for priced models multiply tokens by the provider-registry pricing row (never a literal here — no-hardcoded-pricing rule)");
     println!("island outcomes       : applied={} discarded={} substituted={}",
         isle.metrics().applied, isle.metrics().discarded_total(), isle.metrics().substituted);
-    println!("npc hp                : {:?}", isle.state().actors[&npc].hp);
+    println!("npc vital             : {:?}", isle.state().actors[&npc].vital(&ruleset));
     Ok(())
 }

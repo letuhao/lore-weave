@@ -11,13 +11,16 @@
 //! all. Collapsing them would let whoever submits first act, while a queue is
 //! computed, displayed and ignored.
 
+mod hub_fixture;
+
 use std::sync::Arc;
 
 use commit_service::combat::{EncounterOutcome, Side};
 use commit_service::{
-    Actor, CombatDomain, CombatEvent, CombatPayload, CombatResource, Ruleset, CombatState,
+    Actor, CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatState, RealityRules,
 };
 use sim_core::{
+
     RulesetEpoch,
     Admitted, Class, DiscardReason, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane,
     Outcome, Precondition, PreconditionKind, Producer, QueuedInput, SeenWindow, Seq,
@@ -31,14 +34,26 @@ const FOE: EntityId = EntityId(2);
 fn encounter(hero_hp: i64, foe_hp: i64) -> Island<CombatDomain> {
     // F1 — the island runs the reality's RESOLVED ruleset, pinned by a real
     // content digest. Was `RulesetDigest([0u8; 32])`, which pinned nothing.
-    let rules = Arc::new(Ruleset::engine_default());
+    let rules = Arc::new(RealityRules::proving_ground());
     let mut state = CombatState { session_seed: 0xBEEF_5EED, ..Default::default() };
-    let mut hero = Actor::with_side(&rules, hero_hp, Side::A);
-    hero.stats.speed = 200; // av 50
-    hero.av = 50;
-    let mut foe = Actor::with_side(&rules, foe_hp, Side::B);
-    foe.stats.speed = 100; // av 100
-    foe.av = 100;
+    let mut hero = hub_fixture::actor(&rules, EntityId(1), Side::A, hero_hp as i64);
+    // The hero is up first because its INITIATIVE is lower — set directly.
+    //
+    // `M1` note, stated rather than glossed: this used to say
+    // `hero.stats.speed = 200` and let `action_value` derive an AV of 50. Per-
+    // actor stats no longer exist (`RealityRules::archetype` is one block per
+    // reality), so a per-actor speed cannot be expressed today, and this reaches
+    // for the pool the turn order actually reads instead of the stat behind it.
+    //
+    // The behaviour is NOT identical and the difference is real: the hero's
+    // advantage now lasts until its first act, because a reset draws from the
+    // reality's speed. Every assertion below is about who is up on the FIRST
+    // turn, so none of them depended on the difference — but a test that needed
+    // a permanently faster actor could not be written today. Tracked as
+    // `D-PER-ACTOR-STATS-UNEXPRESSIBLE`.
+    hero.set_initiative(&rules, 50);
+    let mut foe = hub_fixture::actor(&rules, EntityId(2), Side::B, foe_hp as i64);
+    foe.set_initiative(&rules, 100);
     state.actors.insert(HERO, hero);
     state.actors.insert(FOE, foe);
 
@@ -148,11 +163,11 @@ fn an_encounter_runs_to_victory() {
 #[test]
 fn the_slower_actor_cannot_act_out_of_turn() {
     let mut isle = encounter(200, 200);
-    assert_eq!(isle.state().actors[&FOE].turn_slots, 1, "the foe HAS its slot");
+    assert_eq!(isle.state().actors[&FOE].action_budget(isle.rules()), 1, "the foe HAS its slot");
 
     drive(&mut isle, act(1, FOE, CombatPayload::Strike { attacker: FOE, target: HERO }, true));
 
-    assert_eq!(isle.state().actors[&HERO].hp, 200, "the out-of-turn strike did not land");
+    assert_eq!(isle.state().actors[&HERO].vital(isle.rules()), 200, "the out-of-turn strike did not land");
     let refused = isle
         .outcomes()
         .iter()
@@ -186,7 +201,7 @@ fn initiative_advances_in_proportion_to_speed() {
     // The foe is now up; a strike from it must land.
     drive(&mut isle, act(3, FOE, CombatPayload::Strike { attacker: FOE, target: HERO }, true));
     assert!(
-        isle.state().actors[&HERO].hp < 500 || isle.state().actors[&HERO].defending,
+        isle.state().actors[&HERO].vital(isle.rules()) < 500 || isle.state().actors[&HERO].defending,
         "the foe got its turn after two hero actions (2:1 cadence for 2x speed)"
     );
 
@@ -196,7 +211,7 @@ fn initiative_advances_in_proportion_to_speed() {
     drive(&mut fresh, act(2, HERO, CombatPayload::Defend { actor: HERO }, true));
     drive(&mut fresh, act(3, HERO, CombatPayload::Strike { attacker: HERO, target: FOE }, true));
     assert_eq!(
-        fresh.state().actors[&FOE].hp,
+        fresh.state().actors[&FOE].vital(isle.rules()),
         500,
         "a THIRD consecutive hero action is refused — the foe is up"
     );
@@ -210,7 +225,7 @@ fn a_downed_actor_is_knocked_out_not_dead() {
     drive(&mut isle, act(1, HERO, CombatPayload::Strike { attacker: HERO, target: FOE }, true));
 
     let foe = &isle.state().actors[&FOE];
-    assert_eq!(foe.hp, 0);
+    assert_eq!(foe.vital(isle.rules()), 0);
     assert_eq!(foe.knocked_out, Some(5), "revivable for ko_duration_rounds, not gone");
 
     end_round(&mut isle, 1);
@@ -230,7 +245,7 @@ fn round_scoped_status_expires_and_says_so() {
     let mut isle = encounter(200, 200);
     // A slowed foe: AV 100 → 120.
     {
-        let before = isle.state().actors[&FOE].av;
+        let before = isle.state().actors[&FOE].initiative(isle.rules());
         assert_eq!(before, 100);
     }
     // Drive a round boundary with a status set via a strike that KOs nobody,
@@ -240,7 +255,7 @@ fn round_scoped_status_expires_and_says_so() {
 
     end_round(&mut isle, 1);
     assert_eq!(isle.state().round_number, 1, "the round advanced");
-    assert_eq!(isle.state().actors[&FOE].av, 100, "AV is recomputed from speed each round");
+    assert_eq!(isle.state().actors[&FOE].initiative(isle.rules()), 100, "AV is recomputed from speed each round");
 }
 
 /// A resolved encounter takes no further actions. Without the guard a
@@ -252,9 +267,9 @@ fn a_resolved_encounter_accepts_no_further_actions() {
     drive(&mut isle, act(1, HERO, CombatPayload::Strike { attacker: HERO, target: FOE }, true));
     assert_eq!(isle.state().outcome, Some(EncounterOutcome::Victory));
 
-    let hp_before = isle.state().actors[&FOE].hp;
+    let hp_before = isle.state().actors[&FOE].vital(isle.rules());
     drive(&mut isle, act(2, HERO, CombatPayload::Strike { attacker: HERO, target: FOE }, false));
-    assert_eq!(isle.state().actors[&FOE].hp, hp_before, "nothing resolves after the end");
+    assert_eq!(isle.state().actors[&FOE].vital(isle.rules()), hp_before, "nothing resolves after the end");
 }
 
 /// Determinism: the same seed and the same inputs produce the same fight.
@@ -277,6 +292,7 @@ fn the_same_seed_replays_the_same_fight() {
         }
         events(&isle).iter().map(|e| format!("{e:?}")).collect()
     };
+
 
     let a = render();
     let b = render();

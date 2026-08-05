@@ -533,6 +533,7 @@ dependencies = [
 name = "commit-service"
 version = "0.1.0-poc2"
 dependencies = [
+ "actor-hub",
  "anyhow",
  "blake3",
  "dp-kernel",

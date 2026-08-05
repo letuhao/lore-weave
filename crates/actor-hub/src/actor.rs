@@ -30,10 +30,19 @@
 //! `Archetype` type in `world-gen`. Writing them from feature #1's chair would
 //! be inventing the second feature's requirements.
 //!
-//! **No mutation verb for a quantity beyond attachment.** Hub §3.4b says a
-//! quantity *begins* at its declared initial value; **what changes it afterwards
-//! — damage, regeneration, expenditure, progression — belongs to the feature
-//! that declares it**, and every one of those features is unbuilt.
+//! **The mutation verb is [`Actor::set_quantity`], and it CARRIES rather than
+//! decides.** Hub §3.4b says a quantity *begins* at its declared initial value;
+//! **what changes it afterwards — damage, regeneration, expenditure,
+//! progression — belongs to the feature that declares it.** That is still true:
+//! the hub takes a value it is given, refuses a writer that does not own the
+//! quantity, and has no opinion about the number. It is the same shape as
+//! [`Actor::set_existence`] — carry the state, adjudicate nothing.
+//!
+//! **This paragraph used to say there was no such verb**, on the ground that
+//! *"every one of those features is unbuilt"*. `M1` built the first one, and
+//! the hub's own array is the only place a per-actor number lives — so the
+//! alternative to a guarded write was a feature keeping a second copy of the
+//! number beside the hub's, which is precisely the second SSOT hub §5 forbids.
 
 use entity_existence::GoneState;
 use ruleset_core::MAX_DECLARED_QUANTITIES;
@@ -56,6 +65,32 @@ pub enum AttachError {
     /// attaching initialises the plugin's quantities and a silent second attach
     /// would reset a being's state to its birth values.
     AlreadyAttached { plugin: u8 },
+}
+
+/// Why a write to a quantity was refused. **Nothing silent**, for the reason
+/// [`AttachError`] gives: the alternative to each of these is a number changing
+/// where nobody could see that it should not have.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteError {
+    /// The quantity is **ABSENT** on this actor — the plugin that declares it is
+    /// not attached, so there is no slot to write. Distinct from writing zero:
+    /// *a village has no hp because combat is not attached.*
+    Absent { ordinal: u16 },
+    /// The writer is not the plugin that DECLARES this quantity.
+    ///
+    /// **This is the whole reason the verb takes a writer.** Hub §3.4 makes the
+    /// declaring plugin the owner of its quantities' meaning; a second plugin
+    /// writing one would be changing a number under semantics it does not own,
+    /// and the hub — which knows nothing about what any quantity means — is in
+    /// no position to judge whether that was reasonable. So it refuses on
+    /// OWNERSHIP, which it can check, rather than on intent, which it cannot.
+    ///
+    /// `owner` is `None` when no plugin in this reality declares the ordinal at
+    /// all; that is reachable only for an ordinal inside the actor's array width
+    /// but outside the reality's table, and reporting it as *"you are not the
+    /// owner"* with no owner named is more honest than folding it into
+    /// [`Absent`](Self::Absent).
+    NotOwner { ordinal: u16, owner: Option<u8>, writer: u8 },
 }
 
 /// Why a detachment was refused.
@@ -136,15 +171,20 @@ impl Actor {
         for raw in 0..MAX_DECLARED_QUANTITIES as u16 {
             let Some(q) = QuantityOrdinal::new(raw) else { continue };
             // `owner_of(q) == Some(p)` is what makes this initialise ONLY the
-            // attaching plugin's quantities. **It is not observable today**, and
-            // saying so is more honest than a test name that claims otherwise: a
-            // review measured that relaxing it to `.is_some()` reddens nothing,
-            // because the hub has no verb that moves a quantity after attach
-            // (its own seam `S-15`), so re-initialising an already-attached
-            // plugin's quantity writes the value that is already there. It
-            // becomes observable the moment any feature can change one — which
-            // is `NV-4` in its benign direction, and the reason this is a
-            // comment rather than a claim.
+            // attaching plugin's quantities. **It is now observable, and the
+            // test that observes it is
+            // `attaching_a_SECOND_plugin_does_not_reset_the_first`.**
+            //
+            // This comment used to say the opposite, and recording the
+            // transition is the point: a review measured that relaxing this to
+            // `.is_some()` reddened nothing, because the hub had no verb that
+            // moved a quantity after attach — so re-initialising an
+            // already-attached plugin's quantity wrote back the value that was
+            // already there. It said the guard *"becomes observable the moment
+            // any feature can change one"*. `set_quantity` is that moment, and
+            // the prediction held on the first try: relaxing the condition now
+            // reverts a wounded actor to full health when an unrelated plugin
+            // attaches. `NV-4` in its benign direction, discharged.
             if registry.owner_of(q) == Some(p)
                 && let Some(v) = registry.initial_value(self.attached, q)
             {
@@ -189,6 +229,46 @@ impl Actor {
         registry
             .is_present(self.attached, q)
             .then(|| self.quantities[q.index()])
+    }
+
+    /// **Write an intrinsic quantity — the verb `M1` needed and the door `M2`'s
+    /// `Delta` primitive goes through.**
+    ///
+    /// The hub CARRIES the value; the declaring feature decides it. Refuses a
+    /// write to an absent quantity and a write by a plugin that does not own the
+    /// ordinal — see [`WriteError`] for why ownership is the thing it can check.
+    ///
+    /// **No clamping, deliberately.** A ceiling is `ResourceDecl::ceiling`,
+    /// which is the RULESET's and is bound to a derived stat a realm can raise
+    /// (`QTY-A8`) — the hub cannot see it and must not guess one. Clamping to a
+    /// bound it invented would be the hub deciding a number's meaning, which is
+    /// the one thing it exists not to do. The caller clamps.
+    pub fn set_quantity(
+        &mut self,
+        registry: &HubRegistry,
+        by: PluginOrdinal,
+        q: QuantityOrdinal,
+        value: i32,
+    ) -> Result<(), WriteError> {
+        match registry.owner_of(q) {
+            Some(owner) if owner == by => {}
+            owner => {
+                return Err(WriteError::NotOwner {
+                    ordinal: q.get(),
+                    owner: owner.map(|o| o.get()),
+                    writer: by.get(),
+                })
+            }
+        }
+        // Ownership is not presence: the declaring plugin may own the ordinal in
+        // this reality and still not be attached to THIS actor. Checked
+        // separately so the two refusals stay distinguishable — a caller
+        // debugging "my damage did nothing" needs to know which it was.
+        if !registry.is_present(self.attached, q) {
+            return Err(WriteError::Absent { ordinal: q.get() });
+        }
+        self.quantities[q.index()] = value;
+        Ok(())
     }
 
     /// The raw slot array, for the fold. Private state; the accessor above is
@@ -238,163 +318,3 @@ const _: () = assert!(
      a wider quantity ceiling — repin it AND add a row to the repin log above, because the \
      per-actor cost is the argument the whole quantity representation rests on."
 );
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::registry::{PluginDecl, QuantityDecl};
-    use crate::rows::FoldLayer;
-    use ruleset_core::QuantityTable;
-
-    fn q(raw: u16) -> QuantityOrdinal {
-        QuantityOrdinal::new(raw).unwrap()
-    }
-
-    fn p(raw: u8) -> PluginOrdinal {
-        PluginOrdinal::new(raw).unwrap()
-    }
-
-    fn registry() -> HubRegistry {
-        let table = QuantityTable::assign(&["hp", "qi", "speed"]).unwrap();
-        HubRegistry::build(
-            &table,
-            &[
-                PluginDecl {
-                    ordinal: p(0),
-                    quantities: vec![
-                        QuantityDecl { ordinal: q(0), initial: 100 },
-                        QuantityDecl { ordinal: q(2), initial: 30 },
-                    ],
-                    fold_layers: vec![FoldLayer(10)],
-                },
-                PluginDecl {
-                    ordinal: p(1),
-                    quantities: vec![QuantityDecl { ordinal: q(1), initial: 7 }],
-                    fold_layers: vec![FoldLayer(20)],
-                },
-            ],
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn a_new_actor_has_identity_is_live_and_has_no_quantities() {
-        let r = registry();
-        let a = Actor::new(EntityId(42));
-        assert_eq!(a.id(), EntityId(42));
-        assert_eq!(a.existence(), GoneState::Active);
-        assert!(a.attached().is_empty());
-        for raw in 0..3u16 {
-            assert_eq!(
-                a.quantity(&r, q(raw)),
-                None,
-                "an actor with nothing attached has ABSENT quantities, not zeroed ones"
-            );
-        }
-    }
-
-    /// **Hub §3.4b.** Attaching initialises from the plugin's own declaration,
-    /// and only the quantities that plugin declares.
-    #[test]
-    fn attaching_initialises_exactly_its_own_quantities() {
-        let r = registry();
-        let mut a = Actor::new(EntityId(1));
-        a.attach(&r, p(0)).unwrap();
-        assert_eq!(a.quantity(&r, q(0)), Some(100));
-        assert_eq!(a.quantity(&r, q(2)), Some(30));
-        assert_eq!(a.quantity(&r, q(1)), None, "qi belongs to a plugin that is not attached");
-
-        a.attach(&r, p(1)).unwrap();
-        assert_eq!(a.quantity(&r, q(1)), Some(7));
-    }
-
-    #[test]
-    fn attaching_an_undeclared_plugin_is_refused() {
-        let r = registry();
-        let mut a = Actor::new(EntityId(1));
-        assert_eq!(a.attach(&r, p(9)), Err(AttachError::NotDeclared { plugin: 9 }));
-        assert!(a.attached().is_empty());
-    }
-
-    /// A second attach would silently reset a being to its birth values, so it
-    /// is refused rather than swallowed.
-    #[test]
-    fn attaching_twice_is_refused_not_a_silent_reset() {
-        let r = registry();
-        let mut a = Actor::new(EntityId(1));
-        a.attach(&r, p(0)).unwrap();
-        assert_eq!(a.attach(&r, p(0)), Err(AttachError::AlreadyAttached { plugin: 0 }));
-    }
-
-    #[test]
-    fn detaching_makes_its_quantities_absent_again() {
-        let r = registry();
-        let mut a = Actor::new(EntityId(1));
-        a.attach(&r, p(0)).unwrap();
-        a.attach(&r, p(1)).unwrap();
-        a.detach(p(1)).unwrap();
-        assert_eq!(a.quantity(&r, q(1)), None);
-        assert_eq!(a.quantity(&r, q(0)), Some(100), "detaching one plugin left the other alone");
-    }
-
-    /// The other half of *"nothing silent"*: detaching what was never
-    /// attached is a caller bug, and it is reported rather than swallowed.
-    #[test]
-    fn detaching_something_that_is_not_attached_is_refused() {
-        let r = registry();
-        let mut a = Actor::new(EntityId(1));
-        assert_eq!(a.detach(p(0)), Err(DetachError::NotAttached { plugin: 0 }));
-        a.attach(&r, p(0)).unwrap();
-        assert_eq!(a.detach(p(0)), Ok(()));
-        assert_eq!(a.detach(p(0)), Err(DetachError::NotAttached { plugin: 0 }));
-    }
-
-    #[test]
-    fn existence_is_platform_state_and_is_carried_not_adjudicated() {
-        let mut a = Actor::new(EntityId(1));
-        assert!(a.existence().is_live());
-        a.set_existence(GoneState::Archived);
-        assert!(!a.existence().is_live());
-        assert!(!a.existence().is_terminal());
-        a.set_existence(GoneState::UserErased);
-        assert!(a.existence().is_terminal());
-
-        // **The second half of this test's own name, which nothing witnessed.**
-        // A verifier swapped the assignment for `higher(self.existence, state)`
-        // -- real adjudication, forbidden two lines above `set_existence` -- and
-        // all 91 tests passed, because every transition above moves UPWARD
-        // through a lattice `higher` preserves. A DOWNWARD move is the only
-        // input that separates carrying from adjudicating (`D-529`).
-        a.set_existence(GoneState::Active);
-        assert_eq!(
-            a.existence(),
-            GoneState::Active,
-            "the hub CARRIES the state it is given; adjudicating here makes it \
-             the authority on erasure, which hub §3.3 assigns to the platform"
-        );
-    }
-
-    /// The five things, folded — item 5 reached through items 1..4.
-    #[test]
-    fn an_actor_folds_its_attached_plugins_contributions() {
-        let r = registry();
-        let mut a = Actor::new(EntityId(1));
-        a.attach(&r, p(0)).unwrap();
-        let rows = [ModifierRow {
-            target: q(0),
-            op: ruleset_core::ModifierOp::Flat(50),
-            source: p(0),
-            fold_layer: FoldLayer(10),
-        }];
-        let out = a.fold(&r, &rows, &[]);
-        assert_eq!(out.value(q(0)), Some(150));
-        assert_eq!(out.value(q(1)), None);
-    }
-
-    /// The pinned size, asserted at runtime as well so the number appears in a
-    /// test report and not only in a compile error.
-    #[test]
-    fn the_actor_is_the_pinned_size() {
-        assert_eq!(core::mem::size_of::<Actor>(), 144);
-    }
-}

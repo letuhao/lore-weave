@@ -12,6 +12,8 @@
 //! UUID per test — no destructive statements, and no test can see another's
 //! rows.
 
+mod hub_fixture;
+
 use std::sync::Arc;
 
 use sqlx::postgres::PgPoolOptions;
@@ -19,10 +21,12 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use commit_service::recovery::{recover_writer_state, seed_seen, RECOVERY_TAIL};
-use commit_service::{Actor, CombatDomain, Ruleset, CombatState};
+use commit_service::combat::Side;
+use commit_service::{Actor, CombatDomain, CombatState, RealityRules};
 use dp_kernel::channel::{acquire_writer_lease, ChannelId, ChannelWriter};
 use dp_kernel::envelope::EventEnvelope;
 use sim_core::{
+
     RulesetEpoch,
     Admitted, Class, DiscardReason, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane,
     Outcome, Producer, QueuedInput, SeenWindow, Seq, StepStatus,
@@ -91,10 +95,10 @@ async fn db_now(pool: &PgPool) -> String {
 fn island() -> Island<CombatDomain> {
     // F1 — the island runs the reality's RESOLVED ruleset, pinned by a real
     // content digest. Was `RulesetDigest([0u8; 32])`, which pinned nothing.
-    let rules = Arc::new(Ruleset::engine_default());
+    let rules = Arc::new(RealityRules::proving_ground());
     let mut state = CombatState::default();
-    state.actors.insert(EntityId(1), Actor::new(&rules, 100));
-    state.actors.insert(EntityId(2), Actor::new(&rules, 100_000));
+    state.actors.insert(EntityId(1), hub_fixture::actor(&rules, EntityId(1), Side::A, 100));
+    state.actors.insert(EntityId(2), hub_fixture::actor(&rules, EntityId(2), Side::B, 100_000));
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
         0xC2D2,
@@ -266,6 +270,7 @@ async fn recovery_is_scoped_to_its_own_channel() {
         eprintln!("[skip] LOREWEAVE_TEST_PG_URL not set — recovery suite skipped");
         return;
     };
+
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
     let ts = db_now(&pool).await;

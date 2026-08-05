@@ -83,8 +83,14 @@ impl Ruleset {
             if schema_version >= 3 { QuantityTable::decode(&mut r)? } else { QuantityTable::EMPTY };
         // v1..v3 predate declared pools. An artifact from before Q2 declared
         // none, and `EMPTY` states that rather than guessing it.
-        let resources =
-            if schema_version >= 4 { ResourceTable::decode(&mut r)? } else { ResourceTable::EMPTY };
+        let resources = if schema_version >= 4 {
+            // The version reaches the table because `ResourceDecl::role` arrived
+            // at v6 (see `ResourceTable::canon_at`) — a v4/v5 row has no role
+            // byte, and reading one would consume the NEXT row's ordinal.
+            ResourceTable::decode_at(&mut r, schema_version)?
+        } else {
+            ResourceTable::EMPTY
+        };
         // v1..v4 predate the progression pin. An artifact from before S-1b
         // declared none, and `None` states that rather than guessing it.
         let progression = if schema_version >= 5 {
@@ -160,7 +166,7 @@ impl Ruleset {
             quantities.canon(&mut c);
         }
         if version >= 4 {
-            resources.canon(&mut c);
+            resources.canon_at(&mut c, version);
         }
         if version >= 5 {
             canon_progression(&mut c, progression);

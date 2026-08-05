@@ -2,6 +2,10 @@
 //! parallelism (SL-A9). S1a: single island; cross-island messaging is S2.
 
 mod epoch;
+/// The READ surface — see `island/view.rs`. A CHILD module, so it reaches the
+/// parent's private fields without widening them to `pub(crate)`; the same call
+/// `Q0b B2a` made for `island/epoch.rs`.
+mod view;
 mod lifecycle;
 mod registry;
 
@@ -534,44 +538,5 @@ impl<D: Domain> Island<D> {
     fn record(&mut self, seq: Seq, outcome: Outcome<D>) {
         self.outcomes.push((seq, outcome));
         IslandMetrics::gauge_peak(&mut self.metrics.peak_outcomes_len, self.outcomes.len());
-    }
-
-    // ─── read surface (host + tests) ───
-
-    pub fn now(&self) -> Tick {
-        self.tick
-    }
-
-    pub fn state(&self) -> &D::State {
-        &self.state
-    }
-
-    pub fn outcomes(&self) -> &[(Seq, Outcome<D>)] {
-        &self.outcomes
-    }
-
-    pub fn ingress_len(&self) -> usize {
-        self.ingress.len()
-    }
-
-    pub fn seen_len(&self) -> usize {
-        self.seen.len()
-    }
-
-    pub fn buffered_len(&self) -> usize {
-        self.buffered.len()
-    }
-
-    /// The kernel's observability surface — deterministic counters + peak
-    /// gauges. The HOST emits these as real telemetry (DP-R8); tests assert
-    /// they agree with the outcome log (a drift = a silent outcome path).
-    pub fn metrics(&self) -> &IslandMetrics {
-        &self.metrics
-    }
-
-    /// Drain effects that must LEAVE the island (SC-A4). sim-core never
-    /// writes anything external itself (AGT-A6 / DP-A6).
-    pub fn drain_proposals(&mut self) -> Vec<D::External> {
-        std::mem::take(&mut self.externals)
     }
 }

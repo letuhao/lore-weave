@@ -67,6 +67,9 @@ use ruleset_core::{Floor, Ruleset};
 /// assertion instead of prose.
 pub const ENGINE_DEFAULT_TOML: &str = include_str!("../artifacts/engine_default.toml");
 
+mod preset;
+pub use preset::{proving_ground, PROVING_GROUND_TOML};
+
 mod error;
 pub use error::LoadError;
 

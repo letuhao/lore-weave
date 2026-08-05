@@ -31,6 +31,13 @@ ruleset-loader = { path = "../../crates/ruleset-loader" }
 # S2 — the LAWS, now their own crate (IMP-A5/D2/Q2). The host depends on the
 # laws; the laws do NOT depend on the host, and cannot depend on the loader.
 game-rules = { path = "../../crates/game-rules" }
+# `M1` — the actor hub's FIRST CONSUMER. Until this line the hub had none: no
+# Cargo.toml in the workspace depended on it, and `actor_hub::` appeared nowhere
+# outside the crate. `scripts/orphan-model-gate.py` exists because seven
+# projection tables shipped with a projector, a rebuilder, a golden fixture, an
+# oracle and a benchmark and NO producer; a substrate with no consumer is the
+# same finding one layer up.
+actor-hub = { path = "../../crates/actor-hub" }
 # LoreWeave LLM gateway SDK (the ONLY road to a model — provider-gateway invariant).
 loreweave_llm = { path = "../../sdks/rust/loreweave_llm" }
 

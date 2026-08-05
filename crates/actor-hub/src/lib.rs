@@ -78,7 +78,7 @@ pub mod report;
 mod registry;
 mod rows;
 
-pub use actor::{Actor, AttachError, DetachError};
+pub use actor::{Actor, AttachError, DetachError, WriteError};
 pub use entity_existence::GoneState;
 pub use fold::fold;
 pub use report::{

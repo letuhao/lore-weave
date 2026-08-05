@@ -37,6 +37,7 @@ use ruleset_loader::activate_reality_epoch;
 use sim_core::RulesetEpoch;
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
+use commit_service::RealityRules;
 
 mod epoch_live_common;
 use epoch_live_common::{
@@ -70,7 +71,7 @@ async fn the_activation_event_carries_the_unadvanced_turn_number() {
     let d1 = put_quantities(&boot.store, &["qi"]);
     boot.bindings.create(&reality.to_string(), &d1).expect("epoch 1");
     let (rules, _) = boot.load(&reality.to_string()).expect("load");
-    let mut isle = island(Arc::new(rules), RulesetEpoch(1), channel);
+    let mut isle = island(Arc::new(RealityRules::resolve(rules).expect("the reality binds every engine role")), RulesetEpoch(1), channel);
 
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
@@ -127,7 +128,7 @@ async fn an_activated_epoch_reaches_the_channel_log() {
     boot.bindings.create(&reality.to_string(), &d1).expect("epoch 1");
     let (rules, binding) = boot.load(&reality.to_string()).expect("load");
     assert_eq!(binding.epoch, 1);
-    let mut isle = island(Arc::new(rules), RulesetEpoch(1), channel);
+    let mut isle = island(Arc::new(RealityRules::resolve(rules).expect("the reality binds every engine role")), RulesetEpoch(1), channel);
     let epoch1_digest = isle.digest.to_hex();
 
     let pool = Arc::new(
@@ -230,7 +231,7 @@ async fn reconciling_again_appends_nothing() {
     let d1 = put_quantities(&boot.store, &["qi"]);
     boot.bindings.create(&reality.to_string(), &d1).expect("epoch 1");
     let (rules, _) = boot.load(&reality.to_string()).expect("load");
-    let mut isle = island(Arc::new(rules), RulesetEpoch(1), channel);
+    let mut isle = island(Arc::new(RealityRules::resolve(rules).expect("the reality binds every engine role")), RulesetEpoch(1), channel);
 
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
@@ -274,7 +275,7 @@ async fn a_missed_epoch_is_not_replayed() {
     let d1 = put_quantities(&boot.store, &["qi"]);
     boot.bindings.create(&reality.to_string(), &d1).expect("epoch 1");
     let (rules, _) = boot.load(&reality.to_string()).expect("load");
-    let mut isle = island(Arc::new(rules), RulesetEpoch(1), channel);
+    let mut isle = island(Arc::new(RealityRules::resolve(rules).expect("the reality binds every engine role")), RulesetEpoch(1), channel);
 
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),

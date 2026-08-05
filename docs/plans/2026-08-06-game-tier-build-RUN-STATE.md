@@ -218,16 +218,82 @@ per tick"*. It is acyclic because a capability is missing, not because it was de
 > nothing"*), so `M1` must also **populate a reality's quantity table** — that is content, and it is
 > a real sub-task rather than a given.
 
-| `M1.0` | **inventory what the legacy combat domain actually holds, and mark each: DELETE · re-declare · genuinely load-bearing.** The default is DELETE; anything claimed load-bearing needs a reason a reader can check | — | [ ] |
-| `M1.1` | declare the quantities the DESIGN needs — **derived from the design, never read off the old field list.** A quantity named because a struct field was named is the port this milestone refuses | — | [ ] |
-| `M1.2` | `commit-service` depends on `actor-hub`; the domain resolves an actor through the hub's fold | — | [ ] |
-| `M1.3` | the legacy shape **deleted** — `Actor`'s field list, `CombatStats`, and whatever exists only to hold them. Deleted, not commented out | — | [ ] |
-| `M1.4` | bite: delete a `QuantityDecl` and watch the consumer red | — | [ ] |
-| `M1.5` | **a vocabulary check with teeth**: no game noun re-enters the engine tier as an identifier. `hub-vocabulary-gate` already asserts the hub names no ordinal — extend it, or state why it cannot reach the consumer | — | [ ] |
+| `M1.0` | **inventory what the legacy combat domain actually holds, and mark each: DELETE · re-declare · genuinely load-bearing.** The default is DELETE; anything claimed load-bearing needs a reason a reader can check | §6a below — 12 fields, each with a measured call-site count and a verdict | [x] |
+| `M1.1` | declare the quantities the DESIGN needs — **derived from the design, never read off the old field list.** A quantity named because a struct field was named is the port this milestone refuses | `crates/ruleset-loader/artifacts/presets/proving-ground.toml` declares `vitality` · `swiftness` · `breath`, bound to `vital` · `initiative` · `action_budget`. **None is the name of the field it replaced**, deliberately: a rename would have satisfied every check, and different names make a surviving name-coincidence impossible | [x] |
+| `M1.2` | `commit-service` depends on `actor-hub`; the domain resolves an actor through the hub's fold | `services/commit-service/Cargo.toml:40` + 12 `actor_hub::` sites. `A3.3` pasted: table size 3, stored fold 100, fold with a `+25` contribution 125 | [x] |
+| `M1.3` | the legacy shape **deleted** — `Actor`'s field list, `CombatStats`, and whatever exists only to hold them. Deleted, not commented out | `grep -nE "^\s+(pub )?(hp\|max_hp\|av\|stats\|snapshot\|turn_slots)\s*:" domain/actor.rs` → **exit 1, no match**. `Actor` is now `{ hub, defending, stance, fled, side, status, knocked_out }` | [x] |
+| `M1.4` | bite: delete a `QuantityDecl` and watch the consumer red | Bitten on **CONTENT**, which is stronger: the `action_budget` pool commented out of the preset → `RoleUnbound { role: "action_budget" }` at [`services/commit-service/src/domain/binding.rs:277`](../../services/commit-service/src/domain/binding.rs#L277), three suites red. Restored → 7/7 green | [x] |
+| `M1.5` | **a vocabulary check with teeth**: no game noun re-enters the engine tier as an identifier. `hub-vocabulary-gate` already asserts the hub names no ordinal — extend it, or state why it cannot reach the consumer | **A NEW gate**, not an extension — different tree, different subject, opposite direction (see below). `scripts/engine-vocabulary-gate.py`, 89 files across 6 trees, self-test 13 cases, **6/6 harness mutations red**, and bitten on the real repo: a planted `name == "vitality"` in `law.rs` → 1 finding; removed → OK | [x] |
 | `M2.1` | `CMD-10`'s owed bite, landed with its seal | — | [ ] |
 | `M2.2` | the verb row, `Delta`-only, as a declared table | — | [ ] |
 | `M2.3` | one `law.rs` arm replaced by a declared row | — | [ ] |
 | `M2.4` | refusal as a committed fact (`CMD-5`) + the cue channel (`CMD-4`) | — | [ ] |
+
+## 6a. `M1.0` — the inventory, measured at `fa15b072f`
+
+Counts are `grep -c '\.<field>\b'` across `services/commit-service/{src,tests}`. **The default
+verdict is DELETE**; a row that survives says why in terms a reader can check.
+
+| field | sites | verdict | the reason, checkable |
+|---|---|---|---|
+| `snapshot: StatSnapshot` | **0** | **DELETE outright** | Written twice, both `StatSnapshot::default()`; **read nowhere, not even in a test.** Its own doc-comment already passed this sentence on itself: *"written at construction and read nowhere outside tests today… if those land without consuming it, it must go."* They did not land. This is `orphan-model-gate`'s finding shape in a struct field. |
+| `hp: i64` | 20 | **re-declare as a POOL** | `QTY-A4` (shipped, `resource/mod.rs:13`) already says a resource's `current` *"lives on the actor (`pools[ordinal]`)"*. **That slot has never existed.** `actor_hub::Actor::quantities` is it. |
+| `max_hp: i64` | 2 | **DELETE — it is a CEILING, and the ceiling is already declared** | `CeilingBinding` exists and is hashed. A stored `max_hp` beside a declared ceiling is two SSOTs for one number. Both remaining sites are `llm_driver`'s display band. |
+| `av: i64` | 9 | **re-declare as a QUANTITY** | A per-actor number that changes every turn and is **not** a stat slot — tempo state. It cannot be derived (the HSR advance subtracts it from everyone), so it must be stored, and the hub's array is where per-actor numbers live. |
+| `stats: CombatStats` | 8 | **DELETE the FIELD; derive at use** | It is `CombatStats::archetype_melee(&rules.stats, max_hp)` — a pure function of the pinned ruleset and the ceiling, both available wherever it is read. A stored copy of a derivable value is the freeze the doc claims, implemented as duplication. **The TYPE survives** — see `M1-D3`. |
+| `turn_slots: i64` | 6 | **re-declare as a POOL** | `state.rs` already calls it a *resource* (`CombatResource::TurnSlot`), and `ZeroBehaviour::BlockCosts` — *"refuse any action whose cost this pool cannot pay"* — is shipped, unused, and is exactly its semantics. Ceiling `Fixed(1)`. |
+| `defending: bool` | 8 | **stays, recorded** | Non-numeric. It is the `StatusPropose` door, and §3 measures that door as **prose, 0 hits**. Porting it into a quantity would invent the door's shape from feature #1's chair. |
+| `stance: Option<Stance>` | 2 | **stays, recorded** | Same. Also `TG-A4`, whose owner is `COMB_002`. |
+| `fled: bool` | 3 | **stays, recorded** | Same, plus it is the island-handoff trigger (`externals`). |
+| `knocked_out: Option<u8>` | 8 | **stays, recorded** | Same door, and it is a round counter, not a pool. |
+| `status: AvStatus` | 4 | **stays, recorded** | Same door. |
+| `side: Side` | 1 | **stays — genuinely load-bearing** | `COMB_001 Q5`: win/lose is evaluated per side, so an actor with no side can never be counted and the encounter can never end. Structural, not a number. |
+
+⇒ **one outright deletion · four re-declarations · six recorded as the unbuilt `StatusPropose`
+door · one structural.** `Actor` ends with **no `hp`, no `max_hp`, no `av`, no `stats`.**
+
+### The three decisions this inventory forced
+
+| # | |
+|---|---|
+| **`M1-D1`** | **The seam is SHIPPED and `M1` connects it — it does not invent one.** `QTY-A4` places a pool's `current` on *"the actor (`pools[ordinal]`)"* and the actor's array did not exist; the hub built it. So `M1` is not "add quantities to the actor", it is **wire QTY-A4's `current` to `actor_hub::Actor::quantities`.** That is why this milestone is derivable rather than designed. |
+| **`M1-D2`** | **Which ordinal is the vital is declared by CONTENT, through a binding that already ships and costs ZERO new hashed bytes.** `resource/mod.rs:103` states `Q2`'s exit criterion verbatim — *"a reality binds `Vital → qi` and the defeat law is **unchanged**"* — and `Vital` as a role has **exactly one occurrence in the repo: that comment.** It is unbuilt, which per the anti-laziness rule is *buildable*, not blocked. It is built as a **derivation, not a field**: the vital is *the pool whose `CeilingBinding` is `Slot(StatSlot::MaxHp)`*, which is the sentence `CeilingBinding::Slot`'s own doc already writes. Adding a `role:` field to `ResourceDecl` was rejected — `QTY-A10(c)` makes a hashed field permanent, and the module refuses `deps`/`tags` on that exact argument. **Zero, or two or more, is a boot REFUSAL naming the pools** — never a default. |
+| **`M1-D3`** | **`M1` does NOT turn the ten `StatSlot`s into quantities, and that restraint is the decision.** `slots.rs` says the closed slot set is `DF7-A1`, and that doc 31 **`R02`** — *making the slot set ruleset-declared with digest-pinned ordinals* — is **PROPOSED, not applied**, adding: *"applying it here would be scope creep into a decision still open."* Storing the eight numbers as quantities would apply `R02` by the back door, under a milestone that is not about slots. So `CombatStats` survives **as `game-rules`' law-input view**, built where it is read; what dies is the actor's stored copy. **The finding this surfaced is recorded, not acted on:** `game_rules::stats::resolve_block` and `actor_hub::fold` are the same mechanism implemented twice, which is `D-3`'s *"same rot at three levels"* pointing at a fourth. Its trigger is `R02`. |
+
+> ⚠️ **The trap this inventory was written to avoid, stated so it can be checked against the result.**
+> Every re-declared row above names a quantity whose **name is authored in CONTENT and appears
+> nowhere in engine source** — the engine holds ordinals and resolves the vital through a *binding*,
+> not through a literal. That is the discriminator between this and `quantity[0] = "hp"`, which the
+> PO named as the thing that would satisfy `M1` while changing nothing. It is not a matter of
+> intent: `M1.5`'s gate is what makes it hold, and intent is not a mechanism.
+
+## 6b. `M1` — what it cost, and the four things it forced that were not in the plan
+
+`M1` is **DONE**. What it needed that §6's board did not anticipate is the part
+worth recording, because each was a hole the plan could not see from outside.
+
+| # | forced | |
+|---|---|---|
+| **1** | **`Vital` had to be BUILT — it existed as one prose sentence.** `Q2`'s exit criterion (*"a reality binds `Vital → qi` and the defeat law is unchanged"*) was written in `resource/mod.rs` and `Vital` appeared **nowhere else in the repository**. So `ResourceDecl` gained `role: EngineRole` — a new hashed field, schema **5 → 6**. It earns its permanence by the module's own test: `deps` and `tags` were refused for having **no consumer**, and this one has three engine laws reading it in the commit that adds it. The engine default's ENCODED size is unchanged (it declares no pools); the digest moved only because the schema version leads the stream, which is what that field is for. |
+| **2** | **The hub had NO WRITE VERB, and its own doc said so.** `actor.rs` read *"no mutation verb for a quantity beyond attachment… every one of those features is unbuilt."* `M1` is the first one. `Actor::set_quantity` carries a value and refuses a writer that does not own the ordinal — the same shape as `set_existence`, and the door `M2`'s `Delta` walks through. **It made `attach`'s ownership guard observable for the first time**, exactly as that guard's comment predicted; the prediction held on the first try (bite pasted). |
+| **3** | **`Actor.stats` was 64 bytes of duplicated ruleset, per combatant.** Every actor's block came from `archetype_melee(&rules.stats, max_hp)`, so the only per-actor difference was `CombatStats::max_hp` — and **no law reads that field**: `resolve_attack`, `action_value` and `evaluate_outcome` never touch it. One archetype per reality now. `Actor` went from ≤192 bytes to ≤160 **despite** gaining a 128-byte quantity array. |
+| **4** | **A behaviour genuinely regressed, and it is tracked rather than glossed.** Per-actor stats no longer exist, so a per-actor `speed` cannot be expressed — the one test that used it (to make a hero act first) now sets the initiative pool directly, which is what it was reaching for. The advantage lasts until that actor's first reset instead of forever. `D-PER-ACTOR-STATS-UNEXPRESSIBLE`. |
+
+**`M1.5` is a NEW gate rather than an extension of `hub-vocabulary-gate`, and the
+distinction is the point.** That one guards `crates/actor-hub/src` and asks *does
+the hub compare an ORDINAL to a literal* — the plugin's ordering vocabulary
+leaking INTO the hub. This one guards the consumer and asks *does engine source
+contain a quantity NAME* — the author's vocabulary leaking into the engine.
+Different tree, different subject, **opposite direction**. Both were structurally
+true and unguarded.
+
+**Two ceilings were paid in SPLITS rather than absorbed into an allowlist**, which
+is what a ceiling is for: `island/mod.rs`'s read surface → `island/view.rs` (its
+row's fourth split in four slices), and the loader's shipped preset →
+`ruleset-loader/src/preset.rs` (mechanism ↔ content, the only content file in
+that crate). `actor.rs`'s unit tests became integration tests, which is an
+improvement rather than a dodge: every item they touch is public surface, so a
+unit test could pass against an API a plugin author cannot reach.
 
 ## 7. Registers — append as it happens
 
@@ -273,4 +339,7 @@ per tick"*. It is acyclic because a capability is missing, not because it was de
 |---|---|
 | `BDR-1` | I opened this file about to write *"the first consumer is the command substrate"*, which is what the previous turn's summary implied. Measuring first showed the ordering is the other way and **derivable**: an `EffectRow` targets a quantity ordinal, so while the actor's numbers are struct fields the substrate cannot be declarative. A plan whose first line is wrong about its own order is worse than no plan. |
 | `BDR-3` | **I wrote `M1` as a MIGRATION of `commit-service::Actor`'s nouns into quantities, and the PO corrected it mid-draft**: that struct is scaffolding built to prove the kernel and SDK work, and it is to be deleted. `D-11` and `D-14` both say so and I had read both in this same session. The correction matters because a port is the *comfortable* answer — it keeps every test green, it looks like progress, and it carries the old vocabulary into a new container, which is `D-2`'s failure exactly. **`quantity[0] = "hp"` would have satisfied `M1` as I first wrote it.** The slice board now defaults every legacy field to DELETE and forbids deriving a quantity from a struct field name. |
+| `BDR-4` | **I nearly shipped `M1` with the actor's numbers named `hp`, `av` and `turn_slots` in content** — the names were sitting in the field list I had just inventoried, and copying them would have read as faithful. The PO's correction (`BDR-3`) was about the *engine*, and I first satisfied it by moving the same words one file over. What stopped it was writing `M1.5`'s gate BEFORE choosing the names: a gate that greps for the declared vocabulary in engine source is trivially green when the vocabulary IS the engine's own words. **Different names are not decoration — they are what makes a surviving name-coincidence detectable.** |
+| `BDR-5` | I wrote *"`scripts/engine-vocabulary-gate.py` is what keeps it one"* into `binding.rs`'s module doc **while the file did not exist.** It was true within the hour, which is exactly why it is the dangerous kind of claim: a citation to a mechanism that is *about to* exist is indistinguishable, to every future reader, from one that never will. This project has recorded four stale-register catches in a week and this would have been the fifth, authored deliberately. |
+| `BDR-6` | **The bite harness caught a hole in my own gate's self-test.** Every one of my twelve cases reached `_exempt` through the comment-block branch; nothing reached the same-line branch, so `if PRAGMA in raw[line_no - 1]` could have been deleted with the suite green. I had written the header sentence *"a gate with no cry-wolf case is half-tested"* and then shipped a half-tested branch under it. **The mechanism found what the intent did not** — which is the standard's own thesis, demonstrated on its author. |
 | `BDR-2` | `FATAL-2`'s door count was written when the actor round declared *"No code this round"*, and `actor-hub` has shipped since. I nearly carried the old *"seven of eight are design only"* forward unchanged. Re-measured: it improved by **exactly one door**, and that one is `Delta`. Carrying it forward would have been the fourth stale-register claim this week. |

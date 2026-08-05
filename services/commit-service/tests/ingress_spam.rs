@@ -25,14 +25,18 @@
 //! and must keep passing (they are statements about correct behaviour, not
 //! about the bug).
 
+mod hub_fixture;
+
 use std::sync::Arc;
 use std::time::Duration;
 
+use commit_service::combat::Side;
 use commit_service::admission::{admit_engine_turn_end as engine_end_turn, admit_t6, AdmissionOutcome, DedupCache};
 use commit_service::{
-    Actor, CombatDomain, CombatEvent, Ruleset, CombatState, Vocabulary, COMBAT_V1_JSON,
+    Actor, CombatDomain, CombatEvent, CombatState, RealityRules, Vocabulary, COMBAT_V1_JSON,
 };
 use sim_core::{
+
     RulesetEpoch,
     DiscardReason, EntityId, Island, IslandId, Lane, Outcome, PreconditionKind,
     SeenWindow, StepStatus,
@@ -71,10 +75,10 @@ fn strike(client_request_id: &str) -> String {
 fn island() -> Island<CombatDomain> {
     // F1 — the island runs the reality's RESOLVED ruleset, pinned by a real
     // content digest. Was `RulesetDigest([0u8; 32])`, which pinned nothing.
-    let rules = Arc::new(Ruleset::engine_default());
+    let rules = Arc::new(RealityRules::proving_ground());
     let mut state = CombatState::default();
-    state.actors.insert(EntityId(1), Actor::new(&rules, 100));
-    state.actors.insert(EntityId(2), Actor::new(&rules, 100_000));
+    state.actors.insert(EntityId(1), hub_fixture::actor(&rules, EntityId(1), Side::A, 100));
+    state.actors.insert(EntityId(2), hub_fixture::actor(&rules, EntityId(2), Side::B, 100_000));
 
     let mut isle: Island<CombatDomain> = Island::new(
         IslandId(1),
@@ -130,6 +134,7 @@ fn spam_is_gated_by_the_turn_economy() {
         let AdmissionOutcome::Admitted(input) = rec.outcome else {
             continue;
         };
+
         isle.submit(Lane::Live, *input);
     }
     while matches!(isle.step(), StepStatus::Processed(_)) {}

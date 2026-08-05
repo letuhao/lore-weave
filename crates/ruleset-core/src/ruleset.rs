@@ -14,7 +14,7 @@ use crate::stats::StatRules;
 /// is not itself a rules change. Written first into every canonical stream, so
 /// an encoding change can never be mistaken for a rules change: both move the
 /// digest, but only one of them moves it for every reality at once.
-pub const RULESET_SCHEMA_VERSION: u32 = 5;
+pub const RULESET_SCHEMA_VERSION: u32 = 6;
 
 /// The oldest schema version this engine can still DECODE.
 ///
@@ -186,7 +186,25 @@ pub struct Ruleset {
 //   cannot be measured by `size_of` AT ALL — the `QTY-A6 ⊥ QTY-A12` trap. 33
 //   bytes of pointer buys a table of unbounded shape without giving up the
 //   property this assertion exists to hold.
-const _: () = assert!(core::mem::size_of::<Ruleset>() <= 2344);
+// * 2344 -> 2600, 2026-08-06 (`M1`), for `ResourceDecl::role: EngineRole` — ONE
+//   byte of field, **256 bytes of struct**, and the multiplier is the decision
+//   worth recording rather than the total.
+//
+//   `ResourceDecl` went 32 -> 40 (measured, not estimated), because it already
+//   aligns to 8 through `CeilingBinding::Slot(StatSlot)`'s `#[repr(usize)]` —
+//   so a single `u8` costs a whole 8-byte step, times 32 rows. **The paragraph
+//   below already priced this exact trade in the other direction**: storing the
+//   slot as a bare `u8` would recover ~256 B and was refused for putting an
+//   untyped ordinal in the hashed bytes. The same answer holds here, and it is
+//   the same 256 B: a `u8` role would be an untyped index into a closed enum
+//   with nothing checking it, which is precisely the drift `slots.rs` exists to
+//   prevent.
+//
+//   Affordable for the reason `Q1`'s entry gives: `QTY-A6.1`, `O(n)` per ACTOR
+//   and `O(n^2)` per RULESET. This is per-reality, interned once; ten thousand
+//   resident actors pay nothing for it. The ENCODED cost is one byte per
+//   DECLARED pool — a reality with three pools pays three bytes.
+const _: () = assert!(core::mem::size_of::<Ruleset>() <= 2600);
 
 impl Ruleset {
     /// The priority-0 `engine_default` layer (RLS-D2), resolved with no
@@ -273,7 +291,12 @@ impl CanonEncode for Ruleset {
         combat.canon(c);
         stats.canon(c);
         quantities.canon(c);
-        resources.canon(c);
+        // The version is passed explicitly rather than read from `self`:
+        // `schema_version` is destructured above and is the CURRENT constant by
+        // construction here, while `canon_bytes_at` must be able to ask for an
+        // older layout. One encoder, two callers, no branch on a struct field
+        // that a decoded-then-upcast value would have already overwritten.
+        resources.canon_at(c, crate::ruleset::RULESET_SCHEMA_VERSION);
         crate::ruleset_codec::canon_progression(c, progression);
     }
 }

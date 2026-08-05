@@ -186,7 +186,11 @@ pub fn is_malformed_for_us(msg: &BusMessage, reality_id: &str) -> bool {
 pub struct PendingSwitch {
     pub from_epoch: RulesetEpoch,
     pub to_epoch: RulesetEpoch,
-    pub rules: std::sync::Arc<ruleset_core::Ruleset>,
+    /// **`M1`** — the RESOLVED rules, not the raw ruleset. An epoch switch to a
+    /// reality that leaves an engine role unbound is refused HERE, before the
+    /// switch is submitted: the island would otherwise adopt rules under which a
+    /// law has no number, and the symptom would be an encounter that cannot end.
+    pub rules: std::sync::Arc<crate::domain::RealityRules>,
     pub digest: String,
     pub authorised_by: String,
 }
@@ -223,10 +227,12 @@ pub fn reconcile(
     if to <= island_epoch {
         return Ok(None);
     }
+    let resolved = crate::domain::RealityRules::resolve(rules)
+        .map_err(|e| anyhow::anyhow!("reality {reality_id} epoch {} is unrunnable: {e}", binding.epoch))?;
     Ok(Some(PendingSwitch {
         from_epoch: island_epoch,
         to_epoch: to,
-        rules: std::sync::Arc::new(rules),
+        rules: std::sync::Arc::new(resolved),
         digest: binding.digest.clone(),
         authorised_by: authorised_by(reality_id, binding.epoch),
     }))

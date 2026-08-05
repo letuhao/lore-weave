@@ -22,7 +22,7 @@ use serde_json::json;
 use sim_core::EntityId;
 use uuid::Uuid;
 
-use crate::domain::{CombatPayload, CombatState};
+use crate::domain::{CombatPayload, CombatState, RealityRules};
 use crate::vocabulary::{Reject, Vocabulary};
 
 /// What the engine offers the model (THR-A4 shape: vague labels, no raw
@@ -68,26 +68,31 @@ impl DecisionContext {
     /// naturally echoes the identity token and strips the state
     /// parenthetical. Identity and state must be separate fields; `target`
     /// matches the id token alone.
-    pub fn from_state(state: &CombatState, actor: EntityId, hostiles: &[EntityId]) -> Self {
+    pub fn from_state(
+        state: &CombatState,
+        rules: &RealityRules,
+        actor: EntityId,
+        hostiles: &[EntityId],
+    ) -> Self {
         let a = &state.actors[&actor];
         let candidates = hostiles
             .iter()
             .filter_map(|id| {
                 let h = state.actors.get(id)?;
-                if !h.alive() {
+                if !h.alive(rules) {
                     return None;
                 }
                 Some(Candidate {
                     id: *id,
                     token: format!("hostile-{}", id.0),
-                    condition: hp_band(h.hp, h.max_hp),
+                    condition: hp_band(h.vital(rules), h.vital_ceiling(rules)),
                 })
             })
             .collect();
         Self {
             actor,
             actor_label: format!("npc-{}", actor.0),
-            actor_hp: (a.hp, a.max_hp),
+            actor_hp: (a.vital(rules), a.vital_ceiling(rules)),
             defending: a.defending,
             candidates,
         }

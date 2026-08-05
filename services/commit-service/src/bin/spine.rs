@@ -27,6 +27,7 @@ use commit_service::bus::{BusConfig, ProposalBus};
 use commit_service::hostclock::now_rfc3339;
 use commit_service::wire::discard_reason_wire;
 use commit_service::{epoch_commit, epoch_signal};
+use commit_service::combat::Side;
 use commit_service::{Actor, CombatDomain, CombatState, Vocabulary, COMBAT_V1_JSON};
 use dp_kernel::channel::{acquire_writer_lease, ChannelId, ChannelWriter};
 use dp_kernel::envelope::EventEnvelope;
@@ -140,9 +141,12 @@ async fn main() -> anyhow::Result<()> {
     // The island DERIVES its pin from these rules via `Domain::rules_digest`,
     // so it cannot report a digest for rules it is not running.
     let mut state = CombatState::default();
-    state.actors.insert(npc, Actor::new(&ruleset, 100));
-    state.actors.insert(EntityId(2), Actor::new(&ruleset, 40));
-    state.actors.insert(EntityId(3), Actor::new(&ruleset, 40));
+    state.actors.insert(npc, Actor::spawn(&ruleset, npc, Side::A));
+    for h in [EntityId(2), EntityId(3)] {
+        let mut a = Actor::spawn(&ruleset, h, Side::B);
+        a.set_vital(&ruleset, 40);
+        state.actors.insert(h, a);
+    }
     // THE EPOCH COMES FROM THE BINDING, never a default. An island that
     // started at 1 for a reality bound at 5 would compute RLS-I1 monotonicity
     // against the wrong number, and a redelivered switch to an epoch BETWEEN

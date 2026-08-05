@@ -4,16 +4,25 @@
 //! chain, initiative and stat resolution live in `crates/game-rules` (IMP-A5);
 //! what is here decides *when* to call them and what to record — which is why
 //! `apply` is TOTAL and defensive while a law may assume its inputs.
+//!
+//! ## `M1` — the laws read ROLES, not fields
+//!
+//! Every number this file touches now arrives as *the pool bound to
+//! `EngineRole::X`*, resolved once per reality in [`super::binding`]. **No
+//! quantity name appears here**, and that is the whole of what `M1` bought: an
+//! author may call their vital anything at all, and the defeat law is unchanged
+//! — which is `Q2`'s exit criterion, stated in `ruleset-core` when nothing could
+//! express it.
 
 use game_rules::combat::{
     action_value, evaluate_outcome, next_actor, resolve_attack, AvStatus, EncounterOutcome,
 };
-use ruleset_core::Ruleset;
 use sim_core::{
     DetRng, Domain, EntityId, Precondition, PreconditionKind, QueuedInput, Violation,
 };
 
 use super::actor::Actor;
+use super::binding::RealityRules;
 use super::payload::{CombatEvent, CombatPayload};
 use super::state::{CombatResource, CombatState};
 
@@ -21,12 +30,12 @@ pub struct CombatDomain;
 
 impl CombatDomain {
     /// Evaluate the COMB_001 end condition over current state.
-    fn outcome_of(state: &CombatState) -> Option<EncounterOutcome> {
+    fn outcome_of(state: &CombatState, rules: &RealityRules) -> Option<EncounterOutcome> {
         evaluate_outcome(
             state
                 .actors
                 .values()
-                .map(|a| (a.side, a.hp, a.fled))
+                .map(|a| (a.side, a.vital(rules), a.fled))
                 .collect::<Vec<_>>()
                 .into_iter(),
         )
@@ -44,7 +53,6 @@ impl CombatDomain {
             CombatPayload::EndTurn => None,
         }
     }
-
 }
 
 impl Domain for CombatDomain {
@@ -52,7 +60,11 @@ impl Domain for CombatDomain {
     type State = CombatState;
     type Event = CombatEvent;
     type ResKind = CombatResource;
-    type Rules = Ruleset;
+    /// **`M1`** — the rules an island holds are the resolved ruleset PLUS the
+    /// role→ordinal binding derived from it. The binding is not a second source
+    /// of truth: it is a pure function of the ruleset, computed once, and it
+    /// stays out of the digest (see [`RealityRules::digest`]).
+    type Rules = RealityRules;
 
     /// RLS-A13 — BLAKE3 over the ruleset's canonical bytes. The island derives
     /// its pin through this, so the digest an island reports and the rules it
@@ -71,12 +83,12 @@ impl Domain for CombatDomain {
     /// state the check reads.
     fn check(
         state: &Self::State,
-        _rules: &Self::Rules,
+        rules: &Self::Rules,
         p: &Precondition<Self>,
     ) -> Result<(), Violation> {
         match p {
             Precondition::ResourceAtLeast { id, kind: CombatResource::TurnSlot, amount } => {
-                let have = state.actors.get(id).map(|a| a.turn_slots).unwrap_or(0);
+                let have = state.actors.get(id).map(|a| a.action_budget(rules)).unwrap_or(0);
                 if have < *amount {
                     return Err(Violation {
                         kind: PreconditionKind::ResourceAtLeast,
@@ -94,8 +106,8 @@ impl Domain for CombatDomain {
                 let queue: Vec<(EntityId, i64)> = state
                     .actors
                     .iter()
-                    .filter(|(_, a)| a.alive())
-                    .map(|(id, a)| (*id, a.av))
+                    .filter(|(_, a)| a.alive(rules))
+                    .map(|(id, a)| (*id, a.initiative(rules)))
                     .collect();
                 match next_actor(&queue) {
                     Some(up) if up == *id => Ok(()),
@@ -135,14 +147,23 @@ impl Domain for CombatDomain {
         // Done BEFORE resolution so a KO'd actor still leaves the queue in a
         // consistent state.
         if let Some(actor) = Self::actor_of(&input.payload)
-            && state.actors.get(&actor).is_some_and(|a| a.turn_slots >= 1)
+            && state.actors.get(&actor).is_some_and(|a| a.action_budget(rules) >= 1)
             && state.outcome.is_none()
         {
-            let spent = state.actors.get(&actor).map(|a| a.av).unwrap_or(0);
-            for (id, a) in state.actors.iter_mut() {
-                a.av = a.av.saturating_sub(spent);
-                if *id == actor {
-                    a.av = action_value(&rules.combat, a.stats.speed, a.status, false);
+            let spent = state.actors.get(&actor).map(|a| a.initiative(rules)).unwrap_or(0);
+            let ids: Vec<EntityId> = state.actors.keys().copied().collect();
+            for id in ids {
+                let (current, status) = {
+                    let a = &state.actors[&id];
+                    (a.initiative(rules), a.status)
+                };
+                let next = if id == actor {
+                    action_value(&rules.rules().combat, rules.archetype().speed, status, false)
+                } else {
+                    current.saturating_sub(spent)
+                };
+                if let Some(a) = state.actors.get_mut(&id) {
+                    a.set_initiative(rules, next);
                 }
             }
         }
@@ -155,42 +176,50 @@ impl Domain for CombatDomain {
         }
 
         if let Some(actor) = Self::actor_of(&input.payload) {
-            match state.actors.get_mut(&actor) {
-                // Defence in depth: the kernel applies a `Substitute` with NO
-                // preconditions (they "must be TOTAL/defensive in apply"), so
-                // `apply` cannot assume `check_all` ran for this payload. An
-                // out-of-budget actor therefore does nothing here, whatever
-                // route the payload arrived by.
-                Some(a) if a.turn_slots < 1 => return Vec::new(),
-                Some(a) => a.turn_slots -= 1,
+            // Defence in depth: the kernel applies a `Substitute` with NO
+            // preconditions (they "must be TOTAL/defensive in apply"), so
+            // `apply` cannot assume `check_all` ran for this payload. An
+            // out-of-budget actor therefore does nothing here, whatever
+            // route the payload arrived by.
+            let budget = match state.actors.get(&actor) {
+                Some(a) => a.action_budget(rules),
                 None => return Vec::new(),
+            };
+            if budget < 1 {
+                return Vec::new();
+            }
+            if let Some(a) = state.actors.get_mut(&actor) {
+                a.set_action_budget(rules, budget - 1);
             }
         }
         match &input.payload {
             CombatPayload::Strike { attacker, target } => {
-                // Read both stat blocks BEFORE mutating: the borrow checker
-                // is right to object, and copying the blocks is also the
-                // honest model — an attack resolves against the defender as
-                // it stood when the blow landed.
-                let Some(atk) = state.actors.get(attacker).map(|a| a.stats) else {
+                // The attacker's and defender's blocks are the REALITY's
+                // archetype, read once. Before `M1` each actor stored its own
+                // copy; they differed only in `CombatStats::max_hp`, which no
+                // law reads — so the per-actor copy was 64 bytes of duplicated
+                // ruleset and the "read both blocks before mutating" dance
+                // protected a value that could not change.
+                let stats = *rules.archetype();
+                if state.actors.get(attacker).is_none() {
                     return vec![CombatEvent::Missed { attacker: *attacker, target: *target }];
-                };
+                }
                 let Some(def_actor) = state.actors.get(target) else {
                     return vec![CombatEvent::Missed { attacker: *attacker, target: *target }];
                 };
-                if !def_actor.alive() {
+                if !def_actor.alive(rules) {
                     return vec![CombatEvent::Missed { attacker: *attacker, target: *target }];
                 }
-                let (def, defending) = (def_actor.stats, def_actor.defending);
+                let defending = def_actor.defending;
 
                 // COMB_001 §4 — the locked 4-step chain, on streams derived
                 // from this action's own coordinates (Q8).
                 let action_idx = state.next_action_idx;
                 state.next_action_idx = state.next_action_idx.wrapping_add(1);
                 let out = resolve_attack(
-                    &rules.combat,
-                    &atk,
-                    &def,
+                    &rules.rules().combat,
+                    &stats,
+                    &stats,
                     defending,
                     state.session_seed,
                     *attacker,
@@ -204,51 +233,75 @@ impl Domain for CombatDomain {
                     return vec![CombatEvent::Missed { attacker: *attacker, target: *target }];
                 }
 
-                let t = state.actors.get_mut(target).expect("checked above");
-                t.defending = false; // consumed by this hit
-                t.hp = (t.hp - out.damage).max(0);
+                let left = {
+                    let t = state.actors.get_mut(target).expect("checked above");
+                    t.defending = false; // consumed by this hit
+                    let left = (t.vital(rules) - out.damage).max(0);
+                    // The CLAMP is the caller's, deliberately: the hub carries a
+                    // value and has no ceiling to clamp against (see
+                    // `actor_hub::Actor::set_quantity`).
+                    t.set_vital(rules, left);
+                    left
+                };
                 let mut events = vec![CombatEvent::Struck {
                     attacker: *attacker,
                     target: *target,
                     damage: out.damage,
-                    hp_left: t.hp,
+                    hp_left: left,
                     crit: out.crit,
                     capped: out.capped,
                 }];
-                if t.hp == 0 && t.knocked_out.is_none() {
-                    // KO, not death: revivable for `ko_duration_rounds`
-                    // (COMB_001 AC-8). WA_006 mortality only applies once the
-                    // encounter itself resolves to Defeat.
-                    t.knocked_out = Some(rules.combat.ko_duration_rounds);
+                let ko = {
+                    let t = state.actors.get_mut(target).expect("checked above");
+                    if left == 0 && t.knocked_out.is_none() {
+                        // KO, not death: revivable for `ko_duration_rounds`
+                        // (COMB_001 AC-8). WA_006 mortality only applies once
+                        // the encounter itself resolves to Defeat.
+                        t.knocked_out = Some(rules.rules().combat.ko_duration_rounds);
+                        true
+                    } else {
+                        false
+                    }
+                };
+                if ko {
                     events.push(CombatEvent::Downed { target: *target });
                 }
-                if let Some(o) = Self::outcome_of(state) {
+                if let Some(o) = Self::outcome_of(state, rules) {
                     state.outcome = Some(o);
                     events.push(CombatEvent::EncounterEnded { outcome: o });
                 }
                 events
             }
-            CombatPayload::Defend { actor } => match state.actors.get_mut(actor) {
-                Some(a) if a.alive() => {
-                    a.defending = true;
-                    vec![CombatEvent::Defended { actor: *actor }]
+            CombatPayload::Defend { actor } => {
+                let can = state.actors.get(actor).is_some_and(|a| a.alive(rules));
+                match state.actors.get_mut(actor) {
+                    Some(a) if can => {
+                        a.defending = true;
+                        vec![CombatEvent::Defended { actor: *actor }]
+                    }
+                    _ => vec![],
                 }
-                _ => vec![],
-            },
-            CombatPayload::Move { actor, stance } => match state.actors.get_mut(actor) {
-                Some(a) if a.alive() => {
-                    a.stance = Some(*stance);
-                    vec![CombatEvent::Moved { actor: *actor, stance: *stance }]
+            }
+            CombatPayload::Move { actor, stance } => {
+                let can = state.actors.get(actor).is_some_and(|a| a.alive(rules));
+                match state.actors.get_mut(actor) {
+                    Some(a) if can => {
+                        a.stance = Some(*stance);
+                        vec![CombatEvent::Moved { actor: *actor, stance: *stance }]
+                    }
+                    _ => vec![],
                 }
-                _ => vec![],
-            },
-            CombatPayload::Flee { actor } => match state.actors.get_mut(actor) {
-                Some(a) if a.alive() => {
-                    a.fled = true;
-                    vec![CombatEvent::Fled { actor: *actor }]
+            }
+            CombatPayload::Flee { actor } => {
+                let can = state.actors.get(actor).is_some_and(|a| a.alive(rules));
+                match state.actors.get_mut(actor) {
+                    Some(a) if can => {
+                        a.fled = true;
+                        vec![CombatEvent::Fled { actor: *actor }]
+                    }
+                    _ => vec![],
                 }
-                _ => vec![],
-            },
+            }
             // Engine-only turn boundary — refills every actor's slot. Emits no
             // event: it is bookkeeping, not a thing that happened in the
             // fiction, and narrating it would put "the turn ended" into a
@@ -262,25 +315,34 @@ impl Domain for CombatDomain {
                 let mut events = Vec::new();
                 state.round_number = state.round_number.saturating_add(1);
 
-                for (id, a) in state.actors.iter_mut() {
-                    a.turn_slots = 1;
-                    // AV resets each round from the actor's own speed and
-                    // whatever status it currently carries.
-                    a.av = action_value(&rules.combat, a.stats.speed, a.status, false);
+                let ids: Vec<EntityId> = state.actors.keys().copied().collect();
+                for id in ids {
+                    // The refill value is the reality's declared `base`, not a
+                    // hardcoded 1: a reality that grants two actions a turn
+                    // says so in content.
+                    let refill = rules.hub().action_budget_base() as i64;
+                    let status = state.actors[&id].status;
+                    // AV resets each round from the reality's speed and
+                    // whatever status the actor currently carries.
+                    let av =
+                        action_value(&rules.rules().combat, rules.archetype().speed, status, false);
+                    let Some(a) = state.actors.get_mut(&id) else { continue };
+                    a.set_action_budget(rules, refill);
+                    a.set_initiative(rules, av);
 
                     // Round-scoped statuses expire together, and the expiry is
                     // EMITTED — a debuff that vanishes silently is
                     // indistinguishable from one that never applied.
                     if a.status != AvStatus::default() {
                         a.status = AvStatus::default();
-                        events.push(CombatEvent::StatusExpired { actor: *id });
+                        events.push(CombatEvent::StatusExpired { actor: id });
                     }
 
                     if let Some(left) = a.knocked_out {
                         match left.checked_sub(1) {
                             Some(0) | None => {
                                 // The revival window closed. The actor stays
-                                // at 0 HP; permanence is WA_006's call at
+                                // at 0 vital; permanence is WA_006's call at
                                 // encounter end, not the engine's here.
                                 a.knocked_out = Some(0);
                             }
@@ -289,7 +351,7 @@ impl Domain for CombatDomain {
                     }
                 }
                 if state.outcome.is_none()
-                    && let Some(o) = Self::outcome_of(state)
+                    && let Some(o) = Self::outcome_of(state, rules)
                 {
                     state.outcome = Some(o);
                     events.push(CombatEvent::EncounterEnded { outcome: o });
@@ -308,7 +370,7 @@ impl Domain for CombatDomain {
     }
 
     fn extract(state: &mut Self::State, id: EntityId) -> Self::Portable {
-        state.actors.remove(&id).unwrap_or_else(Actor::absent)
+        state.actors.remove(&id).unwrap_or_else(|| Actor::absent(id))
     }
 
     fn install(state: &mut Self::State, id: EntityId, portable: Self::Portable) {

@@ -78,7 +78,8 @@ pub use provenance::{Provenance, RulesetEpoch};
 // Q2 — QTY-A4 declared pools. A resource IS a declared quantity (one identity,
 // one ordinal); this is the row that says it is a POOL and how it behaves.
 pub use resource::{
-    CeilingBinding, RegenType, ResourceDecl, ResourceError, ResourceTable, ZeroBehaviour,
+    CeilingBinding, EngineRole, RegenType, ResourceDecl, ResourceError, ResourceTable,
+    ZeroBehaviour,
     MAX_DECLARED_RESOURCES,
 };
 pub use ruleset::{

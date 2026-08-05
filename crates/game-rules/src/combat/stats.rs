@@ -66,6 +66,23 @@ impl CombatStats {
     /// (IMP-A4 files `stat_archetypes` on the loaded side), and an archetype
     /// that can change without moving the digest changes every NPC in the
     /// reality silently.
+    /// One resolved slot of the reality's melee archetype.
+    ///
+    /// **`M1` — how a `CeilingBinding::Slot` becomes a number.** A declared pool
+    /// binds its ceiling to a slot precisely so a realm can RAISE it
+    /// (`QTY-A8`); resolving that binding means resolving the block and reading
+    /// the slot, which is what this does in one place instead of at every
+    /// caller.
+    ///
+    /// It does NOT go through [`Self::from_block`]: the projection is only eight
+    /// of the ten slots, so `MoveRange` and `MaxStamina` — both legal ceiling
+    /// bindings — have no field to be read from and would resolve to whatever
+    /// the eight-field view happened to hold.
+    pub fn archetype_slot(rules: &StatRules, slot: StatSlot) -> i32 {
+        let arch = StatBlock::from_slots(&rules.melee_archetype);
+        resolve_block(&arch, &[], &[], &[], rules).get(slot)
+    }
+
     pub fn archetype_melee(rules: &StatRules, max_hp: i64) -> Self {
         let mut arch = StatBlock::from_slots(&rules.melee_archetype);
         arch.set(StatSlot::MaxHp, max_hp as i32);
