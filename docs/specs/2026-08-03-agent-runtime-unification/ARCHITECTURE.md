@@ -167,7 +167,7 @@ and each carrying `stage` and `reason` as it does today:
 |---|---|---|
 | `filter` | `field`, `op`, `value` | per-row membership or comparison — the only shape today's `keep` covers |
 | `allow_list` · `deny_list` | `names` | explicit set membership, for the always-hot core and the retirement list |
-| **`order_by`** | `key`, `direction` | **not a narrowing.** It establishes the ranking that rank- and budget-dependent kinds consume |
+| **`order_by`** | **`keys: [(field, direction)]`** — see §0.14.1a, which is the design | **not a narrowing.** It establishes the ranking that rank- and budget-dependent kinds consume |
 | `top_k` | `k` | drops beyond rank *k* |
 | `take_while_budget` | `budget`, `cost_field` | the accumulator: walks the ranking, drops the tail once `budget` is exhausted |
 
@@ -179,6 +179,55 @@ to an **unordered** collection selects an arbitrary subset — which is exactly 
 > A pipeline that does not must be rejected at construction, not at use.
 
 That rule is checkable from the pipeline value alone, which is what makes it worth stating.
+
+##### 0.14.1a Order by WHAT — the part a `key` parameter was hiding
+
+*A previous draft wrote `order_by(key, direction)` and stopped. **`key` was a blank standing in for a
+design**, and the ordering is not a detail: **rank is what a budget cuts on**, so whatever fills that
+blank decides which declarations reach the model. Arm E was a ranking outcome.*
+
+**What the ranking is today**, read from `tool_surface.py:192-194`:
+
+```
+(0 if _is_read_tool(name) else 1,  _tool_tokens(td),  name)
+      reads before writes             cheapest first    alphabetical
+```
+
+Three things are wrong with it, and one is right:
+
+| | |
+|---|---|
+| ✅ **the final `name` component is correct** | it makes the order **total**. Without a last component, equal keys leave the order arbitrary |
+| 🔴 **`_is_read_tool` is a NAME HEURISTIC** | `name.lower()` and prefix matching — the exact defect **C-1** already forbids: *group and lane are data at registration, never inferred from a name.* This is a live instance, not new work invented here |
+| 🔴 **cheapest-first optimises COUNT, not usefulness** | a cheap useless declaration outranks an expensive essential one. `book_list` — arm E's victim — is precisely the kind of thing that loses to volume |
+| 🔴 **`_tool_tokens` is U-1's victim, and that is how U-1 does its damage** | NFD inflates the cost → the declaration sorts later → the budget cuts it. **U-1 does not merely perturb a number; it perturbs the RANK, and rank is what the budget cuts on.** Normalising is not cosmetic — it changes which tools survive |
+
+**And the signal that would make the cut defensible is computed and then not used by the thing that
+cuts.** An embedding call upstream (`skill_router`) decides **candidacy** — which declarations are
+considered — and the budget then ranks the survivors by **cost and alphabet**. Relevance never
+reaches the ranking.
+
+**The design, stated as requirements:**
+
+1. **`keys` is an explicit ordered list of `(field, direction)`**, and every `field` must be **present
+   on the row** — either declared (`lane`, `tier`) or injected by a **recorded** scoring stage
+   (`relevance`). No key may be computed inside the ordering.
+2. **A missing field is a REJECTION, not a fallback.** Silently falling back to id-order when
+   `relevance` is absent reorders the whole surface and cuts different declarations — arm E, arrived
+   at by a default.
+3. **`id` is appended as the final component, always and implicitly.** Equal keys are not an edge
+   case: an embedding failure yields **all-zero relevance across every row**, and U-2 shows that
+   failure is reachable. Without a total order, the budget's victim is then whatever the iteration
+   happened to produce.
+4. **`cost` may never be the primary component**, for the reason above. It is a legitimate tie-break
+   *within* equal usefulness and a poor definition of usefulness.
+5. **`lane` must be declared data.** Converting `_is_read_tool` from a name heuristic is **C-1's
+   existing requirement**, not a new one this section invents.
+6. **A rank-dependent narrowing must record the RANK and the KEY it was ranked by.** Today's record —
+   `{stage: token_budget, reason: over budget}` — says *that* a declaration was cut. It cannot answer
+   **"why this one and not that one"**, which is the only question a person debugging a missing tool
+   actually has. This is P1 extended where P1 is currently thin: a reason that does not distinguish
+   the dropped from the kept is not yet actionable.
 
 **The expressiveness that is lost, stated rather than minimised.** Arbitrary predicates are gone. If
 a real narrowing stage in this repository cannot be expressed by the kinds above, **that is a finding
