@@ -109,38 +109,12 @@ class TestTheInstrumentIsActuallyWired:
         # failing to supply — so it passed while the real path recorded nothing. A behavioural gate
         # that stages its own precondition is a source gate wearing a costume.
         #
-        # The sink must be armed by PRODUCTION CODE that runs before the narrowing. So this asserts
-        # on the source of the arming, positionally, and then exercises the mechanism.
-        src = _stream_src()
-        # The invariant is "armed before the FIRST narrowing of the turn", and the first narrowing
-        # is CATALOG ASSEMBLY — not the seed call. Pointing this gate at the seed call is how the
-        # intent gate came to register nothing while the gate stayed green: it was armed before the
-        # stage being fixed rather than before the earliest one.
-        for call in ("discovery_catalog = filter_intent_gated_setup_tools(",
-                     "resume_discovery_catalog = filter_intent_gated_setup_tools("):
-            idx = src.find(call)
-            assert idx != -1, f"call site vanished: {call}"
-            before = src[max(0, idx - 900): idx]
-            assert "surface_withheld.set(" in before, (
-                f"the sink is not armed before {call.split('=')[0].strip()} — the FIRST narrowing "
-                f"of the turn, so everything it drops registers nowhere"
-            )
-        # And nothing may re-arm between there and the seed call: a second set() discards the
-        # records the first one collected, which made the previous fix a no-op where it was armed.
-        for seed in ("discovery_seed_names = discovery_seed_for_surface(",
-                     "resume_seed_names = discovery_seed_for_surface("):
-            i = src.find(seed)
-            assert i != -1
-            gate = max(src.rfind("filter_intent_gated_setup_tools(", 0, i), 0)
-            assert "surface_withheld.set(" not in src[gate:i], (
-                "a re-arm between catalog assembly and the seed call discards the intent gate's "
-                "records"
-            )
-        # And the turn must ADOPT that sink rather than replace it, or the records are discarded.
-        assert "_surface_sink = instrument.surface_withheld.get()" in src, (
-            "the turn replaces the armed sink instead of adopting it, discarding assembly-time "
-            "narrowings"
-        )
+        # The ordering half of this gate — "armed by production code that runs BEFORE the
+        # narrowing" — used to live here as a 900-character substring window around one call site.
+        # It is now `TestTheTurnSinkIsArmedBeforeAnythingNarrows`, which compares line numbers in the
+        # parse tree instead. The window was what let the seventh recurrence ship: it was satisfied
+        # by an arming 380 lines below the catalogue fetch, because the fetch was not the call the
+        # window was drawn around.
 
         sink: list[dict] = []
         token = _inst.surface_withheld.set(sink)
@@ -1419,3 +1393,140 @@ class TestU2ACatalogueOutageIsRegistered:
         src = _stream_src()
         assert "_catalogue_outage = instrument.catalogue_outage_registered()" in src
         assert "_catalogue_outage = not _turn_catalog" not in src
+
+
+def _turn_entry_calls():
+    """Line numbers of the arming and of every narrowing call, per turn entry point, from the
+    PARSE TREE of the real module. Returns `{fn_name: (arms, raw_sets, narrowings)}`."""
+    import ast
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "app" / "services" / "stream_service.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    out = {}
+    for fn in tree.body:
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if fn.name not in ("stream_response", "resume_stream_response"):
+            continue
+        arms, raw_sets, narrowings = [], [], []
+        for n in ast.walk(fn):
+            if not isinstance(n, ast.Call):
+                continue
+            f = n.func
+            name = f.attr if isinstance(f, ast.Attribute) else (f.id if isinstance(f, ast.Name) else None)
+            if name == "arm_turn_surface":
+                arms.append(n.lineno)
+            elif name in _NARROWING_CALLS:
+                narrowings.append((n.lineno, name))
+            elif (name == "set" and isinstance(f, ast.Attribute)
+                    and isinstance(f.value, ast.Attribute) and f.value.attr == "surface_withheld"):
+                raw_sets.append(n.lineno)
+        out[fn.name] = (sorted(arms), sorted(raw_sets), sorted(narrowings))
+    return out
+
+
+#: Every call inside a turn entry point that can remove a declaration from what the model is
+#: offered. A new one added here without an earlier arming is exactly the recurrence.
+_NARROWING_CALLS = {
+    "get_tool_definitions", "get_admin_tool_definitions",
+    "filter_intent_gated_setup_tools", "discovery_seed_for_surface", "_budget_and_register",
+}
+
+
+class TestTheTurnSinkIsArmedBeforeAnythingNarrows:
+    """🔴 SEVENTH RECURRENCE OF ARM-AFTER-USE — and the one that proves a substring window is not a
+    gate.
+
+    The sixth fix armed the sink above the intent gate, believed then to be the turn's first
+    narrowing, and left a comment stating the rule in the imperative. U-2 then added an **earlier**
+    narrowing — the catalogue fetch — and the arming stayed where it was: 382 lines below it, in the
+    same function, under the sentence forbidding exactly that. A verifier measured the result on a
+    real turn: `catalog: [] | _catalogue_outage: False`. Both halves of U-2 were inert in production
+    while every U-2 test was green, because each armed its own sink first.
+
+    The old gate could not see it. It searched a 900-character window before
+    `filter_intent_gated_setup_tools(` — and that window was satisfied, correctly, by an arming that
+    was nonetheless far too late for a call the window was not drawn around. **A gate anchored to one
+    call site cannot notice a narrowing that moves earlier than the anchor.**
+
+    So this compares LINE NUMBERS IN THE PARSE TREE: the arming against *every* call in
+    `_NARROWING_CALLS`, in both entry points. Adding a narrowing above the arming reds it; deleting
+    the arming reds it; re-arming anywhere in the body reds it. All three were injected into the real
+    module and each was measured red before being reversed.
+
+    **What this gate cannot see, measured rather than guessed.** It matches by *called name*, so an
+    alias walks straight past it — `p = knowledge_client.get_tool_definitions; p(...)` above the
+    arming was injected and stayed **green**. It also cannot see a narrowing that happens inside a
+    callee rather than at a call site named here, and `_NARROWING_CALLS` is a hand-kept list: a
+    genuinely new narrowing stage is invisible until someone adds it. That last one is the residual
+    with teeth, and it is the same residual the previous gate died of — narrower now, because this
+    list is one place and the old anchor was one call site.
+    """
+
+    def test_both_entry_points_arm_exactly_once(self):
+        found = _turn_entry_calls()
+        assert set(found) == {"stream_response", "resume_stream_response"}, (
+            f"a turn entry point vanished or was renamed: {sorted(found)}"
+        )
+        for fn, (arms, raw_sets, _) in found.items():
+            assert len(arms) == 1, (
+                f"{fn}: expected exactly one arm_turn_surface(), found {len(arms)} at {arms}. "
+                f"A second arming DISCARDS everything the first collected."
+            )
+            assert not raw_sets, (
+                f"{fn}: a raw surface_withheld.set() at {raw_sets} bypasses the named entry point, "
+                f"so the ordering gate below cannot see it"
+            )
+
+    def test_no_narrowing_precedes_the_arming(self):
+        for fn, (arms, _, narrowings) in _turn_entry_calls().items():
+            assert arms, (
+                f"{fn}: no arm_turn_surface() at all — every narrowing in this turn registers "
+                f"nowhere. This is the defect verbatim."
+            )
+            assert narrowings, f"{fn}: no narrowing call found — the gate has lost its subject"
+            early = [(line, name) for line, name in narrowings if line < arms[0]]
+            assert not early, (
+                f"{fn}: {early} run BEFORE the sink is armed at line {arms[0]}. Whatever they "
+                f"withhold registers nowhere — this is the defect, not a style point."
+            )
+
+    def test_the_gate_reds_when_a_narrowing_moves_above_the_arming(self):
+        """The control, on the comparison itself. Both live injections were also run against the
+        real file — arming deleted, and a narrowing moved above it — and each reds this class."""
+        arms, _, narrowings = _turn_entry_calls()["stream_response"]
+        assert arms, "no arming to compare against"
+        injected = sorted(narrowings + [(arms[0] - 1, "get_tool_definitions")])
+        early = [(line, name) for line, name in injected if line < arms[0]]
+        assert early, "the ordering comparison cannot detect a narrowing moved above the arming"
+
+    def test_the_emit_path_ADOPTS_the_armed_sink_rather_than_replacing_it(self):
+        """`_emit_chat_turn` runs after surface assembly, so a fresh list there would discard the
+        records this whole mechanism exists to carry."""
+        src = _stream_src()
+        assert "_surface_sink = instrument.surface_withheld.get()" in src, (
+            "the turn replaces the armed sink instead of adopting it"
+        )
+
+    def test_the_armer_actually_arms(self):
+        """The production function, driven — not a hand-made sink. A bare context registers nothing
+        (the defect's own shape); after `arm_turn_surface()` the same call lands."""
+        import contextvars
+
+        def _bare():
+            instrument.record_catalogue_unavailable(stage="catalogue_unavailable", reason="boom")
+            return instrument.catalogue_outage_registered()
+
+        assert contextvars.copy_context().run(_bare) is False, (
+            "an unarmed context must record nothing — otherwise this test cannot tell arming from "
+            "no-arming, and the ordering it guards would not matter"
+        )
+
+        def _armed():
+            sink = instrument.arm_turn_surface()
+            instrument.record_catalogue_unavailable(stage="catalogue_unavailable", reason="boom")
+            return instrument.catalogue_outage_registered(), sink
+
+        outage, sink = contextvars.copy_context().run(_armed)
+        assert outage is True
+        assert sink and sink[0]["scope"] == instrument.SCOPE_CATALOGUE

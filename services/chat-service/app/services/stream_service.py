@@ -4974,6 +4974,11 @@ async def stream_response(
     surfaces) and appends the plan-mode system nudge; 'ask' appends its own
     nudge too (no auto-skill) — both on both system-part assembly paths."""
 
+    # CP-0.2 / U-2 — the turn's narrowing sink, armed HERE because this is the first statement of
+    # the turn and every later one can narrow. Unconditionally: `disable_tools` and `admin_context`
+    # change what is fetched, not whether a narrowing that happens is allowed to register.
+    instrument.arm_turn_surface()
+
     # ── RE-3: parse + STRIP a chat-only inline reasoning command (/no_think etc.)
     # before the message reaches the model or is persisted. The inline override is
     # the highest-precedence reasoning signal (beats the `thinking` toggle below).
@@ -5962,13 +5967,12 @@ async def stream_response(
                 # prompt naming them, so filtering one out splits guidance from capability and
                 # leaves an instruction the model cannot satisfy (see the filter's docstring —
                 # this is the Mị Đế 40k-character loop).
-                # CP-0.2 — ARMED HERE, before the FIRST narrowing of the turn, which is catalog assembly.
-                # It was armed before `discovery_seed_for_surface` — 73 lines too late — so the intent
-                # gate's records went to a sink that did not exist yet, and `set([])` afterwards would have
-                # discarded them even if it had. Sixth recurrence of arm-after-use, and the fifth is named
-                # in the sibling docstring directly below. The rule that prevents a seventh: THE SINK IS
-                # ARMED AT THE TOP OF THE TURN, not before the stage someone happens to be fixing.
-                instrument.surface_withheld.set([])
+                # CP-0.2 — the sink is armed at the TOP of this function, not here. It was armed on
+                # this line for one round: above the intent gate, which was then believed to be the
+                # turn's first narrowing. It was not — U-2 added an earlier one (the catalogue fetch,
+                # 380-odd lines above), and a verifier measured the outage going unrecorded on a real
+                # turn. Re-arming here now would DISCARD that record, which is the failure the sixth
+                # recurrence's own comment predicted. See `instrument.arm_turn_surface`.
                 discovery_catalog = filter_intent_gated_setup_tools(
                     catalog, injected_skill_codes, set(pinned_step_tools or ()),
                 )
@@ -7695,6 +7699,10 @@ async def resume_stream_response(
     from app.services.frontend_tools import frontend_tool_defs
     from app.db.suspended_runs import load_suspended_run_any
 
+    # CP-0.2 / U-2 — the resumed turn's narrowing sink, armed before its first decision. A resume
+    # re-derives its whole surface from scratch (WS-3), so it narrows as much as a fresh turn does.
+    instrument.arm_turn_surface()
+
     susp = await load_suspended_run(pool, run_id, user_id)
     if susp is None or susp.pending_tool_call.get("id") != tool_call_id:
         # Unknown/expired/mismatched — surface a clean AG-UI error.
@@ -8044,8 +8052,8 @@ async def resume_stream_response(
             # precisely because a resume re-derives its surface from scratch (WS-3); dropping
             # the exemption here would strand a rail at its FIRST confirm gate — the same
             # failure WS-3 was written to fix, re-entered through the capability floor.
-            # CP-0.2 — same arming, resume path: before catalog assembly, not after it.
-            instrument.surface_withheld.set([])
+            # CP-0.2 — armed at the top of this function, not here: the catalogue fetch 26 lines
+            # above is a narrowing too, and re-arming here would discard whatever it registered.
             resume_discovery_catalog = filter_intent_gated_setup_tools(
                 catalog, resume_injected_skills, set(susp.pinned_step_tools or ()),
             )

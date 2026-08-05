@@ -489,11 +489,25 @@ class TestStreamResponse:
             ):
                 pass
 
+        # 🔴 U-2, AND THIS TEST IS THE END-TO-END PROOF THE VERIFIER SAID DID NOT EXIST.
+        #
+        # This turn's catalogue fetch genuinely fails (no gateway is reachable from the suite), so
+        # the outage registers and the model is told — a system block ahead of the history. It used
+        # to see exactly three messages, because the narrowing sink was armed 382 lines AFTER the
+        # fetch and the notice therefore never rendered. **The extra message is the fix arriving on
+        # a real `stream_response` call**, not a regression: the assertion below moved because the
+        # behaviour it describes did.
+        assert captured_messages[0]["role"] == "system"
+        assert "TOOL CATALOGUE UNAVAILABLE" in captured_messages[0]["content"], (
+            "the catalogue fetch failed on this turn and the model was not told — U-2's second half "
+            "is inert again"
+        )
         # History reversed back to ASC — user message is from DB, not appended
-        assert len(captured_messages) == 3
-        assert captured_messages[0]["content"] == "first"
-        assert captured_messages[1]["content"] == "reply"
-        assert captured_messages[2]["content"] == "new msg"
+        history = captured_messages[1:]
+        assert len(history) == 3
+        assert history[0]["content"] == "first"
+        assert history[1]["content"] == "reply"
+        assert history[2]["content"] == "new msg"
 
 
 # ── K18.9 prompt-caching (cache_control on Anthropic system segments) ──────

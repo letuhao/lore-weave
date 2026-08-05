@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -107,7 +108,19 @@ ALWAYS_HOT_WRITES: frozenset[str] = frozenset({
 
 
 def _tool_tokens(td: dict) -> int:
-    return estimate_tokens(json.dumps(td, ensure_ascii=False))
+    """U-1 · **count the COMPOSED form.** `estimate_tokens` weights per codepoint and its Vietnamese
+    band spans the combining-mark block, so the same grapheme costs ~1.44× decomposed — and this
+    number is both the sort key and the accumulator of a budget that ends in a hard `break`. A
+    declaration arriving in NFD sorts later and is cut from the wire, with no revision or budget
+    value changing anywhere.
+
+    The door (`knowledge_client._nfc_text`) normalises the text a third party sends us, but it
+    deliberately does NOT touch tool names, schema keys, `enum` or `pattern` — those are wire
+    identifiers owned by the remote server, and rewriting them would break the call the model then
+    makes. Normalising HERE closes that residual without touching a stored value: this function
+    returns a count, so the composed form never leaves it.
+    """
+    return estimate_tokens(unicodedata.normalize("NFC", json.dumps(td, ensure_ascii=False)))
 
 
 def _is_read_tool(name: str) -> bool:

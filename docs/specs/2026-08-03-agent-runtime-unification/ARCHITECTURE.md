@@ -1435,6 +1435,41 @@ generations on one runtime while re-admitting them means the contract is never a
 | a **backward-compatible** amendment | prior admissions stand |
 | a **breaking** amendment | prior declarations enter a re-admission queue **without leaving the runtime** |
 
+#### 6.4.1 What the two fields are, and why one field cannot do it
+
+The pair was written here as a table row and built as **one field**, which broke the mechanism twice
+in opposite directions before anyone noticed the row said *two*. The definitions are therefore
+explicit, and the test that mattered is the one that asks whether the queue can reach **empty**.
+
+| field | what it records | does it move? |
+|---|---|---|
+| `contract_version` | the generation this declaration **originated** in — its first admission | **never.** Carried forward across every regeneration |
+| `admitted_against` | what **this** admission was checked against | **always the live value.** Being in the build's `admitted` set means the current contract just passed on this row |
+
+**The queue is `admitted_against != <document contract_version>`.** It empties exactly when every
+declaration has been re-checked, which is the only behaviour that makes it a work list rather than a
+label.
+
+**Both failure modes are recorded because each looked like a fix.** Binding `admitted_against` to
+the write-time constant made every historical row claim conformance it was never checked for — the
+queue was permanently **empty**, a migration that could never find work. Then carrying it forward for
+any id already in the file froze it — a declaration that *was* re-admitted kept its old stamp, so the
+queue permanently named work already done. **A field that restates a constant and a field that cannot
+move fail identically: the reader cannot act on either.**
+
+**A missing manifest is not permission to restamp.** Regenerating with no prior document rewrites
+every origin with the current constant and silently empties the queue, and deleting the manifest is
+the ordinary reaction to a drift gate going red. Writing the first manifest is a real operation and
+must be **stated by the caller**, not inferred from the absence of a file.
+
+🔴 **UNBUILT, and named rather than implied: the *"without leaving the runtime"* half.** A
+declaration that fails a breaking amendment raises at admission, so it never reaches the writer and
+its row is simply absent from the next manifest — which is leaving the runtime, not queueing. Making
+it stay requires the generator to carry rows that are *not* in `admitted`, and that changes what the
+M1 drift gate (*row count == admitted count*) is comparing. **No amendment has occurred and the
+manifest is empty, so this has no subject today.** It is CP-4's, with the drift gate, and it is the
+one clause of this section the code does not yet implement.
+
 ---
 
 ## 7 · What stays on the old runtime, and why that is the point

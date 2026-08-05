@@ -1566,14 +1566,158 @@ class TestToolTextIsNormalisedAtIngestion:
             unicodedata.normalize("NFD", self.NFD_TEXT)
 
     def test_non_strings_pass_through_untouched(self):
-        """`description` is `str | None` on the wire and the schema carries dicts and lists."""
+        """`description` is `str | None` on the wire, so the SCALAR normaliser must not choke on a
+        non-string.
+
+        🔴 This test used to justify itself with *"and the schema carries dicts and lists"* — naming
+        the exact field the fix had skipped and codifying the gap as intended behaviour. The schema
+        is handled by `_nfc_text`, below; `_nfc` staying scalar is a division of labour, not a
+        boundary of the claim.
+        """
         from app.client.knowledge_client import _nfc
         for v in (None, 3, {"a": 1}, ["x"]):
             assert _nfc(v) is v
 
-    def test_the_ingestion_path_applies_it(self):
-        """The wiring gate — a correct helper with no call site is a shape this repo has shipped.
-        Asserted at the ingestion door, which is where the overlay's third-party text arrives."""
-        from pathlib import Path
-        src = (Path(__file__).resolve().parents[1] / "app" / "client" / "knowledge_client.py").read_text("utf-8")
-        assert '"description": _nfc(' in src, "tool descriptions are ingested un-normalised"
+    def test_text_ANYWHERE_in_the_definition_is_composed_not_only_the_top_description(self):
+        """🔴 THE FIX SHIPPED COVERING ONE OF THE THREE FIELDS THE DOOR WRITES. `_tool_tokens`
+        serialises the WHOLE definition, so the subject was never "the description" — it was every
+        string on the row. A verifier reached the defect through the parameter schema."""
+        import unicodedata
+
+        from app.client.knowledge_client import _nfc_text
+        nfd, nfc = unicodedata.normalize("NFD", self.NFD_TEXT), unicodedata.normalize("NFC", self.NFD_TEXT)
+        schema = {"type": "object", "properties": {
+            "q": {"type": "string", "description": nfd, "title": nfd},
+            "nested": {"type": "object", "properties": {"deep": {"description": nfd}}},
+        }}
+        out = _nfc_text(schema)
+        assert out["properties"]["q"]["description"] == nfc
+        assert out["properties"]["q"]["title"] == nfc
+        assert out["properties"]["nested"]["properties"]["deep"]["description"] == nfc, (
+            "depth is not a boundary — a schema nests arbitrarily"
+        )
+        assert _nfc_text({"synonyms": [nfd], "undo_hint": nfd}, all_strings=True) == \
+            {"synonyms": [nfc], "undo_hint": nfc}, "_meta is our own prose channel; all of it"
+
+    def test_identifiers_are_left_VERBATIM_because_they_go_back_on_the_wire(self):
+        """The deliberate limit, asserted so nobody 'completes' the fix into a broken tool call. A
+        tool name, a schema key, an `enum` value and a `pattern` are the remote server's identifiers;
+        rewriting them changes what we send when the model calls the tool."""
+        import unicodedata
+
+        from app.client.knowledge_client import _nfc_text
+        nfd = unicodedata.normalize("NFD", self.NFD_TEXT)
+        out = _nfc_text({nfd: {"enum": [nfd], "pattern": nfd, "description": nfd}})
+        assert nfd in out, "a dict KEY was rewritten — that is a wire identifier"
+        assert out[nfd]["enum"] == [nfd] and out[nfd]["pattern"] == nfd
+        assert out[nfd]["description"] == unicodedata.normalize("NFC", nfd)
+
+    def test_an_identifier_left_verbatim_still_cannot_INFLATE_the_estimate(self):
+        """The other end of that decision. The door preserves identifiers, so the estimator composes
+        before counting — otherwise the residual would be a live instance of the defect."""
+        import unicodedata
+
+        from app.services.tool_surface import _tool_tokens
+        name_nfc = unicodedata.normalize("NFC", self.NFD_TEXT).replace(" ", "_")
+        name_nfd = unicodedata.normalize("NFD", self.NFD_TEXT).replace(" ", "_")
+        assert name_nfc != name_nfd
+        mk = lambda n: {"type": "function", "function": {  # noqa: E731
+            "name": n, "description": "x", "parameters": {"type": "object", "properties": {}}}}
+        assert _tool_tokens(mk(name_nfd)) == _tool_tokens(mk(name_nfc)), (
+            "an NFD identifier still costs more, so it can still lose a budget slot"
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_INGESTION_PATH_composes_the_schema__driven_not_grepped(self):
+        """The wiring gate, executed. The previous version asserted `'"description": _nfc(' in src`
+        — satisfied by ONE of seven `"description":` sites in that file, and blind to the schema and
+        `_meta` entirely. A substring cannot count, and it cannot run."""
+        import unicodedata
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        nfd, nfc = unicodedata.normalize("NFD", self.NFD_TEXT), unicodedata.normalize("NFC", self.NFD_TEXT)
+        listed = MagicMock()
+        t = MagicMock()
+        t.name, t.description = "u_viet_tool", nfd
+        t.inputSchema = {"type": "object",
+                         "properties": {"q": {"type": "string", "description": nfd}}}
+        t.meta = {"synonyms": [nfd]}
+        listed.tools, listed.meta = [t], {}
+
+        session = AsyncMock()
+        session.list_tools = AsyncMock(return_value=listed)
+        session.initialize = AsyncMock()
+
+        client = KnowledgeClient(
+            base_url="http://knowledge-service:8092", internal_token="unit-test-token",
+            timeout_s=0.5, retries=1,
+        )
+        with patch("app.client.knowledge_client.streamablehttp_client") as transport, \
+                patch("app.client.knowledge_client.ClientSession") as cs:
+            transport.return_value.__aenter__ = AsyncMock(return_value=(None, None, None))
+            transport.return_value.__aexit__ = AsyncMock(return_value=False)
+            cs.return_value.__aenter__ = AsyncMock(return_value=session)
+            cs.return_value.__aexit__ = AsyncMock(return_value=False)
+            defs = await client.get_tool_definitions(user_id="u-1")
+
+        assert defs, "the door returned nothing; this test proves nothing about normalisation"
+        fn = defs[0]["function"]
+        assert fn["description"] == nfc
+        assert fn["parameters"]["properties"]["q"]["description"] == nfc, (
+            "the SCHEMA reached the estimator decomposed — the shipped defect, verbatim"
+        )
+        assert fn["_meta"]["synonyms"] == [nfc]
+
+    def test_ARRIVAL_ENCODING_CANNOT_CHANGE_WHICH_DECLARATIONS_SURVIVE(self):
+        """The consequence, stated as the property rather than as an encoding.
+
+        What the defect did: same tool, same words, no revision change — cut from the wire because a
+        competitor was cheaper by a margin smaller than the decomposition penalty. So the claim worth
+        gating is not *"the text is composed"* but **which names come back must not depend on how the
+        text arrived**, which is what a reader of the surface actually relies on.
+
+        The control runs the PRE-FIX estimator (`json.dumps` straight into `estimate_tokens`, the
+        exact expression `_tool_tokens` used to be) to show the mechanism is real. Without it this
+        would pass over a budget that never had a subject.
+        """
+        import json
+        import unicodedata
+
+        from loreweave_context.tokens import estimate_tokens
+        from app.services.tool_surface import _tool_tokens, budget_names_by_tokens
+
+        nfd = unicodedata.normalize("NFD", self.NFD_TEXT)
+        nfc = unicodedata.normalize("NFC", self.NFD_TEXT)
+
+        def tool(name, schema_desc):
+            return {"type": "function", "function": {
+                "name": name, "description": "lookup",
+                "parameters": {"type": "object", "properties": {
+                    "q": {"type": "string", "description": schema_desc}}}}}
+
+        def legacy_tokens(td):  # what _tool_tokens was before U-1's second half
+            return estimate_tokens(json.dumps(td, ensure_ascii=False))
+
+        composed, decomposed = tool("u_viet_tool", nfc), tool("u_viet_tool", nfd)
+        competitor = tool("u_zzz_other", "x" * 60)
+
+        assert legacy_tokens(decomposed) > legacy_tokens(composed), (
+            "the control failed: the decomposed arrival was not more expensive under the pre-fix "
+            "estimator, so there is no slot to lose and this gate has no subject"
+        )
+        assert _tool_tokens(decomposed) == _tool_tokens(composed), (
+            "the estimate still depends on arrival encoding"
+        )
+
+        budget = _tool_tokens(composed) + _tool_tokens(competitor) - 1
+        names = {"u_viet_tool", "u_zzz_other"}
+        kept_nfc = budget_names_by_tokens([composed, competitor], names, token_budget=budget)
+        kept_nfd = budget_names_by_tokens([decomposed, competitor], names, token_budget=budget)
+        assert budget >= _tool_tokens(composed) and len(kept_nfc) < 2, (
+            "the budget did not actually cut anything, so equality below proves nothing"
+        )
+        assert kept_nfc == kept_nfd, (
+            f"arrival encoding changed the surviving set: NFC kept {sorted(kept_nfc)}, "
+            f"NFD kept {sorted(kept_nfd)}"
+        )
+        assert "u_viet_tool" in kept_nfd

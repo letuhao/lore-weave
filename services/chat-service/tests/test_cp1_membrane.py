@@ -87,7 +87,7 @@ class TestTheManifestStartsEmpty:
     def test_generation_round_trips_exactly_what_was_admitted(self, tmp_path):
         """M1's drift gate: manifest row count == admitted count."""
         p = tmp_path / "m.json"
-        generate([admit(_tool("book_list")), admit(_tool("book_get"))], path=p)
+        generate([admit(_tool("book_list")), admit(_tool("book_get"))], path=p, bootstrap=True)
         assert [r["id"] for r in json.loads(p.read_text("utf-8"))["declarations"]] == \
             ["book_get", "book_list"]
 
@@ -140,8 +140,8 @@ class TestTheManifestStartsEmpty:
         p.write_text(json.dumps({
             "manifest_version": 1, "contract_version": "1.0.0",
             "declarations": [{"id": "world_setup", "kind": "skill", "owning_service": "chat-service",
-                              "lifecycle": "admitted", "admitted_against": "1.0.0",
-                              "members": ["deleted_tool"]}],
+                              "lifecycle": "admitted", "contract_version": "1.0.0",
+                              "admitted_against": "1.0.0", "members": ["deleted_tool"]}],
         }), encoding="utf-8")
         with pytest.raises(UnresolvedReference):
             load(path=p)
@@ -376,7 +376,7 @@ class TestAnUnresolvedReferenceStopsGeneration:
         because the artifact does not exist."""
         p = tmp_path / "m.json"
         with pytest.raises(UnresolvedReference):
-            generate([admit(_skill("world_setup", ("nope",)))], path=p)
+            generate([admit(_skill("world_setup", ("nope",)))], path=p, bootstrap=True)
         assert not p.exists()
 
 
@@ -397,62 +397,167 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
     the queue is permanently empty — a migration that can never find work.
     """
 
-    def test_two_rows_CAN_carry_different_stamps(self):
+    @staticmethod
+    def _amend(monkeypatch, version: str) -> None:
+        """A contract amendment, as a real sequence. `CONTRACT_VERSION` is bound by name in two
+        modules; rebinding one leaves the other reading the old value, which is how a previous round
+        managed to measure a mechanism that could not actually run."""
+        import app.agentruntime.contract as _contract
+        import app.agentruntime.manifest as _manifest
+        monkeypatch.setattr(_contract, "CONTRACT_VERSION", version)
+        monkeypatch.setattr(_manifest, "CONTRACT_VERSION", version)
+
+    def test_two_rows_CAN_carry_different_stamps(self, monkeypatch):
         """🔴 THE TEST THAT WOULD HAVE CAUGHT MY FIRST FIX, and did not exist.
 
-        My first attempt moved the constant read one call earlier — `admit()` took it from
+        The first attempt moved the constant read one call earlier — `admit()` took it from
         `check_contract()`, whose only success return is `CONTRACT_VERSION`. Same value, every row.
         A verifier printed `{'1.0.0'}` across all of them. **A field that cannot differ between two
-        rows records nothing about either**, and the test I wrote asserted a hardcoded `"1.0.0"`,
-        so it was satisfied by exactly the defect it was meant to reject.
+        rows records nothing about either**, and the test written then asserted a hardcoded
+        `"1.0.0"`, so it was satisfied by exactly the defect it was meant to reject.
 
-        This asserts the property that matters — the values CAN differ — and it needs no literal.
+        Now driven through a real amendment rather than by hand-mutating a fixture, because a
+        fixture edited in place proves only that a dict can hold two values.
         """
-        first = build([admit(_tool("book_list"))])
-        assert {r["admitted_against"] for r in first["declarations"]} == {CONTRACT_VERSION}
+        first = build([admit(_tool("book_list"))], previous=None)
+        assert {r["contract_version"] for r in first["declarations"]} == {CONTRACT_VERSION}
 
-        # A contract amendment. The already-admitted row must keep the stamp it was written with.
-        bumped = json.loads(json.dumps(first))
-        bumped["declarations"][0]["admitted_against"] = "0.9.0"
-        after = build([admit(_tool("book_list")), admit(_tool("book_get"))], previous=bumped)
-        stamps = {r["id"]: r["admitted_against"] for r in after["declarations"]}
-        assert stamps == {"book_list": "0.9.0", "book_get": CONTRACT_VERSION}, (
-            f"regeneration restamped a prior admission: {stamps}. §6.4's re-admission queue is the "
-            f"rows whose stamp is not current — restamping empties it at every regeneration, and "
-            f"the M1 drift gate FORCES regeneration, so the queue would be empty whenever CI is green"
+        self._amend(monkeypatch, "2.0.0")
+        after = build([admit(_tool("book_list")), admit(_tool("book_get"))], previous=first)
+        origins = {r["id"]: r["contract_version"] for r in after["declarations"]}
+        assert origins == {"book_list": "1.0.0", "book_get": "2.0.0"}, (
+            f"the ORIGIN generation was not preserved across the amendment: {origins}"
         )
 
-    def test_the_readmission_queue_is_derivable_from_the_file_alone(self):
-        """§6.4's mechanism, exercised rather than asserted. A breaking amendment must be able to
-        name which declarations need re-admitting — from the manifest, with no side channel."""
-        doc = build([admit(_tool("book_list")), admit(_tool("book_get"))])
-        doc["declarations"][0]["admitted_against"] = "0.9.0"          # admitted before the bump
-        queue = [r["id"] for r in doc["declarations"] if r["admitted_against"] != CONTRACT_VERSION]
-        assert queue == ["book_get"] or queue == ["book_list"], queue
-        assert len(queue) == 1, "the queue must name exactly the stale row, not all or none"
+    def test_the_queue_DRAINS_when_a_declaration_is_RE_ADMITTED(self, monkeypatch):
+        """🔴 THE SECOND FIX'S DEFECT, and the mirror of the first one.
 
-    def test_the_stamp_is_VALIDATED_not_merely_present(self):
-        """A field nothing checks is a field anything can say. A verifier fed this `null`,
-        `"banana"`, `"99.0.0"` and the OLD field name; all four were accepted."""
-        good = build([admit(_tool("book_list"))])
-        for bad in (None, "banana", "1.0", 1.0):
+        `previous` was allowed to shadow the live stamp for **any** id already in the file. A
+        verifier re-admitted a declaration under the amended contract — including one whose
+        `owning_service` materially changed, which *is* re-derived — and the stamp did not move. So
+        the queue named work already done, permanently. **Empty forever, then non-empty forever;
+        neither is a work list.**
+
+        A queue that cannot reach empty cannot answer *"is the migration finished?"*, which is the
+        only question §6.4 asks of it.
+        """
+        first = build([admit(_tool("book_list")), admit(_tool("book_get"))], previous=None)
+
+        self._amend(monkeypatch, "2.0.0")
+        # `book_list` is re-admitted under the new contract; `book_get` is not offered at all.
+        after = build([admit(_tool("book_list"))], previous=first)
+        row = after["declarations"][0]
+        assert row["admitted_against"] == "2.0.0", (
+            "a declaration that JUST PASSED the current contract still reports the old one — the "
+            "queue can never drain"
+        )
+        assert row["contract_version"] == "1.0.0", "its origin generation was overwritten"
+
+        queue = [r["id"] for r in after["declarations"]
+                 if r["admitted_against"] != after["contract_version"]]
+        assert queue == [], f"the queue did not drain after a real re-admission: {queue}"
+
+    def test_the_queue_names_exactly_the_rows_that_were_NOT_re_admitted(self, monkeypatch):
+        """§6.4's mechanism, derived from a document that genuinely holds two generations — not from
+        a fixture this test mutated three lines earlier.
+
+        🔴 The previous version of this test was **vacuous**: it hand-set one row's stamp, filtered
+        the dict it had just mutated, and asserted `queue == ["book_get"] or queue == ["book_list"]`
+        — a disjunction accepting either answer. A verifier removed the entire carry mechanism and
+        it stayed green.
+        """
+        first = build([admit(_tool("book_list")), admit(_tool("book_get"))], previous=None)
+        self._amend(monkeypatch, "2.0.0")
+        # Only `book_list` clears the amended contract; `book_get`'s row is carried by the caller.
+        after = build([admit(_tool("book_list"))], previous=first)
+        after["declarations"].append(
+            {**[r for r in first["declarations"] if r["id"] == "book_get"][0]}
+        )
+        queue = sorted(r["id"] for r in after["declarations"]
+                       if r["admitted_against"] != after["contract_version"])
+        assert queue == ["book_get"], (
+            f"the queue must name the un-re-admitted declaration and only it: {queue}"
+        )
+
+    def test_generate_CARRIES_THE_ORIGIN_ACROSS_A_REAL_WRITE(self, tmp_path, monkeypatch):
+        """🔴 THE BRANCH THAT MATTERS, AND IT HAD NO TEST AT ALL.
+
+        A verifier deleted `previous=` from `generate()` — **the only line that will ever write the
+        real manifest** — and the suite stayed **89/89 green**, because both `generate()` call sites
+        in it wrote to a fresh `tmp_path`, so that argument evaluated to `None` in every test that
+        existed. Red-ability had been proven at `build()`; the production branch was dead to the
+        suite. So this writes the SAME path twice, across an amendment, through the real writer.
+        """
+        target = tmp_path / "m.json"
+        generate([admit(_tool("book_list"))], path=target, bootstrap=True)
+        assert target.exists()
+
+        self._amend(monkeypatch, "2.0.0")
+        doc = generate([admit(_tool("book_list")), admit(_tool("book_get"))], path=target)
+
+        on_disk = json.loads(target.read_text("utf-8"))
+        assert on_disk == doc
+        origins = {r["id"]: r["contract_version"] for r in on_disk["declarations"]}
+        assert origins == {"book_list": "1.0.0", "book_get": "2.0.0"}, (
+            f"generate() lost the origin across a real regeneration: {origins}"
+        )
+        assert {r["admitted_against"] for r in on_disk["declarations"]} == {"2.0.0"}, (
+            "both rows were re-admitted under 2.0.0, so both must say so"
+        )
+
+    def test_a_MISSING_manifest_is_not_permission_to_restamp(self, tmp_path):
+        """🔴 THE FAIL-OPEN ERASURE. `previous` defaulted to `None` whenever the target did not
+        exist, so writing to a fresh path — or deleting the manifest, the ordinary reaction to a
+        drift gate going red — restamped every origin with the current constant and emptied the
+        queue. No test and no gate noticed. The caller must now say it means to bootstrap."""
+        with pytest.raises(UntrustedRow, match="bootstrap"):
+            generate([admit(_tool("book_list"))], path=tmp_path / "absent.json")
+        assert not (tmp_path / "absent.json").exists(), "it wrote the file anyway"
+
+    def test_the_WRITE_side_validates_previous_too(self):
+        """`previous` is caller-supplied. The exported `build()` emitted an integer and `"banana"`
+        as stamps and produced a document its own `load()` refuses — a writer trusting its argument,
+        which is the write end of the boundary `UntrustedRow` exists to describe."""
+        for bad in (7, "banana", None, "1.0"):
+            with pytest.raises(UntrustedRow, match="contract_version"):
+                build([admit(_tool("book_list"))],
+                      previous={"declarations": [{"id": "book_list", "contract_version": bad}]})
+
+    def test_BOTH_stamps_are_VALIDATED_not_merely_present(self):
+        """A field nothing checks is a field anything can say. A verifier fed `admitted_against`
+        `null`, `"banana"`, `"99.0.0"` and the OLD field name; all four were accepted.
+
+        **Three of those four are rejected now, not four.** `"99.0.0"` is a well-formed version that
+        never existed, and a shape check cannot tell it from a real one — the residual is stated
+        here rather than papered over, and its direction is the safe one: a bogus stamp lands the row
+        *in* the queue, not out of it.
+        """
+        good = build([admit(_tool("book_list"))], previous=None)
+        for field in ("contract_version", "admitted_against"):
+            for bad in (None, "banana", "1.0", 1.0, " 1.0.0", "1.0.0-beta"):
+                doc = json.loads(json.dumps(good))
+                doc["declarations"][0][field] = bad
+                with pytest.raises(UntrustedRow, match=field):
+                    validate_document(doc)
             doc = json.loads(json.dumps(good))
-            doc["declarations"][0]["admitted_against"] = bad
-            with pytest.raises(UntrustedRow, match="admitted_against"):
+            doc["declarations"][0].pop(field)
+            with pytest.raises(UntrustedRow, match=field):
                 validate_document(doc)
-        # ...and the removed name must not slip back in as a substitute.
-        doc = json.loads(json.dumps(good))
-        doc["declarations"][0].pop("admitted_against")
-        doc["declarations"][0]["contract_version"] = "1.0.0"
-        with pytest.raises(UntrustedRow, match="admitted_against"):
-            validate_document(doc)
 
-    def test_the_row_does_not_carry_a_write_time_constant_at_all(self):
-        """REJECTS the reintroduction. A field whose value is the module constant on every row
-        carries no information — it is the build's version wearing a per-row costume."""
-        row = build([admit(_tool("book_list"))])["declarations"][0]
-        assert "contract_version" not in row, (
-            "a per-row field bound to the current constant is P4's exact shape"
+    def test_the_row_carries_BOTH_fields_because_ONE_of_them_cannot_move(self):
+        """🔴 §6.4 REQUIRES TWO FIELDS AND THE FIRST FIX SHIPPED ONE — with a test that actively
+        *rejected* the second, so the spec and the code contradicted each other and the suite took
+        the code's side.
+
+        They answer different questions and only one moves. Collapsing them is why nothing could
+        drain: a single field cannot both record where a declaration came from and report whether it
+        has been re-checked since.
+        """
+        row = build([admit(_tool("book_list"))], previous=None)["declarations"][0]
+        assert row["contract_version"] == CONTRACT_VERSION
+        assert row["admitted_against"] == CONTRACT_VERSION, (
+            "on a first admission the two coincide — which is exactly why one build can never "
+            "distinguish them, and why the tests above drive an amendment"
         )
 
 

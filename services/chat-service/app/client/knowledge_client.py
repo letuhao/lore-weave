@@ -162,6 +162,37 @@ def _nfc(value):
     return unicodedata.normalize("NFC", value) if isinstance(value, str) else value
 
 
+#: Keys whose value is TEXT — read by the model, measured by the estimator, embedded for semantic
+#: search. Everything below one of these is normalised, at any depth.
+_TEXT_KEYS = frozenset({"description", "title", "summary"})
+
+
+def _nfc_text(obj, *, all_strings: bool = False):
+    """`_nfc`, but through a whole structure — because the door writes a STRUCTURE, not a string.
+
+    🔴 **THE FIRST VERSION OF U-1 NORMALISED ONE OF THE THREE FIELDS IT WRITES.** `_nfc` was applied
+    to the top-level `description` and nothing else, while `_tool_tokens` serialises the **entire**
+    tool definition — so the parameter schema and `_meta` reached the estimator raw. Measured by a
+    verifier on an overlay tool whose *schema* description arrived decomposed: **83 → 91 tokens**,
+    and against a competitor costing 87 under an 88-token budget the tool was **cut from the wire**.
+    Same tool, same words, no revision change. U-1's own mechanism, through the fields U-1 skipped.
+
+    **Only text, and only values.** Dict keys, tool names, `enum`, `const` and `pattern` are *wire
+    identifiers or machine grammar owned by a third-party MCP server* — normalising them would change
+    what we send back on a call, which trades a token defect for a broken tool. They are left exactly
+    as received, and the token consequence of that decision is closed at the other end instead:
+    `_tool_tokens` counts the composed form, so an identifier cannot inflate an estimate even though
+    its value is preserved verbatim.
+    """
+    if isinstance(obj, str):
+        return unicodedata.normalize("NFC", obj) if all_strings else obj
+    if isinstance(obj, dict):
+        return {k: _nfc_text(v, all_strings=all_strings or k in _TEXT_KEYS) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_nfc_text(v, all_strings=all_strings) for v in obj]
+    return obj
+
+
 _FASTMCP_ERR_PREFIX = re.compile(r"^Error executing tool [\w.-]+:\s*(?=\{)")
 
 
@@ -638,7 +669,10 @@ class KnowledgeClient:
                 # 🔴 U-1 — NFC AT THE DOOR. See `_nfc` below for why this is a correctness
                 # fix and not a tidiness one.
                 "description": _nfc(t.description or ""),
-                "parameters": _normalize_tool_parameters(t.inputSchema),
+                # U-1, the half the first version missed: the SCHEMA carries text too, and
+                # `_tool_tokens` serialises all of it. `_nfc_text` reaches every `description`/
+                # `title`/`summary` at any depth and leaves identifiers alone.
+                "parameters": _nfc_text(_normalize_tool_parameters(t.inputSchema)),
             }
             # MCP-fanout C-TOOL: preserve the per-tool `_meta` (tier / scope /
             # synonyms / undo_hint) so the consumer can drive tier-based
@@ -646,7 +680,10 @@ class KnowledgeClient:
             # provider — strip_tool_meta() removes it before the wire request.
             meta = getattr(t, "meta", None)
             if isinstance(meta, dict) and meta:
-                fn["_meta"] = dict(meta)
+                # U-1 — `_meta` is OUR channel (synonyms, undo_hint, tier), all of it prose the
+                # recall path matches against, so every string in it is normalised. Measured
+                # decomposed: 2.1× the tokens of the same tool.
+                fn["_meta"] = _nfc_text(dict(meta), all_strings=True)
             tools.append({"type": "function", "function": fn})
         # MCP-fanout H10: stash the gateway's catalog-level `_meta` (availability /
         # partial-catalog signal). The seam exists even when S-GATEWAY hasn't

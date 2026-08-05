@@ -260,6 +260,33 @@ SCOPE_CATALOGUE = "catalogue"
 surface_withheld: ContextVar[list | None] = ContextVar("lw_surface_withheld", default=None)
 
 
+def arm_turn_surface() -> list[dict]:
+    """Open the turn's narrowing sink. **Call this first in a turn entry point, before anything
+    that can narrow** — and nothing may arm a second one afterwards.
+
+    🔴 **SEVENTH RECURRENCE OF ARM-AFTER-USE, AND THE FIRST ONE THE RULE ITSELF DID NOT STOP.** The
+    sixth was fixed by moving a bare `surface_withheld.set([])` above the stage being repaired, and
+    the comment left beside it stated the rule in the imperative: *the sink is armed at the top of
+    the turn, not before the stage someone happens to be fixing*. Then U-2 added a narrowing
+    **earlier** than that arming — the catalogue fetch — and a verifier measured the result on a real
+    turn: `catalog: [] | _catalogue_outage: False`. The arm sat **382 lines below** the fetch that had
+    to register into it, in the same function, under the sentence forbidding exactly that.
+
+    **Why a named function and not a better comment.** The arm and the first use were two free-floating
+    statements in a 1,600-line generator, so their distance was unbounded and nothing could see it
+    grow. A named entry point gives the ordering an anchor a parse tree can find: the gate now
+    compares this call's line number against every narrowing call in the same function body, which is
+    a fact about the code rather than a substring in a window. What no gate can supply is the reason —
+    **a turn's sink must exist before the turn's first decision, because a narrowing that predates its
+    sink is not late, it is lost.**
+
+    Returns the sink so a caller that wants to read it need not go back through the ContextVar.
+    """
+    sink: list[dict] = []
+    surface_withheld.set(sink)
+    return sink
+
+
 def record_surface_withheld(tool: str, *, stage: str, reason: str) -> None:
     """Register a narrowing from anywhere in the request, with no plumbing.
 

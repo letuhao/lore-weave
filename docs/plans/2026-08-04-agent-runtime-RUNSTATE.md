@@ -968,7 +968,63 @@ that cannot answer its own question.
 **V-METRIC signs CP-0 or the run does not start.** Its specific job: prove each field answers a
 question that has no answer today, and prove the baseline is reproducible **from the snapshot alone**.
 
-### L1 · FRAMEWORK — `CP-1` (β) · the membrane, empty · 🟡 **BUILT AND VERIFIED, BLOCKED ON ONE PO DECISION**
+### L1 · FRAMEWORK — `CP-1` (β) · the membrane, empty · 🔴 **TWO FAIL VERDICTS, 2026-08-05 — CP-1 DOES NOT CLOSE**
+
+## 🔴 ROUND 6/7 — **both verifiers returned `FAIL` on the frozen artifact `1ab136b1c`**
+
+Two fresh verifiers, deployed in one message, on a frozen tree. Neither moved HEAD; each wrote only
+its own verdict file.
+
+| verdict | scope | outcome |
+|---|---|---|
+| [CP-1.8-1.9-v-code.md](../specs/2026-08-03-agent-runtime-unification/verification/CP-1.8-1.9-v-code.md) | items 1.8, 1.9 (U-1…U-4) | **FAIL** — 16 findings. U-3 and U-4 `PASS`; U-1, U-2 and 1.8a `FAIL` |
+| [CP-1-v-code-round7.md](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-v-code-round7.md) | item 1.4, P4 half | **FAIL** on four independent grounds |
+
+**The two that were inert in production, both measured end-to-end, both now fixed:**
+
+* **F1 · U-2 was defeated by statement order inside its own file.** The sink was armed at
+  `stream_service.py:5971`; the catalogue fetch and the outage read sat at `:5589`/`:5602` — **382
+  lines earlier, same function.** Measured on a real turn: `catalog: [] | _catalogue_outage: False`.
+  The row was never written and the "TOOL CATALOGUE UNAVAILABLE" block never rendered, so the
+  **founding defect — the model calling a withheld capability non-existent — was reproduced intact.**
+  Seventh recurrence of arm-after-use, sitting under the comment forbidding it. *Fixed: a named
+  `instrument.arm_turn_surface()` called as the first statement of both turn entry points, with the
+  two downstream re-arms deleted (a second arming discards what the first collected).*
+* **F2 · U-1 normalised one of the three fields the door writes.** `_tool_tokens` serialises the
+  whole definition; `_nfc` touched only `description`. Measured on an overlay tool with an NFD
+  *schema* description: **83 → 91 tokens**, and under an 88-token budget against an 87-token
+  competitor the declaration was **cut from the wire** — same words, no revision change. *Fixed at
+  both ends: `_nfc_text` composes text at any depth at the door, and `_tool_tokens` counts the
+  composed form so a wire identifier (left verbatim on purpose) cannot inflate an estimate either.*
+
+**Why every U-1/U-2 gate was green over both.** Four of them are `in src` / `src.count(...)`
+substring checks and the rest arm their own sink first. **They prove the code was typed, not that it
+runs** — and the realistic defect shape that walks past them is the one that shipped: *correct
+statements in the wrong order.* Replaced with an **AST line-order gate** (the arming's line number
+against every narrowing call in both entry points) and executed end-to-end tests. Three injections
+into the real module were each measured red. A fourth — an **alias** for a narrowing call — stayed
+**green**, and that blind spot is written into the gate rather than left to be discovered.
+
+**P4's four grounds.** The mechanism works — two rows genuinely carry two stamps across an amendment,
+driven through `generate()` against a real file, so round 6's finding is closed. It fails anyway:
+(1) deleting `previous=` from `generate()` leaves **89/89 green**, because both `generate()` call
+sites in the suite write to a fresh `tmp_path`, so the only line that will ever write the real
+manifest is unguarded; (2) **the queue cannot drain** — `manifest.py:130` lets the carried stamp
+shadow the live one unconditionally, so a declaration that *is* re-admitted keeps its old stamp
+forever and the queue permanently names work already done (the mirror of the defect being fixed:
+before, permanently empty; now, permanently non-empty); (3) regenerating to a fresh path — or after
+`rm` of the manifest, the ordinary reaction to a drift FAIL — silently restamps everything; (4) the
+test named after §6.4's queue is **vacuous**, green with the whole mechanism removed, asserting a
+disjunction that accepts either answer.
+
+**And ground 2 is a spec contradiction I created.** §6.4 requires **two** per-row fields
+(`contract_version` + `admitted_against`); the row carries one, and a test now *rejects* the second.
+The pair is what makes the queue drainable — one moves on re-admission, one records the origin. Spec
+is right, code is wrong.
+
+**The systemic finding, across both verdicts:** every failure is one of two shapes — *a wiring gate
+that reads source text instead of running the path*, and *a correction applied to one member of a set*
+(1 of 3 text fields; 1 of 3 catalogue paths; 1 of the twin's 2 fixes).
 
 **Six of seven items carry an independent PASS.** The seventh (1.4) is half done: M4 passes, and its
 **P4 half has no subject at this checkpoint** — no INSERT is reachable from the new runtime, so the
