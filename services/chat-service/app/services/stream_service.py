@@ -2949,7 +2949,7 @@ async def _stream_with_tools(
                         _load_payload, loaded = tool_load_result(
                             discovery_catalog or [], category=_norm_cat,
                             unavailable_providers=provider_availability(
-                                knowledge_client.get_catalog_meta()),
+                                knowledge_client.get_catalog_meta(user_id)),
                         )
                         names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                             discovery_catalog or [], loaded,
@@ -3029,7 +3029,7 @@ async def _stream_with_tools(
                         include_deprecated=include_deprecated,
                         exclude=set(ALWAYS_ON_CORE_NAMES),
                         unavailable_providers=provider_availability(
-                            knowledge_client.get_catalog_meta()),
+                            knowledge_client.get_catalog_meta(user_id)),
                     )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
@@ -3056,7 +3056,7 @@ async def _stream_with_tools(
                         discovery_catalog or [],
                         name=_load_name, names=_load_names, category=_load_category,
                         unavailable_providers=provider_availability(
-                            knowledge_client.get_catalog_meta()),
+                            knowledge_client.get_catalog_meta(user_id)),
                     )
                     from app.services.tool_surface import (
                         HOT_SEED_TOKEN_BUDGET,
@@ -3323,7 +3323,7 @@ async def _stream_with_tools(
                     payload, matched = await find_tools_result_async(
                         discovery_catalog or [], intent, limit,
                         exclude=set(ALWAYS_ON_CORE_NAMES),
-                        catalog_meta=knowledge_client.get_catalog_meta(),
+                        catalog_meta=knowledge_client.get_catalog_meta(user_id),
                         group=group,
                         session_id=session_id,
                         user_id=user_id,

@@ -280,7 +280,12 @@ class KnowledgeClient:
         # "no such tool" from "provider temporarily unavailable". None until a
         # successful fetch; {} when the gateway sends no signal yet (clean seam
         # for S-GATEWAY — see get_catalog_meta()).
-        self._catalog_meta: dict | None = None
+        #
+        # 🔴 U-4 — KEYED BY USER, like `_tool_defs_cache` a few lines of code away. It
+        # was a single bare value on a process-lifetime singleton, so the last user to
+        # fetch a catalogue supplied the availability signal every other user's turn
+        # then read. The same function writes both; only one of them was keyed.
+        self._catalog_meta: dict[str, dict] = {}
 
     async def aclose(self) -> None:
         await self._http.aclose()
@@ -619,7 +624,8 @@ class KnowledgeClient:
         # populated it yet (then it's {} and find_tools degrades to "no such tool"
         # everywhere — never a false outage claim).
         cat_meta = getattr(listed, "meta", None)
-        self._catalog_meta = dict(cat_meta) if isinstance(cat_meta, dict) else {}
+        # U-4 — stored under the SAME key as the tool definitions on the next line.
+        self._catalog_meta[cache_key] = dict(cat_meta) if isinstance(cat_meta, dict) else {}
         self._tool_defs_cache[cache_key] = (time.monotonic() + _TOOL_CATALOG_TTL_S, tools)
         return tools
 
@@ -684,9 +690,9 @@ class KnowledgeClient:
         self._admin_tool_definitions = tools
         return tools
 
-    def get_catalog_meta(self) -> dict:
+    def get_catalog_meta(self, user_id: str) -> dict:
         """MCP-fanout H10 — the gateway's catalog-level `_meta` from the last
-        successful list-tools, or ``{}`` if none was fetched / sent.
+        successful list-tools **for this user**, or ``{}`` if none was fetched.
 
         S-GATEWAY (C-GW) is expected to populate a per-provider availability map
         here, e.g. ``{"unavailable_providers": ["book"], "partial": true}``, so a
@@ -694,8 +700,20 @@ class KnowledgeClient:
         down" (→ the agent says "try again," never "I can't"). Until that lands
         this returns ``{}`` (a clean, non-lying default). TODO(S-GATEWAY): pin the
         exact key shape at COMPOSE A.
+
+        🔴 U-4 — ``user_id`` IS REQUIRED, AND IT IS NOT A STYLE CHOICE. This read a
+        bare instance attribute set by whichever turn last fetched a catalogue, on a
+        process-lifetime singleton, while the tool definitions written by the *same
+        function* were keyed by user. So one user's provider-outage signal was served
+        to another user's turn: the agent would tell person B that a provider was
+        down because person A's fetch had said so — or, worse, stay silent about an
+        outage B was actually experiencing because A's fetch had succeeded.
+
+        The parameter has **no default**. A default would let a caller silently read
+        the wrong user's availability while the call site still looked correct, which
+        is the failure this fix exists to remove rather than relocate.
         """
-        return self._catalog_meta or {}
+        return self._catalog_meta.get(user_id or "") or {}
 
     async def mcp_execute_tool(
         self,

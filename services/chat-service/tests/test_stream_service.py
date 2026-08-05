@@ -544,7 +544,9 @@ def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None
     client.build_context = AsyncMock(return_value=kctx)
     client.get_tool_definitions = AsyncMock(return_value=tool_defs or [])
     # MCP-fanout: discovery reads the catalog-meta (availability) synchronously.
-    client.get_catalog_meta = lambda: {}
+    # U-4 — the real signature takes the user; a zero-arg stub would let a call site
+    # drop the argument and still pass here.
+    client.get_catalog_meta = lambda user_id: {}
     return client
 
 

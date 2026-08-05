@@ -1454,3 +1454,60 @@ def test_error_envelope_empty_has_fallback_message():
     from app.client.knowledge_client import _error_envelope
 
     assert _error_envelope("")["error"] == "mcp tool error"
+
+
+# ── U-4 · the catalogue availability signal must not cross a user boundary ──────────────────────
+
+
+class TestCatalogMetaIsPerUser:
+    """REJECTS a measured cross-user leak, not a hypothetical one.
+
+    `_catalog_meta` was a single bare value on a process-lifetime singleton, written by the same
+    function that writes `_tool_defs_cache` — **and only the cache was keyed by user.** So the last
+    user to fetch a catalogue supplied the provider-availability signal that every other user's turn
+    then read.
+
+    The consequence is not abstract. `get_catalog_meta` exists so `find_tools` can tell *"no such
+    tool"* from *"that provider is temporarily down"*. Leaked, it makes the agent tell person B a
+    provider is down because person A's fetch said so — or stay silent about an outage B is actually
+    having, because A's fetch succeeded. **A wrong answer delivered confidently, which is the failure
+    class this whole run is named for.**
+    """
+
+    def _client(self):
+        return KnowledgeClient(
+            base_url="http://knowledge-service:8092",
+            internal_token="unit-test-token",
+            timeout_s=0.5,
+            retries=1,
+        )
+
+    def test_one_users_outage_signal_does_not_reach_another(self):
+        c = self._client()
+        c._catalog_meta["user-a"] = {"unavailable_providers": ["book"], "partial": True}
+        assert c.get_catalog_meta("user-a") == {"unavailable_providers": ["book"], "partial": True}
+        assert c.get_catalog_meta("user-b") == {}, (
+            "user B read user A's provider-availability signal"
+        )
+
+    def test_an_unknown_user_gets_the_non_lying_default(self):
+        """`{}` means 'no signal', which `find_tools` degrades to 'no such tool' — never a false
+        outage claim. It must not inherit someone else's signal to fill the gap."""
+        c = self._client()
+        c._catalog_meta["user-a"] = {"partial": True}
+        assert c.get_catalog_meta("user-c") == {}
+
+    def test_the_user_argument_has_no_default(self):
+        """REJECTS the fix that relocates the bug. A defaulted parameter lets a call site read the
+        wrong user's availability while still looking correct at the call site."""
+        import inspect
+        p = inspect.signature(KnowledgeClient.get_catalog_meta).parameters["user_id"]
+        assert p.default is inspect.Parameter.empty
+
+    def test_every_call_site_passes_a_user(self):
+        """The wiring gate. A correct signature with a call site that cannot supply the argument is
+        the shape this repository has shipped before — a mechanism with no caller."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "app" / "services" / "stream_service.py").read_text("utf-8")
+        assert "get_catalog_meta()" not in src, "a call site still reads the process-wide signal"
+        assert src.count("get_catalog_meta(user_id)") >= 4
