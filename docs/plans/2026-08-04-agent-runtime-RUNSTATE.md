@@ -1223,6 +1223,33 @@ CP-0's drain path along with them, since that is where the P0 lived.
 If round 9 returns clean, CP-1 closes on V-CODE evidence with the V-LIVE obligation already
 transferred to CP-2 (PO 2026-08-05), and CP-0's closure is re-confirmed rather than re-opened.
 
+---
+
+## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
+
+The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
+subject.** The run proceeds without stopping for scope questions; it stops only for verdicts.
+
+| step | what happens | verifiers | closes when |
+|---|---|---|---|
+| **R9** | verify **the delta only** — U-1's admin door, U-2, 1.8a, the P0 crash, and CP-0's drain path | `V-CODE` ×2, fresh, one message, frozen artifact | clean ⇒ **CP-1 closes**, CP-0 re-confirmed |
+| **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
+| **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
+| **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |
+
+**The three axes hold at every step and none may be substituted for another.** `V-CODE` cannot run
+the system; `V-LIVE` cannot read the builder's notes first; `V-METRIC` judges *whether the number
+could look good while the thing is broken* and never whether the feature is good. **A `PASS` with no
+stated falsifier is `CANNOT DETERMINE` and does not close anything.**
+
+**Two standing rules this run has already paid for, restated because a one-pass run is exactly when
+they get skipped:**
+
+* **Never close on the builder's own evidence.** Round 8 found the worst defect of the effort inside
+  a gap where round 7's fixes had been green and unverified.
+* **A scope question is a PO question.** If an item turns out to need a later checkpoint's code, it
+  moves — it is never re-worded to fit where it sits.
+
 ### Four claims I wrote that round 8 disproved
 
 *"One injection stayed green — an alias"* (**wrong by three**) · *"a fourth entry point cannot inherit
@@ -1465,6 +1492,7 @@ declarations, not silently emit a tool-free pass.
 | **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | ⬜ |
 | **2.9** | **`prompt_hash` — chat-service-local, ~10 lines, and that is the whole item.** ⬅️ rewritten 2026-08-05; the original bundled four things and red team killed three. It closes a **currently undetectable** failure: a prompt can change today and nothing notices. 🔴 **NOT included, each for a measured reason:** `code_revision` — `GIT_SHA` becomes an **OCI image label**, no Dockerfile consumes it, `os.environ.get("GIT_SHA")` is `None` in **every** scenario; `seed` — it is **already forwarded** at `adapters.go:678`, the three typed hops above drop it, production runs `temperature=0.0` (greedy, so a seed consumes no randomness) and Anthropic has no seed parameter at all; `block_hashes` — **cannot be computed correctly here**, the cache breakpoint is owned by provider-registry *after* a schema translation, so a chat-service hash can be green while the cached bytes changed | ⬜ |
 | **2.8** | **`runtime_variant='agentruntime'` stamped at a structural chokepoint covering EVERY terminal path** — not at the happy path. `legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship bias in the new arm's own failure rate**: an unlabelled new-runtime row loses its numerator too, and label-omission correlates with crash and cancel | ⬜ |
+| **2.10** | **⬅️ INHERITED FROM CP-1, PO 2026-08-06.** A pipeline ranks by a **`relevance` its own scoring stage produced** (§0.14.1b), and **the budget arrives as a parameter** rather than as `os.environ` read at import (§0.14.1). CP-1 could check neither: no producer exists, and the boundary module can only supply a budget to a pipeline that runs. Today every pipeline naming `relevance` is rejected — the correct fail-closed direction, and **not** evidence the rule works | ⬜ |
 | **2.6** | **P2 — a call's `source` is assigned STRUCTURALLY, never inferred.** ⬅️ **inherited from CP-0.3, 2026-08-04.** The new runtime dispatches through **one** path, so `source` is a property of *where the code is*, not of what a name looks up to. **Also add `error_class` as a structured enum** — V-METRIC ruled baseline class 3 unscoreable *because* it is a regex over freeform prose from five producers, and *"only a structured enum overturns this, never a better regex"* | ⬜ |
 
 ### L3 · PLAN — `CP-3` (γ) · **the architecture's central claim**
@@ -1505,6 +1533,15 @@ rather than a positive control. With an empty manifest its intersection is empty
 list holds — a verifier substituted 315 fictional names and got an identical pass — so today it only
 proves a planted leak **would** be caught. **The first admitted row gives it a subject**, and the
 same assertion then measures something: that no legacy tool, skill or workflow rode in beside it.
+
+**⬅️ INHERITED FROM CP-1, PO decision 2026-08-06 — four clauses, wording unchanged:**
+
+| # | item | why it could not be checked at CP-1 |
+|---|---|---|
+| **4.a** | **P4 · `admitted_against` must be able to differ from the document's contract version**, so §6.4's re-admission queue can be non-empty. **CP-4 does not close until the queue is driven non-empty and then back to empty across a real breaking amendment** | the stamp can differ only when the manifest holds a row **this build did not admit**. Measured at CP-1: 0 non-empty queues in 500 randomised builds |
+| **4.b** | **§6.4's *"without leaving the runtime"*** — a declaration failing a breaking amendment stays served while it is re-admitted. **Requires a grandfathered row to be distinguishable from a hand-typed one**, which needs the contract as versioned **data** rather than as code | today such a row is simply absent from the next manifest, and `build()` now raises rather than dropping it silently |
+| **4.c** | **manifest rows carry `lane` / `tier` / `cost`** (§0.14.1a rules 1 & 5) | measured: `OrderBy` and `TakeWhileBudget` reject **every** real row today, so the ranking has no subject |
+| **4.d** | **`_is_read_tool` replaced by declared `lane` data** (C-1 forbids the name heuristic) | depends on 4.c |
 
 Throughput is a first-class metric here: **≈13 admissions/week** keeps pace with the model cadence.
 Report it per checkpoint. *(The first draft's metric — "admits fewer than it retires" — cannot fire,
