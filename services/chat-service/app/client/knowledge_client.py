@@ -711,6 +711,15 @@ class KnowledgeClient:
         the turn degrades tool-free, same contract as the user path.
         """
         if not admin_token:
+            # 🔴 THE SIBLING NEITHER FIX REACHED. Round 8 fixed the transport failure, round 9 fixed
+            # `mcp not installed`, and this — the FIRST branch in the method — kept returning `[]`
+            # in silence through both. It is reachable in production, not theoretical: `admin_context`
+            # is a body field while `admin_token` is an optional header, so an admin turn can be
+            # admin-shaped with no token at all, and `stream_service` gates on `admin_context`
+            # alone. Driven with a control: no token ⇒ told=False, `withheld_tools=None`; with a
+            # token ⇒ told=True. **The catalogue is just as absent either way.**
+            self._register_catalogue_outage(
+                self._ADMIN_CATALOG_KEY, "no admin token presented")
             return []
         if self._admin_tool_definitions is not None:
             return self._admin_tool_definitions

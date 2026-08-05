@@ -234,7 +234,13 @@ async def voice_stream_response(
     # voice turn fetches the same federated catalogue (`:452`) and narrows it the same way, so
     # everything it withholds — including a whole-catalogue outage — registered nowhere.
     from app.services import instrument as _instrument
-    _instrument.arm_turn_surface()
+    _voice_sink = _instrument.arm_turn_surface()
+    # 🔴 ARMING A SINK NOBODY READS IS NOT INSTRUMENTATION. Round 8 armed this turn and stopped
+    # there: the outage row landed in the sink, and then nothing drained it and the INSERT below
+    # carried no `withheld_tools` column at all. Measured: row in the sink ✅, model told ❌,
+    # drained ❌, persisted ❌. The recorder exists here so the column has a writer.
+    _voice_advertised = _instrument.AdvertisedToolsRecorder()
+    _voice_advertised.bind_sink(_voice_sink)
 
     normalizer = TextNormalizer()
     sentence_buffer = SentenceBuffer(clause_mode=False)  # Full sentences for natural TTS prosody
@@ -402,6 +408,19 @@ async def voice_stream_response(
     )
     messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
 
+    # 🔴 U-2 · THE CATALOGUE FETCH MOVES ABOVE THE PROMPT, for the third time in this codebase and
+    # for the third identical reason. It sat below `_stream_with_tools`'s call site, i.e. AFTER the
+    # system message was assembled, so a voice turn could not be told its tools were unreachable
+    # even once the record existed. The fresh turn and the admin turn each needed this same move.
+    # A tool set fetch failure degrades to NO tools (voice still answers) and never breaks the turn.
+    _voice_tools: list[dict] = []
+    try:
+        _voice_tools = await knowledge_client.get_tool_definitions(user_id=user_id)
+    except Exception:
+        logger.warning("voice tool-surface fetch failed; proceeding tool-free", exc_info=True)
+        _voice_tools = []
+    _voice_catalogue_outage = _instrument.catalogue_outage_registered()
+
     # Compose the system prompt: memory → anchor → session prompt (K5-I3: each part
     # stripped so trailing newlines don't stack into triple-newline runs). T3.4 — the
     # shared kernel renderer (plain path, no cache, no skills/steering — voice is a
@@ -424,6 +443,16 @@ async def voice_stream_response(
         max(len(messages) - 1, 0),
         {"role": "system", "content": VOICE_SYSTEM_PROMPT},
     )
+
+    # U-2's second half on the voice surface. It had NEITHER half: the row landed in a sink nobody
+    # drained, and the model was never told — so a spoken turn explained a missing capability with
+    # nothing to explain it from, which is the founding defect out loud.
+    if _voice_catalogue_outage:
+        from app.services.stream_service import CATALOGUE_UNAVAILABLE_NOTICE
+        messages.insert(
+            max(len(messages) - 1, 0),
+            {"role": "system", "content": CATALOGUE_UNAVAILABLE_NOTICE},
+        )
 
     # Tail anchor (recency) — closest to the latest user turn (EC-3/EC-7).
     if wm_tail:
@@ -456,11 +485,8 @@ async def voice_stream_response(
         # but never fire a destructive write mid-speech (no client confirm loop exists for voice).
         # A tool set fetch failure degrades to NO tools (voice still answers), never breaks the turn.
         from app.services.stream_service import _stream_with_tools
-        try:
-            _voice_tools = await knowledge_client.get_tool_definitions(user_id=user_id)
-        except Exception:
-            logger.warning("voice tool-surface fetch failed; proceeding tool-free", exc_info=True)
-            _voice_tools = []
+        # Fetched at the top of the turn now, so the outage can reach the prompt. Re-fetching here
+        # would double the call and leave this the only reader.
         chunk_stream = _stream_with_tools(
             model_source=model_source,
             model_ref=model_ref,
@@ -611,9 +637,10 @@ async def voice_stream_response(
                 INSERT INTO chat_messages
                   (message_id, session_id, owner_user_id, role, content, content_parts,
                    sequence_num, model_ref, branch_id, local_date,
-                   finish_reason, outcome, runtime_variant, advertised_tools, tool_calls)
+                   finish_reason, outcome, runtime_variant, advertised_tools, tool_calls,
+                   withheld_tools)
                 VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8, $12, $9, $10, $11::jsonb,
-                        $13::jsonb)
+                        $13::jsonb, $14::jsonb)
                 """,
                 msg_id, session_id, user_id, final_text, json.dumps(parts), seq, model_ref,
                 _local_date,  # DBT-11 — same turn as the user msg above (resolved before acquire)
@@ -648,6 +675,14 @@ async def voice_stream_response(
                 # finish_reason follows outcome rather than asserting 'stop'.
                 "awaiting_input" if _voice_suspended else (_voice_finish_reason or "stop"),
                 json.dumps(_voice_tool_calls) if _voice_tool_calls else None,
+                # CP-0.2 on the voice path. `advertised_tools` stays NULL above — that retraction
+                # stands, because voice has no advertise chokepoint that records what it offered —
+                # but WITHHELD is knowable here and was being thrown away: `withheld_json()` drains
+                # the turn's sink, so a catalogue outage on a spoken turn now reaches the column
+                # instead of dying with the request. An honest gap in one field is not a licence to
+                # drop the other.
+                (json.dumps(_voice_advertised.withheld_json())
+                 if _voice_advertised.withheld_json() else None),
             )
             _mc_row = await conn.fetchrow(
                 "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), "

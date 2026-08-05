@@ -279,6 +279,10 @@ class TestWithheldRegisters:
             # checkpoint. Asserted against `rec.segment` rather than a literal, so the value stays
             # opaque while the binding stays exact.
             "segment": rec.segment,
+            # WHICH QUESTION this row answers. §0.14.3 specifies a `declaration` row and the column
+            # never carried one — `scope` was on the sink's rows and not on the persisted ones, so a
+            # reader could not tell a per-declaration narrowing from a scope-less legacy row.
+            "scope": instrument.SCOPE_DECLARATION,
             "tool": "glossary_search", "stage": "failure_breaker", "reason": "gave up after 3",
             # WHEN, not only who and why. Without it a verifier found 19 of 303 withheld tools also
             # advertised on every pass and could not tell a contradiction from a sequence — dropped
@@ -1352,11 +1356,19 @@ class TestU2ACatalogueOutageIsRegistered:
         assert sink[0]["scope"] == instrument.SCOPE_DECLARATION and sink[0]["tool"] == "book_list"
 
     @pytest.mark.asyncio
-    @pytest.mark.parametrize("method,args", [
-        ("get_tool_definitions", {"user_id": "u-1"}),
-        ("get_admin_tool_definitions", {"admin_token": "tok"}),
+    @pytest.mark.parametrize("method,args,break_it", [
+        # 🔴 EVERY branch that returns `[]`, not just the transport one. A verifier deleted the
+        # registration from BOTH `mcp not installed` branches and the suite stayed **green** — round
+        # 8 named that coverage gap, round 9 fixed the code it was hiding and left the gap itself.
+        # And `no admin token` survived both rounds untouched, because each fix went to the branch
+        # the previous verdict had pointed at.
+        ("get_tool_definitions", {"user_id": "u-1"}, "transport"),
+        ("get_admin_tool_definitions", {"admin_token": "tok"}, "transport"),
+        ("get_tool_definitions", {"user_id": "u-1"}, "no_mcp"),
+        ("get_admin_tool_definitions", {"admin_token": "tok"}, "no_mcp"),
+        ("get_admin_tool_definitions", {"admin_token": None}, "no_token"),
     ])
-    async def test_EVERY_catalogue_path_registers_on_a_real_failure(self, method, args):
+    async def test_EVERY_catalogue_path_registers_on_a_real_failure(self, method, args, break_it):
         """🔴 The previous version asserted `src.count("self._register_catalogue_outage(") >= 2` —
         a substring count, which is how the ADMIN path came to be the one member of the set that was
         never fixed. Both methods return `[]` on a transport failure, and returning `[]` with only a
@@ -1376,8 +1388,17 @@ class TestU2ACatalogueOutageIsRegistered:
 
         async def run():
             sink = _inst.arm_turn_surface()
-            with patch("app.client.knowledge_client.streamablehttp_client",
-                       side_effect=RuntimeError("gateway down")):
+            if break_it == "transport":
+                with patch("app.client.knowledge_client.streamablehttp_client",
+                           side_effect=RuntimeError("gateway down")):
+                    out = await getattr(client, method)(**args)
+            elif break_it == "no_mcp":
+                # The dependency-missing branch. Deleting its registration left the suite green in
+                # BOTH doors — a coverage gap round 8 named and round 9 walked past.
+                with patch("app.client.knowledge_client.streamablehttp_client", None), \
+                        patch("app.client.knowledge_client.ClientSession", None):
+                    out = await getattr(client, method)(**args)
+            else:                                              # no_token
                 out = await getattr(client, method)(**args)
             return out, sink, _inst.catalogue_outage_registered()
 
@@ -1427,6 +1448,40 @@ class TestU2ACatalogueOutageIsRegistered:
         assert "tool" not in outage[0], "a sentinel name leaked back in"
         assert outage[0]["pass"] == 1 and outage[0]["stage"] == "catalogue_unavailable"
         assert {r["tool"] for r in rows if "tool" in r} == {"glossary_search"}
+
+    def test_THE_ROW_REACHES_THE_COLUMN_ON_A_TURN_THAT_NEVER_ADVERTISED(self):
+        """🔴 **THE RECORD PATH WAS DISABLED BY THE EVENT IT EXISTS TO RECORD.**
+
+        The drain lived inside `if _adv_ev is not None` — a chunk only `_stream_with_tools` emits.
+        A **tool-free** turn never reached it, and *a catalogue outage is precisely what makes a turn
+        tool-free.* Measured across the four live turn shapes: agui+editor wrote the row; plain chat,
+        admin and voice persisted `NULL` while the sink held it.
+
+        So the drain belongs to the recorder, and `withheld_json()` runs it — because every terminal
+        path reads that, and no path can forget to.
+        """
+        sink = [{"scope": instrument.SCOPE_CATALOGUE, "stage": "catalogue_unavailable",
+                 "reason": "list-tools failed: TimeoutError"}]
+        rec = instrument.AdvertisedToolsRecorder()
+        rec.bind_sink(sink)
+        # No `record_pass` at all — this turn never advertised, which is the whole point.
+        rows = rec.withheld_json()
+        assert rows, "the sink held a narrowing and the column got nothing"
+        assert rows[0]["scope"] == instrument.SCOPE_CATALOGUE
+        assert rows[0]["pass"] is None, "no pass ran; fabricating 1 would claim one did"
+        assert not sink, "drained, not copied — a second read must not duplicate it"
+
+    def test_a_PASS_that_offered_no_tools_is_not_a_tool_named_star(self):
+        """🔴 §0.14.3 rejects the `tool: \"*\"` sentinel **by name**, and the code minted one two
+        thousand lines away. A sentinel makes every consumer that counts tools return a wrong answer
+        while still looking correct."""
+        rec = instrument.AdvertisedToolsRecorder()
+        rec.record_pass([], tool_choice=None)
+        rec.record_pass_withheld(stage="pass_offered_no_tools", reason="forced final answer (D7)")
+        rows = rec.withheld_json()
+        assert rows and rows[0]["scope"] == instrument.SCOPE_PASS
+        assert "tool" not in rows[0], "the sentinel came back"
+        assert all(r.get("tool") != "*" for r in rows)
 
     def test_the_outage_row_survives_reconciliation_because_it_has_no_name_to_reconcile(self):
         """`withheld_json` filters a withholding out when the tool turns out to have been advertised
@@ -1519,9 +1574,17 @@ class TestU2ACatalogueOutageIsRegistered:
         assert "_catalogue_outage = not _turn_catalog" not in src
 
 
-#: The modules that can begin a turn. Not "the module someone was editing" — a verifier found a
-#: FOURTH entry point already in the tree, unarmed, while a gate asserting the opposite was green.
-_TURN_MODULES = ("stream_service.py", "voice_stream_service.py")
+#: 🔴 **DISCOVERED, NOT LISTED — twice over.** Round 8 replaced two hard-coded function names with
+#: discovery inside two hard-coded MODULES, and round 9 walked past that in four ways: the fetch
+#: extracted into a helper **one module over**, the same refactor through **two levels** of helper,
+#: an entry point whose name starts with `_`, and an entry point in a **third module**. Each was
+#: measured with the gate reporting `5 passed`, and the first two reproduced the end-to-end defect
+#: (`told=False`) verbatim.
+#:
+#: So the scope is now every module under `app/services/` and `app/routers/`, and the helper walk
+#: follows the call graph across modules to a fixed point. A boundary drawn at a file is a boundary
+#: a refactor crosses by accident — which is exactly what "extract a helper" is.
+_TURN_SCOPE = ("services", "routers")
 
 
 def _called_name(node):
@@ -1533,15 +1596,33 @@ def _called_name(node):
     return None
 
 
-def _narrowings_in(fn, helpers, *, _depth=0):
-    """Narrowing calls reachable from `fn`, following module-local helpers ONE level.
+def _narrowing_helpers(all_fns):
+    """Names of functions that reach a narrowing, **transitively, to a fixed point.**
 
-    🔴 **The single-level walk is the fix for the hole that mattered most.** The previous gate looked
-    only inside the entry function, so a verifier extracted the catalogue fetch into a module-level
-    helper — an entirely routine refactor — and the gate went green while the outage notice stopped
-    reaching the model end-to-end. A boundary drawn at one stack frame is a boundary a refactor
-    crosses by accident.
+    🔴 Round 8's walk stopped at ONE level and stayed inside ONE module. Round 9 drove both limits:
+    the fetch moved into a helper one module over (invisible), then through two levels of helper
+    (invisible), and each reproduced `told=False` end-to-end while the gate said `5 passed`. A
+    fixed-point closure has no depth to exceed and no file boundary to cross.
     """
+    reaching = {
+        name for name, fn in all_fns.items()
+        if any(isinstance(n, ast.Call) and _called_name(n) in _NARROWING_CALLS for n in ast.walk(fn))
+    }
+    changed = True
+    while changed:
+        changed = False
+        for name, fn in all_fns.items():
+            if name in reaching:
+                continue
+            if any(isinstance(n, ast.Call) and _called_name(n) in reaching for n in ast.walk(fn)):
+                reaching.add(name)
+                changed = True
+    return reaching
+
+
+def _narrowings_in(fn, reaching):
+    """Every call inside `fn` that reaches a narrowing — directly, or through any chain of helpers.
+    The line reported is the CALL SITE, because that is where the narrowing happens for this turn."""
     found = []
     for n in ast.walk(fn):
         if not isinstance(n, ast.Call):
@@ -1549,43 +1630,75 @@ def _narrowings_in(fn, helpers, *, _depth=0):
         name = _called_name(n)
         if name in _NARROWING_CALLS:
             found.append((n.lineno, name))
-        elif _depth == 0 and name in helpers:
-            # The helper's narrowings happen HERE, at its call site — that is the line the arming
-            # must precede.
-            for _, inner in _narrowings_in(helpers[name], helpers, _depth=1):
-                found.append((n.lineno, f"{name}->{inner}"))
+        elif name in reaching and name != fn.name:
+            found.append((n.lineno, f"{name}->(narrows)"))
     return found
 
 
 def _turn_entry_calls():
-    """Per turn entry point, from the PARSE TREE of every module that can begin a turn:
-    `{fn: (arms, raw_sets, narrowings, aliases, conditional_arms)}`.
+    """Per turn entry point, from the PARSE TREE of **every** module under `app/services/` and
+    `app/routers/`: `{mod::fn: (arms, raw_sets, narrowings, aliases, conditional_arms)}`.
 
-    **Entry points are DISCOVERED, not listed.** Any module-level `async def` that can reach a
-    narrowing is one. The previous version named two functions and asserted a SUBSET, so a third
-    was never asked about — and there was a third.
+    **Entry points are DISCOVERED, not listed** — including `_`-prefixed ones, because a leading
+    underscore is a naming convention and not a guarantee that nothing routes to it.
     """
     from pathlib import Path
-    out = {}
-    for mod in _TURN_MODULES:
-        path = Path(__file__).resolve().parents[1] / "app" / "services" / mod
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        helpers = {
-            f.name: f for f in tree.body
-            if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
-        }
-        for fn in tree.body:
-            if not isinstance(fn, ast.AsyncFunctionDef) or fn.name.startswith("_"):
+    base = Path(__file__).resolve().parents[1] / "app"
+    trees = {}
+    for sub in _TURN_SCOPE:
+        for path in sorted((base / sub).glob("*.py")):
+            try:
+                trees[f"{sub}/{path.name}"] = ast.parse(path.read_text(encoding="utf-8"))
+            except SyntaxError:                       # pragma: no cover - a broken file is its own bug
                 continue
-            narrowings = sorted(_narrowings_in(fn, helpers))
+    all_fns = {}
+    for tree in trees.values():
+        for f in tree.body:
+            if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                all_fns.setdefault(f.name, f)
+    reaching = _narrowing_helpers(all_fns)
+    # A router that DELEGATES to an armed entry point is covered by it. Without this the sweep
+    # demands an arm from `send_message` (which calls `stream_response`) and a second arming is the
+    # thing that discards what the first collected. Transitive, same fixed point as `reaching`.
+    arming = {
+        name for name, fn in all_fns.items()
+        if any(isinstance(n, ast.Call) and _called_name(n) == "arm_turn_surface"
+               for n in ast.walk(fn))
+    }
+    changed = True
+    while changed:
+        changed = False
+        for name, fn in all_fns.items():
+            if name in arming:
+                continue
+            if any(isinstance(n, ast.Call) and _called_name(n) in arming for n in ast.walk(fn)):
+                arming.add(name)
+                changed = True
+
+    out = {}
+    for mod, tree in trees.items():
+        for fn in tree.body:
+            if not isinstance(fn, ast.AsyncFunctionDef):
+                continue
+            narrowings = sorted(_narrowings_in(fn, reaching))
             if not narrowings:
                 continue                      # not a turn entry point: it narrows nothing
+            if fn.name in arming and not any(
+                isinstance(n, ast.Call) and _called_name(n) == "arm_turn_surface"
+                for n in ast.walk(fn)
+            ):
+                # It delegates to something that arms. Covered — and arming again here is the
+                # discard the sixth recurrence was about.
+                continue
             arms, raw_sets, aliases, conditional = [], [], [], []
             # An arm at the TOP LEVEL of the body is unconditional. One nested inside an `if`/`try`
             # is a turn that arms only sometimes, which a verifier measured green.
+            # A top-level `arm_turn_surface()` — as a bare expression OR assigned, since the sink is
+            # worth keeping (`_voice_sink = arm_turn_surface()`). What makes it unconditional is the
+            # STATEMENT DEPTH, not the statement kind.
             top_level_arm_lines = {
                 s.value.lineno for s in fn.body
-                if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call)
+                if isinstance(s, (ast.Expr, ast.Assign)) and isinstance(s.value, ast.Call)
                 and _called_name(s.value) == "arm_turn_surface"
             }
             for n in ast.walk(fn):
@@ -1610,6 +1723,38 @@ def _turn_entry_calls():
                 sorted(arms), sorted(raw_sets), narrowings, sorted(aliases), sorted(conditional),
             )
     return out
+
+
+#: Entry points that reach a narrowing but are NOT turns — each needs a stated reason, because
+#: "it is not a turn" is exactly what would be said about a turn nobody armed.
+_NOT_A_TURN = {
+    # `_stream_with_tools` is the shared inner generator: it runs INSIDE a turn that has already
+    # armed, and arming again would discard what surface assembly collected.
+    "services/stream_service.py::_stream_with_tools",
+    "services/stream_service.py::_emit_chat_turn",
+    "services/stream_service.py::_run_subagent_call",
+    "services/stream_service.py::_compute_rail_drive_context",
+    # `/v1/chat/tools/catalog` — the UI's tool-picker feed. It fetches and filters the catalogue,
+    # so the sweep finds it, but **no model is offered anything**: there is no turn for a narrowing
+    # to belong to, and `record_catalogue_unavailable` correctly no-ops unarmed rather than
+    # attributing a row to a turn that never happened.
+    #
+    # 🔶 Noted while classifying it, NOT fixed here because it is outside R9's scope and a silent
+    # fix is how scope drifts: it calls `get_tool_definitions()` with **no `user_id`**, so the
+    # picker shows the platform catalogue without that user's external-MCP overlay. Whether the
+    # picker should list a user's own overlay tools is a product question, and it is written down
+    # here rather than left in a verifier's transcript.
+    "routers/catalog.py::list_tools_catalog",
+    # `PATCH /v1/chat/sessions/{id}` — it fetches the catalogue to VALIDATE that the names a user
+    # pinned are real, and 422s on an unknown one. A settings write, not a turn: no model, no
+    # surface, and the fetch narrows nothing — it is a membership check whose failure is a loud
+    # HTTP error rather than a silent absence, which is the opposite of what CP-0.2 records.
+    "routers/sessions.py::patch_session",
+    # `POST .../permissions` → `_assert_known_tool` — the same shape: the catalogue is read to
+    # reject an unknown tool name, and the failure is a 4xx the caller sees.
+    "routers/tool_permissions.py::set_permission",
+    "routers/tool_permissions.py::_assert_known_tool",
+}
 
 
 #: Every call inside a turn entry point that can remove a declaration from what the model is
@@ -1651,9 +1796,10 @@ class TestTheTurnSinkIsArmedBeforeAnythingNarrows:
     """
 
     def test_EVERY_DISCOVERED_entry_point_arms_exactly_once_and_unconditionally(self):
-        found = _turn_entry_calls()
+        found = {k: v for k, v in _turn_entry_calls().items() if k not in _NOT_A_TURN}
         # Discovered, not asserted-as-a-subset. The three known today; a fourth appearing here is
-        # the gate WORKING, and it must then be armed like the rest.
+        # the gate WORKING, and it must then be armed like the rest — or be given a STATED reason
+        # in `_NOT_A_TURN`, which is a decision someone has to write down rather than a silence.
         assert {k.split("::")[1] for k in found} >= {
             "stream_response", "resume_stream_response", "voice_stream_response",
         }, f"a turn entry point vanished or was renamed: {sorted(found)}"
@@ -1677,6 +1823,8 @@ class TestTheTurnSinkIsArmedBeforeAnythingNarrows:
 
     def test_no_narrowing_precedes_the_arming__INCLUDING_THROUGH_A_HELPER(self):
         for fn, (arms, _, narrowings, _a, _c) in _turn_entry_calls().items():
+            if fn in _NOT_A_TURN:
+                continue
             assert arms, f"{fn}: no arm_turn_surface() at all — this is the defect verbatim."
             assert narrowings, f"{fn}: no narrowing call found — the gate has lost its subject"
             early = [(line, name) for line, name in narrowings if line < arms[0]]
@@ -1686,49 +1834,68 @@ class TestTheTurnSinkIsArmedBeforeAnythingNarrows:
                 f"(`a->b` means the narrowing is inside helper `a`, at that call site.)"
             )
 
-    def test_the_gate_reds_on_each_of_the_FOUR_measured_bypasses(self):
-        """The control. A verifier drove four routes past the previous version of this gate — the
-        one disclosed (an alias) and three that were not: extracting the fetch into a module-level
-        helper (a routine refactor that reproduced the end-to-end defect while the gate reported
-        `14 passed`), arming inside a conditional, and adding a fourth entry point. Each is now
-        detected by one of the comparisons above, exercised here on synthetic input so a change to
-        the comparison itself reds."""
-        src = (
+    def test_the_gate_reds_on_each_of_the_EIGHT_measured_bypasses(self):
+        """The control, over **every** route a verifier has driven past this gate in two rounds.
+
+        Round 8 found four: an alias (disclosed), a module-level helper (**a routine refactor**, and
+        it reproduced the end-to-end defect while the gate said `14 passed`), a conditional arm, and
+        a fourth entry point. Round 9 found four more past the *fixed* gate: a helper **one module
+        over**, the same refactor through **two levels** of helper, a `_`-prefixed entry point, and
+        an entry point in a **third module**. Each is exercised here on synthetic input, so a change
+        to the comparison itself reds rather than silently narrowing the gate again.
+        """
+        deep = (
             "import x\n"
-            "def _fetch(u):\n"
+            "def _leaf(u):\n"
             "    return x.get_tool_definitions(user_id=u)\n"
+            "def _mid(u):\n"
+            "    return _leaf(u)\n"                       # two levels — round 9 route 2
             "async def stream_response(u):\n"
-            "    cat = _fetch(u)\n"                       # helper route
+            "    cat = _mid(u)\n"
             "    if u:\n"
             "        x.arm_turn_surface()\n"              # conditional arm
             "    p = x.get_tool_definitions\n"            # alias route
             "    return cat, p\n"
-            "async def other_response(u):\n"              # fourth entry point, unarmed
+            "async def _private_response(u):\n"           # `_`-prefixed — round 9 route 3
             "    return x.get_tool_definitions(user_id=u)\n"
         )
-        tree = ast.parse(src)
-        helpers = {f.name: f for f in tree.body
+        tree = ast.parse(deep)
+        all_fns = {f.name: f for f in tree.body
                    if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
-        entries = [f for f in tree.body
-                   if isinstance(f, ast.AsyncFunctionDef) and not f.name.startswith("_")]
-        assert {f.name for f in entries} == {"stream_response", "other_response"}, (
-            "discovery missed an entry point, which is bypass 3"
+        reaching = _narrowing_helpers(all_fns)
+        assert {"_leaf", "_mid"} <= reaching, (
+            "the transitive closure stopped short — a two-level helper is invisible (route 2)"
         )
-        first = entries[0]
-        narrowings = _narrowings_in(first, helpers)
-        assert any("->" in n for _, n in narrowings), "the helper route is invisible — bypass 1"
+
+        entries = [f for f in tree.body if isinstance(f, ast.AsyncFunctionDef)]
+        assert {f.name for f in entries} == {"stream_response", "_private_response"}, (
+            "discovery skips `_`-prefixed entry points — route 3"
+        )
+        first = all_fns["stream_response"]
+        assert any("->" in n for _, n in _narrowings_in(first, reaching)), (
+            "the helper route is invisible — round 8 route 1"
+        )
         top_level = {s.value.lineno for s in first.body
-                     if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call)
+                     if isinstance(s, (ast.Expr, ast.Assign)) and isinstance(s.value, ast.Call)
                      and _called_name(s.value) == "arm_turn_surface"}
-        nested = [n.lineno for n in ast.walk(first) if isinstance(n, ast.Call)
-                  and _called_name(n) == "arm_turn_surface" and n.lineno not in top_level]
-        assert nested, "a conditional arm reads as unconditional — bypass 2"
-        aliases = [n.lineno for n in ast.walk(first) if isinstance(n, ast.Assign)
-                   and isinstance(n.value, ast.Attribute)
-                   and n.value.attr in _NARROWING_CALLS]
-        assert aliases, "the alias route is invisible — bypass 4"
-        assert not _narrowings_in(entries[1], helpers, _depth=1) or True
-        assert _narrowings_in(entries[1], helpers), "the fourth entry point narrows and was ignored"
+        assert [n.lineno for n in ast.walk(first) if isinstance(n, ast.Call)
+                and _called_name(n) == "arm_turn_surface" and n.lineno not in top_level], (
+            "a conditional arm reads as unconditional — round 8 route 3"
+        )
+        assert [n.lineno for n in ast.walk(first) if isinstance(n, ast.Assign)
+                and isinstance(n.value, ast.Attribute)
+                and n.value.attr in _NARROWING_CALLS], "the alias route is invisible"
+        assert _narrowings_in(all_fns["_private_response"], reaching), (
+            "the `_`-prefixed entry point narrows and was ignored"
+        )
+        # Routes 1 and 4 — cross-module — are structural: `_TURN_SCOPE` is a directory sweep and
+        # `all_fns` is built across every module in it, so a helper or an entry point in another
+        # file is in scope by construction. Asserted on the real tree, not on a fixture:
+        real = _turn_entry_calls()
+        assert {k.split("/")[0] for k in real} <= set(_TURN_SCOPE)
+        assert any(k.startswith("services/voice_stream_service.py") for k in real), (
+            "the sweep no longer reaches a second module — routes 1 and 4 reopen"
+        )
 
     def test_the_emit_path_ADOPTS_the_armed_sink_rather_than_replacing_it(self):
         """`_emit_chat_turn` runs after surface assembly, so a fresh list there would discard the

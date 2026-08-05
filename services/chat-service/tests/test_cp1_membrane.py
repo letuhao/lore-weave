@@ -443,15 +443,28 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         exactly when the claim above stops being true and this test should stop being here.
         """
         doc = build([admit(_tool("book_list")), admit(_tool("book_get"))], previous=None)
+        assert len(doc["declarations"]) == 2, "no rows, so every claim below is vacuous"
         queue = [r["id"] for r in doc["declarations"]
                  if r["admitted_against"] != doc["contract_version"]]
         assert queue == [], (
             "the queue is non-empty — the grandfathering mechanism has landed, so §6.4.1's FAIL "
             "record and this test are both stale and must be replaced by a drain test"
         )
+
         self._amend(monkeypatch, "2.0.0")
         after = build([admit(_tool("book_list")), admit(_tool("book_get"))], previous=doc)
-        assert {r["admitted_against"] for r in after["declarations"]} == {after["contract_version"]}, (
+        # 🔴 **THIS TEST WAS GREEN UNDER AN AMEND THAT DID NOTHING.** A verifier injected `_amend`
+        # as a no-op and it passed in 0.11s: assertion 2 below is trivially true when nothing was
+        # amended, so it degenerated into assertion 1 restated and the only half involving an
+        # amendment could not tell a real one from none. **A test that asserts a FAILURE can pass
+        # for the wrong reason, and this is the test CP-4 will be graded against.**
+        assert after["contract_version"] == "2.0.0", (
+            "the amendment did not take — `CONTRACT_VERSION` is bound by name in TWO modules and "
+            "rebinding one leaves the other reading the old value, which has produced a bogus "
+            "measurement in this run before. Without this line the assertion below is vacuous."
+        )
+        assert len(after["declarations"]) == 2
+        assert {r["admitted_against"] for r in after["declarations"]} == {"2.0.0"}, (
             "admitted_against varied, which this checkpoint cannot make happen"
         )
 
@@ -532,21 +545,41 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         with pytest.raises(UntrustedRow, match="admitted_against"):
             validate_document(doc)
 
-    def test_a_PRE_TWO_FIELD_manifest_is_still_readable_and_repairable(self):
-        """🔴 THE MIGRATION I BROKE WHILE FIXING THE FIELD. Adding `contract_version` as required
-        made every manifest written earlier in this run **unreadable AND unwritable at once**:
-        `load()` rejected it, and `generate()` could not repair it because `bootstrap=` is ignored
-        when the file exists — leaving `rm` as the only route, which is precisely the erasure that
-        flag exists to prevent.
+    def test_an_OLD_SHAPE_row_is_REFUSED_rather_than_repaired_in_place(self):
+        """🔴 A BACKFILL STOOD HERE AND IT WAS A LAUNDERING PATH FOR A MIGRATION WITH NO SUBJECT.
 
-        For a row that predates the second field, `admitted_against` IS the only stamp there is, so
-        adopting it as the origin invents nothing."""
+        It adopted `admitted_against` as the origin whenever `contract_version` was missing. True
+        for a genuine old row — and a verifier measured the cost: a **hand-edited** row carrying
+        `admitted_against: "99.0.0"` and no origin was rejected before the backfill and accepted
+        after, and the carry then made `"99.0.0"` that declaration's permanent origin. A bogus
+        *comparand* lands a row in the queue, which is safe; a bogus *origin* is never re-checked.
+
+        The migration it was written for does not exist: **the committed manifest is
+        `declarations: []`**, and the old shapes live only in git history. It also mutated its
+        argument, so the drift gate compared a document it had silently repaired.
+        """
         good = build([admit(_tool("book_list"))], previous=None)
         old = json.loads(json.dumps(good))
         old["declarations"][0].pop("contract_version")
-        out = validate_document(old)
-        assert out["declarations"][0]["contract_version"] == \
-            out["declarations"][0]["admitted_against"]
+        with pytest.raises(UntrustedRow, match="contract_version"):
+            validate_document(old)
+
+        # ...and it must not have edited the caller's document on the way to refusing it.
+        assert "contract_version" not in old["declarations"][0], (
+            "validate_document mutated its argument; the M1 drift gate then compares a document "
+            "this function silently repaired"
+        )
+
+    def test_validate_document_does_not_MUTATE_what_it_validates(self):
+        """A validator that edits its input makes every caller's later read a different question
+        from the one it asked. The drift gate is the caller that matters: it compares the loaded
+        document against `build([])`, so a silent repair is a comparison against a document nobody
+        wrote."""
+        good = build([admit(_tool("book_list"))], previous=None)
+        snapshot = json.loads(json.dumps(good))
+        out = validate_document(good)
+        assert good == snapshot, "the document was edited in place"
+        assert out == snapshot
 
     def test_the_DOCUMENT_stamps_are_validated_because_one_of_them_is_the_comparand(self):
         """Both were written from constants and read from nowhere: `"banana"` and a missing
@@ -1256,6 +1289,85 @@ class TestStageKindsAreDataNotClosures:
         # `bool` is an `int` subclass, and a boolean budget is a real typo shape.
         with pytest.raises(ValueError, match="budget is a bool"):
             TakeWhileBudget("s", "r", budget=True)
+
+    def test_THE_OPERATOR_ITSELF_IS_AN_OPERAND(self):
+        """🔴 `Filter.op` selects `keep()`'s branch **and** selects which validation branch runs.
+        Bounding `value` while leaving `op` free bounds the argument and not the operator — the
+        mirror of §0.14.1's original mistake, made inside the fix for it. Measured: a `str` subclass
+        with a custom `__eq__` spells `'regex'` and satisfies `in self.OPS`."""
+        class SneakyOp(str):
+            def __eq__(self, other):
+                return True
+
+            def __hash__(self):
+                return hash("eq")
+
+        with pytest.raises(ValueError, match="op is a SneakyOp"):
+            Filter("s", "r", field="id", op=SneakyOp("regex"), value="t0")
+
+        class OpObj:
+            def __eq__(self, other):
+                return True
+
+            def __hash__(self):
+                return hash("in")
+
+        with pytest.raises(ValueError, match="op is an? OpObj"):
+            Filter("s", "r", field="id", op=OpObj(), value=("t0",))
+
+    def test_THE_ORDERING_DIRECTION_IS_BOUNDED_TOO__it_chooses_who_survives(self):
+        """`field` was bounded and `direction` was not, in the same loop. Measured: a direction
+        spelled `'NONSENSE'` was accepted, the sort inverted, and end-to-end it decided which 2 of 4
+        declarations reached the model — and the `ordered_by` record explaining the cut was then
+        neither JSON- nor `canon`-serialisable."""
+        class SneakyDir(str):
+            def __eq__(self, other):
+                return True
+
+            def __hash__(self):
+                return hash("asc")
+
+        with pytest.raises(ValueError, match="direction is a SneakyDir"):
+            OrderBy(keys=(("lane", SneakyDir("NONSENSE")),))
+        with pytest.raises(ValueError, match="unknown direction"):
+            OrderBy(keys=(("lane", "NONSENSE"),))
+
+    def test_a_forged_ROW_VALUE_cannot_defeat_the_budget(self):
+        """The stage side was exact and the ROW side was `isinstance`, so the bound stopped at the
+        pipeline and the data walked in. Measured: a `SneakyCost(int)` whose `__radd__` returns the
+        running total unchanged never spends budget, so nothing is ever cut."""
+        class SneakyCost(int):
+            def __radd__(self, other):
+                return other
+
+        doc = {"declarations": [
+            {"id": f"t{i}", "kind": "tool", "cost": SneakyCost(9), "lane": "read"} for i in range(4)
+        ]}
+        with pytest.raises(ValueError, match="plain integer"):
+            SurfaceAssembler(doc).assemble(pass_number=1, pipeline=[
+                OrderBy(keys=(("lane", "asc"),)),
+                TakeWhileBudget("token_budget", "over budget", budget=6),
+            ])
+
+    def test_the_identity_check_reaches_EVERY_site_not_just_the_one_reviewed(self):
+        """🔴 `type(s) in _KIND_SET` was rewritten to `is` after a metaclass forgery; the two
+        `type(x) not in self.SCALARS` sites were left as they were, and the same forgery passed
+        both. One helper now, so a fourth site cannot disagree."""
+        class Forge(type):
+            def __eq__(cls, other):
+                return True
+
+            def __hash__(cls):
+                return hash(str)
+
+        class NotAStr(metaclass=Forge):
+            pass
+
+        assert type(NotAStr()) in (str,), "the forgery does not work, so this proves nothing"
+        with pytest.raises(ValueError, match="filter value"):
+            Filter("s", "r", field="id", op="eq", value=NotAStr())
+        with pytest.raises(ValueError, match="tuple of scalars"):
+            Filter("s", "r", field="id", op="in", value=(NotAStr(),))
 
     def test_TOP_K_ZERO_IS_REFUSED__the_default_narrows_to_nothing(self):
         """The same failure `_require_names` was written for, in the kind sitting right next to it —

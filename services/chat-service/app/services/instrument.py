@@ -256,6 +256,11 @@ def ensure_tool_call_instrumented(chunk: dict) -> dict:
 # question it is answering rather than forcing an absent name into a field that must hold one.
 SCOPE_DECLARATION = "declaration"
 SCOPE_CATALOGUE = "catalogue"
+#: A statement about ONE PASS rather than about a declaration — "this pass offered no tools at all".
+#: It existed already, spelled `tool: "*"`, which §0.14.3 rejects **by name** because a sentinel makes
+#: every consumer that counts tools return a wrong answer while still looking correct. The document
+#: forbade the sentinel and the code minted one two thousand lines away.
+SCOPE_PASS = "pass"
 
 surface_withheld: ContextVar[list | None] = ContextVar("lw_surface_withheld", default=None)
 
@@ -362,12 +367,16 @@ class AdvertisedToolsRecorder:
     must survive a later pass that happens not to consider the tool.
     """
 
-    __slots__ = ("_passes", "_withheld", "_seen", "_segment")
+    __slots__ = ("_passes", "_withheld", "_seen", "_segment", "_sink")
 
     def __init__(self) -> None:
         self._passes: list[dict] = []
         self._withheld: list[dict] = []
         self._seen: set[tuple[str, str]] = set()
+        #: The turn's narrowing sink, adopted via `bind_sink` so `withheld_json()` can drain it on
+        #: **every** terminal path — including the tool-free ones, which is where the row that
+        #: matters most is produced.
+        self._sink: list | None = None
         # F-48 — the SEGMENT this recorder owns, and it exists because one SQL expression had to
         # satisfy two requirements that pull in opposite directions:
         #
@@ -460,6 +469,11 @@ class AdvertisedToolsRecorder:
             # mid-turn checkpoint multiplied every withholding it had recorded so far (measured at
             # ~215 `domain_not_selected` entries per extra copy).
             "segment": self._segment,
+            # 🔴 `scope` was on the SINK's rows and not on the COLUMN's. §0.14.3 specifies a
+            # `declaration` row and the column never carried one, so a reader could not tell a
+            # per-declaration narrowing from a scope-less legacy row — the distinction the field was
+            # added to make. Half a record shape is the same defect as half a consumer.
+            "scope": SCOPE_DECLARATION,
             "tool": tool, "stage": stage, "reason": reason,
             # The pass this narrowing APPLIES TO — the one just recorded, not the next one.
             #
@@ -507,18 +521,63 @@ class AdvertisedToolsRecorder:
         first without the second is not a partial fix, it is a new failure whose severity is decided
         by whichever branch happens to reach it.
         """
-        key = (None, stage, len(self._passes))
+        self._record_scoped(SCOPE_CATALOGUE, stage=stage, reason=reason, count=count)
+
+    def record_pass_withheld(self, *, stage: str, reason: str) -> None:
+        """A pass that offered NO tools at all — a statement about the pass, not about a declaration.
+
+        🔴 **This shipped as `tool: "*"`, the sentinel §0.14.3 rejects by name**, minted two thousand
+        lines from the document that forbids it. The reasoning there is exact and applies here
+        unchanged: a sentinel makes every consumer that counts tools return a wrong answer **while
+        still looking correct**. So the row says which question it answers and omits `tool`, the same
+        way the catalogue row does.
+        """
+        self._record_scoped(SCOPE_PASS, stage=stage, reason=reason)
+
+    def _record_scoped(self, scope: str, *, stage: str, reason: str, count: int | None = None) -> None:
+        key = (scope, stage, len(self._passes))
         if key in self._seen:
             return
         self._seen.add(key)
         entry: dict = {
             "segment": self._segment,
-            "scope": SCOPE_CATALOGUE, "stage": stage, "reason": reason,
+            "scope": scope, "stage": stage, "reason": reason,
             "pass": len(self._passes) or None,
         }
         if count is not None:
             entry["count"] = count
         self._withheld.append(entry)
+
+    def absorb(self, sink: list | None) -> None:
+        """Move everything the request-scoped sink holds into this recorder, **by scope**.
+
+        🔴 **THE DISPATCH LIVED AT A CALL SITE, AND THAT CALL SITE WAS UNREACHABLE ON THE TURNS THAT
+        MATTERED.** It sat inside `if _adv_ev is not None` — a chunk only `_stream_with_tools` emits
+        — so a **tool-free** turn never drained. And a catalogue outage is *precisely what makes a
+        turn tool-free*: **the record path was disabled by the event it exists to record.** Measured
+        across the four live turn shapes: one wrote the row, three persisted `NULL`.
+
+        So the loop moves here, where the recorder can run it from every path that reads the column,
+        rather than staying somewhere a caller has to remember. A record shape and its consumer are
+        one change — and *which branch decides whether the consumer runs at all* is part of the
+        consumer.
+        """
+        if not sink:
+            return
+        while sink:
+            row = sink.pop(0)
+            scope = row.get("scope")
+            if scope == SCOPE_CATALOGUE:
+                self.record_catalogue_withheld(
+                    stage=row["stage"], reason=row["reason"], count=row.get("count"))
+            elif scope == SCOPE_PASS:
+                self.record_pass_withheld(stage=row["stage"], reason=row["reason"])
+            else:
+                self.record_withheld(row["tool"], stage=row["stage"], reason=row["reason"])
+
+    def bind_sink(self, sink: list | None) -> None:
+        """Adopt the turn's sink so `withheld_json()` can drain it **however the turn ends**."""
+        self._sink = sink
 
     def record_withheld_many(self, tools: Iterable[str], *, stage: str, reason: str) -> None:
         for t in tools:
@@ -570,6 +629,10 @@ class AdvertisedToolsRecorder:
         A future need for per-stage narrowing rates requires a second field, not a reinterpretation
         of this one.
         """
+        # Drain FIRST, unconditionally. A turn that never advertised still narrowed — that is what a
+        # catalogue outage IS — and reading the column without draining is how three of the four
+        # live turn shapes came to persist `NULL` while the sink held the row.
+        self.absorb(self._sink)
         if not self._withheld:
             return None
         if not self._passes:
@@ -586,7 +649,7 @@ class AdvertisedToolsRecorder:
             # reconcilable even in principle: reconciliation asks *"was this declaration advertised
             # after all?"*, and an outage is a statement about the whole catalogue, so there is no
             # name to look up. It is always kept.
-            if w.get("scope") == SCOPE_CATALOGUE
+            if w.get("scope") in (SCOPE_CATALOGUE, SCOPE_PASS)
             or w["tool"] not in by_pass.get(w.get("pass"), set())
         ]
         return out or None

@@ -416,6 +416,7 @@ is the n.**
    |---|---|---|
    | `declaration` | `{scope, tool, stage, reason, pass}` — today's record, with the field made explicit | a named declaration was narrowed |
    | `catalogue` | `{scope, stage, reason, pass}` + **`count` only when it is known** — **no `tool`** | the source of declarations was unavailable, so the absent set is not enumerable |
+   | `pass` | `{scope, stage, reason, pass}` — **no `tool`** | **one model pass offered nothing at all.** This existed already, spelled `tool: "*"` — the sentinel the paragraph above rejects **by name**, minted two thousand lines from the sentence forbidding it. Found by a verifier reading the column, not the document |
 
    **`count` and not the names, because the names are not knowable.** When the catalogue fetch fails
    there is no list to enumerate — claiming one would be inventing the very thing the outage
@@ -1421,7 +1422,7 @@ mis-located and is corrected below.
 | # | field | shape | why |
 |---|---|---|---|
 | 1 | **`advertised_tools`** | **`jsonb` — an array per pass**, each `{pass, tool_choice, names[]}` | today **no column anywhere answers this**, which is why arm-E deletion is invisible in production. **A scalar `text[]` would record only the last pass and lose the mid-turn deletion the field exists to catch** |
-| 2 | **`withheld_tools`** | `[{tool, stage, reason}]` | **a withholding that does not register is a defect, not a policy.** Its denominator is `manifest_revision`, or no rate compares across deploys |
+| 2 | **`withheld_tools`** | `[{scope, …}]` per §0.14.3 — 🔴 **this said `[{tool, stage, reason}]`, which admits NEITHER row the code writes**: it omits `pass` (added when a verifier found 19 of 303 withheld tools simultaneously advertised on every pass) and it requires `tool`, which the catalogue and pass rows deliberately do not carry. A column shape stated once and never re-read against the writer | **a withholding that does not register is a defect, not a policy.** Its denominator is `manifest_revision`, or no rate compares across deploys |
 | 3 | **`source ∈ {tool, breaker, meta}`** | on every result | **58–66% of what the model sees as an error is our own prose.** Until this exists that fraction of the signal is uninterpretable |
 | 4 | **outcome** | mandatory on every terminal path | `finish_reason` covers **9.4%** today. Mandatory means *no terminal path may omit it*, including cancel (§0.5's fifth scope) and crash |
 

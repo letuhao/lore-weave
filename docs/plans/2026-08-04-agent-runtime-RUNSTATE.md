@@ -1225,6 +1225,44 @@ transferred to CP-2 (PO 2026-08-05), and CP-0's closure is re-confirmed rather t
 
 ---
 
+## 🔴 R9 — **both verifiers FAIL again**, and the headline is the sharpest defect of the effort
+
+Prompt committed first ([CP-1-ROUND9-V-CODE-PROMPT.md](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-ROUND9-V-CODE-PROMPT.md)),
+two V-CODE deployed in one message on frozen `86ae72592`. Verdicts:
+[round9-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round9-v-code-a.md) ·
+[round9-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round9-v-code-b.md).
+
+### 🔴 THE RECORD PATH WAS DISABLED BY THE EVENT IT EXISTS TO RECORD
+
+The sink drain sat inside `if _adv_ev is not None` — a chunk **only `_stream_with_tools` emits**. A
+**tool-free** turn never reached it, and *a catalogue outage is precisely what makes a turn
+tool-free.* Measured across the four live turn shapes: agui+editor wrote the row; **plain chat,
+admin and voice persisted `NULL`** while the sink held it. Every earlier round had been arguing
+about whether the row was *written correctly*; nobody had asked whether it **arrived**.
+
+*Fixed: the dispatch moves into `AdvertisedToolsRecorder.absorb`, the recorder adopts the turn's
+sink via `bind_sink`, and `withheld_json()` drains before it computes — so every terminal path picks
+it up and none can forget to.*
+
+### The rest, and what each cost
+
+| # | finding | response |
+|---|---|---|
+| **A2** | **voice armed a sink with no reader** — row landed ✅, model told ❌, drained ❌, and the INSERT carried **no `withheld_tools` column at all**. Neither half of §0.14.3 | a recorder, the column, and the catalogue fetch moved **above** the prompt — the third time that same move was needed, for the third identical reason |
+| **A3** | **four MORE routes past the arm-order gate**, all with it reporting `5 passed`: a helper **one module over**, the same refactor through **two levels**, a `_`-prefixed entry point, a **third module**. Two reproduced `told=False` end-to-end | the sweep now covers `app/services` **and** `app/routers`, closes helpers **transitively to a fixed point**, and every exception needs a **written reason**. It immediately found five more sites nobody had looked at |
+| **A4** | **`if not admin_token: return []`** — the FIRST branch of the admin door, silent through both previous fixes. Reachable: `admin_context` is a body field, `admin_token` an optional header | registers, with a driven control |
+| **A5/A6** | `scope` was on the sink's rows and **never on the column's**; and the **`tool: "*"` sentinel §0.14.3 rejects by name** was minted 2,000 lines from the sentence forbidding it | `SCOPE_DECLARATION` reaches the column; the sentinel becomes `SCOPE_PASS`; §0.14.3 gains the row it was missing |
+| **A7** | **both doors' `mcp not installed` registrations were deletable with the suite green** — round 8 named that gap, round 9 fixed the code it was hiding and **left the gap** | all **five** branches driven: transport ×2, no-mcp ×2, no-token |
+| **A8** | `ARCHITECTURE:1424` declared `withheld_tools` as `[{tool, stage, reason}]` — a shape that admits **neither** row the code writes | corrected, with why |
+| **B1/B2** | `Filter.op` and `OrderBy` **direction** unbounded. `op` selects `keep()`'s branch *and* which validation branch runs; a direction spelled `'NONSENSE'` inverted the sort and **chose which 2 of 4 declarations reached the model** | both bounded |
+| **B3/B5** | **the identity fix reached 1 of 3 sites** — `type(x) not in SCALARS` twice, and the ROW side was still `isinstance`, so a `SneakyCost(int)` with `__radd__` **never spent budget** | one `_is_exactly` helper; the row side is exact too |
+| **B6/B7/B8** | **my migration backfill was a laundering path for a migration with no subject** — the committed manifest is `declarations: []`, and it let a hand-typed `"99.0.0"` become a **permanent origin**. It also mutated its argument, so the drift gate compared a document it had silently repaired. *(And I had said there were two old shapes; `git show` gives three.)* | removed; `load()` is strict |
+| **🔴 B9** | **the P4 defect-assertion test passed under an amend that did nothing.** Its second assertion is trivially true when nothing was amended, so it degenerated into the first restated — **and this is the test CP-4 will be graded against** | asserts the amendment took, **proven red by injecting the no-op** |
+
+**2195 tests pass; gate green.** ⚠️ Builder's evidence — **R9's fixes are not verified.**
+
+---
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -1232,7 +1270,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 
 | step | what happens | verifiers | closes when |
 |---|---|---|---|
-| **R9** | verify **the delta only** — U-1's admin door, U-2, 1.8a, the P0 crash, and CP-0's drain path | `V-CODE` ×2, fresh, one message, frozen artifact | clean ⇒ **CP-1 closes**, CP-0 re-confirmed |
+| ~~R9~~ | ran 2026-08-06 → **FAIL ×2**, 13 findings, all fixed. See the block above | `V-CODE` ×2 on `86ae72592` | — |
+| **R10** | verify **R9's delta**: the drain reaching the column on all four turn shapes · voice's recorder and column · the widened arm-order gate · the five catalogue branches · the operand bounds and the single identity helper · the removed backfill · the P4 test's honesty | `V-CODE` ×2, fresh, one message, frozen artifact | clean ⇒ **CP-1 closes**, CP-0 re-confirmed |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
 | **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |

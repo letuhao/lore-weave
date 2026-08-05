@@ -366,15 +366,21 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
         # this one — a bogus stamp lands a row *in* the queue rather than out of it. An earlier
         # version of this comment implied all four of the verifier's inputs were now rejected. Three
         # are.
-        # A manifest written before §6.4's second field existed carries only `admitted_against`,
-        # and for such a row that IS its origin — there is no other stamp and no information is
-        # invented by saying so. Without this, every manifest this run produced before today became
-        # unreadable AND unwritable at once: `load()` rejected it, and `generate()` could not repair
-        # it because `bootstrap=` is ignored when the file exists, leaving `rm` as the only route —
-        # the erasure that flag exists to prevent.
-        if "contract_version" not in r and isinstance(r.get("admitted_against"), str):
-            r = {**r, "contract_version": r["admitted_against"]}
-            rows[i] = r
+        # 🔴 **A BACKFILL STOOD HERE AND IT WAS A LAUNDERING PATH FOR A MIGRATION THAT DOES NOT
+        # EXIST.** It adopted `admitted_against` as the origin whenever `contract_version` was
+        # absent, reasoning that for a pre-two-field row the one stamp IS the origin. True for a
+        # genuine old row — and a verifier showed the cost: a **hand-edited** row carrying
+        # `admitted_against: "99.0.0"` and no `contract_version` was rejected before and accepted
+        # after, and the carry then made `"99.0.0"` its **permanent** origin across a real
+        # `generate()`. The `"99.0.0"` residual is defensible for a queue *comparand*, where a bogus
+        # value lands the row IN the queue; an origin is not a comparand and nothing re-checks it.
+        #
+        # And the migration it was written for has **no subject**: the committed manifest is
+        # `declarations: []`. The old shapes — three of them, not the two I claimed — exist only in
+        # git history. **Nothing deployed is bricked, so nothing needs laundering to un-brick it.**
+        # It also mutated its argument, so the M1 drift gate compared a document it had silently
+        # repaired. Both gone: `load()` is strict, and a real migration, if one is ever needed, is
+        # an explicit operation somebody runs and reviews.
         for field in ("contract_version", "admitted_against"):
             stamp = r.get(field)
             if not isinstance(stamp, str) or not _VERSION.match(stamp):

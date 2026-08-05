@@ -2345,8 +2345,13 @@ async def _stream_with_tools(
                 yield {"advertised": {
                     "names": [],
                     "tool_choice": None,
+                    # 🔴 THIS MINTED `tool: "*"` — the sentinel §0.14.3 rejects BY NAME, two
+                    # thousand lines from the document forbidding it. A pass offering no tools is a
+                    # statement about the PASS, so it carries a scope and no tool, exactly like a
+                    # catalogue outage. A sentinel makes every consumer that counts tools return a
+                    # wrong answer while still looking correct.
                     "withheld": [{
-                        "tool": "*", "stage": "pass_offered_no_tools",
+                        "scope": instrument.SCOPE_PASS, "stage": "pass_offered_no_tools",
                         "reason": ("forced final answer (D7)" if last_iter
                                    else "provider rejected tools (D8) or ask-mode filtered all"),
                     }],
@@ -6571,6 +6576,10 @@ async def _emit_chat_turn(
     if _surface_sink is None:
         _surface_sink = []
         instrument.surface_withheld.set(_surface_sink)
+    # Bind it, so `withheld_json()` drains on EVERY terminal path rather than only on the one that
+    # happens to advertise. Three of the four live turn shapes persisted `NULL` while the sink held
+    # the row, because the drain lived behind an event a tool-free turn never emits.
+    _advertised.bind_sink(_surface_sink)
     # W1 — advertised tool-schema tokens, reported once by the tool loop's
     # first pass ({"schema_tokens": ...} chunk); folded into the contextBudget
     # frame + the persisted context_breakdown at finish.
@@ -6962,25 +6971,17 @@ async def _emit_chat_turn(
                     _adv_ev.get("names") or [],
                     tool_choice=_adv_ev.get("tool_choice"),
                 )
-                # Drain the request-scoped sink: surface-assembly narrowings ran BEFORE the first
-                # pass, so they belong to it. Drained rather than copied, so each registers once.
-                while _surface_sink:
-                    _sw = _surface_sink.pop(0)
-                    # 🔴 DISPATCH ON SCOPE. This read `_sw["tool"]` unconditionally, and a
-                    # catalogue-outage row deliberately has no `tool` — so arming the sink at the
-                    # top of the turn (the U-2 fix) delivered the first such row here and the turn
-                    # died with `RUN_ERROR "'tool'"`, model never called. The record shape and its
-                    # consumer are ONE change; extending one of them alone converted a silent
-                    # narrowing into a dead turn on the editor surface and on resume.
-                    if _sw.get("scope") == instrument.SCOPE_CATALOGUE:
-                        _advertised.record_catalogue_withheld(
-                            stage=_sw["stage"], reason=_sw["reason"], count=_sw.get("count"),
-                        )
-                        continue
-                    _advertised.record_withheld(
-                        _sw["tool"], stage=_sw["stage"], reason=_sw["reason"],
-                    )
+                # Drain the request-scoped sink HERE so assembly-time narrowings are stamped with
+                # the pass they belong to. `withheld_json()` drains again on every terminal path —
+                # this call is for the pass number, not for the delivery, because a turn that never
+                # advertises never reaches this line and is exactly the turn a catalogue outage
+                # produces. See `AdvertisedToolsRecorder.absorb`.
+                _advertised.absorb(_surface_sink)
                 for _w in (_adv_ev.get("withheld") or []):
+                    if _w.get("scope") == instrument.SCOPE_PASS or _w.get("tool") == "*":
+                        _advertised.record_pass_withheld(
+                            stage=_w["stage"], reason=_w["reason"])
+                        continue
                     _advertised.record_withheld(
                         _w["tool"], stage=_w["stage"], reason=_w["reason"],
                     )

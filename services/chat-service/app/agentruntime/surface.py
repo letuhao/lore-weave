@@ -79,6 +79,21 @@ class _Narrowing:
             )
 
 
+def _is_exactly(value, want) -> bool:
+    """`type(value) is want`, and **only** that.
+
+    🔴 **THE IDENTITY FIX REACHED ONE OF THREE SITES.** `type(s) in _KIND_SET` was rewritten to
+    `any(type(s) is k …)` after a verifier forged membership with a metaclass `__eq__` — and
+    `type(x) not in self.SCALARS`, twice, was left exactly as it was. The same forgery passes both,
+    measured for `op="eq"` and for a forged element inside a real tuple. `in` over a container
+    dispatches `__eq__`/`__hash__`; `is` is the only comparison Python does not dispatch.
+
+    One helper now, so there is nowhere for a fourth site to disagree.
+    """
+    t = type(value)
+    return any(t is w for w in (want if isinstance(want, tuple) else (want,)))
+
+
 def _plain(value, want, field: str):
     """🔴 **ONE OPERAND WAS BOUNDED AND SIX WERE NOT** — the first fix reasoned about `Filter.value`
     because that was where the verifier had pointed, and left every other field `Any` in practice.
@@ -92,7 +107,7 @@ def _plain(value, want, field: str):
     behaves like a closure; `bool` is an `int` subclass and is refused for `int` fields for the same
     reason `canon` checks it first.
     """
-    if type(value) is not want:
+    if not _is_exactly(value, want):
         raise ValueError(
             f"{field} is a {type(value).__name__}; a stage parameter must be a plain "
             f"{want.__name__}. An object with custom dunders is a closure wearing a value's "
@@ -124,7 +139,13 @@ class Filter(_Narrowing):
         # zero-arg `super()` closes over the pre-rebuild class and raises `TypeError: obj is not an
         # instance or subtype of type`. Named explicitly, which also survives the next reorder.
         _Narrowing.__post_init__(self)
-        if self.op not in self.OPS:
+        # 🔴 `op` IS AN OPERAND TOO, and the sharpest one: it selects `keep()`'s branch **and**
+        # selects which validation branch runs six lines below. A `str` subclass with a custom
+        # `__eq__` spells `'regex'` and satisfies `in self.OPS`; an object that is not a string at
+        # all also constructed. Bounding `value` while leaving `op` free is bounding the argument
+        # and not the operator — the mirror of the mistake §0.14.1 made in the other direction.
+        _plain(self.op, str, "op")
+        if not any(self.op is o or self.op == o for o in self.OPS) or self.op not in self.OPS:
             raise ValueError(f"unknown op {self.op!r}; expected one of {self.OPS}")
         # `field` is an OPERAND too: it is the key handed to `row.get()`, so a custom `__hash__` and
         # `__eq__` decide which value the filter reads. Measured.
@@ -141,13 +162,15 @@ class Filter(_Narrowing):
         # `type(x) in SCALARS`, not `isinstance` — a `str` subclass overriding `__eq__` passes an
         # isinstance check and then behaves like a closure. Exactness is the point of the bound.
         if self.op == "eq":
-            if type(self.value) not in self.SCALARS:
+            if not _is_exactly(self.value, self.SCALARS):
                 raise ValueError(
                     f"filter value {self.value!r} is a {type(self.value).__name__}; `eq` compares "
                     f"against a plain scalar. An object with a custom __eq__ is a closure wearing a "
                     f"value's clothes (§0.14.1)."
                 )
-        elif type(self.value) is not tuple or any(type(v) not in self.SCALARS for v in self.value):
+        elif not _is_exactly(self.value, tuple) or any(
+            not _is_exactly(v, self.SCALARS) for v in self.value
+        ):
             raise ValueError(
                 f"filter value {self.value!r} is not a tuple of scalars; `{self.op}` needs one. A "
                 f"container with a custom __contains__ expresses arbitrary logic (§0.14.1)."
@@ -253,6 +276,11 @@ class OrderBy:
             # `field` is a `row[...]` key and the sort key; a custom `__hash__`/`__eq__` chooses
             # which column is actually ranked.
             _plain(field, str, f"keys[{i}] field")
+            # `field` was bounded and `direction` was not — in the same loop. Measured: a direction
+            # spelled `'NONSENSE'` was accepted, the sort inverted, and end-to-end it decided which
+            # 2 of 4 declarations reached the model. The resulting `ordered_by` record was neither
+            # JSON- nor `canon`-serialisable, so the row explaining the cut could not be written.
+            _plain(direction, str, f"keys[{i}] direction")
             if direction not in self.DIRECTIONS:
                 raise ValueError(f"keys[{i}]: unknown direction {direction!r}")
             if field == "cost" and i == 0:
@@ -530,11 +558,15 @@ class SurfaceAssembler:
             used, cut_at = 0, len(rows)
             for i, row in enumerate(rows):
                 cost = row.get(stage.cost_field)
-                if not isinstance(cost, int):
+                # 🔴 THE ROW SIDE WAS `isinstance` WHILE THE STAGE SIDE WAS EXACT — so the bound
+                # stopped at the pipeline and the *data* walked in. Measured: a `SneakyCost(int)`
+                # with `__radd__` never spends any budget, so the accumulator never reaches its
+                # limit and nothing is ever cut. A manifest row is as much an input as a stage is.
+                if not _is_exactly(cost, int):
                     raise ValueError(
                         f"take_while_budget reads {stage.cost_field!r}, which row {row.get('id')!r} "
-                        f"does not carry as an integer. A missing cost is a rejection, not a "
-                        f"fallback (§0.14.1a)."
+                        f"does not carry as a plain integer. A missing or exotic cost is a "
+                        f"rejection, not a fallback (§0.14.1a)."
                     )
                 if used + cost > stage.budget and i > 0:
                     cut_at = i
