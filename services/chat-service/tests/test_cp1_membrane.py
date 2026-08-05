@@ -21,6 +21,7 @@ from pathlib import Path
 
 import pytest
 
+from app.agentruntime import canon
 from app.agentruntime import (
     CONTRACT_VERSION,
     Admitted,
@@ -802,3 +803,82 @@ class TestTheLogIsIndependentOfTheAssembler:
                 NarrowingRule("token_budget", "over budget", lambda r: False),
             ])
         assert len(log) == 2 and log.stages() == {"token_budget"}
+
+
+# ── 1.8b · one canonical serialisation ──────────────────────────────────────────────────────────
+
+
+class TestCanonicalSerialisation:
+    """REJECTS the defects that make a digest lie, all of which are SILENT.
+
+    A canonicalisation defect never raises. It produces two digests for one value, or one digest for
+    two values, and the consumer reads a plausible number either way. The repository already carries
+    **18 distinct canonical-JSON implementations, 5 flag variants and 0 shared helpers**, with a
+    precedent of digests permanently baselined because a serializer froze — so these are the rules
+    that must hold before the first digest is persisted, not after.
+    """
+
+    def test_key_order_does_not_change_the_digest(self):
+        assert canon.digest({"a": 1, "b": 2}) == canon.digest({"b": 2, "a": 1})
+
+    def test_the_same_grapheme_hashes_the_same_in_either_unicode_form(self):
+        """U-1's decision applied to content-addressing. Without it the same visible text produces
+        two content addresses, and a drift check reports a change nobody made."""
+        import unicodedata
+        s = "Tạo chương mới"
+        assert unicodedata.normalize("NFD", s) != unicodedata.normalize("NFC", s)
+        assert canon.digest(unicodedata.normalize("NFD", s)) == \
+            canon.digest(unicodedata.normalize("NFC", s))
+
+    def test_a_float_is_REFUSED_rather_than_formatted(self):
+        """repr varies by platform and version, and the variation is invisible in the digest it
+        changes. A caller that needs a number decides its own representation, where the decision is
+        visible to a reader."""
+        with pytest.raises(canon.NotCanonicalisable, match="float"):
+            canon.digest({"score": 0.1})
+
+    def test_a_set_is_refused_because_it_has_no_order(self):
+        with pytest.raises(canon.NotCanonicalisable, match="no order"):
+            canon.digest({"names": {"a", "b"}})
+
+    def test_a_bool_is_not_swallowed_by_the_int_branch(self):
+        """`bool` subclasses `int`, so an int-first check turns True into 1 — two different values,
+        one digest."""
+        assert canon.digest(True) != canon.digest(1)
+
+    def test_the_version_prefix_is_INSIDE_the_hashed_bytes(self):
+        """Without it, a future change to these rules collides silently with the old format and a
+        serializer change is indistinguishable from a content change — which is exactly how digests
+        end up permanently baselined."""
+        assert canon.canonical_bytes({}).startswith(canon.CANON_VERSION.encode())
+        assert canon.CANON_VERSION.encode() in canon.canonical_bytes("x")
+
+    def test_distinct_values_do_not_collide(self):
+        seen = {canon.digest(v) for v in ({"a": 1}, {"a": "1"}, {"a": [1]}, {"a": {"1": None}})}
+        assert len(seen) == 4
+
+    def test_there_is_exactly_one_CANONICAL_implementation_in_the_package(self):
+        """The whole point. 18 copies exist repo-wide; this package gets one.
+
+        🔴 **NARROWED ONCE, AND THE NARROWING IS THE INTERESTING PART.** The first version forbade
+        every `json.dumps`, and it caught `manifest.py`'s file write — which is **not** a second
+        canonical serialiser. That call pretty-prints the manifest for a human reader and for diffs;
+        the canonical form exists to be *hashed*. Two different jobs, and the file on disk is
+        deliberately not the hashed bytes — a reader reproduces a digest by calling
+        `canon.digest(load())`, not by eyeballing the file.
+
+        Narrowing a test to make it pass is the move this run has a rule against, so the replacement
+        is **stricter about the thing that matters**: it forbids the *markers of canonicalisation* —
+        a hash, or a sort/separator-pinned dump — anywhere but `canon.py`. A second pretty-printer is
+        harmless; a second thing that decides what bytes get hashed is the defect.
+        """
+        import re
+        offenders = []
+        for f in (_REPO / "services" / "chat-service" / "app" / "agentruntime").glob("*.py"):
+            if f.name == "canon.py":
+                continue
+            src = f.read_text("utf-8")
+            for pat in (r"hashlib", r"sort_keys\s*=", r"separators\s*="):
+                for m in re.finditer(pat, src):
+                    offenders.append(f"{f.name}:{src[:m.start()].count(chr(10)) + 1} {pat}")
+        assert not offenders, f"a second canonicalisation: {offenders}"

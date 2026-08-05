@@ -20,11 +20,11 @@ artifact does not exist.
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 from typing import Iterable
 
+from . import ambient
 from .admission import Admitted
 from .contract import CONTRACT_VERSION, Declaration, check_contract, identity_of
 
@@ -32,7 +32,8 @@ MANIFEST_VERSION = 1
 
 _VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 _MANIFEST_REL = Path("contracts") / "agent-runtime-manifest.json"
-_ENV_VAR = "LOREWEAVE_AGENT_RUNTIME_MANIFEST"
+# CP-1.8c — the env var name now lives behind the purity boundary (`ambient.py`).
+_ENV_VAR = ambient.MANIFEST_PATH_ENV
 
 
 def manifest_path() -> Path | None:
@@ -51,13 +52,13 @@ def manifest_path() -> Path | None:
     explicit environment override first, and returns `None` rather than raising — a missing manifest
     is a legitimate state (it means *no declarations*), so it must never be an import-time crash.
     """
-    override = os.environ.get(_ENV_VAR)
+    override = ambient.manifest_path_override()
     if override:
         return Path(override)
     here = Path(__file__).resolve()
     for parent in here.parents:
         candidate = parent / _MANIFEST_REL
-        if candidate.exists():
+        if ambient.exists(candidate):
             return candidate
     return None
 
@@ -188,14 +189,13 @@ def generate(admitted: Iterable[Admitted[Declaration]], *, path: Path | None = N
     # Read the existing manifest so already-admitted rows keep their stamp. Regenerating from
     # scratch is what made `admitted_against` unable to differ between rows — and therefore unable
     # to answer the one question §6.4 asks of it.
-    doc = build(admitted, previous=load(path=target) if target and target.exists() else None)
+    doc = build(admitted, previous=load(path=target) if target and ambient.exists(target) else None)
     if target is None:
         raise UntrustedRow(
             "no manifest location: pass `path=`, or set "
             f"{_ENV_VAR}. Guessing one would write the catalog somewhere nobody reads."
         )
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    ambient.write_text(target, json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
     return doc
 
 
@@ -222,9 +222,9 @@ def load(*, path: Path | None = None) -> dict:
     failure class this whole runtime exists to end.
     """
     target = path or manifest_path()
-    if target is None or not target.exists():
+    if target is None or not ambient.exists(target):
         return _empty()
-    doc = json.loads(target.read_text(encoding="utf-8"))
+    doc = json.loads(ambient.read_text(target))
     return validate_document(doc, source=str(target))
 
 

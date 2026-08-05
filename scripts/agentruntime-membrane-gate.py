@@ -72,6 +72,7 @@ FORBIDDEN_CALLS = {"__import__", "importlib"}
 FORBIDDEN_MODULES = {"importlib"}
 
 _STDLIB = set(sys.stdlib_module_names)
+NL = chr(10)
 
 
 def _root(module: str) -> str:
@@ -163,6 +164,77 @@ def _construction_sites(type_name: str) -> list[tuple[Path, int]]:
 
 
 MANIFEST = REPO / "contracts" / "agent-runtime-manifest.json"
+
+# CP-1.8c / ARCHITECTURE 0.14.4 - the PURITY BOUNDARY.
+#
+# Until this existed the gate could not see a single ambient capability: it permits
+# the whole standard library, and every ambient capability in Python IS standard
+# library. It was green on `os`, `time`, `random`, `uuid` and `open()` - measured, not
+# assumed - while 0.13 claimed the boundary was "enforced by the membrane gate, which
+# already walks the import graph". The walk was real; the check did not exist.
+#
+# WHAT THIS CANNOT SEE, and it belongs here rather than in a later discovery: the check
+# is BY DIRECT NAME. An ambient read reached through an intermediate helper, or through
+# a callable handed in as an argument, is invisible to it. It raises the COST of
+# crossing the boundary; it does not make crossing impossible.
+_AMBIENT_REL = "services/chat-service/app/agentruntime/ambient.py"
+AMBIENT_MODULES = {"os", "time", "datetime", "random", "uuid", "socket", "platform"}
+AMBIENT_CALLS = {"getenv", "urandom", "now", "today", "monotonic", "time_ns", "uuid4", "uuid1"}
+AMBIENT_BUILTINS = {"open", "input"}
+# Path methods that touch the filesystem. `Path` itself is pure string manipulation.
+AMBIENT_PATH_METHODS = {
+    "exists", "read_text", "read_bytes", "write_text", "write_bytes",
+    "mkdir", "unlink", "rglob", "glob", "iterdir", "stat",
+}
+
+
+def _ambient_violations_in(path: Path) -> list[tuple[int, str]]:
+    """Ambient reads outside the boundary module."""
+    out: list[tuple[int, str]] = []
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, UnicodeDecodeError, SyntaxError):
+        return out
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if _root(a.name) in AMBIENT_MODULES:
+                    out.append((node.lineno, f"import {a.name} - ambient"))
+        elif isinstance(node, ast.ImportFrom):
+            if _root(node.module or "") in AMBIENT_MODULES:
+                out.append((node.lineno, f"from {node.module} import ... - ambient"))
+        elif isinstance(node, ast.Call):
+            fn = node.func
+            name = getattr(fn, "id", None)
+            attr = getattr(fn, "attr", None)
+            if name in AMBIENT_BUILTINS:
+                out.append((node.lineno, f"{name}() - ambient"))
+            if attr in AMBIENT_CALLS or attr in AMBIENT_PATH_METHODS:
+                # `ambient.exists(p)` is a call INTO the boundary - the thing every other
+                # module is supposed to do. Flagging it would make the boundary unusable,
+                # which the gate proved on its first run by reddening all five call sites
+                # that had just been moved behind it.
+                receiver = getattr(fn.value, "id", None) if isinstance(fn, ast.Attribute) else None
+                if receiver != "ambient":
+                    out.append((node.lineno, f".{attr}() - ambient"))
+        elif isinstance(node, ast.Attribute) and node.attr == "environ":
+            out.append((node.lineno, "os.environ - ambient"))
+    return out
+
+
+def _purity_boundary() -> int:
+    failures = 0
+    for path in sorted(PACKAGE.rglob("*.py")):
+        rel = path.relative_to(REPO).as_posix()
+        if rel == _AMBIENT_REL:
+            continue
+        for lineno, what in _ambient_violations_in(path):
+            print(f"FAIL {rel}:{lineno}: {what}", file=sys.stderr)
+            print(f"     ambient state is read in {_AMBIENT_REL} and passed in as a parameter; "
+                  f"an ambient read elsewhere is an input no record captures "
+                  f"(ARCHITECTURE 0.14.4)", file=sys.stderr)
+            failures += 1
+    return failures
 
 # ARCHITECTURE 6.1 layer 2 - the DETECTION boundary, and it has to be a real scan.
 #
@@ -329,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
 
     failures += _manifest_drift()
     failures += _forgery_scan()
+    failures += _purity_boundary()
 
     for type_name, expected in sorted(SINGLE_SITED.items()):
         sites = _construction_sites(type_name)
@@ -398,6 +471,29 @@ def _selftest() -> int:
             if not _forgery_violations_in(p):
                 failed.append(f"forgery scan: {label}")
 
+    ambient_cases = [
+        ("os import", "import os" + NL),
+        ("env read", "import x" + NL + "def f():" + NL + "    return x.os.environ.get(1)" + NL),
+        ("clock", "import time" + NL),
+        ("randomness", "from random import choice" + NL),
+        ("uuid", "import uuid" + NL),
+        ("open()", "def f():" + NL + "    return open(1)" + NL),
+        ("filesystem probe", "def f(q):" + NL + "    return q.exists()" + NL),
+    ]
+    for label, src in ambient_cases:
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "probe.py"
+            p.write_text(src, encoding="utf-8")
+            if not _ambient_violations_in(p):
+                failed.append(f"purity boundary: {label}")
+
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "pure.py"
+        p.write_text("import json" + NL + "def f(a, b):" + NL
+                     + "    return json.dumps(sorted([a, b]))" + NL, encoding="utf-8")
+        if _ambient_violations_in(p):
+            failed.append("purity boundary fires on a pure module")
+
     with tempfile.TemporaryDirectory() as td:
         p = Path(td) / "unrelated.py"
         p.write_text("object.__setattr__(x, 'y', 1)\n", encoding="utf-8")
@@ -408,7 +504,7 @@ def _selftest() -> int:
         print("SELFTEST FAILED - the gate did not fire on: " + ", ".join(failed), file=sys.stderr)
         return 1
     print(f"agentruntime-membrane-gate selftest OK - fires on {len(cases)} import shapes + "
-          f"{len(forgery_cases)} forgery shapes, silent on a legal module")
+          f"{len(forgery_cases)} forgery + {len(ambient_cases)} ambient shapes, silent on a pure module")
     return 0
 
 
