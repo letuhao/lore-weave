@@ -1593,6 +1593,18 @@ hand. **A document-level digest over the declarations closes exactly that gap** 
 computes one, and the generator is already the only writer. A hand-edited row then breaks the digest,
 so "skips the current check" stops implying "unchecked".
 
+**Measured, not asserted** — the sentence above was written before it was checked, which is the
+habit this document is trying to break. Driven against the real `canon` over a real row shape:
+
+```
+stable across key order / reformatting : True    (a reformatted file is not an edit)
+detects an ADDED row                   : True
+detects a STAMP edit                   : True    ← the grandfathering claim itself
+detects a FIELD edit                   : True
+whole document canonicalises           : True    (no floats or sets in the row shape)
+a recomputed digest passes             : True    ← the limit, below
+```
+
 **Its honest limits, stated because this is the shape of claim that has failed here repeatedly:**
 
 * It is **tamper-evidence, not tamper-proofing.** Someone who edits a row *and* recomputes the digest
