@@ -240,99 +240,107 @@ Items 1 and 2 are the price of the decision. They are not follow-ups.
 
 ---
 
-## §8 · Skyrim's master/plugin files — the 20-year-old answer to a question this design never asked
+## §8 · Three ideas taken from long-lived data-driven plugin formats
 
-`CMD-D1` says declarations are data. Bethesda's ESM/ESP format is the longest-lived
-shipped version of exactly that, and comparing against it exposes **a hole this
-document did not know it had**: *composition*. Nothing above says what happens when
-two features declare the same command, or when one feature wants to change
-another's.
+`CMD-D1` says declarations are data. Bethesda's ESM/ESP is the longest-lived shipped
+system built that way, so it is worth measuring against — **for the ideas.** Their
+file format solves their problem on their constraints; this document does not
+transcribe it and does not port it. What follows is what survives translation.
 
-### 8.1 What the format actually is
+### Idea 1 — a bundle is DATA; code is REFERENCED, not embedded
 
-A plugin is a `TES4` header followed by groups of records. A record is an object —
-a spell, a perk, a weapon — and its fields are the data. **Papyrus scripts are not
-in the file**: they compile to separate `.pex` and records *reference* them.
+Their records are data, and scripts compile separately and are referenced by the
+records that use them. That is exactly the boundary `CMD-D1` draws (§7.1), and
+seeing it carry a game with tens of thousands of third-party bundles for two decades
+is the strongest evidence available that the boundary holds under real extension.
 
-Every record has a **FormID**, and its first byte is the **load-order index of the
-plugin that defines it**: `Skyrim.esm` is `00`, and everything else depends on where
-the user's load order puts it. The header carries a sorted **masters list**, and
-*"if the first byte of the FormID does not correspond to a valid index in that
-masters list, then the FormID's record is added by that plugin"* — otherwise it
-**overrides** a record from a master.
+**Taken.** Nothing about the shape of their records comes with it.
 
-Composition is then one rule: *"if multiple plugins contain the same record, the
-last-loaded plugin's version overrides all others."*
+### Idea 2 — a bundle declares its own dependencies
 
-### 8.2 What this VALIDATES
+A plugin states what it builds on, in its own header. **This design had not said
+so**, and that is the gap worth recording: a feature bundle must name the features
+it depends on, or composition has nothing to order.
 
-- **Declaration data + resolution code, shipped separately, for two decades.** The
-  record is data; the script is compiled and referenced. That is `CMD-D1`'s boundary
-  (§7.1), already load-bearing in a game with tens of thousands of mods.
-- **A dependency list belongs in the bundle's own header.** The masters list is how
-  a plugin says what it builds on. Our feature bundles need the same, and this
-  document had not said so.
-- **Ids must be namespaced by their origin.** A FormID is *(defining plugin, local
-  id)*. Feature B references feature A's command by an id that carries A in it.
+**Taken.** How we express it is ours.
 
-### 8.3 What this design must REFUSE, and why
+### Idea 3 — an id carries its origin
 
-**Refuse: encoding the origin in a fixed-width id.** One byte of load-order index
-caps a game at 254 plugins. Bethesda then needed `ESL` light plugins to raise the
-ceiling to 4096, at the cost of a *smaller* per-plugin record budget and a runtime
-**remap into the `FE` index**. That is a twenty-year-old scar from a byte-width
-decision, and there is no reason to re-cut it: our ids are strings or content
-addresses, not packed indices.
+A reference is *(defining bundle, local id)*, so feature B can name feature A's
+command without a global registry handing out numbers.
 
-**Refuse: composing at LOAD time.** Skyrim resolves load order when the user starts
-the game, so the same set of mods in a different order is a different game. Skyrim
-does not replay; **we do.** Our ledger is the SSOT of facts and replay must be
-reproducible, so composition must resolve **once, at ruleset-build time, into the
-pinned content-addressed digest** (`RLS-A13`) — not per-launch. Same override
-semantics, moved earlier. Anything else means two replays of one ledger can disagree.
+**Taken as a principle, not as a layout** — see the refusal below.
 
-### 8.4 The hole it exposes — OVERRIDE or CONTRIBUTION?
+---
 
-Skyrim's *"last-loaded wins"* is whole-record replacement, and its cost is the
-best-known pain in modding: two mods editing one NPC, one silently loses everything
-the other did. The community's answer is **compatibility patches** — a third plugin
-whose only job is to merge by hand — and sorting tools to make the order sane.
-**That is a permanent tax paid by every user, forever, because composition is
-lossy.**
+### Refused: encoding the origin in a fixed-width field
 
-This repo already refused that shape once. The actor hub's fold is **additive**:
-quantities *contribute*, they do not overwrite, and no plugin silently erases
-another's effect.
+*Observed:* the origin index is one byte, which caps a load order at 254 ESP/ESM
+plugins; light plugins raise the count at the cost of a much smaller per-bundle
+record budget, and are remapped at load.
 
-So the question this document never asked:
+*Not observed:* **why** one byte. No source consulted states a rationale, and this
+document does not invent one — a memory-budget explanation is easy to assume and an
+assumption is not evidence.
 
-> **When feature B touches feature A's command — is that an OVERRIDE (Skyrim) or a
-> CONTRIBUTION (the hub's fold)?**
+*And the rationale is not needed,* because the refusal rests on what is true about
+**us**: our ids are strings or content addresses, nothing forces a packed field, and
+a fixed-width origin would hand us a ceiling we would later have to raise. Take the
+namespacing; leave the packing.
 
-Neither answer is obviously right, and that is why it is recorded rather than
-decided:
+### Refused: composing at LOAD time — two independent reasons
 
-- **Override** is simple and it is what a *verb* seems to want — you cannot
-  meaningfully average two definitions of `consume`. But it is lossy, and it buys a
-  patch-file economy.
-- **Contribution** is what the hub does and what avoids silent loss. Its difficulty
-  is that *"contribute to a verb"* has no obvious meaning: `+5` to a number is
-  clear; `+5` to `consume` is not.
+*Replay.* They resolve order per launch, so the same bundles in a different order
+are a different game. They do not replay. **We do**, and two replays of one ledger
+cannot be allowed to disagree.
 
-**The likely synthesis, offered but NOT sealed:** split the record by axis, which is
-what GAS already does. The **definition** (name, parameters, resolution) is
-whole-record override, because a verb is not a sum. The **precondition and effect
-lists are additive**, so a feature can constrain or extend a command it does not
-own without erasing it — precisely how a GAS `GameplayEffect` adds *Activation
-Blocked* tags to an ability it never authored.
+*SaaS — and this is the binding reason.* There is no pre-compose step at all. That
+survives in a single-player setting because composition happens once per launch, for
+one player, on that player's machine, amortised over a session. **None of those
+three is true here.** Load-time composition would re-resolve the whole override
+chain on every reality boot × every replay × every projection rebuild — identical
+work, repeated per tenant, on our infrastructure.
 
-That would take Skyrim's clarity where a verb needs it and the hub's additivity
-where the lossiness actually bites. It needs a design round of its own.
+So composition resolves **once, at ruleset-build time, into the pinned
+content-addressed digest** (`RLS-A13`). The move pays twice: composition becomes
+`O(ruleset versions)` rather than `O(boots × realities)`, and because the digest *is*
+the content address it doubles as the cache key — realities on the same ruleset
+share one composed artifact.
+
+---
+
+### §8.4 · The hole this comparison exposed — OVERRIDE or CONTRIBUTION?
+
+Nothing above says what happens when two features declare the same command, or when
+feature B wants to change feature A's.
+
+Their answer is last-loaded-wins, whole-record. Its cost is visible from outside the
+codebase: an ecosystem of hand-written compatibility patches, and sorting tools to
+make order tractable — because composition is lossy and one bundle can silently
+erase another's work on the same record.
+
+**This repo already refused that shape once.** The actor hub's fold is *additive*:
+quantities contribute, they do not overwrite, and no plugin silently erases another.
+
+So the question is recorded rather than assumed away:
+
+> **When feature B touches feature A's command — OVERRIDE or CONTRIBUTION?**
+
+- **Override** is simple and suits a *verb*: two definitions of `consume` cannot be
+  averaged. But it is lossy, and lossy composition is what buys a patch economy.
+- **Contribution** is what the hub does and avoids silent loss. Its difficulty is
+  that *"contribute to a verb"* has no obvious meaning — `+5` to a number is clear,
+  `+5` to `consume` is not.
+
+**A synthesis, offered and NOT sealed:** split by axis. The **definition** overrides
+whole (a verb is not a sum); the **precondition and effect lists add**, so a feature
+can constrain or extend a command it does not own without erasing it. GAS already
+works this way — an effect adds *Activation Blocked* tags to an ability it never
+authored. It needs a design round of its own.
 
 **Sources:**
 [Skyrim Mod:Mod File Format — UESP](https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format) ·
 [Skyrim:Form ID — UESP](https://en.uesp.net/wiki/Skyrim:Form_ID) ·
 [FormIDs and You — Nexus](https://www.nexusmods.com/skyrimspecialedition/articles/6629) ·
 [LOOT: Introduction To Load Orders](https://loot.github.io/docs/help/Introduction-To-Load-Orders.html) ·
-[Plugin Load Order — Modding.wiki](https://modding.wiki/en/skyrim/users/plugin-load-order) ·
-[Guide:Plugins Files — Step Mods](https://stepmodifications.org/wiki/Guide:Plugins_Files)
+[Plugin Load Order — Modding.wiki](https://modding.wiki/en/skyrim/users/plugin-load-order)

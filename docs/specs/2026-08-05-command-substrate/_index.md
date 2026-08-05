@@ -19,7 +19,7 @@ are declared by whatever provides them, and the engine never learns their names.
 | file | owns |
 |---|---|
 | [`2026-08-05-command-substrate.md`](2026-08-05-command-substrate.md) | the model: Phase 0 refusals · the three layers · provider ≠ subject · the registry · parameter domains · the entitlement stage · offer-as-hint · declared preconditions · assumptions · what is not decided · §11 the research |
-| [`2026-08-05-extensibility.md`](2026-08-05-extensibility.md) | the N+1 test · the five coupling points · **why `Domain::Payload` is the god class** · four candidates evaluated · **`CMD-D1` — the payload is DATA, sealed** · §8 Skyrim ESM/ESP compared, and **the composition hole it exposes** |
+| [`2026-08-05-extensibility.md`](2026-08-05-extensibility.md) | the N+1 test · the five coupling points · **why `Domain::Payload` is the god class** · four candidates evaluated · **`CMD-D1` — the payload is DATA, sealed** · §8 three IDEAS taken from long-lived data-driven plugin formats (not a port), and **the composition hole they expose** |
 
 ---
 
