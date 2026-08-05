@@ -21,7 +21,14 @@
 > section that claims to BE Phase 0 — and it is the same shape as the actor-hub round
 > that designed feature #1 without auditing what already modelled an actor.
 >
-> **Nothing here is authoritative until it is reconciled with the 2026-08-02 rounds.**
+> **RECONCILED 2026-08-05** — read [`2026-08-05-reconciliation.md`](2026-08-05-reconciliation.md)
+> **FIRST.** It adjudicates every claim here against the prior rounds: most of this
+> folder is duplicate, the 🔴 BLOCKER is WITHDRAWN, `CMD-D1`'s seal is VOID, and five
+> items survive. The prior round's own run state records that the PO **declined to seal**
+> `CMD-1`..`CMD-6` and **directed a round of prior art** — which is, accidentally, what
+> this round performed, blind to the round that asked for it.
+>
+> **Nothing here is authoritative on its own.**
 > Individual findings may survive; the framing ("feature #2", "nothing implements
 > this", the blocker, the decision ids) does not.
 
