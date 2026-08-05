@@ -251,6 +251,12 @@ def ensure_tool_call_instrumented(chunk: dict) -> dict:
 #: anyone remembering to wire it. The failure mode inverts: forgetting now means recording too much,
 #: in the wrong turn's bucket, which is loud — rather than recording nothing, which is silent and
 #: has now cost three verification rounds.
+# U-2 · the SCOPE of a narrowing record. P1's shape `{tool, stage, reason, pass}` is
+# per-declaration, and a whole-catalogue outage has no single tool — so the record says which
+# question it is answering rather than forcing an absent name into a field that must hold one.
+SCOPE_DECLARATION = "declaration"
+SCOPE_CATALOGUE = "catalogue"
+
 surface_withheld: ContextVar[list | None] = ContextVar("lw_surface_withheld", default=None)
 
 
@@ -264,7 +270,56 @@ def record_surface_withheld(tool: str, *, stage: str, reason: str) -> None:
     sink = surface_withheld.get()
     if sink is None:
         return
-    sink.append({"tool": tool, "stage": stage, "reason": reason})
+    sink.append({"scope": SCOPE_DECLARATION, "tool": tool, "stage": stage, "reason": reason})
+
+
+def record_catalogue_unavailable(*, stage: str, reason: str, count: int | None = None) -> None:
+    """U-2 · register the narrowing that has **no tool name** — the source itself was unavailable.
+
+    🔴 **THIS EXISTS BECAUSE P1 WAS FALSIFIABLE AT n=1 AND THIS WAS THE n.** `get_tool_definitions`
+    returned `[]` on any exception with only a `logger.warning`, so a gateway hiccup withheld **the
+    entire catalogue** and registered nothing — the largest narrowing this system can perform,
+    recorded as a log line and treated as a feature.
+
+    **Why not one entry per absent declaration.** That is the literal reading of *"every narrowing
+    registers"* and the wrong one twice over: it turns one outage into hundreds of rows saying the
+    same thing, **and the names are not knowable** — when the fetch fails there is no list to
+    enumerate, so producing one would invent the very thing the outage destroyed.
+
+    **Why not `tool: "*"`.** A sentinel makes every consumer that counts tools return a wrong answer
+    while still looking correct, which is worse than an absent record.
+
+    So the record carries a **`scope`**, and this one omits `tool` entirely.
+
+    **`count` is optional, and absent is not zero.** A count exists only when a previous fetch left
+    something to compare against; on a cold failure nothing is known, not even the size. `count: 0`
+    would claim *we know nothing was there* — a fabrication reached by a default.
+    """
+    sink = surface_withheld.get()
+    if sink is None:
+        return
+    entry: dict = {"scope": SCOPE_CATALOGUE, "stage": stage, "reason": reason}
+    if count is not None:
+        entry["count"] = count
+    sink.append(entry)
+
+
+def catalogue_outage_registered() -> bool:
+    """Did a catalogue-scope narrowing get registered this turn?
+
+    🔴 **THE CALLER MUST NOT INFER THIS FROM AN EMPTY CATALOGUE**, and the first version of U-2's fix
+    did exactly that (`outage = not catalog`). An empty catalogue and an unavailable one are
+    different facts — a user with no permissions legitimately has zero tools — and conflating them
+    is the very confusion U-2 exists to end. Three tests caught it by receiving an outage notice on
+    a turn that simply had no tools.
+
+    So the outage is read from **the record written by the party that knows it failed**, which is
+    also the only source that cannot drift from what the row says.
+    """
+    sink = surface_withheld.get()
+    if not sink:
+        return False
+    return any(e.get("scope") == SCOPE_CATALOGUE for e in sink)
 
 
 class AdvertisedToolsRecorder:

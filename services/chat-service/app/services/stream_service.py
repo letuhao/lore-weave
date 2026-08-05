@@ -5584,8 +5584,22 @@ async def stream_response(
     # background job — the exact pin/load drift reusing `workflow_load_result` was meant to
     # make impossible. (It also saves the duplicate fetch: the block below now reuses this.)
     _turn_catalog: list[dict] = []
+    _catalogue_outage = False
     if not disable_tools and kctx.tool_calling_enabled and not admin_context:
         _turn_catalog = await knowledge_client.get_tool_definitions(user_id=user_id)
+        # 🔴 U-2, second half. Registering the narrowing is not enough: a verifier watched the
+        # model state that a withheld tool "does not exist at all" while the row recorded it
+        # correctly — the row was honest and the screen was not. With the whole catalogue gone the
+        # model has NO tool left to ask with, not even `find_tools`, so the prompt is the only
+        # channel.
+        #
+        # 🔴 READ FROM THE RECORD, NOT FROM EMPTINESS. The first version of this line was
+        # `not _turn_catalog`, which conflates an OUTAGE with a legitimately EMPTY catalogue — a
+        # user with no permissions has zero tools and no outage. That is the exact confusion U-2
+        # exists to end, reproduced inside U-2's own fix, and three tests caught it by receiving an
+        # outage notice on a turn that simply had no tools. The fact comes from the party that knows
+        # it failed.
+        _catalogue_outage = instrument.catalogue_outage_registered()
     _turn_async_tools = frozenset(
         n for n, td in _catalog_index(_turn_catalog).items() if tool_async(td)
     ) if _turn_catalog else frozenset()
@@ -5787,6 +5801,17 @@ async def stream_response(
         workflow_directive_block,  # WS-5 — prefer an authored workflow rail over improvising
         pinned_rail_text,    # WS-3 (C6) — the mode's PINNED rail, already in context
         book_context_note,
+        # U-2 — an outage the model can NAME. Without this it has no tool left to ask with and
+        # every explanation it gives is invented; a verifier watched exactly that, with the model
+        # asserting a withheld tool "does not exist at all". The wording says TEMPORARY and says
+        # what to do, because "I have no tools" and "you have no tools" produce different replies.
+        (
+            "TOOL CATALOGUE UNAVAILABLE. Your tools could not be loaded for this turn — this is a "
+            "temporary outage on our side, NOT a sign that the capability is missing or that the "
+            "user's data is absent. Do not claim a tool or feature does not exist, and do not "
+            "invent a result. Say plainly that your tools are unreachable right now and that the "
+            "user can retry in a moment."
+        ) if _catalogue_outage else None,
     ]
     _system_content = build_system_message(
         use_cache=use_anthropic_cache,

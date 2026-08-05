@@ -1324,3 +1324,98 @@ class TestP1RegistrationIsUnconditional:
             "the registration is not at function level — it is nested inside a branch, which is "
             "exactly how it came to never run"
         )
+
+
+class TestU2ACatalogueOutageIsRegistered:
+    """U-2 — REJECTS the counter-example that REFUTED P1.
+
+    `get_tool_definitions` returned `[]` on any exception with only a `logger.warning`, so a gateway
+    hiccup withheld **the entire catalogue** and registered nothing — the largest narrowing this
+    system can perform, treated as a feature. P1 is falsifiable at n=1 and this was the n.
+    """
+
+    def test_the_record_carries_a_scope_and_no_tool(self):
+        """Neither escape was acceptable: one row per absent declaration turns an outage into
+        hundreds of identical rows, and `tool: "*"` makes every consumer that counts tools return a
+        wrong answer while looking correct."""
+        sink: list = []
+        token = instrument.surface_withheld.set(sink)
+        try:
+            instrument.record_catalogue_unavailable(
+                stage="catalogue_unavailable", reason="list-tools failed: TimeoutError",
+            )
+        finally:
+            instrument.surface_withheld.reset(token)
+        assert len(sink) == 1
+        assert sink[0]["scope"] == instrument.SCOPE_CATALOGUE
+        assert "tool" not in sink[0], "a catalogue outage has no single tool; a sentinel would lie"
+
+    def test_count_is_ABSENT_on_a_cold_failure_not_zero(self):
+        """`count: 0` claims *we know nothing was there*. On a cold failure nothing is known, not
+        even the size — emitting 0 is a fabrication reached by a default, which is the thing this
+        record exists to stop."""
+        sink: list = []
+        token = instrument.surface_withheld.set(sink)
+        try:
+            instrument.record_catalogue_unavailable(stage="s", reason="r")
+            instrument.record_catalogue_unavailable(stage="s", reason="r", count=41)
+        finally:
+            instrument.surface_withheld.reset(token)
+        assert "count" not in sink[0]
+        assert sink[1]["count"] == 41
+
+    def test_a_per_declaration_record_still_carries_its_scope(self):
+        """The other half of the extension — an existing record must say which question it answers,
+        or a consumer cannot tell the two shapes apart."""
+        sink: list = []
+        token = instrument.surface_withheld.set(sink)
+        try:
+            instrument.record_surface_withheld("book_list", stage="token_budget", reason="over")
+        finally:
+            instrument.surface_withheld.reset(token)
+        assert sink[0]["scope"] == instrument.SCOPE_DECLARATION and sink[0]["tool"] == "book_list"
+
+    def test_the_client_registers_on_a_real_failure_path(self):
+        """The wiring gate. A correct recorder with no caller is a shape this repo has shipped —
+        `budget_names_by_tokens_ex` had zero production callers while being unit-tested."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "app" / "client" / "knowledge_client.py").read_text("utf-8")
+        assert src.count("self._register_catalogue_outage(") >= 2, (
+            "a failure path returns [] without registering the narrowing"
+        )
+
+    def test_the_model_is_told_not_only_the_row(self):
+        """Registering without telling the model reproduces the founding defect: a verifier watched
+        the model say a withheld tool 'does not exist at all' while the row recorded it correctly.
+        The row was honest and the screen was not."""
+        src = _stream_src()
+        assert "_catalogue_outage" in src
+        assert "TOOL CATALOGUE UNAVAILABLE" in src
+        i = src.index("TOOL CATALOGUE UNAVAILABLE")
+        note = src[i:i + 700]
+        assert "temporary" in note.lower(), "the model must be told this is temporary, not absence"
+        assert "does not exist" in note, "the model must be told NOT to claim absence"
+
+    def test_an_EMPTY_catalogue_is_not_an_outage(self):
+        """🔴 The defect the first version of this fix contained. `outage = not catalog` conflates
+        an unavailable catalogue with a legitimately empty one — a user with no permissions has zero
+        tools and no outage — which is the exact confusion U-2 exists to end, reproduced inside
+        U-2's own fix. Three tests caught it by receiving an outage notice on a tool-free turn."""
+        sink: list = []
+        token = instrument.surface_withheld.set(sink)
+        try:
+            assert instrument.catalogue_outage_registered() is False
+            instrument.record_surface_withheld("book_list", stage="token_budget", reason="over")
+            assert instrument.catalogue_outage_registered() is False, (
+                "a per-declaration narrowing is not a catalogue outage"
+            )
+            instrument.record_catalogue_unavailable(stage="catalogue_unavailable", reason="boom")
+            assert instrument.catalogue_outage_registered() is True
+        finally:
+            instrument.surface_withheld.reset(token)
+
+    def test_the_stream_reads_the_record_rather_than_inferring(self):
+        """REJECTS the reintroduction. Inferring from emptiness is the shape that shipped once."""
+        src = _stream_src()
+        assert "_catalogue_outage = instrument.catalogue_outage_registered()" in src
+        assert "_catalogue_outage = not _turn_catalog" not in src

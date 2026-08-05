@@ -606,6 +606,7 @@ class KnowledgeClient:
             logger.warning(
                 "get_tool_definitions called but the 'mcp' package is not installed"
             )
+            self._register_catalogue_outage(cache_key, "mcp package not installed")
             return []
 
         mcp_url = f"{self._tools_base_url}/mcp"
@@ -627,6 +628,7 @@ class KnowledgeClient:
                     listed = await mcp_session.list_tools()
         except Exception as exc:
             logger.warning("get_tool_definitions (mcp list-tools) failed: %s", exc)
+            self._register_catalogue_outage(cache_key, f"list-tools failed: {type(exc).__name__}")
             return []
 
         tools = []
@@ -716,6 +718,28 @@ class KnowledgeClient:
         ]
         self._admin_tool_definitions = tools
         return tools
+
+    def _register_catalogue_outage(self, cache_key: str, reason: str) -> None:
+        """U-2 · a catalogue that fails to load is the LARGEST narrowing this system performs, and
+        it registered nothing — only a `logger.warning`. **P1 is falsifiable at n=1 and this was
+        the n.**
+
+        `count` is written **only when a previous fetch left something to compare against** — an
+        expired cache entry. On a cold failure nothing is known, not even the size, and `count: 0`
+        would claim *we know nothing was there*: a fabrication reached by a default, which is the
+        thing this record exists to stop.
+        """
+        stale = self._tool_defs_cache.get(cache_key)
+        try:
+            from app.services.instrument import record_catalogue_unavailable  # noqa: PLC0415
+
+            record_catalogue_unavailable(
+                stage="catalogue_unavailable",
+                reason=reason,
+                count=len(stale[1]) if stale else None,
+            )
+        except Exception:  # noqa: BLE001 — recording a narrowing must never break the turn
+            logger.debug("could not register the catalogue outage", exc_info=True)
 
     def get_catalog_meta(self, user_id: str) -> dict:
         """MCP-fanout H10 — the gateway's catalog-level `_meta` from the last

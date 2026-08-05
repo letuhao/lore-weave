@@ -307,12 +307,20 @@ is the n.**
    | `scope` | shape | when |
    |---|---|---|
    | `declaration` | `{scope, tool, stage, reason, pass}` — today's record, with the field made explicit | a named declaration was narrowed |
-   | `catalogue` | `{scope, stage, reason, count, pass}` — **no `tool`** | the source of declarations was unavailable, so the absent set is not enumerable and `count` is what is honestly known |
+   | `catalogue` | `{scope, stage, reason, pass}` + **`count` only when it is known** — **no `tool`** | the source of declarations was unavailable, so the absent set is not enumerable |
 
    **`count` and not the names, because the names are not knowable.** When the catalogue fetch fails
    there is no list to enumerate — claiming one would be inventing the very thing the outage
    destroyed. *(A narrowing whose record is unreadable is not registered in any useful sense; a
    narrowing whose record is fabricated is worse.)*
+
+   🔴 **AND `count` IS OPTIONAL, which the first draft of this row got wrong.** It said *"`count` is
+   what is honestly known"* — but on a **cold** failure nothing is known, not even the size. A count
+   exists only when a previous fetch left an expired cache entry to compare against. **Absent `count`
+   and `count: 0` are different facts**: the first says *we do not know how much was lost*, the
+   second says *we know nothing was there*. Emitting `0` on a cold failure would be the fabrication
+   this very row forbids, arrived at by a default — so `count` is written when a prior fetch is
+   known and **omitted otherwise**.
 2. **The model must be told.** V-LIVE observed the failure this prevents: with `book_list` withheld,
    the model stated it **"does not exist at all"** while the same row recorded it as withheld with a
    stage and a reason. **The row was honest and the screen was not.** An empty surface the model
