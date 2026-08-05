@@ -1210,7 +1210,7 @@ declarations, not silently emit a tool-free pass.
 
 | # | item | state |
 |---|---|---|
-| 3.1 | `plans` table — **SPEC versioned + hashed, STATE event-sourced**, one live plan per session, template identity **by value** (two databases, so there is no FK to have) | ⬜ |
+| 3.1 | ~~`plans` table — **SPEC versioned + hashed, STATE event-sourced**, one live plan per session~~ | 🔴 **RESCOPE REQUIRED — PO ruling 2026-08-05 lands directly on this item.** *"The agent's EXECUTIVE plan is used only inside its session. It is completely different from planforge and the writing-spec architecture. Persisting it is noise, and it is also wrong."* A `plans` table holding *one live plan per session* is precisely that executive plan. **The ruling does not merely defer this item; it removes its subject.** What survives needs deciding on its own terms rather than by inheritance — the **completed-effects ledger** (3.5) has an independent reason to outlive the session, because a replan that cannot see what already ran is how `kg_project_create` fired **×57 in one turn**. That is a record of *effects*, not of a plan, and CP-0's `tool_calls` may already hold it. **Do not build 3.1 as written** |
 | 3.2 | markdown authoring surface → parsed to structured SPEC; **a parse failure is a rejection with locus (C-12)** | ⬜ |
 | 3.3 | the projection — **generated with a gate**, declares its own lossiness, **stable between plan events**, and **never compresses an identifier** | ⬜ |
 | 3.4 | executor binds `emits` → `accepts` **directly**, instead of asking the model to retype a UUID it has already seen | ⬜ |
@@ -1283,7 +1283,7 @@ retrofitted to whatever gets built.
 | ~~**F-49**~~ | **closed as a false claim**, not a code defect | no |
 | class 3's predicate | **an unresolvable measurement** — a regex over prose from five producers | CP-2.6 needs `error_class` |
 | `sweep_expired_runs` has zero callers | **dead code with a live consumer expectation** | CP-3.6 |
-| is a plan also a **user-facing document** in the product sense? | product decision | no |
+| ~~is a plan also a **user-facing document** in the product sense?~~ | ✅ **DECIDED 2026-08-05 (PO): NO** — see below | no |
 | ~~binding format on our own model~~ | ✅ **measured, null result** — all 5 arms 3/3 incl. the decoy control | no |
 | `ARCHITECTURE.md` §0.2 sits after §0.12 | reading order, one pass | no |
 | third-party sunset window | blocked on prerequisites: no `Sunset` header, unversioned `/mcp`, **114 tools with no `deprecated_at`** | CP-4 |

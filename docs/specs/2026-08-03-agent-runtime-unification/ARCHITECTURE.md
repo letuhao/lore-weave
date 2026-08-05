@@ -645,6 +645,26 @@ implementation is the default outcome** unless the plan's identity and lifetime 
 
 ### 0.11 ✅ DECIDED — where the plan lives: artifact outside, working memory inside *(PO, 2026-08-04)*
 
+> **🔴 NARROWED 2026-08-05 (PO) — and the narrowing removes a checkpoint item's subject.**
+>
+> *"The agent's **executive** plan is used only inside its session. It is completely different from
+> planforge and the writing-spec architecture. **Persisting it is noise, and it is also wrong.**"*
+>
+> **Two things were being called "the plan" and only one of them is a document.** The **authored
+> artifact** — the writing plan, planforge, the writing-spec architecture — is user-facing, already
+> exists, and is what "artifact outside" refers to below. The **executive plan** the agent runs is
+> working memory: session-scoped, and it does not become a document by being written down.
+>
+> Persisting it is not merely redundant. It puts a second thing that looks like a plan next to the
+> user's real one, and **a reader cannot tell which is authoritative** — the same confusion §0.8
+> closes for permission and §0.1 closes for the tool surface.
+>
+> **Consequence, recorded rather than resolved:** CP-3.1 specifies a `plans` table holding *"one live
+> plan per session"*, which is exactly the executive plan. **That item must be rescoped, not
+> deferred** — its subject is gone. What may survive is the **completed-effects ledger** (CP-3.5),
+> which has an independent reason to outlive a session: a replan that cannot see what already ran is
+> how `kg_project_create` fired **×57 in one turn**. That is a record of *effects*, not of a plan.
+
 > The plan is **authored outside the context** at full fidelity, **compressed into the context** as
 > working memory, and the runtime helps the agent remember **the plan and what it has already made**.
 > Lossy inside; a complete version always exists outside. **Spec-file + working-memory.**
