@@ -7,6 +7,45 @@
 > §MERGE RECONCILIATION below. Main's own session sections are preserved verbatim under
 > §FROM `origin/main` further down — they are a different track's history, not this run's.
 
+## ▶ PHASE 0 (actor) — CLOSED 2026-08-05, with one item parked on a mechanism
+
+**Why pc/npc had to go, stated by the PO:** the old design distinguished PC from NPC. **The new
+design has only ACTOR, because it has no concept of "player".** A player is not a kind of actor —
+it is a **control interface**: a human with a GUI driving an actor, plus a dashboard for watching
+the world.
+
+**And the thing being built is not a game.** It is a **world-simulator platform**: the backend
+simulates the world, MCP lets agents understand and act in it, the frontend lets humans do the
+same. Many interface kinds over one world — player, human, LLM, rule-based code, more. The actor
+must therefore never know what is driving it, which is exactly what the hub already enforces.
+
+**Per-reality tier: closed.** Ten of eleven projections removed (`0017`, `0018`), one survives with
+a real producer, five mirrors machine-checked, orphan registry empty.
+
+**One artifact left, and it is PARKED — `DEFERRED 161 / D-PLAYER-INDEX-PARKED`.**
+`migrations/meta/012_player_character_index.up.sql` is the last pc/npc artifact, and it is *half
+right*:
+
+| part | verdict |
+|---|---|
+| `(user_ref_id, reality_id, pc_id)` | the BINDING — which human drives which actor in which reality. Under the new framing this **is** control, and it is real |
+| `pc_name`, `status='npc_converted'` | the two-kind vocabulary. *"PC promoted to permanent NPC"* is a transition between kinds that no longer exist |
+| `status='deceased'` | mortality in a lookup table — a second SSOT, same shape as the `stats JSONB` `0017` removed |
+
+No producer, so nothing depends on it and deciding now would be guessing. **The mechanism, not a
+note:** `contracts/meta/player_index_parked_test.go` asserts the three facts the parking rests on
+and reds the moment any stops holding — a writer lands, the table is dropped, the vocabulary is
+cleaned. Bitten three ways, all red.
+
+**Where the control seam already is.** `commit-service` names it in prose today:
+`domain/payload.rs` calls out *"no driver (player, LLM or script)"* over a **closed action
+vocabulary**, and `llm_driver.rs` is `decide(ctx) → Decision` returning a **proposal** that the
+island validates — nothing a driver says executes. So control is not unbuilt: the
+propose→validate→commit path runs. What does **not** exist is any abstraction over driver kinds —
+there is exactly one driver, and it is a concrete function, not a trait.
+
+---
+
 ## ▶ PROJECTIONS — 2026-08-05: ten of eleven removed, one has a producer
 
 **`0018` removes `region_projection`, `session_participants` and `world_kv_projection`.**
