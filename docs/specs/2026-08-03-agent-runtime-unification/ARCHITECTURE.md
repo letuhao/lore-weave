@@ -659,11 +659,33 @@ implementation is the default outcome** unless the plan's identity and lifetime 
 > user's real one, and **a reader cannot tell which is authoritative** — the same confusion §0.8
 > closes for permission and §0.1 closes for the tool surface.
 >
-> **Consequence, recorded rather than resolved:** CP-3.1 specifies a `plans` table holding *"one live
-> plan per session"*, which is exactly the executive plan. **That item must be rescoped, not
-> deferred** — its subject is gone. What may survive is the **completed-effects ledger** (CP-3.5),
-> which has an independent reason to outlive a session: a replan that cannot see what already ran is
-> how `kg_project_create` fired **×57 in one turn**. That is a record of *effects*, not of a plan.
+> **🔴 AND THE FIRST READING OF THIS RULING WAS TOO STRONG — corrected within the hour, by the PO.**
+> I wrote that CP-3.1's subject was *gone*. It is not. **The executive plan must have a representation
+> in the source**, or there is nothing to execute, nothing to project into the context, and nothing
+> for `emits`→`accepts` to bind against. The question *"then how does the agent read it?"* has no
+> answer under my first reading.
+>
+> **The reconciliation is one word: "outside" above means outside the CONTEXT WINDOW, not "in the
+> product's document library."** This section exists because *the context is a lossy carrier* — RT3
+> measured `LIMIT 50`, pin-blind eviction, tool results dropped past the newest three. The complete
+> version must live where the context cannot truncate it. **That is a runtime-state requirement, not
+> a publishing one**, and the two were conflated by the word "artifact".
+>
+> | | keeps | loses |
+> |---|---|---|
+> | **executive plan** | a representation in src · full fidelity outside the context · a **hash** · a lifetime bounded by its session | any place in the user's document library, beside planforge and the writing specs |
+>
+> **What must survive the narrowing, because §0.8's closure rests on it:** permission-laundering is
+> closed by *the artifact has a **hash***, and an approval binds to that hash — a replan changes it and
+> invalidates an approval over changed gated steps. **The hash does not require the plan to be a
+> product document.** The clause *"the thing the user approved is a thing they can read"* needs the
+> gated step readable **at approval time**, which the confirm card already provides; it does not need
+> a persisted document.
+>
+> **So CP-3.1 is rescoped, not deleted:** session-scoped runtime state, hashed, never surfaced as a
+> user artifact. The **completed-effects ledger** (CP-3.5) is the one part with a reason to outlive
+> the session on its own terms — a replan that cannot see what already ran is how `kg_project_create`
+> fired **×57 in one turn** — and it is a record of *effects*, not of a plan.
 
 > The plan is **authored outside the context** at full fidelity, **compressed into the context** as
 > working memory, and the runtime helps the agent remember **the plan and what it has already made**.
