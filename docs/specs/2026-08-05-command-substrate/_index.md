@@ -19,7 +19,7 @@ are declared by whatever provides them, and the engine never learns their names.
 | file | owns |
 |---|---|
 | [`2026-08-05-command-substrate.md`](2026-08-05-command-substrate.md) | the model: Phase 0 refusals · the three layers · provider ≠ subject · the registry · parameter domains · the entitlement stage · offer-as-hint · declared preconditions · assumptions · what is not decided · §11 the research |
-| [`2026-08-05-extensibility.md`](2026-08-05-extensibility.md) | the N+1 test · the five coupling points · **why `Domain::Payload` is the god class** · four candidates evaluated · the recommendation and what it costs · **`CMD-D1` — the payload is DATA, sealed** |
+| [`2026-08-05-extensibility.md`](2026-08-05-extensibility.md) | the N+1 test · the five coupling points · **why `Domain::Payload` is the god class** · four candidates evaluated · **`CMD-D1` — the payload is DATA, sealed** · §8 Skyrim ESM/ESP compared, and **the composition hole it exposes** |
 
 ---
 
@@ -67,6 +67,12 @@ substrate; what a command's BINDINGS MEAN belongs to the feature that declared i
 own round. The substrate has no opinion and must not acquire one.
 
 ## Deliberately NOT decided
+
+**OVERRIDE or CONTRIBUTION** when feature B touches feature A's command
+(extensibility §8.4) — Skyrim's last-loaded-wins is whole-record replacement and
+its cost is the compatibility-patch economy every modded install pays; the actor
+hub's fold is additive and refuses that. A synthesis is offered and deliberately
+NOT sealed: definition overrides, precondition/effect lists add.
 
 The registry's host service · the wire shape of an offer · **who owns inventory**
 — an item is `External` from the island's view, so something outside must own it,

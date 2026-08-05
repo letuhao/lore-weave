@@ -237,3 +237,102 @@ Sealing `CMD-D1` accepts §5's costs, so §5's mitigation stops being a suggesti
    command that does nothing new" — and `CMD-D1`'s whole argument evaporates.
 
 Items 1 and 2 are the price of the decision. They are not follow-ups.
+
+---
+
+## §8 · Skyrim's master/plugin files — the 20-year-old answer to a question this design never asked
+
+`CMD-D1` says declarations are data. Bethesda's ESM/ESP format is the longest-lived
+shipped version of exactly that, and comparing against it exposes **a hole this
+document did not know it had**: *composition*. Nothing above says what happens when
+two features declare the same command, or when one feature wants to change
+another's.
+
+### 8.1 What the format actually is
+
+A plugin is a `TES4` header followed by groups of records. A record is an object —
+a spell, a perk, a weapon — and its fields are the data. **Papyrus scripts are not
+in the file**: they compile to separate `.pex` and records *reference* them.
+
+Every record has a **FormID**, and its first byte is the **load-order index of the
+plugin that defines it**: `Skyrim.esm` is `00`, and everything else depends on where
+the user's load order puts it. The header carries a sorted **masters list**, and
+*"if the first byte of the FormID does not correspond to a valid index in that
+masters list, then the FormID's record is added by that plugin"* — otherwise it
+**overrides** a record from a master.
+
+Composition is then one rule: *"if multiple plugins contain the same record, the
+last-loaded plugin's version overrides all others."*
+
+### 8.2 What this VALIDATES
+
+- **Declaration data + resolution code, shipped separately, for two decades.** The
+  record is data; the script is compiled and referenced. That is `CMD-D1`'s boundary
+  (§7.1), already load-bearing in a game with tens of thousands of mods.
+- **A dependency list belongs in the bundle's own header.** The masters list is how
+  a plugin says what it builds on. Our feature bundles need the same, and this
+  document had not said so.
+- **Ids must be namespaced by their origin.** A FormID is *(defining plugin, local
+  id)*. Feature B references feature A's command by an id that carries A in it.
+
+### 8.3 What this design must REFUSE, and why
+
+**Refuse: encoding the origin in a fixed-width id.** One byte of load-order index
+caps a game at 254 plugins. Bethesda then needed `ESL` light plugins to raise the
+ceiling to 4096, at the cost of a *smaller* per-plugin record budget and a runtime
+**remap into the `FE` index**. That is a twenty-year-old scar from a byte-width
+decision, and there is no reason to re-cut it: our ids are strings or content
+addresses, not packed indices.
+
+**Refuse: composing at LOAD time.** Skyrim resolves load order when the user starts
+the game, so the same set of mods in a different order is a different game. Skyrim
+does not replay; **we do.** Our ledger is the SSOT of facts and replay must be
+reproducible, so composition must resolve **once, at ruleset-build time, into the
+pinned content-addressed digest** (`RLS-A13`) — not per-launch. Same override
+semantics, moved earlier. Anything else means two replays of one ledger can disagree.
+
+### 8.4 The hole it exposes — OVERRIDE or CONTRIBUTION?
+
+Skyrim's *"last-loaded wins"* is whole-record replacement, and its cost is the
+best-known pain in modding: two mods editing one NPC, one silently loses everything
+the other did. The community's answer is **compatibility patches** — a third plugin
+whose only job is to merge by hand — and sorting tools to make the order sane.
+**That is a permanent tax paid by every user, forever, because composition is
+lossy.**
+
+This repo already refused that shape once. The actor hub's fold is **additive**:
+quantities *contribute*, they do not overwrite, and no plugin silently erases
+another's effect.
+
+So the question this document never asked:
+
+> **When feature B touches feature A's command — is that an OVERRIDE (Skyrim) or a
+> CONTRIBUTION (the hub's fold)?**
+
+Neither answer is obviously right, and that is why it is recorded rather than
+decided:
+
+- **Override** is simple and it is what a *verb* seems to want — you cannot
+  meaningfully average two definitions of `consume`. But it is lossy, and it buys a
+  patch-file economy.
+- **Contribution** is what the hub does and what avoids silent loss. Its difficulty
+  is that *"contribute to a verb"* has no obvious meaning: `+5` to a number is
+  clear; `+5` to `consume` is not.
+
+**The likely synthesis, offered but NOT sealed:** split the record by axis, which is
+what GAS already does. The **definition** (name, parameters, resolution) is
+whole-record override, because a verb is not a sum. The **precondition and effect
+lists are additive**, so a feature can constrain or extend a command it does not
+own without erasing it — precisely how a GAS `GameplayEffect` adds *Activation
+Blocked* tags to an ability it never authored.
+
+That would take Skyrim's clarity where a verb needs it and the hub's additivity
+where the lossiness actually bites. It needs a design round of its own.
+
+**Sources:**
+[Skyrim Mod:Mod File Format — UESP](https://en.uesp.net/wiki/Skyrim_Mod:Mod_File_Format) ·
+[Skyrim:Form ID — UESP](https://en.uesp.net/wiki/Skyrim:Form_ID) ·
+[FormIDs and You — Nexus](https://www.nexusmods.com/skyrimspecialedition/articles/6629) ·
+[LOOT: Introduction To Load Orders](https://loot.github.io/docs/help/Introduction-To-Load-Orders.html) ·
+[Plugin Load Order — Modding.wiki](https://modding.wiki/en/skyrim/users/plugin-load-order) ·
+[Guide:Plugins Files — Step Mods](https://stepmodifications.org/wiki/Guide:Plugins_Files)
