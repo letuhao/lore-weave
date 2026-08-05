@@ -277,10 +277,14 @@ class TestRouterConfidenceThresholdBounds:
         assert 0.0 < router.ROUTER_CONFIDENCE_THRESHOLD < 1.0
 
 
-class TestSkillVectorCacheSignatureIsCodeTupleOnly:
+class TestSkillVectorCacheIgnoresDescriptionText:
     """Accepted tradeoff (review-impl finding, NOT a bug): the skill-vector
-    cache signature (`_skill_catalog_signature()`) is the sorted tuple of
-    SKILL CODES only — never a hash of each skill's description text. A
+    cache signature carries the sorted tuple of SKILL CODES — and, since U-3,
+    the embedding model — but never a hash of each skill's description text.
+
+    *(Renamed from `...SignatureIsCodeTupleOnly`, which stopped being true when
+    U-3 added the model to the key. A class named after a property it no longer
+    asserts is the stale-claim pattern this repository keeps paying for.)* A
     description-only edit to an existing `SkillDef` (code unchanged) does NOT
     invalidate the cache, so the router keeps scoring against the STALE
     embedded text until the process restarts or `SYSTEM_SKILLS` gains/loses a
@@ -331,3 +335,99 @@ class TestSkillVectorCacheSignatureIsCodeTupleOnly:
         # description.
         batch_calls = [c for c in embed_calls if len(c) == len(SYSTEM_SKILLS)]
         assert len(batch_calls) == 1
+
+
+class TestSkillVectorsAreNotSharedAcrossEmbeddingModels:
+    """U-3 — REJECTS a measured defect, and its twin already carried the fix.
+
+    `_SKILL_VECTOR_CACHE` was keyed by the skill codes alone, while the vectors it holds are computed
+    BY a specific embedding model. So whichever model ran first after boot supplied the vectors for
+    every later turn, whatever model that turn asked for — and vectors from two different models are
+    not comparable, so the similarity scores the router ranks on were silently wrong.
+
+    `tool_discovery._TOOL_VECTOR_CACHE` keys on `(catalog_signature, model_source, model_ref)` under
+    the note *"so two distinct embedding models never share a cached vector set"*. **One of the pair
+    was patched and the other was not** — a correction applied where someone was looking.
+
+    It is also a determinism defect: the surface then depends on **which turn ran first after boot**,
+    which no record captures and no replay reproduces.
+    """
+
+    def setup_method(self, _method):
+        router.reset_skill_vector_cache()
+
+    @pytest.mark.asyncio
+    async def test_a_second_model_does_not_inherit_the_first_models_vectors(self):
+        seen_models: list[str] = []
+
+        async def fake_embed(*, user_id, model_source, model_ref, texts):
+            # Each turn embeds TWICE: the skill vectors (many texts, cached) and the
+            # per-turn intent (one text, never cached). Only the first is the subject.
+            if len(texts) > 1:
+                seen_models.append(model_ref)
+            return EmbeddingResult(
+                embeddings=[[1.0, 0.0] for _ in texts], dimension=2, model=model_ref,
+            )
+
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = fake_embed
+        with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+            for ref in ("embed-model-a", "embed-model-b"):
+                await router.route_additional_skills(
+                    intent_text="one", active_surface={"chat"}, already_selected=[],
+                    user_id="u1", model_source="user_model", model_ref=ref,
+                )
+
+        assert seen_models == ["embed-model-a", "embed-model-b"], (
+            f"the second model reused the first model's vectors: embedded {seen_models}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_same_model_twice_still_hits_the_cache(self):
+        """The other half. A key that never hits is not a fix, it is an embedding call per turn —
+        and the cache exists because this runs on every turn."""
+        calls = 0
+
+        async def fake_embed(*, user_id, model_source, model_ref, texts):
+            nonlocal calls
+            if len(texts) > 1:          # skill-vector embeds only; the intent is per-turn
+                calls += 1
+            return EmbeddingResult(
+                embeddings=[[1.0, 0.0] for _ in texts], dimension=2, model=model_ref,
+            )
+
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = fake_embed
+        with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+            for _ in range(3):
+                await router.route_additional_skills(
+                    intent_text="one", active_surface={"chat"}, already_selected=[],
+                    user_id="u1", model_source="user_model", model_ref="embed-model-a",
+                )
+        assert calls == 1, f"the cache stopped working: {calls} embedding calls for one model"
+
+    @pytest.mark.asyncio
+    async def test_a_skill_is_never_looked_up_by_a_model_name(self):
+        """The mistake the fix itself could introduce: the signature now carries the model, so
+        deriving the embedded codes from it would ask SYSTEM_SKILLS for a skill named after an
+        embedding model."""
+        embedded: list[list[str]] = []
+
+        async def fake_embed(*, user_id, model_source, model_ref, texts):
+            embedded.append(list(texts))
+            return EmbeddingResult(
+                embeddings=[[1.0, 0.0] for _ in texts], dimension=2, model=model_ref,
+            )
+
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = fake_embed
+        with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+            await router.route_additional_skills(
+                intent_text="one", active_surface={"chat"}, already_selected=[],
+                user_id="u1", model_source="user_model", model_ref="embed-model-a",
+            )
+        assert embedded, "nothing was embedded"
+        assert not any("embed-model-a" in t for t in embedded[0]), (
+            "an embedding-model name leaked into the skill texts"
+        )
+        assert len(embedded[0]) == len(SYSTEM_SKILLS)

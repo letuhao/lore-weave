@@ -21,7 +21,9 @@ evolving copies:
 Skill-vector cache lifetime is DELIBERATELY simpler than the tool-vector cache:
 `SYSTEM_SKILLS` is a module-level constant (~11-15 entries), not a live,
 per-user MCP catalog -- there is no TTL, only a signature check (the sorted
-tuple of skill codes). In practice this means "compute once per process,
+tuple of skill codes, PLUS the embedding model since U-3: vectors from two
+different models are not comparable, so sharing them silently corrupts every
+similarity score the router ranks on). In practice this means "compute once per process,
 never again" today; the signature check exists only so a hypothetical future
 where SYSTEM_SKILLS becomes dynamic doesn't silently serve stale vectors.
 
@@ -71,7 +73,8 @@ ROUTER_CONFIDENCE_THRESHOLD = 0.35
 ROUTER_MAX_ADDITIONS = 2
 
 # Process-lifetime cache: skill code -> embedding vector. No TTL (see module
-# docstring) -- invalidated only by a SYSTEM_SKILLS signature change.
+# docstring) -- invalidated by a change to the SYSTEM_SKILLS signature OR to the
+# embedding model, because vectors from two models are not comparable (U-3).
 _SKILL_VECTOR_CACHE: dict[str, list[float]] | None = None
 _SKILL_VECTOR_CACHE_SIGNATURE: tuple[str, ...] | None = None
 
@@ -109,10 +112,27 @@ async def _get_skill_vectors(
     failure -- the caller MUST fall back to "no additions"; this never
     raises."""
     global _SKILL_VECTOR_CACHE, _SKILL_VECTOR_CACHE_SIGNATURE
-    sig = _skill_catalog_signature()
+    # 🔴 U-3 — THE EMBEDDING MODEL IS PART OF THE KEY, and it was not.
+    #
+    # The signature was the skill codes alone, while the vectors below are computed BY a specific
+    # embedding model. So whichever model ran first after boot supplied the vectors for every later
+    # turn, whatever model that turn asked for — and vectors from two different models are not
+    # comparable, so the similarity scores the router ranks on were silently wrong.
+    #
+    # This is the SAME defect its twin already fixed: `tool_discovery._TOOL_VECTOR_CACHE` keys on
+    # `(catalog_signature, model_source, model_ref)` under the note "so two distinct embedding
+    # models never share a cached vector set". One of the pair was patched and the other was not,
+    # which is this repository's most repeated shape — a correction applied where someone was
+    # looking, and nowhere else.
+    #
+    # The consequence is a determinism defect as much as a correctness one: the surface then depends
+    # on WHICH TURN RAN FIRST AFTER BOOT, which no record captures and no replay can reproduce.
+    sig = _skill_catalog_signature() + (model_source, model_ref)
     if _SKILL_VECTOR_CACHE is not None and _SKILL_VECTOR_CACHE_SIGNATURE == sig:
         return _SKILL_VECTOR_CACHE
-    codes = list(sig)
+    # NOT `list(sig)` — the signature now carries the model too, and feeding that to
+    # `_skill_embedding_text` would look up a skill named after an embedding model.
+    codes = list(_skill_catalog_signature())
     if not codes:
         return {}
     texts = [_skill_embedding_text(c) for c in codes]
