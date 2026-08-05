@@ -740,6 +740,14 @@ class KnowledgeClient:
             # NOTE: log only the exception, never `headers` — `X-Admin-Token`
             # is a bearer credential and must not reach the logs (§6.7).
             logger.warning("get_admin_tool_definitions (mcp list-tools) failed: %s", exc)
+            # 🔴 U-2's SIBLING, and it was left un-fixed while its twin three methods up was
+            # repaired. This is the other method that returns `[]` on a catalogue failure, and
+            # returning `[]` with only a log line IS the counter-example that refuted P1 — the
+            # largest narrowing this system performs, recorded as a log line and treated as a
+            # feature. That an admin is the one holding the empty surface changes who is misled,
+            # not whether anyone is.
+            self._register_catalogue_outage(
+                self._ADMIN_CATALOG_KEY, f"list-tools failed: {type(exc).__name__}")
             return []
 
         tools = [
@@ -756,6 +764,12 @@ class KnowledgeClient:
         self._admin_tool_definitions = tools
         return tools
 
+    #: The admin catalogue is cached process-wide (`_admin_tool_definitions`), not under a per-user
+    #: key, so it has no entry in `_tool_defs_cache` to compare against. A sentinel key keeps the
+    #: `count`-when-known rule honest: `stale` is always absent for it, so `count` is always ABSENT
+    #: rather than fabricated as 0.
+    _ADMIN_CATALOG_KEY = "\x00admin"
+
     def _register_catalogue_outage(self, cache_key: str, reason: str) -> None:
         """U-2 · a catalogue that fails to load is the LARGEST narrowing this system performs, and
         it registered nothing — only a `logger.warning`. **P1 is falsifiable at n=1 and this was
@@ -767,6 +781,14 @@ class KnowledgeClient:
         thing this record exists to stop.
         """
         stale = self._tool_defs_cache.get(cache_key)
+        # 🔴 The availability signal must not survive the outage it is about. `_catalog_meta` was
+        # written only on SUCCESS and never invalidated, so during an outage `find_tools` read this
+        # user's last "everything is fine" answer — the field exists precisely to tell "no such
+        # tool" from "that provider is temporarily down", and it was wrong at the only moment it
+        # mattered. Dropped rather than replaced with a guess: `{}` means *no signal*, which is
+        # true, and inventing an `unavailable_providers` list we did not receive would be the
+        # fabricated-by-default shape `count` is already guarded against.
+        self._catalog_meta.pop(cache_key, None)
         try:
             from app.services.instrument import record_catalogue_unavailable  # noqa: PLC0415
 

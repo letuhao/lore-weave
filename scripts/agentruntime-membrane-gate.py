@@ -178,13 +178,28 @@ MANIFEST = REPO / "contracts" / "agent-runtime-manifest.json"
 # a callable handed in as an argument, is invisible to it. It raises the COST of
 # crossing the boundary; it does not make crossing impossible.
 _AMBIENT_REL = "services/chat-service/app/agentruntime/ambient.py"
-AMBIENT_MODULES = {"os", "time", "datetime", "random", "uuid", "socket", "platform"}
-AMBIENT_CALLS = {"getenv", "urandom", "now", "today", "monotonic", "time_ns", "uuid4", "uuid1"}
+# `secrets` is here because §0.14.4's word is "randomness", and a list that named only `random`
+# and `uuid` let the most obviously random module in the stdlib through — a verifier measured it.
+AMBIENT_MODULES = {
+    "os", "time", "datetime", "random", "uuid", "socket", "platform", "secrets",
+}
+AMBIENT_CALLS = {
+    "getenv", "urandom", "now", "today", "monotonic", "time_ns", "uuid4", "uuid1",
+    "perf_counter", "process_time", "token_hex", "token_bytes", "token_urlsafe",
+}
 AMBIENT_BUILTINS = {"open", "input"}
 # Path methods that touch the filesystem. `Path` itself is pure string manipulation.
+#
+# 🔴 `resolve`, `cwd`, `home`, `touch`, `is_file`, `is_dir` and `lstat` were added after a verifier
+# executed twelve probe shapes against this list and found seven it did not know — including a LIVE
+# one: `manifest.py` called `Path(__file__).resolve()`, which reads both the filesystem AND the
+# layout of the checkout, in a non-boundary module, with the gate green. The disclosure below says
+# the check is by direct NAME; it did not say the name list was incomplete, and "a filesystem method
+# we did not think to list" is a different failure from the one that was disclosed.
 AMBIENT_PATH_METHODS = {
     "exists", "read_text", "read_bytes", "write_text", "write_bytes",
-    "mkdir", "unlink", "rglob", "glob", "iterdir", "stat",
+    "mkdir", "unlink", "rglob", "glob", "iterdir", "stat", "lstat",
+    "resolve", "cwd", "home", "touch", "is_file", "is_dir", "samefile", "expanduser",
 }
 
 
@@ -479,6 +494,16 @@ def _selftest() -> int:
         ("uuid", "import uuid" + NL),
         ("open()", "def f():" + NL + "    return open(1)" + NL),
         ("filesystem probe", "def f(q):" + NL + "    return q.exists()" + NL),
+        # The seven a verifier measured this gate blind to. `.resolve()` was LIVE in the package
+        # while the gate was green, so these are not hypotheticals — they are the shapes that
+        # already got through once, and a probe apiece is what stops the list silently shrinking.
+        ("path resolve", "def f(q):" + NL + "    return q.resolve()" + NL),
+        ("cwd", "from pathlib import x" + NL + "def f():" + NL + "    return x.Path.cwd()" + NL),
+        ("home", "def f(q):" + NL + "    return q.home()" + NL),
+        ("touch", "def f(q):" + NL + "    return q.touch()" + NL),
+        ("is_file", "def f(q):" + NL + "    return q.is_file()" + NL),
+        ("perf_counter", "def f(q):" + NL + "    return q.perf_counter()" + NL),
+        ("secrets", "import secrets" + NL),
     ]
     for label, src in ambient_cases:
         with tempfile.TemporaryDirectory() as td:

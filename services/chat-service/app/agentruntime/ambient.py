@@ -15,6 +15,15 @@ module that is not this one fails. It **cannot** see an ambient read reached thr
 helper, or through a callable passed in as an argument. **It raises the cost of crossing the
 boundary; it does not make crossing impossible**, and no sentence in this package may claim it does.
 
+🔴 **And "by direct name" was not the whole residual — the NAME LIST itself was short.** A verifier
+executed twelve probe shapes against it instead of trusting it and found seven it did not know:
+`.resolve()`, `Path.cwd()`, `Path.home()`, `.touch()`, `.is_file()`, `time.perf_counter()` and
+**`secrets.*`** — which §0.14.4's own word *"randomness"* covers even though its explicit list named
+only `random` and `uuid`. One of the seven was **live in this package**: `manifest.py` computed
+`Path(__file__).resolve()` with the gate green, which is why `module_anchor` now exists. All seven
+are covered and each has a selftest probe, because a capability list that nobody proves is a list
+that quietly shrinks. **A disclosure of one blind spot is not a disclosure of the others.**
+
 *(The gate could not see any of this until CP-1.8: it permits the whole standard library, and every
 ambient capability in Python is in the standard library — it was green on `os`, `time`, `random`,
 `uuid` and `open()`.)*
@@ -32,6 +41,21 @@ def manifest_path_override() -> str | None:
     """The explicit manifest location, or `None`. **Deployment resolves the path; code does not
     guess it** — a guess writes the catalog somewhere nobody reads."""
     return os.environ.get(MANIFEST_PATH_ENV) or None
+
+
+def module_anchor() -> Path:
+    """The absolute location of this package on disk, for the marker search that finds the manifest.
+
+    🔴 **`Path(__file__).resolve()` lived in `manifest.py` and the gate was green on it** — a
+    filesystem call *and* a read of the checkout's layout, in a non-boundary module, missed because
+    `.resolve()` was not in the gate's method list. A verifier found it by executing twelve probe
+    shapes rather than by trusting the list, and six more were missing beside it.
+
+    It belongs here for the reason the boundary exists: **the deployed layout differs from the
+    checkout**, which is exactly how `parents[4]` once made this package unimportable in production.
+    A module that computes where it is is not a function of its arguments.
+    """
+    return Path(__file__).resolve()
 
 
 def exists(path: Path) -> bool:

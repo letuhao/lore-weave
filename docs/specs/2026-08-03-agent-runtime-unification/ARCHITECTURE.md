@@ -165,7 +165,7 @@ and each carrying `stage` and `reason` as it does today:
 
 | kind | parameters | what it does |
 |---|---|---|
-| `filter` | `field`, **`op ∈ {eq, in, not_in}`**, `value` | per-row membership — the only shape today's `keep` covers. **Three operators, deliberately.** Regex or arbitrary comparison would re-admit the closure problem under a new name; a stage that needs a fourth is **a finding to bring back here** |
+| `filter` | `field`, **`op ∈ {eq, in, not_in}`**, **`value` bounded to a plain scalar or a tuple of them** | per-row membership — the only shape today's `keep` covers. **Three operators, deliberately.** Regex or arbitrary comparison would re-admit the closure problem under a new name; a stage that needs a fourth is **a finding to bring back here** |
 | `allow_list` · `deny_list` | `names` | explicit set membership, for the always-hot core and the retirement list |
 | **`order_by`** | **`keys: [(field, direction)]`** — see §0.14.1a, which is the design | **not a narrowing.** It establishes the ranking that rank- and budget-dependent kinds consume |
 | `top_k` | `k` | drops beyond rank *k* |
@@ -179,6 +179,35 @@ to an **unordered** collection selects an arbitrary subset — which is exactly 
 > A pipeline that does not must be rejected at construction, not at use.
 
 That rule is checkable from the pipeline value alone, which is what makes it worth stating.
+
+🔴 **A CLOSED OPERATOR SET DOES NOT CLOSE THE KIND SET, AND THE FIRST BUILD PROVED IT TWICE.** A
+verifier measured two live routes back to arbitrary logic, both of which this section's reasoning
+walked straight past:
+
+1. **Nothing required a stage to be one of the six.** The assembler dispatched on `stage.keep(row)`
+   by duck typing; a four-line class holding a lambda, never imported from the package, narrowed the
+   surface with the conservation law satisfied and the validator silent. `NarrowingRule(keep=…)` had
+   not been removed — it had been **un-named**.
+2. **`value` was untyped.** The design reasoned about the operator *vocabulary* and never about the
+   *operand*, so a custom `__contains__` gave `in` the behaviour of a regex stage with zero new
+   operators.
+
+So both are now stated as requirements, not left to follow from the table: **membership in the kind
+set is checked by EXACT TYPE at the pipeline boundary** (a subclass overriding `keep` is the same
+closure through inheritance), and **`value` is bounded to a plain scalar or a tuple of plain
+scalars** — which also makes the section's *second* justification true of the whole kind set rather
+than of its examples: every constructible stage is now content-addressable.
+
+**And the same "rejected at construction" promise applies to stage PARAMETERS, which it did not.**
+`AllowList` with no names constructed happily and narrowed the surface to nothing; an empty
+`DenyList` was a silent no-op. The realistic way an empty list arrives is a config read that returned
+nothing, so **the default is the failure mode**, not a neutral starting point.
+
+🔴 **UNBUILT, named: the budget is still an ambient read.** The row above says the boundary module
+*"must read it and pass it in"*. `HOT_SEED_TOKEN_BUDGET = int(os.environ.get(...))` is still
+evaluated at import in `tool_surface.py`, and `ambient.py` has no budget reader. The sentence
+describes the design, not the code, and is marked as such until a checkpoint owns it — see the
+status table in §0.14.1c.
 
 ##### 0.14.1a Order by WHAT — the part a `key` parameter was hiding
 
@@ -257,6 +286,40 @@ a real narrowing stage in this repository cannot be expressed by the kinds above
 to record and bring back here — not a reason to add a closure escape hatch.** A single `Callable`
 parameter would restore every problem this design exists to remove.
 
+##### 0.14.1c What §0.14.1 DESIGNS and what the code currently HAS
+
+🔴 **A verifier's sharpest finding was not a bug — it was that this section reads as though the
+ranking already ranks something.** Measured against a real manifest row:
+
+```
+row keys: ['admitted_against','contract_version','id','kind','lifecycle','members','owning_service']
+OrderBy(('lane',…))  → rejected: the row does not carry 'lane'
+OrderBy(('tier',…))  → rejected           OrderBy(('relevance',…)) → rejected
+TakeWhileBudget(cost_field='cost')        → rejected
+```
+
+**None of the three fields rule 1 names can appear on a manifest row, and nothing produces
+`relevance` at all.** §0.14.1b's rule 4 — *"a pipeline ordering by `relevance` when scoring did not
+run MUST be rejected"* — is satisfied today only in the degenerate sense that **every** such pipeline
+is rejected, because nothing can ever produce the field. That is the correct fail-closed direction
+and it is **not evidence the rule works.**
+
+| clause | state | owner |
+|---|---|---|
+| `order_by` required before a rank-dependent kind; `id` appended; `cost` not primary; missing field rejected; rank recorded | **built and gated** | CP-1 |
+| kind set closed by exact type; `value` bounded; empty list kinds rejected | **built and gated** | CP-1 |
+| one canonical serialisation in the package | **built**, enforced by a unit test | CP-1 |
+| ambient boundary | **built and gated**, with the blind spots disclosed | CP-1 |
+| rows carrying `lane` / `tier` / `cost` | **UNBUILT — the ranking has no subject** | CP-4 (the admitting checkpoint) |
+| a scoring effect producing `relevance` | **UNBUILT — no producer exists** | CP-2 |
+| `_is_read_tool` replaced by declared `lane` data | **UNBUILT — still the name heuristic C-1 forbids** | CP-4 |
+| the budget passed in rather than read from `os.environ` at import | **UNBUILT** | CP-2 |
+
+**The seam this table exists to make visible:** the Unicode door, the budget and the ranking fields
+all live on the **legacy side**, and three of this section's four overstatements were about exactly
+those three. §0.14 was written as though the new package's boundary already reached them. It does
+not, and no gate inside the package can.
+
 #### 0.14.2 One canonical serialisation, and it decides a Unicode form for the whole surface
 
 **Why this is one decision and not two.** U-1 (§0.13.2) requires the token estimator to normalise,
@@ -271,11 +334,28 @@ and giving them different answers would be worse than giving neither.**
 **"Where it enters" must name places, or it is the same blank as `key` was.** There are exactly two:
 **(a)** `manifest.load` — every string on every row read from disk, since a hand-edited or
 tool-generated manifest may arrive in any form; and **(b)** any ingestion of an external declaration
-catalogue, which is where the per-user MCP overlay — **arbitrary third-party text** — arrives. **Both
-are inside the boundary module of §0.14.4**, which is what makes "normalise once at entry"
-enforceable rather than aspirational. `estimate_tokens` must then be able to assume NFC rather than
-normalise defensively; **a normaliser called at every use site is a normaliser someone will forget at
-one of them.**
+catalogue, which is where the per-user MCP overlay — **arbitrary third-party text** — arrives.
+`estimate_tokens` must then be able to assume NFC rather than normalise defensively; **a normaliser
+called at every use site is a normaliser someone will forget at one of them.**
+
+🔴 **AMENDED — this paragraph claimed an enforcement mechanism that cannot exist.** It said *"both
+are inside the boundary module of §0.14.4, which is what makes 'normalise once at entry' enforceable
+rather than aspirational."* **False, and not implementable as written.** Door (b) — the one that
+actually carries third-party text — is `knowledge_client.get_tool_definitions`, in `app/client/`: a
+different package that neither the boundary module nor the membrane gate can reach. Door (a) *is*
+inside the package and has almost no subject, because the contract already constrains every row
+string except `owning_service`. **The doors are on opposite sides of the seam, and no single gate
+spans them.** What is enforceable is stated instead:
+
+| door | where | what enforces it |
+|---|---|---|
+| (b) external catalogue | `app/client/knowledge_client.py` — **legacy side** | a test that DRIVES the ingestion path and asserts the composed form, plus `_tool_tokens` counting the composed form so an un-normalised residual cannot change which declarations survive |
+| (a) `manifest.load` | `app/agentruntime/` — inside | the read-side contract check |
+
+**And the residual is a decision, not an oversight:** the door composes *text* and leaves **tool
+names, schema keys, `enum` and `pattern` verbatim**, because those are wire identifiers owned by the
+remote server and rewriting them changes the call the model then makes. Normalising at the estimator
+closes the token consequence without touching a stored value.
 
 **The canonical form, stated so a second implementation is a diff and not a discovery:**
 
@@ -285,7 +365,15 @@ one of them.**
 | **strings NFC-normalised before hashing** | §0.14.2's whole point |
 | **floats forbidden in any hashed structure** | formatting varies by platform and version; the repo has already paid for digest bugs |
 | **a version prefix inside the hashed bytes** | a future change to this table becomes a *different digest*, not a silent collision. Without it, a serializer change is indistinguishable from a content change |
-| **exactly one implementation, gate-enforced** | the repo currently carries **18 distinct canonical-JSON implementations, 5 flag variants and 0 shared helpers**, with a precedent of digests permanently baselined because a serializer froze |
+| **exactly one implementation *in this package*, enforced by a test in CI** | the repo currently carries **18 distinct canonical-JSON implementations, 5 flag variants and 0 shared helpers**, with a precedent of digests permanently baselined because a serializer froze |
+
+🔴 **Two corrections to the row above, both of which were the "capability written as though it
+exists" shape this section opens by promising to avoid.** It read *"gate-enforced"*, and the membrane
+gate contains **no canonicalisation check at all**; the enforcement is a test in the unit suite. Both
+run in CI, so the property holds — but naming the wrong mechanism sends the next reader to a file
+that will not tell them anything. And its **scope is the 8-file package**, where a second serialiser
+has never existed; the 18 repo-wide implementations cited as motivation are **out of scope and
+untouched**.
 
 #### 0.14.3 A degraded catalogue must narrow loudly — U-2 is a P1 counter-example
 

@@ -14,6 +14,23 @@ from app.services import skill_router as router
 from app.services.skill_registry import SYSTEM_SKILLS
 
 
+@pytest.fixture(autouse=True)
+def _an_embedding_model_is_configured():
+    """🔴 F11 — the router no longer takes a model from its caller; it RESOLVES the user's
+    embedding-capability default. A test that does not stub the resolver reaches provider-registry,
+    gets `None`, and the router correctly does nothing — so every router test needs one configured.
+
+    Defaulted here rather than in each test, because the tests that care about WHICH model patch
+    over this deliberately, and the ones that do not should not be silently exercising the
+    no-embedding-model fallback while claiming to test ranking.
+    """
+    async def _resolve(user_id):
+        return ("user_model", "embed-model-a")
+
+    with patch("app.services.tool_discovery._resolve_embedding_model", side_effect=_resolve):
+        yield
+
+
 def _fake_embed_fixed_map(text_vectors: dict[str, list[float]], default: list[float]):
     """Mirrors test_tool_discovery.py's helper of the same name — maps known
     texts to fixed vectors; any unmapped text (the fresh per-call intent
@@ -41,7 +58,7 @@ class TestRouteAdditionalSkills:
                 intent_text="   ",
                 active_surface={"chat"},
                 already_selected=["universal", "knowledge"],
-                user_id="u1", model_source="user_model", model_ref="m1",
+                user_id="u1",
             )
         assert additions == []
         mock_client.embed.assert_not_awaited()
@@ -75,7 +92,7 @@ class TestRouteAdditionalSkills:
                 intent_text=_intent,
                 active_surface={"book"},
                 already_selected=["glossary", "knowledge"],
-                user_id="u1", model_source="user_model", model_ref="m1",
+                user_id="u1",
             )
         assert additions == ["translation"]
         # Never re-adds anything already selected, even if it also scores high.
@@ -90,7 +107,7 @@ class TestRouteAdditionalSkills:
                 intent_text="anything at all",
                 active_surface={"book", "editor"},
                 already_selected=list(SYSTEM_SKILLS.keys()),  # everything already selected
-                user_id="u1", model_source="user_model", model_ref="m1",
+                user_id="u1",
             )
         # Nothing left to add — every candidate is already in already_selected.
         assert additions == []
@@ -116,7 +133,7 @@ class TestRouteAdditionalSkills:
                 intent_text="anything",
                 active_surface={"chat"},
                 already_selected=["universal"],
-                user_id="u1", model_source="user_model", model_ref="m1",
+                user_id="u1",
             )
         assert "glossary" not in additions
         assert "plan_forge" not in additions
@@ -161,7 +178,7 @@ class TestRouteAdditionalSkills:
                 intent_text="broad authoring intent that matches everything",
                 active_surface={"book", "editor", "studio", "chat"},
                 already_selected=[],
-                user_id="u1", model_source="user_model", model_ref="m1",
+                user_id="u1",
             )
         # Never more than the cap, even though ~all skills clear 0.35 here.
         assert len(additions) == router.ROUTER_MAX_ADDITIONS
@@ -189,7 +206,7 @@ class TestRouteAdditionalSkills:
                 intent_text="something ambiguous",
                 active_surface={"book", "editor", "studio", "chat"},
                 already_selected=["universal"],
-                user_id="u1", model_source="user_model", model_ref="m1",
+                user_id="u1",
             )
         assert additions == []
 
@@ -204,7 +221,7 @@ class TestRouteAdditionalSkills:
                 intent_text="translate my chapter",
                 active_surface={"book", "editor"},
                 already_selected=[],
-                user_id="u1", model_source="user_model", model_ref="m1",
+                user_id="u1",
             )
         assert additions == []
 
@@ -227,7 +244,7 @@ class TestRouteAdditionalSkills:
                 intent_text="translate my chapter",
                 active_surface={"book", "editor"},
                 already_selected=[],
-                user_id="u1", model_source="user_model", model_ref="m1",
+                user_id="u1",
             )
         assert additions == []
 
@@ -248,13 +265,13 @@ class TestRouteAdditionalSkills:
                 intent_text="one",
                 active_surface={"book", "editor", "studio", "chat"},
                 already_selected=[],
-                user_id="u1", model_source="user_model", model_ref="m1",
+                user_id="u1",
             )
             await router.route_additional_skills(
                 intent_text="two",
                 active_surface={"book", "editor", "studio", "chat"},
                 already_selected=[],
-                user_id="u1", model_source="user_model", model_ref="m1",
+                user_id="u1",
             )
         # Call 1: skill-vector batch embed (one call, N texts) + intent embed = 2.
         # Call 2: skill-vector cache HIT (SYSTEM_SKILLS signature unchanged) →
@@ -313,7 +330,7 @@ class TestSkillVectorCacheIgnoresDescriptionText:
         with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
             await router.route_additional_skills(
                 intent_text="one", active_surface={"chat"}, already_selected=[],
-                user_id="u1", model_source="user_model", model_ref="m1",
+                user_id="u1",
             )
             # Mutate ONLY the description of an existing skill — its `code` is
             # unchanged, so `_skill_catalog_signature()` (sorted codes only)
@@ -324,7 +341,7 @@ class TestSkillVectorCacheIgnoresDescriptionText:
             try:
                 await router.route_additional_skills(
                     intent_text="two", active_surface={"chat"}, already_selected=[],
-                    user_id="u1", model_source="user_model", model_ref="m1",
+                    user_id="u1",
                 )
             finally:
                 SYSTEM_SKILLS["universal"] = original
@@ -356,6 +373,22 @@ class TestSkillVectorsAreNotSharedAcrossEmbeddingModels:
     def setup_method(self, _method):
         router.reset_skill_vector_cache()
 
+    @staticmethod
+    def _with_embedding_model(ref):
+        """Patch the model RESOLVER, because that is where the model now comes from.
+
+        🔴 The twin carried TWO fixes and only the key was ported. `route_additional_skills`
+        still took the session's **chat-completion** model — most chat models cannot embed, so that
+        either failed upstream or produced an improvised vector from a model never meant to embed,
+        and the cache key was then honest about the wrong model. `tool_discovery` removed the
+        argument (HIGH-2) in favour of `_resolve_embedding_model(user_id)`; the sibling kept it for
+        four more rounds.
+        """
+        async def _resolve(user_id):
+            return ("user_model", ref) if ref else None
+
+        return patch("app.services.tool_discovery._resolve_embedding_model", side_effect=_resolve)
+
     @pytest.mark.asyncio
     async def test_a_second_model_does_not_inherit_the_first_models_vectors(self):
         seen_models: list[str] = []
@@ -373,10 +406,11 @@ class TestSkillVectorsAreNotSharedAcrossEmbeddingModels:
         mock_client.embed.side_effect = fake_embed
         with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
             for ref in ("embed-model-a", "embed-model-b"):
-                await router.route_additional_skills(
-                    intent_text="one", active_surface={"chat"}, already_selected=[],
-                    user_id="u1", model_source="user_model", model_ref=ref,
-                )
+                with self._with_embedding_model(ref):
+                    await router.route_additional_skills(
+                        intent_text="one", active_surface={"chat"}, already_selected=[],
+                        user_id="u1",
+                    )
 
         assert seen_models == ["embed-model-a", "embed-model-b"], (
             f"the second model reused the first model's vectors: embedded {seen_models}"
@@ -398,13 +432,57 @@ class TestSkillVectorsAreNotSharedAcrossEmbeddingModels:
 
         mock_client = AsyncMock()
         mock_client.embed.side_effect = fake_embed
-        with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+        with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client),                 self._with_embedding_model("embed-model-a"):
             for _ in range(3):
                 await router.route_additional_skills(
                     intent_text="one", active_surface={"chat"}, already_selected=[],
-                    user_id="u1", model_source="user_model", model_ref="embed-model-a",
+                    user_id="u1",
                 )
         assert calls == 1, f"the cache stopped working: {calls} embedding calls for one model"
+
+    @pytest.mark.asyncio
+    async def test_the_router_EMBEDS_WITH_THE_EMBEDDING_MODEL_not_the_turns_chat_model(self):
+        """🔴 F11 — the half of the twin's fix that was never ported. The router had no way to
+        reach an embedding model at all: it used whatever completion model the session chatted with,
+        so U-3's key was honest about a model that should not have been embedding."""
+        used: list[tuple[str, str]] = []
+
+        async def fake_embed(*, user_id, model_source, model_ref, texts):
+            used.append((model_source, model_ref))
+            return EmbeddingResult(
+                embeddings=[[1.0, 0.0] for _ in texts], dimension=2, model=model_ref,
+            )
+
+        import inspect
+        sig = inspect.signature(router.route_additional_skills)
+        assert "model_ref" not in sig.parameters and "model_source" not in sig.parameters, (
+            "the router still accepts a caller-supplied model — a chat model can be handed to an "
+            "embedder again, which is exactly what HIGH-2 removed from the twin"
+        )
+
+        mock_client = AsyncMock()
+        mock_client.embed.side_effect = fake_embed
+        with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client),                 self._with_embedding_model("the-embedding-model"):
+            await router.route_additional_skills(
+                intent_text="one", active_surface={"chat"}, already_selected=[], user_id="u1",
+            )
+        assert used, "nothing was embedded"
+        assert {ref for _, ref in used} == {"the-embedding-model"}, (
+            f"the router embedded with {used} — the skill vectors AND the intent must both use the "
+            f"resolved embedding model, or the cosine score compares two models' vectors"
+        )
+
+    @pytest.mark.asyncio
+    async def test_NO_embedding_model_configured_falls_back_to_static_selection(self):
+        """`_resolve_embedding_model` returns None when the user has no embedding default.
+        Guessing one is the improvised-vector failure arriving through a default."""
+        mock_client = AsyncMock()
+        with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client),                 self._with_embedding_model(None):
+            additions = await router.route_additional_skills(
+                intent_text="one", active_surface={"chat"}, already_selected=[], user_id="u1",
+            )
+        assert additions == []
+        mock_client.embed.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_a_skill_is_never_looked_up_by_a_model_name(self):
@@ -421,10 +499,10 @@ class TestSkillVectorsAreNotSharedAcrossEmbeddingModels:
 
         mock_client = AsyncMock()
         mock_client.embed.side_effect = fake_embed
-        with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client):
+        with patch("app.client.embedding_client.get_embedding_client", return_value=mock_client),                 self._with_embedding_model("embed-model-a"):
             await router.route_additional_skills(
                 intent_text="one", active_surface={"chat"}, already_selected=[],
-                user_id="u1", model_source="user_model", model_ref="embed-model-a",
+                user_id="u1",
             )
         assert embedded, "nothing was embedded"
         assert not any("embed-model-a" in t for t in embedded[0]), (

@@ -34,6 +34,20 @@ class NotCanonicalisable(TypeError):
     """A value this serialisation refuses to represent, rather than represent badly."""
 
 
+def nfc(value: str) -> str:
+    """The Unicode form this package hashes in, exposed for §0.14.2's **door (a)**.
+
+    `manifest.load` is one of the two doors that section names, and it did not normalise: every other
+    row string is ASCII-constrained by the contract, but `owning_service` is not, so an NFD spelling
+    loaded and validated and produced **two `digest` values for one visibly identical document**.
+
+    Exported from here rather than re-spelled at the door, because the whole point of §0.14.2 is that
+    exactly one place decides what the composed form is — a second `unicodedata.normalize` call in
+    this package would be the eighteenth implementation problem in miniature.
+    """
+    return unicodedata.normalize("NFC", value) if isinstance(value, str) else value
+
+
 def _norm(value: Any, *, path: str = "$") -> Any:
     """Recursively normalise for hashing. Raises rather than guessing."""
     # bool BEFORE int: `bool` is a subclass of `int`, so the int branch would swallow it and a

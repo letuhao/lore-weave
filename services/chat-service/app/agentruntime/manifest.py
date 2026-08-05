@@ -24,7 +24,7 @@ import re
 from pathlib import Path
 from typing import Iterable
 
-from . import ambient
+from . import ambient, canon
 from .admission import Admitted
 from .contract import CONTRACT_VERSION, Declaration, check_contract, identity_of
 
@@ -55,7 +55,7 @@ def manifest_path() -> Path | None:
     override = ambient.manifest_path_override()
     if override:
         return Path(override)
-    here = Path(__file__).resolve()
+    here = ambient.module_anchor()
     for parent in here.parents:
         candidate = parent / _MANIFEST_REL
         if ambient.exists(candidate):
@@ -303,7 +303,12 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
                 # The row stores the DERIVED owner; the contract derives it from a path. Feed the
                 # stored owner back through the same shape so a row that names an owner nothing
                 # could have derived is rejected rather than trusted.
-                source_path=f"services/{r.get('owning_service', '')}/",
+                # §0.14.2 door (a). Every other row string is ASCII-constrained by the contract;
+                # `owning_service` is not, and an NFD spelling loaded, validated and stored
+                # un-normalised — two `canon.digest` values for one visibly identical document,
+                # which is the "drift check reports a change nobody made" failure this door exists
+                # to prevent.
+                source_path=f"services/{canon.nfc(r.get('owning_service', ''))}/",
                 lifecycle=r.get("lifecycle", "draft"),
                 members=tuple(r.get("members", ()) or ()),
             ))

@@ -105,7 +105,7 @@ def reset_skill_vector_cache() -> None:
 
 
 async def _get_skill_vectors(
-    *, user_id: str, model_source: str, model_ref: str,
+    *, user_id: str,
 ) -> dict[str, list[float]] | None:
     """Best-effort per-skill embedding vectors, cached for the process
     lifetime (see module docstring). Returns None on ANY embedding-client
@@ -127,6 +127,20 @@ async def _get_skill_vectors(
     #
     # The consequence is a determinism defect as much as a correctness one: the surface then depends
     # on WHICH TURN RAN FIRST AFTER BOOT, which no record captures and no replay can reproduce.
+    #
+    # 🔴 AND THE TWIN CARRIED **TWO** FIXES; ONLY THE KEY WAS PORTED. `tool_discovery` HIGH-2 also
+    # removed `model_source`/`model_ref` from its signature, because those were the turn-scoped
+    # CHAT-completion model values — *"most chat models can't embed, so that either failed upstream
+    # or risked an improvised vector from a model never meant to embed"* — and replaced them with
+    # `_resolve_embedding_model(user_id)`. So the key here was honest about a model that should not
+    # have been embedding at all: the same erratum-not-applied-everywhere shape as U-3 itself, one
+    # level up, found by a verifier reading the twin rather than this file.
+    from app.services.tool_discovery import _resolve_embedding_model  # noqa: PLC0415
+
+    model = await _resolve_embedding_model(user_id)
+    if model is None:
+        return None
+    model_source, model_ref = model
     sig = _skill_catalog_signature() + (model_source, model_ref)
     if _SKILL_VECTOR_CACHE is not None and _SKILL_VECTOR_CACHE_SIGNATURE == sig:
         return _SKILL_VECTOR_CACHE
@@ -160,8 +174,6 @@ async def route_additional_skills(
     active_surface: set[str],
     already_selected: list[str],
     user_id: str,
-    model_source: str,
-    model_ref: str,
 ) -> list[str]:
     """Additive-only: EXTRA skill codes (never already in `already_selected`)
     whose cosine similarity to `intent_text` clears `ROUTER_CONFIDENCE_THRESHOLD`,
@@ -180,14 +192,19 @@ async def route_additional_skills(
     vectors: dict[str, list[float]] | None = None
     intent_vector: list[float] | None = None
     try:
-        vectors = await _get_skill_vectors(
-            user_id=user_id, model_source=model_source, model_ref=model_ref,
-        )
+        vectors = await _get_skill_vectors(user_id=user_id)
         if vectors:
             from app.client.embedding_client import get_embedding_client  # noqa: PLC0415
 
+            # The SAME model that produced the cached skill vectors — a cosine score between two
+            # models' vectors is not a similarity, it is a coincidence.
+            from app.services.tool_discovery import _resolve_embedding_model  # noqa: PLC0415
+
+            model = await _resolve_embedding_model(user_id)
+            if model is None:
+                return []
             intent_result = await get_embedding_client().embed(
-                user_id=user_id, model_source=model_source, model_ref=model_ref,
+                user_id=user_id, model_source=model[0], model_ref=model[1],
                 texts=[intent_text],
             )
             intent_vector = intent_result.embeddings[0] if intent_result.embeddings else None

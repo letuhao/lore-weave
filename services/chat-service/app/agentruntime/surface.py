@@ -91,6 +91,9 @@ class Filter(_Narrowing):
     value: Any = None
 
     OPS = ("eq", "in", "not_in")
+    #: The operand types a filter may hold. **Exact type, never `isinstance`** — see `__post_init__`.
+    #: `float` is absent for the same reason `canon` refuses it: two spellings of one value.
+    SCALARS = (str, bool, int, type(None))
 
     def __post_init__(self) -> None:
         # NOT `super().__post_init__()`. `@dataclass(slots=True)` REBUILDS the class, so the
@@ -101,6 +104,27 @@ class Filter(_Narrowing):
             raise ValueError(f"unknown op {self.op!r}; expected one of {self.OPS}")
         if not self.field:
             raise ValueError("a filter must name the field it reads")
+        # 🔴 THE OPERATOR SET WAS CLOSED AND THE PREDICATE SET WAS NOT. `value: Any` re-admitted
+        # arbitrary logic through Python's own protocols, and a verifier measured it: a class whose
+        # `__contains__` runs a regex gives `op="in"` the behaviour of a regex stage with **zero new
+        # operators**, and `__eq__` does the same for `op="eq"`. A bare `lambda` was storable here
+        # too. The design reasoned about the operator VOCABULARY and never about the OPERAND, so the
+        # whole argument for three operators walked straight past this field.
+        #
+        # `type(x) in SCALARS`, not `isinstance` — a `str` subclass overriding `__eq__` passes an
+        # isinstance check and then behaves like a closure. Exactness is the point of the bound.
+        if self.op == "eq":
+            if type(self.value) not in self.SCALARS:
+                raise ValueError(
+                    f"filter value {self.value!r} is a {type(self.value).__name__}; `eq` compares "
+                    f"against a plain scalar. An object with a custom __eq__ is a closure wearing a "
+                    f"value's clothes (§0.14.1)."
+                )
+        elif type(self.value) is not tuple or any(type(v) not in self.SCALARS for v in self.value):
+            raise ValueError(
+                f"filter value {self.value!r} is not a tuple of scalars; `{self.op}` needs one. A "
+                f"container with a custom __contains__ expresses arbitrary logic (§0.14.1)."
+            )
 
     def keep(self, row: dict) -> bool:
         got = row.get(self.field)
@@ -117,6 +141,10 @@ class AllowList(_Narrowing):
 
     names: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        _Narrowing.__post_init__(self)
+        _require_names(self, "an allow-list with no names narrows the surface to NOTHING")
+
     def keep(self, row: dict) -> bool:
         return row.get("id") in self.names
 
@@ -127,8 +155,28 @@ class DenyList(_Narrowing):
 
     names: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        _Narrowing.__post_init__(self)
+        _require_names(self, "a deny-list with no names removes nothing and registers nothing")
+
     def keep(self, row: dict) -> bool:
         return row.get("id") not in self.names
+
+
+def _require_names(stage, consequence: str) -> None:
+    """Both list kinds default `names=()`, and **the default is the failure mode**, not a neutral
+    starting point: the realistic way an empty list arrives is a config read that returned nothing.
+    An allow-list then hides the whole catalogue and a deny-list becomes a silent no-op — the two
+    failures this package exists to make impossible, reached by a default rather than by a decision.
+
+    "Rejected at construction, not at use" was true of pipeline ORDER and not of stage PARAMETERS; a
+    verifier found `AllowList("s","r")` constructing happily and narrowing to zero.
+    """
+    if not stage.names:
+        raise ValueError(f"{type(stage).__name__} must name at least one declaration: {consequence}")
+    bad = [n for n in stage.names if type(n) is not str or not n]
+    if bad:
+        raise ValueError(f"{type(stage).__name__} names must be non-empty strings; got {bad!r}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,9 +279,21 @@ class TakeWhileBudget(_Narrowing):
 #: Kinds whose decision depends on POSITION in a ranking rather than on the row alone.
 RANK_DEPENDENT = (TopK, TakeWhileBudget)
 
+#: 🔴 **THE CLOSED SET, AND IT HAD TO BE WRITTEN DOWN BEFORE IT WAS CLOSED.** `assemble` dispatched
+#: on `stage.keep(row)` by duck typing, and `validate_pipeline` only asked whether a stage was an
+#: `OrderBy` or rank-dependent. **Nothing anywhere required a stage to be one of the six.** A
+#: verifier defined a four-line class holding a lambda, never imported from this package, and drove
+#: it through `assemble`: it narrowed, the conservation law balanced, and `validate_pipeline` said
+#: nothing. `NarrowingRule(keep=Callable)` had not been removed — it had been **un-named**.
+#:
+#: Membership is by EXACT TYPE. A subclass of `Filter` that overrides `keep` is the same closure
+#: through inheritance, and `isinstance` would welcome it.
+STAGE_KINDS = (OrderBy, Filter, AllowList, DenyList, TopK, TakeWhileBudget)
+_KIND_SET = frozenset(STAGE_KINDS)
+
 
 def validate_pipeline(stages) -> None:
-    """A pipeline containing a rank-dependent kind MUST establish its order first.
+    """Every stage is one of the six kinds, and a rank-dependent kind MUST establish its order first.
 
     A budget or a top-*k* over an **unordered** collection selects an arbitrary subset — which is
     the legacy defect where `active_tool_names` is a `set` iterated unsorted, and `tools` is the
@@ -241,7 +301,14 @@ def validate_pipeline(stages) -> None:
     stating, and rejected **at construction** rather than at use.
     """
     ordered = False
-    for s in stages:
+    for i, s in enumerate(stages):
+        if type(s) not in _KIND_SET:
+            raise ValueError(
+                f"pipeline[{i}] is a {type(s).__name__}, which is not one of the six stage kinds "
+                f"{tuple(k.__name__ for k in STAGE_KINDS)}. A stage that merely answers `keep()` is "
+                f"a closure with a different name, and the whole point of §0.14.1 is that a "
+                f"narrowing has an identity a reader can hash and compare."
+            )
         if isinstance(s, OrderBy):
             ordered = True
         elif isinstance(s, RANK_DEPENDENT) and not ordered:

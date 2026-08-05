@@ -4924,6 +4924,24 @@ _ORIENTATION_SCENT = (
 )
 
 
+#: U-2 — the outage the model can NAME. Without it the model has no tool left to ask with and every
+#: explanation it gives is invented; a verifier watched exactly that, with the model asserting a
+#: withheld tool "does not exist at all". The wording says TEMPORARY and says what to do, because
+#: "I have no tools" and "you have no tools" produce different replies.
+#:
+#: **A constant because there are three turn shapes and a verifier found two of them silent.** While
+#: this text was inline in one branch, the gate for it could only assert the string literal was
+#: present in the module source — which is satisfied by one occurrence and says nothing about the
+#: other two paths.
+CATALOGUE_UNAVAILABLE_NOTICE = (
+    "TOOL CATALOGUE UNAVAILABLE. Your tools could not be loaded for this turn — this is a "
+    "temporary outage on our side, NOT a sign that the capability is missing or that the "
+    "user's data is absent. Do not claim a tool or feature does not exist, and do not "
+    "invent a result. Say plainly that your tools are unreachable right now and that the "
+    "user can retry in a moment."
+)
+
+
 async def stream_response(
     session_id: str,
     user_message_content: str,
@@ -5589,8 +5607,16 @@ async def stream_response(
     # background job — the exact pin/load drift reusing `workflow_load_result` was meant to
     # make impossible. (It also saves the duplicate fetch: the block below now reuses this.)
     _turn_catalog: list[dict] = []
+    _admin_tool_defs: list[dict] | None = None
     _catalogue_outage = False
-    if not disable_tools and kctx.tool_calling_enabled and not admin_context:
+    if not disable_tools and kctx.tool_calling_enabled and admin_context:
+        # 🔴 U-2's OTHER SIBLING — the admin catalogue was fetched 350 lines BELOW, after the
+        # system prompt was already assembled, so an admin turn could not be told about an outage
+        # even once the record existed. That is the same reason the user catalogue was moved up to
+        # this block (see the note above), applied to the path that was left behind. An admin
+        # holding an empty surface is misled by exactly the same silence.
+        _admin_tool_defs = await knowledge_client.get_admin_tool_definitions(admin_token)
+    elif not disable_tools and kctx.tool_calling_enabled:
         _turn_catalog = await knowledge_client.get_tool_definitions(user_id=user_id)
         # 🔴 U-2, second half. Registering the narrowing is not enough: a verifier watched the
         # model state that a withheld tool "does not exist at all" while the row recorded it
@@ -5604,6 +5630,10 @@ async def stream_response(
         # exists to end, reproduced inside U-2's own fix, and three tests caught it by receiving an
         # outage notice on a turn that simply had no tools. The fact comes from the party that knows
         # it failed.
+        #
+        # Read OUTSIDE the branch that fetched, so it covers whichever catalogue this turn loaded.
+        # Gating it on `not admin_context` was how the admin path came to have neither half.
+    if not disable_tools and kctx.tool_calling_enabled:
         _catalogue_outage = instrument.catalogue_outage_registered()
     _turn_async_tools = frozenset(
         n for n, td in _catalog_index(_turn_catalog).items() if tool_async(td)
@@ -5806,17 +5836,7 @@ async def stream_response(
         workflow_directive_block,  # WS-5 — prefer an authored workflow rail over improvising
         pinned_rail_text,    # WS-3 (C6) — the mode's PINNED rail, already in context
         book_context_note,
-        # U-2 — an outage the model can NAME. Without this it has no tool left to ask with and
-        # every explanation it gives is invented; a verifier watched exactly that, with the model
-        # asserting a withheld tool "does not exist at all". The wording says TEMPORARY and says
-        # what to do, because "I have no tools" and "you have no tools" produce different replies.
-        (
-            "TOOL CATALOGUE UNAVAILABLE. Your tools could not be loaded for this turn — this is a "
-            "temporary outage on our side, NOT a sign that the capability is missing or that the "
-            "user's data is absent. Do not claim a tool or feature does not exist, and do not "
-            "invent a result. Say plainly that your tools are unreachable right now and that the "
-            "user can retry in a moment."
-        ) if _catalogue_outage else None,
+        CATALOGUE_UNAVAILABLE_NOTICE if _catalogue_outage else None,
     ]
     _system_content = build_system_message(
         use_cache=use_anthropic_cache,
@@ -5939,7 +5959,9 @@ async def stream_response(
             # sessions never reach /mcp/admin. No admin token / fetch failure →
             # empty list → the turn runs tool-free. (Never the discovery path —
             # the admin catalog is small + fully advertised.)
-            tool_defs = await knowledge_client.get_admin_tool_definitions(admin_token)
+            # Already fetched at the top of the turn, so the outage can reach the system prompt
+            # (U-2). Re-fetching here would double the call AND leave this the only reader.
+            tool_defs = list(_admin_tool_defs or ())
             # The generic class-C confirm frontend tool, so the agent can surface
             # the System confirm card (suspend → human Confirm → the FE POSTs to
             # /v1/glossary/actions/admin/confirm). Only when there ARE admin tools.
@@ -8121,6 +8143,17 @@ async def resume_stream_response(
         ) = await _compute_rail_drive_context(
             pool, user_id, susp.book_id, susp.permission_mode, session_id, knowledge_client,
         )
+
+    # 🔴 U-2's THIRD PATH, and it had NEITHER half. A resume re-derives its whole surface from
+    # scratch (WS-3), so it hits the same catalogue fetch and the same outage — and the notice
+    # existed only on the fresh-turn prompt. The resumed model would then explain a missing
+    # capability with nothing to explain it from, which is the founding defect on a different turn
+    # shape. The rehydrated conversation has no tail_blocks to hang this on, so it is appended as
+    # its own system message.
+    if instrument.catalogue_outage_registered():
+        working = list(working) + [
+            {"role": "system", "content": CATALOGUE_UNAVAILABLE_NOTICE},
+        ]
 
     async for line in _emit_chat_turn(
         session_id=session_id,

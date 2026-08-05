@@ -1026,6 +1026,35 @@ is right, code is wrong.
 that reads source text instead of running the path*, and *a correction applied to one member of a set*
 (1 of 3 text fields; 1 of 3 catalogue paths; 1 of the twin's 2 fixes).
 
+#### What the 20 findings became — **fixed, 2026-08-05/06. Not yet re-verified.**
+
+| finding | what shipped |
+|---|---|
+| **F1** U-2 arm-after-use | `instrument.arm_turn_surface()`, first statement of **both** turn entry points, unconditional; both downstream re-arms deleted. Gate replaced by an **AST line-order** comparison (arming vs every narrowing call, per function) |
+| **F2** U-1 one of three fields | `_nfc_text` composes text at any depth at the door; `_tool_tokens` counts the **composed** form so a wire identifier left verbatim cannot inflate an estimate |
+| **P4** ×4 | carry rule inverted back (origin carried, admission live); `contract_version` restored as §6.4's second field; `generate(bootstrap=)` so a missing manifest is not permission to restamp; write-side validates `previous`; the vacuous queue test replaced by a real two-generation document |
+| **F3/F4/F7/F16** kind set | membership by **exact type** at the pipeline boundary; `Filter.value` bounded to a scalar or a tuple of scalars; empty `AllowList`/`DenyList` rejected at construction |
+| **F5** U-2's siblings | the **admin** catalogue registers an outage and is fetched early enough to be told; the **resume** turn is told; the notice is one constant, so the three paths cannot drift |
+| **F8** substring gates | the four `in src` gates replaced: the client is **driven** on a failing transport (both methods, parametrised), and "all three turn shapes reach the notice" is read from the parse tree |
+| **F11** U-3's sibling | the skill router resolves the user's **embedding** model instead of taking the session's chat model; no embedding default ⇒ static-only, never a guessed model |
+| **F9/F12/F15** | `manifest.load` composes `owning_service` via `canon.nfc`; the gate's ambient list gained the **seven shapes a verifier measured it blind to** (incl. the live `Path(__file__).resolve()`, now `ambient.module_anchor()`), each with a selftest probe; `_catalog_meta` is dropped on an outage so the stale "everything is fine" signal cannot be served |
+| **F6/F13/F14** | not code — **spec corrections.** §0.14's four overstatements amended, and **§0.14.1c** now tabulates every clause as *built and gated* or *UNBUILT* with an owning checkpoint |
+
+**Every gate above was injected against and measured red before being reversed by an inverse edit —
+never `git checkout`.** One injection stayed **green** and is recorded rather than hidden: an
+**alias** for a narrowing call (`p = client.get_tool_definitions; p(...)`) walks past the AST gate,
+which matches by called name. That blind spot, and the hand-kept `_NARROWING_CALLS` list, are written
+into the gate's own docstring.
+
+**Still open, and none of it is code this checkpoint can write:** §6.4's *"without leaving the
+runtime"* clause (a declaration failing a breaking amendment is absent from the next manifest, not
+queued — CP-4, with the drift gate); the ranking's missing subject (`lane`/`tier`/`cost` on rows —
+CP-4; `relevance` — CP-2); `_is_read_tool` still the name heuristic C-1 forbids (CP-4); the budget
+still an import-time `os.environ` read (CP-2).
+
+**⚠️ These fixes are the BUILDER's. Per the protocol they close nothing until fresh independent
+verifiers rule on them.**
+
 **Six of seven items carry an independent PASS.** The seventh (1.4) is half done: M4 passes, and its
 **P4 half has no subject at this checkpoint** — no INSERT is reachable from the new runtime, so the
 property has nothing to be true or false about. Two V-LIVE rounds returned `CANNOT DETERMINE` for the

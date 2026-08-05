@@ -1349,26 +1349,89 @@ class TestU2ACatalogueOutageIsRegistered:
             instrument.surface_withheld.reset(token)
         assert sink[0]["scope"] == instrument.SCOPE_DECLARATION and sink[0]["tool"] == "book_list"
 
-    def test_the_client_registers_on_a_real_failure_path(self):
-        """The wiring gate. A correct recorder with no caller is a shape this repo has shipped —
-        `budget_names_by_tokens_ex` had zero production callers while being unit-tested."""
-        from pathlib import Path
-        src = (Path(__file__).resolve().parents[1] / "app" / "client" / "knowledge_client.py").read_text("utf-8")
-        assert src.count("self._register_catalogue_outage(") >= 2, (
-            "a failure path returns [] without registering the narrowing"
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("method,args", [
+        ("get_tool_definitions", {"user_id": "u-1"}),
+        ("get_admin_tool_definitions", {"admin_token": "tok"}),
+    ])
+    async def test_EVERY_catalogue_path_registers_on_a_real_failure(self, method, args):
+        """🔴 The previous version asserted `src.count("self._register_catalogue_outage(") >= 2` —
+        a substring count, which is how the ADMIN path came to be the one member of the set that was
+        never fixed. Both methods return `[]` on a transport failure, and returning `[]` with only a
+        log line IS the counter-example that refuted P1.
+
+        Driven, not counted: a transport that raises, a context this test does not pre-arm with a
+        hand-made sink, and the assertion that the record arrived.
+        """
+        import contextvars
+        from unittest.mock import patch
+
+        from app.services import instrument as _inst
+        from app.client.knowledge_client import KnowledgeClient
+        client = KnowledgeClient(
+            base_url="http://knowledge-service:8092", internal_token="t", timeout_s=0.1, retries=1,
         )
+
+        async def run():
+            sink = _inst.arm_turn_surface()
+            with patch("app.client.knowledge_client.streamablehttp_client",
+                       side_effect=RuntimeError("gateway down")):
+                out = await getattr(client, method)(**args)
+            return out, sink, _inst.catalogue_outage_registered()
+
+        ctx = contextvars.copy_context()
+        out, sink, outage = await ctx.run(run)
+
+        assert out == [], "the failure path did not degrade to an empty catalogue"
+        assert outage is True, f"{method} returned [] and registered nothing — P1's counter-example"
+        rows = [e for e in sink if e.get("scope") == _inst.SCOPE_CATALOGUE]
+        assert len(rows) == 1 and "tool" not in rows[0]
+        assert rows[0]["stage"] == "catalogue_unavailable" and rows[0]["reason"]
+        assert "count" not in rows[0], "a cold failure knows nothing, not even the size"
 
     def test_the_model_is_told_not_only_the_row(self):
         """Registering without telling the model reproduces the founding defect: a verifier watched
         the model say a withheld tool 'does not exist at all' while the row recorded it correctly.
-        The row was honest and the screen was not."""
-        src = _stream_src()
-        assert "_catalogue_outage" in src
-        assert "TOOL CATALOGUE UNAVAILABLE" in src
-        i = src.index("TOOL CATALOGUE UNAVAILABLE")
-        note = src[i:i + 700]
+        The row was honest and the screen was not.
+
+        🔴 This used to assert the notice's STRING LITERAL was somewhere in the module — satisfied
+        by one occurrence, while two of the three turn shapes (admin, resume) had no notice at all.
+        The text is now one constant, so what is left to check here is its content; **which paths
+        reach it** is the parametrised test below.
+        """
+        from app.services.stream_service import CATALOGUE_UNAVAILABLE_NOTICE as note
         assert "temporary" in note.lower(), "the model must be told this is temporary, not absence"
         assert "does not exist" in note, "the model must be told NOT to claim absence"
+        assert "retry" in note.lower(), "and what to do instead of inventing a result"
+
+    def test_ALL_THREE_TURN_SHAPES_reach_the_notice(self):
+        """🔴 Two of the three were silent, and a source-literal gate could not tell.
+
+        The fresh turn had it; the ADMIN turn was explicitly excluded (`and not admin_context`, with
+        its catalogue fetched 350 lines *after* the prompt was assembled), and the RESUME turn — which
+        re-derives its whole surface from scratch — never had it. Checked from the parse tree, per
+        function, so a fourth entry point cannot inherit the silence by omission.
+        """
+        import ast
+        from pathlib import Path
+        path = Path(__file__).resolve().parents[1] / "app" / "services" / "stream_service.py"
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        users = {
+            fn.name for fn in tree.body
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and any(isinstance(n, ast.Name) and n.id == "CATALOGUE_UNAVAILABLE_NOTICE"
+                    for n in ast.walk(fn))
+        }
+        assert {"stream_response", "resume_stream_response"} <= users, (
+            f"a turn entry point cannot tell the model about an outage: {sorted(users)}"
+        )
+        # ...and the admin branch must not be excluded from the READ, which is how it lost both
+        # halves at once.
+        src = _stream_src()
+        assert "catalogue_outage_registered()" in src
+        assert "and not admin_context" not in src.split("_catalogue_outage = instrument")[0][-400:], (
+            "the outage read is gated on the non-admin branch again"
+        )
 
     def test_an_EMPTY_catalogue_is_not_an_outage(self):
         """🔴 The defect the first version of this fix contained. `outage = not catalog` conflates

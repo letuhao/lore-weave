@@ -1085,10 +1085,113 @@ class TestStageKindsAreDataNotClosures:
         with pytest.raises(ValueError, match="unknown op"):
             Filter("s", "r", field="id", op="regex", value="^b")
 
-    def test_no_stage_kind_carries_a_callable(self):
-        """The whole point: a closure has no content identity, so a pipeline built from lambdas
-        cannot be content-addressed and two different narrowings hash the same."""
+    def test_no_stage_kind_DECLARES_a_callable_field(self):
+        """The shape check, kept — and demoted to what it actually proves.
+
+        🔴 A verifier measured this test seeing `['str','str','str','str','Any']` and passing, while
+        **two live routes to arbitrary logic were open**. It inspects DECLARED FIELD TYPES; both
+        routes live in runtime values and in the dispatch. It is red-able only for the shape already
+        removed. The two tests below are the ones that gate the behaviour.
+        """
         import dataclasses
         for kind in (Filter, AllowList, DenyList, OrderBy, TopK, TakeWhileBudget):
             for f in dataclasses.fields(kind):
                 assert "Callable" not in str(f.type), f"{kind.__name__}.{f.name} is a closure"
+
+    def test_AN_ARBITRARY_STAGE_OBJECT_IS_REFUSED_AT_THE_PIPELINE_BOUNDARY(self):
+        """🔴 ROUTE 1, MEASURED BY A VERIFIER: `assemble` dispatched on `stage.keep(row)` by duck
+        typing and nothing required a stage to be one of the six. A four-line class holding a lambda,
+        never imported from the package, narrowed the surface — conservation law satisfied,
+        `validate_pipeline` silent. `NarrowingRule(keep=Callable)` had not been removed; it had been
+        un-named."""
+        class ArbitraryStage:
+            stage, reason = "custom", "because my lambda said so"
+
+            def __init__(self, fn):
+                self.fn = fn
+
+            def keep(self, row):
+                return self.fn(row)
+
+        with pytest.raises(ValueError, match="not one of the six stage kinds"):
+            SurfaceAssembler(self._doc()).assemble(
+                pass_number=1, pipeline=[ArbitraryStage(lambda r: r["id"] in ("t0", "t2"))],
+            )
+
+    def test_a_SUBCLASS_of_a_kind_is_refused_too(self):
+        """Membership is by exact type. A subclass overriding `keep` is the same closure arriving
+        through inheritance, and `isinstance` would welcome it."""
+        class SneakyFilter(Filter):
+            def keep(self, row):
+                return row["id"].startswith("t0")
+
+        with pytest.raises(ValueError, match="not one of the six stage kinds"):
+            SurfaceAssembler(self._doc()).assemble(
+                pass_number=1,
+                pipeline=[SneakyFilter("s", "r", field="id", op="eq", value="t0")],
+            )
+
+    def test_THE_OPERAND_IS_BOUNDED_NOT_ONLY_THE_OPERATOR(self):
+        """🔴 ROUTE 2, MEASURED: `value: Any` re-admitted arbitrary logic through Python's own
+        protocols. A custom `__contains__` gives `op="in"` the behaviour of a regex stage with **zero
+        new operators**, and `__eq__` does the same for `eq`. The design reasoned about the operator
+        VOCABULARY and never about the OPERAND, so its whole argument walked past this field."""
+        import re
+
+        class Regexish:
+            def __contains__(self, x):
+                return bool(re.match(r"^b", str(x)))
+
+        class EqAnything:
+            def __eq__(self, other):
+                return str(other).endswith("_list")
+
+        with pytest.raises(ValueError, match="custom __contains__"):
+            Filter("s", "r", field="id", op="in", value=Regexish())
+        with pytest.raises(ValueError, match="custom __eq__"):
+            Filter("s", "r", field="id", op="eq", value=EqAnything())
+        with pytest.raises(ValueError, match="custom __eq__"):
+            Filter("s", "r", field="id", op="eq", value=lambda r: True)
+        # ...and a str SUBCLASS overriding __eq__ passes isinstance, which is why the check is exact.
+        class Sneaky(str):
+            def __eq__(self, other):
+                return True
+
+        with pytest.raises(ValueError, match="custom __eq__"):
+            Filter("s", "r", field="id", op="eq", value=Sneaky("t0"))
+
+        # The legitimate operands still work.
+        Filter("s", "r", field="id", op="eq", value="t0")
+        Filter("s", "r", field="id", op="in", value=("t0", "t1"))
+        Filter("s", "r", field="lane", op="eq", value=None)
+
+    def test_every_kind_is_CONTENT_ADDRESSABLE__which_was_the_stated_reason(self):
+        """§0.14.1's second justification: *a closure is not content-addressable, so a pipeline built
+        from closures has no identity.* A verifier noted the property held only over the well-behaved
+        subset — `canon.digest` raised on a pipeline carrying a `Regexish` value. With the operand
+        bounded, every constructible stage is now digestible, so the justification is true of the
+        whole kind set rather than of the examples."""
+        import dataclasses
+
+        from app.agentruntime import canon
+        stages = [
+            OrderBy(keys=(("lane", "asc"),)),
+            Filter("s", "r", field="id", op="in", value=("t0",)),
+            AllowList("s", "r", names=("t0",)),
+            DenyList("s", "r", names=("t1",)),
+            TopK("s", "r", k=2),
+            TakeWhileBudget("s", "r", budget=6),
+        ]
+        digests = {canon.digest(dataclasses.asdict(s)) for s in stages}
+        assert len(digests) == len(stages), "two different stages hashed the same"
+
+    def test_an_EMPTY_list_kind_is_refused_because_the_default_IS_the_failure(self):
+        """"Rejected at construction, not at use" held for pipeline ORDER and not for stage
+        PARAMETERS. `AllowList("s","r")` constructed happily and narrowed the surface to zero; the
+        realistic way an empty list arrives is a config read that returned nothing."""
+        with pytest.raises(ValueError, match="narrows the surface to NOTHING"):
+            AllowList("s", "r")
+        with pytest.raises(ValueError, match="removes nothing and registers nothing"):
+            DenyList("s", "r", names=())
+        with pytest.raises(ValueError, match="non-empty strings"):
+            AllowList("s", "r", names=("t0", ""))
