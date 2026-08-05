@@ -33,6 +33,19 @@ last_updated: 2026-04-27 ACT_001 unification refactor (main session attribution;
 
 ## 12H. NPC Memory Aggregate Split (R8 mitigation, A1 foundation) — HISTORICAL CONTEXT
 
+<!-- pc-npc-projections-dropped-0017 -->
+> **⚠️ The `pc_*` / `npc_*` projection tables named below DO NOT EXIST (dropped 2026-08-04).**
+> All seven were created by `contracts/migrations/per_reality/0006_projections.up.sql`
+> and dropped by `0017_drop_pc_npc_projections.up.sql`, for two independent reasons:
+> **no production code ever emitted a `pc.*` or `npc.*` event** (every occurrence in the
+> tree was a fixture, a bench input or a test), and their columns — `name`,
+> `stats JSONB`, a hardcoded `status` set — put game vocabulary in engine tables, which
+> `D-2` forbids.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #9).** In addition to the ACT_001 note above: the `region` aggregate referenced in this file's aggregate inventory no longer exists (`place`/`actor_core` per the 52-row ownership matrix), and `npc_session_memory` is `actor_session_memory` per ACT_001. Status markers below predate the island/commit-service model.
 
 NPC state grows linearly with interaction count. A popular NPC (tavern keeper) after 1 year with 10K PCs would have ~75MB state per snapshot in a naive design. Resolution: split NPC into core aggregate + per-pair memory aggregates. This is also the storage foundation for A1 (NPC memory at scale) — A1's semantic layer builds on this infrastructure.

@@ -134,6 +134,16 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # on its first run. Phase 0 made mechanical.
 "$PY" "$ROOT/scripts/orphan-model-gate.py"
 
+# A LIST COPIED INTO FOUR LANGUAGES, CHECKED IN ONE. The L3.A projection table
+# names live in a SQL CHECK, a Rust const, three Go declarations and a YAML
+# config, and every copy's own comment calls itself a mirror. Exactly one had a
+# mechanism, and that one read a SINGLE migration file -- so when 0017 narrowed
+# the constraint from ANOTHER file, it kept comparing against 0007's ten names
+# and stayed green. One day later four copies still named seven tables the DB no
+# longer had; one of them gates a TRUNCATE, one is a loaded production config
+# that would have failed the integrity-checker at startup.
+"$PY" "$ROOT/scripts/projection-table-mirror-gate.py"
+
 # A CITATION NOBODY CAN FOLLOW IS WORSE THAN NONE (U-10). It reports evidence and
 # silences review. Measured in the 2026-08-02 actor-hub round: design-lint's corpus
 # is hard-defaulted to docs/03_planning/LLM_MMO_RPG and pointing it at docs/specs

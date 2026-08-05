@@ -2,10 +2,15 @@ package pglive_test
 
 // End-to-end live-smoke for the 071 consumer (Slice 2): build the real Writer
 // with the pglive adapters (+ MetaScrubber) against real PG, call Handle with a
-// user.erased envelope, and assert BOTH PII copies are scrubbed — the
-// per-reality pc_projection AND the meta player_character_index.pc_name — and
-// that the meta scrub wrote a meta_write_audit row (MetaWrite self-audit).
+// user.erased envelope, and assert the PII copy is scrubbed and that the meta
+// scrub wrote a meta_write_audit row (MetaWrite self-audit).
 // Gated on PIIKMS_TEST_PG_URL.
+//
+// It used to assert BOTH copies — the meta index AND a per-reality pc_projection
+// it CREATEd itself. `0017` dropped that table and the per-reality scrub became a
+// no-op, so that half was removed 2026-08-04. Worth noting how it would have
+// aged otherwise: because the test built its own subject, it would have kept
+// passing against a table that exists nowhere but inside this test.
 
 import (
 	"context"
@@ -62,14 +67,6 @@ func TestLive_UserErasedConsumer_ScrubsBothPIICopies(t *testing.T) {
 	apply("../../../../../migrations/meta/012_player_character_index.up.sql")
 	apply("../../../../../migrations/meta/013_meta_write_audit.up.sql")
 	apply("../../../../../migrations/meta/027_meta_write_audit_scrub_version.up.sql")
-	if _, e := pool.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS pc_projection (
-			pc_id UUID PRIMARY KEY, user_id UUID NOT NULL, name TEXT NOT NULL,
-			status TEXT NOT NULL DEFAULT 'active',
-			CONSTRAINT pc_projection_status_valid CHECK (status IN ('active','inactive','deleted')))`); e != nil {
-		t.Fatalf("create pc_projection: %v", e)
-	}
-
 	userA := uuid.New()
 	reality := uuid.New()
 	pcID := uuid.New()
@@ -79,12 +76,6 @@ func TestLive_UserErasedConsumer_ScrubsBothPIICopies(t *testing.T) {
 		 VALUES ($1,$2,$3,$4,'Alice','active')`, uuid.New(), userA, reality, pcID); e != nil {
 		t.Fatalf("seed pc index: %v", e)
 	}
-	// Per-reality projection row (the projection PII copy).
-	if _, e := pool.Exec(ctx,
-		`INSERT INTO pc_projection (pc_id, user_id, name, status) VALUES ($1,$2,'Alice','active')`, pcID, userA); e != nil {
-		t.Fatalf("seed pc_projection: %v", e)
-	}
-
 	allow, err := meta.LoadAllowlist("../../../../../contracts/meta/events_allowlist.yaml")
 	if err != nil {
 		t.Fatalf("allowlist: %v", err)
@@ -112,14 +103,6 @@ func TestLive_UserErasedConsumer_ScrubsBothPIICopies(t *testing.T) {
 		t.Fatalf("Handle: %v", err)
 	}
 
-	// Per-reality projection scrubbed.
-	var pName, pStatus string
-	if err := pool.QueryRow(ctx, `SELECT name, status FROM pc_projection WHERE pc_id=$1`, pcID).Scan(&pName, &pStatus); err != nil {
-		t.Fatalf("query pc_projection: %v", err)
-	}
-	if pName != "[erased]" || pStatus != "deleted" {
-		t.Errorf("pc_projection not scrubbed: name=%q status=%q", pName, pStatus)
-	}
 	// Meta index scrubbed (the 2nd PII copy).
 	var iName, iStatus string
 	if err := pool.QueryRow(ctx, `SELECT pc_name, status FROM player_character_index WHERE user_ref_id=$1`, userA).Scan(&iName, &iStatus); err != nil {

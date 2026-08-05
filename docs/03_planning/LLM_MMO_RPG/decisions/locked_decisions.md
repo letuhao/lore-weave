@@ -8,6 +8,19 @@ generated_by: scripts/chunk_doc.py
 
 ## Locked decisions (history)
 
+<!-- pc-npc-projections-dropped-0017 -->
+> **⚠️ The `pc_*` / `npc_*` projection tables named below DO NOT EXIST (dropped 2026-08-04).**
+> All seven were created by `contracts/migrations/per_reality/0006_projections.up.sql`
+> and dropped by `0017_drop_pc_npc_projections.up.sql`, for two independent reasons:
+> **no production code ever emitted a `pc.*` or `npc.*` event** (every occurrence in the
+> tree was a fixture, a bench input or a test), and their columns — `name`,
+> `stats JSONB`, a hardcoded `status` set — put game vocabulary in engine tables, which
+> `D-2` forbids.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 As user confirms items, they move here with the answer and any rationale.
 
 | # | Decision | Answered on | Answer | Rationale / Notes |

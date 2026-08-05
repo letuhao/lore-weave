@@ -75,10 +75,10 @@ daily_enabled: false
 monthly_enabled: true
 full_check_interval_days: 30
 tables:
-  - name: pc_projection
+  - name: region_projection
     sample_size: 50
     full_scan_batch_size: 1000
-  - name: npc_projection
+  - name: world_kv_projection
     sample_size: 25
     full_scan_batch_size: 750
 `
@@ -101,10 +101,10 @@ tables:
 	if len(cfg.Tables) != 2 {
 		t.Fatalf("2 tables expected, got %d", len(cfg.Tables))
 	}
-	if cfg.Tables[0].TableName != "pc_projection" || cfg.Tables[0].SampleSize != 50 || cfg.Tables[0].FullScanBatchSize != 1000 {
+	if cfg.Tables[0].TableName != "region_projection" || cfg.Tables[0].SampleSize != 50 || cfg.Tables[0].FullScanBatchSize != 1000 {
 		t.Errorf("table[0] mismatch: %+v", cfg.Tables[0])
 	}
-	if cfg.Tables[1].TableName != "npc_projection" || cfg.Tables[1].SampleSize != 25 {
+	if cfg.Tables[1].TableName != "world_kv_projection" || cfg.Tables[1].SampleSize != 25 {
 		t.Errorf("table[1] mismatch: %+v", cfg.Tables[1])
 	}
 }
@@ -114,7 +114,7 @@ func TestParse_IgnoresUnknownKeys_ForwardCompat(t *testing.T) {
 mode: daily
 future_knob: 42
 tables:
-  - name: pc_projection
+  - name: region_projection
     sample_size: 20
     full_scan_batch_size: 500
 `
@@ -141,7 +141,7 @@ func TestParse_HandlesInlineComment(t *testing.T) {
 	yaml := `
 mode: daily  # cycle-15 default
 tables:
-  - name: pc_projection  # canonical PC table
+  - name: region_projection  # a surviving L3.A table
     sample_size: 20
     full_scan_batch_size: 500
 `
@@ -152,7 +152,7 @@ tables:
 	if cfg.Mode != types.CheckModeDaily {
 		t.Errorf("inline comment broke mode parse")
 	}
-	if !strings.HasPrefix(cfg.Tables[0].TableName, "pc_projection") {
+	if !strings.HasPrefix(cfg.Tables[0].TableName, "region_projection") {
 		t.Errorf("inline comment broke table-name parse: got %q", cfg.Tables[0].TableName)
 	}
 }

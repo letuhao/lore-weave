@@ -8,6 +8,19 @@ generated_by: scripts/chunk_doc.py
 
 ## 12G. Session as Concurrency Boundary + Cross-Session Event Handler (R7 mitigation)
 
+<!-- pc-npc-projections-dropped-0017 -->
+> **⚠️ The `pc_*` / `npc_*` projection tables named below DO NOT EXIST (dropped 2026-08-04).**
+> All seven were created by `contracts/migrations/per_reality/0006_projections.up.sql`
+> and dropped by `0017_drop_pc_npc_projections.up.sql`, for two independent reasons:
+> **no production code ever emitted a `pc.*` or `npc.*` event** (every occurrence in the
+> tree was a fixture, a bench input or a test), and their columns — `name`,
+> `stats JSONB`, a hardcoded `status` set — put game vocabulary in engine tables, which
+> `D-2` forbids.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #2).** §12G.1/§12G.2's core resolution — session as the concurrency unit with a per-session single writer — is on the wrong unit: the **channel/island** is the single writer (DP-A16 · SL-A9 · CS-A1), and §12G.3–§12G.6's `event-handler` service tailing the events table to drive cross-session propagation is a second writer — cross-island effects travel as async messages (SL-A10). Current design: [`13_simulation_loop.md`](../13_simulation_loop.md) + [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
 
 R7 initially framed as "multi-aggregate transaction deadlocks." Re-examination: **game is turn-based, session is the concurrency unit**. Intra-session writes are sequential by design — no deadlocks possible. The real R7 is cross-session effect propagation when an event's scope exceeds the originating session (e.g., spell destroys tavern → affects all 5 sessions in the tavern).

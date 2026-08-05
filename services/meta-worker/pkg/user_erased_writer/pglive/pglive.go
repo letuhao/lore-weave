@@ -5,11 +5,19 @@
 // adapters add the pgx dependency:
 //   - PgUserRealityLookup reads the META cross-reality index
 //     (player_character_index) to find which realities a user has PCs in.
-//   - PgPerRealityScrubber scrubs the user's PII in a PER-REALITY projection
-//     (pc_projection.name → '[erased]', status → 'deleted'), idempotently.
+//   - PgPerRealityScrubber scrubbed the user's PII in a PER-REALITY projection.
+//     **It has nothing to scrub since 2026-08-04 — see below.**
 //
-// pc_projection is the ONLY per-reality projection that references user_id
-// (verified against contracts/migrations/per_reality/0006_projections).
+// `pc_projection` was the ONLY per-reality projection that referenced `user_id`
+// (verified against contracts/migrations/per_reality/0006_projections), and
+// `0017` dropped it. So NO per-reality projection carries a user reference any
+// more, and the per-reality leg of the erasure cascade has no subject.
+//
+// Left issuing its UPDATE, it would have been worse than useless: the statement
+// targets a table Postgres no longer has, so it errors, the handler NACKs (by
+// design — leaving PII alive is the unsafe direction), and the erasure retries
+// forever without ever completing. A GDPR pipeline wedged shut is not a safe
+// failure just because it fails closed.
 package pglive
 
 import (
@@ -24,8 +32,8 @@ import (
 	uew "github.com/loreweave/foundation/services/meta-worker/pkg/user_erased_writer"
 )
 
-// erasedNameSentinel replaces pc_projection.name (NOT NULL, so a sentinel, not
-// NULL). A consumer reading the projection sees the PC as erased.
+// erasedNameSentinel replaces a NOT NULL name column (so a sentinel, not NULL).
+// Still used by the META scrub (player_character_index.pc_name).
 const erasedNameSentinel = "[erased]"
 
 // PgUserRealityLookup resolves the realities a user touched from the meta
@@ -72,8 +80,12 @@ func (l *PgUserRealityLookup) RealitiesForUser(ctx context.Context, userID uuid.
 type PoolResolver func(realityID uuid.UUID) (*pgxpool.Pool, error)
 
 // PgPerRealityScrubber scrubs a user's PII references in one reality's
-// pc_projection. Idempotent: the `status <> 'deleted'` guard makes a re-run a
-// 0-row no-op.
+// projections. **Currently a no-op with no subject** — see ScrubUserRefs.
+//
+// The type and its wiring are kept rather than deleted because the SEAM is real:
+// the cascade must reach every reality a user touched, and the first per-reality
+// table to carry a user reference will need exactly this. What is NOT kept is a
+// pretence that it is doing something.
 type PgPerRealityScrubber struct {
 	resolve PoolResolver
 }
@@ -85,22 +97,23 @@ func NewPgPerRealityScrubber(resolve PoolResolver) *PgPerRealityScrubber {
 
 var _ uew.PerRealityDB = (*PgPerRealityScrubber)(nil)
 
-// ScrubUserRefs NULLs/tombstones the user's PC PII in the named reality. A
-// transient failure (unreachable reality, SQL error) returns an error so the
-// caller NACKs (Q-L5H-1 inverted: leaving PII alive is the UNSAFE direction).
-// A 0-row result is success (already scrubbed, or the user has no PC here —
-// over-inclusion from the lookup is expected and safe).
-func (s *PgPerRealityScrubber) ScrubUserRefs(ctx context.Context, in uew.ScrubIntent) error {
-	pool, err := s.resolve(in.RealityID)
-	if err != nil {
+// ScrubUserRefs has NO PER-REALITY PII TO SCRUB since `0017`.
+//
+// It still resolves the reality's pool, because a reality the cascade cannot
+// reach at all is a real failure worth surfacing (the lookup said the user
+// touched it) and because that is the check the first real scrub will need. It
+// then does nothing and reports success, which is the honest outcome when the
+// set of columns to scrub is empty.
+//
+// **The emptiness is not assumed, it is asserted**:
+// TestNoPerRealityTableCarriesAUserReference walks the migrations and fails the
+// moment a surviving per-reality table declares a `user_id`, naming this method
+// as the thing that must be written. Without that test this would be a silent
+// erasure hole the day such a column lands — which is a far worse bug than the
+// one it replaces.
+func (s *PgPerRealityScrubber) ScrubUserRefs(_ context.Context, in uew.ScrubIntent) error {
+	if _, err := s.resolve(in.RealityID); err != nil {
 		return fmt.Errorf("pglive: resolve pool for reality %s: %w", in.RealityID, err)
-	}
-	if _, err := pool.Exec(ctx,
-		`UPDATE pc_projection
-		    SET name = $2, status = 'deleted'
-		  WHERE user_id = $1 AND status <> 'deleted'`,
-		in.UserID, erasedNameSentinel); err != nil {
-		return fmt.Errorf("pglive: scrub pc_projection user %s in reality %s: %w", in.UserID, in.RealityID, err)
 	}
 	return nil
 }

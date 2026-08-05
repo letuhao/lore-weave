@@ -129,8 +129,10 @@ type UserRealityLookup interface {
 }
 
 // MetaScrubber scrubs the user's PII in META tables (P2/071) — the
-// cross-reality player_character_index.pc_name copy that the per-reality
-// pc_projection scrub does NOT reach. Production routes it through MetaWrite
+// cross-reality player_character_index.pc_name copy. Since `0017` this is the
+// ONLY leg of the cascade with anything to scrub: no per-reality projection
+// carries a user reference any more, so PerRealityDB is a no-op (see
+// pglive.PgPerRealityScrubber). Production routes it through MetaWrite
 // (so each row is self-audited + emits pc.index.status.changed). Called once
 // per Handle. MUST be idempotent (re-delivery is safe). A non-nil error → NACK
 // (Q-L5H-1 inverted: leaving the PII copy alive is the UNSAFE direction).

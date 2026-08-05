@@ -144,10 +144,15 @@ func run() error {
 	}
 
 	// ── user-erased cascade (P2/071): xreality.user.erased → scrub PII ──────────
-	// Per-reality pc_projection scrub (always) + meta player_character_index.pc_name
-	// scrub via MetaWrite (only when META_ALLOWLIST_PATH is set → graceful degrade:
-	// the canon path + the per-reality scrub work without it; the meta-index scrub
-	// needs the allowlist/MetaWrite Config).
+	// Meta player_character_index.pc_name scrub via MetaWrite (only when
+	// META_ALLOWLIST_PATH is set → graceful degrade: the canon path works without
+	// it; the meta-index scrub needs the allowlist/MetaWrite Config).
+	//
+	// The per-reality leg is still wired but has had NOTHING TO SCRUB since 0017
+	// dropped pc_projection, the last per-reality table with a user reference. It
+	// resolves the pool (an unreachable reality is still worth surfacing) and
+	// returns. TestNoPerRealityTableCarriesAUserReference fails the day that
+	// changes.
 	uerCfg := user_erased_writer.Config{
 		Lookup: pglive.NewPgUserRealityLookup(metaPool),
 		DB: pglive.NewPgPerRealityScrubber(func(rid uuid.UUID) (*pgxpool.Pool, error) {

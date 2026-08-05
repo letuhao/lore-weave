@@ -1,5 +1,18 @@
 # 00_actor — Index
 
+<!-- pc-npc-projections-dropped-0017 -->
+> **⚠️ The `pc_*` / `npc_*` projection tables named below DO NOT EXIST (dropped 2026-08-04).**
+> All seven were created by `contracts/migrations/per_reality/0006_projections.up.sql`
+> and dropped by `0017_drop_pc_npc_projections.up.sql`, for two independent reasons:
+> **no production code ever emitted a `pc.*` or `npc.*` event** (every occurrence in the
+> tree was a fixture, a bench input or a test), and their columns — `name`,
+> `stats JSONB`, a hardcoded `status` set — put game vocabulary in engine tables, which
+> `D-2` forbids.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **Category:** ACT — Actor Foundation (foundation tier; unified substrate underlying NPC_001 + future PCS_001)
 > **Catalog reference:** [`catalog/cat_00_ACT_actor_foundation.md`](../../catalog/cat_00_ACT_actor_foundation.md) (will be added with ACT_001 DRAFT 2/4)
 > **Purpose:** UNIFIED actor identity + AI-drive metadata + bilateral opinion + session memory substrate. Eliminates the `npc` aggregate anomaly (only Tier 5 feature NOT per-actor unified pre-ACT_001) by lifting per-NPC aggregates to per-actor symmetric pattern. Future-proofs **AI-controls-PC-offline V1+** + **multi-PC realities** + **NPC↔NPC drama V1+** simultaneously.

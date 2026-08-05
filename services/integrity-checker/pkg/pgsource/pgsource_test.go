@@ -6,7 +6,7 @@ import (
 )
 
 func TestSampleSQL_StripsMetaCastsPKAndOrdersRandom(t *testing.T) {
-	sql := sampleSQL("pc_inventory_projection", []string{"pc_id", "item_code"})
+	sql := sampleSQL("session_participants", []string{"session_id", "participant_id"})
 	for _, k := range metaKeys {
 		if !strings.Contains(sql, " - '"+k+"'") {
 			t.Errorf("missing meta strip %q in: %s", k, sql)
@@ -15,13 +15,13 @@ func TestSampleSQL_StripsMetaCastsPKAndOrdersRandom(t *testing.T) {
 	if !strings.Contains(sql, "to_jsonb(t)") || !strings.Contains(sql, "AS payload") {
 		t.Errorf("payload projection missing: %s", sql)
 	}
-	if !strings.Contains(sql, "t.pc_id::text AS pc_id") || !strings.Contains(sql, "t.item_code::text AS item_code") {
+	if !strings.Contains(sql, "t.session_id::text AS session_id") || !strings.Contains(sql, "t.participant_id::text AS participant_id") {
 		t.Errorf("pk ::text casts missing: %s", sql)
 	}
 	if !strings.Contains(sql, "t.event_id") || !strings.Contains(sql, "t.aggregate_version") {
 		t.Errorf("boundary columns missing: %s", sql)
 	}
-	if !strings.Contains(sql, "FROM pc_inventory_projection t") {
+	if !strings.Contains(sql, "FROM session_participants t") {
 		t.Errorf("from clause: %s", sql)
 	}
 	if !strings.HasSuffix(sql, "ORDER BY random() LIMIT $1") {
@@ -30,8 +30,8 @@ func TestSampleSQL_StripsMetaCastsPKAndOrdersRandom(t *testing.T) {
 }
 
 func TestSampleSQL_SingleColumnPK(t *testing.T) {
-	sql := sampleSQL("pc_projection", []string{"pc_id"})
-	if !strings.Contains(sql, "t.pc_id::text AS pc_id") {
+	sql := sampleSQL("region_projection", []string{"region_id"})
+	if !strings.Contains(sql, "t.region_id::text AS region_id") {
 		t.Errorf("single pk: %s", sql)
 	}
 	// exactly one pk column → no stray comma before FROM
@@ -72,11 +72,11 @@ func TestNewRejectsNilPool(t *testing.T) {
 }
 
 func TestScanSQL_NoCursor_OrdersByPKNoWhere(t *testing.T) {
-	sql := scanSQL("pc_projection", []string{"pc_id"}, false)
+	sql := scanSQL("region_projection", []string{"region_id"}, false)
 	if strings.Contains(sql, "WHERE") {
 		t.Errorf("first batch (no cursor) must have no WHERE: %s", sql)
 	}
-	if !strings.Contains(sql, "ORDER BY t.pc_id::text") {
+	if !strings.Contains(sql, "ORDER BY t.region_id::text") {
 		t.Errorf("must order by pk ::text: %s", sql)
 	}
 	if !strings.HasSuffix(sql, "LIMIT $1") {
@@ -92,16 +92,16 @@ func TestScanSQL_NoCursor_OrdersByPKNoWhere(t *testing.T) {
 
 func TestScanSQL_Cursor_SingleVsCompositePK(t *testing.T) {
 	// Single PK → scalar comparison, cursor bind at $2.
-	one := scanSQL("pc_projection", []string{"pc_id"}, true)
-	if !strings.Contains(one, "WHERE t.pc_id::text > $2") {
+	one := scanSQL("region_projection", []string{"region_id"}, true)
+	if !strings.Contains(one, "WHERE t.region_id::text > $2") {
 		t.Errorf("single-pk cursor predicate: %s", one)
 	}
 	// Composite PK → row-value comparison, binds $2,$3 in PK order.
-	two := scanSQL("pc_inventory_projection", []string{"pc_id", "item_code"}, true)
-	if !strings.Contains(two, "WHERE (t.pc_id::text, t.item_code::text) > ($2, $3)") {
+	two := scanSQL("session_participants", []string{"session_id", "participant_id"}, true)
+	if !strings.Contains(two, "WHERE (t.session_id::text, t.participant_id::text) > ($2, $3)") {
 		t.Errorf("composite-pk row-value cursor predicate: %s", two)
 	}
-	if !strings.Contains(two, "ORDER BY t.pc_id::text, t.item_code::text") {
+	if !strings.Contains(two, "ORDER BY t.session_id::text, t.participant_id::text") {
 		t.Errorf("composite order-by must match the cursor key columns/order: %s", two)
 	}
 }

@@ -12,21 +12,21 @@ import (
 	"github.com/google/uuid"
 )
 
-// L3ATables is the canonical allowlist of the 10 L3.A projection tables.
+// L3ATables is the canonical allowlist of the L3.A projection tables.
 // This MUST match the projection_drift_table_name_allowlist CHECK in
-// contracts/migrations/per_reality/0007_drift_metadata.up.sql.
+// contracts/migrations/per_reality/0007_drift_metadata.up.sql, as narrowed by
+// 0017 — and `scripts/projection-table-mirror-gate.py` now enforces the "MUST"
+// that this comment only asserted.
 //
 // The list is exported so sampler + state_writer can both iterate it from
 // the same source of truth. If a new projection table lands in L4+, BOTH
 // this slice AND the migration's CHECK constraint MUST be extended.
+//
+// SHRANK from ten to three on 2026-08-04: `0017` dropped the seven `pc_*`/`npc_*`
+// projections, which had no producer and encoded game vocabulary in engine
+// tables. An enumeration of names is supposed to be able to move in this
+// direction.
 var L3ATables = []string{
-	"pc_projection",
-	"pc_inventory_projection",
-	"pc_relationship_projection",
-	"npc_projection",
-	"npc_session_memory_projection",
-	"npc_pc_relationship_projection",
-	"npc_session_memory_embedding",
 	"region_projection",
 	"world_kv_projection",
 	"session_participants",

@@ -8,6 +8,19 @@ generated_by: scripts/chunk_doc.py
 
 ## 12X. Audit Log PII + Retention — S8 Resolution (2026-04-24)
 
+<!-- pc-npc-projections-dropped-0017 -->
+> **⚠️ The `pc_*` / `npc_*` projection tables named below DO NOT EXIST (dropped 2026-08-04).**
+> All seven were created by `contracts/migrations/per_reality/0006_projections.up.sql`
+> and dropped by `0017_drop_pc_npc_projections.up.sql`, for two independent reasons:
+> **no production code ever emitted a `pc.*` or `npc.*` event** (every occurrence in the
+> tree was a fixture, a bench input or a test), and their columns — `name`,
+> `stats JSONB`, a hardcoded `status` set — put game vocabulary in engine tables, which
+> `D-2` forbids.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #3).** The erasure model treats the events table as the universal SSOT (“SSOT events hold user content forever”) — overstated: live state is island memory, and Class A state persists via checkpoints that are never event-sourced; neither surface is covered by the crypto-shred/PII-registry design below. **Open GDPR gap:** erasure coverage for island memory + Class A checkpoints is unresolved. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md) + [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
 
 **Origin:** Security Review S8 — design has 8+ data stores holding user data with inconsistent retention and no unified erasure strategy. GDPR/CCPA right-to-erasure has no mechanism against immutable event SSOT. Free-text admin `reason` fields can leak PII. Application logs undefined. No consent ledger for legal basis.

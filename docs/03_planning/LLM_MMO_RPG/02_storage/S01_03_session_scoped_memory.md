@@ -8,6 +8,19 @@ generated_by: scripts/chunk_doc.py
 
 ## 12S. Security Review — S1/S2/S3 Resolutions (2026-04-24)
 
+<!-- pc-npc-projections-dropped-0017 -->
+> **⚠️ The `pc_*` / `npc_*` projection tables named below DO NOT EXIST (dropped 2026-08-04).**
+> All seven were created by `contracts/migrations/per_reality/0006_projections.up.sql`
+> and dropped by `0017_drop_pc_npc_projections.up.sql`, for two independent reasons:
+> **no production code ever emitted a `pc.*` or `npc.*` event** (every occurrence in the
+> tree was a fixture, a bench input or a test), and their columns — `name`,
+> `stats JSONB`, a hardcoded `status` set — put game vocabulary in engine tables, which
+> `D-2` forbids.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 roots #1, #2, #4).** §12S.2's visibility schema keys events to `session_id` and routes `region_broadcast`/`reality_broadcast` “via R7 event-handler” — but the channel/island is the concurrency unit (SL-A9), cross-island propagation is async messages, not an events-table tailer (SL-A10), and event identity is `(reality_id, channel_id, channel_event_id)`, not a reality-global id. §12S.2.5's canonical prompt-assembly query also predates island state as an input. Current design: [`13_simulation_loop.md`](../13_simulation_loop.md) + [`15_commit_service.md`](../15_commit_service.md). Status markers below predate the island/commit-service model.
 
 **Origin:** Security Engineer / Threat Modeler adversarial review. S2 + S3 reshaped via user insight — capability-based data model replaces access-control-filter model. S3 extends with full Option A privacy tier system.

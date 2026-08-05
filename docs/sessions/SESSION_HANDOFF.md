@@ -7,6 +7,77 @@
 > §MERGE RECONCILIATION below. Main's own session sections are preserved verbatim under
 > §FROM `origin/main` further down — they are a different track's history, not this run's.
 
+## ▶ PROJECTION SWEEP — 2026-08-05: Phase 0 finished the job `0017` started
+
+<sub>(This heading deliberately does NOT reuse the game-tier heading below: that exact string is
+`actor-hub-figures-gate`'s start marker, and a second occurrence makes the FIRST one win, silently
+rescoping the governed block. The gate caught this section's first draft doing exactly that — and
+then caught this very note, which quoted the marker to explain itself.)</sub>
+
+`0017` removed the seven producer-less `pc_*`/`npc_*` projection tables from the Rust and SQL
+layers. It stopped at the language boundary. **One day later, seven production Go files and a
+loaded YAML config still named those tables**, and the sweep found the reason:
+
+**A tripwire for exactly this drift already existed, and it read one file.**
+`TestAllowlist_MatchesMigrationCheck` parsed `0007`'s CHECK and compared it to the Go allowlist.
+Its own comment anticipated only growth — *"the next time the CHECK GROWS, this fails"*. `0017`
+SHRANK the constraint from a **different file**, so the test kept comparing against `0007`'s ten
+names and stayed green while the map it guards named seven tables the database no longer had.
+Bite C of its repair pins this: the old single-file form, run against today's correct map, **reds**
+— it was not weaker, it was already wrong.
+
+| what was actually broken | why it mattered |
+|---|---|
+| `admin-cli/rebuild_projection.go` allowlist (11→4) | the name is interpolated into `TRUNCATE <table>` — a DDL-injection guard vouching for tables the DB lacks |
+| `contracts/integrity/config.yaml` (10→3) | a LOADED production config; `config.Validate()` rejects a non-`L3ATables` name, so the integrity-checker would have failed at startup |
+| `integrity-checker` `types.L3ATables` + `tablemap.specs` | said *"MUST match the CHECK"* with nothing enforcing it |
+| `meta-worker` GDPR per-reality scrub | `UPDATE pc_projection …` against a dropped table → error → NACK → **erasure retries forever**. `pc_projection` was the only per-reality table with `user_id`; there is now nothing to scrub |
+
+**New mechanism — `scripts/projection-table-mirror-gate.py`** (pre-commit, self-test discovered):
+the table list is written down in SQL, Rust, three Go declarations and a YAML config, each copy
+calling itself a mirror in its own comment. One script checks all five relationships, derives the
+**effective** CHECK across every migration, and **fails when any source parses to nothing** — two
+empty sets agree perfectly. 10 self-test rules, every one bitten.
+
+**Two vacuities are now asserted rather than assumed**, because deleting the machinery would have
+been wrong and keeping it silently is how dead code survives two months:
+`TestNoProductionSpecIsCrossAggregateYet` (no projection is cross-aggregate since
+`npc_session_memory_projection` went) and `TestNoPerRealityTableCarriesAUserReference` (no shard
+table carries PII). Each reds the day its subject returns and names the coverage owed.
+
+**The second test was VACUOUS on its first draft and the bite caught it**: its regex ended a
+`CREATE TABLE` body at `\n);`, and `npc_session_memory_embedding` is created inside a
+`DO $$ … EXECUTE $exec$` block with an INDENTED `)`, so the match ran past it and swallowed
+`region_projection` whole — the parser could not see the table it most needed to watch, and
+reported a clean tree with total confidence. It now chunks between `CREATE TABLE` headers, strips
+SQL comments (a commented-out `DROP` read identically to a real one), applies creates and drops in
+**document order** (`0002` drops `events` and recreates it in the same file), and carries
+`TestPerRealityMigrationParserCanSeeTheSurvivingTables` — a parser that cannot NAME a table cannot
+notice it changing.
+
+**Docs:** 24 LLM_MMO_RPG design docs bannered, not rewritten — in a design doc `pc_projection` is a
+PROPOSAL, and find-and-replace would silently edit someone's design. `docs/plans/**`,
+`docs/specs/**`, `_superseded/**` and the changelogs are RECORDS and were left alone.
+
+**Three `_boundaries/` docs are DELIBERATELY UNBANNERED.** `boundaries-lock-gate` refused the
+commit: that directory may only change inside an evidenced claim+release cycle, because on
+2026-07-26 three changelog entries claimed cycles that never happened. Adding a `_Last released:_`
+line to `_LOCK.md` would have satisfied the gate and been a lie of exactly the kind it exists to
+catch — so the banners were **removed** instead. `_boundaries/01`, `/02` and `/_LOCK.md` still name
+the dropped tables; they are ownership matrices, the lowest rot risk of the set, and the next real
+lock cycle can carry the banner. **A convenience is not worth forging the evidence of a process.**
+**DEFERRED 146 CLOSED — subject removed**, not fixed: its whole subject was *"the one
+cross-aggregate table"*.
+
+**Evidence (2026-08-05):** `cargo test --workspace` **2232 passed, 0 failed** (summed over every
+`test result` line) · `admin-cli` 11 pkgs ok · `integrity-checker` 11 pkgs ok · `meta-worker` 13
+pkgs ok · `gate-self-tests` all green incl. the new gate · `design-lint` OK · `citation-gate` OK ·
+`actor-hub-figures --check` every governed figure agrees · `language-rule` PASS. Bites pasted in
+the run: 3 red on the repaired tripwire, 3 red on the per-reality PII assertion (2 of them GREEN on
+the first draft — that is what caught the blind parser).
+
+---
+
 ## ▶ GAME TIER — feature #1 is BUILT (branch `feat/game-logic`, 2026-08-02)
 
 > **Different branch from the block above.** That NEXT block belongs to
@@ -31,7 +102,7 @@ the two design contracts that are its only specification are in
 move · the Go mirror `contracts/entity_status` still agrees · `actor-hub` and `entity-existence` are clippy- and rustdoc-clean (the other three crates in that command carry a handful of pre-existing doc and clippy warnings, none of them this round's — counts deliberately not stated, because nothing here measures them and a figure with no measurement rule goes stale by construction; run the two commands if you want the numbers — a round-12 verifier measured the flat claim `clippy clean · cargo doc 0 warnings` FALSE, in the sentence that claims every figure in this block is emitted by a checker) ·
 every mutation in the committed
 mutation harness reds its gate's self-test (`python scripts/gate-bite-harness.py` — one mutation per
-PRODUCTION RULE, run it rather than trust this sentence) · the **42**
+PRODUCTION RULE, run it rather than trust this sentence) · the **43**
 gate scripts the pre-commit hook
 wires all green, and every `--self-test` among them runs pre-commit via
 `scripts/gate-self-tests.py`, which DISCOVERS them rather than naming them.

@@ -8,6 +8,19 @@ generated_by: scripts/chunk_doc.py
 
 ## 12Y. Prompt Assembly Governance — S9 Resolution (2026-04-24)
 
+<!-- pc-npc-projections-dropped-0017 -->
+> **⚠️ The `pc_*` / `npc_*` projection tables named below DO NOT EXIST (dropped 2026-08-04).**
+> All seven were created by `contracts/migrations/per_reality/0006_projections.up.sql`
+> and dropped by `0017_drop_pc_npc_projections.up.sql`, for two independent reasons:
+> **no production code ever emitted a `pc.*` or `npc.*` event** (every occurrence in the
+> tree was a fixture, a bench input or a test), and their columns — `name`,
+> `stats JSONB`, a hardcoded `status` set — put game vocabulary in engine tables, which
+> `D-2` forbids.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #7).** The framing that `roleplay-service` orchestrates all LLM calls is stale — orchestration sits with the island + `commit-service`; see [`17_game_data_architecture.md`](../17_game_data_architecture.md) R8 for the current retrieval/composition role split. The governance layers §12Y.1–§12Y.11 (template registry, section structure, injection defense, budgets, redaction, replay audit, regression harness) remain valid wherever assembly runs. Status markers below predate the island/commit-service model.
 
 **Origin:** Security Review S9 — roleplay-service orchestrates all LLM calls. Without governance on prompt assembly, capability-based memory (S2), privacy tiers (S3), PII boundaries (S8), and cost caps (S6) are all one sloppy prompt builder away from regression. Plus: no injection defense, no versioning, no regression tests, no deterministic replay for incident response.

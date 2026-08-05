@@ -1,5 +1,18 @@
 # NPC_001 — Cast (NPC Foundation)
 
+<!-- pc-npc-projections-dropped-0017 -->
+> **⚠️ The `pc_*` / `npc_*` projection tables named below DO NOT EXIST (dropped 2026-08-04).**
+> All seven were created by `contracts/migrations/per_reality/0006_projections.up.sql`
+> and dropped by `0017_drop_pc_npc_projections.up.sql`, for two independent reasons:
+> **no production code ever emitted a `pc.*` or `npc.*` event** (every occurrence in the
+> tree was a fixture, a bench input or a test), and their columns — `name`,
+> `stats JSONB`, a hardcoded `status` set — put game vocabulary in engine tables, which
+> `D-2` forbids.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **⚠ CLOSURE-PASS-EXTENSION 2026-05-14 — TMP_001 Tilemap Foundation CANDIDATE-LOCK cdc2f706:**
 > V2+ NPC routing on non-cell tilemap reservation (TMP_001 §14 cross-feature integration). NPC scripted-travel paths at non-cell tiers consume `tilemap_view.road_segments` + free-path connectivity (TMP-A8 "never seal a gap" connectivity invariant). NPC_001 owns the NPC routing intent + scheduler binding (V1+ DF1 daily life feature); TMP_001 owns the tile-level pathfinding surface (road segments + walkable tiles + obstacles). At cell tier, NPC paths stay on CSC_001 16×16 grid (V1 already). At non-cell tier V2+, NPC paths cross `tilemap_view.road_segments`. Direction: NPC_001 → TMP_001 (NPC reads tilemap, doesn't write). NO NPC_001 V1+30d surface change; reservation only. Annotation only. See §16 row.
 

@@ -10,13 +10,13 @@
 // row's owning event is absent from `events` (archived/pruned).
 //
 // Gated by build tag `integration` AND env LOREWEAVE_TEST_PG_URL (a DISPOSABLE
-// per-reality DB — applies 0002+0006 and TRUNCATEs pc_projection, so run it on
+// per-reality DB — applies 0002+0006 and TRUNCATEs region_projection, so run it on
 // its OWN DB; the foundation db-smoke CI gives it `scan_smoke`). Excluded from
 // the normal `go test ./...` by the build tag.
 //
 //	go test -tags=integration -run TestScanRows ./pkg/pgsource/...
 //
-// db-safety-gate: file-ok — the destructive statements here (TRUNCATE pc_projection
+// db-safety-gate: file-ok — the destructive statements here (TRUNCATE region_projection
 // and the migration re-applies that recreate tables) run ONLY after
 // testsafe.EnsureThrowawayDB(current_database()) refuses a non-throwaway DB; the env
 // points at a DISPOSABLE per-reality DB and the file is excluded from normal runs by
@@ -26,6 +26,7 @@ package pgsource
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 
@@ -68,7 +69,7 @@ func TestScanRows_CursorWalksEveryRowOnceAndSkipsPrunedOwners(t *testing.T) {
 	defer pool.Close()
 
 	// SAFETY GUARD — before any destructive statement (this test re-applies migrations
-	// that recreate tables, then TRUNCATEs pc_projection). Refuse to proceed unless the
+	// that recreate tables, then TRUNCATEs region_projection). Refuse to proceed unless the
 	// target is a recognizable throwaway DB, so a LOREWEAVE_TEST_PG_URL accidentally
 	// pointed at a real service DB can never be wiped.
 	var dbName string
@@ -89,25 +90,25 @@ func TestScanRows_CursorWalksEveryRowOnceAndSkipsPrunedOwners(t *testing.T) {
 	}
 	// Clean slate so the row count is exactly what we seed (0006 is IF NOT EXISTS;
 	// 0002 already recreated events).
-	if _, err := pool.Exec(ctx, "TRUNCATE pc_projection"); err != nil {
-		t.Fatalf("truncate pc_projection: %v", err)
+	if _, err := pool.Exec(ctx, "TRUNCATE region_projection"); err != nil {
+		t.Fatalf("truncate region_projection: %v", err)
 	}
 
 	const n = 7
 	realityID := uuid.New()
 	prunedIdx := 4 // this row's owning event is intentionally NOT seeded into events
-	pcIDs := make([]uuid.UUID, n)
+	regionIDs := make([]uuid.UUID, n)
 	for i := 0; i < n; i++ {
-		pcID := uuid.New()
-		pcIDs[i] = pcID
+		regionID := uuid.New()
+		regionIDs[i] = regionID
 		eventID := uuid.New()
 		// The projection row (carries event_id → the owner-resolution boundary).
 		if _, err := pool.Exec(ctx,
-			"INSERT INTO pc_projection (pc_id, user_id, name, event_id, aggregate_version) "+
+			"INSERT INTO region_projection (region_id, code, display_name, event_id, aggregate_version) "+
 				"VALUES ($1, $2, $3, $4, 1)",
-			pcID, uuid.New(), "pc-name", eventID,
+			regionID, fmt.Sprintf("r-%d", i), "a region", eventID,
 		); err != nil {
-			t.Fatalf("seed pc_projection[%d]: %v", i, err)
+			t.Fatalf("seed region_projection[%d]: %v", i, err)
 		}
 		if i == prunedIdx {
 			continue // no events row → owner lookup must yield ErrOwnerPruned → SKIP
@@ -115,9 +116,9 @@ func TestScanRows_CursorWalksEveryRowOnceAndSkipsPrunedOwners(t *testing.T) {
 		if _, err := pool.Exec(ctx,
 			"INSERT INTO events (event_id, reality_id, aggregate_type, aggregate_id, "+
 				"aggregate_version, event_type, event_version, payload, occurred_at, recorded_at) "+
-				"VALUES ($1, $2, 'pc', $3, 1, 'pc.spawned', 1, '{}'::jsonb, "+
+				"VALUES ($1, $2, 'region', $3, 1, 'region.created', 1, '{}'::jsonb, "+
 				"'2026-06-15T12:00:00Z'::timestamptz, date_trunc('month', now()) + ($4 * interval '1 second'))",
-			eventID, realityID, pcID.String(), i,
+			eventID, realityID, regionID.String(), i,
 		); err != nil {
 			t.Fatalf("seed events[%d]: %v", i, err)
 		}
@@ -139,7 +140,7 @@ func TestScanRows_CursorWalksEveryRowOnceAndSkipsPrunedOwners(t *testing.T) {
 		if iters > 100 {
 			t.Fatal("cursor did not terminate")
 		}
-		rows, next, err := sampler.NextBatch(ctx, realityID, "pc_projection", cursor, batchSize)
+		rows, next, err := sampler.NextBatch(ctx, realityID, "region_projection", cursor, batchSize)
 		if err != nil {
 			t.Fatalf("NextBatch cursor=%q: %v", cursor, err)
 		}
@@ -150,11 +151,11 @@ func TestScanRows_CursorWalksEveryRowOnceAndSkipsPrunedOwners(t *testing.T) {
 			t.Fatalf("batch overran limit: %d > %d", len(rows), batchSize)
 		}
 		for _, r := range rows {
-			pk := r.PK["pc_id"]
+			pk := r.PK["region_id"]
 			seen[pk]++
 			if len(r.Owning) == 0 {
 				prunedSkips++ // pruned-owner row emitted with nil Owning (not an error)
-			} else if len(r.Owning) != 1 || r.Owning[0].Type != "pc" || r.Owning[0].ID != pk {
+			} else if len(r.Owning) != 1 || r.Owning[0].Type != "region" || r.Owning[0].ID != pk {
 				t.Errorf("row %s: unexpected owning %+v", pk, r.Owning)
 			}
 		}
@@ -182,13 +183,15 @@ func TestScanRows_CursorWalksEveryRowOnceAndSkipsPrunedOwners(t *testing.T) {
 		t.Errorf("pruned-owner skips = %d, want 1", prunedSkips)
 	}
 
-	// 153: TableLagSeconds (live.LagReader). The just-seeded pc_projection has
+	// 153: TableLagSeconds (live.LagReader). The just-seeded region_projection has
 	// rows (applied_at defaulted to NOW()) → ok=true + a small non-negative lag;
 	// an untouched table → ok=false (no max(applied_at)).
-	if lag, ok, err := sampler.TableLagSeconds(ctx, "pc_projection"); err != nil || !ok || lag < 0 {
-		t.Errorf("pc_projection lag: lag=%v ok=%v err=%v (want ok + non-negative)", lag, ok, err)
+	if lag, ok, err := sampler.TableLagSeconds(ctx, "region_projection"); err != nil || !ok || lag < 0 {
+		t.Errorf("region_projection lag: lag=%v ok=%v err=%v (want ok + non-negative)", lag, ok, err)
 	}
-	if _, ok, err := sampler.TableLagSeconds(ctx, "region_projection"); err != nil || ok {
-		t.Errorf("empty region_projection lag: ok=%v err=%v (want ok=false, no error)", ok, err)
+	// world_kv_projection takes over as the untouched table (region_projection is
+	// now the seeded one), so the ok=false branch keeps a subject.
+	if _, ok, err := sampler.TableLagSeconds(ctx, "world_kv_projection"); err != nil || ok {
+		t.Errorf("empty world_kv_projection lag: ok=%v err=%v (want ok=false, no error)", ok, err)
 	}
 }

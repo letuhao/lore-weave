@@ -8,6 +8,19 @@ generated_by: scripts/chunk_doc.py
 
 ## 12B. Projection Rebuild & Integrity (R2 mitigation)
 
+<!-- pc-npc-projections-dropped-0017 -->
+> **⚠️ The `pc_*` / `npc_*` projection tables named below DO NOT EXIST (dropped 2026-08-04).**
+> All seven were created by `contracts/migrations/per_reality/0006_projections.up.sql`
+> and dropped by `0017_drop_pc_npc_projections.up.sql`, for two independent reasons:
+> **no production code ever emitted a `pc.*` or `npc.*` event** (every occurrence in the
+> tree was a fixture, a bench input or a test), and their columns — `name`,
+> `stats JSONB`, a hardcoded `status` set — put game vocabulary in engine tables, which
+> `D-2` forbids.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **⚠ PARTIALLY SUPERSEDED 2026-07-26 (AUD-F16 root #9 + write-freeze).** Projections are not consulted on the write path (CS-A3), so §12B.5's catastrophic-rebuild step “all writes for this reality rejected with 503” must not freeze gameplay — the island keeps serving from memory while the sink rebuilds; and `region_projection` naming is stale (`region` → `place`/`actor_core` per the 52-row ownership matrix). Current design: [`15_commit_service.md`](../15_commit_service.md) CS-A3. Status markers below predate the island/commit-service model.
 
 Event sourcing requires the ability to rebuild projections from events. This is rare but load-bearing: schema changes, corruption recovery, and catastrophic restore all depend on it. Multiverse isolation + snapshots from §6 already solve most normal cases; the layers below address edge cases.

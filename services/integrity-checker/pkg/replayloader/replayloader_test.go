@@ -48,10 +48,10 @@ func baseReq() ReplayRequest {
 	return ReplayRequest{
 		RealityID:       uuid.MustParse("00000000-0000-0000-0000-000000000001"),
 		DSN:             "postgres://u:p@h/db",
-		Projection:      "pc_inventory_projection",
+		Projection:      "session_participants",
 		BoundaryEventID: uuid.MustParse("00000000-0000-0000-0000-0000000000aa"),
 		Owning:          []tablemap.OwningAggregate{{Type: "pc", ID: "pc-1"}},
-		PK:              map[string]string{"pc_id": "pc-1", "item_code": "sword"},
+		PK:              map[string]string{"session_id": "s-1", "participant_id": "p-1"},
 	}
 }
 
@@ -77,7 +77,7 @@ func TestReplay_BuildsArgsAndPassesDSNAsEnv(t *testing.T) {
 	if argValue(fr.gotArgs, "--reality-id") != "00000000-0000-0000-0000-000000000001" {
 		t.Errorf("reality-id: %v", fr.gotArgs)
 	}
-	if argValue(fr.gotArgs, "--projection") != "pc_inventory_projection" {
+	if argValue(fr.gotArgs, "--projection") != "session_participants" {
 		t.Errorf("projection: %v", fr.gotArgs)
 	}
 	if argValue(fr.gotArgs, "--boundary-event-id") != "00000000-0000-0000-0000-0000000000aa" {
@@ -88,7 +88,7 @@ func TestReplay_BuildsArgsAndPassesDSNAsEnv(t *testing.T) {
 	}
 	// PK is a JSON object carrying both composite columns.
 	pk := argValue(fr.gotArgs, "--pk")
-	if !strings.Contains(pk, `"pc_id":"pc-1"`) || !strings.Contains(pk, `"item_code":"sword"`) {
+	if !strings.Contains(pk, `"session_id":"s-1"`) || !strings.Contains(pk, `"participant_id":"p-1"`) {
 		t.Errorf("pk json: %q", pk)
 	}
 	// Result parsed.
@@ -104,9 +104,9 @@ func TestReplay_CrossAggregate(t *testing.T) {
 	fr := &fakeRunner{out: []byte(`{"found":true,"events_replayed":7,"status":"ok","payload":{}}`)}
 	l, _ := New(fr)
 	req := baseReq()
-	req.Projection = "npc_session_memory_projection"
+	req.Projection = "region_projection"
 	req.Owning = []tablemap.OwningAggregate{{Type: "session", ID: "s-9"}, {Type: "npc", ID: "n-3"}}
-	req.PK = map[string]string{"npc_id": "n-3", "session_id": "s-9"}
+	req.PK = map[string]string{"region_id": "r-3"}
 	if _, err := l.Replay(context.Background(), req); err != nil {
 		t.Fatal(err)
 	}

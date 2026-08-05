@@ -1,5 +1,18 @@
 # 00 — Agent Brief: PCS_001 PC Substrate (parallel work commission)
 
+<!-- pc-npc-projections-dropped-0017 -->
+> **⚠️ The `pc_*` / `npc_*` projection tables named below DO NOT EXIST (dropped 2026-08-04).**
+> All seven were created by `contracts/migrations/per_reality/0006_projections.up.sql`
+> and dropped by `0017_drop_pc_npc_projections.up.sql`, for two independent reasons:
+> **no production code ever emitted a `pc.*` or `npc.*` event** (every occurrence in the
+> tree was a fixture, a bench input or a test), and their columns — `name`,
+> `stats JSONB`, a hardcoded `status` set — put game vocabulary in engine tables, which
+> `D-2` forbids.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **Status:** LOCKED brief. Issued 2026-04-25 by the main session that designed Continuum (PL_001/PL_001b) + NPC foundation (NPC_001/NPC_002) + WA closure pass (WA_001..006). The agent receiving this brief is expected to design `06_pc_systems/PCS_001_*.md` with the depth + discipline established by NPC_001 Cast precedent.
 >
 > **Read order before starting:** §0 Identity → §1 Why → §2 IN scope → §3 OUT of scope → §4 Required reading → §5 Phase plan → §6 Stable ID namespace → §7 Process discipline → §8 Coordination → §9 Success criteria → §10 First-session deliverable → Appendix A SPIKE_01 grounding.

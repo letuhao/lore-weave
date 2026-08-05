@@ -57,17 +57,17 @@ func newRig(t *testing.T, m lifecycle.ServiceMode, intervalDays int) *rig {
 	return &rig{loop: loop, src: src, replayer: rep, persister: per}
 }
 
-// addRow seeds one pc row whose live payload is `live`; the replay returns
+// addRow seeds one region row whose live payload is `live`; the replay returns
 // `replay` (Found+ok). When live==replay the row is clean; differing = drift.
 func (r *rig) addRow(rid uuid.UUID, livePayload, replayPayload string) {
-	pcID := uuid.New().String()
+	regionID := uuid.New().String()
 	ev := uuid.New()
-	r.src.AddRow(rid, "pc_projection", live.SampledRow{
-		PK:               map[string]string{"pc_id": pcID},
+	r.src.AddRow(rid, "region_projection", live.SampledRow{
+		PK:               map[string]string{"region_id": regionID},
 		EventID:          ev,
 		AggregateVersion: 3,
 		Payload:          []byte(livePayload),
-		Owning:           []tablemap.OwningAggregate{{Type: "pc", ID: pcID}},
+		Owning:           []tablemap.OwningAggregate{{Type: "region", ID: regionID}},
 	})
 	r.replayer.byEvent[ev] = replayloader.ReplayResult{
 		Found: true, EventsReplayed: 5, Status: "ok", Payload: []byte(replayPayload),
@@ -98,7 +98,7 @@ func TestRun_WalksAllRowsViaCursorBatching(t *testing.T) {
 		r.addRow(rid, `{"v":42}`, `{"v":42}`)
 	}
 	stats, err := r.loop.Run(context.Background(), rid, "postgres://shard", []types.TableConfig{
-		{TableName: "pc_projection", FullScanBatchSize: 500},
+		{TableName: "region_projection", FullScanBatchSize: 500},
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -124,7 +124,7 @@ func TestRun_DetectsDriftAcrossFullScan(t *testing.T) {
 		}
 	}
 	stats, err := r.loop.Run(context.Background(), rid, "postgres://shard", []types.TableConfig{
-		{TableName: "pc_projection", FullScanBatchSize: 25},
+		{TableName: "region_projection", FullScanBatchSize: 25},
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -140,7 +140,7 @@ func TestRun_DetectsDriftAcrossFullScan(t *testing.T) {
 func TestRun_DegradedMode_Skips(t *testing.T) {
 	r := newRig(t, lifecycle.ModeEssentials, 30)
 	stats, err := r.loop.Run(context.Background(), uuid.New(), "postgres://shard", []types.TableConfig{
-		{TableName: "pc_projection", FullScanBatchSize: 500},
+		{TableName: "region_projection", FullScanBatchSize: 500},
 	})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -156,15 +156,15 @@ func TestRun_DegradedMode_Skips(t *testing.T) {
 func TestRun_MonthlyDelayWritten(t *testing.T) {
 	r := newRig(t, lifecycle.ModeFull, 30)
 	rid := uuid.New()
-	pcID := uuid.New().String()
+	regionID := uuid.New().String()
 	// Unregistered replay → zero-value result (Status="" → Skippable). Still
 	// produces a persisted report.
-	r.src.AddRow(rid, "pc_projection", live.SampledRow{
-		PK: map[string]string{"pc_id": pcID}, EventID: uuid.New(),
-		Owning: []tablemap.OwningAggregate{{Type: "pc", ID: pcID}},
+	r.src.AddRow(rid, "region_projection", live.SampledRow{
+		PK: map[string]string{"region_id": regionID}, EventID: uuid.New(),
+		Owning: []tablemap.OwningAggregate{{Type: "region", ID: regionID}},
 	})
 	_, _ = r.loop.Run(context.Background(), rid, "postgres://shard", []types.TableConfig{
-		{TableName: "pc_projection", FullScanBatchSize: 500},
+		{TableName: "region_projection", FullScanBatchSize: 500},
 	})
 	if len(r.persister.Calls) != 1 {
 		t.Fatalf("1 persist call expected, got %d", len(r.persister.Calls))
@@ -189,7 +189,7 @@ func TestRun_AbortsOnStuckCursor(t *testing.T) {
 		FullCheckIntervalDays: 30,
 	})
 	_, err := loop.Run(context.Background(), uuid.New(), "postgres://shard", []types.TableConfig{
-		{TableName: "pc_projection", FullScanBatchSize: 100},
+		{TableName: "region_projection", FullScanBatchSize: 100},
 	})
 	if err == nil {
 		t.Fatal("expected error for stuck cursor")
@@ -205,7 +205,7 @@ func TestRun_RespectsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := r.loop.Run(ctx, rid, "postgres://shard", []types.TableConfig{
-		{TableName: "pc_projection", FullScanBatchSize: 500},
+		{TableName: "region_projection", FullScanBatchSize: 500},
 	})
 	if err == nil {
 		t.Fatal("expected error on cancelled context")
@@ -224,7 +224,7 @@ func (s *stuckCursorSource) NextBatch(_ context.Context, _ uuid.UUID, _, _ strin
 		return nil, "", fmt.Errorf("test ran away")
 	}
 	rows := []live.SampledRow{{
-		PK: map[string]string{"pc_id": uuid.New().String()}, EventID: uuid.New(),
+		PK: map[string]string{"region_id": uuid.New().String()}, EventID: uuid.New(),
 		Owning: []tablemap.OwningAggregate{{Type: "pc", ID: "x"}},
 	}}
 	// Always return "stuck-cursor" — never advances.

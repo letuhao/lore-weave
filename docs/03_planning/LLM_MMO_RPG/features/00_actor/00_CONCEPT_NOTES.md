@@ -1,5 +1,18 @@
 # ACT_001 Actor Foundation — Concept Notes
 
+<!-- pc-npc-projections-dropped-0017 -->
+> **⚠️ The `pc_*` / `npc_*` projection tables named below DO NOT EXIST (dropped 2026-08-04).**
+> All seven were created by `contracts/migrations/per_reality/0006_projections.up.sql`
+> and dropped by `0017_drop_pc_npc_projections.up.sql`, for two independent reasons:
+> **no production code ever emitted a `pc.*` or `npc.*` event** (every occurrence in the
+> tree was a fixture, a bench input or a test), and their columns — `name`,
+> `stats JSONB`, a hardcoded `status` set — put game vocabulary in engine tables, which
+> `D-2` forbids.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **Status:** Q1-Q6 LOCKED 2026-04-27 — main session deep-dive analysis (Opportunity 1 actor_core unification + Q3 REVISION + Q6 user-revised to full unify all 3 opportunities). DRAFT promotion ready when `_boundaries/_LOCK.md` free (commit 2/4).
 >
 > **Purpose:** Capture architectural insight + 3-layer control model + 4-aggregate decomposition + Q1-Q6 LOCKED for ACT_001 Actor Foundation. The seed material for the eventual `ACT_001_actor_foundation.md` design.

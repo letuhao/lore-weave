@@ -1,5 +1,18 @@
 # 06_pc_systems — Index
 
+<!-- pc-npc-projections-dropped-0017 -->
+> **⚠️ The `pc_*` / `npc_*` projection tables named below DO NOT EXIST (dropped 2026-08-04).**
+> All seven were created by `contracts/migrations/per_reality/0006_projections.up.sql`
+> and dropped by `0017_drop_pc_npc_projections.up.sql`, for two independent reasons:
+> **no production code ever emitted a `pc.*` or `npc.*` event** (every occurrence in the
+> tree was a fixture, a bench input or a test), and their columns — `name`,
+> `stats JSONB`, a hardcoded `status` set — put game vocabulary in engine tables, which
+> `D-2` forbids.
+>
+> **This document is kept as DESIGN. It is not a description of the database.**
+> Anything built on these names must be re-derived: with a producer, and with
+> quantities that come from the actor-hub fold rather than an opaque blob.
+
 > **Category:** PCS — PC Systems
 > **Catalog reference:** [`catalog/cat_06_PCS_pc_systems.md`](../../catalog/cat_06_PCS_pc_systems.md) (owns `PCS-*` stable-ID namespace)
 > **Purpose:** PC-specific substrate post-ACT_001 unification — `pc_user_binding` (user_id + current_session + body_memory xuyên không) + `pc_mortality_state` (handoff from WA_006) + (V1+ pc_stats_v1_stub TBD) + `PcXuyenKhongCompleted` event integrating TDIL_001 clock-split. Builds on ACT_001 stable base for IDENTITY (actor_core absorbs persona + canonical_traits + flexible_state) + bilateral opinion (actor_actor_opinion) + session memory (actor_session_memory).

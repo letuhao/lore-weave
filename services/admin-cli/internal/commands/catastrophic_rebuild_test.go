@@ -14,7 +14,7 @@ import (
 
 type rrStats = rr.PerRealityStats
 
-func twoProjections() []string { return []string{"pc_projection", "npc_projection"} }
+func twoProjections() []string { return []string{"region_projection", "world_kv_projection"} }
 
 func resolverFor(tr ProjectionTruncator, iv RebuildInvoker) PerRealityResolver {
 	return func(_ context.Context, _ uuid.UUID) (ProjectionTruncator, RebuildInvoker, func(), error) {
