@@ -6,10 +6,13 @@
 //! (L3.A.10). S2 capability-scoped membership: which entities are bound
 //! to which session. `left_at IS NULL` = currently in-session.
 //!
-//! Handles `session.participant_joined` + `session.participant_left`. Other
-//! `session.*` events (started/ended) update the NPC session memory
-//! projection (handled by `projections-npc::NpcSessionMemoryProjection`),
-//! not the participants table.
+//! Handles `session.participant_joined` + `session.participant_left`.
+//!
+//! **`session.started` / `session.ended` are PRODUCED and now project to
+//! nothing.** Their only target was `npc_session_memory_projection`, dropped by
+//! `0017` along with `projections-npc`. That is a real gap, recorded here rather
+//! than papered over with a table nobody writes; this projector deliberately
+//! does not claim them.
 //!
 //! ## LOCKED decisions consumed
 //!

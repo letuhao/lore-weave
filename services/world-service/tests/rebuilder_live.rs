@@ -9,10 +9,17 @@
 //!
 //! Validates what no unit test can: the `ParallelRebuilder` + `SqlxEventSource` +
 //! `SqlxProjectionWriter` chain applying real events into real tables end-to-end.
-//! Case B (`npc_session_memory_projection`) specifically proves the 147
-//! writer-Insert fix in the REBUILDER (not just the replay bin): `session.started`
-//! omits the NOT NULL `summary`/`facts` columns, which the old `SELECT *` writer
-//! would have failed on.
+//! Case B (`session_participants`) specifically proves the 147 writer-Insert fix
+//! in the REBUILDER (not just the replay bin): `session.participant_joined` omits
+//! the NOT NULL `applied_at` column, which the old `SELECT *` writer would have
+//! written as an explicit NULL and failed on.
+//!
+//! **Retargeted 2026-08-05.** All three cases ran against `pc_projection` /
+//! `npc_session_memory_projection` until `0017` dropped those tables and deleted
+//! their projector crates. This smoke was then MEASURABLY BROKEN, not merely
+//! stale -- the bin exits 2 with `unknown projection table "pc_projection"` -- and
+//! nobody saw it because the gate is an env var. Not one of the properties here
+//! was ever about pc or npc, so the fixtures moved and the assertions did not.
 //!
 //! Gated by `LOREWEAVE_TEST_PG_URL` (a per-reality DB that gets `0002`+`0006`
 //! applied — `0002` DROPs+recreates `events`, so point this at a DISPOSABLE DB,
@@ -133,29 +140,26 @@ fn rebuilder_round_trip_live_smoke() {
 
     // ══ Case A — pc, single-aggregate, TRUNCATE→rebuild ══════════════════════
     let reality_a = Uuid::new_v4();
-    let pc_id = Uuid::new_v4();
-    let user_id = Uuid::new_v4();
-    let region_1 = Uuid::new_v4();
-    let region_2 = Uuid::new_v4();
+    let region_id = Uuid::new_v4();
     rt.block_on(async {
         // The admin-cli `Truncator` step the bin assumes ran.
-        sqlx::query("TRUNCATE pc_projection")
+        sqlx::query("TRUNCATE region_projection")
             .execute(&pool)
             .await
-            .expect("truncate pc_projection");
+            .expect("truncate region_projection");
         seed(
             &pool,
             0,
             reality_a,
             Uuid::new_v4(),
-            "pc",
-            &pc_id.to_string(),
+            "region",
+            &region_id.to_string(),
             1,
-            "pc.spawned",
+            "region.created",
             "2026-06-15T12:00:00Z",
             json!({
-                "user_id": user_id.to_string(), "name": "Aria",
-                "spawn_region_id": region_1.to_string(), "stats": { "hp": 100 },
+                "code": "azure-vault", "display_name": "The Azure Vault",
+                "ambient_state": { "light": "dim" },
             }),
         )
         .await;
@@ -164,68 +168,73 @@ fn rebuilder_round_trip_live_smoke() {
             1,
             reality_a,
             Uuid::new_v4(),
-            "pc",
-            &pc_id.to_string(),
+            "region",
+            &region_id.to_string(),
             2,
-            "pc.moved",
+            "region.ambient_changed",
             "2026-06-15T12:05:00Z",
-            json!({ "to_region_id": region_2.to_string() }),
+            json!({ "ambient_state": { "light": "blazing" } }),
         )
         .await;
     });
 
-    let stats = run_rebuilder(&db_url, reality_a, "pc_projection");
+    let stats = run_rebuilder(&db_url, reality_a, "region_projection");
     assert_eq!(
         stats["aggregates_failed"], 0,
-        "pc rebuild had no failed aggregates: {stats}"
+        "region rebuild had no failed aggregates: {stats}"
     );
     assert_eq!(
         stats["aggregates_rebuilt"], 1,
-        "pc reality has exactly 1 aggregate: {stats}"
+        "region reality has exactly 1 aggregate: {stats}"
     );
     assert_eq!(
         stats["events_replayed"], 2,
-        "pc rebuild replayed both events: {stats}"
+        "region rebuild replayed both events: {stats}"
     );
 
     rt.block_on(async {
         assert_eq!(
-            count(&pool, "pc_projection").await,
+            count(&pool, "region_projection").await,
             1,
-            "exactly one rebuilt pc row"
+            "exactly one rebuilt region row"
         );
         let row = sqlx::query(
-            "SELECT current_region_id, last_event_version, name, status, user_id, stats \
-               FROM pc_projection WHERE pc_id = $1",
+            "SELECT ambient_state, last_event_version, code, display_name, \
+                    description, exits, floor_items \
+               FROM region_projection WHERE region_id = $1",
         )
-        .bind(pc_id)
+        .bind(region_id)
         .fetch_one(&pool)
         .await
-        .expect("rebuilt pc row exists");
+        .expect("rebuilt region row exists");
         assert_eq!(
-            row.get::<Uuid, _>("current_region_id"),
-            region_2,
-            "pc.moved applied"
+            row.get::<Value, _>("ambient_state"),
+            json!({ "light": "blazing" }),
+            "region.ambient_changed applied ON TOP of region.created"
         );
         assert_eq!(row.get::<i64, _>("last_event_version"), 2);
-        assert_eq!(row.get::<String, _>("name"), "Aria");
-        assert_eq!(row.get::<String, _>("status"), "active");
-        assert_eq!(row.get::<Uuid, _>("user_id"), user_id);
-        assert_eq!(row.get::<Value, _>("stats"), json!({ "hp": 100 }));
+        assert_eq!(row.get::<String, _>("code"), "azure-vault");
+        assert_eq!(row.get::<String, _>("display_name"), "The Azure Vault");
+        // Absent from the event payload -> the projector's own fallbacks.
+        assert_eq!(row.get::<String, _>("description"), "");
+        assert_eq!(row.get::<Value, _>("exits"), json!([]));
+        assert_eq!(row.get::<Value, _>("floor_items"), json!([]));
     });
 
-    // ══ Case B — npc_session_memory_projection, TRUNCATE→rebuild ═════════════
-    // Proves the 147 writer-Insert fix in the REBUILDER: session.started omits
-    // NOT NULL summary/facts → the old `SELECT *` writer would NULL-violate.
+    // ══ Case B — session_participants, TRUNCATE→rebuild ══════════════════════
+    // Proves the 147 writer-Insert fix in the REBUILDER. The projector's Insert
+    // row OMITS `applied_at`, which is `TIMESTAMPTZ NOT NULL DEFAULT NOW()`; the
+    // old `SELECT *` writer turned every absent key into an explicit NULL and so
+    // violated the NOT NULL. The defect is the same one Case B always tested —
+    // only the omitted column changed when the fixture moved off npc vocabulary.
     let reality_b = Uuid::new_v4();
-    let npc_id = Uuid::new_v4();
     let session_id = Uuid::new_v4();
-    let synthetic_agg = Uuid::new_v4();
+    let participant_id = Uuid::new_v4();
     rt.block_on(async {
-        sqlx::query("TRUNCATE npc_session_memory_projection")
+        sqlx::query("TRUNCATE session_participants")
             .execute(&pool)
             .await
-            .expect("truncate npc_session_memory_projection");
+            .expect("truncate session_participants");
         seed(
             &pool,
             0,
@@ -234,11 +243,16 @@ fn rebuilder_round_trip_live_smoke() {
             "session",
             &session_id.to_string(),
             1,
-            "session.started",
+            "session.participant_joined",
             "2026-06-15T14:00:00Z",
             json!({
-                "npc_id": npc_id.to_string(), "session_id": session_id.to_string(),
-                "aggregate_id": synthetic_agg.to_string(),
+                "session_id": session_id.to_string(),
+                // 'pc'/'npc' is what session_participants_type_valid still allows.
+                // That CHECK is game vocabulary in an engine table — the same shape
+                // `0017` removed elsewhere — and changing it is a schema decision,
+                // not a test fixture's to make. Noted rather than quietly worked around.
+                "participant_type": "pc",
+                "participant_id": participant_id.to_string(),
             }),
         )
         .await;
@@ -250,14 +264,18 @@ fn rebuilder_round_trip_live_smoke() {
             "session",
             &session_id.to_string(),
             2,
-            "session.ended",
+            "session.participant_left",
             "2026-06-15T14:30:00Z",
-            json!({ "npc_id": npc_id.to_string(), "session_id": session_id.to_string() }),
+            json!({
+                "session_id": session_id.to_string(),
+                "participant_type": "pc",
+                "participant_id": participant_id.to_string(),
+            }),
         )
         .await;
     });
 
-    let stats_b = run_rebuilder(&db_url, reality_b, "npc_session_memory_projection");
+    let stats_b = run_rebuilder(&db_url, reality_b, "session_participants");
     assert_eq!(
         stats_b["aggregates_failed"], 0,
         "session rebuild had no failed aggregates: {stats_b}"
@@ -273,38 +291,33 @@ fn rebuilder_round_trip_live_smoke() {
 
     rt.block_on(async {
         assert_eq!(
-            count(&pool, "npc_session_memory_projection").await,
+            count(&pool, "session_participants").await,
             1,
-            "exactly one rebuilt session row"
+            "exactly one rebuilt participant row"
         );
         let row = sqlx::query(
-            "SELECT archive_status, summary, facts, interaction_count, \
-                    session_ended_at IS NOT NULL AS ended \
-               FROM npc_session_memory_projection WHERE npc_id = $1 AND session_id = $2",
+            "SELECT reality_id, left_at IS NOT NULL AS has_left, \
+                    applied_at IS NOT NULL AS applied_defaulted \
+               FROM session_participants \
+              WHERE session_id = $1 AND participant_id = $2",
         )
-        .bind(npc_id)
         .bind(session_id)
+        .bind(participant_id)
         .fetch_one(&pool)
         .await
-        .expect("rebuilt session row exists");
-        // session.ended Update applied on top of session.started Insert.
-        assert_eq!(row.get::<String, _>("archive_status"), "faded");
+        .expect("rebuilt participant row exists");
+        // The _left Update applied on top of the _joined Insert.
         assert!(
-            row.get::<bool, _>("ended"),
-            "session_ended_at set by session.ended"
+            row.get::<bool, _>("has_left"),
+            "left_at set by session.participant_left"
         );
-        // The writer-fix payoff: omitted NOT NULL cols took their schema DEFAULT.
-        assert_eq!(
-            row.get::<String, _>("summary"),
-            "",
-            "summary took its '' DEFAULT"
+        assert_eq!(row.get::<Uuid, _>("reality_id"), reality_b);
+        // The writer-fix payoff: a column ABSENT from the Insert row took its
+        // schema DEFAULT instead of an explicit NULL that NOT NULL would reject.
+        assert!(
+            row.get::<bool, _>("applied_defaulted"),
+            "applied_at took its NOW() DEFAULT — the 147 writer-Insert fix"
         );
-        assert_eq!(
-            row.get::<Value, _>("facts"),
-            json!({}),
-            "facts took its {{}} DEFAULT"
-        );
-        assert_eq!(row.get::<i32, _>("interaction_count"), 0);
     });
 
     // ══ Case C — MULTI-aggregate, exercises the ParallelRebuilder concurrency ══
@@ -313,66 +326,63 @@ fn rebuilder_round_trip_live_smoke() {
     // db_rt via Handle::block_on + each acquiring a pool connection + all writing
     // the SAME target table). Cases A/B had one aggregate each → that path never
     // ran. A real catastrophic-rebuild (now first-class after 141) hits it on any
-    // many-aggregate reality, so smoke it: two pc aggregates → rebuilt=2, 2 rows.
+    // many-aggregate reality, so smoke it: two region aggregates → rebuilt=2, 2 rows.
     let reality_c = Uuid::new_v4();
-    let pc_a = Uuid::new_v4();
-    let pc_b = Uuid::new_v4();
-    let region = Uuid::new_v4();
+    let region_a = Uuid::new_v4();
+    let region_b = Uuid::new_v4();
     rt.block_on(async {
-        sqlx::query("TRUNCATE pc_projection")
+        sqlx::query("TRUNCATE region_projection")
             .execute(&pool)
             .await
-            .expect("truncate pc_projection (case C)");
-        for (i, pc) in [pc_a, pc_b].iter().enumerate() {
+            .expect("truncate region_projection (case C)");
+        for (i, r) in [region_a, region_b].iter().enumerate() {
             seed(
                 &pool,
                 i as i32,
                 reality_c,
                 Uuid::new_v4(),
-                "pc",
-                &pc.to_string(),
+                "region",
+                &r.to_string(),
                 1,
-                "pc.spawned",
+                "region.created",
                 "2026-06-15T16:00:00Z",
                 json!({
-                    "user_id": Uuid::new_v4().to_string(),
-                    "name": format!("PC-{i}"),
-                    "spawn_region_id": region.to_string(),
-                    "stats": {},
+                    "code": format!("region-{i}"),
+                    "display_name": format!("Region {i}"),
                 }),
             )
             .await;
         }
     });
 
-    let stats_c = run_rebuilder(&db_url, reality_c, "pc_projection");
+    let stats_c = run_rebuilder(&db_url, reality_c, "region_projection");
     assert_eq!(
         stats_c["aggregates_failed"], 0,
         "multi-aggregate rebuild had no failed aggregates: {stats_c}"
     );
     assert_eq!(
         stats_c["aggregates_rebuilt"], 2,
-        "both pc aggregates rebuilt concurrently: {stats_c}"
+        "both region aggregates rebuilt concurrently: {stats_c}"
     );
     assert_eq!(
         stats_c["events_replayed"], 2,
-        "one pc.spawned per aggregate: {stats_c}"
+        "one region.created per aggregate: {stats_c}"
     );
 
     rt.block_on(async {
         assert_eq!(
-            count(&pool, "pc_projection").await,
+            count(&pool, "region_projection").await,
             2,
-            "both rebuilt pc rows present"
+            "both rebuilt region rows present"
         );
-        for pc in [pc_a, pc_b] {
-            let region_id: Uuid =
-                sqlx::query_scalar("SELECT current_region_id FROM pc_projection WHERE pc_id = $1")
-                    .bind(pc)
+        for (i, r) in [region_a, region_b].iter().enumerate() {
+            let code: String =
+                sqlx::query_scalar("SELECT code FROM region_projection WHERE region_id = $1")
+                    .bind(r)
                     .fetch_one(&pool)
                     .await
-                    .unwrap_or_else(|e| panic!("rebuilt pc row {pc} missing: {e}"));
-            assert_eq!(region_id, region, "pc {pc} spawn region applied");
+                    .unwrap_or_else(|e| panic!("rebuilt region row {r} missing: {e}"));
+            assert_eq!(code, format!("region-{i}"), "region {r} payload applied");
         }
     });
 }

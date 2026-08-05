@@ -69,6 +69,27 @@ lock cycle can carry the banner. **A convenience is not worth forging the eviden
 **DEFERRED 146 CLOSED — subject removed**, not fixed: its whole subject was *"the one
 cross-aggregate table"*.
 
+**Two DB-gated live smokes were MEASURABLY BROKEN, not stale** — and the env-var gate is why nobody
+saw it. Run against a real throwaway Postgres, `world-service`'s `rebuilder_live` and
+`replay_aggregate_live` both died at setup:
+
+```
+[rebuilder] fatal: rebuilder: unknown projection table "pc_projection" (not in the L3.A allowlist)
+```
+
+The projector crates were deleted with `0017`; the smokes went on naming their tables. All eight
+cases across the two files were retargeted onto `region_projection` / `session_participants` and
+**run green on a real DB** — not compile-checked, run. Case B's property survived exactly: it proves
+the 147 writer-Insert fix, where an Insert row that OMITS a column must let the schema DEFAULT fill
+it rather than write an explicit NULL; the omitted column moves from `summary`/`facts` to
+`applied_at`, and the defect is the same one. The drift case was bitten — neutering the tamper reds
+it with *"DRIFT: tampered live row must NOT match the replay"*.
+
+**Left standing and said out loud:** `session_participants` still carries
+`CHECK (participant_type IN ('pc','npc'))` — game vocabulary in an engine table, the same `D-2`
+shape `0017` removed elsewhere. Changing it is a schema decision with its own design question, not
+something a test fixture should route around, so the fixture uses `'pc'` and says why.
+
 **Evidence (2026-08-05):** `cargo test --workspace` **2232 passed, 0 failed** (summed over every
 `test result` line) · `admin-cli` 11 pkgs ok · `integrity-checker` 11 pkgs ok · `meta-worker` 13
 pkgs ok · `gate-self-tests` all green incl. the new gate · `design-lint` OK · `citation-gate` OK ·

@@ -52,13 +52,18 @@ pub fn is_known_projection_table(table: &str) -> bool {
 /// because the per-aggregate-parallel path can't guarantee the cross-aggregate
 /// ordering.
 ///
-/// Today the only such table is `npc_session_memory_projection`: the *session*
-/// aggregate's `session.started` creates the row and the *npc* aggregate's
-/// `npc.said` (Q-L3B-1 fan-out) increments `interaction_count`. The other L3.A
-/// tables are each written from a single aggregate (audited 2026-06-04:
-/// session_participants ← session.*; npc_pc_relationship ← npc.relationship_*;
-/// pc_* ← pc.*; region ← region.*; world_kv ← world.kv_*; canon ← canon.*). Add
-/// a table here if a new cross-aggregate fan-out is introduced.
+/// **The list is EMPTY, and that is a fact rather than an oversight.** The only
+/// cross-aggregate table there has ever been was `npc_session_memory_projection`
+/// — the *session* aggregate created the row, the *npc* aggregate incremented it
+/// — and `0017` dropped it. Every surviving projection is written from a single
+/// aggregate: `session_participants` ← `session.*`, `region_projection` ←
+/// `region.*`, `world_kv_projection` ← `world.kv_*`, `canon_projection` ←
+/// `canon.*`.
+///
+/// The global-order path it selects is NOT dead: `rebuild::global` is exercised
+/// by test-only projectors, because cross-aggregate replay ordering is a
+/// property of the rebuilder rather than of npc vocabulary. Add a table here if
+/// a new cross-aggregate fan-out is introduced.
 pub const MULTI_AGGREGATE_TABLES: &[&str] = &[];
 
 /// Returns true if `table` must be rebuilt with the global-order path rather
