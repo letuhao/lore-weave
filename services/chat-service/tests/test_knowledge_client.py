@@ -1511,3 +1511,69 @@ class TestCatalogMetaIsPerUser:
         src = (Path(__file__).resolve().parents[1] / "app" / "services" / "stream_service.py").read_text("utf-8")
         assert "get_catalog_meta()" not in src, "a call site still reads the process-wide signal"
         assert src.count("get_catalog_meta(user_id)") >= 4
+
+
+# ── U-1 · Unicode normalisation at the one door declaration text enters ─────────────────────────
+
+
+class TestToolTextIsNormalisedAtIngestion:
+    """U-1 — REJECTS a mechanism that deletes declarations from the wire with no revision change.
+
+    `estimate_tokens` weights per CODEPOINT and its Vietnamese band spans the combining-mark block,
+    so the same grapheme costs **1.44× more in NFD than NFC**. That number is **both the sort key
+    and the accumulator** in `budget_names_by_tokens`, which ends in a hard `break` — so a
+    declaration arriving decomposed sorts later and is cut. Arm E's mechanism, reached through text
+    encoding.
+
+    **Measured before the fix: 0 of 315 frozen declarations are non-NFC, while 253 carry non-ASCII.**
+    So the internal catalogue is exposed and undamaged, and the live subject is the per-user
+    external-MCP overlay — arbitrary third-party text. This is latent, not active, and the tests say
+    so rather than implying a number moved.
+    """
+
+    NFD_TEXT = "Tạ̀o chương mới cho tiểu thuyết"
+
+    def test_the_defect_is_real_before_asserting_the_fix(self):
+        """The control. Without it, the assertions below could pass over a token estimator that
+        never cared about normalisation in the first place."""
+        import unicodedata
+
+        from loreweave_context.tokens import estimate_tokens
+        nfd = unicodedata.normalize("NFD", self.NFD_TEXT)
+        nfc = unicodedata.normalize("NFC", self.NFD_TEXT)
+        assert nfd != nfc, "the fixture is not actually decomposed"
+        assert estimate_tokens(nfd) > estimate_tokens(nfc), (
+            "estimate_tokens is normalisation-insensitive, so U-1 does not exist as described"
+        )
+
+    def test_a_decomposed_description_is_composed_at_the_door(self):
+        """The subject is text arriving UN-NORMALISED FROM OUTSIDE — so the fixture is decomposed
+        and the assertion is that the client composed it, not that two normalised strings match."""
+        import unicodedata
+
+        from app.client.knowledge_client import _nfc
+        out = _nfc(self.NFD_TEXT)
+        assert out == unicodedata.normalize("NFC", self.NFD_TEXT)
+        assert out != self.NFD_TEXT, "the door let decomposed text through"
+
+    def test_normalisation_preserves_the_reader_visible_text(self):
+        """NFC must not change what anyone reads — only how it is encoded. A normaliser that alters
+        the description would be a worse defect than the one it fixes."""
+        import unicodedata
+
+        from app.client.knowledge_client import _nfc
+        assert unicodedata.normalize("NFD", _nfc(self.NFD_TEXT)) == \
+            unicodedata.normalize("NFD", self.NFD_TEXT)
+
+    def test_non_strings_pass_through_untouched(self):
+        """`description` is `str | None` on the wire and the schema carries dicts and lists."""
+        from app.client.knowledge_client import _nfc
+        for v in (None, 3, {"a": 1}, ["x"]):
+            assert _nfc(v) is v
+
+    def test_the_ingestion_path_applies_it(self):
+        """The wiring gate — a correct helper with no call site is a shape this repo has shipped.
+        Asserted at the ingestion door, which is where the overlay's third-party text arrives."""
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1] / "app" / "client" / "knowledge_client.py").read_text("utf-8")
+        assert '"description": _nfc(' in src, "tool descriptions are ingested un-normalised"

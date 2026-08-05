@@ -25,6 +25,7 @@ import json
 import logging
 import re
 import time
+import unicodedata
 from typing import Literal
 
 import httpx
@@ -135,6 +136,30 @@ def _degraded() -> KnowledgeContext:
         recent_message_count=DEGRADED_RECENT_MESSAGE_COUNT,
         token_count=0,
     )
+
+
+def _nfc(value):
+    """U-1 · normalise declaration text to NFC **at the one door it enters through**.
+
+    **Why this is a correctness fix and not a tidiness one.** `estimate_tokens` weights per
+    CODEPOINT, and its Vietnamese band spans the combining-mark block `0x0300–0x036F`. So the same
+    grapheme costs **1.44× more in NFD than NFC**, measured on a real Vietnamese tool description.
+    That number is **both the sort key and the accumulator** in `budget_names_by_tokens`, which ends
+    in a hard `break` — so a declaration arriving decomposed sorts later and **is cut from the wire**.
+    Arm E's mechanism, reached through text encoding, and **no revision or budget value changes**.
+
+    **Measured before fixing, and the honest state is latent-not-live:** of the 315 frozen
+    declarations, **0 are non-NFC today** — our own tooling emits composed text — while **253 carry
+    non-ASCII at all.** So the internal catalogue is exposed and undamaged. The real subject is the
+    **per-user external-MCP overlay** (`u_`/`b_`/`s_`), which is arbitrary third-party text this
+    codebase does not author and cannot assume anything about.
+
+    **Here rather than in `estimate_tokens`, deliberately.** A normaliser called at every use site is
+    one somebody forgets at one of them, and the estimator is not the only consumer of this text —
+    the description is also embedded for semantic search, where NFD would produce a different vector
+    for the same words. One door, once, and every downstream reader may then assume NFC.
+    """
+    return unicodedata.normalize("NFC", value) if isinstance(value, str) else value
 
 
 _FASTMCP_ERR_PREFIX = re.compile(r"^Error executing tool [\w.-]+:\s*(?=\{)")
@@ -608,7 +633,9 @@ class KnowledgeClient:
         for t in listed.tools:
             fn: dict = {
                 "name": t.name,
-                "description": t.description or "",
+                # 🔴 U-1 — NFC AT THE DOOR. See `_nfc` below for why this is a correctness
+                # fix and not a tidiness one.
+                "description": _nfc(t.description or ""),
                 "parameters": _normalize_tool_parameters(t.inputSchema),
             }
             # MCP-fanout C-TOOL: preserve the per-tool `_meta` (tier / scope /
