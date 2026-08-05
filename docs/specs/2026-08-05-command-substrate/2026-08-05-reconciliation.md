@@ -1,5 +1,16 @@
 # Reconciliation — the 2026-08-05 round against the 2026-08-02 rounds
 
+> # ⛔ CLOSED 2026-08-06 — FOLDED INTO THE 2026-08-02 ROUND
+>
+> Every surviving item now has an **08-02 id** and the id is where the work continues:
+> `CMD-11` the offer registry · `CMD-12` the keyed-MAC `offer_id` · `CMD-13` horizontal
+> composition · `CMD-10` absorbed the N+1 test · `O-CI-23`/`O-CI-24`/`O-CI-25` carry the three
+> questions the conflict-resolution proposal left open. See
+> [`2026-08-05-reconciliation.md`](2026-08-05-reconciliation.md) §8b for the item-by-item mapping.
+>
+> **This folder is HISTORY. Do not build from it, do not cite it as current, and do not edit it to
+> keep it alive** — an open question living only here is how it stops being asked.
+
 **Status:** the adjudication the quarantine demanded. Read this before any other file
 in this folder.
 
@@ -139,6 +150,23 @@ blocked. Calling it a blocker was the anti-laziness rule's exact failure mode:
 *"saying 'blocked' when you mean 'I'd have to build it'."*
 
 ---
+
+## §8b · ✅ DISCHARGED 2026-08-06 — the fold happened, and where each item went
+
+This folder is now **history**. Everything below that survived has an 08-02 id, and the id is where
+the work continues; nothing here is authoritative and nothing here should be edited to keep it alive.
+
+| §5 survivor | landed as |
+|---|---|
+| the offer **registry**, `offers_for(subject, tick)`, and where it runs | **`CMD-11`** (RUN-STATE §4e) — carrying the red team's finding that `THR-A4` constrains the model relative to its **driver**, not the driver relative to the engine, which makes the registry necessary rather than decorative |
+| `offer-entitlement` + the keyed-MAC `offer_id` | **`CMD-12`** — with the same-tick leak stated as a limit, and with the security lens's `actorForUser` finding attached, because a MAC over a subject the caller can already be is a lock on the wrong door |
+| the pre-compose ⇒ **a build may FAIL** argument | **`CMD-13` part ④**. It is the argument that makes the whole mechanism affordable, and it is the one thing 08-02's Qud/Evennia prior art did not carry |
+| the **N+1 test** as a mechanical criterion | **`CMD-10`** absorbed it: V1–V4 are the N+1 test made answerable per-concern, and V4 is the question N+1 could not ask |
+| the **red team** | re-homed. Its findings about **shipped code and the 08-02 design** outlive this folder — four of them are now `D-REPLAY-PIN-REFUSAL-UNDEFINED`, `D-RNG-COORDS-SNAPSHOT-ONLY`, `D-NO-INPUT-LOG`, and a fixed `FATAL-1` |
+| the conflict-resolution proposal (deliberately unnumbered) | **`CMD-13`**, with its three open questions promoted to **`O-CI-23`** (is the strategy set complete), **`O-CI-24`** (where a resolution is authored), **`O-CI-25`** (does `strict` earn a member) — because an open question living only in a quarantined folder's prose is how it stops being asked |
+
+**`CMD-D1`..`CMD-D7` remain RETIRED.** They were never re-used: the fold deliberately allocated
+`CMD-10`..`CMD-13` in the live sequence rather than rehabilitating a colliding prefix.
 
 ## §8 · What to do
 

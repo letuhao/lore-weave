@@ -1,5 +1,16 @@
 # Command Substrate — feature #2
 
+> # ⛔ CLOSED 2026-08-06 — FOLDED INTO THE 2026-08-02 ROUND
+>
+> Every surviving item now has an **08-02 id** and the id is where the work continues:
+> `CMD-11` the offer registry · `CMD-12` the keyed-MAC `offer_id` · `CMD-13` horizontal
+> composition · `CMD-10` absorbed the N+1 test · `O-CI-23`/`O-CI-24`/`O-CI-25` carry the three
+> questions the conflict-resolution proposal left open. See
+> [`2026-08-05-reconciliation.md`](2026-08-05-reconciliation.md) §8b for the item-by-item mapping.
+>
+> **This folder is HISTORY. Do not build from it, do not cite it as current, and do not edit it to
+> keep it alive** — an open question living only here is how it stops being asked.
+
 > # 🔴 QUARANTINED — DO NOT BUILD FROM THIS
 >
 > **This round's Phase 0 is FALSE.** Its §0 states *"In code: nothing… In design: two
