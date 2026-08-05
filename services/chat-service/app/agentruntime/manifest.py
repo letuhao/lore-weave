@@ -198,6 +198,24 @@ def build(
             )
         origin[r["id"]] = stamp
     rows = [_row(a, origin=origin) for a in admitted]
+    # 🔴 A DECLARATION PRESENT IN `previous` AND ABSENT FROM `admitted` WAS SILENTLY DROPPED, and
+    # that is how the "origin" stamp turned out not to be an origin at all: a verifier regenerated
+    # without one declaration, regenerated again with it, and the row came back **claiming the new
+    # generation**. Four routes reset it, three of them ungated.
+    #
+    # §1 says the plan deletes nothing and retirements are structurally zero, so a row disappearing
+    # is never intended — it is either a caller that forgot one or a declaration that **failed a
+    # breaking amendment**, which §6.4 says must enter a re-admission queue *without leaving the
+    # runtime*. That mechanism does not exist (see §6.4.1), and the honest response to a missing
+    # mechanism is to make its absence LOUD rather than to let the row fall out in silence.
+    lost = sorted(set(origin) - {r["id"] for r in rows})
+    if lost:
+        raise UntrustedRow(
+            f"{lost} are in the previous manifest and not in this build. A declaration does not "
+            f"leave the runtime (§1), and §6.4's re-admission queue — the mechanism that would let "
+            f"one stay while it is re-admitted — IS NOT BUILT (§6.4.1). Dropping the row silently "
+            f"erases the generation it originated in."
+        )
     ids = {r["id"] for r in rows}
     for r in rows:
         for m in r["members"]:
@@ -289,6 +307,23 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
     """
     if not isinstance(doc, dict):
         raise UntrustedRow(f"{source}: manifest is not an object")
+    # The document-level stamps were written from constants and read from nowhere: a verifier fed
+    # `contract_version: "banana"` and a missing `manifest_version` and both passed. The only thing
+    # catching it today is the drift gate's byte-equality with `build([])`, which does not survive
+    # the first non-empty manifest. `contract_version` is also the queue's COMPARAND — an unreadable
+    # one silently empties the queue, which is the same failure §6.4.1 records one level down.
+    if doc.get("manifest_version") != MANIFEST_VERSION:
+        raise UntrustedRow(
+            f"{source}: manifest_version is {doc.get('manifest_version')!r}, expected "
+            f"{MANIFEST_VERSION}. One format is supported and an unknown one is not a newer file, "
+            f"it is a file this reader cannot make claims about."
+        )
+    doc_version = doc.get("contract_version")
+    if not isinstance(doc_version, str) or not _VERSION.match(doc_version):
+        raise UntrustedRow(
+            f"{source}: contract_version is {doc_version!r}; §6.4's re-admission queue is derived "
+            f"by comparing every row against it, so an unreadable value empties the queue in silence"
+        )
     rows = doc.get("declarations")
     if not isinstance(rows, list):
         raise UntrustedRow(f"{source}: `declarations` is missing or not a list")
@@ -309,7 +344,13 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
                 # which is the "drift check reports a change nobody made" failure this door exists
                 # to prevent.
                 source_path=f"services/{canon.nfc(r.get('owning_service', ''))}/",
-                lifecycle=r.get("lifecycle", "draft"),
+                # 🔴 NO DEFAULT. This read `r.get("lifecycle", "draft")`, so a row with **no**
+                # lifecycle key passed validation — and was returned still missing it, because the
+                # default lived only inside this check. C-0 names lifecycle state as part of
+                # identity, so a row omitting it was admitted on read with an identity the file does
+                # not contain. It is the P4 shape at the READ half of the same boundary: a column
+                # value fixed by the code rather than by the thing being validated.
+                lifecycle=r["lifecycle"] if "lifecycle" in r else "",
                 members=tuple(r.get("members", ()) or ()),
             ))
         except Exception as exc:
@@ -325,6 +366,15 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
         # this one — a bogus stamp lands a row *in* the queue rather than out of it. An earlier
         # version of this comment implied all four of the verifier's inputs were now rejected. Three
         # are.
+        # A manifest written before §6.4's second field existed carries only `admitted_against`,
+        # and for such a row that IS its origin — there is no other stamp and no information is
+        # invented by saying so. Without this, every manifest this run produced before today became
+        # unreadable AND unwritable at once: `load()` rejected it, and `generate()` could not repair
+        # it because `bootstrap=` is ignored when the file exists, leaving `rm` as the only route —
+        # the erasure that flag exists to prevent.
+        if "contract_version" not in r and isinstance(r.get("admitted_against"), str):
+            r = {**r, "contract_version": r["admitted_against"]}
+            rows[i] = r
         for field in ("contract_version", "admitted_against"):
             stamp = r.get(field)
             if not isinstance(stamp, str) or not _VERSION.match(stamp):

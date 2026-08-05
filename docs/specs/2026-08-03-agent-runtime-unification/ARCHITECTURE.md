@@ -193,10 +193,22 @@ walked straight past:
    operators.
 
 So both are now stated as requirements, not left to follow from the table: **membership in the kind
-set is checked by EXACT TYPE at the pipeline boundary** (a subclass overriding `keep` is the same
-closure through inheritance), and **`value` is bounded to a plain scalar or a tuple of plain
-scalars** — which also makes the section's *second* justification true of the whole kind set rather
-than of its examples: every constructible stage is now content-addressable.
+set is checked by IDENTITY at the pipeline boundary** — `type(s) is k`, because `type(s) in {…}`
+dispatches `__eq__`/`__hash__` and **a metaclass forges membership through them**, measured — and
+**every stage parameter is bounded to a plain value of its exact type**, not just `Filter.value`.
+
+🔴 **AMENDED TWICE, AND THE SECOND AMENDMENT IS THE ONE WORTH READING.** The first version of this
+paragraph bounded `Filter.value` and claimed *"every constructible stage is now content-addressable"*.
+**False, with five counter-examples measured**: `TakeWhileBudget.budget` is compared against a
+running total **once per row**, so a custom `__lt__` decided every cut; `Filter.field` and
+`cost_field` are `row.get()` keys, so `__hash__`/`__eq__` chose which column was read; `TopK.k`
+reached a slice through `__index__`; and `OrderBy.keys` / `AllowList.names` could decide their own
+iteration. **The fix reasoned about the field a verifier had pointed at, not about the set of
+operands** — which is the same failure the paragraph above it describes. The claim is true now, and
+it is true because every field is checked, not because six examples were.
+
+Also: **`TopK`'s default `k=0` narrows the surface to nothing**, the identical failure the two list
+kinds were guarded against, in the kind sitting next to them.
 
 **And the same "rejected at construction" promise applies to stage PARAMETERS, which it did not.**
 `AllowList` with no names constructed happily and narrowed the surface to nothing; an empty
@@ -304,12 +316,19 @@ run MUST be rejected"* — is satisfied today only in the degenerate sense that 
 is rejected, because nothing can ever produce the field. That is the correct fail-closed direction
 and it is **not evidence the rule works.**
 
-| clause | state | owner |
-|---|---|---|
-| `order_by` required before a rank-dependent kind; `id` appended; `cost` not primary; missing field rejected; rank recorded | **built and gated** | CP-1 |
-| kind set closed by exact type; `value` bounded; empty list kinds rejected | **built and gated** | CP-1 |
-| one canonical serialisation in the package | **built**, enforced by a unit test | CP-1 |
-| ambient boundary | **built and gated**, with the blind spots disclosed | CP-1 |
+🔴 **"Gated" in this table means A UNIT TEST IN CI, not `agentruntime-membrane-gate.py`** — which
+contains no check for `validate_pipeline`, `OrderBy`, `STAGE_KINDS`, `canon` or the arming. Rows 1
+and 2 said "built and gated" two lines above a row that had just been corrected for exactly that
+equivocation, which is the erratum-not-applied-everywhere failure inside the correction for it.
+
+| clause | state | enforced by | owner |
+|---|---|---|---|
+| `order_by` required before a rank-dependent kind; `id` appended; `cost` not primary; missing field rejected; rank recorded | **built** | `test_cp1_membrane.py` (unit suite, CI) | CP-1 |
+| kind set closed by identity; **every** stage parameter bounded; empty list kinds and `top_k=0` rejected | **built** | `test_cp1_membrane.py` (unit suite, CI) | CP-1 |
+| one canonical serialisation in the package | **built** | `test_cp1_membrane.py` (unit suite, CI) | CP-1 |
+| ambient boundary | **built** | `agentruntime-membrane-gate.py` — genuinely the gate, with its blind spots measured and disclosed | CP-1 |
+| **P4 on `admitted_against`** | **FAIL — the queue is unsatisfiable by construction** (§6.4.1) | a test that asserts the defect, so it reds when the mechanism lands | CP-4 |
+| a declaration cannot silently leave the manifest | **built** | `test_cp1_membrane.py` | CP-1 |
 | rows carrying `lane` / `tier` / `cost` | **UNBUILT — the ranking has no subject** | CP-4 (the admitting checkpoint) |
 | a scoring effect producing `relevance` | **UNBUILT — no producer exists** | CP-2 |
 | `_is_read_tool` replaced by declared `lane` data | **UNBUILT — still the name heuristic C-1 forbids** | CP-4 |
@@ -1534,9 +1553,36 @@ explicit, and the test that mattered is the one that asks whether the queue can 
 | `contract_version` | the generation this declaration **originated** in — its first admission | **never.** Carried forward across every regeneration |
 | `admitted_against` | what **this** admission was checked against | **always the live value.** Being in the build's `admitted` set means the current contract just passed on this row |
 
-**The queue is `admitted_against != <document contract_version>`.** It empties exactly when every
-declaration has been re-checked, which is the only behaviour that makes it a work list rather than a
-label.
+**The queue is `admitted_against != <document contract_version>`.**
+
+🔴 **AND TODAY THAT PREDICATE IS UNSATISFIABLE. P4 IS NOT SATISFIED BY `admitted_against`.** An
+earlier version of this paragraph said the queue *"empties exactly when every declaration has been
+re-checked"* — a biconditional of which **only one direction holds. It is empty always.** The chain
+is three links and every link is the same literal: `row.admitted_against` ← `Admitted.contract_version`
+← `check_contract()`, whose only success return is `CONTRACT_VERSION`; and the document's
+`contract_version` is that same constant imported by name. A verifier measured **0 non-empty queues
+in 500 randomised builds**, value set `{'1.0.0'}` — *the identical measurement that condemned the
+first attempt at this fix*. Replacing the field with a constant read one attribute later leaves the
+suite **fully green**, because the two expressions cannot differ in one process.
+
+**So the honest state of item 1.4's P4 half is FAIL, and it is recorded as FAIL.** What CP-1 did
+build is `contract_version`: an origin generation that genuinely varies between rows and is carried
+across regeneration. That field is real and it is gated. The field the queue reads is not.
+
+**Why this cannot be finished here, stated as a design problem rather than as a schedule.** For
+`admitted_against` to differ from the document version, the manifest must contain a row that this
+build did **not** admit — a grandfathered one. A grandfathered row is by definition one the *current*
+contract may reject, so `load()` cannot re-check it against the current contract; it would have to be
+checked against the contract it was admitted under. **This code has only the current contract, as
+code.** Exempting the row instead opens the hole the whole membrane exists to close: **a hand-typed
+row and a grandfathered row are indistinguishable from the file alone.** Closing it needs the
+contract to be *versioned data* rather than a function — which is CP-4's, alongside the drift gate
+that has the same dependency.
+
+**What CP-1 does instead of pretending:** `build()` now **refuses** to write a manifest that loses a
+declaration present in the previous one. The missing mechanism therefore fails loudly at the moment
+it is needed, rather than dropping the row and resetting its origin in silence — which is what a
+verifier measured it doing, by four routes, three of them ungated.
 
 **Both failure modes are recorded because each looked like a fix.** Binding `admitted_against` to
 the write-time constant made every historical row claim conformance it was never checked for — the

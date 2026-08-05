@@ -429,55 +429,42 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
             f"the ORIGIN generation was not preserved across the amendment: {origins}"
         )
 
-    def test_the_queue_DRAINS_when_a_declaration_is_RE_ADMITTED(self, monkeypatch):
-        """🔴 THE SECOND FIX'S DEFECT, and the mirror of the first one.
+    def test_THE_QUEUE_IS_EMPTY_BY_CONSTRUCTION__P4_IS_NOT_SATISFIED_HERE(self, monkeypatch):
+        """🔴 **THE TEST THAT RECORDS A FAILURE INSTEAD OF HIDING IT.**
 
-        `previous` was allowed to shadow the live stamp for **any** id already in the file. A
-        verifier re-admitted a declaration under the amended contract — including one whose
-        `owning_service` materially changed, which *is* re-derived — and the stamp did not move. So
-        the queue named work already done, permanently. **Empty forever, then non-empty forever;
-        neither is a work list.**
+        `admitted_against` ← `Admitted.contract_version` ← `check_contract()`, whose only success
+        return is `CONTRACT_VERSION` — the same literal the document header carries. A verifier
+        measured **0 non-empty queues in 500 randomised builds**, and replacing the field with the
+        constant read one attribute later left the suite fully green: the two expressions *cannot*
+        differ in one process.
 
-        A queue that cannot reach empty cannot answer *"is the migration finished?"*, which is the
-        only question §6.4 asks of it.
+        So this asserts the defect, deliberately, because the alternative is a suite that reads as
+        though §6.4 works. It turns red the day the grandfathering mechanism lands — which is
+        exactly when the claim above stops being true and this test should stop being here.
         """
-        first = build([admit(_tool("book_list")), admit(_tool("book_get"))], previous=None)
-
+        doc = build([admit(_tool("book_list")), admit(_tool("book_get"))], previous=None)
+        queue = [r["id"] for r in doc["declarations"]
+                 if r["admitted_against"] != doc["contract_version"]]
+        assert queue == [], (
+            "the queue is non-empty — the grandfathering mechanism has landed, so §6.4.1's FAIL "
+            "record and this test are both stale and must be replaced by a drain test"
+        )
         self._amend(monkeypatch, "2.0.0")
-        # `book_list` is re-admitted under the new contract; `book_get` is not offered at all.
-        after = build([admit(_tool("book_list"))], previous=first)
-        row = after["declarations"][0]
-        assert row["admitted_against"] == "2.0.0", (
-            "a declaration that JUST PASSED the current contract still reports the old one — the "
-            "queue can never drain"
+        after = build([admit(_tool("book_list")), admit(_tool("book_get"))], previous=doc)
+        assert {r["admitted_against"] for r in after["declarations"]} == {after["contract_version"]}, (
+            "admitted_against varied, which this checkpoint cannot make happen"
         )
-        assert row["contract_version"] == "1.0.0", "its origin generation was overwritten"
 
-        queue = [r["id"] for r in after["declarations"]
-                 if r["admitted_against"] != after["contract_version"]]
-        assert queue == [], f"the queue did not drain after a real re-admission: {queue}"
+    def test_A_DECLARATION_CANNOT_SILENTLY_LEAVE_THE_MANIFEST(self, monkeypatch):
+        """§1 says the plan deletes nothing; §6.4 says a declaration entering the re-admission queue
+        does so *without leaving the runtime*. That mechanism is unbuilt, and a verifier measured the
+        consequence: regenerate without a declaration, regenerate again with it, and its ORIGIN comes
+        back as the new generation. Four routes, three ungated.
 
-    def test_the_queue_names_exactly_the_rows_that_were_NOT_re_admitted(self, monkeypatch):
-        """§6.4's mechanism, derived from a document that genuinely holds two generations — not from
-        a fixture this test mutated three lines earlier.
-
-        🔴 The previous version of this test was **vacuous**: it hand-set one row's stamp, filtered
-        the dict it had just mutated, and asserted `queue == ["book_get"] or queue == ["book_list"]`
-        — a disjunction accepting either answer. A verifier removed the entire carry mechanism and
-        it stayed green.
-        """
+        The missing mechanism now fails loudly at the moment it is needed."""
         first = build([admit(_tool("book_list")), admit(_tool("book_get"))], previous=None)
-        self._amend(monkeypatch, "2.0.0")
-        # Only `book_list` clears the amended contract; `book_get`'s row is carried by the caller.
-        after = build([admit(_tool("book_list"))], previous=first)
-        after["declarations"].append(
-            {**[r for r in first["declarations"] if r["id"] == "book_get"][0]}
-        )
-        queue = sorted(r["id"] for r in after["declarations"]
-                       if r["admitted_against"] != after["contract_version"])
-        assert queue == ["book_get"], (
-            f"the queue must name the un-re-admitted declaration and only it: {queue}"
-        )
+        with pytest.raises(UntrustedRow, match="IS NOT BUILT"):
+            build([admit(_tool("book_list"))], previous=first)
 
     def test_generate_CARRIES_THE_ORIGIN_ACROSS_A_REAL_WRITE(self, tmp_path, monkeypatch):
         """🔴 THE BRANCH THAT MATTERS, AND IT HAD NO TEST AT ALL.
@@ -539,10 +526,51 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
                 doc["declarations"][0][field] = bad
                 with pytest.raises(UntrustedRow, match=field):
                     validate_document(doc)
+        # `admitted_against` is required outright.
+        doc = json.loads(json.dumps(good))
+        doc["declarations"][0].pop("admitted_against")
+        with pytest.raises(UntrustedRow, match="admitted_against"):
+            validate_document(doc)
+
+    def test_a_PRE_TWO_FIELD_manifest_is_still_readable_and_repairable(self):
+        """🔴 THE MIGRATION I BROKE WHILE FIXING THE FIELD. Adding `contract_version` as required
+        made every manifest written earlier in this run **unreadable AND unwritable at once**:
+        `load()` rejected it, and `generate()` could not repair it because `bootstrap=` is ignored
+        when the file exists — leaving `rm` as the only route, which is precisely the erasure that
+        flag exists to prevent.
+
+        For a row that predates the second field, `admitted_against` IS the only stamp there is, so
+        adopting it as the origin invents nothing."""
+        good = build([admit(_tool("book_list"))], previous=None)
+        old = json.loads(json.dumps(good))
+        old["declarations"][0].pop("contract_version")
+        out = validate_document(old)
+        assert out["declarations"][0]["contract_version"] == \
+            out["declarations"][0]["admitted_against"]
+
+    def test_the_DOCUMENT_stamps_are_validated_because_one_of_them_is_the_comparand(self):
+        """Both were written from constants and read from nowhere: `"banana"` and a missing
+        `manifest_version` both passed. The document's `contract_version` is what every row is
+        compared against, so an unreadable one empties §6.4's queue in silence — the same failure
+        as the row-level stamp, one level up. Caught today only by the drift gate's byte-equality
+        with `build([])`, which does not survive the first non-empty manifest."""
+        good = build([admit(_tool("book_list"))], previous=None)
+        for key, bad in (("contract_version", "banana"), ("contract_version", None),
+                         ("manifest_version", 99), ("manifest_version", None)):
             doc = json.loads(json.dumps(good))
-            doc["declarations"][0].pop(field)
-            with pytest.raises(UntrustedRow, match=field):
+            doc[key] = bad
+            with pytest.raises(UntrustedRow, match=key):
                 validate_document(doc)
+
+    def test_a_row_with_NO_lifecycle_is_refused_rather_than_defaulted(self):
+        """C-0 names lifecycle state as part of identity. `r.get("lifecycle", "draft")` admitted a
+        row that omits it **and returned it still missing the key**, so the default existed only for
+        the duration of the check — the P4 shape at the read half of the same boundary."""
+        good = build([admit(_tool("book_list"))], previous=None)
+        doc = json.loads(json.dumps(good))
+        doc["declarations"][0].pop("lifecycle")
+        with pytest.raises(UntrustedRow):
+            validate_document(doc)
 
     def test_the_row_carries_BOTH_fields_because_ONE_of_them_cannot_move(self):
         """🔴 §6.4 REQUIRES TWO FIELDS AND THE FIRST FIX SHIPPED ONE — with a test that actively
@@ -1184,6 +1212,79 @@ class TestStageKindsAreDataNotClosures:
         ]
         digests = {canon.digest(dataclasses.asdict(s)) for s in stages}
         assert len(digests) == len(stages), "two different stages hashed the same"
+
+    def test_EVERY_OPERAND_IS_BOUNDED_not_only_the_one_a_verifier_named(self):
+        """🔴 THE FIRST FIX BOUNDED `Filter.value` AND LEFT SIX OTHER OPERANDS OPEN, because it
+        reasoned about the field the verifier had pointed at rather than about the set.
+
+        Each of these was **measured** reaching the narrowing decision: `TakeWhileBudget.budget` is
+        compared against a running total once per row, so a custom `__lt__` decides every cut;
+        `Filter.field` and `cost_field` are `row.get()` keys, so `__hash__`/`__eq__` choose which
+        column is read; `TopK.k` reaches a slice through `__index__`; `OrderBy.keys` and
+        `AllowList.names` are containers that can decide their own iteration and membership.
+        """
+        class Sneaky(int):
+            def __lt__(self, other):
+                return True
+
+            def __index__(self):
+                return 999
+
+        class SneakyKey(str):
+            def __hash__(self):
+                return hash("id")
+
+            def __eq__(self, other):
+                return True
+
+        for ctor, match in (
+            (lambda: TakeWhileBudget("s", "r", budget=Sneaky(1)), "budget is a Sneaky"),
+            (lambda: TakeWhileBudget("s", "r", budget=1, cost_field=SneakyKey("cost")),
+             "cost_field is a SneakyKey"),
+            (lambda: TopK("s", "r", k=Sneaky(1)), "k is a Sneaky"),
+            (lambda: Filter("s", "r", field=SneakyKey("id"), op="eq", value="x"),
+             "field is a SneakyKey"),
+            (lambda: OrderBy(keys=[("lane", "asc")]), "keys is a list"),
+            (lambda: OrderBy(keys=((SneakyKey("lane"), "asc"),)), "field is a SneakyKey"),
+            (lambda: AllowList("s", "r", names=["t0"]), "names is a list"),
+            (lambda: Filter(SneakyKey("s"), "r", field="id", op="eq", value="x"),
+             "stage is a SneakyKey"),
+        ):
+            with pytest.raises(ValueError, match=match):
+                ctor()
+
+        # `bool` is an `int` subclass, and a boolean budget is a real typo shape.
+        with pytest.raises(ValueError, match="budget is a bool"):
+            TakeWhileBudget("s", "r", budget=True)
+
+    def test_TOP_K_ZERO_IS_REFUSED__the_default_narrows_to_nothing(self):
+        """The same failure `_require_names` was written for, in the kind sitting right next to it —
+        missed because the first fix looked at the two list kinds a verifier had named. `k=0` is the
+        DEFAULT, so this arrives by omission rather than by decision."""
+        with pytest.raises(ValueError, match="k=0 keeps nothing"):
+            TopK("s", "r")
+        TopK("s", "r", k=1)
+
+    def test_a_METACLASS_cannot_forge_membership_in_the_kind_set(self):
+        """🔴 `type(s) in _KIND_SET` is a `__eq__`/`__hash__` comparison, and both are overridable —
+        on the METACLASS, so the class itself compares equal to a member. `is` against each member
+        is the only comparison Python does not dispatch."""
+        class Forge(type):
+            def __eq__(cls, other):
+                return True
+
+            def __hash__(cls):
+                return hash(Filter)
+
+        class NotAFilter(metaclass=Forge):
+            stage, reason = "custom", "forged"
+
+            def keep(self, row):
+                return row["id"] == "t0"
+
+        assert type(NotAFilter()) in {Filter}, "the forgery does not work, so this proves nothing"
+        with pytest.raises(ValueError, match="not one of the six stage kinds"):
+            SurfaceAssembler(self._doc()).assemble(pass_number=1, pipeline=[NotAFilter()])
 
     def test_an_EMPTY_list_kind_is_refused_because_the_default_IS_the_failure(self):
         """"Rejected at construction, not at use" held for pipeline ORDER and not for stage

@@ -6966,6 +6966,17 @@ async def _emit_chat_turn(
                 # pass, so they belong to it. Drained rather than copied, so each registers once.
                 while _surface_sink:
                     _sw = _surface_sink.pop(0)
+                    # 🔴 DISPATCH ON SCOPE. This read `_sw["tool"]` unconditionally, and a
+                    # catalogue-outage row deliberately has no `tool` — so arming the sink at the
+                    # top of the turn (the U-2 fix) delivered the first such row here and the turn
+                    # died with `RUN_ERROR "'tool'"`, model never called. The record shape and its
+                    # consumer are ONE change; extending one of them alone converted a silent
+                    # narrowing into a dead turn on the editor surface and on resume.
+                    if _sw.get("scope") == instrument.SCOPE_CATALOGUE:
+                        _advertised.record_catalogue_withheld(
+                            stage=_sw["stage"], reason=_sw["reason"], count=_sw.get("count"),
+                        )
+                        continue
                     _advertised.record_withheld(
                         _sw["tool"], stage=_sw["stage"], reason=_sw["reason"],
                     )

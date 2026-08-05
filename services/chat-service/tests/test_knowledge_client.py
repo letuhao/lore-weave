@@ -1668,6 +1668,43 @@ class TestToolTextIsNormalisedAtIngestion:
         )
         assert fn["_meta"]["synonyms"] == [nfc]
 
+    @pytest.mark.asyncio
+    async def test_THE_ADMIN_INGESTION_PATH_COMPOSES_TOO(self):
+        """🔴 The admin catalogue composed NOTHING — in the same round that fixed and parametrised
+        U-2's admin sibling three methods up. Same estimator, same budget, same cut; the correction
+        went where the reviewer was looking and nowhere else, which is this run's most repeated
+        shape repeating inside the fix for it."""
+        import unicodedata
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        nfd, nfc = unicodedata.normalize("NFD", self.NFD_TEXT), unicodedata.normalize("NFC", self.NFD_TEXT)
+        t = MagicMock()
+        t.name, t.description = "admin_tool", nfd
+        t.inputSchema = {"type": "object",
+                         "properties": {"q": {"type": "string", "description": nfd}}}
+        listed = MagicMock()
+        listed.tools, listed.meta = [t], {}
+
+        session = AsyncMock()
+        session.list_tools = AsyncMock(return_value=listed)
+        session.initialize = AsyncMock()
+
+        client = KnowledgeClient(
+            base_url="http://knowledge-service:8092", internal_token="t", timeout_s=0.5, retries=1,
+        )
+        with patch("app.client.knowledge_client.streamablehttp_client") as transport, \
+                patch("app.client.knowledge_client.ClientSession") as cs:
+            transport.return_value.__aenter__ = AsyncMock(return_value=(None, None, None))
+            transport.return_value.__aexit__ = AsyncMock(return_value=False)
+            cs.return_value.__aenter__ = AsyncMock(return_value=session)
+            cs.return_value.__aexit__ = AsyncMock(return_value=False)
+            defs = await client.get_admin_tool_definitions("admin-token")
+
+        assert defs, "the admin door returned nothing; this proves nothing about normalisation"
+        fn = defs[0]["function"]
+        assert fn["description"] == nfc
+        assert fn["parameters"]["properties"]["q"]["description"] == nfc
+
     def test_ARRIVAL_ENCODING_CANNOT_CHANGE_WHICH_DECLARATIONS_SURVIVE(self):
         """The consequence, stated as the property rather than as an encoding.
 

@@ -488,6 +488,38 @@ class AdvertisedToolsRecorder:
             "pass": len(self._passes) or None,
         })
 
+    def record_catalogue_withheld(self, *, stage: str, reason: str, count: int | None = None) -> None:
+        """🔴 **U-2's RECORD HAD NO CONSUMER, AND THE MISSING CONSUMER WAS A CRASH.**
+
+        `record_catalogue_unavailable` deliberately omits `tool` — a catalogue outage has no single
+        declaration, and a `"*"` sentinel makes every consumer that counts tools return a wrong
+        answer while looking correct. That was the right call and it was made in isolation: the
+        drain in `stream_service` reads `_sw["tool"]` unconditionally, so the row this recorder
+        was built to carry **raised `KeyError: 'tool'` the moment it arrived.**
+
+        It never arrived, because the sink was armed 382 lines after the fetch. So the fix for
+        arm-after-use is what **armed the landmine**: with the sink live, a real editor-surface turn
+        and a real resume both ended in `RUN_ERROR "'tool'"` **with the model never called** — a
+        degraded catalogue turned from a silent narrowing into a dead turn. A verifier measured
+        both, and measured the same turn healthy with the old ordering restored.
+
+        The transferable part: **a record shape and its consumer are one change.** Extending the
+        first without the second is not a partial fix, it is a new failure whose severity is decided
+        by whichever branch happens to reach it.
+        """
+        key = (None, stage, len(self._passes))
+        if key in self._seen:
+            return
+        self._seen.add(key)
+        entry: dict = {
+            "segment": self._segment,
+            "scope": SCOPE_CATALOGUE, "stage": stage, "reason": reason,
+            "pass": len(self._passes) or None,
+        }
+        if count is not None:
+            entry["count"] = count
+        self._withheld.append(entry)
+
     def record_withheld_many(self, tools: Iterable[str], *, stage: str, reason: str) -> None:
         for t in tools:
             self.record_withheld(t, stage=stage, reason=reason)
@@ -548,7 +580,14 @@ class AdvertisedToolsRecorder:
             # Keep it only if the tool was genuinely absent from the pass it was stamped against.
             # An unknown pass (stamped before any pass was recorded) keeps the entry: absence of
             # evidence is not evidence the tool was visible.
-            if w["tool"] not in by_pass.get(w.get("pass"), set())
+            #
+            # 🔴 A CATALOGUE-SCOPE ROW HAS NO `tool` AND THIS EXPRESSION ASSUMED ONE — the second
+            # copy of the crash described on `record_catalogue_withheld`. It is also not
+            # reconcilable even in principle: reconciliation asks *"was this declaration advertised
+            # after all?"*, and an outage is a statement about the whole catalogue, so there is no
+            # name to look up. It is always kept.
+            if w.get("scope") == SCOPE_CATALOGUE
+            or w["tool"] not in by_pass.get(w.get("pass"), set())
         ]
         return out or None
 

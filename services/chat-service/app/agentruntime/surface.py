@@ -70,11 +70,35 @@ class _Narrowing:
     reason: str
 
     def __post_init__(self) -> None:
+        _plain(self.stage, str, "stage")
+        _plain(self.reason, str, "reason")
         if not self.stage or not self.reason:
             raise ValueError(
                 "a narrowing stage must name its stage and its reason; an exclusion with no "
                 "{tool, stage, reason} is a defect, not a policy (ARCHITECTURE §0.3)"
             )
+
+
+def _plain(value, want, field: str):
+    """🔴 **ONE OPERAND WAS BOUNDED AND SIX WERE NOT** — the first fix reasoned about `Filter.value`
+    because that was where the verifier had pointed, and left every other field `Any` in practice.
+
+    Measured on the next round: `TakeWhileBudget.budget` consults a custom `__lt__` **once per row**,
+    `Filter.field` steers `row.get()` through custom `__hash__`/`__eq__`, and `TopK.k` runs through
+    `__index__`. Each is arbitrary logic reaching the narrowing decision — the thing the six kinds
+    exist to make impossible — through a field nobody thought of as an operand.
+
+    **Exact type, never `isinstance`.** A `str` or `int` subclass passes an isinstance check and then
+    behaves like a closure; `bool` is an `int` subclass and is refused for `int` fields for the same
+    reason `canon` checks it first.
+    """
+    if type(value) is not want:
+        raise ValueError(
+            f"{field} is a {type(value).__name__}; a stage parameter must be a plain "
+            f"{want.__name__}. An object with custom dunders is a closure wearing a value's "
+            f"clothes, and it reaches the narrowing decision exactly like one (§0.14.1)."
+        )
+    return value
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +126,9 @@ class Filter(_Narrowing):
         _Narrowing.__post_init__(self)
         if self.op not in self.OPS:
             raise ValueError(f"unknown op {self.op!r}; expected one of {self.OPS}")
+        # `field` is an OPERAND too: it is the key handed to `row.get()`, so a custom `__hash__` and
+        # `__eq__` decide which value the filter reads. Measured.
+        _plain(self.field, str, "field")
         if not self.field:
             raise ValueError("a filter must name the field it reads")
         # 🔴 THE OPERATOR SET WAS CLOSED AND THE PREDICATE SET WAS NOT. `value: Any` re-admitted
@@ -172,6 +199,11 @@ def _require_names(stage, consequence: str) -> None:
     "Rejected at construction, not at use" was true of pipeline ORDER and not of stage PARAMETERS; a
     verifier found `AllowList("s","r")` constructing happily and narrowing to zero.
     """
+    if type(stage.names) is not tuple:
+        raise ValueError(
+            f"{type(stage).__name__}.names is a {type(stage.names).__name__}; a container with a "
+            f"custom __contains__ or __iter__ decides membership, which is arbitrary logic"
+        )
     if not stage.names:
         raise ValueError(f"{type(stage).__name__} must name at least one declaration: {consequence}")
     bad = [n for n in stage.names if type(n) is not str or not n]
@@ -207,10 +239,20 @@ class OrderBy:
     TIE_BREAK = ("id", "asc")
 
     def __post_init__(self) -> None:
+        if type(self.keys) is not tuple:
+            raise ValueError(
+                f"order_by keys is a {type(self.keys).__name__}; the ranking is what a budget cuts "
+                f"on, so a container that decides its own iteration decides the whole surface"
+            )
         if not self.keys:
             raise ValueError("order_by must name at least one field")
         for i, pair in enumerate(self.keys):
+            if type(pair) is not tuple or len(pair) != 2:
+                raise ValueError(f"keys[{i}] is not a (field, direction) pair: {pair!r}")
             field, direction = pair
+            # `field` is a `row[...]` key and the sort key; a custom `__hash__`/`__eq__` chooses
+            # which column is actually ranked.
+            _plain(field, str, f"keys[{i}] field")
             if direction not in self.DIRECTIONS:
                 raise ValueError(f"keys[{i}]: unknown direction {direction!r}")
             if field == "cost" and i == 0:
@@ -250,8 +292,16 @@ class TopK(_Narrowing):
         # zero-arg `super()` closes over the pre-rebuild class and raises `TypeError: obj is not an
         # instance or subtype of type`. Named explicitly, which also survives the next reorder.
         _Narrowing.__post_init__(self)
-        if self.k < 0:
-            raise ValueError("top_k needs a non-negative k")
+        # `k` reaches a slice, so `__index__` runs arbitrary code. Measured.
+        _plain(self.k, int, "k")
+        if self.k < 1:
+            # 🔴 `k=0` IS THE DEFAULT, AND IT NARROWS THE SURFACE TO ZERO — the exact failure
+            # `_require_names` was written for, in the kind sitting next to it, missed because the
+            # first fix looked at the two list kinds the verifier had named and not at the set.
+            raise ValueError(
+                "top_k needs k >= 1: k=0 keeps nothing, and it is the DEFAULT, so the failure "
+                "arrives by omission rather than by decision"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -272,8 +322,14 @@ class TakeWhileBudget(_Narrowing):
         # zero-arg `super()` closes over the pre-rebuild class and raises `TypeError: obj is not an
         # instance or subtype of type`. Named explicitly, which also survives the next reorder.
         _Narrowing.__post_init__(self)
+        # `budget` is compared against a running total ONCE PER ROW, so a custom `__lt__` decides
+        # every cut in the pipeline. `cost_field` is a `row.get()` key, same as `Filter.field`.
+        _plain(self.budget, int, "budget")
+        _plain(self.cost_field, str, "cost_field")
         if self.budget < 0:
             raise ValueError("take_while_budget needs a non-negative budget")
+        if not self.cost_field:
+            raise ValueError("take_while_budget must name the field it accumulates")
 
 
 #: Kinds whose decision depends on POSITION in a ranking rather than on the row alone.
@@ -302,7 +358,11 @@ def validate_pipeline(stages) -> None:
     """
     ordered = False
     for i, s in enumerate(stages):
-        if type(s) not in _KIND_SET:
+        # 🔴 `type(s) in _KIND_SET` IS DEFEATED BY A METACLASS: `__eq__`/`__hash__` on the class's
+        # own metaclass make a foreign class compare equal to a member, so the set lookup says yes.
+        # `is` against each member cannot be overridden by anything — identity is the only comparison
+        # Python does not dispatch. Measured by a verifier on the version above.
+        if not any(type(s) is k for k in STAGE_KINDS):
             raise ValueError(
                 f"pipeline[{i}] is a {type(s).__name__}, which is not one of the six stage kinds "
                 f"{tuple(k.__name__ for k in STAGE_KINDS)}. A stage that merely answers `keep()` is "

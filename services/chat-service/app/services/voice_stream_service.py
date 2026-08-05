@@ -228,6 +228,14 @@ async def voice_stream_response(
 
     Yields AI SDK data stream protocol SSE lines, extended with voice events.
     """
+    # 🔴 CP-0.2 / U-2 — THE FOURTH TURN ENTRY POINT, AND IT WAS UNARMED IN THE TREE while a gate
+    # asserting "a fourth entry point cannot inherit the silence by omission" was green: that
+    # assertion was a SUBSET check over two names, so a third name simply was not asked about. A
+    # voice turn fetches the same federated catalogue (`:452`) and narrows it the same way, so
+    # everything it withholds — including a whole-catalogue outage — registered nowhere.
+    from app.services import instrument as _instrument
+    _instrument.arm_turn_surface()
+
     normalizer = TextNormalizer()
     sentence_buffer = SentenceBuffer(clause_mode=False)  # Full sentences for natural TTS prosody
 

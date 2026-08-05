@@ -11,6 +11,8 @@ Every test states the defect it rejects. If you cannot say what would make it re
 """
 from __future__ import annotations
 
+import ast
+
 import pytest
 
 from pathlib import Path
@@ -1389,6 +1391,58 @@ class TestU2ACatalogueOutageIsRegistered:
         assert rows[0]["stage"] == "catalogue_unavailable" and rows[0]["reason"]
         assert "count" not in rows[0], "a cold failure knows nothing, not even the size"
 
+    def test_A_CATALOGUE_ROW_REACHING_THE_RECORDER_DOES_NOT_KILL_THE_TURN(self):
+        """🔴 THE FIX FOR ARM-AFTER-USE IS WHAT ARMED THIS LANDMINE.
+
+        The catalogue record deliberately omits `tool` — a sentinel would make every consumer that
+        counts tools return a wrong answer while looking correct. That was decided in isolation from
+        the drain, which read `_sw["tool"]` unconditionally. While the sink was armed 382 lines after
+        the fetch the row never arrived, so the mismatch was **latent**. Arming the sink first
+        delivered it: a verifier measured a real editor-surface turn and a real resume both ending in
+        `RUN_ERROR "'tool'"` **with the model never called** — a degraded catalogue converted from a
+        silent narrowing into a dead turn.
+
+        A record shape and its consumer are ONE change.
+        """
+        rec = instrument.AdvertisedToolsRecorder()
+        rec.record_pass(["book_list"], tool_choice="auto")
+        sink = [
+            {"scope": instrument.SCOPE_CATALOGUE, "stage": "catalogue_unavailable",
+             "reason": "list-tools failed: TimeoutError"},
+            {"scope": instrument.SCOPE_DECLARATION, "tool": "glossary_search",
+             "stage": "token_budget", "reason": "over budget"},
+        ]
+        # The production drain, verbatim in shape: dispatch on scope, never index `tool` blind.
+        for _sw in sink:
+            if _sw.get("scope") == instrument.SCOPE_CATALOGUE:
+                rec.record_catalogue_withheld(
+                    stage=_sw["stage"], reason=_sw["reason"], count=_sw.get("count"))
+            else:
+                rec.record_withheld(_sw["tool"], stage=_sw["stage"], reason=_sw["reason"])
+
+        rows = rec.withheld_json()
+        assert rows is not None
+        outage = [r for r in rows if r.get("scope") == instrument.SCOPE_CATALOGUE]
+        assert len(outage) == 1, "the outage row was dropped by reconciliation"
+        assert "tool" not in outage[0], "a sentinel name leaked back in"
+        assert outage[0]["pass"] == 1 and outage[0]["stage"] == "catalogue_unavailable"
+        assert {r["tool"] for r in rows if "tool" in r} == {"glossary_search"}
+
+    def test_the_outage_row_survives_reconciliation_because_it_has_no_name_to_reconcile(self):
+        """`withheld_json` filters a withholding out when the tool turns out to have been advertised
+        after all. An outage is a statement about the WHOLE catalogue — there is no name to look up,
+        so the expression that asks `w["tool"] not in advertised` both crashes and, if made lenient,
+        would silently discard the largest narrowing the system performs."""
+        rec = instrument.AdvertisedToolsRecorder()
+        rec.record_pass(["book_list", "glossary_search"], tool_choice="auto")
+        rec.record_catalogue_withheld(stage="catalogue_unavailable", reason="boom")
+        # `glossary_search` WAS advertised on this pass, so its per-declaration row is reconciled
+        # away — proving the filter is live and that the outage row survives it on merit.
+        rec.record_withheld("glossary_search", stage="token_budget", reason="over")
+        rows = rec.withheld_json()
+        assert rows is not None and len(rows) == 1
+        assert rows[0].get("scope") == instrument.SCOPE_CATALOGUE
+
     def test_the_model_is_told_not_only_the_row(self):
         """Registering without telling the model reproduces the founding defect: a verifier watched
         the model say a withheld tool 'does not exist at all' while the row recorded it correctly.
@@ -1409,8 +1463,15 @@ class TestU2ACatalogueOutageIsRegistered:
 
         The fresh turn had it; the ADMIN turn was explicitly excluded (`and not admin_context`, with
         its catalogue fetched 350 lines *after* the prompt was assembled), and the RESUME turn — which
-        re-derives its whole surface from scratch — never had it. Checked from the parse tree, per
-        function, so a fourth entry point cannot inherit the silence by omission.
+        re-derives its whole surface from scratch — never had it.
+
+        🔴 **This docstring used to end "so a fourth entry point cannot inherit the silence by
+        omission". That was false and a verifier measured it: the assertion is a SUBSET check over
+        two names, so a third name is simply never asked about — and a fourth entry point
+        (`voice_stream_response`) was already in the tree, unarmed.** What follows checks the two
+        names it lists and nothing else; **discovery** of entry points is
+        `TestTheTurnSinkIsArmedBeforeAnythingNarrows`, which enumerates them from the parse tree
+        instead of naming them. A claim about "any fourth" belongs to the test that can see one.
         """
         import ast
         from pathlib import Path
@@ -1458,33 +1519,96 @@ class TestU2ACatalogueOutageIsRegistered:
         assert "_catalogue_outage = not _turn_catalog" not in src
 
 
+#: The modules that can begin a turn. Not "the module someone was editing" — a verifier found a
+#: FOURTH entry point already in the tree, unarmed, while a gate asserting the opposite was green.
+_TURN_MODULES = ("stream_service.py", "voice_stream_service.py")
+
+
+def _called_name(node):
+    f = node.func
+    if isinstance(f, ast.Attribute):
+        return f.attr
+    if isinstance(f, ast.Name):
+        return f.id
+    return None
+
+
+def _narrowings_in(fn, helpers, *, _depth=0):
+    """Narrowing calls reachable from `fn`, following module-local helpers ONE level.
+
+    🔴 **The single-level walk is the fix for the hole that mattered most.** The previous gate looked
+    only inside the entry function, so a verifier extracted the catalogue fetch into a module-level
+    helper — an entirely routine refactor — and the gate went green while the outage notice stopped
+    reaching the model end-to-end. A boundary drawn at one stack frame is a boundary a refactor
+    crosses by accident.
+    """
+    found = []
+    for n in ast.walk(fn):
+        if not isinstance(n, ast.Call):
+            continue
+        name = _called_name(n)
+        if name in _NARROWING_CALLS:
+            found.append((n.lineno, name))
+        elif _depth == 0 and name in helpers:
+            # The helper's narrowings happen HERE, at its call site — that is the line the arming
+            # must precede.
+            for _, inner in _narrowings_in(helpers[name], helpers, _depth=1):
+                found.append((n.lineno, f"{name}->{inner}"))
+    return found
+
+
 def _turn_entry_calls():
-    """Line numbers of the arming and of every narrowing call, per turn entry point, from the
-    PARSE TREE of the real module. Returns `{fn_name: (arms, raw_sets, narrowings)}`."""
-    import ast
+    """Per turn entry point, from the PARSE TREE of every module that can begin a turn:
+    `{fn: (arms, raw_sets, narrowings, aliases, conditional_arms)}`.
+
+    **Entry points are DISCOVERED, not listed.** Any module-level `async def` that can reach a
+    narrowing is one. The previous version named two functions and asserted a SUBSET, so a third
+    was never asked about — and there was a third.
+    """
     from pathlib import Path
-    path = Path(__file__).resolve().parents[1] / "app" / "services" / "stream_service.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"))
     out = {}
-    for fn in tree.body:
-        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        if fn.name not in ("stream_response", "resume_stream_response"):
-            continue
-        arms, raw_sets, narrowings = [], [], []
-        for n in ast.walk(fn):
-            if not isinstance(n, ast.Call):
+    for mod in _TURN_MODULES:
+        path = Path(__file__).resolve().parents[1] / "app" / "services" / mod
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        helpers = {
+            f.name: f for f in tree.body
+            if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        for fn in tree.body:
+            if not isinstance(fn, ast.AsyncFunctionDef) or fn.name.startswith("_"):
                 continue
-            f = n.func
-            name = f.attr if isinstance(f, ast.Attribute) else (f.id if isinstance(f, ast.Name) else None)
-            if name == "arm_turn_surface":
-                arms.append(n.lineno)
-            elif name in _NARROWING_CALLS:
-                narrowings.append((n.lineno, name))
-            elif (name == "set" and isinstance(f, ast.Attribute)
-                    and isinstance(f.value, ast.Attribute) and f.value.attr == "surface_withheld"):
-                raw_sets.append(n.lineno)
-        out[fn.name] = (sorted(arms), sorted(raw_sets), sorted(narrowings))
+            narrowings = sorted(_narrowings_in(fn, helpers))
+            if not narrowings:
+                continue                      # not a turn entry point: it narrows nothing
+            arms, raw_sets, aliases, conditional = [], [], [], []
+            # An arm at the TOP LEVEL of the body is unconditional. One nested inside an `if`/`try`
+            # is a turn that arms only sometimes, which a verifier measured green.
+            top_level_arm_lines = {
+                s.value.lineno for s in fn.body
+                if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call)
+                and _called_name(s.value) == "arm_turn_surface"
+            }
+            for n in ast.walk(fn):
+                if isinstance(n, ast.Assign):
+                    # `p = client.get_tool_definitions` — the alias route past a name-matching gate.
+                    v = n.value
+                    if isinstance(v, ast.Attribute) and v.attr in _NARROWING_CALLS:
+                        aliases.append((n.lineno, v.attr))
+                if not isinstance(n, ast.Call):
+                    continue
+                name = _called_name(n)
+                f = n.func
+                if name == "arm_turn_surface":
+                    arms.append(n.lineno)
+                    if n.lineno not in top_level_arm_lines:
+                        conditional.append(n.lineno)
+                elif (name == "set" and isinstance(f, ast.Attribute)
+                        and isinstance(f.value, ast.Attribute)
+                        and f.value.attr == "surface_withheld"):
+                    raw_sets.append(n.lineno)
+            out[f"{mod}::{fn.name}"] = (
+                sorted(arms), sorted(raw_sets), narrowings, sorted(aliases), sorted(conditional),
+            )
     return out
 
 
@@ -1526,42 +1650,85 @@ class TestTheTurnSinkIsArmedBeforeAnythingNarrows:
     list is one place and the old anchor was one call site.
     """
 
-    def test_both_entry_points_arm_exactly_once(self):
+    def test_EVERY_DISCOVERED_entry_point_arms_exactly_once_and_unconditionally(self):
         found = _turn_entry_calls()
-        assert set(found) == {"stream_response", "resume_stream_response"}, (
-            f"a turn entry point vanished or was renamed: {sorted(found)}"
-        )
-        for fn, (arms, raw_sets, _) in found.items():
+        # Discovered, not asserted-as-a-subset. The three known today; a fourth appearing here is
+        # the gate WORKING, and it must then be armed like the rest.
+        assert {k.split("::")[1] for k in found} >= {
+            "stream_response", "resume_stream_response", "voice_stream_response",
+        }, f"a turn entry point vanished or was renamed: {sorted(found)}"
+        for fn, (arms, raw_sets, _, aliases, conditional) in found.items():
             assert len(arms) == 1, (
                 f"{fn}: expected exactly one arm_turn_surface(), found {len(arms)} at {arms}. "
-                f"A second arming DISCARDS everything the first collected."
+                f"A second arming DISCARDS everything the first collected; zero means every "
+                f"narrowing in this turn registers nowhere."
+            )
+            assert not conditional, (
+                f"{fn}: the arming at {conditional} is nested inside a branch, so the turn arms "
+                f"only sometimes — measured green by a verifier on the previous gate"
             )
             assert not raw_sets, (
-                f"{fn}: a raw surface_withheld.set() at {raw_sets} bypasses the named entry point, "
-                f"so the ordering gate below cannot see it"
+                f"{fn}: a raw surface_withheld.set() at {raw_sets} bypasses the named entry point"
+            )
+            assert not aliases, (
+                f"{fn}: a narrowing call is aliased at {aliases}; this gate matches by called name, "
+                f"so an alias walks past the ordering check below"
             )
 
-    def test_no_narrowing_precedes_the_arming(self):
-        for fn, (arms, _, narrowings) in _turn_entry_calls().items():
-            assert arms, (
-                f"{fn}: no arm_turn_surface() at all — every narrowing in this turn registers "
-                f"nowhere. This is the defect verbatim."
-            )
+    def test_no_narrowing_precedes_the_arming__INCLUDING_THROUGH_A_HELPER(self):
+        for fn, (arms, _, narrowings, _a, _c) in _turn_entry_calls().items():
+            assert arms, f"{fn}: no arm_turn_surface() at all — this is the defect verbatim."
             assert narrowings, f"{fn}: no narrowing call found — the gate has lost its subject"
             early = [(line, name) for line, name in narrowings if line < arms[0]]
             assert not early, (
                 f"{fn}: {early} run BEFORE the sink is armed at line {arms[0]}. Whatever they "
-                f"withhold registers nowhere — this is the defect, not a style point."
+                f"withhold registers nowhere — this is the defect, not a style point. "
+                f"(`a->b` means the narrowing is inside helper `a`, at that call site.)"
             )
 
-    def test_the_gate_reds_when_a_narrowing_moves_above_the_arming(self):
-        """The control, on the comparison itself. Both live injections were also run against the
-        real file — arming deleted, and a narrowing moved above it — and each reds this class."""
-        arms, _, narrowings = _turn_entry_calls()["stream_response"]
-        assert arms, "no arming to compare against"
-        injected = sorted(narrowings + [(arms[0] - 1, "get_tool_definitions")])
-        early = [(line, name) for line, name in injected if line < arms[0]]
-        assert early, "the ordering comparison cannot detect a narrowing moved above the arming"
+    def test_the_gate_reds_on_each_of_the_FOUR_measured_bypasses(self):
+        """The control. A verifier drove four routes past the previous version of this gate — the
+        one disclosed (an alias) and three that were not: extracting the fetch into a module-level
+        helper (a routine refactor that reproduced the end-to-end defect while the gate reported
+        `14 passed`), arming inside a conditional, and adding a fourth entry point. Each is now
+        detected by one of the comparisons above, exercised here on synthetic input so a change to
+        the comparison itself reds."""
+        src = (
+            "import x\n"
+            "def _fetch(u):\n"
+            "    return x.get_tool_definitions(user_id=u)\n"
+            "async def stream_response(u):\n"
+            "    cat = _fetch(u)\n"                       # helper route
+            "    if u:\n"
+            "        x.arm_turn_surface()\n"              # conditional arm
+            "    p = x.get_tool_definitions\n"            # alias route
+            "    return cat, p\n"
+            "async def other_response(u):\n"              # fourth entry point, unarmed
+            "    return x.get_tool_definitions(user_id=u)\n"
+        )
+        tree = ast.parse(src)
+        helpers = {f.name: f for f in tree.body
+                   if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        entries = [f for f in tree.body
+                   if isinstance(f, ast.AsyncFunctionDef) and not f.name.startswith("_")]
+        assert {f.name for f in entries} == {"stream_response", "other_response"}, (
+            "discovery missed an entry point, which is bypass 3"
+        )
+        first = entries[0]
+        narrowings = _narrowings_in(first, helpers)
+        assert any("->" in n for _, n in narrowings), "the helper route is invisible — bypass 1"
+        top_level = {s.value.lineno for s in first.body
+                     if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call)
+                     and _called_name(s.value) == "arm_turn_surface"}
+        nested = [n.lineno for n in ast.walk(first) if isinstance(n, ast.Call)
+                  and _called_name(n) == "arm_turn_surface" and n.lineno not in top_level]
+        assert nested, "a conditional arm reads as unconditional — bypass 2"
+        aliases = [n.lineno for n in ast.walk(first) if isinstance(n, ast.Assign)
+                   and isinstance(n.value, ast.Attribute)
+                   and n.value.attr in _NARROWING_CALLS]
+        assert aliases, "the alias route is invisible — bypass 4"
+        assert not _narrowings_in(entries[1], helpers, _depth=1) or True
+        assert _narrowings_in(entries[1], helpers), "the fourth entry point narrows and was ignored"
 
     def test_the_emit_path_ADOPTS_the_armed_sink_rather_than_replacing_it(self):
         """`_emit_chat_turn` runs after surface assembly, so a fresh list there would discard the

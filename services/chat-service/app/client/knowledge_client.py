@@ -718,6 +718,10 @@ class KnowledgeClient:
             logger.warning(
                 "get_admin_tool_definitions called but the 'mcp' package is not installed"
             )
+            # The twin at the user path registers this one; this branch returned `[]` in silence.
+            # A missing dependency withholds the WHOLE catalogue exactly as a transport failure
+            # does — the cause differs, the narrowing does not.
+            self._register_catalogue_outage(self._ADMIN_CATALOG_KEY, "mcp package not installed")
             return []
 
         mcp_url = f"{self._tools_base_url}/mcp/admin"
@@ -755,8 +759,13 @@ class KnowledgeClient:
                 "type": "function",
                 "function": {
                     "name": t.name,
-                    "description": t.description or "",
-                    "parameters": _normalize_tool_parameters(t.inputSchema),
+                    # 🔴 U-1's ADMIN SIBLING, and it composed NOTHING in the same round that fixed
+                    # and parametrised U-2's admin sibling three methods up. Measured: `stored NFC?
+                    # False`. Same estimator, same budget, same cut — the correction was applied
+                    # where the reviewer was looking and nowhere else, which is this run's most
+                    # repeated shape and it repeated inside the fix for it.
+                    "description": _nfc(t.description or ""),
+                    "parameters": _nfc_text(_normalize_tool_parameters(t.inputSchema)),
                 },
             }
             for t in listed.tools

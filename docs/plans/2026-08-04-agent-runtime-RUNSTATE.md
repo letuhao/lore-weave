@@ -1041,10 +1041,15 @@ that reads source text instead of running the path*, and *a correction applied t
 | **F6/F13/F14** | not code — **spec corrections.** §0.14's four overstatements amended, and **§0.14.1c** now tabulates every clause as *built and gated* or *UNBUILT* with an owning checkpoint |
 
 **Every gate above was injected against and measured red before being reversed by an inverse edit —
-never `git checkout`.** One injection stayed **green** and is recorded rather than hidden: an
-**alias** for a narrowing call (`p = client.get_tool_definitions; p(...)`) walks past the AST gate,
-which matches by called name. That blind spot, and the hand-kept `_NARROWING_CALLS` list, are written
-into the gate's own docstring.
+never `git checkout`.**
+
+🔴 **AND THE SENTENCE THAT STOOD HERE — *"one injection stayed green: an alias"* — WAS WRONG BY
+THREE.** Round 8 drove **four** routes past that gate: extracting the fetch into a module-level
+helper (**a routine refactor**, which reproduced the end-to-end defect while the gate reported
+`14 passed`), arming inside a conditional, adding a fourth entry point, and the alias. **A fourth
+entry point was already in the tree** — `voice_stream_service.py` fetches the same catalogue and was
+never armed. Disclosing one blind spot and calling it *the* blind spot is the same claim-beyond-the-
+evidence this run keeps making; see the round-8 block below for what replaced the gate.
 
 **Still open, and none of it is code this checkpoint can write:** §6.4's *"without leaving the
 runtime"* clause (a declaration failing a breaking amendment is absent from the next manifest, not
@@ -1054,6 +1059,73 @@ still an import-time `os.environ` read (CP-2).
 
 **⚠️ These fixes are the BUILDER's. Per the protocol they close nothing until fresh independent
 verifiers rule on them.**
+
+## 🔴 ROUND 8 — **both verifiers FAIL again**, and one finding is worse than anything round 7 found
+
+Prompts committed **before** the run ([CP-1-ROUND8-V-CODE-PROMPT.md](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-ROUND8-V-CODE-PROMPT.md)),
+two verifiers deployed in one message on frozen `73241817c`. Verdicts:
+[round8-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round8-v-code-a.md) ·
+[round8-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round8-v-code-b.md).
+
+**12 of round 7's 16 findings genuinely closed.** U-3, U-4, 1.8b, 1.8c now PASS; U-1 PASS with two
+residuals. The verdict turns on four things.
+
+### 🔴 P0 — the U-2 fix did not create a crash, it ARMED one
+
+The catalogue-outage record deliberately omits `tool`; the sink drain read `_sw["tool"]`
+unconditionally. While the sink was armed 382 lines *after* the fetch the row never arrived, so the
+two halves could disagree for free. **Arming it first delivered the row**, and a verifier measured a
+real `stream_response(stream_format="agui", editor_context=…)` — the editor `<Chat>` surface — and a
+real resume both ending in `RUN_ERROR "'tool'"` **with the model never called**. A degraded catalogue
+turned from a silent narrowing into a **dead turn**. Second copy at `instrument.withheld_json`.
+*Fixed: `record_catalogue_withheld` + scope dispatch at both sites; three tests, one of which drives
+the real generator on the exact shape.* **A record shape and its consumer are ONE change.**
+
+### The other three
+
+| | finding | response |
+|---|---|---|
+| **A-2** | the arm-order gate had **four** ways past it, not the one disclosed — helper extraction (a routine refactor that reproduced the defect end-to-end while the gate said `14 passed`), a conditional arm, a fourth entry point, the alias. **`voice_stream_service.py` was an unarmed fourth entry point already in the tree** | gate rebuilt: **discovers** entry points from the parse tree instead of naming two and asserting a subset; follows module-local helpers one level; requires the arm at top level of the body; flags aliases. `voice_stream_response` armed |
+| **A-3** | 1.8a bounded `Filter.value` and left **six** other operands open — `budget` (`__lt__`, once per row), `field`/`cost_field` (`row.get()` keys), `k` (`__index__`), `keys`, `names`; a **metaclass** forges `type(s) in _KIND_SET`; and `TopK`'s default `k=0` narrows to nothing | every parameter bounded by exact type; membership by **identity** (`type(s) is k`) — the one comparison Python does not dispatch; `k >= 1` required |
+| **A-4** | U-1's **admin** door composed nothing, in the same round that fixed U-2's admin door three methods away; and the `mcp not installed` branch returned `[]` with no outage while its twin registered | both fixed, with a driven test |
+
+### 🔴 B — item 1.4's P4 half is **FAIL**, and the honest record is FAIL
+
+`row.admitted_against` ← `Admitted.contract_version` ← `check_contract()`, whose only success return
+is `CONTRACT_VERSION` — the same literal the document header carries. **The queue's predicate is
+unsatisfiable.** Measured: **0 non-empty queues in 500 randomised builds**, value set `{'1.0.0'}` —
+*the identical measurement that condemned the first attempt*. Replacing the field with the constant
+read one attribute later leaves the suite **fully green**, because the two expressions cannot differ
+in one process.
+
+**And the deferral was wrong in scope.** *"Without leaving the runtime"* is not one clause of §6.4 —
+it is the **only** clause that can put anything in the queue; everything else describes what to do
+with a queue `build()` cannot produce. My §6.4.1 also said the queue *"empties exactly when every
+declaration has been re-checked"* — a biconditional of which only one direction holds. **It is empty
+always.**
+
+*Recorded as FAIL in §6.4.1 and in the table above, with a test that asserts the defect so it reds
+the day the mechanism lands.* What CP-1 legitimately built is `contract_version` — an origin that
+genuinely varies and is carried. Fixed alongside: **a declaration can no longer silently leave the
+manifest** (four routes reset the origin, three ungated — now a loud failure); the **migration
+regression I introduced** (every earlier manifest became unreadable *and* unwritable at once, with
+`rm` the only route — the erasure `bootstrap=` exists to prevent); document-level stamps validated;
+`lifecycle` no longer defaulted on read; the still-vacuous queue test deleted rather than repaired.
+
+**Why it cannot be finished here, as a design problem and not a schedule:** a grandfathered row is by
+definition one the *current* contract may reject, so `load()` would have to check it against the
+contract it was admitted under — and this code has only the current contract, **as code**. Exempting
+it instead makes a hand-typed row and a grandfathered row indistinguishable from the file alone,
+which is the hole the entire membrane exists to close. It needs the contract as **versioned data**:
+CP-4, with the drift gate that has the same dependency.
+
+### Four claims I wrote that round 8 disproved
+
+*"One injection stayed green — an alias"* (**wrong by three**) · *"a fourth entry point cannot inherit
+the silence by omission"* (**a subset check over two names**) · *"every constructible stage is now
+content-addressable"* (**five counter-examples**) · §0.14.1c rows 1–2 *"built and gated"* (**a unit
+test, not the gate — two lines below a row corrected for that exact equivocation**). All four are
+corrected in place, at the claim rather than where the reviewer looked.
 
 **Six of seven items carry an independent PASS.** The seventh (1.4) is half done: M4 passes, and its
 **P4 half has no subject at this checkpoint** — no INSERT is reachable from the new runtime, so the
