@@ -67,100 +67,82 @@ contract violation.
 
 ---
 
-### 0.13 The other half of §0.1 — the substrate must be a FUNCTION *(PO, 2026-08-05)*
+### 0.13 Disclosure is not determinism — the observation, and the clause that failed on it *(2026-08-05)*
 
-*Numbered by order of adoption, placed here by order of reading: it is §0.1's twin and the two are
-unreadable apart.*
+> 🔴 **THE FIRST VERSION OF THIS SECTION IS RETRACTED.** It was written, red-teamed from four angles
+> the same day, and did not survive any of them. What follows is what remained. The retraction is
+> kept in place rather than deleted because **the failure mode is the one this document keeps
+> repeating**, and a section that quietly improved itself would teach nothing.
+> Verdicts: [`RT-0.13-falsifiability`](verification/RT-0.13-falsifiability.md) ·
+> [`RT-0.13-cost`](verification/RT-0.13-cost.md) ·
+> [`RT-0.13-completeness`](verification/RT-0.13-completeness.md) ·
+> [`RT-0.13-purpose`](verification/RT-0.13-purpose.md)
 
-> **Below the model call, the same inputs produce the same surface — and the record carries enough
-> input to reconstruct the output.** Above the model call, nothing is promised.
+#### 0.13.1 What survives — an observation, not a law
 
-**Why this was missing, and it is the whole finding.** §0.1 and P1–P6 are, without exception,
-**disclosure** properties: *register the narrowing · assign `source` structurally · write an outcome
-on every terminal path · bind no constants · bind `emits`→`accepts` · advertise while the step is
-current.* Every one says **"tell the truth about what you did."** Not one says **"do the same thing
-twice."**
+**§0.1 and P1–P6 are, without exception, *disclosure* properties.** *Register the narrowing · assign
+`source` structurally · write an outcome on every terminal path · bind no constants · bind
+`emits`→`accepts` · advertise while the step is current.* Every one says **"tell the truth about what
+you did."** None says **"do the same thing twice."**
 
-Disclosure without determinism yields an **honest record of a chaotic process**. You can read exactly
-what happened and still not make it happen again — which is precisely what CP-0 delivered: a good
-instrument, and a claim that could not be settled.
-
-> **We already had this pattern and used it once.** CP-3.1 specifies *"plans table — SPEC
-> **versioned + hashed**, STATE **event-sourced**"* — content-addressed input plus an event log,
-> exactly the mechanism below. It was applied to plans and never generalised to the runtime that
-> executes them.
-
-**The tell is P4.** Of the six properties it is the only one secretly about determinism — *a column
-bound to a constant* is a value that does not depend on its input, the degenerate case of a function
-— and it is the only one that never found a home. Two attempts to site it at CP-1 returned something
-else each time, because a property filed under the wrong genus makes its hunter bring back the wrong
-animal.
-
-#### 0.13.1 The gap is bounded, not guessed — ten ways a substrate stops being a function
-
-| source | in this system |
-|---|---|
-| ambient — env, filesystem, clock, randomness | **yes**, confined to `manifest.py` **by accident**; nothing holds it there |
-| **process state** — hash seed, unordered `set` iteration | **yes, legacy**: `active_tool_names: set[str]` reaches the wire unsorted, and `tools` is the FIRST prompt-cache block |
-| **unrecorded parameters** | **yes**: manifest, rule set and budget never enter the record |
-| **closures** — not content-addressable | **yes**: `NarrowingRule.keep` is an arbitrary `Callable` |
-| iteration order | partly handled (`sorted(names)`) |
-| **accumulated state** | **yes, measured**: `assemble` called twice at one pass writes the record twice |
-| concurrency | **never audited** |
-| external services — model, database | genuinely non-deterministic; must be quarantined, not denied |
-| time — expiry, TTL | present in the legacy suspend path |
-| identity generation — `uuid4` | present in the CP-0 recorder |
-
-#### 0.13.2 Four layers
-
-**A · Input closure.** Everything that affects the surface is named and **content-addressed**:
-`manifest_revision`, `policy_revision`, `budget_revision`, `code_revision`. The last is nearly free —
-`scripts/build-stack.sh` already computes `GIT_SHA` and labels images with it, machinery built to
-catch a stale container, which is the same question asked from the other side.
-
-**B · Pure core, effect shell.** One named module may read ambient state; everything else receives it
-as a parameter. Enforced by the membrane gate, which already walks the import graph.
-
-**C · Effect quarantine.** The non-deterministic seams — the model call, the database — are named,
-and **the record marks where determinism ends.** A reader must not have to infer the boundary.
-
-**D · Replay, and there are TWO questions.** Conflating them is what made replay look expensive:
-
-| | asks | needs | used for |
-|---|---|---|---|
-| **fidelity** | did the record match what the code **at that time** would produce? | `code_revision` + that code | audit, incident |
-| **drift** | does **today's** code produce the same surface for that input? | the record alone | **a CI gate, every commit** |
-
-**E · Each stage declares its determinism class** — `pure · reads_ambient · effectful` — and the gate
-enforces the declaration. This is the symmetry that was missing: **C-13 requires every *tool* to
-declare `re_runnable`, while the runtime declares nothing.** We demanded more of the thing being
+That asymmetry is real, and it has one concrete consequence worth carrying: **C-13 requires every
+*tool* to declare `re_runnable`; the runtime declares nothing.** We ask more of the thing being
 anchored than of the anchor.
 
-#### 0.13.3 The model call is not a black box
+**It is recorded as an observation and NOT promoted to an invariant**, because every attempt to state
+it as one failed — see §0.13.3. An invariant nobody can falsify is worse than an absent one.
 
-Sampling is probabilistic **and seedable**, and this repository passes **no seed at all** — checked,
-not assumed: `seed` appears nowhere on the provider path. Recording
-`{model_ref, seed, temperature, top_p, prompt_hash, block_hashes}` buys four things: prompt drift
-becomes **detectable** (today a prompt can change with nobody noticing); `block_hashes` show **which
-cache block broke**, and `tools` is the first one, so this is a cost property as well as a
-correctness one; a local model becomes genuinely replayable; a cloud model becomes at least
-**diffable**.
+#### 0.13.2 What it produced that is worth having — four live defects, none needing the thesis
 
-#### 0.13.4 What this changes about CP-0 — and it does not reopen it
+Found by adversarial review of the retracted clause. **Each stands on its own measurement**; none
+depends on any claim in §0.13.3.
 
-CP-0's retrospective concluded the rate claim could not be settled on this corpus, and attributed it
-to **sample size** (548 frozen failures against 743 needed). Under this clause that attribution is
-**incomplete**:
+| | defect | evidence |
+|---|---|---|
+| **U-1** | **Unicode normalisation silently deletes tools from the wire.** `estimate_tokens` weights per *codepoint*, and its Vietnamese band spans the combining-mark block — so the same grapheme costs **1.44× more in NFD than NFC**, measured on a real tool description. That number is **both the sort key and the accumulator** in a hard `break` budget cliff. **No `unicodedata` import exists anywhere in chat-service** | `tokens.py:33,41-51`; `tool_surface.py:109-110,192-201` |
+| **U-2** | **the catalogue is a 60 s-cached network fetch that degrades to `[]`.** A gateway hiccup yields a turn with no tools and no record of why — the largest silent narrowing available, currently treated as a feature | `knowledge_client.py:571-624` |
+| **U-3** | **`_SKILL_VECTOR_CACHE` is keyed without the embedding model**, and populated with whichever chat model ran first after boot — so the surface depends on turn order. Its twin `_TOOL_VECTOR_CACHE` was explicitly patched for both defects | `skill_router.py:75-76,91-92` |
+| **U-4** | **`KnowledgeClient._catalog_meta` is an unkeyed process singleton** — one user's provider-outage signal reaches another user's turn | `knowledge_client.py:283,622` |
 
-> **The frozen baseline was supposed to be the deterministic control arm. It was not.**
-> `budget_names_by_tokens` was query-dependent — **87 candidate tools for one message and 101 for
-> another** — so the control varied per input. **No sample size fixes a control that moves.**
+**U-1 is arm E's mechanism reached through text encoding**, and it is the single most valuable thing
+this exercise produced.
 
-CP-0 stays closed and the legacy instrument stays frozen as-is; nothing here is a retrofit
-instruction. What changes is what CP-2 and CP-4 must not repeat: **an A/B whose control is not a
-function is not an A/B.** Two more CP-0 artefacts are re-read by this clause — `manifest_revision`
-was accepted by the recorder and **never supplied by any caller**, and the record captured outputs
-without inputs, which is why arm E could only ever be diagnosed by running it live.
+#### 0.13.3 What died, and why — kept because the pattern is the point
+
+| retracted claim | why it is dead |
+|---|---|
+| *"the 87-vs-101 candidate spread proves the baseline was non-deterministic"* | **it proves input UNDER-SPECIFICATION.** `budget_names_by_tokens` is **pure** — its own docstring says so. 87-for-A / 101-for-B is *a function of its input*; the input list omitted the message. **Three independent reviewers converged here** |
+| *"below the model call, the same inputs produce the same surface"* | **there are two model calls, and one is ABOVE the surface** — an embedding call in the skill router shapes what is later assembled. The sentence does not describe this system's topology |
+| *"CP-0's unsettleable claim was partly a determinism problem"* | the retrospective attributed it to **instrument non-equivalence**, which determinism does not touch. The figure quoted — *548 against 743* — **appears in no round**; round 6 corrected it to 522. And the rate claim had already been withdrawn, so the re-attribution changed no decision |
+| *"`seed` appears nowhere on the provider path — checked, not assumed"* | **false.** `adapters.go:678` forwards it. Grepped in one service, asserted about four |
+| *"`code_revision` is nearly free — `build-stack.sh` already computes `GIT_SHA`"* | **false.** It becomes an **OCI image label** read from the host. No Dockerfile consumes it; `os.environ.get("GIT_SHA")` is `None` in every scenario, including the happy path |
+| *"the purity boundary is enforced by the membrane gate, which already walks the import graph"* | **false, and the fourth instance of this exact shape in this document.** The gate blanket-permits stdlib, and every ambient capability in Python is stdlib — it is green on `os`, `time`, `random`, `uuid`, `open()`. **The tell was the word "already": true of the walk, false of the check** |
+| *"P7 — the surface is a function of its recorded inputs, falsifiable at n=1"* | function-ness quantifies over **pairs**; no single record contradicts it. It needs two records with byte-identical inputs, which this corpus is unlikely to contain |
+| *"P8 — the record is idempotent"* | **contradicts this same clause**, which prescribed event-sourcing — append-only by definition. `record_pass` appends *deliberately*: a recorder keeping only the latest state cannot show the deletion arm E is made of. Three sites, three defensible semantics, one sentence pretending otherwise |
+| *"the gap is bounded, not guessed — ten ways"* | **two more were proven** (U-1, U-2). A list that asserts completeness fails on one omission |
+| *"§0.12 conflated two layers by rejecting replay"* | **§0.12 survives unamended.** A drift gate is a *rejector*, which §0.12 already permits in terms. The rule did not need attacking |
+| *"the cheap moment is now"* (for the whole proposal) | true for **3 of 9** items. And emitting `manifest_revision` today would hash an **empty** manifest — a constant-valued column at every write, **the exact P4 violation just repaired** |
+
+**The pattern, stated once so it is quotable:** every dead row above is a *capability or a boundary
+written as though it already existed*. The diagnosis underneath survived — seven of eight factual
+claims held under attack. **What failed was everything built on top of it**, and it failed the way
+§6.1 failed three times before.
+
+#### 0.13.4 What is worth building, on its own merits
+
+None of these needs the retracted thesis. Ordered by value per line, measured rather than guessed:
+
+| | why |
+|---|---|
+| **`prompt_hash`**, chat-service-local | ~10 lines, and it closes a **currently undetectable** failure: a prompt can change today with nobody noticing. Best value per line in the proposal |
+| **`NarrowingRule` as data — with pipeline stage kinds** (`order_by`, `take_while_budget`, `top_k`), not keep-predicates | the motivating stage is a *running accumulator over a sort order*, which a `keep(row)` enum **cannot express** — and 6 of 9 existing fixtures are already named `token_budget`. Time-sensitive: **zero production construction sites exist today** |
+| **one canonical-serialisation helper** | the repo carries **18 distinct canonical-JSON implementations, 5 flag variants, 0 shared helpers**, with a precedent of digests permanently baselined because a serializer froze. Time-sensitive: **zero persisted digests exist yet** |
+| **the purity boundary on the membrane gate** | ~30 lines, and the gate cannot currently see a single ambient import. Ambient reads *are* confined to one module today — **structurally, not by accident** — which is what makes the boundary cheap to hold |
+
+**`code_revision`, `seed` and `block_hashes` are deliberately NOT here.** Their cost does not fall by
+doing them early, two are cross-service, and `block_hashes` **cannot be computed correctly in
+chat-service at all** — the cache breakpoint is owned by provider-registry *after* a schema
+translation, so a chat-service-side hash can be green while the cached bytes changed.
 
 ---
 
