@@ -20,6 +20,7 @@ are declared by whatever provides them, and the engine never learns their names.
 |---|---|
 | [`2026-08-05-command-substrate.md`](2026-08-05-command-substrate.md) | the model: Phase 0 refusals · the three layers · provider ≠ subject · the registry · parameter domains · the entitlement stage · offer-as-hint · declared preconditions · assumptions · what is not decided · §11 the research |
 | [`2026-08-05-extensibility.md`](2026-08-05-extensibility.md) | the N+1 test · the five coupling points · **why `Domain::Payload` is the god class** · four candidates evaluated · **`CMD-D1` — the payload is DATA, sealed** · §8 three IDEAS taken from long-lived data-driven plugin formats (not a port), and **the composition hole they expose** |
+| [`2026-08-05-resolutions.md`](2026-08-05-resolutions.md) | `CMD-D2`..`CMD-D7` — six open questions closed, each because a sealed decision forces the answer · and 🔴 **the BLOCKER found while closing them: `LinkExists` stands on nothing** |
 
 ---
 
@@ -66,15 +67,48 @@ substrate; what a command's BINDINGS MEAN belongs to the feature that declared i
 `CombatPayload` is therefore **combat's** to keep, decode or delete — in combat's
 own round. The substrate has no opinion and must not acquire one.
 
+**`CMD-D2` — a collision is a BUILD ERROR; an amendment is ADDITIVE.** Two bundles
+claiming one command id fails the ruleset build. A feature may ADD preconditions and
+effects to a command it does not own; it may never redefine or weaken one. **We get
+an answer nobody else gets because we pre-compose:** a system composing at launch
+must produce something and so must pick a silent winner — a build can simply fail.
+
+**`CMD-D3` — the registry runs in commit-service.** Forced: offers need live island
+state, and `game-server` holds no authority (`CWC-A1`) while `world-service` holds
+only derived reads. Computation and delivery stay separate; the lens stays a lens.
+
+**`CMD-D4` — `offer_id` is a keyed MAC over `(ruleset_digest, reality, tick,
+subject, provider, command, param-domains)`.** Entitlement recomputes and compares.
+Stateless, expires for free, and names which field was tampered with.
+
+**`CMD-D5` — no order queue in the substrate.** Offers expire per tick and a queued
+command must be re-validated anyway, so queuing belongs to the driver.
+
+**`CMD-D6` — parameter domains stay `Enumerated`-only**, admitting a new kind only
+when a real command needs it AND the engine clamps it.
+
+**`CMD-D7` — multi-subject commands stay out**, because a two-party act needs
+CONSENT, and consent is a negotiation protocol rather than a command.
+
+## 🔴 BLOCKER — ahead of any implementation
+
+**`LinkExists` stands on nothing.** The contract's precondition alphabet includes
+*"the subject holds the provider"*, and the design's own worked example — *consume
+the teleport scroll you are holding* — is that relation and nothing else.
+
+Measured 2026-08-05: **no holder graph exists anywhere.** No containment, no
+inventory, no entity-to-entity holding relation in `crates/`, `services/`, or the
+per-reality schema. The only `holder` in the codebase is the channel writer lease —
+an unrelated concept sharing a word.
+
+*"Who owns inventory"* was filed as a deferred side question. It is a
+**prerequisite**: one of five precondition kinds is unimplementable, and the
+substrate cannot express its own worked example until something owns that graph.
+It cannot be the island — an item leaving an actor's hands is `External` by
+`sim-core`'s own definition — so it lives outside, and today there is no outside.
+
 ## Deliberately NOT decided
 
-**OVERRIDE or CONTRIBUTION** when feature B touches feature A's command
-(extensibility §8.4) — Skyrim's last-loaded-wins is whole-record replacement and
-its cost is the compatibility-patch economy every modded install pays; the actor
-hub's fold is additive and refuses that. A synthesis is offered and deliberately
-NOT sealed: definition overrides, precondition/effect lists add.
-
-The registry's host service · the wire shape of an offer · **who owns inventory**
-— an item is `External` from the island's view, so something outside must own it,
-and today nothing does · multi-subject commands · parameter domains beyond
-`Enumerated` · an order queue.
+**The wire shape of an offer**, and only that. Designing a wire format with zero
+declared commands is the declared-general-with-one-instance trap this repo hit four
+times in a single day. The first real command decides it.
