@@ -162,6 +162,19 @@ function is not an A/B.** Two more CP-0 artefacts are re-read by this clause —
 was accepted by the recorder and **never supplied by any caller**, and the record captured outputs
 without inputs, which is why arm E could only ever be diagnosed by running it live.
 
+---
+
+### 0.3 The Ceiling Test — every mechanism must pass it *(PO, 2026-08-04)*
+
+> 🔴 **THIS HEADING WAS DELETED 2026-08-05 AND RESTORED THE SAME DAY.** The edit that inserted §0.13
+> above consumed this line and did not put it back, so the entire Ceiling Test spent one commit
+> living inside `#### 0.13.4` while **68 cross-references** — including §9's own reading order —
+> pointed at a section that no longer existed. Found by an adversarial reviewer, not by the author.
+>
+> **It is the defect §0.1 names, committed by §0.1's twin, in the commit that introduced it:** a
+> section narrowed **silently**, with the index still claiming the list was complete. A structural
+> edit that matches on a neighbouring heading must restore that heading, and nothing here checked.
+
 **The question:** is what we are about to build an *enabler* for a stronger model, or a *block* that
 buys a weak model a few points while capping a strong one?
 
