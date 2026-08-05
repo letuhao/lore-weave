@@ -1116,8 +1116,24 @@ regression I introduced** (every earlier manifest became unreadable *and* unwrit
 definition one the *current* contract may reject, so `load()` would have to check it against the
 contract it was admitted under — and this code has only the current contract, **as code**. Exempting
 it instead makes a hand-typed row and a grandfathered row indistinguishable from the file alone,
-which is the hole the entire membrane exists to close. It needs the contract as **versioned data**:
-CP-4, with the drift gate that has the same dependency.
+which is the hole the entire membrane exists to close.
+
+### ⛔ THE P4 DECISION — **the PO's, and the goal already says so**
+
+The goal names P4's **home** as a PO question. Round 8 turned that from a judgement into a
+measurement: the field cannot vary, so there is nothing at CP-1 for the property to be true or false
+about *as written*. What is now on the table is not "finish P4" but **which trade to make**, and
+§6.4.2 records the one implementable path I found:
+
+| option | what it costs |
+|---|---|
+| **A — document digest, grandfathering at CP-1** | Closes the integrity gap that blocks grandfathering (`canon` already computes the digest; the generator is already the only writer). But it is **tamper-EVIDENCE, not tamper-proofing** — a weaker guarantee than §6.1 layer 3 makes today, and **swapping a strong check for a weaker one is a criterion change.** Changes the manifest format, so it changes M1's drift gate, `load()` and every reader |
+| **B — wait for contract-as-data at CP-4** | Keeps today's guarantee intact. P4 stays FAIL on `admitted_against` until then, with the defect asserted by a test that reds the day it lands |
+| **C — narrow P4's claim at CP-1 to `contract_version`** | Records what was actually built (an origin that genuinely varies and is carried) and stops asserting the other half. **A criterion change, so not the builder's** |
+
+**I have not chosen.** Building A unilaterally would trade a *measured* defect for an *unmeasurable*
+one and would weaken a criterion without a decision — two things this run's anti-drift list names
+explicitly. The evidence is recorded; the trade is not mine.
 
 ### Four claims I wrote that round 8 disproved
 

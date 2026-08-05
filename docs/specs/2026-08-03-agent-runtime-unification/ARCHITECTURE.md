@@ -1584,6 +1584,31 @@ declaration present in the previous one. The missing mechanism therefore fails l
 it is needed, rather than dropping the row and resetting its origin in silence — which is what a
 verifier measured it doing, by four routes, three of them ungated.
 
+#### 6.4.2 The one implementable path, and why it is a PO decision rather than a builder's
+
+**A cheaper route than versioned-contract-as-data exists, and it should be on the record.** The
+blocking objection to grandfathering is integrity, not mechanism: a grandfathered row must skip the
+current contract check, and from the file alone that row is indistinguishable from one typed in by
+hand. **A document-level digest over the declarations closes exactly that gap** — `canon` already
+computes one, and the generator is already the only writer. A hand-edited row then breaks the digest,
+so "skips the current check" stops implying "unchecked".
+
+**Its honest limits, stated because this is the shape of claim that has failed here repeatedly:**
+
+* It is **tamper-evidence, not tamper-proofing.** Someone who edits a row *and* recomputes the digest
+  passes. That is the correct threat model for the stated failure — *"a row typed straight into the
+  JSON"* is an accident, not an attack — but it is a **weaker guarantee than the one §6.1 layer 3
+  makes today**, and swapping a strong check for a weaker one is a criterion change.
+* It **changes the manifest format**, so it changes the M1 drift gate, `load()`, and every reader.
+* It leaves *"a grandfathered row was admitted under a contract this code no longer has"* true. The
+  digest says the row was not hand-edited; it says nothing about what the row was checked against.
+
+**Three decisions follow, and none of them is the builder's:** whether tamper-evidence is an
+acceptable substitute for re-validation on grandfathered rows; whether the format change lands at
+CP-1 or waits for CP-4's contract-as-data, which subsumes it; and whether §6.4's queue is worth
+either before any declaration exists to put in it. **The measurement is recorded; the trade is
+not mine to make.**
+
 **Both failure modes are recorded because each looked like a fix.** Binding `admitted_against` to
 the write-time constant made every historical row claim conformance it was never checked for — the
 queue was permanently **empty**, a migration that could never find work. Then carrying it forward for
