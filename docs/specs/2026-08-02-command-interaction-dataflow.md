@@ -529,11 +529,11 @@ would be the suspicious outcome; this one did not.
 | # | |
 |---|---|
 | **O-CI-1** | **The closure rule is strained by 2 of 8 primitives** (`EdgeMove`, `Oracle`). Either build the two doors, or weaken the rule and lose its power to close the set. No test distinguishes *missing door* from *missing primitive*. |
-| **O-CI-2** | **`Oracle` and the two replays.** Recording an Oracle result serves the fold; it is unchecked against re-simulation (actor dataflow §6.1). |
+| **O-CI-2** | ✅ **DECIDED 2026-08-02** — [RUN-STATE §9.6](../plans/2026-08-02-command-interaction-RUN-STATE.md#L652). Recording an Oracle result **serves recovery replay and breaks verification replay**: every Oracle effect is a guaranteed false positive forever, and an oracle that always reports drift is one an operator learns to ignore. **`origin` belongs on the Decision (event-side), not on `EffectRow` (ruleset-side)** — structure §6.2 moved it one level down onto an artifact the event vocabulary carries no id for, inverting the property that made `§11.6` correct. **Corollary: there is no input log** (`grep` → empty), so this row could never have been closed by argument in the first place. |
 | **O-CI-3** | **One roll per verb is a NARROWING of shipped behaviour.** `attack.rs` uses `SeedRole::Hit` *and* `SeedRole::Crit` inside one attack; §2.3's flat `gate` expresses one. Either the roll is per **effect group** (and a group is a new concept), or the design refuses a shape the engine currently has. |
-| **O-CI-4** | **`A-6` — three ways to fail after spending.** Reaction veto · failed roll · stage-6 refusal. Either the spend is inside the same transaction as the effects (`D-50`) and rolls back, or the reaction seam cannot veto. **Both readings break something the design claims.** |
+| **O-CI-4** | ✅ **DECIDED 2026-08-02** — [RUN-STATE §9.6](../plans/2026-08-02-command-interaction-RUN-STATE.md#L632). *"Both readings break something"* was the error: **they are not symmetric.** Rolling the spend back forces the reaction inside `apply`, fusing stages 4/5/6 and breaking **two SEALED inherited decisions** (`D-5`, `D-9`); not rolling it back breaks **one shape proposed this round**. ⇒ **the spend does not roll back**, and `RefusalFact` gains `spend_committed` — otherwise a replay reconstructing pools from refusals over-credits every vetoed verb. **The vocabulary was already present:** §2.3's `gate: Always` *is* the non-refundable spend. **And the ambiguity already ships** — `law.rs` emits an indistinguishable `CombatEvent::Missed` down four control paths, exactly one of which advanced the RNG cursor. |
 | **O-CI-5** | **A sixth ordinal space**, against `§27.4`'s stated objection. Accepted by the PO; the guard obligation is real and unassigned. |
-| **O-CI-6** | **Is the verb table inside `RulesPin`?** §2.2's considerations are hashed only if it is. Measurable, not yet measured. |
+| **O-CI-6** | 🔵 **MEASURED 2026-08-06, and the row named a thing that does not exist.** `RulesPin` has **zero occurrences in code** — 68 hits, all in `docs/` (48 of them in the actor dataflow alone). **This is `R4-7`'s error class again**, committed in the register a second time: a design noun cited as if it were shipped machinery. The real machinery is `ruleset_digest` via `impl CanonEncode for Ruleset` at [ruleset.rs:259-279](../../crates/ruleset-core/src/ruleset.rs#L259), which destructures **exhaustively with no `..`** — so a new field of `Ruleset` cannot silently stay out of the digest, and **the source carries the receipt** at [ruleset.rs:265-268](../../crates/ruleset-core/src/ruleset.rs#L265): *"Adding `law_version` broke this line until it was named here, which is the mechanism doing its job."* ⇒ **the question as asked is answered by a compile error (E0027) that has already fired once on a real field.** **What survives, and it is smaller and sharper than the original row:** the mechanism guards a container's *contents*, never the choice of *container*. Nothing forces the verb table to be a field of `Ruleset` rather than to live somewhere unhashed. That residue is `O-CI-6`. |
 | **O-CI-7** | **`/sleep` leaves four of six new columns inert.** Out-of-fiction control versus in-fiction act may be two tables, and forcing them into one is `A-7`. |
 | **O-CI-8** | **`SeedRole` is a closed enum of combat nouns** — `Damage · Crit · Hit · Position · Loot` ([rng.rs:14](../../crates/game-rules/src/combat/rng.rs#L14)). A declared verb needing a new roll kind has no seed role, and the pinned-discriminant discipline in that file is exactly the ordinal discipline a declared set would need. **The rot is one level below where this round has been looking.** |
 | ~~**O-CI-9**~~ | 🔴 **WITHDRAWN 2026-08-02 — I cited a STALE DOCSTRING as if it were the code.** The literals `clamp(0.5 + acc − dodge, 0.05, 0.95)` live only at [attack.rs:9-10](../../crates/game-rules/src/combat/attack.rs#L9); the function itself reads `rules.hit_base_pm`, `rules.hit_floor_pm` and `rules.hit_ceiling_pm` — **all ruleset-declared and hashed**. Its own comment states the split this round argues for: *"**That the clamps EXIST is the law; their values are the ruleset's** (IMP-D1)."* **The row was backwards: that function is a positive example, not rot.** Recorded rather than deleted, because citing a comment as a measurement is the exact error class this round exists to name — and I committed it in the register. |
@@ -547,13 +547,21 @@ would be the suspicious outcome; this one did not.
 
 ## 8. What this round still owes
 
-Per the PO's *"full companion"*: the red-team rounds and the author-agent rounds have **not** run.
-This document is the drawing plus the decision layer the PO's question exposed.
+> ⚠️ **STALE HEADER, corrected 2026-08-06.** This section read *"the red-team rounds and the
+> author-agent rounds have **not** run"* for four days **after both had run** — four red teams
+> (`R1`/`R2`/`R3`/`R4`, 17 FATAL) and four blind authors, all reported in
+> [RUN-STATE §9.4–§9.8](../plans/2026-08-02-command-interaction-RUN-STATE.md#L424). A checklist that
+> describes the round as earlier than it is understates the open count of everything downstream of
+> it, which is the cheapest possible way to look finished.
+
+Per the PO's *"full companion"*: both rounds **have** run. This document is the drawing plus the
+decision layer the PO's question exposed; the review results live in the RUN-STATE.
 
 | | |
 |---|---|
-| **next** | red team, against §2–§4 — `O-CI-4` (spend-before-veto) is the finding most likely to be fatal, and it should be attacked first |
-| **then** | author agents — **and the experiment must be run blind**, as the actor round did: an author writes their verb wish list **before** reading the surface, or they fit their wishes to what exists and the measurement self-confirms |
+| ~~**next**~~ | ✅ **DONE.** Red team ran four times, and `O-CI-4` — nominated here as *"the finding most likely to be fatal"* — **was in fact the one that got decided** (`R1`, §9.6). The nomination was right |
+| ~~**then**~~ | ✅ **DONE, blind as demanded** — and the blindness paid: the home genre scored **worst** of four, falsifying this document's own prediction (see the struck `note` row below) |
+| **now** | `O-CI-22` — the classification test's fourth question. **Nothing in this round can be sealed above it:** `F-8` said the original test *could not fail*; `R4-4`/`O-CI-22` say the replacement **passes anything given a flag set**. Opposite signs, one defect — a test that does not discriminate |
 | ~~**note**~~ | 🔴 **FALSIFIED 2026-08-02.** This row read: *"the cultivation genre is the wrong one to start with — it is the home genre and **will fit by construction**."* It was run last, blind and unprimed, and scored **`3 ✅ · 27 ⚠ · 22 ❌`** — **the lowest ✅ rate of all four genres** (5.8 %, against wuxia's 19 % and the chronicle's 15 %). It hit the same four walls. The prediction is deleted rather than annotated, per the round's own rot rule — and the author's closing line is the one worth keeping: *"a design that hands an author the language to falsify its own optimism is a design I want to build on."* |
 
 ---
