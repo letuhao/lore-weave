@@ -971,7 +971,7 @@ needs it; the package boundary is what makes M2 mechanical today.
 | 1.1 | `contracts/agent-runtime-manifest.json`, generated, **starts empty** (M1) | 🔨 built — committed as `declarations: []`; a **missing** manifest reads as empty, never as fall-back; `build()` takes `Admitted`, so there is no generate-from-raw path |
 | 1.2 | **import-graph gate** — the new assembler cannot reach any legacy catalog module (M2) | 🔨 built — `scripts/agentruntime-membrane-gate.py`, **an allowlist** (stdlib + itself, `ALLOWED_EXTERNAL = {}`). Wired into `lint-foundation.yml`; **default mode runs its own `--selftest` first**, so CI cannot pass a gate that has not been shown to fire |
 | 1.3 | discovery reads M1 only; a legacy-only declaration of **each of the three kinds** returns zero rows (M3) | 🔨 built — `discover()` takes the same manifest argument as the assembler; asserted per kind and against three real legacy tool names |
-| 1.4 | **construction *is* validation** — `Admitted[D]` whose only producer is the contract check (M4). **Verified missing today:** Go's `NewToolMeta` validates nothing; 14 validator call sites against 58 uses in glossary alone | 🔨 built — module-private token · frozen + `__slots__` · `__reduce__`/`__copy__`/`__deepcopy__` refuse · a forged `object.__new__` instance raises on first read · one construction site, gated. **§6.1's "compile error" was amended first** — see below |
+| 1.4 | **construction *is* validation** — `Admitted[D]` whose only producer is the contract check (M4), **and P4: no column bound to a constant at the write boundary** | ✅ **M4 PASS (round 2)** — defence in depth, and the load-bearing layer is **revalidation at both ends**, not the type. ⚠️ **P4 fixed 2026-08-05, VERIFICATION PENDING** — `_row` bound `identity_of`'s module constant while `Admitted.contract_version` held the version actually checked against, one attribute away. **I had reported P4 as having "no subject at CP-1" and escalated it**; that was reasoning from where I expected the property to live rather than from what it says — **the manifest IS this checkpoint's write boundary.** A verifier named the dead field in round 2 and I did not act on it for three rounds. Consequence: §6.4's re-admission queue is computed by comparing what a row was admitted against with the current contract, so a row re-stating the current constant makes **every historical row claim conformance it was never checked for** — a migration that can never find work |
 | 1.5 | a reference to a non-admitted declaration is **unresolvable** (M5) — today 12 rails point at 30 dead tools behind a gate that **fails open** | 🔨 built — resolved at **generation**, so an unresolved member means **no manifest is written at all** and the failure cannot be reached at runtime |
 | 1.6 | **C-0 identity** — id · owning service (derived) · lifecycle state · contract version | 🔨 built — `Declaration` has **no `owning_service` field to author**; it is derived from `source_path`, and an underivable owner is a **violation, not an `unknown`** |
 | **1.7** | **P1 — every narrowing registers `{tool, stage, reason, pass}`.** ⬅️ **inherited from CP-0.1/0.2, 2026-08-04.** On this surface it is not a property to hunt: **one assembly point, one manifest, one write path** (§0.1, construction not filtering). The retrofit took eight frames and never closed — that is the specification for this item | 🔨 built — `stage` and `reason` are **required fields of the rule**, so a narrowing cannot be expressed without them; `_narrow` is the only place a row is dropped **and** the only place `log.record` is called, asserted structurally |
@@ -1080,7 +1080,36 @@ no-op.
 **Item state after round 4:** 1.1 ✅ · 1.2 ✅ · 1.3 🟡 *(positive control; no subject until CP-4)* ·
 1.4 🔴 **P4 half only — PO decision** · 1.5 ✅ · 1.6 ✅ · 1.7 ✅
 
+## ✅ PO DECISION 2026-08-05 — **what cannot be checked here moves to the checkpoint that can check it**
+
+> *"cái nào không check được ở đây mà cần CP sau thì update run state đẩy nó về sau; cái nào chưa
+> kiểm chứng thì đi kiểm chứng đi để clear CP1"*
+
+**This resolves the β-roster question below, and it resolves it by scope rather than by weakening a
+criterion.** Nothing is dropped and no bar is lowered: each item keeps its exact wording and moves to
+the checkpoint where its subject first exists. The alternative — holding CP-1 open until CP-2 creates
+the subject — is the CP-0.7 circularity that cost seven rounds before it was adjudicated.
+
+| what moves | to | why it cannot be checked at CP-1 |
+|---|---|---|
+| **V-LIVE items A–D** — *the agent on the new surface says it is empty; no legacy declaration is reachable; the empty state is recorded; P1 visible in the row* | **CP-2** | **no route exists by which a chat turn can be served by the new surface.** Two independent V-LIVE rounds established this four ways each. CP-1 builds the membrane; CP-2 is the runtime that serves through it. A verifier cannot observe an agent on a surface no agent can reach |
+| **CP-1's β roster** → CP-1 closes on **V-CODE** evidence | **CP-2 inherits the β obligation** | same cause. **CP-2 is already scale β**, so the V-LIVE deployment is not lost, only moved to the first checkpoint where it has a subject |
+| **1.3's live measurement** — *a legacy-only declaration of each kind returns zero rows* | **CP-4** | with an empty manifest the intersection is empty whatever the legacy list holds. The test is a **positive control** (a planted leak is caught, proven) and becomes a measurement when CP-4 admits the first row |
+| **M4's *"refuses to boot"*** (§3) | **CP-2** | nothing imports `app.agentruntime`, so there is no boot to refuse. Recorded as unmet rather than reworded |
+
+**Binding on CP-2, so this is a transfer and not a quiet disposal:** CP-2 does not close until the
+four V-LIVE items above are driven **on the new surface**, and until `runtime_variant='agentruntime'`
+is stamped at a structural chokepoint covering **every** terminal path — `legacy` is fail-safe
+against false credit to the new arm but **not** against survivorship bias in the new arm's own
+failure rate.
+
+**What CP-1 therefore closes on:** items 1.1, 1.2, 1.4, 1.5, 1.6, 1.7 with independent V-CODE
+verdicts, and 1.3 as a proven positive control. **The last open item is the P4 fix's own
+verification** — see the item row.
+
 ### 🔴 THE DECISION CP-1 CANNOT MAKE FOR ITSELF — P4 and the β roster
+*(Superseded by the PO decision above, and kept because the reasoning is the record of how it was
+put rather than taken. One of its three readings — "CP-1 gains a write path" — remains forbidden.)*
 
 **Two independent V-LIVE rounds returned `CANNOT DETERMINE` for the same reason, established four
 ways each time:** there is **no route by which a chat turn can be served by the new surface.**
@@ -1144,6 +1173,8 @@ declarations, not silently emit a tool-free pass.
 | 2.3 | deterministic tool ordering — `active_tool_names` is a `set[str]` iterated unsorted, so **the order changes on every restart** and `tools` is the first cache block | ⬜ |
 | 2.4 | withheld things stay **reachable on request**; the model can tell *withheld* from *never existed* | ⬜ |
 | 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | ⬜ |
+| **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | ⬜ |
+| **2.8** | **`runtime_variant='agentruntime'` stamped at a structural chokepoint covering EVERY terminal path** — not at the happy path. `legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship bias in the new arm's own failure rate**: an unlabelled new-runtime row loses its numerator too, and label-omission correlates with crash and cancel | ⬜ |
 | **2.6** | **P2 — a call's `source` is assigned STRUCTURALLY, never inferred.** ⬅️ **inherited from CP-0.3, 2026-08-04.** The new runtime dispatches through **one** path, so `source` is a property of *where the code is*, not of what a name looks up to. **Also add `error_class` as a structured enum** — V-METRIC ruled baseline class 3 unscoreable *because* it is a regex over freeform prose from five producers, and *"only a structured enum overturns this, never a better regex"* | ⬜ |
 
 ### L3 · PLAN — `CP-3` (γ) · **the architecture's central claim**
@@ -1178,6 +1209,12 @@ will demand, which makes it a test of the *membrane* rather than of the declarat
 - **and it is the declaration `budget_names_by_tokens` silently deleted in arm E.**
 
 > Admitting `book_list` first closes the exact defect that founded this work.
+
+**⬅️ INHERITED FROM CP-1.3, PO decision 2026-08-05:** the M3 leak test becomes a **measurement** here
+rather than a positive control. With an empty manifest its intersection is empty whatever the legacy
+list holds — a verifier substituted 315 fictional names and got an identical pass — so today it only
+proves a planted leak **would** be caught. **The first admitted row gives it a subject**, and the
+same assertion then measures something: that no legacy tool, skill or workflow rode in beside it.
 
 Throughput is a first-class metric here: **≈13 admissions/week** keeps pace with the model cadence.
 Report it per checkpoint. *(The first draft's metric — "admits fewer than it retires" — cannot fire,
