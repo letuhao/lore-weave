@@ -27,7 +27,7 @@ func TestPersist_RecordsCall(t *testing.T) {
 	rid := uuid.New()
 	rep := types.DriftReport{
 		RealityID:   rid,
-		TableName:   "region_projection",
+		TableName:   "canon_projection",
 		SampleSize:  20,
 		DriftCount:  0,
 		CheckMode:   string(types.CheckModeDaily),
@@ -63,7 +63,7 @@ func TestPersist_RejectsNegativeDrift(t *testing.T) {
 	w, _ := New(Config{Persister: NewInMemPersister(), Clock: time.Now})
 	rep := types.DriftReport{
 		RealityID:  uuid.New(),
-		TableName:  "region_projection",
+		TableName:  "canon_projection",
 		DriftCount: -1,
 	}
 	if err := w.Persist(context.Background(), rep, 24*time.Hour); err == nil {
@@ -75,7 +75,7 @@ func TestPersist_RejectsDriftWithNilAggregateID(t *testing.T) {
 	w, _ := New(Config{Persister: NewInMemPersister(), Clock: time.Now})
 	rep := types.DriftReport{
 		RealityID:              uuid.New(),
-		TableName:              "region_projection",
+		TableName:              "canon_projection",
 		DriftCount:             3,
 		LastDriftedAggregateID: uuid.Nil,
 	}

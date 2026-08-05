@@ -7,6 +7,72 @@
 > §MERGE RECONCILIATION below. Main's own session sections are preserved verbatim under
 > §FROM `origin/main` further down — they are a different track's history, not this run's.
 
+## ▶ PROJECTIONS — 2026-08-05: ten of eleven removed, one has a producer
+
+**`0018` removes `region_projection`, `session_participants` and `world_kv_projection`.**
+`canon_projection` is the only projection left, and the only one anything writes.
+
+**The PO named it first and the measurement caught up.** `session_participants` was built on the
+OLD world/map feature, which is being redesigned — there is no mechanism to spawn an actor anywhere
+at all, so a membership table for sessions nobody can join is not a foundation. It also carried
+`CHECK (participant_type IN ('pc','npc'))`: game vocabulary in an engine table, the exact `D-2`
+shape `0017` removed elsewhere.
+
+**Then the gate found the hole in itself.** `orphan-model-gate` excluded test code BY PATH —
+`/tests/`, `/benches/`, `/fixtures/`. **Rust does not put unit tests there.** It puts them in a
+`#[cfg(test)] mod tests` at the bottom of the `src/` file the gate was reading as production:
+
+```
+crates/rebuilder/src/lib.rs:529  #[cfg(test)]
+crates/rebuilder/src/lib.rs:542      event_type: "world.kv_set".into(),
+```
+
+That line was the ONLY occurrence of `world.kv_set` outside an excluded path, so the gate had been
+certifying `world_kv_projection` as produced **since its first run** — a test vouching for a
+projector, the same `D-446` circularity the gate exists to break, arriving through a door the path
+list could not see. Closing it (brace-matched, not regex-matched: a `mod tests` body has braces and
+a lazy pattern strips one function) turned the answer red immediately.
+
+| projection | producer |
+|---|---|
+| `canon_projection` | **meta-worker canon_writer** — real |
+| `world_kv_projection` | a `#[cfg(test)]` fixture, which is not one |
+| `region_projection` | none |
+| `session_participants` | none |
+
+**`KNOWN_UNPRODUCED` is now EMPTY** — 5 rows → 6 → 0, because every subject was deleted at once and
+the shrink-from-both-ends rule removed them. That is not a vacuous gate: the self-test asserts it
+still HAS a subject (4 handled event types). It means every event a projector handles is finally
+emitted by real code.
+
+**Three DB-gated live smokes retargeted and RUN GREEN on real Postgres** (`rebuilder_live`,
+`replay_aggregate_live`, `pgsource` scan). Two of them had already been retargeted earlier the same
+day onto `region_projection`/`session_participants` — from one producer-less table onto another,
+because nobody had asked yet. The third move is the one that lands.
+
+**`canon` broke an assumption the replay harness had carried unguarded.** Its doc said the
+envelope's `recorded_at` was a harmless placeholder because *"META keys are stripped on BOTH
+sides"* — true of every projector it had ever run. `canon` writes `recorded_at` into
+`last_synced_at`, an ordinary compared column, so a CLEAN row failed its own byte-match on a field
+neither side got wrong. `seed_events` now writes the STORED value back, rendered by the same
+`to_char` the real event source uses.
+
+**Two properties LOST, recorded rather than faked:** `session_participants` was the last COMPOSITE
+primary key in the schema, so the replay smoke's composite-PK half and `tablemap`'s multi-column
+case have no carrier — the machinery is unchanged, there is simply nothing left to exercise it.
+`payload_select_sql`'s two-column test is now explicitly synthetic.
+
+**`dp-kernel`'s own test fixtures are vocabulary-free** — they used `pc.said` → `pc_projection`.
+The kernel naming a game noun to illustrate itself is how vocabulary gets into an engine (`D-2`).
+
+**Evidence:** `cargo test --workspace` **2223 passed, 0 failed** · admin-cli 11 / integrity-checker
+11 / meta-worker 13 packages ok · `gate-self-tests` **20 green** · `projection-table-mirror-gate`
+5 mirrors agree on 1 table, 10 self-test rules bitten · `orphan-model-gate` 7 rules incl. 2 new
+`#[cfg(test)]` cases · `design-lint`/`citation-gate` OK · live: rebuilder 1 passed, replay 1 passed
+(drift bite RED when the tamper is neutered), pgsource scan ok.
+
+---
+
 ## ▶ PROJECTION SWEEP — 2026-08-05: Phase 0 finished the job `0017` started
 
 <sub>(This heading deliberately does NOT reuse the game-tier heading below: that exact string is

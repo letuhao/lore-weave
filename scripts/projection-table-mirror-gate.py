@@ -227,23 +227,29 @@ def self_test() -> int:
     # R2..R5 — every mirror must be able to disagree. Mutate each source ON DISK,
     # run the REAL check, restore. Mutating a copy of the parsed set would test
     # the set-difference operator, not the gate.
+    # The seeds name each mirror's LIVE contents, so they follow the shrinking:
+    # `0018` moved every one of them onto `canon_projection`. A seed that no
+    # longer occurs is reported as "could not be planted" and counts as a
+    # FAILURE, never a skip — a bite that cannot be planted proves nothing, and
+    # silently skipping it is how a self-test becomes decoration.
     seeds = [
-        ("SQL CHECK", MIGRATION_DIR / "0017_drop_pc_npc_projections.up.sql",
-         "        'session_participants'\n    ));",
-         "        'session_participants',\n        'ghost_projection'\n    ));"),
+        ("SQL CHECK",
+         MIGRATION_DIR / "0018_drop_region_session_world_kv_projections.up.sql",
+         "        'canon_projection'\n    ));",
+         "        'canon_projection',\n        'ghost_projection'\n    ));"),
         ("Rust PROJECTION_TABLES", RUST_REBUILD,
          '    "canon_projection",\n];', '    "canon_projection",\n    "ghost_projection",\n];'),
         ("admin-cli allowedProjectionTables", GO_DRIFT,
-         '\t"session_participants": true,', '\t"ghost_projection":     true,'),
+         '\t"canon_projection": true,', '\t"ghost_projection": true,'),
         ("integrity-checker types.L3ATables", GO_TYPES,
-         '\t"session_participants",', '\t"ghost_projection",'),
+         '\t"canon_projection",', '\t"ghost_projection",'),
         ("integrity-checker tablemap.specs", GO_TABLEMAP,
-         '\t"world_kv_projection":  {PKColumns: []string{"key"}},',
-         '\t"ghost_projection":  {PKColumns: []string{"key"}},'),
+         '\t"canon_projection": {PKColumns: []string{"canon_entry_id"}},',
+         '\t"ghost_projection": {PKColumns: []string{"canon_entry_id"}},'),
         ("contracts/integrity/config.yaml", YAML_CONFIG,
-         "  - name: session_participants", "  - name: ghost_projection"),
+         "  - name: canon_projection", "  - name: ghost_projection"),
         ("admin-cli projectionTables", GO_REBUILD,
-         '\t"canon_projection":     {},', '\t"ghost_projection":     {},'),
+         '\t"canon_projection": {},', '\t"ghost_projection": {},'),
     ]
     for label, path, old, new in seeds:
         raw = path.read_bytes()
@@ -272,7 +278,7 @@ def self_test() -> int:
     try:
         names, src = sql_effective()
         case("the SQL parser ignores the DELETE's table_name IN (...) list",
-             "pc_projection" not in names and src.startswith("0017"))
+             "region_projection" not in names and src.startswith("0018"))
     except LostSubject as e:
         failures += 1
         print(f"  FAIL SQL parse lost its subject: {e}")

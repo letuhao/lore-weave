@@ -55,12 +55,15 @@ type TableSpec struct {
 
 // specs is the canonical per-table map. Keys MUST equal types.L3ATables.
 //
-// SHRANK from ten to three on 2026-08-04 with `0017`. Every removed key was a
-// `pc_*`/`npc_*` table that no production code could fill.
+// Ten -> three (`0017`) -> ONE (`0018`). Every removed key was a table no
+// production code could fill.
+//
+// NOTE the consequence for the COMPOSITE-PK path: `session_participants` was the
+// last multi-column PK here, so `PKColumns` now has only single-column data. The
+// machinery is unchanged and the DDL contract still governs it; there is simply
+// nothing left to exercise it with, which is recorded rather than papered over.
 var specs = map[string]TableSpec{
-	"region_projection":    {PKColumns: []string{"region_id"}},
-	"world_kv_projection":  {PKColumns: []string{"key"}},
-	"session_participants": {PKColumns: []string{"session_id", "participant_type", "participant_id"}},
+	"canon_projection": {PKColumns: []string{"canon_entry_id"}},
 }
 
 // Lookup returns the TableSpec for an L3.A projection table.

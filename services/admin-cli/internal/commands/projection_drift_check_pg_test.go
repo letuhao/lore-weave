@@ -32,7 +32,7 @@ func TestLive_PgProjectionDriftReader(t *testing.T) {
 	applyDDL(ctx, t, pool, "../../../../migrations/meta/001_reality_registry.up.sql")
 	applyDDL(ctx, t, pool, "../../../../contracts/migrations/per_reality/0007_drift_metadata.up.sql")
 
-	const proj = "world_kv_projection" // one of the 10 allowlist tables; low-traffic choice
+	const proj = "canon_projection" // one of the 10 allowlist tables; low-traffic choice
 	verified := time.Now().UTC().Truncate(time.Second)
 	if _, e := pool.Exec(ctx,
 		`UPDATE projection_drift_state
@@ -118,7 +118,7 @@ func TestLive_PgProjectionDriftReader_ToleratesDownShard(t *testing.T) {
 	applyDDL(ctx, t, pool, "../../../../migrations/meta/001_reality_registry.up.sql")
 	applyDDL(ctx, t, pool, "../../../../contracts/migrations/per_reality/0007_drift_metadata.up.sql")
 
-	const proj = "world_kv_projection"
+	const proj = "canon_projection"
 	if _, e := pool.Exec(ctx, `UPDATE projection_drift_state SET drift_count = 2 WHERE table_name = $1`, proj); e != nil {
 		t.Fatalf("seed drift row: %v", e)
 	}
@@ -191,7 +191,7 @@ func TestLive_PgProjectionDriftReader_MissingRowFlagged(t *testing.T) {
 	applyDDL(ctx, t, pool, "../../../../migrations/meta/001_reality_registry.up.sql")
 	applyDDL(ctx, t, pool, "../../../../contracts/migrations/per_reality/0007_drift_metadata.up.sql")
 
-	const proj = "session_participants"
+	const proj = "canon_projection"
 	// Remove the migration-seeded row so readOne hits ErrNoRows for this projection.
 	if _, e := pool.Exec(ctx, `DELETE FROM projection_drift_state WHERE table_name = $1`, proj); e != nil {
 		t.Fatalf("delete drift row: %v", e)

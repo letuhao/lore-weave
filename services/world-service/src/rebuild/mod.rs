@@ -32,12 +32,9 @@ use serde::Serialize;
 /// into `jsonb_populate_record(NULL::<table>, …)`, so an un-allowlisted name
 /// must never reach the SQL.
 pub const PROJECTION_TABLES: &[&str] = &[
-    // The seven `pc_*` / `npc_*` tables were REMOVED 2026-08-04 — see
-    // `all_projections` for why. This list SHRANK, which is the direction a
-    // vocabulary enumeration is supposed to move.
-    "region_projection",
-    "world_kv_projection",
-    "session_participants",
+    // Eleven -> four (`0017`) -> ONE (`0018`). Every removal was a table whose
+    // events nothing emitted; see `all_projections`. A vocabulary enumeration is
+    // supposed to be able to move in this direction, and this one has, twice.
     "canon_projection",
 ];
 
@@ -113,9 +110,17 @@ impl RebuildStats {
 /// process lifetime).
 ///
 /// All projections run over every event; the writer applies ONLY the updates
-/// targeting the requested table, so rebuilding e.g. `region_projection` replays
-/// `region.*` through `RegionProjection` and drops every other projection's
+/// targeting the requested table, so rebuilding e.g. `canon_projection` replays
+/// `canon.entry.*` through `CanonProjection` and drops every other projection's
 /// output.
+///
+/// **There is exactly ONE projection left, and that is the point.** `0017` removed
+/// seven; `0018` removed the last three. Every one of them handled events that no
+/// production code emitted — and `world_kv` looked produced only because the gate
+/// that asks the question could not see a `#[cfg(test)]` module inside a `src/`
+/// file, so a unit-test fixture in `crates/rebuilder` had been vouching for it.
+/// `canon.entry.*` is emitted by `meta-worker`'s canon writer, which is why canon
+/// is here and nothing else is.
 ///
 /// **The seven `pc.*` / `npc.*` projections were REMOVED 2026-08-04.** They had
 /// no producer: every occurrence of `pc.created`, `pc.moved`, `npc.created` in
@@ -131,12 +136,7 @@ pub fn all_projections() -> Vec<&'static dyn SendSyncProjection> {
     fn leak<T: SendSyncProjection + 'static>(p: T) -> &'static dyn SendSyncProjection {
         &*Box::leak(Box::new(p))
     }
-    vec![
-        leak(projections_region::RegionProjection),
-        leak(projections_session::SessionParticipantsProjection),
-        leak(projections_world_kv::WorldKvProjection),
-        leak(projections_canon::CanonProjection),
-    ]
+    vec![leak(projections_canon::CanonProjection)]
 }
 
 #[cfg(test)]
@@ -185,18 +185,20 @@ mod tests {
     #[test]
     fn all_projections_present_and_named() {
         let ps = all_projections();
-        assert_eq!(ps.len(), 4, "all L3.B projections registered");
+        assert_eq!(ps.len(), 1, "canon is the only projection with a producer");
     }
 
     #[test]
     fn projection_table_allowlist() {
-        assert!(is_known_projection_table("region_projection"));
         assert!(is_known_projection_table("canon_projection"));
         assert!(!is_known_projection_table("reality_registry"));
         // The removed vocabulary must NOT be re-admitted by accident.
         assert!(!is_known_projection_table("pc_projection"));
         assert!(!is_known_projection_table("npc_projection"));
-        assert!(!is_known_projection_table("region_projection; DROP TABLE x"));
+        assert!(!is_known_projection_table("region_projection"));
+        assert!(!is_known_projection_table("session_participants"));
+        assert!(!is_known_projection_table("world_kv_projection"));
+        assert!(!is_known_projection_table("canon_projection; DROP TABLE x"));
     }
 
     #[test]
@@ -205,8 +207,7 @@ mod tests {
         // went out with the `npc` projections. Every table therefore keeps the
         // per-aggregate-parallel path, and the global-order path stays because
         // the SHAPE recurs the moment two aggregates share a table.
-        assert!(!needs_global_order("session_participants"));
-        assert!(!needs_global_order("region_projection"));
+        assert!(!needs_global_order("canon_projection"));
         // Every multi-aggregate table must also be a known projection table.
         for t in MULTI_AGGREGATE_TABLES {
             assert!(is_known_projection_table(t), "{t} not in PROJECTION_TABLES");

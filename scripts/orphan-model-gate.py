@@ -74,20 +74,19 @@ LITERAL_RE = re.compile(r'"(?P<ev>[a-z][a-z0-9_]*\.[a-z][a-z0-9_.]*)"')
 # and the list must SHRINK: a name here that becomes produced is a finding, so a
 # slice that lands its writer is forced to delete its own row.
 KNOWN_UNPRODUCED: dict[str, str] = {
-    # ── found by this gate on its FIRST run, 2026-08-04 ──────────────────
-    # The pc/npc removal was scoped by the PO to pc/npc. This gate then
-    # measured that FIVE MORE handled events have no producer either — every
-    # surviving projector except `canon`, whose events `world-service`'s
-    # reality_seeder really does emit. They are NAMED rather than deleted,
-    # because naming was the missing step: the pc/npc pair sat unproduced for
-    # two months precisely because nothing said so out loud.
-    "region.created": "region aggregate has no writer yet; the projector predates it "
-                      "(raid-c13, 2026-05-29). Delete or land the writer — do not leave silent",
-    "region.ambient_changed": "same as region.created",
-    "session.participant_joined": "session aggregate has no writer yet; same shape",
-    "session.participant_left": "same as session.participant_joined",
-    "world.kv_unset": "`world.kv_set` IS produced; its unset twin is not — half a "
-                      "vertical, which is the normal state the list exists to make visible",
+    # ── EMPTY, and that is the point ────────────────────────────────────────
+    #
+    # This registry held five rows on 2026-08-04 and six on 2026-08-05, when
+    # closing the `#[cfg(test)]` hole revealed that `world.kv_set` had been
+    # certified as produced by a unit-test fixture. `0018` then deleted the
+    # region, session and world_kv projectors outright, so every row lost its
+    # subject at once and the gate's shrink-from-both-ends rule removed them.
+    #
+    # An empty registry is not the same as a vacuous gate: `scan` still walks
+    # every projector and every producer, and the self-test asserts the gate HAS
+    # a subject (10 -> 4 handled event types). What it means is that every event
+    # a projector handles is now emitted by real production code — which is what
+    # the rule always asked for, and what nothing satisfied until today.
 }
 
 
@@ -119,6 +118,59 @@ def _is_producer_path(rel: str) -> bool:
     return not any(part in f"/{rel}" for part in NON_PRODUCER_PARTS)
 
 
+CFG_TEST_RE = re.compile(r"#\[cfg\(test\)\]")
+
+
+def strip_rust_test_items(text: str) -> str:
+    """Remove every `#[cfg(test)]` item from a Rust source.
+
+    THE HOLE THIS CLOSES, measured 2026-08-05.
+    -----------------------------------------
+    Test code was excluded BY PATH — `/tests/`, `/benches/`, `/fixtures/`. Rust
+    does not put its unit tests there. It puts them in a `#[cfg(test)] mod tests`
+    at the bottom of the very `src/` file the gate was reading as production.
+
+        crates/rebuilder/src/lib.rs:529  #[cfg(test)]
+        crates/rebuilder/src/lib.rs:542      event_type: "world.kv_set".into(),
+
+    That single line — a unit-test fixture — was the ONLY occurrence of
+    `world.kv_set` outside an excluded path, so the gate reported
+    `world_kv_projection` as produced and stayed green. **A test vouching for a
+    projector is the exact circularity this gate exists to break**, and it had
+    been doing it since the gate's first run: the same `D-446` shape as a witness
+    table counting as its own witness, arriving through a door the path list
+    could not see.
+
+    Brace-matched rather than regex-matched, because a `mod tests` body contains
+    braces and a lazy pattern stops at the first `}` it meets — which would strip
+    one function and leave the rest of the module readable as production.
+    """
+    out, i = [], 0
+    for m in CFG_TEST_RE.finditer(text):
+        if m.start() < i:
+            continue  # already inside a stripped item
+        out.append(text[i:m.start()])
+        j = text.find("{", m.end())
+        if j == -1:
+            # `#[cfg(test)] use ...;` and friends — drop to end of statement.
+            k = text.find("\n", m.end())
+            i = len(text) if k == -1 else k
+            continue
+        depth, k = 0, j
+        while k < len(text):
+            if text[k] == "{":
+                depth += 1
+            elif text[k] == "}":
+                depth -= 1
+                if depth == 0:
+                    k += 1
+                    break
+            k += 1
+        i = k
+    out.append(text[i:])
+    return "".join(out)
+
+
 def scan(files: list[Path], known: dict[str, str] | None = None) -> list[Finding]:
     # `known` is injectable so the self-test can drive the rule with its OWN
     # registry. Reading the module constant from a case would make every case
@@ -139,7 +191,10 @@ def scan(files: list[Path], known: dict[str, str] | None = None) -> list[Finding
             for m in HANDLER_RE.finditer(text):
                 handled.setdefault(m.group("ev"), rel)
         if _is_producer_path(rel) and "/projections/" not in f"/{rel}":
-            for m in LITERAL_RE.finditer(text):
+            # Rust keeps its unit tests INSIDE the src file, so a path-based
+            # exclusion never reaches them. See strip_rust_test_items.
+            body = strip_rust_test_items(text) if p.suffix == ".rs" else text
+            for m in LITERAL_RE.finditer(body):
                 produced.add(m.group("ev"))
 
     out: list[Finding] = []
@@ -244,6 +299,32 @@ def self_test() -> int:
                                          encoding="utf-8")
             case("the declaration table does not vouch for itself",
                  len(scan(_source_files(), known={})) == 1)
+
+            # 3b. a `#[cfg(test)]` module INSIDE a src file is a test, however
+            #     production its path looks. This is the hole that certified
+            #     `world_kv_projection` as produced for the gate's whole life.
+            (svc / "inline_test.rs").write_text(
+                'fn real() {}\n'
+                '#[cfg(test)]\n'
+                'mod tests {\n'
+                '    fn f() { let _ = "probe.made"; }\n'
+                '    fn g() { if x { y() } }\n'   # nested braces: a lazy match stops here
+                '}\n', encoding="utf-8")
+            case("a #[cfg(test)] module in a src file does not count as a producer",
+                 len(scan(_source_files(), known={})) == 1)
+            (svc / "inline_test.rs").unlink()
+
+            # 3c. ...and the stripper must not eat the production code AFTER the
+            #     test module, or it would hide real producers instead.
+            (svc / "after.rs").write_text(
+                '#[cfg(test)]\n'
+                'mod tests {\n'
+                '    fn f() { if x { y() } }\n'
+                '}\n'
+                'fn real() { emit("probe.made"); }\n', encoding="utf-8")
+            case("production code AFTER a #[cfg(test)] module is still read",
+                 len(scan(_source_files(), known={})) == 0)
+            (svc / "after.rs").unlink()
 
             # 4. real production source -> silent
             (svc / "main.rs").write_text('emit("probe.made");', encoding="utf-8")

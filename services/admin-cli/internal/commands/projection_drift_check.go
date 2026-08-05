@@ -16,7 +16,7 @@ import (
 // BEFORE any DB work (D3) so an arbitrary string never reaches N per-reality
 // queries.
 //
-// SHRANK from ten to three on 2026-08-04: `0017` dropped the seven `pc_*`/`npc_*`
+// Ten -> three (0017) -> ONE (0018): `0017` dropped the seven `pc_*`/`npc_*`
 // projections and narrowed the CHECK to match. This list said "mirrors the CHECK"
 // for the whole of that day and mirrored nothing — a comment is a claim, not a
 // mechanism. TestAllowlist_MatchesMigrationCheck DID exist, and did not fire:
@@ -24,9 +24,7 @@ import (
 // another file. Both it and `scripts/projection-table-mirror-gate.py` now derive
 // the EFFECTIVE constraint across every migration.
 var allowedProjectionTables = map[string]bool{
-	"region_projection":    true,
-	"world_kv_projection":  true,
-	"session_participants": true,
+	"canon_projection": true,
 }
 
 // DriftRow is one reality's projection_drift_state summary for a projection table

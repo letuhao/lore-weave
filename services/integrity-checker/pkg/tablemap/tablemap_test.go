@@ -43,9 +43,11 @@ func TestEveryL3ATableHasNonEmptyPK(t *testing.T) {
 
 func TestCompositePKColumnsMatch0006(t *testing.T) {
 	cases := map[string][]string{
-		"session_participants": {"session_id", "participant_type", "participant_id"},
-		"world_kv_projection":  {"key"},
-		"region_projection":    {"region_id"},
+		// The last COMPOSITE pk went with session_participants (`0018`), so this
+		// case now only proves single-column PKs match the DDL. Recorded rather
+		// than quietly narrowed: a multi-column projection would need this case
+		// extended, and there is nothing here to notice that today.
+		"canon_projection": {"canon_entry_id"},
 	}
 	for tbl, want := range cases {
 		got, err := PKColumns(tbl)

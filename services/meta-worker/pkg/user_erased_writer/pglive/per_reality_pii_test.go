@@ -125,20 +125,22 @@ func perRealityTablesWithUserColumn(t *testing.T, dir string) (map[string]string
 // surviving per-reality projections.
 func TestPerRealityMigrationParserCanSeeTheSurvivingTables(t *testing.T) {
 	_, seen := perRealityTablesWithUserColumn(t, migrationDir)
-	for _, must := range []string{
-		"region_projection", "world_kv_projection", "session_participants",
-		"canon_projection", "events",
-	} {
+	for _, must := range []string{"canon_projection", "events"} {
 		if !seen[must] {
 			t.Errorf("the migration walk never saw %q — a table it cannot see is a "+
 				"table it cannot check, and a clean result would mean nothing", must)
 		}
 	}
-	// ...and the tables 0017 dropped must NOT be seen, or the walk is reading a
-	// world that no longer exists.
-	for _, gone := range []string{"pc_projection", "npc_projection"} {
+	// ...and the dropped tables must NOT be seen, or the walk is reading a world
+	// that no longer exists. This list is where `0018` announced itself: the walk
+	// still named region/world_kv/session_participants an hour after the migration
+	// removed them, and this assertion is what said so.
+	for _, gone := range []string{
+		"pc_projection", "npc_projection", // 0017
+		"region_projection", "world_kv_projection", "session_participants", // 0018
+	} {
 		if seen[gone] {
-			t.Errorf("the walk still sees %q, dropped by 0017", gone)
+			t.Errorf("the walk still sees %q, dropped by 0017/0018", gone)
 		}
 	}
 }

@@ -9,17 +9,11 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-/// Run an envelope through the FULL production projection set (the same 11 arms the
-/// rebuilder uses) — identical to the C2 golden harness `full_delta`.
+/// Run an envelope through the FULL production projection set — identical to the
+/// C2 golden harness `full_delta`. Since `0018` that set is `canon` alone.
 fn production(env: &EventEnvelope) -> Vec<ProjectionUpdate> {
-    let region = projections_region::RegionProjection;
-    let session = projections_session::SessionParticipantsProjection;
-    let world_kv = projections_world_kv::WorldKvProjection;
     let canon = projections_canon::CanonProjection;
     ProjectionRunner::new()
-        .with_projection(&region)
-        .with_projection(&session)
-        .with_projection(&world_kv)
         .with_projection(&canon)
         .apply_one(env)
 }
@@ -62,10 +56,11 @@ fn production_is_conformant_for_every_fixture() {
         );
         checked += 1;
     }
-    // The floor SHRANK with the npc/pc fixtures (2026-08-04). It is a floor,
-    // not a pin: it exists so a harness that silently stops loading fixtures
-    // cannot pass, and 10 is the count that remains after the removal.
-    assert!(checked >= 10, "expected >= 10 fixtures, checked {checked}");
+    // The floor SHRANK twice: with the pc/npc fixtures (`0017`) and with the
+    // region/session/world_kv ones (`0018`). It is a floor, not a pin: it exists so
+    // a harness that silently stops loading fixtures cannot pass. 4 = the
+    // `canon.entry.*` arms, the only events anything produces.
+    assert!(checked >= 4, "expected >= 4 fixtures, checked {checked}");
 }
 
 /// The reproduction reference must MATCH the production output exactly for every
@@ -138,18 +133,11 @@ fn reproduced_events_all_have_fixtures() {
 // a real envelope, constructs a BUGGY production-like update (a class C2 cannot
 // catch), and asserts the conformance oracle / reproduction FLAGS it.
 
-// Retargeted 2026-08-04. These bites hung off `npc.relationship_changed`,
-// deleted with the npc projections. **The property is that the oracle can
-// DISAGREE**, and the vocabulary was incidental to it, so the fixtures moved
-// and the tests did not.
-fn region_env() -> EventEnvelope {
-    let (_, env) = load_envelopes()
-        .into_iter()
-        .find(|(_, e)| e.event_type == "region.created")
-        .expect("region.created fixture");
-    env
-}
-
+// Retargeted twice: off `npc.relationship_changed` (`0017`) and off
+// `region.created` (`0018`), each time because the projector under the fixture was
+// deleted for having no producer. **The property is that the oracle can DISAGREE**,
+// and the vocabulary was incidental to it every time, so the fixtures moved and the
+// tests did not. They now sit on the only projection anything writes.
 fn canon_env() -> EventEnvelope {
     let (_, env) = load_envelopes()
         .into_iter()
@@ -160,28 +148,28 @@ fn canon_env() -> EventEnvelope {
 
 #[test]
 fn bite_conformance_flags_hallucinated_column() {
-    let env = region_env();
+    let env = canon_env();
     // A buggy arm writes to a column that does NOT exist in the DDL.
     let buggy = vec![ProjectionUpdate::Update {
-        table: "region_projection".into(),
-        pk: json!({ "region_id": env.aggregate_id }),
-        fields: json!({ "display_nam": "x" }), // typo: display_nam
+        table: "canon_projection".into(),
+        pk: json!({ "canon_entry_id": env.payload["canon_entry_id"] }),
+        fields: json!({ "attribute_pat": "x" }), // typo: attribute_pat
         meta: dp_kernel::VerificationMeta::from_envelope(&env),
     }];
     let violations = check_conformance(&env, &buggy);
     assert!(
         violations.iter().any(|v| v.rule == "unknown-column"),
-        "conformance should flag the hallucinated column display_nam: {violations:?}"
+        "conformance should flag the hallucinated column attribute_pat: {violations:?}"
     );
 }
 
 #[test]
 fn bite_conformance_flags_wrong_pk() {
-    let env = region_env();
+    let env = canon_env();
     let buggy = vec![ProjectionUpdate::Update {
-        table: "region_projection".into(),
-        pk: json!({ "code": env.payload["code"] }), // `code` is not the PK; `region_id` is
-        fields: json!({ "display_name": env.payload["display_name"] }),
+        table: "canon_projection".into(),
+        pk: json!({ "book_id": env.payload["book_id"] }), // `book_id` is not the PK; `canon_entry_id` is
+        fields: json!({ "attribute_path": env.payload["attribute_path"] }),
         meta: dp_kernel::VerificationMeta::from_envelope(&env),
     }];
     let violations = check_conformance(&env, &buggy);
@@ -193,25 +181,25 @@ fn bite_conformance_flags_wrong_pk() {
 
 #[test]
 fn bite_conformance_flags_wrong_key_read() {
-    let env = region_env();
+    let env = canon_env();
     // A buggy arm writes a wrong VALUE into a REAL column. The direct-field
     // check (payload key vs written) catches it — the exact class C2
     // (same-author fixtures) cannot.
     let bad_value: Value = json!("DEFINITELY-WRONG");
     assert_ne!(
-        bad_value, env.payload["display_name"],
+        bad_value, env.payload["attribute_path"],
         "test setup: value must differ"
     );
     let buggy = vec![ProjectionUpdate::Update {
-        table: "region_projection".into(),
-        pk: json!({ "region_id": env.aggregate_id }),
-        fields: json!({ "display_name": bad_value }),
+        table: "canon_projection".into(),
+        pk: json!({ "canon_entry_id": env.payload["canon_entry_id"] }),
+        fields: json!({ "attribute_path": bad_value }),
         meta: dp_kernel::VerificationMeta::from_envelope(&env),
     }];
     let violations = check_conformance(&env, &buggy);
     assert!(
         violations.iter().any(|v| v.rule == "direct-field-mismatch"),
-        "conformance should flag the wrong display_name value: {violations:?}"
+        "conformance should flag the wrong attribute_path value: {violations:?}"
     );
 }
 
@@ -258,12 +246,15 @@ fn bite_reproduction_disagrees_with_wrong_key_arm() {
 
 #[test]
 fn bite_conformance_flags_wrong_table() {
-    let env = region_env();
-    // The region event wrongly projects to a table it does not own.
+    let env = canon_env();
+    // The canon event wrongly projects to a table it does not own. Since `0018`
+    // there is only ONE projection table, so the wrong target is necessarily a
+    // non-projection one — which is the sharper case anyway: the oracle must reject
+    // a target it has never heard of, not merely the wrong member of a known set.
     let buggy = vec![ProjectionUpdate::Update {
-        table: "world_kv_projection".into(),
-        pk: json!({ "region_id": env.aggregate_id }),
-        fields: json!({ "last_event_version": 1 }),
+        table: "reality_registry".into(),
+        pk: json!({ "canon_entry_id": env.payload["canon_entry_id"] }),
+        fields: json!({ "last_synced_at": 1 }),
         meta: dp_kernel::VerificationMeta::from_envelope(&env),
     }];
     let violations = check_conformance(&env, &buggy);

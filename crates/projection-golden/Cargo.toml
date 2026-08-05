@@ -13,9 +13,6 @@ path = "src/lib.rs"
 
 [dependencies]
 dp-kernel = { path = "../dp-kernel" }
-projections-region = { path = "../projections/region" }
-projections-world-kv = { path = "../projections/world_kv" }
-projections-session = { path = "../projections/session" }
 projections-canon = { path = "../projections/canon" }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -102,9 +102,6 @@ reqwest = { workspace = true }
 rebuilder = { path = "../../crates/rebuilder" }
 dp-kernel = { path = "../../crates/dp-kernel" }
 projections-canon = { path = "../../crates/projections/canon" }
-projections-region = { path = "../../crates/projections/region" }
-projections-session = { path = "../../crates/projections/session" }
-projections-world-kv = { path = "../../crates/projections/world_kv" }
 
 [features]
 # 091 D-EMBEDDING-TESTKIT: exposes embedding_queue::testkit (shared in-memory

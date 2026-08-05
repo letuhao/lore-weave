@@ -36,15 +36,12 @@ var ErrInvalidRebuild = errors.New("rebuild-projection: invalid request")
 // rebuilder, so an un-allowlisted value MUST be rejected (DDL-injection guard).
 // Mirrors world_service::rebuild::PROJECTION_TABLES.
 //
-// SHRANK from eleven to four on 2026-08-04 with `0017`. A stale entry here is
+// Eleven -> four (0017) -> ONE (0018). A stale entry here is
 // worse than a missing one: this list gates a `TRUNCATE <table>`, so keeping a
 // dropped name means the guard vouches for a table the DB no longer has.
 // `scripts/projection-table-mirror-gate.py` checks the mirror.
 var projectionTables = map[string]struct{}{
-	"region_projection":    {},
-	"world_kv_projection":  {},
-	"session_participants": {},
-	"canon_projection":     {},
+	"canon_projection": {},
 }
 
 // IsKnownProjectionTable reports whether name is an allowlisted projection table.

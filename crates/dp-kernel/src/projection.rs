@@ -165,7 +165,8 @@ impl ProjectionUpdate {
 ///     it as an error.
 pub trait Projection {
     /// Stable name for this projection (used in logs + metrics). Convention:
-    /// `<aggregate>_<purpose>`, e.g. `region_projection`, `session_participants`.
+    /// `<aggregate>_<purpose>`. The kernel names no real table: which tables
+    /// exist is the manifest's business, not the engine's (`D-2`).
     fn name(&self) -> &str;
 
     /// Decide whether this envelope is relevant to this projection. Default
@@ -281,7 +282,7 @@ mod tests {
                 return vec![];
             }
             vec![ProjectionUpdate::Update {
-                table: "world_kv_projection".into(),
+                table: "alpha_projection".into(),
                 pk: json!({ "key": "world.tick" }),
                 fields: json!({ "value": env.aggregate_version }),
                 meta: VerificationMeta::from_envelope(env),
@@ -291,25 +292,25 @@ mod tests {
 
     // A counter projection that BOTH updates one table AND increments
     // an interaction counter — the multi-update case from Q-L3B-1.
-    struct PcSaidMultiProjection;
-    impl Projection for PcSaidMultiProjection {
+    struct FanOutProjection;
+    impl Projection for FanOutProjection {
         fn name(&self) -> &str {
-            "pc_said_multi"
+            "fan_out_multi"
         }
         fn apply_event(&self, env: &EventEnvelope) -> Vec<ProjectionUpdate> {
-            if env.event_type != "pc.said" {
+            if env.event_type != "thing.happened" {
                 return vec![];
             }
             let meta = VerificationMeta::from_envelope(env);
             vec![
                 ProjectionUpdate::Update {
-                    table: "region_projection".into(),
-                    pk: json!({ "pc_id": env.aggregate_id }),
+                    table: "alpha_projection".into(),
+                    pk: json!({ "entity_id": env.aggregate_id }),
                     fields: json!({ "last_event_version": env.aggregate_version }),
                     meta: meta.clone(),
                 },
                 ProjectionUpdate::Update {
-                    table: "session_participants".into(),
+                    table: "beta_projection".into(),
                     pk: json!({ "session_id": env.metadata.as_ref()
                         .and_then(|m| m.get("session_id"))
                         .and_then(|v| v.as_str())
@@ -324,7 +325,7 @@ mod tests {
     #[test]
     fn empty_vec_when_event_unrelated() {
         let p = WorldStateProjection;
-        let e = env("npc.said", "npc", "npc-1", 1);
+        let e = env("other.thing", "other", "o-1", 1);
         assert!(p.apply_event(&e).is_empty(), "irrelevant event must yield empty Vec, not panic");
     }
 
@@ -334,18 +335,18 @@ mod tests {
         let e = env("world.tick", "world", "world-1", 42);
         let updates = p.apply_event(&e);
         assert_eq!(updates.len(), 1);
-        assert_eq!(updates[0].table(), "world_kv_projection");
+        assert_eq!(updates[0].table(), "alpha_projection");
     }
 
     #[test]
     fn projection_returns_multiple_updates_q_l3b_1() {
-        let p = PcSaidMultiProjection;
-        let mut e = env("pc.said", "pc", "pc-1", 7);
+        let p = FanOutProjection;
+        let mut e = env("thing.happened", "thing", "t-1", 7);
         e.metadata = Some(json!({ "session_id": "sess-9" }));
         let updates = p.apply_event(&e);
         assert_eq!(updates.len(), 2, "Q-L3B-1: one event may emit multiple updates");
-        assert_eq!(updates[0].table(), "region_projection");
-        assert_eq!(updates[1].table(), "session_participants");
+        assert_eq!(updates[0].table(), "alpha_projection");
+        assert_eq!(updates[1].table(), "beta_projection");
     }
 
     #[test]
@@ -371,18 +372,18 @@ mod tests {
     #[test]
     fn runner_fan_out_across_projections() {
         let world = WorldStateProjection;
-        let pc = PcSaidMultiProjection;
+        let fan = FanOutProjection;
         let runner = ProjectionRunner::new()
             .with_projection(&world)
-            .with_projection(&pc);
+            .with_projection(&fan);
         assert_eq!(runner.projections().len(), 2);
 
         let tick = env("world.tick", "world", "world-1", 1);
         let updates = runner.apply_one(&tick);
         assert_eq!(updates.len(), 1, "only world projection fires on world.tick");
-        assert_eq!(updates[0].table(), "world_kv_projection");
+        assert_eq!(updates[0].table(), "alpha_projection");
 
-        let mut said = env("pc.said", "pc", "pc-1", 5);
+        let mut said = env("thing.happened", "thing", "t-1", 5);
         said.metadata = Some(json!({ "session_id": "sess-7" }));
         let updates = runner.apply_one(&said);
         assert_eq!(updates.len(), 2, "only pc projection fires on pc.said (2 updates from one event)");
@@ -390,12 +391,12 @@ mod tests {
 
     #[test]
     fn runner_skips_via_handles_predicate() {
-        // PcSaidMultiProjection doesn't override `handles` — default returns
+        // FanOutProjection doesn't override `handles` — default returns
         // true and the inner `if env.event_type != ...` does the skip.
         // WorldStateProjection DOES override handles().
         let world = WorldStateProjection;
         let runner = ProjectionRunner::new().with_projection(&world);
-        let unrelated = env("npc.said", "npc", "npc-1", 1);
+        let unrelated = env("other.thing", "other", "o-1", 1);
         // `handles(unrelated) == false` so runner short-circuits without
         // calling apply_event — observable as zero updates.
         assert!(runner.apply_one(&unrelated).is_empty());

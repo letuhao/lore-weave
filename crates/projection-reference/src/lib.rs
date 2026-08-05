@@ -62,52 +62,18 @@ const META_COLS: &[&str] = &[
     "last_verified_at",
 ];
 
-/// The projection tables the schema model knows. **Seven `pc_*` / `npc_*`
-/// tables were removed 2026-08-04** — vocabulary with no producer; see
-/// `world-service::rebuild::all_projections`. This list SHRANK, which is the
-/// direction such an enumeration is supposed to move. The differential harness
-/// asserts this set equals the tables production actually emits across the golden
-/// fixtures (the table-set drift guard — catches a stale or missing table).
-pub const KNOWN_TABLES: &[&str] = &[
-    "region_projection",
-    "session_participants",
-    "world_kv_projection",
-    "canon_projection",
-];
+/// The projection tables the schema model knows. **Eleven -> four (`0017`) ->
+/// ONE (`0018`)**: every removed table handled events that no production code
+/// emitted. `canon_projection` is the only one with a real writer (meta-worker's
+/// canon writer); see `world-service::rebuild::all_projections`. The differential
+/// harness asserts this set equals the tables production actually emits across the
+/// golden fixtures (the table-set drift guard — catches a stale or missing table).
+pub const KNOWN_TABLES: &[&str] = &["canon_projection"];
 
 /// (pk columns, projection-specific columns) for a projection table — authored
 /// from the per-reality DDL. Returns None for a non-projection / unknown table.
 fn table_schema(table: &str) -> Option<(&'static [&'static str], &'static [&'static str])> {
     Some(match table {
-        "region_projection" => (
-            &["region_id"],
-            &[
-                "region_id",
-                "code",
-                "display_name",
-                "description",
-                "parent_region_id",
-                "exits",
-                "floor_items",
-                "ambient_state",
-                "last_event_version",
-            ],
-        ),
-        "session_participants" => (
-            &["session_id", "participant_type", "participant_id"],
-            &[
-                "session_id",
-                "participant_type",
-                "participant_id",
-                "reality_id",
-                "joined_at",
-                "left_at",
-            ],
-        ),
-        "world_kv_projection" => (
-            &["key"],
-            &["key", "value", "last_event_version", "updated_at"],
-        ),
         "canon_projection" => (
             &["canon_entry_id"],
             &[
@@ -155,12 +121,6 @@ impl Kind {
 /// emits EXACTLY this set (catching a wrong/extra/missing target or wrong kind).
 fn event_targets(event_type: &str) -> Option<&'static [(&'static str, Kind)]> {
     Some(match event_type {
-        "session.participant_joined" => &[("session_participants", Kind::Insert)],
-        "session.participant_left" => &[("session_participants", Kind::Update)],
-        "region.created" => &[("region_projection", Kind::Insert)],
-        "region.ambient_changed" => &[("region_projection", Kind::Update)],
-        "world.kv_set" => &[("world_kv_projection", Kind::Insert)],
-        "world.kv_unset" => &[("world_kv_projection", Kind::Delete)],
         "canon.entry.created" => &[("canon_projection", Kind::Insert)],
         "canon.entry.updated" => &[("canon_projection", Kind::Update)],
         "canon.entry.promoted" => &[("canon_projection", Kind::Update)],

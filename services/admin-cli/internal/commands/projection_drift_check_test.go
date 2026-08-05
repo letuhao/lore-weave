@@ -28,20 +28,20 @@ func TestRunProjectionDriftCheck_RejectsUnknownProjection(t *testing.T) {
 		t.Fatalf("want unknown-projection error, got %v", err)
 	}
 	// The error must list the allowlist so the operator can self-correct.
-	if !strings.Contains(err.Error(), "region_projection") {
+	if !strings.Contains(err.Error(), "canon_projection") {
 		t.Errorf("error should list allowed projections: %v", err)
 	}
 }
 
 func TestRunProjectionDriftCheck_RejectsBadSampleSize(t *testing.T) {
-	_, err := RunProjectionDriftCheck(context.Background(), "region_projection", 0, fakeDriftReader{})
+	_, err := RunProjectionDriftCheck(context.Background(), "canon_projection", 0, fakeDriftReader{})
 	if err == nil || !strings.Contains(err.Error(), "sample_size must be >= 1") {
 		t.Fatalf("want sample_size error, got %v", err)
 	}
 }
 
 func TestRunProjectionDriftCheck_NilReader(t *testing.T) {
-	_, err := RunProjectionDriftCheck(context.Background(), "region_projection", 100, nil)
+	_, err := RunProjectionDriftCheck(context.Background(), "canon_projection", 100, nil)
 	if err == nil || !strings.Contains(err.Error(), "not wired") {
 		t.Fatalf("want not-wired error, got %v", err)
 	}
@@ -52,13 +52,13 @@ func TestRunProjectionDriftCheck_FleetAggregate(t *testing.T) {
 	nextSweep := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
 	agg := uuid.New()
 	rows := []DriftRow{
-		{RealityID: uuid.New(), TableName: "region_projection", DriftCount: 3, LastVerifiedAt: &verified, ExpectedNextSweep: &nextSweep, LastDriftedAggID: &agg, LastSampleSize: intPtr(100), Notes: "pgvector skipped"},
-		{RealityID: uuid.New(), TableName: "region_projection", DriftCount: 0, LastVerifiedAt: &verified},
-		{RealityID: uuid.New(), TableName: "region_projection"},                   // never verified
-		{RealityID: uuid.New(), TableName: "region_projection", MissingRow: true}, // shard not seeded
-		{RealityID: uuid.New(), TableName: "region_projection", ReadErr: "dial timeout"},
+		{RealityID: uuid.New(), TableName: "canon_projection", DriftCount: 3, LastVerifiedAt: &verified, ExpectedNextSweep: &nextSweep, LastDriftedAggID: &agg, LastSampleSize: intPtr(100), Notes: "pgvector skipped"},
+		{RealityID: uuid.New(), TableName: "canon_projection", DriftCount: 0, LastVerifiedAt: &verified},
+		{RealityID: uuid.New(), TableName: "canon_projection"},                   // never verified
+		{RealityID: uuid.New(), TableName: "canon_projection", MissingRow: true}, // shard not seeded
+		{RealityID: uuid.New(), TableName: "canon_projection", ReadErr: "dial timeout"},
 	}
-	out, err := RunProjectionDriftCheck(context.Background(), "region_projection", 100, fakeDriftReader{rows: rows})
+	out, err := RunProjectionDriftCheck(context.Background(), "canon_projection", 100, fakeDriftReader{rows: rows})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestRunProjectionDriftCheck_FleetAggregate(t *testing.T) {
 func TestRunProjectionDriftCheck_SampleSizeEchoIsNotConstant(t *testing.T) {
 	// Proves the "not applied" note echoes the CALLER's value, not a hardcoded 100 —
 	// closing the honest-status loop (a constant 100 would pass the FleetAggregate test).
-	out, err := RunProjectionDriftCheck(context.Background(), "region_projection", 37, fakeDriftReader{})
+	out, err := RunProjectionDriftCheck(context.Background(), "canon_projection", 37, fakeDriftReader{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestRunProjectionDriftCheck_SampleSizeEchoIsNotConstant(t *testing.T) {
 }
 
 func TestRunProjectionDriftCheck_EmptyFleet(t *testing.T) {
-	out, err := RunProjectionDriftCheck(context.Background(), "world_kv_projection", 100, fakeDriftReader{rows: nil})
+	out, err := RunProjectionDriftCheck(context.Background(), "canon_projection", 100, fakeDriftReader{rows: nil})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

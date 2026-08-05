@@ -14,7 +14,14 @@ import (
 
 type rrStats = rr.PerRealityStats
 
-func twoProjections() []string { return []string{"region_projection", "world_kv_projection"} }
+// MultiProjectionRebuilder takes its list INJECTED, not from the allowlist, so
+// this is not constrained to real table names -- but two entries are, because
+// the property under test is that it processes EVERY entry. Since `0018` there
+// is one real projection, so the two entries are the same name. That still
+// catches a dedupe bug: a rebuilder that collapsed them would report tried=1.
+func twoProjections() []string {
+	return []string{"canon_projection", "canon_projection"}
+}
 
 func resolverFor(tr ProjectionTruncator, iv RebuildInvoker) PerRealityResolver {
 	return func(_ context.Context, _ uuid.UUID) (ProjectionTruncator, RebuildInvoker, func(), error) {

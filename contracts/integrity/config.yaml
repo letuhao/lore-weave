@@ -39,18 +39,12 @@ full_check_interval_days: 30
 # contracts/migrations/per_reality/0007_drift_metadata.up.sql, as narrowed
 # by 0017).
 #
-# SHRANK from ten to three on 2026-08-04. This file is a LOADED PRODUCTION
+# Ten -> three (0017) -> ONE (0018). This file is a LOADED PRODUCTION
 # CONFIG, not documentation: `pkg/config.Validate()` rejects a table that is
 # not in types.L3ATables, so leaving the seven dropped `pc_*`/`npc_*` names
 # here would have failed the checker at startup — the loudest of the several
 # places 0017 left behind, and still not one that any test caught.
 tables:
-  - name: region_projection
-    sample_size: 20
-    full_scan_batch_size: 500
-  - name: world_kv_projection
-    sample_size: 20
-    full_scan_batch_size: 500
-  - name: session_participants
+  - name: canon_projection
     sample_size: 20
     full_scan_batch_size: 500

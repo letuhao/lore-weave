@@ -9,17 +9,20 @@
 //!
 //! Validates what no unit test can: the `ParallelRebuilder` + `SqlxEventSource` +
 //! `SqlxProjectionWriter` chain applying real events into real tables end-to-end.
-//! Case B (`session_participants`) specifically proves the 147 writer-Insert fix
-//! in the REBUILDER (not just the replay bin): `session.participant_joined` omits
-//! the NOT NULL `applied_at` column, which the old `SELECT *` writer would have
-//! written as an explicit NULL and failed on.
+//! Case B specifically proves the 147 writer-Insert fix in the REBUILDER (not just
+//! the replay bin): the projector's Insert row omits the NOT NULL `applied_at`
+//! column, which the old `SELECT *` writer would have written as an explicit NULL
+//! and failed on.
 //!
-//! **Retargeted 2026-08-05.** All three cases ran against `pc_projection` /
-//! `npc_session_memory_projection` until `0017` dropped those tables and deleted
-//! their projector crates. This smoke was then MEASURABLY BROKEN, not merely
-//! stale -- the bin exits 2 with `unknown projection table "pc_projection"` -- and
-//! nobody saw it because the gate is an env var. Not one of the properties here
-//! was ever about pc or npc, so the fixtures moved and the assertions did not.
+//! **Retargeted twice on 2026-08-05, and the second move is the one that matters.**
+//! These cases ran against `pc_projection` until `0017`, which left them MEASURABLY
+//! BROKEN (`unknown projection table "pc_projection"`, exit 2) with nobody to see
+//! it, because the gate is an env var. They were moved to `region_projection` /
+//! `session_participants` — and then the orphan gate learned to read `#[cfg(test)]`
+//! modules, which showed those two had no producer either. `0018` removed them, and
+//! the fixtures landed on `canon_projection`: the only projection anything writes.
+//! Not one property here was ever about the vocabulary, which is why it could move
+//! three times without an assertion changing meaning.
 //!
 //! Gated by `LOREWEAVE_TEST_PG_URL` (a per-reality DB that gets `0002`+`0006`
 //! applied — `0002` DROPs+recreates `events`, so point this at a DISPOSABLE DB,
@@ -137,29 +140,40 @@ fn rebuilder_round_trip_live_smoke() {
         &pool,
         "contracts/migrations/per_reality/0006_projections.up.sql",
     ));
+    // 0009 creates canon_projection — the only projection left after `0018`,
+    // and it was never in 0006.
+    rt.block_on(apply(
+        &pool,
+        "contracts/migrations/per_reality/0009_canon_projection.up.sql",
+    ));
 
     // ══ Case A — pc, single-aggregate, TRUNCATE→rebuild ══════════════════════
     let reality_a = Uuid::new_v4();
-    let region_id = Uuid::new_v4();
+    let canon_id = Uuid::new_v4();
+    let book_id = Uuid::new_v4();
     rt.block_on(async {
         // The admin-cli `Truncator` step the bin assumes ran.
-        sqlx::query("TRUNCATE region_projection")
+        sqlx::query("TRUNCATE canon_projection")
             .execute(&pool)
             .await
-            .expect("truncate region_projection");
+            .expect("truncate canon_projection");
         seed(
             &pool,
             0,
             reality_a,
             Uuid::new_v4(),
-            "region",
-            &region_id.to_string(),
+            "canon",
+            &canon_id.to_string(),
             1,
-            "region.created",
+            "canon.entry.created",
             "2026-06-15T12:00:00Z",
             json!({
-                "code": "azure-vault", "display_name": "The Azure Vault",
-                "ambient_state": { "light": "dim" },
+                "canon_entry_id": canon_id.to_string(),
+                "book_id": book_id.to_string(),
+                "attribute_path": "characters/aria/race",
+                "value": "elf",
+                "canon_layer": "L2_seeded",
+                "lock_level": "soft",
             }),
         )
         .await;
@@ -168,91 +182,88 @@ fn rebuilder_round_trip_live_smoke() {
             1,
             reality_a,
             Uuid::new_v4(),
-            "region",
-            &region_id.to_string(),
+            "canon",
+            &canon_id.to_string(),
             2,
-            "region.ambient_changed",
+            "canon.entry.updated",
             "2026-06-15T12:05:00Z",
-            json!({ "ambient_state": { "light": "blazing" } }),
+            json!({
+                "canon_entry_id": canon_id.to_string(),
+                "new_value": "high elf",
+                "canon_layer": "L2_seeded",
+            }),
         )
         .await;
     });
 
-    let stats = run_rebuilder(&db_url, reality_a, "region_projection");
+    let stats = run_rebuilder(&db_url, reality_a, "canon_projection");
     assert_eq!(
         stats["aggregates_failed"], 0,
-        "region rebuild had no failed aggregates: {stats}"
+        "canon rebuild had no failed aggregates: {stats}"
     );
     assert_eq!(
         stats["aggregates_rebuilt"], 1,
-        "region reality has exactly 1 aggregate: {stats}"
+        "canon reality has exactly 1 aggregate: {stats}"
     );
     assert_eq!(
         stats["events_replayed"], 2,
-        "region rebuild replayed both events: {stats}"
+        "canon rebuild replayed both events: {stats}"
     );
 
     rt.block_on(async {
         assert_eq!(
-            count(&pool, "region_projection").await,
+            count(&pool, "canon_projection").await,
             1,
-            "exactly one rebuilt region row"
+            "exactly one rebuilt canon row"
         );
         let row = sqlx::query(
-            "SELECT ambient_state, last_event_version, code, display_name, \
-                    description, exits, floor_items \
-               FROM region_projection WHERE region_id = $1",
+            "SELECT value, attribute_path, book_id, canon_layer, lock_level \
+               FROM canon_projection WHERE canon_entry_id = $1",
         )
-        .bind(region_id)
+        .bind(canon_id)
         .fetch_one(&pool)
         .await
-        .expect("rebuilt region row exists");
+        .expect("rebuilt canon row exists");
         assert_eq!(
-            row.get::<Value, _>("ambient_state"),
-            json!({ "light": "blazing" }),
-            "region.ambient_changed applied ON TOP of region.created"
+            row.get::<Value, _>("value"),
+            json!("high elf"),
+            "canon.entry.updated applied ON TOP of canon.entry.created"
         );
-        assert_eq!(row.get::<i64, _>("last_event_version"), 2);
-        assert_eq!(row.get::<String, _>("code"), "azure-vault");
-        assert_eq!(row.get::<String, _>("display_name"), "The Azure Vault");
-        // Absent from the event payload -> the projector's own fallbacks.
-        assert_eq!(row.get::<String, _>("description"), "");
-        assert_eq!(row.get::<Value, _>("exits"), json!([]));
-        assert_eq!(row.get::<Value, _>("floor_items"), json!([]));
+        assert_eq!(row.get::<String, _>("attribute_path"), "characters/aria/race");
+        assert_eq!(row.get::<Uuid, _>("book_id"), book_id);
+        assert_eq!(row.get::<String, _>("canon_layer"), "L2_seeded");
+        assert_eq!(row.get::<String, _>("lock_level"), "soft");
     });
 
-    // ══ Case B — session_participants, TRUNCATE→rebuild ══════════════════════
+    // ══ Case B — the writer-Insert fix, on its own reality ═══════════════════
     // Proves the 147 writer-Insert fix in the REBUILDER. The projector's Insert
     // row OMITS `applied_at`, which is `TIMESTAMPTZ NOT NULL DEFAULT NOW()`; the
     // old `SELECT *` writer turned every absent key into an explicit NULL and so
-    // violated the NOT NULL. The defect is the same one Case B always tested —
-    // only the omitted column changed when the fixture moved off npc vocabulary.
+    // violated the NOT NULL. The defect is the same one Case B always tested; only
+    // the omitted column changed as the fixture moved off npc, then off session.
     let reality_b = Uuid::new_v4();
-    let session_id = Uuid::new_v4();
-    let participant_id = Uuid::new_v4();
+    let canon_b = Uuid::new_v4();
     rt.block_on(async {
-        sqlx::query("TRUNCATE session_participants")
+        sqlx::query("TRUNCATE canon_projection")
             .execute(&pool)
             .await
-            .expect("truncate session_participants");
+            .expect("truncate canon_projection (case B)");
         seed(
             &pool,
             0,
             reality_b,
             Uuid::new_v4(),
-            "session",
-            &session_id.to_string(),
+            "canon",
+            &canon_b.to_string(),
             1,
-            "session.participant_joined",
+            "canon.entry.created",
             "2026-06-15T14:00:00Z",
             json!({
-                "session_id": session_id.to_string(),
-                // 'pc'/'npc' is what session_participants_type_valid still allows.
-                // That CHECK is game vocabulary in an engine table — the same shape
-                // `0017` removed elsewhere — and changing it is a schema decision,
-                // not a test fixture's to make. Noted rather than quietly worked around.
-                "participant_type": "pc",
-                "participant_id": participant_id.to_string(),
+                "canon_entry_id": canon_b.to_string(),
+                "book_id": Uuid::new_v4().to_string(),
+                "attribute_path": "regions/vault/climate",
+                "value": "cold",
+                "canon_layer": "L2_seeded",
             }),
         )
         .await;
@@ -261,21 +272,23 @@ fn rebuilder_round_trip_live_smoke() {
             1,
             reality_b,
             Uuid::new_v4(),
-            "session",
-            &session_id.to_string(),
+            "canon",
+            &canon_b.to_string(),
             2,
-            "session.participant_left",
+            "canon.entry.promoted",
             "2026-06-15T14:30:00Z",
             json!({
-                "session_id": session_id.to_string(),
-                "participant_type": "pc",
-                "participant_id": participant_id.to_string(),
+                "canon_entry_id": canon_b.to_string(),
+                // `to_layer`, NOT `canon_layer` — the promoted arm reads a
+                // different key from the created arm, and the value must be one
+                // the canon_projection_layer_valid CHECK admits.
+                "to_layer": "L1_axiom",
             }),
         )
         .await;
     });
 
-    let stats_b = run_rebuilder(&db_url, reality_b, "session_participants");
+    let stats_b = run_rebuilder(&db_url, reality_b, "canon_projection");
     assert_eq!(
         stats_b["aggregates_failed"], 0,
         "session rebuild had no failed aggregates: {stats_b}"
@@ -291,27 +304,20 @@ fn rebuilder_round_trip_live_smoke() {
 
     rt.block_on(async {
         assert_eq!(
-            count(&pool, "session_participants").await,
+            count(&pool, "canon_projection").await,
             1,
-            "exactly one rebuilt participant row"
+            "exactly one rebuilt canon row"
         );
         let row = sqlx::query(
-            "SELECT reality_id, left_at IS NOT NULL AS has_left, \
-                    applied_at IS NOT NULL AS applied_defaulted \
-               FROM session_participants \
-              WHERE session_id = $1 AND participant_id = $2",
+            "SELECT canon_layer, applied_at IS NOT NULL AS applied_defaulted \
+               FROM canon_projection WHERE canon_entry_id = $1",
         )
-        .bind(session_id)
-        .bind(participant_id)
+        .bind(canon_b)
         .fetch_one(&pool)
         .await
-        .expect("rebuilt participant row exists");
-        // The _left Update applied on top of the _joined Insert.
-        assert!(
-            row.get::<bool, _>("has_left"),
-            "left_at set by session.participant_left"
-        );
-        assert_eq!(row.get::<Uuid, _>("reality_id"), reality_b);
+        .expect("rebuilt canon row exists");
+        // The promoted Update applied on top of the created Insert.
+        assert_eq!(row.get::<String, _>("canon_layer"), "L1_axiom");
         // The writer-fix payoff: a column ABSENT from the Insert row took its
         // schema DEFAULT instead of an explicit NULL that NOT NULL would reject.
         assert!(
@@ -326,63 +332,67 @@ fn rebuilder_round_trip_live_smoke() {
     // db_rt via Handle::block_on + each acquiring a pool connection + all writing
     // the SAME target table). Cases A/B had one aggregate each → that path never
     // ran. A real catastrophic-rebuild (now first-class after 141) hits it on any
-    // many-aggregate reality, so smoke it: two region aggregates → rebuilt=2, 2 rows.
+    // many-aggregate reality, so smoke it: two canon aggregates → rebuilt=2, 2 rows.
     let reality_c = Uuid::new_v4();
-    let region_a = Uuid::new_v4();
-    let region_b = Uuid::new_v4();
+    let canon_c1 = Uuid::new_v4();
+    let canon_c2 = Uuid::new_v4();
     rt.block_on(async {
-        sqlx::query("TRUNCATE region_projection")
+        sqlx::query("TRUNCATE canon_projection")
             .execute(&pool)
             .await
-            .expect("truncate region_projection (case C)");
-        for (i, r) in [region_a, region_b].iter().enumerate() {
+            .expect("truncate canon_projection (case C)");
+        for (i, c) in [canon_c1, canon_c2].iter().enumerate() {
             seed(
                 &pool,
                 i as i32,
                 reality_c,
                 Uuid::new_v4(),
-                "region",
-                &r.to_string(),
+                "canon",
+                &c.to_string(),
                 1,
-                "region.created",
+                "canon.entry.created",
                 "2026-06-15T16:00:00Z",
                 json!({
-                    "code": format!("region-{i}"),
-                    "display_name": format!("Region {i}"),
+                    "canon_entry_id": c.to_string(),
+                    "book_id": Uuid::new_v4().to_string(),
+                    "attribute_path": format!("things/t{i}/kind"),
+                    "value": format!("kind-{i}"),
+                    "canon_layer": "L2_seeded",
                 }),
             )
             .await;
         }
     });
 
-    let stats_c = run_rebuilder(&db_url, reality_c, "region_projection");
+    let stats_c = run_rebuilder(&db_url, reality_c, "canon_projection");
     assert_eq!(
         stats_c["aggregates_failed"], 0,
         "multi-aggregate rebuild had no failed aggregates: {stats_c}"
     );
     assert_eq!(
         stats_c["aggregates_rebuilt"], 2,
-        "both region aggregates rebuilt concurrently: {stats_c}"
+        "both canon aggregates rebuilt concurrently: {stats_c}"
     );
     assert_eq!(
         stats_c["events_replayed"], 2,
-        "one region.created per aggregate: {stats_c}"
+        "one canon.entry.created per aggregate: {stats_c}"
     );
 
     rt.block_on(async {
         assert_eq!(
-            count(&pool, "region_projection").await,
+            count(&pool, "canon_projection").await,
             2,
-            "both rebuilt region rows present"
+            "both rebuilt canon rows present"
         );
-        for (i, r) in [region_a, region_b].iter().enumerate() {
-            let code: String =
-                sqlx::query_scalar("SELECT code FROM region_projection WHERE region_id = $1")
-                    .bind(r)
-                    .fetch_one(&pool)
-                    .await
-                    .unwrap_or_else(|e| panic!("rebuilt region row {r} missing: {e}"));
-            assert_eq!(code, format!("region-{i}"), "region {r} payload applied");
+        for (i, c) in [canon_c1, canon_c2].iter().enumerate() {
+            let path: String = sqlx::query_scalar(
+                "SELECT attribute_path FROM canon_projection WHERE canon_entry_id = $1",
+            )
+            .bind(c)
+            .fetch_one(&pool)
+            .await
+            .unwrap_or_else(|e| panic!("rebuilt canon row {c} missing: {e}"));
+            assert_eq!(path, format!("things/t{i}/kind"), "canon {c} payload applied");
         }
     });
 }

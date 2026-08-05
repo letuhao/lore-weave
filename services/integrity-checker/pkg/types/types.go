@@ -22,14 +22,12 @@ import (
 // the same source of truth. If a new projection table lands in L4+, BOTH
 // this slice AND the migration's CHECK constraint MUST be extended.
 //
-// SHRANK from ten to three on 2026-08-04: `0017` dropped the seven `pc_*`/`npc_*`
-// projections, which had no producer and encoded game vocabulary in engine
-// tables. An enumeration of names is supposed to be able to move in this
-// direction.
+// Ten -> three (`0017`) -> ONE (`0018`). Every removal was a projection whose
+// events no production code emitted; `canon_projection` is the only one with a
+// real writer. An enumeration of names is supposed to be able to move in this
+// direction, and this one has, twice.
 var L3ATables = []string{
-	"region_projection",
-	"world_kv_projection",
-	"session_participants",
+	"canon_projection",
 }
 
 // TableConfig describes the integrity-check budget for one projection

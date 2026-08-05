@@ -80,13 +80,12 @@ members = [
     # ⚠ SHIP RULE: build with `--profile release-commit` (panic="unwind") —
     # NEVER plain --release (panic="abort" kills SC-A8 containment).
     "services/commit-service",
-    # Cycle 13 — L3.B per-aggregate projection skeletons (consume
-    # `crates/dp-kernel::Projection` trait shipped cycle 12; write to the
-    # `contracts/migrations/per_reality/0006_projections.sql` tables shipped
-    # this cycle). Full event coverage lands with L4-L7 domain cycles.
-    "crates/projections/region",
-    "crates/projections/world_kv",
-    "crates/projections/session",
+    # Cycle 13's L3.B projection skeletons are GONE. `0017` removed the seven
+    # `pc_*`/`npc_*` crates and `0018` removed `region`, `session` and `world_kv`:
+    # none of them had a producer, and `session_participants` was membership for a
+    # world/map feature being redesigned. `canon` below is the only projection
+    # left, and the only one anything writes.
+
     # Cycle 23 — L5.D.3 canon projection (11th projection table; consumes the
     # cycle-13 cycle-12 `Projection` trait + writes to the cycle-23 L5.D.1
     # `canon_projection` table in per-reality DB). Glossary-service authoring
