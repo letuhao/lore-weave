@@ -1,5 +1,32 @@
 # Extensibility — where a feature's command actually lives
 
+> # 🔴 QUARANTINED — DO NOT BUILD FROM THIS
+>
+> **This round's Phase 0 is FALSE.** Its §0 states *"In code: nothing… In design: two
+> things, and both are refused."* A cold-start review found **4 017 lines of directly
+> relevant prior design**, three days older, in this same `docs/specs/` tree, which
+> this round never opened:
+>
+> | | lines | what it already contains |
+> |---|---|---|
+> | `../2026-08-02-command-interaction-structure.md` | 415 | **`from: Offered \| Any // THR-A4`** — the offer concept this round presents as its central invention, already a declared field · The Sims smart objects, already sourced to `D-2` · deterministic lockstep, already concluding *"a command is data by necessity, not by taste"* |
+> | `../2026-08-02-command-interaction-dataflow.md` | 877 | the specification proper |
+> | `../../plans/2026-08-02-command-interaction-RUN-STATE.md` | 796 | decisions **`CMD-1`..`CMD-9`** — which this round's `CMD-D1`..`CMD-D7` collide with, one letter apart, same subject |
+> | `../2026-08-02-item-data-structure.md` | 611 | *"the substrate under **ownership, inventory, equipment and transfer**"* — the holder graph this round declares a 🔴 BLOCKER with *"today there is no outside"* |
+> | `../2026-08-02-item-dataflow.md` | 1 318 | its specification |
+>
+> **How it happened, precisely:** every absence claim in this round was a `grep` over
+> `crates/` and `services/`, reported as a repo-scoped conclusion. **`docs/specs/` was
+> never searched.** That is the exact defect Phase 0 exists to prevent, performed by a
+> section that claims to BE Phase 0 — and it is the same shape as the actor-hub round
+> that designed feature #1 without auditing what already modelled an actor.
+>
+> **Nothing here is authoritative until it is reconciled with the 2026-08-02 rounds.**
+> Individual findings may survive; the framing ("feature #2", "nothing implements
+> this", the blocker, the decision ids) does not.
+
+
+
 **Status:** DESIGN, unreviewed.
 **Question:** we will have N features. How does feature N+1 land without collapsing
 the command layer? Does the feature implement its commands while the command layer
