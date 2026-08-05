@@ -301,6 +301,12 @@ The discriminator is not *who picks a member*. It is **who may ADD one, and what
 | **V1 · Extension** | Can a new member be added by writing a **manifest row**, with no engine edit and no new rung on the digest re-encode ladder? | **mechanism** — or, if the concern *ought* to be open, **a defect** |
 | **V2 · Non-interference** | Does adding a member leave the behaviour of **existing** members unchanged? | **mechanism.** An author must never change arithmetic they cannot see |
 | **V3 · Identity-blindness** | Is the engine's arithmetic independent of the member's **identity** — reading only its declared parameters? | **mechanism.** If the engine must know *which* member this is, it owns the set |
+| **V4 · Operand, not predicate** | Does every authored field enter the engine as an **OPERAND** — a value the engine's own fixed rule then judges — or can a field **BE the judgement**? | **mechanism.** Added by `CMD-10` (§9.4) after `R4-16` showed V1–V3 measure extension *mechanics* only, so a flag set turns any closed set into vocabulary |
+
+> **All four are asked about ADDING A MEMBER to the concern**, never about referencing one.
+> `effects[]` naming `EffectPrimitive::Delta` is a reference; minting a new primitive is a member.
+> `§27.1`'s three levels are the same distinction: **KIND** (engine) → **RECORD** (feature) →
+> **MEMBER** (author).
 
 ### 9.2 It fails on real cases, including two of my own — which is the point
 
@@ -324,6 +330,82 @@ Per the repo's non-vacuity standard, a classification is a claim and needs a mec
 > else moved** — no other member's resolved output changes, and the digest moves only by the
 > addition. **Break it, watch it go red, put it back, paste the output.** A concern that cannot be
 > bite-tested this way has not been classified; it has been asserted.
+
+### 9.4 `CMD-10` — the fourth question, and two boundaries the first three lacked
+
+> **DRAFT, awaiting the PO.** Answers `O-CI-22`. Numbered `CMD-10` because `CMD-1`..`CMD-9` are
+> live on this same subject and a colliding id is what the 08-05 round produced.
+
+**The trap to avoid first, because it is the third time.** `R4-16` phrases the gap as *"can a member
+the author writes VIOLATE AN ENGINE INVARIANT?"* — and that is **not yet a test**. It is `F-8`'s
+shape again. `F-8` failed because *"is the author choosing from a set the engine defines"* had no
+operational content; a question naming *"an engine invariant"* without a list of them is answerable
+either way by whoever wants the answer. **A fourth question that cannot fail would be the same
+defect a third time**, in the section written to fix it the second time. So V4 is phrased
+structurally, and needs no enumeration:
+
+> **V4 · Does every authored field enter the engine as an OPERAND — a value the engine's own fixed
+> rule then judges — or can a field BE the judgement?**
+
+**This is `D-29` generalised, not an invention.** `D-29` is sealed: *"a condition is a declared
+**threshold**, never a **predicate grammar**"* — operand, not predicate, at the condition layer,
+and both the item round and the story-seed round already apply it. V4 is that same cut asked of
+every authored field instead of one.
+
+| concern | V4 | why |
+|---|:--:|---|
+| `cue` ordinal | ✅ | there is no invariant-bearing judgement in the path at all; it is consumed past the authority boundary — `CWC-A1`, *the room is a lens* |
+| `spend: [{resource, amount}]` | ✅ | the engine owns *you must have it · it is deducted once · it is conserved*. The author supplies the amount and nothing else |
+| `submitter_class` + `may_submit_engine_verbs` | ❌ | the author supplies **the verdict of the authorisation rule**. `R4-16`'s construction dies exactly here |
+| role `victim` + `pays_spend: true` | ❌ | redirects **whom** conservation applies to. That is the rule, not an operand |
+| the ref-kind set | ❌ | the engine dispatches on kind to take a spend, so minting a kind changes what it can dispatch. **This resolves a contradiction `R4` found: rot row `C-6` rules it vocabulary in this same document** |
+
+**And V4 supplies the boundary V3 was missing.** `R4` records that V3 has no stated line between
+*reads identity as a lookup key* (`effectiveness` ✅) and *must know which member this is*
+(`EffectPrimitive` ❌) — *"structurally the same dispatch"*. It is one line: `effectiveness` looks
+identity up **to fetch an operand**; `EffectPrimitive` uses identity **to select which engine
+operation runs**. A cut that resolves a contradiction raised against a *different* question was
+probably made in the right place.
+
+#### The two boundaries V1 and V2 lacked — and both attacks dissolve
+
+**`R4-4` — V1 must name its artifact.** As applied it asks *"is this already a table?"*, so every
+unbuilt concern fails and every proposal passes. **V1 is asked of the DESIGN UNDER JUDGEMENT, never
+of the shipped code.** §9.2's `CommandKind` ❌ beside `verb_declarations` ✅ then stops being one
+concern scored twice — they are two *proposals*: keep the compiled enum, or declare the table. And
+`R4-16`'s counterfactual stops being a paradox: **a `CommandKind` with a flag set and a manifest row
+IS `verb_declarations` under another name**, and scoring it ✅ is correct rather than embarrassing.
+
+**`R4-5` — V2 is about SCORE, not RANK.** §2.2 installs an argmax, so adding a verb can make a
+former winner lose. Read literally, V2 fails `verb_declarations` — and then **no extensible choice
+set can ever be vocabulary**, which is absurd, because a new verb being able to win is what an open
+verb set is FOR. The boundary: *does adding a member change an existing member's **score**, or only
+its **rank**?*
+
+| | | |
+|---|:--:|---|
+| `considerations` — the count | ❌ | every other consideration's score moves by `1 − 1/n`. **The catch survives** |
+| `effectiveness` cells | ❌ | the value used for a pair changes. **Survives** |
+| `verb_declarations` | ✅ | no existing verb's score moves; one may be outranked. **`R4-5` dissolves** |
+
+Both of §9.2's self-caught defects are still caught. That is the test to apply: a repair that also
+dissolves the round's own findings would be a repair that stopped measuring.
+
+#### The bite V4 owes, recorded as OWED
+
+Per §9.3's own standard a classification is a claim and needs a mechanism. V4's is: **for a concern
+classified vocabulary, author a member that sets an authority-bearing field and assert the build or
+the engine REFUSES it.** If no such member can be constructed, V4 was not applied — it was asserted.
+`8b` makes this session design-only, so this is **owed to BUILD and recorded as owed**, not done.
+
+#### What `CMD-10` does NOT claim
+
+- It does not repair `R4-6` (§10's out-of-fiction test admits the Forge) or the `origin`/`arity`
+  findings. Those are separate rows.
+- V4 is structural, so it needs no invariant catalogue — but *reading* a field's path to decide
+  operand-or-judgement is a code question, and for the six unbuilt tables there is **no code to
+  read**. On a proposal, V4 is answered from the design's own text, and that is weaker evidence
+  than the shipped cases (`cue`, ref-kind) where it can be checked.
 
 ---
 
@@ -876,7 +958,7 @@ right.
 
 | # | |
 |---|---|
-| **O-CI-22** | 🔑 **The test needs a FOURTH question: *can a member the author writes violate an engine invariant?*** V1-V3 measure extension mechanics only, and `A-4`'s flag-set argument — the same as V3 — **dissolves every closed set including `CommandKind`** |
+| **O-CI-22** | 🔑 **The test needs a FOURTH question: *can a member the author writes violate an engine invariant?*** V1-V3 measure extension mechanics only, and `A-4`'s flag-set argument — the same as V3 — **dissolves every closed set including `CommandKind`**. → **PROPOSAL `CMD-10` in §9.4, awaiting the PO.** V4 is *operand, not predicate* — `D-29` generalised from the condition layer to every authored field — phrased structurally on purpose, because `R4-16`'s own wording (*"violate an engine invariant"*) needs a list of invariants to be answerable and would have been `F-8` a third time. It also supplies V3's missing boundary and dissolves `R4-4` and `R4-5` without dissolving the two defects §9.2 caught in itself. **The bite it owes is recorded as OWED, not done** (`8b`: design-only) |
 | **O-CI-23** | 🔴 **§11.2 must be RE-DESIGNED, not re-costed** — it reads a feature aggregate from the engine, a path neither channel permits, and its bound rests on a deleted column. **The diagnosis survives; the mechanism does not** |
 | **O-CI-24** | **`arity` has no home**, found twice independently (`R4-2`, `G1`) |
 | **O-CI-25** | **A pair value is a FOLD over timed modifiers, not a scalar** — §4.8.2's own CK3 finding, *now-or-never* |
