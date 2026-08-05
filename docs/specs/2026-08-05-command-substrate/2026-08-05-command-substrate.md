@@ -169,8 +169,9 @@ becomes a security boundary.
 
 Offers close it without a new subsystem:
 
-- an offer is minted **for a (session, subject) pair**; `offer_id` is unguessable
-  and bound to that pair
+- an offer is minted **for a (session, subject) pair**. `CMD-D4` gives the
+  mechanism: `offer_id` is a keyed MAC over the offer's own inputs, so binding
+  is recomputation rather than a trusted lookup table
 - a new admission stage **`offer-entitlement`** re-derives the offer from
   `(offer_id, claimed subject, producer)` and rejects a mismatch
 - so a driver cannot invoke an offer it was not given, and cannot act for an actor
@@ -259,13 +260,15 @@ owns every verb that can execute.
 
 1. **Every entity that participates in the map can be a provider.** Doors, nodes,
    items, skills, actors. Nothing is special-cased.
-2. **Every invocation has exactly one subject.** Multi-subject commands
-   (a two-person ritual) are out of scope; whether they are a command or a
-   negotiation is undecided.
+2. **Every invocation has exactly one subject.** Multi-subject commands are out
+   of scope, and `CMD-D7` settled WHY: a two-party act needs CONSENT from the
+   second subject's driver, and consent is a negotiation protocol with its own
+   states — not a command.
 3. **One offer set per (subject, tick).** Offers do not survive a tick. This is what
    makes them safe to treat as hints.
-4. **`Enumerated` is the only parameter domain.** Ranges/free-text/open-reference
-   are refused until a real command needs one.
+4. **`Enumerated` is the only parameter domain.** `CMD-D6` gives the admission
+   test for a second kind: a real command must need it AND **the engine must
+   clamp it**. An unclamped `Range` is a free parameter wearing a type.
 5. **Turn slot stays the arbitration primitive**, and it is a per-domain resource,
    not a command-layer concept. The command layer *declares a cost*; the domain
    owns whether the cost can be paid.
@@ -286,17 +289,34 @@ owns every verb that can execute.
 
 ## §9 · What this design does NOT decide
 
-- where the registry runs (commit-service, world-service, a new service)
-- the wire shape of an offer (this doc names roles, not JSON)
-- whether `CombatPayload` is replaced, shrunk, or wrapped
-- inventory ownership — an item is `External` from the island's view, so something
-  outside the island must own it, and nothing does today
-- multi-subject commands (§8.2), parameter domains beyond `Enumerated` (§8.4)
-- how offers are delivered to a GUI vs. to an LLM (both consume the same offer set;
-  the rendering differs and neither gets a privileged path)
-- **an order QUEUE.** §11.3 names queuing, undo and replay as the three things a
-  command-as-object buys. The event ledger already gives replay. Queuing — *"move
-  here, then attack that"* — has no home in this design and is not addressed.
+**Six items that stood here have been decided** — see
+[`2026-08-05-resolutions.md`](2026-08-05-resolutions.md). Kept as a pointer rather
+than deleted, because a list of open questions that quietly loses entries is how a
+resolved decision gets re-litigated:
+
+| was open here | now |
+|---|---|
+| where the registry runs | `CMD-D3` — commit-service, forced by live island state |
+| an order queue | `CMD-D5` — no queue in the substrate; it is the driver's |
+| multi-subject commands | `CMD-D7` — out, because they need consent |
+| parameter domains beyond `Enumerated` | `CMD-D6` — closed, with a clamp test for admitting a kind |
+| whether `CombatPayload` is replaced | `CMD-D1` — it is COMBAT's to keep, decode or delete |
+| override vs contribution across features | `CMD-D2` — collision fails the build; amendment is additive |
+
+**Inventory ownership is no longer a deferred item — it is a 🔴 BLOCKER.** An item is
+`External` from the island's view, so something outside must own the holder graph,
+and measurement found that nothing does. That makes `LinkExists` — one of §7's five
+precondition kinds — unimplementable, and it is the relation this document's own
+worked example rests on. See the resolutions doc.
+
+**Still genuinely open, and only this:**
+
+- **the wire shape of an offer.** This document names roles, not JSON. Designing a
+  wire format with zero declared commands is the declared-general-with-one-instance
+  trap; the first real command decides it.
+- **how offers are delivered to a GUI vs. an LLM** is *not* open in substance — both
+  consume the same offer set and neither gets a privileged path (§10). What is open
+  is only the rendering, which is each driver's business.
 
 ---
 
