@@ -1135,6 +1135,94 @@ about *as written*. What is now on the table is not "finish P4" but **which trad
 one and would weaken a criterion without a decision — two things this run's anti-drift list names
 explicitly. The evidence is recorded; the trade is not mine.
 
+---
+
+## ✅ PO DECISION 2026-08-06 — **option B, by the criterion already in force**
+
+> *"cứ theo tiêu chí đã làm trước đây, cái nào cần phải có code của CP sau để đo lường thì đẩy về
+> sau"*
+
+**This is not a new rule; it is the 2026-08-05 rule applied to one more item.** Each criterion keeps
+its exact wording and moves to the checkpoint where its subject first exists. Nothing is dropped, no
+bar is lowered, and option A is **not taken** — the strong check at §6.1 layer 3 stays.
+
+**First, the correction this decision must not repeat.** "P4 has no subject at CP-1" was ruled once
+before and it was **wrong**: the manifest *is* this checkpoint's write boundary, and P4 does have a
+subject here. So the transfer is **narrower than the property**. It moves one clause, not P4.
+
+| stays at CP-1 | moves |
+|---|---|
+| **`contract_version`** — the origin generation. Genuinely varies between rows, is carried across regeneration, and is gated. This is P4 satisfied at the write boundary CP-1 owns | **`admitted_against` must be able to differ from the document's version** — the clause §6.4's queue reads |
+
+| what moves | to | why it cannot be checked at CP-1 |
+|---|---|---|
+| **P4 · `admitted_against` varies** — *the stamp records what THIS admission was checked against, and the re-admission queue is the rows where it is not current* | **CP-4** | the stamp can differ only when the manifest holds a row **this build did not admit** — a grandfathered one. A grandfathered row is by definition one the *current* contract may reject, so `load()` must check it against the contract it was admitted under, and this code has only the current contract **as code**. Needs contract-as-data, which CP-4 owns. **Measured: 0 non-empty queues in 500 randomised builds** |
+| **§6.4's *"without leaving the runtime"*** | **CP-4** | same dependency, and it is the only clause that can put anything in the queue |
+| **rows carrying `lane` / `tier` / `cost`** (§0.14.1a rules 1 & 5) | **CP-4** | the admitting checkpoint produces them. **Measured: `OrderBy` and `TakeWhileBudget` reject every real manifest row today** |
+| **a scoring effect producing `relevance`** (§0.14.1b) | **CP-2** | scoring is a runtime effect and no producer exists. Today every pipeline naming `relevance` is rejected — the correct fail-closed direction, and **not** evidence the rule works |
+| **`_is_read_tool` replaced by declared `lane` data** (C-1) | **CP-4** | depends on rows carrying `lane` |
+| **the budget passed in, not `os.environ` at import** (§0.14.1) | **CP-2** | the boundary module can only supply it to a pipeline that runs, and none runs until CP-2 serves a turn |
+| **M1's drift gate against a non-empty manifest** | **CP-4** | `expected = build([])` byte-equality holds only while the manifest is empty; it reds unconditionally the moment CP-4 admits anything |
+
+**Binding, so this is a transfer and not a quiet disposal.** **CP-4 does not close until** the
+re-admission queue is driven **non-empty and then back to empty** across a real breaking amendment,
+and until a grandfathered row is shown to be distinguishable from a hand-typed one. **CP-2 does not
+close until** a pipeline ranks by a `relevance` its own scoring stage produced, with the budget
+arriving as a parameter.
+
+**What CP-1 therefore owes on P4:** nothing further. The clause that stays is built and gated; the
+clause that moves has a test **asserting the defect**, so it reds the day CP-4 lands — the transfer
+cannot be forgotten, because forgetting it turns a green suite red.
+
+---
+
+## ▶ CAN CP-0 AND CP-1 CLOSE? — assessed 2026-08-06, **and the answer is NOT YET**
+
+With the transfers above applied, **no open item is blocked on a missing subject any more.** What
+blocks closure is different and simpler: **the most recent round of fixes has been verified by
+nobody but their author.**
+
+### CP-1, item by item
+
+| item | state | evidence |
+|---|---|---|
+| 1.1, 1.2, 1.5, 1.6, 1.7 | ✅ | independent V-CODE, rounds 1–5 |
+| 1.3 | ✅ as a proven **positive control**; live measurement → CP-4 | round 2 |
+| 1.4 · M4 | ✅ | round 2 |
+| 1.4 · P4 | ✅ `contract_version` built + gated · ➡️ `admitted_against` → CP-4 | rounds 6–8 + PO 2026-08-06 |
+| 1.8b, 1.8c | ✅ | round 8 |
+| 1.9 · U-3, U-4 | ✅ | round 8 |
+| **1.9 · U-1** | 🟡 PASS at round 8 **with residuals** — the admin door was fixed **after** the verdict | **builder-only** |
+| **1.9 · U-2** | 🔴 **FAIL at round 8**, fixed after | **builder-only** |
+| **1.8a** | 🔴 **FAIL at round 8**, fixed after | **builder-only** |
+| **the P0 crash** | 🔴 found at round 8, fixed after | **builder-only** |
+
+### Why "the suite is green" is not the answer
+
+**Every round in this run where I fixed and did not re-verify, the next verifier found something —
+and round 8 found the worst defect of the whole effort in exactly that gap.** Round 7's fixes were
+green, complete-looking, and one of them **armed a crash that killed the turn before the model was
+called**. Closing on my own evidence now would be `self-verify`, which sits at the top of the
+anti-drift list and has been the proximate cause of eleven rounds.
+
+### What CP-0's closure now means, stated precisely
+
+**CP-0 closed on 0.5/0.6/0.7 (PO, 2026-08-04) and that decision stands.** But CP-1.9 later added a
+**new record type** — a catalogue-scope narrowing with no `tool` field — and CP-0's own consumer
+could not read it. The closure is not invalidated: the defect did not exist when it was taken. What
+is true is narrower and worth writing down: **CP-0's instrument now contains paths that no verifier
+has seen**, because a later checkpoint changed its inputs. *(This is the "a new row type must audit
+every consumer of the shared table" shape, arriving across a checkpoint boundary.)*
+
+### The exit condition
+
+**ONE more round on the delta, then CP-1 closes.** Not a re-verification of everything — items with
+an independent PASS stay passed. **Round 9's scope is exactly the four builder-only rows above**, and
+CP-0's drain path along with them, since that is where the P0 lived.
+
+If round 9 returns clean, CP-1 closes on V-CODE evidence with the V-LIVE obligation already
+transferred to CP-2 (PO 2026-08-05), and CP-0's closure is re-confirmed rather than re-opened.
+
 ### Four claims I wrote that round 8 disproved
 
 *"One injection stayed green — an alias"* (**wrong by three**) · *"a fourth entry point cannot inherit
@@ -1163,7 +1251,7 @@ needs it; the package boundary is what makes M2 mechanical today.
 | 1.1 | `contracts/agent-runtime-manifest.json`, generated, **starts empty** (M1) | 🔨 built — committed as `declarations: []`; a **missing** manifest reads as empty, never as fall-back; `build()` takes `Admitted`, so there is no generate-from-raw path |
 | 1.2 | **import-graph gate** — the new assembler cannot reach any legacy catalog module (M2) | 🔨 built — `scripts/agentruntime-membrane-gate.py`, **an allowlist** (stdlib + itself, `ALLOWED_EXTERNAL = {}`). Wired into `lint-foundation.yml`; **default mode runs its own `--selftest` first**, so CI cannot pass a gate that has not been shown to fire |
 | 1.3 | discovery reads M1 only; a legacy-only declaration of **each of the three kinds** returns zero rows (M3) | 🔨 built — `discover()` takes the same manifest argument as the assembler; asserted per kind and against three real legacy tool names |
-| 1.4 | **construction *is* validation** — `Admitted[D]` whose only producer is the contract check (M4), **and P4: no column bound to a constant at the write boundary** | ✅ **M4 PASS (round 2)** — defence in depth, and the load-bearing layer is **revalidation at both ends**, not the type. ⚠️ **P4 fixed 2026-08-05, VERIFICATION PENDING** — `_row` bound `identity_of`'s module constant while `Admitted.contract_version` held the version actually checked against, one attribute away. **I had reported P4 as having "no subject at CP-1" and escalated it**; that was reasoning from where I expected the property to live rather than from what it says — **the manifest IS this checkpoint's write boundary.** A verifier named the dead field in round 2 and I did not act on it for three rounds. Consequence: §6.4's re-admission queue is computed by comparing what a row was admitted against with the current contract, so a row re-stating the current constant makes **every historical row claim conformance it was never checked for** — a migration that can never find work |
+| 1.4 | **construction *is* validation** — `Admitted[D]` whose only producer is the contract check (M4), **and P4: no column bound to a constant at the write boundary** | ✅ **M4 PASS (round 2).** **P4 SPLIT BY PO DECISION 2026-08-06.** ✅ *`contract_version` (the origin generation)* — varies between rows, carried across regeneration, gated: **P4 satisfied at the write boundary CP-1 owns.** ➡️ *`admitted_against` must be able to differ* — **moved to CP-4**, because the stamp can differ only when the manifest holds a row this build did not admit, and validating such a row needs the contract as versioned **data**. Measured across three rounds: the first fix restated the constant (`{'1.0.0'}` on every row); the second froze it, so a re-admitted declaration kept its old stamp and the queue named work already done; the third is unsatisfiable by construction — **0 non-empty queues in 500 randomised builds**. A test now asserts that defect, so CP-4 landing turns the suite red. **I twice ruled P4 'has no subject at CP-1' — wrong both times; the manifest IS the write boundary, which is why this is a one-clause transfer and not a transfer of the property** |
 | 1.5 | a reference to a non-admitted declaration is **unresolvable** (M5) — today 12 rails point at 30 dead tools behind a gate that **fails open** | 🔨 built — resolved at **generation**, so an unresolved member means **no manifest is written at all** and the failure cannot be reached at runtime |
 | 1.6 | **C-0 identity** — id · owning service (derived) · lifecycle state · contract version | 🔨 built — `Declaration` has **no `owning_service` field to author**; it is derived from `source_path`, and an underivable owner is a **violation, not an `unknown`** |
 | **1.7** | **P1 — every narrowing registers `{tool, stage, reason, pass}`.** ⬅️ **inherited from CP-0.1/0.2, 2026-08-04.** On this surface it is not a property to hunt: **one assembly point, one manifest, one write path** (§0.1, construction not filtering). The retrofit took eight frames and never closed — that is the specification for this item | 🔨 built — `stage` and `reason` are **required fields of the rule**, so a narrowing cannot be expressed without them; `_narrow` is the only place a row is dropped **and** the only place `log.record` is called, asserted structurally |

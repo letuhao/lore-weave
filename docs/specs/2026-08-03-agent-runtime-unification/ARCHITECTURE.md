@@ -327,7 +327,8 @@ equivocation, which is the erratum-not-applied-everywhere failure inside the cor
 | kind set closed by identity; **every** stage parameter bounded; empty list kinds and `top_k=0` rejected | **built** | `test_cp1_membrane.py` (unit suite, CI) | CP-1 |
 | one canonical serialisation in the package | **built** | `test_cp1_membrane.py` (unit suite, CI) | CP-1 |
 | ambient boundary | **built** | `agentruntime-membrane-gate.py` — genuinely the gate, with its blind spots measured and disclosed | CP-1 |
-| **P4 on `admitted_against`** | **FAIL — the queue is unsatisfiable by construction** (§6.4.1) | a test that asserts the defect, so it reds when the mechanism lands | CP-4 |
+| **P4 on `admitted_against`** | **TRANSFERRED to CP-4, wording unchanged** (PO 2026-08-06) — unsatisfiable by construction here (§6.4.1) | a test that asserts the defect, so it reds when the mechanism lands | CP-4 |
+| **P4 on `contract_version`** | **built** — the origin varies between rows and is carried | `test_cp1_membrane.py` | CP-1 |
 | a declaration cannot silently leave the manifest | **built** | `test_cp1_membrane.py` | CP-1 |
 | rows carrying `lane` / `tier` / `cost` | **UNBUILT — the ranking has no subject** | CP-4 (the admitting checkpoint) |
 | a scoring effect producing `relevance` | **UNBUILT — no producer exists** | CP-2 |
@@ -1568,6 +1569,15 @@ suite **fully green**, because the two expressions cannot differ in one process.
 **So the honest state of item 1.4's P4 half is FAIL, and it is recorded as FAIL.** What CP-1 did
 build is `contract_version`: an origin generation that genuinely varies between rows and is carried
 across regeneration. That field is real and it is gated. The field the queue reads is not.
+
+✅ **PO DECISION 2026-08-06 — this clause moves to CP-4, and only this clause.** By the rule already
+in force (*what cannot be checked here moves to the checkpoint that can check it*), the requirement
+*"`admitted_against` must be able to differ from the document's version"* is transferred to CP-4
+**with its wording unchanged**, because its subject — a manifest row this build did not admit —
+first exists there. **`contract_version` stays at CP-1**, where it is built and gated. Option A
+(document digest) was **not** taken: it would have traded §6.1 layer 3's re-validation for
+tamper-evidence, which is a weaker guarantee. **CP-4 does not close until the queue is driven
+non-empty and then back to empty across a real breaking amendment.**
 
 **Why this cannot be finished here, stated as a design problem rather than as a schedule.** For
 `admitted_against` to differ from the document version, the manifest must contain a row that this
