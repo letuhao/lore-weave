@@ -1450,6 +1450,77 @@ mechanism · unknown row keys steering the ranking · four exported doors boundi
 
 ---
 
+## 🔴 R14 — **FAIL ×2**, and the first number that says the loop can end
+
+Prompt committed first, two V-CODE on frozen `b30db5b80`. Verdicts:
+[round14-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round14-v-code-a.md) ·
+[round14-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round14-v-code-b.md).
+
+### The question I asked, and the answer
+
+I triaged R13 into *production-reachable* (fixed) and *adversarial-only* (recorded OPEN), and asked
+both verifiers to grade **the triage**, not just the code: *did anything cross into
+production-reachable because of these changes?*
+
+**Verifier B ran the experiment in the direction that could have said yes, and the answer is no.**
+The row bound **strictly narrows** both OPEN TOCTOUs; `json.loads` yields exactly-`dict` at both
+levels, so `.get` / `__getitem__` / `{**}` cannot disagree on a plain document. *"Fixing only the
+production-reachable set was the right call; the execution failed."*
+
+### 🔴 I bounded the TYPE and the vehicle was the VALUE
+
+The new bound refuses *exotic* values and admits **every plain scalar** — and all three of R13's
+vehicles were plain scalars. `members: ['ghost']` (**quoted verbatim in my own commit message**)
+still reaches the wire at all four doors; `"cost": 1000000000` still steers `TakeWhileBudget`
+(surface `('book_get',)` vs control of three). **The commit asserted three findings closed by name
+and closed one — the one-line one.**
+
+### 🔴 And I loosened a guard while claiming I had not
+
+`match="plain integer"` → `match="plain integer|plain scalar"`, so the test could no longer tell the
+door's refusal from the budget's — **which is exactly why downgrading the door to `isinstance`
+measured green** — with *"Both guards stay"* written beside it. Now split: two assertions, two
+mechanisms.
+
+### What the fixes closed, and the one they opened
+
+Verifier A: **route 17 CLOSED**; R13's central finding (four fixes at baseline) **closed at the
+class**, 4 of 4 guards red for their stated mechanism; production-reachable **22 → 13 → 9**, its
+first fall.
+
+| new | |
+|---|---|
+| **🔴 route 20, created by my fix** | I widened the sweep to all of `app/` and reused one bare-name closure for **both** relations. They are not symmetric: `reaching` over-approximates toward **more** scrutiny (safe); `arming` grants an **exemption**, so at 115 files a same-named helper anywhere absolved a genuinely un-armed entry point. **An over-approximation is only safe in the direction of suspicion.** `arming` now follows real **import edges** |
+| **route 19** | `async def` only — a sync entry point that narrows was invisible. Nothing about a turn requires a coroutine |
+| **T2** | the gate matched `ast.Assign` only, so `_withheld_json: str | None = None` walked past — and annotated assignment is **this file's own house style**. An ordinary refactor, not a contrivance |
+
+### ▶ CONVERGENCE — the column that matters moved
+
+| round | prod | adversarial | guard | total | **introduced by the graded delta** |
+|---|---|---|---|---|---|
+| 9 | 4 | 5 | 2 | 11 | 2 |
+| 10 | 12 | 5 | 1 | 18 | 1 |
+| 11 | 9 | 7 | 5 | 21 | 2 |
+| 12 | 3 | 7 | 7 | 17 | 1 |
+| 13 | 3 | 3 | 3 | 9 | 3 |
+| **14** | **8** | **4** | **9** | **21** | **2 — and NO new TOCTOU** |
+
+**R13's delta created two TOCTOUs in two lines; R14's created none in forty.** That is the first
+round in four where the read-twice sweep came back empty. Closure is still ~8%, and Verifier A reads
+the introduction rate as flat rather than falling — **the two verifiers disagree on that number, and
+the disagreement is itself the finding**: total findings do not say whether the loop terminates; the
+introduction rate does, and one round is not a trend.
+
+**2227 tests pass; gate green.** ⚠️ Builder's evidence.
+
+**Open:** `members`/`cost` steering by plain scalar at four doors · `validate_document`/`load` with no
+field bound at all (and the drift gate discarding its return) · the clean-finish write still bindable
+to `None` · the flag INERT (every read precedes every drain) · the container `try` losing rows for a
+tuple sink · the 5th/6th TOCTOUs · the `r.get("id")`/`r["id"]` split · P4 on a `generate()`-landing
+mechanism.
+
+---
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -1462,7 +1533,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | ~~R11~~ | ran 2026-08-06 → **FAIL ×2**. The finding was the method: 9 of 9 guards silent, 3 firing wrongly. See the block above | `V-CODE` ×2 on `2c63496b4` | — |
 | ~~R12~~ | ran 2026-08-06 → **FAIL ×2**. The R11 headline fix closed the case that never happens; the guard claim was false for the membrane package. See the block above | `V-CODE` ×2 on `9c8df7800` | — |
 | ~~R13~~ | ran 2026-08-06 → **FAIL ×2**, with the first convergence measurement. See above | `V-CODE` ×2 on `5ce95de37` | — |
-| **R14** | verify R13's delta **and** the nine findings recorded OPEN. ⚠️ **PO decision pending**: closure is ~10%/round, so the open set is ~20 rounds at this cadence | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
+| ~~R14~~ | ran 2026-08-06 → **FAIL ×2**. Triage graded SOUND, execution failed; introduced-by-delta produced no new TOCTOU for the first time in four rounds | `V-CODE` ×2 on `b30db5b80` | — |
+| **R15** | verify R14's delta and the eight OPEN findings | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
 | **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |

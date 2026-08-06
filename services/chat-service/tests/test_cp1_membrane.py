@@ -1458,10 +1458,22 @@ class TestStageKindsAreDataNotClosures:
         doc = {"declarations": [
             {"id": f"t{i}", "kind": "tool", "cost": SneakyCost(9), "lane": "read"} for i in range(4)
         ]}
-        # Rejected at the DOOR now (`rows_of` bounds every row field, not only `id`), which is
-        # earlier and stronger than the budget's own check. Both guards stay: the door refuses the
-        # row, and `_narrow` still refuses a cost it is handed by any other route.
-        with pytest.raises(ValueError, match="plain integer|plain scalar"):
+        # 🔴 **I LOOSENED THIS TO `"plain integer|plain scalar"` SO IT WOULD PASS, AND WROTE
+        # "BOTH GUARDS STAY" NEXT TO IT.** A verifier then measured the consequence: with the
+        # alternation, downgrading the door's bound to `isinstance` is **green**, because the test
+        # can no longer tell the door's refusal from the budget's. The comment described a property
+        # the assertion had just stopped checking.
+        #
+        # Both guards genuinely do stay, so both are asserted — separately. This one is the budget's,
+        # reached by handing `_narrow` a row the door never saw.
+        with pytest.raises(ValueError, match="plain integer"):
+            SurfaceAssembler({"declarations": []})._narrow(
+                [{"id": "t0", "cost": SneakyCost(9)}],
+                TakeWhileBudget("token_budget", "over budget", budget=6),
+                pass_number=1, ordered_by=(("id", "asc"),),
+            )
+        # ...and this one is the door's.
+        with pytest.raises(ValueError, match="plain scalar"):
             SurfaceAssembler(doc).assemble(pass_number=1, pipeline=[
                 OrderBy(keys=(("lane", "asc"),)),
                 TakeWhileBudget("token_budget", "over budget", budget=6),

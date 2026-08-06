@@ -1538,8 +1538,15 @@ class TestU2ACatalogueOutageIsRegistered:
                     for n in ast.walk(fn)
                 )
                 _param_names = {a.arg for a in fn.args.args + fn.args.kwonlyargs}
+                # 🔴 `ast.Assign` ONLY — so `_withheld_json: str | None = None` walked past, and
+                # annotated assignment is **this file's own house style** (`_budget_withheld:
+                # list[dict] = []` at :1956). An ordinary refactor, not a contrivance.
+                _assigns = [n for n in ast.walk(fn) if isinstance(n, ast.Assign)] + [
+                    ast.Assign(targets=[n.target], value=n.value, lineno=n.lineno)
+                    for n in ast.walk(fn) if isinstance(n, ast.AnnAssign) and n.value is not None
+                ]
                 bad_bindings = [
-                    t.lineno for n in ast.walk(fn) if isinstance(n, ast.Assign)
+                    t.lineno for n in _assigns
                     for t in n.targets
                     if isinstance(t, ast.Name) and "withheld" in t.id
                     # From a recorder call, from another local, or **derived from the parameter**
@@ -2140,33 +2147,81 @@ def _turn_entry_calls():
     # A router that DELEGATES to an armed entry point is covered by it. Without this the sweep
     # demands an arm from `send_message` (which calls `stream_response`) and a second arming is the
     # thing that discards what the first collected. Transitive, same fixed point as `reaching`.
-    arming = {
-        name for name, fns in by_name.items()
-        if any(isinstance(n, ast.Call) and _called_name(n) == "arm_turn_surface"
-               for fn in fns for n in ast.walk(fn))
-    }
+    # 🔴 **ROUTE 20, AND MY OWN FIX CREATED IT.** I widened the sweep to all of `app/` and reused
+    # the bare-name closure for BOTH relations. But the two are not symmetric:
+    #
+    #   * `reaching` (this narrows) over-approximates toward MORE scrutiny — a name that narrows
+    #     anywhere is treated as narrowing everywhere. Safe.
+    #   * `arming` (this is covered) over-approximates toward LESS scrutiny — it grants an
+    #     **exemption**. With 68 files it was tolerable; at 115 files and 641 names a same-named
+    #     arming helper anywhere in `app/` absolves a genuinely un-armed entry point. Measured:
+    #     gate `6 passed`, control `2 failed`.
+    #
+    # **An over-approximation is only safe in the direction of suspicion.** So `arming` is keyed by
+    # MODULE::NAME: a caller is covered only by a function it could actually be calling.
+    arming = set()
+    for mod, tree in trees.items():
+        for fn in ast.walk(tree):
+            if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)) and any(
+                isinstance(n, ast.Call) and _called_name(n) == "arm_turn_surface"
+                for n in ast.walk(fn)
+            ):
+                arming.add(f"{mod}::{fn.name}")
+    # A caller is covered by a function it can actually reach: one defined in its own module, or
+    # one it IMPORTS. Bare-name matching across 641 names was the exemption hole; import-following
+    # is the same relation with its real edges.
+    visible = {}
+    for mod, tree in trees.items():
+        names = {f.name for f in ast.walk(tree)
+                 if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
+        for n in ast.walk(tree):
+            if isinstance(n, ast.ImportFrom) and (n.module or "").startswith("app."):
+                src = (n.module or "").removeprefix("app.").replace(".", "/") + ".py"
+                for a in n.names:
+                    names.add(a.asname or a.name)
+                    visible.setdefault((mod, a.asname or a.name), f"{src}::{a.name}")
+        for nm in names:
+            visible.setdefault((mod, nm), f"{mod}::{nm}")
     changed = True
     while changed:
         changed = False
-        for name, fns in by_name.items():
-            if name in arming:
-                continue
-            if any(isinstance(n, ast.Call) and _called_name(n) in arming
-                   for fn in fns for n in ast.walk(fn)):
-                arming.add(name)
-                changed = True
+        for mod, tree in trees.items():
+            for fn in ast.walk(tree):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                key = f"{mod}::{fn.name}"
+                if key in arming:
+                    continue
+                if any(isinstance(n, ast.Call)
+                       and visible.get((mod, _called_name(n) or "")) in arming
+                       for n in ast.walk(fn)):
+                    arming.add(key)
+                    changed = True
 
     out = {}
     for mod, tree in trees.items():
         for fn in ast.walk(tree):
             # `ast.walk`, not `tree.body`: a verifier routed the admin door through a CLASS METHOD
             # and the gate reported `5 passed` with three suites exactly at baseline.
-            if not isinstance(fn, ast.AsyncFunctionDef):
+            #
+            # 🔴 ROUTE 19 — and `async def` ONLY was the same assumption one level down. A sync
+            # entry point that narrows was invisible; nothing about a turn requires a coroutine.
+            if not isinstance(fn, (ast.AsyncFunctionDef, ast.FunctionDef)):
+                continue
+            if fn.name.startswith("_") and f"{mod}::{fn.name}" not in _NOT_A_TURN and not any(
+                isinstance(n, ast.Call) and _called_name(n) in _NARROWING_CALLS
+                for n in ast.walk(fn)
+            ):
                 continue
             narrowings = sorted(_narrowings_in(fn, reaching))
             if not narrowings:
                 continue                      # not a turn entry point: it narrows nothing
-            if fn.name in arming and not any(
+            if fn.name in _NARROWING_CALLS:
+                # A function that IS a narrowing primitive is not an entry point — it is the thing
+                # entry points call. `discovery_seed_for_surface` appears on both sides of the
+                # relation, which the widened sweep surfaced the moment it could see `tool_surface`.
+                continue
+            if f"{mod}::{fn.name}" in arming and not any(
                 isinstance(n, ast.Call) and _called_name(n) == "arm_turn_surface"
                 for n in ast.walk(fn)
             ):
@@ -2247,6 +2302,10 @@ _NOT_A_TURN = {
     # reject an unknown tool name, and the failure is a 4xx the caller sees.
     "routers/tool_permissions.py::set_permission",
     "routers/tool_permissions.py::_assert_known_tool",
+    # `tool_surface`'s own budgeting helpers. They ARE narrowing machinery — they run inside a turn
+    # that has already armed, and arming here would discard what surface assembly collected. Found
+    # only once the sweep was widened past `services/` + `routers/`, which is the widening working.
+    "services/tool_surface.py::effective_enabled_tools",
 }
 
 
