@@ -5,7 +5,14 @@ failure.** It re-derived `DP-A1` (only-sanctioned-path), `DP-A2` (control/data s
 (tier taxonomy), `DP-A10` (primitives not queries) and `DP-A12` (type-gated access) as
 `DPA-A1..A18`, without opening `06_data_plane/` once. See §0.
 
-**Status:** 🔴 **BLOCKED by a cold-start red team, 2026-08-06 — do not build against this document.**
+**Status:** 🔴 **BLOCKED (red team, 2026-08-06) and now SUPERSEDED IN SUBSTANCE (2026-08-07).**
+**The question this document exists to answer is already answered by a LOCKED doc that predates it:**
+[`06_data_plane/01_scope_and_boundary.md`](../03_planning/LLM_MMO_RPG/06_data_plane/01_scope_and_boundary.md)
+§1 locks *"the SDK is the only door"*, §4 defines mechanically which services must use it, and §6
+lists the consequences as *"mechanical enforcement rules, not principles to be interpreted"*.
+**Recommend RETIRE.** What may survive is `DPA-A17` (the two drills) and `DPA-A18`, and both must
+first be reconciled against `scripts/restore-drill.sh`, which already is a rebuild drill.
+**Do not build against this document.**
 14 findings; the four highest-cost were re-verified by hand and every one holds. **§9 (`DPA-A7`) is
 the PO's seal and survives as a DECISION; the spec's expression of it does not.** See §0.
 
