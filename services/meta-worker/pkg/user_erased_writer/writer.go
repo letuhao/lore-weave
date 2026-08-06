@@ -128,12 +128,16 @@ type UserRealityLookup interface {
 	RealitiesForUser(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error)
 }
 
-// MetaScrubber scrubs the user's PII in META tables (P2/071) — the
-// cross-reality player_character_index.pc_name copy. Since `0017` this is the
-// ONLY leg of the cascade with anything to scrub: no per-reality projection
-// carries a user reference any more, so PerRealityDB is a no-op (see
-// pglive.PgPerRealityScrubber). Production routes it through MetaWrite
-// (so each row is self-audited + emits pc.index.status.changed). Called once
+// MetaScrubber removes the user's references from META tables (P2/071) — since
+// migrations 034/035, their actor_control_binding rows. Because that table holds
+// no PII, the implementation is a DELETE rather than a scrub-to-sentinel; the
+// interface contract is unchanged and is what the name means here: leave the
+// meta tier carrying no reference to this user.
+//
+// Since `0017` this is the ONLY leg of the cascade with a subject at all: no
+// per-reality projection carries a user reference any more, so PerRealityDB is a
+// no-op (see pglive.PgPerRealityScrubber). Production routes it through MetaWrite
+// (so each row is self-audited + emits actor.control.erased). Called once
 // per Handle. MUST be idempotent (re-delivery is safe). A non-nil error → NACK
 // (Q-L5H-1 inverted: leaving the PII copy alive is the UNSAFE direction).
 type MetaScrubber interface {
@@ -184,8 +188,8 @@ type Config struct {
 	DB     PerRealityDB
 	Audit  AuditSink
 	// MetaScrubber is OPTIONAL (P2/071): when set, Handle also scrubs the
-	// user's PII in META tables (the cross-reality player_character_index.pc_name
-	// copy) exactly once per event, via MetaWrite (self-audited). nil = skip
+	// user's references in META tables (the actor_control_binding rows) exactly
+	// once per event, via MetaWrite (self-audited). nil = skip
 	// (back-compat for existing callers/tests that only cascade per-reality).
 	MetaScrubber MetaScrubber
 	Clock        Clock // optional
@@ -277,9 +281,13 @@ func (w *Writer) Handle(ctx context.Context, fields map[string]any) error {
 		}
 	}
 
-	// Meta-side scrub (P2/071): the cross-reality player_character_index.pc_name
-	// copy. Once per event, via MetaWrite (self-audited). Idempotent. Runs after
-	// the per-reality cascade; a failure NACKs the whole event (Q-L5H-1).
+	// Meta-side erasure (P2/071): the user's actor_control_binding rows. Once per
+	// event, via MetaWrite (self-audited). Idempotent.
+	//
+	// **Runs AFTER the per-reality cascade, and that order is now load-bearing
+	// rather than incidental**: those rows ARE the input to RealitiesForUser, so
+	// deleting them first would leave the cascade with an empty reality list and
+	// report success over nothing. A failure NACKs the whole event (Q-L5H-1).
 	if w.metaScrubber != nil {
 		if err := w.metaScrubber.ScrubUserMetaRefs(ctx, payload.UserID); err != nil {
 			if firstErr == nil {

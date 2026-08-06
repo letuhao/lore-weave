@@ -103,3 +103,88 @@ test('turn.submit over the cap closes the socket and reaches NEITHER the bus nor
   delete process.env.LW_WS_MSG_PER_WINDOW;
   delete process.env.LW_WS_RATE_WINDOW_MS;
 });
+
+// ── the confused-deputy hole (2026-08-06) ──────────────────────────────────
+//
+// `actorForUser` returned `LW_CHANNEL_DEFAULT_ACTOR ?? '1'` for any
+// authenticated user absent from the map, so every unmapped user was bound to
+// the SAME subject — two humans acting as one actor, stamped by the server. A
+// red-team pass called this the load-bearing hole and downgraded the
+// confused-deputy guard because of it: a keyed MAC over a subject is a lock on
+// the wrong door while the caller can already BE that subject.
+//
+// Nothing tested it, which is why it survived a security review that NAMED it.
+
+test('an unmapped authenticated user is bound to NOBODY, not to a default actor', () => {
+  const prevMap = process.env.LW_CHANNEL_ACTOR_MAP;
+  const prevDefault = process.env.LW_CHANNEL_DEFAULT_ACTOR;
+  // The default is set on purpose: if the fallback ever comes back, this env
+  // var is what it would read, so the test would go green again without it.
+  process.env.LW_CHANNEL_DEFAULT_ACTOR = '1';
+  process.env.LW_CHANNEL_ACTOR_MAP = 'alice:7';
+
+  const room = new ChannelRoom() as unknown as {
+    actorForUser(u: string): string | undefined;
+  };
+
+  assert.equal(room.actorForUser('alice'), '7', 'an explicit mapping still resolves');
+  assert.equal(
+    room.actorForUser('mallory'),
+    undefined,
+    'an authenticated user with no binding must drive nobody — a default here is ' +
+      'the server itself asserting that a stranger is entity 1. This assertion ' +
+      'holds the SAFE state for D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT: the ' +
+      'durable source (actor_control_binding, migration 034) is not read here ' +
+      'yet, so absence must refuse rather than resolve. Re-point it at the ' +
+      'binding when that lookup lands, and close the row.',
+  );
+  assert.notEqual(
+    room.actorForUser('mallory'),
+    room.actorForUser('alice'),
+    'two users must never resolve to one subject',
+  );
+
+  if (prevMap === undefined) delete process.env.LW_CHANNEL_ACTOR_MAP;
+  else process.env.LW_CHANNEL_ACTOR_MAP = prevMap;
+  if (prevDefault === undefined) delete process.env.LW_CHANNEL_DEFAULT_ACTOR;
+  else process.env.LW_CHANNEL_DEFAULT_ACTOR = prevDefault;
+});
+
+test('onJoin binds no session entry when the user drives nobody', () => {
+  const prevMap = process.env.LW_CHANNEL_ACTOR_MAP;
+  process.env.LW_CHANNEL_ACTOR_MAP = 'alice:7';
+
+  const room = new ChannelRoom() as unknown as {
+    actorOf: Map<string, string>;
+    opts: unknown;
+    onJoin(c: unknown): void;
+  };
+  // `opts` is normally set by onCreate; onJoin reads realityId/channelId for the
+  // bind ack. Stubbed rather than booting a room, because the subject here is
+  // the BINDING, not the handshake.
+  room.opts = { realityId: 'r1', channelId: 'c1' };
+  const sent: Array<[string, unknown]> = [];
+  const client = {
+    sessionId: 's1',
+    auth: { userId: 'mallory' },
+    send: (t: string, p: unknown) => sent.push([t, p]),
+    leave: () => {},
+  };
+  room.onJoin(client);
+
+  // The MAP is what makes `handleSubmit`'s `no_actor_bound` reachable. An entry
+  // here — any entry — is the hole, because submit reads exactly this.
+  assert.equal(room.actorOf.has('s1'), false, 'no actor entry for an unbound user');
+
+  const frame = sent.find(([t]) => t === 'w1.frame');
+  assert.ok(frame, 'the room still sends a frame — the user may watch');
+  assert.equal(
+    (frame![1] as { self: unknown }).self,
+    null,
+    '`self` must be null, not a fabricated entity: the frame is what the client ' +
+      'renders as "you"',
+  );
+
+  if (prevMap === undefined) delete process.env.LW_CHANNEL_ACTOR_MAP;
+  else process.env.LW_CHANNEL_ACTOR_MAP = prevMap;
+});

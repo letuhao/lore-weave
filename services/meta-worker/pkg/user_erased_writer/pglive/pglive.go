@@ -3,8 +3,8 @@
 //
 // The user_erased_writer package is driver-clean (interfaces only); these
 // adapters add the pgx dependency:
-//   - PgUserRealityLookup reads the META cross-reality index
-//     (player_character_index) to find which realities a user has PCs in.
+//   - PgUserRealityLookup reads the META control plane
+//     (actor_control_binding) to find which realities a user drives an actor in.
 //   - PgPerRealityScrubber scrubbed the user's PII in a PER-REALITY projection.
 //     **It has nothing to scrub since 2026-08-04 — see below.**
 //
@@ -32,12 +32,8 @@ import (
 	uew "github.com/loreweave/foundation/services/meta-worker/pkg/user_erased_writer"
 )
 
-// erasedNameSentinel replaces a NOT NULL name column (so a sentinel, not NULL).
-// Still used by the META scrub (player_character_index.pc_name).
-const erasedNameSentinel = "[erased]"
-
 // PgUserRealityLookup resolves the realities a user touched from the meta
-// cross-reality PC index.
+// control plane's user->actor bindings.
 type PgUserRealityLookup struct {
 	meta *pgxpool.Pool
 }
@@ -49,13 +45,20 @@ func NewPgUserRealityLookup(meta *pgxpool.Pool) *PgUserRealityLookup {
 
 var _ uew.UserRealityLookup = (*PgUserRealityLookup)(nil)
 
-// RealitiesForUser returns the distinct realities where the user has a PC.
-// Q-L5H-1 inverted: over-inclusion is safe (scrub is idempotent); we return
-// every reality the index knows, regardless of PC status (an inactive/deleted
-// PC's projection may still carry the name until scrubbed).
+// RealitiesForUser returns the distinct realities where the user drives an actor.
+//
+// Q-L5H-1 inverted: over-inclusion is safe (the cascade is idempotent), which is
+// why there is NO `revoked_at IS NULL` filter. A revoked binding still means the
+// user was there, and a reality the cascade skips is PII left alive — the unsafe
+// direction. Reading every row is the conservative choice and it is deliberate,
+// not an omission.
+//
+// OWNER-scoped (`WHERE user_ref_id = $1`), so this is not the cross-user read
+// registered as `actor_binding_cross_user`; scripts/meta-sensitive-read-bypass-lint.sh
+// exempts this package for exactly that reason.
 func (l *PgUserRealityLookup) RealitiesForUser(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := l.meta.Query(ctx,
-		`SELECT DISTINCT reality_id FROM player_character_index WHERE user_ref_id = $1`, userID)
+		`SELECT DISTINCT reality_id FROM actor_control_binding WHERE user_ref_id = $1`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("pglive: query realities for user %s: %w", userID, err)
 	}
@@ -118,14 +121,28 @@ func (s *PgPerRealityScrubber) ScrubUserRefs(_ context.Context, in uew.ScrubInte
 	return nil
 }
 
-// PgMetaScrubber scrubs the user's PII in the META cross-reality index
-// (player_character_index.pc_name) — the copy the per-reality pc_projection
-// scrub does not reach (P2/071). It routes through contracts/meta MetaWriteBatch
-// (one UPDATE intent per non-deleted pc_index row) so each scrub is
-// same-TX-audited in meta_write_audit + (if cfg.Outbox is set) emits
-// pc.index.status.changed. Enumerate-then-batch (like the KEK shred) keeps the
-// multi-PC scrub atomic; the `status <> 'deleted'` SELECT filter makes a re-run
-// a no-op (idempotent).
+// PgMetaScrubber removes the user's META references — since migration 034/035,
+// their `actor_control_binding` rows.
+//
+// **What changed, and why it is a DELETE and not a scrub.** It used to tombstone
+// `player_character_index.pc_name` to a sentinel, because that column was the
+// last PII the meta tier held about a user's characters. `actor_control_binding`
+// has no name, no presence and no status — it is three opaque uuids — so there
+// is nothing left to overwrite, and what erasure owes is removal of the
+// REFERENCE itself. That is the `@erasure_method: hard_delete` the migration
+// header declares; leaving the annotation with no deleter would be a promise
+// nothing keeps.
+//
+// It routes through contracts/meta MetaWriteBatch (one DELETE intent per row) so
+// each removal is same-TX-audited in meta_write_audit and (if cfg.Outbox is set)
+// emits `actor.control.erased`. Enumerate-then-batch — the shape the KEK shred
+// uses — keeps a multi-actor erasure atomic, and an empty enumeration makes a
+// re-run a no-op, which is the idempotence the writer contract requires.
+//
+// ⚠ ORDER IS LOAD-BEARING: `Writer.Handle` runs this AFTER the per-reality
+// cascade, and it must stay that way. These rows ARE the input to
+// `RealitiesForUser`; deleting them first would leave the cascade with an empty
+// list of realities to visit and report success over nothing.
 type PgMetaScrubber struct {
 	meta    *pgxpool.Pool
 	cfg     *meta.Config
@@ -140,43 +157,46 @@ func NewPgMetaScrubber(metaPool *pgxpool.Pool, cfg *meta.Config, actorID string)
 
 var _ uew.MetaScrubber = (*PgMetaScrubber)(nil)
 
-// ScrubUserMetaRefs tombstones every non-deleted player_character_index row for
-// the user (pc_name → '[erased]', status → 'deleted') via MetaWriteBatch.
+// ScrubUserMetaRefs deletes every actor_control_binding row for the user, via
+// MetaWriteBatch. See the type doc for why erasure here is a DELETE.
 func (s *PgMetaScrubber) ScrubUserMetaRefs(ctx context.Context, userID uuid.UUID) error {
+	// No `revoked_at IS NULL` filter, for the reason RealitiesForUser gives: a
+	// revoked binding is still a reference to this user, and erasure owes
+	// removal of every one of them.
 	rows, err := s.meta.Query(ctx,
-		`SELECT pc_index_id FROM player_character_index WHERE user_ref_id = $1 AND status <> 'deleted'`, userID)
+		`SELECT reality_id, actor_id FROM actor_control_binding WHERE user_ref_id = $1`, userID)
 	if err != nil {
-		return fmt.Errorf("pglive: enumerate pc_index for user %s: %w", userID, err)
+		return fmt.Errorf("pglive: enumerate actor bindings for user %s: %w", userID, err)
 	}
-	var ids []uuid.UUID
+	type binding struct{ reality, actor uuid.UUID }
+	var found []binding
 	for rows.Next() {
-		var id uuid.UUID
-		if err := rows.Scan(&id); err != nil {
+		var b binding
+		if err := rows.Scan(&b.reality, &b.actor); err != nil {
 			rows.Close()
-			return fmt.Errorf("pglive: scan pc_index_id: %w", err)
+			return fmt.Errorf("pglive: scan actor_control_binding pk: %w", err)
 		}
-		ids = append(ids, id)
+		found = append(found, b)
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("pglive: iterate pc_index: %w", err)
+		return fmt.Errorf("pglive: iterate actor bindings: %w", err)
 	}
-	if len(ids) == 0 {
-		return nil // already scrubbed / no PCs — idempotent
+	if len(found) == 0 {
+		return nil // already erased / never bound — idempotent
 	}
-	intents := make([]meta.MetaWriteIntent, 0, len(ids))
-	for _, id := range ids {
+	intents := make([]meta.MetaWriteIntent, 0, len(found))
+	for _, b := range found {
 		intents = append(intents, meta.MetaWriteIntent{
-			Table:     "player_character_index",
-			Operation: meta.OpUpdate,
-			PK:        map[string]any{"pc_index_id": id},
-			NewValues: map[string]any{"pc_name": erasedNameSentinel, "status": "deleted"},
+			Table:     "actor_control_binding",
+			Operation: meta.OpDelete,
+			PK:        map[string]any{"reality_id": b.reality, "actor_id": b.actor},
 			Actor:     meta.Actor{Type: meta.ActorService, ID: s.actorID},
-			Reason:    "gdpr erasure: scrub cross-reality PC index (P2/071)",
+			Reason:    "gdpr erasure: remove the user->actor control binding (P2/071)",
 		})
 	}
 	if _, err := meta.MetaWriteBatch(ctx, s.cfg, intents); err != nil {
-		return fmt.Errorf("pglive: meta-scrub player_character_index for user %s: %w", userID, err)
+		return fmt.Errorf("pglive: erase actor_control_binding for user %s: %w", userID, err)
 	}
 	return nil
 }

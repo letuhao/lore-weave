@@ -144,7 +144,7 @@ func run() error {
 	}
 
 	// ── user-erased cascade (P2/071): xreality.user.erased → scrub PII ──────────
-	// Meta player_character_index.pc_name scrub via MetaWrite (only when
+	// Meta actor_control_binding erasure via MetaWrite (only when
 	// META_ALLOWLIST_PATH is set → graceful degrade: the canon path works without
 	// it; the meta-index scrub needs the allowlist/MetaWrite Config).
 	//
@@ -175,7 +175,7 @@ func run() error {
 		}
 		uerCfg.MetaScrubber = pglive.NewPgMetaScrubber(metaPool, mwCfg, "meta-worker")
 	} else {
-		slog.Warn("[meta-worker] META_ALLOWLIST_PATH unset — user.erased per-reality scrub wired, but the meta player_character_index.pc_name scrub is DISABLED (set it to complete erasure)")
+		slog.Warn("[meta-worker] META_ALLOWLIST_PATH unset — user.erased per-reality scrub wired, but the meta actor_control_binding erasure is DISABLED (set it to complete erasure)")
 	}
 	uer, uerr := user_erased_writer.New(uerCfg)
 	if uerr != nil {

@@ -61,9 +61,21 @@ give the binding a NEW table in the meta DB.** The parking rested on *"no produc
 now would be guessing"*; there is a producer now (the command substrate's offer stage needs a
 subject it can trust), and a column audit found the keep-argument empty — see
 [the argument](../plans/2026-08-06-game-tier-build-RUN-STATE.md) §6g.
-**Not yet DISCHARGED:** the migration is unwritten, so `contracts/meta/player_index_parked_test.go`
-stays until it lands — and it will go RED when the writer arrives, which is its trigger firing, not
-a regression. It retires in the same commit as the drop.
+**✅ DISCHARGED 2026-08-06.** Migration **034** creates `actor_control_binding` in the meta DB;
+**035** drops `player_character_index` and swaps the read-audit path id. The GDPR erasure lookup and
+its meta leg moved with it — a table swap that leaves its readers behind does not fail loudly, it
+**wedges the erasure pipeline shut**, which `pglive.go`'s own header records happening to
+`pc_projection`. Because the new table holds no PII, the meta leg is now a **DELETE** rather than a
+scrub-to-sentinel: `@erasure_method: hard_delete`, and an annotation with no deleter would be a
+promise nothing keeps.
+
+`player_index_parked_test.go` → **`actor_control_binding_test.go`**, re-pointed rather than deleted.
+Its own instruction was *"if 012 was deleted, remove this test"* — right about the row, wrong about
+the file: **a migration file is history, you drop rather than delete**, so that trigger could never
+fire and the test would have gone on passing over a table Postgres no longer has. It now guards that
+the deleted vocabulary stays deleted, and found **three live references** on its first run
+(`meta-rs/transitions.rs`, `contracts/meta/lifecycle.go`, and a stale `COMMENT ON`). Four
+cross-language mirrors went red on the rename and were updated.
 
 The original assessment, kept because the two-thirds/one-third split is what decided it:
 
@@ -269,7 +281,7 @@ the two design contracts that are its only specification are in
 | `U-10` — the citations in this round's own contracts now resolve mechanically | `scripts/citation-gate.py`, wired pre-commit |
 
 **Evidence:** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules -p ruleset-loader`
-= **308 passed, 0 failed** · `dp-kernel --lib` **315** passed, unchanged by the `GoneState`
+= **328 passed, 0 failed** · `dp-kernel --lib` **315** passed, unchanged by the `GoneState`
 move · the Go mirror `contracts/entity_status` still agrees · `actor-hub` and `entity-existence` are clippy- and rustdoc-clean (the other three crates in that command carry a handful of pre-existing doc and clippy warnings, none of them this round's — counts deliberately not stated, because nothing here measures them and a figure with no measurement rule goes stale by construction; run the two commands if you want the numbers — a round-12 verifier measured the flat claim `clippy clean · cargo doc 0 warnings` FALSE, in the sentence that claims every figure in this block is emitted by a checker) ·
 every mutation in the committed
 mutation harness reds its gate's self-test (`python scripts/gate-bite-harness.py` — one mutation per

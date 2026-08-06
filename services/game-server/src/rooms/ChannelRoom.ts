@@ -361,18 +361,45 @@ export class ChannelRoom extends Room {
   }
 
   /**
-   * Map an authenticated user to the entity they control on this channel.
-   * V1 resolves this from the PC-substrate binding (a user's character in
-   * this reality); the dev map keeps the PoC runnable without that service
-   * while never letting the CLIENT choose. Env form: `user:entity,user:entity`.
+   * Map an authenticated user to the entity they control on this channel, or
+   * `undefined` when this user drives nobody here.
+   *
+   * **`undefined` IS THE FIX.** This returned `LW_CHANNEL_DEFAULT_ACTOR ?? '1'`
+   * for any authenticated user absent from the map, so every unmapped user was
+   * legitimately bound to the SAME subject — two humans acting as one actor,
+   * with the server itself stamping the claim. A red-team pass called it the
+   * load-bearing hole and downgraded the confused-deputy guard because of it:
+   * `CMD-12`'s keyed-MAC over a subject is a lock on the wrong door while the
+   * caller can already BE that subject. It is a tenancy defect by CLAUDE.md's
+   * own checklist before it is an offer problem.
+   *
+   * Two lines above, `onJoin` refuses a missing `userId` with the comment *"loud
+   * rather than defaulting to entity 1"* — and then called a function that
+   * defaulted to entity 1. The principle was already written down; only this
+   * function disagreed with it.
+   *
+   * The refusal it now reaches is not new either: `handleSubmit` has always had
+   * `no_actor_bound`, which the default made unreachable. Refusing at SUBMIT and
+   * not at join is deliberate — the user is authenticated and entitled to the
+   * channel, they simply drive nobody in it, so they may watch and may not act.
+   * Closing the socket would need a close code that does not exist in the
+   * four-language `§12AB.9` set, to say something this transport can already say.
+   *
+   * The durable source is `actor_control_binding` (migration 034 — which human
+   * drives which actor, in which reality). game-server has no Postgres client
+   * and must not grow one (I3: TypeScript is gateway/realtime), so reaching it
+   * needs a control-plane lookup that does not exist yet — tracked as
+   * `D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT`. The env map stays as the dev-time
+   * binding and is NOT the bug: it is explicit and per-user, and it never lets
+   * the CLIENT choose. Env form: `user:entity,user:entity`.
    */
-  private actorForUser(userId: string): string {
+  private actorForUser(userId: string): string | undefined {
     const raw = process.env.LW_CHANNEL_ACTOR_MAP ?? '';
     for (const pair of raw.split(',')) {
       const [u, e] = pair.split(':').map((x) => x.trim());
       if (u && e && u === userId) return e;
     }
-    return process.env.LW_CHANNEL_DEFAULT_ACTOR ?? '1';
+    return undefined;
   }
 
   /**
@@ -434,7 +461,12 @@ export class ChannelRoom extends Room {
       return;
     }
     const actor = this.actorForUser(userId);
-    this.actorOf.set(client.sessionId, actor);
+    // Only bind when there IS a binding. An unmapped user gets no entry, which
+    // is what makes `handleSubmit`'s `no_actor_bound` reachable — see
+    // `actorForUser`. Storing a default here was the confused-deputy hole.
+    if (actor !== undefined) {
+      this.actorOf.set(client.sessionId, actor);
+    }
     this.userOf.set(client.sessionId, userId);
     // IAS-D5 — one limiter per connection, created here so a reconnect gets a
     // fresh window rather than inheriting a stranger's.
@@ -465,8 +497,13 @@ export class ChannelRoom extends Room {
       client_protocol: 1,
     });
     // W1 — first frame, folded from the replayed log (D2).
+    //
+    // `self` is null when this user drives nobody here (see `actorForUser`).
+    // Null and not a default entity: the frame is what the client renders as
+    // "you", and inventing one is the same confused-deputy claim one layer up
+    // from the submit path — it would show a stranger's actor as the reader's.
     client.send('w1.frame', {
-      self: { entity_id: actor, ...this.view.actors[actor] },
+      self: actor === undefined ? null : { entity_id: actor, ...this.view.actors[actor] },
       turn_number: this.view.turn_number,
       roster: Object.entries(this.view.actors).map(([id, a]) => ({
         entity_id: id,

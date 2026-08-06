@@ -151,15 +151,23 @@ entries:
       - op: UPDATE
         event_name: user.consent.revoked
 
-  # ── L1.A-2 §2.4 (cycle 3) — player character index (dashboard view)
-  - table: player_character_index
+  # ── SEALED-BINDING (migration 034) — who drives which actor, in which reality
+  - table: actor_control_binding
     owner: world-service
-    notes: "L1A §2.4 — cross-reality PC index. Status transitions emit pc.index.status.changed."
+    notes: >-
+      Replaces player_character_index. A player is not a KIND of actor — it is a
+      control interface — so the events are about the BINDING, not about a
+      character's lifecycle. `pc.index.status.changed` had no successor because
+      the status enum it announced was presence and mortality, which belong to
+      the transport and to GoneState; a revoke is the only durable transition
+      this table has, and DELETE is the GDPR erasure of the binding itself.
     events:
       - op: INSERT
-        event_name: pc.index.created
+        event_name: actor.control.granted
       - op: UPDATE
-        event_name: pc.index.status.changed
+        event_name: actor.control.revoked
+      - op: DELETE
+        event_name: actor.control.erased
 
   # ── L1.A-4 §4.1 (cycle 7) — user_cost_ledger (financial; events to billing dashboards)
   - table: user_cost_ledger

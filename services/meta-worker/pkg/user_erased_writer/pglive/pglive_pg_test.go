@@ -1,7 +1,7 @@
 package pglive
 
 // PG-gated test for the 071 adapters. Gated on PIIKMS_TEST_PG_URL.
-//   - PgUserRealityLookup over the meta player_character_index (migration 012).
+//   - PgUserRealityLookup over the meta actor_control_binding (migration 034).
 //
 // TestLive_PgPerRealityScrubber_ScrubsAndIdempotent was DELETED on 2026-08-04.
 // It created its own minimal `pc_projection`, seeded two users, and asserted the
@@ -51,24 +51,24 @@ func exec(t *testing.T, pool *pgxpool.Pool, sql string, args ...any) {
 func TestLive_PgUserRealityLookup_DistinctRealities(t *testing.T) {
 	pool := pgPool(t)
 	ctx := context.Background()
-	sql, _ := os.ReadFile("../../../../../migrations/meta/012_player_character_index.up.sql")
+	sql, _ := os.ReadFile("../../../../../migrations/meta/034_actor_control_binding.up.sql")
 	if _, err := pool.Exec(ctx, string(sql)); err != nil && !strings.Contains(err.Error(), "deadlock") {
-		t.Fatalf("apply 012: %v", err)
+		t.Fatalf("apply 034: %v", err)
 	}
 
 	userA, userB := uuid.New(), uuid.New()
 	r1, r2 := uuid.New(), uuid.New()
-	seed := func(user, reality uuid.UUID, name string) {
+	seed := func(user, reality uuid.UUID) {
 		exec(t, pool,
-			`INSERT INTO player_character_index (pc_index_id, user_ref_id, reality_id, pc_id, pc_name, status)
-			 VALUES ($1,$2,$3,$4,$5,'active')`,
-			uuid.New(), user, reality, uuid.New(), name)
+			`INSERT INTO actor_control_binding (user_ref_id, reality_id, actor_id)
+			 VALUES ($1,$2,$3)`,
+			user, reality, uuid.New())
 	}
-	// userA: 2 PCs in r1 (same reality) + 1 in r2 → distinct realities {r1, r2}.
-	seed(userA, r1, "A-one")
-	seed(userA, r1, "A-two")
-	seed(userA, r2, "A-three")
-	seed(userB, uuid.New(), "B-one") // a different user, different reality
+	// userA drives 2 actors in r1 (same reality) + 1 in r2 → distinct {r1, r2}.
+	seed(userA, r1)
+	seed(userA, r1)
+	seed(userA, r2)
+	seed(userB, uuid.New()) // a different user, different reality
 
 	got, err := NewPgUserRealityLookup(pool).RealitiesForUser(ctx, userA)
 	if err != nil {

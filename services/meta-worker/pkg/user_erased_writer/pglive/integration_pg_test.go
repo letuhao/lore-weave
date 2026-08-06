@@ -64,17 +64,17 @@ func TestLive_UserErasedConsumer_ScrubsBothPIICopies(t *testing.T) {
 			time.Sleep(50 * time.Millisecond)
 		}
 	}
-	apply("../../../../../migrations/meta/012_player_character_index.up.sql")
+	apply("../../../../../migrations/meta/034_actor_control_binding.up.sql")
 	apply("../../../../../migrations/meta/013_meta_write_audit.up.sql")
 	apply("../../../../../migrations/meta/027_meta_write_audit_scrub_version.up.sql")
 	userA := uuid.New()
 	reality := uuid.New()
-	pcID := uuid.New()
-	// Meta index row (the cross-reality PII copy).
+	actorID := uuid.New()
+	// The user->actor control binding — the only meta reference to this user.
 	if _, e := pool.Exec(ctx,
-		`INSERT INTO player_character_index (pc_index_id, user_ref_id, reality_id, pc_id, pc_name, status)
-		 VALUES ($1,$2,$3,$4,'Alice','active')`, uuid.New(), userA, reality, pcID); e != nil {
-		t.Fatalf("seed pc index: %v", e)
+		`INSERT INTO actor_control_binding (user_ref_id, reality_id, actor_id)
+		 VALUES ($1,$2,$3)`, userA, reality, actorID); e != nil {
+		t.Fatalf("seed actor binding: %v", e)
 	}
 	allow, err := meta.LoadAllowlist("../../../../../contracts/meta/events_allowlist.yaml")
 	if err != nil {
@@ -103,22 +103,26 @@ func TestLive_UserErasedConsumer_ScrubsBothPIICopies(t *testing.T) {
 		t.Fatalf("Handle: %v", err)
 	}
 
-	// Meta index scrubbed (the 2nd PII copy).
-	var iName, iStatus string
-	if err := pool.QueryRow(ctx, `SELECT pc_name, status FROM player_character_index WHERE user_ref_id=$1`, userA).Scan(&iName, &iStatus); err != nil {
-		t.Fatalf("query pc index: %v", err)
+	// The binding is GONE, not tombstoned. `actor_control_binding` holds no PII
+	// to overwrite, so erasure owes removal of the reference itself — the
+	// `@erasure_method: hard_delete` migration 034 declares.
+	var left int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM actor_control_binding WHERE user_ref_id=$1`, userA).Scan(&left); err != nil {
+		t.Fatalf("query actor bindings: %v", err)
 	}
-	if iName != "[erased]" || iStatus != "deleted" {
-		t.Errorf("player_character_index not scrubbed: pc_name=%q status=%q", iName, iStatus)
+	if left != 0 {
+		t.Errorf("actor_control_binding not erased: %d row(s) still name the user", left)
 	}
-	// The meta scrub self-audited via MetaWrite.
+	// ...and it went through MetaWrite, so it self-audited. Without this the
+	// assertion above would also pass on a raw DELETE that bypassed the audit.
 	var audits int
 	if err := pool.QueryRow(ctx,
-		`SELECT count(*) FROM meta_write_audit WHERE table_name='player_character_index'`).Scan(&audits); err != nil {
+		`SELECT count(*) FROM meta_write_audit WHERE table_name='actor_control_binding'`).Scan(&audits); err != nil {
 		t.Fatalf("count audit: %v", err)
 	}
 	if audits < 1 {
-		t.Error("meta scrub must write a meta_write_audit row (MetaWrite self-audit)")
+		t.Error("meta erasure must write a meta_write_audit row (MetaWrite self-audit)")
 	}
 
 	// Idempotent re-delivery: re-Handle is a no-op (no error).

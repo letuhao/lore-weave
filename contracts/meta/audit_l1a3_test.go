@@ -27,7 +27,6 @@ func TestPkColumnFor_L1A3Tables(t *testing.T) {
 		{"pii_registry", "user_ref_id"},
 		{"pii_kek", "kek_id"},
 		{"user_consent_ledger", "user_ref_id"},
-		{"player_character_index", "pc_index_id"},
 		// Cycle 4 new
 		{"meta_write_audit", "audit_id"},
 		{"meta_read_audit", "audit_id"},
@@ -76,7 +75,7 @@ func TestAllowlist_L1A3AuditTables_Loaded(t *testing.T) {
 	// Regression: cycle 2 + cycle 3 tables still present
 	for _, tbl := range []string{
 		"reality_registry", "session_cost_summary",
-		"pii_registry", "pii_kek", "user_consent_ledger", "player_character_index",
+		"pii_registry", "pii_kek", "user_consent_ledger", "actor_control_binding",
 	} {
 		if !a.AllowsTable(tbl) {
 			t.Errorf("regression: allowlist lost prior-cycle table %s", tbl)

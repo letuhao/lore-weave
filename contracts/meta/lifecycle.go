@@ -189,8 +189,12 @@ func pkColumnFor(table string) string {
 		return "kek_id"
 	case "user_consent_ledger":
 		return "user_ref_id"
-	case "player_character_index":
-		return "pc_index_id"
+	// `player_character_index` removed with migration 035. Its successor
+	// `actor_control_binding` is deliberately ABSENT rather than renamed here:
+	// it has no state machine (the `status` enum this lookup served was 5/6
+	// presence, mortality and a UI preference), and its PK is COMPOSITE —
+	// (reality_id, actor_id) — which this single-column switch cannot express.
+	// Mirrors crates/meta-rs/src/transitions.rs default_pk_lookup.
 	// Cycle 4 — L1.A-3 audit tables
 	case "meta_write_audit",
 		"meta_read_audit",
