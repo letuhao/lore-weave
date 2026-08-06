@@ -100,9 +100,16 @@ SUITE = "tests/test_cp1_membrane.py"
 ALLOWLIST = ROOT / "contracts" / "agentruntime-census-silent.txt"
 
 
-def _with_condition(node: ast.Raise):
-    """The refusal **and the test that reaches it**, as one expression."""
-    cond = getattr(_with_condition, "_ctx", {}).get(id(node))
+def _with_condition(node: ast.Raise, cond=None):
+    """The refusal **and the test that reaches it**, as one expression.
+
+    🔴 The condition used to be looked up in a module-level dict keyed by `id(node)`.
+    **CPython reuses `id()` for freed objects**, so across parses — and across modules within one
+    run — a raise could pick up a condition belonging to a node that no longer existed. The digest
+    was therefore **non-deterministic**, and the gate caught it exactly as designed: the same site
+    reported two different digests between a `--write` and the check run that followed it, one
+    `NEWLY SILENT` and one `NOW GUARDED` for one refusal. An identity is not a key.
+    """
     if cond is None:
         return node
     return ast.Expr(value=ast.Tuple(elts=[ast.parse(ast.unparse(cond)).body[0].value,
@@ -110,7 +117,7 @@ def _with_condition(node: ast.Raise):
                                           or ast.Constant(value=None)], ctx=ast.Load()))
 
 
-def _shape_digest(node: ast.Raise) -> str:
+def _shape_digest(node: ast.Raise, cond=None) -> str:
     """A digest of the refusal's SHAPE, stable across interpreters and blind to its prose.
 
     🔴 **THE FIRST VERSION USED `ast.dump`, AND THAT BROKE CI IN A WAY THAT LOOKED LIKE A
@@ -139,7 +146,7 @@ def _shape_digest(node: ast.Raise) -> str:
     # the enclosing branch test also takes the collision groups from 4 to **0** while a full reword
     # sweep still moves **0 of 68** rows — which refutes the framing I had accepted, that a stable id
     # and a prose-blind id were incompatible and one had to be chosen. The trade was never that.
-    shape = ast.parse(ast.unparse(_with_condition(node))).body[0]
+    shape = ast.parse(ast.unparse(_with_condition(node, cond))).body[0]
     for n in ast.walk(shape):
         if isinstance(n, ast.Constant) and isinstance(n.value, str):
             n.value = "\u0000"
@@ -156,16 +163,11 @@ def _sites(tree: ast.AST, mod: str) -> list[tuple[str, ast.Raise]]:
     out: list[tuple[str, ast.Raise]] = []
     seen: dict[str, int] = {}
 
-    def walk(node, qual: str):
+    def walk(node, qual: str, cond=None):
         for child in ast.iter_child_nodes(node):
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 walk(child, f"{qual}.{child.name}" if qual else child.name)
                 continue
-            if isinstance(child, (ast.If, ast.While)):
-                for inner in ast.walk(child):
-                    if isinstance(inner, ast.Raise):
-                        _with_condition._ctx = getattr(_with_condition, "_ctx", {})
-                        _with_condition._ctx.setdefault(id(inner), child.test)
             if isinstance(child, ast.Raise):
                 exc = child.exc
                 name = "reraise"
@@ -181,9 +183,9 @@ def _sites(tree: ast.AST, mod: str) -> list[tuple[str, ast.Raise]]:
                 # arriving instead of as nothing at all.
                 key = f"{mod}::{qual or '<module>'}::{name}"
                 seen[key] = seen.get(key, 0) + 1
-                digest = _shape_digest(child)
+                digest = _shape_digest(child, cond)
                 out.append((f"{key}::{seen[key]}::{digest}", child))
-            walk(child, qual)
+            walk(child, qual, child.test if isinstance(child, (ast.If, ast.While)) else cond)
 
     walk(tree, "")
     return out
@@ -256,10 +258,21 @@ def census(verbose: bool = False) -> dict[str, bool]:
     pkg, cs = mirror / _PKG_REL, mirror / _CS_REL
     import atexit as _atexit
     import shutil as _shutil
+    import tempfile
     # \U0001F534 108 directories, 8.4 GB measured — one 237 MB copy per run, never removed, and one of
     # them landed inside the repo and reddened an unrelated test that a verifier nearly filed as a
     # finding. An instrument that leaves debris is an instrument that manufactures findings.
-    _atexit.register(lambda: _shutil.rmtree(mirror, ignore_errors=True))
+    # 🔴 **THIS DELETED THE SYSTEM TEMP DIRECTORY.** The guard for this function monkeypatches
+    # `_mirror` to return `fixture.parent` — and `mkdtemp` returns a directory INSIDE temp, so its
+    # parent is `%TEMP%` itself. Every run of that test then registered `rmtree(%TEMP%)` and executed
+    # it on exit. It destroyed this census's own mirror mid-run, and it is the most likely cause of
+    # the six "another process deleted my output file" failures I spent the evening blaming on the
+    # environment. **A cleanup must only remove what it created**, so this refuses anything that is
+    # not a directory this function made.
+    if mirror.name.startswith("lw-census-") and mirror.parent == pathlib.Path(tempfile.gettempdir()):
+        _atexit.register(lambda: _shutil.rmtree(mirror, ignore_errors=True))
+    else:
+        print(f"census: not registering cleanup for {mirror} — this function did not create it")
     for path in sorted(pkg.glob("*.py")):
         if path.name == "__init__.py":
             continue
