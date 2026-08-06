@@ -911,10 +911,119 @@ are the two things an implementer lifts verbatim.
 | **slice 2** | *"the `DP-R3` lint, shipped RED"* | `DP-K11` already specifies it: `dp::forbid_raw_kernel_client`, an explicit 7-path forbidden-import list (`sqlx::PgPool`, `redis::Client`, `deadpool_*`…), scoped by a **`dp-crate = true` Cargo marker** rather than a directory list — which is the `NV-3`-correct shape, already written |
 | **new** | — | **`DP-Ch1/Ch2/Ch3` (`FLOW-9`) belongs in the slice order.** `ChannelScoped` in slice 1 is a marker for a scope key whose table does not exist |
 
+### `FLOW-12` — 🔴 the tier system has **no test strategy**, its own spec says so, and the phase closed as complete anyway
+
+`99` **`Q13`**, verbatim and still `open`:
+
+> *"How do we test that a feature actually honors its declared tier? E.g., if a feature declares T2
+> but occasionally writes T3 under error conditions, how is this caught? … **Why deferred:** test
+> strategy depends on SDK API (Phase 2). Phase 1 only asserts that tier choice is locked at design
+> time (`DP-A9`) and that the Rulebook review gate requires a tier table (`DP-R2`)."*
+
+**Its stated precondition was met the same day it was written.** `Q1` and `Q14` both resolved
+2026-04-25 — *"the SDK API is concrete"* — and `Q13` was never picked up. Then the file closes:
+*"🎉 Phase 4 design phase is COMPLETE — every design action that could be taken has been taken."*
+
+⇒ Read `Q13`'s own two sentences again: **`DP-A9` and `DP-R2` are the entire enforcement of the tier
+system, and both are REVIEW-GATE claims.** A human reads a table and agrees. Nothing observes a
+running feature. That is `non-vacuity` at the tier layer — *a check that cannot fail* — and it is the
+one thing this repo has a whole standard about. **The spec identified it, classified it correctly,
+and shipped the phase as complete with it open.**
+
+This lands directly on the slice order: `DP-R2`'s tier table (the debt this run has carried since it
+started) is **the weaker half**. The mechanism half is `Q13`, it is unbuilt, and it belongs with
+slice 1 — a tier trait with no runtime observation is a comment with a type.
+
+### `FLOW-13` — `Q2` waits on a service that left the game loop
+
+`Q2` (the Python↔Rust proposal bus) is `open`, *"deferred: user flagged roleplay-service as a draft…
+locking a bus protocol to a draft service would constrain that redesign. **Dependencies:**
+roleplay-service design maturity."*
+
+Since then, and none of it written back into `Q2`:
+
+| | |
+|---|---|
+| `AUD-F16` root 7 | *"`roleplay-service` orchestrates LLM calls"* is **stale** — **roleplay-service exits the game loop entirely** |
+| `REC-77` | the **`LlmDriver` in `commit-service` is the LLM-Originator** — and it is **BUILT** (`services/commit-service/src/llm_driver.rs`) |
+| `15` §2 + `admission.rs` | the bus itself is **built** — Redis Streams `XREADGROUP`, per-cell, with the T6 proposal shape parsed at admission |
+
+⇒ **The question survives its own subject.** The dependency it names cannot mature, because it is no
+longer in the loop; the thing it was going to design got built by a different route. Not a defect in
+anything shipped — but an `open` row that nothing will ever close is indistinguishable, to the next
+reader, from work remaining.
+
+### `FLOW-14` — `OOS-2`'s answer is a crate that does not exist, and `22` cites it as the ✅ Do
+
+`OOS-2` resolves cross-service aggregate-type sharing to *"a shared `crates/loreweave-aggregates`
+crate that all DP-using services depend on"*, and `22 §5`'s anti-pattern table makes it normative:
+
+> ❌ *Build a runtime aggregate type registry across services* → ✅ *Use a shared workspace crate
+> (`crates/loreweave-aggregates/`)* → **`OOS-2`**
+
+**Measured: `crates/loreweave-aggregates` does not exist.**
+
+⇒ Slice 1 creates **two** crates, not one — `dp` holds the tier + scope **traits**, and
+`loreweave-aggregates` holds the **types** that implement them — or it knowingly collapses them and
+records why. Deciding that by accident is how a runtime registry gets built later, which is the
+exact thing `OOS-2` refuses.
+
+### `FLOW-15` — the SLO doc says T1 is not exercised at V1. The thing being built puts T1 on the critical path
+
+`DP-S1` (LOCKED): **V1 — Solo RP · 1 concurrent player per reality · *"T2/T3 only; T0/T1 not
+exercised"***. And **`Q20` Part A** leaves the **whole `DP-S*` table unvalidated** — *"DP-S\* numbers
+anchor on MMO scale… may be over-specced. No design action available without V1 prototype
+measurement."*
+
+Against that, the model actually under construction:
+
+- `GDA-A1` makes **island memory authoritative while Hot**, and maps it to `DP-X1`'s **T1** row.
+- `20` §5 ships **four RTM movement frames in the v1 client wire contract** — `MoveIntent`,
+  `PositionPatch`, `SnapBack`, `ModeFlip` — which is the T1 broadcast lane.
+- `Q18` itself rewrote T1's examples **to** the channel model (presence, typing, emote) — i.e. the
+  tier the scale doc says V1 skips is the tier Phase 4 spent a question re-aiming at V1's own shapes.
+
+⇒ **Slice 4 cannot ship T2/T3 first and defer T1 on the spec's authority.** The authority says T1 is
+idle at V1, and it was written before the island model existed. This is **`Q20` Part A** in a form that
+does not need a prototype to see: it is not a *number* being wrong, it is a *row* being wrong.
+
+### `FLOW-16` — the LOCKED spec cannot be quoted without breaking the repo's own language law
+
+Found by **being blocked by it**: `doc-language-gate` refused the commit above because I had quoted
+`Q20`'s two sub-parts **verbatim**, and the LOCKED spec spells them in Vietnamese.
+
+**Measured — 3 of the 25 locked files** (`_index.md` · `21_llm_turn_slot.md` · `99_open_questions.md`)
+carry it, and not as prose: it is a **STABLE IDENTIFIER**, cited across all three, used as a section
+heading and as a status-table row key. The two sub-part labels, quoted exactly because the spelling
+IS the finding:
+
+<!-- doc-language-gate: ok -- the non-English token IS the subject matter: this finding reports a Vietnamese IDENTIFIER inside a LOCKED English spec, and paraphrasing it would erase the defect being reported. -->
+> `docs/03_planning/LLM_MMO_RPG/06_data_plane/99_open_questions.md:301` — `### Phần A — Quantitative DP-S* rescale 🟡 STILL DEFERRED`
+> `docs/03_planning/LLM_MMO_RPG/06_data_plane/99_open_questions.md:305` — `### Phần B — LLM turn slot primitive + pattern doc ✅ RESOLVED`
+<!-- doc-language-gate: end -->
+
+Why this is not cosmetic:
+
+- **An identifier that cannot be grepped in the language of the corpus is not an identifier.** An
+  agent searching `Q20 Part A` finds nothing; any id-keyed gate cannot match it.
+- **`doc-language-gate` is a staged-diff gate** — it scans *lines added by staged files*. That is the
+  right scope for what it does and it means every pre-existing file is **default-uncovered** (`NV-3`
+  again, and this time benignly, since a retro-sweep is a different tool).
+- ⇒ The practical cost landed on this very session: **quoting the locked spec faithfully is a
+  gate failure.** The correct output — *"`Q20` Part A"* — is now a **paraphrase of an id**, which is
+  precisely the drift the id existed to prevent.
+
+Not fixed here: renaming an id inside a LOCKED file is an `AMEND`, so it joins slice 0's bundle
+rather than being patched past. Recorded with the rest.
+
+*(Also confirmed in passing, and it closes `FLOW-7` beyond argument — `_index.md` line 60: **"SDK
+implementation (Phase 2b `dp` / `dp-derive` / `dp-clippy` crates)"**. The index names the three
+crates itself.)*
+
 ### Stated limit of this audit
 
 Read in full: `22`, `06`, **`04c`**, **`04d`**, **`12`**, `17`, `20`, `38 §0–§4`, `37 §1`,
-`19 §12b/§15`. **Measured but not read in full:** `07`/`08`/`13`–`21`/`99`. Every count above is a command, and every command
+`19 §12b/§15`, **`08`**, **`99`**. **Measured but not read in full:** `07`/`13`–`21`. Every count above is a command, and every command
 is printed beside its claim. What is *not* claimed: that the nine unread files contain no further
 seam. They are the remaining work of this review.
 
