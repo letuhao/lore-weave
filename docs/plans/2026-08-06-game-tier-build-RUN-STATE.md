@@ -1020,10 +1020,71 @@ rather than being patched past. Recorded with the rest.
 implementation (Phase 2b `dp` / `dp-derive` / `dp-clippy` crates)"**. The index names the three
 crates itself.)*
 
+### `FLOW-17` — the BUILD corrected the locked spec twice, correctly, and neither correction was filed
+
+`13` is the one place where code met the spec, and it is worth saying first that **the code was
+right both times.** `0014_channel_ordering.up.sql`'s header:
+
+> *"⚠ **SPEC CORRECTION** (plan D1 / **REC-80 candidate**): `DP-Ch11` asks for
+> `UNIQUE (reality_id, channel_id, channel_event_id)` on the event log — **IMPOSSIBLE** here:
+> `events` is `PARTITION BY RANGE (recorded_at)`, and PG requires the partition key inside any
+> parent unique constraint."*
+
+That is a genuine defect in a LOCKED file — `DP-Ch11`'s DDL cannot execute — and the migration ships
+the correct substitute: a **non-partitioned `channel_event_index`** carrying the spec's exact PK,
+written in the same transaction, plus a `channel_writer_state` CAS that is **both** the allocator
+**and** the `DP-A16` fence. `0015` then adds what `CNC-F9` found missing — *"nothing assigns a
+channel, notices a dead holder, or reassigns"* — because `DP-Ch12`'s CP does not exist, and it puts
+issuance **in the same row**, with the seam stated: *"when the platform CP lands it takes over
+ISSUANCE POLICY over this same table with this same fence."*
+
+**And then:**
+
+| | measured |
+|---|---|
+| is the `DP-Ch11` partition correction in the reconciliation register? | **no** — `grep 'PARTITION BY RANGE\|partition key\|channel_event_index'` over `19` **and** all 25 DP files returns **nothing** |
+| does `REC-80` mean this? | **no — `REC-80` is already taken.** It is the `GEO_001` world-vs-continent row, applied 2026-07-30 |
+| register's highest id | **`REC-98`** — so the intended row was never filed under any id |
+
+⇒ **Two correct spec corrections exist only as SQL comments.** `19` §15a named this direction
+*"the healthy direction of drift — code teaching the docs"* and filed three rows for it; these two
+got a `candidate` label pointing at an occupied id, and stopped there. The locked `DP-Ch11` still
+prints DDL that will not run.
+
+### `FLOW-18` — `ChannelId` is three different types in three artifacts, and the built one lost the property it existed for
+
+| artifact | type |
+|---|---|
+| **LOCKED `DP-Ch1`** | `pub struct ChannelId(pub(crate) Uuid)` — *"newtype with **module-private constructor** — **cannot be forged by feature code**"* |
+| **built** `crates/dp-kernel/src/channel.rs:31` | `pub struct ChannelId(pub i64)` |
+| **wire** `contracts/game-wire/common.schema.json` | `Uint64String` — *"`channel_id` … BIGINT server-side"* |
+
+Two of three agree on **64-bit**, so the `Uuid` is the odd one and the build's choice is defensible
+(a `BIGINT` allocator is what `DP-Ch11`'s counter actually wants). **What is not defensible is
+`pub`.** `DP-Ch1`'s newtype is a *parallel shape to `RealityId`*, and `DP-A12`'s whole claim for
+`RealityId` is that it *"gates cross-reality leakage at the type level"* by being unforgeable. The
+shipped `ChannelId` has a **public field**: any caller can write `ChannelId(7)`.
+
+⇒ **This is `SEALED-SUBJECT` in a third costume** — a value whose supplier is also its judge. Same
+week, same tier, and the run has now recorded it three times: `actor` on the proposal, `event_category`
+under `PID-D5`, and here.
+
+### `FLOW-19` — the lease table points at a tree that is not there
+
+`DP-Ch13` locks `channel_writer_state.channel_id UUID PRIMARY KEY **REFERENCES channels(id)**`.
+Shipped: `PRIMARY KEY (reality_id, channel_id)`, `channel_id BIGINT`, **no foreign key** — which it
+could not have had, because `channels` has no migration (`FLOW-9`).
+
+So the shipped stack is: a **writer lease** on a channel, a **total order** within a channel, an
+**epoch fence** protecting a channel — and **no definition of a channel.** Nothing can answer *does
+this channel exist · who is its parent · is it Active or Dissolved*, which is exactly the set
+`DP-Ch1`, `DP-Ch31` and the ancestor-chain visibility rules are built on. The hard half shipped
+against a structural half that was never poured.
+
 ### Stated limit of this audit
 
 Read in full: `22`, `06`, **`04c`**, **`04d`**, **`12`**, `17`, `20`, `38 §0–§4`, `37 §1`,
-`19 §12b/§15`, **`08`**, **`99`**. **Measured but not read in full:** `07`/`13`–`21`. Every count above is a command, and every command
+`19 §12b/§15`, **`08`**, **`99`**, **`13`**. **Measured but not read in full:** `07`/`14`–`21`. Every count above is a command, and every command
 is printed beside its claim. What is *not* claimed: that the nine unread files contain no further
 seam. They are the remaining work of this review.
 
