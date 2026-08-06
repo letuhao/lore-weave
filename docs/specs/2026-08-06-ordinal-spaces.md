@@ -105,6 +105,36 @@ by `PluginSet` being a `u32` bitmask — 32 bits, 32 plugins — and the crate
 already states that in a `const` assertion directly below the alias. So the
 width has a real source and is aliased to an unrelated one.
 
+> 🔴 **CORRECTION to this section's first draft, 2026-08-06.** It ended *"widening
+> the quantity table silently widens the plugin ceiling today, and nothing would
+> notice."* **The second half is FALSE.** The `const` assertion below the alias
+> notices: its own comment records it **measured failing at 16 and at 64**, with
+> `error[E0080]` naming the line. It is neither vacuous nor unbitten, and calling
+> it absent was the register repeating the error the register exists to catch.
+>
+> **The real defect is smaller and of a different kind — a COUPLING, not a
+> safety hole**, and measuring both numbers is what shows it:
+>
+> | | where 32 comes from |
+> |---|---|
+> | `MAX_DECLARED_QUANTITIES` | **CHOSEN.** Doc 35 §4.2 measured the per-actor array: `[i32;32]` puts `Actor` at ≈280 B, `[i32;64]` at ≈408 B. `quantity.rs` adds *"raising it is cheap and does not move any existing digest"* |
+> | `MAX_PLUGINS` | **FORCED.** `PluginSet(u32)` holds exactly 32 bits |
+>
+> The alias makes the FORCED number look as though it follows the CHOSEN one. So
+> an author raising quantities to 64 — which `quantity.rs` calls cheap — hits a
+> compile error in `actor-hub`. The error is correct and the shape is backwards:
+> the quantity table is blocked by a bitmask that has nothing to do with it, and
+> the only ways through are widening `PluginSet` to a `u64` (an unrelated change)
+> or breaking the alias.
+>
+> **The proposed fix is unchanged and its reason is now sharper:** deriving
+> `MAX_PLUGINS` from `PluginSet`'s own width DECOUPLES them. Quantities go to 64
+> and simply work; plugins stay at 32 because that is what a `u32` holds. And the
+> assertion goes away because it can no longer fail — which is exactly what
+> `LAYER_SLOTS` says deriving a width is for. There is no reason plugins must not
+> exceed quantities: `PluginDecl` permits a plugin that declares **no** quantities
+> at all, so the two spaces have no relationship to preserve.
+
 The correct pattern ships in the same crate, on the neighbouring space:
 
 > *"The width is `LAYER_SLOTS`, **derived from `FoldLayer`'s own integer type** —
@@ -113,8 +143,7 @@ The correct pattern ships in the same crate, on the neighbouring space:
 
 ⇒ **Proposed:** `MAX_PLUGINS` derives from `PluginSet`'s own width, and the
 `const` assertion below it goes away because there is nothing left to keep in
-step. Widening the quantity table then stops silently widening the plugin
-ceiling, which today it does — and which nothing would notice.
+step.
 
 ## 5. The third kind the measurement found — RUNTIME-DERIVED
 
