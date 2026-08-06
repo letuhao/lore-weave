@@ -2275,7 +2275,13 @@ def _unconditional_calls(body, pred, narrows=None):
                        for h in s.handlers + [s.finalbody] if h is not None
                        for n in ast.walk(h if not isinstance(h, list)
                                          else ast.Module(body=h, type_ignores=[]))):
-                yield from _unconditional_calls(s.body, pred, narrows)
+                # 🔴 **`s.body[:1]` — W4's rule, and it is ONE TOKEN, five rounds late.** R16-A
+                # specified it: *accept a `try` body's arm only when no statement precedes it in the
+                # chain.* A `try` is entered unconditionally, so its FIRST statement runs; the second
+                # runs only if the first did not raise, which is the whole reason a `try` is there.
+                # Every round since accepted the entire body and every round a verifier measured the
+                # cost. Driven at 9/9 shapes, full suite at baseline.
+                yield from _unconditional_calls(s.body[:1], pred, narrows)
 
 
 def _turn_entry_calls():
@@ -3371,4 +3377,41 @@ from app.client.knowledge_client import KnowledgeClient
                     inst.test_EVERY_TERMINAL_WRITE_BINDS_THE_DRAINED_VALUE__not_a_literal_None()
             finally:
                 path.unlink(missing_ok=True)
+
+    def test_THE_RECORDER_DOOR_IS_BOUNDED__and_a_CARRIED_recorder_is_the_new_failure_mode(self):
+        """🔴 **The parameter fixed a false NEGATIVE and opened a false POSITIVE I never
+        asserted.** A recorder that outlives its turn reports THAT turn's outage for THIS one - 228
+        sequences, measured exhaustively by a verifier - and the failure is U-2's founding defect
+        verbatim: telling a healthy turn its tools are unreachable. My test drove the *fresh*
+        recorder case; the **carried** case, which this parameter makes possible for the first time,
+        was the one it never drove.
+
+        And the door carried no type bound at all while every other door in the module does: five
+        argument types crashed it from inside prompt assembly, the sixth occurrence of bounding a
+        container without bounding what it holds."""
+        import contextvars
+
+        from app.services import instrument
+
+        for bad in (42, 'x', [], {}, object()):
+            with pytest.raises(TypeError, match='recorder'):
+                instrument.catalogue_outage_registered(recorder=bad)
+
+        # The carried case, driven rather than reasoned about: turn A's recorder must not answer
+        # for turn B. It is the caller's contract - the one wired caller builds and reads in the
+        # same function - and this asserts the shape that would violate it.
+        def _carried():
+            instrument.arm_turn_surface()
+            instrument.record_catalogue_unavailable(stage='s', reason='r')
+            rec_a = instrument.AdvertisedToolsRecorder()
+            rec_a.absorb(instrument.surface_withheld.get())
+            instrument.arm_turn_surface()                    # turn B
+            return instrument.catalogue_outage_registered(), rec_a.catalogue_outage()
+
+        no_recorder, carried_still_holds = contextvars.copy_context().run(_carried)
+        assert no_recorder is False, 'turn B saw turn A outage with no recorder passed'
+        assert carried_still_holds is True, (
+            'turn A recorder forgot its own row, so the carried-recorder hazard is not what this '
+            'test claims and the assertion above proves nothing'
+        )
 

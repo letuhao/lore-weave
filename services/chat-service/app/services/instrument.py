@@ -561,8 +561,29 @@ def catalogue_outage_registered(recorder=None) -> bool:
     # The recorder is passed rather than held in a ContextVar: its lifetime problem was the whole
     # defect of the two earlier attempts, and a caller that has one already knows which turn it is
     # for. `voice_stream_response` constructs it at `:242` and reads here at `:422`, same function.
-    if recorder is not None and recorder.catalogue_outage():
-        return True
+    # 🔴 **AND THE PARAMETER CREATED A FALSE POSITIVE NOBODY ASSERTED.** It fixes a false NEGATIVE
+    # (a drain erasing the turn's outage) and opens a false POSITIVE the flag never had: a recorder
+    # that outlived its turn reports THAT turn's outage for THIS one — 228 sequences, measured
+    # exhaustively, and the failure is **U-2's founding defect verbatim**: telling a healthy turn its
+    # tools are unreachable. My test asserted the *fresh*-recorder case; the **carried** case, which
+    # this parameter makes possible for the first time, was the one it never drove. *A fixture chosen
+    # for convenience answers a different question* — the third party in this package to earn that
+    # sentence, after a verifier and myself.
+    #
+    # So the door is bounded and the contract is stated instead of assumed: **the recorder must be
+    # this turn's**, and the one wired caller (`voice_stream_response`) constructs it and reads it in
+    # the same function. `type(...) is` on the argument because five argument types crashed this
+    # door from inside prompt assembly — the sixth occurrence of a bound on a container without a
+    # bound on what it holds.
+    if recorder is not None:
+        if type(recorder) is not AdvertisedToolsRecorder:
+            raise TypeError(
+                f"catalogue_outage_registered(recorder=) got a {type(recorder).__name__}. It reads "
+                f"THIS TURN's recorder; anything else is either a crash inside prompt assembly or a "
+                f"previous turn's answer reported as this one's."
+            )
+        if recorder.catalogue_outage():
+            return True
     if catalogue_outage.get():
         return True
     sink = surface_withheld.get()
