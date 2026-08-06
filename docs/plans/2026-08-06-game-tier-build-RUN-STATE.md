@@ -523,6 +523,51 @@ and mortality in a lookup table. Keep the binding, drop those three.
 > **that is its trigger firing, not a regression.** It is the one deferral in
 > this project whose mechanism is designed to announce its own discharge.
 
+### And a register line that is WRONG — measured while answering this
+
+The handoff says *"No producer, so nothing depends on it and deciding now would
+be guessing."* **The first half is true; the second is false.**
+
+```
+services/meta-worker/pkg/user_erased_writer/pglive/pglive.go:58
+   SELECT DISTINCT reality_id FROM player_character_index WHERE user_ref_id = $1
+```
+
+**The GDPR user-erasure path READS this table** — to find which realities a user
+has an actor in — and a second leg scrubs `pc_name` through `MetaWrite`. Nothing
+WRITES it, so it is empty and both legs run over nothing. That is currently
+correct, because nothing records a user→actor binding anywhere; but it means
+something stronger than "dormant":
+
+> **The erasure path was built FOR this table and is waiting for it.** Landing
+> the binding does not add work to GDPR — it **completes a path that already
+> ships.** Same shape as `M1`: `QTY-A4` said a pool's `current` lives on *"the
+> actor (`pools[ordinal]`)"* and that slot had never existed; the hub built it
+> and `M1` connected it.
+
+⇒ This strengthens the argument above rather than complicating it: the erasure
+lookup already queries **this table, in the meta DB.** Putting the binding
+anywhere else orphans a shipped GDPR path and requires rewriting it.
+
+**One consequence worth naming:** removing `pc_name` does not only delete dead
+vocabulary — it removes the **last PII in the table.** What remains is
+`(uuid, uuid, uuid)`, and the meta scrub leg can retire with it.
+
+### What is DEAD versus what INVERTED
+
+The PO asked whether this is just old pc/npc confusion the new design no longer
+needs. **Two thirds of it, yes — same call and same reason as `hp`.**
+`npc_converted` is a transition between two kinds that no longer exist;
+`deceased` is mortality in a lookup table, the same second-SSOT shape `0017`
+removed.
+
+**The third part inverts.** The new framing is *"a player is not a kind of actor
+— it is a CONTROL INTERFACE: a human with a GUI driving an actor."* If "player"
+is no longer a KIND, then `(user, reality, actor)` is the only thing that makes a
+player a player. **Removing the PC/NPC distinction does not delete the binding;
+it makes the binding the entire concept.** The dead half is the kind-vocabulary;
+the live half became more load-bearing, not less.
+
 **Still the PO's to take.** This section is the argument, not the decision.
 
 ## 7. Registers — append as it happens
