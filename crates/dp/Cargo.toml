@@ -1,0 +1,20 @@
+[package]
+name = "dp"
+version = "0.1.0"
+edition = "2021"
+description = "Data-plane SDK contract: DP-T0..T3 tiers, DP-Ch4 scopes, DP-K1 aggregate."
+
+[dependencies]
+
+[dev-dependencies]
+trybuild = { workspace = true }
+
+# NOTE — `[package.metadata.dp] dp-crate = true` was here and has been REMOVED
+# (`V1-F12`). It is `DP-K11`'s marker for distinguishing a DP crate from a
+# feature crate, and it is the right shape (a manifest key travels with the
+# crate; a hardcoded directory list is default-uncovered for any crate created
+# tomorrow, NV-3) — but its only reader is the `dp::forbid_raw_kernel_client`
+# lint, which is SLICE 2 and does not exist. A declared input with no consumer
+# is the orphan shape `scripts/orphan-model-gate.py` refuses, and shipping it
+# early buys nothing except a key that looks load-bearing to the next reader.
+# It arrives in the same commit as the lint that reads it.

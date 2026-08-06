@@ -36,6 +36,13 @@ members = [
     # --cfg loom). dp-kernel re-exports CircuitBreaker from here; public path
     # dp_kernel::resilience::CircuitBreaker is unchanged.
     "crates/breaker-core",
+    # 2026-08-07 (slice 1 of the sealed SDK build order) — `dp`, the data-plane
+    # SDK CONTRACT the 25 LOCKED docs of 06_data_plane/ name and nothing had
+    # built. NOT `dp-kernel`: that crate is 02_storage in Rust (event store,
+    # outbox, snapshot, projection runner) and took this prefix five weeks after
+    # the DP lock, by a different track — see FLOW-7 / REC-100. `dp` holds the
+    # tiers, the scopes and the aggregate contract, and NO I/O by design.
+    "crates/dp",
     # 2026-08-02 (actor hub, feature #1) — the `GoneState` existence lattice,
     # extracted DOWN out of dp-kernel::entity_status so a PURE crate can hold
     # it. dp-kernel re-exports it; `dp_kernel::entity_status::GoneState` is

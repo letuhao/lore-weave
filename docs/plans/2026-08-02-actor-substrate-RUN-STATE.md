@@ -20,7 +20,7 @@
 > round-12 verifier measured the flat claim FALSE, and the handoff was corrected while this document
 > kept it · every mutation in
 > `scripts/gate-bite-harness.py` reds its gate's self-test (run it; no count is asserted here, because a
-> hand-typed one went stale eight times) · the **47** gate scripts the pre-commit hook wires all green ·
+> hand-typed one went stale eight times) · the **48** gate scripts the pre-commit hook wires all green ·
 > the two contracts are **207** and **157** lines.
 >
 > **Cold-start adversarial verifiers, one round per fix pass — every finding fixed or answered. The

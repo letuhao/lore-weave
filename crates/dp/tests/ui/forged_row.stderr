@@ -1,0 +1,19 @@
+error[E0451]: fields `type_name`, `tier`, `scope`, `coherency`, `cache_ttl`, `write_ack_p99` and `survives_store_outage` of struct `TierRow` are private
+  --> tests/ui/forged_row.rs:26:9
+   |
+25 |     let forged = TierRow {
+   |                  ------- in this type
+26 |         type_name: "player_wallet",
+   |         ^^^^^^^^^ private field
+27 |         tier: TierLevel::T3,
+   |         ^^^^ private field
+28 |         scope: ScopeKind::Reality,
+   |         ^^^^^ private field
+29 |         coherency: Coherency::None,
+   |         ^^^^^^^^^ private field
+30 |         cache_ttl: Some(Duration::from_secs(24 * 60 * 60)),
+   |         ^^^^^^^^^ private field
+31 |         write_ack_p99: Duration::from_millis(1),
+   |         ^^^^^^^^^^^^^ private field
+32 |         survives_store_outage: true,
+   |         ^^^^^^^^^^^^^^^^^^^^^ private field

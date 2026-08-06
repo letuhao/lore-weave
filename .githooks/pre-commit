@@ -94,6 +94,22 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # denylist. Scans the whole tree, so it does not need a staged-file trigger.
 "$PY" "$ROOT/scripts/crate-purity-gate.py"
 
+# ONE AGGREGATE NAME BINDS ONE TIER AND ONE SCOPE (DP-A9 / DP-Ch5). `crates/dp`
+# makes tier and scope ASSOCIATED TYPES, and slice 1 was put to the PO on the
+# claim that a second tier is therefore unrepresentable. A cold-start refuter
+# compiled the counter-example in one file (V1-F1): `impl<T: Tier> DpAggregate
+# for Wallet<T>` gives ONE `TYPE_NAME` four tiers, picked per request — with
+# `survives_store_outage` flipping false->true on an env var, which is exactly
+# the REC-102c promise the crate exists to make un-flippable.
+#
+# rustc cannot object, BY CONSTRUCTION: each monomorphisation is individually
+# consistent and the contradiction lives across them, which is the one
+# comparison a type checker never makes. So the half the type system cannot hold
+# is held here. The legal tier/scope names are PARSED out of crates/dp/src, so
+# adding a tier extends this gate in the same edit rather than rotting it.
+# Whole-tree and unconditional: a new aggregate can land in any crate.
+"$PY" "$ROOT/scripts/dp-aggregate-gate.py"
+
 # NO FLOAT IN THE BYTES THAT BECOME A NAME (U-9, engine-substrate §3). A float
 # inside the hashed ruleset bytes lets two machines produce two digests for one
 # ruleset -- two realities with identical content and different NAMES. Server

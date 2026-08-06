@@ -1,0 +1,419 @@
+#!/usr/bin/env python3
+"""dp-slice1-bite — `S3.3`, the bite matrix for `crates/dp`.
+
+A guarantee nobody tried to break is a claim. Every mechanism slice 1 installs is
+therefore **removed, shown to let the violation through, and restored.**
+
+WHAT CHANGED AFTER `V1-F3`, AND WHY THE SCORE WAS THE FINDING
+--------------------------------------------------------------
+The first version of this file printed **`PASS 3/3`**. A cold-start refuter
+measured it and only **two** of the three were bites:
+
+* Leg (a) claimed to prove exclusivity by compiling `tests/ui/_bite_shape.rs` as
+  a control. That file **did not reference `dp` at all**, so it would have
+  compiled with the crate deleted — and its counterpart `two_tiers.rs` fails on
+  **`E0201`**, a Rust language rule provable with `trait Anything { type T; }`.
+  The leg established *"E0201 exists"*. `_bite_shape.rs` has been deleted rather
+  than left in place with a caveat: a control that controls for nothing is not
+  evidence, and the argument it was standing in for (that `DP-Ch4`'s
+  macro-checked shape is bypassable by hand-writing the impl) is made in prose in
+  `compile_fail.rs`, where it belongs.
+* Meanwhile `runtime_tier_branch.rs` **labelled itself unbiteable** and leg (a)
+  got a substitute instead of the same disclosure. The inconsistency was the
+  finding, not the missing bite.
+
+So this file now reports **bitten** and **unbiteable-and-named** separately, and
+`3/3` is gone. A leg with no removable guard is worth stating; it is not worth
+counting.
+
+THE THREE KINDS OF BITE HERE
+----------------------------
+  compile-fail  remove the mechanism from `crates/dp`, show the `tests/ui/` case
+                now COMPILES, restore
+  oracle        edit ONE SIDE of a spec/code pair, show `spec_oracle` goes RED
+                **naming both sides**, restore. This is the `V.2` claim: a
+                parser disagreeing with a `const` is the drift alarm that did
+                not exist while `FLOW-2` was accumulating.
+  gate          introduce the violation `dp-aggregate-gate` exists for, show it
+                reds, remove it
+
+`BDR-19` is why every mutation is verified before its check runs: a harness that
+fails to mutate prints the SAME string as a guard that fails to catch, and the
+wrong one of those is a finding about the guard. Every step asserts
+`mutated != original`, restores from an in-memory copy in a `finally`, and then
+**proves the restore by digest** rather than trusting that the `finally` ran
+(`V1-F8`).
+
+**`mutated != original` is necessary and NOT sufficient — `BDR-30`.** This
+harness's own first run proved it: the `DP-S5` leg's anchor changed
+`"| T2 writes"` to `"| T2 writes "`, one added space. The bytes differed, so the
+assertion passed; the parse was identical, because `table_cells` trims labels.
+The oracle stayed green and was RIGHT to. A mutation must change what the
+document **says**, not merely what it contains — and the only reason that is
+written here rather than mis-scored as a gate failure is that the harness
+reported the leg red and the anchor was re-read.
+
+Exit 0 = every bite bit; 1 = one did not.
+"""
+from __future__ import annotations
+
+import hashlib
+import subprocess
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+DP = REPO / "crates" / "dp"
+TIER = DP / "src" / "tier.rs"
+AGGREGATE = DP / "src" / "aggregate.rs"
+DOCS = REPO / "docs" / "03_planning" / "LLM_MMO_RPG" / "06_data_plane"
+
+
+def read_txt(path: Path) -> str:
+    """Read as BYTES then decode — never `Path.read_text`.
+
+    `V1-F8`'s digest check found this on its first run and it is not cosmetic:
+    `Path.read_text`/`write_text` open in text mode with `newline=None`, so on
+    Windows every restore rewrote every line ending as CRLF. The harness was
+    silently re-punctuating LOCKED design documents on every run — and `git
+    diff` showed NOTHING, because `.gitattributes` normalises to LF on read. The
+    damage was invisible to exactly the tool a reviewer would check with, which
+    is why the digest compares BYTES rather than asking git.
+    """
+    return path.read_bytes().decode("utf-8")
+
+
+def write_txt(path: Path, text: str) -> None:
+    path.write_bytes(text.encode("utf-8"))
+
+
+def restored_byte_identical(path: Path, original: str, label: str) -> bool:
+    """`V1-F8` — prove the restore, do not assume it.
+
+    Every mutation below is undone in a `finally` from a copy held in **process
+    memory**. That is the only copy: the mutated files are `crates/dp/src/*.rs`
+    and LOCKED design documents, so a crash between write and restore leaves the
+    tree wrong with nothing to diff against — and the first version of this
+    harness ran against files git did not yet track, so `git checkout` would not
+    have helped either. The digest is cheap and it turns "the `finally` ran" into
+    "the bytes are back".
+    """
+    now = hashlib.sha256(path.read_bytes()).hexdigest()
+    want = hashlib.sha256(original.encode("utf-8")).hexdigest()
+    if now != want:
+        print(f"  x {label}: RESTORE FAILED — {path.relative_to(REPO)} differs after the bite")
+        print(f"      sha256 now  = {now}")
+        print(f"      sha256 want = {want}")
+        print("      The tree is left MUTATED. Restore it before doing anything else.")
+        return False
+    print(f"  restored : sha256 {now[:16]}… identical to baseline")
+    return True
+
+
+def run(*args: str) -> tuple[int, str]:
+    p = subprocess.run(
+        args, cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace"
+    )
+    return p.returncode, (p.stdout or "") + (p.stderr or "")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# compile-fail bites
+# ─────────────────────────────────────────────────────────────────────────────
+def _rlib() -> str:
+    deps = REPO / "target" / "debug" / "deps"
+    cands = sorted(deps.glob("libdp-*.rlib"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not cands:
+        print("dp-slice1-bite: MISUSE — no libdp-*.rlib; run `cargo build -p dp` first",
+              file=sys.stderr)
+        sys.exit(2)
+    return str(cands[0])
+
+
+def compiles(ui_file: str) -> tuple[bool, str]:
+    """Ask rustc directly whether one UI case builds against the real crate."""
+    code, out = run("cargo", "build", "-p", "dp", "--message-format=short")
+    if code != 0:
+        return False, "crate itself does not build:\n" + out[-2000:]
+    code, out = run("rustc", "--edition", "2021", "--crate-type", "bin",
+                    "--extern", f"dp={_rlib()}",
+                    "-L", str(REPO / "target" / "debug" / "deps"),
+                    "-o", str(REPO / "target" / "dp_bite_probe"),
+                    str(DP / "tests" / "ui" / ui_file))
+    return code == 0, out
+
+
+def bite_compile_fail(label: str, path: Path, ui_file: str, find: str, replace: str) -> bool:
+    print(f"\n{'=' * 74}\nBITE [compile-fail] {label}\n{'=' * 74}")
+
+    before_ok, _ = compiles(ui_file)
+    print(f"  baseline : tests/ui/{ui_file} compiles? {before_ok}  (expected False)")
+    if before_ok:
+        print(f"  x {label}: the UI case ALREADY compiles — the guard is absent, not merely weak")
+        return False
+
+    original = read_txt(path)
+    if find not in original:
+        print(f"  x {label}: MISUSE — anchor not found in {path.name}: {find[:60]!r}")
+        return False
+    mutated = original.replace(find, replace, 1)
+    assert mutated != original, "mutation produced identical text"
+
+    try:
+        write_txt(path, mutated)
+        after_ok, out = compiles(ui_file)
+        print(f"  mutated  : guard removed -> compiles? {after_ok}  (expected True)")
+        if not after_ok:
+            # `V1-F7`: these are two DIFFERENT findings and the first version
+            # printed the same sentence for both. If the mutation broke the
+            # CRATE, nothing has been learned about the guard — that is a
+            # defect in this harness, and saying "the guard is weak" would send
+            # the reader to the wrong file.
+            if out.startswith("crate itself does not build"):
+                print(f"  x {label}: HARNESS MISUSE — the mutation broke `dp` itself, so the UI")
+                print("    case could not be compiled against it. Nothing is proven about the")
+                print("    guard. Fix the mutation, not the crate. rustc said:")
+            else:
+                print("  x the UI case still fails WITH THE GUARD REMOVED — it was failing for")
+                print("    some other reason, so it never tested this guarantee. rustc said:")
+            print("    " + "\n    ".join(out.strip().splitlines()[:8]))
+            return False
+    finally:
+        write_txt(path, original)
+
+    if not restored_byte_identical(path, original, label):
+        return False
+    restored_ok, _ = compiles(ui_file)
+    print(f"  restored : compiles? {restored_ok}  (expected False)")
+    if restored_ok:
+        print(f"  x {label}: restore failed — {path.name} is left mutated!")
+        return False
+
+    print(f"  + {label}: the guard BITES — removing it makes the violation legal")
+    return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# oracle bites — the V.2 claim, one side at a time
+# ─────────────────────────────────────────────────────────────────────────────
+def oracle_green() -> tuple[bool, str]:
+    code, out = run("cargo", "test", "-p", "dp", "--test", "spec_oracle")
+    return code == 0, out
+
+
+def bite_oracle(label: str, doc: str, find: str, replace: str, must_name: tuple[str, ...]) -> bool:
+    """Edit ONE side and require the oracle to red, naming BOTH sides."""
+    print(f"\n{'=' * 74}\nBITE [oracle] {label}\n{'=' * 74}")
+    path = DOCS / doc
+
+    ok, _ = oracle_green()
+    print(f"  baseline : spec_oracle green? {ok}  (expected True)")
+    if not ok:
+        print(f"  x {label}: the oracle is already red — nothing can be concluded from a flip")
+        return False
+
+    original = read_txt(path)
+    if find not in original:
+        print(f"  x {label}: MISUSE — anchor not found in {doc}: {find[:70]!r}")
+        return False
+    mutated = original.replace(find, replace, 1)
+    assert mutated != original, "mutation produced identical text"
+
+    try:
+        write_txt(path, mutated)
+        ok_after, out = oracle_green()
+        print(f"  mutated  : {doc} edited on ONE side -> green? {ok_after}  (expected False)")
+        if ok_after:
+            print(f"  x {label}: the document and the code now DISAGREE and the oracle said "
+                  f"nothing. That is FLOW-2, alive.")
+            return False
+        missing = [n for n in must_name if n not in out]
+        if missing:
+            print(f"  x {label}: it reddened but its message does not name {missing} — a drift "
+                  f"alarm that does not say WHICH TWO THINGS disagree sends the reader hunting")
+            return False
+        print(f"  ...       and the failure names both sides: {', '.join(must_name)}")
+    finally:
+        write_txt(path, original)
+
+    if not restored_byte_identical(path, original, label):
+        return False
+    ok_restored, _ = oracle_green()
+    print(f"  restored : green? {ok_restored}  (expected True)")
+    if not ok_restored:
+        print(f"  x {label}: restore failed — {doc} is left mutated!")
+        return False
+
+    print(f"  + {label}: the oracle BITES — a one-sided edit cannot pass")
+    return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# gate bite
+# ─────────────────────────────────────────────────────────────────────────────
+def bite_gate() -> bool:
+    label = "dp-aggregate-gate / V1-F1"
+    print(f"\n{'=' * 74}\nBITE [gate] {label}\n{'=' * 74}")
+    probe = DP / "tests" / "_bite_v1f1.rs"
+    gate = str(REPO / "scripts" / "dp-aggregate-gate.py")
+
+    code, _ = run(sys.executable, gate)
+    print(f"  baseline : gate exit={code}  (expected 0)")
+    if code != 0:
+        print(f"  x {label}: the gate is already red")
+        return False
+
+    write_txt(
+        probe,
+        "//! Transient bite probe — written and removed by scripts/dp-slice1-bite.py.\n"
+        "use core::marker::PhantomData;\n"
+        "use dp::{DpAggregate, Scope, Tier};\n"
+        "pub struct PlayerWallet<T: Tier, S: Scope>(PhantomData<(T, S)>);\n"
+        "impl<T: Tier, S: Scope> DpAggregate for PlayerWallet<T, S> {\n"
+        "    type Tier = T;\n"
+        "    type Scope = S;\n"
+        "    type Id = u64;\n"
+        "    const TYPE_NAME: &'static str = \"player_wallet\";\n"
+        "}\n",
+    )
+    try:
+        code_after, out = run(sys.executable, gate)
+        print(f"  mutated  : the V1-F1 generic escape added -> gate exit={code_after}  (expected 1)")
+        if code_after != 1:
+            print(f"  x {label}: the gate accepted the exact break it was written for")
+            return False
+        # And the contrast that IS the finding: rustc is perfectly happy with it.
+        rc, _ = run("cargo", "build", "-p", "dp", "--tests", "--message-format=short")
+        print(f"  ...       and `cargo build -p dp --tests` exit={rc} — rustc ACCEPTS it, which "
+              f"is why\n            this is a gate and not a type")
+        if rc != 0:
+            print("  x the probe did not compile, so it is not the case V1-F1 describes")
+            return False
+        if "R1" not in out or "R2" not in out:
+            print("  x the gate reddened without naming R1/R2")
+            return False
+    finally:
+        probe.unlink(missing_ok=True)
+
+    code_restored, _ = run(sys.executable, gate)
+    print(f"  restored : gate exit={code_restored}  (expected 0)")
+    if code_restored != 0:
+        print(f"  x {label}: restore failed")
+        return False
+    print(f"  + {label}: the gate BITES — and rustc does not")
+    return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Leg (c)'s mutation names the tier seal THREE times — once as the anchor, once
+# in the injected `impl`, once re-emitting the anchor. Spelling it out three
+# times is how it went stale: the trait was `sealed::Sealed` until the `V1-F13`
+# split, and the stale spelling still MATCHED because it is a prefix of
+# `sealed::SealedTier`. The mutation then injected an impl of a trait that no
+# longer exists, breaking `dp` — and only `V1-F7`'s misuse branch stopped that
+# being scored as a weak guard. Written once, used three times, it cannot drift
+# against itself.
+TIER_SEAL_ANCHOR = "pub trait Tier: sealed::SealedTier"
+RUNTIME_TIER_MUTATION = (
+    "impl sealed::SealedTier for TierLevel {}\n"
+    "impl Tier for TierLevel {\n"
+    "    const LEVEL: TierLevel = TierLevel::T2;\n"
+    "    const COHERENCY: Coherency = Coherency::Snapshot;\n"
+    "    const CACHE_TTL: Option<Duration> = None;\n"
+    "    const WRITE_ACK_P99: Duration = Duration::from_millis(1);\n"
+    "    const SUSTAINED_WRITES_PER_S: Option<u32> = None;\n"
+    "    const SURVIVES_STORE_OUTAGE: bool = true;\n"
+    "}\n"
+) + TIER_SEAL_ANCHOR
+
+UNBITEABLE = [
+    ("tests/ui/two_tiers.rs",
+     "fails on E0201 — 'duplicate definitions for `Tier`' — which is a Rust language rule, not a "
+     "mechanism crates/dp installs. It is a REGRESSION PIN for the shape, and it is not evidence "
+     "that anything in this crate is load-bearing. V1-F3."),
+    ("tests/ui/runtime_tier_branch.rs",
+     "fails because two distinct types cannot be the arms of one `if`. There is no guard to "
+     "remove, so there is nothing to bite; the FIELD case next to it is the biteable half."),
+]
+
+
+def main() -> int:
+    run("cargo", "build", "-p", "dp")
+    results: list[bool] = []
+
+    # ── compile-fail ─────────────────────────────────────────────────────────
+    results.append(bite_compile_fail(
+        "(b) closed set / DP-A5 — the seal is one word", TIER, "fifth_tier.rs",
+        "pub(crate) mod sealed {", "pub mod sealed {",
+    ))
+    results.append(bite_compile_fail(
+        "(c) design-time only / DP-A9 — TierLevel must not be a Tier", TIER,
+        "runtime_tier_field.rs",
+        TIER_SEAL_ANCHOR,
+        RUNTIME_TIER_MUTATION,
+    ))
+    results.append(bite_compile_fail(
+        "(d) derived rows / DP-R2 — privacy is what makes tier_row the only constructor",
+        AGGREGATE, "forged_row.rs",
+        # All SEVEN fields, not just the first. With one field made public the
+        # literal still fails on the other six, and the leg scores a miss for a
+        # reason that has nothing to do with the guarantee — which is exactly the
+        # wrong-reason failure this whole harness exists to detect, arriving from
+        # inside the harness. `BDR-30`.
+        "    type_name: &'static str,\n    tier: TierLevel,\n    scope: ScopeKind,\n"
+        "    coherency: Coherency,\n    cache_ttl: Option<Duration>,\n"
+        "    write_ack_p99: Duration,\n    survives_store_outage: bool,",
+        "    pub type_name: &'static str,\n    pub tier: TierLevel,\n    pub scope: ScopeKind,\n"
+        "    pub coherency: Coherency,\n    pub cache_ttl: Option<Duration>,\n"
+        "    pub write_ack_p99: Duration,\n    pub survives_store_outage: bool,",
+    ))
+
+    # ── oracle: one bite per parsed source ───────────────────────────────────
+    for label, doc, find, replace, names in [
+        ("DP-S3 write-ack budget", "08_scale_and_slos.md",
+         "| DP-T2 | <5 ms ack", "| DP-T2 | <7 ms ack", ("08_scale_and_slos.md", "tier.rs")),
+        ("DP-X7 cache TTL", "06_cache_coherency.md",
+         "| T2 | 5 min |", "| T2 | 7 min |", ("06_cache_coherency.md", "tier.rs")),
+        # NOT `"| T2 writes" -> "| T2 writes "`. That was the first anchor here and
+        # it changed BYTES without changing MEANING — `table_cells` trims labels, so
+        # the parse was identical and the oracle was right to stay green. `BDR-19`
+        # says verify the mutation APPLIED; this is its sharper form: verify the
+        # mutation SAYS SOMETHING DIFFERENT. The harness caught it, which is the
+        # only reason it is written down here instead of being scored as a gate
+        # failure. `BDR-30`.
+        ("DP-S5 sustained writes", "08_scale_and_slos.md",
+         "| T2 writes | 500 / s", "| T2 writes | 700 / s",
+         ("08_scale_and_slos.md", "tier.rs")),
+        ("03 tier matrix — the closed SET (V1-F2)", "03_tier_taxonomy.md",
+         "| **DP-T3** | Durable-sync", "| **DP-T4** | Durable-sync",
+         ("03_tier_taxonomy.md", "tier.rs")),
+        ("DP-X1 coherency model (V1-F4b)", "06_cache_coherency.md",
+         "| **T1** | Snapshot coherency", "| **T1** | Snapshot-ish coherency",
+         ("06_cache_coherency.md", "tier.rs")),
+        ("REC-102c degraded-mode partition (V1-F4c)", "07_failure_and_recovery.md",
+         "| **T3** | **REJECT", "| **T3** | **BUFFER",
+         ("07_failure_and_recovery.md", "tier.rs")),
+    ]:
+        results.append(bite_oracle(label, doc, find, replace, names))
+
+    # ── gate ─────────────────────────────────────────────────────────────────
+    results.append(bite_gate())
+
+    print(f"\n{'=' * 74}")
+    print("UNBITEABLE, and named rather than given a substitute (V1-F3):")
+    for f, why in UNBITEABLE:
+        print(f"  - {f}\n      {why}")
+
+    print(f"\n{'=' * 74}")
+    if all(results):
+        print(f"dp-slice1-bite: PASS — {len(results)} bite(s) bit, {len(UNBITEABLE)} leg(s) "
+              f"stated as unbiteable.")
+        print("Each mechanism was shown BREAKABLE by removing it, which is the only evidence")
+        print("that the mechanism is what holds the claim.")
+        return 0
+    print(f"dp-slice1-bite: FAIL — {sum(results)}/{len(results)} bites bit.")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
