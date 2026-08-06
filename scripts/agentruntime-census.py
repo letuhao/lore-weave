@@ -44,8 +44,11 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import atexit
 import ast
+import hashlib
 import pathlib
+import signal
 import subprocess
 import sys
 
@@ -78,9 +81,16 @@ def _sites(tree: ast.AST, mod: str) -> list[tuple[str, ast.Raise]]:
                     name = getattr(exc.func, "id", getattr(exc.func, "attr", "?"))
                 elif isinstance(exc, ast.Name):
                     name = exc.id
+                # 🔴 **THE ORDINAL ALONE WAS SILENTLY STALE.** Reordering two same-class
+                # raises that are BOTH silent produced `rc=0` and an allowlist pointing at the wrong
+                # sites — the exact failure the ordinal was chosen to prevent, measured by a
+                # verifier. A short hash of the statement's own source pins the row to the refusal
+                # rather than to its position, so a reorder shows up as one row leaving and one
+                # arriving instead of as nothing at all.
                 key = f"{mod}::{qual or '<module>'}::{name}"
                 seen[key] = seen.get(key, 0) + 1
-                out.append((f"{key}::{seen[key]}", child))
+                digest = hashlib.sha256(ast.dump(child).encode("utf-8")).hexdigest()[:8]
+                out.append((f"{key}::{seen[key]}::{digest}", child))
             walk(child, qual)
 
     walk(tree, "")
@@ -108,10 +118,35 @@ def _suite_is_green() -> bool:
 def census(verbose: bool = False) -> dict[str, bool]:
     """`{site_id: is_red}` — a site is RED when neutering it makes the suite fail."""
     results: dict[str, bool] = {}
+    # 🔴 **SNAPSHOT EVERY FILE BEFORE THE FIRST WRITE, AND RESTORE ON ANY EXIT.** Two defects
+    # in one line, both executed by verifiers:
+    #
+    #   * The read sat INSIDE the loop, so a re-run after a crash read the *neutered* file as its
+    #     own original — and then reported `NOW GUARDED … good news` for a site nothing had guarded.
+    #   * Killed at 12, 20, 30 and 45 seconds, **4 of 4 runs left a `raise → pass` in a tracked
+    #     file**, and the suite then reddened blaming a test. That is the carried "probe modules in
+    #     the live tree" finding, reproduced inside the instrument built to end this class of defect.
+    #
+    # A `finally` does not run when the process is killed, so the restore is also registered with
+    # `atexit` and on SIGINT/SIGTERM.
+    snapshot = {p: p.read_bytes() for p in sorted(PKG.glob("*.py"))}
+
+    def _restore_all(*_a):
+        for path, data in snapshot.items():
+            if path.read_bytes() != data:
+                path.write_bytes(data)
+
+    atexit.register(_restore_all)
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            signal.signal(sig, lambda *_a: (_restore_all(), sys.exit(130)))
+        except (ValueError, OSError):        # not the main thread; atexit still covers it
+            pass
+
     for path in sorted(PKG.glob("*.py")):
         if path.name == "__init__.py":
             continue
-        raw = path.read_bytes()          # BYTES, not text
+        raw = snapshot[path]             # the PRE-RUN bytes, never a re-read mid-run
         src = raw.decode("utf-8")
         mod = path.name
         for site_id, node in _sites(ast.parse(src), mod):
@@ -120,7 +155,10 @@ def census(verbose: bool = False) -> dict[str, bool]:
                 red = not _suite_is_green()
             finally:
                 path.write_bytes(raw)     # the ORIGINAL bytes, line endings included
-                assert path.read_bytes() == raw, f"restore changed {path}"
+                # NOT `assert` — it vanishes under `python -O`, and a restore guarantee that can be
+                # switched off by an interpreter flag is not a guarantee.
+                if path.read_bytes() != raw:
+                    raise SystemExit(f"restore changed {path}; the tree is NOT as it was")
             results[site_id] = red
             if verbose:
                 print(f"  {'RED   ' if red else 'SILENT'} {site_id}", flush=True)

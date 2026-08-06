@@ -154,9 +154,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      # 🔴 `requirements.txt` HAS NO PYTEST, so the first version of this job could never
+      # pass: a verifier executed it and got `SELFTEST FAIL`, rc=1, every time. I wired a gate whose
+      # green state was unreachable and did not run it in its CI shape before shipping it — which is
+      # the vacuous-gate failure this job exists to prevent, committed in the job that prevents it.
       - name: Install chat-service deps
         working-directory: services/chat-service
-        run: python -m pip install --quiet -r requirements.txt
+        run: python -m pip install --quiet -r requirements.txt -r requirements-test.txt
       # Default mode runs --selftest first: it asserts the enumeration still finds
       # the sites AND that neutering a guarded refusal reds the suite, so CI cannot
       # pass a census that has not been shown to fire in both directions.

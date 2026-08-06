@@ -2117,3 +2117,38 @@ class TestStageKindsAreDataNotClosures:
             f"a generator pipeline was a silent no-op: {s.names}. Validated once, iterated empty."
         )
 
+    def test_THE_CENSUS_IS_WIRED_AND_ITS_GREEN_STATE_IS_REACHABLE(self):
+        """🔴 **I SHIPPED A GATE WHOSE GREEN STATE WAS UNREACHABLE, AND DID NOT RUN IT IN ITS
+        CI SHAPE.** The census job installed `requirements.txt`, which has no pytest, so a verifier
+        executed it and got `SELFTEST FAIL`, rc=1, every time. A gate that can never pass is the
+        vacuous-gate failure this whole effort exists to end, committed inside the gate built to end
+        it - and the census itself had **no test at all**, twenty lines from the membrane gate whose
+        precedent is exactly this.
+
+        This is a shape check and says so: it cannot prove the census MEASURES correctly, only that
+        it is wired and that the environment it runs in can satisfy it. What it forbids is the two
+        things that were actually wrong."""
+        import re
+
+        wf = (_REPO / '.github' / 'workflows' / 'lint-foundation.yml').read_text('utf-8')
+        assert 'agentruntime-census' in wf, 'the census is not wired into CI at all'
+        job = wf.split('agentruntime-census:')[1]
+        assert 'requirements-test.txt' in job.split('agentruntime-census.py')[0], (
+            'the census job does not install a pytest; its selftest runs the suite, so its green '
+            'state is unreachable and the job can only ever fail'
+        )
+        src = (_REPO / 'scripts' / 'agentruntime-census.py').read_text('utf-8')
+        assert 'atexit.register' in src and 'SIGTERM' in src, (
+            'the census writes neutered source into tracked files; without an exit handler a killed '
+            'run leaves the tree broken and the suite reds blaming a test - measured 4 of 4 kills'
+        )
+        assert 'raise SystemExit' in src.split('write_bytes(raw)')[1][:400], (
+            'the restore guarantee is an assert, which vanishes under python -O'
+        )
+        allow = (_REPO / 'contracts' / 'agentruntime-census-silent.txt').read_text('utf-8')
+        rows = [l for l in allow.splitlines() if l.strip() and not l.startswith('#')]
+        assert rows and all(re.search(r'::[0-9a-f]{8}$', r) for r in rows), (
+            'an allowlist row is keyed by position alone; reordering two same-class raises that are '
+            'both silent then goes unnoticed, which is what the ordinal was chosen to prevent'
+        )
+
