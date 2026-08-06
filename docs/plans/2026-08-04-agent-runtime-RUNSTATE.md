@@ -1906,6 +1906,86 @@ oracles · B18-10 (a fifth exported door, **fifth round**) · `surface.py:305` (
 shape) · `_ID` has no length bound · the probe modules are written into the live `app/` tree, so an
 interrupted run leaves the suite red blaming the wrong file.
 
+---
+
+## 🔴 R20 — **FAIL ×2**, and both verifiers answered the termination question the same way
+
+Prompt committed first, two V-CODE on frozen `b73e086ca`. Verdicts:
+[round20-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round20-v-code-a.md) ·
+[round20-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round20-v-code-b.md).
+
+### ITEM ZERO — asked before any finding, answered by two independent parties
+
+**1. Is the loop converging? No.** `introduced` raw, twelve rounds: `2,1,2,1,3,2,4,3,2,2,2,5` — no
+direction, and **the maximum lands on the smallest delta of the run** (47 production lines). The
+decisive evidence is structural, not numeric: **a verifier stopped reporting and WROTE the patch**,
+measured it at baseline, named the line. It was applied verbatim — the shortest path a fix can take —
+and still shipped a behavioural regression, an inert production wiring and a false claim in three
+places. **When the pre-written fix still fails, the loop is not limited by the quality of its
+findings.**
+
+And the mechanism was named: that patch had been certified against **nine hand-picked orderings**.
+Enumerated exhaustively (30,948 sequences) it **regresses 584**, 228 of them toward telling a healthy
+turn its tools are unreachable — **U-2's founding defect, reintroduced by the fix for it.**
+
+> *"Execution over a hand-picked sample is argument wearing a lab coat."* — R20-A
+
+**2. What closes CP-1?** Both reject *"three rounds at `introduced == 0`"* — **satisfiable by looking
+less hard**, and unreached in twelve rounds. Both name the same thing instead: **the AST census of the
+package's refusals, mechanised into a gate.** Three verifiers derived **68 sites** independently and
+agreed **member for member** on which **thirteen** are unguarded. Two added a hand-picked structural
+addendum (87, 92) and **no two cut it the same way — every unit of divergence lived there**. R20-B's
+denominator **FELL for the first time in the run** (48 → 87 → 92 → 84) the moment it replaced its
+hand-picked half with an AST rule. **Mechanise the 68, drop the addendum.**
+
+**3. Is more V-CODE the right axis? No — and my prompt's premise was FALSE.** I wrote *"nothing in
+CP-0 or CP-1 has been through V-LIVE"*; **eleven verdict files sit in the directory I was writing
+into** (9 CP-0, 2 CP-1). The truth is worse: **both CP-1 V-LIVE rounds returned `CANNOT DETERMINE` on
+all four items** — *"the turn cannot be placed on the new surface"* — because **`agentruntime` has
+zero importers outside the package**. Reachability, R20-B's column: **0 production-reachable**. So
+CP-1 is closable by neither axis until something imports it. R20-A adds the sharper half: every
+ordering the eleven-round argument concerns is **unreachable if the design's own premise holds**
+(*"each request runs in its own task and therefore its own context copy"*) — **if it holds, five
+rounds were about impossible states; if it fails, the delta makes the system worse.** Not answerable
+from source.
+
+### Findings acted on this round
+
+**Shipped** (`3caac262d`, `ad4e69030`): the **census gate** — 68 sites, 13 silent, 55 red, its own CI
+job (the lint matrix is stdlib-only; a census there would pass over a suite that never ran) · the
+**carried-recorder false positive** bounded and driven · the **untyped `recorder=` door** (five
+argument types crashed it from inside prompt assembly — sixth occurrence of bounding a container and
+not its contents) · **W4's rule, five rounds late and ONE TOKEN**: `s.body` → `s.body[:1]`, 9/9
+shapes, baseline.
+
+**And the census script reproduced, in my harness, the defect a verifier had recorded in its own one
+round earlier**: `write_text` rewrote LF as CRLF, so every "restore" reproduced the file's *meaning*
+and not its *bytes*. It reads and writes bytes now and asserts the restore.
+
+### ▶ The number that has never flattered
+
+| | executed | argued |
+|---|---|---|
+| correct, whole run | **10 / 10** | **0 / 11** |
+
+Polarity unbroken at n=21, across three rounds and two independent verifiers — with the caveat R20-A
+attached and the PO should have: **a hand-picked sample does not count as execution.**
+
+**2268 tests pass; membrane gate green; census 68/13/55.** ⚠️ Builder's evidence.
+
+### 🔴 CP-1's closure criterion is NOT the builder's to change
+
+Both verdicts recommend closing against the census. **This board already says the builder may not
+change a criterion**, and the criterion the PO set is *"a clean V-CODE round"*. So the census is on
+the board as a **measured proposal**, not applied as a verdict, and **R21 runs under the existing
+criterion** while that decision is open.
+
+**Open, carried:** `O_S` and **60 single-turn residuals** · `dict(r)` is **shallow** (all four doors
+hand back the source document's own `members` list) · B18-8, B18-11, B18-10 (**sixth round**) ·
+`surface.py:305` · `_ID` has no length bound · the three weak oracles (**fourth round**) · T11d ·
+probe modules written into the live `app/` tree · the `:531`/`:542` contradiction (**sixth round**) ·
+**B20-4: my corrected `Open, carried` list restored two and dropped four.**
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -1924,7 +2004,9 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | ~~R17~~ | ran 2026-08-06 → **FAIL ×2**. A verifier refuted my claim that an arrangement was impossible — the counter-example was one statement I had deleted myself, and the argument behind the claim was my own sentence gone vacuous. R16-B's advance prediction HELD. See the block above | `V-CODE` ×2 on `6761cf013` | — |
 | ~~R18~~ | ran 2026-08-06 → **FAIL ×2**. All three "unreproduced" holes reproduced; the impossibility argument I had deleted is true again; a fix of mine blinded five working detections; **the two records disagreed**. See the block above | `V-CODE` ×2 on `2faa88bac` | — |
 | ~~R19~~ | ran 2026-08-06 → **FAIL ×2**. Both predictions HELD. My "unaddressable" claim was refuted by a six-line patch that runs — the error was LOGICAL, not careless. A fix of mine guarded the sibling, seventh instance. See the block above | `V-CODE` ×2 on `5b531e22a` | — |
-| **R20** | verify R19's delta — **and answer the termination question**: eleven rounds, eleven FAILs, `introduced` with no direction. What closes CP-1, and is more V-CODE the right axis? | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
+| ~~R20~~ | ran 2026-08-06 → **FAIL ×2**. Both verifiers: **no convergence**, close against the **mechanised census**, and **stop V-CODE** — `agentruntime` has **zero importers**, so V-LIVE returns `CANNOT DETERMINE` by construction. Census shipped as a gate. See above | `V-CODE` ×2 on `b73e086ca` | — |
+| **R21** | verify R20's delta under the **existing** criterion, since the criterion is the PO's to change: the census gate itself, the bounded recorder door, W4's one-token rule | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
+| **PO** | ⭐ **decision open**: close CP-1 against the census (68 sites, 13 recorded silent, no drift) instead of a clean V-CODE round — and go to CP-2 so something finally imports the package | — | — |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
 | **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |
