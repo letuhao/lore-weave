@@ -91,10 +91,18 @@ A feature adds a verb by writing **rows**, never code (`D-27`). It declares:
 - **requirements** — from the closed relation set, over state the substrate can already read
 - **spend** and **effects** — from the closed primitive set
 - a **cue** ordinal
-- ~~a **submitter class**~~ 🔴 **CONTRADICTED BY THIS DOCUMENT — awaiting the PO.**
+- ~~a **submitter class**~~ ✅ **STRUCK by the PO, 2026-08-06 — see `SEAM-1` below.**
 
-> 🔴 **`SEAM-1` · This line and `CMD-10` disagree, and `CMD-10` is the later
-> decision.** §2's DUMB DRIVER table does not list a submitter class among the
+> ✅ **`SEAM-1` · RESOLVED 2026-08-06. This line is struck; `CMD-10` governs.**
+>
+> **The reason the PO gave is stronger than seniority between two decisions, and
+> it is now `AUTHOR-1`:** *the manifest author is not a developer, and usually
+> produces the manifest with an LLM — so if it gets too complex they cannot do
+> it.* Striking this field does not merely follow the later decision; it
+> **removes a field the author would have had to get right, whose wrong value is
+> an authorisation defect.**
+>
+> The original finding, kept because how it survived a seal is the useful part: §2's DUMB DRIVER table does not list a submitter class among the
 > nine things the engine still needs, and `CMD-10`'s V4 table — cited by this
 > same document — scores `submitter_class` + `may_submit_engine_verbs` **❌**
 > with the reason *"the author supplies the verdict of the authorisation rule."*

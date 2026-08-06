@@ -479,6 +479,52 @@ counts them, and it paid for itself on the first run:
 | **3** | **A THIRD kind exists that neither half describes** — plugin ordinals and fold layers are computed at BOOT and are **not in the hashed ruleset**. It cannot vary today (two constants, one plugin), so there is no live defect; the hazard is that it cannot vary *yet*. The day a reality's plugin set is content, two realities could share a digest and derive different plugin ordinals — `QTY-A14` arriving in a space the digest does not cover |
 | **4** | **`cue` is unpriced.** `M2` shipped `cue: u16` with no width constant, no repin log and no argument, in a tier where every neighbour carries all three. `AF-8` had already found `RefKindMask` *"outside the six ordinal spaces"* — outside a set nobody had enumerated |
 
+## 6g. Where the user→actor binding belongs — the answer, and the measurement behind it
+
+**Asked by the PO**, who did not take it and asked which is optimal and most
+standard, and why. It blocks the subject-source fix → roles + offer → any verb
+that touches another actor. It blocks combat.
+
+**Answer: `migrations/meta/012_player_character_index`, with the pc/npc vocabulary
+removed. Not close.** Four reasons, heaviest first.
+
+| | |
+|---|---|
+| **1 · The binding is inherently CROSS-REALITY; per-reality data is not** | A human exists across realities. In a per-reality DB, *"which actors do I drive?"* — the first question a character-select screen asks — becomes a fan-out over N databases |
+| **2 · The meta DB is not infra-only, measured** | It already carries per-user rows on purpose, with the machinery this needs: `009_pii_registry` · `011_user_consent_ledger` · `018_user_cost_ledger` · `026_book_reality_subscription` · and `014_meta_read_audit` plus the `meta-sensitive-read-paths.yml` registry. It is the **cross-reality control plane** |
+| **3 · `012`'s split is ALREADY the standard shape** | Its own header: `pc_id` is a *"per-reality PC identifier (**FK lives in per-reality DB**)"*. A control-plane pointer into a data-plane identity — exactly what `reality_ruleset_binding` is to a content-addressed artifact. `ruleset_boot.rs` states the same law: *"the meta DB holds the binding; the per-reality DB holds the channel log. Collapsing them would exercise a topology nothing runs"* |
+| **4 · GDPR erasure** | This repo shipped a user-erasure orchestrator. Erasing a user must find EVERY binding; a fan-out over N reality DBs is the shape that leaves rows behind |
+
+> **The general rule, since the PO asked for the standard:** the binding is
+> **CONTROL, not SIMULATION.** Control questions are cross-instance by nature, so
+> control data in a data-plane database is the anti-pattern. Meta = control
+> plane (which reality, which ruleset, which human drives which actor);
+> per-reality = data plane (the log, the state).
+
+**And `012` already names the exact defect we have.** Its header:
+
+> *"Risk: identity-manipulation attack (alter rows → impersonation, cross-user
+> data leak). Defense: … sensitive-read audit on non-owner queries"*, with
+> non-owner SELECTs registered as `player_index_cross_user`.
+
+`actorForUser` returning `LW_CHANNEL_DEFAULT_ACTOR ?? '1'` for any unmapped
+authenticated user **is** that identity-manipulation risk — and **the defence
+written for it is sitting unused.** Building the binding anywhere else abandons a
+defence that already exists and would have to be rebuilt.
+
+**What is dead in `012`** is what the handoff already identified and nothing more:
+`pc_name`, `status='npc_converted'`, `status='deceased'` — the two-kind vocabulary
+and mortality in a lookup table. Keep the binding, drop those three.
+
+> ⚠️ **The parking's own premise has EXPIRED.** It was parked because *"No
+> producer, so nothing depends on it and deciding now would be guessing."* There
+> is a producer now: the offer stage needs a subject it can trust. And
+> `contracts/meta/player_index_parked_test.go` will go RED when a writer lands —
+> **that is its trigger firing, not a regression.** It is the one deferral in
+> this project whose mechanism is designed to announce its own discharge.
+
+**Still the PO's to take.** This section is the argument, not the decision.
+
 ## 7. Registers — append as it happens
 
 ### Decisions
@@ -488,6 +534,9 @@ counts them, and it paid for itself on the first run:
 | **`SCOPE-1`** | 2026-08-06 | **The scope contract is SEALED** — [`2026-08-06-command-hub.md`](../specs/2026-08-06-command-hub.md). The DUMB DRIVER test decides in-or-out; the architecture line is the actor hub's one level up, and **if the two sentences stop being the same sentence, one of the two designs has drifted** |
 | **`SCOPE-2`** | 2026-08-06 | **The chooser is a FEATURE, not a column.** `considerations`, `InputKind`, the effectiveness matrix and `attack_class` leave the substrate. The substrate owes the decision layer a **declared seam** and nothing else. `PO-5` is honoured, not overridden: it asked for the layer, and this says which side of the boundary it lives on |
 | **`SCOPE-3`** | 2026-08-06 | **The substrate RESOLVES actions; it does not BUILD rulesets.** `CMD-13` and `O-CI-23`..`O-CI-25` are the **ruleset builder's**, not this layer's |
+| **`SEALED-CMD`** | 2026-08-06 | 🔴 **PO: `CMD-10` is SEALED, and `CMD-1`..`CMD-6` with it.** The blocking condition was discharged three times over (prior art: 08-02 §3's six systems · the decision-layer round · the folded 08-05 round), and **`CMD-10`'s owed bite landed in `M2`** — `FORBIDDEN_VERB_KEYS` refuses three authority-bearing keys by name, with their reasons, and all three refusals are pasted. §4.1's forced order is discharged in the order it forced. |
+| **`AUTHOR-1`** | 2026-08-06 | 🔴 **THE MANIFEST AUTHOR IS NOT A PROGRAMMER — PO, and this is a CONSTRAINT, not a preference.** *"The author is not a developer, and they usually use an LLM to produce the manifest, so if it gets too complex they cannot do it."* **Complexity in the AUTHORED SURFACE is a hard cost, priced against whatever it buys.** This is why `SEAM-1` resolves the way it does: striking `submitter_class` is not merely *"`CMD-10` came later"* — it **removes a field the author would have had to get right**, and a field whose wrong value is an authorisation defect. Consequences, stated so they are not re-derived: an extra `spend` row, a relation grammar, and a row that must name its own ordinal space each carry this cost and must earn it; `D-29` (*a declared THRESHOLD, never a predicate grammar*) is this axiom arriving from the other side; and where a space can be IMPLIED by the field's type it should be, because that is one thing fewer to write. |
+| **`SEAM-1`** | 2026-08-06 | 🔴 **RESOLVED by the PO — strike `submitter_class` from the sealed contract's §4.** `CMD-10` is right and the build already followed it. See `AUTHOR-1` for the reason that decided it, which is stronger than seniority between two decisions. |
 | **`SEAL-ORDER`** | 2026-08-06 | `CMD-10` seals **first** — it is the test by which the rest are classified — and **its owed bite lands WITH the seal**, not after. Then `CMD-1`..`CMD-6`, re-scored under it |
 
 ### What the evictions changed — run immediately after sealing, because a goal aimed at a stale remainder is the wrong goal
