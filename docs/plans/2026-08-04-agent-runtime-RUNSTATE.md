@@ -2226,6 +2226,63 @@ measured**) · the register lost 2 more rows, **sixth consecutive round** · and
 **two verifiers sharing one worktree** — the live allowlist was observed rewritten to `deadbeef` and
 back by a concurrent process.
 
+---
+
+## ⭐ TRANSFER DECISION — **PO, 2026-08-07**: the unbuilt-subject items move to CP-2
+
+The criterion is the one this board has used twice before and it is not new: **an item whose
+measurement has no SUBJECT until a later checkpoint's code exists MOVES. It is never re-worded to fit
+where it happens to sit.** Applied to every row still open after R24.
+
+### → MOVED TO CP-2 — three items, each with the measurement that establishes it has no subject here
+
+| item | why it has no subject at CP-1 |
+|---|---|
+| **the catalogue-outage ordering residual** | Four verifiers, four rounds: *"unfalsifiable at this seam."* `type(x) is` cannot express *"this turn's"*, and the two states a guard would have to separate **differ in no `ContextVar` — only in a comment** (AST-alpha-equivalent, measured). R20-A adds the half that settles it: **every ordering the argument concerns is unreachable if the design's own premise holds** (*"each request runs in its own task and therefore its own context copy"*). If the premise holds, five rounds were about impossible states; if it fails, the delta made things worse. **Neither can be answered from source.** The turn identity belongs to the runtime that serves the turn — CP-2 · **V-LIVE must observe whether one `AdvertisedToolsRecorder` id ever appears under two turn tokens** |
+| **`rows_of` runs no document-level stamp check** | R20-B measured it and scoped it itself: **production-reachable *at* CP-2**, not today. Its own reachability column reads **0 production-reachable**, and the cause is mechanical: **`agentruntime` has zero importers outside the package** |
+| **B18-10 — a fifth exported door** (10 rounds) | Same mechanism, verified repo-wide by two verifiers: a fifth door serving `['TYPED BY HAND:1']` passes suite **and** gate, and the scoping to CP-2 is *"honest"* precisely because **no consumer exists**. A door with no caller cannot be measured as a leak |
+
+**The common cause, stated once:** nothing outside `app/agentruntime/` imports it. That is why **both
+CP-1 V-LIVE rounds returned `CANNOT DETERMINE` on all four items** — *"the turn cannot be placed on
+the new surface"* — and why they have not run since. **CP-2's first import is what creates the
+subject for all three.**
+
+### ✖ NOT MOVED — deterministic, measurable today, and CP-1's to close
+
+Being old is not being unbuilt. Each of these has a subject in the tree right now:
+
+| item | rounds | the measurement that exists today |
+|---|---|---|
+| `dict(r)` is **shallow** at 4/4 doors | 5 | `ROW_FIELDS["members"]` already accepts `tuple`; the 2-line fix was executed. **Its one test asserts non-mutation by `==`, so the guard requires the defect** |
+| `_ID` has **no length bound** | 6 | a 300-character id travels through three doors, end to end |
+| `surface.py:305` — `OrderBy`'s key-pair shape | 6 | a 2-element **list** is accepted; the other four vehicles are masked by Python's unpacking |
+| **B18-8** — `str`-subclass key / member | 7 | 1 of 3 pins guarded, control fires |
+| **B18-11** — `canon` has 0 uses, 2 dead imports, a **refuted docstring** | 7 | measured; `digest(NFD) == digest(NFC)` |
+| **W4** — `s.body[:1]` untested | 8 | R23-A **wrote and ran** the 22-line test: shipped 139 passed, reverted 1 failed |
+| the **three weak oracles** | 8 | all three gate a callee with 2 matching messages, so none can bind its probe |
+| **T11d** — the live SQL spelling | 6 | BLIND, control CAUGHT |
+| the **probe writers** hardcoding `"app"` | 6 | `_TURN_SCOPE_ROOT` already exists and both gates read it |
+
+### ✖ NOT MOVED — instrument debt, which is not a CP-1 property either way
+
+The census, the terminal-write gate and the arm-order gate are **tools built to verify CP-1**, not
+claims CP-1 makes. Their defects belong to whoever maintains them. Recorded so the distinction is not
+quietly used to inflate or deflate CP-1's state: the census's own guard is defeatable (**1 of 8
+cells**, and `_selftest`'s writer is still outside the watched path); the CI half was green under
+**15 of 16** disable shapes; and the register has lost rows in **six consecutive rounds**, which is
+why R22-B's design — *generate it from the verdicts, refuse a closure signed by the party that
+shipped the fix* — is the one durable answer to it.
+
+### 🔴 Two failures of mine this session, recorded because both were process, not code
+
+* **I broke FREEZE.** I committed while R24-B was measuring the same two files. B measured the cost:
+  had my fix landed twenty minutes earlier it would have reported the census **HEALTHY** — *"a false
+  PASS on the round's biggest finding, with no way to detect it."*
+* **I blamed the environment before checking myself.** Six shell-output failures I attributed to
+  another process were, most likely, my own `atexit` deleting `%TEMP%` — because the census guard's
+  `_mirror` stub returned `mkdtemp().parent`, which is the temp root. *Report contamination only
+  after ruling out being its source.*
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
