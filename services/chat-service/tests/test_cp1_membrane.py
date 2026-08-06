@@ -2148,6 +2148,17 @@ class TestStageKindsAreDataNotClosures:
         census_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(census_mod)
 
+        # 🔴 **AND THIS GUARD BROKE THE THING IT GUARDS.** `census()` runs the membrane suite
+        # inside its mirror 68 times — and this file is in that suite, so the guard re-entered
+        # `census()`, whose `_mirror()` ran `git ls-files` in a directory with no `.git`. The
+        # subprocess died, `_suite_is_green` read every non-zero exit as "the suite noticed", and
+        # the census reported **68 red, 0 silent** with thirteen `NOW GUARDED ... good news` lines.
+        # The selftest passed throughout, because its positive control runs in the mirror too.
+        #
+        # A guard that executes the instrument must not execute inside it. The mirror has no `.git`;
+        # that is the signal, and skipping is honest here because the outer run is the one measuring.
+        if not (_REPO / ".git").exists():
+            pytest.skip("running inside a census mirror; the outer run is the measurement")
         pkg = _REPO / "services" / "chat-service" / "app" / "agentruntime"
         before = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(pkg.glob("*.py"))}
         assert len(before) >= 6, "the package moved; this probe would assert nothing"

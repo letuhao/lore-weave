@@ -180,9 +180,23 @@ def _neutered(src: str, node: ast.Raise) -> str:
 
 
 def _suite_is_green(cwd=None) -> bool:
+    """Green / not-green — and **a crash is neither.**
+
+    🔴 This returned `r.returncode == 0`, so **any** non-zero exit read as "the suite noticed",
+    including a collection error, a missing dependency, or an interpreter that never got as far as a
+    test. A verifier measured the consequence end to end: the census reported **68 sites, 0 silent,
+    68 red** and printed thirteen `NOW GUARDED … good news: drop it from the allowlist` lines —
+    which is verbatim the failure this file's own docstring calls *worse than the one it replaced*,
+    because it looks like a result. `pytest` reserves exit 1 for test failures; 2–5 mean it did not
+    get to run them, and that is a broken harness, not a guarded refusal.
+    """
     r = subprocess.run([sys.executable, "-m", "pytest", SUITE, "-q", "--no-header", "-p",
                         "no:randomly"], cwd=cwd or CS, capture_output=True, text=True)
-    return r.returncode == 0
+    if r.returncode not in (0, 1):
+        raise SystemExit(
+            "pytest exited " + str(r.returncode) + " in " + str(cwd or CS) + " - it did "
+            "not run the suite, so no site can be classified. Reporting these as RED would "
+            "print a plausible lie." + chr(10) + r.stdout[-2000:] + chr(10) + r.stderr[-2000:])
 
 
 def census(verbose: bool = False) -> dict[str, bool]:
