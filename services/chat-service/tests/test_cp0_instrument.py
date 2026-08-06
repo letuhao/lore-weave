@@ -1520,10 +1520,22 @@ class TestU2ACatalogueOutageIsRegistered:
         _EXECUTORS = ("execute", "fetchval", "fetchrow", "fetch", "executemany")
 
         def _names_the_column(node) -> bool:
-            """Does this expression carry the SQL that writes the column?"""
+            """Does this expression carry SQL that **writes a value into** the column?
+
+            🔴 The per-bind rebuild dropped the qualification the previous version had and matched
+            the bare column name. Widening the sweep to all of `app/` then reddened
+            `db/migrate.py` — the **DDL that creates the column**, which binds nothing. That is a
+            false positive on correct code, the failure this file has convicted itself of three
+            times, and it is recorded here rather than fixed by narrowing the sweep back: the
+            subject is a row WRITE, and `CREATE TABLE` / `ALTER TABLE` are not writes.
+            """
             for n in ast.walk(node):
                 if isinstance(n, ast.Constant) and isinstance(n.value, str) \
-                        and "withheld_tools" in n.value:
+                        and "withheld_tools" in n.value \
+                        and ("INSERT INTO chat_messages" in n.value
+                             or "UPDATE chat_messages" in n.value
+                             or "withheld_tools =" in n.value
+                             or "withheld_tools=" in n.value):
                     return True
                 if isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "segment_merge_sql" \
                         and any(isinstance(a, ast.Constant) and a.value == "withheld_tools"
@@ -1589,7 +1601,18 @@ class TestU2ACatalogueOutageIsRegistered:
         #
         # The reachability is not hypothetical: **`app/agentruntime/` is where CP-2's runtime
         # lands**, and a terminal write there would have been invisible to this gate by construction.
-        offenders, binds_checked = [], []
+        # 🔴 **T9 — NINE MORE DEFEATS, AND THE HEADLINE ONE WAS A MODULE-LEVEL CONSTANT.** Hoisting
+        # the SQL out of the function (`_SQL = "UPDATE chat_messages SET withheld_tools = $1 …"`)
+        # made the whole gate blind, because `sql_locals` was computed from the FUNCTION's bindings
+        # only. So were: SQL assembled in another module, a write at module scope, in a `lambda`, in
+        # a comprehension, in a class body, and through a bare-name executor (`execute(...)` rather
+        # than `conn.execute(...)`). And `except SyntaxError: continue` was **fail-open** — an
+        # unparseable module silently left the sweep.
+        #
+        # Every one of those is an ordinary way to write the same statement. The anchor is now: any
+        # executor call anywhere under `app/`, with the SQL resolved through module-level constants
+        # and cross-module constants as well as function locals.
+        offenders, binds_checked, unparseable = [], [], []
         _base = Path(__file__).resolve().parents[1] / _TURN_SCOPE_ROOT
         _paths = [p for p in sorted(_base.rglob("*.py"))
                   if not any(part in _TURN_SCOPE_EXCLUDE for part in p.parts)]
@@ -1597,34 +1620,55 @@ class TestU2ACatalogueOutageIsRegistered:
         for p in _paths:
             try:
                 trees_all.append(ast.parse(p.read_text(encoding="utf-8")))
-            except SyntaxError:                  # pragma: no cover - a broken file is its own bug
+            except SyntaxError:
+                # FAIL CLOSED. A file this gate cannot read is a file it cannot clear, and
+                # `continue` meant an unparseable module left the sweep with no record at all.
+                unparseable.append(p.relative_to(_base).as_posix())
                 continue
             _mods.append(p.relative_to(_base).as_posix())
+
+        # Names bound to the column's SQL ANYWHERE — module constants included, and shared across
+        # modules because a constant is imported by name and this gate has no import graph. Over-
+        # approximating here costs a few extra binds to check; under-approximating is T9e.
+        global_sql_names = set()
+        for tree in trees_all:
+            for name, value in _bindings(tree):
+                if _names_the_column(value):
+                    global_sql_names.add(name)
+
         for mod, tree in zip(_mods, trees_all):
-            for fn in ast.walk(tree):
-                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for call in ast.walk(tree):
+                if not (isinstance(call, ast.Call) and _called_name(call) in _EXECUTORS):
                     continue
-                derived = _recorder_locals(fn)
-                # SQL is often assembled into a local first; the bind then passes the local.
-                sql_locals = {name for name, value in _bindings(fn) if _names_the_column(value)}
-                for call in ast.walk(fn):
-                    if not (isinstance(call, ast.Call)
-                            and getattr(call.func, "attr", None) in _EXECUTORS):
-                        continue
-                    args = list(call.args) + [k.value for k in call.keywords]
-                    if not any(_names_the_column(a) or (isinstance(a, ast.Name)
-                                                        and a.id in sql_locals) for a in args):
-                        continue
-                    binds_checked.append(f"{mod}::{fn.name}:{call.lineno}")
-                    ok = any(
-                        _has_recorder_call(a) or any(isinstance(n, ast.Name) and n.id in derived
-                                                     for n in ast.walk(a))
-                        for a in args
-                    )
-                    if not ok:
-                        offenders.append(
-                            f"{mod}::{fn.name}:{call.lineno} writes `withheld_tools` and NO argument "
-                            f"of that call carries the recorder's value")
+                # The enclosing function, if any — a write at module scope, in a lambda or in a
+                # comprehension has none, and used to be skipped for exactly that reason.
+                fn = next((f for f in ast.walk(tree)
+                           if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))
+                           and f.lineno <= call.lineno <= (f.end_lineno or f.lineno)), None)
+                derived = _recorder_locals(fn) if fn is not None else set()
+                sql_locals = set(global_sql_names)
+                sql_locals |= {n for n, v in _bindings(fn if fn is not None else tree)
+                               if _names_the_column(v)}
+                args = list(call.args) + [k.value for k in call.keywords]
+                if not any(_names_the_column(a) or (isinstance(a, ast.Name) and a.id in sql_locals)
+                           for a in args):
+                    continue
+                where = f"{mod}::{fn.name if fn is not None else '<module>'}:{call.lineno}"
+                binds_checked.append(where)
+                ok = any(
+                    _has_recorder_call(a) or any(isinstance(n, ast.Name) and n.id in derived
+                                                 for n in ast.walk(a))
+                    for a in args
+                )
+                if not ok:
+                    offenders.append(
+                        f"{where} writes `withheld_tools` and NO argument of that call carries the "
+                        f"recorder's value")
+
+        assert not unparseable, (
+            f"{unparseable} could not be parsed, so this gate cleared them without looking. A gate "
+            f"that skips what it cannot read is green over exactly the files most likely to be wrong."
+        )
 
         # 🔴 The NV: if the anchor stops matching, every assertion below is vacuous and green.
         #
@@ -2199,8 +2243,22 @@ def _unconditional_calls(body, pred):
             for n in ast.walk(s.value):
                 if isinstance(n, ast.Call) and pred(n):
                     yield n
-        elif isinstance(s, (ast.With, ast.AsyncWith, ast.Try)):
+        elif isinstance(s, (ast.With, ast.AsyncWith)):
             yield from _unconditional_calls(s.body, pred)
+        elif isinstance(s, ast.Try):
+            # 🔴 **THE `Try` WIDENING OVERSHOT, AND IT WAS INTRODUCED BY THE FIX FOR ROUTE 18.**
+            # Four probes that were RED before it are GREEN after — the worst being an arm as the
+            # LAST statement of a `try` body with the narrowing in the `except` handler: the handler
+            # runs precisely when the body did not finish, so that is a turn narrowing into nothing,
+            # and the line numbers say the arm came first.
+            #
+            # A `try` body is entered unconditionally, which is why it counts at all. But it only
+            # covers what is IN it: if a handler of the same `try` narrows, no arm inside the body
+            # can be said to precede that narrowing.
+            if not any(isinstance(n, ast.Call) and _called_name(n) in _NARROWING_CALLS
+                       for h in s.handlers + [s.finalbody] if h is not None
+                       for n in ast.walk(h if not isinstance(h, list) else ast.Module(body=h, type_ignores=[]))):
+                yield from _unconditional_calls(s.body, pred)
 
 
 def _turn_entry_calls():
@@ -2349,8 +2407,23 @@ def _turn_entry_calls():
             # definition the arm itself uses, so the two cannot drift) and that **precedes every
             # narrowing**. Verified still correct for its one live beneficiary,
             # `routers/messages.py::send_message`.
-            _delegates = sorted(c.lineno for c in _unconditional_calls(
-                fn.body, lambda c: visible.get((mod, _called_name(c) or "")) in arming))
+            # 🔴 **ROUTE 24 — I COMPARED LINE NUMBERS AND PYTHON EVALUATES ARGUMENTS FIRST.**
+            # `return stream_response(await c.get_tool_definitions())` puts the narrowing INSIDE the
+            # delegating call, on the same line, and the fetch runs **before** the delegate is even
+            # entered. Route 23 written on one line, exempted by the fix for route 23.
+            #
+            # A narrowing nested in the delegate's own arguments precedes it no matter what the line
+            # numbers say, so those delegates do not count.
+            _delegate_nodes = [c for c in _unconditional_calls(
+                fn.body, lambda c: visible.get((mod, _called_name(c) or "")) in arming)]
+            _delegate_nodes = [
+                c for c in _delegate_nodes
+                if not any(isinstance(n, ast.Call)
+                           and (_called_name(n) in _NARROWING_CALLS or _called_name(n) in reaching)
+                           for a in list(c.args) + [k.value for k in c.keywords]
+                           for n in ast.walk(a))
+            ]
+            _delegates = sorted(c.lineno for c in _delegate_nodes)
             if (f"{mod}::{fn.name}" in arming
                     and not any(isinstance(n, ast.Call)
                                 and _called_name(n) == "arm_turn_surface" for n in ast.walk(fn))
@@ -2705,39 +2778,34 @@ class TestTheFactsTHIS_ROUND_TIGHTENED_ARE_EACH_GUARDED:
             rec.absorb(instrument.surface_withheld.get())
         return instrument.catalogue_outage_registered()
 
-    def test_THE_OUTAGE_FACT_IS_ORDERING_DEPENDENT__and_this_records_WHICH_orderings(self):
-        """🔴 **THE TEST THAT RECORDS THE DEFECT INSTEAD OF DRESSING IT UP.**
+    def test_THE_OUTAGE_FACT_SURVIVES_A_DRAIN__and_does_not_survive_the_TURN(self):
+        """🔴 **THE ORDERING TABLE, ASSERTED — AND THE CLAIM IT REPLACES WAS THAT THIS COULD NOT
+        BE DONE.**
 
-        The previous version asserted all four orderings hold. It was **`1 passed` on the artifact
-        the change replaced** — every ordering it named was already satisfied by the code being
-        replaced, so it could not see the change at all. *A check whose seed and control agree is
-        theatre*, and this file has that sentence as a standard.
+        The previous version of this test asserted the arm-after-drain ordering as a **defect**,
+        under a note saying no arrangement inside `instrument.py` could satisfy every ordering
+        without a turn identity. A verifier refuted that in one line: the arrangement is the one that
+        was there before — the write in `record_catalogue_unavailable` plus the derivation at the arm
+        — and the argument I had rested the impossibility on was **my own sentence, gone vacuous**
+        (with the writer deleted, "monotone" and "lowering" are the same program, and the monotone
+        variant reds 0 of 2255).
 
-        What is actually true, measured rather than reasoned:
+        Six orderings, all measured against this tree rather than reasoned about:
 
-        | ordering | answer | |
+        | ordering | | |
         |---|---|---|
         | arm → record → read | `True` | the live production shape |
-        | arm → record → **drain** → read | **`False`** | 🔴 the drain erases the turn's fact |
-        | record → recorder → arm → drain → read | `True` | the arm derives from a non-empty sink |
-        | turn A drains → turn B arms → read | `False` | no boolean survives into the next turn |
+        | arm → record → **drain** → read | `True` | the write is what buys this |
+        | record → recorder → arm → drain → read | `True` | an arm joining a turn that already narrowed |
+        | two recorders in one turn | `True` | neither owns the fact, so neither can lose it |
+        | turn A drains → turn B arms → read | `False` | the derivation is what buys this |
 
-        **Row two is a defect and it is asserted as one.** Three arrangements of this fact have now
-        been measured — the flag with a writer, the flag deriving, and the fact rehoused onto the
-        recorder — and a verifier ran the last two head-to-head over six orderings: identical on
-        four, **worse on two, better on none**. Every arrangement that lives in this module fails at
-        least one ordering, because `arm_turn_surface` cannot tell *"a new turn is starting"* from
-        *"this turn already narrowed"*. The fact needs a **turn identity**, and nothing here has one.
-
-        So this asserts the current answers, including the wrong one. **It reds the day someone
-        gives the turn an identity** — which is CP-2's runtime — and at that point this test, the
-        note in `catalogue_outage_registered` and CP-2's entry all have to be updated together,
-        which is the point of writing it this way rather than leaving a comment.
-
-        **Reachability of row two: none today.** A verifier re-derived the full read/drain map at
-        this HEAD — three production reads, eight drains, and in all three turn shapes **every read
-        precedes every drain**. It is a latent hole, and it is named so that adding a post-drain
-        read in CP-2 cannot land quietly.
+        **The one residual, named rather than buried:** a turn that records and *never* calls
+        `arm_turn_surface()` leaves its row in the context for the next turn. That rides the
+        **sink**, not this flag, so no arrangement of this variable addresses it — and the shape that
+        produces it (an entry point that narrows without arming) is what
+        `TestTheTurnSinkIsArmedBeforeAnythingNarrows` statically forbids. Two mechanisms, one hole,
+        and the other mechanism is the one that owns it.
         """
         import contextvars
 
@@ -2761,23 +2829,38 @@ class TestTheFactsTHIS_ROUND_TIGHTENED_ARE_EACH_GUARDED:
             "the live production ordering lost the outage — the model would not be told its tools "
             "were unreachable, which is U-2's founding defect"
         )
+        assert ctx().run(lambda: _turn(drain=True)) is True, (
+            "THE DRAIN ERASED THE TURN'S OUTAGE. The persisted row now says outage while the model "
+            "was told nothing — worse than either being wrong alone. This is what the write in "
+            "`record_catalogue_unavailable` exists for; three rounds measured that write `inert` "
+            "and deleting it is what made this ordering fail."
+        )
         assert ctx().run(lambda: _turn(arm_first=False, drain=True)) is True, (
             "arming after a narrowing erased the narrowing's own fact"
         )
-        assert ctx().run(lambda: _turn(drain=True)) is False, (
-            "a read after the drain now returns the outage — the ordering hole is CLOSED. That is "
-            "good news and this test is stale: someone has given the turn an identity. Update this "
-            "row, the note in `catalogue_outage_registered`, and CP-2's entry on the board together."
+
+        def _two_recorders():
+            instrument.arm_turn_surface()
+            instrument.record_catalogue_unavailable(stage="s", reason="r")
+            first = instrument.AdvertisedToolsRecorder()
+            first.absorb(instrument.surface_withheld.get())
+            instrument.AdvertisedToolsRecorder()          # a second one, same turn
+            return instrument.catalogue_outage_registered()
+
+        assert ctx().run(_two_recorders) is True, (
+            "a second recorder in one turn lost the first one's fact — the failure mode of homing "
+            "this on the recorder, which a verifier measured and which is why it is not homed there"
         )
 
         def _two_turns():
             first = _turn(drain=True)
-            instrument.arm_turn_surface()                   # turn B, same context, drained sink
+            instrument.arm_turn_surface()                 # turn B, same context, drained sink
             return first, instrument.catalogue_outage_registered()
 
-        assert ctx().run(_two_turns)[1] is False, (
-            "turn A's outage outlived it into turn B — a pooled worker thread would tell a healthy "
-            "turn its tools were unreachable"
+        first, second = ctx().run(_two_turns)
+        assert (first, second) == (True, False), (
+            f"turn A={first}, turn B={second}. A `True` in turn B is the pooled-worker leak: a "
+            f"healthy turn told its tools were unreachable. A `False` in turn A is the drain erasure."
         )
 
     # ── The three value bounds ──────────────────────────────────────────────────────────────────
@@ -3106,3 +3189,87 @@ from app.client.knowledge_client import KnowledgeClient
         assert out["declaration"] == "read_file", (
             f"the row was classified from one value and stamped with another: {out}"
         )
+
+    def test_the_TERMINAL_GATE_sees_SQL_HOISTED_TO_A_MODULE_CONSTANT(self):
+        """🔴 **T9e — the headline defeat, and it is the most ordinary refactor there is.**
+        Hoisting the statement out of the function (`_SQL = "UPDATE chat_messages SET withheld_tools
+        = $1 …"`) made the gate blind, because `sql_locals` was computed from the FUNCTION's
+        bindings only. Also covered here: a write at **module scope**, which has no enclosing
+        function at all and was skipped for that reason."""
+        import pathlib as _pl
+
+        base = _pl.Path(__file__).resolve().parents[1] / "app"
+        probes = {
+            "module constant": [
+                '_SQL = "UPDATE chat_messages SET withheld_tools = $1 WHERE message_id = $2"',
+                "async def probe_write(conn, msg_id):",
+                "    await conn.execute(_SQL, None, msg_id)"],
+            "bare-name executor": [
+                "async def probe_write2(execute, msg_id):",
+                "    await execute(",
+                '        "UPDATE chat_messages SET withheld_tools = $1 WHERE message_id = $2",',
+                "        None, msg_id,",
+                "    )"],
+        }
+        for label, lines in probes.items():
+            path = base / "services" / "_lwprobe_hoisted.py"
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            try:
+                inst = TestU2ACatalogueOutageIsRegistered()
+                with pytest.raises(AssertionError, match="withheld_tools"):
+                    inst.test_EVERY_TERMINAL_WRITE_BINDS_THE_DRAINED_VALUE__not_a_literal_None()
+            finally:
+                path.unlink(missing_ok=True)
+
+    def test_the_TERMINAL_GATE_FAILS_CLOSED_on_a_file_it_cannot_parse(self):
+        """`except SyntaxError: continue` meant an unparseable module left the sweep with no record.
+        A gate that skips what it cannot read is green over exactly the files most likely to be
+        wrong."""
+        import pathlib as _pl
+
+        path = _pl.Path(__file__).resolve().parents[1] / "app" / "services" / "_lwprobe_broken.py"
+        path.write_text("def broken(:\n", encoding="utf-8")
+        try:
+            inst = TestU2ACatalogueOutageIsRegistered()
+            with pytest.raises(AssertionError, match="could not be parsed"):
+                inst.test_EVERY_TERMINAL_WRITE_BINDS_THE_DRAINED_VALUE__not_a_literal_None()
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_a_NARROWING_IN_THE_DELEGATES_ARGUMENTS_precedes_it(self):
+        """🔴 **ROUTE 24 — I compared line numbers and Python evaluates arguments first.**
+        `return stream_response(await c.get_tool_definitions())` puts the narrowing INSIDE the
+        delegating call, on the same line, and the fetch runs before the delegate is entered. It is
+        route 23 written on one line, exempted by the fix for route 23."""
+        key, entry = self._narrows_unarmed("arg_probe", "\n".join([
+            "from app.client.knowledge_client import KnowledgeClient",
+            "from app.services.stream_service import stream_response",
+            "async def arg_probe(c):",
+            "    return stream_response(await c.get_tool_definitions())"]) + "\n")
+        assert key and not entry[0], (
+            "a narrowing nested in the delegating call's own arguments was treated as happening "
+            "after it — the exemption compared source position against execution order"
+        )
+
+    def test_an_ARM_IN_A_TRY_WHOSE_HANDLER_NARROWS_is_not_COVERED(self):
+        """🔴 **The `Try` widening overshot, and the fix for route 18 introduced it.** An arm
+        as the LAST statement of a `try` body with the narrowing in the `except` handler: the handler
+        runs precisely when the body did not finish, so that is a turn narrowing into nothing — and
+        the line numbers say the arm came first. A `try` body is entered unconditionally, which is
+        why it counts at all; it only covers what is IN it."""
+        key, entry = self._narrows_unarmed("handler_probe", "\n".join([
+            "from app.client.knowledge_client import KnowledgeClient",
+            "from app.services.instrument import arm_turn_surface",
+            "async def handler_probe(c):",
+            "    try:",
+            "        arm_turn_surface()",
+            "    except Exception:",
+            "        return await c.get_tool_definitions()",
+            "    return []"]) + "\n")
+        assert key, "the probe was not discovered, so this asserts nothing"
+        arms, _raw, _narrowings, _aliases, conditional = entry
+        assert conditional or not arms, (
+            f"an arm in a `try` body was treated as covering a narrowing in that try's own handler, "
+            f"which runs only when the body did not complete: {entry}"
+        )
+

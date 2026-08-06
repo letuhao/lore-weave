@@ -307,26 +307,45 @@ def _as_text(value) -> str:
 surface_withheld: ContextVar[list | None] = ContextVar("lw_surface_withheld", default=None)
 #: Whether a CATALOGUE-scope narrowing happened this turn — a fact about the turn, deliberately
 #: independent of whether the sink holding its row has since been drained by a persister.
-#: 🔴 **THIS WAS A `bool` AND THE BOOL WAS THE DEFECT.** It held "did a catalogue outage happen this
-#: turn" — a fact whose lifetime is exactly one TURN — in a `ContextVar`, whose lifetime is the
-#: context, i.e. the thread when one is pooled. That mismatch *was* both live failures, and a
-#: verifier proved they cannot both be fixed by any single assignment: making the derivation
-#: monotone (so `narrow → drain → arm` stops ERASING a true flag) reds two tests, and leaving it
-#: lowering keeps the erasure. `arm_turn_surface` cannot tell *"a new turn is starting"* from
-#: *"this turn already narrowed"*, so no value it writes is right in both orders.
 #:
-#: Three separate rounds measured the writer at `record_catalogue_unavailable` **inert** — every
-#: production read precedes every drain — and the third also measured it **redundant**: removing it
-#: alone left the flag's own guard test passing, because the arm recomputed the same fact three
-#: lines away. A field that is both dead and duplicated is not a mechanism, it is a place for the
-#: next reader to be wrong.
+#: 🔴 **I CLAIMED NO ARRANGEMENT OF THIS FACT COULD BE CORRECT WITHOUT A TURN IDENTITY, AND
+#: THE COUNTER-EXAMPLE WAS ONE STATEMENT I HAD DELETED MYSELF.**
 #:
-#: So the fact moved to the object whose lifetime **is** one turn: the recorder. It already holds
-#: every absorbed catalogue row, so this is not new state — it is the same state, read where it
-#: lives. Neither failure mode is constructible against that lifetime: a pooled thread cannot keep
-#: a previous turn's answer (a new turn builds a new recorder), and a drain cannot erase it (the
-#: drain is what puts the row IN the recorder). The mechanism is NOT deleted — a verifier showed it
-#: buys a real post-drain property — it is rehoused.
+#: The history, because every step of it looked reasonable from inside:
+#:
+#:   1. The fact was a flag written HERE by `record_catalogue_unavailable` and DERIVED by
+#:      `arm_turn_surface`. Three rounds measured the writer **inert** (every production read
+#:      precedes every drain) and one measured it **redundant** (deleting it alone left the flag's
+#:      guard test green). Both measurements were correct. **Both were about the state of the tree
+#:      at that moment, and I read them as facts about the design.**
+#:   2. So the writer was deleted — and deleting it is what made the remaining hole real: with no
+#:      writer, a read AFTER a drain has nothing to consult, because the arm derives from a sink the
+#:      drain has emptied.
+#:   3. Then the fact was moved onto the recorder, which a verifier measured **worse on two
+#:      orderings and better on none**.
+#:   4. Then I reverted that — to step 2, not to step 1 — and wrote that no arrangement inside this
+#:      module could satisfy every ordering. A verifier measured the revert: **worse than the
+#:      recorder version on three orderings, worse than the original on four, better than neither on
+#:      any.** I called it a revert; it was the worst of the three.
+#:
+#: **The argument I rested the impossibility claim on was vacuous, and it was my own sentence.** It
+#: said *"making the derivation monotone reds two tests, and leaving it lowering keeps the erasure,
+#: so no value the arm writes is right in both orders."* That was true in step 1. After step 2 it
+#: was not: with the writer gone, **monotone and lowering are the same program**, and a verifier
+#: measured the monotone variant reddening **0 of 2255** tests. I carried a justification across a
+#: change that had emptied it, and then built a negative existence claim on top.
+#:
+#: **The arrangement that works is the one that was here before I started:** the write below, plus
+#: the derivation at the arm. The write makes the fact survive a drain; the derivation makes it not
+#: survive a turn. It needs no turn identity, and it satisfies every ordering measured except one —
+#: a turn that records and never calls `arm_turn_surface()` leaks into the next turn in the same
+#: context. That one rides the **sink**, not the flag, so no arrangement of this variable addresses
+#: it, and the arm-order gate statically forbids the shape that produces it.
+#:
+#: The transferable part is not about outages. **A measurement is about the tree at the moment it
+#: ran.** "Inert" and "redundant" were true of a tree that still had the writer; they stopped being
+#: true the instant the writer left, and nothing re-ran them. A claim that something is impossible
+#: deserves the same treatment as a claim that something is broken: an execution, not an argument.
 catalogue_outage: ContextVar[bool] = ContextVar("lw_catalogue_outage", default=False)
 
 
@@ -484,15 +503,17 @@ def record_catalogue_unavailable(*, stage: str, reason: str, count: int | None =
     if count is not None:
         entry["count"] = count
     sink.append(entry)
-    # 🔴 **A SEPARATE FLAG WAS WRITTEN HERE FOR THREE ROUNDS AND IT NEVER ONCE CHANGED AN ANSWER.**
-    # The reasoning was sound — the sink is drained and the question is about the TURN, so a reader
-    # after the drain would say "no outage" for a turn that had one — but the write was in the wrong
-    # place for it: the row and the flag went to two containers with two different lifetimes, and
-    # keeping them agreeing was then a discipline rather than a structure.
+    # 🔴 **DELETED FOR THREE ROUNDS ON A MEASUREMENT THAT WAS TRUE AND A CONCLUSION THAT WAS
+    # NOT.** The writer was measured *inert* (no production read follows a drain) and *redundant*
+    # (the arm recomputes the same fact), and both were correct **of the tree that still had it**.
+    # Deleting it is what turned a latent hole into a live one: with no write here, a read after a
+    # drain has nothing to consult, because the arm derives from a sink the drain has emptied.
     #
-    # It is still not written here. The row is the record; the arm derives the flag from the rows.
-    # That is one write, not two, so the pair cannot disagree — at the cost of the arm-after-drain
-    # ordering, which is recorded OPEN at `catalogue_outage_registered` rather than papered over.
+    # It is back, and the ordering it buys is asserted rather than argued — see
+    # `catalogue_outage_registered` and `test_THE_OUTAGE_FACT_SURVIVES_A_DRAIN`. "Did a catalogue
+    # outage happen this turn" is a fact about the TURN; it must not depend on whether somebody has
+    # since moved the rows somewhere else.
+    catalogue_outage.set(True)
 
 
 def catalogue_outage_registered() -> bool:
@@ -511,30 +532,16 @@ def catalogue_outage_registered() -> bool:
     # persists it, and a drained sink answers "no outage" for a turn that had one. The recorder is
     # where the drained rows went, so it is the one place the fact cannot be read *before* it exists
     # and cannot survive *after* the turn.
-    # 🔴 **THE REHOUSING WAS REVERTED, AND THE MEASUREMENT THAT REVERTED IT IS THE POINT.**
+    # 🔴 **THIS FACT HAS BEEN ARRANGED FOUR WAYS AND THE FIRST ONE WAS RIGHT.** The full
+    # history is on `catalogue_outage` above; the short version is that a writer measured *inert*
+    # was deleted, the fact was then rehoused onto the recorder (measured worse), then "reverted" to
+    # the state without the writer (measured worse still — worse than both predecessors on every
+    # ordering that discriminates). Restored, and the ordering it exists for is now a test rather
+    # than a sentence.
     #
-    # A verifier ruled that the fact belonged on the recorder rather than in a `ContextVar[bool]`,
-    # and that was shipped. The next verifier ran both trees head-to-head over six orderings:
-    # **identical on four, strictly worse on two** (a second recorder in one turn loses the first's
-    # rows; a background task that drains), **better on none**. Both sentences written to justify it
-    # were false — the leak does not ride the recorder, it rides the **sink**, which the arm adopts
-    # when non-empty; and a drain still erases, the trigger having merely moved from
-    # `catalogue_outage.set(...)` to `_turn_recorder.set(None)`. Worst of all, the guard written for
-    # it **passed on the artifact it replaced**: a check whose seed and control agree is theatre.
-    #
-    # I then tried a third design and a fourth. **Every arrangement that lives in this module fails
-    # at least one ordering**, and the reason is structural rather than a matter of care:
-    # `arm_turn_surface` cannot distinguish *"a new turn is starting"* from *"this turn already
-    # narrowed"*, because a re-used context and an auto-armed sink look identical from here. The
-    # fact's true owner is a **turn identity**, and nothing in this module has one.
-    #
-    # So it is NOT closed and it is NOT dressed up. Recorded OPEN, owner named: the turn-scoped
-    # token belongs to the runtime that serves the turn — **CP-2** — and the design a verifier
-    # proposed (the arm replaces the sink with a fresh, turn-stamped list; the outage travels as a
-    # row in it; `absorb` moves rows without clearing the turn's answer) is written down there,
-    # where the code that can implement it will exist. Shipping a third rearrangement of the same
-    # ambiguity would move the defect again and call it progress, which is what the last two rounds
-    # did.
+    # Read from the FLAG first, not from the sink's current contents: the sink is drained by whoever
+    # persists it, and a drained sink answers "no outage" for a turn that had one — the persisted
+    # row saying outage while the model was told nothing, which is worse than either alone.
     if catalogue_outage.get():
         return True
     sink = surface_withheld.get()
