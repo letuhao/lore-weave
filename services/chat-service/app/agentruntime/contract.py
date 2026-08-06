@@ -18,7 +18,11 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Literal
 
-from . import canon
+# 🔴 **`from . import canon` STOOD HERE WITH ZERO CALL SITES FOR SEVEN ROUNDS.** The one
+# `canon.nfc(...)` in this module was removed when its stated harm was refuted by execution, and the
+# import it existed for was left — so every reader of this file's imports believed the contract
+# consulted the canonical serialisation, and the four `canon.*` spellings still in `check_row`'s
+# comment made that belief look confirmed. An import is a claim about what a module depends on.
 
 CONTRACT_VERSION = "1.0.0"
 
@@ -28,7 +32,19 @@ KINDS: frozenset[str] = frozenset({"tool", "skill", "workflow"})
 Lifecycle = Literal["draft", "admitted", "deprecated", "retired"]
 LIFECYCLES: frozenset[str] = frozenset({"draft", "admitted", "deprecated", "retired"})
 
-_ID = re.compile(r"^[a-z][a-z0-9_]*$")
+#: A declaration id is a **key**, and an unbounded key is not one.
+#:
+#: 🔴 **SIX ROUNDS OPEN, AND THE VEHICLE IS PLAIN JSON.** `^[a-z][a-z0-9_]*$` bounded the alphabet
+#: and not the length, so a 300-character id was measured travelling through `check_row`, `rows_of`
+#: and `validate_document` end to end. It is the `AllowList`/`DenyList` membership key, it is the
+#: `OrderBy` tie-break, it is the M5 foreign key, and it is rendered into the prompt the model reads
+#: — so an id longer than the surface it names is a budget the ranking spends on one row.
+#:
+#: The bound is **stated rather than assumed**: 64 characters, which is longer than every identifier
+#: this repository declares and short enough that no single row can crowd a surface. A limit chosen
+#: by a person and written down is checkable; the absent one was neither.
+ID_MAX_LEN = 64
+_ID = re.compile(r"^[a-z][a-z0-9_]{0,%d}$" % (ID_MAX_LEN - 1))
 _VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 
 
@@ -347,7 +363,9 @@ def check_contract(declaration: Declaration) -> str:
         raise ContractViolation(
             getattr(d, "id", ""), "id",
             "not a stable identifier",
-            "lowercase letters, digits and underscores, starting with a letter",
+            f"lowercase letters, digits and underscores, starting with a letter, at most "
+            f"{ID_MAX_LEN} characters — an id is the membership key of every allow-list and the "
+            f"ranking's final tie-break, so an unbounded one is an unbounded key",
         )
     if d.kind not in KINDS:
         raise ContractViolation(
@@ -380,7 +398,8 @@ def check_contract(declaration: Declaration) -> str:
         if not isinstance(m, str) or not _ID.match(m or ""):
             raise ContractViolation(
                 d.id, f"members[{i}]", f"not a declaration id: {m!r}",
-                "the id of another declaration, resolved against the manifest at generation",
+                f"the id of another declaration (at most {ID_MAX_LEN} characters), resolved "
+                f"against the manifest at generation",
             )
     return CONTRACT_VERSION
 

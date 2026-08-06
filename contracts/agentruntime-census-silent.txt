@@ -11,13 +11,9 @@
 canon.py::_norm::NotCanonicalisable::1::be8fd1f7
 canon.py::_norm::NotCanonicalisable::2::795ce436
 canon.py::_norm::NotCanonicalisable::4::1598291a
-contract.py::check_contract::ContractViolation::7::6899e25d
-contract.py::check_row_shape::ContractViolation::2::3e304e0c
-contract.py::check_row_shape::ContractViolation::7::559fc0a3
 manifest.py::build::UntrustedRow::4::f4ee8484
 manifest.py::generate::UntrustedRow::1::aac73feb
 manifest.py::generate::UntrustedRow::2::311a6e16
 manifest.py::validate_document::UntrustedRow::5::dfe69192
 manifest.py::validate_document::UntrustedRow::6::d4482c64
-surface.py::OrderBy.__post_init__::ValueError::3::b3926159
 surface.py::TakeWhileBudget.__post_init__::ValueError::1::3130a968

@@ -96,6 +96,45 @@ def _mirror() -> pathlib.Path:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(src, dst)
     return out
+
+
+def _own_mirror(mirror: pathlib.Path) -> bool:
+    """Did `_mirror()` create this directory? **A cleanup must only remove what it created.**
+
+    🔴 The check exists because the version without it **deleted the system temp directory**: a
+    guard monkeypatched `_mirror` to return `fixture.parent`, and `mkdtemp` returns a directory
+    INSIDE temp, so its parent is `%TEMP%` itself. It destroyed this census's own mirror mid-run and
+    is the most likely cause of six "another process deleted my output file" failures that were
+    blamed on the environment for an evening.
+    """
+    import tempfile
+
+    return (mirror.name.startswith("lw-census-")
+            and mirror.parent == pathlib.Path(tempfile.gettempdir()))
+
+
+def _discard(mirror: pathlib.Path) -> None:
+    """Remove a mirror **this module made**, and say so when it declines.
+
+    🔴 **BOTH WRITERS LEAKED, AND ONE OF THEM LEAKED EVERYTHING.** `census()` registered an
+    `atexit` and therefore held a full 239 MB copy for the whole run; `_selftest()` called
+    `_mirror()` and had **no cleanup at all**, so every invocation leaked one. Measured on this
+    machine: **12 mirrors and 455 fixture directories, 2.4 GB** — and it was found by listing the
+    temp directory, not by any gate, which is the part worth recording. A previous round had
+    already measured 6.71 GB of the same thing and the fix landed on `census()` alone: **the tenth
+    pair in this run repaired at one end.**
+
+    A `finally` frees it deterministically; the `atexit` registration stays as the kill-path
+    backstop, and `ignore_errors` makes the double-remove a no-op.
+    """
+    import shutil
+
+    if _own_mirror(mirror):
+        shutil.rmtree(mirror, ignore_errors=True)
+    else:
+        print(f"census: not removing {mirror} - this module did not create it")
+
+
 SUITE = "tests/test_cp1_membrane.py"
 ALLOWLIST = ROOT / "contracts" / "agentruntime-census-silent.txt"
 
@@ -258,36 +297,35 @@ def census(verbose: bool = False) -> dict[str, bool]:
     pkg, cs = mirror / _PKG_REL, mirror / _CS_REL
     import atexit as _atexit
     import shutil as _shutil
-    import tempfile
     # \U0001F534 108 directories, 8.4 GB measured — one 237 MB copy per run, never removed, and one of
     # them landed inside the repo and reddened an unrelated test that a verifier nearly filed as a
     # finding. An instrument that leaves debris is an instrument that manufactures findings.
-    # 🔴 **THIS DELETED THE SYSTEM TEMP DIRECTORY.** The guard for this function monkeypatches
-    # `_mirror` to return `fixture.parent` — and `mkdtemp` returns a directory INSIDE temp, so its
-    # parent is `%TEMP%` itself. Every run of that test then registered `rmtree(%TEMP%)` and executed
-    # it on exit. It destroyed this census's own mirror mid-run, and it is the most likely cause of
-    # the six "another process deleted my output file" failures I spent the evening blaming on the
-    # environment. **A cleanup must only remove what it created**, so this refuses anything that is
-    # not a directory this function made.
-    if mirror.name.startswith("lw-census-") and mirror.parent == pathlib.Path(tempfile.gettempdir()):
+    #
+    # The `atexit` is the KILL PATH only: a `finally` cannot run when the process is killed, and a
+    # `SIGKILL` runs neither — but the ordinary exit must not hold 239 MB for the length of the run
+    # either, so both are here and `_discard` makes the second call a no-op.
+    if _own_mirror(mirror):
         _atexit.register(lambda: _shutil.rmtree(mirror, ignore_errors=True))
     else:
         print(f"census: not registering cleanup for {mirror} — this function did not create it")
-    for path in sorted(pkg.glob("*.py")):
-        if path.name == "__init__.py":
-            continue
-        raw = path.read_bytes()
-        src = raw.decode("utf-8")
-        mod = path.name
-        for site_id, node in _sites(ast.parse(src), mod):
-            path.write_bytes(_neutered(src, node).encode("utf-8"))
-            try:
-                red = not _suite_is_green(cs)
-            finally:
-                path.write_bytes(raw)     # inside the mirror; the live tree is never touched
-            results[site_id] = red
-            if verbose:
-                print(f"  {'RED   ' if red else 'SILENT'} {site_id}", flush=True)
+    try:
+        for path in sorted(pkg.glob("*.py")):
+            if path.name == "__init__.py":
+                continue
+            raw = path.read_bytes()
+            src = raw.decode("utf-8")
+            mod = path.name
+            for site_id, node in _sites(ast.parse(src), mod):
+                path.write_bytes(_neutered(src, node).encode("utf-8"))
+                try:
+                    red = not _suite_is_green(cs)
+                finally:
+                    path.write_bytes(raw)   # inside the mirror; the live tree is never touched
+                results[site_id] = red
+                if verbose:
+                    print(f"  {'RED   ' if red else 'SILENT'} {site_id}", flush=True)
+    finally:
+        _discard(mirror)
     return results
 
 
@@ -315,6 +353,17 @@ def _selftest() -> int:
         return 1
     # ...and it must go red when a known-guarded site is neutered.
     mirror = _mirror()
+    try:
+        return _selftest_in(mirror, len(sites))
+    finally:
+        # 🔴 **THIS FUNCTION LEAKED ITS MIRROR ENTIRELY** — `census()` at least registered an
+        # `atexit`, and this one had nothing, so every invocation left a 239 MB copy behind. The
+        # previous round's fix for "mirrors never removed" landed on `census()` alone: a pair
+        # repaired at one end, twenty lines apart, for the second time in this same file.
+        _discard(mirror)
+
+
+def _selftest_in(mirror: pathlib.Path, n_sites: int) -> int:
     probe = mirror / _PKG_REL / "contract.py"
     raw = probe.read_bytes()
     src = raw.decode("utf-8")
@@ -344,7 +393,7 @@ def _selftest() -> int:
     if not fired:
         print("SELFTEST FAIL: neutering a guarded refusal did not red the suite")
         return 1
-    print(f"agentruntime-census selftest OK - {len(sites)} raise sites, fires on a guarded one")
+    print(f"agentruntime-census selftest OK - {n_sites} raise sites, fires on a guarded one")
     return 0
 
 

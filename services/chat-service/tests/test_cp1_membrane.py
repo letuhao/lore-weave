@@ -2093,6 +2093,155 @@ class TestStageKindsAreDataNotClosures:
             "changed what it had validated"
         )
 
+    def test_THE_ROW_COPY_IS_NOT_SHALLOW__members_is_the_one_mutable_value_a_row_carries(self):
+        """🔴 **FIVE ROUNDS, AND ITS OWN GUARD REQUIRED THE DEFECT TO STAY.** `dict(r)` was added at
+        both doors to stop the caller's row object reaching a consumer — and `dict()` is shallow, so
+        every row still handed back **the source document's own `members` list**. The test above
+        asserts non-mutation of `id`, a `str`, which a shallow copy protects; it therefore passes in
+        both states and could never have named this.
+
+        `members` is a skill's foreign-key list. A consumer appending to it writes into the document
+        the assembler was given, so the *next* read of that document resolves M5 against members
+        nothing admitted.
+
+        The vehicle is the assertion the sibling test could not make: **identity of the list**, and
+        then a write through it.
+        """
+        good = build([admit(_skill("world_setup", members=("book_list",))),
+                      admit(_tool("book_list"))], previous=None)
+        src_row = next(r for r in good["declarations"] if r["id"] == "world_setup")
+
+        for name, door in (("rows_of", rows_of),
+                           ("validate_document",
+                            lambda d: validate_document(d)["declarations"]),
+                           ("declarations", lambda d: declarations(d))):
+            out = door(good)
+            row = next(r for r in out if r["id"] == "world_setup")
+            assert row["members"] is not src_row["members"], (
+                f"{name} handed back the source document's own `members` list; `dict(r)` is a "
+                f"shallow copy and `members` is the only mutable value a row carries"
+            )
+            row["members"].append("TYPED BY HAND")
+            assert src_row["members"] == ["book_list"], (
+                f"{name}: appending to the row it returned changed the document it validated — M5 "
+                f"resolved against members nothing admitted"
+            )
+
+    def test_AN_ID_IS_A_KEY_AND_A_KEY_IS_BOUNDED(self):
+        """🔴 **SIX ROUNDS, VEHICLE = PLAIN JSON.** `^[a-z][a-z0-9_]*$` bounded the alphabet and not
+        the length, and a 300-character id was measured travelling through `check_row`, `rows_of`
+        and `validate_document` end to end. An id is the `AllowList`/`DenyList` membership key, the
+        `OrderBy` tie-break, M5's foreign key, and text rendered into the prompt the model reads.
+
+        Both `_ID` sites are driven, because the regex governs the id AND every member — the member
+        half sits behind a second refusal, and fixing one spelling of a shared pattern is this run's
+        most-repeated failure.
+        """
+        from app.agentruntime.contract import ID_MAX_LEN, check_row
+
+        at_limit = "a" * ID_MAX_LEN
+        over = "a" * (ID_MAX_LEN + 1)
+
+        check_row({**_VALID_ROW, "id": at_limit}, "row")           # the bound is inclusive, stated
+
+        with pytest.raises(ContractViolation, match="not a stable identifier"):
+            check_row({**_VALID_ROW, "id": over}, "row")
+        with pytest.raises(ContractViolation, match="not a declaration id"):
+            check_row({**_VALID_ROW, "id": "s0", "kind": "skill", "members": [over]}, "row")
+
+        for name, door in (("rows_of", rows_of), ("validate_document", validate_document),
+                           ("declarations", lambda d: declarations(d))):
+            doc = {"manifest_version": 1, "contract_version": "1.0.0",
+                   "declarations": [{**_VALID_ROW, "id": over}]}
+            with pytest.raises(ContractViolation, match="not a stable identifier"):
+                door(doc)
+
+    def test_A_KEY_PAIR_THAT_IS_NOT_A_PAIR_IS_REFUSED__and_the_vehicle_is_a_LIST(self):
+        """🔴 **FIVE ROUNDS SILENT, AND THE REASON IS WHY THE OTHER VEHICLES PROVE NOTHING.**
+        `OrderBy` refuses a key that is not a 2-tuple, and the census records that refusal as one
+        the suite does not notice being removed. Neuter it and try the obvious probes: a 3-tuple, a
+        1-tuple and a 2-character `str` all still raise `ValueError` — from `field, direction =
+        pair`, Python's own unpacking, which says nothing about this check.
+
+        **A 2-element LIST is the one vehicle the unpacking does not mask**: it unpacks cleanly,
+        both halves are plain `str`, the direction is legal, and the ranking that decides which
+        declarations reach the model is then built from a container that decides its own iteration.
+        """
+        with pytest.raises(ValueError, match=r"is not a \(field, direction\) pair"):
+            OrderBy(keys=(["id", "asc"],))
+        # ...and the shape it exists to accept still constructs, so this is not a blanket refusal.
+        assert OrderBy(keys=(("id", "asc"),)).effective_keys() == (("id", "asc"),)
+
+    def test_A_STR_SUBCLASS_KEY_OR_MEMBER_IS_NOT_A_STR(self):
+        """🔴 **B18-8 — SEVEN ROUNDS, AND `1 OF 3 PINS` HAD A TEST.** `check_row_shape` bounds three
+        places a `str` can arrive: the row's KEYS, the `members` elements, and every VALUE via
+        `ROW_FIELDS`. Only the value pin was guarded, so the census recorded the other two as
+        refusals nothing checks.
+
+        A `str` subclass is not a cosmetic distinction here. `in`, `[]` and `==` all dispatch to
+        user code, so the object that answers `"id"` to the validator can answer something else to
+        the consumer — the TOCTOU this package has already paid for five times, arriving through the
+        one type nobody thought to bound because it *is* the bound.
+
+        `isinstance` cannot express this and `type(x) is str` is the only comparison Python does not
+        dispatch, which is why both pins spell it that way and why both need a test that reds when
+        they stop.
+        """
+        from app.agentruntime.contract import check_row_shape
+
+        class Forged(str):
+            pass
+
+        row = dict(_VALID_ROW)
+        row[Forged("id")] = row.pop("id")
+        with pytest.raises(ContractViolation, match="non-string key"):
+            check_row_shape(row, "row")
+
+        with pytest.raises(ContractViolation, match="members"):
+            check_row_shape({**_VALID_ROW, "id": "s0", "kind": "skill",
+                             "members": [Forged("book_list")]}, "row")
+
+    def test_AN_IMPORT_IS_A_CLAIM_ABOUT_WHAT_A_MODULE_DEPENDS_ON(self):
+        """🔴 **B18-11 — `canon` was imported by two modules and called by neither, seven rounds.**
+        The one `canon.nfc(...)` call was removed when a verifier refuted the harm its comment
+        described; the imports it existed for stayed, and `check_row`'s surviving comment mentions
+        `canon.digest` four times — so every reader of this package saw a contract that consults the
+        canonical serialisation, and grep confirmed it.
+
+        Named as a property rather than as two deletions, because the deletions would go stale and
+        the property will not: **a module may not import a name it does not use.**
+        """
+        import ast
+
+        pkg = Path(__file__).resolve().parents[1] / "app" / "agentruntime"
+        dead = []
+        for path in sorted(pkg.glob("*.py")):
+            tree = ast.parse(path.read_text("utf-8"))
+            bound = {}
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Import, ast.ImportFrom)):
+                    # `from __future__ import …` binds a COMPILER DIRECTIVE, not a name. Excluded by
+                    # module rather than by name, so a future feature added later is covered too.
+                    if isinstance(node, ast.ImportFrom) and node.module == "__future__":
+                        continue
+                    for a in node.names:
+                        if a.name == "*":
+                            continue
+                        bound[(a.asname or a.name).split(".")[0]] = node.lineno
+            used = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
+            used |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
+            used |= {s for n in ast.walk(tree) if isinstance(n, ast.Constant)
+                     and isinstance(n.value, str) for s in n.value.split()}
+            for name, lineno in bound.items():
+                if name not in used and not name.startswith("__"):
+                    dead.append(f"{path.name}:{lineno} imports {name}, which it never uses")
+        assert not dead, (
+            f"{dead} — an import is a claim about what a module depends on, and a reader (or a "
+            f"grep) takes it at face value. `canon` was imported by two modules with zero call "
+            f"sites in either for seven consecutive rounds, and this gate's first run found a "
+            f"THIRD (`manifest.import re`) that eight rounds of review had not named."
+        )
+
     def test_A_STAGE_MUST_NAME_THE_FIELD_IT_READS__and_the_order_it_ranks_by(self):
         """🔴 **The fifth unguarded load-bearing check, found by a verifier enumerating raise
         sites rather than reading the diff.** `Filter(field="")` narrows the surface to **zero**
@@ -2117,7 +2266,7 @@ class TestStageKindsAreDataNotClosures:
             f"a generator pipeline was a silent no-op: {s.names}. Validated once, iterated empty."
         )
 
-    def test_THE_CENSUS_DOES_NOT_WRITE_INTO_THE_LIVE_TREE(self):
+    def test_THE_CENSUS_DOES_NOT_WRITE_INTO_THE_LIVE_TREE(self, tmp_path):
         """🔴 **THE PREVIOUS VERSION OF THIS TEST WAS GREEN OVER THE CENSUS'S OWN REMOVAL.**
 
         Two verifiers enumerated it independently: **8 of 8 bypasses green** — `if: false`,
@@ -2169,7 +2318,13 @@ class TestStageKindsAreDataNotClosures:
         # touch.
         import tempfile
 
-        fixture = pathlib.Path(tempfile.mkdtemp(prefix="lw-census-fixture-"))
+        # 🔴 **AND THIS LINE LEAKED 455 DIRECTORIES.** It was `mkdtemp(prefix="lw-census-fixture-")`
+        # with no cleanup — in the guard written to police an instrument whose own recorded finding
+        # is *"mirrors never removed, 6.71 GB measured"*. Measured on one machine: **455 fixture
+        # directories and 12 mirrors, 2.4 GB**, and it was found by listing `%TEMP%` rather than by
+        # any gate. `tmp_path` is removed by pytest, so the leak cannot come back by omission.
+        fixture = tmp_path / "lw-census-fixture"
+        fixture.mkdir()
         (fixture / "probe.py").write_text(
             "def a(x):\n"
             "    if not x:\n"
@@ -2234,36 +2389,355 @@ class TestStageKindsAreDataNotClosures:
             f"is not what was measured, which is a fix landing beside its subject"
         )
 
-    def test_THE_CENSUS_IS_WIRED_TO_RUN_IN_CI(self):
-        """The CI half, and it **parses the YAML** rather than matching substrings in it.
+    def test_NEITHER_CENSUS_WRITER_CAN_REACH_THE_LIVE_TREE__all_8_cells(self):
+        """🔴 **THE GUARD ABOVE WATCHES ONE WRITER THROUGH ONE API: 1 OF 8 CELLS.**
 
-        🔴 `'python scripts/agentruntime-census.py' in job` was satisfied by a `#` comment and by
-        any later job in the file; `'--write' not in job` forbade exactly the one flag it named while
-        `--selftest`, `|| true`, `continue-on-error` and `if: false` all passed. A workflow is
-        structured data and was being read as a string.
+        The census has **two** functions that write source files — `census()` and `_selftest()` —
+        and a verifier enumerated the space as {2 writers} × {4 write APIs}. The existing guard
+        drives `census()` and patches `pathlib.Path.write_bytes`, so seven of the eight ways to put
+        a `raise -> pass` into a tracked module go unobserved. That is not hypothetical arithmetic:
+        **the fix that moved the neutering into a mirror moved `census()`'s writer and left
+        `_selftest`'s behind**, twenty lines away, and the guard stayed green through it — the tenth
+        pair in this run repaired at one end.
+
+        So this drives BOTH writers with every write API wrapped, and then **enumerates all eight
+        cells as controls**: for each (writer, API) it injects a live-tree write into that writer,
+        by AST, and requires the watcher to catch it. A guard whose failure mode is unmeasured is
+        the thing the census exists to replace.
+
+        The interception never lets a live-tree write reach the disk, so the controls cannot leave
+        debris — an instrument that manufactures findings is the defect one level up.
         """
-        import yaml
+        import ast as _ast
+        import io
+        import pathlib
+        import shutil as _shutil
+        import tempfile
+        import types
 
-        wf = yaml.safe_load((_REPO / ".github" / "workflows" / "lint-foundation.yml")
-                            .read_text("utf-8"))
-        job = wf["jobs"].get("agentruntime-census")
+        script = _REPO / "scripts" / "agentruntime-census.py"
+        source = script.read_text("utf-8")
+        real_pkg = _REPO / "services" / "chat-service" / "app" / "agentruntime"
+
+        def _load(inject_into=None, statement=None):
+            """The census module, optionally with `statement` spliced into `inject_into`'s body."""
+            tree = _ast.parse(source)
+            if inject_into is not None:
+                fn = next(n for n in tree.body
+                          if isinstance(n, _ast.FunctionDef) and n.name == inject_into)
+                fn.body.insert(1, _ast.parse(statement).body[0])
+                _ast.fix_missing_locations(tree)
+            mod = types.ModuleType("_census_cell_probe")
+            mod.__file__ = str(script)
+            exec(compile(tree, str(script), "exec"), mod.__dict__)   # noqa: S102 - the subject
+            return mod
+
+        def _run(mod):
+            """Drive both writers with every write API watched. Returns the live-tree writes seen."""
+            # One mirror PER `_mirror()` call, named exactly as the real one is, so the leak check
+            # below is about what each writer does with the directory it was given.
+            made: list[pathlib.Path] = []
+
+            def _fake_mirror():
+                d = pathlib.Path(tempfile.mkdtemp(prefix="lw-census-"))
+                _shutil.copytree(real_pkg, d / mod._PKG_REL)
+                made.append(d)
+                return d
+
+            writes: list[pathlib.Path] = []
+
+            def _is_live(p) -> bool:
+                p = pathlib.Path(p)
+                return p == _REPO or _REPO in p.parents
+
+            _rb, _rt = pathlib.Path.write_bytes, pathlib.Path.write_text
+            _ro, _rbo = pathlib.Path.open, __builtins__["open"] if isinstance(
+                __builtins__, dict) else __builtins__.open
+
+            def _w_bytes(self, data, *a, **kw):
+                if _is_live(self):
+                    writes.append(pathlib.Path(self))
+                    return len(data)
+                return _rb(self, data, *a, **kw)
+
+            def _w_text(self, data, *a, **kw):
+                if _is_live(self):
+                    writes.append(pathlib.Path(self))
+                    return len(data)
+                return _rt(self, data, *a, **kw)
+
+            def _p_open(self, mode="r", *a, **kw):
+                if set(mode) & set("wax+") and _is_live(self):
+                    writes.append(pathlib.Path(self))
+                    return io.BytesIO() if "b" in mode else io.StringIO()
+                return _ro(self, mode, *a, **kw)
+
+            def _b_open(file, mode="r", *a, **kw):
+                if set(str(mode)) & set("wax+") and _is_live(file):
+                    writes.append(pathlib.Path(file))
+                    return io.BytesIO() if "b" in str(mode) else io.StringIO()
+                return _rbo(file, mode, *a, **kw)
+
+            def _fake_green(cwd=None):
+                # Green at the selftest's baseline, red under injection — the two answers
+                # `_selftest` needs to run to completion without a real pytest.
+                return cwd is None
+
+            try:
+                with pytest.MonkeyPatch.context() as mp:
+                    mp.setattr(mod, "_suite_is_green", _fake_green)
+                    mp.setattr(mod, "_mirror", _fake_mirror)
+                    mp.setattr(pathlib.Path, "write_bytes", _w_bytes)
+                    mp.setattr(pathlib.Path, "write_text", _w_text)
+                    mp.setattr(pathlib.Path, "open", _p_open)
+                    mp.setattr("builtins.open", _b_open)
+                    results = mod.census()
+                    rc = mod._selftest()
+                return writes, results, rc, [d for d in made if d.exists()]
+            finally:
+                for d in made:
+                    _shutil.rmtree(d, ignore_errors=True)
+
+        # The pristine instrument, both writers, every API watched.
+        live, results, rc, leaked = _run(_load())
+        assert not live, (
+            f"the census wrote into the live tree, first {live[0]}. It neuters production source, "
+            f"so any interruption leaves a `raise -> pass` behind in a tracked module and every "
+            f"concurrent suite run reddens blaming a test — both measured."
+        )
+        # 🔴 Without these two, the cells below would prove only that the WATCHER sees four APIs:
+        # the injected statement is the writer's first line, so it fires even from a function that
+        # bails immediately afterwards. These are what make the drive a drive.
+        assert len(results) >= 50, (
+            f"the census enumerated {len(results)} sites over the real package; the drive is not "
+            f"exercising the loop it claims to and the cells below would be measuring the patches"
+        )
+        assert rc == 0, (
+            "`_selftest()` did not complete under the drive, so its four cells below fire from a "
+            "function that never reaches its own writer"
+        )
+        # 🔴 **THE LEAK, AND IT WAS FOUND BY LISTING `%TEMP%` RATHER THAN BY ANY GATE.** Measured on
+        # one machine: **12 mirrors and 455 fixture directories, 2.4 GB** — a previous round had
+        # already recorded 6.71 GB of exactly this, and the fix landed on `census()` alone while
+        # `_selftest()` twenty lines below had **no cleanup at all**. The tenth pair in this run
+        # repaired at one end, in the file whose docstring says an instrument that leaves debris is
+        # an instrument that manufactures findings.
+        #
+        # The property is per-writer and deterministic: **each returns having removed the directory
+        # it was given.** `atexit` is the kill path and cannot be asserted from inside the process
+        # that would have to exit for it to run.
+        assert not leaked, (
+            f"{len(leaked)} mirror(s) survived the writers that created them: {leaked}. Each is a "
+            f"239 MB copy of the repository held for the length of a CI run and left behind after "
+            f"it — the finding this instrument has recorded twice about itself."
+        )
+
+        # ...and the eight cells, so "the watcher would notice" is a measurement.
+        _APIS = {
+            "Path.write_bytes": "(ROOT / '_lwcensus_live_probe.tmp').write_bytes(b'x')",
+            "Path.write_text": "(ROOT / '_lwcensus_live_probe.tmp').write_text('x')",
+            "Path.open(w)": "(ROOT / '_lwcensus_live_probe.tmp').open('wb').write(b'x')",
+            "builtins.open(w)": "open(str(ROOT / '_lwcensus_live_probe.tmp'), 'w').write('x')",
+        }
+        blind = []
+        for writer in ("census", "_selftest"):
+            for api, statement in _APIS.items():
+                if not _run(_load(writer, statement))[0]:
+                    blind.append(f"{writer}() via {api}")
+        assert not blind, (
+            f"{len(blind)} of {2 * len(_APIS)} cells are invisible to this guard: {blind}. Each is "
+            f"a way the instrument can write into its own subject with the gate green — which is "
+            f"exactly how `_selftest`'s writer stayed in the live tree for a full round after "
+            f"`census`'s was moved out."
+        )
+        assert not (_REPO / "_lwcensus_live_probe.tmp").exists(), (
+            "a control actually created a file in the repository; the interception is supposed to "
+            "record the write and stop it, so the experiment cannot leave debris behind"
+        )
+
+    #: The CI half, expressed once so a CONTROL can run it against a deliberately broken workflow.
+    #:
+    #: 🔴 **THE ASSERTIONS BELOW WERE MEASURED GREEN UNDER 15 OF 16 WAYS TO DISABLE THE JOB.** The
+    #: previous version parsed the YAML rather than grepping it, which fixed the two shapes a
+    #: verifier had named and left the rest: a step-level `if`, a job-level `continue-on-error`,
+    #: `; exit 0`, `set +e`, a commented-out `run:`, an `on:` narrowed so the workflow never fires on
+    #: a PR, and the install landing after the run. **A gate over CI that is not itself controlled is
+    #: a gate about which nobody has measured anything** — which is this file's own standard, applied
+    #: to the file's own CI wiring for the first time.
+    @staticmethod
+    def _assert_census_ci(wf) -> None:
+        """Everything CI must be true for the census to be a gate. Raises `AssertionError`."""
+        def _live(run: str) -> str:
+            """The commands, with comment lines removed — a `#`-commented `run:` satisfied every
+            substring check written over it, twice, in two different tests."""
+            out = []
+            for line in str(run).splitlines():
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    out.append(stripped)
+            return "\n".join(out)
+
+        triggers = wf.get("on") or wf.get(True)          # PyYAML parses bare `on:` as the bool True
+        assert isinstance(triggers, dict) and ({"push", "pull_request"} & set(triggers)), (
+            f"the workflow's triggers are {triggers!r}: a census that never runs on a push or a "
+            f"pull request is a gate nobody passes through"
+        )
+        job = (wf.get("jobs") or {}).get("agentruntime-census")
         assert job, "the census job is not in the workflow"
         assert "if" not in job, "the census job is conditional, so it can be skipped silently"
-        runs = [str(s.get("run", "")) for s in job["steps"]]
-        census_steps = [r for r in runs if "agentruntime-census.py" in r]
+        assert not job.get("continue-on-error"), (
+            "the census JOB is continue-on-error, so every step inside it can fail green — the "
+            "step-level check below never sees this one"
+        )
+        steps = job.get("steps") or []
+        runs = [_live(s.get("run", "")) for s in steps]
+        census_steps = [(s, r) for s, r in zip(steps, runs) if "agentruntime-census.py" in r]
         assert census_steps, "no step runs the census; installing its dependencies is not running it"
-        for r in census_steps:
+        for s, r in census_steps:
             assert "--write" not in r and "--selftest" not in r, (
                 f"the CI step runs {r!r}: --write regenerates the allowlist instead of checking it, "
                 f"and --selftest alone never enumerates a single site"
             )
             assert "||" not in r, f"the CI step swallows its own failure: {r!r}"
-        for s in job["steps"]:
+            assert "set +e" not in r and "set +o errexit" not in r, (
+                f"the step disables error propagation before running the census: {r!r}"
+            )
+            assert not any(line.strip() in ("exit 0", "true") for line in r.splitlines()), (
+                f"the step ends by discarding the census's exit code: {r!r}"
+            )
+            assert "if" not in s, (
+                f"the census STEP is conditional, so the job can be green having never run it: "
+                f"{s.get('if')!r}"
+            )
             assert not s.get("continue-on-error"), "the census step cannot fail the build"
-        installs = " ".join(runs).split("agentruntime-census.py")[0]
+        installs = "\n".join(runs).split("agentruntime-census.py")[0]
         assert "requirements-test.txt" in installs, (
-            "the job installs no pytest, so the census's selftest runs the suite and can only fail - "
-            "a gate whose green state is unreachable"
+            "the job installs no pytest BEFORE the census runs, so the census's selftest runs the "
+            "suite and can only fail - a gate whose green state is unreachable"
+        )
+
+    def test_THE_CENSUS_IS_WIRED_TO_RUN_IN_CI(self):
+        """The real workflow satisfies every clause. `_assert_census_ci` is the whole check; the
+        test below is what establishes the check can fail."""
+        import yaml
+
+        wf = yaml.safe_load((_REPO / ".github" / "workflows" / "lint-foundation.yml")
+                            .read_text("utf-8"))
+        self._assert_census_ci(wf)
+
+    def test_THE_CI_CHECK_REDS_ON_EVERY_WAY_TO_DISABLE_THE_CENSUS(self):
+        """🔴 **THE ENUMERATION, AND IT IS THE POINT OF THE PREVIOUS TEST.** Two verifiers measured
+        the CI half green under 15 of 16 disable shapes; the answer to that is not more clauses, it
+        is a control per shape, so the count is measured rather than asserted.
+
+        Each entry below turns the workflow into one that does **not** gate anything. Every one must
+        make `_assert_census_ci` raise. A shape that stays green here is a documented hole, and this
+        list is the only honest place to record one.
+        """
+        import yaml
+
+        real = yaml.safe_load((_REPO / ".github" / "workflows" / "lint-foundation.yml")
+                              .read_text("utf-8"))
+        JOB, RUN = "agentruntime-census", "python scripts/agentruntime-census.py"
+
+        def _census_step(wf):
+            job = wf["jobs"][JOB]
+            return next(s for s in job["steps"] if "agentruntime-census.py" in str(s.get("run", "")))
+
+        def _install_step(wf):
+            job = wf["jobs"][JOB]
+            return next(s for s in job["steps"] if "requirements-test.txt" in str(s.get("run", "")))
+
+        def _drop_job(wf):
+            del wf["jobs"][JOB]
+
+        def _job_if_false(wf):
+            wf["jobs"][JOB]["if"] = "false"
+
+        def _step_if_false(wf):
+            _census_step(wf)["if"] = "false"
+
+        def _job_continue_on_error(wf):
+            wf["jobs"][JOB]["continue-on-error"] = True
+
+        def _step_continue_on_error(wf):
+            _census_step(wf)["continue-on-error"] = True
+
+        def _write_flag(wf):
+            _census_step(wf)["run"] = RUN + " --write"
+
+        def _selftest_only(wf):
+            _census_step(wf)["run"] = RUN + " --selftest"
+
+        def _or_true(wf):
+            _census_step(wf)["run"] = RUN + " || true"
+
+        def _exit_zero(wf):
+            _census_step(wf)["run"] = RUN + "\nexit 0\n"
+
+        def _set_plus_e(wf):
+            _census_step(wf)["run"] = "set +e\n" + RUN
+
+        def _comment_out(wf):
+            _census_step(wf)["run"] = "# " + RUN + "\necho skipped"
+
+        def _drop_step(wf):
+            job = wf["jobs"][JOB]
+            job["steps"] = [s for s in job["steps"]
+                            if "agentruntime-census.py" not in str(s.get("run", ""))]
+
+        def _drop_install(wf):
+            _install_step(wf)["run"] = "python -m pip install --quiet -r requirements.txt"
+
+        def _install_after(wf):
+            job, inst = wf["jobs"][JOB], _install_step(wf)
+            job["steps"] = [s for s in job["steps"] if s is not inst] + [inst]
+
+        def _dispatch_only(wf):
+            wf.pop("on", None), wf.pop(True, None)
+            wf["on"] = {"workflow_dispatch": None}
+
+        def _rename_script(wf):
+            _census_step(wf)["run"] = "python scripts/agentruntime-membrane-gate.py"
+
+        def _empty_steps(wf):
+            wf["jobs"][JOB]["steps"] = []
+
+        SHAPES = {
+            "the job is deleted": _drop_job,
+            "the job is `if: false`": _job_if_false,
+            "the STEP is `if: false`": _step_if_false,
+            "the JOB is continue-on-error": _job_continue_on_error,
+            "the STEP is continue-on-error": _step_continue_on_error,
+            "`--write` regenerates instead of checking": _write_flag,
+            "`--selftest` only, so no site is enumerated": _selftest_only,
+            "`|| true` swallows the exit code": _or_true,
+            "`exit 0` on the next line discards it": _exit_zero,
+            "`set +e` disables error propagation": _set_plus_e,
+            "the `run:` is commented out": _comment_out,
+            "the census step is removed": _drop_step,
+            "requirements-test.txt is not installed": _drop_install,
+            "the install lands AFTER the census": _install_after,
+            "`on:` is narrowed to workflow_dispatch": _dispatch_only,
+            "the step runs a different script": _rename_script,
+            "the job has no steps at all": _empty_steps,
+        }
+
+        survived = []
+        for label, mutate in SHAPES.items():
+            wf = copy.deepcopy(real)
+            mutate(wf)
+            try:
+                self._assert_census_ci(wf)
+            except AssertionError:
+                continue
+            except (KeyError, StopIteration) as exc:      # the mutation itself did not apply
+                survived.append(f"{label} (the control did not take: {exc!r})")
+                continue
+            survived.append(label)
+        assert not survived, (
+            f"{len(survived)} of {len(SHAPES)} ways to disable the census leave the CI check GREEN: "
+            f"{survived}. Each is a way this gate can stop gating with nobody informed."
         )
 
     def test_THE_MANIFEST_IS_WRITTEN_WITH_LF_ON_EVERY_PLATFORM(self, tmp_path):

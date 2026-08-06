@@ -35,15 +35,22 @@ class NotCanonicalisable(TypeError):
 
 
 def nfc(value: str) -> str:
-    """The Unicode form this package hashes in, exposed for §0.14.2's **door (a)**.
+    """The Unicode form this package hashes in — **the one place that decides it.**
 
-    `manifest.load` is one of the two doors that section names, and it did not normalise: every other
-    row string is ASCII-constrained by the contract, but `owning_service` is not, so an NFD spelling
-    loaded and validated and produced **two `digest` values for one visibly identical document**.
+    🔴 **THIS DOCSTRING MADE A CLAIM A VERIFIER REFUTED BY EXECUTING IT, AND IT SURVIVED SEVEN
+    ROUNDS SAYING IT.** It said `manifest.load` *"did not normalise, so an NFD spelling loaded and
+    validated and produced **two `digest` values for one visibly identical document**"* — and the
+    second half is false: `digest` normalises every string on the way in, so
+    `digest(NFD) == digest(NFC)` and no drift gate can see a difference. The `canon.nfc(...)` call
+    placed at that door on the strength of this sentence also normalised only the COPY fed to the
+    check, leaving the row storing NFD either way; it was removed, and the sentence that justified it
+    should have gone in the same change. **A rationale that outlives its own refutation is how the
+    next reader re-adds the line.**
 
-    Exported from here rather than re-spelled at the door, because the whole point of §0.14.2 is that
-    exactly one place decides what the composed form is — a second `unicodedata.normalize` call in
-    this package would be the eighteenth implementation problem in miniature.
+    What IS true, and is the whole of §0.14.2: exactly one place decides what the composed form is.
+    That claim was false *inside this module* — `_norm` spelled `unicodedata.normalize("NFC", …)`
+    three more times, which is the eighteen-implementations problem in miniature, in the file written
+    to end it. `_norm` calls this now, so the module has one spelling and this function has callers.
     """
     return unicodedata.normalize("NFC", value) if isinstance(value, str) else value
 
@@ -63,7 +70,7 @@ def _norm(value: Any, *, path: str = "$") -> Any:
             f"string, or a scaled integer — where the choice is visible to a reader."
         )
     if isinstance(value, str):
-        return unicodedata.normalize("NFC", value)
+        return nfc(value)
     if isinstance(value, dict):
         out = {}
         for k in value:
@@ -72,7 +79,7 @@ def _norm(value: Any, *, path: str = "$") -> Any:
                     f"{path}: keys must be strings; {type(k).__name__} has no stable ordering "
                     f"across runs, so the digest would depend on insertion order."
                 )
-            out[unicodedata.normalize("NFC", k)] = _norm(value[k], path=f"{path}.{k}")
+            out[nfc(k)] = _norm(value[k], path=f"{path}.{k}")
         return out
     if isinstance(value, (list, tuple)):
         return [_norm(v, path=f"{path}[{i}]") for i, v in enumerate(value)]

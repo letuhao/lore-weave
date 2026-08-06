@@ -21,7 +21,62 @@ from app.services import instrument
 from app.services.instrument import AdvertisedToolsRecorder
 from app.services.tool_surface import budget_names_by_tokens, budget_names_by_tokens_ex
 
-_APP = Path(__file__).resolve().parents[1] / "app"
+#: The two gates in this file sweep a directory tree, and this names it. Both were moved here from
+#: beside the arm-order gate so that everything which writes into the swept tree can derive its path
+#: from the same constant the sweep uses.
+#:
+#: 🔴 **ROUTE SEVENTEEN, AND IT IS ABOUT THE FUTURE RATHER THAN THE PAST.** The sweep was a
+#: **non-recursive** glob over two named directories, so a byte-identical entry point is discovered
+#: under `app/services/` and **not discovered at all** under `app/agentruntime/` — the package CP-2
+#: will put the new runtime's turn entry point in. The gate would have been green on the first turn
+#: served by the thing this whole effort exists to build.
+#:
+#: `app/` recursively, with the directories that cannot host a turn named as exclusions, so a new
+#: package is IN scope by default and leaving it out is a decision someone writes down.
+_TURN_SCOPE_ROOT = "app"
+_TURN_SCOPE_EXCLUDE = ("__pycache__",)
+
+_APP = Path(__file__).resolve().parents[1] / _TURN_SCOPE_ROOT
+
+
+def _swept_root() -> Path:
+    """The directory **both gates actually sweep** — the one place a probe module may be written.
+
+    🔴 **SIX ROUNDS: SIX PROBE WRITERS TYPED `"app"` WHILE BOTH GATES READ `_TURN_SCOPE_ROOT`.**
+    Every one of the probe tests below is an experiment whose independent variable is *"a module
+    appears inside the swept tree"* — and each of them named the tree by hand. Rename or re-root the
+    scope and the gates follow it while every probe lands outside, so each of those tests goes green
+    while asserting nothing at all. That is the failure mode this file convicts other people's gates
+    of by name: **a file set that is TYPED OUT cannot notice the tree moving.**
+
+    `test_EVERY_PROBE_IS_WRITTEN_INTO_THE_TREE_THE_GATES_ACTUALLY_SWEEP` holds it as a property, so
+    the seventh writer cannot arrive typed.
+    """
+    return Path(__file__).resolve().parents[1] / _TURN_SCOPE_ROOT
+
+
+def _probe_offender(where: str, stem: str) -> str:
+    """A `pytest.raises(match=…)` pattern that only THIS probe's offender line can satisfy.
+
+    🔴 **THE THREE WEAK ORACLES, EIGHT ROUNDS.** All three terminal-write probe tests asserted
+    `match="withheld_tools"`, and the terminal-write gate carries that word in **three of its four
+    assertions** — the named-writer subset check, the `>= 4` anchor check and the offender list. So
+    each of those tests passed when its probe was caught, and passed identically when the gate broke
+    for a reason having nothing to do with the probe: *"a red happened"* is not *"my experiment
+    fired"*. The gate's own anchor assertion exists precisely because it can stop matching, and the
+    tests over it could not have noticed.
+
+    🔴 **AND THE FIRST VERSION OF THIS HELPER WAS STILL NOT AN ORACLE.** Matching the probe's module
+    path alone narrowed three assertions to two, not to one: `binds_checked` is a list of the same
+    `mod::fn:line` strings, so the ANCHOR assertion (*"only N bind(s) were found"*) renders the
+    probe's path as well. Driven: with the anchor's threshold raised so it fails for a reason having
+    nothing to do with any probe, all three tests stayed **green** — the same result the old oracle
+    gave, which is the whole defect one step smaller. So the pattern carries the offender sentence
+    too, and that sentence exists in exactly one assertion.
+    """
+    import re as _re
+    return (_re.escape(f"{where}/{stem}.py::")
+            + r"\S+ writes .withheld_tools. and NO argument")
 
 
 def _stream_src() -> str:
@@ -1518,6 +1573,20 @@ class TestU2ACatalogueOutageIsRegistered:
 
         _RECORDER_CALLS = ("withheld_json", "absorb")
         _EXECUTORS = ("execute", "fetchval", "fetchrow", "fetch", "executemany")
+        _COL = "withheld_tools"
+
+        # 🔴 **T11d — SIX ROUNDS, AND IT IS ABOUT THE LIVE WRITE, NOT A PROBE.** Every production
+        # site that persists this column is an **f-string**, and the only thing making any of them
+        # visible to this gate is that the column name appears as a *literal* inside it —
+        # `instrument.segment_merge_sql("withheld_tools")`, or the bare word in the INSERT's column
+        # list. Hoist that name to a constant, which is the most ordinary refactor there is and one
+        # this file has already recorded happening to the SQL itself (T9e), and the gate goes silent
+        # on **the real writers**, not on a synthetic probe. Measured BLIND with the control CAUGHT.
+        #
+        # So a name bound to the column's own spelling resolves like a name bound to the SQL does,
+        # and for the same reason: this gate has no import graph, so it over-approximates across
+        # modules. Over-approximating costs a few extra binds to check; under-approximating is T11d.
+        _col_aliases: set[str] = set()
 
         def _names_the_column(node) -> bool:
             """Does this expression carry SQL that **writes a value into** the column?
@@ -1537,18 +1606,28 @@ class TestU2ACatalogueOutageIsRegistered:
             # in the expression and whitespace-normalised before matching — which still keeps
             # `db/migrate.py` out, because DDL contains none of these verbs, and discards no
             # spelling of a write.
-            _flat = " ".join(" ".join(
-                n.value for n in ast.walk(node)
-                if isinstance(n, ast.Constant) and isinstance(n.value, str)).split())
-            if "withheld_tools" in _flat and (
+            # A `Name` bound to the column's spelling contributes that spelling, so an interpolated
+            # `f"... SET {_COL} = $1"` flattens to the same text as the literal it replaced.
+            _parts = []
+            for n in ast.walk(node):
+                if isinstance(n, ast.Constant) and isinstance(n.value, str):
+                    _parts.append(n.value)
+                elif isinstance(n, ast.Name) and n.id in _col_aliases:
+                    _parts.append(_COL)
+            _flat = " ".join(" ".join(_parts).split())
+            if _COL in _flat and (
                     "INSERT INTO chat_messages" in _flat
                     or "UPDATE chat_messages" in _flat
-                    or "withheld_tools =" in _flat
-                    or "withheld_tools=" in _flat):
+                    or f"{_COL} =" in _flat
+                    or f"{_COL}=" in _flat):
                 return True
             for n in ast.walk(node):
-                if isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "segment_merge_sql" \
-                        and any(isinstance(a, ast.Constant) and a.value == "withheld_tools"
+                # `_called_name`, not `func.attr`: a bare-name `segment_merge_sql(...)` — the same
+                # unqualified-executor shape T9 already recorded for `execute` — had no `attr` at
+                # all, so this branch returned `None` and read as "not the column".
+                if isinstance(n, ast.Call) and _called_name(n) == "segment_merge_sql" \
+                        and any((isinstance(a, ast.Constant) and a.value == _COL)
+                                or (isinstance(a, ast.Name) and a.id in _col_aliases)
                                 for a in n.args):
                     return True
             return False
@@ -1623,7 +1702,7 @@ class TestU2ACatalogueOutageIsRegistered:
         # executor call anywhere under `app/`, with the SQL resolved through module-level constants
         # and cross-module constants as well as function locals.
         offenders, binds_checked, unparseable = [], [], []
-        _base = Path(__file__).resolve().parents[1] / _TURN_SCOPE_ROOT
+        _base = _swept_root()
         _paths = [p for p in sorted(_base.rglob("*.py"))
                   if not any(part in _TURN_SCOPE_EXCLUDE for part in p.parts)]
         _mods, trees_all = [], []
@@ -1636,6 +1715,21 @@ class TestU2ACatalogueOutageIsRegistered:
                 unparseable.append(p.relative_to(_base).as_posix())
                 continue
             _mods.append(p.relative_to(_base).as_posix())
+
+        # T11d, and it must run BEFORE anything calls `_names_the_column`: names bound to the
+        # column's own spelling, to a fixed point so `_A = "withheld_tools"; _B = _A` resolves too.
+        # Depth-bounded for the same reason `_recorder_locals` is — `a = b; b = a` is a cycle and a
+        # gate that hangs is a gate someone deletes.
+        for _ in range(12):
+            _before = len(_col_aliases)
+            for tree in trees_all:
+                for name, value in _bindings(tree):
+                    if isinstance(value, ast.Constant) and value.value == _COL:
+                        _col_aliases.add(name)
+                    elif isinstance(value, ast.Name) and value.id in _col_aliases:
+                        _col_aliases.add(name)
+            if len(_col_aliases) == _before:
+                break
 
         # Names bound to the column's SQL ANYWHERE — module constants included, and shared across
         # modules because a constant is imported by name and this gate has no import graph. Over-
@@ -2082,7 +2176,7 @@ class TestU2ACatalogueOutageIsRegistered:
         """
         import ast
         from pathlib import Path
-        path = Path(__file__).resolve().parents[1] / "app" / "services" / "stream_service.py"
+        path = _swept_root() / "services" / "stream_service.py"
         tree = ast.parse(path.read_text(encoding="utf-8"))
         users = {
             fn.name for fn in tree.body
@@ -2140,16 +2234,10 @@ class TestU2ACatalogueOutageIsRegistered:
 #: So the scope is now every module under `app/services/` and `app/routers/`, and the helper walk
 #: follows the call graph across modules to a fixed point. A boundary drawn at a file is a boundary
 #: a refactor crosses by accident — which is exactly what "extract a helper" is.
-#: 🔴 **ROUTE SEVENTEEN, AND IT IS ABOUT THE FUTURE RATHER THAN THE PAST.** This was a
-#: **non-recursive** glob over two named directories, so a byte-identical entry point is discovered
-#: under `app/services/` and **not discovered at all** under `app/agentruntime/` — the package CP-2
-#: will put the new runtime's turn entry point in. The gate would have been green on the first turn
-#: served by the thing this whole effort exists to build.
 #:
-#: `app/` recursively, with the directories that cannot host a turn named as exclusions, so a new
-#: package is IN scope by default and leaving it out is a decision someone writes down.
-_TURN_SCOPE_ROOT = "app"
-_TURN_SCOPE_EXCLUDE = ("__pycache__",)
+#: `_TURN_SCOPE_ROOT` / `_TURN_SCOPE_EXCLUDE` and the reason for their value now live at the TOP of
+#: this module, beside `_swept_root()`, because six probe writers below typed `"app"` by hand while
+#: the two gates read the constant — and a probe written outside the swept tree asserts nothing.
 
 
 def _called_name(node):
@@ -2291,8 +2379,7 @@ def _turn_entry_calls():
     **Entry points are DISCOVERED, not listed** — including `_`-prefixed ones, because a leading
     underscore is a naming convention and not a guarantee that nothing routes to it.
     """
-    from pathlib import Path
-    base = Path(__file__).resolve().parents[1] / _TURN_SCOPE_ROOT
+    base = _swept_root()
     trees = {}
     for path in sorted(base.rglob("*.py")):
         if any(part in _TURN_SCOPE_EXCLUDE for part in path.parts):
@@ -3044,7 +3131,7 @@ from app.client.knowledge_client import KnowledgeClient
         """Write one module under `app/services/`, sweep it, remove it. Never left behind."""
         import pathlib
 
-        base = pathlib.Path(__file__).resolve().parents[1] / "app" / "services"
+        base = _swept_root() / "services"
         path = base / f"{prefix}_{name}.py"
         path.write_text(body, encoding="utf-8")
         try:
@@ -3074,7 +3161,7 @@ from app.client.knowledge_client import KnowledgeClient
         direction of suspicion."""
         import pathlib
 
-        base = pathlib.Path(__file__).resolve().parents[1] / "app"
+        base = _swept_root()
         decoy = base / "agentruntime" / "_lwprobe_decoy.py"
         decoy.write_text(
             "from app.services.instrument import arm_turn_surface\n"
@@ -3216,6 +3303,109 @@ from app.client.knowledge_client import KnowledgeClient
             f"that gets deleted the first time it is inconvenient."
         )
 
+    def test_EVERY_PROBE_IS_WRITTEN_INTO_THE_TREE_THE_GATES_ACTUALLY_SWEEP(self):
+        """🔴 **SIX ROUNDS: SIX PROBE WRITERS TYPED THE SCOPE ROOT WHILE BOTH GATES READ IT.**
+
+        Every probe test in this class is an experiment whose independent variable is *"a module
+        appears inside the swept tree"*. Six of them named that tree with a literal `"app"`, and the
+        two gates derive it from `_TURN_SCOPE_ROOT`. Move or rename the root — which `_TURN_SCOPE_
+        ROOT`'s own comment says is coming, because CP-2's runtime lands in a new package — and the
+        gates follow while every probe lands outside the sweep. Each of those tests then passes,
+        having asserted nothing, and this file's whole record of routes 17–25 becomes theatre.
+
+        This is the same defect the terminal-write gate convicts other code of by name (*"a gate
+        whose file set is TYPED OUT cannot notice a writer arriving somewhere else"*) — committed by
+        the tests written to prove it.
+
+        Held as a property, not as six repairs, because the seventh writer is the one that matters.
+        """
+        src = Path(__file__).read_text(encoding="utf-8")
+        tree = ast.parse(src)
+
+        typed = sorted({
+            n.lineno for n in ast.walk(tree)
+            if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div)
+            and isinstance(n.right, ast.Constant) and n.right.value == _TURN_SCOPE_ROOT
+        })
+        assert not typed, (
+            f"line(s) {typed} build a path with a literal {_TURN_SCOPE_ROOT!r} instead of "
+            f"`_swept_root()`. The gates read `_TURN_SCOPE_ROOT`; a probe written anywhere else is "
+            f"outside the sweep, and the test that wrote it goes green asserting nothing."
+        )
+
+        # ...and the other half, because a writer can reach the tree without spelling the root: any
+        # function that writes a file must build its path from the one helper that derives it.
+        stray = []
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if not any(isinstance(n, ast.Call) and getattr(n.func, "attr", None)
+                       in ("write_text", "write_bytes") for n in ast.walk(fn)):
+                continue
+            names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
+            names |= {n.attr for n in ast.walk(fn) if isinstance(n, ast.Attribute)}
+            if "_swept_root" not in names and "_sweep" not in names:
+                stray.append(f"{fn.name}:{fn.lineno}")
+        assert not stray, (
+            f"{stray} write a module without deriving the path from `_swept_root()` — so the file "
+            f"may land outside the tree the gates sweep, and the assertion that follows it would "
+            f"pass over an experiment that never happened."
+        )
+
+    def test_ONLY_THE_FIRST_STATEMENT_OF_A_TRY_BODY_IS_UNCONDITIONAL(self):
+        """🔴 **W4 — SPECIFIED IN ROUND 16, SHIPPED IN ROUND 20 AS ONE TOKEN, AND UNTESTED UNTIL
+        NOW.** The rule is `s.body[:1]`: a `try` is entered unconditionally, so its FIRST statement
+        runs — and its second runs only if the first did not raise, which is the entire reason a
+        `try` is there. Accepting the whole body means an arm behind a statement that can fail is
+        treated as an arm that always happens.
+
+        Three consecutive rounds shipped a claim about this with no artifact. The token was added
+        with *"driven at 9/9 shapes"* recorded in a verdict and **reverting it left 137 passed** —
+        so the suite could not tell the two rules apart, and the shape the rule exists to reject was
+        never in it. A verifier eventually wrote this test rather than reporting the gap again.
+
+        The vehicle has to be an arm that is **second** in a `try` body: first-statement probes are
+        accepted by both rules and prove nothing. Every other statement here is deliberately
+        ordinary — a preceding `await` is exactly what a real turn does before it arms.
+        """
+        key, entry = self._narrows_unarmed("w4_probe", "\n".join([
+            "from app.client.knowledge_client import KnowledgeClient",
+            "from app.services.instrument import arm_turn_surface",
+            "async def w4_probe(c):",
+            "    try:",
+            "        prefs = await c.get_preferences()",
+            "        arm_turn_surface()",
+            "        return await c.get_tool_definitions()",
+            "    except Exception:",
+            "        return []"]) + "\n")
+        assert key, "the probe was not discovered, so this asserts nothing"
+        arms, _raw, _narrowings, _aliases, conditional = entry
+        assert arms, "the arm was not seen at all, so this probe measures the wrong thing"
+        assert conditional == arms, (
+            f"an arm as the SECOND statement of a `try:` body was counted as UNCONDITIONAL: "
+            f"{entry}. It runs only if `prefs = await c.get_preferences()` did not raise — and the "
+            f"handler that catches that raise is the path where the turn narrows into a sink "
+            f"nothing armed."
+        )
+
+        # ...and the control, so this is not a blanket refusal of arms inside `try`: the FIRST
+        # statement is still unconditional, which is what route 18/W2 established and what a
+        # `s.body[:0]` overshoot would break without any other test noticing.
+        key2, entry2 = self._narrows_unarmed("w4_first_probe", "\n".join([
+            "from app.client.knowledge_client import KnowledgeClient",
+            "from app.services.instrument import arm_turn_surface",
+            "async def w4_first_probe(c):",
+            "    try:",
+            "        arm_turn_surface()",
+            "        return await c.get_tool_definitions()",
+            "    except Exception:",
+            "        return []"]) + "\n")
+        assert key2 and entry2[0] and not entry2[4], (
+            f"the control regressed: an arm as the FIRST statement of a `try:` body must stay "
+            f"unconditional, and reporting it CONDITIONAL is a false positive on correct code "
+            f"({entry2})"
+        )
+
     def test_the_TERMINAL_WRITE_GATE_sees_a_writer_in_ANY_module(self):
         """🔴 **T8 — and it was the module list.** Ten in-module defeats red (alias, `*args`,
         `**kwargs`, a returning helper, `executemany`, a rename, SQL split across locals, a lost
@@ -3227,7 +3417,7 @@ from app.client.knowledge_client import KnowledgeClient
         been invisible to this gate by construction — not by oversight, by design."""
         import pathlib
 
-        base = pathlib.Path(__file__).resolve().parents[1] / "app"
+        base = _swept_root()
         probe = "\n".join([
             "async def probe_write(conn, msg_id):",
             "    await conn.execute(",
@@ -3239,7 +3429,13 @@ from app.client.knowledge_client import KnowledgeClient
             path.write_text(probe, encoding="utf-8")
             try:
                 inst = TestU2ACatalogueOutageIsRegistered()
-                with pytest.raises(AssertionError, match="withheld_tools"):
+                # 🔴 **THE ORACLE WAS `match="withheld_tools"`, WHICH MATCHES THREE OF THE GATE'S
+                # FOUR ASSERTIONS** — the named-writer subset check, the `>= 4` anchor check and the
+                # offender list all carry that word. So this test could not tell *"the probe was
+                # caught"* from *"the gate broke in some unrelated way and reddened first"*, and an
+                # anchor that stopped matching would have kept it green while proving nothing. It
+                # binds to the PROBE'S OWN MODULE PATH now, which appears in exactly one message.
+                with pytest.raises(AssertionError, match=_probe_offender(where, "_lwprobe_writer")):
                     inst.test_EVERY_TERMINAL_WRITE_BINDS_THE_DRAINED_VALUE__not_a_literal_None()
             finally:
                 path.unlink(missing_ok=True)
@@ -3276,7 +3472,7 @@ from app.client.knowledge_client import KnowledgeClient
         function at all and was skipped for that reason."""
         import pathlib as _pl
 
-        base = _pl.Path(__file__).resolve().parents[1] / "app"
+        base = _swept_root()
         probes = {
             "module constant": [
                 '_SQL = "UPDATE chat_messages SET withheld_tools = $1 WHERE message_id = $2"',
@@ -3294,7 +3490,68 @@ from app.client.knowledge_client import KnowledgeClient
             path.write_text("\n".join(lines) + "\n", encoding="utf-8")
             try:
                 inst = TestU2ACatalogueOutageIsRegistered()
-                with pytest.raises(AssertionError, match="withheld_tools"):
+                # Bound to this probe's own module — `match="withheld_tools"` was satisfied by three
+                # of the gate's four assertions and therefore by any of them going red.
+                with pytest.raises(AssertionError,
+                                   match=_probe_offender("services", "_lwprobe_hoisted")):
+                    inst.test_EVERY_TERMINAL_WRITE_BINDS_THE_DRAINED_VALUE__not_a_literal_None()
+            finally:
+                path.unlink(missing_ok=True)
+
+    def test_the_TERMINAL_GATE_sees_THE_COLUMN_NAME_HOISTED_TO_A_CONSTANT(self):
+        """🔴 **T11d — SIX ROUNDS, AND THE SUBJECT IS THE LIVE WRITE.** Every production statement
+        that persists this column is an f-string, and the *only* thing keeping any of them visible
+        to the gate was the column name appearing as a **literal** inside it. Hoisting a column name
+        to a constant is the most ordinary refactor there is — T9e is the same refactor applied to
+        the SQL one level out, and it made the whole gate blind — so this is not a synthetic hazard:
+        it is the one the live spelling is one edit away from.
+
+        Four vehicles, each an ordinary way to write the same statement. Two of them additionally
+        cover the bare-name `segment_merge_sql(...)`, which had no `.attr` at all and so read as
+        *"not the column"* rather than as a call the gate could not resolve.
+        """
+        base = _swept_root() / "services"
+        probes = {
+            "interpolated column name": [
+                '_COL = "withheld_tools"',
+                "async def probe_write(conn, msg_id):",
+                '    await conn.execute(',
+                '        f"UPDATE chat_messages SET {_COL} = $1 WHERE message_id = $2",',
+                "        None, msg_id,",
+                "    )"],
+            "column name through TWO bindings": [
+                '_COL_A = "withheld_tools"',
+                "_COL_B = _COL_A",
+                "async def probe_write(conn, msg_id):",
+                '    await conn.execute(',
+                '        f"UPDATE chat_messages SET {_COL_B} = $1 WHERE message_id = $2",',
+                "        None, msg_id,",
+                "    )"],
+            "segment_merge_sql on a hoisted name": [
+                "from app.services import instrument",
+                '_COL = "withheld_tools"',
+                "async def probe_write(conn, msg_id):",
+                "    await conn.execute(",
+                '        f"INSERT INTO chat_messages (message_id) VALUES ($2) ON CONFLICT DO '
+                'UPDATE SET {instrument.segment_merge_sql(_COL)}",',
+                "        None, msg_id,",
+                "    )"],
+            "bare-name segment_merge_sql": [
+                "from app.services.instrument import segment_merge_sql",
+                "async def probe_write(conn, msg_id):",
+                "    await conn.execute(",
+                '        f"INSERT INTO chat_messages (message_id) VALUES ($2) ON CONFLICT DO '
+                'UPDATE SET {segment_merge_sql(\'withheld_tools\')}",',
+                "        None, msg_id,",
+                "    )"],
+        }
+        for label, lines in probes.items():
+            path = base / "_lwprobe_hoistcol.py"
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            try:
+                inst = TestU2ACatalogueOutageIsRegistered()
+                with pytest.raises(AssertionError,
+                                   match=_probe_offender("services", "_lwprobe_hoistcol")):
                     inst.test_EVERY_TERMINAL_WRITE_BINDS_THE_DRAINED_VALUE__not_a_literal_None()
             finally:
                 path.unlink(missing_ok=True)
@@ -3305,7 +3562,7 @@ from app.client.knowledge_client import KnowledgeClient
         wrong."""
         import pathlib as _pl
 
-        path = _pl.Path(__file__).resolve().parents[1] / "app" / "services" / "_lwprobe_broken.py"
+        path = _swept_root() / "services" / "_lwprobe_broken.py"
         path.write_text("def broken(:\n", encoding="utf-8")
         try:
             inst = TestU2ACatalogueOutageIsRegistered()
@@ -3359,7 +3616,7 @@ from app.client.knowledge_client import KnowledgeClient
         string in the expression and whitespace-normalised instead."""
         import pathlib as _pl
 
-        base = _pl.Path(__file__).resolve().parents[1] / 'app' / 'services'
+        base = _swept_root() / 'services'
         spellings = {
             'two spaces': '        "UPDATE  chat_messages SET withheld_tools  =  $1 WHERE id = $2",',
             'concatenation': '        "UPDATE chat_messages SET " + "withheld_tools = $1 WHERE id = $2",',
@@ -3373,7 +3630,11 @@ from app.client.knowledge_client import KnowledgeClient
                             + '        None, mid,' + chr(10) + '    )' + chr(10), encoding='utf-8')
             try:
                 inst = TestU2ACatalogueOutageIsRegistered()
-                with pytest.raises(AssertionError, match='withheld_tools'):
+                # Bound to this probe's own module. These four spellings are the ones a matcher
+                # narrowing already blinded once; an oracle that any red satisfies could not have
+                # told anyone.
+                with pytest.raises(AssertionError,
+                                   match=_probe_offender('services', '_lwprobe_spelling')):
                     inst.test_EVERY_TERMINAL_WRITE_BINDS_THE_DRAINED_VALUE__not_a_literal_None()
             finally:
                 path.unlink(missing_ok=True)

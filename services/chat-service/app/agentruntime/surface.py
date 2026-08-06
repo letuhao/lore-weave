@@ -69,7 +69,16 @@ def rows_of(manifest_doc: dict) -> list[dict]:
         # definition was shared. **A shape check that admits a dangling foreign key is not a row
         # check**, and calling it one is how the gap survived being looked at three times.
         check_row(r, f"declarations[{i}]")
-        out.append(dict(r))
+        # 🔴 **`dict(r)` IS SHALLOW, AND `members` IS THE ONE MUTABLE VALUE A ROW CARRIES.** Five
+        # rounds: the copy was added to stop the caller's own row object reaching a consumer, and
+        # both doors then handed back **the source document's own `members` list** — so a narrowing
+        # stage, or anything downstream that appends to a skill's member list, writes straight into
+        # the document the assembler was given. The `id` half was guarded and the `members` half was
+        # not, in the same statement.
+        #
+        # `check_row` has already bounded `members` to a `list`/`tuple` of non-empty `str`, and `str`
+        # is immutable, so one level is the whole depth this value has.
+        out.append({**r, "members": list(r["members"])})
     # Duplicate ids and M5 are properties of the SET. `validate_document` ran both and this door ran
     # neither, which is the mechanism behind `members: ['ghost']`: every row was individually valid.
     check_document_rows(out, "declarations")

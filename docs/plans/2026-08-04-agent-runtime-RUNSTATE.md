@@ -2283,6 +2283,116 @@ shipped the fix* — is the one durable answer to it.
   `_mirror` stub returned `mkdtemp().parent`, which is the temp root. *Report contamination only
   after ruling out being its source.*
 
+---
+
+## ⭐ R25 DELTA — the nine deterministic items closed, and the instrument's own three holes with them
+
+Written after the TRANSFER DECISION, and it is the first delta in this run whose scope was **finite
+and enumerated before it started**: everything still open at CP-1 that has a subject today.
+
+### ▶ The number that moved
+
+| | before | after |
+|---|---|---|
+| **census** | 68 sites, **13** silent, 55 red | 68 sites, **9** silent, **59** red |
+| rows leaving the allowlist | — | **4 NOW GUARDED, 0 NEWLY SILENT** |
+| chat-service suite | 2271 | **2281** |
+
+The four: `check_row_shape::ContractViolation::2` and `::7` (B18-8), `OrderBy.__post_init__::
+ValueError::3` (`surface.py:305`), and `check_contract::ContractViolation::7` — the fourth was not
+targeted. It closed because the `_ID` guard drives the **member** spelling of the same regex as well
+as the id, which is what "fix a claim everywhere it appears" produces when it is actually done.
+
+**Zero NEWLY SILENT** is the half that matters: the digest did not churn, so no allowlist row moved
+for a reason other than a guard arriving.
+
+### The nine, each with the reversion that reds its guard
+
+Every fix has a guard proven RED-able by **reverting exactly that fix inside a throwaway mirror of
+the tracked working tree** — never `git checkout <file>`, which discards the real edits in the same
+file. **7/7** (membrane), **5/5** (instrument, incl. a 2×2), **13/13** (census guards).
+
+| # | item | rds | the fix | the reversion that reds it |
+|---|---|---|---|---|
+| 1 | `dict(r)` **shallow** at both copy doors | 5 | `members` copied at `rows_of` and `validate_document` | either copy back to `dict(r)` — the guard reds, **named** |
+| 2 | `_ID` had **no length bound** | 6 | `ID_MAX_LEN = 64`, driven at the id AND the member spelling | the `{0,63}` quantifier removed |
+| 3 | `OrderBy`'s key-pair shape | 5 | code was already right — the **census had recorded the refusal SILENT for five rounds** | `ValueError::3` neutered |
+| 4 | **B18-8** `str`-subclass key / member | 7 | both already refused — **2 of 3 pins census-SILENT** | `check_row_shape::ContractViolation::2` and `::7` neutered |
+| 5 | **B18-11** dead `canon` imports | 7 | 2 removed; `nfc`'s refuted docstring corrected; `_norm` now calls `nfc`, so "one place decides the composed form" is true inside its own module | a dead import re-added |
+| 6 | **W4** — `s.body[:1]` untested | 8 | the test, **plus a control** for the first-statement case, so a `[:0]` overshoot cannot pass either | `s.body[:1]` → `s.body` |
+| 7 | the **three weak oracles** | 8 | bound to the offender **sentence** | see the 2×2 below |
+| 8 | **T11d** — the live SQL spelling | 6 | column-name aliases resolved to a fixed point; 4 vehicles | the alias set stops accepting members |
+| 9 | 6 probe writers hardcoding `"app"` | 6 | `_swept_root()` + a property gate | one writer typed back |
+
+### ▶ Three things the fixes measured that the findings had not said
+
+* **The dead-import gate found a THIRD dead import.** B18-11 named two `canon` imports across seven
+  rounds. Holding it as a **property** — *a module may not import a name it does not use* — rather
+  than as two deletions produced `manifest.py: import re` on its first run, in a file eight rounds of
+  review had gone through line by line. **A repair finds what it was pointed at; a property finds the
+  class.** This is the same lesson as the `dict(r)` sibling and the `_selftest` writer, arriving for
+  once in the builder's favour.
+* **My first repair of the weak oracles was still not an oracle.** Binding `match=` to the probe's
+  module path narrowed three assertions to two — `binds_checked` renders the same `mod::fn:line`
+  strings the offender list does. So a 2×2 was run with the gate broken for a reason having **nothing
+  to do with any probe**: the OLD oracle stayed **green**, and **so did my first fix**. Only the
+  offender-sentence form reds. *The defect one step smaller is still the defect, and only the control
+  could say so.*
+* **`surface.py:305` and B18-8 were never code defects.** Both refusals were already correct; what was
+  missing was any test, and the census had been naming them for five and seven rounds. **Four rows
+  left the allowlist because a guard arrived** — the first time in this run that *"a finding is
+  closed"* was settled by a mechanism instead of by a sentence.
+
+### ▶ And the instrument's own three holes, which are NOT CP-1 properties
+
+Recorded separately on purpose: the census and the two gates are **tools built to verify CP-1, not
+claims CP-1 makes.** Their defects belong to whoever maintains them.
+
+* **C1 — the write guard caught 1 of 8 cells.** The census has *two* writers (`census`, `_selftest`)
+  and the guard drove one of them through one API. Not hypothetical arithmetic: **the fix that moved
+  neutering into a mirror moved `census`'s writer and left `_selftest`'s behind**, twenty lines away,
+  with the guard green throughout. Both writers are now driven with every write API wrapped and **all
+  eight cells enumerated as controls**, each injected by AST. The interception records the write and
+  **stops** it, so a control cannot leave debris.
+* **C2 — the CI half was green under 15 of 16 disable shapes.** Answered with a control per shape
+  rather than with more clauses: **17 shapes**, each of which must make the check raise. Removing any
+  one clause reopens **exactly one** shape — measured, 9/9 — so no clause is decorative and none is
+  load-bearing twice.
+* **C3 — both writers leaked their mirror, and I found it by listing `%TEMP%`, not with a gate.**
+  **477 directories, 2.4 GB.** `census()` held its 239 MB copy for the whole run behind an `atexit`;
+  `_selftest()` had **no cleanup at all**; and the guard test written to police the instrument leaked
+  a fixture directory **455 times**. A previous round had already recorded *"mirrors never removed,
+  6.71 GB measured"* and **that fix landed on `census()` alone — the eleventh pair in this run
+  repaired at one end**, in the file whose own docstring says an instrument that leaves debris is an
+  instrument that manufactures findings. Each writer now frees its mirror in a `finally` (the
+  `atexit` stays as the kill-path backstop), the fixture moved to `tmp_path`, and the property is
+  asserted per writer: **each returns having removed the directory it was given.** Measured after a
+  full 68-site run: **0 leaked directories.**
+
+### ▶ The one thing that went right, and it is a method rather than a fix
+
+**The census was killed mid-run, deliberately, rather than allowed to measure a tree that was about
+to change** — and `git status` showed the live package byte-clean afterwards. Four rounds ago the
+same kill left a `raise → pass` in a tracked module in **4 of 4 attempts**. That property was
+designed, argued, fixed at one end, re-fixed — and has now been observed under a real kill rather
+than a simulated one.
+
+### 🔴 What this delta does NOT establish
+
+* **The census being green is the builder measuring the builder's own instrument.** The same is true
+  of the 8-cell and 17-shape counts: they are enumerations *I* chose, and the ninth cell and the
+  eighteenth shape are exactly what an independent round is for.
+* **Nothing here touches V-LIVE.** `agentruntime` still has zero importers outside the package —
+  which is why the three transferred items have no subject, and why CP-1 closes on V-CODE or not at
+  all.
+* **`ID_MAX_LEN = 64` is a number a person chose.** It is stated and enforced; it is not derived.
+* **9 rows remain SILENT**, and the census still cannot say WHY any of them is — sibling, unreachable
+  or unchecked. That distinction still needs a person and a verdict id.
+
+**FREEZE from this commit.** R25 runs two V-CODE verifiers, **each in its own `git worktree`**: R23
+measured the live allowlist being rewritten by a concurrent process, and R24 measured that my own
+FREEZE break would have produced an undetectable false PASS twenty minutes earlier.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its

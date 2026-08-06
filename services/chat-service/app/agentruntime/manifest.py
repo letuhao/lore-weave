@@ -20,11 +20,13 @@ artifact does not exist.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Iterable
 
-from . import ambient, canon
+# `canon` was imported here and never called — the second of the two dead imports B18-11 named. The
+# manifest is written with `json.dumps(indent=2)` for a human reader and hashed, when it is hashed at
+# all, by a caller running `canon.digest(load())`; this module needs neither.
+from . import ambient
 from .admission import Admitted
 from .contract import (
     CONTRACT_VERSION, ContractViolation, Declaration, UnresolvedReference, UntrustedRow, _VERSION,
@@ -445,7 +447,12 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
     return {
         "manifest_version": MANIFEST_VERSION,
         "contract_version": doc_version,
-        "declarations": [dict(r) for r in rows],
+        # 🔴 **AND `dict(r)` IS SHALLOW — the third half of the same sentence, five rounds open.**
+        # The rows were rebuilt and the two stamps were rebuilt, and every row still handed the
+        # caller **its own `members` list**, so mutating what this function returned changed what it
+        # had validated. Exactly the defect the line above it fixed, one level of nesting in.
+        # `check_row` bounds `members` to a `list`/`tuple` of `str`, so one level is the whole depth.
+        "declarations": [{**r, "members": list(r["members"])} for r in rows],
     }
 
 
