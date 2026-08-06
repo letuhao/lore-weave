@@ -1342,6 +1342,59 @@ level out, in the instrument rather than the subject.
 
 ---
 
+## 🔴 R12 — **FAIL ×2.** The previous round's headline fix closed the case that never happens
+
+Prompt committed first, two V-CODE on frozen `9c8df7800`. Verdicts:
+[round12-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round12-v-code-a.md) ·
+[round12-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round12-v-code-b.md).
+
+### 🔴 Auto-arming fixed the shape nobody had ever reported
+
+R11 made a narrowing open its own sink, on the reasoning that ordering would stop mattering. **But
+all eight measured bypass routes are narrowings ABOVE an arm, and `arm_turn_surface` still
+REPLACED** — so the auto-armed sink was created, filled, and thrown away by the very arming it was
+meant to survive. Measured: `outage=False, rows=None`. Only *"an entry point that arms nowhere"* was
+closed, and no verifier had ever reported that shape.
+
+**And it created a state the old code could not reach**: a recorder built before the arm held the
+auto-armed list while `catalogue_outage_registered()` read the replaced one, so **the persisted row
+and the model's notice contradicted each other**.
+
+*Fixed: arming ADOPTS, and the outage fact is a ContextVar **derived from the rows** rather than read
+from a sink that gets drained.*
+
+### 🔴 The guard axis — the claim was false where it mattered
+
+Verifier B: **5 of 5 `agentruntime` fixes silent under injection, and the delta added ZERO tests to
+`test_cp1_membrane.py`.** The previous commit message said *"every fix has a test proven red"* — true
+for the instrument package, **false for the membrane**. I announced a method change and applied it
+**where the reviewer had pointed**, which is the failure the method change was for.
+
+### The rest
+
+| # | finding | response |
+|---|---|---|
+| **🔴 B** | **fourth TOCTOU, and a shape I had not imagined**: `validate_document` materialised the *iteration* and returned the **original container**. A row's own `.get()` is user code the validator calls **inside its loop**; it appended a hand-typed row, the validator **accepted**, and consumers saw `['book_list', 'TYPED BY HAND!!']` with `contract_version: "banana"`. **No subclass needed** — the escape was the return value | returns what it validated; guarded by a smuggler test, proven red |
+| **B** | the **outer** `previous or {}` untouched while the inner one was fixed — eight shapes, the previous round's finding verbatim. **Fifth instance of fixing the member and not the set, inside the fix for the fourth** | checked, guarded |
+| **A** | `_as_text` used `isinstance`, so a `str` **subclass** passed uncoerced and the two crashes its own comment claimed closed were still live | exact-typed |
+| **A** | the terminal-write gate: a `Name` containing `"withheld"` was an escape hatch — `_withheld_json = None` killed **both** the main INSERT and the orphan UPDATE and stayed green | *open, recorded* |
+| **A** | **route sixteen**: a router that narrows then **delegates** to an armed entry point is not merely unflagged, it is **not discovered**; and `_NOT_A_TURN`'s `catalog.py` reason is now **factually wrong** — it cites a no-op this round deleted | *open, recorded* |
+| **A/B** | `[]`-not-cached has **no test**; the user door still caches `[]` for 60 s; the P4 test is still green if the mechanism lands in `generate()` | *open, recorded* |
+
+### 🔴 And one defect I introduced *in this round's own fix*
+
+The derived-flag change began as *"leave the flag alone when adopting"* — and it **outlived its
+turn**: a context that had served one turn kept `True`, so a later turn inserted "TOOL CATALOGUE
+UNAVAILABLE" with no outage. **Two prompt-caching tests caught it by counting system segments —
+green alone, red in the full run**, which is the signature of state leaking between turns rather than
+of a broken assertion. Production copies the context per request, so this would not have been seen
+until a user saw it. The flag is now **derived from the rows**, never carried.
+
+**2219 tests pass; gate green.** ⚠️ Builder's evidence. **Six findings above remain open and are
+recorded as open, not fixed.**
+
+---
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -1352,7 +1405,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | ~~R9~~ | ran 2026-08-06 → **FAIL ×2**, 13 findings, all fixed. See the block above | `V-CODE` ×2 on `86ae72592` | — |
 | ~~R10~~ | ran 2026-08-06 → **FAIL ×2**, 10 findings, all fixed. See the block above | `V-CODE` ×2 on `a43c24fcc` | — |
 | ~~R11~~ | ran 2026-08-06 → **FAIL ×2**. The finding was the method: 9 of 9 guards silent, 3 firing wrongly. See the block above | `V-CODE` ×2 on `2c63496b4` | — |
-| **R12** | verify **R11's delta**, and grade it against the method finding: **does each fix have a test that reds for the reason it names?** Ordering made irrelevant by auto-arming · reconciliation by presence-of-name · `absorb` total over row shapes · the SQL-shaped terminal-write gate · the three manifest TOCTOUs · the P4 test on the partial re-admission · the reverted empty-vs-outage confusion | `V-CODE` ×2, fresh, one message, frozen artifact | clean ⇒ **CP-1 closes**, CP-0 re-confirmed |
+| ~~R12~~ | ran 2026-08-06 → **FAIL ×2**. The R11 headline fix closed the case that never happens; the guard claim was false for the membrane package. See the block above | `V-CODE` ×2 on `9c8df7800` | — |
+| **R13** | verify **R12's delta** *and* the six findings recorded OPEN above: adopt-not-replace arming · the derived outage flag (incl. its own leak) · the validator returning what it validated · the outer `previous` · `_as_text` exactness · and whether each has a test that reds for its stated reason | `V-CODE` ×2, fresh, one message, frozen artifact | clean ⇒ **CP-1 closes**, CP-0 re-confirmed |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
 | **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |

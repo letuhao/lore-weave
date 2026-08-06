@@ -186,6 +186,15 @@ def build(
     A writer that trusts its argument is the write-end of the boundary `UntrustedRow` describes.
     """
     origin: dict[str, str] = {}
+    # 🔴 The OUTER `previous or {}` was left untouched while the inner one was fixed — **eight**
+    # malformed shapes still accepted, the previous round's finding verbatim. Fixing the member the
+    # reviewer named rather than the set is this run's most-repeated failure; this is its fifth
+    # instance, and it happened inside the fix for the fourth.
+    if previous is not None and type(previous) is not dict:
+        raise UntrustedRow(
+            f"previous is a {type(previous).__name__}, not a plain object. A malformed prior "
+            f"document is not an absent one, and treating it as absent disables the loss check."
+        )
     # Materialised for the same reason, and `type(...) is` for the same reason: `_prev_rows or []`
     # over a container that lies about `__len__` turned a populated document into an empty one and
     # disabled the loss guard below.
@@ -431,7 +440,16 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
         for m in r.get("members", ()) or ():
             if m not in ids:
                 raise UnresolvedReference(r["id"], m)
-    return doc
+    # 🔴 **I MATERIALISED THE ITERATION AND RETURNED THE ORIGINAL CONTAINER.** The rows were copied
+    # so the loop could not be fed different values twice — and then `return doc` handed the caller
+    # the document it came in on. A row's own `.get()` is user code, and this function CALLS it
+    # inside the validation loop: that call appended a hand-typed row to the caller's plain list, so
+    # `validate_document` **accepted** while `rows_of` / `declarations()` handed the consumer
+    # `['book_list', 'TYPED BY HAND!!']`. **No container subclass required.**
+    #
+    # A validator returns what it validated, or it has validated nothing. The document that leaves
+    # here is built from the rows this function actually checked.
+    return {**doc, "declarations": [dict(r) for r in rows]}
 
 
 def declarations(doc: dict | None = None, *, path: Path | None = None) -> list[dict]:

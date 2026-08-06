@@ -1607,21 +1607,77 @@ class TestU2ACatalogueOutageIsRegistered:
         assert outage is True, "the outage was lost because nobody had armed first"
         assert rows and len(rows) == 2, f"narrowings lost to ordering: {rows}"
 
-    def test_arming_still_REPLACES_the_sink_so_a_turn_starts_clean(self):
-        """`_sink_for_record` is deliberately not `arm_turn_surface`. The first means *a record
-        needs somewhere to go*; the second means *a turn is starting, take a fresh list*. Collapsing
-        them would let a mid-turn narrowing silently replace a sink that already held rows — the
-        discard this area has been fighting since the sixth recurrence."""
+    def test_NARROW_THEN_ARM_KEEPS_THE_ROWS__the_shape_all_eight_routes_have(self):
+        """🔴 **THE PREVIOUS FIX CLOSED THE CASE THAT NEVER HAPPENS, AND THIS TEST BLESSED IT.**
+
+        Making a narrowing open its own sink was supposed to end the ordering problem. But **all
+        eight measured bypass routes are narrowings ABOVE an arm**, and `arm_turn_surface` still
+        *replaced* — so the auto-armed sink was created, filled, and then discarded by the very
+        arming it was meant to survive. A verifier measured `outage=False, rows=None`.
+
+        And the test that stood here asserted the replacement **as the desired property**: I wrote a
+        guard for the behaviour that was the defect. Arming now adopts — a sink present at the top of
+        a turn is that turn's own early narrowing, because each request runs in its own context copy.
+        """
         import contextvars
 
-        def run():
-            instrument.record_surface_withheld("stale", stage="s", reason="r")
-            first = instrument.surface_withheld.get()
-            second = instrument.arm_turn_surface()
-            return first, second
+        def narrow_then_arm():
+            instrument.record_catalogue_unavailable(stage="catalogue_unavailable", reason="boom")
+            instrument.record_surface_withheld("book_list", stage="token_budget", reason="over")
+            instrument.arm_turn_surface()                    # the arm that used to throw them away
+            rec = instrument.AdvertisedToolsRecorder()
+            return instrument.catalogue_outage_registered(), rec.withheld_json()
 
-        first, second = contextvars.copy_context().run(run)
-        assert first is not second and second == [], "arming must start the turn clean"
+        outage, rows = contextvars.copy_context().run(narrow_then_arm)
+        assert outage is True, "the arming discarded the outage recorded before it"
+        assert rows and len(rows) == 2, f"narrowings lost to the arming that followed them: {rows}"
+
+    def test_the_ROW_AND_THE_NOTICE_CANNOT_CONTRADICT_EACH_OTHER(self):
+        """🔴 A state the OLD code could not reach, created by my own fix. With the recorder built
+        **before** the arm — which is `_emit_chat_turn`'s literal order — the recorder held the
+        auto-armed list while `catalogue_outage_registered()` read the replaced one. The column then
+        carried the outage row while the model was told nothing, which is worse than either failure
+        alone: the record and the screen disagree, and the record is what a later question trusts."""
+        import contextvars
+
+        def recorder_before_arm():
+            instrument.record_catalogue_unavailable(stage="catalogue_unavailable", reason="boom")
+            rec = instrument.AdvertisedToolsRecorder()       # adopts whatever exists now
+            instrument.arm_turn_surface()                    # …and this used to replace it
+            return rec.withheld_json(), instrument.catalogue_outage_registered()
+
+        rows, told = contextvars.copy_context().run(recorder_before_arm)
+        assert bool(rows) == bool(told), (
+            f"the persisted row says {bool(rows)} and the model was told {told} — the record and "
+            f"the screen disagree about the same turn"
+        )
+
+    def test_THE_OUTAGE_FACT_DOES_NOT_OUTLIVE_ITS_TURN(self):
+        """🔴 A defect **I introduced in this round's own fix**, caught by two prompt-caching tests
+        that pass alone and fail in the full run — the signature of state leaking between turns.
+
+        The flag was left alone when arming adopted an existing sink, on the reasoning that the rows
+        and the flag are the same fact. They are, which is precisely why the flag must be **derived**
+        from the rows and never carried: a context that had already served a turn kept `True`, and a
+        later turn inserted "TOOL CATALOGUE UNAVAILABLE" with no outage. Production copies the
+        context per request, so this could not have been seen there until a user saw it.
+        """
+        import contextvars
+
+        def two_turns_one_context():
+            instrument.arm_turn_surface()
+            instrument.record_catalogue_unavailable(stage="catalogue_unavailable", reason="boom")
+            first = instrument.catalogue_outage_registered()
+            instrument.AdvertisedToolsRecorder().withheld_json()      # drains, as a write would
+            instrument.arm_turn_surface()                             # the NEXT turn
+            return first, instrument.catalogue_outage_registered()
+
+        first, second = contextvars.copy_context().run(two_turns_one_context)
+        assert first is True
+        assert second is False, (
+            "a later turn inherited the previous turn's outage and would tell the model its tools "
+            "are unreachable when nothing failed"
+        )
 
     def test_A_RECORDER_ADOPTS_THE_TURNS_SINK_WITHOUT_ANYONE_REMEMBERING_TO(self):
         """🔴 Deleting `bind_sink` was measured **green at both entry points**, and a gate written
@@ -1785,6 +1841,7 @@ class TestU2ACatalogueOutageIsRegistered:
         U-2's own fix. Three tests caught it by receiving an outage notice on a tool-free turn."""
         sink: list = []
         token = instrument.surface_withheld.set(sink)
+        _flag = instrument.catalogue_outage.set(False)   # production arms; this test hand-sets
         try:
             assert instrument.catalogue_outage_registered() is False
             instrument.record_surface_withheld("book_list", stage="token_budget", reason="over")
@@ -1795,6 +1852,7 @@ class TestU2ACatalogueOutageIsRegistered:
             assert instrument.catalogue_outage_registered() is True
         finally:
             instrument.surface_withheld.reset(token)
+            instrument.catalogue_outage.reset(_flag)
 
     def test_the_stream_reads_the_record_rather_than_inferring(self):
         """REJECTS the reintroduction. Inferring from emptiness is the shape that shipped once."""

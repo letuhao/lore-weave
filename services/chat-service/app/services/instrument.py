@@ -271,7 +271,12 @@ def _as_text(value) -> str:
     a plain list any code in the request can append to, so its contents are input, and input is
     coerced at the boundary rather than trusted past it.
     """
-    if isinstance(value, str):
+    # 🔴 `isinstance` HERE MEANT THE TWO CRASHES THIS FUNCTION'S OWN COMMENT CLAIMED TO CLOSE WERE
+    # STILL LIVE: a `str` subclass passes it untouched, and a subclass whose `__hash__` raises then
+    # blows the dedupe `set` exactly as before. The whole point of coercing at the boundary is that
+    # what comes out is a *plain* `str`, so the check has to be exact — the same identity-vs-equality
+    # lesson the membrane learned three rounds ago, in a module that had not been told.
+    if type(value) is str:
         return value
     if value is None:
         return ""
@@ -282,6 +287,9 @@ def _as_text(value) -> str:
 
 
 surface_withheld: ContextVar[list | None] = ContextVar("lw_surface_withheld", default=None)
+#: Whether a CATALOGUE-scope narrowing happened this turn — a fact about the turn, deliberately
+#: independent of whether the sink holding its row has since been drained by a persister.
+catalogue_outage: ContextVar[bool] = ContextVar("lw_catalogue_outage", default=False)
 
 
 def _sink_for_record() -> list:
@@ -323,10 +331,38 @@ def arm_turn_surface() -> list[dict]:
     **a turn's sink must exist before the turn's first decision, because a narrowing that predates its
     sink is not late, it is lost.**
 
-    Returns the sink so a caller that wants to read it need not go back through the ContextVar.
+    🔴 **AND THE PREVIOUS FIX CLOSED THE CASE THAT NEVER HAPPENS.** Making a narrowing open its own
+    sink was supposed to make ordering irrelevant — but **all eight measured routes are narrowings
+    ABOVE an arm**, and this function still *replaced*. So the auto-armed sink was created, filled,
+    and then thrown away by the very arming it was meant to survive. Measured: narrow-then-arm gave
+    `outage=False, rows=None`; only "an entry point that arms nowhere" — a shape nobody had ever
+    reported — was actually fixed.
+
+    Worse, it created a state the old code could not reach: a recorder constructed **before** the arm
+    holds the auto-armed list while `catalogue_outage_registered()` reads the replaced one, so the
+    persisted row and the model's notice **contradict each other**.
+
+    So arming **ADOPTS**. A sink already present at the top of a turn is that turn's own early
+    narrowing — each request runs in its own task and therefore its own context copy, so it cannot be
+    a previous turn's. `_emit_chat_turn` has adopted for exactly this reason since CP-0.2; the entry
+    points were the ones still replacing.
     """
-    sink: list[dict] = []
-    surface_withheld.set(sink)
+    sink = surface_withheld.get()
+    if sink is None:
+        sink = []
+        surface_withheld.set(sink)
+    # 🔴 **THE FLAG IS DERIVED FROM THE ROWS, NEVER CARRIED.** My first version left it alone when
+    # adopting, reasoning that the rows and the flag are the same fact — and they are, which is
+    # exactly why the flag must be *computed* from them rather than trusted. Left alone, it outlived
+    # its turn: a context that had already served a turn kept `True`, so a later turn inserted the
+    # "TOOL CATALOGUE UNAVAILABLE" block with no outage. Two prompt-caching tests caught it by
+    # counting system segments — they passed alone and failed in the full run, which is the
+    # signature of state leaking between turns rather than of a broken assertion.
+    #
+    # Production gives each request its own context copy, so this could not have been seen there
+    # until it was seen by a user. Deriving costs one pass over a list that is almost always empty.
+    catalogue_outage.set(any(
+        isinstance(e, dict) and e.get("scope") == SCOPE_CATALOGUE for e in sink))
     return sink
 
 
@@ -380,6 +416,15 @@ def record_catalogue_unavailable(*, stage: str, reason: str, count: int | None =
     if count is not None:
         entry["count"] = count
     sink.append(entry)
+    # 🔴 A SEPARATE FLAG, because the sink is DRAINED and the question is about the TURN.
+    # `catalogue_outage_registered()` read the sink, and a recorder that had already absorbed it
+    # left the sink empty — so the persisted row said "outage" while the model was told nothing.
+    # The record and the screen disagreed about the same turn, which is worse than either failure
+    # alone, and it was reachable simply by constructing the recorder before reading the flag.
+    #
+    # "Did a catalogue outage happen this turn" is a fact about the turn; it must not depend on
+    # whether somebody has since moved the rows somewhere else.
+    catalogue_outage.set(True)
 
 
 def catalogue_outage_registered() -> bool:
@@ -394,6 +439,10 @@ def catalogue_outage_registered() -> bool:
     So the outage is read from **the record written by the party that knows it failed**, which is
     also the only source that cannot drift from what the row says.
     """
+    # Read from the FLAG, not from the sink's current contents: the sink is drained by whoever
+    # persists it, and a drained sink used to answer "no outage" for a turn that had one.
+    if catalogue_outage.get():
+        return True
     sink = surface_withheld.get()
     if not sink:
         return False
@@ -625,8 +674,19 @@ class AdvertisedToolsRecorder:
         """
         if not sink:
             return
+        if type(sink) is not list:
+            # The sink container is as much input as its rows: a `list` subclass can lie about
+            # `pop`, `__bool__` or `__len__` and hand this loop something other than what it holds.
+            sink = list(sink)
         while sink:
             row = sink.pop(0)
+            if type(row) is not dict:
+                # `isinstance` again: a `dict` subclass whose `.get` raises took the turn down from
+                # inside a recorder. Coerced to a plain dict by reading it defensively.
+                try:
+                    row = {k: row[k] for k in list(row)} if hasattr(row, "keys") else {}
+                except Exception:                            # noqa: BLE001
+                    row = {"stage": "malformed", "reason": "sink row could not be read"}
             if not isinstance(row, dict):
                 # A sink is a plain list anyone in the request can append to. A non-dict row used to
                 # raise `AttributeError` here — a recorder that crashes on bad input is a recorder

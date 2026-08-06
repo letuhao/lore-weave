@@ -609,6 +609,53 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
             "this function silently repaired"
         )
 
+    def test_A_ROWS_OWN_GET_CANNOT_SMUGGLE_A_ROW_PAST_THE_VALIDATOR(self):
+        """🔴 **I MATERIALISED THE ITERATION AND RETURNED THE ORIGINAL CONTAINER.**
+
+        The rows were copied so the loop could not be fed two different sequences — and then
+        `return doc` handed back the document that came in. A row's `.get()` is **user code**, and
+        the validator calls it inside its own loop: that call appended a hand-typed row to the
+        caller's plain list. `validate_document` **accepted**, and every consumer then saw
+        `['book_list', 'TYPED BY HAND!!']` with `contract_version: "banana"`. **No container
+        subclass was needed** — the escape was the return value, not the input.
+        """
+        class Smuggler(dict):
+            def __init__(self, real, target):
+                super().__init__(real)
+                self._target = target
+                self._fired = False
+
+            def get(self, key, default=None):
+                if key == "members" and not self._fired:
+                    self._fired = True
+                    self._target.append({"id": "TYPED_BY_HAND", "kind": "tool",
+                                         "owning_service": "book-service", "lifecycle": "admitted",
+                                         "contract_version": "banana", "admitted_against": None,
+                                         "members": []})
+                return super().get(key, default)
+
+        good = build([admit(_tool("book_list"))], previous=None)
+        rows = good["declarations"]
+        doc = {**good, "declarations": rows}
+        rows[0] = Smuggler(rows[0], rows)
+
+        try:
+            out = validate_document(doc)
+        except UntrustedRow:
+            return                      # refusing outright is also correct
+        ids = [r["id"] for r in out["declarations"]]
+        assert "TYPED_BY_HAND" not in ids, (
+            f"a row smuggled itself in during validation and the validator returned it: {ids}"
+        )
+
+    def test_the_OUTER_previous_is_checked_too_not_only_the_inner_one(self):
+        """The inner `previous.declarations` was guarded and the outer `previous or {}` was not —
+        eight malformed shapes still accepted, the previous round's finding verbatim. Fixing the
+        member a reviewer named rather than the set is this run's most-repeated failure."""
+        for bad in ([], "not a doc", 7, ("declarations", [])):
+            with pytest.raises(UntrustedRow, match="not a plain object"):
+                build([admit(_tool("book_list"))], previous=bad)
+
     def test_validate_document_does_not_MUTATE_what_it_validates(self):
         """A validator that edits its input makes every caller's later read a different question
         from the one it asked. The drift gate is the caller that matters: it compares the loaded
