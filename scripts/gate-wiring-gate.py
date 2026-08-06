@@ -166,10 +166,20 @@ NEEDS_STACK: dict[str, str] = {
 # "expensive" is not "failing" and calling it red would put a non-finding on the
 # board next to two security ones.
 TOO_SLOW: dict[str, str] = {
-    "scripts/meta-write-discipline-lint.sh": "74s standalone on a warm cache and >900s under "
-        "the shared runner — it greps every Go/Rust/SQL/TS file once PER META TABLE (33 of "
-        "them), so it is quadratic in a repo this size. Wants its own CI leg, or a rewrite "
-        "that walks the tree once. Tracked: D-GATE-SLOW-META-WRITE-DISCIPLINE",
+    # EMPTY, and it stays empty until something earns a row.
+    #
+    # Its only occupant was `meta-write-discipline-lint.sh` — 74s standalone,
+    # >900s shared, because it grepped the whole tree once PER META TABLE (33 of
+    # them). Rewritten 2026-08-06 to ONE walk with the table list as a single
+    # alternation: **74s -> 9.2s measured**, so it is now named in the hook like
+    # any other fast gate. `D-GATE-SLOW-META-WRITE-DISCIPLINE` is CLEARED.
+    #
+    # The category survives rather than being deleted, and the reason is the
+    # incident that emptied it: "expensive" was an HONEST classification, it was
+    # printed on every run, and it still meant the invariant went unguarded for
+    # weeks while reading as handled. A future row here is a debt with a clock
+    # on it, not a resting place — the fix is a cheaper walk or its own CI leg,
+    # never a longer explanation.
 }
 
 # name -> (deferral id, why it is red). `--run-all` expects these to FAIL, and

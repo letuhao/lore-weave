@@ -239,9 +239,12 @@ fi
 # so, because none of these four lints had ever been hooked. They were "run them
 # if you remember", which is the same as not having them.
 #
-# `meta-write-discipline-lint.sh` is deliberately NOT here: it greps every Go /
-# Rust / SQL / TS file for every meta table and takes ~74s, which is a pre-commit
-# nobody keeps. It belongs in CI. The three below total ~8s.
+# `meta-write-discipline-lint.sh` IS here now (2026-08-06). It used to be
+# excluded for taking ~74s — it grepped every Go/Rust/SQL/TS file once per meta
+# table, 33 of them. That exclusion was honest and it still left I8 unguarded:
+# the rule held because nobody had broken it, not because anything would say so.
+# Rewritten to ONE walk with the tables as a single alternation, measured
+# 74s -> 9.2s, which is a pre-commit someone keeps.
 #
 # The trigger is CONTENT as well as path. A path-only condition
 # (migrations/meta/, contracts/meta/, crates/meta-rs/) would have MISSED the very
@@ -252,7 +255,19 @@ if git diff --cached --name-only | grep -qE 'migrations/meta/|contracts/(service
   sh "$ROOT/scripts/service-acl-matrix-lint.sh"
   sh "$ROOT/scripts/role-grant-validator.sh"
   sh "$ROOT/scripts/pii-classify-lint.sh"
+  sh "$ROOT/scripts/meta-write-discipline-lint.sh"
 fi
+
+# I3 — the TRANSPORT TIER owns no database of record. Repo-wide, not
+# staged-scoped, and deliberately: "no TS service declares a DB driver" is a
+# property of the TREE, so a staged-only check would pass while a violation sat
+# one un-staged commit away. Runs in well under a second.
+#
+# Added 2026-08-06 alongside the meta-write rewrite, after a PO question found
+# THREE invariants in a row that were true and unguarded: the kernel sitting
+# outside crate-purity-gate PURE_CRATES, this one, and meta-write-discipline
+# being too slow to run. An unguarded true statement is one commit from false.
+"$PY" "$ROOT/scripts/tier-capability-gate.py"
 
 # A GATE NOBODY RUNS IS NOT A GATE. Wired 2026-07-29 after an audit found 26 of
 # the repo's 58 gate/lint scripts running NOWHERE — not here, not in any

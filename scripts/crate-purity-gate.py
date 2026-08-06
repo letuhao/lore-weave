@@ -139,6 +139,44 @@ PURE_CRATES: dict[str, dict[str, set[str]]] = {
             "blake3",  # via ruleset-core, as for game-rules.
         },
     },
+    # ── the two the gate was NOT looking at, added 2026-08-06 ────────────────
+    #
+    # Both were already clean — measured: zero I/O-capable std paths, and
+    # dependency lists of `{}` and `{sim-core, blake3}`. Clean is not the point.
+    # `PURE_CRATES` is an ENUMERATED LIST, and R3 scans `crates/<name>/src` for
+    # exactly the names in it, so everything absent was **default-uncovered**
+    # (`NV-3`) — including the kernel, which is the one crate in the tree whose
+    # purity the whole determinism argument rests on.
+    #
+    # The gate's own header says R1 is transitive so that a sibling crate
+    # written tomorrow is refused. That polarity was right for R1 and never
+    # applied to R3: a `std::fs::read` inside `sim-core` reached no allowlist,
+    # widened no dependency set, and would have shipped green.
+    #
+    # Found by a PO question — *"is there anywhere a module that may not touch
+    # the DB reaches down to it, and how is that guarded?"* — not by any check.
+    "sim-core": {
+        # ZERO, and the emptiness is the assertion. `Cargo.toml` carries the
+        # same claim in prose (*"determinism is the product, and every
+        # dependency is a determinism liability to audit"*); this is where that
+        # sentence becomes a thing that can fail. Adding ANY dependency to the
+        # kernel now reds here and has to be argued in this diff.
+        "workspace": set(),
+        "external": set(),
+    },
+    "ruleset-core": {
+        "workspace": {
+            "sim-core",  # `RulesetDigest` ALONE (F1-D1) — the kernel CARRIES
+                         # the digest, this crate COMPUTES it
+        },
+        "external": {
+            "blake3",  # the canonical-bytes hash. Pure compute: no fs, no net,
+                       # no clock. Same entry the two crates above already carry
+                       # it under, because they reach it transitively through
+                       # here — which is why its absence from THIS set would
+                       # have been the inconsistency.
+        },
+    },
 }
 
 # R3 — capabilities a law may not have. The rule is the CAPABILITY, not the

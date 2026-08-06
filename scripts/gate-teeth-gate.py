@@ -42,7 +42,11 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 #: 2026-07-31: 54 CI-invoked gates, 7 proven (4 selftest + 3 test files) ⇒ 47.
 #: MEASURED, not estimated — the first value here was a guess of 43 and the gate rejected it
 #: on its own first run, which is the behaviour you want from a ratchet.
-NO_PROOF_BASELINE = 46
+#: 2026-08-06: 46 -> 45. `meta-write-discipline-lint.sh` gained a self-test in the rewrite
+#: that made it fast enough to run at all (74s -> 9.2s), and the new
+#: `tier-capability-gate.py` shipped with one. The ratchet asked for this itself
+#: ("Progress — lower NO_PROOF_BASELINE to 45"), which is the direction it exists to force.
+NO_PROOF_BASELINE = 45
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {

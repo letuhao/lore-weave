@@ -90,7 +90,6 @@ its subject arrived. **Intent is not a mechanism.**
 | ID | Gate # | What is owed | Mechanism — what changes colour |
 |---|---|---|---|
 | `D-GATE-ROT-LANGUAGE-BIAS` | 2 | 13 offenders in chat + composition; classified into 4 classes, **2 of which change bytes that are already persisted** (a digest input, and `casefold()` used as a persisted identity key) — so it is a migration decision, not an edit. | `KNOWN_RED` row in `gate-wiring-gate.py`; `--run-all` names it every run **and fails if it turns green** without the row being deleted. |
-| `D-GATE-SLOW-META-WRITE-DISCIPLINE` | 4 | `meta-write-discipline-lint.sh` is quadratic (re-greps the tree once per meta table, 33 of them): 74s alone, >900s shared. Wants its own CI leg or a single-walk rewrite. | `TOO_SLOW` row in `gate-wiring-gate.py` — printed as a SKIP with its reason on every run, never silent. |
 | `D-GATE-ROT-ENV-AT-IMPORT` | 4 | Three gates import service code that reads `JWT_SECRET` at module level, so they need an environment rather than a checkout. | `NEEDS_STACK` rows in `gate-wiring-gate.py`, printed on every run. |
 | `D-META-LIVE-SMOKE-NOT-IN-CI` | 4 | `meta-rs-pg-live-smoke.sh` proves the polyglot write path against real Postgres and runs only by hand. | **prose-only.** ⚠ First claimed as "named in `gates.yml`" — it is, in a `#` comment; and in `gate-wiring-gate.py`'s **docstring**, where it is stated as a scope *limit*. Documenting a hole is not covering it. Trigger: `is_gate()` widening to `-smoke`, which needs a stack-up CI job. |
 | `D-PUBLISHER-SMOKE-NOT-IN-CI` | 4 | Same shape for the publisher live smoke. | **prose-only** — same, same trigger. |
@@ -131,6 +130,28 @@ its subject arrived. **Intent is not a mechanism.**
 | `D-NO-INPUT-LOG` | 2 | Escalated out of the command round (`R1-11`). Verification replay's stated input **does not exist**: `grep -rn "input_log\|inputs_log" crates/ services/ migrations/` → empty, re-verified 2026-08-06. Recovery replay folds committed events and is fine; verification replay has nothing to re-run. This is why the round's Oracle-versus-two-replays row could never have been closed by argument. | **prose-only** — declared in `deferral-gate.py`. The subject is an **absent artifact**, so nothing in the tree can disagree with a check (`NV-2`, the same shape as `D-S04-1`). Trigger: the first commit that writes an input record, or a verification-replay harness landing. |
 
 <!-- deferral-registry:end -->
+
+**CLEARED, and OUT of the block above — 2026-08-06.**
+
+- **`D-GATE-SLOW-META-WRITE-DISCIPLINE`.** The gate was correct and it ran **NOWHERE**: `TOO_SLOW`
+  removed it from `--run-all`, which is this repo's actual coverage mechanism (the pre-commit hook
+  names fast gates for latency; the runner is what guarantees coverage). So `I8` — *"no direct meta
+  write"* — was held by human discipline alone, and held only because nobody had crossed it.
+  Rewritten from **one full-tree grep per meta table (33 walks)** to **ONE walk** with the tables as a
+  single alternation, the table a hit named recovered from the matched text afterwards:
+  **74s → 9.2s, measured.** Now in `.githooks/pre-commit` and in the runnable set (79 of 86);
+  `TOO_SLOW` is `{}`.
+
+  Two things landed with it that the old version did not have: a **self-test** (flags
+  INSERT/UPDATE/DELETE, ignores a comment and a SELECT, and does not confuse a table with its
+  longer-named sibling — the old matcher had no trailing boundary), and a **subject check**, because
+  it used to `exit 0` printing *"no meta tables discovered"*, so a broken discovery regex passed
+  silently. **Bitten four ways including the negative case** — a sanctioned path+table pair must still
+  PASS, or a rewrite that reds on everything would read as a working gate.
+
+  It leaves the block rather than staying annotated: the registry is designed to SHRINK, and an id
+  outside it is history rather than an obligation.
+
 
 **Gate #** is the defer-eligibility gate from `CLAUDE.md` (1 out-of-scope · 2 large/structural ·
 3 naturally-next-phase · 4 blocked/external · 5 conscious won't-fix).
