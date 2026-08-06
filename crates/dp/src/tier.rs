@@ -258,6 +258,17 @@ const _: () = {
     // and the count is the actual invariant — *"exactly one tier refuses, and it
     // is the one whose definition IS invalidate-before-ack."* Flip any tier and
     // the sum moves; flip two and it still moves.
+    //
+    // **STATED LIMIT (`R2-9`): this sum is written over four NAMED tiers, so it
+    // does not extend by itself.** A fifth tier that buffers would leave
+    // `survivors == 3` false and this block silent about it, because the fifth
+    // is not in the sum. Two mechanisms cover that gap and neither is here:
+    // `spec_oracle::the_tier_set_in_source_matches_the_taxonomy_doc` reds when
+    // the declared set stops matching `03_tier_taxonomy.md`, and
+    // `no_tier_is_implemented_outside_the_declare_tier_macro` reds on a tier
+    // hand-written past the macro. Written down rather than left implied,
+    // because a reader arriving at a `const` block that names every tier will
+    // reasonably assume it covers every tier.
     let survivors = T0::SURVIVES_STORE_OUTAGE as u8
         + T1::SURVIVES_STORE_OUTAGE as u8
         + T2::SURVIVES_STORE_OUTAGE as u8
@@ -315,9 +326,29 @@ mod tests {
             T3::WRITE_ACK_P99, T3::CACHE_TTL, T3::SUSTAINED_WRITES_PER_S, T3::SURVIVES_STORE_OUTAGE);
     }
 
+    /// `V2-F6` — **all four, not two.** This pinned `T2` and `T3` only, so
+    /// renaming `T0`'s key to `"TIER_ZERO"` and `T1`'s to `"TIER_ONE"` passed
+    /// every one of the crate's twenty tests. `as_key` is the tier token of the
+    /// `DP-Ch5` cache key `dp:{reality}:{r|c}:{tier}:…`, so half the enum was a
+    /// cache-key format nothing checked.
+    ///
+    /// The list is written out rather than looped, because a loop over
+    /// `[T0,T1,T2,T3]` comparing `as_key()` to a lowercased `Debug` would be
+    /// asserting that two spellings of the same match arm agree — which they
+    /// would, always. The value of a pin is that it is a SECOND statement of
+    /// the same fact, made in a different place.
     #[test]
     fn tier_keys_are_the_cache_key_form() {
+        assert_eq!(TierLevel::T0.as_key(), "t0");
+        assert_eq!(TierLevel::T1.as_key(), "t1");
         assert_eq!(TierLevel::T2.as_key(), "t2");
+        assert_eq!(TierLevel::T3.as_key(), "t3");
+
+        // ...and `Display` must agree with `as_key` for every tier, since the
+        // two reach the same key by different routes.
+        assert_eq!(T0::LEVEL.to_string(), "t0");
+        assert_eq!(T1::LEVEL.to_string(), "t1");
+        assert_eq!(T2::LEVEL.to_string(), "t2");
         assert_eq!(T3::LEVEL.to_string(), "t3");
     }
 }

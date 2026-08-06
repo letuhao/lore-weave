@@ -482,14 +482,20 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          '        if p.name == SELF or p.name.startswith("."):\n            continue',
          "        if False:\n            continue"),
         ("the discovery predicate matches everything",
-         '            if FLAG in _code_only(p.read_text(encoding="utf-8", errors="replace")):',
+         '            if advertised_flag(p.read_text(encoding="utf-8", errors="replace")):',
          "            if True:"),
         # M8 -- the predicate counted a MENTION of the flag as having one. A gate
         # in this tree names it in two comments, has no self-test, was invoked,
         # ignored the flag, exited 0, and was counted green.
+        # The anchor is inside `advertised_flag` now, not at the call site: the
+        # predicate moved there when the driver learned the second spelling
+        # (2026-08-07). Both anchors went stale in that edit and THIS HARNESS is
+        # what said so -- "occurs 0x outside the tables" -- which is the mutation
+        # equivalent of BDR-30: a mutation whose target no longer exists applies
+        # nowhere and reports green.
         ("the predicate counts prose as code again",
-         "            if FLAG in _code_only(p.read_text(encoding=\"utf-8\", errors=\"replace\")):",
-         "            if FLAG in p.read_text(encoding=\"utf-8\", errors=\"replace\"):"),
+         "    m = FLAG_RE.search(_code_only(src))",
+         "    m = FLAG_RE.search(src)"),
         ("the routing to self_test() removed",
          '    mode = _route(args)\n    if mode == "self-test":',
          '    mode = _route(args)\n    if False:'),

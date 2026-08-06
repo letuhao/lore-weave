@@ -61,6 +61,33 @@ SELF = Path(__file__).name
 # prose-only deferrals as covered until the stripper was fixed.
 FLAG = "--self-test"
 
+# ...and the SPELLING is the same defect one level down (found 2026-08-07 while
+# wiring gate #48). The predicate above was fixed to read CODE rather than PROSE,
+# which was the right fix for the problem it had -- and it still keyed on ONE
+# spelling. Measured on this tree: **four** gates dispatch on `--selftest` with
+# no hyphen (`amendment-rot-gate`, `design-lint`, `phase0-reconcile-gate`,
+# `tier-capability-gate`), so this driver had never invoked one of their cases,
+# while printing a count that reads as full coverage. Discovery went 22 -> 26.
+#
+# Three of the four happen to run their self-test inline in normal mode, so the
+# damage was smaller than it looks -- but that is luck, not a mechanism, and it
+# is invisible from here either way. The comment above says a predicate keyed on
+# one dispatch idiom is "an enumerated list wearing a regex"; two hard-coded
+# spellings would be that list, one entry longer. So the match is on the SHAPE.
+#
+# `run_all` then invokes each script with the spelling THAT SCRIPT advertises.
+# Passing `--self-test` to a gate that only knows `--selftest` runs it in NORMAL
+# mode and scores whatever the full scan returned as a self-test verdict --
+# measured on `tier-capability-gate`, which exits 0 either way. That false green
+# is the exact failure this driver exists to prevent.
+FLAG_RE = re.compile(r"--self[-_]?test\b")
+
+
+def advertised_flag(src: str) -> str | None:
+    """The self-test flag THIS script dispatches on, or `None`."""
+    m = FLAG_RE.search(_code_only(src))
+    return m.group(0) if m else None
+
 
 def _code_only(src: str) -> str:
     """`src` with comments and docstrings blanked. Offsets are not preserved.
@@ -138,17 +165,36 @@ def discover(root: Path | None = None) -> list[Path]:
         if p.name == SELF or p.name.startswith("."):
             continue
         try:
-            if FLAG in _code_only(p.read_text(encoding="utf-8", errors="replace")):
+            if advertised_flag(p.read_text(encoding="utf-8", errors="replace")):
                 found.append(p)
         except OSError:
             continue
     return found
 
 
+def flag_for(p: Path) -> str:
+    """The spelling `p` dispatches on. Falls back to the canonical one."""
+    try:
+        return advertised_flag(p.read_text(encoding="utf-8", errors="replace")) or FLAG
+    except OSError:
+        return FLAG
+
+
+def argv_for(p: Path) -> list[str]:
+    """The exact command this driver runs for `p`.
+
+    Extracted so the self-test can assert on **what is actually invoked** rather
+    than on `flag_for` in isolation. The first version of that case called
+    `flag_for` directly, so reverting `run_all` to a hardcoded `--self-test`
+    left it GREEN — `NV-3` ("the scope never reaches it") inside the case
+    written to prevent exactly this. Caught by biting it.
+    """
+    return [sys.executable, str(p), flag_for(p)]
+
+
 def run_all(scripts: list[Path], run=None) -> int:
-    runner = run or (lambda p: subprocess.run(
-        [sys.executable, str(p), "--self-test"], cwd=REPO,
-        capture_output=True, text=True, timeout=CHILD_TIMEOUT_S))
+    runner = run or (lambda p, argv: subprocess.run(
+        argv, cwd=REPO, capture_output=True, text=True, timeout=CHILD_TIMEOUT_S))
     failed = []
     for p in scripts:
         t0 = time.time()
@@ -159,7 +205,7 @@ def run_all(scripts: list[Path], run=None) -> int:
         # by nothing at all. The mutation harness carries this guard and says so
         # in a comment about itself; the same rule was never written here.
         try:
-            out = runner(p)
+            out = runner(p, argv_for(p))
         except subprocess.TimeoutExpired:
             ms = int((time.time() - t0) * 1000)
             print(f"  SLOW {p.name:<44} {ms:>6}ms -> no verdict in {CHILD_TIMEOUT_S}s")
@@ -231,13 +277,63 @@ def self_test() -> int:
         print("  ok  --list reports without applying the floor")
 
     # A gate that advertises `--self-test` but is not in the list is the whole
-    # defect. Three known ones, asserted by name, so a predicate that narrows is
-    # caught even while the floor still passes.
+    # defect. Known ones asserted BY NAME, so a predicate that narrows is caught
+    # even while the floor still passes.
+    #
+    # The last four are the `--selftest` spelling. They are named separately
+    # because the floor did NOT catch them: this driver ran 22 gates and reported
+    # "22 gate self-tests green" while four gates' cases had never been invoked
+    # by it, and 22 is comfortably above a floor of 10. **A count that is right
+    # about what it did and silent about what it missed is the shape this whole
+    # file exists to refuse**, and it had it.
     for required in ("citation-gate.py", "actor-hub-figures-gate.py",
-                     "hashed-substrate-float-gate.py", "deferral-gate.py"):
+                     "hashed-substrate-float-gate.py", "deferral-gate.py",
+                     "amendment-rot-gate.py", "design-lint.py",
+                     "phase0-reconcile-gate.py", "tier-capability-gate.py"):
         if required not in names:
             failures += 1
-            print(f"  FAIL {required} advertises --self-test and was not discovered")
+            print(f"  FAIL {required} advertises a self-test flag and was not discovered")
+
+    # ...and each must be invoked with the spelling IT dispatches on. Handing
+    # `--self-test` to a gate that only knows `--selftest` runs it in NORMAL mode
+    # and scores the full scan as a self-test verdict — measured on
+    # `tier-capability-gate`, which exits 0 either way, so the false green is
+    # completely silent.
+    #
+    # **This case drives `run_all` and records the argv it BUILDS.** Asking
+    # `flag_for` directly was the first version, and biting it showed the case
+    # was vacuous: reverting `run_all` to a hardcoded `--self-test` left it
+    # green, because nothing it looked at was on the path being reverted. That
+    # is `NV-3` — the scope never reaches the subject — inside the case written
+    # to prevent a false green. The subject is what gets EXECUTED, so the case
+    # has to go through the thing that executes it.
+    import contextlib as _cl
+    import io as _io2
+
+    class _Ok:
+        returncode, stdout, stderr = 0, "", ""
+
+    seen: list[list[str]] = []
+    with _cl.redirect_stdout(_io2.StringIO()), _cl.redirect_stderr(_io2.StringIO()):
+        run_all(found, run=lambda _p, argv: seen.append(argv) or _Ok())
+
+    if len(seen) != len(found):
+        failures += 1
+        print(f"  FAIL run_all invoked {len(seen)} of {len(found)} discovered gates")
+    else:
+        wrong = [(Path(a[1]).name, a[-1], flag_for(Path(a[1]))) for a in seen
+                 if a[-1] != flag_for(Path(a[1]))]
+        hyphenless = [a for a in seen if a[-1] == "--selftest"]
+        if wrong:
+            failures += 1
+            print(f"  FAIL run_all passed the wrong flag to {len(wrong)} gate(s): {wrong[:3]}")
+        elif not hyphenless:
+            failures += 1
+            print("  FAIL no discovered gate dispatches on `--selftest`, so this case has no "
+                  "subject — it would pass whether or not the flag were routed at all")
+        else:
+            print(f"  ok  run_all invokes each gate with ITS OWN flag spelling "
+                  f"({len(hyphenless)} hyphenless, {len(seen) - len(hyphenless)} canonical)")
 
     # `--self-test` must ROUTE to the cases. Deleting that branch left this
     # file's own self-test green, because the fallthrough ran every other gate.
@@ -316,12 +412,12 @@ def self_test() -> int:
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return run_all([Path("a-gate.py")], run=runner)
 
-    if quietly(lambda _: _Red()) == 0:
+    if quietly(lambda _p, _argv: _Red()) == 0:
         failures += 1
         print("  FAIL a red gate did not fail the run")
     else:
         print("  ok  a red gate fails the run")
-    if quietly(lambda _: _Green()) != 0:
+    if quietly(lambda _p, _argv: _Green()) != 0:
         failures += 1
         print("  FAIL a green gate failed the run")
     else:
@@ -333,7 +429,7 @@ def self_test() -> int:
     # and the gates after it were reported by nothing. The mutation harness
     # carries the guard and its comment describes this exact failure; the rule
     # was simply never written on this side.
-    def _hangs(_):
+    def _hangs(_p, _argv):
         raise subprocess.TimeoutExpired("child", CHILD_TIMEOUT_S)
 
     printed = io.StringIO()
@@ -360,7 +456,7 @@ def self_test() -> int:
     # gate has a case for exactly this and this side had none.
     reason = io.StringIO()
     with contextlib.redirect_stdout(reason), contextlib.redirect_stderr(io.StringIO()):
-        run_all([Path("a-gate.py")], run=lambda _: _Red())
+        run_all([Path("a-gate.py")], run=lambda _p, _argv: _Red())
     if _Red.stdout not in reason.getvalue():
         failures += 1
         print("  FAIL a red gate's reason was not printed")

@@ -91,10 +91,16 @@ pub trait DpAggregate: Send + Sync + 'static {
 /// buffer. It compiled, because a struct literal is not a derivation.
 ///
 /// **A table that can be written by hand is the hand-written table it was meant
-/// to replace.** So the only constructor is [`tier_row`], which reads every
-/// field off `A`'s types and can therefore only ever produce a row that agrees
-/// with the tier. Reading is by `const fn` accessor, so a caller loses nothing:
-/// a row is still usable in a `const` context.
+/// to replace.** So the only constructor **in safe Rust** is [`tier_row`], which
+/// reads every field off `A`'s types and can therefore only ever produce a row
+/// that agrees with the tier. Reading is by `const fn` accessor, so a caller
+/// loses nothing: a row is still usable in a `const` context.
+///
+/// *"In safe Rust"* is the honest qualifier and was missing (`R2-11`): a caller
+/// writing `unsafe { transmute(..) }` forged a `T3` row with a 24-hour TTL. It
+/// is UB — the layout is `repr(Rust)` — and `#![forbid(unsafe_code)]` binds this
+/// crate, not its consumers. Every private-field invariant in Rust has this
+/// same boundary; stating it costs a line and stops the claim being absolute.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TierRow {
     type_name: &'static str,

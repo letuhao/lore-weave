@@ -1,8 +1,59 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — `M1` and `M2` are BUILT (2026-08-06, branch `feat/game-logic`)
+## ▶ GAME BUILD — the FOUNDATION track: `crates/dp` slice 1 (2026-08-07, branch `feat/game-logic`)
 
-**HEAD:** `1a3497418` · Run-state: [`docs/plans/2026-08-06-game-tier-build-RUN-STATE.md`](../plans/2026-08-06-game-tier-build-RUN-STATE.md) — **read it before `git log`.**
+**HEAD:** `10fe795c5` · Run-state: [`docs/plans/2026-08-06-game-tier-build-RUN-STATE.md`](../plans/2026-08-06-game-tier-build-RUN-STATE.md) — **read it before `git log`.** §6h is the flow audit (`FLOW-1`..`FLOW-26`), §6i is the SDK board and its DoD, §7 holds Decisions / Parked / Debt / Drift.
+
+### What this track is, and why it exists
+
+The PO stopped the feature build with a measurement: *the foundation was believed finished in May,
+and what was finished is the **kernel**, not the foundation — there is no data tiering and no SDK.*
+The audit that followed (`FLOW-1`..`FLOW-26`) found the shape of it: **`06_data_plane/` is 25 LOCKED
+documents naming three crates — `dp`, `dp-derive`, `dp-clippy` — and none of the three existed**,
+while `crates/dp-kernel` (created five weeks *after* that lock, by a different track, for event
+plumbing) carried the prefix and was read as coverage by the module audit. `FLOW-6` is the one-line
+version: **everything built is a WRITE, everything missing is a READ.**
+
+| slice | state |
+|---|---|
+| **0** — the AMEND bundle | ✅ `217d325f0` + `3e6358749`. `REC-99`..`REC-102`, 16 LOCKED files amended so they stop stating things that are false. `REC-102` PO-approved. |
+| **1** — `crates/dp`: tiers, scopes, `DpAggregate` | 🟡 Two rounds of cold-start refutation, **both BLOCK, both discharged in full** (13 + 19 findings). The type-system half survived a direct adversary including from a crate outside this repo; the source-gate half was rewritten. **Not closed** — a third refuter has not run, and each round found what the previous one certified. |
+| **1b**–**5** | ⬜ boards written per slice, at its start. |
+
+**The finding worth carrying forward is `V1-F1`.** Slice 1 was put to the PO on the claim that an
+aggregate having *"exactly one tier"* is **structural**. It is not: `DpAggregate` constrains the
+*impl*, not the *type constructor*, so `impl<T: Tier> DpAggregate for Wallet<T>` gives one
+`TYPE_NAME` four tiers, chosen per request — with `survives_store_outage` flipping on an env var,
+which is exactly the `REC-102c` promise the crate exists to make un-flippable. **rustc cannot object
+by construction**: each monomorphisation is individually consistent and the contradiction lives
+*across* them. So the claim was restated at all five sites it had reached, and the half the type
+system cannot hold is held by **`scripts/dp-aggregate-gate.py`** (gate #48, wired pre-commit) — whose
+legal tier/scope names are *parsed out of* `crates/dp/src` rather than typed into it, so adding a
+tier extends the gate in the same edit. It found a real `TYPE_NAME` collision on its first run.
+
+**Evidence, all fresh:** `cargo test -p dp` **20 passed** (8 lib + 5 trybuild + 3 measure + 8 oracle)
+· `cargo clippy -p dp --all-targets -D warnings` exit 0 · `cargo check --workspace` exit 0 ·
+`scripts/dp-slice1-bite.py` **PASS — 10 bites bit, 2 legs stated unbiteable** · 48 hook gates green,
+22 gate self-tests green. *live infra unavailable: `crates/dp` declares no I/O and opens no
+connection — Axis 2 is the compiler on adversarial input, by construction, not by omission.*
+
+**Two mechanisms the next session should know about:** the **spec oracle**
+(`crates/dp/tests/spec_oracle.rs`) parses six tables out of the LOCKED corpus and asserts they equal
+the `const`s in `tier.rs` — a one-sided edit to either goes red naming both sides, which is the drift
+alarm `FLOW-2` measured the absence of. And the **bite matrix** (`scripts/dp-slice1-bite.py`) proves
+each guard by removing it. Both are bitten; neither is decoration.
+
+**Drift this run:** `BDR-26`..`BDR-32` in §7. Notably `BDR-32` — the bite harness had been rewriting
+LOCKED documents' line endings on every run, invisibly to `git diff`, because `.gitattributes`
+normalises on read. Found by a sha256 check on its first run.
+
+---
+
+## GAME BUILD — `M1` and `M2` are BUILT (2026-08-06, HEAD was `1a3497418`)
+
+> Superseded as the *next* item by the foundation track above, and kept because the two are not
+> alternatives: `M1`/`M2` are the **feature** tier, and the audit that opened the foundation track
+> found that tier was being built on a data plane that does not exist yet. Both are live work.
 
 Two milestones landed, in the order §2 of that file derives rather than chooses.
 

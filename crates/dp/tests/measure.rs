@@ -131,10 +131,54 @@ fn s3_4_counts() {
     println!("S3.4  pinned .stderr files    = {stderr_files}");
     println!("S3.4  spec-oracle tests       = {oracle_tests}");
 
-    // `DP-Ch4`: "all 4 tiers x 2 scopes = 8 combinations, all valid." This one
-    // is a PRODUCT of two independently-declared sets, so it is not the `NV-1`
-    // shape the deleted assertions were.
-    assert_eq!(tiers.len() * scopes.len(), 8);
+    // `V2-F5` — **the assertion that used to live here was `NV-1`, and the
+    // comment above it claimed otherwise.** It read
+    // `assert_eq!(tiers.len() * scopes.len(), 8)` and called that "a PRODUCT of
+    // two independently-declared sets". They are two array literals typed three
+    // lines up. Adding a fifth `TierLevel` variant left this test **printing
+    // `tiers declared = 4` and `cells = 8`, and passing** — which is
+    // `assert_eq!([T0..T3].len(), 4)`, the assertion `V1-F2` deleted from this
+    // very file, wearing a different costume.
+    //
+    // The subject that can actually vary is the SOURCE. `TierLevel`'s variants
+    // and `declare_tier!`'s invocations are two independent things in one file:
+    // add a variant without a tier, or a tier without a variant, and they
+    // disagree. The arrays above are then checked against the parse rather than
+    // against themselves.
+    let tier_src = std::fs::read_to_string(dir.join("src/tier.rs")).expect("tier.rs");
+    let enum_body = {
+        let s = tier_src.find("pub enum TierLevel {").expect("the TierLevel enum");
+        let e = tier_src[s..].find('}').expect("its closing brace") + s;
+        &tier_src[s..e]
+    };
+    let variants: Vec<&str> = enum_body
+        .lines()
+        .skip(1)
+        .map(|l| l.trim().trim_end_matches(','))
+        .filter(|l| !l.is_empty() && !l.starts_with("//"))
+        .collect();
+    let invocations = tier_src.matches("declare_tier!(").count();
+
+    println!("S3.4  TierLevel variants      = {} {:?}", variants.len(), variants);
+    println!("S3.4  declare_tier! calls     = {invocations}");
+
+    assert_eq!(
+        variants.len(),
+        invocations,
+        "tier.rs declares {} TierLevel variant(s) {variants:?} and makes {invocations} \
+         declare_tier! call(s) — one was added without the other",
+        variants.len()
+    );
+    assert_eq!(
+        tiers.len(),
+        variants.len(),
+        "this test enumerates {} tier(s) while tier.rs declares {} — the array above is stale",
+        tiers.len(),
+        variants.len()
+    );
+    // `DP-Ch4`: "all 4 tiers x 2 scopes = 8 combinations, all valid." Now a
+    // product of two numbers that came from the file rather than from here.
+    println!("S3.4  cells (parsed)          = {}", variants.len() * scopes.len());
 
     // Every UI case must carry a pinned expectation, or trybuild would accept a
     // failure whose REASON has drifted. Counted, not assumed.

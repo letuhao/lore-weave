@@ -40,8 +40,19 @@
 //! first number would have been comparing the wrong thing and agreeing anyway.
 //!
 //! Still **not** covered, stated so the next reader does not have to re-derive
-//! it: the per-tier *eligibility rules* and *examples* in `03`, which are prose
-//! by nature; and `DP-S5`'s read ceilings, which no `const` here mirrors.
+//! it — and this list is where a limit belongs, because an inline comment is
+//! not where anyone checks (`V2-F9`):
+//!
+//! * The per-tier *eligibility rules* and *examples* in `03`, prose by nature.
+//! * `DP-S5`'s **read** ceilings — no `const` here mirrors them.
+//! * **`REC-102c` is read from the BOLDED LEAD of its cell only.** A row whose
+//!   lead says `REJECT` and whose following paragraph says the opposite stays
+//!   green. That is deliberate — scanning the whole cell was the first
+//!   implementation and it failed correctly, because T3's paragraph contains
+//!   the word *"buffered"* while ruling the opposite — but it means the oracle
+//!   watches the ruling, not the argument for it.
+//! * **The unit of `DP-X7`'s TTL cells beyond `s`/`min`/`h`**, and anything in
+//!   a cell after its first quantity.
 
 use std::fs;
 use std::path::PathBuf;
@@ -82,6 +93,26 @@ fn the_parsers_distinguish_absent_from_unreadable() {
     }
     assert!(parse_ms("<1 s").is_err(), "a seconds cell in a millisecond table must not parse");
     assert!(parse_rate("lots").is_err());
+
+    // ── V2-F3: the cases above were all SINGLE-quantity, and every real DP-S3
+    // cell for T2 is a TWO-quantity cell. `assert!(parse_ms("<1 s").is_err())`
+    // held only because that fixture contains no `ms` at all — the guard's
+    // subject could not vary in the direction that would fail it (`NV-2`). These
+    // are the actual shapes, and the actual swap the refuter used.
+    assert_eq!(parse_ms("<5 ms ack, ≤1 s to projection"), Ok(Duration::from_millis(5)));
+    assert!(
+        parse_ms("<5 s ack, ≤1 ms to projection").is_err(),
+        "swapping the two units of a two-quantity cell is a 1000x drift and must not read as 5ms"
+    );
+    assert_eq!(parse_ms("<50 ms ack"), Ok(Duration::from_millis(50)));
+
+    // ...and the same on the denominator side.
+    assert_eq!(parse_rate("500 / s"), Ok(Some(500)));
+    assert!(
+        parse_rate("500 / min").is_err(),
+        "a per-minute ceiling is a different quantity from a per-second one, not a smaller number"
+    );
+    assert!(parse_rate("500").is_err(), "a rate with no denominator is not a rate");
 }
 
 fn dp_doc(name: &str) -> String {
@@ -118,19 +149,48 @@ fn table_cells(doc: &str, section: &str, needle_fn: impl Fn(&str) -> bool) -> Ve
 /// returns "nothing" for an unreadable cell makes an unreadable cell agree with
 /// a `const` of `None`, and the check that was supposed to catch the drift is
 /// the thing that hides it.
+/// **The unit is read off the QUANTITY, not looked for anywhere in the cell.**
+///
+/// `V2-F3`: the previous version asked only whether `"ms"` appeared *somewhere*
+/// and then took the leading digits. `DP-S3`'s real cells are **two-quantity
+/// cells** — `<5 ms ack, ≤1 s to projection` — so swapping the two units gives
+/// `<5 s ack, ≤1 ms to projection`: still contains `ms`, still leads with `5`,
+/// still **green**. A 1000× change to a LOCKED latency budget, certified by the
+/// oracle written to catch exactly that.
+///
+/// And the guard that was supposed to prevent it was `NV-2`:
+/// `assert!(parse_ms("<1 s").is_err())` passed only because that *fixture*
+/// contains no `ms` at all. The property it named did not hold on the real
+/// subject, and the test could not tell, because its subject could not vary in
+/// the direction that would have failed it.
 fn parse_ms(cell: &str) -> Result<Duration, String> {
-    if !cell.contains("ms") {
-        return Err(format!("{cell:?}: no `ms` unit in a millisecond budget"));
+    let (n, unit) = leading_quantity(cell)?;
+    if unit != "ms" {
+        return Err(format!(
+            "{cell:?}: the leading quantity is {n} {unit}, not milliseconds. This is a p99 write-ack \
+             budget; a cell whose FIRST number is in another unit is either a different quantity or \
+             a 1000x drift, and the oracle must not guess which"
+        ));
     }
-    let digits: String = cell
-        .trim_start_matches(['<', '≤', ' '])
-        .chars()
-        .take_while(|c| c.is_ascii_digit())
-        .collect();
-    digits
+    Ok(Duration::from_millis(n))
+}
+
+/// `<5 ms ack, …` → `(5, "ms")`. The FIRST number and the unit attached to it.
+fn leading_quantity(cell: &str) -> Result<(u64, String), String> {
+    let re = cell.trim_start_matches(['<', '≤', '~', ' ']);
+    let digits: String = re.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() {
+        return Err(format!("{cell:?}: no leading number"));
+    }
+    let n: u64 = digits
         .parse()
-        .map(Duration::from_millis)
-        .map_err(|e| format!("{cell:?}: leading digits {digits:?} do not parse ({e})"))
+        .map_err(|e| format!("{cell:?}: leading digits {digits:?} do not parse ({e})"))?;
+    let rest = re[digits.len()..].trim_start();
+    let unit: String = rest.chars().take_while(|c| c.is_ascii_alphabetic()).collect();
+    if unit.is_empty() {
+        return Err(format!("{cell:?}: the number {n} carries no unit"));
+    }
+    Ok((n, unit))
 }
 
 /// `N/A` → `Ok(None)` · `60 s` / `5 min` / `10 min` / `1 h` → `Ok(Some(_))` ·
@@ -171,14 +231,32 @@ fn parse_ttl(cell: &str) -> Result<Option<Duration>, String> {
 }
 
 /// `5 000 / s` / `500 / s` → `Some(u32)`; `Unbounded (in-process)` → `None`.
+///
+/// **The denominator is checked.** `V2-F3`: this used to concatenate every
+/// digit in the cell and never look at what it was divided by, so
+/// `500 / s` → `500 / min` — a 60× cut to a LOCKED throughput ceiling — read
+/// identically. `DP-S5` states a *per-second* rate; a cell denominated in
+/// anything else is a different quantity.
 fn parse_rate(cell: &str) -> Result<Option<u32>, String> {
-    let digits: String = cell.chars().filter(|c| c.is_ascii_digit()).collect();
-    if digits.is_empty() {
+    let has_digit = cell.chars().any(|c| c.is_ascii_digit());
+    if !has_digit {
         return if cell.to_ascii_lowercase().contains("unbounded") {
             Ok(None)
         } else {
             Err(format!("{cell:?}: no digits, and it does not say `Unbounded`"))
         };
+    }
+    let (num, denom) = cell
+        .split_once('/')
+        .ok_or_else(|| format!("{cell:?}: a rate must be written `<n> / <unit>`"))?;
+    // The spec uses a thin space as the thousands separator.
+    let digits: String = num.chars().filter(|c| c.is_ascii_digit()).collect();
+    let denom = denom.trim();
+    if denom != "s" {
+        return Err(format!(
+            "{cell:?}: denominated in {denom:?}, but DP-S5 states a PER-SECOND rate. A cell in \
+             another unit is a different quantity, not a smaller number"
+        ));
     }
     digits
         .parse()
@@ -200,7 +278,11 @@ fn write_ack_budgets_match_dp_s3() {
     ];
     for (label, konst) in expected {
         let cell = &rows.iter().find(|(l, _)| l == label).expect("row").1;
-        let parsed = parse_ms(cell).unwrap_or_else(|e| panic!("{label}: {e}"));
+        // The document is NAMED in the panic. A drift alarm that says only
+        // "5 s is not milliseconds" leaves the reader hunting for which of the
+        // twenty-five locked files it came from.
+        let parsed = parse_ms(cell)
+            .unwrap_or_else(|e| panic!("{label}: 08_scale_and_slos.md DP-S3 — {e}"));
         assert_eq!(
             parsed, konst,
             "{label}: 08_scale_and_slos.md DP-S3 says {cell:?} ({parsed:?}), tier.rs says {konst:?}"
@@ -252,11 +334,90 @@ fn the_tier_set_in_source_matches_the_taxonomy_doc() {
         "one side parsed EMPTY (source {declared:?}, doc {matrix:?}) — an empty comparison agrees \
          with anything, which is the failure this test is named after"
     );
+    // Order-insensitive: `03`'s matrix is LABEL-keyed, so reordering its rows is
+    // meaning-preserving and must not red. `V2-N11` — a check that fires on a
+    // harmless edit teaches "the oracle is noisy", and that is how red becomes
+    // the normal colour.
+    let (mut d, mut x) = (declared.clone(), matrix.clone());
+    d.sort();
+    x.sort();
     assert_eq!(
-        declared, matrix,
+        d, x,
         "the tiers declared in crates/dp/src/tier.rs ({declared:?}) are not the tiers in \
          03_tier_taxonomy.md's matrix ({matrix:?}). DP-A5 closes this set; adding to it requires \
          a superseding decision in docs/03_planning/LLM_MMO_RPG/decisions/, not a new macro call"
+    );
+}
+
+/// `V2-F4` — **a tier is a type implementing `Tier`, not a macro invocation.**
+///
+/// The test above parses `declare_tier!` invocations and calls that "the source
+/// side". A cold-start refuter hand-wrote the impl instead:
+///
+/// ```ignore
+/// pub(crate) struct T1p5;
+/// impl sealed::SealedTier for T1p5 {}
+/// impl Tier for T1p5 { /* its own TTL, ack budget, throughput */ }
+/// ```
+///
+/// A genuine fifth tier, with `cargo test`, `clippy`, `dp-aggregate-gate` and
+/// the oracle **all green** — because none of them was looking at the thing
+/// that makes a tier a tier. (The *public* case reds, but only incidentally:
+/// trybuild's pinned `.stderr` happens to contain rustc's *"the following other
+/// types implement trait `Tier`"* enumeration. A guarantee resting on a
+/// compiler diagnostic's formatting is not a guarantee.)
+///
+/// So this reads the definition site directly. `declare_tier!` is the ONLY
+/// sanctioned way to add a tier; any `impl Tier for _` or `impl SealedTier for
+/// _` appearing outside the macro's own body is a tier the closed set does not
+/// know about.
+#[test]
+fn no_tier_is_implemented_outside_the_declare_tier_macro() {
+    let src = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/tier.rs"),
+    )
+    .expect("tier.rs");
+
+    // The macro's own body legitimately contains both impls, once, with `$name`.
+    let body_start = src.find("macro_rules! declare_tier").expect("the declare_tier macro");
+    let body_end = src[body_start..]
+        .find("\n}\n")
+        .map(|i| body_start + i + 3)
+        .expect("the macro body must be terminated by a line-initial `}`");
+
+    let mut stray: Vec<(usize, String)> = Vec::new();
+    for (i, line) in src.lines().enumerate() {
+        let off = src.lines().take(i).map(|l| l.len() + 1).sum::<usize>();
+        if off >= body_start && off < body_end {
+            continue;
+        }
+        let t = line.trim();
+        if t.starts_with("//") {
+            continue;
+        }
+        for pat in ["impl Tier for ", "impl sealed::SealedTier for ", "impl SealedTier for "] {
+            if t.contains(pat) {
+                stray.push((i + 1, t.to_string()));
+            }
+        }
+    }
+
+    assert!(
+        stray.is_empty(),
+        "a tier is implemented outside `declare_tier!`, so it is NOT in the set every other check \
+         reads: {stray:?}. DP-A5 closes the taxonomy at four; a fifth tier needs a superseding \
+         decision, and if one is made it goes through the macro so that the doc oracle, the gate \
+         and the const block all see it"
+    );
+
+    // ...and the check must have a subject: the macro body itself must contain
+    // the two impls, or the search above is scanning for something that has
+    // moved and would report clean forever.
+    let body = &src[body_start..body_end];
+    assert!(
+        body.contains("impl Tier for $name") && body.contains("impl sealed::SealedTier for $name"),
+        "the declare_tier! body no longer contains the impls this test searches for — the search \
+         has lost its subject and would report clean whatever the file said"
     );
 }
 

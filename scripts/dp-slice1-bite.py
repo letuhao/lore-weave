@@ -289,8 +289,14 @@ def bite_gate() -> bool:
         if rc != 0:
             print("  x the probe did not compile, so it is not the case V1-F1 describes")
             return False
-        if "R1" not in out or "R2" not in out:
-            print("  x the gate reddened without naming R1/R2")
+        # R6, not R1/R2. The rule that catches the generic escape changed when
+        # the gate was rewritten after round 2: `R1` asks "is this token a
+        # tier?", which a renamed parameter passes; `R6` asks "does the
+        # right-hand side name something this impl BINDS?", which is the actual
+        # property. Pinning the rule id is what makes this a bite for the RIGHT
+        # reason rather than a check on the exit code.
+        if "R6" not in out:
+            print("  x the gate reddened without naming R6 — right answer, wrong rule")
             return False
     finally:
         probe.unlink(missing_ok=True)
@@ -325,6 +331,117 @@ RUNTIME_TIER_MUTATION = (
     "    const SURVIVES_STORE_OUTAGE: bool = true;\n"
     "}\n"
 ) + TIER_SEAL_ANCHOR
+
+def cargo_green() -> tuple[bool, str]:
+    code, out = run("cargo", "test", "-p", "dp")
+    return code == 0, out
+
+
+def bite_source(label: str, path: Path, edits: list[tuple[str, str]],
+                must_name: tuple[str, ...] = ()) -> bool:
+    """Mutate `crates/dp` source and require `cargo test -p dp` to RED.
+
+    Added after `V.1` round 2, which found four MAJOR holes that every existing
+    leg was blind to (`V2-F3`..`F6`) — because every existing leg mutated a
+    DOCUMENT or a GATE, and these live in the crate. The bite matrix was honest
+    about what it ran and silent about what it never touched, which is `V2-N10`.
+    """
+    print(f"\n{'=' * 74}\nBITE [source] {label}\n{'=' * 74}")
+
+    ok, _ = cargo_green()
+    print(f"  baseline : cargo test -p dp green? {ok}  (expected True)")
+    if not ok:
+        print(f"  x {label}: the suite is already red — a flip proves nothing")
+        return False
+
+    original = read_txt(path)
+    # A LIST of edits, because one coherent change is not always one anchor:
+    # adding a `TierLevel` variant without its `as_key` arm is `E0004`, so the
+    # crate never builds and the mutation never reaches the check it is aimed
+    # at. A mutation must be the change an AUTHOR would make, not the smallest
+    # textual one.
+    mutated = original
+    for find, replace in edits:
+        if find not in mutated:
+            print(f"  x {label}: MISUSE — anchor not found in {path.name}: {find[:70]!r}")
+            return False
+        mutated = mutated.replace(find, replace, 1)
+    assert mutated != original, "mutation produced identical text"
+
+    try:
+        write_txt(path, mutated)
+        ok_after, out = cargo_green()
+        print(f"  mutated  : {path.name} changed -> green? {ok_after}  (expected False)")
+        if ok_after:
+            print(f"  x {label}: the crate now says something different and 21 tests agreed with")
+            print("    it anyway. That is the hole this leg was written for.")
+            return False
+        missing = [n for n in must_name if n not in out]
+        if missing:
+            print(f"  x {label}: it reddened but the message does not name {missing}")
+            return False
+        if must_name:
+            print(f"  ...       and the failure names: {', '.join(must_name)}")
+    finally:
+        write_txt(path, original)
+
+    if not restored_byte_identical(path, original, label):
+        return False
+    ok_restored, _ = cargo_green()
+    print(f"  restored : green? {ok_restored}  (expected True)")
+    if not ok_restored:
+        print(f"  x {label}: restore failed")
+        return False
+    print(f"  + {label}: the check BITES")
+    return True
+
+
+def bite_gate_probe(label: str, probe_rel: str, src: str, want_rules: tuple[str, ...]) -> bool:
+    """Plant a round-2 reproduction in the tree; the gate must red naming its rule.
+
+    These are the refuter's own files, kept verbatim. A gate hardened against a
+    break it no longer has a copy of is one refactor from having the break back.
+    """
+    print(f"\n{'=' * 74}\nBITE [gate-probe] {label}\n{'=' * 74}")
+    gate = str(REPO / "scripts" / "dp-aggregate-gate.py")
+    probe = REPO / probe_rel
+
+    code, _ = run(sys.executable, gate)
+    if code != 0:
+        print(f"  x {label}: the gate is already red")
+        return False
+
+    probe.parent.mkdir(parents=True, exist_ok=True)
+    write_txt(probe, src)
+    try:
+        code_after, out = run(sys.executable, gate)
+        rules = sorted({ln.split()[0] for ln in out.splitlines()
+                        if ln.strip()[:2] in ("R1", "R2", "R3", "R4", "R6", "R7", "R8", "R9")
+                        or ln.strip().startswith("R10")})
+        print(f"  planted  : gate exit={code_after} rules={rules}  (expected 1)")
+        if code_after != 1:
+            print(f"  x {label}: the gate ACCEPTED a break it is written against")
+            return False
+        missing = [r for r in want_rules if r not in rules]
+        if missing:
+            print(f"  x {label}: reddened, but not by {missing} — right answer, wrong reason")
+            return False
+    finally:
+        probe.unlink(missing_ok=True)
+        for d in (probe.parent, probe.parent.parent):
+            try:
+                d.rmdir()
+            except OSError:
+                break
+
+    code_restored, _ = run(sys.executable, gate)
+    print(f"  restored : gate exit={code_restored}  (expected 0)")
+    if code_restored != 0:
+        print(f"  x {label}: restore failed")
+        return False
+    print(f"  + {label}: the gate BITES, by {', '.join(want_rules)}")
+    return True
+
 
 UNBITEABLE = [
     ("tests/ui/two_tiers.rs",
@@ -396,8 +513,109 @@ def main() -> int:
     ]:
         results.append(bite_oracle(label, doc, find, replace, names))
 
+    # ── source: the four MAJOR holes round 2 found in the crate itself ──────
+    for label, path, edits, names in [
+        ("V2-F3 DP-S3's unit — a two-quantity cell with its units swapped",
+         DOCS / "08_scale_and_slos.md",
+         [("| DP-T2 | <5 ms ack, ≤1 s to projection",
+           "| DP-T2 | <5 s ack, ≤1 ms to projection")],
+         ("not milliseconds",)),
+        ("V2-F3 DP-S5's denominator — per-second becomes per-minute",
+         DOCS / "08_scale_and_slos.md",
+         [("| T2 writes | 500 / s", "| T2 writes | 500 / min")],
+         ("PER-SECOND",)),
+        ("V2-F4 a hand-written tier past the macro",
+         TIER,
+         # The derives are load-bearing: `Tier: Copy + Debug`, so without them the
+         # mutation fails to COMPILE and never reaches the check it is aimed at —
+         # `V1-F7`'s "the mutation broke the crate" case, from a brand-new leg on
+         # its first run.
+         [("declare_tier!(\n    T3,",
+           "#[derive(Debug, Clone, Copy)]\npub(crate) struct T1p5;\n"
+           "impl sealed::SealedTier for T1p5 {}\n"
+           "impl Tier for T1p5 {\n"
+           "    const LEVEL: TierLevel = TierLevel::T2;\n"
+           "    const COHERENCY: Coherency = Coherency::Snapshot;\n"
+           "    const CACHE_TTL: Option<Duration> = None;\n"
+           "    const WRITE_ACK_P99: Duration = Duration::from_millis(7);\n"
+           "    const SUSTAINED_WRITES_PER_S: Option<u32> = Some(1_500);\n"
+           "    const SURVIVES_STORE_OUTAGE: bool = true;\n}\n"
+           "declare_tier!(\n    T3,")],
+         ("outside `declare_tier!`",)),
+        # TWO edits, and that is the finding: a variant ALONE is `E0004` —
+        # `as_key`'s match is exhaustive, so rustc refuses the crate before any
+        # test runs. Stronger than the check, and it means the naive one-anchor
+        # mutation never reaches its subject. With the arm supplied, which is
+        # what an author adding a tier would write, `s3_4_counts` is what reds.
+        ("V2-F5 a fifth TierLevel variant with no tier behind it",
+         TIER,
+         [("pub enum TierLevel {\n    T0,", "pub enum TierLevel {\n    T4,\n    T0,"),
+          ('            Self::T0 => "t0",',
+           '            Self::T4 => "t4",\n            Self::T0 => "t0",')],
+         ("declare_tier!",)),
+        ("V2-F6 rename half the cache-key tokens",
+         TIER,
+         [('Self::T0 => "t0",\n            Self::T1 => "t1",',
+           'Self::T0 => "TIER_ZERO",\n            Self::T1 => "TIER_ONE",')],
+         ()),
+    ]:
+        results.append(bite_source(label, path, edits, names))
+
     # ── gate ─────────────────────────────────────────────────────────────────
     results.append(bite_gate())
+
+    # ── gate: round 2's own reproductions, kept verbatim ─────────────────────
+    P = "crates/dp/tests/_r2_probe.rs"
+    for label, rel_path, src, want in [
+        ("R2-1 a generic parameter NAMED T2", P,
+         "use dp::{DpAggregate, Scope, Tier};\nuse core::marker::PhantomData;\n"
+         "pub struct PlayerWallet<T2, RealityScope>(PhantomData<(T2, RealityScope)>);\n"
+         "impl<T2: Tier, RealityScope: Scope> DpAggregate for PlayerWallet<T2, RealityScope> {\n"
+         "    type Tier = T2; type Scope = RealityScope; type Id = u64;\n"
+         "    const TYPE_NAME: &'static str = \"r2_wallet\";\n}\n", ("R6", "R7")),
+        ("R2-2 an associated-type projection", P,
+         "use dp::{DpAggregate, Scope, Tier};\n"
+         "pub trait Pick { type T2: Tier; type RealityScope: Scope; }\n"
+         "impl<A: Tier, B: Scope> DpAggregate for Wallet<A, B> {\n"
+         "    type Tier = <Self as Pick>::T2; type Scope = <Self as Pick>::RealityScope;\n"
+         "    type Id = u64; const TYPE_NAME: &'static str = \"r2_proj\";\n}\n", ("R6",)),
+        ("R2-3 a char literal that blanks the impl", P,
+         "use dp::{DpAggregate, Scope, Tier};\npub const QUOTE: char = '\"';\n"
+         "pub const OPEN: &str = \"/*\";\n"
+         "impl<A: Tier, B: Scope> DpAggregate for Ledger<A, B> {\n"
+         "    type Tier = A; type Scope = B; type Id = u64;\n"
+         "    const TYPE_NAME: &'static str = \"r2_ledger\";\n}\npub const CLOSE: &str = \"*/\";\n",
+         ("R6",)),
+        ("R2-4 an odd brace inside a doc string", P,
+         "use dp::{DpAggregate, Scope, Tier};\n"
+         "impl<A: Tier, B: Scope> DpAggregate for Evil<A, B> {\n"
+         "    #[doc = \"the cache key opens with a brace: dp:{\"]\n"
+         "    type Tier = A; type Scope = B; type Id = u64;\n"
+         "    const TYPE_NAME: &'static str = \"r2_evil\";\n}\n", ("R6",)),
+        ("R2-5 src/tests/ui/ is NOT a trybuild fixture", "crates/dp/src/tests/ui/mod.rs",
+         "use dp::{DpAggregate, Scope, Tier};\n"
+         "impl<A: Tier, B: Scope> DpAggregate for Sneak<A, B> {\n"
+         "    type Tier = A; type Scope = B; type Id = u64;\n"
+         "    const TYPE_NAME: &'static str = \"r2_sneak\";\n}\n", ("R6",)),
+        ("R2-6 aliasing a tier name", P,
+         "use dp::{DpAggregate, Scope, Tier};\nuse dp::T3 as T2;\n"
+         "impl DpAggregate for AliasWallet {\n"
+         "    type Tier = T2; type Scope = dp::RealityScope; type Id = u64;\n"
+         "    const TYPE_NAME: &'static str = \"r2_alias\";\n}\n", ("R8",)),
+        ("R2-7 a unicode escape defeating TYPE_NAME uniqueness", P,
+         "use dp::DpAggregate;\n"
+         "impl DpAggregate for Fast { type Tier = dp::T0; type Scope = dp::RealityScope;\n"
+         "    type Id = u64; const TYPE_NAME: &'static str = \"r2dup\"; }\n"
+         "impl DpAggregate for Safe { type Tier = dp::T3; type Scope = dp::RealityScope;\n"
+         "    type Id = u64; const TYPE_NAME: &'static str = \"r2du\\u{70}\"; }\n", ("R4",)),
+        ("R2-8 one macro body, N invocations", P,
+         "use dp::DpAggregate;\nmacro_rules! agg { ($ty:ident) => {\n    pub struct $ty;\n"
+         "    impl DpAggregate for $ty {\n"
+         "        type Tier = dp::T2; type Scope = dp::RealityScope; type Id = u64;\n"
+         "        const TYPE_NAME: &'static str = \"r2_macro\";\n    }\n}; }\n"
+         "agg!(WalletA);\nagg!(WalletB);\n", ("R10",)),
+    ]:
+        results.append(bite_gate_probe(label, rel_path, src, want))
 
     print(f"\n{'=' * 74}")
     print("UNBITEABLE, and named rather than given a substitute (V1-F3):")

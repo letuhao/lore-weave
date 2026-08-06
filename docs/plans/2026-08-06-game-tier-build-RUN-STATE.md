@@ -1458,12 +1458,119 @@ is the finding's real content.
 | `V1-F12` | `[package.metadata.dp] dp-crate = true` **removed**. Its only reader is slice 2's lint. A declared input with no consumer is the orphan shape `orphan-model-gate` refuses. | It arrives in the same commit as the lint that reads it — moved to slice 2's row below. |
 | `V1-F13` | One `Sealed` marker split into `SealedTier` + `SealedScope`. | `.stderr` pins regenerated; nothing else moved. |
 
+### `V.1` round 2 — a DIFFERENT refuter, and it returned **BLOCK** again
+
+**Run 2026-08-07 against `10fe795c5`. Two cold-start agents, neither of which wrote the code and
+neither of which was the round-1 refuter: one on the MECHANISM lens (*do the guards hold?*), one on
+the EVIDENCE lens (*is the proof non-vacuous?*).** Tree verified byte-identical after each; the
+mechanism refuter fixed nothing, as instructed, and pasted a per-file sha256 table plus a
+`git status --porcelain` digest matching its own baseline.
+
+#### The split is the finding, and it is clean
+
+**The type-system half is SOUND.** Claims 1, 2, 3, 4 and 6 were each attacked directly and none
+moved. That is worth stating as loudly as the failures, because it is what `V1-F1`'s correction was
+*for*: the honest half of the claim survived an adversary.
+
+| claim | attacks that failed |
+|---|---|
+| **the seal (`DP-A5`/`DP-A14`)**, from a crate **outside this repo** | naming `sealed` → `E0603` · implementing `Tier` without it → `E0277` *"`Tier` is a sealed trait"* · a third scope → `E0277` · the **`#[fundamental]` `&T` orphan escape** → `E0277` · a blanket impl over a local marker → `E0210` · re-impl'ing an existing tier to flip `REC-102c` from outside → `E0117` · every `pub use` grepped: no export path to `sealed` exists |
+| **one tier / one scope per concrete impl** | `E0201` · `E0119` |
+| **no runtime tier** | `E0277` — `TierLevel: Tier` is not satisfied |
+| **`TierRow` unforgeable in safe Rust** | the struct literal → `E0451` · **and the functional-update dodge** `TierRow { survives_store_outage: true, ..BASE }` → `E0451` |
+| **`REC-102c`'s `const` block is sufficient AND live** | moving the refusing tier from T3 to T2 while keeping the count at 3 → **`E0080` build failure** quoting the message |
+
+**The gate half is REFUTED six ways, and the diagnosis is structural, not a bug list.** In the
+refuter's words: *"`dp-aggregate-gate.py` matches **tokens in text** where the property is about
+**types after name resolution**, and text has more ways to spell a generic than the gate has
+patterns."* Each break below is compiling, running Rust that the gate reports `OK` on — and four
+reproduce `V1-F1` verbatim, `survives_store_outage` flipping on an env var included. The gate does
+not merely miss them; it **affirmatively certifies** them.
+
+| id | sev | the break | why it is the dangerous one |
+|---|---|---|---|
+| `R2-1` | 🔴 BLOCKER | **Name a generic parameter `T2`.** `impl<T2: Tier, RealityScope: Scope> DpAggregate for PlayerWallet<T2, RealityScope>` — `type Tier = T2` passes the membership test. | **`V1-F1` restored by a one-character rename**, and `T2` is an unremarkable name for a second type parameter. This is the likeliest *accidental* recurrence. |
+| `R2-2` | 🔴 BLOCKER | **Associated-type projection.** A helper trait whose associated types are *named* `T2`/`RealityScope`; `type Tier = <Self as Pick>::T2`. `last_segment` splits on `::` and sees a legal token. | No parameter is renamed, so it defeats a fix aimed only at `R2-1`. |
+| `R2-3` | 🔴 BLOCKER | **`const QUOTE: char = '"';`** — `strip_comments` has no char-literal handling. The char opens a phantom string, a later `/*` in what was string content starts a phantom comment, and **the impl is blanked entirely**. Impl count went *down*. | `'"'` is ordinary code in any quoting/CSV/escape routine. |
+| `R2-4` | 🔴 BLOCKER | **An odd `{` inside a string.** `#[doc = "the cache key opens with a brace: dp:{"]` → `_balanced` returns `-1` → `continue`. **The gate fails OPEN, silently, with no diagnostic and no count.** | The worst of the four, because it is *invisible*: a doc comment about a `DP-Ch5` cache-key template — this crate's own subject matter — is enough. |
+| `R2-5` | 🔴 BLOCKER | **`_FIXTURE_PARTS = ("tests/ui/",)` is an unanchored substring over the whole path**, so `src/tests/ui/mod.rs` in *any* crate — a normal compiled module — is excluded. | The docstring calls this exclusion *"a structural property of the directory, not an enumerated file list."* **That sentence is false**, and I wrote it. `NV-3` in the *exclusion*: default-**covering**. |
+| `R2-6` | 🔴 BLOCKER | **`use dp::T3 as T2;`** — and under `#[cfg(feature)]`, the tier becomes a **cargo-feature** choice. The gate's report then names the *wrong tier*. | `DP-A9`: a tier is *"not switchable without a design-change"*. A feature flag is a build-time switch. |
+| `R2-7` | MAJOR | **`TYPE_NAME` uniqueness compares literal SOURCE TEXT; rustc compares string VALUE.** `"wallet"` and `"walle\u{74}"` are one cache-key token and two `REC-102c` verdicts. | Certified `unique TYPE_NAME` while printing the opposite of the truth. |
+| `R2-8` | MAJOR | **One `macro_rules!` body, N invocations.** The gate counts one block; rustc emits N impls sharing a `TYPE_NAME`. (The *metavariable* form `type Tier = $tier` **is** caught.) | |
+| `R2-9` | MINOR | The `const _` block sums `T0..T3` **by hand**, so a fifth in-crate buffering tier builds clean. Mitigated — `spec_oracle` reds on the tier-set mismatch — but the *stated* mechanism for claim 6 does not extend. | |
+| `R2-10` | MINOR | **There is no production `impl DpAggregate` in the repo.** `R5`'s subject check is satisfied entirely by `#[cfg(test)]` fixtures and a test binary. | It proves the gate can run, not that it guards anything shipped. Defensible for a slice that ships no aggregates — but weaker than its docstring reads. |
+| `R2-11` | NIT | `transmute` forges a `TierRow` (24 h TTL, `survives = true`, on T3). Needs `unsafe` in the caller and `repr(Rust)` makes it UB. | Only that claim 4 is stated absolutely; the honest form is *"in safe Rust"*. |
+
+#### The EVIDENCE lens — the same defect class, re-committed *inside* the discharge
+
+| id | sev | the break |
+|---|---|---|
+| `V2-F1` | 🔴 BLOCKER | **`dp-aggregate-gate --self-test` never calls `scan()`.** It re-implements R1/R2/R3 inline and R4 with a *different regex*. Gutting the real path (`if seg not in legal:` → `if False:`) leaves the self-test printing *"non-vacuous in both directions"* — **with a live `V1-F1` generic escape sitting in `crates/dp/tests/` and the gate reporting `OK — every one binds one of ['T0','T1','T2','T3']`.** Two `scan()` branches (missing `type Tier`, missing `TYPE_NAME`) have **zero** coverage in either copy. |
+| `V2-F2` | 🔴 BLOCKER | **`_FIXTURE_PARTS` is an enumerated skip list, and `R5` is a COUNT check, not a SCOPE check.** Adding one plausible substring (`"services/"`) took 494 files → 305, hid a real escape, and `R5` was satisfied by the four surviving fixtures. **Shipped in the same commit that rescoped `no-absolute-host-paths` off an enumerated skip list, for that exact reason.** The docstring calling the exclusion *"structural, not an enumerated file list"* is false twice over — see also `R2-5`. |
+| `V2-F3` | MAJOR | **`parse_ms`/`parse_rate` are unit-blind.** `parse_ms` requires only that `ms` appear *somewhere*. `<5 ms ack, ≤1 s to projection` → `<5 s ack, ≤1 ms to projection` stays **green** — a 1000× SLO change on a LOCKED budget. `500 / s` → `500 / min` likewise. **And my own guard is `NV-2`:** `assert!(parse_ms("<1 s").is_err())` passes only because that fixture contains no `ms` at all, while every real `DP-S3` cell is a two-quantity cell. The guard's subject cannot vary in the direction that would fail it. |
+| `V2-F4` | MAJOR | **A `pub(crate)` fifth tier leaves the entire crate green** — `cargo test`, `clippy`, the gate, and the oracle whose docstring says *"mint a fifth tier and the source side grows"*. The source side counts `declare_tier!` **invocations**, not types implementing `Tier`; a hand-written impl does not grow it. And the *public* case is caught only **incidentally**, by trybuild's pinned `.stderr` happening to contain rustc's *"the following other types implement trait `Tier`"* list — a guarantee resting on a compiler diagnostic's formatting. |
+| `V2-F5` | MAJOR | **`assert_eq!(tiers.len() * scopes.len(), 8)` is `NV-1`, and I wrote a comment claiming it is not.** *"A PRODUCT of two independently-declared sets"* — they are two array literals retyped three lines above. Adding a fifth `TierLevel` variant: the test **prints `tiers declared = 4` and `cells = 8`** and passes. It is `assert_eq!([T0..T3].len(), 4)` — the assertion `V1-F2` deleted from this very file — wearing a different costume. |
+| `V2-F6` | MAJOR | **`TierLevel::as_key()` is pinned for T2 and T3 only.** Renaming T0→`"TIER_ZERO"` and T1→`"TIER_ONE"` passes all 20 tests. `as_key` is the tier token of the `DP-Ch5` cache key. |
+| `V2-F7` | MINOR | Same as `R2-10` from the other lens: every `impl DpAggregate` in the repo is test code, and **no `Cargo.toml` outside `crates/dp` depends on `dp`.** |
+| `V2-F8` | MINOR | **`no-absolute-host-paths` fixed the DIRECTORY dimension of its scope and left the EXTENSION dimension an enumerated list.** `_EXTS` has no `.rs` — in the commit that added a Rust crate to a repo with five Rust crates and three Rust services. Latent, not live (no `.rs` violation exists today). `.md` is unscanned too. |
+| `V2-F9` | MINOR | `REC-102c`'s bolded-lead parse is disclosed in an inline comment but **absent from the module's "Stated limits" table** — the one place a reader checks. A row whose lead says `REJECT` and whose body says the opposite stays green. |
+| `V2-N10` | NIT | The bite matrix's `10 bites bit` is true and its legs are **an enumerated list of six hand-picked anchors**. Every green in `V2-F3`/`F4`/`F5`/`F6` lives inside that blind spot. Honest about what it ran, silent about polarity. |
+| `V2-N11` | NIT | `the_tier_set_in_source_matches_the_taxonomy_doc` compares `Vec`s, so reordering rows in a label-keyed table reds it. False-positive direction — which teaches *"the oracle is noisy"*, and that is how red becomes the normal colour. |
+
+**What round 2 could NOT break, recorded because an absent finding is evidence only if the attempt is:**
+the bite harness's restores are genuinely byte-exact (five files independently baselined, every digest
+matched) · **all 10 bites are real bites**, verified in reverse · the two "unbiteable" legs are honestly
+unbiteable (`E0201`; a *parse* error) · `V1-F7`'s misuse branch correctly separates the two failure
+kinds · **the `no-absolute-host-paths` rescope loses no real coverage** — all 67 files that left the
+scope were enumerated and checked, 0 violations, and the untracked-file leg still reds · `Tier::LEVEL`
+is guarded · every one-sided *numeric* edit reds, and `parse_ttl`'s `Result` rewrite does exactly what
+`V1-F4` claimed. **The residual hole is the UNIT, not the shape.**
+
+> **The lesson, stated before the fix so it cannot be retro-fitted:** `V1-F1` established that the
+> type system cannot hold this property. I concluded *"so a source gate holds it"* and did not ask
+> **whether a source gate can hold it either.** It cannot, in general — the property is about types
+> after name resolution and the gate reads text before it. The principled home is `dp-clippy`, which
+> **`06_data_plane/` already names as one of its three crates** and which does not exist. That is
+> `FLOW-1` pointing at me: the corpus named the tool for this job in April, and I built the thing I
+> could build in an afternoon instead of the thing that was specified.
+
+### `V.1` round 2 — how each finding was discharged, 2026-08-07
+
+**The gate is a rewrite, not a patch**, because six of the eight mechanism
+findings were its parser and its scope. The rules are no longer *"does this token
+look like a tier"*; they are a **closed characterisation of how a generic can
+reach `type Tier`** — it must name something the impl binds — plus the ways a
+concrete-looking token can lie.
+
+| id | discharged by | evidence |
+|---|---|---|
+| `R2-1` `R2-2` | **`R6`, the load-bearing rule:** the right-hand side may name **no generic parameter the impl binds and no `Self`**. This is a closure argument, not a pattern list — *to be generic, the RHS must name something in scope, and the only things in scope are the impl's parameters and `Self`.* Plus **`R7`**, which refuses a parameter *named* after a taxonomy member. | Both reproductions are permanent legs. `R2-1` → `R6`+`R7`; `R2-2` → `R6`. |
+| `R2-3` | `strip_comments` handles **char literals and raw strings**. | The refuter's `const QUOTE: char = '"';` file → caught by `R6` instead of blanking the impl. |
+| `R2-4` | **Two views of the same offsets** — one with string content intact (what the rules read), one with it blanked (what the brace counter walks) — and `find_impls` now **fails CLOSED**: an impl it cannot delimit is `R9`, a finding. | The `dp:{` doc string → caught. |
+| `R2-5` `V2-F2` | The exclusion is **one anchored repo-relative directory**, and `R5` is a **set difference** rather than a count: every excluded path must be under it. | `src/tests/ui/mod.rs` is scanned; broadening `FIXTURE_DIR` to `"services/"` reds the self-test on both directions. |
+| `R2-6` | **`R8`** — no `use ... as <taxonomy name>` in a file declaring an aggregate. | Permanent leg. |
+| `R2-7` | `TYPE_NAME` compared by **decoded value** (`\u{..}`, `\x..`, escapes), because rustc does. | Leg, plus a cry-wolf case proving it does *not* fire on two genuinely distinct names. |
+| `R2-8` | **`R10`** — an impl inside a `macro_rules!` body is refused: one body, N invocations, and the gate can only see the body. | Permanent leg. |
+| `R2-9` | **Stated, with its two real mechanisms named** in the `const` block itself: the sum is over four *named* tiers and does not extend, so `the_tier_set_in_source_matches_the_taxonomy_doc` and `no_tier_is_implemented_outside_the_declare_tier_macro` are what cover a fifth. | |
+| `R2-10` `V2-F7` | Recorded, not papered over — see the Debt row. Slice 1 ships no aggregates, so the gate's subject today is four fixtures. | |
+| `R2-11` | Claim 4 now reads *"the only constructor **in safe Rust**"*. | |
+| 🔴 `V2-F1` | **`self_test()` drives the real `scan()`** over synthetic files on disk. 19 cases, and two new ones (`a concrete NON-tier as the tier`, `…NON-scope as the scope`) exist because biting found the **membership branch had no case of its own** — gutting it left the old suite green. | **Every rule of `scan()` bitten:** removing R1's membership test, R6, R7, R8, R4, or the fail-closed branch each reds the self-test. 7/7. |
+| 🔴 `V2-F2` | see `R2-5`. | |
+| `V2-F3` | `parse_ms` reads the unit **off the leading quantity**; `parse_rate` **checks the denominator**. | The refuter's own edits are legs: `<5 ms ack, ≤1 s…` → `<5 s ack, ≤1 ms…` reds; `500 / s` → `500 / min` reds naming `PER-SECOND`. And the `NV-2` guard is replaced by cases on the **real two-quantity cell shape**. |
+| `V2-F4` | New oracle test `no_tier_is_implemented_outside_the_declare_tier_macro` — a tier is *a type implementing `Tier`*, not a macro invocation. It also asserts the macro body still contains what it searches for, so the search cannot lose its subject. | Leg: a hand-written `pub(crate) struct T1p5` reds. |
+| `V2-F5` | The `NV-1` product is **deleted**. `s3_4_counts` now compares **`TierLevel` variants parsed from source** against **`declare_tier!` invocations** — two independent things in one file. | Leg. **And the leg found something better:** a variant *alone* is `E0004`, because `as_key`'s match is exhaustive — rustc refuses the crate before any test runs. The mutation needs the arm too, which is what an author would write. |
+| `V2-F6` | All four `as_key` values pinned, plus all four via `Display`. | Leg: renaming T0/T1's keys reds. |
+| `V2-F8` | `.rs` and `.sql` added to `_EXTS`. **`.md` was tried and reverted** — it found four hits, all documents quoting a `docker compose -f "D:/…"` command someone ran. That widens the gate's **subject**, not its scope. | Bitten with a `.rs` violation. |
+| `V2-F9` | The bolded-lead limit is now a row in the module's **Stated limits** table, where a reader checks — not an inline comment. | |
+| `V2-N10` | The blind spot is the point: the matrix grew **10 → 23 legs** with two new kinds — `source` (mutate the crate, require `cargo test -p dp` red) and `gate-probe` (plant round 2's own reproduction, require the gate red **naming its rule**). | |
+| `V2-N11` | Order-insensitive compare — `03`'s matrix is label-keyed, so reordering is meaning-preserving and must not red. | |
+
 ### Slice board
 
 | # | slice | done = |
 |---|---|---|
 | **0** | AMEND bundle | ✅ `217d325f0` + `3e6358749` |
-| **1** | `crates/dp` — tiers, scopes, `DpAggregate` | 🟡 DoD met, `V.1` round 1 discharged in full. **Not closed until a SECOND, different cold-start refuter returns CLEAR** — the same refuter re-reading its own findings is not independence. |
+| **1** | `crates/dp` — tiers, scopes, `DpAggregate` | 🟡 Round 1 (13) and round 2 (19) **both discharged in full**, each reproduction kept as a permanent bite leg. **Not closed** — a **third** cold-start refuter has not run, and rounds 1 and 2 each found what the previous one had certified. The residual limit is stated rather than closed: `dp-clippy` (`D-DP-CLIPPY-NOT-BUILT`). |
 | **1b** | the `channels` table (`DP-Ch1/Ch2/Ch3`) | ⬜ *board TBD — it is a migration, so Axis 2 IS a live DB and §0's shape applies* |
 | **2** | `dp::forbid_raw_kernel_client`, shipped RED | ⬜ *board TBD.* **Carries `[package.metadata.dp] dp-crate = true`**, removed from `crates/dp/Cargo.toml` by `V1-F12`: it is `DP-K11`'s marker and it is the right shape, but its only reader is this lint. It lands in the same commit as the thing that reads it. |
 | **3** | `RealityId` + `SessionContext` | ⬜ *board TBD* |
@@ -1539,6 +1646,8 @@ be graded against a design that slices 1–3 will change, which is how a DoD bec
 | `D-Q13-BEHAVIOURAL-HALF` | slice 1 makes the tier *declaration* a compile problem; whether a T2 write path *behaves* as T2 is untested (`FLOW-12`) | **slice 4** — there is no write surface to observe until then | ✅ |
 | `D-DP-S1-V1-TIER-ROW-WRONG` | `DP-S1` says V1 exercises *"T2/T3 only; T0/T1 not exercised"*; island memory is T1 and `20 §5` ships four RTM movement frames in the v1 wire contract (`FLOW-15`) | **slice 4 shipping T1** — the amendment lands with the code that falsifies the row | ✅ |
 | `D-DP-REDIS-KEYSPACE-DISJOINT` | all four DP keys (`dp:events` · `dp:inval` · `dp:channel_changes` · `dp:writer_audit`) are **0**; the shipped publisher emits `lw.events.*` + `xreality.*`, governed by `DATA_ARCHITECTURE.md` `I7`, which the DP corpus never cites (`FLOW-21`) | slice 4's write surface must publish **somewhere**; the choice is forced then. **No mechanism until it is** | ⬜ |
+| `D-DP-CLIPPY-NOT-BUILT` | 🔴 **The property `V1-F1` identified has no home that can fully hold it.** The type system cannot see across monomorphisations; `dp-aggregate-gate` reads **text before name resolution** and round 2 got six spellings past it (all now closed, but the closure is *at the token level*, which is not the same as closed). `include!`, a build script, a proc-macro or a determined `cfg` maze remain outside it. **`06_data_plane/` has named `dp-clippy` as one of its three crates since April** — a lint running *after* name resolution is where `type Tier = T` resolving to a parameter is decidable rather than guessable | **MECHANICAL.** `crates/dp/src/lib.rs`'s own header names `dp-clippy` as absent, and `scripts/dp-aggregate-gate.py`'s docstring names this row as its stated limit — so the two files a reader reaches for both point here. Trigger: the day a `DpAggregate` impl ships in a crate this gate does not scan, or the day the token-level closure is broken again | ⬜ |
+| `D-DP-AGGREGATE-GATE-NO-PRODUCTION-SUBJECT` | **Every `impl DpAggregate` in the repo is test code** — three in `aggregate.rs`'s `#[cfg(test)] mod tests`, one in `tests/measure.rs` — and no `Cargo.toml` outside `crates/dp` depends on `dp` (`R2-10`, `V2-F7`). `R5` proves the gate can RUN; it does not prove the gate GUARDS anything shipped | **MECHANICAL**, and it is `R5` itself: the gate FAILS on `impls == 0`, so the fixtures cannot be deleted without the gate saying so — and the row closes on its own the first time a real aggregate lands, because that is when the subject stops being fixtures. Defensible for a slice that ships no aggregates; **not** defensible once slice 3 or 4 does | ⬜ |
 | `D-DP-CH-SIXTEEN-UNEXPLAINED` | 16 of 18 Phase-4 symbols are zero **with no reason written anywhere**; `channel_pause` is the one that did it right, in two source comments (`FLOW-22`) | prose. **The mechanism that would fix the class**: a gate listing `DP-Ch` symbols with zero occurrences and no reason-comment — cheap, and not built | ⬜ |
 | `D-DP-F10-DRILLS-NO-SUBJECT` | `DP-F10` gates every DP release on drills: **6 of 9 name components that do not exist**, 5 existing harnesses go unnamed, and `last_successful_drill` is 0 (`FLOW-26`) | **slice 5** gives three of them a subject; the CI gate stays inert until then | ⬜ |
 | `D-Q2-SURVIVES-ITS-SUBJECT` | `Q2` is `open`, waiting on *"roleplay-service design maturity"* — and `AUD-F16` root 7 removed roleplay-service from the game loop, `REC-77` moved the originator to `commit-service::LlmDriver` (**built**), and the bus is **built** (`FLOW-13`) | **nothing.** A row whose dependency cannot mature never closes — which is why it is here: it needs a decision (close as OOS, or re-home), not a wait | ⬜ |
@@ -1571,6 +1680,10 @@ explained — and it would convert three of the prose rows at once.
 
 | # | what nearly went wrong |
 |---|---|
+| `BDR-36` | 🔴 **The two rounds are one defect wearing seven costumes, and it is mine.** Every finding across both refuters is *the check reads a PROXY for its subject*: the gate reads **text** where the property is about **types after name resolution** · the self-test reads a **re-implementation** where the subject is `scan()` · the tier set reads **`declare_tier!` invocations** where the subject is *types implementing `Tier`* · `parse_ms` reads **digits** where the subject is a *quantity with a unit* · `s3_4` reads **an array literal it just wrote** where the subject is the taxonomy · `as_key` pins **two of four** variants · the fixture exclusion reads **a floating substring** where the subject is one directory. ⇒ **The rule I did not have: a check must read the same thing the property is about, and must be driven through the same path production uses.** I had the first half (that is `NV-1`) and not the second, and the second is where five of the nine landed. |
+| `BDR-35` | **I ran two cold-start refuters against a working tree I was editing at the same time.** The evidence refuter reported it: `git diff HEAD` was empty when it started and later showed three files it had never opened, and a probe file appearing and vanishing moved the gate's reported impl count **6 → 5 → 4 across its runs**. Nothing it concluded turned out to depend on the drift, and it flagged the anomaly rather than absorbing it — but that is the refuter being careful, not the method being sound. **A verifier's whole value is that its subject is fixed**; I gave it a moving one and got lucky. ⇒ *Refute a COMMIT, in a clean tree or a worktree — never a branch you are still typing into.* |
+| `BDR-34` | 🔴 **`V1-F1` taught me the type system could not hold a property, and I did not ask the same question about the thing I replaced it with.** The reasoning went *"rustc cannot see across monomorphisations ⇒ check it over the source"* — and stopped. A source gate reads **text before name resolution**; the property is about **types after it**. Round 2 found six spellings of a generic the gate has no pattern for, four of them reproducing `V1-F1` exactly. **The tell was available and I walked past it twice:** `06_data_plane/` names **`dp-clippy`** as one of its three crates, `crates/dp/src/lib.rs` says so **in its own opening paragraph**, and I wrote that paragraph. The corpus named the right tool in April; I built the one I could finish in an afternoon and called the property enforced. ⇒ **When a mechanism is a fallback for one that provably cannot work, ask what the fallback provably cannot do — before claiming the property, not after a refuter asks.** |
+| `BDR-33` | **I put `git checkout -- <file>` inside a bite script, on a file with uncommitted edits, and it reverted my own work.** The script mutated `gate-self-tests.py`, and I used `git checkout` as the restore step — on a file whose edits were not committed. It restored to HEAD, i.e. deleted the change under test, and the "restore" leg then reported the pre-fix number as though it were the post-fix one. Recovered by re-applying. Worth a row because it is `BDR-32`'s twin from the other side: **that one trusted a `finally` and did not check the bytes; this one checked out bytes that were never the baseline.** The rule both point at: *the baseline is what you read at the start of the bite, held in memory, verified by digest — never what a VCS thinks the file should be.* |
 | `BDR-32` | 🔴 **The bite harness had been silently rewriting the line endings of LOCKED design documents on every run, and `git diff` could not see it.** `Path.read_text`/`write_text` open in text mode with `newline=None`, so on Windows the restore wrote CRLF wherever the file had LF. It was invisible for the exact reason that makes it worth recording: **`.gitattributes` normalises to LF on read, so `git status` and `git diff` both showed clean** — the two tools a reviewer checks with are the two tools blind to it. Found by `V1-F8`'s digest check on its **first run**, which is the argument for the check: the previous version restored in a `finally` and *asserted nothing about the result*. ⇒ **"the restore ran" and "the bytes are back" are different claims, and only one of them is checkable.** |
 | `BDR-31` | **My fix for `BDR-32` rewrote 1069 files to repair 12.** The harness had touched four documents and a few sources; I ran the CRLF→LF normalisation across every tracked text file in the repo. It was content-neutral to git (`git diff --numstat` = 16, of which 12 were mine) and the four strays were reverted — so nothing was lost. But the blast radius was ~90× the problem, on a branch mid-slice, and had any of those 1057 files been genuinely CRLF-in-index I would have created a diff I did not understand across the whole tree. ⇒ **A repair's scope should be the damage's scope. I knew which files the harness touched — they are listed in the harness — and I swept the repo instead.** |
 | `BDR-30` | **`mutated != original` passed while the mutation said nothing.** `BDR-19` made every bite verify that its mutation APPLIED; the `DP-S5` leg changed `"\| T2 writes"` to `"\| T2 writes "` — one space — so the bytes differed, the assertion passed, and the parse was **identical** because `table_cells` trims labels. The oracle stayed green and was right to. The leg scored red and I nearly filed it as a gate weakness. ⇒ **`BDR-19` is necessary and not sufficient: a mutation must change what the subject SAYS, not merely what it contains.** The same shape appeared twice more in one hour — a stale trait name that still *matched* because it was a prefix, and a struct-field anchor that pub'd one field of seven. All three were caught by the harness reporting red rather than by me reading it. |
