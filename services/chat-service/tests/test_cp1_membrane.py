@@ -2152,3 +2152,26 @@ class TestStageKindsAreDataNotClosures:
             'both silent then goes unnoticed, which is what the ordinal was chosen to prevent'
         )
 
+    def test_THE_MANIFEST_IS_WRITTEN_WITH_LF_ON_EVERY_PLATFORM(self, tmp_path):
+        """🔴 **`generate()` — the only writer this code has — emitted CRLF on Windows**,
+        and a verifier measured it rewriting the committed manifest line for line. **The M1 drift
+        gate is a byte-equality check** and `canon.digest` hashes bytes, so the same declarations
+        written on two machines were two different documents: a drift alarm for a change nobody
+        made, which is the failure §0.14.2's normalisation doors exist to prevent, one layer down.
+
+        `Path.write_text` translates the newline to the platform's. That is not a quirk to
+        remember — it is what the function does — and the same defect landed three times in one
+        week: in a verifier's restore harness, in the census script written to end this class of
+        failure, and here, in production. A manifest is a contract artifact: committed, diffed,
+        compared across machines.
+        """
+        path = tmp_path / "m.json"
+        generate([admit(_tool("book_list"))], path=path, bootstrap=True)
+        raw = path.read_bytes()
+        assert b"\r\n" not in raw, (
+            "the manifest was written with CRLF; the M1 drift gate compares bytes, so this "
+            "document differs from the identical one written on another platform"
+        )
+        assert raw.endswith(b"\n"), "the manifest has no trailing newline"
+        # ...and pinning the newline did not change what is stored.
+        assert load(path=path)["declarations"][0]["id"] == "book_list"

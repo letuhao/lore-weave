@@ -68,5 +68,23 @@ def read_text(path: Path) -> str:
 
 
 def write_text(path: Path, text: str) -> None:
+    """Write the manifest — **LF, on every platform, always.**
+
+    🔴 **`path.write_text` TRANSLATES `\\n` TO THE PLATFORM'S LINE ENDING.** On Windows that made
+    `generate()` — *the only writer this code has* — emit CRLF, and a verifier measured the
+    consequence: one ordinary call rewrote the committed `contracts/agent-runtime-manifest.json`
+    line for line. **The M1 drift gate is a byte-equality check**, so the same declarations written
+    on two developers' machines are two different documents to it, and `canon.digest` — the thing
+    that decides whether the catalog changed — hashes bytes.
+
+    A manifest is a **contract artifact**, not a local file: it is committed, diffed and compared
+    across machines. So the newline is pinned rather than inherited, and the write goes through
+    bytes so nothing between here and the disk can translate it back.
+
+    The same defect, in the same week, in three separate places — a verifier's own restore harness,
+    the census script I wrote to end this class of failure, and here, in production. It is not a
+    Windows quirk to remember; it is what `write_text` does, and the only reliable answer is to stop
+    calling it on anything whose bytes matter.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    path.write_bytes(text.encode("utf-8"))
