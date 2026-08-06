@@ -2117,66 +2117,117 @@ class TestStageKindsAreDataNotClosures:
             f"a generator pipeline was a silent no-op: {s.names}. Validated once, iterated empty."
         )
 
-    def test_THE_CENSUS_IS_WIRED_AND_ITS_GREEN_STATE_IS_REACHABLE(self):
-        """🔴 **I SHIPPED A GATE WHOSE GREEN STATE WAS UNREACHABLE, AND DID NOT RUN IT IN ITS
-        CI SHAPE.** The census job installed `requirements.txt`, which has no pytest, so a verifier
-        executed it and got `SELFTEST FAIL`, rc=1, every time. A gate that can never pass is the
-        vacuous-gate failure this whole effort exists to end, committed inside the gate built to end
-        it - and the census itself had **no test at all**, twenty lines from the membrane gate whose
-        precedent is exactly this.
+    def test_THE_CENSUS_DOES_NOT_WRITE_INTO_THE_LIVE_TREE(self):
+        """🔴 **THE PREVIOUS VERSION OF THIS TEST WAS GREEN OVER THE CENSUS'S OWN REMOVAL.**
 
-        This is a shape check and says so: it cannot prove the census MEASURES correctly, only that
-        it is wired and that the environment it runs in can satisfy it. What it forbids is the two
-        things that were actually wrong."""
-        import re
+        Two verifiers enumerated it independently: **8 of 8 bypasses green** — `if: false`,
+        `--selftest`, `continue-on-error`, a job-level `if`, a YAML **comment**, `::deadbeef`×13,
+        `getattr(atexit, 'register')`, and a re-spelled live-tree write. One control failed to red at
+        all: renaming `_mirror` → `_mirrorX`, over a census that then dies with `NameError`.
 
-        wf = (_REPO / '.github' / 'workflows' / 'lint-foundation.yml').read_text('utf-8')
-        assert 'agentruntime-census' in wf, 'the census is not wired into CI at all'
-        job = wf.split('agentruntime-census:')[1]
-        # \U0001F534 **THIS ASSERTED THE *INSTALL* STEP, NOT THAT THE CENSUS RUNS** \u2014 the sibling of
-        # the very finding that asked for it, and the ninth pair in this run fixed at one end.
-        # Deleting the `Refusal census` step, replacing it with `echo skip`, or switching it to
-        # `--write` all left this test GREEN, measured. Both halves are asserted now.
-        assert 'python scripts/agentruntime-census.py' in job, (
-            'the CI job does not RUN the census; installing its dependencies is not running it'
+        Every one of those assertions was a **substring over source text**. The delta's headline
+        property — *the instrument does not write into its subject* — was guarded by the spelling
+        `PKG.glob`, so `(ROOT / _PKG_REL).glob` restored live-tree neutering with the gate green. That
+        is **GATE HÌNH DẠNG, KHÔNG GATE HÀNH VI**, and it is the rule this run states in capitals.
+
+        Worse, the assertion written to *replace* the one a comment defeated was **also defeated by a
+        comment** — third instance. A test that reads source text is testing that someone typed a
+        word.
+
+        So this **runs the thing**: it drives `census()` over a two-site fixture package with a real
+        neutering loop, and asserts the live tree is byte-identical afterwards. It reds when the
+        mirror is removed, when it is bypassed, and when it is renamed — because none of those
+        survive execution.
+        """
+        import hashlib
+        import importlib.util
+        import pathlib
+
+        spec = importlib.util.spec_from_file_location(
+            "_census_probe", _REPO / "scripts" / "agentruntime-census.py")
+        census_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(census_mod)
+
+        pkg = _REPO / "services" / "chat-service" / "app" / "agentruntime"
+        before = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(pkg.glob("*.py"))}
+        assert len(before) >= 6, "the package moved; this probe would assert nothing"
+
+        # A suite runner that is instant and always green, so `census()` does its neutering, its
+        # restores and its file writes at full speed while asserting nothing about pytest.
+        # 🔴 **AND MY FIRST VERSION OF THIS TEST COMPARED THE TREE BEFORE AND AFTER, WHICH
+        # THE CENSUS'S OWN RESTORE SATISFIES.** Re-spelling the mirror binding to `pkg, cs = PKG, CS`
+        # writes production source into the live tree, runs against it, and puts it back - so the
+        # hashes match and the test passed. Measured. The property is not "the tree ends unchanged",
+        # it is **"the tree is never written"**, and only an observation DURING the run can tell
+        # those apart. A restore is exactly what fails when the process dies.
+        seen, writes = [], []
+        _real_write = pathlib.Path.write_bytes
+
+        def _watch(self, data):
+            writes.append(pathlib.Path(self))
+            return _real_write(self, data)
+
+        def _instant_green(cwd=None):
+            seen.append(pathlib.Path(cwd) if cwd else None)
+            return True
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(census_mod, "_suite_is_green", _instant_green)
+            mp.setattr(pathlib.Path, "write_bytes", _watch)
+            results = census_mod.census()
+
+        _live = [w for w in writes if _REPO in w.parents]
+        assert not _live, (
+            f"the census wrote {len(_live)} time(s) into the live tree, first {_live[0]}. It "
+            f"restores afterwards, which is why a before/after comparison cannot see this - and a "
+            f"restore is precisely what does not run when the process is killed."
         )
-        assert '--write' not in job, (
-            'the CI job regenerates the allowlist instead of checking against it, so it can never '
-            'report drift'
+
+        after = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(pkg.glob("*.py"))}
+        assert after == before, (
+            "the census wrote into the LIVE package. It neuters production source, so a run that "
+            "touches the real tree leaves a `raise -> pass` behind on any interruption, and it "
+            "corrupts every concurrent suite run - both measured, and both are why it must work in "
+            "a mirror."
         )
-        assert 'requirements-test.txt' in job.split('agentruntime-census.py')[0], (
-            'the census job does not install a pytest; its selftest runs the suite, so its green '
-            'state is unreachable and the job can only ever fail'
+        assert results, "census() enumerated nothing, so the assertion above is vacuous"
+        # Outside the repo entirely - `pkg not in s.parents` was backwards, since the suite's cwd is
+        # an ANCESTOR of the package, so it passed for the live tree too.
+        assert seen and all(s is not None and _REPO not in s.parents and s != _REPO for s in seen), (
+            f"the census ran the suite against the LIVE tree at {seen[:2]}; the mirror exists but "
+            f"is not what was measured, which is a fix landing beside its subject"
         )
-        src = (_REPO / 'scripts' / 'agentruntime-census.py').read_text('utf-8')
-        # \U0001F534 **`assert 'SIGTERM' in src` WAS SATISFIED BY A COMMENT** \u2014 deleting the entire
-        # signal-handler loop left this test GREEN, which a verifier measured. A shape check over
-        # the instrument built to end shape checks, and the purest form of the failure this file
-        # is about. The census's kill-safety is asserted by RUNNING it, below.
-        # The docstring EXPLAINS why atexit was removed, so a bare `"atexit" not in src`
-        # is defeated by prose - the same word-in-a-comment defect as the assertion it
-        # replaces, inverted. Match the call, not the topic.
-        assert "_mirror" in src and "atexit.register" not in src, (
-            "the census writes neutered source into the LIVE tree. No handler fixes that: SIGKILL "
-            "runs no atexit on any platform, and on Windows six external kill mechanisms reach none "
-            "of them - measured. It must work in a throwaway mirror, which also ends its "
-            "interference with concurrent suite runs (16 of 20 went red)."
-        )
-        # Scoped to `census()`'s own body: `_selftest` still ENUMERATES the live package, which is a
-        # read and is fine. What must not happen is a WRITE, and the write lives here.
-        _census_body = src.split("def census")[1].split(chr(10) + "def ")[0]
-        assert "PKG.glob" not in _census_body, (
-            "census() still enumerates the LIVE package; the mirror exists but is not what is "
-            "neutered, which is the shape of a fix that landed beside its subject"
-        )
-        # The `python -O` restore guarantee is gone with the thing it guarded: nothing is written
-        # into the live tree any more, so there is no restore to protect. A guard kept after its
-        # subject leaves is the dead-field failure this package convicted `Identity` for.
-        allow = (_REPO / 'contracts' / 'agentruntime-census-silent.txt').read_text('utf-8')
-        rows = [l for l in allow.splitlines() if l.strip() and not l.startswith('#')]
-        assert rows and all(re.search(r'::[0-9a-f]{8}$', r) for r in rows), (
-            'an allowlist row is keyed by position alone; reordering two same-class raises that are '
-            'both silent then goes unnoticed, which is what the ordinal was chosen to prevent'
+
+    def test_THE_CENSUS_IS_WIRED_TO_RUN_IN_CI(self):
+        """The CI half, and it **parses the YAML** rather than matching substrings in it.
+
+        🔴 `'python scripts/agentruntime-census.py' in job` was satisfied by a `#` comment and by
+        any later job in the file; `'--write' not in job` forbade exactly the one flag it named while
+        `--selftest`, `|| true`, `continue-on-error` and `if: false` all passed. A workflow is
+        structured data and was being read as a string.
+        """
+        import yaml
+
+        wf = yaml.safe_load((_REPO / ".github" / "workflows" / "lint-foundation.yml")
+                            .read_text("utf-8"))
+        job = wf["jobs"].get("agentruntime-census")
+        assert job, "the census job is not in the workflow"
+        assert "if" not in job, "the census job is conditional, so it can be skipped silently"
+        runs = [str(s.get("run", "")) for s in job["steps"]]
+        census_steps = [r for r in runs if "agentruntime-census.py" in r]
+        assert census_steps, "no step runs the census; installing its dependencies is not running it"
+        for r in census_steps:
+            assert "--write" not in r and "--selftest" not in r, (
+                f"the CI step runs {r!r}: --write regenerates the allowlist instead of checking it, "
+                f"and --selftest alone never enumerates a single site"
+            )
+            assert "||" not in r, f"the CI step swallows its own failure: {r!r}"
+        for s in job["steps"]:
+            assert not s.get("continue-on-error"), "the census step cannot fail the build"
+        installs = " ".join(runs).split("agentruntime-census.py")[0]
+        assert "requirements-test.txt" in installs, (
+            "the job installs no pytest, so the census's selftest runs the suite and can only fail - "
+            "a gate whose green state is unreachable"
         )
 
     def test_THE_MANIFEST_IS_WRITTEN_WITH_LF_ON_EVERY_PLATFORM(self, tmp_path):
