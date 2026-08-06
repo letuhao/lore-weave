@@ -942,8 +942,17 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         prev = build([admit(_tool("book_list"))], previous=None)
         for bad in ({"weight": 999}, {"cost": 3}, {"lifecycle": {"a": 1}}, {"id": ""}):
             broken = {**prev, "declarations": [{**prev["declarations"][0], **bad}]}
-            with pytest.raises(UntrustedRow):
+            # 🔴 **AND THE CLASS AND ITS FIELDS ARE ASSERTED, NOT JUST THE REFUSAL.** Unifying the
+            # exception hierarchy made `except UntrustedRow` here catch `ContractViolation` — a
+            # subclass it did not have when the handler was written — and re-raise it FLAT, so the
+            # same row refused by `rows_of` with a C-12 field path was refused here with prose. A
+            # broader `except` catches more the moment the class it names gains a child, and the
+            # test that only asked "did it refuse" could not see the difference.
+            with pytest.raises(ContractViolation) as exc:
                 build([admit(_tool("book_list"))], previous=broken)
+            assert exc.value.field_path and exc.value.accepted, (
+                f"C-12's structured fields were destroyed by a re-raise: {exc.value!r}"
+            )
 
     def test_AN_EXPORTED_DOOR_REFUSES_WITH_ONE_DOCUMENTED_CLASS(self):
         """🔴 `rows_of` raised **`ContractViolation`** for a bad row and a bare **`ValueError`** for
@@ -968,9 +977,86 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         from app.agentruntime.contract import ROW_FIELDS, ROW_REQUIRED
         with pytest.raises(TypeError):
             ROW_FIELDS["cost"] = (int,)
-        assert set(ROW_REQUIRED) == set(ROW_FIELDS), (
-            "every field the writer emits is required; a subset was itself a hole — a row carrying "
-            "exactly ROW_REQUIRED passed `rows_of` and failed `load()`"
+        assert set(ROW_REQUIRED) <= set(ROW_FIELDS), "a required field the schema does not define"
+
+    def test_AN_OPTIONAL_FIELD_IS_EXPRESSIBLE__because_CP2_needs_one(self):
+        """🔴 The guard for the tier itself, not for today's contents. `ROW_REQUIRED =
+        frozenset(ROW_FIELDS)` compares equal to the writer's output *and* leaves no optional tier,
+        so a test over today's seven fields cannot tell the two apart — which is why the previous
+        version of this guard was SILENT when the derivation was put back.
+
+        What must stay true is that **naming a field does not make it mandatory**: CP-2 adds
+        `relevance` and CP-4 adds `lane`/`tier`/`cost` to rows that already exist on disk, and if
+        every new field is required on arrival those rows can only be migrated by deleting the
+        manifest, which erases every origin stamp.
+
+        🔴 **AND THIS GUARD IS DECLARED UNGUARDED, WITH THE REASON.** Reverting `ROW_REQUIRED` to
+        `frozenset(ROW_FIELDS)` leaves it GREEN, because the derivation runs at import and a
+        runtime patch of `ROW_FIELDS` cannot re-trigger it. The property — *naming a field does not
+        make it mandatory* — has no subject until an optional field exists, which is CP-2. Saying so
+        is the point: a red-ability sweep that counts this row as covered would be reporting the
+        builder's intention rather than the tree's behaviour, and that is the exact failure a
+        verifier caught in the previous round's self-measurement.
+        """
+        import app.agentruntime.contract as _c
+        from types import MappingProxyType
+
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(_c, "ROW_FIELDS",
+                       MappingProxyType({**_c.ROW_FIELDS, "relevance": (int,)}))
+            _c.check_row(dict(_VALID_ROW), "row")              # absent: still valid
+            _c.check_row({**_VALID_ROW, "relevance": 7}, "row")  # present: also valid
+            with pytest.raises(ContractViolation):
+                _c.check_row({**_VALID_ROW, "relevance": "7"}, "row")   # still bounded
+
+    def test_A_DUPLICATE_DECLARATION_ID_IS_REFUSED_AT_EVERY_DOOR(self):
+        """A load-bearing check with no test, named by a verifier's own gap list. Two rows with one
+        id make `AllowList`, `DenyList` and every `by-id` lookup answer for whichever the iteration
+        reached first — the surface then depends on dict ordering rather than on the manifest."""
+        doc = {"manifest_version": 1, "contract_version": "1.0.0",
+               "declarations": [dict(_VALID_ROW), dict(_VALID_ROW)]}
+        for door in (rows_of, validate_document):
+            with pytest.raises(UntrustedRow, match="duplicate"):
+                door(doc)
+
+    def test_A_MALFORMED_PREVIOUS_IS_NOT_AN_EMPTY_ONE(self):
+        """`previous={"declarations": None}` silently disabled the loss guard — the `or []` turned a
+        malformed document into an empty one, which is the same "serve a broken thing as empty" that
+        `rows_of` refuses by name. Load-bearing, and nothing checked it."""
+        prev = build([admit(_tool("book_list"))], previous=None)
+        for broken in (None, 0, "", {}, (r for r in ())):
+            with pytest.raises(UntrustedRow):
+                build([admit(_tool("book_get"))],
+                      previous={**prev, "declarations": broken})
+
+    def test_THE_DOCUMENT_SCHEMA_IS_CLOSED_TOO(self):
+        """The row schema is closed and the document's was not, so a top-level key nothing defines
+        passed no clause and `{**doc}` carried it to every reader. Same argument, one level up."""
+        good = build([admit(_tool("book_list"))], previous=None)
+        with pytest.raises(UntrustedRow, match="does not define"):
+            validate_document({**good, "digest": "sha256:whatever"})
+
+    def test_THE_REQUIRED_SET_IS_WHAT_THE_WRITER_ACTUALLY_EMITS__and_no_more(self):
+        """🔴 **`ROW_REQUIRED = frozenset(ROW_FIELDS)` HAD NO OPTIONAL TIER, AND THAT MADE THE NEXT
+        CHECKPOINT UNSHIPPABLE.** Deriving *required* from *allowed* stops the two drifting and makes
+        every new field mandatory the instant it is named — so CP-2 adding `relevance` fails every
+        row already on disk, and a verifier measured that there is no migration: `generate(path=)`
+        raises, `bootstrap=True` does not apply while the file exists, and `rm` + bootstrap **erases
+        every origin stamp** — the operation `generate`'s own guard exists to prevent — while §6.4's
+        queue is not built.
+
+        The sets are separate again, and this is the gate that keeps them honest: it compares
+        `ROW_REQUIRED` against what the writer really emits, so a field added to `_row` without a
+        decision about whether it is required fails here rather than at the next `load()`. An
+        OPTIONAL field is now expressible, which is exactly what CP-2 and CP-4 need."""
+        from app.agentruntime.contract import ROW_REQUIRED
+
+        emitted = set(build([admit(_tool("book_list"))], previous=None)["declarations"][0])
+        assert emitted == set(ROW_REQUIRED), (
+            f"the writer emits {sorted(emitted)} and ROW_REQUIRED is {sorted(ROW_REQUIRED)}. If a "
+            f"field was added to `_row`, decide whether it is REQUIRED (and then every existing row "
+            f"must be migrated, which §6.4's queue does not yet make possible) or OPTIONAL (add it "
+            f"to ROW_FIELDS only)."
         )
 
     def test_a_document_with_NO_declarations_key_is_not_an_empty_one(self):

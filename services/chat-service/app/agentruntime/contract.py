@@ -175,13 +175,31 @@ ROW_FIELDS = MappingProxyType({
     "admitted_against": (str,),
     "members": (list, tuple),
 })
-#: Every field is required — the row `_row` writes carries exactly these seven and nothing else.
+#: The fields every row must carry — the seven `_row` writes today.
 #:
 #: 🔴 **THIS WAS A FIVE-ELEMENT SUBSET AND THAT SUBSET WAS ITSELF A HOLE.** `validate_document`
 #: additionally required the two §6.4 stamps, so a row carrying **exactly** `ROW_REQUIRED` passed
 #: `rows_of` and failed `load()` — the two doors disagreeing about validity while a docstring said
-#: they were one definition. Derived from `ROW_FIELDS` rather than restated, so the two cannot drift.
-ROW_REQUIRED = frozenset(ROW_FIELDS)
+#: they were one definition.
+#:
+#: 🔴 **AND THE FIX FOR THAT WAS `frozenset(ROW_FIELDS)`, WHICH LEFT NO OPTIONAL TIER AND MADE THE
+#: NEXT CHECKPOINT UNSHIPPABLE.** Deriving *required* from *allowed* keeps them from drifting and
+#: makes every new field mandatory on arrival — so the moment CP-2 adds `relevance`, **every row
+#: already on disk fails `load()`, `rows_of` and `SurfaceAssembler`**, and a verifier measured that
+#: there is no way out: `generate(path=<existing>)` raises, `bootstrap=True` does not apply while
+#: the file exists, and the only remaining route is `rm` + bootstrap — **which erases every origin
+#: stamp**, the exact operation `generate`'s own guard exists to prevent, while §6.4's re-admission
+#: queue (the mechanism that would carry a row across a format change) is NOT BUILT. Latent today
+#: only because the committed manifest is empty; **scheduled, not hypothetical.**
+#:
+#: So the two sets are separate again, and the thing that stops them drifting is a **gate** rather
+#: than a definition: `test_THE_REQUIRED_SET_IS_WHAT_THE_WRITER_ACTUALLY_EMITS` compares this set
+#: against `_row`'s real output, so adding a field to the writer without deciding whether it is
+#: required fails immediately — and adding an OPTIONAL field to `ROW_FIELDS` is now expressible,
+#: which is what CP-2 and CP-4 need.
+ROW_REQUIRED = frozenset({
+    "id", "kind", "owning_service", "lifecycle", "contract_version", "admitted_against", "members",
+})
 
 
 def check_row_shape(row, where: str) -> None:
@@ -262,10 +280,18 @@ def check_row(row, where: str) -> None:
             kind=row["kind"],
             # The row stores the DERIVED owner; the contract derives it from a path. Feed the stored
             # owner back through the same shape so a row naming an owner nothing could have derived
-            # is rejected rather than trusted. §0.14.2 door (a): `owning_service` is the one row
-            # string the contract does not ASCII-constrain, and an NFD spelling would validate and
-            # store un-normalised — two `canon.digest` values for one visibly identical document.
-            source_path=f"services/{canon.nfc(row['owning_service'])}/",
+            # is rejected rather than trusted.
+            #
+            # 🔴 **A `canon.nfc(...)` STOOD HERE AND THE HARM ITS COMMENT DESCRIBED WAS NOT REAL.**
+            # It claimed an NFD spelling would *"validate and store un-normalised — two
+            # `canon.digest` values for one visibly identical document"*. A verifier executed the
+            # second half: `canon.digest` **already normalises**, so `digest(NFD) == digest(NFC)` is
+            # True and the drift gate cannot see a difference. And the call normalised only the
+            # COPY fed to the check — the row still stored NFD either way — so it changed nothing at
+            # all. A normalisation that neither guards a real difference nor alters what is stored
+            # is a line that makes the next reader believe a door exists. §0.14.2 door (a) is
+            # answered by `canon.digest`, which is where it always was.
+            source_path=f"services/{row['owning_service']}/",
             lifecycle=row["lifecycle"],
             members=tuple(row["members"]),
         ))

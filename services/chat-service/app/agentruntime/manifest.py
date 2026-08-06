@@ -231,6 +231,16 @@ def build(
         # `build()`, in plain JSON.
         try:
             check_row(r, f"previous.declarations[{i}]")
+        except ContractViolation as exc:
+            # 🔴 **THE NEW SUBCLASSING MADE `except UntrustedRow` SWALLOW `ContractViolation` AND
+            # RE-RAISE IT FLAT**, destroying `.declaration_id` / `.field_path` / `.accepted` — so
+            # the same row refused by `rows_of` with a C-12 field path was refused here with prose.
+            # It is verbatim the defect fixed 175 lines below, committed in the same change as that
+            # fix, and it exists *because* the hierarchy was unified: a broader `except` catches
+            # more the moment the class it names gains a subclass.
+            raise ContractViolation(exc.declaration_id, exc.field_path, exc.reason,
+                                    f"{exc.accepted}. `previous` is caller-supplied, so it is "
+                                    f"checked here and not only on the way back in") from exc
         except UntrustedRow as exc:
             raise UntrustedRow(f"{exc}. `previous` is caller-supplied, so it is checked here and "
                                f"not only on the way back in.") from exc

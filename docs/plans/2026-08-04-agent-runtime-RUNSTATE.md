@@ -1605,6 +1605,81 @@ return · a module-scope lambda / module-scope narrowing invisible to the sweep 
 
 ---
 
+---
+
+## 🔴 R16 — **FAIL ×2**, and both verifiers refuted both of my self-measurements
+
+Prompt committed first, two V-CODE on frozen `d23ea5592`. Verdicts:
+[round16-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round16-v-code-a.md) ·
+[round16-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round16-v-code-b.md).
+
+### The finding that matters most is about MEASUREMENT
+
+| I published | measured independently |
+|---|---|
+| 14/14 membrane guards red-able | **22/30** — *"the denominator is self-derived"* |
+| 10/10 instrument guards red-able | **9/16** — three silent, **including both of that round's own read-twice fixes** |
+| builder read-twice sweep = 0 sites | **not 0** — one missed (`chunk["tool"]`, production) and one **introduced** |
+
+I counted the guards I had just written and reported the ratio as coverage. This run already has that
+lesson written down — *a coverage score's denominator must come from the SSOT, not from what you
+built* — and I reproduced it inside the round whose headline was self-measurement. The sweep's
+definition was narrowed the same way: I defined a read-twice site as *two mechanisms* (`.get` and
+`[…]`), which returns 0; under *two reads of one fact* it returns 6.
+
+### 🔴 The rehousing was measured WORSE than what it replaced, and its guard was theatre
+
+R15 moved the catalogue-outage fact off a `ContextVar[bool]` onto the recorder, on a verifier's
+ruling. R16 ran both trees head-to-head over six orderings: **identical on four, strictly worse on
+two, better on none.** Both sentences I wrote to justify it were false — the leak rides the **sink**,
+not the recorder, and the drain still erases (the trigger merely moved). And
+`test_the_outage_survives_the_DRAIN…` was **`1 passed` on the artifact it replaced**: every ordering
+it named was already satisfied by the old code. *A check whose seed and control agree is theatre.*
+
+**Reverted, and NOT replaced with a third arrangement.** I tried two more; every arrangement that
+lives in `instrument.py` fails at least one ordering, because `arm_turn_surface` cannot distinguish
+*"a new turn is starting"* from *"this turn already narrowed"*. The fact needs a **turn identity** and
+nothing in that module has one. Recorded OPEN with the owner named — **CP-2** — and the surviving
+ordering hole is now asserted as a *defect* (the P4 pattern), so closing it reds the test and forces
+the record to be updated.
+
+### What this round shipped
+
+| | |
+|---|---|
+| **T8 — the gate's file set** | ten in-module defeats red, and a writer in **any other module** binding `None` was green, because `_mods` was a typed-out 2-tuple. `app/agentruntime/` is where CP-2 lands, so the hole was by construction. Now `rglob`, like the arm-order gate sixty lines away |
+| **route 23** | the delegation exemption was `ast.walk` — *"does this token appear"* rather than *"does this run before anything narrows"*. Ordering-, dead-branch- and liveness-blind. Both relations now use **one** definition of unconditional, which is how route 23 was born: one relation computed two ways |
+| **W2 + W3** | an arm in a `try:` body reddened correct code, and my stated reason for excluding `Try` was refuted by a `with` whose `__enter__` raises being *accepted*. The distinction did not exist; I drew the line around the one shape somebody had measured and invented the justification afterwards |
+| **`chunk["tool"]`** | the same function whose `source` read-twice I fixed, read `tool` twice too. Fixed at the read a sweep named, not at the pair — the sixth round for that shape, inside the commit that closed the other half |
+| **B2 — `ROW_REQUIRED = frozenset(ROW_FIELDS)`** | deriving *required* from *allowed* left **no optional tier**, so CP-2 adding `relevance` fails every row on disk **with no migration**: `generate(path=)` raises, `bootstrap` does not apply, and `rm` + bootstrap **erases every origin stamp** while §6.4's queue is unbuilt. Latent only because the manifest is empty; **scheduled** |
+| **B3** | unifying the exception hierarchy made `except UntrustedRow` in `build` swallow `ContractViolation` and re-raise it flat, destroying C-12's fields — a broader `except` catches more the moment its class gains a child |
+| **B5** | a `canon.nfc()` whose stated harm was not real: `canon.digest` already normalises, and the call normalised only the copy fed to the check |
+
+### ▶ CONVERGENCE
+
+| round | prod | adversarial | guard | total | introduced | **per 100 changed lines** |
+|---|---|---|---|---|---|---|
+| 14 | 8 | 4 | 9 | 21 | 2 | 0.78 |
+| 15 | 11 | 3 | 10 | 24 | 4 | 2.25 |
+| **16 (A)** | **7** | **5** | — | 12 | **5** | **0.68** |
+| **16 (B)** | **3** | **1** | **4** | 8 | **3** | **1.1** |
+
+Closure **75%** (A) and **~54%** (B), the highest of the series — and both verifiers give the same
+ruling on the trend question as last round: **two consecutive rises is still not a trend.** B named the
+confounder that would explain it away: R15 and R16 are the first two *structural* deltas, and the
+falsifiable prediction is that the rate falls back on the next site-by-site one.
+
+**Red-ability, with a denominator taken from the two verdicts rather than from what I wrote: 10 of 11.**
+The eleventh is **declared unguarded with its reason** — *naming a field does not make it mandatory*
+has no subject until an optional field exists, which is CP-2 — rather than counted as covered.
+
+**2255 tests pass; gate green.** ⚠️ Builder's evidence. **CP-1 does not close**; R17 verifies this delta.
+
+**Open, carried:** the outage ordering hole (owner: CP-2) · `rows_of` runs no document-level stamp
+check (production-reachable *at* CP-2) · `generate`'s `exists`→`load` race · the untyped document
+container at `rows_of` · the drift gate discarding `validate_document`'s return · six same-fact
+read-twice sites, each safe only by an exact-type pin.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -1619,7 +1694,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | ~~R13~~ | ran 2026-08-06 → **FAIL ×2**, with the first convergence measurement. See above | `V-CODE` ×2 on `5ce95de37` | — |
 | ~~R14~~ | ran 2026-08-06 → **FAIL ×2**. Triage graded SOUND, execution failed; introduced-by-delta produced no new TOCTOU for the first time in four rounds | `V-CODE` ×2 on `b30db5b80` | — |
 | ~~R15~~ | ran 2026-08-06 → **FAIL ×2**. The graded claim was a sentence, and its disproof was the builder's own comment 25 lines above the contradicting code. Closure rose for the first time in the series (~8% → ~27%); `introduced` rose 2 → 4. See the block above | `V-CODE` ×2 on `cba800fa8` | — |
-| **R16** | verify R15's delta: the four-door row definition, the closed schema, the per-bind terminal gate, the rehoused outage fact, routes 18–22 | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
+| ~~R16~~ | ran 2026-08-06 → **FAIL ×2**. Both verifiers refuted both builder self-measurements; the R15 rehousing was measured WORSE than what it replaced and was reverted. Closure 75% / 54%, the highest of the series. See the block above | `V-CODE` ×2 on `d23ea5592` | — |
+| **R17** | verify R16's delta: the reverted outage fact and its defect-recording guard, T8's discovered file set, route 23, the optional-field tier, C-12 at `build` | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
 | **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |

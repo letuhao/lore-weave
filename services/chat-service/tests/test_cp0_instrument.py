@@ -1579,10 +1579,27 @@ class TestU2ACatalogueOutageIsRegistered:
                     break
             return derived
 
+        # 🔴 **T8 — AND IT WAS THE MODULE LIST.** Ten in-module defeats red (alias, `*args`,
+        # `**kwargs`, a returning helper, `executemany`, a rename, SQL split across one and two
+        # locals, a lost writer, a gained writer) — and a writer in **any other module** binding
+        # `None` was `1 passed`, three ways. A gate whose file set is TYPED OUT cannot notice a
+        # writer arriving somewhere else, and the arm-order gate sixty lines below already derives
+        # its file set with `rglob` for exactly that reason: two gates in one file, one discovering
+        # and one listing.
+        #
+        # The reachability is not hypothetical: **`app/agentruntime/` is where CP-2's runtime
+        # lands**, and a terminal write there would have been invisible to this gate by construction.
         offenders, binds_checked = [], []
-        _mods = ("stream_service.py", "voice_stream_service.py")
-        _base = Path(__file__).resolve().parents[1] / "app" / "services"
-        trees_all = [ast.parse((_base / m).read_text(encoding="utf-8")) for m in _mods]
+        _base = Path(__file__).resolve().parents[1] / _TURN_SCOPE_ROOT
+        _paths = [p for p in sorted(_base.rglob("*.py"))
+                  if not any(part in _TURN_SCOPE_EXCLUDE for part in p.parts)]
+        _mods, trees_all = [], []
+        for p in _paths:
+            try:
+                trees_all.append(ast.parse(p.read_text(encoding="utf-8")))
+            except SyntaxError:                  # pragma: no cover - a broken file is its own bug
+                continue
+            _mods.append(p.relative_to(_base).as_posix())
         for mod, tree in zip(_mods, trees_all):
             for fn in ast.walk(tree):
                 if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -2155,6 +2172,37 @@ def _narrowings_in(fn, reaching):
     return found
 
 
+def _unconditional_calls(body, pred):
+    """Every call satisfying `pred` that a reader can see is **not behind a branch**.
+
+    One definition, used by BOTH the arming check and the delegation exemption — they had two, and
+    the exemption's was `ast.walk`, which answers *"does this token appear anywhere in the tree"*
+    when the question is *"does this run, before anything narrows"*. That gap was route 23: a
+    delegating call under `if False:`, or inside a nested `def` nothing invokes, granted a blanket
+    pass.
+
+    Depth 1 through `with` / `async with` / `try` bodies, and no further. **It does not descend into
+    a nested `def`** — a function definition is not an execution — nor into `if`, loops, or
+    `except`/`finally` handlers.
+
+    🔴 The first version matched only a call that WAS the statement's whole value, and the one live
+    delegation in this repository is `return StreamingResponse(stream_response(...))` — a `Return`,
+    with the delegate nested one level in. So the tightened exemption reddened `send_message`, which
+    is correct code, and the gate was about to be loosened to make it pass. **The defect was in my
+    definition of "unconditional", not in the router.** The statement kinds that carry an expression
+    are enumerated, and the search runs over THAT STATEMENT'S expression — which keeps the property
+    (nothing behind a branch a reader can see) while finding a call wherever it sits inside it.
+    """
+    _CARRIERS = (ast.Expr, ast.Assign, ast.AnnAssign, ast.AugAssign, ast.Return)
+    for s in body:
+        if isinstance(s, _CARRIERS) and getattr(s, "value", None) is not None:
+            for n in ast.walk(s.value):
+                if isinstance(n, ast.Call) and pred(n):
+                    yield n
+        elif isinstance(s, (ast.With, ast.AsyncWith, ast.Try)):
+            yield from _unconditional_calls(s.body, pred)
+
+
 def _turn_entry_calls():
     """Per turn entry point, from the PARSE TREE of **every** module under `app/services/` and
     `app/routers/`: `{mod::fn: (arms, raw_sets, narrowings, aliases, conditional_arms)}`.
@@ -2285,12 +2333,34 @@ def _turn_entry_calls():
             narrowings = sorted(_narrowings_in(fn, reaching))
             if not narrowings:
                 continue                      # not a turn entry point: it narrows nothing
-            if f"{mod}::{fn.name}" in arming and not any(
-                isinstance(n, ast.Call) and _called_name(n) == "arm_turn_surface"
-                for n in ast.walk(fn)
-            ):
-                # It delegates to something that arms. Covered — and arming again here is the
-                # discard the sixth recurrence was about.
+            # 🔴 **ROUTE 23 — THE DELEGATION EXEMPTION, AND IT WAS THE THIRD FIX TO CREATE THE NEXT
+            # HOLE.** This granted a blanket pass to any function that *contains anywhere in its
+            # tree* a call to something that arms. A verifier drove three defeats, each `6 passed`
+            # against a control at `2 failed`:
+            #
+            #   * **ordering-blind** — narrow first, delegate afterwards. The delegate arms a sink
+            #     the earlier narrowing never reached, which is the sixth recurrence exactly.
+            #   * **dead-branch-blind** — the delegating call under `if False:`.
+            #   * **liveness-blind** — the call inside a nested `def` nothing ever invokes.
+            #
+            # `ast.walk` answers *"does this token appear"*, and the question is *"does this run,
+            # before anything narrows"*. So the exemption now requires a delegating call that is
+            # **unconditionally executed** (top level, or a `with`/`try` body at depth 1 — the same
+            # definition the arm itself uses, so the two cannot drift) and that **precedes every
+            # narrowing**. Verified still correct for its one live beneficiary,
+            # `routers/messages.py::send_message`.
+            _delegates = sorted(c.lineno for c in _unconditional_calls(
+                fn.body, lambda c: visible.get((mod, _called_name(c) or "")) in arming))
+            if (f"{mod}::{fn.name}" in arming
+                    and not any(isinstance(n, ast.Call)
+                                and _called_name(n) == "arm_turn_surface" for n in ast.walk(fn))
+                    # `<=`, not `<`: the delegating call IS usually the narrowing — `send_message`'s
+                    # `stream_response(...)` both arms and reaches a narrowing, at one line. The
+                    # property is *no narrowing happens BEFORE the delegation*, and a strict `<`
+                    # states something else and reds correct code.
+                    and _delegates and _delegates[0] <= min(ln for ln, _ in narrowings)):
+                # It delegates to something that arms, before it narrows anything. Covered — and
+                # arming again here is the discard the sixth recurrence was about.
                 continue
             arms, raw_sets, aliases, conditional = [], [], [], []
             # An arm at the TOP LEVEL of the body is unconditional. One nested inside an `if`/`try`
@@ -2307,20 +2377,26 @@ def _turn_entry_calls():
             # is inconvenient**, and the shape it reds on is ordinary: `voice_stream_service.py:237`
             # is one refactor away from being written that way.
             #
-            # A `with`/`async with` body at depth 1 is entered unconditionally — that is what the
-            # statement means — so it counts. `If` and `Try` deliberately do NOT: an `if` body is
-            # conditional by definition, and an arm inside a `try` is one exception away from a turn
-            # that narrows into nothing. Only the shape a verifier measured is widened; guessing at
-            # the others is how routes 21 and 22 got written.
-            def _unconditional(body):
-                for s in body:
-                    if isinstance(s, (ast.Expr, ast.Assign)) and isinstance(s.value, ast.Call) \
-                            and _called_name(s.value) == "arm_turn_surface":
-                        yield s.value.lineno
-                    elif isinstance(s, (ast.With, ast.AsyncWith)):
-                        yield from _unconditional(s.body)
-
-            top_level_arm_lines = set(_unconditional(fn.body))
+            # 🔴 **AND THE REASON I GAVE FOR STOPPING AT `With` WAS REFUTED IN THE SAME ROUND.** I
+            # wrote that `Try` must not count because *"an arm inside a `try` is one exception away
+            # from a turn that narrows into nothing"* — and a verifier pointed out that a `with`
+            # whose `__enter__` raises is the identical situation, **and it was already accepted**.
+            # So the stated distinction did not exist; what I had actually drawn was a line around
+            # the one shape somebody had measured, with a justification invented afterwards. That is
+            # the rationalisation shape this run keeps paying for, and the second time in two rounds
+            # the arm inside a `try:` body reddened **correct code**.
+            #
+            # The honest property is SYNTACTIC and is now stated as such: *the arm is not guarded by
+            # a branch a reader can see.* A `with`, an `async with` and a `try` body at depth 1 all
+            # satisfy it; an `if`/`else`, a loop and an `except`/`finally` handler do not. **What it
+            # deliberately does NOT claim** is that the arm executes — no static rule can, because
+            # `__enter__` can raise, and pretending otherwise is what made the previous version's
+            # comment false. The gate's subject is *"was arming written as a decision or as a
+            # condition"*, and that is answerable from the parse tree.
+            top_level_arm_lines = {
+                c.lineno for c in _unconditional_calls(
+                    fn.body, lambda c: _called_name(c) == "arm_turn_surface")
+            }
             for n in ast.walk(fn):
                 if isinstance(n, ast.Assign):
                     # `p = client.get_tool_definitions` — the alias route past a name-matching gate.
@@ -2629,40 +2705,79 @@ class TestTheFactsTHIS_ROUND_TIGHTENED_ARE_EACH_GUARDED:
             rec.absorb(instrument.surface_withheld.get())
         return instrument.catalogue_outage_registered()
 
-    def test_the_outage_survives_the_DRAIN__and_does_not_outlive_the_TURN(self):
+    def test_THE_OUTAGE_FACT_IS_ORDERING_DEPENDENT__and_this_records_WHICH_orderings(self):
+        """🔴 **THE TEST THAT RECORDS THE DEFECT INSTEAD OF DRESSING IT UP.**
+
+        The previous version asserted all four orderings hold. It was **`1 passed` on the artifact
+        the change replaced** — every ordering it named was already satisfied by the code being
+        replaced, so it could not see the change at all. *A check whose seed and control agree is
+        theatre*, and this file has that sentence as a standard.
+
+        What is actually true, measured rather than reasoned:
+
+        | ordering | answer | |
+        |---|---|---|
+        | arm → record → read | `True` | the live production shape |
+        | arm → record → **drain** → read | **`False`** | 🔴 the drain erases the turn's fact |
+        | record → recorder → arm → drain → read | `True` | the arm derives from a non-empty sink |
+        | turn A drains → turn B arms → read | `False` | no boolean survives into the next turn |
+
+        **Row two is a defect and it is asserted as one.** Three arrangements of this fact have now
+        been measured — the flag with a writer, the flag deriving, and the fact rehoused onto the
+        recorder — and a verifier ran the last two head-to-head over six orderings: identical on
+        four, **worse on two, better on none**. Every arrangement that lives in this module fails at
+        least one ordering, because `arm_turn_surface` cannot tell *"a new turn is starting"* from
+        *"this turn already narrowed"*. The fact needs a **turn identity**, and nothing here has one.
+
+        So this asserts the current answers, including the wrong one. **It reds the day someone
+        gives the turn an identity** — which is CP-2's runtime — and at that point this test, the
+        note in `catalogue_outage_registered` and CP-2's entry all have to be updated together,
+        which is the point of writing it this way rather than leaving a comment.
+
+        **Reachability of row two: none today.** A verifier re-derived the full read/drain map at
+        this HEAD — three production reads, eight drains, and in all three turn shapes **every read
+        precedes every drain**. It is a latent hole, and it is named so that adding a post-drain
+        read in CP-2 cannot land quietly.
+        """
         import contextvars
 
         from app.services import instrument
 
+        def _turn(*, drain, arm_first=True):
+            rec = None
+            if arm_first:
+                instrument.arm_turn_surface()
+            instrument.record_catalogue_unavailable(stage="catalogue_unavailable", reason="boom")
+            if not arm_first:
+                rec = instrument.AdvertisedToolsRecorder()
+                instrument.arm_turn_surface()      # adopts a NON-empty sink: this turn narrowed
+            if drain:
+                rec = rec or instrument.AdvertisedToolsRecorder()
+                rec.absorb(instrument.surface_withheld.get())
+            return instrument.catalogue_outage_registered()
+
         ctx = contextvars.copy_context
-        assert ctx().run(lambda: self._turn(drain=False)) is True, (
-            "an outage recorded this turn is not readable before the drain"
+        assert ctx().run(lambda: _turn(drain=False)) is True, (
+            "the live production ordering lost the outage — the model would not be told its tools "
+            "were unreachable, which is U-2's founding defect"
         )
-        # 🔴 The property the flag existed for: the sink is emptied by whoever persists it, and a
-        # drained sink used to answer "no outage" for a turn that had one — the persisted row said
-        # outage while the model had been told nothing.
-        assert ctx().run(lambda: self._turn(drain=True)) is True, (
-            "the drain ERASED the turn's outage: the row and the prompt now disagree about the "
-            "same turn, which is worse than either being wrong alone"
-        )
-        # 🔴 `narrow -> drain -> arm` — the arm used to LOWER a true flag, measured at rows=2,
-        # flag=False. An arm that adopts a NON-empty sink is joining a turn that already narrowed.
-        assert ctx().run(lambda: self._turn(arm_first=False, drain=True)) is True, (
+        assert ctx().run(lambda: _turn(arm_first=False, drain=True)) is True, (
             "arming after a narrowing erased the narrowing's own fact"
         )
+        assert ctx().run(lambda: _turn(drain=True)) is False, (
+            "a read after the drain now returns the outage — the ordering hole is CLOSED. That is "
+            "good news and this test is stale: someone has given the turn an identity. Update this "
+            "row, the note in `catalogue_outage_registered`, and CP-2's entry on the board together."
+        )
 
-        # 🔴 The leak: ONE context serving two turns — a pooled worker thread — kept `True` for the
-        # thread's life, so a later turn inserted the CATALOGUE UNAVAILABLE block with no outage.
-        # Measured `req_A=True, req_B=True`. One context deliberately: that is the defect's shape.
         def _two_turns():
-            first = self._turn(drain=True)
-            instrument.arm_turn_surface()                  # turn B, same context, drained sink
+            first = _turn(drain=True)
+            instrument.arm_turn_surface()                   # turn B, same context, drained sink
             return first, instrument.catalogue_outage_registered()
 
-        first, second = ctx().run(_two_turns)
-        assert first is True and second is False, (
-            f"turn A's outage outlived it into turn B (A={first}, B={second}) — a pooled worker "
-            f"thread would tell a healthy turn its tools were unreachable"
+        assert ctx().run(_two_turns)[1] is False, (
+            "turn A's outage outlived it into turn B — a pooled worker thread would tell a healthy "
+            "turn its tools were unreachable"
         )
 
     # ── The three value bounds ──────────────────────────────────────────────────────────────────
@@ -2873,4 +2988,121 @@ from app.client.knowledge_client import KnowledgeClient
         arms, _raw, _narrowings, _aliases, conditional = entry
         assert arms and not conditional, (
             f"an unconditional arm inside `async with` was reported CONDITIONAL: {entry}"
+        )
+
+    def test_the_DELEGATION_EXEMPTION_is_not_ordering_dead_branch_or_liveness_BLIND(self):
+        """🔴 **ROUTE 23 — the third arm-order fix to create the next hole.** The exemption for a
+        function that delegates to something that arms was computed with `ast.walk`, which answers
+        *"does this token appear anywhere in the tree"* when the question is *"does this run, before
+        anything narrows"*. Three defeats, each `6 passed` against a control at `2 failed`: narrow
+        first and delegate afterwards; the delegating call under `if False:`; the delegating call
+        inside a nested `def` nothing invokes.
+
+        The exemption now uses the SAME definition of "unconditional" as the arming check, so the
+        two cannot drift — which is how route 23 was born in the first place, one relation computed
+        two ways.
+        """
+        _IMPORTS = ["from app.client.knowledge_client import KnowledgeClient",
+                    "from app.services.stream_service import stream_response"]
+        cases = {
+            "narrow-then-delegate": ("d1_probe", _IMPORTS + [
+                "async def d1_probe(c):",
+                "    tools = await c.get_tool_definitions()",
+                "    return stream_response(tools)"]),
+            "delegation under a dead branch": ("d2_probe", _IMPORTS + [
+                "async def d2_probe(c):",
+                "    if False:",
+                "        return stream_response(None)",
+                "    return await c.get_tool_definitions()"]),
+            "delegation inside an uncalled nested def": ("d3_probe", _IMPORTS + [
+                "async def d3_probe(c):",
+                "    def _never():",
+                "        return stream_response(None)",
+                "    return await c.get_tool_definitions()"]),
+        }
+        for label, (fn, lines) in cases.items():
+            key, entry = self._narrows_unarmed(fn, "\n".join(lines) + "\n")
+            assert key and not entry[0], (
+                f"{label}: the delegation exemption absolved an entry point that narrows with no "
+                f"arming. The exemption is about what RUNS before the narrowing, not about which "
+                f"tokens appear in the tree."
+            )
+
+    def test_an_ARM_INSIDE_A_TRY_BODY_is_not_CONDITIONAL_either(self):
+        """🔴 **W2 — route 18's class in a new spelling, and my stated reason for it was refuted in
+        the same round.** I excluded `Try` because *"an arm inside a `try` is one exception away
+        from a turn that narrows into nothing"* — and a verifier pointed out that a `with` whose
+        `__enter__` raises is the identical situation and was **already accepted**. The distinction
+        did not exist; I had drawn a line around the one shape somebody had measured and invented
+        the justification afterwards.
+
+        The property is syntactic and now says so: *the arm is not guarded by a branch a reader can
+        see.* It does not claim the arm executes — no static rule can."""
+        key, entry = self._narrows_unarmed("try_probe", "\n".join([
+            "from app.client.knowledge_client import KnowledgeClient",
+            "from app.services.instrument import arm_turn_surface",
+            "async def try_probe(c):",
+            "    try:",
+            "        arm_turn_surface()",
+            "        return await c.get_tool_definitions()",
+            "    except Exception:",
+            "        return []"]) + "\n")
+        assert key, "the probe was not discovered, so this asserts nothing"
+        arms, _raw, _narrowings, _aliases, conditional = entry
+        assert arms and not conditional, (
+            f"an arm as the first statement of a `try:` body was reported CONDITIONAL: {entry}. "
+            f"That is a false positive on correct code, and a gate that reds on correct code is one "
+            f"that gets deleted the first time it is inconvenient."
+        )
+
+    def test_the_TERMINAL_WRITE_GATE_sees_a_writer_in_ANY_module(self):
+        """🔴 **T8 — and it was the module list.** Ten in-module defeats red (alias, `*args`,
+        `**kwargs`, a returning helper, `executemany`, a rename, SQL split across locals, a lost
+        writer, a gained writer) — and a writer in any OTHER module binding `None` was `1 passed`,
+        three ways, because `_mods` was a hardcoded two-tuple. The arm-order gate sixty lines away
+        derives its file set with `rglob`; this one wrote it down.
+
+        **`app/agentruntime/` is where CP-2's runtime lands**, so a terminal write there would have
+        been invisible to this gate by construction — not by oversight, by design."""
+        import pathlib
+
+        base = pathlib.Path(__file__).resolve().parents[1] / "app"
+        probe = "\n".join([
+            "async def probe_write(conn, msg_id):",
+            "    await conn.execute(",
+            '        "UPDATE chat_messages SET withheld_tools = $1 WHERE message_id = $2",',
+            "        None, msg_id,",
+            "    )"]) + "\n"
+        for where in ("agentruntime", "routers", "services"):
+            path = base / where / "_lwprobe_writer.py"
+            path.write_text(probe, encoding="utf-8")
+            try:
+                inst = TestU2ACatalogueOutageIsRegistered()
+                with pytest.raises(AssertionError, match="withheld_tools"):
+                    inst.test_EVERY_TERMINAL_WRITE_BINDS_THE_DRAINED_VALUE__not_a_literal_None()
+            finally:
+                path.unlink(missing_ok=True)
+
+    def test_TOOL_READ_ONCE__the_pair_the_source_fix_left_behind(self):
+        """🔴 The same function whose `source` read-twice this effort fixed read `tool` twice as
+        well, and the fix went to the read a sweep had named rather than to the pair — the flaw six
+        rounds have recorded, committed inside the commit that closed the other half. A verifier
+        drove it: the row classified `breaker` from `read_file` and stamped
+        `declaration: delete_everything`."""
+        from app.services import instrument
+
+        class TwoFaced(dict):
+            def __init__(self, real):
+                super().__init__(real)
+                self._n = 0
+
+            def get(self, key, default=None):
+                if key == "tool":
+                    self._n += 1
+                    return "read_file" if self._n == 1 else "delete_everything"
+                return super().get(key, default)
+
+        out = instrument.ensure_tool_call_instrumented(TwoFaced({"tool": "read_file"}))
+        assert out["declaration"] == "read_file", (
+            f"the row was classified from one value and stamped with another: {out}"
         )

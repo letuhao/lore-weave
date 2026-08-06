@@ -225,9 +225,16 @@ def ensure_tool_call_instrumented(chunk: dict) -> dict:
     # is an ordinary argument here, nothing bounds its type, and a container answering the two reads
     # differently would classify one way and stamp another. This function is instrumentation, so a
     # wrong stamp is not visible anywhere until someone audits the column.
+    #
+    # 🔴 **AND `tool` WAS READ TWICE IN THIS SAME FUNCTION AND I FIXED ONLY `source`** — the fix
+    # went to the read a sweep had named rather than to the pair, which is the flaw six rounds have
+    # recorded, committed inside the commit that closed the other half. Driven by a verifier: the
+    # row classified `breaker` from `read_file` and stamped `declaration: delete_everything`. One
+    # read of each fact, bound to a local, used everywhere below.
     _source = chunk.get("source")
+    _tool = chunk.get("tool")
     if _source not in TOOL_CALL_SOURCES:
-        name = chunk.get("tool") or ""
+        name = _tool or ""
         _source = SOURCE_META if name in RUNTIME_PRIMITIVES else SOURCE_BREAKER
         chunk["source"] = _source
         chunk["source_inferred"] = True
@@ -240,7 +247,7 @@ def ensure_tool_call_instrumented(chunk: dict) -> dict:
     if chunk.get("latency_ms") is None:
         chunk["latency_ms"] = None
         chunk.setdefault("latency_unmeasured", _source)
-    chunk.setdefault("declaration", chunk.get("tool"))
+    chunk.setdefault("declaration", _tool)
     chunk.setdefault("runtime_variant", RUNTIME_LEGACY)
     chunk.setdefault("latency_ms", None)
     return chunk
@@ -320,7 +327,7 @@ surface_withheld: ContextVar[list | None] = ContextVar("lw_surface_withheld", de
 #: a previous turn's answer (a new turn builds a new recorder), and a drain cannot erase it (the
 #: drain is what puts the row IN the recorder). The mechanism is NOT deleted — a verifier showed it
 #: buys a real post-drain property — it is rehoused.
-_turn_recorder: ContextVar[object | None] = ContextVar("lw_turn_recorder", default=None)
+catalogue_outage: ContextVar[bool] = ContextVar("lw_catalogue_outage", default=False)
 
 
 def _sink_for_record() -> list:
@@ -396,17 +403,14 @@ def arm_turn_surface() -> list[dict]:
     # *"`isinstance` was the bug"*. A rogue row then made **`arm_turn_surface` itself raise**, and
     # that is the first statement of every turn entry point: the crash-inside-its-own-fix pattern,
     # fifth occurrence, now at the one place where a failure takes the whole turn with it.
-    # 🔴 **THE ARM NO LONGER ASSIGNS THE FACT AT ALL** — see `_turn_recorder`. What it does instead
-    # is release the PREVIOUS turn's recorder, and only when it can prove the previous turn is over:
-    # an **empty** sink at arm time means nothing has been recorded for this turn yet, so no
-    # registration can legitimately belong to it. A non-empty sink means this turn already narrowed
-    # (a narrowing opened its own sink before the entry point armed), and clearing there is the
-    # erasure the previous design could not avoid.
-    #
-    # That single condition is what makes the assignment correct in **both** orders, which no
-    # assignment of a boolean could be.
-    if not sink:
-        _turn_recorder.set(None)
+    # 🔴 **THE ASSIGNMENT BELOW IS KNOWN TO BE WRONG IN ONE ORDERING, AND IT IS THE LEAST WRONG OF
+    # THE FOUR ARRANGEMENTS MEASURED.** It derives rather than carries, so a re-used context cannot
+    # keep a previous turn's answer; it therefore also LOWERS a true flag when an arm follows a
+    # drain within one turn. A verifier proved the two properties incompatible on a `ContextVar`
+    # (monotone reds two tests, lowering keeps the erasure), and a later one proved that moving the
+    # fact onto the recorder is strictly worse. See `catalogue_outage_registered` for the whole
+    # measurement and for who owns the real fix.
+    catalogue_outage.set(any(_is_catalogue_row(e) for e in list(sink)))
     return sink
 
 
@@ -486,8 +490,9 @@ def record_catalogue_unavailable(*, stage: str, reason: str, count: int | None =
     # place for it: the row and the flag went to two containers with two different lifetimes, and
     # keeping them agreeing was then a discipline rather than a structure.
     #
-    # The row is the fact. Whoever drains it takes the fact with it, and `catalogue_outage_registered`
-    # asks the drain's destination. Nothing is written twice, so nothing can disagree.
+    # It is still not written here. The row is the record; the arm derives the flag from the rows.
+    # That is one write, not two, so the pair cannot disagree — at the cost of the arm-after-drain
+    # ordering, which is recorded OPEN at `catalogue_outage_registered` rather than papered over.
 
 
 def catalogue_outage_registered() -> bool:
@@ -506,8 +511,31 @@ def catalogue_outage_registered() -> bool:
     # persists it, and a drained sink answers "no outage" for a turn that had one. The recorder is
     # where the drained rows went, so it is the one place the fact cannot be read *before* it exists
     # and cannot survive *after* the turn.
-    rec = _turn_recorder.get()
-    if rec is not None and rec.catalogue_outage():
+    # 🔴 **THE REHOUSING WAS REVERTED, AND THE MEASUREMENT THAT REVERTED IT IS THE POINT.**
+    #
+    # A verifier ruled that the fact belonged on the recorder rather than in a `ContextVar[bool]`,
+    # and that was shipped. The next verifier ran both trees head-to-head over six orderings:
+    # **identical on four, strictly worse on two** (a second recorder in one turn loses the first's
+    # rows; a background task that drains), **better on none**. Both sentences written to justify it
+    # were false — the leak does not ride the recorder, it rides the **sink**, which the arm adopts
+    # when non-empty; and a drain still erases, the trigger having merely moved from
+    # `catalogue_outage.set(...)` to `_turn_recorder.set(None)`. Worst of all, the guard written for
+    # it **passed on the artifact it replaced**: a check whose seed and control agree is theatre.
+    #
+    # I then tried a third design and a fourth. **Every arrangement that lives in this module fails
+    # at least one ordering**, and the reason is structural rather than a matter of care:
+    # `arm_turn_surface` cannot distinguish *"a new turn is starting"* from *"this turn already
+    # narrowed"*, because a re-used context and an auto-armed sink look identical from here. The
+    # fact's true owner is a **turn identity**, and nothing in this module has one.
+    #
+    # So it is NOT closed and it is NOT dressed up. Recorded OPEN, owner named: the turn-scoped
+    # token belongs to the runtime that serves the turn — **CP-2** — and the design a verifier
+    # proposed (the arm replaces the sink with a fresh, turn-stamped list; the outage travels as a
+    # row in it; `absorb` moves rows without clearing the turn's answer) is written down there,
+    # where the code that can implement it will exist. Shipping a third rearrangement of the same
+    # ambiguity would move the defect again and call it progress, which is what the last two rounds
+    # did.
+    if catalogue_outage.get():
         return True
     sink = surface_withheld.get()
     if not sink:
@@ -549,11 +577,10 @@ class AdvertisedToolsRecorder:
         #: `bind_sink` remains for the caller that legitimately owns a different sink (voice builds
         #: its own; tests supply one), but the DEFAULT is no longer a step that can be skipped.
         self._sink: list | None = surface_withheld.get()
-        # 🔴 **THE TURN'S OUTAGE FACT NOW LIVES HERE**, and registering is part of construction for
-        # the same reason adopting the sink is: a step a caller has to remember is a step two
-        # functions can drift apart on, which `bind_sink` already demonstrated. A recorder built
-        # inside a turn IS that turn's recorder.
-        _turn_recorder.set(self)
+        # 🔴 A `_turn_recorder.set(self)` stood here for one round. It was reverted — see
+        # `catalogue_outage_registered`. A recorder is a *constructed-object*-lifetime thing and a
+        # turn can construct zero, one or two of them, so it was never the turn-lifetime home the
+        # docstring claimed.
         # F-48 — the SEGMENT this recorder owns, and it exists because one SQL expression had to
         # satisfy two requirements that pull in opposite directions:
         #
@@ -737,20 +764,10 @@ class AdvertisedToolsRecorder:
             entry["count"] = count
         self._withheld.append(entry)
 
-    def catalogue_outage(self) -> bool:
-        """Did a catalogue-scope narrowing reach this recorder? **The turn's outage fact, at home.**
-
-        No new state: the rows are already here, filed by scope, because `absorb` put them here.
-        That is the whole point of the rehousing — a fact stored twice is a fact that can disagree
-        with itself, and the previous design stored it in a `ContextVar` beside the rows and spent
-        three rounds keeping the two in step by hand.
-
-        `type(...) is str` on the value for the same reason `_is_catalogue_row` does it: this is
-        consulted while the system prompt is being assembled, so a comparison that can dispatch into
-        user code is a turn that can die inside the function reporting that something went wrong.
-        """
-        return any(type(w.get("scope")) is str and w.get("scope") == SCOPE_CATALOGUE
-                   for w in self._withheld)
+    # 🔴 A `catalogue_outage()` method stood here for one round, holding the turn's outage fact.
+    # It was reverted with the rest of the rehousing and DELETED rather than left unread: this
+    # package already convicted `Identity.contract_version` for exactly that — *"a field kept
+    # because removing it feels lossy is a field the next reader will trust."*
 
     def absorb(self, sink: list | None) -> None:
         """Move everything the request-scoped sink holds into this recorder, **by scope**.
