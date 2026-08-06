@@ -1501,9 +1501,10 @@ class TestU2ACatalogueOutageIsRegistered:
         from pathlib import Path
 
         offenders, sql_writers = [], []
-        for mod in ("stream_service.py", "voice_stream_service.py"):
-            path = Path(__file__).resolve().parents[1] / "app" / "services" / mod
-            tree = ast.parse(path.read_text(encoding="utf-8"))
+        _mods = ("stream_service.py", "voice_stream_service.py")
+        _base = Path(__file__).resolve().parents[1] / "app" / "services"
+        trees_all = [ast.parse((_base / m).read_text(encoding="utf-8")) for m in _mods]
+        for mod, tree in zip(_mods, trees_all):
             for fn in ast.walk(tree):
                 if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
@@ -1524,11 +1525,57 @@ class TestU2ACatalogueOutageIsRegistered:
                 if not writes_sql:
                     continue
                 sql_writers.append(f"{mod}::{fn.name}")
-                if not any(isinstance(n, ast.Call)
-                           and getattr(n.func, "attr", None) in ("withheld_json", "absorb")
-                           for n in ast.walk(fn)) and not any(
-                        isinstance(n, ast.Name) and "withheld" in n.id for n in ast.walk(fn)):
+                # 🔴 **THE ESCAPE HATCH WAS `any Name containing "withheld"`.** `_withheld_json =
+                # None` satisfied it while killing **both** the main INSERT and the orphan UPDATE,
+                # and the clean-finish site binding `None` was green too. A name is not a value.
+                #
+                # What is checked instead: every local whose name carries `withheld` must be
+                # ASSIGNED from a recorder call somewhere in the function — so binding `None` to it
+                # reds, and binding it from a correct helper does not.
+                reads_recorder = any(
+                    isinstance(n, ast.Call)
+                    and getattr(n.func, "attr", None) in ("withheld_json", "absorb")
+                    for n in ast.walk(fn)
+                )
+                _param_names = {a.arg for a in fn.args.args + fn.args.kwonlyargs}
+                bad_bindings = [
+                    t.lineno for n in ast.walk(fn) if isinstance(n, ast.Assign)
+                    for t in n.targets
+                    if isinstance(t, ast.Name) and "withheld" in t.id
+                    # From a recorder call, from another local, or **derived from the parameter**
+                    # this conduit was handed — all legitimate. A CONSTANT is not.
+                    and not any(isinstance(c, ast.Call)
+                                and getattr(c.func, "attr", None) in ("withheld_json", "absorb")
+                                for c in ast.walk(n.value))
+                    and not any(isinstance(c, ast.Name) and c.id in _param_names
+                                for c in ast.walk(n.value))
+                    and not isinstance(n.value, ast.Name)
+                ]
+                # A function may instead be a CONDUIT: it takes the value as a parameter and its
+                # callers supply it. Then the obligation moves to the call sites — which is where
+                # `None` was bound and stayed green, so they are checked rather than assumed.
+                params = {a.arg for a in fn.args.args + fn.args.kwonlyargs}
+                is_conduit = "withheld_tools" in params
+                if is_conduit:
+                    for tree2 in trees_all:
+                        for call in ast.walk(tree2):
+                            if not (isinstance(call, ast.Call)
+                                    and getattr(call.func, "id", getattr(call.func, "attr", None))
+                                    == fn.name):
+                                continue
+                            kw = next((k for k in call.keywords if k.arg == "withheld_tools"), None)
+                            if kw is None:
+                                continue
+                            if isinstance(kw.value, ast.Constant):
+                                offenders.append(
+                                    f"{fn.name} called at line {kw.value.lineno} with a literal "
+                                    f"{kw.value.value!r} for withheld_tools")
+                elif not reads_recorder:
                     offenders.append(f"{mod}::{fn.name} writes the column and never reads a recorder")
+                if bad_bindings:
+                    offenders.append(
+                        f"{mod}::{fn.name} binds a `withheld*` local from something that is not the "
+                        f"recorder at line(s) {bad_bindings}")
 
         assert len(sql_writers) >= 3, (
             f"only {len(sql_writers)} function(s) write `withheld_tools` in SQL: {sql_writers}. "
@@ -1582,6 +1629,49 @@ class TestU2ACatalogueOutageIsRegistered:
             "an empty catalogue was registered as an OUTAGE, so the model is told its tools are "
             "unreachable when nothing failed — the confusion U-2 exists to end"
         )
+
+    @pytest.mark.asyncio
+    async def test_AN_EMPTY_ADMIN_CATALOGUE_IS_NOT_CACHED(self):
+        """The `[]`-not-cached fix shipped with **no test**, and it is the half of that change that
+        actually mattered: the cache had no TTL, so one zero-tool answer pinned every admin turn for
+        the life of the process and the transport was never re-dialled after recovery. The emptiness
+        was never the outage — **the permanence was.**"""
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.client.knowledge_client import KnowledgeClient
+
+        calls = {"n": 0}
+
+        def _listed(n):
+            t = MagicMock()
+            t.name, t.description, t.inputSchema = f"admin_{n}", "d", {"type": "object"}
+            out = MagicMock()
+            out.tools, out.meta = ([] if n == 0 else [t]), {}
+            return out
+
+        session = AsyncMock()
+
+        async def list_tools():
+            calls["n"] += 1
+            return _listed(0 if calls["n"] == 1 else 1)      # empty first, then recovered
+
+        session.list_tools = list_tools
+        session.initialize = AsyncMock()
+        client = KnowledgeClient(
+            base_url="http://knowledge-service:8092", internal_token="t", timeout_s=0.5, retries=1)
+
+        with patch("app.client.knowledge_client.streamablehttp_client") as transport, \
+                patch("app.client.knowledge_client.ClientSession") as cs:
+            transport.return_value.__aenter__ = AsyncMock(return_value=(None, None, None))
+            transport.return_value.__aexit__ = AsyncMock(return_value=False)
+            cs.return_value.__aenter__ = AsyncMock(return_value=session)
+            cs.return_value.__aexit__ = AsyncMock(return_value=False)
+            first = await client.get_admin_tool_definitions("adm")
+            second = await client.get_admin_tool_definitions("adm")
+
+        assert first == []
+        assert calls["n"] == 2, "the empty answer was cached; the gateway was never re-dialled"
+        assert second, "a recovered catalogue was still served as empty, permanently"
 
     def test_A_NARROWING_BEFORE_ANY_ARMING_IS_STILL_RECORDED(self):
         """🔴 **EIGHT MEASURED ROUTES PAST THE ORDERING GATE IN THREE ROUNDS** — a helper one module

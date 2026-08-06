@@ -45,6 +45,7 @@ from app.agentruntime import (
     generate,
     identity_of,
     load,
+    rows_of,
     try_admit,
     validate_document,
 )
@@ -647,6 +648,34 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         assert "TYPED_BY_HAND" not in ids, (
             f"a row smuggled itself in during validation and the validator returned it: {ids}"
         )
+
+    def test_EVERY_ROW_FIELD_IS_BOUNDED__not_only_the_id(self):
+        """🔴 `id` was bounded and every other field steers a decision. `OrderBy` sorts on any field
+        a pipeline names, `TakeWhileBudget` accumulates one, `Filter` compares one — so an **unknown
+        key with an exotic value, in plain JSON**, reaches the ranking that decides what the model
+        sees. And `members` was unbounded at four exported doors, so `members: ['ghost']` travelled
+        to the wire.
+
+        **Production-reachable without an adversary**: a hand-edited or mis-generated manifest is
+        precisely what this door exists for.
+        """
+        base = {"id": "t0", "kind": "tool", "owning_service": "book-service",
+                "lifecycle": "admitted", "members": []}
+        for bad in ({"lane": {"nested": 1}}, {"cost": [1]}, {"relevance": 1.5},
+                    {"tier": {1, 2}}, {"members": "not-a-list"}, {"members": [""]},
+                    {"members": [None]}):
+            with pytest.raises(ValueError, match="plain scalar|members are a plain list"):
+                rows_of({"declarations": [{**base, **bad}]})
+        # ...and the legitimate shapes still pass.
+        rows_of({"declarations": [{**base, "lane": "read", "cost": 3, "tier": None}]})
+
+    def test_a_document_with_NO_declarations_key_is_not_an_empty_one(self):
+        """`.get("declarations", [])` served a missing key as empty — the exact confusion `rows_of`
+        refuses by name two modules over, inside the function whose job is to notice a declaration
+        that vanished. Reachable with plain JSON: a caller that built the dict wrong disabled the
+        loss guard."""
+        with pytest.raises(UntrustedRow, match="no `declarations` key"):
+            build([admit(_tool("book_list"))], previous={"manifest_version": 1})
 
     def test_the_OUTER_previous_is_checked_too_not_only_the_inner_one(self):
         """The inner `previous.declarations` was guarded and the outer `previous or {}` was not —
@@ -1429,7 +1458,10 @@ class TestStageKindsAreDataNotClosures:
         doc = {"declarations": [
             {"id": f"t{i}", "kind": "tool", "cost": SneakyCost(9), "lane": "read"} for i in range(4)
         ]}
-        with pytest.raises(ValueError, match="plain integer"):
+        # Rejected at the DOOR now (`rows_of` bounds every row field, not only `id`), which is
+        # earlier and stronger than the budget's own check. Both guards stay: the door refuses the
+        # row, and `_narrow` still refuses a cost it is handed by any other route.
+        with pytest.raises(ValueError, match="plain integer|plain scalar"):
             SurfaceAssembler(doc).assemble(pass_number=1, pipeline=[
                 OrderBy(keys=(("lane", "asc"),)),
                 TakeWhileBudget("token_budget", "over budget", budget=6),

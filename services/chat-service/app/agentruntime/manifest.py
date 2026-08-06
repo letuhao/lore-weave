@@ -198,6 +198,17 @@ def build(
     # Materialised for the same reason, and `type(...) is` for the same reason: `_prev_rows or []`
     # over a container that lies about `__len__` turned a populated document into an empty one and
     # disabled the loss guard below.
+    # 🔴 `.get("declarations", [])` SERVES A MISSING KEY AS EMPTY — the exact confusion `rows_of`
+    # refuses by name two modules over, in the function whose whole job is to notice a declaration
+    # that vanished. A document with no `declarations` key is malformed, not empty, and treating it
+    # as empty disables the loss guard for a caller that simply built the dict wrong. **Reachable
+    # with plain JSON and no adversary.**
+    if previous is not None and "declarations" not in previous:
+        raise UntrustedRow(
+            "previous has no `declarations` key. An empty prior manifest is `declarations: []`; a "
+            "missing key is a malformed document, and serving it as empty silently disables the "
+            "check that a declaration cannot leave the manifest."
+        )
     _prev_rows = (previous or {}).get("declarations", [])
     if previous is not None and type(_prev_rows) is not list:
         # `previous={"declarations": None}` silently disabled the loss guard below — the `or []`

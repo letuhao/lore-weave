@@ -51,6 +51,7 @@ def rows_of(manifest_doc: dict) -> list[dict]:
     # A manifest row is an input exactly as much as a stage is; `load()` validates the file, and
     # this validates whatever reached here by any other door (`SurfaceAssembler` and `discover` are
     # both exported and neither went through `load`).
+    out = []
     for i, r in enumerate(rows):
         if not _is_exactly(r, dict):
             raise ValueError(f"declarations[{i}] is a {type(r).__name__}, not a plain object")
@@ -60,7 +61,34 @@ def rows_of(manifest_doc: dict) -> list[dict]:
                 f"plain string. An id with a custom __eq__ decides membership in every allow-list "
                 f"and deny-list it is compared against (§0.14.1)."
             )
-    return list(rows)
+        # 🔴 **ONLY `id` WAS BOUNDED, AND EVERY OTHER FIELD STEERS A DECISION.** `OrderBy` sorts on
+        # any field a pipeline names, `TakeWhileBudget` accumulates one, `Filter` compares one — so
+        # an **unknown key with an exotic value, in plain JSON**, reaches the ranking that decides
+        # which declarations the model sees. And `members` was unbounded at four exported doors, so
+        # `members: ['ghost']` travelled to the wire. **Production-reachable without an adversary:
+        # a hand-edited or mis-generated manifest is what this door exists for.**
+        #
+        # Every value a row carries is an operand. The bound is the same one the stage kinds use.
+        for key, val in r.items():
+            if not _is_exactly(key, str):
+                raise ValueError(f"declarations[{i}] has a non-string key {key!r}")
+            if key == "members":
+                if not _is_exactly(val, (list, tuple)) or any(
+                    not _is_exactly(m, str) or not m for m in val
+                ):
+                    raise ValueError(
+                        f"declarations[{i}].members is {val!r}; members are a plain list of "
+                        f"non-empty declaration ids, and each is a foreign key (C-11 / M5)."
+                    )
+                continue
+            if not _is_exactly(val, (str, bool, int, type(None))):
+                raise ValueError(
+                    f"declarations[{i}].{key} is a {type(val).__name__}; a row field is a plain "
+                    f"scalar. Every field a row carries can be named by an `order_by`, a budget or "
+                    f"a filter, so an exotic value here decides the surface (§0.14.1)."
+                )
+        out.append(dict(r))
+    return out
 
 
 # ── CP-1.8a · narrowing stages are DATA, and the ordering is explicit ────────────────────────────
