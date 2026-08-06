@@ -1,5 +1,39 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ▶ GAME BUILD — `M1` and `M2` are BUILT (2026-08-06, branch `feat/game-logic`)
+
+**HEAD:** `1a3497418` · Run-state: [`docs/plans/2026-08-06-game-tier-build-RUN-STATE.md`](../plans/2026-08-06-game-tier-build-RUN-STATE.md) — **read it before `git log`.**
+
+Two milestones landed, in the order §2 of that file derives rather than chooses.
+
+| | |
+|---|---|
+| **`M1`** `554e803a4` | **The actor hub got its first consumer.** `commit-service`'s combat `Actor` no longer holds `hp` / `max_hp` / `av` / `stats` — those numbers are hub quantities addressed by ORDINAL, and the engine finds them through an `EngineRole` binding a reality declares in content. The legacy shape was **deleted, not ported**: the PO's instruction was explicit that `quantity[0] = "hp"` would pass every check and change nothing. |
+| **`M2`** `1a3497418` | **A verb is a declared ROW.** One arm in `law.rs` routes to `domain/substrate.rs`, which resolves every verb that will ever exist without branching on a name. Adding a verb is a TOML row — asserted by `adding_a_verb_touches_zero_files.rs`, not claimed. |
+
+**Two new gates**, both mechanical, both bite-tested: `scripts/engine-vocabulary-gate.py` (no engine
+source may name a quantity a shipped preset declares — 97 files, 6 trees, 6/6 harness mutations red)
+and `FORBIDDEN_VERB_KEYS` (an author may not write a field that IS an authorisation verdict —
+`CMD-10`'s owed bite, discharged).
+
+**Schema `RULESET_SCHEMA_VERSION` went 5 → 7**, in two deliberate steps with two golden-digest repins
+and their reasons: v6 for `ResourceDecl::role`, v7 for the verb table.
+
+**Evidence:** `cargo test --workspace` **2254 passed, 0 failed** (159 suites) · game-server TS **70
+tests, 0 fail** · full pre-commit green, 21 gate self-tests green · **live smoke GREEN** on real
+Postgres (`scripts/declared-verb-live-smoke.sh`) · an independent **mechanical oracle AGREES**
+(`scripts/declared-verb-oracle.py` — Python, the preset parsed as text, a running sum over rows read
+back from the log).
+
+**What is NOT done, stated plainly:** `M2.3` — *replace a `law.rs` arm* — is **not discharged**, and
+the measurement that stopped it is in §6c: **no shipped arm is a pure `Delta`**, and `Delta` is the
+only effect door built. The four legacy arms leave when their doors do.
+
+**New deferral:** `D-PER-ACTOR-STATS-UNEXPRESSIBLE`, with an ASSERTED TRIGGER (a test that reds when
+its own subject arrives), not prose.
+
+---
+
 **HEAD:** `37e453255` + merge of `origin/main` (`1dc1509ed`) · **Branch:** `feat/frontend-tools-mcp-migration` · 2026-08-02
 
 > **MERGE 2026-08-02** — `origin/main` (67 commits: the game-logic promotion + a Dependabot
