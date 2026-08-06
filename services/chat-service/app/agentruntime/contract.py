@@ -15,7 +15,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Literal
+
+from . import canon
 
 CONTRACT_VERSION = "1.0.0"
 
@@ -26,9 +29,44 @@ Lifecycle = Literal["draft", "admitted", "deprecated", "retired"]
 LIFECYCLES: frozenset[str] = frozenset({"draft", "admitted", "deprecated", "retired"})
 
 _ID = re.compile(r"^[a-z][a-z0-9_]*$")
+_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 
 
-class ContractViolation(Exception):
+class UntrustedRow(ValueError):
+    """A manifest row that did not come from an admission, on either side of the file.
+
+    §6.1 layer 3. **The type was never the boundary it was believed to be**, and trusting it hid two
+    separate defects: `build()` wrote a row for any object carrying a `.declaration` attribute (a
+    four-line duck-typed class put `sneaky` into a generated manifest), and `load()` served whatever
+    JSON was on disk — so a row **typed in by hand** reached the assembler having passed no clause.
+
+    JSON has no types. A boundary that assumes its neighbour validated is a boundary that validates
+    nothing.
+
+    🔴 **IT LIVES HERE NOW, AND IT IS A `ValueError`.** It was defined in `manifest.py`, so the one
+    door a consumer actually stands behind — `rows_of` — could not raise it without an import cycle
+    and raised `ContractViolation` for a bad row and a bare `ValueError` for a bad document: **two
+    unrelated classes at one exported door, neither of them the one whose docstring is verbatim this
+    case.** A verifier measured it and called it a breaking change, because every pre-delta refusal
+    at that door was a `ValueError` and callers catch what a door used to raise. Both halves are
+    answered by putting the class where the contract is and keeping it a `ValueError`: one documented
+    refusal, and no caller's `except` stops working.
+    """
+
+
+class UnresolvedReference(UntrustedRow):
+    """C-11 / M5 — a member naming a declaration the manifest does not contain."""
+
+    def __init__(self, declaration_id: str, member: str) -> None:
+        self.declaration_id = declaration_id
+        self.member = member
+        super().__init__(
+            f"{declaration_id} references {member!r}, which is not admitted. A reference is a "
+            f"foreign key into the manifest (C-11 / M5) — resolve it or do not declare it."
+        )
+
+
+class ContractViolation(UntrustedRow):
     """A declaration that does not satisfy the contract. Carries the field path, per C-12.
 
     C-12: *name the field path rejected, the reason, and what would be accepted.* The measured
@@ -106,11 +144,29 @@ def derive_owning_service(source_path: str) -> str:
 #: handed.
 #:
 #: So the rule stops being about the value and becomes about the SCHEMA: a row carrying an unknown
-#: key **passed no clause**, which is the same sentence `UntrustedRow` already exists for. `lane`,
-#: `tier`, `cost` and `relevance` are therefore refused today **on purpose** — §0.14.1c records them
-#: as UNBUILT with CP-2/CP-4 owning their producers, and a door that accepted them would be letting
-#: an unbuilt capability in through the back.
-ROW_FIELDS: dict[str, tuple] = {
+#: key **passed no clause**, which is the same sentence `UntrustedRow` already exists for.
+#:
+#: 🔴 **AND `lane`, `tier`, `cost` AND `relevance` ARE NOT HERE — WHICH IS THE WHOLE FIX, AND THE
+#: LAST ROUND WROTE THE SENTENCE ABOVE AND THEN LISTED THEM ANYWAY.** The comment said they were
+#: *"refused today on purpose"*; four lines below, the dict defined all four, so both doors accepted
+#: a hand-typed `"cost": 1000000000` and a hand-typed `"relevance": 9999` — and a verifier measured
+#: the second one **selecting which single declaration the model sees** under `OrderBy(relevance) →
+#: TopK(1)`. The file argued the correct rule and shipped its four exceptions in the same literal.
+#:
+#: The rationalisation that produced them is worth keeping in view, because it read as principle:
+#: *"a hand-typed but well-typed `cost` is the hand-edited-manifest threat, whose **only** answer is
+#: the document digest at §6.4.2, deliberately not taken."* The first half is true — no value bound
+#: distinguishes a forged cost from a real one, and shipping one would be a gate with no subject.
+#: **The word "only" was false.** Removing these four entries refuses the forged cost outright, and
+#: it is *stronger* than the digest rather than a trade: the accepted set is strictly smaller, every
+#: row is still fully re-validated, and the manifest format does not change — where §6.4.2 records
+#: that a digest **does** change the format, and that a recomputed digest passes.
+#:
+#: §0.14.1c owns the producers: CP-2 for `relevance`, CP-4 for `lane`/`tier`/`cost`. Nothing writes
+#: them today, so nothing legitimate is refused. When a producer is built, the field arrives **with
+#: it**, in the same change — which is what "a record and the place that consumes it are ONE change"
+#: means, applied to a schema.
+ROW_FIELDS = MappingProxyType({
     "id": (str,),
     "kind": (str,),
     "owning_service": (str,),
@@ -118,38 +174,23 @@ ROW_FIELDS: dict[str, tuple] = {
     "contract_version": (str,),
     "admitted_against": (str,),
     "members": (list, tuple),
-    # 🔴 **THE RANKING FIELDS, AND THE HONEST LINE ABOUT THEM.** A verifier showed a hand-typed
-    # `"cost": 1000000000` steering `TakeWhileBudget` and asked for it to be closed. It **cannot be
-    # closed by a value bound**: `1000000000` is a well-typed integer, and no rule distinguishes a
-    # forged cost from a real one. That is the **hand-edited-manifest** threat, and this design
-    # already records its only answer — a document digest, §6.4.2, **not taken** because it trades
-    # re-validation for tamper-evidence.
-    #
-    # What IS closable, and what the finding actually contained, is an **undefined** field: a row
-    # carrying a key the contract never named passed no clause for it, and every stage will rank on
-    # whatever it is handed. So these are named and bounded; anything else is refused.
-    #
-    # §0.14.1c records their producers as CP-2 (`relevance`) and CP-4 (`lane`, `tier`, `cost`), so a
-    # row carrying one today came from somewhere those checkpoints have not built yet — which is
-    # worth knowing and is not, by itself, a forgery.
-    "lane": (str,),
-    "tier": (str,),
-    "cost": (int,),
-    "relevance": (int,),
-}
-#: Fields a row must carry. `members` is required rather than defaulted: `r.get("members", ()) or ()`
-#: served **absent, `null`, `0` and `false`** as "no members", so the M5 reference check silently had
-#: nothing to check.
-ROW_REQUIRED = frozenset({"id", "kind", "owning_service", "lifecycle", "members"})
+})
+#: Every field is required — the row `_row` writes carries exactly these seven and nothing else.
+#:
+#: 🔴 **THIS WAS A FIVE-ELEMENT SUBSET AND THAT SUBSET WAS ITSELF A HOLE.** `validate_document`
+#: additionally required the two §6.4 stamps, so a row carrying **exactly** `ROW_REQUIRED` passed
+#: `rows_of` and failed `load()` — the two doors disagreeing about validity while a docstring said
+#: they were one definition. Derived from `ROW_FIELDS` rather than restated, so the two cannot drift.
+ROW_REQUIRED = frozenset(ROW_FIELDS)
 
 
 def check_row_shape(row, where: str) -> None:
-    """One definition of a valid manifest row, for **every** door.
+    """The SHAPE half of one definition of a valid manifest row — see `check_row` for the whole.
 
-    🔴 There were two: `rows_of` bounded fields and `validate_document` bounded none, so `load()`
-    accepted a row the assembler then refused — **with a different exception type**. Two definitions
-    of the same thing in one package is the failure `UntrustedRow`'s own docstring is about, and it
-    arrived because a fix was applied at the door a verifier had named.
+    🔴 There were two definitions: `rows_of` bounded fields and `validate_document` bounded none, so
+    `load()` accepted a row the assembler then refused. Consolidating the *shape* left the *clauses*
+    split — nine classes of row still reached the consumer that `load()` refused — so this function
+    is deliberately no longer the door. **Callers want `check_row`.**
 
     Raises `ContractViolation`, which per C-12 names the field path, the reason, and what would be
     accepted — never "invalid".
@@ -177,11 +218,93 @@ def check_row_shape(row, where: str) -> None:
             raise ContractViolation(
                 rid or "", f"{where}.{key}", f"is a {type(val).__name__}",
                 f"exactly {' or '.join(w.__name__ for w in want)}")
+    # 🔴 **THE NON-EMPTY HALF, WHICH THE CONSOLIDATION DELETED.** `rows_of` carried
+    # `if not _is_exactly(r.get("id"), str) or not r.get("id")`; moving it here reproduced the type
+    # half and dropped the rest, so `id: ""` was REFUSED before the consolidation and ACCEPTED after
+    # — measured in one process against both sources. An empty id is the `AllowList` membership key
+    # for every row that omits one, and the vehicle is plain JSON.
+    # `rid`, not a second `row["id"]`: the builder's own pre-commit read-twice sweep flagged the
+    # mixed-mechanism pair here. It is provably safe (the exact-type bound above means both reads are
+    # the builtin on one storage) — and "safe because of an argument three lines up" is exactly what
+    # was said about the five TOCTOUs this run has already paid for. One read.
+    if not rid:
+        raise ContractViolation(
+            "", f"{where}.id", "is empty",
+            "a non-empty declaration id; an id decides membership in every allow-list and deny-list "
+            "it is compared against (§0.14.1)")
     for m in row["members"]:
         if type(m) is not str or not m:
             raise ContractViolation(
                 rid or "", f"{where}.members", f"contains {m!r}",
                 "non-empty declaration ids; each member is a foreign key (C-11 / M5)")
+
+
+def check_row(row, where: str) -> None:
+    """**One definition of a VALID manifest row, for every door — shape AND clauses.**
+
+    🔴 The previous round consolidated the *shape* and called it one definition. A verifier then
+    drove fifteen row shapes through both doors and found **nine classes** that `rows_of` accepted
+    and `load()` refused: an unknown `kind`, an unknown `lifecycle`, an `id` matching no identifier
+    pattern, an empty `id`, a **skill with no members**, a **tool with members**, a row missing both
+    §6.4 stamps, and a member naming nothing. The door the consumer actually stands behind —
+    `SurfaceAssembler`, `discover`, `declarations`, `rows_of`, none of which go through `load()` —
+    was **the weaker of the two**. A shape check that admits `members: ['ghost']` is not a row check.
+
+    So the clauses run here too, and every row-reader in the package calls this one function:
+    `rows_of`, `validate_document`, `_row` (the WRITER — it never checked its own output, so an
+    added field was written to disk and refused afterwards by `load()` and by CI) and
+    `build(previous=)` (which had a third, weaker, hand-written definition).
+    """
+    check_row_shape(row, where)
+    try:
+        check_contract(Declaration(
+            id=row["id"],
+            kind=row["kind"],
+            # The row stores the DERIVED owner; the contract derives it from a path. Feed the stored
+            # owner back through the same shape so a row naming an owner nothing could have derived
+            # is rejected rather than trusted. §0.14.2 door (a): `owning_service` is the one row
+            # string the contract does not ASCII-constrain, and an NFD spelling would validate and
+            # store un-normalised — two `canon.digest` values for one visibly identical document.
+            source_path=f"services/{canon.nfc(row['owning_service'])}/",
+            lifecycle=row["lifecycle"],
+            members=tuple(row["members"]),
+        ))
+    except ContractViolation as exc:
+        raise ContractViolation(row["id"], f"{where}.{exc.field_path}", exc.reason,
+                                exc.accepted) from exc
+    # Both stamps, because a field nothing checks is a field anything can say. **A SYNTAX check, not
+    # a validity one, deliberately and with a residual**: `"99.0.0"` and `"0.0.0"` pass — they are
+    # well-formed versions that never existed. A shape check cannot tell a real generation from a
+    # plausible one, and the safe direction is this one, because a bogus stamp lands a row *in*
+    # §6.4's queue rather than out of it.
+    for stamp_field in ("contract_version", "admitted_against"):
+        stamp = row[stamp_field]
+        if not _VERSION.match(stamp):
+            raise ContractViolation(
+                row["id"], f"{where}.{stamp_field}", f"is {stamp!r}",
+                "MAJOR.MINOR.PATCH — §6.4 needs both the origin generation (`contract_version`) and "
+                "what this admission was checked against (`admitted_against`); the re-admission "
+                "queue is the difference between them, so an unreadable stamp empties it silently")
+
+
+def check_document_rows(rows, where: str) -> None:
+    """The clauses that are properties of the SET, not of a row: duplicate ids, and M5.
+
+    Both were run by `validate_document` and by neither consumer door, which is how
+    `members: ['ghost']` reached `rows_of`, `declarations`, `discover` and `assemble()` for three
+    consecutive rounds. M5 is re-run on every read because a member that resolved at generation can
+    be broken by an edit to the file afterwards.
+    """
+    ids: set[str] = set()
+    for i, r in enumerate(rows):
+        if r["id"] in ids:
+            raise ContractViolation(r["id"], f"{where}[{i}].id", "is a duplicate declaration id",
+                                    "one row per declaration id")
+        ids.add(r["id"])
+    for r in rows:
+        for m in r["members"]:
+            if m not in ids:
+                raise UnresolvedReference(r["id"], m)
 
 
 def check_contract(declaration: Declaration) -> str:

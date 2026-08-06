@@ -52,6 +52,30 @@ from app.agentruntime import (
 
 _REPO = Path(__file__).resolve().parents[3]
 
+#: 🔴 **ONE FIXTURE ROW, DERIVED FROM THE CONTRACT — because hand-written partial rows were a whole
+#: class of false confidence in this file.** Ranking fixtures were `{id, kind, cost, lane}`, so every
+#: ordering test ran against a shape the manifest can never produce; row-bound fixtures omitted the
+#: §6.4 stamps, so they exercised a door the reader half never sees. `check_row` refusing them is the
+#: door working, and completing them by hand at each site is how the next omission arrives.
+#:
+#: It is asserted against `ROW_FIELDS` at import, so adding a contract field without adding it here
+#: fails immediately rather than leaving the fixtures a generation behind the writer.
+_VALID_ROW = {
+    "id": "t0",
+    "kind": "tool",
+    "owning_service": "book-service",
+    "lifecycle": "admitted",
+    "contract_version": "1.0.0",
+    "admitted_against": "1.0.0",
+    "members": [],
+}
+
+
+def _rows(n: int = 4, **over) -> list[dict]:
+    """`n` valid rows, `t0`..`t{n-1}`, each with a distinct `owning_service` so a ranking has
+    something to rank on that a row can legitimately carry."""
+    return [{**_VALID_ROW, "id": f"t{i}", "owning_service": f"svc{i}", **over} for i in range(n)]
+
 
 def _tool(id_: str = "book_list", **kw) -> Declaration:
     kw.setdefault("source_path", "services/book-service/internal/api/list.go")
@@ -290,7 +314,8 @@ class TestDiscoveryReturnsNothingForLegacyDeclarations:
         # names and got an identical pass. The assertion above therefore measures nothing TODAY;
         # it is armed for CP-4. Without this control the row would read as a live check.
         planted = {"id": legacy_tools[0], "kind": "tool", "owning_service": "book-service",
-                   "lifecycle": "admitted", "contract_version": "1.0.0", "members": []}
+                   "lifecycle": "admitted", "contract_version": "1.0.0",
+                   "admitted_against": "1.0.0", "members": []}
         planted_surfaced = {r["id"] for r in discover({"declarations": [planted]})}
         assert planted_surfaced & set(legacy_tools), (
             "the leak detector cannot detect a leak: a legacy tool placed directly in the manifest "
@@ -430,7 +455,7 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
             f"the ORIGIN generation was not preserved across the amendment: {origins}"
         )
 
-    def test_THE_QUEUE_IS_EMPTY_BY_CONSTRUCTION__P4_IS_NOT_SATISFIED_HERE(self, monkeypatch):
+    def test_THE_QUEUE_IS_EMPTY_BY_CONSTRUCTION__P4_IS_NOT_SATISFIED_HERE(self, monkeypatch, tmp_path):
         """🔴 **THE TEST THAT RECORDS A FAILURE INSTEAD OF HIDING IT.**
 
         `admitted_against` ← `Admitted.contract_version` ← `check_contract()`, whose only success
@@ -493,20 +518,64 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         # for free — which is why the previous version stayed green while a verifier ran the
         # mechanism underneath it. A queue member requires a declaration in `previous` and **absent
         # from `admitted`**, so the test performs exactly that partial re-admission.
+        # 🔴 **AND IT WAS STILL BLIND TO THE ONE LANDING SITE §6.4.1's OWN ARGUMENT NAMES.** Four
+        # consecutive verifiers built the mechanism inside `generate()` — the only real writer —
+        # proved it on disk (`QUEUE=['book_get']`, draining to `[]`, the file loading cleanly) and
+        # measured this test **green**, because its only exit is `build`'s refusal and the mechanism
+        # does not touch `build`. The docstring above claimed it "reds the day the mechanism lands";
+        # for the most likely landing site it did not, four rounds running.
+        #
+        # So the partial re-admission is now driven through **both** producers. A queue that appears
+        # by either route reds.
+        # ORDER MATTERS AND IT IS THE WHOLE POINT: the `generate()` route writes its pair at the
+        # CURRENT version and amends afterwards, because a queue can only exist where a row's stamp
+        # predates the document's. My first version amended first, so both files were written at one
+        # version — and the test passed with a working mechanism underneath it, which is the same
+        # vacuity it was being repaired for. Measured before it was believed.
+        queue_gen = self._partial_via_generate(monkeypatch, tmp_path)   # amends to 3.0.0 inside
+        queue_build = self._partial_via_build(after)                    # contract is 3.0.0 now
+        for route, queue in (("generate()", queue_gen), ("build()", queue_build)):
+            if queue:
+                raise AssertionError(
+                    f"§6.4's re-admission queue is NON-EMPTY via {route} ({queue}) — the "
+                    f"grandfathering mechanism has LANDED. §6.4.1's FAIL record, §0.14.1c's row and "
+                    f"this test are all stale now: replace them with a drain test (fills on a "
+                    f"breaking amendment, empties as each declaration is re-admitted). This test "
+                    f"asserts a defect, and the defect is gone."
+                )
+
+    @staticmethod
+    def _queue_of(doc) -> list[str]:
+        return sorted(r["id"] for r in doc["declarations"]
+                      if r["admitted_against"] != doc["contract_version"])
+
+    def _partial_via_build(self, previous):
+        """`None` means the mechanism is absent: `build` refuses to lose the row. Today's state."""
+        try:
+            return self._queue_of(build([admit(_tool("book_list"))], previous=previous))
+        except UntrustedRow:
+            return None
+
+    def _partial_via_generate(self, monkeypatch, tmp_path):
+        """The same partial re-admission through **`generate()`**, reading the queue off the FILE.
+
+        §6.4.1's own argument puts the grandfathering mechanism here, and a mechanism that lands
+        here never reaches `build`'s refusal — which is exactly why the `build`-only version of this
+        test stayed green while a verifier ran a working queue underneath it.
+        """
+        path = tmp_path / "agent-runtime-manifest.json"
+        # The pair on disk, stamped at the version in force NOW...
+        first = generate([admit(_tool("book_list")), admit(_tool("book_get"))],
+                         path=path, bootstrap=True)
+        assert self._queue_of(first) == [], "the pre-amendment file already has a queue"
+        # ...then the breaking amendment, and only then the partial re-admission. Written this way
+        # round because amending FIRST leaves both stamps equal, and a queue cannot form.
         self._amend(monkeypatch, "3.0.0")
         try:
-            partial = build([admit(_tool("book_list"))], previous=after)
+            generate([admit(_tool("book_list"))], path=path)
         except UntrustedRow:
-            return          # the mechanism is absent: `build` refuses to lose the row. Today's state.
-
-        queue = sorted(r["id"] for r in partial["declarations"]
-                       if r["admitted_against"] != partial["contract_version"])
-        raise AssertionError(
-            f"§6.4's re-admission queue is NON-EMPTY ({queue}) — the grandfathering mechanism has "
-            f"LANDED. §6.4.1's FAIL record, §0.14.1c's row and this test are all stale now: replace "
-            f"them with a drain test (fills on a breaking amendment, empties as each declaration is "
-            f"re-admitted). This test asserts a defect, and the defect is gone."
-        ) if queue else None
+            return None                      # the row cannot be lost: the mechanism is absent
+        return self._queue_of(json.loads(path.read_text("utf-8")))
 
     def test_A_DECLARATION_CANNOT_SILENTLY_LEAVE_THE_MANIFEST(self, monkeypatch):
         """§1 says the plan deletes nothing; §6.4 says a declaration entering the re-admission queue
@@ -640,14 +709,33 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         doc = {**good, "declarations": rows}
         rows[0] = Smuggler(rows[0], rows)
 
-        try:
-            out = validate_document(doc)
-        except UntrustedRow:
-            return                      # refusing outright is also correct
-        ids = [r["id"] for r in out["declarations"]]
-        assert "TYPED_BY_HAND" not in ids, (
-            f"a row smuggled itself in during validation and the validator returned it: {ids}"
+        # 🔴 **THIS TEST WENT VACUOUS AND REPORTED THE SAME GREEN AS A TEST THAT RAN.** Closing the
+        # row schema made `check_row` refuse the `dict` subclass *before* its `.get` is ever called,
+        # so control reached `except UntrustedRow: return` and the assertion below was never
+        # evaluated — a verifier proved it by reverting the fix this test exists for and measuring
+        # the suite still green. A coverage regression created by an improvement, invisible because
+        # an early `return` is indistinguishable from a pass.
+        #
+        # So the refusal is now ASSERTED rather than caught, and the property the fix actually buys
+        # gets its own assertion on a vehicle that survives every door.
+        with pytest.raises(UntrustedRow, match="is a Smuggler"):
+            validate_document(doc)
+
+        # The live half: a plain, fully valid document. What R13's fix bought is that **nothing the
+        # validator returns was read after it was checked** — neither the rows nor the two document
+        # stamps. Reverting either half of `return {manifest_version, contract_version, [dict(r)…]}`
+        # to `{**doc, …}` or to `return doc` reds one of these three.
+        plain = build([admit(_tool("book_list"))], previous=None)
+        out = validate_document(plain)
+        assert out is not plain, "the validator returned the caller's own document object"
+        assert out["declarations"][0] is not plain["declarations"][0], (
+            "the validator returned the caller's own ROW object; a row's `.get` is user code and "
+            "this function calls it, so the object that leaves must be the copy that was checked"
         )
+        # ...and the stamps are the validated values, not a second read of the caller's container —
+        # `contract_version` is §6.4's queue comparand, so a re-read is a different comparand.
+        assert out["contract_version"] == plain["contract_version"]
+        assert out["manifest_version"] == plain["manifest_version"]
 
     def test_EVERY_ROW_FIELD_IS_BOUNDED__not_only_the_id(self):
         """🔴 `id` was bounded and every other field steers a decision. `OrderBy` sorts on any field
@@ -659,21 +747,231 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         **Production-reachable without an adversary**: a hand-edited or mis-generated manifest is
         precisely what this door exists for.
         """
-        base = {"id": "t0", "kind": "tool", "owning_service": "book-service",
-                "lifecycle": "admitted", "members": []}
+        base = dict(_VALID_ROW)
         from app.agentruntime.contract import ContractViolation
-        for bad in ({"lane": {"nested": 1}}, {"cost": [1]}, {"relevance": 1.5},
-                    {"tier": {1, 2}}, {"members": "not-a-list"}, {"members": [""]},
-                    {"members": [None]},
+        for bad in ({"members": "not-a-list"}, {"members": [""]}, {"members": [None]},
                     # 🔴 The class the type bound could not reach: an **undefined** field. A verifier
                     # steered `TakeWhileBudget` with a plain `"cost": 1000000000`, and no value bound
                     # can refuse a well-typed integer. What IS refusable is a key the contract never
                     # named — the row passed no clause for it, and every stage will rank on it.
-                    {"weight": 999}, {"": 1}):
+                    {"weight": 999}, {"": 1},
+                    # 🔴 **AND THE FOUR RANKING FIELDS ARE IN THIS LIST NOW, WHICH IS THE POINT.**
+                    # The previous round wrote "they are refused today on purpose" in a comment and
+                    # then NAMED all four in `ROW_FIELDS` four lines below, so both doors accepted a
+                    # hand-typed `cost` and a hand-typed `relevance` — and a verifier measured
+                    # `relevance` choosing which SINGLE declaration survives `TopK(1)`. Removing the
+                    # four entries refuses the forged value outright and breaks nothing, because
+                    # §0.14.1c puts their producers at CP-2 and CP-4 and nothing writes them today.
+                    {"cost": 1000000000}, {"relevance": 9999}, {"lane": "read"}, {"tier": "hot"}):
             with pytest.raises(ContractViolation):
                 rows_of({"declarations": [{**base, **bad}]})
-        # ...and the legitimate shapes still pass.
-        rows_of({"declarations": [{**base, "lane": "read", "cost": 3, "tier": "hot"}]})
+        # ...and the row the WRITER produces still passes, which is what makes the closure honest
+        # rather than merely strict: `_row` emits exactly `ROW_FIELDS` and no more.
+        rows_of({"declarations": [dict(_VALID_ROW)]})
+
+    # ── The bounds that were tightened with no test over any of them ────────────────────────────
+    #
+    # 🔴 A verifier weakened each of the four one at a time and measured the suite **green** on
+    # three, then proved each weakening restores a real defect end-to-end. *"A fix without a
+    # red-able test is not a closed finding"* is a standing rule of this run, and three consecutive
+    # rounds shipped strengthenings that nothing would notice being reverted. These are those tests,
+    # and each names the defect its weakening restores rather than the line it covers.
+
+    def test_BOTH_DOORS_REFUSE_THE_SAME_ROW__and_the_consumer_door_is_not_the_weaker_one(self):
+        """🔴 **THE CONSOLIDATION WAS OF THE SHAPE, AND THE VALIDITY STAYED SPLIT — IN THE LEAKING
+        DIRECTION.** A verifier drove fifteen shapes through both doors and measured **nine** that
+        `rows_of` accepted and `load()` refused. `rows_of` is the door `SurfaceAssembler`, `discover`
+        and `declarations` all stand behind, and **none of them goes through `load()`** — so the
+        weaker definition was the one facing the consumer. `members: ['ghost']` reached the wire for
+        three consecutive rounds this way, each row individually valid.
+
+        This also guards the `validate_document` half, which had **no test at all**: deleting its
+        `check_row` call left the suite green while restoring the two-definitions defect the previous
+        round was named for.
+        """
+        cases = {
+            "unknown kind": {"kind": "nonsense"},
+            "unknown lifecycle": {"lifecycle": "??"},
+            "id matching no identifier pattern": {"id": "!!! HAND TYPED !!!"},
+            "empty id": {"id": ""},
+            "a skill with no members": {"kind": "skill", "members": []},
+            "a tool WITH members": {"kind": "tool", "members": ["t9"]},
+            "a member naming nothing": {"kind": "skill", "members": ["ghost"]},
+            "an owner nothing could derive": {"owning_service": ""},
+            "an unreadable §6.4 stamp": {"admitted_against": "banana"},
+        }
+        for name, bad in cases.items():
+            doc = {"manifest_version": 1, "contract_version": "1.0.0",
+                   "declarations": [{**_VALID_ROW, **bad}]}
+            with pytest.raises(UntrustedRow):
+                validate_document(doc)
+            with pytest.raises(UntrustedRow):
+                rows_of(doc)
+            # ...and through the two exported doors that reach a consumer without `load()`.
+            with pytest.raises(UntrustedRow):
+                discover(doc)
+            with pytest.raises(UntrustedRow):
+                SurfaceAssembler(doc).assemble(pass_number=1)
+
+    def test_A_MISSING_REQUIRED_FIELD_IS_A_REFUSAL__not_an_uncaught_KeyError(self):
+        """`check_row` dereferences `row["members"]` and `row["id"]` unconditionally, so the
+        required-field loop is load-bearing for its OWN safety: removing it turns both exported
+        doors into an uncaught `KeyError`, which is a stack trace at a boundary whose whole job is
+        to produce a C-12 message naming the field."""
+        for missing in sorted(_VALID_ROW):
+            row = {k: v for k, v in _VALID_ROW.items() if k != missing}
+            for door in (rows_of, validate_document):
+                with pytest.raises(ContractViolation) as exc:
+                    door({"manifest_version": 1, "contract_version": "1.0.0",
+                          "declarations": [row]})
+                assert missing in str(exc.value), (
+                    f"the refusal for a missing {missing!r} does not name the field (C-12)"
+                )
+
+    def test_THE_SHAPE_HALF_REFUSES_AN_EMPTY_ID_ON_ITS_OWN(self):
+        """🔴 **The guard the consolidation DELETED, and its restoration was SILENT.**
+
+        `rows_of` carried `not _is_exactly(r.get("id"), str) or not r.get("id")`; moving it into
+        `check_row_shape` reproduced the type half and dropped the non-empty half, so `id: ""` was
+        refused before and accepted after — measured in one process against both sources.
+
+        Restoring it in `check_row_shape` was not enough to make it *observable*: `check_row` also
+        runs `check_contract`, whose identifier pattern refuses `""` for its own reason, so deleting
+        the clause again left every door still red. **A guard that only ever fires behind another
+        guard is untested by every test that goes through the door**, which is why this one is
+        asserted at the shape function directly — the only place its absence can be seen.
+        """
+        from app.agentruntime.contract import check_row_shape
+        check_row_shape(dict(_VALID_ROW), "row")                       # the control
+        with pytest.raises(ContractViolation, match="is empty"):
+            check_row_shape({**_VALID_ROW, "id": ""}, "row")
+
+    def test_THE_DOCUMENT_IS_EXACTLY_A_DICT__the_fifth_TOCTOU(self):
+        """🔴 **Open four rounds, and it survived this round's first fix too.** Every ROW was
+        exact-typed while the DOCUMENT supplying them was only `isinstance`-checked — inside the same
+        function. Measured: a `dict` subclass answered `manifest_version=1` / `contract_version=
+        '1.0.0'` to the checks and `999` / `'banana'` to the `{**doc}` at the return.
+        `contract_version` is §6.4's queue comparand, so the document that left carried a different
+        comparand from the one that was validated.
+
+        It needs its own vehicle: the smuggler test's row subclass is refused by `check_row` long
+        before the document is re-read, so that test cannot see this.
+        """
+        class LyingDoc(dict):
+            def __init__(self, real):
+                super().__init__(real)
+                self._reads = 0
+
+            def get(self, key, default=None):
+                if key == "contract_version":
+                    self._reads += 1
+                    return "1.0.0" if self._reads == 1 else "banana"
+                return super().get(key, default)
+
+        good = build([admit(_tool("book_list"))], previous=None)
+        with pytest.raises(UntrustedRow, match="LyingDoc"):
+            validate_document(LyingDoc(good))
+
+    def test_THE_ROW_TYPE_BOUND_IS_EXACT__because_isinstance_restores_the_TOCTOU(self):
+        """🔴 Weakening `type(row) is not dict` to `isinstance` restores the sixth TOCTOU **in
+        full** — measured: the validator contract-checked `'book_list'` and the consumer received
+        `'!! HAND TYPED !!'`. The closure of that finding rests entirely on this one line, and
+        nothing could see it."""
+        class LyingRow(dict):
+            def __init__(self, real):
+                super().__init__(real)
+                self._reads = 0
+
+            def get(self, key, default=None):
+                if key == "id":
+                    self._reads += 1
+                    return "book_list" if self._reads == 1 else "!! HAND TYPED !!"
+                return super().get(key, default)
+
+        doc = {"manifest_version": 1, "contract_version": "1.0.0",
+               "declarations": [LyingRow(_VALID_ROW)]}
+        for door in (rows_of, validate_document):
+            with pytest.raises(UntrustedRow, match="LyingRow"):
+                door(doc)
+
+    def test_THE_FIELD_TYPE_BOUND_IS_EXACT__because_isinstance_restores_ARM_E_at_the_row(self):
+        """🔴 Weakening the per-field bound to `isinstance` restores §0.14.1 **at the row**: a `str`
+        subclass `id` whose `__eq__` lies made `AllowList(names=('NOTHING_MATCHES_THIS',))` keep the
+        row — an unlisted declaration on the wire with no record at all, which is arm E reached
+        through the data instead of through the rule. The subclass passes the identifier pattern, so
+        the exact type is the only thing that refuses it."""
+        class SneakyId(str):
+            def __eq__(self, other):
+                return True
+
+            def __hash__(self):
+                return hash("t0")
+
+        doc = {"manifest_version": 1, "contract_version": "1.0.0",
+               "declarations": [{**_VALID_ROW, "id": SneakyId("t0")}]}
+        for door in (rows_of, validate_document):
+            with pytest.raises(ContractViolation, match="SneakyId"):
+                door(doc)
+
+    def test_THE_WRITER_CHECKS_ITS_OWN_OUTPUT__the_third_door(self):
+        """🔴 **The only function in this repository that PRODUCES a row did not consult the one
+        definition of a row.** A verifier gave `_row` one plausible CP-4 field: `build()` accepted
+        it, `generate()` wrote it to disk, and the refusal landed afterwards — at the next `load()`,
+        or in CI. CP-4 adding a row field is a scheduled occurrence of exactly that.
+
+        Driven through a real drift between a derivation and the contract, which is the shape that
+        would actually produce it: `identity_of` is a separate function, and a row is assembled from
+        what it returns rather than from what `check_contract` just approved.
+        """
+        from app.agentruntime import manifest as _m
+        good = build([admit(_tool("book_list"))], previous=None)
+        assert good["declarations"][0]["id"] == "book_list", "the control did not build"
+
+        import app.agentruntime.contract as _c
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr(_m, "identity_of", lambda d: _c.Identity(
+                id="", owning_service="book-service", lifecycle="admitted"))
+            with pytest.raises(ContractViolation, match="row.id"):
+                build([admit(_tool("book_list"))], previous=None)
+
+    def test_BUILD_PREVIOUS_USES_THE_SAME_DEFINITION__the_fourth_door(self):
+        """🔴 `build(previous=)` held a third, weaker, hand-written definition — `isinstance(r,
+        dict)`, `r.get("id")`, `r.get("contract_version")` — so a previous row carrying an undefined
+        key, a dict-valued field or a non-string key was accepted here and refused by `rows_of`.
+        `previous` is caller-supplied through the exported `build()`, in plain JSON."""
+        prev = build([admit(_tool("book_list"))], previous=None)
+        for bad in ({"weight": 999}, {"cost": 3}, {"lifecycle": {"a": 1}}, {"id": ""}):
+            broken = {**prev, "declarations": [{**prev["declarations"][0], **bad}]}
+            with pytest.raises(UntrustedRow):
+                build([admit(_tool("book_list"))], previous=broken)
+
+    def test_AN_EXPORTED_DOOR_REFUSES_WITH_ONE_DOCUMENTED_CLASS(self):
+        """🔴 `rows_of` raised **`ContractViolation`** for a bad row and a bare **`ValueError`** for
+        a bad document — two unrelated classes at one exported door, and neither was `UntrustedRow`,
+        whose docstring is verbatim this case. It was also a breaking change: every pre-consolidation
+        refusal there was a `ValueError`, and callers catch what a door used to raise. One class now,
+        and it is still a `ValueError`, so no caller's `except` stopped working."""
+        assert issubclass(ContractViolation, UntrustedRow)
+        assert issubclass(UnresolvedReference, UntrustedRow)
+        assert issubclass(UntrustedRow, ValueError)
+        with pytest.raises(UntrustedRow):
+            rows_of({})                                    # the document half
+        with pytest.raises(UntrustedRow):
+            rows_of({"declarations": [{**_VALID_ROW, "weight": 1}]})    # the row half
+
+    def test_THE_SCHEMA_ITSELF_CANNOT_BE_MUTATED_AT_RUNTIME(self):
+        """`check_row_shape` reads `ROW_FIELDS` twice — `key not in ROW_FIELDS`, then
+        `ROW_FIELDS[key]` — while `ROW_REQUIRED` two lines away was already a `frozenset`. A verifier
+        mutated the module global at runtime with no complaint, which is a check-read and a use-read
+        over a mutable global: the new read-twice site introduced by the round that was measuring
+        read-twice sites."""
+        from app.agentruntime.contract import ROW_FIELDS, ROW_REQUIRED
+        with pytest.raises(TypeError):
+            ROW_FIELDS["cost"] = (int,)
+        assert set(ROW_REQUIRED) == set(ROW_FIELDS), (
+            "every field the writer emits is required; a subset was itself a hole — a row carrying "
+            "exactly ROW_REQUIRED passed `rows_of` and failed `load()`"
+        )
 
     def test_a_document_with_NO_declarations_key_is_not_an_empty_one(self):
         """`.get("declarations", [])` served a missing key as empty — the exact confusion `rows_of`
@@ -1192,22 +1490,37 @@ class TestStageKindsAreDataNotClosures:
     """
 
     def _doc(self, n=4):
-        # 🔴 THE FIXTURE USED TO BE A PARTIAL ROW — `{id, kind, cost, lane}` and nothing else — so
-        # every ranking test ran against a shape the manifest can never produce. `check_row_shape`
-        # made that visible by refusing it, which is the door working: a test that ranks rows should
-        # rank ROWS.
-        return {"declarations": [
-            {"id": f"t{i}", "kind": "tool", "owning_service": "book-service",
-             "lifecycle": "admitted", "members": [], "cost": i + 1, "lane": "read"}
-            for i in range(n)
-        ]}
+        # 🔴 THE FIXTURE WAS A PARTIAL ROW — `{id, kind, cost, lane}` and nothing else — so every
+        # ranking test ran against a shape the manifest can never produce. Completing it by hand
+        # then made it carry `cost` and `lane`, which the contract does not define **and now
+        # refuses**: §0.14.1c puts their producers at CP-4, so a row carrying one came from a hand
+        # edit. The fixture is a real row; the budget tests moved BELOW the door, where their
+        # subject actually lives (see `_ranked`).
+        return {"declarations": _rows(n)}
+
+    def _ranked(self, n=4):
+        """Rows as a ranking stage sees them — **below the door, deliberately and with the reason
+        stated.**
+
+        `TakeWhileBudget` accumulates `cost`, and **no row can carry `cost` today**: §0.14.1c records
+        its producer as CP-4 and the schema refuses the field, so the only way one appears on a
+        manifest row is a text editor. Driving the budget through `assemble()` therefore requires a
+        fixture that is a forgery, which is what the previous version of this class silently was.
+
+        So the budget's semantics are exercised against rows handed straight to `_narrow`, and the
+        DOOR's refusal of those same rows is asserted separately
+        (`test_EVERY_ROW_FIELD_IS_BOUNDED__not_only_the_id`). Two mechanisms, two assertions — the
+        pattern this file learned the hard way when one `pytest.raises` was made to stand for both
+        and stopped being able to tell them apart.
+        """
+        return [{**r, "cost": i + 1} for i, r in enumerate(_rows(n))]
 
     def test_a_budget_walks_the_ranking_and_cuts_the_tail(self):
-        s = SurfaceAssembler(self._doc()).assemble(pass_number=1, pipeline=[
-            OrderBy(keys=(("lane", "asc"),)),
-            TakeWhileBudget("token_budget", "over budget", budget=6),
-        ])
-        assert s.names == ("t0", "t1", "t2")            # 1+2+3 fits, 4 does not
+        kept = SurfaceAssembler({"declarations": []})._narrow(
+            self._ranked(), TakeWhileBudget("token_budget", "over budget", budget=6),
+            pass_number=1, ordered_by=(("id", "asc"),),
+        )
+        assert [r["id"] for r in kept] == ["t0", "t1", "t2"]   # 1+2+3 fits, 4 does not
 
     def test_a_rank_dependent_stage_without_an_order_is_REFUSED(self):
         """A budget over an unordered collection selects an arbitrary subset — the legacy defect
@@ -1220,14 +1533,12 @@ class TestStageKindsAreDataNotClosures:
     def test_the_record_says_WHY_THIS_ONE_and_not_that_one(self):
         """§0.14.1a rule 6. `{stage: token_budget, reason: over budget}` says *that* a declaration
         was cut; it cannot answer the only question a person debugging a missing tool has."""
-        a = SurfaceAssembler(self._doc())
-        s = a.assemble(pass_number=1, pipeline=[
-            OrderBy(keys=(("lane", "asc"),)),
-            TakeWhileBudget("token_budget", "over budget", budget=6),
-        ])
-        cut = s.withheld[0]
+        a = SurfaceAssembler({"declarations": []})
+        a._narrow(self._ranked(), TakeWhileBudget("token_budget", "over budget", budget=6),
+                  pass_number=1, ordered_by=(("owning_service", "asc"), ("id", "asc")))
+        cut = a.log.records()[0]
         assert cut["tool"] == "t3" and cut["rank"] == 3
-        assert cut["ordered_by"] == [["lane", "asc"], ["id", "asc"]]
+        assert cut["ordered_by"] == [["owning_service", "asc"], ["id", "asc"]]
 
     def test_a_per_row_stage_records_no_rank_because_the_question_does_not_arise(self):
         s = SurfaceAssembler(self._doc()).assemble(pass_number=1, pipeline=[
@@ -1259,11 +1570,13 @@ class TestStageKindsAreDataNotClosures:
             ])
 
     def test_a_missing_cost_is_a_rejection_too(self):
-        doc = {"declarations": [{"id": "t0", "kind": "tool", "owning_service": "book-service",
-                                 "lifecycle": "admitted", "members": [], "lane": "read"}]}
+        """And it is now unreachable any other way: `cost` is not a field a row may carry, so a
+        budget over a manifest surface **always** takes this path until CP-4 builds the producer.
+        That is the honest state of §0.14.1c rows 1–3 and it should be visible as a test, not only
+        as a table cell."""
         with pytest.raises(ValueError, match="rejection, not a fallback"):
-            SurfaceAssembler(doc).assemble(pass_number=1, pipeline=[
-                OrderBy(keys=(("lane", "asc"),)),
+            SurfaceAssembler(self._doc(1)).assemble(pass_number=1, pipeline=[
+                OrderBy(keys=(("owning_service", "asc"),)),
                 TakeWhileBudget("token_budget", "over budget", budget=10),
             ])
 
@@ -1468,32 +1781,31 @@ class TestStageKindsAreDataNotClosures:
             def __radd__(self, other):
                 return other
 
-        doc = {"declarations": [
-            {"id": f"t{i}", "kind": "tool", "owning_service": "book-service",
-             "lifecycle": "admitted", "members": [], "cost": SneakyCost(9), "lane": "read"}
-            for i in range(4)
-        ]}
         # 🔴 **I LOOSENED THIS TO `"plain integer|plain scalar"` SO IT WOULD PASS, AND WROTE
-        # "BOTH GUARDS STAY" NEXT TO IT.** A verifier then measured the consequence: with the
-        # alternation, downgrading the door's bound to `isinstance` is **green**, because the test
-        # can no longer tell the door's refusal from the budget's. The comment described a property
+        # "BOTH GUARDS STAY" NEXT TO IT.** A verifier measured the consequence: with the
+        # alternation, downgrading the door's bound to `isinstance` was **green**, because the test
+        # could no longer tell the door's refusal from the budget's. The comment described a property
         # the assertion had just stopped checking.
         #
-        # Both guards genuinely do stay, so both are asserted — separately. This one is the budget's,
-        # reached by handing `_narrow` a row the door never saw.
+        # 🔴 **AND THE SPLIT THAT FIXED IT RE-LOOSENED THE DOOR HALF IN A NEW SPELLING** —
+        # `pytest.raises((ValueError, _CV))` is the same alternation written as a type tuple, and the
+        # next verifier measured the same weakening green through it. **Second consecutive round in
+        # which this one assertion described a property it did not check.** The lesson that finally
+        # took: an alternation over two mechanisms is not two assertions, whichever syntax spells it.
+        #
+        # So the budget's guard is asserted here, on the budget, by handing `_narrow` a row the door
+        # never saw...
         with pytest.raises(ValueError, match="plain integer"):
             SurfaceAssembler({"declarations": []})._narrow(
                 [{"id": "t0", "cost": SneakyCost(9)}],
                 TakeWhileBudget("token_budget", "over budget", budget=6),
                 pass_number=1, ordered_by=(("id", "asc"),),
             )
-        # ...and this one is the door's.
-        from app.agentruntime.contract import ContractViolation as _CV
-        with pytest.raises((ValueError, _CV)):
-            SurfaceAssembler(doc).assemble(pass_number=1, pipeline=[
-                OrderBy(keys=(("lane", "asc"),)),
-                TakeWhileBudget("token_budget", "over budget", budget=6),
-            ])
+        # ...and the door's is asserted on the door, with ONE class and the door's OWN reason. It no
+        # longer refuses this row for its type at all: `cost` is not a field a row may carry, so the
+        # refusal is the schema's and the message says so.
+        with pytest.raises(ContractViolation, match="does not define"):
+            rows_of({"declarations": [{**_VALID_ROW, "cost": SneakyCost(9)}]})
 
     def test_the_identity_check_reaches_EVERY_site_not_just_the_one_reviewed(self):
         """🔴 `type(s) in _KIND_SET` was rewritten to `is` after a metaclass forgery; the two

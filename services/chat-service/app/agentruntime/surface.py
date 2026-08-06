@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
-from .contract import check_row_shape
+from .contract import UntrustedRow, check_document_rows, check_row
 from .narrowing import NarrowingLog
 
 def rows_of(manifest_doc: dict) -> list[dict]:
@@ -41,7 +41,11 @@ def rows_of(manifest_doc: dict) -> list[dict]:
     # `_is_exactly`, not `isinstance` — this was the one type decision in the module the identity
     # sweep did not reach, found by asking which sites still spelled it the old way.
     if not _is_exactly(rows, list):
-        raise ValueError(
+        # 🔴 `UntrustedRow`, not a bare `ValueError`. This door raised **two unrelated classes**
+        # depending on which part of the document was wrong, and neither was the one whose docstring
+        # is verbatim this case. `UntrustedRow` subclasses `ValueError`, so every caller that catches
+        # what this door used to raise still catches it.
+        raise UntrustedRow(
             "manifest document has no `declarations` list. An empty catalog is `[]`; a missing key "
             "is a malformed document, and serving it as empty would hide the difference."
         )
@@ -54,11 +58,21 @@ def rows_of(manifest_doc: dict) -> list[dict]:
     # both exported and neither went through `load`).
     out = []
     for i, r in enumerate(rows):
-        # ONE definition of a valid row, shared with `manifest.validate_document`. There were two —
-        # this door bounded fields and that one bounded none — so `load()` accepted a row the
-        # assembler refused, with a different exception type. See `contract.check_row_shape`.
-        check_row_shape(r, f"declarations[{i}]")
+        # ONE definition of a VALID row, shared with `manifest.validate_document`, `_row` and
+        # `build(previous=)`. There were two, then there was one definition of the SHAPE and two of
+        # the VALIDITY — and the weaker one was **this** door, the one every consumer stands behind.
+        # A verifier drove fifteen shapes through both and measured nine that `load()` refused and
+        # this accepted: unknown `kind`, unknown `lifecycle`, an `id` matching no pattern, an empty
+        # `id`, duplicate ids, a skill with no members, a tool WITH members, a row missing both §6.4
+        # stamps, and `members: ['ghost']` — that last one reaching `rows_of`, `declarations`,
+        # `discover` and `assemble()` for three consecutive rounds while a docstring here said the
+        # definition was shared. **A shape check that admits a dangling foreign key is not a row
+        # check**, and calling it one is how the gap survived being looked at three times.
+        check_row(r, f"declarations[{i}]")
         out.append(dict(r))
+    # Duplicate ids and M5 are properties of the SET. `validate_document` ran both and this door ran
+    # neither, which is the mechanism behind `members: ['ghost']`: every row was individually valid.
+    check_document_rows(out, "declarations")
     return out
 
 
@@ -593,7 +607,7 @@ class SurfaceAssembler:
                 # limit and nothing is ever cut. A manifest row is as much an input as a stage is.
                 if not _is_exactly(cost, int):
                     raise ValueError(
-                        f"take_while_budget reads {stage.cost_field!r}, which row {row.get('id')!r} "
+                        f"take_while_budget reads {stage.cost_field!r}, which row {row['id']!r} "
                         f"does not carry as a plain integer. A missing or exotic cost is a "
                         f"rejection, not a fallback (§0.14.1a)."
                     )

@@ -27,12 +27,20 @@ from typing import Iterable
 from . import ambient, canon
 from .admission import Admitted
 from .contract import (
-    CONTRACT_VERSION, Declaration, check_contract, check_row_shape, identity_of,
+    CONTRACT_VERSION, ContractViolation, Declaration, UnresolvedReference, UntrustedRow, _VERSION,
+    check_contract, check_document_rows, check_row, identity_of,
 )
+
+# 🔴 `UntrustedRow` and `UnresolvedReference` are DEFINED IN `contract.py` now and re-exported here
+# so every existing `from .manifest import UntrustedRow` keeps working. They moved because the door
+# a consumer actually stands behind is `surface.rows_of`, which could not raise either of them from
+# here without an import cycle — so it raised `ContractViolation` for a bad row and a bare
+# `ValueError` for a bad document, two unrelated classes at one exported door. Both are `ValueError`
+# subclasses now, so no caller's `except` stops working.
+__all_reexported__ = (UnresolvedReference, UntrustedRow)
 
 MANIFEST_VERSION = 1
 
-_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 _MANIFEST_REL = Path("contracts") / "agent-runtime-manifest.json"
 # CP-1.8c — the env var name now lives behind the purity boundary (`ambient.py`).
 _ENV_VAR = ambient.MANIFEST_PATH_ENV
@@ -65,31 +73,6 @@ def manifest_path() -> Path | None:
     return None
 
 
-class UnresolvedReference(Exception):
-    """M5 — a member naming a declaration that is not admitted. Generation fails; nothing ships."""
-
-    def __init__(self, declaration_id: str, member: str) -> None:
-        self.declaration_id = declaration_id
-        self.member = member
-        super().__init__(
-            f"{declaration_id} references {member!r}, which is not admitted. A reference is a "
-            f"foreign key into the manifest (C-11 / M5) — resolve it or do not declare it."
-        )
-
-
-class UntrustedRow(Exception):
-    """A manifest row that did not come from an admission, on either side of the file.
-
-    §6.1 layer 3. **The type was never the boundary it was believed to be**, and trusting it hid two
-    separate defects: `build()` wrote a row for any object carrying a `.declaration` attribute (a
-    four-line duck-typed class put `sneaky` into a generated manifest), and `load()` served whatever
-    JSON was on disk — so a row **typed in by hand** reached the assembler having passed no clause.
-
-    JSON has no types. A boundary that assumes its neighbour validated is a boundary that validates
-    nothing.
-    """
-
-
 def _row(admitted: Admitted[Declaration], *, origin: dict[str, str] | None = None) -> dict:
     # §6.1 layer 3, the WRITE end. `isinstance` first — the type is an accident boundary, so this
     # rejects the duck type — and then the contract is re-run, because holding an `Admitted` is
@@ -103,7 +86,7 @@ def _row(admitted: Admitted[Declaration], *, origin: dict[str, str] | None = Non
     d = admitted.declaration
     check_contract(d)
     ident = identity_of(d)
-    return {
+    row = {
         "id": ident.id,
         "kind": d.kind,
         # C-0: derived from where the code lives, never read from the declaration.
@@ -151,6 +134,18 @@ def _row(admitted: Admitted[Declaration], *, origin: dict[str, str] | None = Non
         "admitted_against": admitted.contract_version,
         "members": list(d.members),
     }
+    # 🔴 **THE WRITER WAS THE THIRD DOOR, AND IT WAS THE ONE NOBODY CHECKED.** `rows_of` and
+    # `validate_document` both consult the one definition of a row; the only function in this
+    # repository that PRODUCES a row did not. A verifier gave `_row` one plausible CP-4 field and
+    # measured the result: `build()` accepted it, `generate()` **wrote it to disk**, and the failure
+    # landed afterwards — at the next `load()`, or in CI at `agentruntime-membrane-gate.py`. That is
+    # the "discovered late" shape, and CP-4 adding a row field is a scheduled occurrence of it.
+    #
+    # It also makes the closed schema self-enforcing at the only place that can violate it: adding a
+    # key here without adding it to `ROW_FIELDS` now fails in the same change rather than in the next
+    # one.
+    check_row(row, "row")
+    return row
 
 
 def build(
@@ -224,16 +219,22 @@ def build(
         )
     _prev_rows = list(_prev_rows)
     for i, r in enumerate(_prev_rows):
-        if not isinstance(r, dict) or not r.get("id"):
-            raise UntrustedRow(f"previous.declarations[{i}] has no id; it cannot carry an origin")
-        stamp = r.get("contract_version")
-        if not isinstance(stamp, str) or not _VERSION.match(stamp):
-            raise UntrustedRow(
-                f"previous.declarations[{i}].contract_version is {stamp!r}; the origin generation "
-                f"must be MAJOR.MINOR.PATCH. `previous` is caller-supplied, so it is checked here "
-                f"and not only on the way back in."
-            )
-        origin[r["id"]] = stamp
+        # 🔴 **THE FOURTH DOOR, AND IT HAD ITS OWN WEAKER DEFINITION OF A ROW.** This read
+        # `isinstance(r, dict)`, `r.get("id")` and `r.get("contract_version")` — so a `previous` row
+        # carrying an undefined key, a dict-valued field or a non-string key was ACCEPTED here and
+        # REFUSED by `rows_of`, measured. Worse, `.get("id")` here and `r["id"]` one line below are
+        # two reads of the same fact, which a `dict` subclass answers differently.
+        #
+        # `previous` is caller-supplied — the docstring above says exactly why that matters — so it
+        # goes through the same definition as every other row-reader. Unreachable through
+        # `generate()`, where `previous` comes from `load()`; reachable through the exported
+        # `build()`, in plain JSON.
+        try:
+            check_row(r, f"previous.declarations[{i}]")
+        except UntrustedRow as exc:
+            raise UntrustedRow(f"{exc}. `previous` is caller-supplied, so it is checked here and "
+                               f"not only on the way back in.") from exc
+        origin[r["id"]] = r["contract_version"]
     rows = [_row(a, origin=origin) for a in admitted]
     # 🔴 A DECLARATION PRESENT IN `previous` AND ABSENT FROM `admitted` WAS SILENTLY DROPPED, and
     # that is how the "origin" stamp turned out not to be an origin at all: a verifier regenerated
@@ -253,14 +254,10 @@ def build(
             f"one stay while it is re-admitted — IS NOT BUILT (§6.4.1). Dropping the row silently "
             f"erases the generation it originated in."
         )
-    ids = {r["id"] for r in rows}
-    for r in rows:
-        for m in r["members"]:
-            if m not in ids:
-                raise UnresolvedReference(r["id"], m)
-    dupes = sorted({r["id"] for r in rows if sum(1 for x in rows if x["id"] == r["id"]) > 1})
-    if dupes:
-        raise UnresolvedReference(dupes[0], dupes[0])
+    # M5 and the duplicate check are properties of the SET, and they now live beside the row clauses
+    # in `contract.py` so the read side and the write side cannot disagree about them — which they
+    # did: `rows_of` ran neither, and served `members: ['ghost']` to four consumer doors.
+    check_document_rows(rows, "declarations")
     return {
         "manifest_version": MANIFEST_VERSION,
         "contract_version": CONTRACT_VERSION,
@@ -353,8 +350,26 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
     Separate from `load` so the same check covers a document that arrived any other way, and so the
     M1 drift gate can call it without reading through this module's path resolution.
     """
-    if not isinstance(doc, dict):
-        raise UntrustedRow(f"{source}: manifest is not an object")
+    # 🔴 `type(...) is dict`, not `isinstance` — **the fifth TOCTOU, open four rounds.** Every ROW
+    # was exact-typed while the DOCUMENT that supplies them was only `isinstance`-checked, inside
+    # this one function. Measured: a `dict` subclass answered `manifest_version=1` /
+    # `contract_version='1.0.0'` to the checks and `999` / `'banana'` to the `{**doc}` at the bottom
+    # — and `contract_version` is §6.4's queue comparand, so the document that left here had a
+    # different comparand from the one that was validated.
+    if type(doc) is not dict:
+        raise UntrustedRow(
+            f"{source}: manifest is a {type(doc).__name__}, not a plain JSON object. A container "
+            f"that decides its own answers can answer the validator and the consumer differently."
+        )
+    # The document schema is closed for the same reason the row schema is: a top-level key nothing
+    # defines passed no clause, and `{**doc}` used to carry it through to every reader.
+    _extra = sorted(set(doc) - {"manifest_version", "contract_version", "declarations"})
+    if _extra:
+        raise UntrustedRow(
+            f"{source}: manifest carries {_extra}, which the format does not define. One format is "
+            f"supported; an unknown key is not a newer file, it is one this reader cannot make "
+            f"claims about."
+        )
     # The document-level stamps were written from constants and read from nowhere: a verifier fed
     # `contract_version: "banana"` and a missing `manifest_version` and both passed. The only thing
     # catching it today is the drift gate's byte-equality with `build([])`, which does not survive
@@ -382,84 +397,26 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
     if type(rows) is not list:
         raise UntrustedRow(f"{source}: `declarations` is missing or not a plain list")
     rows = list(rows)
-    ids: set[str] = set()
     for i, r in enumerate(rows):
-        # ONE definition of a valid row, shared with `surface.rows_of`. This function had **no
-        # field bound at all** while that door bounded every field, so `load()` accepted rows the
-        # assembler then refused — and with a different exception type. The fix went to the door a
-        # verifier named; this is the other one.
+        # ONE definition of a valid row, shared with `surface.rows_of`, `_row` and `build(previous=)`
+        # — **shape AND clauses**. Three earlier versions of this loop each held their own copy of
+        # the clause list; consolidating only the shape left nine classes of row that this door
+        # refused and the consumer door accepted. The contract clauses, the two §6.4 stamps and the
+        # `owning_service` NFC door all moved into `contract.check_row` verbatim; the duplicate check
+        # and M5 into `contract.check_document_rows`, because they are properties of the set.
         try:
-            check_row_shape(r, f"declarations[{i}]")
-        except Exception as exc:
+            check_row(r, f"declarations[{i}]")
+        except ContractViolation as exc:
+            # Re-raised as the SAME class, with `source` folded into the field path rather than
+            # into a wrapper. Wrapping it in a bare `UntrustedRow` kept the sentence and threw away
+            # `.declaration_id` / `.field_path` / `.accepted` — so the two doors refused the same
+            # row with two different classes again, one level further down, and C-12's structured
+            # promise survived only as prose.
+            raise ContractViolation(exc.declaration_id, f"{source}:{exc.field_path}", exc.reason,
+                                    exc.accepted) from exc
+        except UntrustedRow as exc:
             raise UntrustedRow(f"{source}: {exc}") from exc
-        try:
-            check_contract(Declaration(
-                id=r.get("id", ""),
-                kind=r.get("kind", ""),
-                # The row stores the DERIVED owner; the contract derives it from a path. Feed the
-                # stored owner back through the same shape so a row that names an owner nothing
-                # could have derived is rejected rather than trusted.
-                # §0.14.2 door (a). Every other row string is ASCII-constrained by the contract;
-                # `owning_service` is not, and an NFD spelling loaded, validated and stored
-                # un-normalised — two `canon.digest` values for one visibly identical document,
-                # which is the "drift check reports a change nobody made" failure this door exists
-                # to prevent.
-                source_path=f"services/{canon.nfc(r.get('owning_service', ''))}/",
-                # 🔴 NO DEFAULT. This read `r.get("lifecycle", "draft")`, so a row with **no**
-                # lifecycle key passed validation — and was returned still missing it, because the
-                # default lived only inside this check. C-0 names lifecycle state as part of
-                # identity, so a row omitting it was admitted on read with an identity the file does
-                # not contain. It is the P4 shape at the READ half of the same boundary: a column
-                # value fixed by the code rather than by the thing being validated.
-                lifecycle=r["lifecycle"] if "lifecycle" in r else "",
-                members=tuple(r.get("members", ()) or ()),
-            ))
-        except Exception as exc:
-            raise UntrustedRow(f"{source}: declarations[{i}] failed the contract — {exc}") from exc
-        # 🔴 Both stamps are validated, because a field nothing checks is a field anything can say.
-        # A verifier fed `admitted_against` `null`, `"banana"`, `"99.0.0"` and the OLD field name;
-        # all four were accepted, and four hand-built fixtures still carried the removed name and
-        # passed — which was itself the proof that neither name was being validated.
-        #
-        # **This is a SYNTAX check and not a validity one, deliberately and with a residual.**
-        # `"99.0.0"` and `"0.0.0"` still pass: they are well-formed versions that never existed. A
-        # shape check cannot tell a real generation from a plausible one, and the safe direction is
-        # this one — a bogus stamp lands a row *in* the queue rather than out of it. An earlier
-        # version of this comment implied all four of the verifier's inputs were now rejected. Three
-        # are.
-        # 🔴 **A BACKFILL STOOD HERE AND IT WAS A LAUNDERING PATH FOR A MIGRATION THAT DOES NOT
-        # EXIST.** It adopted `admitted_against` as the origin whenever `contract_version` was
-        # absent, reasoning that for a pre-two-field row the one stamp IS the origin. True for a
-        # genuine old row — and a verifier showed the cost: a **hand-edited** row carrying
-        # `admitted_against: "99.0.0"` and no `contract_version` was rejected before and accepted
-        # after, and the carry then made `"99.0.0"` its **permanent** origin across a real
-        # `generate()`. The `"99.0.0"` residual is defensible for a queue *comparand*, where a bogus
-        # value lands the row IN the queue; an origin is not a comparand and nothing re-checks it.
-        #
-        # And the migration it was written for has **no subject**: the committed manifest is
-        # `declarations: []`. The old shapes — three of them, not the two I claimed — exist only in
-        # git history. **Nothing deployed is bricked, so nothing needs laundering to un-brick it.**
-        # It also mutated its argument, so the M1 drift gate compared a document it had silently
-        # repaired. Both gone: `load()` is strict, and a real migration, if one is ever needed, is
-        # an explicit operation somebody runs and reviews.
-        for field in ("contract_version", "admitted_against"):
-            stamp = r.get(field)
-            if not isinstance(stamp, str) or not _VERSION.match(stamp):
-                raise UntrustedRow(
-                    f"{source}: declarations[{i}].{field} is {stamp!r}; §6.4 requires BOTH the "
-                    f"origin generation (`contract_version`) and what this admission was checked "
-                    f"against (`admitted_against`), as MAJOR.MINOR.PATCH. The re-admission queue is "
-                    f"the difference between them, so an unreadable stamp empties it silently."
-                )
-        if r["id"] in ids:
-            raise UntrustedRow(f"{source}: duplicate declaration id {r['id']!r}")
-        ids.add(r["id"])
-    # M5 again, on the read side: a member that resolved at generation can be broken by an edit.
-    for r in rows:
-        for m in r["members"]:   # required by `check_row_shape`; the `or ()` default served
-            # absent, `null`, `0` and `false` as "no members", so M5 had nothing to check.
-            if m not in ids:
-                raise UnresolvedReference(r["id"], m)
+    check_document_rows(rows, "declarations")
     # 🔴 **I MATERIALISED THE ITERATION AND RETURNED THE ORIGINAL CONTAINER.** The rows were copied
     # so the loop could not be fed different values twice — and then `return doc` handed the caller
     # the document it came in on. A row's own `.get()` is user code, and this function CALLS it
@@ -469,7 +426,17 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
     #
     # A validator returns what it validated, or it has validated nothing. The document that leaves
     # here is built from the rows this function actually checked.
-    return {**doc, "declarations": [dict(r) for r in rows]}
+    #
+    # 🔴 **AND `{**doc}` WAS THE OTHER HALF OF THAT SENTENCE, LEFT UNDONE FOR FOUR ROUNDS.** The
+    # ROWS were rebuilt from what was checked and the two document STAMPS were re-read from the
+    # caller's object at the return — the same defect one level up, in the same statement as its own
+    # fix. Both stamps are now the validated values, so nothing this function returns was read after
+    # it was checked.
+    return {
+        "manifest_version": MANIFEST_VERSION,
+        "contract_version": doc_version,
+        "declarations": [dict(r) for r in rows],
+    }
 
 
 def declarations(doc: dict | None = None, *, path: Path | None = None) -> list[dict]:

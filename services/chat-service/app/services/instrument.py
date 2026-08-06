@@ -220,9 +220,16 @@ def ensure_tool_call_instrumented(chunk: dict) -> dict:
     stamped one — and so that a future real-dispatch site added without a stamp is findable as a
     ``breaker`` row with that flag, rather than silently miscounted forever.
     """
-    if chunk.get("source") not in TOOL_CALL_SOURCES:
+    # 🔴 One read of `source`, not a `.get` to classify and a `[...]` to stamp. Found by the
+    # builder's own pre-commit read-twice sweep rather than by a verifier after the fact: a `chunk`
+    # is an ordinary argument here, nothing bounds its type, and a container answering the two reads
+    # differently would classify one way and stamp another. This function is instrumentation, so a
+    # wrong stamp is not visible anywhere until someone audits the column.
+    _source = chunk.get("source")
+    if _source not in TOOL_CALL_SOURCES:
         name = chunk.get("tool") or ""
-        chunk["source"] = SOURCE_META if name in RUNTIME_PRIMITIVES else SOURCE_BREAKER
+        _source = SOURCE_META if name in RUNTIME_PRIMITIVES else SOURCE_BREAKER
+        chunk["source"] = _source
         chunk["source_inferred"] = True
     # CP-0.3 — `latency_ms` was null on every meta and breaker result, which made the field mean
     # "dispatch latency" rather than "how long this call cost the turn". A `meta` call is not free:
@@ -232,7 +239,7 @@ def ensure_tool_call_instrumented(chunk: dict) -> dict:
     # reason — the field then reads as "not measured here", never as "instant".
     if chunk.get("latency_ms") is None:
         chunk["latency_ms"] = None
-        chunk.setdefault("latency_unmeasured", chunk["source"])
+        chunk.setdefault("latency_unmeasured", _source)
     chunk.setdefault("declaration", chunk.get("tool"))
     chunk.setdefault("runtime_variant", RUNTIME_LEGACY)
     chunk.setdefault("latency_ms", None)
@@ -293,7 +300,27 @@ def _as_text(value) -> str:
 surface_withheld: ContextVar[list | None] = ContextVar("lw_surface_withheld", default=None)
 #: Whether a CATALOGUE-scope narrowing happened this turn — a fact about the turn, deliberately
 #: independent of whether the sink holding its row has since been drained by a persister.
-catalogue_outage: ContextVar[bool] = ContextVar("lw_catalogue_outage", default=False)
+#: 🔴 **THIS WAS A `bool` AND THE BOOL WAS THE DEFECT.** It held "did a catalogue outage happen this
+#: turn" — a fact whose lifetime is exactly one TURN — in a `ContextVar`, whose lifetime is the
+#: context, i.e. the thread when one is pooled. That mismatch *was* both live failures, and a
+#: verifier proved they cannot both be fixed by any single assignment: making the derivation
+#: monotone (so `narrow → drain → arm` stops ERASING a true flag) reds two tests, and leaving it
+#: lowering keeps the erasure. `arm_turn_surface` cannot tell *"a new turn is starting"* from
+#: *"this turn already narrowed"*, so no value it writes is right in both orders.
+#:
+#: Three separate rounds measured the writer at `record_catalogue_unavailable` **inert** — every
+#: production read precedes every drain — and the third also measured it **redundant**: removing it
+#: alone left the flag's own guard test passing, because the arm recomputed the same fact three
+#: lines away. A field that is both dead and duplicated is not a mechanism, it is a place for the
+#: next reader to be wrong.
+#:
+#: So the fact moved to the object whose lifetime **is** one turn: the recorder. It already holds
+#: every absorbed catalogue row, so this is not new state — it is the same state, read where it
+#: lives. Neither failure mode is constructible against that lifetime: a pooled thread cannot keep
+#: a previous turn's answer (a new turn builds a new recorder), and a drain cannot erase it (the
+#: drain is what puts the row IN the recorder). The mechanism is NOT deleted — a verifier showed it
+#: buys a real post-drain property — it is rehoused.
+_turn_recorder: ContextVar[object | None] = ContextVar("lw_turn_recorder", default=None)
 
 
 def _sink_for_record() -> list:
@@ -369,14 +396,34 @@ def arm_turn_surface() -> list[dict]:
     # *"`isinstance` was the bug"*. A rogue row then made **`arm_turn_surface` itself raise**, and
     # that is the first statement of every turn entry point: the crash-inside-its-own-fix pattern,
     # fifth occurrence, now at the one place where a failure takes the whole turn with it.
-    catalogue_outage.set(any(_is_catalogue_row(e) for e in list(sink)))
+    # 🔴 **THE ARM NO LONGER ASSIGNS THE FACT AT ALL** — see `_turn_recorder`. What it does instead
+    # is release the PREVIOUS turn's recorder, and only when it can prove the previous turn is over:
+    # an **empty** sink at arm time means nothing has been recorded for this turn yet, so no
+    # registration can legitimately belong to it. A non-empty sink means this turn already narrowed
+    # (a narrowing opened its own sink before the entry point armed), and clearing there is the
+    # erasure the previous design could not avoid.
+    #
+    # That single condition is what makes the assignment correct in **both** orders, which no
+    # assignment of a boolean could be.
+    if not sink:
+        _turn_recorder.set(None)
     return sink
 
 
 def _is_catalogue_row(row) -> bool:
-    """Exact type, and no user code on the path. `dict.get` on a subclass is user code; `type(row) is
-    dict` means the `.get` below is the builtin, so this cannot raise on any input."""
-    return type(row) is dict and row.get("scope") == SCOPE_CATALOGUE
+    """Exact type, and no user code on the path — **on the row AND on the value**.
+
+    `dict.get` on a subclass is user code; `type(row) is dict` means the `.get` below is the
+    builtin. 🔴 But bounding the row did not bound what the row CONTAINS: a plain dict whose `scope`
+    value carries a hostile `__eq__` still ran user code at the `==`, and a verifier made
+    `arm_turn_surface` — **the first statement of every turn entry point** — raise on it. Bounding
+    the container and not the value is this run's most-repeated shape; `type(v) is str` first means
+    the comparison below is `str.__eq__` and cannot dispatch anywhere.
+    """
+    if type(row) is not dict:
+        return False
+    v = row.get("scope")
+    return type(v) is str and v == SCOPE_CATALOGUE
 
 
 def record_surface_withheld(tool: str, *, stage: str, reason: str) -> None:
@@ -426,18 +473,21 @@ def record_catalogue_unavailable(*, stage: str, reason: str, count: int | None =
     """
     sink = _sink_for_record()
     entry: dict = {"scope": SCOPE_CATALOGUE, "stage": stage, "reason": reason}
+    # `type(...) is int` at every door the value can enter by, not only the one a verifier named:
+    # `True` is an `int`, so `count=False` persisted as a boolean and `count=True` as a size of 1.
+    if type(count) is not int:
+        count = None
     if count is not None:
         entry["count"] = count
     sink.append(entry)
-    # 🔴 A SEPARATE FLAG, because the sink is DRAINED and the question is about the TURN.
-    # `catalogue_outage_registered()` read the sink, and a recorder that had already absorbed it
-    # left the sink empty — so the persisted row said "outage" while the model was told nothing.
-    # The record and the screen disagreed about the same turn, which is worse than either failure
-    # alone, and it was reachable simply by constructing the recorder before reading the flag.
+    # 🔴 **A SEPARATE FLAG WAS WRITTEN HERE FOR THREE ROUNDS AND IT NEVER ONCE CHANGED AN ANSWER.**
+    # The reasoning was sound — the sink is drained and the question is about the TURN, so a reader
+    # after the drain would say "no outage" for a turn that had one — but the write was in the wrong
+    # place for it: the row and the flag went to two containers with two different lifetimes, and
+    # keeping them agreeing was then a discipline rather than a structure.
     #
-    # "Did a catalogue outage happen this turn" is a fact about the turn; it must not depend on
-    # whether somebody has since moved the rows somewhere else.
-    catalogue_outage.set(True)
+    # The row is the fact. Whoever drains it takes the fact with it, and `catalogue_outage_registered`
+    # asks the drain's destination. Nothing is written twice, so nothing can disagree.
 
 
 def catalogue_outage_registered() -> bool:
@@ -452,14 +502,22 @@ def catalogue_outage_registered() -> bool:
     So the outage is read from **the record written by the party that knows it failed**, which is
     also the only source that cannot drift from what the row says.
     """
-    # Read from the FLAG, not from the sink's current contents: the sink is drained by whoever
-    # persists it, and a drained sink used to answer "no outage" for a turn that had one.
-    if catalogue_outage.get():
+    # Ask the turn's RECORDER first, not the sink's current contents: the sink is drained by whoever
+    # persists it, and a drained sink answers "no outage" for a turn that had one. The recorder is
+    # where the drained rows went, so it is the one place the fact cannot be read *before* it exists
+    # and cannot survive *after* the turn.
+    rec = _turn_recorder.get()
+    if rec is not None and rec.catalogue_outage():
         return True
     sink = surface_withheld.get()
     if not sink:
         return False
-    return any(e.get("scope") == SCOPE_CATALOGUE for e in sink)
+    # 🔴 `_is_exactly` HERE TOO — the helper was written three lines above for exactly this and this
+    # line was left as a bare `e.get(...)`. A row of `42`, `None` or `"x"` made **the reader raise
+    # `AttributeError`**, and the reader is consulted while assembling the system prompt: a
+    # malformed row in the sink took the turn down from inside the function that exists to report
+    # that something went wrong. The fix went to the site a verifier named and not to the pair.
+    return any(_is_catalogue_row(e) for e in list(sink))
 
 
 class AdvertisedToolsRecorder:
@@ -491,6 +549,11 @@ class AdvertisedToolsRecorder:
         #: `bind_sink` remains for the caller that legitimately owns a different sink (voice builds
         #: its own; tests supply one), but the DEFAULT is no longer a step that can be skipped.
         self._sink: list | None = surface_withheld.get()
+        # 🔴 **THE TURN'S OUTAGE FACT NOW LIVES HERE**, and registering is part of construction for
+        # the same reason adopting the sink is: a step a caller has to remember is a step two
+        # functions can drift apart on, which `bind_sink` already demonstrated. A recorder built
+        # inside a turn IS that turn's recorder.
+        _turn_recorder.set(self)
         # F-48 — the SEGMENT this recorder owns, and it exists because one SQL expression had to
         # satisfy two requirements that pull in opposite directions:
         #
@@ -667,9 +730,27 @@ class AdvertisedToolsRecorder:
         # failure nothing is known, not even the size, and `0` claims *we know nothing was there*.
         # The guard existed at the recorder's other entry point and not at this one, so an injection
         # writing `count or 0` here was measured **green**.
+        # And `type(...) is int` for the third door: `True` is an `int`.
+        if type(count) is not int:
+            count = None
         if count is not None:
             entry["count"] = count
         self._withheld.append(entry)
+
+    def catalogue_outage(self) -> bool:
+        """Did a catalogue-scope narrowing reach this recorder? **The turn's outage fact, at home.**
+
+        No new state: the rows are already here, filed by scope, because `absorb` put them here.
+        That is the whole point of the rehousing — a fact stored twice is a fact that can disagree
+        with itself, and the previous design stored it in a `ContextVar` beside the rows and spent
+        three rounds keeping the two in step by hand.
+
+        `type(...) is str` on the value for the same reason `_is_catalogue_row` does it: this is
+        consulted while the system prompt is being assembled, so a comparison that can dispatch into
+        user code is a turn that can die inside the function reporting that something went wrong.
+        """
+        return any(type(w.get("scope")) is str and w.get("scope") == SCOPE_CATALOGUE
+                   for w in self._withheld)
 
     def absorb(self, sink: list | None) -> None:
         """Move everything the request-scoped sink holds into this recorder, **by scope**.
@@ -691,11 +772,24 @@ class AdvertisedToolsRecorder:
         # sink was never emptied, and a mid-turn checkpoint plus the terminal write absorbed the same
         # rows twice (measured: 1 row became 2). The copy was added to stop a subclass lying about
         # `pop`; it stopped the drain instead. Read defensively, then clear the real container.
+        # 🔴 **AND THEN THE READ AND THE CLEAR SHARED ONE `try`, SO A CONTAINER THAT RESISTS `del`
+        # DISCARDED ROWS THE READ HAD ALREADY PRODUCED.** The comment said *"read defensively, then
+        # clear the real container"*; the code threw the read away when the clear failed. Measured:
+        # a tuple, a generator and a `list` subclass forbidding `__delitem__` each gave
+        # `withheld_json() = None` against a matched plain-list control that recorded — **a strict
+        # behavioural regression against the artifact this replaced**, on inputs that one handled.
+        #
+        # Two statements, two obligations. A hostile container now degrades to the previous defect
+        # (rows recorded twice) rather than to silence, which is the correct direction: a duplicate
+        # row is visible and a lost one is not.
         try:
             rows_in = list(sink)
-            del sink[:]
         except Exception:                                    # noqa: BLE001 — a container that resists
-            rows_in, _ = [], None
+            rows_in = []
+        try:
+            del sink[:]
+        except Exception:                                    # noqa: BLE001 — clearing may fail
+            pass
         while rows_in:
             row = rows_in.pop(0)
             if type(row) is not dict:
@@ -720,7 +814,18 @@ class AdvertisedToolsRecorder:
             stage = _as_text(row.get("stage")) or "unknown"
             reason = _as_text(row.get("reason")) or "unrecorded"
             tool = _as_text(row.get("tool"))
-            count = row.get("count") if isinstance(row.get("count"), int) else None
+            # 🔴 `type(...) is int`, not `isinstance` — **five rounds**. `True` IS an `int` in
+            # Python, so `count: false` persisted into the jsonb as a boolean where every reader
+            # expects a number, and `count: true` would persist as `1` — a fabricated size for an
+            # outage whose whole point is that the size is unknown.
+            #
+            # This bound is **redundant with `record_catalogue_withheld`'s**, which is the door this
+            # line feeds, and it is kept as a defence rather than as a guarantee. Recorded plainly
+            # because a red-ability sweep showed weakening it alone leaves the suite green: it is
+            # not independently guarded and claiming otherwise would be the vacuity failure this
+            # file has a standard about.
+            _count_raw = row.get("count")
+            count = _count_raw if type(_count_raw) is int else None
             # Scope FIRST, always: `elif row.get("tool")` sat before the fallback, so a new scope
             # that happened to carry a tool was filed as `declaration` and **its scope discarded** —
             # the same one-behind enumeration, in the branch order rather than in the list.
@@ -834,8 +939,11 @@ class AdvertisedToolsRecorder:
             # So the consumer stops asking which scope it is and asks **whether the row has a name
             # to reconcile** — which is the actual precondition of reconciliation, and is true of
             # every scope that will ever be added.
-            if not w.get("tool")
-            or w["tool"] not in by_pass.get(w.get("pass"), set())
+            # One read, bound once. The rows here are the recorder's own, so a container that
+            # answers twice differently is not constructible — and that is precisely the argument
+            # that was made about the sites which later became TOCTOUs. The walrus costs nothing.
+            if not (_t := w.get("tool"))
+            or _t not in by_pass.get(w.get("pass"), set())
         ]
         return out or None
 

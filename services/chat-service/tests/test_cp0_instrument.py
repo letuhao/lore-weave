@@ -1492,15 +1492,94 @@ class TestU2ACatalogueOutageIsRegistered:
         false positive is one that gets deleted the first time it is inconvenient, and this one was
         also blind where it mattered.
 
-        So it stops matching a call shape and matches the thing that cannot be spelled two ways:
-        **every SQL statement naming the column, and every function that contains one.** If a
-        function writes `withheld_tools` in SQL, the recorder's value has to appear in that
-        function.
+        🔴 **AND THE SECOND VERSION WAS STILL A PROPERTY ABOUT ONE SYNTACTIC FORM OF ONE LOCAL, SO
+        THE ORIGINAL FINDING SURVIVED SEVEN ROUNDS.** `_emit_chat_turn` — **the path every
+        successful turn takes** — has no `withheld*` local at all: it binds the value as a positional
+        argument. So `bad_bindings` was vacuous over it, the only obligation left was that the string
+        `withheld_json` appear *somewhere* in its 1,200 lines, and binding `None` at the clean finish
+        stayed green through two consecutive rewrites of this gate. An ordinary two-line extraction
+        (`_wj_tmp = None; _withheld_json = _wj_tmp`) walked past it too.
+
+        Each round said the honest version was "the harder one". A verifier finally **built** it and
+        measured it: forty lines, **seven of seven defeats red, zero false positives on the pristine
+        tree**. It was not harder; it was deferred. So the anchor moves from the ASSIGNMENT to the
+        **BIND**:
+
+        > For every `execute`/`fetchval`/`fetchrow` call whose SQL names `withheld_tools`, at least
+        > one argument **of that call** must be recorder-derived — a `withheld_json()`/`absorb()`
+        > call, a local transitively assigned from one (through `Assign` *and* `AnnAssign`), or the
+        > conduit parameter.
+
+        Keying on the SQL text of the *individual call* rather than on a column name matched anywhere
+        in the function is also what stops R12's G5 false positive coming back.
         """
         import ast
         from pathlib import Path
 
-        offenders, sql_writers = [], []
+        _RECORDER_CALLS = ("withheld_json", "absorb")
+        _EXECUTORS = ("execute", "fetchval", "fetchrow", "fetch", "executemany")
+
+        def _names_the_column(node) -> bool:
+            """Does this expression carry the SQL that writes the column?"""
+            for n in ast.walk(node):
+                if isinstance(n, ast.Constant) and isinstance(n.value, str) \
+                        and "withheld_tools" in n.value:
+                    return True
+                if isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "segment_merge_sql" \
+                        and any(isinstance(a, ast.Constant) and a.value == "withheld_tools"
+                                for a in n.args):
+                    return True
+            return False
+
+        def _has_recorder_call(node) -> bool:
+            return any(isinstance(n, ast.Call)
+                       and getattr(n.func, "attr", None) in _RECORDER_CALLS
+                       for n in ast.walk(node))
+
+        def _bindings(fn):
+            """`(target_name, value_expr)` for every assignment form that can bind a local."""
+            out = []
+            for n in ast.walk(fn):
+                if isinstance(n, ast.Assign):
+                    targets, value = n.targets, n.value
+                elif isinstance(n, ast.AnnAssign) and n.value is not None:
+                    targets, value = [n.target], n.value
+                elif isinstance(n, ast.NamedExpr):          # the walrus
+                    targets, value = [n.target], n.value
+                else:
+                    continue
+                for t in targets:
+                    if isinstance(t, ast.Name):
+                        out.append((t.id, value))
+                    elif isinstance(t, (ast.Tuple, ast.List)):   # a tuple target
+                        for e in t.elts:
+                            if isinstance(e, ast.Name):
+                                out.append((e.id, value))
+            return out
+
+        def _recorder_locals(fn) -> set[str]:
+            """Names transitively derived from a recorder call, plus the conduit parameter.
+
+            A fixed point, **depth-bounded** — `a = b; b = a` is a cycle and a gate that hangs is a
+            gate someone deletes.
+            """
+            derived = {a.arg for a in fn.args.args + fn.args.kwonlyargs
+                       if "withheld" in a.arg}
+            binds = _bindings(fn)
+            for _ in range(12):
+                grew = False
+                for name, value in binds:
+                    if name in derived:
+                        continue
+                    if _has_recorder_call(value) or any(
+                            isinstance(n, ast.Name) and n.id in derived for n in ast.walk(value)):
+                        derived.add(name)
+                        grew = True
+                if not grew:
+                    break
+            return derived
+
+        offenders, binds_checked = [], []
         _mods = ("stream_service.py", "voice_stream_service.py")
         _base = Path(__file__).resolve().parents[1] / "app" / "services"
         trees_all = [ast.parse((_base / m).read_text(encoding="utf-8")) for m in _mods]
@@ -1508,89 +1587,53 @@ class TestU2ACatalogueOutageIsRegistered:
             for fn in ast.walk(tree):
                 if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     continue
-                writes_sql = any(
-                    isinstance(n, ast.Constant) and isinstance(n.value, str)
-                    and "withheld_tools" in n.value
-                    and ("INSERT INTO chat_messages" in n.value or "UPDATE chat_messages" in n.value
-                         or "withheld_tools =" in n.value or "withheld_tools=" in n.value)
-                    for n in ast.walk(fn)
-                )
-                # An f-string carrying `segment_merge_sql("withheld_tools")` is the merge form.
-                writes_sql = writes_sql or any(
-                    isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "segment_merge_sql"
-                    and any(isinstance(a, ast.Constant) and a.value == "withheld_tools"
-                            for a in n.args)
-                    for n in ast.walk(fn)
-                )
-                if not writes_sql:
-                    continue
-                sql_writers.append(f"{mod}::{fn.name}")
-                # 🔴 **THE ESCAPE HATCH WAS `any Name containing "withheld"`.** `_withheld_json =
-                # None` satisfied it while killing **both** the main INSERT and the orphan UPDATE,
-                # and the clean-finish site binding `None` was green too. A name is not a value.
-                #
-                # What is checked instead: every local whose name carries `withheld` must be
-                # ASSIGNED from a recorder call somewhere in the function — so binding `None` to it
-                # reds, and binding it from a correct helper does not.
-                reads_recorder = any(
-                    isinstance(n, ast.Call)
-                    and getattr(n.func, "attr", None) in ("withheld_json", "absorb")
-                    for n in ast.walk(fn)
-                )
-                _param_names = {a.arg for a in fn.args.args + fn.args.kwonlyargs}
-                # 🔴 `ast.Assign` ONLY — so `_withheld_json: str | None = None` walked past, and
-                # annotated assignment is **this file's own house style** (`_budget_withheld:
-                # list[dict] = []` at :1956). An ordinary refactor, not a contrivance.
-                _assigns = [n for n in ast.walk(fn) if isinstance(n, ast.Assign)] + [
-                    ast.Assign(targets=[n.target], value=n.value, lineno=n.lineno)
-                    for n in ast.walk(fn) if isinstance(n, ast.AnnAssign) and n.value is not None
-                ]
-                bad_bindings = [
-                    t.lineno for n in _assigns
-                    for t in n.targets
-                    if isinstance(t, ast.Name) and "withheld" in t.id
-                    # From a recorder call, from another local, or **derived from the parameter**
-                    # this conduit was handed — all legitimate. A CONSTANT is not.
-                    and not any(isinstance(c, ast.Call)
-                                and getattr(c.func, "attr", None) in ("withheld_json", "absorb")
-                                for c in ast.walk(n.value))
-                    and not any(isinstance(c, ast.Name) and c.id in _param_names
-                                for c in ast.walk(n.value))
-                    and not isinstance(n.value, ast.Name)
-                ]
-                # A function may instead be a CONDUIT: it takes the value as a parameter and its
-                # callers supply it. Then the obligation moves to the call sites — which is where
-                # `None` was bound and stayed green, so they are checked rather than assumed.
-                params = {a.arg for a in fn.args.args + fn.args.kwonlyargs}
-                is_conduit = "withheld_tools" in params
-                if is_conduit:
-                    for tree2 in trees_all:
-                        for call in ast.walk(tree2):
-                            if not (isinstance(call, ast.Call)
-                                    and getattr(call.func, "id", getattr(call.func, "attr", None))
-                                    == fn.name):
-                                continue
-                            kw = next((k for k in call.keywords if k.arg == "withheld_tools"), None)
-                            if kw is None:
-                                continue
-                            if isinstance(kw.value, ast.Constant):
-                                offenders.append(
-                                    f"{fn.name} called at line {kw.value.lineno} with a literal "
-                                    f"{kw.value.value!r} for withheld_tools")
-                elif not reads_recorder:
-                    offenders.append(f"{mod}::{fn.name} writes the column and never reads a recorder")
-                if bad_bindings:
-                    offenders.append(
-                        f"{mod}::{fn.name} binds a `withheld*` local from something that is not the "
-                        f"recorder at line(s) {bad_bindings}")
+                derived = _recorder_locals(fn)
+                # SQL is often assembled into a local first; the bind then passes the local.
+                sql_locals = {name for name, value in _bindings(fn) if _names_the_column(value)}
+                for call in ast.walk(fn):
+                    if not (isinstance(call, ast.Call)
+                            and getattr(call.func, "attr", None) in _EXECUTORS):
+                        continue
+                    args = list(call.args) + [k.value for k in call.keywords]
+                    if not any(_names_the_column(a) or (isinstance(a, ast.Name)
+                                                        and a.id in sql_locals) for a in args):
+                        continue
+                    binds_checked.append(f"{mod}::{fn.name}:{call.lineno}")
+                    ok = any(
+                        _has_recorder_call(a) or any(isinstance(n, ast.Name) and n.id in derived
+                                                     for n in ast.walk(a))
+                        for a in args
+                    )
+                    if not ok:
+                        offenders.append(
+                            f"{mod}::{fn.name}:{call.lineno} writes `withheld_tools` and NO argument "
+                            f"of that call carries the recorder's value")
 
-        assert len(sql_writers) >= 3, (
-            f"only {len(sql_writers)} function(s) write `withheld_tools` in SQL: {sql_writers}. "
-            f"The column lost a writer, which is how three of four turn shapes persisted NULL."
+        # 🔴 The NV: if the anchor stops matching, every assertion below is vacuous and green.
+        #
+        # The threshold is the MEASURED set, not a guess. I first wrote `>= 5` from an expectation
+        # and it red on correct code — a gate whose bound comes from what the author assumed rather
+        # than from what is there is the same defect as a metric with a self-derived denominator,
+        # and it is the shape this file exists to catch. The four binds are two in
+        # `_persist_terminal_assistant` (the INSERT and the orphan UPDATE), one in `_emit_chat_turn`
+        # (the clean finish — R10's I13, the site this rebuild is for) and one in voice.
+        #
+        # Named rather than counted, so losing a *specific* writer is caught by name: a count alone
+        # is satisfied by any four.
+        _binding_fns = {b.split("::")[1].split(":")[0] for b in binds_checked}
+        assert _binding_fns >= {"_persist_terminal_assistant", "_emit_chat_turn",
+                                "voice_stream_response"}, (
+            f"a terminal writer stopped binding `withheld_tools`: found {sorted(_binding_fns)}. "
+            f"Three of four turn shapes once persisted NULL under a fully green suite."
+        )
+        assert len(binds_checked) >= 4, (
+            f"only {len(binds_checked)} bind(s) of `withheld_tools` were found: {binds_checked}. "
+            f"The gate's anchor stopped matching, so it is green over nothing."
         )
         assert not offenders, (
-            f"{offenders} — a function persists the column without the recorder's value anywhere "
-            f"in it. A verifier bound `None` at four such sites and the suite stayed green."
+            f"{offenders} — a statement persists the column with no recorder-derived argument. A "
+            f"verifier bound `None` at the clean finish and at four other sites, and the previous "
+            f"two versions of this gate stayed green on all of them."
         )
 
     @pytest.mark.asyncio
@@ -1994,7 +2037,10 @@ class TestU2ACatalogueOutageIsRegistered:
         U-2's own fix. Three tests caught it by receiving an outage notice on a tool-free turn."""
         sink: list = []
         token = instrument.surface_withheld.set(sink)
-        _flag = instrument.catalogue_outage.set(False)   # production arms; this test hand-sets
+        # The turn's fact now lives on the RECORDER, so starting a turn is what clears it —
+        # `arm_turn_surface` releases the previous registration when the sink is empty, which is
+        # what production does and what this used to hand-set a boolean to fake.
+        instrument.arm_turn_surface()
         try:
             assert instrument.catalogue_outage_registered() is False
             instrument.record_surface_withheld("book_list", stage="token_budget", reason="over")
@@ -2005,7 +2051,6 @@ class TestU2ACatalogueOutageIsRegistered:
             assert instrument.catalogue_outage_registered() is True
         finally:
             instrument.surface_withheld.reset(token)
-            instrument.catalogue_outage.reset(_flag)
 
     def test_the_stream_reads_the_record_rather_than_inferring(self):
         """REJECTS the reintroduction. Inferring from emptiness is the shape that shipped once."""
@@ -2208,19 +2253,38 @@ def _turn_entry_calls():
             # entry point that narrows was invisible; nothing about a turn requires a coroutine.
             if not isinstance(fn, (ast.AsyncFunctionDef, ast.FunctionDef)):
                 continue
-            if fn.name.startswith("_") and f"{mod}::{fn.name}" not in _NOT_A_TURN and not any(
-                isinstance(n, ast.Call) and _called_name(n) in _NARROWING_CALLS
-                for n in ast.walk(fn)
-            ):
-                continue
+            # 🔴 **ROUTES 21 AND 22 STOOD HERE, AND THE COMMIT THAT WROTE THEM WAS THE COMMIT THAT
+            # CONDEMNED THEIR CLASS.** Ten lines above, in the fix for route 20: *"an
+            # over-approximation is only safe in the direction of suspicion."* The same diff then
+            # added two over-approximations in the direction of **exemption**:
+            #
+            #   * **Route 21** — `if fn.name.startswith("_") and no DIRECT narrowing call: continue`.
+            #     `narrowings` is computed from `reaching`, the TRANSITIVE closure, so a `_`-prefixed
+            #     entry point narrowing through one hop of helper was dropped before `_narrowings_in`
+            #     ever ran. Measured `6 passed` against a byte-identical non-underscore control at
+            #     `2 failed`. And `_turn_entry_calls`'s own docstring — twelve lines up, unedited —
+            #     said entry points are discovered *"including `_`-prefixed ones, because a leading
+            #     underscore is a naming convention and not a guarantee that nothing routes to it."*
+            #     A guard loosened while the comment beside it claimed it had not been, which is this
+            #     builder's own listed pattern, verbatim. Disabling it on the pristine tree revealed
+            #     **+0**: it bought nothing and risked exactly the three functions
+            #     (`_stream_with_tools`, `_emit_chat_turn`, `_run_subagent_call`) that were
+            #     deliberately removed from `_NOT_A_TURN` *because discovery would catch them*.
+            #
+            #   * **Route 22** — `if fn.name in _NARROWING_CALLS: continue`, a bare-name exemption
+            #     across all of `app/`, with no allow-list entry, no written reason, and outside
+            #     `test_NO_ALLOW_LIST_ENTRY_IS_STALE`'s reach. Measured invisible on four of the five
+            #     names — and **load-bearing**: disabling it turned the pristine gate `2 failed`, so
+            #     it was silencing a real offender by name. The two functions it was written for now
+            #     have `_NOT_A_TURN` entries with stated reasons, where the staleness test polices
+            #     them; `app/agentruntime/` defines none of those five names today and CP-2's arming
+            #     runtime is scheduled for exactly that package.
+            #
+            # Both are gone. The only exemption mechanism is the allow-list, which is the one with
+            # a reason per entry and a test that the entry still exists.
             narrowings = sorted(_narrowings_in(fn, reaching))
             if not narrowings:
                 continue                      # not a turn entry point: it narrows nothing
-            if fn.name in _NARROWING_CALLS:
-                # A function that IS a narrowing primitive is not an entry point — it is the thing
-                # entry points call. `discovery_seed_for_surface` appears on both sides of the
-                # relation, which the widened sweep surfaced the moment it could see `tool_surface`.
-                continue
             if f"{mod}::{fn.name}" in arming and not any(
                 isinstance(n, ast.Call) and _called_name(n) == "arm_turn_surface"
                 for n in ast.walk(fn)
@@ -2234,11 +2298,29 @@ def _turn_entry_calls():
             # A top-level `arm_turn_surface()` — as a bare expression OR assigned, since the sink is
             # worth keeping (`_voice_sink = arm_turn_surface()`). What makes it unconditional is the
             # STATEMENT DEPTH, not the statement kind.
-            top_level_arm_lines = {
-                s.value.lineno for s in fn.body
-                if isinstance(s, (ast.Expr, ast.Assign)) and isinstance(s.value, ast.Call)
-                and _called_name(s.value) == "arm_turn_surface"
-            }
+            #
+            # 🔴 **ROUTE 18 — AND IT WAS A FALSE POSITIVE ON CORRECT CODE FOR THREE ROUNDS.** Only
+            # `fn.body` counted, so an arm that is the first statement inside
+            # `async with contextlib.AsyncExitStack():` reddened as *conditional* — measured
+            # `1 failed` on an entry point that arms exactly once, unconditionally, before anything
+            # narrows. **A gate that reds on correct code is one that gets deleted the first time it
+            # is inconvenient**, and the shape it reds on is ordinary: `voice_stream_service.py:237`
+            # is one refactor away from being written that way.
+            #
+            # A `with`/`async with` body at depth 1 is entered unconditionally — that is what the
+            # statement means — so it counts. `If` and `Try` deliberately do NOT: an `if` body is
+            # conditional by definition, and an arm inside a `try` is one exception away from a turn
+            # that narrows into nothing. Only the shape a verifier measured is widened; guessing at
+            # the others is how routes 21 and 22 got written.
+            def _unconditional(body):
+                for s in body:
+                    if isinstance(s, (ast.Expr, ast.Assign)) and isinstance(s.value, ast.Call) \
+                            and _called_name(s.value) == "arm_turn_surface":
+                        yield s.value.lineno
+                    elif isinstance(s, (ast.With, ast.AsyncWith)):
+                        yield from _unconditional(s.body)
+
+            top_level_arm_lines = set(_unconditional(fn.body))
             for n in ast.walk(fn):
                 if isinstance(n, ast.Assign):
                     # `p = client.get_tool_definitions` — the alias route past a name-matching gate.
@@ -2306,6 +2388,19 @@ _NOT_A_TURN = {
     # that has already armed, and arming here would discard what surface assembly collected. Found
     # only once the sweep was widened past `services/` + `routers/`, which is the widening working.
     "services/tool_surface.py::effective_enabled_tools",
+    # 🔴 **THIS ENTRY IS ROUTE 22, CONVERTED FROM A BLANKET RULE INTO A DECISION.** It was exempt by
+    # `if fn.name in _NARROWING_CALLS: continue` — a bare name matched across all of `app/`, with no
+    # reason at any site and outside `test_NO_ALLOW_LIST_ENTRY_IS_STALE`'s reach. A verifier proved
+    # that rule load-bearing: disabling it turned the gate `2 failed`, revealing exactly this
+    # function. So the rule was silencing a real offender, and the offender was never judged.
+    #
+    # Judged now, and the reason is the same one that acquits `effective_enabled_tools` above and
+    # is true of the code: its signature takes `withheld_sink: list[dict] | None = None` and its two
+    # call sites (`stream_service.py:6073`, `:8119`) are both inside an already-armed turn. **A
+    # function that RECEIVES the turn's sink is by definition running inside a turn somebody else
+    # armed**, and arming here would replace a sink already holding rows — which is the discard the
+    # sixth recurrence was about.
+    "services/tool_surface.py::discovery_seed_for_surface",
 }
 
 
@@ -2499,3 +2594,283 @@ class TestTheTurnSinkIsArmedBeforeAnythingNarrows:
         outage, sink = contextvars.copy_context().run(_armed)
         assert outage is True
         assert sink and sink[0]["scope"] == instrument.SCOPE_CATALOGUE
+
+
+class TestTheFactsTHIS_ROUND_TIGHTENED_ARE_EACH_GUARDED:
+    """🔴 **THREE CONSECUTIVE ROUNDS SHIPPED STRENGTHENINGS THAT NOTHING WOULD NOTICE BEING
+    REVERTED.** A verifier weakened each one and measured the suite green on most of them, then
+    proved every weakening restores a real defect end-to-end. *"A fix without a red-able test is not
+    a closed finding"* is a standing rule of this run; the round that closed three arm-order routes
+    added **zero** assertions and left the suite count unchanged at `2 failed, 115 passed`.
+
+    Each test below names the defect its weakening restores, not the line it covers.
+    """
+
+    # ── The outage fact's four orderings ────────────────────────────────────────────────────────
+    #
+    # The fact moved from a `ContextVar[bool]` (lifetime: the context, i.e. a pooled thread) onto the
+    # recorder (lifetime: exactly one turn). A verifier proved no single assignment of the boolean
+    # was correct in both orders — monotone reds two tests, lowering keeps the erasure — so the four
+    # orderings are asserted together. Two of them were green before; the other two are the live
+    # defects the rehousing exists to make unconstructible.
+
+    def _turn(self, *, drain=False, arm_first=True):
+        from app.services import instrument
+
+        rec = None
+        if arm_first:
+            instrument.arm_turn_surface()
+        instrument.record_catalogue_unavailable(stage="catalogue_unavailable", reason="boom")
+        if not arm_first:
+            rec = instrument.AdvertisedToolsRecorder()
+            instrument.arm_turn_surface()          # adopts a NON-empty sink: this turn narrowed
+        if drain:
+            rec = rec or instrument.AdvertisedToolsRecorder()
+            rec.absorb(instrument.surface_withheld.get())
+        return instrument.catalogue_outage_registered()
+
+    def test_the_outage_survives_the_DRAIN__and_does_not_outlive_the_TURN(self):
+        import contextvars
+
+        from app.services import instrument
+
+        ctx = contextvars.copy_context
+        assert ctx().run(lambda: self._turn(drain=False)) is True, (
+            "an outage recorded this turn is not readable before the drain"
+        )
+        # 🔴 The property the flag existed for: the sink is emptied by whoever persists it, and a
+        # drained sink used to answer "no outage" for a turn that had one — the persisted row said
+        # outage while the model had been told nothing.
+        assert ctx().run(lambda: self._turn(drain=True)) is True, (
+            "the drain ERASED the turn's outage: the row and the prompt now disagree about the "
+            "same turn, which is worse than either being wrong alone"
+        )
+        # 🔴 `narrow -> drain -> arm` — the arm used to LOWER a true flag, measured at rows=2,
+        # flag=False. An arm that adopts a NON-empty sink is joining a turn that already narrowed.
+        assert ctx().run(lambda: self._turn(arm_first=False, drain=True)) is True, (
+            "arming after a narrowing erased the narrowing's own fact"
+        )
+
+        # 🔴 The leak: ONE context serving two turns — a pooled worker thread — kept `True` for the
+        # thread's life, so a later turn inserted the CATALOGUE UNAVAILABLE block with no outage.
+        # Measured `req_A=True, req_B=True`. One context deliberately: that is the defect's shape.
+        def _two_turns():
+            first = self._turn(drain=True)
+            instrument.arm_turn_surface()                  # turn B, same context, drained sink
+            return first, instrument.catalogue_outage_registered()
+
+        first, second = ctx().run(_two_turns)
+        assert first is True and second is False, (
+            f"turn A's outage outlived it into turn B (A={first}, B={second}) — a pooled worker "
+            f"thread would tell a healthy turn its tools were unreachable"
+        )
+
+    # ── The three value bounds ──────────────────────────────────────────────────────────────────
+
+    def test_a_HOSTILE_SCOPE_VALUE_cannot_take_the_turn_down_at_the_ARM(self):
+        """🔴 The row TYPE was bounded and the row's CONTENTS were not, in the commit whose headline
+        was that `isinstance` was the bug. `arm_turn_surface` is the first statement of every turn
+        entry point, so a `RuntimeError` there takes the whole turn with it — the
+        crash-inside-its-own-fix pattern at the one place where it costs everything."""
+        import contextvars
+
+        from app.services import instrument
+
+        class Hostile:
+            def __eq__(self, other):
+                raise RuntimeError("a comparison that runs user code")
+
+            def __hash__(self):
+                return 0
+
+        def _drive():
+            sink = instrument.arm_turn_surface()
+            sink.append({"scope": Hostile(), "stage": "s", "reason": "r"})
+            instrument.arm_turn_surface()                     # must not raise
+            return instrument.catalogue_outage_registered()   # nor must this
+
+        assert contextvars.copy_context().run(_drive) is False
+
+    def test_COUNT_FALSE_IS_NOT_A_COUNT__at_every_door_it_can_enter_by(self):
+        """🔴 Five rounds. `True` IS an `int` in Python, so `isinstance(count, int)` let
+        `count: false` persist into the jsonb as a boolean where every reader expects a number — and
+        `count: true` would persist as a size of `1`, a fabricated number for an outage whose entire
+        point is that the size is unknown. Bounded at all three doors, not the one named."""
+        import contextvars
+
+        from app.services import instrument
+
+        # 🔴 **THE TWO DOORS ARE ASSERTED SEPARATELY, AND THE THIRD IS NAMED AS REDUNDANT.** Driving
+        # all three through one pipeline made each individual bound SILENT — weakening any one left
+        # the suite green because a later one caught it. That is defence in depth working and a test
+        # that cannot see it, which is the same "an alternation is not two assertions" mistake this
+        # run has now made twice in one file. So: door 1 is read at the SINK, door 3 at the RECORDER,
+        # and `absorb`'s bound is stated for what it is — a defence that feeds door 3, redundant by
+        # construction and deliberately not claimed as independently guarded.
+        def _door_1():
+            sink = instrument.arm_turn_surface()
+            instrument.record_catalogue_unavailable(stage="s", reason="r", count=False)
+            return list(sink)
+
+        def _door_3():
+            rec = instrument.AdvertisedToolsRecorder()
+            rec.record_catalogue_withheld(stage="s3", reason="r", count=True)
+            return rec.withheld_json()
+
+        for door, rows in (("record_catalogue_unavailable", contextvars.copy_context().run(_door_1)),
+                           ("AdvertisedToolsRecorder.record_catalogue_withheld",
+                            contextvars.copy_context().run(_door_3))):
+            assert rows, f"{door} recorded nothing, so this asserts nothing"
+            for r in rows:
+                assert type(r.get("count")) is not bool, (
+                    f"a boolean reached the `count` column through {door}: {r}. Absent and zero are "
+                    f"different facts, and `true` is neither of them."
+                )
+
+    def test_A_SINK_THAT_RESISTS_CLEARING_LOSES_NOTHING(self):
+        """🔴 The read and the clear shared one `try`, so a container that resists `del` discarded
+        rows the read had ALREADY produced — the comment said *"read defensively, then clear"* and
+        the code threw the read away when the clear failed. A strict behavioural regression against
+        the artifact it replaced, on inputs that one handled. A hostile container must degrade to
+        the PREVIOUS defect (a row recorded twice) rather than to silence: a duplicate row is
+        visible and a lost one is not."""
+        from app.services import instrument
+
+        class Undeletable(list):
+            def __delitem__(self, key):
+                raise RuntimeError("this container resists clearing")
+
+        rows = [{"scope": instrument.SCOPE_CATALOGUE, "stage": "s", "reason": "r"}]
+        for sink in (Undeletable(rows), tuple(rows), (r for r in rows)):
+            rec = instrument.AdvertisedToolsRecorder()
+            rec.absorb(sink)
+            assert rec.withheld_json(), (
+                f"a {type(sink).__name__} sink lost EVERY row; a matched plain list records it"
+            )
+
+
+class TestTheARM_ORDER_GATE_SEES_THE_SHAPES_IT_WAS_BLIND_TO:
+    """🔴 **ROUTES 19-22, AND THE GATE'S OWN FIXES WERE UNGUARDED.** Three routes were closed by a
+    round that added no assertion over any of them, and the same commit opened two more. Every probe
+    below is a real module written under `app/`, swept by the real `_turn_entry_calls()`, and removed
+    in a `finally` — because a gate over a synthetic AST proves the helper works, not the sweep.
+    """
+
+    _PROBE = '''
+from app.client.knowledge_client import KnowledgeClient
+
+{decorator}def {name}(user_id):
+    tools = {call}
+    return tools
+'''
+
+    def _sweep(self, name, *, body, prefix="_lwprobe"):
+        """Write one module under `app/services/`, sweep it, remove it. Never left behind."""
+        import pathlib
+
+        base = pathlib.Path(__file__).resolve().parents[1] / "app" / "services"
+        path = base / f"{prefix}_{name}.py"
+        path.write_text(body, encoding="utf-8")
+        try:
+            return _turn_entry_calls()
+        finally:
+            path.unlink(missing_ok=True)
+
+    def _narrows_unarmed(self, name, body):
+        found = self._sweep(name, body=body)
+        key = next((k for k in found if k.endswith(f"::{name}")), None)
+        return key, (found.get(key) if key else None)
+
+    def test_a_SYNC_def_entry_point_is_discovered(self):
+        """ROUTE 19. `ast.AsyncFunctionDef` only — a sync entry point that narrows was invisible,
+        and nothing about a turn requires a coroutine."""
+        key, entry = self._narrows_unarmed("sync_probe", (
+            "from app.client.knowledge_client import KnowledgeClient\n"
+            "def sync_probe(c):\n"
+            "    return c.get_tool_definitions()\n"
+        ))
+        assert key and not entry[0], f"a sync entry point that narrows was not discovered: {key}"
+
+    def test_a_SAME_NAMED_ARMING_HELPER_ELSEWHERE_does_not_absolve_it(self):
+        """ROUTE 20, created by the fix that widened the sweep to all of `app/`. `arming` was keyed
+        by BARE NAME across 641 names, and it grants an EXEMPTION — so an arming helper anywhere in
+        `app/` absolved a genuinely un-armed entry point. An over-approximation is only safe in the
+        direction of suspicion."""
+        import pathlib
+
+        base = pathlib.Path(__file__).resolve().parents[1] / "app"
+        decoy = base / "agentruntime" / "_lwprobe_decoy.py"
+        decoy.write_text(
+            "from app.services.instrument import arm_turn_surface\n"
+            "def twin_probe():\n"
+            "    return arm_turn_surface()\n", encoding="utf-8")
+        try:
+            key, entry = self._narrows_unarmed("twin_probe", (
+                "from app.client.knowledge_client import KnowledgeClient\n"
+                "async def twin_probe(c):\n"
+                "    return await c.get_tool_definitions()\n"
+            ))
+            assert key and not entry[0], (
+                "a same-named arming helper in another package absolved an un-armed entry point"
+            )
+        finally:
+            decoy.unlink(missing_ok=True)
+
+    def test_an_UNDERSCORED_entry_point_narrowing_TRANSITIVELY_is_discovered(self):
+        """ROUTE 21, opened by the fix for route 20 — twelve lines below a docstring saying entry
+        points are discovered *"including `_`-prefixed ones, because a leading underscore is a
+        naming convention and not a guarantee that nothing routes to it."* `narrowings` comes from
+        the TRANSITIVE closure and the filter admitted only a DIRECT primitive call, so one hop of
+        helper made it invisible. The three functions deliberately removed from `_NOT_A_TURN` are
+        all `_`-prefixed."""
+        key, entry = self._narrows_unarmed("_under_probe", (
+            "from app.client.knowledge_client import KnowledgeClient\n"
+            "def _under_helper(c):\n"
+            "    return c.get_tool_definitions()\n"
+            "async def _under_probe(c):\n"
+            "    return _under_helper(c)\n"
+        ))
+        assert key and not entry[0], (
+            "a `_`-prefixed entry point narrowing through one helper was invisible to the sweep"
+        )
+
+    def test_an_entry_point_NAMED_LIKE_A_PRIMITIVE_is_discovered(self):
+        """ROUTE 22, opened by the same fix: `if fn.name in _NARROWING_CALLS: continue`, a bare-name
+        exemption across all of `app/`, with no allow-list entry, no stated reason, and outside
+        `test_NO_ALLOW_LIST_ENTRY_IS_STALE`'s reach. It was load-bearing — disabling it turned the
+        pristine gate `2 failed` — so it was silencing a real offender by name. `app/agentruntime/`
+        defines none of those names today and CP-2's arming runtime is scheduled for that package."""
+        for primitive in sorted(_NARROWING_CALLS):
+            body = (
+                "from app.client.knowledge_client import KnowledgeClient\n"
+                f"async def {primitive}(c):\n"
+                "    return await c.get_admin_tool_definitions()\n"
+            )
+            found = self._sweep(f"named_{primitive}", body=body)
+            key = next((k for k in found
+                        if k.startswith("services/_lwprobe_named_") and k.endswith(primitive)), None)
+            assert key and not found[key][0], (
+                f"an entry point named {primitive!r} was exempted by its NAME, with no reason "
+                f"recorded and no staleness test over it"
+            )
+
+    def test_a_TOP_LEVEL_ARM_INSIDE_AN_ASYNC_WITH_is_not_CONDITIONAL(self):
+        """ROUTE 18 — and this one is a FALSE POSITIVE on correct code, three rounds. Only `fn.body`
+        counted, so an arm that is the first statement inside `async with AsyncExitStack():` reddened
+        as conditional. **A gate that reds on correct code is one that gets deleted the first time it
+        is inconvenient**, and the shape is ordinary — `voice_stream_service.py:237` is one refactor
+        from being written that way."""
+        key, entry = self._narrows_unarmed("with_probe", (
+            "import contextlib\n"
+            "from app.client.knowledge_client import KnowledgeClient\n"
+            "from app.services.instrument import arm_turn_surface\n"
+            "async def with_probe(c):\n"
+            "    async with contextlib.AsyncExitStack():\n"
+            "        arm_turn_surface()\n"
+            "        return await c.get_tool_definitions()\n"
+        ))
+        assert key, "the probe was not discovered, so this asserts nothing"
+        arms, _raw, _narrowings, _aliases, conditional = entry
+        assert arms and not conditional, (
+            f"an unconditional arm inside `async with` was reported CONDITIONAL: {entry}"
+        )

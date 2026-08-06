@@ -316,6 +316,21 @@ run MUST be rejected"* — is satisfied today only in the degenerate sense that 
 is rejected, because nothing can ever produce the field. That is the correct fail-closed direction
 and it is **not evidence the rule works.**
 
+🔴 **AND FOR ONE ROUND THAT PARAGRAPH WAS FALSE.** A row-schema change named all four fields as
+legal, so `lane`, `tier`, `cost` and `relevance` **could** appear on a row — and a verifier measured
+what followed: a hand-typed `"cost": 1000000000` withheld 2 of 3 declarations against a control that
+withheld none, and a hand-typed `"relevance": 9999` under `OrderBy(relevance desc) → TopK(1)` chose
+**which single declaration the model saw**. The sentence above stayed in this document, describing a
+property the code had stopped having.
+
+It is true again, and now it is **enforced rather than incidental**: the row schema is closed to
+exactly the seven fields the writer emits, so those four are refused at every door — `rows_of`,
+`validate_document`, `_row` and `build(previous=)` — and the refusal is red-able. When CP-2 builds
+`relevance` and CP-4 builds `lane`/`tier`/`cost`, **the field arrives in the same change as its
+producer**, which is what "a record and the place that consumes it are ONE change" means applied to a
+schema. Until then the ranking stages are exercised below the door, where their subject actually is,
+and the tests say so instead of manufacturing a row shape the manifest cannot produce.
+
 🔴 **"Gated" in this table means A UNIT TEST IN CI, not `agentruntime-membrane-gate.py`** — which
 contains no check for `validate_pipeline`, `OrderBy`, `STAGE_KINDS`, `canon` or the arming. Rows 1
 and 2 said "built and gated" two lines above a row that had just been corrected for exactly that
@@ -1631,6 +1646,37 @@ acceptable substitute for re-validation on grandfathered rows; whether the forma
 CP-1 or waits for CP-4's contract-as-data, which subsumes it; and whether §6.4's queue is worth
 either before any declaration exists to put in it. **The measurement is recorded; the trade is
 not mine to make.**
+
+##### 🔴 What this section was then used to justify, and why that was wrong
+
+A later round wrote, beside a row-schema fix:
+
+> *A hand-typed but well-typed `cost` is the **hand-edited-manifest** threat, whose only answer is
+> the document digest recorded in §6.4.2 and deliberately not taken. Pretending a value bound closes
+> it would be worse than leaving it open, because it would look closed.*
+
+**The second sentence is right and it stays.** No predicate over a value distinguishes a forged
+`cost` from a real one — `1000000000` is a well-typed integer — so a range bound or a "plausible
+cost" heuristic would be a gate with no subject, which is the vacuity failure §0.14.1c already
+convicts elsewhere in this design. Declining to ship a check that cannot fail was the correct call.
+
+**The word "only" was false, and the sentence was used to justify a change in the PERMISSIVE
+direction.** The same commit added `lane`, `tier`, `cost` and `relevance` to the row schema — four
+lines below a comment saying those four *"are refused today on purpose … a door that accepted them
+would be letting an unbuilt capability in through the back."* A verifier executed the counterfactual:
+removing the four entries breaks nothing (`build`, `rows_of`, `validate_document` and the committed
+manifest all pass) and **refuses the hand-typed `cost` outright**. It is not a trade against §6.1
+layer 3 — it *strengthens* it: the accepted set is strictly smaller, every remaining row is still
+fully re-validated, and **the format does not change**, where the digest above changes it and admits
+that *"a recomputed digest passes"*.
+
+So the closed schema is the cheaper and stronger answer to *this* threat, and it is shipped: a row
+may carry exactly the seven fields `_row` writes. The digest's decision is unaffected — it answers
+*"was a **defined** field edited"*, which is a different question and still open, still a PO call.
+
+The transferable part is not about `cost`. **A limit stated as a principle and a rationalisation for
+leaving something open read identically when the author is the beneficiary**, and the way to tell
+them apart is to execute the cheaper alternative rather than to reason about whether one exists.
 
 **Both failure modes are recorded because each looked like a fix.** Binding `admitted_against` to
 the write-time constant made every historical row claim conformance it was never checked for — the

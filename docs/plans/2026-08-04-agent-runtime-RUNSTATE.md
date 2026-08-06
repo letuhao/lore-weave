@@ -1521,6 +1521,90 @@ mechanism.
 
 ---
 
+## 🔴 R15 — **FAIL ×2**, and the round where a verifier answered my question with my own comment
+
+Prompt committed first, two V-CODE on frozen `cba800fa8`. Verdicts:
+[round15-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round15-v-code-a.md) ·
+[round15-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round15-v-code-b.md).
+
+### The question I asked, and the answer
+
+Not *"is this code right"* but *"is this SENTENCE right"* — the one I wrote beside the row-schema fix:
+*a hand-typed but well-typed `cost` is the hand-edited-manifest threat, whose **only** answer is the
+digest at §6.4.2, deliberately not taken.*
+
+**Half sound, half rationalisation, and the disproof was 25 lines above the contradicting code.**
+`contract.py:109-112` said `lane`/`tier`/`cost`/`relevance` *"are refused today on purpose … a door
+that accepted them would be letting an unbuilt capability in through the back."* `contract.py:135-138`
+defined all four. Verifier B ran the counterfactual: popping the four entries breaks **nothing** and
+**refuses** the forged `cost`. It is *stronger* than the digest, not a trade — smaller accepted set,
+no format change — where §6.4.2's own text says a digest changes the format and *"a recomputed digest
+passes"*. **I wrote the answer down and then did the opposite four lines later**, and used the
+sentence to justify a change in the *permissive* direction.
+
+### 🔴 What the delta itself introduced — four, all mine
+
+**A guard I DELETED while calling it consolidation** (`rows_of` refused `id: ""`; the move reproduced
+the type half and dropped the non-empty half — REFUSED pre-delta, ACCEPTED at HEAD, measured in one
+process). **Two exception classes at one exported door** (`ContractViolation` ∉ `ValueError`,
+∉ `UntrustedRow` — a breaking change). **The four ranking fields.** **An existing test made vacuous**
+— the closed schema refuses the smuggler's `dict` subclass before its `.get` fires, so it took its
+`except … return` and asserted nothing, invisible because an early return reports the same green.
+
+And on the instrument side the same shape one round later: **the commit that condemned bare-name
+exemptions added two of them.** Route 21 (a `_`-prefix skip, twelve lines below a docstring saying
+`_`-prefixed entry points *are* discovered) and route 22 (`fn.name in _NARROWING_CALLS`, blanket
+across `app/`, **load-bearing** — disabling it turned the pristine gate `2 failed`, so it was
+silencing a real offender by name). Three routes closed, two opened, **zero tests over any of five**.
+
+### What this round shipped
+
+| | |
+|---|---|
+| **one definition of a VALID row** | `check_row` = shape **+ clauses**, at **all four** row-readers. Nine classes reached the consumer door that `load()` refused — `members: ['ghost']` among them, third round — because the fix had gone to *the two doors a verifier named*, not to *the set*, which is four. `check_document_rows` does the same for duplicate ids and M5 |
+| **the schema is closed, and the four fields are OUT** | the answer to my own question, which the round before had written down and not taken |
+| **the writer checks its own output** | `_row` never consulted the definition of a row; an added field was written **to disk** and refused afterwards by `load()` and CI. CP-4 adding a field is a scheduled occurrence of that |
+| **the 5th TOCTOU CLOSED** | four rounds. The document is exactly a `dict` and the return is built from validated values — `{**doc}` re-read §6.4's queue comparand after checking it |
+| **`:7424` CLOSED — seven rounds** | the per-bind gate Verifier A *built* rather than described. Each round called it "the harder version"; it is forty lines, **7/7 defeats red, 0 false positives**. It was not harder, it was deferred |
+| **the outage fact rehoused** | off a `ContextVar[bool]` (lifetime: a pooled thread) onto the recorder (lifetime: one turn). A verifier proved no single assignment could be right in both orders. Both live defects — the leak and the erasure — are now unconstructible |
+| **routes 18–22** | 21 and 22 deleted; 22's real offender judged and given a `_NOT_A_TURN` entry with a reason the staleness test polices; 18's **false positive on correct code** fixed, third round |
+| **P4 through `generate()` CLOSED** | four rounds green on a working mechanism. My first version of the fix was **still** green — it amended before writing, so no queue could form. Measured before it was believed |
+
+### ▶ CONVERGENCE
+
+| round | prod | adversarial | guard | total | **introduced by the graded delta** |
+|---|---|---|---|---|---|
+| 12 | 3 | 7 | 7 | 17 | 1 |
+| 13 | 3 | 3 | 3 | 9 | 3 |
+| 14 | 8 | 4 | 9 | 21 | 2 — no new TOCTOU |
+| **15** | **11** | **3** | **10** | **24** | **4 — and a new read-twice site** |
+
+**R14's "no new TOCTOU" was a SINGLE POINT, not a trend**, and R15 broke it at one: `check_row_shape`
+read the **mutable** global `ROW_FIELDS` twice while `ROW_REQUIRED` beside it was a `frozenset`. The
+`introduced` series reads 2,1,2,1,3,2,**4** — no direction. The confounder is real and B stated it
+before the conclusion (~90 changed lines against 41 and 2; per line R15 is the best of the three),
+but a defence is not evidence.
+
+**The one number that improved is closure: 14% → ~10% → ~8% → ~27%**, and **two of the four closures
+were not aimed at** — the 6th TOCTOU and `validate_document`'s `id` split both fell out of
+`type(row) is not dict`. That is what a *structural* fix does, and it is the only argument that
+defends this round.
+
+**What would settle the termination question**, named by B rather than by me: three consecutive
+rounds at `introduced == 0`; the read-twice sweep run **by the builder pre-commit with its result in
+the commit message**; and `introduced` reported **per changed line**, so a round cannot buy a good
+number by shipping less. The first is now a pre-commit step: **14/14 membrane guards and 10/10
+instrument guards proven red-able before this commit, two found silent and repaired.**
+
+**2246 tests pass; gate green.** ⚠️ Builder's evidence. **CP-1 does not close** — R15 was not clean,
+so R16 verifies this delta.
+
+**Open, carried:** `generate`'s `exists`→`load` race (4 rounds) · `build`'s `r.get("id")`/`r["id"]`
+split · the untyped document container at `rows_of` · the drift gate discarding `validate_document`'s
+return · a module-scope lambda / module-scope narrowing invisible to the sweep (adversarial).
+
+---
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -1534,7 +1618,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | ~~R12~~ | ran 2026-08-06 → **FAIL ×2**. The R11 headline fix closed the case that never happens; the guard claim was false for the membrane package. See the block above | `V-CODE` ×2 on `9c8df7800` | — |
 | ~~R13~~ | ran 2026-08-06 → **FAIL ×2**, with the first convergence measurement. See above | `V-CODE` ×2 on `5ce95de37` | — |
 | ~~R14~~ | ran 2026-08-06 → **FAIL ×2**. Triage graded SOUND, execution failed; introduced-by-delta produced no new TOCTOU for the first time in four rounds | `V-CODE` ×2 on `b30db5b80` | — |
-| **R15** | verify R14's delta and the eight OPEN findings | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
+| ~~R15~~ | ran 2026-08-06 → **FAIL ×2**. The graded claim was a sentence, and its disproof was the builder's own comment 25 lines above the contradicting code. Closure rose for the first time in the series (~8% → ~27%); `introduced` rose 2 → 4. See the block above | `V-CODE` ×2 on `cba800fa8` | — |
+| **R16** | verify R15's delta: the four-door row definition, the closed schema, the per-bind terminal gate, the rehoused outage fact, routes 18–22 | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
 | **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |
