@@ -1156,14 +1156,79 @@ They are resilience primitives from the platform tier, **not `DpError` variants*
 is **1 file** (`spine.rs`). ⇒ **`FLOW-7`'s failure mode a second time, one layer down**: a symbol
 that greps green while the contract it belongs to does not exist.
 
+### `FLOW-24` — 🔴 the collision is a CLASS, not three accidents — and it is Phase 0 question 1, committed by the spec itself
+
+`FLOW-7` found `dp-kernel`. `FLOW-23` found `CircuitOpen`/`RateLimited`. Reading `07` produced a
+**third**, and at that point it stops being coincidence:
+
+| the DP spec means | the platform already had | measured |
+|---|---|---|
+| `dp-kernel` | — (nothing; the spec's crates are `dp` / `dp-derive` / `dp-clippy`) | a RAID-track crate took the name 5 weeks after the lock |
+| `CircuitOpen` · `RateLimited` — **`DpError` variants** | **`crates/breaker-core`**, *"mirrors Go `ErrCircuitOpen`"* | 13 + 26 files, none of them `DpError` |
+| **`deploy_cohort`** — a **CP-side manifest** carrying `last_successful_drill`, the CI gate on every DP release (`DP-F10`) | `reality_registry.deploy_cohort **INT** CHECK (0..99)` — a **canary bucket**, `SR05 §12AH.4` | the column exists; `last_successful_drill` is **0** |
+
+⇒ **The DP corpus never ran AUDIT-EXISTING against the tier it sits on.** `02_storage` and the meta
+registry were already built and already had this vocabulary; `06_data_plane` reused three of their
+words for different things. Every collision **reads as coverage** to a grep, and one of them fooled
+the module-coverage audit for six weeks (`FLOW-7`).
+
+**This is the same defect `CLAUDE.md` records as the canonical Phase-0 incident, committed by the
+document family that most needed to be right.** And it is worth stating plainly: the August specs
+that ignored `06_data_plane` were repeating what `06_data_plane` did to `02_storage`.
+
+### `FLOW-25` — degraded mode: the DP says REJECT, the island model says BUFFER
+
+`DP-F4`/`DP-F5` are unambiguous and locked — **consistency over availability**:
+
+> *"T3 write … **Fails** with `DpError::CircuitOpen { service: "redis" }`"* · *"Partitioned SDKs:
+> **stop accepting T3 writes**"*
+
+The island model says the opposite, and `02_storage/SR06`'s own correction banner is where it is
+written down:
+
+> *"…and **'per-reality DB down → writes rejected' is inverted**: the island should **buffer and
+> dilate ticks** while the sink is down, **not reject gameplay**."*
+
+Both are defensible; they cannot both be built. And this seam is **not** the one `GDA-F11` found —
+that one is about *when the ack fires* on a healthy path. This is about **whether the game stops**
+when a store is down, and `17`'s flow set never traverses it: `B1`–`B5` are boot, `R1`–`R8` are the
+healthy path, `L2` is crash recovery *after* the fact. **Degraded-mode-while-running has no flow**,
+which is exactly the condition under which two layers disagree and nobody notices.
+
+### `FLOW-26` — `DP-F10` gates production on drills that have no subject, beside seven drills that exist
+
+`DP-F10` is a **release gate**: *"A DP release cannot ship to production if any mandatory drill has
+failed in the preceding 30 days."* Its nine drills, against the tree:
+
+| drill | subject exists? |
+|---|---|
+| Full reality freeze + thaw | ✅ — `world-service/src/bin/freeze_drill.rs` + `provision_drill.rs` |
+| Schema migration rollback | ✅ — `migration-orchestrator/cmd/migrate-drill` + `canary-drill` |
+| CP failover · game-node kill · Redis cluster node loss · invalidation-drop injection · SDK↔CP partition · backpressure saturation | ❌ **six** — every one names a component that does not exist |
+| Cross-region DR | V3, explicitly deferred |
+
+And **five harnesses exist that `DP-F10` does not name**: `restore-drill.sh` · `closure-drill` ·
+`relocate-drill` · `canary-drill` · `provision_drill`.
+
+⇒ `BDR-21`'s lesson, third occurrence: **the pattern already existed and the spec did not open the
+file.** Two of the nine could have been written as *"extend the existing drill"*; six are honest
+absences; and the CI gate that enforces all nine reads `last_successful_drill`, which is **0**.
+
+*(`07`'s own Deferred list closes with **"Q13 test strategy — not resolved here; belongs in a
+test-plan doc once SDK implementation starts."** So `FLOW-12`'s finding is deferred in **two**
+locked files with the **same trigger** — and that trigger is the slice about to begin. `Q13` is not
+stale; it is **due**.)*
+
 ### Stated limit of this audit
 
 Read in full: `22`, `06`, **`04c`**, **`04d`**, **`12`**, `17`, `20`, `38 §0–§4`, `37 §1`,
-`19 §12b/§15`, `08`, `99`, `13`, **`14`**. **Read at the SYMBOL level only** — `07` · `15`–`21`:
+`19 §12b/§15`, `08`, `99`, `13`, `14`, **`07`**. **Read at the SYMBOL level only** — `15`–`21`:
 every named primitive, type, table and Redis key in them was swept against the tree (`FLOW-21`,
 `FLOW-22`, `FLOW-23`), which settles *is it built* but **not** *is the design internally sound*.
 Sixteen of those symbols have zero occurrences, so for them the second question has no subject yet;
-for `07`'s degraded-mode contract it does, and that read is genuinely outstanding. Every count above is a command, and every command
+`07` has since been read in full (`FLOW-24`–`26`). What remains genuinely unread is `15`–`21`'s
+internal design — five files of channel semantics whose every named symbol is zero, so the question
+*is the design sound* has no subject there until slice 1 gives it one. Every count above is a command, and every command
 is printed beside its claim. What is *not* claimed: that the nine unread files contain no further
 seam. They are the remaining work of this review.
 
