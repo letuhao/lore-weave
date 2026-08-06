@@ -568,6 +568,64 @@ player a player. **Removing the PC/NPC distinction does not delete the binding;
 it makes the binding the entire concept.** The dead half is the kind-vocabulary;
 the live half became more load-bearing, not less.
 
+### 🔴 CORRECTION — the recommendation above was WRONG about the TABLE
+
+The PO asked *"keep it or make a new one, and what is the reason to keep it?"*
+The honest answer, after auditing the columns rather than repeating the
+handoff's *"half right"*: **right database, WRONG TABLE. Drop `012`.**
+
+**The strongest keep-argument does not exist.** There is **no `INSERT` anywhere**
+— only index definitions — so the table is **empty by construction** and can only
+ever be empty. Nothing is preserved by keeping it.
+
+**And the argument I actually used was weak.** *"The GDPR path already points at
+this table"* — that query reads `user_ref_id` and `reality_id`, both of which
+survive any rename. It is **one line of Go and one row of YAML**. I priced a
+rename as a cost; it is not one.
+
+**The column audit is worse than "two thirds":**
+
+| | |
+|---|---|
+| `user_ref_id` · `reality_id` · `pc_id` | the binding — but `pc_id`'s NAME is dead vocabulary |
+| `pc_name` | dead: two-kind vocabulary, and the table's last PII |
+| `status` | **5 of 6 members wrong.** `npc_converted` dead · `deceased` a second SSOT for death · `active`/`offline` are **PRESENCE**, which belongs to the transport (a Colyseus room knows who is connected), not to a durable binding · `hidden` is a UI preference, which `CLAUDE.md` routes to `/v1/me/preferences` · only `deleted` is about the binding, and it wants to be `revoked_at TIMESTAMPTZ NULL` |
+| `last_seen_at` | presence again |
+| `pc_index_id` | a surrogate PK where `(reality_id, pc_id)` is already UNIQUE |
+
+**And the precedent I missed:**
+`contracts/migrations/per_reality/0017_drop_pc_npc_projections.up.sql`. **This
+project DROPPED the other pc/npc artifacts** rather than renaming around them.
+Keeping `player_character_index` while having dropped `pc_projection` contradicts
+the project's own most recent decision on this exact class.
+
+**The deepest reason is the NAME.** `player_character_index` says *player
+character* — the concept the new framing deleted. Keeping it is `D-2`'s failure
+and the PO's own `M1` instruction inverted: *DELETE, not port.* `pc_id` renamed
+to `actor_id` inside `player_character_index` is `quantity[0] = "hp"` one tier
+over — it passes every check and changes nothing.
+
+**Proposed shape** (naming is the PO's):
+
+```sql
+actor_control_binding (
+    user_ref_id  UUID NOT NULL,     -- who drives
+    reality_id   UUID NOT NULL,     -- where
+    actor_id     UUID NOT NULL,     -- what     (FK lives in the per-reality DB)
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    revoked_at   TIMESTAMPTZ NULL,  -- the BINDING is revoked; the actor lives on
+    PRIMARY KEY (reality_id, actor_id)
+)
+```
+
+No PII. No presence. No actor lifecycle — `GoneState` already holds that, and a
+second enum here would be a second SSOT.
+
+**What survives from the section above, unchanged:** the DATABASE. Meta, for the
+four measured reasons — cross-reality by nature, already a per-user control plane
+with the audit machinery, `012`'s own control-pointer-into-data-plane split, and
+GDPR erasure needing to find every binding without a fan-out.
+
 **Still the PO's to take.** This section is the argument, not the decision.
 
 ## 7. Registers — append as it happens
@@ -617,6 +675,7 @@ the live half became more load-bearing, not less.
 |---|---|
 | `BDR-1` | I opened this file about to write *"the first consumer is the command substrate"*, which is what the previous turn's summary implied. Measuring first showed the ordering is the other way and **derivable**: an `EffectRow` targets a quantity ordinal, so while the actor's numbers are struct fields the substrate cannot be declarative. A plan whose first line is wrong about its own order is worse than no plan. |
 | `BDR-3` | **I wrote `M1` as a MIGRATION of `commit-service::Actor`'s nouns into quantities, and the PO corrected it mid-draft**: that struct is scaffolding built to prove the kernel and SDK work, and it is to be deleted. `D-11` and `D-14` both say so and I had read both in this same session. The correction matters because a port is the *comfortable* answer — it keeps every test green, it looks like progress, and it carries the old vocabulary into a new container, which is `D-2`'s failure exactly. **`quantity[0] = "hp"` would have satisfied `M1` as I first wrote it.** The slice board now defaults every legacy field to DELETE and forbids deriving a quantity from a struct field name. |
+| `BDR-13` | **I recommended keeping `player_character_index` after repeating the handoff's phrase *"half right"* WITHOUT auditing the columns.** The PO asked what the reason to keep it actually was, and there was not one: the table has no writer anywhere, so it is empty by construction; the GDPR argument I leaned on is a one-line query edit; the status enum is 5/6 wrong including two members that are PRESENCE, a second SSOT against the live transport; and `0017` had already set the precedent by DROPPING the sibling pc/npc artifacts. **Fourth time this session I reasoned over a summary instead of the artifact** — and the first time the PO caught it rather than a gate or a reviewer. |
 | `BDR-12` | **I shipped an ordinal with no width, in the week I spent auditing widths.** `M2`'s `cue: u16` has no named constant, no repin log and no argument, while `MAX_DECLARED_VERBS` — twelve lines away, written the same hour — carries all three and an essay about why it is not an alias. Nothing caught it: no gate counts ordinal spaces, which is precisely what `AF-8` reported about `RefKindMask` and what nobody acted on. **The register exists because the register did not exist**, and its first run found my own omission alongside the two it was looking for. |
 | `BDR-11` | **I proposed opening a second effect door as the substrate's next task, and the PO refused it as a boundary violation.** `Delta`'s door was built by the ACTOR HUB — feature #1 — not by the substrate; `StatusPropose`'s belongs to a status feature that does not exist. The substrate never opens a door, it gains a primitive when a feature opens one. **This is `SCOPE-2` a second time in a different costume**: the chooser got designed inside the substrate because the substrate was the thing being written, and the same gravity pulled the doors in. §5's own wording carried it (*"build doors, or narrow the primitive set"*), so the plan had been saying it for two days and I read past it. ⇒ `M2.3` waits on **feature #3**, not on more substrate work. |
 | `BDR-9` | **Six of the ten findings were bugs I had already written a CORRECT SENTENCE about.** `EffectRow::amount` said *"the engine clamps against the pool's own declared bounds"* while the code did `.max(0)`. `substrate.rs` said *"every path commits a FACT"* above three `return Vec::new()`. `actor.rs` said *"adding a field moves this number"* under a `<=`. `binding.rs`'s refusal cited an incident it did not cover. **The prose was not wrong — it was written first and never checked against the code beneath it**, which is the same defect as a stale register, one level down. A doc comment is a claim, and this run has now recorded that lesson at three scales: a register, a heading, and a doc comment. |
