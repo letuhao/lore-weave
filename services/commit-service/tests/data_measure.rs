@@ -14,7 +14,7 @@ use commit_service::combat::Side;
 use commit_service::{
     Actor, CombatDomain, CombatEvent, CombatPayload, CombatState, RealityRules,
 };
-use ruleset_core::{Provenance, ResolvedRuleset};
+use ruleset_core::{Provenance, ResolvedRuleset, Ruleset};
 use sim_core::{
     Admitted, Class, EntityId, Fallback, Gen, InputId, Island, IslandId, Lane, Producer,
     QueuedInput, RulesetEpoch, SeenWindow, Seq, StepStatus,
@@ -155,6 +155,52 @@ fn the_digest_does_not_move_when_only_provenance_changes() {
         embellished.digest(),
         "lineage entered the identity — two records of one ruleset would stop interning, \
          and a wall-clock field would make the digest non-reproducible (RLS-D13)"
+    );
+}
+
+/// **The verb table is INSIDE the hashed bytes — asserted, not claimed.**
+///
+/// `M2`'s commit message says *"two realities whose verbs differ are two
+/// different sets of rules, and `RLS-A13` says an event is pinned to the rules
+/// that produced it."* That is a claim about the encoding, and a claim about an
+/// encoding is worth exactly what a test of it is worth.
+///
+/// Both directions, because one without the other proves nothing: adding a verb
+/// MOVES the digest, and changing only a verb's `cue` — a number the engine
+/// carries and never reads — moves it TOO. The second is the one worth stating:
+/// a cue is presentation's, so it is tempting to leave it out of the pin, and
+/// that would let a reality change what a player is shown with nothing going
+/// red.
+#[test]
+fn a_verb_table_change_moves_the_reality_digest() {
+    let base = RealityRules::proving_ground();
+
+    let mut added = base.rules().clone();
+    let mut v = added.verbs.rows()[0];
+    v.name = ruleset_core::QuantityName::new("second").unwrap();
+    added.verbs.declare(v, added.quantities.len(), false).unwrap();
+
+    // Rebuilt through `declare` rather than mutated in place: the table's
+    // ordering rule (`CMD-1` — by DECLARATION, never sorted) is part of what is
+    // hashed, so a test that bypassed the constructor could produce bytes the
+    // real path cannot.
+    let mut recued = base.rules().clone();
+    let mut rebuilt = ruleset_core::VerbTable::EMPTY;
+    for mut row in base.rules().verbs.rows().iter().copied() {
+        row.cue = row.cue.wrapping_add(1);
+        rebuilt.declare(row, base.rules().quantities.len(), false).unwrap();
+    }
+    recued.verbs = rebuilt;
+
+    println!("VERB-PIN  base       = {}", hex(&base.digest().0));
+    println!("VERB-PIN  +one verb  = {}", hex(&Ruleset::digest(&added).0));
+    println!("VERB-PIN  cue+1 only = {}", hex(&Ruleset::digest(&recued).0));
+
+    assert_ne!(base.digest(), Ruleset::digest(&added), "a new verb is a rules change");
+    assert_ne!(
+        base.digest(),
+        Ruleset::digest(&recued),
+        "a cue change moved no digest — a reality could change what a player is shown          with nothing going red"
     );
 }
 
