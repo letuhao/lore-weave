@@ -12,8 +12,8 @@
 #
 # THE POINT OF THE NAMES
 # ----------------------
-# `vitality`, `swiftness` and `breath` are CONTENT. They appear in this file and
-# in nothing else: no crate, no service, no test fixture in `src/`. The engine
+# `vitality`, `swiftness`, `breath` and `focus` are CONTENT. They appear in this file
+# and in nothing else: no crate, no service, no test fixture in `src/`. The engine
 # asks for a ROLE — "the pool whose exhaustion ends participation" — and this
 # file answers with a quantity. `scripts/engine-vocabulary-gate.py` is what keeps
 # that true rather than merely intended.
@@ -67,17 +67,24 @@ zero_behaviour = "clamp"
 
 # --- the pool an action spends to be taken at all ---------------------------
 #
-# IAS-D6's turn economy. `block_costs` is the shipped ZeroBehaviour whose doc
-# reads "refuse any action whose cost this pool cannot pay" — written before
-# anything used it, and this is what it was written for. One action per actor
-# per turn; a reality that grants two says `base = 2` here rather than in code.
+# IAS-D6's turn economy, and the ENGINE owns it: it is deducted on every action,
+# and no declared verb may name it. One action per actor per turn; a reality that
+# grants two says `base = 2` here rather than in code.
+#
+# `zero_behaviour` is declared and is currently NOT READ by any law — the
+# substrate's affordability test is a comparison against the pool's declared
+# floor, not a `ZeroBehaviour` dispatch. Saying so here is better than the
+# comment this replaces, which claimed `block_costs` was "what it was written
+# for": it is the right VALUE for this row and it has no consumer yet. Tracked
+# as `D-ZERO-BEHAVIOUR-UNREAD`.
 # --- a pool with NO engine role: ordinary content, for verbs to spend ---------
 #
 # `EngineRole::None` is the common case and this is what it looks like. It exists
-# because a declared verb may not spend the action budget: the engine already
-# spends that on every action (IAS-D6), so a verb declaring the cost as well
-# would charge twice — refused at boot with that reason. A verb's cost is a
-# GAME resource, and this is one.
+# because a declared verb may not TOUCH the action budget in any position: the
+# engine spends that on every action (IAS-D6), so an `effect` on it grants
+# unlimited free actions, a `spend` charges twice and a `requires` can never be
+# met. All three are refused at boot with that reason. A verb's cost is a GAME
+# resource, and this is one.
 [[resources]]
 quantity = "focus"
 min = 0

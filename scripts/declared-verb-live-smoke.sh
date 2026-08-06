@@ -101,6 +101,10 @@ fi
 
 export DECLARED_VERB_TEST_DATABASE_URL="postgres://${PG_USER}:${PG_PASSWORD}@127.0.0.1:${PG_HOST_PORT}/${DB}"
 
+# REQUIRE_LIVE=1 turns a missing DSN into a FAILURE rather than a green skip.
+# Without it this script could report success having touched no database.
+export REQUIRE_LIVE=1
+
 log "running the live declared-verb test ..."
 cargo test -p commit-service --test declared_verb_live -- --nocapture
 rc=$?

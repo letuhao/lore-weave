@@ -217,6 +217,24 @@ async fn a_declared_verb_reaches_the_log_and_the_wire() -> anyhow::Result<()> {
         "CMD-4 — the declared cue ordinal survived the round trip through Postgres"
     );
     assert_eq!(acted_ev["actor"].as_str(), Some(ACTOR.0.to_string().as_str()), "CWC-A2 decimal string");
+    // **The NUMBERS, not only the identifiers.** The first version of this smoke
+    // asserted `verb` and `cue` and nothing else — so a fact carrying a
+    // fabricated `left` for a quantity the actor does not hold would have passed
+    // it unchanged, which is exactly the defect a cold-start reviewer found in
+    // the substrate. The three fields below are what makes this a check on what
+    // HAPPENED rather than on what was labelled.
+    assert_eq!(
+        acted_ev["quantity"].as_u64(),
+        Some(decl.effect.quantity as u64),
+        "the fact must name the quantity the DECLARATION names"
+    );
+    assert_eq!(acted_ev["delta"].as_i64(), Some(decl.effect.amount as i64));
+    let left = acted_ev["left"].as_i64().expect("left is a number");
+    let (min, ceiling) = rules.pool_bounds(decl.effect.quantity).expect("a declared pool");
+    assert!(
+        (i64::from(min)..=i64::from(ceiling)).contains(&left),
+        "left={left} is outside the pool's declared bounds [{min}, {ceiling}] — the clamp          did not run, or the fact is about a quantity the actor does not hold"
+    );
 
     // ── A2.2 — the REFUSAL, with its reason ordinal (`CMD-5`) ───────────────
     let (refused_id, refused_ev) = refused.expect(

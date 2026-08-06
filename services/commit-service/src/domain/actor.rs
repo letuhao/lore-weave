@@ -76,7 +76,14 @@ pub struct Actor {
 // MAX_DECLARED_QUANTITIES moves this number. Boxing the hub to keep it small
 // would make the assertion 16 bytes for every n and is forbidden for the reason
 // `QTY-A6 ⊥ QTY-A12` gives.
-const _: () = assert!(core::mem::size_of::<Actor>() <= 160);
+//
+// **`<=` became `==` after a cold-start reviewer measured the slack.** The
+// comment above claimed "adding a field moves this number"; the NUMBER moves,
+// the ASSERTION did not — used bytes are 144 + 1 + 1 + 1 + 1 + 3 + 2 = 153 in
+// 160 allocated, so up to SEVEN bytes of new field slid in green. The hub's own
+// assertion next door is `== 144` and survives every attack; this one is now the
+// same shape, and the cost of exactness is one repin per deliberate change.
+const _: () = assert!(core::mem::size_of::<Actor>() == 160);
 
 impl Actor {
     /// Spawn a combatant into a reality: attach the feature, and take every

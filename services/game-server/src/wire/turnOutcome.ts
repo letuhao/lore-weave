@@ -211,7 +211,8 @@ export type RefusalReason =
   | 'requirement_unmet'
   | 'cannot_afford'
   | 'actor_absent'
-  | 'not_acting';
+  | 'not_acting'
+  | 'encounter_resolved';
 
 /** Every `RefusalReason`, for the same reason `DOMAIN_EVENT_TYPES` exists: a
  *  union's members are not enumerable at runtime. */
@@ -221,6 +222,7 @@ export const REFUSAL_REASONS = [
   'cannot_afford',
   'actor_absent',
   'not_acting',
+  'encounter_resolved',
 ] as const satisfies readonly RefusalReason[];
 
 /** Terminal result of an encounter. Mirrors `game_rules::combat::EncounterOutcome`. */

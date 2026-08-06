@@ -73,25 +73,42 @@ pub enum BindingError {
     /// `QuantityOrdinal` width ever disagree — which is exactly the drift a
     /// refusal should catch rather than an `unwrap` in a boot path.
     OrdinalTooWide { ordinal: u16 },
-    /// A declared verb spends the pool bound to `EngineRole::ActionBudget`.
+    /// A declared verb names a quantity that is not a declared POOL.
     ///
-    /// **Refused because the engine ALREADY spends it, on every action** — that
-    /// is `IAS-D6`'s turn economy, and it is what stops a driver taking two
-    /// actions in a turn. A verb that also declared the cost would charge twice,
-    /// and the author would have written a turn economy of their own on top of
-    /// the engine's.
+    /// **`VerbTable::declare` cannot catch this** — it validates against the
+    /// QUANTITY table, and a quantity becomes readable on an actor only if it
+    /// also has a `[[resources]]` row, because the hub plugin is built from the
+    /// RESOURCE table. A verb naming a pool-less quantity therefore passed every
+    /// build check and reached the substrate, where the write silently did
+    /// nothing and **an `Acted` fact was committed anyway, carrying a fabricated
+    /// `left`.**
     ///
-    /// Found by a test rather than by design: the first authored verb spent the
-    /// action budget, the engine's generic spend had already taken it, and the
-    /// verb refused itself with `RequirementUnmet` on its own first submission.
-    /// The refusal now says why, at BOOT, instead of leaving an author with a
-    /// verb that can never fire.
+    /// A silence would have been bad; a committed LIE is worse, and it is the
+    /// `QTY-Q5` class that `VerbError::UnknownQuantity`'s own doc says this tier
+    /// exists to refuse. Found by a cold-start reviewer, not by the suite.
+    VerbNamesUndeclaredPool { verb: String, ordinal: u16 },
+    /// A declared verb names the pool bound to `EngineRole::ActionBudget`, in
+    /// ANY of its three positions.
     ///
-    /// **The EFFECT side is deliberately not refused.** A verb that changes the
-    /// initiative pool is a haste effect and is exactly what a declared verb is
-    /// for; only the SPEND collides, because only the spend is a second
-    /// deduction of the same budget.
-    VerbSpendsEngineBudget { verb: String },
+    /// **The engine owns that pool outright** — `IAS-D6`'s turn economy spends
+    /// it on every action, which is what stops a driver acting twice in a turn.
+    /// All three positions are refused, because each breaks it differently:
+    ///
+    /// | position | what it did before this refusal |
+    /// |---|---|
+    /// | `effect` | **unlimited free actions.** The engine deducted 1 and the verb's effect added it back; four submissions with no turn boundary left the budget at 1 |
+    /// | `spend` | charged TWICE for one action |
+    /// | `requires` | a verb that can NEVER fire — the engine's deduction runs first, so the threshold is already unmet on the verb's own first submission |
+    ///
+    /// **The first version of this refusal covered only `spend`, and cited the
+    /// `requires` incident as its reason.** The symptom it quoted
+    /// (`RequirementUnmet` on the first submission) cannot come from a spend at
+    /// all — that path returns `CannotAfford`. It was aimed at the wrong arm of
+    /// the bug it was written for, and the free-action case was argued away in
+    /// prose as *"the EFFECT side is deliberately not refused"* — sound for the
+    /// INITIATIVE pool, where a haste effect is exactly what a declared verb is
+    /// for, and false for this one.
+    VerbTouchesEngineBudget { verb: String, position: &'static str },
 }
 
 impl std::fmt::Display for BindingError {
@@ -109,9 +126,13 @@ impl std::fmt::Display for BindingError {
                 f,
                 "quantity ordinal {ordinal} is outside the hub's ordinal space"
             ),
-            Self::VerbSpendsEngineBudget { verb } => write!(
+            Self::VerbNamesUndeclaredPool { verb, ordinal } => write!(
                 f,
-                "verb `{verb}` spends the pool bound to the `action_budget` role, which the                  engine already spends on every action (IAS-D6). Declaring the cost as well                  would charge twice and the verb could never fire. Spend a pool of your own"
+                "verb `{verb}` names quantity ordinal {ordinal}, which this reality declares                  as an identity but NOT as a pool. An actor holds a number only for a                  declared pool, so the verb would write nothing and commit a fact saying it                  had. Add a `[[resources]]` row for it"
+            ),
+            Self::VerbTouchesEngineBudget { verb, position } => write!(
+                f,
+                "verb `{verb}`'s `{position}` names the pool bound to the `action_budget`                  role. The engine owns that pool: IAS-D6 spends it on every action, which is                  what stops a driver acting twice in a turn. An `effect` on it grants                  unlimited free actions, a `spend` charges twice, and a `requires` can never                  be met. Use a pool of your own"
             ),
         }
     }
@@ -265,17 +286,31 @@ impl RealityRules {
             .expect("resolved above")
             .base;
 
-        // A declared verb may not re-declare the engine's own turn cost. See
-        // `BindingError::VerbSpendsEngineBudget` — checked HERE because this is
-        // the only place that knows both the verb table and the role bindings,
-        // and at BOOT because an author must learn it before a player does.
+        // Every quantity a verb names must be a declared POOL, and none of them
+        // may be the engine's own turn budget. Checked HERE because this is the
+        // only place that knows the verb table, the resource table AND the role
+        // bindings — `VerbTable::declare` sees only the QUANTITY table, which is
+        // exactly why it let a pool-less quantity through.
         for v in rules.verbs.rows() {
-            if let Some(spend) = v.spend
-                && spend.quantity == action_budget.get()
-            {
-                return Err(BindingError::VerbSpendsEngineBudget {
-                    verb: v.name.as_str().to_string(),
-                });
+            let named = [
+                (Some(v.effect.quantity), "effect"),
+                (v.spend.map(|s| s.quantity), "spend"),
+                (v.requires.map(|r| r.quantity), "requires"),
+            ];
+            for (q, position) in named {
+                let Some(q) = q else { continue };
+                if rules.resources.for_quantity(q).is_none() {
+                    return Err(BindingError::VerbNamesUndeclaredPool {
+                        verb: v.name.as_str().to_string(),
+                        ordinal: q,
+                    });
+                }
+                if q == action_budget.get() {
+                    return Err(BindingError::VerbTouchesEngineBudget {
+                        verb: v.name.as_str().to_string(),
+                        position,
+                    });
+                }
             }
         }
 
@@ -320,6 +355,25 @@ impl RealityRules {
 
     pub fn hub(&self) -> &HubBinding {
         &self.hub
+    }
+
+    /// **The declared bounds of a pool, resolved** — `[min, ceiling]`.
+    ///
+    /// `None` when the ordinal is not a declared pool, which after
+    /// [`BindingError::VerbNamesUndeclaredPool`] no declared verb can name.
+    ///
+    /// **This exists because `EffectRow::amount`'s doc claimed a clamp that did
+    /// not happen.** It said *"the engine clamps against the pool's own declared
+    /// bounds"*, and the substrate did `(before + amount).max(0)` — a hardcoded
+    /// floor of zero that ignored `ResourceDecl::min` and had no ceiling at all.
+    /// A cold-start reviewer drove a `vitality` of ceiling 100 to **15100**.
+    pub fn pool_bounds(&self, ordinal: u16) -> Option<(i32, i32)> {
+        let row = self.rules.resources.for_quantity(ordinal)?;
+        let ceiling = match row.ceiling {
+            CeilingBinding::Slot(s) => CombatStats::archetype_slot(&self.rules.stats, s),
+            CeilingBinding::Fixed(v) => v,
+        };
+        Some((row.min, ceiling))
     }
 
     /// The reality's resolved combat archetype — one block, not one per actor.

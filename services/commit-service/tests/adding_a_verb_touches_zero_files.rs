@@ -70,7 +70,13 @@ fn reality_with(extra: &str) -> RealityRules {
 
 fn island(rules: Arc<RealityRules>) -> Island<CombatDomain> {
     let mut state = CombatState { session_seed: 1, ..Default::default() };
-    state.actors.insert(A, Actor::spawn(&rules, A, Side::A));
+    // Wounded on purpose. The verb below RESTORES vitality, and the pool's
+    // ceiling is its declared one — so an actor at full health would clamp and
+    // the test would measure the clamp instead of the verb. Starting below full
+    // is also the only shape in which a heal means anything.
+    let mut a = Actor::spawn(&rules, A, Side::A);
+    a.set_vital(&rules, 50);
+    state.actors.insert(A, a);
     let mut isle: Island<CombatDomain> =
         Island::new(IslandId(1), 3, RulesetEpoch(1), rules, SeenWindow::Unbounded, state);
     isle.spawn_entity(A);
@@ -286,4 +292,65 @@ fn the_seventeenth_verb_is_refused_rather_than_dropped() {
     .expect_err("past the declared width is a REFUSAL, never a silent truncation");
     println!("width bound  -> {err}");
     assert!(err.to_string().contains("capacity"));
+}
+
+// ── the claim itself, mechanised ────────────────────────────────────────────
+
+/// **`CMD-6`, as a CHECK rather than a comment.**
+///
+/// `substrate.rs`'s own header says *"If either appears, the acceptance test is
+/// false and the substrate has become the thing it replaced."* **Nothing checked
+/// it.** A cold-start reviewer's sharpest finding was that every test above
+/// would stay green if someone added `match verb { 0 => …, _ => … }` tomorrow —
+/// so the load-bearing claim of `M2` was prose sitting under a file named for
+/// it.
+///
+/// This reads the source at RUNTIME, which is the same call
+/// `TestOpenAPIRouteConformance` makes for the contract-first rule: a check that
+/// is compiled in cannot see the file it is about.
+///
+/// It is narrow on purpose. It does not try to understand Rust; it looks for the
+/// two shapes a per-verb branch can take — a `match` whose scrutinee is the verb
+/// ordinal, and a comparison of it against a literal — which is exactly the
+/// discriminator `hub-vocabulary-gate` settled on one contract down, for the
+/// same reason: *an ordinal is an ADDRESS; comparing one against a LITERAL asks
+/// "is this the address I mean", which is a name.*
+#[test]
+fn the_substrate_never_branches_on_a_verb() {
+    const CORE: &[&str] = &[
+        "src/domain/substrate.rs",
+        "src/domain/binding.rs",
+        "src/domain/law.rs",
+    ];
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut findings = Vec::new();
+
+    for rel in CORE {
+        let src = std::fs::read_to_string(root.join(rel))
+            .unwrap_or_else(|e| panic!("command core file {rel} is unreadable: {e}"));
+        for (i, line) in src.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or("").trim();
+            if code.is_empty() {
+                continue;
+            }
+            let branches_on_verb = code.starts_with("match verb")
+                || code.contains("match verb {")
+                || code.contains("matches!(verb")
+                || (code.contains("verb ==") && code.split("verb ==").nth(1)
+                    .is_some_and(|r| r.trim_start().starts_with(|c: char| c.is_ascii_digit())))
+                || (code.contains("verb !=") && code.split("verb !=").nth(1)
+                    .is_some_and(|r| r.trim_start().starts_with(|c: char| c.is_ascii_digit())));
+            if branches_on_verb {
+                findings.push(format!("{rel}:{}: {code}", i + 1));
+            }
+        }
+    }
+
+    assert!(
+        findings.is_empty(),
+        "command core branches on a verb ordinal, so `adding a verb touches zero files` is \
+         FALSE — the substrate has become the `match` it replaced (CMD-6):\n  {}",
+        findings.join("\n  ")
+    );
+    println!("CMD-6  {} command-core file(s) scanned; none branches on a verb", CORE.len());
 }

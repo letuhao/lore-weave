@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use commit_service::combat::{EncounterOutcome, Side};
 use commit_service::{
-    Actor, CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatState, RealityRules,
+    CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatState, RealityRules,
 };
 use sim_core::{
 

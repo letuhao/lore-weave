@@ -343,7 +343,7 @@ impl CanonEncode for Ruleset {
         // that a decoded-then-upcast value would have already overwritten.
         resources.canon_at(c, crate::ruleset::RULESET_SCHEMA_VERSION);
         crate::ruleset_codec::canon_progression(c, progression);
-        verbs.canon(c);
+        verbs.canon_at(c, crate::ruleset::RULESET_SCHEMA_VERSION);
     }
 }
 

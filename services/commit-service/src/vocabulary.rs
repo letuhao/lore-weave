@@ -41,6 +41,22 @@ pub enum Reject {
     BadStance(String),
     #[error("no tool call in the model response (finish={0})")]
     NoToolCall(String),
+    /// A declared verb and an engine tool share a name.
+    ///
+    /// **Refused rather than resolved by precedence, and that is the whole
+    /// point.** The declared table is consulted first, so before this refusal a
+    /// preset declaring `strike` silently REPLACED the engine's attack with a
+    /// self-targeted delta and dropped the target argument on the floor —
+    /// content disabling combat, at boot-time-green. Preferring the manifest
+    /// instead would be the mirror defect: an author's declaration silently
+    /// doing nothing.
+    ///
+    /// `CMD-10`'s V4 stops an author writing `submitter_class`; it never stopped
+    /// them writing `strike`. Found by a cold-start reviewer.
+    #[error(
+        "declared verb '{0}' has the same name as an engine tool. Neither can win          without the other silently losing: rename the verb, or wait for the tool to          be replaced by a declared row (D-14)"
+    )]
+    VerbShadowsTool(String),
 }
 
 impl Vocabulary {
@@ -103,6 +119,12 @@ impl Vocabulary {
         // true: every arm below is one verb's worth of code, and a declared verb
         // needs none.
         if let Some(ordinal) = verbs.ordinal_of(tool_name) {
+            // A collision is refused, never resolved by precedence — see
+            // `Reject::VerbShadowsTool`. Checked HERE and not only at boot,
+            // because this is the path that would otherwise pick a winner.
+            if self.contains(tool_name) {
+                return Err(Reject::VerbShadowsTool(tool_name.to_string()));
+            }
             return Ok(CombatPayload::Declared { verb: ordinal, actor });
         }
         if !self.contains(tool_name) {

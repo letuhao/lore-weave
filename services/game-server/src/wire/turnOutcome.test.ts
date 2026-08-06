@@ -67,7 +67,7 @@ test('refusal reasons are exactly the schema enum — CMD-5 carries a reason ord
   // commit-service/src/domain/payload.rs.
   const allowed = schema.$defs.RefusalReason.enum;
   assert.deepEqual([...REFUSAL_REASONS].sort(), [...allowed].sort());
-  assert.equal(allowed.length, 5, 'RefusalReason has FIVE members');
+  assert.equal(allowed.length, 6, 'RefusalReason has SIX members since the silent-path fix');
 });
 
 test('discard reasons are exactly the 5-variant sim-core set', () => {

@@ -13,7 +13,7 @@
 > | `U-9` · `U-10` | `scripts/hashed-substrate-float-gate.py` · `scripts/citation-gate.py`, both wired pre-commit, both with a passing `--self-test` |
 >
 > **Evidence, every number re-derived at the moment of writing** — because the previous two versions of
-> this block were stale by the commit that contained them (`D-343`, `D-350`): **307 Rust tests** green
+> this block were stale by the commit that contained them (`D-343`, `D-350`): **308 Rust tests** green
 > across the touched crates · `dp-kernel --lib` **315**, unchanged by the `GoneState` move · the Go mirror
 > `contracts/entity_status` **ok** · clippy and `cargo doc` counts deliberately not stated, because
 > nothing here measures them and a figure with no measurement rule goes stale by construction — a
@@ -1558,7 +1558,7 @@ recorded as OPEN in the previous commit and discharged in this one.
 (cold-start agent that did not write the code) · this row filled in.
 
 > **ALL ELEVEN SLICES CLOSED.** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules
-> -p ruleset-loader` = **307 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
+> -p ruleset-loader` = **308 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
 > `GoneState` move) · the Go mirror `contracts/entity_status` **ok** · clippy and `cargo doc` counts
 > deliberately not stated: nothing here measures them, so the figure goes stale by construction — a
 > round-12 verifier measured the flat claim FALSE, the header block was corrected, and this copy of the

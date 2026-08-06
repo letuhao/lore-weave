@@ -15,7 +15,7 @@
 //! express it.
 
 use game_rules::combat::{
-    action_value, evaluate_outcome, next_actor, resolve_attack, AvStatus, EncounterOutcome,
+    action_value, evaluate_outcome, next_actor, resolve_attack, EncounterOutcome,
 };
 use sim_core::{
     DetRng, Domain, EntityId, Precondition, PreconditionKind, QueuedInput, Violation,
@@ -23,7 +23,7 @@ use sim_core::{
 
 use super::actor::Actor;
 use super::binding::RealityRules;
-use super::payload::{CombatEvent, CombatPayload};
+use super::payload::{CombatEvent, CombatPayload, RefusalReason};
 use super::state::{CombatResource, CombatState};
 
 pub struct CombatDomain;
@@ -172,8 +172,13 @@ impl Domain for CombatDomain {
         // A resolved encounter takes no further actions. Without this a
         // late-arriving proposal could damage corpses after Victory, and the
         // outcome event would already have been committed and fanned out.
+        //
+        // **A DECLARED verb is refused rather than dropped** (`CMD-5`). The
+        // legacy arms still return silence, and that is the pre-existing
+        // behaviour `D-14` will rewrite; a declared verb has a reason ordinal
+        // and a committed fact, so there is no excuse for it to vanish.
         if state.outcome.is_some() && !matches!(input.payload, CombatPayload::EndTurn) {
-            return Vec::new();
+            return super::substrate::refuse_declared(&input.payload, RefusalReason::EncounterResolved);
         }
 
         if let Some(actor) = Self::actor_of(&input.payload) {
@@ -184,10 +189,16 @@ impl Domain for CombatDomain {
             // route the payload arrived by.
             let budget = match state.actors.get(&actor) {
                 Some(a) => a.action_budget(rules),
-                None => return Vec::new(),
+                // The submitter is not in this encounter. This is what made
+                // `RefusalReason::ActorAbsent` DEAD CODE: the substrate had an
+                // arm for it that nothing could reach, because `apply` returned
+                // silence here first.
+                None => return super::substrate::refuse_declared(&input.payload, RefusalReason::ActorAbsent),
             };
             if budget < 1 {
-                return Vec::new();
+                // Out of turn budget — `NotActing`'s doc already names this case
+                // and nothing could produce it.
+                return super::substrate::refuse_declared(&input.payload, RefusalReason::NotActing);
             }
             if let Some(a) = state.actors.get_mut(&actor) {
                 a.set_action_budget(rules, budget - 1);
@@ -322,53 +333,7 @@ impl Domain for CombatDomain {
             // all, so three documents were assuming one that did not exist and
             // a 3-round debuff would have been permanent. In-combat expiry is
             // COMB-owned and round-scoped.
-            CombatPayload::EndTurn => {
-                let mut events = Vec::new();
-                state.round_number = state.round_number.saturating_add(1);
-
-                let ids: Vec<EntityId> = state.actors.keys().copied().collect();
-                for id in ids {
-                    // The refill value is the reality's declared `base`, not a
-                    // hardcoded 1: a reality that grants two actions a turn
-                    // says so in content.
-                    let refill = rules.hub().action_budget_base() as i64;
-                    let status = state.actors[&id].status;
-                    // AV resets each round from the reality's speed and
-                    // whatever status the actor currently carries.
-                    let av =
-                        action_value(&rules.rules().combat, rules.archetype().speed, status, false);
-                    let Some(a) = state.actors.get_mut(&id) else { continue };
-                    a.set_action_budget(rules, refill);
-                    a.set_initiative(rules, av);
-
-                    // Round-scoped statuses expire together, and the expiry is
-                    // EMITTED — a debuff that vanishes silently is
-                    // indistinguishable from one that never applied.
-                    if a.status != AvStatus::default() {
-                        a.status = AvStatus::default();
-                        events.push(CombatEvent::StatusExpired { actor: id });
-                    }
-
-                    if let Some(left) = a.knocked_out {
-                        match left.checked_sub(1) {
-                            Some(0) | None => {
-                                // The revival window closed. The actor stays
-                                // at 0 vital; permanence is WA_006's call at
-                                // encounter end, not the engine's here.
-                                a.knocked_out = Some(0);
-                            }
-                            Some(n) => a.knocked_out = Some(n),
-                        }
-                    }
-                }
-                if state.outcome.is_none()
-                    && let Some(o) = Self::outcome_of(state, rules)
-                {
-                    state.outcome = Some(o);
-                    events.push(CombatEvent::EncounterEnded { outcome: o });
-                }
-                events
-            }
+            CombatPayload::EndTurn => super::round::end_turn(state, rules),
         }
     }
 

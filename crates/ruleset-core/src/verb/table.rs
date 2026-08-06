@@ -131,7 +131,21 @@ impl VerbTable {
         Ok(())
     }
 
-    pub(crate) fn canon(&self, c: &mut Canon) {
+    /// Encode at a SPECIFIC schema version — `QTY-A11`'s round-trip.
+    ///
+    /// **The version parameter is here BEFORE it is needed, and that is the
+    /// point.** `ResourceTable::canon_at` acquired one at v6 because a field
+    /// arrived, and its doc explains what the version-free form would have done:
+    /// re-encode a decoded older artifact in the NEW shape, so `RulesetStore::get`
+    /// re-digests it and rejects the store's own artifact.
+    ///
+    /// This table shipped without one. A cold-start reviewer measured the trap:
+    /// the moment a field is added to `VerbDecl` at v8, an unversioned encoder
+    /// writes the v8 shape at v7 and breaks the round-trip for every v7
+    /// artifact. **The sibling already learned this; the cost of learning it
+    /// twice is a corrupted store.** So the parameter is threaded now, while it
+    /// is free.
+    pub(crate) fn canon_at(&self, c: &mut Canon, _version: u32) {
         c.seq_len(self.len());
         for v in self.rows() {
             c.bytes(v.name.as_bytes());
@@ -144,7 +158,8 @@ impl VerbTable {
         }
     }
 
-    pub(crate) fn decode(r: &mut CanonReader<'_>) -> Result<Self, CanonError> {
+    /// Decode at a SPECIFIC schema version — the other half of [`Self::canon_at`].
+    pub(crate) fn decode_at(r: &mut CanonReader<'_>, _version: u32) -> Result<Self, CanonError> {
         let n = r.u32()? as usize;
         if n > MAX_DECLARED_VERBS {
             // Refuse rather than truncate: a stored fact may already name a verb

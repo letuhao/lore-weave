@@ -75,6 +75,18 @@ pub enum RefusalReason {
     /// Down, fled, or out of turn budget — the actor holds a place in the
     /// encounter without holding a turn.
     NotActing = 4,
+    /// The encounter is already over. A late proposal must not damage corpses,
+    /// and it must not vanish either.
+    ///
+    /// **Added because a cold-start reviewer measured three SILENT paths.**
+    /// `law.rs` returned an empty event vector for an out-of-budget actor, an
+    /// absent actor and a resolved encounter — so the spine committed
+    /// `turn.resolved` with an empty `events` array, which is a turn that
+    /// resolved into nothing: exactly the *"indistinguishable from an action
+    /// that never arrived"* the design forbids. Two of the three now reach
+    /// existing reasons; this one had none, and inventing a reason is cheaper
+    /// than pretending the case does not exist.
+    EncounterResolved = 5,
 }
 
 impl RefusalReason {
@@ -82,12 +94,13 @@ impl RefusalReason {
     /// rather than against a second list. `closed-set-gate` exists because Rust
     /// makes you HANDLE every variant but cannot make an array CONTAIN every
     /// variant.
-    pub const ALL: [RefusalReason; 5] = [
+    pub const ALL: [RefusalReason; 6] = [
         RefusalReason::UnknownVerb,
         RefusalReason::RequirementUnmet,
         RefusalReason::CannotAfford,
         RefusalReason::ActorAbsent,
         RefusalReason::NotActing,
+        RefusalReason::EncounterResolved,
     ];
 }
 

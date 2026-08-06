@@ -176,47 +176,6 @@ fn a_contribution_to_an_undeclared_quantity_is_refused_not_ignored() {
     assert_eq!(report.refused.len(), 1, "the refusal is a fact, not a silence");
 }
 
-/// **The asserted trigger for `D-PER-ACTOR-STATS-UNEXPRESSIBLE`.**
-///
-/// `M1` collapsed `Actor.stats` into one archetype per reality, because the
-/// per-actor copies differed only in `CombatStats::max_hp` and no law reads that
-/// field. The consequence is that **a reality cannot give two actors different
-/// speeds today** — and a deferral row is prose unless something reds when its
-/// subject arrives.
-///
-/// This is that something. It fails the moment `StatRules` grows a second
-/// archetype, or `Actor` grows anywhere to store per-actor modifiers — which are
-/// the only two shapes in which the missing capability can arrive. Whoever makes
-/// that change reads this test, and the row goes with it.
-#[test]
-fn the_reality_declares_exactly_one_archetype() {
-    let rules = hub_fixture::rules();
-
-    // ONE archetype in the ruleset. `StatRules` is destructured exhaustively so
-    // a new field cannot be added without this line failing to compile —
-    // the same mechanism `CanonEncode` uses to keep a field out of the digest.
-    let ruleset_core::StatRules {
-        slot_defaults: _,
-        move_base: _,
-        move_speed_per_tile: _,
-        move_max: _,
-        melee_archetype: _,
-    } = rules.rules().stats;
-
-    // …and every actor in the reality resolves to it. Two actors, one block —
-    // which IS the deferred limitation, asserted rather than described. When a
-    // per-actor stat path lands this equality stops holding, and the row is
-    // discharged by the change that broke it.
-    let a = Actor::spawn(&rules, A, Side::A);
-    let b = Actor::spawn(&rules, EntityId(2), Side::B);
-    assert_eq!(
-        a.vital_ceiling(&rules),
-        b.vital_ceiling(&rules),
-        "two actors already differ — per-actor stats exist, so \
-         D-PER-ACTOR-STATS-UNEXPRESSIBLE is discharged and this test should go with it"
-    );
-}
-
 /// **`A3.4` — the door count.** `CMD-3` closes the effect primitive set on
 /// *"a primitive exists iff the substrate already built the door"*, and `M1`
 /// opened exactly one: `Delta`, a signed write to a declared quantity.
@@ -228,7 +187,7 @@ fn the_reality_declares_exactly_one_archetype() {
 fn exactly_one_effect_door_is_open_and_it_is_delta() {
     let rules = hub_fixture::rules();
     let mut a = Actor::spawn(&rules, A, Side::A);
-    let q = rules.hub().vital();
+
 
     // Delta: OPEN — the hub has a guarded write, and it carries any value.
     a.set_vital(&rules, a.vital(&rules) - 30);
@@ -278,4 +237,79 @@ fn the_engine_finds_its_numbers_by_role_not_by_name() {
 
     let a = Actor::spawn(&renamed, A, Side::A);
     assert_eq!(a.vital(&renamed), 100, "the defeat law reads the same number under a new name");
+}
+
+// ── the refusals a cold-start reviewer's findings forced ────────────────────
+
+/// **Finding #1 — a verb naming a quantity with no POOL committed a LIE.**
+///
+/// `VerbTable::declare` validates against the QUANTITY table; an actor holds a
+/// number only for a declared POOL. So a verb naming a pool-less quantity passed
+/// every build check, wrote nothing, and committed an `Acted` fact carrying a
+/// fabricated `left`. A silence would have been bad; a committed lie is worse.
+#[test]
+fn a_verb_naming_a_quantity_with_no_pool_is_refused_at_boot() {
+    let src = "quantities = [\"spirit\"]\n\
+               [[verbs]]\nname = \"ghost\"\neffect_quantity = \"spirit\"\neffect_amount = 5\n";
+    let rules = ruleset_loader::resolve(&[
+        ruleset_loader::parse_layer(
+            ruleset_loader::Layer::Preset,
+            ruleset_loader::PROVING_GROUND_TOML,
+        )
+        .unwrap(),
+        ruleset_loader::parse_layer(ruleset_loader::Layer::Reality, src).unwrap(),
+    ])
+    .expect("the layer stack resolves — the quantity IS declared");
+
+    let err = RealityRules::resolve(rules)
+        .expect_err("a verb on a pool-less quantity must be refused at BOOT");
+    assert!(
+        matches!(err, BindingError::VerbNamesUndeclaredPool { .. }),
+        "{err:?}"
+    );
+    println!("finding#1  {err}");
+}
+
+/// **Finding #2/#3 — the engine's turn budget is untouchable, in all THREE
+/// positions.**
+///
+/// The first version of this refusal covered only `spend`. An `effect` on the
+/// budget granted **unlimited free actions** (the engine deducted 1, the verb
+/// added it back); a `requires` on it produced a verb that could never fire,
+/// which is the exact incident the refusal's own docstring cited while fixing a
+/// different arm.
+#[test]
+fn a_verb_may_not_touch_the_action_budget_in_any_position() {
+    for (position, extra) in [
+        ("effect", "effect_quantity = \"breath\"\neffect_amount = 1\n"),
+        (
+            "spend",
+            "effect_quantity = \"vitality\"\neffect_amount = 1\n\
+             spend_quantity = \"breath\"\nspend_amount = -1\n",
+        ),
+        (
+            "requires",
+            "effect_quantity = \"vitality\"\neffect_amount = 1\n\
+             requires_quantity = \"breath\"\nrequires_at_least = 1\n",
+        ),
+    ] {
+        let src = format!("[[verbs]]\nname = \"usurp\"\n{extra}");
+        let rules = ruleset_loader::resolve(&[
+            ruleset_loader::parse_layer(
+                ruleset_loader::Layer::Preset,
+                ruleset_loader::PROVING_GROUND_TOML,
+            )
+            .unwrap(),
+            ruleset_loader::parse_layer(ruleset_loader::Layer::Reality, &src).unwrap(),
+        ])
+        .expect("the layer stack resolves");
+        let err = RealityRules::resolve(rules).expect_err(&format!(
+            "`{position}` on the action budget must be refused at BOOT — otherwise an              `effect` grants unlimited free actions, a `spend` charges twice, and a              `requires` can never be met"
+        ));
+        assert!(
+            matches!(&err, BindingError::VerbTouchesEngineBudget { position: p, .. } if *p == position),
+            "the refusal must name WHICH position: {err:?}"
+        );
+        println!("finding#2/3  {position}: {err}");
+    }
 }

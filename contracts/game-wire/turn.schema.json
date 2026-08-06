@@ -154,7 +154,8 @@
         "requirement_unmet",
         "cannot_afford",
         "actor_absent",
-        "not_acting"
+        "not_acting",
+        "encounter_resolved"
       ]
     }
   }

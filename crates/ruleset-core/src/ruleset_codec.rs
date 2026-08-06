@@ -119,7 +119,11 @@ impl Ruleset {
         };
         // v1..v6 predate declared verbs. An artifact from before `M2` declared
         // none, and `EMPTY` states that rather than guessing it.
-        let verbs = if schema_version >= 7 { VerbTable::decode(&mut r)? } else { VerbTable::EMPTY };
+        let verbs = if schema_version >= 7 {
+            VerbTable::decode_at(&mut r, schema_version)?
+        } else {
+            VerbTable::EMPTY
+        };
         r.finish()?;
 
         // Upcast: the value handed back is always the current shape. Note it
@@ -184,7 +188,7 @@ impl Ruleset {
             canon_progression(&mut c, progression);
         }
         if version >= 7 {
-            verbs.canon(&mut c);
+            verbs.canon_at(&mut c, version);
         }
         Some(c.finish())
     }

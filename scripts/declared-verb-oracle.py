@@ -29,7 +29,10 @@ WHAT IT CHECKS
    the LAST fact carries. That is the conservation claim, checked against the
    log rather than against the code that wrote it.
 3. Every committed `refused` fact moved nothing — the fact after a refusal opens
-   at the value the fact before it closed at.
+   at the value the fact before it closed at. **Checked by walking the stream**,
+   not inferred from `Refused` having no `delta` field: that inference is true by
+   construction and could never diverge, which is the one thing an oracle must
+   never contain.
 4. The number of `acted` facts equals the declared `focus` pool's `base`, which
    is the verb's own `requires`/`spend` arithmetic checked from content.
 
@@ -205,13 +208,40 @@ def main() -> int:
     #     with itself.
     check("closing vital", acted[-1]["left"], opening + per_use * uses_available)
 
-    # (4) a refusal moved nothing.
-    if refused:
-        print(f"[oracle] agree   {len(refused)} refusal(s) carry no delta field at all "
-              f"— nothing to move")
-    else:
+    # (4) a refusal moved nothing — CHECKED, not asserted from the shape.
+    #
+    # The first version of this block printed "refusals carry no delta field at
+    # all — nothing to move", which is true BY CONSTRUCTION (`Refused` has no
+    # such field) and could therefore never diverge. In the one artifact whose
+    # entire premise is method-independence, a tautology is the worst possible
+    # passenger, and a cold-start reviewer said so.
+    #
+    # What is checked instead is the thing the docstring always claimed: the
+    # vital ACROSS a refusal. Every refusal in the log sits between two states,
+    # and the value after it must equal the value before it.
+    if not refused:
         print("[oracle] DIVERGE  the log carries no refusal; CMD-5's other half is unproven")
         failures += 1
+    else:
+        # Walk the whole fact stream in order, tracking the last `left` seen.
+        # A refusal must not change it, and the NEXT acted fact must open from
+        # it — which is a statement about two facts either side of a third.
+        last_left = opening
+        crossed = 0
+        for f in facts:
+            if f.get("type") == "acted":
+                last_left = f["left"]
+            elif f.get("type") == "refused":
+                before = last_left
+                after = next(
+                    (g["left"] - g["delta"] for g in facts[facts.index(f) + 1:]
+                     if g.get("type") == "acted"),
+                    before,
+                )
+                crossed += 1
+                check(f"vital across refusal {crossed}", after, before)
+        print(f"[oracle] {len(refused)} refusal(s) crossed, {crossed} checked against the "
+              f"values either side")
 
     if failures:
         print(f"\n[oracle] {failures} divergence(s): two independent methods disagree "

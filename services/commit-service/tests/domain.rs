@@ -5,7 +5,7 @@ mod hub_fixture;
 use std::sync::Arc;
 
 use commit_service::combat::Side;
-use commit_service::{Actor, CombatDomain, CombatEvent, CombatPayload, CombatState, RealityRules};
+use commit_service::{CombatDomain, CombatEvent, CombatPayload, CombatState, RealityRules};
 use sim_core::{
 
     RulesetEpoch,

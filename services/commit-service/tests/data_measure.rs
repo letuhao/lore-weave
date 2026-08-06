@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use commit_service::combat::Side;
 use commit_service::{
-    Actor, CombatDomain, CombatEvent, CombatPayload, CombatState, RealityRules,
+    CombatDomain, CombatEvent, CombatPayload, CombatState, RealityRules,
 };
 use ruleset_core::{Provenance, ResolvedRuleset, Ruleset};
 use sim_core::{
