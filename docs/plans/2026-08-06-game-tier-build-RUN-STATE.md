@@ -811,10 +811,110 @@ each one either invents its own access (which is the 457 bare `reality_id` sites
 the precise sense in which the house has no floor: not that rooms are missing, but that everything
 already standing is resting on the ground.
 
+### `FLOW-7` — 🔴 **THE ROOT CAUSE: `dp-kernel` is a NAME COLLISION from a different track**
+
+This is the answer to *"I thought the foundation was finished in May."* **Something named
+`dp-kernel` did appear in May. It was never the data plane.**
+
+| | measured |
+|---|---|
+| crates the LOCKED DP corpus names | **`dp`** (the SDK) · **`dp-derive`** (`04d` Deferred: *"macro code lives in `dp-derive` crate"*) · **`dp-clippy`** (`DP-K11`) · `loreweave-aggregates` (`OOS-2`) |
+| times the DP corpus names `dp-kernel` | **ZERO** — `grep -rn 'dp-kernel\|dp_kernel' 06_data_plane/*.md` → no match |
+| who created `crates/dp-kernel` | `21855a371` **`feat(raid-c8): L2 schema infra (F+G+H+I) — registry+eventgen+upcaster+validator`**, **2026-05-29** — the RAID track's event-contract infrastructure, five weeks *after* the DP spec locked (2026-04-24/25) |
+
+**And then the coverage audit believed the prefix.**
+[`12_module_coverage_audit.md`](../03_planning/LLM_MMO_RPG/12_module_coverage_audit.md) line 154:
+
+> *"Data platform (events, snapshots, projections, outbox, PII, capacity) | thin | **very deep** —
+> `crates/dp-kernel` (32 modules)"*
+
+The document whose entire job is to say **what is covered** looked at a crate whose name starts with
+`dp-`, counted 32 modules and 15 041 lines, and marked the data platform *very deep*. Every later doc
+inherited it — `13`, `14`, `16` all cite `dp-kernel::` as the thing the design stands on.
+
+⇒ **This is `NV` at the naming layer: a name that cannot fail to look like coverage.** No gate could
+catch it, because nothing was wrong — the crate is good code doing a real job. What was wrong is that
+**it answered a question nobody asked it**, and the answer was accepted because of five characters.
+
+**The remedy is not a rename** (`dp-kernel` is 15k LOC with a legitimate lineage and consumers). It
+is that **slice 1 creates `crates/dp` and the two are named, in both directions, for what they are**:
+`dp-kernel` = the storage/contract plumbing (`02_storage`'s Rust home); `dp` = the SDK the LOCKED
+corpus specifies. Anything less and the next coverage audit makes the same mistake.
+
+### `FLOW-8` — `#[derive(Aggregate)]` already exists, with a different contract. Slice 1 collides on day one
+
+`DP-Ch4` locks the derive as the enforcement point for scope exclusivity:
+`#[dp(scope = "channel", tier = "T2")]` → emits `impl ChannelScoped` + `impl T2Aggregate`, and
+`scope = "reality_and_channel"` is a **macro compile error**.
+
+**Measured:** `crates/dp-kernel-macros/src/lib.rs:78` already declares
+`#[proc_macro_derive(Aggregate, attributes(aggregate_type))]` — it emits `dp_kernel::Aggregate` +
+`AggregateMeta` from a field-shape contract, and knows nothing of scope or tier. Same name, same
+`dp-` family, different job. `04d`'s Deferred row says the DP one belongs in **`dp-derive`**.
+
+⇒ Slice 1's first decision is not *what the traits are* — it is **`dp-derive` beside
+`dp-kernel-macros`, or one macro serving two contracts**. Found by reading; it would otherwise have
+been found by `cargo` in the middle of the build.
+
+### `FLOW-9` — the channel ORDERING is built on a channel TREE that has no table
+
+`DP-Ch2` locks a `channels` table in the **per-reality** DB: `parent`, `depth ≤ 16`, `lifecycle`,
+`metadata`, plus `channels_no_orphan` and the no-cycle constraint. It is what `ChannelScoped` keys
+on, what the ancestor chain walks, and what every visibility rule resolves against.
+
+**Measured — `contracts/migrations/per_reality/`, 18 migrations:**
+
+| | |
+|---|---|
+| `0014_channel_ordering` → `channel_event_index` | ✅ `DP-Ch11` (per-channel `channel_event_id` allocation) |
+| `0015_writer_lease_liveness` → `channel_writer_state` | ✅ `DP-Ch12..Ch15` (writer binding + epoch fence) |
+| **`channels`** | ❌ **no migration, no table** — `DP-Ch1`/`Ch2`/`Ch3` (identity · registry · CP cache) |
+
+⇒ The **hardest** part of the channel design shipped (single-writer ordering, epoch fencing, lease
+liveness) and the **structural** part did not. `commit-service` writes `(reality_id, channel_id,
+channel_event_id)` against a `channel_id` that **no table defines**, so nothing enforces that a
+channel exists, has a parent, or is `Active`. That is the same shape as `SEALED-SUBJECT`: a field
+whose supplier is also its judge.
+
+### `FLOW-10` — dead vocabulary inside a LOCKED primitive signature, one file away from where it was fixed
+
+`04c` `DP-K6`:
+
+```rust
+pub enum BroadcastScope {
+    Reality, Session(SessionId),
+    Region(RegionId),   // players in one region (common for position)
+}
+```
+
+`GDA-F8` measured that `region` is **not vocabulary the feature layer uses** (the 52-row ownership
+matrix has `place` / `actor_core`), and `GDA-D13` fixed the one instance it found — the `DP-X3`
+hotset default. **`RegionId` is the only other occurrence in the entire locked corpus** (measured:
+one hit across all 25 files), it is in a **primitive's type signature** rather than a default value,
+and it is on the **T1 position-broadcast path** — the RTM lane. It was missed because the July sweep
+went looking for the hotset, not for the noun.
+
+### `FLOW-11` — the locked spec contradicts itself on the read primitives' names
+
+`04b` (LOCKED) defines `read_projection_reality` / `read_projection_channel` / `query_scoped_reality`
+/ `query_scoped_channel` — the Phase-4 scope split — and `DP-K12`'s surface table lists exactly those
+four. But **`04c` `DP-K8`'s worked example** calls `dp::read_projection::<PlayerInventory>(ctx, id)`
+and **`DP-K11`'s lint skeleton** matches on `dp::read_projection` / `dp::query_scoped` — the
+pre-split names. Small, and it is precisely the copy-paste surface: a worked example and a lint rule
+are the two things an implementer lifts verbatim.
+
+### What slices 1 and 2 now know that they did not
+
+| | before | after this read |
+|---|---|---|
+| **slice 1** | *"`DP-T0..T3` marker traits"* | tier traits **and** `DP-Ch4`'s `RealityScoped`/`ChannelScoped`, exclusivity enforced by a derive that **must resolve the `FLOW-8` collision first**, in a new **`crates/dp`** + **`dp-derive`** that `FLOW-7` says must be named against `dp-kernel`, not beside it |
+| **slice 2** | *"the `DP-R3` lint, shipped RED"* | `DP-K11` already specifies it: `dp::forbid_raw_kernel_client`, an explicit 7-path forbidden-import list (`sqlx::PgPool`, `redis::Client`, `deadpool_*`…), scoped by a **`dp-crate = true` Cargo marker** rather than a directory list — which is the `NV-3`-correct shape, already written |
+| **new** | — | **`DP-Ch1/Ch2/Ch3` (`FLOW-9`) belongs in the slice order.** `ChannelScoped` in slice 1 is a marker for a scope key whose table does not exist |
+
 ### Stated limit of this audit
 
-Read in full: `22`, `06`, `17`, `20`, `38 §0–§4`, `37 §1`, `19 §12b/§15`. **Measured but not read in
-full:** `04a`/`04c`/`04d`/`07`/`08`/`12`–`21`/`99`. Every count above is a command, and every command
+Read in full: `22`, `06`, **`04c`**, **`04d`**, **`12`**, `17`, `20`, `38 §0–§4`, `37 §1`,
+`19 §12b/§15`. **Measured but not read in full:** `07`/`08`/`13`–`21`/`99`. Every count above is a command, and every command
 is printed beside its claim. What is *not* claimed: that the nine unread files contain no further
 seam. They are the remaining work of this review.
 
