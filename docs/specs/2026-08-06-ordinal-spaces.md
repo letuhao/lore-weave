@@ -60,6 +60,22 @@ Measured. `N` is the binary's ceiling; `n` is what a reality declares.
 | **quantity** | **32** | `ruleset-core/src/quantity.rs` | `QTY-A5` — assigned in declaration order, **never authored**; `never_reuse.rs` guards re-use across epochs | yes — `QuantityTable`, `0..n` only |
 | **verb** | **16** | `ruleset-core/src/verb/table.rs` | `CMD-1` — the row's INDEX, append-only, never reused | yes — `VerbTable`, `0..n` only |
 | **tier within a kind** | **64** | `ruleset-core/src/progression/mod.rs` | a decode bound, not a layout one | via the progression digest |
+| **cue** | **= verb** | `ruleset-core/src/verb/table.rs` | authored on a verb row, **PER-REALITY** (PO, sealed 2026-08-06). `QTY-A14` applies: cue 3 in one reality means nothing in another | yes — inside `VerbTable`'s rows |
+
+> **The cue's width is DERIVED, not chosen**, and it is the pattern §4 says
+> `MAX_PLUGINS` should have used. Every cue in existence comes from a verb row
+> and there is exactly one per row, so a reality with `N` verbs cannot need an
+> `N+1`th distinct cue. Deriving it removes the thing to keep in step.
+>
+> **There is deliberately no cue TABLE.** A reality declares cue *numbers* and
+> nothing else; the words live in presentation content, in whatever language the
+> reader asked for. `AUTHOR-1` decides it — a second table to write is a cost
+> that buys only what a presentation file already holds.
+>
+> ⚠️ **When a non-verb emitter arrives** — a status lapsing, an encounter ending
+> — the derivation stops being true and must change in one place with a reason.
+> `a_cue_past_the_declared_space_is_refused` asserts the equality, so that change
+> cannot be silent.
 
 **And three constants that are ALIASES of `quantity`, two of them correctly:**
 
@@ -143,7 +159,7 @@ and each extension is an engine release plus a mirror on every consumer.
 
 | | |
 |---|---|
-| **`cue`** | `VerbDecl::cue: u16`. **No width constant, no repin log, no argument** — shipped by `M2` this week, in a tier where every neighbour carries all three. It is AUTHOR-EXTENSIBLE by construction (an author writes the number) and therefore owes exactly what a quantity owes. **Proposed:** a named `MAX_DECLARED_CUES`, and a decision on whether a cue is *per-reality* (like a quantity) or *global* (like a `StatSlot`) — the two have different costs and the code currently implies neither |
+| ~~**`cue`**~~ | ✅ **PRICED 2026-08-06 — see §3.** The PO sealed **per-reality**, and the width is `MAX_DECLARED_CUES`, **derived** from `MAX_DECLARED_VERBS`. It was unpriced because nothing counted ordinal spaces, which is what this register exists to be |
 | **`RefKindMask`** | Named in the design, **0 occurrences in code**. `AF-8` found it *"unpriced and outside the six ordinal spaces"*; this register is what it was outside OF. It belongs to the OFFER stage, which is unbuilt |
 
 ## 8. How a row says which space it addresses
@@ -202,8 +218,6 @@ Tier 2 gets **seams, never implementations.**
 
 ## 10. What this file does NOT decide
 
-- **Whether a cue is per-reality or global.** §7 names the choice and its two
-  costs; it does not take it.
 - **Whether `MAX_PLUGINS` is repinned.** §4 argues the derivation is wrong and
   proposes the fix; the edit is not made here.
 - **How many spaces there should BE.** This counts what exists. `O-CI-5`'s

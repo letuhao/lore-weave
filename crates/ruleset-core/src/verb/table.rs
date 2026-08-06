@@ -24,6 +24,39 @@ use super::{EffectRow, RequirementRow, TargetRole, VerbDecl, VerbError};
 /// be cheap; this is not per actor).
 pub const MAX_DECLARED_VERBS: usize = 16;
 
+/// How many distinct cue ordinals one reality may use — **`M2`, priced 2026-08-06.**
+///
+/// **The cue space is PER-REALITY (PO, sealed).** A cue is *"that something must
+/// be SHOWN"* (`CMD-4`), and the engine carries it without ever reading it — so
+/// its meaning can only come from the reality that declared it. `QTY-A14`
+/// applies unchanged: cue 3 in one reality means nothing in another, and
+/// presentation resolves `(reality, cue)` or resolves nothing.
+///
+/// **There is deliberately no cue TABLE.** A reality declares cue *numbers* on
+/// its verb rows and nothing else; the words live in presentation content, in
+/// whatever language the reader asked for. `AUTHOR-1` decides it — the manifest
+/// author is not a developer, and a second table to write is a cost that buys
+/// only what a presentation file already holds.
+///
+/// **DERIVED from [`MAX_DECLARED_VERBS`], not chosen.** Every cue in existence
+/// comes from a verb row and there is exactly one per row, so a reality with 16
+/// verbs cannot need a 17th distinct cue. Deriving it removes the thing to keep
+/// in step — the move `HubRegistry`'s `LAYER_SLOTS` already makes on
+/// `FoldLayer`'s own integer type, and the opposite of the `MAX_PLUGINS` alias
+/// that ties a width to a table that does not force it.
+///
+/// ⚠️ **When a non-verb emitter arrives** — a status lapsing, an encounter
+/// ending — this derivation stops being true. It must change HERE, once, with a
+/// reason. That is the loud version of what would otherwise be a silent
+/// widening, and it is why this is a derivation rather than a literal.
+///
+/// **Why it was unpriced until now:** `M2` shipped `cue: u16` with no constant,
+/// no repin log and no argument, twelve lines from a constant carrying all
+/// three. Nothing caught it because nothing counted ordinal spaces — which is
+/// what `AF-8` had already reported about `RefKindMask` and nobody acted on.
+/// See `docs/specs/2026-08-06-ordinal-spaces.md`.
+pub const MAX_DECLARED_CUES: usize = MAX_DECLARED_VERBS;
+
 /// The declared verbs of one reality, in the hashed bytes.
 ///
 /// Ordered by DECLARATION, not sorted — unlike [`crate::ResourceTable`], and the
@@ -121,6 +154,16 @@ impl VerbTable {
                 });
             }
         }
+        // The cue is an ordinal like any other and is bounded like one. An
+        // author's typo (`cue = 70000`) is refused rather than stored — and a
+        // stored one would be a number presentation could never resolve.
+        if (row.cue as usize) >= MAX_DECLARED_CUES {
+            return Err(VerbError::CueOutOfRange {
+                verb: row.name.as_str().to_string(),
+                cue: row.cue,
+                capacity: MAX_DECLARED_CUES,
+            });
+        }
         if row.target == TargetRole::Other && !offer_registry {
             return Err(VerbError::TargetNeedsOfferRegistry {
                 verb: row.name.as_str().to_string(),
@@ -186,6 +229,17 @@ impl VerbTable {
                 found: 0,
             })?;
             let cue = r.u32()? as u16;
+            // Refused on the way IN too, on the argument the ascending-ordinal
+            // check above makes: an artifact carrying an out-of-range cue was
+            // not written by `declare`, and accepting it would store a number
+            // presentation can never resolve.
+            if (cue as usize) >= MAX_DECLARED_CUES {
+                return Err(CanonError::LengthMismatch {
+                    field: "verbs: cue ordinal",
+                    expected: MAX_DECLARED_CUES,
+                    found: cue as usize,
+                });
+            }
             let requires = decode_opt_requirement(r)?;
             let spend = decode_opt_effect(r)?;
             let effect = EffectRow { quantity: r.u32()? as u16, amount: r.i32()? };

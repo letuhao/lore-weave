@@ -88,7 +88,7 @@ pub use resource::MAX_DECLARED_RESOURCES;
 // `M2` — CMD-1: a verb is a declared ROW with an ordinal, append-only and never
 // reused. The engine resolves it and never branches on its name (CMD-6).
 pub use verb::{
-    EffectRow, RequirementRow, TargetRole, VerbDecl, VerbError, VerbTable, MAX_DECLARED_VERBS,
+    EffectRow, RequirementRow, TargetRole, VerbDecl, VerbError, VerbTable, MAX_DECLARED_CUES, MAX_DECLARED_VERBS,
 };
 pub use ruleset::{
     LAW_VERSION, LAW_VERSION_UNVERSIONED, RULESET_SCHEMA_VERSION, ResolvedRuleset, Ruleset,

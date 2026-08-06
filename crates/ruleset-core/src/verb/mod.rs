@@ -49,7 +49,7 @@
 use crate::quantity::QuantityName;
 
 mod table;
-pub use table::{VerbTable, MAX_DECLARED_VERBS};
+pub use table::{VerbTable, MAX_DECLARED_CUES, MAX_DECLARED_VERBS};
 
 /// **The one built effect primitive: a signed write to a declared quantity.**
 ///
@@ -125,6 +125,11 @@ pub struct VerbDecl {
     /// **That something must be SHOWN** — an ordinal on a channel of its own
     /// (`CMD-4`). The engine carries it and never reads it; what it renders as
     /// is presentation's, in whatever language the reader asked for.
+    ///
+    /// **PER-REALITY, and bounded by [`MAX_DECLARED_CUES`]** (PO, sealed
+    /// 2026-08-06). Because the engine never reads it, its meaning can only come
+    /// from the reality that declared it — so `QTY-A14` applies unchanged: cue 3
+    /// in one reality means nothing in another.
     pub cue: u16,
     /// What must hold. `None` = always legal.
     pub requires: Option<RequirementRow>,
@@ -163,6 +168,12 @@ pub enum VerbError {
     /// supposed to make a target legitimate does not exist. Refusing is the only
     /// honest answer: the alternative is a verb that works and is unauthorised.
     TargetNeedsOfferRegistry { verb: String },
+    /// A cue ordinal past the reality's declared cue space.
+    ///
+    /// The cue space is **per-reality** and bounded (see [`MAX_DECLARED_CUES`]).
+    /// An author's typo would otherwise be stored as a number presentation can
+    /// never resolve — a fact on the log pointing at nothing.
+    CueOutOfRange { verb: String, cue: u16, capacity: usize },
 }
 
 impl core::fmt::Display for VerbError {
@@ -185,6 +196,10 @@ impl core::fmt::Display for VerbError {
                 "verb `{verb}` names quantity ordinal {ordinal}, but this reality declares \
                  only {declared}. An effect on a quantity that does not exist can never \
                  fire, and the verb would silently do nothing"
+            ),
+            Self::CueOutOfRange { verb, cue, capacity } => write!(
+                f,
+                "verb `{verb}` declares cue {cue}, past this reality's cue space of                  {capacity}. A cue is PER-REALITY and bounded; a number outside it is one                  presentation can never resolve, so the fact would point at nothing"
             ),
             Self::TargetNeedsOfferRegistry { verb } => write!(
                 f,
