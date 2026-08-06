@@ -1529,14 +1529,24 @@ class TestU2ACatalogueOutageIsRegistered:
             times, and it is recorded here rather than fixed by narrowing the sweep back: the
             subject is a row WRITE, and `CREATE TABLE` / `ALTER TABLE` are not writes.
             """
+            # 🔴 **AND QUALIFYING IT COST FIVE DETECTIONS THAT ALREADY WORKED.** A verifier
+            # attributed them per probe against a control: concatenation, `.format`, `%`,
+            # `" ".join` and **two spaces** (`"UPDATE  chat_messages"`) were all CAUGHT before this
+            # qualification and blinded by it. Damping a false positive by narrowing a matcher is
+            # how a gate loses the cases it was built for. So the SQL is ASSEMBLED from every string
+            # in the expression and whitespace-normalised before matching — which still keeps
+            # `db/migrate.py` out, because DDL contains none of these verbs, and discards no
+            # spelling of a write.
+            _flat = " ".join(" ".join(
+                n.value for n in ast.walk(node)
+                if isinstance(n, ast.Constant) and isinstance(n.value, str)).split())
+            if "withheld_tools" in _flat and (
+                    "INSERT INTO chat_messages" in _flat
+                    or "UPDATE chat_messages" in _flat
+                    or "withheld_tools =" in _flat
+                    or "withheld_tools=" in _flat):
+                return True
             for n in ast.walk(node):
-                if isinstance(n, ast.Constant) and isinstance(n.value, str) \
-                        and "withheld_tools" in n.value \
-                        and ("INSERT INTO chat_messages" in n.value
-                             or "UPDATE chat_messages" in n.value
-                             or "withheld_tools =" in n.value
-                             or "withheld_tools=" in n.value):
-                    return True
                 if isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "segment_merge_sql" \
                         and any(isinstance(a, ast.Constant) and a.value == "withheld_tools"
                                 for a in n.args):
@@ -2216,7 +2226,7 @@ def _narrowings_in(fn, reaching):
     return found
 
 
-def _unconditional_calls(body, pred):
+def _unconditional_calls(body, pred, narrows=None):
     """Every call satisfying `pred` that a reader can see is **not behind a branch**.
 
     One definition, used by BOTH the arming check and the delegation exemption — they had two, and
@@ -2244,7 +2254,7 @@ def _unconditional_calls(body, pred):
                 if isinstance(n, ast.Call) and pred(n):
                     yield n
         elif isinstance(s, (ast.With, ast.AsyncWith)):
-            yield from _unconditional_calls(s.body, pred)
+            yield from _unconditional_calls(s.body, pred, narrows)
         elif isinstance(s, ast.Try):
             # 🔴 **THE `Try` WIDENING OVERSHOT, AND IT WAS INTRODUCED BY THE FIX FOR ROUTE 18.**
             # Four probes that were RED before it are GREEN after — the worst being an arm as the
@@ -2255,10 +2265,17 @@ def _unconditional_calls(body, pred):
             # A `try` body is entered unconditionally, which is why it counts at all. But it only
             # covers what is IN it: if a handler of the same `try` narrows, no arm inside the body
             # can be said to precede that narrowing.
-            if not any(isinstance(n, ast.Call) and _called_name(n) in _NARROWING_CALLS
+            # 🔴 `narrows`, not `_NARROWING_CALLS` — **the same relation had two definitions eight
+            # lines apart, in the same commit that fixed the previous instance of exactly that.**
+            # The sibling filter uses the TRANSITIVE closure; this one used the bare primitive set,
+            # so a handler narrowing through one hop of helper was invisible to it. The caller
+            # supplies one predicate and both sites use it.
+            _n = narrows or (lambda c: _called_name(c) in _NARROWING_CALLS)
+            if not any(isinstance(n, ast.Call) and _n(n)
                        for h in s.handlers + [s.finalbody] if h is not None
-                       for n in ast.walk(h if not isinstance(h, list) else ast.Module(body=h, type_ignores=[]))):
-                yield from _unconditional_calls(s.body, pred)
+                       for n in ast.walk(h if not isinstance(h, list)
+                                         else ast.Module(body=h, type_ignores=[]))):
+                yield from _unconditional_calls(s.body, pred, narrows)
 
 
 def _turn_entry_calls():
@@ -2414,8 +2431,10 @@ def _turn_entry_calls():
             #
             # A narrowing nested in the delegate's own arguments precedes it no matter what the line
             # numbers say, so those delegates do not count.
+            _narrows = (lambda c: _called_name(c) in _NARROWING_CALLS
+                        or _called_name(c) in reaching)
             _delegate_nodes = [c for c in _unconditional_calls(
-                fn.body, lambda c: visible.get((mod, _called_name(c) or "")) in arming)]
+                fn.body, lambda c: visible.get((mod, _called_name(c) or "")) in arming, _narrows)]
             _delegate_nodes = [
                 c for c in _delegate_nodes
                 if not any(isinstance(n, ast.Call)
@@ -2468,7 +2487,7 @@ def _turn_entry_calls():
             # condition"*, and that is answerable from the parse tree.
             top_level_arm_lines = {
                 c.lineno for c in _unconditional_calls(
-                    fn.body, lambda c: _called_name(c) == "arm_turn_surface")
+                    fn.body, lambda c: _called_name(c) == "arm_turn_surface", _narrows)
             }
             for n in ast.walk(fn):
                 if isinstance(n, ast.Assign):
@@ -3272,4 +3291,31 @@ from app.client.knowledge_client import KnowledgeClient
             f"an arm in a `try` body was treated as covering a narrowing in that try's own handler, "
             f"which runs only when the body did not complete: {entry}"
         )
+
+    def test_the_TERMINAL_GATE_sees_EVERY_SPELLING_OF_THE_SAME_WRITE(self):
+        """🔴 **Five of these were CAUGHT before I qualified the SQL match, and my
+        qualification blinded them.** A verifier attributed each against a control: concatenation,
+        `.format`, `%`, `" ".join` and **two spaces**. Damping a false positive by narrowing a
+        matcher is how a gate loses the cases it was built for, so the SQL is assembled from every
+        string in the expression and whitespace-normalised instead."""
+        import pathlib as _pl
+
+        base = _pl.Path(__file__).resolve().parents[1] / 'app' / 'services'
+        spellings = {
+            'two spaces': '        "UPDATE  chat_messages SET withheld_tools  =  $1 WHERE id = $2",',
+            'concatenation': '        "UPDATE chat_messages SET " + "withheld_tools = $1 WHERE id = $2",',
+            'format': '        "UPDATE chat_messages SET {} = $1 WHERE id = $2".format("withheld_tools"),',
+            'join': '        " ".join(["UPDATE chat_messages SET", "withheld_tools = $1 WHERE id = $2"]),',
+        }
+        for label, sql in spellings.items():
+            path = base / '_lwprobe_spelling.py'
+            path.write_text('async def probe_write(conn, mid):' + chr(10)
+                            + '    await conn.execute(' + chr(10) + sql + chr(10)
+                            + '        None, mid,' + chr(10) + '    )' + chr(10), encoding='utf-8')
+            try:
+                inst = TestU2ACatalogueOutageIsRegistered()
+                with pytest.raises(AssertionError, match='withheld_tools'):
+                    inst.test_EVERY_TERMINAL_WRITE_BINDS_THE_DRAINED_VALUE__not_a_literal_None()
+            finally:
+                path.unlink(missing_ok=True)
 

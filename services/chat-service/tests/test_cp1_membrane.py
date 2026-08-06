@@ -2021,3 +2021,85 @@ class TestStageKindsAreDataNotClosures:
             DenyList("s", "r", names=())
         with pytest.raises(ValueError, match="non-empty strings"):
             AllowList("s", "r", names=("t0", ""))
+
+    def test_C12s_STRUCTURED_FIELDS_SURVIVE_EVERY_RE_RAISE(self):
+        """🔴 **I RECORDED THIS UNREPRODUCED AND MY PROBE WAS THE DEFECT.** I *deleted* the
+        re-raise wrapper, which preserves the exception class and reads green; a verifier
+        *downgraded* it and lost `.field_path` at `rows_of`, `validate_document` and
+        `build(previous=)` **simultaneously**, suite green. Even deletion degrades the path from
+        `declarations[0].kind` to `kind`, which is the half C-12 exists for: *name the field path
+        rejected*, not the field.
+
+        A probe that disagrees with a verifier is a reason to re-measure, and re-measuring is what
+        settled it: the hole was real and my instrument missed it."""
+        bad = {"manifest_version": 1, "contract_version": "1.0.0",
+               "declarations": [{**_VALID_ROW, "kind": "nonsense"}]}
+        prev = build([admit(_tool("book_list"))], previous=None)
+        broken_prev = {**prev, "declarations": [{**prev["declarations"][0], "kind": "nonsense"}]}
+
+        doors = {
+            "rows_of": lambda: rows_of(bad),
+            "validate_document": lambda: validate_document(bad),
+            "build(previous=)": lambda: build([admit(_tool("book_list"))], previous=broken_prev),
+        }
+        for name, call in doors.items():
+            with pytest.raises(ContractViolation) as exc:
+                call()
+            # The PATH, not merely the field: a bare `kind` cannot tell a caller which row.
+            assert "declarations[" in exc.value.field_path and "kind" in exc.value.field_path, (
+                f"{name} lost C-12's field PATH: {exc.value.field_path!r}"
+            )
+            assert exc.value.accepted, f"{name} lost C-12's `accepted`"
+
+    def test_A_TOOL_WITH_RESOLVING_MEMBERS_IS_STILL_A_TOOL_WITH_MEMBERS(self):
+        """🔴 **The second one my probe missed, and it missed it by using the stock fixture.**
+        `members: ['ghost']` trips **M5** (`UnresolvedReference`) before the kind clause is reached,
+        so the refusal looked like the clause working. A member that **resolves** separates them:
+        with the clause gone, a tool carrying a real declaration id is ACCEPTED at three doors.
+
+        A fixture chosen for convenience answered a different question than the one being asked."""
+        doc = {"manifest_version": 1, "contract_version": "1.0.0", "declarations": [
+            {**_VALID_ROW, "id": "t0", "members": ["t1"]},
+            {**_VALID_ROW, "id": "t1"},
+        ]}
+        for name, door in (("rows_of", rows_of), ("validate_document", validate_document),
+                           ("declarations", lambda d: declarations(d))):
+            with pytest.raises(ContractViolation, match="a tool has no members"):
+                door(doc)
+
+    def test_THE_ROW_COPY_IS_WHAT_LEAVES_THE_VALIDATOR(self):
+        """The third. `dict(r)` is what stops the caller's own row object reaching a consumer after
+        validation, and nothing asserted the copy itself."""
+        good = build([admit(_tool("book_list"))], previous=None)
+        out = validate_document(good)
+        assert out["declarations"][0] is not good["declarations"][0]
+        out["declarations"][0]["id"] = "MUTATED"
+        assert good["declarations"][0]["id"] == "book_list", (
+            "the validator returned the caller's own row object; mutating what it handed back "
+            "changed what it had validated"
+        )
+
+    def test_A_STAGE_MUST_NAME_THE_FIELD_IT_READS__and_the_order_it_ranks_by(self):
+        """🔴 **The fifth unguarded load-bearing check, found by a verifier enumerating raise
+        sites rather than reading the diff.** `Filter(field="")` narrows the surface to **zero**
+        under `eq` and to **nothing** under `not_in` — `withheld=0`, so the record cannot even say
+        what happened — and the check that refuses it had no test. `OrderBy(keys=())` silently falls
+        back to id-order, which its own docstring forbids by name."""
+        with pytest.raises(ValueError, match="must name the field it reads"):
+            Filter("s", "r", field="", op="eq", value="t0")
+        with pytest.raises(ValueError, match="must name at least one field"):
+            OrderBy(keys=())
+        with pytest.raises(ValueError, match="must name the field it accumulates"):
+            TakeWhileBudget("s", "r", budget=1, cost_field="")
+
+    def test_A_GENERATOR_PIPELINE_IS_NOT_A_SILENT_NO_OP(self):
+        """`pipeline = list(pipeline)` in `assemble` — without it a bare generator is validated once
+        and then iterated empty, so a `Filter` keeping one declaration returns all four and the
+        conservation law balances. The comment above it records the defect; nothing tested it."""
+        doc = {"manifest_version": 1, "contract_version": "1.0.0", "declarations": _rows(4)}
+        stages = (s for s in [Filter("intent_gate", "off", field="id", op="eq", value="t0")])
+        s = SurfaceAssembler(doc).assemble(pass_number=1, pipeline=stages)
+        assert s.names == ("t0",), (
+            f"a generator pipeline was a silent no-op: {s.names}. Validated once, iterated empty."
+        )
+
