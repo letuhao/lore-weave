@@ -1680,6 +1680,77 @@ check (production-reachable *at* CP-2) · `generate`'s `exists`→`load` race ·
 container at `rows_of` · the drift gate discarding `validate_document`'s return · six same-fact
 read-twice sites, each safe only by an exact-type pin.
 
+---
+
+## 🔴 R17 — **FAIL ×2**, and a verifier refuted a claim I had made that something was IMPOSSIBLE
+
+Prompt committed first, two V-CODE on frozen `6761cf013`. Verdicts:
+[round17-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round17-v-code-a.md) ·
+[round17-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round17-v-code-b.md).
+
+### The claim, and the one-line counter-example
+
+I wrote that **no arrangement of the catalogue-outage fact inside `instrument.py` could satisfy every
+ordering without a turn identity**, and asked a verifier to refute it. It did, decisively: the
+arrangement is the one that was there before I started — the write in `record_catalogue_unavailable`
+plus the derivation at the arm. `869c5be52` was `cba800fa8` **minus that one statement**.
+
+**The argument I rested it on was vacuous, and it was my own sentence.** *"Making the derivation
+monotone reds two tests"* was true while the writer existed; after I deleted the writer, monotone and
+lowering are **the same program**, and the monotone variant reds **0 of 2255**. I carried a
+justification across the change that emptied it, then built a negative existence claim on top.
+
+| ordering | HEAD (then) | `530ce3eff` | `cba800fa8` |
+|---|---|---|---|
+| arm → record → drain → read | **False** | True | True |
+| two recorders in one turn | **False** | False | True |
+| background drain | **False** | True | True |
+
+**Worse than the rehousing on three, worse than the original on four, better than neither on any** —
+and I had described it as a *revert*. No introduction rate can see that, which is why A recommends
+steering by raw findings with regressions flagged separately.
+
+### The measurement failures, third and fourth consecutive
+
+* **A negative existence claim from a single failed attempt** — a new species. I declared the
+  eleventh guard unguardable because a monkeypatch could not re-trigger an import-time derivation.
+  True of the technique, used as a conclusion about the property. B built it in ~10 lines by
+  re-executing the module source with a field injected. **It is now in the suite and red-able.**
+* **The read-twice sweep's scope was its denominator again.** Mine covered four modules and returned
+  6/0; in A's scope alone it is **100 same-fact and 35 mixed-mechanism**, including
+  `stream_service.py:4884` carrying *the identical shape to the fix this delta shipped*. B, whose
+  scope matched mine, reproduced 6/0 exactly — the first self-measurement in three rounds to survive
+  a re-run, and it survived only because the scopes agreed.
+* **Red-ability denominator: 20 across both scopes**, larger than the whole-run figure I published.
+
+### What R17 confirmed, and it is the good news
+
+**The migration claim is TRUE, executed by B rather than argued:** an old-schema manifest on disk with
+distinct origins, `relevance` added to the schema and emitted — the *ordinary* `generate(path=)`
+round-trips and **origin stamps survive**. R16-B's B2, the previous round's most serious finding, is
+**closed**. And **R16-B's advance prediction HELD on both readings**: closure fell 54% → 25–37%,
+introduced-per-100-lines rose 1.1 → 4.7. The R15–R16 closure step-change tracked **delta structure**,
+not an improving process — the confounder B named in advance, now confirmed.
+
+### Shipped
+
+Writer restored (guard reds on **both** artifacts I got wrong, passes on the one I deleted) · **T9**:
+the terminal gate was blind to SQL hoisted to a **module-level constant**, to module scope, lambdas,
+comprehensions, class bodies and bare-name executors, and its `except SyntaxError` was **fail-open** ·
+widening it reddened `db/migrate.py` (**DDL**, a false positive on correct code) so the SQL match is
+qualified to *writes* rather than the sweep narrowed back · **route 24**: I compared line numbers and
+Python evaluates arguments first · the **`Try` widening overshot**, introduced by the route-18 fix ·
+**B17-1**: the `ROW_REQUIRED` gate asserted EQUALITY, which is `frozenset(ROW_FIELDS)` moved into the
+test — now `REQUIRED ⊆ emitted ⊆ ALLOWED`, an order rather than an identity.
+
+**Not closed, and not claimed:** two of B's four unguarded holes (C-12 fields at `check_row`'s
+re-raise; `dict(r)`) **did not reproduce** under my probe — recorded as *unreproduced*, not as fixed,
+for R18 to re-measure. Carried: `rows_of` runs no document-level stamp check (owner CP-2) ·
+`generate`'s `exists`→`load` race · the untyped document container · the drift gate discarding
+`validate_document`'s return · the same-fact read-twice sites, now measured at 100 in scope A.
+
+**2260 tests pass; gate green.** ⚠️ Builder's evidence. **CP-1 does not close**; R18 verifies this delta.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -1695,7 +1766,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | ~~R14~~ | ran 2026-08-06 → **FAIL ×2**. Triage graded SOUND, execution failed; introduced-by-delta produced no new TOCTOU for the first time in four rounds | `V-CODE` ×2 on `b30db5b80` | — |
 | ~~R15~~ | ran 2026-08-06 → **FAIL ×2**. The graded claim was a sentence, and its disproof was the builder's own comment 25 lines above the contradicting code. Closure rose for the first time in the series (~8% → ~27%); `introduced` rose 2 → 4. See the block above | `V-CODE` ×2 on `cba800fa8` | — |
 | ~~R16~~ | ran 2026-08-06 → **FAIL ×2**. Both verifiers refuted both builder self-measurements; the R15 rehousing was measured WORSE than what it replaced and was reverted. Closure 75% / 54%, the highest of the series. See the block above | `V-CODE` ×2 on `d23ea5592` | — |
-| **R17** | verify R16's delta: the reverted outage fact and its defect-recording guard, T8's discovered file set, route 23, the optional-field tier, C-12 at `build` | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
+| ~~R17~~ | ran 2026-08-06 → **FAIL ×2**. A verifier refuted my claim that an arrangement was impossible — the counter-example was one statement I had deleted myself, and the argument behind the claim was my own sentence gone vacuous. R16-B's advance prediction HELD. See the block above | `V-CODE` ×2 on `6761cf013` | — |
+| **R18** | verify R17's delta: the restored writer and its six-ordering guard, T9's widened anchor, route 24, the `Try` handler rule, `REQUIRED ⊆ emitted ⊆ ALLOWED`, and the guard I had called unguardable | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
 | **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |

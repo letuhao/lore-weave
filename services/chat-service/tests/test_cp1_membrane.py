@@ -1009,6 +1009,63 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
             with pytest.raises(ContractViolation):
                 _c.check_row({**_VALID_ROW, "relevance": "7"}, "row")   # still bounded
 
+    def test_NAMING_A_FIELD_DOES_NOT_MAKE_IT_MANDATORY(self):
+        """🔴 **I DECLARED THIS UNGUARDABLE, WITH A REASON, AND THE REASON WAS TRUE OF ONE
+        TECHNIQUE RATHER THAN OF THE PROPERTY.**
+
+        I wrote: *"the derivation runs at import and a runtime patch of `ROW_FIELDS` cannot
+        re-trigger it"* — correct about `monkeypatch`, and then used as a conclusion about whether
+        the property has a subject at all. A verifier showed it does, in about ten lines, using an
+        idiom this suite already uses: **re-execute the module's source with one field injected**,
+        which separates the two states exactly. Literal `ROW_REQUIRED` → the row without the new
+        field is valid; `frozenset(ROW_FIELDS)` → `ContractViolation: … is missing`.
+
+        That was the third consecutive self-measurement wrong in the flattering direction, and a new
+        species of it: **a negative existence claim from a single failed attempt.** A claim that
+        something cannot be done deserves what a claim that something is broken gets — an execution.
+
+        The property itself is what CP-2 and CP-4 need: `relevance`, `lane`, `tier` and `cost` all
+        arrive on rows that already exist, and if naming a field makes it mandatory those rows can
+        only be migrated by deleting the manifest, which erases every origin stamp.
+        """
+        import pathlib
+
+        src = (pathlib.Path(__file__).resolve().parents[1]
+               / "app" / "agentruntime" / "contract.py").read_text("utf-8")
+        anchor = '    "members": (list, tuple),\n})'
+        assert src.count(anchor) == 1, "the schema literal moved; this probe is stale"
+        injected = src.replace(anchor, '    "members": (list, tuple),\n    "salience": (int,),\n})')
+
+        def _exec(text):
+            # Executed under the package's own name so `from . import canon` resolves — the module
+            # is real source, not a fixture, which is the point: the probe must see what ships.
+            import sys
+            import types
+            ns = types.ModuleType("app.agentruntime._contract_probe")
+            ns.__package__ = "app.agentruntime"
+            sys.modules[ns.__name__] = ns
+            try:
+                exec(compile(text, "<probe>", "exec"), ns.__dict__)
+                return ns.__dict__
+            finally:
+                sys.modules.pop(ns.__name__, None)
+
+        mod = _exec(injected)
+        assert "salience" in mod["ROW_FIELDS"], "the injection did not take"
+        # The row a writer produces TODAY, with no `salience` — it must remain valid.
+        mod["check_row"](dict(_VALID_ROW), "row")
+
+        # ...and the control: derive REQUIRED from ALLOWED and the same row is refused, which is the
+        # state this test exists to keep out.
+        derived = injected.replace(
+            'ROW_REQUIRED = frozenset({\n    "id", "kind", "owning_service", "lifecycle", '
+            '"contract_version", "admitted_against", "members",\n})',
+            "ROW_REQUIRED = frozenset(ROW_FIELDS)")
+        assert derived != injected, "the control injection did not take, so this proves nothing"
+        ctl = _exec(derived)
+        with pytest.raises(ctl["ContractViolation"], match="salience"):
+            ctl["check_row"](dict(_VALID_ROW), "row")
+
     def test_A_DUPLICATE_DECLARATION_ID_IS_REFUSED_AT_EVERY_DOOR(self):
         """A load-bearing check with no test, named by a verifier's own gap list. Two rows with one
         id make `AllowList`, `DenyList` and every `by-id` lookup answer for whichever the iteration
@@ -1051,12 +1108,24 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         OPTIONAL field is now expressible, which is exactly what CP-2 and CP-4 need."""
         from app.agentruntime.contract import ROW_REQUIRED
 
+        # 🔴 **THIS ASSERTED EQUALITY, WHICH IS `frozenset(ROW_FIELDS)` MOVED FROM THE
+        # DEFINITION INTO THE TEST.** A verifier ran all three branches the failure message
+        # prescribes and showed the one that matters: a field that is optional **and emitted** —
+        # which is exactly what CP-2's `relevance` will be, because §0.14.1c gives it a producer —
+        # reds this gate. So the comment saying an optional field is "expressible, which is what
+        # CP-2 and CP-4 need" was false of the case it names.
+        #
+        # The three sets have an ORDER, not an identity: every REQUIRED field must be emitted (or
+        # the writer produces rows its own reader refuses), and everything emitted must be ALLOWED.
+        # A field between the two is optional, which is the tier the whole fix exists to create.
+        from app.agentruntime.contract import ROW_FIELDS
+
         emitted = set(build([admit(_tool("book_list"))], previous=None)["declarations"][0])
-        assert emitted == set(ROW_REQUIRED), (
-            f"the writer emits {sorted(emitted)} and ROW_REQUIRED is {sorted(ROW_REQUIRED)}. If a "
-            f"field was added to `_row`, decide whether it is REQUIRED (and then every existing row "
-            f"must be migrated, which §6.4's queue does not yet make possible) or OPTIONAL (add it "
-            f"to ROW_FIELDS only)."
+        assert set(ROW_REQUIRED) <= emitted <= set(ROW_FIELDS), (
+            f"the writer emits {sorted(emitted)}; ROW_REQUIRED is {sorted(ROW_REQUIRED)} and "
+            f"ROW_FIELDS is {sorted(ROW_FIELDS)}. A required field the writer does not emit makes "
+            f"every generated row fail its own reader; an emitted field the schema does not allow "
+            f"makes `generate()` write a document `load()` refuses."
         )
 
     def test_a_document_with_NO_declarations_key_is_not_an_empty_one(self):
