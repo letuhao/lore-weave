@@ -390,10 +390,26 @@ to model it.** Ask three questions and answer each with a command, not a memory:
 
 1. **What already models this concept?** `grep` the tables, the crates, the
    projectors, the planning docs. A name from a different track counts.
+   **`scripts/phase0-reconcile-gate.py` asks this mechanically** — a spec dated
+   on/after 2026-08-06 must carry a `Reconciles: <index rows> — <what it found>`
+   line naming real rows of [`docs/standards/README.md`](docs/standards/README.md).
+   It forces the LOOK, not the conclusion; that is the honest limit, and the
+   action that failed three times was *not opening the file*.
 2. **Does it have a PRODUCER?** A model nothing writes to is a dead end, however
    complete it looks. `scripts/orphan-model-gate.py` asks this mechanically.
 3. **Does it CONFLICT with a decision this round will make?** A pre-existing
    model built before a rule was sealed will contradict it silently.
+   **No gate. Declared rather than glossed** — see the second incident below.
+
+**The second incident, measured 2026-08-06 — and it is question 1 again.** The
+SAME actor-hub round also wrote three specs for a tier that already had **25
+LOCKED documents** governing it (`06_data_plane/`: `DP-A1..A19` · `DP-T0..T3` ·
+`DP-R1..R8`). Measured: `DP-` appears **zero** times in all three, and `DP-R2`
+(*"every feature design doc MUST contain a tier table"*) is owed and unpaid by
+each. **The mechanism built after the first incident — `orphan-model-gate` —
+answers question 2.** So question 1 failed again, in the same round, and nothing
+said anything: it was **default-uncovered**, which is `NV-3` at the process
+level rather than loose discipline.
 
 **The failure this exists to stop, measured 2026-08-04.** The actor-hub round
 designed feature #1 without auditing what already modelled an actor. Seven of the

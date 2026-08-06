@@ -1,5 +1,10 @@
 # Ordinal spaces — the register
 
+**Reconciles:** Data Plane **DP-A1–A19 / DP-R1–R8 / DP-T0–T3** · **Actor hub** — 🔴 **not done
+when written.** `DP-A7` fixes a cache-key format (`dp:{reality_id}:{tier}:{aggregate_type}:…`)
+that is itself an ordinal-bearing namespace this register never counted, and `DP-T0..T3` is a
+closed engine set of exactly the kind §6 enumerates. Neither appears in this document.
+
 **Status:** measurement — **§4c (`LIM-1`) is SEALED and BUILT**; everything else is
 proposed · **Date:** 2026-08-06
 **Companions:** [command hub](2026-08-06-command-hub.md) *(sealed)* ·

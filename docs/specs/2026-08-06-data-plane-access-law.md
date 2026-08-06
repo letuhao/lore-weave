@@ -1,5 +1,10 @@
 # The data-plane access law — one read layer per plane
 
+**Reconciles:** Data Plane **DP-A1–A19 / DP-R1–R8 / DP-T0–T3** — 🔴 **this document IS the
+failure.** It re-derived `DP-A1` (only-sanctioned-path), `DP-A2` (control/data split), `DP-A5`
+(tier taxonomy), `DP-A10` (primitives not queries) and `DP-A12` (type-gated access) as
+`DPA-A1..A18`, without opening `06_data_plane/` once. See §0.
+
 **Status:** 🔴 **BLOCKED by a cold-start red team, 2026-08-06 — do not build against this document.**
 14 findings; the four highest-cost were re-verified by hand and every one holds. **§9 (`DPA-A7`) is
 the PO's seal and survives as a DECISION; the spec's expression of it does not.** See §0.

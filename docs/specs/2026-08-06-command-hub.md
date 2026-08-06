@@ -1,5 +1,14 @@
 # Command Hub — the scope contract
 
+**Reconciles:** Data Plane **DP-A1–A19 / DP-R1–R8 / DP-T0–T3** — 🔴 **and the reconciliation
+was NOT done when this spec was written (2026-08-06).** Measured after the fact: `DP-` appears
+**zero** times in this document, while `06_data_plane/` holds 25 LOCKED files governing this
+tier. `DP-A1` (*"DP primitives + Rulebook are the only sanctioned path to kernel state"*) and
+`DP-A10` (*"DP owns primitives, not domain queries"*) say in April what `CMD-6` and the port
+discipline here say in August. **`DP-R2` is OWED and unpaid: no `DP-T0..T3` tier table exists
+for any aggregate this spec introduces** (the verb table, the refusal fact, the cue channel).
+Recorded rather than quietly fixed — the debt is the finding.
+
 **Status:** design contract — **SEALED by the PO 2026-08-06** · **Date:** 2026-08-06
 **Companions:** [structure](2026-08-02-command-interaction-structure.md) ·
 [dataflow](2026-08-02-command-interaction-dataflow.md) *(the derivation record — how each line was

@@ -269,6 +269,13 @@ fi
 # being too slow to run. An unguarded true statement is one commit from false.
 "$PY" "$ROOT/scripts/tier-capability-gate.py"
 
+# Phase 0 QUESTION 1 — "what already models this concept?" CLAUDE.md names a
+# gate for question 2 and named nothing for 1, which is the question that kept
+# failing: the actor-hub round skipped it twice (pc/npc tables, then the 25
+# LOCKED 06_data_plane docs), and a third spec re-derived five of those axioms
+# the same week. Default-uncovered is NV-3 at the process level.
+"$PY" "$ROOT/scripts/phase0-reconcile-gate.py"
+
 # A GATE NOBODY RUNS IS NOT A GATE. Wired 2026-07-29 after an audit found 26 of
 # the repo's 58 gate/lint scripts running NOWHERE — not here, not in any
 # workflow — six of them RED, two reporting "NEW offender(s)" for regressions
