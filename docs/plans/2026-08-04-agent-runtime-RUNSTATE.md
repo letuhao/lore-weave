@@ -1300,6 +1300,48 @@ belongs with CP-2's terminal-path work rather than being bolted on here.
 
 ---
 
+## 🔴 R11 — **FAIL ×2**, and the finding is about the BUILDER'S METHOD, not a defect
+
+Prompt committed first, two V-CODE on frozen `2c63496b4`. Verdicts:
+[round11-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round11-v-code-a.md) ·
+[round11-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round11-v-code-b.md).
+
+### 🔴 **9 of 9 of R10's guards were SILENT, and 3 of them fired wrongly**
+
+Verifier B injected every element of the R10 delta — `pipeline_not_materialised`,
+`rows_of_no_row_validation`, `pass_number_unbounded`, `discover_kind_unbounded`,
+`seen_no_hash_prefix`, `absorb_else_reads_tool` and three more — and **every injection was green**,
+with two controls proving the harness reds. `git diff` showed the round had added **exactly three
+tests**. Verifier A found the reverse failure in the same delta: the terminal-write gate matched
+`ast.keyword` while **every bind that persists the column is positional**, so it saw 4 of 8 sites,
+**none an SQL bind**, stayed green on the round's own headline fix — and **reddened on a correct
+helper.**
+
+**The method was the defect: fixes were outrunning evidence.** Ten patches and three tests per round
+compounds guard debt, and the goal's own rule — *a binary defect is cleared by a red-able test* —
+had been broken for four rounds. **Every fix in this round has a test proven red before moving on.**
+
+*And that discipline immediately caught a wrong conclusion of my own:* the probe built to check the
+P4 test patched `manifest.build` while the test imports `build` **from the package**, so the
+injection never took effect and the test looked fine. Patched at both bindings, it reds. **A
+negative measurement has to be shown capable of measuring anything** — the `_amend` no-op trap, one
+level out, in the instrument rather than the subject.
+
+### What that produced
+
+| # | finding | response |
+|---|---|---|
+| **🔴 A5** | **I re-created U-2's founding confusion inside a fix for something else** — a *successful* admin fetch returning zero tools registered `catalogue_unavailable`, so the model was told its tools were unreachable when **nothing had failed**. `test_an_EMPTY_catalogue_is_not_an_outage` stayed green because it drives the *recorder* and the defect was at the *caller* | reverted; the real finding was the **cache**, and that stays fixed. Tested at the caller |
+| **🔴 P0 ×4** | `withheld_json`'s reconciliation still read `w["tool"]`, so the unrecognised-scope row `absorb` had just been taught to record **crashed the reader**, on every terminal write | fixed at the **class**: reconciliation asks *does this row have a name to reconcile*, which is its actual precondition and is true of every scope that will ever exist |
+| **A6** | `absorb` crashed on **7 of 19** row shapes — unhashable `stage` in the dedupe set, unhashable `tool` in the other, four dying at `json.dumps` **after the turn had already succeeded**; and `elif row.get("tool")` sat before the fallback, so a new scope carrying a tool was filed as `declaration` **with its scope discarded** | total over 14 shapes, scope before tool. *A record that can kill the write it belongs to is not instrumentation* |
+| **B** | **three more TOCTOUs of the shape fixed in `surface.py` and not looked for elsewhere**: `manifest.declarations` iterated twice (a `list` subclass gave the validator `['t0']` and the consumer `['t0','TYPED BY HAND!!']`), `_prev_rows or []` over a `__len__`-liar, and `generate`'s `exists`→`load` re-read | all three materialised and exact-typed. **Fourth instance of applying a correction where the reviewer pointed rather than to the class** |
+| **🔴 B** | the P4 defect-assertion test asserted `build()`'s refusal — **a proxy**. It red for the wrong reason (change the wording or the exception type) and **stayed green with the mechanism live** in the two most likely shapes | it now performs the **partial re-admission** — the only shape that can create a queue member — and was proven red with the mechanism injected at both bindings |
+| **🔴 A4** | **eight measured routes past the ordering gate over three rounds**: helper one module over, two levels of helper, `_`-prefixed entry point, class method, `getattr`, lambda, `functools.partial`, module-level alias, name collision | **the approach changed, not the pattern list.** A narrowing with no sink now **opens one**, so ordering stops being load-bearing and every one of those routes is harmless. *A parse tree cannot decide what a program does* — the gate stays as a second line, not the only one |
+
+**2216 tests pass; gate green.** ⚠️ Builder's evidence.
+
+---
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -1309,7 +1351,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 |---|---|---|---|
 | ~~R9~~ | ran 2026-08-06 → **FAIL ×2**, 13 findings, all fixed. See the block above | `V-CODE` ×2 on `86ae72592` | — |
 | ~~R10~~ | ran 2026-08-06 → **FAIL ×2**, 10 findings, all fixed. See the block above | `V-CODE` ×2 on `a43c24fcc` | — |
-| **R11** | verify **R10's delta**: sink adoption at construction · the materialised pipeline · `absorb`'s unknown-scope branch · the P4 test on the carry-forward path · the whole-tree gate sweep and the stale-exemption check · the admin cache · the orphan stamp's column · the row-shape bound | `V-CODE` ×2, fresh, one message, frozen artifact | clean ⇒ **CP-1 closes**, CP-0 re-confirmed |
+| ~~R11~~ | ran 2026-08-06 → **FAIL ×2**. The finding was the method: 9 of 9 guards silent, 3 firing wrongly. See the block above | `V-CODE` ×2 on `2c63496b4` | — |
+| **R12** | verify **R11's delta**, and grade it against the method finding: **does each fix have a test that reds for the reason it names?** Ordering made irrelevant by auto-arming · reconciliation by presence-of-name · `absorb` total over row shapes · the SQL-shaped terminal-write gate · the three manifest TOCTOUs · the P4 test on the partial re-admission · the reverted empty-vs-outage confusion | `V-CODE` ×2, fresh, one message, frozen artifact | clean ⇒ **CP-1 closes**, CP-0 re-confirmed |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
 | **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |

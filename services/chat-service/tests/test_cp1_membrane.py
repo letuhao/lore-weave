@@ -475,10 +475,37 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         # docstring and §0.14.1c both claimed it "reds the day the mechanism lands". It did not.
         #
         # I had fixed what the verifier pointed AT (an amend that did nothing) and not what it
-        # MEANT. The claim is about the carry-forward path, so the test must drive the carry-forward
-        # path: re-admit ONE of two, which is the only shape that can put a row in the queue.
-        with pytest.raises(UntrustedRow, match="IS NOT BUILT"):
-            build([admit(_tool("book_list"))], previous=after)
+        # MEANT.
+        #
+        # 🔴 **AND THE FIX FOR THAT WAS A PROXY, WHICH THE NEXT ROUND MEASURED TOO.** It asserted
+        # `build()`'s refusal — the same claim `test_A_DECLARATION_CANNOT_SILENTLY_LEAVE_THE_MANIFEST`
+        # already makes — so it **red for the wrong reason** (changing the refusal's wording or its
+        # exception type reds it, with the mechanism as absent as ever) and **stayed green with the
+        # mechanism live** in the two most likely shapes: gated on a breaking amendment, which is
+        # §6.4's literal wording, and landing in `generate()`, which is where §6.4.1's own argument
+        # puts it. A verifier built both and measured 109 passed.
+        #
+        # So the assertion is now about the OUTCOME the mechanism exists to produce, checked through
+        # every door that could produce it. **A queue with a member is the mechanism; a refusal is
+        # only evidence that one thing which would break it is still absent.**
+        # The scenario has to be one in which a queue member COULD exist, or the assertion is true
+        # for free — which is why the previous version stayed green while a verifier ran the
+        # mechanism underneath it. A queue member requires a declaration in `previous` and **absent
+        # from `admitted`**, so the test performs exactly that partial re-admission.
+        self._amend(monkeypatch, "3.0.0")
+        try:
+            partial = build([admit(_tool("book_list"))], previous=after)
+        except UntrustedRow:
+            return          # the mechanism is absent: `build` refuses to lose the row. Today's state.
+
+        queue = sorted(r["id"] for r in partial["declarations"]
+                       if r["admitted_against"] != partial["contract_version"])
+        raise AssertionError(
+            f"§6.4's re-admission queue is NON-EMPTY ({queue}) — the grandfathering mechanism has "
+            f"LANDED. §6.4.1's FAIL record, §0.14.1c's row and this test are all stale now: replace "
+            f"them with a drain test (fills on a breaking amendment, empties as each declaration is "
+            f"re-admitted). This test asserts a defect, and the defect is gone."
+        ) if queue else None
 
     def test_A_DECLARATION_CANNOT_SILENTLY_LEAVE_THE_MANIFEST(self, monkeypatch):
         """§1 says the plan deletes nothing; §6.4 says a declaration entering the re-admission queue

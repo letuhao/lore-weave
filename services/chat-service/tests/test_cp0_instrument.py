@@ -1483,29 +1483,145 @@ class TestU2ACatalogueOutageIsRegistered:
         expression is the RECORDER'S, never a literal. A behaviour test cannot reach all four
         terminal paths from a unit suite; what it can do is make "someone quietly binds `None`
         again" impossible to do silently.
+
+        🔴 **AND THE FIRST VERSION OF THIS GATE WAS WORSE THAN NO GATE.** It matched
+        `ast.keyword`, and **every bind that actually persists the column is POSITIONAL** — an
+        asyncpg parameter. So it saw 4 of 8 sites, **none of them an SQL bind**, stayed green on the
+        clean finish, on voice, on the main INSERT, and **on the orphan `UPDATE` that was the
+        previous round's own headline fix** — while reddening on a correct helper. A guard with a
+        false positive is one that gets deleted the first time it is inconvenient, and this one was
+        also blind where it mattered.
+
+        So it stops matching a call shape and matches the thing that cannot be spelled two ways:
+        **every SQL statement naming the column, and every function that contains one.** If a
+        function writes `withheld_tools` in SQL, the recorder's value has to appear in that
+        function.
         """
         import ast
         from pathlib import Path
 
-        offenders, sites = [], 0
+        offenders, sql_writers = [], []
         for mod in ("stream_service.py", "voice_stream_service.py"):
             path = Path(__file__).resolve().parents[1] / "app" / "services" / mod
             tree = ast.parse(path.read_text(encoding="utf-8"))
-            for node in ast.walk(tree):
-                # The keyword form: `withheld_tools=<expr>`
-                if isinstance(node, ast.keyword) and node.arg == "withheld_tools":
-                    sites += 1
-                    if not any(isinstance(n, ast.Call) and getattr(n.func, "attr", None)
-                               == "withheld_json" for n in ast.walk(node.value)):
-                        offenders.append(f"{mod}:{node.value.lineno} withheld_tools=<not the recorder>")
-        assert sites >= 3, (
-            f"only {sites} `withheld_tools=` binding(s) found — the column lost a writer, which is "
-            f"how three of four turn shapes came to persist NULL"
+            for fn in ast.walk(tree):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                writes_sql = any(
+                    isinstance(n, ast.Constant) and isinstance(n.value, str)
+                    and "withheld_tools" in n.value
+                    and ("INSERT INTO chat_messages" in n.value or "UPDATE chat_messages" in n.value
+                         or "withheld_tools =" in n.value or "withheld_tools=" in n.value)
+                    for n in ast.walk(fn)
+                )
+                # An f-string carrying `segment_merge_sql("withheld_tools")` is the merge form.
+                writes_sql = writes_sql or any(
+                    isinstance(n, ast.Call) and getattr(n.func, "attr", None) == "segment_merge_sql"
+                    and any(isinstance(a, ast.Constant) and a.value == "withheld_tools"
+                            for a in n.args)
+                    for n in ast.walk(fn)
+                )
+                if not writes_sql:
+                    continue
+                sql_writers.append(f"{mod}::{fn.name}")
+                if not any(isinstance(n, ast.Call)
+                           and getattr(n.func, "attr", None) in ("withheld_json", "absorb")
+                           for n in ast.walk(fn)) and not any(
+                        isinstance(n, ast.Name) and "withheld" in n.id for n in ast.walk(fn)):
+                    offenders.append(f"{mod}::{fn.name} writes the column and never reads a recorder")
+
+        assert len(sql_writers) >= 3, (
+            f"only {len(sql_writers)} function(s) write `withheld_tools` in SQL: {sql_writers}. "
+            f"The column lost a writer, which is how three of four turn shapes persisted NULL."
         )
         assert not offenders, (
-            f"a terminal write binds something other than the recorder's own value: {offenders}. "
-            f"A verifier bound `None` at four of these and the suite stayed green."
+            f"{offenders} — a function persists the column without the recorder's value anywhere "
+            f"in it. A verifier bound `None` at four such sites and the suite stayed green."
         )
+
+    @pytest.mark.asyncio
+    async def test_AN_EMPTY_CATALOGUE_IS_NOT_AN_OUTAGE__AT_THE_CALLER_TOO(self):
+        """🔴 I re-created U-2's founding confusion **in the fix for something else**, and the test
+        against it stayed green because that test drives the *recorder* while the defect was at the
+        *caller*.
+
+        A successful fetch returning zero tools is a legitimately empty catalogue — an admin with no
+        system-tier tools — not an unavailable one. Registering it told the model its tools were
+        unreachable when nothing had failed: the exact inversion, one layer out from where anyone
+        was looking.
+        """
+        import contextvars
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from app.services import instrument as _inst
+        from app.client.knowledge_client import KnowledgeClient
+
+        listed = MagicMock()
+        listed.tools, listed.meta = [], {}                      # SUCCESS, and empty
+        session = AsyncMock()
+        session.list_tools = AsyncMock(return_value=listed)
+        session.initialize = AsyncMock()
+
+        client = KnowledgeClient(
+            base_url="http://knowledge-service:8092", internal_token="t", timeout_s=0.5, retries=1)
+
+        async def run():
+            _inst.arm_turn_surface()
+            with patch("app.client.knowledge_client.streamablehttp_client") as transport, \
+                    patch("app.client.knowledge_client.ClientSession") as cs:
+                transport.return_value.__aenter__ = AsyncMock(return_value=(None, None, None))
+                transport.return_value.__aexit__ = AsyncMock(return_value=False)
+                cs.return_value.__aenter__ = AsyncMock(return_value=session)
+                cs.return_value.__aexit__ = AsyncMock(return_value=False)
+                out = await client.get_admin_tool_definitions("adm")
+            return out, _inst.catalogue_outage_registered()
+
+        out, outage = await contextvars.copy_context().run(run)
+        assert out == []
+        assert outage is False, (
+            "an empty catalogue was registered as an OUTAGE, so the model is told its tools are "
+            "unreachable when nothing failed — the confusion U-2 exists to end"
+        )
+
+    def test_A_NARROWING_BEFORE_ANY_ARMING_IS_STILL_RECORDED(self):
+        """🔴 **EIGHT MEASURED ROUTES PAST THE ORDERING GATE IN THREE ROUNDS** — a helper one module
+        over, two levels of helper, a `_`-prefixed entry point, a class method, `getattr`, a lambda,
+        `functools.partial`, a module-level alias, a name collision. Each fix was a better
+        *syntactic* check for a *semantic* property, and a parse tree cannot decide what a program
+        does. After the eighth route it is the approach that is wrong, not the pattern list.
+
+        So ordering stops being load-bearing: a narrowing with no sink **opens one**. Every route
+        above ends in "the narrowing ran before the arming", and every one of them is now harmless.
+        The ordering gate remains as a second line, not as the only one.
+        """
+        import contextvars
+
+        def narrow_first_arm_never():
+            # No `arm_turn_surface` anywhere — this is every bypass, distilled.
+            instrument.record_catalogue_unavailable(stage="catalogue_unavailable", reason="boom")
+            instrument.record_surface_withheld("book_list", stage="token_budget", reason="over")
+            rec = instrument.AdvertisedToolsRecorder()
+            return instrument.catalogue_outage_registered(), rec.withheld_json()
+
+        outage, rows = contextvars.copy_context().run(narrow_first_arm_never)
+        assert outage is True, "the outage was lost because nobody had armed first"
+        assert rows and len(rows) == 2, f"narrowings lost to ordering: {rows}"
+
+    def test_arming_still_REPLACES_the_sink_so_a_turn_starts_clean(self):
+        """`_sink_for_record` is deliberately not `arm_turn_surface`. The first means *a record
+        needs somewhere to go*; the second means *a turn is starting, take a fresh list*. Collapsing
+        them would let a mid-turn narrowing silently replace a sink that already held rows — the
+        discard this area has been fighting since the sixth recurrence."""
+        import contextvars
+
+        def run():
+            instrument.record_surface_withheld("stale", stage="s", reason="r")
+            first = instrument.surface_withheld.get()
+            second = instrument.arm_turn_surface()
+            return first, second
+
+        first, second = contextvars.copy_context().run(run)
+        assert first is not second and second == [], "arming must start the turn clean"
 
     def test_A_RECORDER_ADOPTS_THE_TURNS_SINK_WITHOUT_ANYONE_REMEMBERING_TO(self):
         """🔴 Deleting `bind_sink` was measured **green at both entry points**, and a gate written
@@ -1544,6 +1660,57 @@ class TestU2ACatalogueOutageIsRegistered:
         assert rows and rows[0]["scope"] == instrument.SCOPE_PASS
         assert "tool" not in rows[0], "the sentinel came back"
         assert all(r.get("tool") != "*" for r in rows)
+
+    @pytest.mark.parametrize("row", [
+        {"scope": "catalogue", "stage": "s", "reason": "r"},
+        {"scope": "pass", "stage": "s", "reason": "r"},
+        {"scope": "declaration", "tool": "t", "stage": "s", "reason": "r"},
+        {"tool": "t", "stage": "s", "reason": "r"},                       # legacy, no scope
+        {"scope": "a_scope_from_the_future", "stage": "s", "reason": "r"},
+        {"scope": "a_scope_from_the_future", "tool": "t", "stage": "s", "reason": "r"},
+        {"stage": "s", "reason": "r"},                                    # neither
+        {},                                                               # nothing at all
+        {"scope": ["unhashable"], "stage": ["unhashable"], "tool": ["unhashable"]},
+        {"scope": object(), "stage": object(), "reason": object(), "tool": object()},
+        {"scope": "catalogue", "stage": "s", "reason": "r", "count": "not an int"},
+        "not a dict at all",
+        None,
+        42,
+    ])
+    def test_ABSORB_IS_TOTAL__no_row_shape_can_kill_the_turn_or_the_write(self, row):
+        """🔴 **FOURTH RECURRENCE OF THE SAME CLASS.** Every fix so far enumerated the scopes that
+        carry no `tool`, and every time a new one arrived the enumeration was one behind: the reader
+        crashed on the row the writer had just been taught to produce. A verifier fed 19 shapes and
+        **7 still crashed** — an unhashable `stage` in the dedupe set, an unhashable `tool` in the
+        other one, and four that died at `json.dumps` **after** the turn had already succeeded.
+
+        A record that can kill the write it belongs to is not instrumentation. So this asserts the
+        property rather than the enumeration: **absorb, reconcile and serialise, for every shape.**
+        """
+        import json
+
+        rec = instrument.AdvertisedToolsRecorder()
+        rec.record_pass(["book_list"], tool_choice="auto")
+        rec.absorb([row])
+        rows = rec.withheld_json()                     # the reader that has crashed four times
+        assert rows is None or json.dumps(rows)        # and the write path that crashed four more
+        if rows:
+            for r in rows:
+                assert isinstance(r.get("stage"), str) and r["stage"]
+                assert isinstance(r.get("reason"), str) and r["reason"]
+                assert "count" not in r or isinstance(r["count"], int)
+
+    def test_a_FUTURE_scope_carrying_a_tool_keeps_its_scope(self):
+        """`elif row.get("tool")` sat before the fallback, so a new scope that happened to carry a
+        tool was filed as `declaration` **with its own scope discarded** — the one-behind
+        enumeration again, this time in the branch ORDER rather than in the list."""
+        rec = instrument.AdvertisedToolsRecorder()
+        rec.record_pass(["book_list"], tool_choice="auto")
+        rec.absorb([{"scope": "future_thing", "tool": "book_get", "stage": "s", "reason": "r"}])
+        rows = rec.withheld_json()
+        assert rows and rows[0]["scope"] == "future_thing", (
+            f"the scope was rewritten to {rows[0].get('scope')!r}"
+        )
 
     def test_the_outage_row_survives_reconciliation_because_it_has_no_name_to_reconcile(self):
         """`withheld_json` filters a withholding out when the tool turns out to have been advertised
@@ -2030,13 +2197,17 @@ class TestTheTurnSinkIsArmedBeforeAnythingNarrows:
         (the defect's own shape); after `arm_turn_surface()` the same call lands."""
         import contextvars
 
-        def _bare():
+        # 🔴 THIS ASSERTED THAT AN UNARMED CONTEXT RECORDS **NOTHING**, and that property has been
+        # deliberately removed — it was the property that made ordering load-bearing, and eight
+        # measured routes walked past the gate protecting it. A narrowing now opens its own sink.
+        # What survives, and is the thing worth asserting, is that arming starts a turn CLEAN:
+        # `record_*` adopts, `arm_turn_surface` replaces.
+        def _unarmed_still_records():
             instrument.record_catalogue_unavailable(stage="catalogue_unavailable", reason="boom")
             return instrument.catalogue_outage_registered()
 
-        assert contextvars.copy_context().run(_bare) is False, (
-            "an unarmed context must record nothing — otherwise this test cannot tell arming from "
-            "no-arming, and the ordering it guards would not matter"
+        assert contextvars.copy_context().run(_unarmed_still_records) is True, (
+            "a narrowing with no sink was lost — the defect eight bypass routes all ended in"
         )
 
         def _armed():

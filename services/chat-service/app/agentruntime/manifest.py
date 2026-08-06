@@ -186,8 +186,11 @@ def build(
     A writer that trusts its argument is the write-end of the boundary `UntrustedRow` describes.
     """
     origin: dict[str, str] = {}
+    # Materialised for the same reason, and `type(...) is` for the same reason: `_prev_rows or []`
+    # over a container that lies about `__len__` turned a populated document into an empty one and
+    # disabled the loss guard below.
     _prev_rows = (previous or {}).get("declarations", [])
-    if previous is not None and not isinstance(_prev_rows, list):
+    if previous is not None and type(_prev_rows) is not list:
         # `previous={"declarations": None}` silently disabled the loss guard below — the `or []`
         # turned a malformed document into an empty one, which is the same "serve a broken thing as
         # empty" the assembler's own `rows_of` refuses by name. Unreachable through `generate()`,
@@ -197,7 +200,8 @@ def build(
             f"not an empty one, and treating it as empty disables the check that a declaration "
             f"cannot silently leave the manifest."
         )
-    for i, r in enumerate(_prev_rows or []):
+    _prev_rows = list(_prev_rows)
+    for i, r in enumerate(_prev_rows):
         if not isinstance(r, dict) or not r.get("id"):
             raise UntrustedRow(f"previous.declarations[{i}] has no id; it cannot carry an origin")
         stamp = r.get("contract_version")
@@ -266,7 +270,18 @@ def generate(
             f"{_ENV_VAR}. Guessing one would write the catalog somewhere nobody reads."
         )
     if ambient.exists(target):
+        # 🔴 `exists()` THEN `load()` IS TWO READS OF THE SAME FACT. If the file vanishes between
+        # them — a concurrent regeneration, a deploy, a `rm` — `load()` returns `_empty()` and this
+        # writes a manifest with **every origin reset and rows silently dropped**, without
+        # `bootstrap=` ever being passed. The flag exists to make exactly that operation deliberate,
+        # and a race walked around it. So the emptiness is re-checked against the reason we believed
+        # the file was there.
         previous = load(path=target)
+        if not previous.get("declarations") and not ambient.exists(target):
+            raise UntrustedRow(
+                f"{target} disappeared between the existence check and the read. Writing now would "
+                f"reset every origin and drop every row without `bootstrap=` being asked for."
+            )
     elif bootstrap:
         previous = None
     else:
@@ -336,8 +351,15 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
             f"by comparing every row against it, so an unreadable value empties the queue in silence"
         )
     rows = doc.get("declarations")
-    if not isinstance(rows, list):
-        raise UntrustedRow(f"{source}: `declarations` is missing or not a list")
+    # 🔴 **THE SAME TOCTOU I FIXED IN `surface.py` AND DID NOT LOOK FOR HERE.** `declarations` was
+    # `isinstance`-checked and then **iterated twice** — a `list` subclass handed the validator
+    # `['t0']` and the consumer `['t0', 'TYPED BY HAND!!']`, the second row violating every clause.
+    # `_is_exactly` refuses the subclass; the materialised copy makes the two iterations the same
+    # one. Applying a correction where the reviewer pointed, and not to the class, is this run's
+    # most-repeated failure and this is its fourth instance.
+    if type(rows) is not list:
+        raise UntrustedRow(f"{source}: `declarations` is missing or not a plain list")
+    rows = list(rows)
     ids: set[str] = set()
     for i, r in enumerate(rows):
         if not isinstance(r, dict):

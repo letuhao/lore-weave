@@ -790,11 +790,17 @@ class KnowledgeClient:
             }
             for t in listed.tools
         ]
-        if not tools:
-            # A successful fetch that returned nothing IS a whole-catalogue narrowing for this turn,
-            # and it is the one shape that used to become permanent by being cached.
-            self._register_catalogue_outage(
-                self._ADMIN_CATALOG_KEY, "admin catalogue returned zero tools")
+        # 🔴 **I WROTE `if not tools: register an outage` HERE AND IT WAS U-2's FOUNDING CONFUSION,
+        # RE-CREATED BY THE PERSON WHO WROTE THE TEST AGAINST IT.** A *successful* fetch returning
+        # zero tools is a legitimately EMPTY catalogue — an admin with no system-tier tools — not an
+        # unavailable one. Registering it made `catalogue_outage_registered()` true and the model was
+        # told its tools were unreachable when nothing had failed, which is the exact inversion
+        # `test_an_EMPTY_catalogue_is_not_an_outage` exists to reject. That test stayed **green**,
+        # because it drives the recorder and this defect is at the caller.
+        #
+        # The real finding it was reaching for is the CACHE, and that is fixed above: `[]` is no
+        # longer a cacheable answer, so an empty result is re-fetched instead of pinned forever. The
+        # emptiness is not the outage; the permanence was.
         self._admin_tool_definitions = tools
         return tools
 

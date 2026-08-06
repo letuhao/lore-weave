@@ -262,7 +262,45 @@ SCOPE_CATALOGUE = "catalogue"
 #: forbade the sentinel and the code minted one two thousand lines away.
 SCOPE_PASS = "pass"
 
+def _as_text(value) -> str:
+    """Whatever it was, as a plain `str` — or `""`.
+
+    Every crash in this recorder's history has been a consumer trusting the shape a producer put in
+    the sink: `row["tool"]` when the row had none, an unhashable value reaching a `set`, a
+    non-serialisable one reaching `json.dumps` **after** the turn had already succeeded. The sink is
+    a plain list any code in the request can append to, so its contents are input, and input is
+    coerced at the boundary rather than trusted past it.
+    """
+    if isinstance(value, str):
+        return value
+    if value is None:
+        return ""
+    try:
+        return str(value)
+    except Exception:                                    # noqa: BLE001 — a __str__ that raises
+        return f"<unrepresentable {type(value).__name__}>"
+
+
 surface_withheld: ContextVar[list | None] = ContextVar("lw_surface_withheld", default=None)
+
+
+def _sink_for_record() -> list:
+    """The turn's sink, **opening one if nobody armed**.
+
+    This is the line that stops ordering from being load-bearing. Eight measured routes walked past
+    the ordering gate over three rounds; every one of them ended with a narrowing happening before
+    an arming, and every one of them is now harmless, because the narrowing brings its own sink.
+
+    Deliberately NOT `arm_turn_surface`: that name means *"a turn is starting, take a fresh list"*,
+    and this means *"a record needs somewhere to go"*. Calling the first from here would let a
+    mid-turn narrowing silently replace a sink that already held rows — the discard this whole area
+    has been fighting since the sixth recurrence.
+    """
+    sink = surface_withheld.get()
+    if sink is None:
+        sink = []
+        surface_withheld.set(sink)
+    return sink
 
 
 def arm_turn_surface() -> list[dict]:
@@ -295,13 +333,23 @@ def arm_turn_surface() -> list[dict]:
 def record_surface_withheld(tool: str, *, stage: str, reason: str) -> None:
     """Register a narrowing from anywhere in the request, with no plumbing.
 
-    A no-op when nothing has begun a turn (a background job, a test importing the module), which is
-    correct: there is no turn for the record to belong to, and inventing one would attribute a
-    narrowing to a turn that never saw it.
+    🔴 **THIS USED TO NO-OP WHEN NOTHING HAD ARMED, AND THAT MADE ORDERING LOAD-BEARING.** Three
+    rounds of verifiers walked past the ordering gate — a helper one module over, two levels of
+    helper, a `_`-prefixed entry point, a class method, `getattr`, `functools.partial`, a
+    module-level alias, a name collision — and each time the fix was a better *syntactic* check for
+    a *semantic* property. A parse tree cannot decide what a program does, and after the eighth
+    route it is the approach that is wrong, not the pattern list.
+
+    So the record no longer depends on somebody having armed first: **if there is no sink, one is
+    opened here.** A narrowing cannot be lost to ordering, because the narrowing itself is what
+    creates the place to put it. The recorder adopts whatever the ContextVar holds at construction,
+    so an auto-armed sink reaches the column exactly as a turn-armed one does.
+
+    In a genuine non-turn (a background job, a test importing the module) this allocates one list
+    that nothing drains and the context discards — a cost of nothing against a class of defect that
+    has now cost four rounds. The ordering gate stays as a second line, no longer as the only one.
     """
-    sink = surface_withheld.get()
-    if sink is None:
-        return
+    sink = _sink_for_record()
     sink.append({"scope": SCOPE_DECLARATION, "tool": tool, "stage": stage, "reason": reason})
 
 
@@ -327,9 +375,7 @@ def record_catalogue_unavailable(*, stage: str, reason: str, count: int | None =
     something to compare against; on a cold failure nothing is known, not even the size. `count: 0`
     would claim *we know nothing was there* — a fabrication reached by a default.
     """
-    sink = surface_withheld.get()
-    if sink is None:
-        return
+    sink = _sink_for_record()
     entry: dict = {"scope": SCOPE_CATALOGUE, "stage": stage, "reason": reason}
     if count is not None:
         entry["count"] = count
@@ -581,14 +627,33 @@ class AdvertisedToolsRecorder:
             return
         while sink:
             row = sink.pop(0)
-            scope = row.get("scope")
-            stage, reason = row.get("stage") or "unknown", row.get("reason") or "unrecorded"
+            if not isinstance(row, dict):
+                # A sink is a plain list anyone in the request can append to. A non-dict row used to
+                # raise `AttributeError` here — a recorder that crashes on bad input is a recorder
+                # that takes the turn down with it, which is strictly worse than the silence it
+                # exists to measure.
+                row = {"stage": "malformed", "reason": f"sink row was {type(row).__name__}"}
+            # 🔴 EVERY value is coerced to a plain string before it is used as a key or written.
+            # A verifier fed 19 row shapes and **7 still crashed**: an unhashable `stage` blew up
+            # the dedupe `set`, an unhashable `tool` blew up the other one, and four more died at
+            # `json.dumps` on the write path — i.e. AFTER the turn had already succeeded. A record
+            # that can kill the write it belongs to is not instrumentation.
+            scope = _as_text(row.get("scope"))
+            stage = _as_text(row.get("stage")) or "unknown"
+            reason = _as_text(row.get("reason")) or "unrecorded"
+            tool = _as_text(row.get("tool"))
+            count = row.get("count") if isinstance(row.get("count"), int) else None
+            # Scope FIRST, always: `elif row.get("tool")` sat before the fallback, so a new scope
+            # that happened to carry a tool was filed as `declaration` and **its scope discarded** —
+            # the same one-behind enumeration, in the branch order rather than in the list.
             if scope == SCOPE_CATALOGUE:
-                self.record_catalogue_withheld(stage=stage, reason=reason, count=row.get("count"))
+                self.record_catalogue_withheld(stage=stage, reason=reason, count=count)
             elif scope == SCOPE_PASS:
                 self.record_pass_withheld(stage=stage, reason=reason)
-            elif row.get("tool"):
-                self.record_withheld(row["tool"], stage=stage, reason=reason)
+            elif not scope and tool:
+                self.record_withheld(tool, stage=stage, reason=reason)
+            elif scope == SCOPE_DECLARATION and tool:
+                self.record_withheld(tool, stage=stage, reason=reason)
             else:
                 # 🔴 **THE `else` READ `row["tool"]` UNCONDITIONALLY — the P0 crash re-created inside
                 # the function written to fix it**, and this time on EVERY terminal path, because
@@ -600,10 +665,12 @@ class AdvertisedToolsRecorder:
                 # Losing it would be worse than a crash was: a crash is loud, and this column exists
                 # because silence is the failure being measured.
                 self._record_scoped(
-                    str(scope or "unknown"),
+                    scope or "unknown",
                     stage=stage,
                     reason=f"{reason} (unrecognised scope {scope!r}; recorded rather than dropped)",
                 )
+
+
 
     def bind_sink(self, sink: list | None) -> None:
         """Adopt the turn's sink so `withheld_json()` can drain it **however the turn ends**."""
@@ -679,7 +746,17 @@ class AdvertisedToolsRecorder:
             # reconcilable even in principle: reconciliation asks *"was this declaration advertised
             # after all?"*, and an outage is a statement about the whole catalogue, so there is no
             # name to look up. It is always kept.
-            if w.get("scope") in (SCOPE_CATALOGUE, SCOPE_PASS)
+            # 🔴 **FOURTH RECURRENCE, AND THE LAST TIME IT IS WRITTEN AS A SCOPE LIST.** Every
+            # previous fix enumerated the scopes that have no `tool` — and each time a new scope
+            # arrived, the enumeration was one behind and the reader crashed. `absorb` now RECORDS
+            # an unrecognised scope rather than dropping it, which made this line fail on the very
+            # row the fix produces, on every terminal write.
+            #
+            # The class of defect is "a consumer assumes a key that the producer says is optional".
+            # So the consumer stops asking which scope it is and asks **whether the row has a name
+            # to reconcile** — which is the actual precondition of reconciliation, and is true of
+            # every scope that will ever be added.
+            if not w.get("tool")
             or w["tool"] not in by_pass.get(w.get("pass"), set())
         ]
         return out or None
