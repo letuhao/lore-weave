@@ -1986,6 +1986,79 @@ hand back the source document's own `members` list) · B18-8, B18-11, B18-10 (**
 probe modules written into the live `app/` tree · the `:531`/`:542` contradiction (**sixth round**) ·
 **B20-4: my corrected `Open, carried` list restored two and dropped four.**
 
+---
+
+## 🔴 R21 — **FAIL ×2**, and the gate I built to end builder self-measurement was itself unmeasured
+
+Prompt committed first, two V-CODE on frozen `9818c7bc5`. Verdicts:
+[round21-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round21-v-code-a.md) ·
+[round21-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round21-v-code-b.md).
+
+### The census, graded first as the prompt demanded
+
+**Both verifiers: the mechanism is sound and exactly reproducible** — `68 sites, 13 silent, 55 red`,
+a **fourth** independent convergence, one of them re-deriving every id with its own AST walker.
+**And as shipped it was not a gate.** R21-A: *"five ≤10-line fixes make it one, and then I'd support
+closing CP-1 against it."*
+
+| defect | how it was found |
+|---|---|
+| **the CI job could NEVER pass** — `requirements.txt` has no pytest, so the selftest always exits 1 | executed |
+| **not fail-closed on a kill** — 4 of 4 kills left a `raise → pass` in a **tracked** file; the suite then reds blaming a test | executed at 12/20/30/45 s |
+| the snapshot read sat **inside** the loop, so a re-run after a crash read a neutered file as its own original and printed *"NOW GUARDED … good news"* | executed |
+| the id was a **positional ordinal** — reordering two SILENT siblings gave `rc=0` and silent staleness, the exact failure the ordinal was chosen to prevent | executed |
+| the restore guarantee was an `assert`, gone under `python -O` | read |
+| **the census had no test at all**, twenty lines from the membrane gate whose precedent is exactly that | grep |
+| it **corrupts what it measures** — 15 of 20 concurrent suite runs go red; it destroyed 7 of a verifier's first 8 baselines | executed |
+
+**All five fixes shipped** (`1569ce443`): CI installs `requirements-test.txt` · every file snapshotted
+before the first write, restored via `atexit` + SIGINT/SIGTERM · `SystemExit` not `assert` · each row
+carries a **hash of the raise statement's own AST** · and the census has a test that **declares itself
+a shape check**.
+
+### 🔴 What the census still cannot say, recorded rather than carried
+
+The allowlist has **no vocabulary** for *"guarded by a same-class sibling"* or for *"dead code"*. So
+between **2 and 5 of its 13 rows are mis-recorded, depending on which question you ask** — R21-A
+enumerated **all 378 subsets of size ≤3** and found 2 false; R21-B asked whether the guarded
+CONDITION is checked and found 5, including two raises that are **unreachable** and one whose test
+passes for the wrong reason (`match="float"` is satisfied by the fallback message). **Both are
+right.** The census knows whether the suite reds; it does not know whether the guard is correct —
+and that line belonged in its docstring on day one, not in a verdict.
+
+Also open: a weakened **condition** leaves the census output unchanged, and extracting raises into a
+helper collapses `contract.py` 18 → 12 sites.
+
+### The delta, graded
+
+* **The recorder test DESCRIBES the hazard.** `catalogue_outage_registered(rec_a)` in turn B returns
+  `True` — and **the test never makes that call**. Both its assertions survive deleting the branch.
+  Sharper: `_carried` and the passing `_O_K` are **AST-alpha-equivalent** in their first five
+  statements, *distinguished only by a comment*. **The hazard is unfalsifiable at this seam** —
+  `type() is` cannot express *"this turn's"* — and only V-LIVE settles it. **Third round.**
+* **W4's `s.body[:1]` has no test.** Reverting the token leaves **137 passed**; *"9/9 shapes"* left no
+  artifact. And a `with` as a `try`'s first statement re-admits the whole body — route 18, one level in.
+* **`dict(r)` is SHALLOW at 4/4 doors** — two doors share one `members` list. The fix needs **both**
+  siblings, the eighth time this run a pair has been half-fixed.
+* **`generate()` emitted CRLF on Windows** — production-reachable, and **the M1 drift gate compares
+  bytes**. One probe call rewrote the committed manifest line for line. Fixed (`93af52373`), guard
+  proven red. **The same defect landed three times in one week**: a verifier's restore harness, the
+  census script written to end this class, and production.
+* **The record lost SIX rows, not four** (T10 and route 25 as well). R21-B: *"the register is
+  hand-typed prose and has lost rows in four consecutive rounds — it must be **generated from the
+  verdicts**."*
+
+### ▶ The numbers
+
+| | |
+|---|---|
+| executed vs argued | **A 27:5 · B 18:3**, every execution over an **enumerated** space (378 subsets, 63 shapes, 13×2,266 tests, 4 kills) |
+| `introduced` | A: **13** — but 9 are a first grading of new machinery; **excluding the census, 4** |
+| series | `2,1,2,1,3,2,4,3,2,2,2,5,13(4)` — still no direction |
+
+**2270 tests pass; census 68/13/55; membrane gate green.** ⚠️ Builder's evidence.
+**CP-1 does not close**; R22 verifies this delta under the existing criterion.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -2005,7 +2078,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | ~~R18~~ | ran 2026-08-06 → **FAIL ×2**. All three "unreproduced" holes reproduced; the impossibility argument I had deleted is true again; a fix of mine blinded five working detections; **the two records disagreed**. See the block above | `V-CODE` ×2 on `2faa88bac` | — |
 | ~~R19~~ | ran 2026-08-06 → **FAIL ×2**. Both predictions HELD. My "unaddressable" claim was refuted by a six-line patch that runs — the error was LOGICAL, not careless. A fix of mine guarded the sibling, seventh instance. See the block above | `V-CODE` ×2 on `5b531e22a` | — |
 | ~~R20~~ | ran 2026-08-06 → **FAIL ×2**. Both verifiers: **no convergence**, close against the **mechanised census**, and **stop V-CODE** — `agentruntime` has **zero importers**, so V-LIVE returns `CANNOT DETERMINE` by construction. Census shipped as a gate. See above | `V-CODE` ×2 on `b73e086ca` | — |
-| **R21** | verify R20's delta under the **existing** criterion, since the criterion is the PO's to change: the census gate itself, the bounded recorder door, W4's one-token rule | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
+| ~~R21~~ | ran 2026-08-06 → **FAIL ×2**. The census was graded first: **sound mechanism, not yet a gate** — its CI job could never pass, it was not fail-closed on a kill, and it had no test. All five prescribed fixes shipped. See the block above | `V-CODE` ×2 on `9818c7bc5` | — |
+| **R22** | verify R21's delta: the hardened census (kill-safe, hash-keyed ids, reachable CI green, its own test), the manifest's pinned newline, and what the census still **cannot** say | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
 | **PO** | ⭐ **decision open**: close CP-1 against the census (68 sites, 13 recorded silent, no drift) instead of a clean V-CODE round — and go to CP-2 so something finally imports the package | — | — |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
