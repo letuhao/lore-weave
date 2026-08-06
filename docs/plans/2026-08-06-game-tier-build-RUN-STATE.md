@@ -629,6 +629,142 @@ GDPR erasure needing to find every binding without a fan-out.
 
 **Still the PO's to take.** This section is the argument, not the decision.
 
+## 6h. `FLOW-AUDIT` — the whole chain traced, 2026-08-07, and the PO's diagnosis confirmed
+
+**The PO's words:** *"I thought the foundation was finished in May, but what got finished seems
+to be only the KERNEL, not the foundation — it has no data tiering and no SDK."*
+**That is exactly right, and it is measurable.** What follows is the measurement.
+
+### The chain, segment by segment — spec status ‖ code status
+
+| # | segment | governing spec | code | verdict |
+|---|---|---|---|---|
+| **A** | book → extraction → enrichment → baseline → **manifest** | [`38`](../03_planning/LLM_MMO_RPG/38_content_pipeline_architecture.md) `CPL-*` — **OVERVIEW**, per-element generators unwritten | `world-gen` 30 772 | **spec is an overview; 8 element modules unbuilt** |
+| **B** | manifest → resolve → normalise → **digest** → ruleset store | [`16`](../03_planning/LLM_MMO_RPG/16_ruleset_loader_and_registry.md) `RLS-*` — deep, and the corrections landed | `ruleset-core` 5 197 + `ruleset-loader` 3 852 | ✅ **the one segment that is whole** |
+| **C** | manifest → **SEEDING** → `*Born` → a reality with a world | [`18`](../03_planning/LLM_MMO_RPG/18_reality_bootstrap.md) `RBS-*` + `GDA-D3/D4` + [`37`](../03_planning/LLM_MMO_RPG/37_world_data_storage.md) `WDS-*` | **0** | ❌ **the hole. See below.** |
+| **D** | ingress → island memory `D::State` → `step()` | `13`/`14` `SL-*`/`SC-*` | `sim-core` 2 459 · `game-rules` 1 029 · `actor-hub` 1 974 | ✅ built |
+| **E** | proposal → admission → commit → `event_log` + outbox | `15` `CS-*` | `commit-service` 6 032 | ✅ built |
+| **F** | `event_log` → projections · snapshots · rebuild | `02_storage` | `dp-kernel` 15 041 · `rebuilder` 1 043 | ✅ built — **and this is the "kernel" the PO means** |
+| **G** | **tiers T0..T3 · cache · invalidation · the SDK primitive surface** | [`06_data_plane/`](../03_planning/LLM_MMO_RPG/06_data_plane/) — 25 files **LOCKED**, `DP-A/T/K/C/X/F/R/S/Ch` | **0** | ❌ **absent. See below.** |
+| **H** | outbox → `dp:events:*` → durable subscribe → Colyseus room | `DP-Ch16..Ch20` + `GDA-A7` | `game-server` 3 192 · `publisher` | ⚠ transport built, **DP semantics not** |
+| **I** | room → W0/W1/W2 → browser | [`20`](../03_planning/LLM_MMO_RPG/20_client_wire_contract.md) `CWC-*` — DRAFT, prefix **unregistered** | `contracts/game-wire/` 4 schemas · `frontend-game/src/net/` | ⚠ contract scaffolded, one producer |
+| **J** | world → **prompt assembly** → LLM | `GDA-F10`/`R8` + `S09` (10 governance layers) | `prompt.rs` 797 | ⚠ **a validated shell around a hole** |
+
+### `FLOW-1` — the SDK is not "thin", it is **zero**, and one grep says so
+
+```
+rg '\b(t1_read|t2_write|t3_write|read_projection_reality|read_projection_channel
+     |query_scoped_reality|subscribe_channel_events_durable|subscribe_invalidation
+     |DpClient|CausalityToken|cache_key!)\b' -g '*.{rs,ts,go}'
+  →  2 occurrences, 2 files — and one of them is the agent worktree copy of the other.
+     The single real hit is services/commit-service/src/bin/spine.rs.
+```
+
+Against that, `reality_id` as a **bare field** is **457 occurrences across 44 files in `crates/`
+alone**. `22 §5`'s anti-pattern table forbids exactly this in as many words — *"Pre-resolve
+`RealityId` from a config string and pass it everywhere → the newtype is module-private; obtain it
+from `SessionContext::reality_id()` — `DP-A12` gates cross-reality leakage at the type level."*
+
+⇒ **`dp-kernel` is not the data plane. It is `02_storage` in Rust** — event store, outbox,
+snapshot, projection runner, upcaster, channel writer, canon cache, prompt composer. Every one of
+those is segment **F**. Segment **G** — the four tiers, their coherency models, the ~42 primitives,
+the cache-key macro, the capability token — **has no code at all**, and the crate that carries the
+`dp-` prefix is the reason nobody noticed.
+
+### `FLOW-2` — the flow WAS traced. In a draft. Whose corrections to the LOCKED spec were never applied
+
+[`17_game_data_architecture.md`](../03_planning/LLM_MMO_RPG/17_game_data_architecture.md) (2026-07-26,
+`GDA-*`) is the end-to-end flow document, and it opens by naming this exact defect: *"we have ~80
+documents of data architecture and **zero end-to-end flows**… not one document traces a single
+request from trigger to storage and back."* It then composes 6 boot levels + 16 flows and closes
+**nine** seams.
+
+**It is still `Status: DRAFT`, and its corrections to `06_data_plane` were parked.**
+[`19_reconciliation_register.md`](../03_planning/LLM_MMO_RPG/19_reconciliation_register.md) line 392,
+verbatim: **"All LOCKED-file changes marked pending-AMEND in place; none applied."** §15 files them
+as the **AMEND bundle** — *"decision-complete, application-gated"*.
+
+The bundle: `REC-53` (EVT + envelope v2) · `REC-58` (bus parked-state) · **`REC-65` (`DpError` drift
+— `DP-K3` is LOCKED at 21 variants and 5+ docs mint satellites)** · `REC-68` (gate-reject audit) ·
+`AGT-A2/D1` · `DP-A16` lease · **the `DP-Ch33`-adjacent hotset default**.
+
+**Why this is not bookkeeping.** The doc hierarchy says *the locked spec wins* (`22 §8`). So the
+authoritative text is the un-amended one — and `GDA-F8` measured what that text says: `DP-X3`'s V1
+static hotset is **`player + session + region`**, and **none of those three aggregates exist** in the
+52-row ownership matrix the feature layer actually uses. **The pre-warm, as locked, warms nothing.**
+`GDA-D13` fixed it eleven days ago on paper and the fix was never written into the file it fixes.
+
+### `FLOW-3` — the hole is segment C, and doc `38` named it a week ago
+
+[`38 §0`](../03_planning/LLM_MMO_RPG/38_content_pipeline_architecture.md), 2026-07-30, traced the
+same chain and printed the same shape:
+
+```
+Phase 0 authoring (TOML layers)              ✅ built
+Phase 1 reality creation → digest → binding  ✅ built
+Phase 2 SEEDING                              ❌ does not exist
+Phase 3 node boot → island Cold→Hot          ✅ built
+Phase 4 actor spawn                          ⚠  hp + one hardcoded archetype
+Phase 5 the room projects the log            ✅ built
+```
+
+> *"The `RealityManifest` appears in **eight design documents and zero lines of code**. It has no
+> type, no table, no producer, and no hash in the reality binding. So the engine can load a
+> reality's **rules** and cannot load its **world**."*
+
+**Re-measured today, 2026-08-07 — unchanged.** `rg 'RealityManifest|reality_manifest'` over
+`*.{rs,go,ts,py,sql,json}` returns **two real files**: `crates/ruleset-loader/src/validate.rs`
+(a **doc comment**) and `scripts/amendment-rot-gate.py` (a **gate**). Neither is a producer.
+`CPL-F1` states the consequence precisely: *"the missing tier is not the manifest TYPE. It is the
+pipeline that produces one. Declaring the struct tomorrow would leave every field unpopulated."*
+
+And [`37`](../03_planning/LLM_MMO_RPG/37_world_data_storage.md) `WDS-F1` found that the sealed
+mechanism for filling it is **half wrong**: `GDA-D4`'s *"seeding emits events, never direct writes"*
+is a **record** for authored content and a **transcript** for generated bulk — ~33 k genesis events
+at `Megaplanet` scale for a payload that regenerates in ~1 s from a 32-byte seed.
+
+### `FLOW-4` — the LLM's READ of the world has no owner in code
+
+MCP in the game tier is entirely the **decide** path — `AGT-A2`: *"the allowed-tool set is defined
+once as MCP tools"*, and `AGT-A6`: a tool-call **executes nothing**, it IS the proposal payload.
+(`REC-77` then amended the originator: ai-gateway is MCP tool-federation only; the `LlmDriver` lives
+in `commit-service` — and **that one is built**, `src/llm_driver.rs`.)
+
+**The read path is prompt assembly, and it is the hole `GDA-F10` opened.** `prompt.rs` documents its
+own emptiness — `PromptContext` *"WHO + WHAT-FOR; no body"*, `ResolvedContext`'s filter chain
+*"V1 = empty"*, `RetrievalHints` with nowhere to come from, and three `Noop` gates. `GDA-D16`
+created the **`ContextResolver`** role to own it. Measured: **`ContextResolver` = 0 occurrences in
+the entire tree.** So does `RealityBootstrapper`, `PlaceBorn`, `EntityBorn`, `BubbleUpAggregator`
+and `hotset` — the whole named vocabulary of segments **C** and **G**.
+
+### What this does to `SEALED-BUILD-ORDER`
+
+**It confirms slices 1–4 and inserts a slice 0.** The order was derived from dependencies and the
+dependencies hold. What the audit adds is that **slices 2 and 4 bind to text four pending
+amendments were supposed to change** — most sharply `REC-65`, which says `DP-K3`'s error enum is
+already drifting across five documents. Typing the write surface against the un-amended enum bakes
+the drift into the first line of the SDK.
+
+| slice | was | now |
+|---|---|---|
+| **0** | — | **apply the AMEND bundle** (or explicitly reduce it). `REC-65` before slice 4; the `DP-X3` hotset default before anything pre-warms |
+| 1 | `DP-T0..T3` marker traits | unchanged — still zero-dependency, still discharges the `DP-R2` debt |
+| 2 | the `DP-R3` lint, shipped RED | unchanged — and `FLOW-1` re-prices it: the allowlist is not 6 files, it is **every** call site, because there is no primitive to migrate *to* yet |
+| 3 | `RealityId` + `SessionContext` | **re-priced by the 457 bare `reality_id` sites** — this is the largest single mechanical change in the plan |
+| 4 | tier-typed write surface | unchanged, gated on slice 0's `REC-65` |
+| 5 | `DpControlPlane` | unchanged |
+
+**Segment C (seeding) is NOT in this order and that is deliberate** — it is a *consumer* of the SDK,
+not part of it, and `38`/`37` already own its design. Recorded so it is chosen rather than
+rediscovered: **after slice 4, the next thing the world needs is a world.**
+
+### Stated limit of this audit
+
+Read in full: `22`, `06`, `17`, `20`, `38 §0–§4`, `37 §1`, `19 §12b/§15`. **Measured but not read in
+full:** `04a`/`04c`/`04d`/`07`/`08`/`12`–`21`/`99`. Every count above is a command, and every command
+is printed beside its claim. What is *not* claimed: that the nine unread files contain no further
+seam. They are the remaining work of this review.
+
 ## 7. Registers — append as it happens
 
 ### Decisions
@@ -685,6 +821,8 @@ GDPR erasure needing to find every binding without a fan-out.
 
 | # | what nearly went wrong |
 |---|---|
+| `BDR-23` | **I was one message from starting slice 1, and the PO stopped me to finish the review — which then found slice 0.** The build order was sealed, committed and pushed; every dependency in it was measured and every one of them held. What it was missing was not a dependency, it was a **precondition**: `REC-65` records `DP-K3`'s error enum already drifting across five documents, and slice 4 types the write surface against it. Building in the sealed order would have been correct and would still have baked the drift into the SDK's first line. ⇒ **A dependency graph answers *what can be built first*. It does not answer *what is safe to build against*, and I had only asked the first question.** |
+| `BDR-24` | **I proposed `FLOW-AUDIT` as new work, and two of its four findings were already written down** — `38 §0` had printed the same six-phase chain with the same `❌ Phase 2` a week earlier, and `17`'s opening paragraph names the *"zero end-to-end flows"* defect in its own words. My contribution was **re-measuring them against today's tree** (both still true) and joining them to `FLOW-1`, which was new. Worth recording because the instinct on being asked *"keep reviewing"* is to look for something unfound, and here the unfound thing was **that two known findings were the same finding, and neither had moved.** |
 | `BDR-1` | I opened this file about to write *"the first consumer is the command substrate"*, which is what the previous turn's summary implied. Measuring first showed the ordering is the other way and **derivable**: an `EffectRow` targets a quantity ordinal, so while the actor's numbers are struct fields the substrate cannot be declarative. A plan whose first line is wrong about its own order is worse than no plan. |
 | `BDR-3` | **I wrote `M1` as a MIGRATION of `commit-service::Actor`'s nouns into quantities, and the PO corrected it mid-draft**: that struct is scaffolding built to prove the kernel and SDK work, and it is to be deleted. `D-11` and `D-14` both say so and I had read both in this same session. The correction matters because a port is the *comfortable* answer — it keeps every test green, it looks like progress, and it carries the old vocabulary into a new container, which is `D-2`'s failure exactly. **`quantity[0] = "hp"` would have satisfied `M1` as I first wrote it.** The slice board now defaults every legacy field to DELETE and forbids deriving a quantity from a struct field name. |
 | `BDR-21` | **A cold-start red team returned BLOCK on the DPA spec, and the two most expensive findings were AUDIT-EXISTING misses in a document about not duplicating what exists.** `DATA_ARCHITECTURE.md` **§5 is a dedicated section on this exact plane** and line 343 already states invariant `I7` — *"`meta-worker` is the only consumer of `xreality.*` Redis Streams"* — **a single-reader rule for a Redis plane, in the file my spec says is silent, while my own table records Redis's port as "nothing".** And `scripts/restore-drill.sh` is **already a rebuild drill over a data plane**, so `DPA-A17` is that script generalised rather than a new pattern. I wrote a law against re-inventing registries and then re-invented one, without opening the file I cited as the model. |
