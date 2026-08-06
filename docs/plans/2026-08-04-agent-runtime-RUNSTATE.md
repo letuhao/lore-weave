@@ -1834,6 +1834,78 @@ contributes 0 of 2) · B18-2 (the eleventh guard's anchor reds at CP-2) · B18-1
 door, fourth round) · `rows_of`'s document-stamp gap · two contradictory comments 11 lines apart in
 `catalogue_outage_registered`.
 
+---
+
+## 🔴 R19 — **FAIL ×2**, both predictions HELD, and my error was LOGICAL rather than careless
+
+Prompt committed first, two V-CODE on frozen `5b531e22a`. Verdicts:
+[round19-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round19-v-code-a.md) ·
+[round19-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round19-v-code-b.md).
+
+### The refutation that runs
+
+I wrote that `O_K` (arm → record → drain → **arm again** → read) and the two-turn case are
+*"byte-identically the same execution, so no assignment of the flag can split them."* **The premise
+is true and the conclusion does not follow.** They are identical **in the ContextVars**; they differ
+in **which recorder the reader holds**. I reasoned about the state I had chosen to look at and
+concluded about every state.
+
+| | `O_K` | two-turn B | wrong | full suite |
+|---|---|---|---|---|
+| truth | `True` | `False` | — | — |
+| flag only | **`False`** 🔴 | `False` | **3 / 9** | baseline |
+| **+ recorder as a second witness** | `True` ✅ | `False` ✅ | **1 / 9** | **baseline** |
+
+Third consecutive negative claim of mine refuted — and the first whose refutation **runs**: six lines,
+full suite at baseline, and an **eighth ordering** the previous round had not found. The survivor
+(`O_J`, a turn that records and never arms) **is** genuinely sink-borne, which is what the comment
+said *before* `O_K` was discovered. **I answered a discovery by widening the excuse instead of
+narrowing it.** Shipped: the recorder is **passed**, not held in a ContextVar — its lifetime was the
+whole defect of both earlier attempts.
+
+### Both predictions HELD — and one held on a subject I never touched
+
+**P18-B1** and **P18-B2** both held. B18-2's anchor is byte-identical; the delta did not attempt it.
+And R18-B's own published control was wrong — it measured `salience`, a field its prediction does not
+name (`relevance`/`lane`/`tier` → 2 failed, `cost` → 4, `salience` → 1). **A fixture chosen for
+convenience answering a different question** — the exact sentence R18-B wrote about me, one round
+later, about itself. The verifier chain self-corrects; that is worth recording.
+
+### The fix that guarded the sibling — seventh instance
+
+`dict(r)`: the finding named **`rows_of`**; I wrote the test against `validate_document`, whose copy
+**already had a red-able test**. Net new coverage **zero**. Both doors asserted now, and the
+`rows_of` half reds when its copy is removed.
+
+### Three things still wrong with the RECORD, and they are mine
+
+* The sentence my two records finally **agreed** on is **false**: *"each reds when the check it names
+  is neutered"* was true of two of the three.
+* **B18-8 and B18-11 are open, unfixed, and absent from `Open, carried`** — third round of that
+  failure mode.
+* My new spelling test's oracle (`match='withheld_tools'`) matches **every** assertion in the gate,
+  not the one it means — third instance of that family; the correct pattern is already in the file.
+
+### ▶ The numbers, and what they say
+
+| | |
+|---|---|
+| **executed vs argued** | **7 : 6 — executed 7/7 correct, argued 0/6 correct.** Two rounds, two independent verifiers, polarity clean at n=13 |
+| `introduced`, raw, eleven rounds | `2,1,2,1,3,2,4,3,2,2,2` — **no direction** |
+| per-changed-line | moved 5.5× between rounds **purely because the denominator shrank**. Raw is the stable signal |
+| denominators derived | me **11** · R17-B 48 · R18-B 87 · R19-B 92 |
+| the first coverage number that is not a measure of who looked hardest | two independent mechanical censuses (**87** and **92**) now **agree on the silent set**. It should be a CI script, not a line in a verdict |
+
+**2267 tests pass; gate green.** ⚠️ Builder's evidence. **CP-1 does not close**; R20 verifies this delta.
+
+**Open, carried** (now including the two that were dropped): the sink-borne `O_J` residual · **B18-8**
+(`contract.py:221`/`:255` — a `str` subclass key/member walks in) · **B18-11** (`canon` has zero
+in-package call sites; its refuted docstring is unchanged) · T10/T11d (the live SQL is an f-string
+whose literal column name is the only thing keeping it visible) · route 25 · W4/W7 · the three weak
+oracles · B18-10 (a fifth exported door, **fifth round**) · `surface.py:305` (`OrderBy`'s key-pair
+shape) · `_ID` has no length bound · the probe modules are written into the live `app/` tree, so an
+interrupted run leaves the suite red blaming the wrong file.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -1851,7 +1923,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | ~~R16~~ | ran 2026-08-06 → **FAIL ×2**. Both verifiers refuted both builder self-measurements; the R15 rehousing was measured WORSE than what it replaced and was reverted. Closure 75% / 54%, the highest of the series. See the block above | `V-CODE` ×2 on `d23ea5592` | — |
 | ~~R17~~ | ran 2026-08-06 → **FAIL ×2**. A verifier refuted my claim that an arrangement was impossible — the counter-example was one statement I had deleted myself, and the argument behind the claim was my own sentence gone vacuous. R16-B's advance prediction HELD. See the block above | `V-CODE` ×2 on `6761cf013` | — |
 | ~~R18~~ | ran 2026-08-06 → **FAIL ×2**. All three "unreproduced" holes reproduced; the impossibility argument I had deleted is true again; a fix of mine blinded five working detections; **the two records disagreed**. See the block above | `V-CODE` ×2 on `2faa88bac` | — |
-| **R19** | verify R18's delta: the three restored holes, the reassembled SQL matcher, the single narrowing predicate, the four newly-guarded raise sites — and **settle B18's two predictions** | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
+| ~~R19~~ | ran 2026-08-06 → **FAIL ×2**. Both predictions HELD. My "unaddressable" claim was refuted by a six-line patch that runs — the error was LOGICAL, not careless. A fix of mine guarded the sibling, seventh instance. See the block above | `V-CODE` ×2 on `5b531e22a` | — |
+| **R20** | verify R19's delta — **and answer the termination question**: eleven rounds, eleven FAILs, `introduced` with no direction. What closes CP-1, and is more V-CODE the right axis? | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
 | **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |
