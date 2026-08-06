@@ -17,7 +17,7 @@ version: **everything built is a WRITE, everything missing is a READ.**
 | slice | state |
 |---|---|
 | **0** — the AMEND bundle | ✅ `217d325f0` + `3e6358749`. `REC-99`..`REC-102`, 16 LOCKED files amended so they stop stating things that are false. `REC-102` PO-approved. |
-| **1** — `crates/dp`: tiers, scopes, `DpAggregate` | 🟡 Two rounds of cold-start refutation, **both BLOCK, both discharged in full** (13 + 19 findings). The type-system half survived a direct adversary including from a crate outside this repo; the source-gate half was rewritten. **Not closed** — a third refuter has not run, and each round found what the previous one certified. |
+| **1** — `crates/dp`: tiers, scopes, `DpAggregate` | 🟡 **Three rounds of cold-start refutation, all three BLOCK, 45 findings.** The type-system half survived every direct attack, including from a crate outside this repo. The source-check half was broken 11 times and is now **retired**: the property is enforced over a real `syn` AST in `crates/dp/tests/aggregate_contract.rs`, and `scripts/dp-aggregate-gate.py` is a runner. **Not closed** — 9 gaps are recorded and open, and no round has returned CLEAR. |
 | **1b**–**5** | ⬜ boards written per slice, at its start. |
 
 **The finding worth carrying forward is `V1-F1`.** Slice 1 was put to the PO on the claim that an
@@ -43,7 +43,9 @@ the `const`s in `tier.rs` — a one-sided edit to either goes red naming both si
 alarm `FLOW-2` measured the absence of. And the **bite matrix** (`scripts/dp-slice1-bite.py`) proves
 each guard by removing it. Both are bitten; neither is decoration.
 
-**Drift this run:** `BDR-26`..`BDR-32` in §7. Notably `BDR-32` — the bite harness had been rewriting
+**Drift this run:** `BDR-26`..`BDR-38` in §7. `BDR-38` is the one to read: I answered *"the type system cannot hold this"* with *"so the source can"* and never asked what a source check provably cannot do — then re-implemented a Rust parser badly, twice, while `syn` sat unused in the workspace's own dependency table.
+
+**Drift, earlier:** `BDR-26`..`BDR-32`. Notably `BDR-32` — the bite harness had been rewriting
 LOCKED documents' line endings on every run, invisibly to `git diff`, because `.gitattributes`
 normalises on read. Found by a sha256 check on its first run.
 

@@ -187,5 +187,40 @@ fn s3_4_counts() {
         stderr_files,
         "every tests/ui/*.rs needs its .stderr: found {ui_cases:?} against {stderr_files} pins"
     );
+
+    // `G2` — **`tests/ui/` was default-uncovered in BOTH directions.**
+    // `compile_fail.rs` enumerates its cases by hand, and `dp-aggregate-gate`
+    // excludes the whole directory — so a file dropped there was compiled by
+    // nothing and scanned by nothing. A completeness pass planted a live
+    // `V1-F1` escape as `zzz_orphan.rs` with a matching `.stderr`: the parity
+    // assertion above **printed 6 and passed**, because a pair keeps parity.
+    //
+    // So the enumerated list becomes a set difference — the same fix `V2-F2`
+    // applied to the gate's scope, in the one place still carrying the shape.
+    let driver = std::fs::read_to_string(dir.join("tests/compile_fail.rs")).expect("compile_fail");
+    let mut driven: Vec<String> = driver
+        .match_indices("t.compile_fail(\"")
+        .map(|(i, _)| {
+            driver[i + "t.compile_fail(\"".len()..]
+                .split('"')
+                .next()
+                .unwrap_or("")
+                .rsplit('/')
+                .next()
+                .unwrap_or("")
+                .to_string()
+        })
+        .filter(|s| !s.is_empty())
+        .collect();
+    driven.sort();
+    let mut present = ui_cases.clone();
+    present.sort();
+    assert_eq!(
+        driven, present,
+        "tests/ui/ and compile_fail.rs disagree. Driven: {driven:?}. On disk: {present:?}. A file \
+         in tests/ui/ that no `t.compile_fail(..)` names is compiled by NOTHING and — because the \
+         aggregate contract excludes that directory as trybuild fixtures — scanned by nothing \
+         either. It is the one place in this crate where a live violation could sit green (G2)"
+    );
     assert!(!ui_cases.is_empty() && oracle_tests > 0, "S3.4 counted nothing");
 }

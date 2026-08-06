@@ -8,6 +8,18 @@ description = "Data-plane SDK contract: DP-T0..T3 tiers, DP-Ch4 scopes, DP-K1 ag
 
 [dev-dependencies]
 trybuild = { workspace = true }
+# `syn` is a DEV dependency only: the crate itself stays dependency-free
+# (`[dependencies]` above is empty, and `S2.3`'s "declares no I/O" rests on it).
+# It is here because `tests/aggregate_contract.rs` enforces DP-A9 over a real
+# Rust AST — three rounds of refutation broke a hand-rolled lexer eleven times,
+# and every one of those breaks was a fact about Rust's grammar that a partial
+# reimplementation got wrong.
+# `visit` is not in the workspace default feature set; this crate needs the
+# visitor to reach impls nested in modules.
+syn = { workspace = true, features = ["visit", "extra-traits"] }
+# `span-locations` is what turns a finding into a file:line rather than a
+# file — a gate that cannot say WHERE sends the reader hunting.
+proc-macro2 = { workspace = true, features = ["span-locations"] }
 
 # NOTE — `[package.metadata.dp] dp-crate = true` was here and has been REMOVED
 # (`V1-F12`). It is `DP-K11`'s marker for distinguishing a DP crate from a

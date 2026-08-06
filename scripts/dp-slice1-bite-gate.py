@@ -1,5 +1,14 @@
 #!/usr/bin/env python3
-"""dp-slice1-bite — `S3.3`, the bite matrix for `crates/dp`.
+"""dp-slice1-bite-gate — `S3.3`, the bite matrix for `crates/dp`.
+
+**RENAMED from `dp-slice1-bite.py` (`G5`).** `gate-wiring-gate`'s scope is a
+FILENAME predicate — `*-gate` / `*-lint` — so under the old name this file was
+not merely unwired, it was **not reportable as unwired**: 23 legs, the entire
+`S3.3` evidence that every guard in this slice is real, ran nowhere and nothing
+could say so. A completeness pass found it. One `git mv` puts it inside
+`gates.yml --run-all` and the wiring gate on the same day, which is the cheapest
+mechanism available and therefore the right one.
+
 
 A guarantee nobody tried to break is a claim. Every mechanism slice 1 installs is
 therefore **removed, shown to let the violation through, and restored.**
@@ -124,7 +133,7 @@ def _rlib() -> str:
     deps = REPO / "target" / "debug" / "deps"
     cands = sorted(deps.glob("libdp-*.rlib"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not cands:
-        print("dp-slice1-bite: MISUSE — no libdp-*.rlib; run `cargo build -p dp` first",
+        print("dp-slice1-bite-gate: MISUSE — no libdp-*.rlib; run `cargo build -p dp` first",
               file=sys.stderr)
         sys.exit(2)
     return str(cands[0])
@@ -265,7 +274,7 @@ def bite_gate() -> bool:
 
     write_txt(
         probe,
-        "//! Transient bite probe — written and removed by scripts/dp-slice1-bite.py.\n"
+        "//! Transient bite probe — written and removed by scripts/dp-slice1-bite-gate.py.\n"
         "use core::marker::PhantomData;\n"
         "use dp::{DpAggregate, Scope, Tier};\n"
         "pub struct PlayerWallet<T: Tier, S: Scope>(PhantomData<(T, S)>);\n"
@@ -624,12 +633,12 @@ def main() -> int:
 
     print(f"\n{'=' * 74}")
     if all(results):
-        print(f"dp-slice1-bite: PASS — {len(results)} bite(s) bit, {len(UNBITEABLE)} leg(s) "
+        print(f"dp-slice1-bite-gate: PASS — {len(results)} bite(s) bit, {len(UNBITEABLE)} leg(s) "
               f"stated as unbiteable.")
         print("Each mechanism was shown BREAKABLE by removing it, which is the only evidence")
         print("that the mechanism is what holds the claim.")
         return 0
-    print(f"dp-slice1-bite: FAIL — {sum(results)}/{len(results)} bites bit.")
+    print(f"dp-slice1-bite-gate: FAIL — {sum(results)}/{len(results)} bites bit.")
     return 1
 
 

@@ -64,35 +64,74 @@ pub trait Scope: sealed::SealedScope + Copy + fmt::Debug + Send + Sync + 'static
     const KIND: ScopeKind;
 }
 
-/// `RealityScoped` — *"if the player walks from cell A to tavern to cell B,
-/// does this aggregate move with them?"* **Yes.**
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct RealityScope;
+/// The **one sanctioned door** into the `DP-A14` scope set.
+///
+/// Scopes were hand-written until `G1`, and that was the difference between the
+/// two taxonomies — not a stylistic one. `dp-aggregate-gate` reads the legal
+/// scope names by parsing this file, so a hand-written third scope became
+/// **legal by being written**: a cold-start completeness pass added `ZoneScope`
+/// and got `cargo test` green, `clippy` green, and the gate reporting
+/// `OK — every one binds one of ['ChannelScope', 'RealityScope', 'ZoneScope']`.
+/// The gate did not miss it; it *printed the widened set and approved it.*
+///
+/// The tier side was already safe from this, and the reason is exactly the
+/// macro: `declare_tier!` is a door, and
+/// `spec_oracle::no_tier_is_implemented_outside_the_declare_tier_macro` checks
+/// that nobody climbs the window. This is that shape, applied to the taxonomy
+/// that did not have it.
+macro_rules! declare_scope {
+    ($name:ident, $kind:expr, $doc:expr) => {
+        #[doc = $doc]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+        pub struct $name;
 
-/// `ChannelScoped` — same question, answered **no**: the aggregate belongs to
-/// the place, not to the actor passing through it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ChannelScope;
+        impl sealed::SealedScope for $name {}
 
-impl sealed::SealedScope for RealityScope {}
-impl sealed::SealedScope for ChannelScope {}
-
-impl Scope for RealityScope {
-    const KIND: ScopeKind = ScopeKind::Reality;
+        impl Scope for $name {
+            const KIND: ScopeKind = $kind;
+        }
+    };
 }
 
-impl Scope for ChannelScope {
-    const KIND: ScopeKind = ScopeKind::Channel;
-}
+declare_scope!(
+    RealityScope,
+    ScopeKind::Reality,
+    "`RealityScoped` — *\"if the player walks from cell A to tavern to cell B, \
+     does this aggregate move with them?\"* **Yes.** Identified by \
+     `(reality_id, aggregate_id)`: inventory, achievements, reputation."
+);
+
+declare_scope!(
+    ChannelScope,
+    ScopeKind::Channel,
+    "`ChannelScoped` — same question, answered **no**: the aggregate belongs to \
+     the place, not to the actor passing through it. Identified by \
+     `(reality_id, channel_id, aggregate_id)`: chat, cell scene layout, tavern \
+     decor."
+);
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// `G9` / `R3-N3` — **`Display` too, not just `as_key`.**
+    ///
+    /// `V2-F6` found `TierLevel::as_key` pinned for two of its four variants and
+    /// fixed it — pinning all four keys *and* all four `Display` forms. The
+    /// sibling enum one file over got neither half of that treatment: renaming
+    /// `Display`'s `"reality"` to anything at all passed every test in the
+    /// crate. Same defect, same commit, adjacent file — which is `BDR-36`'s
+    /// shape at its smallest.
     #[test]
     fn scope_markers_are_the_cache_key_form() {
         assert_eq!(ScopeKind::Reality.as_key(), "r");
         assert_eq!(ScopeKind::Channel.as_key(), "c");
+
+        // The `Display` form is what reaches a log line and a metric label.
+        assert_eq!(ScopeKind::Reality.to_string(), "reality");
+        assert_eq!(ScopeKind::Channel.to_string(), "channel");
+        assert_eq!(RealityScope::KIND.to_string(), "reality");
+        assert_eq!(ChannelScope::KIND.to_string(), "channel");
     }
 
     #[test]

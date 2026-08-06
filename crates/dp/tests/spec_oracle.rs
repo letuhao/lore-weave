@@ -115,6 +115,31 @@ fn the_parsers_distinguish_absent_from_unreadable() {
     assert!(parse_rate("500").is_err(), "a rate with no denominator is not a rate");
 }
 
+/// Every `declare_tier!` invocation's first argument, whichever delimiter it
+/// uses. `R3-M2`.
+fn declared_tiers(src: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = src;
+    while let Some(i) = rest.find("declare_tier!") {
+        let after = &rest[i + "declare_tier!".len()..];
+        let after = after.trim_start();
+        // A DEFINITION is `macro_rules! declare_tier {`; an INVOCATION opens
+        // with a delimiter and is immediately followed by the tier name.
+        if let Some(body) = after.strip_prefix(['(', '{', '[']) {
+            let name: String = body
+                .trim_start()
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() && name != "name" {
+                out.push(name);
+            }
+        }
+        rest = &rest[i + "declare_tier!".len()..];
+    }
+    out
+}
+
 fn dp_doc(name: &str) -> String {
     let p: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../docs/03_planning/LLM_MMO_RPG/06_data_plane")
@@ -311,17 +336,13 @@ fn the_tier_set_in_source_matches_the_taxonomy_doc() {
     .expect("tier.rs");
     // The macro DEFINITION also contains the token, so count invocations only:
     // an invocation is followed by a name and a comma, the definition by `(`.
-    let declared: Vec<String> = src
-        .match_indices("declare_tier!(")
-        .map(|(i, _)| {
-            src[i + "declare_tier!(".len()..]
-                .trim_start()
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect::<String>()
-        })
-        .filter(|s: &String| !s.is_empty())
-        .collect();
+    // **Delimiter-agnostic (`R3-M2`).** `declare_tier!{..}` is the same
+    // invocation as `declare_tier!(..)`, and matching only `declare_tier!(`
+    // let a refuter mint a fifth tier — 24-hour TTL, `REC-102c` inverted — by
+    // changing ONE character. It passed this test, its sibling below, the gate
+    // and clippy. The `const` block did not see it either, because that block
+    // sums four NAMED tiers (`R2-9`).
+    let declared: Vec<String> = declared_tiers(&src);
 
     let doc = dp_doc("03_tier_taxonomy.md");
     let matrix: Vec<String> = table_cells(&doc, "## Tier matrix", |l| l.starts_with("**DP-T"))
@@ -417,6 +438,65 @@ fn no_tier_is_implemented_outside_the_declare_tier_macro() {
     assert!(
         body.contains("impl Tier for $name") && body.contains("impl sealed::SealedTier for $name"),
         "the declare_tier! body no longer contains the impls this test searches for — the search \
+         has lost its subject and would report clean whatever the file said"
+    );
+}
+
+/// `G1` — **the same check for scopes, which did not have one.**
+///
+/// This is the gap a completeness pass found after two rounds of refutation had
+/// closed everything either of them could break. `DP-A14` closes the scope set
+/// at two exactly as `DP-A5` closes the tier set at four, and `V2-F4` gave the
+/// tier set a door and a check — while the scope set was still hand-written.
+///
+/// The consequence was not "the gate misses a third scope". It is worse:
+/// `dp-aggregate-gate` learns the legal scope names **by parsing this file**, so
+/// writing `impl Scope for ZoneScope` makes `ZoneScope` legal, and the gate
+/// reports `OK` while printing the widened set as though it were the taxonomy.
+/// A check that reads its rule out of the file the violation is written in is
+/// not a check — it is `BDR-36`, one file over from where it was found.
+#[test]
+fn no_scope_is_implemented_outside_the_declare_scope_macro() {
+    let src = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/scope.rs"),
+    )
+    .expect("scope.rs");
+
+    let body_start = src.find("macro_rules! declare_scope").expect("the declare_scope macro");
+    let body_end = src[body_start..]
+        .find("\n}\n")
+        .map(|i| body_start + i + 3)
+        .expect("the macro body must be terminated by a line-initial `}`");
+
+    let mut stray: Vec<(usize, String)> = Vec::new();
+    for (i, line) in src.lines().enumerate() {
+        let off = src.lines().take(i).map(|l| l.len() + 1).sum::<usize>();
+        if off >= body_start && off < body_end {
+            continue;
+        }
+        let t = line.trim();
+        if t.starts_with("//") {
+            continue;
+        }
+        for pat in ["impl Scope for ", "impl sealed::SealedScope for ", "impl SealedScope for "] {
+            if t.contains(pat) {
+                stray.push((i + 1, t.to_string()));
+            }
+        }
+    }
+
+    assert!(
+        stray.is_empty(),
+        "a scope is implemented outside `declare_scope!`, so it is NOT in the set every other \
+         check reads — and `dp-aggregate-gate` parses THIS FILE for its legal names, so the new \
+         scope would be legal by existing: {stray:?}. DP-A14 closes the set at two"
+    );
+
+    let body = &src[body_start..body_end];
+    assert!(
+        body.contains("impl Scope for $name")
+            && body.contains("impl sealed::SealedScope for $name"),
+        "the declare_scope! body no longer contains the impls this test searches for — the search \
          has lost its subject and would report clean whatever the file said"
     );
 }
