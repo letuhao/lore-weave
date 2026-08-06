@@ -2393,6 +2393,101 @@ than a simulated one.
 measured the live allowlist being rewritten by a concurrent process, and R24 measured that my own
 FREEZE break would have produced an undetectable false PASS twenty minutes earlier.
 
+---
+
+## 🔴 R25 — **FAIL × FAIL**, and the isolation held while both halves of my own delta did not
+
+Prompt committed first, two V-CODE on frozen `c181a3525`, **each in its own detached `git worktree`**.
+Verdicts:
+[round25-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round25-v-code-a.md) ·
+[round25-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round25-v-code-b.md).
+
+### ⭐ The method worked, and that is the round's one clean result
+
+Both verifiers report **HEAD identical at start and finish**, byte-clean worktrees, **no file changing
+underneath them**. Two rounds ago the live allowlist was observed being rewritten by a concurrent
+process; one round ago I broke FREEZE myself. **The contamination the last two rounds measured did
+not recur.** It cost two worktrees.
+
+### 🔴 The correction I owe first, because I published the claim
+
+I reported *"four rows NOW GUARDED, zero NEWLY SILENT, so the digest did not churn"*. **The inference
+is invalid and B caught it.** `check_contract::ContractViolation::7` moved
+`6899e25d → 179f246e` — my `_ID` fix put `{ID_MAX_LEN}` into the message, and an f-string's
+`FormattedValue` carries a bare `Name` that the digest's string-blinding does not erase. Verified
+against the run's own output.
+
+**A churned digest on a RED site is invisible to the drift check**: the old id leaves the allowlist
+(reads as `NOW GUARDED`) and the new id, being red, never appears as `NEWLY SILENT`. So "zero NEWLY
+SILENT" cannot establish "no churn" — the control and the seed agree by construction. The conclusion
+survives, because B executed the row and it is genuinely RED; **the evidence I gave for it did not.**
+
+### The findings, and the pattern under them is mine
+
+| | finding | who | reach |
+|---|---|---|---|
+| **A1** | **C2 is green under 19 of 22 shapes**, not 17 of 17. The check never reads `defaults`, `shell`, `runs-on`, `needs`, `strategy` or any trigger VALUE. Green under `paths-ignore: ['**']`, a never-matching runner label, an all-excluded matrix, `; true`, `\| cat`, `--help`, `trap 'exit 0' ERR` | A | today, one YAML line |
+| **A2** | **C1 catches 5 of 19 write APIs.** `{2 writers} × {4 APIs}` was **the space a previous verdict happened to name**, adopted as if it were the space. Blind to `os.open`+`os.write`, `os.replace`, `shutil.copytree`, `subprocess`, `mmap` — and to **every deletion API including `shutil.rmtree`, which the census calls at three live sites on a path from a patchable `_mirror()`, and which is the exact API of the `%TEMP%`-deletion incident recorded two commits earlier** | A | today |
+| **B1** | **the dead-import gate is defeated by one word of prose**, and B restored B18-11 with it GREEN: re-add the import, put the bare token in a docstring, `1 passed`. **3 of 11 dead-import shapes caught, 1 false-positive class.** Fourth *"a test satisfied by a comment"* in this run — **inside the repair for the finding it closes.** B executed the naive fix too: dropping string terms reds ~30 `__init__.py` re-exports, so the narrowing is to `__all__` elements | B | today |
+| **B2** | **9 of 9 real workflow ids fail `_ID`'s ALPHABET** — `kg-build`, `build-a-book`, `entity-triage` are hyphenated and live in this repository. **Six rounds went into the LENGTH half of that regex while the alphabet half refuses 100% of one declaration kind.** Confirmed independently | B | CP-4, certain |
+| **A3** | **T11d reds on CORRECT CODE, cross-module** — the delete-the-gate criterion I quoted at the verifiers. `_col_aliases` is global with no import graph, so one module hoisting `_COL` convicts any other module reusing that identifier | A | today |
+| **A4** | **T11d is blind to the TABLE-name hoist.** `ast.walk` is breadth-first, so an alias always lands after every literal and `withheld_tools =` is never contiguous; the fix survives only because `UPDATE chat_messages` is still a literal. T9e's twin. And **3 of 4 vehicles bind** | A | today |
+| **A5** | **W4 is installed at the `try` door only.** `s.body[:1]` for `Try`, full `s.body` for `With`/`AsyncWith`, **eight lines apart**. An arm 2nd in a `with` nested 1st in a swallowing `try` reports UNCONDITIONAL — W4's defect verbatim, **in the fix for W4** | A | 45 `with`s under `app/` |
+| **B3** | **`ID_MAX_LEN` is guarded only from BELOW**: 32, 64, 300, 10 000, 1 000 000 all green, because the test derives its vehicles from the constant. **A self-derived denominator, in a new spelling.** — and B gave the number its **first executed defence**: 334 real ids, max length **38**, 0 over 64 | B | today |
+| **A6** | **the probe-writer gate catches 2 of 8 vehicles**, and a **dead `_ = _swept_root` absolves a typed root** — satisfied by a token | A | today |
+| **B4** | **two unfixed twins.** `check_contract` still uses `isinstance`, so a `str`-subclass id **and** member walk through `admit()`; and the id bound is enforced on **0 of 7 comparand-side doors**. **4 of 8 sibling pairs fixed at both ends** | B | today |
+| **A7** | **`_mirror()` itself leaks** when it fails after `mkdtemp` — no `finally` covers the allocator, and `census()`'s `atexit` is not registered yet. Executed: git failure, mid-copy `OSError` | A | today |
+| **B5** | **2 of the 9 SILENT rows are provably unreachable dead code** — `check_row` can raise only `ContractViolation`, so `except UntrustedRow` at `manifest.py:246` and `:429` can never fire (AST closure + 25 executed rows) | B | n/a |
+
+### 🔴 The transfer was challenged by both, and both are right
+
+* **A:** the load-bearing fact is TRUE — zero production importers of `agentruntime`, verified
+  independently. **But my stated common cause is FALSE for the catalogue-outage item**: its subject
+  is `app/services/instrument.py`, which has **9 production importers today**, including both live
+  turn entry points. It still moves — V-CODE cannot falsify a runtime ordering — but not for the
+  reason I wrote.
+* **B:** `rows_of`'s document-stamp check was moved on *"production-reachable at CP-2"*, which is
+  **not the criterion I declared**. It has a subject today: **24/24 cells SERVED** — four exported
+  doors accept `manifest_version: 999`, `contract_version: "banana"`, both missing, and an unknown
+  top-level key.
+
+**I substituted a criterion on one row and mis-stated the cause on another, in the block whose entire
+purpose was to stop exactly that.** 2 of 3 honest.
+
+### ▶ What HELD, independently re-derived
+
+* **Every graded membrane guard reds for the reason it names.** B: 10/10 reversions, one red each,
+  the named one — *"the first round in the series where every graded guard reds for the reason it
+  names."*
+* **`_probe_offender` is a real oracle** — A re-derived the 2×2: 4 passed pristine, 4 failed when the
+  gate was broken for an unrelated reason.
+* **`members` really is the one mutable value a row carries** — B enumerated 504 cells: 0 leaks, 0
+  aliases at 5 doors, **7/7 doors run `check_row`**.
+* **68/9/59 reproduces** under B's own instrument, and the four rows moved genuinely.
+* **The 9 SILENT rows now have the classification the allowlist header says they need**: **4
+  unchecked · 2 sibling-masked · 3 unreachable** — B did the work the header asks a person to do.
+
+### ▶ The numbers
+
+| | |
+|---|---|
+| executed vs argued | **A 18:24 (75%) · B 23:3 (88%)** |
+| denominators, mine vs theirs | C1 8 vs **19** · C2 17 vs **22/39** · vehicles 1 vs **5 of 15** · import shapes — vs **3 of 11** · comparand doors — vs **0 of 7** |
+| `introduced` | A 7 · B 8 — series `…,5,13,8/9,…,7/8` |
+
+**Every denominator I published this round was again a lower bound**, for the fifth consecutive round,
+**including the two I built specifically to stop that.**
+
+### 🔴 And one method failure that is mine
+
+The isolation rule I wrote covered the repository and **not the shared scratchpad the two worktrees
+live in**. B wrote a probe into a path A could have used. Nothing was measurably affected — but the
+hazard was open, in the round whose headline control is isolation, and it was open because I drew the
+boundary around the thing the last round happened to name. **That is finding A2's shape, committed by
+the prompt rather than by the code.**
+
+**CP-1 does not close.**
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
