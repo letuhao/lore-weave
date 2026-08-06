@@ -1,6 +1,13 @@
 # Command and interaction structure — the substrate under verbs, effects and refusal
 
-**Status:** DESIGN, awaiting PO review · **Date:** 2026-08-02 · **Base:** `50bff49a4`
+**Status:** DESIGN — **`CMD-1`..`CMD-6` and `CMD-10` are SEALED by the PO 2026-08-06**; `CMD-7`..`CMD-9` and `CMD-11`..`CMD-13` are not
+
+> ⚠️ **This line said *"awaiting PO review"* while six of this document's decisions were already
+> sealed and built on.** Corrected 2026-08-06 while surveying what remained unsealed — a status
+> line is a claim like any other, and this run has now caught the same stale-claim shape in a
+> register, a heading, a doc comment and here. `CMD-11`/`CMD-12` are PARKED (the offer registry
+> waits on the subject source); `CMD-13` and `O-CI-23`..`O-CI-25` were RE-HOMED to the ruleset
+> builder by `SCOPE-3`. · **Date:** 2026-08-02 · **Base:** `50bff49a4`
 **Run state:** [`docs/plans/2026-08-02-command-interaction-RUN-STATE.md`](../plans/2026-08-02-command-interaction-RUN-STATE.md) — the measurement is §5 there and is not repeated here in full.
 **Sibling:** [`2026-08-02-actor-data-structure.md`](2026-08-02-actor-hub/analysis/2026-08-02-actor-data-structure.md) + [`2026-08-02-actor-dataflow.md`](2026-08-02-actor-hub/analysis/2026-08-02-actor-dataflow.md). Their decisions `D-1..D-75` are **inherited and not re-opened**.
 

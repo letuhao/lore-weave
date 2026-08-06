@@ -56,7 +56,18 @@ must therefore never know what is driving it, which is exactly what the hub alre
 **Per-reality tier: closed.** Ten of eleven projections removed (`0017`, `0018`), one survives with
 a real producer, five mirrors machine-checked, orphan registry empty.
 
-**One artifact left, and it is PARKED — `DEFERRED 161 / D-PLAYER-INDEX-PARKED`.**
+**One artifact left. ✅ NO LONGER PARKED — the PO decided it 2026-08-06: `DROP` it, and
+give the binding a NEW table in the meta DB.** The parking rested on *"no producer, so deciding
+now would be guessing"*; there is a producer now (the command substrate's offer stage needs a
+subject it can trust), and a column audit found the keep-argument empty — see
+[the argument](../plans/2026-08-06-game-tier-build-RUN-STATE.md) §6g.
+**Not yet DISCHARGED:** the migration is unwritten, so `contracts/meta/player_index_parked_test.go`
+stays until it lands — and it will go RED when the writer arrives, which is its trigger firing, not
+a regression. It retires in the same commit as the drop.
+
+The original assessment, kept because the two-thirds/one-third split is what decided it:
+
+**`DEFERRED 161 / D-PLAYER-INDEX-PARKED`** —
 `migrations/meta/012_player_character_index.up.sql` is the last pc/npc artifact, and it is *half
 right*:
 
