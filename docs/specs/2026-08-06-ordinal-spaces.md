@@ -145,6 +145,44 @@ The correct pattern ships in the same crate, on the neighbouring space:
 `const` assertion below it goes away because there is nothing left to keep in
 step.
 
+## 4b. `MAX_DECLARED_VERBS = 16` is the one ceiling that is genuinely too tight
+
+**PO, 2026-08-06:** *"it should not be hardcoded, because every reality is a
+different size — hardcode it and there is no way to widen or narrow it later."*
+
+**Two thirds of that is already answered by `QTY-A6`, and the last third is a
+real mistake of mine.**
+
+| | |
+|---|---|
+| **the size ALREADY varies per reality** | `n` is in the hashed bytes, `N` is in the binary. Only `0..n` is encoded, so a reality declaring 4 and one declaring 20 already differ in the artifact |
+| **widening is a RECOMPILE, not a migration** | it moves **no existing digest**, because the tail was never encoded |
+| **narrowing is forbidden by DATA, not by laziness** | a stored ordinal 40 becomes unreadable (`QTY-A10(c)`). The widening direction is the reversible one |
+| **the array WIDTH is the part that is fixed, and it is priced** | making it per-reality costs `Copy` on `Actor`, makes `size_of` **16 bytes for every `n`** — the `QTY-A6 ⊥ QTY-A12` trap, which kills the guard — and adds a pointer chase to the fold. `QTY-A6.1` already took this trade: `O(n)` **per ACTOR** is what must be cheap |
+
+**And here the objection lands on something real.** `MAX_DECLARED_VERBS = 16` is
+a literal I chose, and the argument written for it explains why it is *cheap*,
+not why it is *16*. Worse:
+
+> **The cost that constrains quantities is per-ACTOR. The verb table is
+> per-RULESET, interned once.** `[i32; 32]` on `Actor` is 128 B × every resident
+> actor — 1.28 MB at ten thousand. `[VerbDecl; 16]` on `Ruleset` is 1088 B **once
+> per reality.** Raising verbs 16 → 64 costs ~3.2 KB resident per reality and
+> **zero encoded bytes.**
+
+**Sixteen verbs is small for a game** — a modest one has more than sixteen
+actions. ⇒ **I applied a per-actor discipline to a per-reality table**, and this
+is the one ceiling in the tier that could actually bite an author.
+
+**The only thing that resists widening it is `size_of::<Ruleset>() <= 3696`**,
+which would go to roughly 6960 at 64. That assertion firing is the guard doing
+its job: it forces this conversation rather than letting the number drift. A
+repin with a reason is the whole mechanism.
+
+**Not changed here** — a ceiling is the PO's, and this section is the
+measurement. Note that `MAX_DECLARED_CUES` is derived from this constant, so
+raising it widens the cue space too, correctly and automatically.
+
 ## 5. The third kind the measurement found — RUNTIME-DERIVED
 
 Two numberings are neither authored nor a closed engine set. **They are computed
