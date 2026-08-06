@@ -31,6 +31,21 @@ fn hex(b: &[u8]) -> String {
 ///
 /// The seed is fixed and the inputs are fixed, so the ONLY way two runs can
 /// differ is a real non-determinism — an iteration order, a clock, a hash seed.
+///
+/// **The script MUST contain a `Declared` payload, and that is the reason this
+/// doc comment exists.** The sealed substrate contract's §5 requires two things
+/// to ship *with* the first verb rather than after it — the declaration↔
+/// resolution gate in both directions, and *"a determinism re-proof against the
+/// INTERPRETER"*. As first written this script was `Strike · EndTurn · Defend`
+/// and nothing else: every payload in it takes a **compiled arm**, so `A3.1`
+/// re-proved the determinism of the code path that existed before `M2` and could
+/// not have failed on a non-deterministic interpreter. `NV-3` exactly — the
+/// scope never reached the subject.
+///
+/// `gather` is verb ordinal 0 of the proving ground. It walks
+/// `substrate::resolve_declared`: a table lookup, a requirement compare, a spend
+/// and a clamped write — every one of which is a place an iteration order or a
+/// map could enter and where nothing else in this suite would notice.
 fn run_encounter() -> Vec<CombatEvent> {
     let rules = Arc::new(RealityRules::proving_ground());
     let mut state = CombatState { session_seed: 0xBEEF_5EED, ..Default::default() };
@@ -49,6 +64,22 @@ fn run_encounter() -> Vec<CombatEvent> {
         CombatPayload::Strike { attacker: FOE, target: HERO },
         CombatPayload::EndTurn,
         CombatPayload::Defend { actor: HERO },
+        CombatPayload::EndTurn,
+        // The INTERPRETER, in the determinism script — see the doc above.
+        // Submitted FOUR times, and the count is measured rather than chosen:
+        // `gather` requires `focus >= 1` and spends 1, and the proving ground
+        // declares `focus` with `base = 3`. So three succeed and the FOURTH is
+        // refused — which puts BOTH arms of the declared path inside the digest
+        // this test compares, since a refusal is a committed fact (`CMD-5`).
+        // `A3.1` prints `acted` and `refused` separately so this claim cannot
+        // quietly stop being true.
+        CombatPayload::Declared { verb: 0, actor: HERO },
+        CombatPayload::EndTurn,
+        CombatPayload::Declared { verb: 0, actor: HERO },
+        CombatPayload::EndTurn,
+        CombatPayload::Declared { verb: 0, actor: HERO },
+        CombatPayload::EndTurn,
+        CombatPayload::Declared { verb: 0, actor: HERO },
         CombatPayload::EndTurn,
         CombatPayload::Strike { attacker: FOE, target: HERO },
     ];
@@ -94,6 +125,28 @@ fn the_same_input_replayed_twice_is_byte_identical() {
     println!("A3.1  run 1 = {}  ({} events)", hex(da.as_bytes()), a.len());
     println!("A3.1  run 2 = {}  ({} events)", hex(db.as_bytes()), b.len());
     assert!(!a.is_empty(), "an empty event stream would make any two runs agree");
+
+    // **The re-proof is AGAINST THE INTERPRETER, or it is not the re-proof the
+    // sealed contract's §5 asked for.** Without this, the script could drift
+    // back to compiled arms only — an encounter resolving before the declared
+    // payloads land would do it silently — and `A3.1` would go on passing while
+    // covering nothing it was added to cover. `NV-3`: an enumerated script is
+    // default-uncovered.
+    let acted = a.iter().filter(|e| matches!(e, CombatEvent::Acted { .. })).count();
+    let refused = a.iter().filter(|e| matches!(e, CombatEvent::Refused { .. })).count();
+    let from_the_interpreter = acted + refused;
+    println!(
+        "A3.1  events from the declared-verb path = {from_the_interpreter}           (acted {acted}, refused {refused})"
+    );
+    assert!(
+        from_the_interpreter > 0,
+        "the determinism script reached no declared verb, so this test re-proved only the \
+         compiled arms - which were deterministic before M2 and are not what §5 asked for"
+    );
+    // BOTH arms, not just the happy one. A script that only ever succeeds leaves
+    // the refusal path — its own branch, and its own write-back decision
+    // (`O-CI-4`: spend is NOT rolled back) — outside the digest being compared.
+    assert!(acted > 0 && refused > 0, "both arms of the declared path must be in the digest");
     assert_eq!(da, db, "two runs of one script diverged — replay is not deterministic");
 }
 
