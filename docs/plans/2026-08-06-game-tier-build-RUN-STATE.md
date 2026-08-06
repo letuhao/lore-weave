@@ -436,6 +436,49 @@ and *said in a comment* that main refuses — a claim about a branch nothing ran
 and both arms of the file walk, including the `--staged` path that pre-commit
 actually uses.
 
+## 6f. The features are NOT circularly dependent — and one artifact says why
+
+The question, from the PO: *the missing pieces hook back into the actor hub, the
+resource pool and an unfinished ownership design; the features depend on each
+other; how do we untangle?*
+
+**Tested rather than accepted, and it is not a cycle.** Tracing each missing
+item to what it actually needs:
+
+| tier | needs | items |
+|---|---|---|
+| **0** | **nobody** | the ordinal-space register · arity · a second relation (`at_most`) · the roll's verb term · `SEAM-1` |
+| **1** | one external FIX, not a feature | roles + offer ← the subject source: `ChannelRoom.ts:375` returns `LW_CHANNEL_DEFAULT_ACTOR ?? '1'` for **any authenticated user absent from an env map**, so two users are bound to one actor. Re-measured at HEAD, not trusted from the register. It is a **tenancy defect** by `CLAUDE.md`'s own checklist before it is an offer problem |
+| **2** | a feature to exist | status relations · a price that is not a quantity · `O-CI-4`'s reachable subject · six effect doors |
+
+**It looks like a cycle because the coupling gets stated in NOUNS** — *the
+substrate needs statuses; statuses need the substrate.* Stated in SHAPE it is
+not:
+
+> **A feature and the substrate are coupled only through an ORDINAL SPACE.** The
+> substrate declares the space and the row shape; the feature declares what an
+> ordinal MEANS; content assigns the name. **Neither needs the other to exist
+> first.**
+
+**This project has already done it twice and never stated it as a rule.**
+`actor-hub` shipped with zero consumers and its first feature arrived two months
+later; `M2`'s substrate resolves verbs whose meaning it never learns, and the
+first verb arrived as a row in a TOML file. Both are held by shipped gates rather
+than by intent — `hub-vocabulary-gate` and `engine-vocabulary-gate`.
+
+⇒ **The rule is only MECHANICAL if the spaces are counted, and they were not.**
+One design document says *"a sixth ordinal space"* and then corrects itself to
+*"the honest count is TEN"* — in the same file, without listing either set. So
+[`docs/specs/2026-08-06-ordinal-spaces.md`](../specs/2026-08-06-ordinal-spaces.md)
+counts them, and it paid for itself on the first run:
+
+| # | |
+|---|---|
+| **1** | **The word names two different things**, which is why six became ten: an AUTHOR-EXTENSIBLE space (content adds a member, one line of TOML) and a CLOSED ENGINE SET (a release, a codec arm, a mirror on every consumer). `§27.4`'s objection was about the first kind only |
+| **2** | **`MAX_PLUGINS` derives its width from the wrong thing.** Two of the three aliases of the quantity space are *identity* — a pool IS a quantity, a progression kind IS a quantity. This one is aliased *"so the two ceilings move together"*, which is the exact shape `MAX_DECLARED_VERBS`' own doc refuses as *"a coincidence pretending to be an invariant"*. **The number is right and the derivation is wrong**: 32 is forced by `PluginSet` being a `u32`, and the correct pattern — deriving a width from the type's own integer — already ships eight files away on `FoldLayer::ORDINAL_SPACE`. Widening the quantity table silently widens the plugin ceiling today, and nothing would notice |
+| **3** | **A THIRD kind exists that neither half describes** — plugin ordinals and fold layers are computed at BOOT and are **not in the hashed ruleset**. It cannot vary today (two constants, one plugin), so there is no live defect; the hazard is that it cannot vary *yet*. The day a reality's plugin set is content, two realities could share a digest and derive different plugin ordinals — `QTY-A14` arriving in a space the digest does not cover |
+| **4** | **`cue` is unpriced.** `M2` shipped `cue: u16` with no width constant, no repin log and no argument, in a tier where every neighbour carries all three. `AF-8` had already found `RefKindMask` *"outside the six ordinal spaces"* — outside a set nobody had enumerated |
+
 ## 7. Registers — append as it happens
 
 ### Decisions
@@ -480,6 +523,7 @@ actually uses.
 |---|---|
 | `BDR-1` | I opened this file about to write *"the first consumer is the command substrate"*, which is what the previous turn's summary implied. Measuring first showed the ordering is the other way and **derivable**: an `EffectRow` targets a quantity ordinal, so while the actor's numbers are struct fields the substrate cannot be declarative. A plan whose first line is wrong about its own order is worse than no plan. |
 | `BDR-3` | **I wrote `M1` as a MIGRATION of `commit-service::Actor`'s nouns into quantities, and the PO corrected it mid-draft**: that struct is scaffolding built to prove the kernel and SDK work, and it is to be deleted. `D-11` and `D-14` both say so and I had read both in this same session. The correction matters because a port is the *comfortable* answer — it keeps every test green, it looks like progress, and it carries the old vocabulary into a new container, which is `D-2`'s failure exactly. **`quantity[0] = "hp"` would have satisfied `M1` as I first wrote it.** The slice board now defaults every legacy field to DELETE and forbids deriving a quantity from a struct field name. |
+| `BDR-12` | **I shipped an ordinal with no width, in the week I spent auditing widths.** `M2`'s `cue: u16` has no named constant, no repin log and no argument, while `MAX_DECLARED_VERBS` — twelve lines away, written the same hour — carries all three and an essay about why it is not an alias. Nothing caught it: no gate counts ordinal spaces, which is precisely what `AF-8` reported about `RefKindMask` and what nobody acted on. **The register exists because the register did not exist**, and its first run found my own omission alongside the two it was looking for. |
 | `BDR-11` | **I proposed opening a second effect door as the substrate's next task, and the PO refused it as a boundary violation.** `Delta`'s door was built by the ACTOR HUB — feature #1 — not by the substrate; `StatusPropose`'s belongs to a status feature that does not exist. The substrate never opens a door, it gains a primitive when a feature opens one. **This is `SCOPE-2` a second time in a different costume**: the chooser got designed inside the substrate because the substrate was the thing being written, and the same gravity pulled the doors in. §5's own wording carried it (*"build doors, or narrow the primitive set"*), so the plan had been saying it for two days and I read past it. ⇒ `M2.3` waits on **feature #3**, not on more substrate work. |
 | `BDR-9` | **Six of the ten findings were bugs I had already written a CORRECT SENTENCE about.** `EffectRow::amount` said *"the engine clamps against the pool's own declared bounds"* while the code did `.max(0)`. `substrate.rs` said *"every path commits a FACT"* above three `return Vec::new()`. `actor.rs` said *"adding a field moves this number"* under a `<=`. `binding.rs`'s refusal cited an incident it did not cover. **The prose was not wrong — it was written first and never checked against the code beneath it**, which is the same defect as a stale register, one level down. A doc comment is a claim, and this run has now recorded that lesson at three scales: a register, a heading, and a doc comment. |
 | `BDR-10` | **I nearly did not run `V.1` at all.** Every suite was green, both milestones were committed, the goal's other clauses were pasted, and the reviewer felt like ceremony on top of work already finished. It found six real bugs — including one that let content grant **unlimited free actions** — in code that had passed 2254 tests, 21 gate self-tests, a live smoke and an independent oracle. **Everything else I built measures whether the code does what I designed. Only this measured whether the design was right.** |

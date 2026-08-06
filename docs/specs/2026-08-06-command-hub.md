@@ -5,7 +5,11 @@
 [dataflow](2026-08-02-command-interaction-dataflow.md) *(the derivation record — how each line was
 reached)* · [RUN-STATE](../plans/2026-08-06-game-tier-build-RUN-STATE.md)
 
-> This file states **what is in and what is out**, and nothing else. Every argument that produced a
+> This file states **what is in and what is out**, and nothing else.
+>
+> ⚠️ **One line of §4 is struck through pending the PO** — see `SEAM-1` there. The
+> ordinal spaces this contract's rows address are counted in
+> [ordinal-spaces](2026-08-06-ordinal-spaces.md), which is proposed, not sealed. Every argument that produced a
 > line here lives in the two 08-02 documents. Written after the actor hub's contract, in the same
 > shape, because that shape is what stopped that round from sprawling.
 
@@ -87,7 +91,29 @@ A feature adds a verb by writing **rows**, never code (`D-27`). It declares:
 - **requirements** — from the closed relation set, over state the substrate can already read
 - **spend** and **effects** — from the closed primitive set
 - a **cue** ordinal
-- a **submitter class**
+- ~~a **submitter class**~~ 🔴 **CONTRADICTED BY THIS DOCUMENT — awaiting the PO.**
+
+> 🔴 **`SEAM-1` · This line and `CMD-10` disagree, and `CMD-10` is the later
+> decision.** §2's DUMB DRIVER table does not list a submitter class among the
+> nine things the engine still needs, and `CMD-10`'s V4 table — cited by this
+> same document — scores `submitter_class` + `may_submit_engine_verbs` **❌**
+> with the reason *"the author supplies the verdict of the authorisation rule."*
+>
+> **The build followed `CMD-10`, not this line.**
+> [`FORBIDDEN_VERB_KEYS`](../../crates/ruleset-core/src/classification/forbidden.rs)
+> refuses both keys **by name, with the reason**, on the permissive parse — and
+> that refusal IS `CMD-10`'s owed bite, discharged in `M2`.
+>
+> So a SEALED contract asks for a field the code refuses. It is struck through
+> rather than deleted because **sealing is the PO's and so is unsealing**; this
+> marker is the ask. The correct reading, if the PO agrees: a declared verb is
+> submittable by any actor-driver, and engine-only payloads (`EndTurn`) are not
+> declared verbs at all.
+>
+> **How it survived a seal:** the line was written before `CMD-10` existed, and
+> `CMD-10` was folded in without re-reading the seam it changed. Same shape as
+> `M1-D2`, sealed and then reversed by its own build — the fourth stale-claim
+> catch of this run, and the first one inside a document carrying a seal.
 
 **The substrate never branches on the verb's name.** Binding a declared name to an engine operation
 is table-driven, not a `match` arm (`CMD-6`) — which is what `vocabulary.rs` gets wrong today, and
