@@ -1,6 +1,7 @@
 # The data-plane access law — one read layer per plane
 
-**Status:** PROPOSED · **§9 (`DPA-A7`) SEALED 2026-08-06** — the event-log port question is answered; §11 adds five rules found by measuring against outside practice
+**Status:** PROPOSED, and ready for a red team · **§9 (`DPA-A7`) SEALED 2026-08-06**
+**§14 lists the holes this design does NOT close** — written before the review, not after it
 **Date:** 2026-08-06 · **Id family:** `DPA-*`
 **Companions:** [`DATA_ARCHITECTURE.md`](../DATA_ARCHITECTURE.md) §3 *(the model this extends)* ·
 [command hub](2026-08-06-command-hub.md) *(sealed)* ·
@@ -40,6 +41,18 @@ over, and it is the property the PO named. Everything else in this document exis
 And `DATA_ARCHITECTURE.md` §3 already has exactly the right shape — a *Layer / Owner /
 Notes* table over seven layers. **The game tier appears in that entire file twice.** The
 model is correct and stops at the door of the tier being built.
+
+### The severity, stated accurately
+
+**Nothing here was about to collapse.** Five of the seven planes are already correctly
+single-ported, and the two that are not have been that way for months without producing a
+corruption. Overstating this would be its own kind of unreliability, and a spec that opens
+with an emergency is a spec that gets its costs waved through.
+
+What the missing law actually costs is **erosion, not collapse**: the change surface widens
+one file at a time until moving a plane's storage is a multi-week refactor instead of a
+one-file edit. `DPA-A1` is the thing being bought, and its absence is felt on the day
+somebody tries to change something — not before.
 
 ---
 
@@ -147,9 +160,27 @@ planes:
     status: open                    # counts printed every run until the debt is zero
 ```
 
-Fields that carry the three rules of `DPA-A3`: `ssot` (one per datum, checked across
-planes), `ports` (the read layer), `access` (roles). `derived_from` replaces `ssot: true`
-for a rebuildable plane and **must** name what it rebuilds from.
+### 6.1.1 The complete field set — decided BEFORE the first plane is written
+
+A registry is a contract, and `QTY-A10(c)`'s lesson generalises: a field costs one edit now
+and N edits after every plane declares one. So the schema is closed here, not grown later.
+
+| field | required | carries | refused when |
+|---|---|---|---|
+| `id` · `question` | yes | `DPA-A2` — the plane is the QUESTION, not the store | two planes answer the same question |
+| `ssot` **xor** `derived_from` | yes | `DPA-A3` · `DPA-A10` | both, or neither; or a `derived_from` chain that cycles or never reaches an `ssot: true` plane |
+| `storage.kind` · `storage.vocabulary` | yes | `DPA-A1` — the names the gate scopes to the ports | an empty vocabulary (a plane the gate cannot check is worse than an unregistered one) |
+| `ports.<runtime>` | yes | `DPA-A5` · `DPA-A7` — a MAP of named jobs per runtime | a path that is not a real file; an empty map on a plane with any consumer |
+| `compatibility` · `oldest_readable` | yes | `DPA-A8` | `none` on a plane with ports in two runtimes |
+| `consistency` | yes | `DPA-A12` — `strong` · `eventual` · `ttl_bounded` | `strong` on a plane that is `derived_from` something |
+| `freshness` | iff `derived_from` | `DPA-A9` — the bound, AND `on_stale: refuse` | a derived plane with no bound; `on_stale: serve` (a stale value returned silently is the defect) |
+| `owner` · `deprecation` | yes | `DPA-A12` — who answers, and how it is retired | absent owner; `deprecation` naming an unknown successor plane |
+| `access[]` | no | `DPA-A4` — role per path, default `consumer` | `auditor` or `migrator` with no `reason`; an `auditor` path whose output is read by domain code |
+| `status` | yes | the debt, printed every run | `open` with no count, or `closed` while findings exist |
+
+**`ssot` xor `derived_from` is the whole of `DPA-A3`'s third rule in one line**, and the
+`xor` is the load-bearing part: a plane that declares neither is a datum with no authority,
+which is exactly the state you cannot detect once it exists.
 
 ### 6.2 `scripts/data-plane-gate.py`
 
@@ -339,6 +370,13 @@ those patterns carry that ours does not.**
 > and it worked only because a re-pointed test caught three live references. That should be a
 > declared path, not a good day.
 
+### ⚠ The limit of this section, so nobody treats it as authority
+
+**These are search-result summaries, not sources read in depth.** They were enough to find
+five fields the registry was missing, which is what they were for. They are **not** a
+literature review, and nothing further should be sealed on their strength — if a rule below
+turns out to matter, read the primary source before it hardens.
+
 ### What this changes about the plan
 
 Nothing in §8's order — but the registry schema in §6.1 grows five fields **before** the
@@ -347,7 +385,88 @@ build rather than after it.
 
 ---
 
-## 12. Ids introduced
+## 12. `DPA-A13` — ENUMERATE the characteristics; do not wait to discover them
+
+The most useful thing the comparison produced is not a field. It is a method.
+
+**Three invariants were found unguarded on 2026-08-06 by a PO question** — the kernel
+outside `crate-purity-gate`'s scope, the transport tier with no capability rule, and a
+meta-write gate that ran nowhere. None was found by a check. All three had been true and
+unguarded for weeks, and each would have gone on being true until the day it wasn't.
+
+That is the predictable outcome of a tree that has strong **mechanism** discipline
+(non-vacuity, bite tests, ratchets) and assembles its **taxonomy** from first principles
+each time: every rule has to be derived from an incident, so every lesson is paid for once
+in production.
+
+> **`DPA-A13` — every architectural characteristic this repo CLAIMS must name either a
+> fitness function that checks it, or a declared gap. The list is enumerated and reviewed;
+> it is not discovered.**
+
+`docs/standards/README.md` is already the catalogue of cross-cutting rules and
+`gate-wiring-gate.py` already answers *"is every gate wired"*. **Neither answers the
+question in the other direction** — *"is every claimed characteristic gated?"* — and that
+direction is where all three of this morning's findings lived.
+
+⚠ **This id does NOT ship with this spec.** It is a platform-wide obligation over
+`docs/standards/`, not a data-plane rule, and folding it in would make this document govern
+something it did not measure. Recorded here because this is where it was found; its home
+and its gate are a separate round.
+
+---
+
+## 13. `DPA-A14` — a port returns DOMAIN types, never storage types
+
+The vocabulary scan in §6.2 greps for a plane's storage names. **It cannot see a port that
+re-exports the storage through its own type system**, and that is the most likely way
+`DPA-A1` is defeated in practice:
+
+```rust
+// The gate is GREEN on this file — it is the port. And every consumer of
+// `EventRow` now knows the column set, so changing the table still touches N files.
+pub struct EventRow { pub seq: i64, pub payload: serde_json::Value, /* … */ }
+pub fn read(..) -> Vec<EventRow>
+```
+
+> **A port's return type is part of the port.** It must be a DOMAIN type — one whose shape
+> is a fact about the plane's *question*, not about its *storage*. A port that hands back
+> rows has moved the coupling from the SQL string into the struct, where the grep cannot
+> follow it.
+
+This is the leaky-abstraction failure of ports & adapters, and it is why *"is there a port"*
+is the wrong acceptance question. The right one is `DPA-A1` itself: **change the storage and
+count the files.**
+
+**Mechanisable, partly:** a port's public return types must not be declared in the port
+file's own storage-adjacent module, and a `#[derive(sqlx::FromRow)]`/`serde` row type must
+not appear in the port's public signature. That catches the common shape. It does not catch
+a hand-written struct that mirrors the columns, and §14 says so.
+
+---
+
+## 14. What this design does NOT prevent
+
+Written before the red team rather than after it. A design that lists its own holes is
+cheaper to attack usefully than one that has to be pried open first, and every item here is
+a place the gate will report GREEN while `DPA-A1` is broken.
+
+| hole | why the gate misses it | current answer |
+|---|---|---|
+| **the mirroring struct** | `DPA-A14` catches the derive-based row type; a hand-written struct with the same fields is indistinguishable from a domain type by any check | none. The acceptance test (§1) is the only detector, and it is human |
+| **semantic bypass of a correct port** | a consumer calls the port and then re-implements the plane's invariants on the result — the port was used, the coupling remains | none |
+| **Redis as a store of record** | the law is per-plane, and the check is a NAME check; a plane that quietly becomes authoritative does not rename itself | `ssot` xor `derived_from` is a declaration, and a false declaration is a lie a gate cannot see |
+| **mislabelled `auditor`** | the one role that bypasses the port, so it is the route a defeated developer takes (`DPA-A11`) | `reason` is required, and an auditor whose output feeds domain code is refusable — but only if the gate can see that edge |
+| **shape knowledge without names** | a consumer that knows column ORDER or a key FORMAT without ever naming the table | none |
+| **the registry itself going stale** | it is a document, and this repo's most-recorded defect is exactly that | `ports` paths must resolve, `status` counts print every run, `vocabulary` must be non-empty — three checks that make a stale row red rather than quiet |
+
+**The pattern across the first five: every one is a case where the gate is green and a human
+would still see the problem.** That is the honest boundary of a grep-based fitness function,
+and it is the reason `DPA-A1` is written as a *countable acceptance test* rather than as
+*"use the port"* — the test survives all six.
+
+---
+
+## 15. Ids introduced
 
 | id | |
 |---|---|
@@ -364,10 +483,12 @@ build rather than after it.
 | `DPA-A10` | `derived_from` forms a checked DAG terminating at an SSOT — this is what catches a second SSOT transitively |
 | `DPA-A11` | the port must be the EASIEST path; an obligation on the port, not on the gate |
 | `DPA-A12` | every plane declares its consistency class (strong · eventual · TTL-bounded) and a deprecation path |
+| `DPA-A13` | enumerate the claimed characteristics and gate each, or declare the gap — do not wait to discover them. **Platform-wide; does NOT ship with this spec** |
+| `DPA-A14` | a port returns DOMAIN types, never storage types — otherwise the coupling moves from the SQL string into the struct, where the grep cannot follow |
 
 ---
 
-## 13. Sources
+## 16. Sources
 
 Consulted 2026-08-06 for §11. Listed because the section's claims are about what OTHER
 systems do, and a claim about the outside world with no citation is the same shape as an
