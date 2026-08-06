@@ -1081,10 +1081,89 @@ this channel exist · who is its parent · is it Active or Dissolved*, which is 
 `DP-Ch1`, `DP-Ch31` and the ancestor-chain visibility rules are built on. The hard half shipped
 against a structural half that was never poured.
 
+### `FLOW-20` — the locked spec's queries name a table that does not exist
+
+`event_log` is the spec's table across **8 of the 25 DP files** (`02` · `13` · `14` · `15` · `17` ·
+`18` · `20` · `99`). The shipped table is **`events`**, `PARTITION BY RANGE (recorded_at)` —
+which is exactly what forced `FLOW-17`'s correction.
+
+The sharp end is `DP-Ch18`'s **catchup query**, given as copyable SQL:
+
+```sql
+SELECT * FROM event_log
+WHERE reality_id = $1 AND channel_id = $2 AND channel_event_id > N
+ORDER BY channel_event_id ASC LIMIT 1000
+```
+
+It is correct in shape — `0014` even built `events_channel_order_idx` on exactly that predicate —
+and it names a **relation that has never existed in this repo**. (`event_log` appears in code only
+in `services/worker-infra`, an unrelated context.)
+
+### `FLOW-21` — the DP Redis keyspace and the built Redis keyspace are disjoint
+
+Every keyspace the locked corpus defines, measured across `crates/` + `services/` + `contracts/`:
+
+| key | spec | code |
+|---|---|---:|
+| `dp:events:{reality}:{channel}` | `DP-Ch17` — **canonical event delivery** | **0** |
+| `dp:inval:{reality}` | `DP-X2` — cache invalidation | **0** |
+| `dp:channel_changes:{reality}` | `DP-Ch3` — channel-tree delta | **0** |
+| `dp:writer_audit:{reality}` | `DP-Ch13` — handoff audit | **0** |
+
+What the shipped publisher actually emits: **`lw.events.*`** (`services/publisher/pkg/redisemit`) and
+**`xreality.*`** (`pkg/xreality_fanout`). Two namespaces, neither aware of the other, and
+`DATA_ARCHITECTURE.md`'s `I7` (*"`meta-worker` is the only consumer of `xreality.*` Redis Streams"*)
+governs the second while the DP corpus governs the first. **Nothing reconciles them** — which is
+`BDR-21` again: a Redis plane with a single-reader rule already written down, in a file the DP
+corpus does not cite.
+
+### `FLOW-22` — the definitive Phase-4 measurement, and the one symbol that did it right
+
+Every named primitive, type and table across `13`–`21`, swept against the tree:
+
+| | count | |
+|---|---:|---|
+| **built** | **1** | `turn_number` — and by a **different route** than `advance_turn`: it is `commit-service`'s own field (`epoch_commit.rs`), not `DP-Ch21`'s primitive |
+| **deliberately NOT built, with a written reason** | **1** | `channel_pause` — `epoch_commit.rs:24` and `contracts/events/reality.go:66` each state *why*: with every channel transcribing independently there is no reality-wide barrier to pause |
+| **zero occurrences, no reason anywhere** | **16** | `advance_turn` · `TurnBoundary` · `BubbleUpAggregator` · `register_bubble_up_aggregator` · `deterministic_rng` · `channel_resume` · `ChannelPaused` · `MemberJoined` · `MemberLeft` · `CausalityToken` · `RouteChannelWrite` · `RedactionPolicy` · `claim_turn_slot` · `TurnSlotClaimed` · `projection_apply_state` · `bubble_up_aggregator_snapshot` |
+
+⇒ **`channel_pause` is the shape the other sixteen should have had.** Not built, and a reader who
+greps for it lands on a sentence explaining the decision. Sixteen others are indistinguishable, to
+that same reader, from work nobody has got to yet. **The difference between a decision and a gap is
+one comment**, and this tier wrote it once out of eighteen.
+
+*(`MemberJoined`/`MemberLeft` deserve their own line: `DP-A18` makes them **canonical, DP-emitted,
+feature-forbidden** — *"feature code cannot forge these — reserved event types"* — and `22 §5` lists
+emitting them as an anti-pattern the **SDK type system rejects**. A reserved word that exists in no
+type system reserves nothing.)*
+
+### `FLOW-23` — the control plane is zero, and two names make it look otherwise
+
+| `DP-C*` mechanism | code |
+|---|---:|
+| `tier_policy` · `tier_capability` (the registry `DP-C4` calls the source of truth for who may do what) | **0** · **0** |
+| `GetChannelTree` · `ResolveAncestorChain` · `StreamChannelTreeUpdates` (the three gRPC methods `Q26` added) | **0** · **0** · **0** |
+| `reality_hotset` (`DP-X3`) | **0** |
+| `ControlPlaneUnavailable` (the `DpError` variant every degraded-mode path returns) | **0** |
+
+So `17` §4 **B1 step 2.5** — added in the July correction pass as *"**mandatory**; a node that has
+not fetched the tier policy cannot legally read or write"* — has **no subject**: there is no policy,
+no fetch, and no error to return when it fails.
+
+**And the two names that look like coverage:** `CircuitOpen` (13 files) and `RateLimited` (26) both
+appear — from **`crates/breaker-core`**, whose own header says it *"mirrors Go `ErrCircuitOpen`"*.
+They are resilience primitives from the platform tier, **not `DpError` variants**. `DpError` itself
+is **1 file** (`spine.rs`). ⇒ **`FLOW-7`'s failure mode a second time, one layer down**: a symbol
+that greps green while the contract it belongs to does not exist.
+
 ### Stated limit of this audit
 
 Read in full: `22`, `06`, **`04c`**, **`04d`**, **`12`**, `17`, `20`, `38 §0–§4`, `37 §1`,
-`19 §12b/§15`, **`08`**, **`99`**, **`13`**. **Measured but not read in full:** `07`/`14`–`21`. Every count above is a command, and every command
+`19 §12b/§15`, `08`, `99`, `13`, **`14`**. **Read at the SYMBOL level only** — `07` · `15`–`21`:
+every named primitive, type, table and Redis key in them was swept against the tree (`FLOW-21`,
+`FLOW-22`, `FLOW-23`), which settles *is it built* but **not** *is the design internally sound*.
+Sixteen of those symbols have zero occurrences, so for them the second question has no subject yet;
+for `07`'s degraded-mode contract it does, and that read is genuinely outstanding. Every count above is a command, and every command
 is printed beside its claim. What is *not* claimed: that the nine unread files contain no further
 seam. They are the remaining work of this review.
 
