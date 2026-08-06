@@ -2138,6 +2138,94 @@ requires the defect** · W4's `s.body[:1]` untested — but **R22-A wrote and ex
 that reds it** (6 of 9 discriminate) · the recorder hazard **unfalsifiable at this seam** (3rd) —
 V-LIVE must observe whether one recorder id appears under two turn tokens.
 
+---
+
+## ⚖️ R23 — **PASS × FAIL**, the first split verdict, and the split is the answer
+
+Prompt committed first, two V-CODE on frozen `9b77caed7`. Verdicts:
+[round23-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round23-v-code-a.md) ·
+[round23-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round23-v-code-b.md).
+
+### The census: four things fixed, measured by both
+
+| | |
+|---|---|
+| version stability | **68/68 ids identical on 3.12 and 3.13; 13/13 allowlist rows resolvable** (R22: 0/68, 0/13) |
+| kills | **A: 8/8 · B: 6/6** termination modes leave the live tree byte-clean |
+| concurrency | **20/20** concurrent suites GREEN during a live census (R22: 16/20 RED) |
+| the header | true for 13/13 across **91 subsets** — third harness to reproduce it to the member |
+| reword-in-place | **0/64** move (R22: 13/13) |
+
+**A: PASS.** *"Do I support closing CP-1 against it? **Yes** — with two checks, not a debate."*
+**B: partly.** *"Yes as the criterion for the **55 RED** sites. **No for the SILENT half.**"*
+
+### 🔴 And the split has a cause I did not see: the id is not injective
+
+**68 sites collapse to 54 digests** — four collision groups, **two containing an allowlisted row**. A
+null swap of two blocks leaves the id set *identical* while a row comes to name a **different**
+refusal. So *"this named site"* — the sentence the whole gate rests on — **is not well-defined for the
+silent half.** My docstring's *"98/98 pairs, 0 collisions"* is refuted twice over (A measured 94/98;
+B measured 54 digests from 68 sites): **I copied a verifier's number about a different digest.**
+Second consecutive round of an inherited, unchecked claim.
+
+### 🔴 My guard for the census was green over the census's own removal
+
+Both verifiers enumerated it: **8 of 8 bypasses green** — `if: false`, `--selftest`,
+`continue-on-error`, a job-level `if`, a **YAML comment**, `::deadbeef`×13,
+`getattr(atexit,'register')`, and a re-spelled live-tree write. **One control never reddened**:
+renaming `_mirror`, over a census that then dies with `NameError`.
+
+Every assertion read **source text**. The delta's headline property was guarded by the spelling
+`PKG.glob` — **GATE HÌNH DẠNG where this board demands GATE HÀNH VI**. And the assertion written to
+replace the one a comment defeated was **itself defeated by a comment**, third instance.
+
+**Fixed (`714d8b7c8`), and the second attempt was wrong too:** my first rewrite compared the tree
+**before and after**, which the census's own restore satisfies — re-spelling the mirror binding
+writes production source into the live tree, runs against it, puts it back, hashes match, test
+passes. *The property is not "the tree ends unchanged", it is **"the tree is never written"**, and
+only an observation DURING the run separates them — a restore is exactly what does not happen when
+the process is killed.* It now watches writes as they occur. **All five bypasses red**, including the
+control neither verifier could make fire.
+
+### Both proposed columns were refuted BEFORE being built — which is why they were sent to be graded
+
+* **`effect`**: `call.excinfo` is **`None`** for a passing test, including a passing `pytest.raises`.
+  So it is computable only for **RED** sites — and **the entire dispute is about the SILENT ones.**
+* **`static`**: both *"unreachable handlers"* **fire** — an object whose `__repr__` raises a bare
+  `UntrustedRow` reaches both. This refutes B21-1/2, the allowlist header, this board, **and the
+  design itself.**
+
+A verifier refuted its own predecessor's finding *and* its predecessor's design. The chain
+self-corrects; **shipping either would have been the fourth instrument measuring something adjacent
+to what it claimed.**
+
+### The numbers
+
+| | |
+|---|---|
+| executed vs argued | **A 58:9 (87%) · B 38:5** |
+| A's ledger | **6 closed / 9 introduced — the first positive ledger of the run** |
+| B's ledger | 4 closed / 12 introduced; series `…,5,9,9,12` |
+| the class of defect | moved from *"the measurement is wrong"* to *"the guard around it is weak"* |
+
+**2271 tests pass; membrane gate green.** ⚠️ Builder's evidence. **CP-1 does not close**; R24 verifies.
+
+### ⭐ The criterion, with a SCOPE — first time in the run
+
+**The census is a real gate for the 55 RED sites. It is not one for the 13 SILENT sites until the id
+is injective** (B: six changes ≤15 lines). That is a PO decision and it is open:
+**(1)** close CP-1 scoped to the 55 and record the 13 as named debt, then start CP-2 · **(2)** make
+the six changes first · **(3)** another round.
+
+**Open, carried:** the non-injective id · B18-8 (6th) · B18-11 (6th) · **B18-10 (9th)** ·
+`surface.py:305` (5th) · `_ID` (5th) · the weak oracles (7th) · T11d (5th) · `dict(r)` shallow at
+4/4 doors, its one test asserting non-mutation by `==` so **the guard requires the defect** · W4 —
+**A wrote and executed the 22-line test: SHIPPED 138 passed, REVERTED 1 failed**, ready to paste ·
+the recorder hazard **unfalsifiable at this seam** (4th) · mirrors never removed (**6.71 GB
+measured**) · the register lost 2 more rows, **sixth consecutive round** · and a measured hazard:
+**two verifiers sharing one worktree** — the live allowlist was observed rewritten to `deadbeef` and
+back by a concurrent process.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -2159,7 +2247,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | ~~R20~~ | ran 2026-08-06 → **FAIL ×2**. Both verifiers: **no convergence**, close against the **mechanised census**, and **stop V-CODE** — `agentruntime` has **zero importers**, so V-LIVE returns `CANNOT DETERMINE` by construction. Census shipped as a gate. See above | `V-CODE` ×2 on `b73e086ca` | — |
 | ~~R21~~ | ran 2026-08-06 → **FAIL ×2**. The census was graded first: **sound mechanism, not yet a gate** — its CI job could never pass, it was not fail-closed on a kill, and it had no test. All five prescribed fixes shipped. See the block above | `V-CODE` ×2 on `9818c7bc5` | — |
 | ~~R22~~ | ran 2026-08-06 → **FAIL ×2**. My digest fix broke CI in a way that *looked like a result* (0/68 ids stable across interpreters); my test for the census passed because of a **comment**; the census now runs in a throwaway mirror. See above | `V-CODE` ×2 on `c37459826` | — |
-| **R23** | verify R22's delta: the mirror-based census, the version-stable prose-blind digest, the honest allowlist header, and the CI test that asserts the **run** | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
+| ~~R23~~ | ran 2026-08-07 → **PASS × FAIL**, the run's first split. Four census defects genuinely closed; **the id is not injective** (68 sites → 54 digests), and my guard for the census was green over its own removal. See above | `V-CODE` ×2 on `9b77caed7` | — |
+| **R24** | verify R23's delta: the two **executing** census guards (writes watched during the run; the workflow parsed as YAML), and whether the id can be made injective without reintroducing prose-churn | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
 | **PO** | ⭐ **decision open**: close CP-1 against the census (68 sites, 13 recorded silent, no drift) instead of a clean V-CODE round — and go to CP-2 so something finally imports the package | — | — |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
