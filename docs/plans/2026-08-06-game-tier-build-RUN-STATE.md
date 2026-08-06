@@ -176,9 +176,22 @@ Not a wish list. Each of these **blocks writing code**, and inventing an answer 
 is the failure mode this project has recorded most often.
 
 1. **The effect primitive set, and the six unbuilt doors** (`C-1` · `O-CI-1` · `FATAL-2`). The
-   round calls this *"the round's real unknown"* and §3 prices it: one door of seven. The question
-   is a scope decision — **build doors, or narrow the primitive set to what is open** — and it
-   decides how far `M2` reaches. Everything else in `M2` is downstream of it.
+   round calls this *"the round's real unknown"* and §3 prices it: one door of seven.
+   
+   > 🔴 **The question is NOT "should the substrate build doors" — PO, 2026-08-06.**
+   > **A door belongs to the FEATURE that owns it.** `Delta`'s door was built by the actor hub,
+   > which is feature #1; `StatusPropose`'s belongs to a **status feature**, which does not exist.
+   > The substrate does not open a door — it *gains a primitive* when a feature opens one.
+   >
+   > The phrasing this replaces was *"build doors, or narrow the primitive set"*, which reads as
+   > substrate work and is the same boundary violation `SCOPE-2` already refused once: designing
+   > the chooser inside the substrate because the substrate is the thing being written. **The
+   > author proposed it a second time, in a different costume, and the PO caught it again.**
+   
+   So the real question is narrower and it is the substrate's: **what does a primitive's row look
+   like, such that a feature can open its door without the substrate learning what the door
+   means?** That is answerable now. Which doors open, and when, is the features' — and `M2.3`
+   therefore waits on feature #3, not on more substrate.
 2. **`O-CI-16` — six types are named and never defined**: `ChanceSpec`, `InputKind`, arity's home,
    pair `subject`, the two-role `EffectRow`, `RefKindMask`. **Every `consideration` and every
    `success` row in a real manifest rests on an invented shape.** You cannot write code against a
@@ -377,10 +390,51 @@ source at runtime and is bitten: a planted `verb == 0` reds it.
 
 | attack | verdict |
 |---|---|
-| `engine-vocabulary-gate` | **SURVIVED.** 14/14 self-test, 6/6 harness mutations red. Its `[a-z][a-z0-9_]*` matches `QuantityName`'s charset exactly, so no legal quantity name evades it. Evasions found were contrived (`concat!`, `\u{79}`, byte arrays). **Two honest gaps recorded rather than fixed:** it is `.rs`-only (the wire schema and the TypeScript consumer are unguarded), and `GUARDED_TREES` is hand-maintained — the gate's own header condemns an enumerated *file* list as default-uncovered, and a directory list has the same defect one tier up |
+| `engine-vocabulary-gate` | **SURVIVED the rule**, and its `[a-z][a-z0-9_]*` matches `QuantityName`'s charset exactly, so no legal quantity name evades it. Evasions found were contrived (`concat!`, `\u{79}`, byte arrays). **But it recorded two gaps in the gate's SCOPE, and both are now closed — see §6e.** |
 | `QTY-A11` itself | **SURVIVED.** Holds at every version 1..=7, for `engine_default`, for the preset, and for a two-verb ruleset. Its COVERAGE was the defect, not the property |
 | `actor_hub::Actor`'s `== 144` | **SURVIVED.** Exact; any field addition moves it |
 | `FORBIDDEN_VERB_KEYS` | **SURVIVED**, and the refutation it tried is worth recording: *"`deny_unknown_fields` already rejects these, so the by-name refusal is decoration."* Measured false — that path never emits the VERB's name, which is what the test asserts. It also noted the `len() > 120` assertion alone would not bite (272 > 120); the name assertion is the load-bearing one |
+
+## 6e. The gate's own scope was the defect it exists to refuse
+
+`V.1` did not break `engine-vocabulary-gate`'s RULE. It broke its **scope**, in
+two ways, and both are the shape the gate's own header condemns three paragraphs
+above the code that had it.
+
+**The scope was a hand-written list of directories.** The header says an
+enumerated FILE list is *default-uncovered* — *"it says nothing about the file
+created tomorrow"*. A directory list has the same defect one tier up: nothing
+checked it against the dependency graph, so a crate created tomorrow that depends
+on `ruleset-core` would be silently unguarded while the gate reported OK.
+
+**It is DERIVED now** — every `src` tree whose `Cargo.toml` transitively reaches
+`ruleset-core` or `actor-hub` through path dependencies. Those are exactly the
+trees that can hold a quantity ordinal, so they are exactly the trees that could
+name one instead; adding such a dependency extends the gate **in the same edit
+that creates the risk.**
+
+> **And the derivation caught the list being WRONG, not merely unchecked.** The
+> hand-written version named `crates/sim-core/src`. `sim-core` does not depend on
+> `ruleset-core` — `ruleset-core` depends on IT — so it can never hold a quantity
+> ordinal. Six listed trees became **five derived** ones. A list I wrote by eye,
+> defended in a header about lists written by eye.
+
+**And the scope was `.rs` only** — while *the wire is exactly where `M2` worked
+hardest to carry ordinals instead of names*. `contracts/game-wire/*.json` and the
+TypeScript consumer that mirrors it were unguarded. Both are scanned now: 98
+files became **108**.
+
+**Bitten three ways, each pasted:** a quantity name planted in
+`turnOutcome.ts` (a file the gate could not previously see) → 1 finding; a probe
+crate depending on `ruleset-core` → 1 finding, where the hand-written list would
+have been silent; and the harness, now **10/10 mutations red**, including *the
+scope reverts to a hand-written list* and *the transitive closure stops*.
+
+**Three of its own claims were also untested, and are now executed rather than
+described:** `main()`'s empty-vocabulary refusal (`E1` stopped at `scan_source`
+and *said in a comment* that main refuses — a claim about a branch nothing ran),
+and both arms of the file walk, including the `--staged` path that pre-commit
+actually uses.
 
 ## 7. Registers — append as it happens
 
@@ -426,6 +480,7 @@ source at runtime and is bitten: a planted `verb == 0` reds it.
 |---|---|
 | `BDR-1` | I opened this file about to write *"the first consumer is the command substrate"*, which is what the previous turn's summary implied. Measuring first showed the ordering is the other way and **derivable**: an `EffectRow` targets a quantity ordinal, so while the actor's numbers are struct fields the substrate cannot be declarative. A plan whose first line is wrong about its own order is worse than no plan. |
 | `BDR-3` | **I wrote `M1` as a MIGRATION of `commit-service::Actor`'s nouns into quantities, and the PO corrected it mid-draft**: that struct is scaffolding built to prove the kernel and SDK work, and it is to be deleted. `D-11` and `D-14` both say so and I had read both in this same session. The correction matters because a port is the *comfortable* answer — it keeps every test green, it looks like progress, and it carries the old vocabulary into a new container, which is `D-2`'s failure exactly. **`quantity[0] = "hp"` would have satisfied `M1` as I first wrote it.** The slice board now defaults every legacy field to DELETE and forbids deriving a quantity from a struct field name. |
+| `BDR-11` | **I proposed opening a second effect door as the substrate's next task, and the PO refused it as a boundary violation.** `Delta`'s door was built by the ACTOR HUB — feature #1 — not by the substrate; `StatusPropose`'s belongs to a status feature that does not exist. The substrate never opens a door, it gains a primitive when a feature opens one. **This is `SCOPE-2` a second time in a different costume**: the chooser got designed inside the substrate because the substrate was the thing being written, and the same gravity pulled the doors in. §5's own wording carried it (*"build doors, or narrow the primitive set"*), so the plan had been saying it for two days and I read past it. ⇒ `M2.3` waits on **feature #3**, not on more substrate work. |
 | `BDR-9` | **Six of the ten findings were bugs I had already written a CORRECT SENTENCE about.** `EffectRow::amount` said *"the engine clamps against the pool's own declared bounds"* while the code did `.max(0)`. `substrate.rs` said *"every path commits a FACT"* above three `return Vec::new()`. `actor.rs` said *"adding a field moves this number"* under a `<=`. `binding.rs`'s refusal cited an incident it did not cover. **The prose was not wrong — it was written first and never checked against the code beneath it**, which is the same defect as a stale register, one level down. A doc comment is a claim, and this run has now recorded that lesson at three scales: a register, a heading, and a doc comment. |
 | `BDR-10` | **I nearly did not run `V.1` at all.** Every suite was green, both milestones were committed, the goal's other clauses were pasted, and the reviewer felt like ceremony on top of work already finished. It found six real bugs — including one that let content grant **unlimited free actions** — in code that had passed 2254 tests, 21 gate self-tests, a live smoke and an independent oracle. **Everything else I built measures whether the code does what I designed. Only this measured whether the design was right.** |
 | `BDR-7` | **I wrote `M2.3` into the board as *"replace a `law.rs` arm"* and only measured whether that was possible when I came to do it.** It was not: no shipped arm is a pure `Delta`, and §3 had already priced the door count at one of seven — I had the number and did not apply it to the sentence beside it. The plan was internally inconsistent for two days. What saved it was refusing to open a second door to make a checkbox tick, which is the closure rule working; but the near-miss was *"just make `defend` a declared verb"*, which would have shipped `StatusPropose` as a `Delta` in disguise. |

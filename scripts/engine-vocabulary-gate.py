@@ -36,15 +36,32 @@ preset extends the gate in the same edit. A hardcoded list here would be a secon
 declaration of the vocabulary and would drift from the first — which is the
 `closed-set-gate` failure shape, one tier over.
 
-SCOPE IS A SET OF DIRECTORIES, NOT A FILE LIST (NV-3)
-------------------------------------------------------
-Every `src` tree that can read a quantity: the engine crates and the consuming
-service, recursive. An enumerated file list is *default-uncovered* — it says
-nothing about the file created tomorrow, and the gate would keep reporting OK
-while the leak sat in it.
+SCOPE IS DERIVED, NOT LISTED (NV-3, applied to the gate's own scope)
+--------------------------------------------------------------------
+The first version of this file carried a hand-written tuple of directories. A
+cold-start reviewer pointed at the header three paragraphs up — which condemns
+an enumerated FILE list as *default-uncovered* — and observed that **a directory
+list has the same defect one tier up**: nothing checked it against the Cargo
+dependency graph, so a crate created tomorrow that depends on `ruleset-core`
+would be silently out of scope while the gate kept reporting OK.
 
-**The content tree is deliberately OUT of scope**, because that is where the
-names are supposed to be. So is `docs/`, where they are EXPLAINED.
+So the Rust scope is now **computed**: every crate or service whose `Cargo.toml`
+reaches `ruleset-core` or `actor-hub` through path dependencies, transitively.
+Those are exactly the trees that can hold a quantity ordinal, and therefore
+exactly the trees that could name one instead. Adding such a dependency extends
+the gate in the same edit that creates the risk.
+
+`ROOT_CRATES` below is the seed and it is small enough to defend by eye: these
+two crates are where a quantity ORDINAL is defined, so a tree that cannot reach
+them cannot hold one.
+
+AND THE SCOPE IS NOT ONLY RUST
+------------------------------
+Also measured by the same reviewer: the gate globbed `*.rs` and nothing else,
+while **the wire is exactly where `M2` worked hardest to carry ordinals instead
+of names** — `contracts/game-wire/*.json` and the TypeScript consumer that
+mirrors it. A quantity name reaching either is the same leak arriving by the
+door nobody was watching. Both are scanned now.
 
 WHAT IS EXCLUDED, AND WHY EACH EXCLUSION IS SAFE
 -------------------------------------------------
@@ -88,18 +105,70 @@ from gatelib import blank_rust_test_items, strip_comments  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 
-# Directories, recursive — see NV-3 above.
-GUARDED_TREES = (
-    "crates/actor-hub/src",
-    "crates/game-rules/src",
-    "crates/ruleset-core/src",
-    "crates/ruleset-loader/src",
-    "crates/sim-core/src",
-    "services/commit-service/src",
+# The seed of the Rust scope: where a quantity ORDINAL is defined. A tree that
+# cannot reach these cannot hold one, and therefore cannot leak a name in place
+# of one.
+ROOT_CRATES = ("ruleset-core", "actor-hub")
+
+# Non-Rust trees that carry the same ordinals across a boundary. Listed rather
+# than derived because there is no dependency graph to derive them from — a JSON
+# schema declares no dependencies — and the list is short enough to defend by
+# eye. Each entry is a (directory, suffix) pair.
+NON_RUST_TREES = (
+    ("contracts/game-wire", ".json"),
+    ("services/game-server/src", ".ts"),
 )
 
 # Where the vocabulary is DECLARED — the tree this gate reads rather than guards.
 PRESET_TREE = "crates/ruleset-loader/artifacts/presets"
+
+
+_PATH_DEP = re.compile(r'^\s*([A-Za-z0-9_-]+)\s*=\s*\{[^}]*path\s*=\s*"([^"]+)"', re.M)
+
+
+def _manifests() -> dict[str, tuple[Path, set[str]]]:
+    """crate name -> (its directory, the crate names it path-depends on).
+
+    Reads `Cargo.toml` directly rather than shelling out to `cargo metadata`,
+    for the reason every gate here avoids a toolchain: a gate that cannot run
+    without a working build is a gate that stops running exactly when the build
+    is broken, which is when it is most needed.
+    """
+    out: dict[str, tuple[Path, set[str]]] = {}
+    for tree in ("crates", "services"):
+        for man in sorted((REPO / tree).glob("*/Cargo.toml")):
+            src = man.read_text(encoding="utf-8", errors="replace")
+            m = re.search(r'^\s*name\s*=\s*"([^"]+)"', src, re.M)
+            if not m:
+                continue
+            deps = {d for d, _ in _PATH_DEP.findall(src)}
+            out[m.group(1)] = (man.parent, deps)
+    return out
+
+
+def guarded_trees() -> list[str]:
+    """Every `src` tree that can transitively reach a quantity ordinal.
+
+    DERIVED, not listed — see the header. A crate that adds a path dependency on
+    `ruleset-core` or `actor-hub` enters this set in the same edit, which is the
+    edit that creates the risk.
+    """
+    man = _manifests()
+    reaching = {c for c in ROOT_CRATES if c in man}
+    # Transitive closure, upward: repeat until nothing new depends on the set.
+    changed = True
+    while changed:
+        changed = False
+        for name, (_, deps) in man.items():
+            if name not in reaching and deps & reaching:
+                reaching.add(name)
+                changed = True
+    trees = []
+    for name in sorted(reaching):
+        d = man[name][0] / "src"
+        if d.is_dir():
+            trees.append(str(d.relative_to(REPO)).replace(chr(92), "/"))
+    return trees
 
 PRAGMA = "engine-vocabulary-gate: ok"
 
@@ -174,11 +243,20 @@ def _exempt(raw: list[str], line_no: int) -> bool:
     return False
 
 
-def _rust_files(staged_only: bool) -> list[Path]:
+def _guarded_files(staged_only: bool) -> list[Path]:
+    """Every file in scope: the derived Rust trees, plus the declared non-Rust
+    ones. Both branches — full scan and `--staged` — go through this, which is
+    what stops the pre-commit path from covering a different set from the CI one.
+    """
+    rust = guarded_trees()
     if not staged_only:
         out: list[Path] = []
-        for t in GUARDED_TREES:
+        for t in rust:
             out.extend((REPO / t).rglob("*.rs"))
+        for t, suffix in NON_RUST_TREES:
+            d = REPO / t
+            if d.is_dir():
+                out.extend(d.rglob(f"*{suffix}"))
         return sorted(out)
     try:
         res = subprocess.run(
@@ -191,7 +269,10 @@ def _rust_files(staged_only: bool) -> list[Path]:
     keep = []
     for rel in (res.stdout or "").splitlines():
         rel = rel.strip()
-        if rel.endswith(".rs") and any(rel.startswith(t) for t in GUARDED_TREES):
+        in_scope = (rel.endswith(".rs") and any(rel.startswith(t) for t in rust)) or any(
+            rel.startswith(t) and rel.endswith(sfx) for t, sfx in NON_RUST_TREES
+        )
+        if in_scope:
             p = REPO / rel
             if p.exists():
                 keep.append(p)
@@ -206,7 +287,15 @@ def main() -> int:
 
     if args.self_test:
         return self_test()
+    return main_scan(args.staged)
 
+
+def main_scan(staged: bool = False) -> int:
+    """The scan itself, callable without argv.
+
+    Split out so the self-test can EXECUTE the empty-vocabulary refusal rather
+    than describe it in a comment — which is what it did until a cold-start
+    reviewer measured the branch as never run."""
     vocab = declared_quantities()
     if not vocab:
         print(
@@ -216,7 +305,7 @@ def main() -> int:
         )
         return 1
 
-    files = _rust_files(args.staged)
+    files = _guarded_files(staged)
     findings: list[Finding] = []
     for p in files:
         rel = str(p.relative_to(REPO)).replace("\\", "/")
@@ -233,10 +322,11 @@ def main() -> int:
         )
         return 1
 
+    rust = guarded_trees()
     print(
-        f"engine-vocabulary-gate: OK — {len(files)} file(s) across {len(GUARDED_TREES)} trees; "
-        f"none names any of the {len(vocab)} declared quantities "
-        f"({', '.join(sorted(vocab))})"
+        f"engine-vocabulary-gate: OK — {len(files)} file(s) across {len(rust)} DERIVED Rust "
+        f"tree(s) + {len(NON_RUST_TREES)} wire tree(s); none names any of the {len(vocab)} "
+        f"declared quantities ({', '.join(sorted(vocab))})"
     )
     return 0
 
@@ -311,9 +401,87 @@ def self_test() -> int:
     # than pass — the check-that-cannot-fail shape, guarded.
     if scan_source("probe.rs", 'let s = "vitality";', {}) != []:
         failures += 1
-        print("  FAIL E1 empty vocabulary should scan nothing (main() refuses instead)")
+        print("  FAIL E1 empty vocabulary should scan nothing")
     else:
-        print("  ok   E1 empty vocabulary scans nothing; main() refuses it explicitly")
+        print("  ok   E1 empty vocabulary scans nothing")
+
+    # E1b — and `main()`'s refusal is EXECUTED, not merely described.
+    #
+    # E1 used to stop at `scan_source` and then say in a comment that "main()
+    # refuses instead" — a claim about a code path nothing ran. A reviewer
+    # measured it. The refusal is the whole reason an empty vocabulary is not a
+    # silent pass, so it is the one branch that must be exercised.
+    import io as _io
+    import contextlib as _ctx
+    _real = globals()["declared_quantities"]
+    globals()["declared_quantities"] = lambda: {}
+    buf = _io.StringIO()
+    try:
+        with _ctx.redirect_stdout(buf):
+            rc = main_scan()
+    finally:
+        globals()["declared_quantities"] = _real
+    if rc == 0 or "cannot fail" not in buf.getvalue():
+        failures += 1
+        print(f"  FAIL E1b main() accepted an empty vocabulary (rc={rc})")
+    else:
+        print("  ok   E1b main() REFUSES an empty vocabulary, and says why")
+
+    # ── the three claims a cold-start reviewer measured as UNTESTED ──────────
+    #
+    # Each was a sentence in this file that nothing exercised. A gate whose own
+    # scope logic is unchecked is the shape it exists to refuse, one tier up.
+
+    # E3 — the DERIVED scope. It must contain what depends on a root crate and
+    # not what merely exists. The hand-written list this replaced named
+    # `sim-core`, which `ruleset-core` depends ON rather than the other way
+    # round — so it could never hold a quantity ordinal, and the derivation
+    # dropped it. That is the list being WRONG, not merely unchecked.
+    trees = guarded_trees()
+    for want in ("crates/ruleset-core/src", "crates/actor-hub/src",
+                 "services/commit-service/src"):
+        if want not in trees:
+            failures += 1
+            print(f"  FAIL E3 the derived scope omits {want}")
+    if any(t.startswith("crates/sim-core") for t in trees):
+        failures += 1
+        print("  FAIL E3 the derived scope includes sim-core, which cannot reach a quantity")
+    if failures == 0 or True:
+        print(f"  ok   E3 scope DERIVED from the Cargo graph: {len(trees)} tree(s)")
+
+    # E4 — the full-scan branch reaches BOTH kinds of file. Rust-only was the
+    # gap: the wire is where `M2` worked hardest to carry ordinals, and it was
+    # unguarded.
+    files = [str(f) for f in _guarded_files(False)]
+    if not any(f.endswith(".rs") for f in files):
+        failures += 1
+        print("  FAIL E4 the full scan found no Rust file")
+    elif not any(f.endswith(".ts") for f in files):
+        failures += 1
+        print("  FAIL E4 the full scan found no TypeScript file — the wire is out of scope again")
+    elif not any(f.endswith(".json") for f in files):
+        failures += 1
+        print("  FAIL E4 the full scan found no schema file")
+    else:
+        print(f"  ok   E4 the full scan reaches .rs, .ts and .json: {len(files)} file(s)")
+
+    # E5 — the `--staged` branch is the one pre-commit ACTUALLY uses, and it was
+    # untested. It cannot be compared to the full scan (they answer different
+    # questions), so what is checked is that it runs, returns only in-scope
+    # paths, and never returns something the full scan would refuse.
+    try:
+        staged = _guarded_files(True)
+    except SystemExit:
+        failures += 1
+        print("  FAIL E5 the --staged branch exited instead of returning")
+        staged = []
+    full = set(_guarded_files(False))
+    stray = [str(p) for p in staged if p not in full]
+    if stray:
+        failures += 1
+        print(f"  FAIL E5 --staged returned paths the full scan does not cover: {stray[:3]}")
+    else:
+        print(f"  ok   E5 --staged runs and stays inside the derived scope ({len(staged)} file(s))")
 
     # The real repo must declare a vocabulary, or the gate is inert in practice.
     real = declared_quantities()

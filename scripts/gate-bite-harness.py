@@ -692,6 +692,22 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ('the pragma stops exempting',
          '    if PRAGMA in raw[line_no - 1]:\n        return True',
          '    if False:\n        return True'),
+        # Added after a cold-start reviewer measured three of this gate's own
+        # claims as untested: the derived scope, both branches of the file
+        # walk, and `main()`'s empty-vocabulary refusal. A gate whose scope
+        # logic is unchecked is the shape it exists to refuse, one tier up.
+        ("the scope reverts to a HAND-WRITTEN list -- the defect the gate's own header condemns",
+         '    man = _manifests()\n    reaching = {c for c in ROOT_CRATES if c in man}',
+         '    return ["crates/actor-hub/src"]\n    man = _manifests()\n    reaching = {c for c in ROOT_CRATES if c in man}'),
+        ('the transitive closure stops, so only the root crates are guarded',
+         '            if name not in reaching and deps & reaching:',
+         '            if False:'),
+        ('the wire trees leave the full scan, and the gate is Rust-only again',
+         '        for t, suffix in NON_RUST_TREES:',
+         '        for t, suffix in ():'),
+        ("main()'s empty-vocabulary refusal becomes a pass",
+         '    if not vocab:\n        print(',
+         '    if False:\n        print('),
         ("the pragma's block window becomes unbounded, silencing a whole file",
          '    while j >= 0 and raw[j].lstrip().startswith(("//", "///", "//!", "#[", "*")):',
          '    while j >= 0:'),
