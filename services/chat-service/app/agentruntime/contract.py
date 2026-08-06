@@ -96,6 +96,94 @@ def derive_owning_service(source_path: str) -> str:
     return ""
 
 
+#: The fields a manifest row may carry — **exactly these, no more**.
+#:
+#: 🔴 **THE CLASS OF DEFECT THIS CLOSES, AND WHY BOUNDING TYPES DID NOT.** Two rounds were spent
+#: bounding row VALUES, and both times the vehicle was a plain scalar that walked through: a
+#: hand-typed `"cost": 1000000000` steered `TakeWhileBudget`, `"relevance"` steered `OrderBy`. No
+#: type bound can help, because those values are *well-typed* — the defect is that the row carries a
+#: field **the contract never defined**, and every stage kind will happily rank on whatever it is
+#: handed.
+#:
+#: So the rule stops being about the value and becomes about the SCHEMA: a row carrying an unknown
+#: key **passed no clause**, which is the same sentence `UntrustedRow` already exists for. `lane`,
+#: `tier`, `cost` and `relevance` are therefore refused today **on purpose** — §0.14.1c records them
+#: as UNBUILT with CP-2/CP-4 owning their producers, and a door that accepted them would be letting
+#: an unbuilt capability in through the back.
+ROW_FIELDS: dict[str, tuple] = {
+    "id": (str,),
+    "kind": (str,),
+    "owning_service": (str,),
+    "lifecycle": (str,),
+    "contract_version": (str,),
+    "admitted_against": (str,),
+    "members": (list, tuple),
+    # 🔴 **THE RANKING FIELDS, AND THE HONEST LINE ABOUT THEM.** A verifier showed a hand-typed
+    # `"cost": 1000000000` steering `TakeWhileBudget` and asked for it to be closed. It **cannot be
+    # closed by a value bound**: `1000000000` is a well-typed integer, and no rule distinguishes a
+    # forged cost from a real one. That is the **hand-edited-manifest** threat, and this design
+    # already records its only answer — a document digest, §6.4.2, **not taken** because it trades
+    # re-validation for tamper-evidence.
+    #
+    # What IS closable, and what the finding actually contained, is an **undefined** field: a row
+    # carrying a key the contract never named passed no clause for it, and every stage will rank on
+    # whatever it is handed. So these are named and bounded; anything else is refused.
+    #
+    # §0.14.1c records their producers as CP-2 (`relevance`) and CP-4 (`lane`, `tier`, `cost`), so a
+    # row carrying one today came from somewhere those checkpoints have not built yet — which is
+    # worth knowing and is not, by itself, a forgery.
+    "lane": (str,),
+    "tier": (str,),
+    "cost": (int,),
+    "relevance": (int,),
+}
+#: Fields a row must carry. `members` is required rather than defaulted: `r.get("members", ()) or ()`
+#: served **absent, `null`, `0` and `false`** as "no members", so the M5 reference check silently had
+#: nothing to check.
+ROW_REQUIRED = frozenset({"id", "kind", "owning_service", "lifecycle", "members"})
+
+
+def check_row_shape(row, where: str) -> None:
+    """One definition of a valid manifest row, for **every** door.
+
+    🔴 There were two: `rows_of` bounded fields and `validate_document` bounded none, so `load()`
+    accepted a row the assembler then refused — **with a different exception type**. Two definitions
+    of the same thing in one package is the failure `UntrustedRow`'s own docstring is about, and it
+    arrived because a fix was applied at the door a verifier had named.
+
+    Raises `ContractViolation`, which per C-12 names the field path, the reason, and what would be
+    accepted — never "invalid".
+    """
+    rid = row.get("id") if type(row) is dict else None
+    if type(row) is not dict:
+        raise ContractViolation("", where, f"is a {type(row).__name__}", "a plain JSON object")
+    for key in row:
+        if type(key) is not str:
+            raise ContractViolation(rid or "", where, f"has a non-string key {key!r}",
+                                    "string keys only")
+        if key not in ROW_FIELDS:
+            raise ContractViolation(
+                rid or "", f"{where}.{key}",
+                "is a field the contract does not define, so the row passed no clause for it and "
+                "every ranking stage will happily order on whatever it is handed",
+                f"one of {sorted(ROW_FIELDS)}")
+    for key in sorted(ROW_REQUIRED):
+        if key not in row:
+            raise ContractViolation(rid or "", f"{where}.{key}", "is missing",
+                                    f"every row carries {sorted(ROW_REQUIRED)}")
+    for key, val in row.items():
+        want = ROW_FIELDS[key]
+        if not any(type(val) is w for w in want):
+            raise ContractViolation(
+                rid or "", f"{where}.{key}", f"is a {type(val).__name__}",
+                f"exactly {' or '.join(w.__name__ for w in want)}")
+    for m in row["members"]:
+        if type(m) is not str or not m:
+            raise ContractViolation(
+                rid or "", f"{where}.members", f"contains {m!r}",
+                "non-empty declaration ids; each member is a foreign key (C-11 / M5)")
+
+
 def check_contract(declaration: Declaration) -> str:
     """Run every clause CP-1 owns. Returns the contract version on success; raises on the first
     failing clause with its field path.

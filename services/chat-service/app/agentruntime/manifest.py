@@ -26,7 +26,9 @@ from typing import Iterable
 
 from . import ambient, canon
 from .admission import Admitted
-from .contract import CONTRACT_VERSION, Declaration, check_contract, identity_of
+from .contract import (
+    CONTRACT_VERSION, Declaration, check_contract, check_row_shape, identity_of,
+)
 
 MANIFEST_VERSION = 1
 
@@ -382,8 +384,14 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
     rows = list(rows)
     ids: set[str] = set()
     for i, r in enumerate(rows):
-        if not isinstance(r, dict):
-            raise UntrustedRow(f"{source}: declarations[{i}] is not an object")
+        # ONE definition of a valid row, shared with `surface.rows_of`. This function had **no
+        # field bound at all** while that door bounded every field, so `load()` accepted rows the
+        # assembler then refused — and with a different exception type. The fix went to the door a
+        # verifier named; this is the other one.
+        try:
+            check_row_shape(r, f"declarations[{i}]")
+        except Exception as exc:
+            raise UntrustedRow(f"{source}: {exc}") from exc
         try:
             check_contract(Declaration(
                 id=r.get("id", ""),
@@ -448,7 +456,8 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
         ids.add(r["id"])
     # M5 again, on the read side: a member that resolved at generation can be broken by an edit.
     for r in rows:
-        for m in r.get("members", ()) or ():
+        for m in r["members"]:   # required by `check_row_shape`; the `or ()` default served
+            # absent, `null`, `0` and `false` as "no members", so M5 had nothing to check.
             if m not in ids:
                 raise UnresolvedReference(r["id"], m)
     # 🔴 **I MATERIALISED THE ITERATION AND RETURNED THE ORIGINAL CONTAINER.** The rows were copied

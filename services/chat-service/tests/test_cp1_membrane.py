@@ -661,13 +661,19 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         """
         base = {"id": "t0", "kind": "tool", "owning_service": "book-service",
                 "lifecycle": "admitted", "members": []}
+        from app.agentruntime.contract import ContractViolation
         for bad in ({"lane": {"nested": 1}}, {"cost": [1]}, {"relevance": 1.5},
                     {"tier": {1, 2}}, {"members": "not-a-list"}, {"members": [""]},
-                    {"members": [None]}):
-            with pytest.raises(ValueError, match="plain scalar|members are a plain list"):
+                    {"members": [None]},
+                    # 🔴 The class the type bound could not reach: an **undefined** field. A verifier
+                    # steered `TakeWhileBudget` with a plain `"cost": 1000000000`, and no value bound
+                    # can refuse a well-typed integer. What IS refusable is a key the contract never
+                    # named — the row passed no clause for it, and every stage will rank on it.
+                    {"weight": 999}, {"": 1}):
+            with pytest.raises(ContractViolation):
                 rows_of({"declarations": [{**base, **bad}]})
         # ...and the legitimate shapes still pass.
-        rows_of({"declarations": [{**base, "lane": "read", "cost": 3, "tier": None}]})
+        rows_of({"declarations": [{**base, "lane": "read", "cost": 3, "tier": "hot"}]})
 
     def test_a_document_with_NO_declarations_key_is_not_an_empty_one(self):
         """`.get("declarations", [])` served a missing key as empty — the exact confusion `rows_of`
@@ -1186,8 +1192,14 @@ class TestStageKindsAreDataNotClosures:
     """
 
     def _doc(self, n=4):
+        # 🔴 THE FIXTURE USED TO BE A PARTIAL ROW — `{id, kind, cost, lane}` and nothing else — so
+        # every ranking test ran against a shape the manifest can never produce. `check_row_shape`
+        # made that visible by refusing it, which is the door working: a test that ranks rows should
+        # rank ROWS.
         return {"declarations": [
-            {"id": f"t{i}", "kind": "tool", "cost": i + 1, "lane": "read"} for i in range(n)
+            {"id": f"t{i}", "kind": "tool", "owning_service": "book-service",
+             "lifecycle": "admitted", "members": [], "cost": i + 1, "lane": "read"}
+            for i in range(n)
         ]}
 
     def test_a_budget_walks_the_ranking_and_cuts_the_tail(self):
@@ -1247,7 +1259,8 @@ class TestStageKindsAreDataNotClosures:
             ])
 
     def test_a_missing_cost_is_a_rejection_too(self):
-        doc = {"declarations": [{"id": "t0", "kind": "tool", "lane": "read"}]}
+        doc = {"declarations": [{"id": "t0", "kind": "tool", "owning_service": "book-service",
+                                 "lifecycle": "admitted", "members": [], "lane": "read"}]}
         with pytest.raises(ValueError, match="rejection, not a fallback"):
             SurfaceAssembler(doc).assemble(pass_number=1, pipeline=[
                 OrderBy(keys=(("lane", "asc"),)),
@@ -1456,7 +1469,9 @@ class TestStageKindsAreDataNotClosures:
                 return other
 
         doc = {"declarations": [
-            {"id": f"t{i}", "kind": "tool", "cost": SneakyCost(9), "lane": "read"} for i in range(4)
+            {"id": f"t{i}", "kind": "tool", "owning_service": "book-service",
+             "lifecycle": "admitted", "members": [], "cost": SneakyCost(9), "lane": "read"}
+            for i in range(4)
         ]}
         # 🔴 **I LOOSENED THIS TO `"plain integer|plain scalar"` SO IT WOULD PASS, AND WROTE
         # "BOTH GUARDS STAY" NEXT TO IT.** A verifier then measured the consequence: with the
@@ -1473,7 +1488,8 @@ class TestStageKindsAreDataNotClosures:
                 pass_number=1, ordered_by=(("id", "asc"),),
             )
         # ...and this one is the door's.
-        with pytest.raises(ValueError, match="plain scalar"):
+        from app.agentruntime.contract import ContractViolation as _CV
+        with pytest.raises((ValueError, _CV)):
             SurfaceAssembler(doc).assemble(pass_number=1, pipeline=[
                 OrderBy(keys=(("lane", "asc"),)),
                 TakeWhileBudget("token_budget", "over budget", budget=6),

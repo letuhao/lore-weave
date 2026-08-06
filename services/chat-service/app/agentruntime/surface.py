@@ -21,6 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
+from .contract import check_row_shape
 from .narrowing import NarrowingLog
 
 def rows_of(manifest_doc: dict) -> list[dict]:
@@ -53,40 +54,10 @@ def rows_of(manifest_doc: dict) -> list[dict]:
     # both exported and neither went through `load`).
     out = []
     for i, r in enumerate(rows):
-        if not _is_exactly(r, dict):
-            raise ValueError(f"declarations[{i}] is a {type(r).__name__}, not a plain object")
-        if not _is_exactly(r.get("id"), str) or not r.get("id"):
-            raise ValueError(
-                f"declarations[{i}].id is {r.get('id')!r}; a declaration id must be a non-empty "
-                f"plain string. An id with a custom __eq__ decides membership in every allow-list "
-                f"and deny-list it is compared against (§0.14.1)."
-            )
-        # 🔴 **ONLY `id` WAS BOUNDED, AND EVERY OTHER FIELD STEERS A DECISION.** `OrderBy` sorts on
-        # any field a pipeline names, `TakeWhileBudget` accumulates one, `Filter` compares one — so
-        # an **unknown key with an exotic value, in plain JSON**, reaches the ranking that decides
-        # which declarations the model sees. And `members` was unbounded at four exported doors, so
-        # `members: ['ghost']` travelled to the wire. **Production-reachable without an adversary:
-        # a hand-edited or mis-generated manifest is what this door exists for.**
-        #
-        # Every value a row carries is an operand. The bound is the same one the stage kinds use.
-        for key, val in r.items():
-            if not _is_exactly(key, str):
-                raise ValueError(f"declarations[{i}] has a non-string key {key!r}")
-            if key == "members":
-                if not _is_exactly(val, (list, tuple)) or any(
-                    not _is_exactly(m, str) or not m for m in val
-                ):
-                    raise ValueError(
-                        f"declarations[{i}].members is {val!r}; members are a plain list of "
-                        f"non-empty declaration ids, and each is a foreign key (C-11 / M5)."
-                    )
-                continue
-            if not _is_exactly(val, (str, bool, int, type(None))):
-                raise ValueError(
-                    f"declarations[{i}].{key} is a {type(val).__name__}; a row field is a plain "
-                    f"scalar. Every field a row carries can be named by an `order_by`, a budget or "
-                    f"a filter, so an exotic value here decides the surface (§0.14.1)."
-                )
+        # ONE definition of a valid row, shared with `manifest.validate_document`. There were two —
+        # this door bounded fields and that one bounded none — so `load()` accepted a row the
+        # assembler refused, with a different exception type. See `contract.check_row_shape`.
+        check_row_shape(r, f"declarations[{i}]")
         out.append(dict(r))
     return out
 
