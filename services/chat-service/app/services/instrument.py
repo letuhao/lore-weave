@@ -516,7 +516,7 @@ def record_catalogue_unavailable(*, stage: str, reason: str, count: int | None =
     catalogue_outage.set(True)
 
 
-def catalogue_outage_registered() -> bool:
+def catalogue_outage_registered(recorder=None) -> bool:
     """Did a catalogue-scope narrowing get registered this turn?
 
     🔴 **THE CALLER MUST NOT INFER THIS FROM AN EMPTY CATALOGUE**, and the first version of U-2's fix
@@ -542,6 +542,27 @@ def catalogue_outage_registered() -> bool:
     # Read from the FLAG first, not from the sink's current contents: the sink is drained by whoever
     # persists it, and a drained sink answers "no outage" for a turn that had one — the persisted
     # row saying outage while the model was told nothing, which is worse than either alone.
+    # 🔴 **"UNADDRESSABLE BY THIS VARIABLE" WAS REFUTED BY A SIX-LINE PATCH — THE THIRD NEGATIVE
+    # CLAIM OF MINE TO FALL, AND THE FIRST WHOSE REFUTATION RUNS.**
+    #
+    # I argued that `O_K` (arm → record → drain → **arm again** → read) and the two-turn case are
+    # *"byte-identically the same execution, so no assignment of the flag can split them."* **The
+    # premise is true and the conclusion does not follow.** They are byte-identical *in the
+    # ContextVars*. They differ in the object the READER holds: in `O_K` the drained row went into a
+    # recorder that is still live; in the two-turn case turn B builds its own. I reasoned about the
+    # state I had chosen to look at and concluded about every state.
+    #
+    # A verifier measured it: flag-only answers **3 of 9** orderings wrong (including an eighth I had
+    # not found); consulting the recorder's retained rows answers **8 of 9**, at baseline, with the
+    # turn-B row still green. The only survivor is `O_J` — a turn that records and never arms — and
+    # that one **is** genuinely sink-borne, which is what this comment said before `O_K` was
+    # discovered. **I answered the discovery by widening the excuse instead of narrowing it.**
+    #
+    # The recorder is passed rather than held in a ContextVar: its lifetime problem was the whole
+    # defect of the two earlier attempts, and a caller that has one already knows which turn it is
+    # for. `voice_stream_response` constructs it at `:242` and reads here at `:422`, same function.
+    if recorder is not None and recorder.catalogue_outage():
+        return True
     if catalogue_outage.get():
         return True
     sink = surface_withheld.get()
@@ -771,10 +792,24 @@ class AdvertisedToolsRecorder:
             entry["count"] = count
         self._withheld.append(entry)
 
-    # 🔴 A `catalogue_outage()` method stood here for one round, holding the turn's outage fact.
-    # It was reverted with the rest of the rehousing and DELETED rather than left unread: this
-    # package already convicted `Identity.contract_version` for exactly that — *"a field kept
-    # because removing it feels lossy is a field the next reader will trust."*
+    def catalogue_outage(self) -> bool:
+        """Did a catalogue-scope narrowing reach THIS recorder? **Retained rows, not the sink.**
+
+        This method existed for one round as the *home* of the turn's outage fact, was measured
+        worse than the flag in that role, and was deleted. It is back in a different role: not the
+        home, a **second witness**. The flag answers "did this turn record an outage"; this answers
+        "did the rows I drained include one", and the two together split the orderings neither can
+        split alone — because a drain moves the row from the sink into a specific recorder, and
+        *which* recorder the reader holds is the fact both earlier designs threw away.
+
+        `type(...) is str` on the value, one read of it, for the reason `_is_catalogue_row` gives.
+        """
+        for w in self._withheld:
+            v = w.get("scope")
+            if type(v) is str and v == SCOPE_CATALOGUE:
+                return True
+        return False
+
 
     def absorb(self, sink: list | None) -> None:
         """Move everything the request-scoped sink holds into this recorder, **by scope**.

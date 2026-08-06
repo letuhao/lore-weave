@@ -419,7 +419,7 @@ async def voice_stream_response(
     except Exception:
         logger.warning("voice tool-surface fetch failed; proceeding tool-free", exc_info=True)
         _voice_tools = []
-    _voice_catalogue_outage = _instrument.catalogue_outage_registered()
+    _voice_catalogue_outage = _instrument.catalogue_outage_registered(_voice_advertised)
 
     # Compose the system prompt: memory → anchor → session prompt (K5-I3: each part
     # stripped so trailing newlines don't stack into triple-newline runs). T3.4 — the

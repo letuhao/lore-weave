@@ -2070,7 +2070,21 @@ class TestStageKindsAreDataNotClosures:
     def test_THE_ROW_COPY_IS_WHAT_LEAVES_THE_VALIDATOR(self):
         """The third. `dict(r)` is what stops the caller's own row object reaching a consumer after
         validation, and nothing asserted the copy itself."""
+        # 🔴 **AND THE FIRST VERSION OF THIS TEST GUARDED THE SIBLING.** The finding named
+        # `surface.py`'s `rows_of`; I wrote the test against `validate_document`, whose copy already
+        # had a red-able test. Net new coverage: **zero** — the seventh time in this run a fix went
+        # to the site a verifier pointed AT rather than the one it named. Both doors are asserted
+        # now, and the `rows_of` half is the one the finding was about.
         good = build([admit(_tool("book_list"))], previous=None)
+
+        rows = rows_of(good)
+        assert rows[0] is not good["declarations"][0]
+        rows[0]["id"] = "MUTATED"
+        assert good["declarations"][0]["id"] == "book_list", (
+            "`rows_of` handed the consumer the caller's own row object; every narrowing stage then "
+            "writes through into the document the assembler was given"
+        )
+
         out = validate_document(good)
         assert out["declarations"][0] is not good["declarations"][0]
         out["declarations"][0]["id"] = "MUTATED"
