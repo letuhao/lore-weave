@@ -2059,6 +2059,85 @@ helper collapses `contract.py` 18 → 12 sites.
 **2270 tests pass; census 68/13/55; membrane gate green.** ⚠️ Builder's evidence.
 **CP-1 does not close**; R22 verifies this delta under the existing criterion.
 
+---
+
+## 🔴 R22 — **FAIL ×2**. My fix for the census broke CI in a way that *looked like a result*
+
+Prompt committed first, two V-CODE on frozen `c37459826`. Verdicts:
+[round22-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round22-v-code-a.md) ·
+[round22-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round22-v-code-b.md).
+
+### The census, graded first — 3 of 5 fixes worked, 2 became each other's defect
+
+| item | measured |
+|---|---|
+| **the digest** | `ast.dump` is **not version-stable** (3.13 omits `keywords=[]`). **0 of 68 ids match across 3.12/3.13; 0 of the 13 allowlist rows exist** under the pinned interpreter. The gate printed 13 `NEWLY SILENT` + 13 `NOW GUARDED` and instructed the maintainer to **delete the allowlist**. The old failure was obviously broken; **this one looked like a result** |
+| **the kills** | Linux 3/5 clean — a real fix. **Windows: 6 external kill mechanisms, 0 reach the handler**, because `os.kill(pid, SIGTERM)` there *is* `TerminateProcess`. SIGKILL runs no `atexit` anywhere; **19% of sites are SILENT, so ~1 kill in 5 left invisible damage** in a tracked production module |
+| **id sensitivity** | enumerated 68 sites × 4 edit classes: reorder **should** move and now does (98/98 pairs, 0 collisions — what the ordinal never could); reindent correctly does not; **rename moved 68/68**; **rewording a message moved 68/68**, relocating all 13 rows |
+| **the CI green state** | ✅ install reachable — but the census then `rc=1` for the digest reason above |
+| **concurrency** | **worse: 16–20 of 20** concurrent suite runs red (was 15/20) |
+
+### 🔴 My own test for the census passed because of a COMMENT
+
+`assert 'SIGTERM' in src` was satisfied by prose at `:131`, so **deleting the entire signal-handler
+loop was green.** And the CI assertion checked the **install** step, not that the census **runs** —
+deleting the step, replacing it with `echo skip`, or switching it to `--write` were all green. The
+sibling of the very finding that asked for it; **ninth pair in this run fixed at one end.**
+
+Then, repairing exactly that, I wrote `"atexit" not in src` — **defeated by the docstring explaining
+why atexit was removed.** The same word-in-a-comment error, inverted, *inside its own repair*.
+
+### The claim I inherited without checking it — four places
+
+R21-B said *"the M1 drift gate is a byte-equality check."* I wrote it into `ambient.py`, a test
+docstring, an assertion message and this board. **R22-B executed it: M1 is a `dict` comparison** — a
+fully-CRLF manifest gives `rc=0` and an empty `git diff`, and `canon.digest` never touches the file.
+The LF fix is right; **the reason I published for it was false in every place I published it.** *A
+claim inherited from a verifier is still an unchecked claim.*
+
+### Shipped (`bc1452f4c`)
+
+Digest over `ast.unparse` with string literals blanked — version-stable **and** blind to prose ·
+**the census no longer writes into the live tree at all**: it runs in a throwaway mirror of the
+tracked working tree, which kills the Windows-handler finding and the concurrency finding together
+and **deletes 24 lines of signal handling** · the CI test asserts the census **runs** · the allowlist
+header says what was **measured** (*"neutering this site ALONE does not red the suite"*), which
+stops 2 of 13 rows being false.
+
+### ▶ What R22-B designed and this run should adopt
+
+* **Two columns the census can compute but throws away.** `_suite_is_green() -> bool` discards the
+  observation set it already has. **`effect ∈ {accepts, refuses-differently, no-observable-change}`**
+  separates UNGUARDED (write a test) from MASKED (fix the *assertion*) mechanically — which is
+  exactly the 2-vs-5 disagreement between two verifiers who were **both right**.
+  **`static ∈ {reachable, unreachable-handler}`** is a ~20-line AST pass and the only *proof* of DEAD.
+* **The register, generated from the verdicts.** Source of truth: a YAML findings block **per
+  verdict**, never this board. Identity: `(anchor, axis)` — deliberately *not* a hash of prose, which
+  churns 13/13. The generator **refuses**: a row open in N−1 and absent in N · a verdict with no
+  block · `closed` without a sha **and** a collectable test node id · **a closure signed by the party
+  that shipped the fix** · duplicates · an unknown axis · a skipped round.
+
+That last-but-two clause makes *"never close on the builder's own evidence"* a property of the tool
+rather than a line in a goal.
+
+### The numbers
+
+| | |
+|---|---|
+| executed vs argued | **A 34:8 · B 26:4**, over enumerated spaces (11 kill mechanisms, 68×4 edit classes, 98 sibling pairs, 68×2 interpreters, 91 subsets) |
+| `introduced` | A 8 · B 9 · series `…,5,13,8/9` — still no direction |
+| R22-A's position | *"I do **not** yet support closing CP-1 against the census"* — distance: **four ≤10-line changes**, all four now shipped, **unverified** |
+
+**2270 tests pass; census 68/13/55 with the live tree byte-untouched; membrane gate green.**
+⚠️ Builder's evidence. **CP-1 does not close**; R23 verifies this delta.
+
+**Open, carried:** B18-8 (5th) · B18-11 (5th) · **B18-10 (8th)** · `surface.py:305` (4th) · `_ID`
+(4th) · the three weak oracles (**6th**) · T11d (4th) · the 6 probe writers hardcoding `"app"` (4th) ·
+`dict(r)` shallow at 4/4 doors, and its one test **asserts non-mutation by `==`, so the guard
+requires the defect** · W4's `s.body[:1]` untested — but **R22-A wrote and executed the 9-line shape
+that reds it** (6 of 9 discriminate) · the recorder hazard **unfalsifiable at this seam** (3rd) —
+V-LIVE must observe whether one recorder id appears under two turn tokens.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -2079,7 +2158,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | ~~R19~~ | ran 2026-08-06 → **FAIL ×2**. Both predictions HELD. My "unaddressable" claim was refuted by a six-line patch that runs — the error was LOGICAL, not careless. A fix of mine guarded the sibling, seventh instance. See the block above | `V-CODE` ×2 on `5b531e22a` | — |
 | ~~R20~~ | ran 2026-08-06 → **FAIL ×2**. Both verifiers: **no convergence**, close against the **mechanised census**, and **stop V-CODE** — `agentruntime` has **zero importers**, so V-LIVE returns `CANNOT DETERMINE` by construction. Census shipped as a gate. See above | `V-CODE` ×2 on `b73e086ca` | — |
 | ~~R21~~ | ran 2026-08-06 → **FAIL ×2**. The census was graded first: **sound mechanism, not yet a gate** — its CI job could never pass, it was not fail-closed on a kill, and it had no test. All five prescribed fixes shipped. See the block above | `V-CODE` ×2 on `9818c7bc5` | — |
-| **R22** | verify R21's delta: the hardened census (kill-safe, hash-keyed ids, reachable CI green, its own test), the manifest's pinned newline, and what the census still **cannot** say | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
+| ~~R22~~ | ran 2026-08-06 → **FAIL ×2**. My digest fix broke CI in a way that *looked like a result* (0/68 ids stable across interpreters); my test for the census passed because of a **comment**; the census now runs in a throwaway mirror. See above | `V-CODE` ×2 on `c37459826` | — |
+| **R23** | verify R22's delta: the mirror-based census, the version-stable prose-blind digest, the honest allowlist header, and the CI test that asserts the **run** | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
 | **PO** | ⭐ **decision open**: close CP-1 against the census (68 sites, 13 recorded silent, no drift) instead of a clean V-CODE round — and go to CP-2 so something finally imports the package | — | — |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
