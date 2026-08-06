@@ -127,12 +127,25 @@ fn hex(d: &[u8; 32]) -> String {
 ///   it in the commit that introduced it. See `EngineRole`'s doc for the full
 ///   argument, including why the role is declared rather than inferred from
 ///   `CeilingBinding`.
+/// * `f0bd1bdf…` → `2bc91306…`, **2026-08-06, `M2` the declared verb table**.
+///   The answer: **no number changed and no law changed** —
+///   `RULESET_SCHEMA_VERSION` went 6 → 7 and a `verbs` table entered the bytes.
+///
+///   The engine default declares no verbs (`VerbTable::EMPTY`, and `QTY-A10(c)`
+///   is why it must stay that way), so `0..n` is empty and it pays **one length
+///   prefix** — four bytes. The digest moved for the same reason `M1`'s did: the
+///   schema version is the first field in the stream.
+///
+///   ⚠ **The table is ordered by DECLARATION, not sorted** — unlike `resources`.
+///   `CMD-1` makes a verb's ordinal its identity, append-only and never reused,
+///   and committed history already names one; sorting would renumber every verb
+///   the moment an author added one whose name sorts earlier.
 #[test]
 fn v1_engine_default_digest_is_pinned() {
     let d = Ruleset::engine_default().digest();
     assert_eq!(
         hex(&d.0),
-        "f0bd1bdf3dae11edbd48cb07873052d307c3c9890a13d3466ef495af0b1cd387",
+        "2bc91306f2b0132c28cdd568be5a3143d5f5632a03852a82eec83a76f2ca71a1",
         "the engine-default ruleset digest moved — a rules value, the canonical \
          encoding, the schema version, or LAW_VERSION changed. That is a rules \
          change for EVERY reality; confirm it was intended before repinning, and \

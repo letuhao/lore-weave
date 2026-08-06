@@ -232,6 +232,15 @@ pub struct RulesetPatch {
     /// layer that declares them rather than dropping them.
     #[serde(default)]
     pub progression_kinds: Vec<crate::patch_progression::ProgressionKindPatch>,
+
+    /// `M2` — the verbs this layer declares (`CMD-1`).
+    ///
+    /// A table of tables like `resources`, and for the same reason: the shape is
+    /// irreducibly a record, so a flat list would have nowhere to put the
+    /// effect. **Ordinals are assigned in declaration order across the merged
+    /// stack and never reused** — see `VerbTable`.
+    #[serde(default)]
+    pub verbs: Vec<crate::patch_verb::VerbPatch>,
 }
 
 /// Why a patch could not be folded. Two sources, kept apart so the loader can
@@ -240,6 +249,8 @@ pub struct RulesetPatch {
 pub enum PatchError {
     Quantity(QuantityError),
     Resource(ResourceError),
+    /// `M2` — a verb row this layer could not declare.
+    Verb(crate::patch_verb::VerbPatchError),
 }
 
 impl From<QuantityError> for PatchError {
@@ -297,6 +308,22 @@ impl RulesetPatch {
             })?;
             let decl = r.to_decl(ordinal).map_err(PatchError::Resource)?;
             base.resources.declare(decl, base.quantities.len()).map_err(PatchError::Resource)?;
+        }
+
+        // `M2` — verbs, AFTER the pools, for the reason pools come after the
+        // quantities: a layer may declare a quantity, its pool and a verb that
+        // spends it in one file, and resolving a name before it exists would
+        // refuse the most natural thing an author writes.
+        //
+        // `offer_registry: false` — CMD-11/CMD-12 are PARKED, so a verb
+        // targeting another actor is refused rather than shipped unauthorised.
+        // It is a parameter and not a constant inside the table so the refusal
+        // disappears by itself the day the registry lands.
+        for v in &self.verbs {
+            let decl = v.to_decl(&base.quantities).map_err(PatchError::Verb)?;
+            base.verbs
+                .declare(decl, base.quantities.len(), false)
+                .map_err(|e| PatchError::Verb(crate::patch_verb::VerbPatchError::Table(e)))?;
         }
         Ok(())
     }

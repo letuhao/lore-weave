@@ -224,10 +224,13 @@ per tick"*. It is acyclic because a capability is missing, not because it was de
 | `M1.3` | the legacy shape **deleted** — `Actor`'s field list, `CombatStats`, and whatever exists only to hold them. Deleted, not commented out | `grep -nE "^\s+(pub )?(hp\|max_hp\|av\|stats\|snapshot\|turn_slots)\s*:" domain/actor.rs` → **exit 1, no match**. `Actor` is now `{ hub, defending, stance, fled, side, status, knocked_out }` | [x] |
 | `M1.4` | bite: delete a `QuantityDecl` and watch the consumer red | Bitten on **CONTENT**, which is stronger: the `action_budget` pool commented out of the preset → `RoleUnbound { role: "action_budget" }` at [`services/commit-service/src/domain/binding.rs:277`](../../services/commit-service/src/domain/binding.rs#L277), three suites red. Restored → 7/7 green | [x] |
 | `M1.5` | **a vocabulary check with teeth**: no game noun re-enters the engine tier as an identifier. `hub-vocabulary-gate` already asserts the hub names no ordinal — extend it, or state why it cannot reach the consumer | **A NEW gate**, not an extension — different tree, different subject, opposite direction (see below). `scripts/engine-vocabulary-gate.py`, 89 files across 6 trees, self-test 13 cases, **6/6 harness mutations red**, and bitten on the real repo: a planted `name == "vitality"` in `law.rs` → 1 finding; removed → OK | [x] |
-| `M2.1` | `CMD-10`'s owed bite, landed with its seal | — | [ ] |
-| `M2.2` | the verb row, `Delta`-only, as a declared table | — | [ ] |
-| `M2.3` | one `law.rs` arm replaced by a declared row | — | [ ] |
-| `M2.4` | refusal as a committed fact (`CMD-5`) + the cue channel (`CMD-4`) | — | [ ] |
+| `M2.1` | `CMD-10`'s owed bite, landed with its seal | `FORBIDDEN_VERB_KEYS` — three authority-bearing keys refused **by name, with the reason**, on the permissive parse before deserialization. Pasted: all three refusals name the verb, the key and why. `deny_unknown_fields` would have said *"unknown field"*, which is true and useless | [x] |
+| `M2.2` | the verb row, `Delta`-only, as a declared table | `ruleset-core/src/verb/` — hashed, schema **6 → 7**, ordered by DECLARATION (`CMD-1`: an ordinal is the verb's identity). `EffectRow` has **no `kind` field**: one door is open, so there is nothing to discriminate, and the exhaustive destructure in `data_measure.rs` stops compiling when a second opens | [x] |
+| `M2.3` | one `law.rs` arm replaced by a declared row | ⚠️ **NOT discharged, and the measurement is why** — see §6c. **No shipped arm is `Delta`-only.** What landed instead: the substrate has ONE arm for every verb that will ever exist, and the first declared verb is a new one | [~] |
+| `M2.4` | refusal as a committed fact (`CMD-5`) + the cue channel (`CMD-4`) | Live, on real Postgres: `channel_event_id=7 {"actor":"1","reason":"requirement_unmet","type":"refused","verb":0}` · the cue reaches the client payload, parsed out of `TurnOutcome`'s narration | [x] |
+| `A1.5` | **the acceptance test** — declaring a verb touches ZERO files in command core | `adding_a_verb_touches_zero_files.rs`, 7 tests. A verb declared in a TOML **string inside the test** resolves end to end; its cue reaches the fact; the tool manifest does **not** know it and it resolves anyway | [x] |
+| `A2.*` | the live smoke | `scripts/declared-verb-live-smoke.sh` — **GREEN.** 7 rows read back out of Postgres, every one carrying its `ruleset_digest` pin; applied at `channel_event_id=5`, refused at `7`, wire payload pasted | [x] |
+| `V.2` | the mechanical oracle | `scripts/declared-verb-oracle.py` — **AGREE.** Python · the preset parsed as TEXT · a running sum over rows read back from the log. Shares no method with the engine's fold-and-write | [x] |
 
 ## 6a. `M1.0` — the inventory, measured at `fa15b072f`
 
@@ -295,6 +298,53 @@ that crate). `actor.rs`'s unit tests became integration tests, which is an
 improvement rather than a dodge: every item they touch is public surface, so a
 unit test could pass against an API a plugin author cannot reach.
 
+## 6c. `M2` — the measurement that changed the milestone, and what landed instead
+
+**`M2.3` said *"one `law.rs` arm replaced by a declared row"*. It is NOT
+discharged, and the reason is a measurement rather than an excuse.**
+
+`CMD-3` closes the effect primitive set on *"a primitive exists iff the substrate
+already built the door it goes through"*, and §3 measured **one door of seven
+open** — `Delta`, a signed write to a declared quantity. Measured again at the
+moment of building, against the four shipped arms:
+
+| arm | what it changes | door |
+|---|---|---|
+| `strike` | a roll, then a vital delta, then a KO status | needs `ChanceSpec`, one of `O-CI-16`'s five undefined types |
+| `defend` | a `bool` | `StatusPropose` — **prose, zero implementation** |
+| `move` | an `enum` | `StatusPropose` |
+| `flee` | a `bool` | `StatusPropose` |
+| `EndTurn` | engine-only | never a declared verb, by construction (`IAS-D6`) |
+
+⇒ **Not one of them is a pure `Delta`.** So `M2`'s first verb could not have
+replaced an arm without opening a second door — which the closure rule forbids
+until the door is built. The rule did its job; the plan's phrasing was written
+before the measurement existed.
+
+**What landed instead is the stronger half of what `M2.3` was for.** `law.rs`
+has ONE arm for declared verbs, and it will never gain another: it routes to
+`domain/substrate.rs`, which resolves every verb that will ever exist without
+branching on a name. The four legacy arms are the combat vocabulary `D-14`
+already slates for rewrite; they leave when their doors are built, and
+`adding_a_verb_touches_zero_files.rs` is what makes the claim checkable now
+rather than then.
+
+### Three things `M2` forced that the plan did not anticipate
+
+| # | |
+|---|---|
+| **1** | **A declared verb may not spend the ACTION BUDGET, and a test found it, not a design.** The engine spends that pool generically on every action (`IAS-D6`); the first authored verb declared the same cost, and it **refused itself with `RequirementUnmet` on its own first submission**. `BindingError::VerbSpendsEngineBudget` now says so at BOOT. The preset gained a role-free pool (`focus`) for verbs to spend — which is also the first demonstration that `EngineRole::None` is the common case. |
+| **2** | **`EffectRow` has no `kind` field, and that is a decision.** A one-variant enum would put a discriminant byte in every reality's hashed bytes forever, encoding a choice that does not exist — and `QTY-A10(c)` forbids taking it back out. The kind arrives with the second door, as a schema bump, which is loud and is supposed to be. The count is kept by the COMPILER: an exhaustive destructure in `data_measure.rs` stops compiling when the field appears. |
+| **3** | **`VerbTable` is ordered by DECLARATION, not sorted — the opposite call from `ResourceTable`.** A pool's identity is its quantity ordinal, assigned elsewhere, so that table can sort for a canonical encoding. A verb's identity IS its index (`CMD-1`, append-only, never reused) and committed history already names one; sorting would renumber every verb the moment an author added one whose name sorts earlier. |
+
+### And a pre-existing RED, fixed in passing
+
+`cargo build --all-targets` had been failing on this branch since migration
+`0018` removed the `region`/`session`/`world_kv` projections as orphans and
+deleted their fixtures: `services/world-service/benches/projection_hotpath.rs`
+still named all three. **Nothing caught it because a bench is not built by
+`cargo test`** — which is worth recording as its own small finding.
+
 ## 7. Registers — append as it happens
 
 ### Decisions
@@ -339,6 +389,8 @@ unit test could pass against an API a plugin author cannot reach.
 |---|---|
 | `BDR-1` | I opened this file about to write *"the first consumer is the command substrate"*, which is what the previous turn's summary implied. Measuring first showed the ordering is the other way and **derivable**: an `EffectRow` targets a quantity ordinal, so while the actor's numbers are struct fields the substrate cannot be declarative. A plan whose first line is wrong about its own order is worse than no plan. |
 | `BDR-3` | **I wrote `M1` as a MIGRATION of `commit-service::Actor`'s nouns into quantities, and the PO corrected it mid-draft**: that struct is scaffolding built to prove the kernel and SDK work, and it is to be deleted. `D-11` and `D-14` both say so and I had read both in this same session. The correction matters because a port is the *comfortable* answer — it keeps every test green, it looks like progress, and it carries the old vocabulary into a new container, which is `D-2`'s failure exactly. **`quantity[0] = "hp"` would have satisfied `M1` as I first wrote it.** The slice board now defaults every legacy field to DELETE and forbids deriving a quantity from a struct field name. |
+| `BDR-7` | **I wrote `M2.3` into the board as *"replace a `law.rs` arm"* and only measured whether that was possible when I came to do it.** It was not: no shipped arm is a pure `Delta`, and §3 had already priced the door count at one of seven — I had the number and did not apply it to the sentence beside it. The plan was internally inconsistent for two days. What saved it was refusing to open a second door to make a checkbox tick, which is the closure rule working; but the near-miss was *"just make `defend` a declared verb"*, which would have shipped `StatusPropose` as a `Delta` in disguise. |
+| `BDR-8` | **The first authored verb refused itself, and I nearly patched the symptom.** `gather` declared a spend of the same pool the engine spends generically, so its own requirement failed on its first submission. The reachable-in-one-edit fix was to move the engine's generic spend after the verb's — which would have let a declared verb take an action for free. The right fix was a BOOT refusal saying the author may not re-declare the engine's turn cost, and it took longer. **A test failure whose quickest fix changes an invariant is the shape to slow down on.** |
 | `BDR-4` | **I nearly shipped `M1` with the actor's numbers named `hp`, `av` and `turn_slots` in content** — the names were sitting in the field list I had just inventoried, and copying them would have read as faithful. The PO's correction (`BDR-3`) was about the *engine*, and I first satisfied it by moving the same words one file over. What stopped it was writing `M1.5`'s gate BEFORE choosing the names: a gate that greps for the declared vocabulary in engine source is trivially green when the vocabulary IS the engine's own words. **Different names are not decoration — they are what makes a surviving name-coincidence detectable.** |
 | `BDR-5` | I wrote *"`scripts/engine-vocabulary-gate.py` is what keeps it one"* into `binding.rs`'s module doc **while the file did not exist.** It was true within the hour, which is exactly why it is the dangerous kind of claim: a citation to a mechanism that is *about to* exist is indistinguishable, to every future reader, from one that never will. This project has recorded four stale-register catches in a week and this would have been the fifth, authored deliberately. |
 | `BDR-6` | **The bite harness caught a hole in my own gate's self-test.** Every one of my twelve cases reached `_exempt` through the comment-block branch; nothing reached the same-line branch, so `if PRAGMA in raw[line_no - 1]` could have been deleted with the suite green. I had written the header sentence *"a gate with no cry-wolf case is half-tested"* and then shipped a half-tested branch under it. **The mechanism found what the intent did not** — which is the standard's own thesis, demonstrated on its author. |

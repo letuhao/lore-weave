@@ -25,7 +25,7 @@ use uuid::Uuid;
 
 use commit_service::manager::{AdoptOutcome, Manager};
 use commit_service::combat::Side;
-use commit_service::{Actor, CombatDomain, CombatPayload, CombatState, RealityRules};
+use commit_service::{CombatDomain, CombatPayload, CombatState, RealityRules};
 use dp_kernel::envelope::EventEnvelope;
 use sim_core::{
 

@@ -167,7 +167,16 @@ async fn main() -> anyhow::Result<()> {
         // The LlmDriver dispatch races the SL-A4 deadline.
         let dispatch = match tokio::time::timeout(
             std::time::Duration::from_millis(args.deadline_ms),
-            decide(&client, args.model_source, args.model_ref, args.user_id, &vocab, &ctx, args.reasoning),
+            decide(
+                &client,
+                args.model_source,
+                args.model_ref,
+                args.user_id,
+                &vocab,
+                &ruleset.rules().verbs,
+                &ctx,
+                args.reasoning,
+            ),
         )
         .await
         {
@@ -211,7 +220,7 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or(serde_json::json!({})),
             },
         });
-        match admit_t6(&proposal.to_string(), &vocab, &mut dedup).outcome {
+        match admit_t6(&proposal.to_string(), &vocab, &ruleset.rules().verbs, &mut dedup).outcome {
             AdmissionOutcome::Admitted(a) => {
                 isle.submit(Lane::Live, *a);
             }
@@ -231,7 +240,7 @@ async fn main() -> anyhow::Result<()> {
                     "decision": {"vocabulary": "combat_v1", "tool": "defend", "params": {}},
                 });
                 if let AdmissionOutcome::Admitted(a) =
-                    admit_t6(&fb.to_string(), &vocab, &mut dedup).outcome
+                    admit_t6(&fb.to_string(), &vocab, &ruleset.rules().verbs, &mut dedup).outcome
                 {
                     isle.submit(Lane::Live, *a);
                 }
@@ -256,7 +265,7 @@ async fn main() -> anyhow::Result<()> {
                     },
                 });
                 if let AdmissionOutcome::Admitted(a) =
-                    admit_t6(&hp.to_string(), &vocab, &mut dedup).outcome
+                    admit_t6(&hp.to_string(), &vocab, &ruleset.rules().verbs, &mut dedup).outcome
                 {
                     isle.submit(Lane::Live, *a);
                 }

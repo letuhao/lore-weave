@@ -41,7 +41,7 @@ pub mod wire;
 
 pub use domain::{
     Actor, BindingError, CombatDomain, CombatEvent, CombatPayload, CombatResource, CombatState,
-    HubBinding, RealityRules, Stance,
+    HubBinding, RealityRules, RefusalReason, Stance,
 };
 // S2 — the laws moved to `crates/game-rules` (IMP-A5). Re-exported under their
 // original paths so every `commit_service::combat::…` / `::stats::…` import

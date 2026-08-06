@@ -182,7 +182,46 @@ export type DomainEvent =
   | { type: 'fled'; actor: string }
   | { type: 'downed'; target: string }
   | { type: 'status_expired'; actor: string }
+  /** `M2` — a DECLARED verb resolved. Carries ordinals and no names: the verb's
+   *  ordinal, its declared CUE ordinal (`CMD-4` — that something must be SHOWN,
+   *  on a channel of its own), and the quantity it moved. A client that wants a
+   *  name resolves it against the reality's tables, which is the only place an
+   *  ordinal means anything (`QTY-A14`). */
+  | {
+      type: 'acted';
+      actor: string;
+      verb: number;
+      cue: number;
+      quantity: number;
+      delta: number;
+      left: number;
+    }
+  /** `M2` / `CMD-5` — the refusal, as a committed fact. A substrate that only
+   *  commits its happy path has proved half of it, and a client that cannot see
+   *  a refusal cannot tell one from an action that never arrived. */
+  | { type: 'refused'; actor: string; verb: number; reason: RefusalReason }
   | { type: 'encounter_ended'; outcome: EncounterOutcome };
+
+/** Why a declared verb was refused. Mirrors `commit_service::RefusalReason`
+ *  **against `contracts/game-wire/turn.schema.json`**, never against the Rust
+ *  enum directly — joining the two languages to each other with no contract
+ *  between them is exactly what produced the 8-against-6 drift above. */
+export type RefusalReason =
+  | 'unknown_verb'
+  | 'requirement_unmet'
+  | 'cannot_afford'
+  | 'actor_absent'
+  | 'not_acting';
+
+/** Every `RefusalReason`, for the same reason `DOMAIN_EVENT_TYPES` exists: a
+ *  union's members are not enumerable at runtime. */
+export const REFUSAL_REASONS = [
+  'unknown_verb',
+  'requirement_unmet',
+  'cannot_afford',
+  'actor_absent',
+  'not_acting',
+] as const satisfies readonly RefusalReason[];
 
 /** Terminal result of an encounter. Mirrors `game_rules::combat::EncounterOutcome`. */
 export type EncounterOutcome = 'victory' | 'defeat' | 'disengaged';
@@ -198,6 +237,8 @@ export const DOMAIN_EVENT_TYPES = [
   'fled',
   'downed',
   'status_expired',
+  'acted',
+  'refused',
   'encounter_ended',
 ] as const satisfies readonly DomainEvent['type'][];
 
@@ -226,6 +267,17 @@ export function renderEvent(e: DomainEvent): string {
       // client can render it. Dropping it here re-silenced the fact the Rust
       // variant's own doc comment exists to make audible.
       return `${e.actor} recovers`;
+    case 'acted':
+      // The CUE is what presentation keys on (`CMD-4`); this fallback line is
+      // deliberately not a translation of it. Rendering a verb by NAME here
+      // would put the engine's ordinal space and the player's language in one
+      // place, which is the boundary the cue channel exists to keep apart.
+      return `${e.actor} acts (cue ${e.cue}): ${e.delta >= 0 ? '+' : ''}${e.delta} -> ${e.left}`;
+    case 'refused':
+      // Rendered rather than dropped, for the reason `status_expired` is: a fact
+      // the client never hears is indistinguishable from one that never
+      // happened, and a refusal is the half of `CMD-5` most easily lost.
+      return `${e.actor} cannot (${e.reason})`;
     case 'encounter_ended':
       return `the encounter ends (${e.outcome})`;
   }

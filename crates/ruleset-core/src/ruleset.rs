@@ -7,6 +7,7 @@ use crate::combat::CombatRules;
 use crate::provenance::{Provenance, RulesetEpoch};
 use crate::quantity::QuantityTable;
 use crate::resource::ResourceTable;
+use crate::verb::VerbTable;
 use crate::progression::ProgressionDigest;
 use crate::stats::StatRules;
 
@@ -14,7 +15,7 @@ use crate::stats::StatRules;
 /// is not itself a rules change. Written first into every canonical stream, so
 /// an encoding change can never be mistaken for a rules change: both move the
 /// digest, but only one of them moves it for every reality at once.
-pub const RULESET_SCHEMA_VERSION: u32 = 6;
+pub const RULESET_SCHEMA_VERSION: u32 = 7;
 
 /// The oldest schema version this engine can still DECODE.
 ///
@@ -121,6 +122,21 @@ pub struct Ruleset {
     /// second end for bytes that arrive by another route
     /// (`D-PROGRESSION-EMPTY-PIN`, CLOSED by `PGN-R2a`).
     pub progression: Option<ProgressionDigest>,
+    /// **`M2` — `CMD-1`: the declared verbs, and their ordinals.**
+    ///
+    /// Inside the hashed bytes, and it has to be: two realities whose verbs
+    /// differ are two different sets of rules, and `RLS-A13` says an event is
+    /// pinned to the rules that produced it. A verb table living outside the
+    /// digest would let a reality gain an action with nothing going red.
+    ///
+    /// **A TABLE and not a POINTER, unlike `progression`, and the difference is
+    /// measured rather than stylistic.** A `TierDecl` transitively owns
+    /// `String`/`Vec`/`HashMap`, so it can never be `Copy`, never be
+    /// `const`-constructed, and cannot be seen by `size_of` at all — the
+    /// `QTY-A6 ⊥ QTY-A12` trap, which is why that one is a content address. A
+    /// `VerbDecl` is a fixed-size POD: a 32-byte name, two ordinals, three small
+    /// rows. It fits inline, so it is inline, and `size_of` can still see it.
+    pub verbs: VerbTable,
 }
 
 // QTY-A12 (doc 35 §6.4) — see the rationale on `StatBlock` in
@@ -204,7 +220,24 @@ pub struct Ruleset {
 //   and `O(n^2)` per RULESET. This is per-reality, interned once; ten thousand
 //   resident actors pay nothing for it. The ENCODED cost is one byte per
 //   DECLARED pool — a reality with three pools pays three bytes.
-const _: () = assert!(core::mem::size_of::<Ruleset>() <= 2600);
+// * 2600 -> 3696, 2026-08-06 (`M2`), for `verbs: VerbTable` — 16 rows of a
+//   68-byte `VerbDecl` plus its length. Measured by probe, not estimated.
+//
+//   **This is the growth `Q1`'s entry predicted by name**, one table over: the
+//   struct L2 grows is the struct that holds what an AUTHOR declares. A
+//   `VerbDecl` is 68 B rather than the ~56 its fields sum to, because a
+//   `QuantityName` is 33 bytes (32 + a length) and the two `Option<…Row>` each
+//   carry a discriminant.
+//
+//   **Affordable here for the reason `QTY-A6.1` gives, and NOT affordable on
+//   `Actor`:** `O(n)` per ACTOR, `O(n^2)` per RULESET. A ruleset is interned once
+//   per reality; ten thousand resident actors pay nothing. The ENCODED cost is
+//   `0..n` — a reality declaring one verb pays for one row, not sixteen.
+//
+//   **Boxing the table to keep this number small is FORBIDDEN**, the same call
+//   the entry above makes: a heap pointer makes `size_of` 16 bytes for every `n`,
+//   so this assertion would compile, always pass, and never fire again.
+const _: () = assert!(core::mem::size_of::<Ruleset>() <= 3696);
 
 impl Ruleset {
     /// The priority-0 `engine_default` layer (RLS-D2), resolved with no
@@ -225,7 +258,11 @@ impl Ruleset {
             // they stay exactly where they are.
             resources: ResourceTable::EMPTY,
             // The engine declares no progression. `None`, never a zero digest.
+            // The engine declares no verbs. A verb in the engine default would
+            // enter every reality in existence and QTY-A10(c) forbids removing
+            // it -- the same call `resources` makes one field up.
             progression: None,
+            verbs: VerbTable::EMPTY,
         }
     }
 
@@ -284,8 +321,16 @@ impl CanonEncode for Ruleset {
         // `law_version` broke this line until it was named here, which is the
         // mechanism doing its job: a new field cannot silently stay out of the
         // digest.
-        let Self { schema_version, law_version, combat, stats, quantities, resources, progression } =
-            self;
+        let Self {
+            schema_version,
+            law_version,
+            combat,
+            stats,
+            quantities,
+            resources,
+            progression,
+            verbs,
+        } = self;
         c.u32(*schema_version);
         c.u32(*law_version);
         combat.canon(c);
@@ -298,6 +343,7 @@ impl CanonEncode for Ruleset {
         // that a decoded-then-upcast value would have already overwritten.
         resources.canon_at(c, crate::ruleset::RULESET_SCHEMA_VERSION);
         crate::ruleset_codec::canon_progression(c, progression);
+        verbs.canon(c);
     }
 }
 
@@ -337,3 +383,4 @@ impl ResolvedRuleset {
         self.ruleset.digest()
     }
 }
+

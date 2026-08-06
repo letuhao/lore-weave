@@ -259,7 +259,7 @@ fn the_engine_finds_its_numbers_by_role_not_by_name() {
         rules.rules().quantities.names().iter().map(|n| n.as_str().to_string()).collect();
 
     // The names are the AUTHOR's. This test may say them; the engine may not.
-    assert_eq!(names, vec!["vitality", "swiftness", "breath"]);
+    assert_eq!(names, vec!["vitality", "swiftness", "breath", "focus"]);
 
     // …and the engine reached each one through a role, by ordinal.
     assert_eq!(rules.hub().vital().get(), 0);
@@ -271,7 +271,8 @@ fn the_engine_finds_its_numbers_by_role_not_by_name() {
     // Vital -> qi and the defeat law is unchanged" — and it was prose in
     // `resource/mod.rs` with nothing able to express it until `M1`.
     let mut renamed = rules.rules().clone();
-    renamed.quantities = ruleset_core::QuantityTable::assign(&["qi", "xu", "yi"]).unwrap();
+    renamed.quantities =
+        ruleset_core::QuantityTable::assign(&["qi", "xu", "yi", "shen"]).unwrap();
     let renamed = RealityRules::resolve(renamed).expect("renaming binds the same roles");
     assert_eq!(renamed.hub().vital(), rules.hub().vital());
 

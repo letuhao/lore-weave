@@ -137,6 +137,7 @@ pub async fn decide(
     model_ref: Uuid,
     user_id: Uuid,
     vocab: &Vocabulary,
+    verbs: &ruleset_core::VerbTable,
     ctx: &DecisionContext,
     reasoning: ReasoningEffort,
 ) -> Dispatch {
@@ -244,6 +245,7 @@ pub async fn decide(
         call.name.as_deref().unwrap_or_default(),
         &call.arguments,
         &offered,
+        verbs,
     ) {
         Ok(payload) => out.payload = Some(payload),
         Err(reject) => out.reject = Some(reject.to_string()),

@@ -7,7 +7,10 @@
     "TurnSubmit": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["client_request_id", "action"],
+      "required": [
+        "client_request_id",
+        "action"
+      ],
       "properties": {
         "client_request_id": {
           "$ref": "common.schema.json#/$defs/Uuid",
@@ -22,12 +25,23 @@
     "TurnOutcome": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["channel_event_id", "kind", "turn_number", "detail"],
+      "required": [
+        "channel_event_id",
+        "kind",
+        "turn_number",
+        "detail"
+      ],
       "properties": {
-        "channel_event_id": { "$ref": "common.schema.json#/$defs/Uint64String" },
+        "channel_event_id": {
+          "$ref": "common.schema.json#/$defs/Uint64String"
+        },
         "kind": {
           "type": "string",
-          "enum": ["resolved", "discarded", "rejected"],
+          "enum": [
+            "resolved",
+            "discarded",
+            "rejected"
+          ],
           "description": "CWC-A6 truth-in-labeling — three DIFFERENT things the UI must not collapse: rejected = the validator said no (no turn consumed, retry free); discarded = the world moved under a valid intent (SC-A1 precondition, no turn consumed); resolved = it happened (turn consumed)."
         },
         "turn_number": {
@@ -36,9 +50,15 @@
         },
         "detail": {
           "oneOf": [
-            { "$ref": "#/$defs/ResolvedDetail" },
-            { "$ref": "#/$defs/DiscardDetail" },
-            { "$ref": "#/$defs/RejectDetail" }
+            {
+              "$ref": "#/$defs/ResolvedDetail"
+            },
+            {
+              "$ref": "#/$defs/DiscardDetail"
+            },
+            {
+              "$ref": "#/$defs/RejectDetail"
+            }
           ]
         }
       }
@@ -46,38 +66,59 @@
     "ResolvedDetail": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["events"],
+      "required": [
+        "events"
+      ],
       "properties": {
         "events": {
           "type": "array",
           "description": "Renderable narration/effect lines derived from the committed domain events. Pre-localized (CWC-D7).",
-          "items": { "type": "string" }
+          "items": {
+            "type": "string"
+          }
         }
       }
     },
     "DiscardDetail": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["reason", "user_message"],
+      "required": [
+        "reason",
+        "user_message"
+      ],
       "properties": {
         "reason": {
           "type": "string",
-          "enum": ["duplicate", "precondition_failed", "superseded", "expired", "quarantined"],
+          "enum": [
+            "duplicate",
+            "precondition_failed",
+            "superseded",
+            "expired",
+            "quarantined"
+          ],
           "description": "sim-core DiscardReason — the 5-variant closed set (REC-63 as amended by REC-78)."
         },
-        "user_message": { "type": "string" }
+        "user_message": {
+          "type": "string"
+        }
       }
     },
     "RejectDetail": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["stage", "user_message"],
+      "required": [
+        "stage",
+        "user_message"
+      ],
       "properties": {
         "stage": {
           "type": "string",
           "description": "The admission stage that rejected (schema | idempotency | decision-vocabulary | …). Named, never generic — CS-A4: neither rejection kind is silent."
         },
-        "user_message": { "type": "string", "description": "Pre-localized (CWC-D7)." }
+        "user_message": {
+          "type": "string",
+          "description": "Pre-localized (CWC-D7)."
+        }
       }
     },
     "DomainEventType": {
@@ -91,13 +132,30 @@
         "fled",
         "downed",
         "status_expired",
-        "encounter_ended"
+        "encounter_ended",
+        "acted",
+        "refused"
       ]
     },
     "EncounterOutcome": {
       "type": "string",
       "description": "Terminal result carried by `encounter_ended`. Mirrors `game-rules::combat::EncounterOutcome`.",
-      "enum": ["victory", "defeat", "disengaged"]
+      "enum": [
+        "victory",
+        "defeat",
+        "disengaged"
+      ]
+    },
+    "RefusalReason": {
+      "description": "M2/CMD-5 -- why a declared verb was refused. A closed ENGINE set, mirrored on both sides against THIS contract rather than against each other: FATAL-1 shipped an 8-vs-6 drift under a comment claiming the set was asserted in the tests, because the two languages were joined to one another with no contract between them.",
+      "type": "string",
+      "enum": [
+        "unknown_verb",
+        "requirement_unmet",
+        "cannot_afford",
+        "actor_absent",
+        "not_acting"
+      ]
     }
   }
 }

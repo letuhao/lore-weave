@@ -50,12 +50,15 @@ mod ruleset;
 mod ruleset_codec;
 mod slots;
 mod stats;
+mod verb;
 
 pub use canon::{Canon, CanonEncode, CanonError, CanonReader};
 // S1a — the field classification (RLS-A4/A16/A17, 16a). `FORBIDDEN_KEYS` is
 // what the loader refuses a layer with; the rest is the classified table whose
 // totality is a compile error to break.
-pub use classification::{FieldClass, Floor, Mutability, Strategy, FORBIDDEN_KEYS};
+pub use classification::{
+    FieldClass, Floor, Mutability, Strategy, FORBIDDEN_KEYS, FORBIDDEN_VERB_KEYS,
+};
 pub use combat::CombatRules;
 // Q1 — L2 declared quantities (QTY-A5/A6): identities an author invents,
 // ordinals the engine assigns, both inside the hashed bytes.
@@ -80,7 +83,12 @@ pub use provenance::{Provenance, RulesetEpoch};
 pub use resource::{
     CeilingBinding, EngineRole, RegenType, ResourceDecl, ResourceError, ResourceTable,
     ZeroBehaviour,
-    MAX_DECLARED_RESOURCES,
+};
+pub use resource::MAX_DECLARED_RESOURCES;
+// `M2` — CMD-1: a verb is a declared ROW with an ordinal, append-only and never
+// reused. The engine resolves it and never branches on its name (CMD-6).
+pub use verb::{
+    EffectRow, RequirementRow, TargetRole, VerbDecl, VerbError, VerbTable, MAX_DECLARED_VERBS,
 };
 pub use ruleset::{
     LAW_VERSION, LAW_VERSION_UNVERSIONED, RULESET_SCHEMA_VERSION, ResolvedRuleset, Ruleset,

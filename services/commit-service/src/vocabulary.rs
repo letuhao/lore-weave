@@ -90,7 +90,21 @@ impl Vocabulary {
         tool_name: &str,
         raw_arguments: &str,
         candidates: &[(EntityId, String)],
+        verbs: &ruleset_core::VerbTable,
     ) -> Result<CombatPayload, Reject> {
+        // **`M2` / `CMD-6` — the declared path, and it has NO ARM.**
+        //
+        // A name is resolved to an ordinal against the reality's own table and
+        // the engine carries the ordinal from there. Checked BEFORE the JSON
+        // vocabulary, because a reality that declares a verb has said so in its
+        // hashed rules, which is a stronger statement than a tool manifest.
+        //
+        // This is the whole of what makes `adding_a_verb_touches_zero_files`
+        // true: every arm below is one verb's worth of code, and a declared verb
+        // needs none.
+        if let Some(ordinal) = verbs.ordinal_of(tool_name) {
+            return Ok(CombatPayload::Declared { verb: ordinal, actor });
+        }
         if !self.contains(tool_name) {
             return Err(Reject::UnknownTool(tool_name.to_string()));
         }

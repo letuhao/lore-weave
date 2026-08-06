@@ -272,7 +272,7 @@ async fn main() -> anyhow::Result<()> {
             // The signature is a SIBLING stream field, so the verifier hashes
             // the exact bytes the producer sent (PID-D2).
             let sig = msg.field("producer_sig");
-            let record = admit_signed(body, sig, &producers, &vocab, &mut dedup);
+            let record = admit_signed(body, sig, &producers, &vocab, &ruleset.rules().verbs, &mut dedup);
             match record.outcome {
                 AdmissionOutcome::Rejected { stage, ref reason } => {
                     rejected += 1;

@@ -32,7 +32,7 @@
 # vitality 0, swiftness 1, breath 2 — and a later layer adding a quantity
 # appends rather than renumbers.
 
-quantities = ["vitality", "swiftness", "breath"]
+quantities = ["vitality", "swiftness", "breath", "focus"]
 
 # --- the pool an engine law reads to decide the encounter is over -----------
 #
@@ -71,6 +71,21 @@ zero_behaviour = "clamp"
 # reads "refuse any action whose cost this pool cannot pay" — written before
 # anything used it, and this is what it was written for. One action per actor
 # per turn; a reality that grants two says `base = 2` here rather than in code.
+# --- a pool with NO engine role: ordinary content, for verbs to spend ---------
+#
+# `EngineRole::None` is the common case and this is what it looks like. It exists
+# because a declared verb may not spend the action budget: the engine already
+# spends that on every action (IAS-D6), so a verb declaring the cost as well
+# would charge twice — refused at boot with that reason. A verb's cost is a
+# GAME resource, and this is one.
+[[resources]]
+quantity = "focus"
+min = 0
+base = 3
+ceiling_fixed = 3
+regen_type = "none"
+zero_behaviour = "block_costs"
+
 [[resources]]
 quantity = "breath"
 role = "action_budget"
@@ -79,3 +94,45 @@ base = 1
 ceiling_fixed = 1
 regen_type = "none"
 zero_behaviour = "block_costs"
+
+# ═══ VERBS ═══════════════════════════════════════════════════════════════════
+#
+# `M2` / `CMD-1`. A feature adds a verb by writing ROWS, never code (`D-27`), and
+# the acceptance test is the actor hub's one level up:
+#
+#   > Adding a verb must touch ZERO files in command core.
+#
+# WHY THIS ONE, AND WHY IT REPLACES NOTHING
+# -----------------------------------------
+# `CMD-3` closes the effect primitive set on "a primitive exists iff the
+# substrate already built the door it goes through", and exactly ONE door is
+# open: `Delta`, a signed write to a declared quantity, built by the actor hub.
+#
+# Measured 2026-08-06: NONE of the four hardcoded arms in `law.rs` is a pure
+# Delta. `defend` sets a bool, `move` sets an enum, `flee` sets a bool -- all
+# three are the `StatusPropose` door, which is prose with zero implementation --
+# and `strike` needs the roll, whose `ChanceSpec` is one of the five types the
+# round names and never defines. So the first declared verb is a NEW one. That
+# is the closure rule doing its job, not a compromise with it.
+#
+# WHAT AN AUTHOR MAY NOT WRITE HERE
+# ---------------------------------
+# `submitter_class`, `may_submit_engine_verbs` and `pays_spend` are refused BY
+# NAME with a reason (`ruleset_core::FORBIDDEN_VERB_KEYS`). Each would have the
+# author supplying the VERDICT of a rule rather than an operand the rule judges
+# -- `CMD-10`'s V4, and this refusal is that classification's owed bite.
+
+[[verbs]]
+# A being gathers itself: spends a point of focus, trading a little vitality.
+# Every number here is a constant, it touches no other actor, it takes no
+# parameter and needs no state between two actors -- which is the sub-language
+# the round independently measured as working today.
+name = "gather"
+cue = 1
+target = "actor"
+requires_quantity = "focus"
+requires_at_least = 1
+spend_quantity = "focus"
+spend_amount = -1
+effect_quantity = "vitality"
+effect_amount = -3

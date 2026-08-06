@@ -162,6 +162,34 @@ impl Actor {
         self.role_value(rules, rules.hub().action_budget()).unwrap_or(0) as i64
     }
 
+    /// Read any declared quantity by ORDINAL — the general form the role
+    /// accessors specialise.
+    ///
+    /// **A declared verb may name any quantity the reality declares**, not only
+    /// the three an engine law reads. Without this the substrate could only move
+    /// numbers that happen to have a role bound, which would make a verb's reach
+    /// depend on the engine's needs rather than on the author's declaration —
+    /// exactly the coupling `M2` exists to remove.
+    pub fn quantity_by_ordinal(
+        &self,
+        rules: &RealityRules,
+        q: actor_hub::QuantityOrdinal,
+    ) -> Option<i64> {
+        self.role_value(rules, q).map(i64::from)
+    }
+
+    /// The write half. Silent on refusal, because the hub already RECORDS it and
+    /// `apply` is TOTAL: a cross-island substitute arrives with no preconditions
+    /// and must never panic.
+    pub fn set_quantity_by_ordinal(
+        &mut self,
+        rules: &RealityRules,
+        q: actor_hub::QuantityOrdinal,
+        v: i64,
+    ) {
+        let _ = self.set_role(rules, q, v);
+    }
+
     /// Write a role's pool. **The FEATURE decides the number; the hub carries
     /// it** — see `actor_hub::Actor::set_quantity`.
     ///

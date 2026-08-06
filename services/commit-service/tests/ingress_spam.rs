@@ -32,8 +32,14 @@ use std::time::Duration;
 
 use commit_service::combat::Side;
 use commit_service::admission::{admit_engine_turn_end as engine_end_turn, admit_t6, AdmissionOutcome, DedupCache};
+
+/// The shipped reality's declared verbs — admission judges against the rules in
+/// force (`M2`).
+fn verbs() -> ruleset_core::VerbTable {
+    RealityRules::proving_ground().rules().verbs
+}
 use commit_service::{
-    Actor, CombatDomain, CombatEvent, CombatState, RealityRules, Vocabulary, COMBAT_V1_JSON,
+    CombatDomain, CombatEvent, CombatState, RealityRules, Vocabulary, COMBAT_V1_JSON,
 };
 use sim_core::{
 
@@ -105,7 +111,7 @@ fn distinct_client_request_ids_all_pass_idempotency() {
     let admitted = (0..SPAM)
         .filter(|i| {
             matches!(
-                admit_t6(&strike(&format!("req-{i}")), &v, &mut dedup).outcome,
+                admit_t6(&strike(&format!("req-{i}")), &v, &verbs(), &mut dedup).outcome,
                 AdmissionOutcome::Admitted(_)
             )
         })
@@ -130,7 +136,7 @@ fn spam_is_gated_by_the_turn_economy() {
     let mut isle = island();
 
     for i in 0..SPAM {
-        let rec = admit_t6(&strike(&format!("req-{i}")), &v, &mut dedup);
+        let rec = admit_t6(&strike(&format!("req-{i}")), &v, &verbs(), &mut dedup);
         let AdmissionOutcome::Admitted(input) = rec.outcome else {
             continue;
         };
@@ -170,7 +176,7 @@ fn refused_spam_is_recorded_as_a_precondition_failure() {
 
     for i in 0..SPAM {
         if let AdmissionOutcome::Admitted(a) =
-            admit_t6(&strike(&format!("req-{i}")), &v, &mut dedup).outcome
+            admit_t6(&strike(&format!("req-{i}")), &v, &verbs(), &mut dedup).outcome
         {
             isle.submit(Lane::Live, *a);
         }
@@ -205,13 +211,13 @@ fn end_turn_refills_the_slot_so_legitimate_play_continues() {
     for turn in 0..5 {
         // One legitimate action for this turn.
         if let AdmissionOutcome::Admitted(a) =
-            admit_t6(&strike(&format!("turn-{turn}")), &v, &mut dedup).outcome
+            admit_t6(&strike(&format!("turn-{turn}")), &v, &verbs(), &mut dedup).outcome
         {
             isle.submit(Lane::Live, *a);
         }
         // …plus a spam attempt in the SAME turn, which must not land.
         if let AdmissionOutcome::Admitted(a) =
-            admit_t6(&strike(&format!("turn-{turn}-spam")), &v, &mut dedup).outcome
+            admit_t6(&strike(&format!("turn-{turn}-spam")), &v, &verbs(), &mut dedup).outcome
         {
             isle.submit(Lane::Live, *a);
         }

@@ -30,7 +30,7 @@ pub struct CombatDomain;
 
 impl CombatDomain {
     /// Evaluate the COMB_001 end condition over current state.
-    fn outcome_of(state: &CombatState, rules: &RealityRules) -> Option<EncounterOutcome> {
+    pub(super) fn outcome_of(state: &CombatState, rules: &RealityRules) -> Option<EncounterOutcome> {
         evaluate_outcome(
             state
                 .actors
@@ -49,7 +49,8 @@ impl CombatDomain {
             CombatPayload::Strike { attacker, .. } => Some(*attacker),
             CombatPayload::Defend { actor }
             | CombatPayload::Move { actor, .. }
-            | CombatPayload::Flee { actor } => Some(*actor),
+            | CombatPayload::Flee { actor }
+            | CombatPayload::Declared { actor, .. } => Some(*actor),
             CombatPayload::EndTurn => None,
         }
     }
@@ -301,6 +302,16 @@ impl Domain for CombatDomain {
                     }
                     _ => vec![],
                 }
+            }
+            // ─── `M2` — THE DECLARED VERB. One arm for ALL of them, forever. ───
+            //
+            // `CMD-6`: *"the substrate never branches on the verb's name."* There
+            // is no name in the payload and no `match` on one; the ordinal
+            // indexes a table the REALITY declared. The resolution itself lives
+            // in `substrate.rs` — this arm exists only to route to it, and it is
+            // the LAST arm this file will ever gain for a verb.
+            CombatPayload::Declared { verb, actor } => {
+                super::substrate::resolve_declared(state, rules, *verb, *actor)
             }
             // Engine-only turn boundary — refills every actor's slot. Emits no
             // event: it is bookkeeping, not a thing that happened in the

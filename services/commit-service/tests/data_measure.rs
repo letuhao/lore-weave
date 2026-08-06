@@ -172,11 +172,24 @@ fn the_counts_are_what_the_reality_declares() {
         .filter(|r| r.role != ruleset_core::EngineRole::None)
         .count();
 
+    let verbs = rules.rules().verbs.len();
     println!(
         "A3.4  quantities declared = {quantities}  |  pools = {pools}  |  \
-         engine roles bound = {roles}  |  effect doors used = 1 (Delta)"
+         engine roles bound = {roles}  |  verbs declared = {verbs}  |  \
+         effect doors used = 1 (Delta)"
     );
-    assert_eq!(quantities, 3);
-    assert_eq!(pools, 3);
+    assert_eq!(quantities, 4, "vital, initiative, action budget, and one plain pool");
+    assert_eq!(pools, 4);
     assert_eq!(roles, 3, "vital, initiative and action_budget — every law has its number");
+    assert_eq!(verbs, 1, "`M2`'s first declared verb");
+
+    // **The door count, kept by the COMPILER rather than by a document.**
+    //
+    // `CMD-3` closes the effect primitive set on *"a primitive exists iff the
+    // substrate already built the door"*, and `EffectRow` has no `kind` field —
+    // there is exactly one door, so there is nothing to discriminate. The
+    // exhaustive destructure below stops compiling the day a second door opens,
+    // which is `FATAL-2`'s finding turned into a mechanism: it measured seven of
+    // eight primitives as prose that nothing checked.
+    let ruleset_core::EffectRow { quantity: _, amount: _ } = rules.rules().verbs.rows()[0].effect;
 }

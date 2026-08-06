@@ -73,6 +73,25 @@ pub enum BindingError {
     /// `QuantityOrdinal` width ever disagree — which is exactly the drift a
     /// refusal should catch rather than an `unwrap` in a boot path.
     OrdinalTooWide { ordinal: u16 },
+    /// A declared verb spends the pool bound to `EngineRole::ActionBudget`.
+    ///
+    /// **Refused because the engine ALREADY spends it, on every action** — that
+    /// is `IAS-D6`'s turn economy, and it is what stops a driver taking two
+    /// actions in a turn. A verb that also declared the cost would charge twice,
+    /// and the author would have written a turn economy of their own on top of
+    /// the engine's.
+    ///
+    /// Found by a test rather than by design: the first authored verb spent the
+    /// action budget, the engine's generic spend had already taken it, and the
+    /// verb refused itself with `RequirementUnmet` on its own first submission.
+    /// The refusal now says why, at BOOT, instead of leaving an author with a
+    /// verb that can never fire.
+    ///
+    /// **The EFFECT side is deliberately not refused.** A verb that changes the
+    /// initiative pool is a haste effect and is exactly what a declared verb is
+    /// for; only the SPEND collides, because only the spend is a second
+    /// deduction of the same budget.
+    VerbSpendsEngineBudget { verb: String },
 }
 
 impl std::fmt::Display for BindingError {
@@ -89,6 +108,10 @@ impl std::fmt::Display for BindingError {
             Self::OrdinalTooWide { ordinal } => write!(
                 f,
                 "quantity ordinal {ordinal} is outside the hub's ordinal space"
+            ),
+            Self::VerbSpendsEngineBudget { verb } => write!(
+                f,
+                "verb `{verb}` spends the pool bound to the `action_budget` role, which the                  engine already spends on every action (IAS-D6). Declaring the cost as well                  would charge twice and the verb could never fire. Spend a pool of your own"
             ),
         }
     }
@@ -241,6 +264,20 @@ impl RealityRules {
             .by_role(EngineRole::ActionBudget)
             .expect("resolved above")
             .base;
+
+        // A declared verb may not re-declare the engine's own turn cost. See
+        // `BindingError::VerbSpendsEngineBudget` — checked HERE because this is
+        // the only place that knows both the verb table and the role bindings,
+        // and at BOOT because an author must learn it before a player does.
+        for v in rules.verbs.rows() {
+            if let Some(spend) = v.spend
+                && spend.quantity == action_budget.get()
+            {
+                return Err(BindingError::VerbSpendsEngineBudget {
+                    verb: v.name.as_str().to_string(),
+                });
+            }
+        }
 
         let archetype = CombatStats::archetype_melee(&rules.stats, vital_ceiling as i64);
 

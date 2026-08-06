@@ -22,7 +22,7 @@ use uuid::Uuid;
 
 use commit_service::recovery::{recover_writer_state, seed_seen, RECOVERY_TAIL};
 use commit_service::combat::Side;
-use commit_service::{Actor, CombatDomain, CombatState, RealityRules};
+use commit_service::{CombatDomain, CombatState, RealityRules};
 use dp_kernel::channel::{acquire_writer_lease, ChannelId, ChannelWriter};
 use dp_kernel::envelope::EventEnvelope;
 use sim_core::{

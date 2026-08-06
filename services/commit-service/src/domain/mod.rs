@@ -12,9 +12,10 @@ mod binding;
 mod law;
 mod payload;
 mod state;
+mod substrate;
 
 pub use actor::Actor;
 pub use binding::{BindingError, HubBinding, RealityRules};
 pub use law::CombatDomain;
-pub use payload::{CombatEvent, CombatPayload, Stance};
+pub use payload::{CombatEvent, CombatPayload, RefusalReason, Stance};
 pub use state::{CombatResource, CombatState, NoResource};

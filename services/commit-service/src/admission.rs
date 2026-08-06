@@ -187,11 +187,12 @@ impl Category {
 pub fn admit_t6(
     raw_json: &str,
     vocab: &Vocabulary,
+    verbs: &ruleset_core::VerbTable,
     dedup: &mut DedupCache,
 ) -> AdmissionRecord {
     // Back-compat entry point for callers that do not sign (tests, the POC
     // runner). Trusts the caller to have established identity out-of-band.
-    admit_signed(raw_json, None, &ProducerRegistry::new(), vocab, dedup)
+    admit_signed(raw_json, None, &ProducerRegistry::new(), vocab, verbs, dedup)
 }
 
 /// Admit a proposal whose producer identity is PROVEN (PID-A2..A4).
@@ -205,6 +206,11 @@ pub fn admit_signed(
     sig_hex: Option<&str>,
     registry: &ProducerRegistry,
     vocab: &Vocabulary,
+    // `M2` — the reality's DECLARED verbs. Admission judges a proposal against
+    // the rules in force, and a declared verb is part of them: a tool manifest
+    // alone could admit a name this reality never declared, or refuse one it
+    // did.
+    verbs: &ruleset_core::VerbTable,
     dedup: &mut DedupCache,
 ) -> AdmissionRecord {
     let mut stages: Vec<(&'static str, Verdict)> = Vec::new();
@@ -293,6 +299,7 @@ pub fn admit_signed(
         &tool,
         &params.to_string(),
         &candidates,
+        verbs,
     ) {
         Ok(p) => {
             stages.push(("decision-vocabulary", Verdict::Pass));
