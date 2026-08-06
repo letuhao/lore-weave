@@ -212,13 +212,30 @@ def _suite_is_green(cwd=None) -> bool:
     because it looks like a result. `pytest` reserves exit 1 for test failures; 2–5 mean it did not
     get to run them, and that is a broken harness, not a guarded refusal.
     """
-    r = subprocess.run([sys.executable, "-m", "pytest", SUITE, "-q", "--no-header", "-p",
-                        "no:randomly"], cwd=cwd or CS, capture_output=True, text=True)
+    # 🔴 `-p no:randomly` was passed UNCONDITIONALLY, and in an environment where that plugin
+    # is absent pytest treats it as a usage error: **rc=4, "no tests ran"**. Measured here while the
+    # same suite ran 2271 green on its own. A determinism flag that can turn "the suite is fine" into
+    # "the suite noticed" is worse than non-determinism, so it is passed only when the plugin is
+    # actually installed.
+    args = [sys.executable, "-m", "pytest", SUITE, "-q", "--no-header"]
+    try:
+        import importlib.util as _ilu
+        if _ilu.find_spec("pytest_randomly") is not None:
+            args += ["-p", "no:randomly"]
+    except Exception:                                    # noqa: BLE001 - probing must never decide
+        pass
+    r = subprocess.run(args, cwd=cwd or CS, capture_output=True, text=True)
     if r.returncode not in (0, 1):
         raise SystemExit(
             "pytest exited " + str(r.returncode) + " in " + str(cwd or CS) + " - it did "
             "not run the suite, so no site can be classified. Reporting these as RED would "
             "print a plausible lie." + chr(10) + r.stdout[-2000:] + chr(10) + r.stderr[-2000:])
+    # 🔴 **THIS LINE WAS DELETED BY THE REPAIR THAT WAS FIXING THE LINES AROUND IT.** A line-based
+    # script cleaning up a broken f-string above took the `return` with it, so this function fell
+    # off the end and returned `None` — falsy — and every run reported "the suite is not green
+    # before any injection" while the suite ran 137 green from the same directory, measured. The
+    # census could not have classified a single site, and its failure message pointed at the suite.
+    return r.returncode == 0
 
 
 def census(verbose: bool = False) -> dict[str, bool]:
