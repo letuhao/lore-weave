@@ -234,12 +234,51 @@ pub enum DpError {
     #[error("control plane unavailable: {reason}")]
     ControlPlaneUnavailable { reason: String },
 
+    // ── ADOPTED 2026-08-07 (REC-102b, PO-approved) — see the adjudication below ──
+
+    /// DP-Ch18: the caller's resume token is older than the oldest event still
+    /// in retention, so a gap-free stream cannot be served. Explicit, because
+    /// the alternative is delivering with a silent gap, and in an event-linear
+    /// game a silent gap is missing STORY, not stale cache.
+    #[error("resume token expired: requested={requested} earliest_available={earliest}")]
+    ResumeTokenExpired { requested: u64, earliest: u64 },
+
+    /// DP-Ch26: a bubble-up aggregator panicked, was reloaded from its last
+    /// snapshot, replayed, and panicked on the same event again. The SDK stops
+    /// retrying; an operator must unregister it or fix the code. Distinct from
+    /// every other variant in that NO retry can clear it.
+    #[error("aggregator stuck: aggregator={aggregator} channel={channel} on_event={event_id}")]
+    AggregatorStuck { aggregator: &'static str, channel: String, event_id: u64 },
+
     #[error("backend io: {0}")]
     BackendIo(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 ```
 
 **Backpressure variants** (RateLimited, CircuitOpen) MUST be propagated by callers per [DP-R6](11_access_pattern_rules.md#dp-r6--backpressure-propagation-not-swallow-and-retry).
+
+---
+
+### ⚠ AMENDED 2026-08-07 — `REC-102b`: the enum-drift adjudication (closes `REC-65`)
+
+`REC-65` was filed 2026-07-26 — *"`DP-K3` is LOCKED at 21 variants; 5+ docs mint satellites"* — and
+never adjudicated. It is closed here, on a **full census** rather than the original list:
+`rg -o 'DpError::[A-Za-z]+' --include=*.md` over the whole `LLM_MMO_RPG` track, 2026-08-07.
+
+| satellite | sites | verdict |
+|---|---|---|
+| **`ResumeTokenExpired`** | `14` ×4, `22`, `99` | **ADOPT** — load-bearing, has a payload, and no existing variant carries *"the history you asked for is gone"*. Now variant **22** |
+| **`AggregatorStuck`** | `16` | **ADOPT** — the only failure in the whole surface that **no retry can clear**; collapsing it into `BackendIo` would lose exactly that. Now variant **23** |
+| **`ChannelAlreadyDissolved`** | `17` | **STRIKE — duplicate.** `ChannelAlreadyInState { channel, state }` already covers it, generally, and was locked first. `17`'s prose should say `ChannelAlreadyInState { state: "dissolved" }` |
+| **`CausalRefMissing` · `CausalRefCrossReality` · `CausalRefRequired` · `CausalRefForward`** | `07_event_model/02`, `09` | **RE-HOME, not adopt.** All four are **validator-pipeline** rejections — `EVT-A6` says so itself: *"rejected at validator-pipeline time"* — and the validator pipeline is `commit-service`'s admission path, **not the DP SDK**. A `DpError` is what an SDK primitive returns to its caller; these are what an event fails on. They belong to the event-model's own error type. **The drift here is an attribution, not a variant** |
+| **`OwnershipTransferAlreadyActive`** | `features/10_platform_business/PLT_002b` | **NOT A SATELLITE — `REC-65` was wrong about its own list.** Measured: the source never writes it as `DpError::`; it is a feature-level rejection in a platform-business flow. Recorded because a register row that miscounts is the shape this project has now caught four times |
+
+**Net: 21 → 23 variants. One struck, four re-homed, one mis-attributed.**
+
+> **Why this had to be closed before slice 4 and not after.** The tier-typed write surface returns
+> this enum from its first line. Typing it against a set that five documents were still adding to
+> would bake the drift into the SDK's signature, where changing it stops being an edit and starts
+> being a breaking change.
 
 ---
 

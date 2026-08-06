@@ -27,8 +27,52 @@ use uuid::Uuid;
 use crate::envelope::EventEnvelope;
 
 /// Channel identity (BIGINT per DP-Ch11; `None` on an event = reality-scoped).
+///
+/// # The field is private, and that is the whole point (REC-102a)
+///
+/// `DP-Ch1` specifies this newtype as *"module-private constructor — **cannot be
+/// forged by feature code**"*, a parallel shape to `RealityId`, whose entire
+/// justification (`DP-A12`) is that it *"gates cross-reality leakage at the type
+/// level"*. It shipped as `pub i64`, so any caller could write `ChannelId(7)` —
+/// which is the same defect `SEALED-SUBJECT` named on the proposal's `actor`
+/// field and `PID-D5` named on `event_category`: **a value whose supplier is
+/// also its judge.** Third occurrence, same tier, same week.
+///
+/// The spec says `Uuid`; the build, the wire contract (`Uint64String`) and
+/// `DP-Ch11`'s allocator all say 64-bit, and two of three win — `i64` is
+/// adopted into the spec rather than the code being changed to `Uuid`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ChannelId(pub i64);
+pub struct ChannelId(pub(crate) i64);
+
+impl ChannelId {
+    // NOTE: `DP-Ch1`'s sanctioned mint — `pub(crate) fn new_verified`, called
+    // during SDK channel-tree resolution — is deliberately NOT declared here.
+    // It would have no caller, and an unused constructor for a model nothing
+    // produces is the orphan shape `scripts/orphan-model-gate.py` exists to
+    // refuse. It arrives with `crates/dp`, together with the `channels` table
+    // it would resolve against.
+
+    /// Read the raw BIGINT — needed to bind it as a query parameter.
+    pub fn get(self) -> i64 {
+        self.0
+    }
+
+    /// ⚠ **PRE-SDK SEAM — mint a `ChannelId` from a value nothing verified.**
+    ///
+    /// `DP-Ch1`'s only sanctioned mint is `new_verified`, called during SDK
+    /// channel-tree resolution against the `channels` table. **Neither exists
+    /// yet**: `crates/dp` is unbuilt (`FLOW-7`) and `channels` has no migration
+    /// (`FLOW-9`) — so today there is nothing to resolve a channel *against*,
+    /// and every caller here is asserting a subject it did not verify.
+    ///
+    /// This is deliberately a named, greppable function rather than a public
+    /// tuple field. It does not make the mint safe; it makes it **countable**,
+    /// and when `crates/dp` lands this function is deleted and the compiler
+    /// enumerates the migration. `rg 'ChannelId::unverified'` is the worklist.
+    pub fn unverified(raw: i64) -> Self {
+        Self(raw)
+    }
+}
 
 /// A writer lease `(channel_id, epoch)` — DP-Ch12. Possession is necessary
 /// but NOT sufficient: every append re-proves it against the DB.
@@ -74,7 +118,7 @@ pub async fn acquire_writer_lease(
         "#,
     )
     .bind(reality_id)
-    .bind(channel_id.0)
+    .bind(channel_id.get())
     .fetch_one(pool)
     .await?;
     Ok(WriterLease { channel_id, epoch: row.0 })
@@ -134,7 +178,7 @@ impl ChannelWriter {
             "#,
         )
         .bind(self.reality_id)
-        .bind(self.lease.channel_id.0)
+        .bind(self.lease.channel_id.get())
         .bind(self.lease.epoch)
         .fetch_optional(&mut *tx)
         .await?;
@@ -146,7 +190,7 @@ impl ChannelWriter {
                 "SELECT current_epoch FROM channel_writer_state WHERE reality_id = $1 AND channel_id = $2",
             )
             .bind(self.reality_id)
-            .bind(self.lease.channel_id.0)
+            .bind(self.lease.channel_id.get())
             .fetch_optional(&*self.pool)
             .await?;
             return Err(match exists {
@@ -189,7 +233,7 @@ impl ChannelWriter {
         .bind(env.metadata.as_ref())
         .bind(&env.occurred_at)
         .bind(&env.recorded_at)
-        .bind(self.lease.channel_id.0)
+        .bind(self.lease.channel_id.get())
         .bind(channel_event_id)
         .bind(self.lease.epoch)
         .bind(causal_refs)
@@ -205,7 +249,7 @@ impl ChannelWriter {
             "#,
         )
         .bind(self.reality_id)
-        .bind(self.lease.channel_id.0)
+        .bind(self.lease.channel_id.get())
         .bind(channel_event_id)
         .bind(env.event_id)
         .execute(&mut *tx)
@@ -286,7 +330,7 @@ pub async fn claim_writer_lease(
         "#,
     )
     .bind(reality_id)
-    .bind(channel_id.0)
+    .bind(channel_id.get())
     .bind(holder)
     .bind(ttl_secs as f64)
     .fetch_optional(pool)
@@ -322,7 +366,7 @@ pub async fn renew_writer_lease(
         "#,
     )
     .bind(reality_id)
-    .bind(held.lease.channel_id.0)
+    .bind(held.lease.channel_id.get())
     .bind(held.holder)
     .bind(ttl_secs as f64)
     .bind(held.lease.epoch)
@@ -352,7 +396,7 @@ pub async fn release_writer_lease(
         "#,
     )
     .bind(reality_id)
-    .bind(held.lease.channel_id.0)
+    .bind(held.lease.channel_id.get())
     .bind(held.holder)
     .bind(held.lease.epoch)
     .execute(pool)

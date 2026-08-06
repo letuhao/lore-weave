@@ -30,7 +30,7 @@ Two operational gaps clustered here because they share a common audience — fea
 pub struct CausalityToken {
     pub(crate) reality_id: RealityId,
     pub(crate) scope: TokenScope,
-    pub(crate) event_id: u64,         // channel_event_id for Channel scope; event_log id for Reality scope
+    pub(crate) event_id: u64,         // channel_event_id for Channel scope; events id for Reality scope
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

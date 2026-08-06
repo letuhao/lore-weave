@@ -59,7 +59,7 @@ async fn channel_append_allocates_monotonically() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId(1);
+    let ch = ChannelId::unverified(1);
 
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
@@ -74,7 +74,7 @@ async fn channel_append_allocates_monotonically() {
         "SELECT COUNT(*) FROM channel_event_index WHERE reality_id = $1 AND channel_id = $2",
     )
     .bind(reality)
-    .bind(ch.0)
+    .bind(ch.get())
     .fetch_one(&*pool)
     .await
     .unwrap();
@@ -84,7 +84,7 @@ async fn channel_append_allocates_monotonically() {
         "SELECT MAX(channel_event_id) FROM events WHERE reality_id = $1 AND channel_id = $2",
     )
     .bind(reality)
-    .bind(ch.0)
+    .bind(ch.get())
     .fetch_one(&*pool)
     .await
     .unwrap();
@@ -115,7 +115,7 @@ async fn stale_epoch_writer_is_fenced_at_the_db() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId(7);
+    let ch = ChannelId::unverified(7);
 
     let old_lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let old_writer = ChannelWriter::new(pool.clone(), reality, old_lease);
@@ -141,7 +141,7 @@ async fn stale_epoch_writer_is_fenced_at_the_db() {
         "SELECT COUNT(*) FROM events WHERE reality_id = $1 AND channel_id = $2",
     )
     .bind(reality)
-    .bind(ch.0)
+    .bind(ch.get())
     .fetch_one(&*pool)
     .await
     .unwrap();
@@ -171,7 +171,7 @@ async fn append_without_lease_is_distinct_error() {
     let writer = ChannelWriter::new(
         pool.clone(),
         reality,
-        dp_kernel::channel::WriterLease { channel_id: ChannelId(99), epoch: 1 },
+        dp_kernel::channel::WriterLease { channel_id: ChannelId::unverified(99), epoch: 1 },
     );
     let err = writer
         .append(&envelope(reality, "combat_session", "enc-1", 1, "turn.resolved"), &serde_json::json!([]))

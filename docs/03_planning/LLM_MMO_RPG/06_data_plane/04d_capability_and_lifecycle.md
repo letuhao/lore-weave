@@ -294,9 +294,15 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 
 ```rust
 // Rule: in feature crates, detect direct calls to `dp::t2_*`, `dp::t3_*`,
-// `dp::read_projection`, `dp::query_scoped` not lexically wrapped by the
+// `dp::read_projection_*`, `dp::query_scoped_*` not lexically wrapped by the
 // `dp::instrumented!` macro. Warn level (not error — tight loops opt out
 // with `#[allow(dp::missing_instrumentation)]` + aggregated metrics).
+//
+// AMENDED 2026-08-07 (REC-101b): the two matchers said `read_projection` /
+// `query_scoped`, the pre-Phase-4 names. 04b + DP-K12 define the scope-split
+// four, so the bare names match NOTHING and the lint would have been vacuous
+// on every call site the moment it was written from this skeleton — a lint
+// rule and a worked example being exactly what an implementer lifts verbatim.
 ```
 
 ---

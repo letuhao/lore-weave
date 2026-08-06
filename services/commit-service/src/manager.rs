@@ -127,7 +127,7 @@ impl Manager {
             });
         }
 
-        let ch = ChannelId(channel);
+        let ch = ChannelId::unverified(channel);
         let Some(lease) =
             claim_writer_lease(&self.pool, self.reality_id, ch, self.holder, self.ttl_secs)
                 .await

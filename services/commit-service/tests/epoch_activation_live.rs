@@ -76,7 +76,7 @@ async fn the_activation_event_carries_the_unadvanced_turn_number() {
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
     );
-    let lease = acquire_writer_lease(&pool, reality, ChannelId(channel)).await.expect("lease");
+    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     let mut version = 0u64;
 
@@ -134,7 +134,7 @@ async fn an_activated_epoch_reaches_the_channel_log() {
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
     );
-    let lease = acquire_writer_lease(&pool, reality, ChannelId(channel)).await.expect("lease");
+    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     let mut version = 0u64;
 
@@ -236,7 +236,7 @@ async fn reconciling_again_appends_nothing() {
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
     );
-    let lease = acquire_writer_lease(&pool, reality, ChannelId(channel)).await.expect("lease");
+    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     let mut version = 0u64;
 
@@ -280,7 +280,7 @@ async fn a_missed_epoch_is_not_replayed() {
     let pool = Arc::new(
         PgPoolOptions::new().max_connections(2).connect(&channel_dsn).await.expect("channel"),
     );
-    let lease = acquire_writer_lease(&pool, reality, ChannelId(channel)).await.expect("lease");
+    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await.expect("lease");
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     let mut version = 0u64;
 

@@ -115,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
 
     // ── durability side: lease + fenced writer (dp-kernel SDK) ──
     let pool = Arc::new(PgPoolOptions::new().max_connections(4).connect(&args.pg_url).await?);
-    let lease = acquire_writer_lease(&pool, args.reality, ChannelId(args.channel)).await?;
+    let lease = acquire_writer_lease(&pool, args.reality, ChannelId::unverified(args.channel)).await?;
     let writer = ChannelWriter::new(pool.clone(), args.reality, lease);
     println!("lease acquired: channel {} epoch {}", args.channel, lease.epoch);
 

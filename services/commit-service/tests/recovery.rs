@@ -143,7 +143,7 @@ async fn recovery_reads_back_what_the_writer_committed() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId(1);
+    let ch = ChannelId::unverified(1);
     let ts = db_now(&pool).await;
 
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
@@ -156,7 +156,7 @@ async fn recovery_reads_back_what_the_writer_committed() {
         writer.append(&env, &serde_json::json!([])).await.unwrap();
     }
 
-    let rec = recover_writer_state(&pool, reality, ch.0, RECOVERY_TAIL).await.unwrap();
+    let rec = recover_writer_state(&pool, reality, ch.get(), RECOVERY_TAIL).await.unwrap();
     assert_eq!(rec.seen_input_ids.len(), 3, "every committed dedup key came back");
     assert!(rec.seen_input_ids.contains(&InputId(big)), "128-bit id survived the round trip");
     assert_eq!(rec.turn_number, 3, "turn counter recovered, not reset to 0");
@@ -177,7 +177,7 @@ async fn a_redelivered_intent_does_not_apply_twice_after_writer_handover() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId(2);
+    let ch = ChannelId::unverified(2);
     let ts = db_now(&pool).await;
 
     // Node A commits one resolution, then dies before ACKing the bus.
@@ -191,7 +191,7 @@ async fn a_redelivered_intent_does_not_apply_twice_after_writer_handover() {
 
     // Node B takes the lease and the bus redelivers the SAME intent.
     let _lease_b = acquire_writer_lease(&pool, reality, ch).await.unwrap();
-    let rec = recover_writer_state(&pool, reality, ch.0, RECOVERY_TAIL).await.unwrap();
+    let rec = recover_writer_state(&pool, reality, ch.get(), RECOVERY_TAIL).await.unwrap();
     assert!(rec.seen_input_ids.contains(&InputId(in_flight)));
 
     // (a) WITHOUT recovery — the pre-fix behaviour, kept as the control. If
@@ -239,14 +239,14 @@ async fn recovery_does_not_block_new_intents() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId(3);
+    let ch = ChannelId::unverified(3);
     let ts = db_now(&pool).await;
 
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     writer.append(&envelope(reality, 1, 0xAAA, 1, &ts), &serde_json::json!([])).await.unwrap();
 
-    let rec = recover_writer_state(&pool, reality, ch.0, RECOVERY_TAIL).await.unwrap();
+    let rec = recover_writer_state(&pool, reality, ch.get(), RECOVERY_TAIL).await.unwrap();
     let mut isle = island();
     let at = isle.tick_now();
     seed_seen(&mut isle, &rec.seen_input_ids, at);
@@ -276,7 +276,7 @@ async fn recovery_is_scoped_to_its_own_channel() {
     let ts = db_now(&pool).await;
 
     for (ch, id) in [(10i64, 0x111u128), (11, 0x222)] {
-        let lease = acquire_writer_lease(&pool, reality, ChannelId(ch)).await.unwrap();
+        let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(ch)).await.unwrap();
         let w = ChannelWriter::new(pool.clone(), reality, lease);
         // Distinct aggregate per channel — see `envelope`'s note on the PK.
         let env = envelope_for(reality, &format!("enc-ch{ch}"), 1, id, 1, &ts);

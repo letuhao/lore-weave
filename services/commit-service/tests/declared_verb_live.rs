@@ -85,7 +85,7 @@ async fn a_declared_verb_reaches_the_log_and_the_wire() -> anyhow::Result<()> {
     let reality = Uuid::new_v4();
     let channel = 1i64;
     let pool = PgPoolOptions::new().max_connections(4).connect(&dsn).await?;
-    let lease = acquire_writer_lease(&pool, reality, ChannelId(channel)).await?;
+    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel)).await?;
     let writer = ChannelWriter::new(Arc::new(pool.clone()), reality, lease);
 
     let mut state = CombatState { session_seed: 0x5EED, ..Default::default() };

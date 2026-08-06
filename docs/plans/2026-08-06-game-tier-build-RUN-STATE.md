@@ -1219,6 +1219,48 @@ test-plan doc once SDK implementation starts."** So `FLOW-12`'s finding is defer
 locked files with the **same trigger** — and that trigger is the slice about to begin. `Q13` is not
 stale; it is **due**.)*
 
+### `SLICE-0` — DONE, 2026-08-07. What was applied, what was queued, and why the split is the work
+
+Filed as **`REC-99`..`REC-102`** in `19_reconciliation_register.md` §16 — **no new registry**
+(`GDA-D12`), because these are reconciliations and that file is their home.
+
+**The load-bearing decision is the A/B/C split**, not any individual edit:
+
+| class | meaning | verdict |
+|---|---|---|
+| **A** | a decision already made and never applied | **APPLY** — it was locked eleven days ago |
+| **B** | the document states something **factually false about this repo** | **APPLY** — a doc naming a table that never existed is not a locked decision, it is an error, and an implementer copying it gets a Postgres error rather than a different design |
+| **C** | changing it changes a **decision** | **QUEUE for the PO** — recorded, not applied |
+
+#### Applied
+
+| | edit | evidence |
+|---|---|---|
+| **B** | `event_log` → `events`, **37 identifier-position occurrences across 8 locked files** | shipped table is `events` (`0002_events_table.up.sql`); `event_log` exists nowhere in the game tier. Residual: **0** |
+| **B** | `DP-Ch11`'s `UNIQUE (reality_id, channel_id, channel_event_id)` → the shipped `channel_event_index` + `channel_writer_state` CAS pair | the constraint **cannot be created**: `events` is `PARTITION BY RANGE (recorded_at)`. The build knew on 2026-07-27 and filed it as *"REC-80 candidate"* — an **id already taken**. Now `REC-99b` |
+| **B** | `DP-Ch22`'s partial UNIQUE index → a non-partitioned `channel_turn_index` | **the same defect, one file over, never found** — partial unique indexes are not supported on partitioned tables at all. It survived because `advance_turn` was never built, so nothing executed the DDL. `REC-99c` |
+| **B** | `BroadcastScope::Region(RegionId)` → `Channel(ChannelId)` | the only surviving `region` in the locked corpus, in a **type signature**, on the T1 broadcast path. `REC-101a` |
+| **B** | bare `read_projection` / `query_scoped` → the scope-split four, at **4 sites** including `DP-K8`'s worked example and `DP-K11`'s lint skeleton | those two are what an implementer lifts verbatim — **the lint would have been vacuous on every call site**. `REC-101b` |
+| **B** | `Q20 Part A/B` — **19 occurrences across 3 files** de-transliterated | it is a stable **identifier**, and `doc-language-gate` blocked this audit's own commit for quoting it faithfully. `REC-101c` |
+| **A** | `DP-X3`'s V1 hotset → the **W1 first-frame set** | `GDA-D13`, decided 2026-07-26, never applied. `GDA-F8` measured that all three previously-named aggregates **do not exist** — the pre-warm warmed nothing |
+| **B** | `_index.md` gains a **read-this-first** banner | the three crates it names are unbuilt; `dp-kernel` is not them; 16 of 18 `DP-Ch` symbols, every `DP-C*`, and every DP Redis keyspace are zero. `REC-100` |
+
+#### `REC-102` — ✅ **PO APPROVED 2026-08-07, ALL THREE APPLIED** (spec *and* code, one commit)
+
+| # | resolution | evidence |
+|---|---|---|
+| **(a)** `ChannelId` | spec adopts **`i64`** — two of three artifacts said 64-bit and `DP-Ch11`'s allocator is a **counter**, which a `Uuid` cannot be. Code's field becomes **`pub(crate)`**. `new_verified` deliberately **not** added: an unused constructor for a model nothing produces is the orphan shape `orphan-model-gate` refuses. Instead a named, greppable **`ChannelId::unverified(i64)`** that claims no safety and makes the mints **countable** | **22 call sites — 18 tests, 3 operator CLIs, and exactly ONE load-bearing**: `commit-service/src/manager.rs`, where the channel arrives **from the wire**. `SEALED-SUBJECT` verbatim, now visible. `cargo check -p dp-kernel -p commit-service --all-targets` green; `cargo test -p dp-kernel --lib` **315 passed** |
+| **(b)** `DpError` | closes `REC-65` on a **full census**, not its original list. **21 → 23**: adopt `ResumeTokenExpired` (no variant carries *"the history you asked for is gone"*) + `AggregatorStuck` (**the only failure no retry can clear**); strike `ChannelAlreadyDissolved` (duplicate); **re-home the four `CausalRef*`** — `EVT-A6` itself says *"rejected at validator-pipeline time"*, and that pipeline is `commit-service`'s admission, **not the SDK**, so the drift is an **attribution**, not a variant | and `OwnershipTransferAlreadyActive` **is not a satellite at all** — the source never writes it as `DpError::`. **`REC-65` miscounted its own list**, which is the fifth time this project has caught a register row wrong about its own subject |
+| **(c)** degraded mode | **a partition, not a winner.** T0/T1/T2 **buffer and dilate** — `SR06` is right that the island must not stop because a *sink* is unreachable. **T3 still rejects** — `DP-T3` *is* invalidate-before-ack, so a buffered T3 acks a promise not kept | **`GDA-F11`'s resolution applied one failure-mode over**: *the island stays authoritative for state, and the tier decides whether the write may proceed without its store.* Datable root cause: `DP-F1`–`F5` were written while the **DB was believed to be the SSOT** (`AUD-F16` root #3) |
+
+**Verify evidence:** `event_log` 0 · `Part A/B` 0 residual VN · bare `read_projection`/`query_scoped`
+0 · `RegionId` 1 (inside its own amendment note, deliberate) · `amendment-rot-gate` OK 380 docs ·
+`phase0-reconcile-gate` OK · `citation-gate` OK.
+
+**What slice 0 did NOT do, stated so it is not mistaken for done:** it changed no code, and it did not
+touch `REC-53`/`REC-58`/`REC-68`/`AGT-A2`/`AGT-D1` — those are **EVT- and AGT-track** amendments this
+audit never examined. Claiming the bundle is discharged would be false; the **DP-track half** is.
+
 ### Stated limit of this audit
 
 Read in full: `22`, `06`, **`04c`**, **`04d`**, **`12`**, `17`, `20`, `38 §0–§4`, `37 §1`,
@@ -1288,6 +1330,7 @@ seam. They are the remaining work of this review.
 
 | # | what nearly went wrong |
 |---|---|
+| `BDR-25` | **A regex over a type name is a regex over a WORD, and this tier has four things sharing one.** Migrating `ChannelId(` → `ChannelId::unverified(` swept `services/tilemap-service`, which has its **own unrelated `pub struct ChannelId(pub String)`**, and emitted `pub struct ChannelId::unverified(pub String);`. Caught by `cargo`, reverted in full, ~40 seconds lost. Worth recording anyway because **it is `FLOW-24` biting the person who wrote `FLOW-24`**: I had just finished documenting three name collisions between the DP corpus and the platform, and then took a fourth one in the face while acting on that very finding. The corpus-wide lesson holds one level lower than I stated it — **the collisions are not only between DOCUMENTS, they are between TYPES in one workspace**, and a rename is never safe on a name alone. |
 | `BDR-23` | **I was one message from starting slice 1, and the PO stopped me to finish the review — which then found slice 0.** The build order was sealed, committed and pushed; every dependency in it was measured and every one of them held. What it was missing was not a dependency, it was a **precondition**: `REC-65` records `DP-K3`'s error enum already drifting across five documents, and slice 4 types the write surface against it. Building in the sealed order would have been correct and would still have baked the drift into the SDK's first line. ⇒ **A dependency graph answers *what can be built first*. It does not answer *what is safe to build against*, and I had only asked the first question.** |
 | `BDR-24` | **I proposed `FLOW-AUDIT` as new work, and two of its four findings were already written down** — `38 §0` had printed the same six-phase chain with the same `❌ Phase 2` a week earlier, and `17`'s opening paragraph names the *"zero end-to-end flows"* defect in its own words. My contribution was **re-measuring them against today's tree** (both still true) and joining them to `FLOW-1`, which was new. Worth recording because the instinct on being asked *"keep reviewing"* is to look for something unfound, and here the unfound thing was **that two known findings were the same finding, and neither had moved.** |
 | `BDR-1` | I opened this file about to write *"the first consumer is the command substrate"*, which is what the previous turn's summary implied. Measuring first showed the ordering is the other way and **derivable**: an `EffectRow` targets a quantity ordinal, so while the actor's numbers are struct fields the substrate cannot be declarative. A plan whose first line is wrong about its own order is worse than no plan. |

@@ -21,8 +21,16 @@ It does **not** lock: per-channel event ordering (→ Q17/Q30), writer node bind
 /// Channel identifier. Newtype with module-private constructor — cannot be
 /// forged by feature code. Produced only by the SDK during channel-tree
 /// resolution (at bind_session or on delta-stream updates).
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct ChannelId(pub(crate) Uuid);
+///
+/// ⚠ AMENDED 2026-08-07 (REC-102a, PO-approved): the payload is `i64`, not
+/// `Uuid`. Three artifacts disagreed and two of the three said 64-bit — the
+/// shipped `crates/dp-kernel/src/channel.rs`, and the client wire contract
+/// (`contracts/game-wire/common.schema.json`, `Uint64String`). The build is
+/// right on substance: DP-Ch11's allocator is a monotonic per-channel COUNTER
+/// seeded from MAX(), which is what a BIGINT is for; a Uuid cannot be
+/// incremented. So the spec adopts i64 rather than the code adopting Uuid.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
+pub struct ChannelId(pub(crate) i64);
 
 impl ChannelId {
     /// Reserved: the root channel of a reality. Stable per-reality derivation
@@ -30,11 +38,35 @@ impl ChannelId {
     /// an extra CP lookup.
     pub fn reality_root(reality_id: &RealityId) -> Self { /* deterministic derivation */ }
 
-    pub fn as_str(&self) -> String { self.0.to_string() }
+    /// Read the raw BIGINT — needed to bind it as a query parameter.
+    pub fn get(self) -> i64 { self.0 }
 
-    pub(crate) fn new_verified(uuid: Uuid) -> Self { Self(uuid) }
+    pub(crate) fn new_verified(raw: i64) -> Self { Self(raw) }
 }
 ```
+
+> **⚠ AMENDED 2026-08-07 (REC-102a) — the SHIPPED type had a `pub` field, and the privacy is the
+> whole point.** `crates/dp-kernel/src/channel.rs` declared `pub struct ChannelId(pub i64)`, so any
+> caller could write `ChannelId(7)`. That deletes exactly the property this section claims — *"cannot
+> be forged by feature code"* — and it is the property `DP-A12` rests the whole cross-reality
+> argument on for the parallel `RealityId`. **It is the third occurrence of one shape this week**:
+> `SEALED-SUBJECT` on the proposal's `actor`, `PID-D5` on `event_category`, and here — *a value whose
+> supplier is also its judge.*
+>
+> **Applied to the code in the same commit.** The field is now `pub(crate)`, with `get()` for the
+> query-binding read. Because `new_verified`'s caller — SDK channel-tree resolution against the
+> `channels` table — **does not exist yet** (`crates/dp` is unbuilt, and `channels` has no migration),
+> the code carries a deliberately-named, greppable `ChannelId::unverified(i64)` instead:
+>
+> - It does **not** claim safety. It makes the unverified mints **countable**. Measured
+>   2026-08-07 — `rg -c 'ChannelId::unverified' --type rust` over `crates/` + `services/`:
+>   **22 call sites**, and the shape of the list is the useful part. **18 are tests**; three of the
+>   remaining four are operator CLIs (`bin/spine.rs`, `bin/ceilings.rs`). **The load-bearing one is
+>   exactly one line** — `services/commit-service/src/manager.rs`, where the channel arrives **from
+>   the wire**, which is `SEALED-SUBJECT`'s site verbatim, now visible instead of invisible.
+> - When `crates/dp` lands, the function is deleted and the compiler enumerates the migration.
+> - `new_verified` is deliberately **not** declared in the code yet: an unused constructor for a model
+>   nothing produces is the orphan shape `scripts/orphan-model-gate.py` refuses.
 
 Parallel shape to [`RealityId`](04a_core_types_and_session.md#realityid) (see [DP-K1](04a_core_types_and_session.md#dp-k1--core-types)) — same module-privacy story, same newtype discipline, compile-time forgery prevention.
 
