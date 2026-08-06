@@ -41,42 +41,29 @@ pub use entity_existence::{GoneState, higher, reduce};
 
 // ── Refs + envelope ─────────────────────────────────────────────────────────
 
-/// Aggregate type enum. Mirrors the 5 cycle-13 per-aggregate skeletons.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AggregateType {
-    /// Player character.
-    Pc,
-    /// Non-player character.
-    Npc,
-    /// Region of the world map.
-    Region,
-    /// Free-form world key/value store.
-    WorldKv,
-    /// Session aggregate.
-    Session,
-}
-
-impl AggregateType {
-    /// Canonical snake_case string.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Pc => "pc",
-            Self::Npc => "npc",
-            Self::Region => "region",
-            Self::WorldKv => "world_kv",
-            Self::Session => "session",
-        }
-    }
-}
 
 /// One entity to resolve. Mirrors `EntityRef` in Go.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EntityRef {
     /// Aggregate primary key (UUID string).
     pub entity_id: String,
-    /// Aggregate kind.
-    pub aggregate_type: AggregateType,
+    /// Aggregate kind, as an OPEN string — mirrors `EntityRef.AggregateType`
+    /// in `contracts/entity_status/resolver.go`.
+    ///
+    /// **It was a closed `enum AggregateType { Pc, Npc, Region, WorldKv,
+    /// Session }` and that broke the plugin architecture at the lowest layer**
+    /// (PO, 2026-08-06). A closed set here means a new aggregate kind needs an
+    /// ENGINE RELEASE — which is `D-2` inverted: the engine had closed on
+    /// VOCABULARY. `EventEnvelope.aggregate_type` was already a `String` on
+    /// both sides of the wire, so the enum closed a door the design had
+    /// deliberately left open.
+    ///
+    /// It was also dead: all five members named projections that `0017` and
+    /// `0018` DROPPED — `pc_*`, `npc_*`, `region_projection`,
+    /// `world_kv_projection`, `session_participants` — and it had zero
+    /// consumers outside this file. The enum outlived every one of its
+    /// subjects.
+    pub aggregate_type: String,
     /// Home reality id.
     pub reality_id: String,
 }
@@ -86,6 +73,15 @@ impl EntityRef {
     pub fn validate(&self) -> Result<(), EntityStatusError> {
         if self.entity_id.trim().is_empty() {
             return Err(EntityStatusError::BadRef("entity_id empty".into()));
+        }
+        // REQUIRED, and this check is what replaces the deleted enum. Dropping
+        // a closed set without adding the emptiness check would trade "cannot
+        // be a new kind" for "can be nothing at all" — a strictly worse
+        // bargain. Go has always had it (`resolver.go`: `r.AggregateType ==
+        // ""`), so the Rust side was simultaneously MORE closed and LESS
+        // validated than the mirror it claims to mirror.
+        if self.aggregate_type.trim().is_empty() {
+            return Err(EntityStatusError::BadRef("aggregate_type empty".into()));
         }
         if self.reality_id.trim().is_empty() {
             return Err(EntityStatusError::BadRef("reality_id empty".into()));
@@ -406,7 +402,7 @@ mod tests {
     fn sample_ref() -> EntityRef {
         EntityRef {
             entity_id: "11111111-2222-3333-4444-555555555555".into(),
-            aggregate_type: AggregateType::Pc,
+            aggregate_type: "actor".into(),
             reality_id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".into(),
         }
     }
@@ -609,18 +605,14 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_type_round_trip() {
-        for at in [
-            AggregateType::Pc,
-            AggregateType::Npc,
-            AggregateType::Region,
-            AggregateType::WorldKv,
-            AggregateType::Session,
-        ] {
-            let s = serde_json::to_string(&at).unwrap();
-            let back: AggregateType = serde_json::from_str(&s).unwrap();
-            assert_eq!(back, at);
-        }
+    fn an_empty_aggregate_type_is_refused() {
+        // The guard that replaces the deleted closed enum. Bitten: remove the
+        // check in `validate()` and this reds.
+        let mut r = sample_ref();
+        r.aggregate_type = "  ".into();
+        assert!(r.validate().is_err(), "an empty aggregate_type must be refused");
+        r.aggregate_type = "anything_a_feature_declares".into();
+        assert!(r.validate().is_ok(), "the set is OPEN — any non-empty kind is legal");
     }
 
     #[test]
