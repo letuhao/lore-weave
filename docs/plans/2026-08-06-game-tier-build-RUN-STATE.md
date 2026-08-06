@@ -758,6 +758,59 @@ the drift into the first line of the SDK.
 not part of it, and `38`/`37` already own its design. Recorded so it is chosen rather than
 rediscovered: **after slice 4, the next thing the world needs is a world.**
 
+### `FLOW-5` — FOUNDATION or FEATURE, and the test is one the repo already runs
+
+**PO, 2026-08-07:** *"this needs to be made clear — segment C is unbuilt because it is
+FEATURE-SPECIFIC. G, B and D–F are foundation. The rest I don't know. But yes, we are missing
+foundation."* Correct on all three, and the criterion that separates them is already mechanical.
+
+> **`FLOW-A1` — a layer is FOUNDATION if it can be written without naming a single game noun.**
+> The moment a design cannot be stated without `place`, `hp`, `inventory`, `tilemap` or `combat`,
+> it has stopped being the engine and started being a world. This is `D-2` — *the engine closes on
+> MECHANISM, the manifest closes on VOCABULARY* — applied one tier up, to the question of what
+> belongs in the foundation at all.
+
+**It is not a new discipline: `scripts/engine-vocabulary-gate.py` already IS this test**, run
+pre-commit, over every tree that transitively reaches `ruleset-core` or `actor-hub`, with the
+forbidden words **parsed out of the shipped presets** rather than listed. It was pointed at
+crate source. It was never pointed at the layering question.
+
+### And then the split falls out, and it explains why the foundation went missing
+
+| | segment | verdict | why |
+|---|---|---|---|
+| **A** | content pipeline | **SPLIT** — `CPL-A3`'s six-part contract (schema · extractor · enricher · normalizer · admission · repair) is foundation; the **eight element generators are feature**. `CPL-A2` is the seam: *the generator's output is admitted by the ENGINE'S OWN validator* | build-time authoring, and `world-gen` shipped as one instance of a contract nobody extracted |
+| **B** | manifest → digest → ruleset | **FOUNDATION** ✅ built | names no noun: it resolves, normalises, hashes and stores whatever is declared |
+| **C** | seeding | **SPLIT — and the PO is right about the visible half.** The emission DAG (`PlaceBorn`/`LayoutBorn`/`TilemapBorn`/`EntityBorn`) is **feature**. The lifecycle worker — CAS, checkpointing, resumability, idempotency keys, the reality writer lease — is **foundation**, and `GDA-A3` already separated them: *the worker HOSTS the `RealityBootstrapper` role* | **measured 2026-08-07: the STATES exist and the TRANSITION has no driver.** `crates/meta-rs/src/routing.rs` declares `Provisioning · Seeding · Active · Frozen · Migrating · Archived`; `rg '\b(Seeding\|seed_reality)\b'` finds **no worker**. A reality can be marked `seeding` and nothing will ever move it out |
+| **D–F** | island → commit → log → projection | **FOUNDATION** ✅ built | the whole write spine, noun-free |
+| **G** | tiers · cache · SDK primitives | **FOUNDATION** ❌ **zero** | `DP-X1`'s four coherency models mention no game object at all |
+| **H** | outbox → stream → durable subscribe | **FOUNDATION** ⚠ transport built, DP semantics absent | resume tokens, gaplessness, redaction *policy* — mechanism. The specific policies are feature |
+| **I** | client wire | **SPLIT** — `CWC-A1..A8` (room-is-a-projection · 64-bit-as-string · `client_protocol` ladder · reconnect-is-catch-up · DTO≠aggregate) is **foundation**; `PcSelf`/`InventorySummary`/`RosterEntry`/`CombatFrame` are **feature** | schemas scaffolded, one producer |
+| **J** | prompt assembly | **SPLIT** — `Composer`, section structure, budget, filter chain, audit row = foundation (**built, gates `Noop`**); the `ContextResolver`'s section→source **table** = feature | `ContextResolver` itself is the missing *mechanism*, 0 occurrences |
+
+### `FLOW-6` — the one-line statement of what is missing
+
+Read the ✅ column and the ❌ column and they separate perfectly:
+
+> **Everything built is a WRITE. Everything missing is a READ.**
+>
+> **B** writes the rules in · **C** writes the world in · **D–F** write state down. All specified,
+> and every one of them either built or feature-scoped.
+> **G** is the read contract (a tier IS a coherency guarantee — `DP-X1`'s columns are literally
+> *read-your-writes* and *cross-session visibility*) · **H** is the read reaching a client · **I**
+> is the read a browser can render · **J** is the read an LLM can reason over. **None exists.**
+
+**And `GDA-F3` said this in July, about a smaller subject:** *"`02_storage` §4.4 documents the
+WRITE path. There was **no read-path section anywhere** — a striking asymmetry for a system whose
+founding premise is that event-sourcing reads are expensive."* It resolved that for one flow. The
+asymmetry it noticed is the whole shape of the tier.
+
+⇒ **This is why "missing foundation" is not the same as "unbuilt features."** A feature can be
+missing and the ones that exist still work. **A read contract cannot** — every feature reads, so
+each one either invents its own access (which is the 457 bare `reality_id` sites) or waits. That is
+the precise sense in which the house has no floor: not that rooms are missing, but that everything
+already standing is resting on the ground.
+
 ### Stated limit of this audit
 
 Read in full: `22`, `06`, `17`, `20`, `38 §0–§4`, `37 §1`, `19 §12b/§15`. **Measured but not read in
