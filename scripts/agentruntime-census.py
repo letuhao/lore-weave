@@ -100,6 +100,16 @@ SUITE = "tests/test_cp1_membrane.py"
 ALLOWLIST = ROOT / "contracts" / "agentruntime-census-silent.txt"
 
 
+def _with_condition(node: ast.Raise):
+    """The refusal **and the test that reaches it**, as one expression."""
+    cond = getattr(_with_condition, "_ctx", {}).get(id(node))
+    if cond is None:
+        return node
+    return ast.Expr(value=ast.Tuple(elts=[ast.parse(ast.unparse(cond)).body[0].value,
+                                          ast.parse(ast.unparse(node)).body[0].exc
+                                          or ast.Constant(value=None)], ctx=ast.Load()))
+
+
 def _shape_digest(node: ast.Raise) -> str:
     """A digest of the refusal's SHAPE, stable across interpreters and blind to its prose.
 
@@ -122,7 +132,14 @@ def _shape_digest(node: ast.Raise) -> str:
     retyped or restructured refusal does not. The function name is already the id's prefix, so a
     rename is visible there and does not need to churn the digest as well.
     """
-    shape = ast.parse(ast.unparse(node)).body[0]
+    # \U0001F534 **THE ID COVERED THE `raise` AND NOT THE CONDITION THAT REACHES IT.** A verifier
+    # replaced each guard's test with `False` — making the refusal unreachable — and the id set was
+    # **unchanged for 59 of 59** guarded sites, including **10 of the 13 allowlisted rows**. So a
+    # change that silently disables a refusal moves nothing in the allowlist. Widening the digest to
+    # the enclosing branch test also takes the collision groups from 4 to **0** while a full reword
+    # sweep still moves **0 of 68** rows — which refutes the framing I had accepted, that a stable id
+    # and a prose-blind id were incompatible and one had to be chosen. The trade was never that.
+    shape = ast.parse(ast.unparse(_with_condition(node))).body[0]
     for n in ast.walk(shape):
         if isinstance(n, ast.Constant) and isinstance(n.value, str):
             n.value = "\u0000"
@@ -144,6 +161,11 @@ def _sites(tree: ast.AST, mod: str) -> list[tuple[str, ast.Raise]]:
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 walk(child, f"{qual}.{child.name}" if qual else child.name)
                 continue
+            if isinstance(child, (ast.If, ast.While)):
+                for inner in ast.walk(child):
+                    if isinstance(inner, ast.Raise):
+                        _with_condition._ctx = getattr(_with_condition, "_ctx", {})
+                        _with_condition._ctx.setdefault(id(inner), child.test)
             if isinstance(child, ast.Raise):
                 exc = child.exc
                 name = "reraise"
@@ -215,6 +237,12 @@ def census(verbose: bool = False) -> dict[str, bool]:
     # `atexit` and on SIGINT/SIGTERM.
     mirror = _mirror()
     pkg, cs = mirror / _PKG_REL, mirror / _CS_REL
+    import atexit as _atexit
+    import shutil as _shutil
+    # \U0001F534 108 directories, 8.4 GB measured — one 237 MB copy per run, never removed, and one of
+    # them landed inside the repo and reddened an unrelated test that a verifier nearly filed as a
+    # finding. An instrument that leaves debris is an instrument that manufactures findings.
+    _atexit.register(lambda: _shutil.rmtree(mirror, ignore_errors=True))
     for path in sorted(pkg.glob("*.py")):
         if path.name == "__init__.py":
             continue
@@ -243,6 +271,12 @@ def _selftest() -> int:
     for path in sorted(PKG.glob("*.py")):
         if path.name != "__init__.py":
             sites += _sites(ast.parse(path.read_bytes().decode("utf-8")), path.name)
+    _ids = [sid for sid, _ in sites]
+    _ordinal_free = {sid.rsplit("::", 2)[0] + "::" + sid.rsplit("::", 1)[1] for sid in _ids}
+    if len(_ordinal_free) != len(_ids):
+        print(f"SELFTEST FAIL: {len(_ids)} sites share {len(_ordinal_free)} ordinal-free ids. "
+              f"Two refusals with one id means an allowlist row does not name a site.")
+        return 1
     if len(sites) < 50:
         print(f"SELFTEST FAIL: found only {len(sites)} raise sites; the enumeration broke")
         return 1
@@ -259,7 +293,19 @@ def _selftest() -> int:
     if target is None:
         print("SELFTEST FAIL: no probe site in check_row_shape")
         return 1
-    probe.write_bytes(_neutered(src, target).encode("utf-8"))
+    # \U0001F534 **THE NINTH BYPASS, AND IT IS THIS RUN'S SIGNATURE:** `_selftest` neuters and restores
+    # **twenty lines below `census()`**, and the guard never calls it — so pointing its probe at the
+    # live tree left the gate green. **The fix moved one writer into the mirror and left its sibling
+    # behind**, the tenth pair in this run repaired at one end. Enumerated as {2 writers} × {4 write
+    # APIs}: **1 of 8 caught.**
+    _mutated = _neutered(src, target).encode("utf-8")
+    if _mutated == raw:
+        # \U0001F534 And the control was theatre: it printed `fires on a guarded one` when `_neutered`
+        # returned its input unchanged, and again when this write was deleted outright. A positive
+        # control that cannot tell "fired" from "never ran" certifies nothing.
+        print("SELFTEST FAIL: neutering produced an identical file; the injection is a no-op")
+        return 1
+    probe.write_bytes(_mutated)
     try:
         fired = not _suite_is_green(mirror / _CS_REL)
     finally:

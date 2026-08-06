@@ -2157,8 +2157,26 @@ class TestStageKindsAreDataNotClosures:
         #
         # A guard that executes the instrument must not execute inside it. The mirror has no `.git`;
         # that is the signal, and skipping is honest here because the outer run is the one measuring.
-        if not (_REPO / ".git").exists():
-            pytest.skip("running inside a census mirror; the outer run is the measurement")
+        # \U0001F534 **AND THE DOCSTRING ABOVE DESCRIBED A CAPABILITY I HAD NOT WRITTEN.** It says this
+        # drives `census()` over a two-site FIXTURE package; it called the real one. Running the
+        # instrument over the real package from inside the suite the instrument runs is what caused
+        # the recursion in the first place, and a skip only papered over it: in the live tree the
+        # guard still launched a full ten-minute census inside another suite run.
+        #
+        # It now does what the docstring said. A two-site fixture makes the run seconds instead of
+        # minutes, removes the re-entrancy entirely, and — the part that matters — lets the
+        # assertion below be about **the real package's bytes**, which a fixture run must never
+        # touch.
+        import tempfile
+
+        fixture = pathlib.Path(tempfile.mkdtemp(prefix="lw-census-fixture-"))
+        (fixture / "probe.py").write_text(
+            "def a(x):\n"
+            "    if not x:\n"
+            '        raise ValueError("a")\n'
+            "def b(x):\n"
+            "    if x:\n"
+            '        raise TypeError("b")\n', encoding="utf-8")
         pkg = _REPO / "services" / "chat-service" / "app" / "agentruntime"
         before = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(pkg.glob("*.py"))}
         assert len(before) >= 6, "the package moved; this probe would assert nothing"
@@ -2184,6 +2202,10 @@ class TestStageKindsAreDataNotClosures:
 
         with pytest.MonkeyPatch.context() as mp:
             mp.setattr(census_mod, "_suite_is_green", _instant_green)
+            mp.setattr(census_mod, "PKG", fixture)
+            mp.setattr(census_mod, "_mirror", lambda: fixture.parent)
+            mp.setattr(census_mod, "_PKG_REL", pathlib.Path(fixture.name))
+            mp.setattr(census_mod, "_CS_REL", pathlib.Path(fixture.name))
             mp.setattr(pathlib.Path, "write_bytes", _watch)
             results = census_mod.census()
 
@@ -2201,7 +2223,10 @@ class TestStageKindsAreDataNotClosures:
             "corrupts every concurrent suite run - both measured, and both are why it must work in "
             "a mirror."
         )
-        assert results, "census() enumerated nothing, so the assertion above is vacuous"
+        assert len(results) == 2, (
+            f"the fixture has two refusals and the census found {len(results)}; the probe is not "
+            f"exercising the enumeration it claims to"
+        )
         # Outside the repo entirely - `pkg not in s.parents` was backwards, since the suite's cwd is
         # an ANCESTOR of the package, so it passed for the live tree too.
         assert seen and all(s is not None and _REPO not in s.parents and s != _REPO for s in seen), (
