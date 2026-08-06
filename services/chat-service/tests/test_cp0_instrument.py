@@ -1768,6 +1768,62 @@ class TestU2ACatalogueOutageIsRegistered:
             f"the scope was rewritten to {rows[0].get('scope')!r}"
         )
 
+    def test_AS_TEXT_RETURNS_A_PLAIN_STR__not_a_subclass(self):
+        """R12's finding #3 was fixed and **left untested**, which is how it survived to be found
+        again: `str(value)` on an object whose `__str__` returns a `str` SUBCLASS handed the dedupe
+        set an unhashable key at the exact line whose comment says the crash is closed."""
+        class Unhashable(str):
+            __hash__ = None
+
+        class Sneaky:
+            def __str__(self):
+                return Unhashable("boom")
+
+        assert type(instrument._as_text(Sneaky())) is str
+        assert type(instrument._as_text(Unhashable("x"))) is str
+        rec = instrument.AdvertisedToolsRecorder()
+        rec.absorb([{"scope": "catalogue", "stage": Sneaky(), "reason": Sneaky()}])
+        assert rec.withheld_json()                    # the dedupe key did not explode
+
+    def test_ABSORB_EMPTIES_THE_REAL_SINK__not_a_copy_of_it(self):
+        """`sink = list(sink)` drained the **copy** and left the original full, so a checkpoint plus
+        a terminal write absorbed the same rows twice — measured 1 row becoming 2. The copy was added
+        to stop a container lying about `pop`; it stopped the drain instead."""
+        class Weird(list):
+            pass
+
+        sink = Weird([{"scope": "catalogue", "stage": "s", "reason": "r"}])
+        rec = instrument.AdvertisedToolsRecorder()
+        rec.absorb(sink)
+        assert list(sink) == [], "the real sink was not emptied; a second absorb duplicates it"
+        rec.absorb(sink)
+        assert len(rec.withheld_json()) == 1
+
+    def test_a_NON_DICT_row_names_what_it_actually_WAS(self):
+        """The second coercion branch was dead code, so a row of `42` recorded `stage: "unknown"` —
+        losing the one fact a reader needs to find whoever appended it."""
+        rec = instrument.AdvertisedToolsRecorder()
+        rec.absorb([42])
+        rows = rec.withheld_json()
+        assert rows and "int" in rows[0]["reason"], rows
+
+    def test_ARMING_CANNOT_RAISE_ON_ANY_SINK_CONTENT(self):
+        """🔴 The derived-flag code used `isinstance(e, dict)` and a bare `.get` — **in the commit
+        whose headline was that `isinstance` was the bug**. A rogue row made `arm_turn_surface`
+        itself raise, and that is the FIRST STATEMENT of every turn entry point: a failure there
+        takes the whole turn."""
+        class Hostile(dict):
+            def get(self, *a, **k):
+                raise RuntimeError("no")
+
+        import contextvars
+
+        def run():
+            instrument.surface_withheld.set([Hostile(), 42, None, "x"])
+            return instrument.arm_turn_surface()
+
+        assert contextvars.copy_context().run(run) is not None
+
     def test_the_outage_row_survives_reconciliation_because_it_has_no_name_to_reconcile(self):
         """`withheld_json` filters a withholding out when the tool turns out to have been advertised
         after all. An outage is a statement about the WHOLE catalogue — there is no name to look up,
@@ -1871,7 +1927,16 @@ class TestU2ACatalogueOutageIsRegistered:
 #: So the scope is now every module under `app/services/` and `app/routers/`, and the helper walk
 #: follows the call graph across modules to a fixed point. A boundary drawn at a file is a boundary
 #: a refactor crosses by accident — which is exactly what "extract a helper" is.
-_TURN_SCOPE = ("services", "routers")
+#: 🔴 **ROUTE SEVENTEEN, AND IT IS ABOUT THE FUTURE RATHER THAN THE PAST.** This was a
+#: **non-recursive** glob over two named directories, so a byte-identical entry point is discovered
+#: under `app/services/` and **not discovered at all** under `app/agentruntime/` — the package CP-2
+#: will put the new runtime's turn entry point in. The gate would have been green on the first turn
+#: served by the thing this whole effort exists to build.
+#:
+#: `app/` recursively, with the directories that cannot host a turn named as exclusions, so a new
+#: package is IN scope by default and leaving it out is a decision someone writes down.
+_TURN_SCOPE_ROOT = "app"
+_TURN_SCOPE_EXCLUDE = ("__pycache__",)
 
 
 def _called_name(node):
@@ -1956,14 +2021,16 @@ def _turn_entry_calls():
     underscore is a naming convention and not a guarantee that nothing routes to it.
     """
     from pathlib import Path
-    base = Path(__file__).resolve().parents[1] / "app"
+    base = Path(__file__).resolve().parents[1] / _TURN_SCOPE_ROOT
     trees = {}
-    for sub in _TURN_SCOPE:
-        for path in sorted((base / sub).glob("*.py")):
-            try:
-                trees[f"{sub}/{path.name}"] = ast.parse(path.read_text(encoding="utf-8"))
-            except SyntaxError:                       # pragma: no cover - a broken file is its own bug
-                continue
+    for path in sorted(base.rglob("*.py")):
+        if any(part in _TURN_SCOPE_EXCLUDE for part in path.parts):
+            continue
+        rel = path.relative_to(base).as_posix()
+        try:
+            trees[rel] = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:                           # pragma: no cover - a broken file is its own bug
+            continue
     # 🔴 `tree.body` ONLY — so a **method**, a nested function and a lambda were all invisible, and
     # a verifier routed the admin door through a class method with the gate at `5 passed` and three
     # suites exactly at baseline while the admin turn lost both halves of U-2. `ast.walk` sees every
@@ -2068,11 +2135,18 @@ _NOT_A_TURN = {
     # to belong to, and `record_catalogue_unavailable` correctly no-ops unarmed rather than
     # attributing a row to a turn that never happened.
     #
-    # 🔶 Noted while classifying it, NOT fixed here because it is outside R9's scope and a silent
-    # fix is how scope drifts: it calls `get_tool_definitions()` with **no `user_id`**, so the
-    # picker shows the platform catalogue without that user's external-MCP overlay. Whether the
-    # picker should list a user's own overlay tools is a product question, and it is written down
-    # here rather than left in a verifier's transcript.
+    # 🔴 THE REASON ABOVE WAS FACTUALLY WRONG FOR TWO ROUNDS. It said the record "correctly no-ops
+    # unarmed" — and this run DELETED that no-op: a narrowing now opens its own sink. The exemption
+    # survived on a justification that had stopped being true, which is the same failure as a stale
+    # allow-list entry, one level up: the entry was live, and its REASON was stale.
+    #
+    # The true reason: no model is offered anything here, so there is no turn for a narrowing to
+    # belong to. What it now costs is one sink allocated per picker request and discarded with the
+    # context — a real cost, stated, not a claim of zero.
+    #
+    # 🔶 Noted while classifying it, NOT fixed here because it is outside scope and a silent fix is
+    # how scope drifts: it calls `get_tool_definitions()` with **no `user_id`**, so the picker shows
+    # the platform catalogue without that user's external-MCP overlay.
     "routers/catalog.py::list_tools_catalog",
     # `PATCH /v1/chat/sessions/{id}` — it fetches the catalogue to VALIDATE that the names a user
     # pinned are real, and 422s on an unknown one. A settings write, not a turn: no model, no
@@ -2237,7 +2311,7 @@ class TestTheTurnSinkIsArmedBeforeAnythingNarrows:
         # `all_fns` is built across every module in it, so a helper or an entry point in another
         # file is in scope by construction. Asserted on the real tree, not on a fixture:
         real = _turn_entry_calls()
-        assert {k.split("/")[0] for k in real} <= set(_TURN_SCOPE)
+        assert real, "the sweep found no entry point at all"
         assert any(k.startswith("services/voice_stream_service.py") for k in real), (
             "the sweep no longer reaches a second module — routes 1 and 4 reopen"
         )

@@ -1395,6 +1395,61 @@ recorded as open, not fixed.**
 
 ---
 
+## 🔴 R13 — **FAIL ×2**, and for the first time the loop has a MEASUREMENT of itself
+
+Prompt committed first, two V-CODE on frozen `5ce95de37`. Verdicts:
+[round13-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round13-v-code-a.md) ·
+[round13-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round13-v-code-b.md).
+
+Verifier A calls R12's arming fix **"the largest genuine advance in this run's record"**: narrow-then-arm
+now gives `outage=True, rows=2` where it gave `False/None`, and reverting it reds two named tests.
+
+### ▶ CONVERGENCE, measured rather than felt — 160 findings classified across R9–R12
+
+Verifier B, controlled: same role, same package, five rounds.
+
+| round | production-reachable | adversarial-input only | guard-only |
+|---|---|---|---|
+| 9 | 4 | 5 | 2 |
+| 10 | 12 | 5 | 1 |
+| 11 | 9 | 7 | 5 |
+| 12 | 3 | 7 | 7 |
+| **13** | **3** | **3** | **3** |
+
+**The membrane is converging** — both counts falling, and R12→R13 is the first round the adversarial
+count fell. **The instrument scope is flat**: Verifier A's production-reachable count runs 13 → 17 →
+22 → 13 with no trend, and is 93% of that scope's findings.
+
+**The number that should decide the round is the closure rate: ~9–14% per round.** R11→R12 closed 3
+of 21; R12→R13 closed 1 confirmed and 2 partial of 17. **At that rate the open findings take
+roughly twenty more rounds.**
+
+**And of the three defects the builder's own fixes introduced across R11–R13, two are
+production-reachable** — including R12's `dict(r)`, where the fix for the fourth TOCTOU **created the
+fifth and sixth** and was a net regression on its own shape: the plain dict it returns is one
+`rows_of` refused before that round and accepts after.
+
+### What was fixed this round
+
+| # | finding | reachability | response |
+|---|---|---|---|
+| **🔴 route 17** | `_TURN_SCOPE` was a **non-recursive two-directory glob**: a byte-identical entry point is discovered under `app/services/` and **not discovered at all under `app/agentruntime/`** — the package CP-2 will put the new runtime's entry point in | **production, by construction** | recursive over `app/`, with exclusions named. **The gate would have been green on the first turn served by the thing this effort exists to build** |
+| **🔴 `isinstance` in the flag** | the derived-flag code used `isinstance(e, dict)` and a bare `.get` **in the commit whose headline was that `isinstance` was the bug**, so a rogue row made `arm_turn_surface` — the first statement of every turn entry point — **raise** | adversarial | exact type, builtin `.get` only. **Fifth occurrence of recreating a crash inside its own fix** |
+| **`absorb` drained a copy** | `sink = list(sink)` emptied the copy and left the original full, so checkpoint + terminal absorbed the same rows twice (1 → 2) | adversarial | reads defensively, clears the real container |
+| **dead branch** | a row of `42` recorded `stage: "unknown"` instead of naming what it was | production | one branch, keeps the type |
+| **`_as_text`** | `str(value)` returns whatever `__str__` returns, **including a `str` subclass** — the unhashable-key crash came back through the function's own return | adversarial | forced plain |
+| **four fixes with no test** | `_as_text`, the container coercion, the flag write, `[]`-not-cached — all measured **BASELINE** | — | three now guarded; `[]`-not-cached still open |
+| **stale exemption reason** | `_NOT_A_TURN`'s `catalog.py` justification cited a no-op **this run deleted** — the entry was live and its REASON was stale | documentation | corrected, with what it now actually costs |
+
+**2224 tests pass; gate green.** ⚠️ Builder's evidence.
+
+**Open and recorded:** the terminal-write gate's `Name` hatch · route sixteen · `[]`-not-cached
+untested and the user door's 60 s `[]` cache · the P4 test still green on a `generate()`-landing
+mechanism · unknown row keys steering the ranking · four exported doors bounding only `id` · the
+`r.get("id")`/`r["id"]` split · the 5th/6th TOCTOUs introduced by R12's fix.
+
+---
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -1406,7 +1461,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | ~~R10~~ | ran 2026-08-06 → **FAIL ×2**, 10 findings, all fixed. See the block above | `V-CODE` ×2 on `a43c24fcc` | — |
 | ~~R11~~ | ran 2026-08-06 → **FAIL ×2**. The finding was the method: 9 of 9 guards silent, 3 firing wrongly. See the block above | `V-CODE` ×2 on `2c63496b4` | — |
 | ~~R12~~ | ran 2026-08-06 → **FAIL ×2**. The R11 headline fix closed the case that never happens; the guard claim was false for the membrane package. See the block above | `V-CODE` ×2 on `9c8df7800` | — |
-| **R13** | verify **R12's delta** *and* the six findings recorded OPEN above: adopt-not-replace arming · the derived outage flag (incl. its own leak) · the validator returning what it validated · the outer `previous` · `_as_text` exactness · and whether each has a test that reds for its stated reason | `V-CODE` ×2, fresh, one message, frozen artifact | clean ⇒ **CP-1 closes**, CP-0 re-confirmed |
+| ~~R13~~ | ran 2026-08-06 → **FAIL ×2**, with the first convergence measurement. See above | `V-CODE` ×2 on `5ce95de37` | — |
+| **R14** | verify R13's delta **and** the nine findings recorded OPEN. ⚠️ **PO decision pending**: closure is ~10%/round, so the open set is ~20 rounds at this cadence | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
 | **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |

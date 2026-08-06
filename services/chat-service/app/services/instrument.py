@@ -281,7 +281,11 @@ def _as_text(value) -> str:
     if value is None:
         return ""
     try:
-        return str(value)
+        # `str(value)` returns whatever `__str__` returns, **including a `str` SUBCLASS** — so the
+        # unhashable-key crash this function exists to prevent came straight back through its own
+        # return. `str.__str__` on the result forces a plain one.
+        out = str(value)
+        return out if type(out) is str else str.__str__(out)
     except Exception:                                    # noqa: BLE001 — a __str__ that raises
         return f"<unrepresentable {type(value).__name__}>"
 
@@ -361,9 +365,18 @@ def arm_turn_surface() -> list[dict]:
     #
     # Production gives each request its own context copy, so this could not have been seen there
     # until it was seen by a user. Deriving costs one pass over a list that is almost always empty.
-    catalogue_outage.set(any(
-        isinstance(e, dict) and e.get("scope") == SCOPE_CATALOGUE for e in sink))
+    # 🔴 THIS READ `isinstance(e, dict) and e.get(...)` — in the commit whose headline was
+    # *"`isinstance` was the bug"*. A rogue row then made **`arm_turn_surface` itself raise**, and
+    # that is the first statement of every turn entry point: the crash-inside-its-own-fix pattern,
+    # fifth occurrence, now at the one place where a failure takes the whole turn with it.
+    catalogue_outage.set(any(_is_catalogue_row(e) for e in list(sink)))
     return sink
+
+
+def _is_catalogue_row(row) -> bool:
+    """Exact type, and no user code on the path. `dict.get` on a subclass is user code; `type(row) is
+    dict` means the `.get` below is the builtin, so this cannot raise on any input."""
+    return type(row) is dict and row.get("scope") == SCOPE_CATALOGUE
 
 
 def record_surface_withheld(tool: str, *, stage: str, reason: str) -> None:
@@ -674,25 +687,30 @@ class AdvertisedToolsRecorder:
         """
         if not sink:
             return
-        if type(sink) is not list:
-            # The sink container is as much input as its rows: a `list` subclass can lie about
-            # `pop`, `__bool__` or `__len__` and hand this loop something other than what it holds.
-            sink = list(sink)
-        while sink:
-            row = sink.pop(0)
+        # 🔴 `sink = list(sink)` DRAINED THE COPY AND LEFT THE ORIGINAL FULL — so a `list`-subclass
+        # sink was never emptied, and a mid-turn checkpoint plus the terminal write absorbed the same
+        # rows twice (measured: 1 row became 2). The copy was added to stop a subclass lying about
+        # `pop`; it stopped the drain instead. Read defensively, then clear the real container.
+        try:
+            rows_in = list(sink)
+            del sink[:]
+        except Exception:                                    # noqa: BLE001 — a container that resists
+            rows_in, _ = [], None
+        while rows_in:
+            row = rows_in.pop(0)
             if type(row) is not dict:
                 # `isinstance` again: a `dict` subclass whose `.get` raises took the turn down from
-                # inside a recorder. Coerced to a plain dict by reading it defensively.
+                # inside a recorder. Coerced to a plain dict by reading it defensively — and the
+                # SECOND branch that used to stand here was dead code, so a row of `42` recorded
+                # `stage: "unknown"` instead of naming what it actually was. One branch now, and it
+                # keeps the type in the reason.
+                what = type(row).__name__
                 try:
                     row = {k: row[k] for k in list(row)} if hasattr(row, "keys") else {}
                 except Exception:                            # noqa: BLE001
-                    row = {"stage": "malformed", "reason": "sink row could not be read"}
-            if not isinstance(row, dict):
-                # A sink is a plain list anyone in the request can append to. A non-dict row used to
-                # raise `AttributeError` here — a recorder that crashes on bad input is a recorder
-                # that takes the turn down with it, which is strictly worse than the silence it
-                # exists to measure.
-                row = {"stage": "malformed", "reason": f"sink row was {type(row).__name__}"}
+                    row = {}
+                if not row:
+                    row = {"stage": "malformed", "reason": f"sink row was {what}"}
             # 🔴 EVERY value is coerced to a plain string before it is used as a key or written.
             # A verifier fed 19 row shapes and **7 still crashed**: an unhashable `stage` blew up
             # the dedupe `set`, an unhashable `tool` blew up the other one, and four more died at
