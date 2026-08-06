@@ -1,7 +1,7 @@
 # The data-plane access law — one read layer per plane
 
 **Status:** PROPOSED, and ready for a red team · **§9 (`DPA-A7`) SEALED 2026-08-06**
-**§14 lists the holes this design does NOT close** — written before the review, not after it
+**§14 lists the holes this design does NOT close; §15 closes five of six and names the one that stays open** — written before the review, not after it
 **Date:** 2026-08-06 · **Id family:** `DPA-*`
 **Companions:** [`DATA_ARCHITECTURE.md`](../DATA_ARCHITECTURE.md) §3 *(the model this extends)* ·
 [command hub](2026-08-06-command-hub.md) *(sealed)* ·
@@ -466,7 +466,106 @@ and it is the reason `DPA-A1` is written as a *countable acceptance test* rather
 
 ---
 
-## 15. Ids introduced
+## 15. Closing them — and the reason a better grep was never the answer
+
+Every hole in §14 has the same signature: it is a property of **source text** that a
+scan cannot distinguish from its legitimate twin. Iterating on the regex is the wrong move;
+it produces a gate that cries wolf, and this project has already recorded what happens then
+(*"crying wolf got the check switched off"* — `D-SPEC-CODE-ENUM-PARITY`).
+
+> **Static analysis closes a mistake that has a NAME. Privacy closes one that has a
+> REFERENCE. A drill closes one that has only a SHAPE.**
+
+Three mechanisms, and the third is the one that was missing. **This repo already runs six
+drills** — `closure-drill`, `relocate-drill`, `canary-drill`, `migrate-drill`,
+`freeze_drill`, `provision_drill` — plus a `chaos/` tree and `SR07_chaos_drills.md`. The
+pattern is established; it has simply never been pointed at the data planes.
+
+### `DPA-A15` — make the STORAGE shape inexpressible, rather than detectable
+
+The first hole was **misstated in §14**, and restating it dissolves most of it. The problem
+is not *"a struct that mirrors"* — you cannot stop anyone copying a domain type, and there
+is no reason to. It is *"a struct that mirrors **the storage**"*.
+
+> A plane's storage row type is **`pub(crate)` or narrower**, and the port returns an
+> **owned domain value**. Then a consumer cannot name the storage shape, so the widest thing
+> it can copy is what the port already chose to expose.
+
+**The coupling becomes bounded by the port's own surface** — which is the property
+`DPA-A1` actually needs. This is `DPA-A6` again: where a language can enforce the boundary,
+let it, and gate the enforcement rather than the data. `Actor` already works exactly this
+way, and it is why the actor-RAM plane needed no grep at all.
+
+### `DPA-A16` — a port exposes the plane's QUESTIONS, not its rows
+
+The semantic bypass — call the port, then re-implement the plane's invariants on the result
+— is caused by a port that hands back atoms. CQRS says this in its own words: *read models
+are designed around questions, unlike a schema designed around writes.* A port returning
+`Vec<Event>` guarantees every consumer folds; a port returning the folded answer makes the
+bypass unwritable.
+
+**The countable trigger, since this one has no clean static check:** the **second** consumer
+that performs the same fold over a port's output. One consumer folding is a consumer; two
+folding identically is a missing port method, and the second one is the signal. That is a
+review rule with a number in it rather than a taste.
+
+⚠ **This is the one hole that stays partly human**, and §14's row for it should be read as
+still open. Named honestly rather than closed by assertion.
+
+### `DPA-A17` — the two drills, which is where the un-greppable cases go
+
+> **The rebuild drill.** Every `derived_from` plane owes a drill that **WIPES it and rebuilds
+> it from its declared source**. A plane that cannot survive being deleted is
+> **authoritative, whatever it declared** — and the drill is what says so.
+
+This converts `ssot` / `derived_from` from an unfalsifiable label into a test. It is the
+direct answer to *"Redis quietly became a store of record"*: nobody has to notice the intent,
+because the drill fails.
+
+> **The storage-shuffle drill.** In a throwaway environment, rename a column, reorder the
+> projection, change a key prefix — then run the suite and count what broke. **Anything
+> outside the port that breaks knew the SHAPE.**
+
+That is `DPA-A1` **executed** rather than stated, and it is the only mechanism that reaches
+hole #5 (shape knowledge with no name). It is also the acceptance test made repeatable: the
+spec's headline claim stops being a promise and becomes a number somebody ran.
+
+**Both are drills, not pre-commit gates** — they need a stack and they are destructive by
+design. That places them with `closure-drill` and `migrate-drill`, in the CI leg those
+already occupy, and it is the honest cost: they run on a schedule, not on every commit, so
+they catch drift **late but certainly** rather than never.
+
+### `DPA-A18` — an auditor's output may not reach a domain decision
+
+The `auditor` role is the one bypass, so it is the route a defeated developer takes
+(`DPA-A11`). The constraint that makes the label expensive to lie about is a dependency
+rule, not a naming rule:
+
+> A module declared `auditor` **must not be imported by domain code**. Its output is a
+> report, an alert or a test verdict — never an input to a decision the engine makes.
+
+That is checkable in exactly the shape `crate-purity-gate` already checks (and that ArchUnit
+calls a dependency constraint). `integrity-checker` passes it by construction: it is a
+separate service whose output is an alert. A module that wants the bypass AND wants to be
+read by the domain has to pick one.
+
+### What is left after all four
+
+| §14 hole | closed by | residue |
+|---|---|---|
+| mirroring struct | `DPA-A15` — privacy | copying the DOMAIN type, which is harmless |
+| semantic bypass | `DPA-A16` — partly | **genuinely open**; a countable review trigger, not a check |
+| Redis-as-SSOT | `DPA-A17` rebuild drill | a drill that is skipped; `gate-wiring`'s `TOO_SLOW` lesson applies |
+| mislabelled auditor | `DPA-A18` — dependency rule | an auditor nobody imports and nobody reads, i.e. dead code |
+| shape knowledge | `DPA-A17` shuffle drill | found late, on a schedule, not at commit time |
+| registry stale | §6.1.1's three checks | — |
+
+**One of six stays open and it is named.** That is a better answer than six closed by
+assertion, and it is what the red team should attack first.
+
+---
+
+## 16. Ids introduced
 
 | id | |
 |---|---|
@@ -485,10 +584,14 @@ and it is the reason `DPA-A1` is written as a *countable acceptance test* rather
 | `DPA-A12` | every plane declares its consistency class (strong · eventual · TTL-bounded) and a deprecation path |
 | `DPA-A13` | enumerate the claimed characteristics and gate each, or declare the gap — do not wait to discover them. **Platform-wide; does NOT ship with this spec** |
 | `DPA-A14` | a port returns DOMAIN types, never storage types — otherwise the coupling moves from the SQL string into the struct, where the grep cannot follow |
+| `DPA-A15` | make the STORAGE shape inexpressible (`pub(crate)` row types, port returns an owned domain value) rather than detectable — the coupling then bounded by the port's own surface |
+| `DPA-A16` | a port exposes the plane's QUESTIONS, not its rows. Countable trigger: the SECOND consumer folding identically is a missing port method |
+| `DPA-A17` | two drills — **rebuild** (wipe a derived plane and rebuild it; one that cannot survive it is authoritative whatever it declared) and **storage-shuffle** (rename/reorder/re-prefix and count what breaks outside the port). `DPA-A1` executed, not stated |
+| `DPA-A18` | an `auditor` module must not be imported by domain code — its output is a report, never an input to a decision |
 
 ---
 
-## 16. Sources
+## 17. Sources
 
 Consulted 2026-08-06 for §11. Listed because the section's claims are about what OTHER
 systems do, and a claim about the outside world with no citation is the same shape as an
