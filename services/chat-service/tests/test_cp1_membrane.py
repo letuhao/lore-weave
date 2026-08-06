@@ -2133,18 +2133,45 @@ class TestStageKindsAreDataNotClosures:
         wf = (_REPO / '.github' / 'workflows' / 'lint-foundation.yml').read_text('utf-8')
         assert 'agentruntime-census' in wf, 'the census is not wired into CI at all'
         job = wf.split('agentruntime-census:')[1]
+        # \U0001F534 **THIS ASSERTED THE *INSTALL* STEP, NOT THAT THE CENSUS RUNS** \u2014 the sibling of
+        # the very finding that asked for it, and the ninth pair in this run fixed at one end.
+        # Deleting the `Refusal census` step, replacing it with `echo skip`, or switching it to
+        # `--write` all left this test GREEN, measured. Both halves are asserted now.
+        assert 'python scripts/agentruntime-census.py' in job, (
+            'the CI job does not RUN the census; installing its dependencies is not running it'
+        )
+        assert '--write' not in job, (
+            'the CI job regenerates the allowlist instead of checking against it, so it can never '
+            'report drift'
+        )
         assert 'requirements-test.txt' in job.split('agentruntime-census.py')[0], (
             'the census job does not install a pytest; its selftest runs the suite, so its green '
             'state is unreachable and the job can only ever fail'
         )
         src = (_REPO / 'scripts' / 'agentruntime-census.py').read_text('utf-8')
-        assert 'atexit.register' in src and 'SIGTERM' in src, (
-            'the census writes neutered source into tracked files; without an exit handler a killed '
-            'run leaves the tree broken and the suite reds blaming a test - measured 4 of 4 kills'
+        # \U0001F534 **`assert 'SIGTERM' in src` WAS SATISFIED BY A COMMENT** \u2014 deleting the entire
+        # signal-handler loop left this test GREEN, which a verifier measured. A shape check over
+        # the instrument built to end shape checks, and the purest form of the failure this file
+        # is about. The census's kill-safety is asserted by RUNNING it, below.
+        # The docstring EXPLAINS why atexit was removed, so a bare `"atexit" not in src`
+        # is defeated by prose - the same word-in-a-comment defect as the assertion it
+        # replaces, inverted. Match the call, not the topic.
+        assert "_mirror" in src and "atexit.register" not in src, (
+            "the census writes neutered source into the LIVE tree. No handler fixes that: SIGKILL "
+            "runs no atexit on any platform, and on Windows six external kill mechanisms reach none "
+            "of them - measured. It must work in a throwaway mirror, which also ends its "
+            "interference with concurrent suite runs (16 of 20 went red)."
         )
-        assert 'raise SystemExit' in src.split('write_bytes(raw)')[1][:400], (
-            'the restore guarantee is an assert, which vanishes under python -O'
+        # Scoped to `census()`'s own body: `_selftest` still ENUMERATES the live package, which is a
+        # read and is fine. What must not happen is a WRITE, and the write lives here.
+        _census_body = src.split("def census")[1].split(chr(10) + "def ")[0]
+        assert "PKG.glob" not in _census_body, (
+            "census() still enumerates the LIVE package; the mirror exists but is not what is "
+            "neutered, which is the shape of a fix that landed beside its subject"
         )
+        # The `python -O` restore guarantee is gone with the thing it guarded: nothing is written
+        # into the live tree any more, so there is no restore to protect. A guard kept after its
+        # subject leaves is the dead-field failure this package convicted `Identity` for.
         allow = (_REPO / 'contracts' / 'agentruntime-census-silent.txt').read_text('utf-8')
         rows = [l for l in allow.splitlines() if l.strip() and not l.startswith('#')]
         assert rows and all(re.search(r'::[0-9a-f]{8}$', r) for r in rows), (

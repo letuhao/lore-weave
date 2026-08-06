@@ -44,19 +44,89 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import atexit
 import ast
 import hashlib
 import pathlib
-import signal
 import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PKG = ROOT / "services" / "chat-service" / "app" / "agentruntime"
-CS = ROOT / "services" / "chat-service"
+_PKG_REL = pathlib.Path("services") / "chat-service" / "app" / "agentruntime"
+_CS_REL = pathlib.Path("services") / "chat-service"
+PKG = ROOT / _PKG_REL
+CS = ROOT / _CS_REL
+
+
+def _mirror() -> pathlib.Path:
+    """A throwaway copy of the tracked tree. **The census never writes into the live one.**
+
+    🔴 **TWO FINDINGS DIED HERE, AND NEITHER WAS FIXABLE WHERE IT STOOD.**
+
+    *The kills.* Neutering happened in the real `app/agentruntime/`, restored in a `finally` plus
+    `atexit` plus signal handlers. On Linux that got 3 of 5 kill mechanisms; **on Windows a verifier
+    measured 6 external kill mechanisms and 0 reaching the handler**, because `os.kill(pid, SIGTERM)`
+    there *is* `TerminateProcess`. SIGKILL never runs `atexit` on any platform. **19% of the sites are
+    SILENT, so roughly one kill in five left INVISIBLE damage in a tracked production module** — and
+    a suite that then reds blaming a test.
+
+    *The interference.* 16 of 20 concurrent suite runs went red during a census; it destroyed seven
+    of a verifier's first eight baselines. A measuring instrument that corrupts what it measures.
+
+    Both are the same defect — *the instrument writes into its subject* — and no amount of handler
+    was going to fix a `SIGKILL`. So it stops writing there. Twenty-four lines of signal handling are
+    gone, and the two findings with them.
+
+    Tracked files only, copied from the WORKING tree rather than from `HEAD`: this runs as a
+    pre-commit gate, and the thing that must be measured is what is about to be committed, not what
+    was committed last.
+    """
+    import shutil
+    import tempfile
+
+    out = pathlib.Path(tempfile.mkdtemp(prefix="lw-census-"))
+    listing = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+                             capture_output=True, check=True).stdout
+    for rel in listing.split(b"\0"):
+        if not rel:
+            continue
+        src = ROOT / rel.decode("utf-8")
+        if not src.is_file():                       # a submodule or a deleted-but-tracked path
+            continue
+        dst = out / rel.decode("utf-8")
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, dst)
+    return out
 SUITE = "tests/test_cp1_membrane.py"
 ALLOWLIST = ROOT / "contracts" / "agentruntime-census-silent.txt"
+
+
+def _shape_digest(node: ast.Raise) -> str:
+    """A digest of the refusal's SHAPE, stable across interpreters and blind to its prose.
+
+    🔴 **THE FIRST VERSION USED `ast.dump`, AND THAT BROKE CI IN A WAY THAT LOOKED LIKE A
+    RESULT.** `ast.dump` is not version-stable — 3.13 omits `keywords=[]` where 3.12 emits it — so a
+    verifier measured **0 of 68 ids matching across 3.12 and 3.13, and 0 of the 13 allowlist rows
+    existing** under the pinned interpreter. The gate then printed thirteen `NEWLY SILENT` and
+    thirteen `NOW GUARDED` lines and instructed the maintainer, thirteen times, to delete the
+    allowlist. **That is worse than the failure it replaced**, because the previous one was obviously
+    broken and this one is plausible.
+
+    🔴 **AND IT WAS TOO SENSITIVE IN THE OTHER DIRECTION.** Enumerated over all 68 sites × four
+    edit classes: reordering two raises **should** move a row and does (98/98 pairs, 0 collisions —
+    the one thing the ordinal could not do); reindenting should not and does not; but **renaming the
+    enclosing function moved 68/68**, and **rewording a message moved 68/68**, relocating all
+    thirteen allowlist rows and emitting two false sentences each time.
+
+    So the digest is taken over `ast.unparse` — stable source text rather than a dump format — with
+    every string literal replaced by a placeholder. A reworded message keeps its row; a moved,
+    retyped or restructured refusal does not. The function name is already the id's prefix, so a
+    rename is visible there and does not need to churn the digest as well.
+    """
+    shape = ast.parse(ast.unparse(node)).body[0]
+    for n in ast.walk(shape):
+        if isinstance(n, ast.Constant) and isinstance(n.value, str):
+            n.value = "\u0000"
+    return hashlib.sha256(ast.unparse(shape).encode("utf-8")).hexdigest()[:8]
 
 
 def _sites(tree: ast.AST, mod: str) -> list[tuple[str, ast.Raise]]:
@@ -89,7 +159,7 @@ def _sites(tree: ast.AST, mod: str) -> list[tuple[str, ast.Raise]]:
                 # arriving instead of as nothing at all.
                 key = f"{mod}::{qual or '<module>'}::{name}"
                 seen[key] = seen.get(key, 0) + 1
-                digest = hashlib.sha256(ast.dump(child).encode("utf-8")).hexdigest()[:8]
+                digest = _shape_digest(child)
                 out.append((f"{key}::{seen[key]}::{digest}", child))
             walk(child, qual)
 
@@ -109,9 +179,9 @@ def _neutered(src: str, node: ast.Raise) -> str:
     return "".join(out)
 
 
-def _suite_is_green() -> bool:
+def _suite_is_green(cwd=None) -> bool:
     r = subprocess.run([sys.executable, "-m", "pytest", SUITE, "-q", "--no-header", "-p",
-                        "no:randomly"], cwd=CS, capture_output=True, text=True)
+                        "no:randomly"], cwd=cwd or CS, capture_output=True, text=True)
     return r.returncode == 0
 
 
@@ -129,36 +199,20 @@ def census(verbose: bool = False) -> dict[str, bool]:
     #
     # A `finally` does not run when the process is killed, so the restore is also registered with
     # `atexit` and on SIGINT/SIGTERM.
-    snapshot = {p: p.read_bytes() for p in sorted(PKG.glob("*.py"))}
-
-    def _restore_all(*_a):
-        for path, data in snapshot.items():
-            if path.read_bytes() != data:
-                path.write_bytes(data)
-
-    atexit.register(_restore_all)
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            signal.signal(sig, lambda *_a: (_restore_all(), sys.exit(130)))
-        except (ValueError, OSError):        # not the main thread; atexit still covers it
-            pass
-
-    for path in sorted(PKG.glob("*.py")):
+    mirror = _mirror()
+    pkg, cs = mirror / _PKG_REL, mirror / _CS_REL
+    for path in sorted(pkg.glob("*.py")):
         if path.name == "__init__.py":
             continue
-        raw = snapshot[path]             # the PRE-RUN bytes, never a re-read mid-run
+        raw = path.read_bytes()
         src = raw.decode("utf-8")
         mod = path.name
         for site_id, node in _sites(ast.parse(src), mod):
             path.write_bytes(_neutered(src, node).encode("utf-8"))
             try:
-                red = not _suite_is_green()
+                red = not _suite_is_green(cs)
             finally:
-                path.write_bytes(raw)     # the ORIGINAL bytes, line endings included
-                # NOT `assert` — it vanishes under `python -O`, and a restore guarantee that can be
-                # switched off by an interpreter flag is not a guarantee.
-                if path.read_bytes() != raw:
-                    raise SystemExit(f"restore changed {path}; the tree is NOT as it was")
+                path.write_bytes(raw)     # inside the mirror; the live tree is never touched
             results[site_id] = red
             if verbose:
                 print(f"  {'RED   ' if red else 'SILENT'} {site_id}", flush=True)
@@ -182,7 +236,8 @@ def _selftest() -> int:
         print("SELFTEST FAIL: the suite is not green before any injection")
         return 1
     # ...and it must go red when a known-guarded site is neutered.
-    probe = next((p for p in PKG.glob("*.py") if p.name == "contract.py"), None)
+    mirror = _mirror()
+    probe = mirror / _PKG_REL / "contract.py"
     raw = probe.read_bytes()
     src = raw.decode("utf-8")
     target = next((n for sid, n in _sites(ast.parse(src), "contract.py")
@@ -192,7 +247,7 @@ def _selftest() -> int:
         return 1
     probe.write_bytes(_neutered(src, target).encode("utf-8"))
     try:
-        fired = not _suite_is_green()
+        fired = not _suite_is_green(mirror / _CS_REL)
     finally:
         probe.write_bytes(raw)
         assert probe.read_bytes() == raw, "restore changed the probe file"
@@ -223,7 +278,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.write:
         ALLOWLIST.parent.mkdir(parents=True, exist_ok=True)
         ALLOWLIST.write_text(
-            "# Refusal sites the suite does NOT notice being removed.\n"
+            "# Refusal sites the suite does not notice being removed ON THEIR OWN.\n"
+            "#\n"
+            "# \U0001F534 The header used to say 'a refusal nothing checks', and two verifiers measured\n"
+            "# that false for 2 of these 13 rows: a site can be SILENT because a SAME-CLASS SIBLING\n"
+            "# reds first, or because it is UNREACHABLE. This gate neuters one site at a time, so\n"
+            "# what it observes is exactly 'alone' \u2014 and claiming more than the experiment supports is\n"
+            "# the failure this whole effort exists to end. Deciding WHY a row is here still needs a\n"
+            "# person and a verdict id.\n"
             "# Generated by scripts/agentruntime-census.py --write. Every line is a claim that\n"
             "# nothing checks; adding one is a decision, and removing one is a closed finding.\n"
             + "".join(f"{s}\n" for s in silent), "utf-8")
