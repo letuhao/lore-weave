@@ -32,6 +32,7 @@ mod binding;
 mod epoch;
 mod layer;
 mod patch;
+mod patch_limits;
 mod labels;
 mod patch_progression;
 mod resolve_pin;
@@ -48,6 +49,7 @@ pub use patch::{CombatPatch, PatchError, RulesetPatch, StatPatch};
 pub use labels::{Label, LabelError, LabelStore, ProgressionLabels};
 pub use patch_progression::{ProgressionKindPatch, ProgressionPatchError, TierPatch};
 pub use resolve_pin::resolve_and_pin;
+pub use patch_limits::LimitsPatch;
 pub use patch_resource::ResourcePatch;
 pub use patch_verb::{VerbPatch, VerbPatchError};
 pub use progression_store::{
@@ -100,6 +102,20 @@ pub fn resolve(layers: &[LayerSource]) -> Result<Ruleset, LoadError> {
     ordered.sort_by_key(|l| l.layer.priority());
 
     let mut out = Ruleset::engine_default();
+    // `LIM-1` — a fold accumulator, NOT a field on `Ruleset`, and that is a
+    // decision rather than an omission.
+    //
+    // A limit is read exactly once, here, and never again: no law reads it, no
+    // step reads it, and a resolved `Ruleset` is immutable, so after this loop
+    // there is nothing left for it to constrain. Storing it would be a shape
+    // nobody reads — the anti-pattern this arc has spent two features closing —
+    // and putting it in the hashed bytes would move every existing reality's
+    // digest to record a number that changes no actor's numbers (`RLS-A15`'s
+    // precedent, `QTY-A10(c)`'s warning).
+    //
+    // Seeded at CAPACITY so a stack that declares no `[limits]` anywhere behaves
+    // exactly as every manifest did before this block existed.
+    let mut limits = ruleset_core::Limits::CAPACITY;
     for l in ordered {
         // S1b floor arm — checked BEFORE the merge, so the diagnostic names the
         // layer that overstepped rather than the resolved result, which by then
@@ -144,12 +160,13 @@ pub fn resolve(layers: &[LayerSource]) -> Result<Ruleset, LoadError> {
                 floor: Floor::Preset,
             });
         }
-        l.patch.apply(&mut out).map_err(|e| match e {
+        l.patch.apply(&mut out, &mut limits).map_err(|e| match e {
             patch::PatchError::Quantity(source) => LoadError::Quantity { layer: l.layer, source },
             patch::PatchError::Resource(source) => LoadError::Resource { layer: l.layer, source },
             patch::PatchError::Verb(e) => {
                 LoadError::Verb { layer: l.layer, message: e.to_string() }
             }
+            patch::PatchError::Limit(source) => LoadError::Limit { layer: l.layer, source },
         })?;
     }
 

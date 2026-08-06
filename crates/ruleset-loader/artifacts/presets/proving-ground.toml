@@ -34,6 +34,34 @@
 
 quantities = ["vitality", "swiftness", "breath", "focus"]
 
+# ═══ HOW BIG THIS WORLD IS ═══════════════════════════════════════════════════
+#
+# `LIM-1`. Before this block, the only ceiling that existed was the ENGINE's, and
+# its refusal said so:
+#
+#   > 40 declared quantities exceeds this engine's capacity of 32
+#
+# That is the engine answering a question that is not its to answer. We build a
+# world engine; how big a world is, is the world's business. So the numbers below
+# are DATA, ingested, and they are what a row is refused against.
+#
+# The block is OPTIONAL — a manifest that omits it runs at the build's capacity,
+# exactly as every manifest did before. It is written here because the proving
+# ground is deliberately SMALL, and saying so is the point: this reality has four
+# quantities and one verb, and it is declaring that it means to stay that size.
+# A generated manifest that quietly grew a fifth pool would be refused by name
+# rather than absorbed.
+#
+# Raising any of these is an edit to this file. Raising them past the build's
+# capacity is a rebuild, and the refusal says which of the two you are looking at.
+#
+# There is no `cues` key: a cue space is DERIVED from `verbs`, because every cue
+# comes from a verb row and there is exactly one per row.
+[limits]
+quantities = 8
+resources = 8
+verbs = 4
+
 # --- the pool an engine law reads to decide the encounter is over -----------
 #
 # `ceiling_slot`, not `ceiling_fixed`: QTY-A8 distinguishes RAISING a ceiling

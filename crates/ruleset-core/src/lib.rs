@@ -40,6 +40,7 @@
 mod canon;
 mod classification;
 mod combat;
+mod limits;
 mod provenance;
 mod modifier;
 mod never_reuse;
@@ -47,6 +48,9 @@ mod quantity;
 mod progression;
 mod resource;
 mod ruleset;
+// `QTY-A12`'s resident-size budget for `Ruleset` and its repin log. No exports:
+// the module IS one `const` assertion and the decision log behind it.
+mod ruleset_size;
 mod ruleset_codec;
 mod slots;
 mod stats;
@@ -60,6 +64,10 @@ pub use classification::{
     FieldClass, Floor, Mutability, Strategy, FORBIDDEN_KEYS, FORBIDDEN_VERB_KEYS,
 };
 pub use combat::CombatRules;
+// `LIM-1` — the reality declares its own size; the engine only states what the
+// binary can physically hold. `OrdinalSpace` doubles as the register of every
+// author-extensible ordinal space, which is what nothing in the tree had.
+pub use limits::{LimitError, Limits, OrdinalSpace};
 // Q1 — L2 declared quantities (QTY-A5/A6): identities an author invents,
 // ordinals the engine assigns, both inside the hashed bytes.
 pub use never_reuse::OrdinalReuse;

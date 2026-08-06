@@ -1,6 +1,7 @@
 # Ordinal spaces — the register
 
-**Status:** proposed — **NOT sealed** · **Date:** 2026-08-06
+**Status:** measurement — **§4c (`LIM-1`) is SEALED and BUILT**; everything else is
+proposed · **Date:** 2026-08-06
 **Companions:** [command hub](2026-08-06-command-hub.md) *(sealed)* ·
 [actor hub](2026-08-02-actor-hub/2026-08-02-actor-hub.md) ·
 [RUN-STATE](../plans/2026-08-06-game-tier-build-RUN-STATE.md)
@@ -53,12 +54,16 @@ And measurement found a **third** kind that neither half describes — §5.
 
 ## 3. The register — AUTHOR-EXTENSIBLE
 
-Measured. `N` is the binary's ceiling; `n` is what a reality declares.
+Measured. `N` is the binary's **capacity**; `n` is what a reality declares —
+and since `LIM-1` (§4c) the reality also declares its own **limit** on `n`, in
+`[limits]`. This table is now `OrdinalSpace` in `ruleset-core/src/limits.rs`
+rather than only prose; a new space that does not appear there fails to compile
+in four places.
 
-| space | `N` | where | assignment | in the hashed bytes |
-|---|---|---|---|---|
-| **quantity** | **32** | `ruleset-core/src/quantity.rs` | `QTY-A5` — assigned in declaration order, **never authored**; `never_reuse.rs` guards re-use across epochs | yes — `QuantityTable`, `0..n` only |
-| **verb** | **16** | `ruleset-core/src/verb/table.rs` | `CMD-1` — the row's INDEX, append-only, never reused | yes — `VerbTable`, `0..n` only |
+| space | `N` | `[limits]` key | where | assignment | in the hashed bytes |
+|---|---|---|---|---|---|
+| **quantity** | **32** | `quantities` | `ruleset-core/src/quantity.rs` | `QTY-A5` — assigned in declaration order, **never authored**; `never_reuse.rs` guards re-use across epochs | yes — `QuantityTable`, `0..n` only |
+| **verb** | **64** *(was 16 — §4c)* | `verbs` | `ruleset-core/src/verb/table.rs` | `CMD-1` — the row's INDEX, append-only, never reused | yes — `VerbTable`, `0..n` only |
 | **tier within a kind** | **64** | `ruleset-core/src/progression/mod.rs` | a decode bound, not a layout one | via the progression digest |
 | **cue** | **= verb** | `ruleset-core/src/verb/table.rs` | authored on a verb row, **PER-REALITY** (PO, sealed 2026-08-06). `QTY-A14` applies: cue 3 in one reality means nothing in another | yes — inside `VerbTable`'s rows |
 
@@ -179,9 +184,96 @@ which would go to roughly 6960 at 64. That assertion firing is the guard doing
 its job: it forces this conversation rather than letting the number drift. A
 repin with a reason is the whole mechanism.
 
-**Not changed here** — a ceiling is the PO's, and this section is the
-measurement. Note that `MAX_DECLARED_CUES` is derived from this constant, so
-raising it widens the cue space too, correctly and automatically.
+Note that `MAX_DECLARED_CUES` is derived from this constant, so raising it
+widens the cue space too, correctly and automatically.
+
+## 4c. `LIM-1` — SEALED 2026-08-06. The ceiling moved to the manifest
+
+**PO, immediately after reading §4b:**
+
+> *"A hard ceiling should be pushed out for the reality manifest to decide,
+> because we only build a world engine. A hardcoded number should be DATA and
+> INGESTED, not a magic number inside the world engine. That is rot — if you find
+> it, fix it rather than skip it."*
+
+That reframes §4b's finding. §4b treated `16` as *the wrong number*; the PO's
+reading is that it was **the wrong kind of thing**, and raising it would have
+fixed one instance of a defect the tier has everywhere.
+
+### The defect, in one sentence the engine used to say
+
+```
+40 declared quantities exceeds this engine's capacity of 32
+```
+
+**The engine is answering a question that is not its to answer** — *how big may
+this world be?* — with a number chosen by whoever wrote the crate. Every reality
+on the platform inherited one developer's guess, and could say nothing in either
+direction: a small reality could not declare itself small, a large one could not
+declare itself large without a code change to a crate it does not own.
+
+One number was doing two incompatible jobs:
+
+| | who decides | what it means | how it changes |
+|---|---|---|---|
+| **capacity** — `OrdinalSpace::capacity()` | the engine | *this binary's inline array is `N` wide* | rebuild |
+| **limit** — `Limits`, from `[limits]` in the manifest | **the reality** | *this world declares at most `n`* | edit a `.toml` |
+
+**Only the second was ever a design decision, and it was living in the wrong
+repository.**
+
+### What shipped
+
+`crates/ruleset-core/src/limits.rs` — `OrdinalSpace` (the register in §3, now in
+code) and `Limits`, folded through `RulesetPatch::apply` from a `[limits]` block.
+Three refusals with **two audiences**, which is the whole point of the split:
+
+| refusal | says | audience |
+|---|---|---|
+| `AtLimit` | *`brace` does not fit: your world declares 1 verb* | the author, in the file they are editing |
+| `BelowDeclared` | *this layer narrows to 2 and 3 are already declared* | the author, across layers |
+| `AboveCapacity` | *you asked for 200; this build holds 64 — rebuild* | whoever deploys. **Not** a design verdict |
+
+Applied **before** the rows of its own layer, so an author raises a ceiling and
+spends it in one file. Enforced per row, so the message names the row that did
+not fit rather than a count.
+
+### Three decisions inside it, each with its reason
+
+**Limits are NOT in the digest.** A limit is read once, at ingest, and never
+again — no law reads it, no step reads it, and a resolved `Ruleset` is immutable.
+`RLS-A15`'s precedent (same rules, different provenance ⇒ same digest) applies
+unchanged, and a divergence is still visible where it matters: if two realities
+with identical rows declare different limits and an author adds a row to each,
+the one that accepted has a different ROW SET, which *is* hashed. The digest
+moves when the behaviour does, not before. `QTY-A10(c)` settles the tie — hashing
+is irreversible, would move every existing reality's digest, and would record a
+number nothing reads. `Limits` therefore has **no `CanonEncode` impl**: the same
+structural exclusion `Provenance` uses, so including it would not compile.
+
+**Limits are not stored on `Ruleset` either.** They are a fold accumulator in
+`resolve`. After the fold there is nothing left for them to constrain, so a field
+would be a shape nobody reads.
+
+**Capacity stays a compile-time constant, deliberately.** It is an inline array
+width, so runtime data means a heap allocation — forbidden by name
+(`QTY-A6 ⊥ QTY-A12`). A per-deployment knob (`option_env!`) dodges the allocation
+and is refused for a sharper reason: **two nodes of one cluster built with
+different capacities would disagree about whether a manifest is valid.** A world
+that loads on one node and is refused on its neighbour is worse than a rebuild.
+
+### And §4b's number, now that it means something else
+
+`MAX_DECLARED_VERBS` 16 → **64**, and the repin `size_of::<Ruleset>() <= 3696`
+→ **6960** (measured: `VerbDecl` 68 B, `VerbTable` 1090 → 4356). The assertion
+refused the change and forced the entry to be written, which is the entry above
+it demonstrated rather than restated — *"the assertion is not here to forbid
+growth."* **The repin is not what changed; the authority is.**
+
+**What the register catches that a raise would not have:** raising 16 → 64 fixes
+one constant. `LIM-1` fixes the *class* — every author-extensible space now has a
+manifest key, and `OrdinalSpace`'s four exhaustive matches make a new space a
+compile error until it is given one.
 
 ## 5. The third kind the measurement found — RUNTIME-DERIVED
 

@@ -10,7 +10,11 @@ use crate::quantity::QuantityName;
 
 use super::{EffectRow, RequirementRow, TargetRole, VerbDecl, VerbError};
 
-/// How many verbs one reality may declare.
+/// **How many verb rows THIS BINARY can hold — not how many a world may have.**
+///
+/// The second question is the manifest's, and it is answered by
+/// [`ruleset_core::Limits`](crate::Limits) (`LIM-1`). Everything below is about
+/// the first.
 ///
 /// **Not the same number as `MAX_DECLARED_QUANTITIES`, and deliberately not an
 /// alias of it.** `MAX_DECLARED_RESOURCES` IS an alias, because a pool *is* a
@@ -18,11 +22,46 @@ use super::{EffectRow, RequirementRow, TargetRole, VerbDecl, VerbError};
 /// in a different ordinal space, so tying the two would be a coincidence
 /// pretending to be an invariant.
 ///
-/// Sixteen because the encoded cost is `0..n` — a reality declaring three verbs
-/// pays for three — while the resident cost is `n × size_of::<VerbDecl>()` on a
-/// struct interned once per reality (`QTY-A6.1`: `O(n)` per actor is what must
-/// be cheap; this is not per actor).
-pub const MAX_DECLARED_VERBS: usize = 16;
+/// ## Why it was 16, and why 16 was wrong
+///
+/// The argument this doc used to carry explained why the TABLE is cheap — the
+/// encoded cost is `0..n`, and the resident cost lands on a struct interned once
+/// per reality (`QTY-A6.1`). Every word of that is true, and **none of it
+/// explains why the number is sixteen.** It was a prose argument for
+/// affordability standing in for a derivation, which is the same defect one tier
+/// up that `docs/specs/2026-08-06-ordinal-spaces.md` was written to catch.
+///
+/// Worse, the discipline it borrowed was the wrong one. `MAX_DECLARED_QUANTITIES
+/// = 32` is tight because that array is **per-ACTOR**: `[i32; 32]` is 128 B on
+/// every resident actor, 1.28 MB at ten thousand. A verb table is
+/// **per-RULESET**, interned once per reality. Measured, the two costs are not
+/// in the same units:
+///
+/// ```text
+/// [i32; 32]      on Actor     128 B x EVERY resident actor
+/// [VerbDecl; 64] on Ruleset   4356 B ONCE per reality
+/// ```
+///
+/// So 16 -> 64 costs ~3.2 KB per reality and **zero encoded bytes**. Sixteen
+/// actions is a tight budget for a game; four kilobytes is not a budget at all.
+///
+/// ## Why capacity is still a compile-time constant, and not itself ingested
+///
+/// It is an inline array width, so making it runtime data means a heap
+/// allocation — and that is forbidden by name (`QTY-A6 ⊥ QTY-A12`: boxing makes
+/// `size_of` 16 bytes for every `n`, so the guards on these structs would
+/// compile, always pass, and never fire again).
+///
+/// A per-deployment knob (`option_env!`) would dodge the allocation and is
+/// **also refused**, for a sharper reason: two nodes of one cluster built with
+/// different capacities would disagree about whether a manifest is valid. A
+/// world that loads on one node and is refused on its neighbour is a worse
+/// failure than a rebuild.
+///
+/// Raising it is a rebuild that **moves no existing digest** — only `0..n` is
+/// encoded. Lowering it is forbidden by data, not by taste: a stored ordinal
+/// past the new width is unreadable.
+pub const MAX_DECLARED_VERBS: usize = 64;
 
 /// How many distinct cue ordinals one reality may use — **`M2`, priced 2026-08-06.**
 ///

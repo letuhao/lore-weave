@@ -7,7 +7,7 @@
 //! because a variant whose message lives in another file is a variant whose
 //! message drifts.
 
-use ruleset_core::{Floor, ProgressionInvalid, QuantityError, ResourceError};
+use ruleset_core::{Floor, LimitError, ProgressionInvalid, QuantityError, ResourceError};
 
 use crate::patch_progression::ProgressionPatchError;
 use crate::progression_store::ProgressionStoreError;
@@ -56,6 +56,15 @@ pub enum LoadError {
     /// Q2 — a declared POOL is malformed: it names a quantity no layer
     /// declared, repeats one, or gives bounds no actor could satisfy (QTY-A4).
     Resource { layer: Layer, source: ResourceError },
+    /// `LIM-1` — the reality's `[limits]` block refused a row, or asked for a
+    /// ceiling this build cannot hold.
+    ///
+    /// **A separate variant rather than a `Quantity`/`Resource`/`Verb` refusal,
+    /// and the split is the point of `LIM-1` rather than tidiness.** Those three
+    /// say a ROW is wrong. This one says the row is fine and the WORLD is full —
+    /// a sentence the engine had no way to say before, because the only ceiling
+    /// that existed was its own.
+    Limit { layer: Layer, source: LimitError },
     /// **S1b — the layer-floor arm (RLS-A16), and its FIRST real subject.**
     ///
     /// 16a gives every Ruleset field a *lowest permissible layer*. Until `Q1`
@@ -108,6 +117,9 @@ impl core::fmt::Display for LoadError {
                 write!(f, "layer `{}`: {source}", layer.name())
             }
             Self::Resource { layer, source } => {
+                write!(f, "layer `{}`: {source}", layer.name())
+            }
+            Self::Limit { layer, source } => {
                 write!(f, "layer `{}`: {source}", layer.name())
             }
             Self::BelowFloor { layer, field, floor } => write!(
