@@ -1751,6 +1751,89 @@ for R18 to re-measure. Carried: `rows_of` runs no document-level stamp check (ow
 
 **2260 tests pass; gate green.** ⚠️ Builder's evidence. **CP-1 does not close**; R18 verifies this delta.
 
+---
+
+## 🔴 R18 — **FAIL ×2**, and my instrument was wrong three times in three different ways
+
+Prompt committed first, two V-CODE on frozen `2faa88bac`. Verdicts:
+[round18-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round18-v-code-a.md) ·
+[round18-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round18-v-code-b.md).
+
+### 🔴 The record contradicted itself, and that is the worst thing in this block
+
+R17's commit message recorded G9+G22 as unreproduced; `RUNSTATE` recorded G9+G48. **One open finding
+had no status anywhere.** A log that disagrees with itself inside one change is where the log stops
+being usable, and this run's own rule — *a record and the place that consumes it are ONE change* —
+is the rule I broke to produce it.
+
+### All three "unreproduced" holes reproduce, and each probe missed in a nameable way
+
+| hole | how my probe missed |
+|---|---|
+| C-12's fields at `check_row`'s re-raise | I **deleted** the wrapper; deletion preserves the exception class and reads green. **Downgrading** it loses `.field_path` at `rows_of`, `validate_document` **and** `build(previous=)` at once |
+| a tool with **resolving** members | I used the stock `members: ['ghost']` fixture, which trips **M5** before the clause is reached — a refusal for the wrong reason looked like the clause working |
+| `dict(r)` | reproduces |
+
+**A probe that disagrees with a verifier is a reason to re-measure, not a reason to close**, and
+re-measuring is what settled all three.
+
+### The impossibility argument I deleted is TRUE AGAIN, and restoring the writer made it true
+
+R17-A was right that *"monotone reds two tests"* was vacuous **without the writer**. I restored the
+writer and **nothing re-ran it with the writer**. R18-A constructed the seventh ordering —
+`arm → record → drain → arm again → read` — and it is **byte-identically the same execution** as the
+two-turn case this delta's own test asserts must return `False`. No assignment of `catalogue_outage`
+can split them. The counter-example was already in the file, **77 lines below** the block claiming a
+single sink-borne residual: *"it therefore also LOWERS a true flag when an arm follows a drain within
+one turn."* **Second consecutive round in which the refutation is a sentence I wrote and did not
+re-read.** The residual is recorded OPEN and **unaddressable by this variable** — not explained away.
+(The number in that sentence was never right either: 5 with the writer, 0 without, never 2.)
+
+### A fix of mine blinded five detections that already worked
+
+Damping the `db/migrate.py` false positive by narrowing the SQL matcher lost **concatenation,
+`.format`, `%`, `" ".join` and two spaces** — all CAUGHT before it, attributed per probe against a
+control. **Narrowing a matcher to silence a false positive is how a gate loses the cases it was built
+for.** The SQL is now assembled from every string in the expression and whitespace-normalised, which
+keeps the DDL out and discards no spelling. And W5b: the `Try` rule tested the bare primitive set
+while its sibling eight lines above tested the transitive closure — **one relation, two definitions,
+in the commit that fixed the previous instance of exactly that.**
+
+### Denominators — the series that matters
+
+| derived by | denominator |
+|---|---|
+| me | **11** |
+| R17-B | 48 |
+| R18-B | **87** (68 `raise` sites enumerated by AST over eight modules, neutered one at a time, + 19 structural invariants) |
+
+**Every ratio I have published in this run is a lower bound, not a measurement.** R18-B measures
+63/87 red-able; R18-A measures 13/24 in its scope.
+
+### What went right, and it should lead the next brief
+
+**7 of 7 fixes in R17's delta have a red-able test that reds for the reason it names** — A calls it
+the best guard record in its scope in eighteen rounds. `introduced` 0.74/100 in scope A,
+second-lowest ever. B's scope was **test-only, zero source lines**, and B says its own low number
+therefore means nothing — which is the right way to report a number that flatters.
+
+### ▶ The two instruments this round produced, both kept
+
+* **A's axis:** count load-bearing claims established **by execution** vs **by argument**. This round
+  1:1 — the executed claim was correct, the argued one was false. *"The only metric that has been
+  red every round, and the one a rate cannot see."*
+* **B's two falsifiable predictions**, each settleable by one command on R19's artifact: that fixing
+  B18-2 at the anchor leaves the class alive (≥1 test red under the CP-2 injection), and that
+  rewording B18-1 leaves both drift injections red.
+
+**2266 tests pass; gate green.** ⚠️ Builder's evidence. **CP-1 does not close**; R19 verifies this delta.
+
+**Open, carried:** the outage ordering residual (**unaddressable by `catalogue_outage`**; owner CP-2)
+· T10 · route 25 · W4/W7 · `G01`/`G12` silent a **fourth** round · B18-1 (the subset assertion
+contributes 0 of 2) · B18-2 (the eleventh guard's anchor reds at CP-2) · B18-10 (a fifth exported
+door, fourth round) · `rows_of`'s document-stamp gap · two contradictory comments 11 lines apart in
+`catalogue_outage_registered`.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -1767,7 +1850,8 @@ subject.** The run proceeds without stopping for scope questions; it stops only 
 | ~~R15~~ | ran 2026-08-06 → **FAIL ×2**. The graded claim was a sentence, and its disproof was the builder's own comment 25 lines above the contradicting code. Closure rose for the first time in the series (~8% → ~27%); `introduced` rose 2 → 4. See the block above | `V-CODE` ×2 on `cba800fa8` | — |
 | ~~R16~~ | ran 2026-08-06 → **FAIL ×2**. Both verifiers refuted both builder self-measurements; the R15 rehousing was measured WORSE than what it replaced and was reverted. Closure 75% / 54%, the highest of the series. See the block above | `V-CODE` ×2 on `d23ea5592` | — |
 | ~~R17~~ | ran 2026-08-06 → **FAIL ×2**. A verifier refuted my claim that an arrangement was impossible — the counter-example was one statement I had deleted myself, and the argument behind the claim was my own sentence gone vacuous. R16-B's advance prediction HELD. See the block above | `V-CODE` ×2 on `6761cf013` | — |
-| **R18** | verify R17's delta: the restored writer and its six-ordering guard, T9's widened anchor, route 24, the `Try` handler rule, `REQUIRED ⊆ emitted ⊆ ALLOWED`, and the guard I had called unguardable | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
+| ~~R18~~ | ran 2026-08-06 → **FAIL ×2**. All three "unreproduced" holes reproduced; the impossibility argument I had deleted is true again; a fix of mine blinded five working detections; **the two records disagreed**. See the block above | `V-CODE` ×2 on `2faa88bac` | — |
+| **R19** | verify R18's delta: the three restored holes, the reassembled SQL matcher, the single narrowing predicate, the four newly-guarded raise sites — and **settle B18's two predictions** | `V-CODE` ×2 | clean ⇒ **CP-1 closes** |
 | **CP-2** | the runtime that serves through the membrane: 2.1–2.10. Carries CP-1's four **V-LIVE** items and the two clauses inherited today | `V-CODE` + `V-LIVE` (β) | all items PASS **and** `runtime_variant` is stamped on **every** terminal path |
 | **CP-3** | the plan — the architecture's central claim | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the claim survives a measurement designed to refute it |
 | **CP-4** | declarations, one at a time, starting with `book_list`. Carries 4.a–4.d and CP-1.3's live measurement | `V-CODE` + `V-LIVE` + `V-METRIC` (γ) | the queue fills and drains; the M3 leak test measures instead of asserting |
