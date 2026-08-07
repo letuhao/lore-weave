@@ -519,6 +519,14 @@ def main() -> int:
         ("REC-102c degraded-mode partition (V1-F4c)", "07_failure_and_recovery.md",
          "| **T3** | **REJECT", "| **T3** | **BUFFER",
          ("07_failure_and_recovery.md", "tier.rs")),
+        # `G3` — the two documents that carry the RULES rather than the numbers,
+        # and which nothing opened until a completeness pass counted: 22 of 26.
+        ("DP-A5 the closed set, in the invariant the seal cites (G3)", "02_invariants.md",
+         "- **DP-T3 Durable-sync**", "- **DP-T9 Durable-sync**",
+         ("02_invariants.md", "tier.rs")),
+        ("DP-Ch5 the cache-key scope marker (G3)", "12_channel_primitives.md",
+         "Reality-scoped:   dp:{reality_id}:r:", "Reality-scoped:   dp:{reality_id}:R:",
+         ("12_channel_primitives.md",)),
     ]:
         results.append(bite_oracle(label, doc, find, replace, names))
 

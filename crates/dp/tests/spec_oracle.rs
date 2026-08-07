@@ -53,12 +53,32 @@
 //!   watches the ruling, not the argument for it.
 //! * **The unit of `DP-X7`'s TTL cells beyond `s`/`min`/`h`**, and anything in
 //!   a cell after its first quantity.
+//! * **`DP-S5`'s BURST column** (`R3-N4`). `table_cells` returns the second cell
+//!   only, so `| T2 writes | 500 / s | 2 000 / s |` is compared on the sustained
+//!   figure and the burst figure can be edited to anything. It was omitted from
+//!   this list while the read ceilings were named, which is the worse half of
+//!   the defect: an undisclosed omission in the one place a reader checks.
+//! * **`DP-S4`**, a four-row per-tier READ-latency table in the same file and
+//!   the same markdown shape as `DP-S3`, which *is* parsed. No `const` here
+//!   mirrors it — but it was not mentioned anywhere either.
+//! * **`DP-F7` Bucket 1 holds a SECOND COPY of `DP-S5`'s numbers** (`G10`),
+//!   headed *"Enforces DP-S5 ceilings"*. They agree today; nothing compares
+//!   them, and this oracle parses only the `08` copy. That is `FLOW-2`'s drift
+//!   shape *inside the corpus this oracle was built for* — the highest-value
+//!   thing still unwatched here.
+//!
+//! **Now covered that was not, after `G3`:** `02_invariants.md` `DP-A5` — the
+//! invariant the seal cites as its authority and which nothing had ever opened —
+//! and `12_channel_primitives.md` `DP-Ch5`, so `as_key()` is no longer pinned
+//! only against a second copy of itself. **22 of 26 LOCKED documents were read
+//! by nothing** when a completeness pass measured it; these two were the
+//! load-bearing ones.
 
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use dp::{Tier, T0, T1, T2, T3};
+use dp::{ScopeKind, Tier, TierLevel, T0, T1, T2, T3};
 
 /// `V1-F4(d)` — **the parsers' own teeth.**
 ///
@@ -439,6 +459,124 @@ fn no_tier_is_implemented_outside_the_declare_tier_macro() {
         body.contains("impl Tier for $name") && body.contains("impl sealed::SealedTier for $name"),
         "the declare_tier! body no longer contains the impls this test searches for — the search \
          has lost its subject and would report clean whatever the file said"
+    );
+}
+
+/// `G3` — **`02_invariants.md` holds the authority this crate cites, and
+/// nothing opened it.**
+///
+/// A completeness pass measured that **22 of the 26 LOCKED documents** are read
+/// by no test and no gate — including this one, which defines `DP-A5`,
+/// `DP-A9` and `DP-A14`: the three invariants the seal, the `const _` block and
+/// the aggregate contract all name as the reason they exist. The oracle parsed
+/// the documents that carry *numbers* and skipped the one that carries the
+/// *rules*, which is the wrong way round for a closed-set claim.
+///
+/// `DP-A5`'s rule is a four-bullet list, one per tier, in the form
+/// `**DP-T0 Ephemeral** — …`. That is as parseable as any table.
+#[test]
+fn the_tier_set_matches_dp_a5() {
+    let doc = dp_doc("02_invariants.md");
+    let start = doc.find("## DP-A5").expect("DP-A5 is not in 02_invariants.md");
+    let body = &doc[start..];
+    let end = body[8..].find("\n## ").map(|i| i + 8).unwrap_or(body.len());
+
+    let mut from_doc: Vec<String> = body[..end]
+        .lines()
+        .filter_map(|l| l.trim().strip_prefix("- **DP-T"))
+        .filter_map(|rest| {
+            let n = rest.chars().next()?;
+            n.is_ascii_digit().then(|| format!("T{n}"))
+        })
+        .collect();
+
+    let src = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/tier.rs"),
+    )
+    .expect("tier.rs");
+    let mut from_src = declared_tiers(&src);
+
+    assert!(
+        !from_doc.is_empty(),
+        "DP-A5's `- **DP-Tn ..**` bullet list did not parse — the rule's shape moved, and a \
+         comparison against nothing agrees with anything"
+    );
+    from_doc.sort();
+    from_src.sort();
+    assert_eq!(
+        from_src, from_doc,
+        "crates/dp/src/tier.rs declares {from_src:?}; 02_invariants.md DP-A5 — the invariant the \
+         seal cites as its authority — enumerates {from_doc:?}"
+    );
+}
+
+/// `G3`, second half — **`as_key()` was pinned only against itself.**
+///
+/// `TierLevel::as_key` and `ScopeKind::as_key` produce the tokens of the
+/// `DP-Ch5` cache key. `V2-F6` pinned all four tier keys and `G9` all four scope
+/// forms — but every one of those assertions is a *second hand-written table*,
+/// which this file's own docstring calls *"the same act done twice"*. The
+/// template they implement lives in `12_channel_primitives.md` and was never
+/// opened.
+///
+/// This parses the two key templates and the worked example beside them, so the
+/// `r`/`c` markers and the lowercase tier token are compared against the
+/// document that defines them rather than against a copy of themselves.
+#[test]
+fn cache_key_tokens_match_dp_ch5() {
+    let doc = dp_doc("12_channel_primitives.md");
+
+    let reality = doc
+        .lines()
+        .find(|l| l.contains("Reality-scoped:") && l.contains("dp:{"))
+        .expect("12_channel_primitives.md: DP-Ch5's reality-scoped key template");
+    let channel = doc
+        .lines()
+        .find(|l| l.contains("Channel-scoped:") && l.contains("dp:{"))
+        .expect("12_channel_primitives.md: DP-Ch5's channel-scoped key template");
+
+    // Position 2 of the key — `dp:{reality_id}:<marker>:…` — is the scope token.
+    let marker_of = |line: &str| -> String {
+        line.split("dp:")
+            .nth(1)
+            .and_then(|k| k.split(':').nth(1))
+            .unwrap_or("")
+            .trim()
+            .to_string()
+    };
+    assert_eq!(
+        marker_of(reality),
+        ScopeKind::Reality.as_key(),
+        "12_channel_primitives.md DP-Ch5's reality template is {reality:?}; scope.rs's \
+         ScopeKind::Reality.as_key() is {:?}",
+        ScopeKind::Reality.as_key()
+    );
+    assert_eq!(
+        marker_of(channel),
+        ScopeKind::Channel.as_key(),
+        "12_channel_primitives.md DP-Ch5's channel template is {channel:?}; scope.rs's \
+         ScopeKind::Channel.as_key() is {:?}",
+        ScopeKind::Channel.as_key()
+    );
+
+    // The worked example beside the template spells a tier token literally.
+    let example = doc
+        .lines()
+        .find(|l| l.contains("\"dp:{reality}:r:") && l.contains("RealityScoped"))
+        .expect("12_channel_primitives.md: DP-Ch5's worked reality-scoped example");
+    let tier_token = example
+        .split("\"dp:{reality}:r:")
+        .nth(1)
+        .and_then(|r| r.split(':').next())
+        .expect("the tier token in DP-Ch5's example");
+    assert_eq!(
+        tier_token,
+        TierLevel::T2.as_key(),
+        "12_channel_primitives.md DP-Ch5's example key uses the tier token {tier_token:?}; \
+         tier.rs's TierLevel::T2.as_key() is {:?}. \
+         These are the same token in the same key, and until now each was checked only against a \
+         copy of itself",
+        TierLevel::T2.as_key()
     );
 }
 
