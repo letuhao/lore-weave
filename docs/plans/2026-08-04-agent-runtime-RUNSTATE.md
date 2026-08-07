@@ -3227,6 +3227,69 @@ call recorded at 2.2 for the three heuristics, and at CP-1.9 for U-1 and U-3. Wh
 establishes is that **the new arm does not have the defect**, by a measurement the legacy shape
 fails under the same harness.
 
+### ⭐ CP-2.4 — reachable was already true; **the model being TOLD** was the item
+
+**Built 2026-08-08.** CP-2.1 made a withheld declaration hidden-but-revealable and proved it end to
+end through a real agent loop. That closes the first half of this row and **not the second**, and
+the distinction is the whole reason §0.14.3 has two numbered parts.
+
+> V-LIVE watched the model state that `book_list` **"does not exist at all"** while the same turn's
+> row recorded it as withheld, with a stage and a reason. **The row was honest and the screen was
+> not.**
+
+Correct telemetry does not prevent that — the record is read by us, afterwards. **And
+reachability does not prevent it either: a model that has concluded a tool does not exist has no
+reason to search for it.** So the fact of withholding is stated, unprompted, on the turn it happens.
+
+### ▶ The measurement is a PAIR, and it has to be
+
+One name is admitted and withheld; the other was never admitted at all. The model searches for each,
+through the real `ToolSearch` path:
+
+| the model asks for | what it gets back |
+|---|---|
+| a **withheld** declaration | revealed, and callable |
+| one that was **never admitted** | nothing, at any turn |
+
+**If those two came back the same, *withheld* and *never existed* would be one state as far as the
+model is concerned** — and every other guard in the class would be about our bookkeeping rather
+than about what the model can know. The guard asserts the difference, not each half separately.
+
+### ▶ `withholding_notice` — three decisions, each of which could have gone wrong quietly
+
+* **The COUNT, never the names.** Listing them puts back on the wire exactly what the narrowing
+  removed: a budget stage that cut five declarations would pay most of its own saving back, and the
+  withholding would be theatre. (Second reason, measured elsewhere in this effort: identifier
+  confusion is the repository's largest failure class, and a bare name list with no schemas feeds
+  it.) The names are in the record, which is where a person reads them.
+* **`None`, not *"0 withheld"*.** A notice on every turn is noise the model learns to skip, and
+  **absent and zero are different facts** — the same distinction §0.14.3 draws for `count`.
+* **It says they EXIST.** The observed fabrication was *"does not exist at all"*; a hedge — *"some
+  tools may not be available"* — is compatible with that reading and would not close it. The guard
+  and its falsifier are built on exactly that substitution.
+
+### ▶ The three QC pillars
+
+**QC1 · CODE — `PASS`.** Suite **2349** · census **72 sites · 8 silent · 64 red**, `rc=0` · falsification **327 guards,
+68 falsified, 259 unproven, 0 stale anchors**, **68/68 fire** · membrane gate green. **5 new
+guards, 5 falsifiers.**
+
+**QC2 · LIVE RUN — `CANNOT DETERMINE` for a chat turn**, unchanged: no request path reaches this
+code. The reveal path itself runs for real (a real `Agent`, the library's real `ToolSearch`), which
+is what makes the pair above a measurement rather than an assertion about flags.
+
+**QC3 · DATA — `PASS`.** The artifact is the pair of observable outcomes above, plus the notice
+text, each with a falsifier that produces the failure it is named for.
+
+### 🔴 What this row does NOT claim
+
+* **Not that the model will act on the notice.** It closes the gap where the model *could not know*;
+  whether a given model then searches is a behaviour no static guard can establish, and it is
+  V-LIVE's question at 2.7.
+* **Not that a withheld declaration is easy to find.** It is discoverable **by name tokens only**
+  — `ROW_FIELDS` still carries no `description`, and tool search scores on name + description. The
+  residual is CP-2.1's, unchanged, and it closes at CP-4 with the first real declaration.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -3505,7 +3568,7 @@ declarations, not silently emit a tool-free pass.
 | 2.1 | P4 assembly on the bought toolset — **and it must be the deferring API, not the filtering one.** Both exist one method apart; one is a ceiling and one is an enabler | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 SPLIT.** `assembly.py` on `pydantic_ai.toolsets`, `.defer_loading()` only; `.filtered(`/`.prepared(` refused by the membrane gate. **29 guards, 28 new falsifiers, 44/44 fire; census 70/7/63 `rc=0`.** **Live at the assembly boundary (real agent loop, real reveal); `CANNOT DETERMINE` for a chat turn — no request path reaches it, which is 2.7.** See the CP-2 block above |
 | 2.2 | **the widening rule** (§4.3) — a plan step's declaration must be advertised while that step is current. **Deletes three heuristics**: the rail next-step exemption, the backtick prose scraper, `load_skill`'s un-advertised names | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `assemble(required=)`; a widened declaration keeps its `Narrowing` and gains a `Widening` naming what it overruled; an un-admitted requirement raises `RequirementNotAdmitted`. 12 guards, 12 falsifiers. ✖ **The three legacy heuristics are NOT deleted** — they live in CP-2's CONTROL arm; the new arm needs none of them. See the CP-2.2 block above |
 | 2.3 | deterministic tool ordering — `active_tool_names` is a `set[str]` iterated unsorted, so **the order changes on every restart** and `tools` is the first cache block | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** The new runtime had the MIRROR defect, measured: deterministic and **rank discarded** — rows ranked `c,b,a` were advertised `a,b,c`. `names` now preserves the pipeline's order; determinism comes from the canonical document + order-preserving stages, proved across **four hash seeds in four interpreters**, with the legacy `set` as a control that disagrees. ✖ `active_tool_names` itself is untouched — CONTROL arm. See the CP-2.3 block above |
-| 2.4 | withheld things stay **reachable on request**; the model can tell *withheld* from *never existed* | ⬜ |
+| 2.4 | withheld things stay **reachable on request**; the model can tell *withheld* from *never existed* | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** Reachability came with 2.1; this row is the **second half of §0.14.3** — the model is TOLD, unprompted, that N admitted declarations exist and were withheld. Measured as a PAIR against a never-admitted name, through the real reveal path. Count never names; `None` never *"0 withheld"*. See the CP-2.4 block above |
 | 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | ⬜ |
 | **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | ⬜ |
 | **2.9** | **`prompt_hash` — chat-service-local, ~10 lines, and that is the whole item.** ⬅️ rewritten 2026-08-05; the original bundled four things and red team killed three. It closes a **currently undetectable** failure: a prompt can change today and nothing notices. 🔴 **NOT included, each for a measured reason:** `code_revision` — `GIT_SHA` becomes an **OCI image label**, no Dockerfile consumes it, `os.environ.get("GIT_SHA")` is `None` in **every** scenario; `seed` — it is **already forwarded** at `adapters.go:678`, the three typed hops above drop it, production runs `temperature=0.0` (greedy, so a seed consumes no randomness) and Anthropic has no seed parameter at all; `block_hashes` — **cannot be computed correctly here**, the cache breakpoint is owned by provider-registry *after* a schema translation, so a chat-service hash can be green while the cached bytes changed | ⬜ |

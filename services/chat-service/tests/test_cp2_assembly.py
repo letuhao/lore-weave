@@ -44,6 +44,7 @@ from app.agentruntime import (
     discover,
     excluded_by,
     toolset_for,
+    withholding_notice,
 )
 from app.agentruntime import assembly as _assembly
 
@@ -517,6 +518,92 @@ class TestAPlanStepsDeclarationIsAdvertised:
         defs = _defs(toolset_for(doc, surface, executor=_executor))
         assert advertised_names(defs) == ("a", "b")
         assert deferred_names(defs) == ("c",)
+
+
+# ── 2.4 · withheld is reachable, and DISTINGUISHABLE from never-existed ─────────────────────────
+
+class TestTheModelCanTellWithheldFromNeverExisted:
+    """REJECTS: an empty-looking surface the model reads as an empty world.
+
+    🔴 **THE ROW WAS HONEST AND THE SCREEN WAS NOT.** V-LIVE watched the model state that
+    `book_list` *"does not exist at all"* while the same turn's row recorded it as withheld with a
+    stage and a reason. Correct telemetry does not prevent that: the record is read by us,
+    afterwards.
+
+    Reachability alone does not prevent it either, which is why this is a separate item from 2.1.
+    A model that has already concluded a tool does not exist **has no reason to search for it.**
+    """
+
+    def test_A_WITHHELD_DECLARATION_AND_A_NEVER_ADMITTED_ONE_END_DIFFERENTLY(self):
+        """🔴 **THE MEASUREMENT, AND IT IS A PAIR.** One name is admitted and withheld; the other
+        was never admitted at all. The model searches for each. If the two searches came back the
+        same, *"withheld"* and *"never existed"* would be one state as far as the model is
+        concerned, and every guard in this class would be about our bookkeeping rather than about
+        what the model can know."""
+        doc = _doc("book_list", "glossary_search")
+        surface = _split(doc, ("glossary_search",))
+        toolset = toolset_for(doc, surface, executor=_executor)
+
+        found: dict[str, list[str]] = {}
+
+        def drive(query: str) -> list[str]:
+            turns: list[list[str]] = []
+
+            def model_fn(messages, info: AgentInfo):
+                turns.append(sorted(t.name for t in info.function_tools))
+                if len(turns) == 1:
+                    return ModelResponse(
+                        parts=[ToolCallPart("search_tools", {"queries": [query]})])
+                return ModelResponse(parts=[TextPart("done")])
+
+            agent = Agent(FunctionModel(model_fn), toolsets=[toolset],
+                          capabilities=[ToolSearch()])
+            asyncio.run(agent.run(f"find {query}"))
+            return turns[-1]
+
+        found["withheld"] = drive("glossary")
+        found["never"] = drive("wormhole")
+
+        assert "glossary_search" in found["withheld"], (
+            "the withheld declaration was not revealed by a search that names it"
+        )
+        assert "glossary_search" not in found["never"], "the search harness reveals unconditionally"
+        assert found["withheld"] != found["never"], (
+            "a withheld declaration and one that never existed produced the SAME observable "
+            "outcome - then the model cannot tell them apart and §0.14.3's failure is live"
+        )
+
+    def test_THE_MODEL_IS_TOLD_UNPROMPTED_THAT_SOMETHING_WAS_WITHHELD(self):
+        """Reachable is not enough: the notice is what stops the model concluding *"no tool
+        provides this"* before it ever searches."""
+        doc = _doc("a", "b", "c")
+        notice = withholding_notice(_split(doc, ("b", "c")))
+        assert notice is not None and "2 declarations" in notice
+        assert "reachable" in notice and "search" in notice
+
+    def test_THE_NOTICE_COUNTS_AND_DOES_NOT_NAME(self):
+        """🔴 **NAMING THEM PUTS BACK ON THE WIRE EXACTLY WHAT THE NARROWING REMOVED**, so a budget
+        stage that cut five declarations would pay most of its own saving back and the withholding
+        would be theatre. The names are in the record, which is where a person reads them."""
+        doc = _doc("glossary_search", "kg_build", "book_list")
+        notice = withholding_notice(_split(doc, ("glossary_search", "kg_build")))
+        assert notice is not None
+        for name in ("glossary_search", "kg_build"):
+            assert name not in notice, f"the notice leaked {name} back onto the wire"
+
+    def test_NOTHING_WITHHELD_MEANS_NO_NOTICE_AT_ALL__not_a_notice_saying_zero(self):
+        """A notice on every turn is noise the model learns to skip, and **absent and zero are
+        different facts** — the same distinction §0.14.3 draws for `count`."""
+        doc = _doc("a", "b")
+        assert withholding_notice(_split(doc, ())) is None
+
+    def test_THE_NOTICE_SAYS_THEY_EXIST__it_is_the_sentence_the_model_got_wrong(self):
+        """The observed fabrication was *"does not exist at all"*. A notice that hedges — *"some
+        tools may not be available"* — is compatible with that reading and would not close it."""
+        doc = _doc("a", "b")
+        notice = withholding_notice(_split(doc, ("b",)))
+        assert "exist" in notice and "not deleted" in notice
+        assert "1 declaration " in notice, "the singular case reads as a plural"
 
 
 # ── 2.3 · deterministic tool ordering ───────────────────────────────────────────────────────────

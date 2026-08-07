@@ -246,6 +246,39 @@ def deferred_names(tool_defs: Sequence[ToolDefinition]) -> tuple[str, ...]:
     return tuple(d.name for d in tool_defs if d.defer_loading)
 
 
+def withholding_notice(surface: Surface) -> str | None:
+    """CP-2.4 · §0.14.3 — what the model must be TOLD, or `None` when there is nothing to tell.
+
+    🔴 **THE ROW WAS HONEST AND THE SCREEN WAS NOT.** V-LIVE watched the model state that
+    `book_list` *"does not exist at all"* while the same turn's row recorded it as withheld, with a
+    stage and a reason. **An empty surface the model cannot distinguish from an empty world
+    produces confident fabrication**, and no amount of correct telemetry prevents it — the record
+    is read by us, afterwards.
+
+    Reachability alone does not close this either. CP-2.1 made a withheld declaration discoverable
+    and callable; a model that has concluded the tool does not exist **has no reason to search**.
+    So the fact of withholding is stated, unprompted, on the turn it happens.
+
+    **The COUNT, never the names.** Two reasons, and the first is the load-bearing one: listing the
+    names puts back on the wire exactly what the narrowing removed, so a budget stage that cut five
+    declarations would pay most of its own saving back and the narrowing would be theatre. The
+    second is measured elsewhere in this effort — identifier confusion is the repository's largest
+    failure class, and a bare list of names with no schemas is the shape that feeds it. The names
+    are in the record, which is where a person reads them.
+
+    `None` rather than *"0 withheld"*: a notice on every turn is noise the model learns to skip,
+    and **absent and zero are different facts** — the same distinction §0.14.3 makes for `count`.
+    """
+    n = len(surface.withheld)
+    if not n:
+        return None
+    return (
+        f"{n} declaration{'s' if n != 1 else ''} that exist and are admitted were not offered on "
+        f"this pass. They were withheld, not deleted, and they are reachable: search for the "
+        f"operation you need before concluding that no tool provides it."
+    )
+
+
 def excluded_by(tool_defs: Sequence[ToolDefinition]) -> dict[str, dict]:
     """`{declaration id: the narrowing record that withheld it}` — the `_meta` reason channel."""
     out: dict[str, dict] = {}
@@ -265,4 +298,5 @@ __all__ = [
     "deferred_names",
     "excluded_by",
     "toolset_for",
+    "withholding_notice",
 ]

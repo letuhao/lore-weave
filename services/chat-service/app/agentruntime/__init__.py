@@ -35,6 +35,7 @@ from .assembly import (
     deferred_names,
     excluded_by,
     toolset_for,
+    withholding_notice,
 )
 from .contract import (
     CONTRACT_VERSION,
@@ -73,7 +74,7 @@ from .surface import (
 __all__ = [
     "Admitted", "admit", "try_admit",
     "TOOLSET_ID", "AssemblyMismatch", "DeclarationToolset", "advertised_names", "deferred_names",
-    "excluded_by", "toolset_for",
+    "excluded_by", "toolset_for", "withholding_notice",
     "CONTRACT_VERSION", "ContractViolation", "Declaration", "Identity",
     "derive_owning_service", "identity_of",
     "UnresolvedReference", "UntrustedRow", "build", "declarations", "generate", "load",

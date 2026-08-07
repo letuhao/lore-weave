@@ -368,6 +368,36 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/surface.py", "        required = list(required)", "        required = required"),
     ],
 
+    # ── CP-2.4 · withheld is reachable AND distinguishable from never-existed ─────────────────
+    "test_A_WITHHELD_DECLARATION_AND_A_NEVER_ADMITTED_ONE_END_DIFFERENTLY": [
+        # Drop the withheld ones out of the toolset - `.filtered()` by hand - and the two searches
+        # come back identical, which is §0.14.3's failure exactly.
+        (f"{PKG}/assembly.py",
+         "    defs += [_tool_def(by_id[name], excluded_by=excluded_by[name]) for name in withheld_ids]",
+         "    defs += []"),
+    ],
+    "test_THE_MODEL_IS_TOLD_UNPROMPTED_THAT_SOMETHING_WAS_WITHHELD": [
+        # The state before this item: reachable, and never mentioned.
+        (f"{PKG}/assembly.py", "    n = len(surface.withheld)\n    if not n:",
+                               "    n = len(surface.withheld)\n    if True:"),
+    ],
+    "test_NOTHING_WITHHELD_MEANS_NO_NOTICE_AT_ALL__not_a_notice_saying_zero": [
+        (f"{PKG}/assembly.py", "    n = len(surface.withheld)\n    if not n:",
+                               "    n = len(surface.withheld)\n    if False:"),
+    ],
+    "test_THE_NOTICE_COUNTS_AND_DOES_NOT_NAME": [
+        (f"{PKG}/assembly.py",
+         '        f"operation you need before concluding that no tool provides it."',
+         '        f"operation you need before concluding that no tool provides it: "\n'
+         '        + ", ".join(w["tool"] for w in surface.withheld)'),
+    ],
+    "test_THE_NOTICE_SAYS_THEY_EXIST__it_is_the_sentence_the_model_got_wrong": [
+        # The hedge that reads as compatible with "does not exist at all".
+        (f"{PKG}/assembly.py",
+         '        f"{n} declaration{\'s\' if n != 1 else \'\'} that exist and are admitted were not offered on "',
+         '        f"{n} tool{\'s\' if n != 1 else \'\'} may not be available on "'),
+    ],
+
     # ── CP-2.3 · deterministic tool ordering ─────────────────────────────────────────────────
     #
     # `NAMES` is the one line, and it has two wrong values rather than one: alphabetical (the
