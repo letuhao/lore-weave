@@ -59,6 +59,61 @@ fn shipped_migrations() -> Vec<(String, String)> {
     out
 }
 
+/// The body, returning failures instead of panicking.
+///
+/// Written this way so the DROP below is UNCONDITIONAL. Found the honest way:
+/// biting this test left `ws_reentry_<pid>_test` behind, because a panic never
+/// reaches a cleanup that sits after the `.await`. That is `1b7db-12`'s
+/// contamination hazard — a stray database that makes the NEXT run look broken —
+/// arriving through the failure path of the test written to prove a fix.
+async fn check(dsn: &str) -> Result<(), String> {
+    let pool = sqlx::PgPool::connect(dsn).await.map_err(|e| format!("reality connect: {e}"))?;
+    let migrations = shipped_migrations();
+    let out = run(&pool, &migrations).await;
+    pool.close().await;
+    out
+}
+
+async fn run(pool: &sqlx::PgPool, migrations: &[(String, String)]) -> Result<(), String> {
+    if migrations.len() < 10 {
+        return Err(format!("expected the shipped manifest, got {}", migrations.len()));
+    }
+
+    // Pass 1 — a fresh reality applies everything.
+    let first = world_service::provisioner_live::apply_pending(pool, migrations)
+        .await
+        .map_err(|e| format!("first pass must apply cleanly: {e:?}"))?;
+    if first != migrations.len() {
+        return Err(format!("a fresh reality must apply every migration: {first}"));
+    }
+
+    // Pass 2 — THE REGRESSION. Before the ledger this errored at `0001_initial`;
+    // the contract is that it is a no-op.
+    let second = world_service::provisioner_live::apply_pending(pool, migrations)
+        .await
+        .map_err(|e| format!("re-entry must not error — this is 1b14-01: {e:?}"))?;
+    if second != 0 {
+        return Err(format!("a completed reality must re-provision to a no-op: {second}"));
+    }
+
+    // NON-VACUITY: the pass above would also read `0` if the loop silently did
+    // nothing. Forget ONE migration and exactly that one must re-apply, which
+    // proves the ledger is CONSULTED rather than merely written.
+    let victim = &migrations.last().expect("at least one migration").0;
+    sqlx::query("DELETE FROM schema_migrations WHERE id = $1")
+        .bind(victim)
+        .execute(pool)
+        .await
+        .map_err(|e| format!("forget one: {e}"))?;
+    let third = world_service::provisioner_live::apply_pending(pool, migrations)
+        .await
+        .map_err(|e| format!("re-applying one migration is the retry-safe operation: {e:?}"))?;
+    if third != 1 {
+        return Err(format!("exactly the forgotten migration must re-apply, got {third}"));
+    }
+    Ok(())
+}
+
 #[tokio::test]
 async fn a_completed_reality_re_provisions_to_a_no_op() {
     let Some(admin) = admin_dsn() else {
@@ -69,7 +124,9 @@ async fn a_completed_reality_re_provisions_to_a_no_op() {
     assert!(db.contains("test"), "throwaway marker required before CREATE/DROP");
 
     let admin_pool = sqlx::PgPool::connect(&admin).await.expect("admin connect");
-    let _ = sqlx::raw_sql(&format!("DROP DATABASE IF EXISTS {db}")).execute(&admin_pool).await;
+    let _ = sqlx::raw_sql(&format!("DROP DATABASE IF EXISTS {db} WITH (FORCE)"))
+        .execute(&admin_pool)
+        .await;
     sqlx::raw_sql(&format!("CREATE DATABASE {db}")).execute(&admin_pool).await.expect("create db");
 
     let dsn = {
@@ -77,45 +134,14 @@ async fn a_completed_reality_re_provisions_to_a_no_op() {
         format!("{base}/{db}")
     };
 
-    let result = async {
-        let pool = sqlx::PgPool::connect(&dsn).await.expect("reality connect");
-        let migrations = shipped_migrations();
-        assert!(migrations.len() >= 10, "expected the shipped manifest, got {}", migrations.len());
-
-        // Pass 1 — a fresh reality applies everything.
-        let first = world_service::provisioner_live::apply_pending(&pool, &migrations)
-            .await
-            .expect("first pass must apply cleanly");
-        assert_eq!(first, migrations.len(), "a fresh reality must apply every migration");
-
-        // Pass 2 — THE REGRESSION. Before the ledger this errored at
-        // `0001_initial`; the contract is that it is a no-op.
-        let second = world_service::provisioner_live::apply_pending(&pool, &migrations)
-            .await
-            .expect("re-entry must not error — this is 1b14-01");
-        assert_eq!(second, 0, "a completed reality must re-provision to a no-op");
-
-        // NON-VACUITY: the pass above would also read `0` if the loop silently
-        // did nothing. Forget ONE migration and exactly that one must re-apply,
-        // which proves the ledger is CONSULTED rather than merely written.
-        let victim = &migrations.last().expect("at least one migration").0;
-        sqlx::query("DELETE FROM schema_migrations WHERE id = $1")
-            .bind(victim)
-            .execute(&pool)
-            .await
-            .expect("forget one");
-        let third = world_service::provisioner_live::apply_pending(&pool, &migrations)
-            .await
-            .expect("re-applying one migration is the retry-safe operation");
-        assert_eq!(third, 1, "exactly the forgotten migration must re-apply, not all or none");
-
-        pool.close().await;
-    }
-    .await;
+    let result = check(&dsn).await;
 
     let _ = sqlx::raw_sql(&format!("DROP DATABASE IF EXISTS {db} WITH (FORCE)"))
         .execute(&admin_pool)
         .await;
     admin_pool.close().await;
-    result
+
+    if let Err(why) = result {
+        panic!("{why}");
+    }
 }
