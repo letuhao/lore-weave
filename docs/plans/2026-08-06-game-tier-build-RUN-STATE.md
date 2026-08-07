@@ -1864,6 +1864,21 @@ borrowed row §6i's own "What does NOT satisfy this" forbids by name.
 migration written to discharge it. Recorded as `REC-105` and flagged: it is the one **judgement** in
 1b rather than a correction, and nothing has run against a real database.
 
+## 6k. `SLICE-2` — Phase 0 only. **The board is NOT written and slice 2 has NOT started.**
+
+Run while `1b.7`'s refuters were working, because Phase 0 reads `crates/` and `services/` and they
+read `scripts/` and `docs/` — different bytes, no rework risk either way. `BDR-26` still holds: the
+board gets written when the slice starts, and it does not start while `1b` is open.
+
+Three questions, each answered with a command.
+
+| # | finding |
+|---|---|
+| `2F-1` | ✅ **The subject is real, and it is large.** `DP-R3`'s lint has something to be red about on day one: `sqlx::` appears in **36 files across three services** — `world-service` 16, `commit-service` 12, `roleplay-service` 8 — and **15 across four crates** (`dp-kernel` 8, `meta-rs` 3, `service-http` 3, `world-gen` 1). This is the opposite of the `pc_*`/`npc_*` finding: a mechanism whose subject exists before the mechanism does. |
+| `2F-2` | 🔴 **`DP-R3`'s own exemption names a crate that is not where the database code lives.** [`11_access_pattern_rules.md:66`](../03_planning/LLM_MMO_RPG/06_data_plane/11_access_pattern_rules.md) locks the rule as *"scans for forbidden imports in any crate other than `dp` itself"*. Applied literally it fires on **`crates/dp-kernel`**, which holds `event_store_pg.rs`, `outbox.rs`, `load_aggregate.rs` — the code whose whole job is to touch Postgres. `dp-kernel` was created five weeks *after* this rule was locked, by a different track; that is `FLOW-6` again, arriving as an exemption list that cannot be right. **The slice must decide what the exempt set IS, and derive it rather than type it** — an enumerated crate list is `NV-3`, and this is the second time in this run that an enumerated list has been the defect. |
+| `2F-3` | 🔴 **The enforcement mechanism `DP-R3` names does not exist, and neither does any infrastructure for it.** It specifies a *"custom clippy rule `dp::forbid_raw_kernel_client` … Presence = lint error, breaks CI."* A real custom clippy lint needs `dylint`, `clippy_utils` or `rustc_private`: **grep finds none of the three anywhere in the tree.** Meanwhile the repo has **90 wired gates**, each with a self-test and a bite, which is the mechanism that actually holds every other rule here. ⇒ **This is a decision slice 2 must make out loud, not discover halfway through**: stand up a dylint toolchain to honour the letter, or implement the rule as a wired gate and amend `DP-R3`'s enforcement line to say what enforces it. `D-DP-CLIPPY-NOT-BUILT` names the debt and does not name this fork. |
+| `2F-4` | 🟠 **`roleplay-service` is a THIRD candidate game-layer service, and `DPA-SCOPE` named two.** It carries `sqlx::` in 8 files and `reality_id` in `services/roleplay-service/src/handlers/mod.rs:10` and `services/roleplay-service/src/models.rs:32`. `DPA-SCOPE` derived *"game-layer ⇒ uses the SDK"* from `01_scope_and_boundary.md` §4 and cited `commit-service` and `world-service`. Whether `roleplay-service`'s `reality_id` is a per-reality DB access or a foreign key in a platform DB decides whether the RED allowlist is 28 files or 36 — **and nobody has looked.** |
+
 ## 7. Registers — append as it happens
 
 ### Decisions
