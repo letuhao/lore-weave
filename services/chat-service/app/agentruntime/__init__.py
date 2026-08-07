@@ -57,6 +57,14 @@ from .manifest import (
     validate_document,
 )
 from .narrowing import Narrowing, NarrowingLog, Widening
+from .observation import (
+    OUTCOMES,
+    SOURCES,
+    Guardrail,
+    NotObservable,
+    Observation,
+    observe,
+)
 from .surface import (
     AllowList,
     DenyList,
@@ -80,6 +88,7 @@ __all__ = [
     "UnresolvedReference", "UntrustedRow", "build", "declarations", "generate", "load",
     "manifest_path", "validate_document",
     "Narrowing", "NarrowingLog", "Widening", "RequirementNotAdmitted",
+    "OUTCOMES", "SOURCES", "Guardrail", "NotObservable", "Observation", "observe",
     "AllowList", "DenyList", "Filter", "OrderBy", "TopK", "TakeWhileBudget",
     "Surface", "SurfaceAssembler", "discover", "rows_of", "validate_pipeline",
 ]

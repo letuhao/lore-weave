@@ -3290,6 +3290,90 @@ text, each with a falsifier that produces the failure it is named for.
   — `ROW_FIELDS` still carries no `description`, and tool search scores on name + description. The
   residual is CP-2.1's, unchanged, and it closes at CP-4 with the first real declaration.
 
+### ⭐ CP-2.5 — P5 is not enforced here, it is made INEXPRESSIBLE
+
+**Built 2026-08-08.** *"Every terminal path records"* failed as a retrofit for **eleven consecutive
+rounds**. On the legacy runtime it is one claim about six INSERT sites, thirty mint sites and five
+producers; eight fixes were attempted, each correct at the layer it named and blind to the next, and
+two were placed where they could not run at all. **`finish_reason` covers 9.4% of turns today.**
+
+So `app/agentruntime/observation.py` does not check the property. `Observation` has **four required
+fields and no defaults**, so a path that cannot answer one does not produce a partial record — it
+produces none, and cannot end a turn. Same construction argument as M2 and `Admitted[D]`: there is
+no validator to run and forget to run.
+
+🔴 **And the reason there are no defaults is P4, not tidiness.** `source="tool"`,
+`outcome="done"`, `advertised=()` are each a **constant written at every write** — the exact
+violation CP-1 repaired at eight asserted values, the last being `outcome_source='path'` written
+from a mid-turn checkpoint no terminal path reaches. A record that guesses is worse than a missing
+one: **it is a missing one that counts.**
+
+### ▶ The measurement — an array per pass, and what a scalar would have lost
+
+```
+advertised: {'pass': 1, 'tool_choice': 'auto', 'names': ('a', 'c')}
+advertised: {'pass': 2, 'tool_choice': 'auto', 'names': ('a', 'b', 'c')}
+withheld  : ['b']
+guardrail : Guardrail(fired=True, evidence='the same call, 3 times, identical args',
+                      transition='step 2 -> blocked_on_missing_input', acted=False)
+```
+
+**A scalar `text[]` holds the last row only** — `('a','b','c')` — and the mid-turn deletion of `b`
+is gone. That deletion is the entire reason the field exists: arm E's silent deletion is invisible
+in production today because no column answers *what did this turn advertise, and when*. The guard
+asserts the two passes **differ**, so it cannot pass over a fixture where a scalar would have done.
+
+Two entries for one pass are refused: a duplicate makes *"what was advertised at pass 2"* answer two
+things, and every consumer reading the first silently disagrees with every consumer reading the last.
+
+### ⭐ The guardrail shadow arm, and why it is v1 rather than v2
+
+> **Property 3: a strong model reaches the transition before the guardrail fires.**
+
+It is measurable only as **fire-rate falling toward zero as model strength rises** — *if it does not
+fall, we built a ceiling and mislabelled it.* 🔴 **A guardrail that acts destroys its own
+denominator**: the turns where the model would have recovered on its own never happen, so the rate
+measures the guardrail rather than the model. **That sentence cannot be tested at all once the
+ceiling is in place**, which is precisely what *un-retrofittable* means here — the data for a v2
+decision exists only if v1 does not act.
+
+So `acted` is a **field that is refused at construction**, not a comment. An invariant that is only
+documented is one this run has watched fail eleven times. Two more clauses come straight from §0.5:
+
+* a fire with **no deterministic evidence** is refused — property 1 is *an identical call repeated,
+  a budget spent*, **never** a judgement about whether the model seems confused. A guardrail that
+  fires on a judgement is the sixth breaker with a new name;
+* a fire with **no transition** is refused — *a guardrail's output must be a PLAN STATE TRANSITION,
+  not a stop*, and today's six breakers are **65.7% of everything the model sees as an error**.
+
+And a guardrail that did **not** fire needs neither, or every quiet turn would be forced to invent
+evidence — the fabrication these checks exist to prevent.
+
+### ✖ Two fields that are deliberately absent, each with the measurement behind it
+
+* **The wrong-object counter is not a P5 field** (§0.6): *a counter without a detector ships reading
+  zero.* Only substitution-shaped cases are detectable at the call; the **61.8% carry-forward class
+  is detectable only from plan-binding state**, so its detector belongs with the plan (§0.11) and P5
+  carries the output when there is one.
+* **`manifest_revision` is not here** (CP-1.8): hashing an empty manifest is a constant-valued
+  column at every write — the P4 violation CP-1 just repaired.
+
+Both are guarded, so adding either fails on the day it is written.
+
+### ▶ The three QC pillars
+
+**QC1 · CODE — `PASS`.** Suite **2383** · census **81 sites · 8 silent · 73 red**, `rc=0` · falsification **343 guards,
+84 falsified, 259 unproven, 0 stale anchors**, **84/84 fire** · membrane gate green over **10
+modules**. **16 new guards, 16 falsifiers** — 13 written with the module, and **three more the CENSUS found**: all three refusals in `Observation.__post_init__` (the closed entry shape, the 1-based `pass` bound, the `names`-is-a-tuple bound) shipped with nothing checking them and were reported `NEWLY SILENT` on the first run after the module landed. Guarded rather than allowlisted; the same three sites then read RED.
+
+**QC2 · LIVE RUN — `CANNOT DETERMINE`**, and here the phrase is sharper than at 2.1–2.4: P5's claim
+is about **terminal paths**, and the new runtime has none, because no request reaches it. *"Written
+on every path"* is established here as **"no path can omit them"**, which is a property of the type;
+that a real turn produces one is 2.7's to show.
+
+**QC3 · DATA — `PASS`.** The artifact is the record above, with its falsifier stated: a scalar
+column would have shown `('a','b','c')` alone.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -3569,7 +3653,7 @@ declarations, not silently emit a tool-free pass.
 | 2.2 | **the widening rule** (§4.3) — a plan step's declaration must be advertised while that step is current. **Deletes three heuristics**: the rail next-step exemption, the backtick prose scraper, `load_skill`'s un-advertised names | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `assemble(required=)`; a widened declaration keeps its `Narrowing` and gains a `Widening` naming what it overruled; an un-admitted requirement raises `RequirementNotAdmitted`. 12 guards, 12 falsifiers. ✖ **The three legacy heuristics are NOT deleted** — they live in CP-2's CONTROL arm; the new arm needs none of them. See the CP-2.2 block above |
 | 2.3 | deterministic tool ordering — `active_tool_names` is a `set[str]` iterated unsorted, so **the order changes on every restart** and `tools` is the first cache block | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** The new runtime had the MIRROR defect, measured: deterministic and **rank discarded** — rows ranked `c,b,a` were advertised `a,b,c`. `names` now preserves the pipeline's order; determinism comes from the canonical document + order-preserving stages, proved across **four hash seeds in four interpreters**, with the legacy `set` as a control that disagrees. ✖ `active_tool_names` itself is untouched — CONTROL arm. See the CP-2.3 block above |
 | 2.4 | withheld things stay **reachable on request**; the model can tell *withheld* from *never existed* | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** Reachability came with 2.1; this row is the **second half of §0.14.3** — the model is TOLD, unprompted, that N admitted declarations exist and were withheld. Measured as a PAIR against a never-admitted name, through the real reveal path. Count never names; `None` never *"0 withheld"*. See the CP-2.4 block above |
-| 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | ⬜ |
+| 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `observation.py`: four required fields, **no defaults** — every plausible default is a constant at a write boundary, which is P4. `advertised` is an array PER PASS and a duplicate pass is refused. The guardrail refuses `acted=True` at construction; a fire needs deterministic evidence AND a transition. ✖ wrong-object counter and `manifest_revision` are absent, and guarded absent. See the CP-2.5 block above |
 | **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | ⬜ |
 | **2.9** | **`prompt_hash` — chat-service-local, ~10 lines, and that is the whole item.** ⬅️ rewritten 2026-08-05; the original bundled four things and red team killed three. It closes a **currently undetectable** failure: a prompt can change today and nothing notices. 🔴 **NOT included, each for a measured reason:** `code_revision` — `GIT_SHA` becomes an **OCI image label**, no Dockerfile consumes it, `os.environ.get("GIT_SHA")` is `None` in **every** scenario; `seed` — it is **already forwarded** at `adapters.go:678`, the three typed hops above drop it, production runs `temperature=0.0` (greedy, so a seed consumes no randomness) and Anthropic has no seed parameter at all; `block_hashes` — **cannot be computed correctly here**, the cache breakpoint is owned by provider-registry *after* a schema translation, so a chat-service hash can be green while the cached bytes changed | ⬜ |
 | **2.8** | **`runtime_variant='agentruntime'` stamped at a structural chokepoint covering EVERY terminal path** — not at the happy path. `legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship bias in the new arm's own failure rate**: an unlabelled new-runtime row loses its numerator too, and label-omission correlates with crash and cancel | ⬜ |

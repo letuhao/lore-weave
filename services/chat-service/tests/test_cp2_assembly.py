@@ -27,6 +27,10 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 from app.agentruntime import (
     AssemblyMismatch,
     Declaration,
+    Guardrail,
+    NotObservable,
+    Observation,
+    observe,
     DeclarationToolset,
     DenyList,
     admit,
@@ -518,6 +522,184 @@ class TestAPlanStepsDeclarationIsAdvertised:
         defs = _defs(toolset_for(doc, surface, executor=_executor))
         assert advertised_names(defs) == ("a", "b")
         assert deferred_names(defs) == ("c",)
+
+
+# ── 2.5 · P5 on every path, and the guardrail shadow arm ────────────────────────────────────────
+
+class TestTheFourFieldsCannotBeSkipped:
+    """REJECTS: a terminal path that ends a turn with a partial record.
+
+    🔴 **P5 FAILED AS A RETROFIT FOR ELEVEN CONSECUTIVE ROUNDS.** Eight fixes, each correct at the
+    layer it named and blind to the next; `finish_reason` covers 9.4% of turns today. So the
+    property is not enforced here, it is made **inexpressible**: four required fields, no defaults,
+    so a path that cannot answer one does not produce a partial `Observation` — it produces none.
+    """
+
+    def test_A_TURN_THAT_CANNOT_ANSWER_ALL_FOUR_FIELDS_PRODUCES_NO_RECORD_AT_ALL(self):
+        for missing in ("advertised", "withheld", "source", "outcome"):
+            kwargs = {"advertised": (), "withheld": (), "source": "tool", "outcome": "done"}
+            kwargs.pop(missing)
+            with pytest.raises(TypeError):
+                Observation(**kwargs)                      # type: ignore[arg-type]
+
+    def test_EVERY_PLAUSIBLE_DEFAULT_IS_A_CONSTANT_AT_A_WRITE_BOUNDARY(self):
+        """🔴 The reason none of the four has a default is P4, not tidiness. `source="tool"`,
+        `outcome="done"`, `advertised=()` are each a **constant written at every write** — the exact
+        violation CP-1 repaired at eight asserted values, the last being `outcome_source='path'`
+        written from a checkpoint no terminal path reaches."""
+        import dataclasses
+
+        required = {f.name for f in dataclasses.fields(Observation)
+                    if f.default is dataclasses.MISSING
+                    and f.default_factory is dataclasses.MISSING}
+        assert required == {"advertised", "withheld", "source", "outcome"}
+
+    def test_ADVERTISED_IS_PER_PASS__and_a_scalar_would_lose_the_mid_turn_change(self):
+        """§5 field 1. **A scalar `text[]` records only the LAST pass**, and the mid-turn deletion
+        is the thing the field exists to catch — arm E's silent deletion is invisible in production
+        today precisely because no column answers *what did this turn advertise, and when*."""
+        doc = _doc("a", "b", "c")
+        asm = SurfaceAssembler(doc, log=NarrowingLog())
+        first = asm.assemble(
+            pass_number=1,
+            pipeline=[DenyList(names=("b",), stage="token_budget", reason="over budget")])
+        second = asm.assemble(pass_number=2)
+        record = observe([first, second], source="tool", outcome="done")
+
+        assert [e["pass"] for e in record.advertised] == [1, 2]
+        assert record.advertised[0]["names"] == ("a", "c")
+        assert record.advertised[1]["names"] == ("a", "b", "c")
+        # The scalar view - what a `text[]` column would have held - cannot see the difference.
+        assert record.advertised[-1]["names"] != record.advertised[0]["names"], (
+            "the fixture does not actually change between passes, so this guard would pass over a "
+            "scalar column too"
+        )
+
+    @pytest.mark.parametrize("entry", [
+        {"pass": 1, "names": ()},                                   # missing `tool_choice`
+        {"pass": 1, "tool_choice": "auto"},                          # missing `names`
+        {"pass": 1, "tool_choice": "auto", "names": (), "extra": 1},  # a field nobody defined
+        ({"pass": 1, "tool_choice": "auto", "names": ()},),           # not a dict at all
+    ])
+    def test_AN_ADVERTISED_ENTRY_IS_EXACTLY_THREE_KEYS(self, entry):
+        """🔴 Found by the census, not by me: this refusal shipped with no guard at all.
+
+        The closed shape is the same rule `ROW_FIELDS` enforces one module over — **a record
+        carrying a field the contract never defined passed no clause**, and every consumer that
+        reads it is reading something nobody decided."""
+        with pytest.raises(NotObservable, match="advertised"):
+            Observation(advertised=(entry,), withheld=(), source="tool", outcome="done")
+
+    @pytest.mark.parametrize("bad", [0, -1, "1", True, 1.0, None])
+    def test_A_PASS_NUMBER_IS_A_1_BASED_INT(self, bad):
+        """Also census-found. `True` is in the list on purpose: `bool` is an `int` subclass, so
+        `isinstance` would admit it and `type(p) is not int` does not — the one comparison Python
+        does not dispatch, and the same argument that pinned `check_contract`."""
+        with pytest.raises(NotObservable, match="pass"):
+            Observation(
+                advertised=({"pass": bad, "tool_choice": "auto", "names": ()},),
+                withheld=(), source="tool", outcome="done")
+
+    @pytest.mark.parametrize("bad", [["a"], {"a"}, "a", (n for n in ("a",))])
+    def test_ADVERTISED_NAMES_IS_A_TUPLE_NOT_A_MUTABLE_OR_LAZY_CONTAINER(self, bad):
+        """Census-found, and the third of three. A record that can change after it is written is
+        not a record — and a **generator** is worse: it is empty the second time anyone reads it,
+        so the first consumer sees the names and every later one sees none."""
+        with pytest.raises(NotObservable, match="names"):
+            Observation(
+                advertised=({"pass": 1, "tool_choice": "auto", "names": bad},),
+                withheld=(), source="tool", outcome="done")
+
+    def test_TWO_ENTRIES_FOR_ONE_PASS_IS_REFUSED(self):
+        """A duplicate makes *"what was advertised at pass 2"* answer two things, so every consumer
+        reading the first silently disagrees with every consumer reading the last."""
+        with pytest.raises(NotObservable, match="two entries for pass"):
+            Observation(
+                advertised=({"pass": 1, "tool_choice": "auto", "names": ("a",)},
+                            {"pass": 1, "tool_choice": "auto", "names": ("b",)}),
+                withheld=(), source="tool", outcome="done")
+
+    @pytest.mark.parametrize("bad", ["wire", "TOOL", "", None, 1])
+    def test_SOURCE_IS_ONE_OF_THREE_AND_NOT_A_FREE_STRING(self, bad):
+        """58–66% of what the model sees as an error is our own prose; until `source` exists that
+        fraction of the signal is uninterpretable."""
+        with pytest.raises(NotObservable, match="source is"):
+            Observation(advertised=(), withheld=(), source=bad, outcome="done")
+
+    @pytest.mark.parametrize("bad", ["ok", True, "success", "DONE"])
+    def test_OUTCOME_IS_C14s_TYPED_ENUM_NOT_OK_BOOL(self, bad):
+        """`ok=true` is untyped and meant seven different things: **358 refusals rode the success
+        channel**, 400 empty results had four indistinguishable causes."""
+        with pytest.raises(NotObservable, match="outcome is"):
+            Observation(advertised=(), withheld=(), source="tool", outcome=bad)
+
+    def test_THE_RECORD_IS_DERIVED_FROM_THE_SURFACES_NOT_HAND_TYPED(self):
+        """Every denominator a person maintained in this run turned out to be a lower bound. A pass
+        that happened and was not recorded must be **inexpressible**, not discouraged."""
+        doc = _doc("a", "b")
+        asm = SurfaceAssembler(doc, log=NarrowingLog())
+        surfaces = [
+            asm.assemble(pass_number=1,
+                         pipeline=[DenyList(names=("b",), stage="s", reason="r")]),
+            asm.assemble(pass_number=2),
+        ]
+        record = observe(surfaces, source="tool", outcome="partial")
+        assert len(record.advertised) == len(surfaces)
+        assert [w["tool"] for w in record.withheld] == ["b"]
+
+    def test_THE_WRONG_OBJECT_COUNTER_IS_NOT_A_P5_FIELD(self):
+        """§0.6: **a counter without a detector ships reading zero.** Only substitution-shaped cases
+        are detectable at the call; the 61.8% carry-forward class is detectable only from
+        plan-binding state, so its detector belongs with the plan and P5 carries the output."""
+        import dataclasses
+
+        names = {f.name for f in dataclasses.fields(Observation)}
+        assert not any("wrong" in n or "object_count" in n for n in names), (
+            f"a wrong-object counter was added to P5: {names}"
+        )
+        assert "manifest_revision" not in names, (
+            "hashing an empty manifest is a constant-valued column at every write - the P4 "
+            "violation CP-1 repaired (CP-1.8)"
+        )
+
+
+class TestTheGuardrailIsAShadowArmStructurally:
+    """REJECTS: a v1 guardrail that acts.
+
+    🔴 **PROPERTY 3 IS UNOBSERVABLE ONCE THE GUARDRAIL BLOCKS.** The property is *a strong model
+    reaches the transition before the guardrail fires*, measurable only as **fire-rate falling
+    toward zero as model strength rises**. A guardrail that acts destroys its own denominator: the
+    turns where the model would have recovered never happen. *If it does not fall, we built a
+    ceiling and mislabelled it* — and that sentence cannot be tested once the ceiling is in place.
+
+    **Un-retrofittable**: the data for a v2 decision only exists if v1 does not act.
+    """
+
+    def test_A_GUARDRAIL_THAT_ACTED_CANNOT_BE_CONSTRUCTED(self):
+        with pytest.raises(NotObservable, match="SHADOW ARM"):
+            Guardrail(fired=True, evidence="the same call 3 times", transition="step 2 -> blocked",
+                      acted=True)
+
+    def test_THE_DEFAULT_IS_NOT_ACTING__not_a_flag_someone_must_remember(self):
+        assert Guardrail(False, "", "").acted is False
+
+    def test_A_FIRE_WITHOUT_DETERMINISTIC_EVIDENCE_IS_REFUSED(self):
+        """§0.5 property 1: it fires on an identical call repeated or a budget spent — **never on a
+        judgement about whether the model seems confused.** A guardrail that fires on a judgement is
+        the sixth breaker with a new name."""
+        with pytest.raises(NotObservable, match="DETERMINISTIC"):
+            Guardrail(fired=True, evidence="   ", transition="step 2 -> blocked")
+
+    def test_A_FIRE_WITH_NO_TRANSITION_IS_A_STOP_AND_IS_REFUSED(self):
+        """§0.5: *a guardrail's output must be a PLAN STATE TRANSITION, not a stop.* Today's six
+        breakers are **65.7% of everything the model sees as an error** — the archetypal ceiling."""
+        with pytest.raises(NotObservable, match="TRANSITION"):
+            Guardrail(fired=True, evidence="budget spent", transition="")
+
+    def test_A_GUARDRAIL_THAT_DID_NOT_FIRE_NEEDS_NEITHER(self):
+        """The bounds apply to a FIRE. Requiring evidence for a non-event would force every quiet
+        turn to invent one, which is the fabrication these checks exist to prevent."""
+        assert observe([], source="tool", outcome="done").guardrail.fired is False
 
 
 # ── 2.4 · withheld is reachable, and DISTINGUISHABLE from never-existed ─────────────────────────

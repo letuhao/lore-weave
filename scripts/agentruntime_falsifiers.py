@@ -368,6 +368,91 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/surface.py", "        required = list(required)", "        required = required"),
     ],
 
+    # ── CP-2.5 · P5 on every path, and the guardrail shadow arm ───────────────────────────────
+    "test_A_TURN_THAT_CANNOT_ANSWER_ALL_FOUR_FIELDS_PRODUCES_NO_RECORD_AT_ALL": [
+        # Give the four fields the plausible defaults. Each one is a CONSTANT at a write boundary,
+        # which is P4's violation - and it makes a partial record expressible again.
+        (f"{PKG}/observation.py", "    advertised: tuple[dict, ...]\n",
+                                  "    advertised: tuple[dict, ...] = ()\n"),
+        (f"{PKG}/observation.py", "    withheld: tuple[dict, ...]\n    source: str\n    outcome: str",
+                                  '    withheld: tuple[dict, ...] = ()\n    source: str = "tool"\n'
+                                  '    outcome: str = "done"'),
+    ],
+    "test_EVERY_PLAUSIBLE_DEFAULT_IS_A_CONSTANT_AT_A_WRITE_BOUNDARY": [
+        (f"{PKG}/observation.py", "    withheld: tuple[dict, ...]\n    source: str\n    outcome: str",
+                                  '    withheld: tuple[dict, ...] = ()\n    source: str = "tool"\n'
+                                  '    outcome: str = "done"'),
+    ],
+    "test_ADVERTISED_IS_PER_PASS__and_a_scalar_would_lose_the_mid_turn_change": [
+        # The scalar column: keep only the last pass, which is what a `text[]` would have held.
+        (f"{PKG}/observation.py",
+         "        advertised=tuple(\n"
+         '            {"pass": s.pass_number, "tool_choice": tool_choice, "names": tuple(s.names)}\n'
+         "            for s in surfaces\n        ),",
+         "        advertised=tuple(\n"
+         '            {"pass": s.pass_number, "tool_choice": tool_choice, "names": tuple(s.names)}\n'
+         "            for s in surfaces[-1:]\n        ),"),
+    ],
+    "test_TWO_ENTRIES_FOR_ONE_PASS_IS_REFUSED": [
+        (f"{PKG}/observation.py", "            if p in seen:", "            if False:"),
+    ],
+    # 🔴 The three below exist because the CENSUS found them, not because I wrote guards for them:
+    # all three refusals shipped in this item's own module with nothing checking them, and were
+    # reported `NEWLY SILENT` on the first run after the module landed.
+    "test_AN_ADVERTISED_ENTRY_IS_EXACTLY_THREE_KEYS": [
+        (f"{PKG}/observation.py",
+         '            if type(entry) is not dict or set(entry) != {"pass", "tool_choice", "names"}:',
+         "            if False:"),
+    ],
+    "test_A_PASS_NUMBER_IS_A_1_BASED_INT": [
+        (f"{PKG}/observation.py", "            if type(p) is not int or p < 1:",
+                                  "            if False:"),
+    ],
+    "test_ADVERTISED_NAMES_IS_A_TUPLE_NOT_A_MUTABLE_OR_LAZY_CONTAINER": [
+        (f"{PKG}/observation.py", '            if type(entry["names"]) is not tuple:',
+                                  "            if False:"),
+    ],
+    "test_SOURCE_IS_ONE_OF_THREE_AND_NOT_A_FREE_STRING": [
+        (f"{PKG}/observation.py",
+         "        if type(self.source) is not str or self.source not in SOURCES:",
+         "        if False:"),
+    ],
+    "test_OUTCOME_IS_C14s_TYPED_ENUM_NOT_OK_BOOL": [
+        (f"{PKG}/observation.py",
+         "        if type(self.outcome) is not str or self.outcome not in OUTCOMES:",
+         "        if False:"),
+    ],
+    "test_THE_RECORD_IS_DERIVED_FROM_THE_SURFACES_NOT_HAND_TYPED": [
+        (f"{PKG}/observation.py",
+         "        withheld=tuple(record for s in surfaces for record in s.withheld),",
+         "        withheld=(),"),
+    ],
+    "test_THE_WRONG_OBJECT_COUNTER_IS_NOT_A_P5_FIELD": [
+        # §0.6: a counter without a detector ships reading zero.
+        (f"{PKG}/observation.py", "    source: str\n    outcome: str",
+                                  "    source: str\n    outcome: str\n    wrong_object_count: int = 0"),
+    ],
+    "test_A_GUARDRAIL_THAT_ACTED_CANNOT_BE_CONSTRUCTED": [
+        (f"{PKG}/observation.py", "        if self.acted:", "        if False:"),
+    ],
+    "test_THE_DEFAULT_IS_NOT_ACTING__not_a_flag_someone_must_remember": [
+        (f"{PKG}/observation.py", "    acted: bool = False", "    acted: bool = True"),
+    ],
+    "test_A_FIRE_WITHOUT_DETERMINISTIC_EVIDENCE_IS_REFUSED": [
+        (f"{PKG}/observation.py", "        if self.fired and not self.evidence.strip():",
+                                  "        if False:"),
+    ],
+    "test_A_FIRE_WITH_NO_TRANSITION_IS_A_STOP_AND_IS_REFUSED": [
+        (f"{PKG}/observation.py", "        if self.fired and not self.transition.strip():",
+                                  "        if False:"),
+    ],
+    "test_A_GUARDRAIL_THAT_DID_NOT_FIRE_NEEDS_NEITHER": [
+        # Drop the `fired and` conjunct: every quiet turn is then forced to invent evidence, which
+        # is the fabrication these checks exist to prevent.
+        (f"{PKG}/observation.py", "        if self.fired and not self.evidence.strip():",
+                                  "        if not self.evidence.strip():"),
+    ],
+
     # ── CP-2.4 · withheld is reachable AND distinguishable from never-existed ─────────────────
     "test_A_WITHHELD_DECLARATION_AND_A_NEVER_ADMITTED_ONE_END_DIFFERENTLY": [
         # Drop the withheld ones out of the toolset - `.filtered()` by hand - and the two searches
