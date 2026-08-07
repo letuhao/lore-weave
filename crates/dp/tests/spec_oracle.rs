@@ -61,11 +61,12 @@
 //! * **`DP-S4`**, a four-row per-tier READ-latency table in the same file and
 //!   the same markdown shape as `DP-S3`, which *is* parsed. No `const` here
 //!   mirrors it — but it was not mentioned anywhere either.
-//! * **`DP-F7` Bucket 1 holds a SECOND COPY of `DP-S5`'s numbers** (`G10`),
-//!   headed *"Enforces DP-S5 ceilings"*. They agree today; nothing compares
-//!   them, and this oracle parses only the `08` copy. That is `FLOW-2`'s drift
-//!   shape *inside the corpus this oracle was built for* — the highest-value
-//!   thing still unwatched here.
+//!
+//! **Closed since (`G10`):** `DP-F7` Bucket 1's second copy of `DP-S5`'s numbers
+//! is now compared to the original by `dp_f7_rate_limits_match_dp_s5_ceilings` —
+//! the first DOC-to-DOC check here. Every other test asks whether a document and
+//! the CODE agree; that one asks whether the corpus agrees with itself, which is
+//! `FLOW-2`'s shape and was the last unwatched instance of it in reach.
 //!
 //! **Now covered that was not, after `G3`:** `02_invariants.md` `DP-A5` — the
 //! invariant the seal cites as its authority and which nothing had ever opened —
@@ -459,6 +460,67 @@ fn no_tier_is_implemented_outside_the_declare_tier_macro() {
         body.contains("impl Tier for $name") && body.contains("impl sealed::SealedTier for $name"),
         "the declare_tier! body no longer contains the impls this test searches for — the search \
          has lost its subject and would report clean whatever the file said"
+    );
+}
+
+/// `G10` — **the corpus contains its own drift, and this oracle was built for
+/// exactly that shape and was not looking at it.**
+///
+/// `DP-F7` Bucket 1 is a rate-limiter table headed *"Enforces `DP-S5`
+/// ceilings"* — and it **restates `DP-S5`'s numbers** rather than referring to
+/// them. Two copies of one set of figures, in two LOCKED documents, agreeing
+/// today because nobody has edited either.
+///
+/// That is `FLOW-2` verbatim: *a document and a fact drifting apart with nothing
+/// watching*. The whole reason this file exists is that no such alarm existed
+/// while `17_game_data_architecture.md` decided four corrections to LOCKED
+/// data-plane files and none were applied. Every other test here compares a
+/// **document to code**; this is the first that compares a **document to a
+/// document**, and the corpus needed it more than the code did.
+///
+/// Only rows present in BOTH tables are compared. `T0` has no bucket — it is
+/// `Unbounded (in-process)` in `DP-S5` and absent from `DP-F7` — and that
+/// asymmetry is correct, not drift.
+#[test]
+fn dp_f7_rate_limits_match_dp_s5_ceilings() {
+    let slos = dp_doc("08_scale_and_slos.md");
+    let failure = dp_doc("07_failure_and_recovery.md");
+
+    // Bound the section explicitly: `table_cells` stops at the next `## `, and
+    // Bucket 2 is a `### `, so the default heuristic would read straight through
+    // three more tables.
+    let b1 = failure.find("### Bucket 1").expect("DP-F7's Bucket 1");
+    let b2 = failure[b1..].find("### Bucket 2").map(|i| b1 + i).unwrap_or(failure.len());
+    let bucket1 = &failure[b1..b2];
+
+    let ceilings = table_cells(&slos, "## DP-S5", |l| !l.is_empty() && l != "Tier");
+    let buckets = table_cells(bucket1, "### Bucket 1", |l| !l.is_empty() && l != "Tier");
+
+    let mut compared = 0usize;
+    for (label, bucket_cell) in &buckets {
+        let Some((_, slo_cell)) = ceilings.iter().find(|(l, _)| l == label) else {
+            continue;
+        };
+        let want = parse_rate(slo_cell)
+            .unwrap_or_else(|e| panic!("08_scale_and_slos.md DP-S5 {label}: {e}"));
+        let got = parse_rate(bucket_cell)
+            .unwrap_or_else(|e| panic!("07_failure_and_recovery.md DP-F7 {label}: {e}"));
+        assert_eq!(
+            got, want,
+            "{label}: 07_failure_and_recovery.md DP-F7 Bucket 1 says {bucket_cell:?} and \
+             08_scale_and_slos.md DP-S5 says {slo_cell:?}. Bucket 1's own header reads \"Enforces \
+             DP-S5 ceilings\" — a rate limiter that does not enforce the ceiling it names either \
+             throttles healthy traffic or lets the ceiling be exceeded, and which one is a coin \
+             flip on the direction of the drift"
+        );
+        compared += 1;
+    }
+
+    assert!(
+        compared >= 3,
+        "only {compared} row(s) matched between DP-S5 and DP-F7 Bucket 1 — the parse found \
+         DP-S5 {ceilings:?} and Bucket 1 {buckets:?}. A cross-check that compares nothing agrees \
+         with anything, and this one exists because the two tables can drift silently"
     );
 }
 

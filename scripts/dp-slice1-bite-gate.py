@@ -527,6 +527,19 @@ def main() -> int:
         ("DP-Ch5 the cache-key scope marker (G3)", "12_channel_primitives.md",
          "Reality-scoped:   dp:{reality_id}:r:", "Reality-scoped:   dp:{reality_id}:R:",
          ("12_channel_primitives.md",)),
+        # `G10` — the first DOC-to-DOC leg. Every other one edits a document and
+        # requires the CODE to notice; this pair edits one of two copies of the
+        # same figures inside the LOCKED corpus and requires the OTHER COPY to
+        # notice. `DP-F7` Bucket 1's header says "Enforces DP-S5 ceilings" and
+        # then restates the numbers instead of referring to them. Both sides are
+        # bitten, because a cross-check that only fires from one direction leaves
+        # the other free to drift.
+        ("G10 DP-F7's copy of the ceilings, edited alone", "07_failure_and_recovery.md",
+         "| T2 writes | 500/s", "| T2 writes | 700/s",
+         ("07_failure_and_recovery.md", "08_scale_and_slos.md")),
+        ("G10 DP-S5's copy of the ceilings, edited alone", "08_scale_and_slos.md",
+         "| T2 writes | 500 / s | 2 000 / s |", "| T2 writes | 700 / s | 2 000 / s |",
+         ("07_failure_and_recovery.md", "08_scale_and_slos.md")),
     ]:
         results.append(bite_oracle(label, doc, find, replace, names))
 
