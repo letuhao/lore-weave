@@ -2667,6 +2667,76 @@ the prompt instead of by the code.** R26 gives each verifier its own scratch dir
 
 **FREEZE from this commit.**
 
+---
+
+## 🔴 R26 — **FAIL × FAIL**, the fixes landed, and the GUARDS are now the bottleneck
+
+Two V-CODE on frozen `55871f6f3`, each in its own worktree **and its own scratch directory**.
+Verdicts:
+[round26-v-code-a](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round26-v-code-a.md) ·
+[round26-v-code-b](../specs/2026-08-03-agent-runtime-unification/verification/CP-1-round26-v-code-b.md).
+
+### ⭐ The fixes landed, and this is the first round that can say so from a PREDICTION
+
+**Both of R25-B's falsifiable predictions were refuted by execution.** P1 printed `NARROWED` (it
+predicted `STILL BLANKET`); P2 printed `0 of 9` (it predicted `9 of 9`). B calls it *"the largest
+genuine movement in six rounds."* R26-A's convergence went to **refuted 4 · partial 1 · upheld 4 of
+9** — its first two-way improvement, on a larger scope.
+
+**Upheld under independent re-derivation:** A5 (W4 at BOTH doors, red-able, zero bystanders) · A7
+(property, red-able, **and my debris attribution verified**) · the **7 allowlist rows are the same
+SITES** — A executed the new digest over the OLD sources, which is exactly the number I had flagged
+as *"my reading of my own output"* · B5's unreachability · zero production importers · the corrected
+transfer · `ID_MAX_LEN` now pinned to exactly `{64}` · both `check_contract` pins · 5/5 id-comparand
+doors · the alphabet (0 of 334 refused, re-derived) · and the **field-name-door decision graded
+SOUND** — the first time a stated *omission* has been graded rather than found.
+
+### 🔴 And every FAIL is a guard I wrote, not a defect I missed
+
+| | finding | verified |
+|---|---|---|
+| **A-1** | **the taint walk does not treat a `for` target as a binder** — which is *the census's own inner-loop shape*. 20 of 24 axis vehicles BLIND, and the union of the new path gate and the old API watcher refuted end to end: **8 directories written into the live `app/agentruntime/` package with the CP-1 suite reporting `152 passed`** | ✅ by me |
+| **A-2** | **my no-vacuity assertion is a TAUTOLOGY.** `tainted = set(LIVE)` is unconditional, so `LIVE <= tainted_fns["census"]` cannot fail — proved by renaming every live root out of the module. **Third control-agrees-with-its-seed in this run, shipped INSIDE the axis fix** | ✅ by me |
+| **B-1** | **F7's guard has a VACUOUS COLUMN.** The `build(previous=)` cell passed `book_get` against `previous=[book_list]`, so the **declaration-loss** guard fired on every cell. Match the ids and it **SERVES** — `build(previous=)` is a **seventh document door** with no `check_document`, and it launders a `manifest_version: 999 / contract_version: "banana"` document into one stamped `1`, harvesting §6.4's origin stamps on the way. **Fifth wrong-clause control in this run, inside the repair for the finding it closes** | ✅ by me |
+| **B-2** | **the registry gate reads 2 of 3 registries.** I pointed at `tests/fixtures/`; the snapshot is at `contracts/agent-runtime-baseline/` — **a path already in the same file, 1,900 lines up**. Corpus **19 ids, not 334**, and my anti-vacuity assertion `>= 15` passes at 19, **tolerating a 94.3% collapse**. A four-state experiment established it *unwired*, not broken. It also falsifies B3's docstring: the "measurement that justifies 64" evaluated 19 ids, longest 19 | ✅ by me |
+| **A-3** | **A1: 9 of 63 shapes green.** `branches-ignore` is unread — **the literal sibling of `paths-ignore` in the same dict**, in the clause written to close that family. And the whitelist bounds only steps that *spell* the script name | |
+| **A-4** | **A6 kept the write-API-list axis that A2 abandoned, in the same commit.** 10 of 12 blind; `open(p, mode='w')` is a one-keyword bypass; and it reds on two correct-code vehicles, one of them the module's own `_APP` | |
+| **A-5** | A4 blind one hoist further out, 5/5; A3 shrank the false-positive radius without removing it (2 new FPs execute) | |
+| **A-6** | **F3 DOUBLED the digest collision groups** (1 → 2, executed). My *"collision groups to 0"* is false today. Contained — no ordinal-free id collides | |
+| **B-3** | **B5's closure guard defeated 4/4**, suite `152 passed` each time: bare-class `raise`, `raise <bound name>`, a non-`Name` callee, and a **cross-module** raise — the state `contract.py` actually held for seven rounds | |
+| **B-4** | `check_document` pins `contract_version` with `type(x) is not str` and `manifest_version` with `!=`, **six lines apart**. `manifest_version: true` is accepted at all seven doors and `validate_document` **launders it to `1`** | |
+| **B-5** | 5 further `Filter(op="not_in")` doors remove NOTHING and register NOTHING; two have closed vocabularies already in `contract.py`, cited as the reason not to bound | |
+| **B-6** | B1 went **3/11 → 10/11** dead shapes — a real improvement — and opened **7 false-positive shapes**, one a regression; `MUST_NOT_CATCH` covers 3 of 11 |
+| **B-7** | *(B against itself)* the allowlist annotation *"the digest depends on insertion order"* is **measurably false**. That sentence is **B's own, from R25, unexecuted, and I committed it into a contract file** | |
+
+### ⭐ The pattern, and it is the round's real finding
+
+**Six rounds: the fixes land, and the guards written for them have holes.** B1 caught 3 of 11 shapes
+and now catches 10 — and opened 7 false positives. Sibling pairs fixed at both ends: **3 of 12.**
+Every FAIL above is a guard, not a defect.
+
+**Guard-writing is the bottleneck, not defect-fixing**, and that is a different problem from the one
+this loop is shaped to solve. The one instrument that has never flattered me is the **reversion
+prover** — it caught four unguarded fixes this round before either verifier saw the tree, and both
+verifiers independently made the same error it exists to catch (*a reversion that does not restore
+the defect proves nothing*) and self-corrected using this round's own rule.
+
+### 🔴 And I destroyed both verdict files
+
+`git worktree remove --force` on two worktrees whose untracked verdicts had not been copied out — the
+preceding `cp` failed silently on a bad working directory, and I had put the removal on its own line
+so `&&` did not guard it. **A destructive command run without checking its target.**
+
+Both were re-emitted **verbatim** from the authoring transcripts, each with a marked provenance
+block; nothing is a reconstruction. What did NOT survive: B's **byte-integrity check** of seven
+subject files against `git show HEAD:<path>`, which was evidence about a tree that no longer exists.
+
+B named the shape better than I could: *"a `cp` that fails silently and a `--force` removal are the
+same shape as B26-F1 — an operation that reports success while a different clause decides the
+outcome."* It is the round's headline finding, committed by the coordinator against the round itself.
+
+**CP-1 does not close.**
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
