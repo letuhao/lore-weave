@@ -1,8 +1,8 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — the FOUNDATION track: `crates/dp` slice 1 (2026-08-07, branch `feat/game-logic`)
+## ▶ GAME BUILD — the FOUNDATION track: `crates/dp` slice 1 + the `channels` table (2026-08-08, branch `feat/game-logic`)
 
-**HEAD:** `10fe795c5` · Run-state: [`docs/plans/2026-08-06-game-tier-build-RUN-STATE.md`](../plans/2026-08-06-game-tier-build-RUN-STATE.md) — **read it before `git log`.** §6h is the flow audit (`FLOW-1`..`FLOW-26`), §6i is the SDK board and its DoD, §7 holds Decisions / Parked / Debt / Drift.
+**HEAD:** `adbfcdd9e` · Run-state: [`docs/plans/2026-08-06-game-tier-build-RUN-STATE.md`](../plans/2026-08-06-game-tier-build-RUN-STATE.md) — **read it before `git log`.** §6h is the flow audit (`FLOW-1`..`FLOW-26`), §6i is the SDK board and its DoD, §6j is slice `1b` (the `channels` table), §7 holds Decisions / Parked / Debt / Drift.
 
 ### What this track is, and why it exists
 
@@ -18,7 +18,8 @@ version: **everything built is a WRITE, everything missing is a READ.**
 |---|---|
 | **0** — the AMEND bundle | ✅ `217d325f0` + `3e6358749`. `REC-99`..`REC-102`, 16 LOCKED files amended so they stop stating things that are false. `REC-102` PO-approved. |
 | **1** — `crates/dp`: tiers, scopes, `DpAggregate` | 🟡 **Three rounds of cold-start refutation, all three BLOCK, 45 findings.** The type-system half survived every direct attack, including from a crate outside this repo. The source-check half was broken 11 times and is now **retired**: the property is enforced over a real `syn` AST in `crates/dp/tests/aggregate_contract.rs`, and `scripts/dp-aggregate-gate.py` is a runner. **Not closed** — 9 gaps are recorded and open, and no round has returned CLEAR. |
-| **1b**–**5** | ⬜ boards written per slice, at its start. |
+| **1b** — the `channels` table (`DP-Ch1`/`Ch2`/`Ch3`) | 🟡 **built, live-verified, one refutation round survived, a second in flight.** `FLOW-9` is discharged: `06_data_plane/` had specified this table since Phase 4 and no migration ever shipped. `0019_channels.{up,down}.sql` now exists, **46/46 on a live Postgres 18**. Round `1b.5` returned BLOCK with 16 findings; all ten that were itemised and left open are discharged in `1b.6`. `1b.7` (a different refuter, worktree-isolated against `adbfcdd9e`) is the open row. |
+| **2**–**5** | ⬜ boards written per slice, at its start. |
 
 **The finding worth carrying forward is `V1-F1`.** Slice 1 was put to the PO on the claim that an
 aggregate having *"exactly one tier"* is **structural**. It is not: `DpAggregate` constrains the
@@ -33,14 +34,46 @@ tier extends the gate in the same edit. It found a real `TYPE_NAME` collision on
 
 **Evidence, all fresh:** `cargo test -p dp` **20 passed** (8 lib + 5 trybuild + 3 measure + 8 oracle)
 · `cargo clippy -p dp --all-targets -D warnings` exit 0 · `cargo check --workspace` exit 0 ·
-`scripts/dp-slice1-bite.py` **PASS — 10 bites bit, 2 legs stated unbiteable** · 48 hook gates green,
-22 gate self-tests green. *live infra unavailable: `crates/dp` declares no I/O and opens no
+`scripts/dp-slice1-bite-gate.py` **PASS — 32 bites bit, 2 legs stated unbiteable** · **90 hook gates**
+green (7 exempt, 1 tracked-red), **27 gate self-tests** green. *live infra unavailable: `crates/dp` declares no I/O and opens no
 connection — Axis 2 is the compiler on adversarial input, by construction, not by omission.*
+
+### Slice `1b` — what the `channels` table is, and the one idea worth carrying
+
+**`REC-106`: a cycle in the channel tree is not *rejected*, it is *unrepresentable*.**
+`12_channel_primitives.md:97` had stated the mechanism since Phase 4 — *"No cycles. Enforced by
+`depth` (root = 0, children = parent.depth + 1) + referential integrity on `parent`"* — and the first
+schema implemented the second half only, so `depth` was a free-floating number any caller could
+declare. The fix is a generated column plus a wider key:
+
+```sql
+parent_depth SMALLINT GENERATED ALWAYS AS ((depth - 1)::smallint) STORED,
+CONSTRAINT channels_parent_fk FOREIGN KEY (reality_id, parent, parent_depth)
+    REFERENCES channels (reality_id, id, depth) DEFERRABLE INITIALLY IMMEDIATE
+```
+
+Depth now decreases by **exactly one** along every parent edge, so a cycle of length `k` requires
+`d = d - k`. Seven attacks refused on a live database, including one built inside a single
+transaction with `SET CONSTRAINTS ... DEFERRED` — it fails at `COMMIT` and leaves zero rows, because
+the impossibility is arithmetic rather than a matter of check timing. **The stated cost:**
+re-parenting is now a SUBTREE operation (a parent's depth is referenced by its children), which is
+why the key is `DEFERRABLE`; both halves are measured — the rigid path refused, the deferred subtree
+move accepted, the resulting tree printed.
+
+**Two consequences to know before touching this table.** `channels_no_self_parent` was **removed** —
+the key makes a self-parented row impossible, so the `CHECK` could no longer fail (`NV-1`), and the
+proof is the bite: drop the foreign key and the row it used to catch inserts. And `1b5-M2` **recurred
+inside the commit that fixed `1b5-H2`**: two bite legs' violating rows became refused by the new
+foreign key *before* the constraint under test ran, so neither proved its own constraint
+load-bearing. Both decisions were individually correct — that is `NV`'s *"an adjacent decision
+defeats it"* — and the only reason it did not ship is that the bite harness demands each constraint
+be the SOLE refuser. **A new constraint does not only add coverage; it can silently remove the
+exclusivity of an old one.**
 
 **Two mechanisms the next session should know about:** the **spec oracle**
 (`crates/dp/tests/spec_oracle.rs`) parses six tables out of the LOCKED corpus and asserts they equal
 the `const`s in `tier.rs` — a one-sided edit to either goes red naming both sides, which is the drift
-alarm `FLOW-2` measured the absence of. And the **bite matrix** (`scripts/dp-slice1-bite.py`) proves
+alarm `FLOW-2` measured the absence of. And the **bite matrix** (`scripts/dp-slice1-bite-gate.py`) proves
 each guard by removing it. Both are bitten; neither is decoration.
 
 **Drift this run:** `BDR-26`..`BDR-38` in §7. `BDR-38` is the one to read: I answered *"the type system cannot hold this"* with *"so the source can"* and never asked what a source check provably cannot do — then re-implemented a Rust parser badly, twice, while `syn` sat unused in the workspace's own dependency table.
