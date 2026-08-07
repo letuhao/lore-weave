@@ -692,7 +692,21 @@ class SurfaceAssembler:
                 f"An exclusion with no record is a defect, not a policy (ARCHITECTURE §0.3)."
             )
         return Surface(
-            names=tuple(sorted(r["id"] for r in kept)),
+            # 🔴 CP-2.3 — **THE PIPELINE'S ORDER, NOT ALPHABETICAL.** This read
+            # `tuple(sorted(...))`, which is deterministic and throws away the rank the pipeline
+            # just computed. Measured: three rows ranked `c, b, a` by `OrderBy(owning_service asc)`
+            # were reported as `a, b, c`; `TopK(2)` cut the correct pair and then presented it
+            # backwards. So `order_by` decided **which** declarations survive and had no say in
+            # **what the model sees first** — and `tools` is the first prompt-cache block, so the
+            # order is also what a cache hit depends on.
+            #
+            # Determinism does not come from sorting here. It comes from the manifest being an
+            # ordered file (`build()` writes `sorted(rows, key=id)`) and every stage preserving
+            # order: the keep-predicates iterate `rows`, `TopK`/`TakeWhileBudget` slice, and
+            # `OrderBy.sort` is a stable `sorted`. With no `order_by` in the pipeline this yields
+            # exactly what the old expression did — canonical id order — which is why no guard
+            # written against the previous behaviour changes.
+            names=tuple(r["id"] for r in kept),
             pass_number=pass_number,
             withheld=withheld,
         )

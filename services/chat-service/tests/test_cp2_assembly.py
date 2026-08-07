@@ -26,8 +26,11 @@ from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from app.agentruntime import (
     AssemblyMismatch,
+    Declaration,
     DeclarationToolset,
     DenyList,
+    admit,
+    build,
     NarrowingLog,
     OrderBy,
     RequirementNotAdmitted,
@@ -514,6 +517,143 @@ class TestAPlanStepsDeclarationIsAdvertised:
         defs = _defs(toolset_for(doc, surface, executor=_executor))
         assert advertised_names(defs) == ("a", "b")
         assert deferred_names(defs) == ("c",)
+
+
+# ── 2.3 · deterministic tool ordering ───────────────────────────────────────────────────────────
+
+_ORDER_PROBE = """
+import sys
+sys.path.insert(0, {cs!r})
+from app.agentruntime import SurfaceAssembler, NarrowingLog, OrderBy
+def row(i, svc):
+    return {{"id": i, "kind": "tool", "owning_service": svc, "lifecycle": "admitted",
+             "contract_version": "1.0.0", "admitted_against": "1.0.0", "members": []}}
+doc = {{"manifest_version": 1, "contract_version": "1.0.0",
+        "declarations": [row("a", "z"), row("b", "y"), row("c", "x")]}}
+s = SurfaceAssembler(doc, log=NarrowingLog()).assemble(
+    pass_number=1, pipeline={pipeline})
+print(",".join(s.names))
+"""
+
+#: 🔴 THE CONTROL FOR THE GUARD BELOW. It is the legacy shape in miniature — `active_tool_names` is
+#: a `set[str]` iterated unsorted (`stream_service.py:1383`), and `PYTHONHASHSEED` is exactly what
+#: makes that vary between restarts. If this does NOT disagree across seeds then the harness cannot
+#: detect non-determinism at all, and the guard beside it is measuring nothing.
+_SET_PROBE = """
+print(",".join({"glossary_search", "book_list", "kg_build", "entity_triage", "plan_compile"}))
+"""
+
+
+def _across_hash_seeds(source: str, seeds=("0", "1", "12345", "99991")) -> set[str]:
+    import os
+    outs = set()
+    for seed in seeds:
+        env = {**os.environ, "PYTHONHASHSEED": seed}
+        r = subprocess.run([sys.executable, "-c", source], capture_output=True, text=True, env=env)
+        assert r.returncode == 0, f"probe failed under PYTHONHASHSEED={seed}:\n{r.stderr}"
+        outs.add(r.stdout.strip())
+    return outs
+
+
+class TestTheOrderIsTheRanksAndItIsDeterministic:
+    """REJECTS: an advertised order that changes between restarts, or that discards the rank.
+
+    The legacy defect is one line — `active_tool_names` is a `set[str]` iterated unsorted, so the
+    advertised order changes on every restart, **and `tools` is the first prompt-cache block.** The
+    new runtime had the mirror-image defect: it was deterministic and threw the rank away.
+    """
+
+    _CS = str(_REPO / "services" / "chat-service")
+
+    def test_THE_SURFACE_IS_IN_THE_PIPELINES_ORDER_NOT_ALPHABETICAL(self):
+        """🔴 Measured before the fix: rows ranked `c, b, a` were reported `a, b, c`. `order_by`
+        decided which declarations survive and had no say in what the model sees first."""
+        doc = {
+            "manifest_version": 1, "contract_version": "1.0.0",
+            "declarations": [
+                {**_row("a"), "owning_service": "z-svc"},
+                {**_row("b"), "owning_service": "y-svc"},
+                {**_row("c"), "owning_service": "x-svc"},
+            ],
+        }
+        surface = SurfaceAssembler(doc, log=NarrowingLog()).assemble(
+            pass_number=1, pipeline=[OrderBy(keys=(("owning_service", "asc"),))])
+        assert surface.names == ("c", "b", "a"), (
+            "the surface re-sorted alphabetically and discarded the rank the pipeline computed"
+        )
+
+    def test_A_RANK_DEPENDENT_CUT_PRESENTS_ITS_SURVIVORS_IN_RANK_ORDER(self):
+        """Selection was already correct; presentation was not. Both are checked, because a guard
+        on the survivor SET is green over a surface that presents them backwards."""
+        doc = {
+            "manifest_version": 1, "contract_version": "1.0.0",
+            "declarations": [
+                {**_row("a"), "owning_service": "z-svc"},
+                {**_row("b"), "owning_service": "y-svc"},
+                {**_row("c"), "owning_service": "x-svc"},
+            ],
+        }
+        surface = SurfaceAssembler(doc, log=NarrowingLog()).assemble(
+            pass_number=1,
+            pipeline=[OrderBy(keys=(("owning_service", "asc"),)),
+                      TopK(k=2, stage="top_k", reason="over rank")])
+        assert set(surface.names) == {"c", "b"}, "the wrong two survived"
+        assert surface.names == ("c", "b"), "the right two survived, in the wrong order"
+
+    def test_WITH_NO_ORDER_BY_THE_ORDER_IS_THE_MANIFESTS_OWN(self):
+        """The no-ranking case must stay stable, and it does so because the DOCUMENT is ordered —
+        not because this function sorts. That is the whole difference from the previous code."""
+        doc = _doc("c", "a", "b")
+        surface = SurfaceAssembler(doc, log=NarrowingLog()).assemble(pass_number=1)
+        assert surface.names == ("c", "a", "b")
+
+    def test_THE_MANIFEST_IS_WRITTEN_IN_A_CANONICAL_ORDER__which_is_what_makes_that_stable(self):
+        """🔴 The guard above is only worth something if the document's order is itself stable
+        across regenerations. `build()` writes `sorted(rows, key=id)`; without that clause the
+        previous test would be asserting that a churning order is preserved faithfully."""
+        rows = [_row(n) for n in ("c", "a", "b")]
+        doc = build(tuple(admit(Declaration(
+            id=r["id"], kind="tool", source_path="services/book-service/x.py",
+            lifecycle="admitted")) for r in rows))
+        assert [r["id"] for r in doc["declarations"]] == ["a", "b", "c"]
+
+    def test_THE_ORDER_IS_IDENTICAL_IN_A_FRESH_INTERPRETER_UNDER_FOUR_HASH_SEEDS(self):
+        """🔴 **THE DEFECT THIS ITEM IS NAMED FOR, MEASURED THE ONLY WAY IT CAN BE.**
+
+        *"The order changes on every restart"* is not observable inside one process — the legacy
+        `set[str]` iterates consistently for the life of an interpreter and differently in the next
+        one, because `PYTHONHASHSEED` is randomised per process. So this runs the real assembly in
+        four fresh interpreters under four seeds and requires one answer.
+        """
+        src = _ORDER_PROBE.format(
+            cs=self._CS, pipeline='[OrderBy(keys=(("owning_service", "asc"),))]')
+        assert _across_hash_seeds(src) == {"c,b,a"}
+
+    def test_THE_HASH_SEED_HARNESS_CAN_ACTUALLY_DETECT_NON_DETERMINISM(self):
+        """🔴 **A CHECK WHOSE CONTROL AGREES WITH ITS SEED IS THEATRE**, and this run has shipped
+        two of those. The guard above passes trivially if the subprocesses never differ for any
+        reason — a fixed seed leaking in, an env var ignored, output buffered away. So the legacy
+        shape is run through the same harness and is required to **DISAGREE**."""
+        assert len(_across_hash_seeds(_SET_PROBE)) > 1, (
+            "a bare `set` of strings produced one order across four hash seeds - the harness "
+            "cannot see non-determinism, so the guard above is measuring nothing"
+        )
+
+    def test_THE_TOOLSET_PRESENTS_THE_SURFACE_IN_THAT_ORDER(self):
+        """End to end: rank has to survive the trip through CP-2.1's assembly, or it holds in a
+        tuple and not on the wire."""
+        doc = {
+            "manifest_version": 1, "contract_version": "1.0.0",
+            "declarations": [
+                {**_row("a"), "owning_service": "z-svc"},
+                {**_row("b"), "owning_service": "y-svc"},
+                {**_row("c"), "owning_service": "x-svc"},
+            ],
+        }
+        surface = SurfaceAssembler(doc, log=NarrowingLog()).assemble(
+            pass_number=1, pipeline=[OrderBy(keys=(("owning_service", "asc"),))])
+        defs = _defs(toolset_for(doc, surface, executor=_executor))
+        assert advertised_names(defs) == ("c", "b", "a")
 
 
 # ── the gate, and the coupling it now admits ────────────────────────────────────────────────────

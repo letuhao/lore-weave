@@ -3154,6 +3154,79 @@ picks up debris. **This is the defect the census was redesigned to remove from i
 instrument writes into its subject"*), still live in the CP-0 suite one directory over. Registered
 here, not fixed here.
 
+### ⭐ CP-2.3 — the order was deterministic and WRONG, which the row did not predict
+
+**Built 2026-08-08.** The row names a legacy defect: `active_tool_names` is a `set[str]` iterated
+unsorted (`stream_service.py:1383`), so **the advertised order changes on every restart** — and
+`tools` is the first prompt-cache block, so the order is what a cache hit depends on.
+
+The new runtime did not have that defect. **It had the mirror image of it, and nobody had looked.**
+
+### 🔴 Measured before anything was changed
+
+`Surface` was built with `names=tuple(sorted(r["id"] for r in kept))`. Three rows ranked `c, b, a`
+by `OrderBy(owning_service asc)`:
+
+```
+ranked by owning_service asc -> expected c, b, a
+Surface.names                -> ('a', 'b', 'c')
+after TopK(2) it keeps       -> ('b', 'c')      # the right two, presented backwards
+```
+
+So **`order_by` decided WHICH declarations survive and had no say in WHAT THE MODEL SEES FIRST.**
+Selection honoured the rank; presentation threw it away. §0.14.1a's whole argument is that *rank is
+what a budget cuts on* — and the cut was correct while the surface it produced was not the ranking.
+
+The fix is one line: `names=tuple(r["id"] for r in kept)`.
+
+### ▶ Determinism does not come from sorting, and that is the point
+
+Removing a `sorted()` looks like removing the determinism. It is not where the determinism lives:
+
+* the **document** is ordered — `build()` writes `sorted(rows, key=id)`, so a manifest has one
+  canonical order and regenerating it does not churn;
+* every **stage preserves order** — the keep-predicates iterate `rows`, `TopK` and
+  `TakeWhileBudget` slice, `OrderBy.sort` is a stable `sorted`.
+
+With no `order_by` in the pipeline this yields exactly what the old expression did — canonical id
+order — **which is why 199 existing guards were unchanged by the fix.** That was checked before the
+claim was written, not after.
+
+### ▶ The guard that matters, and the control that makes it mean something
+
+*"The order changes on every restart"* is **not observable inside one process**: a `set[str]`
+iterates consistently for the life of an interpreter and differently in the next one, because
+`PYTHONHASHSEED` is randomised per process. So the real assembly runs in **four fresh interpreters
+under four seeds** and must produce one answer.
+
+🔴 **A guard like that passes trivially if the subprocesses never differ for ANY reason** — a
+pinned seed, an ignored env var, buffered output. So the legacy shape (a bare `set` of five
+declaration names) goes through the same harness and is **required to DISAGREE**. It does. Without
+that control the determinism guard is theatre, and this run has shipped two pieces of theatre.
+
+### ▶ The three QC pillars
+
+**QC1 · CODE — `PASS`.** Suite **2344** · census **72 sites · 8 silent · 64 red**, `rc=0` · falsification **322 guards,
+63 falsified, 259 unproven, 0 stale anchors**, **63/63 fire** · membrane gate green. **7 new
+guards, 7 falsifiers** — and the `NAMES` line has *two* wrong values, so it carries two distinct
+falsifiers: alphabetical (the state this item repaired) and a set comprehension (the legacy state,
+which additionally reds the four-seed guard).
+
+**QC2 · LIVE RUN — `CANNOT DETERMINE` for a chat turn**, unchanged: no request path reaches this
+code. Exercised end to end through CP-2.1's toolset — a ranked surface reaches `advertised_names`
+in rank order — which is as far as this checkpoint carries it before 2.7.
+
+**QC3 · DATA — `PASS`.** The artifact is the advertised order itself, measured across four
+interpreters, with the falsifier stated in advance and a control that disagrees.
+
+### ✖ What this row does NOT do
+
+**It does not touch `active_tool_names`.** The legacy `set[str]` is in CP-2's **control arm**, and a
+control perturbed by changes nobody decided invalidates the comparison before it starts — the same
+call recorded at 2.2 for the three heuristics, and at CP-1.9 for U-1 and U-3. What this row
+establishes is that **the new arm does not have the defect**, by a measurement the legacy shape
+fails under the same harness.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -3431,7 +3504,7 @@ declarations, not silently emit a tool-free pass.
 |---|---|---|
 | 2.1 | P4 assembly on the bought toolset — **and it must be the deferring API, not the filtering one.** Both exist one method apart; one is a ceiling and one is an enabler | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 SPLIT.** `assembly.py` on `pydantic_ai.toolsets`, `.defer_loading()` only; `.filtered(`/`.prepared(` refused by the membrane gate. **29 guards, 28 new falsifiers, 44/44 fire; census 70/7/63 `rc=0`.** **Live at the assembly boundary (real agent loop, real reveal); `CANNOT DETERMINE` for a chat turn — no request path reaches it, which is 2.7.** See the CP-2 block above |
 | 2.2 | **the widening rule** (§4.3) — a plan step's declaration must be advertised while that step is current. **Deletes three heuristics**: the rail next-step exemption, the backtick prose scraper, `load_skill`'s un-advertised names | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `assemble(required=)`; a widened declaration keeps its `Narrowing` and gains a `Widening` naming what it overruled; an un-admitted requirement raises `RequirementNotAdmitted`. 12 guards, 12 falsifiers. ✖ **The three legacy heuristics are NOT deleted** — they live in CP-2's CONTROL arm; the new arm needs none of them. See the CP-2.2 block above |
-| 2.3 | deterministic tool ordering — `active_tool_names` is a `set[str]` iterated unsorted, so **the order changes on every restart** and `tools` is the first cache block | ⬜ |
+| 2.3 | deterministic tool ordering — `active_tool_names` is a `set[str]` iterated unsorted, so **the order changes on every restart** and `tools` is the first cache block | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** The new runtime had the MIRROR defect, measured: deterministic and **rank discarded** — rows ranked `c,b,a` were advertised `a,b,c`. `names` now preserves the pipeline's order; determinism comes from the canonical document + order-preserving stages, proved across **four hash seeds in four interpreters**, with the legacy `set` as a control that disagrees. ✖ `active_tool_names` itself is untouched — CONTROL arm. See the CP-2.3 block above |
 | 2.4 | withheld things stay **reachable on request**; the model can tell *withheld* from *never existed* | ⬜ |
 | 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | ⬜ |
 | **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | ⬜ |

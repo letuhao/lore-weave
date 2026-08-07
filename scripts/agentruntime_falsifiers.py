@@ -367,6 +367,43 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_THE_REQUIREMENT_IS_MATERIALISED_BEFORE_IT_IS_CHECKED": [
         (f"{PKG}/surface.py", "        required = list(required)", "        required = required"),
     ],
+
+    # ── CP-2.3 · deterministic tool ordering ─────────────────────────────────────────────────
+    #
+    # `NAMES` is the one line, and it has two wrong values rather than one: alphabetical (the
+    # state before this item - deterministic, and the rank thrown away) and a set comprehension
+    # (the LEGACY state - the rank thrown away AND the order changing every restart).
+    "test_THE_SURFACE_IS_IN_THE_PIPELINES_ORDER_NOT_ALPHABETICAL": [
+        (f"{PKG}/surface.py", '            names=tuple(r["id"] for r in kept),',
+                              '            names=tuple(sorted(r["id"] for r in kept)),'),
+    ],
+    "test_A_RANK_DEPENDENT_CUT_PRESENTS_ITS_SURVIVORS_IN_RANK_ORDER": [
+        (f"{PKG}/surface.py", '            names=tuple(r["id"] for r in kept),',
+                              '            names=tuple(sorted(r["id"] for r in kept)),'),
+    ],
+    "test_WITH_NO_ORDER_BY_THE_ORDER_IS_THE_MANIFESTS_OWN": [
+        (f"{PKG}/surface.py", '            names=tuple(r["id"] for r in kept),',
+                              '            names=tuple(sorted(r["id"] for r in kept)),'),
+    ],
+    "test_THE_TOOLSET_PRESENTS_THE_SURFACE_IN_THAT_ORDER": [
+        (f"{PKG}/surface.py", '            names=tuple(r["id"] for r in kept),',
+                              '            names=tuple(sorted(r["id"] for r in kept)),'),
+    ],
+    "test_THE_ORDER_IS_IDENTICAL_IN_A_FRESH_INTERPRETER_UNDER_FOUR_HASH_SEEDS": [
+        # The legacy shape, transplanted: a set of strings, iterated.
+        (f"{PKG}/surface.py", '            names=tuple(r["id"] for r in kept),',
+                              '            names=tuple({r["id"] for r in kept}),'),
+    ],
+    "test_THE_MANIFEST_IS_WRITTEN_IN_A_CANONICAL_ORDER__which_is_what_makes_that_stable": [
+        (f"{PKG}/manifest.py", '        "declarations": sorted(rows, key=lambda r: r["id"]),',
+                               '        "declarations": rows,'),
+    ],
+    "test_THE_HASH_SEED_HARNESS_CAN_ACTUALLY_DETECT_NON_DETERMINISM": [
+        # Pin the seed and the harness stops being able to see anything - which is precisely the
+        # state in which the guard above passes while measuring nothing.
+        (T2, '        env = {**os.environ, "PYTHONHASHSEED": seed}',
+             '        env = {**os.environ, "PYTHONHASHSEED": "0"}'),
+    ],
 }
 
 #: Guards whose falsifier is a DECISION not to write one, each with a stated reason.
