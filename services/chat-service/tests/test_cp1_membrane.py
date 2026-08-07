@@ -350,13 +350,24 @@ class TestTheNewSurfaceCannotReachTheOldOne:
         wf = (_REPO / ".github" / "workflows" / "lint-foundation.yml").read_text("utf-8")
         assert "- agentruntime-membrane-gate" in wf
 
-    def test_the_allowlist_is_an_allowlist(self):
+    def test_the_allowlist_is_an_allowlist(self, tmp_path):
         """A denylist is default-permitted: a legacy module written tomorrow would be reachable
-        until someone remembered to add it. The direction of the list is the gate."""
+        until someone remembered to add it. The direction of the list is the gate.
+
+        🔴 **THIS ASSERTED `ALLOWED_EXTERNAL == {}` UNTIL CP-2.1, AND THAT WAS THE WRONG PROPERTY
+        ALL ALONG.** Emptiness was true and easy to check, and it would have been *deleted* by the
+        first legitimate entry — which is what a guard that measures a coincidence rather than its
+        subject always does. The subject is the DIRECTION: a module nobody decided about is
+        refused. That is checked behaviourally here, against a name no allowlist will ever hold,
+        so this guard survives every future entry instead of being edited away by one."""
         g = _gate()
-        assert g.ALLOWED_EXTERNAL == {}, (
-            "every entry needs a reason in the diff that introduces it"
-        )
+        p = tmp_path / "assembly.py"          # the most-permitted file in the package
+        p.write_text("import nobody_decided_about_this\n", encoding="utf-8")
+        assert g._violations_in(p), "an undecided module was admitted - the list ran as a denylist"
+        for module, reason in g.ALLOWED_EXTERNAL.items():
+            assert len(reason) > 40 and "CP-" in reason, (
+                f"{module} is admitted without a reason naming the decision that admitted it"
+            )
 
 
 # ── 1.3 · M3 — discovery reads the manifest only ────────────────────────────────────────────────
@@ -1610,8 +1621,12 @@ class TestThePackageImportsWhereItIsDEPLOYEDNotWhereItIsWritten:
     expression that counts directory levels encodes the *checkout*, and the deployed tree is a
     different one.
 
-    This package imports only the standard library and itself (M2), which is what makes the
-    regression testable at all: it can be copied to any depth and imported there.
+    This package imports the standard library, itself, and — since CP-2.1 — `pydantic_ai` in one
+    scoped file (M2's allowlist). That is what makes the regression testable at all: every one of
+    those resolves from the interpreter rather than from the tree, so the package can be copied to
+    any depth and imported there. 🔴 The sentence here used to say *"only the standard library and
+    itself"*, and it was corrected in the same change that made it false rather than in the round
+    that found it.
     """
 
     def _import_at(self, tmp_path: Path, depth: int) -> subprocess.CompletedProcess:
@@ -3516,6 +3531,12 @@ class TestStageKindsAreDataNotClosures:
             f"the enumeration found only {len(guards)} guards; it broke, and a partition over "
             f"nothing is exactly the vacuity this instrument exists to end"
         )
+        # 🔴 **AND THE TOTAL IS NOT ENOUGH.** A floor over the sum stays green while ONE suite
+        # silently contributes nothing — which is R26's headline shape exactly (an anti-vacuity
+        # assertion calibrated below the thing it guarded, over a corpus that had collapsed to 19
+        # of 334). Per suite, so a suite that stops parsing is a failure rather than a rounding.
+        per_suite = {s: sum(1 for v in guards.values() if v == s) for s in mod.SUITES}
+        assert all(per_suite.values()), f"a suite contributed no guards at all: {per_suite}"
         recorded = sorted(
             l.strip() for l in mod.UNPROVEN.read_text("utf-8").splitlines()
             if l.strip() and not l.startswith("#"))
@@ -3533,6 +3554,74 @@ class TestStageKindsAreDataNotClosures:
             f"{stale} name no guard in either suite — a register that has gone stale claims "
             f"coverage it does not have, which is the shape six consecutive rounds of a hand-typed "
             f"record already produced here."
+        )
+
+    def test_THE_SUITE_LIST_IS_EVERY_CP_SUITE_ON_DISK(self):
+        """REJECTS: a new checkpoint suite whose guards are outside the partition entirely.
+
+        🔴 **THE PARTITION IS ONLY AS HONEST AS ITS DENOMINATOR, AND `SUITES` IS THE DENOMINATOR'S
+        DENOMINATOR.** Everything above enumerates guards *from the files named in `SUITES`* — so a
+        suite that is simply not in that tuple is 100% declared, by arithmetic, without a single
+        falsifier being written. That is the self-derived-total failure this instrument exists to
+        end, arriving through its own front door: CP-2 adds a suite, its 27 guards are invisible,
+        and the gate reports a clean partition over a corpus that has quietly stopped growing.
+
+        The floor is what is ON DISK, discovered by glob, so adding `tests/test_cp3_*.py` fails
+        here on the day it is created rather than in whatever round someone notices.
+        """
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "_falsify_probe2", _REPO / "scripts" / "agentruntime-falsification.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        tests_dir = _REPO / "services" / "chat-service" / "tests"
+        on_disk = sorted(f"tests/{p.name}" for p in tests_dir.glob("test_cp*.py"))
+        assert sorted(mod.SUITES) == on_disk, (
+            f"SUITES is {sorted(mod.SUITES)} and the checkpoint suites on disk are {on_disk}. "
+            f"A suite outside the tuple is 100% declared by arithmetic — every guard in it is "
+            f"unmeasured while the gate prints a clean partition."
+        )
+
+    def test_THE_CENSUS_RUNS_EVERY_CP_SUITE_NOT_ONLY_THE_ONE_IT_WAS_BORN_WITH(self):
+        """REJECTS: a refusal guarded by a suite the census does not run, reported as SILENT.
+
+        🔴 **CP-2.1 IS WHAT TURNED A HARD-CODED `SUITE` INTO A DEFECT.** `assembly.py` shipped two
+        refusals guarded entirely by `tests/test_cp2_assembly.py`; with the census running the CP-1
+        suite alone, neutering either left it green and **both would have been named SILENT** — the
+        census asking a person to explain two refusals that are, in fact, guarded.
+
+        The direction is the safe one (a false SILENT is a finding, never a false green) and it is
+        still a false finding, which is the defect one level up: an instrument that manufactures
+        work. Derived rather than listed, for the reason five published denominators in this run
+        have already demonstrated.
+
+        **The subject is the PREDICATE, computed here independently of the census's own walk** — a
+        guard that called `_suites` and compared it to `_suites` would be the tautology R26 found.
+        """
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "_census_probe", _REPO / "scripts" / "agentruntime-census.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        cs = _REPO / "services" / "chat-service"
+        # Independently derived: a plain text scan, not the census's AST walk.
+        importers = sorted(
+            f"tests/{p.name}" for p in (cs / "tests").glob("test_*.py")
+            if "import app.agentruntime" in p.read_text("utf-8")
+            or "from app.agentruntime" in p.read_text("utf-8")
+        )
+        assert mod._suites(cs) == importers, (
+            f"the census would run {mod._suites(cs)} while the suites that can observe the package "
+            f"are {importers}. A refusal guarded only by an unrun suite is reported SILENT."
+        )
+        assert "tests/test_cp2_assembly.py" in importers, (
+            "the CP-2 suite no longer imports the package; this guard would then agree with a "
+            "census that runs whatever is left, which is how a shrinking denominator reads as "
+            "agreement"
         )
 
     def test_THE_CENSUS_IS_WIRED_TO_RUN_IN_CI(self):

@@ -55,9 +55,49 @@ REPO = Path(__file__).resolve().parents[1]
 PACKAGE = REPO / "services" / "chat-service" / "app" / "agentruntime"
 PACKAGE_MODULE = "app.agentruntime"
 
-# Nothing yet, and that emptiness is the point. Each future entry needs a reason
-# in this dict, so the coupling is visible in the diff that introduces it.
-ALLOWED_EXTERNAL: dict[str, str] = {}
+# Each entry needs a reason here, so the coupling is visible in the diff that
+# introduces it. It was empty until CP-2.1, and the first entry is a decision the
+# board made rather than a convenience: BUILD-VS-BUY.md 2 records P4 (Assembly) as
+# BUY, and 4.4 as "P4 stops being ours to design".
+ALLOWED_EXTERNAL: dict[str, str] = {
+    "pydantic_ai": (
+        "CP-2.1 - P4 Assembly is BOUGHT (BUILD-VS-BUY 2). The toolset API is what "
+        "makes 'withheld' and 'never existed' different states: .defer_loading() "
+        "hides a declaration and keeps it discoverable, .filtered() deletes it."
+    ),
+}
+
+# An allowed external module is allowed IN NAMED FILES, not package-wide.
+#
+# The allowlist's argument is that a coupling should be a decision someone makes on
+# purpose; a module admitted everywhere is one decision that then covers every file
+# written afterwards, which is the default-permitted shape the allowlist exists to
+# avoid. Keyed on the file NAME because the selftest runs `_violations_in` over
+# probe files in a temp directory - a path-based key would silently pass every probe.
+#
+# A module in ALLOWED_EXTERNAL with no entry here is allowed package-wide, and that
+# should stay a conscious omission rather than the easy default.
+ALLOWED_EXTERNAL_SCOPE: dict[str, frozenset[str]] = {
+    "pydantic_ai": frozenset({"assembly.py"}),
+}
+
+# THE CEILING METHODS - CP-2.1, and this is the item rather than a detail of it.
+#
+# `AbstractToolset` publishes both reductions about fifty lines apart. `.filtered()`
+# REMOVES a declaration: it is not on the wire, not searchable, and identical from
+# the model's side to one that was never admitted. `.prepared()` is the same power
+# with a different name - its prepare function returns a list, and a shorter list is
+# a deletion. `.defer_loading()` marks instead of removing, so the declaration stays
+# reachable and CP-2.4 ("the model can tell withheld from never existed") is still
+# available to be built.
+#
+# A removal cannot be un-done by a later item, so this is refused at the API rather
+# than checked at the result - the M2 argument applied one layer up. If a future
+# item genuinely needs one, it arrives here with a reason, in that diff.
+CEILING_METHODS: dict[str, str] = {
+    "filtered": "removes the declaration - withheld becomes indistinguishable from absent",
+    "prepared": "a prepare func returning a shorter list is the same deletion, renamed",
+}
 
 # Dynamic import machinery. Static analysis cannot follow these, so inside this
 # package they are refused outright rather than silently unchecked.
@@ -95,6 +135,25 @@ def _is_internal(module: str, *, from_file: Path) -> bool:
     return False
 
 
+def _external_verdict(module: str, *, from_file: Path) -> str | None:
+    """`None` if this external import is allowed from this file, else why it is not.
+
+    ONE implementation, called from both the `import` and the `from ... import`
+    branch. They used to hold a copy each, two lines apart and identical - and this
+    run has already paid for that exact shape twice: a duplicated walk where a new
+    clause went into one copy, and a claim corrected in one of three files. A rule
+    with two implementations has two behaviours the moment either is edited.
+    """
+    key = module if module in ALLOWED_EXTERNAL else _root(module)
+    if key not in ALLOWED_EXTERNAL:
+        return ""
+    scope = ALLOWED_EXTERNAL_SCOPE.get(key)
+    if scope is not None and from_file.name not in scope:
+        return (f" - {key} is allowed only in {'/'.join(sorted(scope))}, not "
+                f"{from_file.name}; the coupling is scoped on purpose")
+    return None
+
+
 def _violations_in(path: Path) -> list[tuple[int, str]]:
     out: list[tuple[int, str]] = []
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -108,9 +167,10 @@ def _violations_in(path: Path) -> list[tuple[int, str]]:
                 continue
             if _is_internal(mod, from_file=path) or _root(mod) in _STDLIB:
                 continue
-            if mod in ALLOWED_EXTERNAL or _root(mod) in ALLOWED_EXTERNAL:
+            why = _external_verdict(mod, from_file=path)
+            if why is None:
                 continue
-            out.append((node.lineno, f"from {mod} import ..."))
+            out.append((node.lineno, f"from {mod} import ...{why}"))
         elif isinstance(node, ast.Import):
             for alias in node.names:
                 mod = alias.name
@@ -119,14 +179,22 @@ def _violations_in(path: Path) -> list[tuple[int, str]]:
                     continue
                 if _is_internal(mod, from_file=path) or _root(mod) in _STDLIB:
                     continue
-                if mod in ALLOWED_EXTERNAL or _root(mod) in ALLOWED_EXTERNAL:
+                why = _external_verdict(mod, from_file=path)
+                if why is None:
                     continue
-                out.append((node.lineno, f"import {mod}"))
+                out.append((node.lineno, f"import {mod}{why}"))
         elif isinstance(node, ast.Call):
             fn = node.func
             name = getattr(fn, "id", None) or getattr(fn, "attr", None)
             if name in FORBIDDEN_CALLS:
                 out.append((node.lineno, f"dynamic import via {name}() - unanalysable"))
+            # CP-2.1. Only as an ATTRIBUTE call: `t.filtered(...)` is the toolset
+            # API, while a bare `filtered(...)` is somebody's local function and
+            # convicting it would be a gate firing on a name rather than on a thing.
+            elif isinstance(fn, ast.Attribute) and fn.attr in CEILING_METHODS:
+                out.append((node.lineno,
+                            f".{fn.attr}() - a CEILING api: {CEILING_METHODS[fn.attr]}. "
+                            f"CP-2.1 assembles with .defer_loading()"))
     return out
 
 
@@ -433,7 +501,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nagentruntime-membrane-gate: {failures} violation(s)", file=sys.stderr)
         return 1
     print(f"agentruntime-membrane-gate OK - {len(files)} module(s), "
-          f"{len(ALLOWED_EXTERNAL)} allowed external import(s), "
+          f"{len(ALLOWED_EXTERNAL)} allowed external import(s) "
+          f"({len(ALLOWED_EXTERNAL_SCOPE)} file-scoped), "
+          f"{len(CEILING_METHODS)} refused ceiling api(s), "
           f"{len(SINGLE_SITED)} single-sited type(s)")
     return 0
 
@@ -456,6 +526,15 @@ def _selftest() -> int:
         # waved through as "internal" by a startswith with no separator anchor.
         ("sibling-prefix module", "from app.agentruntime_bridge import legacy_catalog\n"),
         ("sibling-prefix bare", "import app.agentruntimeX\n"),
+        # CP-2.1. An allowlist entry is scoped to named files, so the probe (probe.py)
+        # is the WRONG file for `pydantic_ai` and must still be convicted. Without
+        # this case the scope map could be deleted and every case above stays green.
+        ("scoped external outside its file", "import pydantic_ai\n"),
+        ("scoped external, from-form", "from pydantic_ai.toolsets import abstract\n"),
+        # The ceiling APIs. Both delete a declaration; the item is that the assembly
+        # uses neither.
+        ("ceiling api .filtered", "def f(t, g):\n    return t.filtered(g)\n"),
+        ("ceiling api .prepared", "def f(t, g):\n    return t.prepared(g)\n"),
     ]
     failed = []
     for label, src in cases:
@@ -470,6 +549,17 @@ def _selftest() -> int:
         p.write_text("import json\nfrom .contract import Declaration\n", encoding="utf-8")
         if _violations_in(p):
             failed.append("false positive on a legal module")
+
+    # CP-2.1's two NEGATIVE controls, and they are not decoration: a gate that
+    # convicts the scoped import in its own file, or convicts `.defer_loading()`,
+    # would make the item unshippable while every red-ness case above passed.
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "assembly.py"
+        p.write_text("from pydantic_ai.tools import ToolDefinition" + NL
+                     + "def f(t, names):" + NL
+                     + "    return t.defer_loading(names)" + NL, encoding="utf-8")
+        if _violations_in(p):
+            failed.append("the scoped import + .defer_loading() are convicted in assembly.py")
 
     # ARCHITECTURE 6.1 layer 2. The clause claims a deliberate bypass is loud in a diff;
     # these are the shapes that claim rests on, and each one is watched going red here.

@@ -8,7 +8,11 @@ Checkpoint: ``docs/plans/2026-08-04-agent-runtime-RUNSTATE.md`` → L1 · CP-1.
 > Old declarations are not hidden. They are **absent**. There is no branch in the new assembler that
 > can read the old catalog — not one that is disabled, not one behind a flag.
 
-**Why the whole package imports only the standard library and itself.** Invisibility implemented as
+**Why the whole package imports the standard library, itself, and one scoped external.**
+🔴 *This read "only the standard library and itself" until CP-2.1, when `assembly.py` admitted
+`pydantic_ai` — P4 Assembly is a BUY decision (`BUILD-VS-BUY.md` §2), and the entry is scoped to
+that one file by `ALLOWED_EXTERNAL_SCOPE`. The allowlist was built for exactly this: a coupling
+that arrives as a line with a reason, in the diff that needs it.* Invisibility implemented as
 a *filter* has been produced thirteen times in this repository, and every instance eventually leaked
 or silently deleted the wrong thing. A filter is a code path from the old catalog to the new
 surface; the only way to be sure a path does not leak is for it not to exist.
@@ -23,6 +27,15 @@ cannot drop without recording (`surface.py`), and one producer of an admitted de
 (`admission.py`).
 """
 from .admission import Admitted, admit, try_admit
+from .assembly import (
+    TOOLSET_ID,
+    AssemblyMismatch,
+    DeclarationToolset,
+    advertised_names,
+    deferred_names,
+    excluded_by,
+    toolset_for,
+)
 from .contract import (
     CONTRACT_VERSION,
     ContractViolation,
@@ -58,6 +71,8 @@ from .surface import (
 
 __all__ = [
     "Admitted", "admit", "try_admit",
+    "TOOLSET_ID", "AssemblyMismatch", "DeclarationToolset", "advertised_names", "deferred_names",
+    "excluded_by", "toolset_for",
     "CONTRACT_VERSION", "ContractViolation", "Declaration", "Identity",
     "derive_owning_service", "identity_of",
     "UnresolvedReference", "UntrustedRow", "build", "declarations", "generate", "load",

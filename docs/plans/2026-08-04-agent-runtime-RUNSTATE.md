@@ -2836,6 +2836,184 @@ into a gate with a checked-in register:
 
 **CP-1 is closed at this scope. CP-2 begins with the first import.**
 
+---
+
+## ⭐ CP-2 OPENS — **2.1, and it is the first production import of the package**
+
+**Built 2026-08-08.** Every CP-1 V-LIVE round returned `CANNOT DETERMINE` on every item for one
+mechanical reason, established four ways each time: **nothing imported `app.agentruntime`.** That is
+what this row changes, and it is why it comes first.
+
+### ▶ The item was a choice between two adjacent methods, and it is now a GATE rather than a sentence
+
+`BUILD-VS-BUY.md` §2 records **P4 Assembly as BUY**, and §4.4 as *"P4 stops being ours to design"*.
+The bought thing is `pydantic_ai.toolsets`, and the row's wording — *"it must be the deferring API,
+not the filtering one … one is a ceiling and one is an enabler"* — turns out to be exact:
+
+| `AbstractToolset` method | what it does to a declaration | |
+|---|---|---|
+| `.filtered(fn)` · `abstract.py:194` | **removes** it — not on the wire, not searchable, identical to never admitted | **a CEILING** |
+| `.defer_loading(names)` · `abstract.py:246` | sets `defer_loading=True` — hidden until discovered, then revealed | **an ENABLER** |
+
+A filtered declaration cannot be restored by any later item, so **`.filtered(` and `.prepared(` are
+now refused inside the package by `scripts/agentruntime-membrane-gate.py`** — the M2 argument one
+layer up: a wrong result can be tested for, an absent code path cannot. `.prepared()` is in the
+refusal because a prepare function returning a shorter list is the same deletion under a different
+name, which is exactly the bypass shape this run has produced thirteen times.
+
+The library agrees with the distinction in its own model: `defer_loading` is *authored* and stays set
+for the run, while current visibility travels separately on `ModelRequestParameters.revealed_tool_names`.
+**Hidden and absent are different states there too, not only in our prose.**
+
+### ▶ The three QC pillars, graded SEPARATELY — and one of them is not a PASS
+
+**QC1 · CODE — `PASS`.**
+
+| | |
+|---|---|
+| new module | `app/agentruntime/assembly.py`, 9 modules in the package |
+| new guards | **29** in `tests/test_cp2_assembly.py`, plus 2 added to the CP-1 suite |
+| falsifiers | 28 new — **44/44 fire and red the guard they NAME**, `rc=0` |
+| chat-service suite | **2322** |
+| membrane gate | 1 allowed external (1 file-scoped) · **2 refused ceiling apis** · 11 import shapes + 2 negative controls in its selftest |
+| falsification gate | **303 guards · 44 falsified · 259 unproven**, partition exact |
+| census | **70 sites · 7 silent · 63 red**, `rc=0` — the two new refusals RED, the silent set the same 7 rows |
+
+**QC2 · LIVE RUN — `PASS` at the assembly boundary, `CANNOT DETERMINE` for a chat turn.** Both
+halves are stated because collapsing them into one verdict is how this run has produced false PASSes
+before.
+
+* **What ran for real:** a real `pydantic_ai.Agent`, a real toolset built by `toolset_for`, real
+  `.defer_loading()`, and the library's real `ToolSearch` reveal path — in-process, three model
+  turns. The model is a `FunctionModel`, and that is the **counterparty**, not the behaviour under
+  test: what is being measured is which tool definitions reach the model boundary.
+* **What did NOT run, and cannot yet:** a chat-service turn. **No request path reaches this code.**
+  That is CP-2.7's route, and until it exists every turn-level V-LIVE question stays
+  `CANNOT DETERMINE` — unchanged from CP-1 and named rather than quietly improved.
+
+**QC3 · DATA / MEASUREMENT — `PASS`, with the falsifier stated and run.** The artifact is the tool
+set the model was actually offered, per turn. **The same surface was assembled BOTH ways and the two
+disagree**, which is what makes the measurement worth anything:
+
+```
+advertised: ('book_list',)   deferred: ('glossary_search',)
+excluded_by: {'glossary_search': {'tool': 'glossary_search', 'stage': 'token_budget',
+                                  'reason': 'over budget', 'pass': 1}}
+
+DEFERRING (.defer_loading): turns=[['book_list'], ['book_list', 'glossary_search'],
+                                   ['book_list', 'glossary_search']]   called=['glossary_search']
+CEILING   (.filtered)     : turns=[['book_list'], ['book_list']]        called=[]
+```
+
+**The falsifier, stated in advance and satisfied:** *if the withheld declaration had appeared at
+turn 1, deferring would not hide; if it had never appeared at turn 2, deferring would be filtering
+with extra steps and CP-2.4 would have no subject.* The ceiling row is the control, and it
+**disagrees** — a control that agrees with its seed is theatre, and this run has shipped two of
+those.
+
+**So the row is BUILT and its QC1/QC3 are PASS, and it is NOT CLOSED.** A row closes on three
+pillars; this one has two and a half, and the missing half has a named owner.
+
+### 🔴 THREE defects the instruments found in MY OWN work, in this session
+
+* **Three of the 28 falsifiers were duds, and every one of them was caught by the runner.** Two
+  read **GREEN** — one replaced the requirements pin with `# pydantic-ai-slim removed`, which still
+  contains the string the guard looks for; the other wrote `CEILING_METHODS = {} or {`, which
+  evaluates to the **non-empty** dict because `{}` is falsy. Both would have been filed as *"the
+  guard requires nothing"*: a working guard convicted by a broken accuser. The third was refused
+  outright — `ANCHOR STALE … 0 occurrences (want 1)` — because I anchored on a line I had already
+  replaced myself. **That refusal is the stricter of the two failures**, and it is the better
+  design: a stale anchor cannot silently certify anything, where a dud that applies can.
+
+  This is the rule the instrument's own header states — *a reversion that does not restore the
+  defect proves nothing* — and it needed to be a machine, three times in one session, on the
+  session that wrote it down.
+* **The new suite arrived UNTRACKED and the census said so immediately.** `assembly.py` and its
+  suite were not `git add`-ed, so the mirror-of-tracked-files had neither and the run died at
+  `SELFTEST FAIL`. Same defect, same instrument, same catch as the falsification gate's own three
+  files one session ago — the design works, and I made the mistake again anyway.
+
+### 🔴 And a hole the new gate found in the instrument it was added to
+
+`test_THE_SUITE_LIST_IS_EVERY_CP_SUITE_ON_DISK` was written to stop a *future* suite escaping the
+falsification denominator. On its first run it found a **present** one: **`tests/test_cp0_merge_db.py`
+has existed since CP-0 and was never in `SUITES`**, so its 13 guards were *100% declared by
+arithmetic* while the gate printed a clean partition.
+
+**The unproven count rises 246 → 259, and that is a corrected denominator rather than new debt.**
+Those guards were always unproven; the instrument was measuring a corpus it had chosen. **Fifth
+consecutive time a denominator I published turned out to be a lower bound, and the second time an
+instrument built to stop exactly that produced one.**
+
+The 13 are in the backlog rather than in `UNFALSIFIED`, with the reason in the file: they are
+**DB-gated**, so without a real Postgres they SKIP — and a skip is not a failure, so a falsifier row
+for one would read GREEN and be recorded as *"the guard requires nothing"*, which would be a lie
+about a guard that works.
+
+### 🔴 And the SAME hole in the census, found by running it
+
+The census ran **one hard-coded suite**, `tests/test_cp1_membrane.py`. `assembly.py` arrived with
+two refusals guarded entirely by the CP-2 suite, so the first run after the module landed reported
+them exactly as predicted:
+
+```
+SILENT assembly.py::toolset_for::AssemblyMismatch::1::7e1d672f
+SILENT assembly.py::toolset_for::AssemblyMismatch::2::7fb218d4
+```
+
+**Two guarded refusals named as unguarded, in the file whose entire value is that its rows are
+true.** The direction is the safe one — a false SILENT is a finding, never a false green — and it
+is still a false finding, which is the defect one level up: **an instrument that manufactures work.**
+
+After the fix, **the same two site ids** read:
+
+```
+RED    assembly.py::toolset_for::AssemblyMismatch::1::7e1d672f
+RED    assembly.py::toolset_for::AssemblyMismatch::2::7fb218d4
+```
+
+— which is the census's id design doing the one job it was built for: *"a finding is closed"*
+means **this named site moved SILENT → RED**, and the digest is unchanged, so the fix landed on the
+site rather than on its sibling. Seven times in this run it landed on the sibling instead.
+
+`SUITE` becomes `_suites(cwd)`, derived by the predicate **"imports `app.agentruntime`"** rather
+than by a name glob. The predicate matters: globbing `test_cp*.py` would also take
+`test_cp0_instrument.py`, which names the package in prose and path strings, never imports it, and
+measures **63 s** — on a run that executes the suite once per site. Today the answer is two suites.
+Derived in the tree being **measured**, not the live one, for the reason the `cwd=CS` default here
+already demonstrated.
+
+### 🔴 What 2.1 explicitly does NOT claim
+
+* **Not that a declaration is well-described.** `ROW_FIELDS` carries no `description` and no
+  parameter schema, so every tool definition is built with `description=None` and a **closed empty**
+  object schema — `{}` would mean *anything goes*, which no row has ever claimed. Tool search scores
+  on *name + description*, so **a deferred declaration is discoverable by name tokens only.** That
+  is a real reduction in reachability, and it is recorded rather than papered over: the fields
+  arrive with the first real declaration at CP-4, in the same change as their producer.
+* **Not that the package is pure.** Admitting `pydantic_ai` admits its transitive imports, and the
+  §1.8c purity boundary is static over *this package's own files*. The scope entry keeps the
+  coupling to one file; **it cannot keep it to one library**, and no sentence here may say it does.
+* **Not that the manifest has anything in it.** The committed manifest is `declarations: []`, so in
+  production this assembles an empty toolset. Every measurement above runs on fixtures.
+* **Not that the buy is free.** Measured: `import pydantic_ai.toolsets.abstract` is **1.06 s** of
+  import time, and `import app.agentruntime` went from negligible to **~1.3 s** wall. That is paid
+  once per process, and it is paid by our own instruments too — the census imports the package
+  once per site, 70 times. It is recorded rather than engineered around: the only structural fix
+  (keep `assembly` out of the package `__init__`) helps a consumer that does not exist yet, and
+  every suite that touches the assembly pays it regardless. **The moment to move it is when a
+  startup path at 2.7 measures it as a problem**, not on a guess now.
+
+### ▶ The coupling, recorded because the allowlist was built for exactly this
+
+`ALLOWED_EXTERNAL` was empty from CP-1 until today, *"and that emptiness is the point"*. The first
+entry is `pydantic_ai`, **scoped by `ALLOWED_EXTERNAL_SCOPE` to `assembly.py` alone** — a module
+admitted package-wide is one decision that then covers every file written afterwards, which is the
+default-permitted shape the allowlist exists to avoid. The claim it falsifies — *"the package
+imports only the standard library and itself"* — was corrected **in the change that made it false**,
+in all four places it appeared: the gate's docstring and its FAIL message, the package `__init__`,
+the CI comment, and the two tests that asserted it.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -3111,7 +3289,7 @@ declarations, not silently emit a tool-free pass.
 
 | # | item | state |
 |---|---|---|
-| 2.1 | P4 assembly on the bought toolset — **and it must be the deferring API, not the filtering one.** Both exist one method apart; one is a ceiling and one is an enabler | ⬜ |
+| 2.1 | P4 assembly on the bought toolset — **and it must be the deferring API, not the filtering one.** Both exist one method apart; one is a ceiling and one is an enabler | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 SPLIT.** `assembly.py` on `pydantic_ai.toolsets`, `.defer_loading()` only; `.filtered(`/`.prepared(` refused by the membrane gate. **29 guards, 28 new falsifiers, 44/44 fire; census 70/7/63 `rc=0`.** **Live at the assembly boundary (real agent loop, real reveal); `CANNOT DETERMINE` for a chat turn — no request path reaches it, which is 2.7.** See the CP-2 block above |
 | 2.2 | **the widening rule** (§4.3) — a plan step's declaration must be advertised while that step is current. **Deletes three heuristics**: the rail next-step exemption, the backtick prose scraper, `load_skill`'s un-advertised names | ⬜ |
 | 2.3 | deterministic tool ordering — `active_tool_names` is a `set[str]` iterated unsorted, so **the order changes on every restart** and `tools` is the first cache block | ⬜ |
 | 2.4 | withheld things stay **reachable on request**; the model can tell *withheld* from *never existed* | ⬜ |
@@ -3192,7 +3370,7 @@ retrofitted to whatever gets built.
 |---|---|---|
 | **CP-0** instrument + frozen baseline | γ | ✅ **CLOSED 2026-08-04 on 0.5/0.6/0.7** — the three that ever passed. **0.1–0.4 reassigned to CP-1.7 / CP-2.6 / CP-3.6 / CP-1.4**, where each is structural rather than retrofitted. **Verification stopped after 11 rounds** (~27 verifier deployments). The legacy instrument stays live as a control-group diagnostic, with F-45 · F-48 · F-49 recorded open |
 | CP-1 membrane, empty | β | 🟡 **BUILT · 6 of 7 items independently PASS · BLOCKED ON A PO DECISION.** 7 verifier deployments (V-CODE ×5, V-LIVE ×2). **P1 closed at round 4** after three of the builder's own gates died — wrong direction, then unable to fire, then a law sampled at five points — and only closed when the invariant moved into **production code** as a post-condition. **1.4's P4 half has no subject here** and all three ways to resolve it change a criterion |
-| CP-2 runtime | β | ⬜ |
+| CP-2 runtime | β | 🟡 **OPEN — 2.1 built 2026-08-08, the effort's first production import of the package.** QC1/QC3 `PASS`, QC2 split: live at the assembly boundary, `CANNOT DETERMINE` for a chat turn until 2.7's route exists |
 | CP-3 plan | γ | ⬜ |
 | CP-4 declarations | γ | ⬜ |
 

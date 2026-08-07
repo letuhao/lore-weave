@@ -86,11 +86,16 @@ jobs:
           # behavioural test can only show the path was not taken on the inputs it
           # tried, and "invisibility implemented as a filter" has leaked or
           # silently deleted the wrong thing thirteen times in this repository.
-          # So the new package may import the standard library and itself, and
-          # nothing else — an ALLOWLIST, because a denylist is default-permitted
-          # and a legacy module written tomorrow would be reachable until someone
-          # remembered it. Its default mode runs --selftest, which fires the gate
-          # on five bypass shapes before it is trusted to pass.
+          # So the new package may import the standard library, itself, and what is
+          # named in ALLOWED_EXTERNAL with a reason — an ALLOWLIST, because a
+          # denylist is default-permitted and a legacy module written tomorrow
+          # would be reachable until someone remembered it. CP-2.1 added the first
+          # entry, `pydantic_ai`, SCOPED to assembly.py: P4 Assembly is a BUY
+          # decision, and the gate additionally refuses the toolset library's two
+          # CEILING apis (`.filtered`, `.prepared`), which delete a declaration
+          # instead of deferring it. Its default mode runs --selftest, which fires
+          # the gate on eleven bypass shapes — and stays silent on two negative
+          # controls — before it is trusted to pass.
           - agentruntime-membrane-gate
           # Context Budget Law §13c — the §11a Inspector coverage manifest stays
           # un-gameable: every checklist item must bind to an existing proving test.

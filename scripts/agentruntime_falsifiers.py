@@ -32,7 +32,11 @@ CS = "services/chat-service"
 PKG = f"{CS}/app/agentruntime"
 T1 = f"{CS}/tests/test_cp1_membrane.py"
 T0 = f"{CS}/tests/test_cp0_instrument.py"
+T2 = f"{CS}/tests/test_cp2_assembly.py"
 CENSUS = "scripts/agentruntime-census.py"
+GATE = "scripts/agentruntime-membrane-gate.py"
+FALSIFY = "scripts/agentruntime-falsification.py"
+REQS = f"{CS}/requirements.txt"
 
 #: `{test name: [(file, old, new), ...]}` — apply every mutation, then that test must RED.
 FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
@@ -132,6 +136,166 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
              "                if any((isinstance(x, ast.Name) and x.id in derived)\n"
              "                       or (isinstance(x, ast.Attribute) and x.attr in derived)\n"
              "                       for x in ast.walk(scope)):\n                    continue"),
+    ],
+
+    # ── CP-2.1 · P4 assembly on the bought toolset ───────────────────────────────────────────
+    #
+    # 🔴 **THESE ARRIVED WITH THEIR GUARDS RATHER THAN AFTER THEM, AND THAT IS THE POINT.** The
+    # standing debt at CP-1's close was 246 guards nobody had shown could fail. A new checkpoint
+    # that adds 25 more to the backlog makes the number rise while the instrument built to lower
+    # it prints a clean partition. So CP-2's first item ships 25 falsified guards and 0 backlogged
+    # ones, and the debt is the only thing that moved.
+    "test_THE_DEFERRING_API_KEEPS_A_WITHHELD_DECLARATION_REACHABLE": [
+        # The item, inverted: stop putting the withheld declarations in the toolset at all. That is
+        # `.filtered()` by hand, and the reveal at turn 2 then has nothing to reveal.
+        (f"{PKG}/assembly.py",
+         "    defs += [_tool_def(by_id[name], excluded_by=excluded_by[name]) for name in withheld_ids]",
+         "    defs += []"),
+    ],
+    "test_THE_CEILING_API_MAKES_IT_UNREACHABLE__the_control_that_gives_the_test_above_meaning": [
+        # A control must be able to fail as a CONTROL: make the "ceiling" toolset keep everything,
+        # and the disagreement it exists to demonstrate disappears.
+        (T2, "                [d for d in _defs(full) if d.name in offered], executor=ex",
+             "                _defs(full), executor=ex"),
+    ],
+    "test_EACH_PASS_DEFERS_ITS_OWN_WITHHELD_SET_NOT_A_PREVIOUS_PASSES": [
+        # Make one pass's deferral carry into the next by seeding it from the whole turn's log
+        # rather than from this assembly's own contribution.
+        (f"{PKG}/assembly.py",
+         '    withheld_ids = tuple(w["tool"] for w in withheld_records)',
+         '    withheld_ids = tuple(dict.fromkeys(\n'
+         '        list(_CARRIED) + [w["tool"] for w in withheld_records]))\n'
+         '    _CARRIED.extend(withheld_ids)'),
+        (f"{PKG}/assembly.py", 'TOOLSET_ID = "agentruntime"',
+                               'TOOLSET_ID = "agentruntime"\n_CARRIED: list = []'),
+    ],
+    "test_A_QUERY_FILTER_SHARING_THE_LOG_DOES_NOT_DEFER_WHAT_THE_ASSEMBLY_OFFERS": [
+        # 🔴 The `_log_mark` fix, reverted. This reds the guard through the CONSERVATION LAW rather
+        # than through the guard's own `deferred_names` assertion - and that is the mechanism
+        # working, not a bystander: the post-condition in `assemble` is what enforces the property,
+        # and the guard observes it end to end. Recorded here so nobody has to re-derive it.
+        (f"{PKG}/surface.py",
+         "        mine = [e for e in self._log.entries[_log_mark:] if e.pass_number == pass_number]",
+         "        mine = [e for e in self._log.entries if e.pass_number == pass_number]"),
+    ],
+    "test_THE_TOOLSET_HOLDS_EVERY_ADMITTED_DECLARATION_NOT_ONLY_THE_OFFERED_ONES": [
+        (f"{PKG}/assembly.py",
+         "    defs += [_tool_def(by_id[name], excluded_by=excluded_by[name]) for name in withheld_ids]",
+         "    defs += []"),
+    ],
+    "test_THE_WITHHELD_ONE_IS_MARKED_AND_THE_OFFERED_ONES_ARE_NOT": [
+        (f"{PKG}/assembly.py",
+         "    return toolset.defer_loading(withheld_ids)",
+         "    return toolset.defer_loading(())"),
+    ],
+    "test_WITH_NOTHING_WITHHELD_NOTHING_IS_DEFERRED__tool_names_None_would_defer_EVERYTHING": [
+        # The library's own default, which hides the entire surface while every count balances.
+        (f"{PKG}/assembly.py",
+         "    return toolset.defer_loading(withheld_ids)",
+         "    return toolset.defer_loading(withheld_ids or None)"),
+    ],
+    "test_A_DECLARATION_THAT_WAS_NEVER_ADMITTED_IS_ABSENT_RATHER_THAN_DEFERRED": [
+        # Fabricate a declaration AFTER both reconciliation checks, so the guard reds on its own
+        # clause rather than on an AssemblyMismatch raised upstream - a red for a different reason
+        # is a bystander, and this file's header says so.
+        (f"{PKG}/assembly.py",
+         "    toolset = DeclarationToolset(defs, executor=executor)",
+         "    defs.append(_tool_def({**by_id[offered[0]], 'id': 'legacy_tool'}, excluded_by=None))\n"
+         "    toolset = DeclarationToolset(defs, executor=executor)"),
+    ],
+    "test_THE_WITHHELD_RECORD_IS_CARRIED_ON_THE_META_CHANNEL": [
+        (f"{PKG}/assembly.py",
+         '        metadata["excluded_by"] = excluded_by',
+         '        metadata["excluded_by"] = {}'),
+    ],
+    "test_AN_OFFERED_DECLARATION_CARRIES_NO_EXCLUSION_RECORD": [
+        (f"{PKG}/assembly.py",
+         "    defs = [_tool_def(by_id[name], excluded_by=excluded_by.get(name)) for name in offered]",
+         "    defs = [_tool_def(by_id[name], excluded_by=excluded_by.get(name) or {}) for name in offered]"),
+    ],
+    "test_NO_REASON_TEXT_IS_ON_ANY_DESCRIPTION": [
+        (f"{PKG}/assembly.py", "        description=None,",
+         '        description="a tool that was withheld",'),
+    ],
+    "test_A_DECLARATION_BOTH_OFFERED_AND_WITHHELD_IS_CAUGHT_BY_THE_COUNT_NOT_THE_SET": [
+        (f"{PKG}/assembly.py",
+         "    if len(offered) + len(withheld_ids) != len(rows):",
+         "    if False:"),
+    ],
+    "test_A_STALE_SURFACE_IS_REFUSED_RATHER_THAN_RECONCILED": [
+        (f"{PKG}/assembly.py", "    if accounted != set(by_id):", "    if False:"),
+    ],
+    "test_A_SURFACE_NAMING_AN_UNADMITTED_DECLARATION_IS_REFUSED": [
+        (f"{PKG}/assembly.py", "    if accounted != set(by_id):", "    if False:"),
+    ],
+    "test_THE_EXECUTOR_IS_A_REQUIRED_KEYWORD": [
+        (f"{PKG}/assembly.py", "        executor: Executor,", "        executor: Executor = None,"),
+    ],
+    "test_A_CALL_GOES_TO_THE_INJECTED_EXECUTOR_AND_NOWHERE_ELSE": [
+        (f"{PKG}/assembly.py",
+         "        return await self._executor(name, tool_args, ctx)",
+         '        return "ok"'),
+    ],
+    "test_EVERY_TOOL_IS_BUILT_WITH_ZERO_RETRIES": [
+        (f"{PKG}/assembly.py", "                max_retries=0,", "                max_retries=1,"),
+    ],
+    "test_THE_PARAMETER_SCHEMA_IS_CLOSED_NOT_OPEN": [
+        (f"{PKG}/assembly.py",
+         '"additionalProperties": False}', '"additionalProperties": True}'),
+    ],
+    "test_NO_CEILING_CALL_EXISTS_IN_THE_PACKAGE": [
+        (f"{PKG}/assembly.py",
+         "    return toolset.defer_loading(withheld_ids)",
+         "    return toolset.defer_loading(withheld_ids) if defs else toolset.filtered(None)"),
+    ],
+    "test_THE_GATE_FIRES_ON_A_CEILING_CALL": [
+        # 🔴 The first version wrote `= {} or {`, which evaluates to the NON-empty dict - `{}` is
+        # falsy, so `or` returns the right operand and nothing changed. Second dud in one round,
+        # same class: an edit that looks like a reversion and is not one. Disable the CHECK instead,
+        # which is unambiguous.
+        (GATE, "            elif isinstance(fn, ast.Attribute) and fn.attr in CEILING_METHODS:",
+               "            elif False:"),
+    ],
+    "test_THE_GATE_IS_SILENT_ON_THE_DEFERRING_CALL": [
+        # The other direction: a gate that convicts the deferring API makes the item unshippable
+        # while every red-ness case stays green.
+        (GATE, '    "filtered": "removes the declaration',
+               '    "defer_loading": "x",\n    "filtered": "removes the declaration'),
+    ],
+    "test_THE_ALLOWANCE_IS_SCOPED_TO_THE_ONE_FILE_THAT_NEEDS_IT": [
+        (GATE, '    "pydantic_ai": frozenset({"assembly.py"}),',
+               '    "pydantic_ai": frozenset({"assembly.py", "surface.py"}),'),
+    ],
+    "test_ASSEMBLY_IS_THE_ONLY_FILE_IN_THE_PACKAGE_THAT_IMPORTS_IT": [
+        (f"{PKG}/narrowing.py", "from dataclasses import dataclass, field",
+         "import pydantic_ai\nfrom dataclasses import dataclass, field"),
+    ],
+    "test_THE_DEPENDENCY_IS_DECLARED_BY_THE_SERVICE_THAT_IMPORTS_IT": [
+        # 🔴 The first version of this row replaced the pin with `# pydantic-ai-slim removed`,
+        # which still CONTAINS the string the guard looks for. It read GREEN and would have been
+        # filed as "the guard requires nothing" - a reversion that does not restore the defect
+        # proves nothing, and the runner caught it on the first pass.
+        (REQS, "pydantic-ai-slim>=2.26,<3", "# the pin was deleted"),
+    ],
+    "test_THE_PACKAGE_STILL_IMPORTS_AT_THE_CONTAINERS_DEPTH": [
+        (f"{PKG}/__init__.py", "from .assembly import (\n    TOOLSET_ID,\n",
+                               "from .assembly import (\n"),
+    ],
+    "test_THE_SUITE_LIST_IS_EVERY_CP_SUITE_ON_DISK": [
+        (FALSIFY, '    "tests/test_cp2_assembly.py",\n', ""),
+    ],
+    "test_THE_CENSUS_RUNS_EVERY_CP_SUITE_NOT_ONLY_THE_ONE_IT_WAS_BORN_WITH": [
+        # The state the census was in until CP-2.1: one suite, typed out.
+        #
+        # 🔴 **THE FIRST VERSION OF THIS ROW ANCHORED ON A LINE I HAD ALREADY REPLACED**, and the
+        # runner refused to apply it — `ANCHOR STALE … 0 occurrences (want 1)`. Third dud falsifier
+        # in this session and the only one caught by REFUSAL rather than by a green result, which
+        # is the stricter of the two failures: a stale anchor cannot silently certify anything.
+        (CENSUS, '                out.append(f"tests/{p.name}")',
+                 '                out.append("tests/test_cp1_membrane.py")'),
+    ],
+    "test_THE_NAMED_RESIDUAL_IS_STILL_NAMED": [
+        (f"{PKG}/assembly.py", "discoverable **by name tokens only**", "discoverable"),
     ],
 }
 

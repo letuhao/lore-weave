@@ -151,7 +151,46 @@ def _discard(mirror: pathlib.Path) -> None:
         print(f"census: not removing {mirror} - this module did not create it")
 
 
-SUITE = "tests/test_cp1_membrane.py"
+def _suites(cwd) -> list[str]:
+    """Every suite that IMPORTS the package - derived, never typed out.
+
+    🔴 **THIS WAS A SINGLE HARD-CODED `tests/test_cp1_membrane.py`, AND CP-2 IS WHAT MADE THAT A
+    DEFECT RATHER THAN A SIMPLIFICATION.** `assembly.py` arrived with two refusals guarded entirely
+    by `tests/test_cp2_assembly.py`. Neutering either left the CP-1 suite green, so the census
+    **reported both SILENT** - measured, not predicted, in the run that produced this fix. A file
+    whose whole value is that its rows are true had two rows naming guarded refusals as unguarded.
+
+    The failure direction is the safe one (a false SILENT is a finding, never a false green), and it
+    is still a false finding, which is the defect one level up: an instrument that manufactures work.
+
+    **The predicate is `imports app.agentruntime`, not a name glob**, and the difference is not
+    cosmetic. A glob over `test_cp*.py` also takes `test_cp0_instrument.py` - which names the
+    package in prose and in path strings but never imports it, spawns subprocesses, and measures
+    **63 s**, on a run that executes the suite once per site - and `test_cp0_merge_db.py`, which is
+    DB-gated and contributes skips. Neither can red on a membrane refusal, so both would be pure
+    cost. What makes a suite relevant here is exactly that it can observe this package, so that is
+    what is asked, and the answer today is two suites.
+
+    Derived rather than listed for the reason five published denominators in this run have already
+    demonstrated: a hand-maintained list is one someone must remember to grow, and every one of them
+    turned out to be a lower bound.
+
+    `cwd` is the mirror's `services/chat-service`. Reading the live tree instead would be the same
+    category of error the `cwd=CS` default already produced here - the instrument answering a
+    question about a tree other than the one under measurement.
+    """
+    out = []
+    for p in sorted((pathlib.Path(cwd) / "tests").glob("test_*.py")):
+        tree = ast.parse(p.read_text(encoding="utf-8"), filename=str(p))
+        for node in ast.walk(tree):
+            mods = ([node.module or ""] if isinstance(node, ast.ImportFrom)
+                    else [a.name for a in node.names] if isinstance(node, ast.Import) else [])
+            if any(m == "app.agentruntime" or m.startswith("app.agentruntime.") for m in mods):
+                out.append(f"tests/{p.name}")
+                break
+    return out
+
+
 ALLOWLIST = ROOT / "contracts" / "agentruntime-census-silent.txt"
 
 
@@ -303,7 +342,7 @@ def _suite_is_green(cwd) -> bool:
     # same suite ran 2271 green on its own. A determinism flag that can turn "the suite is fine" into
     # "the suite noticed" is worse than non-determinism, so it is passed only when the plugin is
     # actually installed.
-    args = [sys.executable, "-m", "pytest", SUITE, "-q", "--no-header"]
+    args = [sys.executable, "-m", "pytest", *_suites(cwd), "-q", "--no-header"]
     try:
         import importlib.util as _ilu
         if _ilu.find_spec("pytest_randomly") is not None:
