@@ -118,12 +118,32 @@ CREATE TABLE channels (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     dissolved_at  TIMESTAMPTZ,
 
+    -- ⚠ ADDED (REC-106): not a fact about this channel — a fact about the one it
+    -- claims as a parent, GENERATED from this row so it cannot disagree with
+    -- `depth`. The root's value is -1 and no row can match it; the root does not
+    -- need one, because its `parent` is NULL and the FK below is MATCH SIMPLE.
+    parent_depth  SMALLINT GENERATED ALWAYS AS ((depth - 1)::smallint) STORED,
+
     PRIMARY KEY (reality_id, id),             -- ⚠ AMENDED (REC-105)
+
+    -- ⚠ ADDED (REC-106): the FK's target, and its only purpose. `(reality_id,
+    -- id)` is already unique; Postgres still requires a declared unique
+    -- constraint on the exact referenced column list.
+    CONSTRAINT channels_id_depth_uq UNIQUE (reality_id, id, depth),
 
     -- ⚠ AMENDED (REC-105): composite, so a channel in reality A cannot claim a
     -- parent in reality B.
-    CONSTRAINT channels_parent_fk FOREIGN KEY (reality_id, parent)
-        REFERENCES channels (reality_id, id),
+    -- ⚠ AMENDED (REC-106): `parent_depth` joins the key, and that is DP-Ch1's
+    -- own sentence (:97) turned into SQL. Along every parent edge depth
+    -- decreases by exactly one, so a cycle of length k would need `d = d - k`.
+    -- A cycle is not rejected — it is not REPRESENTABLE, including the one-node
+    -- case. DEFERRABLE because a parent's depth is referenced by its children,
+    -- so a subtree move must pass through an inconsistent middle; that does not
+    -- weaken the guarantee, since the impossibility is arithmetic and a deferred
+    -- cycle still fails at COMMIT.
+    CONSTRAINT channels_parent_fk FOREIGN KEY (reality_id, parent, parent_depth)
+        REFERENCES channels (reality_id, id, depth)
+        DEFERRABLE INITIALLY IMMEDIATE,
 
     CONSTRAINT channels_depth_bounded CHECK (depth >= 0 AND depth <= 16),
     CONSTRAINT channels_lifecycle_known
@@ -132,10 +152,17 @@ CREATE TABLE channels (
         (parent IS NULL AND depth = 0) OR (parent IS NOT NULL AND depth > 0)
     ),
 
-    -- ⚠ ADDED (REC-105): `channels_no_orphan` does NOT forbid a self-parented
-    -- row — one at `depth > 0` satisfies both halves — and a one-node cycle is
-    -- the cheapest way to turn the tree into a graph.
-    CONSTRAINT channels_no_self_parent CHECK (parent IS NULL OR parent <> id),
+    -- ⚠ ADDED (1b5-M4): `REC-103` carried the wire contract's WIDTH across and
+    -- not its DOMAIN. `DP-Ch11` allocates `MAX() + 1`, which starts at 1.
+    CONSTRAINT channels_id_positive CHECK (id > 0),
+    CONSTRAINT channels_level_name_nonempty CHECK (length(btrim(level_name)) > 0),
+
+    -- ⚠ REMOVED (REC-106): `channels_no_self_parent CHECK (parent IS NULL OR
+    -- parent <> id)` stood here. `channels_parent_fk` now makes it unable to
+    -- fail — a self-parented row would need a row with its own id at its own
+    -- depth minus one, and `id` is unique per reality — and a CHECK that cannot
+    -- reject anything is `NV-1`. That is `1bF-2`'s defect, in the same table,
+    -- and keeping it for readability is how it got there the first time.
 
     -- ⚠ ADDED (REC-105), DP-Ch31..Ch37 (17_channel_lifecycle.md): a dissolved
     -- channel has a dissolution time and
@@ -153,12 +180,56 @@ CREATE TABLE channels (
 -- ⚠ AMENDED (REC-105): keyed on `reality_id`, so the invariant is ONE ROOT PER
 -- REALITY. Keyed on a constant it would have been one root per DATABASE, which
 -- is a different and wrong claim once the table carries `reality_id`.
+-- ⚠ NOTED (1b5-L3): this index ignores `lifecycle`, and DP-Ch33 keeps a
+-- dissolved row indefinitely, so dissolving a reality's root FORECLOSES that
+-- reality. Correct, and written down so it is a decision: DP-Ch11 never reissues
+-- an id, and a `lifecycle <> 'dissolved'` predicate would let a reality be
+-- re-rooted while the old tree's events still reference the old root.
+-- ⚠ NOTED (REC-106): this index gives AT MOST one root. The parent FK gives AT
+-- LEAST one for any non-empty reality — walk `parent` and depth strictly
+-- decreases, so the walk terminates, and only `depth = 0` can terminate it,
+-- which `channels_no_orphan` forces to be a root. Together: EXACTLY one.
 CREATE UNIQUE INDEX channels_root_single ON channels (reality_id)
     WHERE parent IS NULL;
 
 CREATE INDEX channels_parent_idx ON channels(reality_id, parent);
 CREATE INDEX channels_level_idx ON channels(reality_id, level_name) WHERE lifecycle = 'active';
 CREATE INDEX channels_lifecycle_idx ON channels(reality_id, lifecycle);
+```
+
+⚠ **ADDED (`1b5-L5`) — the two lifecycle rules `DP-Ch31` names and no row-level
+mechanism enforced.** [`17_channel_lifecycle.md:57`](17_channel_lifecycle.md)
+locks *Dissolved → (any)* as *"terminal, no transitions"* and `:77` attributes it
+to a *"row-level rule"*; `:55` requires *"all descendants Dissolved"* before a
+dissolution. Both are statements about a TRANSITION, which a `CHECK` cannot see,
+and until `1b.5` both fell to a plain `UPDATE` while `:77` named a mechanism that
+existed nowhere. The rule is a `BEFORE UPDATE OF lifecycle` trigger — in the DB
+and not only in the SDK, because `DP-Ch31` says *"row-level rule **+** SDK
+transition validator"*, and an SDK-only check is one the next writer to reach
+this table does not have. It tests CHILDREN rather than descendants, which is not
+a weakening: a child may only reach Dissolved when its own children are, so by
+induction a Dissolved channel's whole subtree is Dissolved.
+
+```sql
+CREATE OR REPLACE FUNCTION channels_lifecycle_guard() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF OLD.lifecycle = 'dissolved' AND NEW.lifecycle <> 'dissolved' THEN
+        RAISE EXCEPTION 'channels_dissolved_is_terminal: ...' USING ERRCODE = 'check_violation';
+    END IF;
+    IF NEW.lifecycle = 'dissolved' AND OLD.lifecycle <> 'dissolved'
+       AND EXISTS (SELECT 1 FROM channels c
+                    WHERE c.reality_id = NEW.reality_id AND c.parent = NEW.id
+                      AND c.lifecycle <> 'dissolved') THEN
+        RAISE EXCEPTION 'channels_dissolve_descendants_first: ...' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER channels_lifecycle_guard_trg
+    BEFORE UPDATE OF lifecycle ON channels
+    FOR EACH ROW EXECUTE FUNCTION channels_lifecycle_guard();
 ```
 
 > ## ⚠ `REC-103` — `id` is `BIGINT`, not `UUID`, and this is the amendment `REC-102a` implied

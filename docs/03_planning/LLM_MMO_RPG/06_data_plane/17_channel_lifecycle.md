@@ -58,6 +58,22 @@ Three Phase 4 questions cluster here because they share one state machine: a cha
 
 ### Schema additions
 
+⚠ **NOT MIGRATED, and that is a decision (`1b5-H1`, 2026-08-07).** `0019_channels`
+ships `DP-Ch2`'s registry; this block is a **second** locked `ALTER TABLE channels`
+that Phase 0 did not find, and none of its five columns has a writer anywhere in
+the tree — `paused_until`, `paused_reason`, `paused_by`, `became_dormant_at` and
+`dissolved_at_eid` are read by nothing and written by nothing. Adding them now
+would be apparatus with no subject, which is the shape
+[`scripts/orphan-model-gate.py`](../../../../scripts/orphan-model-gate.py) exists
+for. It is registered as PENDING in
+[`scripts/dp-channels-schema-gate.py`](../../../../scripts/dp-channels-schema-gate.py)
+rather than ignored: the gate reds if a pending column silently appears in the
+migration (the row must then be retired), and reds if this block grows a column
+the register does not name. **Trigger to build it:** the first `DP-Ch32`
+auto-dormant scheduler or `pause_channel` caller. What `0019` DOES implement from
+this document is `DP-Ch31`'s terminal-Dissolved rule and `DP-Ch33`'s
+descendants-first rule — see `12_channel_primitives.md`, `1b5-L5`.
+
 ```sql
 -- channels table extended (per-reality DB)
 ALTER TABLE channels

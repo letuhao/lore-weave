@@ -183,7 +183,6 @@ def main() -> int:
             ("depth past the DP-Ch2 bound of 16", row(REALITY_A, 11, 1, 17), "channels_depth_bounded"),
             ("a negative depth", row(REALITY_A, 12, 1, -1), "channels_depth_bounded"),
             ("an unknown lifecycle", row(REALITY_A, 13, 1, 1, "zombie"), "channels_lifecycle_known"),
-            ("a channel parented to itself", row(REALITY_A, 14, 14, 1), "channels_no_self_parent"),
             ("a parent that does not exist", row(REALITY_A, 15, 999, 1), "channels_parent_fk"),
             ("a parent in ANOTHER reality", row(REALITY_B, 15, 2, 1), "channels_parent_fk"),
             ("dissolved with no dissolved_at", row(REALITY_A, 16, 1, 1, "dissolved"),
@@ -191,6 +190,14 @@ def main() -> int:
             ("active WITH a dissolved_at", row(REALITY_A, 17, 1, 1, "active", "now()"),
              "channels_dissolved_at_iff_dissolved"),
             ("a duplicate (reality_id, id)", row(REALITY_A, 2, 1, 1), "channels_pkey"),
+            # `1b.5 M4` — REC-103 carried the wire contract's WIDTH across and
+            # not its DOMAIN. DP-Ch11 allocates MAX()+1, which starts at 1.
+            ("id = 0", row(REALITY_A, 0, 1, 1), "channels_id_positive"),
+            ("a negative id", row(REALITY_A, -5, 1, 1), "channels_id_positive"),
+            ("an empty level_name", row(REALITY_A, 18, 1, 1, level=""),
+             "channels_level_name_nonempty"),
+            ("a level_name of only spaces", row(REALITY_A, 19, 1, 1, level="   "),
+             "channels_level_name_nonempty"),
         ]:
             code, out = psql(sql)
             named = expect in out
@@ -200,6 +207,120 @@ def main() -> int:
             if code != 0 and not named:
                 print(f"        ^ rejected, but NOT by {expect} — right answer, wrong constraint")
             results.append(ok)
+
+        # ── `REC-106` — `DP-Ch1`'s anti-cycle mechanism, attacked rather than
+        # argued. `12_channel_primitives.md:97` states it — *"No cycles.
+        # Enforced by `depth` (root = 0, children = parent.depth + 1) +
+        # referential integrity on `parent`"* — and the first shipped schema
+        # implemented the second half only. `1b5-H2`/`H3` are that gap; these are
+        # the attacks that were possible before the depth joined the foreign key.
+        #
+        # The statements here are not all INSERTs, which is the point: `1b.2`
+        # only ever inserted, and the cycle attacks are UPDATEs and DELETEs.
+        print(f"\n── REC-106: a cycle must be UNREPRESENTABLE, not merely rejected")
+        for label, sql, expect in [
+            ("a channel parented to itself",
+             row(REALITY_A, 14, 14, 1), "channels_parent_fk"),
+            ("a child of the root claiming depth 16",
+             row(REALITY_A, 30, 1, 16), "channels_parent_fk"),
+            ("a child at its parent's OWN depth (a flat chain)",
+             row(REALITY_A, 31, 2, 1), "channels_parent_fk"),
+            ("a 2-cycle: point the root at its own child",
+             f"UPDATE channels SET parent = 2, depth = 3 WHERE reality_id='{REALITY_A}' AND id = 1",
+             "channels_parent_fk"),
+            ("a cycle built inside ONE transaction, constraints DEFERRED",
+             f"BEGIN; SET CONSTRAINTS channels_parent_fk DEFERRED; "
+             f"{row(REALITY_C, 100, 101, 5)}; {row(REALITY_C, 101, 100, 4)}; COMMIT",
+             "channels_parent_fk"),
+            ("deleting the root out from under the tree",
+             f"DELETE FROM channels WHERE reality_id='{REALITY_A}' AND id = 1",
+             "channels_parent_fk"),
+            ("re-parenting a node whose children still reference its depth",
+             f"UPDATE channels SET depth = 5 WHERE reality_id='{REALITY_A}' AND id = 2",
+             "channels_parent_fk"),
+        ]:
+            code, out = psql(sql)
+            named = expect in out
+            ok = code != 0 and named
+            print(f"   {'OK  ' if ok else 'FAIL'} {label:46s} exit={code}")
+            print(f"        {blamed_constraint(out)}")
+            if code != 0 and not named:
+                print(f"        ^ rejected, but NOT by {expect} — right answer, wrong constraint")
+            results.append(ok)
+
+        # The DEFERRED leg must fail at COMMIT and leave NOTHING behind. A
+        # transaction that half-applied would satisfy "it errored" while having
+        # written a cycle, which is the failure this leg exists to exclude.
+        _, left = psql(f"SELECT count(*) FROM channels WHERE reality_id='{REALITY_C}'")
+        ok = left == "0"
+        print(f"   {'OK  ' if ok else 'FAIL'} {'the deferred cycle left no rows behind':46s} "
+              f"rows in reality C = {left}")
+        results.append(ok)
+
+        # ── the LEGAL half. A schema that refuses everything is not a tree, it
+        # is a wall, and `REC-106`'s stated cost is that re-parenting becomes a
+        # SUBTREE operation. That cost has to be payable or the constraint is
+        # wrong: the escape hatch is one transaction with the check deferred.
+        print(f"\n── REC-106: the operations that must still be POSSIBLE")
+        for label, sql in [
+            ("add a second branch under the root", row(REALITY_A, 40, 1, 1, level="zone2")),
+            ("move a subtree one level deeper, deferred, in one transaction",
+             f"BEGIN; SET CONSTRAINTS channels_parent_fk DEFERRED; "
+             f"UPDATE channels SET parent = 40, depth = 2 WHERE reality_id='{REALITY_A}' AND id = 2; "
+             f"UPDATE channels SET depth = 3 WHERE reality_id='{REALITY_A}' AND id = 3; COMMIT"),
+        ]:
+            code, out = psql(sql)
+            ok = code == 0
+            print(f"   {'OK  ' if ok else 'FAIL'} {label:46s} exit={code}"
+                  + ("" if ok else f"  {blamed_constraint(out)}"))
+            results.append(ok)
+        _, shape = psql(f"SELECT string_agg(id || ':d' || depth || '<-' || "
+                        f"coalesce(parent::text,'root'), ' ' ORDER BY id) FROM channels "
+                        f"WHERE reality_id='{REALITY_A}'")
+        print(f"        tree after the move: {shape}")
+
+        # ── `1b.5 L5` — DP-Ch31's terminal-Dissolved and DP-Ch33's
+        # descendants-first. Both are statements about a TRANSITION, which no
+        # CHECK can see, and `17_channel_lifecycle.md:77` attributed them to a
+        # "row-level rule" that existed nowhere. Both fell to a plain UPDATE.
+        print(f"\n── 1b5-L5: the lifecycle rules DP-Ch31 names")
+        psql("DROP TABLE IF EXISTS channels")
+        apply_file(MIGRATION)
+        seed_tree()
+        for label, sql, expect in [
+            ("dissolve a parent whose child is still active",
+             f"UPDATE channels SET lifecycle='dissolved', dissolved_at=now() "
+             f"WHERE reality_id='{REALITY_A}' AND id = 2",
+             "channels_dissolve_descendants_first"),
+            ("dissolve the LEAF first (must be allowed)",
+             f"UPDATE channels SET lifecycle='dissolved', dissolved_at=now() "
+             f"WHERE reality_id='{REALITY_A}' AND id = 3", None),
+            ("then its parent (must now be allowed)",
+             f"UPDATE channels SET lifecycle='dissolved', dissolved_at=now() "
+             f"WHERE reality_id='{REALITY_A}' AND id = 2", None),
+            ("bring a dissolved channel back to active",
+             f"UPDATE channels SET lifecycle='active', dissolved_at=NULL "
+             f"WHERE reality_id='{REALITY_A}' AND id = 3",
+             "channels_dissolved_is_terminal"),
+            ("bring it back to dormant instead",
+             f"UPDATE channels SET lifecycle='dormant', dissolved_at=NULL "
+             f"WHERE reality_id='{REALITY_A}' AND id = 3",
+             "channels_dissolved_is_terminal"),
+        ]:
+            code, out = psql(sql)
+            if expect is None:
+                ok = code == 0
+                print(f"   {'OK  ' if ok else 'FAIL'} {label:46s} exit={code}"
+                      + ("" if ok else f"  {blamed_constraint(out)}"))
+            else:
+                ok = code != 0 and expect in out
+                print(f"   {'OK  ' if ok else 'FAIL'} {label:46s} exit={code}")
+                print(f"        {blamed_constraint(out)}")
+            results.append(ok)
+
+        psql("DROP TABLE IF EXISTS channels")
+        apply_file(MIGRATION)
+        seed_tree()
 
         # ── `1b.4` — THE BITE. Every rejection above named its constraint, so
         # attribution is already proven. What is not proven is that the
@@ -212,30 +333,68 @@ def main() -> int:
         # a LOCKED spec for months as `UNIQUE (id)` on a primary key — a
         # constraint that could not fail, which no amount of inserting against
         # it would have revealed, because nothing ever did.
+        # ⚠ `1b5-M2`, RECREATED BY `REC-106` and caught by this harness on the
+        # first run after the change. Two legs went red — `no orphan` and `depth
+        # bounded` — because their violating rows were now refused TWICE. A child
+        # at `depth 0` has `parent_depth = -1`, and a child of the root at `depth
+        # 17` needs a parent at `depth 16`: neither exists, so `channels_parent_fk`
+        # refused both before the constraint under test ever ran. That is the
+        # "an adjacent decision defeats it" shape, and the adjacent decision was
+        # the one made two hours earlier in this same slice.
+        #
+        # Each row below is now chosen so the FOREIGN KEY is SATISFIED and the
+        # constraint under test is the only barrier left:
+        #   * no orphan     -> a ROOT at depth != 0. `parent IS NULL`, so the
+        #                      MATCH SIMPLE key is not checked at all. It goes in
+        #                      REALITY_C, which has no root, so
+        #                      `channels_root_single` is not a second barrier
+        #                      either — that was `1b5-M2`'s original finding.
+        #   * depth bounded -> a genuine 17-deep chain, so the violating row's
+        #                      parent really is at depth 16. Building it is the
+        #                      cost of proving the bound still does independent
+        #                      work: past `REC-106`, depth 17 is not reachable by
+        #                      declaration, only by digging.
+        deep_chain = [row(REALITY_C, 100, None, 0, level="reality")] + [
+            row(REALITY_C, 100 + d, 99 + d, d) for d in range(1, 17)]
         print(f"\n── BITE: drop the constraint, the violation must now be LEGAL")
-        for label, constraint, drop, sql in [
+        for label, constraint, drop, sql, setup in [
             ("one root per reality", "channels_root_single",
-             "DROP INDEX channels_root_single", row(REALITY_A, 20, None, 0)),
+             "DROP INDEX channels_root_single", row(REALITY_A, 20, None, 0), []),
             ("no orphan", "channels_no_orphan",
-             "ALTER TABLE channels DROP CONSTRAINT channels_no_orphan", row(REALITY_A, 21, 1, 0)),
+             "ALTER TABLE channels DROP CONSTRAINT channels_no_orphan",
+             row(REALITY_C, 21, None, 3), []),
             ("depth bounded", "channels_depth_bounded",
              "ALTER TABLE channels DROP CONSTRAINT channels_depth_bounded",
-             row(REALITY_A, 22, 1, 17)),
+             row(REALITY_C, 200, 116, 17), deep_chain),
             ("lifecycle known", "channels_lifecycle_known",
              "ALTER TABLE channels DROP CONSTRAINT channels_lifecycle_known",
-             row(REALITY_A, 23, 1, 1, "zombie")),
-            ("no self parent", "channels_no_self_parent",
-             "ALTER TABLE channels DROP CONSTRAINT channels_no_self_parent",
-             row(REALITY_A, 24, 24, 1)),
+             row(REALITY_A, 23, 1, 1, "zombie"), []),
             ("dissolved_at iff dissolved", "channels_dissolved_at_iff_dissolved",
              "ALTER TABLE channels DROP CONSTRAINT channels_dissolved_at_iff_dissolved",
-             row(REALITY_A, 25, 1, 1, "dissolved")),
+             row(REALITY_A, 25, 1, 1, "dissolved"), []),
+            # `REC-106`. This leg replaces the one that used to read "no self
+            # parent": `channels_no_self_parent` was REMOVED because the depth in
+            # this key makes a self-parented row unrepresentable, so a CHECK for
+            # it could no longer fail (`NV-1`). The evidence for that claim is
+            # exactly this leg — drop the foreign key, and the self-parented row
+            # that `channels_no_self_parent` used to catch INSERTS.
+            ("the parent link, depth included", "channels_parent_fk",
+             "ALTER TABLE channels DROP CONSTRAINT channels_parent_fk",
+             row(REALITY_A, 24, 24, 1), []),
+            ("id is positive", "channels_id_positive",
+             "ALTER TABLE channels DROP CONSTRAINT channels_id_positive",
+             row(REALITY_A, 0, 1, 1), []),
+            ("level_name is not blank", "channels_level_name_nonempty",
+             "ALTER TABLE channels DROP CONSTRAINT channels_level_name_nonempty",
+             row(REALITY_A, 26, 1, 1, level="  "), []),
         ]:
+            for s in setup:
+                code_s, out_s = psql(s)
+                if code_s != 0:
+                    print(f"        x SETUP FAILED for `{label}`: {blamed_constraint(out_s)}")
             before, out_before = psql(sql)
             code_drop, _ = psql(drop)
             after, out_after = psql(sql)
-            psql(f"DELETE FROM channels WHERE reality_id='{REALITY_A}' AND id "
-                 f"= {sql.split('VALUES')[1].split(',')[1].strip()}")
             # Put it back. `1b.5 M1`: re-applying the migration alone was a
             # NO-OP — `CREATE TABLE IF NOT EXISTS` skips, so five of six
             # constraints never returned and legs 2..6 ran on a progressively
@@ -251,8 +410,6 @@ def main() -> int:
                 print(f"        x RESTORE FAILED: {constraint} is still absent after re-apply")
                 results.append(False)
                 continue
-            _, still = psql("SELECT count(*) FROM pg_constraint WHERE conname = %s"
-                            % f"'{constraint}'")
             bit = before != 0 and code_drop == 0 and after == 0
             print(f"   {'OK  ' if bit else 'FAIL'} {label:34s} "
                   f"with={before and 'rejected' or 'ACCEPTED'} "
@@ -261,6 +418,47 @@ def main() -> int:
                 print(f"        ^ still rejected with {constraint} gone: {blamed_constraint(out_after)}")
                 print("        Something ELSE is refusing this row, so this constraint was not")
                 print("        the thing holding the property.")
+            results.append(bit)
+
+        # The lifecycle rules are a TRIGGER, not a constraint, so they need their
+        # own bite shape — and they need one for the same reason: a trigger that
+        # has never been the sole refuser is a trigger nobody has proven is load
+        # bearing. Drop it, and the transition it forbids must go through.
+        psql("DROP TABLE IF EXISTS channels")
+        apply_file(MIGRATION)
+        seed_tree()
+        dissolve_leaf = (f"UPDATE channels SET lifecycle='dissolved', dissolved_at=now() "
+                         f"WHERE reality_id='{REALITY_A}' AND id = 3")
+        revive = (f"UPDATE channels SET lifecycle='active', dissolved_at=NULL "
+                  f"WHERE reality_id='{REALITY_A}' AND id = 3")
+        dissolve_parent = (f"UPDATE channels SET lifecycle='dissolved', dissolved_at=now() "
+                           f"WHERE reality_id='{REALITY_A}' AND id = 2")
+        for label, violation, setup in [
+            ("DP-Ch31 terminal Dissolved", revive, [dissolve_leaf]),
+            ("DP-Ch33 descendants first", dissolve_parent, []),
+        ]:
+            psql("DROP TABLE IF EXISTS channels")
+            apply_file(MIGRATION)
+            seed_tree()
+            for s in setup:
+                psql(s)
+            # A refused UPDATE changes nothing, so the state the second attempt
+            # sees is the state the first one saw. No re-seed, and none hidden.
+            before, _ = psql(violation)
+            _, trg_before = psql("SELECT count(*) FROM pg_trigger "
+                                 "WHERE tgname='channels_lifecycle_guard_trg'")
+            psql("DROP TRIGGER channels_lifecycle_guard_trg ON channels")
+            _, trg_after = psql("SELECT count(*) FROM pg_trigger "
+                                "WHERE tgname='channels_lifecycle_guard_trg'")
+            after, out_after = psql(violation)
+            bit = before != 0 and after == 0 and trg_before == "1" and trg_after == "0"
+            print(f"   {'OK  ' if bit else 'FAIL'} {label:34s} "
+                  f"with={'rejected' if before else 'ACCEPTED'} "
+                  f"without={'accepted' if after == 0 else 'still rejected'}  "
+                  f"(pg_trigger {trg_before} -> {trg_after})")
+            if not bit and after != 0:
+                print(f"        ^ still rejected with the trigger gone: "
+                      f"{blamed_constraint(out_after)}")
             results.append(bit)
 
         # The bite dropped and re-created constraints; rebuild a clean tree for

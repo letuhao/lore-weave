@@ -5,33 +5,62 @@
 
 `FLOW-2` is this project's recurring defect: a correction decided, applied where
 the author was looking, and not applied where they were not. It has now been
-measured four times in this corpus, and `REC-103` is the sharpest instance —
+measured five times in this corpus, and `REC-103` is the sharpest instance —
 `REC-102a` ruled `ChannelId` to be `i64`, that ruling reached the newtype and the
 Rust code in the same commit, and it **never reached the schema thirty lines
 below it**. The one artifact a migration would be written from still declared
 `UUID`, and nothing said so for the eight weeks in between.
 
-`crates/dp/tests/spec_oracle.rs` compares LOCKED markdown to Rust `const`s. This
-does the same for the one place both sides are the same language: `DP-Ch2`'s
-`CREATE TABLE` in `12_channel_primitives.md`, against
-`contracts/migrations/per_reality/0019_channels.up.sql`.
+WHAT `1b.5` FOUND ABOUT THE FIRST VERSION OF THIS GATE
+-----------------------------------------------------
+Three findings, and all three are the same defect — *a check that reads a PROXY
+for its subject*:
 
-WHAT IT COMPARES, AND WHY NOT MORE
-----------------------------------
-  * every column's NAME and TYPE, in order
-  * the set of named CONSTRAINTS
-  * the presence of `channels_root_single` as a PARTIAL UNIQUE INDEX on both
-    sides — `REC-104`'s subject, and the one constraint that spent months in the
-    spec as a form that could not fail
+  * `1b5-H1` — **the gate read ONE file.** `REC-103`/`REC-105` reached
+    `12_channel_primitives.md` and **not** `13_channel_ordering_and_writer.md:209`,
+    `16_bubble_up_aggregator.md:339`, or the second locked `ALTER TABLE channels`
+    in `17_channel_lifecycle.md:63`. *The gate built to stop `FLOW-2` was scoped
+    to the one file where `FLOW-2` did not happen this time.* It now scans every
+    `.md` in `06_data_plane/`, so a file created tomorrow is covered by default
+    rather than by an author remembering to add it (`NV-3`).
 
-It does **not** normalise or compare CHECK *bodies*. `(depth >= 0 AND depth <=
-16)` and `(depth BETWEEN 0 AND 16)` are the same predicate and different text,
-and a comparison that called them different would cry wolf until someone
-switched it off. **Stated rather than glossed:** a constraint can be present on
-both sides under one name and mean two things, and this gate would not know.
-Closing that needs the live smoke (`scripts/dp-channels-live-smoke.py`), which
-asks each constraint to actually reject a row — which is why that script exists
-and why `1b` does not close without it.
+  * `1b5-H4` — **the gate was blind to `PRIMARY KEY`, `NOT NULL`, `DEFAULT`, the
+    bodies of foreign keys, and every index but one.** A four-way mutant —
+    `ON DELETE CASCADE`, `level_name` losing `NOT NULL`, `metadata` losing its
+    `DEFAULT`, an extra `UNIQUE` — applied cleanly and the gate said OK. The
+    primary key is `REC-105`'s ENTIRE SUBJECT and the gate did not look at it.
+    It now parses the table structurally instead of line by line.
+
+  * `1b5-M5` — **the gate cried wolf on formatting.** Lowercasing a type, or
+    deleting one space in `ON channels (reality_id)`, reddened it — and the
+    no-space form is what the spec itself used for its other three indexes. A
+    gate that reds on a normalisation is a gate that gets switched off within a
+    day. Everything is normalised before comparison: keyword and type case,
+    whitespace, `IF NOT EXISTS`, and the space before `(`.
+
+WHAT IT COMPARES
+----------------
+  * every column: NAME, TYPE, `NOT NULL`, `DEFAULT`, `GENERATED ... STORED`
+  * the `PRIMARY KEY` column list
+  * every named constraint, and for `FOREIGN KEY`/`UNIQUE` its full body —
+    columns, referenced table and columns, referential actions, deferrability
+  * every index: name, uniqueness, table, column list, and partial predicate
+  * the `DP-Ch31`/`DP-Ch33` lifecycle trigger's name and firing event
+  * across ALL of `06_data_plane/`: every `REFERENCES channels (...)` agrees with
+    the shipped key, and every `ALTER TABLE channels` is either in the migration
+    or in `PENDING_ALTERS` below
+
+WHAT IT DOES NOT COMPARE, AND WHY
+---------------------------------
+`CHECK` bodies and the trigger's plpgsql body. `(depth >= 0 AND depth <= 16)` and
+`(depth BETWEEN 0 AND 16)` are the same predicate and different text, and a
+comparison that called them different would cry wolf until someone switched it
+off — which is `1b5-M5` arriving through the other door. **Stated rather than
+glossed:** a constraint can be present on both sides under one name and mean two
+things, and this gate would not know. Closing that needs the live smoke
+(`scripts/dp-channels-live-smoke.py`), which asks each constraint to actually
+reject a row — which is why that script exists and why `1b` does not close
+without it.
 
 Run: ``python scripts/dp-channels-schema-gate.py`` — wired pre-commit.
 Exit 0 = they agree; 1 = they do not; 2 = one of them could not be parsed.
@@ -43,78 +72,490 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-SPEC = REPO / "docs/03_planning/LLM_MMO_RPG/06_data_plane/12_channel_primitives.md"
+DP_DOCS = REPO / "docs/03_planning/LLM_MMO_RPG/06_data_plane"
+SPEC = DP_DOCS / "12_channel_primitives.md"
 MIGRATION = REPO / "contracts/migrations/per_reality/0019_channels.up.sql"
 
-_TABLE = re.compile(r"CREATE TABLE(?: IF NOT EXISTS)? channels \((.*?)\n\);", re.S)
-_COL = re.compile(r"^([a-z_]+)\s+([A-Z]+)")
+# The shipped key of `channels`. Every `REFERENCES channels (...)` in the tier's
+# documents must name one of these, or it is `REC-105`'s defect somewhere new.
+#
+#   (reality_id, id)        — the primary key. What ANY other table references.
+#   (reality_id, id, depth) — `channels_parent_fk`'s own target (`REC-106`). It
+#                             carries `depth` so that a cycle is unrepresentable,
+#                             and `channels_id_depth_uq` exists to be it.
+#
+# A closed set rather than a prefix rule, deliberately: a fourth form arriving is
+# a decision someone should have to make on purpose, not a shape that slips
+# through because it happened to start with the right two columns.
+CHANNELS_KEYS = {("REALITY_ID", "ID"), ("REALITY_ID", "ID", "DEPTH")}
+
+# ---------------------------------------------------------------------------
+# `1b5-H1` · the PENDING register.
+#
+# `17_channel_lifecycle.md:63` holds a SECOND locked `ALTER TABLE channels` whose
+# five columns have no writer and no reader anywhere in the tree. Migrating them
+# would be apparatus with no subject. Ignoring them is how `FLOW-2` happens. So
+# they are named here, and the register is built to SHRINK: if one of these
+# appears in the migration, this gate REDS until the row is retired.
+# ---------------------------------------------------------------------------
+PENDING_ALTERS = {
+    "17_channel_lifecycle.md": {
+        "columns": {
+            "PAUSED_UNTIL", "PAUSED_REASON", "PAUSED_BY",
+            "BECAME_DORMANT_AT", "DISSOLVED_AT_EID",
+        },
+        "constraints": {"CHANNELS_PAUSE_ACTIVE_ONLY"},
+        "trigger": "the first DP-Ch32 auto-dormant scheduler or pause_channel caller",
+    },
+}
+
+# The lifecycle rules `DP-Ch31`/`DP-Ch33` state and no CHECK can express, because
+# both are about a TRANSITION. `1b5-L5`.
+TRIGGER_NAME = "CHANNELS_LIFECYCLE_GUARD_TRG"
+TRIGGER_EVENT = "BEFORE UPDATE OF LIFECYCLE ON CHANNELS"
+
+_TYPE_ALIASES = {
+    "INT8": "BIGINT", "INT4": "INTEGER", "INT": "INTEGER", "INT2": "SMALLINT",
+    "BOOL": "BOOLEAN", "TIMESTAMP WITH TIME ZONE": "TIMESTAMPTZ",
+    "CHARACTER VARYING": "VARCHAR",
+}
+_COL_STOP = {"NOT", "NULL", "DEFAULT", "GENERATED", "PRIMARY", "UNIQUE",
+             "REFERENCES", "CHECK", "COLLATE", "CONSTRAINT"}
+_ITEM_KEYWORDS = {"CONSTRAINT", "PRIMARY", "UNIQUE", "FOREIGN", "CHECK", "EXCLUDE"}
 
 
 def strip_sql_comments(text: str) -> str:
-    return "\n".join(line.split("--")[0] for line in text.splitlines())
+    """Drop `--` comments, without eating a `--` inside a string literal."""
+    out = []
+    for line in text.splitlines():
+        res, i, in_str = [], 0, False
+        while i < len(line):
+            ch = line[i]
+            if ch == "'":
+                in_str = not in_str
+            if not in_str and ch == "-" and line[i:i + 2] == "--":
+                break
+            res.append(ch)
+            i += 1
+        out.append("".join(res))
+    return "\n".join(out)
 
 
-def columns(text: str, who: str) -> list[tuple[str, str]]:
-    m = _TABLE.search(text)
+def norm(sql: str) -> str:
+    """`1b5-M5`: case, whitespace and `IF NOT EXISTS` are not schema facts.
+
+    Uppercases outside single-quoted literals, collapses runs of whitespace, and
+    removes the space before `(` so `channels (a)` and `channels(a)` are one
+    string. Literals keep their case: `'active'` is a VALUE.
+    """
+    res, in_str = [], False
+    for ch in sql:
+        if ch == "'":
+            in_str = not in_str
+            res.append(ch)
+        else:
+            res.append(ch if in_str else ch.upper())
+    s = "".join(res)
+    s = re.sub(r"\bIF NOT EXISTS\b", " ", s)
+    s = re.sub(r"\bOR REPLACE\b", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"\s+\(", "(", s)
+    return s
+
+
+def _norm_type(t: str) -> str:
+    t = re.sub(r"\s+", " ", t).strip()
+    return _TYPE_ALIASES.get(t, t)
+
+
+def split_top_level(body: str) -> list[str]:
+    depth, in_str, cur, out = 0, False, [], []
+    for ch in body:
+        if ch == "'":
+            in_str = not in_str
+        if not in_str:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth -= 1
+            elif ch == "," and depth == 0:
+                out.append("".join(cur))
+                cur = []
+                continue
+        cur.append(ch)
+    out.append("".join(cur))
+    return [x.strip() for x in out if x.strip()]
+
+
+def _cols(paren: str) -> list[str]:
+    return [c.strip() for c in split_top_level(paren.strip()) if c.strip()]
+
+
+def _extract_table(text: str, who: str) -> str:
+    m = re.search(r"CREATE TABLE(?: IF NOT EXISTS)? CHANNELS\((.*?)\);",
+                  norm(strip_sql_comments(sql_only(text))), re.S)
     if not m:
         print(f"dp-channels-schema-gate: MISUSE — no `CREATE TABLE channels (..)` in {who}. "
               f"The parse found nothing, and a comparison against nothing agrees with anything.",
               file=sys.stderr)
         sys.exit(2)
-    out = []
-    for line in strip_sql_comments(m.group(1)).splitlines():
-        line = line.strip().rstrip(",")
-        c = _COL.match(line)
-        if c:
-            out.append((c.group(1), c.group(2)))
+    return m.group(1)
+
+
+def parse_table(text: str, who: str) -> dict:
+    """Structural, not line-shaped. `1b5-H4` is what line-shaped cost."""
+    body = _extract_table(text, who)
+    columns, constraints, pk = [], {}, []
+
+    for item in split_top_level(body):
+        head = item.split("(")[0].split()
+        if not head:
+            continue
+        kw = head[0]
+
+        if kw == "PRIMARY":
+            pk = _cols(re.search(r"\((.*)\)", item, re.S).group(1))
+            continue
+        if kw in _ITEM_KEYWORDS:
+            if kw == "CONSTRAINT":
+                name = head[1]
+                rest = item[item.index(name) + len(name):].strip()
+            else:                       # an UNNAMED table constraint
+                name, rest = f"<unnamed {kw}>", item
+            constraints[name] = _parse_constraint(rest)
+            continue
+
+        # a column
+        toks = item.split()
+        name = toks[0]
+        ty, i = [], 1
+        while i < len(toks) and toks[i] not in _COL_STOP:
+            ty.append(toks[i])
+            i += 1
+            if ty and ty[-1].endswith(")"):
+                break
+        rest = " ".join(toks[i:])
+        gen = re.search(r"GENERATED ALWAYS AS\((.*)\) STORED", rest, re.S)
+        dfl = re.search(r"\bDEFAULT (.+?)(?=\s+(?:NOT NULL|NULL|CHECK|REFERENCES|"
+                        r"GENERATED|UNIQUE|PRIMARY|COLLATE)\b|$)", rest, re.S)
+        columns.append({
+            "name": name,
+            "type": _norm_type(" ".join(ty)),
+            "not_null": bool(re.search(r"\bNOT NULL\b", rest)),
+            "default": dfl.group(1).strip() if dfl else None,
+            "generated": re.sub(r"\s+", " ", gen.group(1)).strip() if gen else None,
+        })
+
+    return {"columns": columns, "pk": pk, "constraints": constraints}
+
+
+def _parse_constraint(rest: str) -> tuple:
+    """CHECK bodies are deliberately not compared — see the module docstring."""
+    if rest.startswith("FOREIGN KEY"):
+        m = re.match(r"FOREIGN KEY\((.*?)\) REFERENCES (\w+)\((.*?)\)(.*)$", rest, re.S)
+        if not m:
+            return ("FOREIGN KEY", "UNPARSED", rest)
+        tail = m.group(4).strip()
+        actions = tuple(sorted(re.findall(r"ON (?:DELETE|UPDATE) (?:NO ACTION|RESTRICT|"
+                                          r"CASCADE|SET NULL|SET DEFAULT)", tail)))
+        deferrable = "DEFERRABLE" in tail and "NOT DEFERRABLE" not in tail
+        initially = "DEFERRED" if re.search(r"INITIALLY DEFERRED", tail) else "IMMEDIATE"
+        return ("FOREIGN KEY", tuple(_cols(m.group(1))), m.group(2),
+                tuple(_cols(m.group(3))), actions, deferrable, initially)
+    if rest.startswith("UNIQUE"):
+        return ("UNIQUE", tuple(_cols(re.search(r"\((.*)\)", rest, re.S).group(1))))
+    if rest.startswith("CHECK"):
+        return ("CHECK",)
+    return ("OTHER", rest)
+
+
+def parse_indexes(text: str) -> dict:
+    out = {}
+    pat = re.compile(
+        r"CREATE (UNIQUE )?INDEX(?: IF NOT EXISTS)? (\w+) ON (\w+)\((.*?)\)"
+        r"(?: WHERE (.*?))?;", re.S)
+    for m in pat.finditer(norm(strip_sql_comments(sql_only(text)))):
+        out[m.group(2)] = (bool(m.group(1)), m.group(3), tuple(_cols(m.group(4))),
+                           re.sub(r"\s+", " ", m.group(5)).strip() if m.group(5) else None)
     return out
 
 
-def constraints(text: str) -> list[str]:
-    return sorted(set(re.findall(r"CONSTRAINT (\w+)", strip_sql_comments(text))))
+def parse_trigger(text: str) -> str | None:
+    m = re.search(r"CREATE(?: OR REPLACE)? TRIGGER (\w+)\s+(.*?)\s+FOR EACH ROW",
+                  norm(strip_sql_comments(sql_only(text))), re.S)
+    return f"{m.group(1)}|{m.group(2)}" if m else None
 
 
-def root_index(text: str) -> str | None:
-    """`REC-104`'s subject: a PARTIAL unique index, not a plain UNIQUE."""
-    m = re.search(
-        r"CREATE UNIQUE INDEX(?: IF NOT EXISTS)? channels_root_single\s*"
-        r"ON channels \(([^)]*)\)\s*WHERE ([^;]+);",
-        strip_sql_comments(text), re.S)
-    if not m:
-        return None
-    return f"({m.group(1).strip()}) WHERE {m.group(2).strip()}"
+# ---------------------------------------------------------------------------
+# `1b5-H1` · the cross-file scan
+# ---------------------------------------------------------------------------
+_FENCE = re.compile(r"```sql\n(.*?)```", re.S)
+
+
+def sql_blocks(md: str) -> str:
+    return "\n".join(_FENCE.findall(md))
+
+
+def sql_only(text: str) -> str:
+    """A markdown file is PROSE with SQL in it, and the prose is hostile input.
+
+    Found while wiring `1b5-L5`: `parse_trigger` was reading the whole document,
+    and English prose contains apostrophes — ``DP-Ch1`'s`` is one. `norm()`
+    tracks single-quoted literals so that `'active'` keeps its case, so ONE
+    unbalanced apostrophe in a sentence puts the rest of the file inside a string
+    literal and silently stops normalising it. The gate then reported a
+    case-difference as a schema disagreement, which is `1b5-M5` wearing a
+    different coat. Parse the fences, never the file.
+    """
+    return sql_blocks(text) if "```sql" in text else text
+
+
+def tier_docs() -> list[tuple[str, str]]:
+    """Every `.md` in the tier — a GLOB, not a list. `NV-3`: an enumerated file
+    set is default-uncovered, and `1b5-H1` is what that cost."""
+    return [(p.name, p.read_bytes().decode("utf-8")) for p in sorted(DP_DOCS.glob("*.md"))]
+
+
+def scan_tier_docs(migration_cols: set[str], migration_cons: set[str],
+                   docs: list[tuple[str, str]] | None = None) -> list[str]:
+    findings = []
+    seen_alter_files = set()
+    for name_, text_ in (tier_docs() if docs is None else docs):
+        doc = type("D", (), {"name": name_})
+        sql = norm(strip_sql_comments(sql_blocks(text_)))
+
+        for m in re.finditer(r"REFERENCES CHANNELS\((.*?)\)", sql, re.S):
+            cols = tuple(_cols(m.group(1)))
+            if cols not in CHANNELS_KEYS:
+                allowed = " or ".join("(" + ", ".join(k).lower() + ")"
+                                      for k in sorted(CHANNELS_KEYS))
+                findings.append(
+                    f"{doc.name}: `REFERENCES channels({', '.join(c.lower() for c in cols)})` — "
+                    f"the shipped key is {allowed}. REC-103/REC-105 reached the migration and not "
+                    f"this file, which is FLOW-2.")
+
+        for m in re.finditer(r"ALTER TABLE CHANNELS\b(.*?);", sql, re.S):
+            seen_alter_files.add(doc.name)
+            reg = PENDING_ALTERS.get(doc.name)
+            body = m.group(1)
+            cols = set(re.findall(r"ADD COLUMN(?: IF NOT EXISTS)? (\w+)", body))
+            cons = set(re.findall(r"ADD CONSTRAINT (\w+)", body))
+            if reg is None:
+                findings.append(
+                    f"{doc.name}: an `ALTER TABLE channels` this gate has never been told about "
+                    f"(columns {sorted(cols)}, constraints {sorted(cons)}). Either migrate it or "
+                    f"add a PENDING_ALTERS row naming what would wake it up.")
+                continue
+            for extra in sorted(cols - reg["columns"]):
+                findings.append(
+                    f"{doc.name}: `ALTER TABLE channels` grew column `{extra.lower()}`, which the "
+                    f"PENDING_ALTERS register does not name.")
+            for extra in sorted(cons - reg["constraints"]):
+                findings.append(
+                    f"{doc.name}: `ALTER TABLE channels` grew constraint `{extra.lower()}`, which "
+                    f"the PENDING_ALTERS register does not name.")
+
+    # The register must SHRINK. A pending item the migration now has is a row to
+    # retire, not a row to keep — a stale PENDING entry reads as "still owed".
+    for name, reg in PENDING_ALTERS.items():
+        if name not in seen_alter_files:
+            findings.append(
+                f"PENDING_ALTERS names `{name}`, and no `ALTER TABLE channels` was found in it. "
+                f"The register is stale — retire the row.")
+        for col in sorted(reg["columns"] & migration_cols):
+            findings.append(
+                f"PENDING_ALTERS still lists column `{col.lower()}` and 0019 now HAS it. "
+                f"The register must shrink: retire the entry.")
+        for con in sorted(reg["constraints"] & migration_cons):
+            findings.append(
+                f"PENDING_ALTERS still lists constraint `{con.lower()}` and 0019 now HAS it. "
+                f"The register must shrink: retire the entry.")
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# self-test — every capability above, bitten in BOTH directions
+# ---------------------------------------------------------------------------
+_T = """CREATE TABLE channels (
+    reality_id UUID NOT NULL,
+    id BIGINT NOT NULL,
+    parent BIGINT,
+    depth SMALLINT NOT NULL,
+    level_name TEXT NOT NULL,
+    parent_depth SMALLINT GENERATED ALWAYS AS ((depth - 1)::smallint) STORED,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    PRIMARY KEY (reality_id, id),
+    CONSTRAINT channels_id_depth_uq UNIQUE (reality_id, id, depth),
+    CONSTRAINT channels_parent_fk FOREIGN KEY (reality_id, parent, parent_depth)
+        REFERENCES channels (reality_id, id, depth) DEFERRABLE INITIALLY IMMEDIATE,
+    CONSTRAINT channels_depth_bounded CHECK (depth >= 0 AND depth <= 16)
+);
+CREATE UNIQUE INDEX channels_root_single ON channels (reality_id) WHERE parent IS NULL;
+"""
 
 
 def self_test() -> int:
-    """Cases on synthetic SQL, both directions."""
     bad = []
-    good = "CREATE TABLE channels (\n  reality_id UUID NOT NULL,\n  id BIGINT NOT NULL\n);"
-    if columns(good, "self-test") != [("reality_id", "UUID"), ("id", "BIGINT")]:
-        bad.append("the column parse does not read a plain table")
-    drifted = good.replace("id BIGINT", "id UUID")
-    if columns(good, "s") == columns(drifted, "s"):
-        bad.append("a changed column TYPE is invisible — this gate's whole subject (REC-103)")
-    renamed = good.replace("reality_id UUID", "realm_id UUID")
-    if columns(good, "s") == columns(renamed, "s"):
-        bad.append("a changed column NAME is invisible")
-    if columns(good, "s") == columns(good.replace("  id BIGINT NOT NULL\n", ""), "s"):
-        bad.append("a DROPPED column is invisible")
-    if constraints("CONSTRAINT a CHECK (1)") != ["a"]:
-        bad.append("the constraint parse does not read a named constraint")
-    # `REC-104`: a plain UNIQUE must NOT satisfy the partial-index check.
-    if root_index("CONSTRAINT channels_root_single UNIQUE (id)") is not None:
-        bad.append("a plain `UNIQUE (id)` reads as the partial index — REC-104 exactly")
-    if root_index("CREATE UNIQUE INDEX channels_root_single ON channels (reality_id) "
-                  "WHERE parent IS NULL;") != "(reality_id) WHERE parent IS NULL":
-        bad.append("the partial index is not read when it IS present")
+
+    def t(sql=_T):
+        return parse_table(sql, "self-test")
+
+    base = t()
+
+    # --- the parse reads what it claims to read -----------------------------
+    if [c["name"] for c in base["columns"]] != ["REALITY_ID", "ID", "PARENT", "DEPTH",
+                                                "LEVEL_NAME", "PARENT_DEPTH", "METADATA"]:
+        bad.append(f"the column parse is wrong: {[c['name'] for c in base['columns']]}")
+    if base["pk"] != ["REALITY_ID", "ID"]:
+        bad.append(f"PRIMARY KEY not read — REC-105's whole subject ({base['pk']})")
+    fk = base["constraints"].get("CHANNELS_PARENT_FK")
+    if fk != ("FOREIGN KEY", ("REALITY_ID", "PARENT", "PARENT_DEPTH"), "CHANNELS",
+              ("REALITY_ID", "ID", "DEPTH"), (), True, "IMMEDIATE"):
+        bad.append(f"the FOREIGN KEY body is not read: {fk}")
+    md = next(c for c in base["columns"] if c["name"] == "METADATA")
+    if md["default"] != "'{}'::JSONB" or not md["not_null"]:
+        bad.append(f"DEFAULT/NOT NULL not read: {md}")
+    pd = next(c for c in base["columns"] if c["name"] == "PARENT_DEPTH")
+    if pd["generated"] != "(DEPTH - 1)::SMALLINT":
+        bad.append(f"GENERATED expression not read: {pd['generated']}")
+
+    # --- MUTATIONS: each must be VISIBLE (1b5-H4) --------------------------
+    mutants = {
+        "PRIMARY KEY changed": ("PRIMARY KEY (reality_id, id)", "PRIMARY KEY (id)"),
+        "NOT NULL dropped": ("level_name TEXT NOT NULL", "level_name TEXT"),
+        "DEFAULT dropped": ("metadata JSONB NOT NULL DEFAULT '{}'::jsonb",
+                            "metadata JSONB NOT NULL"),
+        "FK gained ON DELETE CASCADE": ("(reality_id, id, depth) DEFERRABLE",
+                                        "(reality_id, id, depth) ON DELETE CASCADE DEFERRABLE"),
+        "FK lost a key column": ("FOREIGN KEY (reality_id, parent, parent_depth)",
+                                 "FOREIGN KEY (reality_id, parent)"),
+        "FK target changed": ("REFERENCES channels (reality_id, id, depth)",
+                              "REFERENCES channels (reality_id, id)"),
+        "deferrability dropped": ("DEFERRABLE INITIALLY IMMEDIATE", "NOT DEFERRABLE"),
+        "column TYPE changed (REC-103)": ("id BIGINT NOT NULL", "id UUID NOT NULL"),
+        "column NAME changed": ("reality_id UUID", "realm_id UUID"),
+        "generated expression changed": ("(depth - 1)::smallint", "(depth + 1)::smallint"),
+        "a UNIQUE constraint appeared": ("PRIMARY KEY (reality_id, id),",
+                                         "PRIMARY KEY (reality_id, id), "
+                                         "CONSTRAINT extra_uq UNIQUE (level_name),"),
+    }
+    for label, (old, new) in mutants.items():
+        if old not in _T:
+            bad.append(f"MUTATION ANCHOR MISSING — `{old}` is not in the fixture, so the "
+                       f"`{label}` leg tested nothing")
+            continue
+        if t(_T.replace(old, new, 1)) == base:
+            bad.append(f"INVISIBLE mutation: {label}")
+
+    # --- FORMATTING: each must be INVISIBLE (1b5-M5) ------------------------
+    formats = {
+        "type lowercased": ("id BIGINT NOT NULL", "id bigint NOT NULL"),
+        "keyword lowercased": ("PRIMARY KEY (reality_id, id)", "primary key (reality_id, id)"),
+        "space before paren removed": ("REFERENCES channels (reality_id, id, depth)",
+                                       "REFERENCES channels(reality_id, id, depth)"),
+        "IF NOT EXISTS added": ("CREATE TABLE channels", "CREATE TABLE IF NOT EXISTS channels"),
+        "indentation changed": ("    id BIGINT NOT NULL", "\t\tid BIGINT NOT NULL"),
+        "int8 alias for bigint": ("id BIGINT NOT NULL", "id int8 NOT NULL"),
+    }
+    for label, (old, new) in formats.items():
+        if old not in _T:
+            bad.append(f"FORMAT ANCHOR MISSING — `{old}` is not in the fixture")
+            continue
+        if t(_T.replace(old, new, 1)) != base:
+            bad.append(f"CRIES WOLF on formatting: {label}")
+
+    # --- indexes ------------------------------------------------------------
+    idx = parse_indexes(_T)
+    if idx.get("CHANNELS_ROOT_SINGLE") != (True, "CHANNELS", ("REALITY_ID",), "PARENT IS NULL"):
+        bad.append(f"the partial unique index is not read: {idx}")
+    if parse_indexes("CONSTRAINT channels_root_single UNIQUE (id)"):
+        bad.append("a plain `UNIQUE (id)` reads as REC-104's partial index — REC-104 exactly")
+    if parse_indexes(_T.replace("WHERE parent IS NULL", "WHERE parent IS NOT NULL")) == idx:
+        bad.append("a changed partial PREDICATE is invisible")
+    if parse_indexes(_T.replace("CREATE UNIQUE INDEX", "CREATE INDEX")) == idx:
+        bad.append("UNIQUE-ness of an index is invisible")
+
+    # --- the trigger (1b5-L5) ----------------------------------------------
+    trg = ("CREATE OR REPLACE TRIGGER channels_lifecycle_guard_trg BEFORE UPDATE OF "
+           "lifecycle ON channels FOR EACH ROW EXECUTE FUNCTION f();")
+    if parse_trigger(trg) != f"{TRIGGER_NAME}|{TRIGGER_EVENT}":
+        bad.append(f"the lifecycle trigger is not read: {parse_trigger(trg)}")
+    if parse_trigger(trg.replace("BEFORE UPDATE OF lifecycle", "AFTER UPDATE")) \
+            == parse_trigger(trg):
+        bad.append("a changed trigger EVENT is invisible — an AFTER trigger cannot refuse")
+    if parse_trigger("Tree invariants, and `DP-Ch1`'s rule.\n\n```sql\n" + trg + "\n```") \
+            != parse_trigger(trg):
+        bad.append("an apostrophe in PROSE changes the trigger parse — this is the defect the "
+                   "gate actually reported as a schema disagreement on its first real run")
+
+    # --- prose is hostile input (the sql_only bug, found wiring 1b5-L5) -----
+    # ONE unbalanced apostrophe in an English sentence puts the rest of the file
+    # inside a string literal as far as `norm()` is concerned, and it silently
+    # stops normalising. The gate reported that as a schema disagreement.
+    prose = "Tree invariants, and `DP-Ch1`'s rule.\n\n```sql\n" + _T + "```\n"
+    if prose.split("```sql")[0].count("'") % 2 == 0:
+        bad.append("the PROSE fixture has an even number of apostrophes, so nothing flips and "
+                   "the leg below tests nothing")
+    if parse_table(prose, "self-test") != base:
+        bad.append("an apostrophe in PROSE changes the table parse — the gate is reading the "
+                   "document instead of its SQL fences")
+    if parse_indexes(prose) != parse_indexes(_T):
+        bad.append("an apostrophe in PROSE changes the index parse")
+
+    # --- the cross-file scan (1b5-H1) --------------------------------------
+    # Synthetic documents, so each rule of the scan is bitten rather than
+    # inferred from the tree happening to be clean today.
+    def fence(sql):
+        return "```sql\n" + sql + "\n```"
+
+    lifecycle_doc = ("17_channel_lifecycle.md", fence(
+        "ALTER TABLE channels ADD COLUMN paused_until TIMESTAMPTZ, "
+        "ADD COLUMN paused_reason TEXT, ADD COLUMN paused_by TEXT, "
+        "ADD COLUMN became_dormant_at TIMESTAMPTZ, ADD COLUMN dissolved_at_eid BIGINT;"
+        "\nALTER TABLE channels ADD CONSTRAINT channels_pause_active_only CHECK (true);"))
+    ok_ref = ("99_ok.md", fence("CREATE TABLE t (a UUID, b BIGINT, "
+                                "FOREIGN KEY (a, b) REFERENCES channels (reality_id, id));"))
+    clean = [lifecycle_doc, ok_ref]
+    if scan_tier_docs(set(), set(), clean):
+        bad.append(f"the scan reds on a CLEAN synthetic tree: "
+                   f"{scan_tier_docs(set(), set(), clean)}")
+
+    scan_bites = {
+        "1b5-H1's actual finding — a single-column UUID reference":
+            [lifecycle_doc, ("13.md", fence("CREATE TABLE w (channel_id UUID PRIMARY KEY "
+                                            "REFERENCES channels(id));"))],
+        "a reference with the right columns in the wrong order":
+            [lifecycle_doc, ("x.md", fence("FOREIGN KEY (a,b) REFERENCES channels (id, "
+                                           "reality_id);"))],
+        "an ALTER TABLE channels in a file the register has never heard of":
+            [lifecycle_doc, ("new.md", fence("ALTER TABLE channels ADD COLUMN colour TEXT;"))],
+        "a registered ALTER growing an unregistered column":
+            [("17_channel_lifecycle.md", lifecycle_doc[1].replace(
+                "ADD COLUMN paused_by TEXT", "ADD COLUMN paused_by TEXT, ADD COLUMN sneak INT"))],
+        "the register naming a file whose ALTER has gone":
+            [ok_ref],
+    }
+    for label, docs in scan_bites.items():
+        if not scan_tier_docs(set(), set(), docs):
+            bad.append(f"the cross-file scan is BLIND to: {label}")
+    if not scan_tier_docs({"PAUSED_UNTIL"}, set(), clean):
+        bad.append("the PENDING register does not SHRINK: 0019 having `paused_until` must red")
+    if not scan_tier_docs(set(), {"CHANNELS_PAUSE_ACTIVE_ONLY"}, clean):
+        bad.append("the PENDING register does not SHRINK on a CONSTRAINT it now has")
+    if scan_tier_docs(set(), set()):
+        bad.append(f"the cross-file scan reds on the REAL tree, which it must not: "
+                   f"{scan_tier_docs(set(), set())}")
+
     if bad:
         print("dp-channels-schema-gate: SELF-TEST FAIL")
         for b in bad:
             print("  " + b)
         return 1
-    print("dp-channels-schema-gate: SELF-TEST PASS — a changed type, a changed name and a dropped "
-          "column are each visible, and a plain `UNIQUE (id)` does NOT read as REC-104's partial "
-          "index (non-vacuous in both directions)")
+    print(f"dp-channels-schema-gate: SELF-TEST PASS — {len(mutants)} schema mutations are each "
+          f"VISIBLE (PK, NOT NULL, DEFAULT, FK body, FK actions, deferrability, type, name, "
+          f"GENERATED expr, an added UNIQUE), {len(formats)} formatting changes are each "
+          f"INVISIBLE, index uniqueness and partial predicate are read, the lifecycle trigger's "
+          f"event is read, and the PENDING register reds when it should shrink")
     return 0
 
 
@@ -133,33 +574,70 @@ def main() -> int:
     mig = MIGRATION.read_bytes().decode("utf-8")
 
     findings = []
-    s_cols, m_cols = columns(spec, "DP-Ch2"), columns(mig, "0019_channels.up.sql")
-    if s_cols != m_cols:
-        findings.append(f"COLUMNS differ.\n      DP-Ch2      : {s_cols}\n"
-                        f"      0019_channels: {m_cols}")
-    s_con, m_con = constraints(spec), constraints(mig)
-    if s_con != m_con:
-        findings.append(f"CONSTRAINTS differ.\n      only in DP-Ch2      : "
-                        f"{sorted(set(s_con) - set(m_con))}\n"
-                        f"      only in 0019_channels: {sorted(set(m_con) - set(s_con))}")
-    s_root, m_root = root_index(spec), root_index(mig)
-    if s_root is None or m_root is None or s_root != m_root:
-        findings.append(f"channels_root_single differs — REC-104's subject.\n"
-                        f"      DP-Ch2      : {s_root}\n      0019_channels: {m_root}")
+    s_t, m_t = parse_table(spec, "DP-Ch2"), parse_table(mig, "0019_channels.up.sql")
+
+    if s_t["columns"] != m_t["columns"]:
+        s_by = {c["name"]: c for c in s_t["columns"]}
+        m_by = {c["name"]: c for c in m_t["columns"]}
+        if list(s_by) != list(m_by):
+            findings.append(f"COLUMN SET differs.\n      only in DP-Ch2      : "
+                            f"{sorted(set(s_by) - set(m_by))}\n"
+                            f"      only in 0019_channels: {sorted(set(m_by) - set(s_by))}\n"
+                            f"      order DP-Ch2 : {list(s_by)}\n"
+                            f"      order 0019   : {list(m_by)}")
+        for name in s_by:
+            if name in m_by and s_by[name] != m_by[name]:
+                diff = [k for k in s_by[name] if s_by[name][k] != m_by[name][k]]
+                findings.append(f"COLUMN `{name.lower()}` differs on {diff}.\n"
+                                f"      DP-Ch2      : {s_by[name]}\n"
+                                f"      0019_channels: {m_by[name]}")
+    if s_t["pk"] != m_t["pk"]:
+        findings.append(f"PRIMARY KEY differs — REC-105's subject.\n"
+                        f"      DP-Ch2      : {s_t['pk']}\n      0019_channels: {m_t['pk']}")
+    if s_t["constraints"] != m_t["constraints"]:
+        s_c, m_c = s_t["constraints"], m_t["constraints"]
+        only_s, only_m = sorted(set(s_c) - set(m_c)), sorted(set(m_c) - set(s_c))
+        if only_s or only_m:
+            findings.append(f"CONSTRAINT SET differs.\n      only in DP-Ch2      : {only_s}\n"
+                            f"      only in 0019_channels: {only_m}")
+        for name in sorted(set(s_c) & set(m_c)):
+            if s_c[name] != m_c[name]:
+                findings.append(f"CONSTRAINT `{name.lower()}` BODY differs.\n"
+                                f"      DP-Ch2      : {s_c[name]}\n"
+                                f"      0019_channels: {m_c[name]}")
+    s_i, m_i = parse_indexes(spec), parse_indexes(mig)
+    if s_i != m_i:
+        for name in sorted(set(s_i) | set(m_i)):
+            if s_i.get(name) != m_i.get(name):
+                findings.append(f"INDEX `{name.lower()}` differs.\n"
+                                f"      DP-Ch2      : {s_i.get(name)}\n"
+                                f"      0019_channels: {m_i.get(name)}")
+    s_g, m_g = parse_trigger(spec), parse_trigger(mig)
+    if s_g != m_g or m_g != f"{TRIGGER_NAME}|{TRIGGER_EVENT}":
+        findings.append(f"the DP-Ch31/DP-Ch33 lifecycle trigger differs or is absent (1b5-L5).\n"
+                        f"      DP-Ch2      : {s_g}\n      0019_channels: {m_g}\n"
+                        f"      expected    : {TRIGGER_NAME}|{TRIGGER_EVENT}")
+
+    findings += scan_tier_docs({c["name"] for c in m_t["columns"]}, set(m_t["constraints"]))
 
     if findings:
-        print(f"dp-channels-schema-gate: {len(findings)} disagreement(s) between the LOCKED spec "
+        print(f"dp-channels-schema-gate: {len(findings)} disagreement(s) between the LOCKED specs "
               f"and the migration\n")
         for f in findings:
             print(f"  {f}")
         print("\nDP-Ch2 in 12_channel_primitives.md and 0019_channels.up.sql are two statements of")
-        print("one schema. FLOW-2 is what happens when one moves and the other does not — REC-103")
-        print("is that exact defect, and it went unnoticed for eight weeks.")
+        print("one schema, and 06_data_plane/ holds THREE more sites that name the same table.")
+        print("FLOW-2 is what happens when one moves and the others do not — REC-103 is that exact")
+        print("defect, it went unnoticed for eight weeks, and 1b5-H1 is it happening again inside")
+        print("the commit written to kill it.")
         return 1
 
-    print(f"dp-channels-schema-gate: OK — DP-Ch2 and 0019_channels agree on {len(m_cols)} column(s) "
-          f"and {len(m_con)} named constraint(s), and channels_root_single is a partial unique "
-          f"index {m_root} on both sides")
+    docs = len(list(DP_DOCS.glob("*.md")))
+    print(f"dp-channels-schema-gate: OK — DP-Ch2 and 0019_channels agree on "
+          f"{len(m_t['columns'])} column(s), PRIMARY KEY {m_t['pk']}, "
+          f"{len(m_t['constraints'])} named constraint(s) including the FOREIGN KEY body, "
+          f"{len(m_i)} index(es), and the lifecycle trigger; and {docs} document(s) in "
+          f"06_data_plane/ were scanned for `REFERENCES channels` / `ALTER TABLE channels`")
     return 0
 
 

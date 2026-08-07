@@ -1717,6 +1717,84 @@ the real `0001`->`0019` chain. A wrong-shaped pre-existing `channels` is **not**
 `0014_channel_ordering.up.sql:31` really is `PRIMARY KEY (reality_id, channel_id)`, so the composite
 shape is forced rather than chosen.
 
+### `1b.6` — the `1b.5` BLOCK discharged. **All ten itemised findings, with evidence.**
+
+**Live Postgres 18 (`infra-postgres-1`), throwaway `dp_slice1b_smoke_test`, dropped after: 46/46.**
+The migration has still never been applied to a real database, so `0019` was AMENDED IN PLACE rather
+than superseded by an `0020`.
+
+#### `REC-106` — `DP-Ch1`'s anti-cycle mechanism, implemented instead of asserted
+
+`1b5-H2` and `1b5-H3` were always one defect, and `12_channel_primitives.md:97` had been naming the
+missing mechanism the whole time: *"No cycles. Enforced by `depth` (root = 0, children =
+parent.depth + 1) + referential integrity on `parent`."* The first schema implemented the second half.
+`depth` was a free-floating number.
+
+```sql
+parent_depth SMALLINT GENERATED ALWAYS AS ((depth - 1)::smallint) STORED,
+CONSTRAINT channels_id_depth_uq UNIQUE (reality_id, id, depth),
+CONSTRAINT channels_parent_fk FOREIGN KEY (reality_id, parent, parent_depth)
+    REFERENCES channels (reality_id, id, depth) DEFERRABLE INITIALLY IMMEDIATE,
+```
+
+**A cycle is not rejected — it is not representable.** Depth decreases by exactly one along every
+parent edge, so a cycle of length `k` requires `d = d - k`. Seven attacks, each refused by
+`channels_parent_fk` and each pasted in the smoke output: a self-parent · a child of the root claiming
+`depth 16` · a child at its parent's own depth · a 2-cycle by `UPDATE` · **a cycle built inside one
+transaction with `SET CONSTRAINTS ... DEFERRED`, which fails at `COMMIT` and leaves zero rows** ·
+deleting the root · re-parenting a node whose children still reference its depth.
+
+Three consequences, none of them optional and all of them stated rather than discovered:
+
+| | |
+|---|---|
+| **`channels_no_self_parent` was REMOVED** | The foreign key makes a self-parented row unrepresentable, so the `CHECK` could no longer fail. Keeping it for readability is `NV-1` — and `1bF-2`, the vacuous `UNIQUE (id)`, is the same defect in the same table. The proof is the bite: drop `channels_parent_fk`, and the row `channels_no_self_parent` used to catch **inserts**. |
+| **Re-parenting became a SUBTREE operation** | A parent's `depth` is referenced by its children, so it cannot move one row at a time. That is why the key is `DEFERRABLE`, and the escape hatch does not weaken anything: the impossibility is arithmetic, not a matter of check timing. Both halves are measured — the rigid path is refused, the deferred subtree move succeeds, and the resulting tree is printed. |
+| **`1b5-L4` closed as a byproduct** | The index gives *at most* one root; this key gives *at least* one for any non-empty reality, because walking `parent` strictly decreases `depth`, so the walk terminates, and only `depth = 0` can terminate it — which `channels_no_orphan` forces to be a root. **Exactly one**, which is what `DP-Ch1` says. |
+
+#### The one that was found by running it: `1b5-M2`, recreated by the fix for `H2`/`H3`
+
+The first smoke run after `REC-106` landed came back **44/46**, and the two red legs were `no orphan`
+and `depth bounded`. Their violating rows were now refused **twice** — a child at `depth 0` has
+`parent_depth = -1`, and a child of the root at `depth 17` needs a parent at `depth 16`; neither
+exists, so `channels_parent_fk` refused both before the constraint under test ever ran.
+
+**That is `1b5-M2` exactly — a row refused by two barriers — recreated by a decision made two hours
+earlier in the same slice.** It is `NV`'s hardest shape, *an adjacent decision defeats it*, and the
+only reason it did not ship is that the bite harness asks each constraint to be the SOLE refuser.
+The rows were re-chosen so the foreign key is satisfied: a **root** at `depth != 0` in a reality with
+no root (`parent IS NULL`, so the `MATCH SIMPLE` key is never checked, and `channels_root_single` is
+not a second barrier either), and a **genuine 17-deep chain** so the violating row's parent really is
+at `depth 16`. Building that chain is the cost of proving the bound still does independent work —
+past `REC-106`, `depth 17` is not reachable by declaration, only by digging.
+
+#### The rest
+
+| id | discharged by |
+|---|---|
+| `1b5-H1` | The three other locked SQL sites amended — `13:209` (a `channel_writer_state` that does not exist: wrong type, wrong arity, wrong reference, **and** a column set superseded by `0014`/`0015` without the document moving), `16:339` (`bubble_up_aggregator`, spec-only, no migration), `17:63` (a second locked `ALTER TABLE channels`). **The gate now globs every `.md` in `06_data_plane/`** — 26 documents — so a file created tomorrow is covered by existing rather than by an author remembering (`NV-3`). `17:63`'s five columns have **no writer and no reader anywhere in the tree**, so migrating them would be apparatus with no subject; they are a `PENDING_ALTERS` row naming what would wake them up, and **the register is built to SHRINK** — if `0019` gains one, the gate reds until the row is retired. |
+| `1b5-H4` | The gate parses the table **structurally** instead of line by line: columns with `NOT NULL`/`DEFAULT`/`GENERATED`, the `PRIMARY KEY` list, every constraint body including the foreign key's referenced columns, actions and deferrability, and every index's uniqueness and partial predicate. **11 mutations are each proven visible** in the self-test, including the four-way mutant that used to apply cleanly. |
+| `1b5-M4` | `channels_id_positive` and `channels_level_name_nonempty`. `REC-103` cited the wire contract's unsigned `Uint64String` and carried the **width** across without the **domain**; `DP-Ch11` allocates `MAX() + 1`, which starts at 1. |
+| `1b5-M5` | Everything is normalised before comparison — keyword and type case, whitespace, `IF NOT EXISTS`, the space before `(`, and `int8`/`bigint` aliasing. **6 formatting changes are each proven invisible**, including the exact two the refuter used. |
+| `1b5-L3` | Written down rather than left to be discovered: a dissolved root **forecloses its reality permanently**, and that is correct — `DP-Ch11` never reissues an id, and a `lifecycle <> 'dissolved'` predicate would let a reality be re-rooted while the old tree's events still reference the old root. |
+| `1b5-L5` | A `BEFORE UPDATE OF lifecycle` trigger. `DP-Ch31`'s terminal-Dissolved and `DP-Ch33`'s descendants-first are statements about a **transition**, which no `CHECK` can see — and `17_channel_lifecycle.md:77` attributed them to a *"row-level rule"* that existed nowhere. In the DB and not only in the SDK, because the spec says *"row-level rule **+** SDK transition validator"*. Children rather than descendants, which is not a weakening: a child may only dissolve when its own children have, so by induction the subtree is dissolved. Both rules bitten — drop the trigger and the forbidden transition goes through, with `pg_trigger 1 -> 0` printed. |
+| `1b5-L6` | `scripts/migration-idempotency-validator.sh`'s default target list was **two files while the directory held 38**, so 36 migrations were default-uncovered — `NV-3`'s named shape, and the answer to *"what happens to a file created tomorrow?"* was measured rather than guessed: `0019` was written, committed and checked by a pre-commit hook that never looked at it, the 19th file to which that happened. Now a glob. Bitten by appending a bare `CREATE INDEX` to `0019` — **red at line 218**, and green again when removed. |
+
+#### Found while fixing, and it was in the gate itself
+
+**A markdown file is prose with SQL in it, and the prose is hostile input.** `norm()` tracks
+single-quoted literals so `'active'` keeps its case — and English prose contains apostrophes.
+``DP-Ch1`'s`` is one. **One unbalanced apostrophe in a sentence puts the rest of the file inside a
+string literal and silently stops normalising it**, which is how the gate's first real run reported a
+case difference as a schema disagreement. It had been reading whole documents rather than their SQL
+fences. Fixed, and bitten at all three call sites — each reverted, each turns the self-test red.
+
+#### ⚠ A discrepancy in the record, not in the code
+
+`1b.5`'s header says **7 LOW** and its table itemises **six** (`L1`–`L6`). The seventh has no row and
+no description, so it cannot be discharged, re-run, or looked up. Recorded here rather than
+reconciled by quietly changing the count — the missing row is the finding.
+
 ### Slice board
 
 | # | slice | done = |
@@ -1776,7 +1854,9 @@ borrowed row §6i's own "What does NOT satisfy this" forbids by name.
 | `1b.2` | ✅ **24 checks on a live Postgres.** Every constraint rejected what its name claims — with the database's own `SQLSTATE` — and accepted what it must, including a root in a *different* reality. Down migration reverses to zero tables. |
 | `1b.3` | ✅ `scripts/dp-channels-schema-gate.py` — spec SQL vs migration SQL, wired pre-commit. Bitten on **both** sides plus a `REC-104` regression. Stated limit: it does not compare `CHECK` **bodies**, because two spellings of one predicate would cry wolf; that half is `1b.2`. |
 | `1b.4` | ✅ each of the six constraints DROPPED and its violating row shown to **insert**, then restored. A constraint that rejects with it and accepts without it is the only proof nothing else is silently backstopping it. |
-| `1b.5` | 🔴 **BLOCK** — 4 HIGH / 5 MEDIUM / 7 LOW. Five discharged (the three FALSE claims + two absent mechanisms); `H1`-`H4`, `M4`, `M5`, `L3`-`L6` OPEN. |
+| `1b.5` | 🔴 **BLOCK** — 4 HIGH / 5 MEDIUM / 7 LOW. Five discharged at the time (the three FALSE claims + two absent mechanisms); `H1`-`H4`, `M4`, `M5`, `L3`-`L6` were left OPEN. |
+| `1b.6` | ✅ **all ten remaining findings discharged, on a live Postgres 18 — 46/46.** `REC-106` makes a cycle *unrepresentable* rather than rejected (seven attacks, including a deferred one that fails at `COMMIT`), which closed `H2`/`H3`/`L4` and forced the removal of `channels_no_self_parent` as newly vacuous. The gate was rewritten from line-shaped to structural and from one file to a **glob over all 26** tier documents. `1b5-M2` **recurred**, caught by the bite harness on the first run after `REC-106`: two violating rows became double-refused by the new foreign key. `1b.5`'s own record is one LOW row short of its own count. |
+| `1b.7` | ⬜ `V.1` cold-start refuter — **a DIFFERENT one**, worktree-isolated, against the `1b.6` commit |
 
 **`1bF-4` was found DURING the build, not by the board** — every shipped per-reality table keys on
 `(reality_id, …)`, so `DP-Ch2`'s single-column `id` made the `channel_writer_state` foreign key
@@ -1884,6 +1964,8 @@ explained — and it would convert three of the prose rows at once.
 
 | # | what nearly went wrong |
 |---|---|
+| `BDR-40` | 🔴 **A gate I wrote to compare SQL was reading English prose, and the failure mode was SILENT DEGRADATION rather than a crash.** `norm()` tracks single-quoted literals so `'active'` keeps its case. A markdown document is prose with SQL in it, and prose has apostrophes — ``DP-Ch1`'s`` is one. **One unbalanced apostrophe puts every byte after it inside a string literal**, so normalisation quietly stops and the comparison starts failing on case. It reported that as a schema disagreement on its first real run. ⇒ **A parser pointed at a file format it was not written for does not error — it succeeds on the wrong bytes.** The fix is one line (`sql_only`), and the reason I did not see it is that both the spec and the migration ARE SQL, so "just parse the file" felt like the whole design. It is not: one of them is a document that CONTAINS SQL. |
+| `BDR-39` | 🔴 **`1b5-M2` recurred inside the commit fixing `1b5-H2`, and the two decisions were each individually correct.** `REC-106` put `depth` in the parent foreign key. Two bite legs' violating rows — a child at `depth 0`, a child of the root at `depth 17` — thereby became refused by the foreign key *before* the constraint under test ran, so neither leg proved its own constraint was load-bearing any more. **This is `NV`'s hardest shape** (*an adjacent decision defeats it*) and it is the second time in this slice that a row was refused by two barriers. ⇒ **A new constraint does not only add coverage; it can silently REMOVE the exclusivity of an old one.** The only reason it did not ship is that the bite harness demands each constraint be the SOLE refuser — a property no amount of "the tests are green" would have shown, because they were green. **The harness earned its cost here, in a way I could not have argued for in advance.** |
 | `BDR-38` | 🔴 **I answered *"the type system cannot hold this"* with *"so the source can"* and never asked what a source check provably cannot do — then did it again one level down.** Round 2 broke the first lexer six ways and I rewrote it; round 3 broke the rewrite four more, and every one of the four was a fact about **Rust's grammar** that a partial reimplementation got wrong: the `>` of `->`, a raw identifier, a doc attribute, a C-string literal. **The rule `R6` states was correct throughout all three rounds.** What kept failing was that I was re-implementing a parser to check it, badly, in a language with no stake in Rust's grammar — while `syn` sat in the workspace's own `[workspace.dependencies]`, unused by me and already correct. ⇒ **When a check needs to understand a language, use that language's parser. A regex over a grammar is a claim that you know the grammar better than the people who wrote the parser, and eleven times over three rounds is the price of finding out you do not.** |
 | `BDR-37` | **The completeness critic found five 🔴 gaps in work that two adversarial rounds had just certified — and they were not bugs, they were ABSENCES.** A scope taxonomy with no door · a directory covered in neither direction · 22 of 26 LOCKED documents opened by nothing · a debt row calling itself MECHANICAL while its only mechanism was a docstring · 23 bite legs wired to nothing. **Two refuters told to BREAK things found none of them**, because an adversary attacks what is there and every one of these is what is not. ⇒ *"Try to break it" and "what did nobody look at" are different questions, and a verification plan needs both.* The cheapest one was a `git mv`. |
 | `BDR-36` | 🔴 **The two rounds are one defect wearing seven costumes, and it is mine.** Every finding across both refuters is *the check reads a PROXY for its subject*: the gate reads **text** where the property is about **types after name resolution** · the self-test reads a **re-implementation** where the subject is `scan()` · the tier set reads **`declare_tier!` invocations** where the subject is *types implementing `Tier`* · `parse_ms` reads **digits** where the subject is a *quantity with a unit* · `s3_4` reads **an array literal it just wrote** where the subject is the taxonomy · `as_key` pins **two of four** variants · the fixture exclusion reads **a floating substring** where the subject is one directory. ⇒ **The rule I did not have: a check must read the same thing the property is about, and must be driven through the same path production uses.** I had the first half (that is `NV-1`) and not the second, and the second is where five of the nine landed. |

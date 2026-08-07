@@ -333,10 +333,21 @@ If a feature legitimately needs "current time" semantics in a deterministic way,
 
 ### Registry table (per-reality DB)
 
+⚠ **AMENDED 2026-08-07 (`1b5-H1`).** `parent_channel` was `UUID NOT NULL
+REFERENCES channels(id)` — the wrong type (`REC-103`: `ChannelId` is `i64`) and
+the wrong arity (`REC-105`: `channels` is keyed `(reality_id, id)`, so a
+single-column reference is not expressible). This table has **no migration**;
+the amendment is to the specification only, and it is recorded because a spec
+that would not compile is the state `0019` was written from.
+
 ```sql
 CREATE TABLE bubble_up_aggregator (
-    aggregator_id     UUID PRIMARY KEY,
-    parent_channel    UUID NOT NULL REFERENCES channels(id),
+    reality_id        UUID   NOT NULL,          -- ⚠ ADDED (REC-105)
+    aggregator_id     UUID   NOT NULL,
+    parent_channel    BIGINT NOT NULL,          -- ⚠ AMENDED (REC-103): was UUID
+    PRIMARY KEY (reality_id, aggregator_id),    -- ⚠ AMENDED (REC-105)
+    CONSTRAINT bubble_up_parent_fk FOREIGN KEY (reality_id, parent_channel)
+        REFERENCES channels (reality_id, id),   -- ⚠ AMENDED (REC-105)
     aggregator_type   TEXT NOT NULL,
     source_filter     JSONB NOT NULL,
     config            JSONB NOT NULL,

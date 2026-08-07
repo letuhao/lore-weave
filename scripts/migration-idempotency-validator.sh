@@ -25,23 +25,32 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 violations=0
 
-# default file set: per-reality migrations shipped to date.
-default_targets=(
-  "$repo_root/contracts/migrations/per_reality/0001_initial.up.sql"
-  "$repo_root/contracts/migrations/per_reality/0001_initial.down.sql"
-)
+# Default file set: EVERY per-reality migration, by glob.
+#
+# ⚠ AMENDED 2026-08-07 (`1b5-L6`). This was an enumerated list holding exactly
+# two entries -- `0001_initial.up.sql` and `0001_initial.down.sql` -- while the
+# directory held 38 files. So 36 migrations were DEFAULT-UNCOVERED, which is
+# `NV-3`'s named shape: *"an enumerated file list is default-uncovered: what
+# happens to a file created tomorrow?"* The answer here was measured rather than
+# guessed -- `0019_channels` was written, committed, and checked by a pre-commit
+# hook that never looked at it, and it was the 19th file to which that happened.
+# A glob makes tomorrow's file covered by existing rather than by an author
+# remembering. If a file genuinely cannot be idempotent, it earns a named
+# exclusion here with its reason -- there are none today.
+migration_dir="$repo_root/contracts/migrations/per_reality"
 
 if [ "$#" -gt 0 ]; then
   targets=("$@")
 else
   targets=()
-  for t in "${default_targets[@]}"; do
-    if [ -f "$t" ]; then targets+=("$t"); fi
-  done
+  while IFS= read -r t; do
+    [ -f "$t" ] && targets+=("$t")
+  done < <(find "$migration_dir" -maxdepth 1 -name '*.sql' -print | sort)
   if [ "${#targets[@]}" -eq 0 ]; then
-    echo "[idempotency] no targets specified and no defaults present; nothing to do"
+    echo "[idempotency] no targets specified and no migrations found under $migration_dir"
     exit 0
   fi
+  echo "[idempotency] scanning ${#targets[@]} migration file(s) under contracts/migrations/per_reality/"
 fi
 
 # check_file <path>  — emits violation lines to stdout and bumps $violations.

@@ -204,15 +204,40 @@ if result.rows_affected() == 0 {
 
 **`channel_writer_state` table** (per-reality DB):
 
+⚠ **AMENDED 2026-08-07 (`1b5-H1`) — this block declared a table that does not
+exist, in a document `0019_channels`'s own header cites by name.** It said
+`channel_id UUID PRIMARY KEY REFERENCES channels(id)`, which is wrong three
+times over: the type (`REC-103` settled `ChannelId` as `i64`), the arity (`REC-105`
+— every per-reality table keys on `(reality_id, …)`), and the reference itself
+(`channels` had no migration at all until `0019`; that is `FLOW-9`). The column
+set was also superseded by `0014_channel_ordering` and `0015_writer_lease_liveness`
+without this block moving — `writer_node`/`assigned_at`/`last_heartbeat` were never
+built, and `last_event_id`/`holder_id`/`lease_expires_at` were. Below is the
+SHIPPED table. **`FLOW-2` is exactly this**: the correction reached the migration
+and not the document, and the document is what the next reader believes.
+
 ```sql
+-- 0014_channel_ordering.up.sql + 0015_writer_lease_liveness.up.sql
 CREATE TABLE channel_writer_state (
-    channel_id      UUID PRIMARY KEY REFERENCES channels(id),
-    current_epoch   BIGINT NOT NULL,
-    writer_node     TEXT NOT NULL,
-    assigned_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_heartbeat  TIMESTAMPTZ NOT NULL DEFAULT now()
+    reality_id       UUID   NOT NULL,
+    channel_id       BIGINT NOT NULL,
+    current_epoch    BIGINT NOT NULL DEFAULT 1,
+    last_event_id    BIGINT NOT NULL DEFAULT 0,   -- allocation is DB-authoritative
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    holder_id        UUID,                        -- IMG-A2, 0015: lease holder
+    lease_expires_at TIMESTAMPTZ,                 -- IMG-A2, 0015: NULL = claimable
+    PRIMARY KEY (reality_id, channel_id)
 );
 ```
+
+⚠ **There is still no foreign key to `channels` — that is `FLOW-19`, and it is
+now WRITABLE rather than inexpressible.** It could not have existed before
+`0019`, because there was nothing to reference; with `channels` keyed
+`(reality_id, id)` at `BIGINT` the reference `(reality_id, channel_id) →
+channels (reality_id, id)` finally type-checks. Whether to add it is a decision
+about pre-existing rows (a lease row whose channel was never registered would be
+refused by the new constraint), not about expressibility, and it is tracked as
+`FLOW-19` rather than assumed here.
 
 CP updates this table on every reassignment. Writer node updates `last_heartbeat` periodically (every 10s); CP detects stale heartbeats as a secondary signal in addition to gRPC health probes.
 
