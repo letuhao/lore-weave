@@ -536,15 +536,54 @@ fn one_aggregate_name_binds_one_tier_and_one_scope() {
     let (scanned, excluded): (Vec<_>, Vec<_>) =
         all.iter().cloned().partition(|p| !rel(&root, p).starts_with(FIXTURE_DIR));
 
-    // The SCOPE is a set difference, not a count (`V2-F2`): everything excluded
-    // must be under the one named directory. A count check passes while any
-    // amount of the tree goes dark, so long as one subject survives.
-    let stray: Vec<String> = excluded
+    // ── The SCOPE, checked against an INDEPENDENT enumeration ───────────────
+    //
+    // `V4-F6`: the previous version of this check was a **tautology**, and it
+    // was written as the fix for a vacuity finding, in the file whose thesis is
+    // non-vacuity. It read:
+    //
+    //     let (scanned, excluded) = all.partition(|p| !rel(p).starts_with(FIXTURE_DIR));
+    //     let stray = excluded.filter(|r| !r.starts_with(FIXTURE_DIR));
+    //     assert!(stray.is_empty());
+    //
+    // `excluded` is *defined* by that predicate and then filtered by the same
+    // predicate, so `stray` is empty for every possible repo state. Setting
+    // `FIXTURE_DIR = ""` — excluding **the entire repository** — left it silent;
+    // the only thing that noticed was `impls > 0` below, satisfied by three
+    // `#[cfg(test)]` fixtures in `src/`. So any widening that spares
+    // `crates/dp/src/` was undetectable.
+    //
+    // The subject is *"what went dark"*, and the only way to see that is to ask
+    // a DIFFERENT SOURCE what should have been dark. `read_dir` on the trybuild
+    // directory is that source: it does not know `FIXTURE_DIR` exists.
+    let fixture_dir_on_disk: std::collections::BTreeSet<String> =
+        std::fs::read_dir(root.join(FIXTURE_DIR))
+            .expect("the trybuild fixture directory must exist — it is the ONE exclusion")
+            .filter_map(Result::ok)
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".rs"))
+            .collect();
+    let excluded_names: std::collections::BTreeSet<String> = excluded
         .iter()
-        .map(|p| rel(&root, p))
-        .filter(|r| !r.starts_with(FIXTURE_DIR))
+        .map(|p| p.file_name().unwrap_or_default().to_string_lossy().into_owned())
         .collect();
-    assert!(stray.is_empty(), "excluded files outside {FIXTURE_DIR}: {stray:?}");
+    assert_eq!(
+        excluded_names, fixture_dir_on_disk,
+        "the excluded set is not the trybuild fixture directory. Excluded: {excluded_names:?}. \
+         On disk in {FIXTURE_DIR}: {fixture_dir_on_disk:?}. If FIXTURE_DIR has been widened, \
+         everything it now covers is scanned by NOTHING"
+    );
+
+    // ...and a canary in the other direction: the file that holds this crate's
+    // own aggregates must be IN scope. A widened `FIXTURE_DIR` that swallowed
+    // `crates/dp/src/` would satisfy the set equality above only by also
+    // emptying the fixture directory, but stating the positive costs one line
+    // and it is the assertion a reader actually wants to see.
+    let canary = "crates/dp/src/aggregate.rs";
+    assert!(
+        scanned.iter().any(|p| rel(&root, p) == canary),
+        "{canary} is not in the scanned set — the scope has collapsed away from its own subject"
+    );
 
     let (findings, impls) = scan(&root, &scanned, &tiers, &scopes);
 

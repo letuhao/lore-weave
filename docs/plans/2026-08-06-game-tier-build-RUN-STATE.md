@@ -1628,12 +1628,59 @@ known-defeatable, is the mirror defect this repo already has a gate about.*
 **Still open, and recorded rather than claimed:** `G3` (22 unopened LOCKED
 documents), `G4`, `G6`, `G7`, `G8`, `G10`–`G13`, `R3-N4`.
 
+### `V.1` round 4 — **BLOCK**, and four rounds now converge on one answer
+
+**Run 2026-08-07 against `c31c2348f`, isolated worktree.** 6 BLOCKER, 4 MAJOR, 3 MINOR. Tree
+verified byte-identical afterwards.
+
+**The rate is not falling: 13 → 19 → 13 → 13.** That is the finding, more than any individual row.
+
+| id | sev | the break |
+|---|---|---|
+| `V4-F1` | 🔴 | **`use dp::DpAggregate as Agg;`** — `is_dp` tests a SPELLING, and `R8` guards only aliases that take a *taxonomy* name. The trait's own name is not in that set. Four characters remove an impl from R1, R2, R3, R4, R6, R7, R10 and R11 at once, and it is not even COUNTED — so `impls > 0` cannot notice either. `V1-F1` restored, with the gate printing a sentence that is now false. |
+| `V4-F2` | 🔴 | **A concrete impl whose tier is a lie.** `type Tier = <Wallet as Pick>::T2` where `Pick::T2` is an associated type *named* `T2` — `last_segment` reads `"T2"`, which is legal. `R6` looks for `Self` or a bound parameter; naming the concrete type removes the only ident it looks for. Contract counted it and certified it while `row.tier() == T3`. |
+| `V4-F3` | 🔴 | **`agg!(DpAggregate, WalletA, dp::T2)`** — pass the trait in as a macro ARGUMENT and `R10`'s subject (the string `"DpAggregate"` inside the body) is gone. Three impls invisible in one file, including an `R4` duplicate and a generic escape. Same class covers a proc-macro `quote!` — which matters, because `dp-derive` is a named deferred crate. |
+| `V4-F4` | 🔴 | **Both "one sanctioned door" tests read ONE FILE each**, and the seal is `pub(crate)` — i.e. crate-wide. A new `src/zone.rs` mints a fifth tier (24-hour TTL, `REC-102c` inverted) and a **public** third scope, with the full suite green. |
+| `V4-F5` | 🔴 | **`include!("x.inc")`** — outside `git ls-files "*.rs"`, and `R9` never fires because the *including* file parses fine. Same hole covers `#[path]` and a `build.rs` writing to `OUT_DIR`. |
+| `V4-F6` | 🔴 | **The scan-scope guard is a TAUTOLOGY** — `excluded` is defined by a predicate and then filtered by the same predicate, so `stray` is `∅` for every possible repo state. `FIXTURE_DIR = ""` excludes the entire repository and it stayed silent. **I wrote it as the fix for `V2-F2`, a vacuity finding, in the file whose thesis is non-vacuity.** |
+| `V4-F7` | MAJOR | **`PASS — 25 bites bit` with two live rules DELETED.** The legs assert on `R4`/`R6`/`R8`/`R10` only; `R1`, `R2`, `R3`, `R7`, `R9`, `R11` are named by no leg. Removing `R9` and `R11` left both the bite gate and the runner's `--self-test` at their highest score. **The number measures legs, not coverage.** |
+| `V4-F8` | MAJOR | `DP-X7`'s **1-hour TTL cap** can become 24 hours with the oracle green — while `tier.rs`'s `const _` block asserts `≤ 3600` *quoting that exact sentence*. A hand-transcribed number from prose the oracle never opens. |
+| `V4-F9` | MAJOR | `cache_key_tokens_match_dp_ch5` — **added by the commit under test** — reads one token out of a six-field template. Deleting `{channel_id}` from the channel-scoped key leaves it green. |
+| `V4-F10` | MAJOR | **`TierRow::cache_ttl()` and `write_ack_p99()` have no reader**, so `tier_row()`'s derivation of them is unwatched: sever either from the type and 25 tests agree. The `(d)` bite leg proves **privacy** bites and says nothing about **derivation**. |
+| `V4-F11`–`F13`, NIT | MINOR | `table_cells` returns column 2 only, so a whole column is invisible in tables the oracle *does* parse · `the_tier_set_matches_dp_a5` reads only the digit · the success line states conclusions the code did not reach · `measure.rs:160` still uses the delimiter-sensitive `declare_tier!(` that `R3-M2` fixed everywhere else. |
+
+#### What survived, and it is the same thing every round
+
+> **R6's closure argument survives, as a statement about Rust and as an implementation over `syn`.**
+> Everything that got past worked by attacking one of R6's **premises** — that the impl is visible as
+> an `ItemImpl` with the literal trait name (`F1`, `F3`, `F5`), that the last path segment names the
+> type it resolves to (`F2`), that the scan enumerates every `.rs` (`F5`, `F6`).
+
+**And that is the answer four rounds have been converging on.** Every remaining break is about **name
+resolution** (`F1`, `F2`), **macro expansion** (`F3`), **module scope** (`F4`), or **file inclusion**
+(`F5`). Not one is a defect in the rule. All four evaporate inside a `rustc` lint, which sees resolved
+paths, expanded macros and the whole crate graph — and `06_data_plane/` has named **`dp-clippy`** as
+one of its three crates since April.
+
+⇒ **`D-DP-CLIPPY-NOT-BUILT` should stop being a debt row and become a slice.** Four independent
+adversaries have now arrived at it from four directions, and the source check has been rewritten
+twice without closing the class.
+
+#### Discharged so far
+
+| | |
+|---|---|
+| `V4-F6` | Fixed. The scope is now checked against an **independent enumeration** — `read_dir` on the trybuild directory, which does not know `FIXTURE_DIR` exists — plus a positive canary. Bitten: `FIXTURE_DIR = "crates/dp/tests/"` and `FIXTURE_DIR = ""` both red, where the tautology saw neither. |
+
+**Everything else is recorded and OPEN**, pending the `dp-clippy` decision, because patching `F1`–`F5`
+in the source checker is the third rewrite of a thing four rounds have shown cannot close the class.
+
 ### Slice board
 
 | # | slice | done = |
 |---|---|---|
 | **0** | AMEND bundle | ✅ `217d325f0` + `3e6358749` |
-| **1** | `crates/dp` — tiers, scopes, `DpAggregate` | 🟡 **Three rounds, three BLOCKs, 45 findings, all mechanism findings discharged.** Round 3 retired the hand-rolled lexer for a real `syn` AST. **Not closed** — `G3`/`G4`/`G6`–`G13` are recorded and open, and no round has yet returned CLEAR. The residual limit is stated rather than closed: `dp-clippy` (`D-DP-CLIPPY-NOT-BUILT`). |
+| **1** | `crates/dp` — tiers, scopes, `DpAggregate` | 🟡 **Four rounds, four BLOCKs, 58 findings.** Round 3 retired the hand-rolled lexer for a real `syn` AST. **Not closed** — `G3`/`G4`/`G6`–`G13` are recorded and open, and no round has yet returned CLEAR. The residual limit is stated rather than closed: `dp-clippy` (`D-DP-CLIPPY-NOT-BUILT`). |
 | **1b** | the `channels` table (`DP-Ch1/Ch2/Ch3`) | ⬜ *board TBD — it is a migration, so Axis 2 IS a live DB and §0's shape applies* |
 | **2** | `dp::forbid_raw_kernel_client`, shipped RED | ⬜ *board TBD.* **Carries `[package.metadata.dp] dp-crate = true`**, removed from `crates/dp/Cargo.toml` by `V1-F12`: it is `DP-K11`'s marker and it is the right shape, but its only reader is this lint. It lands in the same commit as the thing that reads it. |
 | **3** | `RealityId` + `SessionContext` | ⬜ *board TBD* |
