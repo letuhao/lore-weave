@@ -42,6 +42,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import time
 import sys
 
 CONTAINER = "infra-postgres-1"
@@ -100,6 +101,43 @@ def psql(sql: str, db: str = DB, quiet: bool = False) -> tuple[int, str]:
     if not quiet:
         pass
     return p.returncode, out
+
+
+def psql_session(db: str = DB) -> subprocess.Popen:
+    """A psql session left OPEN, so a second one can overlap it mid-transaction.
+
+    `1b12-02` needs this and nothing else in the suite does. Both lifecycle
+    guards were unlocked predicate reads, so plain READ COMMITTED write-skew
+    defeated them — T1 inserts a child under an active parent while T2 dissolves
+    that parent, neither sees the other, both commit. **A suite that only ever
+    runs one statement at a time cannot see a concurrency defect at all**, which
+    is why the mutation removing `FOR UPDATE` stayed green.
+    """
+    return subprocess.Popen(
+        ["docker", "exec", "-i", CONTAINER, "psql", "-U", USER, "-d", db, "-tA"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace", bufsize=1)
+
+
+def wait_for(proc: subprocess.Popen, token: str, seconds: float = 20.0) -> bool:
+    """Block until the session echoes `token`, or give up.
+
+    A HANDSHAKE rather than a sleep, and the difference is the whole leg. The
+    first version slept 0.7s before starting T2 — and `docker exec` plus psql
+    startup costs more than that, so T2 finished BEFORE T1 had even opened its
+    transaction. The two statements ran SERIALLY, the guard refused the child
+    correctly, and the leg passed while testing nothing. `1b12-02` stayed green
+    twice for that reason. **A concurrency test that does not prove overlap is a
+    sequential test with extra steps.**
+    """
+    deadline = time.time() + seconds
+    while time.time() < deadline:
+        line = proc.stdout.readline()
+        if not line:
+            return False
+        if token in line:
+            return True
+    return False
 
 
 def apply_file(path: str, db: str = DB) -> tuple[int, str]:
@@ -248,6 +286,16 @@ def main() -> int:
              f"BEGIN; SET CONSTRAINTS channels_parent_fk DEFERRED; "
              f"{row(REALITY_C, 100, 101, 5)}; {row(REALITY_C, 101, 100, 4)}; COMMIT",
              "channels_parent_fk"),
+            # `1b12-01` — both guards only inspected rows that ALREADY EXIST, so
+            # reversing the insert order inside the sanctioned deferral hatch
+            # smuggled a dissolved parent in under a live child. Closed by making
+            # the dissolve-order trigger fire on INSERT; this is the leg that
+            # keeps it closed.
+            ("a DISSOLVED parent inserted UNDER a live child, deferred",
+             f"BEGIN; SET CONSTRAINTS channels_parent_fk DEFERRED; "
+             f"{row(REALITY_C, 2, 1, 1)}; "
+             f"{row(REALITY_C, 1, None, 0, 'dissolved', 'now()', 'reality')}; COMMIT",
+             "channels_dissolve_descendants_first"),
             ("deleting the root out from under the tree",
              f"DELETE FROM channels WHERE reality_id='{REALITY_A}' AND id = 1",
              "channels_parent_fk"),
@@ -316,6 +364,22 @@ def main() -> int:
         with_expr, _ = psql(forged)
         drop_expr, out_de = psql("ALTER TABLE channels ALTER COLUMN parent_depth DROP EXPRESSION")
         after_de, out_after = psql(forged)
+        # `1b12-03` — the leg above FORGES a value and the CHECK catches it. The
+        # hole was one step to the side: **OMIT** the column and it is NULL, the
+        # CHECK evaluates to NULL (not FALSE, so it passes) and the MATCH SIMPLE
+        # foreign key skips a key with a NULL member. A self-parent and a full
+        # 2-cycle both INSERT under a constraint reporting `convalidated = t`.
+        omitted = (f"INSERT INTO channels (reality_id, id, parent, level_name, depth, "
+                   f"lifecycle) VALUES ('{REALITY_A}', 8, 8, 'self', 1, 'active')")
+        omit_de, out_omit = psql(omitted)
+        ok_omit = omit_de != 0 and "channels_parent_depth_derived" in out_omit
+        print(f"   {'OK  ' if ok_omit else 'FAIL'} "
+              f"{'...and with parent_depth OMITTED rather than forged':46s}")
+        print(f"        {blamed_constraint(out_omit)}")
+        if not ok_omit:
+            print("        ^ NULL is not FALSE: the CHECK passes and the MATCH SIMPLE FK skips")
+        results.append(ok_omit)
+
         psql("ALTER TABLE channels DROP CONSTRAINT channels_parent_depth_derived")
         no_check, _ = psql(forged)
         ok = (with_expr != 0 and drop_expr == 0 and after_de != 0
@@ -427,6 +491,105 @@ def main() -> int:
         if not ok:
             print(f"        expected {sorted(want)} — an undocumented 4th value is a silent "
                   f"widening of a closed set that DP-Ch31's state machine depends on")
+        results.append(ok)
+
+        # `1b12-04` — the SAME tenancy defect as `M21`, on the trigger added to
+        # FIX `1b7gap-H3`, and the mutation stayed green at 54/54. Deleting the
+        # `reality_id` filter from `channels_no_child_of_dissolved` could not be
+        # seen, because no reality ever held a DISSOLVED row whose id collided
+        # with another reality's ACTIVE parent while a child insert ran. Reality
+        # B's root is dissolved here so that collision exists.
+        print(f"\n── 1b12-04: the NEW guard's tenancy filter (M21, one trigger over)")
+        psql("DROP TABLE IF EXISTS channels")
+        apply_file(MIGRATION)
+        seed_tree()
+        psql(f"UPDATE channels SET lifecycle='dissolved', dissolved_at=now() "
+             f"WHERE reality_id='{REALITY_B}' AND id=1")
+        _, b_state = psql(f"SELECT lifecycle FROM channels WHERE reality_id='{REALITY_B}' AND id=1")
+        code, out = psql(row(REALITY_A, 50, 1, 1, level="zone"))
+        ok = code == 0 and b_state == "dissolved"
+        print(f"   {'OK  ' if ok else 'FAIL'} "
+              f"{'a child under A-s ACTIVE id 1 while B-s id 1 is dissolved':46s} exit={code}")
+        print(f"        reality B id 1 = {b_state}"
+              + ("" if ok else f"   {blamed_constraint(out)}"))
+        if not ok and code != 0:
+            print("        ^ a dissolved row in ANOTHER reality blocked a legal insert — the "
+                  "guard is reading across tenants")
+        results.append(ok)
+
+        # `1b12-09` — the operation `1b7db-07`'s whole reshape exists to enable
+        # had NO leg. A revert to a BEFORE-row trigger would make it impossible
+        # again and nothing would have changed colour.
+        psql("DROP TABLE IF EXISTS channels")
+        apply_file(MIGRATION)
+        seed_tree()
+        code, out = psql(f"UPDATE channels SET lifecycle='dissolved', dissolved_at=now() "
+                         f"WHERE reality_id='{REALITY_A}' AND id IN (2,3)")
+        _, n = psql(f"SELECT count(*) FROM channels WHERE reality_id='{REALITY_A}' "
+                    f"AND lifecycle='dissolved'")
+        ok = code == 0 and n == "2"
+        print(f"   {'OK  ' if ok else 'FAIL'} {'a SUBTREE dissolved in ONE statement':46s} "
+              f"exit={code}  dissolved={n}"
+              + ("" if ok else f"  {blamed_constraint(out)}"))
+        results.append(ok)
+
+        # ── `1b12-02` — WRITE-SKEW. The only leg in this suite that needs two
+        # sessions overlapping in time, and the only one that could ever have
+        # caught the defect: T1 inserts a child under an active parent (the
+        # guard reads `active`, passes, uncommitted) while T2 dissolves that
+        # parent (DP-Ch33's EXISTS cannot see T1's row, passes). Both commit and
+        # a live child sits under a dissolved parent, with no deferral, no DDL
+        # and no superuser. **Two predicate reads that each pass are not the
+        # same as the conjunction holding.**
+        print(f"\n── 1b12-02: two concurrent writers, plain READ COMMITTED")
+        psql("DROP TABLE IF EXISTS channels")
+        apply_file(MIGRATION)
+        seed_tree()
+        # The race MUST run on the childless LEAF (id 3), not on id 2. `seed_tree`
+        # gives id 2 a COMMITTED live child, so a concurrent dissolve of it is
+        # refused by `DP-Ch33` for an unrelated reason and the interleaving never
+        # happens — which is exactly why this leg stayed GREEN on the mutation
+        # the first time. A leg that cannot reach its own subject is `1b5-M2` in
+        # a third costume: the row is refused, by the wrong thing.
+        t1 = psql_session()
+        t1.stdin.write(f"BEGIN;\n{row(REALITY_A, 60, 3, 3)};\nSELECT 'T1_HOLDS';\n")
+        t1.stdin.flush()
+        overlapped = wait_for(t1, "T1_HOLDS")
+        if not overlapped:
+            print("   FAIL T1 never reported holding its transaction — the leg below would "
+                  "have run SERIALLY and proved nothing")
+            results.append(False)
+        # T2 now runs while T1's INSERT is genuinely uncommitted and in flight.
+        #
+        # `lock_timeout` is REQUIRED, and its absence deadlocked this leg by
+        # construction: with `FOR UPDATE` working, T2 waits on the row lock T1
+        # holds — and T1 cannot commit until T2 returns, because this script is
+        # single-threaded. **T2 BLOCKING IS THE CORRECT OUTCOME, not a failure**;
+        # it is what serialisation looks like from the outside. The timeout turns
+        # "waits forever" into "waits, then reports", so both branches terminate:
+        #   * lock held  -> T2 times out, T1 commits, no dissolved parent  -> PASS
+        #   * no lock    -> T2 succeeds, T1 commits, live child under it   -> FAIL
+        t2_code, t2_out = psql(
+            f"SET lock_timeout = '4s'; UPDATE channels SET lifecycle='dissolved', "
+            f"dissolved_at=now() WHERE reality_id='{REALITY_A}' AND id=3")
+        t1.stdin.write("COMMIT;\n")
+        t1.stdin.close()
+        t1_out = t1.stdout.read()
+        t1.wait()
+        _, live_under_dissolved = psql(
+            f"SELECT count(*) FROM channels c JOIN channels p "
+            f"ON p.reality_id = c.reality_id AND p.id = c.parent "
+            f"WHERE p.lifecycle='dissolved' AND c.lifecycle <> 'dissolved'")
+        ok = live_under_dissolved == "0"
+        print(f"   {'OK  ' if ok else 'FAIL'} "
+              f"{'no live child under a dissolved parent, after the race':46s}")
+        print(f"        overlap confirmed  : {overlapped}")
+        print(f"        T1 (insert child)  : exit={t1.returncode}  "
+              f"{blamed_constraint(t1_out)[:60] if t1.returncode else 'committed'}")
+        print(f"        T2 (dissolve parent): exit={t2_code}  {blamed_constraint(t2_out)[:70]}")
+        print(f"        live-child-under-dissolved rows = {live_under_dissolved}")
+        if not ok:
+            print("        ^ write-skew: both transactions passed their own predicate read")
         results.append(ok)
 
         psql("DROP TABLE IF EXISTS channels")

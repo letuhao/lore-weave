@@ -173,7 +173,14 @@ CREATE TABLE channels (
     -- self-parent inserts in one statement. A CHECK survives DROP EXPRESSION.
     -- Vacuous only while the expression exists, which is exactly the condition
     -- it exists to outlive.
-    CONSTRAINT channels_parent_depth_derived CHECK (parent_depth = depth - 1),
+    -- ⚠ `IS NOT NULL` ADDED (1b12-03): `parent_depth` is NULLABLE, so after
+    -- DROP EXPRESSION you do not FORGE a value — you OMIT the column. The CHECK
+    -- then evaluates to NULL (not FALSE, so it passes) and the MATCH SIMPLE FK
+    -- skips a key with a NULL member. A self-parent and a 2-cycle both INSERT,
+    -- under a constraint reporting convalidated = t. The previous leg tested the
+    -- exact probe its author imagined; the hole was one step to the side.
+    CONSTRAINT channels_parent_depth_derived
+        CHECK (parent_depth IS NOT NULL AND parent_depth = depth - 1),
 
     -- ⚠ REMOVED (REC-106): `channels_no_self_parent CHECK (parent IS NULL OR
     -- parent <> id)` stood here. `channels_parent_fk` now makes it unable to
@@ -241,16 +248,33 @@ implemented. The trigger is now `BEFORE INSERT OR UPDATE` rather than
 when only `parent` changes — re-parenting under a dissolved node was the same
 hole through a second door.
 
+⚠ **`FOR UPDATE` and `AFTER INSERT` ADDED 2026-08-08 (`1b12-02`, `1b12-01`) — two
+independent routes past the rule above, neither needing DDL or superuser.**
+*(a)* Both guards were **unlocked predicate reads**, so plain READ COMMITTED
+write-skew defeated them: T1 inserts a child under an active parent (reads
+`active`, passes, uncommitted) while T2 dissolves that parent (`DP-Ch33`'s
+`EXISTS` cannot see T1's row, passes). Both commit. **Two predicate reads that
+each pass are not the same as the conjunction holding.** Locking the parent row
+makes both paths contend on one row in either order. *(b)* Both guards only
+inspected rows that ALREADY EXIST, so **reversing the insert order** inside the
+sanctioned `SET CONSTRAINTS ... DEFERRED` hatch smuggled a dissolved parent in
+underneath an already-inserted live child — and since `DP-Ch33` checks children
+rather than descendants *on the strength of this rule*, every ancestor could then
+be dissolved legally, leaving a fully dissolved tree with a live leaf.
+
 ```sql
 CREATE OR REPLACE FUNCTION channels_lifecycle_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
+DECLARE parent_lifecycle TEXT;
 BEGIN
     IF NEW.parent IS NOT NULL
-       AND (TG_OP = 'INSERT' OR NEW.parent IS DISTINCT FROM OLD.parent)
-       AND EXISTS (SELECT 1 FROM channels c
-                    WHERE c.reality_id = NEW.reality_id AND c.id = NEW.parent
-                      AND c.lifecycle = 'dissolved') THEN
-        RAISE EXCEPTION 'channels_no_child_of_dissolved: ...' USING ERRCODE = 'check_violation';
+       AND (TG_OP = 'INSERT' OR NEW.parent IS DISTINCT FROM OLD.parent) THEN
+        SELECT c.lifecycle INTO parent_lifecycle FROM channels c
+         WHERE c.reality_id = NEW.reality_id AND c.id = NEW.parent
+           FOR UPDATE;                       -- 1b12-02: serialises against a concurrent dissolve
+        IF parent_lifecycle = 'dissolved' THEN
+            RAISE EXCEPTION 'channels_no_child_of_dissolved: ...' USING ERRCODE = 'check_violation';
+        END IF;
     END IF;
     IF TG_OP = 'INSERT' THEN
         RETURN NEW;
@@ -294,7 +318,7 @@ $$;
 
 DROP TRIGGER IF EXISTS channels_dissolve_order_trg ON channels;
 CREATE CONSTRAINT TRIGGER channels_dissolve_order_trg
-    AFTER UPDATE OF lifecycle ON channels
+    AFTER INSERT OR UPDATE OF lifecycle ON channels
     DEFERRABLE INITIALLY IMMEDIATE
     FOR EACH ROW
     WHEN (NEW.lifecycle = 'dissolved')

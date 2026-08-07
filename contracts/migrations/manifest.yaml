@@ -155,13 +155,13 @@ migrations:
 
   - id: "0017_drop_pc_npc_projections"
     version: 17
-    breaking: false
+    breaking: true
     dependencies: ["0006_projections"]
     description: "Drops the seven pc_*/npc_* projection tables. Every one had a projector, a rebuilder, a golden fixture, an oracle and a benchmark — and NO PRODUCER: every pc.created/npc.created in the tree was a fixture. DROP ... IF EXISTS, so it is safe whether or not 0006 ran."
 
   - id: "0018_drop_region_session_world_kv_projections"
     version: 18
-    breaking: false
+    breaking: true
     dependencies: ["0006_projections"]
     description: "Drops region_projection / world_kv_projection / session_participants — the same no-producer finding as 0017, one sweep later. DROP ... IF EXISTS."
 

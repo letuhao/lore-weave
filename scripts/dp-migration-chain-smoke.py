@@ -49,6 +49,7 @@ an empty schema, and `channels` as BUILT BY POSTGRES matches what 0019 declares.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -59,7 +60,10 @@ CONTAINER = "infra-postgres-1"
 USER = "loreweave"
 # Carries `test` AND `smoke`. `scripts/db-safety-gate.py` and CLAUDE.md's
 # destructive-ops rule both require a throwaway marker; this script DROPs.
-DB = "dp_chain_smoke_test"
+# Per-run suffix for the reason its sibling carries one (`1b7db-12`,
+# `1b12-08`): a shared name means two concurrent runs drop each other's
+# database mid-run, and the corruption presents as a schema defect.
+DB = f"dp_chain_smoke_test_{os.getpid()}"
 
 # What `0019_channels.up.sql` declares. Compared against what POSTGRES REPORTS
 # after the whole chain has run, not against the file — the file is the claim,
@@ -212,6 +216,22 @@ def main() -> int:
               + ("" if good else f"   expected {sorted(EXPECT_TRIGGERS)}"))
         ok &= good
         print(f"   parent_depth generated as: {gen}")
+
+        # `1b12-07` — a THIRD ownership-only route to a cycle, and the only one
+        # the database can still tell you about. PG18's
+        # `ALTER TABLE ... ALTER CONSTRAINT ... NOT ENFORCED` needs no superuser,
+        # leaves the constraint definition in place, and flips `conenforced` to
+        # `f`; `pg_get_constraintdef` still prints the whole FOREIGN KEY clause,
+        # so a gate reading the DEFINITION TEXT sees nothing wrong. Reading the
+        # catalog flag is the difference between "the constraint is declared" and
+        # "the constraint is doing anything".
+        unenforced = names("SELECT conname FROM pg_constraint "
+                           "WHERE conrelid='channels'::regclass "
+                           "AND (NOT conenforced OR NOT convalidated)")
+        good = not unenforced
+        print(f"   {'OK  ' if good else 'FAIL'} every constraint is ENFORCED and VALIDATED"
+              + ("" if good else f"   not enforced/validated: {sorted(unenforced)}"))
+        ok &= good
         # `REC-106`'s whole mechanism is this expression. If a later migration
         # ever redefines it, the cycle argument silently stops being true.
         if "depth - 1" not in gen.replace("(", "").replace(")", ""):

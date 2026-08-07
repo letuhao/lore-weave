@@ -123,8 +123,11 @@ PENDING_ALTERS = {
 # silently re-break the operation.
 EXPECT_TRIGGERS = {
     "CHANNELS_LIFECYCLE_GUARD_TRG": "BEFORE INSERT OR UPDATE ON CHANNELS",
+    # `INSERT` is load-bearing (`1b12-01`): an `AFTER UPDATE`-only trigger never
+    # fires on a row written already-dissolved, which let the reverse-insert
+    # order smuggle a dissolved parent in under a live child.
     "CHANNELS_DISSOLVE_ORDER_TRG":
-        "AFTER UPDATE OF LIFECYCLE ON CHANNELS DEFERRABLE INITIALLY IMMEDIATE",
+        "AFTER INSERT OR UPDATE OF LIFECYCLE ON CHANNELS DEFERRABLE INITIALLY IMMEDIATE",
 }
 
 # ---------------------------------------------------------------------------

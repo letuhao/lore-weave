@@ -18,7 +18,7 @@ version: **everything built is a WRITE, everything missing is a READ.**
 |---|---|
 | **0** — the AMEND bundle | ✅ `217d325f0` + `3e6358749`. `REC-99`..`REC-102`, 16 LOCKED files amended so they stop stating things that are false. `REC-102` PO-approved. |
 | **1** — `crates/dp`: tiers, scopes, `DpAggregate` | 🟡 **Three rounds of cold-start refutation, all three BLOCK, 45 findings.** The type-system half survived every direct attack, including from a crate outside this repo. The source-check half was broken 11 times and is now **retired**: the property is enforced over a real `syn` AST in `crates/dp/tests/aggregate_contract.rs`, and `scripts/dp-aggregate-gate.py` is a runner. **Not closed** — 9 gaps are recorded and open, and no round has returned CLEAR. |
-| **1b** — the `channels` table (`DP-Ch1`/`Ch2`/`Ch3`) | 🟡 **built, live-verified, TWO refutation rounds survived — 54/54 on a live Postgres 18.** `FLOW-9` discharged: the tier had specified this table since Phase 4 and no migration ever shipped. `1b.5` returned BLOCK (16 findings, all itemised ones closed in `1b.6`); `1b.7` ran **two** refuters on different bytes — one attacking a live database, one asking what nobody looked at — and **both returned BLOCK, neither finding what the other found**. All HIGH and MEDIUM discharged in `1b.10`. **The headline: `0019` was applied by NOTHING** — the migration manifest ended at `0013`, six migrations unregistered, so the orchestrator had been applying an eight-month-old schema. Three LOW recorded not fixed (superuser bypass, `INHERITS`, `reality_root` vs `id > 0`). |
+| **1b** — the `channels` table (`DP-Ch1`/`Ch2`/`Ch3`) | 🟡 **built, live-verified, TWO refutation rounds survived — 54/54 on a live Postgres 18.** `FLOW-9` discharged: the tier had specified this table since Phase 4 and no migration ever shipped. `1b.5` returned BLOCK (16 findings, all itemised ones closed in `1b.6`); `1b.7` ran **two** refuters on different bytes — one attacking a live database, one asking what nobody looked at — and **both returned BLOCK, neither finding what the other found**. `1b.10` claimed all HIGH and MEDIUM discharged; **a THIRD refuter (`1b.12`) measured that three of six fixes did not hold**, and the 54/54 was green on all three. Now fixed and, more importantly, **bitten** — five mutations of the shipped migration, four of which previously stayed green. **The headline: `0019` was applied by NOTHING** — the manifest ended at `0013` with six migrations unregistered, AND `provisioner_live.rs` applied only `0001_initial`, so registration alone did not fix it. Three LOW recorded not fixed (superuser bypass, `INHERITS`, `reality_root` vs `id > 0`). |
 | **2**–**5** | ⬜ boards written per slice, at its start. |
 
 **The finding worth carrying forward is `V1-F1`.** Slice 1 was put to the PO on the claim that an
@@ -59,6 +59,19 @@ the impossibility is arithmetic rather than a matter of check timing. **The stat
 re-parenting is now a SUBTREE operation (a parent's depth is referenced by its children), which is
 why the key is `DEFERRABLE`; both halves are measured — the rigid path refused, the deferred subtree
 move accepted, the resulting tree printed.
+
+**The sentence `1b.12` produced, and it is the more useful of the two:**
+
+> **"I verified it live" is not "the suite would notice."** After `1b.10` every fix was attacked by
+> hand on a live database and every one was refused. Then five mutations of the shipped migration
+> were applied one at a time with the whole harness re-run, and **four stayed green — three of them
+> silently reverting those same fixes.** The fixes were right; the harness did not hold them.
+
+A fix without a leg is a fix the next edit removes. This slice's own `1b.4` bite section exists for
+exactly that reason, applied to CONSTRAINTS — and not applied to FIXES until a third refuter said so.
+One leg also needed a change to the SUBJECT before it could work at all (`INTO STRICT`, so a deleted
+tenancy filter becomes a hard error rather than an arbitrary row pick): **sometimes what makes a
+defect testable is a change to the thing, not to the test.**
 
 **The sentence `1b.7` produced, and it is the one to carry past this slice:**
 

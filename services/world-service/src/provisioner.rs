@@ -10,7 +10,7 @@
 //!     `reality_registry` with `status=provisioning`
 //!  4. `create_database(db_host, db_name)` — `CREATE DATABASE <name>` on
 //!     the picked shard
-//!  5. `apply_initial_migration(db_name)` — apply
+//!  5. `apply_migrations(db_name)` — apply
 //!     `contracts/migrations/per_reality/0001_initial.sql` skeleton
 //!  6. `register_with_pgbouncer(db_host, db_name)` — append entry to
 //!     pgbouncer's `databases.ini` and SIGHUP (L1.G dependency)
@@ -139,7 +139,7 @@ pub const PROVISION_STEPS: [&str; 11] = [
     "pick_shard",
     "register_pending",
     "create_database",
-    "apply_initial_migration",
+    "apply_migrations",
     "register_with_pgbouncer",
     "register_prometheus_scrape",
     "register_backup_policy",
@@ -153,7 +153,7 @@ pub const PROVISION_STEPS: [&str; 11] = [
 ///
 /// - `register_pending` → MetaWriter RPC → Go MetaWrite()
 /// - `create_database` → libpq `CREATE DATABASE`
-/// - `apply_initial_migration` → migrate cli
+/// - `apply_migrations` → migrate cli
 /// - `register_with_pgbouncer` → append + SIGHUP
 /// - `register_prometheus_scrape` → file-write + Prom config reload
 /// - `register_backup_policy` → backup-scheduler API
@@ -180,7 +180,7 @@ pub trait Effects {
     /// Step 5 — apply contracts/migrations/per_reality/0001_initial.sql
     /// (the SKELETON; per-reality tables land in L2 cycles 8-11).
     /// Idempotent: returns `false` if it was already applied.
-    fn apply_initial_migration(
+    fn apply_migrations(
         &mut self,
         shard: &ShardId,
         db_name: &str,
@@ -257,8 +257,8 @@ impl Provisioner {
         steps.push(io(created, "create_database"));
 
         // Step 5 — apply initial migration
-        let migrated = effects.apply_initial_migration(&picked.shard_id, &db_name)?;
-        steps.push(io(migrated, "apply_initial_migration"));
+        let migrated = effects.apply_migrations(&picked.shard_id, &db_name)?;
+        steps.push(io(migrated, "apply_migrations"));
 
         // Step 6 — register with pgbouncer
         let pgb = effects.register_with_pgbouncer(&picked.shard_id, &db_name)?;
@@ -355,7 +355,7 @@ mod tests {
             Ok(self.created_dbs.insert(db_name.to_string()))
         }
 
-        fn apply_initial_migration(
+        fn apply_migrations(
             &mut self,
             _shard: &ShardId,
             db_name: &str,
@@ -530,7 +530,7 @@ mod tests {
                 "pick_shard",
                 "register_pending",
                 "create_database",
-                "apply_initial_migration",
+                "apply_migrations",
                 "register_with_pgbouncer",
                 "register_prometheus_scrape",
                 "register_backup_policy",

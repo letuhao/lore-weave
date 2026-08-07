@@ -193,7 +193,21 @@ CREATE TABLE IF NOT EXISTS channels (
     -- difference between a guarantee that lives in a column definition and one
     -- that lives in the table. Bitten by dropping the expression, not by
     -- dropping the CHECK.
-    CONSTRAINT channels_parent_depth_derived CHECK (parent_depth = depth - 1),
+    -- ⚠ `IS NOT NULL` ADDED 2026-08-08 (`1b12-03`), and its absence made the
+    -- whole constraint decorative. `parent_depth` is NULLABLE. After
+    -- `DROP EXPRESSION` the previous round's smoke hand-supplied a WRONG value
+    -- and the CHECK caught it — so the leg passed. **Omit the column instead**
+    -- and it is NULL: the CHECK evaluates to NULL, which is not FALSE, so it
+    -- passes; and the foreign key is MATCH SIMPLE, so a NULL member skips the
+    -- check entirely. A self-parent and a full 2-cycle both INSERT, with
+    -- `convalidated = t` on a constraint sitting right there.
+    --
+    -- The lesson is sharper than the fix: **the leg tested the exact probe the
+    -- author imagined, and the hole was one step to the side of it.** Three-
+    -- valued logic is where a CHECK stops being a check, and `NOT NULL` is the
+    -- only thing that closes it.
+    CONSTRAINT channels_parent_depth_derived
+        CHECK (parent_depth IS NOT NULL AND parent_depth = depth - 1),
     CONSTRAINT channels_level_name_nonempty CHECK (length(btrim(level_name)) > 0),
 
     -- `DP-Ch31`..`DP-Ch37` (17_channel_lifecycle.md): a dissolved channel has a
@@ -280,20 +294,62 @@ CREATE INDEX IF NOT EXISTS channels_lifecycle_idx
 -- the same hole through a second door.
 CREATE OR REPLACE FUNCTION channels_lifecycle_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
+DECLARE
+    parent_lifecycle TEXT;
 BEGIN
     -- `DP-Ch34` / 17_channel_lifecycle.md:51 — a channel may not be created
     -- under, or moved under, a Dissolved parent.
+    --
+    -- ⚠ `FOR UPDATE` ADDED 2026-08-08 (`1b12-02`), and without it this rule
+    -- fell to plain READ COMMITTED write-skew — no deferral, no DDL, no
+    -- superuser, just two ordinary concurrent writers. T1 inserts a child under
+    -- an active parent (this guard reads `active`, passes, uncommitted); T2
+    -- dissolves that parent (`DP-Ch33`'s `EXISTS` cannot see T1's uncommitted
+    -- row, passes). Both commit, and a live child sits under a dissolved
+    -- parent. **Two unlocked predicate reads that each pass are not the same as
+    -- the conjunction holding**, which is what write-skew IS.
+    --
+    -- Locking the PARENT ROW makes the two paths contend on one row, in either
+    -- order: an INSERT waits for a concurrent dissolution and then sees
+    -- `dissolved`; a dissolution waits for a concurrent INSERT and then
+    -- `DP-Ch33` sees the committed child. `SELECT ... INTO ... FOR UPDATE`
+    -- rather than `EXISTS (... FOR UPDATE)`, because a row lock inside an
+    -- `EXISTS` subquery is not expressible.
     IF NEW.parent IS NOT NULL
-       AND (TG_OP = 'INSERT' OR NEW.parent IS DISTINCT FROM OLD.parent)
-       AND EXISTS (SELECT 1 FROM channels c
-                    WHERE c.reality_id = NEW.reality_id
-                      AND c.id = NEW.parent
-                      AND c.lifecycle = 'dissolved') THEN
-        RAISE EXCEPTION
-            'channels_no_child_of_dissolved: channel % cannot have dissolved '
-            'channel % as its parent (DP-Ch31: dissolution is terminal, so a '
-            'dissolved subtree cannot grow)', NEW.id, NEW.parent
-            USING ERRCODE = 'check_violation';
+       AND (TG_OP = 'INSERT' OR NEW.parent IS DISTINCT FROM OLD.parent) THEN
+        -- `INTO STRICT`, and the reason is a harness property rather than a
+        -- runtime one (`1b12-04`). `(reality_id, id)` is the primary key, so
+        -- EXACTLY ONE row can match — `STRICT` states that and makes it
+        -- enforced. Without it, deleting the `reality_id` filter leaves a
+        -- MULTI-ROW query whose first row plain `SELECT INTO` takes ARBITRARILY,
+        -- so the cross-tenant defect is nondeterministic and a smoke leg cannot
+        -- catch it reliably. That is exactly what happened: the mutation stayed
+        -- green. `TOO_MANY_ROWS` turns it into a hard, immediate error.
+        --
+        -- `NO_DATA_FOUND` is caught rather than raised, because it is LEGAL: the
+        -- parent may not exist yet when `channels_parent_fk` is deferred and the
+        -- child is inserted first. That case is not this rule's to refuse — the
+        -- foreign key refuses it at COMMIT if the parent never arrives, and
+        -- `channels_dissolve_order_trg` refuses it on INSERT if the parent
+        -- arrives already dissolved (`1b12-01`).
+        BEGIN
+            SELECT c.lifecycle INTO STRICT parent_lifecycle
+              FROM channels c
+             WHERE c.reality_id = NEW.reality_id
+               AND c.id = NEW.parent
+               FOR UPDATE;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                parent_lifecycle := NULL;
+        END;
+
+        IF parent_lifecycle = 'dissolved' THEN
+            RAISE EXCEPTION
+                'channels_no_child_of_dissolved: channel % cannot have dissolved '
+                'channel % as its parent (DP-Ch31: dissolution is terminal, so a '
+                'dissolved subtree cannot grow)', NEW.id, NEW.parent
+                USING ERRCODE = 'check_violation';
+        END IF;
     END IF;
 
     IF TG_OP = 'INSERT' THEN
@@ -347,9 +403,32 @@ BEGIN
 END;
 $$;
 
+-- ⚠ `INSERT` ADDED 2026-08-08 (`1b12-01`). This fired on UPDATE only, and both
+-- guards only ever looked at rows that ALREADY EXIST — so the pair could be
+-- walked around by REVERSING THE INSERT ORDER inside the migration's own
+-- sanctioned deferral hatch:
+--
+--     BEGIN; SET CONSTRAINTS channels_parent_fk DEFERRED;
+--       INSERT the CHILD   -- its parent does not exist yet, so the
+--                          -- no-child-of-dissolved lookup finds nothing
+--       INSERT the PARENT, already 'dissolved'
+--                          -- NEW.parent IS NULL, so that guard skips; and this
+--                          -- trigger was AFTER **UPDATE**, so it never fired
+--     COMMIT;              -- the FK is satisfied: both rows now exist
+--
+-- and the dissolved subtree then GROWS, which is exactly what the other guard's
+-- error text says cannot happen. Composed with `DP-Ch33` checking CHILDREN
+-- rather than descendants — which is only sound BECAUSE of the induction this
+-- rule provides — every ancestor could then be dissolved legally, leaving a
+-- fully dissolved tree with a live leaf under it.
+--
+-- Firing on INSERT closes it: inserting an already-dissolved row whose children
+-- exist is checked at end-of-statement like any other dissolution. The hatch is
+-- not the defect; **a rule that only inspects the past is**, and an INSERT is
+-- how you write a row whose children are already there.
 DROP TRIGGER IF EXISTS channels_dissolve_order_trg ON channels;
 CREATE CONSTRAINT TRIGGER channels_dissolve_order_trg
-    AFTER UPDATE OF lifecycle ON channels
+    AFTER INSERT OR UPDATE OF lifecycle ON channels
     DEFERRABLE INITIALLY IMMEDIATE
     FOR EACH ROW
     WHEN (NEW.lifecycle = 'dissolved')

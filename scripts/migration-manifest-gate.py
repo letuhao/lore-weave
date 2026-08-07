@@ -28,6 +28,8 @@ WHAT IT CHECKS
   R4  versions strictly increase, and `dependencies` reference earlier ids
       (the orchestrator checks this at RUNTIME, which is too late to be a
       pre-commit signal; checking it here is cheap and catches the edit)
+  R6  a migration containing `DROP TABLE`/`DROP COLUMN` is `breaking: true`, so it
+      routes through the canary the manifest's own header mandates (`1b12-06`)
   R5  the `UNREGISTERED` list SHRINKS — an id that is now registered must lose
       its row, or this gate reds. An exclusion that outlives its reason is how
       `D-MANIFEST-0009-0012-UNREGISTERED` came to cover six files it never named.
@@ -59,6 +61,11 @@ UNREGISTERED = {
 }
 
 
+def strip_sql_comments(text: str) -> str:
+    """A `DROP TABLE` inside a `--` comment is prose, not a drop."""
+    return "\n".join(line.split("--")[0] for line in text.splitlines())
+
+
 def parse_manifest(text: str) -> list[dict]:
     """A tiny reader for the manifest's fixed shape.
 
@@ -74,10 +81,14 @@ def parse_manifest(text: str) -> list[dict]:
             continue
         m = re.match(r'-\s*id:\s*"([^"]+)"', s)
         if m:
-            out.append({"id": m.group(1), "version": None, "dependencies": []})
+            out.append({"id": m.group(1), "version": None, "breaking": False,
+                        "dependencies": []})
             continue
         if not out:
             continue
+        m = re.match(r"breaking:\s*(true|false)", s)
+        if m:
+            out[-1]["breaking"] = m.group(1) == "true"
         m = re.match(r"version:\s*(\d+)", s)
         if m:
             out[-1]["version"] = int(m.group(1))
@@ -87,11 +98,12 @@ def parse_manifest(text: str) -> list[dict]:
     return out
 
 
-def check(manifest_text: str, on_disk: set[str],
-          downs: set[str], unregistered: dict[str, str]) -> list[str]:
+def check(manifest_text: str, on_disk: set[str], downs: set[str],
+          unregistered: dict[str, str], destructive: set[str] | None = None) -> list[str]:
     findings: list[str] = []
     entries = parse_manifest(manifest_text)
     ids = [e["id"] for e in entries]
+    destructive = destructive or set()
 
     if not entries:
         return ["MISUSE — no migration entries parsed out of the manifest. A comparison "
@@ -134,6 +146,22 @@ def check(manifest_text: str, on_disk: set[str],
                                 f"before it.")
         seen.append(e["id"])
 
+    # R6 — a migration that DROPs must be `breaking: true` (`1b12-06`).
+    #
+    # The manifest's own header states the criterion — `breaking: <bool> — true
+    # ⇒ route through canary module` — and `0002`/`0003`/`0004` carry it BECAUSE
+    # they drop tables. `0017` and `0018` were registered `breaking: false` while
+    # dropping TEN tables between them, which fans a destructive change out to
+    # the whole fleet with no one-reality canary. Nothing checked `breaking` at
+    # all: the field existed, the rule was written down, and the two were joined
+    # by nobody.
+    for e in entries:
+        if e["id"] in destructive and not e["breaking"]:
+            findings.append(
+                f"R6 `{e['id']}` contains a DROP TABLE / DROP COLUMN and is registered "
+                f"`breaking: false`, so it fans out to every reality with no canary. The "
+                f"manifest's own header: `true => route through canary module`.")
+
     # R5 — the exclusion list must shrink.
     for stem in sorted(unregistered):
         if stem in ids:
@@ -173,6 +201,8 @@ def self_test() -> int:
             (good_manifest, disk, downs, {"0002_events": "stale reason"}),
         "R5 an exclusion whose file is gone":
             (good_manifest, disk, downs, {"0099_vanished": "stale reason"}),
+        "R6 a DROP registered as non-breaking (the 0017/0018 defect)":
+            (good_manifest, disk, downs, {}, {"0002_events"}),
     }
     for label, args in cases.items():
         if not check(*args):
@@ -183,6 +213,17 @@ def self_test() -> int:
     if check(good_manifest, disk | {"0004_harness"}, downs | {"0004_harness"},
              {"0004_harness": "applied by the harness"}):
         bad.append("a REASONED exclusion still reds — the escape hatch does not work")
+
+    # R6 must NOT red once the migration is correctly marked breaking, or the
+    # rule is unsatisfiable and the next author deletes it rather than obeys it.
+    breaking_manifest = good_manifest.replace(
+        '  - id: "0002_events"\n    version: 2\n',
+        '  - id: "0002_events"\n    version: 2\n    breaking: true\n', 1)
+    if check(breaking_manifest, disk, downs, {}, {"0002_events"}):
+        bad.append("R6 still reds when the DROP migration IS marked breaking — unsatisfiable")
+    # And a DROP that lives only inside a `--` comment is prose, not a drop.
+    if strip_sql_comments("-- DROP TABLE x;\nSELECT 1;").strip().startswith("DROP"):
+        bad.append("a DROP TABLE inside a comment reads as a real drop")
 
     if bad:
         print("migration-manifest-gate: SELF-TEST FAIL")
@@ -207,9 +248,15 @@ def main() -> int:
               file=sys.stderr)
         return 2
 
-    on_disk = {p.name[:-len(".up.sql")] for p in MIGRATIONS.glob("*.up.sql")}
-    downs = {p.name[:-len(".down.sql")] for p in MIGRATIONS.glob("*.down.sql")}
-    findings = check(MANIFEST.read_bytes().decode("utf-8"), on_disk, downs, UNREGISTERED)
+    on_disk = {p.name[:-len(".up.sql")] for p in MIGRATIONS.rglob("*.up.sql")}
+    downs = {p.name[:-len(".down.sql")] for p in MIGRATIONS.rglob("*.down.sql")}
+    destructive = {
+        p.name[:-len(".up.sql")] for p in MIGRATIONS.rglob("*.up.sql")
+        if re.search(r"(?im)^[ 	]*DROP[ 	]+(TABLE|COLUMN)[ 	]",
+                     strip_sql_comments(p.read_bytes().decode("utf-8", "replace")))
+    }
+    findings = check(MANIFEST.read_bytes().decode("utf-8"), on_disk, downs,
+                     UNREGISTERED, destructive)
 
     if findings:
         print(f"migration-manifest-gate: {len(findings)} finding(s)\n")

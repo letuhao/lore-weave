@@ -232,7 +232,7 @@ mod tests {
         ) -> Result<bool, ProvisionerError> {
             Ok(true)
         }
-        fn apply_initial_migration(
+        fn apply_migrations(
             &mut self,
             _: &crate::capacity_planner::ShardId,
             _: &str,

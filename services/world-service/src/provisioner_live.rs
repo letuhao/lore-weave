@@ -9,7 +9,7 @@
 //!   cannot write `reality_registry` directly. This is the centerpiece of W1.5.
 //! - **create_database** → sqlx `CREATE DATABASE` on the picked shard + the I4
 //!   isolation bootstrap (`REVOKE CONNECT … FROM PUBLIC`).
-//! - **apply_initial_migration** → run `0001_initial.up.sql` on the new DB.
+//! - **apply_migrations** → run `0001_initial.up.sql` on the new DB.
 //! - **pgbouncer / prometheus / backup** → no-op (those subsystems are go-live;
 //!   the provisioner calls them through no-op Effects so the core flow runs now).
 //!
@@ -159,6 +159,86 @@ impl LiveEffects {
             self.pg_user, self.pg_pass, self.shard_hostport, db_name
         )
     }
+
+    /// The ordered migration ids from `contracts/migrations/manifest.yaml`.
+    ///
+    /// A four-line reader rather than a YAML dependency, for the reason
+    /// `scripts/migration-manifest-gate.py` gives for the same choice: the shape
+    /// is a stable contract stated in the manifest's own header (`- id: "x"`),
+    /// and a provisioner that fails to build because of a parser dependency is
+    /// worse than one that reads four lines. The gate keeps this file and the
+    /// manifest honest in both directions.
+    fn manifest_ids(&self) -> Result<Vec<String>, ProvisionerError> {
+        let path = format!("{}/../manifest.yaml", self.sql_dir);
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| ProvisionerError::ShardEffect(format!("read {path}: {e}")))?;
+        let ids = parse_manifest_ids(&text);
+        if ids.is_empty() {
+            // A manifest that parses to nothing would silently provision an
+            // EMPTY reality — the failure mode `1b12-05` exists to end, arriving
+            // through the parser instead of through the hardcoded filename.
+            return Err(ProvisionerError::ShardEffect(format!(
+                "manifest {path} yielded no migration ids"
+            )));
+        }
+        Ok(ids)
+    }
+}
+
+/// Pull `- id: "<stem>"` out of the manifest, in file order.
+fn parse_manifest_ids(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.starts_with('#'))
+        .filter_map(|l| l.strip_prefix("- id:"))
+        .filter_map(|rest| {
+            let rest = rest.trim();
+            rest.strip_prefix('"')
+                .and_then(|r| r.split_once('"'))
+                .map(|(id, _)| id.to_string())
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod manifest_tests {
+    use super::parse_manifest_ids;
+
+    #[test]
+    fn reads_ids_in_order_and_ignores_comments() {
+        let text = "# - id: \"0000_commented_out\"\n\
+                    migrations:\n  \
+                    - id: \"0001_initial\"\n    version: 1\n  \
+                    - id: \"0002_events_table\"\n    version: 2\n";
+        assert_eq!(
+            parse_manifest_ids(text),
+            vec!["0001_initial".to_string(), "0002_events_table".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_commented_entry_is_not_a_migration() {
+        // The manifest carries long `#` comment blocks that QUOTE entry syntax
+        // when explaining a deferral; reading one as a real id would make the
+        // provisioner look for a file that does not exist.
+        assert!(parse_manifest_ids("  # - id: \"0009_canon_projection\"\n").is_empty());
+    }
+
+    #[test]
+    fn the_real_manifest_parses_and_is_ordered() {
+        // Non-vacuity: this test is worthless if it runs against a fixture. It
+        // reads the SHIPPED manifest, so deleting an entry or breaking the
+        // format reds here as well as in the Python gate.
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../contracts/migrations/manifest.yaml");
+        let text = std::fs::read_to_string(path).expect("the shipped manifest must be readable");
+        let ids = parse_manifest_ids(&text);
+        assert!(ids.len() >= 15, "expected the shipped manifest's entries, got {ids:?}");
+        assert_eq!(ids.first().map(String::as_str), Some("0001_initial"));
+        assert!(
+            ids.contains(&"0019_channels".to_string()),
+            "0019_channels must be registered or a provisioned reality has no `channels` table"
+        );
+    }
 }
 
 /// Reject anything but a safe lowercase identifier so a db_name can be
@@ -228,29 +308,58 @@ impl Effects for LiveEffects {
         })
     }
 
-    fn apply_initial_migration(
+    fn apply_migrations(
         &mut self,
         _shard: &ShardId,
         db_name: &str,
     ) -> Result<bool, ProvisionerError> {
         safe_ident(db_name)?;
-        let path = format!("{}/0001_initial.up.sql", self.sql_dir);
-        let sql = std::fs::read_to_string(&path)
-            .map_err(|e| ProvisionerError::ShardEffect(format!("read {path}: {e}")))?;
+
+        // ⚠ REWRITTEN 2026-08-08 (`1b12-05`). This applied `0001_initial.up.sql`
+        // and nothing else, so **a freshly provisioned reality got the cycle-5
+        // skeleton and none of the eighteen migrations after it** — no
+        // `channels`, no writer lease, no ruleset digest. `1b7gap-H1` registered
+        // `0014`-`0019` in the manifest and I claimed that "changes what the
+        // orchestrator applies". A cold-start verifier measured that it does
+        // not: registration is necessary and **not sufficient**, because nothing
+        // read the manifest here and `migrate` takes one id at a time with no
+        // apply-pending path. The claim was false and the table still could not
+        // exist in a real database.
+        //
+        // The manifest is the ORDER, not the directory listing: `0009`-`0012`
+        // are deliberately unregistered (they belong to the projection
+        // harnesses), so globbing `*.up.sql` would apply four files the
+        // orchestrator is not supposed to own. `scripts/migration-manifest-gate.py`
+        // keeps the manifest and the directory in agreement.
+        let ids = self.manifest_ids()?;
+        let mut sqls = Vec::with_capacity(ids.len());
+        for id in &ids {
+            let path = format!("{}/{id}.up.sql", self.sql_dir);
+            let sql = std::fs::read_to_string(&path)
+                .map_err(|e| ProvisionerError::ShardEffect(format!("read {path}: {e}")))?;
+            sqls.push((id.clone(), sql));
+        }
+
         let dsn = self.reality_dsn(db_name);
         self.handle.clone().block_on(async move {
             let pool = sqlx::PgPool::connect(&dsn)
                 .await
                 .map_err(|e| ProvisionerError::ShardEffect(format!("connect new db: {e}")))?;
-            // The skeleton is IF-NOT-EXISTS-shaped → idempotent re-run.
-            sqlx::raw_sql(&sql)
-                .execute(&pool)
-                .await
-                .map_err(|e| ProvisionerError::ShardEffect(format!("apply skeleton: {e}")))?;
+            // Every migration is retry-safe (`IF NOT EXISTS`-shaped and measured
+            // 18/18 by `scripts/dp-migration-chain-smoke.py`), so re-running the
+            // whole chain on an existing reality is a no-op rather than an
+            // error — which is what makes this step idempotent.
+            for (id, sql) in &sqls {
+                sqlx::raw_sql(sql).execute(&pool).await.map_err(|e| {
+                    ProvisionerError::ShardEffect(format!("apply {id}: {e}"))
+                })?;
+            }
             pool.close().await;
             Ok(true)
         })
     }
+
+    // (see `manifest_ids` below the impl — a helper, not a trait method)
 
     // pgbouncer / prometheus / backup registration are go-live infra — no-op so
     // the core provision flow runs now (returns "skipped").
