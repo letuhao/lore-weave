@@ -2239,13 +2239,38 @@ where it happens to sit.** Applied to every row still open after R24.
 | item | why it has no subject at CP-1 |
 |---|---|
 | **the catalogue-outage ordering residual** | Four verifiers, four rounds: *"unfalsifiable at this seam."* `type(x) is` cannot express *"this turn's"*, and the two states a guard would have to separate **differ in no `ContextVar` — only in a comment** (AST-alpha-equivalent, measured). R20-A adds the half that settles it: **every ordering the argument concerns is unreachable if the design's own premise holds** (*"each request runs in its own task and therefore its own context copy"*). If the premise holds, five rounds were about impossible states; if it fails, the delta made things worse. **Neither can be answered from source.** The turn identity belongs to the runtime that serves the turn — CP-2 · **V-LIVE must observe whether one `AdvertisedToolsRecorder` id ever appears under two turn tokens** |
-| **`rows_of` runs no document-level stamp check** | R20-B measured it and scoped it itself: **production-reachable *at* CP-2**, not today. Its own reachability column reads **0 production-reachable**, and the cause is mechanical: **`agentruntime` has zero importers outside the package** |
+| ~~**`rows_of` runs no document-level stamp check**~~ — 🔴 **MOVED BACK AND FIXED, R26.** I recorded the reason as *"production-reachable **at** CP-2, not today"*. **That is not the criterion this block declares**, and the nine items I kept were judged on the one it does. Both verifiers said so independently, and B drove it: **24 of 24 cells SERVED** — four exported doors handing rows to a consumer out of a document carrying `manifest_version: 999`, `contract_version: "banana"`, either stamp missing, or an undefined top-level key. The subject was `rows_of` and those four doors, all in the tree, all measurable in one command. `contract.check_document` is now one definition for every door |
 | **B18-10 — a fifth exported door** (10 rounds) | Same mechanism, verified repo-wide by two verifiers: a fifth door serving `['TYPED BY HAND:1']` passes suite **and** gate, and the scoping to CP-2 is *"honest"* precisely because **no consumer exists**. A door with no caller cannot be measured as a leak |
 
-**The common cause, stated once:** nothing outside `app/agentruntime/` imports it. That is why **both
-CP-1 V-LIVE rounds returned `CANNOT DETERMINE` on all four items** — *"the turn cannot be placed on
-the new surface"* — and why they have not run since. **CP-2's first import is what creates the
-subject for all three.**
+🔴 **THE COMMON CAUSE I STATED WAS FALSE FOR ONE OF THE THREE, AND BOTH VERIFIERS CAUGHT IT.**
+
+I wrote: *"nothing outside `app/agentruntime/` imports it."* The FACT is true and both verifiers
+re-derived it independently — **zero production importers of `app.agentruntime`**, every one outside
+the package being a test or the membrane gate's own smoke import. It is the right reason for **two**
+of the three rows.
+
+It is **not** the reason for the catalogue-outage residual. That item's subject is
+`AdvertisedToolsRecorder` / `surface_withheld` in **`app/services/instrument.py`, which has 9
+production importers today** — including both live turn entry points (`stream_service.py`,
+`voice_stream_service.py`), `routers/internal.py`, `main.py`, `tool_surface.py`,
+`tool_discovery.py` and `knowledge_client.py`. **That code serves real turns now.**
+
+The transfer is still right, for a different and stated reason: **V-CODE cannot falsify a claim about
+runtime ORDERING from source.** Four rounds established that the two states a guard would have to
+separate differ in no `ContextVar` — only in a comment — and that every ordering the argument
+concerns is unreachable if the design's own per-request-context premise holds. Only V-LIVE settles
+it, and V-LIVE needs a turn on the new surface.
+
+So the two criteria, each attached to the rows it actually governs:
+
+* **zero production reachability** — B18-10's fifth door. A door with no caller cannot be measured
+  as a leak.
+* **V-CODE non-falsifiability of a runtime ordering** — the catalogue-outage residual, whose code is
+  live today.
+
+**One sentence covering three rows was one sentence too few**, and writing it that way is the same
+move as fixing a defect at the site a reviewer pointed at: it makes the record read tidier than the
+thing it records.
 
 ### ✖ NOT MOVED — deterministic, measurable today, and CP-1's to close
 
@@ -2487,6 +2512,160 @@ boundary around the thing the last round happened to name. **That is finding A2'
 the prompt rather than by the code.**
 
 **CP-1 does not close.**
+
+---
+
+## ⭐ R26 DELTA — twelve findings, and the two that mattered changed an AXIS rather than a list
+
+R25 was `FAIL × FAIL`. Its two headline findings were not *"you missed a case"* — they were **"the
+space you enumerated is not the space"**, twice, and one verifier predicted in writing that the
+obvious repair would fail again next round. This delta takes that seriously in the two places it
+applies and does the ordinary thing everywhere else.
+
+### ▶ The number that moved
+
+| | R25 | R26 |
+|---|---|---|
+| **census** | 68 sites, 9 silent, 59 red | 68 sites, **7 silent, 61 red** |
+| chat-service suite | 2281 | **2288** |
+| rows that LEFT the allowlist for good | — | **2** — both provably-unreachable `except` clauses, deleted from the source |
+| the 7 remaining | *unclassified* | **classified, per row, with the observation behind it** |
+
+**The 6 other allowlist rows changed id, and that is the F3 fix working.** Blanking an f-string
+moved every digest that interpolates a name — and this time the churn is **visible**, as a matched
+`NOW GUARDED` / `NEWLY SILENT` pair per site. Under the old digest a churn on a RED site was
+invisible, which is exactly how I came to publish *"zero NEWLY SILENT, therefore no churn"* as
+evidence for a claim whose control and seed agreed by construction.
+
+### 🔴 The two that changed an axis
+
+* **A2 — the write guard bound the API, and the API set is open.** `{2 writers} × {4 APIs}` was
+  **the space a previous verdict happened to name**, adopted as though it were the space; a verifier
+  derived **19** and measured **5 caught**, including *every deletion API* — `shutil.rmtree` among
+  them, which this census calls at three live sites on a path from a monkeypatchable `_mirror()`,
+  and which is the exact API of the `%TEMP%`-deletion incident the previous fix was written for.
+  **The guard built after that incident could not observe the call that caused it.**
+
+  It now binds the **PATH**: a taint walk from `ROOT`/`PKG`/`CS`/`ALLOWLIST` to a fixed point,
+  refusing any tainted value that reaches a non-read call. Python's filesystem surface is open-ended;
+  the set of expressions that can name the live tree is small and closed. **22 vehicles as controls,
+  including the two the verifier said a cell-list repair would miss next round** — and it found a
+  live defect on its first run that no round had named: `_suite_is_green`'s `cwd` **defaulted to the
+  real `services/chat-service`**, so the selftest's baseline started a pytest subprocess in the live
+  tree. The fourteenth vehicle, arriving through a keyword default instead of a call.
+
+* **A1 — the CI check was a blacklist of shell spellings.** Green under **19 of 22** further shapes:
+  `; true` on one line, `&`, `| cat`, `echo …`, `--help`, `if false; then … fi`,
+  `trap 'exit 0' ERR`, a mid-line `#`, and every trigger VALUE, `runs-on`, `needs`, `strategy` and
+  `defaults`. Nine more clauses would have bought a tenth spelling. The command family is a
+  **whitelist** now — the step's live `run:` must be exactly `python scripts/agentruntime-census.py`
+  — and the structural keys are read. **36 shapes as controls.**
+
+### ▶ The other ten
+
+| # | finding | the fix, and the reversion that reds it |
+|---|---|---|
+| **B1** | the dead-import gate was **defeated by one word of prose** — a verifier restored the seven-round B18-11 defect with the suite green | the string term is narrowed to **`__all__`'s elements**, which is that verifier's own prescription after it executed the naive repair and found it reds ~30 re-exports. Plus `Load` context, `rglob`, per-import, and the `attr` term removed |
+| **B2** | **9 of 9 real workflow ids fail `_ID`'s ALPHABET** — six rounds went into the LENGTH half | `-` admitted, with the migration argument stated (these ids are persisted and §6.4's queue is not built); and a gate that runs `_ID` over **the three live registries**, so the next kind with a new spelling is refused at CP-1 where the answer is a decision |
+| **B3** | `ID_MAX_LEN` guarded **only from below** — 32, 64, 300, 10 000, 1 000 000 all green, because the test derived its vehicles from the constant | the vehicles are **literals**, and the constant is asserted against the measurement that justifies it (334 real ids, longest 38, none over 64) |
+| **B4** | two unfixed twins: `check_contract` still used `isinstance`, and the id bound reached **0 of 7** comparand doors | both pins exact-typed; `AllowList`/`DenyList`/`Filter`-on-`id` bounded by `_ID`. The field-name doors are **deliberately not** bounded and the reason is stated — they name a ROW FIELD, and that answer changes at CP-2 |
+| **B5** | 2 of the 9 SILENT rows were **provably unreachable** `except` clauses | deleted, with a guard on `check_row`'s raise **CLOSURE** rather than on the deletion, so re-widening it fails where the decision is |
+| **A3** | T11d **red on correct code, cross-module** — the delete-the-gate criterion I quoted at the verifiers | alias maps are **per module plus imports**; both false-positive vehicles are controls that must stay GREEN |
+| **A4** | T11d **blind to the table-name hoist** — `ast.walk` is breadth-first, so an alias always landed after every literal | the SQL is flattened in **source order**, and any name bound to a string literal is substituted, not only the column's |
+| **A5** | **W4 installed at the `try` door only** — `s.body[:1]` for `Try`, full `s.body` for `With`, eight lines apart, inside the repair FOR W4 | both doors, with the verifier's two probes and a first-statement control at each |
+| **A6** | the probe gate caught **2 of 8**, and a **dead `_ = _swept_root`** absolved a typed root | the literal is refused **anywhere**; the path must **derive** from the helper by assignment. **10 vehicles as controls** |
+| **A7** | `_mirror()` leaked whatever it allocated when it failed after `mkdtemp` | frees it, on `BaseException` — a `KeyboardInterrupt` between the allocation and the return is the same leak and the one a person causes |
+| **F3** | **an f-string is not prose-blind**, so a digest moved and the drift check could not see it | `JoinedStr` blanked wholesale |
+| **F7** | the transfer of `rows_of`'s document check used a **substituted criterion** | **moved back to CP-1 and fixed.** `contract.check_document` is one definition for six doors; 24 of 24 cells were SERVED |
+
+### 🔴 The transfer, corrected at the claim
+
+Both verifiers challenged it and both were right.
+
+* The load-bearing fact **holds** and both re-derived it: **zero production importers of
+  `app.agentruntime`.**
+* **`rows_of`'s document check was moved on a predicate this board never stated** —
+  *"production-reachable at CP-2"* — while the nine items I kept were judged on *"no subject until
+  later code exists"*. It has a subject today and a verifier drove it in one command. **Back, and
+  fixed.**
+* **My "common cause, stated once" was FALSE for the catalogue-outage item.** Its subject is
+  `app/services/instrument.py`, which has **9 production importers today**, including both live turn
+  entry points. It still moves — V-CODE cannot falsify a runtime ordering from source — but for a
+  different reason, and the block now carries two criteria, each attached to the rows it governs.
+
+**One sentence covering three rows was one sentence too few.** Writing it that way is the same move
+as fixing a defect at the site a reviewer pointed at: it makes the record read tidier than the thing
+it records.
+
+### ▶ What HELD from R25, independently re-derived, and is not re-graded
+
+**Every graded membrane guard reds for the reason it names** — 10/10, one single-test red each, zero
+bystanders; *"the first round in the series where I can say that of every graded item."*
+`_probe_offender` is a real oracle under an unrelated break. **`members` is the one mutable value a
+row carries**, over a 504-cell enumeration with **7 of 7 doors running `check_row`**. And 68/9/59
+reproduced exactly under an independent instrument.
+
+### 🔴 What this delta does NOT establish
+
+* **Six of these twelve fixes ship a NEW enumeration** (22 vehicles, 36 shapes, 10 vehicles, 3
+  registries, 12 malformed rows, 36 document cells). My record is that **every claim settled by a
+  control has held and every claim settled by an enumeration I chose has been short** — five rounds
+  running. The 23rd vehicle and the 37th shape are what R26 is for.
+* **Branch protection is a permanent named residual.** Whether the census job is *required* lives in
+  GitHub, not in this tree, and **no check in this repository can ever observe it.** Every CI count
+  above is therefore "of the shapes expressible in a workflow file", stated here so it does not read
+  as complete.
+* **The allowlist regeneration is the highest-risk change here.** Six rows changed id at once. They
+  are the same SITES — each churn shows as a matched pair — but that is my reading of my own output.
+* **Nothing here touches V-LIVE.** `agentruntime` still has zero production importers.
+
+### 🔴 The reversion prover found four fixes I had shipped with NO GUARD
+
+**12 of the first 18 reversions red. Four of the six that stayed green were fixes with no test at
+all**, and my own instrument found them before any verifier did:
+
+* **`check_contract`'s two pins** — switching both back to `isinstance` left the suite GREEN, because
+  the guard I had written is scoped to `check_row_shape`, two functions away. **The twin was fixed
+  and neither end was guarded**, inside the repair for a twin.
+* **the allocator fix** — the 8-cell drive *patches* `_mirror`, so the real one's failure path is
+  never exercised there.
+* **the digest fix** — nothing asserted stability under a reword.
+* **the import gate** — re-widening the string term left the suite green, because **a looser gate
+  simply finds nothing.** The property is not *"no dead import exists"*, it is *"a dead import
+  cannot be hidden"*, and only an injection can say that.
+
+Diagnosing them produced three more findings against my own work: a control **satisfied by a
+different clause than the one it names** (A6's dead-token vehicle was being caught by the literal
+clause); a **local that shadows an import** reading as a use; and a **second import of the same
+name** swallowed by a dict. And the gate and its control held **two copies of one walk**, with the
+duplicate-import clause in only one of them — the twelfth-recorded instance of that defect in this
+run, committed inside the repair for it. There is one implementation now and the control calls it.
+
+**Twice the REVERSION was wrong rather than the guard absent.** A6's mutation made the gate stricter;
+B1's never restored the `.split()` that was the actual defect. **A reversion that does not restore
+the defect proves nothing** — the same error class as a control satisfied by the wrong clause, and
+worth stating because it is the failure mode of this whole method. Corrected: **21/21.**
+
+### 🔴 And the prover manufactured a finding against itself, which is the rule working
+
+The confirming census reported **one leaked `lw-census-` directory**, which contradicts A7. It was
+attributed rather than explained away: it came from **the prover's own A7 case**, which disables
+`_discard` on purpose, so the leak is the guard firing. **An instrument that leaves debris
+manufactures findings**, and this one did — against the fix it was verifying. The prover cleans up
+after each control now.
+
+Worth keeping in view: *"0 leaked directories"* is only a measurement if nothing else in the session
+creates them, and I published that number for R25 without saying so.
+
+### 🔴 And the isolation hole I left in my own prompt
+
+R25's rule covered the repository and **not the shared scratchpad the two worktrees lived in.** One
+verifier wrote a probe into a path the other could have used. Nothing was measurably affected — but
+the hazard was open in the round whose headline control is isolation, and it was open because I drew
+the boundary around the thing the previous round happened to name. **That is A2's shape, committed by
+the prompt instead of by the code.** R26 gives each verifier its own scratch directory.
+
+**FREEZE from this commit.**
 
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 

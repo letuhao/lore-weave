@@ -84,17 +84,33 @@ def _mirror() -> pathlib.Path:
     import tempfile
 
     out = pathlib.Path(tempfile.mkdtemp(prefix="lw-census-"))
-    listing = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
-                             capture_output=True, check=True).stdout
-    for rel in listing.split(b"\0"):
-        if not rel:
-            continue
-        src = ROOT / rel.decode("utf-8")
-        if not src.is_file():                       # a submodule or a deleted-but-tracked path
-            continue
-        dst = out / rel.decode("utf-8")
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dst)
+    # 🔴 **THE ALLOCATOR LEAKED, AND FIXING BOTH WRITERS DID NOT COVER IT — the twelfth pair in this
+    # run repaired at one end.** `census()` and `_selftest()` each free their mirror in a `finally`
+    # now; neither `try` has been ENTERED when this function raises, and `census()`'s `atexit` is not
+    # registered yet either. A verifier executed both paths: `git ls-files` failing leaves one empty
+    # directory, and an `OSError` mid-copy leaves one holding a **partial copy of the repository** —
+    # 239 MB of a tree that is not the tree, which is worse debris than none. Both are ordinary here:
+    # `git` absent, a permission error, or a Windows path-length limit on a deep tracked path under
+    # the long temp prefix this verification workflow checks out into.
+    #
+    # A function that allocates before it can fail owns what it allocated until it returns.
+    try:
+        listing = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
+                                 capture_output=True, check=True).stdout
+        for rel in listing.split(b"\0"):
+            if not rel:
+                continue
+            src = ROOT / rel.decode("utf-8")
+            if not src.is_file():                   # a submodule or a deleted-but-tracked path
+                continue
+            dst = out / rel.decode("utf-8")
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(src, dst)
+    except BaseException:
+        # `BaseException`, not `Exception`: a `KeyboardInterrupt` between `mkdtemp` and the return
+        # is the same leak, and it is the one a person actually causes.
+        _discard(out)
+        raise
     return out
 
 
@@ -186,10 +202,39 @@ def _shape_digest(node: ast.Raise, cond=None) -> str:
     # sweep still moves **0 of 68** rows — which refutes the framing I had accepted, that a stable id
     # and a prose-blind id were incompatible and one had to be chosen. The trade was never that.
     shape = ast.parse(ast.unparse(_with_condition(node, cond))).body[0]
-    for n in ast.walk(shape):
-        if isinstance(n, ast.Constant) and isinstance(n.value, str):
-            n.value = "\u0000"
+    shape = _BlankProse().visit(shape)
+    ast.fix_missing_locations(shape)
     return hashlib.sha256(ast.unparse(shape).encode("utf-8")).hexdigest()[:8]
+
+
+class _BlankProse(ast.NodeTransformer):
+    """Erase every spelling of a MESSAGE, so a reworded refusal keeps its row.
+
+    \U0001F534 **AN f-STRING WAS NOT PROSE-BLIND, AND IT SILENTLY RELOCATED A ROW.** Blanking
+    `ast.Constant` strings covers a plain message and misses a `JoinedStr`, whose `FormattedValue`
+    carries a bare `ast.Name`. A verifier caught it: putting `{ID_MAX_LEN}` into one refusal's
+    message moved `check_contract::ContractViolation::7` from `6899e25d` to `179f246e`, and the
+    census then printed `NOW GUARDED - drop it from the allowlist` for a row whose id had simply
+    ceased to exist.
+
+    **The drift check cannot see this by itself**, and that is the part worth recording. The old id
+    leaves the allowlist and reads as a closed finding; the new id, being RED, never appears as
+    `NEWLY SILENT`. So *"zero NEWLY SILENT, therefore the digest did not churn"* is an inference
+    whose control and seed agree by construction - and it was published as evidence. The outcome was
+    right because the row is genuinely red; the evidence was not.
+
+    An f-string **is** a message, and is replaced wholesale exactly as a plain one is. That also
+    means two refusals differing only in what they interpolate now collide, which is precisely what
+    `_selftest`'s ordinal-free injectivity check exists to refuse.
+    """
+
+    def visit_Constant(self, node):
+        if isinstance(node.value, str):
+            return ast.Constant(value="\u0000")
+        return node
+
+    def visit_JoinedStr(self, node):
+        return ast.Constant(value="\u0000")
 
 
 def _sites(tree: ast.AST, mod: str) -> list[tuple[str, ast.Raise]]:
@@ -242,7 +287,7 @@ def _neutered(src: str, node: ast.Raise) -> str:
     return "".join(out)
 
 
-def _suite_is_green(cwd=None) -> bool:
+def _suite_is_green(cwd) -> bool:
     """Green / not-green — and **a crash is neither.**
 
     🔴 This returned `r.returncode == 0`, so **any** non-zero exit read as "the suite noticed",
@@ -265,10 +310,19 @@ def _suite_is_green(cwd=None) -> bool:
             args += ["-p", "no:randomly"]
     except Exception:                                    # noqa: BLE001 - probing must never decide
         pass
-    r = subprocess.run(args, cwd=cwd or CS, capture_output=True, text=True)
+    # 🔴 `cwd` HAD A DEFAULT OF `CS` — THE LIVE TREE — AND `_selftest`'s BASELINE CALL USED IT.
+    # So one code path in this module started a subprocess whose working directory was the real
+    # `services/chat-service`, which is `subprocess` as a write API: the fourteenth of the nineteen
+    # a verifier enumerated, arriving through a keyword default rather than through a call. My own
+    # path-taint gate reported it on its first run, which is the gate working before anyone
+    # independent had to.
+    #
+    # The baseline belongs in the mirror anyway: what the census is about to measure IS the mirror,
+    # so measuring "green before any injection" anywhere else answers a slightly different question.
+    r = subprocess.run(args, cwd=cwd, capture_output=True, text=True)
     if r.returncode not in (0, 1):
         raise SystemExit(
-            "pytest exited " + str(r.returncode) + " in " + str(cwd or CS) + " - it did "
+            "pytest exited " + str(r.returncode) + " in " + str(cwd) + " - it did "
             "not run the suite, so no site can be classified. Reporting these as RED would "
             "print a plausible lie." + chr(10) + r.stdout[-2000:] + chr(10) + r.stderr[-2000:])
     # 🔴 **THIS LINE WAS DELETED BY THE REPAIR THAT WAS FIXING THE LINES AROUND IT.** A line-based
@@ -348,10 +402,10 @@ def _selftest() -> int:
     if len(sites) < 50:
         print(f"SELFTEST FAIL: found only {len(sites)} raise sites; the enumeration broke")
         return 1
-    if not _suite_is_green():
-        print("SELFTEST FAIL: the suite is not green before any injection")
-        return 1
-    # ...and it must go red when a known-guarded site is neutered.
+    # 🔴 The baseline used to run in the LIVE tree, through `_suite_is_green`'s `cwd or CS` default.
+    # It runs in the mirror now — which is both safer (no subprocess is ever started in the real
+    # `services/chat-service`) and more correct, since the mirror is what every other measurement in
+    # this run is taken against.
     mirror = _mirror()
     try:
         return _selftest_in(mirror, len(sites))
@@ -364,6 +418,10 @@ def _selftest() -> int:
 
 
 def _selftest_in(mirror: pathlib.Path, n_sites: int) -> int:
+    if not _suite_is_green(mirror / _CS_REL):
+        print("SELFTEST FAIL: the suite is not green before any injection")
+        return 1
+    # ...and it must go red when a known-guarded site is neutered.
     probe = mirror / _PKG_REL / "contract.py"
     raw = probe.read_bytes()
     src = raw.decode("utf-8")

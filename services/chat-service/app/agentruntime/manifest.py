@@ -29,8 +29,8 @@ from typing import Iterable
 from . import ambient
 from .admission import Admitted
 from .contract import (
-    CONTRACT_VERSION, ContractViolation, Declaration, UnresolvedReference, UntrustedRow, _VERSION,
-    check_contract, check_document_rows, check_row, identity_of,
+    CONTRACT_VERSION, MANIFEST_VERSION, ContractViolation, Declaration, UnresolvedReference,
+    UntrustedRow, check_contract, check_document, check_document_rows, check_row, identity_of,
 )
 
 # 🔴 `UntrustedRow` and `UnresolvedReference` are DEFINED IN `contract.py` now and re-exported here
@@ -41,7 +41,9 @@ from .contract import (
 # subclasses now, so no caller's `except` stops working.
 __all_reexported__ = (UnresolvedReference, UntrustedRow)
 
-MANIFEST_VERSION = 1
+# `MANIFEST_VERSION` moved to `contract.py` beside `check_document`, which is the only thing that
+# reads it, and is re-exported here so every existing `from .manifest import MANIFEST_VERSION`
+# keeps working. A constant belongs with the check that enforces it.
 
 _MANIFEST_REL = Path("contracts") / "agent-runtime-manifest.json"
 # CP-1.8c — the env var name now lives behind the purity boundary (`ambient.py`).
@@ -243,9 +245,14 @@ def build(
             raise ContractViolation(exc.declaration_id, exc.field_path, exc.reason,
                                     f"{exc.accepted}. `previous` is caller-supplied, so it is "
                                     f"checked here and not only on the way back in") from exc
-        except UntrustedRow as exc:
-            raise UntrustedRow(f"{exc}. `previous` is caller-supplied, so it is checked here and "
-                               f"not only on the way back in.") from exc
+        # 🔴 **AN `except UntrustedRow` STOOD HERE AND COULD NEVER FIRE.** A verifier proved it two
+        # ways — an AST call-closure over `contract.py`, and 25 executed malformed rows, 25/25
+        # `ContractViolation` — because `check_row` raises **only** that class. It sat in the census
+        # allowlist as a refusal "nothing checks", which is the wrong category: nothing checks it
+        # because nothing can reach it. **An `except` that cannot fire is not a refusal**, and
+        # carrying one as allowlisted debt makes the instrument's own count wrong.
+        # `test_CHECK_ROW_RAISES_EXACTLY_ONE_CLASS` keeps that true, so re-widening `check_row` is a
+        # decision that fails here rather than a handler that silently comes back.
         origin[r["id"]] = r["contract_version"]
     rows = [_row(a, origin=origin) for a in admitted]
     # 🔴 A DECLARATION PRESENT IN `previous` AND ABSENT FROM `admitted` WAS SILENTLY DROPPED, and
@@ -362,43 +369,13 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
     Separate from `load` so the same check covers a document that arrived any other way, and so the
     M1 drift gate can call it without reading through this module's path resolution.
     """
-    # 🔴 `type(...) is dict`, not `isinstance` — **the fifth TOCTOU, open four rounds.** Every ROW
-    # was exact-typed while the DOCUMENT that supplies them was only `isinstance`-checked, inside
-    # this one function. Measured: a `dict` subclass answered `manifest_version=1` /
-    # `contract_version='1.0.0'` to the checks and `999` / `'banana'` to the `{**doc}` at the bottom
-    # — and `contract_version` is §6.4's queue comparand, so the document that left here had a
-    # different comparand from the one that was validated.
-    if type(doc) is not dict:
-        raise UntrustedRow(
-            f"{source}: manifest is a {type(doc).__name__}, not a plain JSON object. A container "
-            f"that decides its own answers can answer the validator and the consumer differently."
-        )
-    # The document schema is closed for the same reason the row schema is: a top-level key nothing
-    # defines passed no clause, and `{**doc}` used to carry it through to every reader.
-    _extra = sorted(set(doc) - {"manifest_version", "contract_version", "declarations"})
-    if _extra:
-        raise UntrustedRow(
-            f"{source}: manifest carries {_extra}, which the format does not define. One format is "
-            f"supported; an unknown key is not a newer file, it is one this reader cannot make "
-            f"claims about."
-        )
-    # The document-level stamps were written from constants and read from nowhere: a verifier fed
-    # `contract_version: "banana"` and a missing `manifest_version` and both passed. The only thing
-    # catching it today is the drift gate's byte-equality with `build([])`, which does not survive
-    # the first non-empty manifest. `contract_version` is also the queue's COMPARAND — an unreadable
-    # one silently empties the queue, which is the same failure §6.4.1 records one level down.
-    if doc.get("manifest_version") != MANIFEST_VERSION:
-        raise UntrustedRow(
-            f"{source}: manifest_version is {doc.get('manifest_version')!r}, expected "
-            f"{MANIFEST_VERSION}. One format is supported and an unknown one is not a newer file, "
-            f"it is a file this reader cannot make claims about."
-        )
-    doc_version = doc.get("contract_version")
-    if not isinstance(doc_version, str) or not _VERSION.match(doc_version):
-        raise UntrustedRow(
-            f"{source}: contract_version is {doc_version!r}; §6.4's re-admission queue is derived "
-            f"by comparing every row against it, so an unreadable value empties the queue in silence"
-        )
+    # 🔴 **THE WHOLE DOCUMENT CHECK MOVED TO `contract.check_document`, AND THAT IS THE FIX.** Every
+    # clause below used to live only here — the exact-type bound that closed the fifth TOCTOU, the
+    # closed top-level schema, and both stamps — so `rows_of`, `declarations`, `discover` and
+    # `SurfaceAssembler` served rows from documents this function refuses: **24 of 24 cells, and I
+    # had moved that finding to CP-2 on a predicate the board never stated.** One definition, both
+    # doors, exactly as the ROW definition already is.
+    doc_version = check_document(doc, source)
     rows = doc.get("declarations")
     # 🔴 **THE SAME TOCTOU I FIXED IN `surface.py` AND DID NOT LOOK FOR HERE.** `declarations` was
     # `isinstance`-checked and then **iterated twice** — a `list` subclass handed the validator
@@ -426,8 +403,9 @@ def validate_document(doc: dict, *, source: str = "<memory>") -> dict:
             # promise survived only as prose.
             raise ContractViolation(exc.declaration_id, f"{source}:{exc.field_path}", exc.reason,
                                     exc.accepted) from exc
-        except UntrustedRow as exc:
-            raise UntrustedRow(f"{source}: {exc}") from exc
+        # The sibling of the dead handler removed in `build()` — same proof, same removal.
+        # `check_row` raises exactly one class, and `test_CHECK_ROW_RAISES_EXACTLY_ONE_CLASS` holds
+        # that true, so re-widening it fails there rather than resurrecting an unreachable handler.
     check_document_rows(rows, "declarations")
     # 🔴 **I MATERIALISED THE ITERATION AND RETURNED THE ORIGINAL CONTAINER.** The rows were copied
     # so the loop could not be fed different values twice — and then `return doc` handed the caller

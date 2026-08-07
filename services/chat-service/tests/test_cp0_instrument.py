@@ -1586,14 +1586,57 @@ class TestU2ACatalogueOutageIsRegistered:
         # So a name bound to the column's own spelling resolves like a name bound to the SQL does,
         # and for the same reason: this gate has no import graph, so it over-approximates across
         # modules. Over-approximating costs a few extra binds to check; under-approximating is T11d.
-        _col_aliases: set[str] = set()
+        # 🔴 **AND THE FIRST REPAIR WAS WRONG IN BOTH DIRECTIONS AT ONCE.** It kept ONE
+        # global alias set for all of `app/` with no import graph, and it flattened with `ast.walk`.
+        # A verifier measured what each cost:
+        #
+        #   * **RED ON CORRECT CODE, twice, cross-module** - the delete-the-gate criterion I quoted
+        #     at the verifiers. Module A hoists `_COL = "withheld_tools"`, which is exactly the
+        #     refactor T11d exists to survive; module B, which never touches the column, takes an
+        #     unrelated parameter named `_COL` - and is convicted. The same fires through
+        #     `global_sql_names` with a generic `_SQL` executor helper. **The over-approximation
+        #     does not cost "a few extra binds to check"; it costs the identifier namespace of the
+        #     whole tree**, and `_COL`/`col`/`_SQL`/`sql`/`q` are normal things to write.
+        #   * **BLIND on the table-name hoist** - the same refactor one level out, which is T9e
+        #     exactly, cited as the precedent and then left unfixed. `ast.walk` is BREADTH-first, so
+        #     an alias's spelling is always appended AFTER every literal in the expression:
+        #     `withheld_tools =` is never contiguous, and the fix survived only because
+        #     `UPDATE chat_messages` was still a literal.
+        #
+        # Both come from the same two choices. Aliases are scoped to the module that binds them plus
+        # the modules that IMPORT them, and the text is assembled in SOURCE order with any name
+        # bound to a string literal substituted - not just the column's, so a hoisted TABLE name
+        # resolves by the same rule that resolves a hoisted column name.
+        _col_aliases: dict[str, str] = {}
+
+        def _flat_sql(node) -> str:
+            """The expression's strings, in **source order**, with string-bound names substituted.
+
+            `ast.iter_child_nodes` yields fields in declaration order, and for a `JoinedStr` that is
+            the order the pieces appear in the f-string. `ast.walk` is breadth-first and was the
+            whole of A4.
+            """
+            parts: list[str] = []
+
+            def go(n):
+                if isinstance(n, ast.Constant) and isinstance(n.value, str):
+                    parts.append(n.value)
+                    return
+                if isinstance(n, ast.Name) and n.id in _col_aliases:
+                    parts.append(_col_aliases[n.id])
+                    return
+                for c in ast.iter_child_nodes(n):
+                    go(c)
+
+            go(node)
+            return " ".join(" ".join(parts).split())
 
         def _names_the_column(node) -> bool:
             """Does this expression carry SQL that **writes a value into** the column?
 
             🔴 The per-bind rebuild dropped the qualification the previous version had and matched
             the bare column name. Widening the sweep to all of `app/` then reddened
-            `db/migrate.py` — the **DDL that creates the column**, which binds nothing. That is a
+            `db/migrate.py` - the **DDL that creates the column**, which binds nothing. That is a
             false positive on correct code, the failure this file has convicted itself of three
             times, and it is recorded here rather than fixed by narrowing the sweep back: the
             subject is a row WRITE, and `CREATE TABLE` / `ALTER TABLE` are not writes.
@@ -1603,18 +1646,10 @@ class TestU2ACatalogueOutageIsRegistered:
             # `" ".join` and **two spaces** (`"UPDATE  chat_messages"`) were all CAUGHT before this
             # qualification and blinded by it. Damping a false positive by narrowing a matcher is
             # how a gate loses the cases it was built for. So the SQL is ASSEMBLED from every string
-            # in the expression and whitespace-normalised before matching — which still keeps
+            # in the expression and whitespace-normalised before matching - which still keeps
             # `db/migrate.py` out, because DDL contains none of these verbs, and discards no
             # spelling of a write.
-            # A `Name` bound to the column's spelling contributes that spelling, so an interpolated
-            # `f"... SET {_COL} = $1"` flattens to the same text as the literal it replaced.
-            _parts = []
-            for n in ast.walk(node):
-                if isinstance(n, ast.Constant) and isinstance(n.value, str):
-                    _parts.append(n.value)
-                elif isinstance(n, ast.Name) and n.id in _col_aliases:
-                    _parts.append(_COL)
-            _flat = " ".join(" ".join(_parts).split())
+            _flat = _flat_sql(node)
             if _COL in _flat and (
                     "INSERT INTO chat_messages" in _flat
                     or "UPDATE chat_messages" in _flat
@@ -1622,12 +1657,13 @@ class TestU2ACatalogueOutageIsRegistered:
                     or f"{_COL}=" in _flat):
                 return True
             for n in ast.walk(node):
-                # `_called_name`, not `func.attr`: a bare-name `segment_merge_sql(...)` — the same
-                # unqualified-executor shape T9 already recorded for `execute` — had no `attr` at
+                # `_called_name`, not `func.attr`: a bare-name `segment_merge_sql(...)` - the same
+                # unqualified-executor shape T9 already recorded for `execute` - had no `attr` at
                 # all, so this branch returned `None` and read as "not the column".
                 if isinstance(n, ast.Call) and _called_name(n) == "segment_merge_sql" \
                         and any((isinstance(a, ast.Constant) and a.value == _COL)
-                                or (isinstance(a, ast.Name) and a.id in _col_aliases)
+                                or (isinstance(a, ast.Name)
+                                    and _col_aliases.get(a.id) == _COL)
                                 for a in n.args):
                     return True
             return False
@@ -1716,31 +1752,71 @@ class TestU2ACatalogueOutageIsRegistered:
                 continue
             _mods.append(p.relative_to(_base).as_posix())
 
-        # T11d, and it must run BEFORE anything calls `_names_the_column`: names bound to the
-        # column's own spelling, to a fixed point so `_A = "withheld_tools"; _B = _A` resolves too.
-        # Depth-bounded for the same reason `_recorder_locals` is — `a = b; b = a` is a cycle and a
-        # gate that hangs is a gate someone deletes.
-        for _ in range(12):
-            _before = len(_col_aliases)
-            for tree in trees_all:
+        # 🔴 **THE ALIAS MAPS ARE PER-MODULE PLUS IMPORTS, WHICH IS THE WHOLE OF A3.** One
+        # global set meant a name bound anywhere convicted every OTHER module that reused the
+        # identifier - two executed false positives on correct code, which is the criterion this
+        # file uses to predict that a gate gets deleted. A constant crosses a module boundary
+        # exactly one way, and it is an `import`; the arm-order gate sixty lines below already
+        # follows those edges for the same reason.
+        #
+        # Every name bound to a string literal is recorded, not only the column's: a hoisted TABLE
+        # name is the same refactor one level out (A4 / T9e's twin) and resolves by the same rule.
+        _strs_by_mod: dict[str, dict[str, str]] = {}
+        for mod, tree in zip(_mods, trees_all):
+            own: dict[str, str] = {}
+            for _ in range(12):                       # a fixed point: `_A = "x"; _B = _A`
+                grew = False
                 for name, value in _bindings(tree):
-                    if isinstance(value, ast.Constant) and value.value == _COL:
-                        _col_aliases.add(name)
-                    elif isinstance(value, ast.Name) and value.id in _col_aliases:
-                        _col_aliases.add(name)
-            if len(_col_aliases) == _before:
-                break
+                    if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                        if own.get(name) != value.value:
+                            own[name] = value.value
+                            grew = True
+                    elif isinstance(value, ast.Name) and value.id in own:
+                        if own.get(name) != own[value.id]:
+                            own[name] = own[value.id]
+                            grew = True
+                if not grew:
+                    break
+            _strs_by_mod[mod] = own
 
-        # Names bound to the column's SQL ANYWHERE — module constants included, and shared across
-        # modules because a constant is imported by name and this gate has no import graph. Over-
-        # approximating here costs a few extra binds to check; under-approximating is T9e.
-        global_sql_names = set()
-        for tree in trees_all:
-            for name, value in _bindings(tree):
-                if _names_the_column(value):
-                    global_sql_names.add(name)
+        def _visible_strs(mod: str, tree) -> dict[str, str]:
+            """This module's string constants, plus the ones it actually IMPORTS."""
+            out = dict(_strs_by_mod.get(mod, {}))
+            for n in ast.walk(tree):
+                if not (isinstance(n, ast.ImportFrom) and (n.module or "").startswith("app.")):
+                    continue
+                src = (n.module or "").removeprefix("app.").replace(".", "/") + ".py"
+                for a in n.names:
+                    val = _strs_by_mod.get(src, {}).get(a.name)
+                    if val is not None:
+                        out[a.asname or a.name] = val
+            return out
+
+        # `global_sql_names` was global for the same wrong reason and produced the same class of
+        # false positive on a generic `async def run_any(conn, _SQL, arg)`. Per module, plus imports.
+        _sql_by_mod: dict[str, set[str]] = {}
+        for mod, tree in zip(_mods, trees_all):
+            _col_aliases.clear()
+            _col_aliases.update(_visible_strs(mod, tree))
+            _sql_by_mod[mod] = {name for name, value in _bindings(tree)
+                                if _names_the_column(value)}
+
+        def _visible_sql(mod: str, tree) -> set[str]:
+            out = set(_sql_by_mod.get(mod, set()))
+            for n in ast.walk(tree):
+                if not (isinstance(n, ast.ImportFrom) and (n.module or "").startswith("app.")):
+                    continue
+                src = (n.module or "").removeprefix("app.").replace(".", "/") + ".py"
+                for a in n.names:
+                    if a.name in _sql_by_mod.get(src, set()):
+                        out.add(a.asname or a.name)
+            return out
 
         for mod, tree in zip(_mods, trees_all):
+            # The alias map is re-scoped per module before every use of `_names_the_column`.
+            _col_aliases.clear()
+            _col_aliases.update(_visible_strs(mod, tree))
+            global_sql_names = _visible_sql(mod, tree)
             for call in ast.walk(tree):
                 if not (isinstance(call, ast.Call) and _called_name(call) in _EXECUTORS):
                     continue
@@ -2342,7 +2418,23 @@ def _unconditional_calls(body, pred, narrows=None):
                 if isinstance(n, ast.Call) and pred(n):
                     yield n
         elif isinstance(s, (ast.With, ast.AsyncWith)):
-            yield from _unconditional_calls(s.body, pred, narrows)
+            # 🔴 **W4's RULE WAS INSTALLED AT THE `try` DOOR AND NOT AT THIS ONE, EIGHT LINES
+            # APART.** The token `[:1]` went in for `Try` with a nine-shape drive behind it, and its
+            # twin here kept the whole body — so an arm SECOND inside a `with` reported
+            # UNCONDITIONAL, and so did an arm second inside a `with` nested as the first statement
+            # of a swallowing `try`, which is W4's own defect restored exactly. Measured by a
+            # verifier on the real sweep: `arms=[7] conditional=[]` and `arms=[8] conditional=[]`.
+            #
+            # The argument is identical and I made it myself for `Try`: the block is ENTERED
+            # unconditionally, so its first statement runs; the second runs only if the first did
+            # not raise. Nothing about `with` weakens that — a `__enter__` that raises is the same
+            # situation as a `try` body that raises, which is the very refutation that put `Try`
+            # here in the first place.
+            #
+            # Reachability, measured not guessed: **45 `with`/`async with` under `app/`, 20 with
+            # multi-statement bodies, 2 inside the turn entry points.** No arm sits in one today,
+            # which is why the pristine gate was green for the right reason and this was latent.
+            yield from _unconditional_calls(s.body[:1], pred, narrows)
         elif isinstance(s, ast.Try):
             # 🔴 **THE `Try` WIDENING OVERSHOT, AND IT WAS INTRODUCED BY THE FIX FOR ROUTE 18.**
             # Four probes that were RED before it are GREEN after — the worst being an arm as the
@@ -3318,39 +3410,179 @@ from app.client.knowledge_client import KnowledgeClient
         the tests written to prove it.
 
         Held as a property, not as six repairs, because the seventh writer is the one that matters.
+
+        🔴 **AND THE FIRST VERSION OF THIS GATE CAUGHT 2 OF 8 VEHICLES.** A verifier appended eight
+        probe-writer shapes to this file and ran the real gate:
+
+        * half one matched a `BinOp(/)` with the literal on the right, so **`.joinpath("app")`,
+          `os.path.join` and string concatenation all walked past it**;
+        * half two asserted that the *identifier* `_swept_root` or `_sweep` **appears somewhere in
+          the function** — so a **dead `_ = _swept_root`** beside a typed root absolved it. *A test
+          satisfied by a comment is not a test*; this was **a test satisfied by a token**, the
+          fourth instance in this run and the second inside a repair for another;
+        * and it only looked at `write_text`/`write_bytes` inside a `FunctionDef`, so `open(p, "w")`,
+          `shutil.copyfile`, a write in a **lambda**, and a write at **module scope** were invisible.
+
+        Both halves now bind what they are about. The literal is refused **anywhere** it appears,
+        not in one syntactic form; and the path is required to *derive* from `_swept_root()` by
+        assignment, which a mention cannot satisfy.
         """
         src = Path(__file__).read_text(encoding="utf-8")
+        typed, stray = self._probe_writer_offenders(src)
+        assert not typed, (
+            f"line(s) {typed} spell the scope root {_TURN_SCOPE_ROOT!r} as a literal instead of "
+            f"going through `_swept_root()`. The gates read `_TURN_SCOPE_ROOT`; a probe written "
+            f"anywhere else is outside the sweep, and the test that wrote it goes green asserting "
+            f"nothing. `/`, `.joinpath`, `os.path.join` and concatenation are all the same defect."
+        )
+
+        assert not stray, (
+            f"{stray} write a file whose path does not DERIVE from `_swept_root()` - so it may "
+            f"land outside the tree the gates sweep, and the assertion that follows would pass over "
+            f"an experiment that never happened. Mentioning the helper is not deriving from it: a "
+            f"dead `_ = _swept_root` defeated the previous version of this clause."
+        )
+
+        # \U0001F534 **THE CONTROL - the eight shapes a verifier used to defeat the first version,
+        # plus two of my own.** Each is appended to this module's source in memory and the same
+        # analysis is re-run; every one must be reported. Appending to the real file on disk is what
+        # the verifier did, and it is what left it needing a byte-exact restore.
+        VEHICLES = {
+            "the typed root the gate names": [
+                "def _v1():",
+                "    p = Path(__file__).resolve().parents[1] / 'app' / 'services' / 'p.py'",
+                "    p.write_text('x', encoding='utf-8')"],
+            "`.joinpath` instead of `/`": [
+                "def _v2():",
+                "    p = Path(__file__).resolve().parents[1].joinpath('app').joinpath('p.py')",
+                "    p.write_text('x', encoding='utf-8')"],
+            "`.joinpath` PLUS a dead mention of the helper": [
+                "def _v3():",
+                "    _ = _swept_root",
+                "    p = Path(__file__).resolve().parents[1].joinpath('app').joinpath('p.py')",
+                "    p.write_text('x', encoding='utf-8')"],
+            # 🔴 **AND v3 IS CAUGHT BY THE *LITERAL* CLAUSE, SO IT DOES NOT CONTROL THE DEAD-TOKEN
+            # BYPASS AT ALL.** My own reversion prover exposed that: a control that is satisfied by
+            # a different clause than the one it names measures nothing about that clause. This one
+            # carries no literal, so only half two can catch it.
+            "a dead mention of the helper, with NO literal to catch it": [
+                "def _v3b():",
+                "    _ = _swept_root",
+                "    p = Path('/tmp').joinpath('services', 'p.py')",
+                "    p.write_text('x', encoding='utf-8')"],
+            "written through `open(path, 'w')`": [
+                "def _v4():",
+                "    p = Path(__file__).resolve().parents[1].joinpath('app', 'p.py')",
+                "    open(p, 'w').write('x')"],
+            "written through `shutil.copyfile`": [
+                "def _v5():",
+                "    p = Path(__file__).resolve().parents[1].joinpath('app', 'p.py')",
+                "    shutil.copyfile('a', p)"],
+            "written inside a lambda": [
+                "_v6 = lambda: Path('x').joinpath('app', 'p.py').write_text('x')"],
+            "written at module scope": [
+                "_v7 = Path(__file__).resolve().parents[1].joinpath('app', 'p.py')",
+                "_v7.write_text('x', encoding='utf-8')"],
+            "an unrelated local named `_sweep`": [
+                "def _v8():",
+                "    _sweep = 1",
+                "    p = Path(__file__).resolve().parents[1].joinpath('app', 'p.py')",
+                "    p.write_text('x', encoding='utf-8')"],
+            "os.path.join, which is not a BinOp at all": [
+                "def _v9():",
+                "    import os.path",
+                "    p = os.path.join('app', 'p.py')",
+                "    open(p, 'w').write('x')"],
+            "concatenation": [
+                "def _v10():",
+                "    p = Path('x' + 'app' + '/p.py')",
+                "    p.write_text('x', encoding='utf-8')"],
+        }
+        blind = []
+        for label, lines in VEHICLES.items():
+            t2, s2 = self._probe_writer_offenders(src + "\n\n" + "\n".join(lines) + "\n")
+            if not (set(t2) - set(typed) or set(s2) - set(stray)):
+                blind.append(label)
+        assert not blind, (
+            f"{len(blind)} of {len(VEHICLES)} probe-writer vehicles are invisible: {blind}. The "
+            f"first version of this gate caught 2 of 8, and one of the six it missed was a DEAD "
+            f"mention of the helper it asks for."
+        )
+
+    @staticmethod
+    def _probe_writer_offenders(src: str):
+        """`(literal_lines, non_deriving_writes)` for a module's source. Shared with the control."""
         tree = ast.parse(src)
 
+        # Half one: the literal, ANYWHERE. Its own definition is the single exemption, by line.
+        _defn = next((n.lineno for n in ast.walk(tree)
+                      if isinstance(n, ast.Assign)
+                      and any(isinstance(t, ast.Name) and t.id == "_TURN_SCOPE_ROOT"
+                              for t in n.targets)), -1)
         typed = sorted({
             n.lineno for n in ast.walk(tree)
-            if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Div)
-            and isinstance(n.right, ast.Constant) and n.right.value == _TURN_SCOPE_ROOT
+            if isinstance(n, ast.Constant) and n.value == _TURN_SCOPE_ROOT and n.lineno != _defn
         })
-        assert not typed, (
-            f"line(s) {typed} build a path with a literal {_TURN_SCOPE_ROOT!r} instead of "
-            f"`_swept_root()`. The gates read `_TURN_SCOPE_ROOT`; a probe written anywhere else is "
-            f"outside the sweep, and the test that wrote it goes green asserting nothing."
-        )
 
-        # ...and the other half, because a writer can reach the tree without spelling the root: any
-        # function that writes a file must build its path from the one helper that derives it.
+        # Half two: the PATH must DERIVE from the helper. A mention is not a derivation.
+        _WRITES = ("write_text", "write_bytes", "touch", "mkdir", "unlink", "symlink_to")
+        _SAFE_ROOTS = {"_swept_root", "_sweep", "tmp_path", "mkdtemp", "TemporaryDirectory"}
         stray = []
-        for fn in ast.walk(tree):
-            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            if not any(isinstance(n, ast.Call) and getattr(n.func, "attr", None)
-                       in ("write_text", "write_bytes") for n in ast.walk(fn)):
-                continue
-            names = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
-            names |= {n.attr for n in ast.walk(fn) if isinstance(n, ast.Attribute)}
-            if "_swept_root" not in names and "_sweep" not in names:
-                stray.append(f"{fn.name}:{fn.lineno}")
-        assert not stray, (
-            f"{stray} write a module without deriving the path from `_swept_root()` — so the file "
-            f"may land outside the tree the gates sweep, and the assertion that follows it would "
-            f"pass over an experiment that never happened."
-        )
+
+        def _path_expr(call):
+            """The expression naming the file this call writes, or None if it is not a write."""
+            attr = getattr(call.func, "attr", None)
+            if attr in _WRITES:
+                return call.func.value
+            name = attr or getattr(call.func, "id", None)
+            if name == "open" and len(call.args) >= 2:
+                mode = call.args[1]
+                if isinstance(mode, ast.Constant) and set(str(mode.value)) & set("wax+"):
+                    return call.args[0]
+            if name in ("copyfile", "copy", "copy2", "copytree") and len(call.args) >= 2:
+                return call.args[1]
+            if name in ("rmtree", "remove") and call.args:
+                return call.args[0]
+            return None
+
+        scopes = [tree] + [n for n in ast.walk(tree)
+                           if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda))]
+        for scope in scopes:
+            # Taint to a fixed point, within this scope: a name assigned from anything that reaches
+            # a safe root is itself safe. **An assignment, never a mention** - `_ = _swept_root`
+            # binds `_`, not the path, and that is the whole of the dead-token bypass.
+            derived = set(_SAFE_ROOTS)
+            for _ in range(12):
+                grew = False
+                for n in ast.walk(scope):
+                    if not isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                        continue
+                    value = getattr(n, "value", None)
+                    if value is None or not any(
+                            (isinstance(x, ast.Name) and x.id in derived)
+                            or (isinstance(x, ast.Attribute) and x.attr in derived)
+                            for x in ast.walk(value)):
+                        continue
+                    targets = n.targets if isinstance(n, ast.Assign) else [n.target]
+                    for t in targets:
+                        for el in ([t] if isinstance(t, ast.Name) else getattr(t, "elts", [])):
+                            if isinstance(el, ast.Name) and el.id not in derived:
+                                derived.add(el.id)
+                                grew = True
+                if not grew:
+                    break
+            for call in ast.walk(scope):
+                if not isinstance(call, ast.Call):
+                    continue
+                path = _path_expr(call)
+                if path is None:
+                    continue
+                if any((isinstance(x, ast.Name) and x.id in derived)
+                       or (isinstance(x, ast.Attribute) and x.attr in derived)
+                       for x in ast.walk(path)):
+                    continue
+                stray.append(f"{getattr(scope, 'name', '<module>')}:{call.lineno}")
+        return typed, sorted(set(stray))
 
     def test_ONLY_THE_FIRST_STATEMENT_OF_A_TRY_BODY_IS_UNCONDITIONAL(self):
         """🔴 **W4 — SPECIFIED IN ROUND 16, SHIPPED IN ROUND 20 AS ONE TOKEN, AND UNTESTED UNTIL
@@ -3404,6 +3636,60 @@ from app.client.knowledge_client import KnowledgeClient
             f"the control regressed: an arm as the FIRST statement of a `try:` body must stay "
             f"unconditional, and reporting it CONDITIONAL is a false positive on correct code "
             f"({entry2})"
+        )
+
+        # 🔴 **AND THE SAME RULE AT THE `with` DOOR, WHICH THE FIRST REPAIR LEFT OUT.** `[:1]` went
+        # in for `Try` with a nine-shape drive behind it and its twin eight lines above kept the
+        # whole body — the twelfth pair in this run repaired at one end, inside the repair for W4.
+        # A verifier measured both shapes UNCONDITIONAL on the real sweep.
+        for label, lines in {
+            "an arm 2nd in a `with` body": [
+                "import contextlib",
+                "from app.client.knowledge_client import KnowledgeClient",
+                "from app.services.instrument import arm_turn_surface",
+                "async def w4_with_probe(c):",
+                "    async with contextlib.AsyncExitStack():",
+                "        prefs = await c.get_preferences()",
+                "        arm_turn_surface()",
+                "        return await c.get_tool_definitions()"],
+            "an arm 2nd in a `with` nested 1st in a swallowing `try`": [
+                "import contextlib",
+                "from app.client.knowledge_client import KnowledgeClient",
+                "from app.services.instrument import arm_turn_surface",
+                "async def w4_nested_probe(c):",
+                "    try:",
+                "        async with contextlib.AsyncExitStack():",
+                "            prefs = await c.get_preferences()",
+                "            arm_turn_surface()",
+                "            return await c.get_tool_definitions()",
+                "    except Exception:",
+                "        return []"],
+        }.items():
+            name = lines[3].split("def ")[1].split("(")[0]
+            key3, entry3 = self._narrows_unarmed(name, "\n".join(lines) + "\n")
+            assert key3, f"{label}: the probe was not discovered, so this asserts nothing"
+            arms3, _r, _n, _a, cond3 = entry3
+            assert arms3 and cond3 == arms3, (
+                f"{label} was counted as UNCONDITIONAL: {entry3}. It runs only if the preceding "
+                f"`await` did not raise — and in the nested case the handler swallows that raise, "
+                f"so the turn narrows into a sink nothing armed while the line numbers say the arm "
+                f"came first. That is W4's own defect, at the door its repair did not reach."
+            )
+
+        # ...and the `with` control, so `[:1]` here is not a blanket refusal either: route 18's one
+        # live beneficiary is an arm that IS the first statement of an `async with`.
+        key4, entry4 = self._narrows_unarmed("w4_with_first_probe", "\n".join([
+            "import contextlib",
+            "from app.client.knowledge_client import KnowledgeClient",
+            "from app.services.instrument import arm_turn_surface",
+            "async def w4_with_first_probe(c):",
+            "    async with contextlib.AsyncExitStack():",
+            "        arm_turn_surface()",
+            "        return await c.get_tool_definitions()"]) + "\n")
+        assert key4 and entry4[0] and not entry4[4], (
+            f"the `with` control regressed: an arm as the FIRST statement of an `async with` must "
+            f"stay unconditional — `voice_stream_service.py` is one refactor from that shape, and a "
+            f"gate that reds on correct code is one that gets deleted ({entry4})"
         )
 
     def test_the_TERMINAL_WRITE_GATE_sees_a_writer_in_ANY_module(self):
@@ -3527,6 +3813,19 @@ from app.client.knowledge_client import KnowledgeClient
                 '        f"UPDATE chat_messages SET {_COL_B} = $1 WHERE message_id = $2",',
                 "        None, msg_id,",
                 "    )"],
+            # 🔴 **A4 — THE TABLE HOIST, WHICH THE FIRST REPAIR WAS BLIND TO.** `ast.walk` is
+            # breadth-first, so an alias's spelling always landed AFTER every literal: `withheld_
+            # tools =` was never contiguous and the fix survived only because `UPDATE chat_messages`
+            # was still a literal. This is T9e's refactor one level out — cited as the precedent in
+            # the same comment that left its twin open.
+            "the TABLE name hoisted too": [
+                '_COL = "withheld_tools"',
+                '_TBL = "chat_messages"',
+                "async def probe_write(conn, msg_id):",
+                "    await conn.execute(",
+                '        f"UPDATE {_TBL} SET {_COL} = $1 WHERE message_id = $2",',
+                "        None, msg_id,",
+                "    )"],
             "segment_merge_sql on a hoisted name": [
                 "from app.services import instrument",
                 '_COL = "withheld_tools"',
@@ -3555,6 +3854,61 @@ from app.client.knowledge_client import KnowledgeClient
                     inst.test_EVERY_TERMINAL_WRITE_BINDS_THE_DRAINED_VALUE__not_a_literal_None()
             finally:
                 path.unlink(missing_ok=True)
+
+    def test_the_TERMINAL_GATE_DOES_NOT_RED_ON_CORRECT_CODE_IN_ANOTHER_MODULE(self):
+        """🔴 **A3 — THE FIRST T11d REPAIR RED ON CORRECT CODE, TWICE, CROSS-MODULE.** The prompt
+        asked whether the over-approximation could do this, quoting the standard the gate is held
+        to: *"a gate that reds on correct code is one that gets deleted the first time it is
+        inconvenient."* It could, and a verifier executed both vehicles.
+
+        One global alias set for all of `app/`, with no import graph, means: module A performs the
+        hoist T11d exists to survive, and every OTHER module that happens to reuse the identifier is
+        convicted. The comment claimed the over-approximation *"costs a few extra binds to check"*.
+        **It costs the identifier namespace of the whole tree**, and `_COL`, `col`, `_SQL`, `sql`
+        and `q` are ordinary names.
+
+        A constant crosses a module boundary exactly one way — an `import` — so the alias maps are
+        scoped to the binding module plus the modules that import from it. Both vehicles below are
+        **correct code** and must leave the gate green.
+        """
+        base = _swept_root() / "services"
+        pairs = {
+            "an unrelated `_COL` parameter in another module": {
+                "_lwprobe_fp_a.py": ['_COL = "withheld_tools"'],
+                "_lwprobe_fp_b.py": [
+                    "async def rename_content(conn, mid, _COL):",
+                    '    await conn.execute(',
+                    '        f"UPDATE chat_messages SET content = {_COL} WHERE message_id = $1",',
+                    "        mid,",
+                    "    )"],
+            },
+            "a generic executor helper taking `_SQL`": {
+                "_lwprobe_fp_c.py": [
+                    '_SQL = "UPDATE chat_messages SET withheld_tools = $1 WHERE message_id = $2"'],
+                "_lwprobe_fp_d.py": [
+                    "async def run_any(conn, _SQL, arg):",
+                    "    await conn.execute(_SQL, arg)"],
+            },
+        }
+        for label, files in pairs.items():
+            written = []
+            try:
+                for name, lines in files.items():
+                    p = base / name
+                    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                    written.append(p)
+                inst = TestU2ACatalogueOutageIsRegistered()
+                # No `pytest.raises`: correct code must simply pass.
+                inst.test_EVERY_TERMINAL_WRITE_BINDS_THE_DRAINED_VALUE__not_a_literal_None()
+            except AssertionError as exc:
+                raise AssertionError(
+                    f"{label}: the gate reddened on CORRECT code — {exc}. An alias that crosses a "
+                    f"module boundary without an import is not an alias, it is a name collision, "
+                    f"and convicting on one is how this gate gets deleted."
+                ) from exc
+            finally:
+                for p in written:
+                    p.unlink(missing_ok=True)
 
     def test_the_TERMINAL_GATE_FAILS_CLOSED_on_a_file_it_cannot_parse(self):
         """`except SyntaxError: continue` meant an unparseable module left the sweep with no record.

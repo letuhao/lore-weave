@@ -40,11 +40,31 @@ LIFECYCLES: frozenset[str] = frozenset({"draft", "admitted", "deprecated", "reti
 #: `OrderBy` tie-break, it is the M5 foreign key, and it is rendered into the prompt the model reads
 #: — so an id longer than the surface it names is a budget the ranking spends on one row.
 #:
-#: The bound is **stated rather than assumed**: 64 characters, which is longer than every identifier
-#: this repository declares and short enough that no single row can crowd a surface. A limit chosen
-#: by a person and written down is checkable; the absent one was neither.
+#: The bound is **stated rather than assumed**: 64 characters. 🔴 **AND IT IS NOW MEASURED RATHER
+#: THAN ASSERTED** — a verifier read the three registries this checkpoint's declarations will come
+#: from (`tools-list.snapshot.json`, `LOADABLE_SKILL_CODES`, `intent_workflows._COMPILED`, **334
+#: ids**) and found max length **38**, p99 37, and **0 over 64**. The docstring used to claim
+#: *"longer than every identifier this repository declares"* with nobody having run it.
 ID_MAX_LEN = 64
-_ID = re.compile(r"^[a-z][a-z0-9_]{0,%d}$" % (ID_MAX_LEN - 1))
+
+#: 🔴 **AND THE ALPHABET REFUSED 9 OF 9 REAL WORKFLOW IDS, WHICH SIX ROUNDS ABOUT THE *LENGTH* NEVER
+#: ASKED.** `^[a-z][a-z0-9_]*$` was a builder choice; `ARCHITECTURE.md` C-0 says *"id"* and specifies
+#: no alphabet. Every workflow this repository actually declares is hyphenated — `entity-triage`,
+#: `canon-check`, `kg-build`, `build-a-book`, `translation-pass`, `autonomous-drafting`,
+#: `chapter-compose`, `draw-a-map`, `lore-so-far` — so at CP-4 `check_contract` would have refused
+#: **100% of one declaration kind**, and the message it printed would have led with the length.
+#:
+#: One command over the same corpus that justified `ID_MAX_LEN` would have found it, and the
+#: measurement made was *"is the length bounded"* rather than *"what does this regex do to the real
+#: data"*. `-` is admitted, because these ids are **persisted** and renaming nine of them is a
+#: migration this checkpoint has no mechanism for (§6.4's re-admission queue is not built). A hyphen
+#: is safe in every place an id is used here: a dict key, an allow-list member, a sort key, and
+#: prompt text — none of them require a Python identifier.
+#:
+#: `test_THE_ALPHABET_ADMITS_EVERY_ID_THIS_REPOSITORY_ALREADY_DECLARES` runs the regex over all three
+#: live registries, so the next kind that arrives with a new spelling is refused at **CP-1**, where
+#: the answer is a decision, rather than at CP-4, inside the admission of the first declaration.
+_ID = re.compile(r"^[a-z][a-z0-9_-]{0,%d}$" % (ID_MAX_LEN - 1))
 _VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 
 
@@ -329,6 +349,60 @@ def check_row(row, where: str) -> None:
                 "queue is the difference between them, so an unreadable stamp empties it silently")
 
 
+#: The manifest format this reader supports. It lives here, beside `check_document`, because the
+#: document check is what reads it and `manifest.py` re-exports it for every existing caller.
+MANIFEST_VERSION = 1
+
+
+def check_document(doc, source: str) -> str:
+    """**One definition of a valid manifest DOCUMENT, for every door** — schema and both stamps.
+
+    🔴 **THIS IS THE NINE-CLASSES FINDING ONE LEVEL UP, AND I MOVED IT TO CP-2 ON A CRITERION THE
+    BOARD DID NOT STATE.** The ROW definition was consolidated across every door; the DOCUMENT
+    definition was left in `validate_document` alone. A verifier measured the result at **24 of 24
+    cells SERVED**: `rows_of`, `declarations`, `discover` and `SurfaceAssembler` all hand rows to a
+    consumer from a document carrying `manifest_version: 999`, `contract_version: "banana"`, either
+    stamp missing, or an undefined top-level key — while `load()` refuses every one of them.
+
+    `contract_version` is the comparand §6.4's re-admission queue is derived from. Four exported
+    doors never read it.
+
+    The transfer said *"production-reachable at CP-2, not today"*. The criterion this board declared
+    is *"no SUBJECT until a later checkpoint's code exists"* — and the subject is this function and
+    the four doors, all of which are in the tree now and all of which a verifier drove in one
+    command. **Those are different predicates, and the nine items I kept were judged on the first.**
+    So it comes back, and it is fixed here rather than re-worded where it sat.
+
+    Returns the validated `contract_version`, so a caller cannot re-read it off the object it just
+    handed in — the `{**doc}` half of this same defect, one level down, took four rounds.
+    """
+    if type(doc) is not dict:
+        raise UntrustedRow(
+            f"{source}: manifest is a {type(doc).__name__}, not a plain JSON object. A container "
+            f"that decides its own answers can answer the validator and the consumer differently."
+        )
+    extra = sorted(set(doc) - {"manifest_version", "contract_version", "declarations"})
+    if extra:
+        raise UntrustedRow(
+            f"{source}: manifest carries {extra}, which the format does not define. One format is "
+            f"supported; an unknown key is not a newer file, it is one this reader cannot make "
+            f"claims about."
+        )
+    if doc.get("manifest_version") != MANIFEST_VERSION:
+        raise UntrustedRow(
+            f"{source}: manifest_version is {doc.get('manifest_version')!r}, expected "
+            f"{MANIFEST_VERSION}. One format is supported and an unknown one is not a newer file, "
+            f"it is a file this reader cannot make claims about."
+        )
+    doc_version = doc.get("contract_version")
+    if type(doc_version) is not str or not _VERSION.match(doc_version):
+        raise UntrustedRow(
+            f"{source}: contract_version is {doc_version!r}; §6.4's re-admission queue is derived "
+            f"by comparing every row against it, so an unreadable value empties the queue in silence"
+        )
+    return doc_version
+
+
 def check_document_rows(rows, where: str) -> None:
     """The clauses that are properties of the SET, not of a row: duplicate ids, and M5.
 
@@ -359,13 +433,20 @@ def check_contract(declaration: Declaration) -> str:
     """
     d = declaration
 
-    if not isinstance(d.id, str) or not _ID.match(d.id or ""):
+    # 🔴 `type(...) is str`, not `isinstance`. **THE TWIN OF `check_row_shape`'s TWO PINS, LEFT
+    # UNFIXED WHILE THEY WERE CLOSED.** A verifier executed it: `admit(Declaration(id=SubStr(...)))`
+    # **succeeded**, and the same held for a `str`-subclass member — so the one door whose whole job
+    # is to be the boundary accepted the exact forgery the row-shape check had just been guarded
+    # against, two functions away. `in`, `[]` and `==` all dispatch to user code; `type(x) is str` is
+    # the only comparison Python does not dispatch, and it belongs at every pin of one claim.
+    if type(d.id) is not str or not _ID.match(d.id or ""):
         raise ContractViolation(
             getattr(d, "id", ""), "id",
             "not a stable identifier",
-            f"lowercase letters, digits and underscores, starting with a letter, at most "
-            f"{ID_MAX_LEN} characters — an id is the membership key of every allow-list and the "
-            f"ranking's final tie-break, so an unbounded one is an unbounded key",
+            f"lowercase letters, digits, underscores and hyphens, starting with a letter, at most "
+            f"{ID_MAX_LEN} characters, and a plain `str` — an id is the membership key of every "
+            f"allow-list and the ranking's final tie-break, so an unbounded or self-answering one "
+            f"is an unbounded or self-answering key",
         )
     if d.kind not in KINDS:
         raise ContractViolation(
@@ -395,11 +476,13 @@ def check_contract(declaration: Declaration) -> str:
             "at least one declaration id, which M5 resolves against the manifest",
         )
     for i, m in enumerate(d.members):
-        if not isinstance(m, str) or not _ID.match(m or ""):
+        # `type(...) is str` here for the same reason as the id above — the second half of the same
+        # unfixed twin, and a member is M5's foreign key.
+        if type(m) is not str or not _ID.match(m or ""):
             raise ContractViolation(
                 d.id, f"members[{i}]", f"not a declaration id: {m!r}",
-                f"the id of another declaration (at most {ID_MAX_LEN} characters), resolved "
-                f"against the manifest at generation",
+                f"the id of another declaration (a plain `str`, at most {ID_MAX_LEN} characters), "
+                f"resolved against the manifest at generation",
             )
     return CONTRACT_VERSION
 

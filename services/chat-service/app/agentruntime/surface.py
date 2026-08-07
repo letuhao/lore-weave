@@ -21,11 +21,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
-from .contract import UntrustedRow, check_document_rows, check_row
+from .contract import (
+    ID_MAX_LEN, UntrustedRow, _ID, check_document, check_document_rows, check_row,
+)
 from .narrowing import NarrowingLog
 
 def rows_of(manifest_doc: dict) -> list[dict]:
     """The declarations in a manifest document, or a refusal.
+
+    🔴 **AND IT RAN NO DOCUMENT-LEVEL CHECK AT ALL — 24 of 24 cells SERVED, measured.** The ROW
+    definition was consolidated across every door and the DOCUMENT definition was left in
+    `validate_document`, so this door and the three that stand behind it (`declarations`,
+    `discover`, `SurfaceAssembler`) served rows from a manifest carrying `manifest_version: 999`,
+    `contract_version: "banana"`, either stamp missing, or an undefined top-level key. `load()`
+    refuses all of them. **The same finding as the nine row classes, one level up**, and I moved it
+    to CP-2 on a predicate this board never stated before a verifier moved it back.
 
     🔴 ONE PLACE, because two hand-written copies of this drifted inside a single commit. The
     assembler was fixed to reject a missing `declarations` key while `discover` — two functions
@@ -37,6 +47,10 @@ def rows_of(manifest_doc: dict) -> list[dict]:
     difference between *"nothing is admitted"* and *"we could not read the catalog"*, which is the
     one confusion `Surface.is_empty` exists to prevent.
     """
+    # ONE definition of a valid DOCUMENT, shared with `manifest.validate_document`. It runs FIRST,
+    # because a row read out of a document this reader cannot make claims about is a row with no
+    # provenance — and `contract_version` is §6.4's queue comparand.
+    check_document(manifest_doc, "manifest document")
     rows = manifest_doc.get("declarations")
     # `_is_exactly`, not `isinstance` — this was the one type decision in the module the identity
     # sweep did not reach, found by asking which sites still spelled it the old way.
@@ -215,6 +229,24 @@ class Filter(_Narrowing):
                 f"filter value {self.value!r} is not a tuple of scalars; `{self.op}` needs one. A "
                 f"container with a custom __contains__ expresses arbitrary logic (§0.14.1)."
             )
+        # 🔴 The id-comparand half, the same finding as `_require_names`: when the field IS `id`,
+        # every operand is compared against `row["id"]` and is therefore a key. An operand no
+        # declaration could be named narrows to zero under `eq`/`in`, and to EVERYTHING under
+        # `not_in` — the second of which is the deny-list-that-removes-nothing failure this package
+        # exists to make impossible, arriving through a typo rather than through a rule.
+        #
+        # Only `field == "id"` — the other fields are not ids and bounding them to `_ID` would be a
+        # different claim. `lifecycle` and `kind` have their own closed vocabularies at the row.
+        if self.field == "id":
+            operands = (self.value,) if self.op == "eq" else self.value
+            unadmittable = [v for v in operands if type(v) is not str or not _ID.match(v)]
+            if unadmittable:
+                raise ValueError(
+                    f"filter on `id` compares against {unadmittable!r}, which no declaration can be "
+                    f"named: an id is lowercase letters, digits, underscores and hyphens, at most "
+                    f"{ID_MAX_LEN} characters. Under `eq`/`in` this narrows to zero; under `not_in` "
+                    f"it removes nothing and registers nothing."
+                )
 
     def keep(self, row: dict) -> bool:
         got = row.get(self.field)
@@ -272,6 +304,21 @@ def _require_names(stage, consequence: str) -> None:
     bad = [n for n in stage.names if type(n) is not str or not n]
     if bad:
         raise ValueError(f"{type(stage).__name__} names must be non-empty strings; got {bad!r}")
+    # 🔴 **THE BOUND WAS ON THE ROW SIDE OF EVERY COMPARISON AND ON NEITHER COMPARAND.** Six rounds
+    # bounded the id a ROW may carry; a verifier then measured `AllowList(names=("a"*300,))`
+    # constructing happily — and, being unmatchable against any bounded row, narrowing the surface to
+    # **zero**. That is an asymmetry rather than a leak (the drop registers, loudly), which is why it
+    # is a bound and not an alarm — but "an id is a key" is a claim about the KEY, and a key has two
+    # sides. A name no declaration could ever be spelled with is a typo, and the honest moment to say
+    # so is construction, not the empty surface three stages later.
+    unadmittable = [n for n in stage.names if not _ID.match(n)]
+    if unadmittable:
+        raise ValueError(
+            f"{type(stage).__name__} names {unadmittable!r}, which no declaration can be called: "
+            f"a membership key is compared against `row['id']`, and an id is lowercase letters, "
+            f"digits, underscores and hyphens, at most {ID_MAX_LEN} characters. An unmatchable name "
+            f"narrows to zero rather than to what was meant."
+        )
 
 
 @dataclass(frozen=True, slots=True)

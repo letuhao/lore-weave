@@ -77,6 +77,24 @@ def _rows(n: int = 4, **over) -> list[dict]:
     return [{**_VALID_ROW, "id": f"t{i}", "owning_service": f"svc{i}", **over} for i in range(n)]
 
 
+def _doc(rows=None, **over) -> dict:
+    """🔴 **ONE DOCUMENT FIXTURE, DERIVED FROM THE CONTRACT — the row lesson, one level up.**
+
+    Twenty-seven document literals in this file were written as `{"declarations": [...]}`, with
+    **neither §6.4 stamp**, because `rows_of` never read them. A verifier measured what that hid:
+    **24 of 24 cells SERVED** — four exported doors handing rows to a consumer out of a document
+    carrying `manifest_version: 999`, `contract_version: "banana"`, either stamp missing, or an
+    undefined top-level key, all of which `load()` refuses.
+
+    So the fixtures were a shape the manifest can never produce, and every test built on one was
+    exercising a door the reader half never sees. That is the same sentence `_VALID_ROW`'s comment
+    already carries, and completing a document by hand at each site is how the next omission
+    arrives.
+    """
+    return {"manifest_version": 1, "contract_version": "1.0.0",
+            "declarations": _rows() if rows is None else rows, **over}
+
+
 def _tool(id_: str = "book_list", **kw) -> Declaration:
     kw.setdefault("source_path", "services/book-service/internal/api/list.go")
     return Declaration(id=id_, kind="tool", **kw)
@@ -85,6 +103,108 @@ def _tool(id_: str = "book_list", **kw) -> Declaration:
 def _skill(id_: str = "world_setup", members=("book_list",)) -> Declaration:
     return Declaration(id=id_, kind="skill", members=tuple(members),
                        source_path="services/chat-service/app/skills/world.py")
+
+
+
+def _dead_imports(src: str, label: str = "<module>") -> list[str]:
+    """Every import in `src` that binds a name the module never uses. **One implementation.**
+
+    \U0001F534 The first version of this rule counted a name appearing in **any whitespace-delimited
+    token of any string literal** as a use. A verifier restored the exact seven-round B18-11 defect
+    with the suite green: re-add `from . import canon`, put the bare token `canon` in a docstring,
+    **1 passed**. Not adversarial prose - ORDINARY prose, in files whose docstrings are rewritten
+    every round. Fourth "a test satisfied by a comment" in this run, and the second inside a repair
+    for another.
+
+    Enumerated by that verifier at **3 of 11** shapes caught. The naive repair is also wrong and was
+    executed: deleting the string term reds **~30 re-exports in `__init__.py`**, which are used only
+    through the `__all__` string list. So the term is load-bearing for exactly one construct, and the
+    narrowing is to that construct.
+
+    \U0001F534 **AND IT LIVES HERE, ONCE.** The gate and its control had two copies of this walk, and
+    the duplicate-import clause went into one of them - two implementations of one rule, which is the
+    defect this run has recorded twelve times, committed inside the repair for it.
+    """
+    import ast
+
+    tree = ast.parse(src)
+    dead: list[str] = []
+
+    bound: list[tuple[str, int]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Import, ast.ImportFrom)):
+            continue
+        # `from __future__ import ...` binds a COMPILER DIRECTIVE, not a name. Excluded by module
+        # rather than by name, so a future feature added later is covered too.
+        if isinstance(node, ast.ImportFrom) and node.module == "__future__":
+            continue
+        for a in node.names:
+            if a.name == "*":
+                continue
+            # A dotted `import a.b.c` with no `as` is either used as `a.b.c...` - in which case the
+            # Name `a` appears - or it is a SIDE-EFFECT import, a legitimate registration pattern and
+            # this gate's one measured false positive. Exempted deliberately; the residual is that a
+            # dead `import os.path` is missed, which is the safe direction.
+            if isinstance(node, ast.Import) and "." in a.name and not a.asname:
+                continue
+            # A LIST, not a dict keyed by name: the second dead import of a doubly-imported name was
+            # overwritten and never reported.
+            bound.append(((a.asname or a.name).split(".")[0], node.lineno))
+
+    seen: dict[str, int] = {}
+    for name, lineno in list(bound):
+        if name in seen:
+            dead.append(f"{label}:{lineno} imports {name} a second time, shadowing line {seen[name]}")
+        else:
+            seen[name] = lineno
+
+    parent = {}
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            parent[child] = node
+
+    def _binds_locally(fn, name) -> bool:
+        for n in ast.walk(fn):
+            if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)) \
+                    and n.id == name:
+                return True
+            if isinstance(n, ast.arg) and n.arg == name:
+                return True
+        return False
+
+    def _shadowed(node, name) -> bool:
+        # \U0001F534 **A LOCAL THAT SHADOWS THE IMPORT IS NOT A USE OF IT.** `import re` followed by a
+        # function doing `re = 1; return re` reads as "used" to any flat name scan - measured.
+        cur = parent.get(node)
+        while cur is not None:
+            if isinstance(cur, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)) \
+                    and _binds_locally(cur, name):
+                return True
+            cur = parent.get(cur)
+        return False
+
+    # `Load` context only, and \U0001F534 the `n.attr` term is GONE: it made an unrelated `c.re` count
+    # as a use of `import re`, and it was never needed - `canon.digest` is an `Attribute` whose
+    # `.value` is the `Name` `canon`, which this already sees.
+    used = {n.id for n in ast.walk(tree)
+            if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load) and not _shadowed(n, n.id)}
+    # The string term, narrowed from "every token of every literal" to the elements of a
+    # module-level `__all__` - the one construct where a name is genuinely used through a string.
+    for node in tree.body:
+        targets = node.targets if isinstance(node, ast.Assign) else (
+            [node.target] if isinstance(node, ast.AnnAssign) else [])
+        if not any(isinstance(t, ast.Name) and t.id == "__all__" for t in targets):
+            continue
+        for el in ast.walk(node):
+            if isinstance(el, ast.Constant) and isinstance(el.value, str):
+                used.add(el.value)
+
+    for name, lineno in bound:
+        # \U0001F534 The `startswith("__")` exclusion is gone: it exempted a dead `__`-prefixed alias,
+        # which is a name like any other. `__future__` is excluded by module above.
+        if name not in used:
+            dead.append(f"{label}:{lineno} imports {name}, which it never uses")
+    return dead
 
 
 # ── 1.1 · M1 — the registry starts empty ────────────────────────────────────────────────────────
@@ -156,8 +276,18 @@ class TestTheManifestStartsEmpty:
         Round 4 found that reverting it left 63/63 green: the fix was real and unguarded. This is
         the guard, and it names the exported surface rather than the internal helper, because that
         is where the silent answer was reachable from."""
-        with pytest.raises(ValueError, match="malformed"):
+        # `{}` is malformed in three ways at once, and the DOCUMENT check now reaches it first —
+        # which is the finding of the round that added `check_document` working. Both refusals are
+        # asserted, because "the exported reader refuses a broken document" is the claim and
+        # matching only `rows_of`'s own sentence bound the test to whichever clause happened to fire
+        # first.
+        with pytest.raises(UntrustedRow, match="manifest_version"):
             declarations({})
+        # ...and a document whose stamps are RIGHT and whose `declarations` key is absent still
+        # reaches the sentence this test was written for. Without this half, moving the document
+        # check ahead of the row check would have silently retired the guard.
+        with pytest.raises(ValueError, match="malformed"):
+            declarations({"manifest_version": 1, "contract_version": "1.0.0"})
 
     def test_a_hand_broken_reference_is_refused_on_load(self, tmp_path):
         """M5 resolves at generation — and an edit afterwards can break what generation proved."""
@@ -316,7 +446,7 @@ class TestDiscoveryReturnsNothingForLegacyDeclarations:
         planted = {"id": legacy_tools[0], "kind": "tool", "owning_service": "book-service",
                    "lifecycle": "admitted", "contract_version": "1.0.0",
                    "admitted_against": "1.0.0", "members": []}
-        planted_surfaced = {r["id"] for r in discover({"declarations": [planted]})}
+        planted_surfaced = {r["id"] for r in discover(_doc([planted]))}
         assert planted_surfaced & set(legacy_tools), (
             "the leak detector cannot detect a leak: a legacy tool placed directly in the manifest "
             "was not flagged, so the assertions above would pass through a real breach"
@@ -764,10 +894,10 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
                     # §0.14.1c puts their producers at CP-2 and CP-4 and nothing writes them today.
                     {"cost": 1000000000}, {"relevance": 9999}, {"lane": "read"}, {"tier": "hot"}):
             with pytest.raises(ContractViolation):
-                rows_of({"declarations": [{**base, **bad}]})
+                rows_of(_doc([{**base, **bad}]))
         # ...and the row the WRITER produces still passes, which is what makes the closure honest
         # rather than merely strict: `_row` emits exactly `ROW_FIELDS` and no more.
-        rows_of({"declarations": [dict(_VALID_ROW)]})
+        rows_of(_doc([dict(_VALID_ROW)]))
 
     # ── The bounds that were tightened with no test over any of them ────────────────────────────
     #
@@ -1532,11 +1662,18 @@ class TestTheAssemblerRefusesAMalformedDocument:
     'nothing is admitted', which is the one confusion `is_empty` exists to prevent."""
 
     def test_a_document_without_declarations_is_refused(self):
+        # Fully stamped, so the DOCUMENT check passes and the missing `declarations` key is the one
+        # thing left to refuse. The previous fixture (`{"manifest_version": 1}`) was malformed twice
+        # over and would have gone on passing while binding nothing.
         with pytest.raises(ValueError, match="malformed"):
-            SurfaceAssembler({"manifest_version": 1})
+            SurfaceAssembler({"manifest_version": 1, "contract_version": "1.0.0"})
+        # ...and the document half is refused at this door too — the 24-of-24 finding, at the door
+        # the consumer actually stands behind.
+        with pytest.raises(UntrustedRow, match="contract_version"):
+            SurfaceAssembler({"manifest_version": 1, "declarations": []})
 
     def test_an_explicitly_empty_catalog_is_accepted(self):
-        assert SurfaceAssembler({"declarations": []}).assemble(pass_number=1).is_empty
+        assert SurfaceAssembler(_doc([])).assemble(pass_number=1).is_empty
 
 
 class TestTheLogIsIndependentOfTheAssembler:
@@ -1651,7 +1788,7 @@ class TestStageKindsAreDataNotClosures:
         # refuses**: §0.14.1c puts their producers at CP-4, so a row carrying one came from a hand
         # edit. The fixture is a real row; the budget tests moved BELOW the door, where their
         # subject actually lives (see `_ranked`).
-        return {"declarations": _rows(n)}
+        return _doc(_rows(n))
 
     def _ranked(self, n=4):
         """Rows as a ranking stage sees them — **below the door, deliberately and with the reason
@@ -1671,7 +1808,7 @@ class TestStageKindsAreDataNotClosures:
         return [{**r, "cost": i + 1} for i, r in enumerate(_rows(n))]
 
     def test_a_budget_walks_the_ranking_and_cuts_the_tail(self):
-        kept = SurfaceAssembler({"declarations": []})._narrow(
+        kept = SurfaceAssembler(_doc([]))._narrow(
             self._ranked(), TakeWhileBudget("token_budget", "over budget", budget=6),
             pass_number=1, ordered_by=(("id", "asc"),),
         )
@@ -1688,7 +1825,7 @@ class TestStageKindsAreDataNotClosures:
     def test_the_record_says_WHY_THIS_ONE_and_not_that_one(self):
         """§0.14.1a rule 6. `{stage: token_budget, reason: over budget}` says *that* a declaration
         was cut; it cannot answer the only question a person debugging a missing tool has."""
-        a = SurfaceAssembler({"declarations": []})
+        a = SurfaceAssembler(_doc([]))
         a._narrow(self._ranked(), TakeWhileBudget("token_budget", "over budget", budget=6),
                   pass_number=1, ordered_by=(("owning_service", "asc"), ("id", "asc")))
         cut = a.log.records()[0]
@@ -1951,7 +2088,7 @@ class TestStageKindsAreDataNotClosures:
         # So the budget's guard is asserted here, on the budget, by handing `_narrow` a row the door
         # never saw...
         with pytest.raises(ValueError, match="plain integer"):
-            SurfaceAssembler({"declarations": []})._narrow(
+            SurfaceAssembler(_doc([]))._narrow(
                 [{"id": "t0", "cost": SneakyCost(9)}],
                 TakeWhileBudget("token_budget", "over budget", budget=6),
                 pass_number=1, ordered_by=(("id", "asc"),),
@@ -1960,7 +2097,7 @@ class TestStageKindsAreDataNotClosures:
         # longer refuses this row for its type at all: `cost` is not a field a row may carry, so the
         # refusal is the schema's and the message says so.
         with pytest.raises(ContractViolation, match="does not define"):
-            rows_of({"declarations": [{**_VALID_ROW, "cost": SneakyCost(9)}]})
+            rows_of(_doc([{**_VALID_ROW, "cost": SneakyCost(9)}]))
 
     def test_the_identity_check_reaches_EVERY_site_not_just_the_one_reviewed(self):
         """🔴 `type(s) in _KIND_SET` was rewritten to `is` after a metaclass forgery; the two
@@ -2156,6 +2293,222 @@ class TestStageKindsAreDataNotClosures:
             with pytest.raises(ContractViolation, match="not a stable identifier"):
                 door(doc)
 
+    def test_THE_ALPHABET_ADMITS_EVERY_ID_THIS_REPOSITORY_ALREADY_DECLARES(self):
+        """🔴 **SIX ROUNDS WENT INTO THE *LENGTH* HALF OF `_ID` WHILE THE *ALPHABET* HALF REFUSED
+        9 OF 9 REAL WORKFLOW IDS.**
+
+        `^[a-z][a-z0-9_]*$` was a builder choice — `ARCHITECTURE.md` C-0 says *"id"* and specifies no
+        alphabet — and every workflow this repository declares is hyphenated. At CP-4 `check_contract`
+        would have refused **100% of one declaration kind**, printing a message that leads with the
+        length. **One command over the same corpus that justified `ID_MAX_LEN = 64` would have found
+        it**, and the question asked was *"is the length bounded"* rather than *"what does this regex
+        do to the real data"*.
+
+        So the property is stated over the **real registries** rather than over a fixture: every id
+        this repository already declares must be admissible. The next kind that arrives with a new
+        spelling is then refused **here**, where the answer is a design decision, instead of at CP-4
+        inside the admission of the first declaration — where the ids are already persisted and
+        §6.4's re-admission queue, the mechanism that would migrate them, is not built.
+        """
+        from app.agentruntime.contract import ID_MAX_LEN, _ID
+        from app.services.intent_workflows import _COMPILED
+        from app.services.skill_registry import LOADABLE_SKILL_CODES
+
+        corpus: dict[str, list[str]] = {
+            "workflow": [w for w, _ in _COMPILED],
+            "skill": list(LOADABLE_SKILL_CODES),
+        }
+        snapshot = _REPO / "services" / "chat-service" / "tests" / "fixtures" / \
+            "tools-list.snapshot.json"
+        if snapshot.exists():
+            data = json.loads(snapshot.read_text("utf-8"))
+            tools = data.get("tools", data) if isinstance(data, dict) else data
+            corpus["tool"] = [t["name"] for t in tools if isinstance(t, dict) and "name" in t]
+
+        assert sum(len(v) for v in corpus.values()) >= 15, (
+            f"the corpus collapsed to {corpus}; a registry moved and this gate would pass over "
+            f"nothing, which is the vacuity failure it exists to prevent"
+        )
+        refused = {kind: sorted(i for i in ids if not _ID.match(i))
+                   for kind, ids in corpus.items()}
+        refused = {k: v for k, v in refused.items() if v}
+        assert not refused, (
+            f"`_ID` refuses ids this repository already declares: {refused}. These are PERSISTED — "
+            f"renaming them is a migration, and §6.4's re-admission queue is not built (§6.4.1). "
+            f"Decide the alphabet here, at CP-1, not inside CP-4's first admission."
+        )
+        # ...and the length half, over the same corpus, so the number in the docstring is measured
+        # rather than asserted. A verifier derived it first: 334 ids, max 38, 0 over 64.
+        longest = max((len(i), i) for ids in corpus.values() for i in ids)
+        assert longest[0] <= ID_MAX_LEN, (
+            f"{longest[1]!r} is {longest[0]} characters and ID_MAX_LEN is {ID_MAX_LEN}"
+        )
+
+    def test_ID_MAX_LEN_IS_THE_NUMBER_THE_DOCSTRING_ARGUES_FOR(self):
+        """🔴 **THE BOUND WAS GUARDED ONLY FROM BELOW.** A verifier swept the constant against the
+        whole suite: 9 → 9 failed, 12 → 1 failed, and **32, 64, 300, 10 000 and 1 000 000 all
+        GREEN**. The guard derives its vehicles (`at_limit`, `over`) from `ID_MAX_LEN` itself, so
+        what it binds is *"a bound exists"*, never *"the bound is the one argued for"* — the
+        self-derived-denominator failure applied to a constant, which is a failure this run has a
+        standard about and had not thought to apply to a number.
+
+        So the vehicles here are **literals**, and the constant is asserted against the measurement
+        that justifies it rather than against itself.
+        """
+        from app.agentruntime.contract import ID_MAX_LEN, check_row
+
+        assert ID_MAX_LEN == 64, (
+            f"ID_MAX_LEN is {ID_MAX_LEN}. 64 is the stated number and it is defensible against a "
+            f"measurement: 334 real declaration ids, longest 38, none over 64 — 1.68x the observed "
+            f"maximum. Changing it is a decision that belongs in the comment beside it, with what "
+            f"was measured."
+        )
+        check_row({**_VALID_ROW, "id": "a" * 64}, "row")            # literal, not derived
+        for literal in (65, 300, 10_000):
+            with pytest.raises(ContractViolation, match="not a stable identifier"):
+                check_row({**_VALID_ROW, "id": "a" * literal}, "row")
+
+    def test_A_KEY_IS_BOUNDED_ON_BOTH_SIDES_OF_THE_COMPARISON(self):
+        """🔴 **SIX ROUNDS BOUNDED THE ROW SIDE AND ZERO OF SEVEN COMPARAND DOORS.** A verifier
+        drove a 300-character key through every stage parameter that is compared against an id and
+        found all of them accepting it. *"An id is a key"* is a claim about the KEY, and a key has
+        two sides.
+
+        The consequence is stated at its true size rather than inflated: an unmatchable `AllowList`
+        name cannot match a bounded row, so it narrows to **zero** — an asymmetry, and a loud one,
+        because the drop registers. Under `not_in` it inverts: an unmatchable operand removes
+        **nothing** and registers nothing, which is the silent deny-list this package exists to make
+        impossible, arriving through a typo instead of through a rule.
+
+        Bounded here rather than at CP-2 because the parameter is in the tree today and the vehicle
+        is a config read that returned the wrong string.
+
+        **The field-name doors are deliberately NOT bounded** — `OrderBy`'s field and
+        `TakeWhileBudget.cost_field` name a ROW FIELD, not an id, and bounding them to `ROW_FIELDS`
+        is a different claim whose answer changes at CP-2 (which adds `relevance`). Stated so the
+        omission is a decision rather than the next round's finding.
+        """
+        long = "a" * 300
+        for kind, make in (
+            ("AllowList", lambda v: AllowList("s", "r", names=(v,))),
+            ("DenyList", lambda v: DenyList("s", "r", names=(v,))),
+            ("Filter eq", lambda v: Filter("s", "r", field="id", op="eq", value=v)),
+            ("Filter in", lambda v: Filter("s", "r", field="id", op="in", value=(v,))),
+            ("Filter not_in", lambda v: Filter("s", "r", field="id", op="not_in", value=(v,))),
+        ):
+            for bad in (long, "Not An Id", "", "UPPER"):
+                with pytest.raises(ValueError):
+                    make(bad)
+            make("book_list")           # ...and a real id still constructs, at every door
+            make("kg-build")            # ...including the hyphenated spelling CP-4 will bring
+
+        # A filter on a NON-id field is untouched: the bound is about ids, not about strings.
+        Filter("s", "r", field="owning_service", op="eq", value=long)
+
+    def test_CHECK_ROW_RAISES_EXACTLY_ONE_CLASS__so_a_second_handler_is_dead_code(self):
+        """🔴 **TWO `except UntrustedRow` CLAUSES SAT IN THE ALLOWLIST AS "REFUSALS NOTHING
+        CHECKS", AND THEY COULD NEVER FIRE.** A verifier proved it two ways — an AST call-closure
+        over `contract.py`, and 25 executed malformed rows, 25 of 25 `ContractViolation`. Nothing
+        checked them because nothing could reach them, which is a different category, and carrying
+        them as allowlisted debt made the instrument's own count wrong by two.
+
+        Both are deleted. This is what keeps that true: it asserts the **closure**, not the deletion,
+        so widening `check_row` to raise a second class fails here — where the answer is *"then the
+        handler comes back, deliberately"* — rather than silently restoring an unreachable branch.
+        """
+        import ast
+
+        from app.agentruntime.contract import check_row
+
+        pkg = Path(__file__).resolve().parents[1] / "app" / "agentruntime"
+        tree = ast.parse((pkg / "contract.py").read_text("utf-8"))
+        fns = {f.name: f for f in ast.walk(tree)
+               if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+        seen: set[str] = set()
+        reached: set[str] = set()
+
+        def walk(name):
+            if name in seen or name not in fns:
+                return
+            seen.add(name)
+            for n in ast.walk(fns[name]):
+                if isinstance(n, ast.Raise) and isinstance(n.exc, ast.Call):
+                    cls = getattr(n.exc.func, "id", getattr(n.exc.func, "attr", "?"))
+                    reached.add(cls)
+                elif isinstance(n, ast.Call):
+                    callee = getattr(n.func, "id", None)
+                    if callee in fns:
+                        walk(callee)
+
+        walk("check_row")
+        assert reached == {"ContractViolation"}, (
+            f"`check_row`'s transitive raise closure is {sorted(reached)}, not just "
+            f"{{'ContractViolation'}}. `manifest.build` and `manifest.validate_document` each "
+            f"dropped an `except UntrustedRow` on the strength of that closure; a second class "
+            f"means those refusals now vanish silently."
+        )
+        # ...and driven, because an AST closure is an argument about code and this is a claim about
+        # behaviour. Every malformed shape a row can take, through the one door.
+        for bad in ({"id": ""}, {"id": "Not An Id"}, {"kind": "nope"}, {"lifecycle": "nope"},
+                    {"members": "x"}, {"members": [""]}, {"members": [None]}, {"weight": 1},
+                    {"contract_version": "x"}, {"admitted_against": 7}, {"id": "a" * 300},
+                    {"kind": "skill"}):
+            with pytest.raises(ContractViolation):
+                check_row({**_VALID_ROW, **bad}, "row")
+        # ...and the shapes that are not an OVERLAY of a valid row, which the loop above cannot
+        # express: `{**_VALID_ROW, **{}}` is a valid row, and writing `{}` in that list was a
+        # vehicle that asserted nothing.
+        for whole in ({}, [], "row", None, 7, {"id": "t0"}):
+            with pytest.raises(ContractViolation):
+                check_row(whole, "row")
+
+    def test_EVERY_DOOR_READS_THE_DOCUMENTS_OWN_STAMPS(self):
+        """🔴 **24 OF 24 CELLS SERVED, AND I HAD MOVED THIS TO CP-2 ON A CRITERION THE BOARD NEVER
+        STATED.** The ROW definition was consolidated across every door; the DOCUMENT definition was
+        left in `validate_document` alone. So `rows_of`, `declarations`, `discover` and
+        `SurfaceAssembler` handed rows to a consumer out of a manifest carrying `manifest_version:
+        999`, `contract_version: "banana"`, either stamp missing, or an undefined top-level key —
+        every one of which `load()` refuses. `contract_version` is §6.4's queue COMPARAND.
+
+        The stated criterion for a transfer is *"no SUBJECT until a later checkpoint's code
+        exists"*; the reason I recorded was *"production-reachable at CP-2"*. **Those are different
+        predicates, and the nine items I kept were judged on the first.** A verifier moved it back
+        in one command, so it is fixed here and the transfer block is corrected at the claim.
+
+        This is the nine-classes finding one level up, and this is its enumeration: 6 document
+        defects × 6 doors.
+        """
+        good = build([admit(_tool("book_list"))], previous=None)
+        defects = {
+            "manifest_version missing": {k: v for k, v in good.items() if k != "manifest_version"},
+            "manifest_version 999": {**good, "manifest_version": 999},
+            "contract_version missing": {k: v for k, v in good.items() if k != "contract_version"},
+            "contract_version banana": {**good, "contract_version": "banana"},
+            "an undefined top-level key": {**good, "lane": "read"},
+            "the document is not a dict": [good],
+        }
+        doors = {
+            "rows_of": rows_of,
+            "declarations": lambda d: declarations(d),
+            "discover": lambda d: discover(d),
+            "SurfaceAssembler": lambda d: SurfaceAssembler(d),
+            "validate_document": validate_document,
+            "build(previous=)": lambda d: build([admit(_tool("book_get"))], previous=d),
+        }
+        served = []
+        for label, doc in defects.items():
+            for name, door in doors.items():
+                try:
+                    door(doc)
+                    served.append(f"{name} SERVED {label}")
+                except (UntrustedRow, TypeError, AttributeError):
+                    pass
+        assert not served, (
+            f"{len(served)} of {len(defects) * len(doors)} cells serve rows from a document the "
+            f"reader cannot make claims about: {served}"
+        )
+
     def test_A_KEY_PAIR_THAT_IS_NOT_A_PAIR_IS_REFUSED__and_the_vehicle_is_a_LIST(self):
         """🔴 **FIVE ROUNDS SILENT, AND THE REASON IS WHY THE OTHER VEHICLES PROVE NOTHING.**
         `OrderBy` refuses a key that is not a 2-tuple, and the census records that refusal as one
@@ -2201,6 +2554,26 @@ class TestStageKindsAreDataNotClosures:
             check_row_shape({**_VALID_ROW, "id": "s0", "kind": "skill",
                              "members": [Forged("book_list")]}, "row")
 
+        # 🔴 **AND THE TWIN — `check_contract` STILL USED `isinstance`, TWO FUNCTIONS AWAY.** A
+        # verifier executed it: `admit(Declaration(id=SubStr("book_list")))` **succeeded**, and so
+        # did a subclass MEMBER. So the one door whose entire job is to be the boundary accepted the
+        # exact forgery the row-shape pins had just been guarded against.
+        #
+        # **And my first repair of this shipped with no test at all** — my own reversion prover
+        # caught it: switching both pins back to `isinstance` left the suite GREEN, because the
+        # guard above is scoped to `check_row_shape`. A fix without a red-able test is not a closed
+        # finding, which is a standing rule of this run, and this is the second time in two rounds it
+        # was broken inside the repair for a twin.
+        with pytest.raises(ContractViolation, match="not a stable identifier"):
+            admit(Declaration(id=Forged("book_list"), kind="tool",
+                              source_path="services/book-service/x.go"))
+        with pytest.raises(ContractViolation, match="not a declaration id"):
+            admit(Declaration(id="world_setup", kind="skill", members=(Forged("book_list"),),
+                              source_path="services/chat-service/app/skills/world.py"))
+        # ...and the real spellings still admit at that door, so this is not a blanket refusal.
+        admit(_tool("book_list"))
+        admit(_skill("world_setup", members=("book_list",)))
+
     def test_AN_IMPORT_IS_A_CLAIM_ABOUT_WHAT_A_MODULE_DEPENDS_ON(self):
         """🔴 **B18-11 — `canon` was imported by two modules and called by neither, seven rounds.**
         The one `canon.nfc(...)` call was removed when a verifier refuted the harm its comment
@@ -2210,36 +2583,75 @@ class TestStageKindsAreDataNotClosures:
 
         Named as a property rather than as two deletions, because the deletions would go stale and
         the property will not: **a module may not import a name it does not use.**
-        """
-        import ast
 
+        🔴 **AND THE FIRST VERSION OF THIS GATE WAS DEFEATED BY ONE WORD OF PROSE.** It counted a
+        name appearing in **any whitespace-delimited token of any string literal** as a use, so a
+        verifier restored the exact seven-round defect with the suite green: re-add
+        `from . import canon`, change one docstring phrase so it contains the bare token `canon`,
+        **1 passed**. Same for `import re`. Not adversarial prose — *ordinary* prose, in files whose
+        docstrings are rewritten every round. **Fourth "a test satisfied by a comment" in this run,
+        and this one was inside the repair for the finding it closes.**
+
+        Enumerated by that verifier at **3 of 11** dead-import shapes caught, plus one
+        false-positive class. The naive repair is also wrong and was executed: deleting the
+        string-literal term reds **~30 re-exports in `__init__.py`**, which are "used" only through
+        the `__all__` string list. So the term is load-bearing for exactly one construct, and the
+        correct narrowing is to **that construct** — `__all__`'s elements — rather than to every
+        token of every string.
+
+        Six shapes are closed here, each named where it is closed. What remains open is stated in
+        the assertion rather than left for the next round to find.
+        """
         pkg = Path(__file__).resolve().parents[1] / "app" / "agentruntime"
         dead = []
-        for path in sorted(pkg.glob("*.py")):
-            tree = ast.parse(path.read_text("utf-8"))
-            bound = {}
-            for node in ast.walk(tree):
-                if isinstance(node, (ast.Import, ast.ImportFrom)):
-                    # `from __future__ import …` binds a COMPILER DIRECTIVE, not a name. Excluded by
-                    # module rather than by name, so a future feature added later is covered too.
-                    if isinstance(node, ast.ImportFrom) and node.module == "__future__":
-                        continue
-                    for a in node.names:
-                        if a.name == "*":
-                            continue
-                        bound[(a.asname or a.name).split(".")[0]] = node.lineno
-            used = {n.id for n in ast.walk(tree) if isinstance(n, ast.Name)}
-            used |= {n.attr for n in ast.walk(tree) if isinstance(n, ast.Attribute)}
-            used |= {s for n in ast.walk(tree) if isinstance(n, ast.Constant)
-                     and isinstance(n.value, str) for s in n.value.split()}
-            for name, lineno in bound.items():
-                if name not in used and not name.startswith("__"):
-                    dead.append(f"{path.name}:{lineno} imports {name}, which it never uses")
+        # `rglob`, not `glob`: a dead import in a sub-package was invisible. The package is flat
+        # today, which is exactly why the non-recursive form looked correct.
+        for path in sorted(pkg.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            dead += _dead_imports(path.read_text("utf-8"), path.name)
         assert not dead, (
             f"{dead} — an import is a claim about what a module depends on, and a reader (or a "
             f"grep) takes it at face value. `canon` was imported by two modules with zero call "
-            f"sites in either for seven consecutive rounds, and this gate's first run found a "
-            f"THIRD (`manifest.import re`) that eight rounds of review had not named."
+            f"sites in either for seven consecutive rounds; this gate's first run found a THIRD "
+            f"(`manifest.import re`) that eight rounds of review had not named; and its FIRST "
+            f"version was then defeated by putting the word `canon` in a docstring."
+        )
+
+        # 🔴 **THE CONTROL, AND WITHOUT IT THE NARROWING WAS ITSELF UNGUARDED.** My own reversion
+        # prover caught that: re-widening the string term left the suite GREEN, because a looser
+        # gate simply finds nothing. The property here is not *"no dead import exists"* — it is
+        # **"a dead import cannot be hidden"**, and only an injection can say that.
+        #
+        # Shapes 1-2 are the exact defeat a verifier executed: re-add the import AND put the bare
+        # token in prose. Shapes 3-6 are the other misses it enumerated. Shape 7 is the one
+        # construct the blanket term was actually buying, and it must stay GREEN.
+        MUST_CATCH = {
+            "a bare dead import": 'import re\n',
+            "the name as a bare word in the DOCSTRING": '"""we do not parse with re here."""\nimport re\n',
+            "the name in an unrelated message string": 'import re\nX = "re is not used"\n',
+            "the name shadowed by an unrelated attribute": 'import re\nX = c.re\n',
+            "the name reused as a local": 'import re\ndef f():\n    re = 1\n    return re\n',
+            "a dead `__`-prefixed alias": 'import re as __re\n',
+            "the SECOND dead import of a doubly-imported name": 'import re\nimport re\nY = re\n',
+        }
+        MUST_NOT_CATCH = {
+            "a re-export through `__all__`": 'from x import Admitted\n__all__ = ["Admitted"]\n',
+            "a genuinely used import": 'import re\nY = re.compile("x")\n',
+            "a side-effect-only dotted import": 'import app.agentruntime.canon\n',
+        }
+        missed = [k for k, src in MUST_CATCH.items() if not _dead_imports(src)]
+        assert not missed, (
+            f"{missed} hide a dead import from this gate. The first version was defeated by ONE "
+            f"WORD OF PROSE — a verifier restored the seven-round B18-11 defect with the suite "
+            f"green — which is the fourth 'a test satisfied by a comment' in this run and the "
+            f"second inside a repair for another."
+        )
+        wrong = [k for k, src in MUST_NOT_CATCH.items() if _dead_imports(src)]
+        assert not wrong, (
+            f"{wrong} are CORRECT code and this gate reds on them. The naive repair — deleting the "
+            f"string term outright — reds ~30 `__init__.py` re-exports, which is why the narrowing "
+            f"is to `__all__`'s elements and not to nothing."
         )
 
     def test_A_STAGE_MUST_NAME_THE_FIELD_IT_READS__and_the_order_it_ranks_by(self):
@@ -2389,6 +2801,185 @@ class TestStageKindsAreDataNotClosures:
             f"is not what was measured, which is a fix landing beside its subject"
         )
 
+    def test_NO_LIVE_TREE_PATH_REACHES_A_MUTATING_CALL__the_property_not_the_API_LIST(self):
+        """🔴 **THE CELL LIST WAS THE WRONG AXIS, AND A VERIFIER PREDICTED THE NEXT ROUND'S FAILURE
+        BEFORE I COULD COMMIT IT.**
+
+        The previous guard enumerated `{2 writers} × {4 write APIs}` and called it complete. It was
+        **the space a previous verdict happened to name**, adopted as though it were the space: A
+        derived **19** write APIs and measured **5 caught**. Blind to `io.open`, `os.open`+`os.write`,
+        `Path.touch`, `Path.mkdir`, `shutil.copytree`, `os.replace`, `os.rename`,
+        `NamedTemporaryFile`, `subprocess`, `os.link`, `mmap` — and **to every deletion API,
+        including `shutil.rmtree`, which this census calls at three live sites on a path returned by
+        a monkeypatchable `_mirror()`, and which is the exact API of the `%TEMP%`-deletion incident
+        the fix two commits earlier was written for.** The guard built after that incident could not
+        observe the call that caused it.
+
+        And the prediction: *"if C1 is repaired by adding the fourteen APIs I named as fourteen more
+        cells, the fifteenth will be found next round."* That is correct, and it is why this is not
+        that repair.
+
+        **The property is not about the API. It is about the PATH.** Python's filesystem surface is
+        open-ended; the set of expressions that can name the live tree is small and closed —
+        `ROOT`, `PKG`, `CS`, and whatever is derived from them. So this taints those three names,
+        propagates the taint through assignment to a fixed point, and refuses any tainted value
+        reaching **any call at all** except a read. One clause covers all nineteen of A's vehicles
+        and the twentieth nobody has written, because a write it cannot see is still a write whose
+        path came from here.
+
+        The behavioural drive stays below it: an AST rule is an argument about code, and the census
+        has already shipped two of those that were green over the thing they described.
+        """
+        import ast
+
+        script = _REPO / "scripts" / "agentruntime-census.py"
+        tree = ast.parse(script.read_text("utf-8"))
+
+        #: The names that denote the LIVE tree. Everything else in the module is a mirror path.
+        LIVE = {"ROOT", "PKG", "CS", "ALLOWLIST"}
+        #: Attributes that only READ. Anything not here is treated as a mutation, which is the safe
+        #: direction: a new read is a one-line addition to this set, made deliberately; a new write
+        #: is refused by default. `glob`/`rglob`/`read_bytes` are how the census enumerates sites,
+        #: and `relative_to`/`parents`/`name`/`parent` are path arithmetic.
+        READS = {"glob", "rglob", "read_bytes", "read_text", "exists", "is_file", "is_dir",
+                 "relative_to", "parents", "parent", "name", "resolve", "as_posix", "stat",
+                 "joinpath", "with_suffix", "splitlines", "decode", "encode", "startswith"}
+        #: Callables that cannot touch a filesystem no matter what they are handed. A live path
+        #: flowing into one of these is arithmetic or a message, not an operation on the tree.
+        #: Kept deliberately small: `subprocess.run` is NOT here, which is how the `cwd=CS` default
+        #: that ran pytest in the live tree was found — by this gate, on its first run.
+        PURE = {"sorted", "list", "set", "tuple", "len", "str", "repr", "print", "any", "all",
+                "enumerate", "zip", "max", "min", "next", "iter", "sum", "SystemExit", "Path",
+                "_sites", "_neutered", "_shape_digest", "_own_mirror", "_discard"}
+        #: The two functions allowed to hold a live path, each for a stated reason.
+        EXEMPT = {
+            # It READS the live tree to build the mirror — that is its entire job — and its only
+            # live-path calls are `git ls-files` (cwd=ROOT) and `shutil.copyfile(src, dst)`.
+            "_mirror",
+            # `--write` regenerates the allowlist, which IS a live file and is meant to be. The one
+            # deliberate live write in this module, and it is not a source file.
+            "main",
+        }
+
+        tainted_fns: dict[str, set[str]] = {}
+
+        def _offenders(tree) -> list[str]:
+            found: list[str] = []
+            _scan(tree, found)
+            return found
+
+        def _scan(tree, offenders):
+            for fn in ast.walk(tree):
+                if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    continue
+                if fn.name in EXEMPT:
+                    continue
+                _scan_fn(fn, offenders)
+
+        def _scan_fn(fn, offenders):
+            # Taint to a fixed point: a name assigned from anything carrying a live root is live.
+            tainted = set(LIVE)
+            for _ in range(12):
+                grew = False
+                for n in ast.walk(fn):
+                    if not isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                        continue
+                    value = n.value
+                    if value is None:
+                        continue
+                    if not any(isinstance(x, ast.Name) and x.id in tainted
+                               for x in ast.walk(value)):
+                        continue
+                    targets = n.targets if isinstance(n, ast.Assign) else [n.target]
+                    for t in targets:
+                        for el in ([t] if isinstance(t, ast.Name)
+                                   else getattr(t, "elts", [])):
+                            if isinstance(el, ast.Name) and el.id not in tainted:
+                                tainted.add(el.id)
+                                grew = True
+                if not grew:
+                    break
+            tainted_fns[fn.name] = tainted
+
+            for call in ast.walk(fn):
+                if not isinstance(call, ast.Call):
+                    continue
+                attr = getattr(call.func, "attr", None)
+                receiver_live = isinstance(call.func, ast.Attribute) and any(
+                    isinstance(x, ast.Name) and x.id in tainted
+                    for x in ast.walk(call.func.value))
+                arg_live = any(
+                    isinstance(x, ast.Name) and x.id in tainted
+                    for a in list(call.args) + [k.value for k in call.keywords]
+                    for x in ast.walk(a))
+                callee = attr or getattr(call.func, "id", "?")
+                if receiver_live and callee not in READS:
+                    offenders.append(
+                        f"{fn.name}:{call.lineno} calls `{callee}` ON a live-tree path")
+                elif arg_live and callee not in READS | PURE:
+                    offenders.append(
+                        f"{fn.name}:{call.lineno} passes a live-tree path INTO `{callee}`")
+
+        offenders = _offenders(tree)
+        assert not offenders, (
+            f"{offenders} — a value derived from {sorted(LIVE)} reaches a call that is not a read. "
+            f"The census neuters production source; anything it does to the live tree is a "
+            f"`raise -> pass` left in a tracked module on the next interruption, and every "
+            f"concurrent suite run reddening blaming a test. Both measured. If the call really is "
+            f"read-only, add it to READS in the same change and say why."
+        )
+        # The gate must be able to see the live roots at all — otherwise it is green over a module
+        # whose names were simply spelled differently.
+        assert LIVE <= set(tainted_fns.get("census", ())), (
+            "the taint roots are not present in `census()`; the gate is measuring nothing"
+        )
+
+        # 🔴 **THE CONTROL — all nineteen APIs a verifier enumerated, plus the two shapes it
+        # predicted would be found NEXT round.** Every one of them is caught by ONE clause, because
+        # each names the live tree and none of them can avoid doing so. That is the whole argument
+        # for binding the path instead of the API: the API list is open, and this one is not.
+        VEHICLES = {
+            "Path.write_bytes": "(ROOT / 'x').write_bytes(b'x')",
+            "Path.write_text": "(ROOT / 'x').write_text('x')",
+            "Path.open('wb')": "(ROOT / 'x').open('wb').write(b'x')",
+            "builtins.open('w')": "open(str(ROOT / 'x'), 'w').write('x')",
+            "shutil.copyfile": "__import__('shutil').copyfile('a', ROOT / 'x')",
+            "io.open": "__import__('io').open(str(ROOT / 'x'), 'w')",
+            "os.open+os.write": "__import__('os').write(__import__('os').open(str(ROOT / 'x'), 1), b'x')",
+            "Path.touch": "(ROOT / 'x').touch()",
+            "Path.mkdir": "(ROOT / 'x').mkdir()",
+            "shutil.copytree": "__import__('shutil').copytree('a', ROOT / 'x')",
+            "os.replace": "__import__('os').replace('a', ROOT / 'x')",
+            "os.rename": "__import__('os').rename('a', ROOT / 'x')",
+            "NamedTemporaryFile": "__import__('tempfile').NamedTemporaryFile(dir=ROOT, delete=False)",
+            "subprocess": "subprocess.run(['sh', '-c', 'x'], cwd=ROOT)",
+            "os.link": "__import__('os').link('a', ROOT / 'x')",
+            "mmap": "__import__('mmap').mmap(__import__('os').open(str(ROOT / 'x'), 2), 0)",
+            "os.remove": "__import__('os').remove(ROOT / 'x')",
+            "Path.unlink": "(ROOT / 'x').unlink()",
+            "shutil.rmtree": "__import__('shutil').rmtree(ROOT)",
+            # ...and the two the verifier said a cell-list repair would miss next round.
+            "ctypes": "__import__('ctypes').CDLL(None).unlink(str(ROOT / 'x').encode())",
+            "a re-exported pathlib": "__import__('pathlib').Path(ROOT / 'x').write_bytes(b'x')",
+            # ...and one through an intermediate local, which is what the fixed point is for.
+            "an aliased local": "_p = ROOT / 'x'\n_p.write_bytes(b'x')",
+        }
+        blind = []
+        for label, stmt in VEHICLES.items():
+            mutated = ast.parse(script.read_text("utf-8"))
+            fn = next(n for n in mutated.body
+                      if isinstance(n, ast.FunctionDef) and n.name == "census")
+            fn.body[1:1] = ast.parse(stmt).body
+            ast.fix_missing_locations(mutated)
+            if not _offenders(mutated):
+                blind.append(label)
+        assert not blind, (
+            f"{len(blind)} of {len(VEHICLES)} live-tree write vehicles are invisible: {blind}. "
+            f"The previous guard patched four Python-level entry points and a verifier found "
+            f"fourteen more; the answer is not fifteen more cells, it is that a write this gate "
+            f"cannot name is still a write whose PATH came from here."
+        )
+
     def test_NEITHER_CENSUS_WRITER_CAN_REACH_THE_LIVE_TREE__all_8_cells(self):
         """🔴 **THE GUARD ABOVE WATCHES ONE WRITER THROUGH ONE API: 1 OF 8 CELLS.**
 
@@ -2478,10 +3069,19 @@ class TestStageKindsAreDataNotClosures:
                     return io.BytesIO() if "b" in str(mode) else io.StringIO()
                 return _rbo(file, mode, *a, **kw)
 
-            def _fake_green(cwd=None):
-                # Green at the selftest's baseline, red under injection — the two answers
-                # `_selftest` needs to run to completion without a real pytest.
-                return cwd is None
+            def _fake_green(cwd):
+                # 🔴 This used to answer on `cwd is None`, which stopped working the moment
+                # `_suite_is_green`'s live-tree `cwd` DEFAULT was removed — the baseline and the
+                # probe run now pass the same argument, as they should. A counter would have worked
+                # and would have been a fake that agrees with the drive by construction.
+                #
+                # So it answers the question the real suite answers: **is the package under `cwd`
+                # still the package on disk?** Green until something is neutered, red the moment
+                # anything is — which is what makes `census()`'s 68 iterations and `_selftest`'s
+                # two-direction check both behave like the real thing without pytest.
+                pkg = pathlib.Path(cwd) / "app" / "agentruntime"
+                return all(p.read_bytes() == (real_pkg / p.name).read_bytes()
+                           for p in sorted(pkg.glob("*.py")))
 
             try:
                 with pytest.MonkeyPatch.context() as mp:
@@ -2577,11 +3177,39 @@ class TestStageKindsAreDataNotClosures:
                     out.append(stripped)
             return "\n".join(out)
 
+        #: 🔴 **THE COMMAND CLAUSES WERE A BLACKLIST, AND A BLACKLIST OF SHELL SPELLINGS IS NOT A
+        #: SPACE.** The previous version refused `||`, `set +e` and a whole-line `exit 0`; a verifier
+        #: walked past it with `; true` on the same line, `&`, `| cat`, `echo …`, `--help`,
+        #: `if false; then … fi`, `trap 'exit 0' ERR`, and a mid-line `#` comment. Nine more
+        #: spellings would have been nine more clauses and a tenth spelling.
+        #:
+        #: So the command is a **whitelist**: the census step's live command, whitespace-normalised,
+        #: must be exactly this. One clause, and the space it covers is closed.
+        EXPECTED = "python scripts/agentruntime-census.py"
+
         triggers = wf.get("on") or wf.get(True)          # PyYAML parses bare `on:` as the bool True
-        assert isinstance(triggers, dict) and ({"push", "pull_request"} & set(triggers)), (
-            f"the workflow's triggers are {triggers!r}: a census that never runs on a push or a "
-            f"pull request is a gate nobody passes through"
-        )
+        # 🔴 An INTERSECTION: one key sufficed, so deleting `pull_request` left the check green over
+        # a census that never gates a PR. Both are required, and so are their VALUES — `paths`,
+        # `paths-ignore`, `branches` and `types` each narrow a trigger to nothing while the key
+        # remains, and none of them was read.
+        assert isinstance(triggers, dict), f"the workflow's triggers are {triggers!r}"
+        for needed in ("push", "pull_request"):
+            assert needed in triggers, (
+                f"the workflow does not fire on `{needed}`: a census that does not gate a pull "
+                f"request is a gate nobody passes through"
+            )
+            cfg = triggers[needed] or {}
+            assert not isinstance(cfg, dict) or not (set(cfg) & {"paths", "paths-ignore", "types"}), (
+                f"`on.{needed}` is narrowed by {sorted(set(cfg) & {'paths', 'paths-ignore', 'types'})}"
+                f", so the workflow can be silently skipped for the changes this gate is about"
+            )
+            branches = (cfg or {}).get("branches") if isinstance(cfg, dict) else None
+            assert branches is None or "main" in branches, (
+                f"`on.{needed}.branches` is {branches!r} and does not include `main`"
+            )
+        # `defaults.run.shell` at workflow level can swallow a non-zero rc for every step below it.
+        assert "defaults" not in wf, "a workflow-level `defaults` can redefine the shell rc handling"
+
         job = (wf.get("jobs") or {}).get("agentruntime-census")
         assert job, "the census job is not in the workflow"
         assert "if" not in job, "the census job is conditional, so it can be skipped silently"
@@ -2589,21 +3217,41 @@ class TestStageKindsAreDataNotClosures:
             "the census JOB is continue-on-error, so every step inside it can fail green — the "
             "step-level check below never sees this one"
         )
+        # 🔴 None of these five was read, and each disables the job while leaving every `run:`
+        # string intact: a never-matching runner label, a dependency on a job that skips, a matrix
+        # that excludes every combination, and a shell override at either level.
+        assert job.get("runs-on") in ("ubuntu-latest", "ubuntu-22.04", "ubuntu-24.04"), (
+            f"`runs-on` is {job.get('runs-on')!r}; a label no runner carries queues forever and the "
+            f"check never reports"
+        )
+        assert "needs" not in job, (
+            f"the census `needs` {job.get('needs')!r}: if that job is skipped this one is skipped "
+            f"too, and the workflow still succeeds"
+        )
+        assert "strategy" not in job, (
+            "a matrix can exclude every combination, producing zero jobs and a green workflow"
+        )
+        assert "defaults" not in job, "a job-level `defaults` can redefine the shell rc handling"
+
         steps = job.get("steps") or []
         runs = [_live(s.get("run", "")) for s in steps]
-        census_steps = [(s, r) for s, r in zip(steps, runs) if "agentruntime-census.py" in r]
+        census_steps = [(s, r) for s, r in zip(steps, runs)
+                        if "agentruntime-census.py" in r or "agentruntime-census.py" in
+                        str(s.get("uses", ""))]
         assert census_steps, "no step runs the census; installing its dependencies is not running it"
         for s, r in census_steps:
-            assert "--write" not in r and "--selftest" not in r, (
-                f"the CI step runs {r!r}: --write regenerates the allowlist instead of checking it, "
-                f"and --selftest alone never enumerates a single site"
+            # The whitelist. Every command family the blacklist chased — `--write`, `--selftest`,
+            # `|| true`, `; true`, `&`, `| cat`, `echo`, `--help`, `if false`, `trap` — fails this
+            # one clause, and so does the eleventh spelling nobody has written.
+            assert " ".join(r.split()) == EXPECTED, (
+                f"the census step runs {r!r}, not exactly {EXPECTED!r}. Anything else is a command "
+                f"whose exit code this check has not established reaches the job: a trailing "
+                f"`; true`, a `| cat`, a `&`, an `echo`, a `--help`, or a flag that regenerates the "
+                f"allowlist instead of checking it."
             )
-            assert "||" not in r, f"the CI step swallows its own failure: {r!r}"
-            assert "set +e" not in r and "set +o errexit" not in r, (
-                f"the step disables error propagation before running the census: {r!r}"
-            )
-            assert not any(line.strip() in ("exit 0", "true") for line in r.splitlines()), (
-                f"the step ends by discarding the census's exit code: {r!r}"
+            assert "shell" not in s, (
+                f"the step overrides its `shell` ({s.get('shell')!r}), which decides whether a "
+                f"non-zero exit fails the step at all"
             )
             assert "if" not in s, (
                 f"the census STEP is conditional, so the job can be green having never run it: "
@@ -2614,6 +3262,123 @@ class TestStageKindsAreDataNotClosures:
         assert "requirements-test.txt" in installs, (
             "the job installs no pytest BEFORE the census runs, so the census's selftest runs the "
             "suite and can only fail - a gate whose green state is unreachable"
+        )
+
+    def test_THE_ALLOCATOR_FREES_WHAT_IT_ALLOCATED_WHEN_IT_FAILS(self):
+        """🔴 **THE TWELFTH PAIR REPAIRED AT ONE END, AND MY FIRST FIX FOR IT HAD NO TEST.**
+
+        `census()` and `_selftest()` each free their mirror in a `finally`. A verifier then pointed
+        at the third site: **`_mirror()` itself**. It calls `mkdtemp` and *then* does work that can
+        fail — `git ls-files` erroring, a permission error, a Windows path-length limit on a deep
+        tracked path under the long temp prefix this very verification workflow checks out into.
+        When it raises, neither writer's `try` has been entered, so neither `finally` covers it and
+        `census()`'s `atexit` is not registered yet. Executed by that verifier both ways: an empty
+        directory on the `git` failure, and one holding a **partial copy of the repository** on a
+        mid-copy `OSError` — 239 MB of a tree that is not the tree, which is worse debris than none.
+
+        And my repair shipped unguarded: the 8-cell drive **patches `_mirror`**, so the real one's
+        failure path is never exercised there. My own reversion prover caught it — removing the
+        `except` left the suite green. **A function that allocates before it can fail owns what it
+        allocated until it returns**, and that is what this drives, on both failure paths.
+        """
+        import importlib.util
+        import pathlib
+        import subprocess
+        import tempfile
+
+        spec = importlib.util.spec_from_file_location(
+            "_census_alloc_probe", _REPO / "scripts" / "agentruntime-census.py")
+        census_mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(census_mod)
+
+        temp_root = pathlib.Path(tempfile.gettempdir())
+
+        def _mirrors_now():
+            return {p for p in temp_root.glob("lw-census-*") if p.is_dir()}
+
+        for label, boom in (
+            ("`git ls-files` fails", lambda *a, **k: (_ for _ in ()).throw(
+                subprocess.CalledProcessError(128, "git"))),
+            ("the copy loop raises mid-way", None),
+        ):
+            before = _mirrors_now()
+            with pytest.MonkeyPatch.context() as mp:
+                if boom is not None:
+                    mp.setattr(census_mod.subprocess, "run", boom)
+                else:
+                    calls = {"n": 0}
+
+                    def _fail_after_a_few(src, dst):
+                        calls["n"] += 1
+                        if calls["n"] > 5:
+                            raise OSError(36, "File name too long")
+                        return None
+
+                    # `shutil` is imported INSIDE `_mirror`, so it is not an attribute of the
+                    # module — patch the real one, which is what `_mirror` will look up.
+                    import shutil as _sh
+                    mp.setattr(_sh, "copyfile", _fail_after_a_few)
+                with pytest.raises(BaseException):        # noqa: B017 - the failure is the input
+                    census_mod._mirror()
+            leaked = sorted(str(p) for p in _mirrors_now() - before)
+            assert not leaked, (
+                f"{label}: `_mirror()` left {leaked} behind. It allocated before it could fail, so "
+                f"nothing else can free it: neither writer's `try` has been entered and the "
+                f"`atexit` is not registered yet."
+            )
+
+    def test_THE_DIGEST_IS_BLIND_TO_PROSE__including_an_f_STRING(self):
+        """🔴 **AN f-STRING WAS NOT PROSE-BLIND, AND THE DRIFT CHECK COULD NOT SEE THE CHURN.**
+
+        `_shape_digest` blanks `ast.Constant` strings so that rewording a refusal keeps its
+        allowlist row. An f-string is a `JoinedStr` whose `FormattedValue` carries a bare `ast.Name`
+        — so adding `{ID_MAX_LEN}` to one message moved `check_contract::ContractViolation::7` from
+        `6899e25d` to `179f246e`, and the census printed **`NOW GUARDED — drop it from the
+        allowlist`** for a row whose id had simply ceased to exist.
+
+        **The half that matters is why nobody could have noticed.** On a RED site the churn is
+        invisible: the old id leaves the allowlist and reads as a closed finding, and the new id,
+        being red, never appears as `NEWLY SILENT`. So *"zero NEWLY SILENT, therefore the digest did
+        not churn"* is an inference whose control and seed agree by construction — and I published
+        it as evidence. A verifier caught it.
+
+        My repair also shipped unguarded, which my own prover caught: removing `visit_JoinedStr`
+        left the suite green.
+        """
+        import ast
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "_census_digest_probe", _REPO / "scripts" / "agentruntime-census.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        def _digest(src: str) -> str:
+            node = next(n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Raise))
+            return mod._shape_digest(node)
+
+        # The same refusal, three ways of writing its message. All three must be one row.
+        plain = 'raise ValueError("the id is not acceptable")'
+        reworded = 'raise ValueError("this identifier cannot be admitted, and here is why")'
+        fstring = 'raise ValueError(f"the id is not acceptable: at most {LIMIT} characters")'
+        fstring2 = 'raise ValueError(f"nope: {OTHER_NAME} and {A_THIRD}")'
+        digests = {k: _digest(v) for k, v in
+                   {"plain": plain, "reworded": reworded, "f-string": fstring,
+                    "another f-string": fstring2}.items()}
+        assert len(set(digests.values())) == 1, (
+            f"the digest is not blind to prose: {digests}. A reworded message must keep its "
+            f"allowlist row — and an f-string is a message. When it does not, a row silently "
+            f"relocates and the drift check reports it as a CLOSED FINDING, because a churn on a "
+            f"RED site produces a `NOW GUARDED` line with no matching `NEWLY SILENT`."
+        )
+        # ...and the control: a STRUCTURAL change must still move the row, or the digest is blind
+        # to everything and every site collapses onto one id.
+        assert _digest('raise TypeError("the id is not acceptable")') not in digests.values(), (
+            "the digest no longer distinguishes the exception CLASS; blanking has gone from "
+            "prose-blind to blind"
+        )
+        assert _digest('raise ValueError("x", "y")') not in digests.values(), (
+            "the digest no longer distinguishes the refusal's ARITY"
         )
 
     def test_THE_CENSUS_IS_WIRED_TO_RUN_IN_CI(self):
@@ -2703,7 +3468,93 @@ class TestStageKindsAreDataNotClosures:
         def _empty_steps(wf):
             wf["jobs"][JOB]["steps"] = []
 
+        # 🔴 **A VERIFIER ENUMERATED 22 MORE AND THE CHECK SURVIVED 19 OF THEM.** My seventeen were
+        # one narrow family — the text of a `run:` string plus `if`/`continue-on-error` at two
+        # levels — and I published them as the space. They are all here now, as controls, because a
+        # count of shapes I chose is a count of what I thought of.
+        def _semicolon_true(wf):
+            _census_step(wf)["run"] = RUN + " ; true"
+
+        def _background(wf):
+            _census_step(wf)["run"] = RUN + " &"
+
+        def _pipe_cat(wf):
+            _census_step(wf)["run"] = RUN + " | cat"
+
+        def _echoed(wf):
+            _census_step(wf)["run"] = "echo " + RUN
+
+        def _help_flag(wf):
+            _census_step(wf)["run"] = RUN + " --help"
+
+        def _if_false(wf):
+            _census_step(wf)["run"] = "if false; then " + RUN + "; fi"
+
+        def _trap_exit(wf):
+            _census_step(wf)["run"] = "trap 'exit 0' ERR\n" + RUN
+
+        def _midline_comment(wf):
+            _census_step(wf)["run"] = "echo stub  # " + RUN
+
+        def _paths_ignore(wf):
+            wf.pop("on", None), wf.pop(True, None)
+            wf["on"] = {"push": {"paths-ignore": ["**"]}, "pull_request": {"paths-ignore": ["**"]}}
+
+        def _paths_docs(wf):
+            wf.pop("on", None), wf.pop(True, None)
+            wf["on"] = {"push": {"paths": ["docs/**"]}, "pull_request": {"paths": ["docs/**"]}}
+
+        def _no_such_branch(wf):
+            wf.pop("on", None), wf.pop(True, None)
+            wf["on"] = {"push": {"branches": ["no-such-branch"]},
+                        "pull_request": {"branches": ["no-such-branch"]}}
+
+        def _pr_types_labeled(wf):
+            wf.pop("on", None), wf.pop(True, None)
+            wf["on"] = {"push": {"branches": ["main"]}, "pull_request": {"types": ["labeled"]}}
+
+        def _push_only(wf):
+            wf.pop("on", None), wf.pop(True, None)
+            wf["on"] = {"push": {"branches": ["main"]}}
+
+        def _never_matching_runner(wf):
+            wf["jobs"][JOB]["runs-on"] = ["self-hosted", "never-exists"]
+
+        def _needs_a_skippable_job(wf):
+            wf["jobs"][JOB]["needs"] = ["lint"]
+
+        def _matrix_all_excluded(wf):
+            wf["jobs"][JOB]["strategy"] = {"matrix": {"x": [1], "exclude": [{"x": 1}]}}
+
+        def _workflow_defaults_shell(wf):
+            wf["defaults"] = {"run": {"shell": "bash -c 'eval \"$0\"; exit 0' {0}"}}
+
+        def _job_defaults_shell(wf):
+            wf["jobs"][JOB]["defaults"] = {"run": {"shell": "bash -c 'eval \"$0\"; exit 0' {0}"}}
+
+        def _step_shell(wf):
+            _census_step(wf)["shell"] = "bash -c 'eval \"$0\"; exit 0' {0}"
+
         SHAPES = {
+            "`; true` on the same line": _semicolon_true,
+            "`&` backgrounds it": _background,
+            "`| cat` takes the pipeline's rc": _pipe_cat,
+            "the command is echoed, not run": _echoed,
+            "`--help` instead of a census": _help_flag,
+            "`if false; then ... fi`": _if_false,
+            "`trap 'exit 0' ERR` before it": _trap_exit,
+            "a MID-LINE `#` hides the command": _midline_comment,
+            "`paths-ignore: ['**']` on both triggers": _paths_ignore,
+            "`paths: ['docs/**']`": _paths_docs,
+            "`branches: [no-such-branch]`": _no_such_branch,
+            "`pull_request: {types: [labeled]}`": _pr_types_labeled,
+            "`pull_request` deleted, push-only": _push_only,
+            "a never-matching `runs-on` label": _never_matching_runner,
+            "`needs:` a job that can skip": _needs_a_skippable_job,
+            "a matrix with every combination excluded": _matrix_all_excluded,
+            "workflow-level `defaults.run.shell` swallows rc": _workflow_defaults_shell,
+            "job-level `defaults.run.shell` swallows rc": _job_defaults_shell,
+            "step-level `shell:` swallows rc": _step_shell,
             "the job is deleted": _drop_job,
             "the job is `if: false`": _job_if_false,
             "the STEP is `if: false`": _step_if_false,
@@ -2738,6 +3589,16 @@ class TestStageKindsAreDataNotClosures:
         assert not survived, (
             f"{len(survived)} of {len(SHAPES)} ways to disable the census leave the CI check GREEN: "
             f"{survived}. Each is a way this gate can stop gating with nobody informed."
+        )
+        # 🔴 **AND THE ONE SHAPE NO YAML CHECK CAN EVER SEE, RECORDED RATHER THAN LEFT IMPLICIT.**
+        # Branch protection may simply not require `agentruntime-census`, and nothing in this
+        # repository can observe that: the setting lives in GitHub, not in the tree. It is a
+        # **permanent named residual**, not a gap to be closed later, and the honest place for it is
+        # beside the enumeration that would otherwise read as complete. Every count above is
+        # therefore "of the shapes expressible in this file".
+        assert len(SHAPES) >= 36, (
+            f"the enumeration shrank to {len(SHAPES)}; it was 39 shapes across two independent "
+            f"derivations and shrinking it is how a published count becomes a lower bound again"
         )
 
     def test_THE_MANIFEST_IS_WRITTEN_WITH_LF_ON_EVERY_PLATFORM(self, tmp_path):
