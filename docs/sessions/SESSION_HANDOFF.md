@@ -18,7 +18,7 @@ version: **everything built is a WRITE, everything missing is a READ.**
 |---|---|
 | **0** — the AMEND bundle | ✅ `217d325f0` + `3e6358749`. `REC-99`..`REC-102`, 16 LOCKED files amended so they stop stating things that are false. `REC-102` PO-approved. |
 | **1** — `crates/dp`: tiers, scopes, `DpAggregate` | 🟡 **Three rounds of cold-start refutation, all three BLOCK, 45 findings.** The type-system half survived every direct attack, including from a crate outside this repo. The source-check half was broken 11 times and is now **retired**: the property is enforced over a real `syn` AST in `crates/dp/tests/aggregate_contract.rs`, and `scripts/dp-aggregate-gate.py` is a runner. **Not closed** — 9 gaps are recorded and open, and no round has returned CLEAR. |
-| **1b** — the `channels` table (`DP-Ch1`/`Ch2`/`Ch3`) | 🟡 **built, live-verified, one refutation round survived, a second in flight.** `FLOW-9` is discharged: `06_data_plane/` had specified this table since Phase 4 and no migration ever shipped. `0019_channels.{up,down}.sql` now exists, **46/46 on a live Postgres 18**. Round `1b.5` returned BLOCK with 16 findings; all ten that were itemised and left open are discharged in `1b.6`. `1b.7` (a different refuter, worktree-isolated against `adbfcdd9e`) is the open row. |
+| **1b** — the `channels` table (`DP-Ch1`/`Ch2`/`Ch3`) | 🟡 **built, live-verified, TWO refutation rounds survived — 54/54 on a live Postgres 18.** `FLOW-9` discharged: the tier had specified this table since Phase 4 and no migration ever shipped. `1b.5` returned BLOCK (16 findings, all itemised ones closed in `1b.6`); `1b.7` ran **two** refuters on different bytes — one attacking a live database, one asking what nobody looked at — and **both returned BLOCK, neither finding what the other found**. All HIGH and MEDIUM discharged in `1b.10`. **The headline: `0019` was applied by NOTHING** — the migration manifest ended at `0013`, six migrations unregistered, so the orchestrator had been applying an eight-month-old schema. Three LOW recorded not fixed (superuser bypass, `INHERITS`, `reality_root` vs `id > 0`). |
 | **2**–**5** | ⬜ boards written per slice, at its start. |
 
 **The finding worth carrying forward is `V1-F1`.** Slice 1 was put to the PO on the claim that an
@@ -60,7 +60,19 @@ re-parenting is now a SUBTREE operation (a parent's depth is referenced by its c
 why the key is `DEFERRABLE`; both halves are measured — the rigid path refused, the deferred subtree
 move accepted, the resulting tree printed.
 
-**Two consequences to know before touching this table.** `channels_no_self_parent` was **removed** —
+**The sentence `1b.7` produced, and it is the one to carry past this slice:**
+
+> **The migration's mechanism is strong, and its DESCRIPTION of the mechanism was stronger than the
+> mechanism.** *"Not representable"* is not what a constraint gives you — a constraint gives you
+> *"rejected, as long as the thing it depends on is still there."*
+
+The cycle guarantee rested on `parent_depth = depth - 1`, which lived in a **column definition** —
+DDL, not data. `ALTER COLUMN parent_depth DROP EXPRESSION` needs only table ownership, and then a
+self-parent inserts in one statement. `REC-104` and `1bF-2` were checks that could not FAIL; this
+was a claim that could not be TRUE, and **no amount of biting the constraint would have found it,
+because the constraint worked.** What found it was someone asking *what does this rest on?*
+
+**Three consequences to know before touching this table.** `channels_no_self_parent` was **removed** —
 the key makes a self-parented row impossible, so the `CHECK` could no longer fail (`NV-1`), and the
 proof is the bite: drop the foreign key and the row it used to catch inserts. And `1b5-M2` **recurred
 inside the commit that fixed `1b5-H2`**: two bite legs' violating rows became refused by the new
@@ -68,7 +80,10 @@ foreign key *before* the constraint under test ran, so neither proved its own co
 load-bearing. Both decisions were individually correct — that is `NV`'s *"an adjacent decision
 defeats it"* — and the only reason it did not ship is that the bite harness demands each constraint
 be the SOLE refuser. **A new constraint does not only add coverage; it can silently remove the
-exclusivity of an old one.**
+exclusivity of an old one.** And **a live channel could be created under a dissolved one**, which
+falsified the induction the other two lifecycle rules leaned on — induction over *transitions* says
+nothing about *creation*, and the trigger fired `BEFORE UPDATE OF lifecycle`, so an INSERT never
+consulted it. Both refuters found that one independently.
 
 **Two mechanisms the next session should know about:** the **spec oracle**
 (`crates/dp/tests/spec_oracle.rs`) parses six tables out of the LOCKED corpus and asserts they equal

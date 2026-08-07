@@ -1843,6 +1843,28 @@ the trigger and are not bypasses. And the bite legs were audited as honest: each
 drops exactly its own constraint and shows the row move from rejected to
 accepted. *"The harness's problem is coverage, not integrity."*
 
+#### `1b7gap-M8` — the Phase-0 gate could not see the file where Phase 0 happened
+
+`scripts/phase0-reconcile-gate.py` had `SPEC_ROOTS = ("docs/specs", "docs/03_planning")` and
+`governed_specs()` returned **three files**. The Phase-0 discipline for this entire build lives in
+`docs/plans/2026-08-06-game-tier-build-RUN-STATE.md` — a file the gate could not open — and
+`CLAUDE.md` lists `docs/plans/YYYY-MM-DD-<feature>.md` as a first-class PLAN artifact in the same
+table as `docs/specs`. **An omission, not a decision: `NV-3` at the process level, inside the gate
+written to stop Phase 0 being skipped.** Scope widened; 3 governed specs → 4.
+
+Two things fell out of doing it, and both were real:
+
+* **The standards index had NO ROW for `DP-Ch1–Ch37`** — twenty-six LOCKED documents governing this
+  tier, and nothing to reconcile *against*. The gate could not have checked this slice even had it
+  been reading the right directory. Row added, naming the four mechanisms that now hold the family.
+* **`Reconciles:` listed `FLOW-9` and `FLOW-19`**, which are this run's own audit findings rather
+  than prior art. *Reconciles* means *"here is what I opened before designing"*; listing your own
+  findings there inflates the look you took. They moved to a separate sentence. The field is also
+  now ONE LINE, because the regex is `$` under `MULTILINE` and had only ever read the first — so
+  the two unresolvable entries were the only two it would have seen, which is luck, not design.
+
+Bitten both ways: remove the line → red; name a phantom row → red.
+
 #### The sentence to carry forward
 
 > **The migration's mechanism is strong, and its DESCRIPTION of the mechanism was
@@ -1951,9 +1973,24 @@ Asked the three questions with commands rather than memory, and all three answer
 | `1bF-2` | 🟠 **`CONSTRAINT channels_root_single UNIQUE (id)` is vacuous.** `id` is already `PRIMARY KEY`, so the constraint adds nothing and can never fire. Its NAME says what it was meant to do — *exactly one root per reality* — which is a real invariant (`DP-Ch1`: *"a strict tree; every channel except the root has exactly one parent"*) and is **enforced by nothing**. The honest form is a partial unique index on `(parent IS NULL)`. This is a check that cannot fail, in a LOCKED spec, which is `NV-1` and was sitting there before this run. |
 | `1bF-3` | **`FLOW-19` becomes EXPRESSIBLE by this slice.** (⚠ This read *"is discharged BY this slice"* until `1b7gap-H4` measured the contradiction: two artifacts said discharged, `0019_channels.down.sql:12` and `13_channel_ordering_and_writer.md` said still open, and `FLOW-*` appears **zero** times in `scripts/deferral-gate.py` -- so nothing would have noticed if the key never landed. `1b.9` decides it stays open and `flow19_trigger()` in the schema gate reds the moment `channels` gains a non-test writer.) `channel_writer_state.channel_id` ships as `BIGINT` with **no foreign key** — which it could not have had, because `channels` has no migration (`FLOW-9`). Once the table exists at `BIGINT`, the FK becomes writable. Whether to add it is a slice-1b decision, not an assumption: it is a per-reality DB, and the lease table is keyed `(reality_id, channel_id)`. |
 
-**Reconciles:** `FLOW-9` (the table does not exist), `FLOW-19` (the lease table references it anyway),
-`REC-102a` (`ChannelId` is `i64`), `DP-Ch1`/`DP-Ch2`/`DP-Ch3`, `DP-Ch11` (the allocator),
-`DP-Ch13` (the writer lease), `DP-A2` (CP not on the hot path — why this is per-reality and not CP).
+**Reconciles:** `DP-Ch1–Ch37`, `DP-A1–A19`, `Locked Decisions ledger`
+
+Which is: `DP-Ch1` (the tree) · `DP-Ch2` (the registry) · `DP-Ch3` (the delta stream) · `DP-Ch11`
+(the allocator — **and `1b7gap-M1` later measured that it allocates `channel_event_id`, not
+`channels.id`**) · `DP-Ch13` (the writer lease) · `DP-Ch31`–`DP-Ch37` (lifecycle) · `DP-A2` (CP not
+on the hot path — why this is per-reality and not CP) · `REC-102a` (`ChannelId` is `i64`). **The
+`DP-Ch1–Ch37` row did not exist in the standards index until `1b7gap-M8`** — twenty-six LOCKED
+documents governing this tier, and no row, which is why the Phase-0 gate could not have checked this
+slice's reconciliation even had it been reading `docs/plans/`.
+
+**What this slice DISCHARGES, which is a different list** (`1b7gap-M8`): `FLOW-9` (the table does
+not exist) and `FLOW-19` (the lease table references it anyway) — both findings of §6h, this run's
+own audit, not rows of the standards index. They stood inside the `Reconciles:` field until the
+Phase-0 gate was widened to `docs/plans/` and rejected them by name. **The gate was right and the
+distinction is real:** *reconciles* means *"here is the prior art I opened before designing"*, and
+listing your own findings there inflates the look you actually took. It also only ever read the
+FIRST line of the field — `$` under `MULTILINE` — so the two unresolvable entries were the only two
+it saw, which is luck rather than design and is why the field is now one line.
 
 ### Why §0's DoD applies here and slice 1's does not
 

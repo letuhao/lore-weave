@@ -78,8 +78,18 @@ INDEX = REPO / "docs" / "standards" / "README.md"
 #: Specs dated on or after this must reconcile. The day the law was agreed.
 CUTOFF = "2026-08-06"
 
-#: Both trees `CLAUDE.md` names for new specs.
-SPEC_ROOTS = ("docs/specs", "docs/03_planning")
+#: Both trees `CLAUDE.md` names for new specs — plus `docs/plans`, added
+#: 2026-08-08 (`1b7gap-M8`).
+#:
+#: A cold-start critic measured the hole: `governed_specs()` returned exactly
+#: THREE files, and **the Phase-0 discipline for the whole `crates/dp` build was
+#: performed in `docs/plans/2026-08-06-game-tier-build-RUN-STATE.md`** — a file
+#: this gate could not see, using entry names it would have rejected. `CLAUDE.md`
+#: lists `docs/plans/YYYY-MM-DD-<feature>.md` as a first-class PLAN artifact in
+#: the same table as `docs/specs`, so leaving it out was an omission rather than
+#: a decision: `NV-3` at the process level, in the gate written to stop Phase 0
+#: being skipped.
+SPEC_ROOTS = ("docs/specs", "docs/03_planning", "docs/plans")
 
 DATED = re.compile(r"^(\d{4}-\d{2}-\d{2})-.+\.md$")
 FIELD = re.compile(r"^\s*\**Reconciles:?\**\s*:?\s*(.+?)\s*$", re.IGNORECASE | re.MULTILINE)
