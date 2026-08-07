@@ -315,8 +315,20 @@ BEGIN
     -- `DP-Ch33` sees the committed child. `SELECT ... INTO ... FOR UPDATE`
     -- rather than `EXISTS (... FOR UPDATE)`, because a row lock inside an
     -- `EXISTS` subquery is not expressible.
+    -- ⚠ `reality_id` ADDED TO THE CONDITION 2026-08-08 (`1b14-02`). This read
+    -- `NEW.parent IS DISTINCT FROM OLD.parent`, and **`parent` alone does not
+    -- identify the parent row** — `(reality_id, parent)` does, because that is
+    -- the key this table is built on. So `UPDATE channels SET reality_id = ...`
+    -- moved the pointer to a DIFFERENT channel while the guard saw no change,
+    -- and put a live child under a dissolved parent with one ordinary statement:
+    -- no deferral, no DDL, no superuser, no concurrency. **A guard whose firing
+    -- condition does not cover the whole key it guards is wrong regardless of
+    -- who can reach it today** — and the FK comment above justifies `reality_id`
+    -- as "what stops a channel in reality A claiming a parent in reality B",
+    -- which is exactly what happened.
     IF NEW.parent IS NOT NULL
-       AND (TG_OP = 'INSERT' OR NEW.parent IS DISTINCT FROM OLD.parent) THEN
+       AND (TG_OP = 'INSERT'
+            OR (NEW.reality_id, NEW.parent) IS DISTINCT FROM (OLD.reality_id, OLD.parent)) THEN
         -- `INTO STRICT`, and the reason is a harness property rather than a
         -- runtime one (`1b12-04`). `(reality_id, id)` is the primary key, so
         -- EXACTLY ONE row can match — `STRICT` states that and makes it
@@ -434,10 +446,18 @@ CREATE CONSTRAINT TRIGGER channels_dissolve_order_trg
     WHEN (NEW.lifecycle = 'dissolved')
     EXECUTE FUNCTION channels_dissolve_order_guard();
 
+-- ⚠ REWRITTEN 2026-08-08 (`1b14-03`). This asserted BOTH claims the slice
+-- retracted, 200+ lines below their own retractions in this same file --
+-- that `DP-Ch11` allocates `channels.id` (it allocates `channel_event_id`,
+-- `1b7gap-M1`) and that cycles are "unrepresentable rather than rejected"
+-- (`1b7db-02`/`03`). **This COMMENT is the only artifact of slice 1b that is
+-- written into a real per-reality database**, and `dp-channels-schema-gate`
+-- does not read `COMMENT ON` -- default-uncovered, `NV-3`. It now says only
+-- what survived attack.
 COMMENT ON TABLE channels IS
-    'DP-Ch2 channel registry, per reality. id is BIGINT (REC-103): DP-Ch11 allocates it as a '
-    'monotonic counter seeded from MAX(), which a UUID cannot do. Cycles are unrepresentable '
-    'rather than rejected (REC-106): parent_depth is generated from depth, and the parent FK '
-    'carries it, so depth decreases by exactly one along every parent edge.';
+    'DP-Ch2 channel registry, per reality. id is BIGINT (REC-103, REC-102a: ChannelId is '
+    'i64). Through ordinary SQL a cycle is not representable (REC-106): parent_depth is '
+    'generated from depth and the parent FK carries it, so depth decreases by exactly one '
+    'along every parent edge. How channels.id is ALLOCATED is unspecified in the corpus.';
 
 COMMIT;

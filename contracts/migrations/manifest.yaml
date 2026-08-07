@@ -94,24 +94,23 @@ migrations:
   # npc_session_memory_embedding.embedding BYTEA → VECTOR(1536) (conditional
   # — skips if cycle 13's path-A already created with VECTOR), (c) CREATE
   # HNSW INDEX (m=16, ef_construction=64). Closes the L3 layer.
-  - id: "0008_pgvector_setup"
-    version: 8
-    breaking: false
-    dependencies: ["0006_projections"]
-    description: "L3 cycle 16 — L3.I pgvector finalizer: CREATE EXTENSION vector + ALTER npc_session_memory_embedding.embedding to VECTOR(1536) when BYTEA placeholder still present + HNSW(m=16, ef_construction=64). Q-L3I-1 dim=1536 LOCKED. Closes L3 layer."
+  # ⚠ 0008 UNREGISTERED 2026-08-08 (`1b14-05`). It does `CREATE EXTENSION
+  # vector`, and the shipped stack runs `postgres:18-alpine`, which does NOT
+  # provide pgvector -- so once the provisioner began applying the whole
+  # manifest (1b12-05) it died at migration 8 of 15 on every new reality.
+  # That regression was introduced by the fix for 1b7gap-H1, and the claim
+  # "Verified: the full 0001->0019 chain applies to a throwaway database"
+  # below was FALSE: the chain smoke SKIPS 0008 and reports it as skipped,
+  # which is exactly the fact the claim needed and did not carry.
+  #
+  # It joins 0009-0012, which are unregistered for the same family of
+  # reasons -- the L3 projection/test harnesses apply them where the
+  # extension exists. `scripts/migration-manifest-gate.py` holds the row and
+  # its shrink rule forces this to be revisited: the moment 0008 is put back
+  # in the manifest, the gate reds until the exclusion is deleted.
+  #
+  # ⚠ TRIGGER: an image that provides pgvector. Then re-register it here.
 
-  # ── L2.A integrity — stored payload checksum (Wave 3 — W3.4)
-  #
-  # NOTE the version gap (8 → 13): the per-reality migration FILES 0009–0012
-  # (canon_projection, its indexes, archive_state, outbox_prune_index) are NOT
-  # registered here — they are applied by the projection/test harnesses directly,
-  # not the orchestrator's manifest-driven `migrate` path. That pre-existing gap
-  # is out of W3.4 scope (tracked as D-MANIFEST-0009-0012-UNREGISTERED). This
-  # entry keeps the established `version == filename-stem number` convention
-  # (0013 → 13); the manifest's monotonic check only requires version > prev.
-  #
-  # Additive nullable column on `events` ⇒ metadata-only catalog change on the
-  # partitioned table (no rewrite); back-compat, hence breaking: false.
   - id: "0013_events_content_sha256"
     version: 13
     breaking: false

@@ -136,8 +136,11 @@ CREATE TABLE channels (
     -- ⚠ AMENDED (REC-106): `parent_depth` joins the key, and that is DP-Ch1's
     -- own sentence (:97) turned into SQL. Along every parent edge depth
     -- decreases by exactly one, so a cycle of length k would need `d = d - k`.
-    -- A cycle is not rejected — it is not REPRESENTABLE, including the one-node
-    -- case. DEFERRABLE because a parent's depth is referenced by its children,
+    -- Through ORDINARY SQL a cycle is not representable, including the one-node
+    -- case (⚠ AMENDED 1b7db-02/03: this said "not rejected — not REPRESENTABLE"
+    -- flatly, and DROP EXPRESSION / DISABLE TRIGGER ALL are two measured routes
+    -- past it; a constraint gives you "rejected while the thing it rests on is
+    -- still there", and no more). DEFERRABLE because a parent's depth is referenced by its children,
     -- so a subtree move must pass through an inconsistent middle; that does not
     -- weaken the guarantee, since the impossibility is arithmetic and a deferred
     -- cycle still fails at COMMIT.
@@ -207,8 +210,10 @@ CREATE TABLE channels (
 -- is a different and wrong claim once the table carries `reality_id`.
 -- ⚠ NOTED (1b5-L3): this index ignores `lifecycle`, and DP-Ch33 keeps a
 -- dissolved row indefinitely, so dissolving a reality's root FORECLOSES that
--- reality. Correct, and written down so it is a decision: DP-Ch11 never reissues
--- an id, and a `lifecycle <> 'dissolved'` predicate would let a reality be
+-- reality. Correct, and written down so it is a decision (⚠ AMENDED 1b7gap-M2:
+-- this claimed "DP-Ch11 never reissues an id"; DP-Ch11 does not say that, and a
+-- MAX(id)+1 allocator over a table permitting DELETE provably reissues -- measured
+-- moving from 5 back to 3. Non-reuse is a real requirement and is UNOWNED)
 -- re-rooted while the old tree's events still reference the old root.
 -- ⚠ NOTED (REC-106): this index gives AT MOST one root. The parent FK gives AT
 -- LEAST one for any non-empty reality — walk `parent` and depth strictly
@@ -361,7 +366,7 @@ CREATE CONSTRAINT TRIGGER channels_dissolve_order_trg
 > The composite key follows, and so do three things it makes possible: the parent FK becomes
 > `(reality_id, parent) → (reality_id, id)`, which is what stops a channel claiming a parent in
 > another reality; `channels_root_single` becomes **one root per reality** rather than one per
-> database; and `DP-Ch11`'s `MAX()+1` allocator becomes per-reality, which is what a per-reality
+> database; and a `MAX()+1` allocator becomes per-reality, which is what a per-reality
 > counter means.
 >
 > ⚠ **This is the one amendment in `1b` that is a judgement rather than a correction**, and it is

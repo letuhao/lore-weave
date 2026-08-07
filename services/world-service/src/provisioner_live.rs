@@ -9,7 +9,11 @@
 //!   cannot write `reality_registry` directly. This is the centerpiece of W1.5.
 //! - **create_database** → sqlx `CREATE DATABASE` on the picked shard + the I4
 //!   isolation bootstrap (`REVOKE CONNECT … FROM PUBLIC`).
-//! - **apply_migrations** → run `0001_initial.up.sql` on the new DB.
+//! - **apply_migrations** → apply every migration the manifest registers,
+//!   in order, skipping those already in the reality's `schema_migrations`
+//!   ledger. (This read "run `0001_initial.up.sql` on the new DB" until
+//!   `1b14-06` -- the precise false sentence `1b12-05` blocked on, left in
+//!   the header of the file whose body was rewritten to fix it.)
 //! - **pgbouncer / prometheus / backup** → no-op (those subsystems are go-live;
 //!   the provisioner calls them through no-op Effects so the core flow runs now).
 //!
@@ -185,6 +189,56 @@ impl LiveEffects {
     }
 }
 
+/// Apply every migration not already in the reality's `schema_migrations`
+/// ledger, in order. Returns how many were newly applied.
+///
+/// Extracted from the trait method **so a live test can drive the real code
+/// path** rather than a re-implementation of it. `1b14-01` was found because the
+/// unit test covering provisioner re-entry was green against
+/// `FakeEffects::apply_migrations`, which is a `HashSet::insert` — the mock had
+/// the idempotence and the live code did not. A second re-implementation, this
+/// time in a test, would repeat exactly that.
+pub async fn apply_pending(
+    pool: &sqlx::PgPool,
+    migrations: &[(String, String)],
+) -> Result<usize, ProvisionerError> {
+    sqlx::raw_sql(
+        "CREATE TABLE IF NOT EXISTS schema_migrations (\
+           id TEXT PRIMARY KEY, \
+           applied_at TIMESTAMPTZ NOT NULL DEFAULT now())",
+    )
+    .execute(pool)
+    .await
+    .map_err(|e| ProvisionerError::ShardEffect(format!("create ledger: {e}")))?;
+
+    let applied: Vec<(String,)> = sqlx::query_as("SELECT id FROM schema_migrations")
+        .fetch_all(pool)
+        .await
+        .map_err(|e| ProvisionerError::ShardEffect(format!("read ledger: {e}")))?;
+    let applied: std::collections::HashSet<String> = applied.into_iter().map(|(id,)| id).collect();
+
+    let mut newly = 0usize;
+    for (id, sql) in migrations {
+        if applied.contains(id) {
+            continue;
+        }
+        sqlx::raw_sql(sql)
+            .execute(pool)
+            .await
+            .map_err(|e| ProvisionerError::ShardEffect(format!("apply {id}: {e}")))?;
+        // Recorded only AFTER the migration succeeded, so a crash between the
+        // two re-applies that one file — which IS the retry-safe operation, and
+        // the only one this ledger ever asks any migration to perform.
+        sqlx::query("INSERT INTO schema_migrations (id) VALUES ($1) ON CONFLICT DO NOTHING")
+            .bind(id)
+            .execute(pool)
+            .await
+            .map_err(|e| ProvisionerError::ShardEffect(format!("mark {id}: {e}")))?;
+        newly += 1;
+    }
+    Ok(newly)
+}
+
 /// Pull `- id: "<stem>"` out of the manifest, in file order.
 fn parse_manifest_ids(text: &str) -> Vec<String> {
     text.lines()
@@ -232,11 +286,27 @@ mod manifest_tests {
         let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../contracts/migrations/manifest.yaml");
         let text = std::fs::read_to_string(path).expect("the shipped manifest must be readable");
         let ids = parse_manifest_ids(&text);
-        assert!(ids.len() >= 15, "expected the shipped manifest's entries, got {ids:?}");
+        // The count is a smoke check on the PARSER (did it return garbage or
+        // nothing?), deliberately loose: it was `>= 15` and broke the moment
+        // `0008_pgvector_setup` was correctly unregistered for `1b14-05`. A test
+        // that fails when a deliberate decision is made is a test that gets its
+        // number bumped without being read. The two assertions BELOW are the
+        // ones with content.
+        assert!(ids.len() >= 10, "the parser returned too little to be the manifest: {ids:?}");
         assert_eq!(ids.first().map(String::as_str), Some("0001_initial"));
         assert!(
             ids.contains(&"0019_channels".to_string()),
             "0019_channels must be registered or a provisioned reality has no `channels` table"
+        );
+        // `0008` requires pgvector, which `postgres:18-alpine` does not provide;
+        // registering it killed provisioning at migration 8 of 15 (`1b14-05`).
+        // Asserted here as well as in the gate, because THIS is the code that
+        // would die.
+        assert!(
+            !ids.contains(&"0008_pgvector_setup".to_string()),
+            "0008_pgvector_setup is registered again — the provisioner will die on every new \
+             reality unless the image now provides pgvector, in which case delete this assertion \
+             and the UNREGISTERED row together"
         );
     }
 }
@@ -345,17 +415,13 @@ impl Effects for LiveEffects {
             let pool = sqlx::PgPool::connect(&dsn)
                 .await
                 .map_err(|e| ProvisionerError::ShardEffect(format!("connect new db: {e}")))?;
-            // Every migration is retry-safe (`IF NOT EXISTS`-shaped and measured
-            // 18/18 by `scripts/dp-migration-chain-smoke.py`), so re-running the
-            // whole chain on an existing reality is a no-op rather than an
-            // error — which is what makes this step idempotent.
-            for (id, sql) in &sqls {
-                sqlx::raw_sql(sql).execute(&pool).await.map_err(|e| {
-                    ProvisionerError::ShardEffect(format!("apply {id}: {e}"))
-                })?;
-            }
+            let newly = apply_pending(&pool, &sqls).await;
             pool.close().await;
-            Ok(true)
+            // `false` = nothing to do, which is what the step contract means by
+            // idempotent: a completed reality re-provisions to a no-op. The
+            // ledger is what makes that TRUE rather than merely documented --
+            // see `apply_pending`, and `1b14-01` for what it cost to find out.
+            Ok(newly? > 0)
         })
     }
 

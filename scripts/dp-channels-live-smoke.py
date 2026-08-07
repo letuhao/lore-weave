@@ -517,6 +517,23 @@ def main() -> int:
                   "guard is reading across tenants")
         results.append(ok)
 
+        # `1b14-02` — the state above is exactly what this needs: reality B's id 1
+        # is DISSOLVED and reality A's id 1 is ACTIVE. `parent` alone does not
+        # identify the parent row; `(reality_id, parent)` does. The guard fired
+        # only on a change to `parent`, so moving the ROW to reality B re-pointed
+        # it at a DIFFERENT channel while the guard saw no change — one ordinary
+        # UPDATE, no deferral, no DDL, no concurrency, and a live child under a
+        # dissolved parent.
+        code, out = psql(f"UPDATE channels SET reality_id='{REALITY_B}' "
+                         f"WHERE reality_id='{REALITY_A}' AND id=2")
+        ok = code != 0 and "channels_no_child_of_dissolved" in out
+        print(f"   {'OK  ' if ok else 'FAIL'} "
+              f"{'moving a row to a reality whose id-1 is dissolved':46s} exit={code}")
+        print(f"        {blamed_constraint(out)}")
+        if not ok and code == 0:
+            print("        ^ the guard's firing condition does not cover the whole key it guards")
+        results.append(ok)
+
         # `1b12-09` — the operation `1b7db-07`'s whole reshape exists to enable
         # had NO leg. A revert to a BEFORE-row trigger would make it impossible
         # again and nothing would have changed colour.

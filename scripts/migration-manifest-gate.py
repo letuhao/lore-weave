@@ -52,6 +52,11 @@ MIGRATIONS = REPO / "contracts/migrations/per_reality"
 # it. This list must SHRINK. Adding a row is a decision; leaving one after the
 # id is registered is a finding (R5).
 UNREGISTERED = {
+    "0008_pgvector_setup": "does `CREATE EXTENSION vector`, and the shipped stack runs "
+                           "`postgres:18-alpine`, which does not provide pgvector — so "
+                           "registering it killed provisioning at migration 8 of 15 on every new "
+                           "reality (1b14-05). WAKES UP: an image that provides pgvector; then "
+                           "re-register it and delete this row.",
     "0009_canon_projection": "applied by the projection/test harnesses directly, not the "
                              "orchestrator's migrate path (D-MANIFEST-0009-0012-UNREGISTERED). "
                              "Wakes up when canon projection is provisioned per reality.",
