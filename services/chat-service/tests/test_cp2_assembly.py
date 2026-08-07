@@ -29,8 +29,13 @@ from app.agentruntime import (
     DeclarationToolset,
     DenyList,
     NarrowingLog,
+    OrderBy,
+    RequirementNotAdmitted,
     Surface,
     SurfaceAssembler,
+    TopK,
+    UnresolvedReference,
+    UntrustedRow,
     advertised_names,
     deferred_names,
     discover,
@@ -366,6 +371,149 @@ class TestTheToolsetCanExecuteOnlyWhatItWasHanded:
         doc = _doc("a")
         defs = _defs(toolset_for(doc, _split(doc, ()), executor=_executor))
         assert defs[0].parameters_json_schema["additionalProperties"] is False
+
+
+# ── 2.2 · the widening rule (§4.3) ──────────────────────────────────────────────────────────────
+
+class TestAPlanStepsDeclarationIsAdvertised:
+    """REJECTS: a plan step whose declaration the budget removed — the class the three heuristics
+    in `tool_surface.py` each patch at one site.
+
+    The measured instance is the `co_write` incident: **6,948 characters of plan prose, zero tool
+    calls**, because `plan_propose_spec` and `plan_compile` were named only in signature form and
+    the backtick scraper required a closing backtick. §4.3 states the obligation once, at assembly,
+    where it cannot be blind to a stage it has never heard of.
+    """
+
+    def _assemble(self, *, drop, required):
+        """🔴 **THE EMPTY `drop` MUST PRODUCE AN EMPTY PIPELINE, NOT AN EMPTY `DenyList`.**
+
+        The first version built `DenyList(names=())` unconditionally, and the module refuses that
+        outright — *"a deny-list with no names removes nothing and registers nothing"*. So two
+        guards below went green on **that** `ValueError` instead of the one they name: the bound on
+        `required`, and the un-admitted refusal. A control satisfied by a different clause has
+        measured a bystander, which is R26's finding reproduced inside the guards written for it.
+        """
+        doc = _doc("a", "b", "c")
+        log = NarrowingLog()
+        pipeline = ([DenyList(names=drop, stage="token_budget", reason="over budget")]
+                    if drop else [])
+        return log, SurfaceAssembler(doc, log=log).assemble(
+            pass_number=1, pipeline=pipeline, required=required)
+
+    def test_A_REQUIRED_DECLARATION_SURVIVES_A_STAGE_THAT_REMOVED_IT(self):
+        _, surface = self._assemble(drop=("b", "c"), required=["b"])
+        assert surface.names == ("a", "b")
+        assert [w["tool"] for w in surface.withheld] == ["c"], (
+            "a widened declaration is still listed as WITHHELD - the column would then say the "
+            "model could not see something it was offered"
+        )
+
+    def test_A_REQUIRED_DECLARATION_SURVIVES_A_RANK_DEPENDENT_CUT_TOO(self):
+        """The budget stage, not just a name list — a running accumulator is the shape §4.3's
+        motivating incident actually died on."""
+        doc = {
+            "manifest_version": 1, "contract_version": "1.0.0",
+            "declarations": [{**_row(n), "members": []} for n in ("a", "b", "c")],
+        }
+        log = NarrowingLog()
+        surface = SurfaceAssembler(doc, log=log).assemble(
+            pass_number=1,
+            pipeline=[OrderBy(keys=(("id", "asc"),)), TopK(k=1, stage="top_k", reason="rank")],
+            required=["c"],
+        )
+        assert surface.names == ("a", "c")
+        assert [w["tool"] for w in surface.withheld] == ["b"]
+
+    def test_THE_NARROWING_RECORD_SURVIVES_THE_WIDENING(self):
+        """🔴 **THE DESIGN DECISION, GUARDED.** Deleting the narrowing would be shorter and would
+        balance the conservation law just as well — and it would erase the only evidence that a
+        stage wanted this declaration gone and the plan overruled it. Each of the three legacy
+        heuristics was written blind to the other two because nobody could see that."""
+        log, _ = self._assemble(drop=("b",), required=["b"])
+        assert [(e.declaration_id, e.stage) for e in log.entries] == [("b", "token_budget")]
+
+    def test_THE_WIDENING_RECORD_NAMES_WHAT_IT_OVERRULED(self):
+        log, _ = self._assemble(drop=("b",), required=["b"])
+        assert log.widening_records() == [{
+            "tool": "b", "stage": "widening",
+            "reason": "named by the current plan step (§4.3)", "pass": 1,
+            "over": {"stage": "token_budget", "reason": "over budget"},
+        }]
+
+    def test_CONSERVATION_STILL_HOLDS_WITH_A_WIDENING_IN_PLAY(self):
+        """`offered + registered == admitted` is evaluated in production code, so this checks the
+        widened declaration moved sides rather than being counted twice or not at all."""
+        _, surface = self._assemble(drop=("b", "c"), required=["b"])
+        assert len(surface.names) + len(surface.withheld) == 3
+
+    def test_A_REQUIRED_DECLARATION_THE_MANIFEST_DOES_NOT_ADMIT_IS_REFUSED(self):
+        """§4.3 widens the ADVERTISED set within the ADMITTED set. A step naming something
+        un-admitted is asking the assembler to invent, and that is §0.1's clause, not §4.3's."""
+        with pytest.raises(RequirementNotAdmitted, match="not a licence to invent"):
+            self._assemble(drop=(), required=["ghost"])
+
+    def test_THE_REFUSAL_IS_ITS_OWN_CLASS_NOT_UNRESOLVED_REFERENCE(self):
+        """C-11/M5's `UnresolvedReference` is a *member* of an admitted declaration, resolved at
+        GENERATION. This is a plan step, at ASSEMBLY, from outside the manifest — a different
+        actor at a different moment. One class for both would be `ok=true` again."""
+        assert RequirementNotAdmitted is not UnresolvedReference
+        assert issubclass(RequirementNotAdmitted, UntrustedRow), (
+            "a new refusal type outside the documented one breaks every caller's `except`"
+        )
+
+    @pytest.mark.parametrize("bad", [b"a", 42, None, ["a"]])
+    def test_A_REQUIRED_NAME_IS_BOUNDED_LIKE_EVERY_OTHER_OPERAND(self, bad):
+        """It is compared against every row, so a custom `__eq__` is a regex stage with zero new
+        operators — and its `__repr__` reaches a persisted record through `reason`.
+
+        🔴 **`pytest.raises(ValueError)` ALONE IS GREEN WITHOUT THE BOUND.** `RequirementNotAdmitted`
+        subclasses `UntrustedRow`, which subclasses `ValueError` — so deleting the type bound leaves
+        this raising a *different* ValueError from the un-admitted check two lines later, and the
+        guard never notices. The message is what separates them.
+        """
+        with pytest.raises(ValueError, match="plain str"):
+            self._assemble(drop=(), required=[bad])
+
+    def test_AN_EMPTY_REQUIREMENT_CHANGES_NOTHING(self):
+        _, surface = self._assemble(drop=("b",), required=[])
+        assert surface.names == ("a", "c") and [w["tool"] for w in surface.withheld] == ["b"]
+
+    def test_THE_REQUIREMENT_IS_MATERIALISED_BEFORE_IT_IS_CHECKED(self):
+        """🔴 A verifier already drove a four-line rogue class through `pipeline`: an object
+        yielding different stages on its second iteration was validated as one pipeline and
+        executed as another. `required` is iterated twice for the same reason and gets the same
+        defence."""
+        class Rogue:
+            def __init__(self):
+                self.n = 0
+
+            def __iter__(self):
+                self.n += 1
+                return iter(["b"] if self.n == 1 else ["ghost"])
+
+        doc = _doc("a", "b")
+        surface = SurfaceAssembler(doc, log=NarrowingLog()).assemble(
+            pass_number=1,
+            pipeline=[DenyList(names=("b",), stage="token_budget", reason="over budget")],
+            required=Rogue(),
+        )
+        assert surface.names == ("a", "b"), (
+            "the obligation that was CHECKED is not the one that RAN"
+        )
+
+    def test_THE_WIDENED_DECLARATION_REACHES_THE_TOOLSET_AS_ADVERTISED(self):
+        """End to end: §4.3's obligation has to survive the trip through CP-2.1's assembly, or the
+        rule holds in a dataclass and not on the wire."""
+        doc = _doc("a", "b", "c")
+        surface = SurfaceAssembler(doc, log=NarrowingLog()).assemble(
+            pass_number=1,
+            pipeline=[DenyList(names=("b", "c"), stage="token_budget", reason="over budget")],
+            required=["b"],
+        )
+        defs = _defs(toolset_for(doc, surface, executor=_executor))
+        assert advertised_names(defs) == ("a", "b")
+        assert deferred_names(defs) == ("c",)
 
 
 # ── the gate, and the coupling it now admits ────────────────────────────────────────────────────

@@ -3014,6 +3014,146 @@ imports only the standard library and itself"* — was corrected **in the change
 in all four places it appeared: the gate's docstring and its FAIL message, the package `__init__`,
 the CI comment, and the two tests that asserted it.
 
+### ⭐ CP-2.2 — the widening rule, and the three heuristics it makes redundant
+
+**Built 2026-08-08.** §0.1 governs only *narrowing* — **narrow, never invent, never silently**. The
+measured failure class runs the other way: **a plan names a declaration that is not on the wire**,
+and this repository has paid for that omission three times, with three heuristics in
+`tool_surface.py` that exist for no other reason.
+
+§4.3 states it once, as an obligation on assembly:
+
+> **A plan step's declaration MUST be advertised while that step is current.**
+
+`SurfaceAssembler.assemble(..., required=)`. The plan does not exist until CP-3, so the obligation
+arrives as an argument exactly the way CP-2.1's executor does — the membrane holds because the
+obligation comes in from outside and the catalogue comes from disk, and neither can reach the other.
+
+### ▶ The measurement, on the shape that produced the incident
+
+`co_write` named `plan_propose_spec` and `plan_compile` only in **signature** form; the backtick
+scraper required a closing backtick; neither tool was advertised. **6,948 characters of plan prose,
+zero tool calls, `finish_reason=stop`.** Reconstructed with both tools cut by a budget stage and
+both named by the step:
+
+```
+advertised : ('book_list', 'plan_compile', 'plan_propose_spec')
+deferred   : ()
+withheld   : []
+narrowings : [('plan_propose_spec', 'token_budget', 'over budget'),
+              ('plan_compile',      'token_budget', 'over budget')]
+widening   : {'tool': 'plan_propose_spec', 'stage': 'widening', 'pass': 1,
+              'reason': 'named by the current plan step (§4.3)',
+              'over': {'stage': 'token_budget', 'reason': 'over budget'}}
+widening   : {'tool': 'plan_compile', ... 'over': {'stage': 'token_budget', ...}}
+```
+
+**The falsifier, stated in advance:** *if `narrowings` were empty, the record of the disagreement
+would be gone; if `withheld` still named either tool, the column would claim the model could not see
+something it was offered; if `advertised` omitted either, the rule did not run.* All three are
+guarded, each with an edit that reds it.
+
+### 🔴 The design decision, and the shorter implementation is the wrong one
+
+A widened declaration was **wanted gone by some stage**. Deleting its `Narrowing` and letting the
+conservation law rebalance is fewer lines and passes every count — **and it erases the only evidence
+that the budget and the plan disagreed.** That disagreement *is* the finding: each of the three
+legacy heuristics was written blind to the other two precisely because nobody could see it.
+
+So `Widening` is its own event kind, in its own list, and `NarrowingLog.entries` is untouched.
+`Surface.withheld` excludes what was widened at that pass, so `offered + registered == admitted`
+still holds — the declaration moved sides, one on each.
+
+`over_stage` / `over_reason` carry what was overruled. Without them the record says a declaration
+was widened and cannot answer **widened past what**, which is the same argument that put `rank` and
+`ordered_by` on a rank-dependent narrowing.
+
+### 🔴 A new refusal class rather than a convenient reuse
+
+A `required` id the manifest does not admit is a **refusal**, not a widening: §4.3 widens the
+ADVERTISED set within the ADMITTED set, and a step naming something un-admitted is asking the
+assembler to invent — §0.1's clause, which §4.3 must not spend.
+
+It raises `RequirementNotAdmitted`, **not** `UnresolvedReference`. That one is C-11/M5: a *member*
+of an admitted declaration, resolved at **generation**, so a manifest failing it is never written.
+This is a **plan step**, at **assembly**, from outside the manifest — a different actor, a different
+moment, a different fix. One class for both would be two facts sharing one message and one `except`,
+which is how `ok=true` came to mean seven things.
+
+### ✖ What is NOT deleted, and that is a scope statement rather than a deferral
+
+§4.3 says the sentence *"deletes all three heuristics"* — the rail next-step exemption
+(`tool_surface.py:564`), the backtick prose scraper (`:661`), and `load_skill`'s un-advertised names
+(`:588`). **All three live in the LEGACY arm, and they stay.**
+
+The legacy arm is CP-2's **control group** (§7), and CP-1.9's whole argument is that a control
+perturbed by changes nobody decided invalidates the comparison before it starts. What §4.3
+establishes is that **the new arm needs none of them** — one obligation at assembly instead of three
+exemptions at three sites. Their deletion belongs with the legacy arm's retirement, and the predicate
+is that the new runtime serves the declarations they exist to protect. Same call the board already
+made for U-1 and U-3.
+
+### ▶ The three QC pillars
+
+**QC1 · CODE — `PASS`.** Suite **2337** · census **72 sites · 8 silent · 64 red**, `rc=0` · falsification **315 guards,
+56 falsified, 259 unproven, 0 stale anchors**, **56/56 fire** · membrane gate green.
+
+**QC2 · LIVE RUN — `CANNOT DETERMINE` for a chat turn, unchanged and for the same reason as 2.1:**
+no request path reaches this code. The rule is exercised end to end through CP-2.1's toolset (a
+widened declaration is `advertised`, not `deferred`), which is as far as this checkpoint can carry
+it before 2.7.
+
+**QC3 · DATA — `PASS`**, the artifact above, with its falsifier stated and every clause guarded.
+
+### 🔴 Two more defects the instruments found in my own work
+
+* **A bystander inside a guard written for bystanders.** My `_assemble` helper built
+  `DenyList(names=())` unconditionally, and the module **refuses** that — *"a deny-list with no
+  names removes nothing and registers nothing"*. So two of the new guards were green on **that**
+  `ValueError` rather than the one they name. Worse, `test_A_REQUIRED_NAME_IS_BOUNDED…` would have
+  stayed green with the type bound **deleted**, because `RequirementNotAdmitted` is itself a
+  `ValueError`: the guard now matches the message, and its falsifier proves the difference.
+* **Two more stale falsifier anchors, and this time the fix is mechanical.** Editing `_suites`
+  invalidated a row written for CP-2.1; CP-2.2's rewrite of the `withheld` expression invalidated
+  another twenty minutes old. `_apply` refuses both — correctly — but **fifteen minutes into
+  `--run`**. A falsifier is data about the tree, and data about the tree goes stale when the tree
+  moves. `stale_anchors()` now runs in the gate's default mode: a string comparison, in the same
+  second as the edit that broke it. Four dud or stale falsifiers across CP-2.1 and 2.2, **every one
+  caught by a machine**.
+
+### 🔴 And the census found a defect in THIS item, on its first run
+
+The widening looks up the `Narrowing` it is about to overrule so it can record **what** it overruled.
+`cut is None` means a declaration is admitted, absent from the surface, and carries no narrowing
+record — a P1 violation. The census neutered it and the suite stayed green:
+
+```
+NEWLY SILENT  surface.py::SurfaceAssembler.assemble::AssertionError::1::6b19409d
+              <- a refusal nothing checks; guard it or record it deliberately
+```
+
+**Executed rather than argued.** The only stage that can shrink `kept` without registering is
+`OrderBy.sort`; the real one returns every row, and a subclass overriding it is refused by
+`validate_pipeline`'s `type(s) is k` — *"pipeline[0] is a Rogue, which is not one of the six stage
+kinds"*. So it is unreachable **while P1 holds**.
+
+🔴 **The allowlist's own precedent is to DELETE an unreachable refusal** — two `except` clauses went
+that way at R25 — **and it does not apply here.** Those could not fire because the try-body raised
+exactly one other class: dead by construction of that statement. This one is dead only because a
+*different* invariant holds elsewhere, and deleting it turns a future P1 regression from a named
+failure into a bare `StopIteration` three frames up. **Kept, and the cost is a row in the register,
+carrying the observation rather than the argument.** Silent sites: 7 → 8.
+
+### 🔴 And an instrument finding that is not a CP-2 property
+
+`git add -A` mid-suite staged **`app/services/_lwprobe_sync_probe.py`**: the CP-0 instrument suite
+writes probe modules **into the live production package** while it runs, and deletes them after. It
+cleans up on a normal exit, which is why nothing has noticed — but it means a killed run leaves a
+`_lwprobe_*.py` in a tracked directory, concurrent runs interfere, and any staging during a run
+picks up debris. **This is the defect the census was redesigned to remove from itself** (*"the
+instrument writes into its subject"*), still live in the CP-0 suite one directory over. Registered
+here, not fixed here.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -3290,7 +3430,7 @@ declarations, not silently emit a tool-free pass.
 | # | item | state |
 |---|---|---|
 | 2.1 | P4 assembly on the bought toolset — **and it must be the deferring API, not the filtering one.** Both exist one method apart; one is a ceiling and one is an enabler | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 SPLIT.** `assembly.py` on `pydantic_ai.toolsets`, `.defer_loading()` only; `.filtered(`/`.prepared(` refused by the membrane gate. **29 guards, 28 new falsifiers, 44/44 fire; census 70/7/63 `rc=0`.** **Live at the assembly boundary (real agent loop, real reveal); `CANNOT DETERMINE` for a chat turn — no request path reaches it, which is 2.7.** See the CP-2 block above |
-| 2.2 | **the widening rule** (§4.3) — a plan step's declaration must be advertised while that step is current. **Deletes three heuristics**: the rail next-step exemption, the backtick prose scraper, `load_skill`'s un-advertised names | ⬜ |
+| 2.2 | **the widening rule** (§4.3) — a plan step's declaration must be advertised while that step is current. **Deletes three heuristics**: the rail next-step exemption, the backtick prose scraper, `load_skill`'s un-advertised names | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `assemble(required=)`; a widened declaration keeps its `Narrowing` and gains a `Widening` naming what it overruled; an un-admitted requirement raises `RequirementNotAdmitted`. 12 guards, 12 falsifiers. ✖ **The three legacy heuristics are NOT deleted** — they live in CP-2's CONTROL arm; the new arm needs none of them. See the CP-2.2 block above |
 | 2.3 | deterministic tool ordering — `active_tool_names` is a `set[str]` iterated unsorted, so **the order changes on every restart** and `tools` is the first cache block | ⬜ |
 | 2.4 | withheld things stay **reachable on request**; the model can tell *withheld* from *never existed* | ⬜ |
 | 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | ⬜ |

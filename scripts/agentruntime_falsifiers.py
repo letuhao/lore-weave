@@ -175,8 +175,10 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         # working, not a bystander: the post-condition in `assemble` is what enforces the property,
         # and the guard observes it end to end. Recorded here so nobody has to re-derive it.
         (f"{PKG}/surface.py",
-         "        mine = [e for e in self._log.entries[_log_mark:] if e.pass_number == pass_number]",
-         "        mine = [e for e in self._log.entries if e.pass_number == pass_number]"),
+         "        mine = [e for e in self._log.entries[_log_mark:]\n"
+         "                if e.pass_number == pass_number and e.declaration_id not in widened]",
+         "        mine = [e for e in self._log.entries\n"
+         "                if e.pass_number == pass_number and e.declaration_id not in widened]"),
     ],
     "test_THE_TOOLSET_HOLDS_EVERY_ADMITTED_DECLARATION_NOT_ONLY_THE_OFFERED_ONES": [
         (f"{PKG}/assembly.py",
@@ -281,6 +283,10 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/__init__.py", "from .assembly import (\n    TOOLSET_ID,\n",
                                "from .assembly import (\n"),
     ],
+    "test_A_STALE_FALSIFIER_ANCHOR_IS_CAUGHT_WITHOUT_RUNNING_A_SUITE": [
+        (FALSIFY, "    out: list[str] = []\n    for test, edits in sorted(FALSIFIERS.items()):",
+                  "    out: list[str] = []\n    return out\n    for test, edits in sorted(FALSIFIERS.items()):"),
+    ],
     "test_THE_SUITE_LIST_IS_EVERY_CP_SUITE_ON_DISK": [
         (FALSIFY, '    "tests/test_cp2_assembly.py",\n', ""),
     ],
@@ -296,6 +302,70 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     ],
     "test_THE_NAMED_RESIDUAL_IS_STILL_NAMED": [
         (f"{PKG}/assembly.py", "discoverable **by name tokens only**", "discoverable"),
+    ],
+
+    # ── CP-2.2 · the widening rule (§4.3) ────────────────────────────────────────────────────
+    #
+    # `_NO_WIDENING` is the state the runtime was in before this item: the pipeline decides, and a
+    # plan step that names a budget-dropped declaration gets prose instead of a tool call. It is
+    # the exact configuration the `co_write` incident ran in.
+    "test_A_REQUIRED_DECLARATION_SURVIVES_A_STAGE_THAT_REMOVED_IT": [
+        (f"{PKG}/surface.py", "        if required:\n            by_id =",
+                              "        if False:\n            by_id ="),
+    ],
+    "test_A_REQUIRED_DECLARATION_SURVIVES_A_RANK_DEPENDENT_CUT_TOO": [
+        (f"{PKG}/surface.py", "        if required:\n            by_id =",
+                              "        if False:\n            by_id ="),
+    ],
+    "test_THE_WIDENED_DECLARATION_REACHES_THE_TOOLSET_AS_ADVERTISED": [
+        (f"{PKG}/surface.py", "        if required:\n            by_id =",
+                              "        if False:\n            by_id ="),
+    ],
+    "test_THE_NARROWING_RECORD_SURVIVES_THE_WIDENING": [
+        # The shorter implementation: drop the narrowing and let conservation rebalance. It works,
+        # and it destroys the record of the disagreement that is the whole point of the event.
+        (f"{PKG}/narrowing.py",
+         "        self.widenings.append(\n"
+         "            Widening(declaration_id, reason, pass_number, over_stage, over_reason))",
+         "        self.widenings.append(\n"
+         "            Widening(declaration_id, reason, pass_number, over_stage, over_reason))\n"
+         "        self.entries[:] = [e for e in self.entries\n"
+         "                           if not (e.declaration_id == declaration_id\n"
+         "                                   and e.pass_number == pass_number)]"),
+    ],
+    "test_THE_WIDENING_RECORD_NAMES_WHAT_IT_OVERRULED": [
+        (f"{PKG}/narrowing.py",
+         '            "over": {"stage": self.over_stage, "reason": self.over_reason},\n', ""),
+    ],
+    "test_CONSERVATION_STILL_HOLDS_WITH_A_WIDENING_IN_PLAY": [
+        # Restore the declaration to `kept` and leave it in `withheld` too - counted on both sides.
+        (f"{PKG}/surface.py",
+         "                if e.pass_number == pass_number and e.declaration_id not in widened]",
+         "                if e.pass_number == pass_number]"),
+    ],
+    "test_A_REQUIRED_DECLARATION_THE_MANIFEST_DOES_NOT_ADMIT_IS_REFUSED": [
+        (f"{PKG}/surface.py", "        if unadmitted:", "        if False:"),
+    ],
+    "test_THE_REFUSAL_IS_ITS_OWN_CLASS_NOT_UNRESOLVED_REFERENCE": [
+        (f"{PKG}/contract.py", "class RequirementNotAdmitted(UntrustedRow):",
+                               "class RequirementNotAdmitted(Exception):"),
+    ],
+    "test_A_REQUIRED_NAME_IS_BOUNDED_LIKE_EVERY_OTHER_OPERAND": [
+        # 🔴 Note what this row proves and what it does NOT. Without the bound the assembly still
+        # raises - `RequirementNotAdmitted` is a `ValueError` - so a guard asserting only the TYPE
+        # stays green. The falsifier reds it because the guard matches the MESSAGE, which is the
+        # correction this row is the record of.
+        (f"{PKG}/surface.py", '            _plain(name, str, "required declaration")',
+                              "            pass"),
+    ],
+    "test_AN_EMPTY_REQUIREMENT_CHANGES_NOTHING": [
+        # The `tool_names=None` trap from CP-2.1, one layer over: an empty obligation read as
+        # "everything is required" widens the entire surface while every count still balances.
+        (f"{PKG}/surface.py", "        required = list(required)",
+                              '        required = list(required) or [r["id"] for r in self._rows]'),
+    ],
+    "test_THE_REQUIREMENT_IS_MATERIALISED_BEFORE_IT_IS_CHECKED": [
+        (f"{PKG}/surface.py", "        required = list(required)", "        required = required"),
     ],
 }
 

@@ -102,6 +102,33 @@ class UnresolvedReference(UntrustedRow):
         )
 
 
+class RequirementNotAdmitted(UntrustedRow):
+    """CP-2.2 · §4.3 — the current plan step names a declaration the manifest does not admit.
+
+    🔴 **NOT `UnresolvedReference`, and the difference is the whole of §4.3's second half.** That
+    one is C-11/M5: a *member* of an admitted declaration naming another declaration, resolved at
+    generation, so a manifest that fails it is never written. This is a **plan step** naming
+    something at assembly time, from outside the manifest entirely — a different actor, a different
+    moment, and a different fix. Reusing the class would have made two facts share one message and
+    one `except`, which is how `ok=true` came to mean seven things.
+
+    It is a refusal rather than a widening because §4.3 widens the ADVERTISED set within the
+    ADMITTED set. A step that names something un-admitted is asking the assembler to invent, and
+    *"never invent"* is the clause §0.1 has that §4.3 must not spend.
+
+    A subclass of `UntrustedRow` for the reason recorded above: one documented refusal type, and no
+    caller's `except` stops working.
+    """
+
+    def __init__(self, names: list[str]) -> None:
+        self.names = list(names)
+        super().__init__(
+            f"the current step requires {sorted(self.names)}, which the manifest does not admit. "
+            f"§4.3 widens the ADVERTISED set within the ADMITTED set; it is an obligation on "
+            f"assembly, not a licence to invent (C-11 / M5)."
+        )
+
+
 class ContractViolation(UntrustedRow):
     """A declaration that does not satisfy the contract. Carries the field path, per C-12.
 

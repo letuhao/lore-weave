@@ -78,6 +78,46 @@ class Narrowing:
         return out
 
 
+@dataclass(frozen=True, slots=True)
+class Widening:
+    """CP-2.2 · §4.3 — one declaration RESTORED because the current plan step names it.
+
+    > **A plan step's declaration MUST be advertised while that step is current.**
+
+    §0.1 governs only *narrowing*; the measured failure class runs the other way — **a plan names a
+    declaration that is not on the wire.** This repository has paid for that omission three times,
+    with three heuristics that exist for no other reason: the rail next-step budget exemption, the
+    backtick prose scraper, and `load_skill` naming tools that were never advertised. The last one
+    is the `co_write` incident: **6,948 characters of plan prose, zero tool calls**, because the two
+    plan tools were named only in signature form and the scraper required a closing backtick.
+
+    🔴 **THIS IS ITS OWN EVENT KIND RATHER THAN AN ABSENCE, AND THAT IS THE DESIGN DECISION.** The
+    shorter implementation drops the `Narrowing` and lets the conservation law rebalance — and it
+    erases the only evidence that **a stage wanted this declaration gone and the plan overruled
+    it.** That disagreement *is* the finding. Each of the three heuristics was written blind to the
+    other two precisely because nobody could see it.
+
+    `over_stage` / `over_reason` carry what was overruled. Without them the record says a
+    declaration was widened and cannot answer *widened past what* — the same argument that put
+    `rank` and `ordered_by` on a rank-dependent narrowing.
+    """
+
+    declaration_id: str
+    reason: str
+    pass_number: int
+    over_stage: str
+    over_reason: str
+
+    def as_record(self) -> dict:
+        return {
+            "tool": self.declaration_id,
+            "stage": "widening",
+            "reason": self.reason,
+            "pass": self.pass_number,
+            "over": {"stage": self.over_stage, "reason": self.over_reason},
+        }
+
+
 @dataclass(slots=True)
 class NarrowingLog:
     """Everything withheld during one turn, in the order it was decided.
@@ -88,6 +128,11 @@ class NarrowingLog:
     """
 
     entries: list[Narrowing] = field(default_factory=list)
+    #: CP-2.2. A SEPARATE list, not a second kind inside `entries`, because every existing reader
+    #: of `entries` — the conservation law, `for_pass`, `stages`, `records` — asks *"what did the
+    #: model not see"*, and a widening is the opposite answer. Mixing them would silently change
+    #: what four call sites mean, which is the shape `withheld` was already corrected for once.
+    widenings: list[Widening] = field(default_factory=list)
 
     def record(
         self, declaration_id: str, *, stage: str, reason: str, pass_number: int,
@@ -95,8 +140,26 @@ class NarrowingLog:
     ) -> None:
         self.entries.append(Narrowing(declaration_id, stage, reason, pass_number, rank, ordered_by))
 
+    def widen(
+        self, declaration_id: str, *, reason: str, pass_number: int,
+        over_stage: str, over_reason: str,
+    ) -> None:
+        """Register a restoration. **The `Narrowing` it overrules stays in `entries`.**
+
+        Deleting it would be shorter and would balance the conservation law just as well. It would
+        also destroy the record of the disagreement, which is the one thing this event is for.
+        """
+        self.widenings.append(
+            Widening(declaration_id, reason, pass_number, over_stage, over_reason))
+
+    def widened_at(self, pass_number: int) -> set[str]:
+        return {w.declaration_id for w in self.widenings if w.pass_number == pass_number}
+
     def records(self) -> list[dict]:
         return [e.as_record() for e in self.entries]
+
+    def widening_records(self) -> list[dict]:
+        return [w.as_record() for w in self.widenings]
 
     def for_pass(self, pass_number: int) -> list[Narrowing]:
         return [e for e in self.entries if e.pass_number == pass_number]

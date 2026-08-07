@@ -48,3 +48,19 @@ manifest.py::validate_document::UntrustedRow::1::843af89b
 
 # UNCHECKED — neutered, `TakeWhileBudget(budget=-1)` constructs.
 surface.py::TakeWhileBudget.__post_init__::ValueError::1::3130a968
+
+# UNREACHABLE while P1 holds, and KEPT rather than deleted — CP-2.2, 2026-08-08.
+#
+# The widening rule looks up the `Narrowing` it is about to overrule, so it can record WHAT it
+# overruled. `cut is None` means a declaration is admitted, absent from the surface, and has no
+# narrowing record: a P1 violation. Executed rather than argued — the only stage that can shrink
+# `kept` without registering is `OrderBy.sort`, and (a) the real one returns every row, (b) a
+# subclass overriding it is refused by `validate_pipeline`'s `type(s) is k`, measured:
+#   `pipeline[0] is a Rogue, which is not one of the six stage kinds`.
+#
+# 🔴 This file's own precedent is to DELETE an unreachable refusal (two `except` clauses went that
+# way at R25), and the precedent does not apply here. Those could not fire because the try-body
+# raised exactly one other class — dead by construction of that statement. This one is dead only
+# because a DIFFERENT invariant holds elsewhere, and deleting it turns a future P1 regression from
+# a named failure into a bare `StopIteration` three frames up. Kept, and the cost is this row.
+surface.py::SurfaceAssembler.assemble::AssertionError::1::6b19409d

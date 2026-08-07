@@ -3556,6 +3556,46 @@ class TestStageKindsAreDataNotClosures:
             f"record already produced here."
         )
 
+    def test_A_STALE_FALSIFIER_ANCHOR_IS_CAUGHT_WITHOUT_RUNNING_A_SUITE(self):
+        """REJECTS: a falsifier that no longer applies, discovered fifteen minutes into `--run`.
+
+        🔴 **CP-2 PRODUCED TWO OF THESE IN ONE SESSION.** A falsifier is *data about the tree*, and
+        data about the tree goes stale when the tree moves: CP-2.1's census row anchored on a
+        `return` I then replaced, and CP-2.2's rewrite of the `withheld` expression invalidated a
+        row written twenty minutes earlier. `_apply` refuses both — correctly — but it refuses them
+        mid-run, after however many suites have already executed.
+
+        Checking an anchor is a string comparison. Paying for it with a suite run was a choice
+        nobody made on purpose.
+
+        Both halves are asserted: the tree is clean **and** the check can fire. The second is the
+        one that matters — a `stale_anchors` that always returns `[]` would satisfy the first
+        forever.
+        """
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "_falsify_probe3", _REPO / "scripts" / "agentruntime-falsification.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        assert mod.stale_anchors() == [], "a recorded falsifier no longer applies to this tree"
+
+        real = dict(mod.FALSIFIERS)
+        try:
+            mod.FALSIFIERS.clear()
+            mod.FALSIFIERS["test_fabricated"] = [
+                ("scripts/agentruntime-falsification.py", "a string that is not in this file", "x")
+            ]
+            assert mod.stale_anchors(), "the check did not fire on an anchor that matches nothing"
+            mod.FALSIFIERS["test_fabricated"] = [
+                ("scripts/no-such-file-at-all.py", "anything", "x")
+            ]
+            assert mod.stale_anchors(), "the check did not fire on a file that does not exist"
+        finally:
+            mod.FALSIFIERS.clear()
+            mod.FALSIFIERS.update(real)
+
     def test_THE_SUITE_LIST_IS_EVERY_CP_SUITE_ON_DISK(self):
         """REJECTS: a new checkpoint suite whose guards are outside the partition entirely.
 

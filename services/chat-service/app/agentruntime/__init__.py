@@ -41,6 +41,7 @@ from .contract import (
     ContractViolation,
     Declaration,
     Identity,
+    RequirementNotAdmitted,
     derive_owning_service,
     identity_of,
 )
@@ -54,7 +55,7 @@ from .manifest import (
     manifest_path,
     validate_document,
 )
-from .narrowing import Narrowing, NarrowingLog
+from .narrowing import Narrowing, NarrowingLog, Widening
 from .surface import (
     AllowList,
     DenyList,
@@ -77,7 +78,7 @@ __all__ = [
     "derive_owning_service", "identity_of",
     "UnresolvedReference", "UntrustedRow", "build", "declarations", "generate", "load",
     "manifest_path", "validate_document",
-    "Narrowing", "NarrowingLog",
+    "Narrowing", "NarrowingLog", "Widening", "RequirementNotAdmitted",
     "AllowList", "DenyList", "Filter", "OrderBy", "TopK", "TakeWhileBudget",
     "Surface", "SurfaceAssembler", "discover", "rows_of", "validate_pipeline",
 ]

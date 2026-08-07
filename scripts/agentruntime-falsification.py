@@ -137,6 +137,33 @@ def _apply(mirror: pathlib.Path, edits) -> None:
         p.write_bytes(src.replace(old, new, 1).encode("utf-8"))
 
 
+def stale_anchors() -> list[str]:
+    """Every falsifier whose anchor no longer matches the tree — checked WITHOUT running anything.
+
+    🔴 **THIS EXISTS BECAUSE A STALE ANCHOR USED TO COST FIFTEEN MINUTES TO DISCOVER.** `_apply`
+    refuses a falsifier that does not apply, which is the right behaviour — but it refuses it in
+    the middle of `--run`, after however many suites have already executed, and CP-2 produced two
+    of them in one session: an edit to `_suites` invalidated CP-2.1's census row, and CP-2.2's
+    rewrite of the `withheld` expression invalidated another written twenty minutes earlier.
+
+    **A falsifier is data about the tree, and data about the tree goes stale when the tree moves.**
+    Checking it is a string comparison; paying for it with a suite run was a choice nobody made on
+    purpose. This runs in the default mode, beside the partition, so the answer arrives in the same
+    second as the edit that broke it.
+    """
+    out: list[str] = []
+    for test, edits in sorted(FALSIFIERS.items()):
+        for rel, old, _new in edits:
+            path = ROOT / rel
+            if not path.is_file():
+                out.append(f"{test}: {rel} does not exist")
+                continue
+            n = path.read_bytes().decode("utf-8").replace("\r\n", "\n").count(old)
+            if n != 1:
+                out.append(f"{test}: {rel} has {n} occurrences (want 1) of {old[:60]!r}")
+    return out
+
+
 def _run_one(mirror: pathlib.Path, suite: str, test: str):
     return subprocess.run(
         [sys.executable, "-m", "pytest", suite, "-q", "--no-header", "-k", test],
@@ -249,9 +276,14 @@ def main(argv: list[str] | None = None) -> int:
     for g in stale:
         print(f"STALE ROW      {g}  <- names no guard in either suite")
 
-    rc = 1 if (undeclared or now_proven or stale) else 0
+    anchors = stale_anchors()
+    for a in anchors:
+        print(f"STALE ANCHOR   {a}")
+
+    rc = 1 if (undeclared or now_proven or stale or anchors) else 0
     print(f"agentruntime-falsification: {len(guards)} guards, {len(FALSIFIERS)} falsified, "
-          f"{len(UNFALSIFIED)} deliberately unfalsifiable, {len(recorded)} unproven")
+          f"{len(UNFALSIFIED)} deliberately unfalsifiable, {len(recorded)} unproven, "
+          f"{len(anchors)} stale anchor(s)")
 
     if args.run:
         proven, failed = run_falsifiers(verbose=args.verbose)

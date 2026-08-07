@@ -22,7 +22,8 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
 from .contract import (
-    ID_MAX_LEN, UntrustedRow, _ID, check_document, check_document_rows, check_row,
+    ID_MAX_LEN, RequirementNotAdmitted, UntrustedRow, _ID, check_document, check_document_rows,
+    check_row,
 )
 from .narrowing import NarrowingLog
 
@@ -554,8 +555,20 @@ class SurfaceAssembler:
     def admitted_count(self) -> int:
         return len(self._rows)
 
-    def assemble(self, *, pass_number: int, pipeline: Sequence[object] = ()) -> Surface:
+    def assemble(
+        self, *, pass_number: int, pipeline: Sequence[object] = (),
+        required: Sequence[str] = (),
+    ) -> Surface:
         """Assemble one pass's surface.
+
+        **CP-2.2 · §4.3 — `required` is the current plan step's declarations, and they MUST be
+        advertised.** The plan does not exist until CP-3, so the obligation arrives as an argument
+        exactly the way `toolset_for`'s executor does: the membrane holds because the obligation
+        comes in from outside and the catalogue comes from disk, and neither can reach the other.
+
+        It is an obligation on assembly, **not a licence to invent** — a `required` id the manifest
+        does not admit is a refusal, not a widening, so this widens the *advertised* set strictly
+        within the *admitted* set, which is the direction §0.1 permits and forgot to require.
 
         **This is the only place THIS CLASS removes a declaration**, and `_narrow` writes the record
         in the same statement that computes the removal. It is *not* the only removal site in the
@@ -582,6 +595,21 @@ class SurfaceAssembler:
         # unordered collection selects an arbitrary subset.
         validate_pipeline(pipeline)
 
+        # 🔴 **MATERIALISED FOR THE SAME REASON THE PIPELINE IS.** `required` is checked against the
+        # manifest and then iterated again below; an object yielding different names on its second
+        # pass would be validated as one obligation and executed as another — the TOCTOU a verifier
+        # already drove through `pipeline` with a four-line rogue class.
+        required = list(required)
+        for name in required:
+            # An OPERAND, exactly like `discover`'s `kind`: it is compared against every row, so a
+            # custom `__eq__` is a regex stage with zero new operators, and its `__repr__` reaches
+            # a persisted record through `reason`.
+            _plain(name, str, "required declaration")
+        admitted_ids = {row["id"] for row in self._rows}
+        unadmitted = [n for n in required if n not in admitted_ids]
+        if unadmitted:
+            raise RequirementNotAdmitted(unadmitted)
+
         # 🔴 F3 — count only what THIS assembly recorded, not every entry at this pass.
         #
         # The first version read `self._log.for_pass(pass_number)`, which is the whole log. A log
@@ -599,7 +627,43 @@ class SurfaceAssembler:
                 ordered_by = stage.effective_keys()
                 continue
             kept = self._narrow(kept, stage, pass_number=pass_number, ordered_by=ordered_by)
-        mine = [e for e in self._log.entries[_log_mark:] if e.pass_number == pass_number]
+        # 🔴 CP-2.2 · §4.3 — THE WIDENING, AFTER THE PIPELINE AND BEFORE THE CONSERVATION LAW.
+        #
+        # After, because the rule is about the surface a step is *offered*, not about which stage
+        # is allowed to run. Before, because a restored declaration must leave `withheld` and enter
+        # `kept` in the same breath, or the law reports a loss that did not happen.
+        if required:
+            by_id = {row["id"]: row for row in self._rows}
+            kept_ids = {row["id"] for row in kept}
+            for name in required:
+                if name in kept_ids:
+                    continue
+                # 🔴 **`next(...)` WITH NO DEFAULT WOULD MAKE P1 LOAD-BEARING FOR CONTROL FLOW.**
+                # The declaration is admitted and absent, so some stage dropped it, and every drop
+                # in `_narrow` registers — that is P1, and if it holds the entry exists. Relying on
+                # it silently means a P1 violation surfaces here as a bare `StopIteration` three
+                # frames up. It is named instead.
+                cut = next(
+                    (e for e in reversed(self._log.entries[_log_mark:])
+                     if e.declaration_id == name and e.pass_number == pass_number),
+                    None,
+                )
+                if cut is None:
+                    raise AssertionError(
+                        f"{name!r} is admitted, absent from the surface, and has NO narrowing "
+                        f"record at pass {pass_number}. A declaration left without registering, "
+                        f"which is the state the conservation law exists to make unreachable."
+                    )
+                self._log.widen(
+                    name, reason="named by the current plan step (§4.3)",
+                    pass_number=pass_number, over_stage=cut.stage, over_reason=cut.reason,
+                )
+                kept = kept + [by_id[name]]
+                kept_ids.add(name)
+
+        widened = self._log.widened_at(pass_number)
+        mine = [e for e in self._log.entries[_log_mark:]
+                if e.pass_number == pass_number and e.declaration_id not in widened]
         withheld = tuple(e.as_record() for e in mine)
 
         # 🔴 THE CONSERVATION LAW, ENFORCED IN PRODUCTION CODE RATHER THAN ONLY IN A TEST.
