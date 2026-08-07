@@ -2737,6 +2737,105 @@ outcome."* It is the round's headline finding, committed by the coordinator agai
 
 **CP-1 does not close.**
 
+---
+
+## ⭐ CP-1 CLOSES — **SCOPED**, and the scope is the whole of the claim
+
+**PO decision, 2026-08-07.** After R26 (`FAIL × FAIL`), two things were true at once: the *fixes*
+had begun landing — both of R25-B's falsifiable predictions were refuted by execution, the first
+time in this run a delta was confirmed by a prediction made before it existed — and every single one
+of R26's ten findings was **a guard rather than a defect**. Sibling pairs fixed at both ends across
+the run: **3 of 12**.
+
+That is a different problem from the one this loop was shaped to solve, and eighteen rounds of the
+same loop will not solve it. So the loop changed first, and then the checkpoint closed.
+
+### ▶ What CLOSES
+
+**CP-1's refusal surface, scoped to the 61 census-RED sites.** Each is a `raise` in
+`app/agentruntime/` that was neutered **one at a time** and made the suite fail — mechanically, by an
+instrument three verifiers re-derived independently and whose arithmetic reproduced exactly under a
+fourth's own implementation.
+
+| | |
+|---|---|
+| census | **68 sites · 61 RED · 7 SILENT**, `rc=0` |
+| chat-service suite | **2291** |
+| membrane gate | 8 modules, **0 external imports**, 2 single-sited types |
+| falsification gate | **262 guards · 16 falsified · 16/16 fire** |
+
+Also closing, each upheld by an independent verifier rather than by me: `members` is the one mutable
+value a row carries (504 cells, 7/7 doors run `check_row`) · `ID_MAX_LEN` pinned to exactly `{64}`,
+defended over 334 real ids · the alphabet admits all 334 · both `check_contract` pins · 5/5
+id-comparand doors · W4 at both the `try` and `with` doors · the allocator property · the seven
+allowlist rows are the same SITES across the digest churn · and the field-name-door **omission**
+graded SOUND — the first time a stated decision not to act was judged rather than found.
+
+### ▶ What is CARRIED, and on which criterion
+
+**Nothing here is being quietly dropped.** Each row names the predicate that moves it, and the
+predicate is the one this board declared — not one chosen to fit the row, which is the error the
+TRANSFER DECISION block above had to be corrected for.
+
+**→ CP-2, on ZERO PRODUCTION REACHABILITY** (verified independently twice: `app.agentruntime` has no
+importer outside the package that is not a test or the membrane gate's own smoke import):
+
+| item | measured today |
+|---|---|
+| **`build(previous=)` is a SEVENTH document door** with no `check_document`, and it **launders** a `manifest_version: 999 / contract_version: "banana"` document into one stamped `1` while harvesting §6.4's origin stamps | 10 of 13 document defects pass it |
+| **`manifest_version: true`** is accepted at all seven doors and `validate_document` launders it to `1` — `check_document` pins one stamp with `type(x) is not str` and the other with `!=`, six lines apart | plain JSON on disk |
+| **5 further `Filter(op="not_in")` doors** remove NOTHING and register NOTHING | two have closed vocabularies already in `contract.py` |
+| **B18-10's fifth exported door** (11 rounds) | a door with no caller cannot be measured as a leak |
+
+**→ CP-2, on V-CODE NON-FALSIFIABILITY OF A RUNTIME ORDERING:** the catalogue-outage residual. Its
+subject is `app/services/instrument.py`, which has **9 production importers today** — this is live
+code, and the reason it moves is that no reading of source can settle an ordering claim, not that it
+has no subject. **V-LIVE must observe whether one `AdvertisedToolsRecorder` id ever appears under two
+turn tokens.**
+
+**→ NAMED DEBT, with a register rather than a sentence:**
+
+* **7 SILENT census rows**, each classified in `contracts/agentruntime-census-silent.txt` with the
+  observation behind it — **4 UNCHECKED · 2 SIBLING · 1 UNREACHABLE**. The file's header had asked
+  for exactly that since it was created; a verifier supplied it and it is recorded with the verdict
+  id.
+* **246 unproven guards** in `contracts/agentruntime-falsification-unproven.txt` — the first time
+  this number has existed. A guard there is one nobody has shown can fail.
+* **The instrument findings of R26** that are neither: `branches-ignore` unread in the CI check;
+  A6 still binding a write-API list; T11d blind one hoist further out and carrying 2 residual
+  false positives; the digest's collision groups doubled from 1 to 2; B5's closure guard defeated
+  4 of 4; the import gate's 7 false-positive shapes. Both R26 verdicts are the register.
+* **Branch protection** — whether CI's census job is *required* lives in GitHub, not in this tree.
+  **No check in this repository can ever observe it.** A permanent named residual, so every CI count
+  above reads as *"of the shapes expressible in a workflow file"*.
+
+### 🔴 What this closure explicitly does NOT claim
+
+* **Not that the membrane holds in production.** It has never served a turn. Both CP-1 V-LIVE rounds
+  returned `CANNOT DETERMINE` on every item, for the same mechanical reason: nothing imports it.
+  **CP-2's first import is what makes V-LIVE possible at all**, and that is the point of moving.
+* **Not that the guards are right.** The census says the suite notices a refusal being removed; it
+  does not say the refusal is correct. 246 guards have never been shown to fail at all.
+* **Not that the enumerations are complete.** Every denominator published in this run has turned out
+  to be a lower bound — five rounds running, including from two instruments built to stop that.
+
+### ⭐ The loop changed, and that is the durable part
+
+`scripts/agentruntime-falsification.py` promotes the one instrument that never flattered the builder
+into a gate with a checked-in register:
+
+* the **denominator is enumerated from the suites by AST** — 262 guards, not a list anyone maintains;
+* the **partition must be exact** — falsified, deliberately unfalsifiable *with a reason*, or in the
+  backlog. **A guard in none of the three fails on the day it is written**, which is the clause that
+  would have caught R26's four unguarded fixes;
+* the runner requires the guard a falsifier **NAMES** to be the failing test — a red elsewhere is a
+  bystander, which is R26's vacuous-column finding encoded;
+* and it caught a defect in itself within minutes: **its own three files were untracked**, so the
+  live tree was green and every clean checkout, CI included, was red. The census's
+  mirror-of-tracked-files design found it. There is now a clause asserting the register is tracked.
+
+**CP-1 is closed at this scope. CP-2 begins with the first import.**
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its

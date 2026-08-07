@@ -166,3 +166,34 @@ jobs:
       # pass a census that has not been shown to fire in both directions.
       - name: Refusal census
         run: python scripts/agentruntime-census.py
+
+  # 🔴 THE GUARDS, NOT THE FIXES, ARE WHERE THIS RUN'S DEFECTS NOW LIVE.
+  #
+  # Six independent verification rounds on CP-1 converged on one shape: the fixes land, and the
+  # guards written for them have holes. Round 26's ten findings were ALL guards — a control that
+  # could not fail, a column that reddened for a different clause than the one it tested, an
+  # anti-vacuity check calibrated below the thing it guarded. Sibling pairs fixed at both ends
+  # across the run: 3 of 12.
+  #
+  # The rule "a fix without a red-able test is not a closed finding" was in force the whole time and
+  # did not hold, because it is a thing a person is supposed to remember at the moment they are most
+  # convinced they have just fixed something. What DID hold is the reversion prover: it caught four
+  # fixes shipped with no guard at all in one round, before either verifier saw the tree.
+  #
+  # `--run` applies each recorded falsifier in a throwaway mirror and requires the guard it NAMES to
+  # be the failing test — a red somewhere else is a bystander, which is the R26 finding this clause
+  # is built from. ~2 minutes; it reuses one mirror rather than one per falsifier.
+  agentruntime-falsification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install chat-service deps
+        working-directory: services/chat-service
+        run: python -m pip install --quiet -r requirements.txt -r requirements-test.txt
+      # Default mode checks the PARTITION — every guard is falsified, deliberately unfalsifiable
+      # with a reason, or in the checked-in backlog. `--run` then proves the recorded ones fire.
+      - name: Falsification gate
+        run: python scripts/agentruntime-falsification.py --run

@@ -2844,6 +2844,10 @@ class TestStageKindsAreDataNotClosures:
         READS = {"glob", "rglob", "read_bytes", "read_text", "exists", "is_file", "is_dir",
                  "relative_to", "parents", "parent", "name", "resolve", "as_posix", "stat",
                  "joinpath", "with_suffix", "splitlines", "decode", "encode", "startswith"}
+        #: The subset of `READS` that turns a PATH into CONTENT. Everything else in `READS` is a
+        #: transform that carries the path onward — a distinction the vehicle table forced.
+        CONSUMES = {"read_bytes", "read_text", "glob", "rglob", "stat", "exists", "is_file",
+                    "is_dir"}
         #: Callables that cannot touch a filesystem no matter what they are handed. A live path
         #: flowing into one of these is arithmetic or a message, not an operation on the tree.
         #: Kept deliberately small: `subprocess.run` is NOT here, which is how the `cwd=CS` default
@@ -2862,6 +2866,26 @@ class TestStageKindsAreDataNotClosures:
         }
 
         tainted_fns: dict[str, set[str]] = {}
+
+        def _carries_live(node, tainted) -> bool:
+            """Does this expression still carry a live-tree PATH, rather than data read from one?
+
+            Walks the expression but refuses to descend through a READ: `p.read_bytes()` yields
+            bytes, `p.glob()` yields paths that are separately tainted by their own binding, and
+            neither hands `p` onward. Without this, every read-and-transform chain in the module
+            reads as "a live path reached a call".
+            """
+            if isinstance(node, ast.Name):
+                return node.id in tainted
+            # 🔴 **`READS` IS THE WRONG SET TO STOP AT, AND THE VEHICLE TABLE SAID SO IMMEDIATELY.**
+            # It holds two different kinds of call: ones that turn a path into CONTENT
+            # (`read_bytes`, `glob`, `stat`) and ones that merely transform it (`decode`, `encode`,
+            # `resolve`, `joinpath`). Stopping at both made `str(ROOT / 'x').encode()` — the `ctypes`
+            # vehicle — read as data, because `.encode()` was in the set. Only a CONSUMER breaks the
+            # chain; a transform carries the path onward, which is exactly what the vehicle does.
+            if isinstance(node, ast.Call) and getattr(node.func, "attr", None) in CONSUMES:
+                return False
+            return any(_carries_live(c, tainted) for c in ast.iter_child_nodes(node))
 
         def _offenders(tree) -> list[str]:
             found: list[str] = []
@@ -2882,15 +2906,31 @@ class TestStageKindsAreDataNotClosures:
             for _ in range(12):
                 grew = False
                 for n in ast.walk(fn):
-                    if not isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                    # 🔴 **`for` AND COMPREHENSION TARGETS WERE NOT BINDERS, AND THAT IS THE
+                    # CENSUS'S OWN INNER-LOOP SHAPE.** A verifier measured the cost: 20 of 24 axis
+                    # vehicles blind, and then drove it to the end — `for p in sorted(PKG.glob(...))`
+                    # followed by a write through `p` put **8 directories inside the live
+                    # `app/agentruntime/` package while this suite reported `152 passed`.**
+                    #
+                    # The axis was right and the walk was incomplete: a binding is a binding however
+                    # Python spells it, and I had enumerated three spellings out of five.
+                    if isinstance(n, (ast.For, ast.AsyncFor)):
+                        value, targets = n.iter, [n.target]
+                    elif isinstance(n, ast.comprehension):
+                        value, targets = n.iter, [n.target]
+                    elif isinstance(n, ast.withitem):
+                        value, targets = n.context_expr, ([n.optional_vars]
+                                                          if n.optional_vars else [])
+                    elif isinstance(n, (ast.Assign, ast.AnnAssign, ast.NamedExpr)):
+                        value = n.value
+                        targets = n.targets if isinstance(n, ast.Assign) else [n.target]
+                    else:
                         continue
-                    value = n.value
                     if value is None:
                         continue
                     if not any(isinstance(x, ast.Name) and x.id in tainted
                                for x in ast.walk(value)):
                         continue
-                    targets = n.targets if isinstance(n, ast.Assign) else [n.target]
                     for t in targets:
                         for el in ([t] if isinstance(t, ast.Name)
                                    else getattr(t, "elts", [])):
@@ -2913,6 +2953,17 @@ class TestStageKindsAreDataNotClosures:
                     for a in list(call.args) + [k.value for k in call.keywords]
                     for x in ast.walk(a))
                 callee = attr or getattr(call.func, "id", "?")
+                # 🔴 **A READ TURNS A PATH INTO DATA, AND THE FIRST VERSION COULD NOT TELL.**
+                # `ast.parse(path.read_bytes().decode("utf-8"))` carries a tainted NAME in its
+                # argument while the value that arrives is a `str`. Widening `PURE` with `parse`
+                # would have worked and would have been the wrong move — a verifier warned in the
+                # same round that `READS`/`PURE` are allow-lists a new entry widens silently, and
+                # `PURE` is the one that grants passage. So the rule is about the EXPRESSION: a
+                # tainted name consumed by a read does not propagate past it.
+                if arg_live and not any(
+                        _carries_live(a, tainted)
+                        for a in list(call.args) + [k.value for k in call.keywords]):
+                    arg_live = False
                 if receiver_live and callee not in READS:
                     offenders.append(
                         f"{fn.name}:{call.lineno} calls `{callee}` ON a live-tree path")
@@ -2928,11 +2979,17 @@ class TestStageKindsAreDataNotClosures:
             f"concurrent suite run reddening blaming a test. Both measured. If the call really is "
             f"read-only, add it to READS in the same change and say why."
         )
-        # The gate must be able to see the live roots at all — otherwise it is green over a module
-        # whose names were simply spelled differently.
-        assert LIVE <= set(tainted_fns.get("census", ())), (
-            "the taint roots are not present in `census()`; the gate is measuring nothing"
-        )
+        # 🔴 **A NO-VACUITY ASSERTION STOOD HERE AND IT WAS A TAUTOLOGY.** It read
+        # `assert LIVE <= set(tainted_fns["census"])` — and `tainted` is initialised
+        # `= set(LIVE)` unconditionally, so it could not fail. A verifier proved it by renaming every
+        # live root out of the module and watching it stay True. **Third control-agreeing-with-its-
+        # seed in this run, and I shipped it inside the fix for an axis I was changing because the
+        # previous enumeration had been too small.**
+        #
+        # It is DELETED rather than replaced. The vehicle table below is the real anti-vacuity
+        # check: it requires an offender for every one of 23 shapes, three of which reach the tree
+        # only through a tainted LOCAL, so the fixed point cannot be dead and the roots cannot be
+        # missing. A second control that restates the first is what produced the tautology.
 
         # 🔴 **THE CONTROL — all nineteen APIs a verifier enumerated, plus the two shapes it
         # predicted would be found NEXT round.** Every one of them is caught by ONE clause, because
@@ -2963,6 +3020,14 @@ class TestStageKindsAreDataNotClosures:
             "a re-exported pathlib": "__import__('pathlib').Path(ROOT / 'x').write_bytes(b'x')",
             # ...and one through an intermediate local, which is what the fixed point is for.
             "an aliased local": "_p = ROOT / 'x'\n_p.write_bytes(b'x')",
+            # 🔴 **THE CENSUS'S OWN INNER-LOOP SHAPE**, which the first version of this gate was
+            # blind to because a `for` target was not treated as a binder. A verifier drove it to 8
+            # directories inside the live package with this suite reporting `152 passed`.
+            "a `for` target": "for _q in sorted(PKG.glob('*.py')):\n    _q.write_bytes(b'x')",
+            "a comprehension target": "[_r.write_bytes(b'x') for _r in PKG.glob('*.py')]",
+            "a `with ... as` target": "import contextlib\n"
+                                      "with contextlib.nullcontext(ROOT / 'x') as _s:\n"
+                                      "    _s.write_bytes(b'x')",
         }
         blind = []
         for label, stmt in VEHICLES.items():
@@ -3379,6 +3444,95 @@ class TestStageKindsAreDataNotClosures:
         )
         assert _digest('raise ValueError("x", "y")') not in digests.values(), (
             "the digest no longer distinguishes the refusal's ARITY"
+        )
+
+    def test_EVERY_GUARD_DECLARES_WHETHER_IT_CAN_FAIL(self):
+        """🔴 **SIX ROUNDS FOUND THAT THE GUARDS, NOT THE FIXES, ARE WHERE THE DEFECTS NOW LIVE.**
+
+        R26 is the clean case: every one of its ten findings was a guard rather than a defect — a
+        control that could not fail (`tainted = set(LIVE)` is unconditional, so the assertion over it
+        was a tautology), a column that reddened for the declaration-loss clause instead of the one
+        it was testing, an anti-vacuity check calibrated below the thing it guarded. Sibling pairs
+        fixed at both ends across the run: **3 of 12**.
+
+        *"A fix without a red-able test is not a closed finding"* has been a standing rule the whole
+        time. It did not hold, because it is a thing a person is supposed to remember at the moment
+        they are most convinced they have just fixed something. **In R26 the reversion prover caught
+        four fixes shipped with no guard at all**, before either verifier saw the tree.
+
+        So the rule becomes a partition, and this is the clause that enforces it: **every guard in
+        these two suites is either falsified, deliberately unfalsifiable with a stated reason, or in
+        the checked-in backlog.** A guard in none of the three fails here — on the day it is written,
+        not six rounds later.
+
+        The denominator is enumerated from the suites by AST, never from a list, because a
+        hand-maintained denominator is the failure this run has paid for five times.
+
+        This is the CHEAP half — it checks the partition, not the falsifiers. Running them is
+        `scripts/agentruntime-falsification.py --run`, ~2 minutes, and it has its own CI job.
+        """
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location(
+            "_falsify_probe", _REPO / "scripts" / "agentruntime-falsification.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+
+        # 🔴 **AN UNTRACKED REGISTER IS A REGISTER NOBODY ELSE HAS**, and the census found this one
+        # within minutes of the instrument being written: its own three files were untracked, so the
+        # live tree was green and **every clean checkout — including CI — was red**. That is the
+        # census's mirror-of-tracked-files design catching a defect in the gate written beside it.
+        #
+        # It is the same shape as a gate whose file set is typed out: the thing that decides the
+        # answer is not the thing the next machine will see.
+        # 🔴 **AND THE FIRST VERSION OF THIS CLAUSE CONFLATED "CANNOT ASK" WITH "ANSWERED NO" —
+        # WHICH IS THE DEFECT `_suite_is_green` RECORDS IN CAPITALS, TWENTY LINES OF READING AWAY.**
+        # `git ls-files` exits **128** inside the census's mirror, because a mirror is a copy of
+        # tracked files and has no `.git`. Treating every non-zero exit as "not tracked" turned a
+        # question that could not be asked into a failing answer, and reddened the census's own
+        # selftest against a tree that was fine. *"pytest reserves exit 1 for test failures; 2–5
+        # mean it did not get to run them, and that is a broken harness, not a guarded refusal."*
+        # Same sentence, different command.
+        import subprocess as _sp
+
+        _is_repo = _sp.run(["git", "rev-parse", "--git-dir"], cwd=_REPO,
+                           capture_output=True).returncode == 0
+        if _is_repo:
+            untracked = [
+                rel for rel in ("scripts/agentruntime-falsification.py",
+                                "scripts/agentruntime_falsifiers.py",
+                                "contracts/agentruntime-falsification-unproven.txt")
+                if _sp.run(["git", "ls-files", "--error-unmatch", rel], cwd=_REPO,
+                           capture_output=True).returncode == 1
+            ]
+            assert not untracked, (
+                f"{untracked} are not tracked. The falsification gate would pass here and fail in "
+                f"every other checkout, which is worse than not having it — the census found "
+                f"exactly that within minutes of this instrument being written."
+            )
+
+        guards = mod._guards()
+        assert len(guards) >= 250, (
+            f"the enumeration found only {len(guards)} guards; it broke, and a partition over "
+            f"nothing is exactly the vacuity this instrument exists to end"
+        )
+        recorded = sorted(
+            l.strip() for l in mod.UNPROVEN.read_text("utf-8").splitlines()
+            if l.strip() and not l.startswith("#"))
+        declared = set(mod.FALSIFIERS) | set(mod.UNFALSIFIED) | set(recorded)
+
+        undeclared = sorted(set(guards) - declared)
+        assert not undeclared, (
+            f"{len(undeclared)} guard(s) declare nothing about whether they can fail: "
+            f"{undeclared[:8]}. Write a falsifier in `scripts/agentruntime_falsifiers.py`, or "
+            f"record it in the backlog with `--write`, or say in `UNFALSIFIED` why no edit can make "
+            f"it red. Doing none of the three is how four fixes shipped unguarded in one round."
+        )
+        stale = sorted(declared - set(guards))
+        assert not stale, (
+            f"{stale} name no guard in either suite — a register that has gone stale claims "
+            f"coverage it does not have, which is the shape six consecutive rounds of a hand-typed "
+            f"record already produced here."
         )
 
     def test_THE_CENSUS_IS_WIRED_TO_RUN_IN_CI(self):
