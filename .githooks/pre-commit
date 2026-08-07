@@ -125,6 +125,16 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # gate and not named like one.
 "$PY" "$ROOT/scripts/dp-channels-schema-gate.py"
 
+# A MIGRATION THE ORCHESTRATOR NEVER APPLIES (1b7gap-H1). manifest.yaml ended at
+# 0013 while six more migrations had shipped, so `channels`, the writer lease,
+# the ruleset digest and both projection drops could not exist in a real
+# per-reality database -- 0019 was written, reviewed, live-smoked 46 times, gated
+# here, and applied by NOTHING. The gap was already tracked in a manifest comment
+# naming four other files, and six drifted past it, because a row is not a
+# mechanism. Every per_reality/*.up.sql now needs an entry or a reasoned
+# exclusion, and the exclusion list must shrink.
+"$PY" "$ROOT/scripts/migration-manifest-gate.py"
+
 # NO FLOAT IN THE BYTES THAT BECOME A NAME (U-9, engine-substrate §3). A float
 # inside the hashed ruleset bytes lets two machines produce two digests for one
 # ruleset -- two realities with identical content and different NAMES. Server

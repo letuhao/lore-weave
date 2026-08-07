@@ -36,6 +36,8 @@
 -- They now project to nothing. That is a real gap and it is recorded here rather
 -- than papered over with a table nobody writes.
 
+BEGIN;
+
 DROP TABLE IF EXISTS npc_session_memory_embedding;
 DROP TABLE IF EXISTS npc_pc_relationship_projection;
 DROP TABLE IF EXISTS npc_session_memory_projection;
@@ -70,3 +72,5 @@ ALTER TABLE projection_drift_state
 
 COMMENT ON CONSTRAINT projection_drift_table_name_allowlist ON projection_drift_state IS
     'Cardinality fence, shrunk from ten to three by 0017 when the pc/npc projections were removed. A new table added in L4+ MUST extend this CHECK.';
+
+COMMIT;

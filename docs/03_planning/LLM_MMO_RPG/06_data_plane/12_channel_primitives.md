@@ -153,9 +153,27 @@ CREATE TABLE channels (
     ),
 
     -- ⚠ ADDED (1b5-M4): `REC-103` carried the wire contract's WIDTH across and
-    -- not its DOMAIN. `DP-Ch11` allocates `MAX() + 1`, which starts at 1.
+    -- not its DOMAIN.
     CONSTRAINT channels_id_positive CHECK (id > 0),
     CONSTRAINT channels_level_name_nonempty CHECK (length(btrim(level_name)) > 0),
+
+    -- ⚠ ADDED (1b7gap-L1): the domain was fixed at ONE end. `id = i64::MAX` was
+    -- accepted and then `SELECT MAX(id) + 1` — the shape any allocator for this
+    -- column will have — dies with `bigint out of range`. Reserving the top value
+    -- means a successor always exists. NOTE: `contracts/game-wire/common.schema.json`
+    -- types `Uint64String` as `^(0|[1-9][0-9]{0,19})$`, which admits `0` and
+    -- values past `i64::MAX`; the column is the narrower of the two, which is the
+    -- safe direction, and the contract needs the amendment.
+    CONSTRAINT channels_id_allocatable CHECK (id < 9223372036854775807),
+
+    -- ⚠ ADDED (1b7db-02): the assertion that makes `channels_parent_fk`'s
+    -- arithmetic a fact about DATA rather than about DDL. `ALTER COLUMN
+    -- parent_depth DROP EXPRESSION` needs only table ownership — no superuser,
+    -- no rewrite — and then a caller supplies `parent_depth` by hand and a
+    -- self-parent inserts in one statement. A CHECK survives DROP EXPRESSION.
+    -- Vacuous only while the expression exists, which is exactly the condition
+    -- it exists to outlive.
+    CONSTRAINT channels_parent_depth_derived CHECK (parent_depth = depth - 1),
 
     -- ⚠ REMOVED (REC-106): `channels_no_self_parent CHECK (parent IS NULL OR
     -- parent <> id)` stood here. `channels_parent_fk` now makes it unable to
@@ -203,33 +221,84 @@ locks *Dissolved → (any)* as *"terminal, no transitions"* and `:77` attributes
 to a *"row-level rule"*; `:55` requires *"all descendants Dissolved"* before a
 dissolution. Both are statements about a TRANSITION, which a `CHECK` cannot see,
 and until `1b.5` both fell to a plain `UPDATE` while `:77` named a mechanism that
-existed nowhere. The rule is a `BEFORE UPDATE OF lifecycle` trigger — in the DB
+existed nowhere. The rule is a `BEFORE INSERT OR UPDATE` trigger — in the DB
 and not only in the SDK, because `DP-Ch31` says *"row-level rule **+** SDK
 transition validator"*, and an SDK-only check is one the next writer to reach
-this table does not have. It tests CHILDREN rather than descendants, which is not
-a weakening: a child may only reach Dissolved when its own children are, so by
-induction a Dissolved channel's whole subtree is Dissolved.
+this table does not have.
+
+⚠ **AMENDED 2026-08-08 (`1b7gap-H3`) — there are THREE rules, and the third is
+what makes the other two's induction argument true rather than merely stated.**
+This section originally justified checking CHILDREN rather than descendants by
+claiming *"a child may only reach Dissolved when its own children are, so by
+induction a Dissolved channel's whole subtree is Dissolved."* **That was false.**
+Induction over TRANSITIONS says nothing about CREATION, and the trigger fired
+`BEFORE UPDATE OF lifecycle` only. Measured on a live Postgres 18: dissolve
+channel 2, then `INSERT (id 3, parent 2, 'active')` → `INSERT 0 1` — a live child
+under a dissolved parent, which the state table above forbids in its own
+precondition column (*"parent exists, parent not Dissolved"*) and which nothing
+implemented. The trigger is now `BEFORE INSERT OR UPDATE` rather than
+`UPDATE OF lifecycle`, because an `UPDATE OF lifecycle` trigger does not fire
+when only `parent` changes — re-parenting under a dissolved node was the same
+hole through a second door.
 
 ```sql
 CREATE OR REPLACE FUNCTION channels_lifecycle_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
+    IF NEW.parent IS NOT NULL
+       AND (TG_OP = 'INSERT' OR NEW.parent IS DISTINCT FROM OLD.parent)
+       AND EXISTS (SELECT 1 FROM channels c
+                    WHERE c.reality_id = NEW.reality_id AND c.id = NEW.parent
+                      AND c.lifecycle = 'dissolved') THEN
+        RAISE EXCEPTION 'channels_no_child_of_dissolved: ...' USING ERRCODE = 'check_violation';
+    END IF;
+    IF TG_OP = 'INSERT' THEN
+        RETURN NEW;
+    END IF;
     IF OLD.lifecycle = 'dissolved' AND NEW.lifecycle <> 'dissolved' THEN
         RAISE EXCEPTION 'channels_dissolved_is_terminal: ...' USING ERRCODE = 'check_violation';
-    END IF;
-    IF NEW.lifecycle = 'dissolved' AND OLD.lifecycle <> 'dissolved'
-       AND EXISTS (SELECT 1 FROM channels c
-                    WHERE c.reality_id = NEW.reality_id AND c.parent = NEW.id
-                      AND c.lifecycle <> 'dissolved') THEN
-        RAISE EXCEPTION 'channels_dissolve_descendants_first: ...' USING ERRCODE = 'check_violation';
     END IF;
     RETURN NEW;
 END;
 $$;
 
 CREATE OR REPLACE TRIGGER channels_lifecycle_guard_trg
-    BEFORE UPDATE OF lifecycle ON channels
+    BEFORE INSERT OR UPDATE ON channels
     FOR EACH ROW EXECUTE FUNCTION channels_lifecycle_guard();
+```
+
+⚠ **`DP-Ch33` is a SEPARATE, `AFTER`, CONSTRAINT trigger, and the shape is the
+finding (`1b7db-07`).** As a `BEFORE`-row check this rule made a legitimate
+operation *impossible* rather than merely awkward: dissolving a subtree in one
+statement failed in **every** row order, including an explicit leaf-first
+`ORDER BY depth DESC`, because a `BEFORE`-row trigger cannot see the other rows
+the same command is updating. The only working shape was N separate single-row
+statements — nowhere documented, and not something a caller would guess. A
+constraint trigger fires at the **end of the statement**, so it sees the whole
+effect; it is also `DEFERRABLE`, so a subtree dissolved across several statements
+can defer to `COMMIT`. Same escape hatch as `channels_parent_fk`, same reason,
+and it does not weaken the rule because the final state is still checked.
+
+```sql
+CREATE OR REPLACE FUNCTION channels_dissolve_order_guard() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM channels c
+                WHERE c.reality_id = NEW.reality_id AND c.parent = NEW.id
+                  AND c.lifecycle <> 'dissolved') THEN
+        RAISE EXCEPTION 'channels_dissolve_descendants_first: ...' USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS channels_dissolve_order_trg ON channels;
+CREATE CONSTRAINT TRIGGER channels_dissolve_order_trg
+    AFTER UPDATE OF lifecycle ON channels
+    DEFERRABLE INITIALLY IMMEDIATE
+    FOR EACH ROW
+    WHEN (NEW.lifecycle = 'dissolved')
+    EXECUTE FUNCTION channels_dissolve_order_guard();
 ```
 
 > ## ⚠ `REC-103` — `id` is `BIGINT`, not `UUID`, and this is the amendment `REC-102a` implied
@@ -591,8 +660,8 @@ Entry shape (MessagePack):
 {
   "v": 1,
   "op": "insert" | "update" | "dissolve",
-  "channel_id": "<uuid>",
-  "parent": "<uuid|null>",
+  "channel_id": "<uint64-string>",
+  "parent": "<uint64-string|null>",
   "level_name": "<string>",
   "lifecycle": "active|dormant|dissolved",
   "version": <monotonic per reality>,

@@ -275,7 +275,12 @@ use blake3;
 fn deterministic_rng(channel_id: &ChannelId, channel_event_id: u64) -> StdRng {
     let mut hasher = blake3::Hasher::new();
     hasher.update(b"dp-bubble-up-rng-v1");
-    hasher.update(channel_id.as_uuid().as_bytes());
+    // ⚠ AMENDED 2026-08-08 (1b7gap-M3): was `channel_id.as_uuid().as_bytes()`.
+    // `ChannelId` has no UUID payload and never had one — the shipped type is
+    // `ChannelId(i64)` and its only accessor is `get()`. `grep -rn as_uuid
+    // crates/` returns nothing, so this named a method that does not exist, in
+    // a fence 60 lines above the block amended for `1b5-H1` in the same file.
+    hasher.update(&channel_id.get().to_le_bytes());
     hasher.update(&channel_event_id.to_le_bytes());
     let seed: [u8; 32] = hasher.finalize().into();
     StdRng::from_seed(seed)

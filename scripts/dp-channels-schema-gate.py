@@ -109,10 +109,56 @@ PENDING_ALTERS = {
     },
 }
 
-# The lifecycle rules `DP-Ch31`/`DP-Ch33` state and no CHECK can express, because
-# both are about a TRANSITION. `1b5-L5`.
-TRIGGER_NAME = "CHANNELS_LIFECYCLE_GUARD_TRG"
-TRIGGER_EVENT = "BEFORE UPDATE OF LIFECYCLE ON CHANNELS"
+# The lifecycle rules `DP-Ch31`/`DP-Ch33`/`DP-Ch34` state and no CHECK can
+# express, because all three are about a TRANSITION. `1b5-L5`, widened to INSERT
+# by `1b7gap-H3` — an `UPDATE OF lifecycle` trigger does not fire on an INSERT,
+# nor when only `parent` changes, and both were live holes.
+#
+# TWO triggers, not one, and the second one's SHAPE is load-bearing: a
+# `BEFORE`-row check of DP-Ch33 makes a one-statement subtree dissolve impossible
+# in every row order (`1b7db-07`), because a BEFORE-row trigger cannot see the
+# other rows its own command is updating. Only a CONSTRAINT trigger, which fires
+# at end-of-statement, can express "no live child" over a multi-row UPDATE. So
+# the timing is compared, not just the name — downgrading it to `BEFORE` would
+# silently re-break the operation.
+EXPECT_TRIGGERS = {
+    "CHANNELS_LIFECYCLE_GUARD_TRG": "BEFORE INSERT OR UPDATE ON CHANNELS",
+    "CHANNELS_DISSOLVE_ORDER_TRG":
+        "AFTER UPDATE OF LIFECYCLE ON CHANNELS DEFERRABLE INITIALLY IMMEDIATE",
+}
+
+# ---------------------------------------------------------------------------
+# `1b7gap-M3`/`M4` · the scan's blast radius.
+#
+# The first cross-file scan read ONLY ```sql fences and ONLY two patterns, and a
+# cold-start refuter found FOUR more sites still declaring `UUID` after
+# `REC-103` — two of them within 200 lines of blocks this very gate's commit
+# amended, one in a ```rust fence, one in an unlabelled fence in the file the
+# gate parses as schema authority. `1b5-H1` said "one of FOUR locked SQL sites";
+# there are at least EIGHT.
+#
+# So: every fence of every language, AND the prose between them. A declaration
+# does not become invisible by being written in a sentence — `13:209`'s form is
+# exactly what prose looks like.
+#
+# THE ESCAPE HATCH AND ITS REASON. An "⚠ AMENDED" block legitimately QUOTES the
+# old wrong form in order to explain the correction, and a gate that cannot tell
+# a quotation from a declaration would make every fix unshippable. A line may
+# carry `schema-gate: ok — <reason>` on itself or up to 3 lines above. `NV`'s
+# fourth shape is *"the escape hatch cannot reach its reason"*, so the reason is
+# REQUIRED: a bare marker with nothing after the dash does not exempt anything.
+_SQLISH = {"sql", "postgresql", "postgres", "psql", "plpgsql", ""}
+_EXEMPT = re.compile(r"schema-gate:\s*ok\s*[—\-]\s*(\S.*)$")
+_EXEMPT_WINDOW = 3
+# Declarations that contradict `REC-103` (`ChannelId` is `i64`, so the column is
+# BIGINT). Deliberately narrow patterns: a false positive here is a gate that
+# gets switched off, which is `1b5-M5`.
+_UUID_FORMS = [
+    (re.compile(r"\bchannel_id\s+UUID\b", re.I), "`channel_id UUID` — REC-103 settled ChannelId as i64, so the column is BIGINT"),
+    (re.compile(r"\bparent_channel\s+UUID\b", re.I), "`parent_channel UUID` — REC-103 settled ChannelId as i64, so the column is BIGINT"),
+    (re.compile(r"\bchannel_id\b[^\n]{0,20}as_uuid\(\)", re.I), "`channel_id.as_uuid()` — ChannelId has no UUID payload; `grep as_uuid crates/` finds nothing"),
+    (re.compile(r'"(?:channel_id|parent)"\s*:\s*"<\s*uuid', re.I), "a wire shape typing a channel id as `<uuid>` — REC-103"),
+]
 
 _TYPE_ALIASES = {
     "INT8": "BIGINT", "INT4": "INTEGER", "INT": "INTEGER", "INT2": "SMALLINT",
@@ -280,10 +326,19 @@ def parse_indexes(text: str) -> dict:
     return out
 
 
-def parse_trigger(text: str) -> str | None:
-    m = re.search(r"CREATE(?: OR REPLACE)? TRIGGER (\w+)\s+(.*?)\s+FOR EACH ROW",
-                  norm(strip_sql_comments(sql_only(text))), re.S)
-    return f"{m.group(1)}|{m.group(2)}" if m else None
+def parse_triggers(text: str) -> dict[str, str]:
+    """Every trigger, with its full timing clause — not just the first one.
+
+    `re.search` returned ONE, which is how a second trigger could have been added
+    on one side and not the other without a word. Same defect class as
+    `_extract_table` taking the first `CREATE TABLE` (`1b7gap-M4`).
+    """
+    out = {}
+    pat = re.compile(r"CREATE(?: OR REPLACE)?(?: CONSTRAINT)? TRIGGER (\w+)\s+(.*?)"
+                     r"\s+(?:WHEN\s*\(.*?\)\s+)?(?:FOR EACH ROW|EXECUTE)", re.S)
+    for m in pat.finditer(norm(strip_sql_comments(sql_only(text)))):
+        out[m.group(1)] = re.sub(r"\s+FOR EACH ROW$", "", m.group(2).strip())
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -310,10 +365,98 @@ def sql_only(text: str) -> str:
     return sql_blocks(text) if "```sql" in text else text
 
 
+def flow19_trigger(writers: set[str] | None = None,
+                   fk_declared: bool | None = None) -> list[str]:
+    """`1b7gap-H4` — `FLOW-19` gets a MECHANISM instead of four sentences.
+
+    `FLOW-19` is *"`channel_writer_state.channel_id` has no foreign key to
+    `channels`"*. It was called discharged in two artifacts, still-open in two
+    others, and **`FLOW-*` appears nowhere in `scripts/deferral-gate.py`** — 30
+    tracked ids, all `D-*`. Nothing would have noticed if the key never landed.
+
+    It cannot land TODAY and the reason is measurable rather than rhetorical
+    (`1b.9`): `dp-kernel::acquire_writer_lease` INSERTs into
+    `channel_writer_state` on every lease acquisition, and **nothing anywhere
+    writes `channels`**. Adding the key now would make every lease acquisition
+    fail against an empty table.
+
+    So this is the trigger, not the fix: **the moment `channels` gains a
+    non-test writer, this reds** and the key becomes owed. An asserted trigger
+    that fires when its subject arrives is the shape `deferral-gate` accepts as
+    mechanical, and it is the shape a prose row is not.
+    """
+    if writers is None:
+        writers = set()
+        for root in ("crates", "services"):
+            base = REPO / root
+            if not base.is_dir():
+                continue
+            for p in base.rglob("*.rs"):
+                rel = p.relative_to(REPO).as_posix()
+                if "/tests/" in rel or "/benches/" in rel or p.name.startswith("test_"):
+                    continue
+                try:
+                    body = p.read_bytes().decode("utf-8", "replace")
+                except OSError:
+                    continue
+                # Only a WRITE counts. A read cannot violate referential
+                # integrity, and counting reads would red on the first consumer.
+                if re.search(r"(?i)\b(INSERT\s+INTO|UPDATE)\s+channels\b", body):
+                    writers.add(rel)
+    if fk_declared is None:
+        fk_declared = any(
+            re.search(r"(?is)ALTER\s+TABLE\s+channel_writer_state.*?REFERENCES\s+channels",
+                      p.read_bytes().decode("utf-8", "replace"))
+            or re.search(r"(?is)CREATE\s+TABLE[^;]*channel_writer_state.*?REFERENCES\s+channels",
+                         p.read_bytes().decode("utf-8", "replace"))
+            for p in (REPO / "contracts/migrations/per_reality").glob("*.up.sql"))
+
+    if writers and not fk_declared:
+        return [f"FLOW-19 is now OWED. `channels` has {len(writers)} non-test writer(s) "
+                f"({sorted(writers)[:3]}), so the foreign key "
+                f"`channel_writer_state (reality_id, channel_id) -> channels (reality_id, id)` "
+                f"is no longer blocked by an empty table — the reason 1b.9 recorded for NOT "
+                f"adding it has expired. Add the key in a new migration, or record a new "
+                f"reason here."]
+    return []
+
+
 def tier_docs() -> list[tuple[str, str]]:
     """Every `.md` in the tier — a GLOB, not a list. `NV-3`: an enumerated file
     set is default-uncovered, and `1b5-H1` is what that cost."""
     return [(p.name, p.read_bytes().decode("utf-8")) for p in sorted(DP_DOCS.glob("*.md"))]
+
+
+def exempt_at(lines: list[str], i: int) -> str | None:
+    """`schema-gate: ok — <reason>` on this line or up to 3 above.
+
+    A window rather than the line alone, because the marker usually belongs to a
+    prose sentence introducing the quoted form. A window that is a FIXED single
+    line is `NV`'s fourth shape and shipped three times in sibling gates here.
+    """
+    for j in range(max(0, i - _EXEMPT_WINDOW), i + 1):
+        m = _EXEMPT.search(lines[j])
+        if m and m.group(1).strip():
+            return m.group(1).strip()
+    return None
+
+
+def scan_line_regions(text: str) -> list[tuple[int, str]]:
+    """(line_no, line) for every region a DECLARATION could hide in.
+
+    Every fence whose language is SQL-ish or unlabelled, plus the prose between
+    fences. Non-SQL fences (```rust, ```json) are included too — `1b7gap-M3`
+    found `channel_id.as_uuid()` in a ```rust fence and a `"<uuid>"` wire shape
+    in an unlabelled one, and both are declarations of the same fact.
+    """
+    out, fence_lang = [], None
+    for i, line in enumerate(text.splitlines(), 1):
+        m = re.match(r"^```(\w*)", line.strip())
+        if m:
+            fence_lang = None if fence_lang is not None else m.group(1).lower()
+            continue
+        out.append((i, line))
+    return out
 
 
 def scan_tier_docs(migration_cols: set[str], migration_cons: set[str],
@@ -322,6 +465,41 @@ def scan_tier_docs(migration_cols: set[str], migration_cons: set[str],
     seen_alter_files = set()
     for name_, text_ in (tier_docs() if docs is None else docs):
         doc = type("D", (), {"name": name_})
+
+        # `1b7gap-M3` — REC-103 violations, anywhere in the document, line by
+        # line so the finding can point at one and an exemption can reach one.
+        lines = text_.splitlines()
+        for lineno, line in scan_line_regions(text_):
+            # A COMMENT cannot declare a column type, and every amendment note in
+            # this corpus quotes the form it is correcting — that is what makes
+            # the correction legible. Skipping comments is not a loophole: a
+            # commented-out declaration declares nothing. Bitten by un-amending
+            # each of the four real sites and requiring the gate to red, which is
+            # the only thing that shows the skip did not swallow the subject.
+            if re.match(r"\s*(--|#|//|<!--|\*)", line):
+                continue
+            for pat, why in _UUID_FORMS:
+                if pat.search(line):
+                    reason = exempt_at(lines, lineno - 1)
+                    if reason is None:
+                        findings.append(f"{name_}:{lineno}: {why}. If this line QUOTES the old "
+                                        f"form to explain a correction, mark it "
+                                        f"`schema-gate: ok — <reason>`.")
+
+        # `1b7gap-M4` — a SECOND `CREATE TABLE channels` is silently ignored by
+        # `_extract_table`, which uses `re.search`: the first block wins and a
+        # contradicting one anywhere else is invisible.
+        creates = [(n, l) for n, l in scan_line_regions(text_)
+                   if re.search(r"CREATE TABLE(?: IF NOT EXISTS)? channels\b", l, re.I)]
+        if name_ == SPEC.name and len(creates) > 1:
+            findings.append(f"{name_}: {len(creates)} `CREATE TABLE channels` blocks at lines "
+                            f"{[n for n, _ in creates]}. `_extract_table` takes the FIRST and "
+                            f"ignores the rest, so a contradicting one is invisible.")
+        elif name_ != SPEC.name and creates:
+            findings.append(f"{name_}:{creates[0][0]}: a `CREATE TABLE channels` outside "
+                            f"{SPEC.name}, which is the one document this gate treats as schema "
+                            f"authority. Two homes for one schema is FLOW-2 by construction.")
+
         sql = norm(strip_sql_comments(sql_blocks(text_)))
 
         for m in re.finditer(r"REFERENCES CHANNELS\((.*?)\)", sql, re.S):
@@ -478,15 +656,37 @@ def self_test() -> int:
     # --- the trigger (1b5-L5) ----------------------------------------------
     trg = ("CREATE OR REPLACE TRIGGER channels_lifecycle_guard_trg BEFORE UPDATE OF "
            "lifecycle ON channels FOR EACH ROW EXECUTE FUNCTION f();")
-    if parse_trigger(trg) != f"{TRIGGER_NAME}|{TRIGGER_EVENT}":
-        bad.append(f"the lifecycle trigger is not read: {parse_trigger(trg)}")
-    if parse_trigger(trg.replace("BEFORE UPDATE OF lifecycle", "AFTER UPDATE")) \
-            == parse_trigger(trg):
+    if parse_triggers(trg) != {"CHANNELS_LIFECYCLE_GUARD_TRG":
+                               "BEFORE UPDATE OF LIFECYCLE ON CHANNELS"}:
+        bad.append(f"the lifecycle trigger is not read: {parse_triggers(trg)}")
+    if parse_triggers(trg.replace("BEFORE UPDATE OF lifecycle", "AFTER UPDATE")) \
+            == parse_triggers(trg):
         bad.append("a changed trigger EVENT is invisible — an AFTER trigger cannot refuse")
-    if parse_trigger("Tree invariants, and `DP-Ch1`'s rule.\n\n```sql\n" + trg + "\n```") \
-            != parse_trigger(trg):
+    # `1b7gap-M4`'s shape again: a SECOND trigger must not be swallowed.
+    two = trg + ("\nCREATE CONSTRAINT TRIGGER channels_dissolve_order_trg AFTER UPDATE OF "
+                 "lifecycle ON channels DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW "
+                 "WHEN (NEW.lifecycle = 'dissolved') EXECUTE FUNCTION g();")
+    if len(parse_triggers(two)) != 2:
+        bad.append(f"a SECOND trigger is invisible — re.search took the first: "
+                   f"{parse_triggers(two)}")
+    if "DEFERRABLE INITIALLY IMMEDIATE" not in parse_triggers(two).get(
+            "CHANNELS_DISSOLVE_ORDER_TRG", ""):
+        bad.append(f"the constraint trigger's DEFERRABILITY is not read — downgrading it to a "
+                   f"plain BEFORE trigger re-breaks the one-statement subtree dissolve "
+                   f"(1b7db-07): {parse_triggers(two)}")
+    if parse_triggers("Tree invariants, and `DP-Ch1`'s rule.\n\n```sql\n" + trg + "\n```") \
+            != parse_triggers(trg):
         bad.append("an apostrophe in PROSE changes the trigger parse — this is the defect the "
                    "gate actually reported as a schema disagreement on its first real run")
+
+    # --- FLOW-19's trigger (1b7gap-H4) -------------------------------------
+    if flow19_trigger(writers=set(), fk_declared=False):
+        bad.append("FLOW-19 reds with NO writer — it would fire today and be switched off")
+    if not flow19_trigger(writers={"services/x/src/create.rs"}, fk_declared=False):
+        bad.append("FLOW-19's trigger is BLIND: a writer arriving must make the key owed, and "
+                   "that arrival is the whole reason the deferral is allowed to stand")
+    if flow19_trigger(writers={"services/x/src/create.rs"}, fk_declared=True):
+        bad.append("FLOW-19 still reds once the key IS declared — the trigger cannot be retired")
 
     # --- prose is hostile input (the sql_only bug, found wiring 1b5-L5) -----
     # ONE unbalanced apostrophe in an English sentence puts the rest of the file
@@ -612,13 +812,20 @@ def main() -> int:
                 findings.append(f"INDEX `{name.lower()}` differs.\n"
                                 f"      DP-Ch2      : {s_i.get(name)}\n"
                                 f"      0019_channels: {m_i.get(name)}")
-    s_g, m_g = parse_trigger(spec), parse_trigger(mig)
-    if s_g != m_g or m_g != f"{TRIGGER_NAME}|{TRIGGER_EVENT}":
-        findings.append(f"the DP-Ch31/DP-Ch33 lifecycle trigger differs or is absent (1b5-L5).\n"
-                        f"      DP-Ch2      : {s_g}\n      0019_channels: {m_g}\n"
-                        f"      expected    : {TRIGGER_NAME}|{TRIGGER_EVENT}")
+    s_g, m_g = parse_triggers(spec), parse_triggers(mig)
+    if s_g != m_g:
+        findings.append(f"the lifecycle TRIGGERS differ between spec and migration (1b5-L5).\n"
+                        f"      DP-Ch2      : {s_g}\n      0019_channels: {m_g}")
+    for name, event in EXPECT_TRIGGERS.items():
+        if m_g.get(name) != event:
+            findings.append(f"trigger `{name.lower()}` is absent or has the wrong timing.\n"
+                            f"      0019_channels: {m_g.get(name)}\n      expected     : {event}")
+    for extra in sorted(set(m_g) - set(EXPECT_TRIGGERS)):
+        findings.append(f"trigger `{extra.lower()}` exists in the migration and this gate has "
+                        f"never been told about it. Add it to EXPECT_TRIGGERS with its timing.")
 
     findings += scan_tier_docs({c["name"] for c in m_t["columns"]}, set(m_t["constraints"]))
+    findings += flow19_trigger()
 
     if findings:
         print(f"dp-channels-schema-gate: {len(findings)} disagreement(s) between the LOCKED specs "

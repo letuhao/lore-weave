@@ -18,6 +18,8 @@
 -- If a future feature genuinely needs a player-character projection, it authors
 -- it forward — with a producer, and with quantities that come from the fold.
 
+BEGIN;
+
 ALTER TABLE projection_drift_state
     DROP CONSTRAINT IF EXISTS projection_drift_table_name_allowlist;
 
@@ -35,3 +37,5 @@ ALTER TABLE projection_drift_state
         'world_kv_projection',
         'session_participants'
     ));
+
+COMMIT;

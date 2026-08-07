@@ -13,11 +13,24 @@
 -- -------------------------------------------------------------------------
 -- `REC-103` — `id` is **BIGINT**, not `UUID`. `REC-102a` (PO-approved
 --   2026-08-07) settled `ChannelId`'s payload as `i64`: the shipped
---   `crates/dp-kernel/src/channel.rs` says `ChannelId(pub(crate) i64)`, the
---   client wire contract says `Uint64String`, and `DP-Ch11`'s allocator is a
---   monotonic counter seeded from `MAX()` — which is what a BIGINT is for and
---   which a UUID cannot do. That decision reached the newtype and the code and
---   never reached the schema thirty lines below it.
+--   `crates/dp-kernel/src/channel.rs` says `ChannelId(pub(crate) i64)` and the
+--   client wire contract says `Uint64String`. That decision reached the newtype
+--   and the code and never reached the schema thirty lines below it.
+--
+--   ⚠ AMENDED 2026-08-08 (`1b7gap-M1`): this argument had a THIRD leg —
+--   *"`DP-Ch11`'s allocator is a monotonic counter seeded from `MAX()`"* — and
+--   it cited the wrong allocator. `DP-Ch11` is
+--   `13_channel_ordering_and_writer.md:19`, *"`channel_event_id` allocation
+--   mechanism"*: it seeds `last_event_id` from
+--   `SELECT MAX(channel_event_id) FROM events`, which is the position of an
+--   EVENT WITHIN a channel, not the id OF a channel. The conclusion survives on
+--   the two legs above, which are the ones `REC-102a` actually rested on.
+--   **What the corpus does NOT contain is any specification of how
+--   `channels.id` is allocated** — no `DP-Ch*` rule names it. That is a real
+--   gap, and it belongs to whichever slice first WRITES this table (see the
+--   `FLOW-19` note in the down migration); it is recorded here rather than
+--   invented, because inventing an allocator in a comment is how the wrong one
+--   got cited in the first place.
 --
 -- `REC-104` — `CONSTRAINT channels_root_single UNIQUE (id)` was **vacuous**.
 --   `id` is the primary key, so uniqueness on it is already total: it could not
@@ -45,6 +58,8 @@
 --   child of the root could declare `depth 16`, a hundred-node chain could sit
 --   entirely at `depth 1`, and a two-row cycle took one `UPDATE`. The fix is
 --   below and it is the spec's own sentence turned into SQL.
+
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS channels (
     reality_id    UUID     NOT NULL,
@@ -81,9 +96,36 @@ CREATE TABLE IF NOT EXISTS channels (
     -- most expensive defect. Along every parent edge, depth DECREASES BY
     -- EXACTLY ONE. Walk any cycle of length k and you return to your starting
     -- row having subtracted k > 0 from its own depth: `d = d - k` has no
-    -- solution. A cycle is therefore not *rejected* — it is not
-    -- *representable*. That includes the one-node case, which is why
+    -- solution. That includes the one-node case, which is why
     -- `channels_no_self_parent` is NOT in this table (see below).
+    --
+    -- ⚠ AMENDED 2026-08-08 (`1b7db-02`, `1b7db-03`) — this said a cycle is "not
+    -- REJECTED, it is not REPRESENTABLE", and **the description was stronger
+    -- than the mechanism.** Two measured routes, neither exotic:
+    --
+    --   * `ALTER TABLE channels ALTER COLUMN parent_depth DROP EXPRESSION` needs
+    --     only table ownership, no rewrite and no superuser. The column becomes
+    --     ordinary, a caller supplies `parent_depth` by hand, and a self-parent
+    --     inserts in one statement. **The arithmetic argument rests on
+    --     `parent_depth == depth - 1`, and nothing in the database asserted it**
+    --     — the guarantee lived in a column DEFINITION, which is DDL, not data.
+    --     `channels_parent_depth_derived` below closes that: a CHECK survives
+    --     `DROP EXPRESSION` and starts doing work the moment the expression
+    --     stops. It is vacuous only while the expression exists, and it exists
+    --     precisely to be non-vacuous when that stops being true.
+    --   * `SET session_replication_role = replica` or `ALTER TABLE ... DISABLE
+    --     TRIGGER ALL` suspends FK enforcement outright; the rows persist, and
+    --     `pg_constraint.convalidated` still reports `t` afterwards. **No
+    --     table-level mechanism can defend against this** — it is the escape
+    --     hatch Postgres gives replication tools. ⚠ It needs superuser, and the
+    --     `loreweave` role every service in the compose stack connects as **IS
+    --     superuser** — which is a deployment finding, not a schema one, and is
+    --     recorded rather than fixed here.
+    --
+    -- So the honest claim, and the one that survives attack: **through ordinary
+    -- SQL a cycle is not representable.** A constraint gives you "rejected, as
+    -- long as the thing it depends on is still there", and saying more than that
+    -- is the same overreach `REC-104` and `1bF-2` are about.
     --
     -- DEFERRABLE INITIALLY IMMEDIATE, deliberately. Because a parent's `depth`
     -- is referenced by its children, moving a subtree cannot be done one row at
@@ -120,13 +162,38 @@ CREATE TABLE IF NOT EXISTS channels (
     -- `1bF-2` in this same table is what that costs when nobody notices for
     -- eight weeks. Verified by attack rather than by argument: with the foreign
     -- key in place, `INSERT (id 9, parent 9, depth 1)` is refused by
-    -- `channels_parent_fk`; `scripts/dp-slice1b-constraint-bite.py` drops the
-    -- foreign key and shows that same row INSERT.
+    -- `channels_parent_fk`; the BITE section of
+    -- `scripts/dp-channels-live-smoke.py` drops the foreign key and shows that
+    -- same row INSERT. (That sentence named a script that does not exist until
+    -- `1b7gap` — a phantom citation in the file arguing against vacuous claims.)
 
     -- `1b5-M4`: `REC-103` cited the wire contract's unsigned `Uint64String` as a
-    -- ground for BIGINT and carried the WIDTH across without the DOMAIN. A
-    -- channel id is allocated by `DP-Ch11`'s `MAX() + 1`, which starts at 1.
+    -- ground for BIGINT and carried the WIDTH across without the DOMAIN.
     CONSTRAINT channels_id_positive CHECK (id > 0),
+
+    -- `1b7gap-L1`: the domain was fixed at ONE end. `id = 9223372036854775807`
+    -- was accepted, and then `SELECT MAX(id) + 1` — the shape any allocator for
+    -- this column will have — dies with `bigint out of range`. Reserving the top
+    -- value means a successor always exists.
+    --
+    -- ⚠ The wire contract and this column DISAGREE, and neither this constraint
+    -- nor `REC-103` can fix it here: `contracts/game-wire/common.schema.json`
+    -- types `Uint64String` as `^(0|[1-9][0-9]{0,19})$` — UNSIGNED, up to 20
+    -- digits, and `0` is legal. So it admits `0` (refused above) and values past
+    -- `i64::MAX` (refused here) that `ChannelId(i64)` cannot hold either. The
+    -- column is the narrower of the two and that is the safe direction; the
+    -- contract needs the amendment and this migration is not where it lives.
+    CONSTRAINT channels_id_allocatable CHECK (id < 9223372036854775807),
+
+    -- `1b7db-02`. The one assertion that makes `channels_parent_fk`'s arithmetic
+    -- a fact about DATA rather than about DDL. While `parent_depth` is GENERATED
+    -- this cannot fail; the instant someone runs `ALTER COLUMN parent_depth DROP
+    -- EXPRESSION` it becomes the only thing standing between a hand-supplied
+    -- `parent_depth` and a two-row cycle. That is not vacuity — it is the
+    -- difference between a guarantee that lives in a column definition and one
+    -- that lives in the table. Bitten by dropping the expression, not by
+    -- dropping the CHECK.
+    CONSTRAINT channels_parent_depth_derived CHECK (parent_depth = depth - 1),
     CONSTRAINT channels_level_name_nonempty CHECK (length(btrim(level_name)) > 0),
 
     -- `DP-Ch31`..`DP-Ch37` (17_channel_lifecycle.md): a dissolved channel has a
@@ -144,13 +211,28 @@ CREATE TABLE IF NOT EXISTS channels (
 -- collides and a root in a different reality does not.
 --
 -- `1b5-L3`, written down rather than discovered later: this index ignores
--- `lifecycle`, and `DP-Ch33` keeps a dissolved row indefinitely. So dissolving a
--- reality's root FORECLOSES that reality — no second root can ever be created in
--- it. That is the correct behaviour and not an oversight: `DP-Ch11` never
--- reissues an id, and a reality whose root is dissolved is a dissolved reality.
--- Making the predicate `lifecycle <> 'dissolved'` would say the opposite, and
--- would let a reality be re-rooted under a new tree while the old one's events
--- still reference the old root.
+-- `lifecycle`, and `DP-Ch33` keeps a dissolved row indefinitely. So a reality
+-- whose root is dissolved cannot gain a second root WHILE THAT ROW EXISTS. That
+-- is deliberate: a `lifecycle <> 'dissolved'` predicate would let a reality be
+-- re-rooted under a new tree while the old one's events still reference the old
+-- root.
+--
+-- ⚠ AMENDED 2026-08-08 (`1b7gap-M2`) — this said dissolving the root
+-- "FORECLOSES that reality — no second root can EVER be created in it", and that
+-- was a promise about HISTORY made by a mechanism that only sees the PRESENT.
+-- Measured: dissolve the root, watch a second root refused by
+-- `channels_root_single`, `DELETE` the dissolved row, and the new root INSERTs.
+-- A partial unique index constrains the rows that exist; no index can speak
+-- about rows that have been removed.
+--
+-- The same run killed the other half of that sentence, *"`DP-Ch11` never
+-- reissues an id"*. `DP-Ch11` does not say that (`1b7gap-M1`: it allocates
+-- `channel_event_id`, not `channels.id`), nothing else says it, and a
+-- `MAX(id) + 1` allocator over a table that permits DELETE **provably reissues**
+-- — the same run moved `max(id) + 1` from 5 back to 3. Non-reuse of channel ids
+-- is a genuine requirement, because events reference them, and it is UNOWNED: it
+-- needs a counter that does not read live rows. It belongs to whichever slice
+-- first WRITES this table, and it is not claimed here.
 CREATE UNIQUE INDEX IF NOT EXISTS channels_root_single
     ON channels (reality_id)
     WHERE parent IS NULL;
@@ -177,27 +259,51 @@ CREATE INDEX IF NOT EXISTS channels_lifecycle_idx
 -- transition validator", and an SDK-only check is a check the next writer to
 -- reach this table does not have.
 --
--- Children, not descendants, and that is not a weakening: a child may only reach
--- Dissolved when ITS children are Dissolved, so by induction a Dissolved
--- channel's whole subtree is Dissolved.
+-- ⚠ `1b7gap-H3`, found by a cold-start refuter and REPRODUCED before fixing.
+-- This comment used to say: *"Children, not descendants, and that is not a
+-- weakening: a child may only reach Dissolved when ITS children are Dissolved,
+-- so by induction a Dissolved channel's whole subtree is Dissolved."*
+--
+-- **That was FALSE, and it was the argument the other two rules leaned on.**
+-- Induction over transitions says nothing about CREATION, and the trigger fired
+-- `BEFORE UPDATE OF lifecycle` only. Measured on a live Postgres 18: dissolve
+-- channel 2, then `INSERT (id 3, parent 2, 'active')` -> `INSERT 0 1`. A live
+-- child under a dissolved parent, which `17_channel_lifecycle.md:51` forbids in
+-- its own precondition column (*"parent exists, parent not Dissolved"*) and
+-- which nothing implemented.
+--
+-- Three rules now, and the third is what makes the first two's induction TRUE
+-- rather than merely stated: a Dissolved channel can gain no new live child, by
+-- INSERT or by re-parenting. The trigger is therefore `BEFORE INSERT OR UPDATE`
+-- rather than `UPDATE OF lifecycle` — an `UPDATE OF lifecycle` trigger does not
+-- fire when only `parent` changes, so re-parenting under a dissolved node was
+-- the same hole through a second door.
 CREATE OR REPLACE FUNCTION channels_lifecycle_guard() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
+    -- `DP-Ch34` / 17_channel_lifecycle.md:51 — a channel may not be created
+    -- under, or moved under, a Dissolved parent.
+    IF NEW.parent IS NOT NULL
+       AND (TG_OP = 'INSERT' OR NEW.parent IS DISTINCT FROM OLD.parent)
+       AND EXISTS (SELECT 1 FROM channels c
+                    WHERE c.reality_id = NEW.reality_id
+                      AND c.id = NEW.parent
+                      AND c.lifecycle = 'dissolved') THEN
+        RAISE EXCEPTION
+            'channels_no_child_of_dissolved: channel % cannot have dissolved '
+            'channel % as its parent (DP-Ch31: dissolution is terminal, so a '
+            'dissolved subtree cannot grow)', NEW.id, NEW.parent
+            USING ERRCODE = 'check_violation';
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        RETURN NEW;
+    END IF;
+
     IF OLD.lifecycle = 'dissolved' AND NEW.lifecycle <> 'dissolved' THEN
         RAISE EXCEPTION
             'channels_dissolved_is_terminal: channel % cannot leave lifecycle '
             '''dissolved'' (DP-Ch31: terminal, no transitions)', OLD.id
-            USING ERRCODE = 'check_violation';
-    END IF;
-
-    IF NEW.lifecycle = 'dissolved' AND OLD.lifecycle <> 'dissolved'
-       AND EXISTS (SELECT 1 FROM channels c
-                    WHERE c.reality_id = NEW.reality_id
-                      AND c.parent = NEW.id
-                      AND c.lifecycle <> 'dissolved') THEN
-        RAISE EXCEPTION
-            'channels_dissolve_descendants_first: channel % still has a child '
-            'that is not dissolved (DP-Ch33)', NEW.id
             USING ERRCODE = 'check_violation';
     END IF;
 
@@ -206,11 +312,53 @@ END;
 $$;
 
 CREATE OR REPLACE TRIGGER channels_lifecycle_guard_trg
-    BEFORE UPDATE OF lifecycle ON channels
+    BEFORE INSERT OR UPDATE ON channels
     FOR EACH ROW EXECUTE FUNCTION channels_lifecycle_guard();
+
+-- `DP-Ch33` — descendants first. **A separate, AFTER, CONSTRAINT trigger, and
+-- the shape is the finding** (`1b7db-07`).
+--
+-- As a BEFORE-ROW check this rule made a legitimate operation IMPOSSIBLE rather
+-- than merely awkward: dissolving a subtree in one statement failed in EVERY row
+-- order, including an explicitly leaf-first `ORDER BY depth DESC`, because a
+-- BEFORE-ROW trigger cannot see the other rows the same command is updating. The
+-- only working shape was N separate single-row statements, which was nowhere
+-- documented and which no caller would guess.
+--
+-- A CONSTRAINT TRIGGER fires at the END OF THE STATEMENT, so it sees the
+-- statement's whole effect: `UPDATE ... WHERE id IN (2,3)` now succeeds, and a
+-- parent left with a live child still fails. It is also DEFERRABLE, so a caller
+-- dissolving a subtree across several statements can defer to COMMIT — the same
+-- escape hatch `channels_parent_fk` has, for the same reason, and it does not
+-- weaken the rule: at COMMIT the final state is checked.
+CREATE OR REPLACE FUNCTION channels_dissolve_order_guard() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM channels c
+                WHERE c.reality_id = NEW.reality_id
+                  AND c.parent = NEW.id
+                  AND c.lifecycle <> 'dissolved') THEN
+        RAISE EXCEPTION
+            'channels_dissolve_descendants_first: channel % still has a child '
+            'that is not dissolved (DP-Ch33)', NEW.id
+            USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS channels_dissolve_order_trg ON channels;
+CREATE CONSTRAINT TRIGGER channels_dissolve_order_trg
+    AFTER UPDATE OF lifecycle ON channels
+    DEFERRABLE INITIALLY IMMEDIATE
+    FOR EACH ROW
+    WHEN (NEW.lifecycle = 'dissolved')
+    EXECUTE FUNCTION channels_dissolve_order_guard();
 
 COMMENT ON TABLE channels IS
     'DP-Ch2 channel registry, per reality. id is BIGINT (REC-103): DP-Ch11 allocates it as a '
     'monotonic counter seeded from MAX(), which a UUID cannot do. Cycles are unrepresentable '
     'rather than rejected (REC-106): parent_depth is generated from depth, and the parent FK '
     'carries it, so depth decreases by exactly one along every parent edge.';
+
+COMMIT;

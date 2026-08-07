@@ -39,16 +39,27 @@ Exit 0 = every constraint rejected what it names and accepted what it must.
 """
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 import sys
-import uuid
 
 CONTAINER = "infra-postgres-1"
 USER = "loreweave"
 # The name carries `test` AND `smoke`. `scripts/db-safety-gate.py` and
 # CLAUDE.md's destructive-ops rule both require a throwaway marker before
 # anything destructive runs, and this script DROPs the database at the end.
-DB = "dp_slice1b_smoke_test"
+#
+# ⚠ PER-RUN SUFFIX (`1b7db-12` / `1b7gap-M5`). This was a single global name with
+# no lock, and two overlapping runs destroy each other: one `DROP DATABASE` under
+# the other's feet produces `relation "channels" does not exist` and duplicate-key
+# reds MID-RUN. Both cold-start refuters hit exactly this and one recorded 43/46
+# and 33/46 before isolating the name and getting 46/46 — **contamination that
+# presents as a schema defect**, which is the failure mode CLAUDE.md names by
+# hand ("never run two suites against the SAME test DB at once… failures that
+# look like code defects"). The pid makes concurrent runs, and concurrent agents,
+# structurally safe rather than safe by luck.
+DB = f"dp_slice1b_smoke_test_{os.getpid()}"
 MIGRATION = "contracts/migrations/per_reality/0019_channels.up.sql"
 DOWN = "contracts/migrations/per_reality/0019_channels.down.sql"
 
@@ -198,6 +209,11 @@ def main() -> int:
              "channels_level_name_nonempty"),
             ("a level_name of only spaces", row(REALITY_A, 19, 1, 1, level="   "),
              "channels_level_name_nonempty"),
+            # `1b7db-L1` — the domain was fixed at ONE end. i64::MAX was accepted
+            # and then `SELECT MAX(id)+1`, the shape any allocator for this
+            # column will have, died with `bigint out of range`.
+            ("id = i64::MAX (the allocator's successor overflows)",
+             row(REALITY_A, 9223372036854775807, 1, 1), "channels_id_allocatable"),
         ]:
             code, out = psql(sql)
             named = expect in out
@@ -279,6 +295,43 @@ def main() -> int:
                         f"WHERE reality_id='{REALITY_A}'")
         print(f"        tree after the move: {shape}")
 
+        # ── `1b7db-02` — the cycle argument rested on `parent_depth == depth-1`,
+        # and that lived in a COLUMN DEFINITION. `ALTER COLUMN ... DROP
+        # EXPRESSION` needs only table ownership — no superuser, no rewrite —
+        # and then a caller supplies `parent_depth` by hand and self-parents in
+        # one statement. `channels_parent_depth_derived` moves the guarantee from
+        # DDL into the table.
+        #
+        # Its bite is INVERTED and that is the point: while the expression exists
+        # the CHECK cannot fail, so the way to show it is load-bearing is to drop
+        # the EXPRESSION (not the CHECK) and watch the CHECK start refusing —
+        # then drop the CHECK too and watch the row go in.
+        print(f"\n── 1b7db-02: the guarantee moved out of the column DEFINITION")
+        psql("DROP TABLE IF EXISTS channels")
+        apply_file(MIGRATION)
+        seed_tree()
+        forged = (f"INSERT INTO channels (reality_id, id, parent, level_name, depth, "
+                  f"lifecycle, parent_depth) VALUES ('{REALITY_A}', 9, 9, 'self', 1, "
+                  f"'active', 1)")
+        with_expr, _ = psql(forged)
+        drop_expr, out_de = psql("ALTER TABLE channels ALTER COLUMN parent_depth DROP EXPRESSION")
+        after_de, out_after = psql(forged)
+        psql("ALTER TABLE channels DROP CONSTRAINT channels_parent_depth_derived")
+        no_check, _ = psql(forged)
+        ok = (with_expr != 0 and drop_expr == 0 and after_de != 0
+              and "channels_parent_depth_derived" in out_after and no_check == 0)
+        print(f"   {'OK  ' if ok else 'FAIL'} {'a hand-forged parent_depth self-parent':46s}")
+        print(f"        with GENERATED expression : {'refused' if with_expr else 'ACCEPTED'}")
+        print(f"        expression dropped        : "
+              f"{'refused by ' + blamed_constraint(out_after)[:60] if after_de else 'ACCEPTED'}")
+        print(f"        CHECK dropped too         : {'accepted' if no_check == 0 else 'refused'}")
+        if not ok:
+            print("        ^ the CHECK is not what stands between DROP EXPRESSION and a cycle")
+        results.append(ok)
+        psql("DROP TABLE IF EXISTS channels")
+        apply_file(MIGRATION)
+        seed_tree()
+
         # ── `1b.5 L5` — DP-Ch31's terminal-Dissolved and DP-Ch33's
         # descendants-first. Both are statements about a TRANSITION, which no
         # CHECK can see, and `17_channel_lifecycle.md:77` attributed them to a
@@ -317,6 +370,64 @@ def main() -> int:
                 print(f"   {'OK  ' if ok else 'FAIL'} {label:46s} exit={code}")
                 print(f"        {blamed_constraint(out)}")
             results.append(ok)
+
+        # ── `1b7db-04` — THREE SEMANTIC MUTATIONS OF THE SHIPPED MIGRATION LEFT
+        # BOTH GATES GREEN. A cold-start refuter applied each one alone to a
+        # pristine checkout and ran the whole harness; nothing moved. These are
+        # the legs that were missing, and each one is here because its ABSENCE
+        # was demonstrated rather than suspected.
+        print(f"\n── 1b7db-04: the semantics no leg was exercising")
+        psql("DROP TABLE IF EXISTS channels")
+        apply_file(MIGRATION)
+        seed_tree()
+
+        # M1 — `c.lifecycle <> 'dissolved'` mutated to `= 'active'` stayed green,
+        # because the harness NEVER PUT A DORMANT ROW IN THE TABLE. `dormant`
+        # appeared only as the target of a rejection leg. A dormant child is not
+        # dissolved, so it must block its parent's dissolution.
+        psql(f"UPDATE channels SET lifecycle='dormant' WHERE reality_id='{REALITY_A}' AND id=3")
+        code, out = psql(f"UPDATE channels SET lifecycle='dissolved', dissolved_at=now() "
+                         f"WHERE reality_id='{REALITY_A}' AND id=2")
+        ok = code != 0 and "channels_dissolve_descendants_first" in out
+        print(f"   {'OK  ' if ok else 'FAIL'} {'a DORMANT child blocks dissolution':46s} exit={code}")
+        print(f"        {blamed_constraint(out)}")
+        results.append(ok)
+
+        # M21 — deleting the trigger's `reality_id` filter stayed green, because
+        # `seed_tree()` gave reality B a lone root with NO CHILDREN, so no
+        # cross-reality row could ever be mistaken for a descendant. Reality C
+        # gets a tree with the SAME ids and a LIVE child, so an unfiltered
+        # descendant query would read it and refuse a legal dissolution.
+        psql(f"UPDATE channels SET lifecycle='active' WHERE reality_id='{REALITY_A}' AND id=3")
+        for sql in (row(REALITY_C, 1, None, 0, level="reality"),
+                    row(REALITY_C, 2, 1, 1), row(REALITY_C, 3, 2, 2)):
+            psql(sql)
+        psql(f"UPDATE channels SET lifecycle='dissolved', dissolved_at=now() "
+             f"WHERE reality_id='{REALITY_A}' AND id=3")
+        code, out = psql(f"UPDATE channels SET lifecycle='dissolved', dissolved_at=now() "
+                         f"WHERE reality_id='{REALITY_A}' AND id=2")
+        ok = code == 0
+        print(f"   {'OK  ' if ok else 'FAIL'} "
+              f"{'reality C-s live child does not block reality A':46s} exit={code}"
+              + ("" if ok else f"  {blamed_constraint(out)}"))
+        results.append(ok)
+
+        # M22 — a 4th undocumented `lifecycle` value stayed green: the smoke only
+        # ever probes `'zombie'`, and the schema gate deliberately does not
+        # compare CHECK bodies. Read the CHECK Postgres actually holds and pin
+        # the SET. This is the one place a body comparison is right, because the
+        # subject IS the literal set.
+        _, cdef = psql("SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                       "WHERE conname='channels_lifecycle_known'")
+        got = set(re.findall(r"'(\w+)'::text", cdef)) or set(re.findall(r"'(\w+)'", cdef))
+        want = {"active", "dormant", "dissolved"}
+        ok = got == want
+        print(f"   {'OK  ' if ok else 'FAIL'} {'the lifecycle set is EXACTLY 3 values':46s} "
+              f"{sorted(got)}")
+        if not ok:
+            print(f"        expected {sorted(want)} — an undocumented 4th value is a silent "
+                  f"widening of a closed set that DP-Ch31's state machine depends on")
+        results.append(ok)
 
         psql("DROP TABLE IF EXISTS channels")
         apply_file(MIGRATION)
@@ -387,6 +498,9 @@ def main() -> int:
             ("level_name is not blank", "channels_level_name_nonempty",
              "ALTER TABLE channels DROP CONSTRAINT channels_level_name_nonempty",
              row(REALITY_A, 26, 1, 1, level="  "), []),
+            ("id leaves room for a successor", "channels_id_allocatable",
+             "ALTER TABLE channels DROP CONSTRAINT channels_id_allocatable",
+             row(REALITY_A, 9223372036854775807, 1, 1), []),
         ]:
             for s in setup:
                 code_s, out_s = psql(s)
@@ -433,9 +547,19 @@ def main() -> int:
                   f"WHERE reality_id='{REALITY_A}' AND id = 3")
         dissolve_parent = (f"UPDATE channels SET lifecycle='dissolved', dissolved_at=now() "
                            f"WHERE reality_id='{REALITY_A}' AND id = 2")
-        for label, violation, setup in [
-            ("DP-Ch31 terminal Dissolved", revive, [dissolve_leaf]),
-            ("DP-Ch33 descendants first", dissolve_parent, []),
+        adopt = (f"INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle) "
+                 f"VALUES ('{REALITY_A}', 30, 3, 'orphanage', 3, 'active')")
+        # ⚠ TWO triggers now, and each leg must drop THE ONE UNDER TEST. Dropping
+        # `channels_lifecycle_guard_trg` for the DP-Ch33 leg would have dropped
+        # the wrong guard and shown "still rejected" — a wrong-reason failure in
+        # the harness that exists to catch wrong-reason failures.
+        for label, violation, setup, trg in [
+            ("DP-Ch31 terminal Dissolved", revive, [dissolve_leaf],
+             "channels_lifecycle_guard_trg"),
+            ("DP-Ch34 no child of a dissolved parent", adopt, [dissolve_leaf],
+             "channels_lifecycle_guard_trg"),
+            ("DP-Ch33 descendants first", dissolve_parent, [],
+             "channels_dissolve_order_trg"),
         ]:
             psql("DROP TABLE IF EXISTS channels")
             apply_file(MIGRATION)
@@ -445,11 +569,9 @@ def main() -> int:
             # A refused UPDATE changes nothing, so the state the second attempt
             # sees is the state the first one saw. No re-seed, and none hidden.
             before, _ = psql(violation)
-            _, trg_before = psql("SELECT count(*) FROM pg_trigger "
-                                 "WHERE tgname='channels_lifecycle_guard_trg'")
-            psql("DROP TRIGGER channels_lifecycle_guard_trg ON channels")
-            _, trg_after = psql("SELECT count(*) FROM pg_trigger "
-                                "WHERE tgname='channels_lifecycle_guard_trg'")
+            _, trg_before = psql(f"SELECT count(*) FROM pg_trigger WHERE tgname='{trg}'")
+            psql(f"DROP TRIGGER {trg} ON channels")
+            _, trg_after = psql(f"SELECT count(*) FROM pg_trigger WHERE tgname='{trg}'")
             after, out_after = psql(violation)
             bit = before != 0 and after == 0 and trg_before == "1" and trg_after == "0"
             print(f"   {'OK  ' if bit else 'FAIL'} {label:34s} "
@@ -473,22 +595,44 @@ def main() -> int:
         for label, sql in [
             ("rows in reality A", f"SELECT count(*) FROM channels WHERE reality_id='{REALITY_A}'"),
             ("rows in reality B", f"SELECT count(*) FROM channels WHERE reality_id='{REALITY_B}'"),
-            ("DP-Ch11 next id, reality A", f"SELECT coalesce(max(id),0)+1 FROM channels "
+            ("MAX(id)+1, reality A", f"SELECT coalesce(max(id),0)+1 FROM channels "
                                            f"WHERE reality_id='{REALITY_A}'"),
-            ("DP-Ch11 next id, reality B", f"SELECT coalesce(max(id),0)+1 FROM channels "
+            ("MAX(id)+1, reality B", f"SELECT coalesce(max(id),0)+1 FROM channels "
                                            f"WHERE reality_id='{REALITY_B}'"),
-            ("roots (must be one per reality)", "SELECT count(*) FROM channels WHERE parent IS NULL"),
         ]:
             _, out = psql(sql)
             print(f"   {label:46s} = {out}")
+
+        # `1b7db-10` — this block used to PRINT `roots (must be one per reality)`
+        # and never `results.append` it. A measurement whose parenthesis states
+        # the requirement and whose code does not check it is a label, not a
+        # check: it printed `2` and the suite passed. Asserted per reality, which
+        # is what the label claims, rather than as a total across realities.
+        _, bad_realities = psql(
+            "SELECT count(*) FROM (SELECT reality_id FROM channels GROUP BY reality_id "
+            "HAVING count(*) FILTER (WHERE parent IS NULL) <> 1) x")
+        ok = bad_realities == "0"
+        _, per = psql("SELECT string_agg(n::text, ',') FROM (SELECT count(*) FILTER "
+                      "(WHERE parent IS NULL) AS n FROM channels GROUP BY reality_id) y")
+        print(f"   {'OK  ' if ok else 'FAIL'} {'EXACTLY one root per non-empty reality':46s} "
+              f"roots per reality = [{per}]")
+        results.append(ok)
 
         # ── the down migration must actually reverse it.
         print(f"\n── apply {DOWN}")
         code, out = apply_file(DOWN)
         _, remains = psql("SELECT count(*) FROM information_schema.tables "
                           "WHERE table_name='channels'")
-        print(f"   exit={code}   channels tables remaining = {remains}")
-        results.append(code == 0 and remains == "0")
+        # `1b7db-05` — the down migration was held by NOTHING but "the table is
+        # gone". Deleting its `DROP FUNCTION` left both gates green, and the
+        # leftover `channels_lifecycle_guard()` is exactly what makes the next
+        # forward `CREATE OR REPLACE` inherit an older body — the failure the
+        # down file's own comment names and nothing checked.
+        _, fns = psql("SELECT count(*) FROM pg_proc WHERE proname IN "
+                      "('channels_lifecycle_guard','channels_dissolve_order_guard')")
+        print(f"   exit={code}   channels tables remaining = {remains}   "
+              f"guard functions left behind = {fns}")
+        results.append(code == 0 and remains == "0" and fns == "0")
 
         print(f"\n{'=' * 78}")
         if all(results):

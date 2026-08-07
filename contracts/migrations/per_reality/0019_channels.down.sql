@@ -17,6 +17,8 @@
 -- the FK lands. Until then it guards nothing, and says so. (`channels` does now
 -- reference ITSELF -- `channels_parent_fk`, `REC-106` -- and a self-reference
 -- drops with the table, so that is not the subject either.)
+BEGIN;
+
 DROP INDEX IF EXISTS channels_lifecycle_idx;
 DROP INDEX IF EXISTS channels_level_idx;
 DROP INDEX IF EXISTS channels_parent_idx;
@@ -27,3 +29,6 @@ DROP TABLE IF EXISTS channels;
 -- that leaves a `channels_lifecycle_guard()` behind makes the next forward
 -- migration's `CREATE OR REPLACE` silently inherit an older body.
 DROP FUNCTION IF EXISTS channels_lifecycle_guard();
+DROP FUNCTION IF EXISTS channels_dissolve_order_guard();
+
+COMMIT;

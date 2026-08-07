@@ -48,9 +48,23 @@ impl ChannelId {
     // NOTE: `DP-Ch1`'s sanctioned mint — `pub(crate) fn new_verified`, called
     // during SDK channel-tree resolution — is deliberately NOT declared here.
     // It would have no caller, and an unused constructor for a model nothing
-    // produces is the orphan shape `scripts/orphan-model-gate.py` exists to
-    // refuse. It arrives with `crates/dp`, together with the `channels` table
-    // it would resolve against.
+    // produces is the orphan shape this repo has been burned by: seven `pc_*` /
+    // `npc_*` projection tables shipped with a projector, a rebuilder, a golden
+    // fixture, an independent oracle and a benchmark, and no producer at all.
+    // It arrives with `crates/dp`, together with the `channels` table it would
+    // resolve against.
+    //
+    // ⚠ AMENDED 2026-08-08 (`1b7gap-H2`): this cited
+    // `scripts/orphan-model-gate.py` as the mechanism that "exists to refuse"
+    // this shape. **It does not, and cannot.** That gate asks whether an EVENT a
+    // projector HANDLES has a PRODUCER — its roots are `crates/`+`services/`,
+    // its suffixes `.rs`/`.ts`/`.go`, and it never reads SQL. An unused
+    // constructor, an unread type and a table with no writer are all outside its
+    // subject, and it reports OK across 14k files while every one of them
+    // stands. Citing a green gate as coverage for something it cannot see is
+    // worse than citing nothing: it reports evidence and silences review. The
+    // reason above is a REASON, and it now says so instead of borrowing a
+    // mechanism's authority.
 
     /// Read the raw BIGINT — needed to bind it as a query parameter.
     pub fn get(self) -> i64 {
@@ -60,10 +74,16 @@ impl ChannelId {
     /// ⚠ **PRE-SDK SEAM — mint a `ChannelId` from a value nothing verified.**
     ///
     /// `DP-Ch1`'s only sanctioned mint is `new_verified`, called during SDK
-    /// channel-tree resolution against the `channels` table. **Neither exists
-    /// yet**: `crates/dp` is unbuilt (`FLOW-7`) and `channels` has no migration
-    /// (`FLOW-9`) — so today there is nothing to resolve a channel *against*,
-    /// and every caller here is asserting a subject it did not verify.
+    /// channel-tree resolution against the `channels` table. **The resolver
+    /// still does not exist** — `crates/dp` is unbuilt (`FLOW-7`) — so every
+    /// caller here is asserting a subject it did not verify.
+    ///
+    /// ⚠ AMENDED 2026-08-08 (`1b7gap-M6`): this said `channels` has no
+    /// migration (`FLOW-9`). It has one — `0019_channels`, which cites THIS
+    /// file as its evidence that `ChannelId` is `i64`. The sibling doc
+    /// (`13_channel_ordering_and_writer.md`) was moved to past tense in the same
+    /// commit that shipped the migration and this line was not: `FLOW-2`, one
+    /// file over, inside the round whose subject is `FLOW-2`.
     ///
     /// This is deliberately a named, greppable function rather than a public
     /// tuple field. It does not make the mint safe; it makes it **countable**,

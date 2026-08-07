@@ -1789,6 +1789,103 @@ string literal and silently stops normalising it**, which is how the gate's firs
 case difference as a schema disagreement. It had been reading whole documents rather than their SQL
 fences. Fixed, and bitten at all three call sites — each reverted, each turns the self-test red.
 
+### `1b.10` — **`1b.7` returned BLOCK from BOTH refuters, and they were right**
+
+Two cold-start refuters against `adbfcdd9e`, each in its own worktree, given
+**different jobs on different bytes**: one drove a live Postgres and attacked the
+schema; one never ran a query and asked *what did nobody look at* (`BDR-37`'s
+lesson — an adversary attacks what is there, and absences need their own pass).
+**Both returned BLOCK. Neither found what the other found**, which is the whole
+argument for the shape.
+
+#### The one that was mine, and it was an argument rather than a bug
+
+**`1b7db-01` / `1b7gap-H3` — a live channel can be created under a dissolved
+one, and it falsifies the induction the other two lifecycle rules lean on.**
+Both refuters found it independently. `0019`'s comment said: *"a child may only
+reach Dissolved when ITS children are Dissolved, so by induction a Dissolved
+channel's whole subtree is Dissolved."* **Induction over TRANSITIONS says nothing
+about CREATION**, and the trigger fired `BEFORE UPDATE OF lifecycle` — so an
+INSERT never consulted it, and neither did a re-parenting UPDATE, which names no
+`lifecycle` column. Reproduced before fixing: `INSERT 0 1`. Both routes now
+refused by `channels_no_child_of_dissolved`; the induction is true because a
+third rule makes it true, not because it was asserted.
+
+#### The four the live refuter found that I had no idea about
+
+| id | what |
+|---|---|
+| `1b7db-02` | **The cycle guarantee lived in a COLUMN DEFINITION, which is DDL, not data.** `ALTER COLUMN parent_depth DROP EXPRESSION` needs only table ownership — no superuser, no rewrite — and then a caller supplies `parent_depth` by hand and self-parents in one statement; a deferred pair then builds a full 2-cycle with **zero roots**. Nothing asserted `parent_depth = depth - 1`. `channels_parent_depth_derived` does now, and its bite is INVERTED: drop the EXPRESSION, watch the CHECK start refusing, drop the CHECK, watch the row go in. **This is `NV`'s *"an adjacent decision defeats it"* against the very argument I wrote it to make.** |
+| `1b7db-03` | `session_replication_role = replica` and `ALTER TABLE ... DISABLE TRIGGER ALL` suspend enforcement outright; rows persist and `pg_constraint.convalidated` still reports `t`. No table-level mechanism can defend against that. ⚠ Both need superuser — **and `loreweave`, the role every service in the compose stack connects as, IS superuser.** That is a deployment finding, recorded not fixed. The claim is now *"through ordinary SQL a cycle is not representable"*, because **the description was stronger than the mechanism**, which is `REC-104`'s own defect wearing my prose. |
+| `1b7db-04` | **Three semantic mutations of the shipped migration left BOTH gates green.** A dormant child no longer blocking dissolution — because the harness never put a `dormant` row in the table at all, only used it as a rejection target. The trigger's `reality_id` tenancy filter deleted — because `seed_tree()` gave reality B a lone childless root, so no cross-reality row could be mistaken for a descendant. A 4th undocumented `lifecycle` value — because the smoke only ever probed `'zombie'` and the gate deliberately does not compare CHECK bodies. Three legs added, each because its absence was *demonstrated*. |
+| `1b7db-07` | **Dissolving a subtree in one statement was IMPOSSIBLE, in every row order**, including an explicit leaf-first `ORDER BY depth DESC` — a `BEFORE`-row trigger cannot see the other rows its own command is updating. The only working shape was N single-row statements, documented nowhere. `DP-Ch33` is now an `AFTER` CONSTRAINT trigger, so it sees the statement's whole effect and is `DEFERRABLE` for a multi-statement subtree move. **A rule whose SHAPE forbids a legal operation is a design defect, not a strict reading.** |
+
+#### The four the completeness critic found, which no attack could have
+
+| id | what |
+|---|---|
+| `1b7gap-H1` | 🔴 **`0019` is applied by NOTHING.** `contracts/migrations/manifest.yaml` ended at `0013`; six migrations had shipped since, none registered, so the orchestrator has been applying an eight-month-old schema. `0019` was written, reviewed, **live-smoked 46 times**, gated pre-commit — and could not exist in a real per-reality database. **The gap was ALREADY TRACKED**: a manifest comment names `D-MANIFEST-0009-0012-UNREGISTERED` and explains four deliberately-unregistered files, and six more drifted straight past it. *A row is not a mechanism.* Fixed by registering `0014`–`0019` **and** by `scripts/migration-manifest-gate.py` (gate #91): every `*.up.sql` needs an entry or a reasoned exclusion, and the exclusion list must shrink. ⚠ This CHANGES WHAT THE ORCHESTRATOR APPLIES, which is the point and is called out rather than slipped in. |
+| `1b7gap-H2` | 🔴 **`scripts/orphan-model-gate.py` was cited TWICE as the mechanism refusing a subject-less model — by me, in `17_channel_lifecycle.md`, and in `crates/dp-kernel/src/channel.rs`.** It cannot see either: it asks whether an **event** a projector handles has a **producer**, reads `.rs`/`.ts`/`.go`, and never opens a `.sql` file. It reports OK across 14k files while `channels` has no writer at all. **Citing a green gate for something outside its subject is worse than citing nothing — it reports evidence and silences review.** Both citations now state the REASON and stop borrowing a mechanism's authority. |
+| `1b7gap-M1` | 🟠 **`REC-103`'s third leg cited the wrong allocator.** `DP-Ch11` is *"`channel_event_id` allocation"* — the position of an event WITHIN a channel, not the id OF a channel — and seven downstream comments inherited it, including a smoke label. The conclusion (BIGINT) stands on its other two legs. **Nothing in the corpus specifies how `channels.id` is allocated**, and that is now recorded as unowned rather than invented in a comment. |
+| `1b7gap-M3` | 🟠 **`1b5-H1` said "one of FOUR locked SQL sites"; there are at least EIGHT.** Four more still declared `UUID` after `REC-103` — two of them within 200 lines of blocks the previous commit amended, one in a ` ```rust ` fence calling `channel_id.as_uuid()` (a method that does not exist; `grep` finds nothing), one in an unlabelled fence **inside the file the gate parses as schema authority**. All four were invisible because the scan read ` ```sql ` fences and two patterns. It now reads every fence of every language and the prose between them, skipping comments — and **all five re-introduced violations are bitten red**, so the comment-skip did not swallow the subject. |
+
+#### What survived, and it is worth as much as the findings
+
+The live refuter could not break the arithmetic. With the schema intact it found
+**no ordinary-SQL route** to a cycle, a self-parent, a second root or a rootless
+non-empty reality; `d = d - k` is genuinely unsatisfiable and the foreign key
+re-checks on both sides when `depth` moves. Claim 2 — that `DEFERRABLE` does not
+weaken it — was independently verified true, `COMMIT` refusing and leaving zero
+rows. **Two overlapping deferred transactions** interleaved with `pg_sleep`, one
+re-parenting and one shifting a child's depth, both aborted with the table
+byte-identical afterwards. `INSERT ... ON CONFLICT`, `MERGE` and `COPY` all fire
+the trigger and are not bypasses. And the bite legs were audited as honest: each
+drops exactly its own constraint and shows the row move from rejected to
+accepted. *"The harness's problem is coverage, not integrity."*
+
+#### The sentence to carry forward
+
+> **The migration's mechanism is strong, and its DESCRIPTION of the mechanism was
+> stronger than the mechanism.** "Not representable" is not what a constraint
+> gives you — a constraint gives you *"rejected, as long as the thing it depends
+> on is still there."*
+
+That is `REC-104` and `1bF-2` one level up: those were checks that could not fail;
+this was a claim that could not be true. `BDR-41` records it.
+
+#### `1b.9` — `1bF-3` DECIDED: **the `FLOW-19` foreign key is NOT added, and the reason is the reverse of the one expected**
+
+`1bF-3` left this open on purpose — *"Whether to add it is a slice-1b decision, not an assumption."*
+The slice's own framing was that `FLOW-19` becomes **writable** once `channels` exists at `BIGINT`
+with a composite key, which it now does. The type-check is no longer the obstacle. Something else is.
+
+| table | writer |
+|---|---|
+| `channel_writer_state` | **live.** `dp-kernel::acquire_writer_lease` INSERTs on every lease acquisition — `crates/dp-kernel/src/channel.rs:112`, with `ON CONFLICT (reality_id, channel_id) DO UPDATE`. |
+| `channels` | **none.** No `INSERT`/`UPDATE`/`SELECT` against it anywhere in `crates/`, `services/` or `frontend/`. |
+
+⇒ **Adding `FOREIGN KEY (reality_id, channel_id) REFERENCES channels (reality_id, id)` today would
+make `acquire_writer_lease` fail for every channel**, because no channel is ever registered. It would
+take a working code path and break it, in exchange for referential integrity against an empty table.
+
+**This is *subject before apparatus* running in the opposite direction from usual.** The familiar
+version is a mechanism with nothing to guard. This is a mechanism whose *target* has nothing in it,
+and the cost of adding it lands on the one side that DOES work. The ordering is forced and it is
+`SEALED-BUILD-ORDER`'s: the floor exists, the writer arrives with the SDK's write surface.
+
+**Trigger, so this wakes up by itself:** the first non-test writer of `channels` — `DP-Ch11`'s
+allocator on the tier-typed write surface (slice 4) or `DpControlPlane` (slice 5). `FLOW-19` stays
+open and now says *why* it is open, which is a different sentence from the one it carried for eight
+weeks (*"it could not have had a foreign key, because there was nothing to reference"*).
+
+⚠ **And it names what `channels` is today: a table with no producer.** That is the `pc_*`/`npc_*`
+shape and it deserves the comparison rather than a defence. The difference is the one `DPA-SWEEP`
+drew for `prompt.rs` and the PO confirmed on 2026-08-06: **spec-first with a consumer pending is this
+project's workflow; a model whose subjects were all DROPPED is rot.** `channels` is the first —
+`FLOW-9` is that `06_data_plane/` specified it in Phase 4 and no migration ever shipped, and the
+consumer is named, scheduled and two slices away. `scripts/orphan-model-gate.py` cannot see either
+case, because it asks whether an EVENT has a producer, not whether a TABLE has a writer.
+
 #### `1b.8` — the chain, and a finding that MEASUREMENT KILLED
 
 The live smoke applies `0019` **alone, into an empty database**. That is right for testing the
@@ -1830,7 +1927,7 @@ reconciled by quietly changing the count — the missing row is the finding.
 |---|---|---|
 | **0** | AMEND bundle | ✅ `217d325f0` + `3e6358749` |
 | **1** | `crates/dp` — tiers, scopes, `DpAggregate` | 🟡 **Four rounds, four BLOCKs, 58 findings.** Round 3 retired the hand-rolled lexer for a real `syn` AST. **Not closed** — `G3`/`G4`/`G6`–`G13` are recorded and open, and no round has yet returned CLEAR. The residual limit is stated rather than closed: `dp-clippy` (`D-DP-CLIPPY-NOT-BUILT`). |
-| **1b** | the `channels` table (`DP-Ch1/Ch2/Ch3`) | 🟡 **board written — §6j.** Phase 0 found three things before any code: `DP-Ch2`'s LOCKED schema says `UUID` and contradicts PO-approved `REC-102a` (`i64`); `channels_root_single UNIQUE (id)` is **vacuous** — `id` is already the primary key, so the constraint its name claims (*exactly one root*) is enforced by nothing; and `FLOW-19` is discharged by this slice rather than blocked on it. |
+| **1b** | the `channels` table (`DP-Ch1/Ch2/Ch3`) | 🟡 **board written — §6j.** Phase 0 found three things before any code: `DP-Ch2`'s LOCKED schema says `UUID` and contradicts PO-approved `REC-102a` (`i64`); `channels_root_single UNIQUE (id)` is **vacuous** — `id` is already the primary key, so the constraint its name claims (*exactly one root*) is enforced by nothing; and `FLOW-19` becomes EXPRESSIBLE by this slice rather than blocked on it -- **expressible is not discharged**, and `1b.9` decides it stays open, with a trigger. |
 | **2** | `dp::forbid_raw_kernel_client`, shipped RED | ⬜ *board TBD.* **Carries `[package.metadata.dp] dp-crate = true`**, removed from `crates/dp/Cargo.toml` by `V1-F12`: it is `DP-K11`'s marker and it is the right shape, but its only reader is this lint. It lands in the same commit as the thing that reads it. |
 | **3** | `RealityId` + `SessionContext` | ⬜ *board TBD* |
 | **4** | tier-typed write surface | ⬜ *board TBD* |
@@ -1852,7 +1949,7 @@ Asked the three questions with commands rather than memory, and all three answer
 |---|---|
 | `1bF-1` | 🔴 **`DP-Ch2`'s LOCKED schema contradicts `REC-102a`, which the PO approved on 2026-08-07.** The spec declares `id UUID PRIMARY KEY, parent UUID REFERENCES channels(id)`. `REC-102a` settled `ChannelId` as **`i64`** — because two of the three artifacts said 64-bit (the shipped `crates/dp-kernel/src/channel.rs`, verified `pub struct ChannelId(pub(crate) i64)`, and the client wire contract's `Uint64String`), and because `DP-Ch11`'s allocator is a **monotonic per-channel counter seeded from `MAX()`**, which is what a `BIGINT` is for and which a `Uuid` cannot do. **The migration must be `BIGINT`, and `12_channel_primitives.md` needs the amendment `REC-102a` implied and did not reach.** |
 | `1bF-2` | 🟠 **`CONSTRAINT channels_root_single UNIQUE (id)` is vacuous.** `id` is already `PRIMARY KEY`, so the constraint adds nothing and can never fire. Its NAME says what it was meant to do — *exactly one root per reality* — which is a real invariant (`DP-Ch1`: *"a strict tree; every channel except the root has exactly one parent"*) and is **enforced by nothing**. The honest form is a partial unique index on `(parent IS NULL)`. This is a check that cannot fail, in a LOCKED spec, which is `NV-1` and was sitting there before this run. |
-| `1bF-3` | **`FLOW-19` is discharged BY this slice.** `channel_writer_state.channel_id` ships as `BIGINT` with **no foreign key** — which it could not have had, because `channels` has no migration (`FLOW-9`). Once the table exists at `BIGINT`, the FK becomes writable. Whether to add it is a slice-1b decision, not an assumption: it is a per-reality DB, and the lease table is keyed `(reality_id, channel_id)`. |
+| `1bF-3` | **`FLOW-19` becomes EXPRESSIBLE by this slice.** (⚠ This read *"is discharged BY this slice"* until `1b7gap-H4` measured the contradiction: two artifacts said discharged, `0019_channels.down.sql:12` and `13_channel_ordering_and_writer.md` said still open, and `FLOW-*` appears **zero** times in `scripts/deferral-gate.py` -- so nothing would have noticed if the key never landed. `1b.9` decides it stays open and `flow19_trigger()` in the schema gate reds the moment `channels` gains a non-test writer.) `channel_writer_state.channel_id` ships as `BIGINT` with **no foreign key** — which it could not have had, because `channels` has no migration (`FLOW-9`). Once the table exists at `BIGINT`, the FK becomes writable. Whether to add it is a slice-1b decision, not an assumption: it is a per-reality DB, and the lease table is keyed `(reality_id, channel_id)`. |
 
 **Reconciles:** `FLOW-9` (the table does not exist), `FLOW-19` (the lease table references it anyway),
 `REC-102a` (`ChannelId` is `i64`), `DP-Ch1`/`DP-Ch2`/`DP-Ch3`, `DP-Ch11` (the allocator),
@@ -1885,7 +1982,8 @@ borrowed row §6i's own "What does NOT satisfy this" forbids by name.
 | `1b.4` | ✅ each of the six constraints DROPPED and its violating row shown to **insert**, then restored. A constraint that rejects with it and accepts without it is the only proof nothing else is silently backstopping it. |
 | `1b.5` | 🔴 **BLOCK** — 4 HIGH / 5 MEDIUM / 7 LOW. Five discharged at the time (the three FALSE claims + two absent mechanisms); `H1`-`H4`, `M4`, `M5`, `L3`-`L6` were left OPEN. |
 | `1b.6` | ✅ **all ten remaining findings discharged, on a live Postgres 18 — 46/46.** `REC-106` makes a cycle *unrepresentable* rather than rejected (seven attacks, including a deferred one that fails at `COMMIT`), which closed `H2`/`H3`/`L4` and forced the removal of `channels_no_self_parent` as newly vacuous. The gate was rewritten from line-shaped to structural and from one file to a **glob over all 26** tier documents. `1b5-M2` **recurred**, caught by the bite harness on the first run after `REC-106`: two violating rows became double-refused by the new foreign key. `1b.5`'s own record is one LOW row short of its own count. |
-| `1b.7` | ⬜ `V.1` cold-start refuter — **a DIFFERENT one**, worktree-isolated, against the `1b.6` commit |
+| `1b.7` | 🔴 **BLOCK from BOTH refuters — 8 HIGH / 9 MEDIUM / 8 LOW, and neither found what the other found.** One drove a live Postgres; one never ran a query and asked what nobody looked at. Both independently found that a live channel can be created under a dissolved one, which falsifies an induction argument I wrote. |
+| `1b.10` | ✅ **every HIGH and MEDIUM discharged, re-verified live: 54/54.** `0019` was applied by NOTHING (the manifest ended at `0013`, six migrations unregistered, past a row that tracked four); the cycle guarantee lived in DDL rather than data; three semantic mutations left both gates green; a one-statement subtree dissolve was impossible in every row order; and `orphan-model-gate` was cited twice for something it cannot see. |
 
 **`1bF-4` was found DURING the build, not by the board** — every shipped per-reality table keys on
 `(reality_id, …)`, so `DP-Ch2`'s single-column `id` made the `channel_writer_state` foreign key
@@ -2008,6 +2106,8 @@ explained — and it would convert three of the prose rows at once.
 
 | # | what nearly went wrong |
 |---|---|
+| `BDR-42` | 🔴 **I cited a green gate as coverage for something it cannot see — twice, and one of them was in a file arguing against exactly that.** `scripts/orphan-model-gate.py` asks whether an EVENT has a PRODUCER. I cited it in `17_channel_lifecycle.md` and in `crates/dp-kernel/src/channel.rs` as the mechanism that refuses *a model with no subject* — a column with no writer, an unused constructor, a table nothing writes. It reads `.rs`/`.ts`/`.go`, never opens a `.sql` file, and reports OK across 14k files while `channels` has no writer at all. **What makes this worse than citing nothing is that it reports evidence and silences review**: the next reader sees a named, wired, green gate and stops asking. ⇒ **Before citing a gate as covering X, read its subject line and check that X is in it.** The tell I ignored: I had *independently derived* this exact gap earlier in the same session — "orphan-model-gate asks whether an event has a producer, not whether a contract has a consumer" — and then wrote the false citation anyway, two hours later, in a new file. **Knowing a mechanism's limit does not stop you invoking it; only checking at the point of citation does.** |
+| `BDR-41` | 🔴 **The DESCRIPTION of a mechanism can be stronger than the mechanism, and that is a distinct defect from a check that cannot fail.** I wrote that a cycle is *"not rejected — it is not REPRESENTABLE"*. The arithmetic is sound and survived every ordinary-SQL attack. But the guarantee rested on `parent_depth = depth - 1`, which lived in a **column definition** — DDL, not data — and `ALTER COLUMN ... DROP EXPRESSION` needs only table ownership. A refuter self-parented in one statement and then built a 2-cycle with zero roots. ⇒ **A constraint gives you "rejected, as long as the thing it depends on is still there", and any sentence stronger than that is a claim, not a property.** `REC-104` and `1bF-2` were checks that could not FAIL; this is a claim that could not be TRUE, and no amount of biting the constraint would have found it, because the constraint worked. What found it was someone asking *what does this rest on?* |
 | `BDR-40` | 🔴 **A gate I wrote to compare SQL was reading English prose, and the failure mode was SILENT DEGRADATION rather than a crash.** `norm()` tracks single-quoted literals so `'active'` keeps its case. A markdown document is prose with SQL in it, and prose has apostrophes — ``DP-Ch1`'s`` is one. **One unbalanced apostrophe puts every byte after it inside a string literal**, so normalisation quietly stops and the comparison starts failing on case. It reported that as a schema disagreement on its first real run. ⇒ **A parser pointed at a file format it was not written for does not error — it succeeds on the wrong bytes.** The fix is one line (`sql_only`), and the reason I did not see it is that both the spec and the migration ARE SQL, so "just parse the file" felt like the whole design. It is not: one of them is a document that CONTAINS SQL. |
 | `BDR-39` | 🔴 **`1b5-M2` recurred inside the commit fixing `1b5-H2`, and the two decisions were each individually correct.** `REC-106` put `depth` in the parent foreign key. Two bite legs' violating rows — a child at `depth 0`, a child of the root at `depth 17` — thereby became refused by the foreign key *before* the constraint under test ran, so neither leg proved its own constraint was load-bearing any more. **This is `NV`'s hardest shape** (*an adjacent decision defeats it*) and it is the second time in this slice that a row was refused by two barriers. ⇒ **A new constraint does not only add coverage; it can silently REMOVE the exclusivity of an old one.** The only reason it did not ship is that the bite harness demands each constraint be the SOLE refuser — a property no amount of "the tests are green" would have shown, because they were green. **The harness earned its cost here, in a way I could not have argued for in advance.** |
 | `BDR-38` | 🔴 **I answered *"the type system cannot hold this"* with *"so the source can"* and never asked what a source check provably cannot do — then did it again one level down.** Round 2 broke the first lexer six ways and I rewrote it; round 3 broke the rewrite four more, and every one of the four was a fact about **Rust's grammar** that a partial reimplementation got wrong: the `>` of `->`, a raw identifier, a doc attribute, a C-string literal. **The rule `R6` states was correct throughout all three rounds.** What kept failing was that I was re-implementing a parser to check it, badly, in a language with no stake in Rust's grammar — while `syn` sat in the workspace's own `[workspace.dependencies]`, unused by me and already correct. ⇒ **When a check needs to understand a language, use that language's parser. A regex over a grammar is a claim that you know the grammar better than the people who wrote the parser, and eleven times over three rounds is the price of finding out you do not.** |

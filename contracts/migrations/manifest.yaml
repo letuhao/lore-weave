@@ -117,3 +117,56 @@ migrations:
     breaking: false
     dependencies: ["0002_events_table"]
     description: "L2.A Wave-3 W3.4 — events.content_sha256 CHAR(64) (nullable). Stored SHA-256 of the canonical jsonb text of jsonb_build_object(p:payload, m:metadata) — covers payload AND metadata — set at INSERT by both the dp-kernel append + the Go emit path via the identical SQL expression. PG is the single canonicalizer (Go≡Rust agree, no cross-lang JSON lib). PLAIN column (not generated) so a later payload/metadata UPDATE doesn't mask byte-rot; the ledger -check-checksum re-derives + compares. NULL pre-0013 rows skipped."
+
+  # ── 0014–0019 REGISTERED 2026-08-08 (`1b7gap-H1`, found by a cold-start refuter)
+  #
+  # These six shipped over months and NONE of them was registered here, so the
+  # orchestrator never applied any of them: `channels`, the writer lease, the
+  # ruleset digest and both projection drops could not exist in a real
+  # per-reality database. The note above tracks 0009–0012 as a known gap
+  # (`D-MANIFEST-0009-0012-UNREGISTERED`) — and six more files drifted straight
+  # past that row while it sat there, because a ROW is not a MECHANISM. The
+  # mechanism is now `scripts/migration-manifest-gate.py`: every
+  # `per_reality/*.up.sql` must have an entry here or a reasoned exclusion, and
+  # the exclusion list must SHRINK.
+  #
+  # ⚠ This CHANGES WHAT THE ORCHESTRATOR APPLIES. That is the point — it was
+  # applying an eight-month-old schema — but it is a deployment-affecting edit
+  # and is called out rather than slipped in. Verified: the full 0001→0019 chain
+  # applies to a throwaway database, each migration re-applies cleanly, and the
+  # down chain reverses to an empty schema (`scripts/dp-migration-chain-smoke.py`).
+  - id: "0014_channel_ordering"
+    version: 14
+    breaking: false
+    dependencies: ["0002_events_table"]
+    description: "DP-Ch13 channel ordering — events.channel_id/channel_event_id/writer_epoch/causal_refs + channel_writer_state (epoch fence, DB-authoritative allocator) + channel_event_index."
+
+  - id: "0015_writer_lease_liveness"
+    version: 15
+    breaking: false
+    dependencies: ["0014_channel_ordering"]
+    description: "IMG-A2 — channel_writer_state.holder_id + lease_expires_at (nullable = unheld/claimable) + expiry index. Gives the writer lease LIVENESS; DP-A16's epoch fence already gave it safety."
+
+  - id: "0016_events_ruleset_digest"
+    version: 16
+    breaking: false
+    dependencies: ["0002_events_table"]
+    description: "events.ruleset_digest — pins each event to the ruleset version that admitted it."
+
+  - id: "0017_drop_pc_npc_projections"
+    version: 17
+    breaking: false
+    dependencies: ["0006_projections"]
+    description: "Drops the seven pc_*/npc_* projection tables. Every one had a projector, a rebuilder, a golden fixture, an oracle and a benchmark — and NO PRODUCER: every pc.created/npc.created in the tree was a fixture. DROP ... IF EXISTS, so it is safe whether or not 0006 ran."
+
+  - id: "0018_drop_region_session_world_kv_projections"
+    version: 18
+    breaking: false
+    dependencies: ["0006_projections"]
+    description: "Drops region_projection / world_kv_projection / session_participants — the same no-producer finding as 0017, one sweep later. DROP ... IF EXISTS."
+
+  - id: "0019_channels"
+    version: 19
+    breaking: false
+    dependencies: []
+    description: "DP-Ch2 channel registry, per reality (FLOW-9). id BIGINT per REC-103; composite (reality_id, id) per REC-105; cycles unrepresentable via a generated parent_depth in the parent FK (REC-106); DP-Ch31/33/34 lifecycle rules as triggers. References no other table, hence no dependencies."

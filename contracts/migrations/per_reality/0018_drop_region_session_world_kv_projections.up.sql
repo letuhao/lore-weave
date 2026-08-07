@@ -41,6 +41,8 @@
 -- so nothing regresses. But if a later slice lands a world-KV writer it must
 -- author the projection forward — this migration is not a pause, it is a removal.
 
+BEGIN;
+
 DROP TABLE IF EXISTS session_participants;
 DROP TABLE IF EXISTS region_projection;
 DROP TABLE IF EXISTS world_kv_projection;
@@ -66,3 +68,5 @@ ALTER TABLE projection_drift_state
 
 COMMENT ON CONSTRAINT projection_drift_table_name_allowlist ON projection_drift_state IS
     'Cardinality fence. Ten (0007) -> three (0017) -> one (0018), as each projection with no producer was removed. A new table added in L4+ MUST extend this CHECK.';
+
+COMMIT;

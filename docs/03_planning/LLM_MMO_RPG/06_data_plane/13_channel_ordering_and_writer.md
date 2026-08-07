@@ -24,7 +24,12 @@ The per-reality `events` table (existing per [02_storage 00](../02_storage/00_ov
 
 ```sql
 ALTER TABLE events
-    ADD COLUMN channel_id          UUID,            -- NULL = reality-scoped event
+    -- ⚠ AMENDED 2026-08-08 (1b7gap-M3): was UUID. The SHIPPED migration
+    -- 0014_channel_ordering.up.sql:19 says BIGINT, and has since Phase 4 — the
+    -- doc never followed the code. Found by widening dp-channels-schema-gate to
+    -- read every fence and the prose between them; the previous scan read only
+    -- ```sql blocks containing `REFERENCES channels`, and this block has none.
+    ADD COLUMN channel_id          BIGINT,          -- NULL = reality-scoped event
     ADD COLUMN channel_event_id    BIGINT,          -- NULL = reality-scoped event
     ADD COLUMN writer_epoch        BIGINT,          -- monotonic per channel; for fence
     ADD COLUMN causal_refs         JSONB DEFAULT '[]'::jsonb,  -- see DP-Ch15
@@ -205,7 +210,10 @@ if result.rows_affected() == 0 {
 **`channel_writer_state` table** (per-reality DB):
 
 ⚠ **AMENDED 2026-08-07 (`1b5-H1`) — this block declared a table that does not
-exist, in a document `0019_channels`'s own header cites by name.** It said
+exist, in a document `0019_channels`'s own header cites by name.**
+<!-- schema-gate: ok — the next line QUOTES the superseded declaration in order
+     to name what was wrong with it; the corrected table is in the fence below. -->
+It said
 `channel_id UUID PRIMARY KEY REFERENCES channels(id)`, which is wrong three
 times over: the type (`REC-103` settled `ChannelId` as `i64`), the arity (`REC-105`
 — every per-reality table keys on `(reality_id, …)`), and the reference itself

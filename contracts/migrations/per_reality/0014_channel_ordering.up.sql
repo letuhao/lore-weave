@@ -13,6 +13,8 @@
 --       uniqueness + the channel-ordered lookup index DP-Ch11 wanted.
 -- Reality-scoped events keep channel columns NULL (DP-Ch11 note).
 
+BEGIN;
+
 ALTER TABLE events
     ADD COLUMN IF NOT EXISTS channel_id       BIGINT,
     ADD COLUMN IF NOT EXISTS channel_event_id BIGINT,
@@ -46,3 +48,5 @@ CREATE TABLE IF NOT EXISTS channel_event_index (
 CREATE INDEX IF NOT EXISTS events_channel_order_idx
     ON events (reality_id, channel_id, channel_event_id)
     WHERE channel_id IS NOT NULL;
+
+COMMIT;

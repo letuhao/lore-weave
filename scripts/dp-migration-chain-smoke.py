@@ -74,6 +74,14 @@ EXPECT_CONSTRAINTS = {
     "channels_depth_bounded", "channels_lifecycle_known", "channels_no_orphan",
     "channels_id_positive", "channels_level_name_nonempty",
     "channels_dissolved_at_iff_dissolved",
+    # `1b7db-L1` and `1b7db-02`.
+    "channels_id_allocatable", "channels_parent_depth_derived",
+    # A CONSTRAINT TRIGGER gets a `pg_constraint` row of its own, which is the
+    # only place its DEFERRABILITY is recorded — and the deferrability is what
+    # makes a one-statement subtree dissolve possible (`1b7db-07`). Asserting it
+    # here means downgrading it to a plain BEFORE trigger reds from the DATABASE
+    # side, not just from the file comparison.
+    "channels_dissolve_order_trg",
     # Postgres 17+ records NOT NULL in `pg_constraint`, which is a gift here:
     # `1b5-H4`'s finding was that the schema gate could not see `NOT NULL` at
     # all, and a four-way mutant dropping it applied cleanly. These seven are
@@ -89,7 +97,7 @@ EXPECT_INDEXES = {
     "channels_pkey", "channels_id_depth_uq", "channels_root_single",
     "channels_parent_idx", "channels_level_idx", "channels_lifecycle_idx",
 }
-EXPECT_TRIGGER = "channels_lifecycle_guard_trg"
+EXPECT_TRIGGERS = {"channels_lifecycle_guard_trg", "channels_dissolve_order_trg"}
 
 
 def guard_throwaway(name: str) -> None:
@@ -199,8 +207,10 @@ def main() -> int:
             print(f"   {'OK  ' if good else 'FAIL'} {label:12s} {len(got):2d} present"
                   + ("" if good else f"   missing={missing} unexpected={extra}"))
             ok &= good
-        print(f"   {'OK  ' if EXPECT_TRIGGER in trgs else 'FAIL'} trigger      {sorted(trgs)}")
-        ok &= EXPECT_TRIGGER in trgs
+        good = trgs == EXPECT_TRIGGERS
+        print(f"   {'OK  ' if good else 'FAIL'} triggers     {sorted(trgs)}"
+              + ("" if good else f"   expected {sorted(EXPECT_TRIGGERS)}"))
+        ok &= good
         print(f"   parent_depth generated as: {gen}")
         # `REC-106`'s whole mechanism is this expression. If a later migration
         # ever redefines it, the cycle argument silently stops being true.

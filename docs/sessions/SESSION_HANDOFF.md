@@ -371,7 +371,7 @@ the two design contracts that are its only specification are in
 move · the Go mirror `contracts/entity_status` still agrees · `actor-hub` and `entity-existence` are clippy- and rustdoc-clean (the other three crates in that command carry a handful of pre-existing doc and clippy warnings, none of them this round's — counts deliberately not stated, because nothing here measures them and a figure with no measurement rule goes stale by construction; run the two commands if you want the numbers — a round-12 verifier measured the flat claim `clippy clean · cargo doc 0 warnings` FALSE, in the sentence that claims every figure in this block is emitted by a checker) ·
 every mutation in the committed
 mutation harness reds its gate's self-test (`python scripts/gate-bite-harness.py` — one mutation per
-PRODUCTION RULE, run it rather than trust this sentence) · the **49**
+PRODUCTION RULE, run it rather than trust this sentence) · the **50**
 gate scripts the pre-commit hook
 wires all green, and every `--self-test` among them runs pre-commit via
 `scripts/gate-self-tests.py`, which DISCOVERS them rather than naming them.

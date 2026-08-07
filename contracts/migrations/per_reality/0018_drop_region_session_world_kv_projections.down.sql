@@ -18,6 +18,8 @@
 -- If a later slice needs any of these projections, it authors them forward —
 -- with a producer.
 
+BEGIN;
+
 ALTER TABLE projection_drift_state
     DROP CONSTRAINT IF EXISTS projection_drift_table_name_allowlist;
 
@@ -28,3 +30,5 @@ ALTER TABLE projection_drift_state
         'world_kv_projection',
         'session_participants'
     ));
+
+COMMIT;
