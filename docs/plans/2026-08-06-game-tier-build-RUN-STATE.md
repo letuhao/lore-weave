@@ -1789,6 +1789,35 @@ string literal and silently stops normalising it**, which is how the gate's firs
 case difference as a schema disagreement. It had been reading whole documents rather than their SQL
 fences. Fixed, and bitten at all three call sites — each reverted, each turns the self-test red.
 
+#### `1b.8` — the chain, and a finding that MEASUREMENT KILLED
+
+The live smoke applies `0019` **alone, into an empty database**. That is right for testing the
+table's constraints and it makes the smoke structurally blind to the other eighteen migrations —
+and `1b.5`'s *"applies cleanly on the real `0001`->`0019` chain"* was measured **before `REC-106`
+rewrote the file**, so by the time it mattered it described a previous version.
+
+`scripts/dp-migration-chain-smoke.py` (new): **18 migrations applied AND retried**, `channels` as
+**Postgres reports it** compared against `0019`'s declaration — 11 columns, 16 constraints (including
+the seven `NOT NULL` rows PG17+ records in `pg_constraint`, which is `1b5-H4`'s subject asserted from
+the database side), 6 indexes, the trigger, and `parent_depth` confirmed generated as `depth - 1`
+because **that expression IS `REC-106`'s argument**; a 2-cycle refused on a chain-built table; the
+down chain leaving an empty schema and no leftover function. `0008_pgvector_setup` is **skipped and
+reported as skipped, not counted as a pass** — the `vector` extension is not installed in this
+container.
+
+**And a finding that did not survive being tested properly.** A naive chain test re-applies the whole
+history and gets two failures — `0001_initial` (a later migration changed `events`' key) and
+`0007_drift_metadata` (`0017`/`0018` narrowed an allowlist that `0007` seeds into). Against
+`scripts/migration-idempotency-validator.sh`, which had just been widened to all 38 files for
+`1b5-L6` and reports PASS on both, that reads as **exactly `BDR-36`'s shape — the check reads TEXT
+where the property is BEHAVIOUR — inside the check I widened two hours earlier.** It is not. The word
+*idempotent* covers two claims: **retry-safety**, which is what a crashed runner needs and what the
+validator is a proxy for, and **whole-history replay**, which a versioned runner never performs.
+Applying each migration and *immediately* re-applying it — the precise test — is **18 of 18 clean**.
+Both replay failures are correct behaviour. ⇒ Recorded, with the distinction written into the
+validator's own header, because the wrong version of this finding is one careless test away and it
+would have cost a day.
+
 #### ⚠ A discrepancy in the record, not in the code
 
 `1b.5`'s header says **7 LOW** and its table itemises **six** (`L1`–`L6`). The seventh has no row and

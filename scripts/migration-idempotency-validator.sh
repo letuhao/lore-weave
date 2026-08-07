@@ -14,6 +14,25 @@
 #   * ALTER TABLE ... DROP COLUMN that is NOT `DROP COLUMN IF EXISTS`
 #   * INSERT ... that lacks ON CONFLICT  (skip warns-only; pure seed data)
 #
+# WHAT THIS CANNOT SEE, MEASURED 2026-08-08 (stated so nobody re-derives it)
+# -------------------------------------------------------------------------
+# It reads TEXT. The property is BEHAVIOUR. Those are two different things and
+# the word "idempotent" covers two different claims, only one of which is real:
+#
+#   RETRY-SAFETY (real, and what this checks a proxy for) -- a runner dies half
+#   way through migration N and retries N. Applying N twice in a row must work.
+#   `scripts/dp-migration-chain-smoke.py` checks this by BEHAVIOUR against a live
+#   Postgres, and measured 18 of 18 applicable migrations clean.
+#
+#   WHOLE-HISTORY REPLAY (not real, and NOT a defect) -- re-running all of
+#   0001..NNNN against a database that already has them. This FAILS on
+#   0001_initial (a later migration changed `events`' key, so 0001's foreign key
+#   no longer matches) and on 0007_drift_metadata (0017/0018 narrowed
+#   projection_drift_table_name_allowlist, so 0007's seed rows are refused).
+#   BOTH ARE CORRECT, and a versioned runner never produces that scenario. It is
+#   written down because a naive chain test does exactly this, reports two
+#   failures, and looks like a finding against this script. It is not one.
+#
 # Usage:
 #   migration-idempotency-validator.sh                  # lint defaults (per_reality/)
 #   migration-idempotency-validator.sh path1.sql ...    # lint specific files
