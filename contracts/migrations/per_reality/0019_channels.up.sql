@@ -73,8 +73,11 @@ CREATE TABLE IF NOT EXISTS channels (
     -- one-node cycle is the cheapest way to turn the tree into a graph.
     CONSTRAINT channels_no_self_parent CHECK (parent IS NULL OR parent <> id),
 
-    -- `DP-Ch17` (lifecycle): a dissolved channel has a dissolution time and a
+    -- `DP-Ch31`..`DP-Ch37` (17_channel_lifecycle.md): a dissolved channel has a
+    -- dissolution time and a
     -- live one does not. Stated as a biconditional so neither direction can rot.
+    -- (This cited `DP-Ch17` until 1b.5. DP-Ch17 is *Hybrid backing store*,
+    -- 14_durable_subscribe.md:76 -- I had read the FILE NUMBER as a stable ID.)
     CONSTRAINT channels_dissolved_at_iff_dissolved CHECK (
         (lifecycle = 'dissolved') = (dissolved_at IS NOT NULL)
     )

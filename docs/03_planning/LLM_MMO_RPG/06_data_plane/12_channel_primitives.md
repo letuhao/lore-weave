@@ -137,7 +137,8 @@ CREATE TABLE channels (
     -- the cheapest way to turn the tree into a graph.
     CONSTRAINT channels_no_self_parent CHECK (parent IS NULL OR parent <> id),
 
-    -- ⚠ ADDED (REC-105), DP-Ch17: a dissolved channel has a dissolution time and
+    -- ⚠ ADDED (REC-105), DP-Ch31..Ch37 (17_channel_lifecycle.md): a dissolved
+    -- channel has a dissolution time and
     -- a live one does not. A biconditional, so neither direction can rot.
     CONSTRAINT channels_dissolved_at_iff_dissolved CHECK (
         (lifecycle = 'dissolved') = (dissolved_at IS NOT NULL)
@@ -207,7 +208,7 @@ CREATE INDEX channels_lifecycle_idx ON channels(reality_id, lifecycle);
 > Also added here because the live-smoke asked every constraint to fail and two had nothing to say:
 > `channels_no_self_parent` (a self-parented row at `depth > 0` satisfies `channels_no_orphan`, and a
 > one-node cycle is the cheapest way to make the tree a graph) and
-> `channels_dissolved_at_iff_dissolved` (`DP-Ch17`'s lifecycle, as a biconditional so neither
+> `channels_dissolved_at_iff_dissolved` (the `DP-Ch31`..`DP-Ch37` lifecycle, as a biconditional so neither
 > direction can rot).
 
 > ## ⚠ `REC-104` — `channels_root_single` was a check that could not fail

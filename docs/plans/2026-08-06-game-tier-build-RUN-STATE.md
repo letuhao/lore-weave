@@ -1675,6 +1675,48 @@ twice without closing the class.
 **Everything else is recorded and OPEN**, pending the `dp-clippy` decision, because patching `F1`–`F5`
 in the source checker is the third rewrite of a thing four rounds have shown cannot close the class.
 
+
+### `1b.5` — the cold-start refuter returned **BLOCK**
+
+**Isolated worktree against `bd43be69c`, live Postgres, worktree verified byte-identical and every
+throwaway database dropped.** 4 HIGH, 5 MEDIUM, 7 LOW.
+
+#### The one that matters: `FLOW-2` recurred INSIDE the commit written to kill it
+
+| id | sev | finding | state |
+|---|---|---|---|
+| `1b5-H1` | 🔴 | **`REC-103`/`REC-105` reached ONE of FOUR locked SQL sites.** `13_channel_ordering_and_writer.md:209` — **the document `0019`'s own header cites by name** — still declares `channel_id UUID PRIMARY KEY REFERENCES channels(id)`. So does `16_bubble_up_aggregator.md:339`. And `17_channel_lifecycle.md:63` holds a **second locked `ALTER TABLE channels`** (four columns + a constraint) that Phase 0 never found. `dp-channels-schema-gate.py` reads `12_channel_primitives.md` **only** — *the gate built to stop `FLOW-2` is scoped to the one file where `FLOW-2` did not happen this time.* | ⬜ OPEN |
+| `1b5-H2` | 🔴 | **`DP-Ch1`'s *"strict tree, not a DAG"* / *"No cycles"* is asserted, not enforced.** A 2-cycle takes one `UPDATE` and is accepted; delete the root and the reality is a pure cycle with **zero roots**. Any consumer walking `parent` to build an ancestor chain hangs. `channels_no_self_parent` covers length 1 only. | ⬜ OPEN — needs a decision: a trigger/recursive check in the DB, or an explicit *"SDK-enforced"* statement. |
+| `1b5-H3` | 🔴 | **`depth` is a free-floating column.** `DP-Ch1:97` names the mechanism — *"no cycles, enforced by `depth` (children = parent.depth + 1)"* — and the schema never relates `depth` to the parent. A child of the root can declare `depth 16`; a 100-node chain can sit entirely at `depth 1`. `H2` and `H3` are one defect: the spec's stated anti-cycle mechanism IS the depth relation, and neither half is implemented. | ⬜ OPEN |
+| `1b5-H4` | 🔴 | **The schema gate is blind to `PRIMARY KEY`, `NOT NULL`, `DEFAULT`, FK bodies/actions and every index but one.** A four-way mutant — `ON DELETE CASCADE`, `level_name` losing `NOT NULL`, `metadata` losing its `DEFAULT`, an extra `UNIQUE` — applies cleanly and the gate says OK. **The primary key is `REC-105`'s entire subject** and the gate does not look at it. With the mutant applied, one `DELETE` of the root silently wiped the tree. | ⬜ OPEN |
+| `1b5-M4` | 🟠 | `id <= 0` is accepted. `REC-103` cites the wire contract's unsigned `Uint64String` as a ground for `BIGINT` and carried the **width** but not the **domain**. Empty `level_name` likewise. | ⬜ OPEN |
+| `1b5-M5` | 🟠 | **The gate cries wolf on formatting.** Lowercasing a type, or deleting one space in `ON channels (reality_id)`, reds it — and reports `channels_root_single ... None`, which reads as *"`REC-104` has regressed"*. **The no-space style is what the spec itself uses for its other three indexes**, so an author normalising them gets that message. The *"switched off within a day"* failure, arriving through formatting rather than through `CHECK` bodies. | ⬜ OPEN |
+| `1b5-L3`/`L4` | 🟡 | A **dissolved root forecloses the reality permanently** (the index ignores lifecycle; `DP-Ch33` keeps the row indefinitely). And the index gives *at most* one root, not *exactly* one — zero-root realities are legal. The refuter answered the brief's question directly: **"one root" is correct, not "one ACTIVE root"**, because ids are never reissued — but the foreclosure is a consequence nobody wrote down. | ⬜ OPEN |
+| `1b5-L5`/`L6` | 🟡 | `DP-Ch31`'s terminal-Dissolved and `DP-Ch33`'s descendants-first both fall to a plain `UPDATE`; `DP-Ch31:77` claims a *"row-level rule"* that does not exist. And **`0019` is default-uncovered by `scripts/migration-idempotency-validator.sh`**, whose target list is an enumerated `0001_initial` — `NV-3`'s named shape, pre-existing, and this commit added the 19th uncovered file. | ⬜ OPEN |
+
+#### Fixed here — the ones that were FALSE, plus two absent mechanisms
+
+| id | was | now |
+|---|---|---|
+| `1b5-L1` | **`DP-Ch17` cited three times as "lifecycle".** `DP-Ch17` is *Hybrid backing store* (`14_durable_subscribe.md:76`); channel lifecycle is `DP-Ch31`..`DP-Ch37`. I read a **file number as a stable ID**. | corrected in all three places, with the error named |
+| `1b5-L2` | **Three artifacts claimed `SQLSTATE` was printed** — the docstring, the commit message, and a helper literally called `sqlstate()`. None printed one. | the claim is corrected rather than the output padded: what *is* printed is the **constraint name**, which is stronger evidence — a generic code says *a check failed*, `channels_no_orphan` says *which* |
+| `1b5-M1` | **The bite's "restore" was a NO-OP for five of six constraints.** It re-applied the migration, and `CREATE TABLE IF NOT EXISTS` skips — so legs 2..6 ran on a progressively stripped table and the exclusivity the leg advertises was not what the evidence established. (No false pass today; the refuter checked all six for cross-coverage.) | drop + re-create + **re-seed the tree** + verify the constraint is back. The re-seed is itself a `1b.5` lesson: without it a leg's `parent` dangles and the FK rejects for the wrong reason. |
+| `1b5-M2` | **`1b.2` contained a row refused by TWO barriers** — a *root at depth != 0* in a reality that already had a root. `CHECK`s evaluate before index insertion, so attribution passed and the ambiguity was invisible. The exact hazard `1b.4` exists for, inside `1b.2`. | a third reality with **no** root, so the row violates `channels_no_orphan` and nothing else |
+| `1b5-M3` | **The down migration's guard argued about a reference that does not exist.** *"If something references `channels`, the drop must FAIL"* — nothing references `channels`; that is `FLOW-19`, still open. **`REC-104`'s exact shape, in the file written to fix `REC-104`.** | the comment now says what it guards and what it does not, and names `FLOW-19` as still open |
+
+#### What the refuter could NOT break
+
+`channels_parent_fk` stops a cross-reality parent **structurally** — the shared `reality_id` column
+makes it inexpressible, and the `MATCH SIMPLE` NULL escape was hunted specifically and is closed
+because `reality_id` is `NOT NULL`. Constraint attribution is genuine on `INSERT` **and on `UPDATE`,
+which the smoke never exercises** — seven mutation paths, each refused by the right constraint.
+`channels_root_single` is the right index with the right predicate. The migration applies cleanly on
+the real `0001`->`0019` chain. A wrong-shaped pre-existing `channels` is **not** silently accepted
+(the index creation catches what `CREATE TABLE IF NOT EXISTS` masks). The gate's self-test runs on
+**every** invocation and cannot be skipped. And `REC-103`/`REC-105` are both confirmed sound —
+`0014_channel_ordering.up.sql:31` really is `PRIMARY KEY (reality_id, channel_id)`, so the composite
+shape is forced rather than chosen.
+
 ### Slice board
 
 | # | slice | done = |
@@ -1734,7 +1776,7 @@ borrowed row §6i's own "What does NOT satisfy this" forbids by name.
 | `1b.2` | ✅ **24 checks on a live Postgres.** Every constraint rejected what its name claims — with the database's own `SQLSTATE` — and accepted what it must, including a root in a *different* reality. Down migration reverses to zero tables. |
 | `1b.3` | ✅ `scripts/dp-channels-schema-gate.py` — spec SQL vs migration SQL, wired pre-commit. Bitten on **both** sides plus a `REC-104` regression. Stated limit: it does not compare `CHECK` **bodies**, because two spellings of one predicate would cry wolf; that half is `1b.2`. |
 | `1b.4` | ✅ each of the six constraints DROPPED and its violating row shown to **insert**, then restored. A constraint that rejects with it and accepts without it is the only proof nothing else is silently backstopping it. |
-| `1b.5` | ⬜ `V.1` cold-start, isolated, against a commit |
+| `1b.5` | 🔴 **BLOCK** — 4 HIGH / 5 MEDIUM / 7 LOW. Five discharged (the three FALSE claims + two absent mechanisms); `H1`-`H4`, `M4`, `M5`, `L3`-`L6` OPEN. |
 
 **`1bF-4` was found DURING the build, not by the board** — every shipped per-reality table keys on
 `(reality_id, …)`, so `DP-Ch2`'s single-column `id` made the `channel_writer_state` foreign key

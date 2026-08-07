@@ -4,10 +4,17 @@
 -- explicitly anyway, because a down migration that relies on a cascade is one
 -- rename away from leaving an orphan behind.
 --
--- No `CASCADE`. If something references `channels` by the time this runs, the
--- drop must FAIL and say so: the only intended reference is
--- `channel_writer_state`, whose foreign key `FLOW-19` says has never existed,
--- and a silent cascade would take real lease rows with it.
+-- No `CASCADE` -- and the reason stated here until `1b.5` was REC-104's own
+-- defect, in the file written to fix REC-104.
+--
+-- It read: *"if something references `channels` by the time this runs, the drop
+-- must FAIL and say so."* **It cannot fail. NOTHING references `channels`** --
+-- that is `FLOW-19`, still open: `channel_writer_state.channel_id` has no
+-- foreign key, so a lease can outlive the registry and this DROP will not
+-- notice. A guard whose subject does not exist.
+--
+-- The `CASCADE` omission is still correct, for the reason that will apply once
+-- the FK lands. Until then it guards nothing, and says so.
 DROP INDEX IF EXISTS channels_lifecycle_idx;
 DROP INDEX IF EXISTS channels_level_idx;
 DROP INDEX IF EXISTS channels_parent_idx;

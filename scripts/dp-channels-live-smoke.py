@@ -19,7 +19,15 @@ WHAT IT PROVES
 A `CHECK` constraint nobody has inserted against is `REC-104` all over again — a
 check that has never been asked to fail. So every constraint the migration
 declares is given a row that violates it, and the DATABASE'S OWN ERROR is the
-evidence: `SQLSTATE` plus message, printed.
+evidence: **the constraint NAME Postgres blames, printed verbatim.**
+
+That is deliberately not `SQLSTATE`. Three artifacts in this slice claimed
+`SQLSTATE` was printed — this docstring, the commit message, and the helper below
+is still called `sqlstate()` — and none of them printed one (`1b.5 L2`). The name
+is the stronger evidence anyway: `23514` says *a check failed*, while
+`channels_no_orphan` says *which check*, which is the whole attribution question.
+The claim was corrected rather than the output padded to make a false sentence
+true.
 
 The negative direction matters as much: a second root in the SAME reality must
 collide, and a root in a DIFFERENT reality must be accepted. A unique index that
@@ -46,6 +54,12 @@ DOWN = "contracts/migrations/per_reality/0019_channels.down.sql"
 
 REALITY_A = "11111111-1111-4111-8111-111111111111"
 REALITY_B = "22222222-2222-4222-8222-222222222222"
+# `1b.5 M2` — a reality with NO root, so a "root at depth != 0" row violates
+# `channels_no_orphan` and NOTHING ELSE. Using REALITY_B put a second barrier
+# (`channels_root_single`) behind it; CHECKs evaluate before index insertion,
+# so the attribution assertion passed and the ambiguity was invisible. That is
+# the exact hazard `1b.4` exists for, occurring inside `1b.2`.
+REALITY_C = "33333333-3333-4333-8333-333333333333"
 
 
 def guard_throwaway(name: str) -> None:
@@ -87,7 +101,7 @@ def apply_file(path: str, db: str = DB) -> tuple[int, str]:
     return p.returncode, ((p.stdout or "") + (p.stderr or "")).strip()
 
 
-def sqlstate(err: str) -> str:
+def blamed_constraint(err: str) -> str:
     for line in err.splitlines():
         if "ERROR:" in line:
             return line.split("ERROR:")[1].strip()[:110]
@@ -100,6 +114,22 @@ def row(reality: str, cid: int, parent, depth: int, lifecycle: str = "active",
     return (f"INSERT INTO channels (reality_id, id, parent, level_name, depth, lifecycle, "
             f"dissolved_at) VALUES ('{reality}', {cid}, {par}, '{level}', {depth}, "
             f"'{lifecycle}', {dissolved})")
+
+
+def seed_tree() -> None:
+    """The minimal tree every bite leg's rows refer to.
+
+    Needed because `1b.5 M1`'s fix drops and re-creates the table, which wipes
+    the rows — and a leg whose `parent` no longer exists is rejected by the
+    FOREIGN KEY rather than by the constraint under test. That is the
+    wrong-reason failure the whole harness exists to detect, arriving from the
+    fix for a different wrong-reason failure.
+    """
+    for sql in (row(REALITY_A, 1, None, 0, level="reality"),
+                row(REALITY_A, 2, 1, 1),
+                row(REALITY_A, 3, 2, 2),
+                row(REALITY_B, 1, None, 0, level="reality")):
+        psql(sql)
 
 
 def main() -> int:
@@ -141,14 +171,14 @@ def main() -> int:
             code, out = psql(sql)
             ok = code == 0
             print(f"   {'OK  ' if ok else 'FAIL'} {label:46s} exit={code}"
-                  + ("" if ok else f"  {sqlstate(out)}"))
+                  + ("" if ok else f"  {blamed_constraint(out)}"))
             results.append(ok)
 
         # ── every constraint must REJECT what its name claims.
         print(f"\n── REJECT: each constraint, asked to fail")
         for label, sql, expect in [
             ("a second root in the SAME reality", row(REALITY_A, 9, None, 0), "channels_root_single"),
-            ("a root at depth != 0", row(REALITY_B, 9, None, 3), "channels_no_orphan"),
+            ("a root at depth != 0", row(REALITY_C, 9, None, 3), "channels_no_orphan"),
             ("a child at depth 0", row(REALITY_A, 10, 1, 0), "channels_no_orphan"),
             ("depth past the DP-Ch2 bound of 16", row(REALITY_A, 11, 1, 17), "channels_depth_bounded"),
             ("a negative depth", row(REALITY_A, 12, 1, -1), "channels_depth_bounded"),
@@ -166,7 +196,7 @@ def main() -> int:
             named = expect in out
             ok = code != 0 and named
             print(f"   {'OK  ' if ok else 'FAIL'} {label:46s} exit={code}")
-            print(f"        {sqlstate(out)}")
+            print(f"        {blamed_constraint(out)}")
             if code != 0 and not named:
                 print(f"        ^ rejected, but NOT by {expect} — right answer, wrong constraint")
             results.append(ok)
@@ -206,8 +236,21 @@ def main() -> int:
             after, out_after = psql(sql)
             psql(f"DELETE FROM channels WHERE reality_id='{REALITY_A}' AND id "
                  f"= {sql.split('VALUES')[1].split(',')[1].strip()}")
-            # Put it back, so the next leg starts from the real schema.
-            code_restore, out_restore = apply_file(MIGRATION)
+            # Put it back. `1b.5 M1`: re-applying the migration alone was a
+            # NO-OP — `CREATE TABLE IF NOT EXISTS` skips, so five of six
+            # constraints never returned and legs 2..6 ran on a progressively
+            # stripped table. The exclusivity this leg advertises was not what
+            # the evidence established. Drop and re-create, then VERIFY.
+            psql("DROP TABLE IF EXISTS channels")
+            apply_file(MIGRATION)
+            seed_tree()
+            _, back = psql(f"SELECT count(*) FROM pg_constraint WHERE conname='{constraint}'")
+            _, idx = psql(f"SELECT count(*) FROM pg_indexes WHERE indexname='{constraint}'")
+            restored_ok = back != "0" or idx != "0"
+            if not restored_ok:
+                print(f"        x RESTORE FAILED: {constraint} is still absent after re-apply")
+                results.append(False)
+                continue
             _, still = psql("SELECT count(*) FROM pg_constraint WHERE conname = %s"
                             % f"'{constraint}'")
             bit = before != 0 and code_drop == 0 and after == 0
@@ -215,7 +258,7 @@ def main() -> int:
                   f"with={before and 'rejected' or 'ACCEPTED'} "
                   f"without={after == 0 and 'accepted' or 'still rejected'}")
             if not bit and after != 0:
-                print(f"        ^ still rejected with {constraint} gone: {sqlstate(out_after)}")
+                print(f"        ^ still rejected with {constraint} gone: {blamed_constraint(out_after)}")
                 print("        Something ELSE is refusing this row, so this constraint was not")
                 print("        the thing holding the property.")
             results.append(bit)
@@ -224,10 +267,8 @@ def main() -> int:
         # the measurements below rather than reporting on a mutated table.
         psql("DROP TABLE IF EXISTS channels")
         apply_file(MIGRATION)
-        for sql in [row(REALITY_A, 1, None, 0, level="reality"), row(REALITY_A, 2, 1, 1),
-                    row(REALITY_A, 3, 2, 2), row(REALITY_A, 4, 1, 1, "dissolved", "now()"),
-                    row(REALITY_B, 1, None, 0, level="reality")]:
-            psql(sql)
+        seed_tree()
+        psql(row(REALITY_A, 4, 1, 1, "dissolved", "now()"))
 
         # ── DP-Ch11's allocator: MAX()+1, per reality.
         print(f"\n── MEASURE")
