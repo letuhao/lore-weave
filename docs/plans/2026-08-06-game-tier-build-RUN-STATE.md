@@ -1681,7 +1681,7 @@ in the source checker is the third rewrite of a thing four rounds have shown can
 |---|---|---|
 | **0** | AMEND bundle | ✅ `217d325f0` + `3e6358749` |
 | **1** | `crates/dp` — tiers, scopes, `DpAggregate` | 🟡 **Four rounds, four BLOCKs, 58 findings.** Round 3 retired the hand-rolled lexer for a real `syn` AST. **Not closed** — `G3`/`G4`/`G6`–`G13` are recorded and open, and no round has yet returned CLEAR. The residual limit is stated rather than closed: `dp-clippy` (`D-DP-CLIPPY-NOT-BUILT`). |
-| **1b** | the `channels` table (`DP-Ch1/Ch2/Ch3`) | ⬜ *board TBD — it is a migration, so Axis 2 IS a live DB and §0's shape applies* |
+| **1b** | the `channels` table (`DP-Ch1/Ch2/Ch3`) | 🟡 **board written — §6j.** Phase 0 found three things before any code: `DP-Ch2`'s LOCKED schema says `UUID` and contradicts PO-approved `REC-102a` (`i64`); `channels_root_single UNIQUE (id)` is **vacuous** — `id` is already the primary key, so the constraint its name claims (*exactly one root*) is enforced by nothing; and `FLOW-19` is discharged by this slice rather than blocked on it. |
 | **2** | `dp::forbid_raw_kernel_client`, shipped RED | ⬜ *board TBD.* **Carries `[package.metadata.dp] dp-crate = true`**, removed from `crates/dp/Cargo.toml` by `V1-F12`: it is `DP-K11`'s marker and it is the right shape, but its only reader is this lint. It lands in the same commit as the thing that reads it. |
 | **3** | `RealityId` + `SessionContext` | ⬜ *board TBD* |
 | **4** | tier-typed write surface | ⬜ *board TBD* |
@@ -1689,6 +1689,52 @@ in the source checker is the third rewrite of a thing four rounds have shown can
 
 **Boards are written per slice, at its start, not all now** — a board for slice 4 written today would
 be graded against a design that slices 1–3 will change, which is how a DoD becomes decoration.
+
+## 6j. `SLICE-1b` — the `channels` table. **Board written first, at the slice's start.**
+
+> `BDR-26` is the rule this obeys: *a finished slice is not a licence to start the next one; the next
+> one starts when its board exists.* Slice 1 ended green four times over, and green is not authority.
+
+### Phase 0 · AUDIT-EXISTING — three findings, before a line of migration
+
+Asked the three questions with commands rather than memory, and all three answered something.
+
+| # | finding |
+|---|---|
+| `1bF-1` | 🔴 **`DP-Ch2`'s LOCKED schema contradicts `REC-102a`, which the PO approved on 2026-08-07.** The spec declares `id UUID PRIMARY KEY, parent UUID REFERENCES channels(id)`. `REC-102a` settled `ChannelId` as **`i64`** — because two of the three artifacts said 64-bit (the shipped `crates/dp-kernel/src/channel.rs`, verified `pub struct ChannelId(pub(crate) i64)`, and the client wire contract's `Uint64String`), and because `DP-Ch11`'s allocator is a **monotonic per-channel counter seeded from `MAX()`**, which is what a `BIGINT` is for and which a `Uuid` cannot do. **The migration must be `BIGINT`, and `12_channel_primitives.md` needs the amendment `REC-102a` implied and did not reach.** |
+| `1bF-2` | 🟠 **`CONSTRAINT channels_root_single UNIQUE (id)` is vacuous.** `id` is already `PRIMARY KEY`, so the constraint adds nothing and can never fire. Its NAME says what it was meant to do — *exactly one root per reality* — which is a real invariant (`DP-Ch1`: *"a strict tree; every channel except the root has exactly one parent"*) and is **enforced by nothing**. The honest form is a partial unique index on `(parent IS NULL)`. This is a check that cannot fail, in a LOCKED spec, which is `NV-1` and was sitting there before this run. |
+| `1bF-3` | **`FLOW-19` is discharged BY this slice.** `channel_writer_state.channel_id` ships as `BIGINT` with **no foreign key** — which it could not have had, because `channels` has no migration (`FLOW-9`). Once the table exists at `BIGINT`, the FK becomes writable. Whether to add it is a slice-1b decision, not an assumption: it is a per-reality DB, and the lease table is keyed `(reality_id, channel_id)`. |
+
+**Reconciles:** `FLOW-9` (the table does not exist), `FLOW-19` (the lease table references it anyway),
+`REC-102a` (`ChannelId` is `i64`), `DP-Ch1`/`DP-Ch2`/`DP-Ch3`, `DP-Ch11` (the allocator),
+`DP-Ch13` (the writer lease), `DP-A2` (CP not on the hot path — why this is per-reality and not CP).
+
+### Why §0's DoD applies here and slice 1's does not
+
+Slice 1 re-derived Axis 2 as *"the compiler on adversarial input"* because `crates/dp` declares no
+I/O. **1b is a migration.** It has a live subject, so the substitute is not available and would be
+dishonest: `S2.3`'s *"live infra unavailable"* line does not transfer, and copying it would be the
+borrowed row §6i's own "What does NOT satisfy this" forbids by name.
+
+| axis | 1b |
+|---|---|
+| **CODE** | migration applies to a throwaway DB · `sqlx`/driver-level types match `ChannelId`'s `i64` · workspace builds · full pre-commit |
+| **RUN** | **a live Postgres.** Apply forward, insert a root and a child, assert the tree constraints REJECT what they name — a second root, an orphan at `depth > 0`, a root at `depth != 0`, a `depth` past 16, a bad `lifecycle`. Each rejection is the DB's own error, pasted. **`live infra unavailable` is NOT available to this slice**; if Postgres cannot be reached, the slice does not close. |
+| **MEASURE** | row counts · the reject cases as a table of `(input, SQLSTATE, message)` · `MAX(id)+1` allocator behaviour under two concurrent inserts |
+| **BITE** | drop each constraint, show the violating row now INSERTS, restore. A `CHECK` nobody has inserted against is `1bF-2` again. |
+| **`V.1`** | cold-start refuter, **worktree-isolated, against a commit** (`BDR-35`) |
+| **`V.2`** | the oracle parses `DP-Ch2`'s `CREATE TABLE` out of `12_channel_primitives.md` and compares it to the migration — column names, types, and the `CHECK` bodies. `FLOW-2`'s alarm, on the one artifact where spec and code are both SQL. |
+
+### Slice board
+
+| # | done = |
+|---|---|
+| `1b.0` | ⬜ `12_channel_primitives.md` amended: `UUID` → `BIGINT` (`1bF-1`), and `channels_root_single` either made real or deleted (`1bF-2`). **Spec before code** — slice 0's lesson: the locked spec stops stating things that are false. |
+| `1b.1` | ⬜ the migration, at `BIGINT`, with every constraint the amended `DP-Ch2` names |
+| `1b.2` | ⬜ applied to a live throwaway DB; every named rejection demonstrated against it |
+| `1b.3` | ⬜ the `V.2` oracle: spec SQL parsed and compared to migration SQL |
+| `1b.4` | ⬜ bite matrix: each constraint dropped, violation shown to insert, restored |
+| `1b.5` | ⬜ `V.1` cold-start, isolated, against a commit |
 
 ## 7. Registers — append as it happens
 
