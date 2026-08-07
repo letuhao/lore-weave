@@ -157,7 +157,18 @@ fn s3_4_counts() {
         .map(|l| l.trim().trim_end_matches(','))
         .filter(|l| !l.is_empty() && !l.starts_with("//"))
         .collect();
-    let invocations = tier_src.matches("declare_tier!(").count();
+    // Delimiter-agnostic. This line was `matches("declare_tier!(")` — the exact
+    // one-character break `R3-M2` used to mint a fifth tier, still living here
+    // after being fixed in `spec_oracle` and `aggregate_contract`. Masked by
+    // those two, and `BDR-36`'s shape regardless: the same bug one file over.
+    let invocations = tier_src
+        .match_indices("declare_tier!")
+        .filter(|(i, _)| {
+            tier_src[i + "declare_tier!".len()..]
+                .trim_start()
+                .starts_with(['(', '{', '['])
+        })
+        .count();
 
     println!("S3.4  TierLevel variants      = {} {:?}", variants.len(), variants);
     println!("S3.4  declare_tier! calls     = {invocations}");

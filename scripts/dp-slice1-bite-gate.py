@@ -67,6 +67,7 @@ Exit 0 = every bite bit; 1 = one did not.
 from __future__ import annotations
 
 import hashlib
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -424,9 +425,12 @@ def bite_gate_probe(label: str, probe_rel: str, src: str, want_rules: tuple[str,
     write_txt(probe, src)
     try:
         code_after, out = run(sys.executable, gate)
+        # Match the rule id by SHAPE. The enumerated version read `[:2]`, so
+        # `R10` arrived as `R1` and `R11` was invisible entirely — the rule the
+        # `V4-F7` legs below were added to cover could not have been detected by
+        # the code that scores them.
         rules = sorted({ln.split()[0] for ln in out.splitlines()
-                        if ln.strip()[:2] in ("R1", "R2", "R3", "R4", "R6", "R7", "R8", "R9")
-                        or ln.strip().startswith("R10")})
+                        if re.match(r"R\d+\s", ln.strip())})
         print(f"  planted  : gate exit={code_after} rules={rules}  (expected 1)")
         if code_after != 1:
             print(f"  x {label}: the gate ACCEPTED a break it is written against")
@@ -638,6 +642,40 @@ def main() -> int:
          "    type Id = u64; const TYPE_NAME: &'static str = \"r2dup\"; }\n"
          "impl DpAggregate for Safe { type Tier = dp::T3; type Scope = dp::RealityScope;\n"
          "    type Id = u64; const TYPE_NAME: &'static str = \"r2du\\u{70}\"; }\n", ("R4",)),
+        # ── `V4-F7`: the legs asserted `R4`/`R6`/`R7`/`R8`/`R10` and NOTHING
+        # ELSE. Deleting `R9` and `R11` from the contract left BOTH scorers at
+        # their top score — `PASS — 25 bite(s) bit` and `SELF-TEST PASS`. The
+        # number measured LEGS, not COVERAGE, which is `V2-F1`'s defect wearing
+        # the harness's own uniform. One probe per uncovered rule.
+        #
+        # These probes name types that do not exist, and one of them does not
+        # parse at all. That is safe and deliberate: `cargo test --test
+        # aggregate_contract` builds ONLY that target, and the contract reads
+        # every other file from DISK rather than compiling it. A probe that had
+        # to compile could not exercise `R1` or `R9` at all.
+        ("V4-F7 R1 — a concrete NON-tier as the tier", P,
+         "use dp::DpAggregate;\npub struct R1Probe;\n"
+         "impl DpAggregate for R1Probe {\n"
+         "    type Tier = MyCustomTier; type Scope = dp::RealityScope; type Id = u64;\n"
+         "    const TYPE_NAME: &'static str = \"r4_r1\";\n}\n", ("R1",)),
+        ("V4-F7 R2 — a concrete NON-scope as the scope", P,
+         "use dp::DpAggregate;\npub struct R2Probe;\n"
+         "impl DpAggregate for R2Probe {\n"
+         "    type Tier = dp::T0; type Scope = ZoneScope; type Id = u64;\n"
+         "    const TYPE_NAME: &'static str = \"r4_r2\";\n}\n", ("R2",)),
+        ("V4-F7 R3 — a computed TYPE_NAME", P,
+         "use dp::DpAggregate;\npub struct R3Probe;\n"
+         "impl DpAggregate for R3Probe {\n"
+         "    type Tier = dp::T0; type Scope = dp::RealityScope; type Id = u64;\n"
+         "    const TYPE_NAME: &'static str = NAMES[0];\n}\n", ("R3",)),
+        ("V4-F7 R9 — a subject file that does not parse", P,
+         "use dp::DpAggregate;\nimpl DpAggregate for Broken {\n"
+         "    type Tier = dp::T0\n    this is not rust\n", ("R9",)),
+        ("V4-F7 R11 — a TYPE_NAME that is not snake_case", P,
+         "use dp::DpAggregate;\npub struct R11Probe;\n"
+         "impl DpAggregate for R11Probe {\n"
+         "    type Tier = dp::T0; type Scope = dp::RealityScope; type Id = u64;\n"
+         "    const TYPE_NAME: &'static str = \"PlayerWallet\";\n}\n", ("R11",)),
         ("R2-8 one macro body, N invocations", P,
          "use dp::DpAggregate;\nmacro_rules! agg { ($ty:ident) => {\n    pub struct $ty;\n"
          "    impl DpAggregate for $ty {\n"

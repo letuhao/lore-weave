@@ -120,7 +120,13 @@ def self_test() -> int:
             print("  " + b)
         return 1
     print("dp-aggregate-gate: SELF-TEST PASS — the contract exists, parses with `syn`, and REDS "
-          "by R6 on a planted V1-F1 generic escape (proved by running it, not by reading it)")
+          "by R6 on a planted V1-F1 generic escape (proved by running it, not by reading it).")
+    print("  SCOPE OF THIS CLAIM: one rule, R6. It says the check is CAPABLE OF RED, not that "
+          "every rule is covered —")
+    print("  `V4-F7` deleted R9 and R11 from the contract and this line still printed PASS. "
+          "Per-rule coverage is")
+    print("  `scripts/dp-slice1-bite-gate.py`, which has a probe for each of the eleven and "
+          "reds if any is removed.")
     return 0
 
 
