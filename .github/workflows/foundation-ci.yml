@@ -49,6 +49,36 @@ jobs:
       # Linux baselines (D-WORLDGEN-XPLAT-DETERMINISM). Build above still compiles it.
       - run: cargo test --workspace --exclude world-gen
 
+  # `crates/dp` is the data-plane SDK contract. It gets its own leg, on EVERY
+  # branch, because the heavy job above is scoped to main + mmo-rpg and this
+  # work lives on feature branches — a completeness pass measured that `S1.1`
+  # fired only on a PR to main and `S1.2` (clippy) had NO CI HOME AT ALL, so the
+  # row that catches a whole class of this crate's defects ran only when a human
+  # typed it (`G7`).
+  #
+  # It is cheap and can afford to be unconditional: the crate has no runtime
+  # dependencies, and `tests/aggregate_contract.rs` is where DP-A9 is actually
+  # enforced — over a real `syn` AST, after three rounds of refutation broke a
+  # hand-rolled lexer eleven times.
+  dp-contract:
+    name: dp — tier/scope contract (clippy + tests, all branches)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # `aggregate_contract` scopes itself with `git ls-files`, so it needs a
+          # real checkout rather than a shallow archive.
+          fetch-depth: 0
+      # No `@stable`: `rust-toolchain.toml` pins the channel, because this leg's
+      # trybuild `.stderr` files pin rustc's diagnostic prose.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.89.0"
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p dp -- --nocapture
+      - run: cargo clippy -p dp --all-targets -- -D warnings
+
   go:
     name: Go modules (build + vet + test)
     runs-on: ubuntu-latest

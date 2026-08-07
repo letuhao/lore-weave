@@ -76,11 +76,15 @@ pub trait DpAggregate: Send + Sync + 'static {
 
 /// The `DP-R2` tier table, for one aggregate, derived from its types.
 ///
-/// `DP-R2` requires a feature design doc to carry *"every aggregate, read tier,
-/// write tier, rationale"* and blocks review without it. That table has always
-/// been hand-written prose checked by a human. This is the machine-readable
-/// half: everything except the rationale is now **read off the type**, so a
-/// table and the code cannot disagree.
+/// `DP-R2` requires a feature design doc to carry a tier table and blocks
+/// review without it — *"every aggregate, read tier, write tier, rationale"*
+/// (`22_feature_design_quickstart.md:203`, the checklist row that states the
+/// requirement; the header used to attribute the phrase to `DP-R2` itself,
+/// which is where the rule lives but not where those words are — `G11`).
+///
+/// That table has always been hand-written prose checked by a human. This is
+/// the machine-readable half: everything except the rationale is now **read off
+/// the type**, so a table and the code cannot disagree.
 ///
 /// # The fields are private, and that is the entire value of the type
 ///

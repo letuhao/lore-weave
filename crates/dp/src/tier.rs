@@ -4,8 +4,16 @@
 //!
 //! [`DP-A9`] says tier assignment is *"design-time only … not chosen at
 //! runtime, not configurable per player, not switchable without a
-//! design-change"*, and [`DP-A5`] says the taxonomy is **closed**: *"pick the
-//! closer tier; if unsure, pick the safer one. No in-betweens."*
+//! design-change"*, and [`DP-A5`] says the taxonomy is **closed**: *"No new
+//! tiers, no 'between T1 and T2', no per-feature special cases."*
+//!
+//! *(The `DP-A9` quote is verbatim from `02_invariants.md`. The `DP-A5` one was
+//! not: this header attributed *"pick the closer tier; if unsure, pick the safer
+//! one. No in-betweens"* to `DP-A5`, and that sentence is a table row in
+//! `22_feature_design_quickstart.md:185` which **cites** `DP-A5`. Same meaning,
+//! wrong source — `G11`. A citation nobody can follow is worse than none, and
+//! this crate's ~30 citations carry no `#Symbol` anchor, so
+//! `source-citation-gate` reaches none of them by design.)*
 //!
 //! A `tier: TierLevel` **field** cannot say either of those things — a field is
 //! exactly the thing that varies at runtime. So the tier is an **associated
