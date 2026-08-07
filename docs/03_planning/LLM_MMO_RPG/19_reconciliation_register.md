@@ -1036,3 +1036,20 @@ the condition under which two layers disagree and nothing notices.
 `pub struct ChannelId(pub String)`** — a **fourth** name collision, found by `cargo` refusing
 `pub struct ChannelId::unverified(pub String);`. Reverted in full. A regex over a type name is a
 regex over a *word*, and this tier has now produced four different things sharing one word.
+
+## 17. `REC-103` / `REC-104` — slice 1b's Phase 0, found before any migration existed
+
+Both are in `06_data_plane/12_channel_primitives.md` `DP-Ch2`, and both were found by asking Phase 0's
+questions with commands rather than from memory, at the start of slice 1b.
+
+| id | what | status |
+|---|---|---|
+| `REC-103` | **`channels.id` declared `UUID`; `REC-102a` had already ruled it `i64`.** Not a new decision — the amendment `REC-102a` implied and did not reach. It was applied to `DP-Ch1`'s newtype and to `crates/dp-kernel` in the same commit, and not to the schema thirty lines below, so the one artifact a migration would be written from still said the thing the decision had ruled false. | ✅ **APPLIED** — executing a PO-approved decision, not taking one. |
+| `REC-104` | **`CONSTRAINT channels_root_single UNIQUE (id)` could not fail.** `id` is the primary key. The constraint's NAME states `DP-Ch1`'s real invariant — a strict tree has exactly one root — and **nothing enforced it**; `channels_no_orphan` is adjacent and weaker, permitting any number of roots. Replaced with a partial unique index on `parent IS NULL`, the only shape Postgres offers for *"at most one row satisfying a predicate"*. | ✅ **APPLIED**, and flagged: this is a genuine choice (make it real vs delete it) and the register records that I took the first reading. If the intent was *no* root constraint, say so and it comes out — the vacuous version must not return either way. |
+
+| `REC-105` | **`channels` carries `reality_id`; `DP-Ch2` did not.** Every other per-reality migration keys on `(reality_id, …)`, and `channel_writer_state` is `PRIMARY KEY (reality_id, channel_id)` — so a foreign key to a single-column `channels(id)` is **not expressible**, and following the spec literally would have shipped the table while leaving `FLOW-19`'s dangling lease exactly as it was. Derived from the shipped tables, not chosen. | ⚠ **APPLIED, and it is the one JUDGEMENT in 1b rather than a correction.** Nothing has run against a real database — only a throwaway — so it is cheap to reverse. If one-DB-per-reality is the intent and `reality_id` is redundant, say so and it comes out. |
+
+**`REC-104` is `NV-1` inside a LOCKED design document**, predating this run entirely.
+`docs/standards/non-vacuity.md` was written about the code tier; the same defect had been sitting in
+the design corpus, unexamined, because nothing points the standard at prose. Worth noticing as a gap
+in the standard's reach rather than as one bad constraint.

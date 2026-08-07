@@ -107,26 +107,129 @@ Lives in each reality's own Postgres database (the same DB that holds the realit
 ```sql
 -- In each per-reality DB
 CREATE TABLE channels (
-    id            UUID PRIMARY KEY,
-    parent        UUID REFERENCES channels(id),
+    reality_id    UUID     NOT NULL,           -- ⚠ ADDED (REC-105)
+    id            BIGINT   NOT NULL,           -- ⚠ AMENDED (REC-103): was UUID
+    parent        BIGINT,
     level_name    TEXT NOT NULL,
     display_name  TEXT,
-    depth         SMALLINT NOT NULL CHECK (depth >= 0 AND depth <= 16),
-    lifecycle     TEXT NOT NULL CHECK (lifecycle IN ('active','dormant','dissolved')),
+    depth         SMALLINT NOT NULL,          -- ⚠ CHECK moved below and NAMED (REC-105)
+    lifecycle     TEXT     NOT NULL,          -- ⚠ CHECK moved below and NAMED (REC-105)
     metadata      JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     dissolved_at  TIMESTAMPTZ,
 
-    CONSTRAINT channels_root_single UNIQUE (id) DEFERRABLE INITIALLY DEFERRED,
+    PRIMARY KEY (reality_id, id),             -- ⚠ AMENDED (REC-105)
+
+    -- ⚠ AMENDED (REC-105): composite, so a channel in reality A cannot claim a
+    -- parent in reality B.
+    CONSTRAINT channels_parent_fk FOREIGN KEY (reality_id, parent)
+        REFERENCES channels (reality_id, id),
+
+    CONSTRAINT channels_depth_bounded CHECK (depth >= 0 AND depth <= 16),
+    CONSTRAINT channels_lifecycle_known
+        CHECK (lifecycle IN ('active', 'dormant', 'dissolved')),
     CONSTRAINT channels_no_orphan CHECK (
         (parent IS NULL AND depth = 0) OR (parent IS NOT NULL AND depth > 0)
+    ),
+
+    -- ⚠ ADDED (REC-105): `channels_no_orphan` does NOT forbid a self-parented
+    -- row — one at `depth > 0` satisfies both halves — and a one-node cycle is
+    -- the cheapest way to turn the tree into a graph.
+    CONSTRAINT channels_no_self_parent CHECK (parent IS NULL OR parent <> id),
+
+    -- ⚠ ADDED (REC-105), DP-Ch17: a dissolved channel has a dissolution time and
+    -- a live one does not. A biconditional, so neither direction can rot.
+    CONSTRAINT channels_dissolved_at_iff_dissolved CHECK (
+        (lifecycle = 'dissolved') = (dissolved_at IS NOT NULL)
     )
 );
 
-CREATE INDEX channels_parent_idx ON channels(parent);
-CREATE INDEX channels_level_idx ON channels(level_name) WHERE lifecycle = 'active';
-CREATE INDEX channels_lifecycle_idx ON channels(lifecycle);
+-- ⚠ AMENDED (REC-104): `CONSTRAINT channels_root_single UNIQUE (id) DEFERRABLE
+-- INITIALLY DEFERRED` stood here and was VACUOUS — `id` is already the primary
+-- key, so it could never fire, while its NAME states the real DP-Ch1 invariant
+-- (a strict tree has exactly one root). This is that constraint, made able to
+-- fail. A partial unique index is the only form Postgres offers for it.
+-- ⚠ AMENDED (REC-105): keyed on `reality_id`, so the invariant is ONE ROOT PER
+-- REALITY. Keyed on a constant it would have been one root per DATABASE, which
+-- is a different and wrong claim once the table carries `reality_id`.
+CREATE UNIQUE INDEX channels_root_single ON channels (reality_id)
+    WHERE parent IS NULL;
+
+CREATE INDEX channels_parent_idx ON channels(reality_id, parent);
+CREATE INDEX channels_level_idx ON channels(reality_id, level_name) WHERE lifecycle = 'active';
+CREATE INDEX channels_lifecycle_idx ON channels(reality_id, lifecycle);
 ```
+
+> ## ⚠ `REC-103` — `id` is `BIGINT`, not `UUID`, and this is the amendment `REC-102a` implied
+>
+> `REC-102a` (PO-approved 2026-08-07) settled `ChannelId`'s payload as **`i64`**, on three grounds
+> measured at the time: the shipped `crates/dp-kernel/src/channel.rs` declares
+> `pub struct ChannelId(pub(crate) i64)`; the client wire contract
+> (`contracts/game-wire/common.schema.json`) types it `Uint64String`; and **`DP-Ch11`'s allocator is a
+> monotonic per-channel COUNTER seeded from `MAX()`** — which is what a `BIGINT` is for and which a
+> `Uuid` cannot do, because a `Uuid` cannot be incremented.
+>
+> That decision was applied to `DP-Ch1`'s newtype and to the code in the same commit. **It never
+> reached this schema**, thirty lines below, which continued to declare `UUID` — so the one artifact a
+> migration would be written from still said the thing `REC-102a` had ruled false. Found by slice 1b's
+> Phase 0 (`1bF-1`) before any migration existed, which is the only reason it is an amendment rather
+> than a schema.
+>
+> **This is `FLOW-2`'s shape from the inside:** a correction decided, applied where the author was
+> looking, and not applied where they were not. `REC-102a` is why `spec_oracle` now compares documents
+> to code; `1b.3` extends that to compare *this SQL* to the migration's SQL, so the next time these
+> two disagree a test says so rather than a reader noticing eight weeks later.
+
+
+> ## ⚠ `REC-105` — the table carries `reality_id`, and the spec did not
+>
+> **Derived from the shipped tables, not chosen.** Every other migration in
+> `contracts/migrations/per_reality/` carries `reality_id UUID NOT NULL` inside its primary key —
+> `events` is `PRIMARY KEY (reality_id, aggregate_type, aggregate_id, …)`, and `channel_writer_state`
+> is `PRIMARY KEY (reality_id, channel_id)`. The directory's README states no reason for it.
+>
+> **`DP-Ch2` as written made `FLOW-19` unfixable by the migration that exists to fix it.** With
+> `channels` keyed on `id` alone, a foreign key from `channel_writer_state (reality_id, channel_id)`
+> is **not expressible** — so writing the spec literally would have shipped the table and left the
+> lease still dangling, which is the exact defect `1b` was opened for.
+>
+> The composite key follows, and so do three things it makes possible: the parent FK becomes
+> `(reality_id, parent) → (reality_id, id)`, which is what stops a channel claiming a parent in
+> another reality; `channels_root_single` becomes **one root per reality** rather than one per
+> database; and `DP-Ch11`'s `MAX()+1` allocator becomes per-reality, which is what a per-reality
+> counter means.
+>
+> ⚠ **This is the one amendment in `1b` that is a judgement rather than a correction**, and it is
+> recorded as such. If the intent is genuinely one database per reality with `reality_id` redundant,
+> this shape is wrong — and it is cheap to change now, because **nothing has been applied to a real
+> database**: the migration has only ever run against a throwaway. Say so and it comes out.
+>
+> Also added here because the live-smoke asked every constraint to fail and two had nothing to say:
+> `channels_no_self_parent` (a self-parented row at `depth > 0` satisfies `channels_no_orphan`, and a
+> one-node cycle is the cheapest way to make the tree a graph) and
+> `channels_dissolved_at_iff_dissolved` (`DP-Ch17`'s lifecycle, as a biconditional so neither
+> direction can rot).
+
+> ## ⚠ `REC-104` — `channels_root_single` was a check that could not fail
+>
+> The constraint read `UNIQUE (id) DEFERRABLE INITIALLY DEFERRED`. `id` is the **primary key**, so
+> uniqueness on it is already total: the constraint added nothing, could never reject a row, and had
+> been sitting in a LOCKED document since Phase 4.
+>
+> Its **name** is the tell, and it names a real invariant. `DP-Ch1`: *"A reality's channel tree is a
+> strict tree (not a DAG): every channel except the root has exactly one parent."* Exactly one root
+> means exactly one row with `parent IS NULL` — and **nothing enforced that**. `channels_no_orphan`
+> is adjacent but weaker: it forbids a root at `depth != 0` and an orphan at `depth > 0`, and permits
+> any number of roots.
+>
+> Replaced with the partial unique index above, which is the only shape Postgres offers for
+> *"at most one row satisfying a predicate"*. It is `1b.4`'s first bite: drop it, insert a second
+> root, watch it succeed.
+>
+> **Recorded rather than quietly fixed**, because this is `NV-1` — *a check that cannot fail is not a
+> check* — inside a LOCKED spec, predating this run entirely. `docs/standards/non-vacuity.md` was
+> written about the code tier; this is the same defect in the design corpus, and it suggests the
+> standard's reach is shorter than its subject.
 
 **Why per-reality DB and not CP:**
 

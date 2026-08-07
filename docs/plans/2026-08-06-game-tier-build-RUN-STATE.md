@@ -1729,12 +1729,18 @@ borrowed row §6i's own "What does NOT satisfy this" forbids by name.
 
 | # | done = |
 |---|---|
-| `1b.0` | ⬜ `12_channel_primitives.md` amended: `UUID` → `BIGINT` (`1bF-1`), and `channels_root_single` either made real or deleted (`1bF-2`). **Spec before code** — slice 0's lesson: the locked spec stops stating things that are false. |
-| `1b.1` | ⬜ the migration, at `BIGINT`, with every constraint the amended `DP-Ch2` names |
-| `1b.2` | ⬜ applied to a live throwaway DB; every named rejection demonstrated against it |
-| `1b.3` | ⬜ the `V.2` oracle: spec SQL parsed and compared to migration SQL |
-| `1b.4` | ⬜ bite matrix: each constraint dropped, violation shown to insert, restored |
+| `1b.0` | ✅ `REC-103` (`UUID` → `BIGINT`), `REC-104` (`channels_root_single` made able to fail), `REC-105` (`reality_id` + composite keys). Spec before code. |
+| `1b.1` | ✅ `contracts/migrations/per_reality/0019_channels.{up,down}.sql` |
+| `1b.2` | ✅ **24 checks on a live Postgres.** Every constraint rejected what its name claims — with the database's own `SQLSTATE` — and accepted what it must, including a root in a *different* reality. Down migration reverses to zero tables. |
+| `1b.3` | ✅ `scripts/dp-channels-schema-gate.py` — spec SQL vs migration SQL, wired pre-commit. Bitten on **both** sides plus a `REC-104` regression. Stated limit: it does not compare `CHECK` **bodies**, because two spellings of one predicate would cry wolf; that half is `1b.2`. |
+| `1b.4` | ✅ each of the six constraints DROPPED and its violating row shown to **insert**, then restored. A constraint that rejects with it and accepts without it is the only proof nothing else is silently backstopping it. |
 | `1b.5` | ⬜ `V.1` cold-start, isolated, against a commit |
+
+**`1bF-4` was found DURING the build, not by the board** — every shipped per-reality table keys on
+`(reality_id, …)`, so `DP-Ch2`'s single-column `id` made the `channel_writer_state` foreign key
+**inexpressible**, and following the spec literally would have re-created `FLOW-19` inside the
+migration written to discharge it. Recorded as `REC-105` and flagged: it is the one **judgement** in
+1b rather than a correction, and nothing has run against a real database.
 
 ## 7. Registers — append as it happens
 

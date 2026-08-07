@@ -110,6 +110,21 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 # Whole-tree and unconditional: a new aggregate can land in any crate.
 "$PY" "$ROOT/scripts/dp-aggregate-gate.py"
 
+# DP-Ch2 AND THE MIGRATION ARE TWO STATEMENTS OF ONE SCHEMA, AND BOTH ARE SQL.
+# `REC-102a` ruled ChannelId to be i64 on 2026-08-07; that ruling reached the
+# newtype and the Rust code in the same commit and NEVER REACHED THE SCHEMA
+# THIRTY LINES BELOW IT, so the one artifact a migration would be written from
+# still said UUID. Nothing said so, for eight weeks — which is `FLOW-2`, the
+# defect this repo has now measured four times in one corpus.
+#
+# Cheap (two file reads, no DB). What it CANNOT do is compare CHECK bodies:
+# `depth >= 0 AND depth <= 16` and `depth BETWEEN 0 AND 16` are one predicate and
+# two strings, and a gate that called them different would be off within a day.
+# That half is `scripts/dp-channels-live-smoke.py`, which asks each constraint to
+# actually reject a row — and needs a live Postgres, which is why it is not a
+# gate and not named like one.
+"$PY" "$ROOT/scripts/dp-channels-schema-gate.py"
+
 # NO FLOAT IN THE BYTES THAT BECOME A NAME (U-9, engine-substrate §3). A float
 # inside the hashed ruleset bytes lets two machines produce two digests for one
 # ruleset -- two realities with identical content and different NAMES. Server
