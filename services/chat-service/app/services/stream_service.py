@@ -1323,6 +1323,29 @@ def _advertise_discovery_tools(
     PlanForge ``plan_*`` server tools (plan artifacts, never prose).
     """
     restricted = permission_mode in ("ask", "plan")
+    # 🔴 CP-2.7 — THE ROUTE, AND IT IS A `return` RATHER THAN A MERGE.
+    #
+    # This function is the single ADVERTISE chokepoint for the discovery path, with three callers,
+    # which is why the branch is here and nowhere else: one edit covers every path a turn can take
+    # to the wire. On the new arm the advertised set comes from the manifest and from NOTHING
+    # else — not the always-on core, not `find_tools`, not `extra_frontend`.
+    #
+    # A merge would be the membrane leaking through its own route on day one, and it would make
+    # CP-2.7's item B (*no legacy declaration is reachable, by any route*) unmeasurable in exactly
+    # the place it most needs measuring. ARCHITECTURE §3: "old declarations are not hidden, they
+    # are ABSENT".
+    #
+    # Every argument above is deliberately unused on this branch. That is not an oversight to tidy
+    # up later: `catalog_index` IS the legacy catalog, and a branch that reads it — even to check
+    # something — is the code path §3 forbids. The membrane gate cannot see this file, so the
+    # separation rests on this `return` being first.
+    if settings.agentruntime_arm:
+        from app.agentruntime.manifest import load as _agentruntime_load
+        from app.agentruntime.serve import advertise as _agentruntime_advertise
+
+        payload, _surface = _agentruntime_advertise(_agentruntime_load(), pass_number=1)
+        return payload
+
     plan = permission_mode == "plan"
     out: list[dict] = []
     seen: set[str] = set()

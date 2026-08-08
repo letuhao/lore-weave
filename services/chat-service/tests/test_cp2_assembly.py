@@ -524,6 +524,157 @@ class TestAPlanStepsDeclarationIsAdvertised:
         assert deferred_names(defs) == ("c",)
 
 
+# ── 2.7 · THE ROUTE — a turn's advertised set comes from the manifest ───────────────────────────
+
+class TestTheRouteServesFromTheManifestAndNothingElse:
+    """REJECTS: an arm that quietly keeps the legacy core, and a control arm this route perturbed.
+
+    🔴 **THIS IS THE ROW EVERY `CANNOT DETERMINE` IN CP-2 HAS BEEN WAITING ON.** 2.1–2.5 are all
+    QC2 `CANNOT DETERMINE` for one mechanical reason — no request path reached the package. This
+    branch is that path, at the **single ADVERTISE chokepoint** (three callers, one edit).
+    """
+
+    def _advertise(self, **over):
+        from app.services import stream_service
+
+        kwargs = dict(catalog_index={}, active_tool_names=set(), extra_frontend=[])
+        kwargs.update(over)
+        return stream_service._advertise_discovery_tools(**kwargs)
+
+    def test_THE_CONTROL_ARM_IS_UNTOUCHED_WHEN_THE_FLAG_IS_OFF(self, monkeypatch):
+        """🔴 **CP-1.9 SPENT A WHOLE ITEM ON THIS**: a control perturbed by changes nobody decided
+        invalidates the comparison before it starts. Measured as byte-identity of the advertised
+        payload with the flag off, against the legacy catalogue's real core."""
+        from app.config import settings
+
+        legacy_catalog = {
+            n: {"type": "function", "function": {"name": n, "parameters": {}}}
+            for n in ("glossary_search", "book_read")
+        }
+        args = dict(catalog_index=legacy_catalog, active_tool_names=set(legacy_catalog),
+                    extra_frontend=[])
+
+        monkeypatch.setattr(settings, "agentruntime_arm", False)
+        control = self._advertise(**args)
+        monkeypatch.setattr(settings, "agentruntime_arm", True)
+        new_arm = self._advertise(**args)
+
+        # 🔴 The property is the DIFFERENCE, on identical inputs. An earlier draft asserted that
+        # `find_tools` is in the control payload — a proxy for "the core is there" that is coupled
+        # to which core tools exist today, and it went red for a reason that had nothing to do
+        # with the route. What matters is that the control arm still serves the legacy catalogue
+        # and the new arm serves none of it.
+        assert control, "the control arm advertised nothing - the fixture cannot see a difference"
+        assert {d["function"]["name"] for d in control} >= set(legacy_catalog), (
+            "the control arm stopped serving the legacy catalogue - CP-2's control group moved"
+        )
+        assert new_arm == [], f"the new arm served legacy declarations: {new_arm}"
+
+    def test_ON_THE_NEW_ARM_AN_EMPTY_MANIFEST_ADVERTISES_NOTHING_AT_ALL(self, monkeypatch):
+        """`declarations: []` → `[]`. **Not the core, not `find_tools`, not the frontend extras.**
+        An arm that kept them would be the membrane leaking through its own route on day one."""
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "agentruntime_arm", True)
+        assert self._advertise() == []
+
+    def test_NO_LEGACY_DECLARATION_SURVIVES_THE_ROUTE__item_B(self, monkeypatch):
+        """Item **B**, at the one place it can be checked structurally: the legacy catalogue is
+        handed in, richly populated, and **nothing from it reaches the wire**."""
+        from app.config import settings
+
+        legacy_catalog = {
+            n: {"type": "function", "function": {"name": n, "parameters": {}}}
+            for n in ("glossary_search", "book_read", "kg_build", "propose_edit")
+        }
+        monkeypatch.setattr(settings, "agentruntime_arm", True)
+        payload = self._advertise(catalog_index=legacy_catalog,
+                                  active_tool_names=set(legacy_catalog),
+                                  extra_frontend=[legacy_catalog["propose_edit"]])
+        assert payload == [], f"a legacy declaration reached the wire on the new arm: {payload}"
+
+    def test_THE_BRANCH_READS_NOTHING_FROM_THE_LEGACY_CATALOG(self):
+        """🔴 **THE MEMBRANE GATE CANNOT SEE THIS FILE**, so the separation rests on the branch
+        returning before any legacy read. Asserted over the AST rather than by behaviour: a
+        `return` that happens to be first today is a code path that can stop being first."""
+        src = (_REPO / "services" / "chat-service" / "app" / "services"
+               / "stream_service.py").read_text("utf-8")
+        fn = next(n for n in ast.walk(ast.parse(src))
+                  if isinstance(n, ast.FunctionDef) and n.name == "_advertise_discovery_tools")
+        branch = next(n for n in fn.body
+                      if isinstance(n, ast.If)
+                      and "agentruntime_arm" in ast.dump(n.test))
+        legacy_args = {"catalog_index", "active_tool_names", "extra_frontend"}
+
+        # 🔴 **THE PROPERTY IS "NOTHING LEGACY IS READ BEFORE IT", NOT "IT IS FIRST".** An earlier
+        # draft asserted `index == 0` and went red on a docstring plus a pure local
+        # (`restricted = permission_mode in (...)`) — a guard convicting a position rather than
+        # the thing the position was standing in for.
+        before = fn.body[:fn.body.index(branch)]
+        read_before = {x.id for st in before for x in ast.walk(st) if isinstance(x, ast.Name)}
+        assert not (read_before & legacy_args), (
+            f"{sorted(read_before & legacy_args)} is read before the agentruntime branch, so it "
+            f"runs on the new arm too - and `catalog_index` IS the legacy catalog"
+        )
+        assert all(not isinstance(st, ast.Return) for st in before), (
+            "a return precedes the branch, so some path leaves before the route can take it"
+        )
+        reads = {x.id for x in ast.walk(branch) if isinstance(x, ast.Name)}
+        assert not (reads & legacy_args), (
+            f"the new arm reads {sorted(reads & legacy_args)} - §3 forbids the code path, not "
+            f"merely the wrong result"
+        )
+
+    def test_THE_MODEL_IS_TOLD_WHICH_EMPTINESS_THIS_IS__item_A(self):
+        """Item **A** — the agent must **say** it has no declarations rather than answering as if
+        none were needed. Two emptinesses, and collapsing them is §0.14.3's failure: *nothing
+        admitted* has no search that would find anything; *something withheld* does."""
+        from app.agentruntime.serve import NO_DECLARATIONS, statement_for
+
+        empty = _split(_doc(), ())
+        assert statement_for(empty) == NO_DECLARATIONS
+        assert "zero admitted declarations" in NO_DECLARATIONS
+        assert "Do not describe a tool call as performed" in NO_DECLARATIONS
+
+        withheld = _split(_doc("a", "b"), ("b",))
+        assert statement_for(withheld) != NO_DECLARATIONS, (
+            "a withheld surface was described as having no declarations at all - then the model "
+            "cannot tell 'nothing exists' from 'something is hidden'"
+        )
+
+    def test_THE_ROUTE_RETURNS_THE_SURFACE_SO_P1_IS_RECORDABLE__items_C_and_D(self):
+        """Items **C** and **D**. `advertise` returns the payload **and** the `Surface` the
+        conservation law already checked — so *what was advertised* and *what was registered* are
+        one computation, not a record built somewhere else from something else (the eight-frame
+        defect this package exists to make impossible)."""
+        from app.agentruntime.serve import advertise
+
+        doc = _doc("a", "b")
+        payload, surface = advertise(
+            doc, pass_number=1, log=NarrowingLog(),
+            pipeline=[DenyList(names=("b",), stage="token_budget", reason="over budget")])
+        assert [d["function"]["name"] for d in payload] == list(surface.names)
+        assert [w["tool"] for w in surface.withheld] == ["b"]
+        # C — the EMPTY state is recordable as `[]`, which is not the same fact as NULL.
+        empty_payload, empty_surface = advertise(_doc(), pass_number=1)
+        assert empty_payload == [] and empty_surface.names == ()
+        record = observe([empty_surface], source="tool", outcome="empty")
+        assert record.advertised == (
+            {"pass": 1, "tool_choice": "auto", "names": ()},
+        ), "an empty pass produced no row - NULL and [] mean different things"
+
+    def test_A_DEFERRED_DECLARATION_IS_NOT_ON_THE_WIRE(self):
+        """The route advertises the offered set only; the withheld ones stay in the toolset for
+        the reveal path. A payload that carried them would undo CP-2.1 at the last step."""
+        from app.agentruntime.serve import advertise
+
+        doc = _doc("a", "b")
+        payload, _ = advertise(
+            doc, pass_number=1, log=NarrowingLog(),
+            pipeline=[DenyList(names=("b",), stage="s", reason="r")])
+        assert [d["function"]["name"] for d in payload] == ["a"]
+
+
 # ── 2.7 (part) · M4 — the registration entry point refuses to boot ──────────────────────────────
 
 class TestTheRuntimeRefusesToBootOnAnIncompleteContract:

@@ -270,6 +270,19 @@ class Settings(BaseSettings):
     # demand. The domain's TOOLS stay hot regardless (surface_hot_domains is
     # surface-driven, not skill-body-driven) — only the verbose prose defers.
     lazy_skill_bodies: bool = True
+    # CP-2.7 — THE ROUTE. When ON, a turn's advertised set comes from
+    # `contracts/agent-runtime-manifest.json` and from nothing else: no core tools, no
+    # `find_tools`, no frontend extras. "Old declarations are not hidden. They are ABSENT."
+    #
+    # 🔴 **OFF BY DEFAULT, AND THAT IS A MEASUREMENT DECISION RATHER THAN CAUTION.** The legacy arm
+    # is CP-2's CONTROL GROUP (ARCHITECTURE §7). CP-1.9 spent a whole item establishing that a
+    # control perturbed by changes nobody decided invalidates the comparison before it starts — so
+    # with this flag off, the advertise chokepoint is byte-identical to what it was.
+    #
+    # The manifest is committed as `declarations: []`, so turning this on today advertises NOTHING.
+    # That is the honest state of an empty membrane, and it is what makes CP-2.7's item A — the
+    # agent SAYS it has no declarations — a thing that can be observed rather than argued.
+    agentruntime_arm: bool = False
     # `lazy_workflow_directive` — when ON, the WS-5 workflow-preference block lists
     # workflow SLUGS + short titles only (drops each workflow's full description,
     # ~1-2k), keeping the "call workflow_load(<slug>) FIRST" directive that steers

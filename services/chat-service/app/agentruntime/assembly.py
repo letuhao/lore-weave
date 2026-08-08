@@ -173,6 +173,38 @@ def _tool_def(row: dict, *, excluded_by: dict | None) -> ToolDefinition:
     )
 
 
+def _defs_for(by_id: dict, offered, withheld_records) -> tuple[list, list]:
+    """`(offered defs, withheld defs)` — **one construction, two consumers.**
+
+    🔴 `toolset_for` wraps these for a `pydantic_ai` run; `serve.advertise` needs the offered ones
+    on the wire, synchronously, at a chokepoint that has no business acquiring an event loop. Both
+    read this. A second construction is how one rule acquires two behaviours the moment either is
+    edited — measured twice in this run already (a duplicated gate walk, a claim corrected in one
+    of three files).
+
+    The deferral FLAG is not set here: that is `.defer_loading()`'s, and `serve` needs only the
+    offered list, so nothing needs a private copy of the library's marking.
+    """
+    excluded_by = {w["tool"]: dict(w) for w in withheld_records}
+    withheld_ids = [w["tool"] for w in withheld_records]
+    return (
+        [_tool_def(by_id[name], excluded_by=excluded_by.get(name)) for name in offered],
+        [_tool_def(by_id[name], excluded_by=excluded_by[name]) for name in withheld_ids],
+    )
+
+
+def offered_defs_for(manifest_doc: dict, surface: Surface) -> list[ToolDefinition]:
+    """The offered declarations' definitions, without building a toolset.
+
+    Reconciliation is `toolset_for`'s and is not repeated: a caller that wants the wire payload
+    **and** the guarantee that the surface matches the manifest asks for the toolset. This is the
+    narrow accessor for a synchronous chokepoint, and it says so rather than implying more.
+    """
+    rows = rows_of(manifest_doc)
+    by_id = {r["id"]: r for r in rows}
+    return _defs_for(by_id, tuple(surface.names), tuple(surface.withheld))[0]
+
+
 def toolset_for(
     manifest_doc: dict,
     surface: Surface,
@@ -218,9 +250,8 @@ def toolset_for(
             f"{foreign}. One of the two readings is stale, and this module does not pick a winner."
         )
 
-    excluded_by = {w["tool"]: dict(w) for w in withheld_records}
-    defs = [_tool_def(by_id[name], excluded_by=excluded_by.get(name)) for name in offered]
-    defs += [_tool_def(by_id[name], excluded_by=excluded_by[name]) for name in withheld_ids]
+    offered_defs, withheld_defs = _defs_for(by_id, offered, withheld_records)
+    defs = offered_defs + withheld_defs
 
     toolset = DeclarationToolset(defs, executor=executor)
     # 🔴 THE ITEM, IN ONE CALL. `.defer_loading(...)` and `.filtered(...)` are both one method away

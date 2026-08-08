@@ -149,8 +149,8 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         # The item, inverted: stop putting the withheld declarations in the toolset at all. That is
         # `.filtered()` by hand, and the reveal at turn 2 then has nothing to reveal.
         (f"{PKG}/assembly.py",
-         "    defs += [_tool_def(by_id[name], excluded_by=excluded_by[name]) for name in withheld_ids]",
-         "    defs += []"),
+         "    defs = offered_defs + withheld_defs",
+         "    defs = offered_defs"),
     ],
     "test_THE_CEILING_API_MAKES_IT_UNREACHABLE__the_control_that_gives_the_test_above_meaning": [
         # A control must be able to fail as a CONTROL: make the "ceiling" toolset keep everything,
@@ -182,8 +182,8 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     ],
     "test_THE_TOOLSET_HOLDS_EVERY_ADMITTED_DECLARATION_NOT_ONLY_THE_OFFERED_ONES": [
         (f"{PKG}/assembly.py",
-         "    defs += [_tool_def(by_id[name], excluded_by=excluded_by[name]) for name in withheld_ids]",
-         "    defs += []"),
+         "    defs = offered_defs + withheld_defs",
+         "    defs = offered_defs"),
     ],
     "test_THE_WITHHELD_ONE_IS_MARKED_AND_THE_OFFERED_ONES_ARE_NOT": [
         (f"{PKG}/assembly.py",
@@ -212,8 +212,8 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     ],
     "test_AN_OFFERED_DECLARATION_CARRIES_NO_EXCLUSION_RECORD": [
         (f"{PKG}/assembly.py",
-         "    defs = [_tool_def(by_id[name], excluded_by=excluded_by.get(name)) for name in offered]",
-         "    defs = [_tool_def(by_id[name], excluded_by=excluded_by.get(name) or {}) for name in offered]"),
+         "        [_tool_def(by_id[name], excluded_by=excluded_by.get(name)) for name in offered],",
+         "        [_tool_def(by_id[name], excluded_by=excluded_by.get(name) or {}) for name in offered],"),
     ],
     "test_NO_REASON_TEXT_IS_ON_ANY_DESCRIPTION": [
         (f"{PKG}/assembly.py", "        description=None,",
@@ -368,6 +368,49 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/surface.py", "        required = list(required)", "        required = required"),
     ],
 
+    # ── CP-2.7 · THE ROUTE ────────────────────────────────────────────────────────────────────
+    "test_THE_CONTROL_ARM_IS_UNTOUCHED_WHEN_THE_FLAG_IS_OFF": [
+        # The route taken unconditionally: CP-2's control group stops serving the legacy
+        # catalogue, and the comparison is invalid before it starts (CP-1.9's argument).
+        (f"{CS}/app/services/stream_service.py",
+         "    if settings.agentruntime_arm:", "    if True:"),
+    ],
+    "test_ON_THE_NEW_ARM_AN_EMPTY_MANIFEST_ADVERTISES_NOTHING_AT_ALL": [
+        (f"{CS}/app/services/stream_service.py",
+         "    if settings.agentruntime_arm:", "    if False:"),
+    ],
+    "test_NO_LEGACY_DECLARATION_SURVIVES_THE_ROUTE__item_B": [
+        (f"{CS}/app/services/stream_service.py",
+         "    if settings.agentruntime_arm:", "    if False:"),
+    ],
+    "test_THE_BRANCH_READS_NOTHING_FROM_THE_LEGACY_CATALOG": [
+        # The merge that would make item B unmeasurable: one legacy read inside the branch.
+        (f"{CS}/app/services/stream_service.py",
+         "        payload, _surface = _agentruntime_advertise(_agentruntime_load(), pass_number=1)\n"
+         "        return payload",
+         "        payload, _surface = _agentruntime_advertise(_agentruntime_load(), pass_number=1)\n"
+         "        return payload or list(extra_frontend)"),
+    ],
+    "test_THE_MODEL_IS_TOLD_WHICH_EMPTINESS_THIS_IS__item_A": [
+        # Collapse the two emptinesses - §0.14.3's failure, at the one place they are separated.
+        (f"{PKG}/serve.py", "    if not surface.names and not surface.withheld:",
+                            "    if False:"),
+    ],
+    "test_THE_ROUTE_RETURNS_THE_SURFACE_SO_P1_IS_RECORDABLE__items_C_and_D": [
+        # Two assemblies instead of one: the payload and the record stop being one computation,
+        # which is the eight-frame defect ("the record is built somewhere else from something
+        # else") reintroduced at the route.
+        (f"{PKG}/serve.py",
+         "    return payload_from_defs(offered_defs_for(manifest_doc, surface)), surface",
+         "    other = SurfaceAssembler(manifest_doc, log=None).assemble(pass_number=pass_number)\n"
+         "    return payload_from_defs(offered_defs_for(manifest_doc, other)), surface"),
+    ],
+    "test_A_DEFERRED_DECLARATION_IS_NOT_ON_THE_WIRE": [
+        (f"{PKG}/assembly.py",
+         "    return _defs_for(by_id, tuple(surface.names), tuple(surface.withheld))[0]",
+         "    return sum(_defs_for(by_id, tuple(surface.names), tuple(surface.withheld)), [])"),
+    ],
+
     # ── CP-2.7 (part) · M4 — the registration entry point refuses to boot ─────────────────────
     "test_REMOVE_ONE_REQUIRED_CLAUSE_AND_THE_SERVICE_FAILS_TO_START": [
         # The state M4 was in for eleven rounds: nothing refuses, so the service starts with a
@@ -490,8 +533,8 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         # Drop the withheld ones out of the toolset - `.filtered()` by hand - and the two searches
         # come back identical, which is §0.14.3's failure exactly.
         (f"{PKG}/assembly.py",
-         "    defs += [_tool_def(by_id[name], excluded_by=excluded_by[name]) for name in withheld_ids]",
-         "    defs += []"),
+         "    defs = offered_defs + withheld_defs",
+         "    defs = offered_defs"),
     ],
     "test_THE_MODEL_IS_TOLD_UNPROMPTED_THAT_SOMETHING_WAS_WITHHELD": [
         # The state before this item: reachable, and never mentioned.
