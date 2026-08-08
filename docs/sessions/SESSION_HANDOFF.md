@@ -58,6 +58,37 @@ Of the 80 the gate found, 70 carried their English at the call site and were lif
 **10 carried nothing and rendered their own key to the user** (six in `StepProfile`, three in
 pdf-import, one in `GapReportTab`). Those ten are authored copy, worth a reviewer's eye.
 
+### ⚠️ NEXT-1 — two gates report FALSE findings under CI load (`|| true` swallows a partial read)
+
+`all-gates` failed three consecutive runs on the same commit, naming a DIFFERENT subject each
+time, and each subject was demonstrably fine:
+
+| attempt | gate | claim |
+|---|---|---|
+| 1 | observability-inventory | `lw_embedding_queue_depth` undeclared |
+| 1 | emit-0013 | `scripts/perf/scale-rig.sh` missing 0013 |
+| 2 | emit-0013 | `scripts/ledger-verify-smoke.sh` missing 0013 |
+| 3 | observability-inventory | `lw_meta_outbox_retried_total` undeclared |
+
+Both metrics are declared in `contracts/observability/inventory.yaml`; both scripts contain
+`0013_events_content_sha256`. Locally each gate passes deterministically (3/3) on the exact
+committed content.
+
+The mechanism is visible in `observability-inventory-lint.sh:23` — the declared-set is built by
+`grep … | sed … | sort -u || true`. **`|| true` swallows a failed or truncated read**, so a
+transient error under CI load yields a PARTIAL declared-set, and every metric that fell out of it
+is reported as undeclared. `emit-0013` has the same shape via `$(cat "$f")`. The `|| true` is
+there to tolerate "no matches", but it cannot tell that apart from "the read broke" — so the gate
+converts an infrastructure hiccup into a confident, specific, wrong finding.
+
+That is worse than a flaky failure: it names a file and a line, so the natural response is to
+"fix" code that was never broken. Distinguish empty-result from read-failure (check the exit
+status, or assert the declared-set is non-empty before comparing — an empty inventory should
+FAIL loudly, not silently pass everything through as undeclared).
+
+Not fixed here deliberately: it is unrelated to the merge that surfaced it, and changing a gate's
+failure semantics is a decision worth making deliberately rather than at the end of a long run.
+
 ### ✅ CLOSED — Scene Rail: the #12 M-C tri-state (open only as a product choice)
 
 The contribution set the Scene Rail default to `railChoice ?? false` inside a commit about
