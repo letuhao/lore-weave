@@ -261,6 +261,20 @@ RUST_BITES: list[tuple[str, Path, str, str, str]] = [
         "tests::owner_is_optional_and_absent_means_platform_owned",
     ),
     (
+        "provisioning as superuser is permitted (W7 becomes a role nobody must use)",
+        WORKER,
+        "    if !is_super {\n        return Ok(None);\n    }",
+        "    if true {\n        return Ok(None);\n    }",
+        "tests::a_superuser_role_is_refused",
+    ),
+    (
+        "the superuser escape hatch is a flag, not a reason",
+        WORKER,
+        "if !reason.trim().is_empty() {",
+        "if true {",
+        "tests::the_escape_hatch_needs_a_reason_not_a_flag",
+    ),
+    (
         "the dry-run preview re-implements the db name instead of calling it",
         WORKER,
         "world_service::provisioner::db_name_for(reality_id)",

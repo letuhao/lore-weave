@@ -328,6 +328,26 @@ again through the **full audited admin path** with an owner.
 The attributes are **re-asserted on every start** (`ALTER ROLE … NOSUPERUSER …`), so a role
 hand-edited to superuser loses the drift rather than keeping the name and losing the point.
 
+**And then the role was apparatus without a subject, so the worker now REFUSES superuser.** Grepping
+my own work found `loreweave_provisioner` named in exactly two places: the script that creates it
+and this document. **Nothing pointed the worker at it** — only a shell env I had set by hand. The
+committed configuration still let an operator provision as `loreweave`, and the natural credential
+to reach for is the one every other service uses. A role that exists but is never *required* changes
+nothing.
+
+So `connect_shard_admin` reads `rolsuper` for `current_user` and refuses:
+```
+provision: NOTRUN(setup): refusing to provision as superuser loreweave: creating databases
+with a role that holds rolsuper puts every other tenant's database in reach of a bug here.
+```
+Verified both directions live — superuser **exit 2**, `loreweave_provisioner` proceeds. The escape
+hatch is `PROVISION_ALLOW_SUPERUSER_REASON` and takes a **reason, not a boolean**: a blank value is
+refused, because a `=1` flag records that someone bypassed the check and never why, and outlives the
+incident that justified it. The decision is a pure function with 4 unit tests, so the rule is
+exercisable without a database — a rule reachable only through a live connection is one the suite
+cannot check. *(`--dry-run` does not check: it never connects to the shard, so there is no shard
+role to inspect.)*
+
 ### `W6` — a reality now belongs to someone
 
 `reality_registry` had `close_initiated_by` and `drop_approved_by` — the ADMINS who acted on a

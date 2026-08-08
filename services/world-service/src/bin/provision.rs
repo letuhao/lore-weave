@@ -334,7 +334,7 @@ async fn provision(
         return resume_on_shard(args, cfg, meta, &host, &name).await;
     }
 
-    let shard_admin = connect(&cfg.shard_admin_dsn).await?;
+    let shard_admin = connect_shard_admin(&cfg.shard_admin_dsn).await?;
     let report_slot: Arc<Mutex<Option<world_service::ProvisionReport>>> =
         Arc::new(Mutex::new(None));
 
@@ -469,7 +469,7 @@ async fn resume_on_shard(
         ));
     }
 
-    let shard_admin = connect(&cfg.shard_admin_dsn).await?;
+    let shard_admin = connect_shard_admin(&cfg.shard_admin_dsn).await?;
     let bridge = BridgeClient::new(cfg.bridge_url.clone(), cfg.bridge_token.clone());
     let (hostport, user, pass, sql_dir) = (
         cfg.shard_hostport.clone(),
@@ -632,6 +632,73 @@ async fn connect(dsn: &str) -> Result<PgPool, String> {
         .map_err(|e| format!("connect failed: {e}"))
 }
 
+/// Escape hatch for [`connect_shard_admin`]. It must carry a REASON, not be a
+/// boolean: a bare `=1` flag records that someone bypassed the check and never
+/// why, and outlives the incident that justified it.
+const ALLOW_SUPERUSER_ENV: &str = "PROVISION_ALLOW_SUPERUSER_REASON";
+
+/// Connect to the shard, and REFUSE if the role is a superuser.
+///
+/// `W7` created `loreweave_provisioner` (CREATEDB only) and proved by hand that
+/// provisioning works under it. That is not enough: nothing in the repository
+/// pointed the worker at it, so the committed configuration still let an
+/// operator provision as `loreweave` — `rolsuper` + `rolbypassrls` — and the
+/// natural thing to reach for is the credential every other service already
+/// uses. A role that exists but is never required is apparatus without a
+/// subject; this is the check that gives it one.
+///
+/// Superuser is what ownership, RLS and per-database GRANTs cannot restrain, so
+/// a provisioner bug running under it has the whole cluster in reach. The role
+/// needs exactly `CREATEDB`.
+async fn connect_shard_admin(dsn: &str) -> Result<PgPool, String> {
+    let pool = connect(dsn).await?;
+    let (role, is_super): (String, bool) =
+        sqlx::query_as("SELECT current_user::text, rolsuper FROM pg_roles WHERE rolname = current_user")
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| format!("could not determine the shard role's privileges: {e}"))?;
+
+    match superuser_verdict(&role, is_super, std::env::var(ALLOW_SUPERUSER_ENV).ok()) {
+        Ok(Some(warning)) => eprintln!("{warning}"),
+        Ok(None) => {}
+        Err(refusal) => return Err(refusal),
+    }
+    Ok(pool)
+}
+
+/// The privilege decision, as a pure function so it is testable without a
+/// database — the live check above needs Postgres, and a rule reachable only
+/// through a live connection is a rule the suite cannot exercise.
+///
+/// Returns `Ok(None)` to proceed, `Ok(Some(warning))` to proceed loudly under
+/// the escape hatch, `Err` to refuse.
+fn superuser_verdict(
+    role: &str,
+    is_super: bool,
+    override_reason: Option<String>,
+) -> Result<Option<String>, String> {
+    if !is_super {
+        return Ok(None);
+    }
+    // A BLANK reason is not a reason. Treating `=1` or `=""` as consent would
+    // make the hatch a boolean again, which is the shape that outlives the
+    // incident that justified it.
+    if let Some(reason) = override_reason {
+        if !reason.trim().is_empty() {
+            return Ok(Some(format!(
+                "[provision] WARNING: provisioning as SUPERUSER {role} — allowed because \
+                 {ALLOW_SUPERUSER_ENV}={reason}"
+            )));
+        }
+    }
+    Err(format!(
+        "refusing to provision as superuser {role}: creating databases with a role that holds \
+         rolsuper puts every other tenant's database in reach of a bug here. Use a CREATEDB-only \
+         role (infra/db-ensure.sh creates `loreweave_provisioner`). To override deliberately, set \
+         {ALLOW_SUPERUSER_ENV} to a reason"
+    ))
+}
+
 fn setup_err(msg: &str) -> ExitCode {
     eprintln!("provision: NOTRUN(setup): {msg}");
     ExitCode::from(2)
@@ -713,6 +780,41 @@ mod tests {
         // Silently dropping an unparseable owner would record the reality as
         // platform-owned — the tenancy failure this column exists to prevent.
         assert!(args(&["--reality-id", RID, "--reason", "r", "--owner-user-id", "nope"]).is_err());
+    }
+
+    // W7 — provisioning must not run as superuser.
+    #[test]
+    fn a_non_superuser_role_proceeds() {
+        assert_eq!(superuser_verdict("loreweave_provisioner", false, None), Ok(None));
+    }
+
+    #[test]
+    fn a_superuser_role_is_refused() {
+        let v = superuser_verdict("loreweave", true, None);
+        assert!(v.is_err(), "superuser must be refused");
+        assert!(v.unwrap_err().contains("refusing to provision as superuser"));
+    }
+
+    #[test]
+    fn the_escape_hatch_needs_a_reason_not_a_flag() {
+        // A boolean hatch silences the check and keeps silencing it long after
+        // the incident; a blank string must NOT count as consent.
+        for blank in [Some(String::new()), Some("   ".into())] {
+            assert!(
+                superuser_verdict("loreweave", true, blank).is_err(),
+                "a blank reason must not open the hatch"
+            );
+        }
+        let opened = superuser_verdict("loreweave", true, Some("restoring after incident 42".into()));
+        assert!(matches!(opened, Ok(Some(_))), "a real reason should proceed");
+        // ...and it must be LOUD about it.
+        assert!(opened.unwrap().unwrap().contains("WARNING"));
+    }
+
+    #[test]
+    fn a_non_superuser_ignores_the_escape_hatch_entirely() {
+        // The hatch must not become a way to change unrelated behaviour.
+        assert_eq!(superuser_verdict("prov", false, Some("whatever".into())), Ok(None));
     }
 
     #[test]
