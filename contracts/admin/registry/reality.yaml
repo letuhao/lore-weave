@@ -21,6 +21,42 @@
 
 domain: reality
 commands:
+  # W3 (2026-08-08) — the command that CREATES a reality. Until this shipped,
+  # every other command in this file required a reality that already existed and
+  # nothing in the platform could produce one: the only caller of the Rust
+  # provisioner was a drill with hardcoded rig credentials and a fabricated
+  # capacity snapshot.
+  #
+  # tier-2-griefing (admin:write), NOT tier-1: it destroys nothing. What it does
+  # do is consume a finite shard slot that every other reality shares — which is
+  # what the griefing tier names, and the class `reality capacity-override`
+  # already carries for acting on the same resource.
+  #
+  # dry_run_required is a per-COMMAND field (dispatcher reads c.DryRunRequired,
+  # not the tier policy), so a tier-2 command may require it. Provisioning is
+  # exactly where "which shard, how full, then commit" earns its keep — R13
+  # §12L.5 requires the operator see predicted side effects first. The dry run
+  # reads LIVE capacity and writes nothing.
+  #
+  # reality_id is caller-supplied, matching provisioner.rs:54 ("caller-generated
+  # to keep the audit chain coherent"): the uuid lands in the admin_action_audit
+  # params hash BEFORE the worker runs, so a provision that dies half-way is
+  # still traceable to the action that ordered it. Generate with `uuidgen`.
+  - name: reality provision
+    version: "1.0.0"
+    summary: "Create a reality: capacity-routed placement, per-reality DB, migrations, registry row."
+    handler: realityProvision
+    params:
+      - {name: reality_id,    type: uuid,   required: true,  description: "Caller-generated reality UUID (audit chain)"}
+      - {name: reason,        type: string, required: true,  description: "Audit explanation (>= 10 chars)"}
+      - {name: locale,        type: string, required: false, description: "BCP-47 locale, default en"}
+      - {name: deploy_cohort, type: int,    required: false, description: "Canary cohort 0..99, default 0"}
+    impact_class: tier-2-griefing
+    dry_run_required: true
+    double_approval_required: false
+    carry_forward_cycle: "W3"
+    locked_qs_consumed: [Q-L7A-1, Q-L7A-2]
+
   - name: reality force-close
     version: "1.0.0"
     summary: "Force-close a reality (writer rejection 503) — operator escape hatch."

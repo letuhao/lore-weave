@@ -2,7 +2,24 @@
 
 ## ▶ GAME BUILD — the FOUNDATION track: `crates/dp` slice 1 + the `channels` table (2026-08-08, branch `feat/game-logic`)
 
-**HEAD:** `9bb0f149b` · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state. The older [`2026-08-06-game-tier-build-RUN-STATE.md`](../plans/2026-08-06-game-tier-build-RUN-STATE.md) is the RECORD (registers + `BDR-1`..`BDR-48`) — **read it before `git log`.** §6h is the flow audit (`FLOW-1`..`FLOW-26`), §6i is the SDK board and its DoD, §6j is slice `1b` (the `channels` table), §7 holds Decisions / Parked / Debt / Drift.
+**HEAD:** `7072b308f` · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
+
+> **▶ MOST RECENT: `W3` — the platform can CREATE a reality (2026-08-08).** `admin reality
+> provision` now exists (tier-2-griefing, `admin:write`, dry-run required), backed by a real
+> `world-service` `provision` worker. Before this, all 8 `reality` admin commands required a reality
+> that already existed and **nothing could produce one** — the only caller of the provisioner was a
+> drill with hardcoded rig credentials and a fabricated capacity snapshot.
+>
+> **Phase 0 changed the design before a line was written.** The row said *"add an HTTP endpoint to
+> world-service"*; the tree said admin operations go through `admin-cli` + a **subprocess** seam,
+> with a governance layer (JWT scope, dry-run, dual-actor, typed confirm, audit) that an endpoint
+> would have re-implemented — starting, in my first instinct, from a shared token carrying **no
+> actor identity at all**. See `BDR-49`: three-axis QC proves a thing works; only Phase 0 asks
+> whether it should exist.
+>
+> Verified live end-to-end under a **real RS256 admin JWT** (dev-stack admin issuance was disabled —
+> 404 — so no admin command had ever run audited here). `W8` is subsumed: the worker reads live
+> capacity through `place_reality`'s advisory-locked recount instead of faking it. The older [`2026-08-06-game-tier-build-RUN-STATE.md`](../plans/2026-08-06-game-tier-build-RUN-STATE.md) is the RECORD (registers + `BDR-1`..`BDR-48`) — **read it before `git log`.** §6h is the flow audit (`FLOW-1`..`FLOW-26`), §6i is the SDK board and its DoD, §6j is slice `1b` (the `channels` table), §7 holds Decisions / Parked / Debt / Drift.
 
 ### What this track is, and why it exists
 

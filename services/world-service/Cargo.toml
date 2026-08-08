@@ -47,6 +47,15 @@ path = "src/bin/rebuilder.rs"
 name = "provision-drill"
 path = "src/bin/provision_drill.rs"
 
+# W3 (reality layer) — the reality-creation WORKER. Exec'd by the Go
+# `admin reality provision` command through the same subprocess seam admin-cli
+# already uses for `rebuilder` (SubprocessRebuildInvoker). Unlike provision-drill
+# this has NO credential defaults and reads live capacity via capacity_glue
+# (place_reality) instead of fabricating a snapshot.
+[[bin]]
+name = "provision"
+path = "src/bin/provision.rs"
+
 # W1.4 (production wiring) — freeze-drill live drill. Exercises the dp-kernel
 # write-freeze guard (PgEventStore + MetaFreezeGuard) against real Postgres:
 # guard-on rejects appends in migrating/pending_close/frozen; guard-off bite

@@ -619,6 +619,80 @@ func buildRebuildProjectionHandler() (framework.Handler, func(), error) {
 	return h, metaPool.Close, nil
 }
 
+// buildProvisionRealityHandler wires `reality provision` (W3) — the command
+// that CREATES a reality.
+//
+// Unlike its siblings this builder opens NO database connection. The Rust
+// worker owns every DSN, the shard connection, the advisory lock and the
+// migrations; this process contributes governance only (the dispatcher has
+// already checked the admin JWT, the admin:write scope, the dry-run gate and
+// the reason, and written the audit "started" row before the handler runs).
+// Keeping the meta pool out of here means an operator who mis-configures the
+// worker gets the worker's own fail-closed exit 2, naming the missing variable,
+// rather than a half-open connection in two processes.
+//
+// Wiring rule (D-ADMIN-NOTWIRED-EXIT): PROVISION_* unset entirely → leave
+// NotWired and let the tier-2 fail-closed policy refuse. PARTIALLY set → a real
+// error, because that is config present but invalid, and silently refusing
+// would hide the typo.
+func buildProvisionRealityHandler() (framework.Handler, func(), error) {
+	noop := func() {}
+	env := commands.ProvisionWorkerEnvFromOS()
+	if env.MetaDSN == "" && env.ShardAdminDSN == "" && env.BridgeURL == "" {
+		return nil, noop, nil // not configured at all → NotWired
+	}
+	if err := env.Validate(); err != nil {
+		return nil, noop, err // partially configured → fatal, name the gap
+	}
+	binPath := os.Getenv("PROVISION_BIN_PATH")
+	if binPath == "" {
+		binPath = "provision"
+	}
+	invoker := commands.NewSubprocessProvisionInvoker(binPath, env)
+
+	h := func(ctx context.Context, inv framework.Invocation) (string, error) {
+		rid, err := parseProvisionRealityIDParam(inv.Params["reality_id"])
+		if err != nil {
+			return "", err
+		}
+		cohort, err := parseProvisionCohortParam(inv.Params["deploy_cohort"])
+		if err != nil {
+			return "", err
+		}
+		return commands.RunProvisionReality(ctx, commands.ProvisionRealityRequest{
+			RealityID:    rid,
+			Locale:       inv.Params["locale"],
+			DeployCohort: cohort,
+			Actor:        inv.Actor,
+			Reason:       inv.Reason,
+			DryRun:       inv.DryRun,
+			Confirm:      inv.Confirm,
+		}, commands.ProvisionRealityDeps{Invoker: invoker})
+	}
+	return h, noop, nil
+}
+
+// parseProvisionRealityIDParam parses the required reality_id param.
+func parseProvisionRealityIDParam(raw string) (uuid.UUID, error) {
+	id, err := uuid.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid reality_id %q: %w", raw, err)
+	}
+	return id, nil
+}
+
+// parseProvisionCohortParam parses the optional deploy_cohort param.
+func parseProvisionCohortParam(raw string) (int, error) {
+	if strings.TrimSpace(raw) == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, fmt.Errorf("deploy_cohort %q is not an integer", raw)
+	}
+	return n, nil
+}
+
 // resolveCatastrophicRealities turns --scope into a concrete reality-id list:
 // reality (--reality_ids comma/space-separated), all-realities (every ACTIVE
 // reality_registry row — only active realities can be frozen), or aggregate-list
@@ -924,6 +998,7 @@ func run(args []string, stdout, stderr *os.File) int {
 		"reality capacity-override":    buildCapacityOverrideHandler,
 		"reality rebuild-projection":   buildRebuildProjectionHandler,
 		"reality catastrophic-rebuild": buildCatastrophicRebuildHandler,
+		"reality provision":            buildProvisionRealityHandler,
 	}
 	if build, ok := builders[c.Name]; ok {
 		closeHandler, fatal := wireCommandHandler(stderr, handlers, c.Name, build)
