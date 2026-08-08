@@ -10,6 +10,7 @@ package integration
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -131,6 +132,52 @@ func mustApply(t *testing.T, db *sql.DB, relPath string) {
 	}
 	if _, err := db.Exec(string(b)); err != nil {
 		t.Fatalf("mustApply exec %s: %v", abs, err)
+	}
+}
+
+// publisherEventColumns is every `events` column the publisher's pending-select names
+// (services/publisher/pkg/pgsource/pgsource.go), mapped to the migration that adds it.
+// The per-reality migration set is hand-picked per harness — 7 lists across this repo,
+// none of them connected to what the code requires — so a migration a consumer STARTS
+// depending on never arrives by itself.
+var publisherEventColumns = map[string]string{
+	"event_type":       "0002_events_table",
+	"payload":          "0002_events_table",
+	"channel_id":       "0014_channel_ordering",
+	"channel_event_id": "0014_channel_ordering",
+	"writer_epoch":     "0014_channel_ordering",
+	"ruleset_digest":   "0016_events_ruleset_digest",
+}
+
+// requirePublisherColumns fails BEFORE the drain if the schema is short, naming the
+// migration rather than the column.
+//
+// Without it the gap surfaces as `column e.channel_id does not exist (SQLSTATE 42703)`
+// raised from inside `publisher drain`, which reads like a publisher bug — so it is
+// investigated as one. That is why this test sat red from 2026-07-27: the message
+// pointed at the wrong thing, and fixing the first missing column merely revealed the
+// second. One assertion here reports ALL of them at once, before any work starts.
+func requirePublisherColumns(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var missing []string
+	for col, migration := range publisherEventColumns {
+		var exists bool
+		err := db.QueryRow(
+			`SELECT EXISTS (SELECT 1 FROM information_schema.columns
+			                WHERE table_name = 'events' AND column_name = $1)`, col,
+		).Scan(&exists)
+		if err != nil {
+			t.Fatalf("requirePublisherColumns: probing events.%s: %v", col, err)
+		}
+		if !exists {
+			missing = append(missing, fmt.Sprintf("events.%s (add %s)", col, migration))
+		}
+	}
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		t.Fatalf("this harness's migration list is short — the publisher reads %d column(s) "+
+			"the schema does not have:\n  %s\nApply the migration(s) above in the mustApply "+
+			"list at the top of the test.", len(missing), strings.Join(missing, "\n  "))
 	}
 }
 

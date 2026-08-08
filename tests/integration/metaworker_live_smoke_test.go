@@ -23,6 +23,7 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -56,16 +57,26 @@ func TestMetaWorkerLiveSmoke_CanonFanoutToProjection(t *testing.T) {
 	// ── DBs: migrate ─────────────────────────────────────────────────────
 	rdb := openSQL(t, perRealityDSN)
 	mdb := openSQL(t, metaDSN)
-	mustApply(t, rdb, "contracts/migrations/per_reality/0002_events_table.up.sql")
-	// DP-Ch11/Ch13 — 0014 adds events.channel_id, which the publisher's pending-select
-	// reads. Without it this smoke dies on `select pending reality=…: column e.channel_id
-	// does not exist (SQLSTATE 42703)` before it ever reaches the fan-out it exists to
-	// test. The list below is hand-maintained, so a migration the publisher starts
-	// depending on does not arrive here by itself: 0014 landed 2026-07-27 and this test
-	// had been red since.
-	mustApply(t, rdb, "contracts/migrations/per_reality/0014_channel_ordering.up.sql")
-	mustApply(t, rdb, "contracts/migrations/per_reality/0005_events_outbox_table.up.sql")
-	mustApply(t, rdb, "contracts/migrations/per_reality/0009_canon_projection.up.sql")
+	// Hand-picking migrations is what kept this test red from 2026-07-27: it applied
+	// 0002/0005/0009 while the publisher's pending-select had started reading
+	// `e.channel_id` (0014) and `e.ruleset_digest` (0016). The failure surfaced as
+	// `column e.channel_id does not exist (SQLSTATE 42703)` thrown from inside
+	// `publisher drain`, which reads like a publisher bug — and fixing the first missing
+	// column merely revealed the second.
+	//
+	// `mustApplyEventSchema` already exists for exactly this, and says so in its own
+	// header: a hand-written list is default-UNCOVERED, globbing is default-COVERED. The
+	// publisher smoke adopted it; this harness never did. Adopting it now means a future
+	// `0017_events_*` arrives here with no edit.
+	mustApplyEventSchema(t, rdb, func(name string) bool {
+		// The event tables the publisher reads, PLUS the canon projection this test
+		// asserts the fan-out lands in — which the shared filter excludes on purpose,
+		// since most smoke DBs do not provision it.
+		return eventTableMigrations(name) || strings.HasPrefix(name, "0009_canon_projection")
+	})
+	// Backstop for the case globbing cannot cover: a NON-events migration the publisher
+	// starts depending on. Names the migration instead of the column.
+	requirePublisherColumns(t, rdb)
 	mustApply(t, mdb, "migrations/meta/001_reality_registry.up.sql")
 	mustApply(t, mdb, "migrations/meta/013_meta_write_audit.up.sql")
 	mustApply(t, mdb, "migrations/meta/026_book_reality_subscription.up.sql")
