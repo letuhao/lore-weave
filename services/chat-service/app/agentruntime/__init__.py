@@ -59,12 +59,17 @@ from .manifest import (
 )
 from .narrowing import Narrowing, NarrowingLog, Widening
 from .observation import (
+    ERROR_CLASSES,
+    FAILED,
     OUTCOMES,
     SOURCES,
+    UNCLASSIFIABLE,
     Guardrail,
     NotObservable,
     Observation,
-    observe,
+    observe_breaker,
+    observe_dispatch,
+    observe_meta,
     prompt_hash,
 )
 from .surface import (
@@ -92,7 +97,9 @@ __all__ = [
     "UnresolvedReference", "UntrustedRow", "build", "declarations", "generate", "load",
     "manifest_path", "validate_document",
     "Narrowing", "NarrowingLog", "Widening", "RequirementNotAdmitted",
-    "OUTCOMES", "SOURCES", "Guardrail", "NotObservable", "Observation", "observe", "prompt_hash",
+    "ERROR_CLASSES", "FAILED", "OUTCOMES", "SOURCES", "UNCLASSIFIABLE", "Guardrail",
+    "NotObservable", "Observation", "observe_breaker", "observe_dispatch", "observe_meta",
+    "prompt_hash",
     "AllowList", "DenyList", "Filter", "OrderBy", "Score", "TopK", "TakeWhileBudget",
     "Surface", "SurfaceAssembler", "discover", "rows_of", "validate_pipeline",
 ]

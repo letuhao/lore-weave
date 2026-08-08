@@ -569,14 +569,24 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         # which is P4's violation - and it makes a partial record expressible again.
         (f"{PKG}/observation.py", "    advertised: tuple[dict, ...]\n",
                                   "    advertised: tuple[dict, ...] = ()\n"),
-        (f"{PKG}/observation.py", "    withheld: tuple[dict, ...]\n    source: str\n    outcome: str",
-                                  '    withheld: tuple[dict, ...] = ()\n    source: str = "tool"\n'
-                                  '    outcome: str = "done"'),
+        # Re-anchored at CP-2.6: `source` gained a comment block above it explaining why it is
+        # not a parameter, and this anchor spanned the two fields across it. Caught by
+        # `stale_anchors()` in one second rather than by a fifteen-minute run -- which is the
+        # whole reason that check was promoted into the gate's default mode.
+        (f"{PKG}/observation.py", "    withheld: tuple[dict, ...]\n",
+                                  "    withheld: tuple[dict, ...] = ()\n"),
+        (f"{PKG}/observation.py", "    source: str\n    outcome: str\n",
+                                  '    source: str = "tool"\n    outcome: str = "done"\n'),
     ],
     "test_EVERY_PLAUSIBLE_DEFAULT_IS_A_CONSTANT_AT_A_WRITE_BOUNDARY": [
-        (f"{PKG}/observation.py", "    withheld: tuple[dict, ...]\n    source: str\n    outcome: str",
-                                  '    withheld: tuple[dict, ...] = ()\n    source: str = "tool"\n'
-                                  '    outcome: str = "done"'),
+        # Re-anchored at CP-2.6: `source` gained a comment block above it explaining why it is
+        # not a parameter, and this anchor spanned the two fields across it. Caught by
+        # `stale_anchors()` in one second rather than by a fifteen-minute run -- which is the
+        # whole reason that check was promoted into the gate's default mode.
+        (f"{PKG}/observation.py", "    withheld: tuple[dict, ...]\n",
+                                  "    withheld: tuple[dict, ...] = ()\n"),
+        (f"{PKG}/observation.py", "    source: str\n    outcome: str\n",
+                                  '    source: str = "tool"\n    outcome: str = "done"\n'),
     ],
     "test_ADVERTISED_IS_PER_PASS__and_a_scalar_would_lose_the_mid_turn_change": [
         # The scalar column: keep only the last pass, which is what a `text[]` would have held.
@@ -713,6 +723,133 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         # state in which the guard above passes while measuring nothing.
         (T2, '        env = {**os.environ, "PYTHONHASHSEED": seed}',
              '        env = {**os.environ, "PYTHONHASHSEED": "0"}'),
+    ],
+
+    # ── CP-2.6 · `source` is a property of WHERE THE CODE IS ────────────────────────────────
+    #
+    # Every mutation below restores CP-0.3's shape rather than merely breaking a guard: a source
+    # that is a VALUE somebody supplies, chooses, or looks up. The behaviour is often unchanged --
+    # `SOURCES[2]` is still `"meta"` -- and that is the point. The defect this row closes was never
+    # a wrong string; it was a right string arrived at by inference.
+    "test_NO_PUBLIC_ENTRY_POINT_ACCEPTS_A_source_ARGUMENT": [
+        (f"{PKG}/observation.py",
+         'def observe_dispatch(\n    surfaces: Sequence,\n    *,\n    outcome: str,',
+         'def observe_dispatch(\n    surfaces: Sequence,\n    *,\n    source: str = "tool",\n'
+         '    outcome: str,'),
+    ],
+    "test_THE_ONE_FUNCTION_THAT_TAKES_source_IS_PRIVATE_AND_UNEXPORTED": [
+        (f"{PKG}/observation.py",
+         '__all__ = ["ERROR_CLASSES", "FAILED",',
+         '__all__ = ["_observe", "ERROR_CLASSES", "FAILED",'),
+    ],
+    "test_EACH_ENTRY_POINT_IS_PINNED_TO_EXACTLY_ONE_LITERAL": [
+        # Behaviour identical, structure inverted: the origin is now READ OUT OF THE ENUM instead
+        # of stated. This is the falsifier that proves the guard is about location, not value.
+        (f"{PKG}/observation.py",
+         'surfaces, source="meta", outcome=outcome, error_class=error_class,',
+         'surfaces, source=SOURCES[2], outcome=outcome, error_class=error_class,'),
+    ],
+    "test_THE_THREE_LITERALS_COVER_THE_ENUM_AND_NOTHING_ELSE": [
+        (f"{PKG}/observation.py",
+         'SOURCES = ("tool", "breaker", "meta")',
+         'SOURCES = ("tool", "breaker", "meta", "cache")'),
+    ],
+    "test_NO_OTHER_MODULE_IN_THE_PACKAGE_WRITES_A_source": [
+        (f"{PKG}/serve.py",
+         "from __future__ import annotations",
+         'from __future__ import annotations\n_SECOND_WRITER = dict(source="breaker")'),
+    ],
+    "test_AN_ENTRY_POINT_IS_NEVER_USED_AS_A_VALUE": [
+        # CP-0.3's lookup, restored one frame up and inside the module that forbids it.
+        (f"{PKG}/observation.py",
+         '__all__ = ["ERROR_CLASSES", "FAILED",',
+         '_BY_NAME = {"tool": observe_dispatch, "breaker": observe_breaker, "meta": observe_meta}\n'
+         '\n\n__all__ = ["ERROR_CLASSES", "FAILED",'),
+    ],
+    "test_NOTHING_OUTSIDE_observation_PY_CONSTRUCTS_AN_Observation": [
+        # `source=_s` deliberately, not a literal: this must red the CONSTRUCTION guard on its own
+        # merits rather than by tripping the literal guard next door.
+        (f"{PKG}/narrowing.py",
+         "from __future__ import annotations",
+         "from __future__ import annotations\n\n\ndef _forge(_s):\n"
+         "    return Observation(advertised=(), withheld=(), source=_s, outcome='done')"),
+    ],
+    "test_THE_PACKAGE_HAS_NO_source_inferred_FLAG": [
+        (f"{PKG}/observation.py",
+         'SOURCES = ("tool", "breaker", "meta")',
+         'SOURCES = ("tool", "breaker", "meta")\nSOURCE_INFERRED_KEY = "source_inferred"'),
+    ],
+    "test_THE_CONTROL_GROUP_KEEPS_ITS_INFERENCE_FLAG": [
+        # §7, from the other direction: a tidy-up that removes the control arm's self-reporting.
+        (f"{CS}/app/services/instrument.py",
+         'chunk["source_inferred"] = True',
+         'chunk["classified"] = True'),
+    ],
+
+    # ── CP-2.6 · C-7's error class is an ENUM, not a reading ─────────────────────────────────
+    "test_THE_FOUR_CLASSES_ARE_THE_SPECS_FOUR_NOT_A_LIST_I_TYPED": [
+        (f"{PKG}/observation.py", '    "terminal_budget",\n', ""),
+    ],
+    "test_THE_ANTI_ORACLE_CLASS_IS_PRESENT_BY_THE_NAME_THE_RULING_GIVES_IT": [
+        # The 239 rows behind the anti-oracle get forced into another class again -- the exact
+        # hiding V-METRIC's overturn condition names.
+        (f"{PKG}/observation.py", '"unresolved_or_forbidden",', '"unresolved",'),
+    ],
+    "test_THE_UNCLASSIFIABLE_DEFAULT_FAILS_CLOSED": [
+        (f"{PKG}/observation.py",
+         'UNCLASSIFIABLE = "terminal_permanent"',
+         'UNCLASSIFIABLE = "retryable_transient"'),
+    ],
+    "test_A_FAILED_RECORD_CARRIES_ANY_CLASS_IN_THE_ENUM": [
+        # A narrowed vocabulary: two legal classes become unrecordable. Sliced at 3 so that
+        # `UNCLASSIFIABLE` stays admissible and this reds on its own claim.
+        (f"{PKG}/observation.py",
+         'if type(self.error_class) is not str or self.error_class not in ERROR_CLASSES:',
+         'if type(self.error_class) is not str or self.error_class not in ERROR_CLASSES[:3]:'),
+    ],
+    "test_A_FAILED_RECORD_WITHOUT_A_CLASS_IS_NOT_A_RECORD": [
+        # Totality removed: a failure may again arrive with nothing but its prose.
+        (f"{PKG}/observation.py",
+         'if self.outcome == FAILED:\n',
+         'if self.outcome == FAILED and self.error_class is not None:\n'),
+    ],
+    "test_A_CLASS_OUTSIDE_THE_ENUM_IS_REFUSED_ON_A_FAILURE": [
+        (f"{PKG}/observation.py",
+         'if type(self.error_class) is not str or self.error_class not in ERROR_CLASSES:',
+         'if False:'),
+    ],
+    "test_A_CLASS_ON_ANY_OTHER_OUTCOME_IS_A_CATEGORY_ERROR": [
+        # Disjointness removed: `partial` may carry a retryability again, and the column starts
+        # answering a question that has no answer.
+        (f"{PKG}/observation.py",
+         'elif self.error_class is not None:',
+         'elif False:'),
+    ],
+    "test_EVERY_NON_FAILED_OUTCOME_STILL_RECORDS_WITH_NO_CLASS": [
+        # The over-correction: disjointness enforced so hard that ordinary outcomes stop recording.
+        (f"{PKG}/observation.py",
+         'elif self.error_class is not None:',
+         'elif self.error_class is None:'),
+    ],
+    "test_THE_REFINEMENT_HOLDS_AT_ALL_THREE_ORIGINS": [
+        # Breaker failures exempted -- and breakers are 58-66% of what the model sees as an error,
+        # so the enum would cover the minority and the aggregate stay a reading.
+        (f"{PKG}/observation.py",
+         'if self.outcome == FAILED:\n',
+         'if self.outcome == FAILED and self.source != "breaker":\n'),
+    ],
+    "test_NO_error_class_IN_THE_PACKAGE_IS_COMPUTED": [
+        # The quiet undo: a helper that maps prose to a class. Well-typed, enum-valued, and every
+        # other guard in this file stays green.
+        (f"{PKG}/observation.py",
+         'surfaces, source="breaker", outcome=outcome, error_class=error_class,',
+         'surfaces, source="breaker", outcome=outcome,\n'
+         '        error_class=error_class or ("terminal_permanent" if outcome == FAILED else None),'),
+    ],
+    "test_THE_LIMIT_OF_THIS_ROW_IS_WRITTEN_DOWN_WHERE_THE_ENUM_IS": [
+        (f"{PKG}/observation.py",
+         "class 3 is **scoreable in the NEW ARM ONLY**",
+         "class 3 is now measurable"),
     ],
 }
 

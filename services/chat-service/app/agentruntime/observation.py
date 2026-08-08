@@ -21,6 +21,21 @@ WHAT IS DELIBERATELY NOT HERE
   plan (§0.11) and P5 merely carries the output when there is one.
 * **`manifest_revision` is not here either** (CP-1.8): hashing an empty manifest is a
   constant-valued column at every write, which is the exact P4 violation CP-1 repaired.
+
+WHAT CP-2.6's ENUM DOES **NOT** SETTLE
+--------------------------------------
+V-METRIC's overturn condition for class 3 is *"a structured `tool_calls[].error_class` written by
+**all five producers** against one enum"*. This module gives one enum and one arm. **Four of the
+five producers are in the legacy arm**, and §7 forbids editing it mid-run — it is not tolerated
+legacy, it is the **control group**, and the sentence CP-2 exists to test is *"the new runtime
+performs better than the old"*. Retrofitting the old arm's instrument would remove the thing the
+new one is compared against.
+
+So the honest statement of what shipped: class 3 is **scoreable in the NEW ARM ONLY**. A cross-arm
+delta remains uninterpretable for class 2's reason exactly — a baseline derived from error prose
+and a new arm classified at the raise site are **two different instruments**, and a difference
+between them measures the instruments. The ruling stands; what changes is that the new arm is no
+longer the half that cannot be measured.
 """
 from __future__ import annotations
 
@@ -40,6 +55,38 @@ OUTCOMES = (
     "done", "partial", "empty", "ambiguous", "refused",
     "degraded", "deferred", "failed", "unknown_effect",
 )
+
+#: The outcome C-7 refines. Named once so the invariant below and its guards read the same symbol
+#: rather than two copies of a string that can drift apart.
+FAILED = "failed"
+
+#: C-7's error contract (ARCHITECTURE.md §4.2, C-7 row) — **four classes set WHERE THE FAILURE IS
+#: RAISED**, plus one this run's V-METRIC ruling demands by name.
+#:
+#: 🔴 **THIS IS THE ENUM THAT OVERTURNS A RULING, AND ONLY BECAUSE IT IS AN ENUM.** V-METRIC spent
+#: four rounds on class 3 and ended by proving *its own* predicate insufficient: `R7-8` reached
+#: perfect precision and recall on 834 rows and still could not leave the corpus, three ways — 158
+#: rows rested on fitted product sentences, a mid-corpus rename moved the metric by 33 rows
+#: invisibly, and 239 rows sit behind a deliberate anti-oracle. Its words: *"Not by a better regex —
+#: I have now demonstrated that the best possible regex is insufficient."* So this is not a
+#: classifier. Nothing here reads an error message.
+#:
+#: `unresolved_or_forbidden` is **not** a fifth class someone thought would be handy: it is the
+#: exact remedy the ruling names — `jobs_skill.py` and `mcp_server.go` merge *"doesn't exist"* with
+#: *"not yours"* **on purpose**, and a taxonomy without this member forces that blend into one of
+#: the other four, which is the hiding the ruling refuses. It admits the merge instead.
+ERROR_CLASSES = (
+    "retryable_transient",
+    "retryable_modified",
+    "terminal_permanent",
+    "terminal_budget",
+    "unresolved_or_forbidden",
+)
+
+#: C-7: *"a wrapper that cannot classify returns `terminal_permanent`"* — the **fail-closed**
+#: direction. An unclassifiable failure must not read as retryable, because the measured behaviour
+#: this whole run exists to change is **74% byte-identical repeat calls**.
+UNCLASSIFIABLE = "terminal_permanent"
 
 
 def prompt_hash(prompt: str) -> str:
@@ -156,9 +203,18 @@ class Observation:
     #: that admits NEITHER row the code writes, because it omits `pass` and requires `tool`, which
     #: the catalogue and pass scopes do not carry.
     withheld: tuple[dict, ...]
+    #: §5 field 3. 🔴 **NOT A PARAMETER ANYONE CHOOSES.** There is no public constructor that takes
+    #: it: `observe_dispatch` / `observe_breaker` / `observe_meta` each write one literal, so the
+    #: value is a fact about *which line ran*. CP-0.3's residual was the opposite — a `meta`/`breaker`
+    #: split by looking a name up in a set, self-flagged `source_inferred` so the gap stayed
+    #: countable. That flag has no counterpart here because there is no inference to count.
     source: str
     outcome: str
     guardrail: Guardrail = field(default_factory=lambda: Guardrail(False, "", ""))
+    #: C-7, and §4.2's shape: **a REFINEMENT of one outcome value, never a peer taxonomy.** Only
+    #: `failed` carries a retryability class; *"is `partial` retryable"* is a category error, and a
+    #: field that answers it anyway is a second vocabulary that will drift from the first.
+    error_class: str | None = None
 
     def __post_init__(self) -> None:
         if type(self.source) is not str or self.source not in SOURCES:
@@ -171,6 +227,27 @@ class Observation:
             raise NotObservable(
                 f"outcome is {self.outcome!r}; C-14 replaced `ok: bool` with exactly {OUTCOMES}. "
                 f"`ok=true` meant seven different things: 358 refusals rode the success channel."
+            )
+        # C-7 · §4.2 — the refinement relation, enforced in BOTH directions. Totality: a `failed`
+        # with no class is the prose-derived row all over again, and V-METRIC's ruling turns on
+        # every producer writing one. Disjointness: a class on any other outcome answers a question
+        # that has no answer, and a column that is sometimes a category error cannot be aggregated.
+        if self.outcome == FAILED:
+            if type(self.error_class) is not str or self.error_class not in ERROR_CLASSES:
+                raise NotObservable(
+                    f"outcome is {FAILED!r} and error_class is {self.error_class!r}; it must be one "
+                    f"of {ERROR_CLASSES} (C-7). A failure with no class is a row that can only be "
+                    f"classified later by reading its prose — the measurement V-METRIC ruled "
+                    f"unscoreable after proving the best possible regex insufficient. If the raising "
+                    f"site genuinely cannot tell, C-7's answer is {UNCLASSIFIABLE!r}, which is the "
+                    f"fail-closed direction: an unclassifiable failure must never read as retryable."
+                )
+        elif self.error_class is not None:
+            raise NotObservable(
+                f"outcome is {self.outcome!r} and error_class is {self.error_class!r}. §4.2: the "
+                f"error class is a SUB-FIELD of {FAILED!r}, not a peer taxonomy — asking whether "
+                f"{self.outcome!r} is retryable is a category error, and a field that answers it "
+                f"anyway becomes a second vocabulary drifting from the first."
             )
         seen: set[int] = set()
         for i, entry in enumerate(self.advertised):
@@ -200,15 +277,21 @@ class Observation:
                 )
 
 
-def observe(
+def _observe(
     surfaces: Sequence,
     *,
     source: str,
     outcome: str,
-    tool_choice: str = "auto",
-    guardrail: Guardrail | None = None,
+    error_class: str | None,
+    tool_choice: str,
+    guardrail: Guardrail | None,
 ) -> Observation:
     """Build the record **from the surfaces that were actually assembled**.
+
+    🔴 **PRIVATE, AND THAT UNDERSCORE IS THE WHOLE OF CP-2.6's FIRST HALF.** This is the only
+    function that accepts `source` as an argument, and nothing outside this module may reach it: the
+    three callers below are the only ones, each writing one literal. See `observe_dispatch` for what
+    that buys and what it deliberately does not.
 
     🔴 **DERIVED, NEVER HAND-TYPED.** The one thing this run has proved five times over is that a
     denominator a person maintains is a lower bound. `advertised` is exactly what each pass offered
@@ -225,8 +308,91 @@ def observe(
         source=source,
         outcome=outcome,
         guardrail=guardrail if guardrail is not None else Guardrail(False, "", ""),
+        error_class=error_class,
     )
 
 
-__all__ = ["Guardrail", "NotObservable", "OUTCOMES", "Observation", "SOURCES",
-           "observe", "prompt_hash"]
+def observe_dispatch(
+    surfaces: Sequence,
+    *,
+    outcome: str,
+    error_class: str | None = None,
+    tool_choice: str = "auto",
+    guardrail: Guardrail | None = None,
+) -> Observation:
+    """A declaration actually ran. **`source='tool'` because this line is the dispatch site.**
+
+    🔴 **CP-2.6 · P2 — `source` IS ASSIGNED STRUCTURALLY, AND THE MECHANISM IS THE ABSENCE OF A
+    PARAMETER.** The legacy classifier is three lines and looks like this:
+
+        _source = SOURCE_META if name in RUNTIME_PRIMITIVES else SOURCE_BREAKER
+        chunk["source_inferred"] = True
+
+    Every objection to that code is an objection to `name in RUNTIME_PRIMITIVES` — the origin of a
+    result is being recovered from a *string*, after the fact, by a set this service happens to
+    maintain. It is right until someone adds a dispatch site without a stamp, at which point it is
+    confidently wrong and the flag is the only reason anyone could ever find out.
+
+    Here there is nothing to recover. `source` is not a value a caller supplies, so it cannot be
+    supplied wrongly; there are three functions, each pinned to one literal, and choosing this one
+    *is* the statement that a dispatch happened. **A verifier's question changes shape**: not *"is
+    the classifier right"*, which needs a corpus, but *"is this the dispatch site"*, which needs one
+    look at the enclosing function.
+
+    🔴 **WHAT THIS DOES NOT BUY, said plainly because the tempting claim is one step too far.** It
+    does not stop a caller writing `(observe_dispatch if x else observe_breaker)(...)` and putting
+    the lookup back one frame up. Nothing in the type system forbids that, so it is forbidden
+    *statically* instead — the CP-2.6 guards reject any use of these three names other than as the
+    direct callee of a call, which is the same shape of check the membrane gate already applies to
+    the P4 ceiling methods. The claim is therefore: **no inference inside the package, and a gate
+    that goes red the moment one is introduced** — not a proof about all possible callers anywhere.
+    """
+    return _observe(
+        surfaces, source="tool", outcome=outcome, error_class=error_class,
+        tool_choice=tool_choice, guardrail=guardrail,
+    )
+
+
+def observe_breaker(
+    surfaces: Sequence,
+    *,
+    outcome: str,
+    error_class: str | None = None,
+    tool_choice: str = "auto",
+    guardrail: Guardrail | None = None,
+) -> Observation:
+    """**Our own prose, minted by us.** `source='breaker'` because this line is inside a breaker.
+
+    This is the source that motivated §5 field 3 at all: **58–66% of what the model sees as an error
+    is something we wrote**, and while that fraction is unlabelled every error-rate comparison in
+    this run is measuring the two runtimes' breakers as if they were the world's failures.
+    """
+    return _observe(
+        surfaces, source="breaker", outcome=outcome, error_class=error_class,
+        tool_choice=tool_choice, guardrail=guardrail,
+    )
+
+
+def observe_meta(
+    surfaces: Sequence,
+    *,
+    outcome: str,
+    error_class: str | None = None,
+    tool_choice: str = "auto",
+    guardrail: Guardrail | None = None,
+) -> Observation:
+    """A runtime primitive answered — `tool_list`, `tool_load`. `source='meta'`, structurally.
+
+    In the legacy path this and `breaker` are the pair the name lookup separates, and it is the only
+    place `source_inferred` is ever set. Here they are two different functions in two different
+    places, so the split that needed a closed set of names needs nothing at all.
+    """
+    return _observe(
+        surfaces, source="meta", outcome=outcome, error_class=error_class,
+        tool_choice=tool_choice, guardrail=guardrail,
+    )
+
+
+__all__ = ["ERROR_CLASSES", "FAILED", "Guardrail", "NotObservable", "OUTCOMES", "Observation",
+           "SOURCES", "UNCLASSIFIABLE", "observe_breaker", "observe_dispatch", "observe_meta",
+           "prompt_hash"]

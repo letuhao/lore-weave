@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import inspect
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -28,9 +30,15 @@ from app.agentruntime import (
     AssemblyMismatch,
     Declaration,
     Guardrail,
+    ERROR_CLASSES,
+    FAILED,
     NotObservable,
+    OUTCOMES,
     Observation,
-    observe,
+    UNCLASSIFIABLE,
+    observe_breaker,
+    observe_dispatch,
+    observe_meta,
     prompt_hash,
     DeclarationToolset,
     DenyList,
@@ -54,6 +62,7 @@ from app.agentruntime import (
     toolset_for,
     withholding_notice,
 )
+import app.agentruntime as _agentruntime_pkg
 from app.agentruntime import assembly as _assembly
 from app.agentruntime import observation as _observation
 
@@ -966,7 +975,7 @@ class TestTheRouteServesFromTheManifestAndNothingElse:
         # C — the EMPTY state is recordable as `[]`, which is not the same fact as NULL.
         empty_payload, empty_surface = advertise(_doc(), pass_number=1)
         assert empty_payload == [] and empty_surface.names == ()
-        record = observe([empty_surface], source="tool", outcome="empty")
+        record = observe_dispatch([empty_surface], outcome="empty")
         assert record.advertised == (
             {"pass": 1, "tool_choice": "auto", "names": ()},
         ), "an empty pass produced no row - NULL and [] mean different things"
@@ -1116,7 +1125,7 @@ class TestTheFourFieldsCannotBeSkipped:
             pass_number=1,
             pipeline=[DenyList(names=("b",), stage="token_budget", reason="over budget")])
         second = asm.assemble(pass_number=2)
-        record = observe([first, second], source="tool", outcome="done")
+        record = observe_dispatch([first, second], outcome="done")
 
         assert [e["pass"] for e in record.advertised] == [1, 2]
         assert record.advertised[0]["names"] == ("a", "c")
@@ -1195,7 +1204,7 @@ class TestTheFourFieldsCannotBeSkipped:
                          pipeline=[DenyList(names=("b",), stage="s", reason="r")]),
             asm.assemble(pass_number=2),
         ]
-        record = observe(surfaces, source="tool", outcome="partial")
+        record = observe_dispatch(surfaces, outcome="partial")
         assert len(record.advertised) == len(surfaces)
         assert [w["tool"] for w in record.withheld] == ["b"]
 
@@ -1251,7 +1260,7 @@ class TestTheGuardrailIsAShadowArmStructurally:
     def test_A_GUARDRAIL_THAT_DID_NOT_FIRE_NEEDS_NEITHER(self):
         """The bounds apply to a FIRE. Requiring evidence for a non-event would force every quiet
         turn to invent one, which is the fabrication these checks exist to prevent."""
-        assert observe([], source="tool", outcome="done").guardrail.fired is False
+        assert observe_dispatch([], outcome="done").guardrail.fired is False
 
 
 # ── 2.4 · withheld is reachable, and DISTINGUISHABLE from never-existed ─────────────────────────
@@ -1584,3 +1593,340 @@ class TestTheModuleDeclaresItsOwnLimits:
     ])
     def test_THE_NAMED_RESIDUAL_IS_STILL_NAMED(self, phrase):
         assert phrase in (_assembly.__doc__ or "")
+
+
+# ---------------------------------------------------------------------------------------------
+# CP-2.6 · P2 — `source` assigned STRUCTURALLY, and C-7's error class as an enum
+# ---------------------------------------------------------------------------------------------
+
+_ENTRY_POINTS = ("observe_dispatch", "observe_breaker", "observe_meta")
+
+#: The source each entry point is pinned to. The pairing is the item: `source` is a fact about
+#: WHICH FUNCTION RAN, so a guard that checks the value without checking where it lives checks
+#: nothing this row is about.
+_ENTRY_SOURCE = {
+    "observe_dispatch": "tool",
+    "observe_breaker": "breaker",
+    "observe_meta": "meta",
+}
+
+
+def _package_trees():
+    """Every module in the package, parsed once. Derived from the directory, never listed."""
+    return {path.name: ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for path in sorted(_PACKAGE.glob("*.py"))}
+
+
+class TestSourceIsAPropertyOfWhereTheCodeIs:
+    """REJECTS: `source` recovered from a value instead of stated by a location.
+
+    CP-0.3's residual, in full, is three lines of `app/services/instrument.py`::
+
+        _source = SOURCE_META if name in RUNTIME_PRIMITIVES else SOURCE_BREAKER
+        chunk["source_inferred"] = True
+
+    That code is *correct today*. Every objection to it is an objection to `name in
+    RUNTIME_PRIMITIVES`: the origin of a result is being recovered after the fact from a string,
+    against a set this service maintains by hand, and it stays right exactly as long as nobody adds
+    a dispatch site without a stamp. The flag exists because the author knew that, and it is the
+    only reason the failure would ever be findable.
+
+    These guards do not check that a classifier is accurate. They check that **there is no
+    classifier** — no parameter to pass, one literal per origin, and no way to reach the private
+    constructor that still takes one.
+    """
+
+    def test_NO_PUBLIC_ENTRY_POINT_ACCEPTS_A_source_ARGUMENT(self):
+        """The parameter's ABSENCE is the mechanism. A value nobody can supply is never wrong."""
+        for name in _ENTRY_POINTS:
+            sig = inspect.signature(getattr(_observation, name))
+            assert "source" not in sig.parameters, (
+                f"{name} takes `source`. Then it is a value a caller chooses, and CP-2.6 is a "
+                f"naming change: the legacy inference moves one frame up and stops being counted."
+            )
+
+    def test_THE_ONE_FUNCTION_THAT_TAKES_source_IS_PRIVATE_AND_UNEXPORTED(self):
+        assert "source" in inspect.signature(_observation._observe).parameters
+        assert "_observe" not in _observation.__all__
+        assert not hasattr(_agentruntime_pkg, "_observe"), (
+            "the private constructor is reachable from the package root; the underscore is the "
+            "whole guarantee and a re-export deletes it"
+        )
+
+    @pytest.mark.parametrize("entry,source", sorted(_ENTRY_SOURCE.items()))
+    def test_EACH_ENTRY_POINT_IS_PINNED_TO_EXACTLY_ONE_LITERAL(self, entry, source):
+        """AST, not behaviour: the literal must be written *in that function*, at one site.
+
+        A behavioural check (`observe_dispatch(...).source == 'tool'`) passes just as well when the
+        value came from a lookup two frames down. The property is where the string is written.
+        """
+        tree = _package_trees()["observation.py"]
+        fn = next(n for n in ast.walk(tree)
+                  if isinstance(n, ast.FunctionDef) and n.name == entry)
+        literals = [kw.value.value for n in ast.walk(fn) if isinstance(n, ast.Call)
+                    for kw in n.keywords
+                    if kw.arg == "source" and isinstance(kw.value, ast.Constant)]
+        computed = [kw for n in ast.walk(fn) if isinstance(n, ast.Call) for kw in n.keywords
+                    if kw.arg == "source" and not isinstance(kw.value, ast.Constant)]
+        assert literals == [source], f"{entry} writes {literals!r}, expected exactly [{source!r}]"
+        assert computed == [], f"{entry} computes its own source — that is the inference, inlined"
+
+    def test_THE_THREE_LITERALS_COVER_THE_ENUM_AND_NOTHING_ELSE(self):
+        """Totality against `SOURCES` — the denominator comes from the enum, not from this list."""
+        tree = _package_trees()["observation.py"]
+        written = {kw.value.value for n in ast.walk(tree) if isinstance(n, ast.Call)
+                   for kw in n.keywords
+                   if kw.arg == "source" and isinstance(kw.value, ast.Constant)}
+        from app.agentruntime import SOURCES as _S
+        assert written == set(_S), (
+            f"the package writes {sorted(written)} but the enum is {sorted(_S)}; a member with no "
+            f"site can never be recorded, and a site outside the enum is refused at construction "
+            f"only if someone runs that path"
+        )
+
+    def test_NO_OTHER_MODULE_IN_THE_PACKAGE_WRITES_A_source(self):
+        """Scoped to values that ARE sources, because the first draft of this guard was wrong.
+
+        It convicted `manifest.py`'s `validate_document(doc, source=str(target))` -- a file path
+        that shares a parameter name and has nothing to do with §5 field 3. A guard that fires on a
+        *name* rather than on the property is the proxy failure this run has recorded three times;
+        it would have been "fixed" by renaming an unrelated argument, and the fix would have taught
+        nothing.
+        """
+        from app.agentruntime import SOURCES as _S
+        for module, tree in _package_trees().items():
+            if module == "observation.py":
+                continue
+            offenders = [ast.unparse(n) for n in ast.walk(tree) if isinstance(n, ast.Call)
+                         for kw in n.keywords
+                         if kw.arg == "source" and isinstance(kw.value, ast.Constant)
+                         and kw.value.value in _S]
+            assert offenders == [], (
+                f"{module} writes a §5 source: {offenders}. Three functions own three literals; a "
+                f"fourth writer is a second vocabulary, and the two disagree when one is edited"
+            )
+            private = [ast.unparse(n) for n in ast.walk(tree)
+                       if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                       and n.func.id == "_observe"]
+            assert private == [], f"{module} calls the private constructor: {private}"
+
+    @pytest.mark.parametrize("entry", _ENTRY_POINTS)
+    def test_AN_ENTRY_POINT_IS_NEVER_USED_AS_A_VALUE(self, entry):
+        """The anti-inference guard, and the one the module's own docstring promises.
+
+        `observe_dispatch` pinned to a literal buys nothing if a caller writes
+        `(observe_dispatch if name in PRIMITIVES else observe_breaker)(...)` — that is CP-0.3's
+        lookup restored one frame up, and no type system forbids it. So it is forbidden
+        statically: these names may appear as the callee of a call, in an import, or in `__all__`,
+        and nowhere else. Same shape of check the membrane gate applies to the P4 ceiling methods.
+        """
+        for module, tree in _package_trees().items():
+            called, referenced = set(), []
+            for n in ast.walk(tree):
+                if isinstance(n, ast.Call) and isinstance(n.func, ast.Name):
+                    called.add(id(n.func))
+            for n in ast.walk(tree):
+                if isinstance(n, ast.Name) and n.id == entry and id(n) not in called:
+                    referenced.append(module)
+            assert referenced == [], (
+                f"{module} uses `{entry}` as a value rather than calling it. A first-class "
+                f"reference is how the origin becomes selectable at runtime again"
+            )
+
+    def test_NOTHING_OUTSIDE_observation_PY_CONSTRUCTS_AN_Observation(self):
+        """The only other way to hand-write a source is to build the record directly."""
+        for module, tree in _package_trees().items():
+            if module == "observation.py":
+                continue
+            built = [module for n in ast.walk(tree)
+                     if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                     and n.func.id == "Observation"]
+            assert built == [], f"{module} constructs Observation directly, bypassing the three"
+
+    def test_THE_PACKAGE_HAS_NO_source_inferred_FLAG(self):
+        """There is no gap to count, which is the whole of CP-2.6's first half.
+
+        The legacy flag is not a wart to be cleaned up on the way past — it is **the control
+        group's instrumentation** (§7: *"that is not tolerated legacy, it is the control group"*),
+        and the claim under measurement is *the new runtime performs better than the old*. Deleting
+        the old arm's ability to report its own gap would remove the number this row is measured
+        against. So: absent here, present there, and both halves are the item.
+        """
+        for module, tree in _package_trees().items():
+            docstrings = {id(n.value) for n in ast.walk(tree)
+                          if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)}
+            written = [module for n in ast.walk(tree)
+                       if isinstance(n, ast.Constant) and n.value == "source_inferred"
+                       and id(n) not in docstrings]
+            assert written == [], (
+                f"{module} flags an inferred source. The flag counts a gap; CP-2.6's claim is that "
+                f"the gap does not exist here, and a flag that can be set contradicts it"
+            )
+
+    def test_THE_CONTROL_GROUP_KEEPS_ITS_INFERENCE_FLAG(self):
+        """The other side, and it is §7 rather than CP-2.6 — split out so each has its own falsifier.
+
+        A single test asserting both directions can only ever be proven red-able in one of them:
+        the runner applies a mutation and requires the named guard to fail, so whichever half the
+        falsifier restores, the other half rides along unproven. The legacy flag is not a wart to
+        clean up on the way past. §7: *"that is not tolerated legacy, it is the control group"* —
+        and the claim under measurement is *the new runtime performs better than the old*. Deleting
+        the old arm's ability to report its own gap deletes the number this row is measured against.
+        """
+        legacy = (_REPO / "services" / "chat-service" / "app" / "services" / "instrument.py")
+        tree = ast.parse(legacy.read_text(encoding="utf-8"))
+        docstrings = {id(n.value) for n in ast.walk(tree)
+                      if isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant)}
+        written = [n for n in ast.walk(tree)
+                   if isinstance(n, ast.Constant) and n.value == "source_inferred"
+                   and id(n) not in docstrings]
+        assert written, (
+            "the legacy arm no longer WRITES its inference flag. §7: the old runtime is the CONTROL "
+            "GROUP, and an un-instrumented control cannot be compared against. "
+            "This assertion was a substring search over the whole file until the falsifier runner "
+            "reported it GREEN against a mutation that renamed the write: `instrument.py` explains "
+            "the flag in its own docstring, so the word survived the removal of the mechanism. A "
+            "substring gate over prose reads green over wrong data -- the same failure recorded "
+            "twice already in this run, here caught by the instrument rather than by a verifier."
+        )
+
+
+class TestTheErrorClassIsAnEnumAndNotAReading:
+    """REJECTS: a retryability that can only be recovered by reading prose.
+
+    V-METRIC did not rule class 3 unscoreable for want of effort. It **built the predicate it was
+    asked for** — `R7-8`, perfect precision and perfect recall on 834 rows — and then broke it
+    three ways: 158 rows rested on fitted product sentences, a mid-corpus rename (`errChapterNotInBook`,
+    2026-07-26) moved the metric by 33 rows invisibly, and 239 rows sit behind an anti-oracle that
+    merges *"doesn't exist"* with *"not yours"* deliberately. Its ruling: *"Not by a better regex —
+    I have now demonstrated that the best possible regex is insufficient."*
+
+    So none of these guards evaluate a classifier's accuracy. They check that classification
+    happens **where the failure is raised** and that the vocabulary is closed.
+    """
+
+    def test_THE_FOUR_CLASSES_ARE_THE_SPECS_FOUR_NOT_A_LIST_I_TYPED(self):
+        """The denominator is parsed out of the C-7 row. Every total published in this run that a
+        person maintained turned out to be a lower bound, so this one is read from the SSOT."""
+        spec = (_REPO / "docs" / "specs" / "2026-08-03-agent-runtime-unification"
+                / "ARCHITECTURE.md").read_text(encoding="utf-8")
+        rows = [ln for ln in spec.splitlines() if ln.startswith("| **C-7**")]
+        assert rows, "the C-7 row is gone from ARCHITECTURE.md; the enum has no source of truth"
+        named = set(re.findall(r"`(retryable_\w+|terminal_\w+)`", " ".join(rows)))
+        declared = {int(m) for m in re.findall(r"(\d+) classes", " ".join(rows))}
+        assert declared == {len(named)}, (
+            f"the C-7 row says {declared} classes and names {len(named)}: {sorted(named)}. The "
+            f"count and the list are both in the spec and they disagree"
+        )
+        assert named <= set(ERROR_CLASSES), (
+            f"the spec names {sorted(named - set(ERROR_CLASSES))} and the enum does not carry it"
+        )
+
+    def test_THE_ANTI_ORACLE_CLASS_IS_PRESENT_BY_THE_NAME_THE_RULING_GIVES_IT(self):
+        """Not a fifth class someone found handy — the exact remedy, spelled the exact way.
+
+        The ruling's condition is *"the anti-oracle emitting an explicit `unresolved_or_forbidden`
+        class that admits the merge instead of hiding it"*. Without it, 239 rows must be forced
+        into one of the other four, which is precisely the hiding.
+        """
+        assert "unresolved_or_forbidden" in ERROR_CLASSES
+        round7 = (_REPO / "docs" / "specs" / "2026-08-03-agent-runtime-unification"
+                  / "verification" / "CP-0-v-metric-round7.md").read_text(encoding="utf-8")
+        assert "unresolved_or_forbidden" in round7, (
+            "the class no longer matches the ruling that demanded it; a rename here silently "
+            "un-satisfies the only stated overturn condition"
+        )
+
+    def test_THE_UNCLASSIFIABLE_DEFAULT_FAILS_CLOSED(self):
+        """C-7: *a wrapper that cannot classify returns `terminal_permanent`*.
+
+        The direction is the point. `74%` of repeat calls in the baseline are byte-identical, so an
+        unknown failure that reads as retryable feeds exactly the loop this runtime exists to end.
+        """
+        assert UNCLASSIFIABLE in ERROR_CLASSES
+        assert not UNCLASSIFIABLE.startswith("retryable"), (
+            "the unclassifiable default is retryable — an error nobody understood now invites the "
+            "identical retry that is the measured failure mode"
+        )
+
+    @pytest.mark.parametrize("klass", ERROR_CLASSES)
+    def test_A_FAILED_RECORD_CARRIES_ANY_CLASS_IN_THE_ENUM(self, klass):
+        record = observe_dispatch([], outcome=FAILED, error_class=klass)
+        assert record.error_class == klass
+
+    def test_A_FAILED_RECORD_WITHOUT_A_CLASS_IS_NOT_A_RECORD(self):
+        """Totality. A `failed` with no class is the prose row again, and the ruling turns on
+        every producer writing one — a producer that may omit it is not a producer that writes it."""
+        with pytest.raises(NotObservable, match="error_class is None"):
+            observe_dispatch([], outcome=FAILED)
+
+    @pytest.mark.parametrize("bad", ["flaky", "", "Terminal_Permanent", "terminal", 3, None])
+    def test_A_CLASS_OUTSIDE_THE_ENUM_IS_REFUSED_ON_A_FAILURE(self, bad):
+        with pytest.raises(NotObservable):
+            observe_breaker([], outcome=FAILED, error_class=bad)
+
+    @pytest.mark.parametrize("outcome", [o for o in OUTCOMES if o != FAILED])
+    def test_A_CLASS_ON_ANY_OTHER_OUTCOME_IS_A_CATEGORY_ERROR(self, outcome):
+        """Disjointness, and §4.2's reason: *asking whether `partial` is retryable is a category
+        error*. A column that sometimes answers a meaningless question cannot be aggregated."""
+        with pytest.raises(NotObservable, match="SUB-FIELD"):
+            observe_meta([], outcome=outcome, error_class="terminal_budget")
+
+    @pytest.mark.parametrize("outcome", [o for o in OUTCOMES if o != FAILED])
+    def test_EVERY_NON_FAILED_OUTCOME_STILL_RECORDS_WITH_NO_CLASS(self, outcome):
+        """The other half of disjointness — the refusal above must not have made them unrecordable."""
+        assert observe_meta([], outcome=outcome).error_class is None
+
+    @pytest.mark.parametrize("entry", _ENTRY_POINTS)
+    def test_THE_REFINEMENT_HOLDS_AT_ALL_THREE_ORIGINS(self, entry):
+        """A breaker's failure is classified by the same enum as a dispatch's.
+
+        This is the half the legacy arm cannot have: **58-66% of what the model sees as an error is
+        our own prose**, so if `breaker` failures were exempt the enum would cover the minority of
+        the population and the aggregate would still be a reading.
+        """
+        fn = getattr(_observation, entry)
+        assert fn([], outcome=FAILED, error_class=UNCLASSIFIABLE).source == _ENTRY_SOURCE[entry]
+        with pytest.raises(NotObservable):
+            fn([], outcome=FAILED)
+
+    def test_NO_error_class_IN_THE_PACKAGE_IS_COMPUTED(self):
+        """AST: every `error_class=` written here is a literal from the enum or a pass-through.
+
+        The one thing that would quietly undo this row is a helper that maps a message to a class -
+        `"not found" in msg` - because it produces a well-typed enum value and every guard above
+        stays green. So the check is on the expression, not on the value.
+        """
+        for module, tree in _package_trees().items():
+            for n in ast.walk(tree):
+                if not isinstance(n, ast.Call):
+                    continue
+                for kw in n.keywords:
+                    if kw.arg != "error_class":
+                        continue
+                    v = kw.value
+                    ok = ((isinstance(v, ast.Constant) and v.value in ERROR_CLASSES)
+                          or (isinstance(v, ast.Name) and v.id == "error_class"))
+                    assert ok, (
+                        f"{module} computes an error_class from `{ast.unparse(v)}`. C-7 sets the "
+                        f"class WHERE THE FAILURE IS RAISED; anything derived here is a regex with "
+                        f"a better type, and V-METRIC ruled on exactly that"
+                    )
+
+    @pytest.mark.parametrize("phrase", [
+        "scoreable in the NEW ARM ONLY",
+        "five producers are in the legacy arm",
+    ])
+    def test_THE_LIMIT_OF_THIS_ROW_IS_WRITTEN_DOWN_WHERE_THE_ENUM_IS(self, phrase):
+        """The honest limit, pinned so it cannot quietly stop being said.
+
+        The ruling's overturn condition is an enum *written by all five producers*. Four of them
+        live in the legacy arm and §7 forbids touching it mid-run — it is the control group, and
+        the comparison is what CP-2 exists to make. So class 3 becomes structurally scoreable in
+        the new arm, and a cross-arm delta stays uninterpretable for class 2's reason exactly: two
+        different instruments. A row that shipped an enum and let that sentence lapse would read,
+        in six weeks, as a closed ruling.
+        """
+        assert phrase in (_observation.__doc__ or ""), (
+            f"the module no longer states its own limit: {phrase!r}"
+        )

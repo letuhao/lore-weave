@@ -528,6 +528,7 @@ they touch is the legacy diagnostic that is now frozen as-is:
 | **F-45** | **two fixes shipped in the same commit cancel each other.** The sweep writes `finish_reason='abandoned_expired'`; class 4's `CASE` reads `finish_reason='awaiting_input'` | ✅ **FIXED `6d48f7acc`** — class 4 now reads `outcome` **unconditionally**: a row that HAS a recorded outcome cannot belong to a class named *"turns with no recorded outcome"*, whatever word sits beside it. **The verifier's NUMBER does not reproduce**, and that is recorded rather than quietly dropped — see below |
 | **F-48** | `advertised_json()` returns the **whole cumulative list** at six upsert sites on one `message_id`, so a 3-pass turn with 2 checkpoints stores **7** entries. Delta-encoding destroyed; no gate asserts uniqueness or monotonicity | ✅ **CONFIRMED AND FIXED `6d48f7acc`** — reproduced on the real engine (old **7**, `[1,1,2,1,2,3,1]`; new **4**) **and found in production data**: 4 rows carry duplicated passes, the worst a 5-pass turn stored as **13** entries `1,1,2,3,1,2,3,4,1,2,3,4,5` |
 | **F-49** | the *"hoisted `domain_not_selected` out of `if binding_categories:`"* claim is **false about its own history** | ✅ **CLOSED as a false claim, no code defect** — `git show 0362275bc` shows `_unselected` at 4-space (function-level) indent in the commit that introduced it. The change was a **no-op**; it moved the `hot_seed` registration's position. **Eighth instance of asserting without checking** |
+| **F-50** | **the CP-0.4 orphan-stamp has never executed.** `_withheld_json` is read at `stream_service.py:6326` and assigned at `:6364`, *after* the early return it lives in — so **every** empty terminal turn raises `UnboundLocalError`, is caught by the best-effort `except Exception`, and records nothing. Found by CP-2's in-process live turn, not by the suite: the exception is swallowed, so green tests and silent production are the same observation | 🟡 **OPEN, DELIBERATELY.** The writer is the **control arm's** instrument (§7) and the repair belongs to CP-3.6. Fixing it starts stamping outcomes on user rows that carry none today, which moves the baseline CP-2 is measured against. **The fix is one line** — hoist the `_withheld_json` assignment above the `if not content` block |
 
 **🔴 F-45's MECHANISM WAS REAL AND ITS NUMBER WAS NOT — measured, both predicates, same corpus.**
 Round 11 predicted drift toward **~9.6%**. On the same 360-row population the old and new predicates
@@ -3726,6 +3727,175 @@ this package. The **rule** is live; a **real ranking** is not.
 **QC3 · DATA — `PASS`.** The ranked surface plus the withheld record's `rank` and `ordered_by`, with
 all three legs of the guarantee falsified.
 
+### ⭐ CP-2.6 — the classifier is not improved, it is DELETED
+
+**Built 2026-08-08, and it is the last CP-2 row.** Inherited from CP-0.3, whose residual was never
+*"the classifier is wrong"* — it is right today. The residual is three lines of
+`app/services/instrument.py`:
+
+```python
+_source = SOURCE_META if name in RUNTIME_PRIMITIVES else SOURCE_BREAKER
+chunk["source_inferred"] = True
+```
+
+Every objection to that code is an objection to `name in RUNTIME_PRIMITIVES`. The origin of a
+result is being **recovered from a string**, after the fact, against a set this service maintains by
+hand — correct exactly as long as nobody adds a dispatch site without a stamp, at which point it is
+**confidently wrong**, and the self-marked flag is the only reason anyone could ever find out.
+
+**What shipped is the absence of a parameter.** `observe_dispatch` / `observe_breaker` /
+`observe_meta` each write one literal; there is no `source=` to supply, so it cannot be supplied
+wrongly, and *choosing the function* **is** the statement of origin. A verifier's question changes
+shape with it: not *"is the classifier accurate"*, which needs a corpus, but *"is this the dispatch
+site"*, which needs one look at the enclosing function.
+
+**And the claim is bounded, because the tempting one is a step too far.** Nothing in the type system
+stops a caller writing `(observe_dispatch if name in PRIMITIVES else observe_breaker)(...)` — that is
+CP-0.3's lookup restored one frame up. So it is forbidden **statically**: the three names may appear
+as the callee of a call and nowhere else, over the AST of every module in the package. The claim is
+*no inference inside the package, and a gate that reds the moment one appears* — not a proof about
+all possible callers everywhere.
+
+### ▶ C-7's enum, and why it is an enum
+
+V-METRIC did not rule class 3 unscoreable for want of effort. **It built the predicate it was asked
+for** — `R7-8`, perfect precision and perfect recall on 834 rows — and then broke its own work three
+ways: 158 rows rested on fitted product sentences; a mid-corpus rename (`errChapterNotInBook`,
+2026-07-26) moved the metric by 33 rows **invisibly**; and 239 rows sit behind an anti-oracle that
+merges *"doesn't exist"* with *"not yours"* **on purpose**. Its words: *"Not by a better regex — I
+have now demonstrated that the best possible regex is insufficient."*
+
+So `ERROR_CLASSES` is C-7's four, **plus the fifth the ruling names by name**:
+`unresolved_or_forbidden`, which admits the merge instead of hiding it. `UNCLASSIFIABLE` is
+`terminal_permanent` — C-7's fail-closed direction, because an unknown failure that reads as
+retryable feeds the **74% byte-identical repeat calls** this runtime exists to end.
+
+**It is a REFINEMENT of one outcome, not a fifth field** (§4.2). `failed` requires a class;
+**every other outcome refuses one**, because asking whether `partial` is retryable is a category
+error and a column that sometimes answers a meaningless question cannot be aggregated. Both
+directions are refused at construction, and both have their own falsifier.
+
+### 🔴 What this row does NOT settle, said before anyone can read it as settled
+
+The ruling's overturn condition is an enum **written by all five producers**. Four of the five are
+in the legacy arm, and **§7 forbids touching it mid-run** — it is not tolerated legacy, it is the
+**control group**, and *"the new runtime performs better than the old"* is the sentence CP-2 exists
+to test. Retrofitting the old arm's instrument deletes the thing the new one is compared against.
+
+**So: class 3 is scoreable in the NEW ARM ONLY.** A cross-arm delta stays uninterpretable for
+class 2's reason exactly — a baseline derived from error prose and an arm classified at the raise
+site are **two different instruments**, and a difference between them measures the instruments.
+That sentence is in the module's own docstring and a guard fails if it lapses.
+
+### ⭐ Two guards were wrong, and the machines said so before a verifier could
+
+**The `source=` guard convicted a bystander.** Its first form flagged any `source=` keyword outside
+`observation.py` — and red-lit `manifest.py`'s `validate_document(doc, source=str(target))`, a file
+path that shares a parameter name and has nothing to do with §5 field 3. **A guard that fires on a
+name rather than on a property** would have been "fixed" by renaming an unrelated argument. It is
+now scoped to values that are actually sources. Fourth proxy-guard in this run.
+
+**And the §7 guard required nothing.** `test_THE_CONTROL_GROUP_KEEPS_ITS_INFERENCE_FLAG` was a
+substring search over `instrument.py` — and `instrument.py` **explains the flag in its own
+docstring**, so the falsifier that renamed the write left the guard GREEN. The runner reported it as
+*"the guard requires nothing"*. It is now an AST check for a non-docstring write, symmetric with the
+package-side guard. *A substring gate over prose reads green over wrong data* — recorded twice
+before today, and this time caught by the instrument rather than by a verifier.
+
+**The double-sided guard was also split in two.** One test asserting both *"absent here"* and
+*"present there"* can only ever be proven red-able in one direction: the runner applies a mutation
+and requires the **named** guard to fail, so whichever half a falsifier restores, the other rides
+along unproven. Two tests, two falsifiers, two directions.
+
+### ▶ The three QC pillars
+
+**QC1 · CODE — `PASS`.** Suite **2482** · census **90 sites · 8 silent · 82 red**, `rc=0` · falsification
+**396 guards, 137 falsified, 259 unproven, 0 stale anchors**, **137/137 fire** · membrane gate green. **20 guards (50 cases), 20 falsifiers — and two of the guards were themselves defective, below.**
+
+**QC2 · LIVE RUN — `PASS`, and it converts four rows that were `CANNOT DETERMINE`.** One
+in-process turn inside `infra-chat-service-1`, on an image verified byte-identical to source by a
+whole-file digest of `observation.py` (`ed132823c2...`, 22,142 bytes, host and container agreeing),
+with `agentruntime_arm` patched **for that process only** and the real `loreweave_chat` behind it:
+
+| | measured on the deployed image | |
+|---|---|---|
+| the arm | `legacy` -> `agentruntime` from the selector alone | **2.8** |
+| the real advertise chokepoint | armed `[]`, control **4 tools** from the same populated catalogue | **2.7b B** |
+| the statement | byte-equal to `serve.NO_DECLARATIONS` | **2.7b A** |
+| the record | `source='tool'` / `'breaker'` by *which function ran*; `observe_dispatch(source=...)` raises `TypeError: unexpected keyword argument 'source'` | **2.6** |
+| the enum | `failed` with no class -> `NotObservable`; with `terminal_permanent` -> recorded; a class on `done` -> `NotObservable` | **2.6** |
+| the row in Postgres | `advertised_tools = [{"pass": 1, "names": [], "tool_choice": "auto"}]`, `advertised_tools IS NULL` = **false**, `runtime_variant = 'agentruntime'`, `outcome = 'failed'` | **2.5 · 2.7b C/D** |
+
+**The throwaway session was deleted and the deletion verified** (`rows_left_behind = 0`). The
+dogfood corpus is the baseline every cross-arm comparison is measured against; synthetic rows left
+in `chat_messages` would move it silently, which is CP-0.5's recorded failure exactly.
+
+**Still `CANNOT DETERMINE`: a `POST /messages` against a real model.** That needs the arm switched
+on for the serving process, which is a change to a live system nobody asked for. It is the honest
+remaining half of 2.7b, unchanged.
+
+### 🔴 F-50 — the live run found a mechanism that has NEVER worked, and the swallow hid it
+
+**`_persist_terminal_assistant`'s CP-0.4 orphan-stamp raises `UnboundLocalError` on every call.**
+`_withheld_json` is read at `stream_service.py:6326` and assigned at **`:6364`** — *after* the early
+return it lives in. The branch is guarded by `if not content and not reasoning and not
+tool_calls_history`, so **every empty terminal turn** takes it, throws before touching the database,
+and is caught by the `except Exception` two lines below that exists so error paths cannot add a
+second failure.
+
+**What is lost is exactly what the code above it says it was written to save.** Its own comment
+records a verifier's measurement — *"the value was calculated and dropped ... `wrote_row=False,
+carries_outage=False`"* — and the repair for that finding **has never executed once**. Both the
+outcome stamp and the `withheld_tools` merge are gone on that path, so P3's *"every terminal path
+writes an outcome"* is false at runtime for the empty shape, at a **100% rate**, and the only trace
+is a `logger.warning` nobody reads.
+
+**Logged OPEN, not fixed, and the reason is §7.** The writer is the **control arm's** instrument.
+Repairing it mid-run starts recording outcomes on user rows that carry none today, which moves the
+baseline the CP-2 comparison is measured against — CP-1.9 spent an entire item on that. It also
+belongs to CP-3.6, which this run's scope does not open. **The fix is one line** — hoist the
+`_withheld_json` assignment above the `if not content` block — and it is written here so it cannot
+be lost.
+
+**A mock could not have found this.** The suite exercises the function's INSERT path; nothing calls
+it with an empty turn against a real connection, and the exception is swallowed, so a green suite
+and a silent production are the same observation. *This is what QC2 is for.*
+
+### 🔴 And a second cross-layer fact, found the same way
+
+**`chat_messages.outcome` and C-14's `Observation.outcome` are different vocabularies at different
+levels**, and they overlap only at `failed`. The column's CHECK admits `completed · awaiting_input ·
+abandoned_by_user · failed · crashed · interrupted` — the **turn's** fate. C-14's set is `done ·
+partial · empty · ambiguous · refused · degraded · deferred · failed · unknown_effect` — a **call's**
+result, which §4.2 says lives in the envelope. Writing one into the other raises
+`CheckViolationError` **inside the same best-effort swallow**, so the whole row is lost silently.
+
+I hit this by passing `record.outcome` straight through, which is the mistake a CP-3 wiring would
+make for the same reason it looked right to me. Recorded as a hazard for CP-3 rather than a defect:
+nothing does it today. The derivation itself is correct — `outcome_for_finish_reason` was tested
+across seven finish reasons x `is_error`, and returns a legal turn-level value in all fourteen.
+
+**QC3 · DATA — `PASS`, with the falsifiers stated.** The artifacts are the persisted row above and
+the package's AST.
+
+* **The row.** `advertised_tools` holds one entry for pass 1 whose `names` is `[]`, and
+  `advertised_tools IS NULL` is **false**. *Falsifier:* had the empty state been merely displayed
+  rather than recorded, the column would be `NULL` and that boolean `true` — the `NULL`/`[]`
+  distinction is item C's whole content, and the query asks for it directly rather than inferring it
+  from the value.
+* **The label.** `runtime_variant = 'agentruntime'` on a row written with the flag on, against
+  `legacy` from the same code path with it off. *Falsifier:* a constant would give one value on both.
+* **`source`.** Three literals, one per entry point, each written inside the function it names, and
+  the enum's totality checked **against `SOURCES`** rather than against a list in the test.
+  *Falsifier:* `source=SOURCES[2]` keeps the behaviour identical and reds the guard — which is the
+  proof the guard is about *where the value is written*, not about what it equals.
+* **The enum's partition.** `failed` -> class required; every other outcome -> class refused; both
+  parametrized over `OUTCOMES` so a **new** outcome is covered the day it is added. *Falsifier:* each
+  direction has its own mutation, and removing either half reds only its own guard.
+* **The four C-7 classes** are parsed out of `ARCHITECTURE.md`'s C-7 row, and the spec's own *"4
+  classes"* count is compared against the number of names parsed from that same row. *Falsifier:*
+  drop one from `ERROR_CLASSES` and the subset check reds; the denominator is never typed here.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -4005,12 +4175,12 @@ declarations, not silently emit a tool-free pass.
 | 2.2 | **the widening rule** (§4.3) — a plan step's declaration must be advertised while that step is current. **Deletes three heuristics**: the rail next-step exemption, the backtick prose scraper, `load_skill`'s un-advertised names | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `assemble(required=)`; a widened declaration keeps its `Narrowing` and gains a `Widening` naming what it overruled; an un-admitted requirement raises `RequirementNotAdmitted`. 12 guards, 12 falsifiers. ✖ **The three legacy heuristics are NOT deleted** — they live in CP-2's CONTROL arm; the new arm needs none of them. See the CP-2.2 block above |
 | 2.3 | deterministic tool ordering — `active_tool_names` is a `set[str]` iterated unsorted, so **the order changes on every restart** and `tools` is the first cache block | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** The new runtime had the MIRROR defect, measured: deterministic and **rank discarded** — rows ranked `c,b,a` were advertised `a,b,c`. `names` now preserves the pipeline's order; determinism comes from the canonical document + order-preserving stages, proved across **four hash seeds in four interpreters**, with the legacy `set` as a control that disagrees. ✖ `active_tool_names` itself is untouched — CONTROL arm. See the CP-2.3 block above |
 | 2.4 | withheld things stay **reachable on request**; the model can tell *withheld* from *never existed* | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** Reachability came with 2.1; this row is the **second half of §0.14.3** — the model is TOLD, unprompted, that N admitted declarations exist and were withheld. Measured as a PAIR against a never-admitted name, through the real reveal path. Count never names; `None` never *"0 withheld"*. See the CP-2.4 block above |
-| 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `observation.py`: four required fields, **no defaults** — every plausible default is a constant at a write boundary, which is P4. `advertised` is an array PER PASS and a duplicate pass is refused. The guardrail refuses `acted=True` at construction; a fire needs deterministic evidence AND a transition. ✖ wrong-object counter and `manifest_revision` are absent, and guarded absent. See the CP-2.5 block above |
-| **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | 🟡 **PART BUILT 2026-08-08 — M4 IS TRUE.** `boot.py` + `chat-service`'s `lifespan` call it: **the package has a production importer.** §3's literal test passes per required clause, in fresh interpreters; an ABSENT manifest still boots (empty is legitimate). ✅ **A–D now measured** at the advertise chokepoint: the branch is a `return`, the new arm serves `[]` from a populated legacy catalogue, the model is told WHICH emptiness, and the `Surface` comes back with the payload so P1 is one computation. ✖ **A deployed turn against a real model is still `CANNOT DETERMINE`.** See both CP-2.7 blocks above |
+| 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `PASS` 2026-08-08.** The P5 record reached **real Postgres through the real terminal-path writer** on the deployed image: `advertised_tools = [{"pass": 1, "names": [], "tool_choice": "auto"}]`, `IS NULL` false. ✖ **A served turn against a real model is still unrun.** `observation.py`: four required fields, **no defaults** — every plausible default is a constant at a write boundary, which is P4. `advertised` is an array PER PASS and a duplicate pass is refused. The guardrail refuses `acted=True` at construction; a fire needs deterministic evidence AND a transition. ✖ wrong-object counter and `manifest_revision` are absent, and guarded absent. See the CP-2.5 block above |
+| **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | 🟡 **PART BUILT 2026-08-08 — M4 IS TRUE.** `boot.py` + `chat-service`'s `lifespan` call it: **the package has a production importer.** §3's literal test passes per required clause, in fresh interpreters; an ABSENT manifest still boots (empty is legitimate). ✅ **A–D now measured** at the advertise chokepoint: the branch is a `return`, the new arm serves `[]` from a populated legacy catalogue, the model is told WHICH emptiness, and the `Surface` comes back with the payload so P1 is one computation. ✖ **A deployed turn against a real model is still `CANNOT DETERMINE`.** See both CP-2.7 blocks above **⭐ QC2 upgraded 2026-08-08 · items A/C/D measured on the DEPLOYED image**, in-process against real Postgres: the statement is byte-equal to `NO_DECLARATIONS` (A); the empty pass is a **row**, not a blank screen — `advertised_tools IS NULL` is false (C); and it is the same `Surface` `advertise` returned (D). A `POST /messages` against a real model remains the honest missing half. |
 | **2.9** | **`prompt_hash` — chat-service-local, ~10 lines, and that is the whole item.** ⬅️ rewritten 2026-08-05; the original bundled four things and red team killed three. It closes a **currently undetectable** failure: a prompt can change today and nothing notices. 🔴 **NOT included, each for a measured reason:** `code_revision` — `GIT_SHA` becomes an **OCI image label**, no Dockerfile consumes it, `os.environ.get("GIT_SHA")` is `None` in **every** scenario; `seed` — it is **already forwarded** at `adapters.go:678`, the three typed hops above drop it, production runs `temperature=0.0` (greedy, so a seed consumes no randomness) and Anthropic has no seed parameter at all; `block_hashes` — **cannot be computed correctly here**, the cache breakpoint is owned by provider-registry *after* a schema translation, so a chat-service hash can be green while the cached bytes changed | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `digest(nfc(prompt))` — the NFC is load-bearing (1.44× token swing). **All three red-team exclusions guarded absent AND their reasons guarded present.** Not yet called from the request path: that is a write-path change belonging with 2.8. See the CP-2.9 block above |
 | **2.8** | **`runtime_variant='agentruntime'` stamped at a structural chokepoint covering EVERY terminal path** — not at the happy path. `legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship bias in the new arm's own failure rate**: an unlabelled new-runtime row loses its numerator too, and label-omission correlates with crash and cancel | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** The parameter is **GONE** — it cannot be omitted because it cannot be supplied; both write sites derive from the arm selector. Five production call sites, zero edits. **The control arm is byte-identical** (flag off → `legacy`), which is what let this row be built at all. See the CP-2.8 block above |
 | **2.10** | **⬅️ INHERITED FROM CP-1, PO 2026-08-06.** A pipeline ranks by a **`relevance` its own scoring stage produced** (§0.14.1b), and **the budget arrives as a parameter** rather than as `os.environ` read at import (§0.14.1). CP-1 could check neither: no producer exists, and the boundary module can only supply a budget to a pipeline that runs. Today every pipeline naming `relevance` is rejected — the correct fail-closed direction, and **not** evidence the rule works | ✅ **CLOSED 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `Score` produces `relevance` in-flight; the field stays out of `ROW_FIELDS`, so the rule is structural and needed no new check. The blocker was a MEASUREMENT failure — a generator used as a `parametrize` value — and my RETRACTION of the correct diagnosis was the error, taken on a dirty tree. See the CP-2.10 block above |
-| **2.6** | **P2 — a call's `source` is assigned STRUCTURALLY, never inferred.** ⬅️ **inherited from CP-0.3, 2026-08-04.** The new runtime dispatches through **one** path, so `source` is a property of *where the code is*, not of what a name looks up to. **Also add `error_class` as a structured enum** — V-METRIC ruled baseline class 3 unscoreable *because* it is a regex over freeform prose from five producers, and *"only a structured enum overturns this, never a better regex"* | ⬜ |
+| **2.6** | **P2 — a call's `source` is assigned STRUCTURALLY, never inferred.** ⬅️ **inherited from CP-0.3, 2026-08-04.** The new runtime dispatches through **one** path, so `source` is a property of *where the code is*, not of what a name looks up to. **Also add `error_class` as a structured enum** — V-METRIC ruled baseline class 3 unscoreable *because* it is a regex over freeform prose from five producers, and *"only a structured enum overturns this, never a better regex"* | ✅ **CLOSED 2026-08-08 · QC1 `PASS` · QC2 `PASS` · QC3 `PASS`.** The classifier is not improved, it is **deleted**: `source` is not a parameter any caller can supply, so it cannot be supplied wrongly — three entry points, one literal each, and a first-class reference to any of them is refused over the AST. `ERROR_CLASSES` is C-7's four plus the ruling's `unresolved_or_forbidden`, as a **refinement of `failed`** and refused on every other outcome. ✖ **The ruling is NOT overturned** — it needs all five producers and four are in the CONTROL arm (§7): scoreable in the **new arm only**. See the CP-2.6 block above |
 
 ### L3 · PLAN — `CP-3` (γ) · **the architecture's central claim**
 
@@ -4082,7 +4252,7 @@ retrofitted to whatever gets built.
 |---|---|---|
 | **CP-0** instrument + frozen baseline | γ | ✅ **CLOSED 2026-08-04 on 0.5/0.6/0.7** — the three that ever passed. **0.1–0.4 reassigned to CP-1.7 / CP-2.6 / CP-3.6 / CP-1.4**, where each is structural rather than retrofitted. **Verification stopped after 11 rounds** (~27 verifier deployments). The legacy instrument stays live as a control-group diagnostic, with F-45 · F-48 · F-49 recorded open |
 | CP-1 membrane, empty | β | 🟡 **BUILT · 6 of 7 items independently PASS · BLOCKED ON A PO DECISION.** 7 verifier deployments (V-CODE ×5, V-LIVE ×2). **P1 closed at round 4** after three of the builder's own gates died — wrong direction, then unable to fire, then a law sampled at five points — and only closed when the invariant moved into **production code** as a post-condition. **1.4's P4 half has no subject here** and all three ways to resolve it change a criterion |
-| CP-2 runtime | β | 🟡 **OPEN — 7 of 10 rows built 2026-08-08.** 2.1 · 2.2 · 2.3 · 2.4 · 2.5 · **2.7 (M4 + THE ROUTE)** · 2.9, each QC1 `PASS` + QC3 `PASS`. **The package now has a production importer AND a request-path branch**, so 2.7's items A–D are measured rather than `CANNOT DETERMINE`. ⬜ **2.8 · 2.10 · 2.6 remain**, and a served turn against a real model on a running service is still `CANNOT DETERMINE` for every row |
+| CP-2 runtime | β | ✅ **ALL 10 ROWS BUILT 2026-08-08.** 2.1 · 2.2 · 2.3 · 2.4 · 2.5 · **2.7 (M4 + THE ROUTE)** · 2.8 · 2.9 · 2.10 · **2.6**, each QC1 `PASS` + QC3 `PASS`. **QC2 upgraded to `PASS` for 2.5 and 2.7's items A/C/D** by one in-process turn on the DEPLOYED image against real Postgres, which also found **F-50**. ✖ **A served turn against a real model is still `CANNOT DETERMINE`** — it needs the arm on for the serving process, which is a change to a live system nobody asked for. That is the one honest gap left in CP-2 |
 | CP-3 plan | γ | ⬜ |
 | CP-4 declarations | γ | ⬜ |
 
