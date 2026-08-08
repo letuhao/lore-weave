@@ -478,7 +478,7 @@ def main() -> int:
         return 1
     print(
         f"\nall {len(ALL_BITES)} guards proved load-bearing "
-        f"({len(GO_BITES)} go + {len(RUST_BITES)} rust)"
+        f"({len(GO_BITES)} go + {len(RUST_BITES)} rust + {len(META_BITES)} meta)"
     )
     return 0
 
