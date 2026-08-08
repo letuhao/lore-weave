@@ -33,15 +33,100 @@ declared=$(grep -E '^[[:space:]]*-[[:space:]]*name:[[:space:]]*"?lw_' "$inventor
 # `lw_test_registered_total`, `lw_foo_bar_total`) for admission-control
 # unit tests. The lint MUST only fire on REAL emission sites in non-test
 # code.
-emitted=$(grep -rhE '"lw_[a-z][a-z0-9]*_[a-z][a-z0-9_]+"' \
-  --include='*.go' --include='*.rs' \
-  --exclude='*_test.go' --exclude='*_test.rs' \
-  "$repo_root/services" "$repo_root/crates" "$repo_root/contracts" 2>/dev/null \
-  | grep -oE '"lw_[a-z][a-z0-9]*_[a-z][a-z0-9_]+"' \
-  | tr -d '"' | sort -u || true)
+#
+# 2026-08-09 — THAT EXCLUSION WAS GO-SHAPED, AND THIS LINT ALSO READS RUST.
+# `*_test.rs` is not where Rust unit tests live; they live INLINE, in a
+# `#[cfg(test)] mod tests { … }` block inside the source file. So the rule
+# above enforced its stated intent ("only REAL emission sites in non-test
+# code") for Go and not for Rust, and nothing said so until a Rust file put
+# fixtures in one.
+#
+# What surfaced it: `services/world-service/src/orphan_scan.rs` names its
+# fixture databases readably — `lw_reality_ok`, `lw_reality_ghost`,
+# `lw_reality_stalled`, … — all inside the `#[cfg(test)]` module at line 252.
+# The DB-name filter below excludes `lw_reality_` + HEX (the real convention,
+# `lw_reality_cd0747d24b94`), so six test fixtures were reported as six
+# undeclared METRICS.
+#
+# That is `NV-4`, the hardest shape: two individually correct decisions
+# defeating a third. Readable fixture names are right for a test; a hex-only
+# DB-name filter is right for production; a Go-shaped test exclusion was right
+# when the lint only read Go. And the failure mode was the expensive
+# direction — the "fix" it invites is to declare six metrics that do not
+# exist, which would have put a fiction in the observability inventory and
+# turned the gate green.
+#
+# So the fix is the root: strip `#[cfg(test)]` blocks from Rust sources before
+# scanning, which is what the 2019 comment above always meant.
+emitted=$(python3 - "$repo_root" <<'PY'
+import re, sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+LITERAL = re.compile(r'"(lw_[a-z][a-z0-9]*_[a-z][a-z0-9_]+)"')
+
+
+def strip_cfg_test(text: str) -> str:
+    """Remove `#[cfg(test)] mod … { … }` blocks, matched by brace depth.
+
+    Brace counting rather than a regex because the block is nested and a
+    regex cannot balance. Strings and comments containing braces would fool
+    a naive counter, so this deliberately errs toward stripping LESS: if the
+    opening brace is never found, nothing is removed and the file is scanned
+    whole. Under-stripping produces a false positive someone must look at;
+    over-stripping produces a blind spot nobody sees.
+    """
+    out, i = [], 0
+    while True:
+        m = re.compile(r'#\[cfg\(test\)\]').search(text, i)
+        if not m:
+            out.append(text[i:])
+            return "".join(out)
+        out.append(text[i:m.start()])
+        brace = text.find("{", m.end())
+        if brace == -1:
+            out.append(text[m.start():])
+            return "".join(out)
+        depth, j = 0, brace
+        while j < len(text):
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        i = j + 1
+
+
+found = set()
+for sub in ("services", "crates", "contracts"):
+    base = root / sub
+    if not base.is_dir():
+        continue
+    for path in base.rglob("*"):
+        if path.suffix not in (".go", ".rs") or not path.is_file():
+            continue
+        if path.name.endswith(("_test.go", "_test.rs")):
+            continue
+        try:
+            body = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if path.suffix == ".rs":
+            body = strip_cfg_test(body)
+        found.update(LITERAL.findall(body))
+
+for name in sorted(found):
+    print(name)
+PY
+)
 
 # Filter out DB-name format strings (lw_reality_*) and other known non-metric
 # patterns; these are matched by the broader regex but aren't metric names.
+# Kept NARROW (hex only) on purpose: widening it to `lw_reality_[a-z0-9_]+`
+# would silently swallow a genuine future metric in that namespace, which is
+# the blind spot the fix above exists to avoid creating.
 emitted=$(echo "$emitted" | grep -vE '^lw_reality_[0-9a-f]+$' | grep -vE '^lw_reality_$' || true)
 
 violations=0

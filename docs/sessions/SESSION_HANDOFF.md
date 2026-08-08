@@ -4,11 +4,38 @@
 
 **HEAD:** `8c4c13360`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
 
-> **▶ DO NEXT — the three PRE-EXISTING red gates, then slices 3/4.** Red on a clean tree at HEAD,
-> verified by stashing, and none of them from the dp-clippy work:
-> `observability-inventory` (6 metrics emitted but undeclared, incl. `lw_reality_expired`),
-> `projection-coverage` (1 uncovered event), `test-dsn-coverage`. They are debt from the
-> reality-layer commits earlier in this run and are currently untracked.
+> **▶ DO NEXT — slices 3/4: the `dp` SDK surface** (`DpError`, `cache_key!`, the read/write API),
+> which is what gives `dp-clippy`'s other three lints (`R-4`, `R-6`, `R-8`) a subject. `world-service`
+> 5 + `commit-service` 3 are the standing `DP-R3` debt, ratcheted; they can only be migrated once
+> there is an SDK to migrate them TO.
+>
+> **The three red gates are CLOSED, and two were not what they claimed.**
+> - **`observability-inventory` was 6 FALSE POSITIVES.** `lw_reality_ok`, `lw_reality_ghost`, … are
+>   not metrics — they are fake DATABASE names in `orphan_scan.rs`'s `#[cfg(test)]` module
+>   (`lw_reality_<hex>` is the real convention). The lint excluded `*_test.rs`, a **Go-shaped**
+>   exclusion applied to Rust, where unit tests live INLINE. Its own comment already said it "MUST
+>   only fire on REAL emission sites in non-test code". `NV-4`: readable fixture names, a hex-only
+>   DB-name filter and a Go-shaped test exclusion, each correct, defeating a third. **The invited
+>   "fix" was to declare six metrics that do not exist** — a fiction in the observability inventory,
+>   and a green gate. Fixed at the root: `#[cfg(test)]` blocks are stripped before scanning. Bitten
+>   both ways — the identical literal fails outside the test module and passes inside it.
+> - **`projection-coverage`: `npc.said`** has no projection because `0017` DROPPED it with the
+>   `pc_*`/`npc_*` orphan family. Measured: every remaining occurrence in service code is a test
+>   fixture. **No producer, no consumer** — unlike every other allowlist row, which says "consumed
+>   elsewhere". Allowlisted with that stated plainly and a trigger to retire the row; deregistering
+>   the event outright is the defensible alternative and needs its own plan (generated Rust for two
+>   versions + fixtures in five services).
+> - **`test-dsn-coverage` was MY debt from this run.** `provisioner_reentry_live.rs` — the only
+>   coverage of the W3 re-entry defect a unit test provably could not catch — was armed by no
+>   workflow, so it skipped silently on every runner. Now armed in `foundation-ci`'s `db-smoke` job
+>   and **run for real: 1 passed**. Verified PG16-safe by scanning the 19 migrations for PG17/18-only
+>   syntax rather than assuming.
+>
+> **Dev-stack note:** the local `postgres` container had drifted to `postgres:18-alpine`, losing
+> pgvector, while compose declares `loreweave/postgres-pgvector:18`. That is why `0006_projections`
+> failed locally with `could not access file "vector"`. Recreated from the declared image; the named
+> volume persisted and all **7 realities survived**. If it drifts again, something is starting
+> postgres outside `infra/docker-compose.yml`.
 >
 > **`2E` and `2G` are CLOSED — and Phase 0 dissolved both rather than doing them.** The plan was
 > "migrate `service-http`, then ask the PO about `roleplay-service`". Neither was the work.

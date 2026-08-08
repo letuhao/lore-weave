@@ -547,6 +547,29 @@ jobs:
           LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/scan_smoke?sslmode=disable
         run: go -C services/integrity-checker test -tags=integration -run TestScanRows ./pkg/pgsource/...
 
+      # The provisioner's RE-ENTRY path, against a real database (`1b14-01`).
+      #
+      # Armed here because `test-dsn-coverage-gate` found it armed NOWHERE: the
+      # test shipped with the W3 fix and skipped silently on every runner, and a
+      # skip is indistinguishable from a pass in the summary line. It is the only
+      # coverage of a defect a unit test provably could not catch — the mock had
+      # the re-drivable property (`FakeEffects::apply_migrations` is a
+      # `HashSet::insert`) and the live code did not, so a reality that crashed
+      # mid-provision could never be completed.
+      #
+      # No dedicated database to create: the test CREATEs and DROPs its own
+      # throwaway, whose name carries a `test` marker per CLAUDE.md's
+      # destructive-ops rule. It needs a MAINTENANCE DSN with CREATEDB, which is
+      # what `/postgres` is — never a data database.
+      #
+      # pg16 is sufficient here, checked rather than assumed: `contracts/migrations/
+      # per_reality/*.sql` uses no `uuidv7()`, which is the PG18 dependency that
+      # pins `domain-db-smoke` to `postgres:18-alpine`.
+      - name: cargo test provisioner re-entry live-smoke
+        env:
+          LOREWEAVE_TEST_PG_ADMIN_URL: postgres://foundation:foundation@localhost:5432/postgres?sslmode=disable
+        run: cargo test -p world-service --test provisioner_reentry_live
+
   secrets:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
