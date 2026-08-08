@@ -57,6 +57,13 @@ func TestMetaWorkerLiveSmoke_CanonFanoutToProjection(t *testing.T) {
 	rdb := openSQL(t, perRealityDSN)
 	mdb := openSQL(t, metaDSN)
 	mustApply(t, rdb, "contracts/migrations/per_reality/0002_events_table.up.sql")
+	// DP-Ch11/Ch13 — 0014 adds events.channel_id, which the publisher's pending-select
+	// reads. Without it this smoke dies on `select pending reality=…: column e.channel_id
+	// does not exist (SQLSTATE 42703)` before it ever reaches the fan-out it exists to
+	// test. The list below is hand-maintained, so a migration the publisher starts
+	// depending on does not arrive here by itself: 0014 landed 2026-07-27 and this test
+	// had been red since.
+	mustApply(t, rdb, "contracts/migrations/per_reality/0014_channel_ordering.up.sql")
 	mustApply(t, rdb, "contracts/migrations/per_reality/0005_events_outbox_table.up.sql")
 	mustApply(t, rdb, "contracts/migrations/per_reality/0009_canon_projection.up.sql")
 	mustApply(t, mdb, "migrations/meta/001_reality_registry.up.sql")

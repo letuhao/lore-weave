@@ -93,6 +93,20 @@ emitted=$(echo "$emitted" | grep -vE '^lw_reality_[0-9a-f]+$' | grep -vE '^lw_re
 violations=0
 for sym in $emitted; do
   if ! echo "$declared" | grep -qx "$sym"; then
+    # VERIFY BEFORE ACCUSING. The set above is built once, and under `--run-all` (8 gates
+    # in one tree) it has come back incomplete: three runs on one commit accused three
+    # different metrics — lw_embedding_queue_depth, lw_meta_outbox_retried_total,
+    # lw_meta_outbox_dead_lettered_total — each of which IS declared, while this lint
+    # passed locally on the same bytes. The root cause of the short read is not yet
+    # established, so rather than guess at it, re-read the file for THIS symbol before
+    # reporting. A finding then requires two independent reads to agree; a transient one
+    # says so instead of naming an innocent metric.
+    if grep -qE "^[[:space:]]*-[[:space:]]*name:[[:space:]]*\"?${sym}\"?[[:space:]]*$" "$inventory"; then
+      echo "[observability-inventory] WARN — $sym missing from the batch read but present on"
+      echo "  re-read. Treating as a TRANSIENT read, not a finding. If this recurs, the"
+      echo "  declared-set build (and whatever writes this tree concurrently) is the bug."
+      continue
+    fi
     echo "[observability-inventory] FAIL — $sym emitted from code but NOT declared in inventory.yaml"
     violations=$((violations + 1))
   fi
