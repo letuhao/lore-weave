@@ -90,6 +90,70 @@ impl BridgeClient {
         }
     }
 
+    /// Record the CURRENT finding set for a shard (W5-REMEDIATE).
+    ///
+    /// Whole-shard replace: the server upserts what is sent and deletes what is
+    /// not, so a cleared finding disappears. An EMPTY slice is meaningful — it
+    /// says the shard is clean — and is what clears the last stale row.
+    ///
+    /// Public because `orphan_scanner` is the caller; the two provisioning
+    /// methods beside it are private to `LiveEffects`.
+    pub async fn record_orphans(
+        &self,
+        shard_host: &str,
+        findings: &[crate::orphan_scan::Finding],
+        reason: &str,
+    ) -> Result<(u32, u32), ProvisionerError> {
+        let items: Vec<serde_json::Value> = findings
+            .iter()
+            .map(|f| {
+                let mut o = serde_json::json!({
+                    "db_name": f.db_name(),
+                    "finding_class": f.class(),
+                    "detail": f.detail(),
+                });
+                // Omitted entirely for an untracked database, so the server's
+                // "empty means no reality" rule is the ONE place that decides.
+                if let Some(rid) = f.reality_id() {
+                    o["reality_id"] = serde_json::Value::String(rid.to_string());
+                }
+                o
+            })
+            .collect();
+        let body = serde_json::json!({
+            "shard_host": shard_host,
+            "findings": items,
+            "reason": reason,
+        });
+        let resp = self
+            .http
+            .post(format!("{}/internal/provisioner/record-orphans", self.base_url))
+            .header("X-Service-Token", &self.token)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| ProvisionerError::Bridge(format!("record-orphans send: {e}")))?;
+        match resp.status().as_u16() {
+            200 => {
+                let v: serde_json::Value = resp
+                    .json()
+                    .await
+                    .map_err(|e| ProvisionerError::Bridge(format!("record-orphans body: {e}")))?;
+                Ok((
+                    v["recorded"].as_u64().unwrap_or(0) as u32,
+                    v["cleared"].as_u64().unwrap_or(0) as u32,
+                ))
+            }
+            401 => Err(ProvisionerError::Bridge(
+                "record-orphans: 401 unauthorized".into(),
+            )),
+            code => Err(ProvisionerError::Bridge(format!(
+                "record-orphans: unexpected {code}: {}",
+                resp.text().await.unwrap_or_default()
+            ))),
+        }
+    }
+
     async fn transition(
         &self,
         reality_id: Uuid,

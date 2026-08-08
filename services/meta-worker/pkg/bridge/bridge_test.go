@@ -16,11 +16,23 @@ type fakeReg struct {
 	transErr    error
 	newState    string
 	registers   int
+
+	orphanErr      error
+	orphanCalls    int
+	lastOrphanReq  RecordOrphansReq
+	orphanRecorded int
+	orphanCleared  int
 }
 
 func (f *fakeReg) Register(context.Context, RegisterReq) error { f.registers++; return f.registerErr }
 func (f *fakeReg) Transition(context.Context, TransitionReq) (string, error) {
 	return f.newState, f.transErr
+}
+
+func (f *fakeReg) RecordOrphans(_ context.Context, r RecordOrphansReq) (int, int, error) {
+	f.orphanCalls++
+	f.lastOrphanReq = r
+	return f.orphanRecorded, f.orphanCleared, f.orphanErr
 }
 
 type fakeAudit struct {

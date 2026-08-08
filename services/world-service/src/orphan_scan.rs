@@ -123,6 +123,39 @@ impl Finding {
         }
     }
 
+    /// The database this finding is about. EVERY class names one — it is the
+    /// only field common to all four, which is why the finding table is keyed
+    /// by `(shard_host, db_name)` rather than by reality.
+    pub fn db_name(&self) -> &str {
+        match self {
+            Finding::StalledProvision { db_name, .. }
+            | Finding::MissingDatabase { db_name, .. }
+            | Finding::UntrackedDatabase { db_name }
+            | Finding::DropEligible { db_name, .. } => db_name,
+        }
+    }
+
+    /// Operator-facing context for the finding. Human triage detail only —
+    /// never a second source of truth for anything the columns carry.
+    pub fn detail(&self) -> serde_json::Value {
+        match self {
+            Finding::StalledProvision { status, age_hours, database_present, .. } => {
+                serde_json::json!({
+                    "status": status,
+                    "age_hours": age_hours,
+                    "database_present": database_present,
+                })
+            }
+            Finding::MissingDatabase { status, .. } => serde_json::json!({ "status": status }),
+            Finding::UntrackedDatabase { .. } => serde_json::json!({
+                "note": "no registry row claims this database; capacity counts registry rows, so it is invisible to the planner",
+            }),
+            Finding::DropEligible { age_hours, .. } => serde_json::json!({
+                "age_hours": age_hours,
+            }),
+        }
+    }
+
     /// The reality this finding concerns, when one is known. An untracked
     /// database has none — that is precisely what is wrong with it.
     pub fn reality_id(&self) -> Option<Uuid> {

@@ -23,11 +23,20 @@
 //! function, unit-tested, so the decision rules are provable without a
 //! database. Emits one JSON object on stdout and a human summary on stderr.
 //!
-//! **It is READ-ONLY.** It writes nothing, drops nothing. Remediation needs a
-//! `reality_close_audit` write through the bridge, and the bridge exposes only
-//! `register-reality` and `transition` today — so `--remediate` REFUSES rather
-//! than silently doing nothing (R13 §12L.5: no raw destructive primitive, and
-//! never a no-op that reports success).
+//! **It RECORDS, it does not remediate.** With `--record` the findings are
+//! written to `orphan_scan_finding` (meta) through the bridge, so an operator
+//! gets a worklist that ages rather than a log line that scrolls away. It never
+//! drops a database or transitions a reality: reclaiming one is
+//! `admin reality force-close` / the deprovisioner, which are double-approval,
+//! typed-confirm commands for the reason R13 §12L.5 gives — no raw destructive
+//! primitive. `--remediate` therefore refuses with that explanation rather than
+//! quietly doing nothing.
+//!
+//! **`reality_close_audit` is NOT the sink**, though R13 §12L names it. Its
+//! `event_type` is a closed enum of six close-lifecycle values (no orphan class
+//! among them) and its `reality_id` is NOT NULL — which the untracked-database
+//! class, by definition, has none of. The design and that schema have disagreed
+//! since migration 005; see `038_orphan_scan_finding.up.sql`.
 //!
 //! ## Exit codes — designed for cron
 //!
@@ -45,6 +54,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use world_service::orphan_scan::{classify, Finding, RegistryRow, ScanThresholds};
+use world_service::provisioner_live::BridgeClient;
 
 /// 7-day grace period — must match `runbooks/provisioner/orphan_resolution.md`.
 pub const SOFT_DELETE_GRACE_DAYS: i64 = 7;
@@ -64,17 +74,22 @@ async fn main() -> ExitCode {
         print_usage();
         return ExitCode::SUCCESS;
     }
+    let record = args.iter().any(|a| a == "--record");
     if args.iter().any(|a| a == "--remediate") {
         eprintln!(
-            "[orphan_scanner] REFUSING: --remediate is not wired. Marking an orphan needs a \
-             reality_close_audit write through the meta bridge, which today exposes only \
-             register-reality and transition. This binary is read-only; it will not pretend \
-             to have remediated anything."
+            "[orphan_scanner] REFUSING: --remediate does not exist. This binary RECORDS findings \
+             (--record) so an operator can act on them; it never drops a database or transitions \
+             a reality. Reclaiming a reality is `admin reality force-close` / the deprovisioner, \
+             which are double-approval, typed-confirm commands for good reason (R13 §12L.5: no \
+             raw destructive primitive)."
         );
         return ExitCode::from(2);
     }
     if let Some(bad) = args.iter().find(|a| {
-        !matches!(a.as_str(), "--dry-run" | "--json" | "--help" | "-h" | "--remediate")
+        !matches!(
+            a.as_str(),
+            "--dry-run" | "--json" | "--help" | "-h" | "--remediate" | "--record"
+        )
     }) {
         eprintln!("[orphan_scanner] unknown flag {bad}");
         print_usage();
@@ -82,7 +97,7 @@ async fn main() -> ExitCode {
     }
     let json_only = args.iter().any(|a| a == "--json");
 
-    match run(json_only).await {
+    match run(json_only, record).await {
         Ok(code) => code,
         Err(e) => {
             eprintln!("[orphan_scanner] NOTRUN(setup): {e}");
@@ -91,7 +106,7 @@ async fn main() -> ExitCode {
     }
 }
 
-async fn run(json_only: bool) -> Result<ExitCode, String> {
+async fn run(json_only: bool, record: bool) -> Result<ExitCode, String> {
     let missing: Vec<&str> = REQUIRED_ENV
         .iter()
         .copied()
@@ -119,6 +134,28 @@ async fn run(json_only: bool) -> Result<ExitCode, String> {
     let findings = classify(&rows, &databases, thresholds);
 
     println!("{}", report_json(&shard_host, &rows, &databases, &findings));
+
+    // W5-REMEDIATE. RECORD, not remediate: the findings go into
+    // `orphan_scan_finding` (meta) so an operator has a worklist that ages.
+    // Every write goes through the bridge -- the meta-write-discipline lint
+    // forbids a service touching a meta table directly, which is what makes the
+    // same-TX audit invariant (I8) hold.
+    if record {
+        let url = std::env::var("ORPHAN_BRIDGE_URL").unwrap_or_default();
+        let token = std::env::var("ORPHAN_BRIDGE_TOKEN").unwrap_or_default();
+        if url.trim().is_empty() || token.trim().is_empty() {
+            return Err("--record needs ORPHAN_BRIDGE_URL and ORPHAN_BRIDGE_TOKEN \
+                        (no defaults: a default would post this shard's findings \
+                        at some other stack's meta database)"
+                .to_string());
+        }
+        let bridge = BridgeClient::new(url, token);
+        let (recorded, cleared) = bridge
+            .record_orphans(&shard_host, &findings, "orphan_scanner scheduled scan")
+            .await
+            .map_err(|e| format!("record findings: {e}"))?;
+        eprintln!("[orphan_scanner] recorded={recorded} cleared={cleared}");
+    }
 
     if !json_only {
         eprintln!(
@@ -248,13 +285,16 @@ fn print_usage() {
          USAGE:\n\
            orphan_scanner            # scan + report\n\
            orphan_scanner --json     # stdout JSON only (no stderr summary)\n\
-           orphan_scanner --dry-run  # accepted; the scanner is read-only regardless\n\
+           orphan_scanner --record   # ALSO write findings to orphan_scan_finding\n\
+           orphan_scanner --dry-run  # accepted; the scanner never remediates regardless\n\
            orphan_scanner --help\n\
          \n\
          ENV (required, no defaults):\n\
            ORPHAN_META_DSN           # the meta database\n\
            ORPHAN_SHARD_ADMIN_DSN    # the shard, to list pg_database\n\
            ORPHAN_SHARD_HOST         # logical shard name (default pg-shard-0.internal)\n\
+           ORPHAN_BRIDGE_URL         # meta bridge  -- required by --record\n\
+           ORPHAN_BRIDGE_TOKEN       # bridge token -- required by --record\n\
          \n\
          EXIT:\n\
            0  clean\n\

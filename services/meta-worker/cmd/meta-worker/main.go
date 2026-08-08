@@ -269,7 +269,7 @@ func buildBridge(cfg config, metaPool *pgxpool.Pool) (*http.Server, error) {
 		DB: metapg.New(metaPool), Allowlist: allow, Transitions: graph,
 		QueryBuilder: meta.PostgresQueryBuilder{}, Clock: sysClock{}, UUIDGen: randUUID{},
 	}
-	reg := bridge.MetaRegistrar{Cfg: mwCfg, Caller: bridge.WorldServiceActorID}
+	reg := bridge.MetaRegistrar{Cfg: mwCfg, Caller: bridge.WorldServiceActorID, Pool: metaPool}
 	audit := bridge.PgAuditSink{Pool: metaPool, Callee: "meta-worker"}
 	bsrv, err := bridge.New(reg, audit, cfg.BridgeToken, "world-service")
 	if err != nil {

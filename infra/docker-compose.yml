@@ -128,6 +128,38 @@ services:
   # Added 2026-08-08. It had no Dockerfile and appeared in no compose file, so
   # the provisioner's FIRST step could never run -- which is why zero realities
   # have ever existed in this stack.
+  # W5-CRON — something that actually runs the reality reaper.
+  #
+  # The row it closes reads "nothing schedules the scanner -- it is a binary
+  # nobody runs", and notes that a detector nobody invokes is the scaffold
+  # problem one level up. So this is a running container, not a schedule
+  # document.
+  #
+  # It RECORDS findings into orphan_scan_finding through the bridge; it never
+  # drops a database. Reclaiming a reality stays a double-approval admin
+  # command (R13 §12L.5).
+  orphan-scanner:
+    build:
+      context: ..
+      dockerfile: services/world-service/Dockerfile.orphan-scanner
+    image: loreweave/orphan-scanner:0.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      meta-bridge:
+        condition: service_healthy
+    environment:
+      ORPHAN_META_DSN: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_meta?sslmode=disable
+      ORPHAN_SHARD_ADMIN_DSN: postgres://loreweave:loreweave_dev@postgres:5432/postgres?sslmode=disable
+      ORPHAN_SHARD_HOST: pg-shard-0.internal
+      ORPHAN_BRIDGE_URL: http://meta-bridge:8090
+      ORPHAN_BRIDGE_TOKEN: ${METAWORKER_BRIDGE_TOKEN:-loreweave_local_dev_bridge_token}
+      # Hourly in dev. R04 §12D.7 specifies a NIGHTLY cron in production; an
+      # hour here means a developer who breaks a provision sees it the same
+      # session instead of the next day.
+      ORPHAN_SCAN_INTERVAL_SECONDS: "3600"
+    restart: unless-stopped
+
   meta-bridge:
     restart: unless-stopped
     build:

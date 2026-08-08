@@ -107,6 +107,15 @@ entries:
 
   # ── L1.A-3 §3.3 (cycle 4) — admin command audit; never outboxed (the
   # data write the command performs has its own meta_write_audit + outbox row)
+  # W5-REMEDIATE — orphan_scanner's current findings, as STATE not history.
+  # Upserted per scan and DELETEd when a finding clears, so it answers "what is
+  # wrong on this shard now". Never outboxed: an operator worklist is not a
+  # domain event, and emitting one per scan tick would be noise, not signal.
+  - table: orphan_scan_finding
+    owner: world-service (orphan_scanner, through the meta bridge)
+    notes: "W5 — detector output. reality_id is NULL exactly for an untracked database. Never outbox."
+    events: []
+
   - table: admin_action_audit
     owner: admin-cli (writer ships cycle 36)
     notes: "R13 §12L.3 — admin command-level audit. error_detail scrubbed via S08 §12X.5. Never outbox."

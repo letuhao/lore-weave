@@ -1,0 +1,58 @@
+# orphan_scanner — the reality reaper, packaged so something can actually run it.
+#
+# WHY THIS EXISTS RATHER THAN A CRON MANIFEST
+# -------------------------------------------
+# `scripts/archive-worker-cron.yaml` is the repo's precedent for scheduled work,
+# and it says of itself: *"Cycle 11 ships this as a contract document. The actual
+# scheduler binding lands alongside D-PUBLISHER-LIVE-WIRING."* That is a schedule
+# nothing reads — the same shape as the scanner that classified an empty set for
+# two months, and as a role nothing was required to use. `W5-CRON`'s own wording
+# is *"a detector nobody invokes is the scaffold problem one level up"*, so
+# shipping a second contract-document YAML would be the defect, not the fix.
+#
+# WHY NOT THE tilemap-service DOCKERFILE SHAPE
+# --------------------------------------------
+# That one caches dependency compilation by copying each member's Cargo.toml and
+# stubbing its sources. It works because tilemap has TWO workspace deps.
+# `world-service` has eight (meta-rs, rebuilder, dp-kernel, projections-canon,
+# …), each with their own, and a stub list that drifts from the manifest fails as
+# a confusing "could not find module" mid-build. Copying the workspace and
+# building once is slower and cannot drift. The trade is deliberate: this image
+# is rebuilt when the scanner changes, which is rarely.
+#
+# Build context is the REPO ROOT (the workspace Cargo.toml lives there):
+#   docker build -f services/world-service/Dockerfile.orphan-scanner -t loreweave/orphan-scanner .
+
+FROM rust:1.89-slim-bookworm AS builder
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends pkg-config libssl-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+COPY . .
+
+# One binary, not the whole crate: the scanner does not need the rebuilder, the
+# embedding worker, or the drills.
+RUN cargo build --release -p world-service --bin orphan_scanner
+
+FROM debian:bookworm-slim
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY --from=builder /build/target/release/orphan_scanner /app/orphan_scanner
+COPY services/world-service/scan-loop.sh /app/scan-loop.sh
+
+# Required at runtime; the binary refuses to start without them, by name.
+#   ORPHAN_META_DSN, ORPHAN_SHARD_ADMIN_DSN
+#   ORPHAN_BRIDGE_URL, ORPHAN_BRIDGE_TOKEN   (only when --record is used)
+#   ORPHAN_SHARD_HOST                        (default pg-shard-0.internal)
+#   ORPHAN_SCAN_INTERVAL_SECONDS             (default 3600)
+ENV ORPHAN_SCAN_INTERVAL_SECONDS=3600
+
+USER nobody:nogroup
+
+ENTRYPOINT ["/bin/sh", "/app/scan-loop.sh"]

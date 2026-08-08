@@ -77,7 +77,7 @@ func run() error {
 		QueryBuilder: meta.PostgresQueryBuilder{}, Clock: sysClock{}, UUIDGen: randUUID{},
 	}
 	bsrv, err := bridge.New(
-		bridge.MetaRegistrar{Cfg: cfg, Caller: bridge.WorldServiceActorID},
+		bridge.MetaRegistrar{Cfg: cfg, Caller: bridge.WorldServiceActorID, Pool: pool},
 		bridge.PgAuditSink{Pool: pool, Callee: "meta-worker"},
 		token, "world-service",
 	)

@@ -245,3 +245,9 @@ migrations:
     breaking: false
     dependencies: ["036_reality_ownership"]
     description: "meta — the nil UUID is not a valid reality owner"
+
+  - id: "038_orphan_scan_finding"
+    version: 38
+    breaking: false
+    dependencies: []
+    description: "meta — orphan_scanner findings as state (W5-REMEDIATE)"
