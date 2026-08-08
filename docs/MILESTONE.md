@@ -124,7 +124,7 @@
 | S4 | **Pre-manifest stub** — unstructured concept → structured input | — | 🔴 **undefined** | not a named artifact anywhere in the repo |
 | S5 | Manifest / ruleset — what the engine ingests | [LLM_MMO_RPG](03_planning/LLM_MMO_RPG/00_VISION.md) | 🟢 substantially built | `ruleset-core` 5.2k + `ruleset-loader` 3.9k lines; `load_reality()`; shipped `engine_default.toml` |
 | S6 | Engine — deterministic runtime | LLM_MMO_RPG | 🟢 substantially built | `dp-kernel` 15.1k · `world-gen` 30.8k · `sim-core` 2.5k · `actor-hub` 2.0k |
-| S7 | **Reality data** — the per-reality database | LLM_MMO_RPG | 🟡 schema built, **never instantiated** | 19 migrations + provisioner + capacity planner; **zero realities exist** |
+| S7 | **Reality data** — the per-reality database | LLM_MMO_RPG | 🟢 **FIRST REALITY PROVISIONED 2026-08-08** | end-to-end: registry row `active`, DB on `pg-shard-0.internal`, 13 tables, 15 in the migration ledger, `channels` live and `REC-106` holding. Meta DB + meta-bridge now in the stack. **No host process yet** — `world-service` has no server binary, so creation is still a drill. |
 | S8 | Reality request — the user-facing function | — | 🅿 parked | [spec](specs/2026-08-08-user-created-realities.md); a CREATE DATABASE feature, needs layered security |
 
 **Build order (PO, 2026-08-08): engine first.** You cannot give a user a manifest builder without
