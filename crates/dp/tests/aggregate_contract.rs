@@ -376,7 +376,7 @@ impl<'ast, 'a> Visit<'ast> for ImplCollector<'a> {
             }
 
             let seg = last_segment(&t.ty);
-            if !legal.iter().any(|l| *l == seg) {
+            if !legal.contains(&seg) {
                 self.push(
                     rule,
                     t.ident.span(),
