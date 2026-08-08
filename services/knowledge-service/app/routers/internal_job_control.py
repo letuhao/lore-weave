@@ -166,6 +166,17 @@ class JobControlResponse(BaseModel):
 
 
 @router.post("/{job_id}/{action}", response_model=JobControlResponse)
+async def _is_failed(jobs_repo, owner_user_id, job_id) -> bool:
+    """Is this job in the one state checkpoint-retry accepts?
+
+    A missing or unowned job answers False so the caller falls through to the normal
+    path, which already returns the correct 404 — deciding ownership in two places is
+    how the two answers drift apart.
+    """
+    job = await jobs_repo.get(owner_user_id, job_id)
+    return job is not None and job.status == "failed"
+
+
 async def control_extraction_job(
     job_id: UUID,
     action: str,
@@ -184,7 +195,15 @@ async def control_extraction_job(
     # D-JOBS-P4-RETRY-KNOWLEDGE — re-submit a failed extraction job. `resume`
     # carries the persisted cursor/items_processed checkpoint; `retry` starts
     # from the beginning so it can be used after changing parameters.
-    if action in ("retry", "resume"):
+    #
+    # `resume` is OVERLOADED, and the two meanings must be told apart by STATE, not by
+    # the verb: it has always meant "un-pause a paused job" (the native _ACTIONS path
+    # below, and the comment above), and checkpoint-retry claimed the same word. Routing
+    # every `resume` here made un-pausing a paused job fail with
+    # `JOBS_NOT_RETRYABLE: only a failed job can be retried (status='paused')` — the
+    # retry guard rejecting a request that was never a retry. Only a FAILED job takes the
+    # checkpoint path; anything else falls through to the lifecycle handling it wanted.
+    if action == "retry" or (action == "resume" and await _is_failed(jobs_repo, payload.owner_user_id, job_id)):
         return await _retry_extraction_job_core(
             job_id, payload.owner_user_id,
             jobs_repo, projects_repo, benchmark_repo, extraction_wake,
