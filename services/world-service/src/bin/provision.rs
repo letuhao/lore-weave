@@ -807,7 +807,19 @@ mod tests {
     fn a_malformed_owner_is_refused_not_ignored() {
         // Silently dropping an unparseable owner would record the reality as
         // platform-owned — the tenancy failure this column exists to prevent.
-        assert!(args(&["--reality-id", RID, "--reason", "r", "--owner-user-id", "nope"]).is_err());
+        //
+        // Asserts WHICH error, not merely that one occurred. `is_err()` alone
+        // could not distinguish this guard from the nil-UUID guard below it:
+        // degrading the parse to `unwrap_or(Uuid::nil())` yields a nil owner,
+        // the nil check then refuses it, and the test stays green while the
+        // guard it names is gone. The bite harness caught exactly that.
+        match args(&["--reality-id", RID, "--reason", "r", "--owner-user-id", "nope"]) {
+            Err(msg) => assert!(
+                msg.contains("--owner-user-id") && !msg.contains("nil UUID"),
+                "want a PARSE diagnosis, got: {msg}"
+            ),
+            Ok(_) => panic!("a malformed owner must be refused"),
+        }
     }
 
     // W7 — provisioning must not run as superuser.
