@@ -146,8 +146,10 @@ GO_BITES: list[tuple[str, Path, str, str, str]] = [
     (
         "an absent owner still sends the flag (an empty owner reaches the server)",
         PROVPG,
+        # INVERT rather than `if true`: the latter orphans the uuid import and
+        # the bite goes red on the build instead of the assertion.
         "if req.OwnerUserID != uuid.Nil {",
-        "if true {",
+        "if req.OwnerUserID == uuid.Nil {",
         "TestProvisionInvoker_NoOwnerSendsNoFlag",
     ),
     (
