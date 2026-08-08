@@ -119,6 +119,31 @@ services:
       - "1148:1025"
       - "8148:8025"
 
+  # ── META BRIDGE ──────────────────────────────────────────────────────────
+  # The Rust->Go meta-write bridge. `reality_registry` may only be written
+  # through Go MetaWrite so the `meta_write_audit` row lands in the SAME
+  # transaction (I8) -- world-service states it as a rule: "Rust cannot write
+  # reality_registry directly."
+  #
+  # Added 2026-08-08. It had no Dockerfile and appeared in no compose file, so
+  # the provisioner's FIRST step could never run -- which is why zero realities
+  # have ever existed in this stack.
+  meta-bridge:
+    restart: unless-stopped
+    build:
+      context: ..
+      dockerfile: services/meta-worker/Dockerfile.bridge
+      labels: *build-labels
+    environment:
+      META_DB_URL: postgres://loreweave:loreweave_dev@postgres:5432/loreweave_meta?sslmode=disable
+      METAWORKER_BRIDGE_TOKEN: ${METAWORKER_BRIDGE_TOKEN:-loreweave_local_dev_bridge_token}
+      METAWORKER_BRIDGE_ADDR: "0.0.0.0:8090"
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   auth-service:
     restart: unless-stopped
     # Phase 6c — repo-root build context so the Dockerfile can COPY
