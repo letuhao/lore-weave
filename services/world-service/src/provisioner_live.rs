@@ -298,15 +298,18 @@ mod manifest_tests {
             ids.contains(&"0019_channels".to_string()),
             "0019_channels must be registered or a provisioned reality has no `channels` table"
         );
-        // `0008` requires pgvector, which `postgres:18-alpine` does not provide;
-        // registering it killed provisioning at migration 8 of 15 (`1b14-05`).
-        // Asserted here as well as in the gate, because THIS is the code that
-        // would die.
+        // `0008` requires pgvector. It was briefly UNregistered (`1b14-05`,
+        // because `postgres:18-alpine` has none and the provisioner therefore
+        // died at migration 8 of 15), and this assertion was its inverse. The
+        // image now builds pgvector from source against its own `pg_config`
+        // (`infra/postgres-pgvector.Dockerfile`), so the assertion flips: the
+        // thing to guard is that a migration needing an extension does not get
+        // registered while the image cannot supply it.
         assert!(
-            !ids.contains(&"0008_pgvector_setup".to_string()),
-            "0008_pgvector_setup is registered again — the provisioner will die on every new \
-             reality unless the image now provides pgvector, in which case delete this assertion \
-             and the UNREGISTERED row together"
+            ids.contains(&"0008_pgvector_setup".to_string()),
+            "0008_pgvector_setup is registered nowhere — if the image lost pgvector, unregister it \
+             in the manifest AND add its UNREGISTERED row back, rather than leaving the \
+             provisioner to die on every new reality"
         );
     }
 }

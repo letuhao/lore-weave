@@ -15,7 +15,22 @@ x-build-labels: &build-labels
 services:
   postgres:
     restart: unless-stopped
-    image: postgres:18-alpine
+    # Postgres 18 + pgvector, built from THIS image's own pg_config.
+    #
+    # Was `postgres:18-alpine`, which has no pgvector — so `0008_pgvector_setup`
+    # could not apply, and once the provisioner began applying the whole manifest
+    # it died at migration 8 of 15 on every new reality (`1b14-05`).
+    #
+    # NOT `pgvector/pgvector:pg18`, which is Debian/glibc: this data directory is
+    # a persistent volume holding 139 databases created by a MUSL build, and
+    # Postgres resolves text collation through libc. Swapping the libc under an
+    # existing PGDATA changes the sort order behind every text index without
+    # changing the data — indexes stop matching and raise nothing. See
+    # `postgres-pgvector.Dockerfile` for why the Alpine package is not it either.
+    build:
+      context: .
+      dockerfile: postgres-pgvector.Dockerfile
+    image: loreweave/postgres-pgvector:18
     environment:
       POSTGRES_USER: loreweave
       POSTGRES_PASSWORD: loreweave_dev

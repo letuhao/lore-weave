@@ -24,7 +24,8 @@ Two different properties wear the word *idempotent*, and only one of them is rea
   migration N and retries N. Applying N twice in a row must succeed. This is what
   `scripts/migration-idempotency-validator.sh` checks textually, and it is
   checked here by BEHAVIOUR: apply each file, immediately apply it again.
-  **Measured 2026-08-08: 18 of 18 applicable migrations retry cleanly.**
+  **Measured 2026-08-08: 19 of 19 migrations retry cleanly** (18 before the
+  image gained pgvector -- `0008` could not apply at all, and was skipped).
 
   **WHOLE-HISTORY REPLAY (not real, and not a defect).** Re-running the entire
   `0001..0019` sequence against a database that has already had all of it. This
@@ -40,7 +41,10 @@ Two different properties wear the word *idempotent*, and only one of them is rea
 `0008_pgvector_setup` is skipped when the `vector` extension is unavailable in
 the container. That is an environment fact, reported rather than swallowed: the
 run says so, and the count it prints excludes it rather than counting it as a
-pass.
+pass. **It no longer skips**: the stack image builds pgvector from source
+against its own `pg_config` (`infra/postgres-pgvector.Dockerfile`). The skip
+path is kept, because the honest report of an absent extension is exactly what
+surfaced `1b14-05` -- a migration the provisioner would die on.
 
 Run:  python scripts/dp-migration-chain-smoke.py
       (add --keep to leave the throwaway database in place)

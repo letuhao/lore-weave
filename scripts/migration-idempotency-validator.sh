@@ -22,7 +22,8 @@
 #   RETRY-SAFETY (real, and what this checks a proxy for) -- a runner dies half
 #   way through migration N and retries N. Applying N twice in a row must work.
 #   `scripts/dp-migration-chain-smoke.py` checks this by BEHAVIOUR against a live
-#   Postgres, and measured 18 of 18 applicable migrations clean.
+#   Postgres, and measured 19 of 19 migrations clean (18 before the image
+#   gained pgvector, when 0008 could not apply and was skipped).
 #
 #   WHOLE-HISTORY REPLAY (not real, and NOT a defect) -- re-running all of
 #   0001..NNNN against a database that already has them. This FAILS on

@@ -1789,6 +1789,34 @@ string literal and silently stops normalising it**, which is how the gate's firs
 case difference as a schema disagreement. It had been reading whole documents rather than their SQL
 fences. Fixed, and bitten at all three call sites — each reverted, each turns the self-test red.
 
+### `1b.16` — **`1b14-05` fixed at the source: the stack image now has pgvector**
+
+`1b14-05` was closed by *unregistering* `0008_pgvector_setup` — correct as damage control, wrong as an
+ending: it left new realities without vector search and put the gap in a register. **PO: fix the
+image.** Done, and the interesting part is the option that was NOT taken.
+
+| option | why not |
+|---|---|
+| `pgvector/pgvector:pg18` | 🔴 **Debian/glibc.** The running server is `PostgreSQL 18.1 on x86_64-pc-linux-**musl**` and its `PGDATA` is a persistent volume holding **142 databases / 9.3 GB**. Postgres resolves text collation through libc, so putting a glibc build on a musl-created data directory changes the sort order behind every text index **without changing the data** — the indexes stop matching and raise nothing. That is a reindex of 142 databases to avoid a corruption class that is hard to notice and harder to attribute. |
+| `apk add postgresql-pgvector` | 🟠 Alpine does package it (0.8.1-r0) — into `/usr/lib/postgresql18/`. This image's server reports `pg_config --pkglibdir = /usr/local/lib/postgresql`, because the official images build Postgres from source into `/usr/local` rather than using Alpine's package. The extension would land where the server never looks, and it is compiled against a different Postgres build — a second, quieter ABI risk. **Both paths were measured before choosing**, not reasoned about. |
+| **build pgvector from source in-image** | ✅ Against the image's own `pg_config`, so the ABI matches by construction and the files land where the server already looks. Same base, same libc, same data directory semantics. The only change is that `CREATE EXTENSION vector` works. |
+
+`infra/postgres-pgvector.Dockerfile` + `docker-compose.yml` now builds it.
+**Verified before touching the running stack** (isolated container, fresh volume): still
+`x86_64-pc-linux-musl`, `vector 0.8.1` available, a real `<->` distance query correct. **Verified
+after recreating it**: 142 databases, 344 users, 394 books — identical to the snapshot taken before.
+
+⚠ **And a finding that fell out of testing it: `0008`'s subject no longer exists.** It does
+`CREATE EXTENSION vector` and then ALTERs `npc_session_memory_embedding.embedding` — a table
+**`0017` DROPPED**, in the same no-producer sweep that removed the `pc_*`/`npc_*` projections. Its
+`DO` block now finds no column, raises a `NOTICE` and returns, and **after the full chain no vector
+column survives anywhere**. It is kept because the extension is a real capability the tier is
+specified against, not because the `ALTER` still has work to do — and that is written into its
+manifest entry so the next reader does not have to measure it again.
+
+`0008` re-registered, its `UNREGISTERED` row deleted (the gate's shrink rule would have red otherwise),
+and the chain smoke now reports **19 of 19 applied AND retried, no skip**.
+
 ### `1b.14` — **a fourth refuter, and TWO of the findings were regressions I had just introduced**
 
 Briefed to give a final CLEAR/BLOCK on the whole slice and told that a false BLOCK costs as much as a
