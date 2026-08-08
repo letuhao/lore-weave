@@ -6,6 +6,12 @@ LoreWeave is a multi-agent platform for multilingual novel workflows (translatio
 
 Source of truth for current status: `docs/sessions/SESSION_HANDOFF.md`
 
+**📍 Where the work stands, project-wide: [`docs/MILESTONE.md`](docs/MILESTONE.md)** — the progress
+SSOT, and it carries the **BOOK → REALITY build index** for the game tier (what state each stage is
+in, what blocks what). It declares that CLAUDE.md and README derive from it, and until 2026-08-08
+nothing here pointed at it — so it went 2.5 months stale while the game tier was actively built.
+Read it before assuming a track is dormant.
+
 ---
 
 ## Architecture

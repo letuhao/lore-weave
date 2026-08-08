@@ -3,7 +3,7 @@
 > **Single Source of Truth** for project progress.
 > CLAUDE.md and README.md derive from here — update this file first.
 >
-> Last updated: 2026-05-24 (session 67)
+> Last updated: 2026-08-08 — game-tier build index added (§ Phase 6+)
 
 ---
 
@@ -99,7 +99,45 @@
 | Phase 3 — QA Extraction (grounded Q&A) | P3 | After RAG quality baseline validated |
 | Phase 4 — Continuation & Canon Safety | P4 | Canon-aware AI drafting |
 | Phase 5 — Hardening & Scale | P5 | Multi-tenancy, SRE, cloud readiness |
-| Phase 6+ — Living Worlds | P6+ | LLM MMO RPG; design track locked, gated on novel platform maturity |
+| Phase 6+ — Living Worlds | P6+ | **IN BUILD** — see the build index below. The old note ("design track locked, gated on novel platform maturity") was true until ~2026-06 and is no longer: the engine is ~60k lines. |
+
+---
+
+## Phase 6+ — Living Worlds: the BOOK → REALITY build index
+
+> **Added 2026-08-08. This table is the build index for the game tier** — what state each part is
+> in and what blocks what. It is deliberately an INDEX, not a design: detail lives in the track
+> docs, and the live working state is
+> [`docs/plans/2026-08-06-game-tier-build-RUN-STATE.md`](plans/2026-08-06-game-tier-build-RUN-STATE.md).
+>
+> The chain: **`book → lore bible → pre-manifest stub → manifest → reality`**
+> Full stage-by-stage measurement:
+> [`docs/specs/2026-08-08-book-to-reality-pipeline-index.md`](specs/2026-08-08-book-to-reality-pipeline-index.md)
+
+**The shape of it: the two ends are built and the middle is not.**
+
+| # | stage | track | state | note |
+|---|---|---|---|---|
+| S1 | Book — source text | LoreWeave | ✅ built | `loreweave_book` 584 MB / 394 books |
+| S2 | Glossary / KG — authored lore SSOT | LoreWeave | ✅ built | `loreweave_glossary` 1847 MB, largest DB in the stack |
+| S3 | **Lore bible** — the authored game concept | [BOOK_TO_GAME](03_planning/BOOK_TO_GAME/_index.md) | 🟡 design only | 17 docs, **zero code** |
+| S4 | **Pre-manifest stub** — unstructured concept → structured input | — | 🔴 **undefined** | not a named artifact anywhere in the repo |
+| S5 | Manifest / ruleset — what the engine ingests | [LLM_MMO_RPG](03_planning/LLM_MMO_RPG/00_VISION.md) | 🟢 substantially built | `ruleset-core` 5.2k + `ruleset-loader` 3.9k lines; `load_reality()`; shipped `engine_default.toml` |
+| S6 | Engine — deterministic runtime | LLM_MMO_RPG | 🟢 substantially built | `dp-kernel` 15.1k · `world-gen` 30.8k · `sim-core` 2.5k · `actor-hub` 2.0k |
+| S7 | **Reality data** — the per-reality database | LLM_MMO_RPG | 🟡 schema built, **never instantiated** | 19 migrations + provisioner + capacity planner; **zero realities exist** |
+| S8 | Reality request — the user-facing function | — | 🅿 parked | [spec](specs/2026-08-08-user-created-realities.md); a CREATE DATABASE feature, needs layered security |
+
+**Build order (PO, 2026-08-08): engine first.** You cannot give a user a manifest builder without
+knowing what the engine supports — every field a builder offers is a promise the engine must keep
+(`AUTHOR-1`, `LIM-1`). `engine_default.toml` is the engine's own declaration of that surface.
+
+**Open gaps:** `G-S3` lore bible has no schema/producer · `G-S4` pre-manifest stub undefined ·
+`G-S5a` engine's authorable surface not enumerated for authors · `G-S7a` zero realities ever ·
+`G-S7b` **the meta database does not exist** and `migrations/meta/` is a second migration tree with
+no manifest or gate · `G-S8a` `reality_registry` has no owner · `G-S8b` `loreweave` is the sole
+Postgres login role and is superuser.
+
+---
 
 ## Deferred (tracked)
 
