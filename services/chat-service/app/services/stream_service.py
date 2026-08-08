@@ -17,6 +17,7 @@ import json
 from collections import Counter
 import logging
 import re
+import time as _time  # CP-0.3 — dispatch latency; was a function-local import in _emit_chat_turn
 from dataclasses import dataclass
 from typing import AsyncGenerator
 from uuid import UUID, uuid4
@@ -46,6 +47,7 @@ from app.services.canon_capture import CaptureContext, maybe_capture_canon, pers
 from app.services.context_autodetect import resolve_context_pressure
 from app.services.entity_presence import EntityPresence, detect_entity_presence
 from app.services.injection_defense import neutralize_injection
+from app.services import instrument
 from app.services.reasoning_loop_detector import ReasoningLoopDetector
 from app.config import settings
 from app.db.suspended_runs import (
@@ -1321,6 +1323,29 @@ def _advertise_discovery_tools(
     PlanForge ``plan_*`` server tools (plan artifacts, never prose).
     """
     restricted = permission_mode in ("ask", "plan")
+    # 🔴 CP-2.7 — THE ROUTE, AND IT IS A `return` RATHER THAN A MERGE.
+    #
+    # This function is the single ADVERTISE chokepoint for the discovery path, with three callers,
+    # which is why the branch is here and nowhere else: one edit covers every path a turn can take
+    # to the wire. On the new arm the advertised set comes from the manifest and from NOTHING
+    # else — not the always-on core, not `find_tools`, not `extra_frontend`.
+    #
+    # A merge would be the membrane leaking through its own route on day one, and it would make
+    # CP-2.7's item B (*no legacy declaration is reachable, by any route*) unmeasurable in exactly
+    # the place it most needs measuring. ARCHITECTURE §3: "old declarations are not hidden, they
+    # are ABSENT".
+    #
+    # Every argument above is deliberately unused on this branch. That is not an oversight to tidy
+    # up later: `catalog_index` IS the legacy catalog, and a branch that reads it — even to check
+    # something — is the code path §3 forbids. The membrane gate cannot see this file, so the
+    # separation rests on this `return` being first.
+    if settings.agentruntime_arm:
+        from app.agentruntime.manifest import load as _agentruntime_load
+        from app.agentruntime.serve import advertise as _agentruntime_advertise
+
+        payload, _surface = _agentruntime_advertise(_agentruntime_load(), pass_number=1)
+        return payload
+
     plan = permission_mode == "plan"
     out: list[dict] = []
     seen: set[str] = set()
@@ -1386,10 +1411,32 @@ def _advertise_discovery_tools(
         if name in suppress_names:
             continue
         td = catalog_index.get(name)
+        if td is None:
+            # P1 residual — TWO unregistered narrowings lived in these four lines, and they are the
+            # last frame of a defect that has now occupied six.
+            #
+            # This one: a name in the ACTIVE SET with no catalog entry. `_add(None)` returns at its
+            # first line, so the tool leaves the wire without a word — and it is downstream of
+            # domain selection, so `domain_not_selected` never sees it either. That is exactly the
+            # shape V-LIVE measured: four glossary tools, the SAME four in both runs, in a domain
+            # that WAS selected, in neither bucket. Deterministic, because a catalog miss is a
+            # property of the catalog rather than of the query.
+            instrument.record_surface_withheld(
+                name, stage="catalog_miss",
+                reason="in the active set but absent from this turn's catalog index",
+            )
+            continue
         if (
-            restricted and td is not None and tool_tier(td) != "R"
+            restricted and tool_tier(td) != "R"
             and not (plan and _is_plan_tool(name))
         ):
+            # And this one: ask/plan mode drops every non-tier-R tool here, silently. The
+            # permission-mode registration at the advertise chokepoint covers the OTHER branch
+            # only, so on a discovery surface this narrowing registered nowhere.
+            instrument.record_surface_withheld(
+                name, stage="permission_tier",
+                reason=f"tier {tool_tier(td)!r} not offered in restricted mode",
+            )
             continue
         _add(td)
     return out
@@ -1923,6 +1970,13 @@ async def _stream_with_tools(
         # per-turn total so a repeat switches to auto-load+steer and a persistent spammer gets
         # tool_list de-advertised (suppress_tool_list is read at the advertise chokepoint below).
         listed_categories: dict[str, int] = {}
+        # CP-0.2 — drops made by the TOKEN BUDGETER, accumulated here and flushed into the next
+        # `advertised` chunk. This is the narrowing the column was built for and the one it first
+        # shipped without: the other stages (oneshot, rail gate, failure breaker, permission mode)
+        # decide at advertise time and were easy to catch there, while the budgeter decides at
+        # ACTIVATION time — a different moment, several call sites away — so instrumenting the
+        # advertise chokepoint alone captured every narrowing except the one that founded this work.
+        _budget_withheld: list[dict] = []
         tool_list_total = 0
         suppress_tool_list = False
         # ── P-1 step-runner state (Track C) ──────────────────────────────────────
@@ -2140,6 +2194,89 @@ async def _stream_with_tools(
                 # every mode (the nested run is clamped read-only, so it's safe).
                 if subagent_tool is not None and subagent_depth == 0:
                     advertised = list(advertised) + [subagent_tool]
+                # ── CP-0.1 / CP-0.2 · THE INSTRUMENT, at the one chokepoint every pass goes through ──
+                # Emitted on EVERY pass, deliberately unlike the `schema_tokens` chunk above, which
+                # reports once per turn (`schema_tokens_reported`). Once-per-turn is precisely the
+                # shape that cannot see the defect this exists for: the tool is present on pass 1 and
+                # gone on pass 2, so a single sample — whichever pass it lands on — shows a set that
+                # looks entirely unremarkable. The difference between passes IS the finding.
+                #
+                # Emitted for a tool-FREE pass too (`names: []`). "The model was offered nothing" and
+                # "the model was never asked" are different facts, and only one of them is a defect.
+                _adv_names: list[str] = []
+                for _td in (advertised or []):
+                    _fn = _td.get("function") if isinstance(_td, dict) else None
+                    _nm = _fn.get("name") if isinstance(_fn, dict) else None
+                    if _nm:
+                        _adv_names.append(_nm)
+                # Every narrowing that ran on this pass registers with WHO decided and WHY. An
+                # exclusion with no {tool, stage, reason} is a defect, not a policy (§0.3) — and
+                # each stage below is a real suppression already happening today, unrecorded.
+                _withheld_now: list[dict] = []
+                if discovery:
+                    if _oneshot_mode == "existence":
+                        _withheld_now += [
+                            {"tool": t, "stage": "oneshot_existence",
+                             "reason": "target resource already exists in this turn's context"}
+                            for t in sorted(_suppress) if t in ONESHOT_CREATE_TOOLS
+                        ]
+                    elif _oneshot_mode in ("per_turn", "session"):
+                        _withheld_now += [
+                            {"tool": t, "stage": f"oneshot_{_oneshot_mode}",
+                             "reason": "one-shot create already succeeded this turn"}
+                            for t in sorted(oneshot_suppress)
+                        ]
+                    if _rail_gate_mode != "off" and rail_progress:
+                        _withheld_now += [
+                            {"tool": t, "stage": "rail_gate",
+                             "reason": f"rail step already satisfied (mode={_rail_gate_mode})"}
+                            for t in sorted(_rail_suppress) if _rail_suppress
+                        ]
+                    if failure_suppress:
+                        _withheld_now += [
+                            {"tool": t, "stage": "failure_breaker",
+                             "reason": "repeated-failure breaker gave up on this tool"}
+                            for t in sorted(failure_suppress)
+                        ]
+                    if suppress_tool_list:
+                        _withheld_now.append({
+                            "tool": TOOL_LIST_NAME, "stage": "suppress_tool_list",
+                            "reason": "discovery de-advertised for this surface",
+                        })
+                # CP-0.2 — the token budgeter's drops, accumulated at ACTIVATION time and flushed
+                # here. Outside the `if discovery:` block on purpose: the budgeter runs on the
+                # activation path regardless of which advertise branch this pass takes, and gating
+                # it on `discovery` would silently drop the narrowing again on every other surface.
+                # Drained, not copied, so a drop registers against the pass that caused it.
+                if _budget_withheld:
+                    _withheld_now += _budget_withheld
+                    _budget_withheld = []
+                if permission_mode in ("ask", "plan") and not discovery:
+                    _filtered_out = sorted(
+                        {
+                            _f.get("name")
+                            for _t in (tools or [])
+                            if isinstance(_f := _t.get("function"), dict) and _f.get("name")
+                        }
+                        - set(_adv_names)
+                    )
+                    _withheld_now += [
+                        {"tool": t, "stage": f"permission_mode_{permission_mode}",
+                         "reason": f"write tool not offered in '{permission_mode}' mode"}
+                        for t in _filtered_out
+                    ]
+                # Held, not yielded yet: the existing `schema_tokens` chunk must stay the FIRST
+                # side-channel chunk of a tool-bearing turn (test_first_pass_reports_split_schema_
+                # tokens asserts that position). An instrument that reorders the stream it observes
+                # has changed the thing it measures, so this one waits its turn.
+                _adv_ev_pending = {
+                    "names": _adv_names,
+                    "tool_choice": "auto" if advertised else None,
+                    "withheld": _withheld_now,
+                }
+                if not advertised:
+                    # A tool-free pass has no schema_tokens chunk to follow, so it emits here.
+                    yield {"advertised": _adv_ev_pending}
                 if advertised:
                     request_kwargs["tools"] = advertised
                     request_kwargs["tool_choice"] = "auto"
@@ -2166,6 +2303,10 @@ async def _stream_with_tools(
                             "frontend_tool_schemas": _fe_tok,
                             "mcp_tool_schemas": _mcp_tok,
                         }}
+                    # CP-0.1/0.2 — now, after schema_tokens has kept its first-chunk position. Every
+                    # pass emits one, which is the whole point: the once-per-turn `schema_tokens`
+                    # above cannot see a surface that CHANGES between passes.
+                    yield {"advertised": _adv_ev_pending}
                     # W6 — advertised-surface snapshot at the SAME chokepoint:
                     # split the advertised names core/frontend/activated, group
                     # by owning MCP server, and reuse the W1 token measurement
@@ -2216,6 +2357,28 @@ async def _stream_with_tools(
                     # Ask mode filtered everything out — run the pass tool-free
                     # (an empty tools array 400s on some providers).
                     offered_tools = False
+            # CP-0.1 — a pass that offers NO tools is still a pass, and it was recording nothing.
+            # The advertise chunk lives inside `if offered_tools:`, so the three ways a pass can run
+            # tool-free — the D7 forced-final answer, a provider that rejected tools (D8), and ask
+            # mode filtering everything out — left a hole in the per-pass array exactly where the
+            # surface CHANGED most sharply. The pass count then under-reports, and a tool present on
+            # pass 1 and absent on a tool-free pass 2 reads as "still offered", which is the
+            # opposite of the truth and the same failure mode as a scalar column.
+            if not offered_tools:
+                yield {"advertised": {
+                    "names": [],
+                    "tool_choice": None,
+                    # 🔴 THIS MINTED `tool: "*"` — the sentinel §0.14.3 rejects BY NAME, two
+                    # thousand lines from the document forbidding it. A pass offering no tools is a
+                    # statement about the PASS, so it carries a scope and no tool, exactly like a
+                    # catalogue outage. A sentinel makes every consumer that counts tools return a
+                    # wrong answer while still looking correct.
+                    "withheld": [{
+                        "scope": instrument.SCOPE_PASS, "stage": "pass_offered_no_tools",
+                        "reason": ("forced final answer (D7)" if last_iter
+                                   else "provider rejected tools (D8) or ask-mode filtered all"),
+                    }],
+                }}
             # M3 — one observability/cancel job id PER pass (each pass is a
             # separate gateway stream; the active pass is what a disconnect aborts).
             stream_job_id = str(uuid4())
@@ -2808,17 +2971,27 @@ async def _stream_with_tools(
                     if listed_categories.get(_norm_cat, 0) >= TOOL_LIST_CATEGORY_CAP:
                         from app.services.tool_surface import (
                             HOT_SEED_TOKEN_BUDGET,
-                            budget_names_by_tokens,
+                            budget_names_by_tokens_ex,
                             merge_activated_tools,
                         )
                         _load_payload, loaded = tool_load_result(
                             discovery_catalog or [], category=_norm_cat,
                             unavailable_providers=provider_availability(
-                                knowledge_client.get_catalog_meta()),
+                                knowledge_client.get_catalog_meta(user_id)),
                         )
-                        names_to_activate = budget_names_by_tokens(
+                        names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                             discovery_catalog or [], loaded,
                             token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                        # CP-0.2 — register what the budget deleted. Arm E: the budgeter
+                        # dropped the one tool the model needed and returned only the
+                        # survivors, so the tool left the surface and the record at the same
+                        # instant. `find_tools` is cited as the backstop, which is exactly
+                        # why it must be recorded: a backstop nobody can see fire is a claim.
+                        _budget_withheld.extend(
+                            {"tool": _n, "stage": "token_budget",
+                             "reason": "did not fit the activation token budget"}
+                            for _n in _dropped_by_budget
                         )
                         active_tool_names.update(names_to_activate)
                         if curated and activation_state is not None:
@@ -2884,7 +3057,7 @@ async def _stream_with_tools(
                         include_deprecated=include_deprecated,
                         exclude=set(ALWAYS_ON_CORE_NAMES),
                         unavailable_providers=provider_availability(
-                            knowledge_client.get_catalog_meta()),
+                            knowledge_client.get_catalog_meta(user_id)),
                     )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
@@ -2911,20 +3084,30 @@ async def _stream_with_tools(
                         discovery_catalog or [],
                         name=_load_name, names=_load_names, category=_load_category,
                         unavailable_providers=provider_availability(
-                            knowledge_client.get_catalog_meta()),
+                            knowledge_client.get_catalog_meta(user_id)),
                     )
                     from app.services.tool_surface import (
                         HOT_SEED_TOKEN_BUDGET,
-                        budget_names_by_tokens,
+                        budget_names_by_tokens_ex,
                     )
                     # review-impl #1 (WS-1a): tool_load returns FULL schemas — unlike find_tools
                     # (names only). A tool_load(category="all"/big) would re-inject the exact
                     # catalog bloat the discovery layer exists to prevent. Bound the RETURNED
                     # schemas (not just activation) by the same token ceiling the hot-seed uses;
                     # a single-/few-name load always fits, only a large category truncates.
-                    names_to_activate = budget_names_by_tokens(
+                    names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                         discovery_catalog or [], loaded,
                         token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                    )
+                    # CP-0.2 — register what the budget deleted. Arm E: the budgeter
+                    # dropped the one tool the model needed and returned only the
+                    # survivors, so the tool left the surface and the record at the same
+                    # instant. `find_tools` is cited as the backstop, which is exactly
+                    # why it must be recorded: a backstop nobody can see fire is a claim.
+                    _budget_withheld.extend(
+                        {"tool": _n, "stage": "token_budget",
+                         "reason": "did not fit the activation token budget"}
+                        for _n in _dropped_by_budget
                     )
                     if len(names_to_activate) < len(loaded):
                         _keep = set(names_to_activate)
@@ -3011,12 +3194,22 @@ async def _stream_with_tools(
                     if step_tools and discovery:
                         from app.services.tool_surface import (
                             HOT_SEED_TOKEN_BUDGET,
-                            budget_names_by_tokens,
+                            budget_names_by_tokens_ex,
                             merge_activated_tools,
                         )
-                        names_to_activate = budget_names_by_tokens(
+                        names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                             discovery_catalog or [], step_tools,
                             token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                        # CP-0.2 — register what the budget deleted. Arm E: the budgeter
+                        # dropped the one tool the model needed and returned only the
+                        # survivors, so the tool left the surface and the record at the same
+                        # instant. `find_tools` is cited as the backstop, which is exactly
+                        # why it must be recorded: a backstop nobody can see fire is a claim.
+                        _budget_withheld.extend(
+                            {"tool": _n, "stage": "token_budget",
+                             "reason": "did not fit the activation token budget"}
+                            for _n in _dropped_by_budget
                         )
                         active_tool_names.update(names_to_activate)
                         # Persist the step tools REGARDLESS of curated mode. A workflow is an
@@ -3158,7 +3351,7 @@ async def _stream_with_tools(
                     payload, matched = await find_tools_result_async(
                         discovery_catalog or [], intent, limit,
                         exclude=set(ALWAYS_ON_CORE_NAMES),
-                        catalog_meta=knowledge_client.get_catalog_meta(),
+                        catalog_meta=knowledge_client.get_catalog_meta(user_id),
                         group=group,
                         session_id=session_id,
                         user_id=user_id,
@@ -3181,11 +3374,21 @@ async def _stream_with_tools(
                     if payload.get("enumerated"):
                         from app.services.tool_surface import (
                             HOT_SEED_TOKEN_BUDGET,
-                            budget_names_by_tokens,
+                            budget_names_by_tokens_ex,
                         )
-                        names_to_activate = budget_names_by_tokens(
+                        names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                             discovery_catalog or [], matched,
                             token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
+                        )
+                        # CP-0.2 — register what the budget deleted. Arm E: the budgeter
+                        # dropped the one tool the model needed and returned only the
+                        # survivors, so the tool left the surface and the record at the same
+                        # instant. `find_tools` is cited as the backstop, which is exactly
+                        # why it must be recorded: a backstop nobody can see fire is a claim.
+                        _budget_withheld.extend(
+                            {"tool": _n, "stage": "token_budget",
+                             "reason": "did not fit the activation token budget"}
+                            for _n in _dropped_by_budget
                         )
                     else:
                         names_to_activate = set(matched)
@@ -3328,6 +3531,10 @@ async def _stream_with_tools(
                             "tools_used": payload.get("tools_used", []),
                             "undo": {"available": False},
                         }
+                    # CP-0.3 — a subagent run IS a real execution (it dispatched tools of its own),
+                    # so it is `tool`, not `meta`. `meta` is reserved for the runtime answering out
+                    # of its own catalog without anything running.
+                    instrument.stamp_tool_call(tool_chunk, source=instrument.SOURCE_TOOL)
                     yield {"tool_call": tool_chunk}
                     continue
 
@@ -4287,6 +4494,12 @@ async def _stream_with_tools(
                 # frontend tool, which suspends for the human gate.
                 # T4c: on an admin surface, pass the RS256 admin token so
                 # glossary_admin_* route to /mcp/admin (no X-User-Id; INV-T2).
+                # CP-0.3 — the ONE call in this file where a tool genuinely executes. `source='tool'`
+                # is defined by having passed through here, not by inspecting the result: that is
+                # what makes the "our prose vs a real tool" split exact rather than a text match
+                # over breaker phrasing (the earlier attempt at that produced a lower bound which
+                # then got reported as a population count).
+                _dispatch_t0 = _time.monotonic()
                 envelope = await knowledge_client.mcp_execute_tool(
                     user_id=user_id, session_id=session_id, project_id=project_id,
                     # Studio context binding — forward the turn's ambient book so book-scoped
@@ -4295,6 +4508,7 @@ async def _stream_with_tools(
                     tool_name=c["name"], tool_args=args_obj,
                     admin_token=admin_token,
                 )
+                _dispatch_ms = int((_time.monotonic() - _dispatch_t0) * 1000)
                 # ext-tasks (T1c(3)) — a capability-gated domain tool opened a durable
                 # human gate (returned a task HANDLE, surfaced by mcp_execute_tool as
                 # envelope["task"]). Suspend exactly like a frontend tool, but mark it a
@@ -4502,6 +4716,11 @@ async def _stream_with_tools(
                                 if undo else {"available": False}
                             ),
                         }
+                # CP-0.3 — latency is the DISPATCH duration, not the branch's wall time: the gap
+                # between them is our own overhead, and folding it in would flatter the tool.
+                instrument.stamp_tool_call(
+                    tool_chunk, source=instrument.SOURCE_TOOL, latency_ms=_dispatch_ms,
+                )
                 yield {"tool_call": tool_chunk}
 
             if (
@@ -4733,6 +4952,24 @@ _ORIENTATION_SCENT = (
 )
 
 
+#: U-2 — the outage the model can NAME. Without it the model has no tool left to ask with and every
+#: explanation it gives is invented; a verifier watched exactly that, with the model asserting a
+#: withheld tool "does not exist at all". The wording says TEMPORARY and says what to do, because
+#: "I have no tools" and "you have no tools" produce different replies.
+#:
+#: **A constant because there are three turn shapes and a verifier found two of them silent.** While
+#: this text was inline in one branch, the gate for it could only assert the string literal was
+#: present in the module source — which is satisfied by one occurrence and says nothing about the
+#: other two paths.
+CATALOGUE_UNAVAILABLE_NOTICE = (
+    "TOOL CATALOGUE UNAVAILABLE. Your tools could not be loaded for this turn — this is a "
+    "temporary outage on our side, NOT a sign that the capability is missing or that the "
+    "user's data is absent. Do not claim a tool or feature does not exist, and do not "
+    "invent a result. Say plainly that your tools are unreachable right now and that the "
+    "user can retry in a moment."
+)
+
+
 async def stream_response(
     session_id: str,
     user_message_content: str,
@@ -4782,6 +5019,11 @@ async def stream_response(
     RAID B2: 'plan' also auto-injects the plan_forge skill (book/editor
     surfaces) and appends the plan-mode system nudge; 'ask' appends its own
     nudge too (no auto-skill) — both on both system-part assembly paths."""
+
+    # CP-0.2 / U-2 — the turn's narrowing sink, armed HERE because this is the first statement of
+    # the turn and every later one can narrow. Unconditionally: `disable_tools` and `admin_context`
+    # change what is fetched, not whether a narrowing that happens is allowed to register.
+    instrument.arm_turn_surface()
 
     # ── RE-3: parse + STRIP a chat-only inline reasoning command (/no_think etc.)
     # before the message reaches the model or is persisted. The inline override is
@@ -5393,8 +5635,34 @@ async def stream_response(
     # background job — the exact pin/load drift reusing `workflow_load_result` was meant to
     # make impossible. (It also saves the duplicate fetch: the block below now reuses this.)
     _turn_catalog: list[dict] = []
-    if not disable_tools and kctx.tool_calling_enabled and not admin_context:
+    _admin_tool_defs: list[dict] | None = None
+    _catalogue_outage = False
+    if not disable_tools and kctx.tool_calling_enabled and admin_context:
+        # 🔴 U-2's OTHER SIBLING — the admin catalogue was fetched 350 lines BELOW, after the
+        # system prompt was already assembled, so an admin turn could not be told about an outage
+        # even once the record existed. That is the same reason the user catalogue was moved up to
+        # this block (see the note above), applied to the path that was left behind. An admin
+        # holding an empty surface is misled by exactly the same silence.
+        _admin_tool_defs = await knowledge_client.get_admin_tool_definitions(admin_token)
+    elif not disable_tools and kctx.tool_calling_enabled:
         _turn_catalog = await knowledge_client.get_tool_definitions(user_id=user_id)
+        # 🔴 U-2, second half. Registering the narrowing is not enough: a verifier watched the
+        # model state that a withheld tool "does not exist at all" while the row recorded it
+        # correctly — the row was honest and the screen was not. With the whole catalogue gone the
+        # model has NO tool left to ask with, not even `find_tools`, so the prompt is the only
+        # channel.
+        #
+        # 🔴 READ FROM THE RECORD, NOT FROM EMPTINESS. The first version of this line was
+        # `not _turn_catalog`, which conflates an OUTAGE with a legitimately EMPTY catalogue — a
+        # user with no permissions has zero tools and no outage. That is the exact confusion U-2
+        # exists to end, reproduced inside U-2's own fix, and three tests caught it by receiving an
+        # outage notice on a turn that simply had no tools. The fact comes from the party that knows
+        # it failed.
+        #
+        # Read OUTSIDE the branch that fetched, so it covers whichever catalogue this turn loaded.
+        # Gating it on `not admin_context` was how the admin path came to have neither half.
+    if not disable_tools and kctx.tool_calling_enabled:
+        _catalogue_outage = instrument.catalogue_outage_registered()
     _turn_async_tools = frozenset(
         n for n, td in _catalog_index(_turn_catalog).items() if tool_async(td)
     ) if _turn_catalog else frozenset()
@@ -5596,6 +5864,7 @@ async def stream_response(
         workflow_directive_block,  # WS-5 — prefer an authored workflow rail over improvising
         pinned_rail_text,    # WS-3 (C6) — the mode's PINNED rail, already in context
         book_context_note,
+        CATALOGUE_UNAVAILABLE_NOTICE if _catalogue_outage else None,
     ]
     _system_content = build_system_message(
         use_cache=use_anthropic_cache,
@@ -5718,7 +5987,9 @@ async def stream_response(
             # sessions never reach /mcp/admin. No admin token / fetch failure →
             # empty list → the turn runs tool-free. (Never the discovery path —
             # the admin catalog is small + fully advertised.)
-            tool_defs = await knowledge_client.get_admin_tool_definitions(admin_token)
+            # Already fetched at the top of the turn, so the outage can reach the system prompt
+            # (U-2). Re-fetching here would double the call AND leave this the only reader.
+            tool_defs = list(_admin_tool_defs or ())
             # The generic class-C confirm frontend tool, so the agent can surface
             # the System confirm card (suspend → human Confirm → the FE POSTs to
             # /v1/glossary/actions/admin/confirm). Only when there ARE admin tools.
@@ -5746,6 +6017,12 @@ async def stream_response(
                 # prompt naming them, so filtering one out splits guidance from capability and
                 # leaves an instruction the model cannot satisfy (see the filter's docstring —
                 # this is the Mị Đế 40k-character loop).
+                # CP-0.2 — the sink is armed at the TOP of this function, not here. It was armed on
+                # this line for one round: above the intent gate, which was then believed to be the
+                # turn's first narrowing. It was not — U-2 added an earlier one (the catalogue fetch,
+                # 380-odd lines above), and a verifier measured the outage going unrecorded on a real
+                # turn. Re-arming here now would DISCARD that record, which is the failure the sixth
+                # recurrence's own comment predicted. See `instrument.arm_turn_surface`.
                 discovery_catalog = filter_intent_gated_setup_tools(
                     catalog, injected_skill_codes, set(pinned_step_tools or ()),
                 )
@@ -5813,6 +6090,9 @@ async def stream_response(
                     for p in (_rail_progress_objs or [])
                     if getattr(p, "next_step", None) is not None
                 }
+                # NOT re-armed here: the sink is armed before catalog assembly above. Setting a
+                # fresh list at this point would DISCARD the intent gate's records — which is how
+                # the previous fix managed to be a no-op even where it was armed.
                 discovery_seed_names = discovery_seed_for_surface(
                     discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                     pins=tool_pins,
@@ -5948,6 +6228,12 @@ async def stream_response(
         yield line
 
 
+#: Strong references to in-flight cancel-path writes. asyncio holds only a WEAK reference to a task
+#: created with create_task, so a write detached during cancellation can be garbage-collected
+#: mid-flight — losing exactly the turn the detach existed to save. Discarded on completion.
+_DETACHED_CANCEL_WRITES: set = set()
+
+
 async def _persist_terminal_assistant(
     pool: asyncpg.Pool,
     *,
@@ -5962,6 +6248,14 @@ async def _persist_terminal_assistant(
     finish_reason: str,
     is_error: bool,
     error_detail: str | None,
+    # CP-0 — the instrument. Optional at the signature so no caller can fail to compile, but
+    # `outcome` is derived rather than left NULL when a caller omits it: a terminal path that
+    # records no outcome is the exact hole CP-0.4 exists to close, and defaulting to NULL would
+    # reproduce it under a new column name.
+    outcome: str | None = None,
+    advertised_tools: list[dict] | None = None,
+    withheld_tools: list[dict] | None = None,
+    runtime_variant: str = instrument.RUNTIME_LEGACY,
 ) -> bool:
     """DBT-CHAT-PERSIST — persist an assistant reply that ended WITHOUT a clean
     finish (an error mid-stream, a user interrupt, or an abandoned/expired
@@ -5978,13 +6272,96 @@ async def _persist_terminal_assistant(
     user message stands alone and a blank assistant bubble would be noise.
     """
     if not content and not reasoning and not tool_calls_history:
+        # CP-0.4, KNOWN HOLE, DELIBERATELY NOT CLOSED HERE. This is a terminal path that records
+        # nothing at all — an empty turn leaves no row, so it has no outcome, and it is invisible to
+        # every query CP-0 installs. It is one of the four silent exits, and they close as ONE
+        # mechanism at CP-3 (a plan that ends anywhere but done_when names what is live and hands it
+        # to a human), not as four patches. Closing it here would mean writing a blank assistant
+        # bubble into the UI, which is a product change this checkpoint has no business making.
+        # Logged so the hole is countable in the meantime rather than merely known.
+        # ── P3 · CLOSED HERE, and the earlier deferral was a wrong assumption of mine ──────────
+        # I recorded this as unfixable-before-CP-3.6 because writing a row means a blank assistant
+        # bubble in the UI. That assumed the outcome needs an ASSISTANT row. It does not: `outcome`
+        # is a column on `chat_messages`, not a property of a role, and the USER'S row already
+        # exists for every one of these turns — it is what makes them *orphaned* rather than absent.
+        #
+        # So the turn's fate is stamped on the message that is already there. No bubble is created,
+        # no product behaviour changes, and the two paths that recorded NOTHING — a cancel before
+        # the first token, and a process death before any checkpoint — now record what happened to
+        # the user's request. That is P3's whole claim: every terminal path writes an outcome.
+        #
+        # What this does NOT do is give the turn a reply. Materialising abandoned work into
+        # something a human can resume is still CP-3.6's mechanism, and still one mechanism rather
+        # than four patches. This closes the RECORDING hole, which is CP-0's half of it.
+        _orphan_outcome = outcome or instrument.outcome_for_finish_reason(
+            finish_reason, is_error=is_error
+        )
+        # 🔴 NOT `parent_message_id`. Measured live: that id is a UUIDv4 present in NO row on this
+        # path, so the UPDATE matched nothing and 0 of 3,154 user rows ever carried an outcome —
+        # while the log confidently reported "no parent to stamp" and the parent plainly existed,
+        # 0.3s earlier in the same session. The guard reported the absence of a row it had failed
+        # to look for.
+        #
+        # Anchored on the SESSION instead, which is the identifier this path actually holds: the
+        # newest user message with no outcome yet. `ORDER BY sequence_num DESC LIMIT 1` in a
+        # subquery, so a session with several unanswered user turns stamps the one this turn was
+        # for, not all of them.
+        try:
+            async with pool.acquire() as conn:
+                _stamped = await conn.fetchval(
+                    # 🔴 `withheld_tools` TOO. The caller computes `withheld_json()` and hands it in,
+                    # and this branch wrote only the outcome — so the value was **calculated and
+                    # dropped** on exactly the turn shape a catalogue outage produces (no content,
+                    # no tool calls, because the model had nothing to work with). Measured by a
+                    # verifier: `wrote_row=False, carries_outage=False`. The orphan-stamp mechanism
+                    # exists so a turn with no assistant row still records what happened to it; a
+                    # narrowing is part of what happened to it.
+                    "UPDATE chat_messages SET outcome = $2, "
+                    f"       {instrument.segment_merge_sql('withheld_tools')} "
+                    "WHERE message_id = ("
+                    "  SELECT message_id FROM chat_messages "
+                    "  WHERE session_id = $1 AND role = 'user' AND outcome IS NULL "
+                    "  ORDER BY sequence_num DESC LIMIT 1) "
+                    "RETURNING message_id",
+                    session_id, _orphan_outcome, _withheld_json,
+                )
+            if _stamped is not None:
+                logger.info(
+                    "CP-0.4 orphaned turn: no assistant row, outcome '%s' stamped on user "
+                    "message %s (session %s)",
+                    _orphan_outcome, _stamped, session_id,
+                )
+                return False
+            logger.info(
+                "CP-0.4 orphaned turn: no un-outcomed user message to stamp (session %s) — the "
+                "one remaining shape, and it is countable rather than silent.",
+                session_id,
+            )
+        except Exception:  # noqa: BLE001 — best-effort; this runs on error/cancel paths
+            logger.warning(
+                "CP-0.4 orphan-stamp failed (session %s)", session_id, exc_info=True,
+            )
+        logger.info(
+            "CP-0.4 silent-exit: empty terminal turn with NO parent to stamp (session %s, msg %s, "
+            "reason=%s) — the one remaining shape, and it is countable.",
+            session_id, msg_id, finish_reason,
+        )
         return False
     parts: dict = {}
     if reasoning:
         parts["reasoning"] = reasoning
         parts["reasoning_length"] = len(reasoning)
     content_parts = json.dumps(parts) if parts else None
+    # CP-0.3 — the chokepoint. Every recorded call carries a source, a declaration identity and a
+    # runtime variant by the time it is persisted, whichever of the 30-odd mint sites produced it.
+    if tool_calls_history:
+        tool_calls_history = [
+            instrument.ensure_tool_call_instrumented(tc) for tc in tool_calls_history
+        ]
     tool_calls_json = json.dumps(tool_calls_history) if tool_calls_history else None
+    _outcome = outcome or instrument.outcome_for_finish_reason(finish_reason, is_error=is_error)
+    _advertised_json = json.dumps(advertised_tools) if advertised_tools else None
+    _withheld_json = json.dumps(withheld_tools) if withheld_tools else None
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():
@@ -5994,24 +6371,46 @@ async def _persist_terminal_assistant(
                     session_id,
                 )
                 row = await conn.fetchrow(
-                    """
+                    f"""
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, model_ref, parent_message_id, branch_id, tool_calls,
-                       is_error, error_detail, finish_reason)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,0,$9::jsonb,$10,$11,$12)
+                       is_error, error_detail, finish_reason,
+                       outcome, advertised_tools, withheld_tools, runtime_variant, outcome_source)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,0,$9::jsonb,$10,$11,$12,
+                            $13,$14::jsonb,$15::jsonb,$16,'path')
                     ON CONFLICT (message_id) DO UPDATE SET
                       content = EXCLUDED.content,
                       content_parts = EXCLUDED.content_parts,
                       tool_calls = EXCLUDED.tool_calls,
                       is_error = EXCLUDED.is_error,
                       error_detail = EXCLUDED.error_detail,
-                      finish_reason = EXCLUDED.finish_reason
+                      finish_reason = EXCLUDED.finish_reason,
+                      outcome = EXCLUDED.outcome,
+                      -- CP-0.4 — a terminal path SAYS SO. Nothing wrote 'path', so a swept row and
+                      -- a path-written row were distinguishable only by the sweep's own marker —
+                      -- one-directional, and 64.8% of outcomed rows read as path-written when they
+                      -- were not. The distinction only bites if BOTH sides declare themselves.
+                      outcome_source = 'path',
+                      -- CP-0.1/0.2 — this row is upserted several times per turn (a checkpoint at
+                      -- each tool boundary, then the terminal handler) AND across turns (a resume
+                      -- builds a fresh recorder for the same message_id). Those two need opposite
+                      -- things from a merge, which is why both previous versions were wrong:
+                      -- COALESCE erased the resumed turn's earlier passes, and the concatenation
+                      -- that fixed it duplicated every pass a checkpoint had already written.
+                      -- The expression is built ONE PLACE — `instrument.segment_merge_sql` — and
+                      -- interpolated at both upsert sites, because two hand-maintained copies of a
+                      -- merge rule is how the class-4 predicate and the sweep came to contradict
+                      -- each other in the same commit (F-45).
+                      {instrument.segment_merge_sql("advertised_tools")},
+                      {instrument.segment_merge_sql("withheld_tools")},
+                      runtime_variant = EXCLUDED.runtime_variant
                     RETURNING (xmax = 0) AS inserted
                     """,
                     msg_id, session_id, user_id, content, content_parts, seq,
                     model_ref, parent_message_id, tool_calls_json,
                     is_error, error_detail, finish_reason,
+                    _outcome, _advertised_json, _withheld_json, runtime_variant,
                 )
                 # Only bump the session counter on a genuine INSERT (xmax=0), never
                 # when ON CONFLICT took the UPDATE branch (already counted).
@@ -6022,8 +6421,9 @@ async def _persist_terminal_assistant(
                         session_id,
                     )
         logger.info(
-            "terminal-persist: saved %s assistant reply for session %s (msg %s, %d chars)",
-            finish_reason, session_id, msg_id, len(content),
+            "terminal-persist: saved %s assistant reply for session %s (msg %s, %d chars, "
+            "outcome=%s, runtime=%s)",
+            finish_reason, session_id, msg_id, len(content), _outcome, runtime_variant,
         )
         return True
     except Exception:  # noqa: BLE001 — best-effort; runs on error/cancel paths
@@ -6070,6 +6470,10 @@ async def _materialize_abandoned_suspend(pool: asyncpg.Pool, susp) -> bool:
         finish_reason="interrupted",
         is_error=False,
         error_detail=None,
+        # CP-0.4 — an ABANDONED frontend-tool suspend: the confirm card expired, or its resume was
+        # refused. The user was asked and never answered, so this is the user walking away, not a
+        # fault. Deliberately not `failed`: the turn did exactly what it should have and then waited.
+        outcome=instrument.OUTCOME_ABANDONED_BY_USER,
     )
 
 
@@ -6089,9 +6493,16 @@ async def _mark_suspend_abandoned(pool: asyncpg.Pool, susp) -> None:
         if row is None:
             await _materialize_abandoned_suspend(pool, susp)
         elif row["finish_reason"] == "awaiting_input":
+            # CP-0.4 — `outcome` moves WITH `finish_reason`. Updating one and not the other left
+            # `awaiting_input` — a SUCCESS state — on a run the same statement was declaring
+            # abandoned, so an abandoned suspend would have been counted as a turn that correctly
+            # stopped to ask. A column that disagrees with its neighbour is worse than a missing one:
+            # it answers confidently and wrongly. The user was asked and never came back, which is
+            # `abandoned_by_user`, not a failure.
             await pool.execute(
-                "UPDATE chat_messages SET finish_reason = 'interrupted' WHERE message_id = $1",
-                susp.message_id,
+                "UPDATE chat_messages SET finish_reason = 'interrupted', outcome = $2 "
+                "WHERE message_id = $1",
+                susp.message_id, instrument.OUTCOME_ABANDONED_BY_USER,
             )
         # else: already resolved — leave it.
     except Exception:  # noqa: BLE001 — best-effort recovery path
@@ -6182,6 +6593,24 @@ async def _emit_chat_turn(
     full_content: list[str] = []
     full_reasoning: list[str] = []
     tool_calls_history: list[dict] = []
+    # CP-0.1/0.2 — the turn's instrument. Created here, at the top of the turn, because a recorder
+    # created lazily at the first advertise would miss a turn that was narrowed to nothing before
+    # the model ever saw a surface — which is precisely the case worth catching.
+    _advertised = instrument.AdvertisedToolsRecorder()
+    _loop_finish_reason: str | None = None  # CP-0.4 — the loop's own terminal reason
+    # CP-0.2 — arm the request-scoped sink so narrowings decided OUTSIDE this function (surface
+    # assembly, two frames up) still register. Drained into the recorder at each advertise.
+    # ADOPT, never replace: surface assembly ran before this generator's body started and its
+    # narrowings are already in the sink. Setting a fresh list here would discard exactly the
+    # records this field exists to carry.
+    _surface_sink = instrument.surface_withheld.get()
+    if _surface_sink is None:
+        _surface_sink = []
+        instrument.surface_withheld.set(_surface_sink)
+    # Bind it, so `withheld_json()` drains on EVERY terminal path rather than only on the one that
+    # happens to advertise. Three of the four live turn shapes persisted `NULL` while the sink held
+    # the row, because the drain lived behind an event a tool-free turn never emits.
+    _advertised.bind_sink(_surface_sink)
     # W1 — advertised tool-schema tokens, reported once by the tool loop's
     # first pass ({"schema_tokens": ...} chunk); folded into the contextBudget
     # frame + the persisted context_breakdown at finish.
@@ -6552,8 +6981,51 @@ async def _emit_chat_turn(
                         reasoning="".join(full_reasoning),
                         tool_calls_history=tool_calls_history or None,
                         finish_reason="streaming", is_error=False, error_detail=None,
+                        # CP-0.4 — a mid-turn checkpoint records `crashed` PESSIMISTICALLY. If the
+                        # process dies now, this is what the row keeps, and that is the correct
+                        # reading: nothing else will ever run to correct it. The clean finish and
+                        # every terminal handler overwrite it. The failure mode this avoids is the
+                        # opposite default — a checkpoint that writes 'completed' optimistically and
+                        # leaves a dead turn looking successful, which is the one shape of wrongness
+                        # nobody ever investigates.
+                        outcome=instrument.OUTCOME_CRASHED,
+                        advertised_tools=_advertised.advertised_json(),
+                        withheld_tools=_advertised.withheld_json(),
                     )
                 continue
+            # CP-0.1/0.2 — one entry per model pass, appended. This chunk carries no user-visible
+            # payload and emits no SSE line: it exists so the record of what the model was holding
+            # survives the turn, which is the one thing no column answers today.
+            _adv_ev = chunk_data.get("advertised")
+            if _adv_ev is not None:
+                _advertised.record_pass(
+                    _adv_ev.get("names") or [],
+                    tool_choice=_adv_ev.get("tool_choice"),
+                )
+                # Drain the request-scoped sink HERE so assembly-time narrowings are stamped with
+                # the pass they belong to. `withheld_json()` drains again on every terminal path —
+                # this call is for the pass number, not for the delivery, because a turn that never
+                # advertises never reaches this line and is exactly the turn a catalogue outage
+                # produces. See `AdvertisedToolsRecorder.absorb`.
+                _advertised.absorb(_surface_sink)
+                # 🔴 ONE DISPATCH, NOT TWO. This branch handled `pass` and the legacy `"*"` and
+                # **not `catalogue`** — a second dispatch over the same enum, drifting from the
+                # first the moment a scope was added. Latent only because no catalogue row travels
+                # this channel today, which is exactly what "latent" meant about the P0 as well.
+                # Routed through the recorder's own `absorb`, so there is one place that knows the
+                # enum.
+                _legacy = [
+                    {**_w, "scope": instrument.SCOPE_PASS} if _w.get("tool") == "*" else _w
+                    for _w in (_adv_ev.get("withheld") or [])
+                ]
+                _advertised.absorb(_legacy)
+                continue
+            # CP-0.4 / F-17 — the loop REPORTS its terminal reason and this consumer was dropping
+            # it on the floor. I had recorded "the signal does not exist here"; one grep showed it
+            # arrives on every content chunk and no code reads it. Captured now so the outcome is
+            # DERIVED from what the loop said, instead of a constant asserting success.
+            if chunk_data.get("finish_reason"):
+                _loop_finish_reason = chunk_data["finish_reason"]
             # W1 — tool-schema token measurement from the loop's first pass.
             schema_tokens = chunk_data.get("schema_tokens")
             if schema_tokens is not None:
@@ -6675,6 +7147,12 @@ async def _emit_chat_turn(
                 reasoning="".join(full_reasoning),
                 tool_calls_history=[*tool_calls_history, _pending_record],
                 finish_reason="awaiting_input", is_error=False, error_detail=None,
+                # CP-0.4 — asking the user is a SUCCESS state (§0.5), not a stall. A model that
+                # stops to ask when it does not know is doing the thing we want; counting it as a
+                # failure would score the correct behaviour as the defect.
+                outcome=instrument.OUTCOME_AWAITING_INPUT,
+                advertised_tools=_advertised.advertised_json(),
+                withheld_tools=_advertised.withheld_json(),
             )
             # close any open assistant/reasoning message first
             for line in emitter.close_message():
@@ -6746,8 +7224,15 @@ async def _emit_chat_turn(
                 content_parts = json.dumps(parts) if parts else None
                 # K21-B: tool-call history for UI replay — NULL when the
                 # turn made no tool calls.
+                # CP-0.3 — the clean-finish chokepoint, the sibling of the one in
+                # _persist_terminal_assistant. Both INSERT sites pass through it, so there is no
+                # route from a mint site to the tool_calls column that skips the source stamp.
                 tool_calls_json = (
-                    json.dumps(tool_calls_history) if tool_calls_history else None
+                    json.dumps([
+                        instrument.ensure_tool_call_instrumented(_tc)
+                        for _tc in tool_calls_history
+                    ])
+                    if tool_calls_history else None
                 )
 
                 # ── W1: finalize the per-turn context frame payload ─────────
@@ -6899,12 +7384,14 @@ async def _emit_chat_turn(
                 # us whether this was a genuine INSERT so message_count is bumped
                 # exactly once (a checkpoint already counted it).
                 _ins_row = await conn.fetchrow(
-                    """
+                    f"""
                     INSERT INTO chat_messages
                       (message_id, session_id, owner_user_id, role, content, content_parts,
                        sequence_num, input_tokens, output_tokens, model_ref, parent_message_id, branch_id, tool_calls,
-                       context_breakdown, response_id, exclude_from_memory, local_date, finish_reason)
-                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15, 'stop')
+                       context_breakdown, response_id, exclude_from_memory, local_date, finish_reason,
+                       outcome, advertised_tools, withheld_tools, runtime_variant, outcome_source)
+                    VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7,$8,$9,$10, 0, $11::jsonb, $12::jsonb, $13, $14, $15, $20,
+                            $16,$17::jsonb,$18::jsonb,$19,'path')
                     ON CONFLICT (message_id) DO UPDATE SET
                       content = EXCLUDED.content,
                       content_parts = EXCLUDED.content_parts,
@@ -6916,15 +7403,54 @@ async def _emit_chat_turn(
                       response_id = EXCLUDED.response_id,
                       exclude_from_memory = EXCLUDED.exclude_from_memory,
                       local_date = EXCLUDED.local_date,
-                      finish_reason = 'stop',
+                      finish_reason = EXCLUDED.finish_reason,
                       is_error = false,
-                      error_detail = NULL
+                      error_detail = NULL,
+                      -- CP-0.4 — the clean finish is the ONE path that may assert completion, and it
+                      -- overwrites whatever a mid-turn checkpoint left here (a 'crashed' derived from
+                      -- 'streaming'). The reverse never happens: a checkpoint COALESCEs instead.
+                      outcome = EXCLUDED.outcome,
+                      outcome_source = 'path',
+                      -- F-48 — segment-scoped replace, from `instrument.segment_merge_sql`. The
+                      -- terminal handler re-sends the recorder's FULL list, and every mid-turn
+                      -- checkpoint sent it too; unconditional concatenation therefore stored each
+                      -- pass once per write. Measured on the real recorder: a 3-pass turn with 2
+                      -- checkpoints stored 7 entries numbered [1,2,1,2,1,2,3]. Replacing only this
+                      -- writer's own segment makes the write idempotent while still preserving a
+                      -- RESUME's separate segment, which is what the concatenation was protecting.
+                      {instrument.segment_merge_sql("advertised_tools")},
+                      {instrument.segment_merge_sql("withheld_tools")},
+                      runtime_variant = EXCLUDED.runtime_variant
                     RETURNING (xmax = 0) AS inserted
                     """,
                     msg_id, session_id, user_id, final_text, content_parts, seq,
                     input_tok, output_tok, model_ref, parent_message_id, tool_calls_json,
                     json.dumps(_ctx_payload), _final_response_id, _exclude_mem,
                     _local_date,  # DBT-11 — bucket by the user's LOCAL day (resolved before acquire)
+                    # F-17 — DERIVED from the loop's own terminal reason, no longer a constant.
+                    #
+                    # This bound `completed` unconditionally while the repeated-failure breaker's
+                    # exit reaches the same INSERT, so a turn cut short by the breaker recorded a
+                    # success. I had written that fixing it needed a signal the consumer did not
+                    # carry — that was wrong, and checking cost one grep: the loop emits
+                    # `finish_reason` on every content chunk and nothing read it.
+                    #
+                    # HONEST LIMIT, because deriving is not the same as distinguishing: this now
+                    # reflects whatever the loop reports, and if the breaker exit reports `stop`
+                    # like any other completion, the recorded outcome is unchanged. What is fixed is
+                    # that the value is no longer ASSERTED — a distinct terminal reason now flows
+                    # through instead of being overwritten. Whether the breaker produces one is a
+                    # live question for a verifier, not something to settle by reading the code I
+                    # just wrote.
+                    instrument.outcome_for_finish_reason(_loop_finish_reason or "stop"),
+                    json.dumps(_advertised.advertised_json()) if _advertised.advertised_json() else None,
+                    json.dumps(_advertised.withheld_json()) if _advertised.withheld_json() else None,
+                    instrument.RUNTIME_LEGACY,
+                    # F-19 — `finish_reason` and `outcome` now derive from THE SAME signal. Pinning
+                    # 'stop' here while the outcome varied made the row contradict itself, which is
+                    # worse than either value alone being wrong: a reader cannot tell which half to
+                    # believe. This is the verifier's satisfiable gate, applied.
+                    _loop_finish_reason or "stop",
                 )
                 _did_insert = bool(_ins_row and _ins_row["inserted"])
                 if _exclude_mem and parent_message_id:
@@ -7057,7 +7583,18 @@ async def _emit_chat_turn(
         # cancelled; await-only (no yield) is safe inside GeneratorExit cleanup.
         if not _persisted:
             try:
-                await asyncio.shield(
+                # CP-0.4 — DETACH, then shield. `await asyncio.shield(coro)` is not enough here and
+                # measured as failing on EVERY cancel: this handler is already unwinding a
+                # CancelledError, so the next `await` re-raises it immediately — frequently before
+                # the wrapped coroutine has been scheduled at all. The write was abandoned and the
+                # except branch below logged "interrupt-persist failed", which is why every cancel
+                # produced that line while the only surviving row came from a later fallback.
+                #
+                # Creating the task FIRST schedules it independently of this task's fate, and the
+                # strong reference keeps it from being garbage-collected mid-flight (a bare
+                # create_task result is weakly held by the loop). Then shield the await, so being
+                # cancelled again costs us the acknowledgement, never the write.
+                _cancel_write = asyncio.create_task(
                     _persist_terminal_assistant(
                         pool,
                         msg_id=msg_id, session_id=session_id, user_id=user_id,
@@ -7066,7 +7603,28 @@ async def _emit_chat_turn(
                         reasoning="".join(full_reasoning),
                         tool_calls_history=tool_calls_history,
                         finish_reason="interrupted", is_error=False, error_detail=None,
+                        # CP-0.4 — `finish_reason` stays 'interrupted' (the FE badge and every
+                        # existing reader depend on it; nothing is deleted). `outcome` is where the
+                        # truth goes: CancelledError/GeneratorExit here means the user stopped the
+                        # turn or the client went away, which is NOT a failure. Fusing the two is
+                        # what made the run's own `interrupted` baseline uninterpretable — a metric
+                        # containing both "the user changed their mind" and "we lost the turn"
+                        # cannot move in a direction that means anything.
+                        outcome=instrument.OUTCOME_ABANDONED_BY_USER,
+                        advertised_tools=_advertised.advertised_json(),
+                        withheld_tools=_advertised.withheld_json(),
                     )
+                )
+                _DETACHED_CANCEL_WRITES.add(_cancel_write)
+                _cancel_write.add_done_callback(_DETACHED_CANCEL_WRITES.discard)
+                await asyncio.shield(_cancel_write)
+            except asyncio.CancelledError:
+                # Expected, and NOT a failure: we were cancelled again while waiting for the
+                # acknowledgement. The detached task owns the write and is still running. Logging
+                # this as a failure is what made every cancel look broken when most were not.
+                logger.info(
+                    "interrupt-persist detached for session %s (write continues after cancel)",
+                    session_id,
                 )
             except BaseException:  # noqa: BLE001 — cleanup must never mask the cancel
                 logger.warning(
@@ -7093,6 +7651,9 @@ async def _emit_chat_turn(
                 reasoning="".join(full_reasoning),
                 tool_calls_history=tool_calls_history,
                 finish_reason="error", is_error=True, error_detail=safe_msg,
+                outcome=instrument.OUTCOME_FAILED,
+                advertised_tools=_advertised.advertised_json(),
+                withheld_tools=_advertised.withheld_json(),
             )
         for line in emitter.error(safe_msg):
             yield line
@@ -7205,6 +7766,10 @@ async def resume_stream_response(
     run is missing/expired."""
     from app.services.frontend_tools import frontend_tool_defs
     from app.db.suspended_runs import load_suspended_run_any
+
+    # CP-0.2 / U-2 — the resumed turn's narrowing sink, armed before its first decision. A resume
+    # re-derives its whole surface from scratch (WS-3), so it narrows as much as a fresh turn does.
+    instrument.arm_turn_surface()
 
     susp = await load_suspended_run(pool, run_id, user_id)
     if susp is None or susp.pending_tool_call.get("id") != tool_call_id:
@@ -7327,6 +7892,7 @@ async def resume_stream_response(
     # acknowledges the REAL outcome. The provide-input tool is domain-unique
     # (<prefix>_task_provide_input, gateway-routable — see the routing fix), derived from
     # the gate tool's provider prefix. Accept outcomes confirm; anything else declines.
+    _task_chunk: dict | None = None
     if is_task:
         _task = susp.pending_tool_call.get("task") or {}
         _gate = str(susp.pending_tool_call.get("name") or "")
@@ -7334,13 +7900,25 @@ async def resume_stream_response(
         _accepted = outcome in (
             "applied_saved", "action_done", "accept", "applied", "approved_once", "confirmed",
         )
+        # CP-0.3 — the THIRD real dispatch, and until now the only one recording NOTHING: it fed
+        # `working` and never produced a tool_calls entry, so a durable human-gated task resolving
+        # left no trace in the turn's history at all. Not merely unclassified — absent.
+        _task_t0 = _time.monotonic()
         _tenv = await knowledge_client.mcp_execute_tool(
             user_id=user_id, session_id=session_id, project_id=project_id,
             tool_name=_provide_tool,
             tool_args={"task_id": _task.get("taskId"), "accepted": _accepted},
             admin_token=admin_token,
         )
+        _task_ms = int((_time.monotonic() - _task_t0) * 1000)
         _tres = _tenv.get("result") if _tenv.get("success") else {"error": _tenv.get("error")}
+        _task_chunk = instrument.stamp_tool_call({
+            "id": tool_call_id, "iteration": 0, "tool": _provide_tool,
+            "args": {"task_id": _task.get("taskId"), "accepted": _accepted},
+            "ok": bool(_tenv.get("success")),
+            "result": _tenv.get("result") if _tenv.get("success") else None,
+            "error": None if _tenv.get("success") else _tenv.get("error"),
+        }, source=instrument.SOURCE_TOOL, latency_ms=_task_ms)
         working.append({
             "role": "tool", "tool_call_id": tool_call_id,
             "content": tool_result_content(_tres if _tres is not None else {}),
@@ -7353,7 +7931,10 @@ async def resume_stream_response(
     #                     self-corrects (no execution).
     # The executed call is surfaced via pre_tool_chunks (tool_call + activity
     # events + persisted history) — C-ACTIVITY parity, undo unchanged.
-    pre_tool_chunks: list[dict] | None = None
+    # CP-0.3 — carry the ext-task dispatch into the recorded history. `pre_tool_chunks` is the
+    # existing channel for "a tool ran before the loop re-entered"; the task path simply never used
+    # it, which is why its execution was invisible rather than mislabelled.
+    pre_tool_chunks: list[dict] | None = [_task_chunk] if _task_chunk is not None else None
     if is_approval:
         _appr = _approval_args if isinstance(_approval_args, dict) else {}
         _tool_name = str(_appr.get("tool") or susp.pending_tool_call.get("name") or "")
@@ -7432,6 +8013,11 @@ async def resume_stream_response(
                         _tool_name, _k, exc_info=True,
                     )
         if _decision in ("approved_once", "approved_always"):
+            # CP-0.3 — the SECOND real dispatch in this service. Missing it filed a genuine,
+            # user-approved Tier-A WRITE as `breaker`, i.e. as our own refusal prose — inverting the
+            # one distinction the field exists to make, and doing it on the highest-consequence
+            # calls in the product (the ones that change data after a human said yes).
+            _resume_t0 = _time.monotonic()
             envelope = await knowledge_client.mcp_execute_tool(
                 user_id=user_id, session_id=session_id,
                 project_id=str(project_id) if project_id else None,
@@ -7441,6 +8027,7 @@ async def resume_stream_response(
                 tool_name=_tool_name, tool_args=_tool_args,
                 admin_token=admin_token,
             )
+            _resume_ms = int((_time.monotonic() - _resume_t0) * 1000)
             _ok = bool(envelope.get("success"))
             _tool_payload = envelope.get("result") if _ok else {"error": envelope.get("error")}
             working.append({
@@ -7471,17 +8058,23 @@ async def resume_stream_response(
                         if _undo else {"available": False}
                     ),
                 }
+            instrument.stamp_tool_call(
+                _chunk, source=instrument.SOURCE_TOOL, latency_ms=_resume_ms,
+            )
             pre_tool_chunks = [_chunk]
         else:
             working.append({
                 "role": "tool", "tool_call_id": tool_call_id,
                 "content": tool_result_content({"error": "denied by user"}),
             })
-            pre_tool_chunks = [{
+            # Explicitly `breaker`, not left to inference: a user denial is OUR refusal, and this is
+            # the branch where the two are one line apart. Stating it removes the only place where a
+            # reader could mistake the classifier's default for a decision.
+            pre_tool_chunks = [instrument.stamp_tool_call({
                 "id": tool_call_id, "iteration": 0, "tool": _tool_name,
                 "args": _tool_args, "ok": False,
                 "result": None, "error": "denied by user",
-            }]
+            }, source=instrument.SOURCE_BREAKER)]
 
     resume_discovery_catalog: list[dict] | None = None
     resume_extra_frontend: list[dict] | None = None
@@ -7527,6 +8120,8 @@ async def resume_stream_response(
             # precisely because a resume re-derives its surface from scratch (WS-3); dropping
             # the exemption here would strand a rail at its FIRST confirm gate — the same
             # failure WS-3 was written to fix, re-entered through the capability floor.
+            # CP-0.2 — armed at the top of this function, not here: the catalogue fetch 26 lines
+            # above is a narrowing too, and re-arming here would discard whatever it registered.
             resume_discovery_catalog = filter_intent_gated_setup_tools(
                 catalog, resume_injected_skills, set(susp.pinned_step_tools or ()),
             )
@@ -7541,6 +8136,9 @@ async def resume_stream_response(
             # session curated pins when enabled_tools is non-empty (story 04 S2).
             # Resume superset includes the studio hot domains — a suspend raised on the
             # studio compose surface must resume with its composition family still hot.
+            # NOT re-armed here: the sink was armed before catalog assembly above, and setting a
+            # fresh list would DISCARD the intent gate's records — which is how the previous fix
+            # managed to be a no-op even where it was armed.
             resume_seed_names = discovery_seed_for_surface(
                 resume_discovery_catalog,  # N5a-FULL — seed from the filtered catalog too
                 pins=tool_pins,
@@ -7591,6 +8189,17 @@ async def resume_stream_response(
         ) = await _compute_rail_drive_context(
             pool, user_id, susp.book_id, susp.permission_mode, session_id, knowledge_client,
         )
+
+    # 🔴 U-2's THIRD PATH, and it had NEITHER half. A resume re-derives its whole surface from
+    # scratch (WS-3), so it hits the same catalogue fetch and the same outage — and the notice
+    # existed only on the fresh-turn prompt. The resumed model would then explain a missing
+    # capability with nothing to explain it from, which is the founding defect on a different turn
+    # shape. The rehydrated conversation has no tail_blocks to hang this on, so it is appended as
+    # its own system message.
+    if instrument.catalogue_outage_registered():
+        working = list(working) + [
+            {"role": "system", "content": CATALOGUE_UNAVAILABLE_NOTICE},
+        ]
 
     async for line in _emit_chat_turn(
         session_id=session_id,

@@ -693,9 +693,12 @@ async def resolve_skills_to_inject_async(
             intent_text=intent_text,
             active_surface=active,
             already_selected=base,
+            # 🔴 NOT the turn's chat model. The router EMBEDS, and most chat models cannot; passing
+            # the session's completion model either failed upstream or produced an improvised vector
+            # from a model never meant to embed. `tool_discovery` removed exactly this argument
+            # (HIGH-2) and the sibling kept it for another four rounds. The router now resolves the
+            # user's embedding-capability default itself.
             user_id=user_id,
-            model_source=model_source,
-            model_ref=model_ref,
         )
     except Exception:  # noqa: BLE001 — mandatory fallback, never raise into the turn
         logger.warning(

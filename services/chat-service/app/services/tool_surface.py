@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from functools import lru_cache
 
@@ -107,7 +108,19 @@ ALWAYS_HOT_WRITES: frozenset[str] = frozenset({
 
 
 def _tool_tokens(td: dict) -> int:
-    return estimate_tokens(json.dumps(td, ensure_ascii=False))
+    """U-1 · **count the COMPOSED form.** `estimate_tokens` weights per codepoint and its Vietnamese
+    band spans the combining-mark block, so the same grapheme costs ~1.44× decomposed — and this
+    number is both the sort key and the accumulator of a budget that ends in a hard `break`. A
+    declaration arriving in NFD sorts later and is cut from the wire, with no revision or budget
+    value changing anywhere.
+
+    The door (`knowledge_client._nfc_text`) normalises the text a third party sends us, but it
+    deliberately does NOT touch tool names, schema keys, `enum` or `pattern` — those are wire
+    identifiers owned by the remote server, and rewriting them would break the call the model then
+    makes. Normalising HERE closes that residual without touching a stored value: this function
+    returns a count, so the composed form never leaves it.
+    """
+    return estimate_tokens(unicodedata.normalize("NFC", json.dumps(td, ensure_ascii=False)))
 
 
 def _is_read_tool(name: str) -> bool:
@@ -120,6 +133,32 @@ def _is_read_tool(name: str) -> bool:
     # dispatch through an entity-name normalizer would imply it can carry prose.
     n = name.lower()
     return any(v in n for v in _READ_VERBS)
+
+
+def budget_names_by_tokens_ex(
+    catalog: list[dict],
+    names: set[str] | list[str],
+    *,
+    token_budget: int,
+) -> tuple[set[str], list[str]]:
+    """CP-0.2 — :func:`budget_names_by_tokens`, but it also returns what it DROPPED.
+
+    Returns ``(kept, dropped)``, matching :func:`budget_rail_tools` twenty lines below, whose own
+    docstring already states the principle: whatever gets dropped is *"REPORTED so the caller can log
+    it rather than pretend"*. That was true for rails and silently untrue for every other surface.
+
+    **Why this is the founding defect of the runtime rebuild.** In POC arm E the budgeter deleted the
+    one tool the model needed, mid-turn, and returned only the survivors — so the tool was gone from
+    the surface and gone from the record simultaneously. The model then failed the task 3/3 while
+    looking, in every log we had, as though it had simply chosen not to call the tool. A narrowing
+    the caller cannot see is indistinguishable from a decision the model made.
+
+    The behaviour of the kept set is UNCHANGED: this is the same function with its second return
+    value no longer discarded, so the surface cannot shift as a side effect of instrumenting it.
+    """
+    kept = _budget_names_impl(catalog, names, token_budget=token_budget)
+    dropped = sorted(n for n in set(names) if n not in kept)
+    return kept, dropped
 
 
 def budget_names_by_tokens(
@@ -136,7 +175,21 @@ def budget_names_by_tokens(
     schema in `catalog` (core/frontend tools, counted elsewhere) pass through
     free. At least one budgeted tool is always kept (a single oversized schema
     can't zero the seed).
+
+    Kept unchanged, returning only the survivors, so its nine call sites and their tests stay
+    untouched — an instrument must not move the thing it measures. Callers that need to RECORD the
+    narrowing use :func:`budget_names_by_tokens_ex`, which wraps this and reports the dropped names.
     """
+    return _budget_names_impl(catalog, names, token_budget=token_budget)
+
+
+def _budget_names_impl(
+    catalog: list[dict],
+    names: set[str] | list[str],
+    *,
+    token_budget: int,
+) -> set[str]:
+    """The selection itself — one body, so the reporting variant cannot drift from the plain one."""
     want = set(names)
     defs = {tool_name(td): td for td in catalog if tool_name(td) in want}
     kept: set[str] = {n for n in want if n not in defs}  # non-catalog → passthrough
@@ -175,6 +228,43 @@ class SessionToolPins:
     # advertised set regardless of curated/auto mode — a manual pin is a
     # deliberate per-session override, not part of the discovery heuristic.
     pinned_legacy: list[str] = field(default_factory=list)
+
+
+def _budget_and_register(
+    sink: list[dict] | None,
+    stage: str,
+    catalog: list[dict],
+    names: set[str] | list[str],
+    *,
+    token_budget: int,
+) -> set[str]:
+    """CP-0.2 — budget a set AND register what the budget deleted, in one call.
+
+    Exists because the first fix was scoped to the wrong file. The four activation-path budget calls
+    in ``stream_service`` were converted to the reporting variant while these four — the SURFACE
+    ASSEMBLY calls, which run on **every turn** rather than only after a ``tool_load`` — went on
+    discarding their drops. The largest of them trims a 315-tool catalog to a **2,000-token** hot
+    seed, so it is not a smaller instance of the arm-E defect; it is the bigger one, and it fires
+    unconditionally.
+
+    ``sink`` is optional so a caller with nowhere to put the record still gets identical selection
+    behaviour. That is a real hole and it is the honest one: dropping the ``sink`` argument makes a
+    narrowing unrecorded, which is visible at the call site, rather than silently unrecordable.
+    """
+    kept, dropped = budget_names_by_tokens_ex(catalog, names, token_budget=token_budget)
+    reason = f"did not fit the {stage} token budget ({token_budget} tok)"
+    if dropped:
+        if sink is not None:
+            sink.extend({"tool": n, "stage": stage, "reason": reason} for n in dropped)
+        else:
+            # No explicit sink: fall back to the request-scoped one. This branch is why the hole
+            # closed. `withheld_sink` was optional and BOTH production call sites omitted it, so the
+            # `is not None` guard never fired and three rounds of verification found the same
+            # narrowing unrecorded. Registration must not depend on a caller remembering.
+            from app.services.instrument import record_surface_withheld
+            for n in dropped:
+                record_surface_withheld(n, stage=stage, reason=reason)
+    return kept
 
 
 def budget_rail_tools(
@@ -256,6 +346,8 @@ def discovery_seed_for_surface(
     rail_next_step_tools: set[str] | None = None,
     sticky_domains: set[str] | None = None,
     injected_skill_codes: list[str] | None = None,
+    # CP-0.2 — where this function's narrowings register. Optional; see _budget_and_register.
+    withheld_sink: list[dict] | None = None,
 ) -> set[str]:
     """Discovery active-set seed: hot set (auto) or pins ∪ activated (curated).
 
@@ -293,10 +385,47 @@ def discovery_seed_for_surface(
     # FIX (context-explosion): token-budget the hot-seed instead of seeding the
     # WHOLE domain(s). Cuts the always-advertised base ~24K → ~4K (scaled up for a
     # session model with a larger real context_length via scale_by_window).
-    raw_hot_seed = budget_names_by_tokens(
+    raw_hot_seed = _budget_and_register(
+        withheld_sink, 'hot_seed',
         catalog, hot_tool_names(catalog, hot_domains),
         token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
     )
+    # 🔴 EIGHTH FRAME, and it was MY OWN registration hiding inside a branch. This block
+    # sat under `if binding_categories:` — so on every turn without binding categories it
+    # never ran, and the tools it was written to record went unregistered exactly as before.
+    # A control turn disproved the intent-gate diagnosis; this is what the control was
+    # pointing at. Registration must be UNCONDITIONAL and placed after every mutation of
+    # `hot_domains`, never inside the branch that happened to be open when it was written.
+    # ── P1 · THE NARROWING NOBODY INSTRUMENTED ────────────────────────────────────────────────
+    # Live measurement: 237 of the frozen 315 catalogue tools were in NEITHER the advertised nor
+    # the withheld set. Every stage I had instrumented — hot_seed, rail gate, oneshot, failure
+    # breaker, permission mode — sits BELOW this line. The selection that decides which DOMAINS
+    # are candidates at all sits above it, and registered nothing.
+    #
+    # It is query-dependent, which is what made it visible: 87 candidate tools for one message and
+    # 101 for another, differing by 17 names — `jobs_*` and `translation_*` appear only when the
+    # message text mentions them. So ~100 of 315 are chosen by relevance and the other ~215 are
+    # dropped before any budget runs. The decisive case is `world_map_create`: absent from both
+    # records at passes 1-2, then carrying a `token_budget` withheld record at pass 3 — the
+    # runtime's own record proving it had been a candidate all along.
+    #
+    # Registered here as `domain_not_selected`. This is the LARGEST narrowing in the system and it
+    # was the last one found, because it does not look like a filter — it looks like a set being
+    # built. A narrowing that never says no is the hardest kind to see.
+    _selected = hot_tool_names(catalog, hot_domains)
+    _unselected = sorted({tool_name(td) for td in catalog} - set(_selected))
+    if _unselected:
+        _reason = f"domain not in this turn's hot set ({', '.join(sorted(hot_domains)) or 'none'})"
+        if withheld_sink is not None:
+            withheld_sink.extend(
+                {"tool": n, "stage": "domain_not_selected", "reason": _reason}
+                for n in _unselected
+            )
+        else:
+            from app.services.instrument import record_surface_withheld
+            for n in _unselected:
+                record_surface_withheld(n, stage="domain_not_selected", reason=_reason)
+
     eff_pins = pins.effective_enabled
     if pins.curated_mode:
         # In curated mode the hot set only enters via this union; the studio surface's
@@ -340,7 +469,8 @@ def discovery_seed_for_surface(
             # drift risk the standalone constant carried.
             from app.services.skill_registry import SYSTEM_SKILLS
             plan_domains = set(SYSTEM_SKILLS["plan_forge"].hot_domains)
-            plan_hot = budget_names_by_tokens(
+            plan_hot = _budget_and_register(
+                withheld_sink, 'hot_seed_plan_forge',
                 catalog, hot_tool_names(catalog, plan_domains),
                 token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
             )
@@ -381,7 +511,8 @@ def discovery_seed_for_surface(
             if _skill and _skill.hot_domains and _skill_visible(_skill, active_surface):
                 extra_domains |= set(_skill.hot_domains) - covered_domains
         if extra_domains:
-            extra_hot = budget_names_by_tokens(
+            extra_hot = _budget_and_register(
+                withheld_sink, 'hot_seed_skill',
                 catalog, hot_tool_names(catalog, extra_domains),
                 token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
             )
@@ -496,6 +627,7 @@ def effective_enabled_tools(
     catalog: list[dict],
     hot_domains: set[str],
     context_length: int | None = None,
+    withheld_sink: list[dict] | None = None,
 ) -> list[str]:
     """When glossary skill is active in curated mode, auto-union glossary hot tools.
 
@@ -510,7 +642,8 @@ def effective_enabled_tools(
         return list(enabled_tools)
     # FIX (context-explosion): budget the auto-unioned hot set too, so curated
     # sessions with the glossary skill don't re-inflate the whole domain.
-    hot = budget_names_by_tokens(
+    hot = _budget_and_register(
+        withheld_sink, 'hot_seed_glossary',
         catalog, hot_tool_names(catalog, hot_domains),
         token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
     )

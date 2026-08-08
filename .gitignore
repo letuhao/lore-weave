@@ -366,3 +366,6 @@ services/publisher/pub.exe~
 .codex/config.local.toml
 .vscode/settings.json
 AGENTS.local.md
+.vlive*/
+.vcode*/
+.vmetric*/

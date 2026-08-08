@@ -85,8 +85,29 @@ async def _audio_cleanup_loop():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # CP-2.7 / M4 — **the agent-runtime membrane refuses to boot on an incomplete contract**
+    # (ARCHITECTURE §3). This is the FIRST production importer of `app.agentruntime`, and the
+    # reason it exists at all: M4's clause is "the registration entry point refuses to boot", and
+    # for eleven rounds there was no boot to refuse because nothing imported the package.
+    #
+    # Deliberately BEFORE the pool: a manifest that cannot be served is a deploy-time fact, and
+    # discovering it after connecting to Postgres only makes the failure slower to read. An ABSENT
+    # manifest is a legitimate empty state (`declarations: []`) and does not raise — that is
+    # today's state and the membrane is supposed to start empty.
+    from app.agentruntime.boot import boot
+    boot()
     pool = await create_pool(settings.database_url)
     await run_migrations(pool)
+    # P3 — the kill path. A process that died mid-turn could not record its outcome; the process
+    # that starts can. Bounded by age so a live turn is never stamped. Best-effort by construction:
+    # it must never block startup, and it reports its counts because a reconciler that runs
+    # silently is indistinguishable from one with no callers.
+    from app.services.instrument import reconcile_crashed_turns
+    await reconcile_crashed_turns(pool)
+    # And the turns stuck at `awaiting_input` whose suspended run has expired — input can never
+    # arrive, so a success label on them is a lie the column tells about itself.
+    from app.services.instrument import resolve_expired_suspends
+    await resolve_expired_suspends(pool)
     try:
         await ensure_bucket()
     except Exception:
