@@ -68,6 +68,52 @@ Three tool calls last run went to querying live databases for rows of `npc_sessi
 snapshot instead of reading `shard_utilization`, so it never exercises `capacity_glue`. It proved
 provisioning works; it is not how a reality gets created.
 
+### 0.6b · DO NOT ASK FOR PERMISSION TO CONTINUE (standing, PO 2026-08-09)
+
+**The PO has delegated continuation. A question whose only possible answer is
+*"keep going"* is a wasted turn — it costs a round trip and returns no
+information.** The instruction, verbatim: *"the plan should be fully defined in
+the runstate … stop asking something that I only answer as keep going/continue,
+it useless ask and answer."*
+
+So:
+
+- **Never end a turn on a status report that waits.** Finish the row, then start
+  the next row in the same turn.
+- **Never ask which of two options to take when this file can decide it.** If a
+  fork appears and is not sealed below, *seal it here* — write the call, the
+  reason, and the trigger that would reverse it — and then act on it. A decision
+  recorded in this file is worth more than a decision confirmed in chat, because
+  the next session can read it.
+- **Never ask for a size/scope blessing.** §0.3 already says missing
+  infrastructure is unbuilt work, not a blocker.
+
+**The three things that still stop the run**, unchanged and exhaustive:
+
+1. an action that is **destructive or irreversible** outside the repo (dropping a
+   real database, force-pushing, sending something outward);
+2. a **sealed decision turning out to be wrong** — re-read it before saying so;
+3. the PO's own **POST-REVIEW checkpoint** at a shippable risk boundary, which is
+   a presentation, not a question.
+
+**Anything else: park it in the register and keep moving.** A row that cannot be
+finished becomes a `⬜ parked` line with what would unblock it, and the run
+continues at the next row. *Blocked ≠ stopped* (§0.3).
+
+### 0.6c · The forks that are SEALED, so nobody re-asks them
+
+Each of these came up, was decided on evidence, and is closed. Re-opening one
+needs a new fact, not a new opinion.
+
+| fork | sealed call | reversal trigger |
+|---|---|---|
+| **`3E` adoption of `RealityId` across 880 sites** | **A RATCHET, never a big bang.** A baseline file records the count of bare `reality_id` sites per crate; a gate fails on an increase, and on a decrease that the baseline did not record — the exact shape `contracts/dp/dp-clippy-baseline.json` already proves in this repo. An 880-site single commit is unreviewable and unbisectable. | the count falls below ~50, at which point one commit is reviewable |
+| **`DpError` variant set** | **Doc-driven, oracle-enforced.** `DP-K3` is the SSOT; `spec_oracle.rs` compares. Never hand-curate the list. | `DP-K3` itself is amended |
+| **`3D`'s control-plane verification** | **A TRAIT in `crates/dp`, implemented in slice 5.** `crates/dp` declares no I/O, so it declares the seam and slice 5's `DpControlPlane` satisfies it. The trait ships **with its first implementor**, not before — a trait whose only impl is its own test double is the orphan shape. | — |
+| **new types with crate-private constructors** | **Land WITH their producer, never before.** Proven by `3C`: `RealityId` was written, tested, and reverted because `new_verified` had no in-crate caller. `#[allow(dead_code)]` is not an option — it is the pragma-as-exemption shape. | — |
+| **a `DP-R3` finding in a crate that is not game-layer** | **Not debt — out of scope.** `01_scope_and_boundary.md` §4 scopes by the DATABASE. Mark `plane = "platform"` with a reason; the gate refuses the claim from any crate addressing a per-reality DB. | §4 is amended |
+| **anything the spec names that has no producer** | **Do not ship it.** Record it in a deferred register that a gate reads. | its producer arrives |
+
 ### 0.6 · Escapes that cost real time last run
 
 - **Heredocs eat backslashes.** `\b`, `\n`, `\u{74}` and `\\n` were all corrupted, once producing a
@@ -676,6 +722,40 @@ the sealed order *before* slice 4. `spec_oracle.rs` now parses `DP-K3`'s fenced
 block out of the locked markdown and compares sets three ways. Bitten: a dropped
 variant, an invented one, and a deferred row that outlived its deferral each red
 with their own message.
+
+### The rest of slice 3, specified now rather than discovered later
+
+**`3C` + `3D` land as ONE commit.** They are one unit because §0.6c seals it: a
+crate-private constructor ships with its producer.
+
+| step | what | done = |
+|---|---|---|
+| `3D.1` | `CapabilityToken` — opaque, crate-private constructor, an expiry, and `is_live(now)`. NO signature verification here (that is the control plane's). | unit tests incl. an expired token; `Debug` must NOT print the secret — assert that |
+| `3D.2` | `trait ControlPlane` in `crates/dp` — the seam. One method: resolve a bind request into a verified `(RealityId, SessionId, CapabilityToken)`, or a `DpError`. | it compiles and `SessionContext::bind` is generic over it |
+| `3D.3` | `SessionContext` per `DP-K2` — `reality_id`/`session_id`/`node_id`/`capability`/`bound_at`, `check_live() -> Result<(), DpError>` returning `CapabilityExpired`. Channel fields (`current_channel_id`, `ancestor_channels`) ship **only if** `ChannelId` has a producer by then; otherwise they are a `DEFERRED` row like `DpError`'s. | `check_live` red-tested against an expired capability |
+| `3C.1` | re-add `ids.rs` (`RealityId`/`SessionId`/`ChannelId`/`NodeId`) — the file is in `ff118081b`'s history, reverted deliberately | `cargo clippy -p dp --all-targets -D warnings` exit 0, i.e. no dead code, which is the whole test of whether the producer is real |
+| `3C.2` | re-add `tests/ui/forged_reality_id.rs` + `.stderr` — both escapes, `E0603` + `E0624` | the pins READ, not blessed; bite = field → `pub` breaks it |
+| `3D.4` | a test double implementing `ControlPlane` **in `#[cfg(test)]`**, so the trait has an impl and `bind` is exercised end to end | a bound `SessionContext` whose `reality_id()` is the one the double verified |
+
+**`3E` — the ratchet**, per §0.6c. Not started until `3C`/`3D` are in, because
+there is nothing to migrate *to* before then.
+
+| step | what | done = |
+|---|---|---|
+| `3E.1` | `scripts/reality-id-adoption-gate.py` + `contracts/dp/reality-id-baseline.json` — count bare `reality_id: Uuid` per crate, fail on increase, fail on an unrecorded decrease | self-test + 2 bites (a new bare site; a baseline row that improved) |
+| `3E.2` | migrate the crates that already depend on `dp`, highest-count first | the baseline shrinks; gate green |
+
+### Slice 4 — the tier-typed write surface (gated on `3D`)
+
+Sealed prerequisite met: `REC-65` is mechanised (`ff118081b`). Do **not** start
+before `3D`, because every signature takes `&SessionContext`.
+
+| step | what | done = |
+|---|---|---|
+| `4A` | `cache_key!` (`DP-R4`) — expands to `dp:{reality_id}:{tier}:{aggregate_type}:{aggregate_id}[:subkey]` with reality and tier bound at compile time | a trybuild case proving a hand-built `format!("dp:…")` is NOT accepted where a key is required, + `dp-clippy`'s `R-4` given a subject |
+| `4B` | `t0_write`..`t3_write` typed by the tier marker traits | a compile-fail case: writing a `T2Aggregate` via `t1_write` must not compile (`DP-R5`) |
+| `4C` | `read_projection_*` per `04b` | — |
+| `4D` | `dp-clippy` `R-6` (`forbid_swallowed_backpressure`) — keys on `DpError::is_backpressure`, never its own copy of the pair | fires on a real `.ok()` over a `Result<_, DpError>`; self-test 3 legs |
 
 ---
 
