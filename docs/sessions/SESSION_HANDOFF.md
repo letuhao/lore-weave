@@ -2,7 +2,7 @@
 
 ## ▶ GAME BUILD — the FOUNDATION track: `crates/dp` slice 1 + the `channels` table (2026-08-08, branch `feat/game-logic`)
 
-**HEAD:** `304083fad` · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
+**HEAD:** `fdbaef227` · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
 
 > **▶ MOST RECENT: THE REALITY LAYER IS CLOSED (2026-08-08).** The platform can now **create a
 > reality**, it **belongs to someone**, a half-finished one is **found**, and none of it runs as
@@ -16,7 +16,7 @@
 > | `W5` `bebfc4fbb` | **`orphan_scanner` can see** — 4 classes over live state. It had classified `let scanned = 0u32` since cycle 5 |
 > | `W6` `3543684a1` | **ownership** — `owner_kind`/`owner_user_id` with its producer wired end to end |
 > | `W7` `12402d92f`, `c9e0f1881` | **`loreweave_provisioner`** (`CREATEDB` only), and the worker now **refuses** superuser |
-> | `V.1`×2 `40a632244`, `91b27402f` | two BLOCK verdicts discharged — 7 HIGH between them, incl. a retry split-brain, an SQL-injection escalation, and an unkept GDPR erasure promise |
+> | `V.1`×3 `40a632244`, `91b27402f`, `fdbaef227` | **three** BLOCK verdicts discharged — 10 HIGH between them: a retry split-brain, an SQL-injection escalation, an unkept GDPR erasure promise, and (round 3) that the erasure FIX itself never ran for the user class it was written for |
 >
 > **Phase 0 changed `W3`'s design before a line was written.** The row said *"add an HTTP endpoint to
 > world-service"*; the tree said admin operations go through `admin-cli` + a **subprocess** seam,
@@ -52,6 +52,15 @@
 > required to use. Now **37 guards** prove load-bearing across Go/Rust/meta under
 > `scripts/reality-layer-bite-harness.py`, wired into CI — and that harness caught **six of its own
 > bites** failing to prove anything, including a "mutation" that was a no-op comment.
+>
+> **Round 3 is the one to read (`BDR-51`).** It reviewed the round-2 FIXES and found the headline
+> one inert: I fixed the ownership hole in the LOOKUP and left the identical hole in the WRITER,
+> one function later, in the same commit — `reassignOwnedRealities` sat after an early return, so
+> a user who owns a reality but drives no actor was never erased. Live, **both** user-owned
+> realities belonged to such a user. Every assertion covering that path was a `strings.Contains`
+> over the source, and the meta gate could not see its own subject (the column arrives via
+> `ADD COLUMN`; the regex demanded line-start). There is now a **behavioural, DB-gated** test that
+> reports *"the owner SURVIVED erasure"* when the old shape is restored.
 >
 > **Open, each with a trigger** (see the run-state §4): `W5-REMEDIATE` (the scanner detects but
 > cannot mark — needs a bridge endpoint), `W5-CRON` (nothing schedules it), `W3-DRYRUN-MISNOMER`

@@ -446,6 +446,9 @@ not implement toward it.
 | `W5-CRON` | nothing schedules the scanner — it is a binary nobody runs | its first real orphan, or `W5-REMEDIATE` landing. A detector nobody invokes is the scaffold problem one level up |
 | `W6-OWNER-UNVALIDATED` | **conscious decision, recorded because `V.1` found it undocumented.** Nothing checks that `owner_user_id` names a real user: there is no FK (cross-database), and neither the bridge nor the admin handler looks the user up. An admin CAN provision a reality owned by a UUID belonging to nobody. Acceptable for an admin-only tier-2 command where the operator supplies the id deliberately — **not** acceptable once users request their own | the user-facing request pipeline. It must resolve the owner from the authenticated caller, not from a typed parameter |
 | `D-META-ERASURE-COVERAGE` | **8 meta tables carry a user reference with no scrubber path**, 5 declaring no `@erasure_method` at all — found by the gate written for `W6`, and predating it. Several need a retention/legal decision, not code (a tax ledger must not be deleted on request; the consent ledger IS the evidence of the request) | `TestMetaMigrationsDeclareAnImplementedErasure` — its `knownUnhandled` register must shrink, and a NEW user-referencing meta table cannot be added without a row |
+| `W7-SHELL-UNCOVERED` | four round-3-era fixes ship with **no test and no bite**: `infra/db-ensure.sh` (the injection fix itself), the 036/037 down-migration guards, the column-level GRANT, and the `main.go` nil-owner guard. The bite harness's `TARGETS` are Go/Rust files only | a shell-level bite harness, or the next change to `db-ensure.sh`. Recorded because the injection fix is the highest-severity change in this run and is verified only by hand |
+| `META-DOWN-UNCOVERED` | `scripts/migration-idempotency-validator.sh` walks **only** `contracts/migrations/per_reality` — the same `NV-3` shape this run diagnosed twice. The 036/037 down migrations are exercised by nothing automated | pointing the validator at both trees; it is the meta-tree twin of the erasure-gate fix |
+| `W6-ERASURE-EVENT` | `reality_registry` + `OpUpdate` maps to `reality.status.changed` in the allowlist, so the erasure reassign would emit a status-changed event carrying no status change. **Latent only** — `main.go` builds the MetaWrite config with no `Outbox`, so nothing fires today | wiring an Outbox into the meta-worker erasure path |
 | `W7-TEMPLATE1` | the provisioner relies on `CREATE DATABASE`'s **implicit** `TEMPLATE template1` to inherit `vector`; a future `TEMPLATE template0` (the standard move for encoding control) silently returns provisioning to needing superuser. Also cluster-wide: every new database on this box now carries pgvector, and `infra/foundation-dev/` is a **second** cluster that never runs `db-ensure.sh` | anyone adding a TEMPLATE clause, or standing up the foundation-dev cluster for provisioning |
 | `1b7db-03` | ~~`loreweave` is the sole Postgres login and is superuser~~ **CLEARED by `W7`** — provisioning runs as `loreweave_provisioner` (`CREATEDB` only). Other services still connect as `loreweave`; narrowing those is a separate, larger sweep | the next service touched |
 | `1b14-07` | `metadata` JSONB / `display_name` / `dissolved_at` unconstrained | the first writer of `channels` |
@@ -465,6 +468,24 @@ The five that governed last run, so they are not re-learned:
 `BDR-44` a fix without a leg · `BDR-45` a fix's blast radius ≠ its subject · `BDR-46` knowing a rule
 does not transfer across a language boundary · `BDR-47` execute the path before verifying its parts ·
 `BDR-48` "blocked" is a label, and it was the only blocker.
+
+**`BDR-51` (2026-08-08) — I fixed a bug in the lookup and left the identical bug in the writer, one
+function later, in the same commit.** `V.1` round 2 found that `RealitiesForUser` ignored owned
+realities; I fixed it, and shipped `reassignOwnedRealities` as the tail of the binding deleter —
+*after* its `if len(found) == 0 { return nil }`. So the erasure never ran for a user who owns a
+reality but drives no actor: **the exact class I had just fixed**. Round 3 proved it against live
+data — both user-owned realities belonged to a user with zero bindings, so erasing them was a no-op.
+
+Three lessons, in increasing order of how much they cost:
+1. **A fix teaches you the shape of a bug. Search for that shape everywhere before closing.** I had
+   the concept in hand and applied it to one of the two places that needed it.
+2. **Every assertion about that path was a `strings.Contains` over the source.** The reviewer
+   changed the query to `WHERE owner_user_id = $1 AND false` and the whole suite stayed green. A
+   grep-vs-grep bite proves `strings.Contains` works; it cannot see behaviour. Three of my six META
+   bites were that.
+3. **A gate can be blind to its own subject.** My meta walk required the column at line start;
+   migration 036 adds it via `ADD COLUMN`, so it matched **zero** files — the gate written to catch
+   a default-uncovered column could not see that column. `NV-4`, inside the fix for `NV-3`.
 
 **`BDR-50` (2026-08-08) — the three-axis DoD passed work that carried a split-brain bug and three
 checks that could not fail.** `W3` was green on CODE, LIVE RUN and DATA, honestly. `V.1` still
