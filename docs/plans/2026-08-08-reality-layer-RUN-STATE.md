@@ -623,6 +623,62 @@ the ratchet in `contracts/dp/dp-clippy-baseline.json` is the number that moves.
 
 ---
 
+## 4b · SLICE 3 — board, written at the slice's start (`BDR-26`)
+
+Sealed scope: **`RealityId` + `SessionContext`**. Phase 0 changed how it is
+approached, twice, before a line shipped.
+
+| # | row | state |
+|---|---|---|
+| `3A` | **`DpError` (`DP-K3`)** — the settled enum slice 1 named as its own missing prerequisite | ✅ 17 variants + a doc-parsing oracle, 3 bites |
+| `3B` | **`DP-R6`'s backpressure partition, in code** — `is_backpressure()` | ✅ and the non-backpressure arm is enumerated, so a new variant cannot be silently unclassified |
+| `3C` | **the id newtypes** (`RealityId`/`SessionId`/`ChannelId`/`NodeId`) | ⬜ **blocked on a PRODUCER, not on effort** — see below |
+| `3D` | **`CapabilityToken` + `SessionContext`** | ⬜ needs `3C` and a control-plane seam (slice 5) |
+| `3E` | **adoption** — the bare `reality_id` sites | ⬜ **880 across 99 files**, measured; the plan's "457" is stale |
+
+### `3C` — an unforgeable mint is dead code until something can mint
+
+`RealityId` was written, tested and reverted inside an hour, and the revert is
+the finding. `DP-K1` specifies *"module-private constructor — cannot be forged
+by feature code"*, and that property works: `tests/ui/forged_reality_id.rs`
+attempted **both** escapes and rustc refused each for its own reason —
+`E0603` on the tuple-struct constructor, `E0624` on `new_verified` — with the
+bite (field → `pub`) breaking the test.
+
+Then `cargo clippy -p dp --all-targets -- -D warnings` said `new_verified` is
+never used, and it was right. A crate-private constructor with no in-crate
+caller **is** dead code, and its caller is session bind → `CapabilityToken` →
+the control plane, i.e. slice 5. Silencing it with `#[allow(dead_code)]` is the
+pragma-as-exemption shape `CLAUDE.md` names by example. So the types land with
+`3D`, together, and `DpError` went first because **a `pub` enum's variants are
+their own constructors** — it is complete the moment it is declared.
+
+### What `3A` had to reconcile, and what caught it
+
+- **`DP-K3`'s field type `Tier` does not exist here.** In `crates/dp`, `Tier` is
+  the sealed marker TRAIT; the runtime enum the spec means is `TierLevel`,
+  renamed by slice 1 under the rule `aggregate.rs` states for exactly this case
+  (*"when a name is taken, take a different one and say so"*, `FLOW-24` — which
+  lists `CircuitOpen`/`RateLimited` as two more of the same class). Caught by
+  **rustc** (`E0782: expected a type, found a trait`), not by review.
+- **Five variants carry types this workspace has not built** (`NodeId`,
+  `Timestamp`, `ActorId`, `CausalityToken`). They are in `DEFERRED_VARIANTS`
+  with the type each waits on, and the oracle **requires that list to account
+  for every doc variant the code omits** — so a variant cannot be dropped
+  silently, invented silently, or left deferred after it ships.
+- **No new dependency.** `Display` is hand-written rather than taking
+  `thiserror`, so the crate's empty `[dependencies]` — the evidence `S2.3`'s
+  *"declares no I/O"* rests on — survives untouched.
+
+**The oracle is the `REC-65` mechanism.** `REC-65` was *"`DP-K3` is LOCKED at 21
+variants; 5+ docs mint satellites"*, adjudicated by `REC-102b` and required by
+the sealed order *before* slice 4. `spec_oracle.rs` now parses `DP-K3`'s fenced
+block out of the locked markdown and compares sets three ways. Bitten: a dropped
+variant, an invented one, and a deferred row that outlived its deferral each red
+with their own message.
+
+---
+
 ## 5 · REGISTERS
 
 Decisions, parked, debt and **`BDR-1`..`BDR-48`** live in

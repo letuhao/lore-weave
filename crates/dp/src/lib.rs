@@ -72,9 +72,11 @@
 #![deny(missing_debug_implementations)]
 
 pub mod aggregate;
+pub mod error;
 pub mod scope;
 pub mod tier;
 
 pub use aggregate::{requires_channel, tier_row, DpAggregate, TierRow};
+pub use error::DpError;
 pub use scope::{ChannelScope, RealityScope, Scope, ScopeKind};
 pub use tier::{Coherency, Tier, TierLevel, T0, T1, T2, T3};

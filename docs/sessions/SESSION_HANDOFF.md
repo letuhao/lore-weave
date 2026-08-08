@@ -4,10 +4,31 @@
 
 **HEAD:** `8c4c13360`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
 
-> **▶ DO NEXT — slices 3/4: the `dp` SDK surface** (`DpError`, `cache_key!`, the read/write API),
-> which is what gives `dp-clippy`'s other three lints (`R-4`, `R-6`, `R-8`) a subject. `world-service`
-> 5 + `commit-service` 3 are the standing `DP-R3` debt, ratcheted; they can only be migrated once
-> there is an SDK to migrate them TO.
+> **▶ DO NEXT — slice 3 rows `3C`/`3D`: the id newtypes WITH their producer.** `DpError` (`3A`) and
+> `DP-R6`'s backpressure partition (`3B`) are in. `RealityId` is written-and-reverted on purpose:
+> its unforgeability works (rustc refuses both escapes, `E0603` + `E0624`, bite-proven), but a
+> crate-private constructor with no in-crate caller is dead code, and its caller is session bind →
+> `CapabilityToken` → the control plane. They land together or not at all; `#[allow(dead_code)]`
+> would be the pragma-as-exemption shape. Then `3E`: adoption across **880** bare `reality_id`
+> sites in 99 files (the plan's "457" is stale).
+>
+> **`REC-65` is now mechanised, which the sealed order requires before slice 4.** `spec_oracle.rs`
+> parses `DP-K3`'s enum out of the locked markdown and compares sets three ways — a dropped variant,
+> an invented one, and a deferred row that outlived its deferral each red with their own message.
+> Five variants are deferred with the unbuilt type each waits on (`NodeId`, `Timestamp`, `ActorId`,
+> `CausalityToken`), and the oracle refuses to let that list rot.
+>
+> **Two things Phase 0 caught that review would not have.** `DP-K3`'s field type `Tier` does not
+> exist in `crates/dp` — `Tier` is the sealed marker trait, and the runtime enum is `TierLevel`
+> (slice 1's `FLOW-24` rename); rustc said so with `E0782`. And `cargo clippy -p dp` was **red at
+> HEAD** on `aggregate_contract.rs:379`, meaning `dp-contract` — the job whose name says "all
+> branches", the only leg running slice 1's trybuild pins outside `main` — had been failing. Fixed
+> in `f0d55753b`.
+>
+> *(Superseded, kept for the standing debt it names.)* The `dp` SDK surface — `cache_key!` and the
+> read/write API — is what gives `dp-clippy`'s other three lints (`R-4`, `R-6`, `R-8`) a subject.
+> `world-service` 5 + `commit-service` 3 are the standing `DP-R3` debt, ratcheted; they can only be
+> migrated once there is an SDK to migrate them TO.
 >
 > **The three red gates are CLOSED, and two were not what they claimed.**
 > - **`observability-inventory` was 6 FALSE POSITIVES.** `lw_reality_ok`, `lw_reality_ghost`, … are

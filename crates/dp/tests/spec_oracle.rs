@@ -878,3 +878,116 @@ fn the_parser_must_actually_find_something() {
     let distinct: std::collections::HashSet<_> = acks.iter().map(|(_, c)| c).collect();
     assert_eq!(distinct.len(), 4, "four tiers must have four distinct ack budgets");
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DP-K3 — the DpError variant set, parsed out of the locked markdown.
+//
+// `REC-65` (filed 2026-07-26) was EXACTLY this drift: "DP-K3 is LOCKED at 21
+// variants; 5+ docs mint satellites". It was adjudicated 2026-08-07 by
+// `REC-102b` on a full census, and the sealed build order requires that
+// adjudication to hold BEFORE slice 4 types the write surface against it.
+//
+// So the enum in `error.rs` is a transcription, and a transcription needs an
+// oracle by a different method — the same argument the top of this file makes
+// for `tier.rs`. This parses `04a_core_types_and_session.md`'s DP-K3 fenced
+// block and compares SETS, three ways:
+//
+//   * a doc variant that is neither implemented NOR declared-deferred  -> RED
+//   * an implemented variant that is not in the doc (invented)         -> RED
+//   * a deferred variant that IS implemented (the list outlived it)    -> RED
+//
+// The third is what stops `DEFERRED_VARIANTS` becoming the register this repo
+// has caught rotting four times: it shrinks or it reds.
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn dp_k3_variants() -> Vec<String> {
+    // `dp_doc` is this file's existing loader, reused rather than given a
+    // second path convention: two ways of finding the same document is how
+    // one of them ends up pointing at a file that moved.
+    let text = dp_doc("04a_core_types_and_session.md");
+
+    let start = text
+        .find("pub enum DpError {")
+        .unwrap_or_else(|| panic!("DP-K3's `pub enum DpError` block is gone from 04a"));
+    let rest = &text[start..];
+    let end = rest
+        .find("\n```")
+        .unwrap_or_else(|| panic!("DP-K3's fenced block is unterminated in 04a"));
+    let body = &rest[..end];
+
+    // A variant is a line whose first token is an UpperCamel identifier
+    // followed by `{`, `(` or `,`. Attributes (`#[error(...)]`), doc comments
+    // and comments are skipped by that shape alone.
+    let mut found = Vec::new();
+    for line in body.lines().skip(1) {
+        let t = line.trim();
+        if t.is_empty() || t.starts_with('#') || t.starts_with("//") || t.starts_with('}') {
+            continue;
+        }
+        let name: String = t.chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+        if name.is_empty() || !name.starts_with(|c: char| c.is_ascii_uppercase()) {
+            continue;
+        }
+        let after = t[name.len()..].trim_start();
+        if after.starts_with('{') || after.starts_with('(') || after.starts_with(',') {
+            found.push(name);
+        }
+    }
+
+    // A parser that finds nothing must not pass — the `V1-F4` lesson, applied
+    // to this block rather than re-learned on it.
+    assert!(
+        found.len() >= 15,
+        "DP-K3 parse found only {} variants; the block shape changed and this \
+         oracle is no longer reading it: {found:?}",
+        found.len()
+    );
+    found
+}
+
+#[test]
+fn dp_error_matches_dp_k3_or_declares_why_not() {
+    let doc_variants = dp_k3_variants();
+    let implemented: Vec<&str> = dp::DpError::IMPLEMENTED_VARIANTS.to_vec();
+    let deferred: Vec<&str> = dp::error::DEFERRED_VARIANTS.iter().map(|(v, _)| *v).collect();
+
+    let mut problems: Vec<String> = Vec::new();
+
+    for v in &doc_variants {
+        let impl_has = implemented.contains(&v.as_str());
+        let defer_has = deferred.contains(&v.as_str());
+        if !impl_has && !defer_has {
+            problems.push(format!(
+                "DP-K3 declares `{v}` and this build neither implements it nor lists it in \
+                 DEFERRED_VARIANTS. A variant cannot be dropped silently."
+            ));
+        }
+        if impl_has && defer_has {
+            problems.push(format!(
+                "`{v}` is implemented AND listed as deferred — delete its DEFERRED_VARIANTS row; \
+                 the register shrinks or it rots."
+            ));
+        }
+    }
+
+    for v in &implemented {
+        if !doc_variants.iter().any(|d| d == v) {
+            problems.push(format!(
+                "`{v}` is implemented but DP-K3 does not declare it. That is exactly the satellite \
+                 minting REC-65 was filed about; amend the locked doc or drop the variant."
+            ));
+        }
+    }
+
+    for (v, blocker) in dp::error::DEFERRED_VARIANTS {
+        if blocker.trim().is_empty() {
+            problems.push(format!("deferred `{v}` names no blocking type"));
+        }
+    }
+
+    assert!(
+        problems.is_empty(),
+        "DP-K3 and crates/dp/src/error.rs disagree:\n  - {}",
+        problems.join("\n  - ")
+    );
+}
