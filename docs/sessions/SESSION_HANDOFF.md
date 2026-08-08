@@ -2,24 +2,43 @@
 
 ## ▶ GAME BUILD — the FOUNDATION track: `crates/dp` slice 1 + the `channels` table (2026-08-08, branch `feat/game-logic`)
 
-**HEAD:** `7072b308f` · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
+**HEAD:** `c9e0f1881` · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
 
-> **▶ MOST RECENT: `W3` — the platform can CREATE a reality (2026-08-08).** `admin reality
-> provision` now exists (tier-2-griefing, `admin:write`, dry-run required), backed by a real
-> `world-service` `provision` worker. Before this, all 8 `reality` admin commands required a reality
-> that already existed and **nothing could produce one** — the only caller of the provisioner was a
-> drill with hardcoded rig credentials and a fabricated capacity snapshot.
+> **▶ MOST RECENT: THE REALITY LAYER IS CLOSED (2026-08-08).** The platform can now **create a
+> reality**, it **belongs to someone**, a half-finished one is **found**, and none of it runs as
+> superuser. Seven realities exist; at session start there were **zero**, and nothing could make
+> one — the provisioner's only caller was a drill with hardcoded rig credentials and a fabricated
+> capacity snapshot.
 >
-> **Phase 0 changed the design before a line was written.** The row said *"add an HTTP endpoint to
+> | row | what landed |
+> |---|---|
+> | `W3` `925b0e300` | **`admin reality provision`** — tier-2-griefing, `admin:write`, backed by a real worker. `W8` subsumed: live capacity via `place_reality`'s advisory-locked recount instead of a faked snapshot |
+> | `W5` `bebfc4fbb` | **`orphan_scanner` can see** — 4 classes over live state. It had classified `let scanned = 0u32` since cycle 5 |
+> | `W6` `3543684a1` | **ownership** — `owner_kind`/`owner_user_id` with its producer wired end to end |
+> | `W7` `12402d92f`, `c9e0f1881` | **`loreweave_provisioner`** (`CREATEDB` only), and the worker now **refuses** superuser |
+>
+> **Phase 0 changed `W3`'s design before a line was written.** The row said *"add an HTTP endpoint to
 > world-service"*; the tree said admin operations go through `admin-cli` + a **subprocess** seam,
-> with a governance layer (JWT scope, dry-run, dual-actor, typed confirm, audit) that an endpoint
-> would have re-implemented — starting, in my first instinct, from a shared token carrying **no
-> actor identity at all**. See `BDR-49`: three-axis QC proves a thing works; only Phase 0 asks
-> whether it should exist.
+> with governance (JWT scope, dry-run, dual-actor, typed confirm, audit) an endpoint would have
+> re-implemented — starting, in my first instinct, from a shared token carrying **no actor identity
+> at all**. `BDR-49`: three-axis QC proves a thing works; only Phase 0 asks whether it should exist.
 >
-> Verified live end-to-end under a **real RS256 admin JWT** (dev-stack admin issuance was disabled —
-> 404 — so no admin command had ever run audited here). `W8` is subsumed: the worker reads live
-> capacity through `place_reality`'s advisory-locked recount instead of faking it. The older [`2026-08-06-game-tier-build-RUN-STATE.md`](../plans/2026-08-06-game-tier-build-RUN-STATE.md) is the RECORD (registers + `BDR-1`..`BDR-48`) — **read it before `git log`.** §6h is the flow audit (`FLOW-1`..`FLOW-26`), §6i is the SDK board and its DoD, §6j is slice `1b` (the `channels` table), §7 holds Decisions / Parked / Debt / Drift.
+> **`V.1` returned BLOCK on `W3` and was right** (`40a632244`, `499c17f53`): a **retry could put the
+> database on a different shard than the registry names** — the bridge's idempotency doc says it does
+> not diff a retried payload, justified by "the provisioner always retries the same intent", which
+> `W3` had quietly made false. It also found **three defects in the verification itself**, including
+> a bite whose assertions read a 256-byte truncation window the evidence could never reach while
+> this file reported "10/10 guards load-bearing". `BDR-50`: **the axes test the subject; only an
+> independent reader tests the apparatus.**
+>
+> The recurring shape, hit three times and each time fixed: **apparatus without a subject** — a
+> scanner that scanned nothing, a bite that asserted nothing, and a privilege role nothing was
+> required to use. Now 31 guards prove load-bearing under
+> `scripts/reality-layer-bite-harness.py`, wired into CI.
+>
+> **Open, each with a trigger** (see the run-state §4): `W5-REMEDIATE` (the scanner detects but
+> cannot mark — needs a bridge endpoint), `W5-CRON` (nothing schedules it), `W3-DRYRUN-MISNOMER`
+> (`dry_run_required` does not require a dry run — platform-wide, all 12 commands), `W3-DEVKEY`. The older [`2026-08-06-game-tier-build-RUN-STATE.md`](../plans/2026-08-06-game-tier-build-RUN-STATE.md) is the RECORD (registers + `BDR-1`..`BDR-48`) — **read it before `git log`.** §6h is the flow audit (`FLOW-1`..`FLOW-26`), §6i is the SDK board and its DoD, §6j is slice `1b` (the `channels` table), §7 holds Decisions / Parked / Debt / Drift.
 
 ### What this track is, and why it exists
 
