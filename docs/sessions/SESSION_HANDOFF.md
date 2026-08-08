@@ -58,7 +58,36 @@ Of the 80 the gate found, 70 carried their English at the call site and were lif
 **10 carried nothing and rendered their own key to the user** (six in `StepProfile`, three in
 pdf-import, one in `GapReportTab`). Those ten are authored copy, worth a reviewer's eye.
 
-### ⚠️ NEXT-1 — two gates report FALSE findings under CI load (`|| true` swallows a partial read)
+### ⚠️ NEXT-1 — five test harnesses set up databases unguarded, from hand-picked lists
+
+`main` is fully green as of `28b65f9ff` — first time since at least 2026-08-03. Getting
+there exposed something worth a deliberate pass.
+
+**Sixteen** per-reality migrations exist. **Seven** harnesses hand-pick a subset, and only
+**two** use `mustApplyEventSchema`, the globbing helper written for exactly this after the
+publisher smoke hit it. The other five carry both halves of the problem:
+
+- **default-uncovered (NV-3)** — a new migration is invisible until someone adds a line.
+  This kept the meta-worker smoke red from 2026-07-27: it applied 0002/0005/0009 while the
+  publisher's pending-select had moved on to `e.channel_id` (0014) and `e.ruleset_digest`
+  (0016). Each fix revealed the next gap, and every failure read as a publisher bug because
+  the error names a COLUMN, not a migration.
+- **unguarded against a bad DSN** — and this is the serious half. `mustApplyEventSchema`
+  calls `testsafe.EnsureThrowawayDB(current_database())` before its first destructive
+  statement; the hand-written `mustApply` does not. These harnesses apply
+  `0002_events_table.up.sql`, which opens with `DROP TABLE IF EXISTS events`. Point
+  `LW_INTEGRATION_DB` at a real per-reality database and it drops that reality's entire
+  event log — the `loreweave_book` shape exactly: *the statement is fine, the DSN is not.*
+
+The lesson is where the guard lives. Vigilance is not the mechanism; the guard belongs in
+the helper everyone calls, so a caller cannot opt out by writing three lines itself.
+
+**The work:** move the remaining five harnesses onto `mustApplyEventSchema` (with per-test
+filters where a DB genuinely lacks a table), and keep `requirePublisherColumns`-style
+preflights for what globbing cannot cover. Not done here deliberately — it is a change
+across seven files that set up databases, which is not a 2am change.
+
+### ✅ CLOSED (mitigated, not root-caused) — two gates reported FALSE findings under CI load
 
 `all-gates` failed three consecutive runs on the same commit, naming a DIFFERENT subject each
 time, and each subject was demonstrably fine:
