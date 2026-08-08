@@ -4,7 +4,28 @@
 
 **HEAD:** `8c4c13360`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
 
-> **▶ DO NEXT — slice 3 rows `3C`/`3D`: the id newtypes WITH their producer.** `DpError` (`3A`) and
+> **▶ DO NEXT — `A::Delta`, then slice 5.** Slice 3 is CLOSED (`3A`–`3D` committed, `3E` parked) and
+> slice 4's `4A` is in. `4B`/`4C`/`4D` park on three named, buildable, in-repo pieces: `DpAggregate`
+> has no `Delta` (a change to the aggregate CONTRACT — `dp-aggregate-gate`, five trybuild pins, four
+> real impls — so it needs its own slice and its own refutation round); there is no backend seam
+> (`crates/dp` declares no I/O, so a write surface can only be a trait, and its implementor is
+> `dp-kernel`, i.e. slice 5); and `DP-K5` is `async`, which pulls a runtime contract into the crate
+> whose defining property is having none.
+>
+> **`4D` parks for the sharper reason: no SUBJECT.** `R-6` flags `.ok()` over a
+> `Result<_, DpError>`, and the only functions returning that today are `SessionContext::bind` and
+> `check_live`, both inside `crates/dp` and neither called outside tests. Shipping it now would be
+> green by emptiness — the shape this run removed five times.
+>
+> **`3E` parks on a fact about the type, not on effort:** a crate adopts `RealityId` by *receiving*
+> one, the only source is `SessionContext::bind`, and the only `ControlPlane` implementor is a
+> `#[cfg(test)]` double. A production crate could adopt it only by forging a value, which is exactly
+> what the `pub(crate)` constructor prevents. **The figure was wrong three times** — the plan's 457,
+> then 880 (every mention, including SQL strings and comments), against a real subject of **178**
+> typed sites, of which only **84** are in scope: `dp-kernel`'s 73 carry `dp-crate = true` and
+> structurally cannot hold a `RealityId`.
+>
+> *(superseded)* **slice 3 rows `3C`/`3D`: the id newtypes WITH their producer.** `DpError` (`3A`) and
 > `DP-R6`'s backpressure partition (`3B`) are in. `RealityId` is written-and-reverted on purpose:
 > its unforgeability works (rustc refuses both escapes, `E0603` + `E0624`, bite-proven), but a
 > crate-private constructor with no in-crate caller is dead code, and its caller is session bind →

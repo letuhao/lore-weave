@@ -313,7 +313,7 @@ const FORBIDDEN_IMPORTS_IN_FEATURE_CRATES: &[&str] = &[
 |---|---:|---|
 | Core types | 10 | `RealityId`, `ChannelId`, `SessionId`, `NodeId`, `Tier`, `Aggregate`, `T0/T1/T2/T3Aggregate` traits, `RealityScoped`/`ChannelScoped` traits, `Predicate`, `CausalityToken` (Phase 4) |
 | Session | 3 | `SessionContext`, `bind_session`, `refresh_capability` |
-| Error | 1 | `DpError` (21 variants — see [04a DP-K3](04a_core_types_and_session.md#dp-k3--dperror-enum)) |
+| Error | 1 | `DpError` — **22 declared**, of which **17 are implemented** in `crates/dp/src/error.rs` and 5 are deferred with the unbuilt type each waits on (`NodeId`, `Timestamp`, `ActorId`, `CausalityToken`). See [04a DP-K3](04a_core_types_and_session.md#dp-k3--dperror-enum). *This cell said 21, and had been wrong since `REC-102b` adopted `ResumeTokenExpired` + `AggregatorStuck` on 2026-08-07 — 20 + 2 = 22. Nothing noticed because nothing could: `design-lint` compares a claim against a real Rust enum, and there was no enum until slice 3.* |
 | Read | 4 | `read_projection_reality`, `read_projection_channel`, `query_scoped_reality`, `query_scoped_channel` |
 | Write | 5 | `t0_write`, `t1_write`, `t2_write`, `t3_write`, `t3_write_multi` |
 | Subscription | 4 | `subscribe_invalidation` (pub/sub) · `subscribe_broadcast<T1>` (pub/sub) · `subscribe_channel_events_durable<S>` (Streams + DB catchup, Phase 4) · `subscribe_session_channels<S>` (multiplex, Phase 4) |
