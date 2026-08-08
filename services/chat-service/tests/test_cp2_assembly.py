@@ -524,6 +524,99 @@ class TestAPlanStepsDeclarationIsAdvertised:
         assert deferred_names(defs) == ("c",)
 
 
+# ── 2.7 (part) · M4 — the registration entry point refuses to boot ──────────────────────────────
+
+class TestTheRuntimeRefusesToBootOnAnIncompleteContract:
+    """REJECTS: a service that starts with a manifest it cannot serve.
+
+    🔴 **M4 HAS BEEN RECORDED AS FALSE SINCE CP-1, BY NAME.** *"Nothing imports
+    `app.agentruntime`, so there is no boot to refuse — wiring an import so the phrase becomes true
+    would be pulling CP-2 forward. Recorded as unmet rather than reworded."* This is the change
+    that makes it true, and §3's acceptance test for it is literal: **remove one required clause,
+    watch the service fail to start.**
+    """
+
+    _ROW = {
+        "id": "book_list", "kind": "tool", "owning_service": "book-service",
+        "lifecycle": "admitted", "contract_version": "1.0.0", "admitted_against": "1.0.0",
+        "members": [],
+    }
+
+    def _boot_at(self, tmp_path: Path, declarations, *, write_manifest=True):
+        """Boot the package **in a fresh interpreter**, against a manifest we control.
+
+        A subprocess rather than an in-process call, because *"fails to start"* is a claim about a
+        process. Measuring it with a `pytest.raises` would establish that a function raises, which
+        is a different sentence.
+        """
+        import json
+        import shutil
+
+        root = tmp_path
+        shutil.copytree(_PACKAGE, root / "app" / "agentruntime")
+        (root / "app" / "__init__.py").write_text("", encoding="utf-8")
+        if write_manifest:
+            (root / "contracts").mkdir(exist_ok=True)
+            (root / "contracts" / "agent-runtime-manifest.json").write_text(
+                json.dumps({"manifest_version": 1, "contract_version": "1.0.0",
+                            "declarations": declarations}), encoding="utf-8")
+        return subprocess.run(
+            [sys.executable, "-c",
+             "from app.agentruntime.boot import boot; boot(); print('BOOTED')"],
+            cwd=root, capture_output=True, text=True)
+
+    def test_A_COMPLETE_MANIFEST_BOOTS(self, tmp_path):
+        r = self._boot_at(tmp_path, [self._ROW])
+        assert r.returncode == 0 and "BOOTED" in r.stdout, r.stderr
+
+    @pytest.mark.parametrize("clause", sorted(_ROW))
+    def test_REMOVE_ONE_REQUIRED_CLAUSE_AND_THE_SERVICE_FAILS_TO_START(self, tmp_path, clause):
+        """§3's acceptance test, run once **per required clause** rather than once.
+
+        🔴 A single-clause version would establish that ONE omission is caught, and every
+        enumeration published in this run has turned out to be a lower bound. Parametrising over
+        the contract's own required set means a clause added later is covered on arrival."""
+        incomplete = {k: v for k, v in self._ROW.items() if k != clause}
+        r = self._boot_at(tmp_path, [incomplete])
+        assert r.returncode != 0, f"the service started with `{clause}` missing:\n{r.stdout}"
+        assert "WillNotBoot" in r.stderr, r.stderr
+
+    def test_AN_ABSENT_MANIFEST_IS_A_LEGITIMATE_EMPTY_STATE_NOT_A_REFUSAL(self, tmp_path):
+        """🔴 **THE FAIL-SAFE DIRECTION, AND THE ONE THAT WOULD MAKE THE MEMBRANE UNSHIPPABLE.**
+        `load()` reads an absent manifest as `declarations: []` — *no declarations* — which is
+        today's state and the state CP-1 shipped. Refusing to boot on it would confuse *"nothing is
+        declared"* with *"something is wrong"*, the two facts this effort keeps separating."""
+        r = self._boot_at(tmp_path, None, write_manifest=False)
+        assert r.returncode == 0, f"an empty membrane could not start:\n{r.stderr}"
+
+    def test_THE_SERVICE_STARTUP_ACTUALLY_CALLS_IT(self):
+        """🔴 **A GATE PRESENT IN THE TREE AND ABSENT FROM THE PATH IS THE RECURRING DEFECT** — it
+        is why `agentruntime-membrane-gate` has its own CI-wiring guard, and why R21 found a census
+        whose CI job could never pass. `boot()` that nothing calls is M4 still false, with a file."""
+        src = (_REPO / "services" / "chat-service" / "app" / "main.py").read_text("utf-8")
+        tree = ast.parse(src)
+        lifespan = next(n for n in ast.walk(tree)
+                        if isinstance(n, ast.AsyncFunctionDef) and n.name == "lifespan")
+        calls = [n for n in ast.walk(lifespan)
+                 if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "boot"]
+        assert calls, "chat-service's lifespan does not call boot()"
+        imports = [n for n in ast.walk(lifespan) if isinstance(n, ast.ImportFrom)
+                   and (n.module or "").startswith("app.agentruntime")]
+        assert imports, "the call is there but the import is not this package's"
+
+    def test_BOOT_DOES_NOT_REIMPLEMENT_WHAT_VALIDITY_MEANS(self):
+        """🔴 A second definition of *valid* is how `rows_of` and `load()` came to disagree about
+        **nine shapes** while a docstring said they were one door. `boot()` adds a WHEN, not a
+        WHAT: exactly one refusal of its own, and it is the boot failure."""
+        src = (_PACKAGE / "boot.py").read_text("utf-8")
+        raised = {n.exc.func.id for n in ast.walk(ast.parse(src))
+                  if isinstance(n, ast.Raise) and isinstance(n.exc, ast.Call)
+                  and isinstance(n.exc.func, ast.Name)}
+        assert raised == {"WillNotBoot"}, (
+            f"boot.py raises {raised}; a clause of its own is a second definition of validity"
+        )
+
+
 # ── 2.5 · P5 on every path, and the guardrail shadow arm ────────────────────────────────────────
 
 class TestTheFourFieldsCannotBeSkipped:

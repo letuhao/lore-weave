@@ -368,6 +368,38 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/surface.py", "        required = list(required)", "        required = required"),
     ],
 
+    # ── CP-2.7 (part) · M4 — the registration entry point refuses to boot ─────────────────────
+    "test_REMOVE_ONE_REQUIRED_CLAUSE_AND_THE_SERVICE_FAILS_TO_START": [
+        # The state M4 was in for eleven rounds: nothing refuses, so the service starts with a
+        # manifest it cannot serve.
+        (f"{PKG}/boot.py", "    except UntrustedRow as exc:", "    except SystemExit as exc:"),
+    ],
+    "test_A_COMPLETE_MANIFEST_BOOTS": [
+        # The other direction: a boot that refuses everything makes the membrane unshippable while
+        # every red-ness case above stays green.
+        (f"{PKG}/boot.py", "        return load()",
+                           "        raise UntrustedRow('nope')\n        return load()"),
+    ],
+    "test_AN_ABSENT_MANIFEST_IS_A_LEGITIMATE_EMPTY_STATE_NOT_A_REFUSAL": [
+        # Confusing "nothing is declared" with "something is wrong" - the two facts this effort
+        # keeps separating, collapsed at the boot path.
+        (f"{PKG}/boot.py", "        return load()",
+                           "        doc = load()\n"
+                           "        if not doc['declarations']:\n"
+                           "            raise UntrustedRow('empty')\n"
+                           "        return doc"),
+    ],
+    "test_THE_SERVICE_STARTUP_ACTUALLY_CALLS_IT": [
+        (f"{CS}/app/main.py", "    from app.agentruntime.boot import boot\n    boot()\n", ""),
+    ],
+    "test_BOOT_DOES_NOT_REIMPLEMENT_WHAT_VALIDITY_MEANS": [
+        (f"{PKG}/boot.py", "        return load()",
+                           "        doc = load()\n"
+                           "        if len(doc['declarations']) > 99:\n"
+                           "            raise ContractViolation('x', 'y', 'z', 'w')\n"
+                           "        return doc"),
+    ],
+
     # ── CP-2.5 · P5 on every path, and the guardrail shadow arm ───────────────────────────────
     "test_A_TURN_THAT_CANNOT_ANSWER_ALL_FOUR_FIELDS_PRODUCES_NO_RECORD_AT_ALL": [
         # Give the four fields the plausible defaults. Each one is a CONSTANT at a write boundary,

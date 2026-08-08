@@ -37,6 +37,7 @@ from .assembly import (
     toolset_for,
     withholding_notice,
 )
+from .boot import WillNotBoot, boot
 from .contract import (
     CONTRACT_VERSION,
     ContractViolation,
@@ -81,6 +82,7 @@ from .surface import (
 
 __all__ = [
     "Admitted", "admit", "try_admit",
+    "WillNotBoot", "boot",
     "TOOLSET_ID", "AssemblyMismatch", "DeclarationToolset", "advertised_names", "deferred_names",
     "excluded_by", "toolset_for", "withholding_notice",
     "CONTRACT_VERSION", "ContractViolation", "Declaration", "Identity",

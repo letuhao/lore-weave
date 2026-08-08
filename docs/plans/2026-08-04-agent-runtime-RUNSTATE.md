@@ -3374,6 +3374,87 @@ that a real turn produces one is 2.7's to show.
 **QC3 · DATA — `PASS`.** The artifact is the record above, with its falsifier stated: a scalar
 column would have shown `('a','b','c')` alone.
 
+### ⭐ CP-2.7 (part) — **M4 is true.** It has been recorded FALSE, by name, since CP-1
+
+**Built 2026-08-08.** The board's own words, unchanged for eleven rounds:
+
+> **M4** — *"the registration entry point **refuses to boot** on an incomplete contract"* —
+> 🔴 **STILL FALSE, and it is not CP-1's to make true.** Nothing imports `app.agentruntime`, so
+> there is **no boot to refuse**. Wiring an import so the phrase becomes true would be pulling CP-2
+> forward. **Recorded as unmet rather than reworded.**
+
+`app/agentruntime/boot.py` is that import, and `chat-service`'s `lifespan` calls it before it opens
+a database pool. **The package now has a production importer**, which is the sentence every V-LIVE
+`CANNOT DETERMINE` in this effort has been waiting on — though not yet the one that makes a *turn*
+observable (see below).
+
+### ▶ §3's acceptance test is literal, so the guard is literal
+
+> *"remove one required clause, watch the service fail to start."*
+
+```
+complete               -> rc=0 BOOTED
+one clause removed     -> rc=1 app.agentruntime.boot.WillNotBoot: the manifest ... is not admissible
+```
+
+Run **in a fresh interpreter**, because *"fails to start"* is a claim about a **process** —
+measuring it with `pytest.raises` would establish that a function raises, which is a different
+sentence. And run **once per required clause** rather than once: a single-clause version proves one
+omission is caught, and every enumeration published in this run has turned out to be a lower bound.
+Parametrising over the contract's own required set means a clause added later is covered on arrival.
+
+### ▶ Three decisions, and the third is the one that could have killed the membrane
+
+* **Fail-closed.** A malformed manifest takes chat-service down. The alternative is a service that
+  starts with a **silently partial** declaration set — *"invisibility implemented as a filter"*
+  arriving through the boot path, the exact shape §3 forbids everywhere else. The blast radius is
+  bounded: the manifest is generated, committed, and already has a CI drift gate, so a bad one
+  arrives in a diff rather than between deploys.
+* **`boot()` adds a WHEN, not a WHAT.** Every clause is `load()`'s. A second definition of *valid*
+  is how `rows_of` and `load()` came to disagree about **nine shapes** while a docstring said they
+  were one door — so `boot.py` is guarded to raise **exactly one** class of its own.
+* 🔴 **An ABSENT manifest is NOT a refusal.** `load()` reads it as `declarations: []` — *no
+  declarations* — which is **today's state and the state CP-1 shipped**. Refusing on it would make
+  the empty membrane unshippable and would collapse *"nothing is declared"* into *"something is
+  wrong"*, the two facts this entire effort keeps separating. Guarded in both directions, and the
+  falsifier for it is the collapse.
+
+And the wiring itself is guarded: **a gate present in the tree and absent from the path is this
+repository's recurring defect** — it is why the membrane gate has a CI-wiring guard, and why R21
+found a census whose CI job could never pass. A `boot()` nothing calls is M4 still false, with a
+file.
+
+### ✖ What this does NOT close — and 2.7 stays OPEN
+
+**It is not the request-path route.** A turn still cannot be served by this package, so all four
+V-LIVE items inherited into 2.7 remain `CANNOT DETERMINE`:
+
+| | inherited item | still blocked on |
+|---|---|---|
+| **A** | the agent **says** it has no declarations rather than answering as if none were needed | a turn |
+| **B** | no legacy declaration is reachable by any route, incl. after a refusal and under pressure | a turn |
+| **C** | the empty state is **recorded**, not merely displayed — `NULL` and `[]` differ | a write path |
+| **D** | P1 visible **in the row**, not only in a log | a write path |
+
+**The row closes when a chat turn is served through the membrane**, and that is a change to
+`stream_service.py` (**8,404 lines**) plus the arm-assignment question at 2.8. Recorded as
+partially built rather than reworded — the same discipline that kept M4 honestly false for eleven
+rounds instead of quietly satisfied.
+
+### ▶ The three QC pillars, for the half that landed
+
+**QC1 · CODE — `PASS`.** Suite **2394** · census **82 sites · 8 silent · 74 red**, `rc=0` · falsification **348 guards,
+89 falsified, 259 unproven, 0 stale anchors**, **89/89 fire** · membrane gate green over **11
+modules**. **11 new guards, 5 falsifiers** (the per-clause parametrisation is one guard).
+
+**QC2 · LIVE RUN — `PASS`, and it is the first one in this effort.** *"Fails to start"* is a
+statement about a process, and it was measured on processes: a real interpreter, the real package,
+the real `boot()`, once per required clause. The **service** startup path is asserted structurally
+(the `lifespan` call), not executed — stated rather than blurred.
+
+**QC3 · DATA — `PASS`.** The artifact is the pair of exit codes above, with the falsifier stated
+in advance and both directions guarded.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -3654,7 +3735,7 @@ declarations, not silently emit a tool-free pass.
 | 2.3 | deterministic tool ordering — `active_tool_names` is a `set[str]` iterated unsorted, so **the order changes on every restart** and `tools` is the first cache block | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** The new runtime had the MIRROR defect, measured: deterministic and **rank discarded** — rows ranked `c,b,a` were advertised `a,b,c`. `names` now preserves the pipeline's order; determinism comes from the canonical document + order-preserving stages, proved across **four hash seeds in four interpreters**, with the legacy `set` as a control that disagrees. ✖ `active_tool_names` itself is untouched — CONTROL arm. See the CP-2.3 block above |
 | 2.4 | withheld things stay **reachable on request**; the model can tell *withheld* from *never existed* | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** Reachability came with 2.1; this row is the **second half of §0.14.3** — the model is TOLD, unprompted, that N admitted declarations exist and were withheld. Measured as a PAIR against a never-admitted name, through the real reveal path. Count never names; `None` never *"0 withheld"*. See the CP-2.4 block above |
 | 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `observation.py`: four required fields, **no defaults** — every plausible default is a constant at a write boundary, which is P4. `advertised` is an array PER PASS and a duplicate pass is refused. The guardrail refuses `acted=True` at construction; a fire needs deterministic evidence AND a transition. ✖ wrong-object counter and `manifest_revision` are absent, and guarded absent. See the CP-2.5 block above |
-| **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | ⬜ |
+| **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | 🟡 **PART BUILT 2026-08-08 — M4 IS TRUE.** `boot.py` + `chat-service`'s `lifespan` call it: **the package has a production importer.** §3's literal test passes per required clause, in fresh interpreters; an ABSENT manifest still boots (empty is legitimate). ✖ **A–D remain `CANNOT DETERMINE`** — they need a served TURN, which is a change to `stream_service.py` (8,404 lines). See the CP-2.7 block above |
 | **2.9** | **`prompt_hash` — chat-service-local, ~10 lines, and that is the whole item.** ⬅️ rewritten 2026-08-05; the original bundled four things and red team killed three. It closes a **currently undetectable** failure: a prompt can change today and nothing notices. 🔴 **NOT included, each for a measured reason:** `code_revision` — `GIT_SHA` becomes an **OCI image label**, no Dockerfile consumes it, `os.environ.get("GIT_SHA")` is `None` in **every** scenario; `seed` — it is **already forwarded** at `adapters.go:678`, the three typed hops above drop it, production runs `temperature=0.0` (greedy, so a seed consumes no randomness) and Anthropic has no seed parameter at all; `block_hashes` — **cannot be computed correctly here**, the cache breakpoint is owned by provider-registry *after* a schema translation, so a chat-service hash can be green while the cached bytes changed | ⬜ |
 | **2.8** | **`runtime_variant='agentruntime'` stamped at a structural chokepoint covering EVERY terminal path** — not at the happy path. `legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship bias in the new arm's own failure rate**: an unlabelled new-runtime row loses its numerator too, and label-omission correlates with crash and cancel | ⬜ |
 | **2.10** | **⬅️ INHERITED FROM CP-1, PO 2026-08-06.** A pipeline ranks by a **`relevance` its own scoring stage produced** (§0.14.1b), and **the budget arrives as a parameter** rather than as `os.environ` read at import (§0.14.1). CP-1 could check neither: no producer exists, and the boundary module can only supply a budget to a pipeline that runs. Today every pipeline naming `relevance` is rejected — the correct fail-closed direction, and **not** evidence the rule works | ⬜ |
