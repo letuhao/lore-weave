@@ -35,6 +35,7 @@ import logging
 import re
 import time
 from difflib import SequenceMatcher
+from types import MappingProxyType
 
 from loreweave_vecmath import cosine_similarity
 
@@ -556,6 +557,30 @@ def tool_tier(tool_def: dict) -> str:
     carries no tier — a missing tier must NEVER auto-commit a write."""
     tier = tool_meta(tool_def).get("tier")
     return tier if tier in ("R", "A", "W", "S") else "R"
+
+
+#: C-1 · **the lane, as DECLARED data.** `_meta.tier` is set by the provider at registration and
+#: federated verbatim; this map is the only place a tier becomes a lane.
+LANES: tuple[str, ...] = ("read", "action", "write", "system")
+_LANE_BY_TIER = MappingProxyType({"R": "read", "A": "action", "W": "write", "S": "system"})
+
+
+def declared_lane(tool_def: dict) -> str | None:
+    """CP-4.d · C-1's *"lane is data at registration, never inferred from a name"* — the read half.
+
+    🔴 **THIS DELIBERATELY DOES NOT REUSE `tool_tier`, AND THE REASON IS ITS DEFAULT.** That function
+    answers *"may this auto-commit a write?"*, where an unknown tier returning `"R"` is the fail-SAFE
+    answer. The ranking asks the opposite question — *"does this belong in the always-advertised hot
+    set?"* — and there the same default is fail-OPEN: an untiered tool would be promoted into the
+    safe read-first set on the strength of a value nobody declared. One constant cannot be the
+    conservative answer to two questions that point in opposite directions.
+
+    So this returns `None` for an undeclared tier rather than guessing, and the caller sorts an
+    undeclared lane with the writes. **Measured on the live catalogue: 315/315 tools declare a tier**
+    (R=102, W=60, A=153), so nothing legitimate is demoted today — the `None` arm exists so that a
+    provider federating an untiered tool tomorrow is visible instead of silently privileged.
+    """
+    return _LANE_BY_TIER.get(tool_meta(tool_def).get("tier"))
 
 
 def tool_async(tool_def: dict) -> bool:

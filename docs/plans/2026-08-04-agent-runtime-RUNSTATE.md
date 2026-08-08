@@ -4365,7 +4365,31 @@ same assertion then measures something: that no legacy tool, skill or workflow r
 | **4.a** | **P4 · `admitted_against` must be able to differ from the document's contract version**, so §6.4's re-admission queue can be non-empty. **CP-4 does not close until the queue is driven non-empty and then back to empty across a real breaking amendment** | the stamp can differ only when the manifest holds a row **this build did not admit**. Measured at CP-1: 0 non-empty queues in 500 randomised builds |
 | **4.b** | **§6.4's *"without leaving the runtime"*** — a declaration failing a breaking amendment stays served while it is re-admitted. **Requires a grandfathered row to be distinguishable from a hand-typed one**, which needs the contract as versioned **data** rather than as code | today such a row is simply absent from the next manifest, and `build()` now raises rather than dropping it silently |
 | **4.c** | **manifest rows carry `lane` / `tier` / `cost`** (§0.14.1a rules 1 & 5) | measured: `OrderBy` and `TakeWhileBudget` reject **every** real row today, so the ranking has no subject |
-| **4.d** | **`_is_read_tool` replaced by declared `lane` data** (C-1 forbids the name heuristic) | depends on 4.c |
+| **4.d** | **`_is_read_tool` replaced by declared `lane` data** (C-1 forbids the name heuristic) | ✅ **CLOSED 2026-08-09 · QC1 `PASS` · QC2 `PASS` · QC3 `PASS`.** It did **not** depend on 4.c: the lane is declared on the WIRE (`_meta.tier`, set at registration), so the manifest row was never the only carrier. `_is_read_tool` and `_READ_VERBS` are **deleted, not improved** — the tool def was already in scope at the ranking site with the declared fact one slot away. `declared_lane` deliberately does **not** reuse `tool_tier`, whose unknown→`"R"` default is fail-safe for *"may this auto-commit a write?"* and fail-**OPEN** for *"does this belong in the hot set?"*; an undeclared lane is `None` and sorts with the writes. See the CP-4.d block below |
+
+#### CP-4.d — the heuristic was advertising DESTRUCTIVE declarations, measured 2026-08-09
+
+**The board said only *"C-1 forbids the name heuristic"*, which is a rule with no measured
+consequence.** Stated falsifier: *if the heuristic and the declared tier agree on every live row, it
+is a correct implementation of the declared fact and 4.d is a no-op refactor.* It **disagreed on 29
+of 315** — 7 declared non-reads called reads, 22 declared reads called writes.
+
+**Direction is the finding.** Reads sort FIRST into the always-advertised set, so the substring list
+was promoting destructive declarations into it: `memory_forget` matched *get*, `kg_view_delete` /
+`kg_view_edit` / `kg_view_upsert` matched *view*, `glossary_deep_research` matched *search*.
+
+**QC2/QC3 — the shipped ordering over the real 315-tool federated catalogue**, in
+`infra-chat-service-1`, control = the deleted `_READ_VERBS` verbatim:
+
+| budget | kept before → after | declared non-reads the heuristic advertised |
+|---|---|---|
+| 6 000 | 36 → 37 | `kg_view_delete`, `memory_forget` |
+| 12 000 | 60 → 63 | + `glossary_deep_research` |
+| 24 000 | 86 → 97 | + `kg_view_edit`, `kg_view_upsert`, `composition_authoring_run_review`, `plan_review_checkpoint` |
+
+✖ **`lane` is NOT yet a manifest row field** — that is 4.c, and this row did not need it. ✖ The
+guard is proven red by restoring the substring key: the budget then keeps `glossary_deep_research`
+(declared `W`) over `jobs_summary` (declared `R`). Suite **2496**.
 
 Throughput is a first-class metric here: **≈13 admissions/week** keeps pace with the model cadence.
 Report it per checkpoint. *(The first draft's metric — "admits fewer than it retires" — cannot fire,

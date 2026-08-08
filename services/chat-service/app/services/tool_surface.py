@@ -18,6 +18,7 @@ from functools import lru_cache
 from app.services.token_budget import estimate_tokens, scale_by_window
 from app.services.tool_discovery import (
     _domain_of,
+    declared_lane,
     hot_tool_names,
     surface_hot_domains,
     tool_name,
@@ -60,14 +61,11 @@ HOT_SEED_TOKEN_BUDGET = int(os.environ.get("LW_HOT_SEED_TOKEN_BUDGET", "2000")) 
 RAIL_STEP_TOKEN_BUDGET = int(os.environ.get("LW_RAIL_STEP_TOKEN_BUDGET", "6000"))
 ACTIVATED_TOOLS_TOKEN_BUDGET = 6000  # cap the find_tools-accumulated set by tokens
 
-# Read/query verbs → the tools safe to keep hot (writes/proposes are discovered on
-# demand and usually confirmation-gated anyway).
-# WS-1b: `recall`/`timeline` are semantically READS (memory_recall_entity, memory_timeline)
-# but contain no other read-verb substring, so they were misclassed as writes and starved.
-_READ_VERBS = (
-    "search", "list", "get", "read", "find", "lookup",
-    "show", "view", "fetch", "describe", "query", "recall", "timeline",
-)
+# 🔴 **`_READ_VERBS` IS GONE — the twelve-verb list CP-4.d deleted.** Its history is the argument
+# against keeping it: `recall` and `timeline` were appended by WS-1b because `memory_recall_entity`
+# and `memory_timeline` "contain no other read-verb substring, so they were misclassed as writes and
+# starved". That is the maintenance mode of a heuristic — a starved tool is reported, a verb is
+# added, and the 29 rows nobody reported stay misclassified. The lane is declared; see `_READ_LANE`.
 
 # WS-1b — the hot-path write-tool allowlist (OQ7 / contracts.md C2, §4.4). The read-first
 # token trim structurally starves WRITE tools (reads exhaust the budget first), so a mid-tier
@@ -123,16 +121,29 @@ def _tool_tokens(td: dict) -> int:
     return estimate_tokens(unicodedata.normalize("NFC", json.dumps(td, ensure_ascii=False)))
 
 
-def _is_read_tool(name: str) -> bool:
-    # ML-2 FALSE POSITIVE (documented, NOT an active pragma — language-bias-gate
-    # exempts via its BASELINE fingerprint set, not inline markers, so writing one
-    # here would be a claim that silences nothing). `name` is an MCP TOOL NAME,
-    # ASCII by contract
-    # (closed-set snake_case per the Frontend-Tool Contract), never user prose. On
-    # ASCII, .lower() and the NFKC+casefold spine are identical, and routing tool
-    # dispatch through an entity-name normalizer would imply it can carry prose.
-    n = name.lower()
-    return any(v in n for v in _READ_VERBS)
+#: 🔴 **CP-4.d — `_is_read_tool` IS DELETED, NOT IMPROVED, AND SO IS `_READ_VERBS`.**
+#:
+#: It was a twelve-verb substring test over a tool NAME, which is the defect **C-1** forbids by name:
+#: *"group and lane are data at registration, never inferred from a name."* Replacing it with a
+#: better verb list would have been the third retrofit of a property that is not a naming problem.
+#: The lane is **declared** — every federated tool carries `_meta.tier`, set by the provider — so the
+#: name no longer reaches this decision at all. `declared_lane` is the only reader.
+#:
+#: **Measured against the 315 live federated tools before the change, because "C-1 forbids it" is a
+#: rule and a rule with no measured consequence is the kind of claim this run has learned to
+#: distrust.** The stated falsifier was *agreement on every row* — that would have made the heuristic
+#: a correct implementation of the declared fact and 4.d a no-op refactor. It disagreed on **29 of
+#: 315**, and the direction is what matters:
+#:
+#: * **7 tools the heuristic called READS and the provider declares otherwise** — `memory_forget`
+#:   (matches *get*), `kg_view_delete` / `kg_view_edit` / `kg_view_upsert` (match *view*),
+#:   `glossary_deep_research` (matches *search*), `composition_authoring_run_review`,
+#:   `plan_review_checkpoint`. Reads sort FIRST into the always-advertised hot set, so a substring
+#:   was promoting **destructive** declarations into the safe set — the opposite of the rule's intent.
+#: * **22 declared reads the heuristic called writes** — `lore_ask`, `jobs_summary`, `plan_validate`,
+#:   `translation_coverage`, `tool_load` and others — demoted behind every write, against a budget
+#:   that ends in a hard `break`.
+_READ_LANE = "read"
 
 
 def budget_names_by_tokens_ex(
@@ -204,7 +215,9 @@ def _budget_names_impl(
             used += _tool_tokens(td)
     ordered = sorted(
         ((n, td) for n, td in defs.items() if n not in kept),
-        key=lambda kv: (0 if _is_read_tool(kv[0]) else 1, _tool_tokens(kv[1]), kv[0]),
+        # CP-4.d — the DEFINITION is read, never the name. `kv[1]` is the tool def and it was
+        # already in scope; the heuristic was reading `kv[0]` with the declared fact one slot away.
+        key=lambda kv: (0 if declared_lane(kv[1]) == _READ_LANE else 1, _tool_tokens(kv[1]), kv[0]),
     )
     for nm, td in ordered:
         t = _tool_tokens(td)
