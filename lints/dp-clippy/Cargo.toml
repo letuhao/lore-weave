@@ -1,0 +1,25 @@
+[package]
+name = "dp-clippy"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "DP-K11 custom lints for the data-plane SDK. Slice 2 ships the first one: dp::forbid_raw_kernel_client (DP-R3)."
+
+# NOT a workspace member. See rust-toolchain.toml in this directory: the
+# workspace pins 1.89.0 stable because crates/dp/tests/ui/*.stderr record
+# rustc's diagnostic prose, and a dylint lint requires nightly + rustc_private.
+# The two toolchains must not meet.
+[workspace]
+
+[lib]
+# dylint loads lints as a dynamic library.
+crate-type = ["cdylib"]
+
+[dependencies]
+# dylint_linting wraps the rustc_private plumbing (registration, the
+# late-lint-pass boilerplate) so the lint body is the only thing this crate
+# has to get right.
+dylint_linting = "3.1"
+
+[dev-dependencies]
+dylint_testing = "3.1"

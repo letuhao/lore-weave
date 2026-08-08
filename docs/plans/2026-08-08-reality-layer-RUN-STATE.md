@@ -458,6 +458,46 @@ not implement toward it.
 | slice 1 | `G3`/`G4`/`G6`–`G13` open; several need `dp-clippy` | `2026-08-06` run-state §6i |
 | slice 2 | Phase 0 done (`2F-1`..`2F-4`); board not written. `DP-R3` names a clippy lint with **no dylint/`clippy_utils`/`rustc_private` anywhere** | a DESIGN decision before BUILD |
 
+## 4b · SLICE 2 — `DP-R3`'s lint. Board written at the slice's start (`BDR-26`).
+
+**The reality-layer board above is CLOSED.** This file now also carries the `crates/dp` slice work,
+which is what that detour existed to unblock: `channels` and the migration chain were applied by
+nothing because no reality had ever been instantiated, and seven now exist.
+
+**Why slice 2 and not slice 3/4.** The PO chose to BUILD `dp-clippy` rather than retire it, and to
+build the SDK first so the lints have a subject. Phase 0 then corrected the premise: **one of the
+four lints already has a large subject.** `crate-purity-gate` covers only the four PURE crates
+(`actor-hub`, `game-rules`, `ruleset-core`, `sim-core`) — which is why it is green — while `DP-R3`'s
+scope is every crate WITHOUT a `dp-crate` marker, and there:
+
+```
+world-service 15 · roleplay-service 7 · commit-service 6
+dp-kernel 4 · service-http 3 · meta-rs 2 · world-gen 1     = 47 files
+```
+
+`2F-1` recorded this and I under-read it: *"a mechanism whose subject exists before the mechanism
+does"* — the opposite of the `pc_*`/`npc_*` orphan. So slice 2 ships **one** lint against a real
+subject, and stands up the toolchain the other three will need.
+
+### The board
+
+| # | row | state |
+|---|---|---|
+| `2A` | **the dylint toolchain** — `dp-clippy` crate, pinned nightly, one CI leg | ⬜ |
+| `2B` | **`forbid_raw_kernel_client`** shipped **RED** against the 47 files | ⬜ |
+| `2C` | **the `dp-crate = true` marker**, re-added WITH its reader (`V1-F12`: it was removed because a declared input with no consumer is the orphan shape) | ⬜ |
+| `2D` | **`DP-R3`'s exemption amended** — `2F-2`: it locks *"any crate other than `dp` itself"*, which fires on `crates/dp-kernel`, **where the database code is supposed to live** (`event_store_pg.rs`, `outbox.rs`). The exemption must be the MARKER, not a name | ⬜ amendment |
+| `2E` | **`roleplay-service`'s status** — `2F-4`: `DPA-SCOPE` named two game-layer services and this is a third, carrying `sqlx::` in 7 files and `reality_id` in two. In scope or not is a decision, not a discovery | ⬜ PO input |
+
+### What "shipped RED" means, and why it is the point
+
+The lint lands **failing**, against 47 real files, and CI carries it as a tracked-red rather than
+green-by-emptiness. A lint that is green on the day it ships is a lint whose subject you have not
+found yet — and this repo has four instances this session of exactly that. The red is the evidence
+the rule bites; the migration of those 47 files off raw clients is the work it then drives.
+
+---
+
 ## 5 · REGISTERS
 
 Decisions, parked, debt and **`BDR-1`..`BDR-48`** live in
