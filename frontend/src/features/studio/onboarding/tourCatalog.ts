@@ -35,7 +35,11 @@ export const EDITOR_TOUR_CATALOG: StudioTourCatalogEntry[] = [
   { id: 'editorMediaImage', labelKey: 'tourPicker.editorMediaImage.label', descKey: 'tourPicker.editorMediaImage.desc' },
   { id: 'editorMediaVideo', labelKey: 'tourPicker.editorMediaVideo.label', descKey: 'tourPicker.editorMediaVideo.desc' },
   { id: 'editorMediaAudio', labelKey: 'tourPicker.editorMediaAudio.label', descKey: 'tourPicker.editorMediaAudio.desc' },
-  { id: 'structureTemplates', labelKey: 'tourPicker.structureTemplates.label', descKey: 'tourPicker.structureTemplates.desc' },
+  // NOT `structureTemplates`: this list renders under the "Editor" heading in UserGuidePanel,
+  // and every one of its steps opens the editor panel (asserted in tours.test.ts). That tour
+  // opens `structure-templates`, so listing it here offered an Editor tour that navigated
+  // somewhere else. It reaches the user through PANEL_TOUR_IDS['structure-templates'] below,
+  // which is the per-panel guide action it was written for.
 ];
 
 /** #19 Wave 4 — Composer's own tour-picker entries (same "topic, not one long walkthrough" split). */

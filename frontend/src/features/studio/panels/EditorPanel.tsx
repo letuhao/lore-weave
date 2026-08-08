@@ -59,11 +59,13 @@ export function EditorPanel(props: IDockviewPanelProps) {
         window.dispatchEvent(new CustomEvent('lw-glossary-search', { detail: { text } }));
         host.openPanel('glossary', { focus: true });
       } else if (detail.action === 'askAi') {
-        const prompt = `Проанализируй этот фрагмент рукописи и ответь на вопрос пользователя:
-
-«${text}»
-
-Что важно учесть?`;
+        // Localized on purpose: this lands in the composer for the author to read, edit and
+        // send, so it is UI text — and asking in the author's language is what makes the
+        // model answer in it. English is the source string, per the English-artifacts rule.
+        const prompt = t('editor.askAiPrompt', {
+          defaultValue: 'Analyse this passage from the manuscript and answer the user\'s question:\n\n"{{text}}"\n\nWhat is important to consider?',
+          text,
+        });
         try { localStorage.setItem('loreweave.chat.prefill', prompt); } catch { /* private mode */ }
         window.dispatchEvent(new CustomEvent('lw-chat-prefill', { detail: { text: prompt } }));
         host.openPanel('compose', { focus: true });
@@ -343,9 +345,14 @@ export function EditorPanel(props: IDockviewPanelProps) {
   // prose (a real chapter's words wrapped one-per-line in live testing), so the auto-default
   // starts closed on mobile; the toggle button still opens it on demand.
   const railChoice = railChoiceState;
-  // Keep the editor compact by default. Scene metadata is opt-in via the toggle;
-  // an explicit user choice still wins and survives the current chapter render.
-  const railOpen = railChoice ?? false;
+  // `?? (hasScenes && !isMobile)` is what makes `null` mean AUTO, per the #12 M-C contract on
+  // railChoiceState above. PR #184 changed this to `?? false` ("keep the editor compact"); that
+  // is a defensible preference but it was a half-change — it left the M-C comment declaring
+  // auto-open, made `null` and `false` behave identically (so the tri-state carried no
+  // information), and reduced hasScenes to a count label. Reverted here. Wanting compact by
+  // default is fine, but it means retiring the tri-state and amending #12 M-C + #16 Phase 4
+  // together, not flipping this one operand.
+  const railOpen = railChoice ?? (hasScenes && !isMobile);
   const guideSceneSuggestions = () => {
     const selection = editorRef.current?.getSelection();
     if (!selection || selection.empty) {

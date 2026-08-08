@@ -40,7 +40,10 @@ export function TimezoneConfirm({ detected, saving, onConfirm }: Props) {
       className="rounded-lg border border-border bg-card p-3 text-sm"
     >
       <div className="font-medium">{t('timezone.title')}</div>
-      <p className="mt-1 text-xs text-muted-foreground">
+      {/* The detected zone used to sit in its own <span data-testid="tz-detected">. It cannot:
+          the sentence is one translated string now, and a zone spliced mid-sentence does not
+          survive translation. The testid moved to the paragraph so the banner stays assertable. */}
+      <p data-testid="tz-detected" className="mt-1 text-xs text-muted-foreground">
         {t('timezone.description', { zone: detected })}
       </p>
       {!picking ? (

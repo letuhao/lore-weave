@@ -50,18 +50,18 @@ describe('ChatAiSettingsPanel', () => {
 
   it('shows the resolved model with its source tier (de-silenced)', () => {
     render(<ChatAiSettingsPanel />);
-    expect(screen.getByText('Chat & drafting')).toBeInTheDocument();
+    expect(screen.getByText('models.chat')).toBeInTheDocument();
     // the "system default" chips make the previously-silent behavior visible
-    expect(screen.getAllByText('default').length).toBeGreaterThan(0);
-    expect(screen.getByText('your default')).toBeInTheDocument();
-    expect(screen.getByText('not set')).toBeInTheDocument(); // composer unset
+    expect(screen.getAllByText('tiers.system.label').length).toBeGreaterThan(0);
+    expect(screen.getByText('tiers.account.label')).toBeInTheDocument();
+    expect(screen.getByText('tiers.no_model_configured.label')).toBeInTheDocument(); // composer unset
   });
 
   it('editing reasoning effort patches the account prefs', () => {
     const patch = vi.fn().mockResolvedValue(undefined);
     h.ed.current = makeEditor({ patch });
     render(<ChatAiSettingsPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'high' }));
+    fireEvent.click(screen.getByRole('button', { name: 'behavior.reasoning.high' }));
     expect(patch).toHaveBeenCalledWith({ behavior: { reasoning_effort: 'high' } });
   });
 
@@ -69,7 +69,7 @@ describe('ChatAiSettingsPanel', () => {
     const patch = vi.fn().mockResolvedValue(undefined);
     h.ed.current = makeEditor({ patch });
     render(<ChatAiSettingsPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'ask' }));
+    fireEvent.click(screen.getByRole('button', { name: 'behavior.permission.ask' }));
     expect(patch).toHaveBeenCalledWith({ behavior: { permission_mode: 'ask' } });
   });
 
@@ -77,7 +77,7 @@ describe('ChatAiSettingsPanel', () => {
     const patch = vi.fn().mockResolvedValue(undefined);
     h.ed.current = makeEditor({ patch });
     render(<ChatAiSettingsPanel />);
-    fireEvent.click(screen.getByRole('switch', { name: /ground answers/i }));
+    fireEvent.click(screen.getByRole('switch', { name: 'grounding.label' }));
     expect(patch).toHaveBeenCalledWith({ grounding: { grounding_enabled: false } });
   });
 
@@ -86,14 +86,14 @@ describe('ChatAiSettingsPanel', () => {
     e.grounding.grounding_enabled = { effective_value: false, source_tier: 'account', tier_stack: {} };
     h.ed.current = makeEditor({ effective: e });
     render(<ChatAiSettingsPanel />);
-    expect(screen.getByText(/may invent lore as fact/i)).toBeInTheDocument();
+    expect(screen.getByText('grounding.offWarning')).toBeInTheDocument();
   });
 
   it('switching long-work context mode to Off patches context.mode', () => {
     const patch = vi.fn().mockResolvedValue(undefined);
     h.ed.current = makeEditor({ patch });
     render(<ChatAiSettingsPanel />);
-    fireEvent.click(screen.getByRole('button', { name: 'Off' }));
+    fireEvent.click(screen.getByRole('button', { name: 'context.off' }));
     expect(patch).toHaveBeenCalledWith({ context: { mode: 'off' } });
   });
 
@@ -101,7 +101,7 @@ describe('ChatAiSettingsPanel', () => {
     const patch = vi.fn().mockResolvedValue(undefined);
     h.ed.current = makeEditor({ patch });
     render(<ChatAiSettingsPanel />);
-    const input = screen.getByPlaceholderText('e.g. af_heart');
+    const input = screen.getByPlaceholderText('voice.placeholder');
     fireEvent.blur(input, { target: { value: 'nova' } });
     expect(patch).toHaveBeenCalledWith({ voice: { chat: { tts_voice_id: 'nova' } } });
   });

@@ -123,7 +123,10 @@ describe('SessionSettingsPanel — clear · inherit', () => {
     renderPanel({ ...SESSION, grounding_enabled: false } as ChatSession);
     const clear = await screen.findByTestId('session-grounding-clear');
     // "would inherit ON" — a clear button that doesn't say what you'd get is a dare.
-    expect(clear.textContent).toContain('inherit on');
+    // The label is localized now, so under the key-returning i18n mock this reads
+    // `clear.inherit clear.on`; the assertion still pins that the INHERITED VALUE
+    // is named, which is the property the test exists for.
+    expect(clear.textContent).toContain('clear.inherit clear.on');
   });
 
   it('clearing sends an explicit null, not undefined', async () => {

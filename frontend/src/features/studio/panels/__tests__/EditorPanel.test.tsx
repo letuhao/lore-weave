@@ -180,6 +180,15 @@ describe('EditorPanel — #16 Phase 4 Scene Rail mobile default', () => {
     expect(sceneRailSpy).toHaveBeenCalled();
   });
 
+  // The half of the #12 M-C tri-state that has no other coverage: `null` must mean AUTO, and
+  // auto is CONTEXTUAL — no scenes, no rail, even on desktop. PR #184's `?? false` passed the
+  // desktop and mobile cases above by accident while erasing exactly this distinction.
+  it('does not auto-open the Scene Rail when the chapter has no scenes', () => {
+    unitState.scenes = [];
+    render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    expect(sceneRailSpy).not.toHaveBeenCalled();
+  });
+
   it('does not auto-open the Scene Rail on mobile even when the chapter has scenes', () => {
     isMobileState.value = true;
     render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);

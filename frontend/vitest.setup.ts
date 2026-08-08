@@ -24,6 +24,12 @@ Object.defineProperty(globalThis, 'localStorage', { value: localStorageMock, wri
 vi.mock('react-i18next', () => ({
   useTranslation: (ns?: string) => ({
     t: (key: string, opts?: Record<string, unknown>) => {
+      // `returnObjects: true` asks i18next for a whole subtree — the real bundle
+      // answers with an array (books.help.items is 3 strings) and the caller maps
+      // over it. Returning the bare key here made that `.map` a TypeError, so a
+      // component was untestable for a reason that had nothing to do with it.
+      // One key per entry keeps the assert-on-KEYS convention below intact.
+      if (opts?.returnObjects) return [key];
       // Return the key with interpolated values for testing. NOTE: deliberately
       // ignores i18next's `defaultValue` — repo test convention asserts on KEYS,
       // not English fallbacks (see EmbeddingModelPicker, BudgetPanel tests).
