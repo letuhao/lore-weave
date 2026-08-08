@@ -48,4 +48,11 @@ fn tier_and_scope_violations_do_not_compile() {
     // (d) DP-R2 — the tier table is DERIVED, so a hand-written row must not be
     // constructible. Added for V1-F5, which built one and printed it.
     t.compile_fail("tests/ui/forged_row.rs");
+
+    // (e) DP-A12/DP-K1 — a RealityId is minted by session bind, never by a
+    // feature crate. TWO escapes in one file, failing for different reasons:
+    // the tuple-struct constructor (private FIELD, E0603) and new_verified
+    // (pub(crate) FUNCTION, E0624). Covering only one would leave the other
+    // open, and the .stderr pins both.
+    t.compile_fail("tests/ui/forged_reality_id.rs");
 }

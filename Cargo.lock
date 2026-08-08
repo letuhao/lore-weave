@@ -917,6 +917,7 @@ dependencies = [
  "proc-macro2",
  "syn 3.0.0",
  "trybuild",
+ "uuid",
 ]
 
 [[package]]

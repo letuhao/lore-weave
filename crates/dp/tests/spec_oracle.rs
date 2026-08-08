@@ -991,3 +991,101 @@ fn dp_error_matches_dp_k3_or_declares_why_not() {
         problems.join("\n  - ")
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DP-K1 / DP-K2 — the DEFERRED registers, checked against the locked spec.
+//
+// `ids.rs` and `session.rs` each carry a `DEFERRED_*` const whose docstring says
+// it is "read by tests/spec_oracle.rs". A citation to a check that does not
+// exist is the `M3` defect this run already caught once — a test named in
+// evidence that was never written — so these are those checks.
+//
+// What they establish: a type or field the LOCKED spec declares is either built
+// here or has a register row naming the producer it waits on; and a row whose
+// subject HAS since been built fails, so the register shrinks rather than
+// ageing into permanence.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Strip carriage returns before matching source text.
+///
+/// LOAD-BEARING, not tidiness. This repo checks out CRLF on Windows, and the
+/// first version of the shrink arm below matched a line ending in a bare
+/// newline — which can never match one ending CR-LF. The bite proved it: the
+/// mutation applied (a `ChannelId` newtype WAS added, confirmed by re-reading
+/// the file) and the test stayed GREEN. A check that cannot fire is worse than
+/// none, and this one was caught only because the bite was run and its output
+/// actually read.
+fn crlf_free(path: &str) -> String {
+    let p = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path);
+    fs::read_to_string(&p)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", p.display()))
+        .replace('\r', "")
+}
+
+#[test]
+fn deferred_ids_name_things_dp_k1_declares_and_this_build_lacks() {
+    let doc = dp_doc("04a_core_types_and_session.md");
+    let ids_src = crlf_free("src/ids.rs");
+    let mut problems: Vec<String> = Vec::new();
+
+    for (name, producer) in dp::ids::DEFERRED_IDS {
+        // The spec must actually declare it, or the row defers nothing.
+        if !doc.contains(&format!("pub struct {name}(")) {
+            problems.push(format!(
+                "DEFERRED_IDS names `{name}`, but DP-K1 declares no such type; \
+                 a row that defers something the spec never asked for is noise"
+            ));
+        }
+        if producer.trim().is_empty() {
+            problems.push(format!("deferred id `{name}` names no producer"));
+        }
+        // THE SHRINK RULE. If it has since been built, the row has outlived
+        // its deferral.
+        if ids_src.contains(&format!("\n    {name},\n")) {
+            problems.push(format!(
+                "`{name}` is listed in DEFERRED_IDS but IS built in ids.rs — delete the row"
+            ));
+        }
+    }
+
+    assert!(
+        !dp::ids::DEFERRED_IDS.is_empty(),
+        "DEFERRED_IDS is empty, so every arm above ran zero times. If every id \
+         really is built, delete this test rather than leaving it green on nothing."
+    );
+    assert!(problems.is_empty(), "DEFERRED_IDS is stale:\n  - {}", problems.join("\n  - "));
+}
+
+#[test]
+fn deferred_session_fields_name_fields_dp_k2_declares() {
+    let doc = dp_doc("04a_core_types_and_session.md");
+    let src = crlf_free("src/session.rs");
+    let mut problems: Vec<String> = Vec::new();
+
+    for (field, producer) in dp::session::DEFERRED_SESSION_FIELDS {
+        if !doc.contains(field) {
+            problems.push(format!(
+                "DEFERRED_SESSION_FIELDS names `{field}`, which DP-K2 does not declare"
+            ));
+        }
+        if producer.trim().is_empty() {
+            problems.push(format!("deferred field `{field}` names no producer"));
+        }
+        if src.contains(&format!("\n    {field}:")) {
+            problems.push(format!(
+                "`{field}` is listed as deferred but SessionContext HAS it — delete the row"
+            ));
+        }
+    }
+
+    assert!(
+        !dp::session::DEFERRED_SESSION_FIELDS.is_empty(),
+        "DEFERRED_SESSION_FIELDS is empty; delete this test rather than leaving \
+         it green on nothing."
+    );
+    assert!(
+        problems.is_empty(),
+        "DEFERRED_SESSION_FIELDS is stale:\n  - {}",
+        problems.join("\n  - ")
+    );
+}

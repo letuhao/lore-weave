@@ -73,10 +73,14 @@
 
 pub mod aggregate;
 pub mod error;
+pub mod ids;
+pub mod session;
 pub mod scope;
 pub mod tier;
 
 pub use aggregate::{requires_channel, tier_row, DpAggregate, TierRow};
 pub use error::DpError;
+pub use ids::{NodeId, RealityId, SessionId};
+pub use session::{BindRequest, CapabilityToken, ControlPlane, SessionContext, VerifiedBind};
 pub use scope::{ChannelScope, RealityScope, Scope, ScopeKind};
 pub use tier::{Coherency, Tier, TierLevel, T0, T1, T2, T3};
