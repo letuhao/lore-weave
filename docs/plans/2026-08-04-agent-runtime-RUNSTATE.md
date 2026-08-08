@@ -3781,6 +3781,43 @@ and the row land in Postgres. That covers items **A**, **C**, **D** and 2.5's te
 The arm flag is **off in the deployed config**, so turning it on for a real user session is a
 product decision, not a measurement I may take unilaterally — and it is the one remaining piece.
 
+### ⭐ QC3 — the REAL persisted artifact, read out of production Postgres
+
+**2026-08-08**, `loreweave_chat.chat_messages`, the live dev database:
+
+```
+ runtime_variant | rows | with_advertised | with_withheld | with_outcome
+-----------------+------+-----------------+---------------+--------------
+ legacy          | 5975 |             117 |            79 |          367
+```
+
+**Four things this measures that no test could:**
+
+1. **`runtime_variant` is populated on every one of 5,975 rows, and every one reads `legacy`.** That
+   is CP-2.8's derivation confirmed against real data *and* the honest statement that **the new arm
+   has never served a turn** — the same fact the board has carried since CP-1, now from the column
+   rather than from an argument.
+2. **`advertised_tools` is present on 117 rows — 2.0%.** This is the field §5 exists for, and on the
+   legacy arm it is empty **98% of the time**. Arm E's silent deletion is invisible in production
+   because the column that would show it is almost never written.
+3. **`withheld_tools`: 79 rows, 1.3%.** P1's record, on the arm where P1 was a retrofit.
+4. **`finish_reason`: 367 rows, 6.1%.** The board has carried *"`finish_reason` covers 9.4%"* since
+   CP-0. **Measured today it is 6.1%** — recorded as a fresh measurement beside the old one, not as
+   a correction of it: they are different denominators at different times, and I have not
+   established which.
+
+### ▶ Why this is the falsifier CP-2.5 was built to have
+
+CP-2.5 made the four P5 fields **impossible to omit** — four required fields, no defaults. The claim
+that mechanism makes is now checkable against numbers rather than against a type: **when the
+agentruntime arm serves turns, its rows must show these columns populated at 100%, against a legacy
+arm sitting at 1–6%.** A new-arm row with an empty `advertised_tools` falsifies the construction
+argument outright.
+
+**That comparison is the one measurement still outstanding**, and it needs new-arm rows to exist —
+which needs the arm flag on for a real session. Everything on this row is now waiting on that single
+act, not on more code.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
