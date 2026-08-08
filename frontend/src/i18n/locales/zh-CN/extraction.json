@@ -30,7 +30,13 @@
     "allOverwrite": "全部覆盖",
     "required": "必填",
     "thinkingEnabled": "启用思考/推理模式",
-    "thinkingHint": "进行 JSON 提取时建议关闭。对于像 Gemma 这样在启用思考模式时推理方式不同的模型，请开启此选项。"
+    "thinkingHint": "进行 JSON 提取时建议关闭。对于像 Gemma 这样在启用思考模式时推理方式不同的模型，请开启此选项。",
+    "addDefaults": "添加默认类型",
+    "addingDefaults": "正在添加…",
+    "defaultsError": "无法添加默认实体类型。",
+    "loadError": "无法加载提取配置文件。",
+    "noKindsDescription": "提取需要至少一种目标类型。请添加默认类型以开始，或在术语表中自定义类型。",
+    "noKindsTitle": "本书尚未设置任何实体类型"
   },
   "batch": {
     "title": "批量配置",

@@ -772,7 +772,8 @@
     "noScenes": "此场景计划中没有需要编辑的章节。",
     "openEdit": "编辑…",
     "runPicker": "选择一个计划运行",
-    "runToCheckpoint": "运行至下一个检查点"
+    "runToCheckpoint": "运行至下一个检查点",
+    "runningPass": "正在运行 {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "粘贴小说系统 Markdown…",
@@ -835,7 +836,8 @@
       "title": "此计划缺失了什么？",
       "unavailableHint": "未检查；请尝试重新检查，而非将其视为缺失",
       "unavailableTitle": "无法检查",
-      "uncertain": "（您的文档未被完整读取，因此该内容可能已存在）"
+      "uncertain": "（您的文档未被完整读取，因此该内容可能已存在）",
+      "shrank": "本次运行读取的内容多于保留的内容 ({{detail}}) —— 在以此为基础进行创作前，请检查这些部分。"
     },
     "openPassRail": "Pass Rail →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "叙事视图",
       "viewTimeline": "时间轴",
       "viewWorldmap": "世界地图",
-      "viewSoon": "将在后续阶段推出"
+      "viewSoon": "将在后续阶段推出",
+      "addArc": "+ 弧线",
+      "addArcHint": "添加一个顶级弧线",
+      "addArcNoGrant": "您需要编辑权限才能添加弧线",
+      "addSubArc": "+ 子弧线",
+      "addSubArcHint": "在所选弧线下添加一个子弧线",
+      "addSubArcHint2": "选择一个弧线以在其下方嵌套子弧线",
+      "addingArc": "+ 弧线…"
     },
     "mode": {
       "simple": "简易模式",

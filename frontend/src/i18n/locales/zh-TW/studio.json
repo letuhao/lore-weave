@@ -772,7 +772,8 @@
     "noScenes": "此場景計畫中沒有可編輯的章節。",
     "openEdit": "編輯…",
     "runPicker": "選擇一個計畫執行階段",
-    "runToCheckpoint": "執行至下一個檢查點"
+    "runToCheckpoint": "執行至下一個檢查點",
+    "runningPass": "正在執行 {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "貼上小說系統的 Markdown…",
@@ -835,7 +836,8 @@
       "title": "此計畫缺少了什麼？",
       "unavailableHint": "未檢查；請嘗試重新檢查，而非將其視為缺失",
       "unavailableTitle": "無法檢查",
-      "uncertain": "（您的文件未被完整讀取，因此此內容可能已存在）"
+      "uncertain": "（您的文件未被完整讀取，因此此內容可能已存在）",
+      "shrank": "本次執行讀取的內容多於保留的內容 ({{detail}}) — 在以此為基礎進行構建前，請先檢查這些部分。"
     },
     "openPassRail": "Pass Rail →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "敘事結構",
       "viewTimeline": "時間軸",
       "viewWorldmap": "世界地圖",
-      "viewSoon": "即將於後續階段推出"
+      "viewSoon": "即將於後續階段推出",
+      "addArc": "+ 弧線",
+      "addArcHint": "新增一個頂層弧線",
+      "addArcNoGrant": "您需要編輯權限才能新增弧線",
+      "addSubArc": "+ 子弧線",
+      "addSubArcHint": "在所選弧線下新增一個子弧線",
+      "addSubArcHint2": "選擇一個弧線，以便在其下方嵌套子弧線",
+      "addingArc": "+ 弧線…"
     },
     "mode": {
       "simple": "簡易模式",

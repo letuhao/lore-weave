@@ -1705,7 +1705,8 @@
     "undoFailed": "Üzerine yazma işlemi geri yüklenemedi.",
     "undoSuperseded": "Bu öğe için daha yeni bir değişiklik mevcut — geri yüklenecek bir şey yok.",
     "unnamed": "Başlıksız versiyon",
-    "yes": "Evet"
+    "yes": "Evet",
+    "derivativesSection": "Türevler ({{n}})"
   },
   "mark": {
     "action": "Sorunu işaretle",
@@ -1751,5 +1752,6 @@
   "resolveWorkFailed": "Bilgi servisine ulaşılamıyor — temellendirme kurulumu tamamlanamadı.",
   "resolvingWork": "Kurulum tamamlanıyor… bilgi servisine kısa süreliğine ulaşılamadı.",
   "retry": "Tekrar dene",
-  "threadFocusMissing": "Geldiğiniz söz henüz bu görünümde değil — zaten ödenmiş olabilir. Filtreyi “tümü” olarak değiştirin."
+  "threadFocusMissing": "Geldiğiniz söz henüz bu görünümde değil — zaten ödenmiş olabilir. Filtreyi “tümü” olarak değiştirin.",
+  "canonConflictCurrent": "Mevcut (v{{v}}): {{text}}"
 }

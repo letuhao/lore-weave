@@ -458,7 +458,11 @@
       "replaceFactSave": "Simpan penggantian",
       "replaceFactSuccess": "Fakta telah diganti",
       "markWrongUndo": "Batalkan",
-      "markWrongUndoFailed": "Tidak dapat membatalkan: {{error}}"
+      "markWrongUndoFailed": "Tidak dapat membatalkan: {{error}}",
+      "tabs": {
+        "current": "Semasa",
+        "temporal": "Temporal"
+      }
     },
     "edit": {
       "title": "Edit entiti",
@@ -749,7 +753,11 @@
       "rerankModelHint": "Cross-encoder rerank untuk penolakan sampah carian-mentah. Pilihan — jika dibiarkan kosong, carian akan mengekalkan urutan gabungan.",
       "rerankModelNone": "Tiada (langkau rerank — kekalkan urutan gabungan)",
       "toolCalling": "Alatan memori dalam sembang",
-      "toolCallingHint": "Benarkan AI mencari, mengingat, dan mencatat memori semasa berbual dalam projek ini."
+      "toolCallingHint": "Benarkan AI mencari, mengingat, dan mencatat memori semasa berbual dalam projek ini.",
+      "benchmarkFailed": "✗ Penanda aras tidak lulus (recall@3 {{recall}}) — model ini mendapat skor di bawah tahap kualiti untuk pengekstrakan; cuba model embedding yang lain.",
+      "benchmarkInconclusive": "⋯ Penanda aras tidak konklusif (recall@3 {{recall}}) — memerlukan ≥3 kelulusan untuk mengesahkan model ini. Jalankan semula.",
+      "benchmarkPassed": "✓ Penanda aras lulus (recall@3 {{recall}}).",
+      "genreError": "Genre mestilah tidak melebihi {{max}} aksara."
     },
     "archiveDialog": {
       "title": "Arkib projek?",
@@ -1391,18 +1399,80 @@
   },
   "temporal": {
     "canonical": {
-      "asOfChapter": "Setakat bab {{ordinal}}"
+      "asOfChapter": "Setakat bab {{ordinal}}",
+      "current": "semasa",
+      "loadFailed": "Tidak dapat memuatkan kanon untuk titik ini dalam cerita.",
+      "sourceCanonContent": "kanon yang ditulis",
+      "sourceCanonContentHint": "Menunjukkan kanon yang ditulis (tiada imbasan terlipat untuk titik ini).",
+      "status": {
+        "current": "semasa",
+        "stale": "usang",
+        "unbuildable": "tidak tersedia"
+      },
+      "unbuildable": "Sintesis tidak tersedia di sini — mod selamat-degradasi."
     },
     "retrieval": {
-      "chapter": "Bab {{chapter}}"
+      "chapter": "Bab {{chapter}}",
+      "ariaLabel": "Carian pengambilan",
+      "currentStateNote": "Keputusan adalah keadaan semasa (pengambilan temporal belum tersedia).",
+      "error": "Carian gagal: {{error}}",
+      "noResults": "Tiada konteks yang sepadan ditemui.",
+      "noText": "(tiada teks pratonton)",
+      "placeholder": "Cari konteks buku ini...",
+      "typeToSearch": "Taip untuk mencari konteks entiti ini."
     },
     "slider": {
-      "atChapter": "Bab {{ordinal}}"
+      "atChapter": "Bab {{ordinal}}",
+      "aria": "Leret urutan bab masa cerita",
+      "head": "Kepala (terbaharu)",
+      "headButton": "Kepala (terbaharu)",
+      "label": "Masa cerita",
+      "loadFailed": "Tidak dapat memuat garis masa perubahan.",
+      "noChanges": "Tiada perubahan masa cerita lagi."
     },
     "translation": {
       "asOfChapter": "bab {{n}}",
       "asOfLabel": "setakat {{label}}",
-      "error": "Gagal memuatkan konteks: {{error}}"
+      "error": "Gagal memuatkan konteks: {{error}}",
+      "asAuthored": "seperti yang ditulis",
+      "asOfHead": "terkini",
+      "badgeCached": "diterjemah · tersimpan",
+      "badgeFresh": "diterjemah",
+      "empty": "Tiada konteks tersedia untuk titik ini dalam cerita.",
+      "failNoModel": "Tiada model terjemahan ditetapkan. Pilih satu dalam Tetapan Terjemahan untuk melihat konteks yang diterjemah.",
+      "failProvider": "Terjemahan gagal. Menunjukkan konteks asal buat masa ini.",
+      "failQuota": "Terjemahan tidak tersedia — kuota penyedia telah habis.",
+      "langOriginal": "Asal ({{lang}})",
+      "languageLabel": "Bahasa paparan",
+      "title": "Konteks setiap episod",
+      "translating": "Sedang menterjemah… paparan pertama mungkin mengambil masa sedikit"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "Pada bab {{asOf}}",
+      "current": "Semasa",
+      "hint": "Gerakkan bar pelaras masa untuk membandingkan bab terdahulu dengan keadaan semasa.",
+      "loadFailed": "Tidak dapat memuatkan perbezaan: {{error}}",
+      "loading": "Memuatkan perbezaan…",
+      "noChanges": "Tiada perubahan nilai tunggal antara bab {{asOf}} dan sekarang.",
+      "title": "Paparan perbezaan"
+    },
+    "timeline": {
+      "chapter": "bab {{chapter}}",
+      "empty": "Tiada perubahan yang direkodkan untuk entiti ini lagi.",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → terbuka)"
+      },
+      "kind": {
+        "invalidated": "dibatalkan",
+        "open": "terbuka",
+        "superseded": "digantikan"
+      },
+      "loadFailed": "Tidak dapat memuat garis masa perubahan: {{error}}",
+      "loadMore": "Muat lebih banyak",
+      "loading": "Memuat perubahan…",
+      "title": "Garis masa perubahan"
     }
   }
 }

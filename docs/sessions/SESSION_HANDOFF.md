@@ -31,20 +31,34 @@ archived; 20 frontend tests were red; the FB2 `SHA256SUMS` manifest could not ve
 hashes predated LF normalisation); and 30 Russian strings sat in frontend source, including the
 crash page and an LLM prompt.
 
-### ⚠️ NEXT-1 — a gate that cannot see its own subject
+### ✅ CLOSED — the gate that could not see its own subject
 
-`i18n-completeness-gate` compares bundle against bundle. A string that exists only as a
-`t(..., { defaultValue })` is therefore invisible to it, and equally invisible to
-`i18n_translate.py`, which reads the `en` bundle. Such a string stays English in all 19 other
-locales while the gate reports full parity. **609 keys had accumulated this way**; 89% of them
-predate the contribution. All 609 are now backfilled into `en` and translated.
+`i18n-completeness-gate` compares bundle against bundle. A string existing only as a
+`t(..., { defaultValue })` was therefore invisible to it, and equally invisible to
+`i18n_translate.py`, which reads the `en` bundle: such a string stayed in its source language
+in all 19 other locales while the gate reported full parity. **689 keys had accumulated** —
+609 found by hand, then 80 more that only a mechanism could find. 89% predate the outside
+contribution. All are backfilled and translated.
 
-The gate's shape cannot close this. A lint asserting *every literal `t()` key resolves in `en`*
-would. Two call sites need a code change before such a lint can pass:
-`knowledge: projects.form.genreError` and `studio: planPasses.runningPass` interpolate `${...}`
-inside backtick defaults and must move to `{{placeholder}}` form to become bundle entries.
+Closed with a mechanism rather than a note: **`scripts/i18n-key-resolution-gate.py`** asserts
+every literal `t()` key resolves in `en`. Wired pre-commit (on components — adding the call is
+what creates the debt) and in `foundation-ci`. It resolves 6,497 keys across 658 components and
+reports the 418 runtime-built calls it cannot check, so the remaining blind spot is stated
+rather than implied.
 
-### ⚠️ NEXT-2 — Scene Rail: the #12 M-C tri-state, and what changing it would cost
+Four call shapes had to be modelled, each found by a false positive on an early run, and each
+is why a lint like this normally gets switched off instead of fixed: per-identifier namespace
+bindings (one file may hold `const { t } = useTranslation('chat')` beside
+`const { t: tKnowledge } = useTranslation('knowledge')`), the per-call `{ ns: 'x' }` override,
+i18next's positional-default form `t(key, 'text')`, and plural siblings (`key_one`/`key_other`
+resolve `t(key, { count })` with no bare `key` present). Arrays count as leaves —
+`returnObjects` reads a whole list.
+
+Of the 80 the gate found, 70 carried their English at the call site and were lifted verbatim;
+**10 carried nothing and rendered their own key to the user** (six in `StepProfile`, three in
+pdf-import, one in `GapReportTab`). Those ten are authored copy, worth a reviewer's eye.
+
+### ✅ CLOSED — Scene Rail: the #12 M-C tri-state (open only as a product choice)
 
 The contribution set the Scene Rail default to `railChoice ?? false` inside a commit about
 decomposition planning, unmentioned in its message. That left the `#12 M-C` comment above still

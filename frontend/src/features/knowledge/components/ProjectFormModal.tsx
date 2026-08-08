@@ -308,7 +308,7 @@ export function ProjectFormModal({
           />
           {!genreValid && (
             <span className="text-[11px] text-destructive">
-              {t('projects.form.genreError', { max: GENRE_MAX, defaultValue: `Genre must be at most ${GENRE_MAX} characters.` })}
+              {t('projects.form.genreError', { max: GENRE_MAX, defaultValue: 'Genre must be at most {{max}} characters.' })}
             </span>
           )}
         </label>

@@ -30,7 +30,13 @@
     "allOverwrite": "Todos Substituir",
     "required": "obrigatório",
     "thinkingEnabled": "Ativar pensamento / raciocínio",
-    "thinkingHint": "O modo 'desativado' é recomendado para extração de JSON. Ative para modelos como o Gemma, que raciocinam de forma diferente quando o pensamento está ativado."
+    "thinkingHint": "O modo 'desativado' é recomendado para extração de JSON. Ative para modelos como o Gemma, que raciocinam de forma diferente quando o pensamento está ativado.",
+    "addDefaults": "Adicionar tipos padrão",
+    "addingDefaults": "Adicionando…",
+    "defaultsError": "Não foi possível adicionar os tipos de entidades padrão.",
+    "loadError": "Não foi possível carregar o perfil de extração.",
+    "noKindsDescription": "A extração precisa de pelo menos um tipo para busca. Adicione os padrões para começar ou defina os seus próprios no glossário.",
+    "noKindsTitle": "Este livro ainda não possui tipos de entidades"
   },
   "batch": {
     "title": "Config. em Lote",

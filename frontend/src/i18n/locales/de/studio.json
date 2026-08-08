@@ -772,7 +772,8 @@
     "noScenes": "Keine Kapitel zum Bearbeiten in diesem Szenenplan.",
     "openEdit": "bearbeiten…",
     "runPicker": "Einen Plan-Durchgang wählen",
-    "runToCheckpoint": "Bis zum nächsten Checkpoint ausführen"
+    "runToCheckpoint": "Bis zum nächsten Checkpoint ausführen",
+    "runningPass": "Lauf {{pass}} läuft…"
   },
   "planner": {
     "sourcePlaceholder": "Markdown des Roman-Systems einfügen…",
@@ -835,7 +836,8 @@
       "title": "Was fehlt in diesem Plan?",
       "unavailableHint": "nicht geprüft; versuchen Sie es erneut, anstatt es als fehlend zu behandeln",
       "unavailableTitle": "Prüfung nicht möglich",
-      "uncertain": "(Ihr Dokument wurde nicht vollständig gelesen, daher könnte dies bereits vorhanden sein)"
+      "uncertain": "(Ihr Dokument wurde nicht vollständig gelesen, daher könnte dies bereits vorhanden sein)",
+      "shrank": "Dieser Durchgang hat mehr gelesen als beibehalten ({{detail}}) – überprüfe diese Teile, bevor du sie weiterverarbeitest."
     },
     "openPassRail": "Pass Rail →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "Erzählung",
       "viewTimeline": "Zeitstrahl",
       "viewWorldmap": "Weltkarte",
-      "viewSoon": "In einer späteren Phase verfügbar"
+      "viewSoon": "In einer späteren Phase verfügbar",
+      "addArc": "+ Bogen",
+      "addArcHint": "Einen übergeordneten Bogen hinzufügen",
+      "addArcNoGrant": "Du benötigst Bearbeitungsrechte, um Bögen hinzuzufügen",
+      "addSubArc": "+ Unterbogen",
+      "addSubArcHint": "Einen Unterbogen unter dem ausgewählten Bogen hinzufügen",
+      "addSubArcHint2": "Wähle einen Bogen aus, um einen Unterbogen darin zu verschachteln",
+      "addingArc": "+ Bogen…"
     },
     "mode": {
       "simple": "Einfach",

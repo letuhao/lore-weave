@@ -153,7 +153,7 @@ export function PassRailPanel(props: IDockviewPanelProps) {
                   <button type="button" data-testid="pass-run-to-checkpoint" disabled={rail.busy || rail.polling}
                     onClick={() => { setModelRef(''); setBatchConfirm(true); }}
                     className="rounded border border-accent/50 px-2 py-1 text-[11px] font-medium text-accent-foreground hover:bg-accent/10 disabled:opacity-40">
-                    {rail.running ? t('planPasses.runningPass', { defaultValue: `running ${rail.running}…`, pass: rail.running }) : t('planPasses.runToCheckpoint', { defaultValue: '▶ Run to next checkpoint' })}
+                    {rail.running ? t('planPasses.runningPass', { defaultValue: 'running {{pass}}…', pass: rail.running }) : t('planPasses.runToCheckpoint', { defaultValue: '▶ Run to next checkpoint' })}
                   </button>
                 )}
               </div>

@@ -458,7 +458,11 @@
       "replaceFactSave": "Simpan penggantian",
       "replaceFactSuccess": "Fakta berhasil diganti",
       "markWrongUndo": "Batalkan",
-      "markWrongUndoFailed": "Tidak dapat membatalkan: {{error}}"
+      "markWrongUndoFailed": "Tidak dapat membatalkan: {{error}}",
+      "tabs": {
+        "current": "Saat Ini",
+        "temporal": "Temporal"
+      }
     },
     "edit": {
       "title": "Edit entitas",
@@ -749,7 +753,11 @@
       "rerankModelHint": "Cross-encoder rerank untuk penolakan sampah pada pencarian mentah. Opsional — jika dikosongkan, urutan fusi pencarian akan dipertahankan.",
       "rerankModelNone": "Tidak ada (lewati rerank — pertahankan urutan fusi)",
       "toolCalling": "Alat memori dalam obrolan",
-      "toolCallingHint": "Biarkan AI mencari, mengingat, dan mencatat memori saat mengobrol dalam proyek ini."
+      "toolCallingHint": "Biarkan AI mencari, mengingat, dan mencatat memori saat mengobrol dalam proyek ini.",
+      "benchmarkFailed": "✗ Benchmark tidak lolos (recall@3 {{recall}}) — model ini memiliki skor di bawah ambang batas kualitas untuk ekstraksi; coba gunakan model embedding lain.",
+      "benchmarkInconclusive": "⋯ Benchmark tidak konklusif (recall@3 {{recall}}) — butuh ≥3 kelolosan untuk memvalidasi model ini. Jalankan ulang.",
+      "benchmarkPassed": "✓ Benchmark lolos (recall@3 {{recall}}).",
+      "genreError": "Genre maksimal {{max}} karakter."
     },
     "archiveDialog": {
       "title": "Arsipkan proyek?",
@@ -1391,18 +1399,80 @@
   },
   "temporal": {
     "canonical": {
-      "asOfChapter": "Per bab {{ordinal}}"
+      "asOfChapter": "Per bab {{ordinal}}",
+      "current": "saat ini",
+      "loadFailed": "Tidak dapat memuat kanon untuk titik cerita ini.",
+      "sourceCanonContent": "kanon yang ditulis",
+      "sourceCanonContentHint": "Menampilkan kanon yang ditulis (tidak ada snapshot terlipat untuk titik ini).",
+      "status": {
+        "current": "saat ini",
+        "stale": "usang",
+        "unbuildable": "tidak tersedia"
+      },
+      "unbuildable": "Sintesis tidak tersedia di sini — degradasi aman."
     },
     "retrieval": {
-      "chapter": "Bab {{chapter}}"
+      "chapter": "Bab {{chapter}}",
+      "ariaLabel": "Pencarian pengambilan",
+      "currentStateNote": "Hasil adalah status saat ini (pengambilan temporal belum tersedia).",
+      "error": "Pencarian gagal: {{error}}",
+      "noResults": "Tidak ada konteks yang cocok ditemukan.",
+      "noText": "(tidak ada teks pratinjau)",
+      "placeholder": "Cari konteks buku ini…",
+      "typeToSearch": "Ketik untuk mencari konteks entitas ini."
     },
     "slider": {
-      "atChapter": "Bab {{ordinal}}"
+      "atChapter": "Bab {{ordinal}}",
+      "aria": "Geser urutan bab waktu cerita",
+      "head": "Kepala (terbaru)",
+      "headButton": "Kepala (terbaru)",
+      "label": "Waktu cerita",
+      "loadFailed": "Tidak dapat memuat lini masa perubahan.",
+      "noChanges": "Belum ada perubahan waktu cerita."
     },
     "translation": {
       "asOfChapter": "bab {{n}}",
       "asOfLabel": "per {{label}}",
-      "error": "Gagal memuat konteks: {{error}}"
+      "error": "Gagal memuat konteks: {{error}}",
+      "asAuthored": "seperti yang ditulis",
+      "asOfHead": "terbaru",
+      "badgeCached": "diterjemahkan · tersimpan",
+      "badgeFresh": "diterjemahkan",
+      "empty": "Tidak ada konteks waktu yang tersedia untuk titik ini dalam cerita.",
+      "failNoModel": "Model terjemahan belum diatur. Pilih satu di Pengaturan Terjemahan untuk melihat konteks yang diterjemahkan.",
+      "failProvider": "Terjemahan gagal. Menampilkan konteks asli untuk saat ini.",
+      "failQuota": "Terjemahan tidak tersedia — kuota penyedia habis.",
+      "langOriginal": "Asli ({{lang}})",
+      "languageLabel": "Bahasa tampilan",
+      "title": "Konteks per-episode",
+      "translating": "Menerjemahkan… tampilan pertama mungkin memakan waktu sejenak"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "Pada bab {{asOf}}",
+      "current": "Saat ini",
+      "hint": "Geser slider waktu untuk membandingkan bab terdahulu dengan kondisi saat ini.",
+      "loadFailed": "Gagal memuat perbedaan: {{error}}",
+      "loading": "Memuat perbedaan…",
+      "noChanges": "Tidak ada perubahan nilai tunggal antara bab {{asOf}} dan sekarang.",
+      "title": "Tampilan perbedaan"
+    },
+    "timeline": {
+      "chapter": "bab {{chapter}}",
+      "empty": "Belum ada perubahan yang tercatat untuk entitas ini.",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → terbuka)"
+      },
+      "kind": {
+        "invalidated": "dibatalkan",
+        "open": "terbuka",
+        "superseded": "digantikan"
+      },
+      "loadFailed": "Tidak dapat memuat lini masa perubahan: {{error}}",
+      "loadMore": "Muat lebih banyak",
+      "loading": "Memuat perubahan…",
+      "title": "Lini masa perubahan"
     }
   }
 }

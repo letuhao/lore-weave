@@ -30,7 +30,13 @@
     "allOverwrite": "Tất cả ghi đè",
     "required": "bắt buộc",
     "thinkingEnabled": "Bật suy nghĩ / reasoning",
-    "thinkingHint": "Nên tắt khi trích xuất JSON. Bật với Gemma và model tương tự nếu muốn model suy luận trước khi trả lời."
+    "thinkingHint": "Nên tắt khi trích xuất JSON. Bật với Gemma và model tương tự nếu muốn model suy luận trước khi trả lời.",
+    "addDefaults": "Thêm các loại mặc định",
+    "addingDefaults": "Đang thêm…",
+    "defaultsError": "Không thể thêm các loại thực thể mặc định.",
+    "loadError": "Không thể tải hồ sơ trích xuất.",
+    "noKindsDescription": "Việc trích xuất cần ít nhất một loại thực thể để tìm kiếm. Hãy thêm các loại mặc định để bắt đầu, hoặc tự định nghĩa trong bảng thuật ngữ.",
+    "noKindsTitle": "Cuốn sách này chưa có loại thực thể nào"
   },
   "batch": {
     "title": "Cấu hình hàng loạt",

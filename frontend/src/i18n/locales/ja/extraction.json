@@ -30,7 +30,13 @@
     "allOverwrite": "全て上書き",
     "required": "必須",
     "thinkingEnabled": "思考／推論を有効にする",
-    "thinkingHint": "JSON抽出ではオフ推奨。Gemmaなどで推論させたい場合のみオンにしてください。"
+    "thinkingHint": "JSON抽出ではオフ推奨。Gemmaなどで推論させたい場合のみオンにしてください。",
+    "addDefaults": "デフォルトの種別を追加",
+    "addingDefaults": "追加中…",
+    "defaultsError": "デフォルトのエンティティ種別を追加できませんでした。",
+    "loadError": "抽出プロファイルを読み込めませんでした。",
+    "noKindsDescription": "抽出を行うには、少なくとも1つの種別が必要です。まずはデフォルトを追加するか、用語集で独自の種別を定義してください。",
+    "noKindsTitle": "この本にはまだエンティティ種別が設定されていません"
   },
   "batch": {
     "title": "バッチ設定",

@@ -64,5 +64,14 @@
     "back": "পেছনে",
     "cancel": "বাতিল",
     "next": "পরবর্তী"
+  },
+  "import-configure": {
+    "willCreate": "এটি {{count}}টি অধ্যায় তৈরি করবে।"
+  },
+  "import-results": {
+    "chaptersCreated": "{{count}}টি অধ্যায় তৈরি করা হয়েছে।"
+  },
+  "import-upload": {
+    "pageCount": "{{count}}টি পৃষ্ঠা"
   }
 }

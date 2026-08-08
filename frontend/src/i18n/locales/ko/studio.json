@@ -772,7 +772,8 @@
     "noScenes": "이 장면 계획에서 편집할 장이 없습니다.",
     "openEdit": "편집…",
     "runPicker": "실행할 계획 선택",
-    "runToCheckpoint": "다음 체크포인트까지 실행"
+    "runToCheckpoint": "다음 체크포인트까지 실행",
+    "runningPass": "{{pass}} 실행 중…"
   },
   "planner": {
     "sourcePlaceholder": "소설 시스템 마크다운을 붙여넣으세요…",
@@ -835,7 +836,8 @@
       "title": "이 계획에서 누락된 것은 무엇인가요?",
       "unavailableHint": "확인되지 않음; 누락된 것으로 간주하기보다 다시 시도해 보세요",
       "unavailableTitle": "확인 불가",
-      "uncertain": "(문서를 완전히 읽어오지 못했으므로, 이미 포함되어 있을 수 있습니다)"
+      "uncertain": "(문서를 완전히 읽어오지 못했으므로, 이미 포함되어 있을 수 있습니다)",
+      "shrank": "이번 실행에서 읽은 내용이 유지된 내용보다 많습니다 ({{detail}}). 해당 부분을 기반으로 내용을 구성하기 전에 미리 확인하세요."
     },
     "openPassRail": "Pass Rail →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "서사",
       "viewTimeline": "타임라인",
       "viewWorldmap": "세계 지도",
-      "viewSoon": "다음 단계에서 공개 예정"
+      "viewSoon": "다음 단계에서 공개 예정",
+      "addArc": "+ 아크",
+      "addArcHint": "최상위 아크 추가",
+      "addArcNoGrant": "아크를 추가하려면 편집 권한이 필요합니다",
+      "addSubArc": "+ 하위 아크",
+      "addSubArcHint": "선택한 아크 아래에 하위 아크 추가",
+      "addSubArcHint2": "하위 아크를 포함할 아크를 선택하세요",
+      "addingArc": "+ 아크 추가 중…"
     },
     "mode": {
       "simple": "심플",

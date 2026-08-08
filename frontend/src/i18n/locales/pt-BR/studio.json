@@ -772,7 +772,8 @@
     "noScenes": "Não há capítulos para editar neste plano de cenas.",
     "openEdit": "editar...",
     "runPicker": "Escolha uma execução de plano",
-    "runToCheckpoint": "Executar até o próximo checkpoint"
+    "runToCheckpoint": "Executar até o próximo checkpoint",
+    "runningPass": "executando {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "Cole o markdown do sistema do romance…",
@@ -835,7 +836,8 @@
       "title": "O que está faltando neste plano?",
       "unavailableHint": "não verificado; tente novamente em vez de considerar como ausente",
       "unavailableTitle": "Não foi possível verificar",
-      "uncertain": "(seu documento não foi lido completamente, portanto, isso já pode estar presente)"
+      "uncertain": "(seu documento não foi lido completamente, portanto, isso já pode estar presente)",
+      "shrank": "Esta leitura consumiu mais do que manteve ({{detail}}) — verifique essas partes antes de continuar o desenvolvimento."
     },
     "openPassRail": "Pass Rail →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "Narrativa",
       "viewTimeline": "Linha do tempo",
       "viewWorldmap": "Mapa do mundo",
-      "viewSoon": "Disponível em uma fase posterior"
+      "viewSoon": "Disponível em uma fase posterior",
+      "addArc": "+ Arco",
+      "addArcHint": "Adicionar um arco de nível superior",
+      "addArcNoGrant": "Você precisa de acesso de edição para adicionar arcos",
+      "addSubArc": "+ Subarco",
+      "addSubArcHint": "Adicionar um subarco sob o arco selecionado",
+      "addSubArcHint2": "Selecione um arco para aninhar um subarco nele",
+      "addingArc": "+ Arco…"
     },
     "mode": {
       "simple": "Simples",

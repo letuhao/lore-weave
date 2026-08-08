@@ -772,7 +772,8 @@
     "noScenes": "Tidak ada bab untuk diedit dalam rencana adegan ini.",
     "openEdit": "edit…",
     "runPicker": "Pilih jalannya rencana",
-    "runToCheckpoint": "Jalankan hingga titik pemeriksaan berikutnya"
+    "runToCheckpoint": "Jalankan hingga titik pemeriksaan berikutnya",
+    "runningPass": "menjalankan {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "Tempel markdown novel-system…",
@@ -835,7 +836,8 @@
       "title": "Apa yang kurang dari rencana ini?",
       "unavailableHint": "tidak diperiksa; coba lagi alih-alih menganggapnya hilang",
       "unavailableTitle": "Tidak dapat memeriksa",
-      "uncertain": "(dokumen Anda tidak dibaca sepenuhnya, jadi bagian ini mungkin sudah ada)"
+      "uncertain": "(dokumen Anda tidak dibaca sepenuhnya, jadi bagian ini mungkin sudah ada)",
+      "shrank": "Proses ini membaca lebih banyak daripada yang disimpan ({{detail}}) — periksa bagian tersebut sebelum melanjutkannya."
     },
     "openPassRail": "Pass Rail →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "Narasi",
       "viewTimeline": "Lini Masa",
       "viewWorldmap": "Peta Dunia",
-      "viewSoon": "Akan datang di fase berikutnya"
+      "viewSoon": "Akan datang di fase berikutnya",
+      "addArc": "+ Busur",
+      "addArcHint": "Tambahkan busur tingkat atas",
+      "addArcNoGrant": "Anda memerlukan akses edit untuk menambahkan busur",
+      "addSubArc": "+ Sub-busur",
+      "addSubArcHint": "Tambahkan sub-busur di bawah busur yang dipilih",
+      "addSubArcHint2": "Pilih busur untuk menyisipkan sub-busur di bawahnya",
+      "addingArc": "+ Busur…"
     },
     "mode": {
       "simple": "Sederhana",

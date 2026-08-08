@@ -540,7 +540,8 @@
     "next": "Sau",
     "page": "Trang",
     "reasoning_enable": "Bật suy luận mô hình (thinking)",
-    "reasoning_hint": "Mặc định là Tắt — quá trình suy luận ẩn có thể làm tiêu tốn hạn mức đầu ra trên các mô hình cục bộ. Hãy bật tính năng này cho các đoạn văn khó khi sử dụng mô hình suy luận."
+    "reasoning_hint": "Mặc định là Tắt — quá trình suy luận ẩn có thể làm tiêu tốn hạn mức đầu ra trên các mô hình cục bộ. Hãy bật tính năng này cho các đoạn văn khó khi sử dụng mô hình suy luận.",
+    "retranslate_selected": "Dịch lại phần đã chọn ({{count}})"
   },
   "kind_editor": {
     "modified": "đã sửa",

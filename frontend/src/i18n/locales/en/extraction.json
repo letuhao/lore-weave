@@ -30,7 +30,13 @@
     "allOverwrite": "All Overwrite",
     "required": "required",
     "thinkingEnabled": "Enable thinking / reasoning",
-    "thinkingHint": "Off is recommended for JSON extraction. Turn on for models like Gemma that reason differently when thinking is enabled."
+    "thinkingHint": "Off is recommended for JSON extraction. Turn on for models like Gemma that reason differently when thinking is enabled.",
+    "addDefaults": "Add default kinds",
+    "addingDefaults": "Adding…",
+    "defaultsError": "Could not add the default entity kinds.",
+    "loadError": "Could not load the extraction profile.",
+    "noKindsDescription": "Extraction needs at least one kind to look for. Add the defaults to get started, or define your own in the glossary.",
+    "noKindsTitle": "This book has no entity kinds yet"
   },
   "batch": {
     "title": "Batch Config",

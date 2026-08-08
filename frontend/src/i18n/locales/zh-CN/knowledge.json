@@ -458,7 +458,11 @@
       "replaceFactSave": "保存替换",
       "replaceFactSuccess": "事实已替换",
       "markWrongUndo": "撤销",
-      "markWrongUndoFailed": "无法撤销：{{error}}"
+      "markWrongUndoFailed": "无法撤销：{{error}}",
+      "tabs": {
+        "current": "当前",
+        "temporal": "时间线"
+      }
     },
     "edit": {
       "title": "编辑实体",
@@ -749,7 +753,11 @@
       "rerankModelHint": "用于原始搜索垃圾信息过滤的交叉编码器重排序。可选 —— 若留空，搜索将保持融合顺序。",
       "rerankModelNone": "无 (跳过重排序 —— 保持融合顺序)",
       "toolCalling": "对话中的记忆工具",
-      "toolCallingHint": "允许 AI 在此项目的对话过程中进行搜索、检索和记录记忆。"
+      "toolCallingHint": "允许 AI 在此项目的对话过程中进行搜索、检索和记录记忆。",
+      "benchmarkFailed": "✗ 基准测试未通过 (recall@3 {{recall}}) — 该模型的提取质量低于标准；请尝试使用不同的嵌入模型。",
+      "benchmarkInconclusive": "⋯ 基准测试结果不确定 (recall@3 {{recall}}) — 需要 ≥3 次通过才能验证此模型。请重新运行。",
+      "benchmarkPassed": "✓ 基准测试通过 (recall@3 {{recall}})。",
+      "genreError": "类型名称长度不能超过 {{max}} 个字符。"
     },
     "archiveDialog": {
       "title": "归档项目？",
@@ -1391,18 +1399,80 @@
   },
   "temporal": {
     "canonical": {
-      "asOfChapter": "截至第 {{ordinal}} 章"
+      "asOfChapter": "截至第 {{ordinal}} 章",
+      "current": "当前",
+      "loadFailed": "无法加载故事此时间点的正典内容。",
+      "sourceCanonContent": "作者正典",
+      "sourceCanonContentHint": "正在显示作者正典（此时间点没有折叠快照）。",
+      "status": {
+        "current": "当前",
+        "stale": "陈旧",
+        "unbuildable": "不可用"
+      },
+      "unbuildable": "此处无法进行合成 — 已降级处理。"
     },
     "retrieval": {
-      "chapter": "第 {{chapter}} 章"
+      "chapter": "第 {{chapter}} 章",
+      "ariaLabel": "搜索检索",
+      "currentStateNote": "结果为当前状态（暂不支持时序检索）。",
+      "error": "搜索失败：{{error}}",
+      "noResults": "未找到匹配的上下文。",
+      "noText": "（无预览文本）",
+      "placeholder": "搜索本书上下文……",
+      "typeToSearch": "输入以搜索该实体的上下文。"
     },
     "slider": {
-      "atChapter": "第 {{ordinal}} 章"
+      "atChapter": "第 {{ordinal}} 章",
+      "aria": "拖动以跳转至章节时间顺序",
+      "head": "末尾（最新）",
+      "headButton": "末尾（最新）",
+      "label": "故事时间线",
+      "loadFailed": "无法加载变更时间线。",
+      "noChanges": "暂无故事时间线变更。"
     },
     "translation": {
       "asOfChapter": "第 {{n}} 章",
       "asOfLabel": "截至 {{label}}",
-      "error": "加载上下文失败：{{error}}"
+      "error": "加载上下文失败：{{error}}",
+      "asAuthored": "按原著",
+      "asOfHead": "最新",
+      "badgeCached": "已翻译 · 已缓存",
+      "badgeFresh": "已翻译",
+      "empty": "此故事节点暂无对应上下文。",
+      "failNoModel": "未设置翻译模型。请在“翻译设置”中选择一个模型以查看翻译后的上下文。",
+      "failProvider": "翻译失败。目前显示原文上下文。",
+      "failQuota": "翻译不可用 —— 服务商配额已耗尽。",
+      "langOriginal": "原文 ({{lang}})",
+      "languageLabel": "显示语言",
+      "title": "单章上下文",
+      "translating": "正在翻译……首次查看可能需要一点时间"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "截至第 {{asOf}} 章",
+      "current": "当前",
+      "hint": "拖动时间滑块，将过去的章节与当前状态进行对比。",
+      "loadFailed": "无法加载差异：{{error}}",
+      "loading": "正在加载差异…",
+      "noChanges": "第 {{asOf}} 章与当前版本之间没有单值变更。",
+      "title": "差异视图"
+    },
+    "timeline": {
+      "chapter": "第 {{chapter}} 章",
+      "empty": "该实体暂无记录的变更。",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → 开)"
+      },
+      "kind": {
+        "invalidated": "已失效",
+        "open": "进行中",
+        "superseded": "已被取代"
+      },
+      "loadFailed": "无法加载变更时间线：{{error}}",
+      "loadMore": "加载更多",
+      "loading": "正在加载变更…",
+      "title": "变更时间线"
     }
   }
 }

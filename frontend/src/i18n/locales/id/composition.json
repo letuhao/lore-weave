@@ -1705,7 +1705,8 @@
     "undoFailed": "Tidak dapat memulihkan perubahan.",
     "undoSuperseded": "Sudah ada perubahan terbaru untuk entitas tersebut — tidak ada yang dapat dipulihkan.",
     "unnamed": "Versi tanpa judul",
-    "yes": "Ya"
+    "yes": "Ya",
+    "derivativesSection": "Turunan ({{n}})"
   },
   "mark": {
     "action": "Tandai masalah",
@@ -1751,5 +1752,6 @@
   "resolveWorkFailed": "Layanan pengetahuan tidak tersedia — tidak dapat menyelesaikan pengaturan dasar.",
   "resolvingWork": "Menyelesaikan pengaturan... layanan pengetahuan sempat tidak tersedia.",
   "retry": "Coba lagi",
-  "threadFocusMissing": "Janji yang Anda ikuti tidak ada dalam tampilan ini — mungkin sudah dibayar. Ubah filter ke «semua»."
+  "threadFocusMissing": "Janji yang Anda ikuti tidak ada dalam tampilan ini — mungkin sudah dibayar. Ubah filter ke «semua».",
+  "canonConflictCurrent": "Saat ini (v{{v}}): {{text}}"
 }

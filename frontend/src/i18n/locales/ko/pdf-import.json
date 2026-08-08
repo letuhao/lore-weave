@@ -64,5 +64,14 @@
     "back": "뒤로",
     "cancel": "취소",
     "next": "다음"
+  },
+  "import-configure": {
+    "willCreate": "{{count}}개의 장이 생성됩니다."
+  },
+  "import-results": {
+    "chaptersCreated": "{{count}}개의 장이 생성되었습니다."
+  },
+  "import-upload": {
+    "pageCount": "{{count}}페이지"
   }
 }

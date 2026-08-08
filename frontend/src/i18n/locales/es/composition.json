@@ -1705,7 +1705,8 @@
     "undoFailed": "No se pudo restaurar la modificación.",
     "undoSuperseded": "Existe una modificación más reciente para esa entidad; no hay nada que restaurar.",
     "unnamed": "Versión sin título",
-    "yes": "Sí"
+    "yes": "Sí",
+    "derivativesSection": "Derivados ({{n}})"
   },
   "mark": {
     "action": "Marcar problema",
@@ -1751,5 +1752,6 @@
   "resolveWorkFailed": "Servicio de conocimiento no disponible: no se pudo completar la configuración de la base de conocimientos.",
   "resolvingWork": "Finalizando configuración… el servicio de conocimiento no estuvo disponible brevemente.",
   "retry": "Reintentar",
-  "threadFocusMissing": "La promesa de la que vienes no está en esta vista; es posible que ya se haya pagado. Cambia el filtro a «todo»."
+  "threadFocusMissing": "La promesa de la que vienes no está en esta vista; es posible que ya se haya pagado. Cambia el filtro a «todo».",
+  "canonConflictCurrent": "Actual (v{{v}}): {{text}}"
 }

@@ -1705,7 +1705,8 @@
     "undoFailed": "Could not restore the override.",
     "undoSuperseded": "A newer override for that entity exists — nothing to restore.",
     "unnamed": "Untitled version",
-    "yes": "Yes"
+    "yes": "Yes",
+    "derivativesSection": "Derivatives ({{n}})"
   },
   "mark": {
     "action": "Mark problem",
@@ -1751,5 +1752,6 @@
   "resolveWorkFailed": "Knowledge service unavailable — couldn’t finish setting up grounding.",
   "resolvingWork": "Finishing setup… the knowledge service was briefly unavailable.",
   "retry": "Retry",
-  "threadFocusMissing": "The promise you came from is not in this view — it may already be paid. Switch the filter to “all”."
+  "threadFocusMissing": "The promise you came from is not in this view — it may already be paid. Switch the filter to “all”.",
+  "canonConflictCurrent": "Current (v{{v}}): {{text}}"
 }

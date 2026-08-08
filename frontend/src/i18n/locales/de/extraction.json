@@ -30,7 +30,13 @@
     "allOverwrite": "Alle Überschreiben",
     "required": "erforderlich",
     "thinkingEnabled": "Denkprozess aktivieren",
-    "thinkingHint": "Für die JSON-Extraktion wird 'Aus' empfohlen. Aktivieren Sie dies für Modelle wie Gemma, die bei aktiviertem Denkprozess anders argumentieren."
+    "thinkingHint": "Für die JSON-Extraktion wird 'Aus' empfohlen. Aktivieren Sie dies für Modelle wie Gemma, die bei aktiviertem Denkprozess anders argumentieren.",
+    "addDefaults": "Standardtypen hinzufügen",
+    "addingDefaults": "Wird hinzugefügt…",
+    "defaultsError": "Die Standard-Entitätstypen konnten nicht hinzugefügt werden.",
+    "loadError": "Das Extraktionsprofil konnte nicht geladen werden.",
+    "noKindsDescription": "Für die Extraktion muss mindestens ein Typ festgelegt werden. Fügen Sie die Standardtypen hinzu, um zu beginnen, oder definieren Sie eigene im Glossar.",
+    "noKindsTitle": "Dieses Buch enthält noch keine Entitätstypen"
   },
   "batch": {
     "title": "Batch-Konfiguration",

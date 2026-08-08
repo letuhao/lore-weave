@@ -540,7 +540,8 @@
     "next": "Weiter",
     "page": "Seite",
     "reasoning_enable": "Modell-Reasoning aktivieren (Denkprozess)",
-    "reasoning_hint": "Standardmäßig deaktiviert — verborgene Denkprozesse können bei lokalen Modellen das Output-Budget verbrauchen. Aktivieren Sie dies für schwierige Passagen bei einem Reasoning-Modell."
+    "reasoning_hint": "Standardmäßig deaktiviert — verborgene Denkprozesse können bei lokalen Modellen das Output-Budget verbrauchen. Aktivieren Sie dies für schwierige Passagen bei einem Reasoning-Modell.",
+    "retranslate_selected": "Ausgewählte erneut übersetzen ({{count}})"
   },
   "kind_editor": {
     "modified": "geändert",

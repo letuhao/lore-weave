@@ -458,7 +458,11 @@
       "replaceFactSave": "儲存替換",
       "replaceFactSuccess": "事實已替換",
       "markWrongUndo": "復原",
-      "markWrongUndoFailed": "無法復原：{{error}}"
+      "markWrongUndoFailed": "無法復原：{{error}}",
+      "tabs": {
+        "current": "當前",
+        "temporal": "時序"
+      }
     },
     "edit": {
       "title": "編輯實體",
@@ -749,7 +753,11 @@
       "rerankModelHint": "用於原始搜尋雜訊過濾的 Cross-encoder 重排序。此為選填項目 — 若留空，搜尋結果將維持融合後的順序。",
       "rerankModelNone": "無 (跳過重排序 — 維持融合順序)",
       "toolCalling": "對話中的記憶工具",
-      "toolCallingHint": "允許 AI 在此專案的對話過程中進行搜尋、回想並記錄記憶。"
+      "toolCallingHint": "允許 AI 在此專案的對話過程中進行搜尋、回想並記錄記憶。",
+      "benchmarkFailed": "✗ 基準測試未通過 (recall@3 {{recall}}) — 此模型的擷取品質低於標準；請嘗試使用不同的嵌入模型 (embedding model)。",
+      "benchmarkInconclusive": "⋯ 基準測試結果不明確 (recall@3 {{recall}}) — 需要至少 3 次通過才能驗證此模型。請重新執行。",
+      "benchmarkPassed": "✓ 基準測試通過 (recall@3 {{recall}})。",
+      "genreError": "類型名稱長度不得超過 {{max}} 個字元。"
     },
     "archiveDialog": {
       "title": "封存專案?",
@@ -1391,18 +1399,80 @@
   },
   "temporal": {
     "canonical": {
-      "asOfChapter": "截至第 {{ordinal}} 章"
+      "asOfChapter": "截至第 {{ordinal}} 章",
+      "current": "當前",
+      "loadFailed": "無法載入故事此時點的標準內容。",
+      "sourceCanonContent": "作者設定之標準內容",
+      "sourceCanonContentHint": "正在顯示作者設定之標準內容（此時點無摺疊快照）。",
+      "status": {
+        "current": "當前",
+        "stale": "已過時",
+        "unbuildable": "無法使用"
+      },
+      "unbuildable": "此處無法進行合成 — 已降級至安全模式。"
     },
     "retrieval": {
-      "chapter": "第 {{chapter}} 章"
+      "chapter": "第 {{chapter}} 章",
+      "ariaLabel": "搜尋檢索",
+      "currentStateNote": "結果為當前狀態（尚未支援時序檢索）。",
+      "error": "搜尋失敗：{{error}}",
+      "noResults": "找不到符合的內容。",
+      "noText": "（無預覽文字）",
+      "placeholder": "搜尋本書的內容脈絡…",
+      "typeToSearch": "請輸入以搜尋此實體的內容脈絡。"
     },
     "slider": {
-      "atChapter": "第 {{ordinal}} 章"
+      "atChapter": "第 {{ordinal}} 章",
+      "aria": "拖動以調整故事時間章節順序",
+      "head": "末端（最新）",
+      "headButton": "末端（最新）",
+      "label": "故事時間軸",
+      "loadFailed": "無法載入變更時間軸。",
+      "noChanges": "目前尚無故事時間軸變更。"
     },
     "translation": {
       "asOfChapter": "第 {{n}} 章",
       "asOfLabel": "截至 {{label}}",
-      "error": "載入上下文失敗：{{error}}"
+      "error": "載入上下文失敗：{{error}}",
+      "asAuthored": "原始作者版本",
+      "asOfHead": "最新版本",
+      "badgeCached": "已翻譯 · 已快取",
+      "badgeFresh": "已翻譯",
+      "empty": "此故事時間點尚無對應的上下文資訊。",
+      "failNoModel": "未設定翻譯模型。請至「翻譯設定」選擇模型以查看翻譯後的上下文。",
+      "failProvider": "翻譯失敗。目前顯示原始上下文。",
+      "failQuota": "翻譯功能暫時無法使用 — 供應商配額已用盡。",
+      "langOriginal": "原文 ({{lang}})",
+      "languageLabel": "顯示語言",
+      "title": "每章節內容對照",
+      "translating": "翻譯中… 首次查看可能需要一點時間"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "於第 {{asOf}} 章",
+      "current": "當前",
+      "hint": "拖動時間軸，將過去的章節與當前狀態進行比較。",
+      "loadFailed": "無法載入差異：{{error}}",
+      "loading": "載入差異中…",
+      "noChanges": "第 {{asOf}} 章與現在之間沒有單值變更。",
+      "title": "差異檢視"
+    },
+    "timeline": {
+      "chapter": "第 {{chapter}} 章",
+      "empty": "此實體尚無任何紀錄的變更。",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → 開啟)"
+      },
+      "kind": {
+        "invalidated": "已失效",
+        "open": "開啟中",
+        "superseded": "已被取代"
+      },
+      "loadFailed": "無法載入變更時間軸：{{error}}",
+      "loadMore": "載入更多",
+      "loading": "正在載入變更…",
+      "title": "變更時間軸"
     }
   }
 }

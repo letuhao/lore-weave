@@ -458,7 +458,11 @@
       "replaceFactSave": "Ersetzung speichern",
       "replaceFactSuccess": "Fakt ersetzt",
       "markWrongUndo": "Rückgängig machen",
-      "markWrongUndoFailed": "Rückgängig machen fehlgeschlagen: {{error}}"
+      "markWrongUndoFailed": "Rückgängig machen fehlgeschlagen: {{error}}",
+      "tabs": {
+        "current": "Aktuell",
+        "temporal": "Zeitlich"
+      }
     },
     "edit": {
       "title": "Entität bearbeiten",
@@ -749,7 +753,11 @@
       "rerankModelHint": "Cross-Encoder-Rerank zur Ablehnung von Suchmüll bei der Rohsuche. Optional – wenn leer gelassen, behält die Suche die Fusionsreihenfolge bei.",
       "rerankModelNone": "Keine (Rerank überspringen – Fusionsreihenfolge beibehalten)",
       "toolCalling": "Gedächtnis-Tools im Chat",
-      "toolCallingHint": "Erlauben Sie der KI, während des Chats in diesem Projekt im Gedächtnis zu suchen, Informationen abzurufen und sich Notizen zu machen."
+      "toolCallingHint": "Erlauben Sie der KI, während des Chats in diesem Projekt im Gedächtnis zu suchen, Informationen abzurufen und sich Notizen zu machen.",
+      "benchmarkFailed": "✗ Benchmark nicht bestanden (recall@3 {{recall}}) — dieses Modell hat die Qualitätsuntergrenze für die Extraktion unterschritten; versuchen Sie ein anderes Embedding-Modell.",
+      "benchmarkInconclusive": "⋯ Benchmark nicht eindeutig (recall@3 {{recall}}) — es sind ≥3 Durchläufe erforderlich, um dieses Modell zu validieren. Starten Sie den Test erneut.",
+      "benchmarkPassed": "✓ Benchmark bestanden (recall@3 {{recall}}).",
+      "genreError": "Das Genre darf maximal {{max}} Zeichen lang sein."
     },
     "archiveDialog": {
       "title": "Projekt archivieren?",
@@ -1391,18 +1399,80 @@
   },
   "temporal": {
     "canonical": {
-      "asOfChapter": "Stand Kapitel {{ordinal}}"
+      "asOfChapter": "Stand Kapitel {{ordinal}}",
+      "current": "aktuell",
+      "loadFailed": "Das Kanon-Element für diesen Punkt in der Geschichte konnte nicht geladen werden.",
+      "sourceCanonContent": "verfasster Kanon",
+      "sourceCanonContentHint": "Zeigt den verfassten Kanon (kein zusammengeklappter Snapshot für diesen Punkt vorhanden).",
+      "status": {
+        "current": "aktuell",
+        "stale": "veraltet",
+        "unbuildable": "nicht verfügbar"
+      },
+      "unbuildable": "Synthese hier nicht verfügbar — sicherer Abbau."
     },
     "retrieval": {
-      "chapter": "Kapitel {{chapter}}"
+      "chapter": "Kapitel {{chapter}}",
+      "ariaLabel": "Suche nach Abruf",
+      "currentStateNote": "Ergebnisse beziehen sich auf den aktuellen Zustand (zeitliche Abfrage noch nicht verfügbar).",
+      "error": "Suche fehlgeschlagen: {{error}}",
+      "noResults": "Kein passender Kontext gefunden.",
+      "noText": "(kein Vorschautext)",
+      "placeholder": "Kontext dieses Buches durchsuchen…",
+      "typeToSearch": "Tippen Sie, um den Kontext dieser Entität zu durchsuchen."
     },
     "slider": {
-      "atChapter": "Kapitel {{ordinal}}"
+      "atChapter": "Kapitel {{ordinal}}",
+      "aria": "Kapitel-Reihenfolge in der Erzählzeit verschieben",
+      "head": "Anfang (aktuell)",
+      "headButton": "Anfang (aktuell)",
+      "label": "Story-Zeit",
+      "loadFailed": "Zeitstrahl konnte nicht geladen werden.",
+      "noChanges": "Noch keine Änderungen in der Story-Zeit."
     },
     "translation": {
       "asOfChapter": "Kapitel {{n}}",
       "asOfLabel": "Stand: {{label}}",
-      "error": "Kontext konnte nicht geladen werden: {{error}}"
+      "error": "Kontext konnte nicht geladen werden: {{error}}",
+      "asAuthored": "wie verfasst",
+      "asOfHead": "aktuellster Stand",
+      "badgeCached": "übersetzt · zwischengespeichert",
+      "badgeFresh": "übersetzt",
+      "empty": "Für diesen Punkt in der Geschichte ist kein Kontext verfügbar.",
+      "failNoModel": "Kein Übersetzungsmodell festgelegt. Wählen Sie eines in den Übersetzungseinstellungen aus, um den übersetzten Kontext anzuzeigen.",
+      "failProvider": "Übersetzung fehlgeschlagen. Es wird vorerst der Originalkontext angezeigt.",
+      "failQuota": "Übersetzung nicht verfügbar — Kontingent des Anbieters erschöpft.",
+      "langOriginal": "Original ({{lang}})",
+      "languageLabel": "Anzeigesprache",
+      "title": "Kontext pro Episode",
+      "translating": "Wird übersetzt… die erste Ansicht kann einen Moment dauern"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "In Kapitel {{asOf}}",
+      "current": "Aktuell",
+      "hint": "Verschieben Sie den Zeitregler, um ein vergangenes Kapitel mit dem aktuellen Stand zu vergleichen.",
+      "loadFailed": "Differenz konnte nicht geladen werden: {{error}}",
+      "loading": "Differenz wird geladen…",
+      "noChanges": "Keine Einzelwertänderungen zwischen Kapitel {{asOf}} und jetzt.",
+      "title": "Differenzansicht"
+    },
+    "timeline": {
+      "chapter": "Kap. {{chapter}}",
+      "empty": "Noch keine Änderungen für dieses Element aufgezeichnet.",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → offen)"
+      },
+      "kind": {
+        "invalidated": "ungültig gemacht",
+        "open": "offen",
+        "superseded": "ersetzt"
+      },
+      "loadFailed": "Änderungs-Timeline konnte nicht geladen werden: {{error}}",
+      "loadMore": "Mehr laden",
+      "loading": "Änderungen werden geladen…",
+      "title": "Änderungs-Timeline"
     }
   }
 }

@@ -1705,7 +1705,8 @@
     "undoFailed": "Não foi possível restaurar a alteração.",
     "undoSuperseded": "Existe uma alteração mais recente para este item — nada para restaurar.",
     "unnamed": "Versão sem título",
-    "yes": "Sim"
+    "yes": "Sim",
+    "derivativesSection": "Derivados ({{n}})"
   },
   "mark": {
     "action": "Marcar problema",
@@ -1751,5 +1752,6 @@
   "resolveWorkFailed": "Serviço de conhecimento indisponível — não foi possível concluir a configuração de fundamentação.",
   "resolvingWork": "Concluindo configuração… o serviço de conhecimento ficou brevemente indisponível.",
   "retry": "Tentar novamente",
-  "threadFocusMissing": "A promessa da qual você veio não está nesta visualização — ela pode já ter sido paga. Altere o filtro para «todos»."
+  "threadFocusMissing": "A promessa da qual você veio não está nesta visualização — ela pode já ter sido paga. Altere o filtro para «todos».",
+  "canonConflictCurrent": "Atual (v{{v}}): {{text}}"
 }

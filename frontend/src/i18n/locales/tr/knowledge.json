@@ -458,7 +458,11 @@
       "replaceFactSave": "Değişikliği kaydet",
       "replaceFactSuccess": "Bilgi değiştirildi",
       "markWrongUndo": "Geri al",
-      "markWrongUndoFailed": "Geri alınamadı: {{error}}"
+      "markWrongUndoFailed": "Geri alınamadı: {{error}}",
+      "tabs": {
+        "current": "Mevcut",
+        "temporal": "Zamansal"
+      }
     },
     "edit": {
       "title": "Varlığı düzenle",
@@ -749,7 +753,11 @@
       "rerankModelHint": "Ham arama sonuçlarındaki gereksiz verileri elemek için cross-encoder rerank. İsteğe bağlı — boş bırakılırsa arama birleştirme sırasını korur.",
       "rerankModelNone": "Yok (rerank atla — birleştirme sırasını koru)",
       "toolCalling": "Sohbet içinde bellek araçları",
-      "toolCallingHint": "Bu projede sohbet ederken yapay zekanın bellek araması, hatırlaması ve not almasına izin verin."
+      "toolCallingHint": "Bu projede sohbet ederken yapay zekanın bellek araması, hatırlaması ve not almasına izin verin.",
+      "benchmarkFailed": "✗ Karşılaştırma başarısız (recall@3 {{recall}}) — bu model çıkarma işlemi için kalite eşiğinin altında kaldı; farklı bir embedding modeli deneyin.",
+      "benchmarkInconclusive": "⋯ Karşılaştırma sonuçsuz (recall@3 {{recall}}) — bu modeli doğrulamak için ≥3 başarılı deneme gerekiyor. Tekrar çalıştırın.",
+      "benchmarkPassed": "✓ Karşılaştırma başarılı (recall@3 {{recall}}).",
+      "genreError": "Tür, en fazla {{max}} karakter olmalıdır."
     },
     "archiveDialog": {
       "title": "Proje arşivlensin mi?",
@@ -1391,18 +1399,80 @@
   },
   "temporal": {
     "canonical": {
-      "asOfChapter": "{{ordinal}} . bölüm itibarıyla"
+      "asOfChapter": "{{ordinal}} . bölüm itibarıyla",
+      "current": "mevcut",
+      "loadFailed": "Hikayenin bu noktasındaki kanon yüklenemedi.",
+      "sourceCanonContent": "yazarı tarafından oluşturulmuş kanon",
+      "sourceCanonContentHint": "Yazarı tarafından oluşturulmuş kanon gösteriliyor (bu nokta için katlanmış bir anlık görüntü yok).",
+      "status": {
+        "current": "mevcut",
+        "stale": "güncelliğini yitirmiş",
+        "unbuildable": "kullanılamaz"
+      },
+      "unbuildable": "Sentez burada kullanılamıyor — güvenli modda devam ediliyor."
     },
     "retrieval": {
-      "chapter": "{{chapter}}. Bölüm"
+      "chapter": "{{chapter}}. Bölüm",
+      "ariaLabel": "Arama geri çağırma",
+      "currentStateNote": "Sonuçlar mevcut durumdur (zamansal geri çağırma henüz kullanılamıyor).",
+      "error": "Arama başarısız oldu: {{error}}",
+      "noResults": "Eşleşen bağlam bulunamadı.",
+      "noText": "(önizleme metni yok)",
+      "placeholder": "Bu kitabın bağlamında ara…",
+      "typeToSearch": "Bu varlığın bağlamında arama yapmak için yazın."
     },
     "slider": {
-      "atChapter": "{{ordinal}}. Bölüm"
+      "atChapter": "{{ordinal}}. Bölüm",
+      "aria": "Hikaye zamanı bölüm sırasını kaydır",
+      "head": "Baş (en son)",
+      "headButton": "Baş (en son)",
+      "label": "Hikaye zamanı",
+      "loadFailed": "Değişim zaman çizelgesi yüklenemedi.",
+      "noChanges": "Henüz hikaye zamanı değişikliği yok."
     },
     "translation": {
       "asOfChapter": "{{n}}. bölüm",
       "asOfLabel": "{{label}} itibarıyla",
-      "error": "Bağlam yüklenemedi: {{error}}"
+      "error": "Bağlam yüklenemedi: {{error}}",
+      "asAuthored": "yazarın yazdığı haliyle",
+      "asOfHead": "en güncel",
+      "badgeCached": "çevrildi · önbelleğe alındı",
+      "badgeFresh": "çevrildi",
+      "empty": "Hikayenin bu noktasında mevcut bir bağlam yok.",
+      "failNoModel": "Çeviri modeli ayarlanmadı. Çevrilmiş bağlamı görmek için Çeviri Ayarları'ndan bir model seçin.",
+      "failProvider": "Çeviri başarısız oldu. Şimdilik orijinal bağlam gösteriliyor.",
+      "failQuota": "Çeviri kullanılamıyor — sağlayıcı kotası doldu.",
+      "langOriginal": "Orijinal ({{lang}})",
+      "languageLabel": "Görüntüleme dili",
+      "title": "Bölüm bazlı bağlam",
+      "translating": "Çevriliyor… ilk görüntüleme biraz zaman alabilir"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "{{asOf}} numaralı bölümde",
+      "current": "Güncel",
+      "hint": "Geçmiş bir bölümü mevcut durumla karşılaştırmak için zaman sürgüsünü hareket ettirin.",
+      "loadFailed": "Fark yüklenemedi: {{error}}",
+      "loading": "Fark yükleniyor…",
+      "noChanges": "{{asOf}} numaralı bölüm ile şu an arasında tek değerli bir değişiklik yok.",
+      "title": "Fark görünümü"
+    },
+    "timeline": {
+      "chapter": "böl. {{chapter}}",
+      "empty": "Bu varlık için henüz kaydedilmiş bir değişiklik bulunmuyor.",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → açık)"
+      },
+      "kind": {
+        "invalidated": "geçersiz kılındı",
+        "open": "açık",
+        "superseded": "yerine geçildi"
+      },
+      "loadFailed": "Değişiklik zaman çizelgesi yüklenemedi: {{error}}",
+      "loadMore": "Daha fazla yükle",
+      "loading": "Değişiklikler yükleniyor…",
+      "title": "Değişiklik zaman çizelgesi"
     }
   }
 }

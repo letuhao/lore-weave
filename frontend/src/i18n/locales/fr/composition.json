@@ -1705,7 +1705,8 @@
     "undoFailed": "Impossible de restaurer la modification.",
     "undoSuperseded": "Une modification plus récente existe pour cette entité — rien à restaurer.",
     "unnamed": "Version sans titre",
-    "yes": "Oui"
+    "yes": "Oui",
+    "derivativesSection": "Dérivés ({{n}})"
   },
   "mark": {
     "action": "Signaler le problème",
@@ -1751,5 +1752,6 @@
   "resolveWorkFailed": "Service de connaissances indisponible — impossible de terminer la configuration de l'ancrage.",
   "resolvingWork": "Fin de la configuration… le service de connaissances était brièvement indisponible.",
   "retry": "Réessayer",
-  "threadFocusMissing": "La promesse dont vous venez n'est pas dans cette vue — elle a peut-être déjà été payée. Changez le filtre pour « tout »."
+  "threadFocusMissing": "La promesse dont vous venez n'est pas dans cette vue — elle a peut-être déjà été payée. Changez le filtre pour « tout ».",
+  "canonConflictCurrent": "Actuel (v{{v}}) : {{text}}"
 }

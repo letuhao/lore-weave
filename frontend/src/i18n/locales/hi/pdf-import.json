@@ -64,5 +64,14 @@
     "back": "पीछे",
     "cancel": "रद्द करें",
     "next": "अगला"
+  },
+  "import-configure": {
+    "willCreate": "इससे {{count}} अध्याय बनेंगे।"
+  },
+  "import-results": {
+    "chaptersCreated": "{{count}} अध्याय बनाए गए।"
+  },
+  "import-upload": {
+    "pageCount": "{{count}} पृष्ठ"
   }
 }

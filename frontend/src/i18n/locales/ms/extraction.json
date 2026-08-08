@@ -30,7 +30,13 @@
     "allOverwrite": "Semua Ganti",
     "required": "diperlukan",
     "thinkingEnabled": "Aktifkan pemikiran / penaakulan",
-    "thinkingHint": "Fungsi 'Off' disyorkan untuk pengekstrakan JSON. Aktifkan untuk model seperti Gemma yang menaakul secara berbeza apabila pemikiran diaktifkan."
+    "thinkingHint": "Fungsi 'Off' disyorkan untuk pengekstrakan JSON. Aktifkan untuk model seperti Gemma yang menaakul secara berbeza apabila pemikiran diaktifkan.",
+    "addDefaults": "Tambah jenis lalai",
+    "addingDefaults": "Menambah…",
+    "defaultsError": "Tidak dapat menambah jenis entiti lalai.",
+    "loadError": "Tidak dapat memuat profil pengekstrakan.",
+    "noKindsDescription": "Pengekstrakan memerlukan sekurang-kurangnya satu jenis untuk dicari. Tambah jenis lalai untuk bermula, atau tetapkan jenis anda sendiri dalam glosari.",
+    "noKindsTitle": "Buku ini belum mempunyai jenis entiti"
   },
   "batch": {
     "title": "Konfigurasi Kelompok",

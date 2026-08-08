@@ -772,7 +772,8 @@
     "noScenes": "このシーンプランで編集する章はありません。",
     "openEdit": "編集…",
     "runPicker": "プランの実行を選択",
-    "runToCheckpoint": "次のチェックポイントまで実行"
+    "runToCheckpoint": "次のチェックポイントまで実行",
+    "runningPass": "{{pass}}を実行中…"
   },
   "planner": {
     "sourcePlaceholder": "小説システムの Markdown を貼り付け…",
@@ -835,7 +836,8 @@
       "title": "このプランに不足しているものは？",
       "unavailableHint": "未チェック：不足として扱うのではなく、再度試行してください",
       "unavailableTitle": "確認できませんでした",
-      "uncertain": "（ドキュメントが完全に読み込まれていないため、すでに存在している可能性があります）"
+      "uncertain": "（ドキュメントが完全に読み込まれていないため、すでに存在している可能性があります）",
+      "shrank": "この実行では、保持した内容よりも削除された内容の方が多いです（{{detail}}）。これらをベースにする前に、該当するパートを確認してください。"
     },
     "openPassRail": "パス・レールを開く →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "ナラティブ",
       "viewTimeline": "タイムライン",
       "viewWorldmap": "ワールドマップ",
-      "viewSoon": "後のフェーズで登場"
+      "viewSoon": "後のフェーズで登場",
+      "addArc": "+ パート",
+      "addArcHint": "最上位のパートを追加",
+      "addArcNoGrant": "パートを追加するには編集権限が必要です",
+      "addSubArc": "+ サブパート",
+      "addSubArcHint": "選択したパートの下にサブパートを追加",
+      "addSubArcHint2": "サブパートをネストする親のパートを選択してください",
+      "addingArc": "+ パート…"
     },
     "mode": {
       "simple": "シンプル",

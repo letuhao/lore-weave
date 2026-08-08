@@ -458,7 +458,11 @@
       "replaceFactSave": "Salvar substituição",
       "replaceFactSuccess": "Fato substituído",
       "markWrongUndo": "Desfazer",
-      "markWrongUndoFailed": "Não foi possível desfazer: {{error}}"
+      "markWrongUndoFailed": "Não foi possível desfazer: {{error}}",
+      "tabs": {
+        "current": "Atual",
+        "temporal": "Temporal"
+      }
     },
     "edit": {
       "title": "Editar entidade",
@@ -749,7 +753,11 @@
       "rerankModelHint": "Cross-encoder rerank para rejeição de lixo em buscas brutas. Opcional — se deixado vazio, a busca mantém a ordem de fusão.",
       "rerankModelNone": "Nenhum (pular rerank — manter ordem de fusão)",
       "toolCalling": "Ferramentas de memória no chat",
-      "toolCallingHint": "Permita que a IA pesquise, recupere e anote memórias enquanto conversa neste projeto."
+      "toolCallingHint": "Permita que a IA pesquise, recupere e anote memórias enquanto conversa neste projeto.",
+      "benchmarkFailed": "✗ Benchmark não atingiu a meta (recall@3 {{recall}}) — este modelo ficou abaixo do padrão de qualidade para extração; tente um modelo de embedding diferente.",
+      "benchmarkInconclusive": "⋯ Benchmark inconclusivo (recall@3 {{recall}}) — são necessárias ≥3 passagens para validar este modelo. Execute-o novamente.",
+      "benchmarkPassed": "✓ Benchmark aprovado (recall@3 {{recall}}).",
+      "genreError": "O gênero deve ter no máximo {{max}} caracteres."
     },
     "archiveDialog": {
       "title": "Arquivar projeto?",
@@ -1391,18 +1399,80 @@
   },
   "temporal": {
     "canonical": {
-      "asOfChapter": "Conforme o capítulo {{ordinal}}"
+      "asOfChapter": "Conforme o capítulo {{ordinal}}",
+      "current": "atual",
+      "loadFailed": "Não foi possível carregar o cânone para este ponto da história.",
+      "sourceCanonContent": "cânone escrito",
+      "sourceCanonContentHint": "Mostrando o cânone escrito (não há um snapshot oculto para este ponto).",
+      "status": {
+        "current": "atual",
+        "stale": "desatualizado",
+        "unbuildable": "indisponível"
+      },
+      "unbuildable": "Síntese indisponível aqui — modo de degradação seguro."
     },
     "retrieval": {
-      "chapter": "Capítulo {{chapter}}"
+      "chapter": "Capítulo {{chapter}}",
+      "ariaLabel": "Busca de recuperação",
+      "currentStateNote": "Os resultados são do estado atual (recuperação temporal ainda não disponível).",
+      "error": "Falha na busca: {{error}}",
+      "noResults": "Nenhum contexto correspondente encontrado.",
+      "noText": "(sem texto de pré-visualização)",
+      "placeholder": "Buscar o contexto deste livro...",
+      "typeToSearch": "Digite para buscar o contexto desta entidade."
     },
     "slider": {
-      "atChapter": "Capítulo {{ordinal}}"
+      "atChapter": "Capítulo {{ordinal}}",
+      "aria": "Navegar pela ordem cronológica dos capítulos da história",
+      "head": "Início (mais recente)",
+      "headButton": "Início (mais recente)",
+      "label": "Tempo da história",
+      "loadFailed": "Não foi possível carregar a linha do tempo de alterações.",
+      "noChanges": "Ainda não há alterações no tempo da história."
     },
     "translation": {
       "asOfChapter": "capítulo {{n}}",
       "asOfLabel": "até {{label}}",
-      "error": "Falha ao carregar o contexto: {{error}}"
+      "error": "Falha ao carregar o contexto: {{error}}",
+      "asAuthored": "conforme escrito",
+      "asOfHead": "mais recente",
+      "badgeCached": "traduzido · em cache",
+      "badgeFresh": "traduzido",
+      "empty": "Nenhum contexto disponível para este ponto da história.",
+      "failNoModel": "Nenhum modelo de tradução definido. Escolha um nas Configurações de Tradução para ver o contexto traduzido.",
+      "failProvider": "Falha na tradução. Mostrando o contexto original por enquanto.",
+      "failQuota": "A tradução não está disponível — cota do provedor esgotada.",
+      "langOriginal": "Original ({{lang}})",
+      "languageLabel": "Idioma de exibição",
+      "title": "Contexto por episódio",
+      "translating": "Traduzindo… a primeira visualização pode levar um momento"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "No capítulo {{asOf}}",
+      "current": "Atual",
+      "hint": "Arraste a barra de tempo para comparar um capítulo passado com o estado atual.",
+      "loadFailed": "Não foi possível carregar a diferença: {{error}}",
+      "loading": "Carregando diferença…",
+      "noChanges": "Não há alterações de valor único entre o capítulo {{asOf}} e agora.",
+      "title": "Visualização de diferenças"
+    },
+    "timeline": {
+      "chapter": "cap. {{chapter}}",
+      "empty": "Nenhuma alteração registrada para esta entidade ainda.",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → aberto)"
+      },
+      "kind": {
+        "invalidated": "invalidado",
+        "open": "aberto",
+        "superseded": "substituído"
+      },
+      "loadFailed": "Não foi possível carregar a linha do tempo de alterações: {{error}}",
+      "loadMore": "Carregar mais",
+      "loading": "Carregando alterações…",
+      "title": "Linha do tempo de alterações"
     }
   }
 }

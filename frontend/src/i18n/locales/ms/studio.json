@@ -772,7 +772,8 @@
     "noScenes": "Tiada bab untuk disunting dalam pelan adegan ini.",
     "openEdit": "sunting…",
     "runPicker": "Pilih larian pelan",
-    "runToCheckpoint": "Larian ke penanda aras seterusnya"
+    "runToCheckpoint": "Larian ke penanda aras seterusnya",
+    "runningPass": "sedang menjalankan {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "Tampal markdown sistem-novel anda…",
@@ -835,7 +836,8 @@
       "title": "Apakah yang kurang dalam pelan ini?",
       "unavailableHint": "tidak disemak; cuba lagi daripada menganggapnya sebagai hilang",
       "unavailableTitle": "Tidak dapat disemak",
-      "uncertain": "(dokumen anda tidak dibaca sepenuhnya, jadi perkara ini mungkin sudah ada)"
+      "uncertain": "(dokumen anda tidak dibaca sepenuhnya, jadi perkara ini mungkin sudah ada)",
+      "shrank": "Sesi pembacaan ini membaca lebih banyak daripada yang disimpan ({{detail}}) — semak bahagian tersebut sebelum membina di atasnya."
     },
     "openPassRail": "Pass Rail →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "Naratif",
       "viewTimeline": "Garis Masa",
       "viewWorldmap": "Peta Dunia",
-      "viewSoon": "Akan datang dalam fasa seterusnya"
+      "viewSoon": "Akan datang dalam fasa seterusnya",
+      "addArc": "+ Arka",
+      "addArcHint": "Tambah arka peringkat tinggi",
+      "addArcNoGrant": "Anda memerlukan akses suntingan untuk menambah arka",
+      "addSubArc": "+ Sub-arka",
+      "addSubArcHint": "Tambah sub-arka di bawah arka yang dipilih",
+      "addSubArcHint2": "Pilih arka untuk menyisipkan sub-arka di bawahnya",
+      "addingArc": "+ Arka…"
     },
     "mode": {
       "simple": "Ringkas",

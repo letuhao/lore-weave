@@ -64,5 +64,14 @@
     "back": "Voltar",
     "cancel": "Cancelar",
     "next": "Próximo"
+  },
+  "import-configure": {
+    "willCreate": "Isso criará {{count}} capítulos."
+  },
+  "import-results": {
+    "chaptersCreated": "{{count}} capítulos criados."
+  },
+  "import-upload": {
+    "pageCount": "{{count}} páginas"
   }
 }

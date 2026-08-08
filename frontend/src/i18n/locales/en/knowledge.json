@@ -458,7 +458,11 @@
       "replaceFactSave": "Save replacement",
       "replaceFactSuccess": "Fact replaced",
       "markWrongUndo": "Undo",
-      "markWrongUndoFailed": "Could not undo: {{error}}"
+      "markWrongUndoFailed": "Could not undo: {{error}}",
+      "tabs": {
+        "current": "Current",
+        "temporal": "Temporal"
+      }
     },
     "edit": {
       "title": "Edit entity",
@@ -749,7 +753,11 @@
       "rerankModelHint": "Cross-encoder rerank for raw-search junk-rejection. Optional — left empty, search keeps fusion order.",
       "rerankModelNone": "None (skip rerank — keep fusion order)",
       "toolCalling": "Memory tools in chat",
-      "toolCallingHint": "Let the AI search, recall, and note memory while chatting in this project."
+      "toolCallingHint": "Let the AI search, recall, and note memory while chatting in this project.",
+      "benchmarkFailed": "✗ Benchmark not passing (recall@3 {{recall}}) — this model scored below the quality bar for extraction; try a different embedding model.",
+      "benchmarkInconclusive": "⋯ Benchmark inconclusive (recall@3 {{recall}}) — needs ≥3 passes to validate this model. Re-run it.",
+      "benchmarkPassed": "✓ Benchmark passed (recall@3 {{recall}}).",
+      "genreError": "Genre must be at most {{max}} characters."
     },
     "archiveDialog": {
       "title": "Archive project?",
@@ -1391,18 +1399,80 @@
   },
   "temporal": {
     "canonical": {
-      "asOfChapter": "As of chapter {{ordinal}}"
+      "asOfChapter": "As of chapter {{ordinal}}",
+      "current": "current",
+      "loadFailed": "Could not load the canonical for this point in the story.",
+      "sourceCanonContent": "authored canon",
+      "sourceCanonContentHint": "Showing authored canon (no folded snapshot for this point).",
+      "status": {
+        "current": "current",
+        "stale": "stale",
+        "unbuildable": "unavailable"
+      },
+      "unbuildable": "Synthesis unavailable here — degrade-safe."
     },
     "retrieval": {
-      "chapter": "Chapter {{chapter}}"
+      "chapter": "Chapter {{chapter}}",
+      "ariaLabel": "Search retrieval",
+      "currentStateNote": "Results are current-state (temporal retrieval not yet available).",
+      "error": "Search failed: {{error}}",
+      "noResults": "No matching context found.",
+      "noText": "(no preview text)",
+      "placeholder": "Search this book’s context…",
+      "typeToSearch": "Type to search this entity’s context."
     },
     "slider": {
-      "atChapter": "Chapter {{ordinal}}"
+      "atChapter": "Chapter {{ordinal}}",
+      "aria": "Scrub story-time chapter ordinal",
+      "head": "Head (latest)",
+      "headButton": "Head (latest)",
+      "label": "Story time",
+      "loadFailed": "Could not load the change timeline.",
+      "noChanges": "No story-time changes yet."
     },
     "translation": {
       "asOfChapter": "chapter {{n}}",
       "asOfLabel": "as of {{label}}",
-      "error": "Failed to load context: {{error}}"
+      "error": "Failed to load context: {{error}}",
+      "asAuthored": "as authored",
+      "asOfHead": "latest",
+      "badgeCached": "translated · cached",
+      "badgeFresh": "translated",
+      "empty": "No as-of context available for this point in the story.",
+      "failNoModel": "No translation model set. Choose one in Translation Settings to see the translated context.",
+      "failProvider": "Translation failed. Showing the original context for now.",
+      "failQuota": "Translation is unavailable — provider quota exhausted.",
+      "langOriginal": "Original ({{lang}})",
+      "languageLabel": "Display language",
+      "title": "Per-episode context",
+      "translating": "Translating… first view may take a moment"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "At chapter {{asOf}}",
+      "current": "Current",
+      "hint": "Move the time slider to compare a past chapter with the current state.",
+      "loadFailed": "Could not load the diff: {{error}}",
+      "loading": "Loading diff…",
+      "noChanges": "No single-valued changes between chapter {{asOf}} and now.",
+      "title": "Diff view"
+    },
+    "timeline": {
+      "chapter": "ch. {{chapter}}",
+      "empty": "No recorded changes for this entity yet.",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → open)"
+      },
+      "kind": {
+        "invalidated": "invalidated",
+        "open": "open",
+        "superseded": "superseded"
+      },
+      "loadFailed": "Could not load the change timeline: {{error}}",
+      "loadMore": "Load more",
+      "loading": "Loading changes…",
+      "title": "Change timeline"
     }
   }
 }

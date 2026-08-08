@@ -1705,7 +1705,8 @@
     "undoFailed": "Die Überschreibung konnte nicht wiederhergestellt werden.",
     "undoSuperseded": "Es existiert eine neuere Überschreibung für diese Entität – es kann nichts wiederhergestellt werden.",
     "unnamed": "Unbenannte Version",
-    "yes": "Ja"
+    "yes": "Ja",
+    "derivativesSection": "Derivate ({{n}})"
   },
   "mark": {
     "action": "Problem markieren",
@@ -1751,5 +1752,6 @@
   "resolveWorkFailed": "Wissensdienst nicht verfügbar – das Grounding konnte nicht abgeschlossen werden.",
   "resolvingWork": "Einrichtung wird abgeschlossen… der Wissensdienst war kurzzeitig nicht verfügbar.",
   "retry": "Wiederholen",
-  "threadFocusMissing": "Das Versprechen, aus dem Sie kommen, ist in dieser Ansicht nicht enthalten – es wurde möglicherweise bereits eingelöst. Stellen Sie den Filter auf „Alle“ um."
+  "threadFocusMissing": "Das Versprechen, aus dem Sie kommen, ist in dieser Ansicht nicht enthalten – es wurde möglicherweise bereits eingelöst. Stellen Sie den Filter auf „Alle“ um.",
+  "canonConflictCurrent": "Aktuell (v{{v}}): {{text}}"
 }

@@ -540,7 +540,8 @@
     "next": "Next",
     "page": "Halaman",
     "reasoning_enable": "Aktifkan penalaran model (berpikir)",
-    "reasoning_hint": "Nonaktif secara default — proses berpikir yang tersembunyi dapat menghabiskan kuota output pada model lokal. Aktifkan untuk bagian sulit pada model penalaran."
+    "reasoning_hint": "Nonaktif secara default — proses berpikir yang tersembunyi dapat menghabiskan kuota output pada model lokal. Aktifkan untuk bagian sulit pada model penalaran.",
+    "retranslate_selected": "Terjemahkan ulang yang dipilih ({{count}})"
   },
   "kind_editor": {
     "modified": "dimodifikasi",

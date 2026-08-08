@@ -540,7 +540,8 @@
     "next": "Next",
     "page": "Page",
     "reasoning_enable": "Enable model reasoning (thinking)",
-    "reasoning_hint": "Off by default — hidden thinking can burn the output budget on local models. Enable for hard passages on a reasoning model."
+    "reasoning_hint": "Off by default — hidden thinking can burn the output budget on local models. Enable for hard passages on a reasoning model.",
+    "retranslate_selected": "Re-translate selected ({{count}})"
   },
   "kind_editor": {
     "modified": "modified",

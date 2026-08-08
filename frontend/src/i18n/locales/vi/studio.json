@@ -772,7 +772,8 @@
     "noScenes": "Không có chương nào để chỉnh sửa trong kế hoạch cảnh này.",
     "openEdit": "chỉnh sửa…",
     "runPicker": "Chọn một lượt chạy kế hoạch",
-    "runToCheckpoint": "Chạy đến điểm kiểm tra tiếp theo"
+    "runToCheckpoint": "Chạy đến điểm kiểm tra tiếp theo",
+    "runningPass": "đang chạy {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "Dán markdown hệ thống truyện…",
@@ -835,7 +836,8 @@
       "title": "Kế hoạch này đang thiếu gì?",
       "unavailableHint": "chưa được kiểm tra; hãy thử lại thay vì coi đó là phần còn thiếu",
       "unavailableTitle": "Không thể kiểm tra",
-      "uncertain": "(tài liệu của bạn chưa được đọc đầy đủ, vì vậy nội dung này có thể đã tồn tại)"
+      "uncertain": "(tài liệu của bạn chưa được đọc đầy đủ, vì vậy nội dung này có thể đã tồn tại)",
+      "shrank": "Lần chạy này đã lược bỏ nhiều hơn là giữ lại ({{detail}}) — hãy kiểm tra lại các phần đó trước khi tiếp tục xây dựng."
     },
     "openPassRail": "Pass Rail →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "Tự sự",
       "viewTimeline": "Dòng thời gian",
       "viewWorldmap": "Bản đồ thế giới",
-      "viewSoon": "Sẽ ra mắt trong giai đoạn sau"
+      "viewSoon": "Sẽ ra mắt trong giai đoạn sau",
+      "addArc": "+ Arc",
+      "addArcHint": "Thêm một arc cấp cao nhất",
+      "addArcNoGrant": "Bạn cần quyền chỉnh sửa để thêm arc",
+      "addSubArc": "+ Sub-arc",
+      "addSubArcHint": "Thêm một sub-arc dưới arc đã chọn",
+      "addSubArcHint2": "Chọn một arc để lồng một sub-arc vào trong đó",
+      "addingArc": "+ Arc…"
     },
     "mode": {
       "simple": "Đơn giản",

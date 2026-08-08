@@ -772,7 +772,8 @@
     "noScenes": "No hay capítulos para editar en este plan de escenas.",
     "openEdit": "editar…",
     "runPicker": "Elegir una ejecución del plan",
-    "runToCheckpoint": "Ejecutar hasta el siguiente punto de control"
+    "runToCheckpoint": "Ejecutar hasta el siguiente punto de control",
+    "runningPass": "ejecutando {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "Pega el markdown del sistema de la novela…",
@@ -835,7 +836,8 @@
       "title": "¿Qué le falta a este plan?",
       "unavailableHint": "no comprobado; intenta de nuevo en lugar de considerarlo como faltante",
       "unavailableTitle": "No se pudo comprobar",
-      "uncertain": "(tu documento no se leyó por completo, por lo que esto podría estar ya presente)"
+      "uncertain": "(tu documento no se leyó por completo, por lo que esto podría estar ya presente)",
+      "shrank": "Esta pasada leyó más de lo que conservó ({{detail}}) — revisa esas partes antes de seguir construyendo sobre ellas."
     },
     "openPassRail": "Pass Rail →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "Narrativa",
       "viewTimeline": "Línea de tiempo",
       "viewWorldmap": "Mapa del mundo",
-      "viewSoon": "Próximamente en una fase posterior"
+      "viewSoon": "Próximamente en una fase posterior",
+      "addArc": "+ Arco",
+      "addArcHint": "Añadir un arco de nivel superior",
+      "addArcNoGrant": "Necesitas permisos de edición para añadir arcos",
+      "addSubArc": "+ Subarco",
+      "addSubArcHint": "Añadir un subarco bajo el arco seleccionado",
+      "addSubArcHint2": "Selecciona un arco para anidar un subarco debajo",
+      "addingArc": "+ Arco…"
     },
     "mode": {
       "simple": "Simple",

@@ -189,6 +189,10 @@ jobs:
       - run: python scripts/db-safety-gate.py
       - run: python scripts/design-draft-token-lint.py
       - run: python scripts/i18n-completeness-gate.py
+      # Its blind half: completeness compares bundle to bundle, so a t() key that exists
+      # only as a defaultValue is invisible to it and to i18n_translate.py alike, and
+      # stays untranslated in every locale while parity reports green.
+      - run: python scripts/i18n-key-resolution-gate.py
       - run: python scripts/knowledge-access-gate.py
       - run: python scripts/knowledge-http-surface-gate.py
       - run: python scripts/tier-tag-gate.py

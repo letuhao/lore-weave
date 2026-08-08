@@ -30,7 +30,13 @@
     "allOverwrite": "Todo Sobrescribir",
     "required": "requerido",
     "thinkingEnabled": "Activar pensamiento / razonamiento",
-    "thinkingHint": "Se recomienda desactivarlo para la extracción de JSON. Actívalo para modelos como Gemma que razonan de forma distinta cuando el pensamiento está habilitado."
+    "thinkingHint": "Se recomienda desactivarlo para la extracción de JSON. Actívalo para modelos como Gemma que razonan de forma distinta cuando el pensamiento está habilitado.",
+    "addDefaults": "Añadir tipos predeterminados",
+    "addingDefaults": "Añadiendo…",
+    "defaultsError": "No se pudieron añadir los tipos de entidades predeterminados.",
+    "loadError": "No se pudo cargar el perfil de extracción.",
+    "noKindsDescription": "La extracción necesita al menos un tipo para buscar. Añade los predeterminados para empezar o define los tuyos en el glosario.",
+    "noKindsTitle": "Este libro aún no tiene tipos de entidades"
   },
   "batch": {
     "title": "Configuración por Lotes",

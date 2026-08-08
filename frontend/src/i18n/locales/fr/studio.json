@@ -772,7 +772,8 @@
     "noScenes": "Aucun chapitre à éditer dans ce plan de scène.",
     "openEdit": "modifier…",
     "runPicker": "Choisir une exécution de plan",
-    "runToCheckpoint": "Exécuter jusqu'au prochain point de contrôle"
+    "runToCheckpoint": "Exécuter jusqu'au prochain point de contrôle",
+    "runningPass": "exécution de {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "Collez le markdown du système du roman…",
@@ -835,7 +836,8 @@
       "title": "Que manque-t-il à ce plan ?",
       "unavailableHint": "non vérifié ; essayez de nouveau plutôt que de le considérer comme manquant",
       "unavailableTitle": "Impossible de vérifier",
-      "uncertain": "(votre document n'a pas été lu intégralement, il est donc possible que cela y figure déjà)"
+      "uncertain": "(votre document n'a pas été lu intégralement, il est donc possible que cela y figure déjà)",
+      "shrank": "Cette session a consommé plus de contenu qu'elle n'en a conservé ({{detail}}) — vérifiez ces parties avant de les utiliser comme base."
     },
     "openPassRail": "Pass Rail →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "Narratif",
       "viewTimeline": "Timeline",
       "viewWorldmap": "Carte du monde",
-      "viewSoon": "Prévu pour une phase ultérieure"
+      "viewSoon": "Prévu pour une phase ultérieure",
+      "addArc": "+ Arc",
+      "addArcHint": "Ajouter un arc de premier niveau",
+      "addArcNoGrant": "Vous devez avoir l'accès en modification pour ajouter des arcs",
+      "addSubArc": "+ Sous-arc",
+      "addSubArcHint": "Ajouter un sous-arc sous l'arc sélectionné",
+      "addSubArcHint2": "Sélectionnez un arc pour y imbriquer un sous-arc",
+      "addingArc": "+ Arc…"
     },
     "mode": {
       "simple": "Simple",

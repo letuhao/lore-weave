@@ -1705,7 +1705,8 @@
     "undoFailed": "재정의 내용을 복구할 수 없습니다.",
     "undoSuperseded": "해당 항목에 대한 최신 재정의 내용이 존재합니다. 복구할 내용이 없습니다.",
     "unnamed": "제목 없는 버전",
-    "yes": "예"
+    "yes": "예",
+    "derivativesSection": "파생물 ({{n}})"
   },
   "mark": {
     "action": "문제 표시",
@@ -1751,5 +1752,6 @@
   "resolveWorkFailed": "지식 서비스 이용 불가 — 근거 데이터 설정을 완료할 수 없습니다.",
   "resolvingWork": "설정 완료 중… 지식 서비스가 일시적으로 중단되었습니다.",
   "retry": "재시도",
-  "threadFocusMissing": "이 뷰에는 가져오신 약속이 없습니다. 이미 결제되었을 수 있습니다. 필터를 “전체”로 변경해 보세요."
+  "threadFocusMissing": "이 뷰에는 가져오신 약속이 없습니다. 이미 결제되었을 수 있습니다. 필터를 “전체”로 변경해 보세요.",
+  "canonConflictCurrent": "현재 (v{{v}}): {{text}}"
 }

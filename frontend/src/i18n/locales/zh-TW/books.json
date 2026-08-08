@@ -540,7 +540,8 @@
     "next": "下一頁",
     "page": "頁",
     "reasoning_enable": "啟用模型推理（思考）",
-    "reasoning_hint": "預設為關閉 — 在本地模型上，隱藏的思考過程可能會消耗輸出額度。若使用推理模型翻譯艱深段落，請開啟此功能。"
+    "reasoning_hint": "預設為關閉 — 在本地模型上，隱藏的思考過程可能會消耗輸出額度。若使用推理模型翻譯艱深段落，請開啟此功能。",
+    "retranslate_selected": "重新翻譯所選內容 ({{count}})"
   },
   "kind_editor": {
     "modified": "已修改",

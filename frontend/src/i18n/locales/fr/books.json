@@ -540,7 +540,8 @@
     "next": "Suiv.",
     "page": "Page",
     "reasoning_enable": "Activer le raisonnement du modèle (pensée)",
-    "reasoning_hint": "Désactivé par défaut — la pensée cachée peut consommer le budget de sortie sur les modèles locaux. À activer pour les passages difficiles avec un modèle de raisonnement."
+    "reasoning_hint": "Désactivé par défaut — la pensée cachée peut consommer le budget de sortie sur les modèles locaux. À activer pour les passages difficiles avec un modèle de raisonnement.",
+    "retranslate_selected": "Retransluter la sélection ({{count}})"
   },
   "kind_editor": {
     "modified": "modifié",

@@ -540,7 +540,8 @@
     "next": "Seterusnya",
     "page": "Halaman",
     "reasoning_enable": "Aktifkan penaakulan model (pemikiran)",
-    "reasoning_hint": "Nyahaktif secara lalai — pemikiran tersembunyi boleh menghabiskan kuota output pada model tempatan. Aktifkan untuk perenggan yang sukar pada model penaakulan."
+    "reasoning_hint": "Nyahaktif secara lalai — pemikiran tersembunyi boleh menghabiskan kuota output pada model tempatan. Aktifkan untuk perenggan yang sukar pada model penaakulan.",
+    "retranslate_selected": "Terjemah semula yang dipilih ({{count}})"
   },
   "kind_editor": {
     "modified": "diubah suai",

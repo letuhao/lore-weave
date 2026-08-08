@@ -458,7 +458,11 @@
       "replaceFactSave": "Lưu thay đổi",
       "replaceFactSuccess": "Đã thay thế sự thật",
       "markWrongUndo": "Hoàn tác",
-      "markWrongUndoFailed": "Không thể hoàn tác: {{error}}"
+      "markWrongUndoFailed": "Không thể hoàn tác: {{error}}",
+      "tabs": {
+        "current": "Hiện tại",
+        "temporal": "Thời gian"
+      }
     },
     "edit": {
       "title": "Chỉnh sửa thực thể",
@@ -749,7 +753,11 @@
       "rerankModelHint": "Cross-encoder rerank để loại bỏ kết quả rác khi tìm kiếm thô. Tùy chọn — nếu để trống, kết quả tìm kiếm sẽ giữ nguyên thứ tự hợp nhất.",
       "rerankModelNone": "Không (bỏ qua rerank — giữ nguyên thứ tự hợp nhất)",
       "toolCalling": "Công cụ ký ức trong trò chuyện",
-      "toolCallingHint": "Cho phép AI tìm kiếm, truy xuất và ghi chú ký ức trong khi trò chuyện trong dự án này."
+      "toolCallingHint": "Cho phép AI tìm kiếm, truy xuất và ghi chú ký ức trong khi trò chuyện trong dự án này.",
+      "benchmarkFailed": "✗ Benchmark không đạt (recall@3 {{recall}}) — mô hình này có điểm dưới mức tiêu chuẩn chất lượng trích xuất; hãy thử một mô hình embedding khác.",
+      "benchmarkInconclusive": "⋯ Benchmark chưa thể kết luận (recall@3 {{recall}}) — cần ≥3 lần vượt qua để xác thực mô hình này. Hãy chạy lại.",
+      "benchmarkPassed": "✓ Benchmark đã vượt qua (recall@3 {{recall}}).",
+      "genreError": "Thể loại phải có tối đa {{max}} ký tự."
     },
     "archiveDialog": {
       "title": "Lưu trữ dự án?",
@@ -1391,18 +1399,80 @@
   },
   "temporal": {
     "canonical": {
-      "asOfChapter": "Tính đến chương {{ordinal}}"
+      "asOfChapter": "Tính đến chương {{ordinal}}",
+      "current": "hiện tại",
+      "loadFailed": "Không thể tải nội dung chuẩn cho thời điểm này trong câu chuyện.",
+      "sourceCanonContent": "nội dung chuẩn đã viết",
+      "sourceCanonContentHint": "Đang hiển thị nội dung chuẩn đã viết (không có bản sao lưu trữ cho thời điểm này).",
+      "status": {
+        "current": "hiện tại",
+        "stale": "lỗi thời",
+        "unbuildable": "không khả dụng"
+      },
+      "unbuildable": "Không thể tổng hợp tại đây — chế độ an toàn."
     },
     "retrieval": {
-      "chapter": "Chương {{chapter}}"
+      "chapter": "Chương {{chapter}}",
+      "ariaLabel": "Tìm kiếm truy xuất",
+      "currentStateNote": "Kết quả là trạng thái hiện tại (chưa khả dụng tính năng truy xuất theo thời gian).",
+      "error": "Tìm kiếm thất bại: {{error}}",
+      "noResults": "Không tìm thấy ngữ cảnh phù hợp.",
+      "noText": "(không có văn bản xem trước)",
+      "placeholder": "Tìm kiếm ngữ cảnh của cuốn sách này…",
+      "typeToSearch": "Nhập để tìm kiếm ngữ cảnh của thực thể này."
     },
     "slider": {
-      "atChapter": "Chương {{ordinal}}"
+      "atChapter": "Chương {{ordinal}}",
+      "aria": "Cuộn theo thứ tự chương trong dòng thời gian câu chuyện",
+      "head": "Đầu (mới nhất)",
+      "headButton": "Đầu (mới nhất)",
+      "label": "Thời gian cốt truyện",
+      "loadFailed": "Không thể tải dòng thời gian thay đổi.",
+      "noChanges": "Chưa có thay đổi nào về thời gian cốt truyện."
     },
     "translation": {
       "asOfChapter": "chương {{n}}",
       "asOfLabel": "tính đến {{label}}",
-      "error": "Không thể tải ngữ cảnh: {{error}}"
+      "error": "Không thể tải ngữ cảnh: {{error}}",
+      "asAuthored": "như bản gốc",
+      "asOfHead": "mới nhất",
+      "badgeCached": "đã dịch · đã lưu bộ nhớ đệm",
+      "badgeFresh": "đã dịch",
+      "empty": "Không có ngữ cảnh tương ứng cho thời điểm này trong câu chuyện.",
+      "failNoModel": "Chưa thiết lập mô hình dịch. Hãy chọn một mô hình trong Cài đặt Dịch để xem ngữ cảnh đã dịch.",
+      "failProvider": "Dịch thất bại. Hiện đang hiển thị ngữ cảnh gốc.",
+      "failQuota": "Không thể dịch — đã hết hạn mức của nhà cung cấp.",
+      "langOriginal": "Gốc ({{lang}})",
+      "languageLabel": "Ngôn ngữ hiển thị",
+      "title": "Ngữ cảnh theo từng chương",
+      "translating": "Đang dịch… lần xem đầu tiên có thể mất một chút thời gian"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "Tại chương {{asOf}}",
+      "current": "Hiện tại",
+      "hint": "Kéo thanh trượt thời gian để so sánh một chương trong quá khứ với trạng thái hiện tại.",
+      "loadFailed": "Không thể tải bản so sánh: {{error}}",
+      "loading": "Đang tải bản so sánh…",
+      "noChanges": "Không có thay đổi đơn giá nào giữa chương {{asOf}} và hiện tại.",
+      "title": "Chế độ xem so sánh"
+    },
+    "timeline": {
+      "chapter": "ch. {{chapter}}",
+      "empty": "Chưa có thay đổi nào được ghi lại cho thực thể này.",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → mở)"
+      },
+      "kind": {
+        "invalidated": "đã vô hiệu hóa",
+        "open": "mở",
+        "superseded": "đã được thay thế"
+      },
+      "loadFailed": "Không thể tải dòng thời gian thay đổi: {{error}}",
+      "loadMore": "Tải thêm",
+      "loading": "Đang tải các thay đổi…",
+      "title": "Dòng thời gian thay đổi"
     }
   }
 }

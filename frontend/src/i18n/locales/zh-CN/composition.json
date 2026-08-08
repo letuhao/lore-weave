@@ -1705,7 +1705,8 @@
     "undoFailed": "无法还原覆盖内容。",
     "undoSuperseded": "该实体已存在更新的覆盖内容 — 无需还原。",
     "unnamed": "未命名版本",
-    "yes": "是"
+    "yes": "是",
+    "derivativesSection": "衍生内容 ({{n}})"
   },
   "mark": {
     "action": "标记问题",
@@ -1751,5 +1752,6 @@
   "resolveWorkFailed": "知识服务不可用 —— 无法完成背景知识设定。",
   "resolvingWork": "正在完成设定… 知识服务曾短暂不可用。",
   "retry": "重试",
-  "threadFocusMissing": "您所属的承诺在此视图中不可见 —— 它可能已被支付。请将过滤器切换为“全部”。"
+  "threadFocusMissing": "您所属的承诺在此视图中不可见 —— 它可能已被支付。请将过滤器切换为“全部”。",
+  "canonConflictCurrent": "当前 (v{{v}}): {{text}}"
 }

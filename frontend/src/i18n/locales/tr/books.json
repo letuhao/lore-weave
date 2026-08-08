@@ -540,7 +540,8 @@
     "next": "Sonraki",
     "page": "Sayfa",
     "reasoning_enable": "Model akıl yürütmesini etkinleştir (düşünme)",
-    "reasoning_hint": "Varsayılan olarak kapalıdır — yerel modellerde gizli düşünme süreci çıktı bütçesini tüketebilir. Akıl yürütme modellerinde zor pasajlar için etkinleştirin."
+    "reasoning_hint": "Varsayılan olarak kapalıdır — yerel modellerde gizli düşünme süreci çıktı bütçesini tüketebilir. Akıl yürütme modellerinde zor pasajlar için etkinleştirin.",
+    "retranslate_selected": "Seçilenleri yeniden çevir ({{count}})"
   },
   "kind_editor": {
     "modified": "değiştirildi",

@@ -458,7 +458,11 @@
       "replaceFactSave": "置換を保存",
       "replaceFactSuccess": "事実を置換しました",
       "markWrongUndo": "元に戻す",
-      "markWrongUndoFailed": "元に戻せませんでした: {{error}}"
+      "markWrongUndoFailed": "元に戻せませんでした: {{error}}",
+      "tabs": {
+        "current": "現在",
+        "temporal": "時系列"
+      }
     },
     "edit": {
       "title": "エンティティを編集",
@@ -749,7 +753,11 @@
       "rerankModelHint": "検索結果からノイズを除去するためのクロスエンコーダーによるリランク。任意項目です。空欄の場合、検索結果は融合順序が維持されます。",
       "rerankModelNone": "なし（リランクをスキップ — 融合順序を維持）",
       "toolCalling": "チャット内でのメモリツール",
-      "toolCallingHint": "このプロジェクトでのチャット中に、AIがメモリを検索、想起、および記録できるようにします。"
+      "toolCallingHint": "このプロジェクトでのチャット中に、AIがメモリを検索、想起、および記録できるようにします。",
+      "benchmarkFailed": "✗ ベンチマーク未達成 (recall@3 {{recall}}) — このモデルは抽出の品質基準を下回りました。別の埋め込みモデルを試してください。",
+      "benchmarkInconclusive": "⋯ ベンチマーク判定不能 (recall@3 {{recall}}) — このモデルを検証するには3回以上の合格が必要です。再実行してください。",
+      "benchmarkPassed": "✓ ベンチマーク合格 (recall@3 {{recall}})。",
+      "genreError": "ジャンルは{{max}}文字以内で入力してください。"
     },
     "archiveDialog": {
       "title": "プロジェクトをアーカイブしますか？",
@@ -1391,18 +1399,80 @@
   },
   "temporal": {
     "canonical": {
-      "asOfChapter": "{{ordinal}} 章時点"
+      "asOfChapter": "{{ordinal}} 章時点",
+      "current": "現在",
+      "loadFailed": "この物語の時点における正典（カノン）を読み込めませんでした。",
+      "sourceCanonContent": "執筆済み正典",
+      "sourceCanonContentHint": "執筆済み正典を表示しています（この時点の折り畳みスナップショットはありません）。",
+      "status": {
+        "current": "現在",
+        "stale": "古い",
+        "unbuildable": "利用不可"
+      },
+      "unbuildable": "ここでは合成できません — 安全にダウングレードします。"
     },
     "retrieval": {
-      "chapter": "{{chapter}}章"
+      "chapter": "{{chapter}}章",
+      "ariaLabel": "検索の取得",
+      "currentStateNote": "結果は現在の状態に基づいています（時間的検索はまだ利用できません）。",
+      "error": "検索に失敗しました: {{error}}",
+      "noResults": "一致するコンテキストが見つかりませんでした。",
+      "noText": "（プレビューテキストなし）",
+      "placeholder": "この本のコンテキストを検索…",
+      "typeToSearch": "このエンティティのコンテキストを検索するには、文字を入力してください。"
     },
     "slider": {
-      "atChapter": "{{ordinal}}章"
+      "atChapter": "{{ordinal}}章",
+      "aria": "物語の時間軸（章の順序）をスクラブする",
+      "head": "先頭（最新）",
+      "headButton": "先頭（最新）",
+      "label": "ストーリーの時間軸",
+      "loadFailed": "変更履歴のタイムラインを読み込めませんでした。",
+      "noChanges": "ストーリーの時間軸における変更はまだありません。"
     },
     "translation": {
       "asOfChapter": "{{n}}章",
       "asOfLabel": "{{label}}時点",
-      "error": "コンテキストの読み込みに失敗しました: {{error}}"
+      "error": "コンテキストの読み込みに失敗しました: {{error}}",
+      "asAuthored": "執筆時",
+      "asOfHead": "最新",
+      "badgeCached": "翻訳済み · キャッシュ済み",
+      "badgeFresh": "翻訳済み",
+      "empty": "ストーリーのこの時点における、参照可能なコンテキストはありません。",
+      "failNoModel": "翻訳モデルが設定されていません。「翻訳設定」からモデルを選択すると、翻訳されたコンテキストが表示されます。",
+      "failProvider": "翻訳に失敗しました。現在は原文のコンテキストを表示しています。",
+      "failQuota": "翻訳を利用できません — プロバイダーのクォータ（利用制限）に達しました。",
+      "langOriginal": "原文 ({{lang}})",
+      "languageLabel": "表示言語",
+      "title": "各章のコンテキスト",
+      "translating": "翻訳中… 初回の表示には時間がかかる場合があります"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "{{asOf}} の時点の章",
+      "current": "現在",
+      "hint": "タイムスライダーを動かして、過去の章と現在の状態を比較します。",
+      "loadFailed": "差分の読み込みに失敗しました: {{error}}",
+      "loading": "差分を読み込み中…",
+      "noChanges": "第{{asOf}}章から現在までに、単一値の変更はありません。",
+      "title": "差分表示"
+    },
+    "timeline": {
+      "chapter": "第{{chapter}}章",
+      "empty": "このエンティティの変更履歴はまだ記録されていません。",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → open)"
+      },
+      "kind": {
+        "invalidated": "無効",
+        "open": "オープン",
+        "superseded": "更新済み"
+      },
+      "loadFailed": "変更履歴の読み込みに失敗しました: {{error}}",
+      "loadMore": "もっと見る",
+      "loading": "変更履歴を読み込み中…",
+      "title": "変更履歴"
     }
   }
 }

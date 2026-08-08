@@ -30,7 +30,13 @@
     "allOverwrite": "全部覆寫",
     "required": "必填",
     "thinkingEnabled": "啟用思考／推理",
-    "thinkingHint": "JSON 擷取建議關閉。若使用 Gemma 等模型並希望先推理再回答，可開啟。"
+    "thinkingHint": "JSON 擷取建議關閉。若使用 Gemma 等模型並希望先推理再回答，可開啟。",
+    "addDefaults": "新增預設類型",
+    "addingDefaults": "新增中…",
+    "defaultsError": "無法新增預設實體類型。",
+    "loadError": "無法載入擷取設定檔。",
+    "noKindsDescription": "擷取需要至少一種搜尋類型。請新增預設類型以開始，或在術語表中自行定義。",
+    "noKindsTitle": "本書尚未設定任何實體類型"
   },
   "batch": {
     "title": "批量設定",

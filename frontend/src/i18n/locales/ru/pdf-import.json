@@ -64,5 +64,14 @@
     "back": "Назад",
     "cancel": "Отмена",
     "next": "Далее"
+  },
+  "import-configure": {
+    "willCreate": "Будет создано {{count}} глав."
+  },
+  "import-results": {
+    "chaptersCreated": "Создано глав: {{count}}."
+  },
+  "import-upload": {
+    "pageCount": "{{count}} страниц"
   }
 }

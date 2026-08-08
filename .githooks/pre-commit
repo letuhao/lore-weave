@@ -233,6 +233,15 @@ if git diff --cached --name-only | grep -qE 'frontend/src/i18n/locales/.*\.json'
   "$PY" "$ROOT/scripts/i18n-completeness-gate.py" --staged
 fi
 
+# The other half of ML-7, and the half the gate above cannot see. It compares BUNDLE to
+# BUNDLE, so a `t('key', { defaultValue: '…' })` whose key is in no bundle is invisible to
+# it AND to i18n_translate.py, which reads `en`. Such a string renders fine and is never
+# translated — 609 had accumulated by 2026-08-08, found by hand, not by a check. Triggered
+# on COMPONENTS rather than locale files: adding the call is what creates the debt.
+if git diff --cached --name-only | grep -qE 'frontend/src/.*\.tsx?$'; then
+  "$PY" "$ROOT/scripts/i18n-key-resolution-gate.py" --staged
+fi
+
 # Track A / M9a — the central C-TOOL tier gate: a write-verb-named tool must NOT be Tier-R
 # (Tier-R auto-runs with no confirm/Undo — a mutation tagged R is a silent-write). Runs when a
 # tool-registration file (or the gate itself) is staged; it scans the whole tree, so this

@@ -30,7 +30,13 @@
     "allOverwrite": "Tümünü Üzerine Yaz",
     "required": "zorunlu",
     "thinkingEnabled": "Düşünme / Akıl yürütmeyi etkinleştir",
-    "thinkingHint": "JSON çıkarımı için kapalı tutulması önerilir. Gemma gibi düşünme aşamasında farklı akıl yürüten modeller için açın."
+    "thinkingHint": "JSON çıkarımı için kapalı tutulması önerilir. Gemma gibi düşünme aşamasında farklı akıl yürüten modeller için açın.",
+    "addDefaults": "Varsayılan türleri ekle",
+    "addingDefaults": "Ekleniyor…",
+    "defaultsError": "Varsayılan varlık türleri eklenemedi.",
+    "loadError": "Çıkarım profili yüklenemedi.",
+    "noKindsDescription": "Çıkarım işlemi için en az bir tür belirlenmelidir. Başlamak için varsayılanları ekleyin veya sözlükte kendi türlerinizi tanımlayın.",
+    "noKindsTitle": "Bu kitapta henüz varlık türü bulunmuyor"
   },
   "batch": {
     "title": "Toplu İşlem Yapılandırması",

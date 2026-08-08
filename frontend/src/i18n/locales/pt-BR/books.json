@@ -540,7 +540,8 @@
     "next": "Próximo",
     "page": "Página",
     "reasoning_enable": "Ativar raciocínio do modelo (pensamento)",
-    "reasoning_hint": "Desativado por padrão — o pensamento oculto pode consumir o orçamento de saída em modelos locais. Ative para passagens difíceis em um modelo de raciocínio."
+    "reasoning_hint": "Desativado por padrão — o pensamento oculto pode consumir o orçamento de saída em modelos locais. Ative para passagens difíceis em um modelo de raciocínio.",
+    "retranslate_selected": "Retranslating selecionados ({{count}})"
   },
   "kind_editor": {
     "modified": "modificado",

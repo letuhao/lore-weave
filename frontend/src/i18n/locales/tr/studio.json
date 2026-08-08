@@ -772,7 +772,8 @@
     "noScenes": "Bu sahne planında düzenlenecek bölüm yok.",
     "openEdit": "düzenle…",
     "runPicker": "Bir plan çalışması seçin",
-    "runToCheckpoint": "Sonraki kontrol noktasına kadar çalıştır"
+    "runToCheckpoint": "Sonraki kontrol noktasına kadar çalıştır",
+    "runningPass": "{{pass}} çalıştırılıyor…"
   },
   "planner": {
     "sourcePlaceholder": "Roman sistemini markdown olarak yapıştırın…",
@@ -835,7 +836,8 @@
       "title": "Bu planda ne eksik?",
       "unavailableHint": "kontrol edilmedi; eksik olarak kabul etmek yerine tekrar deneyin",
       "unavailableTitle": "Kontrol edilemedi",
-      "uncertain": "(belgeniz tam olarak okunmadı, bu nedenle bu kısım zaten mevcut olabilir)"
+      "uncertain": "(belgeniz tam olarak okunmadı, bu nedenle bu kısım zaten mevcut olabilir)",
+      "shrank": "Bu akış, tutulanlardan daha fazlasını okudu ({{detail}}) — üzerine inşa etmeden önce bu bölümleri kontrol edin."
     },
     "openPassRail": "Pass Rail →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "Anlatı",
       "viewTimeline": "Zaman Çizelgesi",
       "viewWorldmap": "Dünya haritası",
-      "viewSoon": "Daha sonraki bir aşamada gelecek"
+      "viewSoon": "Daha sonraki bir aşamada gelecek",
+      "addArc": "+ Ark",
+      "addArcHint": "Üst düzey bir ark ekle",
+      "addArcNoGrant": "Ark eklemek için düzenleme yetkisine ihtiyacınız var",
+      "addSubArc": "+ Alt-ark",
+      "addSubArcHint": "Seçili arkin altına bir alt-ark ekle",
+      "addSubArcHint2": "Bir alt-arkı içine yerleştirmek için bir ark seçin",
+      "addingArc": "+ Ark…"
     },
     "mode": {
       "simple": "Basit",

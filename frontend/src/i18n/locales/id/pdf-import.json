@@ -64,5 +64,14 @@
     "back": "Kembali",
     "cancel": "Batal",
     "next": "Berikutnya"
+  },
+  "import-configure": {
+    "willCreate": "Ini akan membuat {{count}} bab."
+  },
+  "import-results": {
+    "chaptersCreated": "{{count}} bab berhasil dibuat."
+  },
+  "import-upload": {
+    "pageCount": "{{count}} halaman"
   }
 }

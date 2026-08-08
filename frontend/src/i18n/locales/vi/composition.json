@@ -1705,7 +1705,8 @@
     "undoFailed": "Không thể khôi phục thay đổi.",
     "undoSuperseded": "Đã có một thay đổi mới hơn cho thực thể này — không có gì để khôi phục.",
     "unnamed": "Phiên bản chưa đặt tên",
-    "yes": "Có"
+    "yes": "Có",
+    "derivativesSection": "Các biến thể ({{n}})"
   },
   "mark": {
     "action": "Đánh dấu lỗi",
@@ -1751,5 +1752,6 @@
   "resolveWorkFailed": "Dịch vụ tri thức không khả dụng — không thể hoàn tất thiết lập dữ liệu nền.",
   "resolvingWork": "Đang hoàn tất thiết lập… dịch vụ tri thức vừa tạm thời không khả dụng.",
   "retry": "Thử lại",
-  "threadFocusMissing": "Chủ đề bạn đang theo dõi không có trong chế độ xem này — có thể nó đã được thanh toán. Hãy chuyển bộ lọc sang “tất cả”."
+  "threadFocusMissing": "Chủ đề bạn đang theo dõi không có trong chế độ xem này — có thể nó đã được thanh toán. Hãy chuyển bộ lọc sang “tất cả”.",
+  "canonConflictCurrent": "Hiện tại (v{{v}}): {{text}}"
 }

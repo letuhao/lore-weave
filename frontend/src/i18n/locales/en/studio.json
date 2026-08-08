@@ -772,7 +772,8 @@
     "noScenes": "No chapters to edit in this scene plan.",
     "openEdit": "edit…",
     "runPicker": "Choose a plan run",
-    "runToCheckpoint": "Run to next checkpoint"
+    "runToCheckpoint": "Run to next checkpoint",
+    "runningPass": "running {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "Paste the novel-system markdown…",
@@ -835,7 +836,8 @@
       "title": "What is this plan missing?",
       "unavailableHint": "not checked; try again rather than treating it as missing",
       "unavailableTitle": "Could not check",
-      "uncertain": "(your document was not fully read, so this may already be there)"
+      "uncertain": "(your document was not fully read, so this may already be there)",
+      "shrank": "This run read more than it kept ({{detail}}) — check those parts before building on them."
     },
     "openPassRail": "Pass Rail →"
   },
@@ -1712,7 +1714,14 @@
       "viewNarrative": "Narrative",
       "viewTimeline": "Timeline",
       "viewWorldmap": "World map",
-      "viewSoon": "Coming in a later phase"
+      "viewSoon": "Coming in a later phase",
+      "addArc": "+ Arc",
+      "addArcHint": "Add a top-level arc",
+      "addArcNoGrant": "You need edit access to add arcs",
+      "addSubArc": "+ Sub-arc",
+      "addSubArcHint": "Add a sub-arc under the selected arc",
+      "addSubArcHint2": "Select an arc to nest a sub-arc under it",
+      "addingArc": "+ Arc…"
     },
     "mode": {
       "simple": "Simple",

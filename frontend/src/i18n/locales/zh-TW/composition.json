@@ -1705,7 +1705,8 @@
     "undoFailed": "無法復原覆寫內容。",
     "undoSuperseded": "該實體已有更新的覆寫內容 — 無法復原。",
     "unnamed": "未命名版本",
-    "yes": "是"
+    "yes": "是",
+    "derivativesSection": "衍生內容 ({{n}})"
   },
   "mark": {
     "action": "標記問題",
@@ -1751,5 +1752,6 @@
   "resolveWorkFailed": "知識服務不可用 — 無法完成背景知識設定。",
   "resolvingWork": "設定中… 知識服務曾短暫斷線。",
   "retry": "重試",
-  "threadFocusMissing": "您所屬的承諾不在此視圖中 — 它可能已經結清。請將篩選條件切換為「全部」。"
+  "threadFocusMissing": "您所屬的承諾不在此視圖中 — 它可能已經結清。請將篩選條件切換為「全部」。",
+  "canonConflictCurrent": "當前 (v{{v}}): {{text}}"
 }

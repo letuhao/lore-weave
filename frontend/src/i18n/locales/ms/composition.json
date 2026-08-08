@@ -1705,7 +1705,8 @@
     "undoFailed": "Tidak dapat memulihkan perubahan.",
     "undoSuperseded": "Terdapat perubahan baharu untuk entiti tersebut — tiada apa untuk dipulihkan.",
     "unnamed": "Versi tanpa tajuk",
-    "yes": "Ya"
+    "yes": "Ya",
+    "derivativesSection": "Derivatif ({{n}})"
   },
   "mark": {
     "action": "Tandakan masalah",
@@ -1751,5 +1752,6 @@
   "resolveWorkFailed": "Perkhidmatan pengetahuan tidak tersedia — tidak dapat menyiapkan penyediaan asas.",
   "resolvingWork": "Menyiapkan penyediaan… perkhidmatan pengetahuan tidak tersedia buat seketika.",
   "retry": "Cuba lagi",
-  "threadFocusMissing": "Janji yang anda rujuk tidak ada dalam paparan ini — ia mungkin telah dibayar. Tukar penapis kepada «semua»."
+  "threadFocusMissing": "Janji yang anda rujuk tidak ada dalam paparan ini — ia mungkin telah dibayar. Tukar penapis kepada «semua».",
+  "canonConflictCurrent": "Semasa (v{{v}}): {{text}}"
 }

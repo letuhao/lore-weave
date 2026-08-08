@@ -30,7 +30,13 @@
     "allOverwrite": "Semua Timpa",
     "required": "wajib",
     "thinkingEnabled": "Aktifkan pemikiran / penalaran",
-    "thinkingHint": "Matikan untuk ekstraksi JSON. Aktifkan untuk model seperti Gemma yang menalar secara berbeda saat fitur pemikiran diaktifkan."
+    "thinkingHint": "Matikan untuk ekstraksi JSON. Aktifkan untuk model seperti Gemma yang menalar secara berbeda saat fitur pemikiran diaktifkan.",
+    "addDefaults": "Tambahkan jenis default",
+    "addingDefaults": "Menambahkan…",
+    "defaultsError": "Tidak dapat menambahkan jenis entitas default.",
+    "loadError": "Tidak dapat memuat profil ekstraksi.",
+    "noKindsDescription": "Ekstraksi membutuhkan setidaknya satu jenis untuk dicari. Tambahkan default untuk memulai, atau tentukan sendiri di glosarium.",
+    "noKindsTitle": "Buku ini belum memiliki jenis entitas"
   },
   "batch": {
     "title": "Konfigurasi Batch",
