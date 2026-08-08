@@ -62,7 +62,7 @@ GO_BITES: list[tuple[str, Path, str, str, str]] = [
     (
         "dry run reports success when no shard has capacity",
         PROV,
-        "if !out.WouldProvision {",
+        "if req.DryRun && !out.WouldProvision {",
         "if false {",
         "TestRunProvision_DryRunNoCapacityIsError",
     ),
@@ -223,8 +223,11 @@ RUST_BITES: list[tuple[str, Path, str, str, str]] = [
     (
         "an in-flight status is treated as settled (a retry would re-provision over it)",
         WORKER,
-        '"active",\n    "migrating",',
-        '"active",\n    "provisioning",\n    "migrating",',
+        # SWAP, not insert: SETTLED_STATUSES is `[&str; 6]`, so adding a seventh
+        # element is a type error — the mutation would prove the compiler works
+        # rather than that the test observes the defect.
+        '    "migrating",',
+        '    "provisioning",',
         "tests::settled_statuses_cover_every_state_past_provisioning",
     ),
     (

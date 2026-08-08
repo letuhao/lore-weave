@@ -242,6 +242,13 @@ func TestRunProvision_DryRunNoCapacityIsError(t *testing.T) {
 	if !errors.Is(err, ErrInvalidProvision) {
 		t.Fatalf("want error when no capacity, got %v", err)
 	}
+	// Assert WHICH diagnosis, not merely that something failed. A no-capacity
+	// outcome also names no shard, so with this guard removed the blank-shard
+	// guard fires and an error-type-only assertion still passes — the bite
+	// harness caught exactly that and reported the test as staying green.
+	if !strings.Contains(err.Error(), "capacity") {
+		t.Fatalf("want a CAPACITY diagnosis, got a different failure: %v", err)
+	}
 }
 
 // The defect the live run found and the code did not guard: an empty `shard`
