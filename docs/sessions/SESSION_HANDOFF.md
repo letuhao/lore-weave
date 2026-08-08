@@ -2,7 +2,7 @@
 
 ## ▶ GAME BUILD — the FOUNDATION track: `crates/dp` slice 1 + the `channels` table (2026-08-08, branch `feat/game-logic`)
 
-**HEAD:** `c9e0f1881` · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
+**HEAD:** `304083fad` · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
 
 > **▶ MOST RECENT: THE REALITY LAYER IS CLOSED (2026-08-08).** The platform can now **create a
 > reality**, it **belongs to someone**, a half-finished one is **found**, and none of it runs as
@@ -16,6 +16,7 @@
 > | `W5` `bebfc4fbb` | **`orphan_scanner` can see** — 4 classes over live state. It had classified `let scanned = 0u32` since cycle 5 |
 > | `W6` `3543684a1` | **ownership** — `owner_kind`/`owner_user_id` with its producer wired end to end |
 > | `W7` `12402d92f`, `c9e0f1881` | **`loreweave_provisioner`** (`CREATEDB` only), and the worker now **refuses** superuser |
+> | `V.1`×2 `40a632244`, `91b27402f` | two BLOCK verdicts discharged — 7 HIGH between them, incl. a retry split-brain, an SQL-injection escalation, and an unkept GDPR erasure promise |
 >
 > **Phase 0 changed `W3`'s design before a line was written.** The row said *"add an HTTP endpoint to
 > world-service"*; the tree said admin operations go through `admin-cli` + a **subprocess** seam,
@@ -31,10 +32,26 @@
 > this file reported "10/10 guards load-bearing". `BDR-50`: **the axes test the subject; only an
 > independent reader tests the apparatus.**
 >
+> **`V.1` round 2 returned BLOCK too, on `W6`+`W7`** (`91b27402f`), and the two worst were mine:
+> **the one env var `W7` added was an SQL-injection escalation path around the one boundary `W7`
+> added** — a password of `x'; ALTER ROLE loreweave_provisioner SUPERUSER; --` granted the
+> provisioning role superuser; and **migration 036 declared `@erasure_method` that nothing
+> implemented**, so a GDPR erasure would have reported success while the user's identifier survived.
+> The mechanism built for that class walks `contracts/migrations/per_reality`; `W6` put the column in
+> `migrations/meta`, the one tree it never visits — `NV-3`, default-uncovered. Also a nil-UUID
+> split-brain across three layers, and a tier derivation with **no test and no bite** (replacing it
+> with `ownerKind := "user"` left the whole Go suite green).
+>
+> Writing the gate for that found **8 more meta tables** with a user reference and no scrubber path,
+> five declaring no erasure method at all — pre-existing, partly needing a legal/retention decision
+> rather than code. Recorded in a `knownUnhandled` register that must SHRINK
+> (`D-META-ERASURE-COVERAGE`).
+>
 > The recurring shape, hit three times and each time fixed: **apparatus without a subject** — a
 > scanner that scanned nothing, a bite that asserted nothing, and a privilege role nothing was
-> required to use. Now 31 guards prove load-bearing under
-> `scripts/reality-layer-bite-harness.py`, wired into CI.
+> required to use. Now **37 guards** prove load-bearing across Go/Rust/meta under
+> `scripts/reality-layer-bite-harness.py`, wired into CI — and that harness caught **six of its own
+> bites** failing to prove anything, including a "mutation" that was a no-op comment.
 >
 > **Open, each with a trigger** (see the run-state §4): `W5-REMEDIATE` (the scanner detects but
 > cannot mark — needs a bridge endpoint), `W5-CRON` (nothing schedules it), `W3-DRYRUN-MISNOMER`
