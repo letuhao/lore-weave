@@ -3661,6 +3661,45 @@ in this checkpoint carries.
 restore the constant and the new arm's rows read `legacy`; make the derivation unconditional and the
 control's rows stop reading `legacy`.
 
+### 🔴 CP-2.10 — BUILT AND BACKED OUT, on an instrument finding I could not diagnose
+
+**2026-08-08.** The implementation is sound and its own guards pass; it is **stashed, not lost**
+(`git stash` → *"cp-2.10 work, backed out pending the 8-cell instrument finding"*). What stopped it
+is not the row.
+
+**What was built:** a `Score` stage that stamps `relevance` on the **in-flight** rows, with the
+field deliberately **still absent from `ROW_FIELDS`** — so a hand-typed `relevance` is refused on
+disk and `OrderBy` refuses a key no stage produced. §0.14.1b then holds **structurally**: a pipeline
+that ranks on `relevance` either ran the stage or raises, and no new check was needed. Measured:
+`Score → OrderBy(relevance desc) → TopK(2)` ranked `b, c` with the withheld record carrying
+`rank: 2` and `ordered_by: [[relevance, desc], [id, asc]]`.
+
+### 🔴 Why it is not committed
+
+Adding CP-2.10's guards turns **`test_NEITHER_CENSUS_WRITER_CAN_REACH_THE_LIVE_TREE__all_8_cells`**
+— in the **CP-1** suite — red: `FileNotFoundError` on a `lw-census-*` mirror removed mid-`census()`.
+
+| measurement | result |
+|---|---|
+| the 8-cell guard **alone** | green, 3 runs of 3 |
+| CP-1 suite **alone** | green |
+| both suites, **without** CP-2.10's guards | **green** (274) |
+| both suites, **with** them | **red**, every time, `-p no:randomly` |
+
+**That guard is the one watching for the census writing into the LIVE TREE** — the most dangerous
+failure this apparatus has (four kills once left a `raise → pass` in a tracked module, and a
+verifier drove eight directories into the live package while the suite reported `152 passed`).
+Committing past it on a red run would be exactly the "green over a broken instrument" shape the
+census exists to end.
+
+🔴 **And I got the cause wrong once already.** I concluded two specific guards were responsible
+(removing them made it green); after removing them it was **still red**, so that conclusion was
+false and the correlation is with the CP-2 guard set as a whole. **I have the reproduction exactly
+and the mechanism not at all**, and that is recorded at that strength rather than as a diagnosis.
+
+**Next step for this row is diagnosis, not implementation:** find what in the combined run removes a
+mirror the 8-cell guard is reading. The row's code is written and waiting behind it.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -3944,7 +3983,7 @@ declarations, not silently emit a tool-free pass.
 | **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | 🟡 **PART BUILT 2026-08-08 — M4 IS TRUE.** `boot.py` + `chat-service`'s `lifespan` call it: **the package has a production importer.** §3's literal test passes per required clause, in fresh interpreters; an ABSENT manifest still boots (empty is legitimate). ✅ **A–D now measured** at the advertise chokepoint: the branch is a `return`, the new arm serves `[]` from a populated legacy catalogue, the model is told WHICH emptiness, and the `Surface` comes back with the payload so P1 is one computation. ✖ **A deployed turn against a real model is still `CANNOT DETERMINE`.** See both CP-2.7 blocks above |
 | **2.9** | **`prompt_hash` — chat-service-local, ~10 lines, and that is the whole item.** ⬅️ rewritten 2026-08-05; the original bundled four things and red team killed three. It closes a **currently undetectable** failure: a prompt can change today and nothing notices. 🔴 **NOT included, each for a measured reason:** `code_revision` — `GIT_SHA` becomes an **OCI image label**, no Dockerfile consumes it, `os.environ.get("GIT_SHA")` is `None` in **every** scenario; `seed` — it is **already forwarded** at `adapters.go:678`, the three typed hops above drop it, production runs `temperature=0.0` (greedy, so a seed consumes no randomness) and Anthropic has no seed parameter at all; `block_hashes` — **cannot be computed correctly here**, the cache breakpoint is owned by provider-registry *after* a schema translation, so a chat-service hash can be green while the cached bytes changed | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `digest(nfc(prompt))` — the NFC is load-bearing (1.44× token swing). **All three red-team exclusions guarded absent AND their reasons guarded present.** Not yet called from the request path: that is a write-path change belonging with 2.8. See the CP-2.9 block above |
 | **2.8** | **`runtime_variant='agentruntime'` stamped at a structural chokepoint covering EVERY terminal path** — not at the happy path. `legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship bias in the new arm's own failure rate**: an unlabelled new-runtime row loses its numerator too, and label-omission correlates with crash and cancel | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** The parameter is **GONE** — it cannot be omitted because it cannot be supplied; both write sites derive from the arm selector. Five production call sites, zero edits. **The control arm is byte-identical** (flag off → `legacy`), which is what let this row be built at all. See the CP-2.8 block above |
-| **2.10** | **⬅️ INHERITED FROM CP-1, PO 2026-08-06.** A pipeline ranks by a **`relevance` its own scoring stage produced** (§0.14.1b), and **the budget arrives as a parameter** rather than as `os.environ` read at import (§0.14.1). CP-1 could check neither: no producer exists, and the boundary module can only supply a budget to a pipeline that runs. Today every pipeline naming `relevance` is rejected — the correct fail-closed direction, and **not** evidence the rule works | ⬜ |
+| **2.10** | **⬅️ INHERITED FROM CP-1, PO 2026-08-06.** A pipeline ranks by a **`relevance` its own scoring stage produced** (§0.14.1b), and **the budget arrives as a parameter** rather than as `os.environ` read at import (§0.14.1). CP-1 could check neither: no producer exists, and the boundary module can only supply a budget to a pipeline that runs. Today every pipeline naming `relevance` is rejected — the correct fail-closed direction, and **not** evidence the rule works | 🔴 **BUILT AND BACKED OUT 2026-08-08.** `Score` produces `relevance` in-flight; the field stays out of `ROW_FIELDS`, so the rule is structural. **Stashed, not lost** — its guards turn CP-1's live-tree census-writer guard RED in the combined run, reproducibly. Next step is DIAGNOSIS. See the CP-2.10 block above |
 | **2.6** | **P2 — a call's `source` is assigned STRUCTURALLY, never inferred.** ⬅️ **inherited from CP-0.3, 2026-08-04.** The new runtime dispatches through **one** path, so `source` is a property of *where the code is*, not of what a name looks up to. **Also add `error_class` as a structured enum** — V-METRIC ruled baseline class 3 unscoreable *because* it is a regex over freeform prose from five producers, and *"only a structured enum overturns this, never a better regex"* | ⬜ |
 
 ### L3 · PLAN — `CP-3` (γ) · **the architecture's central claim**
