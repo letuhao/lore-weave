@@ -231,6 +231,13 @@ func TestScrubberSourceNamesEveryTableItClaims(t *testing.T) {
 				"map claims it is handled", table)
 		}
 	}
+	// The reassignment must be REACHED. Asserting only that the intent exists
+	// somewhere in the file passes even when the call site is deleted and the
+	// whole function is dead code -- the bite harness caught exactly that.
+	if !strings.Contains(body, "return s.reassignOwnedRealities(ctx, userID)") {
+		t.Error("ScrubUserMetaRefs does not call reassignOwnedRealities; the reality_registry " +
+			"erasure is unreachable")
+	}
 	// ...and the reassignment must set BOTH columns: clearing owner_user_id
 	// alone is refused by reality_registry_owner_user_set, so a half-written
 	// erasure would fail at runtime rather than in a test.

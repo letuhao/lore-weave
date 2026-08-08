@@ -252,8 +252,8 @@ RUST_BITES: list[tuple[str, Path, str, str, str]] = [
     (
         "a malformed owner is silently ignored instead of refused",
         WORKER,
-        'Uuid::parse_str(val).map_err(|e| format!("--owner-user-id: {e}"))?,',
-        "Uuid::parse_str(val).unwrap_or(Uuid::nil()),",
+        '.map_err(|e| format!("--owner-user-id: {e}"))?;',
+        '.unwrap_or(Uuid::nil());',
         "tests::a_malformed_owner_is_refused_not_ignored",
     ),
     (
@@ -292,8 +292,8 @@ META_BITES: list[tuple[str, Path, str, str, str]] = [
     (
         "the ownership tier is not derived at all (every reality becomes user-owned)",
         BRIDGE,
-        'return "user", oid, nil',
-        'return "user", oid, nil // bite marker',
+        'return "system", nil, nil',
+        'return "user", nil, nil',
         "TestDeriveOwner_AbsentIsPlatformOwned",
     ),
     (
@@ -327,8 +327,10 @@ META_BITES: list[tuple[str, Path, str, str, str]] = [
     (
         "a user who OWNS a reality but drives no actor is invisible to the cascade",
         SCRUB,
-        "         UNION
-         SELECT reality_id FROM reality_registry   WHERE owner_user_id = $1`, userID)",
+        # Anchored on ONE line: a multi-line anchor written through a shell
+        # heredoc lost its escapes and produced a syntax error here (RUN-STATE
+        # §0.6, third occurrence this session).
+        "SELECT reality_id FROM reality_registry   WHERE owner_user_id = $1`, userID)",
         "`, userID)",
         "TestRealitiesForUser_IncludesOwnedRealities",
     ),
