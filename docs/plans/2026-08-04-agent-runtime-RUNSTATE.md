@@ -3697,8 +3697,24 @@ census exists to end.
 false and the correlation is with the CP-2 guard set as a whole. **I have the reproduction exactly
 and the mechanism not at all**, and that is recorded at that strength rather than as a diagnosis.
 
-**Next step for this row is diagnosis, not implementation:** find what in the combined run removes a
-mirror the 8-cell guard is reading. The row's code is written and waiting behind it.
+**Next step for this row is diagnosis, not implementation**, and it is now narrowed to two helpers
+INSIDE the 8-cell guard rather than to the combined run at large:
+
+* **`_fake_mirror`** copies **only the package** (`copytree(real_pkg, d / _PKG_REL)`) — not the rest
+  of the tree the real `_mirror()` copies from `git ls-files`. So the fake and the real mirror do
+  not hold the same file set, and `census()` reads from whichever it was handed.
+* **`_fake_green(cwd)`** reads **`real_pkg / p.name`** — the LIVE file — once per mirror `.py`. It
+  is therefore a function of *both* trees, and it pairs mirror files with live files **by NAME**.
+
+**The specific question to answer first:** what makes a file present in `sorted(pkg.glob("*.py"))`
+and absent by the time `read_bytes()` runs, given both are inside one synchronous call. Either the
+mirror is being discarded while `census()` still holds it, or the two helpers disagree about which
+tree they are describing. **Answer that before touching `Score`** — the row's code is written,
+green on its own guards, and waiting behind it.
+
+🔴 **And do not repeat my error: I twice concluded a cause from "removing X makes it green".** The
+first such conclusion was false — after removing the two guards it was still red. Correlation under
+a state-dependent failure is not a mechanism.
 
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
