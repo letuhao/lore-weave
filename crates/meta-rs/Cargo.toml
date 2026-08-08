@@ -8,6 +8,21 @@ license.workspace = true
 publish.workspace = true
 description = "Rust hot-path port of contracts/meta (Q-L1B-4) — full MetaWrite + AttemptStateTransition + caching + audit surface."
 
+# OUT OF `DP-R3`'s SCOPE — this crate IS the meta plane.
+#
+# `01_scope_and_boundary.md` §4 (LOCKED) scopes the rule to crates that read or
+# write an aggregate in a PER-REALITY database. `meta-rs` is the Meta Access
+# Library: it reads and writes the META database (`reality_registry`,
+# routing, audit). It is the crate that TELLS other crates where a reality
+# lives — it does not open one.
+#
+# Its own discipline is I8/MetaWrite (every meta write same-TX with an audit
+# row, enforced by `meta-write-discipline-lint.sh`), which is a stricter rule
+# than DP-R3, not a weaker one.
+[package.metadata.dp]
+plane = "platform"
+reason = "the Meta Access Library — reads/writes the META database (reality_registry, routing, audit), never a per-reality DB; it RESOLVES routing for others rather than consuming it, and is separately governed by I8/MetaWrite"
+
 [lib]
 path = "src/lib.rs"
 

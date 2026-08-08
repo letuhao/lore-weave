@@ -11,6 +11,17 @@ authors.workspace = true
 license.workspace = true
 publish = false
 
+# OUT OF `DP-R3`'s SCOPE — platform plane.
+#
+# The single `sqlx::PgPool` is `shape/postgres_cache.rs`, a cross-process cache
+# of LLM DISPATCH DECISIONS (`shape_dispatch_cache`: entity_path, kind,
+# params). It is not an aggregate, not per-reality, and not kernel state — the
+# module doc calls it "the trait validation that the abstraction also serves a
+# real DB impl", with the CLI still on the in-memory implementation.
+[package.metadata.dp]
+plane = "platform"
+reason = "shape/postgres_cache.rs caches LLM dispatch decisions in shape_dispatch_cache — a platform-plane cache table, not a per-reality aggregate; the crate consumes no reality routing"
+
 [lib]
 name = "world_gen"
 path = "src/lib.rs"

@@ -26,6 +26,7 @@ path = "src/lib.rs"
 # inconvenient adds a `dp` dependency, not this key.
 [package.metadata.dp]
 dp-crate = true
+reason = "this crate IS the data plane — event_store_pg.rs, outbox.rs, load_aggregate.rs and channel.rs hold the sqlx handles that every game-layer crate is required to reach the kernel THROUGH"
 
 [features]
 # Cycle 32 (L7.E) — compile-time prod-build flag. With `prod` enabled:

@@ -1,12 +1,7 @@
 {
   "known_red": {
-    "meta-rs": 1,
-    "service-http": 2,
-    "world-gen": 1,
+    "commit-service": 3,
     "world-service": 5
   },
-  "blocked": {
-    "commit-service": "service-http",
-    "roleplay-service": "service-http"
-  }
+  "blocked": {}
 }

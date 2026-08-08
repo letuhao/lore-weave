@@ -8,6 +8,27 @@ authors.workspace = true
 license.workspace = true
 publish.workspace = true
 
+# OUT OF `DP-R3`'s SCOPE — and this row is the ANSWER to `2E`, which was
+# parked as "needs a PO decision" when it was answerable by looking.
+#
+# `01_scope_and_boundary.md` §4 (LOCKED) gives the test: does it read or write
+# an aggregate in a per-reality database? Measured:
+#
+#   * `src/main.rs:17` — `service_http::db::init(&config.database_url,
+#     sqlx::migrate!("./migrations"))`. That is the PLATFORM-PLANE per-service
+#     bootstrap, with this service's own migrations.
+#   * `reality_id` appears twice, and both are a foreign key in that platform
+#     DB: a column in a SELECT list (`handlers/mod.rs:10`) and
+#     `Option<Uuid>` on a model (`models.rs:32`). Neither routes to a
+#     `reality_<id>` database.
+#   * The package description above already said it: "single platform pool".
+#
+# So by a LOCKED rule this is not a game-layer service. If it ever opens a
+# per-reality database, this row must go — that is the trigger.
+[package.metadata.dp]
+plane = "platform"
+reason = "2E answered by measurement: single platform pool via service_http::db::init with its own migrations; reality_id is a foreign key in that platform DB (handlers/mod.rs:10, models.rs:32), not per-reality routing"
+
 [[bin]]
 name = "roleplay-service"
 path = "src/main.rs"

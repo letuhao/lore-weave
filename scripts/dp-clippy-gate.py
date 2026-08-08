@@ -83,27 +83,133 @@ def members(meta: dict) -> dict[str, Path]:
     }
 
 
-def declares_marker(manifest_dir: Path) -> bool:
-    """Mirror of the lint's own manifest read.
+def dp_metadata(manifest_dir: Path) -> dict:
+    """`[package.metadata.dp]` for a crate, or {}.
 
     Deliberately a SEPARATE implementation from the lint's (`V.2`: a mechanical
     oracle by a different method). If the two ever disagree about which crates
     are exempt, that disagreement is itself the finding — an exemption only one
     of them honours is how a rule quietly stops applying.
     """
-    text = (manifest_dir / "Cargo.toml").read_text(encoding="utf-8", errors="replace")
     try:
         import tomllib
+        text = (manifest_dir / "Cargo.toml").read_text(encoding="utf-8", errors="replace")
         data = tomllib.loads(text)
     except Exception:
-        return False
-    return (
-        data.get("package", {})
-        .get("metadata", {})
-        .get("dp", {})
-        .get("dp-crate")
-        is True
-    )
+        return {}
+    return data.get("package", {}).get("metadata", {}).get("dp", {}) or {}
+
+
+def declares_marker(manifest_dir: Path) -> bool:
+    """Exempt from DP-R3: IS the data plane, or is not on the game plane."""
+    dp = dp_metadata(manifest_dir)
+    return dp.get("dp-crate") is True or dp.get("plane") == "platform"
+
+
+# How a crate NAMES a per-reality database. `01_scope_and_boundary.md` §4 scopes
+# DP-R3 by the database, so the honest predicate for "is this crate game-layer"
+# is whether it addresses a `reality_<id>` database at all.
+#
+# THE FIRST VERSION OF THIS CHECK WAS VACUOUS, and the bite is what said so.
+# It matched routing SYMBOLS (`RealityRouting`, `reality_routing`) on the claim
+# that "exactly world-service consumes routing". That was a grep result read
+# without opening the file: `world-service`'s only mention is a module doc
+# comment at `src/lib.rs:19`, which this function's comment-stripper correctly
+# removes. So the check had NO SUBJECT in the one crate it existed to catch —
+# and `world-service` claiming `plane = "platform"` sailed past it. (The gate
+# still failed, via BASELINE STALE, which is why the bite was worth running:
+# a guard can be dead while the suite around it stays green.)
+#
+# Measured, non-comment hits, which is the discrimination this needs:
+#   world-service 123 · commit-service 7 · meta-rs 3
+#   service-http 0 · world-gen 0 · roleplay-service 0
+#
+# The two game-layer crates named by `DPA-SCOPE` are exactly the two that
+# cannot claim `platform`. That is the property worth having: the crates that
+# most need DP-R3 are the ones the exemption refuses.
+PER_REALITY_DB_SYMBOLS = ("db_name", "reality_db")
+# The META REGISTRY owns the `db_name` column — it records where realities live
+# without opening one. Named rather than pattern-matched, because "the registry
+# lives in the crate called meta-rs" is a fact about this repo that should break
+# loudly if it stops being true.
+ROUTING_DEFINER = "meta-rs"
+
+
+def consumes_routing(manifest_dir: Path) -> str | None:
+    """First file under src/ that addresses a per-reality database, or None."""
+    src = manifest_dir / "src"
+    if not src.is_dir():
+        return None
+    for path in sorted(src.rglob("*.rs")):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        # Strip line comments so a comment ABOUT routing is not evidence of
+        # using it — the same stripper `gate-wiring-gate` needed after prose
+        # in a source file certified three deferrals as mechanised.
+        body = "\n".join(
+            ln for ln in text.splitlines() if not ln.lstrip().startswith("//")
+        )
+        if any(sym in body for sym in PER_REALITY_DB_SYMBOLS):
+            return str(path.relative_to(REPO)).replace("\\", "/")
+    return None
+
+
+DYLINT_TARGET = REPO / "target" / "dylint"
+STAMP = DYLINT_TARGET / ".dp-clippy-stamp"
+
+
+def verdict_inputs_digest(member_dirs: dict[str, Path]) -> str:
+    """Hash of everything that changes the lint's ANSWER but not cargo's mind.
+
+    THE CACHE DOES NOT KNOW THIS LINT EXISTS, and that is a correctness
+    problem, not a performance one. Measured: `world-service` reported CLEAN
+    in a workspace pass while a direct run on the same tree produced 5
+    findings. Cause — `[package.metadata]` is FREE-FORM data that cargo carries
+    for external tools and deliberately excludes from a unit's fingerprint. So
+    adding or removing `plane = "platform"` does not dirty the crate, cargo
+    replays the cached success, rustc never runs, the lint never fires, and the
+    stale verdict is reported as a fresh one.
+
+    The same hole swallows the lint itself: the dylint driver reaches rustc as
+    a workspace wrapper, and rebuilding `dp_clippy` with different rules does
+    not by itself dirty a single crate.
+
+    This matters most exactly where it is least visible. Locally it looks like
+    flakiness; in CI `Swatinem/rust-cache` PERSISTS the target directory across
+    runs, so a marker deleted in a PR could be checked against a cache built
+    while it was still there — a green leg for a crate nobody re-examined.
+
+    So the gate hashes what cargo ignores — every crate's `[package.metadata.dp]`
+    block plus the lint library's own bytes — and wipes the dylint target tree
+    when that digest moves. Expensive, and only when something that changes the
+    answer has actually changed.
+    """
+    import hashlib
+
+    h = hashlib.sha256()
+    for name in sorted(member_dirs):
+        h.update(name.encode())
+        h.update(json.dumps(dp_metadata(member_dirs[name]), sort_keys=True).encode())
+    for lib in sorted(LIBS.glob("dp_clippy@*")) if LIBS.is_dir() else []:
+        h.update(lib.read_bytes())
+    return h.hexdigest()
+
+
+def invalidate_if_stale(member_dirs: dict[str, Path]) -> None:
+    digest = verdict_inputs_digest(member_dirs)
+    previous = STAMP.read_text(encoding="utf-8").strip() if STAMP.is_file() else ""
+    if previous == digest:
+        return
+    victim = DYLINT_TARGET / "target"
+    if victim.is_dir():
+        import shutil
+        print("[dp-clippy] exemption markers or the lint itself changed since the "
+              "last run; cargo would not notice, so clearing the dylint cache")
+        shutil.rmtree(victim, ignore_errors=True)
+    STAMP.parent.mkdir(parents=True, exist_ok=True)
+    STAMP.write_text(digest, encoding="utf-8")
 
 
 def lint_env() -> dict:
@@ -200,8 +306,20 @@ def main() -> int:
     member_dirs = members(meta)
     exempt = {n for n, d in member_dirs.items() if declares_marker(d)}
 
+    # Print the exemptions and WHICH kind each is. The label used to say
+    # "declaring dp-crate = true" for every exempt crate, which became false
+    # the moment `plane = "platform"` existed — four crates were reported as
+    # claiming to BE the data plane when they claim the opposite.
+    kinds = {
+        n: ("dp-crate" if dp_metadata(member_dirs[n]).get("dp-crate") is True
+            else "platform")
+        for n in sorted(exempt)
+    }
     print(f"[dp-clippy] {len(member_dirs)} workspace members, "
-          f"{len(exempt)} declaring dp-crate = true: {sorted(exempt)}")
+          f"{len(exempt)} exempt: "
+          + ", ".join(f"{n} ({k})" for n, k in kinds.items()))
+
+    invalidate_if_stale(member_dirs)
 
     findings, compiled, stderr = run_lint(["--workspace"], REPO)
 
@@ -256,6 +374,34 @@ def main() -> int:
     blocked = doc.get("blocked", {})
 
     fails: list[str] = []
+
+    # EVERY EXEMPTION IS CHECKED, not merely honoured.
+    #
+    # The lint reads the marker and stops; it cannot know which database a
+    # crate opens. These two rules are what stop `plane = "platform"` becoming
+    # the line anyone adds to make a red crate green:
+    #   1. a written reason, long enough to be a sentence;
+    #   2. a `platform` claim is REFUSED from a crate that consumes per-reality
+    #      routing — i.e. from any crate that can reach a `reality_<id>` DB.
+    for name in sorted(exempt):
+        dp = dp_metadata(member_dirs[name])
+        reason = (dp.get("reason") or "").strip()
+        if len(reason) < 40:
+            fails.append(
+                f"UNREASONED EXEMPTION: `{name}` claims "
+                f"{'dp-crate = true' if dp.get('dp-crate') else 'plane = platform'} "
+                f"with reason={reason!r}. State which databases it opens; an "
+                f"exemption nobody has to justify is an exemption nobody reviews.")
+        if dp.get("plane") == "platform" and name != ROUTING_DEFINER:
+            hit = consumes_routing(member_dirs[name])
+            if hit:
+                fails.append(
+                    f"FALSE PLATFORM CLAIM: `{name}` declares plane = "
+                    f"\"platform\" but addresses a per-reality database at "
+                    f"{hit}. Naming a reality's own database is exactly what "
+                    f"§4 calls game-layer, so this crate is in DP-R3's scope "
+                    f"whatever its manifest says.")
+
     for name in sorted(still_unchecked):
         blocker = blocked.get(name)
         if blocker is None:

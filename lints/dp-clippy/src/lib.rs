@@ -146,16 +146,46 @@ const FORBIDDEN: &[(&str, &str)] = &[
     ("deadpool_redis", "Pool"),
 ];
 
-/// Does the crate being compiled declare `[package.metadata.dp] dp-crate`?
+/// The one plane value that exempts a crate. Closed set of one, on purpose:
+/// anything else — including `plane = "game"` — does NOT exempt, so a typo or
+/// an invented value fails toward being governed.
+const EXEMPT_PLANE: &str = "platform";
+
+/// Is the crate being compiled outside `DP-R3`'s reach?
 ///
-/// Reads the manifest cargo told rustc about. Every failure path returns
-/// `false` — no manifest, unreadable file, malformed TOML, absent key, or a
-/// non-boolean value all mean NOT EXEMPT. That direction is deliberate: a
-/// crate wins the exemption only by successfully asserting it, so the failure
-/// modes produce a lint error to investigate rather than silent permission.
-/// `dp-crate = "true"` (a string) is not a claim of anything and is treated as
-/// what it is — an absent claim.
-fn declares_dp_crate() -> bool {
+/// TWO DIFFERENT TRUE THINGS, and conflating them is why this function is not
+/// just a boolean read:
+///
+///   * `dp-crate = true` — the crate **IS** the data plane. Holding a raw
+///     client is its job (`dp-kernel`: `event_store_pg.rs`, `outbox.rs`).
+///   * `plane = "platform"` — the crate is **not governed by `DP-R3` at all**.
+///     `01_scope_and_boundary.md` §4 is LOCKED and defines the scope by the
+///     DATABASE, not by the language: *"if a service reads or writes any
+///     aggregate in a per-reality database (`reality_<id>_db`), it is a
+///     game-layer service and uses the DP SDK."* A crate whose Postgres is a
+///     platform-plane per-service DB, the meta DB, or a cache is simply not
+///     what the rule is about.
+///
+/// The second key exists because four crates were red for a reason that was
+/// not debt. `crates/service-http`'s own module doc says its `db::init` is
+/// *"the per-service-DB pattern … a normal platform-plane DB like
+/// `loreweave_chat`, NOT the kernel services' per-reality sidecar model"* —
+/// i.e. the crate documented itself as out of scope before the lint existed.
+/// Marking those four `dp-crate = true` would have put a FALSE claim in four
+/// manifests to silence a true positive of the wrong rule.
+///
+/// Every failure path returns `false` — no manifest, unreadable file, malformed
+/// TOML, absent key, wrong type, unrecognised plane. A crate wins the exemption
+/// only by successfully asserting it, so every failure mode produces a lint
+/// error to investigate rather than silent permission.
+///
+/// The CLAIM is not checked here — a lint cannot know which database a crate
+/// opens. `scripts/dp-clippy-gate.py` does that: it requires a written reason
+/// and refuses a `platform` claim from any crate that consumes per-reality
+/// ROUTING, which is how a game-layer crate finds a `reality_<id>` database in
+/// the first place. Measured: exactly `world-service` consumes it, and
+/// `world-service` is the one crate here whose findings are real debt.
+fn is_exempt() -> bool {
     let Ok(dir) = std::env::var("CARGO_MANIFEST_DIR") else {
         return false;
     };
@@ -165,16 +195,21 @@ fn declares_dp_crate() -> bool {
     let Ok(manifest) = text.parse::<toml::Table>() else {
         return false;
     };
-    manifest
+    let Some(dp) = manifest
         .get("package")
         .and_then(toml::Value::as_table)
         .and_then(|p| p.get("metadata"))
         .and_then(toml::Value::as_table)
         .and_then(|m| m.get("dp"))
         .and_then(toml::Value::as_table)
-        .and_then(|d| d.get("dp-crate"))
-        .and_then(toml::Value::as_bool)
-        .unwrap_or(false)
+    else {
+        return false;
+    };
+
+    if dp.get("dp-crate").and_then(toml::Value::as_bool) == Some(true) {
+        return true;
+    }
+    dp.get("plane").and_then(toml::Value::as_str) == Some(EXEMPT_PLANE)
 }
 
 impl<'tcx> LateLintPass<'tcx> for ForbidRawKernelClient {
@@ -183,7 +218,7 @@ impl<'tcx> LateLintPass<'tcx> for ForbidRawKernelClient {
             return;
         };
 
-        if *self.is_dp_crate.get_or_insert_with(declares_dp_crate) {
+        if *self.is_dp_crate.get_or_insert_with(is_exempt) {
             return;
         }
 

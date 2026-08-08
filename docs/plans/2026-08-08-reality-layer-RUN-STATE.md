@@ -487,9 +487,69 @@ subject, and stands up the toolchain the other three will need.
 | `2B` | **`forbid_raw_kernel_client`** shipped **RED** against the 47 files | ✅ `8c4c13360` — **9 findings / 4 crates**, measured; see the count correction below |
 | `2C` | **the `dp-crate = true` marker**, re-added WITH its reader (`V1-F12`: it was removed because a declared input with no consumer is the orphan shape) | ✅ and the reader is the LINT, not a companion gate — see below |
 | `2D` | **`DP-R3`'s exemption amended** — `2F-2`: it locks *"any crate other than `dp` itself"*, which fires on `crates/dp-kernel`, **where the database code is supposed to live** (`event_store_pg.rs`, `outbox.rs`). The exemption must be the MARKER, not a name | ✅ marker-keyed; and `crates/dp` deliberately does NOT carry it |
-| `2E` | **`roleplay-service`'s status** — `2F-4`: `DPA-SCOPE` named two game-layer services and this is a third, carrying `sqlx::` in 7 files and `reality_id` in two. In scope or not is a decision, not a discovery | ⬜ **PO input** — and now blocked on `service-http` regardless, see `2G` |
+| `2E` | **`roleplay-service`'s status** — `2F-4` | ✅ **ANSWERED BY MEASUREMENT, and it was never a PO call** — see below |
 | `2F` | **the CI leg** — `scripts/dp-clippy-gate.py` + the `dp-clippy` job in `gates.yml` | ✅ ratchet with 5 bites, all fire |
-| `2G` | **`service-http` migrates FIRST** — discovered by `2F`, not designed: a red low-level crate makes its dependents UNLINTABLE, so `roleplay-service` and `commit-service` are invisible until it is fixed | ⬜ next |
+| `2G` | **`service-http` migrates FIRST** — a red low-level crate makes its dependents UNLINTABLE | ✅ **but NOT by migrating it.** Phase 0 found it is out of `DP-R3`'s scope entirely |
+
+#### `2E` and `2G` — Phase 0 dissolved both rows instead of doing them
+
+The plan was *"migrate `service-http` off its 2 raw clients, then ask the PO about
+`roleplay-service`"*. Neither turned out to be the work.
+
+**`01_scope_and_boundary.md` §4 is LOCKED and scopes `DP-R3` by the DATABASE**, not by the
+language or the directory: *"if a service reads or writes any aggregate in a per-reality database
+(`reality_<id>_db`), it is a game-layer service and uses the DP SDK."* Measured against that:
+
+| crate | what its Postgres actually is | verdict |
+|---|---|---|
+| `service-http` | `db::init` — its own module doc says *"the per-service-DB pattern … a normal **platform-plane** DB like `loreweave_chat`, **NOT** the kernel services' per-reality sidecar model"*; plus a `SELECT 1` liveness probe | **out of scope** |
+| `roleplay-service` | `services/roleplay-service/src/main.rs:17` — `service_http::db::init(&config.database_url, sqlx::migrate!("./migrations"))`, its own migrations; `reality_id` is a column in a SELECT list and an `Option<Uuid>` on a model. Its package description already said *"single platform pool"* | **out of scope** |
+| `meta-rs` | the META database — it records *where* realities live and never opens one | **out of scope** |
+| `world-gen` | `shape_dispatch_cache`, a cache of LLM dispatch decisions | **out of scope** |
+| `world-service`, `commit-service` | per-reality `events` / reality DBs | **IN scope — real debt** |
+
+So **`2E` was answerable by looking**, and I had parked it as *"needs a PO decision"*. The row
+itself said *"nobody has looked"*. That is the anti-laziness rule in `CLAUDE.md` — *"saying
+'blocked' when you mean 'I'd have to build it'"* — in its other form: saying *"needs a decision"*
+when you mean *"I'd have to read four files."*
+
+**The exemption needed a second key, not a broader first one.** Marking those four
+`dp-crate = true` would have put a FALSE claim in four manifests — they are not the data plane,
+they are simply not on the game plane. So `[package.metadata.dp] plane = "platform"` exists
+alongside it, and the gate refuses to take either on trust:
+
+- a **written `reason`** ≥40 chars, in the exempted crate's own diff;
+- a `platform` claim is **REFUSED from any crate that addresses a per-reality database**
+  (`db_name`, `reality_db`), with `meta-rs` — which owns the registry column — named as the one
+  exception. Measured non-comment hits: `world-service` 123 · `commit-service` 7 · `meta-rs` 3 ·
+  `service-http`/`world-gen`/`roleplay-service` **0**. **The two crates that most need `DP-R3` are
+  exactly the two the exemption will not let out.**
+
+**Result: `0` unchecked.** `commit-service` became lintable and turned out to carry **3 findings
+nothing had ever seen**. The red set is now `world-service` 5 + `commit-service` 3 — *precisely*
+the two services `DPA-SCOPE` derived from the locked rule. The lint and the LOCKED document agree
+without being made to.
+
+#### The two guards that were dead when written, and what caught them
+
+1. **The false-claim check had no subject.** Its first version matched routing *symbols*
+   (`RealityRouting`, `reality_routing`) on my claim that *"exactly `world-service` consumes
+   routing — that is what gives this check teeth"*. I had read a grep result without opening the
+   file: `world-service`'s only mention is a **module doc comment** at
+   `services/world-service/src/lib.rs:19`, which the
+   check's own comment-stripper correctly removes. `world-service` claiming `plane = "platform"`
+   walked straight past it. The gate still failed — on `BASELINE STALE`, an unrelated rule — which
+   is exactly why the bite mattered: **a guard can be dead while the suite around it stays green.**
+2. **`[package.metadata]` is invisible to cargo's fingerprint.** Cargo carries it for external
+   tools and excludes it from a unit's fingerprint, so adding or removing an exemption marker does
+   **not** dirty the crate: cargo replays the cached success, rustc never runs, the lint never
+   fires, and a stale verdict is reported as a fresh one. Measured: `world-service` reported CLEAN
+   in a workspace pass while a direct run on the same tree produced 5 findings. The same hole
+   swallows the lint itself — rebuilding `dp_clippy` with different rules dirties nothing.
+   **This was about to matter in CI**, where `Swatinem/rust-cache` persists the target directory
+   across runs: a marker deleted in a PR could be judged against a cache built while it was still
+   there. The gate now hashes what cargo ignores — every `[package.metadata.dp]` block plus the
+   lint library's bytes — and wipes the dylint target tree when that digest moves.
 
 #### `2C` — the marker's reader is the LINT, and the companion gate was a phantom
 

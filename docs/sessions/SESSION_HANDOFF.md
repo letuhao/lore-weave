@@ -4,17 +4,34 @@
 
 **HEAD:** `8c4c13360`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
 
-> **▶ DO NEXT — `2G`, and it is not the row anyone planned.** Migrate **`crates/service-http`** off
-> its 2 raw `sqlx::PgPool` imports, *before* `roleplay-service` or `commit-service`. Reason,
-> discovered by building the CI leg rather than by design: **a crate that fails to compile cannot
-> have its dependents linted**, so `service-http` being red makes those two services literally
-> unlintable — they hold raw clients (`roleplay-service/src/state.rs:11`) that no gate can currently
-> see. `contracts/dp/dp-clippy-baseline.json` records them in a `blocked` register naming the
-> blocker, and `scripts/dp-clippy-gate.py` **fails when that blocker goes clean**, so the excuse
-> expires by itself.
+> **▶ DO NEXT — the three PRE-EXISTING red gates, then slices 3/4.** Red on a clean tree at HEAD,
+> verified by stashing, and none of them from the dp-clippy work:
+> `observability-inventory` (6 metrics emitted but undeclared, incl. `lw_reality_expired`),
+> `projection-coverage` (1 uncovered event), `test-dsn-coverage`. They are debt from the
+> reality-layer commits earlier in this run and are currently untracked.
 >
-> **`2E` still needs the PO** (`roleplay-service` in or out of DP scope) — but it is moot until `2G`
-> lands, since the crate cannot be measured either way today.
+> **`2E` and `2G` are CLOSED — and Phase 0 dissolved both rather than doing them.** The plan was
+> "migrate `service-http`, then ask the PO about `roleplay-service`". Neither was the work.
+> `01_scope_and_boundary.md` §4 is LOCKED and scopes `DP-R3` **by the database**: only a crate that
+> reads or writes an aggregate in a *per-reality* DB is game-layer. Measured, `service-http`
+> (platform-plane per-service bootstrap — its own module doc says so), `roleplay-service` (single
+> platform pool, `reality_id` is a foreign key), `meta-rs` (the meta DB) and `world-gen` (an LLM
+> dispatch cache) are all **out of scope**. They carry `plane = "platform"` with a written reason.
+> **`2E` was never a PO call** — the row said "nobody has looked", and I had filed it as needing a
+> decision instead of four file reads.
+>
+> **`commit-service` was invisible and carries 3 findings.** With `service-http` no longer red,
+> nothing is `UNCHECKED`. The red set is now `world-service` 5 + `commit-service` 3 — *exactly* the
+> two services `DPA-SCOPE` derived from the locked rule. That agreement was not arranged.
+>
+> **Two guards were dead when written; both bites caught them.** (1) The false-platform-claim check
+> keyed on routing symbols that appear in `world-service` **only inside a doc comment**, so it had no
+> subject in the one crate it existed to catch — the gate still failed, via an unrelated rule, which
+> is the point. (2) **`[package.metadata]` is excluded from cargo's fingerprint**, so changing an
+> exemption marker does not recompile the crate: the lint never re-runs and a stale verdict reads as
+> a fresh one. Measured — a workspace pass called `world-service` clean while a direct run found 5.
+> This was about to matter in CI, where `Swatinem/rust-cache` persists target dirs across runs. The
+> gate now hashes what cargo ignores and wipes the dylint cache when it moves.
 >
 > **SLICE 2 IS CLOSED** (`2A`–`2D`, `2F`): `dp-clippy` exists, `DP-R3` fires on real code — **9
 > findings across 4 crates**, ratcheted in CI — and the exemption is the
