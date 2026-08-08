@@ -307,11 +307,17 @@ def build_scene_decompose_messages(
 
 def _resolve_cast(
     names: list[Any], cast_index: dict[str, str],
-) -> tuple[list[str], list[str]]:
-    """(resolved glossary ids, unresolved names). Match by folded name; dedupe ids
-    preserving order; unmatched names surfaced, never invented."""
+) -> tuple[list[str], list[str], dict[str, str]]:
+    """(resolved glossary ids, unresolved names, id -> the name that matched).
+
+    Match by folded name; dedupe ids preserving order; unmatched names surfaced,
+    never invented. The caller used to rebuild the id->name map with a second
+    `.casefold()` pass of its own; the lookup key is derived HERE and only here,
+    so the two cannot drift apart when this normalisation is upgraded to the
+    NFKC+CJK spine (ML-2)."""
     ids: list[str] = []
     unresolved: list[str] = []
+    names_by_id: dict[str, str] = {}
     seen: set[str] = set()
     for n in names:
         if not isinstance(n, str) or not n.strip():
@@ -319,10 +325,14 @@ def _resolve_cast(
         eid = cast_index.get(n.strip().casefold())
         if eid is None:
             unresolved.append(n.strip())
-        elif eid not in seen:
+            continue
+        # Last spelling wins, matching the dict comprehension this replaced. Only
+        # reachable when one scene lists the same entity twice under two spellings.
+        names_by_id[eid] = n
+        if eid not in seen:
             seen.add(eid)
             ids.append(eid)
-    return ids, unresolved
+    return ids, unresolved, names_by_id
 
 
 def parse_scenes(
@@ -348,11 +358,8 @@ def parse_scenes(
         else:
             tension = max(0, min(100, t))  # 0..100 scale (outline_node.tension)
         present = row.get("present")
-        ids, unresolved = _resolve_cast(present if isinstance(present, list) else [], cast_index)
-        names_by_id = {eid: name for name in (present if isinstance(present, list) else [])
-                       if isinstance(name, str)
-                       for eid in [cast_index.get(name.strip().casefold())]
-                       if eid is not None}
+        ids, unresolved, names_by_id = _resolve_cast(
+            present if isinstance(present, list) else [], cast_index)
         out.append(ScenePlan(
             title=title.strip() if isinstance(title, str) and title.strip() else intent.strip()[:60],
             synopsis=intent.strip(),

@@ -76,6 +76,7 @@
       "nested_list_field": "scenes",
       "nested_row_fields": [
         "present_entity_ids",
+        "present_entity_names",
         "present_entity_names_unresolved",
         "suggested_k",
         "synopsis",
