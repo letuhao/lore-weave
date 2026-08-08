@@ -124,3 +124,30 @@ jobs:
           python-version: "3.12"
       - name: crates/actor-hub, mutated
         run: python scripts/gate-bite-harness.py --rust
+
+  # The reality layer's own guards, mutated (W3 + W5).
+  #
+  # SEPARATE from `rust-mutations` because it needs BOTH toolchains: the Go half
+  # mutates `admin reality provision` and the Rust half mutates
+  # `orphan_scan::classify`.
+  #
+  # Wired because it was not. A cold-start review of the W3 commit pointed out
+  # that `scripts/reality-layer-bite-harness.py` appeared in no workflow, hook or
+  # Makefile target — so it proved its ten guards load-bearing exactly once, on
+  # the author's machine, and constrained nothing afterwards. That is the same
+  # defect `gate-bite-harness.py`'s own header records ("the script existed only
+  # in a session scratchpad"), repeated by someone who had just read it.
+  reality-layer-mutations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: reality-layer guards, mutated
+        run: python scripts/reality-layer-bite-harness.py

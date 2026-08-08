@@ -66,12 +66,55 @@ func (r ProvisionRealityRequest) Validate() error {
 	if r.DeployCohort < 0 || r.DeployCohort > 99 {
 		return fmt.Errorf("%w: deploy_cohort=%d out of range 0..99", ErrInvalidProvision, r.DeployCohort)
 	}
-	if l := strings.TrimSpace(r.Locale); l != "" && len(l) > 35 {
-		// RFC 5646 caps a well-formed tag well below this; the check exists so a
-		// pasted paragraph cannot reach the worker's command line.
-		return fmt.Errorf("%w: locale %q is not a BCP-47 tag", ErrInvalidProvision, r.Locale)
+	if l := strings.TrimSpace(r.Locale); l != "" && !looksLikeBCP47(l) {
+		return fmt.Errorf(
+			"%w: locale %q is not a well-formed language tag (expected e.g. en, en-US, zh-Hant-TW)",
+			ErrInvalidProvision, r.Locale)
 	}
 	return nil
+}
+
+// looksLikeBCP47 accepts the subset of RFC 5646 this platform uses: 2–3 alpha
+// primary subtag, then up to three subtags of 2–8 alphanumerics.
+//
+// The first version of this check tested `len(l) > 35` while REPORTING "is not
+// a BCP-47 tag" — so any 35-character string passed validation and reached both
+// `reality_registry.locale` and the worker's argv, under a message claiming it
+// had been checked. A message that describes a check the code does not perform
+// is worse than no check: it tells the next reader the ground is covered.
+func looksLikeBCP47(s string) bool {
+	parts := strings.Split(s, "-")
+	if len(parts) == 0 || len(parts) > 4 {
+		return false
+	}
+	if n := len(parts[0]); n < 2 || n > 3 || !isAlpha(parts[0]) {
+		return false
+	}
+	for _, p := range parts[1:] {
+		if n := len(p); n < 2 || n > 8 || !isAlnum(p) {
+			return false
+		}
+	}
+	return true
+}
+
+func isAlpha(s string) bool {
+	for _, r := range s {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return false
+		}
+	}
+	return true
+}
+
+func isAlnum(s string) bool {
+	for _, r := range s {
+		alpha := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+		if !alpha && (r < '0' || r > '9') {
+			return false
+		}
+	}
+	return true
 }
 
 // EffectiveLocale resolves the locale actually sent to the worker.
@@ -139,11 +182,26 @@ func RunProvisionReality(ctx context.Context, req ProvisionRealityRequest, deps 
 		return "", err
 	}
 
+	// "No capacity" is diagnosed FIRST: that outcome legitimately names no shard,
+	// so the shard guard below would otherwise report it as a contract failure.
+	if req.DryRun && !out.WouldProvision {
+		return "", fmt.Errorf("%w: no shard has capacity for %s: %s",
+			ErrInvalidProvision, req.RealityID, out.Error)
+	}
+
+	// A report naming no shard is not a report. This is the defect the live run
+	// caught and the code did not: a renamed JSON key left `shard` empty and the
+	// command printed "provisioned on shard " with exit 0. The key was fixed;
+	// the GUARD was missing, so a stale binary or a changed output contract would
+	// print it again. Checked in BOTH modes, before either summary is built.
+	if strings.TrimSpace(out.Shard) == "" {
+		return "", fmt.Errorf(
+			"%w: worker reported no shard for %s — refusing to report a placement it did not name "+
+				"(stale worker binary, or a changed output contract?)",
+			ErrInvalidProvision, req.RealityID)
+	}
+
 	if req.DryRun {
-		if !out.WouldProvision {
-			return "", fmt.Errorf("%w: no shard has capacity for %s: %s",
-				ErrInvalidProvision, req.RealityID, out.Error)
-		}
 		return fmt.Sprintf(
 			"reality provision DRY-RUN — would create reality %s on shard %s as database %s (locale=%s, cohort=%d).\nLive capacity: %s\nNothing was written.",
 			req.RealityID, out.Shard, out.DBName, req.EffectiveLocale(), req.DeployCohort,

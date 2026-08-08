@@ -11,7 +11,17 @@
 #                           dispatches by `name`)
 #   params:                 list of {name, type, required, description}
 #   impact_class:           tier-1-destructive | tier-2-griefing | tier-3-informational
-#   dry_run_required:       bool — true forces --dry-run before --confirm allowed
+#   dry_run_required:       bool — requires the operator to pass EITHER --dry-run
+#                           OR --confirm (i.e. no flagless invocation).
+#                           ⚠ It does NOT force a dry run to happen BEFORE a
+#                           --confirm, which is what this line claimed until
+#                           2026-08-08. `dry_run.EnforceGate` is an OR
+#                           (`if !dryRun && !confirm { refuse }`) and nothing
+#                           anywhere records that a dry run occurred, so the
+#                           ordering it described is unenforceable as written.
+#                           Verified live: `--confirm` alone on a command with
+#                           dry_run_required:true proceeds straight to execution.
+#                           Tracked as W3-DRYRUN-MISNOMER.
 #   double_approval_required: bool — Tier-1 destructive must be true
 #   audit:                  always true; admin_action_audit row written by framework
 #   carry_forward_cycle:    cycle number where the underlying implementation shipped
@@ -33,10 +43,12 @@ commands:
   # already carries for acting on the same resource.
   #
   # dry_run_required is a per-COMMAND field (dispatcher reads c.DryRunRequired,
-  # not the tier policy), so a tier-2 command may require it. Provisioning is
-  # exactly where "which shard, how full, then commit" earns its keep — R13
-  # §12L.5 requires the operator see predicted side effects first. The dry run
-  # reads LIVE capacity and writes nothing.
+  # not the tier policy), so a tier-2 command may set it. It makes a FLAGLESS
+  # invocation refuse — the operator must choose --dry-run or --confirm — but it
+  # does NOT force a preview before the real run (see the schema note above; the
+  # first version of this comment claimed it did). The dry run is genuinely
+  # worth having, reads LIVE capacity and writes nothing, per R13 §12L.5 — but
+  # nothing compels an operator to look at it first.
   #
   # reality_id is caller-supplied, matching provisioner.rs:54 ("caller-generated
   # to keep the audit chain coherent"): the uuid lands in the admin_action_audit

@@ -187,7 +187,7 @@ impl Config {
 // ─── run ─────────────────────────────────────────────────────────────────────
 
 async fn run(args: &Args, cfg: &Config) -> Result<ExitCode, String> {
-    let meta = connect(&cfg.meta_dsn).await?;
+    let meta = connect_meta(&cfg.meta_dsn).await?;
     let planner = CapacityPlanner::new(CapacityThresholds::default());
 
     if args.dry_run {
@@ -245,6 +245,52 @@ async fn dry_run(
     Ok(ExitCode::SUCCESS)
 }
 
+/// An existing `reality_registry` row for this reality, if any.
+///
+/// This read is what makes a RETRY safe, and it closes a split-brain that the
+/// first version of this worker created.
+///
+/// The bridge's register endpoint is idempotent by `reality_id` and
+/// **deliberately does not diff the payload** — its own doc says so, and
+/// justifies it with *"the single V1 caller (the provisioner) always retries
+/// the same intent, so this is safe"* (`bridge.go:47`). That was true of
+/// `provision-drill`, which hardcoded its shard. It stopped being true the
+/// moment this worker started choosing a shard from LIVE capacity, because a
+/// second run sees different counts and can pick a different shard:
+///
+///   run 1 dies after step 3 → registry says shard A, `status=provisioning`
+///   run 2 re-picks → B → register returns 200 `already_registered` (ignored)
+///                      → CREATE DATABASE + 15 migrations land on **B**
+///                      → transitions succeed (the row IS in `provisioning`)
+///
+/// leaving the registry naming A, the database living on B, and the command
+/// printing a confident success. Every consumer resolves its DSN from
+/// `db_host`, so the reality is unreachable.
+///
+/// So: if a row exists, its shard is authoritative and placement is skipped
+/// entirely — the slot was claimed by the first run and re-claiming it would
+/// double-count capacity.
+async fn existing_registration(
+    meta: &PgPool,
+    reality_id: Uuid,
+) -> Result<Option<(String, String, String)>, String> {
+    sqlx::query_as("SELECT db_host, db_name, status FROM reality_registry WHERE reality_id = $1")
+        .bind(reality_id)
+        .fetch_optional(meta)
+        .await
+        .map_err(|e| format!("read reality_registry: {e}"))
+}
+
+/// Statuses past the point where re-running provisioning is meaningful.
+const SETTLED_STATUSES: [&str; 6] = [
+    "active",
+    "migrating",
+    "pending_close",
+    "frozen",
+    "archived",
+    "soft_deleted",
+];
+
 /// The real path: capacity-locked placement wrapping the 11-step provision.
 async fn provision(
     args: &Args,
@@ -252,6 +298,34 @@ async fn provision(
     meta: &PgPool,
     planner: CapacityPlanner,
 ) -> Result<ExitCode, String> {
+    // RESUME BEFORE PLACE. See existing_registration.
+    if let Some((host, name, status)) = existing_registration(meta, args.reality_id).await? {
+        if SETTLED_STATUSES.contains(&status.as_str()) {
+            println!(
+                "{}",
+                json_obj(&[
+                    ("mode", jstr("provision")),
+                    ("reality_id", jstr(&args.reality_id.to_string())),
+                    ("shard", jstr(&host)),
+                    ("db_name", jstr(&name)),
+                    ("already_provisioned", "true".into()),
+                    ("status", jstr(&status)),
+                ])
+            );
+            eprintln!(
+                "NOOP: reality {} is already {status} on {host} as {name}; nothing to do",
+                args.reality_id
+            );
+            return Ok(ExitCode::SUCCESS);
+        }
+        eprintln!(
+            "[provision] resuming reality {} on its REGISTERED shard {host} (status={status}); \
+             capacity placement skipped — the slot was claimed by the first attempt",
+            args.reality_id
+        );
+        return resume_on_shard(args, cfg, meta, &host, &name).await;
+    }
+
     let shard_admin = connect(&cfg.shard_admin_dsn).await?;
     let report_slot: Arc<Mutex<Option<world_service::ProvisionReport>>> =
         Arc::new(Mutex::new(None));
@@ -351,13 +425,113 @@ async fn provision(
     }
 }
 
+/// Re-run the provision pinned to the shard the registry ALREADY names.
+///
+/// No advisory lock and no placement: the slot is already claimed by the
+/// existing row (`capacity_glue::LIVE_STATES` counts `provisioning` and
+/// `seeding`), so taking it again would double-count the shard.
+async fn resume_on_shard(
+    args: &Args,
+    cfg: &Config,
+    meta: &PgPool,
+    host: &str,
+    registered_db_name: &str,
+) -> Result<ExitCode, String> {
+    // `db_name` is derived deterministically from `reality_id`, so a mismatch
+    // means the row was written by something using a different naming rule.
+    // Refuse rather than create a second database for one reality.
+    let expected = db_name_preview(args.reality_id);
+    if registered_db_name != expected {
+        return Err(format!(
+            "registry names database {registered_db_name} for reality {} but this build derives \
+             {expected}; refusing to act on a row written under a different naming rule",
+            args.reality_id
+        ));
+    }
+
+    let snap = live_snapshot(meta).await.map_err(|e| format!("capacity snapshot: {e}"))?;
+    let pinned: Vec<ShardCapacity> =
+        snap.into_iter().filter(|s| s.shard_id.as_str() == host).collect();
+    if pinned.is_empty() {
+        return Err(format!(
+            "reality {} is registered on shard {host}, which is not in shard_utilization; \
+             the shard must be re-registered before the provision can be resumed",
+            args.reality_id
+        ));
+    }
+
+    let shard_admin = connect(&cfg.shard_admin_dsn).await?;
+    let bridge = BridgeClient::new(cfg.bridge_url.clone(), cfg.bridge_token.clone());
+    let (hostport, user, pass, sql_dir) = (
+        cfg.shard_hostport.clone(),
+        cfg.pg_user.clone(),
+        cfg.pg_pass.clone(),
+        cfg.sql_dir.clone(),
+    );
+    let req = ProvisionRequest {
+        reality_id: args.reality_id,
+        locale: args.locale.clone(),
+        deploy_cohort: args.deploy_cohort,
+        reason: args.reason.clone(),
+    };
+    let handle = tokio::runtime::Handle::current();
+    let report = tokio::task::spawn_blocking(move || {
+        let mut effects =
+            LiveEffects::new(handle, bridge, shard_admin, hostport, &user, &pass, &sql_dir);
+        Provisioner::new(CapacityThresholds::default()).provision_reality(req, &pinned, &mut effects)
+    })
+    .await
+    .map_err(|e| format!("join: {e}"))?;
+
+    match report {
+        Ok(r) => {
+            println!(
+                "{}",
+                json_obj(&[
+                    ("mode", jstr("provision")),
+                    ("reality_id", jstr(&r.reality_id.to_string())),
+                    ("shard", jstr(host)),
+                    ("db_name", jstr(&r.db_name)),
+                    ("steps", r.steps.len().to_string()),
+                    ("resumed", "true".into()),
+                ])
+            );
+            eprintln!(
+                "PASS: reality {} resumed on {host} as {} ({} steps)",
+                r.reality_id,
+                r.db_name,
+                r.steps.len()
+            );
+            Ok(ExitCode::SUCCESS)
+        }
+        Err(e) => {
+            println!(
+                "{}",
+                json_obj(&[
+                    ("mode", jstr("provision")),
+                    ("reality_id", jstr(&args.reality_id.to_string())),
+                    ("shard", jstr(host)),
+                    ("resumed", "true".into()),
+                    ("error", jstr(&e.to_string())),
+                ])
+            );
+            eprintln!("FAIL: {e}");
+            Ok(ExitCode::from(1))
+        }
+    }
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-/// Mirrors `provisioner::db_name_for` for the dry-run preview. That fn is
-/// private to the provisioner; the shape is asserted against the real one by
-/// `tests/provision_worker.rs::dry_run_db_name_matches_provisioner`.
+/// The database name the real run will create.
+///
+/// This CALLS the provisioner's own function rather than reimplementing it. The
+/// first version hand-copied the formatting and cited
+/// `tests/provision_worker.rs::dry_run_db_name_matches_provisioner` as proof the
+/// two agreed — **a test that was never written**, in a file that does not
+/// exist. A citation is not a mechanism; deleting the second implementation is.
 fn db_name_preview(reality_id: Uuid) -> String {
-    format!("lw_reality_{}", &reality_id.simple().to_string()[..12])
+    world_service::provisioner::db_name_for(reality_id)
 }
 
 fn shard_json(s: &ShardCapacity) -> String {
@@ -402,6 +576,42 @@ fn jstr(s: &str) -> String {
     out
 }
 
+/// Bound on any single statement issued on the META pool.
+///
+/// `place_reality` takes a per-shard `pg_advisory_lock`, which **waits
+/// indefinitely** by default: a second provision targeting the same shard would
+/// block for the full duration of the first (CREATE DATABASE + 15 migrations)
+/// with no bound and no output. `statement_timeout` applies to the
+/// `SELECT pg_advisory_lock(...)` statement itself, so it converts an unbounded
+/// wait into a legible error.
+///
+/// Set on the meta pool ONLY. The shard-admin pool and the migration pool must
+/// NOT carry it — a migration is legitimately long, and killing one midway is
+/// the failure this is trying to prevent.
+const META_STATEMENT_TIMEOUT_MS: i32 = 120_000;
+
+/// The meta pool: capacity reads + the placement advisory lock.
+///
+/// `max_connections(4)` is not arbitrary. `place_reality` holds one connection
+/// for the whole critical section while the callback's `live_snapshot` acquires
+/// a second, so the real path needs **at least 2** concurrently; lowering this
+/// to 1 would deadlock silently rather than fail.
+async fn connect_meta(dsn: &str) -> Result<PgPool, String> {
+    PgPoolOptions::new()
+        .max_connections(4)
+        .after_connect(|conn, _meta| {
+            Box::pin(async move {
+                sqlx::query(&format!("SET statement_timeout = {META_STATEMENT_TIMEOUT_MS}"))
+                    .execute(conn)
+                    .await
+                    .map(|_| ())
+            })
+        })
+        .connect(dsn)
+        .await
+        .map_err(|e| format!("connect failed: {e}"))
+}
+
 async fn connect(dsn: &str) -> Result<PgPool, String> {
     PgPoolOptions::new()
         .max_connections(4)
@@ -415,4 +625,119 @@ async fn connect(dsn: &str) -> Result<PgPool, String> {
 fn setup_err(msg: &str) -> ExitCode {
     eprintln!("provision: NOTRUN(setup): {msg}");
     ExitCode::from(2)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A cold-start review found this binary had NO tests at all: every one of
+    // the 20 tests and 10 bites covering `reality provision` was on the Go side,
+    // so the argument parser, the fail-closed config, the JSON the Go side
+    // parses, and the name the dry run previews were all unexercised.
+
+    fn args(v: &[&str]) -> Result<Args, String> {
+        Args::parse(v.iter().map(|s| s.to_string()))
+    }
+
+    const RID: &str = "11111111-1111-4111-8111-111111111111";
+
+    #[test]
+    fn parses_a_minimal_invocation() {
+        let a = args(&["--reality-id", RID, "--reason", "because"]).expect("should parse");
+        assert_eq!(a.reality_id.to_string(), RID);
+        assert_eq!(a.reason, "because");
+        assert_eq!(a.locale, "en", "locale should default");
+        assert_eq!(a.deploy_cohort, 0);
+        assert!(!a.dry_run);
+    }
+
+    #[test]
+    fn requires_reality_id_and_reason() {
+        assert!(args(&["--reason", "r"]).is_err(), "missing --reality-id must fail");
+        assert!(args(&["--reality-id", RID]).is_err(), "missing --reason must fail");
+    }
+
+    #[test]
+    fn rejects_a_malformed_uuid_and_an_unknown_flag() {
+        assert!(args(&["--reality-id", "nope", "--reason", "r"]).is_err());
+        assert!(args(&["--reality-id", RID, "--reason", "r", "--wat", "1"]).is_err());
+    }
+
+    #[test]
+    fn dry_run_is_valueless_and_does_not_eat_the_next_flag() {
+        // The hazard: if `--dry-run` were parsed as a valued flag it would
+        // consume `--reason`, and the run would fail for the wrong reason.
+        let a = args(&["--dry-run", "--reality-id", RID, "--reason", "r"]).expect("parses");
+        assert!(a.dry_run);
+        assert_eq!(a.reason, "r");
+    }
+
+    #[test]
+    fn a_value_beginning_with_dashes_is_still_a_value() {
+        // Operator-supplied text reaches argv; a reason that looks like a flag
+        // must not be re-parsed as one.
+        let a = args(&["--reality-id", RID, "--reason", "--not-a-flag"]).expect("parses");
+        assert_eq!(a.reason, "--not-a-flag");
+    }
+
+    #[test]
+    fn a_trailing_flag_without_a_value_is_an_error_not_a_panic() {
+        assert!(args(&["--reality-id", RID, "--reason"]).is_err());
+    }
+
+    #[test]
+    fn cohort_must_fit_a_u8() {
+        assert!(args(&["--reality-id", RID, "--reason", "r", "--deploy-cohort", "300"]).is_err());
+        let a = args(&["--reality-id", RID, "--reason", "r", "--deploy-cohort", "7"]).unwrap();
+        assert_eq!(a.deploy_cohort, 7);
+    }
+
+    // The dry-run preview must name the database the real run creates. Not a
+    // reimplementation compared against the original — the SAME function.
+    #[test]
+    fn preview_names_what_the_provisioner_will_create() {
+        let id = Uuid::parse_str(RID).unwrap();
+        assert_eq!(db_name_preview(id), world_service::provisioner::db_name_for(id));
+        assert!(db_name_preview(id).starts_with("lw_reality_"));
+    }
+
+    #[test]
+    fn json_strings_escape_what_json_requires() {
+        assert_eq!(jstr(r#"a"b"#), r#""a\"b""#);
+        assert_eq!(jstr(r"a\b"), r#""a\\b""#);
+        assert_eq!(jstr("a\nb"), r#""a\nb""#);
+        assert_eq!(jstr("a\tb"), r#""a\tb""#);
+        // A control character must be ESCAPED, not dropped and not passed raw:
+        // raw, it makes the object the Go side parses invalid.
+        assert_eq!(jstr("a\u{1}b"), r#""a\u0001b""#);
+    }
+
+    // The Go side parses this with encoding/json; a malformed object there is a
+    // "worker produced unparseable output" error with no diagnosis.
+    #[test]
+    fn report_json_is_well_formed_even_with_hostile_text() {
+        let out = json_obj(&[
+            ("mode", jstr("provision")),
+            ("error", jstr("boom \"quoted\" and \\slashed\\ and\nnewlined")),
+            ("steps", 11.to_string()),
+        ]);
+        let parsed: serde_json::Value =
+            serde_json::from_str(&out).expect("emitted JSON must parse");
+        assert_eq!(parsed["mode"], "provision");
+        assert_eq!(parsed["steps"], 11);
+        assert!(parsed["error"].as_str().unwrap().contains("quoted"));
+    }
+
+    #[test]
+    fn settled_statuses_cover_every_state_past_provisioning() {
+        // If a status is live but absent here, a re-run would try to provision
+        // over a working reality.
+        for s in ["active", "frozen", "migrating", "pending_close"] {
+            assert!(SETTLED_STATUSES.contains(&s), "{s} must be treated as settled");
+        }
+        for s in ["provisioning", "seeding"] {
+            assert!(!SETTLED_STATUSES.contains(&s), "{s} must remain resumable");
+        }
+    }
 }

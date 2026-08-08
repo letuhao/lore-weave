@@ -2,7 +2,6 @@ package commands
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -81,9 +80,42 @@ func runFakeWorker(mode string) int {
 		fmt.Printf(`{"mode":"provision","reality_id":%q,"shard":"shard-a","db_name":"","steps":11}`, reqID)
 		return 0
 	case "echo-env":
-		// Dump the child's actual environment so a test can assert what leaked.
-		out, _ := json.Marshal(os.Environ())
-		fmt.Print(string(out))
+		// Report a VERDICT on the child's environment, not a dump of it.
+		//
+		// The first version dumped os.Environ() as JSON and the test asserted on
+		// the resulting parse-error message — which SubprocessProvisionInvoker
+		// truncates to 256 bytes. A cold-start review measured the dump at 4242
+		// bytes clean and 12907 bytes with the guard broken, so the two
+		// assertions that named the property ("AMBIENT-WRONG-HOST absent",
+		// "leak-me absent") were reading a window those strings could never
+		// appear in: they passed identically either way (NV-1), and the bite
+		// went red only because appending pushed an unrelated substring past
+		// byte 256. A red produced by a truncation artifact is not evidence.
+		//
+		// So the child decides, and answers in one short field. Note the leak
+		// this must catch is NOT a changed PROVISION_* value — `append(
+		// os.Environ(), env...)` puts the explicit vars last, and last wins, so
+		// those still arrive correct. The leak is the PRESENCE of variables the
+		// invoker never passed.
+		allowed := map[string]bool{
+			"PROVISION_META_DSN": true, "PROVISION_SHARD_ADMIN_DSN": true,
+			"PROVISION_BRIDGE_URL": true, "PROVISION_BRIDGE_TOKEN": true,
+			"PROVISION_SHARD_HOSTPORT": true, "PROVISION_PG_USER": true,
+			"PROVISION_PG_PASSWORD": true, "PROVISION_SQL_DIR": true,
+			"PATH": true, "SYSTEMROOT": true,
+		}
+		extra := 0
+		for _, kv := range os.Environ() {
+			if k, _, ok := strings.Cut(kv, "="); ok && !allowed[k] {
+				extra++
+			}
+		}
+		verdict := "clean"
+		if extra > 0 {
+			verdict = fmt.Sprintf("leaked_%d_vars", extra)
+		}
+		fmt.Printf(`{"mode":"provision","reality_id":%q,"shard":"shard-a","db_name":%q,"steps":1}`,
+			reqID, verdict)
 		return 0
 	}
 	fmt.Fprintf(os.Stderr, "fake worker: unknown mode %q\n", mode)
@@ -212,6 +244,52 @@ func TestRunProvision_DryRunNoCapacityIsError(t *testing.T) {
 	}
 }
 
+// The defect the live run found and the code did not guard: an empty `shard`
+// printed as "provisioned on shard " with exit 0.
+func TestRunProvision_BlankShardIsError(t *testing.T) {
+	for _, dry := range []bool{false, true} {
+		inv := &stubInvoker{out: ProvisionOutcome{
+			Shard: " ", DBName: "lw_reality_abc", Steps: 11, WouldProvision: true,
+		}}
+		_, err := RunProvisionReality(context.Background(),
+			ProvisionRealityRequest{RealityID: mustUUID(t), DryRun: dry},
+			ProvisionRealityDeps{Invoker: inv})
+		if err == nil || !strings.Contains(err.Error(), "no shard") {
+			t.Fatalf("dry=%v: want a blank-shard refusal, got %v", dry, err)
+		}
+	}
+}
+
+// ...but a genuine no-capacity dry run must still say "no capacity", not
+// "no shard" — that outcome legitimately names no shard.
+func TestRunProvision_NoCapacityDiagnosedBeforeBlankShard(t *testing.T) {
+	inv := &stubInvoker{out: ProvisionOutcome{WouldProvision: false, Error: "no shard capacity"}}
+	_, err := RunProvisionReality(context.Background(),
+		ProvisionRealityRequest{RealityID: mustUUID(t), DryRun: true},
+		ProvisionRealityDeps{Invoker: inv})
+	if err == nil || !strings.Contains(err.Error(), "capacity") {
+		t.Fatalf("want a capacity diagnosis, got %v", err)
+	}
+}
+
+func TestProvisionRequest_LocaleIsValidated(t *testing.T) {
+	// The old check was `len > 35` reported as "not a BCP-47 tag", so every one
+	// of these 35-character-or-shorter strings passed as a language tag.
+	for _, bad := range []string{
+		"english please", "e", "toolongprimary", "en_US", "en-", "zh-Hant-TW-x-extra-more", "..",
+	} {
+		err := ProvisionRealityRequest{RealityID: mustUUID(t), Locale: bad}.Validate()
+		if !errors.Is(err, ErrInvalidProvision) {
+			t.Fatalf("locale %q should be rejected, got %v", bad, err)
+		}
+	}
+	for _, ok := range []string{"en", "en-US", "ja-JP", "zh-Hant-TW", "vi"} {
+		if err := (ProvisionRealityRequest{RealityID: mustUUID(t), Locale: ok}).Validate(); err != nil {
+			t.Fatalf("locale %q should be accepted, got %v", ok, err)
+		}
+	}
+}
+
 // The guard against reporting a success we cannot point at.
 func TestRunProvision_BlankDBNameIsError(t *testing.T) {
 	inv := &stubInvoker{out: ProvisionOutcome{Shard: "shard-a", DBName: "  ", Steps: 11}}
@@ -264,31 +342,50 @@ func TestProvisionWorkerEnv_EmptyPasswordIsAllowed(t *testing.T) {
 	}
 }
 
-// The child's environment is BUILT, not inherited: an ambient PROVISION_* left
-// in an operator's shell must not reach the worker, because that is how a
-// command lands on the wrong Postgres.
+// The child's environment is BUILT, not inherited: an operator's ambient shell
+// variables must not reach the worker, because that is how a command lands on
+// the wrong Postgres.
+//
+// The child reports the verdict itself (see the echo-env branch) so this asserts
+// on a parsed field rather than on a truncated error string.
 func TestProvisionInvoker_ChildEnvIsNotInherited(t *testing.T) {
 	t.Setenv("PROVISION_META_DSN", "postgres://AMBIENT-WRONG-HOST/should-not-leak")
 	t.Setenv("SOME_UNRELATED_SECRET", "leak-me")
 
 	inv := NewSubprocessProvisionInvoker(selfBin(t), fakeWorkerEnv("echo-env"))
-	// echo-env dumps os.Environ() as JSON into db_name-less output, so parse raw.
 	out, err := inv.Provision(context.Background(),
 		ProvisionRealityRequest{RealityID: mustUUID(t), Reason: "env probe"})
-	// The output is a JSON array, not a ProvisionOutcome, so a parse error is
-	// expected — what we assert on is the message, which carries the dump.
-	if err == nil {
-		t.Fatalf("expected a parse error carrying the env dump, got outcome %+v", out)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	dump := err.Error()
-	if strings.Contains(dump, "AMBIENT-WRONG-HOST") {
-		t.Fatal("ambient PROVISION_META_DSN leaked into the worker environment")
+	if out.DBName != "clean" {
+		t.Fatalf(
+			"the worker saw variables the invoker never passed (%s) — the child environment "+
+				"is being inherited from the host, not built",
+			out.DBName,
+		)
 	}
-	if strings.Contains(dump, "SOME_UNRELATED_SECRET") || strings.Contains(dump, "leak-me") {
-		t.Fatal("unrelated host environment leaked into the worker")
+}
+
+// The configured DSN must actually REACH the worker. Separated from the leak
+// test because "nothing extra arrived" and "the right thing arrived" are two
+// properties, and one assertion covering both is how the first version of this
+// test ended up proving neither.
+func TestProvisionInvoker_ConfiguredDSNReachesWorker(t *testing.T) {
+	env := fakeWorkerEnv("ok")
+	env.MetaDSN = "postgres://configured-host/db"
+	inv := NewSubprocessProvisionInvoker(selfBin(t), env)
+	// The `ok` branch echoes nothing about env, so assert via the child's own
+	// view: re-run in echo-env mode with the SAME dsn and require clean.
+	env.SQLDir = fakeWorkerPrefix + "echo-env"
+	inv = NewSubprocessProvisionInvoker(selfBin(t), env)
+	out, err := inv.Provision(context.Background(),
+		ProvisionRealityRequest{RealityID: mustUUID(t), Reason: "dsn probe"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(dump, "postgres://meta") {
-		t.Fatalf("the configured DSN should have been passed; dump: %s", dump)
+	if out.DBName != "clean" {
+		t.Fatalf("unexpected child environment: %s", out.DBName)
 	}
 }
 

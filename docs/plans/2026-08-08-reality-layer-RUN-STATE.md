@@ -168,9 +168,14 @@ framework, whose handler execs a **real** `provision` worker binary in `world-se
 **Impact class — `tier-2-griefing` (`admin:write`), `dry_run_required: true`.** It destroys nothing
 (so not tier-1), but it consumes a finite shard slot every other reality shares — which is what
 tier-2 names, and it is the class `reality capacity-override` already carries for the same reason.
-Dry-run is a per-COMMAND field in the dispatcher (`c.DryRunRequired`), not a per-tier one, so a
-tier-2 command can require it; provisioning is exactly where a "which shard, how full, then commit"
-preview earns its keep (R13 §12L.5).
+
+**Correction (2026-08-08, `V.1` finding H2): `dry_run_required` does not require a dry run.**
+`dry_run.EnforceGate` is `if !dryRun && !confirm { refuse }` — an OR — and nothing records that a
+dry run ever happened, so the ordering the registry schema described is unenforceable. `--confirm`
+alone proceeds straight to execution; **verified live**, not just read. The field means "no flagless
+invocation", nothing more. I took the field name at face value and repeated its own documentation's
+claim; the schema comment is now corrected at source. Tracked as `W3-DRYRUN-MISNOMER` — it affects
+all twelve commands carrying the flag, not just this one.
 
 **`W8` is subsumed.** The drill hardcodes `used_realities: 0, total_realities: 100`. A real worker
 has no business faking a capacity snapshot when `capacity_glue::live_snapshot` + `place_reality`
@@ -178,6 +183,14 @@ has no business faking a capacity snapshot when `capacity_glue::live_snapshot` +
 `W3` correctly closes `W8` by construction rather than leaving a second row to fake it later.
 
 ### `W3` — evidence (three axes, 2026-08-08)
+
+> ### ⚠ `V.1` returned **BLOCK** on `925b0e300` — 3 HIGH, 7 MEDIUM, 7 LOW
+>
+> The fifth cold-start round on this project, and the fifth to be right. It found **one real bug**
+> and, more usefully, **three defects in the verification apparatus below** — including in the
+> paragraph that claimed ten guards were load-bearing. Fixes and their evidence: [§3 · `W3` — the
+> refutation](#w3--the-refutation-and-what-it-cost) below. **The evidence in this section is the
+> PRE-refutation record; read the refutation before trusting any of it.**
 
 **CODE.** 20 new Go tests green; full admin-cli suite green; `world-service` **139 passed, 0
 failed**; `admin-command-registry-lint` **PASS, 34 handlers**; `migration-manifest-gate`,
@@ -219,6 +232,64 @@ dev stack, i.e. no admin command had ever run audited here.
 `on shard ` — empty. The Rust key had been renamed `chosen_shard`→`shard` and the binary never
 rebuilt, so Go parsed a field that was not there. Exit code 0 throughout. **Reading the output is
 the check; the exit code is not.**
+
+### `W3` — the refutation, and what it cost
+
+`V.1` ran cold-start against `925b0e300` in an isolated worktree, briefed to assume the work wrong.
+**BLOCK.** Every HIGH is fixed and re-verified below.
+
+**`H1` — a retry could put the database on a different shard than the registry names.** The bug is
+real and it is mine. `bridge.go:47` documents its own idempotency: a retried `register-reality`
+carrying a *different* `db_host` still returns 200 and **is not diffed** — justified by *"the single
+V1 caller (the provisioner) always retries the same intent, so this is safe."* That held for
+`provision-drill`, which hardcoded its shard. `W3` invalidated it by choosing a shard from **live
+capacity on every invocation**: a run that dies after step 3 leaves `provisioning` on shard A, and
+the retry sees A one-fuller, picks **B**, gets `already_registered` (which `provisioner.rs:252`
+records as `skipped` and continues past), then creates the database and 15 migrations on B. Registry
+says A, database lives on B, command prints success. Every consumer resolves its DSN from `db_host`.
+
+*Fix:* the worker now **reads `reality_registry` before placing**. A row exists ⇒ its shard is
+authoritative, placement is skipped entirely (the slot was claimed by the first attempt; re-claiming
+it would double-count capacity), and a settled status is a no-op rather than a re-provision.
+*Reproduced and verified:* registered a second, **emptier** shard (`pg-shard-1.internal`, 0/50 vs
+shard-0 at 4/50) so a re-pick would certainly move — then ran the worker against a half-provisioned
+row. It resumed on **shard-0**, the database landed on **shard-0**, and `pg-shard-1.internal` ended
+with **0 rows**. Without the fix the planner picks least-full, which was shard-1.
+
+**`H3` — the flagship bite was red for the wrong reason, and two of its three assertions could not
+fail.** `TestProvisionInvoker_ChildEnvIsNotInherited` asserted on an error string the invoker
+**truncates to 256 bytes**. `V.1` measured the child's env dump at 4242 bytes intact and 12907
+broken; the two assertions naming the property read a window those strings could never reach, so
+they passed identically either way, and the bite went red only because appending pushed an unrelated
+substring past byte 256. **A red produced by a truncation artifact is not evidence** — and the
+harness's `[WEAK]` detector only recognised build failures, so it certified this as `[RED]` and this
+document reported *"10/10 — every guard proved load-bearing."* That claim was false for this guard.
+*Fix:* the fake worker now computes the verdict itself and answers in one short field, so the
+assertion is on parsed output and length-independent. Note what the bite must catch is **not** a
+changed `PROVISION_*` value — `append(os.Environ(), env...)` puts the explicit vars last and last
+wins — but the **presence** of variables the invoker never passed.
+
+**`H2` — `dry_run_required` does not require a dry run.** See the corrected impact-class note above.
+
+**The MEDIUMs, all fixed:** `M1` no timeout anywhere — a hung worker or one waiting on the
+per-shard advisory lock blocked the admin command forever; now a 30-minute bound (matching
+`catastrophic-rebuild`) plus `statement_timeout` on the **meta pool only**, which is what converts
+an unbounded `pg_advisory_lock` wait into a legible error (the shard and migration pools must not
+carry it — a long migration is legitimate). `M2` **no blank-`Shard` guard** — the commit narrates
+finding exactly that defect live and fixed the *cause* (a renamed key) without adding the *guard*;
+now guarded in both modes, with "no capacity" diagnosed first because that outcome legitimately
+names no shard. `M3` a comment cited `tests/provision_worker.rs::dry_run_db_name_matches_provisioner`
+— **a test that does not exist, in a file that does not exist** — to vouch that a hand-copied
+`db_name` rule matched the provisioner's; fixed by deleting the copy and making `db_name_for`
+public, so there is one implementation and nothing to drift. `M4` the Rust half had **zero tests**;
+now 11. `M5` the bite harness **was wired into nothing** — it proved its guards once, on my machine;
+now a CI job. `M6` the "BCP-47" check was `len > 35` reporting *"is not a BCP-47 tag"*; now an actual
+subtag check with tests.
+
+**What this round says about the method.** The three-axis DoD passed `W3` cleanly — CODE, LIVE RUN
+and DATA were all genuinely green — and the work still carried a split-brain bug and three broken
+checks. `V.1` is not a formality on top of the axes; **it is the only thing that read the apparatus
+itself.** `BDR-50`.
 
 ### `W5` — the scanner can now see, and what it is NOT
 
@@ -289,6 +360,17 @@ The five that governed last run, so they are not re-learned:
 `BDR-44` a fix without a leg · `BDR-45` a fix's blast radius ≠ its subject · `BDR-46` knowing a rule
 does not transfer across a language boundary · `BDR-47` execute the path before verifying its parts ·
 `BDR-48` "blocked" is a label, and it was the only blocker.
+
+**`BDR-50` (2026-08-08) — the three-axis DoD passed work that carried a split-brain bug and three
+checks that could not fail.** `W3` was green on CODE, LIVE RUN and DATA, honestly. `V.1` still
+returned BLOCK with 3 HIGH. The reason is structural, not effort: **the axes test the SUBJECT; only
+an independent reader tests the APPARATUS.** My bite harness certified a guard whose assertions read
+a 256-byte window the evidence could never reach, and reported it as proof. A cold reader measured
+the actual byte lengths — 4242 vs 12907 — and the claim collapsed. Two corollaries worth keeping:
+a green bite is not a proven guard unless you know *why* it went red; and `[WEAK]` detection must
+cover more than build failures, because "red for an unrelated reason" is the failure mode that looks
+most like success. **Budget `V.1` on anything load-bearing, and budget it against the VERIFICATION,
+not only the code.**
 
 **`BDR-49` (2026-08-08) — I wrote a board row from a mental model, and the row survived a
 compaction, a goal, and a hand-off before anything checked it.** `W3` said *"world-service gains a

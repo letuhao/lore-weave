@@ -308,7 +308,14 @@ fn io(executed: bool, label: &'static str) -> StepOutcome {
 /// Convention: `lw_reality_<first-12-hex>`. The trailing 12 hex chars give
 /// 2^48 collision resistance — more than enough for the V1+30d 10K reality
 /// budget. Keeping the full UUID would push some Postgres identifier limits.
-fn db_name_for(reality_id: Uuid) -> String {
+///
+/// **Public because the `provision` worker's dry run must preview the SAME
+/// name the real run will create.** It previously hand-copied this function and
+/// pointed at a test asserting the two agreed — a test that did not exist. Two
+/// implementations of one naming rule can drift, and drift here means the
+/// operator's preview names a database the real run will not create, which is
+/// exactly what a preview exists to prevent. One function, no drift.
+pub fn db_name_for(reality_id: Uuid) -> String {
     let s = reality_id.simple().to_string();
     let prefix = &s[..s.len().min(12)];
     format!("lw_reality_{prefix}")

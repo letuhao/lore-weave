@@ -24,6 +24,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ProvisionWorkerEnv is the full set of connection settings the worker needs.
@@ -92,15 +93,41 @@ func (e ProvisionWorkerEnv) environ() []string {
 	return env
 }
 
+// DefaultProvisionTimeout bounds one worker invocation.
+//
+// There was no bound at all in the first version: `main` builds a
+// `context.Background()` with no deadline, and the worker takes a per-shard
+// advisory lock and then runs CREATE DATABASE plus fifteen migrations. A worker
+// that wedges — or simply waits behind another provision holding the same
+// shard's lock — blocked the admin command forever, with no output.
+//
+// 30 minutes matches what the sibling destructive commands already chose:
+// `reality catastrophic-rebuild` defaults its per-reality timeout to 30m and
+// `reality rebuild-projection` caps `freeze_timeout` at 30m. Provisioning is
+// far quicker; this is a wedge detector, not a performance budget.
+const DefaultProvisionTimeout = 30 * time.Minute
+
 // SubprocessProvisionInvoker execs the world-service `provision` binary.
 type SubprocessProvisionInvoker struct {
 	binPath string
 	env     ProvisionWorkerEnv
+	timeout time.Duration
 }
 
-// NewSubprocessProvisionInvoker binds the worker path + its environment.
+// NewSubprocessProvisionInvoker binds the worker path + its environment, with
+// DefaultProvisionTimeout.
 func NewSubprocessProvisionInvoker(binPath string, env ProvisionWorkerEnv) *SubprocessProvisionInvoker {
-	return &SubprocessProvisionInvoker{binPath: binPath, env: env}
+	return &SubprocessProvisionInvoker{
+		binPath: binPath, env: env, timeout: DefaultProvisionTimeout,
+	}
+}
+
+// WithTimeout overrides the invocation bound (tests use a short one).
+func (i *SubprocessProvisionInvoker) WithTimeout(d time.Duration) *SubprocessProvisionInvoker {
+	if d > 0 {
+		i.timeout = d
+	}
+	return i
 }
 
 var _ ProvisionInvoker = (*SubprocessProvisionInvoker)(nil)
@@ -133,6 +160,9 @@ func (i *SubprocessProvisionInvoker) Provision(ctx context.Context, req Provisio
 		args = append(args, "--dry-run")
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, i.timeout)
+	defer cancel()
+
 	cmd := exec.CommandContext(ctx, i.binPath, args...)
 	cmd.Env = i.env.environ()
 	var stdout, stderr bytes.Buffer
@@ -140,6 +170,16 @@ func (i *SubprocessProvisionInvoker) Provision(ctx context.Context, req Provisio
 	cmd.Stderr = &stderr
 
 	runErr := cmd.Run()
+
+	// Distinguish "we killed it" from "it failed": a timeout leaves the reality
+	// in an unknown half-provisioned state, which is an operator action (re-run
+	// to resume, or let orphan_scanner find it), not a plain failure.
+	if ctx.Err() == context.DeadlineExceeded {
+		return ProvisionOutcome{}, fmt.Errorf(
+			"%w: worker exceeded %s and was killed for %s — the reality may be half-provisioned; "+
+				"re-run to resume on its registered shard, or check orphan_scanner",
+			ErrInvalidProvision, i.timeout, req.RealityID)
+	}
 
 	var out ProvisionOutcome
 	parseErr := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &out)

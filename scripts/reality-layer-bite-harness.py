@@ -46,6 +46,7 @@ PROV = CMDS / "provision_reality.go"
 PROVPG = CMDS / "provision_reality_pg.go"
 GOMOD = REPO / "services" / "admin-cli"
 ORPHAN = REPO / "services" / "world-service" / "src" / "orphan_scan.rs"
+WORKER = REPO / "services" / "world-service" / "src" / "bin" / "provision.rs"
 
 GO, RUST = "go", "rust"
 
@@ -120,6 +121,27 @@ GO_BITES: list[tuple[str, Path, str, str, str]] = [
         "if r.RealityID == uuid.Nil {",
         "if false {",
         "TestProvisionRequest_RejectsNilUUID",
+    ),
+    (
+        "a placement naming NO shard is reported as success",
+        PROV,
+        'if strings.TrimSpace(out.Shard) == "" {',
+        "if false {",
+        "TestRunProvision_BlankShardIsError",
+    ),
+    (
+        "no-capacity is diagnosed as a blank shard instead of as capacity",
+        PROV,
+        "if req.DryRun && !out.WouldProvision {",
+        "if false {",
+        "TestRunProvision_NoCapacityDiagnosedBeforeBlankShard",
+    ),
+    (
+        "locale is unvalidated (the old len>35 check)",
+        PROV,
+        "if l := strings.TrimSpace(r.Locale); l != \"\" && !looksLikeBCP47(l) {",
+        "if l := strings.TrimSpace(r.Locale); l != \"\" && len(l) > 35 {",
+        "TestProvisionRequest_LocaleIsValidated",
     ),
 ]
 
@@ -198,6 +220,20 @@ RUST_BITES: list[tuple[str, Path, str, str, str]] = [
         "database_present: true,",
         "orphan_scan::tests::stalled_finding_records_whether_the_database_exists",
     ),
+    (
+        "an in-flight status is treated as settled (a retry would re-provision over it)",
+        WORKER,
+        '"active",\n    "migrating",',
+        '"active",\n    "provisioning",\n    "migrating",',
+        "tests::settled_statuses_cover_every_state_past_provisioning",
+    ),
+    (
+        "the dry-run preview re-implements the db name instead of calling it",
+        WORKER,
+        "world_service::provisioner::db_name_for(reality_id)",
+        'format!("lw_reality_{}", &reality_id.simple().to_string()[..11])',
+        "tests::preview_names_what_the_provisioner_will_create",
+    ),
 ]
 
 SUITES = [(GO, GO_BITES), (RUST, RUST_BITES)]
@@ -228,10 +264,11 @@ def run_test(suite: str, regex: str) -> tuple[int, str]:
             text=True,
         )
     else:
-        # `--lib` keeps this to the unit tests in orphan_scan; the trailing
-        # name is a filter, and `--` separates cargo's args from the harness's.
+        # Tests inside `src/bin/provision.rs` belong to the BIN target, not the
+        # lib; `--lib` would silently match nothing there.
+        target = ["--bin", "provision"] if regex.startswith("tests::") else ["--lib"]
         p = subprocess.run(
-            ["cargo", "test", "-p", "world-service", "--lib", regex, "--", "--exact"],
+            ["cargo", "test", "-p", "world-service", *target, regex, "--", "--exact"],
             cwd=REPO,
             capture_output=True,
             text=True,
@@ -241,6 +278,24 @@ def run_test(suite: str, regex: str) -> tuple[int, str]:
         if p.returncode == 0 and "1 passed" not in (p.stdout + p.stderr):
             return 1, p.stdout + p.stderr + "\n[harness] filter matched no test — treated as red"
     return p.returncode, p.stdout + p.stderr
+
+
+def red_names_the_test(out: str, regex: str) -> bool:
+    """Did the NAMED test fail, or did something else break?
+
+    A bite is only evidence if the test that names the property is the thing
+    that went red. `BDR-50`: a cold-start review found a bite passing through a
+    truncated assertion window — red, but for a reason unrelated to the guard.
+    Build failures were already caught; this catches the subtler case where an
+    unrelated test in the same package fails instead.
+    """
+    leaf = regex.rsplit("::", 1)[-1]
+    for line in out.splitlines():
+        if ("--- FAIL" in line or "FAILED" in line) and leaf in line:
+            return True
+    # Rust prints a `failures:` block listing the failing test paths.
+    return any(leaf in l and l.strip().startswith(("test ", leaf)) and "FAILED" in l
+               for l in out.splitlines())
 
 
 def main() -> int:
@@ -282,6 +337,12 @@ def main() -> int:
                 elif "build failed" in out or "] undefined" in out or "error[E" in out:
                     print(f"[WEAK]    {label}\n           -> went red via BUILD FAILURE, not the assertion")
                     failures.append((label, "build failure, not an assertion"))
+                elif not red_names_the_test(out, regex):
+                    print(
+                        f"[WEAK]    {label}\n           -> red, but {regex} is not named in the "
+                        f"failure — something ELSE broke"
+                    )
+                    failures.append((label, "red for an unrelated reason"))
                 else:
                     line = next(
                         (l for l in out.splitlines() if "--- FAIL" in l or "FAILED" in l or "panicked at" in l),
