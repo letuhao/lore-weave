@@ -64,14 +64,5 @@
     "back": "Geri",
     "cancel": "İptal",
     "next": "Sonraki"
-  },
-  "import-configure": {
-    "willCreate": "Bu işlem {{count}} bölüm oluşturacaktır."
-  },
-  "import-results": {
-    "chaptersCreated": "{{count}} bölüm oluşturuldu."
-  },
-  "import-upload": {
-    "pageCount": "{{count}} sayfa"
   }
 }

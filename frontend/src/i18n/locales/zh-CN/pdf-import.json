@@ -64,14 +64,5 @@
     "back": "返回",
     "cancel": "取消",
     "next": "下一步"
-  },
-  "import-configure": {
-    "willCreate": "这将创建 {{count}} 个章节。"
-  },
-  "import-results": {
-    "chaptersCreated": "已创建 {{count}} 个章节。"
-  },
-  "import-upload": {
-    "pageCount": "{{count}} 页"
   }
 }

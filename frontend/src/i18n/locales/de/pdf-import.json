@@ -64,14 +64,5 @@
     "back": "Zurück",
     "cancel": "Abbrechen",
     "next": "Weiter"
-  },
-  "import-configure": {
-    "willCreate": "Dies wird {{count}} Kapitel erstellen."
-  },
-  "import-results": {
-    "chaptersCreated": "{{count}} Kapitel erstellt."
-  },
-  "import-upload": {
-    "pageCount": "{{count}} Seiten"
   }
 }

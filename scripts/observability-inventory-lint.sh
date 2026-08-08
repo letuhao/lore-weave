@@ -19,9 +19,39 @@ if [[ ! -f "$inventory" ]]; then
   exit 0
 fi
 
-# Collect declared metric names (key under `metrics:` block)
-declared=$(grep -E '^[[:space:]]*-[[:space:]]*name:[[:space:]]*"?lw_' "$inventory" 2>/dev/null \
-  | sed -E 's/.*name:[[:space:]]*"?([a-zA-Z0-9_]+)"?.*/\1/' | sort -u || true)
+# Collect declared metric names (key under `metrics:` block).
+#
+# `|| true` used to sit on the end of this pipeline, and it made the gate INVENT
+# findings. grep exits 1 for "no matches" (legitimate) and >1 for a real read failure;
+# `|| true` erased that distinction, so a truncated read under CI load yielded a PARTIAL
+# or EMPTY declared-set and every metric missing from it was reported as undeclared —
+# by name, against a file that declares it. Measured 2026-08-08: three consecutive
+# all-gates runs on one commit, each naming a different innocent subject
+# (lw_embedding_queue_depth, then lw_meta_outbox_retried_total), while the gate passed
+# locally 3/3 on the same bytes. A gate that can fabricate a specific, confident, wrong
+# finding costs more than one that dies loudly.
+# `set -e` is on, and a bare assignment from a failing command aborts the script with no
+# message — so the status is captured deliberately rather than inherited.
+set +e
+raw_declared=$(grep -E '^[[:space:]]*-[[:space:]]*name:[[:space:]]*"?lw_' "$inventory" 2>/dev/null)
+rc=$?
+set -e
+if [[ $rc -gt 1 ]]; then
+  echo "[observability-inventory] FAIL — could not read $inventory (grep exit $rc)."
+  echo "  → this is a READ failure, not a finding. Nothing about the code is implied."
+  exit 1
+fi
+declared=$(printf '%s\n' "$raw_declared" \
+  | sed -E 's/.*name:[[:space:]]*"?([a-zA-Z0-9_]+)"?.*/\1/' | sort -u)
+
+# An empty declared-set is never legitimate here: the inventory exists (checked above)
+# and the repo has metrics. Comparing against it would report EVERY emitted metric as
+# undeclared, which is precisely the false finding this gate produced.
+if [[ -z "${declared//[[:space:]]/}" ]]; then
+  echo "[observability-inventory] FAIL — $inventory yielded no lw_* declarations."
+  echo "  → refusing to compare against an empty set; that would flag every emitted metric."
+  exit 1
+fi
 
 # Collect emitted metric names from code.
 # Pattern: prom metric names follow lw_<subsystem>_<verb>(_<unit>?) — at least
@@ -33,12 +63,28 @@ declared=$(grep -E '^[[:space:]]*-[[:space:]]*name:[[:space:]]*"?lw_' "$inventor
 # `lw_test_registered_total`, `lw_foo_bar_total`) for admission-control
 # unit tests. The lint MUST only fire on REAL emission sites in non-test
 # code.
-emitted=$(grep -rhE '"lw_[a-z][a-z0-9]*_[a-z][a-z0-9_]+"' \
+set +e
+raw_emitted=$(grep -rhE '"lw_[a-z][a-z0-9]*_[a-z][a-z0-9_]+"' \
   --include='*.go' --include='*.rs' \
   --exclude='*_test.go' --exclude='*_test.rs' \
-  "$repo_root/services" "$repo_root/crates" "$repo_root/contracts" 2>/dev/null \
+  "$repo_root/services" "$repo_root/crates" "$repo_root/contracts" 2>/dev/null)
+rc=$?
+set -e
+if [[ $rc -gt 1 ]]; then
+  echo "[observability-inventory] FAIL — could not scan source for emitted metrics (grep exit $rc)."
+  exit 1
+fi
+emitted=$(printf '%s\n' "$raw_emitted" \
   | grep -oE '"lw_[a-z][a-z0-9]*_[a-z][a-z0-9_]+"' \
   | tr -d '"' | sort -u || true)
+# The mirror of the declared-set guard, and the more dangerous direction: an empty
+# emitted-set makes the loop below iterate zero times and the gate report PASS having
+# compared nothing. A truncated scan would therefore certify the tree as clean.
+if [[ -z "${emitted//[[:space:]]/}" ]]; then
+  echo "[observability-inventory] FAIL — found no lw_* metric emissions in services/crates/contracts."
+  echo "  → this repo emits metrics; an empty scan means the read failed, not that the tree is clean."
+  exit 1
+fi
 
 # Filter out DB-name format strings (lw_reality_*) and other known non-metric
 # patterns; these are matched by the broader regex but aren't metric names.

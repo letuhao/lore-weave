@@ -401,6 +401,12 @@ jobs:
           # W3.4 — append now stamps events.content_sha256, so 0013 is required or
           # the INSERT fails to bind ("column content_sha256 does not exist").
           psql -d dp_kernel_test -v ON_ERROR_STOP=1 -f contracts/migrations/per_reality/0013_events_content_sha256.up.sql
+          # DP-Ch11/Ch13 (0014) — the publisher's pending-select reads e.channel_id, so
+          # without this the meta-worker live smoke dies on
+          # `select pending reality=…: column e.channel_id does not exist (SQLSTATE 42703)`.
+          # This list is hand-maintained and only grows when something breaks, which is why
+          # it lagged: the migration landed 2026-07-27 and the smoke has been red since.
+          psql -d dp_kernel_test -v ON_ERROR_STOP=1 -f contracts/migrations/per_reality/0014_channel_ordering.up.sql
           # RLS-A13 — PgEventStore stamps the nullable ruleset pin too.
           psql -d dp_kernel_test -v ON_ERROR_STOP=1 -f contracts/migrations/per_reality/0016_events_ruleset_digest.up.sql
           # events is RANGE-partitioned with no default partition; the live suite

@@ -64,14 +64,5 @@
     "back": "戻る",
     "cancel": "キャンセル",
     "next": "次へ"
-  },
-  "import-configure": {
-    "willCreate": "{{count}}個の章が作成されます。"
-  },
-  "import-results": {
-    "chaptersCreated": "{{count}}個の章を作成しました。"
-  },
-  "import-upload": {
-    "pageCount": "{{count}}ページ"
   }
 }

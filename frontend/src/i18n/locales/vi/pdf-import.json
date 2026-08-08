@@ -64,14 +64,5 @@
     "back": "Quay lại",
     "cancel": "Hủy",
     "next": "Tiếp theo"
-  },
-  "import-configure": {
-    "willCreate": "Thao tác này sẽ tạo {{count}} chương."
-  },
-  "import-results": {
-    "chaptersCreated": "Đã tạo {{count}} chương."
-  },
-  "import-upload": {
-    "pageCount": "{{count}} trang"
   }
 }

@@ -64,14 +64,5 @@
     "back": "رجوع",
     "cancel": "إلغاء",
     "next": "التالي"
-  },
-  "import-configure": {
-    "willCreate": "سيؤدي هذا إلى إنشاء {{count}} فصول."
-  },
-  "import-results": {
-    "chaptersCreated": "تم إنشاء {{count}} فصول."
-  },
-  "import-upload": {
-    "pageCount": "{{count}} صفحة"
   }
 }
