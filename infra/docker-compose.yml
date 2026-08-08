@@ -38,6 +38,24 @@ services:
       PGDATA: /var/lib/postgresql/18/docker
     ports:
       - "5555:5432"
+    # SHARD IDENTITY. `reality_registry.db_host` records which Postgres server a
+    # reality's database lives on, and its CHECK requires
+    # `^pg-shard-[0-9]+\.(internal|prod|staging)$`. The dev host is `postgres`,
+    # so the registry rejected the only environment that exists.
+    #
+    # An ALIAS rather than a widened constraint: `pg-shard-0.internal` genuinely
+    # RESOLVES inside the compose network, so `db_host` stays a real connectable
+    # host and the constraint stays honest. Dev then has the same shape as prod
+    # with one shard instead of many.
+    #
+    # Sharding is RESERVED, not built (PO 2026-08-08): one reality lives in one
+    # database on one server today. `ShardId`, `shard_utilization` and
+    # `capacity_planner::pick_shard` already model the multi-shard future; this
+    # is simply its first and only member.
+    networks:
+      default:
+        aliases:
+          - pg-shard-0.internal
     volumes:
       - loreweave_pg:/var/lib/postgresql
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
