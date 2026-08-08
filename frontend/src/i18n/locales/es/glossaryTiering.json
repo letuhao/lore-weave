@@ -120,7 +120,8 @@
     "no_active": "No hay géneros activos. Añade uno para construir la matriz.",
     "cell_inspector": "Celda seleccionada",
     "no_cell": "Haz clic en una celda para inspeccionarla.",
-    "sort": "ordenar"
+    "sort": "ordenar",
+    "required": "obligatorio"
   },
   "entity": {
     "title_new": "Nueva entidad de tipo {{kind}}",
@@ -238,5 +239,16 @@
     "links_saved": "Enlaces de género actualizados",
     "links_failed": "No se pudieron actualizar los enlaces de género",
     "forbidden": "Necesitas permisos de gestión en este libro para realizar cambios"
+  },
+  "batch_translate": {
+    "apply": "Aplicar traducciones",
+    "count": "{{n}} entidades para traducir",
+    "loading": "Cargando…",
+    "none": "No hay entidades sin traducir para este idioma.",
+    "pick_lang": "Selecciona un idioma de destino para comenzar.",
+    "result": "{{w}} escritos · {{v}} mantenidos (verificados) · {{e}} vacíos · {{f}} fallidos",
+    "select_lang": "Seleccionar…",
+    "target_lang": "Idioma de destino",
+    "title": "Traducción por lotes"
   }
 }

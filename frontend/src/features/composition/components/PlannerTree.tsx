@@ -31,7 +31,7 @@ export function PlannerTree({ draft, preview, roster, inactiveIds, entityNames =
               <span className="text-sm font-semibold">{ch.title || t('plan.untitled_chapter')}</span>
             </div>
             <div className="flex items-center gap-2 border-l-2 border-primary/60 pl-2">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">{t('plan.beat_label', { defaultValue: 'Бит' })}</span>
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">{t('plan.beat_label', { defaultValue: 'Beat' })}</span>
               <input
                 data-testid="planner-beat-role"
                 className="w-40 rounded bg-primary/10 px-2 py-1 text-xs font-semibold text-primary outline-none"

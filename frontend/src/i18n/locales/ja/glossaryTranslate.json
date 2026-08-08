@@ -42,7 +42,9 @@
     "startTranslate": "翻訳を開始",
     "startFailed": "翻訳ジョブの開始に失敗しました",
     "thinkingOn": "思考：オン",
-    "thinkingOff": "思考：オフ"
+    "thinkingOff": "思考：オフ",
+    "concurrency": "LLM並列リクエスト数",
+    "concurrencyHint": "1 = シーケンシャル。モデルが同時リクエストを処理できる場合は、この値を上げてください。"
   },
   "progress": {
     "title": "用語集を翻訳中",

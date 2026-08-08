@@ -146,6 +146,11 @@
       "desc": "Yapay zeka tarafından taslak olarak oluşturulan varlıkları incele",
       "guideBody": "Yapay zekanın taslağınızdan otomatik olarak oluşturduğu ve incelemenizi bekleyen varlık girişlerini gösterir. Her bir öneri resmi sözlüğünüzün bir parçası olmadan önce kabul etmek, düzenlemek veya reddetmek için açın."
     },
+    "world-setup": {
+      "title": "Dünya Kurulumu",
+      "desc": "Bir açıklamadan karakter kadronuzu, dünyanızı ve aralarındaki ilişkileri oluşturun",
+      "guideBody": "Hikayenizin açıklamasını gerçek, takip edilebilir bir evrene dönüştürün: sistem ne inşa edileceğini planlar, siz listeyi onaylar veya kırparsınız; ardından her karakter, grup ve terim tek tek hazırlanır (önemli olanlar kapsamlı bir profil alır) ve incelemeniz için dosyalanır. Son olarak, tüm bunların birbirine nasıl bağlandığını belirler ve bunları kaydetmeden önce ilişkileri onaylamanızı ister."
+    },
     "glossary-merge-candidates": {
       "title": "Birleştirme adayları",
       "desc": "Muhtemel yinelenen varlıkları incele ve onayla",
@@ -679,11 +684,6 @@
       "title": "İş Akışı Teklifleri",
       "desc": "Aracın önerdiği iş akışlarını inceleyin",
       "guideBody": "Aracın, tekrarladığınızı fark ettiği çok adımlı dizilere dayanarak oluşturulmasını önerdiği iş akışı tariflerini listeler. Bir teklifi onaylamak —böylece iş akışı çalıştırılabilir hale gelir— veya reddetmek için açın. Aracın önerdiği bir iş akışının gerçek anlamda hayata geçtiği yer burasıdır."
-    },
-    "world-setup": {
-      "title": "Dünya Kurulumu",
-      "desc": "Bir açıklamadan karakter kadronuzu, dünyanızı ve aralarındaki ilişkileri oluşturun",
-      "guideBody": "Hikayenizin açıklamasını gerçek, takip edilebilir bir evrene dönüştürün: sistem ne inşa edileceğini planlar, siz listeyi onaylar veya kırparsınız; ardından her karakter, grup ve terim tek tek hazırlanır (önemli olanlar kapsamlı bir profil alır) ve incelemeniz için dosyalanır. Son olarak, tüm bunların birbirine nasıl bağlandığını belirler ve bunları kaydetmeden önce ilişkileri onaylamanızı ister."
     }
   },
   "sceneRail": {
@@ -719,7 +719,8 @@
     "conflict": "çakışma: {{part}}",
     "format": "Formatla",
     "revert": "Geri Yükle",
-    "openAs": "JSON olarak aç"
+    "openAs": "JSON olarak aç",
+    "readOnly": "salt okunur"
   },
   "planPasses": {
     "comingSoon": "7 aşamalı ray buraya yüklenecek.",
@@ -761,7 +762,17 @@
     "approveGated": "Önce sözlük tohumunu uygulayın (PF-7)",
     "editAdd": "Ekle",
     "editRemove": "Kaldır",
-    "editEmpty": "Burada henüz bir şey yok — bir satır ekleyin."
+    "editEmpty": "Burada henüz bir şey yok — bir satır ekleyin.",
+    "batchSpends": "Hazır olan her aşamayı bir sonraki kontrol noktasına kadar çalıştırır — her aşama için 1 LLM çağrısı harcar.",
+    "chapterNoScenes": "Sahne yok — bu bölüm taslak haline getirilemez.",
+    "linkOutline": "Kurgu arkları + bölümler →",
+    "linkScenes": "Sahneleri bağla →",
+    "linkScenesBlocked": "Önce sahne aşamasını çalıştırın",
+    "noBeat": "(vuruş yok)",
+    "noScenes": "Bu sahne planında düzenlenecek bölüm yok.",
+    "openEdit": "düzenle…",
+    "runPicker": "Bir plan çalışması seçin",
+    "runToCheckpoint": "Sonraki kontrol noktasına kadar çalıştır"
   },
   "planner": {
     "sourcePlaceholder": "Roman sistemini markdown olarak yapıştırın…",
@@ -785,10 +796,48 @@
       "colRun": "Çalışma",
       "colMode": "Mod",
       "colStatus": "Durum",
-      "colCreated": "Oluşturulma"
+      "colCreated": "Oluşturulma",
+      "archive": "Arşivle",
+      "restore": "Geri Yükle",
+      "showArchived": "Arşivlenmişleri göster"
     },
     "grounded": "{{chapters}} mevcut bölüm(ler) + {{cast}} karakter(ler) üzerine temellendirildi; {{arcs}} mevcut kurgu(lar) devam ediyor.",
-    "groundOnExisting": "Bu kitabı devam ettir — mevcut karakterler, kurgular ve son bölümler üzerine temellendir"
+    "groundOnExisting": "Bu kitabı devam ettir — mevcut karakterler, kurgular ve son bölümler üzerine temellendir",
+    "bootstrap": {
+      "apply": "Kitabımda oluştur",
+      "applying": "Oluşturuluyor…",
+      "approve": "Onayla",
+      "check": "Nelerin gerektiğini kontrol et",
+      "checking": "Kontrol ediliyor…",
+      "done": "Tamamlandı — neyin oluşturulduğunu görmek için Bölümler'i açın.",
+      "idleHint": "Bu planın kitabınızda yeni bölümler veya karakterler oluşturulmasına ihtiyaç duyup duymadığını kontrol edin.",
+      "newChapters": "Yeni bölümler",
+      "newGlossary": "Yeni sözlük maddeleri",
+      "nothingToDo": "Bu plandaki her şey kitabınızda zaten mevcut — oluşturulacak yeni bir şey yok.",
+      "reject": "Şimdi değil",
+      "rejected": "Bu öneriyi reddettiniz.",
+      "retry": "Tekrar dene",
+      "title": "Kitabınızı hazırlayın"
+    },
+    "material": {
+      "applied": "Plana eklendi: {{slots}}. Not olarak kaydedildi: {{notes}}.",
+      "askTitle": "Belgenizde yok — karar vermeye değer",
+      "dropped": "{{n}} önerilen satır belgenizde bulunamadığı için atıldı.",
+      "find": "Planımı kontrol et",
+      "finding": "Aranıyor…",
+      "idleHint": "Size sormadan önce, halihazırda yazdıklarınızda eksik bir şey olup olmadığını kontrol eder.",
+      "noChange": "Hiçbir şey değişmedi — koruduğunuz her şey zaten planda mevcuttu.",
+      "nothing": "Eksik yok — plan her bölümü kapsıyor.",
+      "readFailed": "Belgeniz tam olarak okunamadı, bu nedenle aşağıda belirtilen «eksik» ibaresi kesin değildir.",
+      "retry": "Bunları tekrar kontrol edin",
+      "reviewHint": "Bu satırlar zaten belgenizde mevcut. Ait olmayanları kaldırın, ardından geri kalanları ekleyin.",
+      "stale": "Bu kontrolden bu yana planınız değişti — güncel bir sonuç için tekrar çalıştırın.",
+      "title": "Bu planda ne eksik?",
+      "unavailableHint": "kontrol edilmedi; eksik olarak kabul etmek yerine tekrar deneyin",
+      "unavailableTitle": "Kontrol edilemedi",
+      "uncertain": "(belgeniz tam olarak okunmadı, bu nedenle bu kısım zaten mevcut olabilir)"
+    },
+    "openPassRail": "Pass Rail →"
   },
   "editor": {
     "empty": "Düzenlemek için el yazması gezgininden bir bölüm seçin.",
@@ -808,7 +857,13 @@
     "merging": "Birleştiriliyor…",
     "mergeDone": "Ana metne birleştirildi — dal kendi sürümünü korur.",
     "mergeConflict": "Ana metin değişti — bölümü yeniden açın ve tekrar birleştirin.",
-    "mergeFailed": "Birleştirilemedi — tekrar deneyin."
+    "mergeFailed": "Birleştirilemedi — tekrar deneyin.",
+    "askAiPrompt": "Taslaktaki bu pasajı analiz et ve kullanıcının sorusunu yanıtla:\n\n\"{{text}}\"\n\nNeler dikkate alınmalıdır?",
+    "loadingChapter": "Bölüm yükleniyor…",
+    "sceneSuggestionsHint": "Yapay zeka ile sahne önerileri oluşturmak için taslak metni seçin",
+    "sceneSuggestionsReady": "Seçili pasajın üzerindeki yapay zeka araç çubuğundan Sahne önerilerini kullanın.",
+    "sceneSuggestionsSelect": "Önce bir pasaj seçin, ardından seçim üzerindeki Seçenekler kısmından sahne önerilerini kullanın.",
+    "suggestScenes": "Sahneleri öner"
   },
   "sceneCompose": {
     "empty": "Sahnelerini burada taslak haline getirmek için taslak gezgininden bir bölüm seçin.",
@@ -994,11 +1049,20 @@
     "conformanceTitle": "Uyumluluk",
     "conformanceDesc": "Metin planı gerçekleştirdi mi? Sahne bazlı olay örgüsü takibi",
     "pickModelRerun": "Yeniden çalıştırmak için bir model seçin…",
-    "pickChapterConformanceHint": "Metnin planı nasıl hayata geçirdiğini takip etmek için yukarıdan bir bölüm seçin."
+    "pickChapterConformanceHint": "Metnin planı nasıl hayata geçirdiğini takip etmek için yukarıdan bir bölüm seçin.",
+    "editRule": "Düzenleme kuralı",
+    "healApplied": "Seçilen düzeltmeler bölüme uygulandı.",
+    "healApplyError": "Düzeltmeler uygulanamadı. Tekrar deneyin.",
+    "healStale": "Bu bölüm Parlatma işlemi yapıldıktan sonra değişti — önce Parlatmayı tekrar çalıştırın, sonra uygulayın."
   },
   "sidebar": {
     "collapse": "Daralt",
     "resize": "Kenar çubuğunu yeniden boyutlandır"
+  },
+  "panelsPicker": {
+    "title": "Çalışma alanı panelleri",
+    "search": "Bir panel ara…",
+    "hint": "Hangi panellerin görünür kalacağını seçin. Seçiminiz bu çalışma alanı ile birlikte kaydedilir."
   },
   "layout": {
     "title": "Panel düzeni",
@@ -1016,6 +1080,14 @@
       "grid4x2": "4×2 Izgara",
       "cols6": "Altı sütun",
       "cols8": "Sekiz sütun"
+    }
+  },
+  "diagnostics": {
+    "unplannedChapter": "{{title}} başlıklı章 yazıldı ancak planda yer almıyor",
+    "warning": {
+      "openThread": "Açık vaatler okunamadı",
+      "deletedSpec": "Silinen plan düğümleri kontrol edilemedi",
+      "coverage": "Taslak/plan kapsamı hesaplanamadı"
     }
   },
   "bottom": {
@@ -1193,6 +1265,68 @@
         "knowledge": {
           "title": "Bilgi grafiği",
           "body": "Daha derinlemesine dünya inşası için bilgi grafiği; varlıklar, olaylar ve ilişkiler arasındaki tüm bağlantıları takip eder."
+        }
+      },
+      "worldResearch": {
+        "setup": {
+          "title": "Önce dünyayı tanımlayın",
+          "body": "Kitap kurulum sihirbazı, daha sonraki veri çıkarma işlemlerinin öngörülebilir şekilde çalışması için istikrarlı bir dünya yapısı ve sistem varsayılanları oluşturur."
+        },
+        "glossary": {
+          "title": "Sözlüğü oluşturun",
+          "body": "Varlıkları, türleri ve nitelikleri gözden geçirin. Kaynak metinden başlayın, ardından belirsiz kayıtları manuel olarak onaylayın."
+        },
+        "entities": {
+          "title": "Varlıkları inceleyin",
+          "body": "Karakterleri, yerleri ve eşyaları arayın, kanıtlarını açın ve hangi bölümlerde geçtiklerini kontrol edin."
+        },
+        "timeline": {
+          "title": "Zaman çizelgesini kontrol edin",
+          "body": "Olaylar zaman çizelgesi, bölümler arasındaki boşlukları ve çelişkileri ortaya çıkarmaya yardımcı olur. Bunu bir çalışma hipotezi olarak değerlendirin."
+        },
+        "graph": {
+          "title": "Bağlantıları görün",
+          "body": "Grafik, varlıklar arasındaki ilişkileri gösterir. Yüksek düzeyde bağlantılı düğümleri bulun ve onları destekleyen pasajlara geri dönün."
+        }
+      },
+      "factChecking": {
+        "evidence": {
+          "title": "İddianın kaynağından başlayın",
+          "body": "Kanıtlar sizi ilgili bölüme ve metin pasajına götürür. Önce alıntıyı doğrulayın, ardından bir varlığın veya niteliğin değiştirilmesi gerekip gerekmediğine karar verin."
+        },
+        "triage": {
+          "title": "İnceleme kuyruğunu yönetin",
+          "body": "Triyaj, belirsiz bulguları aciliyet sırasına göre gruplandırır. Uç vakalardan önce külliyat çelişkilerini ve tekrarlanan uyarıları ele alın."
+        },
+        "gaps": {
+          "title": "Eksik ayrıntıları bulun",
+          "body": "Boşluk raporu, sıkça bahsedilen ancak yetersiz tanımlanmış varlıkları —zenginleştirme adaylarını— vurgular."
+        },
+        "unknown": {
+          "title": "Bilinmeyen atıfları çözümleyin",
+          "body": "Bir terimi mevcut bir varlıkla eşleştirin veya yeni bir tane oluşturun. Birleştirmeden önce bağlamı ve yazım varyasyonlarını kontrol edin."
+        },
+        "proposals": {
+          "title": "Editör karar verir",
+          "body": "Yapay zeka önerilerini yalnızca kaynaklarını ve etkilerini inceledikten sonra kabul edin. Reddedilen adayları yeni bir kontrol yapmadan tekrar sunmayın."
+        }
+      },
+      "glossaryWorkflow": {
+        "list": {
+          "title": "Varlık listesi",
+          "body": "Varlıkları türüne ve durumuna göre filtreleyin, bir kaydı açın ve kanıtlarını içeren bölümlere gidin."
+        },
+        "ontology": {
+          "title": "Kitap ontolojisi",
+          "body": "Tür, türler ve nitelikleri seçin. Bir sistem şablonuyla başlayın, ardından yalnızca bu dünyanın ihtiyaç duyduğu alanları ekleyin."
+        },
+        "suggestions": {
+          "title": "Çıkarım önerileri",
+          "body": "Seçili bölümlerden çıkarım yapın, adayları inceleyin ve toplu olarak onaylayın. Uzun süren işleri İşler kısmından takip edin."
+        },
+        "merge": {
+          "title": "Kopyaları birleştir",
+          "body": "Birleştirmeden önce isimleri, türleri, nitelikleri ve kanıtları karşılaştırın. İşlemden sonra bağlantıları kontrol edin."
         }
       },
       "translator": {
@@ -1406,14 +1540,63 @@
           "title": "Ayrı bir pencerede aç",
           "body": "Yazım aracını ayrı bir işletim sistemi penceresinde açar — ikinci bir monitör için kullanışlıdır. Orada onayladığınız düzenlemeler hâlâ bu kitabın editörüne kaydedilir."
         }
+      },
+      "structureTemplates": {
+        "panel": {
+          "title": "Yapı şablonu çalışma alanı",
+          "body": "Bu panel yerleşik ve özel hikaye yapılarını içerir. Bölümleri, anlatı vuruşlarından oluşan sıralı bir dizilime yerleştirmenize yardımcı olurlar."
+        },
+        "list": {
+          "title": "Yerleşik ve kişisel şablonlar",
+          "body": "Yerleşik şablonlar salt okunurdur. Düzenlenebilir bir kopya üzerinde çalışmak için birini klonlayın veya kendi şablonunuzu seçin."
+        },
+        "create": {
+          "title": "Kendi yapınızı oluşturun",
+          "body": "“Yeni yapı” seçeneğini belirleyin, adını koyun ve vuruşları ekleyin. Özel şablonlarınız kitaplarınız arasında yeniden kullanılabilir."
+        },
+        "edit": {
+          "title": "Düzenleyin ve uygulayın",
+          "body": "Vuruşların sırasını değiştirin, amaçlarını tanımlayın, değişiklikleri kaydedin ve ardından yapıyı Parçala panelinden kullanın."
+        }
       }
     }
   },
   "userGuide": {
+    "open": "Kullanım kılavuzunu aç",
     "intro": "Writing Studio'nun açabileceği her araç, Komut Paleti ile aynı şekilde gruplandırılmıştır.",
     "toursGroup": "Rehberli turlar",
     "toursEditor": "Editör",
-    "toursComposer": "Yazım Aracı"
+    "toursComposer": "Yazım Aracı",
+    "toursResearch": "Dünya araştırması",
+    "workflowsTitle": "İş akışları ve uygulamalar",
+    "workflows": {
+      "setup": {
+        "title": "Bir kitap hazırlayın",
+        "body": "Önce yapıyı oluşturun, ardından bölümleri içe aktarın ve ağacın sorunsuz yüklendiğini doğrulayın.",
+        "steps": "Kitap İçe Aktarma → Editör → Sözlükten bütünlüğü kontrol edin. Raporlanan sorunları otomatik olarak düzeltin ve ardından kontrolü tekrar çalıştırın."
+      },
+      "lore": {
+        "title": "Dünyayı araştırın",
+        "body": "Sözlük dünya gerçeklerini saklar; bilgi tabanı ise bunları kanıtlar ve olaylarla ilişkilendirir.",
+        "steps": "Ontoloji türleri ve nitelikleri tanımlar → Seçili bölümlerden çıkarım yapın → Varlıklar ve Kanıtlar bulguları doğrular → Grafik ve Zaman Çizelgesi bağlantıları ortaya çıkarır."
+      },
+      "factChecking": {
+        "title": "Gerçekleri ve kanonu kontrol edin",
+        "body": "Bir yapay zeka bulgusunu kaynağı olmadan asla kabul etmeyin: önce ilgili pasajı açın, ardından öneriyi kabul edin veya reddedin.",
+        "steps": "Kanıt → bölüme git → Belirsiz kuyruğunu ayıklayın → Eksik açıklamalar için boşlukları belirleyin. Düzenlemelerden sonra bütünlük kontrollerini yeniden çalıştırın."
+      },
+      "jobs": {
+        "title": "Uzun süreli işler ve kurtarma",
+        "body": "Çıkarım, çeviri ve zenginleştirme işlemleri iş olarak yürütülür, böylece paneli kapatmak ilerlemenin kaybolmasına neden olmaz.",
+        "steps": "Toplu/pencere ilerlemesini ve maliyeti izlemek için İşler panelini açın. Hata durumunda Kontrol Noktasından Devam Et seçeneğini kullanın; parametreler değiştiğinde Yeniden Başlat seçeneğini kullanın."
+      },
+      "translation": {
+        "title": "Kanonu bozmadan çeviri yapın",
+        "body": "İsimlerin, terimlerin ve ilişkilerin tutarlı kalması için çeviri yapmadan önce sözlüğü sabitleyin.",
+        "steps": "Çeviri kapsamı ve sürümleri gösterir → Zenginleştirme evreni boşluklarını doldurur → Yayınlamadan önce bölümleri, sözlüğü ve etkinlik günlüğini gözden geçirin."
+      }
+    },
+    "startPanelTour": "Panel turuna başla"
   },
   "tourPicker": {
     "editorBasics": {
@@ -1475,6 +1658,22 @@
     "composerPopout": {
       "label": "Ayrı Pencere",
       "desc": "İkinci bir monitör için Oluşturma ekranını kendi işletim sistemi penceresi olarak açın."
+    },
+    "worldResearch": {
+      "label": "Dünya araştırması",
+      "desc": "Kitap kurulumundan varlıklara, zaman çizelgesine ve ilişki grafiğine kadar — tekrarlanabilir bir evren araştırma iş akışı."
+    },
+    "factChecking": {
+      "label": "Bilgi doğrulama",
+      "desc": "Kanıtlar, önceliklendirme, boşluklar ve bilinmeyen varlıklar: hipotezleri kaynak metne göre doğrulayın."
+    },
+    "glossaryWorkflow": {
+      "label": "Sözlük iş akışı",
+      "desc": "Ontoloji, çıkarma, öneriler ve güvenli mükerrer birleştirme."
+    },
+    "structureTemplates": {
+      "label": "Yapı şablonları",
+      "desc": "Bölümleri ayrıştırmak için hikaye yapıları oluşturun ve düzenleyin."
     }
   },
   "planHub": {
@@ -1541,6 +1740,12 @@
       "rename": "Yeniden Adlandır",
       "delete": "Bölümü sil",
       "aiDraft": "Veya yapay zekanın taslak oluşturmasına izin ver →",
+      "importPlan": "CSV'den plan içe aktar",
+      "importingPlan": "Plan içe aktarılıyor...",
+      "aiPlan": "Yapay zeka ile plan oluştur",
+      "csvEmpty": "CSV dosyasında plan satırı bulunamadı.",
+      "csvNoMatches": "Hiçbir CSV satırı bu kitapla eşleşmedi. chapter_id veya sort_order kullanın.",
+      "csvFailed": "Plan içe aktarma başarısız oldu.",
       "legend": {
         "authored": "siz yazdınız",
         "ai": "Yapay zeka fikri"
@@ -1586,7 +1791,6 @@
     "mineEmpty": "Henüz hiç yok — başlamak için bir yerleşik yapıyı klonlayın.",
     "loading": "Yükleniyor…",
     "pickHint": "Olay örgüsünü görüntülemek için bir yapı seçin.",
-    "beats": "olay örgüsü",
     "builtinNote": "Bu yerleşik bir yapıdır. Özelleştirmek için klonlayın; siz kendi kopyanızı düzenlersiniz, orijinal yapı herkes için bozulmadan kalır.",
     "cloneBuiltin": "Yapılarım arasına klonla",
     "duplicate": "Kopyala",
@@ -1636,7 +1840,15 @@
       "builtin": "yerleşik",
       "mine": "benimki",
       "archived": "arşivlenmiş"
-    }
+    },
+    "help": "Yapı şablonları yardımı",
+    "startTour": "Yapı şablonları turuna başla",
+    "useInDecompose": "Parçalara Ayır'da kullan →",
+    "beats_one": "vuruş",
+    "beats_other": "vuruşlar",
+    "kindPlaceholder": "genel",
+    "beats": "vuruşlar",
+    "nameRequired": "İsim gerekli"
   },
   "search": {
     "modeLabel": "Arama modu",
@@ -1664,5 +1876,47 @@
     "firstStructureTitle": "Birinci Perde",
     "everything": "Veya bu kitabı tamamen yapılandır",
     "everythingBusy": "Yapılandırılıyor…"
+  },
+  "checkpoints": {
+    "blocked_dirty": "Önce düzenlemelerinizi kaydedin — geri yükleme işlemi onları geçersiz kılacaktır",
+    "confirm_desc": "Mevcut taslak önce anlık görüntü olarak kaydedilir, böylece bu işlem revizyon geçmişinden geri alınabilir.",
+    "confirm_title": "Bu yapay zeka düzenlemesinden önceki sürüme geri dönülsün mü?",
+    "dirty_warning": "Bir kontrol noktasına geri dönmeden önce mevcut düzenlemelerinizi kaydedin.",
+    "header": "Yapay zeka düzenleme kontrol noktaları",
+    "insert": "Eklendi",
+    "no_restore": "Geri dönülecek önceki bir sürüm yok",
+    "replace": "Yeniden yazıldı",
+    "restore": "Geri Yükle",
+    "restore_failed": "Bu kontrol noktası geri yüklenemedi.",
+    "restored": "Yapay zeka düzenlemesi öncesine geri yüklendi"
+  },
+  "common": {
+    "close": "Kapat"
+  },
+  "compose": {
+    "startDrafting": "Taslağa başla →",
+    "startDraftingTitle": "Planınızdan bölümler yazmak için taslak çalışma alanını açın"
+  },
+  "errorBlocks": {
+    "dismiss": "Geç",
+    "drifted": "metin değişti",
+    "remove": "İşareti kaldır",
+    "removed": "İşaret kaldırıldı.",
+    "reopen": "Yeniden aç",
+    "resolve": "Düzeltildi",
+    "title": "İşaretlenmiş sorunlar",
+    "undo": "Geri al",
+    "undoFailed": "İşaret geri yüklenemedi."
+  },
+  "revision": {
+    "blocked_dirty": "Kaydedilmemiş değişiklikleriniz var. Bir revizyonu geri yüklemeden önce bunları kaydedin veya atın.",
+    "confirm_desc": "Mevcut taslak bu revizyonla değiştirilecek. Bu işlem geri alınamaz.",
+    "confirm_title": "Bu revizyon geri yüklensin mi?",
+    "current": "Mevcut",
+    "empty": "Henüz revizyon yok.",
+    "header": "Revizyon geçmişi",
+    "load_more": "Daha fazla yükle",
+    "loading_more": "Yükleniyor…",
+    "restore": "Geri yükle"
   }
 }

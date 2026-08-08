@@ -19,7 +19,9 @@
     "campaign": "Campaign",
     "enrichment_job": "Lore enrichment",
     "book_import": "Book import",
-    "composition": { "generate": "Composition" }
+    "composition": {
+      "generate": "Composition"
+    }
   },
   "summary": {
     "active": "Active",
@@ -57,7 +59,8 @@
     "noActive": "No active jobs.",
     "more": "Load more",
     "toggleChildren": "Toggle children",
-    "noChildren": "No child jobs."
+    "noChildren": "No child jobs.",
+    "errorWithReason": "Could not load jobs: {{error}}"
   },
   "row": {
     "ran": "ran {{d}}",
@@ -94,7 +97,9 @@
     "retry": "Retry",
     "retried": "Re-submitted as a new job.",
     "stale": "Job state changed — refreshed.",
-    "actionFailed": "Action failed: {{error}}"
+    "actionFailed": "Action failed: {{error}}",
+    "retryBenchmarkMissing": "Retry is unavailable: the embedding model has no benchmark. Run the model benchmark, then re-check.",
+    "retryBenchmarkFailed": "Retry is unavailable: the embedding model failed its last benchmark."
   },
   "monitor": {
     "back": "All jobs",

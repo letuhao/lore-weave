@@ -154,7 +154,14 @@
     "promoted": "Promovido a un derivado de what-if.",
     "promotedPartial": "Promovido, pero no se pudieron añadir {{n}} tomas.",
     "promotedProsePartial": "Promocionado, pero la prosa de {{n}} toma(s) no pudo guardarse; vuelve a promocionar para reintentar.",
-    "promoteHint": "Genera al menos una toma para promocionar"
+    "promoteHint": "Genera al menos una toma para promocionar",
+    "vsCanon": {
+      "absoluteHint": "Puntuación absoluta (sin línea base de canon para comparar)",
+      "judging": "· vs canon…",
+      "noBaseline": "· sin línea base de canon",
+      "take": "tomar",
+      "vs": "vs canon"
+    }
   },
   "cast": "Reparto",
   "codex": {
@@ -261,7 +268,8 @@
     "linkMissing": "Uno de esos lugares ya no existe.",
     "delete": "Eliminar {{name}}",
     "deleteConfirm": "¿Eliminar «{{name}}» del mapa mundial? Esto archivará el lugar.",
-    "deleteFailed": "No se pudo eliminar el lugar."
+    "deleteFailed": "No se pudo eliminar el lugar.",
+    "backdropNoChapter": "Abre un capítulo para establecer un trasfondo."
   },
   "grounding": "Contextualización",
   "canon": "Canon",
@@ -346,7 +354,21 @@
     "noHits": "Aún no hay referencias coincidentes.",
     "library": "Biblioteca",
     "delete": "Eliminar",
-    "empty": "Aún no hay referencias; añade influencias arriba."
+    "empty": "Aún no hay referencias; añade influencias arriba.",
+    "addEmbedModel": "Añadir un modelo de incrustación",
+    "content": "Contenido",
+    "contentRecomputes": "Al guardar el contenido, se vuelve a calcular la incrustación de esta referencia.",
+    "deleteBody": "Esto lo eliminará del estante. Esta acción no se puede deshacer.",
+    "deleteTitle": "¿Eliminar esta referencia?",
+    "done": "Hecho",
+    "edit": "Editar",
+    "filter": "Filtrar…",
+    "noMatch": "Ninguna referencia coincide con tu filtro.",
+    "reembedding": "Volver a incrustar…",
+    "saveContent": "Guardar contenido (reincrustar)",
+    "saveMetadata": "Guardar detalles",
+    "saving": "Guardando…",
+    "sourceUrl": "URL de origen (opcional)"
   },
   "progressPanel": {
     "loading": "Cargando progreso…",
@@ -363,7 +385,8 @@
     "words": "palabras",
     "goalPlaceholder": "palabras/día",
     "setGoal": "Establecer meta",
-    "goalHint": "0 desactiva la meta"
+    "goalHint": "0 desactiva la meta",
+    "goalLegacy": "Este objetivo proviene de la configuración compartida del libro; al establecerlo, pasará a ser tuyo."
   },
   "workSettings": {
     "defaultModel": "Modelo de redacción predeterminado",
@@ -375,7 +398,11 @@
     "chapter": "Capítulo (una sola pasada)",
     "narrativeThread": "Rastrear hilos narrativos (promesas y presagios)",
     "narrativeThreadHint": "Aviso: detecta promesas abiertas y las reintroduce para que la generación las respete; muestra las promesas incumplidas en una vista de deuda. Opcional.",
-    "saveError": "No se pudieron guardar los ajustes; inténtalo de nuevo."
+    "saveError": "No se pudieron guardar los ajustes; inténtalo de nuevo.",
+    "criticModel": "Modelo crítico (juez independiente)",
+    "criticModelHint": "Un modelo DIFERENTE califica cada borrador según tu canon y puede bloquear un capítulo que lo contradiga. Sin uno, nada verifica la prosa de forma independiente; un modelo no puede calificar su propio trabajo.",
+    "criticSameAsDrafter": "Este es el mismo modelo que escribe la prosa, por lo que estaría calificando su propio trabajo; el servidor lo rechazará y omitirá la crítica. Elige un modelo distinto.",
+    "noCritic": "Sin crítica: los borradores no se califican de forma independiente"
   },
   "loadingStats": "Cargando calidad...",
   "statsUnavailable": "Estadísticas de calidad no disponibles.",
@@ -489,6 +516,8 @@
     "tension": "Tensión",
     "cast": "Reparto",
     "beat_role": "Función del beat",
+    "beat_label": "Beat",
+    "inactive_cast": "La entidad está inactiva",
     "add_cast": "añadir reparto",
     "remove_cast": "Eliminar a {{name}}",
     "resolve": "Añadir a {{name}} al reparto",
@@ -509,7 +538,23 @@
     "err_no_chapters": "Este libro aún no tiene capítulos; crea capítulos antes de planificar.",
     "err_too_many_chapters": "Demasiados capítulos para planificar a la vez.",
     "err_bad_entity": "Algunos miembros del reparto de la escena no están en el glosario de este libro.",
-    "err_bad_chapter": "Un capítulo en el plan no pertenece a este libro."
+    "err_bad_chapter": "Un capítulo en el plan no pertenece a este libro.",
+    "add_template": "Añadir plantilla",
+    "create_template_title": "Nueva plantilla de estructura",
+    "template_name": "Nombre",
+    "template_name_placeholder": "Por ejemplo, El viaje del héroe",
+    "template_kind": "Tipo",
+    "template_beats": "Beats (uno por línea)",
+    "template_beats_placeholder": "Planteamiento\nPunto de giro\nClímax",
+    "template_create": "Crear plantilla",
+    "template_creating": "Creando…",
+    "template_create_error": "No se pudo crear la plantilla",
+    "close": "Cerrar",
+    "chapter_scope": "Alcance",
+    "all_chapters": "Todos los capítulos",
+    "recreate_current": "Recrear capítulo actual",
+    "recreate_all": "Recrear todos los capítulos",
+    "done": "Hecho"
   },
   "threads": "Hilos",
   "threadsTitle": "Hilos argumentales",
@@ -656,13 +701,16 @@
     "overuse": "«{{name}}» ya se utiliza en {{chapters}} — considera variarlo.",
     "list": {
       "noMatch": "No hay coincidencias — limpia los filtros.",
-      "truncated": "Mostrando los primeros 100; usa la búsqueda o los filtros para ver el resto."
+      "truncated": "Mostrando los primeros 100; usa la búsqueda o los filtros para ver el resto.",
+      "loadMore": "Cargar más",
+      "loadingMore": "Cargando…"
     },
     "error": {
       "load": "No se pudo cargar — por favor, inténtalo de nuevo."
     },
     "permission": {
-      "readOnly": "Esta es una plantilla compartida; clónala para crear tu propia copia editable."
+      "readOnly": "Esta es una plantilla compartida; clónala para crear tu propia copia editable.",
+      "noSession": "La edición no está disponible hasta que se recargue la sesión."
     },
     "action": {
       "open": "Abrir",
@@ -673,11 +721,19 @@
       "cancel": "Cancelar",
       "retry": "Reintentar",
       "swap": "Intercambiar",
-      "clear": "Libre"
+      "clear": "Libre",
+      "bind": "Vincular motivo",
+      "discard": "Descartar",
+      "edit": "Editar",
+      "mine": "Mío",
+      "promote": "Promover",
+      "restore": "Restaurar",
+      "save": "Guardar"
     },
     "card": {
       "draft": "Borrador minado",
-      "tension": "Intensidad"
+      "tension": "Intensidad",
+      "shared": "Compartido"
     },
     "empty": {
       "title": "Tu biblioteca de motivos está lista",
@@ -725,7 +781,13 @@
       "toUser": "Mi biblioteca",
       "whatItDoes": "Copia este motivo en tu biblioteca (un clon privado y editable).",
       "continue": "Continuar",
-      "estimating": "Calculando…"
+      "estimating": "Calculando…",
+      "bodyUser": "Al adoptar, se creará una copia privada y editable en tu biblioteca.",
+      "sharedHint": "Cualquier persona con acceso a este libro puede ver y editar este motivo.",
+      "targetBook": "Este libro (privado)",
+      "targetBookShared": "Compartir con colaboradores",
+      "targetLegend": "Añadir a",
+      "targetUser": "Mi biblioteca"
     },
     "quota": {
       "adopt": "Has adoptado {{used}}/{{limit}} en este periodo; archiva algunos o espera."
@@ -752,7 +814,10 @@
     "binding": {
       "freeForm": "No se encontró ningún motivo: esta escena es de forma libre.",
       "commitGenerate": "Confirmar + escribir esta escena →",
-      "noWork": "Crea un plan para este libro para vincular los motivos a sus escenas."
+      "noWork": "Crea un plan para este libro para vincular los motivos a sus escenas.",
+      "committedTitle": "Vincular motivos de escena",
+      "loadError": "No se pudieron cargar los motivos de la escena.",
+      "sectionTitle": "Motivos de escena"
     },
     "swap": {
       "title": "Cambiar motivo",
@@ -777,7 +842,13 @@
         "warn": "Desviación de tensión",
         "bad": "Tiempo perdido"
       },
-      "rerunNeedsModel": "Elige un modelo para volver a ejecutar la conformidad"
+      "rerunNeedsModel": "Elige un modelo para volver a ejecutar la conformidad",
+      "bindCta": "Vincular un motivo a una escena →",
+      "couldNotCheck": "No se pudo verificar",
+      "notChecked": "Aún no revisado",
+      "notWritten": "Aún no escrito",
+      "openScene": "Abrir esta escena en el inspector",
+      "written": "Escrito"
     },
     "arc": {
       "mobileNotice": "La cuadrícula de la línea de tiempo está disponible en una pantalla más grande; aquí puedes editarla como una lista.",
@@ -834,7 +905,8 @@
         "driftFolded": "Plegado (nunca vinculado)",
         "untitledArc": "(arco sin título)",
         "truncated": "Mostrando los primeros {{shown}} de {{count}} — usa el Catálogo o un plan superior para encontrar más.",
-        "tabSuggest": "Sugerir"
+        "tabSuggest": "Sugerir",
+        "restore": "restaurar"
       },
       "import": {
         "privacy": "El texto original es privado y nunca se comparte. Solo la estructura abstracta derivada puede publicarse; al publicar, se elimina la referencia a la fuente.",
@@ -890,7 +962,42 @@
         "error": "No se pudieron agrupar los capítulos en arcos.",
         "done": "Se agruparon {{chapters}} capítulos en {{arcs}} arcos.",
         "none": "Aún no hay capítulos para agrupar en arcos."
-      }
+      },
+      "apply": {
+        "dropMerge": "Reconciliación de escala",
+        "error": "No se pudo generar la vista previa de la aplicación.",
+        "previewOnly": "Solo vista previa: abre este arco dentro de un libro para confirmarlo.",
+        "rescaled": "Escala reajustada de {{from}} a {{to}} capítulos",
+        "roster": "Vincular al elenco (una vez para todo el arco)",
+        "run": "Vista previa del plan",
+        "running": "Previsualizando…",
+        "targetChapters": "Capítulos de destino",
+        "title": "Aplicar a un nuevo libro (vista previa)",
+        "unbound": "Roles sin asignar: {{keys}}"
+      },
+      "backToList": "Todas las plantillas de arco",
+      "chapterCount": "{{count}} capítulos",
+      "empty": "Este arco aún no tiene hilos ni ubicaciones.",
+      "grabbed": "Arrastrado: {{name}}. Flechas para mover, Shift+Flechas para cambiar tamaño, Enter para soltar, Esc para liberar.",
+      "loadError": "No se pudo cargar la línea de tiempo de este arco.",
+      "loading": "Cargando línea de tiempo…",
+      "materialize": {
+        "blurb": "Consolidar este arco en el libro actual: creará el esquema de escenas de los capítulos + las vinculaciones de motif.",
+        "conflict": "Algunos capítulos ya tienen un plan. ¿Reemplazar sus escenas con este arco?",
+        "done": "Se consolidaron {{scenes}} escenas en {{chapters}} capítulos.",
+        "error": "No se pudo materializar este arco.",
+        "folded": "Se han plegado {{count}} motivo(s) mediante el reescalado de recuento de capítulos.",
+        "replace": "Reemplazar escenas existentes",
+        "run": "Materializar en este libro",
+        "running": "Materializando…",
+        "unresolved": "No se pudieron resolver {{count}} motivo(s) y se han omitido."
+      },
+      "placementDesc": "Hilo {{thread}}, capítulos {{from}}-{{to}}",
+      "readonly": "Este arco es de solo lectura. Adóptalo en tu biblioteca para editar la línea temporal.",
+      "saveConflict": "Recargado: este arco ha cambiado en otro lugar.",
+      "saveError": "No se pudo guardar; se reintentará en la próxima edición.",
+      "saved": "Guardado",
+      "saving": "Guardando…"
     },
     "simple": {
       "actant": {
@@ -1021,6 +1128,111 @@
       "overCap": "Máximo {{cap}} motivos por tarea de traducción; deselecciona {{over}}.",
       "confirmWhat": "Traducir {{count}} motivo(s) a {{lang}} usando tu modelo.",
       "doneTitle": "{{written}} de {{total}} traducidos a {{lang}}"
+    },
+    "arcConf": {
+      "causal": "verificado causalmente",
+      "caused": "causado",
+      "chShort": "cap.",
+      "coarse": "Grueso · solo estructural",
+      "deepError": "No se pudo ejecutar la conformidad profunda.",
+      "deepWhat": "Vuelve a etiquetar la prosa del libro con tu modelo y compárala con este arco (medido por LLM).",
+      "drift": "desviación máx. {{drift}}",
+      "empty": "Aún no se ha materializado nada de este arco.",
+      "entailed": "implicado",
+      "estimating": "Estimando…",
+      "legalTransitions": "legal",
+      "maxDrift": "desviación máx. {{drift}}",
+      "model": "Modelo de etiquetado",
+      "noPlanned": "sin curva de plantilla",
+      "noProse": "Aún no hay prosa extraída; genera escenas para medir la desviación.",
+      "noWork": "Materializa este arco en un libro para ver la conformidad.",
+      "notTagged": "La progresión de los hilos requiere etiquetado; ejecuta con un modelo.",
+      "pacing": "Ritmo",
+      "proseDrift": "Desviación de la prosa (realizada vs. planificada)",
+      "proseDriftTitle": "Conformidad profunda de la prosa",
+      "proseScale": "tensión de los eventos extraídos (1–5 ×20)",
+      "proseSuccession": "Sucesión en la prosa",
+      "proseThreads": "Hilos en la prosa",
+      "runDeep": "Ejecutar conformidad profunda",
+      "running": "Ejecutando...",
+      "structural": "estructural",
+      "succUntagged": "La sucesión requiere el etiquetado de motivos; ejecute con un modelo.",
+      "succession": "Sucesión (estructural)",
+      "successionOk": "Sin violaciones de orden.",
+      "threadMissing": "no está en la prosa",
+      "threads": "Progreso del hilo",
+      "title": "Conformidad del arco",
+      "unmaterialized": "No materializado",
+      "unplannedLabel": "no planificado en la prosa",
+      "violation": "{{label}}: {{n}} fuera de orden"
+    },
+    "editor": {
+      "add": "añadir",
+      "beatIntent": "intención",
+      "beatLabel": "beat",
+      "beats": "Beats",
+      "conflict": "Este motivo ha cambiado en otro lugar; ábrelo de nuevo para obtener la versión más reciente antes de editar.",
+      "deceived": "quién es engañado (coma)",
+      "effects": "Efectos",
+      "emotion": "Emoción",
+      "examples": "Ejemplos (escritos por el autor)",
+      "gap": "la brecha",
+      "genres": "Géneros (separados por comas)",
+      "kind": "Tipo",
+      "knows": "quién sabe (coma)",
+      "name": "Nombre",
+      "preconditions": "Precondiciones",
+      "roleConstraints": "restricciones",
+      "roleLabel": "etiqueta",
+      "roles": "Roles",
+      "saveError": "No se pudo guardar.",
+      "saving": "Guardando…",
+      "scheme": "Asimetría de información",
+      "summary": "Resumen (incrustado para recuperación)",
+      "tension": "Tensión (1–5)"
+    },
+    "kind": {
+      "arcs": "Plantillas de arco",
+      "label": "Biblioteca",
+      "motifs": "Motivos"
+    },
+    "lens": {
+      "title": "Motivos"
+    },
+    "mine": {
+      "belowGate": "{{n}} candidato(s) retenido(s) por debajo del umbral de calidad.",
+      "bookHint": "Un solo libro rara vez repite un patrón; el alcance del corpus encuentra más.",
+      "corpus": "Todo mi corpus",
+      "estimating": "Estimando…",
+      "failed": "Error en la minería.",
+      "minSupport": "Soporte mín.",
+      "minedN": "{{n}} borrador(es) extraído(s) — revísalos",
+      "model": "Modelo de minería",
+      "noCorpus": "Aún no hay un corpus analizado; primero extrae un libro y luego realiza la minería.",
+      "noPatterns": "No se encontraron patrones recurrentes. Prueba con el alcance del corpus o un soporte mín. más bajo.",
+      "quota": "Cuota de minería alcanzada.",
+      "run": "Minar",
+      "running": "Minando…",
+      "scope": "Alcance",
+      "thisBook": "Este libro",
+      "title": "Extrae motivos de tu escritura",
+      "what": "Abstrae los patrones argumentales recurrentes de tu corpus en motivos de borrador (medidos por LLM)."
+    },
+    "sync": {
+      "apply": "Tomar {{n}} de la fuente",
+      "applying": "Aplicando…",
+      "available": "La plantilla de origen tiene una actualización.",
+      "conflict": "conflicto — ambos han editado esto",
+      "error": "No se pudo aplicar la fusión.",
+      "keepMine": "Mantener todo lo mío",
+      "mine": "lo mío",
+      "noChange": "La versión original ha avanzado, pero no ha cambiado ningún campo que se pueda fusionar.",
+      "review": "Revisar y fusionar",
+      "take": "tomar versión original",
+      "theirs": "original",
+      "threeWay": "3 vías",
+      "title": "Actualización de la versión original",
+      "twoWay": "2 vías"
     }
   },
   "authoringRun": {
@@ -1058,7 +1270,14 @@
       "allowlistAdd": "Añadir herramienta…",
       "runGateCheck": "Verificar restricciones →",
       "gating": "Comprobando…",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "chaptersEmpty": "Este libro aún no tiene capítulos; créalos a partir de tu plan para empezar a redactar.",
+      "chaptersEmptyCta": "Abrir el Planificador para compilar un plan primero →",
+      "materialize": "Crear capítulos a partir de este plan →",
+      "materializedOk": "Se han creado {{count}} capítulos a partir de tu plan.",
+      "materializing": "Creando capítulos…",
+      "modelEmpty": "Añade un modelo de chat en Ajustes → Modelos para redactar.",
+      "modelLabel": "Modelo de redacción"
     },
     "gate": {
       "title": "Control de fase",
@@ -1147,5 +1366,390 @@
   "canonUncheckedUnparseable": "el modelo revisor no devolvió una respuesta utilizable",
   "canonUncheckedFailed": "la propia comprobación falló",
   "canonUncheckedOther": "esta comprobación no se pudo ejecutar",
-  "canonUncheckedWhich": "{{count}} de sus comprobaciones no se completaron"
+  "canonUncheckedWhich": "{{count}} de sus comprobaciones no se completaron",
+  "structureTemplates": {
+    "templates": {
+      "save_the_cat": "Save the Cat",
+      "hero_journey": "El viaje del héroe",
+      "story_circle": "Círculo de la historia",
+      "kishotenketsu": "Kishōtenketsu",
+      "web_novel": "Arco de novela web",
+      "generic": "Tres actos (Genérico)"
+    },
+    "beats": {
+      "save_the_cat": {
+        "opening_image": {
+          "label": "Imagen inicial",
+          "purpose": "Establece el tono, el estilo y la situación inicial de la historia."
+        },
+        "theme_stated": {
+          "label": "Tema enunciado",
+          "purpose": "Se presenta la idea central o el mensaje moral de la historia, a menudo a través de un diálogo."
+        },
+        "setup": {
+          "label": "Planteamiento",
+          "purpose": "Presenta al protagonista, su mundo y las carencias que debe superar."
+        },
+        "catalyst": {
+          "label": "Catalizador",
+          "purpose": "Un evento disruptivo que cambia la vida del protagonista y lo saca de su rutina."
+        },
+        "debate": {
+          "label": "Debate",
+          "purpose": "El protagonista duda o se resiste al cambio antes de tomar una decisión definitiva."
+        },
+        "break_into_two": {
+          "label": "Paso al segundo acto",
+          "purpose": "El protagonista abandona su mundo ordinario y se adentra en la aventura."
+        },
+        "b_story": {
+          "label": "Historia B",
+          "purpose": "El propósito de la subtrama para dar profundidad a los personajes."
+        },
+        "fun_and_games": {
+          "label": "Diversión y juegos",
+          "purpose": "El momento en que el protagonista explora las reglas de su nuevo mundo."
+        },
+        "midpoint": {
+          "label": "Punto medio",
+          "purpose": "Un cambio crucial que eleva las apuestas o cambia la dirección de la historia."
+        },
+        "bad_guys_close_in": {
+          "label": "Los villanos se acercan",
+          "purpose": "La presión aumenta y los obstáculos se vuelven más peligrosos."
+        },
+        "all_is_lost": {
+          "label": "Todo está perdido",
+          "purpose": "El momento de mayor derrota para el protagonista."
+        },
+        "dark_night": {
+          "label": "Noche oscura",
+          "purpose": "El punto más bajo antes de la resolución final."
+        },
+        "break_into_three": {
+          "label": "Transición al tercer acto",
+          "purpose": "El protagonista toma una decisión definitiva para abandonar su mundo ordinario y lanzarse a la aventura."
+        },
+        "finale": {
+          "label": "Final",
+          "purpose": "El clímax donde el protagonista enfrenta el conflicto principal y resuelve la trama."
+        },
+        "final_image": {
+          "label": "Imagen Final",
+          "purpose": "Una escena que muestra cómo ha cambiado el mundo o el protagonista tras la resolución."
+        }
+      },
+      "hero_journey": {
+        "ordinary_world": {
+          "label": "Mundo Ordinario",
+          "purpose": "Establece la normalidad del protagonista y su entorno antes de que comience la historia."
+        },
+        "call_to_adventure": {
+          "label": "Llamado a la Aventura",
+          "purpose": "Un evento o mensaje que rompe la rutina y presenta un desafío o meta al protagonista."
+        },
+        "refusal_of_the_call": {
+          "label": "Rechazo de la Llamada",
+          "purpose": "El protagonista duda o se niega a aceptar el desafío por miedo o inseguridad."
+        },
+        "meeting_the_mentor": {
+          "label": "Encuentro con el Mentor",
+          "purpose": "El héroe encuentra un guía o mentor que le proporciona herramientas o consejos para su viaje."
+        },
+        "crossing_the_threshold": {
+          "label": "Cruzar el umbral",
+          "purpose": "El héroe abandona el mundo ordinario y se adentra en el mundo especial de la aventura."
+        },
+        "tests_allies_enemies": {
+          "label": "Pruebas, aliados y enemigos",
+          "purpose": "El héroe se enfrenta a una serie de retos y aprende quiénes son sus amigos y quiénes sus enemigos."
+        },
+        "approach": {
+          "label": "Aproximación",
+          "purpose": "El héroe se prepara para el mayor desafío de su viaje, acercándose al corazón de la aventura."
+        },
+        "ordeal": {
+          "label": "La prueba suprema",
+          "purpose": "El héroe enfrenta su mayor miedo o un peligro mortal en una batalla decisiva."
+        },
+        "reward": {
+          "label": "Recompensa",
+          "purpose": "Tras superar la prueba, el héroe obtiene un objeto, conocimiento o poder crucial."
+        },
+        "the_road_back": {
+          "label": "El camino de regreso",
+          "purpose": "El héroe debe enfrentar las consecuencias de sus acciones y prepararse para el enfrentamiento final."
+        },
+        "resurrection": {
+          "label": "Resurrección",
+          "purpose": "Una prueba definitiva donde el héroe experimenta una transformación o renacimiento antes del clímax."
+        },
+        "return_with_elixir": {
+          "label": "Regreso con el elixir",
+          "purpose": "El héroe regresa al mundo ordinario con lo que necesita para resolver el conflicto o transformar su realidad."
+        }
+      },
+      "story_circle": {
+        "you": {
+          "label": "Tú",
+          "purpose": "Presenta al protagonista en su mundo ordinario, estableciendo su situación actual."
+        },
+        "need": {
+          "label": "Necesidad",
+          "purpose": "Se identifica un deseo o una carencia que impulsa al protagonista a actuar."
+        },
+        "go": {
+          "label": "Ir",
+          "purpose": "El protagonista cruza el umbral y entra en un entorno desconocido para resolver su necesidad."
+        },
+        "search": {
+          "label": "Buscar",
+          "purpose": "El protagonista sale de su zona de confort para buscar algo."
+        },
+        "find": {
+          "label": "Encontrar",
+          "purpose": "El protagonista obtiene lo que buscaba, pero a un costo."
+        },
+        "take": {
+          "label": "Pagar",
+          "purpose": "El protagonista paga un precio por lo que ha encontrado."
+        },
+        "return": {
+          "label": "Regresar",
+          "purpose": "El protagonista regresa a su situación inicial, pero transformado."
+        },
+        "change": {
+          "label": "Cambiar",
+          "purpose": "El protagonista ha cambiado debido a su experiencia."
+        }
+      },
+      "kishotenketsu": {
+        "ki": {
+          "label": "Ki",
+          "purpose": "Introducción de los personajes y el entorno."
+        },
+        "sho": {
+          "label": "Sho",
+          "purpose": "Presentar la situación inicial y los personajes."
+        },
+        "ten": {
+          "label": "Ten",
+          "purpose": "Introducir un giro inesperado o un cambio de dirección en la trama."
+        },
+        "ketsu": {
+          "label": "Ketsu",
+          "purpose": "Resolver la tensión y concluir la narrativa."
+        }
+      },
+      "web_novel": {
+        "hook": {
+          "label": "Hook",
+          "purpose": "Captar la atención inmediata del lector con un elemento intrigante."
+        },
+        "establishment": {
+          "label": "Establishment",
+          "purpose": "Establecer el mundo, las reglas y el contexto de la historia."
+        },
+        "rising_conflict": {
+          "label": "Rising Conflict",
+          "purpose": "Aumentar la tensión y los obstáculos para el protagonista."
+        },
+        "setback": {
+          "label": "Setback",
+          "purpose": "Establecer un obstáculo que complique la situación del protagonista."
+        },
+        "climax": {
+          "label": "Clímax",
+          "purpose": "El punto de máxima tensión donde se resuelve el conflicto principal."
+        },
+        "resolution": {
+          "label": "Resolución",
+          "purpose": "El cierre de la trama tras el clímax."
+        }
+      },
+      "generic": {
+        "setup": {
+          "label": "Planteamiento",
+          "purpose": "Presentar el mundo, los personajes y el conflicto inicial."
+        },
+        "confrontation": {
+          "label": "Confrontación",
+          "purpose": "El desarrollo de los conflictos y el aumento de la tensión."
+        },
+        "resolution": {
+          "label": "Resolución",
+          "purpose": "La resolución de los hilos narrativos y el nuevo estado de las cosas."
+        }
+      }
+    },
+    "kinds": {
+      "save_the_cat": "Estructura «Save the Cat»",
+      "hero_journey": "Estructura del viaje del héroe",
+      "story_circle": "Estructura del círculo de la historia",
+      "kishotenketsu": "Estructura Kishōtenketsu",
+      "web_novel": "Estructura de arcos de novela web",
+      "generic": "Estructura de tres actos (genérica)"
+    }
+  },
+  "branchdiff": {
+    "allNew": "Totalmente nuevo (sin contraparte en el canon)",
+    "branch": "Divergencia",
+    "canon": "Canon",
+    "chg": "cambio",
+    "empty": "Aún no hay prosa divergente; cada escena hereda el canon. Promociona una versión en el lienzo de «qué pasaría si» para ver las diferencias aquí.",
+    "error": "No se pudo leer la prosa de la rama.",
+    "loading": "Leyendo prosa…",
+    "new": "nuevo",
+    "noProseBody": "Esta escena divergente aún no tiene prosa en la versión «what-if»; promociona una toma en el lienzo «what-if» para que su diferencia aparezca aquí.",
+    "noProseTitle": "Aún no escrito",
+    "noSource": "Esta rama no tiene una fuente resoluble con la cual comparar.",
+    "scenes": "{{n}} divergente(s)",
+    "todo": "pendiente",
+    "untitledScene": "escena"
+  },
+  "canonBrokenBadge": "{{n}} roto(s) →",
+  "canonConflictDiscard": "Descartar la mía",
+  "canonConflictKeepTheirs": "Mantener la suya",
+  "canonConflictReapply": "Reaplicar mi edición en la v{{v}}",
+  "canonConflictTitle": "Esta regla ha cambiado en otro lugar; tu borrador se mantiene abajo.",
+  "canonview": {
+    "active": "{{n}} activo(s)",
+    "branchHint": "Lo que el canon sabe justo antes de esta rama",
+    "branchToggle": "Canon en la rama",
+    "canonState": "Estado del canon",
+    "chapterN": "capítulo {{n}}",
+    "countGlossary": "· {{n}} entidades",
+    "coverage": "aparece en el {{pct}}% de los capítulos",
+    "established": "Establecido hasta ahora",
+    "events": "{{n}} eventos en la línea temporal",
+    "gone": "{{n}} eliminados",
+    "knowledgeUnavailable": "Estado del canon no disponible: el servicio de conocimiento no ha respondido.",
+    "loading": "Leyendo canon...",
+    "noChapter": "No hay ningún capítulo enfocado: abre una escena para inspeccionar el canon según su capítulo.",
+    "noneHere": "No hay entidades vinculadas a este capítulo.",
+    "notAnalyzed": "Este capítulo aún no ha sido analizado; extrae el libro para completar el canon.",
+    "presence": "Presente en este capítulo",
+    "srcGlossary": "· glosario",
+    "srcKnowledge": "· conocimiento",
+    "title": "Canon al",
+    "windowUnavailable": "Posición de lectura desconocida; la ventana no está disponible para este capítulo."
+  },
+  "coverageAbandoned": "abandonadas {{n}}",
+  "coverageAbsent": "ausentes {{n}}",
+  "coverageClean": "Sin promesas abandonadas: el libro cumple con todos sus planteamientos.",
+  "coverageDropped": "Prometidas pero abandonadas:",
+  "coverageIntro": "Aviso: qué promesas establecidas en el esquema se cumplen a lo largo de todo el libro. Solo lectura.",
+  "coverageLoading": "Analizando el libro completo…",
+  "coverageNa": "Cobertura de promesas no disponible.",
+  "coverageNoPromises": "No se encontraron promesas rastreables en el esquema.",
+  "coveragePaid": "{{n}} pagadas",
+  "coverageProgressing": "{{n}} en progreso",
+  "coverageRerun": "Volver a analizar",
+  "coverageRun": "Analizar promesas de la historia",
+  "coverageTitle": "Promesas de la historia",
+  "divergence": {
+    "active": "activa",
+    "addOverride": "Añadir anulación",
+    "archive": "Archivar",
+    "archiveConflict": "Se ha modificado en otro lugar; se ha recargado.",
+    "archiveFailed": "No se pudo archivar; inténtalo de nuevo.",
+    "archived": "Archivado: sus capítulos y conocimientos se han conservado; ha salido de esta lista.",
+    "branchPoint": "Punto de ramificación",
+    "branchedAt": "se ramificó en el capítulo {{n}}",
+    "branchedUnknown": "punto de ramificación desconocido",
+    "canonRules": "Reglas del canon",
+    "canonRulesPlaceholder": "Una regla por línea (p. ej., la magia ya no existe en esta rama).",
+    "canonTag": "canon",
+    "canonical": "Canónico",
+    "canonicalSection": "Canónico",
+    "chapterN": "capítulo {{n}}",
+    "editFailed": "No se pudo guardar; inténtalo de nuevo.",
+    "emptyDerivatives": "Aún no hay versiones de «qué pasaría si». Una versión ramifica tu libro en un capítulo y diverge; la fuente original permanece como canon de solo lectura.",
+    "loading": "Cargando...",
+    "new": "Nueva divergencia",
+    "no": "No",
+    "noAnchoredEntities": "Aún no hay personajes vinculados al glosario en la fuente de esta rama; vincula entidades en el glosario para establecer un punto de vista o sobrescribirlas aquí.",
+    "noOverrides": "Aún no hay sobrescrituras de entidades.",
+    "noPov": "— sin anclaje de punto de vista —",
+    "noWork": "Este libro aún no tiene un plan; primero organiza sus arcos y capítulos, luego crea una ramificación de «qué pasaría si» aquí.",
+    "overrideEntity": "Entidad a sobrescribir",
+    "overrideNamePlaceholder": "Nuevo nombre en esta versión (opcional)…",
+    "overridePlaceholder": "En qué se diferencia esta entidad (p. ej., ahora es un villano)…",
+    "overrideRemoved": "Sobrescritura eliminada.",
+    "overrides": "Anulaciones",
+    "pickEntity": "Anular otra entidad…",
+    "povAnchor": "Ancla de punto de vista",
+    "remove": "Eliminar",
+    "removeConfirm": "¿Eliminar?",
+    "rename": "Renombrar",
+    "renameConflict": "Se ha modificado en otro lugar; recarga e inténtalo de nuevo.",
+    "renameFailed": "No se pudo renombrar; inténtalo de nuevo.",
+    "renamePlaceholder": "Nombre hipotético (1–200 caracteres)",
+    "renameTitle": "Renombrar este «qué pasaría si»",
+    "renamed": "Renombrado.",
+    "restoreFailed": "No se pudo restaurar; es posible que haya cambiado en otro lugar.",
+    "restored": "Restaurado en la lista.",
+    "save": "Guardar",
+    "saveRules": "Guardar reglas",
+    "saving": "Guardando…",
+    "specError": "No se pudo cargar la especificación de la rama; intenta seleccionarla de nuevo.",
+    "specLoading": "Cargando especificación…",
+    "switchFailed": "No se pudo cambiar; inténtalo de nuevo.",
+    "switchTo": "Cambiar a",
+    "tabDiff": "Diferencia",
+    "tabSpec": "Especificación",
+    "taxonomy": "Taxonomía",
+    "title": "Versiones «what-if»",
+    "unavailable": "El servicio de composición no está disponible; inténtalo de nuevo en breve.",
+    "undo": "Deshacer",
+    "undoFailed": "No se pudo restaurar la modificación.",
+    "undoSuperseded": "Existe una modificación más reciente para esa entidad; no hay nada que restaurar.",
+    "unnamed": "Versión sin título",
+    "yes": "Sí"
+  },
+  "mark": {
+    "action": "Marcar problema",
+    "cancel": "Cancelar",
+    "duplicate": "Ya has marcado este pasaje con esa nota.",
+    "failed": "No se pudo guardar la marca. Inténtalo de nuevo.",
+    "kind": "¿Qué tipo de problema?",
+    "no_selection": "Selecciona el pasaje incorrecto antes de marcarlo.",
+    "note": "¿Qué tiene de malo este pasaje?",
+    "note_ph": "p. ej., murió en el capítulo 3...",
+    "note_required": "Indica qué está mal; la nota es lo que el coescritor debe corregir.",
+    "save": "Marcar",
+    "saved": "Marcado: el coescritor puede verlo."
+  },
+  "polishAll": "todo",
+  "polishAllDet": "todo lo determinista",
+  "polishApply": "Aplicar {{count}} seleccionados",
+  "polishClean": "No se encontraron problemas; la prosa está limpia.",
+  "polishClear": "limpiar",
+  "polishDeterministic": "auto",
+  "polishIntro": "Revisa las correcciones propuestas antes de que afecten a tu prosa. Las ediciones deterministas (pronombres, erratas) están preseleccionadas; las ediciones semánticas se muestran sin marcar para que tú las juzgues.",
+  "polishLoading": "Analizando…",
+  "polishNoModel": "Selecciona un modelo primero.",
+  "polishRerank": "auto-marcado (IA, mayor coste)",
+  "polishRerankHint": "Utiliza una llamada de IA adicional por edición para marcar automáticamente las mejores (más lento, mayor coste).",
+  "polishRerun": "Volver a ejecutar pulido",
+  "polishRun": "Ejecutar pulido",
+  "polishSemantic": "semántico",
+  "polishStats": "{{edits}} ediciones · {{refuted}} descartadas por verificación",
+  "polishUnplaced": "No se han podido localizar {{count}} hallazgo(s) en este texto; se muestran a continuación sin corregir.",
+  "polishUnplacedNoQuote": "(sin texto entrecomillado)",
+  "qualityCriticNa": "Crítico no disponible.",
+  "qualityHasFix": "corrección propuesta ↓",
+  "qualityIntro": "Solo informativo: cómo se puntúa el capítulo y qué promete pero nunca cumple. Nada de esto cambia tu prosa.",
+  "qualityLoading": "Analizando…",
+  "qualityNoThreads": "No se han planteado nuevos hilos en este capítulo.",
+  "qualityRerun": "Volver a analizar",
+  "qualityRun": "Analizar calidad",
+  "qualityThreadsNa": "Auditoría de hilos no disponible.",
+  "qualityThreadsRaised": "Se han planteado {{n}} hilo(s) en este capítulo:",
+  "qualityThreadsResolved": "{{r}} se resolvieron aquí",
+  "qualityTitle": "Informe de calidad",
+  "resolveWorkFailed": "Servicio de conocimiento no disponible: no se pudo completar la configuración de la base de conocimientos.",
+  "resolvingWork": "Finalizando configuración… el servicio de conocimiento no estuvo disponible brevemente.",
+  "retry": "Reintentar",
+  "threadFocusMissing": "La promesa de la que vienes no está en esta vista; es posible que ya se haya pagado. Cambia el filtro a «todo»."
 }

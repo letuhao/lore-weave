@@ -154,7 +154,14 @@
     "promoted": "Promoted to a what-if derivative.",
     "promotedPartial": "Promoted, but {{n}} take(s) couldn’t be added.",
     "promotedProsePartial": "Promoted, but {{n}} take(s)’ prose couldn’t be saved — re-promote to retry.",
-    "promoteHint": "Generate at least one take to promote"
+    "promoteHint": "Generate at least one take to promote",
+    "vsCanon": {
+      "absoluteHint": "Take scores (no canon baseline to compare)",
+      "judging": "· vs canon…",
+      "noBaseline": "· no canon baseline",
+      "take": "take",
+      "vs": "vs canon"
+    }
   },
   "cast": "Cast",
   "codex": {
@@ -261,7 +268,8 @@
     "linkMissing": "One of those places no longer exists.",
     "delete": "Remove {{name}}",
     "deleteConfirm": "Remove “{{name}}” from the world map? This archives the place.",
-    "deleteFailed": "Could not remove the place."
+    "deleteFailed": "Could not remove the place.",
+    "backdropNoChapter": "Open a chapter to set a backdrop."
   },
   "grounding": "Grounding",
   "canon": "Canon",
@@ -346,7 +354,21 @@
     "noHits": "No matching references yet.",
     "library": "Library",
     "delete": "Delete",
-    "empty": "No references yet — add influences above."
+    "empty": "No references yet — add influences above.",
+    "addEmbedModel": "Add an embedding model",
+    "content": "Content",
+    "contentRecomputes": "Saving content re-computes this reference’s embedding.",
+    "deleteBody": "This removes it from the shelf. It can’t be undone.",
+    "deleteTitle": "Delete this reference?",
+    "done": "Done",
+    "edit": "Edit",
+    "filter": "Filter…",
+    "noMatch": "No references match your filter.",
+    "reembedding": "Re-embedding…",
+    "saveContent": "Save content (re-embeds)",
+    "saveMetadata": "Save details",
+    "saving": "Saving…",
+    "sourceUrl": "Source URL (optional)"
   },
   "progressPanel": {
     "loading": "Loading progress…",
@@ -363,7 +385,8 @@
     "words": "words",
     "goalPlaceholder": "words/day",
     "setGoal": "Set goal",
-    "goalHint": "0 clears the goal"
+    "goalHint": "0 clears the goal",
+    "goalLegacy": "This goal came from the book's shared settings — setting it makes it yours."
   },
   "workSettings": {
     "defaultModel": "Default drafter model",
@@ -375,7 +398,11 @@
     "chapter": "Chapter (single pass)",
     "narrativeThread": "Track narrative threads (promises & foreshadowing)",
     "narrativeThreadHint": "Advisory: detects open promises and re-injects them so generation honors/pays them; surfaces unpaid promises as a debt view. Opt-in.",
-    "saveError": "Could not save settings — try again."
+    "saveError": "Could not save settings — try again.",
+    "criticModel": "Critic model (independent judge)",
+    "criticModelHint": "A DIFFERENT model grades each draft against your canon, and can block a chapter that contradicts it. Without one, nothing independently checks the prose — a model cannot grade its own work.",
+    "criticSameAsDrafter": "This is the same model that writes the prose, so it would be grading its own work — the server will refuse it and skip the critique. Pick a different model.",
+    "noCritic": "No critic — drafts are not independently graded"
   },
   "loadingStats": "Loading quality…",
   "statsUnavailable": "Quality stats unavailable.",
@@ -526,7 +553,8 @@
     "chapter_scope": "Scope",
     "all_chapters": "All chapters",
     "recreate_current": "Recreate current chapter",
-    "recreate_all": "Recreate all chapters"
+    "recreate_all": "Recreate all chapters",
+    "done": "Done"
   },
   "threads": "Threads",
   "threadsTitle": "Plot threads",
@@ -673,13 +701,16 @@
     "overuse": "\"{{name}}\" is already used in {{chapters}} — consider varying it.",
     "list": {
       "noMatch": "No motifs match — clear filters.",
-      "truncated": "Showing the first 100 — narrow with search or filters to see the rest."
+      "truncated": "Showing the first 100 — narrow with search or filters to see the rest.",
+      "loadMore": "Load more",
+      "loadingMore": "Loading…"
     },
     "error": {
       "load": "Couldn't load — please retry."
     },
     "permission": {
-      "readOnly": "This is a shared template — clone it to make your own editable copy."
+      "readOnly": "This is a shared template — clone it to make your own editable copy.",
+      "noSession": "Editing is unavailable until your session reloads."
     },
     "action": {
       "open": "Open",
@@ -690,11 +721,19 @@
       "cancel": "Cancel",
       "retry": "Retry",
       "swap": "Swap",
-      "clear": "Free-form"
+      "clear": "Free-form",
+      "bind": "Bind motif",
+      "discard": "Discard",
+      "edit": "Edit",
+      "mine": "Mine",
+      "promote": "Promote",
+      "restore": "Restore",
+      "save": "Save"
     },
     "card": {
       "draft": "Mined draft",
-      "tension": "Intensity"
+      "tension": "Intensity",
+      "shared": "Shared"
     },
     "empty": {
       "title": "Your motif library is ready",
@@ -742,7 +781,13 @@
       "toUser": "My library",
       "whatItDoes": "Copy this motif into your library (a private, editable clone).",
       "continue": "Continue",
-      "estimating": "Estimating…"
+      "estimating": "Estimating…",
+      "bodyUser": "Adopt makes your own private, editable copy in your library.",
+      "sharedHint": "Everyone with access to this book can see and edit this motif.",
+      "targetBook": "This book (private)",
+      "targetBookShared": "Share with collaborators",
+      "targetLegend": "Add to",
+      "targetUser": "My library"
     },
     "quota": {
       "adopt": "You've adopted {{used}}/{{limit}} this period — archive some or wait."
@@ -769,7 +814,10 @@
     "binding": {
       "freeForm": "No motif matched — this scene is free-form.",
       "commitGenerate": "Commit + write this scene →",
-      "noWork": "Create a plan for this book to bind motifs to its scenes."
+      "noWork": "Create a plan for this book to bind motifs to its scenes.",
+      "committedTitle": "Bind scene motifs",
+      "loadError": "Could not load scene motifs.",
+      "sectionTitle": "Scene motifs"
     },
     "swap": {
       "title": "Swap motif",
@@ -794,7 +842,13 @@
         "warn": "Tension drift",
         "bad": "Beat missed"
       },
-      "rerunNeedsModel": "Pick a model to re-run conformance"
+      "rerunNeedsModel": "Pick a model to re-run conformance",
+      "bindCta": "Bind a motif to a scene →",
+      "couldNotCheck": "Couldn't check",
+      "notChecked": "Not checked yet",
+      "notWritten": "Not written yet",
+      "openScene": "Open this scene in the inspector",
+      "written": "Written"
     },
     "arc": {
       "mobileNotice": "The timeline grid is available on a larger screen — here you can edit it as a list.",
@@ -851,7 +905,8 @@
         "driftFolded": "Folded (never bound)",
         "untitledArc": "(untitled arc)",
         "truncated": "Showing the first {{shown}} of {{count}} — use Catalog or a narrower tier to find more.",
-        "tabSuggest": "Suggest"
+        "tabSuggest": "Suggest",
+        "restore": "restore"
       },
       "import": {
         "privacy": "The raw text stays private to you and is never shared. Only the derived abstract structure can be published — and publishing strips the source reference.",
@@ -907,7 +962,42 @@
         "error": "Could not group the chapters into arcs.",
         "done": "Grouped {{chapters}} chapters into {{arcs}} arcs.",
         "none": "No chapters to group into arcs yet."
-      }
+      },
+      "apply": {
+        "dropMerge": "Scale reconciliation",
+        "error": "Could not build the apply preview.",
+        "previewOnly": "Preview only — open this arc inside a book to commit it.",
+        "rescaled": "Rescaled {{from}} → {{to}} chapters",
+        "roster": "Bind the cast (once for the whole arc)",
+        "run": "Preview plan",
+        "running": "Previewing…",
+        "targetChapters": "Target chapters",
+        "title": "Apply to a new book (preview)",
+        "unbound": "Unbound roles: {{keys}}"
+      },
+      "backToList": "All arc templates",
+      "chapterCount": "{{count}} chapters",
+      "empty": "This arc has no threads or placements yet.",
+      "grabbed": "Grabbed {{name}}. Arrow keys move, Shift+Arrow resize, Enter to drop, Esc to release.",
+      "loadError": "Could not load this arc timeline.",
+      "loading": "Loading timeline…",
+      "materialize": {
+        "blurb": "Commit this arc onto the current book — creates the chapters’ scene outline + motif bindings.",
+        "conflict": "Some chapters already have a plan. Replace their scenes with this arc?",
+        "done": "Committed {{scenes}} scenes across {{chapters}} chapters.",
+        "error": "Could not materialize this arc.",
+        "folded": "{{count}} motif(s) were folded by the chapter-count rescale.",
+        "replace": "Replace existing scenes",
+        "run": "Materialize to this book",
+        "running": "Materializing…",
+        "unresolved": "{{count}} motif(s) could not be resolved and were skipped."
+      },
+      "placementDesc": "{{thread}} thread, chapters {{from}}-{{to}}",
+      "readonly": "This arc is read-only. Adopt it to your library to edit the timeline.",
+      "saveConflict": "Reloaded — this arc changed elsewhere.",
+      "saveError": "Couldn't save — retrying on next edit.",
+      "saved": "Saved",
+      "saving": "Saving…"
     },
     "simple": {
       "actant": {
@@ -1038,6 +1128,111 @@
       "overCap": "At most {{cap}} motifs per translation job — deselect {{over}}.",
       "confirmWhat": "Translate {{count}} motif(s) to {{lang}} using your model.",
       "doneTitle": "{{written}} of {{total}} translated to {{lang}}"
+    },
+    "arcConf": {
+      "causal": "causally verified",
+      "caused": "caused",
+      "chShort": "ch",
+      "coarse": "Coarse · structural only",
+      "deepError": "Couldn’t run deep conformance.",
+      "deepWhat": "Re-tag the book’s prose with your model and diff it against this arc (LLM-metered).",
+      "drift": "max drift {{drift}}",
+      "empty": "Nothing materialized from this arc yet.",
+      "entailed": "entailed",
+      "estimating": "Estimating…",
+      "legalTransitions": "legal",
+      "maxDrift": "max drift {{drift}}",
+      "model": "Tagging model",
+      "noPlanned": "no template curve",
+      "noProse": "No extracted prose yet — generate scenes to measure drift.",
+      "noWork": "Materialize this arc into a book to see conformance.",
+      "notTagged": "Thread-progression needs tagging — run with a model.",
+      "pacing": "Pacing",
+      "proseDrift": "Prose drift (realized vs plan)",
+      "proseDriftTitle": "Deep prose conformance",
+      "proseScale": "tension from extracted events (1–5 ×20)",
+      "proseSuccession": "Succession in the prose",
+      "proseThreads": "Threads in the prose",
+      "runDeep": "Run deep conformance",
+      "running": "Running…",
+      "structural": "structural",
+      "succUntagged": "Succession needs motif-tagging — run with a model.",
+      "succession": "Succession (structural)",
+      "successionOk": "No ordering violations.",
+      "threadMissing": "not in prose",
+      "threads": "Thread progress",
+      "title": "Arc conformance",
+      "unmaterialized": "Not materialized",
+      "unplannedLabel": "unplanned in prose",
+      "violation": "{{label}}: {{n}} out-of-order"
+    },
+    "editor": {
+      "add": "add",
+      "beatIntent": "intent",
+      "beatLabel": "beat",
+      "beats": "Beats",
+      "conflict": "This motif changed elsewhere — reopen it to get the latest before editing.",
+      "deceived": "who is deceived (comma)",
+      "effects": "Effects",
+      "emotion": "Emotion",
+      "examples": "Examples (author-written)",
+      "gap": "the gap",
+      "genres": "Genres (comma-separated)",
+      "kind": "Kind",
+      "knows": "who knows (comma)",
+      "name": "Name",
+      "preconditions": "Preconditions",
+      "roleConstraints": "constraints",
+      "roleLabel": "label",
+      "roles": "Roles",
+      "saveError": "Couldn't save.",
+      "saving": "Saving…",
+      "scheme": "Information asymmetry",
+      "summary": "Summary (embedded for retrieval)",
+      "tension": "Tension (1–5)"
+    },
+    "kind": {
+      "arcs": "Arc templates",
+      "label": "Library",
+      "motifs": "Motifs"
+    },
+    "lens": {
+      "title": "Motifs"
+    },
+    "mine": {
+      "belowGate": "{{n}} candidate(s) held below the quality gate.",
+      "bookHint": "A single book rarely repeats a pattern — corpus scope finds more.",
+      "corpus": "My whole corpus",
+      "estimating": "Estimating…",
+      "failed": "Mining failed.",
+      "minSupport": "Min support",
+      "minedN": "{{n}} draft(s) mined — review them",
+      "model": "Mining model",
+      "noCorpus": "No analyzed corpus yet — extract a book first, then mine.",
+      "noPatterns": "No recurring patterns found. Try corpus scope or a lower min-support.",
+      "quota": "Mining quota reached.",
+      "run": "Mine",
+      "running": "Mining…",
+      "scope": "Scope",
+      "thisBook": "This book",
+      "title": "Mine motifs from your writing",
+      "what": "Abstract the recurring plot patterns in your corpus into draft motifs (LLM-metered)."
+    },
+    "sync": {
+      "apply": "Take {{n}} from upstream",
+      "applying": "Applying…",
+      "available": "The upstream template has an update.",
+      "conflict": "conflict — you both edited this",
+      "error": "Couldn't apply the merge.",
+      "keepMine": "Keep all mine",
+      "mine": "mine",
+      "noChange": "The upstream advanced but no mergeable field changed.",
+      "review": "Review & merge",
+      "take": "take upstream",
+      "theirs": "upstream",
+      "threeWay": "3-way",
+      "title": "Upstream update",
+      "twoWay": "2-way"
     }
   },
   "authoringRun": {
@@ -1075,7 +1270,14 @@
       "allowlistAdd": "Add tool…",
       "runGateCheck": "Run gate check →",
       "gating": "Checking…",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "chaptersEmpty": "This book has no chapters yet — create them from your plan to draft against.",
+      "chaptersEmptyCta": "Open Planner to compile a plan first →",
+      "materialize": "Create chapters from this plan →",
+      "materializedOk": "Created {{count}} chapters from your plan.",
+      "materializing": "Creating chapters…",
+      "modelEmpty": "Add a chat model in Settings → Models to draft with.",
+      "modelLabel": "Drafting model"
     },
     "gate": {
       "title": "Gate check",
@@ -1388,5 +1590,166 @@
       "web_novel": "Web Novel Arc structure",
       "generic": "Three-Act (Generic) structure"
     }
-  }
+  },
+  "branchdiff": {
+    "allNew": "All-new (no canon counterpart)",
+    "branch": "Dị bản",
+    "canon": "Canon",
+    "chg": "chg",
+    "empty": "No diverged prose yet — every scene inherits canon. Promote a take on the what-if canvas to see a diff here.",
+    "error": "Could not read the branch prose.",
+    "loading": "Reading prose…",
+    "new": "new",
+    "noProseBody": "This diverged scene has no prose in the what-if version yet — promote a take on the what-if canvas, then its diff appears here.",
+    "noProseTitle": "Not written yet",
+    "noSource": "This branch has no resolvable source to diff against.",
+    "scenes": "{{n}} diverged",
+    "todo": "todo",
+    "untitledScene": "scene"
+  },
+  "canonBrokenBadge": "{{n}} broken →",
+  "canonConflictDiscard": "Discard mine",
+  "canonConflictKeepTheirs": "Keep theirs",
+  "canonConflictReapply": "Re-apply my edit onto v{{v}}",
+  "canonConflictTitle": "This rule changed elsewhere — your draft is kept below.",
+  "canonview": {
+    "active": "{{n}} active",
+    "branchHint": "What canon knows right before this branch",
+    "branchToggle": "Canon at branch",
+    "canonState": "Canon state",
+    "chapterN": "chapter {{n}}",
+    "countGlossary": "· {{n}} entities",
+    "coverage": "appears in {{pct}}% of chapters",
+    "established": "Established by now",
+    "events": "{{n}} timeline events",
+    "gone": "{{n}} gone",
+    "knowledgeUnavailable": "Canon state unavailable — the knowledge service did not respond.",
+    "loading": "Reading canon…",
+    "noChapter": "No chapter in focus — open a scene to inspect canon as of its chapter.",
+    "noneHere": "No entities linked to this chapter.",
+    "notAnalyzed": "This chapter is not yet analyzed — extract the book to populate canon.",
+    "presence": "Present in this chapter",
+    "srcGlossary": "· glossary",
+    "srcKnowledge": "· knowledge",
+    "title": "Canon as of",
+    "windowUnavailable": "Reading position unknown — window unavailable for this chapter."
+  },
+  "coverageAbandoned": "abandoned {{n}}",
+  "coverageAbsent": "absent {{n}}",
+  "coverageClean": "No abandoned promises — the book pays off its setups.",
+  "coverageDropped": "Promised but abandoned:",
+  "coverageIntro": "Advisory — which promises the outline sets up get paid off across the whole book. Read-only.",
+  "coverageLoading": "Analyzing whole book…",
+  "coverageNa": "Promise coverage unavailable.",
+  "coverageNoPromises": "No trackable promises found in the outline.",
+  "coveragePaid": "paid {{n}}",
+  "coverageProgressing": "progressing {{n}}",
+  "coverageRerun": "Re-analyze",
+  "coverageRun": "Analyze story promises",
+  "coverageTitle": "Story promises",
+  "divergence": {
+    "active": "active",
+    "addOverride": "Add override",
+    "archive": "Archive",
+    "archiveConflict": "Changed elsewhere — reloaded.",
+    "archiveFailed": "Could not archive — try again.",
+    "archived": "Archived — its chapters and knowledge are kept; it left this list.",
+    "branchPoint": "Branch point",
+    "branchedAt": "branched at chapter {{n}}",
+    "branchedUnknown": "branch point unknown",
+    "canonRules": "Canon rules",
+    "canonRulesPlaceholder": "One rule per line (e.g. Magic no longer exists in this branch).",
+    "canonTag": "canon",
+    "canonical": "Canonical",
+    "canonicalSection": "Canonical",
+    "chapterN": "chapter {{n}}",
+    "editFailed": "Could not save — try again.",
+    "emptyDerivatives": "No what-if versions yet. A version branches your book at a chapter and diverges — the source stays read-only canon.",
+    "loading": "Loading works…",
+    "new": "New divergence",
+    "no": "No",
+    "noAnchoredEntities": "No glossary-anchored characters in this branch’s source yet — anchor entities in the glossary to set a POV or override them here.",
+    "noOverrides": "No entity overrides yet.",
+    "noPov": "— no POV anchor —",
+    "noWork": "This book has no plan yet — lay out its arcs and chapters first, then branch a what-if here.",
+    "overrideEntity": "Entity to override",
+    "overrideNamePlaceholder": "New name in this version (optional)…",
+    "overridePlaceholder": "How does this entity differ (e.g. now a villain)…",
+    "overrideRemoved": "Override removed.",
+    "overrides": "Overrides",
+    "pickEntity": "Override another entity…",
+    "povAnchor": "POV anchor",
+    "remove": "Remove",
+    "removeConfirm": "Remove?",
+    "rename": "Rename",
+    "renameConflict": "Changed elsewhere — reload and retry.",
+    "renameFailed": "Could not rename — try again.",
+    "renamePlaceholder": "What-if name (1–200 chars)",
+    "renameTitle": "Rename this what-if",
+    "renamed": "Renamed.",
+    "restoreFailed": "Could not restore — it may have changed elsewhere.",
+    "restored": "Restored to the list.",
+    "save": "Save",
+    "saveRules": "Save rules",
+    "saving": "Saving…",
+    "specError": "Could not load the branch spec — try reselecting it.",
+    "specLoading": "Loading spec…",
+    "switchFailed": "Could not switch — try again.",
+    "switchTo": "Switch to",
+    "tabDiff": "Diff",
+    "tabSpec": "Spec",
+    "taxonomy": "Taxonomy",
+    "title": "What-if versions",
+    "unavailable": "Composition service is unavailable — try again shortly.",
+    "undo": "Undo",
+    "undoFailed": "Could not restore the override.",
+    "undoSuperseded": "A newer override for that entity exists — nothing to restore.",
+    "unnamed": "Untitled version",
+    "yes": "Yes"
+  },
+  "mark": {
+    "action": "Mark problem",
+    "cancel": "Cancel",
+    "duplicate": "You already marked this passage with that note.",
+    "failed": "Could not save the mark. Try again.",
+    "kind": "What kind of problem",
+    "no_selection": "Select the passage that is wrong before marking it.",
+    "note": "What's wrong with this passage",
+    "note_ph": "e.g. she died in chapter 3…",
+    "note_required": "Say what is wrong — the note is what the co-writer acts on.",
+    "save": "Mark it",
+    "saved": "Marked — the co-writer can see this."
+  },
+  "polishAll": "all",
+  "polishAllDet": "all deterministic",
+  "polishApply": "Apply {{count}} selected",
+  "polishClean": "No issues found — the prose is clean.",
+  "polishClear": "clear",
+  "polishDeterministic": "auto",
+  "polishIntro": "Review proposed fixes before they touch your prose. Deterministic edits (pronouns, typos) are pre-selected; semantic edits are shown unchecked for you to judge.",
+  "polishLoading": "Analyzing…",
+  "polishNoModel": "Pick a model first.",
+  "polishRerank": "auto-tick (AI, costs more)",
+  "polishRerankHint": "Uses one extra AI call per edit to auto-tick the good ones (slower, costs more).",
+  "polishRerun": "Re-run Polish",
+  "polishRun": "Run Polish",
+  "polishSemantic": "semantic",
+  "polishStats": "{{edits}} edits · {{refuted}} dropped by verify",
+  "polishUnplaced": "{{count}} finding(s) could not be located in this text — shown below, unfixed.",
+  "polishUnplacedNoQuote": "(no quoted text)",
+  "qualityCriticNa": "Critic unavailable.",
+  "qualityHasFix": "fix proposed ↓",
+  "qualityIntro": "Advisory only — how the chapter scores and what it promises but never pays off. Nothing here changes your prose.",
+  "qualityLoading": "Analyzing…",
+  "qualityNoThreads": "No new threads raised in this chapter.",
+  "qualityRerun": "Re-analyze",
+  "qualityRun": "Analyze quality",
+  "qualityThreadsNa": "Thread audit unavailable.",
+  "qualityThreadsRaised": "{{n}} thread(s) raised in this chapter:",
+  "qualityThreadsResolved": "{{r}} paid off here",
+  "qualityTitle": "Quality report",
+  "resolveWorkFailed": "Knowledge service unavailable — couldn’t finish setting up grounding.",
+  "resolvingWork": "Finishing setup… the knowledge service was briefly unavailable.",
+  "retry": "Retry",
+  "threadFocusMissing": "The promise you came from is not in this view — it may already be paid. Switch the filter to “all”."
 }

@@ -172,5 +172,10 @@
     "saved": "Ordem dos modelos salva",
     "saveFailed": "Falha ao salvar a ordem.",
     "loadFailed": "Falha ao carregar modelos."
+  },
+  "errorBoundary": {
+    "title": "Esta página não pôde ser exibida",
+    "description": "Ocorreu um erro de interface. Ele foi salvo no log de diagnóstico; por favor, tente a operação novamente.",
+    "retry": "Tentar novamente"
   }
 }

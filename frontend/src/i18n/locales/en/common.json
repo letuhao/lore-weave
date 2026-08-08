@@ -172,5 +172,10 @@
     "saved": "Model order saved",
     "saveFailed": "Failed to save order.",
     "loadFailed": "Failed to load models."
+  },
+  "errorBoundary": {
+    "title": "This page could not be displayed",
+    "description": "An interface error occurred. It has been saved to the diagnostics log; please try the operation again.",
+    "retry": "Try again"
   }
 }

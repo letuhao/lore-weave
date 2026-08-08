@@ -1,0 +1,85 @@
+{
+  "loading": "Configurando seu assistente...",
+  "openingJournal": "Abrindo seu diário...",
+  "home": {
+    "welcome": "Bem-vindo de volta, {{name}}",
+    "subtitle": "Seu assistente de trabalho privado.",
+    "capturing": "Capturando suas notas de trabalho",
+    "captureOff": "Captura desativada",
+    "capturingDesc": "Pessoas e projetos são identificados enquanto você fala.",
+    "captureOffDesc": "Ative para lembrar de colegas, projetos e decisões.",
+    "refresh": "Atualizar",
+    "capturedItems": "Itens capturados",
+    "endDay": "Encerrar meu dia",
+    "endingDay": "Encerrando seu dia...",
+    "journal": "Diário",
+    "memory": "Memória",
+    "practice": "Entrevista de prática"
+  },
+  "timezone": {
+    "title": "Confirme seu fuso horário",
+    "description": "Seu diário agrupa cada dia de acordo com o seu horário local. Detectamos {{zone}}.",
+    "saving": "Salvando…",
+    "useThis": "Usar este",
+    "pickAnother": "Escolher outro",
+    "save": "Salvar"
+  },
+  "capture": {
+    "title": "Hoje até agora",
+    "live": "ao vivo",
+    "description": "Coisas que estou percebendo enquanto conversamos. Nada é salvo no seu diário até que você o revise hoje à noite.",
+    "listening": "Ouvindo…",
+    "nothingYet": "Nada capturado ainda — me conte sobre o seu dia.",
+    "turnOn": "Ative a captura para começar a notar pessoas e projetos."
+  },
+  "autonomous": {
+    "title": "Deixe o assistente trabalhar sozinho",
+    "description": "Desativado até que você o ligue — eles funcionam em segundo plano e utilizam seus modelos.",
+    "loading": "Carregando…",
+    "on": "Ligado",
+    "next": "Ligado · próximo em {{time}}",
+    "eod": "Encerrar meu dia automaticamente",
+    "eodDesc": "Registre o dia todas as noites, mesmo que você se esqueça.",
+    "weeklyReflection": "Reflexão semanal",
+    "weeklyReflectionDesc": "Um padrão semanal suave + nota de coaching.",
+    "weeklySummary": "Resumo semanal",
+    "weeklySummaryDesc": "Um resumo da sua semana.",
+    "reminders": "Lembretes de diário",
+    "remindersDesc": "Um lembrete caso você ainda não tenha encerrado o seu dia.",
+    "proactive": "Check-ins proativos",
+    "proactiveOn": "Ativado — eu posso entrar em contato após um longo período.",
+    "proactiveOff": "Deixe-me começar com um pensamento após um período de silêncio."
+  },
+  "review": {
+    "title": "Aqui está o seu dia",
+    "distilling": "Transformando a conversa de hoje em um registro de diário...",
+    "genericError": "Algo deu errado.",
+    "words": "{{count}} palavras",
+    "kept": "mantido",
+    "keep": "Manter entrada de hoje",
+    "keptButton": "Mantido ✓",
+    "keeping": "Mantendo…"
+  },
+  "inbox": {
+    "title": "Fatos para lembrar",
+    "description": "Das conversas de hoje. Mantenha os que valem a pena lembrar; descarte o resto.",
+    "loading": "Carregando…",
+    "error": "Não foi possível carregar os fatos.",
+    "keep": "Manter",
+    "dismiss": "Descartar",
+    "quoted": "citado"
+  },
+  "scorecard": {
+    "title": "Placar de coaching",
+    "badge": "Sem tendência (em revisão)",
+    "badgeTitle": "Esta pontuação ainda não foi calibrada com base em avaliações humanas, portanto, é exibida apenas para referência e não é plotada em um gráfico de tendência.",
+    "overall": "Geral:",
+    "notScored": "não pontuado"
+  },
+  "reflection": {
+    "defaultTitle": "Reflexão semanal",
+    "dismissError": "não foi possível descartar — tente novamente",
+    "dismissing": "Descartando…",
+    "dismiss": "Descartar"
+  }
+}

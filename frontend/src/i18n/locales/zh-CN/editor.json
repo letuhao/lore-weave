@@ -90,6 +90,7 @@
     "underline": "下划线 (Ctrl+U)",
     "inline_code": "行内代码",
     "link": "链接",
+    "url_prompt": "URL：",
     "highlight": "高亮 (Ctrl+Shift+H)",
     "subscript": "下标",
     "superscript": "上标",
@@ -102,8 +103,7 @@
     "code_block": "代码块",
     "horizontal_rule": "分割线",
     "undo": "撤销 (Ctrl+Z)",
-    "redo": "重做 (Ctrl+Shift+Z)",
-    "url_prompt": "URL："
+    "redo": "重做 (Ctrl+Shift+Z)"
   },
   "slash": {
     "paragraph": {
@@ -392,5 +392,29 @@
     "no_restore": "没有更早的版本可供还原",
     "confirm_title": "还原至本次 AI 编辑前的状态？",
     "confirm_desc": "当前草稿将首先被快照保存，因此可以通过修订历史记录进行撤销。"
-  }
+  },
+  "contextMenu": {
+    "replace": "替换为",
+    "copy": "复制",
+    "cut": "剪切",
+    "paste": "粘贴",
+    "selectAll": "全选",
+    "undo": "撤销",
+    "redo": "重做",
+    "rewrite": "AI 重写",
+    "expand": "AI 扩写",
+    "describe": "AI 描述",
+    "dictionary": "在术语表中查询",
+    "bookmark": "添加书签",
+    "findGlossary": "在术语表中查找",
+    "askAi": "向 AI 提问",
+    "findMentions": "查找提及内容"
+  },
+  "chat_mode": "模式",
+  "mode_agent": "智能体",
+  "mode_agent_hint": "AI 可以使用工具并编辑您的文档",
+  "mode_compose": "创作",
+  "mode_compose_hint": "仅限正文 —— AI 负责撰写，您负责应用。最适合推理模型。",
+  "polish_applied": "已应用润色修改",
+  "resize_panel": "拖动以调整大小"
 }

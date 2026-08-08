@@ -211,7 +211,10 @@
     "feedback_up": "Good response",
     "feedback_down": "Bad response",
     "feedback_thanks": "Thanks for the feedback",
-    "feedback_error": "Couldn't save feedback"
+    "feedback_error": "Couldn't save feedback",
+    "incomplete_error": "Error — response incomplete",
+    "incomplete_interrupted": "Interrupted — response incomplete",
+    "insert_into_chapter": "Insert into chapter"
   },
   "tools": {
     "title": "Tools used in this reply",
@@ -243,7 +246,9 @@
     "cancelled": "Cancelled",
     "reprice": "The cost rose to {{cost}} since this was estimated — ask again to re-confirm at the new price.",
     "reprice_title": "Cost changed — not applied",
-    "reprice_detail": "Estimated {{old}}, now {{new}}. Nothing was spent — ask again to re-confirm at the new price."
+    "reprice_detail": "Estimated {{old}}, now {{new}}. Nothing was spent — ask again to re-confirm at the new price.",
+    "advisory_items": "Requested (advisory) — the server confirms the exact set on apply",
+    "awaiting_preview": "Loading the server preview…"
   },
   "batchConfirm": {
     "title": "Confirm {{count}} actions in one step",
@@ -506,5 +511,60 @@
       "onHint": "Always use the long-work context tiers.",
       "offHint": "Never — the plainest, cheapest context."
     }
+  },
+  "dock": {
+    "close": "Close",
+    "label": "Ask AI",
+    "open": "Ask the glossary assistant",
+    "title": "Glossary assistant"
+  },
+  "glossaryEdit": {
+    "applied": "Applied ✓",
+    "apply": "Apply",
+    "conflict": "This entity changed since it was proposed — ask again to see the latest.",
+    "conflict_short": "Changed since proposed — re-ask",
+    "dismiss": "Dismiss",
+    "dismissed": "Dismissed",
+    "empty": "(empty)",
+    "error": "Could not save the change.",
+    "error_short": "Save failed",
+    "field": "Field",
+    "fields": "{{count}} fields",
+    "label": "Glossary edit"
+  },
+  "planner": {
+    "destructive": "destructive",
+    "enable": "Enable this destructive step",
+    "heading": "Plan",
+    "notes": "Planner notes",
+    "steps": "{{count}} step(s)"
+  },
+  "propose": {
+    "applied": "Applied ✓",
+    "apply": "Apply",
+    "apply_failed": "Could not apply the edit.",
+    "apply_n": "Apply {{count}}",
+    "dismiss": "Dismiss",
+    "dismissed": "Dismissed",
+    "hunk_hint": "Pick which changes to apply",
+    "hunk_toggle": "Accept this change",
+    "insert_label": "Suggested insertion",
+    "keep_original": "Keep original",
+    "no_editor": "Open the chapter to apply this edit.",
+    "no_selection": "Select the text to replace, then Apply.",
+    "popout_no_rewrite": "Rewrites need to be applied from the docked editor — dock this window first.",
+    "popout_not_delivered": "Could not confirm the edit reached the docked editor — open the chapter in Studio and try again.",
+    "replace_label": "Suggested rewrite",
+    "selection_changed": "Your selection changed — re-select and Apply, or Dismiss.",
+    "wrong_chapter": "This suggestion was for a different chapter."
+  },
+  "taskGate": {
+    "cancelled": "Dismissed",
+    "confirm": "Confirm",
+    "defaultTitle": "Confirm this action?",
+    "dismiss": "Dismiss",
+    "done": "Confirmed ✓",
+    "error": "Could not confirm",
+    "label": "Confirm"
   }
 }

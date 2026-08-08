@@ -172,5 +172,10 @@
     "saved": "Urutan model disimpan",
     "saveFailed": "Gagal menyimpan urutan.",
     "loadFailed": "Gagal memuatkan model."
+  },
+  "errorBoundary": {
+    "title": "Halaman ini tidak dapat dipaparkan",
+    "description": "Ralat antara muka telah berlaku. Ia telah disimpan ke dalam log diagnostik; sila cuba semula operasi tersebut.",
+    "retry": "Cuba lagi"
   }
 }

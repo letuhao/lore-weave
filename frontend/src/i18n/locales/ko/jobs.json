@@ -59,7 +59,8 @@
     "noActive": "활성 작업이 없습니다.",
     "more": "더 보기",
     "toggleChildren": "하위 작업 펼치기/접기",
-    "noChildren": "하위 작업이 없습니다."
+    "noChildren": "하위 작업이 없습니다.",
+    "errorWithReason": "작업을 불러올 수 없습니다: {{error}}"
   },
   "row": {
     "ran": "{{d}} 전 실행됨",
@@ -85,6 +86,7 @@
   "controls": {
     "pause": "일시 중지",
     "resume": "재개",
+    "resumeFromCheckpoint": "체크포인트에서 재개",
     "cancel": "취소",
     "cancelConfirm": "지금 중단하시겠습니까? 진행 중인 작업은 폐기되지만, 완료된 부분은 유지됩니다.",
     "cancelYes": "예",
@@ -95,7 +97,9 @@
     "retry": "재시도",
     "retried": "새 작업으로 재제출되었습니다.",
     "stale": "작업 상태가 변경되어 새로고침되었습니다.",
-    "actionFailed": "작업 실패: {{error}}"
+    "actionFailed": "작업 실패: {{error}}",
+    "retryBenchmarkMissing": "재시도를 할 수 없습니다: 임베딩 모델에 벤치마크가 없습니다. 모델 벤치마크를 실행한 후 다시 확인해 주세요.",
+    "retryBenchmarkFailed": "재시도를 할 수 없습니다: 임베딩 모델의 마지막 벤치마크 테스트에 실패했습니다."
   },
   "monitor": {
     "back": "모든 작업",

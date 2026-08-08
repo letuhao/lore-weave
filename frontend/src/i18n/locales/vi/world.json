@@ -98,5 +98,27 @@
     "branchAt": "rẽ nhánh tại ch. {{ch}}",
     "orphan": "· nguồn nằm ngoài thế giới này",
     "edgeLabel": "ch. {{ch}}"
+  },
+  "mapEditor": {
+    "bind": "Liên kết thực thể",
+    "delete": "Xóa",
+    "empty": "Chưa có bản đồ nào — hãy vẽ nên thế giới nơi câu chuyện của bạn diễn ra.",
+    "entityPlaceholder": "id thực thể địa điểm",
+    "error": "Không thể tải bản đồ này.",
+    "label": "Nhãn",
+    "marker": "Điểm đánh dấu",
+    "name": "Tên",
+    "newMap": "+ Bản đồ mới",
+    "newMapPrompt": "Đặt tên cho bản đồ mới",
+    "pickWorld": "Chọn một thế giới để lập bản đồ.",
+    "region": "Vùng",
+    "save": "Lưu",
+    "unbind": "Hủy liên kết",
+    "uploadImage": "Tải lên ảnh nền",
+    "vertexCapNotice": "{{count}} đỉnh — tính năng thay đổi hình dạng bị vô hiệu hóa khi vượt quá {{max}} để đảm bảo hiệu suất."
+  },
+  "maps": {
+    "empty": "Chưa có bản đồ nào. Hãy yêu cầu trợ lý “tạo bản đồ của thế giới này” để bắt đầu.",
+    "heading": "Bản đồ"
   }
 }

@@ -211,7 +211,10 @@
     "feedback_up": "Gute Antwort",
     "feedback_down": "Schlechte Antwort",
     "feedback_thanks": "Vielen Dank für das Feedback",
-    "feedback_error": "Feedback konnte nicht gespeichert werden"
+    "feedback_error": "Feedback konnte nicht gespeichert werden",
+    "incomplete_error": "Fehler – Antwort unvollständig",
+    "incomplete_interrupted": "Unterbrochen – Antwort unvollständig",
+    "insert_into_chapter": "In Kapitel einfügen"
   },
   "tools": {
     "title": "In dieser Antwort verwendete Tools",
@@ -243,7 +246,9 @@
     "cancelled": "Abgebrochen",
     "reprice": "Die Kosten sind seit der Schätzung auf {{cost}} gestiegen — bitte erneut bestätigen.",
     "reprice_title": "Kosten geändert — nicht angewendet",
-    "reprice_detail": "Geschätzt {{old}}, jetzt {{new}}. Es wurden keine Kosten verursacht — bitte erneut bestätigen."
+    "reprice_detail": "Geschätzt {{old}}, jetzt {{new}}. Es wurden keine Kosten verursacht — bitte erneut bestätigen.",
+    "advisory_items": "Angefordert (beratend) – der Server bestätigt den genauen Satz beim Anwenden",
+    "awaiting_preview": "Server-Vorschau wird geladen…"
   },
   "batchConfirm": {
     "title": "{{count}} Aktionen in einem Schritt bestätigen",
@@ -446,5 +451,120 @@
     "worldbuilder": "Weltenbauer",
     "editor": "Editor",
     "analyst": "Analyst"
+  },
+  "sessionSettings": {
+    "description": "Einstellungen für diesen Chat. Alles, was Sie hier nicht festlegen, wird vom Buch, dann von Ihrem Konto und schließlich vom Systemstandard übernommen.",
+    "saving": "wird gespeichert…",
+    "close": "Schließen",
+    "voice": "Stimme",
+    "messages": "Nachrichten",
+    "status": {
+      "label": "Status",
+      "active": "Aktiv",
+      "archived": "Archiviert",
+      "closed": "Geschlossen"
+    },
+    "models": {
+      "title": "Modelle",
+      "composer": "Composer-Modell (optional)",
+      "planner": "Planner-Modell (optional)",
+      "composerNone": "Keine — Einzelmodell",
+      "plannerNone": "Meinen Standard-Planer verwenden",
+      "composerHint": "Wenn festgelegt, kann die KI das Schreiben der Prosa an dieses Modell delegieren.",
+      "plannerHint": "Das Modell, das für die mehrstufige Planung in dieser Sitzung verwendet wird."
+    },
+    "behavior": {
+      "title": "Verhalten",
+      "systemPrompt": "System-Prompt",
+      "promptPlaceholder": "Wird von Ihren Kontoeinstellungen übernommen, sofern Sie hier keinen festlegen.",
+      "reasoning": {
+        "label": "Denkaufwand",
+        "off": "Aus",
+        "low": "Niedrig",
+        "medium": "Mittel",
+        "high": "Hoch"
+      },
+      "statefulTitle": "Stateful Responses API verwenden",
+      "statefulHint": "Optionaler serverseitiger Kontext-Reuse. Deaktivieren, sofern Ihr Anbieter keine Responses-Tool-Aufrufe unterstützt.",
+      "temperature": "Temperatur",
+      "temperatureHint": "Höhere Werte sind überraschender, niedrigere Werte sind vorhersehbarer.",
+      "topP": "Top P",
+      "maxTokens": "Maximale Antwort-Tokens",
+      "maxTokensHint": "Nicht festgelegt bedeutet das Limit des Modells."
+    },
+    "grounding": {
+      "title": "Grounding & Gedächtnis",
+      "label": "Antworten auf der Lore dieses Buches basieren",
+      "on": "An — Abruf erfolgt in jedem Durchgang",
+      "off": "Aus — kein Abruf in diesem Chat",
+      "onHint": "Glossare, Wissensgraph-Fakten und Textpassagen werden in jeden Durchgang einbezogen.",
+      "offHint": "Der Assistent antwortet nur auf Basis des Gesprächsverlaufs und könnte Lore erfinden.",
+      "multiHint": "Basierend auf allen ausgewählten Wissensgraphen gleichzeitig – Fakten sind mit ihrer Quelle markiert."
+    },
+    "context": {
+      "title": "Kontextverwaltung",
+      "label": "Kontextmodus für Langwerke",
+      "auto": "Automatisch",
+      "on": "Immer an",
+      "off": "Aus",
+      "autoHint": "Aktiviert die Kontextstufen für Langwerke nur dann, wenn das Buch groß genug ist, um sie zu benötigen.",
+      "onHint": "Verwendet immer die Kontextstufen für Langwerke.",
+      "offHint": "Nie – der einfachste und kostengünstigste Kontext."
+    }
+  },
+  "dock": {
+    "close": "Schließen",
+    "label": "KI fragen",
+    "open": "Glossar-Assistenten fragen",
+    "title": "Glossar-Assistent"
+  },
+  "glossaryEdit": {
+    "applied": "Angewendet ✓",
+    "apply": "Anwenden",
+    "conflict": "Dieses Element wurde seit dem Vorschlag geändert – bitte erneut anfragen, um die neueste Version zu sehen.",
+    "conflict_short": "Seit dem Vorschlag geändert – erneut anfragen",
+    "dismiss": "Verwerfen",
+    "dismissed": "Verworfen",
+    "empty": "(leer)",
+    "error": "Änderung konnte nicht gespeichert werden.",
+    "error_short": "Speichern fehlgeschlagen",
+    "field": "Feld",
+    "fields": "{{count}} Felder",
+    "label": "Glossar bearbeiten"
+  },
+  "planner": {
+    "destructive": "zerstörerisch",
+    "enable": "Diesen zerstörerischen Schritt aktivieren",
+    "heading": "Plan",
+    "notes": "Planungsnotizen",
+    "steps": "{{count}} Schritt(e)"
+  },
+  "propose": {
+    "applied": "Angewendet ✓",
+    "apply": "Anwenden",
+    "apply_failed": "Die Bearbeitung konnte nicht angewendet werden.",
+    "apply_n": "{{count}} anwenden",
+    "dismiss": "Verwerfen",
+    "dismissed": "Verworfen",
+    "hunk_hint": "Wählen Sie die Änderungen aus, die angewendet werden sollen",
+    "hunk_toggle": "Diese Änderung übernehmen",
+    "insert_label": "Vorgeschlagene Einfügung",
+    "keep_original": "Original beibehalten",
+    "no_editor": "Öffnen Sie die Kapitel, um diese Bearbeitung anzuwenden.",
+    "no_selection": "Wählen Sie den zu ersetzenden Text aus und klicken Sie dann auf „Anwenden“.",
+    "popout_no_rewrite": "Umschreibungen müssen im angedockten Editor angewendet werden – docken Sie dieses Fenster zuerst an.",
+    "popout_not_delivered": "Die Übertragung der Bearbeitung an den angedockten Editor konnte nicht bestätigt werden – öffnen Sie das Kapitel im Studio und versuchen Sie es erneut.",
+    "replace_label": "Vorgeschlagene Umschreibung",
+    "selection_changed": "Ihre Auswahl hat sich geändert – wählen Sie den Text erneut aus und klicken Sie auf „Anwenden“ oder „Verwerfen“.",
+    "wrong_chapter": "Dieser Vorschlag bezog sich auf ein anderes Kapitel."
+  },
+  "taskGate": {
+    "cancelled": "Verworfen",
+    "confirm": "Bestätigen",
+    "defaultTitle": "Diese Aktion bestätigen?",
+    "dismiss": "Verwerfen",
+    "done": "Bestätigt ✓",
+    "error": "Bestätigung fehlgeschlagen",
+    "label": "Bestätigen"
   }
 }

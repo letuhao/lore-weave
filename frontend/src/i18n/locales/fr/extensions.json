@@ -9,7 +9,9 @@
     "permissions": "Permissions des outils",
     "proposals": "Propositions",
     "activity": "Journal d'activité",
-    "ingest": "Sources du registre"
+    "ingest": "Sources du registre",
+    "bindings": "Configuration automatique",
+    "workflows": "Recettes"
   },
   "quota": {
     "unavailable": "Utilisation indisponible",

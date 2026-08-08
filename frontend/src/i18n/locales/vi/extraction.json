@@ -65,7 +65,19 @@
     "thinkingOn": "Suy nghĩ: bật",
     "thinkingOff": "Suy nghĩ: tắt (nhanh hơn, JSON ổn định hơn)",
     "startExtraction": "Bắt đầu trích xuất",
-    "editProfile": "Sửa hồ sơ"
+    "editProfile": "Sửa hồ sơ",
+    "cacheAuto": "Chạy lại khi có bất kỳ thay đổi nào (mặc định)",
+    "cacheForce": "Luôn trích xuất lại — bỏ qua bộ nhớ đệm",
+    "cacheHint": "Bạn vừa chỉnh sửa định nghĩa loại? Chế độ mặc định sẽ tự động chạy lại.",
+    "cachePolicy": "Kết quả đã lưu trong bộ nhớ đệm",
+    "cacheReuse": "Tái sử dụng kết quả trong bộ nhớ đệm nếu có thể",
+    "concurrency": "Gọi LLM song song",
+    "concurrencyHint": "1 = tuần tự. Tăng giá trị này nếu mô hình của bạn hỗ trợ các yêu cầu đồng thời.",
+    "strategy": "Cấu trúc Prompt",
+    "strategyBatched": "Theo lô — kỹ lưỡng nhất (mặc định)",
+    "strategyDelta": "Một lần gọi + các phần thay đổi — rẻ nhất",
+    "strategyEdc": "Quét rồi mới gõ — rẻ hơn ~56%, độ chính xác cao nhất",
+    "strategySingle": "Một lần gọi — rẻ hơn ~66%, có thể bỏ lỡ các loại hiếm"
   },
   "progress": {
     "title": "Đang trích xuất Glossary",
@@ -107,7 +119,11 @@
     "draftNote": "Tất cả thực thể mới tạo ở trạng thái nháp — xem lại trong tab Glossary",
     "viewGlossary": "Xem trong Glossary",
     "runAgain": "Trích xuất tiếp",
-    "close": "Đóng"
+    "close": "Đóng",
+    "cacheAllFresh": "Tất cả {{n}} lô đã được trích xuất mới.",
+    "cacheForced": "(đã bỏ qua bộ nhớ đệm theo yêu cầu)",
+    "cacheRerunHint": "Nếu bạn đã thay đổi định nghĩa loại kể từ đó, hãy chạy lại với tùy chọn «Luôn trích xuất lại».",
+    "cacheServed": "{{pct}}% của lần chạy này ({{cached}} trên {{total}} lô) được TÁI SỬ DỤNG từ lần trích xuất trước, không phải đọc lại."
   },
   "button": {
     "extract": "Trích xuất Glossary",

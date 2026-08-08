@@ -42,7 +42,9 @@
     "startTranslate": "Iniciar traducción",
     "startFailed": "Error al iniciar el trabajo de traducción",
     "thinkingOn": "Pensamiento: activado",
-    "thinkingOff": "Pensamiento: desactivado"
+    "thinkingOff": "Pensamiento: desactivado",
+    "concurrency": "Llamadas de LLM en paralelo",
+    "concurrencyHint": "1 = secuencial. Auméntalo si tu modelo admite solicitudes concurrentes."
   },
   "progress": {
     "title": "Traduciendo glosario",

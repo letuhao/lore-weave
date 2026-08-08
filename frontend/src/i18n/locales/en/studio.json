@@ -719,7 +719,8 @@
     "conflict": "conflict: {{part}}",
     "format": "Format",
     "revert": "Revert",
-    "openAs": "Open as JSON"
+    "openAs": "Open as JSON",
+    "readOnly": "read-only"
   },
   "planPasses": {
     "comingSoon": "The 7-pass rail loads here.",
@@ -761,7 +762,17 @@
     "approveGated": "Apply the glossary seed first (PF-7)",
     "editAdd": "Add",
     "editRemove": "Remove",
-    "editEmpty": "Nothing here yet — add a row."
+    "editEmpty": "Nothing here yet — add a row.",
+    "batchSpends": "Runs each ready pass until the next checkpoint — spends 1 LLM call per pass.",
+    "chapterNoScenes": "No scenes — this chapter cannot be drafted.",
+    "linkOutline": "Link arcs + chapters →",
+    "linkScenes": "Link scenes →",
+    "linkScenesBlocked": "Run the scenes pass first",
+    "noBeat": "(no beat)",
+    "noScenes": "No chapters to edit in this scene plan.",
+    "openEdit": "edit…",
+    "runPicker": "Choose a plan run",
+    "runToCheckpoint": "Run to next checkpoint"
   },
   "planner": {
     "sourcePlaceholder": "Paste the novel-system markdown…",
@@ -785,10 +796,48 @@
       "colRun": "Run",
       "colMode": "Mode",
       "colStatus": "Status",
-      "colCreated": "Created"
+      "colCreated": "Created",
+      "archive": "Archive",
+      "restore": "Restore",
+      "showArchived": "Show archived"
     },
     "grounded": "Grounded on {{chapters}} existing chapter(s) + {{cast}} cast member(s); {{arcs}} existing arc(s) continued.",
-    "groundOnExisting": "Continue this book — ground on its existing cast, arcs & recent chapters"
+    "groundOnExisting": "Continue this book — ground on its existing cast, arcs & recent chapters",
+    "bootstrap": {
+      "apply": "Create in my book",
+      "applying": "Creating…",
+      "approve": "Approve",
+      "check": "Check what’s needed",
+      "checking": "Checking…",
+      "done": "Done — open Chapters to see what was created.",
+      "idleHint": "Check whether this plan needs any new chapters or characters created in your book.",
+      "newChapters": "New chapters",
+      "newGlossary": "New glossary entries",
+      "nothingToDo": "Everything in this plan already exists in your book — nothing new to create.",
+      "reject": "Not now",
+      "rejected": "You dismissed this suggestion.",
+      "retry": "Retry",
+      "title": "Set up your book"
+    },
+    "material": {
+      "applied": "Added to the plan: {{slots}}. Filed as notes: {{notes}}.",
+      "askTitle": "Not in your document — worth deciding",
+      "dropped": "{{n}} suggested line(s) were not actually in your document and were discarded.",
+      "find": "Check my plan",
+      "finding": "Looking…",
+      "idleHint": "Looks for anything missing in what you already wrote, before asking you for it.",
+      "noChange": "Nothing changed — everything you kept was already in the plan.",
+      "nothing": "Nothing missing — the plan covers every part.",
+      "readFailed": "Your document could not be fully read, so \"missing\" below is not certain.",
+      "retry": "Check these again",
+      "reviewHint": "These lines are already in your document. Remove any that do not belong, then add the rest.",
+      "stale": "Your plan has changed since this check — run it again for an up-to-date answer.",
+      "title": "What is this plan missing?",
+      "unavailableHint": "not checked; try again rather than treating it as missing",
+      "unavailableTitle": "Could not check",
+      "uncertain": "(your document was not fully read, so this may already be there)"
+    },
+    "openPassRail": "Pass Rail →"
   },
   "editor": {
     "empty": "Select a chapter in the manuscript navigator to edit it here.",
@@ -808,7 +857,13 @@
     "merging": "Merging…",
     "mergeDone": "Merged into canon — the branch keeps its own version.",
     "mergeConflict": "Canon changed since — reopen the chapter and merge again.",
-    "mergeFailed": "Could not merge — try again."
+    "mergeFailed": "Could not merge — try again.",
+    "askAiPrompt": "Analyse this passage from the manuscript and answer the user's question:\n\n\"{{text}}\"\n\nWhat is important to consider?",
+    "loadingChapter": "Loading chapter…",
+    "sceneSuggestionsHint": "Select manuscript text to generate scene proposals with AI",
+    "sceneSuggestionsReady": "Use Suggest scenes in the AI toolbar above the selected passage.",
+    "sceneSuggestionsSelect": "Select a passage first, then use Suggest scenes above the selection.",
+    "suggestScenes": "Suggest scenes"
   },
   "sceneCompose": {
     "empty": "Select a chapter in the manuscript navigator to draft its scenes here.",
@@ -994,7 +1049,11 @@
     "conformanceTitle": "Conformance",
     "conformanceDesc": "Did the prose realize the plan? Per-scene beat trace",
     "pickModelRerun": "Pick a model to re-run with…",
-    "pickChapterConformanceHint": "Pick a chapter above to trace how its prose realized the plan."
+    "pickChapterConformanceHint": "Pick a chapter above to trace how its prose realized the plan.",
+    "editRule": "Edit rule",
+    "healApplied": "Applied the selected fixes to the chapter.",
+    "healApplyError": "Could not apply the fixes. Try again.",
+    "healStale": "This chapter changed since Polish ran — re-run Polish, then apply."
   },
   "sidebar": {
     "collapse": "Collapse",
@@ -1536,7 +1595,8 @@
         "body": "Stabilize the glossary before translating so names, terms, and relationships remain consistent.",
         "steps": "Translation shows coverage and versions → Enrichment fills lore gaps → before publishing, review chapters, glossary, and the activity log."
       }
-    }
+    },
+    "startPanelTour": "Start panel tour"
   },
   "tourPicker": {
     "editorBasics": {
@@ -1786,7 +1846,9 @@
     "useInDecompose": "Use in Decompose →",
     "beats_one": "beat",
     "beats_other": "beats",
-    "kindPlaceholder": "generic"
+    "kindPlaceholder": "generic",
+    "beats": "beats",
+    "nameRequired": "Name required"
   },
   "search": {
     "modeLabel": "Search mode",
@@ -1814,5 +1876,47 @@
     "firstStructureTitle": "Act One",
     "everything": "Or set up this book completely",
     "everythingBusy": "Setting up…"
+  },
+  "checkpoints": {
+    "blocked_dirty": "Save your edits first — restoring would overwrite them",
+    "confirm_desc": "The current draft is snapshotted first, so this is reversible from the revision history.",
+    "confirm_title": "Restore to before this AI edit?",
+    "dirty_warning": "Save your current edits before restoring a checkpoint.",
+    "header": "AI edit checkpoints",
+    "insert": "Inserted",
+    "no_restore": "No earlier version to restore to",
+    "replace": "Rewrote",
+    "restore": "Restore",
+    "restore_failed": "Could not restore this checkpoint.",
+    "restored": "Restored to before the AI edit"
+  },
+  "common": {
+    "close": "Close"
+  },
+  "compose": {
+    "startDrafting": "Start drafting →",
+    "startDraftingTitle": "Open the drafting workspace to write chapters from your plan"
+  },
+  "errorBlocks": {
+    "dismiss": "Leave it",
+    "drifted": "text changed",
+    "remove": "Remove mark",
+    "removed": "Mark removed.",
+    "reopen": "Reopen",
+    "resolve": "Fixed",
+    "title": "Marked problems",
+    "undo": "Undo",
+    "undoFailed": "Could not restore the mark."
+  },
+  "revision": {
+    "blocked_dirty": "You have unsaved changes. Save or discard them before restoring a revision.",
+    "confirm_desc": "The current draft will be replaced with this revision. This cannot be undone.",
+    "confirm_title": "Restore this revision?",
+    "current": "Current",
+    "empty": "No revisions yet.",
+    "header": "Revision history",
+    "load_more": "Load more",
+    "loading_more": "Loading…",
+    "restore": "Restore"
   }
 }

@@ -59,7 +59,8 @@
     "noActive": "Keine aktiven Jobs.",
     "more": "Mehr laden",
     "toggleChildren": "Untergeordnete Jobs ein-/ausblenden",
-    "noChildren": "Keine untergeordneten Jobs."
+    "noChildren": "Keine untergeordneten Jobs.",
+    "errorWithReason": "Jobs konnten nicht geladen werden: {{error}}"
   },
   "row": {
     "ran": "lief {{d}}",
@@ -85,6 +86,7 @@
   "controls": {
     "pause": "Pause",
     "resume": "Fortsetzen",
+    "resumeFromCheckpoint": "Vom Kontrollpunkt aus fortfahren",
     "cancel": "Abbrechen",
     "cancelConfirm": "Jetzt stoppen? In Arbeit befindliche Daten gehen verloren; abgeschlossene Teile bleiben erhalten.",
     "cancelYes": "Ja",
@@ -95,7 +97,9 @@
     "retry": "Wiederholen",
     "retried": "Als neuer Job erneut eingereicht.",
     "stale": "Job-Status geändert — aktualisiert.",
-    "actionFailed": "Aktion fehlgeschlagen: {{error}}"
+    "actionFailed": "Aktion fehlgeschlagen: {{error}}",
+    "retryBenchmarkMissing": "Wiederholung nicht verfügbar: Das Embedding-Modell verfügt über keinen Benchmark. Führen Sie den Modell-Benchmark aus und prüfen Sie ihn erneut.",
+    "retryBenchmarkFailed": "Wiederholung nicht verfügbar: Das Embedding-Modell hat den letzten Benchmark nicht bestanden."
   },
   "monitor": {
     "back": "Alle Jobs",

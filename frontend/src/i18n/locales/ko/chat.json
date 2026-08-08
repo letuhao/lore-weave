@@ -29,6 +29,7 @@
   "context_panel": {
     "title": "컨텍스트 상세 정보",
     "free": "여유 공간: {{tokens}} tok",
+    "tok": "tok",
     "compact_at": "윈도우의 {{pct}}%에서 자동 압축 실행",
     "zero": "0",
     "manage": "도구 및 스킬 관리",
@@ -64,8 +65,7 @@
       "total": "전체",
       "empty": "아직 턴 기록이 없습니다 — 메시지를 보내 토큰 사용량 추적을 시작하세요.",
       "error": "컨텍스트 기록을 불러올 수 없습니다."
-    },
-    "tok": "tok"
+    }
   },
   "compaction": {
     "toast": "이전 턴 압축됨 — {{before}}→{{after}} tok",
@@ -211,7 +211,10 @@
     "feedback_up": "좋은 답변",
     "feedback_down": "나쁜 답변",
     "feedback_thanks": "피드백 감사합니다",
-    "feedback_error": "피드백을 저장할 수 없습니다"
+    "feedback_error": "피드백을 저장할 수 없습니다",
+    "incomplete_error": "오류 — 응답이 불완전합니다",
+    "incomplete_interrupted": "중단됨 — 응답이 불완전합니다",
+    "insert_into_chapter": "장(章)에 삽입"
   },
   "tools": {
     "title": "이 답변에 사용된 도구",
@@ -243,7 +246,9 @@
     "cancelled": "취소됨",
     "reprice": "예상 비용이 {{cost}}으로 변경되었습니다 — 새 가격으로 다시 확인하시겠습니까?",
     "reprice_title": "비용 변경됨 — 적용되지 않음",
-    "reprice_detail": "예상 비용 {{old}} → 현재 {{new}}. 비용이 발생하지 않았습니다 — 새 가격으로 다시 확인하시겠습니까?"
+    "reprice_detail": "예상 비용 {{old}} → 현재 {{new}}. 비용이 발생하지 않았습니다 — 새 가격으로 다시 확인하시겠습니까?",
+    "advisory_items": "요청됨 (권장 사항) — 적용 시 서버에서 정확한 항목 세트를 확인합니다",
+    "awaiting_preview": "서버 미리보기 로딩 중..."
   },
   "batchConfirm": {
     "title": "{{count}}개 작업을 한 번에 확인",
@@ -343,8 +348,10 @@
     "prompt_placeholder": "AI에게 역할, 성격 또는 특정 지침을 부여하세요...",
     "gen_params": "생성 파라미터",
     "max_tokens": "최대 토큰",
+    "temperature": "온도",
     "temp_min": "0 (정밀함)",
     "temp_max": "2 (창의적)",
+    "top_p": "Top P",
     "topp_min": "0 (좁음)",
     "topp_max": "1 (다양함)",
     "default_mode": "기본 모드",
@@ -356,9 +363,7 @@
     "yes": "예",
     "no": "아니요",
     "reset": "기본값으로 재설정",
-    "save_failed": "저장 실패: {{error}}",
-    "temperature": "온도",
-    "top_p": "Top P"
+    "save_failed": "저장 실패: {{error}}"
   },
   "session_toast": {
     "create_failed": "채팅 생성 실패: {{error}}",
@@ -376,11 +381,11 @@
     "approve_once": "한 번만 승인",
     "always_allow": "항상 허용",
     "deny": "거부",
+    "never_allow": "항상 거부",
     "approved": "승인됨 — 실행 중 ✓",
     "always_allowed": "항상 허용됨 — 실행 중 ✓",
     "denied": "거부됨",
-    "never_allowed": "항상 허용 안 함 — 설정 → 권한에서 이 설정을 취소할 수 있습니다",
-    "never_allow": "항상 거부"
+    "never_allowed": "항상 허용 안 함 — 설정 → 권한에서 이 설정을 취소할 수 있습니다"
   },
   "rack": {
     "label": "컨텍스트",
@@ -415,14 +420,15 @@
       "composition": "작문",
       "translation": "번역",
       "jobs": "작업",
+      "ui": "UI",
       "chat": "채팅",
-      "other": "기타",
-      "ui": "UI"
+      "other": "기타"
     }
   },
   "inspector": {
     "title": "에이전트 런타임",
     "pinned": "고정된 도구",
+    "hot": "인기 시드",
     "activated": "활성화됨",
     "skills": "기술",
     "last_search": "최근 find_tools",
@@ -436,8 +442,7 @@
       "discovering": "탐색 중…",
       "activated": "활성화됨",
       "tool_running": "도구 실행 중"
-    },
-    "hot": "인기 시드"
+    }
   },
   "presets": {
     "custom": "사용자 정의",
@@ -446,5 +451,120 @@
     "worldbuilder": "세계관 구축가",
     "editor": "에디터",
     "analyst": "분석가"
+  },
+  "sessionSettings": {
+    "description": "이 채팅의 설정입니다. 여기서 설정하지 않은 항목은 도서, 계정, 시스템 기본 설정 순으로 상속됩니다.",
+    "saving": "저장 중…",
+    "close": "닫기",
+    "voice": "음성",
+    "messages": "메시지",
+    "status": {
+      "label": "상태",
+      "active": "활성",
+      "archived": "보관됨",
+      "closed": "종료됨"
+    },
+    "models": {
+      "title": "모델",
+      "composer": "작곡 모델 (선택 사항)",
+      "planner": "플래너 모델 (선택 사항)",
+      "composerNone": "없음 — 단일 모델",
+      "plannerNone": "기본 플래너 사용",
+      "composerHint": "설정 시, AI가 산문 작성을 이 모델에 위임할 수 있습니다.",
+      "plannerHint": "이 세션의 다단계 계획 수립에 사용되는 모델입니다."
+    },
+    "behavior": {
+      "title": "동작",
+      "systemPrompt": "시스템 프롬프트",
+      "promptPlaceholder": "여기서 설정하지 않으면 계정 기본 설정에서 상속됩니다.",
+      "reasoning": {
+        "label": "추론 강도",
+        "off": "꺼짐",
+        "low": "낮음",
+        "medium": "중간",
+        "high": "높음"
+      },
+      "statefulTitle": "상태 유지 Responses API 사용",
+      "statefulHint": "선택 사항: 서버 측 컨텍스트 재사용. 제공업체가 Responses 도구 호출을 지원하지 않는 경우 해제하십시오.",
+      "temperature": "온도",
+      "temperatureHint": "값이 높을수록 의외성이 커지고, 낮을수록 예측 가능해집니다.",
+      "topP": "Top P",
+      "maxTokens": "최대 응답 토큰",
+      "maxTokensHint": "설정하지 않으면 모델 자체 제한을 따릅니다."
+    },
+    "grounding": {
+      "title": "그라운딩 및 메모리",
+      "label": "이 책의 세계관을 바탕으로 답변 생성",
+      "on": "켜짐 — 매 턴마다 검색 수행",
+      "off": "꺼짐 — 이 채팅에서 검색 미사용",
+      "onHint": "용어 사전, 지식 그래프 사실 및 구절이 매 턴마다 참조됩니다.",
+      "offHint": "어시스턴트가 대화 내용만으로 답변하며, 설정에 따라 세계관을 임의로 생성할 수 있습니다.",
+      "multiHint": "선택된 모든 지식 그래프를 동시에 참조합니다. 사실 관계에는 출처 태그가 표시됩니다."
+    },
+    "context": {
+      "title": "컨텍스트 관리",
+      "label": "장편 작업 컨텍스트 모드",
+      "auto": "자동",
+      "on": "항상 사용",
+      "off": "사용 안 함",
+      "autoHint": "도서 규모가 커져서 컨텍스트 계층이 필요할 때만 장편 작업 계층을 활성화합니다.",
+      "onHint": "장편 작업 컨텍스트 계층을 항상 사용합니다.",
+      "offHint": "사용하지 않음 — 가장 단순하고 비용이 적게 드는 컨텍스트를 사용합니다."
+    }
+  },
+  "dock": {
+    "close": "닫기",
+    "label": "AI에게 묻기",
+    "open": "용어집 어시스턴트에게 묻기",
+    "title": "용어집 어시스턴트"
+  },
+  "glossaryEdit": {
+    "applied": "적용됨 ✓",
+    "apply": "적용",
+    "conflict": "제안 이후 이 항목이 변경되었습니다 — 최신 내용을 확인하려면 다시 요청하세요.",
+    "conflict_short": "제안된 내용과 다름 — 다시 요청",
+    "dismiss": "무시",
+    "dismissed": "무시됨",
+    "empty": "(비어 있음)",
+    "error": "변경 사항을 저장할 수 없습니다.",
+    "error_short": "저장 실패",
+    "field": "필드",
+    "fields": "{{count}}개 필드",
+    "label": "용어집 편집"
+  },
+  "planner": {
+    "destructive": "파괴적",
+    "enable": "이 파괴적 단계 활성화",
+    "heading": "플랜",
+    "notes": "플래너 메모",
+    "steps": "{{count}}단계"
+  },
+  "propose": {
+    "applied": "적용됨 ✓",
+    "apply": "적용",
+    "apply_failed": "수정을 적용할 수 없습니다.",
+    "apply_n": "{{count}}개 적용",
+    "dismiss": "취소",
+    "dismissed": "취소됨",
+    "hunk_hint": "적용할 변경 사항을 선택하세요",
+    "hunk_toggle": "이 변경 사항 수락",
+    "insert_label": "제안된 삽입",
+    "keep_original": "원본 유지",
+    "no_editor": "이 수정을 적용하려면 장을 여세요.",
+    "no_selection": "바꿀 텍스트를 선택한 다음 적용을 누르세요.",
+    "popout_no_rewrite": "다시 쓰기는 도킹된 에디터에서 적용해야 합니다. 먼저 이 창을 도킹하세요.",
+    "popout_not_delivered": "수정 사항이 도킹된 에디터에 전달되지 않았습니다. 스튜디오에서 장을 다시 연 후 다시 시도하세요.",
+    "replace_label": "제안된 다시 쓰기",
+    "selection_changed": "선택 영역이 변경되었습니다. 다시 선택한 후 적용하거나 취소하세요.",
+    "wrong_chapter": "이 제안은 다른 장에 대한 것입니다."
+  },
+  "taskGate": {
+    "cancelled": "취소됨",
+    "confirm": "확인",
+    "defaultTitle": "이 작업을 확인하시겠습니까?",
+    "dismiss": "닫기",
+    "done": "확인됨 ✓",
+    "error": "확인할 수 없습니다",
+    "label": "확인"
   }
 }

@@ -59,7 +59,8 @@
     "noActive": "Aucun job actif.",
     "more": "Charger plus",
     "toggleChildren": "Afficher les sous-jobs",
-    "noChildren": "Aucun sous-job."
+    "noChildren": "Aucun sous-job.",
+    "errorWithReason": "Impossible de charger les tâches : {{error}}"
   },
   "row": {
     "ran": "effectué il y a {{d}}",
@@ -85,6 +86,7 @@
   "controls": {
     "pause": "Pause",
     "resume": "Reprendre",
+    "resumeFromCheckpoint": "Reprendre au point de contrôle",
     "cancel": "Annuler",
     "cancelConfirm": "Arrêter maintenant ? Le travail en cours sera perdu ; les parties terminées seront conservées.",
     "cancelYes": "Oui",
@@ -95,7 +97,9 @@
     "retry": "Réessayer",
     "retried": "Soumis comme un nouveau job.",
     "stale": "L'état du job a changé — actualisé.",
-    "actionFailed": "Action échouée : {{error}}"
+    "actionFailed": "Action échouée : {{error}}",
+    "retryBenchmarkMissing": "Nouvelle tentative impossible : le modèle d'embedding n'a pas de benchmark. Lancez le benchmark du modèle, puis réessayez.",
+    "retryBenchmarkFailed": "Nouvelle tentative impossible : le modèle d'embedding a échoué lors de son dernier benchmark."
   },
   "monitor": {
     "back": "Tous les jobs",

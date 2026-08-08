@@ -271,7 +271,11 @@
       "unknown_error": "ralat tidak diketahui",
       "model_removed": "{{name}} dialih keluar",
       "model_delete_failed": "Gagal memadam model"
-    }
+    },
+    "delete_blocked": "Model ini tidak boleh dipadamkan: {{count}} kerja aktif sedang berjalan. Hentikan kerja tersebut terlebih dahulu.",
+    "delete_refs_none": "tiada rujukan",
+    "delete_confirm": "Padamkan model «{{name}}»?\n\nRujukan ini akan dibuang: {{refs}}.",
+    "return_to_form": "Kembali ke halaman sebelumnya"
   },
   "translation": {
     "heading": "Tetapan Lalai Terjemahan",
@@ -296,7 +300,9 @@
       "tpl_needs_chapter": "Templat prompt pengguna mesti mengandungi {chapter_text}",
       "saved": "Tetapan lalai terjemahan telah disimpan",
       "save_failed": "Gagal menyimpan pilihan terjemahan"
-    }
+    },
+    "models_load_failed": "Gagal memuat model anda. Perkhidmatan penyedia mungkin tidak tersedia.",
+    "retry": "Cuba lagi"
   },
   "reading": {
     "app_theme": "Tema Aplikasi",
@@ -344,7 +350,8 @@
     "auto_saved": "Perubahan disimpan secara automatik.",
     "toast": {
       "preset_saved": "Pratetap \"{{name}}\" telah disimpan"
-    }
+    },
+    "voice_moved": "Tetapan suara & ucapan kini berada di Tetapan → Sembang & AI → Suara."
   },
   "language": {
     "gui_language": "Bahasa GUI",
@@ -473,7 +480,9 @@
       "notes_ph": "Nota pilihan tentang konfigurasi model ini...",
       "cancel": "Batal",
       "adding": "Menambah...",
-      "submit": "Tambah Model"
+      "submit": "Tambah Model",
+      "pricing_summary": "Kos: input ${{input}}/1M · output ${{output}}/1M",
+      "pricing_missing": "Penyedia tidak menerbitkan harga — masukkan secara manual setelah model didaftarkan."
     },
     "edit": {
       "aria": "Edit model",
@@ -511,7 +520,16 @@
       "request_failed": "Permintaan gagal",
       "cancel": "Batal",
       "saving": "Menyimpan...",
-      "submit": "Simpan Perubahan"
+      "submit": "Simpan Perubahan",
+      "capabilities_refreshed": "Keupayaan model telah dikemas kini",
+      "capabilities_refresh_failed": "Gagal mengemas kini keupayaan model",
+      "delete_blocked_active": "Model ini tidak boleh dipadamkan: hentikan kerja aktifnya terlebih dahulu.",
+      "pricing_missing": "Model ini tidak mempunyai maklumat harga — anggaran kos kerja tidak akan tersedia.",
+      "refresh_capabilities": "Kemas kini",
+      "delete_impact": "Rujukan ini akan dibuang: {{refs}}. Tekan Padam sekali lagi untuk mengesahkan.",
+      "delete_impact_none": "tiada",
+      "delete_blocked_count": "Pemadaman disekat: {{count}} kerja aktif sedang berjalan. Hentikan kerja tersebut terlebih dahulu.",
+      "verify_ok_rerank": "Disusun semula {{count}} dokumen · teratas {{score}} · {{ms}}ms"
     },
     "toast": {
       "fetch_failed": "Gagal mengambil model: {{error}}",
@@ -524,5 +542,23 @@
       "deleted": "Model dipadam",
       "delete_failed": "Gagal memadam"
     }
+  },
+  "defaultModels": {
+    "heading": "Model lalai",
+    "subtitle": "Model sandaran bagi setiap pengguna (BYOK — milik anda sendiri). Digunakan apabila tiada model bagi skop tertentu ditetapkan.",
+    "chat": "Model sembang lalai",
+    "chatHint": "Praterpilih apabila anda memulakan sembang baharu. Biarkan kosong untuk menggunakan kegemaran anda sebagai lalai.",
+    "rerank": "Penyusun semula lalai",
+    "rerankHint": "Penyusunan semula cross-encoder untuk penolakan sampah carian mentah. Pilihan — terpakai apabila projek tidak mempunyai model penyusunan semula yang ditetapkan.",
+    "planner": "Perancang lalai",
+    "plannerHint": "Model sembang yang digunakan oleh pembantu glosari untuk membina pelan pelbagai langkah. Pilih model yang kuat dan berkemampuan alat — jika tidak, perancangan akan kembali ke model sembang rawak dan sering kali gagal.",
+    "none": "Tiada",
+    "empty": "Tiada model berkemampuan yang dikonfigurasikan.",
+    "saved": "Lalai dikemas kini"
+  },
+  "external_services": {
+    "delete_blocked": "Perkhidmatan ini tidak boleh dibuang: modelnya sedang digunakan oleh {{count}} kerja aktif. Hentikan kerja tersebut terlebih dahulu.",
+    "delete_refs_none": "tiada rujukan",
+    "delete_confirm": "Buang perkhidmatan «{{name}}»?\n\nRujukan model ini akan dibuang: {{refs}}."
   }
 }

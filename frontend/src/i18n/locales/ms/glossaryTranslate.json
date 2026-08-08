@@ -42,7 +42,9 @@
     "startTranslate": "Mula Terjemah",
     "startFailed": "Gagal memulakan tugasan terjemahan",
     "thinkingOn": "Pemikiran: aktif",
-    "thinkingOff": "Pemikiran: tidak aktif"
+    "thinkingOff": "Pemikiran: tidak aktif",
+    "concurrency": "Panggilan LLM selari",
+    "concurrencyHint": "1 = berturutan. Tingkatkan nilai ini jika model anda melayani permintaan serentak."
   },
   "progress": {
     "title": "Menterjemah Glosari",

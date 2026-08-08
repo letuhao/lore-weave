@@ -154,7 +154,14 @@
     "promoted": "Telah dipromosikan menjadi turunan what-if.",
     "promotedPartial": "Berhasil dipromosikan, tetapi {{n}} versi tidak dapat ditambahkan.",
     "promotedProsePartial": "Berhasil dipromosikan, tetapi prosa {{n}} versi tidak dapat disimpan — promosikan ulang untuk mencoba lagi.",
-    "promoteHint": "Buat setidaknya satu versi untuk dipromosikan"
+    "promoteHint": "Buat setidaknya satu versi untuk dipromosikan",
+    "vsCanon": {
+      "absoluteHint": "Ambil skor (tidak ada tolok ukur kanon untuk dibandingkan)",
+      "judging": "· vs kanon…",
+      "noBaseline": "· tidak ada tolok ukur kanon",
+      "take": "ambil",
+      "vs": "vs kanon"
+    }
   },
   "cast": "Pemeran",
   "codex": {
@@ -261,7 +268,8 @@
     "linkMissing": "Salah satu tempat tersebut tidak lagi ada.",
     "delete": "Hapus {{name}}",
     "deleteConfirm": "Hapus «{{name}}» dari peta dunia? Ini akan mengarsipkan tempat tersebut.",
-    "deleteFailed": "Tidak dapat menghapus tempat ini."
+    "deleteFailed": "Tidak dapat menghapus tempat ini.",
+    "backdropNoChapter": "Buka sebuah bab untuk mengatur latar belakang."
   },
   "grounding": "Grounding",
   "canon": "Kanun",
@@ -346,7 +354,21 @@
     "noHits": "Belum ada referensi yang cocok.",
     "library": "Perpustakaan",
     "delete": "Hapus",
-    "empty": "Belum ada referensi — tambahkan pengaruh di atas."
+    "empty": "Belum ada referensi — tambahkan pengaruh di atas.",
+    "addEmbedModel": "Tambah model embedding",
+    "content": "Konten",
+    "contentRecomputes": "Menyimpan konten akan menghitung ulang embedding referensi ini.",
+    "deleteBody": "Ini akan menghapusnya dari rak. Tindakan ini tidak dapat dibatalkan.",
+    "deleteTitle": "Hapus referensi ini?",
+    "done": "Selesai",
+    "edit": "Edit",
+    "filter": "Filter…",
+    "noMatch": "Tidak ada referensi yang cocok dengan filter Anda.",
+    "reembedding": "Menanamkan ulang…",
+    "saveContent": "Simpan konten (menanamkan ulang)",
+    "saveMetadata": "Simpan detail",
+    "saving": "Menyimpan…",
+    "sourceUrl": "URL Sumber (opsional)"
   },
   "progressPanel": {
     "loading": "Memuat progres...",
@@ -363,7 +385,8 @@
     "words": "kata",
     "goalPlaceholder": "kata/hari",
     "setGoal": "Atur target",
-    "goalHint": "0 untuk menghapus target"
+    "goalHint": "0 untuk menghapus target",
+    "goalLegacy": "Tujuan ini berasal dari pengaturan bersama buku — mengaturnya akan menjadikannya milik Anda."
   },
   "workSettings": {
     "defaultModel": "Model draf default",
@@ -375,7 +398,11 @@
     "chapter": "Bab (satu proses)",
     "narrativeThread": "Lacak alur narasi (janji & foreshadowing)",
     "narrativeThreadHint": "Saran: mendeteksi janji yang belum terpenuhi dan memasukkannya kembali agar generasi teks mematuhinya; menampilkan janji yang belum terpenuhi sebagai daftar utang. Opsional.",
-    "saveError": "Tidak dapat menyimpan pengaturan — coba lagi."
+    "saveError": "Tidak dapat menyimpan pengaturan — coba lagi.",
+    "criticModel": "Model kritikus (juri independen)",
+    "criticModelHint": "Model yang BERBEDA akan menilai setiap draf berdasarkan kanon Anda, dan dapat memblokir bab yang bertentangan dengannya. Tanpa model ini, tidak ada yang memeriksa prosa secara independen — sebuah model tidak dapat menilai karyanya sendiri.",
+    "criticSameAsDrafter": "Ini adalah model yang sama dengan penulis prosa, sehingga ia akan menilai karyanya sendiri — server akan menolaknya dan melewati kritik. Pilih model yang berbeda.",
+    "noCritic": "Tanpa kritikus — draf tidak dinilai secara mandiri"
   },
   "loadingStats": "Memuat statistik kualitas...",
   "statsUnavailable": "Statistik kualitas tidak tersedia.",
@@ -489,6 +516,8 @@
     "tension": "Ketegangan",
     "cast": "Pemeran",
     "beat_role": "Peran beat",
+    "beat_label": "Beat",
+    "inactive_cast": "Entitas tidak aktif",
     "add_cast": "tambah pemeran",
     "remove_cast": "Hapus {{name}}",
     "resolve": "Tambah {{name}} ke pemeran",
@@ -509,7 +538,23 @@
     "err_no_chapters": "Buku ini belum memiliki bab — buat bab terlebih dahulu sebelum membuat rencana.",
     "err_too_many_chapters": "Terlalu banyak bab untuk direncanakan sekaligus.",
     "err_bad_entity": "Beberapa anggota pemeran adegan tidak ada dalam glosarium buku ini.",
-    "err_bad_chapter": "Sebuah bab dalam rencana bukan bagian dari buku ini."
+    "err_bad_chapter": "Sebuah bab dalam rencana bukan bagian dari buku ini.",
+    "add_template": "Tambah templat",
+    "create_template_title": "Templat struktur baru",
+    "template_name": "Nama",
+    "template_name_placeholder": "Contohnya, Perjalanan Pahlawan",
+    "template_kind": "Jenis",
+    "template_beats": "Beat (satu per baris)",
+    "template_beats_placeholder": "Pengenalan\nTitik balik\nKlimaks",
+    "template_create": "Buat templat",
+    "template_creating": "Membuat...",
+    "template_create_error": "Tidak dapat membuat templat",
+    "close": "Tutup",
+    "chapter_scope": "Cakupan",
+    "all_chapters": "Semua bab",
+    "recreate_current": "Buat ulang bab saat ini",
+    "recreate_all": "Buat ulang semua bab",
+    "done": "Selesai"
   },
   "threads": "Thread",
   "threadsTitle": "Thread plot",
@@ -656,13 +701,16 @@
     "overuse": "\"{{name}}\" sudah digunakan dalam {{chapters}} — pertimbangkan untuk variasi lain.",
     "list": {
       "noMatch": "Tidak ada motif yang cocok — hapus filter.",
-      "truncated": "Menampilkan 100 pertama — persempit dengan pencarian atau filter untuk melihat sisanya."
+      "truncated": "Menampilkan 100 pertama — persempit dengan pencarian atau filter untuk melihat sisanya.",
+      "loadMore": "Muat lebih banyak",
+      "loadingMore": "Memuat…"
     },
     "error": {
       "load": "Gagal memuat — silakan coba lagi."
     },
     "permission": {
-      "readOnly": "Ini adalah templat bersama — kloning untuk membuat salinan pribadi yang dapat diedit."
+      "readOnly": "Ini adalah templat bersama — kloning untuk membuat salinan pribadi yang dapat diedit.",
+      "noSession": "Penyuntingan tidak tersedia hingga sesi Anda dimuat ulang."
     },
     "action": {
       "open": "Buka",
@@ -673,11 +721,19 @@
       "cancel": "Batal",
       "retry": "Coba lagi",
       "swap": "Tukar",
-      "clear": "Bebas"
+      "clear": "Bebas",
+      "bind": "Ikat motif",
+      "discard": "Buang",
+      "edit": "Edit",
+      "mine": "Gali",
+      "promote": "Promosikan",
+      "restore": "Pulihkan",
+      "save": "Simpan"
     },
     "card": {
       "draft": "Draf hasil ekstraksi",
-      "tension": "Intensitas"
+      "tension": "Intensitas",
+      "shared": "Dibagikan"
     },
     "empty": {
       "title": "Perpustakaan motif Anda sudah siap",
@@ -725,7 +781,13 @@
       "toUser": "Perpustakaan saya",
       "whatItDoes": "Salin motif ini ke perpustakaan Anda (kloning pribadi yang dapat diedit).",
       "continue": "Lanjutkan",
-      "estimating": "Mengestimasi..."
+      "estimating": "Mengestimasi...",
+      "bodyUser": "Adopsi akan membuat salinan pribadi Anda sendiri yang dapat diedit di dalam perpustakaan Anda.",
+      "sharedHint": "Setiap orang yang memiliki akses ke buku ini dapat melihat dan mengedit motif ini.",
+      "targetBook": "Buku ini (pribadi)",
+      "targetBookShared": "Bagikan dengan kolaborator",
+      "targetLegend": "Tambahkan ke",
+      "targetUser": "Perpustakaan saya"
     },
     "quota": {
       "adopt": "Anda telah mengadopsi {{used}}/{{limit}} periode ini — arsipkan beberapa atau tunggu."
@@ -752,7 +814,10 @@
     "binding": {
       "freeForm": "Tidak ada motif yang cocok — adegan ini bersifat bebas.",
       "commitGenerate": "Komit + tulis adegan ini →",
-      "noWork": "Buat rencana untuk buku ini guna mengikat motif ke adegan-adegannya."
+      "noWork": "Buat rencana untuk buku ini guna mengikat motif ke adegan-adegannya.",
+      "committedTitle": "Ikat motif adegan",
+      "loadError": "Tidak dapat memuat motif adegan.",
+      "sectionTitle": "Motif adegan"
     },
     "swap": {
       "title": "Tukar motif",
@@ -777,7 +842,13 @@
         "warn": "Penyimpangan intensitas",
         "bad": "Beat terlewat"
       },
-      "rerunNeedsModel": "Pilih model untuk menjalankan ulang konformitas"
+      "rerunNeedsModel": "Pilih model untuk menjalankan ulang konformitas",
+      "bindCta": "Ikat motif ke adegan →",
+      "couldNotCheck": "Tidak dapat memeriksa",
+      "notChecked": "Belum diperiksa",
+      "notWritten": "Belum ditulis",
+      "openScene": "Buka adegan ini di inspektor",
+      "written": "Sudah ditulis"
     },
     "arc": {
       "mobileNotice": "Grid lini masa tersedia di layar yang lebih besar — di sini Anda dapat mengeditnya sebagai daftar.",
@@ -834,7 +905,8 @@
         "driftFolded": "Terlipat (tidak pernah terikat)",
         "untitledArc": "(alur tanpa judul)",
         "truncated": "Menampilkan {{shown}} dari {{count}} pertama — gunakan Katalog atau tingkatan yang lebih sempit untuk menemukan lebih banyak.",
-        "tabSuggest": "Saran"
+        "tabSuggest": "Saran",
+        "restore": "pulihkan"
       },
       "import": {
         "privacy": "Teks mentah tetap bersifat pribadi bagi Anda dan tidak akan pernah dibagikan. Hanya struktur abstrak yang diturunkan yang dapat dipublikasikan — dan publikasi akan menghapus referensi sumbernya.",
@@ -890,7 +962,42 @@
         "error": "Tidak dapat mengelompokkan bab ke dalam busur cerita.",
         "done": "Berhasil mengelompokkan {{chapters}} bab ke dalam {{arcs}} busur cerita.",
         "none": "Belum ada bab yang dapat dikelompokkan ke dalam busur cerita."
-      }
+      },
+      "apply": {
+        "dropMerge": "Rekonsiliasi skala",
+        "error": "Tidak dapat membangun pratinjau penerapan.",
+        "previewOnly": "Hanya pratinjau — buka busur ini di dalam buku untuk menerapkannya.",
+        "rescaled": "Skala ulang {{from}} → {{to}} bab",
+        "roster": "Ikat pemeran (sekali untuk seluruh busur)",
+        "run": "Pratinjau rencana",
+        "running": "Pratinjau sedang berjalan…",
+        "targetChapters": "Bab target",
+        "title": "Terapkan ke buku baru (pratinjau)",
+        "unbound": "Peran yang belum terikat: {{keys}}"
+      },
+      "backToList": "Semua templat alur",
+      "chapterCount": "{{count}} bab",
+      "empty": "Alur ini belum memiliki utas atau penempatan.",
+      "grabbed": "Mengambil {{name}}. Tombol panah untuk memindahkan, Shift+Panah untuk mengubah ukuran, Enter untuk meletakkan, Esc untuk melepas.",
+      "loadError": "Tidak dapat memuat lini masa alur ini.",
+      "loading": "Memuat lini masa…",
+      "materialize": {
+        "blurb": "Terapkan alur ini ke buku saat ini — membuat kerangka adegan bab + ikatan motif.",
+        "conflict": "Beberapa bab sudah memiliki rencana. Ganti adegan mereka dengan alur ini?",
+        "done": "Berhasil menerapkan {{scenes}} adegan ke dalam {{chapters}} bab.",
+        "error": "Tidak dapat mewujudkan busur ini.",
+        "folded": "{{count}} motif dilipat melalui penskalaan jumlah bab.",
+        "replace": "Ganti adegan yang ada",
+        "run": "Wujudkan ke buku ini",
+        "running": "Sedang mewujudkan...",
+        "unresolved": "{{count}} motif tidak dapat diselesaikan dan dilewati."
+      },
+      "placementDesc": "Alur {{thread}}, bab {{from}}-{{to}}",
+      "readonly": "Busur ini hanya dapat dibaca. Tambahkan ke perpustakaan Anda untuk mengedit lini masa.",
+      "saveConflict": "Dimuat ulang — busur ini telah berubah di tempat lain.",
+      "saveError": "Gagal menyimpan — mencoba lagi pada pengeditan berikutnya.",
+      "saved": "Tersimpan",
+      "saving": "Menyimpan..."
     },
     "simple": {
       "actant": {
@@ -1021,6 +1128,111 @@
       "overCap": "Maksimal {{cap}} motif per tugas terjemahan — batalkan pilihan {{over}} item.",
       "confirmWhat": "Terjemahkan {{count}} motif ke {{lang}} menggunakan model Anda.",
       "doneTitle": "{{written}} dari {{total}} diterjemahkan ke {{lang}}"
+    },
+    "arcConf": {
+      "causal": "terverifikasi secara kausal",
+      "caused": "disebabkan",
+      "chShort": "bab",
+      "coarse": "Kasar · hanya struktural",
+      "deepError": "Tidak dapat menjalankan konformitas mendalam.",
+      "deepWhat": "Tandai ulang prosa buku dengan model Anda dan bandingkan dengan arc ini (diukur dengan LLM).",
+      "drift": "deviasi maks {{drift}}",
+      "empty": "Belum ada yang terbentuk dari arc ini.",
+      "entailed": "terimplikasi",
+      "estimating": "Mengestimasi...",
+      "legalTransitions": "sah",
+      "maxDrift": "deviasi maks {{drift}}",
+      "model": "Model penandaan",
+      "noPlanned": "tidak ada kurva rencana",
+      "noProse": "Belum ada prosa yang diekstraksi — buatlah adegan untuk mengukur penyimpangan.",
+      "noWork": "Wujudkan busur ini ke dalam buku untuk melihat kesesuaian.",
+      "notTagged": "Progresi alur memerlukan penandaan — jalankan dengan model.",
+      "pacing": "Tempo",
+      "proseDrift": "Penyimpangan prosa (realisasi vs rencana)",
+      "proseDriftTitle": "Kesesuaian prosa mendalam",
+      "proseScale": "ketegangan dari peristiwa yang diekstraksi (1–5 ×20)",
+      "proseSuccession": "Suksesi dalam prosa",
+      "proseThreads": "Alur dalam prosa",
+      "runDeep": "Jalankan kesesuaian mendalam",
+      "running": "Sedang berjalan…",
+      "structural": "struktural",
+      "succUntagged": "Suksesi memerlukan penandaan motif — jalankan dengan model.",
+      "succession": "Suksesi (struktural)",
+      "successionOk": "Tidak ada pelanggaran urutan.",
+      "threadMissing": "tidak ada dalam prosa",
+      "threads": "Kemajuan alur",
+      "title": "Kesesuaian Arc",
+      "unmaterialized": "Belum terwujud",
+      "unplannedLabel": "tidak terencana dalam prosa",
+      "violation": "{{label}}: {{n}} tidak berurutan"
+    },
+    "editor": {
+      "add": "tambah",
+      "beatIntent": "niat",
+      "beatLabel": "beat",
+      "beats": "Beat",
+      "conflict": "Motif ini telah diubah di tempat lain — buka kembali untuk mendapatkan versi terbaru sebelum mengedit.",
+      "deceived": "siapa yang tertipu (koma)",
+      "effects": "Efek",
+      "emotion": "Emosi",
+      "examples": "Contoh (ditulis penulis)",
+      "gap": "celah",
+      "genres": "Genre (pisahkan dengan koma)",
+      "kind": "Jenis",
+      "knows": "siapa yang tahu (koma)",
+      "name": "Nama",
+      "preconditions": "Prasyarat",
+      "roleConstraints": "batasan",
+      "roleLabel": "label",
+      "roles": "Peran",
+      "saveError": "Gagal menyimpan.",
+      "saving": "Menyimpan…",
+      "scheme": "Asimetri informasi",
+      "summary": "Ringkasan (disematkan untuk pengambilan data)",
+      "tension": "Ketegangan (1–5)"
+    },
+    "kind": {
+      "arcs": "Templat Busur",
+      "label": "Perpustakaan",
+      "motifs": "Motif"
+    },
+    "lens": {
+      "title": "Motif"
+    },
+    "mine": {
+      "belowGate": "{{n}} kandidat ditahan di bawah ambang batas kualitas.",
+      "bookHint": "Satu buku jarang mengulang pola — cakupan korpus akan menemukan lebih banyak.",
+      "corpus": "Seluruh korpus saya",
+      "estimating": "Mengestimasi...",
+      "failed": "Penambangan gagal.",
+      "minSupport": "Min support",
+      "minedN": "{{n}} draf berhasil ditambang — tinjau sekarang",
+      "model": "Model penambangan",
+      "noCorpus": "Belum ada korpus yang dianalisis — ekstrak buku terlebih dahulu, lalu lakukan penambangan.",
+      "noPatterns": "Tidak ada pola berulang yang ditemukan. Coba cakupan korpus atau turunkan nilai min-support.",
+      "quota": "Kuota penambangan tercapai.",
+      "run": "Tambang",
+      "running": "Menambang…",
+      "scope": "Cakupan",
+      "thisBook": "Buku ini",
+      "title": "Tambang motif dari tulisan Anda",
+      "what": "Abstraksikan pola plot yang berulang dalam korpus Anda menjadi draf motif (diukur dengan LLM)."
+    },
+    "sync": {
+      "apply": "Ambil {{n}} dari upstream",
+      "applying": "Menerapkan…",
+      "available": "Templat upstream memiliki pembaruan.",
+      "conflict": "konflik — Anda berdua mengedit ini",
+      "error": "Gagal menerapkan penggabungan.",
+      "keepMine": "Simpan semua milik saya",
+      "mine": "milik saya",
+      "noChange": "Versi upstream telah diperbarui tetapi tidak ada bidang yang dapat digabungkan yang berubah.",
+      "review": "Tinjau & gabungkan",
+      "take": "ambil upstream",
+      "theirs": "upstream",
+      "threeWay": "3-arah",
+      "title": "Pembaruan upstream",
+      "twoWay": "2-arah"
     }
   },
   "authoringRun": {
@@ -1058,7 +1270,14 @@
       "allowlistAdd": "Tambah alat…",
       "runGateCheck": "Pemeriksaan gerbang →",
       "gating": "Memeriksa…",
-      "cancel": "Batal"
+      "cancel": "Batal",
+      "chaptersEmpty": "Buku ini belum memiliki bab — buatlah bab dari rencana Anda untuk mulai menulis.",
+      "chaptersEmptyCta": "Buka Planner untuk menyusun rencana terlebih dahulu →",
+      "materialize": "Buat bab dari rencana ini →",
+      "materializedOk": "Berhasil membuat {{count}} bab dari rencana Anda.",
+      "materializing": "Membuat bab…",
+      "modelEmpty": "Tambahkan model chat di Pengaturan → Model untuk mulai menulis draf.",
+      "modelLabel": "Model draf"
     },
     "gate": {
       "title": "Pemeriksaan gerbang",
@@ -1147,5 +1366,390 @@
   "canonUncheckedUnparseable": "model peninjau tidak mengembalikan jawaban yang dapat dipakai",
   "canonUncheckedFailed": "pemeriksaannya sendiri gagal",
   "canonUncheckedOther": "pemeriksaan ini tidak dapat dijalankan",
-  "canonUncheckedWhich": "{{count}} pemeriksaan belum selesai"
+  "canonUncheckedWhich": "{{count}} pemeriksaan belum selesai",
+  "structureTemplates": {
+    "templates": {
+      "save_the_cat": "Save the Cat",
+      "hero_journey": "Hero's Journey",
+      "story_circle": "Story Circle",
+      "kishotenketsu": "Kishōtenketsu",
+      "web_novel": "Busur Web Novel",
+      "generic": "Tiga Babak (Umum)"
+    },
+    "beats": {
+      "save_the_cat": {
+        "opening_image": {
+          "label": "Citra Pembuka",
+          "purpose": "Menetapkan nada, suasana, dan kondisi dunia sebelum konflik utama dimulai."
+        },
+        "theme_stated": {
+          "label": "Tema Dinyatakan",
+          "purpose": "Momen di mana tema atau pesan moral cerita disampaikan secara tersirat atau tersurat."
+        },
+        "setup": {
+          "label": "Setup",
+          "purpose": "Memperkenalkan karakter, dunia, dan situasi normal sebelum gangguan terjadi."
+        },
+        "catalyst": {
+          "label": "Katalis",
+          "purpose": "Peristiwa pemicu yang mengubah dunia karakter dan memulai petualangan."
+        },
+        "debate": {
+          "label": "Debat",
+          "purpose": "Momen keraguan atau persiapan karakter sebelum benar-benar terjun ke dalam konflik."
+        },
+        "break_into_two": {
+          "label": "Transisi ke Babak Dua",
+          "purpose": "Titik di mana karakter meninggalkan dunia lama dan berkomitmen pada perjalanan baru."
+        },
+        "b_story": {
+          "label": "Cerita B",
+          "purpose": "Tujuan dari sub-plot atau cerita sampingan untuk memperdalam hubungan antar karakter."
+        },
+        "fun_and_games": {
+          "label": "Fun And Games",
+          "purpose": "Momen di mana karakter utama mengeksplorasi dunia cerita dan menunjukkan kemampuan atau dinamika baru mereka."
+        },
+        "midpoint": {
+          "label": "Midpoint",
+          "purpose": "Titik balik krusial di mana taruhan meningkat dan protagonis beralih dari bereaksi menjadi bertindak."
+        },
+        "bad_guys_close_in": {
+          "label": "Bad Guys Close In",
+          "purpose": "Tekanan meningkat saat antagonis atau rintangan mulai menyudutkan protagonis, baik secara fisik maupun emosional."
+        },
+        "all_is_lost": {
+          "label": "All Is Lost",
+          "purpose": "Titik terendah di mana protagonis merasa kehilangan segalanya dan menghadapi kegagalan total."
+        },
+        "dark_night": {
+          "label": "Dark Night",
+          "purpose": "Momen refleksi mendalam di tengah keputusasaan sebelum menemukan pencerahan untuk menghadapi konflik terakhir."
+        },
+        "break_into_three": {
+          "label": "Break Into Three",
+          "purpose": "Momen ketika protagonis berkomitmen penuh pada misi mereka dan meninggalkan dunia lama."
+        },
+        "finale": {
+          "label": "Finale",
+          "purpose": "Konfrontasi terakhir di mana protagonis harus menerapkan semua yang telah dipelajari untuk mengatasi konflik utama."
+        },
+        "final_image": {
+          "label": "Final Image",
+          "purpose": "Gambaran visual yang menunjukkan seberapa jauh protagonis telah berubah dibandingkan dengan gambar pembuka."
+        }
+      },
+      "hero_journey": {
+        "ordinary_world": {
+          "label": "Ordinary World",
+          "purpose": "Memperkenalkan kehidupan normal protagonis dan menetapkan status quo sebelum petualangan dimulai."
+        },
+        "call_to_adventure": {
+          "label": "Call To Adventure",
+          "purpose": "Sebuah peristiwa atau pesan yang mengganggu kehidupan normal dan menantang protagonis untuk memulai perjalanan."
+        },
+        "refusal_of_the_call": {
+          "label": "Refusal Of The Call",
+          "purpose": "Reaksi keraguan atau ketakutan dari protagonis terhadap panggilan petualangan tersebut."
+        },
+        "meeting_the_mentor": {
+          "label": "Meeting The Mentor",
+          "purpose": "Bertemu dengan Mentor"
+        },
+        "crossing_the_threshold": {
+          "label": "Melintasi Ambang Pintu",
+          "purpose": "Melintasi Ambang Pintu"
+        },
+        "tests_allies_enemies": {
+          "label": "Ujian, Sekutu, dan Musuh",
+          "purpose": "Ujian, Sekutu, dan Musuh"
+        },
+        "approach": {
+          "label": "Pendekatan",
+          "purpose": "Pendekatan"
+        },
+        "ordeal": {
+          "label": "Cobaan Berat",
+          "purpose": "Cobaan Berat"
+        },
+        "reward": {
+          "label": "Hadiah",
+          "purpose": "Hadiah"
+        },
+        "the_road_back": {
+          "label": "Jalan Pulang",
+          "purpose": "Pahlawan menghadapi konsekuensi dari tindakan mereka dan menghadapi rintangan terakhir sebelum mencapai klimaks."
+        },
+        "resurrection": {
+          "label": "Resurrection",
+          "purpose": "Momen transformasi atau kelahiran kembali di mana pahlawan harus menghadapi tantangan terakhir yang menguji segala yang telah mereka pelajari."
+        },
+        "return_with_elixir": {
+          "label": "Return With Elixir",
+          "purpose": "Pahlawan kembali ke dunia asal dengan membawa perubahan, pengetahuan, atau 'obat' yang dapat menyelamatkan komunitas mereka."
+        }
+      },
+      "story_circle": {
+        "you": {
+          "label": "You",
+          "purpose": "Kenalkan protagonis dan dunia mereka dalam keadaan normal sebelum konflik dimulai."
+        },
+        "need": {
+          "label": "Need",
+          "purpose": "Identifikasi keinginan atau kebutuhan mendesak yang mendorong protagonis untuk bertindak."
+        },
+        "go": {
+          "label": "Go",
+          "purpose": "Protagonis meninggalkan zona nyaman mereka dan memasuki situasi yang tidak dikenal."
+        },
+        "search": {
+          "label": "Search",
+          "purpose": "Mencari apa yang diinginkan karakter"
+        },
+        "find": {
+          "label": "Temukan",
+          "purpose": "Karakter mendapatkan apa yang mereka cari"
+        },
+        "take": {
+          "label": "Ambil",
+          "purpose": "Karakter membayar harga untuk apa yang mereka dapatkan"
+        },
+        "return": {
+          "label": "Kembali",
+          "purpose": "Karakter kembali ke situasi semula"
+        },
+        "change": {
+          "label": "Berubah",
+          "purpose": "Karakter telah berubah karena pengalaman tersebut"
+        }
+      },
+      "kishotenketsu": {
+        "ki": {
+          "label": "Ki",
+          "purpose": "Pengenalan karakter, latar, dan situasi"
+        },
+        "sho": {
+          "label": "Sho",
+          "purpose": "Memperkenalkan karakter, latar, dan situasi awal."
+        },
+        "ten": {
+          "label": "Ten",
+          "purpose": "Menghadirkan perubahan atau konflik yang tidak terduga."
+        },
+        "ketsu": {
+          "label": "Ketsu",
+          "purpose": "Menyelesaikan konflik dan memberikan resolusi."
+        }
+      },
+      "web_novel": {
+        "hook": {
+          "label": "Hook",
+          "purpose": "Menarik perhatian pembaca dengan konflik atau misteri instan."
+        },
+        "establishment": {
+          "label": "Establishment",
+          "purpose": "Membangun dunia, karakter, dan norma dalam cerita."
+        },
+        "rising_conflict": {
+          "label": "Rising Conflict",
+          "purpose": "Meningkatkan ketegangan dan hambatan bagi karakter utama."
+        },
+        "setback": {
+          "label": "Setback",
+          "purpose": "Menciptakan rintangan atau kegagalan yang meningkatkan ketegangan bagi protagonis."
+        },
+        "climax": {
+          "label": "Klimaks",
+          "purpose": "Titik puncak konflik di mana ketegangan mencapai puncaknya dan nasib protagonis ditentukan."
+        },
+        "resolution": {
+          "label": "Resolusi",
+          "purpose": "Menyelesaikan konflik utama dan menunjukkan dampak dari klimaks terhadap dunia cerita."
+        }
+      },
+      "generic": {
+        "setup": {
+          "label": "Setup",
+          "purpose": "Memperkenalkan karakter, latar, dan situasi awal sebelum konflik dimulai."
+        },
+        "confrontation": {
+          "label": "Konfrontasi",
+          "purpose": "Menghadapi konflik utama atau antagonis melalui serangkaian tantangan."
+        },
+        "resolution": {
+          "label": "Resolusi",
+          "purpose": "Menutup alur cerita dan memberikan penyelesaian bagi semua konflik yang ada."
+        }
+      }
+    },
+    "kinds": {
+      "save_the_cat": "Struktur Save the Cat",
+      "hero_journey": "Struktur Perjalanan Pahlawan",
+      "story_circle": "Struktur Lingkaran Cerita",
+      "kishotenketsu": "Struktur Kishōtenketsu",
+      "web_novel": "Struktur Busur Web Novel",
+      "generic": "Struktur Tiga Babak (Umum)"
+    }
+  },
+  "branchdiff": {
+    "allNew": "Semua baru (tidak ada padanan kanon)",
+    "branch": "Dị bản",
+    "canon": "Kanon",
+    "chg": "ubah",
+    "empty": "Belum ada prosa yang berbeda — setiap adegan mewarisi kanon. Promosikan sebuah draf di kanvas what-if untuk melihat perbedaannya di sini.",
+    "error": "Tidak dapat membaca prosa cabang.",
+    "loading": "Membaca prosa…",
+    "new": "baru",
+    "noProseBody": "Adegan yang menyimpang ini belum memiliki prosa dalam versi what-if — buatlah draf pada kanvas what-if, maka perbedaannya akan muncul di sini.",
+    "noProseTitle": "Belum ditulis",
+    "noSource": "Cabang ini tidak memiliki sumber yang dapat dibandingkan.",
+    "scenes": "{{n}} menyimpang",
+    "todo": "tugas",
+    "untitledScene": "adegan"
+  },
+  "canonBrokenBadge": "{{n}} rusak →",
+  "canonConflictDiscard": "Buang milik saya",
+  "canonConflictKeepTheirs": "Simpan milik mereka",
+  "canonConflictReapply": "Terapkan kembali suntingan saya ke v{{v}}",
+  "canonConflictTitle": "Aturan ini berubah di tempat lain — draf Anda tetap disimpan di bawah.",
+  "canonview": {
+    "active": "{{n}} aktif",
+    "branchHint": "Apa yang diketahui kanon tepat sebelum cabang ini",
+    "branchToggle": "Kanon pada cabang",
+    "canonState": "Status kanon",
+    "chapterN": "bab {{n}}",
+    "countGlossary": "· {{n}} entitas",
+    "coverage": "muncul di {{pct}}% bab",
+    "established": "Telah ditetapkan hingga saat ini",
+    "events": "{{n}} peristiwa lini masa",
+    "gone": "{{n}} telah hilang",
+    "knowledgeUnavailable": "Status kanon tidak tersedia — layanan pengetahuan tidak merespons.",
+    "loading": "Membaca kanon...",
+    "noChapter": "Tidak ada bab yang sedang dibuka — buka sebuah adegan untuk memeriksa kanon pada bab tersebut.",
+    "noneHere": "Tidak ada entitas yang tertaut ke bab ini.",
+    "notAnalyzed": "Bab ini belum dianalisis — ekstrak buku untuk mengisi kanon.",
+    "presence": "Ada di bab ini",
+    "srcGlossary": "· glosarium",
+    "srcKnowledge": "· pengetahuan",
+    "title": "Kanon per",
+    "windowUnavailable": "Posisi membaca tidak diketahui — jendela tidak tersedia untuk bab ini."
+  },
+  "coverageAbandoned": "{{n}} ditinggalkan",
+  "coverageAbsent": "{{n}} tidak ada",
+  "coverageClean": "Tidak ada janji yang ditinggalkan — buku ini menuntaskan semua premisnya.",
+  "coverageDropped": "Dijanjikan tetapi ditinggalkan:",
+  "coverageIntro": "Saran — janji mana yang ditetapkan oleh kerangka kerja yang terpenuhi di seluruh buku. Hanya baca.",
+  "coverageLoading": "Menganalisis seluruh buku…",
+  "coverageNa": "Cakupan janji tidak tersedia.",
+  "coverageNoPromises": "Tidak ada janji yang dapat dilacak dalam kerangka.",
+  "coveragePaid": "{{n}} berbayar",
+  "coverageProgressing": "{{n}} sedang berjalan",
+  "coverageRerun": "Analisis ulang",
+  "coverageRun": "Analisis janji cerita",
+  "coverageTitle": "Janji cerita",
+  "divergence": {
+    "active": "aktif",
+    "addOverride": "Tambah pengecualian",
+    "archive": "Arsipkan",
+    "archiveConflict": "Diubah di tempat lain — dimuat ulang.",
+    "archiveFailed": "Gagal mengarsipkan — coba lagi.",
+    "archived": "Telah diarsipkan — bab dan pengetahuannya telah disimpan; telah dihapus dari daftar ini.",
+    "branchPoint": "Titik percabangan",
+    "branchedAt": "bercabang pada bab {{n}}",
+    "branchedUnknown": "titik percabangan tidak diketahui",
+    "canonRules": "Aturan kanon",
+    "canonRulesPlaceholder": "Satu aturan per baris (misalnya: Sihir tidak lagi ada di cabang ini).",
+    "canonTag": "kanon",
+    "canonical": "Kanonik",
+    "canonicalSection": "Kanonik",
+    "chapterN": "bab {{n}}",
+    "editFailed": "Gagal menyimpan — coba lagi.",
+    "emptyDerivatives": "Belum ada versi what-if. Sebuah versi akan mencabangkan buku Anda pada suatu bab dan menyimpang — sumber aslinya tetap menjadi kanon yang hanya dapat dibaca.",
+    "loading": "Memuat...",
+    "new": "Percabangan baru",
+    "no": "Tidak",
+    "noAnchoredEntities": "Belum ada karakter yang tertambat ke glosarium dalam sumber cabang ini — tautkan entitas di glosarium untuk menetapkan POV atau tinjau ulang di sini.",
+    "noOverrides": "Belum ada tinjauan entitas.",
+    "noPov": "— tidak ada jangkar POV —",
+    "noWork": "Buku ini belum memiliki rencana — susun alur dan babnya terlebih dahulu, lalu buat cabang what-if di sini.",
+    "overrideEntity": "Entitas untuk ditinjau",
+    "overrideNamePlaceholder": "Nama baru dalam versi ini (opsional)…",
+    "overridePlaceholder": "Bagaimana entitas ini berbeda (misalnya, sekarang menjadi penjahat)…",
+    "overrideRemoved": "Tinjauan dihapus.",
+    "overrides": "Override",
+    "pickEntity": "Override entitas lain…",
+    "povAnchor": "Jangkar POV",
+    "remove": "Hapus",
+    "removeConfirm": "Hapus?",
+    "rename": "Ubah nama",
+    "renameConflict": "Telah diubah di tempat lain — muat ulang dan coba lagi.",
+    "renameFailed": "Gagal mengubah nama — coba lagi.",
+    "renamePlaceholder": "Nama skenario (1–200 karakter)",
+    "renameTitle": "Ubah nama skenario ini",
+    "renamed": "Nama telah diubah.",
+    "restoreFailed": "Gagal memulihkan — mungkin telah diubah di tempat lain.",
+    "restored": "Dikembalikan ke daftar.",
+    "save": "Simpan",
+    "saveRules": "Simpan aturan",
+    "saving": "Menyimpan…",
+    "specError": "Tidak dapat memuat spesifikasi cabang — coba pilih ulang.",
+    "specLoading": "Memuat spesifikasi…",
+    "switchFailed": "Tidak dapat beralih — coba lagi.",
+    "switchTo": "Beralih ke",
+    "tabDiff": "Perbedaan",
+    "tabSpec": "Spesifikasi",
+    "taxonomy": "Taksonomi",
+    "title": "Versi What-if",
+    "unavailable": "Layanan komposisi tidak tersedia — coba lagi sebentar lagi.",
+    "undo": "Batalkan",
+    "undoFailed": "Tidak dapat memulihkan perubahan.",
+    "undoSuperseded": "Sudah ada perubahan terbaru untuk entitas tersebut — tidak ada yang dapat dipulihkan.",
+    "unnamed": "Versi tanpa judul",
+    "yes": "Ya"
+  },
+  "mark": {
+    "action": "Tandai masalah",
+    "cancel": "Batal",
+    "duplicate": "Anda sudah menandai bagian ini dengan catatan tersebut.",
+    "failed": "Tidak dapat menyimpan tanda. Coba lagi.",
+    "kind": "Jenis masalah apa",
+    "no_selection": "Pilih bagian yang salah sebelum menandainya.",
+    "note": "Apa yang salah dengan bagian ini?",
+    "note_ph": "mis. dia meninggal di bab 3...",
+    "note_required": "Jelaskan apa yang salah — catatan ini adalah panduan bagi rekan penulis.",
+    "save": "Tandai",
+    "saved": "Tandai — rekan penulis dapat melihat ini."
+  },
+  "polishAll": "semua",
+  "polishAllDet": "semua deterministik",
+  "polishApply": "Terapkan {{count}} yang dipilih",
+  "polishClean": "Tidak ada masalah yang ditemukan — prosa sudah bersih.",
+  "polishClear": "bersihkan",
+  "polishDeterministic": "otomatis",
+  "polishIntro": "Tinjau usulan perbaikan sebelum diterapkan ke prosa Anda. Suntingan deterministik (kata ganti, salah ketik) sudah terpilih secara otomatis; suntingan semantik ditampilkan tanpa tanda centang agar Anda dapat meninjaunya.",
+  "polishLoading": "Menganalisis…",
+  "polishNoModel": "Pilih model terlebih dahulu.",
+  "polishRerank": "centang otomatis (AI, biaya lebih tinggi)",
+  "polishRerankHint": "Menggunakan satu panggilan AI tambahan per pengeditan untuk mencentang bagian yang bagus secara otomatis (lebih lambat, biaya lebih tinggi).",
+  "polishRerun": "Jalankan Ulang Poles",
+  "polishRun": "Jalankan Poles",
+  "polishSemantic": "semantik",
+  "polishStats": "{{edits}} pengeditan · {{refuted}} dihapus oleh verifikasi",
+  "polishUnplaced": "{{count}} temuan tidak dapat ditemukan dalam teks ini — ditampilkan di bawah, belum diperbaiki.",
+  "polishUnplacedNoQuote": "(tidak ada teks kutipan)",
+  "qualityCriticNa": "Kritikus tidak tersedia.",
+  "qualityHasFix": "usulan perbaikan ↓",
+  "qualityIntro": "Hanya bersifat saran — bagaimana bab ini dinilai dan apa yang dijanjikan namun tidak terealisasi. Tidak ada yang berubah pada prosa Anda di sini.",
+  "qualityLoading": "Menganalisis...",
+  "qualityNoThreads": "Tidak ada alur baru yang diangkat dalam bab ini.",
+  "qualityRerun": "Analisis ulang",
+  "qualityRun": "Analisis kualitas",
+  "qualityThreadsNa": "Audit alur tidak tersedia.",
+  "qualityThreadsRaised": "{{n}} alur diangkat dalam bab ini:",
+  "qualityThreadsResolved": "{{r}} terselesaikan di sini",
+  "qualityTitle": "Laporan kualitas",
+  "resolveWorkFailed": "Layanan pengetahuan tidak tersedia — tidak dapat menyelesaikan pengaturan dasar.",
+  "resolvingWork": "Menyelesaikan pengaturan... layanan pengetahuan sempat tidak tersedia.",
+  "retry": "Coba lagi",
+  "threadFocusMissing": "Janji yang Anda ikuti tidak ada dalam tampilan ini — mungkin sudah dibayar. Ubah filter ke «semua»."
 }

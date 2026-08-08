@@ -65,7 +65,19 @@
     "thinkingOn": "사고 기능: 켜짐 (추론 활성화)",
     "thinkingOff": "사고 기능: 꺼짐 (더 빠름, JSON 최적화)",
     "startExtraction": "추출 시작",
-    "editProfile": "프로필 수정"
+    "editProfile": "프로필 수정",
+    "cacheAuto": "변경 사항이 있을 때 다시 실행 (기본값)",
+    "cacheForce": "항상 다시 추출 — 캐시 무시",
+    "cacheHint": "정의를 수정하셨나요? 기본 설정으로도 이미 다시 실행됩니다.",
+    "cachePolicy": "캐시된 결과",
+    "cacheReuse": "가능한 경우 캐시된 결과 재사용",
+    "concurrency": "LLM 병렬 호출",
+    "concurrencyHint": "1 = 순차 실행. 모델이 동시 요청을 지원하는 경우 이 값을 높이세요.",
+    "strategy": "프롬프트 형태",
+    "strategyBatched": "배치 방식 — 가장 철저함 (기본값)",
+    "strategyDelta": "단일 호출 + 델타 방식 — 가장 저렴함",
+    "strategyEdc": "스윕 후 타이핑 방식 — 약 56% 저렴, 가장 정확한 근거 제공",
+    "strategySingle": "단일 호출 방식 — 약 66% 저렴, 희귀한 유형은 놓칠 수 있음"
   },
   "progress": {
     "title": "용어집 추출 중",
@@ -107,7 +119,11 @@
     "draftNote": "모든 새 엔티티는 초안으로 생성되었습니다. 용어집 탭에서 검토하세요.",
     "viewGlossary": "용어집에서 검토",
     "runAgain": "다시 추출",
-    "close": "닫기"
+    "close": "닫기",
+    "cacheAllFresh": "모든 {{n}}개 배치가 새로 추출되었습니다.",
+    "cacheForced": "(요청에 의해 캐시를 건너뛰었습니다)",
+    "cacheRerunHint": "그 이후에 종류 정의를 변경했다면, «항상 새로 추출» 옵션으로 다시 실행하세요.",
+    "cacheServed": "이번 실행의 {{pct}}% (배치 {{total}}개 중 {{cached}}개)가 다시 읽지 않고 이전 추출에서 재사용되었습니다."
   },
   "button": {
     "extract": "용어집 추출",

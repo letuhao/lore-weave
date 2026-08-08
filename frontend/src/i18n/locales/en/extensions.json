@@ -9,7 +9,9 @@
     "permissions": "Tool permissions",
     "proposals": "Proposals",
     "activity": "Activity log",
-    "ingest": "Registry sources"
+    "ingest": "Registry sources",
+    "bindings": "Auto-setup",
+    "workflows": "Recipes"
   },
   "quota": {
     "unavailable": "Usage unavailable",

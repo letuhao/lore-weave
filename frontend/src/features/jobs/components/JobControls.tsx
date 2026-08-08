@@ -49,12 +49,12 @@ export function JobControls({ service, jobId, controlCaps, compact, retryBlocked
       const message = typeof d.message === 'string' ? d.message : '';
       if (code === 'benchmark_missing') {
         return t('controls.retryBenchmarkMissing', {
-          defaultValue: 'Перезапуск недоступен: для embedding-модели не пройден benchmark. Запустите benchmark модели и повторите проверку.',
+          defaultValue: 'Retry is unavailable: the embedding model has no benchmark. Run the model benchmark, then re-check.',
         });
       }
       if (code === 'benchmark_failed') {
         return t('controls.retryBenchmarkFailed', {
-          defaultValue: 'Перезапуск недоступен: последний benchmark embedding-модели не пройден.',
+          defaultValue: 'Retry is unavailable: the embedding model failed its last benchmark.',
         });
       }
       if (message) return message;
@@ -64,8 +64,8 @@ export function JobControls({ service, jobId, controlCaps, compact, retryBlocked
 
   const retryBlockedLabel = (reason: string): string => {
     const code = reason.split(':', 1)[0].trim();
-    if (code === 'benchmark_missing') return t('controls.retryBenchmarkMissing', { defaultValue: 'Перезапуск недоступен: для embedding-модели не пройден benchmark. Запустите benchmark модели и повторите проверку.' });
-    if (code === 'benchmark_failed') return t('controls.retryBenchmarkFailed', { defaultValue: 'Перезапуск недоступен: последний benchmark embedding-модели не пройден.' });
+    if (code === 'benchmark_missing') return t('controls.retryBenchmarkMissing', { defaultValue: 'Retry is unavailable: the embedding model has no benchmark. Run the model benchmark, then re-check.' });
+    if (code === 'benchmark_failed') return t('controls.retryBenchmarkFailed', { defaultValue: 'Retry is unavailable: the embedding model failed its last benchmark.' });
     return reason;
   };
   const onError = (e: Error, args: { action: JobControlAction }) => {

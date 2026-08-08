@@ -59,7 +59,8 @@
     "noActive": "No hay trabajos activos.",
     "more": "Cargar más",
     "toggleChildren": "Alternar hijos",
-    "noChildren": "Sin trabajos hijos."
+    "noChildren": "Sin trabajos hijos.",
+    "errorWithReason": "No se pudieron cargar los trabajos: {{error}}"
   },
   "row": {
     "ran": "se ejecutó hace {{d}}",
@@ -85,6 +86,7 @@
   "controls": {
     "pause": "Pausar",
     "resume": "Reanudar",
+    "resumeFromCheckpoint": "Reanudar desde el punto de control",
     "cancel": "Cancelar",
     "cancelConfirm": "¿Detener ahora? El trabajo en curso se descartará; las partes completadas se conservarán.",
     "cancelYes": "Sí",
@@ -95,7 +97,9 @@
     "retry": "Reintentar",
     "retried": "Reenviado como un nuevo trabajo.",
     "stale": "El estado del trabajo ha cambiado — actualizado.",
-    "actionFailed": "La acción falló: {{error}}"
+    "actionFailed": "La acción falló: {{error}}",
+    "retryBenchmarkMissing": "La opción de reintentar no está disponible: el modelo de incrustación no tiene una prueba de rendimiento. Ejecuta la prueba del modelo y vuelve a intentarlo.",
+    "retryBenchmarkFailed": "La opción de reintentar no está disponible: el modelo de incrustación falló en su última prueba de rendimiento."
   },
   "monitor": {
     "back": "Todos los trabajos",

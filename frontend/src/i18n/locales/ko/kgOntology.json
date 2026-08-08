@@ -49,6 +49,45 @@
     "lossChange": {
       "removed_upstream": "삭제됨",
       "modified": "덮어쓰여짐"
+    },
+    "templates": {
+      "general": {
+        "name": "일반 (레거시 온톨로지)",
+        "description": "기존의 일반 추출 온톨로지를 재현합니다 — 가산 우선 방식의 안전망."
+      },
+      "general-legacy": {
+        "name": "일반 (레거시 온톨로지)",
+        "description": "기존의 일반 추출 온톨로지를 재현합니다 — 가산 우선 방식의 안전망."
+      },
+      "xianxia-harem": {
+        "name": "선협 · 하렘",
+        "description": "엄선된 개체 및 관계 유형을 포함하는 수련 및 하렘 소설용 장르 템플릿."
+      },
+      "fantasy": {
+        "name": "판타지",
+        "description": "캐릭터, 장소, 조직, 종족, 아이템, 능력 및 기술을 포함하는 판타지 세계관 스키마."
+      },
+      "romance": {
+        "name": "로맨스",
+        "description": "캐릭터, 관계, 플롯 아크, 클리셰 및 사회적 배경을 포함하는 관계 중심 스키마."
+      },
+      "drama": {
+        "name": "드라마",
+        "description": "캐릭터, 갈등, 관계, 조직, 사건 및 플롯 아크를 위한 드라마 스키마."
+      },
+      "historical": {
+        "name": "역사물",
+        "description": "인물, 장소, 기관, 사건, 용어 및 사회 질서를 위한 역사 소설용 스키마"
+      },
+      "mystery": {
+        "name": "미스터리",
+        "description": "캐릭터, 단서, 물건, 조직, 사건, 플롯 아크 및 클리셰를 위한 수사 스키마"
+      }
+    },
+    "scope": {
+      "system": "시스템",
+      "user": "사용자",
+      "project": "프로젝트"
     }
   },
   "schema": {

@@ -517,11 +517,32 @@
       "discoveredHint": "Entitas baru dimulai sebagai entitas yang ditemukan. Status kanonikal diperoleh dengan menambatkannya ke glosarium."
     },
     "kind": {
+      "unknown": "Jenis tidak dikenal",
+      "person": "Orang",
+      "artifact": "Artefak",
       "character": "Karakter",
       "location": "Lokasi",
       "organization": "Organisasi",
       "concept": "Konsep",
-      "item": "Item"
+      "item": "Item",
+      "event_ref": "Peristiwa",
+      "preference": "Preferensi",
+      "event": "Peristiwa",
+      "terminology": "Terminologi",
+      "power_system": "Sistem kekuatan",
+      "species": "Spesies",
+      "relationship": "Hubungan",
+      "plot_arc": "Busur alur",
+      "social_setting": "Latar sosial",
+      "trope": "Trope",
+      "technique": "Teknik",
+      "colleague": "Rekan Kerja",
+      "decision": "Keputusan",
+      "jargon": "Jargon",
+      "meeting": "Rapat",
+      "org": "Organisasi",
+      "project": "Proyek",
+      "task": "Tugas"
     },
     "archive": {
       "action": "Arsipkan",
@@ -707,7 +728,28 @@
         "errorAlreadyRunning": "Benchmark sedang berjalan untuk proyek ini. Tunggu dan coba lagi.",
         "errorProviderFlake": "Penyedia embedding gagal di tengah proses. Silakan coba lagi.",
         "errorGeneric": "Benchmark gagal: {{message}}"
-      }
+      },
+      "benchmarkNoRun": "⋯ Belum ada benchmark — jalankan benchmark golden-set untuk mengaktifkan ekstraksi.",
+      "bookIdLocked": "Buku ini (terkunci)",
+      "canonCapture": "Tangkap nama baru secara otomatis dari chat",
+      "canonCaptureCeilingOff": "Dinonaktifkan untuk deployment ini — pilihan Anda disimpan, tetapi penangkapan tidak akan berjalan sampai administrator mengaktifkannya kembali.",
+      "canonCaptureHint": "Setiap beberapa giliran, nama yang diperkenalkan dalam percakapan Anda akan ditambahkan ke kotak masuk tinjauan glosarium buku ini sebagai saran — bukan sebagai kanon. Menggunakan satu panggilan AI tambahan per penangkapan, ditagihkan ke model Anda sendiri.",
+      "canonCaptureNoBook": "Hubungkan buku ke proyek ini untuk menangkap nama ke dalam glosariumnya.",
+      "embeddingModel": "Model embedding",
+      "embeddingModelEmpty": "Tidak ada model yang mendukung embedding yang dikonfigurasi — ekstraksi memerlukan satu model.",
+      "embeddingModelHint": "Mengatur ruang vektor mana yang digunakan proyek ini untuk pengambilan fragmen semantik.",
+      "embeddingModelNone": "Tidak ada (tanpa fragmen semantik)",
+      "genre": "Genre",
+      "genrePlaceholder": "mis. Tiên hiệp, Cultivation, Fantasy…",
+      "memoryConfirm": "Konfirmasi sebelum menyimpan memori",
+      "memoryConfirmHint": "Fakta yang ingin diingat oleh AI akan menunggu persetujuan Anda alih-alih disimpan secara otomatis.",
+      "rerankDiscoveryHint": "Self-hosted? Tambahkan kredensial rerank lokal (kompatibel dengan Cohere) di Model AI, lalu Refresh — model rerank akan ditemukan secara otomatis.",
+      "rerankModel": "Model rerank (opsional)",
+      "rerankModelEmpty": "Tidak ada model yang mendukung rerank yang dikonfigurasi. Daftarkan satu untuk mengaktifkan penolakan sampah (junk-rejection).",
+      "rerankModelHint": "Cross-encoder rerank untuk penolakan sampah pada pencarian mentah. Opsional — jika dikosongkan, urutan fusi pencarian akan dipertahankan.",
+      "rerankModelNone": "Tidak ada (lewati rerank — pertahankan urutan fusi)",
+      "toolCalling": "Alat memori dalam obrolan",
+      "toolCallingHint": "Biarkan AI mencari, mengingat, dan mencatat memori saat mengobrol dalam proyek ini."
     },
     "archiveDialog": {
       "title": "Arsipkan proyek?",
@@ -910,6 +952,32 @@
         "unpin": "Lepas sematan",
         "budget": "+{{tokens}} token per jendela ({{count}} disematkan × ~50).",
         "noBook": "Penyematan memerlukan buku yang tertaut. Hubungkan buku ke proyek ini terlebih dahulu."
+      },
+      "disabled": {
+        "benchmarkRequired": "Jalankan benchmark golden-set dan lulusi untuk mengaktifkan ekstraksi (di atas).",
+        "checkingBenchmark": "Memeriksa benchmark embedding...",
+        "fixConcurrency": "Panggilan paralel harus antara 1–64.",
+        "fixMaxSpend": "Masukkan batas pengeluaran yang valid.",
+        "fixRange": "Perbaiki rentang bab.",
+        "pickEmbedding": "Pilih model embedding.",
+        "pickLlm": "Pilih model LLM ekstraksi."
+      },
+      "embedding": {
+        "changeViaDialog": "Proyek ini sudah memiliki model embedding. Gunakan «Ganti model» untuk menggantinya — ini akan membangun ulang graf.",
+        "saveFailed": "Tidak dapat menyimpan model embedding: {{error}}",
+        "saved": "Model embedding berhasil disimpan — jalankan benchmark di bawah untuk mengaktifkan ekstraksi."
+      },
+      "prereq": {
+        "benchmarkChecking": "Memeriksa benchmark embedding...",
+        "benchmarkPassed": "Benchmark embedding berhasil",
+        "benchmarkPending": "Benchmark embedding berhasil (pilih model terlebih dahulu)",
+        "benchmarkRequired": "Benchmark embedding berhasil — jalankan dari pemilih model di bawah",
+        "embedding": "Model embedding terpilih",
+        "llm": "Model LLM ekstraksi dipilih"
+      },
+      "reasoning": {
+        "hint": "Nonaktif secara default — ekstraksi menghasilkan JSON, dan proses berpikir tersembunyi dapat menghabiskan kuota output. Aktifkan hanya untuk konten sulit pada model penalaran.",
+        "label": "Aktifkan penalaran model (thinking)"
       }
     },
     "errorViewer": {
@@ -973,7 +1041,10 @@
       "saving": "Menyimpan...",
       "cancel": "Batal",
       "saved": "Pengaturan ekstraksi disimpan.",
-      "failed": "Penyimpanan gagal: {{error}}"
+      "failed": "Penyimpanan gagal: {{error}}",
+      "filterModel": "Model filter (opsional)",
+      "filterModelDefault": "Gunakan model ekstraksi (default)",
+      "filterModelHint": "LLM yang menilai presisi relasi. Jika dibiarkan default, filter akan menggunakan kembali model ekstraksi Anda (per-pengguna, BYOK). Pilih model yang lebih kuat untuk penyaringan dengan presisi lebih tinggi."
     },
     "confirmDestructive": {
       "cancel": "Batal",
@@ -988,7 +1059,9 @@
       },
       "rebuildStep2": {
         "title": "Kesempatan terakhir — benar-benar bangun ulang?",
-        "description": "Mengeklik Bangun Ulang sekarang akan memulai proses penghapusan-dan-pembangunan-ulang. Tidak ada pembatalan setelah pekerjaan baru berjalan."
+        "description": "Mengeklik Bangun Ulang sekarang akan memulai proses penghapusan-dan-pembangunan-ulang. Tidak ada pembatalan setelah pekerjaan baru berjalan.",
+        "descriptionCount": "Ini akan MENGHAPUS secara permanen {{entities}} entitas, {{events}} peristiwa, dan {{facts}} fakta, lalu membangun ulang dari awal. Tindakan ini tidak dapat dibatalkan.",
+        "typePrompt": "Ketik nama proyek untuk konfirmasi"
       },
       "disable": {
         "title": "Nonaktifkan ekstraksi?",
@@ -1082,7 +1155,8 @@
       },
       "diffToggle": "Tampilkan perbedaan vs saat ini",
       "diffEmpty": "Tidak ada perbedaan."
-    }
+    },
+    "loading": "Memuat..."
   },
   "indicator": {
     "label": "Indikator pengetahuan",
@@ -1090,7 +1164,8 @@
     "modes": {
       "global": "Global",
       "project": "Proyek",
-      "degraded": "Menurun"
+      "degraded": "Menurun",
+      "multi": "{{count}} graf pengetahuan"
     },
     "popover": {
       "projectHeading": "Memori proyek",
@@ -1100,7 +1175,8 @@
       "projectBody": "Sesi ini terhubung ke <strong>{{name}}</strong>. AI melihat bio global Anda serta ringkasan proyek dan entri glosarium pada setiap giliran.",
       "globalBody": "Sesi ini tidak memiliki proyek yang terhubung. AI hanya melihat bio global Anda. Hubungkan proyek di pengaturan sesi untuk memberikan akses ke memori khusus buku.",
       "degradedBody": "Layanan pengetahuan tidak dapat dijangkau pada giliran terakhir. AI hanya menggunakan pesan terbaru — memori proyek Anda untuk sementara tidak ada dalam prompt. Akan pulih otomatis pada giliran berikutnya setelah layanan kembali aktif.",
-      "manage": "Kelola pengetahuan"
+      "manage": "Kelola pengetahuan",
+      "multiBody": "Chat ini didasarkan pada {{count}} graf pengetahuan sekaligus — fakta ditandai dengan sumbernya."
     }
   },
   "picker": {
@@ -1312,5 +1388,21 @@
       "confirm": "Petakan"
     },
     "emptyHint": "Triage mengumpulkan semua hasil ekstraksi yang belum sesuai dengan skema Anda — antrean yang bersih berarti semuanya sudah tersusun rapi."
+  },
+  "temporal": {
+    "canonical": {
+      "asOfChapter": "Per bab {{ordinal}}"
+    },
+    "retrieval": {
+      "chapter": "Bab {{chapter}}"
+    },
+    "slider": {
+      "atChapter": "Bab {{ordinal}}"
+    },
+    "translation": {
+      "asOfChapter": "bab {{n}}",
+      "asOfLabel": "per {{label}}",
+      "error": "Gagal memuat konteks: {{error}}"
+    }
   }
 }

@@ -43,8 +43,8 @@
         "desc": "Теплый оттенок бумаги"
       },
       "oled": {
-        "desc": "Настоящий черный для OLED-экранов",
-        "name": "OLED"
+        "name": "OLED",
+        "desc": "Настоящий черный для OLED-экранов"
       },
       "parchment": {
         "name": "Пергамент",
@@ -69,9 +69,9 @@
   "tts": {
     "source": {
       "attached": "Прикреплено",
+      "ai": "AI TTS",
       "browser": "Браузер",
-      "inline": "Аудио",
-      "ai": "AI TTS"
+      "inline": "Аудио"
     },
     "prev_block": "Предыдущий блок (Shift+Влево)",
     "play": "Воспроизвести (Space)",
@@ -105,10 +105,10 @@
   "audio": {
     "source": {
       "attached": "Прикреплено",
+      "ai": "AI TTS",
       "browser": "Браузер",
       "inline": "Аудиоблок",
-      "none": "Нет",
-      "ai": "AI TTS"
+      "none": "Нет"
     },
     "coverage": "Охват аудио",
     "summary": "{{speakable}} доступных блоков · {{missing}} через браузерный TTS",
@@ -142,5 +142,8 @@
       "kg": "Знания",
       "passage": "Отрывок"
     }
+  },
+  "lore": {
+    "heading": "Мир истории"
   }
 }

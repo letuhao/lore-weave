@@ -227,10 +227,10 @@
       "endpoint_hint": "留空以使用預設端點（OpenAI、Anthropic）。",
       "api_key": "API 金鑰",
       "api_key_ph_local": "本機可選填",
+      "api_key_ph": "sk-...",
       "cancel": "取消",
       "adding": "新增中...",
-      "submit": "新增供應商",
-      "api_key_ph": "sk-..."
+      "submit": "新增供應商"
     },
     "edit_dialog": {
       "aria": "編輯供應商",
@@ -241,14 +241,14 @@
       "endpoint_ph_default": "留空以使用預設",
       "api_key": "API 金鑰",
       "api_key_ph_keep": "••••••••  （留空以保留目前金鑰）",
+      "api_key_ph": "sk-...",
       "api_key_keep_hint": "留空以保留現有金鑰。",
       "max_concurrency": "最大並行請求數",
       "max_concurrency_ph": "無限制",
       "max_concurrency_hint": "此供應商同時執行的請求數。留空表示無限制（由基礎設施決定）。僅在您的後端有已知上限時（例如本機 GPU）才設定數字。",
       "cancel": "取消",
       "saving": "儲存中...",
-      "submit": "儲存變更",
-      "api_key_ph": "sk-..."
+      "submit": "儲存變更"
     },
     "delete": {
       "title": "移除 {{name}}？",
@@ -271,7 +271,11 @@
       "unknown_error": "未知錯誤",
       "model_removed": "已移除 {{name}}",
       "model_delete_failed": "刪除模型失敗"
-    }
+    },
+    "delete_blocked": "此模型無法刪除：尚有 {{count}} 個執行中的工作。請先停止這些工作。",
+    "delete_refs_none": "無引用",
+    "delete_confirm": "確定要刪除模型「{{name}}」嗎？\n\n這將移除以下引用：{{refs}}。",
+    "return_to_form": "返回原處"
   },
   "translation": {
     "heading": "翻譯預設值",
@@ -296,7 +300,9 @@
       "tpl_needs_chapter": "使用者提示範本必須包含 {chapter_text}",
       "saved": "已儲存翻譯預設值",
       "save_failed": "儲存翻譯偏好設定失敗"
-    }
+    },
+    "models_load_failed": "無法載入您的模型。提供者服務可能暫時無法使用。",
+    "retry": "重試"
   },
   "reading": {
     "app_theme": "應用程式主題",
@@ -344,7 +350,8 @@
     "auto_saved": "變更會自動儲存。",
     "toast": {
       "preset_saved": "已儲存預設「{{name}}」"
-    }
+    },
+    "voice_moved": "語音與語音合成設定已移至「設定」→「聊天與 AI」→「語音」。"
   },
   "language": {
     "gui_language": "介面語言",
@@ -364,13 +371,13 @@
       "extended_thinking": "延伸思考",
       "json_mode": "JSON 模式",
       "reasoning": "推理",
+      "tts": "TTS",
+      "stt": "語音轉文字",
       "image_gen": "圖像生成",
       "video_gen": "影片生成",
       "embedding": "嵌入",
       "rerank": "重新排序",
-      "moderation": "內容審核",
-      "tts": "TTS",
-      "stt": "語音轉文字"
+      "moderation": "內容審核"
     }
   },
   "services": {
@@ -399,6 +406,7 @@
       "endpoint": "端點 URL",
       "endpoint_hint": "服務的基底 URL — provider-registry 會在伺服器端呼叫。若服務在主機上執行，請用 host.docker.internal，不要用 localhost（容器內的 localhost 指容器自己）。",
       "key": "API 金鑰",
+      "key_ph": "Bearer 權杖",
       "key_ph_keyless": "免金鑰的本地服務請留空",
       "key_hint": "服務的 Bearer 密鑰。",
       "key_hint_keyless": "選填 — 免金鑰的本地後端（例如 SearXNG）請留空。",
@@ -408,8 +416,7 @@
       "alias_ph": "顯示名稱（選填）",
       "cancel": "取消",
       "submit": "新增服務",
-      "adding": "新增中…",
-      "key_ph": "Bearer 權杖"
+      "adding": "新增中…"
     },
     "edit_dialog": {
       "aria": "編輯外部服務",
@@ -464,6 +471,7 @@
       "model": "模型",
       "search_ph": "搜尋模型...",
       "top": "推薦",
+      "ctx": "ctx",
       "model_hint": "輸入以搜尋。或輸入清單中沒有的自訂模型名稱。",
       "alias": "別名（顯示名稱）",
       "alias_ph": "例如：我的快速模型",
@@ -473,7 +481,8 @@
       "cancel": "取消",
       "adding": "新增中...",
       "submit": "新增模型",
-      "ctx": "ctx"
+      "pricing_summary": "成本：輸入 ${{input}}/1M · 輸出 ${{output}}/1M",
+      "pricing_missing": "該供應商未公布價格 — 請在模型註冊後手動新增。"
     },
     "edit": {
       "aria": "編輯模型",
@@ -489,6 +498,7 @@
       "remove_default_aria": "取消設為預設",
       "set_default_aria": "設為預設",
       "verify_hint": "測試連線以驗證此模型是否可用",
+      "verify_ok": "確定 — {{ms}}ms",
       "testing": "測試中...",
       "reverify": "重新驗證",
       "verify": "驗證",
@@ -511,7 +521,15 @@
       "cancel": "取消",
       "saving": "儲存中...",
       "submit": "儲存變更",
-      "verify_ok": "確定 — {{ms}}ms"
+      "capabilities_refreshed": "模型功能已更新",
+      "capabilities_refresh_failed": "無法更新模型功能",
+      "delete_blocked_active": "此模型無法刪除：請先停止其執行中的工作。",
+      "pricing_missing": "此模型無價格資訊 — 將無法估算工作成本。",
+      "refresh_capabilities": "重新整理",
+      "delete_impact": "這將移除以下引用：{{refs}}。請再次點擊「刪除」以確認。",
+      "delete_impact_none": "無",
+      "delete_blocked_count": "無法刪除：目前有 {{count}} 個執行中的工作。請先停止這些工作。",
+      "verify_ok_rerank": "已對 {{count}} 份文件進行排序 · 前 {{score}} · {{ms}}ms"
     },
     "toast": {
       "fetch_failed": "取得模型失敗：{{error}}",
@@ -524,5 +542,23 @@
       "deleted": "已刪除模型",
       "delete_failed": "刪除失敗"
     }
+  },
+  "defaultModels": {
+    "heading": "預設模型",
+    "subtitle": "您的個人用戶備用模型 (BYOK — 使用您自己的模型)。當未設定特定範圍的模型時使用。",
+    "chat": "預設對話模型",
+    "chatHint": "開始新對話時預先選定。若留空，則預設使用您的收藏模型。",
+    "rerank": "預設重排序模型",
+    "rerankHint": "用於過濾原始搜尋雜訊的 Cross-encoder 重排序。可選 — 當專案未設定重排序模型時套用。",
+    "planner": "預設規劃模型",
+    "plannerHint": "術語表助手用於建立多步驟計畫的對話模型。請選擇功能強大且具備工具調用能力的模型 — 否則計畫功能將回退至隨機的對話模型，且經常失敗。",
+    "none": "無",
+    "empty": "未配置任何具備能力的模型。",
+    "saved": "預設值已更新"
+  },
+  "external_services": {
+    "delete_blocked": "無法移除此服務：其模型正由 {{count}} 個執行中的工作使用中。請先停止這些工作。",
+    "delete_refs_none": "無引用",
+    "delete_confirm": "確定要移除服務「{{name}}」嗎？\n\n這將會移除以下模型引用：{{refs}}。"
   }
 }

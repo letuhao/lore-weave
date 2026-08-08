@@ -409,5 +409,12 @@
     "findGlossary": "Find in glossary",
     "askAi": "Ask AI about this",
     "findMentions": "Find mentions"
-  }
+  },
+  "chat_mode": "Mode",
+  "mode_agent": "Agent",
+  "mode_agent_hint": "AI can use tools and edit your document",
+  "mode_compose": "Compose",
+  "mode_compose_hint": "Prose only — AI writes, you Apply. Best for reasoning models.",
+  "polish_applied": "Applied polish edits",
+  "resize_panel": "Drag to resize"
 }

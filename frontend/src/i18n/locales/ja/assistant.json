@@ -1,0 +1,85 @@
+{
+  "loading": "アシスタントをセットアップ中…",
+  "openingJournal": "ジャーナルを開いています…",
+  "home": {
+    "welcome": "おかえりなさい、{{name}}さん",
+    "subtitle": "あなた専用の執筆アシスタント",
+    "capturing": "執筆メモを記録中",
+    "captureOff": "記録オフ",
+    "capturingDesc": "会話から人物やプロジェクトを自動的に認識します。",
+    "captureOffDesc": "オンにすると、同僚やプロジェクト、決定事項を記録できます。",
+    "refresh": "更新",
+    "capturedItems": "記録されたアイテム",
+    "endDay": "今日を終える",
+    "endingDay": "今日を終了しています…",
+    "journal": "ジャーナル",
+    "memory": "メモリー",
+    "practice": "練習用インタビュー"
+  },
+  "timezone": {
+    "title": "タイムゾーンの確認",
+    "description": "ジャーナルは、お住まいの地域の時間に基づいて日ごとにグループ化されます。現在、{{zone}} が検出されました。",
+    "saving": "保存中…",
+    "useThis": "これを使用",
+    "pickAnother": "別のタイムゾーンを選択",
+    "save": "保存"
+  },
+  "capture": {
+    "title": "今日のこれまでの記録",
+    "live": "ライブ",
+    "description": "会話中に気づいたこと。今夜振り返るまで、日記には保存されません。",
+    "listening": "リスニング中…",
+    "nothingYet": "まだ何も記録されていません。今日一日について教えてください。",
+    "turnOn": "キャプチャをオンにして、人やプロジェクトの記録を開始しましょう。"
+  },
+  "autonomous": {
+    "title": "アシスタントを自律稼働させる",
+    "description": "オンにするまでオフの状態です。バックグラウンドで実行され、あなたのモデルを使用します。",
+    "loading": "読み込み中…",
+    "on": "オン",
+    "next": "オン · 次回 {{time}}",
+    "eod": "一日の終わりに自動実行",
+    "eodDesc": "たとえ忘れてしまっても、毎晩その日のジャーナルを記録します。",
+    "weeklyReflection": "週次リフレクション",
+    "weeklyReflectionDesc": "穏やかな週次の振り返りとコーチングノート。",
+    "weeklySummary": "週間サマリー",
+    "weeklySummaryDesc": "今週の振り返りです。",
+    "reminders": "ジャーナリングのリマインダー",
+    "remindersDesc": "一日の記録が終わっていない場合、お知らせします。",
+    "proactive": "プロアクティブ・チェックイン",
+    "proactiveOn": "オン — しばらく記録がない場合、私から話しかけることがあります。",
+    "proactiveOff": "オフ — しばらく間が空いた後、私から考えを投げかけます。"
+  },
+  "review": {
+    "title": "今日の振り返り",
+    "distilling": "今日の会話を日記の形式にまとめています…",
+    "genericError": "エラーが発生しました。",
+    "words": "{{count}} 文字",
+    "kept": "保存済み",
+    "keep": "今日のメモを保存",
+    "keptButton": "保存済み ✓",
+    "keeping": "保存中…"
+  },
+  "inbox": {
+    "title": "覚えておくべき事実",
+    "description": "今日の会話から抽出。重要なものは保存し、それ以外は整理しましょう。",
+    "loading": "読み込み中…",
+    "error": "事実を読み込めませんでした。",
+    "keep": "保存",
+    "dismiss": "削除",
+    "quoted": "引用"
+  },
+  "scorecard": {
+    "title": "コーチング・スコアカード",
+    "badge": "トレンド未反映（レビュー中）",
+    "badgeTitle": "このスコアはまだ人間の評価とのキャリブレーションが行われていないため、参考値として表示されており、トレンドにはプロットされません。",
+    "overall": "総合:",
+    "notScored": "未評価"
+  },
+  "reflection": {
+    "defaultTitle": "週次振り返り",
+    "dismissError": "解除できませんでした。もう一度お試しください",
+    "dismissing": "解除中…",
+    "dismiss": "解除"
+  }
+}

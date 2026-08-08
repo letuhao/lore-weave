@@ -271,7 +271,11 @@
       "unknown_error": "unbekannter Fehler",
       "model_removed": "{{name}} entfernt",
       "model_delete_failed": "Modell konnte nicht gelöscht werden"
-    }
+    },
+    "delete_blocked": "Dieses Modell kann nicht gelöscht werden: {{count}} aktive(r) Job(s). Beenden Sie diese zuerst.",
+    "delete_refs_none": "keine Verweise",
+    "delete_confirm": "Modell „{{name}}“ löschen?\n\nDiese Verweise werden entfernt: {{refs}}.",
+    "return_to_form": "Zurück zu Ihrem Formular"
   },
   "translation": {
     "heading": "Standardeinstellungen für Übersetzungen",
@@ -296,7 +300,9 @@
       "tpl_needs_chapter": "User-Prompt-Vorlage muss {chapter_text} enthalten",
       "saved": "Übersetzungsstandardwerte gespeichert",
       "save_failed": "Übersetzungseinstellungen konnten nicht gespeichert werden"
-    }
+    },
+    "models_load_failed": "Modelle konnten nicht geladen werden. Der Anbieterdienst ist möglicherweise nicht verfügbar.",
+    "retry": "Wiederholen"
   },
   "reading": {
     "app_theme": "App-Design",
@@ -344,7 +350,8 @@
     "auto_saved": "Änderungen werden automatisch gespeichert.",
     "toast": {
       "preset_saved": "Preset „{{name}}“ gespeichert"
-    }
+    },
+    "voice_moved": "Stimm- und Spracheinstellungen befinden sich jetzt unter Einstellungen → Chat & KI → Stimme."
   },
   "language": {
     "gui_language": "GUI-Sprache",
@@ -473,7 +480,9 @@
       "notes_ph": "Optionale Notizen zu dieser Modellkonfiguration...",
       "cancel": "Abbrechen",
       "adding": "Wird hinzugefügt...",
-      "submit": "Modell hinzufügen"
+      "submit": "Modell hinzufügen",
+      "pricing_summary": "Kosten: Input ${{input}}/1M · Output ${{output}}/1M",
+      "pricing_missing": "Der Anbieter veröffentlicht keine Preisgestaltung – fügen Sie diese manuell hinzu, sobald das Modell registriert ist."
     },
     "edit": {
       "aria": "Modell bearbeiten",
@@ -500,6 +509,7 @@
       "pricing_hint": "Wird bei der Erstellung vorausgefüllt. Falls sich der veröffentlichte Tarif des Anbieters geändert hat, bitte anpassen oder OpenRouter für eine aktuelle Schätzung prüfen.",
       "pricing_check": "OpenRouter prüfen",
       "pricing_checking": "Prüfung läuft...",
+      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} in / ${{output}} out",
       "pricing_apply": "Anwenden",
       "pricing_not_found": "Kein passendes Modell auf OpenRouter gefunden — Preisangaben von dieser Quelle nicht verfügbar.",
       "pricing_check_failed": "Fehler beim Abrufen der OpenRouter-Preise",
@@ -511,7 +521,15 @@
       "cancel": "Abbrechen",
       "saving": "Wird gespeichert...",
       "submit": "Änderungen speichern",
-      "pricing_suggestion_found": "OpenRouter ({{source}}): ${{input}} in / ${{output}} out"
+      "capabilities_refreshed": "Modell-Fähigkeiten aktualisiert",
+      "capabilities_refresh_failed": "Modell-Fähigkeiten konnten nicht aktualisiert werden",
+      "delete_blocked_active": "Dieses Modell kann nicht gelöscht werden: Beenden Sie zuerst die aktiven Jobs.",
+      "pricing_missing": "Dieses Modell hat keine Preisgestaltung – die geschätzten Job-Kosten werden nicht verfügbar sein.",
+      "refresh_capabilities": "Aktualisieren",
+      "delete_impact": "Diese Verweise werden entfernt: {{refs}}. Drücken Sie erneut auf Löschen, um zu bestätigen.",
+      "delete_impact_none": "keine",
+      "delete_blocked_count": "Löschen ist blockiert: {{count}} aktive(r) Job(s). Beenden Sie diese zuerst.",
+      "verify_ok_rerank": "{{count}} Dokumente sortiert · Top {{score}} · {{ms}}ms"
     },
     "toast": {
       "fetch_failed": "Modelle konnten nicht abgerufen werden: {{error}}",
@@ -524,5 +542,23 @@
       "deleted": "Modell gel선cht",
       "delete_failed": "Löschen fehlgeschlagen"
     }
+  },
+  "defaultModels": {
+    "heading": "Standardmodelle",
+    "subtitle": "Ihre benutzerbezogenen Fallback-Modelle (BYOK – Bring Your Own Key). Werden verwendet, wenn kein Modell für den jeweiligen Bereich festgelegt ist.",
+    "chat": "Standard-Chatmodell",
+    "chatHint": "Wird vorausgewählt, wenn Sie einen neuen Chat starten. Lassen Sie das Feld leer, um Ihre Favoriten zu verwenden.",
+    "rerank": "Standard-Reranker",
+    "rerankHint": "Cross-Encoder-Reranking zur Filterung von Suchmüll. Optional – wird angewendet, wenn für ein Projekt kein Rerank-Modell festgelegt ist.",
+    "planner": "Standard-Planner",
+    "plannerHint": "Das Chatmodell, das der Glossar-Assistent verwendet, um mehrstufige Pläne zu erstellen. Wählen Sie ein leistungsstarkes Modell mit Tool-Unterstützung – andernfalls fällt die Planung auf ein beliebiges Chatmodell zurück und schlägt häufig fehl.",
+    "none": "Keines",
+    "empty": "Keine geeigneten Modelle konfiguriert.",
+    "saved": "Standardmodelle aktualisiert"
+  },
+  "external_services": {
+    "delete_blocked": "Dieser Dienst kann nicht entfernt werden: Sein Modell wird von {{count}} aktiven Job(s) verwendet. Beenden Sie diese zuerst.",
+    "delete_refs_none": "keine Referenzen",
+    "delete_confirm": "Dienst „{{name}}“ entfernen?\n\nDiese Modell-Referenzen werden entfernt: {{refs}}."
   }
 }

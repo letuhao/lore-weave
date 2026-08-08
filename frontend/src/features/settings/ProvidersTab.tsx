@@ -218,13 +218,20 @@ export function ProvidersTab() {
     try {
       const impact = await providerApi.getUserModelDeletionImpact(accessToken, model.user_model_id);
       if (!impact.can_delete) {
-        toast.error(`Модель нельзя удалить: активных задач — ${impact.active_tasks.length}. Сначала остановите их.`);
+        toast.error(t('providers.delete_blocked', {
+          defaultValue: 'This model cannot be deleted: {{count}} active job(s). Stop them first.',
+          count: impact.active_tasks.length,
+        }));
         return;
       }
       const refs = impact.references.length
         ? impact.references.map((r) => `${r.kind} (${r.count})`).join(', ')
-        : 'ссылок нет';
-      if (!window.confirm(`Удалить модель «${model.alias || model.provider_model_name}»?\n\nБудут удалены ссылки: ${refs}.`)) return;
+        : t('providers.delete_refs_none', { defaultValue: 'no references' });
+      if (!window.confirm(t('providers.delete_confirm', {
+        defaultValue: 'Delete the model "{{name}}"?\n\nThese references will be removed: {{refs}}.',
+        name: model.alias || model.provider_model_name,
+        refs,
+      }))) return;
       await providerApi.deleteUserModel(accessToken, model.user_model_id, true);
       toast.success(t('providers.toast.model_removed', { name: model.alias || model.provider_model_name }));
       await refresh();

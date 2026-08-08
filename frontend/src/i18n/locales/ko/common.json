@@ -111,6 +111,7 @@
     "receiving": "받는 중...",
     "error": "오류",
     "you": "사용자",
+    "ai": "AI",
     "thinking": "생각 중...",
     "startSpeaking": "말하기 시작...",
     "cancel": "취소",
@@ -139,8 +140,7 @@
     "presetNormalDesc": "균형 잡힌 설정 (기본값)",
     "presetPatientDesc": "대기 시간이 길어 천천히 말하는 분들에게 적합",
     "presetLearnerDesc": "긴 휴지기 허용, 언어 학습용",
-    "audioRetention": "음성 오디오는 재생을 위해 48시간 동안 저장된 후 자동으로 삭제됩니다.",
-    "ai": "AI"
+    "audioRetention": "음성 오디오는 재생을 위해 48시간 동안 저장된 후 자동으로 삭제됩니다."
   },
   "theme_name": {
     "dark": "다크",
@@ -172,5 +172,10 @@
     "saved": "모델 순서가 저장되었습니다",
     "saveFailed": "순서 저장 실패",
     "loadFailed": "모델 로드 실패"
+  },
+  "errorBoundary": {
+    "title": "이 페이지를 표시할 수 없습니다",
+    "description": "인터페이스 오류가 발생했습니다. 진단 로그에 저장되었습니다. 다시 시도해 주세요.",
+    "retry": "다시 시도"
   }
 }

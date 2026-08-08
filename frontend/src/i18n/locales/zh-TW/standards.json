@@ -73,8 +73,8 @@
       "number": "數字",
       "date": "日期",
       "tags": "標籤",
-      "boolean": "是 / 否",
-      "url": "URL"
+      "url": "URL",
+      "boolean": "是 / 否"
     }
   },
   "stdform": {
@@ -115,5 +115,365 @@
     "restoreError": "無法還原",
     "purged": "已永久刪除",
     "purgeError": "無法刪除"
+  },
+  "system": {
+    "genres": {
+      "universal": {
+        "name": "通用",
+        "description": "所有故事共有的非類型屬性。"
+      },
+      "fantasy": {
+        "name": "奇幻",
+        "description": "魔法、超自然力量與虛構世界。"
+      },
+      "xianxia": {
+        "name": "仙俠",
+        "description": "修真、仙人、宗門與武俠奇幻。"
+      },
+      "romance": {
+        "name": "浪漫",
+        "description": "以愛情與親密關係為核心的故事。"
+      },
+      "drama": {
+        "name": "劇情",
+        "description": "以角色為核心，由衝突與情感驅動的故事。"
+      },
+      "historical": {
+        "name": "歷史",
+        "description": "以特定歷史時期或背景為基礎的故事。"
+      },
+      "mystery": {
+        "name": "推理",
+        "description": "調查、秘密以及對隱藏真相的追尋。"
+      }
+    },
+    "kinds": {
+      "character": {
+        "name": "角色",
+        "description": "在故事中行動或說話的個人或具名生物。"
+      },
+      "location": {
+        "name": "地點",
+        "description": "角色可以前往或身處的物理場所。"
+      },
+      "item": {
+        "name": "物品 / 道具",
+        "description": "實體物件，例如武器、寶藏、衣物或載具。"
+      },
+      "event": {
+        "name": "事件",
+        "description": "發生的事物：一場戰鬥、一段旅程、一次背叛或一個啟示。"
+      },
+      "terminology": {
+        "name": "術語",
+        "description": "抽象術語、教義、階級、頭銜或概念。"
+      },
+      "power_system": {
+        "name": "力量體系",
+        "description": "角色可以晉升的有序力量或等級結構。"
+      },
+      "species": {
+        "name": "物種",
+        "description": "一種生物或種族，而非個別角色。"
+      },
+      "organization": {
+        "name": "組織",
+        "description": "共同行動的群體：如派系、家族、公會或政府。"
+      },
+      "relationship": {
+        "name": "關係",
+        "description": "角色或群體之間具有意義的連結。"
+      },
+      "plot_arc": {
+        "name": "劇情弧線",
+        "description": "包含起因、衝突與結局的持續性故事情節。"
+      },
+      "social_setting": {
+        "name": "社會背景",
+        "description": "形塑故事的社會秩序、時代、習俗與階級結構。"
+      },
+      "trope": {
+        "name": "常見套路",
+        "description": "一種重複出現的敘事模式或慣例。"
+      },
+      "technique": {
+        "name": "技巧",
+        "description": "角色所展現的特定動作、方法或技能。"
+      },
+      "colleague": {
+        "name": "同事",
+        "description": "與您共事的人。"
+      },
+      "decision": {
+        "name": "決策",
+        "description": "已做出並影響後續發展的選擇。"
+      },
+      "jargon": {
+        "name": "術語",
+        "description": "文本中使用的專業領域術語或縮寫。"
+      },
+      "meeting": {
+        "name": "會議",
+        "description": "預定的討論或集會。"
+      },
+      "org": {
+        "name": "組織",
+        "description": "公司、團隊或外部機構。"
+      },
+      "project": {
+        "name": "專案",
+        "description": "具有特定目標與預期成果的工作項目。"
+      },
+      "task": {
+        "name": "任務",
+        "description": "需要完成的具體執行項目。"
+      }
+    },
+    "attributes": {
+      "name": {
+        "name": "名稱",
+        "description": "名稱屬性。"
+      },
+      "term": {
+        "name": "術語",
+        "description": "術語屬性。"
+      },
+      "aliases": {
+        "name": "別名",
+        "description": "別名屬性。"
+      },
+      "gender": {
+        "name": "性別",
+        "description": "性別屬性。"
+      },
+      "role": {
+        "name": "角色",
+        "description": "角色屬性。"
+      },
+      "occupation": {
+        "name": "職業",
+        "description": "職業屬性。"
+      },
+      "social_class": {
+        "name": "社會階級",
+        "description": "社會階級屬性。"
+      },
+      "affiliation": {
+        "name": "隸屬關係",
+        "description": "隸屬關係屬性。"
+      },
+      "appearance": {
+        "name": "外貌",
+        "description": "外貌屬性。"
+      },
+      "personality": {
+        "name": "性格",
+        "description": "性格屬性。"
+      },
+      "emotional_wound": {
+        "name": "情感創傷",
+        "description": "情感創傷屬性。"
+      },
+      "love_language": {
+        "name": "愛之語",
+        "description": "愛之語屬性。"
+      },
+      "relationships": {
+        "name": "人際關係",
+        "description": "人際關係屬性。"
+      },
+      "description": {
+        "name": "描述",
+        "description": "描述屬性。"
+      },
+      "type": {
+        "name": "類型",
+        "description": "類型屬性。"
+      },
+      "parent_location": {
+        "name": "父級地點",
+        "description": "父級地點屬性。"
+      },
+      "atmosphere": {
+        "name": "氛圍",
+        "description": "氛圍屬性。"
+      },
+      "significance": {
+        "name": "重要性",
+        "description": "重要性屬性。"
+      },
+      "owner": {
+        "name": "所有者",
+        "description": "所有者屬性。"
+      },
+      "symbolic_meaning": {
+        "name": "象徵意義",
+        "description": "象徵意義屬性。"
+      },
+      "date_in_story": {
+        "name": "故事中的日期",
+        "description": "故事中的日期屬性。"
+      },
+      "location": {
+        "name": "地點",
+        "description": "地點屬性。"
+      },
+      "participants": {
+        "name": "參與者",
+        "description": "參與者屬性。"
+      },
+      "emotional_impact": {
+        "name": "情感影響",
+        "description": "情感影響屬性。"
+      },
+      "outcome": {
+        "name": "結果",
+        "description": "結果屬性。"
+      },
+      "category": {
+        "name": "類別",
+        "description": "類別屬性。"
+      },
+      "definition": {
+        "name": "定義",
+        "description": "定義屬性。"
+      },
+      "usage_note": {
+        "name": "使用說明",
+        "description": "使用說明屬性。"
+      },
+      "tiers": {
+        "name": "階層",
+        "description": "階層屬性。"
+      },
+      "rank": {
+        "name": "等級排名",
+        "description": "等級排名屬性。"
+      },
+      "entry_requirement": {
+        "name": "准入門檻",
+        "description": "准入門檻屬性。"
+      },
+      "capabilities": {
+        "name": "能力",
+        "description": "能力屬性。"
+      },
+      "arc_type": {
+        "name": "故事弧類型",
+        "description": "故事弧類型屬性。"
+      },
+      "parties": {
+        "name": "部",
+        "description": "部屬性。"
+      },
+      "trigger": {
+        "name": "觸發點",
+        "description": "觸發點屬性。"
+      },
+      "stakes": {
+        "name": "賭注",
+        "description": "賭注屬性。"
+      },
+      "chapters_span": {
+        "name": "章節跨度",
+        "description": "章節跨度屬性。"
+      },
+      "emotional_beats": {
+        "name": "情感節點",
+        "description": "情感節點屬性。"
+      },
+      "resolution": {
+        "name": "結局",
+        "description": "結局屬性。"
+      },
+      "era": {
+        "name": "時代",
+        "description": "時代屬性。"
+      },
+      "class_hierarchy": {
+        "name": "階級結構",
+        "description": "階級結構屬性。"
+      },
+      "rules_norms": {
+        "name": "規則與規範",
+        "description": "規則與規範屬性。"
+      },
+      "romance_obstacles": {
+        "name": "戀愛障礙",
+        "description": "戀愛障礙屬性。"
+      },
+      "traits": {
+        "name": "特質",
+        "description": "特質屬性。"
+      },
+      "abilities": {
+        "name": "能力",
+        "description": "能力屬性。"
+      },
+      "habitat": {
+        "name": "棲息地",
+        "description": "棲息地屬性。"
+      },
+      "culture": {
+        "name": "文化",
+        "description": "文化屬性。"
+      },
+      "how_manifested": {
+        "name": "展現方式",
+        "description": "展現方式屬性。"
+      },
+      "subverted": {
+        "name": "顛覆",
+        "description": "顛覆屬性。"
+      },
+      "related_characters": {
+        "name": "相關角色",
+        "description": "相關角色屬性。"
+      },
+      "relationship_type": {
+        "name": "關係類型",
+        "description": "關係類型屬性。"
+      },
+      "status": {
+        "name": "狀態",
+        "description": "狀態屬性。"
+      },
+      "tropes": {
+        "name": "常見套路",
+        "description": "常見套路屬性。"
+      },
+      "dynamic": {
+        "name": "動態",
+        "description": "動態屬性。"
+      },
+      "key_conflict": {
+        "name": "核心衝突",
+        "description": "核心衝突屬性。"
+      },
+      "turning_points": {
+        "name": "轉折點",
+        "description": "轉折點屬性。"
+      },
+      "leader": {
+        "name": "領導者",
+        "description": "領導者屬性。"
+      },
+      "headquarters": {
+        "name": "總部",
+        "description": "總部屬性。"
+      },
+      "members": {
+        "name": "成員",
+        "description": "成員屬性。"
+      },
+      "effects": {
+        "name": "效果",
+        "description": "效果屬性。"
+      },
+      "user": {
+        "name": "使用者",
+        "description": "使用者屬性。"
+      }
+    }
   }
 }

@@ -227,10 +227,10 @@
       "endpoint_hint": "デフォルトエンドポイント（OpenAI、Anthropic）を使う場合は空欄にしてください。",
       "api_key": "APIキー",
       "api_key_ph_local": "ローカルでは任意",
+      "api_key_ph": "sk-...",
       "cancel": "キャンセル",
       "adding": "追加中...",
-      "submit": "プロバイダーを追加",
-      "api_key_ph": "sk-..."
+      "submit": "プロバイダーを追加"
     },
     "edit_dialog": {
       "aria": "プロバイダーを編集",
@@ -241,14 +241,14 @@
       "endpoint_ph_default": "デフォルトを使う場合は空欄",
       "api_key": "APIキー",
       "api_key_ph_keep": "••••••••  （現在のキーを保持する場合は空欄）",
+      "api_key_ph": "sk-...",
       "api_key_keep_hint": "既存のキーを保持する場合は空欄にしてください。",
       "max_concurrency": "最大同時リクエスト数",
       "max_concurrency_ph": "無制限",
       "max_concurrency_hint": "このプロバイダーが同時に実行するリクエスト数。空欄で無制限（インフラ側が判断）。バックエンドに既知の上限がある場合（例：ローカルGPU）のみ数値を設定してください。",
       "cancel": "キャンセル",
       "saving": "保存中...",
-      "submit": "変更を保存",
-      "api_key_ph": "sk-..."
+      "submit": "変更を保存"
     },
     "delete": {
       "title": "{{name}} を削除しますか？",
@@ -271,7 +271,11 @@
       "unknown_error": "不明なエラー",
       "model_removed": "{{name}} を削除しました",
       "model_delete_failed": "モデルの削除に失敗しました"
-    }
+    },
+    "delete_blocked": "このモデルは削除できません：{{count}} 件の実行中のジョブがあります。先にそれらを停止してください。",
+    "delete_refs_none": "参照なし",
+    "delete_confirm": "モデル「{{name}}」を削除しますか？\n\n以下の参照が削除されます：{{refs}}。",
+    "return_to_form": "元の入力画面に戻る"
   },
   "translation": {
     "heading": "翻訳のデフォルト",
@@ -296,7 +300,9 @@
       "tpl_needs_chapter": "ユーザープロンプトテンプレートには {chapter_text} を含める必要があります",
       "saved": "翻訳のデフォルトを保存しました",
       "save_failed": "翻訳設定の保存に失敗しました"
-    }
+    },
+    "models_load_failed": "モデルの読み込みに失敗しました。プロバイダーのサービスが利用できない可能性があります。",
+    "retry": "リトライ"
   },
   "reading": {
     "app_theme": "アプリのテーマ",
@@ -344,7 +350,8 @@
     "auto_saved": "変更は自動的に保存されます。",
     "toast": {
       "preset_saved": "プリセット「{{name}}」を保存しました"
-    }
+    },
+    "voice_moved": "音声・スピーチ設定は「設定」→「チャット＆AI」→「音声」に移動しました。"
   },
   "language": {
     "gui_language": "GUI言語",
@@ -364,13 +371,13 @@
       "extended_thinking": "拡張思考",
       "json_mode": "JSONモード",
       "reasoning": "推論",
+      "tts": "読み上げ",
+      "stt": "音声認識",
       "image_gen": "画像生成",
       "video_gen": "動画生成",
       "embedding": "埋め込み",
       "rerank": "リランク",
-      "moderation": "モデレーション",
-      "tts": "読み上げ",
-      "stt": "音声認識"
+      "moderation": "モデレーション"
     }
   },
   "services": {
@@ -464,6 +471,7 @@
       "model": "モデル",
       "search_ph": "モデルを検索...",
       "top": "おすすめ",
+      "ctx": "ctx",
       "model_hint": "入力して検索。またはリストにないカスタムモデル名を入力してください。",
       "alias": "エイリアス（表示名）",
       "alias_ph": "例: マイ高速モデル",
@@ -473,7 +481,8 @@
       "cancel": "キャンセル",
       "adding": "追加中...",
       "submit": "モデルを追加",
-      "ctx": "ctx"
+      "pricing_summary": "コスト: 入力 ${{input}}/1M · 出力 ${{output}}/1M",
+      "pricing_missing": "プロバイダーが料金を公開していません。モデルの登録後、手動で追加してください。"
     },
     "edit": {
       "aria": "モデルを編集",
@@ -489,6 +498,7 @@
       "remove_default_aria": "デフォルトから外す",
       "set_default_aria": "デフォルトに設定",
       "verify_hint": "接続をテストしてこのモデルが動作するか確認します",
+      "verify_ok": "OK — {{ms}}ms",
       "testing": "テスト中...",
       "reverify": "再検証",
       "verify": "検証",
@@ -511,7 +521,15 @@
       "cancel": "キャンセル",
       "saving": "保存中...",
       "submit": "変更を保存",
-      "verify_ok": "OK — {{ms}}ms"
+      "capabilities_refreshed": "モデルの機能情報を更新しました",
+      "capabilities_refresh_failed": "モデルの機能情報の更新に失敗しました",
+      "delete_blocked_active": "このモデルは削除できません。先に実行中のジョブを停止してください。",
+      "pricing_missing": "このモデルには料金設定がありません。ジョブの推定コストは表示されません。",
+      "refresh_capabilities": "更新",
+      "delete_impact": "以下の参照が削除されます：{{refs}}。削除を確定するには、もう一度「削除」を押してください。",
+      "delete_impact_none": "なし",
+      "delete_blocked_count": "削除がブロックされています：{{count}}件の実行中のジョブがあります。先にこれらを停止してください。",
+      "verify_ok_rerank": "{{count}} 件のドキュメントを再ランク付けしました · 上位 {{score}} · {{ms}}ms"
     },
     "toast": {
       "fetch_failed": "モデルの取得に失敗しました: {{error}}",
@@ -524,5 +542,23 @@
       "deleted": "モデルを削除しました",
       "delete_failed": "削除に失敗しました"
     }
+  },
+  "defaultModels": {
+    "heading": "デフォルトモデル",
+    "subtitle": "ユーザーごとのフォールバックモデル（BYOK — ご自身のモデル）。スコープごとのモデルが設定されていない場合に使用されます。",
+    "chat": "デフォルトのチャットモデル",
+    "chatHint": "新しいチャットを開始する際に事前選択されます。空欄にすると、お気に入りのモデルがデフォルトとして使用されます。",
+    "rerank": "デフォルトのリランカー",
+    "rerankHint": "検索結果のノイズ除去に使用されるクロスエンコーダーによるリランキング。オプション — プロジェクトにリランクモデルが設定されていない場合に適用されます。",
+    "planner": "デフォルトのプランナー",
+    "plannerHint": "用語集アシスタントが多段階のプランを作成する際に使用するチャットモデル。ツール利用が可能な強力なモデルを選択してください。そうでない場合、プランニングは任意のチャットモデルにフォールバックされ、失敗することがよくあります。",
+    "none": "なし",
+    "empty": "設定可能なモデルが構成されていません。",
+    "saved": "デフォルトを更新しました"
+  },
+  "external_services": {
+    "delete_blocked": "このサービスは削除できません：モデルが{{count}}件の実行中のジョブで使用されています。先にこれらを停止してください。",
+    "delete_refs_none": "参照なし",
+    "delete_confirm": "サービス「{{name}}」を削除しますか？\n\n以下のモデル参照が削除されます：{{refs}}。"
   }
 }

@@ -42,7 +42,9 @@
     "startTranslate": "Start Translation",
     "startFailed": "Failed to start translation job",
     "thinkingOn": "Thinking: on",
-    "thinkingOff": "Thinking: off"
+    "thinkingOff": "Thinking: off",
+    "concurrency": "Parallel LLM calls",
+    "concurrencyHint": "1 = sequential. Raise it if your model serves concurrent requests."
   },
   "progress": {
     "title": "Translating Glossary",

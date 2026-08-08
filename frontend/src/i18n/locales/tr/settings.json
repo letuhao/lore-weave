@@ -271,7 +271,11 @@
       "unknown_error": "bilinmeyen hata",
       "model_removed": "{{name}} kaldırıldı",
       "model_delete_failed": "Model silinemedi"
-    }
+    },
+    "delete_blocked": "Bu model silinemez: {{count}} aktif iş var. Önce bunları durdurun.",
+    "delete_refs_none": "referans yok",
+    "delete_confirm": "«{{name}}» modeli silinsin mi?\n\nŞu referanslar kaldırılacak: {{refs}}.",
+    "return_to_form": "Kaldığınız yere dönün"
   },
   "translation": {
     "heading": "Çeviri Varsayılanları",
@@ -296,7 +300,9 @@
       "tpl_needs_chapter": "Kullanıcı komutu şablonu {chapter_text} içermelidir",
       "saved": "Çeviri varsayılanları kaydedildi",
       "save_failed": "Çeviri tercihleri kaydedilemedi"
-    }
+    },
+    "models_load_failed": "Modelleriniz yüklenemedi. Sağlayıcı servisi kullanılamıyor olabilir.",
+    "retry": "Tekrar dene"
   },
   "reading": {
     "app_theme": "Uygulama Teması",
@@ -344,7 +350,8 @@
     "auto_saved": "Değişiklikler otomatik olarak kaydedilir.",
     "toast": {
       "preset_saved": "\"{{name}}\" ön ayarı kaydedildi"
-    }
+    },
+    "voice_moved": "Ses ve konuşma ayarları artık Ayarlar → Sohbet ve Yapay Zeka → Ses kısmında."
   },
   "language": {
     "gui_language": "Arayüz Dili",
@@ -473,7 +480,9 @@
       "notes_ph": "Bu model yapılandırması hakkında isteğe bağlı notlar...",
       "cancel": "İptal",
       "adding": "Ekleniyor...",
-      "submit": "Model Ekle"
+      "submit": "Model Ekle",
+      "pricing_summary": "Maliyet: giriş ${{input}}/1M · çıkış ${{output}}/1M",
+      "pricing_missing": "Sağlayıcı fiyatlandırma bilgilerini yayınlamıyor — model kaydedildikten sonra manuel olarak ekleyin."
     },
     "edit": {
       "aria": "Modeli düzenle",
@@ -511,7 +520,16 @@
       "request_failed": "İstek başarısız oldu",
       "cancel": "İptal",
       "saving": "Kaydediliyor...",
-      "submit": "Değişiklikleri Kaydet"
+      "submit": "Değişiklikleri Kaydet",
+      "capabilities_refreshed": "Model yetenekleri yenilendi",
+      "capabilities_refresh_failed": "Model yetenekleri yenilenemedi",
+      "delete_blocked_active": "Bu model silinemez: önce aktif işlerini durdurun.",
+      "pricing_missing": "Bu modelin fiyatlandırması yok — tahmini iş maliyeti kullanılamayacak.",
+      "refresh_capabilities": "Yenile",
+      "delete_impact": "Şu referanslar kaldırılacak: {{refs}}. Onaylamak için tekrar Sil'e basın.",
+      "delete_impact_none": "hiçbiri",
+      "delete_blocked_count": "Silme işlemi engellendi: {{count}} aktif iş var. Önce bunları durdurun.",
+      "verify_ok_rerank": "{{count}} doküman sıralandı · en yüksek {{score}} · {{ms}}ms"
     },
     "toast": {
       "fetch_failed": "Modeller alınamadı: {{error}}",
@@ -524,5 +542,23 @@
       "deleted": "Model silindi",
       "delete_failed": "Model silinemedi"
     }
+  },
+  "defaultModels": {
+    "heading": "Varsayılan modeller",
+    "subtitle": "Kullanıcı başına varsayılan modelleriniz (BYOK — kendi modelleriniz). Her kapsam için özel bir model ayarlanmadığında kullanılır.",
+    "chat": "Varsayılan sohbet modeli",
+    "chatHint": "Yeni bir sohbet başlattığınızda önceden seçilir. Favorilerinize dönmek için boş bırakın.",
+    "rerank": "Varsayılan yeniden sıralayıcı",
+    "rerankHint": "Ham arama sonuçlarındaki gereksiz verileri elemek için cross-encoder yeniden sıralama. İsteğe bağlı — bir projede yeniden sıralama modeli ayarlanmadığında uygulanır.",
+    "planner": "Varsayılan planlayıcı",
+    "plannerHint": "Sözlük asistanının çok adımlı planlar oluşturmak için kullandığı sohbet modeli. Güçlü ve araç kullanma yeteneğine sahip bir model seçin; aksi takdirde planlama rastgele bir sohbet modeline düşer ve genellikle başarısız olur.",
+    "none": "Yok",
+    "empty": "Yapılandırılmış yetkin model bulunmuyor.",
+    "saved": "Varsayılan güncellendi"
+  },
+  "external_services": {
+    "delete_blocked": "Bu servis kaldırılamaz: modeli {{count}} aktif iş tarafından kullanılıyor. Önce bunları durdurun.",
+    "delete_refs_none": "hiçbir referans yok",
+    "delete_confirm": "«{{name}}» servisi kaldırılsın mı?\n\nŞu model referansları kaldırılacak: {{refs}}."
   }
 }

@@ -1,7 +1,12 @@
 {
   "page": {
     "title": "知識圖譜結構",
-    "tabs": { "adopt": "採用", "schema": "結構", "views": "視圖", "sync": "同步" },
+    "tabs": {
+      "adopt": "採用",
+      "schema": "結構",
+      "views": "視圖",
+      "sync": "同步"
+    },
     "noProject": "此書尚無知識專案",
     "noProjectHelp": "此書尚未連結任何知識專案。請執行抽取或建立專案以管理其圖譜結構。",
     "createProject": "建立知識專案",
@@ -44,6 +49,45 @@
     "lossChange": {
       "removed_upstream": "已移除",
       "modified": "已覆寫"
+    },
+    "templates": {
+      "general": {
+        "name": "通用（舊版本體論）",
+        "description": "重現原始的通用提取本體論 —— 以增量為先的安全網。"
+      },
+      "general-legacy": {
+        "name": "通用（舊版本體論）",
+        "description": "重現原始的通用提取本體論 —— 以增量為先的安全網。"
+      },
+      "xianxia-harem": {
+        "name": "仙俠 · 後宮",
+        "description": "針對修真與後宮小說設計的類型模板，包含精選的實體與關係類型。"
+      },
+      "fantasy": {
+        "name": "奇幻",
+        "description": "奇幻世界架構，包含角色、地點、組織、物種、物品、力量與技能。"
+      },
+      "romance": {
+        "name": "浪漫",
+        "description": "以關係為核心的架構，包含角色、關係、情節弧線、常見套路與社會設定。"
+      },
+      "drama": {
+        "name": "劇情",
+        "description": "劇情架構，包含角色、衝突、關係、組織、事件與情節弧線。"
+      },
+      "historical": {
+        "name": "歷史",
+        "description": "適用於人物、地點、機構、事件、術語及社會秩序的歷史虛構設定架構。"
+      },
+      "mystery": {
+        "name": "推理",
+        "description": "適用於角色、線索、物品、組織、事件、情節弧與常見套路的調查設定架構。"
+      }
+    },
+    "scope": {
+      "system": "系統",
+      "user": "使用者",
+      "project": "專案"
     }
   },
   "schema": {

@@ -147,9 +147,9 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
       setContextLength(updated.context_length ? String(updated.context_length) : '');
       if (updated.pricing?.input_per_mtok != null) setInputPerMTok(String(updated.pricing.input_per_mtok));
       if (updated.pricing?.output_per_mtok != null) setOutputPerMTok(String(updated.pricing.output_per_mtok));
-      toast.success(t('model_modal.edit.capabilities_refreshed', { defaultValue: 'Возможности модели обновлены' }));
+      toast.success(t('model_modal.edit.capabilities_refreshed', { defaultValue: 'Model capabilities refreshed' }));
     } catch (e) {
-      toast.error((e as Error).message || t('model_modal.edit.capabilities_refresh_failed', { defaultValue: 'Не удалось обновить возможности модели' }));
+      toast.error((e as Error).message || t('model_modal.edit.capabilities_refresh_failed', { defaultValue: 'Could not refresh the model capabilities' }));
     } finally { setRefreshingCapabilities(false); }
   }
 
@@ -198,7 +198,7 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
         const impact = await providerApi.getUserModelDeletionImpact(accessToken, model.user_model_id);
         setDeletionImpact(impact);
         if (!impact.can_delete) {
-          toast.error('Модель нельзя удалить: сначала остановите активные задачи.');
+          toast.error(t('model_modal.edit.delete_blocked_active', { defaultValue: 'This model cannot be deleted: stop its active jobs first.' }));
         }
         return;
       }
@@ -308,7 +308,7 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">{t('model_modal.edit.pricing_hint')}</p>
                 {inputPerMTok.trim() === '' && outputPerMTok.trim() === '' && (
-                  <p className="mt-1 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-200">Стоимость модели не задана — approximate-стоимость задач будет недоступна.</p>
+                  <p className="mt-1 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-200">{t('model_modal.edit.pricing_missing', { defaultValue: 'This model has no pricing — estimated job cost will be unavailable.' })}</p>
                 )}
                 <div className="mt-2 flex items-center gap-2">
                   <button
@@ -373,7 +373,7 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
             <CapabilityFlags flags={flags} onChange={setFlags} />
             <button onClick={handleRefreshCapabilities} disabled={refreshingCapabilities} className="flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-colors hover:bg-secondary disabled:opacity-50">
               {refreshingCapabilities ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <RefreshCw className="h-2.5 w-2.5" />}
-              {t('model_modal.edit.refresh_capabilities', { defaultValue: 'Обновить' })}
+              {t('model_modal.edit.refresh_capabilities', { defaultValue: 'Refresh' })}
             </button>
           </div>
 
@@ -439,8 +439,16 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
           {deletionImpact && (
             <div className={cn('absolute bottom-14 left-5 right-5 rounded-md border px-3 py-2 text-[10px]', deletionImpact.can_delete ? 'border-amber-500/30 bg-amber-500/5 text-amber-200' : 'border-destructive/30 bg-destructive/5 text-destructive')}>
               {deletionImpact.can_delete
-                ? `Будут удалены ссылки: ${deletionImpact.references.length ? deletionImpact.references.map((r) => `${r.kind} (${r.count})`).join(', ') : 'нет'}. Повторно нажмите «Удалить» для подтверждения.`
-                : `Удаление заблокировано: активных задач — ${deletionImpact.active_tasks.length}. Сначала остановите их.`}
+                ? t('model_modal.edit.delete_impact', {
+                    defaultValue: 'These references will be removed: {{refs}}. Press Delete again to confirm.',
+                    refs: deletionImpact.references.length
+                      ? deletionImpact.references.map((r) => `${r.kind} (${r.count})`).join(', ')
+                      : t('model_modal.edit.delete_impact_none', { defaultValue: 'none' }),
+                  })
+                : t('model_modal.edit.delete_blocked_count', {
+                    defaultValue: 'Deletion is blocked: {{count}} active job(s). Stop them first.',
+                    count: deletionImpact.active_tasks.length,
+                  })}
             </div>
           )}
           <div className="flex gap-2">

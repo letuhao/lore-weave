@@ -1,0 +1,96 @@
+{
+  "title": "Chat & AI",
+  "description": "Pengaturan default Anda untuk chat dan Writing Studio, dalam satu tempat. Setiap baris menunjukkan nilai efektif dan sumbernya; sesi dan alat Studio mewarisi default ini dan dapat menimpanya.",
+  "models": {
+    "title": "Model",
+    "resolved": "Terselesaikan sekarang",
+    "chat": "Chat & draf",
+    "composer": "Penyusun prosa",
+    "planner": "Perencana",
+    "embedding": "Embedding",
+    "rerank": "Rerank"
+  },
+  "behavior": {
+    "title": "Perilaku",
+    "description": "Pengaturan ini sebelumnya diterapkan secara diam-diam. Sekarang pengaturan ini dapat dilihat dan diubah; kolom kosong berarti default sistem.",
+    "reasoning": {
+      "label": "Upaya penalaran",
+      "off": "Mati",
+      "low": "Rendah",
+      "medium": "Sedang",
+      "high": "Tinggi"
+    },
+    "permission": {
+      "label": "Otoritas alat",
+      "ask": "Tanya",
+      "plan": "Rencana",
+      "write": "Tulis",
+      "hint": "Sejauh mana asisten dapat bertindak tanpa bertanya. Default adalah Tulis."
+    },
+    "temperature": {
+      "label": "Temperatur",
+      "placeholder": "Default penyedia"
+    },
+    "systemPrompt": {
+      "label": "Prompt sistem",
+      "placeholder": "Instruksi persona default (kosong = tidak ada)"
+    }
+  },
+  "grounding": {
+    "title": "Grounding & memori",
+    "label": "Dasarkan jawaban pada cerita saya",
+    "description": "Sertakan entitas kanon, fakta, dan kutipan manuskrip dalam setiap jawaban. Fitur ini aktif secara default dan dapat dinonaktifkan.",
+    "offWarning": "Grounding nonaktif — asisten tidak dapat mengakses bible cerita Anda dan mungkin mengarang lore. Aktifkan untuk jawaban yang akurat."
+  },
+  "context": {
+    "title": "Manajemen konteks",
+    "description": "Cara asisten mengelola anggaran memori untuk percakapan yang sangat panjang. Sebagian besar pengguna sebaiknya membiarkan ini dalam mode Auto.",
+    "label": "Mode konteks karya panjang",
+    "auto": "Otomatis",
+    "on": "Selalu aktif",
+    "off": "Nonaktif",
+    "hint": "Otomatis mengaktifkan tingkatan karya panjang hanya saat proyek membutuhkannya. Nonaktif menjaga jalur paling sederhana."
+  },
+  "voice": {
+    "title": "Suara",
+    "description": "Input dan output suara untuk obrolan. Pengaturan ini disimpan ke akun Anda dan diterapkan pada pesan suara.",
+    "ttsModel": "Model Text-to-Speech (TTS)",
+    "sttModel": "Model Speech-to-Text (STT)",
+    "voice": "Suara",
+    "placeholder": "misal. af_heart",
+    "hint": "Suara bersifat spesifik untuk modelnya — pilih yang didukung oleh model TTS Anda."
+  },
+  "tiers": {
+    "session": {
+      "label": "obrolan ini",
+      "title": "Atur pada obrolan ini — menimpa pengaturan default akun dan buku Anda."
+    },
+    "book": {
+      "label": "buku ini",
+      "title": "Diwarisi dari pengaturan buku ini."
+    },
+    "account": {
+      "label": "default Anda",
+      "title": "Diwarisi dari pengaturan default akun Anda."
+    },
+    "system": {
+      "label": "default",
+      "title": "Default sistem."
+    },
+    "unavailable": {
+      "label": "tidak tersedia",
+      "title": "Tingkat kepemilikan tidak dapat dijangkau."
+    },
+    "no_model_configured": {
+      "label": "tidak diatur",
+      "title": "Tidak ada model aktif yang dikonfigurasi."
+    }
+  },
+  "clear": {
+    "default": "default",
+    "on": "aktif",
+    "off": "nonaktif",
+    "action": "hapus",
+    "inherit": "waris"
+  }
+}

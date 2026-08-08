@@ -2,6 +2,39 @@
   "translateIntent": {
     "hint": "번역할 책을 선택하세요. 책을 연 다음, Translation 탭을 사용하여 번역을 시작할 수 있습니다."
   },
+  "help": {
+    "open": "도움말 열기",
+    "tour": "가이드 투어",
+    "title": "도서 작업하기",
+    "description": "도서 작업 공간에 대한 빠른 가이드입니다.",
+    "intro": "여기에서 도서를 관리하고, 도서를 열어 자료 조사, 편집 및 세계관 구축을 진행하세요.",
+    "items": [
+      "도서를 새로 만들거나 원고를 가져와서 시작하세요.",
+      "도서를 열어 장, 용어 사전 및 온톨로지를 편집하세요.",
+      "검색과 필터를 사용하여 도서를 빠르게 찾으세요."
+    ],
+    "startTour": "투어 시작",
+    "back": "이전",
+    "next": "다음",
+    "done": "완료",
+    "steps": [
+      {
+        "title": "도서 찾기",
+        "description": "검색 및 필터를 사용하여 원하는 도서를 빠르게 찾을 수 있습니다.",
+        "body": "검색창과 언어 필터를 사용하여 목록을 좁혀보세요."
+      },
+      {
+        "title": "생성 또는 가져오기",
+        "description": "새 도서를 만들거나 기존 원고를 불러오세요.",
+        "body": "새 도서를 선택하여 상세 정보를 입력하거나, 파일을 선택하여 가져오기를 진행하세요."
+      },
+      {
+        "title": "워크스페이스 열기",
+        "description": "모든 도서 도구는 워크스페이스에 모여 있습니다.",
+        "body": "도서 내부에서 장, 용어 사전, 온톨로지, 번역 등 다양한 기능을 사용할 수 있습니다."
+      }
+    ]
+  },
   "workspace": "내 도서",
   "new_book": "새 도서",
   "search_placeholder": "도서 검색...",
@@ -21,6 +54,9 @@
     "book_description_placeholder": "이 책은 어떤 내용인가요?",
     "cover": "커버 이미지",
     "cover_hint": "PNG, JPG (최대 5MB)",
+    "import_file": "도서 파일 가져오기",
+    "import_file_hint": "FB2 또는 EPUB 파일을 선택하세요. 적절한 가져오기 프로세스가 시작됩니다.",
+    "import_metadata_hint": "소스 메타데이터를 통해 도서 제목과 상세 정보가 설정됩니다.",
     "submit": "도서 생성"
   },
   "empty": {
@@ -154,6 +190,75 @@
       "confirm": "휴지통으로 이동"
     }
   },
+  "epubImport": {
+    "title": "Import EPUB",
+    "description": "Inspect the book, choose chapters, then import asynchronously.",
+    "close": "Close",
+    "chooseFile": "Choose EPUB file",
+    "fileHint": "EPUB 2 and EPUB 3, up to 200 MiB",
+    "inspecting": "Inspecting {{percent}}%",
+    "unknownAuthor": "Unknown author",
+    "duplicateSource": "This source was imported previously. Merge by source key is available.",
+    "target": "Target",
+    "existingBook": "Add to this book",
+    "newBook": "Create a new book from EPUB metadata",
+    "metadataPolicy": "Metadata conflict policy",
+    "metadata": {
+      "title": "Title",
+      "description": "Description",
+      "language": "Language",
+      "subjects": "Subjects"
+    },
+    "keepExisting": "Keep existing",
+    "useSource": "Use EPUB source",
+    "mergeSource": "Merge with EPUB source",
+    "applyCover": "Apply source cover when policy allows",
+    "coverPreview": "Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})",
+    "noCover": "No usable source cover was found.",
+    "selectedChapters": "{{count}} chapters selected",
+    "selectAll": "Select all",
+    "selectChapter": "Select {{title}}",
+    "ready": "Ready to import {{count}} selected chapters from {{title}}.",
+    "strategyLabel": "Existing-book strategy",
+    "importOptions": "Import options",
+    "options": {
+      "preserve_hierarchy": "Preserve EPUB hierarchy",
+      "import_images": "Import supported images",
+      "import_footnotes": "Import footnotes",
+      "retain_source": "Retain the source file for recovery"
+    },
+    "strategy": {
+      "append": "Append",
+      "merge_by_source_key": "Merge by source key",
+      "replace_all": "Replace all"
+    },
+    "replaceWarning": "Replace all is destructive. Starting import explicitly confirms this action.",
+    "replaceConfirmation": "I understand that this will archive the current chapters in this book.",
+    "queued": "queued",
+    "waiting": "Waiting for worker capacity",
+    "backgroundProgress": "You can close this dialog; the import continues on the server.",
+    "cancel": "Cancel import",
+    "resume": "Resume",
+    "rollback": "Rollback import",
+    "openBook": "Open imported book",
+    "back": "Back",
+    "continue": "Continue",
+    "start": "Start import",
+    "reportSummary": "{{chapters}} chapters created · {{warnings}} warnings",
+    "warningDetails": "Warnings",
+    "progress": "{{done}}/{{total}} chapters",
+    "errors": {
+      "extension": "Choose an .epub file."
+    },
+    "steps": {
+      "upload": "upload",
+      "metadata": "metadata",
+      "chapters": "chapters",
+      "confirm": "confirm",
+      "progress": "progress",
+      "report": "report"
+    }
+  },
   "glossary": {
     "header": "용어집 및 설정",
     "entity_count": "{{count}}개의 엔티티",
@@ -256,7 +361,39 @@
       "title": "엔티티를 삭제할까요?",
       "description": "\"{{title}}\"이(가) 휴지통으로 이동됩니다.",
       "confirm": "삭제"
-    }
+    },
+    "integrity": {
+      "button": "확인",
+      "title": "설정 일관성 검사",
+      "description": "이 도서의 온톨로지, 엔티티, 속성, 링크 및 번역에 대한 읽기 전용 검사를 수행합니다.",
+      "run": "검사 실행",
+      "runAgain": "다시 실행",
+      "checking": "도서 일관성 검사 중…",
+      "close": "닫기",
+      "unavailable": "검사 불가",
+      "issues": "{{count}}개의 문제 발견",
+      "status": {
+        "ok": "정상",
+        "warning": "주의 필요",
+        "error": "일관성 오류"
+      },
+      "repair": "자동 수정",
+      "repairing": "무결성 수정 중&",
+      "repaired": "자동 수정 완료: {{count}}개의 항목이 수정되었습니다.",
+      "checks": {
+        "active_genres": "활성 장르는 이 책에 포함되어 있어야 합니다.",
+        "kind_genres": "종류-장르 연결은 이 책의 장르를 가리켜야 합니다.",
+        "attributes": "도서 속성은 기존의 도서 종류 및 장르를 가리켜야 합니다.",
+        "entity_kinds": "엔티티는 이 책에 속한 종류를 가리켜야 합니다.",
+        "entity_names": "활성 엔티티는 이름 또는 용어 속성을 가져야 합니다.",
+        "entity_attributes": "엔티티 속성 값은 이 책과 종류의 속성 정의를 사용해야 합니다.",
+        "chapter_links": "장 링크는 이 책의 활성 엔티티를 가리켜야 합니다.",
+        "translations": "번역은 기존의 속성 값을 가리켜야 합니다.",
+        "kind_facets": "엔티티 종류 패싯은 이 책의 종류를 가리켜야 합니다."
+      }
+    },
+    "batch_translate": "일괄 번역",
+    "batch_translate_hint": "여러 엔티티의 대상 이름을 직접 입력하세요 (초안용; 검증된 내용은 덮어쓰지 않음)"
   },
   "sharing": {
     "title": "공개 범위",
@@ -401,10 +538,13 @@
     "page_indicator": "페이지 {{page}} / {{pages}}",
     "prev": "이전",
     "next": "다음",
-    "page": "페이지"
+    "page": "페이지",
+    "reasoning_enable": "모델 추론(thinking) 활성화",
+    "reasoning_hint": "기본적으로 비활성화되어 있습니다. 로컬 모델의 경우 숨겨진 추론 과정이 출력 토큰을 소모할 수 있습니다. 추론 모델을 사용하여 어려운 문장을 번역할 때 활성화하세요."
   },
   "kind_editor": {
     "modified": "수정됨",
+    "ai": "AI",
     "required": "필수",
     "optional": "선택",
     "activate": "활성화",
@@ -424,6 +564,7 @@
     "attr_count_other": "{{count}}개 속성",
     "entity_count": "{{count}}개 엔티티",
     "entity_count_other": "{{count}}개 엔티티",
+    "system_tag": "시스템",
     "revert_to_default": "기본값으로 복원",
     "revert_title_attr": "모든 변경 사항을 시스템 기본값으로 복원",
     "delete_kind_tooltip": "종류 삭제",
@@ -469,9 +610,7 @@
       "title": "기본값으로 복원할까요?",
       "desc": "\"{{name}}\"의 이름, 아이콘, 색상 및 속성 이름이 원래 상태로 초기화됩니다. 장르 태그와 사용자 지정 속성에는 영향을 주지 않습니다.",
       "confirm": "복원"
-    },
-    "ai": "AI",
-    "system_tag": "시스템"
+    }
   },
   "attr_editor": {
     "field_type": {
@@ -481,14 +620,15 @@
       "number": "숫자",
       "date": "날짜",
       "tags": "태그",
-      "boolean": "불리언",
-      "url": "URL"
+      "url": "URL",
+      "boolean": "불리언"
     },
     "new_attr": "새 속성",
     "edit_attr": "속성 편집",
     "system": "시스템",
     "custom": "사용자 지정",
     "modified": "수정됨",
+    "ai": "AI",
     "core": "코어",
     "display_name": "표시 이름",
     "field_type_label": "필드 유형",
@@ -528,7 +668,13 @@
       "title": "속성 이름을 복원할까요?",
       "desc": "이름을 \"{{from}}\"에서 \"{{to}}\"로 초기화합니다. 다른 필드에는 영향을 주지 않습니다.",
       "confirm": "복원"
-    },
-    "ai": "AI"
+    }
+  },
+  "lore": {
+    "heading": "지금까지 밝혀진 설정",
+    "noPosition": "장(chapter)을 열어 해당 시점까지 밝혀진 내용을 확인하세요.",
+    "nothingYet": "아직 밝혀진 내용이 없습니다 — 계속 읽어보세요.",
+    "search": "스토리 검색…",
+    "subtitle": "현재 읽고 있는 시점까지 스토리에서 밝혀진 내용 — 이후 장의 스포일러는 포함되지 않습니다."
   }
-,"epubImport":{"title":"Import EPUB","description":"Inspect the book, choose chapters, then import asynchronously.","close":"Close","chooseFile":"Choose EPUB file","fileHint":"EPUB 2 and EPUB 3, up to 200 MiB","inspecting":"Inspecting {{percent}}%","unknownAuthor":"Unknown author","duplicateSource":"This source was imported previously. Merge by source key is available.","target":"Target","existingBook":"Add to this book","newBook":"Create a new book from EPUB metadata","metadataPolicy":"Metadata conflict policy","metadata":{"title":"Title","description":"Description","language":"Language","subjects":"Subjects"},"keepExisting":"Keep existing","useSource":"Use EPUB source","mergeSource":"Merge with EPUB source","applyCover":"Apply source cover when policy allows","coverPreview":"Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})","noCover":"No usable source cover was found.","selectedChapters":"{{count}} chapters selected","selectAll":"Select all","selectChapter":"Select {{title}}","ready":"Ready to import {{count}} selected chapters from {{title}}.","strategyLabel":"Existing-book strategy","importOptions":"Import options","options":{"preserve_hierarchy":"Preserve EPUB hierarchy","import_images":"Import supported images","import_footnotes":"Import footnotes","retain_source":"Retain the source file for recovery"},"strategy":{"append":"Append","merge_by_source_key":"Merge by source key","replace_all":"Replace all"},"replaceWarning":"Replace all is destructive. Starting import explicitly confirms this action.","replaceConfirmation":"I understand that this will archive the current chapters in this book.","queued":"queued","waiting":"Waiting for worker capacity","backgroundProgress":"You can close this dialog; the import continues on the server.","cancel":"Cancel import","resume":"Resume","rollback":"Rollback import","openBook":"Open imported book","back":"Back","continue":"Continue","start":"Start import","reportSummary":"{{chapters}} chapters created · {{warnings}} warnings","warningDetails":"Warnings","progress":"{{done}}/{{total}} chapters","errors":{"extension":"Choose an .epub file."},"steps":{"upload":"upload","metadata":"metadata","chapters":"chapters","confirm":"confirm","progress":"progress","report":"report"}}}
+}

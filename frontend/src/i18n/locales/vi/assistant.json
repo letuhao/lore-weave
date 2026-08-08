@@ -1,0 +1,85 @@
+{
+  "loading": "Đang thiết lập trợ lý của bạn…",
+  "openingJournal": "Đang mở nhật ký…",
+  "home": {
+    "welcome": "Chào mừng trở lại, {{name}}",
+    "subtitle": "Trợ lý công việc riêng tư của bạn.",
+    "capturing": "Đang ghi lại ghi chú công việc",
+    "captureOff": "Chế độ ghi chép đang tắt",
+    "capturingDesc": "Mọi người và dự án sẽ được ghi nhận khi bạn nói.",
+    "captureOffDesc": "Bật lên để ghi nhớ đồng nghiệp, dự án và các quyết định.",
+    "refresh": "Làm mới",
+    "capturedItems": "Các mục đã ghi lại",
+    "endDay": "Kết thúc ngày làm việc",
+    "endingDay": "Đang kết thúc ngày làm việc của bạn…",
+    "journal": "Nhật ký",
+    "memory": "Ký ức",
+    "practice": "Luyện tập phỏng vấn"
+  },
+  "timezone": {
+    "title": "Xác nhận múi giờ của bạn",
+    "description": "Nhật ký của bạn sẽ nhóm mỗi ngày theo giờ địa phương. Chúng tôi đã phát hiện múi giờ {{zone}}.",
+    "saving": "Đang lưu…",
+    "useThis": "Sử dụng múi giờ này",
+    "pickAnother": "Chọn múi giờ khác",
+    "save": "Lưu"
+  },
+  "capture": {
+    "title": "Ngày hôm nay cho đến hiện tại",
+    "live": "trực tiếp",
+    "description": "Những điều tôi nhận thấy khi chúng ta trò chuyện. Mọi thứ sẽ không được lưu vào nhật ký cho đến khi bạn xem lại vào tối nay.",
+    "listening": "Đang lắng nghe…",
+    "nothingYet": "Chưa có dữ liệu nào được ghi lại — hãy kể cho tôi nghe về ngày hôm nay của bạn.",
+    "turnOn": "Bật tính năng ghi chép để bắt đầu theo dõi mọi người và các dự án."
+  },
+  "autonomous": {
+    "title": "Để trợ lý tự vận hành",
+    "description": "Tắt cho đến khi bạn bật — các tác vụ này sẽ chạy ngầm và sử dụng các mô hình của bạn.",
+    "loading": "Đang tải…",
+    "on": "Bật",
+    "next": "Đang bật · tiếp theo vào {{time}}",
+    "eod": "Kết thúc ngày của tôi một cách tự động",
+    "eodDesc": "Viết nhật ký mỗi tối, ngay cả khi bạn quên.",
+    "weeklyReflection": "Suy ngẫm hàng tuần",
+    "weeklyReflectionDesc": "Một ghi chú huấn luyện + tổng kết tuần nhẹ nhàng.",
+    "weeklySummary": "Tóm tắt tuần",
+    "weeklySummaryDesc": "Điểm lại những gì đã diễn ra trong tuần của bạn.",
+    "reminders": "Nhắc nhở viết nhật ký",
+    "remindersDesc": "Một lời nhắc nhẹ nếu bạn chưa kết thúc ngày của mình.",
+    "proactive": "Kiểm tra chủ động",
+    "proactiveOn": "Bật — Tôi có thể sẽ liên hệ khi đã một thời gian trôi qua.",
+    "proactiveOff": "Hãy để tôi mở lời bằng một ý tưởng sau một khoảng lặng."
+  },
+  "review": {
+    "title": "Đây là ngày của bạn",
+    "distilling": "Đang chuyển đổi cuộc trò chuyện hôm nay thành một nhật ký...",
+    "genericError": "Đã có lỗi xảy ra.",
+    "words": "{{count}} từ",
+    "kept": "đã lưu",
+    "keep": "Lưu ghi chú hôm nay",
+    "keptButton": "Đã lưu ✓",
+    "keeping": "Đang lưu…"
+  },
+  "inbox": {
+    "title": "Những sự thật cần nhớ",
+    "description": "Từ các cuộc trò chuyện hôm nay. Hãy lưu lại những điều đáng nhớ; bỏ qua những điều còn lại.",
+    "loading": "Đang tải…",
+    "error": "Không thể tải các sự thật.",
+    "keep": "Lưu",
+    "dismiss": "Bỏ qua",
+    "quoted": "đã trích dẫn"
+  },
+  "scorecard": {
+    "title": "Bảng điểm huấn luyện",
+    "badge": "Chưa có xu hướng (đang xem xét)",
+    "badgeTitle": "Điểm số này chưa được hiệu chuẩn theo đánh giá của con người, vì vậy nó chỉ được hiển thị để tham khảo chứ không được đưa vào biểu đồ xu hướng.",
+    "overall": "Tổng thể:",
+    "notScored": "chưa được chấm điểm"
+  },
+  "reflection": {
+    "defaultTitle": "Suy ngẫm hàng tuần",
+    "dismissError": "không thể bỏ qua — hãy thử lại",
+    "dismissing": "Đang bỏ qua…",
+    "dismiss": "Bỏ qua"
+  }
+}

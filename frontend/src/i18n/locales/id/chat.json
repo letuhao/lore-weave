@@ -211,7 +211,10 @@
     "feedback_up": "Respon bagus",
     "feedback_down": "Respon buruk",
     "feedback_thanks": "Terima kasih atas masukannya",
-    "feedback_error": "Gagal menyimpan masukan"
+    "feedback_error": "Gagal menyimpan masukan",
+    "incomplete_error": "Kesalahan — respons tidak lengkap",
+    "incomplete_interrupted": "Terputus — respons tidak lengkap",
+    "insert_into_chapter": "Masukkan ke dalam bab"
   },
   "tools": {
     "title": "Alat yang digunakan dalam balasan ini",
@@ -243,7 +246,9 @@
     "cancelled": "Dibatalkan",
     "reprice": "Biaya naik menjadi {{cost}} sejak estimasi ini dibuat — ajukan lagi untuk konfirmasi ulang dengan harga baru.",
     "reprice_title": "Biaya berubah — tidak diterapkan",
-    "reprice_detail": "Estimasi {{old}}, sekarang {{new}}. Tidak ada biaya yang dikeluarkan — ajukan lagi untuk konfirmasi ulang dengan harga baru."
+    "reprice_detail": "Estimasi {{old}}, sekarang {{new}}. Tidak ada biaya yang dikeluarkan — ajukan lagi untuk konfirmasi ulang dengan harga baru.",
+    "advisory_items": "Diminta (saran) — server akan mengonfirmasi rangkaian lengkapnya saat diterapkan",
+    "awaiting_preview": "Memuat pratinjau server..."
   },
   "batchConfirm": {
     "title": "Konfirmasi {{count}} tindakan dalam satu langkah",
@@ -446,5 +451,120 @@
     "worldbuilder": "Pembangun Dunia",
     "editor": "Editor",
     "analyst": "Analis"
+  },
+  "sessionSettings": {
+    "description": "Pengaturan untuk obrolan ini. Apa pun yang tidak Anda atur di sini akan diwarisi dari buku, lalu akun Anda, kemudian default sistem.",
+    "saving": "menyimpan...",
+    "close": "Tutup",
+    "voice": "Suara",
+    "messages": "Pesan",
+    "status": {
+      "label": "Status",
+      "active": "Aktif",
+      "archived": " Diarsipkan",
+      "closed": "Ditutup"
+    },
+    "models": {
+      "title": "Model",
+      "composer": "Model Komposer (opsional)",
+      "planner": "Model Perencana (opsional)",
+      "composerNone": "Tidak ada — model tunggal",
+      "plannerNone": "Gunakan planner default saya",
+      "composerHint": "Jika diatur, AI dapat mendelegasikan penulisan prosa ke model ini.",
+      "plannerHint": "Model yang digunakan untuk perencanaan multi-langkah dalam sesi ini."
+    },
+    "behavior": {
+      "title": "Perilaku",
+      "systemPrompt": "Prompt sistem",
+      "promptPlaceholder": "Diwarisi dari default akun Anda kecuali jika Anda mengaturnya di sini.",
+      "reasoning": {
+        "label": "Upaya penalaran",
+        "off": "Mati",
+        "low": "Rendah",
+        "medium": "Sedang",
+        "high": "Tinggi"
+      },
+      "statefulTitle": "Gunakan API Respons stateful",
+      "statefulHint": "Penggunaan kembali konteks sisi server bersifat opsional. Biarkan mati kecuali penyedia Anda mendukung panggilan alat Responses.",
+      "temperature": "Temperature",
+      "temperatureHint": "Semakin tinggi semakin tak terduga, semakin rendah semakin dapat diprediksi.",
+      "topP": "Top P",
+      "maxTokens": "Token respons maksimal",
+      "maxTokensHint": "Jika tidak diatur, akan menggunakan batas model itu sendiri."
+    },
+    "grounding": {
+      "title": "Grounding & memori",
+      "label": "Dasarkan jawaban pada lore buku ini",
+      "on": "Aktif — pengambilan data dilakukan setiap giliran",
+      "off": "Nonaktif — tidak ada pengambilan data dalam obrolan ini",
+      "onHint": "Glosarium, fakta graf pengetahuan, dan kutipan teks akan diambil pada setiap giliran.",
+      "offHint": "Asisten menjawab hanya berdasarkan percakapan, dan mungkin mengarang lore.",
+      "multiHint": "Berdasarkan setiap knowledge graph yang dipilih secara bersamaan — fakta ditandai dengan sumbernya."
+    },
+    "context": {
+      "title": "Manajemen konteks",
+      "label": "Mode konteks karya panjang",
+      "auto": "Otomatis",
+      "on": "Selalu aktif",
+      "off": "Mati",
+      "autoHint": "Mengaktifkan tingkatan konteks karya panjang hanya saat buku sudah cukup besar untuk memerlukannya.",
+      "onHint": "Selalu gunakan tingkatan konteks karya panjang.",
+      "offHint": "Tidak pernah — konteks paling dasar dan paling hemat."
+    }
+  },
+  "dock": {
+    "close": "Tutup",
+    "label": "Tanya AI",
+    "open": "Tanya asisten glosarium",
+    "title": "Asisten glosarium"
+  },
+  "glossaryEdit": {
+    "applied": "Diterapkan ✓",
+    "apply": "Terapkan",
+    "conflict": "Entitas ini telah berubah sejak diusulkan — tanyakan kembali untuk melihat versi terbaru.",
+    "conflict_short": "Berubah sejak diusulkan — ajukan kembali",
+    "dismiss": "Abaikan",
+    "dismissed": "Diabaikan",
+    "empty": "(kosong)",
+    "error": "Tidak dapat menyimpan perubahan.",
+    "error_short": "Gagal menyimpan",
+    "field": "Bidang",
+    "fields": "{{count}} bidang",
+    "label": "Edit glosarium"
+  },
+  "planner": {
+    "destructive": "merusak",
+    "enable": "Aktifkan langkah destruktif ini",
+    "heading": "Rencana",
+    "notes": "Catatan perencana",
+    "steps": "{{count}} langkah"
+  },
+  "propose": {
+    "applied": "Diterapkan ✓",
+    "apply": "Terapkan",
+    "apply_failed": "Tidak dapat menerapkan perubahan.",
+    "apply_n": "Terapkan {{count}}",
+    "dismiss": "Abaikan",
+    "dismissed": "Diabaikan",
+    "hunk_hint": "Pilih perubahan yang ingin diterapkan",
+    "hunk_toggle": "Terima perubahan ini",
+    "insert_label": "Saran penyisipan",
+    "keep_original": "Tetap gunakan aslinya",
+    "no_editor": "Buka bab untuk menerapkan suntingan ini.",
+    "no_selection": "Pilih teks yang ingin diganti, lalu klik Terapkan.",
+    "popout_no_rewrite": "Penulisan ulang harus diterapkan dari editor yang tersemat — sematkan jendela ini terlebih dahulu.",
+    "popout_not_delivered": "Tidak dapat mengonfirmasi bahwa suntingan telah sampai ke editor yang tersemat — buka bab di Studio dan coba lagi.",
+    "replace_label": "Saran penulisan ulang",
+    "selection_changed": "Pilihan Anda berubah — pilih kembali lalu klik Terapkan, atau Abaikan.",
+    "wrong_chapter": "Saran ini ditujukan untuk bab yang berbeda."
+  },
+  "taskGate": {
+    "cancelled": "Dibatalkan",
+    "confirm": "Konfirmasi",
+    "defaultTitle": "Konfirmasi tindakan ini?",
+    "dismiss": "Abaikan",
+    "done": "Terkonfirmasi ✓",
+    "error": "Tidak dapat mengonfirmasi",
+    "label": "Konfirmasi"
   }
 }

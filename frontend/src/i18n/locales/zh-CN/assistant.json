@@ -1,0 +1,85 @@
+{
+  "loading": "正在设置您的助手…",
+  "openingJournal": "正在打开您的日志…",
+  "home": {
+    "welcome": "欢迎回来，{{name}}",
+    "subtitle": "您的私人创作助手。",
+    "capturing": "正在记录您的工作笔记",
+    "captureOff": "记录功能已关闭",
+    "capturingDesc": "在您交谈时，系统会自动识别人物与项目。",
+    "captureOffDesc": "开启此功能以记录同事、项目和决策。",
+    "refresh": "刷新",
+    "capturedItems": "已记录的项目",
+    "endDay": "结束今日工作",
+    "endingDay": "正在结束您的今日工作…",
+    "journal": "日志",
+    "memory": "记忆",
+    "practice": "模拟面试"
+  },
+  "timezone": {
+    "title": "确认您的时区",
+    "description": "您的日志将按当地时间对每天的内容进行分组。我们检测到时区为 {{zone}}。",
+    "saving": "正在保存…",
+    "useThis": "使用此时区",
+    "pickAnother": "选择其他时区",
+    "save": "保存"
+  },
+  "capture": {
+    "title": "今日动态",
+    "live": "实时",
+    "description": "我们在交谈时我所注意到的事情。在您今晚进行回顾之前，这些内容都不会保存到您的日记中。",
+    "listening": "正在倾听…",
+    "nothingYet": "尚未记录任何内容 — 和我聊聊你的一天吧。",
+    "turnOn": "开启记录功能，开始留意身边的人和项目。"
+  },
+  "autonomous": {
+    "title": "让助手自主运行",
+    "description": "默认关闭 — 开启后，它们将在后台运行并使用您的模型。",
+    "loading": "正在加载…",
+    "on": "已开启",
+    "next": "已开启 · 下次于 {{time}}",
+    "eod": "自动结束我的这一天",
+    "eodDesc": "每天傍晚自动记录日志，即使你忘了也没关系。",
+    "weeklyReflection": "每周回顾",
+    "weeklyReflectionDesc": "温和的每周复盘 + 指导建议。",
+    "weeklySummary": "每周总结",
+    "weeklySummaryDesc": "回顾你的一周。",
+    "reminders": "写作提醒",
+    "remindersDesc": "如果你还没结束一天的记录，我会提醒你。",
+    "proactive": "主动问候",
+    "proactiveOn": "开启 — 如果有一段时间没联系了，我可能会主动找你。",
+    "proactiveOff": "关闭 — 在一段沉寂期后，让我用一个想法来开启对话。"
+  },
+  "review": {
+    "title": "这是你的一天",
+    "distilling": "正在将今天的对话转化为日记条目……",
+    "genericError": "发生了一些错误。",
+    "words": "{{count}} 字",
+    "kept": "已保留",
+    "keep": "保留今日记录",
+    "keptButton": "已保留 ✓",
+    "keeping": "正在保留…"
+  },
+  "inbox": {
+    "title": "待记事实",
+    "description": "来自今天的对话。保留值得记忆的内容；忽略其余部分。",
+    "loading": "正在加载…",
+    "error": "无法加载事实。",
+    "keep": "保留",
+    "dismiss": "忽略",
+    "quoted": "引用自"
+  },
+  "scorecard": {
+    "title": "教练评分卡",
+    "badge": "未显示趋势（复习中）",
+    "badgeTitle": "此评分尚未根据人工评分进行校准，因此仅供参考，不会显示在趋势图中。",
+    "overall": "总计：",
+    "notScored": "未评分"
+  },
+  "reflection": {
+    "defaultTitle": "每周回顾",
+    "dismissError": "无法移除 —— 请重试",
+    "dismissing": "正在移除…",
+    "dismiss": "移除"
+  }
+}

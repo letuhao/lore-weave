@@ -1,0 +1,96 @@
+{
+  "title": "Chat e IA",
+  "description": "Suas configurações padrão para o chat e o Writing Studio, em um só lugar. Cada linha mostra seu valor efetivo e a origem; sessões e ferramentas do Studio herdam esses padrões e podem substituí-los.",
+  "models": {
+    "title": "Modelos",
+    "resolved": "Resolvido agora",
+    "chat": "Chat e rascunho",
+    "composer": "Compositor de prosa",
+    "planner": "Planejador",
+    "embedding": "Embedding",
+    "rerank": "Rerank"
+  },
+  "behavior": {
+    "title": "Comportamento",
+    "description": "Estas configurações eram aplicadas silenciosamente anteriormente. Agora elas estão visíveis e editáveis; campos vazios significam o padrão do sistema.",
+    "reasoning": {
+      "label": "Esforço de raciocínio",
+      "off": "Desligado",
+      "low": "Baixo",
+      "medium": "Médio",
+      "high": "Alto"
+    },
+    "permission": {
+      "label": "Autoridade da ferramenta",
+      "ask": "Perguntar",
+      "plan": "Planejar",
+      "write": "Escrever",
+      "hint": "O quanto o assistente pode fazer sem perguntar. O padrão é Escrever."
+    },
+    "temperature": {
+      "label": "Temperatura",
+      "placeholder": "Padrão do provedor"
+    },
+    "systemPrompt": {
+      "label": "Prompt do sistema",
+      "placeholder": "Instruções de persona padrão (vazio = nenhuma)"
+    }
+  },
+  "grounding": {
+    "title": "Fundamentação e memória",
+    "label": "Basear respostas na minha história",
+    "description": "Inclua entidades canônicas, fatos e passagens do manuscrito em cada resposta. Isso vem ativado por padrão e pode ser desativado.",
+    "offWarning": "A fundamentação está desativada — o assistente não pode acessar a bíblia da sua história e pode inventar detalhes. Ative para obter respostas precisas."
+  },
+  "context": {
+    "title": "Gerenciamento de contexto",
+    "description": "Como o assistente gerencia o orçamento de memória para conversas muito longas. A maioria das pessoas deve deixar em Automático.",
+    "label": "Modo de contexto para trabalhos longos",
+    "auto": "Automático",
+    "on": "Sempre ativado",
+    "off": "Desativado",
+    "hint": "O modo Automático ativa os níveis de trabalho longo apenas quando um projeto precisa deles. O modo Desativado mantém o caminho mais simples."
+  },
+  "voice": {
+    "title": "Voz",
+    "description": "Entrada e saída de voz para o chat. Estas configurações são salvas em sua conta e aplicadas a mensagens de voz.",
+    "ttsModel": "Modelo de saída de voz (TTS)",
+    "sttModel": "Modelo de entrada de voz (STT)",
+    "voice": "Voz",
+    "placeholder": "ex: af_heart",
+    "hint": "Uma voz é específica para o seu modelo — escolha uma que seja compatível com o seu modelo de TTS."
+  },
+  "tiers": {
+    "session": {
+      "label": "este chat",
+      "title": "Definido para este chat — substitui os padrões da sua conta e do livro."
+    },
+    "book": {
+      "label": "este livro",
+      "title": "Herdado das configurações deste livro."
+    },
+    "account": {
+      "label": "seu padrão",
+      "title": "Herdado do padrão da sua conta."
+    },
+    "system": {
+      "label": "padrão",
+      "title": "O padrão do sistema."
+    },
+    "unavailable": {
+      "label": "indisponível",
+      "title": "O nível de propriedade não pôde ser alcançado."
+    },
+    "no_model_configured": {
+      "label": "não definido",
+      "title": "Nenhum modelo em tempo real está configurado."
+    }
+  },
+  "clear": {
+    "default": "o padrão",
+    "on": "ligado",
+    "off": "desligado",
+    "action": "limpar",
+    "inherit": "herdar"
+  }
+}

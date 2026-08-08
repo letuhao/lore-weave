@@ -172,5 +172,10 @@
     "saved": "Ordre des modèles enregistré",
     "saveFailed": "Échec de l'enregistrement de l'ordre.",
     "loadFailed": "Échec du chargement des modèles."
+  },
+  "errorBoundary": {
+    "title": "Cette page ne peut pas être affichée",
+    "description": "Une erreur d'interface est survenue. Elle a été enregistrée dans le journal de diagnostic ; veuillez réessayer l'opération.",
+    "retry": "Réessayer"
   }
 }

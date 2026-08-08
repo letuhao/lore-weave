@@ -9,7 +9,9 @@
     "permissions": "أذونات الأدوات",
     "proposals": "المقترحات",
     "activity": "سجل النشاط",
-    "ingest": "مصادر السجل"
+    "ingest": "مصادر السجل",
+    "bindings": "إعداد تلقائي",
+    "workflows": "الوصفات"
   },
   "quota": {
     "unavailable": "الاستخدام غير متاح",
@@ -107,6 +109,7 @@
       "authentication": "المصادقة",
       "authNone": "لا يوجد",
       "authBearer": "رمز Bearer",
+      "authOauth": "OAuth 2.1",
       "noAuthHint": "لا توجد مصادقة — هذا الخادم مفتوح. استمر لتسجيله وفحصه.",
       "bearerLabel": "رمز Bearer (محفوظ في الخزنة؛ لن يظهر مرة أخرى)",
       "bearerPlaceholder": "لصق الرمز",
@@ -123,8 +126,7 @@
       "continue": "استمرار",
       "authKind": "المصادقة: {{kind}}",
       "enable": "تفعيل لجلساتي",
-      "done": "تم",
-      "authOauth": "OAuth 2.1"
+      "done": "تم"
     }
   },
   "commands": {

@@ -19,8 +19,8 @@
   "mode": {
     "classic": "클래식",
     "classic_title": "클래식 모드 — 집중에 최적화된 글쓰기",
-    "ai_title": "AI 어시스턴트 모드 — 모든 기능 제공",
-    "ai": "AI"
+    "ai": "AI",
+    "ai_title": "AI 어시스턴트 모드 — 모든 기능 제공"
   },
   "workmode": {
     "write": "쓰기",
@@ -90,6 +90,7 @@
     "underline": "밑줄 (Ctrl+U)",
     "inline_code": "인라인 코드",
     "link": "링크",
+    "url_prompt": "URL:",
     "highlight": "하이라이트 (Ctrl+Shift+H)",
     "subscript": "아래 첨자",
     "superscript": "위 첨자",
@@ -102,8 +103,7 @@
     "code_block": "코드 블록",
     "horizontal_rule": "구분선",
     "undo": "실행 취소 (Ctrl+Z)",
-    "redo": "다시 실행 (Ctrl+Shift+Z)",
-    "url_prompt": "URL:"
+    "redo": "다시 실행 (Ctrl+Shift+Z)"
   },
   "slash": {
     "paragraph": {
@@ -392,5 +392,29 @@
     "no_restore": "복원할 이전 버전이 없습니다",
     "confirm_title": "이 AI 편집 이전 상태로 복원하시겠습니까?",
     "confirm_desc": "현재 초안이 먼저 스냅샷으로 저장되므로, 수정 기록을 통해 언제든 되돌릴 수 있습니다."
-  }
+  },
+  "contextMenu": {
+    "replace": "바꾸기",
+    "copy": "복사",
+    "cut": "잘라내기",
+    "paste": "붙여넣기",
+    "selectAll": "전체 선택",
+    "undo": "실행 취소",
+    "redo": "다시 실행",
+    "rewrite": "AI로 다시 쓰기",
+    "expand": "AI로 내용 확장",
+    "describe": "AI로 묘사하기",
+    "dictionary": "용어 사전에서 확인",
+    "bookmark": "북마크 추가",
+    "findGlossary": "용어집에서 찾기",
+    "askAi": "AI에게 질문하기",
+    "findMentions": "언급된 내용 찾기"
+  },
+  "chat_mode": "모드",
+  "mode_agent": "에이전트",
+  "mode_agent_hint": "AI가 도구를 사용하고 문서를 편집할 수 있습니다",
+  "mode_compose": "작성",
+  "mode_compose_hint": "산문 전용 — AI가 작성하고 사용자가 적용합니다. 추론 모델에 최적화되어 있습니다.",
+  "polish_applied": "적용된 다듬기 편집",
+  "resize_panel": "드래그하여 크기 조절"
 }

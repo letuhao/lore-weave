@@ -115,5 +115,365 @@
     "restoreError": "Wiederherstellung fehlgeschlagen",
     "purged": "Endgültig gelöscht",
     "purgeError": "Löschen fehlgeschlagen"
+  },
+  "system": {
+    "genres": {
+      "universal": {
+        "name": "Universal",
+        "description": "Genreunabhängige Attribute, die in jeder Geschichte vorkommen."
+      },
+      "fantasy": {
+        "name": "Fantasy",
+        "description": "Magie, übernatürliche Kräfte und imaginäre Welten."
+      },
+      "xianxia": {
+        "name": "Xianxia",
+        "description": "Kultivierung, Unsterbliche, Sekten und Kampfkunst-Fantasy."
+      },
+      "romance": {
+        "name": "Romanze",
+        "description": "Geschichten, die sich auf Liebe und intime Beziehungen konzentrieren."
+      },
+      "drama": {
+        "name": "Drama",
+        "description": "Charakterfokussierte Geschichten, getrieben von Konflikten und Emotionen."
+      },
+      "historical": {
+        "name": "Historisch",
+        "description": "Geschichten, die in einer historischen Periode oder einem historischen Setting spielen."
+      },
+      "mystery": {
+        "name": "Mystery",
+        "description": "Ermittlungen, Geheimnisse und die Suche nach der verborgenen Wahrheit."
+      }
+    },
+    "kinds": {
+      "character": {
+        "name": "Charakter",
+        "description": "Eine einzelne Person oder ein benanntes Wesen, das in der Geschichte handelt oder spricht."
+      },
+      "location": {
+        "name": "Ort",
+        "description": "Ein physischer Ort, den Charaktere aufsuchen oder an dem sie sich befinden können."
+      },
+      "item": {
+        "name": "Gegenstand / Requisite",
+        "description": "Ein physisches Objekt wie eine Waffe, ein Schatz, ein Kleidungsstück oder ein Fahrzeug."
+      },
+      "event": {
+        "name": "Ereignis",
+        "description": "Etwas, das geschieht: eine Schlacht, eine Reise, ein Verrat oder eine Offenbarung."
+      },
+      "terminology": {
+        "name": "Terminologie",
+        "description": "Ein abstrakter Begriff, eine Doktrin, ein Rang, ein Titel oder ein Konzept."
+      },
+      "power_system": {
+        "name": "Kraftsystem",
+        "description": "Ein geordnetes System von Kräften oder Rängen, durch die Charaktere aufsteigen können."
+      },
+      "species": {
+        "name": "Spezies",
+        "description": "Eine Art von Wesen oder Rasse, kein einzelner Charakter."
+      },
+      "organization": {
+        "name": "Organisation",
+        "description": "Eine Gruppe von Personen, die gemeinsam agieren: eine Fraktion, ein Haus, eine Gilde oder eine Regierung."
+      },
+      "relationship": {
+        "name": "Beziehung",
+        "description": "Eine bedeutungsvolle Verbindung zwischen Charakteren oder Gruppen."
+      },
+      "plot_arc": {
+        "name": "Handlungsbogen",
+        "description": "Eine fortlaufende Erzähllinie mit Auslöser, Einsatz und Auflösung."
+      },
+      "social_setting": {
+        "name": "Soziales Setting",
+        "description": "Die soziale Ordnung, Ära, Bräuche und Hierarchie, die die Geschichte prägen."
+      },
+      "trope": {
+        "name": "Trope",
+        "description": "Ein wiederkehrendes Erzählmuster oder eine Konvention."
+      },
+      "technique": {
+        "name": "Technik",
+        "description": "Eine benannte Handlung, Methode oder Fertigkeit, die von einem Charakter ausgeführt wird."
+      },
+      "colleague": {
+        "name": "Kollege",
+        "description": "Eine Person, mit der man zusammenarbeitet."
+      },
+      "decision": {
+        "name": "Entscheidung",
+        "description": "Eine getroffene Wahl, die das weitere Geschehen beeinflusst."
+      },
+      "jargon": {
+        "name": "Jargon",
+        "description": "Fachterminologie oder ein Akronym, das im Text verwendet wird."
+      },
+      "meeting": {
+        "name": "Meeting",
+        "description": "Eine geplante Diskussion oder Zusammenkunft."
+      },
+      "org": {
+        "name": "Organisation",
+        "description": "Ein Unternehmen, ein Team oder eine externe Organisation."
+      },
+      "project": {
+        "name": "Projekt",
+        "description": "Ein Arbeitsumfang mit einem Ziel und einem erwarteten Ergebnis."
+      },
+      "task": {
+        "name": "Aufgabe",
+        "description": "Ein ausführbarer Arbeitsschritt, der abgeschlossen werden muss."
+      }
+    },
+    "attributes": {
+      "name": {
+        "name": "Name",
+        "description": "Name-Attribut."
+      },
+      "term": {
+        "name": "Begriff",
+        "description": "Begriff-Attribut."
+      },
+      "aliases": {
+        "name": "Aliase",
+        "description": "Aliase-Attribut."
+      },
+      "gender": {
+        "name": "Geschlecht",
+        "description": "Geschlechtsattribut."
+      },
+      "role": {
+        "name": "Rolle",
+        "description": "Rollenattribut."
+      },
+      "occupation": {
+        "name": "Beruf",
+        "description": "Berufsattribut."
+      },
+      "social_class": {
+        "name": "Soziale Schicht",
+        "description": "Attribut der sozialen Schicht."
+      },
+      "affiliation": {
+        "name": "Zugehörigkeit",
+        "description": "Zugehörigkeitsattribut."
+      },
+      "appearance": {
+        "name": "Aussehen",
+        "description": "Aussehensattribut."
+      },
+      "personality": {
+        "name": "Persönlichkeit",
+        "description": "Persönlichkeitsattribut."
+      },
+      "emotional_wound": {
+        "name": "Emotionales Trauma",
+        "description": "Attribut für das emotionale Trauma."
+      },
+      "love_language": {
+        "name": "Sprache der Liebe",
+        "description": "Attribut für die Sprache der Liebe."
+      },
+      "relationships": {
+        "name": "Beziehungen",
+        "description": "Beziehungsattribut."
+      },
+      "description": {
+        "name": "Beschreibung",
+        "description": "Beschreibungsattribut."
+      },
+      "type": {
+        "name": "Typ",
+        "description": "Typ-Attribut."
+      },
+      "parent_location": {
+        "name": "Übergeordnete Location",
+        "description": "Attribut: Übergeordnete Location."
+      },
+      "atmosphere": {
+        "name": "Atmosphäre",
+        "description": "Attribut: Atmosphäre."
+      },
+      "significance": {
+        "name": "Bedeutung",
+        "description": "Attribut: Bedeutung."
+      },
+      "owner": {
+        "name": "Eigentümer",
+        "description": "Attribut: Eigentümer."
+      },
+      "symbolic_meaning": {
+        "name": "Symbolische Bedeutung",
+        "description": "Attribut: Symbolische Bedeutung."
+      },
+      "date_in_story": {
+        "name": "Datum in der Geschichte",
+        "description": "Attribut: Datum in der Geschichte."
+      },
+      "location": {
+        "name": "Ort",
+        "description": "Attribut für den Ort."
+      },
+      "participants": {
+        "name": "Teilnehmer",
+        "description": "Attribut für die Teilnehmer."
+      },
+      "emotional_impact": {
+        "name": "Emotionale Wirkung",
+        "description": "Attribut für die emotionale Wirkung."
+      },
+      "outcome": {
+        "name": "Ausgang",
+        "description": "Attribut für den Ausgang."
+      },
+      "category": {
+        "name": "Kategorie",
+        "description": "Attribut für die Kategorie."
+      },
+      "definition": {
+        "name": "Definition",
+        "description": "Attribut für die Definition."
+      },
+      "usage_note": {
+        "name": "Verwendungshinweis",
+        "description": "Verwendungshinweis-Attribut."
+      },
+      "tiers": {
+        "name": "Stufen",
+        "description": "Stufen-Attribut."
+      },
+      "rank": {
+        "name": "Position in der Rangliste",
+        "description": "Position in der Rangliste-Attribut."
+      },
+      "entry_requirement": {
+        "name": "Eintrittsvoraussetzung",
+        "description": "Eintrittsvoraussetzung-Attribut."
+      },
+      "capabilities": {
+        "name": "Fähigkeiten",
+        "description": "Fähigkeiten-Attribut."
+      },
+      "arc_type": {
+        "name": "Handlungsbogen-Typ",
+        "description": "Handlungsbogen-Typ-Attribut."
+      },
+      "parties": {
+        "name": "Teile",
+        "description": "Teile-Attribut."
+      },
+      "trigger": {
+        "name": "Auslöser",
+        "description": "Auslöser-Attribut."
+      },
+      "stakes": {
+        "name": "Einsatz",
+        "description": "Einsatz-Attribut."
+      },
+      "chapters_span": {
+        "name": "Kapitelspanne",
+        "description": "Kapitelspanne-Attribut."
+      },
+      "emotional_beats": {
+        "name": "Emotionale Höhepunkte",
+        "description": "Emotionale Höhepunkte-Attribut."
+      },
+      "resolution": {
+        "name": "Auflösung",
+        "description": "Auflösung-Attribut."
+      },
+      "era": {
+        "name": "Ära",
+        "description": "Ära-Attribut."
+      },
+      "class_hierarchy": {
+        "name": "Klassenhierarchie",
+        "description": "Klassenhierarchie-Attribut."
+      },
+      "rules_norms": {
+        "name": "Regeln und Normen",
+        "description": "Regeln und Normen-Attribut."
+      },
+      "romance_obstacles": {
+        "name": "Liebeshindernisse",
+        "description": "Liebeshindernisse-Attribut."
+      },
+      "traits": {
+        "name": "Eigenschaften",
+        "description": "Eigenschaften-Attribut."
+      },
+      "abilities": {
+        "name": "Fähigkeiten",
+        "description": "Fähigkeiten-Attribut."
+      },
+      "habitat": {
+        "name": "Habitat",
+        "description": "Habitat-Attribut."
+      },
+      "culture": {
+        "name": "Kultur",
+        "description": "Kultur-Attribut."
+      },
+      "how_manifested": {
+        "name": "Manifestation",
+        "description": "Manifestations-Attribut."
+      },
+      "subverted": {
+        "name": "Unterwandert",
+        "description": "Unterwandert-Attribut."
+      },
+      "related_characters": {
+        "name": "Verwandte Charaktere",
+        "description": "Verwandte Charaktere-Attribut."
+      },
+      "relationship_type": {
+        "name": "Beziehungsart",
+        "description": "Beziehungsart-Attribut."
+      },
+      "status": {
+        "name": "Status",
+        "description": "Status-Attribut."
+      },
+      "tropes": {
+        "name": "Tropen",
+        "description": "Tropen-Attribut."
+      },
+      "dynamic": {
+        "name": "Dynamik",
+        "description": "Dynamik-Attribut."
+      },
+      "key_conflict": {
+        "name": "Hauptkonflikt",
+        "description": "Hauptkonflikt-Attribut."
+      },
+      "turning_points": {
+        "name": "Wendepunkte",
+        "description": "Wendepunkte-Attribut."
+      },
+      "leader": {
+        "name": "Anführer",
+        "description": "Anführer-Attribut."
+      },
+      "headquarters": {
+        "name": "Hauptquartier",
+        "description": "Hauptquartier-Attribut."
+      },
+      "members": {
+        "name": "Mitglieder",
+        "description": "Mitglieder-Attribut."
+      },
+      "effects": {
+        "name": "Effekte",
+        "description": "Effekte-Attribut."
+      },
+      "user": {
+        "name": "Benutzer",
+        "description": "Benutzer-Attribut."
+      }
+    }
   }
 }

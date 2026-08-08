@@ -271,7 +271,11 @@
       "unknown_error": "erro desconhecido",
       "model_removed": "{{name}} removido",
       "model_delete_failed": "Falha ao excluir modelo"
-    }
+    },
+    "delete_blocked": "Este modelo não pode ser excluído: {{count}} trabalho(s) ativo(s). Pare-os primeiro.",
+    "delete_refs_none": "nenhuma referência",
+    "delete_confirm": "Excluir o modelo «{{name}}»?\n\nEstas referências serão removidas: {{refs}}.",
+    "return_to_form": "Voltar para onde você estava"
   },
   "translation": {
     "heading": "Padrões de Tradução",
@@ -296,7 +300,9 @@
       "tpl_needs_chapter": "O template de prompt do usuário deve conter {chapter_text}",
       "saved": "Padrões de tradução salvos",
       "save_failed": "Falha ao salvar as preferências de tradução"
-    }
+    },
+    "models_load_failed": "Não foi possível carregar seus modelos. O serviço do provedor pode estar indisponível.",
+    "retry": "Tentar novamente"
   },
   "reading": {
     "app_theme": "Tema do App",
@@ -344,7 +350,8 @@
     "auto_saved": "As alterações são salvas automaticamente.",
     "toast": {
       "preset_saved": "Preset \"{{name}}\" salvo"
-    }
+    },
+    "voice_moved": "As configurações de voz e fala agora estão em Configurações → Chat e IA → Voz."
   },
   "language": {
     "gui_language": "Idioma da Interface",
@@ -473,7 +480,9 @@
       "notes_ph": "Notas opcionais sobre esta configuração de modelo...",
       "cancel": "Cancelar",
       "adding": "Adicionando...",
-      "submit": "Adicionar Modelo"
+      "submit": "Adicionar Modelo",
+      "pricing_summary": "Custo: entrada ${{input}}/1M · saída ${{output}}/1M",
+      "pricing_missing": "O provedor não publica preços — adicione-os manualmente após o registro do modelo."
     },
     "edit": {
       "aria": "Editar modelo",
@@ -511,7 +520,16 @@
       "request_failed": "Falha na requisição",
       "cancel": "Cancelar",
       "saving": "Salvando...",
-      "submit": "Salvar Alterações"
+      "submit": "Salvar Alterações",
+      "capabilities_refreshed": "Capacidades do modelo atualizadas",
+      "capabilities_refresh_failed": "Não foi possível atualizar as capacidades do modelo",
+      "delete_blocked_active": "Este modelo não pode ser excluído: pare seus trabalhos ativos primeiro.",
+      "pricing_missing": "Este modelo não possui preços — o custo estimado do trabalho não estará disponível.",
+      "refresh_capabilities": "Atualizar",
+      "delete_impact": "Estas referências serão removidas: {{refs}}. Pressione Excluir novamente para confirmar.",
+      "delete_impact_none": "nenhuma",
+      "delete_blocked_count": "A exclusão está bloqueada: {{count}} trabalho(s) ativo(s). Pare-os primeiro.",
+      "verify_ok_rerank": "Classificou {{count}} docs · top {{score}} · {{ms}}ms"
     },
     "toast": {
       "fetch_failed": "Falha ao buscar modelos: {{error}}",
@@ -524,5 +542,23 @@
       "deleted": "Modelo excluído",
       "delete_failed": "Falha ao excluir"
     }
+  },
+  "defaultModels": {
+    "heading": "Modelos padrão",
+    "subtitle": "Seus modelos de fallback por usuário (BYOK — seus próprios). Usados quando nenhum modelo por escopo for definido.",
+    "chat": "Modelo de chat padrão",
+    "chatHint": "Pré-selecionado ao iniciar um novo chat. Deixe vazio para usar seus favoritos por padrão.",
+    "rerank": "Reranker padrão",
+    "rerankHint": "Rerank de cross-encoder para rejeição de lixo em buscas brutas. Opcional — aplica-se quando um projeto não possui um modelo de rerank definido.",
+    "planner": "Planejador padrão",
+    "plannerHint": "O modelo de chat que o assistente de glossário utiliza para construir planos de várias etapas. Escolha um modelo robusto e capaz de usar ferramentas — caso contrário, o planejamento recairá sobre um modelo de chat arbitrário e frequentemente falhará.",
+    "none": "Nenhum",
+    "empty": "Nenhum modelo capaz configurado.",
+    "saved": "Padrão atualizado"
+  },
+  "external_services": {
+    "delete_blocked": "Este serviço não pode ser removido: seu modelo está sendo usado por {{count}} trabalho(s) ativo(s). Pare-os primeiro.",
+    "delete_refs_none": "nenhuma referência",
+    "delete_confirm": "Remover o serviço «{{name}}»?\n\nEstas referências de modelo serão removidas: {{refs}}."
   }
 }

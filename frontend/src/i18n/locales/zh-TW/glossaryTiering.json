@@ -120,7 +120,8 @@
     "no_active": "沒有啟用的類型。新增一個以建立矩陣。",
     "cell_inspector": "所選儲存格",
     "no_cell": "點擊一個儲存格以檢視。",
-    "sort": "排序"
+    "sort": "排序",
+    "required": "必填"
   },
   "entity": {
     "title_new": "新增 {{kind}} 實體",
@@ -179,7 +180,12 @@
     "est_cost": "~${{cost}}",
     "complete_summary": "完成 — 在 {{entities}} 個實體上取得 {{sources}} 個來源",
     "failed_prefix": "失敗",
-    "action": { "pause": "暫停", "resume": "繼續", "retry": "重試", "cancel": "取消" },
+    "action": {
+      "pause": "暫停",
+      "resume": "繼續",
+      "retry": "重試",
+      "cancel": "取消"
+    },
     "modal": {
       "title": "研究所有 {{kind}} 實體",
       "subtitle": "每個實體進行一次網路搜尋；前幾個來源會附加為草稿證據。",
@@ -233,5 +239,16 @@
     "links_saved": "已更新類型連結",
     "links_failed": "無法更新類型連結",
     "forbidden": "你需要這本書的「管理」權限才能進行變更"
+  },
+  "batch_translate": {
+    "apply": "套用翻譯",
+    "count": "待翻譯項目：{{n}} 個",
+    "loading": "載入中…",
+    "none": "此語言目前沒有待翻譯項目。",
+    "pick_lang": "請選擇目標語言以開始。",
+    "result": "已寫入 {{w}} 字 · 保留 {{v}} 字 (已驗證) · 空值 {{e}} · 失敗 {{f}}",
+    "select_lang": "選擇…",
+    "target_lang": "目標語言",
+    "title": "批次翻譯"
   }
 }

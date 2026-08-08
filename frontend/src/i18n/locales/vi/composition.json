@@ -154,7 +154,14 @@
     "promoted": "Đã thăng cấp thành dị bản giả định.",
     "promotedPartial": "Đã thăng cấp, nhưng {{n}} bản không thể thêm được.",
     "promotedProsePartial": "Đã thăng cấp, nhưng không lưu được nội dung của {{n}} bản — thăng cấp lại để thử lại.",
-    "promoteHint": "Tạo ít nhất một bản để thăng cấp"
+    "promoteHint": "Tạo ít nhất một bản để thăng cấp",
+    "vsCanon": {
+      "absoluteHint": "Lấy điểm số (không có mốc chuẩn canon để so sánh)",
+      "judging": "· so với canon…",
+      "noBaseline": "· không có mốc chuẩn canon",
+      "take": "lấy",
+      "vs": "so với canon"
+    }
   },
   "cast": "Nhân vật",
   "codex": {
@@ -261,7 +268,8 @@
     "linkMissing": "Một trong các địa điểm đó không còn tồn tại.",
     "delete": "Xóa {{name}}",
     "deleteConfirm": "Xóa «{{name}}» khỏi bản đồ thế giới? Thao tác này sẽ đưa địa điểm vào kho lưu trữ.",
-    "deleteFailed": "Không thể xóa địa điểm này."
+    "deleteFailed": "Không thể xóa địa điểm này.",
+    "backdropNoChapter": "Mở một chương để thiết lập bối cảnh."
   },
   "grounding": "Căn cứ",
   "canon": "Canon",
@@ -346,7 +354,21 @@
     "noHits": "Chưa có tài liệu tham khảo phù hợp.",
     "library": "Thư viện",
     "delete": "Xóa",
-    "empty": "Chưa có tài liệu tham khảo — thêm nguồn ảnh hưởng ở trên."
+    "empty": "Chưa có tài liệu tham khảo — thêm nguồn ảnh hưởng ở trên.",
+    "addEmbedModel": "Thêm một mô hình nhúng",
+    "content": "Nội dung",
+    "contentRecomputes": "Khi lưu nội dung, hệ thống sẽ tính toán lại bản nhúng của tham chiếu này.",
+    "deleteBody": "Thao tác này sẽ xóa tham chiếu khỏi kệ. Không thể hoàn tác.",
+    "deleteTitle": "Xóa tham chiếu này?",
+    "done": "Xong",
+    "edit": "Chỉnh sửa",
+    "filter": "Lọc…",
+    "noMatch": "Không có tài liệu tham khảo nào khớp với bộ lọc của bạn.",
+    "reembedding": "Nhúng lại…",
+    "saveContent": "Lưu nội dung (nhúng lại)",
+    "saveMetadata": "Lưu chi tiết",
+    "saving": "Đang lưu…",
+    "sourceUrl": "URL nguồn (tùy chọn)"
   },
   "progressPanel": {
     "loading": "Đang tải tiến độ…",
@@ -363,7 +385,8 @@
     "words": "từ",
     "goalPlaceholder": "từ/ngày",
     "setGoal": "Đặt mục tiêu",
-    "goalHint": "0 để xóa mục tiêu"
+    "goalHint": "0 để xóa mục tiêu",
+    "goalLegacy": "Mục tiêu này được lấy từ cài đặt chung của sách — việc thiết lập lại sẽ áp dụng cho riêng bạn."
   },
   "workSettings": {
     "defaultModel": "Mô hình soạn mặc định",
@@ -375,7 +398,11 @@
     "chapter": "Theo chương (một lượt)",
     "narrativeThread": "Theo dõi mạch truyện (lời hứa & điềm báo)",
     "narrativeThreadHint": "Cố vấn: phát hiện các lời hứa còn mở và tái tiêm để bản sinh tôn trọng/trả chúng; hiện các lời hứa chưa trả như một bảng nợ. Tùy chọn.",
-    "saveError": "Không lưu được cài đặt — thử lại."
+    "saveError": "Không lưu được cài đặt — thử lại.",
+    "criticModel": "Mô hình phê bình (giám khảo độc lập)",
+    "criticModelHint": "Một mô hình KHÁC sẽ chấm điểm từng bản thảo dựa trên hệ thống thiết lập của bạn, và có thể chặn một chương nếu nội dung mâu thuẫn với thiết lập đó. Nếu không có mô hình này, sẽ không có thực thể nào kiểm tra văn phong một cách độc lập — một mô hình không thể tự chấm điểm chính tác phẩm của mình.",
+    "criticSameAsDrafter": "Đây là cùng một mô hình đã viết văn bản, vì vậy nó sẽ tự chấm điểm chính mình — máy chủ sẽ từ chối yêu cầu này và bỏ qua phần phê bình. Vui lòng chọn một mô hình khác.",
+    "noCritic": "Không có phê bình — bản thảo không được chấm điểm độc lập"
   },
   "loadingStats": "Đang tải chất lượng…",
   "statsUnavailable": "Không có thống kê chất lượng.",
@@ -489,6 +516,8 @@
     "tension": "Căng thẳng",
     "cast": "Nhân vật",
     "beat_role": "Vai trò nhịp",
+    "beat_label": "Nhịp truyện",
+    "inactive_cast": "Thực thể đang ở trạng thái không hoạt động",
     "add_cast": "thêm nhân vật",
     "remove_cast": "Xóa {{name}}",
     "resolve": "Thêm {{name}} vào nhân vật",
@@ -509,7 +538,23 @@
     "err_no_chapters": "Sách chưa có chương nào — tạo chương trước khi lập dàn ý.",
     "err_too_many_chapters": "Quá nhiều chương để lập cùng lúc.",
     "err_bad_entity": "Một số nhân vật trong cảnh không có trong glossary của sách.",
-    "err_bad_chapter": "Một chương trong dàn ý không thuộc sách này."
+    "err_bad_chapter": "Một chương trong dàn ý không thuộc sách này.",
+    "add_template": "Thêm mẫu",
+    "create_template_title": "Mẫu cấu trúc mới",
+    "template_name": "Tên",
+    "template_name_placeholder": "Ví dụ: Hành trình của người hùng",
+    "template_kind": "Loại",
+    "template_beats": "Các nhịp truyện (mỗi nhịp một dòng)",
+    "template_beats_placeholder": "Thiết lập\nBước ngoặt\nCao trào",
+    "template_create": "Tạo mẫu",
+    "template_creating": "Đang tạo…",
+    "template_create_error": "Không thể tạo mẫu",
+    "close": "Đóng",
+    "chapter_scope": "Phạm vi",
+    "all_chapters": "Tất cả các chương",
+    "recreate_current": "Tạo lại chương hiện tại",
+    "recreate_all": "Tạo lại tất cả các chương",
+    "done": "Hoàn thành"
   },
   "threads": "Mạch truyện",
   "threadsTitle": "Mạch truyện (lời hứa)",
@@ -656,13 +701,16 @@
     "overuse": "«{{name}}» đã được sử dụng trong {{chapters}} — hãy cân nhắc thay đổi để đa dạng hơn.",
     "list": {
       "noMatch": "Không có motif nào khớp — hãy xóa các bộ lọc.",
-      "truncated": "Đang hiển thị 100 mục đầu tiên — hãy thu hẹp phạm vi bằng tìm kiếm hoặc bộ lọc để xem các mục còn lại."
+      "truncated": "Đang hiển thị 100 mục đầu tiên — hãy thu hẹp phạm vi bằng tìm kiếm hoặc bộ lọc để xem các mục còn lại.",
+      "loadMore": "Tải thêm",
+      "loadingMore": "Đang tải…"
     },
     "error": {
       "load": "Không thể tải — vui lòng thử lại."
     },
     "permission": {
-      "readOnly": "Đây là mẫu được chia sẻ — hãy nhân bản để tạo bản sao có thể chỉnh sửa của riêng bạn."
+      "readOnly": "Đây là mẫu được chia sẻ — hãy nhân bản để tạo bản sao có thể chỉnh sửa của riêng bạn.",
+      "noSession": "Không thể chỉnh sửa cho đến khi phiên làm việc của bạn được tải lại."
     },
     "action": {
       "open": "Open",
@@ -673,11 +721,19 @@
       "cancel": "Cancel",
       "retry": "Retry",
       "swap": "Swap",
-      "clear": "Free-form"
+      "clear": "Free-form",
+      "bind": "Liên kết motif",
+      "discard": "Hủy bỏ",
+      "edit": "Chỉnh sửa",
+      "mine": "Khai thác",
+      "promote": "Thăng cấp",
+      "restore": "Khôi phục",
+      "save": "Lưu"
     },
     "card": {
       "draft": "Mined draft",
-      "tension": "Intensity"
+      "tension": "Intensity",
+      "shared": "Đã chia sẻ"
     },
     "empty": {
       "title": "Thư viện motif của bạn đã sẵn sàng",
@@ -725,7 +781,13 @@
       "toUser": "My library",
       "whatItDoes": "Sao chép motif này vào thư viện của bạn (một bản sao riêng tư, có thể chỉnh sửa).",
       "continue": "Continue",
-      "estimating": "Estimating…"
+      "estimating": "Estimating…",
+      "bodyUser": "Tính năng Nhận bản giúp tạo một bản sao riêng tư, có thể chỉnh sửa trong thư viện của bạn.",
+      "sharedHint": "Tất cả những người có quyền truy cập vào cuốn sách này đều có thể xem và chỉnh sửa motif này.",
+      "targetBook": "Cuốn sách này (riêng tư)",
+      "targetBookShared": "Chia sẻ với cộng tác viên",
+      "targetLegend": "Thêm vào",
+      "targetUser": "Thư viện của tôi"
     },
     "quota": {
       "adopt": "Bạn đã nhận {{used}}/{{limit}} trong kỳ này — hãy lưu trữ bớt hoặc chờ đợi."
@@ -752,7 +814,10 @@
     "binding": {
       "freeForm": "Không có motif nào khớp — cảnh này là dạng tự do.",
       "commitGenerate": "Xác nhận + viết cảnh này →",
-      "noWork": "Tạo kế hoạch để liên kết các mô-típ với các cảnh trong cuốn sách này."
+      "noWork": "Tạo kế hoạch để liên kết các mô-típ với các cảnh trong cuốn sách này.",
+      "committedTitle": "Liên kết các motif cảnh",
+      "loadError": "Không thể tải các motif cảnh.",
+      "sectionTitle": "Motif cảnh"
     },
     "swap": {
       "title": "Swap motif",
@@ -777,7 +842,13 @@
         "warn": "Tension drift",
         "bad": "Beat missed"
       },
-      "rerunNeedsModel": "Chọn một mô hình để chạy lại kiểm tra sự phù hợp"
+      "rerunNeedsModel": "Chọn một mô hình để chạy lại kiểm tra sự phù hợp",
+      "bindCta": "Liên kết một motif với một cảnh →",
+      "couldNotCheck": "Không thể kiểm tra",
+      "notChecked": "Chưa kiểm tra",
+      "notWritten": "Chưa viết",
+      "openScene": "Mở cảnh này trong trình kiểm tra",
+      "written": "Đã viết"
     },
     "arc": {
       "mobileNotice": "Lưới dòng thời gian có sẵn trên màn hình lớn — tại đây bạn có thể chỉnh sửa dưới dạng danh sách.",
@@ -834,7 +905,8 @@
         "driftFolded": "Bị gấp (chưa bao giờ được liên kết)",
         "untitledArc": "(cốt truyện chưa đặt tên)",
         "truncated": "Đang hiển thị {{shown}} trên {{count}} — hãy sử dụng Danh mục hoặc gói thu hẹp hơn để tìm thêm.",
-        "tabSuggest": "Gợi ý"
+        "tabSuggest": "Gợi ý",
+        "restore": "khôi phục"
       },
       "import": {
         "privacy": "Văn bản gốc sẽ được giữ riêng tư và không bao giờ được chia sẻ. Chỉ có cấu trúc trừu tượng được trích xuất mới có thể được xuất bản — và việc xuất bản sẽ loại bỏ các tham chiếu nguồn.",
@@ -890,7 +962,42 @@
         "error": "Không thể nhóm các chương thành các hồi.",
         "done": "Đã nhóm {{chapters}} chương thành {{arcs}} hồi.",
         "none": "Chưa có chương nào để nhóm thành hồi."
-      }
+      },
+      "apply": {
+        "dropMerge": "Điều chỉnh quy mô",
+        "error": "Không thể tạo bản xem trước áp dụng.",
+        "previewOnly": "Chỉ xem trước — hãy mở arc này trong một cuốn sách để xác nhận.",
+        "rescaled": "Đã thay đổi quy mô từ {{from}} → {{to}} chương",
+        "roster": "Liên kết dàn nhân vật (áp dụng một lần cho toàn bộ arc)",
+        "run": "Xem trước kế hoạch",
+        "running": "Đang xem trước…",
+        "targetChapters": "Các chương mục tiêu",
+        "title": "Áp dụng cho sách mới (xem trước)",
+        "unbound": "Các vai trò chưa được gán: {{keys}}"
+      },
+      "backToList": "Tất cả các mẫu arc",
+      "chapterCount": "{{count}} chương",
+      "empty": "Arc này hiện chưa có các luồng cốt truyện hoặc vị trí đặt.",
+      "grabbed": "Đã chọn {{name}}. Sử dụng phím mũi tên để di chuyển, Shift+Mũi tên để thay đổi kích thước, Enter để đặt, Esc để thả.",
+      "loadError": "Không thể tải dòng thời gian của arc này.",
+      "loading": "Đang tải dòng thời gian…",
+      "materialize": {
+        "blurb": "Áp dụng arc này vào cuốn sách hiện tại — sẽ tạo đề cương cảnh cho các chương + các liên kết motif.",
+        "conflict": "Một số chương đã có kế hoạch sẵn. Bạn có muốn thay thế các cảnh của chúng bằng arc này không?",
+        "done": "Đã áp dụng {{scenes}} cảnh vào {{chapters}} chương.",
+        "error": "Không thể hiện thực hóa arc này.",
+        "folded": "{{count}} motif đã được thu gọn do thay đổi tỷ lệ số chương.",
+        "replace": "Thay thế các cảnh hiện có",
+        "run": "Hiện thực hóa vào cuốn sách này",
+        "running": "Đang hiện thực hóa…",
+        "unresolved": "{{count}} motif không thể giải quyết và đã bị bỏ qua."
+      },
+      "placementDesc": "Luồng {{thread}}, chương {{from}}-{{to}}",
+      "readonly": "Arc này chỉ có thể đọc. Hãy thêm vào thư viện của bạn để chỉnh sửa dòng thời gian.",
+      "saveConflict": "Đã tải lại — arc này đã thay đổi ở một nơi khác.",
+      "saveError": "Không thể lưu — sẽ thử lại trong lần chỉnh sửa tới.",
+      "saved": "Đã lưu",
+      "saving": "Đang lưu…"
     },
     "simple": {
       "actant": {
@@ -1021,6 +1128,111 @@
       "overCap": "Tối đa {{cap}} motif cho mỗi lượt dịch — vui lòng bỏ chọn {{over}} mục.",
       "confirmWhat": "Dịch {{count}} motif sang {{lang}} bằng mô hình của bạn.",
       "doneTitle": "Đã dịch {{written}}/{{total}} sang {{lang}}"
+    },
+    "arcConf": {
+      "causal": "đã xác minh quan hệ nhân quả",
+      "caused": "đã gây ra",
+      "chShort": "ch",
+      "coarse": "Thô · chỉ mang tính cấu trúc",
+      "deepError": "Không thể chạy kiểm tra độ tương thích chuyên sâu.",
+      "deepWhat": "Gán nhãn lại văn xuôi của cuốn sách bằng mô hình của bạn và so sánh sự khác biệt với arc này (đo bằng LLM).",
+      "drift": "độ lệch tối đa {{drift}}",
+      "empty": "Chưa có nội dung nào được hình thành từ arc này.",
+      "entailed": "kéo theo",
+      "estimating": "Đang ước tính…",
+      "legalTransitions": "hợp lệ",
+      "maxDrift": "độ lệch tối đa {{drift}}",
+      "model": "Mô hình gắn thẻ",
+      "noPlanned": "không có đường cong khuôn mẫu",
+      "noProse": "Chưa có văn xuôi được trích xuất — hãy tạo các cảnh để đo lường độ lệch.",
+      "noWork": "Hiện thực hóa arc này thành một cuốn sách để xem mức độ tuân thủ.",
+      "notTagged": "Tiến trình mạch truyện cần được gắn thẻ — hãy chạy với một mô hình.",
+      "pacing": "Nhịp độ",
+      "proseDrift": "Độ lệch văn xuôi (thực tế so với kế hoạch)",
+      "proseDriftTitle": "Độ tuân thủ văn xuôi chuyên sâu",
+      "proseScale": "căng thẳng từ các sự kiện được trích xuất (1–5 ×20)",
+      "proseSuccession": "Sự nối tiếp trong văn xuôi",
+      "proseThreads": "Các mạch truyện trong văn xuôi",
+      "runDeep": "Chạy kiểm tra tuân thủ chuyên sâu",
+      "running": "Đang chạy…",
+      "structural": "cấu trúc",
+      "succUntagged": "Kế thừa cần gắn thẻ motif — hãy chạy với một mô hình.",
+      "succession": "Kế thừa (cấu trúc)",
+      "successionOk": "Không có vi phạm thứ tự.",
+      "threadMissing": "không có trong văn xuôi",
+      "threads": "Tiến độ mạch truyện",
+      "title": "Sự phù hợp của Arc",
+      "unmaterialized": "Chưa được hiện thực hóa",
+      "unplannedLabel": "chưa được lên kế hoạch trong văn xuôi",
+      "violation": "{{label}}: {{n}} lỗi thứ tự"
+    },
+    "editor": {
+      "add": "thêm",
+      "beatIntent": "ý định",
+      "beatLabel": "nhịp",
+      "beats": "Nhịp",
+      "conflict": "Motif này đã thay đổi ở nơi khác — hãy mở lại để cập nhật bản mới nhất trước khi chỉnh sửa.",
+      "deceived": "người bị lừa (cách nhau bằng dấu phẩy)",
+      "effects": "Hiệu ứng",
+      "emotion": "Cảm xúc",
+      "examples": "Ví dụ (tác giả viết)",
+      "gap": "khoảng cách",
+      "genres": "Thể loại (cách nhau bằng dấu phẩy)",
+      "kind": "Loại",
+      "knows": "người biết (cách nhau bằng dấu phẩy)",
+      "name": "Tên",
+      "preconditions": "Điều kiện tiên quyết",
+      "roleConstraints": "ràng buộc",
+      "roleLabel": "nhãn",
+      "roles": "Vai trò",
+      "saveError": "Không thể lưu.",
+      "saving": "Đang lưu…",
+      "scheme": "Bất đối xứng thông tin",
+      "summary": "Tóm tắt (nhúng để truy xuất)",
+      "tension": "Căng thẳng (1–5)"
+    },
+    "kind": {
+      "arcs": "Mẫu Arc",
+      "label": "Thư viện",
+      "motifs": "Motif"
+    },
+    "lens": {
+      "title": "Motif"
+    },
+    "mine": {
+      "belowGate": "{{n}} ứng cử viên nằm dưới ngưỡng chất lượng.",
+      "bookHint": "Một cuốn sách hiếm khi lặp lại một khuôn mẫu — phạm vi kho dữ liệu sẽ tìm thấy nhiều hơn.",
+      "corpus": "Toàn bộ kho dữ liệu của tôi",
+      "estimating": "Đang ước tính…",
+      "failed": "Khai thác thất bại.",
+      "minSupport": "Hỗ trợ tối thiểu",
+      "minedN": "Đã khai thác được {{n}} bản thảo — hãy xem lại chúng",
+      "model": "Mô hình khai thác",
+      "noCorpus": "Chưa có kho dữ liệu nào được phân tích — hãy trích xuất một cuốn sách trước, sau đó mới khai thác.",
+      "noPatterns": "Không tìm thấy khuôn mẫu lặp lại nào. Hãy thử mở rộng phạm vi kho dữ liệu hoặc giảm mức hỗ trợ tối thiểu.",
+      "quota": "Đã đạt hạn mức khai thác.",
+      "run": "Khai thác",
+      "running": "Đang khai thác…",
+      "scope": "Phạm vi",
+      "thisBook": "Cuốn sách này",
+      "title": "Khai thác mô-típ từ bản thảo của bạn",
+      "what": "Trích xuất các mô hình cốt truyện lặp lại trong kho dữ liệu của bạn thành các mô-típ bản thảo (đo bằng LLM)."
+    },
+    "sync": {
+      "apply": "Lấy {{n}} từ nguồn cấp trên",
+      "applying": "Đang áp dụng…",
+      "available": "Mẫu nguồn cấp trên có bản cập nhật mới.",
+      "conflict": "xung đột — cả hai đều đã chỉnh sửa nội dung này",
+      "error": "Không thể áp dụng việc hợp nhất.",
+      "keepMine": "Giữ lại tất cả bản của tôi",
+      "mine": "của tôi",
+      "noChange": "Bản gốc đã được nâng cấp nhưng không có trường nào có thể hợp nhất thay đổi.",
+      "review": "Xem xét & hợp nhất",
+      "take": "lấy bản gốc",
+      "theirs": "bản gốc",
+      "threeWay": "3 chiều",
+      "title": "Cập nhật từ bản gốc",
+      "twoWay": "2 chiều"
     }
   },
   "authoringRun": {
@@ -1058,7 +1270,14 @@
       "allowlistAdd": "Thêm công cụ…",
       "runGateCheck": "Kiểm tra điều kiện chạy →",
       "gating": "Đang kiểm tra…",
-      "cancel": "Hủy"
+      "cancel": "Hủy",
+      "chaptersEmpty": "Cuốn sách này chưa có chương nào — hãy tạo chúng từ kế hoạch của bạn để bắt đầu viết bản thảo.",
+      "chaptersEmptyCta": "Mở Trình lập kế hoạch để lập kế hoạch trước →",
+      "materialize": "Tạo các chương từ kế hoạch này →",
+      "materializedOk": "Đã tạo {{count}} chương từ kế hoạch của bạn.",
+      "materializing": "Đang tạo các chương…",
+      "modelEmpty": "Hãy thêm một mô hình chat trong Cài đặt → Mô hình để bắt đầu soạn thảo.",
+      "modelLabel": "Mô hình soạn thảo"
     },
     "gate": {
       "title": "Kiểm tra điều kiện",
@@ -1147,5 +1366,390 @@
   "canonUncheckedUnparseable": "mô hình thẩm định không trả về câu trả lời dùng được",
   "canonUncheckedFailed": "bản thân lần kiểm tra bị lỗi",
   "canonUncheckedOther": "lần kiểm tra này không chạy được",
-  "canonUncheckedWhich": "{{count}} mục kiểm tra chưa hoàn tất"
+  "canonUncheckedWhich": "{{count}} mục kiểm tra chưa hoàn tất",
+  "structureTemplates": {
+    "templates": {
+      "save_the_cat": "Save the Cat",
+      "hero_journey": "Hành trình anh hùng",
+      "story_circle": "Vòng tròn câu chuyện",
+      "kishotenketsu": "Kishōtenketsu",
+      "web_novel": "Vòng đời tiểu thuyết mạng",
+      "generic": "Ba hồi (Phổ biến)"
+    },
+    "beats": {
+      "save_the_cat": {
+        "opening_image": {
+          "label": "Hình ảnh mở đầu",
+          "purpose": "Thiết lập bối cảnh và tông giọng cho câu chuyện thông qua một hình ảnh biểu tượng."
+        },
+        "theme_stated": {
+          "label": "Chủ đề được nêu bật",
+          "purpose": "Một nhân vật thường nói ra chủ đề cốt lõi của câu chuyện, gợi ý về thông điệp mà nhân vật chính cần học được."
+        },
+        "setup": {
+          "label": "Thiết lập",
+          "purpose": "Giới thiệu thế giới, các nhân vật và các tình tiết quan trọng trước khi biến cố xảy ra."
+        },
+        "catalyst": {
+          "label": "Chất xúc tác",
+          "purpose": "Sự kiện làm thay đổi cuộc đời nhân vật chính, đẩy họ ra khỏi vùng an toàn."
+        },
+        "debate": {
+          "label": "Tranh luận",
+          "purpose": "Giai đoạn nhân vật phản ứng, nghi ngờ hoặc do dự trước khi quyết định dấn thân vào hành trình mới."
+        },
+        "break_into_two": {
+          "label": "Bước sang hồi hai",
+          "purpose": "Nhân vật chính chính thức rời bỏ thế giới cũ để bước vào cuộc phiêu lưu thực sự."
+        },
+        "b_story": {
+          "label": "Cốt truyện B",
+          "purpose": "Mục đích của tuyến truyện phụ (B-story) là để phát triển mối quan hệ giữa các nhân vật và làm giảm bớt căng thẳng của cốt truyện chính."
+        },
+        "fun_and_games": {
+          "label": "Vui chơi và Trải nghiệm",
+          "purpose": "Đây là phần triển khai các tình tiết thú vị nhất, nơi nhân vật chính bắt đầu khám phá thế giới mới hoặc thực hiện các hành động đặc trưng của thể loại truyện."
+        },
+        "midpoint": {
+          "label": "Điểm giữa",
+          "purpose": "Điểm xoay chuyển quan trọng, nơi rủi ro tăng cao hoặc nhân vật chuyển từ trạng thái phản ứng sang chủ động hành động."
+        },
+        "bad_guys_close_in": {
+          "label": "Kẻ phản diện áp sát",
+          "purpose": "Áp lực tăng dần khi các rào cản và kẻ thù bắt đầu dồn ép nhân vật chính, gây ra sự hỗn loạn hoặc xung đột nội tâm."
+        },
+        "all_is_lost": {
+          "label": "Mất tất cả",
+          "purpose": "Thời điểm tồi tệ nhất, nơi nhân vật chính dường như đã thất bại hoàn toàn và phải đối mặt với sự mất mát lớn nhất."
+        },
+        "dark_night": {
+          "label": "Đêm tối của linh hồn",
+          "purpose": "Giai đoạn trầm lắng sau thất bại, nơi nhân vật phải đối mặt với sự thật nghiệt ngã trước khi tìm thấy tia hy vọng cuối cùng."
+        },
+        "break_into_three": {
+          "label": "Bước ngoặt thứ ba",
+          "purpose": "Nhân vật chính chính thức bước vào cuộc hành trình, đưa ra quyết định thay đổi cuộc đời."
+        },
+        "finale": {
+          "label": "Kết thúc",
+          "purpose": "Nhân vật đối mặt với thử thách cuối cùng và giải quyết mọi xung đột."
+        },
+        "final_image": {
+          "label": "Hình ảnh cuối cùng",
+          "purpose": "Một hình ảnh đối lập với hình ảnh mở đầu, cho thấy sự thay đổi của nhân vật."
+        }
+      },
+      "hero_journey": {
+        "ordinary_world": {
+          "label": "Thế giới bình thường",
+          "purpose": "Giới thiệu cuộc sống bình thường và tính cách của nhân vật chính trước khi biến cố xảy ra."
+        },
+        "call_to_adventure": {
+          "label": "Tiếng gọi lên đường",
+          "purpose": "Một sự kiện hoặc thông điệp phá vỡ sự bình yên, thôi thúc nhân vật dấn thân."
+        },
+        "refusal_of_the_call": {
+          "label": "Từ chối lời mời",
+          "purpose": "Nhân vật do sợ hãi hoặc do do dự mà tạm thời chối bỏ nhiệm vụ."
+        },
+        "meeting_the_mentor": {
+          "label": "Gặp gỡ người hướng dẫn",
+          "purpose": "Nhân vật chính gặp gỡ người hướng dẫn để nhận được sự giúp đỡ hoặc lời khuyên."
+        },
+        "crossing_the_threshold": {
+          "label": "Vượt qua ngưỡng cửa",
+          "purpose": "Nhân vật chính chính thức bước vào thế giới mới, bắt đầu cuộc hành trình thực sự."
+        },
+        "tests_allies_enemies": {
+          "label": "Thử thách, Đồng minh và Kẻ thù",
+          "purpose": "Nhân vật chính đối mặt với các thử thách, gặp gỡ những người bạn mới và những kẻ thù tiềm tàng."
+        },
+        "approach": {
+          "label": "Tiếp cận",
+          "purpose": "Nhân vật chính chuẩn bị cho cuộc đối đầu quan trọng nhất."
+        },
+        "ordeal": {
+          "label": "Thử thách cam go",
+          "purpose": "Nhân vật chính phải đối mặt với nỗi sợ lớn nhất hoặc một cuộc chiến sinh tử."
+        },
+        "reward": {
+          "label": "Phần thưởng",
+          "purpose": "Sau khi vượt qua thử thách, nhân vật chính đạt được mục tiêu hoặc một vật phẩm quý giá."
+        },
+        "the_road_back": {
+          "label": "Con đường trở về",
+          "purpose": "Nhân vật chính quay trở lại thế giới quen thuộc để đối mặt với thử thách cuối cùng."
+        },
+        "resurrection": {
+          "label": "Sự hồi sinh",
+          "purpose": "Một khoảnh khắc thử thách quyết định, nơi nhân vật phải đối mặt với cái chết hoặc sự thay đổi hoàn toàn để được tái sinh."
+        },
+        "return_with_elixir": {
+          "label": "Trở về với thuốc hồi sinh",
+          "purpose": "Nhân vật trở về với một món quà, bài học hoặc sức mạnh mới để giúp đỡ thế giới của mình."
+        }
+      },
+      "story_circle": {
+        "you": {
+          "label": "Bạn",
+          "purpose": "Thiết lập nhân vật chính trong trạng thái bình thường của họ."
+        },
+        "need": {
+          "label": "Nhu cầu",
+          "purpose": "Một sự thiếu hụt hoặc khao khát thúc đẩy nhân vật hành động."
+        },
+        "go": {
+          "label": "Đi",
+          "purpose": "Nhân vật bước vào một môi trường xa lạ để tìm kiếm giải pháp."
+        },
+        "search": {
+          "label": "Tìm kiếm",
+          "purpose": "Tìm kiếm"
+        },
+        "find": {
+          "label": "Tìm",
+          "purpose": "Tìm thấy điều gì đó"
+        },
+        "take": {
+          "label": "Lấy",
+          "purpose": "Trả giá để có được nó"
+        },
+        "return": {
+          "label": "Trở về",
+          "purpose": "Quay trở lại trạng thái cũ"
+        },
+        "change": {
+          "label": "Thay đổi",
+          "purpose": "Trở thành một người khác"
+        }
+      },
+      "kishotenketsu": {
+        "ki": {
+          "label": "Ki",
+          "purpose": "Giới thiệu"
+        },
+        "sho": {
+          "label": "Sho",
+          "purpose": "Giới thiệu bối cảnh và nhân vật chính."
+        },
+        "ten": {
+          "label": "Ten",
+          "purpose": "Tạo ra sự thay đổi hoặc biến cố bất ngờ trong câu chuyện."
+        },
+        "ketsu": {
+          "label": "Ketsu",
+          "purpose": "Giải quyết các mâu thuẫn và đưa câu chuyện về hồi kết."
+        }
+      },
+      "web_novel": {
+        "hook": {
+          "label": "Hook",
+          "purpose": "Thu hút sự chú ý của độc giả ngay lập tức bằng một tình tiết hấp dẫn."
+        },
+        "establishment": {
+          "label": "Establishment",
+          "purpose": "Thiết lập thế giới, bối cảnh và các quy tắc trong truyện."
+        },
+        "rising_conflict": {
+          "label": "Rising Conflict",
+          "purpose": "Xây dựng các xung đột và thử thách ngày càng tăng để đẩy cao trào."
+        },
+        "setback": {
+          "label": "Setback",
+          "purpose": "Tạo ra một bước ngoặt hoặc trở ngại để đẩy cao kịch tính."
+        },
+        "climax": {
+          "label": "Cao trào",
+          "purpose": "Đưa xung đột lên mức cao nhất trước khi giải quyết."
+        },
+        "resolution": {
+          "label": "Giải quyết",
+          "purpose": "Giải quyết các nút thắt và đưa câu chuyện về trạng thái cân bằng mới."
+        }
+      },
+      "generic": {
+        "setup": {
+          "label": "Thiết lập",
+          "purpose": "Giới thiệu bối cảnh, nhân vật và thiết lập tình huống ban đầu."
+        },
+        "confrontation": {
+          "label": "Đối đầu",
+          "purpose": "Xây dựng xung đột và đẩy nhân vật vào các thử thách trực tiếp."
+        },
+        "resolution": {
+          "label": "Giải quyết",
+          "purpose": "Kết thúc các xung đột và đưa ra kết quả cuối cùng cho câu chuyện."
+        }
+      }
+    },
+    "kinds": {
+      "save_the_cat": "Cấu trúc Save the Cat",
+      "hero_journey": "Cấu trúc Hành trình Anh hùng",
+      "story_circle": "Cấu trúc Vòng tròn Câu chuyện",
+      "kishotenketsu": "Cấu trúc Kishōtenketsu",
+      "web_novel": "Cấu trúc Arc Tiểu thuyết mạng",
+      "generic": "Cấu trúc Ba hồi (Phổ biến)"
+    }
+  },
+  "branchdiff": {
+    "allNew": "Hoàn toàn mới (không có bản gốc tương ứng)",
+    "branch": "Dị bản",
+    "canon": "Canon",
+    "chg": "thay đổi",
+    "empty": "Chưa có văn bản khác biệt — mọi cảnh đều kế thừa từ bản gốc. Hãy đưa một bản nháp từ khung 'what-if' lên để xem sự khác biệt tại đây.",
+    "error": "Không thể đọc văn bản của nhánh.",
+    "loading": "Đang đọc văn bản…",
+    "new": "mới",
+    "noProseBody": "Cảnh phân nhánh này chưa có văn bản trong phiên bản what-if — hãy thực hiện một bản nháp trên canvas what-if, sau đó sự khác biệt sẽ hiển thị tại đây.",
+    "noProseTitle": "Chưa được viết",
+    "noSource": "Nhánh này không có nguồn để so sánh sự khác biệt.",
+    "scenes": "{{n}} cảnh bị phân nhánh",
+    "todo": "cần làm",
+    "untitledScene": "cảnh"
+  },
+  "canonBrokenBadge": "{{n}} bị phá vỡ →",
+  "canonConflictDiscard": "Loại bỏ bản của tôi",
+  "canonConflictKeepTheirs": "Giữ bản của họ",
+  "canonConflictReapply": "Áp dụng lại chỉnh sửa của tôi lên v{{v}}",
+  "canonConflictTitle": "Quy tắc này đã thay đổi ở nơi khác — bản thảo của bạn được giữ lại bên dưới.",
+  "canonview": {
+    "active": "{{n}} đang hoạt động",
+    "branchHint": "Những gì chính văn đã biết ngay trước nhánh này",
+    "branchToggle": "Chính văn tại nhánh",
+    "canonState": "Trạng thái chính văn",
+    "chapterN": "chương {{n}}",
+    "countGlossary": "· {{n}} thực thể",
+    "coverage": "xuất hiện trong {{pct}}% số chương",
+    "established": "Đã được xác lập cho đến nay",
+    "events": "{{n}} sự kiện dòng thời gian",
+    "gone": "{{n}} đã mất",
+    "knowledgeUnavailable": "Không thể truy cập trạng thái chính văn — dịch vụ kiến thức không phản hồi.",
+    "loading": "Đang đọc chính văn…",
+    "noChapter": "Không có chương nào đang được chọn — hãy mở một cảnh để kiểm tra chính văn tính đến chương đó.",
+    "noneHere": "Không có thực thể nào được liên kết với chương này.",
+    "notAnalyzed": "Chương này chưa được phân tích — hãy trích xuất cuốn sách để cập nhật dữ liệu canon.",
+    "presence": "Có mặt trong chương này",
+    "srcGlossary": "· thuật ngữ",
+    "srcKnowledge": "· kiến thức",
+    "title": "Canon tính đến",
+    "windowUnavailable": "Vị trí đọc không xác định — không thể hiển thị cửa sổ cho chương này."
+  },
+  "coverageAbandoned": "đã bỏ lỡ {{n}}",
+  "coverageAbsent": "thiếu {{n}}",
+  "coverageClean": "Không có lời hứa nào bị bỏ lỡ — cuốn sách đã giải quyết trọn vẹn các tình tiết đã thiết lập.",
+  "coverageDropped": "Đã hứa nhưng bị bỏ lỡ:",
+  "coverageIntro": "Thông báo — các lời hứa mà đề cương đã thiết lập sẽ được giải quyết xuyên suốt toàn bộ cuốn sách. Chỉ đọc.",
+  "coverageLoading": "Đang phân tích toàn bộ cuốn sách…",
+  "coverageNa": "Không thể hiển thị độ bao phủ lời hứa.",
+  "coverageNoPromises": "Không tìm thấy lời hứa nào có thể theo dõi trong đề cương.",
+  "coveragePaid": "đã trả {{n}}",
+  "coverageProgressing": "đang tiến hành {{n}}",
+  "coverageRerun": "Phân tích lại",
+  "coverageRun": "Phân tích lời hứa cốt truyện",
+  "coverageTitle": "Lời hứa cốt truyện",
+  "divergence": {
+    "active": "đang hoạt động",
+    "addOverride": "Thêm ghi đè",
+    "archive": "Lưu trữ",
+    "archiveConflict": "Đã thay đổi ở nơi khác — đã tải lại.",
+    "archiveFailed": "Không thể lưu trữ — vui lòng thử lại.",
+    "archived": "Đã lưu trữ — các chương và kiến thức đã được giữ lại; mục này đã rời khỏi danh sách.",
+    "branchPoint": "Điểm rẽ nhánh",
+    "branchedAt": "đã rẽ nhánh tại chương {{n}}",
+    "branchedUnknown": "không rõ điểm rẽ nhánh",
+    "canonRules": "Quy tắc chính thống",
+    "canonRulesPlaceholder": "Mỗi quy tắc trên một dòng (ví dụ: Phép thuật không còn tồn tại trong nhánh này).",
+    "canonTag": "chính thống",
+    "canonical": "Chính thống",
+    "canonicalSection": "Chính thống",
+    "chapterN": "chương {{n}}",
+    "editFailed": "Không thể lưu — vui lòng thử lại.",
+    "emptyDerivatives": "Chưa có phiên bản giả định nào. Một phiên bản sẽ tách nhánh cuốn sách của bạn tại một chương và phát triển theo hướng khác — bản gốc vẫn được giữ nguyên là chính văn.",
+    "loading": "Đang tải…",
+    "new": "Nhánh giả định mới",
+    "no": "Không",
+    "noAnchoredEntities": "Chưa có nhân vật nào được neo trong thuật ngữ cho nguồn của nhánh này — hãy neo các thực thể trong thuật ngữ để thiết lập góc nhìn (POV) hoặc thay đổi chúng tại đây.",
+    "noOverrides": "Chưa có thay đổi thực thể nào.",
+    "noPov": "— không có neo POV —",
+    "noWork": "Cuốn sách này chưa có kế hoạch — hãy lập dàn ý cho các phần (arc) và chương trước, sau đó mới tạo nhánh giả định tại đây.",
+    "overrideEntity": "Thực thể cần thay đổi",
+    "overrideNamePlaceholder": "Tên mới trong phiên bản này (tùy chọn)…",
+    "overridePlaceholder": "Thực thể này khác biệt như thế nào (ví dụ: giờ đã trở thành phản diện)…",
+    "overrideRemoved": "Đã xóa thay đổi.",
+    "overrides": "Ghi đè",
+    "pickEntity": "Ghi đè thực thể khác…",
+    "povAnchor": "Điểm neo POV",
+    "remove": "Xóa",
+    "removeConfirm": "Xóa?",
+    "rename": "Đổi tên",
+    "renameConflict": "Đã thay đổi ở nơi khác — vui lòng tải lại và thử lại.",
+    "renameFailed": "Không thể đổi tên — vui lòng thử lại.",
+    "renamePlaceholder": "Tên giả định (1–200 ký tự)",
+    "renameTitle": "Đổi tên giả định này",
+    "renamed": "Đã đổi tên.",
+    "restoreFailed": "Không thể khôi phục — thực thể có thể đã thay đổi ở nơi khác.",
+    "restored": "Đã khôi phục vào danh sách.",
+    "save": "Lưu",
+    "saveRules": "Lưu quy tắc",
+    "saving": "Đang lưu…",
+    "specError": "Không thể tải thông số nhánh — hãy thử chọn lại.",
+    "specLoading": "Đang tải thông số…",
+    "switchFailed": "Không thể chuyển đổi — hãy thử lại.",
+    "switchTo": "Chuyển sang",
+    "tabDiff": "Khác biệt",
+    "tabSpec": "Thông số",
+    "taxonomy": "Phân loại",
+    "title": "Các phiên bản giả định",
+    "unavailable": "Dịch vụ biên soạn hiện không khả dụng — vui lòng thử lại sau ít phút.",
+    "undo": "Hoàn tác",
+    "undoFailed": "Không thể khôi phục thay đổi.",
+    "undoSuperseded": "Đã có một thay đổi mới hơn cho thực thể này — không có gì để khôi phục.",
+    "unnamed": "Phiên bản chưa đặt tên",
+    "yes": "Có"
+  },
+  "mark": {
+    "action": "Đánh dấu lỗi",
+    "cancel": "Hủy",
+    "duplicate": "Bạn đã đánh dấu đoạn văn này bằng ghi chú đó rồi.",
+    "failed": "Không thể lưu đánh dấu. Vui lòng thử lại.",
+    "kind": "Loại lỗi là gì",
+    "no_selection": "Hãy chọn đoạn văn bị lỗi trước khi đánh dấu.",
+    "note": "Đoạn văn này có vấn đề gì?",
+    "note_ph": "ví dụ: cô ấy đã chết ở chương 3…",
+    "note_required": "Hãy nêu rõ vấn đề — ghi chú này là căn cứ để người viết cùng thực hiện.",
+    "save": "Đánh dấu",
+    "saved": "Đã đánh dấu — người viết cùng có thể xem nội dung này."
+  },
+  "polishAll": "tất cả",
+  "polishAllDet": "tất cả các lỗi xác định",
+  "polishApply": "Áp dụng {{count}} mục đã chọn",
+  "polishClean": "Không tìm thấy lỗi — văn phong rất mượt mà.",
+  "polishClear": "xóa",
+  "polishDeterministic": "tự động",
+  "polishIntro": "Hãy xem lại các đề xuất chỉnh sửa trước khi áp dụng vào bản thảo. Các chỉnh sửa mang tính xác định (đại từ, lỗi đánh máy) đã được chọn sẵn; các chỉnh sửa về ngữ nghĩa sẽ được để trống để bạn tự đánh giá.",
+  "polishLoading": "Đang phân tích…",
+  "polishNoModel": "Vui lòng chọn một mô hình trước.",
+  "polishRerank": "tự động đánh dấu (AI, tốn phí hơn)",
+  "polishRerankHint": "Sử dụng thêm một lượt gọi AI cho mỗi lần chỉnh sửa để tự động đánh dấu các nội dung tốt (chậm hơn, tốn phí hơn).",
+  "polishRerun": "Chạy lại việc trau chuốt",
+  "polishRun": "Chạy trau chuốt",
+  "polishSemantic": "ngữ nghĩa",
+  "polishStats": "{{edits}} lần chỉnh sửa · {{refuted}} bị loại bởi xác minh",
+  "polishUnplaced": "Không tìm thấy {{count}} lỗi trong văn bản này — hiển thị bên dưới, chưa được khắc phục.",
+  "polishUnplacedNoQuote": "(không có văn bản trong ngoặc kép)",
+  "qualityCriticNa": "Trình phê bình không khả dụng.",
+  "qualityHasFix": "đề xuất chỉnh sửa ↓",
+  "qualityIntro": "Chỉ mang tính chất tham khảo — cách chương này được chấm điểm và những gì nó hứa hẹn nhưng không thực hiện được. Nội dung này không làm thay đổi văn phong của bạn.",
+  "qualityLoading": "Đang phân tích…",
+  "qualityNoThreads": "Không có tình tiết mới nào được khơi gợi trong chương này.",
+  "qualityRerun": "Phân tích lại",
+  "qualityRun": "Phân tích chất lượng",
+  "qualityThreadsNa": "Không thể kiểm tra tình tiết.",
+  "qualityThreadsRaised": "Có {{n}} tình tiết được khơi gợi trong chương này:",
+  "qualityThreadsResolved": "{{r}} đã được giải quyết tại đây",
+  "qualityTitle": "Báo cáo chất lượng",
+  "resolveWorkFailed": "Dịch vụ tri thức không khả dụng — không thể hoàn tất thiết lập dữ liệu nền.",
+  "resolvingWork": "Đang hoàn tất thiết lập… dịch vụ tri thức vừa tạm thời không khả dụng.",
+  "retry": "Thử lại",
+  "threadFocusMissing": "Chủ đề bạn đang theo dõi không có trong chế độ xem này — có thể nó đã được thanh toán. Hãy chuyển bộ lọc sang “tất cả”."
 }

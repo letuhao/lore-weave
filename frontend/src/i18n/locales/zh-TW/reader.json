@@ -43,8 +43,8 @@
         "desc": "溫暖的紙張色調"
       },
       "oled": {
-        "desc": "適合 OLED 螢幕的純黑",
-        "name": "OLED"
+        "name": "OLED",
+        "desc": "適合 OLED 螢幕的純黑"
       },
       "parchment": {
         "name": "羊皮紙",
@@ -69,9 +69,9 @@
   "tts": {
     "source": {
       "attached": "附加",
+      "ai": "AI 語音合成",
       "browser": "瀏覽器",
-      "inline": "音訊",
-      "ai": "AI 語音合成"
+      "inline": "音訊"
     },
     "prev_block": "上一個區塊 (Shift+Left)",
     "play": "播放 (Space)",
@@ -105,10 +105,10 @@
   "audio": {
     "source": {
       "attached": "附加",
+      "ai": "AI 語音合成",
       "browser": "瀏覽器",
       "inline": "音訊區塊",
-      "none": "無",
-      "ai": "AI 語音合成"
+      "none": "無"
     },
     "coverage": "音訊涵蓋範圍",
     "summary": "{{speakable}} 個可朗讀區塊 · {{missing}} 個使用瀏覽器 TTS",
@@ -142,5 +142,8 @@
       "kg": "知識",
       "passage": "段落"
     }
+  },
+  "lore": {
+    "heading": "目前的世界觀設定"
   }
 }

@@ -42,7 +42,9 @@
     "startTranslate": "Çeviriyi Başlat",
     "startFailed": "Çeviri işi başlatılamadı",
     "thinkingOn": "Düşünme: açık",
-    "thinkingOff": "Düşünme: kapalı"
+    "thinkingOff": "Düşünme: kapalı",
+    "concurrency": "Paralel LLM çağrıları",
+    "concurrencyHint": "1 = sıralı. Modeliniz eşzamanlı istekleri işleyebiliyorsa bu değeri artırın."
   },
   "progress": {
     "title": "Sözlük Çevriliyor",

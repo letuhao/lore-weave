@@ -111,6 +111,7 @@
     "receiving": "受信中...",
     "error": "エラー",
     "you": "あなた",
+    "ai": "AI",
     "thinking": "考え中...",
     "startSpeaking": "話し始めてください...",
     "cancel": "キャンセル",
@@ -139,8 +140,7 @@
     "presetNormalDesc": "バランス（デフォルト）",
     "presetPatientDesc": "長めに待つ、ゆっくり話す人向け",
     "presetLearnerDesc": "長い間を許容、語学練習向け",
-    "audioRetention": "音声は再生のため48時間保存され、その後自動削除されます。",
-    "ai": "AI"
+    "audioRetention": "音声は再生のため48時間保存され、その後自動削除されます。"
   },
   "theme_name": {
     "dark": "ダーク",
@@ -172,5 +172,10 @@
     "saved": "モデルの並び順を保存しました",
     "saveFailed": "並び順の保存に失敗しました。",
     "loadFailed": "モデルの読み込みに失敗しました。"
+  },
+  "errorBoundary": {
+    "title": "このページを表示できません",
+    "description": "インターフェースエラーが発生しました。エラー内容は診断ログに保存されました。もう一度操作をお試しください。",
+    "retry": "再試行"
   }
 }

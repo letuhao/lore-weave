@@ -49,6 +49,45 @@
     "lossChange": {
       "removed_upstream": "kaldırıldı",
       "modified": "üzerine yazıldı"
+    },
+    "templates": {
+      "general": {
+        "name": "Genel (eski ontoloji)",
+        "description": "Orijinal genel çıkarma ontolojisini — öncelikli eklemeli güvenlik ağını — yeniden üretir."
+      },
+      "general-legacy": {
+        "name": "Genel (eski ontoloji)",
+        "description": "Orijinal genel çıkarma ontolojisini — öncelikli eklemeli güvenlik ağını — yeniden üretir."
+      },
+      "xianxia-harem": {
+        "name": "Xianxia · Harem",
+        "description": "Özenle seçilmiş varlık ve ilişki türlerine sahip gelişim (cultivation) ve harem romanları için tür şablonu."
+      },
+      "fantasy": {
+        "name": "Fantastik",
+        "description": "Karakterler, yerler, organizasyonlar, türler, eşyalar, güçler ve teknikler içeren fantastik dünya şeması."
+      },
+      "romance": {
+        "name": "Romantik",
+        "description": "Karakterler, ilişkiler, olay örgüsü arkları, klişeler ve sosyal ortamlar içeren ilişki merkezli şema."
+      },
+      "drama": {
+        "name": "Dram",
+        "description": "Karakterler, çatışmalar, ilişkiler, organizasyonlar, olaylar ve olay örgüsü arkları için dram şeması."
+      },
+      "historical": {
+        "name": "Tarihsel",
+        "description": "Kişiler, yerler, kurumlar, olaylar, terminoloji ve toplumsal düzen için tarihsel kurgu şeması."
+      },
+      "mystery": {
+        "name": "Gizem",
+        "description": "Karakterler, ipuçları, nesneler, organizasyonlar, olaylar, olay örgüsü arkları ve klişeler için inceleme şeması."
+      }
+    },
+    "scope": {
+      "system": "sistem",
+      "user": "Kullanıcı",
+      "project": "Proje"
     }
   },
   "schema": {

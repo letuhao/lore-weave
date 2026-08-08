@@ -1,0 +1,96 @@
+{
+  "title": "聊天与 AI",
+  "description": "您的聊天与写作工作室默认设置，尽在掌握。每一行都显示了其生效值及其来源；会话和工作室工具会继承这些默认设置，并可能对其进行覆盖。",
+  "models": {
+    "title": "模型",
+    "resolved": "当前已解析",
+    "chat": "聊天与草拟",
+    "composer": "散文创作",
+    "planner": "规划器",
+    "embedding": "嵌入",
+    "rerank": "重排序"
+  },
+  "behavior": {
+    "title": "行为",
+    "description": "这些设置此前是静默应用的。现在它们已变为可见且可编辑；留空表示使用系统默认值。",
+    "reasoning": {
+      "label": "推理力度",
+      "off": "关闭",
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    },
+    "permission": {
+      "label": "工具权限",
+      "ask": "询问",
+      "plan": "规划",
+      "write": "写入",
+      "hint": "助手在无需询问的情况下可以执行的操作程度。默认设置为“写入”。"
+    },
+    "temperature": {
+      "label": "温度",
+      "placeholder": "供应商默认值"
+    },
+    "systemPrompt": {
+      "label": "系统提示词",
+      "placeholder": "默认角色指令（留空 = 无）"
+    }
+  },
+  "grounding": {
+    "title": "事实依据与记忆",
+    "label": "基于我的故事进行回答",
+    "description": "在每个回答中包含设定实体、事实和原稿片段。此功能默认开启，可手动关闭。",
+    "offWarning": "事实依据功能已关闭 —— 助手无法访问您的故事设定集，可能会虚构设定。请开启此功能以获得准确回答。"
+  },
+  "context": {
+    "title": "上下文管理",
+    "description": "助手如何管理超长对话的记忆预算。大多数用户应保持“自动”状态。",
+    "label": "长篇创作上下文模式",
+    "auto": "自动",
+    "on": "始终开启",
+    "off": "关闭",
+    "hint": "“自动”仅在项目需要时启用长篇创作层级。“关闭”则保持最简路径。"
+  },
+  "voice": {
+    "title": "语音",
+    "description": "用于聊天的语音输入与输出。这些设置将保存到您的账户，并应用于语音消息。",
+    "ttsModel": "语音输出模型 (TTS)",
+    "sttModel": "语音输入模型 (STT)",
+    "voice": "语音",
+    "placeholder": "例如：af_heart",
+    "hint": "语音与其模型绑定 —— 请选择您的 TTS 模型所支持的语音。"
+  },
+  "tiers": {
+    "session": {
+      "label": "本次聊天",
+      "title": "应用于本次聊天 —— 将覆盖您的账户和书籍默认设置。"
+    },
+    "book": {
+      "label": "本书",
+      "title": "继承自本书设置。"
+    },
+    "account": {
+      "label": "您的默认设置",
+      "title": "继承自您的账户默认设置。"
+    },
+    "system": {
+      "label": "默认",
+      "title": "系统默认。"
+    },
+    "unavailable": {
+      "label": "不可用",
+      "title": "无法连接到所属层级。"
+    },
+    "no_model_configured": {
+      "label": "未设置",
+      "title": "未配置实时模型。"
+    }
+  },
+  "clear": {
+    "default": "默认",
+    "on": "开启",
+    "off": "关闭",
+    "action": "清除",
+    "inherit": "继承"
+  }
+}

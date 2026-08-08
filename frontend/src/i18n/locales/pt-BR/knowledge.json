@@ -517,11 +517,32 @@
       "discoveredHint": "Novas entidades começam como 'descobertas'. O status canônico é obtido ao ancorar ao glossário."
     },
     "kind": {
+      "unknown": "Tipo desconhecido",
+      "person": "Pessoa",
+      "artifact": "Artefato",
       "character": "Personagem",
       "location": "Local",
       "organization": "Organização",
       "concept": "Conceito",
-      "item": "Item"
+      "item": "Item",
+      "event_ref": "Evento",
+      "preference": "Preferência",
+      "event": "Evento",
+      "terminology": "Terminologia",
+      "power_system": "Sistema de poder",
+      "species": "Espécie",
+      "relationship": "Relacionamento",
+      "plot_arc": "Arco do enredo",
+      "social_setting": "Cenário social",
+      "trope": "Clichê",
+      "technique": "Técnica",
+      "colleague": "Colega",
+      "decision": "Decisão",
+      "jargon": "Jargão",
+      "meeting": "Reunião",
+      "org": "Organização",
+      "project": "Projeto",
+      "task": "Tarefa"
     },
     "archive": {
       "action": "Arquivar",
@@ -707,7 +728,28 @@
         "errorAlreadyRunning": "Um benchmark já está em execução para este projeto. Aguarde e tente novamente.",
         "errorProviderFlake": "O provedor de embedding falhou durante a execução. Tente novamente.",
         "errorGeneric": "Falha no benchmark: {{message}}"
-      }
+      },
+      "benchmarkNoRun": "⋯ Nenhum benchmark ainda — execute o benchmark do conjunto de ouro para habilitar a extração.",
+      "bookIdLocked": "Este livro (bloqueado)",
+      "canonCapture": "Captura automática de novos nomes do chat",
+      "canonCaptureCeilingOff": "Desativado para esta implantação — sua escolha foi salva, mas a captura não será executada até que um administrador a reative.",
+      "canonCaptureHint": "A cada poucos turnos, os nomes introduzidos em sua conversa são adicionados à caixa de entrada de revisão do glossário deste livro como sugestões — nunca como cânone. Utiliza uma chamada extra de IA por captura, cobrada em seu próprio modelo.",
+      "canonCaptureNoBook": "Vincule um livro a este projeto para capturar nomes em seu glossário.",
+      "embeddingModel": "Modelo de embedding",
+      "embeddingModelEmpty": "Nenhum modelo com capacidade de embedding configurado — a extração requer um.",
+      "embeddingModelHint": "Define qual espaço vetorial este projeto utiliza para a recuperação semântica de passagens.",
+      "embeddingModelNone": "Nenhum (sem passagens semânticas)",
+      "genre": "Gênero",
+      "genrePlaceholder": "ex. Tiên hiệp, Cultivação, Fantasia…",
+      "memoryConfirm": "Confirmar antes de salvar memórias",
+      "memoryConfirmHint": "Fatos que a IA deseja lembrar aguardam sua aprovação em vez de serem salvos automaticamente.",
+      "rerankDiscoveryHint": "Hospedagem própria? Adicione uma credencial de rerank local (compatível com Cohere) em Modelos de IA e, em seguida, clique em Atualizar — modelos de rerank são descobertos automaticamente.",
+      "rerankModel": "Modelo de rerank (opcional)",
+      "rerankModelEmpty": "Nenhum modelo capaz de rerank configurado. Registre um para habilitar a rejeição de lixo.",
+      "rerankModelHint": "Cross-encoder rerank para rejeição de lixo em buscas brutas. Opcional — se deixado vazio, a busca mantém a ordem de fusão.",
+      "rerankModelNone": "Nenhum (pular rerank — manter ordem de fusão)",
+      "toolCalling": "Ferramentas de memória no chat",
+      "toolCallingHint": "Permita que a IA pesquise, recupere e anote memórias enquanto conversa neste projeto."
     },
     "archiveDialog": {
       "title": "Arquivar projeto?",
@@ -910,6 +952,32 @@
         "unpin": "Desfixar",
         "budget": "+{{tokens}} tokens por janela ({{count}} fixados × ~50).",
         "noBook": "A fixação requer um livro vinculado. Primeiro, anexe um livro a este projeto."
+      },
+      "disabled": {
+        "benchmarkRequired": "Execute o benchmark do conjunto de ouro (golden-set) e passe nele para habilitar a extração (acima).",
+        "checkingBenchmark": "Verificando o benchmark de embedding...",
+        "fixConcurrency": "As chamadas paralelas devem estar entre 1 e 64.",
+        "fixMaxSpend": "Insira um limite de gastos válido.",
+        "fixRange": "Corrija o intervalo de capítulos.",
+        "pickEmbedding": "Selecione um modelo de embedding.",
+        "pickLlm": "Selecione um modelo de LLM para extração."
+      },
+      "embedding": {
+        "changeViaDialog": "Este projeto já possui um modelo de embedding. Use «Alterar modelo» para trocá-lo — isso recriará o grafo.",
+        "saveFailed": "Não foi possível salvar o modelo de embedding: {{error}}",
+        "saved": "Modelo de embedding salvo — execute o benchmark abaixo para habilitar a extração."
+      },
+      "prereq": {
+        "benchmarkChecking": "Verificando o benchmark de embedding...",
+        "benchmarkPassed": "Benchmark de embedding aprovado",
+        "benchmarkPending": "Benchmark de embedding pendente (selecione um modelo primeiro)",
+        "benchmarkRequired": "Benchmark de embedding necessário — execute-o no seletor de modelos abaixo",
+        "embedding": "Modelo de embedding selecionado",
+        "llm": "Modelo LLM de extração selecionado"
+      },
+      "reasoning": {
+        "hint": "Desativado por padrão — a extração retorna JSON, e o pensamento oculto pode consumir o orçamento de saída. Ative apenas para conteúdos complexos em um modelo de raciocínio.",
+        "label": "Ativar raciocínio do modelo (pensamento)"
       }
     },
     "errorViewer": {
@@ -973,7 +1041,10 @@
       "saving": "Salvando…",
       "cancel": "Cancelar",
       "saved": "Configurações de extração salvas.",
-      "failed": "Falha ao salvar: {{error}}"
+      "failed": "Falha ao salvar: {{error}}",
+      "filterModel": "Modelo de filtragem (opcional)",
+      "filterModelDefault": "Usar o modelo de extração (padrão)",
+      "filterModelHint": "LLM que avalia a precisão da relação. Se deixado como padrão, o filtro reutiliza seu modelo de extração (por usuário, BYOK). Escolha um modelo mais forte para uma filtragem de maior precisão."
     },
     "confirmDestructive": {
       "cancel": "Cancelar",
@@ -988,7 +1059,9 @@
       },
       "rebuildStep2": {
         "title": "Última chance — reconstruir mesmo assim?",
-        "description": "Clicar em Reconstruir agora iniciará a destruição e reconstrução. Não há como desfazer uma vez que o novo trabalho esteja em execução."
+        "description": "Clicar em Reconstruir agora iniciará a destruição e reconstrução. Não há como desfazer uma vez que o novo trabalho esteja em execução.",
+        "descriptionCount": "Isso EXCLUIRÁ permanentemente {{entities}} entidades, {{events}} eventos e {{facts}} fatos, e então reconstruirá tudo do zero. Esta ação não pode ser desfeita.",
+        "typePrompt": "Digite o nome do projeto para confirmar"
       },
       "disable": {
         "title": "Desativar extração?",
@@ -1082,7 +1155,8 @@
       },
       "diffToggle": "Mostrar diferença vs atual",
       "diffEmpty": "Sem diferenças."
-    }
+    },
+    "loading": "Carregando…"
   },
   "indicator": {
     "label": "Indicador de conhecimento",
@@ -1090,7 +1164,8 @@
     "modes": {
       "global": "Global",
       "project": "Projeto",
-      "degraded": "Degradado"
+      "degraded": "Degradado",
+      "multi": "{{count}} grafos de conhecimento"
     },
     "popover": {
       "projectHeading": "Memória do projeto",
@@ -1100,7 +1175,8 @@
       "projectBody": "Esta sessão está vinculada a <strong>{{name}}</strong>. A IA vê sua bio global, além do resumo do projeto e as entradas do glossário em cada turno.",
       "globalBody": "Esta sessão não possui nenhum projeto vinculado. A IA vê apenas sua bio global. Vincule um projeto nas configurações da sessão para dar a ela acesso à memória específica do livro.",
       "degradedBody": "O serviço de conhecimento não pôde ser alcançado no último turno. A IA utilizou apenas as mensagens recentes — sua memória de projeto não está temporariamente no prompt. A recuperação será automática no próximo turno assim que o serviço retornar.",
-      "manage": "Gerenciar conhecimento"
+      "manage": "Gerenciar conhecimento",
+      "multiBody": "Este chat é baseado em {{count}} grafos de conhecimento simultaneamente — os fatos são marcados com suas respectivas fontes."
     }
   },
   "picker": {
@@ -1312,5 +1388,21 @@
       "confirm": "Mapear"
     },
     "emptyHint": "A Triage coleta qualquer dado extraído que ainda não se encaixe no seu esquema — uma fila limpa significa que tudo está organizado."
+  },
+  "temporal": {
+    "canonical": {
+      "asOfChapter": "Conforme o capítulo {{ordinal}}"
+    },
+    "retrieval": {
+      "chapter": "Capítulo {{chapter}}"
+    },
+    "slider": {
+      "atChapter": "Capítulo {{ordinal}}"
+    },
+    "translation": {
+      "asOfChapter": "capítulo {{n}}",
+      "asOfLabel": "até {{label}}",
+      "error": "Falha ao carregar o contexto: {{error}}"
+    }
   }
 }

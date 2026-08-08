@@ -43,8 +43,8 @@
         "desc": "โทนสีกระดาษเก่า"
       },
       "oled": {
-        "desc": "สีดำสนิทสำหรับหน้าจอ OLED",
-        "name": "OLED"
+        "name": "OLED",
+        "desc": "สีดำสนิทสำหรับหน้าจอ OLED"
       },
       "parchment": {
         "name": "กระดาษหนัง",
@@ -69,9 +69,9 @@
   "tts": {
     "source": {
       "attached": "แนบมาแล้ว",
+      "ai": "AI TTS",
       "browser": "เบราว์เซอร์",
-      "inline": "เสียงในตัว",
-      "ai": "AI TTS"
+      "inline": "เสียงในตัว"
     },
     "prev_block": "บล็อกก่อนหน้า (Shift+ซ้าย)",
     "play": "เล่น (Space)",
@@ -105,10 +105,10 @@
   "audio": {
     "source": {
       "attached": "แนบมาแล้ว",
+      "ai": "AI TTS",
       "browser": "เบราว์เซอร์",
       "inline": "บล็อกเสียง",
-      "none": "ไม่มี",
-      "ai": "AI TTS"
+      "none": "ไม่มี"
     },
     "coverage": "ความครอบคลุมของเสียง",
     "summary": "{{speakable}} บล็อกที่อ่านได้ · {{missing}} ใช้เบราว์เซอร์ TTS",
@@ -142,5 +142,8 @@
       "kg": "ฐานความรู้",
       "passage": "ข้อความต้นฉบับ"
     }
+  },
+  "lore": {
+    "heading": "ข้อมูลเบื้องต้นที่ผ่านมา"
   }
 }

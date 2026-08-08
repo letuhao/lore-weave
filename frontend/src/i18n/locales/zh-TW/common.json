@@ -111,6 +111,7 @@
     "receiving": "接收中...",
     "error": "錯誤",
     "you": "你",
+    "ai": "AI",
     "thinking": "思考中...",
     "startSpeaking": "開始說話...",
     "cancel": "取消",
@@ -139,8 +140,7 @@
     "presetNormalDesc": "平衡（預設）",
     "presetPatientDesc": "等待較久，適合慢速說話者",
     "presetLearnerDesc": "允許長停頓，適合語言練習",
-    "audioRetention": "語音音訊保存 48 小時供重播，之後自動刪除。",
-    "ai": "AI"
+    "audioRetention": "語音音訊保存 48 小時供重播，之後自動刪除。"
   },
   "theme_name": {
     "dark": "深色",
@@ -172,5 +172,10 @@
     "saved": "已儲存模型排序",
     "saveFailed": "無法儲存排序。",
     "loadFailed": "無法載入模型清單。"
+  },
+  "errorBoundary": {
+    "title": "無法顯示此頁面",
+    "description": "發生介面錯誤。錯誤已儲存至診斷日誌；請再試一次。",
+    "retry": "再試一次"
   }
 }

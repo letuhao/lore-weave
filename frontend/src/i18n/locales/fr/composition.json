@@ -154,7 +154,14 @@
     "promoted": "Promu en tant que variante 'Et si...'.",
     "promotedPartial": "Promu, mais {{n}} prise(s) n'ont pas pu être ajoutée(s).",
     "promotedProsePartial": "Promu, mais la prose de {{n}} prise(s) n'a pas pu être sauvegardée — repromouvez pour réessayer.",
-    "promoteHint": "Générez au moins une prise pour pouvoir promouvoir"
+    "promoteHint": "Générez au moins une prise pour pouvoir promouvoir",
+    "vsCanon": {
+      "absoluteHint": "Prendre les scores (aucune base canonique pour comparaison)",
+      "judging": "· vs canon…",
+      "noBaseline": "· aucune base canonique",
+      "take": "prendre",
+      "vs": "vs canon"
+    }
   },
   "cast": "Distribution",
   "codex": {
@@ -261,7 +268,8 @@
     "linkMissing": "L'un de ces lieux n'existe plus.",
     "delete": "Supprimer {{name}}",
     "deleteConfirm": "Supprimer « {{name}} » de la carte du monde ? Cela archivera le lieu.",
-    "deleteFailed": "Impossible de supprimer le lieu."
+    "deleteFailed": "Impossible de supprimer le lieu.",
+    "backdropNoChapter": "Ouvrez un chapitre pour définir une toile de fond."
   },
   "grounding": "Ancrage",
   "canon": "Canon",
@@ -346,7 +354,21 @@
     "noHits": "Aucune référence correspondante pour le moment.",
     "library": "Bibliothèque",
     "delete": "Supprimer",
-    "empty": "Aucune référence pour le moment — ajoutez des influences ci-dessus."
+    "empty": "Aucune référence pour le moment — ajoutez des influences ci-dessus.",
+    "addEmbedModel": "Ajouter un modèle de plongement",
+    "content": "Contenu",
+    "contentRecomputes": "L'enregistrement du contenu recalcule le plongement de cette référence.",
+    "deleteBody": "Ceci la retire de l'étagère. Cette action est irréversible.",
+    "deleteTitle": "Supprimer cette référence ?",
+    "done": "Terminé",
+    "edit": "Modifier",
+    "filter": "Filtrer…",
+    "noMatch": "Aucune référence ne correspond à votre filtre.",
+    "reembedding": "Ré-intégration…",
+    "saveContent": "Enregistrer le contenu (ré-intègre)",
+    "saveMetadata": "Enregistrer les détails",
+    "saving": "Enregistrement…",
+    "sourceUrl": "URL de la source (optionnel)"
   },
   "progressPanel": {
     "loading": "Chargement de la progression…",
@@ -363,7 +385,8 @@
     "words": "mots",
     "goalPlaceholder": "mots/jour",
     "setGoal": "Définir l'objectif",
-    "goalHint": "0 pour effacer l'objectif"
+    "goalHint": "0 pour effacer l'objectif",
+    "goalLegacy": "Cet objectif provient des paramètres partagés du livre — le définir le rendra personnel."
   },
   "workSettings": {
     "defaultModel": "Modèle de rédaction par défaut",
@@ -375,7 +398,11 @@
     "chapter": "Chapitre (passe unique)",
     "narrativeThread": "Suivre les fils narratifs (promesses et indices)",
     "narrativeThreadHint": "Conseil : détecte les promesses en suspens et les réinjecte pour que la génération les respecte ; affiche les promesses non tenues comme une dette. Optionnel.",
-    "saveError": "Impossible d'enregistrer les paramètres — réessayez."
+    "saveError": "Impossible d'enregistrer les paramètres — réessayez.",
+    "criticModel": "Modèle critique (juge indépendant)",
+    "criticModelHint": "Un modèle DIFFÉRENT évalue chaque brouillon par rapport à votre canon et peut bloquer un chapitre qui le contredit. Sans cela, rien ne vérifie la prose de manière indépendante — un modèle ne peut pas évaluer son propre travail.",
+    "criticSameAsDrafter": "Il s'agit du même modèle qui rédige la prose, il évaluerait donc son propre travail — le serveur refusera l'opération et sautera la critique. Choisissez un modèle différent.",
+    "noCritic": "Pas de critique — les brouillons ne sont pas évalués de manière indépendante"
   },
   "loadingStats": "Chargement des statistiques...",
   "statsUnavailable": "Statistiques de qualité indisponibles.",
@@ -489,6 +516,8 @@
     "tension": "Tension",
     "cast": "Distribution",
     "beat_role": "Rôle de la séquence",
+    "beat_label": "Battement",
+    "inactive_cast": "L'entité est inactive",
     "add_cast": "ajouter la distribution",
     "remove_cast": "Retirer {{name}}",
     "resolve": "Ajouter {{name}} à la distribution",
@@ -509,7 +538,23 @@
     "err_no_chapters": "Ce livre n'a pas encore de chapitres — créez des chapitres avant de planifier.",
     "err_too_many_chapters": "Trop de chapitres pour une planification simultanée.",
     "err_bad_entity": "Certains membres de la distribution des scènes ne sont pas dans le glossaire de ce livre.",
-    "err_bad_chapter": "Un chapitre du plan ne fait pas partie de ce livre."
+    "err_bad_chapter": "Un chapitre du plan ne fait pas partie de ce livre.",
+    "add_template": "Ajouter un modèle",
+    "create_template_title": "Nouveau modèle de structure",
+    "template_name": "Nom",
+    "template_name_placeholder": "Par exemple, Le voyage du héros",
+    "template_kind": "Type",
+    "template_beats": "Battements (un par ligne)",
+    "template_beats_placeholder": "Mise en place\nPoint de bascule\nClimax",
+    "template_create": "Créer le modèle",
+    "template_creating": "Création…",
+    "template_create_error": "Impossible de créer le modèle",
+    "close": "Fermer",
+    "chapter_scope": "Portée",
+    "all_chapters": "Tous les chapitres",
+    "recreate_current": "Recréer le chapitre actuel",
+    "recreate_all": "Recréer tous les chapitres",
+    "done": "Terminé"
   },
   "threads": "Fils conducteurs",
   "threadsTitle": "Fils de l'intrigue",
@@ -656,13 +701,16 @@
     "overuse": "\"{{name}}\" est déjà utilisé dans {{chapters}} — essayez de varier.",
     "list": {
       "noMatch": "Aucun motif ne correspond — effacez les filtres.",
-      "truncated": "Affichage des 100 premiers — affinez avec la recherche ou les filtres pour voir le reste."
+      "truncated": "Affichage des 100 premiers — affinez avec la recherche ou les filtres pour voir le reste.",
+      "loadMore": "Charger plus",
+      "loadingMore": "Chargement…"
     },
     "error": {
       "load": "Impossible de charger — veuillez réessayer."
     },
     "permission": {
-      "readOnly": "Ceci est un modèle partagé — clonez-le pour créer votre propre copie modifiable."
+      "readOnly": "Ceci est un modèle partagé — clonez-le pour créer votre propre copie modifiable.",
+      "noSession": "L'édition est indisponible jusqu'au rechargement de votre session."
     },
     "action": {
       "open": "Ouvrir",
@@ -673,11 +721,19 @@
       "cancel": "Annuler",
       "retry": "Réessayer",
       "swap": "Échanger",
-      "clear": "Libre"
+      "clear": "Libre",
+      "bind": "Lier le motif",
+      "discard": "Abandonner",
+      "edit": "Modifier",
+      "mine": "Extraire",
+      "promote": "Promouvoir",
+      "restore": "Restaurer",
+      "save": "Enregistrer"
     },
     "card": {
       "draft": "Brouillon extrait",
-      "tension": "Intensité"
+      "tension": "Intensité",
+      "shared": "Partagé"
     },
     "empty": {
       "title": "Votre bibliothèque de motifs est prête",
@@ -725,7 +781,13 @@
       "toUser": "Ma bibliothèque",
       "whatItDoes": "Copier ce motif dans votre bibliothèque (un clone privé et modifiable).",
       "continue": "Continuer",
-      "estimating": "Estimation…"
+      "estimating": "Estimation…",
+      "bodyUser": "L'adoption crée une copie privée et modifiable dans votre bibliothèque.",
+      "sharedHint": "Toute personne ayant accès à ce livre peut voir et modifier ce motif.",
+      "targetBook": "Ce livre (privé)",
+      "targetBookShared": "Partager avec les collaborateurs",
+      "targetLegend": "Ajouter à",
+      "targetUser": "Ma bibliothèque"
     },
     "quota": {
       "adopt": "Vous avez adopté {{used}}/{{limit}} cette période — archivez-en certains ou attendez."
@@ -752,7 +814,10 @@
     "binding": {
       "freeForm": "Aucun motif ne correspond — cette scène est libre.",
       "commitGenerate": "Valider + écrire cette scène →",
-      "noWork": "Créez un plan pour ce livre afin de lier les motifs à ses scènes."
+      "noWork": "Créez un plan pour ce livre afin de lier les motifs à ses scènes.",
+      "committedTitle": "Lier les motifs de scène",
+      "loadError": "Impossible de charger les motifs de scène.",
+      "sectionTitle": "Motifs de scène"
     },
     "swap": {
       "title": "Échanger le motif",
@@ -777,7 +842,13 @@
         "warn": "Dérive de tension",
         "bad": "Battement manqué"
       },
-      "rerunNeedsModel": "Choisissez un modèle pour relancer la conformité"
+      "rerunNeedsModel": "Choisissez un modèle pour relancer la conformité",
+      "bindCta": "Lier un motif à une scène →",
+      "couldNotCheck": "Impossible de vérifier",
+      "notChecked": "Pas encore vérifié",
+      "notWritten": "Pas encore écrit",
+      "openScene": "Ouvrir cette scène dans l'inspecteur",
+      "written": "Écrit"
     },
     "arc": {
       "mobileNotice": "La grille chronologique est disponible sur un écran plus large — ici, vous pouvez l'éditer sous forme de liste.",
@@ -834,7 +905,8 @@
         "driftFolded": "Replié (jamais lié)",
         "untitledArc": "(arc sans titre)",
         "truncated": "Affichage des {{shown}} premiers sur {{count}} — utilisez le Catalogue ou un forfait supérieur pour en trouver davantage.",
-        "tabSuggest": "Suggérer"
+        "tabSuggest": "Suggérer",
+        "restore": "restaurer"
       },
       "import": {
         "privacy": "Le texte brut vous reste privé et n'est jamais partagé. Seule la structure abstraite dérivée peut être publiée — et la publication supprime la référence source.",
@@ -890,7 +962,42 @@
         "error": "Impossible de regrouper les chapitres en arcs.",
         "done": "{{chapters}} chapitres ont été regroupés en {{arcs}} arcs.",
         "none": "Aucun chapitre à regrouper en arcs pour le moment."
-      }
+      },
+      "apply": {
+        "dropMerge": "Réconciliation de l'échelle",
+        "error": "Impossible de générer l'aperçu de l'application.",
+        "previewOnly": "Aperçu uniquement — ouvrez cet arc dans un livre pour valider les modifications.",
+        "rescaled": "Échelle redimensionnée de {{from}} à {{to}} chapitres",
+        "roster": "Lier la distribution (une seule fois pour tout l'arc)",
+        "run": "Aperçu du plan",
+        "running": "Aperçu en cours…",
+        "targetChapters": "Chapitres cibles",
+        "title": "Appliquer à un nouveau livre (aperçu)",
+        "unbound": "Rôles non liés : {{keys}}"
+      },
+      "backToList": "Tous les modèles d'arc",
+      "chapterCount": "{{count}} chapitres",
+      "empty": "Cet arc ne contient encore aucun fil ni placement.",
+      "grabbed": "Saisi : {{name}}. Flèches pour déplacer, Shift+Flèches pour redimensionner, Entrée pour déposer, Échap pour relâcher.",
+      "loadError": "Impossible de charger la chronologie de cet arc.",
+      "loading": "Chargement de la chronologie…",
+      "materialize": {
+        "blurb": "Incruster cet arc dans le livre actuel — crée le plan des scènes des chapitres + les liaisons de motifs.",
+        "conflict": "Certains chapitres ont déjà un plan. Remplacer leurs scènes par cet arc ?",
+        "done": "{{scenes}} scènes incrustées dans {{chapters}} chapitres.",
+        "error": "Impossible de matérialiser cet arc.",
+        "folded": "{{count}} motif(s) ont été replié(s) par le redimensionnement du nombre de chapitres.",
+        "replace": "Remplacer les scènes existantes",
+        "run": "Matérialiser dans ce livre",
+        "running": "Matérialisation…",
+        "unresolved": "{{count}} motif(s) n'ont pas pu être résolus et ont été ignorés."
+      },
+      "placementDesc": "Fil {{thread}}, chapitres {{from}}-{{to}}",
+      "readonly": "Cet arc est en lecture seule. Adoptez-le dans votre bibliothèque pour modifier la chronologie.",
+      "saveConflict": "Rechargé — cet arc a été modifié ailleurs.",
+      "saveError": "Impossible d'enregistrer — nouvelle tentative lors de la prochaine modification.",
+      "saved": "Enregistré",
+      "saving": "Enregistrement…"
     },
     "simple": {
       "actant": {
@@ -1021,6 +1128,111 @@
       "overCap": "Maximum {{cap}} motifs par tâche de traduction — désélectionnez {{over}} éléments.",
       "confirmWhat": "Traduire {{count}} motif(s) en {{lang}} en utilisant votre modèle.",
       "doneTitle": "{{written}} sur {{total}} traduits en {{lang}}"
+    },
+    "arcConf": {
+      "causal": "vérifié par causalité",
+      "caused": "causé",
+      "chShort": "ch",
+      "coarse": "Grossier · structurel uniquement",
+      "deepError": "Impossible d'exécuter la conformité approfondie.",
+      "deepWhat": "Réétiquetez la prose du livre avec votre modèle et comparez-la avec cet arc (mesuré par LLM).",
+      "drift": "dérive max {{drift}}",
+      "empty": "Rien ne s'est encore matérialisé à partir de cet arc.",
+      "entailed": "impliqué",
+      "estimating": "Estimation en cours…",
+      "legalTransitions": "valide",
+      "maxDrift": "dérive max {{drift}}",
+      "model": "Modèle d'étiquetage",
+      "noPlanned": "aucune courbe de modèle",
+      "noProse": "Aucune prose extraite pour le moment — générez des scènes pour mesurer la dérive.",
+      "noWork": "Matérialisez cet arc dans un livre pour vérifier la conformité.",
+      "notTagged": "La progression des fils narratifs nécessite un étiquetage — lancez l'analyse avec un modèle.",
+      "pacing": "Rythme",
+      "proseDrift": "Dérive de la prose (réalisée vs planifiée)",
+      "proseDriftTitle": "Conformité profonde de la prose",
+      "proseScale": "tension issue des événements extraits (1–5 ×20)",
+      "proseSuccession": "Succession dans la prose",
+      "proseThreads": "Fils narratifs dans la prose",
+      "runDeep": "Lancer la conformité profonde",
+      "running": "En cours…",
+      "structural": "structurel",
+      "succUntagged": "La succession nécessite un marquage motif — exécuter avec un modèle.",
+      "succession": "Succession (structurelle)",
+      "successionOk": "Aucune violation d'ordre.",
+      "threadMissing": "pas dans la prose",
+      "threads": "Progression du fil conducteur",
+      "title": "Conformité de l'arc",
+      "unmaterialized": "Non matérialisé",
+      "unplannedLabel": "non planifié dans la prose",
+      "violation": "{{label}} : {{n}} hors séquence"
+    },
+    "editor": {
+      "add": "ajouter",
+      "beatIntent": "intention",
+      "beatLabel": "battement",
+      "beats": "Battements",
+      "conflict": "Ce motif a été modifié ailleurs — rouvrez-le pour obtenir la version la plus récente avant de le modifier.",
+      "deceived": "qui est trompé (séparé par une virgule)",
+      "effects": "Effets",
+      "emotion": "Émotion",
+      "examples": "Exemples (écrits par l'auteur)",
+      "gap": "l'écart",
+      "genres": "Genres (séparés par des virgules)",
+      "kind": "Type",
+      "knows": "qui sait (séparé par une virgule)",
+      "name": "Nom",
+      "preconditions": "Préconditions",
+      "roleConstraints": "contraintes",
+      "roleLabel": "étiquette",
+      "roles": "Rôles",
+      "saveError": "Impossible d'enregistrer.",
+      "saving": "Enregistrement…",
+      "scheme": "Asymétrie d'information",
+      "summary": "Résumé (intégré pour la récupération)",
+      "tension": "Tension (1–5)"
+    },
+    "kind": {
+      "arcs": "Modèles d'arcs",
+      "label": "Bibliothèque",
+      "motifs": "Motifs"
+    },
+    "lens": {
+      "title": "Motifs"
+    },
+    "mine": {
+      "belowGate": "{{n}} candidat(s) retenu(s) sous le seuil de qualité.",
+      "bookHint": "Un seul livre répète rarement un motif — l'analyse du corpus est plus efficace.",
+      "corpus": "Tout mon corpus",
+      "estimating": "Estimation en cours…",
+      "failed": "Échec de l'extraction.",
+      "minSupport": "Support min.",
+      "minedN": "{{n}} brouillon(s) extrait(s) — les consulter",
+      "model": "Modèle d'extraction",
+      "noCorpus": "Aucun corpus analysé pour le moment — extrayez d'abord un livre, puis lancez l'extraction.",
+      "noPatterns": "Aucun motif récurrent trouvé. Essayez l'analyse du corpus ou un support min. plus bas.",
+      "quota": "Quota d'extraction atteinte.",
+      "run": "Extraire",
+      "running": "Extraction en cours…",
+      "scope": "Portée",
+      "thisBook": "Ce livre",
+      "title": "Extraire les motifs de votre écriture",
+      "what": "Abstraire les schémas narratifs récurrents de votre corpus en motifs de brouillon (mesuré par LLM)."
+    },
+    "sync": {
+      "apply": "Prendre {{n}} de la source",
+      "applying": "Application en cours…",
+      "available": "Le modèle source a une mise à jour.",
+      "conflict": "conflit — vous avez tous les deux modifié ceci",
+      "error": "Impossible d'appliquer la fusion.",
+      "keepMine": "Tout conserver",
+      "mine": "le mien",
+      "noChange": "La version amont a progressé mais aucun champ fusionnable n'a été modifié.",
+      "review": "Réviser et fusionner",
+      "take": "Prendre l'amont",
+      "theirs": "amont",
+      "threeWay": "3-voies",
+      "title": "Mise à jour de l'amont",
+      "twoWay": "2-voies"
     }
   },
   "authoringRun": {
@@ -1058,7 +1270,14 @@
       "allowlistAdd": "Ajouter un outil…",
       "runGateCheck": "Vérification des étapes →",
       "gating": "Vérification…",
-      "cancel": "Annuler"
+      "cancel": "Annuler",
+      "chaptersEmpty": "Ce livre ne contient pas encore de chapitres — créez-les à partir de votre plan pour commencer la rédaction.",
+      "chaptersEmptyCta": "Ouvrir le Planificateur pour compiler un plan d'abord →",
+      "materialize": "Créer les chapitres à partir de ce plan →",
+      "materializedOk": "{{count}} chapitres ont été créés à partir de votre plan.",
+      "materializing": "Création des chapitres…",
+      "modelEmpty": "Ajoutez un modèle de chat dans Paramètres → Modèles pour rédiger.",
+      "modelLabel": "Modèle de rédaction"
     },
     "gate": {
       "title": "Vérification des étapes",
@@ -1147,5 +1366,390 @@
   "canonUncheckedUnparseable": "le modèle de relecture n'a pas renvoyé de réponse exploitable",
   "canonUncheckedFailed": "la vérification elle-même a échoué",
   "canonUncheckedOther": "cette vérification n'a pas pu s'exécuter",
-  "canonUncheckedWhich": "{{count}} de ses vérifications ne se sont pas terminées"
+  "canonUncheckedWhich": "{{count}} de ses vérifications ne se sont pas terminées",
+  "structureTemplates": {
+    "templates": {
+      "save_the_cat": "Save the Cat",
+      "hero_journey": "Le voyage du héros",
+      "story_circle": "Le cercle de l'histoire",
+      "kishotenketsu": "Kishōtenketsu",
+      "web_novel": "Arc de web novel",
+      "generic": "Trois actes (générique)"
+    },
+    "beats": {
+      "save_the_cat": {
+        "opening_image": {
+          "label": "Image d'ouverture",
+          "purpose": "Présente l'état initial du monde et le ton de l'histoire."
+        },
+        "theme_stated": {
+          "label": "Thème énoncé",
+          "purpose": "Le thème central de l'histoire est exprimé, souvent par un personnage."
+        },
+        "setup": {
+          "label": "Mise en place",
+          "purpose": "Présente les personnages, leur univers et les enjeux avant le changement."
+        },
+        "catalyst": {
+          "label": "Catalyseur",
+          "purpose": "L'événement qui bouleverse la vie du protagoniste et lance l'intrigue."
+        },
+        "debate": {
+          "label": "Débat",
+          "purpose": "Le protagoniste hésite ou se prépare face au changement imminent."
+        },
+        "break_into_two": {
+          "label": "Passage à l'acte II",
+          "purpose": "Le protagoniste prend une décision irréversible et entre dans l'aventure."
+        },
+        "b_story": {
+          "label": "Histoire B",
+          "purpose": "L'intrigue secondaire qui explore le thème et les relations émotionnelles."
+        },
+        "fun_and_games": {
+          "label": "Jeux et divertissements",
+          "purpose": "Le moment où le protagoniste explore les promesses du concept de l'histoire."
+        },
+        "midpoint": {
+          "label": "Point de bascule",
+          "purpose": "Un tournant majeur qui change la direction ou l'enjeu de l'histoire."
+        },
+        "bad_guys_close_in": {
+          "label": "Les antagonistes se rapprochent",
+          "purpose": "La pression augmente et les obstacles deviennent plus sérieux."
+        },
+        "all_is_lost": {
+          "label": "Tout est perdu",
+          "purpose": "Le moment de désespoir total où le protagoniste semble avoir tout perdu."
+        },
+        "dark_night": {
+          "label": "Nuit noire de l'âme",
+          "purpose": "La phase de réflexion et de deuil avant le dernier effort."
+        },
+        "break_into_three": {
+          "label": "Passage à l'acte trois",
+          "purpose": "Le protagoniste s'engage pleinement dans l'aventure, quittant son monde habituel pour affronter les enjeux."
+        },
+        "finale": {
+          "label": "Finale",
+          "purpose": "Le protagoniste affronte l'antagoniste ou le conflit principal dans une résolution décisive."
+        },
+        "final_image": {
+          "label": "Image Finale",
+          "purpose": "Une scène qui montre le contraste avec l'image initiale, illustrant le changement du protagoniste."
+        }
+      },
+      "hero_journey": {
+        "ordinary_world": {
+          "label": "Monde Ordinaire",
+          "purpose": "Présentation du quotidien du héros, de son environnement et de sa situation initiale avant le changement."
+        },
+        "call_to_adventure": {
+          "label": "Appel à l'Aventure",
+          "purpose": "Un événement ou un message qui perturbe le monde du héros et l'invite à sortir de sa zone de confort."
+        },
+        "refusal_of_the_call": {
+          "label": "Refus de l'Appel",
+          "purpose": "Le héros hésite ou refuse l'appel, souvent par peur, par devoir ou par manque de confiance."
+        },
+        "meeting_the_mentor": {
+          "label": "Rencontre avec le Mentor",
+          "purpose": "Le héros rencontre un mentor qui lui donne les outils ou les conseils nécessaires pour progresser."
+        },
+        "crossing_the_threshold": {
+          "label": "Franchir le seuil",
+          "purpose": "Le héros quitte son monde ordinaire pour entrer dans l'aventure."
+        },
+        "tests_allies_enemies": {
+          "label": "Épreuves, alliés et ennemis",
+          "purpose": "Le héros est confronté à une série de défis et apprend à distinguer ses amis de ses adversaires."
+        },
+        "approach": {
+          "label": "Approche",
+          "purpose": "Le héros se prépare au défi ultime en s'approchant du cœur de l'aventure."
+        },
+        "ordeal": {
+          "label": "Épreuve ultime",
+          "purpose": "Le héros affronte sa plus grande peur ou son plus grand défi dans une lutte décisive."
+        },
+        "reward": {
+          "label": "Récompense",
+          "purpose": "Après avoir survécu à l'épreuve, le héros obtient ce qu'il était venu chercher."
+        },
+        "the_road_back": {
+          "label": "Le chemin du retour",
+          "purpose": "Le héros doit affronter les conséquences de ses actions et se préparer à l'épreuve finale."
+        },
+        "resurrection": {
+          "label": "Résurrection",
+          "purpose": "Le moment de transformation ultime où le héros surmonte son plus grand défi."
+        },
+        "return_with_elixir": {
+          "label": "Retour avec l'élixir",
+          "purpose": "Le héros revient dans son monde avec une leçon ou un objet précieux pour transformer sa réalité."
+        }
+      },
+      "story_circle": {
+        "you": {
+          "label": "Vous",
+          "purpose": "Le protagoniste est présenté dans son environnement habituel."
+        },
+        "need": {
+          "label": "Besoin",
+          "purpose": "Un désir ou un manque pousse le protagoniste à agir."
+        },
+        "go": {
+          "label": "Partir",
+          "purpose": "Le protagoniste quitte sa zone de confort pour entrer dans l'inconnu."
+        },
+        "search": {
+          "label": "Recherche",
+          "purpose": "Chercher"
+        },
+        "find": {
+          "label": "Trouver",
+          "purpose": "Trouver ce dont on a besoin"
+        },
+        "take": {
+          "label": "Prendre",
+          "purpose": "Payer le prix fort"
+        },
+        "return": {
+          "label": "Retourner",
+          "purpose": "Revenir chez soi"
+        },
+        "change": {
+          "label": "Changer",
+          "purpose": "Être transformé par l'expérience"
+        }
+      },
+      "kishotenketsu": {
+        "ki": {
+          "label": "Ki",
+          "purpose": "L'introduction"
+        },
+        "sho": {
+          "label": "Sho",
+          "purpose": "Présenter l'exposition initiale et le contexte de l'histoire."
+        },
+        "ten": {
+          "label": "Ten",
+          "purpose": "Introduire un développement inattendu ou un tournant narratif."
+        },
+        "ketsu": {
+          "label": "Ketsu",
+          "purpose": "Résoudre l'intrigue et conclure l'arc narratif."
+        }
+      },
+      "web_novel": {
+        "hook": {
+          "label": "Hook",
+          "purpose": "Capter immédiatement l'attention du lecteur avec un élément accrocheur."
+        },
+        "establishment": {
+          "label": "Establishment",
+          "purpose": "Établir l'univers, les personnages et l'enjeu principal."
+        },
+        "rising_conflict": {
+          "label": "Rising Conflict",
+          "purpose": "Augmenter la tension et multiplier les obstacles pour le protagoniste."
+        },
+        "setback": {
+          "label": "Setback",
+          "purpose": "Introduire un obstacle majeur qui change la direction de l'intrigue."
+        },
+        "climax": {
+          "label": "Climax",
+          "purpose": "Le point culminant de l'intrigue où la tension est à son maximum."
+        },
+        "resolution": {
+          "label": "Résolution",
+          "purpose": "Résoudre les conflits et établir un nouvel équilibre."
+        }
+      },
+      "generic": {
+        "setup": {
+          "label": "Mise en place",
+          "purpose": "Présenter les personnages, le cadre et l'élément déclencheur."
+        },
+        "confrontation": {
+          "label": "Confrontation",
+          "purpose": "Développer les obstacles et la montée de la tension dramatique."
+        },
+        "resolution": {
+          "label": "Résolution",
+          "purpose": "Apporter une conclusion aux enjeux de l'histoire."
+        }
+      }
+    },
+    "kinds": {
+      "save_the_cat": "Structure « Save the Cat »",
+      "hero_journey": "Structure du voyage du héros",
+      "story_circle": "Structure du cercle de l'histoire",
+      "kishotenketsu": "Structure Kishōtenketsu",
+      "web_novel": "Structure d'arc de Web Novel",
+      "generic": "Structure en trois actes (générique)"
+    }
+  },
+  "branchdiff": {
+    "allNew": "Tout nouveau (aucun équivalent canonique)",
+    "branch": "Divergence",
+    "canon": "Canon",
+    "chg": "chg",
+    "empty": "Aucune prose divergente pour le moment — chaque scène hérite du canon. Promouvez une version sur le canevas « what-if » pour voir une différence ici.",
+    "error": "Impossible de lire la prose de la branche.",
+    "loading": "Lecture de la prose…",
+    "new": "nouveau",
+    "noProseBody": "Cette scène divergente ne contient pas encore de prose dans la version « what-if » — proposez une version sur le canevas « what-if », puis sa différence apparaîtra ici.",
+    "noProseTitle": "Pas encore écrit",
+    "noSource": "Cette branche n'a aucune source résolvable pour effectuer la comparaison.",
+    "scenes": "{{n}} divergence(s)",
+    "todo": "à faire",
+    "untitledScene": "scène"
+  },
+  "canonBrokenBadge": "{{n}} rupture(s) →",
+  "canonConflictDiscard": "Écarter la mienne",
+  "canonConflictKeepTheirs": "Garder la leur",
+  "canonConflictReapply": "Réappliquer ma modification sur la v{{v}}",
+  "canonConflictTitle": "Cette règle a été modifiée ailleurs — votre brouillon est conservé ci-dessous.",
+  "canonview": {
+    "active": "{{n}} actif(s)",
+    "branchHint": "Ce que le canon sait juste avant cette branche",
+    "branchToggle": "Canon à la branche",
+    "canonState": "État du canon",
+    "chapterN": "chapitre {{n}}",
+    "countGlossary": "· {{n}} entités",
+    "coverage": "apparaît dans {{pct}} % des chapitres",
+    "established": "Établi à ce stade",
+    "events": "{{n}} événements de la chronologie",
+    "gone": "{{n}} disparus",
+    "knowledgeUnavailable": "État du canon indisponible — le service de connaissances n'a pas répondu.",
+    "loading": "Lecture du canon…",
+    "noChapter": "Aucun chapitre n'est sélectionné — ouvrez une scène pour inspecter le canon tel qu'il est dans son chapitre.",
+    "noneHere": "Aucune entité liée à ce chapitre.",
+    "notAnalyzed": "Ce chapitre n'a pas encore été analysé — extrayez le livre pour alimenter le canon.",
+    "presence": "Présent dans ce chapitre",
+    "srcGlossary": "· glossaire",
+    "srcKnowledge": "· connaissances",
+    "title": "Canon au",
+    "windowUnavailable": "Position de lecture inconnue — fenêtre indisponible pour ce chapitre."
+  },
+  "coverageAbandoned": "{{n}} abandonnés",
+  "coverageAbsent": "{{n}} absents",
+  "coverageClean": "Aucune promesse abandonnée — le livre tient ses engagements.",
+  "coverageDropped": "Promis mais abandonné :",
+  "coverageIntro": "Conseil — quelles promesses posées par le plan sont tenues tout au long du livre. Lecture seule.",
+  "coverageLoading": "Analyse de l'ouvrage complet…",
+  "coverageNa": "Couverture des promesses indisponible.",
+  "coverageNoPromises": "Aucune promesse traçable n'a été trouvée dans le plan.",
+  "coveragePaid": "{{n}} payées",
+  "coverageProgressing": "{{n}} en cours",
+  "coverageRerun": "Réanalyser",
+  "coverageRun": "Analyser les promesses de l'histoire",
+  "coverageTitle": "Promesses de l'histoire",
+  "divergence": {
+    "active": "active",
+    "addOverride": "Ajouter une exception",
+    "archive": "Archiver",
+    "archiveConflict": "Modifié ailleurs — rechargé.",
+    "archiveFailed": "Échec de l'archivage — réessayez.",
+    "archived": "Archivé — ses chapitres et ses connaissances sont conservés ; il a quitté cette liste.",
+    "branchPoint": "Point de bifurcation",
+    "branchedAt": "a bifurqué au chapitre {{n}}",
+    "branchedUnknown": "point de bifurcation inconnu",
+    "canonRules": "Règles du canon",
+    "canonRulesPlaceholder": "Une règle par ligne (ex. : La magie n'existe plus dans cette branche).",
+    "canonTag": "canon",
+    "canonical": "Canonique",
+    "canonicalSection": "Canonique",
+    "chapterN": "chapitre {{n}}",
+    "editFailed": "Échec de l'enregistrement — réessayez.",
+    "emptyDerivatives": "Aucune version « et si » pour le moment. Une version bifurque votre livre à partir d'un chapitre et diverge — la source originale reste le canon en lecture seule.",
+    "loading": "Chargement en cours…",
+    "new": "Nouvelle divergence",
+    "no": "Non",
+    "noAnchoredEntities": "Aucun personnage lié au glossaire dans la source de cette branche — ancrez des entités dans le glossaire pour définir un point de vue (POV) ou pour les modifier ici.",
+    "noOverrides": "Aucune modification d'entité pour l'instant.",
+    "noPov": "— aucun ancrage de POV —",
+    "noWork": "Ce livre n'a pas encore de plan — tracez d'abord ses arcs et ses chapitres, puis créez une bifurcation « et si » ici.",
+    "overrideEntity": "Entité à modifier",
+    "overrideNamePlaceholder": "Nouveau nom dans cette version (optionnel)…",
+    "overridePlaceholder": "En quoi cette entité diffère-t-elle (ex. : devient un méchant)…",
+    "overrideRemoved": "Modification de l'entité supprimée.",
+    "overrides": "Surcharges",
+    "pickEntity": "Surcharger une autre entité…",
+    "povAnchor": "Ancre de point de vue",
+    "remove": "Supprimer",
+    "removeConfirm": "Supprimer ?",
+    "rename": "Renommer",
+    "renameConflict": "Modifié ailleurs — rechargez et réessayez.",
+    "renameFailed": "Impossible de renommer — réessayez.",
+    "renamePlaceholder": "Nom de l'alternative (1–200 caractères)",
+    "renameTitle": "Renommer cette alternative",
+    "renamed": "Renommé.",
+    "restoreFailed": "Impossible de restaurer — l'élément a peut-être été modifié ailleurs.",
+    "restored": "Restauré dans la liste.",
+    "save": "Enregistrer",
+    "saveRules": "Enregistrer les règles",
+    "saving": "Enregistrement…",
+    "specError": "Impossible de charger la spécification de la branche — essayez de la sélectionner à nouveau.",
+    "specLoading": "Chargement de la spécification…",
+    "switchFailed": "Impossible de changer — réessayez.",
+    "switchTo": "Passer à",
+    "tabDiff": "Diff",
+    "tabSpec": "Spécification",
+    "taxonomy": "Taxonomie",
+    "title": "Versions « What-if »",
+    "unavailable": "Le service de composition est indisponible — réessayez bientôt.",
+    "undo": "Annuler",
+    "undoFailed": "Impossible de restaurer la modification.",
+    "undoSuperseded": "Une modification plus récente existe pour cette entité — rien à restaurer.",
+    "unnamed": "Version sans titre",
+    "yes": "Oui"
+  },
+  "mark": {
+    "action": "Signaler le problème",
+    "cancel": "Annuler",
+    "duplicate": "Vous avez déjà marqué ce passage avec cette note.",
+    "failed": "Impossible d'enregistrer le marquage. Réessayez.",
+    "kind": "Quel type de problème",
+    "no_selection": "Sélectionnez le passage erroné avant de le marquer.",
+    "note": "Quel est le problème avec ce passage ?",
+    "note_ph": "ex. elle est morte au chapitre 3...",
+    "note_required": "Précisez le problème — la note est ce sur quoi le co-auteur doit agir.",
+    "save": "Marquer",
+    "saved": "Marqué — le co-auteur peut voir ceci."
+  },
+  "polishAll": "tout",
+  "polishAllDet": "tout (déterministe)",
+  "polishApply": "Appliquer {{count}} sélections",
+  "polishClean": "Aucun problème trouvé — la prose est impeccable.",
+  "polishClear": "effacer",
+  "polishDeterministic": "auto",
+  "polishIntro": "Examinez les corrections proposées avant qu'elles ne modifient votre prose. Les modifications déterministes (pronoms, fautes de frappe) sont pré-sélectionnées ; les modifications sémantiques sont affichées décochées pour que vous puissiez les juger.",
+  "polishLoading": "Analyse en cours…",
+  "polishNoModel": "Choisissez d'abord un modèle.",
+  "polishRerank": "auto-cocher (IA, plus coûteux)",
+  "polishRerankHint": "Utilise un appel IA supplémentaire par édition pour cocher automatiquement les meilleures (plus lent, plus coûteux).",
+  "polishRerun": "Relancer le polissage",
+  "polishRun": "Lancer le polissage",
+  "polishSemantic": "sémantique",
+  "polishStats": "{{edits}} éditions · {{refuted}} rejetées par la vérification",
+  "polishUnplaced": "{{count}} élément(s) trouvé(s) introuvable(s) dans ce texte — affiché(s) ci-dessous, non corrigé(s).",
+  "polishUnplacedNoQuote": "(aucun texte entre guillemets)",
+  "qualityCriticNa": "Critique indisponible.",
+  "qualityHasFix": "correction proposée ↓",
+  "qualityIntro": "Conseils uniquement — comment le chapitre est noté et ce qu'il promet sans jamais l'accomplir. Rien ici ne modifie votre prose.",
+  "qualityLoading": "Analyse en cours…",
+  "qualityNoThreads": "Aucun nouveau fil conducteur n'a été soulevé dans ce chapitre.",
+  "qualityRerun": "Réanalyser",
+  "qualityRun": "Analyser la qualité",
+  "qualityThreadsNa": "Audit des fils indisponible.",
+  "qualityThreadsRaised": "{{n}} fil(s) conducteur(s) soulevé(s) dans ce chapitre :",
+  "qualityThreadsResolved": "{{r}} résolu(s) ici",
+  "qualityTitle": "Rapport de qualité",
+  "resolveWorkFailed": "Service de connaissances indisponible — impossible de terminer la configuration de l'ancrage.",
+  "resolvingWork": "Fin de la configuration… le service de connaissances était brièvement indisponible.",
+  "retry": "Réessayer",
+  "threadFocusMissing": "La promesse dont vous venez n'est pas dans cette vue — elle a peut-être déjà été payée. Changez le filtre pour « tout »."
 }

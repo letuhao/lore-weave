@@ -392,5 +392,29 @@
     "no_restore": "Tiada versi terdahulu untuk dipulihkan",
     "confirm_title": "Pulihkan ke keadaan sebelum suntingan AI ini?",
     "confirm_desc": "Draf semasa akan diambil gambar skrin (snapshot) terlebih dahulu, jadi tindakan ini boleh dibatalkan melalui sejarah semakan."
-  }
+  },
+  "contextMenu": {
+    "replace": "Ganti dengan",
+    "copy": "Salin",
+    "cut": "Potong",
+    "paste": "Tampal",
+    "selectAll": "Pilih semua",
+    "undo": "Undo",
+    "redo": "Redo",
+    "rewrite": "Tulis semula dengan AI",
+    "expand": "Kembangkan dengan AI",
+    "describe": "Huraikan dengan AI",
+    "dictionary": "Semak dalam glosari",
+    "bookmark": "Tambah penanda buku",
+    "findGlossary": "Cari dalam glosari",
+    "askAi": "Tanya AI tentang ini",
+    "findMentions": "Cari sebutan"
+  },
+  "chat_mode": "Mod",
+  "mode_agent": "Ejen",
+  "mode_agent_hint": "AI boleh menggunakan alatan dan menyunting dokumen anda",
+  "mode_compose": "Gubah",
+  "mode_compose_hint": "Prosa sahaja — AI menulis, anda laksanakan. Terbaik untuk model penaakulan.",
+  "polish_applied": "Suntingan pemurnian telah dilaksanakan",
+  "resize_panel": "Seret untuk mengubah saiz"
 }

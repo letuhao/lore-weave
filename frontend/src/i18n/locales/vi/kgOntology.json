@@ -1,7 +1,12 @@
 {
   "page": {
     "title": "Lược đồ đồ thị tri thức",
-    "tabs": { "adopt": "Áp dụng", "schema": "Lược đồ", "views": "Góc nhìn", "sync": "Đồng bộ" },
+    "tabs": {
+      "adopt": "Áp dụng",
+      "schema": "Lược đồ",
+      "views": "Góc nhìn",
+      "sync": "Đồng bộ"
+    },
     "noProject": "Sách này chưa có dự án tri thức",
     "noProjectHelp": "Sách này chưa được liên kết với dự án tri thức nào. Hãy chạy trích xuất hoặc tạo một dự án để quản lý lược đồ đồ thị.",
     "createProject": "Tạo dự án tri thức",
@@ -44,6 +49,45 @@
     "lossChange": {
       "removed_upstream": "bị xóa",
       "modified": "bị ghi đè"
+    },
+    "templates": {
+      "general": {
+        "name": "Tổng quát (ontology cũ)",
+        "description": "Tái tạo ontology trích xuất chung nguyên bản — mạng lưới an toàn ưu tiên tính bổ sung."
+      },
+      "general-legacy": {
+        "name": "Tổng quát (ontology cũ)",
+        "description": "Tái tạo ontology trích xuất chung nguyên bản — mạng lưới an toàn ưu tiên tính bổ sung."
+      },
+      "xianxia-harem": {
+        "name": "Tiên hiệp · Harem",
+        "description": "Mẫu thể loại cho tiểu thuyết tu tiên và harem với các loại thực thể và quan hệ được chọn lọc."
+      },
+      "fantasy": {
+        "name": "Fantasy",
+        "description": "Sơ đồ thế giới kỳ ảo với các nhân vật, địa danh, tổ chức, chủng tộc, vật phẩm, sức mạnh và kỹ thuật."
+      },
+      "romance": {
+        "name": "Lãng mạn",
+        "description": "Sơ đồ tập trung vào mối quan hệ với các nhân vật, sự kết nối, các arc cốt truyện, mô-típ và bối cảnh xã hội."
+      },
+      "drama": {
+        "name": "Kịch tính",
+        "description": "Sơ đồ kịch tính cho các nhân vật, xung đột, mối quan hệ, tổ chức, sự kiện và các arc cốt truyện."
+      },
+      "historical": {
+        "name": "Lịch sử",
+        "description": "Sơ đồ hư cấu lịch sử dành cho con người, địa danh, tổ chức, sự kiện, thuật ngữ và trật tự xã hội."
+      },
+      "mystery": {
+        "name": "Bí ẩn",
+        "description": "Sơ đồ điều tra dành cho nhân vật, manh mối, vật thể, tổ chức, sự kiện, các arc cốt truyện và mô-típ."
+      }
+    },
+    "scope": {
+      "system": "hệ thống",
+      "user": "Người dùng",
+      "project": "Dự án"
     }
   },
   "schema": {

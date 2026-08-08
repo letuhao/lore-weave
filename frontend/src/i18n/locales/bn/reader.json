@@ -43,8 +43,8 @@
         "desc": "উষ্ণ কাগজের রঙ"
       },
       "oled": {
-        "desc": "OLED স্ক্রিনের জন্য খাঁটি কালো",
-        "name": "OLED"
+        "name": "OLED",
+        "desc": "OLED স্ক্রিনের জন্য খাঁটি কালো"
       },
       "parchment": {
         "name": "পার্চমেন্ট",
@@ -69,9 +69,9 @@
   "tts": {
     "source": {
       "attached": "সংযুক্ত",
+      "ai": "AI TTS",
       "browser": "ব্রাউজার",
-      "inline": "অডিও",
-      "ai": "AI TTS"
+      "inline": "অডিও"
     },
     "prev_block": "আগের ব্লক (Shift+Left)",
     "play": "প্লে (Space)",
@@ -105,10 +105,10 @@
   "audio": {
     "source": {
       "attached": "সংযুক্ত",
+      "ai": "AI TTS",
       "browser": "ব্রাউজার",
       "inline": "অডিও ব্লক",
-      "none": "কোনোটিই না",
-      "ai": "AI TTS"
+      "none": "কোনোটিই না"
     },
     "coverage": "অডিও কভারেজ",
     "summary": "{{speakable}} স্পেকেবল ব্লক · {{missing}} ব্রাউজার TTS ব্যবহার করছে",
@@ -142,5 +142,8 @@
       "kg": "জ্ঞানভাণ্ডার",
       "passage": "অনুচ্ছেদ"
     }
+  },
+  "lore": {
+    "heading": "এ পর্যন্ত কাহিনী"
   }
 }

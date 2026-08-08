@@ -65,7 +65,19 @@
     "thinkingOn": "Pensamiento: activado (razonamiento habilitado)",
     "thinkingOff": "Pensamiento: desactivado (más rápido, mejor JSON)",
     "startExtraction": "Iniciar Extracción",
-    "editProfile": "Editar Perfil"
+    "editProfile": "Editar Perfil",
+    "cacheAuto": "Volver a ejecutar cuando haya cambios (predeterminado)",
+    "cacheForce": "Re-extraer siempre — ignorar la caché",
+    "cacheHint": "¿Has editado una definición de tipo? El modo predeterminado ya lo vuelve a ejecutar.",
+    "cachePolicy": "Resultados en caché",
+    "cacheReuse": "Reutilizar resultados en caché siempre que sea posible",
+    "concurrency": "Llamadas paralelas a LLM",
+    "concurrencyHint": "1 = secuencial. Auméntalo si tu modelo admite solicitudes concurrentes.",
+    "strategy": "Formato del prompt",
+    "strategyBatched": "Por lotes — el más exhaustivo (predeterminado)",
+    "strategyDelta": "Una llamada + deltas — el más económico",
+    "strategyEdc": "Barrido y luego tipificación — ~56 % más barato, mejor fundamentación",
+    "strategySingle": "Una sola llamada — ~66 % más barato, omite tipos poco comunes"
   },
   "progress": {
     "title": "Extrayendo Glosario",
@@ -107,7 +119,11 @@
     "draftNote": "Todas las nuevas entidades se crean como borrador; revísalas en la pestaña Glosario",
     "viewGlossary": "Revisar en Glosario",
     "runAgain": "Extraer de nuevo",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "cacheAllFresh": "Se extrajeron de forma nueva los {{n}} lotes.",
+    "cacheForced": "(se omitió la caché por solicitud)",
+    "cacheRerunHint": "Si ha cambiado alguna definición de tipo desde entonces, vuelva a ejecutar con «Siempre re-extraer».",
+    "cacheServed": "El {{pct}}% de esta ejecución ({{cached}} de {{total}} lotes) se REUTILIZÓ de una extracción anterior, no se volvió a leer."
   },
   "button": {
     "extract": "Extraer Glosario",

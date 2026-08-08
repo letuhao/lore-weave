@@ -9,7 +9,9 @@
     "permissions": "टूल अनुमतियाँ",
     "proposals": "प्रस्ताव",
     "activity": "गतिविधि लॉग",
-    "ingest": "रजिस्ट्री स्रोत"
+    "ingest": "रजिस्ट्री स्रोत",
+    "bindings": "स्वचालित सेटअप",
+    "workflows": "नुस्खे"
   },
   "quota": {
     "unavailable": "उपयोग अनुपलब्ध",
@@ -107,6 +109,7 @@
       "authentication": "प्रमाणीकरण",
       "authNone": "कोई नहीं",
       "authBearer": "बेयरर टोकन",
+      "authOauth": "OAuth 2.1",
       "noAuthHint": "कोई प्रमाणीकरण नहीं — यह सर्वर खुला है। पंजीकरण और स्कैन करने के लिए जारी रखें।",
       "bearerLabel": "बेयरर टोकन (वॉल्ट में सुरक्षित; फिर कभी नहीं दिखाया जाएगा)",
       "bearerPlaceholder": "टोकन पेस्ट करें",
@@ -121,10 +124,9 @@
       "runScan": "हेल्थ चेक और स्कैन चलाएं",
       "refresh": "रिफ्रेश",
       "continue": "जारी रखें",
+      "authKind": "प्रमाणीकरण: {{kind}}",
       "enable": "मेरे सत्रों के लिए सक्षम करें",
-      "done": "हो गया",
-      "authOauth": "OAuth 2.1",
-      "authKind": "प्रमाणीकरण: {{kind}}"
+      "done": "हो गया"
     }
   },
   "commands": {

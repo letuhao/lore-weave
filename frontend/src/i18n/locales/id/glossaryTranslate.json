@@ -42,7 +42,9 @@
     "startTranslate": "Mulai Terjemahan",
     "startFailed": "Gagal memulai pekerjaan terjemahan",
     "thinkingOn": "Thinking: aktif",
-    "thinkingOff": "Thinking: nonaktif"
+    "thinkingOff": "Thinking: nonaktif",
+    "concurrency": "Pemanggilan LLM paralel",
+    "concurrencyHint": "1 = sekuensial. Tingkatkan nilai ini jika model Anda melayani permintaan secara bersamaan."
   },
   "progress": {
     "title": "Menerjemahkan Glosarium",

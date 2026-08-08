@@ -120,7 +120,8 @@
     "no_active": "Aucun genre actif. Ajoutez-en un pour construire la matrice.",
     "cell_inspector": "Cellule sélectionnée",
     "no_cell": "Cliquez sur une cellule pour l'inspecter.",
-    "sort": "trier"
+    "sort": "trier",
+    "required": "requis"
   },
   "entity": {
     "title_new": "Nouvelle entité {{kind}}",
@@ -238,5 +239,16 @@
     "links_saved": "Liens de genre mis à jour",
     "links_failed": "Impossible de mettre à jour les liens de genre",
     "forbidden": "Vous devez avoir l'accès « Gérer » sur ce livre pour effectuer des modifications"
+  },
+  "batch_translate": {
+    "apply": "Appliquer les traductions",
+    "count": "{{n}} entités à traduire",
+    "loading": "Chargement…",
+    "none": "Aucune entité non traduite pour cette langue.",
+    "pick_lang": "Choisissez une langue cible pour commencer.",
+    "result": "{{w}} écrits · {{v}} conservés (vérifiés) · {{e}} vides · {{f}} échoués",
+    "select_lang": "Sélectionner…",
+    "target_lang": "Langue cible",
+    "title": "Traduction par lots"
   }
 }

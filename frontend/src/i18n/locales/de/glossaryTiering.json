@@ -120,7 +120,8 @@
     "no_active": "Keine aktiven Genres. Füge eines hinzu, um die Matrix zu erstellen.",
     "cell_inspector": "Ausgewählte Zelle",
     "no_cell": "Klicke auf eine Zelle, um sie zu inspizieren.",
-    "sort": "sortieren"
+    "sort": "sortieren",
+    "required": "erforderlich"
   },
   "entity": {
     "title_new": "Neue {{kind}}-Entität",
@@ -238,5 +239,16 @@
     "links_saved": "Genre-Verknüpfungen aktualisiert",
     "links_failed": "Genre-Verknüpfungen konnten nicht aktualisiert werden",
     "forbidden": "Sie benötigen Administrator-Rechte für dieses Buch, um Änderungen vorzunehmen"
+  },
+  "batch_translate": {
+    "apply": "Übersetzungen anwenden",
+    "count": "{{n}} zu übersetzende Einheiten",
+    "loading": "Laden…",
+    "none": "Keine unübersetzten Einheiten für diese Sprache.",
+    "pick_lang": "Wählen Sie eine Zielsprache, um zu beginnen.",
+    "result": "{{w}} geschrieben · {{v}} beibehalten (verifiziert) · {{e}} leer · {{f}} fehlgeschlagen",
+    "select_lang": "Auswählen…",
+    "target_lang": "Zielsprache",
+    "title": "Stapelübersetzung"
   }
 }

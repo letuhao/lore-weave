@@ -517,11 +517,32 @@
       "discoveredHint": "Entiti baharu bermula sebagai entiti yang ditemui. Status kanonikal diperoleh dengan menetapkannya ke dalam glosari."
     },
     "kind": {
+      "unknown": "Jenis tidak dikenali",
+      "person": "Orang",
+      "artifact": "Artifak",
       "character": "Watak",
       "location": "Lokasi",
       "organization": "Organisasi",
       "concept": "Konsep",
-      "item": "Item"
+      "item": "Item",
+      "event_ref": "Peristiwa",
+      "preference": "Keutamaan",
+      "event": "Peristiwa",
+      "terminology": "Terminologi",
+      "power_system": "Sistem kuasa",
+      "species": "Spesies",
+      "relationship": "Hubungan",
+      "plot_arc": "Busur plot",
+      "social_setting": "Latar sosial",
+      "trope": "Trope",
+      "technique": "Teknik",
+      "colleague": "Rakan Sekerja",
+      "decision": "Keputusan",
+      "jargon": "Jargon",
+      "meeting": "Mesyuarat",
+      "org": "Organisasi",
+      "project": "Projek",
+      "task": "Tugasan"
     },
     "archive": {
       "action": "Arkib",
@@ -707,7 +728,28 @@
         "errorAlreadyRunning": "Penanda aras sedang berjalan untuk projek ini. Tunggu dan cuba lagi.",
         "errorProviderFlake": "Penyedia embedding gagal semasa proses berjalan. Sila cuba lagi.",
         "errorGeneric": "Penanda aras gagal: {{message}}"
-      }
+      },
+      "benchmarkNoRun": "⋯ Tiada penanda aras lagi — jalankan penanda aras set-emas untuk membolehkan pengekstrakan.",
+      "bookIdLocked": "Buku ini (dikunci)",
+      "canonCapture": "Tangkap nama baharu secara automatik daripada sembang",
+      "canonCaptureCeilingOff": "Dimatikan untuk penggunaan ini — pilihan anda disimpan, tetapi penangkapan tidak akan dijalankan sehingga pentadbir mengaktifkannya semula.",
+      "canonCaptureHint": "Setiap beberapa pusingan, nama yang diperkenalkan dalam perbualan anda akan ditambah ke dalam peti masuk semakan glosari buku ini sebagai cadangan — bukan sebagai kanon. Menggunakan satu panggilan AI tambahan bagi setiap penangkapan, dicaj kepada model anda sendiri.",
+      "canonCaptureNoBook": "Pautkan buku ke projek ini untuk menangkap nama ke dalam glosari buku tersebut.",
+      "embeddingModel": "Model penanaman (Embedding model)",
+      "embeddingModelEmpty": "Tiada model berkemampuan penanaman dikonfigurasikan — pengekstrakan memerlukan satu.",
+      "embeddingModelHint": "Mengawal ruang vektor yang digunakan oleh projek ini untuk pengambilan petikan semantik.",
+      "embeddingModelNone": "Tiada (tiada petikan semantik)",
+      "genre": "Genre",
+      "genrePlaceholder": "cth. Tiên hiệp, Kultivasi, Fantasi…",
+      "memoryConfirm": "Sahkan sebelum menyimpan memori",
+      "memoryConfirmHint": "Fakta yang ingin diingati oleh AI akan menunggu kelulusan anda dan bukannya disimpan secara automatik.",
+      "rerankDiscoveryHint": "Hos sendiri? Tambah kredensial rerank-tempatan (serasi Cohere) dalam Model AI, kemudian Segarkan — model rerank akan dikesan secara automatik.",
+      "rerankModel": "Model rerank (pilihan)",
+      "rerankModelEmpty": "Tiada model berkemampuan rerank dikonfigurasikan. Daftar satu untuk membolehkan penolakan sampah.",
+      "rerankModelHint": "Cross-encoder rerank untuk penolakan sampah carian-mentah. Pilihan — jika dibiarkan kosong, carian akan mengekalkan urutan gabungan.",
+      "rerankModelNone": "Tiada (langkau rerank — kekalkan urutan gabungan)",
+      "toolCalling": "Alatan memori dalam sembang",
+      "toolCallingHint": "Benarkan AI mencari, mengingat, dan mencatat memori semasa berbual dalam projek ini."
     },
     "archiveDialog": {
       "title": "Arkib projek?",
@@ -910,6 +952,32 @@
         "unpin": "Nyahsemat",
         "budget": "+{{tokens}} token setiap tetingkap ({{count}} disemat × ~50).",
         "noBook": "Penyematan memerlukan buku yang dipautkan. Sambungkan buku ke projek ini terlebih dahulu."
+      },
+      "disabled": {
+        "benchmarkRequired": "Jalankan penanda aras set-emas dan luluskannya untuk membolehkan pengekstrakan (di atas).",
+        "checkingBenchmark": "Menyemak penanda aras embedding...",
+        "fixConcurrency": "Panggilan selari mestilah antara 1–64.",
+        "fixMaxSpend": "Masukkan had perbelanjaan yang sah.",
+        "fixRange": "Betulkan julat bab.",
+        "pickEmbedding": "Pilih model embedding.",
+        "pickLlm": "Pilih model LLM pengekstrakan."
+      },
+      "embedding": {
+        "changeViaDialog": "Projek ini sudah mempunyai model embedding. Gunakan «Tukar model» untuk menukarnya — ini akan membina semula graf.",
+        "saveFailed": "Tidak dapat menyimpan model embedding: {{error}}",
+        "saved": "Model embedding telah disimpan — jalankan penanda aras di bawah untuk membolehkan pengekstrakan."
+      },
+      "prereq": {
+        "benchmarkChecking": "Menyemak penanda aras embedding...",
+        "benchmarkPassed": "Penanda aras embedding lulus",
+        "benchmarkPending": "Penanda aras embedding lulus (pilih model terlebih dahulu)",
+        "benchmarkRequired": "Penanda aras embedding lulus — jalankannya daripada pemilih model di bawah",
+        "embedding": "Model embedding telah dipilih",
+        "llm": "Model LLM pengekstrakan dipilih"
+      },
+      "reasoning": {
+        "hint": "Dimatikan secara lalai — pengekstrakan mengembalikan JSON, dan pemikiran tersembunyi boleh menghabiskan bajet output. Aktifkan hanya untuk kandungan sukar menggunakan model penaakulan.",
+        "label": "Aktifkan penaakulan model (pemikiran)"
       }
     },
     "errorViewer": {
@@ -973,7 +1041,10 @@
       "saving": "Menyimpan…",
       "cancel": "Batal",
       "saved": "Tetapan pengekstrakan telah disimpan.",
-      "failed": "Simpan gagal: {{error}}"
+      "failed": "Simpan gagal: {{error}}",
+      "filterModel": "Model penapis (pilihan)",
+      "filterModelDefault": "Gunakan model pengekstrakan (lalai)",
+      "filterModelHint": "LLM yang menilai ketepatan hubungan. Jika dibiarkan pada tetapan lalai, penapis akan menggunakan semula model pengekstrakan anda (setiap pengguna, BYOK). Pilih model yang lebih kuat untuk penapisan ketepatan tinggi."
     },
     "confirmDestructive": {
       "cancel": "Batal",
@@ -988,7 +1059,9 @@
       },
       "rebuildStep2": {
         "title": "Peluang terakhir — benar-benar bina semula?",
-        "description": "Klik Bina Semula sekarang akan memulakan proses pemadaman-dan-pembinaan semula. Tiada jalan kembali setelah tugasan baharu dijalankan."
+        "description": "Klik Bina Semula sekarang akan memulakan proses pemadaman-dan-pembinaan semula. Tiada jalan kembali setelah tugasan baharu dijalankan.",
+        "descriptionCount": "Ini akan MEMADAM secara kekal {{entities}} entiti, {{events}} peristiwa dan {{facts}} fakta, kemudian membina semula dari awal. Tindakan ini tidak boleh dibatalkan.",
+        "typePrompt": "Taip nama projek untuk pengesahan"
       },
       "disable": {
         "title": "Nyahaktifkan pengekstrakan?",
@@ -1082,7 +1155,8 @@
       },
       "diffToggle": "Tunjukkan perbezaan vs semasa",
       "diffEmpty": "Tiada perbezaan."
-    }
+    },
+    "loading": "Memuatkan…"
   },
   "indicator": {
     "label": "Penunjuk pengetahuan",
@@ -1090,7 +1164,8 @@
     "modes": {
       "global": "Global",
       "project": "Projek",
-      "degraded": "Terjejas"
+      "degraded": "Terjejas",
+      "multi": "{{count}} graf pengetahuan"
     },
     "popover": {
       "projectHeading": "Memori projek",
@@ -1100,7 +1175,8 @@
       "projectBody": "Sesi ini dipautkan ke <strong>{{name}}</strong>. AI melihat bio global anda serta ringkasan projek dan entri glosari pada setiap pusingan.",
       "globalBody": "Sesi ini tidak mempunyai projek yang dipautkan. AI hanya melihat bio global anda. Pautkan projek dalam tetapan sesi untuk memberikannya akses kepada memori khusus buku.",
       "degradedBody": "Perkhidmatan pengetahuan tidak dapat dicapai pada pusingan terakhir. AI hanya merujuk kepada mesej terkini — memori projek anda tidak disertakan dalam prompt buat sementara waktu. Akan pulih secara automatik pada pusingan seterusnya sebaik sahaja perkhidmatan kembali pulih.",
-      "manage": "Urus pengetahuan"
+      "manage": "Urus pengetahuan",
+      "multiBody": "Sembang ini berasaskan {{count}} graf pengetahuan secara serentak — fakta ditandakan dengan sumbernya."
     }
   },
   "picker": {
@@ -1312,5 +1388,21 @@
       "confirm": "Petak"
     },
     "emptyHint": "Triage mengumpul sebarang hasil pengekstrakan yang belum sepadan dengan skema anda — barisan yang bersih bermakna semuanya telah disusun dengan teratur."
+  },
+  "temporal": {
+    "canonical": {
+      "asOfChapter": "Setakat bab {{ordinal}}"
+    },
+    "retrieval": {
+      "chapter": "Bab {{chapter}}"
+    },
+    "slider": {
+      "atChapter": "Bab {{ordinal}}"
+    },
+    "translation": {
+      "asOfChapter": "bab {{n}}",
+      "asOfLabel": "setakat {{label}}",
+      "error": "Gagal memuatkan konteks: {{error}}"
+    }
   }
 }

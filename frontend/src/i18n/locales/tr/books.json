@@ -2,6 +2,39 @@
   "translateIntent": {
     "hint": "Çevrilecek bir kitap seçin — kitabı açın, ardından çeviriye başlamak için Çeviri sekmesini kullanın."
   },
+  "help": {
+    "open": "Yardımı aç",
+    "tour": "Rehberli tur",
+    "title": "Kitaplarla çalışma",
+    "description": "Kitap çalışma alanı için hızlı bir kılavuz.",
+    "intro": "Kitaplarınızı buradan yönetin, ardından araştırma yapmak, düzenlemek ve dünyasını inşa etmek için birini açın.",
+    "items": [
+      "Başlamak için bir kitap oluşturun veya bir taslak içe aktarın.",
+      "Bölümleri, sözlüğü ve ontolojiyi düzenlemek için bir kitap açın.",
+      "Bir kitabı hızlıca bulmak için arama ve filtreleri kullanın."
+    ],
+    "startTour": "Tura başla",
+    "back": "Geri",
+    "next": "İleri",
+    "done": "Tamamla",
+    "steps": [
+      {
+        "title": "Bir kitap bulun",
+        "description": "Arama ve filtreler, doğru kitabı hızlıca açmanıza yardımcı olur.",
+        "body": "Listeyi daraltmak için arama alanını ve dil filtresini kullanın."
+      },
+      {
+        "title": "Oluşturun veya içe aktarın",
+        "description": "Yeni bir kitapla veya mevcut bir taslakla başlayın.",
+        "body": "Yeni Kitap'ı seçin, ayrıntıları girin veya içe aktarmak için bir dosya seçin."
+      },
+      {
+        "title": "Çalışma alanını açın",
+        "description": "Tüm kitap araçları çalışma alanında toplanmıştır.",
+        "body": "Bir kitabın içinde bölümler, sözlük, ontoloji, çeviri ve daha fazlası üzerinde çalışabilirsiniz."
+      }
+    ]
+  },
   "workspace": "Kitaplarım",
   "new_book": "Yeni Kitap",
   "search_placeholder": "Kitap ara...",
@@ -21,6 +54,9 @@
     "book_description_placeholder": "Bu kitap ne hakkında?",
     "cover": "Kapak görseli",
     "cover_hint": "PNG, JPG (en fazla 5MB)",
+    "import_file": "Bir kitap dosyası içe aktarın",
+    "import_file_hint": "Bir FB2 veya EPUB dosyası seçin. Uygun içe aktarma akışı açılacaktır.",
+    "import_metadata_hint": "Kaynak meta verileri kitap başlığını ve ayrıntılarını ayarlayacaktır.",
     "submit": "Kitabı Oluştur"
   },
   "empty": {
@@ -154,6 +190,75 @@
       "confirm": "Çöpe Taşı"
     }
   },
+  "epubImport": {
+    "title": "Import EPUB",
+    "description": "Inspect the book, choose chapters, then import asynchronously.",
+    "close": "Close",
+    "chooseFile": "Choose EPUB file",
+    "fileHint": "EPUB 2 and EPUB 3, up to 200 MiB",
+    "inspecting": "Inspecting {{percent}}%",
+    "unknownAuthor": "Unknown author",
+    "duplicateSource": "This source was imported previously. Merge by source key is available.",
+    "target": "Target",
+    "existingBook": "Add to this book",
+    "newBook": "Create a new book from EPUB metadata",
+    "metadataPolicy": "Metadata conflict policy",
+    "metadata": {
+      "title": "Title",
+      "description": "Description",
+      "language": "Language",
+      "subjects": "Subjects"
+    },
+    "keepExisting": "Keep existing",
+    "useSource": "Use EPUB source",
+    "mergeSource": "Merge with EPUB source",
+    "applyCover": "Apply source cover when policy allows",
+    "coverPreview": "Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})",
+    "noCover": "No usable source cover was found.",
+    "selectedChapters": "{{count}} chapters selected",
+    "selectAll": "Select all",
+    "selectChapter": "Select {{title}}",
+    "ready": "Ready to import {{count}} selected chapters from {{title}}.",
+    "strategyLabel": "Existing-book strategy",
+    "importOptions": "Import options",
+    "options": {
+      "preserve_hierarchy": "Preserve EPUB hierarchy",
+      "import_images": "Import supported images",
+      "import_footnotes": "Import footnotes",
+      "retain_source": "Retain the source file for recovery"
+    },
+    "strategy": {
+      "append": "Append",
+      "merge_by_source_key": "Merge by source key",
+      "replace_all": "Replace all"
+    },
+    "replaceWarning": "Replace all is destructive. Starting import explicitly confirms this action.",
+    "replaceConfirmation": "I understand that this will archive the current chapters in this book.",
+    "queued": "queued",
+    "waiting": "Waiting for worker capacity",
+    "backgroundProgress": "You can close this dialog; the import continues on the server.",
+    "cancel": "Cancel import",
+    "resume": "Resume",
+    "rollback": "Rollback import",
+    "openBook": "Open imported book",
+    "back": "Back",
+    "continue": "Continue",
+    "start": "Start import",
+    "reportSummary": "{{chapters}} chapters created · {{warnings}} warnings",
+    "warningDetails": "Warnings",
+    "progress": "{{done}}/{{total}} chapters",
+    "errors": {
+      "extension": "Choose an .epub file."
+    },
+    "steps": {
+      "upload": "upload",
+      "metadata": "metadata",
+      "chapters": "chapters",
+      "confirm": "confirm",
+      "progress": "progress",
+      "report": "report"
+    }
+  },
   "glossary": {
     "header": "Sözlük ve Lore",
     "entity_count": "{{count}} varlık",
@@ -221,6 +326,7 @@
       "selected": "{{count}} seçildi",
       "activate": "Aktifleştir",
       "deactivate": "Pasifleştir",
+      "reject": "Reddet",
       "clear": "Temizle",
       "done": "{{count}} varlık {{status}} olarak ayarlandı",
       "select_all_matching": "Eşleşen {{count}} öğenin tamamını seç",
@@ -230,8 +336,7 @@
       "delete_confirm": {
         "title": "{{count}} varlık silinsin mi?",
         "description": "Seçilen {{count}} varlık geri dönüşüm kutusuna taşınacak."
-      },
-      "reject": "Reddet"
+      }
     },
     "clear_filters": "Tüm filtreleri temizle",
     "deleted": "Varlık silindi",
@@ -240,6 +345,7 @@
       "description": "İlk sözlük varlığınızı oluşturun — karakterler, yerler, eşyalar ve daha fazlası."
     },
     "untitled": "Başlıksız",
+    "scope_label_title": "Kapsam — bu varlığı aynı ismi paylaşan diğerlerinden ayırt eder",
     "alive_title": "Hayatta — ölü olarak işaretlemek için tıklayın",
     "dead_title": "Ölü — canlandırmak için tıklayın",
     "alive": "hayatta",
@@ -256,7 +362,38 @@
       "description": "\"{{title}}\" geri dönüşüm kutusuna taşınacak.",
       "confirm": "Sil"
     },
-    "scope_label_title": "Kapsam — bu varlığı aynı ismi paylaşan diğerlerinden ayırt eder"
+    "integrity": {
+      "button": "Kontrol Et",
+      "title": "Kurgu bütünlüğünü kontrol et",
+      "description": "Bu kitaptaki ontoloji, varlıklar, nitelikler, bağlantılar ve çeviriler için salt okunur kontroller.",
+      "run": "Kontrolü çalıştır",
+      "runAgain": "Tekrar çalıştır",
+      "checking": "Kitap bütünlüğü kontrol ediliyor…",
+      "close": "Kapat",
+      "unavailable": "Kontrol kullanılamıyor",
+      "issues": "{{count}} sorun",
+      "status": {
+        "ok": "Sorunsuz",
+        "warning": "Dikkat gerekiyor",
+        "error": "Bütünlük hataları"
+      },
+      "repair": "Otomatik düzelt",
+      "repairing": "Bütünlük düzeltiliyor&",
+      "repaired": "Otomatik düzeltme tamamlandı: {{count}} kontrol düzeltildi.",
+      "checks": {
+        "active_genres": "Aktif türler bu kitaba ait olmalıdır.",
+        "kind_genres": "Tür-tür bağlantıları bu kitaptaki türlere işaret etmelidir.",
+        "attributes": "Kitap nitelikleri mevcut bir kitap türüne ve janra işaret etmelidir.",
+        "entity_kinds": "Varlıklar bu kitaba ait bir türe işaret etmelidir.",
+        "entity_names": "Canlı varlıklar bir isim veya terim niteliğine sahip olmalıdır.",
+        "entity_attributes": "Varlık nitelik değerleri, bu kitaba ve türe ait bir nitelik tanımı kullanmalıdır.",
+        "chapter_links": "Bölüm bağlantıları bu kitaptaki canlı varlıklara işaret etmelidir.",
+        "translations": "Çeviriler mevcut bir nitelik değerine işaret etmelidir.",
+        "kind_facets": "Varlık türü yönleri bu kitaptaki türlere işaret etmelidir."
+      }
+    },
+    "batch_translate": "Toplu çeviri",
+    "batch_translate_hint": "Birçok varlık için hedef isimleri elle yazın (taslaklar; doğrulanmış olanların üzerine asla yazılmaz)"
   },
   "sharing": {
     "title": "Görünürlük",
@@ -401,7 +538,9 @@
     "page_indicator": "Sayfa {{page}} / {{pages}}",
     "prev": "Önceki",
     "next": "Sonraki",
-    "page": "Sayfa"
+    "page": "Sayfa",
+    "reasoning_enable": "Model akıl yürütmesini etkinleştir (düşünme)",
+    "reasoning_hint": "Varsayılan olarak kapalıdır — yerel modellerde gizli düşünme süreci çıktı bütçesini tüketebilir. Akıl yürütme modellerinde zor pasajlar için etkinleştirin."
   },
   "kind_editor": {
     "modified": "değiştirildi",
@@ -530,5 +669,12 @@
       "desc": "İsmi \"{{from}}\" değerinden \"{{to}}\" değerine döndür.",
       "confirm": "Geri Yükle"
     }
+  },
+  "lore": {
+    "heading": "Şimdiye kadar anlatılanlar",
+    "noPosition": "O noktaya kadar nelerin ortaya çıktığını görmek için bir bölüm açın.",
+    "nothingYet": "Bununla ilgili henüz hiçbir şey ortaya çıkmadı — okumaya devam edin.",
+    "search": "Hikâyede ara…",
+    "subtitle": "Okuduğunuz yere kadar hikâyenin ortaya çıkardığı bilgiler — sonraki bölümlerden sürprizbozan içermez."
   }
-,"epubImport":{"title":"Import EPUB","description":"Inspect the book, choose chapters, then import asynchronously.","close":"Close","chooseFile":"Choose EPUB file","fileHint":"EPUB 2 and EPUB 3, up to 200 MiB","inspecting":"Inspecting {{percent}}%","unknownAuthor":"Unknown author","duplicateSource":"This source was imported previously. Merge by source key is available.","target":"Target","existingBook":"Add to this book","newBook":"Create a new book from EPUB metadata","metadataPolicy":"Metadata conflict policy","metadata":{"title":"Title","description":"Description","language":"Language","subjects":"Subjects"},"keepExisting":"Keep existing","useSource":"Use EPUB source","mergeSource":"Merge with EPUB source","applyCover":"Apply source cover when policy allows","coverPreview":"Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})","noCover":"No usable source cover was found.","selectedChapters":"{{count}} chapters selected","selectAll":"Select all","selectChapter":"Select {{title}}","ready":"Ready to import {{count}} selected chapters from {{title}}.","strategyLabel":"Existing-book strategy","importOptions":"Import options","options":{"preserve_hierarchy":"Preserve EPUB hierarchy","import_images":"Import supported images","import_footnotes":"Import footnotes","retain_source":"Retain the source file for recovery"},"strategy":{"append":"Append","merge_by_source_key":"Merge by source key","replace_all":"Replace all"},"replaceWarning":"Replace all is destructive. Starting import explicitly confirms this action.","replaceConfirmation":"I understand that this will archive the current chapters in this book.","queued":"queued","waiting":"Waiting for worker capacity","backgroundProgress":"You can close this dialog; the import continues on the server.","cancel":"Cancel import","resume":"Resume","rollback":"Rollback import","openBook":"Open imported book","back":"Back","continue":"Continue","start":"Start import","reportSummary":"{{chapters}} chapters created · {{warnings}} warnings","warningDetails":"Warnings","progress":"{{done}}/{{total}} chapters","errors":{"extension":"Choose an .epub file."},"steps":{"upload":"upload","metadata":"metadata","chapters":"chapters","confirm":"confirm","progress":"progress","report":"report"}}}
+}

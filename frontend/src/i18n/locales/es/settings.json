@@ -271,7 +271,11 @@
       "unknown_error": "error desconocido",
       "model_removed": "{{name}} eliminado",
       "model_delete_failed": "Error al eliminar modelo"
-    }
+    },
+    "delete_blocked": "No se puede eliminar este modelo: hay {{count}} trabajo(s) activo(s). Deténlos primero.",
+    "delete_refs_none": "sin referencias",
+    "delete_confirm": "¿Eliminar el modelo «{{name}}»?\n\nSe eliminarán estas referencias: {{refs}}.",
+    "return_to_form": "Volver a donde estabas"
   },
   "translation": {
     "heading": "Predeterminados de traducción",
@@ -296,7 +300,9 @@
       "tpl_needs_chapter": "La plantilla de User Prompt debe contener {chapter_text}",
       "saved": "Preferencias de traducción guardadas",
       "save_failed": "Error al guardar las preferencias de traducción"
-    }
+    },
+    "models_load_failed": "No se pudieron cargar tus modelos. Es posible que el servicio del proveedor no esté disponible.",
+    "retry": "Reintentar"
   },
   "reading": {
     "app_theme": "Tema de la aplicación",
@@ -344,7 +350,8 @@
     "auto_saved": "Los cambios se guardan automáticamente.",
     "toast": {
       "preset_saved": "Ajuste \"{{name}}\" guardado"
-    }
+    },
+    "voice_moved": "Los ajustes de voz y habla ahora se encuentran en Ajustes → Chat e IA → Voz."
   },
   "language": {
     "gui_language": "Idioma de la interfaz",
@@ -473,7 +480,9 @@
       "notes_ph": "Notas opcionales sobre esta configuración de modelo...",
       "cancel": "Cancelar",
       "adding": "Añadiendo...",
-      "submit": "Añadir Modelo"
+      "submit": "Añadir Modelo",
+      "pricing_summary": "Coste: entrada ${{input}}/1M · salida ${{output}}/1M",
+      "pricing_missing": "El proveedor no publica precios; añádelos manualmente una vez registrado el modelo."
     },
     "edit": {
       "aria": "Editar modelo",
@@ -511,7 +520,16 @@
       "request_failed": "La petición ha fallado",
       "cancel": "Cancelar",
       "saving": "Guardando...",
-      "submit": "Guardar cambios"
+      "submit": "Guardar cambios",
+      "capabilities_refreshed": "Capacidades del modelo actualizadas",
+      "capabilities_refresh_failed": "No se pudieron actualizar las capacidades del modelo",
+      "delete_blocked_active": "No se puede eliminar este modelo: detén sus trabajos activos primero.",
+      "pricing_missing": "Este modelo no tiene precios; el coste estimado del trabajo no estará disponible.",
+      "refresh_capabilities": "Actualizar",
+      "delete_impact": "Se eliminarán estas referencias: {{refs}}. Pulsa «Eliminar» de nuevo para confirmar.",
+      "delete_impact_none": "ninguna",
+      "delete_blocked_count": "La eliminación está bloqueada: {{count}} trabajo(s) activo(s). Deténlos primero.",
+      "verify_ok_rerank": "Se clasificaron {{count}} docs · top {{score}} · {{ms}}ms"
     },
     "toast": {
       "fetch_failed": "Error al obtener modelos: {{error}}",
@@ -524,5 +542,23 @@
       "deleted": "Modelo eliminado",
       "delete_failed": "Error al eliminar"
     }
+  },
+  "defaultModels": {
+    "heading": "Modelos predeterminados",
+    "subtitle": "Tus modelos de respaldo por usuario (BYOK — tus propios modelos). Se utilizan cuando no hay un modelo configurado para un ámbito específico.",
+    "chat": "Modelo de chat predeterminado",
+    "chatHint": "Preseleccionado al iniciar un nuevo chat. Déjalo vacío para usar tus favoritos por defecto.",
+    "rerank": "Reranker predeterminado",
+    "rerankHint": "Rerank de cross-encoder para el rechazo de resultados irrelevantes en búsquedas puras. Opcional; se aplica cuando un proyecto no tiene un modelo de rerank configurado.",
+    "planner": "Planificador predeterminado",
+    "plannerHint": "El modelo de chat que utiliza el asistente de glosario para crear planes de varios pasos. Elige un modelo potente y con capacidad de uso de herramientas; de lo contrario, la planificación recurrirá a un modelo de chat arbitrario y suele fallar.",
+    "none": "Ninguno",
+    "empty": "No hay modelos capaces configurados.",
+    "saved": "Predeterminado actualizado"
+  },
+  "external_services": {
+    "delete_blocked": "Este servicio no se puede eliminar: su modelo está siendo utilizado por {{count}} trabajo(s) activo(s). Deténlos primero.",
+    "delete_refs_none": "sin referencias",
+    "delete_confirm": "¿Eliminar el servicio «{{name}}»?\n\nSe eliminarán estas referencias de modelo: {{refs}}."
   }
 }

@@ -9,7 +9,9 @@
     "permissions": "টুল পারমিশন",
     "proposals": "প্রস্তাবনা",
     "activity": "অ্যাক্টিভিটি লগ",
-    "ingest": "রেজিস্ট্রি সোর্স"
+    "ingest": "রেজিস্ট্রি সোর্স",
+    "bindings": "অটো-সেটআপ",
+    "workflows": "রেসিপি"
   },
   "quota": {
     "unavailable": "ব্যবহার অনুপলব্ধ",
@@ -107,6 +109,7 @@
       "authentication": "অথেনটিকেশন",
       "authNone": "কোনোটিই নয়",
       "authBearer": "Bearer টোকেন",
+      "authOauth": "OAuth 2.1",
       "noAuthHint": "কোনো অথেনটিকেশন নেই — এই সার্ভারটি উন্মুক্ত। নিবন্ধন এবং স্ক্যান করতে এগিয়ে যান।",
       "bearerLabel": "Bearer টোকেন (ভল্টে সংরক্ষিত; আর কখনো দেখানো হবে না)",
       "bearerPlaceholder": "টোকেন পেস্ট করুন",
@@ -121,10 +124,9 @@
       "runScan": "হেলথ চেক ও স্ক্যান করুন",
       "refresh": "রিফ্রেশ",
       "continue": "চালিয়ে যান",
+      "authKind": "auth: {{kind}}",
       "enable": "আমার সেশনের জন্য সক্রিয় করুন",
-      "done": "সম্পন্ন",
-      "authOauth": "OAuth 2.1",
-      "authKind": "auth: {{kind}}"
+      "done": "সম্পন্ন"
     }
   },
   "commands": {

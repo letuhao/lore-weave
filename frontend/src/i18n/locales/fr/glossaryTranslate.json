@@ -42,7 +42,9 @@
     "startTranslate": "Lancer la traduction",
     "startFailed": "Échec du lancement de la tâche de traduction",
     "thinkingOn": "Raisonnement : activé",
-    "thinkingOff": "Raisonnement : désactivé"
+    "thinkingOff": "Raisonnement : désactivé",
+    "concurrency": "Appels LLM parallèles",
+    "concurrencyHint": "1 = séquentiel. Augmentez cette valeur si votre modèle accepte les requêtes simultanées."
   },
   "progress": {
     "title": "Traduction du glossaire",

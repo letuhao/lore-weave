@@ -115,5 +115,365 @@
     "restoreError": "Tidak dapat memulihkan",
     "purged": "Dihapus secara permanen",
     "purgeError": "Tidak dapat menghapus"
+  },
+  "system": {
+    "genres": {
+      "universal": {
+        "name": "Universal",
+        "description": "Atribut lintas genre yang dimiliki oleh setiap cerita."
+      },
+      "fantasy": {
+        "name": "Fantasi",
+        "description": "Sihir, kekuatan supranatural, dan dunia imajinasi."
+      },
+      "xianxia": {
+        "name": "Xianxia",
+        "description": "Kultivasi, dewa abadi, sekte, dan fantasi bela diri."
+      },
+      "romance": {
+        "name": "Romansa",
+        "description": "Cerita yang berfokus pada cinta dan hubungan intim."
+      },
+      "drama": {
+        "name": "Drama",
+        "description": "Cerita berfokus karakter yang digerakkan oleh konflik dan emosi."
+      },
+      "historical": {
+        "name": "Sejarah",
+        "description": "Cerita yang berlatar pada periode atau pengaturan sejarah."
+      },
+      "mystery": {
+        "name": "Misteri",
+        "description": "Investigasi, rahasia, dan pencarian kebenaran yang tersembunyi."
+      }
+    },
+    "kinds": {
+      "character": {
+        "name": "Karakter",
+        "description": "Individu atau entitas bernama yang bertindak atau berbicara dalam cerita."
+      },
+      "location": {
+        "name": "Lokasi",
+        "description": "Tempat fisik yang dapat didatangi atau ditempati oleh karakter."
+      },
+      "item": {
+        "name": "Item / Properti",
+        "description": "Objek fisik seperti senjata, harta karun, pakaian, atau kendaraan."
+      },
+      "event": {
+        "name": "Peristiwa",
+        "description": "Sesuatu yang terjadi: pertempuran, perjalanan, pengkhianatan, atau wahyu."
+      },
+      "terminology": {
+        "name": "Terminologi",
+        "description": "Istilah abstrak, doktrin, pangkat, gelar, atau konsep."
+      },
+      "power_system": {
+        "name": "Sistem kekuatan",
+        "description": "Skema berurutan dari kekuatan atau peringkat yang dapat ditingkatkan oleh karakter."
+      },
+      "species": {
+        "name": "Spesies",
+        "description": "Jenis makhluk atau ras, bukan karakter individu."
+      },
+      "organization": {
+        "name": "Organisasi",
+        "description": "Sekelompok orang yang bertindak bersama: faksi, keluarga, serikat, atau pemerintah."
+      },
+      "relationship": {
+        "name": "Hubungan",
+        "description": "Koneksi bermakna antara karakter atau kelompok."
+      },
+      "plot_arc": {
+        "name": "Busur alur",
+        "description": "Alur cerita berkelanjutan dengan pemicu, pertaruhan, dan resolusi."
+      },
+      "social_setting": {
+        "name": "Latar sosial",
+        "description": "Tatanan sosial, era, adat istiadat, dan hierarki yang membentuk cerita."
+      },
+      "trope": {
+        "name": "Trope",
+        "description": "Pola narasi atau konvensi yang berulang."
+      },
+      "technique": {
+        "name": "Teknik",
+        "description": "Tindakan, metode, atau keterampilan bernama yang dilakukan oleh karakter."
+      },
+      "colleague": {
+        "name": "Rekan Kerja",
+        "description": "Seseorang yang bekerja bersama Anda."
+      },
+      "decision": {
+        "name": "Keputusan",
+        "description": "Pilihan yang telah dibuat dan memengaruhi apa yang terjadi selanjutnya."
+      },
+      "jargon": {
+        "name": "Jargon",
+        "description": "Terminologi domain atau akronim yang digunakan dalam teks."
+      },
+      "meeting": {
+        "name": "Pertemuan",
+        "description": "Diskusi atau perkumpulan yang telah dijadwalkan."
+      },
+      "org": {
+        "name": "Organisasi",
+        "description": "Sebuah perusahaan, tim, atau organisasi eksternal."
+      },
+      "project": {
+        "name": "Proyek",
+        "description": "Sekumpulan pekerjaan dengan tujuan dan hasil yang diharapkan."
+      },
+      "task": {
+        "name": "Tugas",
+        "description": "Item pekerjaan yang dapat ditindaklanjuti yang perlu diselesaikan."
+      }
+    },
+    "attributes": {
+      "name": {
+        "name": "Nama",
+        "description": "Atribut nama."
+      },
+      "term": {
+        "name": "Istilah",
+        "description": "Atribut istilah."
+      },
+      "aliases": {
+        "name": "Alias",
+        "description": "Atribut alias."
+      },
+      "gender": {
+        "name": "Gender",
+        "description": "Atribut gender."
+      },
+      "role": {
+        "name": "Peran",
+        "description": "Atribut peran."
+      },
+      "occupation": {
+        "name": "Pekerjaan",
+        "description": "Atribut pekerjaan."
+      },
+      "social_class": {
+        "name": "Kelas Sosial",
+        "description": "Atribut kelas sosial."
+      },
+      "affiliation": {
+        "name": "Afiliasi",
+        "description": "Atribut afiliasi."
+      },
+      "appearance": {
+        "name": "Penampilan",
+        "description": "Atribut penampilan."
+      },
+      "personality": {
+        "name": "Kepribadian",
+        "description": "Atribut Kepribadian."
+      },
+      "emotional_wound": {
+        "name": "Luka Emosional",
+        "description": "Atribut Luka Emosional."
+      },
+      "love_language": {
+        "name": "Bahasa Kasih",
+        "description": "Atribut Bahasa Kasih."
+      },
+      "relationships": {
+        "name": "Hubungan",
+        "description": "Atribut Hubungan."
+      },
+      "description": {
+        "name": "Deskripsi",
+        "description": "Atribut Deskripsi."
+      },
+      "type": {
+        "name": "Tipe",
+        "description": "Atribut Tipe."
+      },
+      "parent_location": {
+        "name": "Lokasi Induk",
+        "description": "Atribut Lokasi Induk."
+      },
+      "atmosphere": {
+        "name": "Atmosfer",
+        "description": "Atribut Atmosfer."
+      },
+      "significance": {
+        "name": "Signifikansi",
+        "description": "Atribut Signifikansi."
+      },
+      "owner": {
+        "name": "Pemilik",
+        "description": "Atribut Pemilik."
+      },
+      "symbolic_meaning": {
+        "name": "Makna Simbolis",
+        "description": "Atribut Makna Simbolis."
+      },
+      "date_in_story": {
+        "name": "Tanggal dalam Cerita",
+        "description": "Atribut Tanggal dalam Cerita."
+      },
+      "location": {
+        "name": "Lokasi",
+        "description": "Atribut lokasi."
+      },
+      "participants": {
+        "name": "Partisipan",
+        "description": "Atribut partisipan."
+      },
+      "emotional_impact": {
+        "name": "Dampak Emosional",
+        "description": "Atribut dampak emosional."
+      },
+      "outcome": {
+        "name": "Hasil",
+        "description": "Atribut hasil."
+      },
+      "category": {
+        "name": "Kategori",
+        "description": "Atribut kategori."
+      },
+      "definition": {
+        "name": "Definisi",
+        "description": "Atribut definisi."
+      },
+      "usage_note": {
+        "name": "Catatan Penggunaan",
+        "description": "Atribut Catatan Penggunaan."
+      },
+      "tiers": {
+        "name": "Tingkatan",
+        "description": "Atribut Tingkatan."
+      },
+      "rank": {
+        "name": "Posisi dalam Tangga",
+        "description": "Atribut Posisi dalam Tangga."
+      },
+      "entry_requirement": {
+        "name": "Syarat Masuk",
+        "description": "Atribut Syarat Masuk."
+      },
+      "capabilities": {
+        "name": "Kemampuan",
+        "description": "Atribut Kemampuan."
+      },
+      "arc_type": {
+        "name": "Tipe Busur",
+        "description": "Atribut Tipe Busur."
+      },
+      "parties": {
+        "name": "Pihak-pihak",
+        "description": "Atribut Pihak-pihak."
+      },
+      "trigger": {
+        "name": "Pemicu",
+        "description": "Atribut Pemicu."
+      },
+      "stakes": {
+        "name": "Taruhan",
+        "description": "Atribut Taruhan."
+      },
+      "chapters_span": {
+        "name": "Rentang Bab",
+        "description": "Atribut Rentang Bab."
+      },
+      "emotional_beats": {
+        "name": "Emosi Utama",
+        "description": "Atribut Emosi Utama."
+      },
+      "resolution": {
+        "name": "Resolusi",
+        "description": "Atribut Resolusi."
+      },
+      "era": {
+        "name": "Era",
+        "description": "Atribut Era."
+      },
+      "class_hierarchy": {
+        "name": "Hierarki Kelas",
+        "description": "Atribut Hierarki Kelas."
+      },
+      "rules_norms": {
+        "name": "Aturan dan Norma",
+        "description": "Atribut Aturan dan Norma."
+      },
+      "romance_obstacles": {
+        "name": "Hambatan Romansa",
+        "description": "Atribut Hambatan Romansa."
+      },
+      "traits": {
+        "name": "Sifat",
+        "description": "Atribut Sifat."
+      },
+      "abilities": {
+        "name": "Kemampuan",
+        "description": "Atribut Kemampuan."
+      },
+      "habitat": {
+        "name": "Habitat",
+        "description": "Atribut Habitat."
+      },
+      "culture": {
+        "name": "Budaya",
+        "description": "Atribut Budaya."
+      },
+      "how_manifested": {
+        "name": "Cara Terwujud",
+        "description": "Atribut Cara Terwujud."
+      },
+      "subverted": {
+        "name": "Disubversi",
+        "description": "Atribut Disubversi."
+      },
+      "related_characters": {
+        "name": "Karakter Terkait",
+        "description": "Atribut Karakter Terkait."
+      },
+      "relationship_type": {
+        "name": "Tipe Hubungan",
+        "description": "Atribut Tipe Hubungan."
+      },
+      "status": {
+        "name": "Status",
+        "description": "Atribut Status."
+      },
+      "tropes": {
+        "name": "Trope",
+        "description": "Atribut Trope."
+      },
+      "dynamic": {
+        "name": "Dinamis",
+        "description": "Atribut Dinamis."
+      },
+      "key_conflict": {
+        "name": "Konflik Utama",
+        "description": "Atribut Konflik Utama."
+      },
+      "turning_points": {
+        "name": "Titik Balik",
+        "description": "Atribut Titik Balik."
+      },
+      "leader": {
+        "name": "Pemimpin",
+        "description": "Atribut Pemimpin."
+      },
+      "headquarters": {
+        "name": "Markas Besar",
+        "description": "Atribut Markas Besar."
+      },
+      "members": {
+        "name": "Anggota",
+        "description": "Atribut Anggota."
+      },
+      "effects": {
+        "name": "Efek",
+        "description": "Atribut Efek."
+      },
+      "user": {
+        "name": "Pengguna",
+        "description": "Atribut Pengguna."
+      }
+    }
   }
 }

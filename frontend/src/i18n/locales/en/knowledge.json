@@ -543,7 +543,7 @@
       "org": "Organization",
       "project": "Project",
       "task": "Task"
-},
+    },
     "archive": {
       "action": "Archive",
       "confirm": "Hide this entity? Its relations and glossary anchor are kept; it disappears from the active list. You can Undo right after, or surface it again via the Archived filter.",
@@ -728,7 +728,28 @@
         "errorAlreadyRunning": "A benchmark is already running for this project. Wait and retry.",
         "errorProviderFlake": "Embedding provider failed mid-run. Please retry.",
         "errorGeneric": "Benchmark failed: {{message}}"
-      }
+      },
+      "benchmarkNoRun": "⋯ No benchmark yet — run the golden-set benchmark to enable extraction.",
+      "bookIdLocked": "This book (locked)",
+      "canonCapture": "Auto-capture new names from chat",
+      "canonCaptureCeilingOff": "Turned off for this deployment — your choice is saved, but capture won’t run until an administrator re-enables it.",
+      "canonCaptureHint": "Every few turns, names your conversation introduces are added to this book’s glossary review inbox as suggestions — never as canon. Uses one extra AI call per capture, billed to your own model.",
+      "canonCaptureNoBook": "Link a book to this project to capture names into its glossary.",
+      "embeddingModel": "Embedding model",
+      "embeddingModelEmpty": "No embedding-capable models configured — extraction needs one.",
+      "embeddingModelHint": "Governs which vector space this project uses for semantic passage retrieval.",
+      "embeddingModelNone": "None (no semantic passages)",
+      "genre": "Genre",
+      "genrePlaceholder": "e.g. Tiên hiệp, Cultivation, Fantasy…",
+      "memoryConfirm": "Confirm before saving memories",
+      "memoryConfirmHint": "Facts the AI wants to remember wait for your approval instead of saving automatically.",
+      "rerankDiscoveryHint": "Self-hosted? Add a local-rerank (Cohere-compatible) credential in AI Models, then Refresh — rerank models are auto-discovered.",
+      "rerankModel": "Rerank model (optional)",
+      "rerankModelEmpty": "No rerank-capable models configured. Register one to enable junk-rejection.",
+      "rerankModelHint": "Cross-encoder rerank for raw-search junk-rejection. Optional — left empty, search keeps fusion order.",
+      "rerankModelNone": "None (skip rerank — keep fusion order)",
+      "toolCalling": "Memory tools in chat",
+      "toolCallingHint": "Let the AI search, recall, and note memory while chatting in this project."
     },
     "archiveDialog": {
       "title": "Archive project?",
@@ -931,6 +952,32 @@
         "unpin": "Unpin",
         "budget": "+{{tokens}} tokens per window ({{count}} pinned × ~50).",
         "noBook": "Pinning needs a linked book. Attach a book to this project first."
+      },
+      "disabled": {
+        "benchmarkRequired": "Run the golden-set benchmark and pass it to enable extraction (above).",
+        "checkingBenchmark": "Checking the embedding benchmark…",
+        "fixConcurrency": "Parallel calls must be 1–64.",
+        "fixMaxSpend": "Enter a valid spending cap.",
+        "fixRange": "Fix the chapter range.",
+        "pickEmbedding": "Pick an embedding model.",
+        "pickLlm": "Pick an extraction LLM model."
+      },
+      "embedding": {
+        "changeViaDialog": "This project already has an embedding model. Use “Change model” to switch it — that rebuilds the graph.",
+        "saveFailed": "Could not save the embedding model: {{error}}",
+        "saved": "Embedding model saved — run the benchmark below to enable extraction."
+      },
+      "prereq": {
+        "benchmarkChecking": "Checking the embedding benchmark…",
+        "benchmarkPassed": "Embedding benchmark passing",
+        "benchmarkPending": "Embedding benchmark passing (pick a model first)",
+        "benchmarkRequired": "Embedding benchmark passing — run it from the model picker below",
+        "embedding": "Embedding model selected",
+        "llm": "Extraction LLM model selected"
+      },
+      "reasoning": {
+        "hint": "Off by default — extraction returns JSON, and hidden thinking can burn the output budget. Enable only for hard content on a reasoning model.",
+        "label": "Enable model reasoning (thinking)"
       }
     },
     "errorViewer": {
@@ -994,7 +1041,10 @@
       "saving": "Saving…",
       "cancel": "Cancel",
       "saved": "Extraction settings saved.",
-      "failed": "Save failed: {{error}}"
+      "failed": "Save failed: {{error}}",
+      "filterModel": "Filter model (optional)",
+      "filterModelDefault": "Use extraction model (default)",
+      "filterModelHint": "LLM that judges relation precision. Left as default, the filter reuses your extraction model (per-user, BYOK). Pick a stronger model for higher-precision filtering."
     },
     "confirmDestructive": {
       "cancel": "Cancel",
@@ -1009,7 +1059,9 @@
       },
       "rebuildStep2": {
         "title": "Last chance — really rebuild?",
-        "description": "Clicking Rebuild now starts the destruction-and-rebuild. There's no undo once the new job is running."
+        "description": "Clicking Rebuild now starts the destruction-and-rebuild. There's no undo once the new job is running.",
+        "descriptionCount": "This permanently DELETES {{entities}} entities, {{events}} events and {{facts}} facts, then rebuilds from scratch. This cannot be undone.",
+        "typePrompt": "Type the project name to confirm"
       },
       "disable": {
         "title": "Disable extraction?",
@@ -1103,7 +1155,8 @@
       },
       "diffToggle": "Show diff vs current",
       "diffEmpty": "No differences."
-    }
+    },
+    "loading": "Loading…"
   },
   "indicator": {
     "label": "Knowledge indicator",
@@ -1111,7 +1164,8 @@
     "modes": {
       "global": "Global",
       "project": "Project",
-      "degraded": "Degraded"
+      "degraded": "Degraded",
+      "multi": "{{count}} knowledge graphs"
     },
     "popover": {
       "projectHeading": "Project memory",
@@ -1121,7 +1175,8 @@
       "projectBody": "This session is linked to <strong>{{name}}</strong>. The AI sees your global bio plus the project's summary and glossary entries on every turn.",
       "globalBody": "This session has no project linked. The AI sees only your global bio. Link a project in session settings to give it access to book-specific memory.",
       "degradedBody": "Knowledge service was unreachable on the last turn. The AI fell back to recent messages only — your project memory is temporarily not in the prompt. Will recover automatically on the next turn once the service is back.",
-      "manage": "Manage knowledge"
+      "manage": "Manage knowledge",
+      "multiBody": "This chat is grounded on {{count}} knowledge graphs at once — facts are tagged with their source."
     }
   },
   "picker": {
@@ -1333,5 +1388,21 @@
       "confirm": "Map"
     },
     "emptyHint": "Triage collects anything extraction found that doesn’t fit your schema yet — a clean queue means everything lined up."
+  },
+  "temporal": {
+    "canonical": {
+      "asOfChapter": "As of chapter {{ordinal}}"
+    },
+    "retrieval": {
+      "chapter": "Chapter {{chapter}}"
+    },
+    "slider": {
+      "atChapter": "Chapter {{ordinal}}"
+    },
+    "translation": {
+      "asOfChapter": "chapter {{n}}",
+      "asOfLabel": "as of {{label}}",
+      "error": "Failed to load context: {{error}}"
+    }
   }
 }

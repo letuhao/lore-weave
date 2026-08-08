@@ -517,11 +517,32 @@
       "discoveredHint": "新しいエンティティは「発見済み」として作成されます。用語集に紐付けることで「正規」ステータスになります。"
     },
     "kind": {
+      "unknown": "不明な種類",
+      "person": "人物",
+      "artifact": "アーティファクト",
       "character": "キャラクター",
       "location": "場所",
       "organization": "組織",
       "concept": "概念",
-      "item": "アイテム"
+      "item": "アイテム",
+      "event_ref": "イベント参照",
+      "preference": "嗜好",
+      "event": "イベント",
+      "terminology": "用語",
+      "power_system": "能力体系",
+      "species": "種族",
+      "relationship": "関係性",
+      "plot_arc": "プロットアーク",
+      "social_setting": "社会設定",
+      "trope": "トロープ",
+      "technique": "テクニック",
+      "colleague": "同僚",
+      "decision": "決定",
+      "jargon": "専門用語",
+      "meeting": "会議",
+      "org": "組織",
+      "project": "プロジェクト",
+      "task": "タスク"
     },
     "archive": {
       "action": "アーカイブ",
@@ -688,6 +709,7 @@
         "general": "一般"
       },
       "bookId": "ブック ID (任意)",
+      "bookIdPlaceholder": "uuid",
       "description": "説明 (任意)",
       "instructions": "指示 (任意)",
       "instructionsPlaceholder": "文体、声、制約などのメモ — このプロジェクトのすべてのチャットに挿入されます。",
@@ -707,7 +729,27 @@
         "errorProviderFlake": "埋め込みプロバイダーが実行中に失敗しました。再試行してください。",
         "errorGeneric": "ベンチマーク失敗: {{message}}"
       },
-      "bookIdPlaceholder": "uuid"
+      "benchmarkNoRun": "⋯ ベンチマーク未実施 — 抽出機能を有効にするには、ゴールデンセット・ベンチマークを実行してください。",
+      "bookIdLocked": "この書籍（ロック済み）",
+      "canonCapture": "チャットから新しい固有名詞を自動キャプチャ",
+      "canonCaptureCeilingOff": "このデプロイメントではオフに設定されています — 設定は保存されますが、管理者が再度有効にするまでキャプチャは実行されません。",
+      "canonCaptureHint": "会話に登場する新しい名前は、数ターンごとにこの書籍の用語集レビュー・インボックスへ「提案」として追加されます（自動的に正典（canon）にはなりません）。キャプチャごとにAIへの追加リクエストが1回発生し、お客様のモデル使用料が適用されます。",
+      "canonCaptureNoBook": "このプロジェクトに書籍をリンクすると、その用語集に名前をキャプチャできるようになります。",
+      "embeddingModel": "埋め込みモデル",
+      "embeddingModelEmpty": "埋め込み対応モデルが設定されていません — 抽出にはモデルが必要です。",
+      "embeddingModelHint": "セマンティックなパッセージ検索に使用されるベクトル空間を制御します。",
+      "embeddingModelNone": "なし（セマンティック・パッセージを使用しない）",
+      "genre": "ジャンル",
+      "genrePlaceholder": "例：仙侠、修仙、ファンタジー…",
+      "memoryConfirm": "保存前にメモリを確認する",
+      "memoryConfirmHint": "AIが記憶したい事実は、自動的に保存されるのではなく、あなたの承認を待機します。",
+      "rerankDiscoveryHint": "セルフホストしていますか？「AIモデル」でローカルリランク（Cohere互換）の認証情報を追加して「更新」してください。リランクモデルが自動的に検出されます。",
+      "rerankModel": "リランクモデル（任意）",
+      "rerankModelEmpty": "リランク可能なモデルが設定されていません。不要な情報の除外を有効にするには、モデルを登録してください。",
+      "rerankModelHint": "検索結果からノイズを除去するためのクロスエンコーダーによるリランク。任意項目です。空欄の場合、検索結果は融合順序が維持されます。",
+      "rerankModelNone": "なし（リランクをスキップ — 融合順序を維持）",
+      "toolCalling": "チャット内でのメモリツール",
+      "toolCallingHint": "このプロジェクトでのチャット中に、AIがメモリを検索、想起、および記録できるようにします。"
     },
     "archiveDialog": {
       "title": "プロジェクトをアーカイブしますか？",
@@ -910,6 +952,32 @@
         "unpin": "ピン解除",
         "budget": "ウィンドウごとに +{{tokens}} トークン ({{count}} 件ピン留め × 約50)。",
         "noBook": "ピン留めにはリンクされた書籍が必要です。まずこのプロジェクトに書籍を紐付けてください。"
+      },
+      "disabled": {
+        "benchmarkRequired": "抽出を有効にするには、ゴールデンセットのベンチマークを実行し、合格する必要があります。",
+        "checkingBenchmark": "埋め込みベンチマークを確認中…",
+        "fixConcurrency": "並列呼び出し数は1〜64の間である必要があります。",
+        "fixMaxSpend": "有効な支出上限を入力してください。",
+        "fixRange": "章の範囲を修正してください。",
+        "pickEmbedding": "埋め込みモデルを選択してください。",
+        "pickLlm": "抽出用LLMモデルを選択してください。"
+      },
+      "embedding": {
+        "changeViaDialog": "このプロジェクトには既に埋め込みモデルが設定されています。「モデルを変更」を使用して切り替えてください。変更するとグラフが再構築されます。",
+        "saveFailed": "埋め込みモデルを保存できませんでした: {{error}}",
+        "saved": "埋め込みモデルを保存しました。抽出を有効にするには、以下のベンチマークを実行してください。"
+      },
+      "prereq": {
+        "benchmarkChecking": "埋め込みベンチマークを確認中…",
+        "benchmarkPassed": "埋め込みベンチマーク合格",
+        "benchmarkPending": "埋め込みベンチマーク合格（先にモデルを選択してください）",
+        "benchmarkRequired": "埋め込みベンチマーク合格 — 下のモデル選択から実行してください",
+        "embedding": "埋め込みモデルが選択されています",
+        "llm": "抽出用LLMモデルが選択されました"
+      },
+      "reasoning": {
+        "hint": "デフォルトではオフになっています。抽出はJSONを返しますが、思考プロセス（thinking）を有効にすると出力トークンを消費します。推論モデルを使用して難易度の高いコンテンツを処理する場合のみ有効にしてください。",
+        "label": "モデルの推論（思考）を有効にする"
       }
     },
     "errorViewer": {
@@ -973,7 +1041,10 @@
       "saving": "保存中…",
       "cancel": "キャンセル",
       "saved": "抽出設定を保存しました。",
-      "failed": "保存に失敗しました: {{error}}"
+      "failed": "保存に失敗しました: {{error}}",
+      "filterModel": "フィルタリング用モデル（任意）",
+      "filterModelDefault": "抽出用モデルを使用（デフォルト）",
+      "filterModelHint": "関係性の精度を判定するLLMです。デフォルトでは、抽出用モデルが再利用されます（ユーザーごと、BYOK）。より高精度なフィルタリングを行うには、より強力なモデルを選択してください。"
     },
     "confirmDestructive": {
       "cancel": "キャンセル",
@@ -988,7 +1059,9 @@
       },
       "rebuildStep2": {
         "title": "最終確認 — 本当に再構築しますか?",
-        "description": "「再構築」を押すと削除と再構築が開始されます。新しいジョブが動き出すと取り消せません。"
+        "description": "「再構築」を押すと削除と再構築が開始されます。新しいジョブが動き出すと取り消せません。",
+        "descriptionCount": "これにより、{{entities}} 個のエンティティ、{{events}} 個のイベント、{{facts}} 個の事実が完全に削除され、最初から再構築されます。この操作は取り消せません。",
+        "typePrompt": "確認のためプロジェクト名を入力してください"
       },
       "disable": {
         "title": "抽出を無効にしますか?",
@@ -1082,7 +1155,8 @@
       },
       "diffToggle": "現在との差分を表示",
       "diffEmpty": "差分はありません。"
-    }
+    },
+    "loading": "読み込み中…"
   },
   "indicator": {
     "label": "ナレッジインジケーター",
@@ -1090,7 +1164,8 @@
     "modes": {
       "global": "グローバル",
       "project": "プロジェクト",
-      "degraded": "縮退"
+      "degraded": "縮退",
+      "multi": "{{count}} 個のナレッジグラフ"
     },
     "popover": {
       "projectHeading": "プロジェクトメモリ",
@@ -1100,7 +1175,8 @@
       "projectBody": "このセッションは <strong>{{name}}</strong> にリンクされています。AI はあなたのグローバルプロフィールに加えて、毎ターン このプロジェクトの要約とグロッサリーを参照します。",
       "globalBody": "このセッションにはプロジェクトがリンクされていません。AI はあなたのグローバルプロフィールのみを参照します。書籍固有のメモリにアクセスさせるには、セッション設定でプロジェクトをリンクしてください。",
       "degradedBody": "前回のターンで knowledge service に到達できませんでした。AI は直近のメッセージのみを使用するフォールバックモードになり、プロジェクトメモリは一時的にプロンプトに含まれていません。サービスが復旧すれば次のターンで自動的に回復します。",
-      "manage": "ナレッジを管理"
+      "manage": "ナレッジを管理",
+      "multiBody": "このチャットは、同時に {{count}} 個のナレッジグラフに基づいています。事実はそのソースとともにタグ付けされます。"
     }
   },
   "picker": {
@@ -1134,12 +1210,9 @@
   },
   "relations": {
     "edit": {
-      "description": "この関係の述語を修正するか、誤りとしてマークして削除します。",
-      "invalidateHint": "この関係が抽出されるべきではなかった場合は、誤りとしてマークして削除してください。",
-      "invalidateConfirm": "この関係を誤りとしてマークし、削除しますか？",
-      "failed": "修正を保存できませんでした: {{error}}",
       "cta": "リレーションを修正",
       "title": "リレーションを修正",
+      "description": "この関係の述語を修正するか、誤りとしてマークして削除します。",
       "field": {
         "predicate": "述語"
       },
@@ -1148,8 +1221,11 @@
       "cancel": "キャンセル",
       "correctSuccess": "リレーションを修正しました。",
       "invalidateSuccess": "関係を削除しました。",
+      "invalidateHint": "この関係が抽出されるべきではなかった場合は、誤りとしてマークして削除してください。",
+      "invalidateConfirm": "この関係を誤りとしてマークし、削除しますか？",
       "markWrong": "誤りとマーク",
-      "invalidating": "削除中…"
+      "invalidating": "削除中…",
+      "failed": "修正を保存できませんでした: {{error}}"
     },
     "create": {
       "title": "エンティティをリンク",
@@ -1179,30 +1255,30 @@
       "save": "イベントを追加"
     },
     "edit": {
-      "description": "このイベントのタイトル、概要、またはタイミングを調整します。",
-      "dateIsoPlaceholder": "YYYY または YYYY-MM-DD",
-      "conflict": "別のデバイスがこのイベントを更新しました。最新の状態を確認して、もう一度やり直してください。",
-      "failed": "イベントを更新できませんでした: {{error}}",
-      "invalidDate": "日付は YYYY、YYYY-MM、または YYYY-MM-DD の形式で入力してください。",
       "cta": "編集",
       "title": "イベントを編集",
+      "description": "このイベントのタイトル、概要、またはタイミングを調整します。",
       "field": {
         "title": "タイトル",
         "summary": "概要",
         "timeCue": "タイムキュー",
         "dateIso": "日付 (ISO)"
       },
+      "dateIsoPlaceholder": "YYYY または YYYY-MM-DD",
       "save": "保存",
       "saving": "保存中…",
       "cancel": "キャンセル",
-      "success": "イベントを更新しました。"
+      "success": "イベントを更新しました。",
+      "conflict": "別のデバイスがこのイベントを更新しました。最新の状態を確認して、もう一度やり直してください。",
+      "failed": "イベントを更新できませんでした: {{error}}",
+      "invalidDate": "日付は YYYY、YYYY-MM、または YYYY-MM-DD の形式で入力してください。"
     },
     "archive": {
-      "confirm": "このイベントを削除（非表示に）しますか？",
-      "failed": "イベントを削除できませんでした: {{error}}",
       "cta": "削除",
+      "confirm": "このイベントを削除（非表示に）しますか？",
       "archiving": "削除中…",
-      "success": "イベントを削除しました。"
+      "success": "イベントを削除しました。",
+      "failed": "イベントを削除できませんでした: {{error}}"
     }
   },
   "mining": {
@@ -1312,5 +1388,21 @@
       "confirm": "マッピング"
     },
     "emptyHint": "Triageは、まだスキーマに適合していない抽出結果をすべて収集します。キューが空であることは、すべてのデータが整理されたことを意味します。"
+  },
+  "temporal": {
+    "canonical": {
+      "asOfChapter": "{{ordinal}} 章時点"
+    },
+    "retrieval": {
+      "chapter": "{{chapter}}章"
+    },
+    "slider": {
+      "atChapter": "{{ordinal}}章"
+    },
+    "translation": {
+      "asOfChapter": "{{n}}章",
+      "asOfLabel": "{{label}}時点",
+      "error": "コンテキストの読み込みに失敗しました: {{error}}"
+    }
   }
 }

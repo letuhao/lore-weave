@@ -49,6 +49,45 @@
     "lossChange": {
       "removed_upstream": "eliminado",
       "modified": "sobrescrito"
+    },
+    "templates": {
+      "general": {
+        "name": "General (ontología heredada)",
+        "description": "Reproduce la ontología de extracción genérica original: la red de seguridad de prioridad aditiva."
+      },
+      "general-legacy": {
+        "name": "General (ontología heredada)",
+        "description": "Reproduce la ontología de extracción genérica original: la red de seguridad de prioridad aditiva."
+      },
+      "xianxia-harem": {
+        "name": "Xianxia · Harem",
+        "description": "Plantilla de género para novelas de cultivo y harem con tipos de entidades y relaciones seleccionados."
+      },
+      "fantasy": {
+        "name": "Fantasía",
+        "description": "Esquema de mundo de fantasía con personajes, lugares, organizaciones, especies, objetos, poderes y técnicas."
+      },
+      "romance": {
+        "name": "Romance",
+        "description": "Esquema centrado en las relaciones con personajes, vínculos, arcos argumentales, tropos y entornos sociales."
+      },
+      "drama": {
+        "name": "Drama",
+        "description": "Esquema de drama para personajes, conflictos, relaciones, organizaciones, eventos y arcos argumentales."
+      },
+      "historical": {
+        "name": "Histórico",
+        "description": "Esquema de ficción histórica para personas, lugares, instituciones, eventos, terminología y orden social."
+      },
+      "mystery": {
+        "name": "Misterio",
+        "description": "Esquema de investigación para personajes, pistas, objetos, organizaciones, eventos, arcos argumentales y tropos."
+      }
+    },
+    "scope": {
+      "system": "sistema",
+      "user": "Usuario",
+      "project": "Proyecto"
     }
   },
   "schema": {
@@ -62,6 +101,7 @@
     "addEdgeType": "Añadir tipo de arista",
     "code": "Código",
     "label": "Etiqueta",
+    "temporalField": "temporal (valid_from + provenance)",
     "cardinality": "Cardinalidad",
     "addButton": "Añadir tipo de arista",
     "addSectionTitle": "Añadir al esquema",
@@ -92,8 +132,7 @@
     "emptyTitle": "Este esquema está vacío",
     "emptyHelp": "Comienza añadiendo un tipo de nodo (un personaje, un lugar, una organización…), luego conéctalos con un tipo de arista.",
     "deleteConfirmTitle": "¿Eliminar este componente?",
-    "deleteConfirmBody": "«{{code}}» es referenciado por {{count}} elemento(s) del grafo. Eliminarlo lo marcará como obsoleto; los datos seguirán siendo consultables. ¿Eliminar de todos modos?",
-    "temporalField": "temporal (valid_from + provenance)"
+    "deleteConfirmBody": "«{{code}}» es referenciado por {{count}} elemento(s) del grafo. Eliminarlo lo marcará como obsoleto; los datos seguirán siendo consultables. ¿Eliminar de todos modos?"
   },
   "canvas": {
     "list": "Lista",

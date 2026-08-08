@@ -98,5 +98,27 @@
     "branchAt": "se ramifica en el cap. {{ch}}",
     "orphan": "· fuente externa a este mundo",
     "edgeLabel": "cap. {{ch}}"
+  },
+  "mapEditor": {
+    "bind": "Vincular entidad",
+    "delete": "Eliminar",
+    "empty": "Aún no hay mapas; dibuja el mundo en el que habita tu historia.",
+    "entityPlaceholder": "id de entidad de ubicación",
+    "error": "No se pudo cargar este mapa.",
+    "label": "Etiqueta",
+    "marker": "Marcador",
+    "name": "Nombre",
+    "newMap": "+ Nuevo mapa",
+    "newMapPrompt": "Ponle nombre al nuevo mapa",
+    "pickWorld": "Elige un mundo para mapear.",
+    "region": "Región",
+    "save": "Guardar",
+    "unbind": "Desvincular",
+    "uploadImage": "Subir imagen base",
+    "vertexCapNotice": "{{count}} vértices: la remodelación está desactivada por encima de {{max}} por rendimiento."
+  },
+  "maps": {
+    "empty": "Aún no hay mapas. Pide al asistente que «cree un mapa de este mundo» para crear uno.",
+    "heading": "Mapas"
   }
 }

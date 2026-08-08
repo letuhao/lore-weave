@@ -120,7 +120,8 @@
     "no_active": "Aktif tür yok. Matrisi oluşturmak için bir tane ekleyin.",
     "cell_inspector": "Seçili hücre",
     "no_cell": "İncelemek için bir hücreye tıklayın.",
-    "sort": "sırala"
+    "sort": "sırala",
+    "required": "zorunlu"
   },
   "entity": {
     "title_new": "Yeni {{kind}} varlığı",
@@ -238,5 +239,16 @@
     "links_saved": "Tür bağlantıları güncellendi",
     "links_failed": "Tür bağlantıları güncellenemedi",
     "forbidden": "Değişiklik yapmak için bu kitap üzerinde Yönetme erişimine sahip olmalısınız"
+  },
+  "batch_translate": {
+    "apply": "Çevirileri uygula",
+    "count": "{{n}} çevrilecek öğe",
+    "loading": "Yükleniyor…",
+    "none": "Bu dil için çevrilmemiş öğe bulunmuyor.",
+    "pick_lang": "Başlamak için bir hedef dil seçin.",
+    "result": "{{w}} yazıldı · {{v}} korundu (doğrulandı) · {{e}} boş · {{f}} başarısız",
+    "select_lang": "Seç…",
+    "target_lang": "Hedef dil",
+    "title": "Toplu çeviri"
   }
 }

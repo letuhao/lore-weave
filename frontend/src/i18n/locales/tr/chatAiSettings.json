@@ -1,0 +1,96 @@
+{
+  "title": "Sohbet ve Yapay Zeka",
+  "description": "Sohbet ve Yazım Stüdyosu için varsayılanlarınız tek bir yerde. Her satır geçerli değeri ve kaynağını gösterir; oturumlar ve Stüdyo araçları bu varsayılanları devralır ve bunları geçersiz kılabilir.",
+  "models": {
+    "title": "Modeller",
+    "resolved": "Şu anki çözümlenmiş hali",
+    "chat": "Sohbet ve taslak oluşturma",
+    "composer": "Düz yazı oluşturucu",
+    "planner": "Planlayıcı",
+    "embedding": "Gömme",
+    "rerank": "Yeniden sıralama"
+  },
+  "behavior": {
+    "title": "Davranış",
+    "description": "Bu ayarlar daha önce sessizce uygulanıyordu. Artık görünür ve düzenlenebilir durumdalar; boş bırakılması sistem varsayılanı anlamına gelir.",
+    "reasoning": {
+      "label": "Akıl yürütme çabası",
+      "off": "Kapalı",
+      "low": "Düşük",
+      "medium": "Orta",
+      "high": "Yüksek"
+    },
+    "permission": {
+      "label": "Araç yetkisi",
+      "ask": "Sor",
+      "plan": "Planla",
+      "write": "Yaz",
+      "hint": "Asistanın sormadan ne kadar yapabileceği. Varsayılan: Yaz."
+    },
+    "temperature": {
+      "label": "Sıcaklık",
+      "placeholder": "Sağlayıcı varsayılanı"
+    },
+    "systemPrompt": {
+      "label": "Sistem istemi",
+      "placeholder": "Varsayılan persona talimatları (boş bırakılırsa yok)"
+    }
+  },
+  "grounding": {
+    "title": "Dayanak ve bellek",
+    "label": "Yanıtları hikayeme dayandır",
+    "description": "Her yanıta temel kavramları, gerçekleri ve taslak pasajlarını dahil eder. Bu özellik varsayılan olarak etkindir ve kapatılabilir.",
+    "offWarning": "Dayanaklandırma kapalı — asistan hikaye evreninize erişemez ve kurgu uydurabilir. Doğru yanıtlar için özelliği açın."
+  },
+  "context": {
+    "title": "Bağlam yönetimi",
+    "description": "Asistanın çok uzun konuşmalarda bellek bütçesini nasıl yönettiği. Çoğu kullanıcı için Otomatik modda bırakılmalıdır.",
+    "label": "Uzun çalışma bağlam modu",
+    "auto": "Otomatik",
+    "on": "Her zaman açık",
+    "off": "Kapalı",
+    "hint": "Otomatik mod, yalnızca bir proje ihtiyaç duyduğunda uzun çalışma kademelerini etkinleştirir. Kapalı mod ise en basit yolu kullanır."
+  },
+  "voice": {
+    "title": "Ses",
+    "description": "Sohbet için sesli giriş ve çıkış. Bu ayarlar hesabınıza kaydedilir ve sesli mesajlara uygulanır.",
+    "ttsModel": "Metinden sese modeli (TTS)",
+    "sttModel": "Sesten metne modeli (STT)",
+    "voice": "Ses",
+    "placeholder": "ör. af_heart",
+    "hint": "Bir ses, kendisine özgü bir modele sahiptir; TTS modeliniz tarafından desteklenen bir ses seçin."
+  },
+  "tiers": {
+    "session": {
+      "label": "bu sohbet",
+      "title": "Bu sohbet için ayarlanır — hesap ve kitap varsayılanlarınızın üzerine yazılır."
+    },
+    "book": {
+      "label": "bu kitap",
+      "title": "Bu kitabın ayarlarından devralınır."
+    },
+    "account": {
+      "label": "varsayılanınız",
+      "title": "Hesap varsayılanınızdan devralındı."
+    },
+    "system": {
+      "label": "varsayılan",
+      "title": "Sistem varsayılanı."
+    },
+    "unavailable": {
+      "label": "erişilemez",
+      "title": "Sahip olunan kademeye ulaşılamadı."
+    },
+    "no_model_configured": {
+      "label": "ayarlanmadı",
+      "title": "Yapılandırılmış aktif bir model yok."
+    }
+  },
+  "clear": {
+    "default": "varsayılan",
+    "on": "açık",
+    "off": "kapalı",
+    "action": "temizle",
+    "inherit": "devral"
+  }
+}

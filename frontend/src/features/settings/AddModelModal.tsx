@@ -268,9 +268,9 @@ export function AddModelModal({ provider, onClose, onAdded }: Props) {
           {/* Capability flags */}
           <CapabilityFlags flags={flags} onChange={setFlags} />
           {selected && (selected.pricing?.input_per_mtok != null || selected.pricing?.output_per_mtok != null) ? (
-            <p className="text-[11px] text-muted-foreground">Стоимость: вход ${selected.pricing?.input_per_mtok ?? 0}/1M · выход ${selected.pricing?.output_per_mtok ?? 0}/1M</p>
+            <p className="text-[11px] text-muted-foreground">{t('model_modal.add.pricing_summary', { defaultValue: 'Cost: input ${{input}}/1M · output ${{output}}/1M', input: selected.pricing?.input_per_mtok ?? 0, output: selected.pricing?.output_per_mtok ?? 0 })}</p>
           ) : selected ? (
-            <p className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">Стоимость у провайдера не задана — добавьте её вручную после регистрации модели.</p>
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-200">{t('model_modal.add.pricing_missing', { defaultValue: 'The provider does not publish pricing — add it by hand once the model is registered.' })}</p>
           ) : null}
 
           {/* Tags */}

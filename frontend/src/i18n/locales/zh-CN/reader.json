@@ -43,8 +43,8 @@
         "desc": "温暖的纸张色调"
       },
       "oled": {
-        "desc": "适用于 OLED 屏幕的纯黑背景",
-        "name": "OLED"
+        "name": "OLED",
+        "desc": "适用于 OLED 屏幕的纯黑背景"
       },
       "parchment": {
         "name": "羊皮纸",
@@ -69,9 +69,9 @@
   "tts": {
     "source": {
       "attached": "已附加",
+      "ai": "AI 语音合成",
       "browser": "浏览器",
-      "inline": "音频",
-      "ai": "AI 语音合成"
+      "inline": "音频"
     },
     "prev_block": "上一个区块 (Shift+左方向键)",
     "play": "播放 (空格)",
@@ -105,10 +105,10 @@
   "audio": {
     "source": {
       "attached": "已附加",
+      "ai": "AI 语音合成",
       "browser": "浏览器",
       "inline": "音频区块",
-      "none": "无",
-      "ai": "AI 语音合成"
+      "none": "无"
     },
     "coverage": "音频覆盖范围",
     "summary": "{{speakable}} 个可朗读区块 · {{missing}} 个使用浏览器 TTS",
@@ -142,5 +142,8 @@
       "kg": "知识库",
       "passage": "原文"
     }
+  },
+  "lore": {
+    "heading": "设定回顾"
   }
 }

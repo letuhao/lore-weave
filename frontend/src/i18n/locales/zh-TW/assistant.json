@@ -1,0 +1,85 @@
+{
+  "loading": "正在設定您的助手…",
+  "openingJournal": "正在開啟您的日誌…",
+  "home": {
+    "welcome": "歡迎回來，{{name}}",
+    "subtitle": "您的私人工作助手。",
+    "capturing": "正在記錄您的工作筆記",
+    "captureOff": "記錄功能已關閉",
+    "capturingDesc": "當您交談時，系統會自動識別人物與專案。",
+    "captureOffDesc": "開啟此功能以記錄同事、專案與決策。",
+    "refresh": "重新整理",
+    "capturedItems": "已記錄項目",
+    "endDay": "結束我的一天",
+    "endingDay": "正在結束您的一天…",
+    "journal": "日記",
+    "memory": "回憶",
+    "practice": "面試練習"
+  },
+  "timezone": {
+    "title": "確認您的時區",
+    "description": "您的日記會根據您的當地時間對每一天進行分組。我們偵測到 {{zone}}。",
+    "saving": "儲存中…",
+    "useThis": "使用此時區",
+    "pickAnother": "選擇其他時區",
+    "save": "儲存"
+  },
+  "capture": {
+    "title": "今日進度",
+    "live": "即時",
+    "description": "我們對話時我所注意到的事情。在您今晚進行回顧之前，這些內容都不會儲存到您的日記中。",
+    "listening": "正在聆聽…",
+    "nothingYet": "尚未捕捉到任何內容 — 和我聊聊你今天過得如何吧。",
+    "turnOn": "開啟捕捉功能，開始記錄人物與專案。"
+  },
+  "autonomous": {
+    "title": "讓助手自動運作",
+    "description": "預設為關閉 — 開啟後將在背景執行並使用您的模型。",
+    "loading": "載入中…",
+    "on": "開啟",
+    "next": "開啟 · 下次於 {{time}}",
+    "eod": "自動結束我的當天紀錄",
+    "eodDesc": "每天傍晚自動進行日誌紀錄，即使您忘了也沒關係。",
+    "weeklyReflection": "每週回顧",
+    "weeklyReflectionDesc": "溫柔的每週規律整理 + 教練式筆記。",
+    "weeklySummary": "每週摘要",
+    "weeklySummaryDesc": "回顧您的一週生活。",
+    "reminders": "寫作提醒",
+    "remindersDesc": "如果您尚未結束當天的紀錄，我會給予提醒。",
+    "proactive": "主動互動",
+    "proactiveOn": "開啟 — 若有一段時間沒聯繫，我可能會主動與您交流。",
+    "proactiveOff": "關閉 — 在一段靜止期後，讓我以一個想法作為開場。"
+  },
+  "review": {
+    "title": "這是您的一天",
+    "distilling": "正在將今天的對話轉化為日記條目…",
+    "genericError": "發生錯誤。",
+    "words": "{{count}} 字",
+    "kept": "已保留",
+    "keep": "保留今日筆記",
+    "keptButton": "已保留 ✓",
+    "keeping": "處理中…"
+  },
+  "inbox": {
+    "title": "值得記住的事實",
+    "description": "來自今天的對話。保留值得記住的部分；其餘的則將其捨棄。",
+    "loading": "載入中…",
+    "error": "無法載入事實。",
+    "keep": "保留",
+    "dismiss": "捨棄",
+    "quoted": "引用自"
+  },
+  "scorecard": {
+    "title": "教練評分卡",
+    "badge": "尚未趨勢化（審核中）",
+    "badgeTitle": "此分數尚未根據人類評分進行校準，因此僅供參考，不會顯示在趨勢圖中。",
+    "overall": "總體：",
+    "notScored": "未評分"
+  },
+  "reflection": {
+    "defaultTitle": "每週反思",
+    "dismissError": "無法取消 — 請再試一次",
+    "dismissing": "正在取消…",
+    "dismiss": "取消"
+  }
+}

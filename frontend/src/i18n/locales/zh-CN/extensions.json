@@ -9,7 +9,9 @@
     "permissions": "工具权限",
     "proposals": "提案",
     "activity": "活动日志",
-    "ingest": "注册表源"
+    "ingest": "注册表源",
+    "bindings": "自动设置",
+    "workflows": "预设方案"
   },
   "quota": {
     "unavailable": "用量不可用",
@@ -107,6 +109,7 @@
       "authentication": "身份验证",
       "authNone": "无",
       "authBearer": "Bearer 令牌",
+      "authOauth": "OAuth 2.1",
       "noAuthHint": "无需身份验证 — 此服务器是公开的。继续进行注册并扫描。",
       "bearerLabel": "Bearer 令牌 (已加密存储在保险库中；不会再次显示)",
       "bearerPlaceholder": "粘贴令牌",
@@ -123,8 +126,7 @@
       "continue": "继续",
       "authKind": "身份验证方式: {{kind}}",
       "enable": "为我的会话启用",
-      "done": "完成",
-      "authOauth": "OAuth 2.1"
+      "done": "完成"
     }
   },
   "commands": {

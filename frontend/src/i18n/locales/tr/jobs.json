@@ -59,7 +59,8 @@
     "noActive": "Aktif iş yok.",
     "more": "Daha fazla yükle",
     "toggleChildren": "Alt işleri göster/gizle",
-    "noChildren": "Alt iş yok."
+    "noChildren": "Alt iş yok.",
+    "errorWithReason": "İşler yüklenemedi: {{error}}"
   },
   "row": {
     "ran": "{{d}} önce çalıştı",
@@ -85,6 +86,7 @@
   "controls": {
     "pause": "Duraklat",
     "resume": "Devam et",
+    "resumeFromCheckpoint": "Kontrol noktasından devam et",
     "cancel": "İptal et",
     "cancelConfirm": "Şimdi durdurulsun mu? Devam eden çalışmalar atılır; tamamlanan kısımlar saklanır.",
     "cancelYes": "Evet",
@@ -95,7 +97,9 @@
     "retry": "Tekrar dene",
     "retried": "Yeni bir iş olarak yeniden gönderildi.",
     "stale": "İş durumu değişti — güncellendi.",
-    "actionFailed": "İşlem başarısız: {{error}}"
+    "actionFailed": "İşlem başarısız: {{error}}",
+    "retryBenchmarkMissing": "Yeniden deneme kullanılamıyor: gömme modelinin bir kıyaslaması yok. Önce model kıyaslamasını çalıştırın, ardından tekrar kontrol edin.",
+    "retryBenchmarkFailed": "Yeniden deneme kullanılamıyor: gömme modeli son kıyaslamasında başarısız oldu."
   },
   "monitor": {
     "back": "Tüm işler",

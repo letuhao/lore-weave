@@ -98,5 +98,27 @@
     "branchAt": "於第 {{ch}} 章分支",
     "orphan": "· 來源在此世界之外",
     "edgeLabel": "第 {{ch}} 章"
+  },
+  "mapEditor": {
+    "bind": "綁定實體",
+    "delete": "刪除",
+    "empty": "尚未建立地圖 — 繪製故事發生的世界吧。",
+    "entityPlaceholder": "地點實體 ID",
+    "error": "無法載入此地圖。",
+    "label": "標籤",
+    "marker": "標記",
+    "name": "名稱",
+    "newMap": "+ 新建地圖",
+    "newMapPrompt": "請為新地圖命名",
+    "pickWorld": "選擇一個世界進行繪製。",
+    "region": "區域",
+    "save": "儲存",
+    "unbind": "解除綁定",
+    "uploadImage": "上傳底圖",
+    "vertexCapNotice": "{{count}} 個頂點 — 為確保效能，超過 {{max}} 個頂點時將禁用重塑功能。"
+  },
+  "maps": {
+    "empty": "目前尚無地圖。您可以要求助手「製作這個世界的地圖」來建立新地圖。",
+    "heading": "地圖"
   }
 }

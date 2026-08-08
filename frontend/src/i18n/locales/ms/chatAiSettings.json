@@ -1,0 +1,96 @@
+{
+  "title": "Sembang & AI",
+  "description": "Tetapan lalai anda untuk sembang dan Studio Penulisan, di satu tempat. Setiap baris menunjukkan nilai berkesan dan sumbernya; sesi dan alatan Studio mewarisi tetapan lalai ini dan boleh mengubah suainya.",
+  "models": {
+    "title": "Model",
+    "resolved": "Diselesaikan sekarang",
+    "chat": "Sembang & draf",
+    "composer": "Penyusun prosa",
+    "planner": "Perancang",
+    "embedding": "Penanaman",
+    "rerank": "Penyusunan semula"
+  },
+  "behavior": {
+    "title": "Tingkah Laku",
+    "description": "Tetapan ini sebelum ini diterapkan secara senyap. Ia kini boleh dilihat dan disunting; ruang kosong bermaksud tetapan lalai sistem.",
+    "reasoning": {
+      "label": "Usaha penaakulan",
+      "off": "Tutup",
+      "low": "Rendah",
+      "medium": "Sederhana",
+      "high": "Tinggi"
+    },
+    "permission": {
+      "label": "Kuasa alat",
+      "ask": "Tanya",
+      "plan": "Rancang",
+      "write": "Tulis",
+      "hint": "Tahap tindakan yang boleh dilakukan pembantu tanpa bertanya. Tetapan lalai ialah Tulis."
+    },
+    "temperature": {
+      "label": "Suhu",
+      "placeholder": "Lalai pembekal"
+    },
+    "systemPrompt": {
+      "label": "Prompt sistem",
+      "placeholder": "Arahan persona lalai (kosong = tiada)"
+    }
+  },
+  "grounding": {
+    "title": "Asas & memori",
+    "label": "Asaskan jawapan pada cerita saya",
+    "description": "Sertakan entiti kanon, fakta, dan petikan manuskrip dalam setiap jawapan. Ini diaktifkan secara lalai dan boleh dimatikan.",
+    "offWarning": "Asas dimatikan — pembantu tidak dapat mengakses buku panduan cerita anda dan mungkin mencipta lore sendiri. Aktifkan untuk jawapan yang tepat."
+  },
+  "context": {
+    "title": "Pengurusan konteks",
+    "description": "Bagaimana pembantu menguruskan bajet memori untuk perbualan yang sangat panjang. Kebanyakan orang harus membiarkan ini pada Tetapan Automatik.",
+    "label": "Mod konteks kerja-panjang",
+    "auto": "Automatik",
+    "on": "Sentiasa aktif",
+    "off": "Mati",
+    "hint": "Automatik mengaktifkan tahap kerja-panjang hanya apabila projek memerlukannya. Mati mengekalkan laluan yang paling ringkas."
+  },
+  "voice": {
+    "title": "Suara",
+    "description": "Input dan output pertuturan untuk sembang. Tetapan ini disimpan ke akaun anda dan digunakan untuk mesej suara.",
+    "ttsModel": "Model pertuturan keluar (TTS)",
+    "sttModel": "Model pertuturan masuk (STT)",
+    "voice": "Suara",
+    "placeholder": "cth. af_heart",
+    "hint": "Suara adalah khusus untuk modelnya — pilih satu yang disokong oleh model TTS anda."
+  },
+  "tiers": {
+    "session": {
+      "label": "sembang ini",
+      "title": "Tetapkan pada sembang ini — mengatasi tetapan lalai akaun dan buku anda."
+    },
+    "book": {
+      "label": "buku ini",
+      "title": "Diwarisi daripada tetapan buku ini."
+    },
+    "account": {
+      "label": "lalai anda",
+      "title": "Diwarisi daripada tetapan akaun anda."
+    },
+    "system": {
+      "label": "lalai",
+      "title": "Tetapan lalai sistem."
+    },
+    "unavailable": {
+      "label": "tidak tersedia",
+      "title": "Peringkat pemilik tidak dapat dicapai."
+    },
+    "no_model_configured": {
+      "label": "tidak ditetapkan",
+      "title": "Tiada model langsung yang dikonfigurasikan."
+    }
+  },
+  "clear": {
+    "default": "lalai",
+    "on": "hidup",
+    "off": "mati",
+    "action": "kosongkan",
+    "inherit": "warisi"
+  }
+}

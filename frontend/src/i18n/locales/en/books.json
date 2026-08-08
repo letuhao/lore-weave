@@ -2,7 +2,39 @@
   "translateIntent": {
     "hint": "Pick a book to translate — open it, then use the Translation tab to start a translation."
   },
-  "help": {"open": "Open help", "tour": "Guided tour", "title": "Working with books", "description": "A quick guide to the books workspace.", "intro": "Manage your books here, then open one to research, edit, and build its world.", "items": ["Create a book or import a manuscript to get started.", "Open a book to edit chapters, glossary, and ontology.", "Use search and filters to find a book quickly."], "startTour": "Start tour", "back": "Back", "next": "Next", "done": "Done", "steps": [{"title": "Find a book", "description": "Search and filters help you open the right book quickly.", "body": "Use the search field and language filter to narrow the list."}, {"title": "Create or import", "description": "Start with a new book or an existing manuscript.", "body": "Select New Book, enter its details, or choose a file to import."}, {"title": "Open the workspace", "description": "All book tools are collected in its workspace.", "body": "Inside a book you can work with chapters, glossary, ontology, translation, and more."}]},
+  "help": {
+    "open": "Open help",
+    "tour": "Guided tour",
+    "title": "Working with books",
+    "description": "A quick guide to the books workspace.",
+    "intro": "Manage your books here, then open one to research, edit, and build its world.",
+    "items": [
+      "Create a book or import a manuscript to get started.",
+      "Open a book to edit chapters, glossary, and ontology.",
+      "Use search and filters to find a book quickly."
+    ],
+    "startTour": "Start tour",
+    "back": "Back",
+    "next": "Next",
+    "done": "Done",
+    "steps": [
+      {
+        "title": "Find a book",
+        "description": "Search and filters help you open the right book quickly.",
+        "body": "Use the search field and language filter to narrow the list."
+      },
+      {
+        "title": "Create or import",
+        "description": "Start with a new book or an existing manuscript.",
+        "body": "Select New Book, enter its details, or choose a file to import."
+      },
+      {
+        "title": "Open the workspace",
+        "description": "All book tools are collected in its workspace.",
+        "body": "Inside a book you can work with chapters, glossary, ontology, translation, and more."
+      }
+    ]
+  },
   "workspace": "My Books",
   "new_book": "New Book",
   "search_placeholder": "Search books...",
@@ -359,7 +391,9 @@
         "translations": "Translations must point to an existing attribute value.",
         "kind_facets": "Entity kind facets must point to kinds in this book."
       }
-    }
+    },
+    "batch_translate": "Manual translate",
+    "batch_translate_hint": "Type target names for many entities by hand (drafts; never overwrites verified)"
   },
   "sharing": {
     "title": "Visibility",
@@ -504,7 +538,9 @@
     "page_indicator": "Page {{page}} / {{pages}}",
     "prev": "Prev",
     "next": "Next",
-    "page": "Page"
+    "page": "Page",
+    "reasoning_enable": "Enable model reasoning (thinking)",
+    "reasoning_hint": "Off by default — hidden thinking can burn the output budget on local models. Enable for hard passages on a reasoning model."
   },
   "kind_editor": {
     "modified": "modified",
@@ -633,5 +669,12 @@
       "desc": "Reset name from \"{{from}}\" back to \"{{to}}\". Other fields are not affected.",
       "confirm": "Revert"
     }
+  },
+  "lore": {
+    "heading": "Lore so far",
+    "noPosition": "Open a chapter to see what has been revealed by that point.",
+    "nothingYet": "Nothing has been revealed about this yet — keep reading.",
+    "search": "Search the story…",
+    "subtitle": "What the story has revealed up to where you are reading — no spoilers from later chapters."
   }
 }

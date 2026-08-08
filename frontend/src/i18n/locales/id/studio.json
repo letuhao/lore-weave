@@ -146,6 +146,11 @@
       "desc": "Tinjau entitas draf AI",
       "guideBody": "Menampilkan entri entitas yang dibuat otomatis oleh AI dari manuskrip Anda, menunggu tinjauan Anda. Buka untuk menerima, mengedit, atau menolak setiap saran sebelum menjadi bagian dari glosarium resmi Anda."
     },
+    "world-setup": {
+      "title": "Pengaturan Dunia",
+      "desc": "Bangun karakter, dunia, dan hubungan mereka dari sebuah deskripsi",
+      "guideBody": "Ubah deskripsi cerita Anda menjadi lore nyata yang terorganisir: sistem akan merencanakan apa yang perlu dibangun, Anda menyetujui atau memangkas daftarnya, lalu setiap karakter, faksi, dan istilah akan disusun satu per satu (karakter utama mendapatkan profil mendalam) dan disimpan untuk Anda tinjau. Terakhir, sistem akan menyusun bagaimana mereka semua terhubung dan meminta persetujuan Anda terhadap hubungan tersebut sebelum menyimpannya."
+    },
     "glossary-merge-candidates": {
       "title": "Kandidat penggabungan",
       "desc": "Tinjau dan konfirmasi entitas yang kemungkinan duplikat",
@@ -679,11 +684,6 @@
       "title": "Proposal Alur Kerja",
       "desc": "Tinjau alur kerja yang diusulkan oleh agen",
       "guideBody": "Menampilkan daftar resep alur kerja yang disarankan oleh agen untuk dibuat, berdasarkan urutan multi-langkah yang ia perhatikan sering Anda ulangi. Buka panel ini untuk menyetujui proposal — yang akan mencetak alur kerja tersebut agar dapat dijalankan — atau menolaknya. Di sinilah alur kerja usulan agen benar-benar menjadi nyata."
-    },
-    "world-setup": {
-      "title": "Pengaturan Dunia",
-      "desc": "Bangun karakter, dunia, dan hubungan mereka dari sebuah deskripsi",
-      "guideBody": "Ubah deskripsi cerita Anda menjadi lore nyata yang terorganisir: sistem akan merencanakan apa yang perlu dibangun, Anda menyetujui atau memangkas daftarnya, lalu setiap karakter, faksi, dan istilah akan disusun satu per satu (karakter utama mendapatkan profil mendalam) dan disimpan untuk Anda tinjau. Terakhir, sistem akan menyusun bagaimana mereka semua terhubung dan meminta persetujuan Anda terhadap hubungan tersebut sebelum menyimpannya."
     }
   },
   "sceneRail": {
@@ -719,7 +719,8 @@
     "conflict": "konflik: {{part}}",
     "format": "Format",
     "revert": "Kembalikan",
-    "openAs": "Buka sebagai JSON"
+    "openAs": "Buka sebagai JSON",
+    "readOnly": "hanya baca"
   },
   "planPasses": {
     "comingSoon": "Lintasan 7-langkah akan muncul di sini.",
@@ -761,7 +762,17 @@
     "approveGated": "Terapkan benih glosarium terlebih dahulu (PF-7)",
     "editAdd": "Tambah",
     "editRemove": "Hapus",
-    "editEmpty": "Belum ada apa-apa di sini — tambahkan baris."
+    "editEmpty": "Belum ada apa-apa di sini — tambahkan baris.",
+    "batchSpends": "Jalankan setiap tahap yang siap hingga titik pemeriksaan berikutnya — menghabiskan 1 panggilan LLM per tahap.",
+    "chapterNoScenes": "Tidak ada adegan — bab ini tidak dapat dibuat drafnya.",
+    "linkOutline": "Hubungkan alur + bab →",
+    "linkScenes": "Hubungkan adegan →",
+    "linkScenesBlocked": "Jalankan tahap adegan terlebih dahulu",
+    "noBeat": "(tidak ada beat)",
+    "noScenes": "Tidak ada bab untuk diedit dalam rencana adegan ini.",
+    "openEdit": "edit…",
+    "runPicker": "Pilih jalannya rencana",
+    "runToCheckpoint": "Jalankan hingga titik pemeriksaan berikutnya"
   },
   "planner": {
     "sourcePlaceholder": "Tempel markdown novel-system…",
@@ -785,10 +796,48 @@
       "colRun": "Jalankan",
       "colMode": "Mode",
       "colStatus": "Status",
-      "colCreated": "Dibuat"
+      "colCreated": "Dibuat",
+      "archive": "Arsip",
+      "restore": "Pulihkan",
+      "showArchived": "Tampilkan yang diarsipkan"
     },
     "grounded": "Berdasarkan {{chapters}} bab yang sudah ada + {{cast}} anggota cast; {{arcs}} arc yang sudah ada dilanjutkan.",
-    "groundOnExisting": "Lanjutkan buku ini — sesuaikan dengan cast, arc & bab terbaru yang sudah ada"
+    "groundOnExisting": "Lanjutkan buku ini — sesuaikan dengan cast, arc & bab terbaru yang sudah ada",
+    "bootstrap": {
+      "apply": "Buat di buku saya",
+      "applying": "Membuat…",
+      "approve": "Setujui",
+      "check": "Periksa apa yang diperlukan",
+      "checking": "Memeriksa…",
+      "done": "Selesai — buka Bab untuk melihat apa yang telah dibuat.",
+      "idleHint": "Periksa apakah rencana ini memerlukan pembuatan bab atau karakter baru di buku Anda.",
+      "newChapters": "Bab baru",
+      "newGlossary": "Entri glosarium baru",
+      "nothingToDo": "Semua yang ada dalam rencana ini sudah tersedia di buku Anda — tidak ada yang baru untuk dibuat.",
+      "reject": "Nanti saja",
+      "rejected": "Anda mengabaikan saran ini.",
+      "retry": "Coba lagi",
+      "title": "Atur buku Anda"
+    },
+    "material": {
+      "applied": "Ditambahkan ke rencana: {{slots}}. Disimpan sebagai catatan: {{notes}}.",
+      "askTitle": "Tidak ada dalam dokumen Anda — perlu diputuskan",
+      "dropped": "{{n}} baris saran tidak benar-benar ada dalam dokumen Anda dan telah dibuang.",
+      "find": "Periksa rencana saya",
+      "finding": "Mencari...",
+      "idleHint": "Mencari hal apa pun yang kurang dari apa yang telah Anda tulis, sebelum menanyakannya kepada Anda.",
+      "noChange": "Tidak ada perubahan — semua yang Anda simpan sudah ada dalam rencana.",
+      "nothing": "Tidak ada yang kurang — rencana ini mencakup setiap bagian.",
+      "readFailed": "Dokumen Anda tidak dapat dibaca sepenuhnya, jadi status «hilang» di bawah ini belum pasti.",
+      "retry": "Periksa kembali",
+      "reviewHint": "Baris-baris ini sudah ada di dalam dokumen Anda. Hapus yang tidak relevan, lalu tambahkan sisanya.",
+      "stale": "Rencana Anda telah berubah sejak pemeriksaan terakhir — jalankan kembali untuk mendapatkan jawaban terbaru.",
+      "title": "Apa yang kurang dari rencana ini?",
+      "unavailableHint": "tidak diperiksa; coba lagi alih-alih menganggapnya hilang",
+      "unavailableTitle": "Tidak dapat memeriksa",
+      "uncertain": "(dokumen Anda tidak dibaca sepenuhnya, jadi bagian ini mungkin sudah ada)"
+    },
+    "openPassRail": "Pass Rail →"
   },
   "editor": {
     "empty": "Pilih bab di navigator manuskrip untuk mengeditnya di sini.",
@@ -808,7 +857,13 @@
     "merging": "Menggabungkan...",
     "mergeDone": "Berhasil digabungkan ke kanon — cabang tetap menggunakan versinya sendiri.",
     "mergeConflict": "Kanon telah berubah — buka kembali bab ini dan gabungkan lagi.",
-    "mergeFailed": "Gagal menggabungkan — coba lagi."
+    "mergeFailed": "Gagal menggabungkan — coba lagi.",
+    "askAiPrompt": "Analisis kutipan dari manuskrip ini dan jawab pertanyaan pengguna:\n\n\"{{text}}\"\n\nApa hal penting yang perlu dipertimbangkan?",
+    "loadingChapter": "Memuat bab…",
+    "sceneSuggestionsHint": "Pilih teks manuskrip untuk membuat usulan adegan dengan AI",
+    "sceneSuggestionsReady": "Gunakan «Sarankan adegan» pada toolbar AI di atas bagian yang dipilih.",
+    "sceneSuggestionsSelect": "Pilih kutipan terlebih dahulu, lalu gunakan Sarankan 场景 di atas pilihan tersebut.",
+    "suggestScenes": "Sarankan 场景"
   },
   "sceneCompose": {
     "empty": "Pilih bab dalam navigator manuskrip untuk menyusun adegan di sini.",
@@ -994,11 +1049,20 @@
     "conformanceTitle": "Kesesuaian",
     "conformanceDesc": "Apakah prosa sudah mewujudkan rencana? Pelacakan beat per adegan",
     "pickModelRerun": "Pilih model untuk dijalankan ulang dengan…",
-    "pickChapterConformanceHint": "Pilih bab di atas untuk melacak bagaimana prosanya mewujudkan rencana tersebut."
+    "pickChapterConformanceHint": "Pilih bab di atas untuk melacak bagaimana prosanya mewujudkan rencana tersebut.",
+    "editRule": "Aturan pengeditan",
+    "healApplied": "Telah menerapkan perbaikan yang dipilih ke dalam 章.",
+    "healApplyError": "Tidak dapat menerapkan perbaikan. Coba lagi.",
+    "healStale": "章 ini telah berubah sejak proses Polish dijalankan — jalankan ulang Polish, lalu terapkan."
   },
   "sidebar": {
     "collapse": "Sembunyikan",
     "resize": "Ubah ukuran bilah sisi"
+  },
+  "panelsPicker": {
+    "title": "Panel Workspace",
+    "search": "Cari panel…",
+    "hint": "Pilih panel mana yang tetap terlihat. Pilihan Anda disimpan bersama workspace ini."
   },
   "layout": {
     "title": "Tata letak panel",
@@ -1016,6 +1080,14 @@
       "grid4x2": "Grid 4×2",
       "cols6": "Enam kolom",
       "cols8": "Delapan kolom"
+    }
+  },
+  "diagnostics": {
+    "unplannedChapter": "Bab {{title}} telah ditulis tetapi tidak ada dalam rencana",
+    "warning": {
+      "openThread": "Janji yang terbuka tidak dapat dibaca",
+      "deletedSpec": "Node rencana yang dihapus tidak dapat diperiksa",
+      "coverage": "Cakupan manuskrip/rencana tidak dapat dihitung"
     }
   },
   "bottom": {
@@ -1193,6 +1265,68 @@
         "knowledge": {
           "title": "Grafik pengetahuan",
           "body": "Untuk pembangunan dunia yang lebih mendalam, grafik pengetahuan melacak bagaimana segala hal saling terhubung — entitas, peristiwa, dan hubungan."
+        }
+      },
+      "worldResearch": {
+        "setup": {
+          "title": "Deskripsikan dunia terlebih dahulu",
+          "body": "Wizard pengaturan buku membuat struktur dunia yang stabil dan pengaturan sistem default agar proses ekstraksi nantinya berjalan secara terprediksi."
+        },
+        "glossary": {
+          "title": "Buat glosarium",
+          "body": "Tinjau entitas, jenis, dan atribut. Mulai dari teks sumber, lalu konfirmasi catatan yang ambigu secara manual."
+        },
+        "entities": {
+          "title": "Selidiki entitas",
+          "body": "Cari karakter, tempat, dan item, buka bukti mereka, dan periksa bab mana yang menyebutkan mereka."
+        },
+        "timeline": {
+          "title": "Periksa lini masa",
+          "body": "Lini masa peristiwa membantu mengungkap celah dan kontradiksi antar bab. Anggap ini sebagai hipotesis kerja."
+        },
+        "graph": {
+          "title": "Lihat keterkaitannya",
+          "body": "Grafik menunjukkan hubungan antar entitas. Temukan simpul dengan koneksi tinggi dan kembali ke kutipan pendukungnya."
+        }
+      },
+      "factChecking": {
+        "evidence": {
+          "title": "Mulai dari sumber klaim",
+          "body": "Bukti akan mengarahkan Anda ke bab dan kutipan teks. Verifikasi kutipan terlebih dahulu, lalu tentukan apakah entitas atau atribut perlu diubah."
+        },
+        "triage": {
+          "title": "Kerjakan antrean tinjauan",
+          "body": "Triage mengelompokkan temuan yang tidak pasti berdasarkan urgensi. Tangani konflik kanon dan peringatan berulang sebelum menangani kasus khusus."
+        },
+        "gaps": {
+          "title": "Temukan detail yang hilang",
+          "body": "Laporan celah menyoroti entitas yang sering disebut tetapi kurang dijelaskan — kandidat untuk pengayaan."
+        },
+        "unknown": {
+          "title": "Selesaikan penyebutan yang tidak diketahui",
+          "body": "Cocokkan istilah dengan entitas yang sudah ada atau buat yang baru. Periksa konteks dan variasi ejaan sebelum melakukan penggabungan."
+        },
+        "proposals": {
+          "title": "Editor memutuskan",
+          "body": "Terima usulan AI hanya setelah meninjau sumber dan dampaknya. Jangan memasukkan kembali kandidat yang telah ditolak tanpa pemeriksaan baru."
+        }
+      },
+      "glossaryWorkflow": {
+        "list": {
+          "title": "Daftar entitas",
+          "body": "Filter entitas berdasarkan jenis dan status, buka rekaman, dan langsung menuju ke bab yang berisi buktinya."
+        },
+        "ontology": {
+          "title": "Ontologi buku",
+          "body": "Pilih genre, jenis, dan atribut. Mulailah dengan templat sistem, lalu tambahkan hanya bidang yang dibutuhkan dunia ini."
+        },
+        "suggestions": {
+          "title": "Saran ekstraksi",
+          "body": "Ekstrak dari bab yang dipilih, tinjau kandidat, dan setujui secara massal. Pantau pekerjaan yang sedang berjalan di menu Jobs."
+        },
+        "merge": {
+          "title": "Gabungkan duplikat",
+          "body": "Bandingkan nama, jenis, atribut, dan bukti sebelum menggabungkan. Periksa tautan setelah operasi selesai."
         }
       },
       "translator": {
@@ -1406,14 +1540,63 @@
           "title": "Buka di jendela terpisah",
           "body": "Membuka Composer di jendela OS terpisah — sangat berguna untuk monitor kedua. Perubahan yang Anda setujui di sana akan tetap tersimpan di editor buku ini."
         }
+      },
+      "structureTemplates": {
+        "panel": {
+          "title": "Ruang kerja templat struktur",
+          "body": "Panel ini berisi struktur cerita bawaan dan pribadi. Struktur ini membantu Anda memetakan bab ke dalam urutan beat naratif yang teratur."
+        },
+        "list": {
+          "title": "Templat bawaan dan pribadi",
+          "body": "Templat bawaan bersifat read-only. Duplikat salah satu atau pilih templat Anda sendiri untuk mengerjakan salinan yang dapat diedit."
+        },
+        "create": {
+          "title": "Buat struktur Anda sendiri",
+          "body": "Pilih «Struktur baru», beri nama, dan tambahkan beat. Templat kustom Anda dapat digunakan kembali di seluruh buku Anda."
+        },
+        "edit": {
+          "title": "Edit dan terapkan",
+          "body": "Atur ulang urutan beat, jelaskan tujuannya, simpan perubahan, lalu gunakan struktur tersebut dari panel Decompose."
+        }
       }
     }
   },
   "userGuide": {
+    "open": "Buka panduan pengguna",
     "intro": "Setiap alat yang dapat dibuka oleh Writing Studio, dikelompokkan dengan cara yang sama seperti Command Palette.",
     "toursGroup": "Panduan tur",
     "toursEditor": "Editor",
-    "toursComposer": "Composer"
+    "toursComposer": "Composer",
+    "toursResearch": "Riset dunia",
+    "workflowsTitle": "Alur kerja dan praktik",
+    "workflows": {
+      "setup": {
+        "title": "Persiapkan buku",
+        "body": "Buat strukturnya terlebih dahulu, lalu impor bab dan pastikan pohon struktur dimuat dengan sempurna.",
+        "steps": "Impor Buku → Editor → Periksa integritas di Glosarium. Perbaiki masalah yang dilaporkan secara otomatis, lalu jalankan pemeriksaan ulang."
+      },
+      "lore": {
+        "title": "Riset dunia",
+        "body": "Glosarium menyimpan fakta dunia; basis pengetahuan menghubungkannya dengan bukti dan peristiwa.",
+        "steps": "Ontologi mendefinisikan jenis dan atribut → Ekstrak dari bab yang dipilih → Entitas dan Bukti memverifikasi temuan → Graf dan Garis Waktu mengungkap keterkaitan."
+      },
+      "factChecking": {
+        "title": "Periksa fakta dan kanon",
+        "body": "Jangan pernah menerima temuan AI tanpa sumbernya: buka bagian teksnya terlebih dahulu, lalu terima atau tolak usulan tersebut.",
+        "steps": "Bukti → lompat ke bab → Sortir antrean yang tidak pasti → Celah untuk deskripsi yang hilang. Jalankan ulang pemeriksaan integritas setelah pengeditan."
+      },
+      "jobs": {
+        "title": "Pekerjaan durasi panjang dan pemulihan",
+        "body": "Ekstraksi, terjemahan, dan pengayaan berjalan sebagai tugas (job), sehingga menutup panel tidak akan menghilangkan progres.",
+        "steps": "Buka Tugas untuk memantau progres batch/jendela dan biaya. Jika gagal, gunakan Lanjutkan dari titik simpan; jika parameter berubah, gunakan Mulai Ulang."
+      },
+      "translation": {
+        "title": "Terjemahkan tanpa merusak kanon",
+        "body": "Stabilkan glosarium sebelum menerjemahkan agar nama, istilah, dan hubungan tetap konsisten.",
+        "steps": "Penerjemahan menampilkan cakupan dan versi → Pengayaan mengisi celah lore → sebelum menerbitkan, tinjau bab, glosarium, dan log aktivitas."
+      }
+    },
+    "startPanelTour": "Mulai tur panel"
   },
   "tourPicker": {
     "editorBasics": {
@@ -1475,6 +1658,22 @@
     "composerPopout": {
       "label": "Jendela Popout",
       "desc": "Pisahkan Compose ke jendela OS tersendiri untuk penggunaan monitor kedua."
+    },
+    "worldResearch": {
+      "label": "Riset dunia",
+      "desc": "Dari pengaturan buku hingga entitas, lini masa, dan grafik relasi — alur kerja riset lore yang dapat diulang."
+    },
+    "factChecking": {
+      "label": "Pemeriksaan fakta",
+      "desc": "Bukti, triase, celah, dan entitas yang tidak diketahui: verifikasi hipotesis terhadap teks sumber."
+    },
+    "glossaryWorkflow": {
+      "label": "Alur kerja glosarium",
+      "desc": "Ontologi, ekstraksi, saran, dan penggabungan duplikat yang aman."
+    },
+    "structureTemplates": {
+      "label": "Templat struktur",
+      "desc": "Buat dan sesuaikan struktur cerita untuk dekomposisi bab."
     }
   },
   "planHub": {
@@ -1541,6 +1740,12 @@
       "rename": "Ubah nama",
       "delete": "Hapus bab",
       "aiDraft": "Atau biarkan AI membuat drafnya →",
+      "importPlan": "Impor rencana dari CSV",
+      "importingPlan": "Mengimpor rencana...",
+      "aiPlan": "Buat rencana dengan AI",
+      "csvEmpty": "File CSV tidak memiliki baris rencana.",
+      "csvNoMatches": "Tidak ada baris CSV yang cocok dengan buku ini. Gunakan chapter_id atau sort_order.",
+      "csvFailed": "Impor rencana gagal.",
       "legend": {
         "authored": "Anda menulisnya",
         "ai": "Ide AI"
@@ -1586,7 +1791,6 @@
     "mineEmpty": "Belum ada — duplikat struktur bawaan untuk memulai.",
     "loading": "Memuat...",
     "pickHint": "Pilih struktur untuk melihat beat-nya.",
-    "beats": "beat",
     "builtinNote": "Ini adalah struktur bawaan. Duplikat untuk menyesuaikan — Anda mengedit salinan Anda, versi aslinya tetap utuh bagi semua orang.",
     "cloneBuiltin": "Duplikat ke struktur saya",
     "duplicate": "Duplikat",
@@ -1636,7 +1840,15 @@
       "builtin": "bawaan",
       "mine": "milik saya",
       "archived": "diarsipkan"
-    }
+    },
+    "help": "Bantuan templat struktur",
+    "startTour": "Mulai tur templat struktur",
+    "useInDecompose": "Gunakan di Decompose →",
+    "beats_one": "beat",
+    "beats_other": "beat",
+    "kindPlaceholder": "umum",
+    "beats": "beats",
+    "nameRequired": "Nama wajib diisi"
   },
   "search": {
     "modeLabel": "Mode pencarian",
@@ -1664,5 +1876,47 @@
     "firstStructureTitle": "Bab Satu",
     "everything": "Atau atur buku ini sepenuhnya",
     "everythingBusy": "Sedang mengatur..."
+  },
+  "checkpoints": {
+    "blocked_dirty": "Simpan editan Anda terlebih dahulu — memulihkan akan menimpa editan tersebut",
+    "confirm_desc": "Draf saat ini akan diambil sebagai snapshot terlebih dahulu, sehingga tindakan ini dapat dibatalkan melalui riwayat revisi.",
+    "confirm_title": "Pulihkan ke kondisi sebelum pengeditan AI ini?",
+    "dirty_warning": "Simpan editan Anda saat ini sebelum memulihkan titik simpan.",
+    "header": "Titik simpan edit AI",
+    "insert": "Disisipkan",
+    "no_restore": "Tidak ada versi sebelumnya untuk dipulihkan",
+    "replace": "Ditulis ulang",
+    "restore": "Pulihkan",
+    "restore_failed": "Tidak dapat memulihkan titik simpan ini.",
+    "restored": "Telah dipulihkan ke kondisi sebelum edit AI"
+  },
+  "common": {
+    "close": "Tutup"
+  },
+  "compose": {
+    "startDrafting": "Mulai menulis draf →",
+    "startDraftingTitle": "Buka ruang kerja draf untuk menulis bab dari rencana Anda"
+  },
+  "errorBlocks": {
+    "dismiss": "Abaikan",
+    "drifted": "teks berubah",
+    "remove": "Hapus tanda",
+    "removed": "Tanda telah dihapus.",
+    "reopen": "Buka kembali",
+    "resolve": "Selesai",
+    "title": "Masalah yang ditandai",
+    "undo": "Urungkan",
+    "undoFailed": "Tidak dapat memulihkan tanda tersebut."
+  },
+  "revision": {
+    "blocked_dirty": "Anda memiliki perubahan yang belum disimpan. Simpan atau buang perubahan tersebut sebelum memulihkan revisi.",
+    "confirm_desc": "Draf saat ini akan diganti dengan revisi ini. Tindakan ini tidak dapat dibatalkan.",
+    "confirm_title": "Pulihkan revisi ini?",
+    "current": "Saat ini",
+    "empty": "Belum ada revisi.",
+    "header": "Riwayat revisi",
+    "load_more": "Muat lebih banyak",
+    "loading_more": "Memuat…",
+    "restore": "Pulihkan"
   }
 }

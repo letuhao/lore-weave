@@ -19,8 +19,8 @@
   "mode": {
     "classic": "經典",
     "classic_title": "經典模式 — 專注寫作",
-    "ai_title": "AI 助手模式 — 完整功能",
-    "ai": "AI"
+    "ai": "AI",
+    "ai_title": "AI 助手模式 — 完整功能"
   },
   "workmode": {
     "write": "寫作",
@@ -392,5 +392,29 @@
     "no_restore": "沒有可還原的先前版本",
     "confirm_title": "還原至此次 AI 編輯之前？",
     "confirm_desc": "目前草稿會先建立快照，因此可從版本歷史還原此操作。"
-  }
+  },
+  "contextMenu": {
+    "replace": "替換為",
+    "copy": "複製",
+    "cut": "剪下",
+    "paste": "貼上",
+    "selectAll": "全選",
+    "undo": "復原",
+    "redo": "重做",
+    "rewrite": "AI 重寫",
+    "expand": "AI 擴寫",
+    "describe": "AI 描述",
+    "dictionary": "在術語表中查詢",
+    "bookmark": "新增書籤",
+    "findGlossary": "在術語表中查找",
+    "askAi": "詢問 AI 關於此內容",
+    "findMentions": "查找提及"
+  },
+  "chat_mode": "模式",
+  "mode_agent": "智能體",
+  "mode_agent_hint": "AI 可以使用工具並編輯您的文件",
+  "mode_compose": "寫作",
+  "mode_compose_hint": "僅限散文 — AI 負責撰寫，您負責套用。最適合推理模型。",
+  "polish_applied": "已套用的潤色編輯",
+  "resize_panel": "拖動以調整大小"
 }

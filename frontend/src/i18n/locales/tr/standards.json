@@ -115,5 +115,365 @@
     "restoreError": "Geri yüklenemedi",
     "purged": "Kalıcı olarak silindi",
     "purgeError": "Silinemedi"
+  },
+  "system": {
+    "genres": {
+      "universal": {
+        "name": "Evrensel",
+        "description": "Her hikâyede ortak olan, türe bağlı olmayan özellikler."
+      },
+      "fantasy": {
+        "name": "Fantastik",
+        "description": "Büyü, doğaüstü güçler ve hayali dünyalar."
+      },
+      "xianxia": {
+        "name": "Xianxia",
+        "description": "Yetişme, ölümsüzler, tarikatlar ve dövüş sanatları fantezisi."
+      },
+      "romance": {
+        "name": "Romantik",
+        "description": "Aşk ve yakın ilişkiler üzerine kurulu hikâyeler."
+      },
+      "drama": {
+        "name": "Dram",
+        "description": "Çatışma ve duygu odaklı, karakter merkezli hikâyeler."
+      },
+      "historical": {
+        "name": "Tarihi",
+        "description": "Tarihi bir döneme veya mekana dayanan hikâyeler."
+      },
+      "mystery": {
+        "name": "Gizem",
+        "description": "Soruşturmalar, sırlar ve gizli gerçeğin peşinde bir yolculuk."
+      }
+    },
+    "kinds": {
+      "character": {
+        "name": "Karakter",
+        "description": "Hikâyede eylemlerde bulunan veya konuşan bireysel bir kişi veya özel bir varlık."
+      },
+      "location": {
+        "name": "Mekân",
+        "description": "Karakterlerin seyahat edebileceği veya içinde bulunabileceği fiziksel bir yer."
+      },
+      "item": {
+        "name": "Eşya / Nesne",
+        "description": "Silah, hazine, giysi veya araç gibi fiziksel bir nesne."
+      },
+      "event": {
+        "name": "Olay",
+        "description": "Bir savaş, yolculuk, ihanet veya keşif gibi gerçekleşen bir durum."
+      },
+      "terminology": {
+        "name": "Terminoloji",
+        "description": "Soyut bir terim, öğreti, rütbe, unvan veya kavram."
+      },
+      "power_system": {
+        "name": "Güç sistemi",
+        "description": "Karakterlerin ilerleyebileceği, sıralanmış güç veya rütbe şeması."
+      },
+      "species": {
+        "name": "Tür",
+        "description": "Bireysel bir karakter değil, bir varlık veya ırk türü."
+      },
+      "organization": {
+        "name": "Organizasyon",
+        "description": "Birlikte hareket eden bir grup insan: bir grup, hanedan, lonca veya hükümet."
+      },
+      "relationship": {
+        "name": "İlişki",
+        "description": "Karakterler veya gruplar arasındaki anlamlı bağlantı."
+      },
+      "plot_arc": {
+        "name": "Olay örgüsü arkı",
+        "description": "Bir tetikleyici, riskler ve bir çözüm içeren sürdürülebilir olay örgüsü."
+      },
+      "social_setting": {
+        "name": "Sosyal ortam",
+        "description": "Hikayeyi şekillendiren sosyal düzen, dönem, gelenekler ve hiyerarşi."
+      },
+      "trope": {
+        "name": "Trope",
+        "description": "Tekrarlanan bir anlatı kalıbı veya kural."
+      },
+      "technique": {
+        "name": "Teknik",
+        "description": "Bir karakter tarafından gerçekleştirilen adlandırılmış bir eylem, yöntem veya beceri."
+      },
+      "colleague": {
+        "name": "Meslektaş",
+        "description": "Birlikte çalıştığınız kişi."
+      },
+      "decision": {
+        "name": "Karar",
+        "description": "Verilen ve sonrasında neler olacağını etkileyen bir seçim."
+      },
+      "jargon": {
+        "name": "Jargon",
+        "description": "Metinde kullanılan alan terminolojisi veya bir kısaltma."
+      },
+      "meeting": {
+        "name": "Toplantı",
+        "description": "Planlanmış bir tartışma veya buluşma."
+      },
+      "org": {
+        "name": "Organizasyon",
+        "description": "Bir şirket, ekip veya harici bir kuruluş."
+      },
+      "project": {
+        "name": "Proje",
+        "description": "Bir hedefi ve beklenen sonucu olan çalışma bütünü."
+      },
+      "task": {
+        "name": "Görev",
+        "description": "Tamamlanması gereken, uygulanabilir bir iş öğesi."
+      }
+    },
+    "attributes": {
+      "name": {
+        "name": "İsim",
+        "description": "İsim niteliği."
+      },
+      "term": {
+        "name": "Terim",
+        "description": "Terim niteliği."
+      },
+      "aliases": {
+        "name": "Takma Adlar",
+        "description": "Takma adlar niteliği."
+      },
+      "gender": {
+        "name": "Cinsiyet",
+        "description": "Cinsiyet niteliği."
+      },
+      "role": {
+        "name": "Rol",
+        "description": "Rol niteliği."
+      },
+      "occupation": {
+        "name": "Meslek",
+        "description": "Meslek niteliği."
+      },
+      "social_class": {
+        "name": "Sosyal Sınıf",
+        "description": "Sosyal Sınıf niteliği."
+      },
+      "affiliation": {
+        "name": "Bağlılık",
+        "description": "Bağlılık niteliği."
+      },
+      "appearance": {
+        "name": "Görünüm",
+        "description": "Görünüm niteliği."
+      },
+      "personality": {
+        "name": "Kişilik",
+        "description": "Kişilik niteliği."
+      },
+      "emotional_wound": {
+        "name": "Duygusal Yara",
+        "description": "Duygusal Yara niteliği."
+      },
+      "love_language": {
+        "name": "Sevgi Dili",
+        "description": "Sevgi Dili niteliği."
+      },
+      "relationships": {
+        "name": "İlişkiler",
+        "description": "İlişkiler niteliği."
+      },
+      "description": {
+        "name": "Açıklama",
+        "description": "Açıklama niteliği."
+      },
+      "type": {
+        "name": "Tür",
+        "description": "Tür niteliği."
+      },
+      "parent_location": {
+        "name": "Üst Konum",
+        "description": "Üst Konum niteliği."
+      },
+      "atmosphere": {
+        "name": "Atmosfer",
+        "description": "Atmosfer niteliği."
+      },
+      "significance": {
+        "name": "Önem",
+        "description": "Önem niteliği."
+      },
+      "owner": {
+        "name": "Sahip",
+        "description": "Sahip niteliği."
+      },
+      "symbolic_meaning": {
+        "name": "Sembolik Anlam",
+        "description": "Sembolik Anlam niteliği."
+      },
+      "date_in_story": {
+        "name": "Hikayedeki Tarih",
+        "description": "Hikayedeki Tarih niteliği."
+      },
+      "location": {
+        "name": "Konum",
+        "description": "Konum niteliği."
+      },
+      "participants": {
+        "name": "Katılımcılar",
+        "description": "Katılımcı niteliği."
+      },
+      "emotional_impact": {
+        "name": "Duygusal Etki",
+        "description": "Duygusal Etki niteliği."
+      },
+      "outcome": {
+        "name": "Sonuç",
+        "description": "Sonuç niteliği."
+      },
+      "category": {
+        "name": "Kategori",
+        "description": "Kategori niteliği."
+      },
+      "definition": {
+        "name": "Tanım",
+        "description": "Tanım niteliği."
+      },
+      "usage_note": {
+        "name": "Kullanım Notu",
+        "description": "Kullanım Notu özniteliği."
+      },
+      "tiers": {
+        "name": "Kademeler",
+        "description": "Kademeler özniteliği."
+      },
+      "rank": {
+        "name": "Basamaktaki Konum",
+        "description": "Basamaktaki Konum özniteliği."
+      },
+      "entry_requirement": {
+        "name": "Giriş Şartı",
+        "description": "Giriş Şartı özniteliği."
+      },
+      "capabilities": {
+        "name": "Yetenekler",
+        "description": "Yetenekler özniteliği."
+      },
+      "arc_type": {
+        "name": "Ark Türü",
+        "description": "Ark Türü özniteliği."
+      },
+      "parties": {
+        "name": "Bölümler",
+        "description": "Bölümler niteliği."
+      },
+      "trigger": {
+        "name": "Tetikleyici",
+        "description": "Tetikleyici niteliği."
+      },
+      "stakes": {
+        "name": "Riskler",
+        "description": "Riskler niteliği."
+      },
+      "chapters_span": {
+        "name": "Bölüm Aralığı",
+        "description": "Bölüm Aralığı niteliği."
+      },
+      "emotional_beats": {
+        "name": "Duygusal Dönüm Noktaları",
+        "description": "Duygusal Dönüm Noktaları niteliği."
+      },
+      "resolution": {
+        "name": "Çözüm",
+        "description": "Çözüm niteliği."
+      },
+      "era": {
+        "name": "Çağ",
+        "description": "Çağ niteliği."
+      },
+      "class_hierarchy": {
+        "name": "Sınıf Hiyerarşisi",
+        "description": "Sınıf Hiyerarşisi niteliği."
+      },
+      "rules_norms": {
+        "name": "Kurallar ve Normlar",
+        "description": "Kurallar ve Normlar niteliği."
+      },
+      "romance_obstacles": {
+        "name": "Romantik Engeller",
+        "description": "Romantik Engeller niteliği."
+      },
+      "traits": {
+        "name": "Özellikler",
+        "description": "Özellikler niteliği."
+      },
+      "abilities": {
+        "name": "Yetenekler",
+        "description": "Yetenekler niteliği."
+      },
+      "habitat": {
+        "name": "Habitat",
+        "description": "Habitat niteliği."
+      },
+      "culture": {
+        "name": "Kültür",
+        "description": "Kültür niteliği."
+      },
+      "how_manifested": {
+        "name": "Nasıl Tezahür Ettiği",
+        "description": "Nasıl Tezahür Ettiği niteliği."
+      },
+      "subverted": {
+        "name": "Yıkıma Uğratılmış",
+        "description": "Yıkıma Uğratılmış niteliği."
+      },
+      "related_characters": {
+        "name": "İlgili Karakterler",
+        "description": "İlgili Karakterler niteliği."
+      },
+      "relationship_type": {
+        "name": "İlişki Türü",
+        "description": "İlişki Türü niteliği."
+      },
+      "status": {
+        "name": "Durum",
+        "description": "Durum niteliği."
+      },
+      "tropes": {
+        "name": "Tropes",
+        "description": "Tropes niteliği."
+      },
+      "dynamic": {
+        "name": "Dinamik",
+        "description": "Dinamik niteliği."
+      },
+      "key_conflict": {
+        "name": "Temel Çatışma",
+        "description": "Temel Çatışma niteliği."
+      },
+      "turning_points": {
+        "name": "Dönüm Noktaları",
+        "description": "Dönüm Noktaları niteliği."
+      },
+      "leader": {
+        "name": "Lider",
+        "description": "Lider niteliği."
+      },
+      "headquarters": {
+        "name": "Merkez",
+        "description": "Merkez niteliği."
+      },
+      "members": {
+        "name": "Üyeler",
+        "description": "Üyeler niteliği."
+      },
+      "effects": {
+        "name": "Efektler",
+        "description": "Efektler niteliği."
+      },
+      "user": {
+        "name": "Kullanıcı",
+        "description": "Kullanıcı niteliği."
+      }
+    }
   }
 }

@@ -1,0 +1,85 @@
+{
+  "loading": "Dein Assistent wird eingerichtet…",
+  "openingJournal": "Dein Journal wird geöffnet…",
+  "home": {
+    "welcome": "Willkommen zurück, {{name}}",
+    "subtitle": "Dein privater Arbeitsassistent.",
+    "capturing": "Arbeitsnotizen werden erfasst",
+    "captureOff": "Erfassung ist deaktiviert",
+    "capturingDesc": "Personen & Projekte werden erkannt, während du sprichst.",
+    "captureOffDesc": "Aktiviere die Erfassung, um dich an Kollegen, Projekte und Entscheidungen zu erinnern.",
+    "refresh": "Aktualisieren",
+    "capturedItems": "Erfasste Elemente",
+    "endDay": "Meinen Tag beenden",
+    "endingDay": "Dein Tag wird beendet…",
+    "journal": "Journal",
+    "memory": "Erinnerung",
+    "practice": "Übungsinterview"
+  },
+  "timezone": {
+    "title": "Zeitzone bestätigen",
+    "description": "Dein Journal gruppiert jeden Tag nach deiner lokalen Zeit. Wir haben {{zone}} erkannt.",
+    "saving": "Speichern…",
+    "useThis": "Diese verwenden",
+    "pickAnother": "Eine andere wählen",
+    "save": "Speichern"
+  },
+  "capture": {
+    "title": "Heute bisher",
+    "live": "live",
+    "description": "Dinge, die mir während unseres Gesprächs auffallen. Es wird nichts in deinem Tagebuch gespeichert, bis du es heute Abend überprüfst.",
+    "listening": "Zuhören…",
+    "nothingYet": "Noch nichts erfasst – erzähl mir von deinem Tag.",
+    "turnOn": "Aktiviere die Erfassung, um Personen und Projekte wahrzunehmen."
+  },
+  "autonomous": {
+    "title": "Den Assistenten autonom arbeiten lassen",
+    "description": "Aus, bis du es einschaltest – diese Prozesse laufen im Hintergrund und nutzen deine Modelle.",
+    "loading": "Laden…",
+    "on": "An",
+    "next": "An · nächste {{time}}",
+    "eod": "Meinen Tag automatisch abschließen",
+    "eodDesc": "Führe jeden Abend ein Journal, auch wenn du es mal vergisst.",
+    "weeklyReflection": "Wöchentliche Reflexion",
+    "weeklyReflectionDesc": "Ein sanftes wöchentliches Muster + Coaching-Notiz.",
+    "weeklySummary": "Wochenrückblick",
+    "weeklySummaryDesc": "Ein Rückblick auf deine Woche.",
+    "reminders": "Journaling-Erinnerungen",
+    "remindersDesc": "Ein kleiner Anstoß, falls du deinen Tag noch nicht abgeschlossen hast.",
+    "proactive": "Proaktive Check-ins",
+    "proactiveOn": "Ein — Ich melde mich vielleicht, wenn es eine Weile her ist.",
+    "proactiveOff": "Lass mich nach einer ruhigen Phase mit einem Gedanken beginnen."
+  },
+  "review": {
+    "title": "Hier ist dein Tag",
+    "distilling": "Das heutige Gespräch wird in einen Tagebucheintrag umgewandelt…",
+    "genericError": "Etwas ist schiefgelaufen.",
+    "words": "{{count}} Wörter",
+    "kept": "behalten",
+    "keep": "Heutigen Eintrag behalten",
+    "keptButton": "Behalten ✓",
+    "keeping": "Wird behalten…"
+  },
+  "inbox": {
+    "title": "Fakten zum Merken",
+    "description": "Aus den heutigen Gesprächen. Behalte die, die es wert sind, sich zu merken; verwerfe den Rest.",
+    "loading": "Laden…",
+    "error": "Fakten konnten nicht geladen werden.",
+    "keep": "Behalten",
+    "dismiss": "Verwerfen",
+    "quoted": "zitiert"
+  },
+  "scorecard": {
+    "title": "Coaching-Scorecard",
+    "badge": "Kein Trend (in Überprüfung)",
+    "badgeTitle": "Dieser Wert wurde noch nicht mit menschlichen Bewertungen abgeglichen; er dient daher nur als Referenz und wird nicht in einem Trenddiagramm dargestellt.",
+    "overall": "Gesamt:",
+    "notScored": "nicht bewertet"
+  },
+  "reflection": {
+    "defaultTitle": "Wöchentliche Reflexion",
+    "dismissError": "Konnte nicht entfernt werden – bitte erneut versuchen",
+    "dismissing": "Wird entfernt…",
+    "dismiss": "Entfernen"
+  }
+}

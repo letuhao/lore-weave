@@ -172,5 +172,10 @@
     "saved": "Orden de modelos guardado",
     "saveFailed": "Error al guardar el orden.",
     "loadFailed": "Error al cargar los modelos."
+  },
+  "errorBoundary": {
+    "title": "No se pudo mostrar esta página",
+    "description": "Ha ocurrido un error de interfaz. Se ha guardado en el registro de diagnóstico; por favor, inténtelo de nuevo.",
+    "retry": "Reintentar"
   }
 }

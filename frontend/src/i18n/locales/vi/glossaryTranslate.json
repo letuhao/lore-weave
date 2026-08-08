@@ -42,7 +42,9 @@
     "startTranslate": "Bắt đầu dịch",
     "startFailed": "Không thể khởi tạo job dịch",
     "thinkingOn": "Suy nghĩ: bật",
-    "thinkingOff": "Suy nghĩ: tắt"
+    "thinkingOff": "Suy nghĩ: tắt",
+    "concurrency": "Gọi LLM song song",
+    "concurrencyHint": "1 = tuần tự. Tăng giá trị này nếu mô hình của bạn hỗ trợ các yêu cầu đồng thời."
   },
   "progress": {
     "title": "Đang dịch thuật ngữ",

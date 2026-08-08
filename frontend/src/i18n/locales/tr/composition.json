@@ -154,7 +154,14 @@
     "promoted": "Bir 'ya şöyle olsaydı' türevine dönüştürüldü.",
     "promotedPartial": "Yükseltildi, ancak {{n}} versiyon eklenemedi.",
     "promotedProsePartial": "Yükseltildi, ancak {{n}} versiyonun metni kaydedilemedi — tekrar denemek için yeniden yükseltin.",
-    "promoteHint": "Yükseltmek için en az bir versiyon oluşturun"
+    "promoteHint": "Yükseltmek için en az bir versiyon oluşturun",
+    "vsCanon": {
+      "absoluteHint": "Puanları al (karşılaştırma için kanon temeli yok)",
+      "judging": "· kanon ile karşılaştırmalı…",
+      "noBaseline": "· kanon temeli yok",
+      "take": "al",
+      "vs": "kanon ile karşılaştırmalı"
+    }
   },
   "cast": "Kadro",
   "codex": {
@@ -261,7 +268,8 @@
     "linkMissing": "Mekanlardan biri artık mevcut değil.",
     "delete": "{{name}} öğesini kaldır",
     "deleteConfirm": "“{{name}}” dünya haritasından kaldırılsın mı? Bu işlem mekanı arşivler.",
-    "deleteFailed": "Mekan kaldırılamadı."
+    "deleteFailed": "Mekan kaldırılamadı.",
+    "backdropNoChapter": "Bir arka plan ayarlamak için bir章 açın."
   },
   "grounding": "Temellendirme",
   "canon": "Kanun",
@@ -346,7 +354,21 @@
     "noHits": "Henüz eşleşen referans yok.",
     "library": "Kütüphane",
     "delete": "Sil",
-    "empty": "Henüz referans yok — yukarıdan etkileri ekleyin."
+    "empty": "Henüz referans yok — yukarıdan etkileri ekleyin.",
+    "addEmbedModel": "Bir gömme modeli ekle",
+    "content": "İçerik",
+    "contentRecomputes": "İçeriği kaydetmek bu referansın gömme işlemini yeniden hesaplar.",
+    "deleteBody": "Bu işlem referansı raftan kaldırır. Geri alınamaz.",
+    "deleteTitle": "Bu referans silinsin mi?",
+    "done": "Tamam",
+    "edit": "Düzenle",
+    "filter": "Filtrele…",
+    "noMatch": "Filtrenize uygun referans bulunamadı.",
+    "reembedding": "Yeniden yerleştiriliyor…",
+    "saveContent": "İçeriği kaydet (yeniden yerleştirir)",
+    "saveMetadata": "Detayları kaydet",
+    "saving": "Kaydediliyor…",
+    "sourceUrl": "Kaynak URL (isteğe bağlı)"
   },
   "progressPanel": {
     "loading": "İlerleme yükleniyor…",
@@ -363,7 +385,8 @@
     "words": "kelime",
     "goalPlaceholder": "kelime/gün",
     "setGoal": "Hedef belirle",
-    "goalHint": "0 hedefi sıfırlar"
+    "goalHint": "0 hedefi sıfırlar",
+    "goalLegacy": "Bu hedef kitabın ortak ayarlarından geldi — bunu ayarlamak hedefi size özel kılar."
   },
   "workSettings": {
     "defaultModel": "Varsayılan taslak modeli",
@@ -375,7 +398,11 @@
     "chapter": "Bölüm (tek geçiş)",
     "narrativeThread": "Anlatı izlerini takip et (vaatler ve önceden belirtmeler)",
     "narrativeThreadHint": "Tavsiye: Açık vaatleri tespit eder ve üretimin bunlara uymasını sağlamak için yeniden dahil eder; ödenmemiş vaatleri bir borç görünümü olarak sunar. İsteğe bağlıdır.",
-    "saveError": "Ayarlar kaydedilemedi — tekrar deneyin."
+    "saveError": "Ayarlar kaydedilemedi — tekrar deneyin.",
+    "criticModel": "Eleştirmen modeli (bağımsız yargıç)",
+    "criticModelHint": "Farklı bir model, her taslağı kanonunuza göre puanlar ve kanonla çelişen bir bölümü engelleyebilir. Bir model olmazsa, metni bağımsız olarak kontrol eden hiçbir şey olmaz; bir model kendi yazdığı işi puanlayamaz.",
+    "criticSameAsDrafter": "Bu, metni yazan modelin aynısıdır; dolayısıyla kendi yazdığı işi puanlayacaktır — sunucu bunu reddedecek ve eleştiriyi atlayacaktır. Farklı bir model seçin.",
+    "noCritic": "Eleştirmen yok — taslaklar bağımsız olarak puanlanmaz"
   },
   "loadingStats": "Kalite yükleniyor…",
   "statsUnavailable": "Kalite istatistikleri kullanılamıyor.",
@@ -489,6 +516,8 @@
     "tension": "Gerilim",
     "cast": "Oyuncu kadrosu",
     "beat_role": "Olay örgüsü rolü",
+    "beat_label": "Vuruş",
+    "inactive_cast": "Varlık aktif değil",
     "add_cast": "kadro ekle",
     "remove_cast": " {{name}}'i kaldır",
     "resolve": "Kadroya {{name}} ekle",
@@ -509,7 +538,23 @@
     "err_no_chapters": "Bu kitabın henüz bölümü yok — planlama yapmadan önce bölümler oluşturun.",
     "err_too_many_chapters": "Aynı anda planlanamayacak kadar çok bölüm var.",
     "err_bad_entity": "Bazı sahne karakterleri bu kitabın sözlüğünde yer almıyor.",
-    "err_bad_chapter": "Plandaki bir bölüm bu kitabın bir parçası değil."
+    "err_bad_chapter": "Plandaki bir bölüm bu kitabın bir parçası değil.",
+    "add_template": "Şablon ekle",
+    "create_template_title": "Yeni yapı şablonu",
+    "template_name": "İsim",
+    "template_name_placeholder": "Örneğin, Kahramanın Yolculuğu",
+    "template_kind": "Tür",
+    "template_beats": "Vuruşlar (her satıra bir tane)",
+    "template_beats_placeholder": "Kurulum\nDönüm noktası\nDoruk noktası",
+    "template_create": "Şablon oluştur",
+    "template_creating": "Oluşturuluyor…",
+    "template_create_error": "Şablon oluşturulamadı",
+    "close": "Kapat",
+    "chapter_scope": "Kapsam",
+    "all_chapters": "Tüm bölümler",
+    "recreate_current": "Mevcut bölümü yeniden oluştur",
+    "recreate_all": "Tüm bölümleri yeniden oluştur",
+    "done": "Tamamlandı"
   },
   "threads": "İplikler",
   "threadsTitle": "Olay örgüsü iplikleri",
@@ -656,13 +701,16 @@
     "overuse": "\"{{name}}\" zaten {{chapters}} bölümünde kullanılmış — çeşitlendirmeyi düşünün.",
     "list": {
       "noMatch": "Eşleşen motif yok — filtreleri temizleyin.",
-      "truncated": "İlk 100 gösteriliyor — geri kalanını görmek için arama veya filtreleri kullanarak daraltın."
+      "truncated": "İlk 100 gösteriliyor — geri kalanını görmek için arama veya filtreleri kullanarak daraltın.",
+      "loadMore": "Daha fazla yükle",
+      "loadingMore": "Yükleniyor…"
     },
     "error": {
       "load": "Yüklenemedi — lütfen tekrar deneyin."
     },
     "permission": {
-      "readOnly": "Bu paylaşılan bir şablondur — düzenlenebilir bir kopya oluşturmak için klonlayın."
+      "readOnly": "Bu paylaşılan bir şablondur — düzenlenebilir bir kopya oluşturmak için klonlayın.",
+      "noSession": "Oturumunuz yenilenene kadar düzenleme yapılamaz."
     },
     "action": {
       "open": "Aç",
@@ -673,11 +721,19 @@
       "cancel": "İptal",
       "retry": "Tekrar dene",
       "swap": "Değiştir",
-      "clear": "Serbest biçim"
+      "clear": "Serbest biçim",
+      "bind": "Motifi bağla",
+      "discard": "Kaldır",
+      "edit": "Düzenle",
+      "mine": "Çıkar",
+      "promote": "Yükselt",
+      "restore": "Geri yükle",
+      "save": "Kaydet"
     },
     "card": {
       "draft": "Taslak",
-      "tension": "Yoğunluk"
+      "tension": "Yoğunluk",
+      "shared": "Paylaşılan"
     },
     "empty": {
       "title": "Motif kütüphaneniz hazır",
@@ -725,7 +781,13 @@
       "toUser": "Kütüphanem",
       "whatItDoes": "Bu motifi kütüphanenize kopyalayın (özel, düzenlenebilir bir klon).",
       "continue": "Devam et",
-      "estimating": "Hesaplanıyor…"
+      "estimating": "Hesaplanıyor…",
+      "bodyUser": "Adopt özelliği, kütüphanenizde düzenlenebilir, size özel bir kopya oluşturur.",
+      "sharedHint": "Bu kitaba erişimi olan herkes bu motifi görebilir ve düzenleyebilir.",
+      "targetBook": "Bu kitap (özel)",
+      "targetBookShared": "İş birliği yapılanlarla paylaş",
+      "targetLegend": "Ekle:",
+      "targetUser": "Kütüphanem"
     },
     "quota": {
       "adopt": "Bu dönem için {{used}}/{{limit}} kullanım yaptınız — bazılarını arşivleyin veya bekleyin."
@@ -752,7 +814,10 @@
     "binding": {
       "freeForm": "Eşleşen motif yok — bu sahne serbest biçimlidir.",
       "commitGenerate": "Onayla + bu sahneyi yaz →",
-      "noWork": "Motifleri sahnelerle ilişkilendirmek için bu kitap için bir plan oluşturun."
+      "noWork": "Motifleri sahnelerle ilişkilendirmek için bu kitap için bir plan oluşturun.",
+      "committedTitle": "Sahne motiflerini bağla",
+      "loadError": "Sahne motifleri yüklenemedi.",
+      "sectionTitle": "Sahne motifleri"
     },
     "swap": {
       "title": "Motifi değiştir",
@@ -777,7 +842,13 @@
         "warn": "Gerilim sapması",
         "bad": "Vuruş kaçırıldı"
       },
-      "rerunNeedsModel": "Uyumluluğu yeniden çalıştırmak için bir model seçin"
+      "rerunNeedsModel": "Uyumluluğu yeniden çalıştırmak için bir model seçin",
+      "bindCta": "Bir motifi bir sahneye bağla →",
+      "couldNotCheck": "Kontrol edilemedi",
+      "notChecked": "Henüz kontrol edilmedi",
+      "notWritten": "Henüz yazılmadı",
+      "openScene": "Bu sahneyi denetleyicide aç",
+      "written": "Yazıldı"
     },
     "arc": {
       "mobileNotice": "Zaman çizelgesi ızgarası daha büyük bir ekranda mevcuttur — burada liste olarak düzenleyebilirsiniz.",
@@ -834,7 +905,8 @@
         "driftFolded": "Katlanmış (hiç bağlanmamış)",
         "untitledArc": "(başlıksız ark)",
         "truncated": "Toplam {{count}} öğeden ilk {{shown}} tanesi gösteriliyor — daha fazlasını bulmak için Katalog'u veya daha dar bir kademeyi kullanın.",
-        "tabSuggest": "Öner"
+        "tabSuggest": "Öner",
+        "restore": "geri yükle"
       },
       "import": {
         "privacy": "Ham metin size özel kalır ve asla paylaşılmaz. Sadece türetilen soyut yapı yayınlanabilir — yayınlama işlemi kaynak referansını kaldırır.",
@@ -890,7 +962,42 @@
         "error": "Bölümler arklar halinde gruplandırılamadı.",
         "done": "{{chapters}} bölüm {{arcs}} ark olarak gruplandırıldı.",
         "none": "Henüz arklar için gruplandırılacak bölüm yok."
-      }
+      },
+      "apply": {
+        "dropMerge": "Ölçek uyumlulaştırma",
+        "error": "Uygulama önizlemesi oluşturulamadı.",
+        "previewOnly": "Sadece önizleme — Değişiklikleri onaylamak için bu arkı bir kitabın içinde açın.",
+        "rescaled": "{{from}} → {{to}} bölüme yeniden ölçeklendi",
+        "roster": "Kadroyu bağla (tüm ark için bir kez)",
+        "run": "Planı önizle",
+        "running": "Önizleniyor…",
+        "targetChapters": "Hedef bölümler",
+        "title": "Yeni bir kitaba uygula (önizleme)",
+        "unbound": "Bağlantısız roller: {{keys}}"
+      },
+      "backToList": "Tüm ark şablonları",
+      "chapterCount": "{{count}} bölüm",
+      "empty": "Bu ark henüz hiçbir olay örgüsü veya yerleşim içermiyor.",
+      "grabbed": "{{name}} yakalandı. Ok tuşları hareket ettirir, Shift+Ok tuşları yeniden boyutlandırır, Enter bırakır, Esc serbest bırakır.",
+      "loadError": "Bu ark zaman çizelgesi yüklenemedi.",
+      "loading": "Zaman çizelgesi yükleniyor…",
+      "materialize": {
+        "blurb": "Bu arku mevcut kitaba işle — bölümlerin sahne taslağını ve motif bağlantılarını oluşturur.",
+        "conflict": "Bazı bölümlerin zaten bir planı var. Sahnelerini bu ark ile değiştirelim mi?",
+        "done": "{{chapters}} bölüm boyunca {{scenes}} sahne işlendi.",
+        "error": "Bu ark somutlaştırılamadı.",
+        "folded": "Bölüm sayısı yeniden ölçeklendirmesiyle {{count}} motif katlandı.",
+        "replace": "Mevcut sahneleri değiştir",
+        "run": "Bu kitaba somutlaştır",
+        "running": "Somutlaştırılıyor…",
+        "unresolved": "{{count}} motif çözümlenemedi ve atlandı."
+      },
+      "placementDesc": "{{thread}} teması, {{from}}-{{to}} arası bölümler",
+      "readonly": "Bu ark salt okunurdur. Zaman çizelgesini düzenlemek için kütüphanenize dahil edin.",
+      "saveConflict": "Yeniden yüklendi — bu ark başka bir yerde değiştirildi.",
+      "saveError": "Kaydedilemedi — bir sonraki düzenlemede tekrar denenecek.",
+      "saved": "Kaydedildi",
+      "saving": "Kaydediliyor…"
     },
     "simple": {
       "actant": {
@@ -1021,6 +1128,111 @@
       "overCap": "Çeviri görevi başına en fazla {{cap}} motif — {{over}} öğenin seçimini kaldırın.",
       "confirmWhat": "Kendi modelinizi kullanarak {{count}} motif {{lang}} diline çevrilsin.",
       "doneTitle": "{{total}} öğeden {{written}} tanesi {{lang}} diline çevrildi"
+    },
+    "arcConf": {
+      "causal": "nedensel olarak doğrulandı",
+      "caused": "neden oldu",
+      "chShort": "b.",
+      "coarse": "Kaba · sadece yapısal",
+      "deepError": "Derin uyumluluk analizi çalıştırılamadı.",
+      "deepWhat": "Kitabın düzyazısını kendi modelinizle yeniden etiketleyin ve bu ark ile karşılaştırın (LLM ölçümlü).",
+      "drift": "maks. sapma {{drift}}",
+      "empty": "Bu ark'tan henüz hiçbir şey oluşmadı.",
+      "entailed": "gerektiren",
+      "estimating": "Tahmin ediliyor…",
+      "legalTransitions": "geçerli",
+      "maxDrift": "maks. sapma {{drift}}",
+      "model": "Etiketleme modeli",
+      "noPlanned": "planlanmış eğri yok",
+      "noProse": "Henüz çıkarılmış düzyazı yok — sapmayı ölçmek için sahneler oluşturun.",
+      "noWork": "Uyumluluğu görmek için bu arkı bir kitaba dönüştürün.",
+      "notTagged": "Olay örgüsü ilerlemesi etiketleme gerektirir — bir model ile çalıştırın.",
+      "pacing": "Tempo",
+      "proseDrift": "Düzyazı sapması (gerçekleşen vs planlanan)",
+      "proseDriftTitle": "Derin düzyazı uyumluluğu",
+      "proseScale": "çıkarılan olaylardan gerilim (1–5 ×20)",
+      "proseSuccession": "Düzyazıdaki ardışıklık",
+      "proseThreads": "Düzyazıdaki olay örgüleri",
+      "runDeep": "Derin uyumluluk çalıştır",
+      "running": "Çalışıyor…",
+      "structural": "yapısal",
+      "succUntagged": "Ardıllık motif etiketlemesi gerektiriyor — bir model ile çalıştırın.",
+      "succession": "Ardıllık (yapısal)",
+      "successionOk": "Sıralama ihlali yok.",
+      "threadMissing": "düz yazıda yok",
+      "threads": "İplik ilerlemesi",
+      "title": "Ark uyumluluğu",
+      "unmaterialized": "Somutlaşmamış",
+      "unplannedLabel": "düz yazıda planlanmamış",
+      "violation": "{{label}}: {{n}} sıralama hatası"
+    },
+    "editor": {
+      "add": "ekle",
+      "beatIntent": "niyet",
+      "beatLabel": "vuruş",
+      "beats": "Vuruşlar",
+      "conflict": "Bu motif başka bir yerde değiştirildi — düzenlemeye başlamadan önce en güncel halini almak için yeniden açın.",
+      "deceived": "aldatılan kişi (virgülle ayırın)",
+      "effects": "Etkiler",
+      "emotion": "Duygu",
+      "examples": "Örnekler (yazar tarafından yazılmış)",
+      "gap": "boşluk",
+      "genres": "Türler (virgülle ayırın)",
+      "kind": "Tür",
+      "knows": "bilen kişi (virgülle ayırın)",
+      "name": "İsim",
+      "preconditions": "Ön Koşullar",
+      "roleConstraints": "kısıtlamalar",
+      "roleLabel": "etiket",
+      "roles": "Roller",
+      "saveError": "Kaydedilemedi.",
+      "saving": "Kaydediliyor…",
+      "scheme": "Bilgi asimetrisi",
+      "summary": "Özet (erişim için gömülü)",
+      "tension": "Gerilim (1–5)"
+    },
+    "kind": {
+      "arcs": "Ark şablonları",
+      "label": "Kütüphane",
+      "motifs": "Motifler"
+    },
+    "lens": {
+      "title": "Motifler"
+    },
+    "mine": {
+      "belowGate": "Kalite eşiğinin altında {{n}} aday tutuldu.",
+      "bookHint": "Tek bir kitap nadiren bir örüntüyü tekrarlar — derlem kapsamı daha fazlasını bulur.",
+      "corpus": "Tüm derlemim",
+      "estimating": "Tahmin ediliyor…",
+      "failed": "Madencilik başarısız oldu.",
+      "minSupport": "Min. destek",
+      "minedN": "{{n}} taslak çıkarıldı — bunları inceleyin",
+      "model": "Madencilik modeli",
+      "noCorpus": "Henüz analiz edilmiş bir derlem yok — önce bir kitap çıkarın, sonra madencilik yapın.",
+      "noPatterns": "Tekrarlanan örüntü bulunamadı. Derlem kapsamını veya daha düşük bir min. desteği deneyin.",
+      "quota": "Madencilik kotasına ulaşıldı.",
+      "run": "Madencilik yap",
+      "running": "Madencilik yapılıyor…",
+      "scope": "Kapsam",
+      "thisBook": "Bu kitap",
+      "title": "Yazılarınızdan motifler çıkarın",
+      "what": "Metninizdeki yinelenen olay örgüsü kalıplarını taslak motiflere dönüştürün (LLM ölçümlü)."
+    },
+    "sync": {
+      "apply": "Üst kaynaktan {{n}} al",
+      "applying": "Uygulanıyor…",
+      "available": "Üst kaynak şablonunda bir güncelleme var.",
+      "conflict": "çakışma — her ikiniz de burayı düzenlediniz",
+      "error": "Birleştirme uygulanamadı.",
+      "keepMine": "Tümünü benimkilerle tut",
+      "mine": "benimkiler",
+      "noChange": "Kaynak gelişti ancak birleştirilebilir bir alan değişmedi.",
+      "review": "İncele ve birleştir",
+      "take": "kaynağı al",
+      "theirs": "kaynak",
+      "threeWay": "3 yollu",
+      "title": "Kaynak güncellemesi",
+      "twoWay": "2 yollu"
     }
   },
   "authoringRun": {
@@ -1058,7 +1270,14 @@
       "allowlistAdd": "Araç ekle…",
       "runGateCheck": "Çalıştırma kontrolü →",
       "gating": "Kontrol ediliyor…",
-      "cancel": "İptal"
+      "cancel": "İptal",
+      "chaptersEmpty": "Bu kitabın henüz hiç bölümü yok — taslak oluşturmak için planınızdan bölümler oluşturun.",
+      "chaptersEmptyCta": "Önce bir plan derlemek için Planlayıcı'yı açın →",
+      "materialize": "Bu plandan bölümler oluştur →",
+      "materializedOk": "Planınızdan {{count}}章 oluşturuldu.",
+      "materializing": "Bölümler oluşturuluyor…",
+      "modelEmpty": "Taslak oluşturmak için Ayarlar → Modeller kısmından bir sohbet modeli ekleyin.",
+      "modelLabel": "Taslak oluşturma modeli"
     },
     "gate": {
       "title": "Geçiş kontrolü",
@@ -1147,5 +1366,390 @@
   "canonUncheckedUnparseable": "denetleyen model kullanılabilir bir yanıt döndürmedi",
   "canonUncheckedFailed": "denetimin kendisi hata verdi",
   "canonUncheckedOther": "bu denetim çalıştırılamadı",
-  "canonUncheckedWhich": "denetimlerinden {{count}} tanesi tamamlanmadı"
+  "canonUncheckedWhich": "denetimlerinden {{count}} tanesi tamamlanmadı",
+  "structureTemplates": {
+    "templates": {
+      "save_the_cat": "Save the Cat",
+      "hero_journey": "Kahramanın Yolculuğu",
+      "story_circle": "Hikaye Çemberi",
+      "kishotenketsu": "Kishōtenketsu",
+      "web_novel": "Web Romanı Arkı",
+      "generic": "Üç Perdelik (Genel)"
+    },
+    "beats": {
+      "save_the_cat": {
+        "opening_image": {
+          "label": "Açılış Görüntüsü",
+          "purpose": "Açılış görüntüsünün amacı"
+        },
+        "theme_stated": {
+          "label": "Temanın Belirtilmesi",
+          "purpose": "Temanın belirtilmesinin amacı"
+        },
+        "setup": {
+          "label": "Kurulum",
+          "purpose": "Kurulumun amacı"
+        },
+        "catalyst": {
+          "label": "Tetikleyici",
+          "purpose": "Tetikleyicinin amacı"
+        },
+        "debate": {
+          "label": "Tartışma",
+          "purpose": "Tartışmanın amacı"
+        },
+        "break_into_two": {
+          "label": "İkinci Perdeye Geçiş",
+          "purpose": "İkinci perdeye geçişin amacı"
+        },
+        "b_story": {
+          "label": "B Hikâyesi",
+          "purpose": "Yan hikâyenin amacını belirleyin."
+        },
+        "fun_and_games": {
+          "label": "Eğlence ve Oyunlar",
+          "purpose": "Hikâyenin vaat ettiği temel eğlenceyi ve karakterlerin yeni dünyayı keşfettiği anları tanımlayın."
+        },
+        "midpoint": {
+          "label": "Orta Nokta",
+          "purpose": "Hikâyenin yönünü değiştiren, risklerin arttığı ve ana çatışmanın derinleştiği kırılma noktasını belirleyin."
+        },
+        "bad_guys_close_in": {
+          "label": "Kötüler Yaklaşıyor",
+          "purpose": "Antagonistlerin baskısını ve kahramanın üzerindeki baskının arttığı zorlukları tanımlayın."
+        },
+        "all_is_lost": {
+          "label": "Her Şey Bitti",
+          "purpose": "Kahramanın en büyük yenilgisini, umudun tükendiği ve her şeyin kaybedilmiş gibi göründüğü anı belirleyin."
+        },
+        "dark_night": {
+          "label": "Karanlık Gece",
+          "purpose": "Karakterin en derin içsel hesaplaşmasını yaşadığı ve çözüm için gereken motivasyonu bulmaya çalıştığı anı tanımlayın."
+        },
+        "break_into_three": {
+          "label": "Üçüncü Perdeye Geçiş",
+          "purpose": "Kahramanın hikayenin ikinci kısmına geçtiği ve ana çatışmanın başladığı dönüm noktası."
+        },
+        "finale": {
+          "label": "Final",
+          "purpose": "Kahramanın tüm engelleri aşarak ana çatışmayı çözdüğü ve hikayeyi sonuçlandırdığı an."
+        },
+        "final_image": {
+          "label": "Final Görüntüsü",
+          "purpose": "Hikayenin başındaki durumla kıyaslandığında kahramanın ne kadar değiştiğini gösteren son sahne."
+        }
+      },
+      "hero_journey": {
+        "ordinary_world": {
+          "label": "Sıradan Dünya",
+          "purpose": "Kahramanın hikaye başlamadan önce yaşadığı, alışık olduğu normal yaşam ortamı."
+        },
+        "call_to_adventure": {
+          "label": "Maceraya Çağrı",
+          "purpose": "Kahramanın dengesini bozan ve onu bilinmeyene doğru bir yolculuğa davet eden olay."
+        },
+        "refusal_of_the_call": {
+          "label": "Çağrıyı Reddetme",
+          "purpose": "Kahramanın maceranın getireceği risklerden korkarak macerayı reddetmesi veya tereddüt etmesi."
+        },
+        "meeting_the_mentor": {
+          "label": "Akıl Hocasıyla Karşılaşma",
+          "purpose": "Akıl Hocasıyla Karşılaşma"
+        },
+        "crossing_the_threshold": {
+          "label": "Eşiği Geçmek",
+          "purpose": "Eşiği Geçmek"
+        },
+        "tests_allies_enemies": {
+          "label": "Sınavlar, Müttefikler ve Düşmanlar",
+          "purpose": "Sınavlar, Müttefikler ve Düşmanlar"
+        },
+        "approach": {
+          "label": "Yaklaşma",
+          "purpose": "Yaklaşma"
+        },
+        "ordeal": {
+          "label": "Çile",
+          "purpose": "Çile"
+        },
+        "reward": {
+          "label": "Ödül",
+          "purpose": "Ödül"
+        },
+        "the_road_back": {
+          "label": "Geri Dönüş Yolu",
+          "purpose": "Kahramanın geri dönüş yolundaki amacı"
+        },
+        "resurrection": {
+          "label": "Yeniden Doğuş",
+          "purpose": "Kahramanın nihai sınavından geçerek dönüşümü tamamladığı an"
+        },
+        "return_with_elixir": {
+          "label": "İksirle Dönüş",
+          "purpose": "Kahramanın kazandığı deneyim veya nesneyle dünyasına dönmesi"
+        }
+      },
+      "story_circle": {
+        "you": {
+          "label": "Sen",
+          "purpose": "Hikayenin başladığı nokta ve karakterin mevcut durumu"
+        },
+        "need": {
+          "label": "İhtiyaç",
+          "purpose": "Karakterin eksikliğini hissettiği veya arzuladığı şey"
+        },
+        "go": {
+          "label": "Git",
+          "purpose": "Karakterin konfor alanından ayrılıp maceraya atılması"
+        },
+        "search": {
+          "label": "Ara",
+          "purpose": "Arayış"
+        },
+        "find": {
+          "label": "Bul",
+          "purpose": "Bir şey bul"
+        },
+        "take": {
+          "label": "Al",
+          "purpose": "Bir şey al"
+        },
+        "return": {
+          "label": "Dön",
+          "purpose": "Eve dön"
+        },
+        "change": {
+          "label": "Değiş",
+          "purpose": "Değişime uğra"
+        }
+      },
+      "kishotenketsu": {
+        "ki": {
+          "label": "Ki",
+          "purpose": "Giriş"
+        },
+        "sho": {
+          "label": "Sho",
+          "purpose": "Hikâyenin temelini atan giriş bölümü."
+        },
+        "ten": {
+          "label": "Ten",
+          "purpose": "Olayların doruk noktasına ulaştığı ve beklenmedik bir gelişmenin yaşandığı kırılma noktası."
+        },
+        "ketsu": {
+          "label": "Ketsu",
+          "purpose": "Hikâyenin düğümünün çözüldüğü ve sonuçlandığı bölüm."
+        }
+      },
+      "web_novel": {
+        "hook": {
+          "label": "Hook",
+          "purpose": "Okuyucunun ilgisini hemen çeken giriş unsuru."
+        },
+        "establishment": {
+          "label": "Establishment",
+          "purpose": "Dünyanın, karakterlerin ve mevcut durumun tanıtılması."
+        },
+        "rising_conflict": {
+          "label": "Rising Conflict",
+          "purpose": "Gerilimin ve çatışmanın giderek tırmandığı süreç."
+        },
+        "setback": {
+          "label": "Setback",
+          "purpose": "Olay örgüsündeki aksaklığın veya gerilimin artışının amacını belirtin."
+        },
+        "climax": {
+          "label": "Doruk Noktası",
+          "purpose": "Hikayenin en yüksek gerilim anının amacını belirtin."
+        },
+        "resolution": {
+          "label": "Çözüm",
+          "purpose": "Hikayenin düğümlerinin çözüldüğü kısmın amacını belirtin."
+        }
+      },
+      "generic": {
+        "setup": {
+          "label": "Kurulum",
+          "purpose": "Hikayenin temel taşlarının döşendiği kısmın amacını belirtin."
+        },
+        "confrontation": {
+          "label": "Yüzleşme",
+          "purpose": "Çatışmanın ve karşı karşıya gelişin amacını belirtin."
+        },
+        "resolution": {
+          "label": "Çözüm",
+          "purpose": "Hikayenin sonlanma şeklinin amacını belirtin."
+        }
+      }
+    },
+    "kinds": {
+      "save_the_cat": "Save the Cat yapısı",
+      "hero_journey": "Kahramanın Yolculuğu yapısı",
+      "story_circle": "Hikaye Çemberi yapısı",
+      "kishotenketsu": "Kishōtenketsu yapısı",
+      "web_novel": "Web Romanı Ark yapısı",
+      "generic": "Üç Perdelik (Genel) yapı"
+    }
+  },
+  "branchdiff": {
+    "allNew": "Tamamen yeni (kanon karşılığı yok)",
+    "branch": "Dị bản",
+    "canon": "Kanon",
+    "chg": "değiş.",
+    "empty": "Henüz farklılaşmış bir metin yok — her sahne kanonu devralır. Farklılıkları burada görmek için 'what-if' tuvalindeki bir taslağı yükseltin.",
+    "error": "Dallanmış metin okunamadı.",
+    "loading": "Metin okunuyor…",
+    "new": "yeni",
+    "noProseBody": "Bu sapmış sahnenin 'ya şöyle olsaydı' versiyonunda henüz düz yazı bulunmuyor — 'ya şöyle olsaydı' tuvalinde bir taslak oluşturun, ardından fark burada görünecektir.",
+    "noProseTitle": "Henüz yazılmadı",
+    "noSource": "Bu dalın karşılaştırılacak çözülebilir bir kaynağı yok.",
+    "scenes": "{{n}} sapma",
+    "todo": "yapılacaklar",
+    "untitledScene": "sahne"
+  },
+  "canonBrokenBadge": "{{n}} bozuldu →",
+  "canonConflictDiscard": "Benimkini at",
+  "canonConflictKeepTheirs": "Onunkini tut",
+  "canonConflictReapply": "Düzenlememi v{{v}} üzerine yeniden uygula",
+  "canonConflictTitle": "Bu kural başka bir yerde değişti — taslağınız aşağıda tutuluyor.",
+  "canonview": {
+    "active": "{{n}} aktif",
+    "branchHint": "Bu kırılmadan hemen önce kanonun bildikleri",
+    "branchToggle": "Kırılmadaki kanon",
+    "canonState": "Kanon durumu",
+    "chapterN": "{{n}}.章",
+    "countGlossary": "· {{n}} varlık",
+    "coverage": "bölümlerin %{{pct}}'inde yer alıyor",
+    "established": "Şu ana kadar belirlendi",
+    "events": "{{n}} zaman çizelgesi olayı",
+    "gone": "{{n}} silindi",
+    "knowledgeUnavailable": "Kanon durumu kullanılamıyor — bilgi servisi yanıt vermedi.",
+    "loading": "Kanon okunuyor…",
+    "noChapter": "Odaklanmış bir bölüm yok — kanonu o bölüm itibarıyla incelemek için bir sahne açın.",
+    "noneHere": "Bu bölüme bağlı hiçbir varlık bulunmuyor.",
+    "notAnalyzed": "Bu bölüm henüz analiz edilmedi — kanonu doldurmak için kitabı dışa aktarın.",
+    "presence": "Bu bölümde mevcut",
+    "srcGlossary": "· sözlük",
+    "srcKnowledge": "· bilgi",
+    "title": "Şu tarih itibarıyla kanon",
+    "windowUnavailable": "Okuma konumu bilinmiyor — bu bölüm için pencere kullanılamıyor."
+  },
+  "coverageAbandoned": "terk edilen {{n}}",
+  "coverageAbsent": "bulunmayan {{n}}",
+  "coverageClean": "Terk edilmiş vaat yok — kitap kurgusal hazırlıklarını tamamlıyor.",
+  "coverageDropped": "Vaat edilen ancak terk edilen:",
+  "coverageIntro": "Bilgilendirme — taslağın kurduğu vaatlerin kitap genelinde nasıl sonuçlandığını gösterir. Salt okunur.",
+  "coverageLoading": "Tüm kitap analiz ediliyor…",
+  "coverageNa": "Vaat kapsamı kullanılamıyor.",
+  "coverageNoPromises": "Taslakta takip edilebilir vaat bulunamadı.",
+  "coveragePaid": "ödeli {{n}}",
+  "coverageProgressing": "ilerliyor {{n}}",
+  "coverageRerun": "Yeniden analiz et",
+  "coverageRun": "Hikaye vaatlerini analiz et",
+  "coverageTitle": "Hikaye vaatleri",
+  "divergence": {
+    "active": "aktif",
+    "addOverride": "Geçersiz kılma ekle",
+    "archive": "Arşivle",
+    "archiveConflict": "Başka bir yerde değiştirildi — yeniden yüklendi.",
+    "archiveFailed": "Arşivlenemedi — tekrar deneyin.",
+    "archived": "Arşivlendi — bölümleri ve bilgileri korundu; bu listeden ayrıldı.",
+    "branchPoint": "Dallanma noktası",
+    "branchedAt": "{{n}}. bölümde dallandı",
+    "branchedUnknown": "dallanma noktası bilinmiyor",
+    "canonRules": "Kanun kuralları",
+    "canonRulesPlaceholder": "Her satıra bir kural yazın (örneğin: Bu dalda büyü artık mevcut değil).",
+    "canonTag": "kanon",
+    "canonical": "Kanonik",
+    "canonicalSection": "Kanonik",
+    "chapterN": "{{n}}. bölüm",
+    "editFailed": "Kaydedilemedi — tekrar deneyin.",
+    "emptyDerivatives": "Henüz bir 'ya şöyle olsaydı' versiyonu yok. Bir versiyon, kitabınızı bir bölümde dallandırır ve farklılaşır; kaynak metin ise salt okunur kanon olarak kalır.",
+    "loading": "Yükleniyor…",
+    "new": "Yeni dallanma",
+    "no": "Hayır",
+    "noAnchoredEntities": "Bu dalın kaynağında henüz sözlüğe bağlı karakter bulunmuyor — Bakış açısını (POV) belirlemek veya onları burada geçersiz kılmak için sözlükteki varlıkları sabitleyin.",
+    "noOverrides": "Henüz bir varlık geçersiz kılma işlemi yapılmadı.",
+    "noPov": "— bakış açısı (POV) sabiti yok —",
+    "noWork": "Bu kitabın henüz bir planı yok — önce kurgusal akışları ve bölümleri belirleyin, ardından buradan bir 'ya şöyle olsaydı' dalı oluşturun.",
+    "overrideEntity": "Geçersiz kılınacak varlık",
+    "overrideNamePlaceholder": "Bu versiyondaki yeni isim (isteğe bağlı)…",
+    "overridePlaceholder": "Bu varlık nasıl farklılaşıyor (örneğin artık bir kötü karakter)…",
+    "overrideRemoved": "Geçersiz kılma kaldırıldı.",
+    "overrides": "Geçersiz kılmalar",
+    "pickEntity": "Başka bir varlığı geçersiz kıl…",
+    "povAnchor": "Bakış açısı çapası",
+    "remove": "Kaldır",
+    "removeConfirm": "Kaldırılsın mı?",
+    "rename": "Yeniden Adlandır",
+    "renameConflict": "Başka bir yerde değiştirildi — yeniden yükleyin ve tekrar deneyin.",
+    "renameFailed": "Yeniden adlandırılamadı — tekrar deneyin.",
+    "renamePlaceholder": "Varsayımsal isim (1–200 karakter)",
+    "renameTitle": "Bu varsayımı yeniden adlandır",
+    "renamed": "Yeniden adlandırıldı.",
+    "restoreFailed": "Geri yüklenemedi — başka bir yerde değiştirilmiş olabilir.",
+    "restored": "Listeye geri yüklendi.",
+    "save": "Kaydet",
+    "saveRules": "Kuralları kaydet",
+    "saving": "Kaydediliyor…",
+    "specError": "Dal spesifikasyonu yüklenemedi — tekrar seçmeyi deneyin.",
+    "specLoading": "Spesifikasyon yükleniyor…",
+    "switchFailed": "Geçiş yapılamadı — tekrar deneyin.",
+    "switchTo": "Şuna geç:",
+    "tabDiff": "Fark",
+    "tabSpec": "Spesifikasyon",
+    "taxonomy": "Taksonomi",
+    "title": "Ya şöyle olsaydı versiyonları",
+    "unavailable": "Kompozisyon servisine şu anda ulaşılamıyor — lütfen kısa süre sonra tekrar deneyin.",
+    "undo": "Geri Al",
+    "undoFailed": "Üzerine yazma işlemi geri yüklenemedi.",
+    "undoSuperseded": "Bu öğe için daha yeni bir değişiklik mevcut — geri yüklenecek bir şey yok.",
+    "unnamed": "Başlıksız versiyon",
+    "yes": "Evet"
+  },
+  "mark": {
+    "action": "Sorunu işaretle",
+    "cancel": "İptal",
+    "duplicate": "Bu pasajı zaten o notla işaretlediniz.",
+    "failed": "İşaretleme kaydedilemedi. Tekrar deneyin.",
+    "kind": "Sorun türü nedir?",
+    "no_selection": "İşaretlemeden önce hatalı olan pasajı seçin.",
+    "note": "Bu pasajda sorun nedir?",
+    "note_ph": "örneğin 3. bölümde öldü...",
+    "note_required": "Sorunu belirtin — not, ortak yazarın üzerine işlem yapacağı kısımdır.",
+    "save": "İşaretle",
+    "saved": "İşaretlendi — ortak yazar bunu görebilir."
+  },
+  "polishAll": "tümü",
+  "polishAllDet": "tüm belirleyici düzenlemeler",
+  "polishApply": "Seçilen {{count}} öğeyi uygula",
+  "polishClean": "Sorun bulunamadı — anlatım temiz.",
+  "polishClear": "temizle",
+  "polishDeterministic": "otomatik",
+  "polishIntro": "Önerilen düzeltmeler metninize uygulanmadan önce gözden geçirin. Belirleyici düzenlemeler (zamirler, yazım hataları) önceden seçilmiştir; anlamsal düzenlemeler ise karar vermeniz için seçilmemiş olarak gösterilir.",
+  "polishLoading": "Analiz ediliyor…",
+  "polishNoModel": "Önce bir model seçin.",
+  "polishRerank": "otomatik işaretle (AI, daha maliyetli)",
+  "polishRerankHint": "İyi olanları otomatik olarak işaretlemek için her düzenlemede fazladan bir AI çağrısı kullanır (daha yavaş, daha maliyetli).",
+  "polishRerun": "Düzeltmeyi Yeniden Çalıştır",
+  "polishRun": "Düzeltmeyi Çalıştır",
+  "polishSemantic": "anlamsal",
+  "polishStats": "{{edits}} düzenleme · doğrulama ile {{refuted}} adet düşürüldü",
+  "polishUnplaced": "Bu metinde {{count}} bulgu konumlandırılamadı — aşağıda, düzeltilmemiş olarak gösteriliyor.",
+  "polishUnplacedNoQuote": "(alıntı metin yok)",
+  "qualityCriticNa": "Eleştirmen kullanılamıyor.",
+  "qualityHasFix": "önerilen düzeltme ↓",
+  "qualityIntro": "Yalnızca bilgilendirme amaçlıdır — bölümün nasıl puanlandığı ve ne vaat edip neyi yerine getirmediği hakkındadır. Buradaki hiçbir şey anlatımınızı değiştirmez.",
+  "qualityLoading": "Analiz ediliyor…",
+  "qualityNoThreads": "Bu bölümde yeni bir olay örgüsü başlatılmadı.",
+  "qualityRerun": "Yeniden analiz et",
+  "qualityRun": "Kaliteyi analiz et",
+  "qualityThreadsNa": "Olay örgüsü denetimi kullanılamıyor.",
+  "qualityThreadsRaised": "Bu bölümde {{n}} olay örgüsü başlatıldı:",
+  "qualityThreadsResolved": "{{r}} burada sonuçlandı",
+  "qualityTitle": "Kalite raporu",
+  "resolveWorkFailed": "Bilgi servisine ulaşılamıyor — temellendirme kurulumu tamamlanamadı.",
+  "resolvingWork": "Kurulum tamamlanıyor… bilgi servisine kısa süreliğine ulaşılamadı.",
+  "retry": "Tekrar dene",
+  "threadFocusMissing": "Geldiğiniz söz henüz bu görünümde değil — zaten ödenmiş olabilir. Filtreyi “tümü” olarak değiştirin."
 }

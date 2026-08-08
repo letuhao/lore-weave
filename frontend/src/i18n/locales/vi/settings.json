@@ -271,7 +271,11 @@
       "unknown_error": "lỗi không xác định",
       "model_removed": "Đã xóa {{name}}",
       "model_delete_failed": "Không thể xóa mô hình"
-    }
+    },
+    "delete_blocked": "Không thể xóa mô hình này: đang có {{count}} công việc đang chạy. Hãy dừng chúng trước.",
+    "delete_refs_none": "không có tham chiếu nào",
+    "delete_confirm": "Xóa mô hình «{{name}}»?\n\nCác tham chiếu sau sẽ bị xóa: {{refs}}.",
+    "return_to_form": "Quay lại vị trí cũ"
   },
   "translation": {
     "heading": "Mặc định dịch thuật",
@@ -296,7 +300,9 @@
       "tpl_needs_chapter": "Mẫu prompt người dùng phải chứa {chapter_text}",
       "saved": "Đã lưu mặc định dịch thuật",
       "save_failed": "Không thể lưu tùy chọn dịch thuật"
-    }
+    },
+    "models_load_failed": "Không thể tải các mô hình của bạn. Dịch vụ của nhà cung cấp có thể đang tạm ngưng.",
+    "retry": "Thử lại"
   },
   "reading": {
     "app_theme": "Giao diện ứng dụng",
@@ -344,7 +350,8 @@
     "auto_saved": "Các thay đổi được lưu tự động.",
     "toast": {
       "preset_saved": "Đã lưu cấu hình \"{{name}}\""
-    }
+    },
+    "voice_moved": "Cài đặt giọng nói và lời thoại hiện đã được chuyển đến Cài đặt → Chat & AI → Giọng nói."
   },
   "language": {
     "gui_language": "Ngôn ngữ giao diện",
@@ -473,7 +480,9 @@
       "notes_ph": "Ghi chú tùy chọn về cấu hình mô hình này...",
       "cancel": "Hủy",
       "adding": "Đang thêm...",
-      "submit": "Thêm mô hình"
+      "submit": "Thêm mô hình",
+      "pricing_summary": "Chi phí: đầu vào ${{input}}/1M · đầu ra ${{output}}/1M",
+      "pricing_missing": "Nhà cung cấp không công bố giá — hãy tự nhập thủ công sau khi mô hình đã được đăng ký."
     },
     "edit": {
       "aria": "Sửa mô hình",
@@ -511,7 +520,16 @@
       "request_failed": "Yêu cầu thất bại",
       "cancel": "Hủy",
       "saving": "Đang lưu...",
-      "submit": "Lưu thay đổi"
+      "submit": "Lưu thay đổi",
+      "capabilities_refreshed": "Đã cập nhật các tính năng của mô hình",
+      "capabilities_refresh_failed": "Không thể cập nhật các tính năng của mô hình",
+      "delete_blocked_active": "Không thể xóa mô hình này: hãy dừng các công việc đang chạy trước.",
+      "pricing_missing": "Mô hình này không có thông tin giá — chi phí công việc ước tính sẽ không khả dụng.",
+      "refresh_capabilities": "Cập nhật",
+      "delete_impact": "Các tham chiếu sau sẽ bị xóa: {{refs}}. Nhấn Xóa một lần nữa để xác nhận.",
+      "delete_impact_none": "không có",
+      "delete_blocked_count": "Việc xóa đang bị chặn: {{count}} công việc đang chạy. Hãy dừng chúng trước.",
+      "verify_ok_rerank": "Đã xếp hạng {{count}} tài liệu · cao nhất {{score}} · {{ms}}ms"
     },
     "toast": {
       "fetch_failed": "Không thể lấy danh sách mô hình: {{error}}",
@@ -524,5 +542,23 @@
       "deleted": "Đã xóa mô hình",
       "delete_failed": "Không thể xóa"
     }
+  },
+  "defaultModels": {
+    "heading": "Mô hình mặc định",
+    "subtitle": "Các mô hình dự phòng cho từng người dùng (BYOK — của riêng bạn). Được sử dụng khi không có mô hình cụ thể nào được thiết lập cho phạm vi đó.",
+    "chat": "Mô hình chat mặc định",
+    "chatHint": "Được chọn sẵn khi bạn bắt đầu một cuộc trò chuyện mới. Để trống để sử dụng các mô hình yêu thích của bạn.",
+    "rerank": "Bộ xếp hạng lại mặc định",
+    "rerankHint": "Cross-encoder rerank để loại bỏ các kết quả tìm kiếm thô không liên quan. Tùy chọn — áp dụng khi dự án không có mô hình xếp hạng lại được thiết lập.",
+    "planner": "Bộ lập kế hoạch mặc định",
+    "plannerHint": "Mô hình chat mà trợ lý thuật ngữ sử dụng để xây dựng các kế hoạch đa bước. Hãy chọn một mô hình mạnh mẽ và có khả năng sử dụng công cụ — nếu không, việc lập kế hoạch sẽ chuyển về một mô hình chat ngẫu nhiên và thường thất bại.",
+    "none": "Không có",
+    "empty": "Chưa cấu hình mô hình phù hợp nào.",
+    "saved": "Đã cập nhật mặc định"
+  },
+  "external_services": {
+    "delete_blocked": "Không thể xóa dịch vụ này: mô hình của nó đang được sử dụng bởi {{count}} công việc đang chạy. Hãy dừng chúng trước.",
+    "delete_refs_none": "không có tham chiếu nào",
+    "delete_confirm": "Xóa dịch vụ «{{name}}»?\n\nCác tham chiếu mô hình sau sẽ bị xóa: {{refs}}."
   }
 }

@@ -73,8 +73,8 @@
       "number": "数値",
       "date": "日付",
       "tags": "タグ",
-      "boolean": "はい / いいえ",
-      "url": "URL"
+      "url": "URL",
+      "boolean": "はい / いいえ"
     }
   },
   "stdform": {
@@ -115,5 +115,365 @@
     "restoreError": "復元できませんでした",
     "purged": "完全に削除しました",
     "purgeError": "削除できませんでした"
+  },
+  "system": {
+    "genres": {
+      "universal": {
+        "name": "ユニバーサル",
+        "description": "あらゆる物語に共通する、ジャンルを問わない属性。"
+      },
+      "fantasy": {
+        "name": "ファンタジー",
+        "description": "魔法、超自然的な力、そして空想の世界。"
+      },
+      "xianxia": {
+        "name": "仙侠",
+        "description": "修仙、仙人、宗門、そして武侠ファンタジー。"
+      },
+      "romance": {
+        "name": "ロマンス",
+        "description": "愛や親密な人間関係を中心とした物語。"
+      },
+      "drama": {
+        "name": "ドラマ",
+        "description": "葛藤や感情によって展開する、キャラクター重視の物語。"
+      },
+      "historical": {
+        "name": "歴史",
+        "description": "歴史的な時代や設定に基づいた物語。"
+      },
+      "mystery": {
+        "name": "ミステリー",
+        "description": "調査、秘密、そして隠された真実の探求。"
+      }
+    },
+    "kinds": {
+      "character": {
+        "name": "キャラクター",
+        "description": "物語の中で行動したり発言したりする、個人または名前のある存在。"
+      },
+      "location": {
+        "name": "場所",
+        "description": "キャラクターが移動したり立ち寄ったりできる物理的な場所。"
+      },
+      "item": {
+        "name": "アイテム / 小道具",
+        "description": "武器、宝物、衣服、乗り物などの物理的な物体。"
+      },
+      "event": {
+        "name": "イベント",
+        "description": "戦闘、旅、裏切り、あるいは啓示など、物語の中で起こる出来事。"
+      },
+      "terminology": {
+        "name": "用語",
+        "description": "抽象的な用語、教義、階級、称号、または概念。"
+      },
+      "power_system": {
+        "name": "能力体系",
+        "description": "キャラクターが昇進・成長していくための、順序立てられた力や階級の仕組み。"
+      },
+      "species": {
+        "name": "種族",
+        "description": "個々のキャラクターではなく、存在の形態や人種のこと。"
+      },
+      "organization": {
+        "name": "組織",
+        "description": "派閥、家系、ギルド、政府など、共に活動する人々の集まり。"
+      },
+      "relationship": {
+        "name": "関係性",
+        "description": "キャラクター間、あるいはグループ間における意味のある繋がり。"
+      },
+      "plot_arc": {
+        "name": "プロットアーク",
+        "description": "きっかけ、葛藤、そして結末を持つ、継続的なストーリーライン。"
+      },
+      "social_setting": {
+        "name": "社会設定",
+        "description": "物語を形作る社会秩序、時代、慣習、および階級制度。"
+      },
+      "trope": {
+        "name": "トロープ",
+        "description": "繰り返し現れる物語のパターンや慣習。"
+      },
+      "technique": {
+        "name": "テクニック",
+        "description": "キャラクターが行う、特定の名称を持つ動作、手法、またはスキル。"
+      },
+      "colleague": {
+        "name": "同僚",
+        "description": "一緒に働く人物。"
+      },
+      "decision": {
+        "name": "決断",
+        "description": "下された選択であり、その後の展開に影響を与えるもの。"
+      },
+      "jargon": {
+        "name": "専門用語",
+        "description": "テキスト内で使用される特定の分野の用語、または略語。"
+      },
+      "meeting": {
+        "name": "ミーティング",
+        "description": "予定された議論や集まり。"
+      },
+      "org": {
+        "name": "組織",
+        "description": "会社、チーム、または外部組織。"
+      },
+      "project": {
+        "name": "プロジェクト",
+        "description": "目標と期待される成果を持つ一連の業務。"
+      },
+      "task": {
+        "name": "タスク",
+        "description": "完了させる必要がある実行可能な作業項目。"
+      }
+    },
+    "attributes": {
+      "name": {
+        "name": "名前",
+        "description": "名前属性。"
+      },
+      "term": {
+        "name": "用語",
+        "description": "用語属性。"
+      },
+      "aliases": {
+        "name": "別名",
+        "description": "別名属性。"
+      },
+      "gender": {
+        "name": "性別",
+        "description": "性別の属性です。"
+      },
+      "role": {
+        "name": "役割",
+        "description": "役割の属性です。"
+      },
+      "occupation": {
+        "name": "職業",
+        "description": "職業の属性です。"
+      },
+      "social_class": {
+        "name": "社会階級",
+        "description": "社会階級の属性です。"
+      },
+      "affiliation": {
+        "name": "所属",
+        "description": "所属の属性です。"
+      },
+      "appearance": {
+        "name": "外見",
+        "description": "外見の属性です。"
+      },
+      "personality": {
+        "name": "性格",
+        "description": "性格属性。"
+      },
+      "emotional_wound": {
+        "name": "心の傷",
+        "description": "心の傷属性。"
+      },
+      "love_language": {
+        "name": "愛の言語",
+        "description": "愛の言語属性。"
+      },
+      "relationships": {
+        "name": "人間関係",
+        "description": "人間関係属性。"
+      },
+      "description": {
+        "name": "説明",
+        "description": "説明属性。"
+      },
+      "type": {
+        "name": "タイプ",
+        "description": "タイプ属性。"
+      },
+      "parent_location": {
+        "name": "親ロケーション",
+        "description": "親ロケーション属性。"
+      },
+      "atmosphere": {
+        "name": "雰囲気",
+        "description": "雰囲気属性。"
+      },
+      "significance": {
+        "name": "重要性",
+        "description": "重要性属性。"
+      },
+      "owner": {
+        "name": "所有者",
+        "description": "所有者属性。"
+      },
+      "symbolic_meaning": {
+        "name": "象徴的な意味",
+        "description": "象徴的な意味属性。"
+      },
+      "date_in_story": {
+        "name": "作中の日付",
+        "description": "作中の日付属性。"
+      },
+      "location": {
+        "name": "場所",
+        "description": "場所の属性。"
+      },
+      "participants": {
+        "name": "登場人物",
+        "description": "登場人物の属性。"
+      },
+      "emotional_impact": {
+        "name": "感情的影響",
+        "description": "感情的影響の属性。"
+      },
+      "outcome": {
+        "name": "結末",
+        "description": "結末の属性。"
+      },
+      "category": {
+        "name": "カテゴリー",
+        "description": "カテゴリーの属性。"
+      },
+      "definition": {
+        "name": "定義",
+        "description": "定義の属性。"
+      },
+      "usage_note": {
+        "name": "使用上の注意",
+        "description": "使用上の注意属性。"
+      },
+      "tiers": {
+        "name": "ティア",
+        "description": "ティア属性。"
+      },
+      "rank": {
+        "name": "階級",
+        "description": "階級属性。"
+      },
+      "entry_requirement": {
+        "name": "参加条件",
+        "description": "参加条件属性。"
+      },
+      "capabilities": {
+        "name": "能力",
+        "description": "能力属性。"
+      },
+      "arc_type": {
+        "name": "アークの種類",
+        "description": "アークの種類属性。"
+      },
+      "parties": {
+        "name": "パート",
+        "description": "パート属性。"
+      },
+      "trigger": {
+        "name": "トリガー",
+        "description": "トリガー属性。"
+      },
+      "stakes": {
+        "name": "ステークス",
+        "description": "ステークス属性。"
+      },
+      "chapters_span": {
+        "name": "章の範囲",
+        "description": "章の範囲属性。"
+      },
+      "emotional_beats": {
+        "name": "感情の起伏",
+        "description": "感情の起伏属性。"
+      },
+      "resolution": {
+        "name": "結末",
+        "description": "結末属性。"
+      },
+      "era": {
+        "name": "時代",
+        "description": "時代属性。"
+      },
+      "class_hierarchy": {
+        "name": "階級制度",
+        "description": "階級制度属性。"
+      },
+      "rules_norms": {
+        "name": "規則と規範",
+        "description": "規則と規範属性。"
+      },
+      "romance_obstacles": {
+        "name": "恋愛の障害",
+        "description": "恋愛の障害属性。"
+      },
+      "traits": {
+        "name": "特性",
+        "description": "特性属性。"
+      },
+      "abilities": {
+        "name": "能力",
+        "description": "能力属性。"
+      },
+      "habitat": {
+        "name": "生息地",
+        "description": "生息地の属性。"
+      },
+      "culture": {
+        "name": "文化",
+        "description": "文化の属性。"
+      },
+      "how_manifested": {
+        "name": "顕現の仕方",
+        "description": "顕現の仕方の属性。"
+      },
+      "subverted": {
+        "name": "覆された要素",
+        "description": "覆された要素の属性。"
+      },
+      "related_characters": {
+        "name": "関連キャラクター",
+        "description": "関連キャラクターの属性。"
+      },
+      "relationship_type": {
+        "name": "関係性の種類",
+        "description": "関係性の種類の属性。"
+      },
+      "status": {
+        "name": "ステータス",
+        "description": "ステータス属性"
+      },
+      "tropes": {
+        "name": "トロープ",
+        "description": "トロープ属性"
+      },
+      "dynamic": {
+        "name": "ダイナミクス",
+        "description": "ダイナミクス属性"
+      },
+      "key_conflict": {
+        "name": "主要な葛藤",
+        "description": "主要な葛藤属性"
+      },
+      "turning_points": {
+        "name": "ターニングポイント",
+        "description": "ターニングポイント属性"
+      },
+      "leader": {
+        "name": "リーダー",
+        "description": "リーダー属性"
+      },
+      "headquarters": {
+        "name": "本部",
+        "description": "本部属性。"
+      },
+      "members": {
+        "name": "メンバー",
+        "description": "メンバー属性。"
+      },
+      "effects": {
+        "name": "効果",
+        "description": "効果属性。"
+      },
+      "user": {
+        "name": "ユーザー",
+        "description": "ユーザー属性。"
+      }
+    }
   }
 }

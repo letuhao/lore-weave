@@ -2,6 +2,39 @@
   "translateIntent": {
     "hint": "เลือกหนังสือที่ต้องการแปล — เปิดหนังสือขึ้นมา แล้วใช้แท็บการแปลเพื่อเริ่มการแปล"
   },
+  "help": {
+    "open": "เปิดความช่วยเหลือ",
+    "tour": "แนะนำการใช้งาน",
+    "title": "การจัดการหนังสือ",
+    "description": "คู่มือเบื้องต้นสำหรับการใช้งานพื้นที่ทำงานของหนังสือ",
+    "intro": "จัดการหนังสือของคุณที่นี่ จากนั้นเปิดหนังสือเพื่อค้นคว้า แก้ไข และสร้างโลกในเรื่องของคุณ",
+    "items": [
+      "สร้างหนังสือใหม่หรือนำเข้าต้นฉบับเพื่อเริ่มต้นใช้งาน",
+      "เปิดหนังสือเพื่อแก้ไขบท (章), อภิธานศัพท์ และโครงสร้างความสัมพันธ์",
+      "ใช้การค้นหาและตัวกรองเพื่อค้นหาหนังสืออย่างรวดเร็ว"
+    ],
+    "startTour": "เริ่มการแนะนำ",
+    "back": "ย้อนกลับ",
+    "next": "ถัดไป",
+    "done": "เสร็จสิ้น",
+    "steps": [
+      {
+        "title": "ค้นหาหนังสือ",
+        "description": "การค้นหาและตัวกรองจะช่วยให้คุณเปิดหนังสือที่ต้องการได้อย่างรวดเร็ว",
+        "body": "ใช้ช่องค้นหาและตัวกรองภาษาเพื่อจำกัดรายการให้แคบลง"
+      },
+      {
+        "title": "สร้างหรือนำเข้า",
+        "description": "เริ่มต้นด้วยหนังสือเล่มใหม่หรือต้นฉบับที่มีอยู่แล้ว",
+        "body": "เลือก 'หนังสือใหม่' เพื่อกรอกรายละเอียด หรือเลือกไฟล์เพื่อนำเข้า"
+      },
+      {
+        "title": "เปิดพื้นที่ทำงาน",
+        "description": "เครื่องมือทั้งหมดสำหรับหนังสือจะรวมอยู่ในพื้นที่ทำงานนี้",
+        "body": "ภายในหนังสือ คุณสามารถจัดการกับบท, อภิธานศัพท์, ออนโทโลยี, การแปล และอื่นๆ อีกมากมาย"
+      }
+    ]
+  },
   "workspace": "หนังสือของฉัน",
   "new_book": "หนังสือใหม่",
   "search_placeholder": "ค้นหาหนังสือ...",
@@ -21,6 +54,9 @@
     "book_description_placeholder": "หนังสือเล่มนี้เกี่ยวกับอะไร?",
     "cover": "รูปหน้าปก",
     "cover_hint": "PNG, JPG สูงสุด 5MB",
+    "import_file": "นำเข้าไฟล์หนังสือ",
+    "import_file_hint": "เลือกไฟล์ FB2 หรือ EPUB จากนั้นขั้นตอนการนำเข้าที่เหมาะสมจะปรากฏขึ้น",
+    "import_metadata_hint": "ข้อมูลเมตาต้นฉบับจะถูกใช้เพื่อตั้งชื่อเรื่องและรายละเอียดของหนังสือ",
     "submit": "สร้างหนังสือ"
   },
   "empty": {
@@ -154,6 +190,75 @@
       "confirm": "ย้ายไปที่ถังขยะ"
     }
   },
+  "epubImport": {
+    "title": "Import EPUB",
+    "description": "Inspect the book, choose chapters, then import asynchronously.",
+    "close": "Close",
+    "chooseFile": "Choose EPUB file",
+    "fileHint": "EPUB 2 and EPUB 3, up to 200 MiB",
+    "inspecting": "Inspecting {{percent}}%",
+    "unknownAuthor": "Unknown author",
+    "duplicateSource": "This source was imported previously. Merge by source key is available.",
+    "target": "Target",
+    "existingBook": "Add to this book",
+    "newBook": "Create a new book from EPUB metadata",
+    "metadataPolicy": "Metadata conflict policy",
+    "metadata": {
+      "title": "Title",
+      "description": "Description",
+      "language": "Language",
+      "subjects": "Subjects"
+    },
+    "keepExisting": "Keep existing",
+    "useSource": "Use EPUB source",
+    "mergeSource": "Merge with EPUB source",
+    "applyCover": "Apply source cover when policy allows",
+    "coverPreview": "Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})",
+    "noCover": "No usable source cover was found.",
+    "selectedChapters": "{{count}} chapters selected",
+    "selectAll": "Select all",
+    "selectChapter": "Select {{title}}",
+    "ready": "Ready to import {{count}} selected chapters from {{title}}.",
+    "strategyLabel": "Existing-book strategy",
+    "importOptions": "Import options",
+    "options": {
+      "preserve_hierarchy": "Preserve EPUB hierarchy",
+      "import_images": "Import supported images",
+      "import_footnotes": "Import footnotes",
+      "retain_source": "Retain the source file for recovery"
+    },
+    "strategy": {
+      "append": "Append",
+      "merge_by_source_key": "Merge by source key",
+      "replace_all": "Replace all"
+    },
+    "replaceWarning": "Replace all is destructive. Starting import explicitly confirms this action.",
+    "replaceConfirmation": "I understand that this will archive the current chapters in this book.",
+    "queued": "queued",
+    "waiting": "Waiting for worker capacity",
+    "backgroundProgress": "You can close this dialog; the import continues on the server.",
+    "cancel": "Cancel import",
+    "resume": "Resume",
+    "rollback": "Rollback import",
+    "openBook": "Open imported book",
+    "back": "Back",
+    "continue": "Continue",
+    "start": "Start import",
+    "reportSummary": "{{chapters}} chapters created · {{warnings}} warnings",
+    "warningDetails": "Warnings",
+    "progress": "{{done}}/{{total}} chapters",
+    "errors": {
+      "extension": "Choose an .epub file."
+    },
+    "steps": {
+      "upload": "upload",
+      "metadata": "metadata",
+      "chapters": "chapters",
+      "confirm": "confirm",
+      "progress": "progress",
+      "report": "report"
+    }
+  },
   "glossary": {
     "header": "อภิธานศัพท์และข้อมูลโลก",
     "entity_count": "{{count}} เอนทิตี",
@@ -256,7 +361,39 @@
       "title": "ลบเอนทิตีหรือไม่?",
       "description": "\"{{title}}\" จะถูกย้ายไปยังถังขยะ",
       "confirm": "ลบ"
-    }
+    },
+    "integrity": {
+      "button": "ตรวจสอบ",
+      "title": "ตรวจสอบความสมบูรณ์ของข้อมูลเนื้อเรื่อง",
+      "description": "ตรวจสอบข้อมูลแบบอ่านอย่างเดียวสำหรับออนโทโลยี, เอนทิตี, คุณลักษณะ, ความเชื่อมโยง และการแปลในหนังสือเล่มนี้",
+      "run": "เริ่มการตรวจสอบ",
+      "runAgain": "ตรวจสอบอีกครั้ง",
+      "checking": "กำลังตรวจสอบความสมบูรณ์ของหนังสือ…",
+      "close": "ปิด",
+      "unavailable": "ไม่สามารถตรวจสอบได้",
+      "issues": "{{count}} ปัญหา",
+      "status": {
+        "ok": "สมบูรณ์",
+        "warning": "ต้องได้รับการแก้ไข",
+        "error": "พบข้อผิดพลาดด้านความสมบูรณ์"
+      },
+      "repair": "แก้ไขอัตโนมัติ",
+      "repairing": "กำลังแก้ไขความสมบูรณ์&",
+      "repaired": "การแก้ไขอัตโนมัติเสร็จสมบูรณ์: แก้ไขแล้ว {{count}} จุด",
+      "checks": {
+        "active_genres": "แนวเรื่องที่ใช้งานอยู่ต้องเป็นแนวเรื่องของหนังสือเล่มนี้",
+        "kind_genres": "การเชื่อมโยงประเภทไปยังแนวเรื่องต้องชี้ไปยังแนวเรื่องในหนังสือเล่มนี้",
+        "attributes": "คุณลักษณะของหนังสือต้องชี้ไปยังประเภทและแนวเรื่องที่มีอยู่จริง",
+        "entity_kinds": "เอนทิตีต้องชี้ไปยังประเภทที่เป็นของหนังสือเล่มนี้",
+        "entity_names": "เอนทิตีที่มีสถานะใช้งานควรมีคุณลักษณะชื่อหรือคำศัพท์",
+        "entity_attributes": "ค่าคุณลักษณะของเอนทิตีต้องใช้การกำหนดคุณลักษณะจากหนังสือและประเภทนี้",
+        "chapter_links": "การเชื่อมโยงบทต้องชี้ไปยังเอนทิตีที่มีสถานะใช้งานในหนังสือเล่มนี้",
+        "translations": "การแปลต้องชี้ไปยังค่าคุณลักษณะที่มีอยู่จริง",
+        "kind_facets": "คุณลักษณะย่อยของประเภทเอนทิตีต้องชี้ไปยังประเภทในหนังสือเล่มนี้"
+      }
+    },
+    "batch_translate": "แปลแบบกลุ่ม",
+    "batch_translate_hint": "พิมพ์ชื่อเป้าหมายสำหรับหลายเอนทิตีด้วยตนเอง (ฉบับร่าง; จะไม่มีการเขียนทับข้อมูลที่ตรวจสอบแล้ว)"
   },
   "sharing": {
     "title": "การมองเห็น",
@@ -401,10 +538,13 @@
     "page_indicator": "หน้า {{page}} / {{pages}}",
     "prev": "ก่อนหน้า",
     "next": "ถัดไป",
-    "page": "หน้า"
+    "page": "หน้า",
+    "reasoning_enable": "เปิดใช้งานการใช้เหตุผลของโมเดล (การคิด)",
+    "reasoning_hint": "ปิดไว้เป็นค่าเริ่มต้น — การคิดที่ถูกซ่อนไว้สามารถใช้โควตาเอาต์พุตของโมเดลในเครื่องได้ เปิดใช้งานสำหรับข้อความที่ยากเมื่อใช้โมเดลที่มีระบบการใช้เหตุผล"
   },
   "kind_editor": {
     "modified": "แก้ไขแล้ว",
+    "ai": "AI",
     "required": "จำเป็น",
     "optional": "ไม่บังคับ",
     "activate": "เปิดใช้งาน",
@@ -470,8 +610,7 @@
       "title": "คืนค่าเริ่มต้นหรือไม่?",
       "desc": "\"{{name}}\" จะถูกรีเซ็ตกลับเป็นชื่อ ไอคอน สี และชื่อ Attribute เดิม โดยจะไม่ส่งผลกระทบต่อแท็กแนวเรื่อง (Genre tags) และ Attribute ที่กำหนดเอง",
       "confirm": "คืนค่า"
-    },
-    "ai": "AI"
+    }
   },
   "attr_editor": {
     "field_type": {
@@ -489,6 +628,7 @@
     "system": "ระบบ",
     "custom": "กำหนดเอง",
     "modified": "แก้ไขเมื่อ",
+    "ai": "AI",
     "core": "หลัก",
     "display_name": "ชื่อที่แสดง",
     "field_type_label": "ประเภทฟิลด์",
@@ -528,7 +668,13 @@
       "title": "คืนค่าชื่อ Attribute หรือไม่?",
       "desc": "รีเซ็ตชื่อจาก \"{{from}}\" กลับเป็น \"{{to}}\" โดยฟิลด์อื่นจะไม่ได้รับผลกระทบ",
       "confirm": "คืนค่า"
-    },
-    "ai": "AI"
+    }
+  },
+  "lore": {
+    "heading": "ข้อมูลเนื้อเรื่องจนถึงปัจจุบัน",
+    "noPosition": "เปิดบทเพื่อดูสิ่งที่ถูกเปิดเผย ณ จุดนั้น",
+    "nothingYet": "ยังไม่มีการเปิดเผยข้อมูลเกี่ยวกับเรื่องนี้ — อ่านต่อไป",
+    "search": "ค้นหาเนื้อเรื่อง…",
+    "subtitle": "สิ่งที่เนื้อเรื่องได้เปิดเผยจนถึงจุดที่คุณกำลังอ่านอยู่ — ไม่มีสปอยล์จากบทถัดไป"
   }
-,"epubImport":{"title":"Import EPUB","description":"Inspect the book, choose chapters, then import asynchronously.","close":"Close","chooseFile":"Choose EPUB file","fileHint":"EPUB 2 and EPUB 3, up to 200 MiB","inspecting":"Inspecting {{percent}}%","unknownAuthor":"Unknown author","duplicateSource":"This source was imported previously. Merge by source key is available.","target":"Target","existingBook":"Add to this book","newBook":"Create a new book from EPUB metadata","metadataPolicy":"Metadata conflict policy","metadata":{"title":"Title","description":"Description","language":"Language","subjects":"Subjects"},"keepExisting":"Keep existing","useSource":"Use EPUB source","mergeSource":"Merge with EPUB source","applyCover":"Apply source cover when policy allows","coverPreview":"Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})","noCover":"No usable source cover was found.","selectedChapters":"{{count}} chapters selected","selectAll":"Select all","selectChapter":"Select {{title}}","ready":"Ready to import {{count}} selected chapters from {{title}}.","strategyLabel":"Existing-book strategy","importOptions":"Import options","options":{"preserve_hierarchy":"Preserve EPUB hierarchy","import_images":"Import supported images","import_footnotes":"Import footnotes","retain_source":"Retain the source file for recovery"},"strategy":{"append":"Append","merge_by_source_key":"Merge by source key","replace_all":"Replace all"},"replaceWarning":"Replace all is destructive. Starting import explicitly confirms this action.","replaceConfirmation":"I understand that this will archive the current chapters in this book.","queued":"queued","waiting":"Waiting for worker capacity","backgroundProgress":"You can close this dialog; the import continues on the server.","cancel":"Cancel import","resume":"Resume","rollback":"Rollback import","openBook":"Open imported book","back":"Back","continue":"Continue","start":"Start import","reportSummary":"{{chapters}} chapters created · {{warnings}} warnings","warningDetails":"Warnings","progress":"{{done}}/{{total}} chapters","errors":{"extension":"Choose an .epub file."},"steps":{"upload":"upload","metadata":"metadata","chapters":"chapters","confirm":"confirm","progress":"progress","report":"report"}}}
+}

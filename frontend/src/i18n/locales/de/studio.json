@@ -146,6 +146,11 @@
       "desc": "KI-entwürfliche Entitäten überprüfen",
       "guideBody": "Zeigt Entitätseinträge an, die die KI automatisch aus deinem Manuskript erstellt hat und die auf deine Überprüfung warten. Öffne ihn, um jeden Vorschlag zu akzeptieren, zu bearbeiten oder abzulehnen, bevor er Teil deines offiziellen Glossars wird."
     },
+    "world-setup": {
+      "title": "Weltenaufbau",
+      "desc": "Erstelle deine Besetzung, deine Welt und deren Beziehungen aus einer Beschreibung",
+      "guideBody": "Verwandle eine Beschreibung deiner Geschichte in echtes, nachverfolgbares Lore: Es plant, was erstellt werden muss, du genehmigst oder kürzt die Liste, und dann wird jeder Charakter, jede Fraktion und jeder Begriff einzeln ausgearbeitet (wichtige Elemente erhalten ein ausführliches Tiefenprofil) und zur Überprüfung abgelegt. Schließlich wird ermittelt, wie sie alle miteinander verbunden sind, und du wirst gebeten, diese Beziehungen zu bestätigen, bevor sie gespeichert werden."
+    },
     "glossary-merge-candidates": {
       "title": "Merge-Kandidaten",
       "desc": "Wahrscheinliche Duplikate prüfen und bestätigen",
@@ -679,11 +684,6 @@
       "title": "Workflow-Vorschläge",
       "desc": "Überprüfen Sie die vom Agenten vorgeschlagenen Workflows",
       "guideBody": "Hier werden die Workflow-Rezepte aufgelistet, die der Agent basierend auf mehrstufigen Sequenzen vorgeschlagen hat, die er bei Ihnen wiederkehrend festgestellt hat. Öffnen Sie diesen Bereich, um einen Vorschlag anzunehmen – wodurch der Workflow erstellt wird und ausführbar ist – oder ihn abzulehnen. Hier wird ein vom Agenten vorgeschlagener Workflow tatsächlich realisiert."
-    },
-    "world-setup": {
-      "title": "Weltenaufbau",
-      "desc": "Erstelle deine Besetzung, deine Welt und deren Beziehungen aus einer Beschreibung",
-      "guideBody": "Verwandle eine Beschreibung deiner Geschichte in echtes, nachverfolgbares Lore: Es plant, was erstellt werden muss, du genehmigst oder kürzt die Liste, und dann wird jeder Charakter, jede Fraktion und jeder Begriff einzeln ausgearbeitet (wichtige Elemente erhalten ein ausführliches Tiefenprofil) und zur Überprüfung abgelegt. Schließlich wird ermittelt, wie sie alle miteinander verbunden sind, und du wirst gebeten, diese Beziehungen zu bestätigen, bevor sie gespeichert werden."
     }
   },
   "sceneRail": {
@@ -719,7 +719,8 @@
     "conflict": "Konflikt: {{part}}",
     "format": "Formatieren",
     "revert": "Rücksetzen",
-    "openAs": "Als JSON öffnen"
+    "openAs": "Als JSON öffnen",
+    "readOnly": "schreibgeschützt"
   },
   "planPasses": {
     "comingSoon": "Die 7-Pass-Leitung wird hier geladen.",
@@ -761,7 +762,17 @@
     "approveGated": "Zuerst den Glossar-Seed anwenden (PF-7)",
     "editAdd": "Hinzufügen",
     "editRemove": "Entfernen",
-    "editEmpty": "Noch nichts hier — füge eine Zeile hinzu."
+    "editEmpty": "Noch nichts hier — füge eine Zeile hinzu.",
+    "batchSpends": "Führt jeden bereitstehenden Durchgang bis zum nächsten Checkpoint aus – verbraucht 1 LLM-Aufruf pro Durchgang.",
+    "chapterNoScenes": "Keine Szenen – dieses Kapitel kann nicht entworfen werden.",
+    "linkOutline": "Bögen + Kapitel verknüpfen →",
+    "linkScenes": "Szenen verknüpfen →",
+    "linkScenesBlocked": "Führen Sie zuerst den Szenen-Durchgang aus",
+    "noBeat": "(kein Beat)",
+    "noScenes": "Keine Kapitel zum Bearbeiten in diesem Szenenplan.",
+    "openEdit": "bearbeiten…",
+    "runPicker": "Einen Plan-Durchgang wählen",
+    "runToCheckpoint": "Bis zum nächsten Checkpoint ausführen"
   },
   "planner": {
     "sourcePlaceholder": "Markdown des Roman-Systems einfügen…",
@@ -785,10 +796,48 @@
       "colRun": "Lauf",
       "colMode": "Modus",
       "colStatus": "Status",
-      "colCreated": "Erstellt"
+      "colCreated": "Erstellt",
+      "archive": "Archivieren",
+      "restore": "Wiederherstellen",
+      "showArchived": "Archivierte anzeigen"
     },
     "grounded": "Basierend auf {{chapters}} bestehenden Kapitel(n) + {{cast}} Besetzungsmitglied(ern); {{arcs}} bestehende Handlungsbögen werden fortgesetzt.",
-    "groundOnExisting": "Dieses Buch fortsetzen – basierend auf der bestehenden Besetzung, den Handlungsbögen & den jüngsten Kapiteln"
+    "groundOnExisting": "Dieses Buch fortsetzen – basierend auf der bestehenden Besetzung, den Handlungsbögen & den jüngsten Kapiteln",
+    "bootstrap": {
+      "apply": "In meinem Buch erstellen",
+      "applying": "Wird erstellt…",
+      "approve": "Bestätigen",
+      "check": "Prüfen, was benötigt wird",
+      "checking": "Wird geprüft…",
+      "done": "Fertig — öffnen Sie die Kapitel, um zu sehen, was erstellt wurde.",
+      "idleHint": "Prüfen Sie, ob dieser Plan neue Kapitel oder Charaktere erfordert, die in Ihrem Buch erstellt werden müssen.",
+      "newChapters": "Neue Kapitel",
+      "newGlossary": "Neue Glossareinträge",
+      "nothingToDo": "Alles in diesem Plan existiert bereits in Ihrem Buch — es muss nichts Neues erstellt werden.",
+      "reject": "Nicht jetzt",
+      "rejected": "Du hast diesen Vorschlag abgelehnt.",
+      "retry": "Wiederholen",
+      "title": "Richte dein Buch ein"
+    },
+    "material": {
+      "applied": "Zum Plan hinzugefügt: {{slots}}. Als Notizen gespeichert: {{notes}}.",
+      "askTitle": "Nicht in deinem Dokument enthalten – sollte noch entschieden werden",
+      "dropped": "{{n}} vorgeschlagene(r/s) Zeile(n) war(en) nicht in deinem Dokument enthalten und wurden verworfen.",
+      "find": "Meinen Plan prüfen",
+      "finding": "Suche…",
+      "idleHint": "Sucht nach Lücken in dem, was du bereits geschrieben hast, bevor ich dich danach frage.",
+      "noChange": "Nichts geändert – alles, was du behalten hast, war bereits im Plan.",
+      "nothing": "Nichts fehlt – der Plan deckt jeden Teil ab.",
+      "readFailed": "Ihr Dokument konnte nicht vollständig gelesen werden, daher ist die Angabe „fehlend“ unten nicht sicher.",
+      "retry": "Erneut prüfen",
+      "reviewHint": "Diese Zeilen befinden sich bereits in Ihrem Dokument. Entfernen Sie alle, die nicht dazugehören, und fügen Sie den Rest hinzu.",
+      "stale": "Ihr Plan hat sich seit dieser Prüfung geändert – führen Sie sie erneut aus, um ein aktuelles Ergebnis zu erhalten.",
+      "title": "Was fehlt in diesem Plan?",
+      "unavailableHint": "nicht geprüft; versuchen Sie es erneut, anstatt es als fehlend zu behandeln",
+      "unavailableTitle": "Prüfung nicht möglich",
+      "uncertain": "(Ihr Dokument wurde nicht vollständig gelesen, daher könnte dies bereits vorhanden sein)"
+    },
+    "openPassRail": "Pass Rail →"
   },
   "editor": {
     "empty": "Wähle ein Kapitel im Manuskript-Navigator aus, um es hier zu bearbeiten.",
@@ -808,7 +857,13 @@
     "merging": "Zusammenführen…",
     "mergeDone": "In den Kanon übernommen – der Zweig behält seine eigene Version.",
     "mergeConflict": "Kanon hat sich geändert – öffne das Kapitel erneut und führe es wieder zusammen.",
-    "mergeFailed": "Zusammenführen fehlgeschlagen – bitte erneut versuchen."
+    "mergeFailed": "Zusammenführen fehlgeschlagen – bitte erneut versuchen.",
+    "askAiPrompt": "Analysiere diese Passage aus dem Manuskript und beantworte die Frage des Benutzers:\n\n\"{{text}}\"\n\nWas ist dabei zu beachten?",
+    "loadingChapter": "Kapitel wird geladen…",
+    "sceneSuggestionsHint": "Wählen Sie Text aus dem Manuskript aus, um Szenenvorschläge mit KI zu generieren",
+    "sceneSuggestionsReady": "Verwenden Sie „Szenen vorschlagen“ in der KI-Symbolleiste oberhalb des markierten Abschnitts.",
+    "sceneSuggestionsSelect": "Wähle zuerst eine Passage aus und verwende dann „Szenen vorschlagen“ oberhalb der Auswahl.",
+    "suggestScenes": "Szenen vorschlagen"
   },
   "sceneCompose": {
     "empty": "Wählen Sie ein Kapitel im Manuskript-Navigator aus, um dessen Szenen hier zu entwerfen.",
@@ -994,11 +1049,20 @@
     "conformanceTitle": "Konformität",
     "conformanceDesc": "Hat der Text den Plan umgesetzt? Beat-Verfolgung pro Szene",
     "pickModelRerun": "Wählen Sie ein Modell für den erneuten Durchlauf aus…",
-    "pickChapterConformanceHint": "Wählen Sie oben ein Kapitel aus, um zu prüfen, wie dessen Text den Plan umgesetzt hat."
+    "pickChapterConformanceHint": "Wählen Sie oben ein Kapitel aus, um zu prüfen, wie dessen Text den Plan umgesetzt hat.",
+    "editRule": "Bearbeitungsregel",
+    "healApplied": "Die ausgewählten Korrekturen wurden auf das Kapitel angewendet.",
+    "healApplyError": "Korrekturen konnten nicht angewendet werden. Versuche es erneut.",
+    "healStale": "Dieses Kapitel hat sich seit dem letzten Polieren geändert – führe das Polieren erneut aus und wende es dann an."
   },
   "sidebar": {
     "collapse": "Einklappen",
     "resize": "Seitenleiste skalieren"
+  },
+  "panelsPicker": {
+    "title": "Arbeitsbereich-Panels",
+    "search": "Panel suchen…",
+    "hint": "Wählen Sie aus, welche Panels sichtbar bleiben sollen. Ihre Auswahl wird in diesem Arbeitsbereich gespeichert."
   },
   "layout": {
     "title": "Panel-Layout",
@@ -1016,6 +1080,14 @@
       "grid4x2": "Raster 4×2",
       "cols6": "Sechs Spalten",
       "cols8": "Acht Spalten"
+    }
+  },
+  "diagnostics": {
+    "unplannedChapter": "Kapitel {{title}} wurde geschrieben, ist aber nicht im Plan enthalten",
+    "warning": {
+      "openThread": "Offene Threads konnten nicht gelesen werden",
+      "deletedSpec": "Gelöschte Planknoten konnten nicht überprüft werden",
+      "coverage": "Die Abdeckung von Manuskript/Plan konnte nicht berechnet werden"
     }
   },
   "bottom": {
@@ -1193,6 +1265,68 @@
         "knowledge": {
           "title": "Der Knowledge Graph",
           "body": "Für tiefergehendes Worldbuilding verfolgt der Knowledge Graph, wie alles miteinander verbunden ist – Entitäten, Ereignisse und Beziehungen."
+        }
+      },
+      "worldResearch": {
+        "setup": {
+          "title": "Beschreiben Sie zuerst die Welt",
+          "body": "Der Buch-Setup-Assistent erstellt eine stabile Weltstruktur und Systemstandards, damit die spätere Extraktion vorhersehbar erfolgt."
+        },
+        "glossary": {
+          "title": "Erstellen Sie das Glossar",
+          "body": "Überprüfen Sie Entitäten, Arten und Attribute. Beginnen Sie mit dem Quelltext und bestätigen Sie mehrdeutige Einträge manuell."
+        },
+        "entities": {
+          "title": "Entitäten untersuchen",
+          "body": "Suche nach Charakteren, Orten und Gegenständen, öffne deren Belege und prüfe, in welchen Kapiteln sie erwähnt werden."
+        },
+        "timeline": {
+          "title": "Zeitstrahl prüfen",
+          "body": "Der Ereignis-Zeitstrahl hilft dabei, Lücken und Widersprüche zwischen den Kapiteln aufzudecken. Betrachte ihn als Arbeitshypothese."
+        },
+        "graph": {
+          "title": "Verbindungen sehen",
+          "body": "Die Grafik zeigt die Beziehungen zwischen Entitäten. Finde stark vernetzte Knotenpunkte und kehre zu den entsprechenden Textstellen zurück."
+        }
+      },
+      "factChecking": {
+        "evidence": {
+          "title": "Beginne bei der Quelle der Behauptung",
+          "body": "Belege führen dich direkt zum Kapitel und zur Textpassage. Verifiziere zuerst das Zitat und entscheide dann, ob eine Entität oder ein Attribut geändert werden muss."
+        },
+        "triage": {
+          "title": "Die Prüfwarteschlange abarbeiten",
+          "body": "Die Triage gruppiert unsichere Funde nach Dringlichkeit. Bearbeite Kanon-Konflikte und wiederholte Warnungen vor Randfällen."
+        },
+        "gaps": {
+          "title": "Fehlende Details finden",
+          "body": "Der Lückenbericht hebt Entitäten hervor, die häufig erwähnt, aber schlecht beschrieben werden – ideale Kandidaten für eine Erweiterung."
+        },
+        "unknown": {
+          "title": "Unbekannte Erwähnungen klären",
+          "body": "Ordne einen Begriff einer bestehenden Entität zu oder erstelle eine neue. Überprüfe Kontext und Rechtschreibvarianten vor dem Zusammenführen."
+        },
+        "proposals": {
+          "title": "Der Editor entscheidet",
+          "body": "Akzeptiere KI-Vorschläge erst nach Überprüfung ihrer Quelle und ihrer Auswirkungen. Führe abgelehnte Kandidaten nicht ohne eine neue Prüfung wieder ein."
+        }
+      },
+      "glossaryWorkflow": {
+        "list": {
+          "title": "Entitätenliste",
+          "body": "Filtere Entitäten nach Typ und Status, öffne einen Datensatz und springe zu den Kapiteln, die die entsprechenden Belege enthalten."
+        },
+        "ontology": {
+          "title": "Buch-Ontologie",
+          "body": "Wähle Genre, Typen und Attribute aus. Beginne mit einer Systemvorlage und füge nur Felder hinzu, die diese Welt tatsächlich benötigt."
+        },
+        "suggestions": {
+          "title": "Extraktionsvorschläge",
+          "body": "Extrahiere Informationen aus ausgewählten Kapiteln, überprüfe die Kandidaten und genehmige sie in Stapelverarbeitung. Verfolge laufende Prozesse unter Jobs."
+        },
+        "merge": {
+          "title": "Duplikate zusammenführen",
+          "body": "Vergleiche Namen, Typen, Attribute und Belege vor dem Zusammenführen. Überprüfe die Verknüpfungen nach dem Vorgang."
         }
       },
       "translator": {
@@ -1406,14 +1540,63 @@
           "title": "In einem eigenen Fenster öffnen",
           "body": "Öffnet den Editor in einem separaten OS-Fenster – ideal für einen zweiten Monitor. Änderungen, die Sie dort vornehmen, werden weiterhin in diesem Buch-Editor gespeichert."
         }
+      },
+      "structureTemplates": {
+        "panel": {
+          "title": "Arbeitsbereich für Strukturvorlagen",
+          "body": "Dieses Panel enthält integrierte und private Story-Strukturen. Sie helfen Ihnen dabei, Kapitel einer geordneten Abfolge von Erzählbeats zuzuordnen."
+        },
+        "list": {
+          "title": "Integrierte und persönliche Vorlagen",
+          "body": "Integrierte Vorlagen sind schreibgeschützt. Erstellen Sie eine Kopie oder wählen Sie Ihre eigene Vorlage aus, um an einer bearbeitbaren Version zu arbeiten."
+        },
+        "create": {
+          "title": "Erstellen Sie Ihre eigene Struktur",
+          "body": "Wählen Sie „Neue Struktur“, benennen Sie diese und fügen Sie Beats hinzu. Ihre benutzerdefinierten Vorlagen können in all Ihren Büchern wiederverwendet werden."
+        },
+        "edit": {
+          "title": "Bearbeiten und anwenden",
+          "body": "Ordnen Sie die Beats neu an, beschreiben Sie deren Zweck, speichern Sie die Änderungen und verwenden Sie die Struktur anschließend über das Decompose-Panel."
+        }
       }
     }
   },
   "userGuide": {
+    "open": "Benutzerhandbuch öffnen",
     "intro": "Jedes Tool, das Writing Studio öffnen kann, ist so gruppiert wie die Befehlspalette.",
     "toursGroup": "Geführte Touren",
     "toursEditor": "Editor",
-    "toursComposer": "Composer"
+    "toursComposer": "Composer",
+    "toursResearch": "Weltenbau-Recherche",
+    "workflowsTitle": "Workflows und Praktiken",
+    "workflows": {
+      "setup": {
+        "title": "Ein Buch vorbereiten",
+        "body": "Erstellen Sie zuerst die Struktur, importieren Sie dann die Kapitel und stellen Sie sicher, dass die Baumstruktur korrekt geladen wird.",
+        "steps": "Buch-Import → Editor → Integrität im Glossar prüfen. Gemeldete Probleme automatisch reparieren, dann die Prüfung erneut ausführen."
+      },
+      "lore": {
+        "title": "Die Welt erforschen",
+        "body": "Das Glossar speichert Fakten zur Welt; die Wissensdatenbank verknüpft diese mit Belegen und Ereignissen.",
+        "steps": "Ontologie definiert Arten und Attribute → Extraktion aus ausgewählten Kapiteln → Entitäten und Belege verifizieren Ergebnisse → Graph und Zeitstrahl offenbaren Verbindungen."
+      },
+      "factChecking": {
+        "title": "Fakten und Kanon prüfen",
+        "body": "Akzeptieren Sie KI-Ergebnisse niemals ohne deren Quelle: Öffnen Sie zuerst die Passage, dann nehmen Sie den Vorschlag an oder lehnen ihn ab.",
+        "steps": "Beleg → zum Kapitel springen → Unsichere Warteschlange sichten → Lücken für fehlende Beschreibungen. Integritätsprüfungen nach Bearbeitungen erneut ausführen."
+      },
+      "jobs": {
+        "title": "Langlaufende Aufgaben und Wiederherstellung",
+        "body": "Extraktion, Übersetzung und Anreicherung laufen als Jobs, sodass beim Schließen des Panels kein Fortschritt verloren geht.",
+        "steps": "Öffnen Sie die Jobs, um den Fortschritt und die Kosten von Stapelverarbeitung/Zeitfenstern zu überwachen. Bei Fehlern „Von Checkpoint fortsetzen“ verwenden; bei Parameteränderungen „Neu starten“."
+      },
+      "translation": {
+        "title": "Übersetzen ohne Kanonverlust",
+        "body": "Stabilisieren Sie das Glossar vor der Übersetzung, damit Namen, Begriffe und Beziehungen konsistent bleiben.",
+        "steps": "Die Übersetzung zeigt Abdeckung und Versionen an → Enrichment füllt Lore-Lücken → Vor dem Veröffentlichen werden Kapitel, Glossar und das Aktivitätsprotokoll überprüft."
+      }
+    },
+    "startPanelTour": "Tour durch das Bedienfeld starten"
   },
   "tourPicker": {
     "editorBasics": {
@@ -1475,6 +1658,22 @@
     "composerPopout": {
       "label": "Popout-Fenster",
       "desc": "Öffnen Sie den Editor in einem eigenen OS-Fenster für einen zweiten Monitor."
+    },
+    "worldResearch": {
+      "label": "Worldbuilding-Recherche",
+      "desc": "Vom Buch-Setup über Entitäten, Zeitstrahl und Beziehungsdiagramm – ein wiederholbarer Workflow für die Lore-Recherche."
+    },
+    "factChecking": {
+      "label": "Faktencheck",
+      "desc": "Belege, Triage, Lücken und unbekannte Entitäten: Überprüfen Sie Hypothesen anhand des Quelltextes."
+    },
+    "glossaryWorkflow": {
+      "label": "Glossar-Workflow",
+      "desc": "Ontologie, Extraktion, Vorschläge und sicheres Zusammenführen von Duplikaten."
+    },
+    "structureTemplates": {
+      "label": "Strukturvorlagen",
+      "desc": "Erstellen und Anpassen von Story-Strukturen zur Zerlegung von Kapiteln."
     }
   },
   "planHub": {
@@ -1541,6 +1740,12 @@
       "rename": "Umbenennen",
       "delete": "Kapitel löschen",
       "aiDraft": "Oder lassen Sie die KI einen Entwurf erstellen →",
+      "importPlan": "Plan aus CSV importieren",
+      "importingPlan": "Plan wird importiert...",
+      "aiPlan": "Plan mit KI erstellen",
+      "csvEmpty": "Die CSV-Datei enthält keine Planzeilen.",
+      "csvNoMatches": "Keine CSV-Zeilen entsprechen diesem Buch. Verwenden Sie chapter_id oder sort_order.",
+      "csvFailed": "Import des Plans fehlgeschlagen.",
       "legend": {
         "authored": "selbst geschrieben",
         "ai": "KI-Idee"
@@ -1586,7 +1791,6 @@
     "mineEmpty": "Noch keine vorhanden – klone eine integrierte Vorlage, um zu beginnen.",
     "loading": "Laden…",
     "pickHint": "Wähle eine Struktur aus, um ihre Beats anzuzeigen.",
-    "beats": "Beats",
     "builtinNote": "Dies ist eine integrierte Struktur. Klone sie, um sie anzupassen – du bearbeitest deine Kopie, das Original bleibt für alle unverändert.",
     "cloneBuiltin": "In meine Strukturen klonen",
     "duplicate": "Duplizieren",
@@ -1636,7 +1840,15 @@
       "builtin": "integriert",
       "mine": "meine",
       "archived": "archiviert"
-    }
+    },
+    "help": "Hilfe zu Strukturvorlagen",
+    "startTour": "Tour zu Strukturvorlagen starten",
+    "useInDecompose": "In Decompose verwenden →",
+    "beats_one": "Beat",
+    "beats_other": "Beats",
+    "kindPlaceholder": "allgemein",
+    "beats": "Beats",
+    "nameRequired": "Name erforderlich"
   },
   "search": {
     "modeLabel": "Suchmodus",
@@ -1664,5 +1876,47 @@
     "firstStructureTitle": "Erster Akt",
     "everything": "Dieses Buch vollständig einrichten",
     "everythingBusy": "Einrichtung läuft…"
+  },
+  "checkpoints": {
+    "blocked_dirty": "Speichere zuerst deine Bearbeitungen – das Wiederherstellen würde diese überschreiben.",
+    "confirm_desc": "Der aktuelle Entwurf wird zuerst als Snapshot gesichert, sodass dieser Vorgang über den Versionsverlauf rückgängig gemacht werden kann.",
+    "confirm_title": "Auf den Stand vor dieser KI-Bearbeitung wiederherstellen?",
+    "dirty_warning": "Speichere deine aktuellen Änderungen, bevor du einen Checkpoint wiederherstellst.",
+    "header": "KI-Bearbeitungs-Checkpoints",
+    "insert": "Eingefügt",
+    "no_restore": "Keine frühere Version zum Wiederherstellen verfügbar",
+    "replace": "Umgeschrieben",
+    "restore": "Wiederherstellen",
+    "restore_failed": "Dieser Checkpoint konnte nicht wiederhergestellt werden.",
+    "restored": "Wiederhergestellt auf den Stand vor der KI-Bearbeitung"
+  },
+  "common": {
+    "close": "Schließen"
+  },
+  "compose": {
+    "startDrafting": "Entwurf starten →",
+    "startDraftingTitle": "Öffne den Entwurfsbereich, um Kapitel basierend auf deinem Plan zu schreiben"
+  },
+  "errorBlocks": {
+    "dismiss": "Ignorieren",
+    "drifted": "Text geändert",
+    "remove": "Markierung entfernen",
+    "removed": "Markierung entfernt.",
+    "reopen": "Wieder öffnen",
+    "resolve": "Behoben",
+    "title": "Markierte Probleme",
+    "undo": "Rückgängig machen",
+    "undoFailed": "Die Markierung konnte nicht wiederhergestellt werden."
+  },
+  "revision": {
+    "blocked_dirty": "Du hast ungespeicherte Änderungen. Speichere oder verwende sie, bevor du eine Revision wiederherstellst.",
+    "confirm_desc": "Der aktuelle Entwurf wird durch diese Revision ersetzt. Dies kann nicht rückgängig gemacht werden.",
+    "confirm_title": "Diese Revision wiederherstellen?",
+    "current": "Aktuell",
+    "empty": "Noch keine Änderungen vorhanden.",
+    "header": "Versionsverlauf",
+    "load_more": "Mehr laden",
+    "loading_more": "Laden…",
+    "restore": "Wiederherstellen"
   }
 }

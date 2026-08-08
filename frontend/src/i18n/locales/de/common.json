@@ -78,6 +78,7 @@
     "sttSection": "Spracherkennung",
     "sttSource": "STT-Quelle",
     "sttModel": "STT-Modell",
+    "ttsSection": "Text-zu-Sprache",
     "ttsSource": "TTS-Quelle",
     "ttsModel": "TTS-Modell",
     "browser": "Browser (kostenlos)",
@@ -139,8 +140,7 @@
     "presetNormalDesc": "Ausgewogen (Standard)",
     "presetPatientDesc": "Wartet länger, gut für langsame Sprecher",
     "presetLearnerDesc": "Lange Pausen okay, für Sprachtraining",
-    "audioRetention": "Sprachaufnahmen werden 48 Stunden lang zur Wiedergabe gespeichert und dann automatisch gelöscht.",
-    "ttsSection": "Text-zu-Sprache"
+    "audioRetention": "Sprachaufnahmen werden 48 Stunden lang zur Wiedergabe gespeichert und dann automatisch gelöscht."
   },
   "theme_name": {
     "dark": "Dunkel",
@@ -172,5 +172,10 @@
     "saved": "Modell-Reihenfolge gespeichert",
     "saveFailed": "Reihenfolge konnte nicht gespeichert werden.",
     "loadFailed": "Modelle konnten nicht geladen werden."
+  },
+  "errorBoundary": {
+    "title": "Diese Seite konnte nicht angezeigt werden",
+    "description": "Ein Schnittstellenfehler ist aufgetreten. Er wurde im Diagnoseprotokoll gespeichert; bitte versuchen Sie den Vorgang erneut.",
+    "retry": "Erneut versuchen"
   }
 }

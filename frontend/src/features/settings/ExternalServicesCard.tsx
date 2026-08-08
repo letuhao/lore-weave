@@ -85,13 +85,20 @@ export function ExternalServicesCard({ providers, models, onChanged }: Props) {
           ? await getImpact(accessToken, m.user_model_id)
           : { can_delete: true, active_tasks: [], references: [] };
         if (!impact.can_delete) {
-          toast.error(`Нельзя удалить сервис: модель используется активными задачами (${impact.active_tasks.length}). Сначала остановите их.`);
+          toast.error(t('external_services.delete_blocked', {
+            defaultValue: 'This service cannot be removed: its model is in use by {{count}} active job(s). Stop them first.',
+            count: impact.active_tasks.length,
+          }));
           return;
         }
         const refs = impact.references.length
           ? impact.references.map((r) => `${r.kind} (${r.count})`).join(', ')
-          : 'ссылок нет';
-        if (!window.confirm(`Удалить сервис «${provider.display_name}»?\n\nБудут удалены ссылки модели: ${refs}.`)) return;
+          : t('external_services.delete_refs_none', { defaultValue: 'no references' });
+        if (!window.confirm(t('external_services.delete_confirm', {
+          defaultValue: 'Remove the service "{{name}}"?\n\nThese model references will be removed: {{refs}}.',
+          name: provider.display_name,
+          refs,
+        }))) return;
         if (getImpact) {
           await providerApi.deleteUserModel(accessToken, m.user_model_id, true);
         } else {

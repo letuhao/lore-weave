@@ -73,8 +73,8 @@
       "number": "数字",
       "date": "日期",
       "tags": "标签",
-      "boolean": "是 / 否",
-      "url": "URL"
+      "url": "URL",
+      "boolean": "是 / 否"
     }
   },
   "stdform": {
@@ -115,5 +115,365 @@
     "restoreError": "无法还原",
     "purged": "已永久删除",
     "purgeError": "无法删除"
+  },
+  "system": {
+    "genres": {
+      "universal": {
+        "name": "通用",
+        "description": "所有故事共有的、与类型无关的属性。"
+      },
+      "fantasy": {
+        "name": "奇幻",
+        "description": "魔法、超自然力量与虚构世界。"
+      },
+      "xianxia": {
+        "name": "仙侠",
+        "description": "修真、仙人、宗门与武侠奇幻。"
+      },
+      "romance": {
+        "name": "言情",
+        "description": "以爱情和亲密关系为核心的故事。"
+      },
+      "drama": {
+        "name": "剧情",
+        "description": "以角色为核心，由冲突和情感驱动的故事。"
+      },
+      "historical": {
+        "name": "历史",
+        "description": "以特定历史时期或背景为基础的故事。"
+      },
+      "mystery": {
+        "name": "悬疑",
+        "description": "调查、秘密以及对隐藏真相的探寻。"
+      }
+    },
+    "kinds": {
+      "character": {
+        "name": "角色",
+        "description": "在故事中行动或说话的个人或具名存在。"
+      },
+      "location": {
+        "name": "地点",
+        "description": "角色可以前往或身处其中的物理场所。"
+      },
+      "item": {
+        "name": "物品 / 道具",
+        "description": "物理对象，如武器、宝藏、衣物或载具。"
+      },
+      "event": {
+        "name": "事件",
+        "description": "发生的事情：如战斗、旅程、背叛或启示。"
+      },
+      "terminology": {
+        "name": "术语",
+        "description": "抽象术语、教义、等级、头衔或概念。"
+      },
+      "power_system": {
+        "name": "力量体系",
+        "description": "角色可以进阶的有序力量或等级方案。"
+      },
+      "species": {
+        "name": "物种",
+        "description": "一种生物或种族，而非单个角色。"
+      },
+      "organization": {
+        "name": "组织",
+        "description": "共同行动的群体：如派系、家族、公会或政府。"
+      },
+      "relationship": {
+        "name": "关系",
+        "description": "角色或群体之间具有意义的联系。"
+      },
+      "plot_arc": {
+        "name": "情节弧",
+        "description": "包含起因、冲突与结局的持续性故事情节。"
+      },
+      "social_setting": {
+        "name": "社会背景",
+        "description": "塑造故事的社会秩序、时代、习俗与阶级结构。"
+      },
+      "trope": {
+        "name": "套路",
+        "description": "一种反复出现的叙事模式或惯例。"
+      },
+      "technique": {
+        "name": "技巧",
+        "description": "角色所执行的特定动作、方法或技能。"
+      },
+      "colleague": {
+        "name": "同事",
+        "description": "与你共事的人。"
+      },
+      "decision": {
+        "name": "决策",
+        "description": "已做出的并影响后续发展的选择。"
+      },
+      "jargon": {
+        "name": "术语",
+        "description": "文中使用的专业术语或缩写词。"
+      },
+      "meeting": {
+        "name": "会议",
+        "description": "预定的讨论或集会。"
+      },
+      "org": {
+        "name": "组织",
+        "description": "公司、团队或外部机构。"
+      },
+      "project": {
+        "name": "项目",
+        "description": "具有明确目标和预期成果的工作内容。"
+      },
+      "task": {
+        "name": "任务",
+        "description": "需要完成的可执行工作项。"
+      }
+    },
+    "attributes": {
+      "name": {
+        "name": "名称",
+        "description": "名称属性。"
+      },
+      "term": {
+        "name": "术语",
+        "description": "术语属性。"
+      },
+      "aliases": {
+        "name": "别名",
+        "description": "别名属性。"
+      },
+      "gender": {
+        "name": "性别",
+        "description": "性别属性。"
+      },
+      "role": {
+        "name": "角色",
+        "description": "角色属性。"
+      },
+      "occupation": {
+        "name": "职业",
+        "description": "职业属性。"
+      },
+      "social_class": {
+        "name": "社会阶层",
+        "description": "社会阶层属性。"
+      },
+      "affiliation": {
+        "name": "所属势力",
+        "description": "所属势力属性。"
+      },
+      "appearance": {
+        "name": "外貌",
+        "description": "外貌属性。"
+      },
+      "personality": {
+        "name": "性格",
+        "description": "性格属性。"
+      },
+      "emotional_wound": {
+        "name": "情感创伤",
+        "description": "情感创伤属性。"
+      },
+      "love_language": {
+        "name": "爱之语",
+        "description": "爱之语属性。"
+      },
+      "relationships": {
+        "name": "人际关系",
+        "description": "人际关系属性。"
+      },
+      "description": {
+        "name": "描述",
+        "description": "描述属性。"
+      },
+      "type": {
+        "name": "类型",
+        "description": "类型属性。"
+      },
+      "parent_location": {
+        "name": "父级地点",
+        "description": "父级地点属性。"
+      },
+      "atmosphere": {
+        "name": "氛围",
+        "description": "氛围属性。"
+      },
+      "significance": {
+        "name": "重要性",
+        "description": "重要性属性。"
+      },
+      "owner": {
+        "name": "所有者",
+        "description": "所有者属性。"
+      },
+      "symbolic_meaning": {
+        "name": "象征意义",
+        "description": "象征意义属性。"
+      },
+      "date_in_story": {
+        "name": "故事内日期",
+        "description": "故事内日期属性。"
+      },
+      "location": {
+        "name": "地点",
+        "description": "地点属性。"
+      },
+      "participants": {
+        "name": "参与者",
+        "description": "参与者属性。"
+      },
+      "emotional_impact": {
+        "name": "情感冲击",
+        "description": "情感冲击属性。"
+      },
+      "outcome": {
+        "name": "结果",
+        "description": "结果属性。"
+      },
+      "category": {
+        "name": "类别",
+        "description": "类别属性。"
+      },
+      "definition": {
+        "name": "定义",
+        "description": "定义属性。"
+      },
+      "usage_note": {
+        "name": "使用说明",
+        "description": "使用说明属性。"
+      },
+      "tiers": {
+        "name": "等级",
+        "description": "等级属性。"
+      },
+      "rank": {
+        "name": "阶梯排名",
+        "description": "阶梯排名属性。"
+      },
+      "entry_requirement": {
+        "name": "准入门槛",
+        "description": "准入门槛属性。"
+      },
+      "capabilities": {
+        "name": "能力",
+        "description": "能力属性。"
+      },
+      "arc_type": {
+        "name": "叙事弧类型",
+        "description": "叙事弧类型属性。"
+      },
+      "parties": {
+        "name": "部",
+        "description": "部属性。"
+      },
+      "trigger": {
+        "name": "触发点",
+        "description": "触发点属性。"
+      },
+      "stakes": {
+        "name": "赌注",
+        "description": "赌注属性。"
+      },
+      "chapters_span": {
+        "name": "章节跨度",
+        "description": "章节跨度属性。"
+      },
+      "emotional_beats": {
+        "name": "情感节奏",
+        "description": "情感节奏属性。"
+      },
+      "resolution": {
+        "name": "结局",
+        "description": "结局属性。"
+      },
+      "era": {
+        "name": "时代",
+        "description": "时代属性。"
+      },
+      "class_hierarchy": {
+        "name": "阶级结构",
+        "description": "阶级结构属性。"
+      },
+      "rules_norms": {
+        "name": "规则与规范",
+        "description": "规则与规范属性。"
+      },
+      "romance_obstacles": {
+        "name": "情感障碍",
+        "description": "情感障碍属性。"
+      },
+      "traits": {
+        "name": "特质",
+        "description": "特质属性。"
+      },
+      "abilities": {
+        "name": "能力",
+        "description": "能力属性。"
+      },
+      "habitat": {
+        "name": "栖息地",
+        "description": "栖息地属性。"
+      },
+      "culture": {
+        "name": "文化",
+        "description": "文化属性。"
+      },
+      "how_manifested": {
+        "name": "表现形式",
+        "description": "表现形式属性。"
+      },
+      "subverted": {
+        "name": "颠覆",
+        "description": "颠覆属性。"
+      },
+      "related_characters": {
+        "name": "相关角色",
+        "description": "相关角色属性。"
+      },
+      "relationship_type": {
+        "name": "关系类型",
+        "description": "关系类型属性。"
+      },
+      "status": {
+        "name": "状态",
+        "description": "状态属性。"
+      },
+      "tropes": {
+        "name": "梗/套路",
+        "description": "梗/套路属性。"
+      },
+      "dynamic": {
+        "name": "动态",
+        "description": "动态属性。"
+      },
+      "key_conflict": {
+        "name": "核心冲突",
+        "description": "核心冲突属性。"
+      },
+      "turning_points": {
+        "name": "转折点",
+        "description": "转折点属性。"
+      },
+      "leader": {
+        "name": "领袖",
+        "description": "领袖属性。"
+      },
+      "headquarters": {
+        "name": "总部",
+        "description": "总部属性。"
+      },
+      "members": {
+        "name": "成员",
+        "description": "成员属性。"
+      },
+      "effects": {
+        "name": "效果",
+        "description": "效果属性。"
+      },
+      "user": {
+        "name": "用户",
+        "description": "用户属性。"
+      }
+    }
   }
 }

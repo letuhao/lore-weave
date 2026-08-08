@@ -19,8 +19,12 @@
     "edit": "Sửa",
     "delete": "Xóa"
   },
-  "genres": { "new": "Thể loại mới" },
-  "kinds": { "new": "Loại mới" },
+  "genres": {
+    "new": "Thể loại mới"
+  },
+  "kinds": {
+    "new": "Loại mới"
+  },
   "toast": {
     "cloned": "Đã nhân bản “{{name}}” vào tiêu chuẩn của bạn",
     "cloneError": "Không thể nhân bản “{{name}}”",
@@ -111,5 +115,365 @@
     "restoreError": "Không thể khôi phục",
     "purged": "Đã xóa vĩnh viễn",
     "purgeError": "Không thể xóa"
+  },
+  "system": {
+    "genres": {
+      "universal": {
+        "name": "Phổ quát",
+        "description": "Các thuộc tính không phụ thuộc vào thể loại được chia sẻ bởi mọi câu chuyện."
+      },
+      "fantasy": {
+        "name": "Fantasy",
+        "description": "Ma thuật, các thế lực siêu nhiên và những thế giới tưởng tượng."
+      },
+      "xianxia": {
+        "name": "Tiên hiệp",
+        "description": "Tu tiên, bất tử, tông môn và huyền ảo võ thuật."
+      },
+      "romance": {
+        "name": "Lãng mạn",
+        "description": "Những câu chuyện xoay quanh tình yêu và các mối quan hệ thân mật."
+      },
+      "drama": {
+        "name": "Kịch tính",
+        "description": "Những câu chuyện tập trung vào nhân vật, được thúc đẩy bởi xung đột và cảm xúc."
+      },
+      "historical": {
+        "name": "Lịch sử",
+        "description": "Những câu chuyện dựa trên một thời kỳ hoặc bối cảnh lịch sử."
+      },
+      "mystery": {
+        "name": "Bí ẩn",
+        "description": "Những cuộc điều tra, những bí mật và hành trình tìm kiếm sự thật ẩn giấu."
+      }
+    },
+    "kinds": {
+      "character": {
+        "name": "Nhân vật",
+        "description": "Một cá nhân hoặc một thực thể có tên tuổi, người thực hiện hành động hoặc lời nói trong câu chuyện."
+      },
+      "location": {
+        "name": "Địa điểm",
+        "description": "Một địa điểm vật lý mà các nhân vật có thể di chuyển đến hoặc đứng ở đó."
+      },
+      "item": {
+        "name": "Vật phẩm / Đạo cụ",
+        "description": "Một vật thể vật lý như vũ khí, kho báu, trang phục hoặc phương tiện."
+      },
+      "event": {
+        "name": "Sự kiện",
+        "description": "Một điều gì đó xảy ra: một trận chiến, một cuộc hành trình, một sự phản bội hoặc một sự tiết lộ."
+      },
+      "terminology": {
+        "name": "Thuật ngữ",
+        "description": "Một thuật ngữ trừu tượng, học thuyết, cấp bậc, danh hiệu hoặc khái niệm."
+      },
+      "power_system": {
+        "name": "Hệ thống sức mạnh",
+        "description": "Một hệ thống phân cấp sức mạnh hoặc thứ bậc mà các nhân vật có thể thăng tiến."
+      },
+      "species": {
+        "name": "Chủng tộc",
+        "description": "Một loại sinh vật hoặc tộc người, không phải là một nhân vật cá biệt."
+      },
+      "organization": {
+        "name": "Tổ chức",
+        "description": "Một nhóm người hoạt động cùng nhau: một phe phái, gia tộc, hội nhóm hoặc chính phủ."
+      },
+      "relationship": {
+        "name": "Mối quan hệ",
+        "description": "Một sự kết nối có ý nghĩa giữa các nhân vật hoặc các nhóm."
+      },
+      "plot_arc": {
+        "name": "Hồi cốt truyện",
+        "description": "Một mạch truyện kéo dài với các tình tiết khởi đầu, mấu chốt và giải quyết."
+      },
+      "social_setting": {
+        "name": "Bối cảnh xã hội",
+        "description": "Trật tự xã hội, thời đại, phong tục và thứ bậc hình thành nên câu chuyện."
+      },
+      "trope": {
+        "name": "Mô típ",
+        "description": "Một khuôn mẫu hoặc quy ước tự sự lặp đi lặp lại."
+      },
+      "technique": {
+        "name": "Kỹ thuật",
+        "description": "Một hành động, phương pháp hoặc kỹ năng cụ thể được thực hiện bởi một nhân vật."
+      },
+      "colleague": {
+        "name": "Đồng nghiệp",
+        "description": "Một người làm việc cùng bạn."
+      },
+      "decision": {
+        "name": "Quyết định",
+        "description": "Một lựa chọn đã được đưa ra và ảnh hưởng đến những gì xảy ra tiếp theo."
+      },
+      "jargon": {
+        "name": "Thuật ngữ chuyên môn",
+        "description": "Thuật ngữ chuyên ngành hoặc từ viết tắt được sử dụng trong văn bản."
+      },
+      "meeting": {
+        "name": "Cuộc họp",
+        "description": "Một cuộc thảo luận hoặc buổi họp đã được lên lịch trước."
+      },
+      "org": {
+        "name": "Tổ chức",
+        "description": "Một công ty, đội ngũ hoặc tổ chức bên ngoài."
+      },
+      "project": {
+        "name": "Dự án",
+        "description": "Một khối lượng công việc với mục tiêu và kết quả mong đợi."
+      },
+      "task": {
+        "name": "Nhiệm vụ",
+        "description": "Một hạng mục công việc cần được hoàn thành."
+      }
+    },
+    "attributes": {
+      "name": {
+        "name": "Tên",
+        "description": "Thuộc tính tên."
+      },
+      "term": {
+        "name": "Thuật ngữ",
+        "description": "Thuộc tính thuật ngữ."
+      },
+      "aliases": {
+        "name": "Bí danh",
+        "description": "Thuộc tính bí danh."
+      },
+      "gender": {
+        "name": "Giới tính",
+        "description": "Thuộc tính giới tính."
+      },
+      "role": {
+        "name": "Vai trò",
+        "description": "Thuộc tính vai trò."
+      },
+      "occupation": {
+        "name": "Nghề nghiệp",
+        "description": "Thuộc tính nghề nghiệp."
+      },
+      "social_class": {
+        "name": "Tầng lớp xã hội",
+        "description": "Thuộc tính tầng lớp xã hội."
+      },
+      "affiliation": {
+        "name": "Tổ chức",
+        "description": "Thuộc tính tổ chức."
+      },
+      "appearance": {
+        "name": "Ngoại hình",
+        "description": "Thuộc tính ngoại hình."
+      },
+      "personality": {
+        "name": "Tính cách",
+        "description": "Thuộc tính Tính cách."
+      },
+      "emotional_wound": {
+        "name": "Vết thương lòng",
+        "description": "Thuộc tính Vết thương lòng."
+      },
+      "love_language": {
+        "name": "Ngôn ngữ tình yêu",
+        "description": "Thuộc tính Ngôn ngữ tình yêu."
+      },
+      "relationships": {
+        "name": "Mối quan hệ",
+        "description": "Thuộc tính Mối quan hệ."
+      },
+      "description": {
+        "name": "Mô tả",
+        "description": "Thuộc tính Mô tả."
+      },
+      "type": {
+        "name": "Loại",
+        "description": "Thuộc tính Loại."
+      },
+      "parent_location": {
+        "name": "Địa điểm cha",
+        "description": "Thuộc tính Địa điểm cha."
+      },
+      "atmosphere": {
+        "name": "Bầu không khí",
+        "description": "Thuộc tính Bầu không khí."
+      },
+      "significance": {
+        "name": "Tầm quan trọng",
+        "description": "Thuộc tính Tầm quan trọng."
+      },
+      "owner": {
+        "name": "Chủ sở hữu",
+        "description": "Thuộc tính Chủ sở hữu."
+      },
+      "symbolic_meaning": {
+        "name": "Ý nghĩa biểu tượng",
+        "description": "Thuộc tính Ý nghĩa biểu tượng."
+      },
+      "date_in_story": {
+        "name": "Thời điểm trong truyện",
+        "description": "Thuộc tính Thời điểm trong truyện."
+      },
+      "location": {
+        "name": "Địa điểm",
+        "description": "Thuộc tính địa điểm."
+      },
+      "participants": {
+        "name": "Người tham gia",
+        "description": "Thuộc tính người tham gia."
+      },
+      "emotional_impact": {
+        "name": "Tác động cảm xúc",
+        "description": "Thuộc tính tác động cảm xúc."
+      },
+      "outcome": {
+        "name": "Kết quả",
+        "description": "Thuộc tính kết quả."
+      },
+      "category": {
+        "name": "Danh mục",
+        "description": "Thuộc tính danh mục."
+      },
+      "definition": {
+        "name": "Định nghĩa",
+        "description": "Thuộc tính định nghĩa."
+      },
+      "usage_note": {
+        "name": "Ghi chú sử dụng",
+        "description": "Thuộc tính Ghi chú sử dụng."
+      },
+      "tiers": {
+        "name": "Phân cấp",
+        "description": "Thuộc tính Phân cấp."
+      },
+      "rank": {
+        "name": "Vị trí trên Bảng xếp hạng",
+        "description": "Thuộc tính Vị trí trên Bảng xếp hạng."
+      },
+      "entry_requirement": {
+        "name": "Yêu cầu đầu vào",
+        "description": "Thuộc tính Yêu cầu đầu vào."
+      },
+      "capabilities": {
+        "name": "Khả năng",
+        "description": "Thuộc tính Khả năng."
+      },
+      "arc_type": {
+        "name": "Loại Tuyến truyện",
+        "description": "Thuộc tính Loại Tuyến truyện."
+      },
+      "parties": {
+        "name": "Các bộ phận",
+        "description": "Thuộc tính các bộ phận."
+      },
+      "trigger": {
+        "name": "Điểm kích hoạt",
+        "description": "Thuộc tính điểm kích hoạt."
+      },
+      "stakes": {
+        "name": "Mức độ rủi ro",
+        "description": "Thuộc tính mức độ rủi ro."
+      },
+      "chapters_span": {
+        "name": "Phạm vi chương",
+        "description": "Thuộc tính phạm vi chương."
+      },
+      "emotional_beats": {
+        "name": "Nhịp cảm xúc",
+        "description": "Thuộc tính nhịp cảm xúc."
+      },
+      "resolution": {
+        "name": "Giải quyết",
+        "description": "Thuộc tính giải quyết."
+      },
+      "era": {
+        "name": "Kỷ nguyên",
+        "description": "Thuộc tính Kỷ nguyên."
+      },
+      "class_hierarchy": {
+        "name": "Hệ thống phân cấp lớp",
+        "description": "Thuộc tính Hệ thống phân cấp lớp."
+      },
+      "rules_norms": {
+        "name": "Quy tắc và Chuẩn mực",
+        "description": "Thuộc tính Quy tắc và Chuẩn mực."
+      },
+      "romance_obstacles": {
+        "name": "Trở ngại tình cảm",
+        "description": "Thuộc tính Trở ngại tình cảm."
+      },
+      "traits": {
+        "name": "Đặc điểm",
+        "description": "Thuộc tính Đặc điểm."
+      },
+      "abilities": {
+        "name": "Khả năng",
+        "description": "Thuộc tính Khả năng."
+      },
+      "habitat": {
+        "name": "Môi trường sống",
+        "description": "Thuộc tính Môi trường sống."
+      },
+      "culture": {
+        "name": "Văn hóa",
+        "description": "Thuộc tính Văn hóa."
+      },
+      "how_manifested": {
+        "name": "Cách thức biểu hiện",
+        "description": "Thuộc tính Cách thức biểu hiện."
+      },
+      "subverted": {
+        "name": "Bị đảo lộn",
+        "description": "Thuộc tính Bị đảo lộn."
+      },
+      "related_characters": {
+        "name": "Nhân vật liên quan",
+        "description": "Thuộc tính Nhân vật liên quan."
+      },
+      "relationship_type": {
+        "name": "Loại quan hệ",
+        "description": "Thuộc tính Loại quan hệ."
+      },
+      "status": {
+        "name": "Trạng thái",
+        "description": "Thuộc tính Trạng thái."
+      },
+      "tropes": {
+        "name": "Mô típ",
+        "description": "Thuộc tính Mô típ."
+      },
+      "dynamic": {
+        "name": "Động lực",
+        "description": "Thuộc tính Động lực."
+      },
+      "key_conflict": {
+        "name": "Xung đột chính",
+        "description": "Thuộc tính Xung đột chính."
+      },
+      "turning_points": {
+        "name": "Bước ngoặt",
+        "description": "Thuộc tính Bước ngoặt."
+      },
+      "leader": {
+        "name": "Lãnh đạo",
+        "description": "Thuộc tính Lãnh đạo."
+      },
+      "headquarters": {
+        "name": "Trụ sở",
+        "description": "Thuộc tính Trụ sở."
+      },
+      "members": {
+        "name": "Thành viên",
+        "description": "Thuộc tính Thành viên."
+      },
+      "effects": {
+        "name": "Hiệu ứng",
+        "description": "Thuộc tính Hiệu ứng."
+      },
+      "user": {
+        "name": "Người dùng",
+        "description": "Thuộc tính Người dùng."
+      }
+    }
   }
 }

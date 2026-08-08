@@ -1,0 +1,96 @@
+{
+  "title": "Chat & AI",
+  "description": "Các thiết lập mặc định cho chat và Writing Studio, tất cả tại một nơi. Mỗi hàng hiển thị giá trị hiện tại và nguồn gốc; các phiên làm việc và công cụ Studio sẽ kế thừa các thiết lập mặc định này và có thể ghi đè lên chúng.",
+  "models": {
+    "title": "Mô hình",
+    "resolved": "Đã giải quyết",
+    "chat": "Chat & soạn thảo",
+    "composer": "Trình soạn thảo văn xuôi",
+    "planner": "Trình lập kế hoạch",
+    "embedding": "Nhúng (Embedding)",
+    "rerank": "Sắp xếp lại (Rerank)"
+  },
+  "behavior": {
+    "title": "Hành vi",
+    "description": "Các thiết lập này trước đây được áp dụng một cách âm thầm. Hiện tại chúng đã hiển thị và có thể chỉnh sửa; để trống nghĩa là sử dụng mặc định của hệ thống.",
+    "reasoning": {
+      "label": "Nỗ lực suy luận",
+      "off": "Tắt",
+      "low": "Thấp",
+      "medium": "Trung bình",
+      "high": "Cao"
+    },
+    "permission": {
+      "label": "Quyền hạn công cụ",
+      "ask": "Hỏi ý kiến",
+      "plan": "Lập kế hoạch",
+      "write": "Viết",
+      "hint": "Mức độ trợ lý có thể thực hiện mà không cần hỏi ý kiến. Mặc định là Viết."
+    },
+    "temperature": {
+      "label": "Nhiệt độ",
+      "placeholder": "Mặc định của nhà cung cấp"
+    },
+    "systemPrompt": {
+      "label": "Lời nhắc hệ thống",
+      "placeholder": "Hướng dẫn thiết lập nhân vật mặc định (để trống = không có)"
+    }
+  },
+  "grounding": {
+    "title": "Đối chiếu & trí nhớ",
+    "label": "Dựa trên cốt truyện của tôi để trả lời",
+    "description": "Bao gồm các thực thể chính thức, sự kiện và các đoạn bản thảo trong mỗi câu trả lời. Tính năng này được bật theo mặc định và có thể tắt đi.",
+    "offWarning": "Chế độ đối chiếu đang tắt — trợ lý không thể truy cập vào bộ quy chuẩn cốt truyện của bạn và có thể tự tạo ra các tình tiết không có thật. Hãy bật tính năng này để có câu trả lời chính xác."
+  },
+  "context": {
+    "title": "Quản lý ngữ cảnh",
+    "description": "Cách trợ lý quản lý hạn mức bộ nhớ cho các cuộc hội thoại rất dài. Hầu hết người dùng nên để ở chế độ Tự động.",
+    "label": "Chế độ ngữ cảnh cho tác phẩm dài",
+    "auto": "Tự động",
+    "on": "Luôn bật",
+    "off": "Tắt",
+    "hint": "Chế độ Tự động chỉ kích hoạt các cấp độ xử lý tác phẩm dài khi dự án thực sự cần thiết. Chế độ Tắt sẽ duy trì lộ trình đơn giản nhất."
+  },
+  "voice": {
+    "title": "Giọng nói",
+    "description": "Nhập và xuất âm thanh cho trò chuyện. Các cài đặt này được lưu vào tài khoản của bạn và được áp dụng cho các tin nhắn thoại.",
+    "ttsModel": "Mô hình chuyển văn bản thành giọng nói (TTS)",
+    "sttModel": "Mô hình chuyển giọng nói thành văn bản (STT)",
+    "voice": "Giọng nói",
+    "placeholder": "ví dụ: af_heart",
+    "hint": "Mỗi giọng nói đi kèm với một mô hình cụ thể — hãy chọn giọng nói được hỗ trợ bởi mô hình TTS của bạn."
+  },
+  "tiers": {
+    "session": {
+      "label": "trò chuyện này",
+      "title": "Thiết lập cho trò chuyện này — ghi đè lên cài đặt mặc định của tài khoản và sách."
+    },
+    "book": {
+      "label": "cuốn sách này",
+      "title": "Thừa hưởng từ cài đặt của cuốn sách này."
+    },
+    "account": {
+      "label": "mặc định của bạn",
+      "title": "Thừa hưởng từ mặc định của tài khoản."
+    },
+    "system": {
+      "label": "mặc định",
+      "title": "Mặc định của hệ thống."
+    },
+    "unavailable": {
+      "label": "không khả dụng",
+      "title": "Không thể kết nối với gói sở hữu."
+    },
+    "no_model_configured": {
+      "label": "chưa thiết lập",
+      "title": "Chưa cấu hình mô hình trực tiếp nào."
+    }
+  },
+  "clear": {
+    "default": "mặc định",
+    "on": "bật",
+    "off": "tắt",
+    "action": "xóa",
+    "inherit": "thừa hưởng"
+  }
+}

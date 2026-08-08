@@ -19,8 +19,8 @@
   "mode": {
     "classic": "クラシック",
     "classic_title": "クラシックモード — 集中執筆",
-    "ai_title": "AIアシスタントモード — 全機能",
-    "ai": "AI"
+    "ai": "AI",
+    "ai_title": "AIアシスタントモード — 全機能"
   },
   "workmode": {
     "write": "執筆",
@@ -90,6 +90,7 @@
     "underline": "下線 (Ctrl+U)",
     "inline_code": "インラインコード",
     "link": "リンク",
+    "url_prompt": "URL:",
     "highlight": "ハイライト (Ctrl+Shift+H)",
     "subscript": "下付き文字",
     "superscript": "上付き文字",
@@ -102,8 +103,7 @@
     "code_block": "コードブロック",
     "horizontal_rule": "水平線",
     "undo": "元に戻す (Ctrl+Z)",
-    "redo": "やり直し (Ctrl+Shift+Z)",
-    "url_prompt": "URL:"
+    "redo": "やり直し (Ctrl+Shift+Z)"
   },
   "slash": {
     "paragraph": {
@@ -392,5 +392,29 @@
     "no_restore": "復元できる以前のバージョンがありません",
     "confirm_title": "このAI編集の前に復元しますか？",
     "confirm_desc": "現在の下書きは先にスナップショットされるため、リビジョン履歴から元に戻せます。"
-  }
+  },
+  "contextMenu": {
+    "replace": "「」で置換",
+    "copy": "コピー",
+    "cut": "切り取り",
+    "paste": "貼り付け",
+    "selectAll": "すべて選択",
+    "undo": "元に戻す",
+    "redo": "やり直し",
+    "rewrite": "AIで書き換え",
+    "expand": "AIで展開",
+    "describe": "AIで描写",
+    "dictionary": "用語集で確認",
+    "bookmark": "ブックマークに追加",
+    "findGlossary": "用語集から検索",
+    "askAi": "AIに質問する",
+    "findMentions": "メンションを検索"
+  },
+  "chat_mode": "モード",
+  "mode_agent": "エージェント",
+  "mode_agent_hint": "AIがツールを使用し、ドキュメントを編集できます",
+  "mode_compose": "執筆",
+  "mode_compose_hint": "文章作成専用 — AIが執筆し、あなたが適用します。推論モデルに最適です。",
+  "polish_applied": "適用済みの校閲",
+  "resize_panel": "ドラッグしてサイズ変更"
 }

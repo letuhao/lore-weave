@@ -59,7 +59,8 @@
     "noActive": "ไม่มีงานที่กำลังทำงานอยู่",
     "more": "โหลดเพิ่มเติม",
     "toggleChildren": "แสดง/ซ่อนงานย่อย",
-    "noChildren": "ไม่มีงานย่อย"
+    "noChildren": "ไม่มีงานย่อย",
+    "errorWithReason": "ไม่สามารถโหลดงานได้: {{error}}"
   },
   "row": {
     "ran": "รันไปแล้ว {{d}}",
@@ -85,6 +86,7 @@
   "controls": {
     "pause": "หยุดชั่วคราว",
     "resume": "ดำเนินการต่อ",
+    "resumeFromCheckpoint": "เล่นต่อจากจุดที่บันทึกไว้",
     "cancel": "ยกเลิก",
     "cancelConfirm": "หยุดตอนนี้เลยหรือไม่? งานที่กำลังทำอยู่จะถูกลบทิ้ง แต่ส่วนที่เสร็จแล้วจะถูกเก็บไว้",
     "cancelYes": "ใช่",
@@ -95,7 +97,9 @@
     "retry": "ลองใหม่",
     "retried": "ส่งงานใหม่แล้ว",
     "stale": "สถานะงานเปลี่ยนไป — รีเฟรชข้อมูลแล้ว",
-    "actionFailed": "การดำเนินการล้มเหลว: {{error}}"
+    "actionFailed": "การดำเนินการล้มเหลว: {{error}}",
+    "retryBenchmarkMissing": "ไม่สามารถลองใหม่ได้: โมเดลการฝังคำ (embedding model) ยังไม่มีผลการทดสอบมาตรฐาน (benchmark) กรุณารันการทดสอบมาตรฐานของโมเดลแล้วตรวจสอบอีกครั้ง",
+    "retryBenchmarkFailed": "ไม่สามารถลองใหม่ได้: โมเดลการฝังคำ (embedding model) ทำการทดสอบมาตรฐานครั้งล่าสุดไม่สำเร็จ"
   },
   "monitor": {
     "back": "งานทั้งหมด",
@@ -113,9 +117,11 @@
     "costSoFar": "ค่าใช้จ่ายสะสม",
     "tokensIn": "Tokens ขาเข้า",
     "tokensOut": "Tokens ขาออก",
+    "bestEffort": "พยายามอย่างเต็มที่",
     "models": "โมเดล",
     "parameters": "พารามิเตอร์",
     "parametersHint": "แบบไดนามิก จากออบเจกต์ params ของงาน",
+    "jobId": "ID งาน",
     "kind": "ประเภท",
     "service": "บริการ",
     "parent": "งานหลัก",
@@ -125,9 +131,7 @@
     "copied": "คัดลอก Job ID แล้ว",
     "copyFailed": "คัดลอกไม่สำเร็จ",
     "activity": "กิจกรรม (สด)",
-    "errorTitle": "ข้อผิดพลาด",
-    "bestEffort": "พยายามอย่างเต็มที่",
-    "jobId": "ID งาน"
+    "errorTitle": "ข้อผิดพลาด"
   },
   "activity": {
     "created": "สร้างแล้ว",

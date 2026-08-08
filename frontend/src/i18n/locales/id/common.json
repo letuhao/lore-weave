@@ -78,6 +78,7 @@
     "sttSection": "Pengenalan Ucapan",
     "sttSource": "Sumber STT",
     "sttModel": "Model STT",
+    "ttsSection": "Text-to-Speech",
     "ttsSource": "Sumber TTS",
     "ttsModel": "Model TTS",
     "browser": "Browser (gratis)",
@@ -139,8 +140,7 @@
     "presetNormalDesc": "Seimbang (default)",
     "presetPatientDesc": "Menunggu lebih lama, cocok untuk pembicara lambat",
     "presetLearnerDesc": "Jeda panjang diperbolehkan, untuk latihan bahasa",
-    "audioRetention": "Audio suara disimpan selama 48 jam untuk diputar ulang, lalu dihapus secara otomatis.",
-    "ttsSection": "Text-to-Speech"
+    "audioRetention": "Audio suara disimpan selama 48 jam untuk diputar ulang, lalu dihapus secara otomatis."
   },
   "theme_name": {
     "dark": "Gelap",
@@ -172,5 +172,10 @@
     "saved": "Urutan model disimpan",
     "saveFailed": "Gagal menyimpan urutan.",
     "loadFailed": "Gagal memuat model."
+  },
+  "errorBoundary": {
+    "title": "Halaman ini tidak dapat ditampilkan",
+    "description": "Terjadi kesalahan antarmuka. Kesalahan telah disimpan ke log diagnostik; silakan coba kembali operasi Anda.",
+    "retry": "Coba lagi"
   }
 }

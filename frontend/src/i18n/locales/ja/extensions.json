@@ -9,7 +9,9 @@
     "permissions": "ツールの権限",
     "proposals": "プロポーザル",
     "activity": "アクティビティログ",
-    "ingest": "レジストリソース"
+    "ingest": "レジストリソース",
+    "bindings": "自動設定",
+    "workflows": "レシピ"
   },
   "quota": {
     "unavailable": "使用状況を取得できません",
@@ -107,6 +109,7 @@
       "authentication": "認証",
       "authNone": "なし",
       "authBearer": "Bearerトークン",
+      "authOauth": "OAuth 2.1",
       "noAuthHint": "認証なし — このサーバーは公開されています。このまま登録とスキャンに進みます。",
       "bearerLabel": "Bearerトークン (Vaultに安全に保存されます。二度と表示されません)",
       "bearerPlaceholder": "トークンを貼り付け",
@@ -123,8 +126,7 @@
       "continue": "続行",
       "authKind": "認証: {{kind}}",
       "enable": "セッションで有効にする",
-      "done": "完了",
-      "authOauth": "OAuth 2.1"
+      "done": "完了"
     }
   },
   "commands": {

@@ -172,5 +172,10 @@
     "saved": "Model sıralaması kaydedildi",
     "saveFailed": "Sıralama kaydedilemedi.",
     "loadFailed": "Modeller yüklenemedi."
+  },
+  "errorBoundary": {
+    "title": "Bu sayfa görüntülenemedi",
+    "description": "Bir arayüz hatası oluştu. Hata, tanı günlüklerine kaydedildi; lütfen işlemi tekrar deneyin.",
+    "retry": "Tekrar dene"
   }
 }

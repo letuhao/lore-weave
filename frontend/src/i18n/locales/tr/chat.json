@@ -211,7 +211,10 @@
     "feedback_up": "İyi yanıt",
     "feedback_down": "Kötü yanıt",
     "feedback_thanks": "Geri bildirim için teşekkürler",
-    "feedback_error": "Geri bildirim kaydedilemedi"
+    "feedback_error": "Geri bildirim kaydedilemedi",
+    "incomplete_error": "Hata — yanıt eksik",
+    "incomplete_interrupted": "Kesildi — yanıt eksik",
+    "insert_into_chapter": "Bölüme ekle"
   },
   "tools": {
     "title": "Bu yanıtta kullanılan araçlar",
@@ -243,7 +246,9 @@
     "cancelled": "İptal edildi",
     "reprice": "Tahmin edilen maliyet {{cost}} seviyesine çıktı — yeni fiyattan tekrar onaylamak için tekrar isteyin.",
     "reprice_title": "Maliyet değişti — uygulanmadı",
-    "reprice_detail": "Tahmini {{old}}, şimdi {{new}}. Hiçbir harcama yapılmadı — yeni fiyattan tekrar onaylamak için tekrar isteyin."
+    "reprice_detail": "Tahmini {{old}}, şimdi {{new}}. Hiçbir harcama yapılmadı — yeni fiyattan tekrar onaylamak için tekrar isteyin.",
+    "advisory_items": "Talep edildi (danışmanlık) — sunucu, uygulandığında tam seti onaylar",
+    "awaiting_preview": "Sunucu önizlemesi yükleniyor…"
   },
   "batchConfirm": {
     "title": "{{count}} işlemi tek adımda onayla",
@@ -446,5 +451,120 @@
     "worldbuilder": "Dünya Kurucu",
     "editor": "Editör",
     "analyst": "Analist"
+  },
+  "sessionSettings": {
+    "description": "Bu sohbet için ayarlar. Burada ayarlamadığınız her şey sırasıyla kitaptan, ardından hesabınızdan ve son olarak sistem varsayılanından devralınır.",
+    "saving": "kaydediliyor…",
+    "close": "Kapat",
+    "voice": "Ses",
+    "messages": "Mesajlar",
+    "status": {
+      "label": "Durum",
+      "active": "Aktif",
+      "archived": "Arşivlendi",
+      "closed": "Kapatıldı"
+    },
+    "models": {
+      "title": "Modeller",
+      "composer": "Besteci modeli (isteğe bağlı)",
+      "planner": "Planlayıcı modeli (isteğe bağlı)",
+      "composerNone": "Yok — tek model",
+      "plannerNone": "Varsayılan planlayıcımı kullan",
+      "composerHint": "Ayarlandığında, yapay zeka düzyazı yazımını bu modele devredebilir.",
+      "plannerHint": "Bu oturumda çok adımlı planlama için kullanılan model."
+    },
+    "behavior": {
+      "title": "Davranış",
+      "systemPrompt": "Sistem istemi",
+      "promptPlaceholder": "Burada bir tane ayarlamadığınız sürece hesabınızın varsayılanından devralınır.",
+      "reasoning": {
+        "label": "Akıl yürütme çabası",
+        "off": "Kapalı",
+        "low": "Düşük",
+        "medium": "Orta",
+        "high": "Yüksek"
+      },
+      "statefulTitle": "Durumlu Yanıtlar API'sini kullan",
+      "statefulHint": "İsteğe bağlı sunucu tarafı bağlam yeniden kullanımı. Sağlayıcınız Yanıt araç çağrılarını desteklemiyorsa kapalı bırakın.",
+      "temperature": "Sıcaklık",
+      "temperatureHint": "Yüksek değerler daha şaşırtıcı, düşük değerler daha öngörülebilir sonuçlar verir.",
+      "topP": "Top P",
+      "maxTokens": "Maksimum yanıt token sayısı",
+      "maxTokensHint": "Ayarlanmazsa modelin kendi sınırı kullanılır."
+    },
+    "grounding": {
+      "title": "Temellendirme ve bellek",
+      "label": "Yanıtları bu kitabın kurgusuna dayandır",
+      "on": "Açık — her adımda veri geri çağırma yapılır",
+      "off": "Kapalı — bu sohbette veri geri çağırma yapılmaz",
+      "onHint": "Sözlük, bilgi grafiği gerçekleri ve pasajlar her adımda içeriğe dahil edilir.",
+      "offHint": "Asistan yalnızca konuşmaya dayanarak yanıt verir ve kurgusal bilgiler uydurabilir.",
+      "multiHint": "Seçilen tüm bilgi grafikleriyle eş zamanlı olarak temellendirilir — gerçekler kaynaklarıyla etiketlenir."
+    },
+    "context": {
+      "title": "Bağlam yönetimi",
+      "label": "Uzun eser bağlam modu",
+      "auto": "Otomatik",
+      "on": "Her zaman açık",
+      "off": "Kapalı",
+      "autoHint": "Uzun eser kademelerini yalnızca kitap bunları gerektirecek kadar büyük olduğunda açar.",
+      "onHint": "Uzun eser bağlam kademelerini her zaman kullan.",
+      "offHint": "Asla — en yalın ve en düşük maliyetli bağlam."
+    }
+  },
+  "dock": {
+    "close": "Kapat",
+    "label": "Yapay Zekaya Sor",
+    "open": "Sözlük asistanına danış",
+    "title": "Sözlük asistanı"
+  },
+  "glossaryEdit": {
+    "applied": "Uygulandı ✓",
+    "apply": "Uygula",
+    "conflict": "Bu öğe önerildikten sonra değiştirildi — en güncel halini görmek için tekrar sorun.",
+    "conflict_short": "Önerilenden farklı — tekrar sor",
+    "dismiss": "Kapat",
+    "dismissed": "Kapatıldı",
+    "empty": "(boş)",
+    "error": "Değişiklik kaydedilemedi.",
+    "error_short": "Kaydetme başarısız",
+    "field": "Alan",
+    "fields": "{{count}} alan",
+    "label": "Sözlük düzenleme"
+  },
+  "planner": {
+    "destructive": "yıkıcı",
+    "enable": "Bu yıkıcı adımı etkinleştir",
+    "heading": "Plan",
+    "notes": "Planlayıcı notları",
+    "steps": "{{count}} adım"
+  },
+  "propose": {
+    "applied": "Uygulandı ✓",
+    "apply": "Uygula",
+    "apply_failed": "Düzenleme uygulanamadı.",
+    "apply_n": "{{count}} uygula",
+    "dismiss": "Reddet",
+    "dismissed": "Reddedildi",
+    "hunk_hint": "Hangi değişikliklerin uygulanacağını seçin",
+    "hunk_toggle": "Bu değişikliği kabul et",
+    "insert_label": "Önerilen ekleme",
+    "keep_original": "Orijinali koru",
+    "no_editor": "Bu düzenlemeyi uygulamak için bölümü açın.",
+    "no_selection": "Değiştirilecek metni seçin ve ardından Uygula'ya basın.",
+    "popout_no_rewrite": "Yeniden yazımlar sabitlenmiş editör üzerinden uygulanmalıdır — önce bu pencereyi sabitleyin.",
+    "popout_not_delivered": "Düzenlemenin sabitlenmiş editöre ulaştığı onaylanamadı — bölümü Studio'da açın ve tekrar deneyin.",
+    "replace_label": "Önerilen yeniden yazım",
+    "selection_changed": "Seçiminiz değişti — yeniden seçip Uygula'ya basın veya Reddet.",
+    "wrong_chapter": "Bu öneri farklı bir bölüm içindi."
+  },
+  "taskGate": {
+    "cancelled": "Reddedildi",
+    "confirm": "Onayla",
+    "defaultTitle": "Bu işlemi onaylıyor musunuz?",
+    "dismiss": "Kapat",
+    "done": "Onaylandı ✓",
+    "error": "Onaylanamadı",
+    "label": "Onayla"
   }
 }
