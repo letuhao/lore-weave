@@ -2038,6 +2038,70 @@ class TestStageKindsAreDataNotClosures:
         with pytest.raises(ValueError, match="budget is a bool"):
             TakeWhileBudget("s", "r", budget=True)
 
+    def test_THE_OPERAND_SET_COMES_FROM_THE_DATACLASS_NOT_FROM_A_LIST_OF_CASES(self):
+        """🔴 **CP-1 RECONCILIATION, 2026-08-09 — 1.8a's guard had the shape of 1.8a's defect.**
+
+        The finding (A-3) was that the first fix *"bounded `Filter.value` and left SIX other
+        operands open, because it reasoned about the field the verifier had pointed at rather than
+        about the set."* The repair is real and every named operand is bounded — but the guard next
+        door is **nine hand-written cases**, so a SEVENTH operand added tomorrow is unguarded and
+        nothing says so. That is the same reasoning failure one layer up, and it is why this row sat
+        `FAIL at round 8, fixed after, builder-only` until it was re-checked.
+
+        So the denominator comes from `dataclasses.fields()` — the compiler's own list of what each
+        stage kind carries — and every field must be named in a type-bounding call somewhere in the
+        module. A new field cannot arrive unguarded and quietly pass.
+
+        **The stated approximation:** the search is module-wide rather than per-class, so a field
+        bounded inside a *different* class would count. Field names here are distinctive
+        (`cost_field`, `keys`, `names`, `budget`), and the case this must catch — a NEW operand
+        nobody bounded at all — is caught exactly. Narrowing it further would mean modelling
+        inheritance of `__post_init__`, which buys nothing this row needs.
+        """
+        import ast
+        import dataclasses
+
+        from app.agentruntime.surface import STAGE_KINDS
+
+        src = (_REPO / "services" / "chat-service" / "app" / "agentruntime"
+               / "surface.py").read_text(encoding="utf-8")
+        tree = ast.parse(src)
+
+        #: Every `self.X` that reaches a call which BOUNDS a type. `_plain(self.x, ...)`,
+        #: `type(self.x) is not ...` and `_is_exactly(self.x, ...)` are the three forms the module
+        #: uses; anything else reading `self.x` is not a bound and must not count as one.
+        bounded: set[str] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fname = getattr(node.func, "id", None) or getattr(node.func, "attr", None)
+            if fname not in {"_plain", "_is_exactly", "type"}:
+                continue
+            # Any attribute access, not only `self.x`: `AllowList.names` and `DenyList.names` are
+            # bounded in a module-level validator that takes `stage`, so a `self.`-only scan called
+            # them unbounded and would have driven a code change to satisfy the test rather than
+            # the property. The receiver is not what makes a bound a bound.
+            for arg in node.args:
+                for n in ast.walk(arg):
+                    if isinstance(n, ast.Attribute):
+                        bounded.add(n.attr)
+
+        unbounded = {}
+        for kind in STAGE_KINDS:
+            if not dataclasses.is_dataclass(kind):
+                continue
+            missing = [f.name for f in dataclasses.fields(kind) if f.name not in bounded]
+            if missing:
+                unbounded[kind.__name__] = missing
+        assert not unbounded, (
+            f"{unbounded} — a stage kind carries an operand that no type-bounding call names. "
+            f"Every one of these reaches the narrowing decision, and an unbounded operand is "
+            f"arbitrary logic deciding which declarations reach the model: a custom `__lt__` cuts "
+            f"every row, a forged `__hash__`/`__eq__` chooses which column is read, an `__index__` "
+            f"rewrites a slice. Bind it in `__post_init__` in the same change."
+        )
+        assert bounded, "the AST scan found no bounding calls at all; it is green over nothing"
+
     def test_THE_OPERATOR_ITSELF_IS_AN_OPERAND(self):
         """🔴 `Filter.op` selects `keep()`'s branch **and** selects which validation branch runs.
         Bounding `value` while leaving `op` free bounds the argument and not the operator — the
@@ -3265,7 +3329,14 @@ class TestStageKindsAreDataNotClosures:
         #:
         #: So the command is a **whitelist**: the census step's live command, whitespace-normalised,
         #: must be exactly this. One clause, and the space it covers is closed.
+        #: The whitelist, and it is exactly two spellings. `--force` is admitted for one reason
+        #: and it is not convenience: it **disables the local verdict cache**, so CI re-derives the
+        #: answer from nothing every run. It can only make the gate do MORE work, which is the
+        #: opposite of every command this clause exists to refuse — `--write` regenerates the
+        #: allowlist instead of checking it, `--help` exits 0 having measured nothing. A cached
+        #: verdict must never be able to certify a branch, and `--force` is what guarantees that.
         EXPECTED = "python scripts/agentruntime-census.py"
+        ALLOWED = (EXPECTED, EXPECTED + " --force")
 
         triggers = wf.get("on") or wf.get(True)          # PyYAML parses bare `on:` as the bool True
         # 🔴 An INTERSECTION: one key sufficed, so deleting `pull_request` left the check green over
@@ -3323,8 +3394,8 @@ class TestStageKindsAreDataNotClosures:
             # The whitelist. Every command family the blacklist chased — `--write`, `--selftest`,
             # `|| true`, `; true`, `&`, `| cat`, `echo`, `--help`, `if false`, `trap` — fails this
             # one clause, and so does the eleventh spelling nobody has written.
-            assert " ".join(r.split()) == EXPECTED, (
-                f"the census step runs {r!r}, not exactly {EXPECTED!r}. Anything else is a command "
+            assert " ".join(r.split()) in ALLOWED, (
+                f"the census step runs {r!r}, not one of {ALLOWED!r}. Anything else is a command "
                 f"whose exit code this check has not established reaches the job: a trailing "
                 f"`; true`, a `| cat`, a `&`, an `echo`, a `--help`, or a flag that regenerates the "
                 f"allowlist instead of checking it."
@@ -3923,3 +3994,124 @@ class TestStageKindsAreDataNotClosures:
         assert raw.endswith(b"\n"), "the manifest has no trailing newline"
         # ...and pinning the newline did not change what is stored.
         assert load(path=path)["declarations"][0]["id"] == "book_list"
+
+
+class TestAGateVerdictIsAboutOneTree:
+    """REJECTS: a recorded verdict that certifies a tree it was not measured on.
+
+    The cache exists to enforce *a gate's recorded answer must be about the tree you are
+    committing* — not to run gates less often. Every guard here is about that property, and each is
+    deliberately cheap: this file runs once per raise site inside the census, so a second of work
+    here is a minute and a half of gate time.
+    """
+
+    @staticmethod
+    def _gatecache():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "_gatecache_probe", _REPO / "scripts" / "agentruntime_gatecache.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    @staticmethod
+    def _gate_scripts():
+        import ast
+        return {p.name: ast.parse(p.read_text(encoding="utf-8"))
+                for p in (_REPO / "scripts").glob("agentruntime-*.py")}
+
+    def test_THE_DIGEST_CANNOT_BE_COMPUTED_AT_THE_MOMENT_OF_RECORDING(self):
+        """`digest` is keyword-only and required, so a caller cannot forget to hand one in.
+
+        The first version computed it inside `store()`. These runs take minutes; a file edited while
+        one is in flight would have been stamped into the verdict as though it had been measured,
+        and the gate would certify a tree it never saw — the *measured-on-a-dirty-tree* failure,
+        reproduced inside the mechanism built to end it.
+        """
+        import inspect
+        sig = inspect.signature(self._gatecache().store)
+        p = sig.parameters.get("digest")
+        assert p is not None and p.kind is inspect.Parameter.KEYWORD_ONLY, (
+            f"store() takes {list(sig.parameters)}; `digest` must be keyword-only and required"
+        )
+        assert p.default is inspect.Parameter.empty, (
+            "`digest` has a default, so a caller can omit it and get a verdict stamped with "
+            "whatever the tree happened to be at the moment of writing"
+        )
+
+    def test_NO_GATE_COMPUTES_ITS_DIGEST_AT_THE_STORE_CALL(self):
+        """AST: `digest=` must be a NAME bound earlier, never a call evaluated inline.
+
+        `store(..., digest=_gatecache.tree_digest())` type-checks, satisfies the signature guard
+        above, and reintroduces the entire defect. The property is *when* the digest is taken.
+        """
+        import ast
+        offenders = []
+        for name, tree in self._gate_scripts().items():
+            for call in ast.walk(tree):
+                if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                        and call.func.attr == "store"):
+                    continue
+                for kw in call.keywords:
+                    if kw.arg == "digest" and not isinstance(kw.value, ast.Name):
+                        offenders.append(f"{name}:{call.lineno} digest={ast.unparse(kw.value)}")
+        assert offenders == [], (
+            f"{offenders} — the digest is evaluated AT the store call, so it describes the tree "
+            f"as it is when the answer is written rather than when it was measured. Bind it before "
+            f"the run and pass the name."
+        )
+
+    def test_BOTH_GATES_MIRROR_THE_SAME_FILE_SET(self):
+        """One home for *what can this measurement see*, because the cache key IS that set.
+
+        The digest is sound only because it covers exactly what the gates copy. Two hand-kept
+        prefix lists would drift the first time one was widened, and the key would then certify a
+        tree while a file outside it moved the answer — the approximation this design refuses.
+        """
+        import ast
+        users = []
+        for name, tree in self._gate_scripts().items():
+            src = ast.unparse(tree)
+            if "mkdtemp" not in src:
+                continue
+            assert "MIRROR_PREFIXES" in src, (
+                f"{name} builds a mirror without filtering on the shared MIRROR_PREFIXES; its "
+                f"mirror and the cache key now describe different file sets"
+            )
+            users.append(name)
+        assert len(users) >= 2, f"expected both gate scripts to build mirrors, found {users}"
+
+    def test_A_VERDICT_FILE_IS_NOT_PART_OF_ITS_OWN_KEY(self):
+        """A tracked verdict under `contracts/` would otherwise be stale the instant it was written.
+
+        Excluded by SUFFIX rather than by exact name, so a second gate cannot reintroduce the cycle
+        by choosing a new filename — the pair-fixed-at-one-end failure this run has recorded
+        thirteen times.
+        """
+        g = self._gatecache()
+        # The FILTER, not the tracked set: verdict files are git-ignored, so asserting their
+        # absence from `mirrored_files()` would be vacuously true — a guard whose subject cannot
+        # exist, which is one of this run's named failure shapes.
+        assert not g.is_mirrored("contracts/agentruntime-census-verdict.json"), (
+            "a verdict file is inside its own key: writing it changes the digest that certifies "
+            "it, so every verdict would be stale the moment it was recorded"
+        )
+        assert g.is_mirrored("contracts/agentruntime-census-allowlist.txt"), (
+            "the suffix exclusion is too broad and now drops a file the gates genuinely read"
+        )
+        # 🔴 **`is_mirrored()` ONLY — `mirrored_files()` SHELLS OUT TO `git ls-files`, AND A CENSUS
+        # MIRROR IS NOT A GIT REPO.** The first version called it and died with exit 128 inside every
+        # one of the 90 neutered runs, so the whole census reported SELFTEST FAIL. It passed locally,
+        # where the tree is a repo — which is precisely the class of thing the mirror exists to catch,
+        # and it caught mine. Every property below is about the FILTER, and the filter is pure.
+        assert g.is_mirrored("services/chat-service/app/agentruntime/surface.py"), (
+            "the key does not cover the package the census neuters — it would call a verdict "
+            "current across a change to the very code being measured"
+        )
+        assert g.is_mirrored("services/chat-service/tests/test_cp1_membrane.py"), (
+            "the key does not cover the suite whose sensitivity decides every verdict"
+        )
+        assert not g.is_mirrored("frontend/src/main.tsx"), (
+            "the key covers the whole repository again, so every unrelated commit invalidates "
+            "every verdict and the cache stops removing any work"
+        )

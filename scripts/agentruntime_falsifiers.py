@@ -36,6 +36,7 @@ T2 = f"{CS}/tests/test_cp2_assembly.py"
 CENSUS = "scripts/agentruntime-census.py"
 GATE = "scripts/agentruntime-membrane-gate.py"
 FALSIFY = "scripts/agentruntime-falsification.py"
+GATECACHE = "scripts/agentruntime_gatecache.py"
 REQS = f"{CS}/requirements.txt"
 
 #: `{test name: [(file, old, new), ...]}` — apply every mutation, then that test must RED.
@@ -106,7 +107,7 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
          "    def visit_JoinedStr(self, node):\n        return node"),
     ],
     "test_THE_CI_CHECK_REDS_ON_EVERY_WAY_TO_DISABLE_THE_CENSUS": [
-        (T1, 'assert " ".join(r.split()) == EXPECTED, (', 'assert "||" not in r, ('),
+        (T1, 'assert " ".join(r.split()) in ALLOWED, (', 'assert "||" not in r, ('),
     ],
     "test_ONLY_THE_FIRST_STATEMENT_OF_A_TRY_BODY_IS_UNCONDITIONAL": [
         (T0, "            yield from _unconditional_calls(s.body[:1], pred, narrows)\n"
@@ -896,6 +897,31 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{CS}/app/services/instrument.py",
          "WHEN {incoming} IS NULL THEN chat_messages.{column}",
          "WHEN EXCLUDED.{column} IS NULL THEN chat_messages.{column}"),
+    ],
+
+    # -- the gate verdict cache: an answer is about ONE tree ---------------------------------
+    "test_THE_DIGEST_CANNOT_BE_COMPUTED_AT_THE_MOMENT_OF_RECORDING": [
+        (GATECACHE, "def store(path: pathlib.Path, payload: dict, *, digest: str) -> None:",
+                    'def store(path: pathlib.Path, payload: dict, *, digest: str = "") -> None:'),
+    ],
+    "test_NO_GATE_COMPUTES_ITS_DIGEST_AT_THE_STORE_CALL": [
+        # Type-correct, signature-satisfying, and the whole defect back: the digest now describes
+        # the tree as it is when the answer is WRITTEN, not when it was measured.
+        (CENSUS, "digest=started_on)", "digest=_gatecache.tree_digest())"),
+    ],
+    "test_BOTH_GATES_MIRROR_THE_SAME_FILE_SET": [
+        (FALSIFY, "for pref in _gatecache.MIRROR_PREFIXES)", "for pref in ())"),
+    ],
+    "test_A_VERDICT_FILE_IS_NOT_PART_OF_ITS_OWN_KEY": [
+        (GATECACHE, 'VERDICT_SUFFIX = "-verdict.json"', 'VERDICT_SUFFIX = "-never-matches.json"'),
+    ],
+
+    # -- CP-1 reconciliation: 1.8a's guard had the shape of 1.8a's defect --------------------
+    "test_THE_OPERAND_SET_COMES_FROM_THE_DATACLASS_NOT_FROM_A_LIST_OF_CASES": [
+        # Unbind one operand. `cost_field` is a `row.get()` key, so a forged `__hash__`/`__eq__`
+        # chooses which column the budget accumulates -- the A-3 defect, restored on one field.
+        (f"{PKG}/surface.py", '_plain(self.cost_field, str, "cost_field")',
+                              'pass  # unbound'),
     ],
 }
 

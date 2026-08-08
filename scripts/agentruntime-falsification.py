@@ -70,6 +70,10 @@ SUITES = (
     "tests/test_cp0_merge_db.py",
     "tests/test_cp2_assembly.py",
 )
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import agentruntime_gatecache as _gatecache  # noqa: E402
+
+VERDICT = ROOT / "contracts" / "agentruntime-falsification-verdict.json"
 UNPROVEN = ROOT / "contracts" / "agentruntime-falsification-unproven.txt"
 
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -101,16 +105,23 @@ def _mirror() -> pathlib.Path:
     after `mkdtemp` — an allocator that can fail owns what it allocated until it returns.
     """
     out = pathlib.Path(tempfile.mkdtemp(prefix="lw-falsify-"))
+    # The same subset the census mirrors, from the same module: 1,333 of 13,599 tracked files. This
+    # runner copied the WHOLE repository for a suite that runs in one directory, and two copies of
+    # "what can a measurement see" would drift the first time one was widened.
+    prefixes = tuple(str(pref).replace("\\", "/") + "/" for pref in _gatecache.MIRROR_PREFIXES)
     try:
         listing = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT,
                                  capture_output=True, check=True).stdout
         for rel in listing.split(b"\0"):
             if not rel:
                 continue
-            src = ROOT / rel.decode("utf-8")
+            name = rel.decode("utf-8")
+            if not name.startswith(prefixes):
+                continue
+            src = ROOT / name
             if not src.is_file():
                 continue
-            dst = out / rel.decode("utf-8")
+            dst = out / name
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
     except BaseException:
@@ -226,7 +237,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run", action="store_true", help="apply every falsifier and verify it reds")
     ap.add_argument("--write", action="store_true", help="regenerate the unproven backlog")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--check", action="store_true",
+                    help="is the recorded --run verdict about THIS tree? (exit 1 if stale/absent)")
+    ap.add_argument("--force", action="store_true",
+                    help="re-run every falsifier even when the recorded verdict is current")
     args = ap.parse_args(argv)
+
+    if args.check:
+        return _gatecache.check(VERDICT, "agentruntime-falsification")
 
     guards = _guards()
     unproven_now = sorted(set(guards) - set(FALSIFIERS) - set(UNFALSIFIED))
@@ -286,7 +304,19 @@ def main(argv: list[str] | None = None) -> int:
           f"{len(anchors)} stale anchor(s)")
 
     if args.run:
+        # 🔴 Accelerator, not authority: CI passes `--force`, so a recorded verdict is never
+        # the last word. 143 mutations at roughly five seconds each is twelve minutes, and four of
+        # them ran in one session -- three on trees whose mirrored content had not moved.
+        started_on = _gatecache.tree_digest()
+        cached = None if args.force else _gatecache.load(VERDICT)
+        if cached is not None:
+            print(f"falsification: --run verdict is current for this tree "
+                  f"({cached['tree_digest'][:12]}) - {cached['proven']}/{cached['total']} red; "
+                  f"--force to re-run")
+            return 1 if cached["failed"] else rc
         proven, failed = run_falsifiers(verbose=args.verbose)
+        _gatecache.store(VERDICT, {"proven": len(proven), "total": len(proven) + len(failed),
+                                   "failed": failed}, digest=started_on)
         for f in failed:
             print(f"NOT FALSIFIABLE  {f}")
         print(f"  -> {len(proven)}/{len(proven) + len(failed)} falsifiers red the guard they name")

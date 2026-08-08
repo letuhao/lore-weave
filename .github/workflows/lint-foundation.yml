@@ -170,7 +170,10 @@ jobs:
       # the sites AND that neutering a guarded refusal reds the suite, so CI cannot
       # pass a census that has not been shown to fire in both directions.
       - name: Refusal census
-        run: python scripts/agentruntime-census.py
+        # --force: CI re-derives the verdict from nothing. The local cache is an
+        # inner-loop accelerator; if a branch could be certified by a recorded answer,
+        # a stale key would be a way to merge a verdict nobody computed.
+        run: python scripts/agentruntime-census.py --force
 
   # 🔴 THE GUARDS, NOT THE FIXES, ARE WHERE THIS RUN'S DEFECTS NOW LIVE.
   #
@@ -201,4 +204,5 @@ jobs:
       # Default mode checks the PARTITION — every guard is falsified, deliberately unfalsifiable
       # with a reason, or in the checked-in backlog. `--run` then proves the recorded ones fire.
       - name: Falsification gate
-        run: python scripts/agentruntime-falsification.py --run
+        # --force, for the same reason as the census above.
+        run: python scripts/agentruntime-falsification.py --run --force

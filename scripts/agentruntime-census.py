@@ -55,25 +55,14 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 _PKG_REL = pathlib.Path("services") / "chat-service" / "app" / "agentruntime"
 _CS_REL = pathlib.Path("services") / "chat-service"
 
-#: What a mirror must contain. **Measured, not guessed: 1,333 of 13,599 tracked files — 7%.**
-#:
-#: 🔴 The mirror used to be the WHOLE tracked tree: 214.8 MB and 13,599 files, copied one at a time,
-#: for a suite that runs inside a single directory. Sequentially that is a fixed cost paid once and
-#: it merely felt slow; with one mirror per worker it multiplies, and setup became the thing the
-#: parallel census spent its time on rather than the measurement.
-#:
-#: 🔴 **THIS LIST IS A CLAIM, AND ITS FALSIFIER ALREADY RUNS ON EVERY INVOCATION.** `_selftest_in`
-#: requires the FULL suite to be green in a mirror *before any injection*. A prefix that belongs
-#: here and is missing does not produce a subtly wrong census — it produces
-#: `SELFTEST FAIL: the suite is not green before any injection`, immediately, on the first run. So
-#: widening this is a one-line fix with a loud prompt, never a silent drift.
-MIRROR_PREFIXES = (
-    _CS_REL,                                              # the suite and its subject
-    pathlib.Path("scripts"),                              # guards that read the gate scripts
-    pathlib.Path("contracts"),                            # frozen baseline, allowlist, backlog
-    pathlib.Path(".github"),                              # a guard asserts the gate RUNS in CI
-    pathlib.Path("docs") / "specs" / "2026-08-03-agent-runtime-unification",   # guards parse it
-)
+# The mirror's file set, and the verdict cache keyed on it, live in one module: both
+# gates need the identical answer to "what can this measurement see", and two copies of
+# that list would drift the first time one was widened.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from agentruntime_gatecache import MIRROR_PREFIXES  # noqa: E402
+import agentruntime_gatecache as _gatecache  # noqa: E402
+
+VERDICT = ROOT / "contracts" / "agentruntime-census-verdict.json"
 PKG = ROOT / _PKG_REL
 CS = ROOT / _CS_REL
 
@@ -617,26 +606,64 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--write", action="store_true", help="regenerate the allowlist")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--check", action="store_true",
+                    help="is the recorded verdict about THIS tree? (exit 1 if stale or absent)")
+    ap.add_argument("--force", action="store_true",
+                    help="re-measure even when the recorded verdict is current (CI uses this)")
     ap.add_argument("-j", "--jobs", type=int, default=None,
                     help="workers, one mirror each (default: derived from cpu count; 1 = sequential)")
     args = ap.parse_args(argv)
 
+    if args.check:
+        return _gatecache.check(VERDICT, "agentruntime-census")
+
     if args.selftest:
         return _selftest()
 
-    rc = _selftest()
-    if rc:
-        return rc
-
-    jobs = args.jobs if args.jobs is not None else default_jobs()
-    if jobs < 1:
-        print(f"census: --jobs must be >= 1, got {jobs}")
-        return 1
-    if jobs == 1:
-        results = census(verbose=args.verbose)
+    # 🔴 **THE CACHE IS AN ACCELERATOR, NEVER AN AUTHORITY.** CI runs this gate with `--force`, so a
+    # recorded verdict cannot be the last word on a branch; what it removes is re-measuring a tree
+    # that has not moved — two of five census runs in the session that motivated it. `--check` is
+    # the other half, and the more important one: it refuses a verdict about a DIFFERENT tree, which
+    # is what turns *"run the gates once per row, at the end"* from prose into a mechanism. That
+    # sentence was already in that session's own instructions, and it was violated inside the hour.
+    #
+    # 🔴 **AND THE COMPARISON BELOW STAYED HERE** rather than moving into a helper shared with the
+    # cached path. Splitting it out put `mkdir` and `write_text` on a live-tree path inside a new
+    # function, and `test_NO_LIVE_TREE_PATH_REACHES_A_MUTATING_CALL` named all five calls. That
+    # gate's `EXEMPT` set is two functions with two stated reasons; widening it to accommodate a
+    # restructure nobody needed is how such a list stops meaning anything. The split had also left
+    # the helper reading a `silent` that no longer existed in its scope.
+    # Captured BEFORE the measurement: a run takes minutes, and a verdict must be stamped with
+    # the tree it was taken on, never with whatever the tree became while it ran.
+    started_on = _gatecache.tree_digest()
+    results = None if args.force else _gatecache.load(VERDICT)
+    if results is None:
+        # 🔴 The selftest is INSIDE the miss branch, and that is not a shortcut. It proves
+        # the instrument can fire — a census that cannot is a green light with no subject — and that
+        # proof is a property of the same mirrored tree the verdict is keyed on. Running it on a
+        # cache hit would re-prove, for 60 s, something about a tree that has not moved; skipping it
+        # on a MISS would be the failure it exists to prevent. `selftest_ok` is recorded in the
+        # payload so a verdict cannot claim a proof that never ran.
+        rc = _selftest()
+        if rc:
+            return rc
+    if results is not None:
+        print(f"census: verdict is current for this tree ({results['tree_digest'][:12]}) — "
+              f"reusing {len(results['sites'])} site(s); --force to re-measure")
+        results = {k: bool(v) for k, v in results["sites"].items()}
     else:
-        print(f"census: {jobs} workers, one mirror each", flush=True)
-        results = census_parallel(jobs, verbose=args.verbose)
+        jobs = args.jobs if args.jobs is not None else default_jobs()
+        if jobs < 1:
+            print(f"census: --jobs must be >= 1, got {jobs}")
+            return 1
+        if jobs == 1:
+            results = census(verbose=args.verbose)
+        else:
+            print(f"census: {jobs} workers, one mirror each", flush=True)
+            results = census_parallel(jobs, verbose=args.verbose)
+        _gatecache.store(VERDICT, {"sites": results, "selftest_ok": True},
+                          digest=started_on)
+
     silent = sorted(k for k, red in results.items() if not red)
 
     if args.write:
@@ -647,7 +674,7 @@ def main(argv: list[str] | None = None) -> int:
             "# \U0001F534 The header used to say 'a refusal nothing checks', and two verifiers measured\n"
             "# that false for 2 of these 13 rows: a site can be SILENT because a SAME-CLASS SIBLING\n"
             "# reds first, or because it is UNREACHABLE. This gate neuters one site at a time, so\n"
-            "# what it observes is exactly 'alone' \u2014 and claiming more than the experiment supports is\n"
+            "# what it observes is exactly 'alone' — and claiming more than the experiment supports is\n"
             "# the failure this whole effort exists to end. Deciding WHY a row is here still needs a\n"
             "# person and a verdict id.\n"
             "# Generated by scripts/agentruntime-census.py --write. Every line is a claim that\n"
