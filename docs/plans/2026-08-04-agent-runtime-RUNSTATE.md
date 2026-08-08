@@ -3595,6 +3595,22 @@ is a **write-path** change that belongs with 2.8's stamp. Stated rather than blu
 (answers nothing), a digest that varies per call (answers nothing), and the normalisation removed
 (answers *changed* on an unchanged prompt).
 
+### ▶ NEXT ROW: 2.8, and the tension in it is stated before it is started
+
+`runtime_variant` defaults to `legacy` in **two** places — `stamp_tool_call`'s keyword default and
+`chunk.setdefault(...)` in the same module. The row's own argument is why that is not enough:
+`legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship
+bias in the new arm's own failure rate** — an unlabelled new-runtime row loses its numerator too,
+and **label-omission correlates with crash and cancel**. The fix has the shape CP-2.5 already used:
+**no default at all**, supplied structurally from where the arm is decided.
+
+🔴 **And the tension, recorded rather than discovered later:** both sites are in
+`app/services/instrument.py`, which is the **legacy arm's write path** — CP-2's CONTROL GROUP.
+CP-1.9 spent an entire item establishing that a control perturbed by changes nobody decided
+invalidates the comparison before it starts, and 2.2 and 2.3 both declined to touch the control for
+exactly that reason. **Whether making the parameter required counts as perturbing the control is a
+PO question, not the builder's**, and it is the first thing 2.8 must settle.
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -3951,7 +3967,7 @@ retrofitted to whatever gets built.
 |---|---|---|
 | **CP-0** instrument + frozen baseline | γ | ✅ **CLOSED 2026-08-04 on 0.5/0.6/0.7** — the three that ever passed. **0.1–0.4 reassigned to CP-1.7 / CP-2.6 / CP-3.6 / CP-1.4**, where each is structural rather than retrofitted. **Verification stopped after 11 rounds** (~27 verifier deployments). The legacy instrument stays live as a control-group diagnostic, with F-45 · F-48 · F-49 recorded open |
 | CP-1 membrane, empty | β | 🟡 **BUILT · 6 of 7 items independently PASS · BLOCKED ON A PO DECISION.** 7 verifier deployments (V-CODE ×5, V-LIVE ×2). **P1 closed at round 4** after three of the builder's own gates died — wrong direction, then unable to fire, then a law sampled at five points — and only closed when the invariant moved into **production code** as a post-condition. **1.4's P4 half has no subject here** and all three ways to resolve it change a criterion |
-| CP-2 runtime | β | 🟡 **OPEN — 2.1 built 2026-08-08, the effort's first production import of the package.** QC1/QC3 `PASS`, QC2 split: live at the assembly boundary, `CANNOT DETERMINE` for a chat turn until 2.7's route exists |
+| CP-2 runtime | β | 🟡 **OPEN — 7 of 10 rows built 2026-08-08.** 2.1 · 2.2 · 2.3 · 2.4 · 2.5 · **2.7 (M4 + THE ROUTE)** · 2.9, each QC1 `PASS` + QC3 `PASS`. **The package now has a production importer AND a request-path branch**, so 2.7's items A–D are measured rather than `CANNOT DETERMINE`. ⬜ **2.8 · 2.10 · 2.6 remain**, and a served turn against a real model on a running service is still `CANNOT DETERMINE` for every row |
 | CP-3 plan | γ | ⬜ |
 | CP-4 declarations | γ | ⬜ |
 
