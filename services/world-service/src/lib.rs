@@ -59,6 +59,7 @@ pub mod db_pool;
 pub mod deprovisioner;
 pub mod embedding_queue;
 pub mod errors;
+pub mod orphan_scan;
 pub mod provisioner;
 pub mod provisioner_live;
 pub mod reality_seeder;
@@ -82,6 +83,8 @@ pub use embedding_queue::live::{
     MetricsAuditWriter, NotWiredProvider, SqlxEmbeddingWriter,
 };
 pub use errors::ProvisionerError;
+// W5 — orphan classification for the reality reaper.
+pub use orphan_scan::{classify as classify_orphans, Finding, RegistryRow, ScanThresholds};
 pub use provisioner::{ProvisionReport, ProvisionRequest, Provisioner};
 pub use provisioner_live::{BridgeClient, LiveEffects};
 // L5.G cycle 26 — reality seeder + supporting traits.

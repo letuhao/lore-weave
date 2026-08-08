@@ -131,7 +131,7 @@ right**, the fourth finding that two of the third's fixes were regressions. Budg
 | `W2` | meta database + `meta-bridge` in compose (the `I8` write path) | ✅ `9dcb2dea9`, `31a57842b` |
 | `W4` | first reality provisioned end to end | ✅ `dd1d98b4e` |
 | **`W3`** | **`reality provision` — an admin COMMAND, and a real provision worker behind it** | ✅ see evidence below |
-| `W5` | `orphan_scanner` owns the abandoned half-provision | ⬜ |
+| `W5` | `orphan_scanner` owns the abandoned half-provision | ✅ **detection**; remediation needs a bridge endpoint (below) |
 | `W6` | `owner_user_id` on `reality_registry` — ownership exists before users can request | ⬜ decision + migration |
 | `W7` | a `CREATEDB`-only system role; stop provisioning as superuser | ⬜ |
 | `W8` | capacity: make the real path read `shard_utilization` (the drill fakes its snapshot) | ⬜ **subsumed by `W3`** |
@@ -220,6 +220,37 @@ dev stack, i.e. no admin command had ever run audited here.
 rebuilt, so Go parsed a field that was not there. Exit code 0 throughout. **Reading the output is
 the check; the exit code is not.**
 
+### `W5` — the scanner can now see, and what it is NOT
+
+`orphan_scanner` shipped in cycle 5 as a scaffold whose dry run classified `let scanned = 0u32` — an
+empty set, forever — and whose real mode exited 2 with *"cycle 6 dependency"*. The dependency it
+named (the MetaWrite RPC stack) has been up since `W2`, and `W3` finally gave the platform a
+**producer**: a crash between `CREATE DATABASE` and the registry transition now leaves exactly the
+states it was specified to find.
+
+Classification is a **pure function** (`orphan_scan::classify`, 13 unit tests) so the rules are
+provable without a database. Four classes; the third is the one nothing else can see:
+
+| class | why |
+|---|---|
+| `StalledProvision` | stuck in `provisioning`/`seeding` past 24h — records **whether the database was created**, since the two halves need different remediation |
+| `MissingDatabase` | the registry row claims a database that is not there |
+| **`UntrackedDatabase`** | **a `lw_reality_*` database no row claims. `capacity_glue` counts REGISTRY ROWS, so this is invisible to the one component whose job is knowing how full a shard is** |
+| `DropEligible` | `soft_deleted` past the 7-day grace — reported, not acted on |
+
+**Live, and the untracked class demonstrated rather than asserted.** Clean shard → `findings:0`,
+exit 0. Created a real orphan (`CREATE DATABASE lw_reality_w5probe0001`, no registry row) → the
+scanner found it, exit 1. **With that database present, the provisioner's own capacity read still
+reported `used: 3` while `SELECT count(*) … LIKE 'lw_reality_%'` returned `4`** — the blindness,
+measured. Dropped the probe → back to `findings:0`, exit 0. Exit codes verified directly (`0`/`1`/
+`2`), not through a pipe: **`1` = the shard is dirty and `2` = I never looked must never be one
+signal.**
+
+**IS NOT: remediation.** The scanner is READ-ONLY — it writes nothing and drops nothing. Marking an
+orphan needs a `reality_close_audit` write through the bridge, and the bridge exposes only
+`register-reality` and `transition`. `--remediate` therefore **REFUSES (exit 2)** rather than
+silently no-op'ing, which is the `NotWiredHandler` posture applied to a binary.
+
 **IS NOT:** the user-facing request pipeline. A user *requests*; that request runs manifest ingest
 and more, and it binds `book → lore bible → pre-manifest stub → manifest → reality`. Two of those
 stages are undesigned and one is not a named artifact. **Engine first** — you cannot offer a manifest
@@ -238,6 +269,8 @@ not implement toward it.
 | `FLOW-19` | `channel_writer_state` has no FK to `channels` | `flow19_trigger()` in `dp-channels-schema-gate` reds when `channels` gains a non-test writer. `W3` did NOT create one — it creates the *table*, per migration; the first row-writer is still ahead |
 | `W3-DEVKEY` | the dev stack's admin signing key is operator-env only, so `reality provision` reverts to unaudited-refused after a fresh clone | a second person needing to run an admin command here, or CI wanting one. Do **not** commit a key; a bootstrap script that generates one is the fix |
 | `W3-LOCKSPAN` | the advisory lock is held across the WHOLE 11-step provision (incl. migrations), not just through `register_pending` at step 3 | provisioning becoming frequent enough that per-shard serialisation hurts. Deliberate: correctness over throughput on an admin-gated action |
+| `W5-REMEDIATE` | the scanner detects but cannot mark: no bridge endpoint writes `reality_close_audit` (allowlisted to world-service, `reality.close.audit_recorded`) | **buildable now, not blocked** — a Go handler on meta-worker + a Rust client method. `--remediate` refuses loudly meanwhile, so this cannot be mistaken for done |
+| `W5-CRON` | nothing schedules the scanner — it is a binary nobody runs | its first real orphan, or `W5-REMEDIATE` landing. A detector nobody invokes is the scaffold problem one level up |
 | `1b7db-03` | `loreweave` is the sole Postgres login and is superuser | `W7`. Not a tenancy mechanism — DB roles are system roles, users never hold one |
 | `1b14-07` | `metadata` JSONB / `display_name` / `dissolved_at` unconstrained | the first writer of `channels` |
 | `1b7db-08` | `CREATE TABLE … INHERITS (channels)` bypasses constraints | conscious won't-fix; a non-SDK writer appearing |
