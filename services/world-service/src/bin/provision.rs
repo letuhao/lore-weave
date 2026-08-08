@@ -126,9 +126,19 @@ impl Args {
                 }
                 "--reason" => reason = Some(val.clone()),
                 "--owner-user-id" => {
-                    owner_user_id = Some(
-                        Uuid::parse_str(val).map_err(|e| format!("--owner-user-id: {e}"))?,
-                    );
+                    let oid = Uuid::parse_str(val)
+                        .map_err(|e| format!("--owner-user-id: {e}"))?;
+                    // The nil UUID is not an owner. Accepting it produced
+                    // ('user', 00000000-...) in reality_registry: a reality
+                    // owned by a user that cannot exist, which satisfies every
+                    // CHECK on the table. Refused rather than treated as
+                    // absent -- an operator who typed an owner meant one.
+                    if oid.is_nil() {
+                        return Err("--owner-user-id must not be the nil UUID \
+                                    (omit the flag for a platform-owned reality)"
+                            .to_string());
+                    }
+                    owner_user_id = Some(oid);
                 }
                 other => return Err(format!("unknown flag {other}")),
             }
@@ -773,6 +783,24 @@ mod tests {
         const OWNER: &str = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c";
         let b = args(&["--reality-id", RID, "--reason", "r", "--owner-user-id", OWNER]).unwrap();
         assert_eq!(b.owner_user_id.unwrap().to_string(), OWNER);
+    }
+
+    // The nil UUID parses fine, so without an explicit check it flows onward
+    // and the bridge writes ('user', 00000000-…) — a reality owned by a user
+    // that cannot exist.
+    #[test]
+    fn the_nil_owner_uuid_is_refused() {
+        let e = args(&[
+            "--reality-id", RID, "--reason", "r",
+            "--owner-user-id", "00000000-0000-0000-0000-000000000000",
+        ]);
+        // Matched rather than unwrap_err()'d: `Args` carries no Debug (and
+        // should not -- it holds the operator's reason text), so unwrap_err
+        // will not compile.
+        match e {
+            Err(msg) => assert!(msg.contains("nil UUID"), "wrong error: {msg}"),
+            Ok(_) => panic!("the nil UUID must not be accepted as an owner"),
+        }
     }
 
     #[test]

@@ -56,9 +56,17 @@ var _ uew.UserRealityLookup = (*PgUserRealityLookup)(nil)
 // OWNER-scoped (`WHERE user_ref_id = $1`), so this is not the cross-user read
 // registered as `actor_binding_cross_user`; scripts/meta-sensitive-read-bypass-lint.sh
 // exempts this package for exactly that reason.
+// **W6 addition — OWNED realities count too.** This used to read only
+// `actor_control_binding`, so a user who OWNS a reality but drives no actor in
+// it was invisible to the entire cascade: every per-reality scrub skipped it,
+// and the reality kept their data. Ownership arrived in migration 036 and this
+// query did not move with it. The UNION is the conservative direction the
+// paragraph above already argues for.
 func (l *PgUserRealityLookup) RealitiesForUser(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := l.meta.Query(ctx,
-		`SELECT DISTINCT reality_id FROM actor_control_binding WHERE user_ref_id = $1`, userID)
+		`SELECT reality_id FROM actor_control_binding WHERE user_ref_id = $1
+         UNION
+         SELECT reality_id FROM reality_registry   WHERE owner_user_id = $1`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("pglive: query realities for user %s: %w", userID, err)
 	}
@@ -197,6 +205,66 @@ func (s *PgMetaScrubber) ScrubUserMetaRefs(ctx context.Context, userID uuid.UUID
 	}
 	if _, err := meta.MetaWriteBatch(ctx, s.cfg, intents); err != nil {
 		return fmt.Errorf("pglive: erase actor_control_binding for user %s: %w", userID, err)
+	}
+	return s.reassignOwnedRealities(ctx, userID)
+}
+
+// reassignOwnedRealities discharges the `@erasure_method:
+// reassign_to_system_on_user_erasure` that migration 036 declares.
+//
+// **It is a REASSIGN, not a delete.** A reality may hold other users' play, so
+// erasing one person must not destroy the world; what erasure owes is removal
+// of the REFERENCE. Setting (owner_kind='system', owner_user_id=NULL) severs the
+// person from the reality and leaves it running — and the table's CHECK
+// constraints make that the only well-formed way to do it: clearing the id
+// alone is refused by `reality_registry_owner_user_set`, so a partial erasure
+// cannot be written even by mistake.
+//
+// This was declared in the migration header and implemented NOWHERE — the exact
+// "promise nothing keeps" the sibling comment above warns about, written by
+// someone who had just read it. It went unnoticed because the mechanism built
+// for this class, `TestNoPerRealityTableCarriesAUserReference`, walks only
+// `contracts/migrations/per_reality`; W6 put `owner_user_id` in
+// `migrations/meta`, the one tree that gate never visits. Default-uncovered,
+// NV-3. `TestMetaMigrationsDeclareAnImplementedErasure` now walks that tree.
+func (s *PgMetaScrubber) reassignOwnedRealities(ctx context.Context, userID uuid.UUID) error {
+	rows, err := s.meta.Query(ctx,
+		`SELECT reality_id FROM reality_registry WHERE owner_user_id = $1`, userID)
+	if err != nil {
+		return fmt.Errorf("pglive: enumerate realities owned by %s: %w", userID, err)
+	}
+	var owned []uuid.UUID
+	for rows.Next() {
+		var rid uuid.UUID
+		if err := rows.Scan(&rid); err != nil {
+			rows.Close()
+			return fmt.Errorf("pglive: scan owned reality_id: %w", err)
+		}
+		owned = append(owned, rid)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("pglive: iterate owned realities: %w", err)
+	}
+	if len(owned) == 0 {
+		return nil // never owned one / already reassigned — idempotent
+	}
+
+	intents := make([]meta.MetaWriteIntent, 0, len(owned))
+	for _, rid := range owned {
+		intents = append(intents, meta.MetaWriteIntent{
+			Table:     "reality_registry",
+			Operation: meta.OpUpdate,
+			PK:        map[string]any{"reality_id": rid},
+			// BOTH columns, together: the pair must stay consistent or the
+			// CHECK rejects the write.
+			NewValues: map[string]any{"owner_kind": "system", "owner_user_id": nil},
+			Actor:     meta.Actor{Type: meta.ActorService, ID: s.actorID},
+			Reason:    "gdpr erasure: reassign the reality to the platform (migration 036 @erasure_method)",
+		})
+	}
+	if _, err := meta.MetaWriteBatch(ctx, s.cfg, intents); err != nil {
+		return fmt.Errorf("pglive: reassign realities owned by %s: %w", userID, err)
 	}
 	return nil
 }

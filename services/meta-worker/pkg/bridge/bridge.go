@@ -242,6 +242,43 @@ type MetaRegistrar struct {
 	Caller string // the caller's service-principal UUID (audit Actor.ID)
 }
 
+// deriveOwner turns the ONE field a client may send into the (owner_kind,
+// owner_user_id) pair `reality_registry` requires — W6's tenancy tier.
+//
+// Extracted and exported-to-tests because a cold-start review found this
+// decision — the single place `owner_kind` is chosen — had **no test and no
+// bite**: every `TestRegister*` routes through a fake Registrar and exercises
+// the HTTP handler, so replacing the whole derivation with `ownerKind := "user"`
+// left the entire Go suite green. The four bites that did exist all covered the
+// argv TRANSPORT, never the DECISION.
+//
+// Returns `any` for the id so an absent owner becomes a real SQL NULL.
+func deriveOwner(raw string) (kind string, id any, err error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		// Platform-owned. A REAL category, not "unknown".
+		return "system", nil, nil
+	}
+	oid, perr := uuid.Parse(s)
+	if perr != nil {
+		return "", nil, fmt.Errorf("register: owner_user_id not a uuid: %w", perr)
+	}
+	// The nil UUID is not an owner. Accepting it wrote ('user', 00000000-…) —
+	// a reality owned by a user that cannot exist, which satisfies every CHECK
+	// on the table and sits in the partial owner index. The same discipline is
+	// already applied to reality_id (provision_reality.go rejects uuid.Nil);
+	// it was simply not carried across to the new id column.
+	//
+	// It is REFUSED rather than coerced to system-owned: an operator who typed
+	// an owner meant to set one, and silently producing a platform-owned
+	// reality while reporting success is the worse of the two failures.
+	if oid == uuid.Nil {
+		return "", nil, fmt.Errorf(
+			"register: owner_user_id must not be the nil UUID (omit the field for a platform-owned reality)")
+	}
+	return "user", oid, nil
+}
+
 // Register INSERTs the reality_registry row via MetaWrite (I8). A reality_id PK
 // conflict maps to ErrAlreadyRegistered (idempotent retry).
 func (m MetaRegistrar) Register(ctx context.Context, r RegisterReq) error {
@@ -253,15 +290,9 @@ func (m MetaRegistrar) Register(ctx context.Context, r RegisterReq) error {
 	// so the pair written is consistent by construction and the table's
 	// owner_system_null / owner_user_set CHECKs can never be the thing that
 	// discovers a mistake.
-	ownerKind := "system"
-	var ownerUserID any // nil => SQL NULL
-	if s := strings.TrimSpace(r.OwnerUserID); s != "" {
-		oid, err := uuid.Parse(s)
-		if err != nil {
-			return fmt.Errorf("register: owner_user_id not a uuid: %w", err)
-		}
-		ownerKind = "user"
-		ownerUserID = oid
+	ownerKind, ownerUserID, err := deriveOwner(r.OwnerUserID)
+	if err != nil {
+		return err
 	}
 
 	intent := meta.MetaWriteIntent{

@@ -47,8 +47,11 @@ PROVPG = CMDS / "provision_reality_pg.go"
 GOMOD = REPO / "services" / "admin-cli"
 ORPHAN = REPO / "services" / "world-service" / "src" / "orphan_scan.rs"
 WORKER = REPO / "services" / "world-service" / "src" / "bin" / "provision.rs"
+BRIDGE = REPO / "services" / "meta-worker" / "pkg" / "bridge" / "bridge.go"
+SCRUB = REPO / "services" / "meta-worker" / "pkg" / "user_erased_writer" / "pglive" / "pglive.go"
+METAMOD = REPO / "services" / "meta-worker"
 
-GO, RUST = "go", "rust"
+GO, RUST, META = "go", "rust", "meta"
 
 # (label, file, anchor, mutation, test regex) — the Go suite
 GO_BITES: list[tuple[str, Path, str, str, str]] = [
@@ -283,8 +286,56 @@ RUST_BITES: list[tuple[str, Path, str, str, str]] = [
     ),
 ]
 
-SUITES = [(GO, GO_BITES), (RUST, RUST_BITES)]
-ALL_BITES = GO_BITES + RUST_BITES
+
+# The META suite — meta-worker: W6's tier derivation and the GDPR erasure.
+META_BITES: list[tuple[str, Path, str, str, str]] = [
+    (
+        "the ownership tier is not derived at all (every reality becomes user-owned)",
+        BRIDGE,
+        'return "user", oid, nil',
+        'return "user", oid, nil // bite marker',
+        "TestDeriveOwner_AbsentIsPlatformOwned",
+    ),
+    (
+        "an absent owner produces a non-NULL id (violates owner_system_null)",
+        BRIDGE,
+        'return "system", nil, nil',
+        'return "system", uuid.Nil, nil',
+        "TestDeriveOwner_NeverProducesAnInconsistentPair",
+    ),
+    (
+        "the nil UUID is accepted as an owner (a reality owned by nobody)",
+        BRIDGE,
+        "if oid == uuid.Nil {",
+        "if false {",
+        "TestDeriveOwner_NilUUIDIsRefused",
+    ),
+    (
+        "user erasure never reassigns the realities the user owns",
+        SCRUB,
+        "return s.reassignOwnedRealities(ctx, userID)",
+        "return nil",
+        "TestScrubberSourceNamesEveryTableItClaims",
+    ),
+    (
+        "erasure clears the owner id but leaves the tier (a half-written erasure)",
+        SCRUB,
+        '"owner_kind": "system", "owner_user_id": nil',
+        '"owner_user_id": nil',
+        "TestScrubberSourceNamesEveryTableItClaims",
+    ),
+    (
+        "a user who OWNS a reality but drives no actor is invisible to the cascade",
+        SCRUB,
+        "         UNION
+         SELECT reality_id FROM reality_registry   WHERE owner_user_id = $1`, userID)",
+        "`, userID)",
+        "TestRealitiesForUser_IncludesOwnedRealities",
+    ),
+]
+
+SUITES = [(GO, GO_BITES), (RUST, RUST_BITES), (META, META_BITES)]
+ALL_BITES = GO_BITES + RUST_BITES + META_BITES
 
 TARGETS = sorted({str(p.relative_to(REPO)).replace("\\", "/") for _, p, _, _, _ in ALL_BITES})
 
@@ -307,6 +358,14 @@ def run_test(suite: str, regex: str) -> tuple[int, str]:
         p = subprocess.run(
             ["go", "test", "./internal/commands/", "-run", regex, "-count=1"],
             cwd=GOMOD,
+            capture_output=True,
+            text=True,
+        )
+    elif suite == META:
+        p = subprocess.run(
+            ["go", "test", "./pkg/bridge/", "./pkg/user_erased_writer/pglive/",
+             "-run", regex, "-count=1"],
+            cwd=METAMOD,
             capture_output=True,
             text=True,
         )

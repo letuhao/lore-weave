@@ -93,43 +93,111 @@ fi
 # the same for every tenant; user-level tenancy is `reality_registry.owner_*`
 # (W6) and is enforced in the application, not by the database's login.
 PROVISIONER_ROLE="loreweave_provisioner"
+# Dev-only default, matching POSTGRES_PASSWORD in docker-compose.yml: this file
+# bootstraps a LOCAL compose cluster. A real deployment sets
+# LOREWEAVE_PROVISIONER_PASSWORD. The value is never interpolated into SQL --
+# see the psql -v binding below.
 PROVISIONER_PASSWORD="${LOREWEAVE_PROVISIONER_PASSWORD:-loreweave_dev}"
 
-role_exists=$(psql -U loreweave -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='$PROVISIONER_ROLE'" 2>/dev/null)
-if [ "$role_exists" != "1" ]; then
+# NOTE ON `2>/dev/null || true`: the rest of this script uses it, and for the
+# CREATE DATABASE loop it is harmless (the next start retries). It is NOT
+# harmless here. A silently-failed ALTER ROLE means the drift correction this
+# block advertises never ran; a silently-failed GRANT means the provisioner's
+# meta read 500s at runtime with no clue why. A cold-start review found every
+# W7 statement swallowing its own failure while the script still printed "All
+# databases verified." So this block reports, and VERIFIES its result below.
+
+if ! psql -U loreweave -d postgres -tAc \
+      "SELECT 1 FROM pg_roles WHERE rolname='$PROVISIONER_ROLE'" | grep -q 1; then
   echo "Creating provisioning role: $PROVISIONER_ROLE (CREATEDB, NOSUPERUSER)"
-  psql -U loreweave -d postgres -c \
-    "CREATE ROLE $PROVISIONER_ROLE LOGIN PASSWORD '$PROVISIONER_PASSWORD' \
-     CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS;" 2>/dev/null || true
+  # The password is BOUND, not interpolated: `:'pw'` makes psql apply proper
+  # literal quoting.
+  #
+  # This was an interpolated '$PROVISIONER_PASSWORD' until a cold-start review
+  # demonstrated the obvious: LOREWEAVE_PROVISIONER_PASSWORD is operator-supplied
+  # and this DDL runs as the superuser `loreweave`, so a password of
+  #     x'; ALTER ROLE loreweave_provisioner SUPERUSER; --
+  # granted the provisioning role SUPERUSER. The one environment variable W7
+  # introduced was an escalation path around the one boundary W7 introduced.
+  #
+  # Fed on STDIN, not `-c`: psql performs variable interpolation in its lexer,
+  # which `-c` bypasses entirely -- `psql -v pw=x -c "SELECT :'pw'"` is a syntax
+  # error, so the binding would silently not be a binding. Measured, not assumed.
+  # Passing it this way also keeps the secret off the process table (`ps`), which
+  # the `-c` form did not.
+  printf '%s\n' \
+    "CREATE ROLE $PROVISIONER_ROLE LOGIN PASSWORD :'pw' CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS;" \
+    | psql -U loreweave -d postgres -v pw="$PROVISIONER_PASSWORD" \
+    || echo "WARNING: could not create $PROVISIONER_ROLE"
 fi
-# Re-assert the attributes every start: a role that drifted to SUPERUSER by hand
-# would otherwise keep the name and lose the point.
-psql -U loreweave -d postgres -c \
-  "ALTER ROLE $PROVISIONER_ROLE CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS;" \
-  2>/dev/null || true
+
+# Re-assert the attributes ONLY on drift. This used to run unconditionally, and
+# this script is the compose healthcheck at interval 5s -- so it rewrote a
+# pg_authid tuple every five seconds forever (~17k dead tuples/day in a shared
+# catalog) to correct drift that essentially never happens. Read first.
+drift=$(psql -U loreweave -d postgres -tAc \
+  "SELECT 1 FROM pg_roles WHERE rolname='$PROVISIONER_ROLE'
+     AND (rolsuper OR rolcreaterole OR rolreplication OR rolbypassrls OR NOT rolcreatedb)")
+if [ "$drift" = "1" ]; then
+  echo "WARNING: $PROVISIONER_ROLE drifted from its attributes -- correcting"
+  psql -U loreweave -d postgres -c \
+    "ALTER ROLE $PROVISIONER_ROLE CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS;" \
+    || echo "WARNING: could not correct $PROVISIONER_ROLE attributes"
+fi
+
+# ASSERT the outcome. Everything above could fail and this script would still
+# print "All databases verified" -- the check the previous version lacked.
+if ! psql -U loreweave -d postgres -tAc \
+      "SELECT 1 FROM pg_roles WHERE rolname='$PROVISIONER_ROLE'
+         AND rolcreatedb AND NOT rolsuper AND NOT rolbypassrls" | grep -q 1; then
+  echo "FATAL: $PROVISIONER_ROLE is missing or over-privileged; provisioning would run as superuser"
+  exit 1
+fi
 
 # `vector` into template1 (W7). Migration 0008 runs `CREATE EXTENSION IF NOT
 # EXISTS vector`, and pgvector's control file does NOT declare `trusted`, so
 # installing it requires SUPERUSER -- which would force provisioning to stay
 # superuser for one line of one migration. Every CREATE DATABASE copies
-# template1, so installing it there once makes 0008 a no-op that any role can
-# run. Preferred over marking the extension trusted: this changes only THIS
-# cluster's template, not the privilege rules of an extension.
-psql -U loreweave -d template1 -c "CREATE EXTENSION IF NOT EXISTS vector;" 2>/dev/null || true
+# template1 (the provisioner issues a bare `CREATE DATABASE`, whose default
+# template IS template1 -- that implicit default is the load-bearing link, so a
+# future `TEMPLATE template0` there silently breaks this), so installing it here
+# makes 0008 a no-op any role can run.
+#
+# Failure is FATAL rather than silent: without it, provisioning dies at
+# migration 0008 with a confusing permission error long after this ran.
+if ! psql -U loreweave -d template1 -c "CREATE EXTENSION IF NOT EXISTS vector;" >/dev/null; then
+  echo "FATAL: could not install pgvector into template1; provisioning will fail at 0008"
+  exit 1
+fi
 
 # The provisioner also READS meta -- live capacity (`shard_utilization` +
 # `reality_registry`) and, since the retry fix, the existing registration for
-# the reality it is about to place. Grant exactly those two tables, SELECT only.
+# the reality it is about to place. COLUMN-level on reality_registry: the worker
+# needs exactly these four, and a bare table grant would additionally expose
+# every reality's owner_user_id to a role that has no use for it.
+#
 # It must never WRITE reality_registry: that is invariant I8 (every write goes
 # through Go MetaWrite so the meta_write_audit row lands in the same TX), and
 # the absence of INSERT/UPDATE here is what makes the bridge the only door.
 if [ "$meta_exists" = "1" ]; then
   psql -U loreweave -d postgres -c \
-    "GRANT CONNECT ON DATABASE loreweave_meta TO $PROVISIONER_ROLE;" 2>/dev/null || true
+    "GRANT CONNECT ON DATABASE loreweave_meta TO $PROVISIONER_ROLE;" >/dev/null \
+    || echo "WARNING: GRANT CONNECT on loreweave_meta failed"
   psql -U loreweave -d loreweave_meta -c \
-    "GRANT USAGE ON SCHEMA public TO $PROVISIONER_ROLE;" 2>/dev/null || true
+    "GRANT USAGE ON SCHEMA public TO $PROVISIONER_ROLE;" >/dev/null \
+    || echo "WARNING: GRANT USAGE on schema public failed"
   psql -U loreweave -d loreweave_meta -c \
-    "GRANT SELECT ON shard_utilization, reality_registry TO $PROVISIONER_ROLE;" 2>/dev/null || true
+    "GRANT SELECT ON shard_utilization TO $PROVISIONER_ROLE;" >/dev/null \
+    || echo "WARNING: GRANT SELECT on shard_utilization failed"
+  # REVOKE first: an earlier version granted SELECT on the whole table, and a
+  # table-level grant SUPERSEDES the column list below (column privileges are
+  # additive, so leaving it would make the narrowing decorative).
+  psql -U loreweave -d loreweave_meta -c \
+    "REVOKE SELECT ON reality_registry FROM $PROVISIONER_ROLE;" >/dev/null \
+    || echo "WARNING: REVOKE table-level SELECT on reality_registry failed"
+  psql -U loreweave -d loreweave_meta -c \
+    "GRANT SELECT (reality_id, db_host, db_name, status) ON reality_registry TO $PROVISIONER_ROLE;" >/dev/null \
+    || echo "WARNING: GRANT SELECT on reality_registry columns failed"
 fi
 
 # Return healthy

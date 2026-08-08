@@ -666,6 +666,14 @@ func buildProvisionRealityHandler() (framework.Handler, func(), error) {
 			if err != nil {
 				return "", fmt.Errorf("invalid owner_user_id %q: %w", raw, err)
 			}
+			// The nil UUID parses fine and would then be indistinguishable from
+			// "not supplied" one layer down (the invoker drops the flag when the
+			// value is uuid.Nil), so the operator would get a platform-owned
+			// reality and a success message. Refuse where they typed it.
+			if owner == uuid.Nil {
+				return "", fmt.Errorf(
+					"owner_user_id must not be the nil UUID (omit the parameter for a platform-owned reality)")
+			}
 		}
 		return commands.RunProvisionReality(ctx, commands.ProvisionRealityRequest{
 			RealityID:    rid,
