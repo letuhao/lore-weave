@@ -100,6 +100,34 @@ RUNTIME_LEGACY = "legacy"
 RUNTIME_AGENTRUNTIME = "agentruntime"
 
 
+def current_runtime_variant() -> str:
+    """CP-2.8 — **which arm is serving this process, derived where the arm is DECIDED.**
+
+    🔴 **`legacy` AS A DEFAULT IS FAIL-SAFE IN ONLY ONE DIRECTION, AND THE OTHER ONE IS THE
+    MEASUREMENT.** A missing label protects the new arm from **false credit** — an unlabelled row
+    never counts as a success for the new runtime. It does **not** protect the new arm's own
+    **failure rate**: an unlabelled new-runtime row loses its *numerator* too, and **label-omission
+    correlates with crash and cancel**, which are exactly the terminal paths a hand-passed label is
+    most likely to miss. The arm would then measure as safer than it is, by construction.
+
+    So the label is not a parameter anyone can pass, forget, or pass wrongly. `stamp_tool_call`
+    calls this, and this reads the same setting the route reads. **Five production call sites stamp
+    tool calls and not one of them passes a variant** — under a keyword default every one of them
+    wrote `legacy` regardless of which arm ran; under this, every one of them is correct with no
+    call-site edit at all. That is the difference between *a structural chokepoint covering every
+    terminal path* and *the happy path*.
+
+    🔴 **AND IT DOES NOT PERTURB THE CONTROL ARM.** With `agentruntime_arm` off this returns
+    `legacy` — the same value the constant wrote — so every existing row is byte-identical. That
+    matters because the legacy arm is CP-2's control group (§7), and CP-1.9 established that a
+    control moved by a change nobody decided invalidates the comparison before it starts. 2.2 and
+    2.3 both declined to touch the control; this one does not have to.
+    """
+    from app.config import settings
+
+    return RUNTIME_AGENTRUNTIME if settings.agentruntime_arm else RUNTIME_LEGACY
+
+
 def tool_call_source(chunk: dict) -> str:
     """The source of a recorded call, or ``unclassified`` if nobody said.
 
@@ -119,7 +147,6 @@ def stamp_tool_call(
     source: str,
     latency_ms: int | None = None,
     declaration: str | None = None,
-    runtime_variant: str = RUNTIME_LEGACY,
 ) -> dict:
     """Attach CP-0.3 and CP-0.7 to one recorded call, in place, and return it.
 
@@ -135,7 +162,9 @@ def stamp_tool_call(
     if latency_ms is not None:
         chunk["latency_ms"] = int(latency_ms)
     chunk["declaration"] = declaration or chunk.get("tool")
-    chunk["runtime_variant"] = runtime_variant
+    # CP-2.8 — DERIVED, never passed. See `current_runtime_variant`: a label a caller can
+    # omit is one that goes missing on exactly the terminal paths that matter.
+    chunk["runtime_variant"] = current_runtime_variant()
     return chunk
 
 
@@ -248,7 +277,7 @@ def ensure_tool_call_instrumented(chunk: dict) -> dict:
         chunk["latency_ms"] = None
         chunk.setdefault("latency_unmeasured", _source)
     chunk.setdefault("declaration", _tool)
-    chunk.setdefault("runtime_variant", RUNTIME_LEGACY)
+    chunk.setdefault("runtime_variant", current_runtime_variant())
     chunk.setdefault("latency_ms", None)
     return chunk
 

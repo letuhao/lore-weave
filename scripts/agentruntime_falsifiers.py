@@ -368,6 +368,39 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/surface.py", "        required = list(required)", "        required = required"),
     ],
 
+    # ── CP-2.8 · the arm label at a structural chokepoint ─────────────────────────────────────
+    #
+    # `INSTR` is the legacy instrument, which is also CP-2's CONTROL arm. Every falsifier below
+    # restores the state this row repaired: a label a caller passes, defaulting to a constant.
+    "test_THE_LABEL_IS_NOT_A_PARAMETER_A_CALLER_CAN_PASS_AT_ALL": [
+        (f"{CS}/app/services/instrument.py", "    declaration: str | None = None,\n) -> dict:",
+         "    declaration: str | None = None,\n    runtime_variant: str = RUNTIME_LEGACY,\n"
+         ") -> dict:"),
+    ],
+    "test_ON_THE_NEW_ARM_EVERY_STAMP_SAYS_AGENTRUNTIME": [
+        (f"{CS}/app/services/instrument.py",
+         '    chunk["runtime_variant"] = current_runtime_variant()',
+         '    chunk["runtime_variant"] = RUNTIME_LEGACY'),
+    ],
+    "test_THE_CONTROL_ARM_IS_BYTE_IDENTICAL__the_reason_this_row_could_be_built_at_all": [
+        # The other direction: a derivation that gets the CONTROL wrong moves CP-2's control group,
+        # which is the one outcome CP-1.9 spent an item forbidding.
+        (f"{CS}/app/services/instrument.py",
+         "    return RUNTIME_AGENTRUNTIME if settings.agentruntime_arm else RUNTIME_LEGACY",
+         "    return RUNTIME_AGENTRUNTIME"),
+    ],
+    "test_THE_BACKFILL_PATH_DERIVES_IT_TOO__not_only_the_stamping_one": [
+        # The pair repaired at ONE end - thirteen instances in this run.
+        (f"{CS}/app/services/instrument.py",
+         '    chunk.setdefault("runtime_variant", current_runtime_variant())',
+         '    chunk.setdefault("runtime_variant", RUNTIME_LEGACY)'),
+    ],
+    "test_NO_SITE_IN_THE_SERVICE_STILL_WRITES_THE_CONSTANT": [
+        (f"{CS}/app/services/instrument.py",
+         '    chunk["runtime_variant"] = current_runtime_variant()',
+         '    chunk["runtime_variant"] = RUNTIME_LEGACY'),
+    ],
+
     # ── CP-2.9 · prompt_hash ──────────────────────────────────────────────────────────────────
     "test_AN_EDITED_PROMPT_PRODUCES_A_DIFFERENT_DIGEST": [
         (f"{PKG}/observation.py", "    return digest(prompt)", '    return "constant"'),

@@ -526,6 +526,87 @@ class TestAPlanStepsDeclarationIsAdvertised:
         assert deferred_names(defs) == ("c",)
 
 
+# ── 2.8 · runtime_variant at a structural chokepoint ────────────────────────────────────────────
+
+class TestTheArmLabelCannotBeOmittedOrPassedWrongly:
+    """REJECTS: an unlabelled new-runtime row, which is survivorship bias rather than caution.
+
+    🔴 **`legacy` AS A DEFAULT IS FAIL-SAFE IN ONLY ONE DIRECTION.** A missing label protects the
+    new arm from **false credit** — it never counts as a success. It does **not** protect the new
+    arm's own **failure rate**: an unlabelled new-runtime row loses its numerator too, and
+    **label-omission correlates with crash and cancel**, the terminal paths a hand-passed label is
+    most likely to miss. The arm would measure as safer than it is, by construction.
+    """
+
+    def _stamp(self, **over):
+        from app.services import instrument
+
+        chunk = {"tool": "book_list", **over}
+        return instrument.stamp_tool_call(chunk, source=instrument.SOURCE_TOOL)
+
+    def test_THE_LABEL_IS_NOT_A_PARAMETER_A_CALLER_CAN_PASS_AT_ALL(self):
+        """The strongest available form: it cannot be omitted **because it cannot be supplied.**
+        Five production call sites stamp tool calls and **not one passes a variant** — under a
+        keyword default every one of them wrote `legacy` no matter which arm ran."""
+        import inspect
+
+        from app.services import instrument
+
+        params = inspect.signature(instrument.stamp_tool_call).parameters
+        assert "runtime_variant" not in params, (
+            "the arm label is passable again; a label a caller can pass is one a caller can pass "
+            "WRONGLY, and one they can forget on the crash path"
+        )
+
+    def test_ON_THE_NEW_ARM_EVERY_STAMP_SAYS_AGENTRUNTIME(self, monkeypatch):
+        from app.config import settings
+        from app.services import instrument
+
+        monkeypatch.setattr(settings, "agentruntime_arm", True)
+        assert self._stamp()["runtime_variant"] == instrument.RUNTIME_AGENTRUNTIME
+
+    def test_THE_CONTROL_ARM_IS_BYTE_IDENTICAL__the_reason_this_row_could_be_built_at_all(
+            self, monkeypatch):
+        """🔴 CP-1.9 established that a control moved by a change nobody decided invalidates the
+        comparison before it starts — **2.2 and 2.3 both declined to touch the control for that
+        reason.** This row does not have to: with the flag off, the derived value is the same
+        constant the default wrote."""
+        from app.config import settings
+        from app.services import instrument
+
+        monkeypatch.setattr(settings, "agentruntime_arm", False)
+        assert self._stamp()["runtime_variant"] == instrument.RUNTIME_LEGACY
+
+    def test_THE_BACKFILL_PATH_DERIVES_IT_TOO__not_only_the_stamping_one(self, monkeypatch):
+        """🔴 **TWO SITES WROTE THE CONSTANT, AND FIXING ONE IS THE PAIR-AT-ONE-END FAILURE** this
+        run has now recorded thirteen times. The second is a `setdefault` in the derive path — the
+        one that runs for a chunk nobody stamped, which is precisely the crash-and-cancel shape."""
+        from app.config import settings
+        from app.services import instrument
+
+        monkeypatch.setattr(settings, "agentruntime_arm", True)
+        derived = instrument.ensure_tool_call_instrumented(
+            {"tool": "book_list", "source": "tool"})
+        assert derived["runtime_variant"] == instrument.RUNTIME_AGENTRUNTIME
+
+    def test_NO_SITE_IN_THE_SERVICE_STILL_WRITES_THE_CONSTANT(self):
+        """The enumeration, because every ratio published in this run has been a lower bound: no
+        module may assign `runtime_variant` from a bare constant any more."""
+        import ast
+
+        offenders = []
+        root = _REPO / "services" / "chat-service" / "app"
+        for path in sorted(root.rglob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text("utf-8"))):
+                is_assign = (isinstance(node, ast.Assign)
+                             and any(isinstance(t, ast.Subscript)
+                                     and isinstance(t.slice, ast.Constant)
+                                     and t.slice.value == "runtime_variant" for t in node.targets))
+                if is_assign and isinstance(node.value, ast.Name):
+                    offenders.append(f"{path.name}:{node.lineno}")
+        assert offenders == [], f"a bare constant is assigned to runtime_variant at {offenders}"
+
+
 # ── 2.9 · prompt_hash ───────────────────────────────────────────────────────────────────────────
 
 class TestAPromptCanChangeAndSomethingNotices:

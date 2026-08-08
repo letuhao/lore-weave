@@ -3595,21 +3595,71 @@ is a **write-path** change that belongs with 2.8's stamp. Stated rather than blu
 (answers nothing), a digest that varies per call (answers nothing), and the normalisation removed
 (answers *changed* on an unchanged prompt).
 
-### ▶ NEXT ROW: 2.8, and the tension in it is stated before it is started
+### ⭐ CP-2.8 — the label is not a parameter anyone can pass, and the PO question dissolved
 
-`runtime_variant` defaults to `legacy` in **two** places — `stamp_tool_call`'s keyword default and
-`chunk.setdefault(...)` in the same module. The row's own argument is why that is not enough:
-`legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship
-bias in the new arm's own failure rate** — an unlabelled new-runtime row loses its numerator too,
-and **label-omission correlates with crash and cancel**. The fix has the shape CP-2.5 already used:
-**no default at all**, supplied structurally from where the arm is decided.
+**Built 2026-08-08.** The row's argument is the whole item, and it is about a direction:
 
-🔴 **And the tension, recorded rather than discovered later:** both sites are in
-`app/services/instrument.py`, which is the **legacy arm's write path** — CP-2's CONTROL GROUP.
-CP-1.9 spent an entire item establishing that a control perturbed by changes nobody decided
-invalidates the comparison before it starts, and 2.2 and 2.3 both declined to touch the control for
-exactly that reason. **Whether making the parameter required counts as perturbing the control is a
-PO question, not the builder's**, and it is the first thing 2.8 must settle.
+> `legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship
+> bias in the new arm's own failure rate**: an unlabelled new-runtime row **loses its numerator
+> too**, and label-omission **correlates with crash and cancel**.
+
+Those are precisely the terminal paths a hand-passed label is most likely to miss — so the arm
+would measure as *safer than it is*, by construction.
+
+### ▶ The fix is the strongest available form: **it cannot be omitted because it cannot be supplied**
+
+`stamp_tool_call(..., runtime_variant: str = RUNTIME_LEGACY)` → **the parameter is gone.** Both
+write sites call `current_runtime_variant()`, which reads the same setting the route reads.
+
+**Five production call sites stamp tool calls and not one of them passed a variant.** Under a
+keyword default every one of them wrote `legacy` regardless of which arm ran; under a derivation
+every one is correct **with no call-site edit at all**. That is the difference between *a structural
+chokepoint covering every terminal path* and *the happy path*.
+
+🔴 **BOTH sites, not one.** The second is a `setdefault` in the backfill path — the one that runs
+for a chunk nobody stamped, which is exactly the crash-and-cancel shape. Repairing one end of a pair
+is the failure this run has recorded **thirteen times**, so it has its own guard and its own
+falsifier.
+
+### ⭐ The PO question I recorded at 2.7 dissolved on inspection
+
+I recorded this row as blocked: both default sites live in `instrument.py`, **the legacy arm's write
+path, which is CP-2's CONTROL GROUP** — and CP-1.9 established that a control moved by a change
+nobody decided invalidates the comparison before it starts. 2.2 and 2.3 both declined to touch the
+control for that reason.
+
+**It was not a scope question, it was an arithmetic one, and the arithmetic answers it:** with the
+flag off the derivation returns `legacy` — **the same value the constant wrote**. Every existing row
+is byte-identical, so the control does not move. That is guarded in both directions: one falsifier
+makes the derivation always-agentruntime (which *would* move the control) and one restores the
+constant (which loses the new arm).
+
+Recording the tension before starting is what made it cheap to settle. **Escalating it would have
+been wrong — and so would quietly proceeding without checking.**
+
+### ▶ One CP-0 guard changed, and its claim did not
+
+`test_a_consolidating_declaration_keeps_both_identities` passed `runtime_variant=` explicitly. Its
+subject is *both identities ride* — `tool` **and** `declaration` — and the variant was incidental to
+it. The guard now selects the arm through the setting. **A caller can no longer assert an arm it is
+not on**, which is the point of the row.
+
+### ▶ The three QC pillars
+
+**QC1 · CODE — `PASS`.** Suite **2412** · census **82 sites · 8 silent · 74 red**, `rc=0` · falsification **364 guards,
+105 falsified, 259 unproven, 0 stale anchors**, **105/105 fire** · membrane gate green. **5 new
+guards, 5 falsifiers**, including an AST sweep of the whole service asserting **no module assigns
+`runtime_variant` from a bare constant** — because every ratio published in this run has been a
+lower bound.
+
+**QC2 · LIVE RUN — `CANNOT DETERMINE`.** The stamp is exercised through the real
+`stamp_tool_call` and the real backfill path with the real settings object, on both arms. What has
+not run is a **deployed turn writing a row to Postgres**, which is the same missing half every row
+in this checkpoint carries.
+
+**QC3 · DATA — `PASS`.** The artifact is the stamped chunk on each arm, with the falsifier stated:
+restore the constant and the new arm's rows read `legacy`; make the derivation unconditional and the
+control's rows stop reading `legacy`.
 
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
@@ -3893,7 +3943,7 @@ declarations, not silently emit a tool-free pass.
 | 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `observation.py`: four required fields, **no defaults** — every plausible default is a constant at a write boundary, which is P4. `advertised` is an array PER PASS and a duplicate pass is refused. The guardrail refuses `acted=True` at construction; a fire needs deterministic evidence AND a transition. ✖ wrong-object counter and `manifest_revision` are absent, and guarded absent. See the CP-2.5 block above |
 | **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | 🟡 **PART BUILT 2026-08-08 — M4 IS TRUE.** `boot.py` + `chat-service`'s `lifespan` call it: **the package has a production importer.** §3's literal test passes per required clause, in fresh interpreters; an ABSENT manifest still boots (empty is legitimate). ✅ **A–D now measured** at the advertise chokepoint: the branch is a `return`, the new arm serves `[]` from a populated legacy catalogue, the model is told WHICH emptiness, and the `Surface` comes back with the payload so P1 is one computation. ✖ **A deployed turn against a real model is still `CANNOT DETERMINE`.** See both CP-2.7 blocks above |
 | **2.9** | **`prompt_hash` — chat-service-local, ~10 lines, and that is the whole item.** ⬅️ rewritten 2026-08-05; the original bundled four things and red team killed three. It closes a **currently undetectable** failure: a prompt can change today and nothing notices. 🔴 **NOT included, each for a measured reason:** `code_revision` — `GIT_SHA` becomes an **OCI image label**, no Dockerfile consumes it, `os.environ.get("GIT_SHA")` is `None` in **every** scenario; `seed` — it is **already forwarded** at `adapters.go:678`, the three typed hops above drop it, production runs `temperature=0.0` (greedy, so a seed consumes no randomness) and Anthropic has no seed parameter at all; `block_hashes` — **cannot be computed correctly here**, the cache breakpoint is owned by provider-registry *after* a schema translation, so a chat-service hash can be green while the cached bytes changed | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `digest(nfc(prompt))` — the NFC is load-bearing (1.44× token swing). **All three red-team exclusions guarded absent AND their reasons guarded present.** Not yet called from the request path: that is a write-path change belonging with 2.8. See the CP-2.9 block above |
-| **2.8** | **`runtime_variant='agentruntime'` stamped at a structural chokepoint covering EVERY terminal path** — not at the happy path. `legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship bias in the new arm's own failure rate**: an unlabelled new-runtime row loses its numerator too, and label-omission correlates with crash and cancel | ⬜ |
+| **2.8** | **`runtime_variant='agentruntime'` stamped at a structural chokepoint covering EVERY terminal path** — not at the happy path. `legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship bias in the new arm's own failure rate**: an unlabelled new-runtime row loses its numerator too, and label-omission correlates with crash and cancel | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** The parameter is **GONE** — it cannot be omitted because it cannot be supplied; both write sites derive from the arm selector. Five production call sites, zero edits. **The control arm is byte-identical** (flag off → `legacy`), which is what let this row be built at all. See the CP-2.8 block above |
 | **2.10** | **⬅️ INHERITED FROM CP-1, PO 2026-08-06.** A pipeline ranks by a **`relevance` its own scoring stage produced** (§0.14.1b), and **the budget arrives as a parameter** rather than as `os.environ` read at import (§0.14.1). CP-1 could check neither: no producer exists, and the boundary module can only supply a budget to a pipeline that runs. Today every pipeline naming `relevance` is rejected — the correct fail-closed direction, and **not** evidence the rule works | ⬜ |
 | **2.6** | **P2 — a call's `source` is assigned STRUCTURALLY, never inferred.** ⬅️ **inherited from CP-0.3, 2026-08-04.** The new runtime dispatches through **one** path, so `source` is a property of *where the code is*, not of what a name looks up to. **Also add `error_class` as a structured enum** — V-METRIC ruled baseline class 3 unscoreable *because* it is a regex over freeform prose from five producers, and *"only a structured enum overturns this, never a better regex"* | ⬜ |
 

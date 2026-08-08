@@ -547,14 +547,24 @@ class TestToolCallSource:
         assert chunk["declaration"] == "book_list"
         assert chunk["runtime_variant"] == instrument.RUNTIME_LEGACY
 
-    def test_a_consolidating_declaration_keeps_both_identities(self):
+    def test_a_consolidating_declaration_keeps_both_identities(self, monkeypatch):
         """The migration's primary operation is consolidation — one new declaration superseding
-        several legacy names. The join needs both halves or the pair cannot be matched."""
+        several legacy names. The join needs both halves or the pair cannot be matched.
+
+        🔴 **THE ARM IS NOW SET BY THE SETTING, NOT BY A KEYWORD — CP-2.8.** This guard used to
+        pass `runtime_variant=RUNTIME_AGENTRUNTIME`, and that parameter is gone: a label a caller
+        can pass is one a caller can pass **wrongly**, and one they can **forget on the crash
+        path**, where label-omission correlates with exactly the outcomes the new arm's failure
+        rate is computed from. The claim here is unchanged — *both identities ride* — and only the
+        way the arm is selected moved.
+        """
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "agentruntime_arm", True)
         chunk = instrument.stamp_tool_call(
             {"id": "1", "tool": "book_get"},
             source=instrument.SOURCE_TOOL,
             declaration="book_list",
-            runtime_variant=instrument.RUNTIME_AGENTRUNTIME,
         )
         assert chunk["tool"] == "book_get" and chunk["declaration"] == "book_list"
         assert chunk["runtime_variant"] == instrument.RUNTIME_AGENTRUNTIME
