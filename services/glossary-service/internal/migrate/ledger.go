@@ -161,22 +161,15 @@ var chain = []Step{
 	// by whichever extraction batch named it first (BTG-A49/A66) and becomes the argmax over
 	// every observation, with a refinement rule so a corrected ontology can correct the data
 	// the wrong one produced.
+	// Curated default genre-to-kind links, including repair for existing book ontologies.
 	{"0058_entity_kind_votes", UpEntityKindVotes},
-	// D-GLOSSARY-ATTR-LOOKUP-SEQSCAN — (kind_id, code) index on book_attributes. Ten
-	// handler queries resolve an attribute definition by (kind_id, code) with no
-	// book_id, and every prior index leads with book_id, so each evaluation seq-scanned
-	// 441k rows. Live: known-entities 56s -> 0.05s on a 3,187-entity book. The latency
-	// silently timed out knowledge-service's anchor pre-load, which made extraction mint
-	// duplicate entities. See attr_lookup_index.go.
-	//
-	// MERGE 2026-08-02: this shipped as `0056_attr_lookup_index` on
-	// feat/frontend-tools-mcp-migration while main independently took 0056–0058 for the
-	// technique/kind-vote steps. Renumbered to 0059 rather than main's, and the rename —
-	// normally forbidden by the chain rule above — is safe HERE and only here because the
-	// step is a single `CREATE INDEX IF NOT EXISTS`: re-running it on a DB that already
-	// applied it under the old name costs one no-op statement. Renaming main's three would
-	// have re-run kind rewrites and a vote-table build instead.
-	{"0059_attr_lookup_index", UpAttrLookupIndex},
+	{"0059_seed_genre_kind_links", SeedGenreKindLinks},
+	{"0060_seed_genre_kind_attributes", SeedGenreKindAttributes},
+	// The upstream index uses a different name for its migration because this
+	// fork had already allocated 0059 and 0060 to genre seeding. It is safe to
+	// apply after either history: the migration itself is CREATE INDEX IF NOT
+	// EXISTS, so an existing index is a no-op.
+	{"0061_attr_lookup_index", UpAttrLookupIndex},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run
