@@ -342,7 +342,20 @@ def _suite_is_green(cwd) -> bool:
     # same suite ran 2271 green on its own. A determinism flag that can turn "the suite is fine" into
     # "the suite noticed" is worse than non-determinism, so it is passed only when the plugin is
     # actually installed.
-    args = [sys.executable, "-m", "pytest", *_suites(cwd), "-q", "--no-header"]
+    # 🔴 `-x` — STOP AT THE FIRST FAILURE, and it is a cost fix that must not become an answer fix.
+    #
+    # This function asks one BOOLEAN question: did the suite notice? For a RED site the answer is
+    # settled by the first failing test, and running the remaining ~290 is pure cost — which the
+    # census pays **once per site**. At 88 sites × ~47 s the gate had grown to ~69 minutes, and
+    # both numbers rise with every row added, so the instrument was on its way to consuming the run
+    # it exists to verify.
+    #
+    # **It cannot change the verdict**, and that is why it is safe: `rc == 0` still means every test
+    # ran and passed (a SILENT site still pays the full suite, and 9 of 88 do), while any non-zero
+    # still means the suite noticed. `-x` changes only how much is executed AFTER the answer is
+    # already known. The guard on this is a whole-census comparison, not an argument: the same
+    # RED/SILENT partition with and without it, or the flag comes out.
+    args = [sys.executable, "-m", "pytest", *_suites(cwd), "-q", "--no-header", "-x"]
     try:
         import importlib.util as _ilu
         if _ilu.find_spec("pytest_randomly") is not None:

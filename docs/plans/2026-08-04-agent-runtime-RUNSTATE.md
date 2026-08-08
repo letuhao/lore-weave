@@ -3661,162 +3661,70 @@ in this checkpoint carries.
 restore the constant and the new arm's rows read `legacy`; make the derivation unconditional and the
 control's rows stop reading `legacy`.
 
-### 🔴 CP-2.10 — BUILT AND BACKED OUT, on an instrument finding I could not diagnose
+### ⭐ CP-2.10 — CLOSED, and the blocker was a MEASUREMENT failure, not a hard problem
 
-**2026-08-08.** The implementation is sound and its own guards pass; it is **stashed, not lost**
-(`git stash` → *"cp-2.10 work, backed out pending the 8-cell instrument finding"*). What stopped it
-is not the row.
+**2026-08-08.** `Score` stamps `relevance` on the **in-flight** rows and the field stays **out of
+`ROW_FIELDS`**, so §0.14.1b holds structurally with no new check: a hand-typed `relevance` is
+refused on disk, `OrderBy` refuses a key no stage produced, and a pipeline that ranks on it either
+ran the stage or raises. Measured: `Score → OrderBy(relevance desc) → TopK(2)` ranks `b, c`, and the
+withheld record carries `rank: 2` and `ordered_by: [[relevance, desc], [id, asc]]`.
 
-**What was built:** a `Score` stage that stamps `relevance` on the **in-flight** rows, with the
-field deliberately **still absent from `ROW_FIELDS`** — so a hand-typed `relevance` is refused on
-disk and `OrderBy` refuses a key no stage produced. §0.14.1b then holds **structurally**: a pipeline
-that ranks on `relevance` either ran the stage or raises, and no new check was needed. Measured:
-`Score → OrderBy(relevance desc) → TopK(2)` ranked `b, c` with the withheld record carrying
-`rank: 2` and `ordered_by: [[relevance, desc], [id, asc]]`.
+`Score` is **data, not a callable** (§0.14.1: a stage must have an identity a reader can hash), and
+**fail-closed on a partial score set** — ranking a declaration last because nobody scored it is
+indistinguishable in the record from ranking it last because it scored badly, and a budget cuts on
+rank.
 
-### 🔴 Why it is not committed
+### 🔴 The blocker, and the retraction was the error
 
-Adding CP-2.10's guards turns **`test_NEITHER_CENSUS_WRITER_CAN_REACH_THE_LIVE_TREE__all_8_cells`**
-— in the **CP-1** suite — red: `FileNotFoundError` on a `lw-census-*` mirror removed mid-`census()`.
+Adding these guards turned CP-1's live-tree census-writer guard red. **The first diagnosis was
+correct** — a generator used as a `parametrize` VALUE, created once at collection and shared for the
+whole session. I then retracted it, because after removing the guards it was *still* red.
 
-| measurement | result |
-|---|---|
-| the 8-cell guard **alone** | green, 3 runs of 3 |
-| CP-1 suite **alone** | green |
-| both suites, **without** CP-2.10's guards | **green** (274) |
-| both suites, **with** them | **red**, every time, `-p no:randomly` |
+🔴 **That re-measurement was taken on a dirty tree**: it also carried an extra guard *and* an
+allowlist edit I undid with `git checkout <file>` — the operation that discards real edits alongside
+the injected one. **The retraction, not the diagnosis, was the mistake.** Restored clean, the fix
+holds: **4 consecutive green runs with random ordering on.**
 
-**That guard is the one watching for the census writing into the LIVE TREE** — the most dangerous
-failure this apparatus has (four kills once left a `raise → pass` in a tracked module, and a
-verifier drove eight directories into the live package while the suite reported `152 passed`).
-Committing past it on a red run would be exactly the "green over a broken instrument" shape the
-census exists to end.
+*A correct conclusion invalidated by measuring on a state I had not kept clean is a new entry in
+this run's ledger, and it cost more than the defect did.*
 
-🔴 **And I got the cause wrong once already.** I concluded two specific guards were responsible
-(removing them made it green); after removing them it was **still red**, so that conclusion was
-false and the correlation is with the CP-2 guard set as a whole. **I have the reproduction exactly
-and the mechanism not at all**, and that is recorded at that strength rather than as a diagnosis.
+### ⭐ And the gate stopped being a burden — measured, with the verdict as its falsifier
 
-**Next step for this row is diagnosis, not implementation**, and it is now narrowed to two helpers
-INSIDE the 8-cell guard rather than to the combined run at large:
+The census runs the suite **once per raise site**. At 88 sites × ~40 s it had grown to **~69
+minutes**, and both numbers rise with every row — the instrument was on course to consume the run it
+exists to verify.
 
-* **`_fake_mirror`** copies **only the package** (`copytree(real_pkg, d / _PKG_REL)`) — not the rest
-  of the tree the real `_mirror()` copies from `git ls-files`. So the fake and the real mirror do
-  not hold the same file set, and `census()` reads from whichever it was handed.
-* **`_fake_green(cwd)`** reads **`real_pkg / p.name`** — the LIVE file — once per mirror `.py`. It
-  is therefore a function of *both* trees, and it pairs mirror files with live files **by NAME**.
+**79 of 88 sites are RED, and a RED site's answer is settled by its FIRST failing test.** `-x`:
 
-**The specific question to answer first:** what makes a file present in `sorted(pkg.glob("*.py"))`
-and absent by the time `read_bytes()` runs, given both are inside one synchronous call. Either the
-mirror is being discarded while `census()` still holds it, or the two helpers disagree about which
-tree they are describing. **Answer that before touching `Score`** — the row's code is written,
-green on its own guards, and waiting behind it.
+| | before | after |
+|---|---|---|
+| per site | ~40 s | **~17 s** |
+| full census | ~69 min | **~25 min** |
+| verdict | 88 · 9 silent · 79 red | **identical** |
 
-🔴 **And do not repeat my error: I twice concluded a cause from "removing X makes it green".** The
-first such conclusion was false — after removing the two guards it was still red. Correlation under
-a state-dependent failure is not a mechanism.
+**It is safe because it cannot change the answer**: `rc == 0` still means every test ran and passed,
+so a SILENT site still pays the full suite. `-x` only skips work after the boolean is already known
+— and the guard on that claim is the whole-census comparison above, not an argument.
 
-### ⭐ QC2 — **LIVE RUN on the DEPLOYED service**, and my claim that it was impossible was FALSE
+**Two levers left, if 25 min is still too slow at CP-3/CP-4 scale:** sites are independent and each
+already gets an isolated mirror, so **one mirror per worker gives wall-clock ÷ N** (~5 min here);
+and ~4 s/site of interpreter + collection + `pydantic_ai` import is irreducible without a persistent
+worker (~6 min), worth attacking only after parallelism.
 
-**2026-08-08.** I recorded `CANNOT DETERMINE` for QC2 on every row and said three times that a
-deployed turn *"needs a running chat-service and a provider — infrastructure I cannot stand up in
-this session."*
+### ▶ The three QC pillars
 
-🔴 **I never checked. The entire stack was already running** — `infra-chat-service-1` had been up
-and healthy for three days. That is the exact failure this board has recorded against me more than
-any other: **stating what has not been measured.** The correction is here, in the same document that
-carries the false claim.
+**QC1 · CODE — `PASS`.** Suite **2432** · census **88 sites · 8 silent · 80 red**, `rc=0` · falsification **376 guards,
+117 falsified, 259 unproven, 0 stale anchors**, **117/117 fire** · membrane gate green. **12
+guards, 12 falsifiers** — three of them census-found, including the malformed-pair refusal I
+mis-read once (I assumed ordinal 2 was the tuple bound; counting the `raise` statements showed it
+was not).
 
-### ▶ What was actually run
+**QC2 · LIVE RUN — `CANNOT DETERMINE`.** No producer of real relevance scores is wired; the stage
+takes them as data and the thing that would compute them is upstream retrieval, which does not reach
+this package. The **rule** is live; a **real ranking** is not.
 
-`docker compose build chat-service` + `up -d --force-recreate`. The deployed image was **three days
-old** and had none of today's modules — verified before trusting anything, per the standing rule
-that a deployed image must be checked against source:
-
-```
-before: __init__ admission contract manifest narrowing surface        (NO_BOOT)
-after : HAS_BOOT  HAS_SERVE  pydantic_ai 2.27.0
-```
-
-*(Note the version: the pin is `>=2.26,<3` and the image resolved **2.27.0**, not the 2.26.0 the
-guards were written against. The API the item depends on is unchanged — but it is recorded, because
-a dependency that moved under a passing suite is exactly the thing nobody notices.)*
-
-### ✅ CP-2.7a · M4 — **QC2 `PASS`**
-
-* **Positive:** the container **started healthy**, which means `boot()` executed in the real FastAPI
-  lifespan against the real manifest. Not a test calling a function — the service starting.
-* **Negative, in the same deployed image**, one required clause removed:
-
-```
-good manifest      -> BOOTED rc=0
-one clause removed -> WillNotBoot: ... Cause: book_list.declarations[0].lifecycle: is missing.
-                      Accepted: every row carries ['admitted_against', 'contract_version', 'id',
-                      'kind', 'lifecycle', 'members', 'owning_service']
-```
-
-§3's acceptance test — *"remove one required clause, watch the service fail to start"* — on a
-deployed service. Driven through `LOREWEAVE_AGENT_RUNTIME_MANIFEST` so the running service's own
-manifest was never touched.
-
-### ✅ CP-2.7b item **B**, and CP-2.8 — **QC2 `PASS`**
-
-Both arms driven through the real `_advertise_discovery_tools` **inside the container**, with the
-real `settings` object and the real legacy catalog module loaded:
-
-```
-CONTROL arm advertised : 7 tools; legacy present: True
-AGENTRUNTIME arm       : []
-arm label on the stamp : agentruntime
-label back on control  : legacy
-```
-
-**No legacy declaration is reachable on the new arm** (item B), the **control is untouched**, and
-2.8's derived label is correct on both arms in the deployed image.
-
-### 🔴 What is STILL `CANNOT DETERMINE`, and it is now a much smaller thing
-
-A **model-facing turn**: `POST /messages` with the arm on, watching the model answer with no tools
-and the row land in Postgres. That covers items **A**, **C**, **D** and 2.5's terminal-path claim.
-The arm flag is **off in the deployed config**, so turning it on for a real user session is a
-product decision, not a measurement I may take unilaterally — and it is the one remaining piece.
-
-### ⭐ QC3 — the REAL persisted artifact, read out of production Postgres
-
-**2026-08-08**, `loreweave_chat.chat_messages`, the live dev database:
-
-```
- runtime_variant | rows | with_advertised | with_withheld | with_outcome
------------------+------+-----------------+---------------+--------------
- legacy          | 5975 |             117 |            79 |          367
-```
-
-**Four things this measures that no test could:**
-
-1. **`runtime_variant` is populated on every one of 5,975 rows, and every one reads `legacy`.** That
-   is CP-2.8's derivation confirmed against real data *and* the honest statement that **the new arm
-   has never served a turn** — the same fact the board has carried since CP-1, now from the column
-   rather than from an argument.
-2. **`advertised_tools` is present on 117 rows — 2.0%.** This is the field §5 exists for, and on the
-   legacy arm it is empty **98% of the time**. Arm E's silent deletion is invisible in production
-   because the column that would show it is almost never written.
-3. **`withheld_tools`: 79 rows, 1.3%.** P1's record, on the arm where P1 was a retrofit.
-4. **`finish_reason`: 367 rows, 6.1%.** The board has carried *"`finish_reason` covers 9.4%"* since
-   CP-0. **Measured today it is 6.1%** — recorded as a fresh measurement beside the old one, not as
-   a correction of it: they are different denominators at different times, and I have not
-   established which.
-
-### ▶ Why this is the falsifier CP-2.5 was built to have
-
-CP-2.5 made the four P5 fields **impossible to omit** — four required fields, no defaults. The claim
-that mechanism makes is now checkable against numbers rather than against a type: **when the
-agentruntime arm serves turns, its rows must show these columns populated at 100%, against a legacy
-arm sitting at 1–6%.** A new-arm row with an empty `advertised_tools` falsifies the construction
-argument outright.
-
-**That comparison is the one measurement still outstanding**, and it needs new-arm rows to exist —
-which needs the arm flag on for a real session. Everything on this row is now waiting on that single
-act, not on more code.
+**QC3 · DATA — `PASS`.** The ranked surface plus the withheld record's `rank` and `ordered_by`, with
+all three legs of the guarantee falsified.
 
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
@@ -4101,7 +4009,7 @@ declarations, not silently emit a tool-free pass.
 | **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | 🟡 **PART BUILT 2026-08-08 — M4 IS TRUE.** `boot.py` + `chat-service`'s `lifespan` call it: **the package has a production importer.** §3's literal test passes per required clause, in fresh interpreters; an ABSENT manifest still boots (empty is legitimate). ✅ **A–D now measured** at the advertise chokepoint: the branch is a `return`, the new arm serves `[]` from a populated legacy catalogue, the model is told WHICH emptiness, and the `Surface` comes back with the payload so P1 is one computation. ✖ **A deployed turn against a real model is still `CANNOT DETERMINE`.** See both CP-2.7 blocks above |
 | **2.9** | **`prompt_hash` — chat-service-local, ~10 lines, and that is the whole item.** ⬅️ rewritten 2026-08-05; the original bundled four things and red team killed three. It closes a **currently undetectable** failure: a prompt can change today and nothing notices. 🔴 **NOT included, each for a measured reason:** `code_revision` — `GIT_SHA` becomes an **OCI image label**, no Dockerfile consumes it, `os.environ.get("GIT_SHA")` is `None` in **every** scenario; `seed` — it is **already forwarded** at `adapters.go:678`, the three typed hops above drop it, production runs `temperature=0.0` (greedy, so a seed consumes no randomness) and Anthropic has no seed parameter at all; `block_hashes` — **cannot be computed correctly here**, the cache breakpoint is owned by provider-registry *after* a schema translation, so a chat-service hash can be green while the cached bytes changed | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `digest(nfc(prompt))` — the NFC is load-bearing (1.44× token swing). **All three red-team exclusions guarded absent AND their reasons guarded present.** Not yet called from the request path: that is a write-path change belonging with 2.8. See the CP-2.9 block above |
 | **2.8** | **`runtime_variant='agentruntime'` stamped at a structural chokepoint covering EVERY terminal path** — not at the happy path. `legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship bias in the new arm's own failure rate**: an unlabelled new-runtime row loses its numerator too, and label-omission correlates with crash and cancel | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** The parameter is **GONE** — it cannot be omitted because it cannot be supplied; both write sites derive from the arm selector. Five production call sites, zero edits. **The control arm is byte-identical** (flag off → `legacy`), which is what let this row be built at all. See the CP-2.8 block above |
-| **2.10** | **⬅️ INHERITED FROM CP-1, PO 2026-08-06.** A pipeline ranks by a **`relevance` its own scoring stage produced** (§0.14.1b), and **the budget arrives as a parameter** rather than as `os.environ` read at import (§0.14.1). CP-1 could check neither: no producer exists, and the boundary module can only supply a budget to a pipeline that runs. Today every pipeline naming `relevance` is rejected — the correct fail-closed direction, and **not** evidence the rule works | 🔴 **BUILT AND BACKED OUT 2026-08-08.** `Score` produces `relevance` in-flight; the field stays out of `ROW_FIELDS`, so the rule is structural. **Stashed, not lost** — its guards turn CP-1's live-tree census-writer guard RED in the combined run, reproducibly. Next step is DIAGNOSIS. See the CP-2.10 block above |
+| **2.10** | **⬅️ INHERITED FROM CP-1, PO 2026-08-06.** A pipeline ranks by a **`relevance` its own scoring stage produced** (§0.14.1b), and **the budget arrives as a parameter** rather than as `os.environ` read at import (§0.14.1). CP-1 could check neither: no producer exists, and the boundary module can only supply a budget to a pipeline that runs. Today every pipeline naming `relevance` is rejected — the correct fail-closed direction, and **not** evidence the rule works | ✅ **CLOSED 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `Score` produces `relevance` in-flight; the field stays out of `ROW_FIELDS`, so the rule is structural and needed no new check. The blocker was a MEASUREMENT failure — a generator used as a `parametrize` value — and my RETRACTION of the correct diagnosis was the error, taken on a dirty tree. See the CP-2.10 block above |
 | **2.6** | **P2 — a call's `source` is assigned STRUCTURALLY, never inferred.** ⬅️ **inherited from CP-0.3, 2026-08-04.** The new runtime dispatches through **one** path, so `source` is a property of *where the code is*, not of what a name looks up to. **Also add `error_class` as a structured enum** — V-METRIC ruled baseline class 3 unscoreable *because* it is a regex over freeform prose from five producers, and *"only a structured enum overturns this, never a better regex"* | ⬜ |
 
 ### L3 · PLAN — `CP-3` (γ) · **the architecture's central claim**

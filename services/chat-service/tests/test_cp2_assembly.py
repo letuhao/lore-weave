@@ -39,6 +39,9 @@ from app.agentruntime import (
     NarrowingLog,
     OrderBy,
     RequirementNotAdmitted,
+    Score,
+    TakeWhileBudget,
+    rows_of,
     Surface,
     SurfaceAssembler,
     TopK,
@@ -524,6 +527,178 @@ class TestAPlanStepsDeclarationIsAdvertised:
         defs = _defs(toolset_for(doc, surface, executor=_executor))
         assert advertised_names(defs) == ("a", "b")
         assert deferred_names(defs) == ("c",)
+
+
+# ── 2.10 · a pipeline ranks by a relevance ITS OWN scoring stage produced ───────────────────────
+
+class TestRelevanceCanOnlyComeFromTheScoringStage:
+    """REJECTS: a rank steered by a value nobody computed.
+
+    🔴 **THE MEASURED DEFECT:** a hand-typed `"relevance": 9999` **selected which single
+    declaration the model sees** under `OrderBy(relevance) → TopK(1)`. CP-1's answer was to remove
+    the field from `ROW_FIELDS` entirely — *"§0.14.1c owns the producers: **CP-2 for `relevance`**...
+    the field arrives WITH its producer, in the same change"*. This is that change.
+    """
+
+    _DOC = None
+
+    def _doc3(self):
+        return {
+            "manifest_version": 1, "contract_version": "1.0.0",
+            "declarations": [_row(n) for n in ("a", "b", "c")],
+        }
+
+    def test_A_PIPELINE_RANKS_BY_THE_RELEVANCE_ITS_OWN_STAGE_PRODUCED(self):
+        doc = self._doc3()
+        surface = SurfaceAssembler(doc, log=NarrowingLog()).assemble(
+            pass_number=1,
+            pipeline=[Score(scores=(("a", 1), ("b", 9), ("c", 5))),
+                      OrderBy(keys=(("relevance", "desc"),)),
+                      TopK(k=2, stage="top_k", reason="over rank")])
+        assert surface.names == ("b", "c")
+
+    def test_A_HAND_TYPED_RELEVANCE_ON_DISK_IS_STILL_REFUSED(self):
+        """🔴 **THE FIELD DID NOT COME BACK.** `relevance` is absent from `ROW_FIELDS`, so the
+        forgery CP-1 removed it for is refused at every door — and that is *why* the guarantee
+        above needs no extra check: the only thing that can put `relevance` on a row is the stage."""
+        forged = {
+            "manifest_version": 1, "contract_version": "1.0.0",
+            "declarations": [{**_row("a"), "relevance": 9999}],
+        }
+        with pytest.raises(UntrustedRow, match="relevance"):
+            rows_of(forged)
+
+    def test_RANKING_ON_RELEVANCE_WITH_NO_PRODUCER_RAISES(self):
+        """The third leg. Together with the two above: a pipeline that ranks on `relevance` either
+        ran the stage or raises, and there is no third outcome."""
+        with pytest.raises(ValueError, match="does not carry"):
+            SurfaceAssembler(self._doc3(), log=NarrowingLog()).assemble(
+                pass_number=1, pipeline=[OrderBy(keys=(("relevance", "desc"),))])
+
+    def test_A_PARTIAL_SCORE_SET_IS_A_REJECTION_NOT_A_ZERO(self):
+        """Ranking a declaration last because **nobody scored it** is indistinguishable in the
+        record from ranking it last because it **scored badly** — and a budget cuts on rank."""
+        with pytest.raises(ValueError, match="no score for"):
+            SurfaceAssembler(self._doc3(), log=NarrowingLog()).assemble(
+                pass_number=1, pipeline=[Score(scores=(("a", 1),))])
+
+    def test_A_SCORE_FOR_A_DECLARATION_THIS_PASS_DOES_NOT_CARRY_IS_REFUSED(self):
+        """The other direction: a score for something absent ranks nothing and hides a stale
+        producer, which is a defect that would otherwise never surface."""
+        with pytest.raises(ValueError, match="does not carry"):
+            SurfaceAssembler(self._doc3(), log=NarrowingLog()).assemble(
+                pass_number=1,
+                pipeline=[Score(scores=(("a", 1), ("b", 2), ("c", 3), ("ghost", 4)))])
+
+    @pytest.mark.parametrize("bad", [True, 1.0, "9", None])
+    def test_A_SCORE_IS_A_PLAIN_INT(self, bad):
+        """`True` is in the list on purpose: `bool` is an `int` subclass, so `isinstance` admits it.
+        A rank computed from a value with a custom `__lt__` is arbitrary logic wearing a number's
+        clothes — the same route §0.14.1 closes for stage parameters."""
+        with pytest.raises(ValueError):
+            Score(scores=(("a", bad),))
+
+    @pytest.mark.parametrize("kind", ["list", "set", "generator"])
+    def test_THE_SCORE_SET_IS_A_TUPLE_NOT_A_LAZY_OR_MUTABLE_CONTAINER(self, kind):
+        """🔴 Census-found: this refusal shipped with nothing checking it. A container with a custom
+        `__iter__` decides the ranking, which is arbitrary logic — the same route §0.14.1 closes for
+        every other stage parameter — and a **generator** is empty the second time anyone reads it,
+        so the first consumer ranks and every later one sees nothing.
+
+        🔴 **THE VEHICLE IS BUILT HERE, NOT IN THE `parametrize` LIST.** The first version passed
+        `(p for p in [...])` as a parameter value, and a generator in a parametrize list is created
+        **once at collection** and shared for the whole session — so it is exhausted after its first
+        use and any re-run tests something else. That is the same latent defect this guard is
+        written about, in the guard itself.
+        """
+        bad = {"list": [("a", 1)], "set": {("a", 1)},
+               "generator": (p for p in [("a", 1)])}[kind]
+        with pytest.raises(ValueError, match="Score.scores"):
+            Score(scores=bad)
+
+    @pytest.mark.parametrize("bad", [("a",), ("a", 1, 2), ["a", 1], "ab"])
+    def test_A_SCORE_ENTRY_IS_AN_ID_AND_A_SCORE_AND_NOTHING_ELSE(self, bad):
+        """🔴 **CENSUS-FOUND, and I mis-read it once.** It reported ordinal 2 of
+        `Score.__post_init__` SILENT; I assumed that was the tuple bound — which *is* guarded and
+        reds when neutered, measured — and only counting the `raise` statements showed ordinal 2 is
+        the **malformed-pair** refusal, which nothing tested.
+
+        The three-element entry is the interesting vehicle: it unpacks nowhere, so without this
+        clause it would reach `name, value = pair` as a bare tuple-unpacking `ValueError` — a crash
+        rather than a stated refusal.
+        """
+        with pytest.raises(ValueError, match="not an .id, score. pair"):
+            Score(scores=(bad,))
+
+    def test_TWO_SCORES_FOR_ONE_DECLARATION_IS_REFUSED(self):
+        """🔴 Also census-found. *Which one ranks?* — and whichever a reader assumes, the other
+        consumer assumes the opposite. The same ambiguity `advertised` refuses for a duplicate
+        pass."""
+        with pytest.raises(ValueError, match="two entries"):
+            Score(scores=(("a", 1), ("a", 2)))
+
+    def test_THE_SCORES_ARE_DATA_NOT_A_CALLABLE(self):
+        """§0.14.1: *a stage that merely answers a question is a closure with a different name*, and
+        a narrowing must have **an identity a reader can hash and compare**. A `Callable` field
+        would make two pipelines that rank differently indistinguishable in a record."""
+        import dataclasses
+
+        field = {f.name: f for f in dataclasses.fields(Score)}["scores"]
+        assert "Callable" not in str(field.type)
+        assert hash(Score(scores=(("a", 1),))) == hash(Score(scores=(("a", 1),)))
+
+    def test_THE_SCORING_STAGE_REMOVES_NOTHING__it_is_a_producer(self):
+        """It neither registers nor touches the conservation law, because it drops no declaration.
+        A producer that could remove would be a narrowing with no `{tool, stage, reason, pass}`."""
+        doc = self._doc3()
+        surface = SurfaceAssembler(doc, log=NarrowingLog()).assemble(
+            pass_number=1, pipeline=[Score(scores=(("a", 1), ("b", 2), ("c", 3)))])
+        assert len(surface.names) == 3 and surface.withheld == ()
+
+    def test_THE_BUDGET_ARRIVES_AS_A_PARAMETER_AND_NOTHING_READS_THE_ENVIRONMENT(self):
+        """§0.14.1's other half: *the budget arrives as a parameter rather than as `os.environ`
+        read at import.*
+
+        🔴 **THE FIRST DRAFT ASSERTED THAT NO MODULE IMPORTS `os` AND WENT RED ON `ambient.py`** —
+        which is the package's **designated** ambient boundary (§0.14.4), the one file that exists
+        so every ambient capability lives in one place. A guard convicting the mechanism built to
+        contain the thing it is guarding against. The claim is narrower and truer: `os` lives in
+        `ambient.py` **and nowhere else**, and what it reads there is a manifest **path**, not a
+        budget."""
+        import dataclasses
+
+        assert "budget" in {f.name for f in dataclasses.fields(TakeWhileBudget)}, (
+            "the budget stopped being a constructor parameter"
+        )
+        importers = []
+        for path in sorted(_PACKAGE.rglob("*.py")):
+            for node in ast.walk(ast.parse(path.read_text("utf-8"))):
+                mods = ([node.module or ""] if isinstance(node, ast.ImportFrom)
+                        else [a.name for a in node.names] if isinstance(node, ast.Import) else [])
+                if any(m.split(".", 1)[0] == "os" for m in mods):
+                    importers.append(path.name)
+        assert importers == ["ambient.py"], (
+            f"`os` is imported by {importers}; §0.14.4 keeps every ambient capability in ONE file, "
+            f"and a budget read from the environment anywhere else is exactly what §0.14.1 forbids"
+        )
+        # 🔴 **OVER THE AST, NOT THE TEXT.** A substring check said `ambient.py` "grew a budget
+        # reader" because the word appears in its PROSE. That is the same crude-gate class this run
+        # has already recorded — a substring gate over SQL that was green over wrong data — arriving
+        # from the other side: red over a docstring. What is forbidden is a budget-shaped READ.
+        tree = ast.parse((_PACKAGE / "ambient.py").read_text("utf-8"))
+        env_reads = [
+            c.value for c in ast.walk(tree)
+            if isinstance(c, ast.Constant) and isinstance(c.value, str)
+            and c.value.isupper() and "BUDGET" in c.value
+        ]
+        assert env_reads == [], (
+            f"the ambient boundary reads {env_reads}; §0.14.1 requires the budget to arrive as a "
+            f"parameter, and an env-read one cannot be varied per pipeline"
+        )
+        assert not [f for f in ast.walk(tree)
+                    if isinstance(f, ast.FunctionDef) and "budget" in f.name.lower()], (
+            "the ambient boundary grew a budget reader"
+        )
 
 
 # ── 2.8 · runtime_variant at a structural chokepoint ────────────────────────────────────────────

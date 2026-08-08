@@ -72,6 +72,7 @@ from .surface import (
     DenyList,
     Filter,
     OrderBy,
+    Score,
     Surface,
     SurfaceAssembler,
     TakeWhileBudget,
@@ -92,6 +93,6 @@ __all__ = [
     "manifest_path", "validate_document",
     "Narrowing", "NarrowingLog", "Widening", "RequirementNotAdmitted",
     "OUTCOMES", "SOURCES", "Guardrail", "NotObservable", "Observation", "observe", "prompt_hash",
-    "AllowList", "DenyList", "Filter", "OrderBy", "TopK", "TakeWhileBudget",
+    "AllowList", "DenyList", "Filter", "OrderBy", "Score", "TopK", "TakeWhileBudget",
     "Surface", "SurfaceAssembler", "discover", "rows_of", "validate_pipeline",
 ]

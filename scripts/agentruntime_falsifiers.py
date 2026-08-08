@@ -368,6 +368,67 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/surface.py", "        required = list(required)", "        required = required"),
     ],
 
+    # ── CP-2.10 · relevance comes from its own scoring stage ──────────────────────────────────
+    "test_A_PIPELINE_RANKS_BY_THE_RELEVANCE_ITS_OWN_STAGE_PRODUCED": [
+        (f"{PKG}/surface.py", "        return [{**r, self.field: by_id[r['id']]} for r in rows]"
+                              .replace("'", '"'),
+                              "        return rows"),
+    ],
+    "test_A_HAND_TYPED_RELEVANCE_ON_DISK_IS_STILL_REFUSED": [
+        # The field coming back is the whole forgery: a hand-typed 9999 selected which single
+        # declaration the model saw.
+        (f"{PKG}/contract.py", '    "members": (list, tuple),',
+                               '    "members": (list, tuple),\n    "relevance": (int,),'),
+    ],
+    "test_RANKING_ON_RELEVANCE_WITH_NO_PRODUCER_RAISES": [
+        (f"{PKG}/surface.py", "                if field not in r:", "                if False:"),
+    ],
+    "test_A_PARTIAL_SCORE_SET_IS_A_REJECTION_NOT_A_ZERO": [
+        # The zero-fill: ranking a declaration last because nobody scored it.
+        (f"{PKG}/surface.py", "        unscored = sorted(r[\"id\"] for r in rows if r[\"id\"] not in by_id)",
+                              "        unscored = []\n"
+                              "        by_id = {r['id']: by_id.get(r['id'], 0) for r in rows}"),
+    ],
+    "test_A_SCORE_FOR_A_DECLARATION_THIS_PASS_DOES_NOT_CARRY_IS_REFUSED": [
+        (f"{PKG}/surface.py",
+         '        absent_here = sorted(set(by_id) - {r["id"] for r in rows})',
+         "        absent_here = []"),
+    ],
+    "test_A_SCORE_IS_A_PLAIN_INT": [
+        (f"{PKG}/surface.py", "            if type(value) is not int:",
+                              "            if not isinstance(value, int):"),
+    ],
+    # Both census-found: they shipped with nothing checking them.
+    "test_THE_SCORE_SET_IS_A_TUPLE_NOT_A_LAZY_OR_MUTABLE_CONTAINER": [
+        (f"{PKG}/surface.py", "        if type(self.scores) is not tuple:", "        if False:"),
+    ],
+    "test_A_SCORE_ENTRY_IS_AN_ID_AND_A_SCORE_AND_NOTHING_ELSE": [
+        # Anchored with its own line ending, because `OrderBy` carries an identical pair check and
+        # the stale-anchor gate reported the ambiguity in one second the first time.
+        (f"{PKG}/surface.py",
+         '            if type(pair) is not tuple or len(pair) != 2:\n'
+         '                raise ValueError(f"Score.scores holds {pair!r}, which is not an (id, score) pair")',
+         '            if False:\n'
+         '                raise ValueError(f"Score.scores holds {pair!r}, which is not an (id, score) pair")'),
+    ],
+    "test_TWO_SCORES_FOR_ONE_DECLARATION_IS_REFUSED": [
+        (f"{PKG}/surface.py", "            if name in seen:", "            if False:"),
+    ],
+    "test_THE_SCORES_ARE_DATA_NOT_A_CALLABLE": [
+        (f"{PKG}/surface.py", "    scores: tuple[tuple[str, int], ...]",
+                              "    scores: Callable"),
+    ],
+    "test_THE_SCORING_STAGE_REMOVES_NOTHING__it_is_a_producer": [
+        (f"{PKG}/surface.py", "        return [{**r, self.field: by_id[r['id']]} for r in rows]"
+                              .replace("'", '"'),
+                              "        return [{**r, self.field: by_id[r['id']]} for r in rows][:1]"
+                              .replace("['id']", '["id"]')),
+    ],
+    "test_THE_BUDGET_ARRIVES_AS_A_PARAMETER_AND_NOTHING_READS_THE_ENVIRONMENT": [
+        (f"{PKG}/canon.py", "from __future__ import annotations",
+                            "from __future__ import annotations\n\nimport os  # noqa: F401"),
+    ],
+
     # ── CP-2.8 · the arm label at a structural chokepoint ─────────────────────────────────────
     #
     # `INSTR` is the legacy instrument, which is also CP-2's CONTROL arm. Every falsifier below

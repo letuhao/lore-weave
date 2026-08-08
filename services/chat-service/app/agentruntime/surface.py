@@ -323,6 +323,84 @@ def _require_names(stage, consequence: str) -> None:
 
 
 @dataclass(frozen=True, slots=True)
+class Score:
+    """CP-2.10 · §0.14.1b — **the producer of `relevance`, and the only one there can be.**
+
+    > *A pipeline ranks by a `relevance` its own scoring stage produced.*
+
+    🔴 **THAT SENTENCE IS TRUE HERE WITHOUT A NEW CHECK, AND THAT IS THE DESIGN.** `relevance` is
+    **not in `ROW_FIELDS`**, so a manifest carrying one is refused at every door — CP-1 removed it
+    deliberately after a verifier measured a hand-typed `"relevance": 9999` **selecting which
+    single declaration the model sees** under `OrderBy(relevance) → TopK(1)`. And
+    `OrderBy.sort` refuses a key a row does not carry. So a pipeline that ranks on `relevance`
+    either ran this stage or **raises**; there is no third outcome to guard against.
+
+    **DATA, not a callable.** `scores` is an explicit `(id, score)` mapping supplied by whatever
+    computed it upstream. §0.14.1's whole argument against a `keep(row)` closure applies here
+    unchanged: *a stage that merely answers a question is a closure with a different name*, and a
+    narrowing must have **an identity a reader can hash and compare**. A `Callable` field would
+    make two pipelines that rank differently indistinguishable in a record.
+
+    **Fail-closed on a partial score set.** A row with no score is a rejection, not a zero: ranking
+    a declaration at the bottom because nobody scored it is indistinguishable, in the record, from
+    ranking it there because it scored badly — and a budget cuts on rank.
+    """
+
+    scores: tuple[tuple[str, int], ...]
+    field: str = "relevance"
+    stage: str = "score"
+
+    def __post_init__(self) -> None:
+        _plain(self.field, str, "Score.field")
+        _plain(self.stage, str, "Score.stage")
+        if type(self.scores) is not tuple:
+            raise ValueError(
+                f"Score.scores is a {type(self.scores).__name__}; a container with a custom "
+                f"__iter__ decides the ranking, which is arbitrary logic (§0.14.1)."
+            )
+        seen: set[str] = set()
+        for pair in self.scores:
+            if type(pair) is not tuple or len(pair) != 2:
+                raise ValueError(f"Score.scores holds {pair!r}, which is not an (id, score) pair")
+            name, value = pair
+            _plain(name, str, "a scored declaration id")
+            # 🔴 `bool` is an `int` subclass, so `isinstance` admits `True` as a score. `type(...) is`
+            # is the one comparison Python does not dispatch — the same pin `check_contract` needed.
+            if type(value) is not int:
+                raise ValueError(
+                    f"the score for {name!r} is a {type(value).__name__}; a rank computed from a "
+                    f"value with a custom __lt__ is arbitrary logic wearing a number's clothes."
+                )
+            if name in seen:
+                raise ValueError(f"Score.scores holds two entries for {name!r}; which one ranks?")
+            seen.add(name)
+
+    def apply(self, rows: list[dict]) -> list[dict]:
+        """Stamp the score onto each row. **Removes nothing** — this is a producer, not a narrowing.
+
+        A copy per row, because the assembler's baseline list is what the conservation law measures
+        against and what `rows_of` already deep-copied for the caller's protection.
+        """
+        by_id = dict(self.scores)
+        # Named distinctly from CP-2.2's `unadmitted`: two identically-named locals in one module
+        # make an anchor ambiguous, and the falsification gate said so in one second.
+        absent_here = sorted(set(by_id) - {r["id"] for r in rows})
+        if absent_here:
+            raise ValueError(
+                f"scores were supplied for {absent_here}, which this pass does not carry. A score "
+                f"for a declaration that is not here ranks nothing and hides a stale producer."
+            )
+        unscored = sorted(r["id"] for r in rows if r["id"] not in by_id)
+        if unscored:
+            raise ValueError(
+                f"no score for {unscored}. A missing score is a rejection, not a zero: ranking a "
+                f"declaration last because nobody scored it is indistinguishable in the record "
+                f"from ranking it last because it scored badly — and a budget cuts on rank."
+            )
+        return [{**r, self.field: by_id[r["id"]]} for r in rows]
+
+
+@dataclass(frozen=True, slots=True)
 class OrderBy:
     """**Not a narrowing** — it establishes the ranking that rank-dependent kinds consume, so it
     carries no `stage`/`reason`.
@@ -460,7 +538,7 @@ RANK_DEPENDENT = (TopK, TakeWhileBudget)
 #:
 #: Membership is by EXACT TYPE. A subclass of `Filter` that overrides `keep` is the same closure
 #: through inheritance, and `isinstance` would welcome it.
-STAGE_KINDS = (OrderBy, Filter, AllowList, DenyList, TopK, TakeWhileBudget)
+STAGE_KINDS = (Score, OrderBy, Filter, AllowList, DenyList, TopK, TakeWhileBudget)
 _KIND_SET = frozenset(STAGE_KINDS)
 
 
@@ -622,6 +700,12 @@ class SurfaceAssembler:
         kept = self._rows
         ordered_by: tuple[tuple[str, str], ...] | None = None
         for stage in pipeline:
+            if isinstance(stage, Score):
+                # CP-2.10 — a PRODUCER: it stamps `relevance` and removes nothing, so it neither
+                # registers nor touches the conservation law. `OrderBy` may then rank on a field
+                # that could not have come from disk.
+                kept = stage.apply(kept)
+                continue
             if isinstance(stage, OrderBy):
                 kept = stage.sort(kept)
                 ordered_by = stage.effective_keys()
