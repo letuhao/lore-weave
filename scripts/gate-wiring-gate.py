@@ -153,6 +153,17 @@ NEEDS_STACK: dict[str, str] = {
     # rather than KNOWN_RED because KNOWN_RED means "a real finding is waiting";
     # these are harnesses that never started. Making them runnable in CI with an
     # injected dummy secret is tracked as D-GATE-ROT-ENV-AT-IMPORT.
+    # Needs a TOOLCHAIN, not a stack, but the category is the same shape: more
+    # than a checkout. It wants nightly-2025-09-12 + rustc-dev + a matching
+    # `cargo-dylint`, and a built cdylib on DYLINT_LIBRARY_PATH. It has its own
+    # CI job (`dp-clippy` in gates.yml) because that install does not belong in
+    # every other leg — the workspace pins 1.89.0 stable on purpose.
+    # NOT a licence to skip it: `--self-test` runs in the shared sweep, and the
+    # gate refuses to report a verdict when the lint library is absent rather
+    # than exiting 0 the way `cargo dylint` does.
+    "scripts/dp-clippy-gate.py": "needs the nightly + rustc-dev toolchain and a built "
+        "dp-clippy cdylib; runs in its own gates.yml job (2F)",
+
     "scripts/context-inspector-trace-gate.py": "imports service code reading JWT_SECRET at "
         "import time — needs env, not just a checkout (D-GATE-ROT-ENV-AT-IMPORT)",
     "scripts/eval/run_quality_gate.py": "an EVAL harness against a live service; same "

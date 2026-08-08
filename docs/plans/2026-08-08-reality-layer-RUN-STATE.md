@@ -483,18 +483,83 @@ subject, and stands up the toolchain the other three will need.
 
 | # | row | state |
 |---|---|---|
-| `2A` | **the dylint toolchain** — `dp-clippy` crate, pinned nightly, one CI leg | ⬜ |
-| `2B` | **`forbid_raw_kernel_client`** shipped **RED** against the 47 files | ⬜ |
-| `2C` | **the `dp-crate = true` marker**, re-added WITH its reader (`V1-F12`: it was removed because a declared input with no consumer is the orphan shape) | ⬜ |
-| `2D` | **`DP-R3`'s exemption amended** — `2F-2`: it locks *"any crate other than `dp` itself"*, which fires on `crates/dp-kernel`, **where the database code is supposed to live** (`event_store_pg.rs`, `outbox.rs`). The exemption must be the MARKER, not a name | ⬜ amendment |
-| `2E` | **`roleplay-service`'s status** — `2F-4`: `DPA-SCOPE` named two game-layer services and this is a third, carrying `sqlx::` in 7 files and `reality_id` in two. In scope or not is a decision, not a discovery | ⬜ PO input |
+| `2A` | **the dylint toolchain** — `dp-clippy` crate, pinned nightly, one CI leg | ✅ `8c4c13360` + the `dp-clippy` job below |
+| `2B` | **`forbid_raw_kernel_client`** shipped **RED** against the 47 files | ✅ `8c4c13360` — **9 findings / 4 crates**, measured; see the count correction below |
+| `2C` | **the `dp-crate = true` marker**, re-added WITH its reader (`V1-F12`: it was removed because a declared input with no consumer is the orphan shape) | ✅ and the reader is the LINT, not a companion gate — see below |
+| `2D` | **`DP-R3`'s exemption amended** — `2F-2`: it locks *"any crate other than `dp` itself"*, which fires on `crates/dp-kernel`, **where the database code is supposed to live** (`event_store_pg.rs`, `outbox.rs`). The exemption must be the MARKER, not a name | ✅ marker-keyed; and `crates/dp` deliberately does NOT carry it |
+| `2E` | **`roleplay-service`'s status** — `2F-4`: `DPA-SCOPE` named two game-layer services and this is a third, carrying `sqlx::` in 7 files and `reality_id` in two. In scope or not is a decision, not a discovery | ⬜ **PO input** — and now blocked on `service-http` regardless, see `2G` |
+| `2F` | **the CI leg** — `scripts/dp-clippy-gate.py` + the `dp-clippy` job in `gates.yml` | ✅ ratchet with 5 bites, all fire |
+| `2G` | **`service-http` migrates FIRST** — discovered by `2F`, not designed: a red low-level crate makes its dependents UNLINTABLE, so `roleplay-service` and `commit-service` are invisible until it is fixed | ⬜ next |
+
+#### `2C` — the marker's reader is the LINT, and the companion gate was a phantom
+
+The lint shipped in `8c4c13360` with `const DP_CRATES: &[&str]` — four crate names — and a comment
+saying `scripts/dp-crate-marker-gate.py` kept that list in agreement with the manifests. **That
+script did not exist.** It is the same defect `V.1` round 1 caught as `M3` (a test cited in evidence
+that was never written), committed by the author who had just fixed that one.
+
+The fix was not to write the gate. A lint runs inside rustc and *appears* unable to read
+`Cargo.toml` — but cargo puts `CARGO_MANIFEST_DIR` in the rustc process's environment, which is why
+`env!("CARGO_MANIFEST_DIR")` works in ordinary code. Measured under `cargo dylint`: present, and
+naming the crate being compiled. So the lint reads the real manifest, the name list is deleted, and
+the two-lists-must-agree problem it needed a gate for **stops existing**.
+
+`crates/dp-kernel` carries the marker. **`crates/dp` deliberately does not** — its `[dependencies]`
+is empty and `S2.3`'s *"declares no I/O"* rests on that, so the one crate `DP-R3`'s prose exempts by
+name is precisely the one that should stay covered. That is a narrowing of the rule, recorded in
+the manifest itself.
+
+**The self-test leg was passing for the wrong reason.** `fixtures/dp_kernel` carried the marker AND
+was named `dp_kernel`, and the lint keyed on the name — so the manifest key was decoration and
+deleting it would have reddened nothing. `fixtures/unmarked` is now its twin: same package name,
+byte-identical source, no marker. Legs 3+4 are a differential, so the marker is the subject.
+
+#### `2F` — three vacuity traps, each MEASURED on this repo
+
+1. **`cargo dylint --all` exits 0 when it loads no lint.** Measured: hide the library and it prints
+   `Warning: No libraries were found.` and returns **0**. Every way of getting the name, path,
+   toolchain or build wrong therefore produces a *green* run that linted nothing. `run-lint.sh` now
+   calls `cargo dylint list` and refuses (exit 2) unless `dp_clippy` is loaded.
+2. **The runner hardcoded a Windows target triple.** `TOOLCHAIN="…-x86_64-pc-windows-msvc"` — the
+   host of the machine it was written on. On the Linux CI runner this leg was about to be added to,
+   the library would have been named for a toolchain that was not running. Combined with (1) that is
+   a permanently green CI leg enforcing nothing. Now derived from `rustup show active-toolchain`.
+3. **A single `--workspace` pass silently omits crates.** Measured: it reported 3 red crates;
+   linting `services/world-service` alone produced **5 more findings**, in a workspace member that
+   was in the selection. The gate now requires every member to be positively accounted for — a
+   finding or a compiler artifact — and re-lints any that are not. `world-service: 5` is in the
+   baseline *only* because of that check.
+
+**And the finding that reorders the work (`2G`).** Two members are `UNCHECKED` and cannot be fixed
+by trying harder: `roleplay-service` and `commit-service` depend on `service-http`, which **fails to
+compile because the lint reds it**. A crate that does not compile cannot have its dependents linted,
+so a red low-level crate hides every finding above it. Both hold raw clients
+(`roleplay-service/src/state.rs:11`), so the true count is **≥9 and unknowable** until `service-http`
+is migrated. The baseline records them in a `blocked` register that names the blocker, and the gate
+fails when that blocker goes clean — an excuse with an expiry date rather than a quiet exemption.
 
 ### What "shipped RED" means, and why it is the point
 
-The lint lands **failing**, against 47 real files, and CI carries it as a tracked-red rather than
+The lint lands **failing** against real code, and CI carries it as a ratcheted baseline rather than
 green-by-emptiness. A lint that is green on the day it ships is a lint whose subject you have not
 found yet — and this repo has four instances this session of exactly that. The red is the evidence
-the rule bites; the migration of those 47 files off raw clients is the work it then drives.
+the rule bites; migrating those crates off raw clients is the work it then drives.
+
+**Correcting the figure this section used to quote.** "47 files" was a *grep* count of files
+mentioning `sqlx::`/`redis::` anywhere, across `crates/` **and** `services/`. It is not what the
+lint reports and was never a violation count. What the lint actually measures, per crate, on the
+workspace:
+
+| | |
+|---|---|
+| **9 findings across 4 crates** | `world-service` 5 · `service-http` 2 · `meta-rs` 1 · `world-gen` 1 |
+| **2 crates unlintable** | `roleplay-service`, `commit-service` — blocked by `service-http` (`2G`) |
+| **1 crate exempt** | `dp-kernel`, by marker |
+
+The gap between 47 and 9 is mostly `use` sites the rule does not name (`PgPoolOptions`, `Row`,
+`redis::AsyncCommands`) and files inside crates counted once by the lint. Quoting the grep number
+as if it were the violation count is the kind of figure that reads as rigour and measures nothing —
+the ratchet in `contracts/dp/dp-clippy-baseline.json` is the number that moves.
 
 ---
 

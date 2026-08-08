@@ -21,12 +21,25 @@ syn = { workspace = true, features = ["visit", "extra-traits"] }
 # file — a gate that cannot say WHERE sends the reader hunting.
 proc-macro2 = { workspace = true, features = ["span-locations"] }
 
-# NOTE — `[package.metadata.dp] dp-crate = true` was here and has been REMOVED
-# (`V1-F12`). It is `DP-K11`'s marker for distinguishing a DP crate from a
-# feature crate, and it is the right shape (a manifest key travels with the
-# crate; a hardcoded directory list is default-uncovered for any crate created
-# tomorrow, NV-3) — but its only reader is the `dp::forbid_raw_kernel_client`
-# lint, which is SLICE 2 and does not exist. A declared input with no consumer
-# is the orphan shape `scripts/orphan-model-gate.py` refuses, and shipping it
-# early buys nothing except a key that looks load-bearing to the next reader.
-# It arrives in the same commit as the lint that reads it.
+# NOTE — this crate deliberately does NOT carry `[package.metadata.dp]
+# dp-crate = true`, and that is a decision, not an omission.
+#
+# The marker is `DP-K11`'s exemption from `dp::forbid_raw_kernel_client`
+# (`DP-R3`): a crate that declares it may hold a raw `sqlx`/`redis` client.
+# `V1-F12` removed the key from here because its only reader was a lint that
+# did not exist yet — a declared input with no consumer is the orphan shape
+# `scripts/orphan-model-gate.py` refuses. The lint now exists (`lints/dp-clippy`,
+# slice 2) and reads this manifest directly, so the key would finally do
+# something. It is still absent, for a different reason:
+#
+#   `[dependencies]` above is EMPTY, and `S2.3`'s "declares no I/O" rests on
+#   that emptiness. A raw storage client in THIS crate would be a defect, not a
+#   design — so the one crate DP-R3's prose exempts by name is precisely the
+#   crate that should stay covered. Exempting it would silence the lint exactly
+#   where its firing would be most informative.
+#
+# `crates/dp-kernel` carries the marker instead: it is where the database code
+# belongs. If a future slice gives this crate a real read/write surface that
+# must hold a handle, the lint will red and that is the moment to decide
+# whether the surface belongs here or behind `dp-kernel` — visibly, in a diff,
+# rather than by a pre-granted permission nobody re-examines.

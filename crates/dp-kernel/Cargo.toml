@@ -11,6 +11,22 @@ description = "Data-platform kernel — L2/L3/L4 event sourcing primitives (Even
 [lib]
 path = "src/lib.rs"
 
+# THIS CRATE IS THE DATA PLANE — the `DP-R3` exemption (`DP-K11`'s marker).
+#
+# `dp::forbid_raw_kernel_client` forbids a raw storage client in any crate whose
+# manifest does not carry this key. `event_store_pg.rs`, `outbox.rs`,
+# `load_aggregate.rs` and `channel.rs` hold `sqlx` handles because holding them
+# is this crate's JOB: it is the thing feature code is required to go through.
+# DP-R3's prose exempts "any crate other than `dp` itself", which taken
+# literally reds the component the rule exists to protect (run-state `2F-2`);
+# the marker is the exemption instead, and it is here rather than in a list
+# inside the lint so that it appears in the diff of whoever claims it.
+#
+# NOT a licence for convenience. A feature crate that finds the lint
+# inconvenient adds a `dp` dependency, not this key.
+[package.metadata.dp]
+dp-crate = true
+
 [features]
 # Cycle 32 (L7.E) — compile-time prod-build flag. With `prod` enabled:
 #   - `logging::Level::Debug` is dropped at the Logger boundary

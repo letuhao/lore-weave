@@ -2,7 +2,29 @@
 
 ## ▶ GAME BUILD — the FOUNDATION track: `crates/dp` slice 1 + the `channels` table (2026-08-08, branch `feat/game-logic`)
 
-**HEAD:** `fdbaef227` · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
+**HEAD:** `8c4c13360`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
+
+> **▶ DO NEXT — `2G`, and it is not the row anyone planned.** Migrate **`crates/service-http`** off
+> its 2 raw `sqlx::PgPool` imports, *before* `roleplay-service` or `commit-service`. Reason,
+> discovered by building the CI leg rather than by design: **a crate that fails to compile cannot
+> have its dependents linted**, so `service-http` being red makes those two services literally
+> unlintable — they hold raw clients (`roleplay-service/src/state.rs:11`) that no gate can currently
+> see. `contracts/dp/dp-clippy-baseline.json` records them in a `blocked` register naming the
+> blocker, and `scripts/dp-clippy-gate.py` **fails when that blocker goes clean**, so the excuse
+> expires by itself.
+>
+> **`2E` still needs the PO** (`roleplay-service` in or out of DP scope) — but it is moot until `2G`
+> lands, since the crate cannot be measured either way today.
+>
+> **SLICE 2 IS CLOSED** (`2A`–`2D`, `2F`): `dp-clippy` exists, `DP-R3` fires on real code — **9
+> findings across 4 crates**, ratcheted in CI — and the exemption is the
+> `[package.metadata.dp] dp-crate = true` marker read from the crate's real `Cargo.toml`, not a list
+> of names. Three vacuity traps were measured and closed on the way, all three of which would have
+> produced a **green CI leg enforcing nothing**: `cargo dylint --all` exits 0 when it loads no lint;
+> the runner hardcoded a Windows target triple it was about to be run with on Linux; and a single
+> `--workspace` pass silently omitted `world-service` and its 5 findings. The lint's own self-test
+> had the same disease — its "exempts the data plane" leg passed because of the crate's NAME, so
+> the marker was decoration; `fixtures/unmarked` is now its differential twin.
 
 > **▶ MOST RECENT: THE REALITY LAYER IS CLOSED (2026-08-08).** The platform can now **create a
 > reality**, it **belongs to someone**, a half-finished one is **found**, and none of it runs as

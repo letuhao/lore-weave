@@ -9,12 +9,18 @@
 //!
 //! ## The subject is real, and that is why this ships RED
 //!
-//! `sqlx::`/`redis::` appear in **47 files** outside the four pure crates
-//! (`world-service` 15, `roleplay-service` 7, `commit-service` 6, `dp-kernel` 4,
-//! `service-http` 3, `meta-rs` 2, `world-gen` 1). A lint that is green the day
-//! it lands is a lint whose subject has not been found yet; this session
-//! removed four mechanisms with that shape. The red is the evidence the rule
-//! bites, and migrating those files is the work it drives.
+//! Measured by the lint itself over the workspace: **9 findings across 4
+//! crates** — `world-service` 5, `service-http` 2, `meta-rs` 1, `world-gen` 1 —
+//! plus **2 crates it cannot reach yet** (`roleplay-service`,
+//! `commit-service`, blocked behind `service-http`; see `2G`). A lint that is
+//! green the day it lands is a lint whose subject has not been found yet; this
+//! session removed four mechanisms with that shape. The red is the evidence the
+//! rule bites, and migrating those crates is the work it drives.
+//!
+//! An earlier draft of this paragraph said *"47 files"*. That was a grep count
+//! of files mentioning `sqlx::`/`redis::` anywhere — not a violation count, and
+//! not something this lint had ever measured. The number that moves is the
+//! ratchet in `contracts/dp/dp-clippy-baseline.json`.
 //!
 //! ## The exemption is a MARKER, not a name (`2F-2`)
 //!
@@ -30,10 +36,46 @@
 //! exemption said "the crate named dp". The amendment is recorded in the
 //! run-state as `2D`.
 //!
-//! The marker is re-added in the SAME change as this lint, deliberately:
-//! `V1-F12` removed it because *"a declared input with no consumer is the
-//! orphan shape `orphan-model-gate` refuses"*, and said it *"arrives in the
-//! same commit as the lint that reads it"*.
+//! `V1-F12` had removed the marker from `crates/dp/Cargo.toml` because *"a
+//! declared input with no consumer is the orphan shape `orphan-model-gate`
+//! refuses"*, and said it *"arrives in the same commit as the lint that reads
+//! it"*. It arrived one commit later than that, in `2C`, because the lint
+//! shipped first with a hardcoded name list standing in for the marker — see
+//! the section below, which is the record of that stand-in being removed.
+//!
+//! ## The lint reads the MARKER, not a list of names (`2C`)
+//!
+//! The first draft of this file carried `const DP_CRATES: &[&str]` — a
+//! hardcoded list of four crate names — and a comment claiming a companion
+//! gate would keep that list in agreement with the manifests. Both halves were
+//! wrong:
+//!
+//!   * The gate (`scripts/dp-crate-marker-gate.py`) **did not exist**. It was
+//!     a citation of an apparatus that had never been written, which is the
+//!     defect `V.1` round 1 caught as `M3` — a test named in evidence that was
+//!     not there.
+//!   * A name list is **default-uncovered** (`NV-3`) in the direction that
+//!     matters least and over-covered in the direction that matters most: a
+//!     data-plane crate created tomorrow is linted (merely annoying), while
+//!     every name already on the list is exempt forever, whether or not its
+//!     manifest says so. It is a private exemption channel that no reviewer
+//!     of a `Cargo.toml` would ever see.
+//!
+//! A lint runs inside rustc and cannot ask cargo questions — but cargo puts
+//! `CARGO_MANIFEST_DIR` in the environment of the rustc process it spawns
+//! (which is exactly why `env!("CARGO_MANIFEST_DIR")` works in ordinary code).
+//! Measured under `cargo dylint`: the variable is present and names the crate
+//! being compiled. So the lint reads the crate's real manifest, and the marker
+//! `DP-K11` specified is the mechanism rather than a description of one.
+//!
+//! Two consequences worth stating, because they are the reason this shape is
+//! better rather than merely tidier:
+//!
+//!   * **The exemption is reviewable.** It lives in the exempted crate's own
+//!     `Cargo.toml`, in the diff of whoever claims it, instead of in a lint
+//!     crate outside the workspace that a feature author never opens.
+//!   * **A new crate is covered by default.** No marker means not exempt, so
+//!     the uncovered case fails safe. That is the `NV-3` direction.
 
 #![feature(rustc_private)]
 #![warn(unused_extern_crates)]
@@ -45,7 +87,7 @@ use rustc_hir as hir;
 use rustc_lint::{LateContext, LateLintPass, LintContext};
 use rustc_span::Symbol;
 
-dylint_linting::declare_late_lint! {
+dylint_linting::impl_late_lint! {
     /// ### What it does
     /// Forbids a non-SDK crate from importing a raw kernel storage client.
     ///
@@ -60,8 +102,11 @@ dylint_linting::declare_late_lint! {
     /// [package.metadata.dp]
     /// dp-crate = true
     /// ```
-    /// That is for crates that ARE the data plane (`dp`, `dp-kernel`), not for
-    /// crates that find the lint inconvenient.
+    /// That is for crates that ARE the data plane, not for crates that find the
+    /// lint inconvenient. Today exactly one carries it: `dp-kernel`. `crates/dp`
+    /// deliberately does NOT — its `[dependencies]` is empty and `S2.3`'s
+    /// "declares no I/O" rests on that, so a raw client there is a defect and
+    /// the lint firing on it is the point.
     ///
     /// ### Example
     /// ```rust,ignore
@@ -69,7 +114,20 @@ dylint_linting::declare_late_lint! {
     /// ```
     pub FORBID_RAW_KERNEL_CLIENT,
     Deny,
-    "a non-SDK crate must not import a raw kernel storage client (DP-R3)"
+    "a non-SDK crate must not import a raw kernel storage client (DP-R3)",
+    ForbidRawKernelClient::default()
+}
+
+/// Lint state: the exemption verdict for the crate under compilation.
+///
+/// `None` until the first `use` item is seen, then the parsed answer. Cached
+/// because `check_item` runs per item and the manifest cannot change during a
+/// single rustc invocation — but cached *in the pass*, not in a `static`, so
+/// the correctness of this lint never depends on the assumption that one
+/// process compiles exactly one crate.
+#[derive(Default)]
+struct ForbidRawKernelClient {
+    is_dp_crate: Option<bool>,
 }
 
 /// The forbidden paths, verbatim from `DP-K11`'s skeleton.
@@ -88,15 +146,36 @@ const FORBIDDEN: &[(&str, &str)] = &[
     ("deadpool_redis", "Pool"),
 ];
 
-/// Crate names that ARE the data plane, and so may hold raw clients.
+/// Does the crate being compiled declare `[package.metadata.dp] dp-crate`?
 ///
-/// This is the compiled-in fallback for the `dp-crate = true` marker: a lint
-/// runs inside rustc and cannot read the crate's `Cargo.toml`, so the marker is
-/// checked by the wired gate that accompanies this lint
-/// (`scripts/dp-crate-marker-gate.py`), and the lint itself keys on the crate
-/// name it is compiling. The two must agree — the gate asserts they do, which
-/// is what stops this list becoming a private exemption channel.
-const DP_CRATES: &[&str] = &["dp", "dp_clippy", "dp_kernel", "dp_kernel_macros"];
+/// Reads the manifest cargo told rustc about. Every failure path returns
+/// `false` — no manifest, unreadable file, malformed TOML, absent key, or a
+/// non-boolean value all mean NOT EXEMPT. That direction is deliberate: a
+/// crate wins the exemption only by successfully asserting it, so the failure
+/// modes produce a lint error to investigate rather than silent permission.
+/// `dp-crate = "true"` (a string) is not a claim of anything and is treated as
+/// what it is — an absent claim.
+fn declares_dp_crate() -> bool {
+    let Ok(dir) = std::env::var("CARGO_MANIFEST_DIR") else {
+        return false;
+    };
+    let Ok(text) = std::fs::read_to_string(std::path::Path::new(&dir).join("Cargo.toml")) else {
+        return false;
+    };
+    let Ok(manifest) = text.parse::<toml::Table>() else {
+        return false;
+    };
+    manifest
+        .get("package")
+        .and_then(toml::Value::as_table)
+        .and_then(|p| p.get("metadata"))
+        .and_then(toml::Value::as_table)
+        .and_then(|m| m.get("dp"))
+        .and_then(toml::Value::as_table)
+        .and_then(|d| d.get("dp-crate"))
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(false)
+}
 
 impl<'tcx> LateLintPass<'tcx> for ForbidRawKernelClient {
     fn check_item(&mut self, cx: &LateContext<'tcx>, item: &'tcx hir::Item<'tcx>) {
@@ -104,11 +183,12 @@ impl<'tcx> LateLintPass<'tcx> for ForbidRawKernelClient {
             return;
         };
 
-        // The crate being compiled. `dp-kernel` normalises to `dp_kernel`.
-        let this_crate = cx.tcx.crate_name(hir::def_id::LOCAL_CRATE);
-        if DP_CRATES.contains(&this_crate.as_str()) {
+        if *self.is_dp_crate.get_or_insert_with(declares_dp_crate) {
             return;
         }
+
+        // Only for the message. `dp-kernel` normalises to `dp_kernel`.
+        let this_crate = cx.tcx.crate_name(hir::def_id::LOCAL_CRATE);
 
         let segments: Vec<Symbol> = path.segments.iter().map(|s| s.ident.name).collect();
         if segments.len() < 2 {

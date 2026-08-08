@@ -151,3 +151,52 @@ jobs:
           python-version: "3.12"
       - name: reality-layer guards, mutated
         run: python scripts/reality-layer-bite-harness.py
+
+  # DP-R3 across the workspace (`2F`) — the custom clippy lint, plus the ratchet
+  # that makes its verdict binding.
+  #
+  # ITS OWN JOB, and the reason is a hard constraint rather than tidiness: this
+  # lint is a dylint cdylib, which needs `rustc_private` and therefore a NIGHTLY
+  # toolchain with rustc-dev. The workspace pins 1.89.0 STABLE on purpose —
+  # `crates/dp/tests/ui/*.stderr` record rustc's diagnostic prose verbatim, so a
+  # different rustc rewrites those files. The two toolchains must not meet, and
+  # `lints/dp-clippy/` is outside the workspace with its own rust-toolchain.toml
+  # for the same reason.
+  #
+  # `cargo-dylint`'s version must MATCH the `dylint_linting` the lint links.
+  # 3.1.2 against 3.5.1 fails with `could not find RunCompiler in rustc_driver`
+  # (the driver was compiled against a nightly whose API had moved), so the
+  # version here is pinned to the dependency, not to "latest".
+  dp-clippy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2025-09-12
+          components: rustc-dev, llvm-tools, rust-src
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            lints/dp-clippy
+
+      - name: install cargo-dylint (version pinned to dylint_linting)
+        run: |
+          cargo install cargo-dylint --version 3.5.1 --locked
+          cargo install dylint-link --version 3.5.1 --locked
+
+      # FIRST, and deliberately: prove the lint fires, stays quiet on clean
+      # code, exempts a crate carrying the dp-crate marker, and REDS on the
+      # same crate without it. A workspace sweep by a lint that cannot fire is
+      # the failure this repo has shipped repeatedly; the sweep below means
+      # nothing until this step has passed.
+      - name: the lint, proven non-vacuous
+        run: cd lints/dp-clippy && ./run-lint.sh --self-test
+
+      - name: DP-R3 across the workspace, ratcheted
+        run: python scripts/dp-clippy-gate.py
