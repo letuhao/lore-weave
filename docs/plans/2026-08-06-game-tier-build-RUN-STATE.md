@@ -2053,6 +2053,7 @@ reconciled by quietly changing the count — the missing row is the finding.
 | **0** | AMEND bundle | ✅ `217d325f0` + `3e6358749` |
 | **1** | `crates/dp` — tiers, scopes, `DpAggregate` | 🟡 **Four rounds, four BLOCKs, 58 findings.** Round 3 retired the hand-rolled lexer for a real `syn` AST. **Not closed** — `G3`/`G4`/`G6`–`G13` are recorded and open, and no round has yet returned CLEAR. The residual limit is stated rather than closed: `dp-clippy` (`D-DP-CLIPPY-NOT-BUILT`). |
 | **1b** | the `channels` table (`DP-Ch1/Ch2/Ch3`) | ✅ **BUILT AND VERIFIED — §6j. `FLOW-9` discharged: the tier specified this table in Phase 4 and no migration ever shipped.** Four cold-start refutation rounds, **all four BLOCK**, every finding discharged and BITTEN. Live smoke 60/60; chain smoke 18 applied AND retried; the provisioner applies the manifest with a ledger, proven by a live test that fails with the exact regression error when its check is removed. Open, recorded with triggers: `1b7db-03` (every service connects as a Postgres superuser), `1b7db-08` (`INHERITS`), `1b7db-11` (`reality_root` vs `id > 0`), `1b14-07` (three unconstrained column domains), `FLOW-19` (the writer-lease FK, blocked because `channels` has no writer — `flow19_trigger` reds when it gains one). |
+| **R** | **`REALITY-CREATE`** — the user-facing function that provisions a reality | 🔴 **DESIGNED, BLOCKED ON THE PO — §6l + [spec](../specs/2026-08-08-user-created-realities.md).** **Zero per-reality databases exist; the only caller of `provision_reality` is an ops drill; `reality_registry` has no owner.** This is the producer the whole game tier has been waiting on — `channels`, `FLOW-19` and slices 3-5 all bind to it. It is a **CREATE DATABASE feature**: 8 threats, 10 layers, and `L4` (a `CREATEDB`-only role — `loreweave` is currently the sole login role and is superuser) is a **prerequisite, not debt**. Five PO questions open. |
 | **2** | `dp::forbid_raw_kernel_client`, shipped RED | ⬜ *board TBD.* **Carries `[package.metadata.dp] dp-crate = true`**, removed from `crates/dp/Cargo.toml` by `V1-F12`: it is `DP-K11`'s marker and it is the right shape, but its only reader is this lint. It lands in the same commit as the thing that reads it. |
 | **3** | `RealityId` + `SessionContext` | ⬜ *board TBD* |
 | **4** | tier-typed write surface | ⬜ *board TBD* |
@@ -2134,6 +2135,68 @@ borrowed row §6i's own "What does NOT satisfy this" forbids by name.
 **inexpressible**, and following the spec literally would have re-created `FLOW-19` inside the
 migration written to discharge it. Recorded as `REC-105` and flagged: it is the one **judgement** in
 1b rather than a correction, and nothing has run against a real database.
+
+## 6l. `REALITY-CREATE` — **the producer the whole game tier has been missing, and it is a CREATE DATABASE feature**
+
+Design: [`docs/specs/2026-08-08-user-created-realities.md`](../specs/2026-08-08-user-created-realities.md).
+**PO: *"this platform needs a function to create a reality by tool, because users can create their
+own reality"* and *"this is a create-database feature, it needs multiple-layer security."***
+
+### The three measurements that reframed the run
+
+Asked in the order cost dictates — the cheap question first, which is the discipline `BDR-47` records
+this round failing at.
+
+| # | question | answer |
+|---|---|---|
+| 1 | How many per-reality databases exist? | **ZERO. Never one, ever.** |
+| 2 | What can create one? | **`provision_reality`'s only caller is `bin/provision_drill.rs`** — an ops drill. No route, no gateway path, no frontend, no MCP tool. |
+| 3 | Who owns a reality? | **`reality_registry` has no owner column.** Only `close_initiated_by` and `drop_approved_by` — both operator fields. |
+
+⇒ **The shipped design is *an operator provisions a world; users join it*** (`DP-C10` names an admin
+interface and nothing else). *Users create their own realities* is a **different resource with
+different tenancy**, and the schema encodes the other one.
+
+And a fourth, quietly the most telling: `reality_registry_db_host_format` requires
+`^pg-shard-[0-9]+\.(internal|prod|staging)$`. **The dev host is `postgres`** — the registry rejects
+the only environment that exists, on host format alone. The schema was written for infrastructure
+that has never been stood up and locks out the one that has.
+
+### Why this sits ABOVE everything slice 1b did
+
+**Every major finding of this run is one fact wearing different clothes: nobody has ever run the
+path.** `1b7gap-H1` (`0019` applied by nothing) · `1b14-01` (the provisioner never re-driven) ·
+`1b14-05` (death at migration 8). Four refutation rounds and roughly four hours of agent time found
+them one at a time. **A single successful provisioning would have surfaced all three in a minute** —
+and `channels` would have had its producer, which is what `FLOW-19` and `1b14-07` are both waiting on.
+
+### The security shape, because this is not ordinary CRUD
+
+The operation allocates a **database**, on a **shard**, through a role holding **`CREATEDB`**, using a
+name that **must be string-interpolated into DDL** because `CREATE DATABASE` cannot bind parameters.
+Eight threats and ten layers are in the spec; three matter for sequencing:
+
+| | |
+|---|---|
+| 🔴 **`L4` blocks the feature** | The provisioning role must have `CREATEDB` and **not** be superuser. Today `loreweave` is the **only** login role and it is `rolsuper` + `rolbypassrls`. `1b7db-03` recorded that as tracked debt when nothing user-facing could reach it; **a user-facing create-database path promotes it from debt to prerequisite.** |
+| 🟠 **`L3` is a shape, not a validator** | The user never supplies an identifier. The db name is derived server-side from a generated `reality_id`; the user's chosen name is data in a column. `safe_ident()` already exists and stays — as the LAST line, not the first. *A validator on a user-supplied name is the wrong shape; no user byte should reach DDL.* |
+| 🟠 **`L2` must be transactional** | Per-user cap and rate limit enforced **in the same transaction as the registry insert**, or two concurrent requests both pass a read-then-write check. |
+
+Existing layers that already hold: `safe_ident` · `REVOKE CONNECT … FROM PUBLIC` (`I4`) ·
+`X-Service-Token` on the meta bridge · `meta_write_audit` (`I8`) · the `schema_migrations` ledger
+(`1b14-01`) for idempotent resume.
+
+### Blocked on the PO — five questions, and #1 decides the rest
+
+**(1) user-owned or operator-approved?** · (2) quota default and whether it is a plan tier · (3) widen
+the `db_host` CHECK or rename dev to satisfy it · (4) may a user destroy their own reality, or only
+request it (the `deprovisioner` already models approval) · (5) does the `CREATEDB`-only role land in
+this feature or as its own hardening task first.
+
+⚠ **The meta database does not exist** (`loreweave_meta_smoke` is a test DB), and `migrations/meta/`
+is a **second migration tree at repo root** with no manifest and no gate —
+`migration-manifest-gate` covers `contracts/migrations/per_reality` only. Meta is step zero: the
+provisioner's first action writes `reality_registry` through the bridge.
 
 ## 6k. `SLICE-2` — Phase 0 only. **The board is NOT written and slice 2 has NOT started.**
 
@@ -2254,6 +2317,7 @@ explained — and it would convert three of the prose rows at once.
 
 | # | what nearly went wrong |
 |---|---|
+| `BDR-47` | 🔴 **I verified a component for four rounds before asking whether anything runs it.** The decisive query — `SELECT count(*) FROM pg_database WHERE datname LIKE 'reality%'` → **0** — was one command away the entire session, and I ran it last, after the PO pushed twice. Everything before it was leaf-first: *does this table have rows* asked before *does this database type exist*. The cost is measurable: `1b7gap-H1`, `1b14-01` and `1b14-05` are **one fact** — nobody has ever run the path — found separately by three refuters over roughly four hours, when one provisioning attempt surfaces all three in a minute. ⇒ **Execute the path before verifying its parts.** Verifying a component no path exercises is slow, finds problems one at a time, and cannot tell you which parts are worth verifying at all. The repo's own Phase 0 says it — *does it have a producer* — and I applied it to models while never applying it to the database itself. The corollary the PO supplied and I had not reached: **the producer for a user-facing resource is a FUNCTION USERS CAN CALL**, not an ops drill I run by hand. |
 | `BDR-46` | 🔴 **I wrote the rule, then broke it two commits later, in a different language.** `scripts/dp-migration-chain-smoke.py`'s docstring separates RETRY-SAFETY from WHOLE-HISTORY REPLAY by name, says a versioned runner never performs the second, and records that the second dies at `0001_initial`. I wrote that. Then `1b12-05` made the provisioner apply the manifest **unconditionally** — whole-history replay — and I commented that it was *"a no-op rather than an error."* ⇒ **Knowing a distinction does not transfer across a language boundary or a two-hour gap.** What would have caught it is the question I did not ask: *does this loop perform the operation my own docs say fails?* The mechanism now is a live test driving the real function, because the unit test that covered re-entry was green against a `HashSet` mock — **the mock had the property and the live code did not**, which is the repo's own cross-service live-smoke rule firing inside a single service. |
 | `BDR-45` | 🔴 **A fix's blast radius is not the same as its subject, and `1b12-05` had two regressions outside its subject.** Making the provisioner apply the whole manifest was correct. It also (a) turned a working single-file apply into an un-retryable replay and (b) started applying `0008_pgvector_setup`, which needs an extension `postgres:18-alpine` does not have — so provisioning died at migration 8 of 15 on every new reality. **Neither is a defect in the change; both are consequences of it**, and I checked the change rather than the consequences. ⇒ When a fix widens what code DOES, enumerate what it now touches that it did not before, and ask of each: *did this work before, and does it still?* Both answers here were "yes" and "no". |
 | `BDR-44` | 🔴 **"I verified it live" is not "the suite would notice", and I conflated them three times in one slice.** After `1b.10` I attacked each fix by hand on a live database, saw every one refused, and wrote *"every HIGH and MEDIUM discharged, re-verified live: 54/54"*. A third refuter then applied five mutations of the shipped migration one at a time and **four stayed green — three of them reverting the very fixes I had just made.** The fixes were right. The harness did not hold them. ⇒ **A fix without a leg is a fix the next edit silently removes**, and the manual check I did proves the code works TODAY while saying nothing about tomorrow. The tell: I *knew* this rule — the whole `1b.4` bite section exists because of it — and applied it to CONSTRAINTS while not applying it to FIXES. Also: `1b12-04` needed a change to the SUBJECT (`INTO STRICT`) before a leg could catch it deterministically at all. **Sometimes what makes a defect testable is a change to the thing, not to the test.** |
