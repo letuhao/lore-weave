@@ -89,25 +89,12 @@ to `docs/dev/LOCAL_TEST_ENV.md` (git-ignored) and fill it in. Those values are p
 credentials, local DB UUIDs, and `user_model_id`s from another developer's checkout will not work on
 yours, which is exactly why they are not tracked.
 
-### Fork synchronization and safe agent context
-
-This fork synchronizes `upstream/main` into its `main` branch automatically. Portable, reviewable
-agent guidance and configuration are tracked deliberately: `.agents/skills/`, the
-`upstream/main` `.ai-factory/` baseline, `.claude/`, `.codex/`, `.cursor/skills/`, `AGENTS.md`,
-`CLAUDE.md`, contribution guidance, standards, plans, and documentation. Keep those files factual
-and free of machine-specific values.
-
-Do **not** commit agent working state, generated context, credentials, local endpoint addresses,
-personal test-account details, database UUIDs, model IDs, private keys, or filled-in environment
-files. `docs/dev/LOCAL_TEST_ENV.md`, `.env*` files (other than templates), private-key formats,
-`.claude/settings.local.json`, `.claude/scheduled_tasks.lock`, non-skill `.agents/` content,
-non-skill `.cursor/` content, and `.ai-factory/` files absent from `upstream/main` are ignored. If
-a shared agent document needs an example, use an obvious placeholder and describe the required
-environment variable instead of a real value.
-
-The synchronization workflow preserves the tracked agent paths after every upstream merge. It
-removes only explicitly ignored local state and environment files; it does not remove safe tracked
-guidance such as this file, `AGENTS.md`, `CLAUDE.md`, or repository documentation.
+The same rule generalises past the test account. **Never commit** credentials, tokens, passwords,
+private keys, local endpoint addresses, personal test-account details, database UUIDs, model IDs, or
+a filled-in environment file — in code, in docs, or in agent guidance. Two different things go wrong
+when you do: a secret leaks, and a per-machine value sends the next contributor to a row that is not
+theirs. When a shared document needs to show one, use an obvious placeholder and name the
+environment variable or git-ignored file the real value comes from.
 
 ---
 
@@ -258,11 +245,10 @@ wanted, open an issue and ask before building — that costs you five minutes an
 
 ## 9. AI-assisted contributions
 
-They are welcome. Point your assistant at **[`AGENTS.md`](AGENTS.md)** first; it is tool-neutral,
-and `CLAUDE.md` provides the repository-wide development rules. Portable guidance may be committed
-when it is safe for every checkout. Per-developer agent configuration, generated context, session
-state, credentials, and machine-specific parameters remain git-ignored; see
-[Fork synchronization and safe agent context](#fork-synchronization-and-safe-agent-context).
+They are welcome, and the repo is set up for them. Point your assistant at
+**[`AGENTS.md`](AGENTS.md)** — it is tool-neutral, and `CLAUDE.md` is a pointer to it. Shared agent
+tooling under `.claude/commands/` and `.claude/skills/` is committed on purpose; per-developer
+session state is git-ignored.
 
 Two expectations, because this is where AI-assisted PRs usually fail review:
 

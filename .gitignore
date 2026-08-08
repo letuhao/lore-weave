@@ -141,6 +141,8 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+# A filled-in per-environment file (.env.local, .env.production) is credentials;
+# the portable templates beside it are documentation and stay tracked.
 .env.*
 !.env.example
 !.env.sample
@@ -235,10 +237,14 @@ services/auth-service/tmp/
 
 .claude/settings.local.json
 
-# Developer-local credentials and test state. Portable templates stay tracked;
-# their filled-in counterparts never do. Private-key fixture exceptions must be
-# explicit and contain test-only material.
-docs/dev/LOCAL_TEST_ENV.md
+# Local-only operator state (creds, env for the Phase 0b harness, etc.).
+# Never committed — see docs/specs/2026-05-15-tilemap-phase-0b-gateway-tooluse.md D7.
+.local/
+
+# Key material, by EXTENSION rather than by path. A path list is default-uncovered
+# (docs/standards/non-vacuity.md): the key someone drops in a new directory tomorrow
+# is the one that leaks. A test-only fixture may be exempted, but only by naming it
+# here, so the exemption is reviewable rather than implicit.
 *.pem
 !services/auth-service/internal/authjwt/testdata/admin_test_key.pem
 *.key
@@ -248,37 +254,13 @@ docs/dev/LOCAL_TEST_ENV.md
 credentials.local.json
 secrets.local.json
 
-# Local-only operator state (creds, env for the Phase 0b harness, etc.).
-# Never committed — see docs/specs/2026-05-15-tilemap-phase-0b-gateway-tooluse.md D7.
-.local/
-
-# Portable agent guidance, skills, and shared workflow configuration are
-# tracked in this fork. Keep credentials, machine-local state, and generated
-# runtime output out of these paths; dedicated ignore rules above and below
-# protect those artifacts. The `.ai-factory` exceptions mirror `upstream/main`;
-# all other AI Factory files remain local.
-/.agents/*
-!/.agents/skills/
-!/.agents/skills/**
-/.ai-factory/*
-!/.ai-factory/config.yaml
-!/.ai-factory/skill-context/
-/.ai-factory/skill-context/*
-!/.ai-factory/skill-context/aif-commit/
-!/.ai-factory/skill-context/aif-commit/SKILL.md
-!/.ai-factory/skill-context/aif-implement/
-!/.ai-factory/skill-context/aif-implement/SKILL.md
-!/.ai-factory/skill-context/aif-plan/
-!/.ai-factory/skill-context/aif-plan/SKILL.md
-!/.ai-factory/skill-context/aif-review/
-!/.ai-factory/skill-context/aif-review/SKILL.md
-!/.ai-factory/skill-context/aif/
-!/.ai-factory/skill-context/aif/SKILL.md
-/.cursor/*
-!/.cursor/skills/
-!/.cursor/skills/**
-/.github/skills/
-/.ai-factory.json
+# Agent worktrees. This was previously an ENUMERATED list of three generated names
+# (romantic-franklin, cranky-margulis, strange-gagarin) — i.e. default-uncovered: the
+# fourth worktree, created tomorrow, would have been committed. Exactly the
+# "scope never reaches it" vacuity shape from docs/standards/non-vacuity.md.
+# The directory itself is transient state; the tracked agent config next to it
+# (.claude/commands/, .claude/skills/) is shared tooling and stays committed.
+.claude/worktrees/
 
 node_modules/.vite/vitest/da39a3ee5e6b4b0d3255bfef95601890afd80709/results.json
 
@@ -298,6 +280,22 @@ chat-history/
 .claude/scheduled_tasks.lock
 
 chat.txt
+
+# --- Per-developer agent + environment state ---------------------------------
+# These are machine-local. Tracking them leaks one developer's session state and
+# credentials into everyone else's checkout; worse, the values (local DB UUIDs,
+# user_model_ids, ports) are meaningless elsewhere and actively mislead.
+# The SHARED counterparts stay committed on purpose:
+#   .claude/commands/, .claude/skills/  — team tooling
+#   .raid/active-task.yaml              — read by scripts/raid/task_config.py, per-branch by design
+#   .mcp.json, .cursor/.mcp.json        — placeholder tokens only, no secrets
+
+# Agent session memory / rolling notes (remember plugin).
+.remember/
+
+# Your filled-in local test environment. The .example.md template IS committed —
+# copy it, fill it, and it stays here. See docs/dev/LOCAL_TEST_ENV.example.md.
+docs/dev/LOCAL_TEST_ENV.md
 
 geo-review-2026-05-21/
 
@@ -371,3 +369,19 @@ frontend/dist-s01/
 
 frontend/dist-jamie/
 services/publisher/pub.exe~
+
+
+# ── Agent workflow: what is SHARED vs what is YOURS ─────────────────────────
+# The agent workflow IS committed on purpose (see docs/standards/agent-workflow.md):
+# when several people and several agents work the same repo, a shared, versioned
+# process is what makes a wrong turn reviewable instead of invisible. Committed:
+# AGENTS.md, CLAUDE.md, .claude/, .cursor/, .codex/, .agents/, .github/skills/,
+# .ai-factory/, .githooks/, scripts/*-gate.py.
+#
+# Personal layer — never committed. Put your own overrides here and they stay
+# yours without forking anyone else's process:
+.ai-factory/skill-context.local/
+.claude/settings.local.json
+.codex/config.local.toml
+.vscode/settings.json
+AGENTS.local.md

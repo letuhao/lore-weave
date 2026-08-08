@@ -15,11 +15,11 @@ git config core.hooksPath .githooks
 A blocked commit is the system working. **Do not pass `--no-verify`**, and do not "fix" a
 gate by weakening it — a check that cannot fail is worse than no check.
 
-## Commit and push the primary branch
+## Do not push, and do not commit on `main`
 
-This fork commits and pushes only to `main`; do not create or push feature or secondary branches.
-`git.skip_push_after_commit: false` preserves the push prompt after a successful commit. Once the
-required verification and review gates are complete, push `main` to the configured SSH `origin`.
+`git.skip_push_after_commit: false` in AI Factory's defaults means "push after commit".
+**On this repository, do not push unless the human explicitly asks.** If you are on the
+default branch, branch first.
 
 ## What goes in a commit
 
@@ -28,7 +28,8 @@ required verification and review gates are complete, push `main` to the configur
   persisted artifact here. So is the PR body.
 - The `SESSION_HANDOFF.md` update lands in the **same commit** as the code it describes.
   Work not recorded there does not exist for the next session.
-- Never add a `Co-authored-by` trailer to commit messages.
+- End the message with the trailer the harness expects:
+  `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>` when Claude authored it.
 
 ## Before the commit exists
 

@@ -36,15 +36,11 @@ These have each already cost this project a real incident; the full statements a
   the output as evidence. "I added a test" is not evidence.
 - **Destructive DB ops in tests** — scope every cleanup, read the DSN only from a dedicated
   `*_TEST_*` var, and guard before you destroy.
-
-## Fork agent-context hygiene
-
-- Track portable agent guidance in `.agents/skills/`, `.claude/`, `.codex/`, and
-  `.cursor/skills/`. In `.ai-factory/`, track only the files present in `upstream/main`; keep all
-  other working artifacts ignored.
-- Never persist credentials, tokens, passwords, private keys, local endpoints, personal test
-  account details, database UUIDs, model IDs, or filled-in environment files. Use placeholders and
-  document the required environment variable instead.
+- **Nothing machine-local goes in a tracked file** — no credentials, tokens, passwords, private
+  keys, local endpoints, test-account details, database UUIDs, or `user_model_id`s. These are
+  per-developer: pinned in a tracked file they send the next contributor to someone else's row,
+  and a credential among them is a leak. Name the environment variable or the git-ignored file
+  the value comes from instead.
 
 ## Orientation at the start of a task
 
