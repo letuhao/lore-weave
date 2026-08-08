@@ -68,6 +68,15 @@ test = [
   "pytest-mock>=3.14",
   "respx>=0.21",
   "fastapi>=0.110",
+  # Same shape as pytest-mock above, found the same way. `loreweave_parse.pdf_walker`
+  # imports fitz LAZILY on purpose — PyMuPDF is optional at runtime and only
+  # knowledge-service (its consumer) declares it. But the TEST imports fitz and PIL at
+  # module scope to build its fixtures programmatically, so collection died with
+  # `ModuleNotFoundError: No module named 'fitz'` and took the whole SDK suite with it
+  # (Interrupted: 1 error during collection). Test-only deps belong here, not in the
+  # runtime requires, or the lazy import stops being lazy.
+  "pymupdf>=1.28.0",
+  "Pillow>=12.3.0",
 ]
 
 # Phase 4b-α — top-level packages shipped under this distribution.
