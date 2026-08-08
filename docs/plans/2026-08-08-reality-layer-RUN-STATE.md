@@ -779,10 +779,42 @@ before `3D`, because every signature takes `&SessionContext`.
 
 | step | what | done = |
 |---|---|---|
-| `4A` | `cache_key!` (`DP-R4`) — expands to `dp:{reality_id}:{tier}:{aggregate_type}:{aggregate_id}[:subkey]` with reality and tier bound at compile time | a trybuild case proving a hand-built `format!("dp:…")` is NOT accepted where a key is required, + `dp-clippy`'s `R-4` given a subject |
-| `4B` | `t0_write`..`t3_write` typed by the tier marker traits | a compile-fail case: writing a `T2Aggregate` via `t1_write` must not compile (`DP-R5`) |
-| `4C` | `read_projection_*` per `04b` | — |
-| `4D` | `dp-clippy` `R-6` (`forbid_swallowed_backpressure`) — keys on `DpError::is_backpressure`, never its own copy of the pair | fires on a real `.ok()` over a `Result<_, DpError>`; self-test 3 legs |
+| `4A` | `cache_key!` (`DP-R4`) | ✅ reality-scoped form; tier checked by construction (`E0271`), `KeyId` refuses `:` and empty; channel form deferred |
+| `4B` | `t0_write`..`t3_write` typed by the tier marker traits | 🅿 **PARKED** — three prerequisites, below |
+| `4C` | `read_projection_*` per `04b` | 🅿 **PARKED** behind `4B` (same three) |
+| `4D` | `dp-clippy` `R-6` (`forbid_swallowed_backpressure`) | 🅿 **PARKED** — no subject until `4B` |
+
+#### Why `4B`/`4C`/`4D` park, and exactly what unblocks each
+
+Not effort, and not an external dependency — three concrete missing pieces, each
+buildable but none of them a row on this board:
+
+1. **`DpAggregate` has no `Delta`.** `DP-K5`'s signatures are
+   `t2_write<A: T2Aggregate>(ctx, id: A::Id, delta: A::Delta)`. Today the trait
+   carries `Tier`, `Scope`, `Id`, `TYPE_NAME` and no `Delta`. Adding one is a
+   change to the aggregate CONTRACT — governed by `dp-aggregate-gate`, pinned by
+   five trybuild `.stderr` files, and implemented by four real impls. It needs
+   its own slice with its own refutation round, not a line in `4B`.
+2. **There is no backend seam.** `crates/dp` declares no I/O, so a write surface
+   here can only be a trait, exactly as `ControlPlane` is. Its implementor is
+   `dp-kernel` (event store, outbox, projections) — i.e. slice 5's wiring.
+   §0.6c: *a trait ships WITH its first implementor.*
+3. **`DP-K5` is async.** Every primitive but `t0_write` is `async fn`, which
+   pulls a runtime contract into the crate whose defining property is that it
+   has none. That is a decision to take deliberately, with the `S2.3` no-I/O
+   claim re-read, not incidentally while adding a write method.
+
+**`4D` has no SUBJECT, which is the sharper reason.** `R-6` flags `.ok()` /
+`unwrap_or_default()` over a `Result<_, DpError>`. Measured: the only functions
+returning `Result<_, DpError>` today are `SessionContext::bind` and
+`check_live`, both inside `crates/dp` itself, and nothing calls them outside
+tests. A lint shipped now would be green by emptiness — the shape this run
+removed five times. `DpError::is_backpressure` already exists and is the set the
+lint must key on, so the lint is a small job **the day a write surface gives it
+call sites**.
+
+**Unblocks when:** `A::Delta` lands (its own slice) **and** `dp-kernel` is wired
+behind the seam. `4D` unblocks the moment `4B` has feature-code callers.
 
 ---
 
