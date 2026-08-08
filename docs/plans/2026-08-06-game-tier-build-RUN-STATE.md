@@ -2053,7 +2053,8 @@ reconciled by quietly changing the count — the missing row is the finding.
 | **0** | AMEND bundle | ✅ `217d325f0` + `3e6358749` |
 | **1** | `crates/dp` — tiers, scopes, `DpAggregate` | 🟡 **Four rounds, four BLOCKs, 58 findings.** Round 3 retired the hand-rolled lexer for a real `syn` AST. **Not closed** — `G3`/`G4`/`G6`–`G13` are recorded and open, and no round has yet returned CLEAR. The residual limit is stated rather than closed: `dp-clippy` (`D-DP-CLIPPY-NOT-BUILT`). |
 | **1b** | the `channels` table (`DP-Ch1/Ch2/Ch3`) | ✅ **BUILT AND VERIFIED — §6j. `FLOW-9` discharged: the tier specified this table in Phase 4 and no migration ever shipped.** Four cold-start refutation rounds, **all four BLOCK**, every finding discharged and BITTEN. Live smoke 60/60; chain smoke 18 applied AND retried; the provisioner applies the manifest with a ledger, proven by a live test that fails with the exact regression error when its check is removed. Open, recorded with triggers: `1b7db-03` (every service connects as a Postgres superuser), `1b7db-08` (`INHERITS`), `1b7db-11` (`reality_root` vs `id > 0`), `1b14-07` (three unconstrained column domains), `FLOW-19` (the writer-lease FK, blocked because `channels` has no writer — `flow19_trigger` reds when it gains one). |
-| **R** | **`REALITY-CREATE`** — the user-facing function that provisions a reality | 🔴 **DESIGNED, BLOCKED ON THE PO — §6l + [spec](../specs/2026-08-08-user-created-realities.md).** **Zero per-reality databases exist; the only caller of `provision_reality` is an ops drill; `reality_registry` has no owner.** This is the producer the whole game tier has been waiting on — `channels`, `FLOW-19` and slices 3-5 all bind to it. It is a **CREATE DATABASE feature**: 8 threats, 10 layers, and `L4` (a `CREATEDB`-only role — `loreweave` is currently the sole login role and is superuser) is a **prerequisite, not debt**. Five PO questions open. |
+| **P** | **`PIPELINE-INDEX`** — `book -> lore bible -> pre-manifest stub -> manifest -> reality` | 🔵 **INDEXED, PO CHOOSES — §6m + [index](../specs/2026-08-08-book-to-reality-pipeline-index.md).** Measured: the TWO ENDS are built and the MIDDLE is not. `book`/`glossary` hold **584 MB / 1847 MB** of real data; `ruleset-core`+`ruleset-loader`+`dp-kernel`+`world-gen` are ~60k lines with a real ingest entry point and shipped manifest artifacts. **The lore bible is 17 design docs and zero code, and "pre-manifest stub" is not a named artifact anywhere in the repo.** Five candidates indexed with the gap each clears. |
+| **R** | **`REALITY-CREATE`** — the user-facing function that provisions a reality | 🅿 **PARKED the day it was designed.** It modelled the pipeline's LAST stage (`S8`) as a standalone feature. **PO: engine first — you cannot give a user a manifest builder if you do not know what the engine can support.** The threat model and 10 security layers stay valid; the timing does not. Wakes on `G-S5a` + `G-S7b` + `G-S8b`. |
 | **2** | `dp::forbid_raw_kernel_client`, shipped RED | ⬜ *board TBD.* **Carries `[package.metadata.dp] dp-crate = true`**, removed from `crates/dp/Cargo.toml` by `V1-F12`: it is `DP-K11`'s marker and it is the right shape, but its only reader is this lint. It lands in the same commit as the thing that reads it. |
 | **3** | `RealityId` + `SessionContext` | ⬜ *board TBD* |
 | **4** | tier-typed write surface | ⬜ *board TBD* |
@@ -2135,6 +2136,32 @@ borrowed row §6i's own "What does NOT satisfy this" forbids by name.
 **inexpressible**, and following the spec literally would have re-created `FLOW-19` inside the
 migration written to discharge it. Recorded as `REC-105` and flagged: it is the one **judgement** in
 1b rather than a correction, and nothing has run against a real database.
+
+## 6m. `PIPELINE-INDEX` — **book to reality, indexed so the parts can be CHOSEN**
+
+Index: [`docs/specs/2026-08-08-book-to-reality-pipeline-index.md`](../specs/2026-08-08-book-to-reality-pipeline-index.md).
+
+**PO: *"a user can REQUEST a reality creation. It has multiple functions, not only simple data create -- it is manifest ingest and more. It binds `book -> lore bible -> pre-manifest stub -> manifest -> reality data` and more. This is very complex; we cannot do everything at once. We need to index them, then choose to design and implement some of the parts."***
+
+And the sequencing rule, which is the load-bearing half: ***"we are going to the game engine first, because that is the correct build order -- you cannot give a user a manifest builder if you do not know what the game engine can support."***
+
+### What the measurement says
+
+**The two ends are built and the middle is not.** `book` + `glossary` hold **584 MB / 1847 MB** of real content. `ruleset-core` (5197) + `ruleset-loader` (3852) + `sim-core` (2459) + `actor-hub` (1974) + `game-rules` (1029) + `dp-kernel` (15105) + `world-gen` (30772) are a working engine with a real ingest entry point (`load_reality`) and **shipped manifest artifacts** (`artifacts/engine_default.toml`, `presets/proving-ground.toml`). Between them: **the lore bible is 17 design documents and zero code, and "pre-manifest stub" returns no hits anywhere in `docs/`** -- the PO named it in conversation and the repo has never had a word for it.
+
+⇒ The pipeline is not a chain with a weak link. It is **two solid halves with a gap between them**, and that gap is exactly the tier `BOOK_TO_GAME` was opened to name.
+
+### Why "engine first" is a constraint, not a preference
+
+Two sealed decisions already bound the authored surface. **`AUTHOR-1`**: the manifest author is not a programmer, so complexity there is a hard cost. **`LIM-1`**: a ceiling is the manifest's to declare and the engine's to honour. ⇒ **every field a builder offers is a promise the engine must keep**, and offering one it cannot consume yields a silent no-op or a failure in front of players -- which `AUTHOR-1` says the author must not be the one to discover. This is not open-ended: **`engine_default.toml` IS the engine's declaration of its own surface**, so the dependency has a concrete artifact at its centre.
+
+### Seven named gaps, and five candidates
+
+Gaps: `G-S3` lore bible has no schema or producer - `G-S4` pre-manifest stub is undefined - `G-S5a` the engine's authorable surface is not enumerated for authors - `G-S7a` zero realities have ever existed - `G-S7b` **the meta database does not exist** and `migrations/meta/` is a second tree with no manifest or gate - `G-S8a` `reality_registry` has no owner and its `db_host` CHECK rejects dev - `G-S8b` `loreweave` is the sole login role and is superuser.
+
+Candidates, each independently valuable, with the gap it clears: **A** enumerate the engine's authorable surface (`G-S5a`) - **B** stand up meta + one reality end to end (`G-S7a`/`G-S7b`) - **C** the `CREATEDB`-only role (`G-S8b`) - **D** give the lore bible a shape (`G-S3`) - **E** continue slices 2-5.
+
+**A is the cheapest and the most directly "engine first"**: it reads types that already exist and produces the input both `S4` and any future manifest builder require.
 
 ## 6l. `REALITY-CREATE` — **the producer the whole game tier has been missing, and it is a CREATE DATABASE feature**
 

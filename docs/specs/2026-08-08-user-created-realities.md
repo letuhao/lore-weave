@@ -1,6 +1,25 @@
 # User-created realities — the create-database feature, and its security layers
 
-**Status:** DESIGN (2026-08-08). Not built. No code changes accompany this document.
+**Status:** 🅿 **PARKED (2026-08-08, same day it was written).** Not built, and **not next**.
+
+> **Why parked.** This designed the LAST stage of a pipeline as if it were a standalone feature.
+> **PO:** *"it binds `book → lore bible → pre-manifest stub → manifest → reality data` and more…
+> we are going to the game engine first, because that is the correct build order — you cannot give a
+> user a manifest builder if you do not know what the game engine can support."*
+>
+> The chain's middle (`lore bible`, `pre-manifest stub`) is undesigned — *"pre-manifest stub"* is not
+> a named artifact anywhere in the repo — and the manifest's authorable surface is bounded by an
+> engine still being built. **The analysis below stays valid; its timing does not.**
+>
+> **Index:** [`2026-08-08-book-to-reality-pipeline-index.md`](2026-08-08-book-to-reality-pipeline-index.md)
+> — this is stage **`S8`**.
+> **Wake it up when:** `G-S5a` (the engine's authorable surface is enumerated) **and** `G-S7b` (meta
+> exists) **and** `G-S8b` (a `CREATEDB`-only role exists).
+>
+> One correction it also needs on resumption: it treats creation as **one operation**. It is not —
+> the PO's framing is that a user **requests**, and the request runs a multi-function pipeline
+> (manifest ingest and more) across layers with different roles. §5's ten layers are security layers,
+> **not** the pipeline's functional layers, and the two must not be conflated when this is resumed.
 
 **Reconciles:** User Boundaries & Tenancy, User Data Scope & Protection, Data Plane **DP-A1–A19 / DP-R1–R8 / DP-T0–T3**, Foundation Invariants **I1–I19**, Data Plane channels **DP-Ch1–Ch37**
 
