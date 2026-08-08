@@ -63,6 +63,7 @@ commands:
       - {name: reason,        type: string, required: true,  description: "Audit explanation (>= 10 chars)"}
       - {name: locale,        type: string, required: false, description: "BCP-47 locale, default en"}
       - {name: deploy_cohort, type: int,    required: false, description: "Canary cohort 0..99, default 0"}
+      - {name: owner_user_id, type: uuid,   required: false, description: "Owning user; omit for a platform-owned reality"}
     impact_class: tier-2-griefing
     dry_run_required: true
     double_approval_required: false

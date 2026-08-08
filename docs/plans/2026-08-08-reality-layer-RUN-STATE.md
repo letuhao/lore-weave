@@ -132,7 +132,7 @@ right**, the fourth finding that two of the third's fixes were regressions. Budg
 | `W4` | first reality provisioned end to end | ✅ `dd1d98b4e` |
 | **`W3`** | **`reality provision` — an admin COMMAND, and a real provision worker behind it** | ✅ see evidence below |
 | `W5` | `orphan_scanner` owns the abandoned half-provision | ✅ **detection**; remediation needs a bridge endpoint (below) |
-| `W6` | `owner_user_id` on `reality_registry` — ownership exists before users can request | ⬜ decision + migration |
+| `W6` | `owner_user_id` on `reality_registry` — ownership exists before users can request | ✅ column **and its producer**, live both tiers |
 | `W7` | a `CREATEDB`-only system role; stop provisioning as superuser | ⬜ |
 | `W8` | capacity: make the real path read `shard_utilization` (the drill fakes its snapshot) | ⬜ **subsumed by `W3`** |
 
@@ -290,6 +290,51 @@ subtag check with tests.
 and DATA were all genuinely green — and the work still carried a split-brain bug and three broken
 checks. `V.1` is not a formality on top of the axes; **it is the only thing that read the apparatus
 itself.** `BDR-50`.
+
+### `W6` — a reality now belongs to someone
+
+`reality_registry` had `close_initiated_by` and `drop_approved_by` — the ADMINS who acted on a
+reality — and **nothing saying whose reality it is**. `owner_user_id` appeared in zero meta
+migrations and no design doc specified reality ownership. The PO's decision was already on record:
+*"user own their book, their reality"*, no role hierarchy.
+
+**Two columns, not a nullable uuid.** A bare nullable owner makes `NULL` mean both *"the platform
+owns this"* and *"nobody recorded an owner"* — states needing opposite responses. So the tier is
+declared: `owner_kind ∈ {system, user}`, with `system ⟺ owner_user_id IS NULL`. Matches the
+System/Per-user table in CLAUDE.md. **No FK** — `reality_registry` is in `loreweave_meta` and users
+in `loreweave_auth`; Postgres cannot key across databases, which is why the existing actor columns
+carry none either.
+
+**Biting the constraints found a defect in my own first draft.** I wrote the rule as one
+disjunction, which is correct — and which made the enum CHECK **unreachable**, because
+`owner_kind='wizard'` fails both branches and the consistency constraint always fired first. That is
+`NV-1`'s hardest shape: an adjacent decision defeating a check while both look individually right.
+Rewritten as two **implications**, so an unknown kind satisfies both (false antecedents) and reaches
+the enum. Each constraint now has a distinct, reachable job — **proven**, three violations naming
+three different constraints:
+
+```
+owner_kind='wizard'      → reality_registry_owner_kind_enum
+owner_kind='user'        → reality_registry_owner_user_set
+owner_user_id=<a user>   → reality_registry_owner_system_null   (on a system row)
+```
+
+**The tier is derived at the bridge, from ONE field.** The client sends `owner_user_id` or omits it;
+the server decides `owner_kind`. A client able to send both could send `('system', <a user>)` and
+have the table's CHECK discover it at the *end* of provisioning rather than at its edge.
+
+**LIVE, both tiers, through the audited admin command:**
+
+| | `owner_kind` | `owner_user_id` |
+|---|---|---|
+| `--owner_user_id 019d5e3c…` | `user` | `019d5e3c-7cc5-7e6a-8b27-1344e148bf7c` |
+| omitted | `system` | `(null)` |
+
+The **I8 audit records the ownership decision itself** — `after_values` carries `user /
+019d5e3c…` and `system / (null)` respectively — so who a reality was provisioned for is
+reconstructible, not just its current state. The tenancy query returns exactly that user's reality.
+*(`EXPLAIN` shows a seq scan: the table has five rows, so Postgres correctly ignores the partial
+index. That is a statement about the row count, not about the index.)*
 
 ### `W5` — the scanner can now see, and what it is NOT
 

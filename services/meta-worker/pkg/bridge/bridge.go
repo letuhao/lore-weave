@@ -31,6 +31,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -80,6 +81,16 @@ type RegisterReq struct {
 	Locale       string `json:"locale"`
 	DeployCohort int    `json:"deploy_cohort"`
 	Reason       string `json:"reason"`
+
+	// OwnerUserID is the user who owns this reality (W6). EMPTY means the
+	// platform owns it, which the server records as owner_kind='system'.
+	//
+	// The tier is DERIVED here rather than accepted from the client: a client
+	// that could send owner_kind independently could send
+	// ('system', <a user id>) or ('user', NULL), and the table's CHECK
+	// constraints would reject the write at the very end of provisioning
+	// instead of at its edge. One field in, one consistent pair out.
+	OwnerUserID string `json:"owner_user_id,omitempty"`
 }
 
 // TransitionReq is the reality transition payload.
@@ -238,6 +249,21 @@ func (m MetaRegistrar) Register(ctx context.Context, r RegisterReq) error {
 	if err != nil {
 		return fmt.Errorf("register: reality_id not a uuid: %w", err)
 	}
+	// W6 — ownership. The tier is derived from whether an owner was supplied,
+	// so the pair written is consistent by construction and the table's
+	// owner_system_null / owner_user_set CHECKs can never be the thing that
+	// discovers a mistake.
+	ownerKind := "system"
+	var ownerUserID any // nil => SQL NULL
+	if s := strings.TrimSpace(r.OwnerUserID); s != "" {
+		oid, err := uuid.Parse(s)
+		if err != nil {
+			return fmt.Errorf("register: owner_user_id not a uuid: %w", err)
+		}
+		ownerKind = "user"
+		ownerUserID = oid
+	}
+
 	intent := meta.MetaWriteIntent{
 		Table:     "reality_registry",
 		Operation: meta.OpInsert,
@@ -251,6 +277,8 @@ func (m MetaRegistrar) Register(ctx context.Context, r RegisterReq) error {
 			"session_max_pcs":   10,
 			"session_max_npcs":  10,
 			"session_max_total": 20,
+			"owner_kind":        ownerKind,
+			"owner_user_id":     ownerUserID,
 		},
 		// ActorSystem (not Service): the lifecycle_transition_audit.actor_type
 		// CHECK allows only owner/admin/system/cron, and the provisioner is a

@@ -54,6 +54,12 @@ type ProvisionRealityRequest struct {
 	Reason       string
 	DryRun       bool
 	Confirm      bool
+	// OwnerUserID is the user who will own the reality. uuid.Nil means the
+	// PLATFORM owns it — a real category (an admin provisioning for the
+	// platform), not "unknown". The registry stores the tier explicitly as
+	// owner_kind, so an unowned reality is declared rather than inferred from
+	// a NULL. See migrations/meta/036_reality_ownership.up.sql.
+	OwnerUserID uuid.UUID
 }
 
 // Validate checks the request shape. The dispatcher separately enforces the

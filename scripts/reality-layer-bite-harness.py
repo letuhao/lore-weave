@@ -137,6 +137,20 @@ GO_BITES: list[tuple[str, Path, str, str, str]] = [
         "TestRunProvision_NoCapacityDiagnosedBeforeBlankShard",
     ),
     (
+        "the owner never reaches the worker (reality silently becomes platform-owned)",
+        PROVPG,
+        'args = append(args, "--owner-user-id", req.OwnerUserID.String())',
+        "_ = req.OwnerUserID",
+        "TestProvisionInvoker_OwnerReachesWorker",
+    ),
+    (
+        "an absent owner still sends the flag (an empty owner reaches the server)",
+        PROVPG,
+        "if req.OwnerUserID != uuid.Nil {",
+        "if true {",
+        "TestProvisionInvoker_NoOwnerSendsNoFlag",
+    ),
+    (
         "locale is unvalidated (the old len>35 check)",
         PROV,
         "if l := strings.TrimSpace(r.Locale); l != \"\" && !looksLikeBCP47(l) {",
@@ -229,6 +243,20 @@ RUST_BITES: list[tuple[str, Path, str, str, str]] = [
         '    "migrating",',
         '    "provisioning",',
         "tests::settled_statuses_cover_every_state_past_provisioning",
+    ),
+    (
+        "a malformed owner is silently ignored instead of refused",
+        WORKER,
+        'Uuid::parse_str(val).map_err(|e| format!("--owner-user-id: {e}"))?,',
+        "Uuid::parse_str(val).unwrap_or(Uuid::nil()),",
+        "tests::a_malformed_owner_is_refused_not_ignored",
+    ),
+    (
+        "an absent owner is coerced to a default instead of staying None",
+        WORKER,
+        "let mut owner_user_id: Option<Uuid> = None;",
+        "let mut owner_user_id: Option<Uuid> = Some(Uuid::nil());",
+        "tests::owner_is_optional_and_absent_means_platform_owned",
     ),
     (
         "the dry-run preview re-implements the db name instead of calling it",

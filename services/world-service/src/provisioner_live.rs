@@ -56,8 +56,9 @@ impl BridgeClient {
         locale: &str,
         deploy_cohort: u8,
         reason: &str,
+        owner_user_id: Option<Uuid>,
     ) -> Result<bool, ProvisionerError> {
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "reality_id": reality_id.to_string(),
             "db_host": db_host,
             "db_name": db_name,
@@ -65,6 +66,11 @@ impl BridgeClient {
             "deploy_cohort": deploy_cohort,
             "reason": reason,
         });
+        // W6 — omitted entirely when absent, so the server's "empty means
+        // system-owned" rule is the ONE place the tier is decided.
+        if let Some(oid) = owner_user_id {
+            body["owner_user_id"] = serde_json::Value::String(oid.to_string());
+        }
         let resp = self
             .http
             .post(format!("{}/internal/provisioner/register-reality", self.base_url))
@@ -342,6 +348,7 @@ impl Effects for LiveEffects {
             &req.locale,
             req.deploy_cohort,
             &req.reason,
+            req.owner_user_id,
         ))
     }
 

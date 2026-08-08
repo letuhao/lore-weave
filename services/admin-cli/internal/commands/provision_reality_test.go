@@ -76,6 +76,18 @@ func runFakeWorker(mode string) int {
 	case "garbage":
 		fmt.Print("this is not json")
 		return 0
+	case "owner-echo":
+		// Echo back what --owner-user-id carried, so the test asserts on the
+		// child's actual argv rather than on the caller's intent.
+		owner := "no-owner"
+		for i, a := range os.Args {
+			if a == "--owner-user-id" && i+1 < len(os.Args) {
+				owner = os.Args[i+1]
+			}
+		}
+		fmt.Printf(`{"mode":"provision","reality_id":%q,"shard":"shard-a","db_name":%q,"steps":11}`,
+			reqID, owner)
+		return 0
 	case "blank-db":
 		fmt.Printf(`{"mode":"provision","reality_id":%q,"shard":"shard-a","db_name":"","steps":11}`, reqID)
 		return 0
@@ -465,6 +477,38 @@ func TestProvisionInvoker_DryRunFlagReachesWorker(t *testing.T) {
 	}
 	if !strings.Contains(got, "DRY-RUN") || !strings.Contains(got, "2/50") {
 		t.Fatalf("dry-run summary wrong:\n%s", got)
+	}
+}
+
+// ─── ownership (W6) ──────────────────────────────────────────────────────────
+
+// An owner must REACH the worker. If the flag were dropped, the bridge would
+// see no owner and record the reality as platform-owned — silently, with the
+// command still reporting success.
+func TestProvisionInvoker_OwnerReachesWorker(t *testing.T) {
+	owner := mustUUID(t)
+	inv := NewSubprocessProvisionInvoker(selfBin(t), fakeWorkerEnv("owner-echo"))
+	out, err := inv.Provision(context.Background(),
+		ProvisionRealityRequest{RealityID: mustUUID(t), Reason: "r", OwnerUserID: owner})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.DBName != owner.String() {
+		t.Fatalf("worker saw owner %q, wanted %q", out.DBName, owner)
+	}
+}
+
+// ...and an ABSENT owner must not send the flag at all, so the server's
+// "empty means system-owned" rule is the single place the tier is decided.
+func TestProvisionInvoker_NoOwnerSendsNoFlag(t *testing.T) {
+	inv := NewSubprocessProvisionInvoker(selfBin(t), fakeWorkerEnv("owner-echo"))
+	out, err := inv.Provision(context.Background(),
+		ProvisionRealityRequest{RealityID: mustUUID(t), Reason: "r"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out.DBName != "no-owner" {
+		t.Fatalf("expected no --owner-user-id flag, worker saw %q", out.DBName)
 	}
 }
 

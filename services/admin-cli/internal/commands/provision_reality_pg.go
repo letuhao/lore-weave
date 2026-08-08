@@ -25,6 +25,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // ProvisionWorkerEnv is the full set of connection settings the worker needs.
@@ -155,6 +157,9 @@ func (i *SubprocessProvisionInvoker) Provision(ctx context.Context, req Provisio
 		"--reason", req.Reason,
 		"--locale", req.EffectiveLocale(),
 		"--deploy-cohort", strconv.Itoa(req.DeployCohort),
+	}
+	if req.OwnerUserID != uuid.Nil {
+		args = append(args, "--owner-user-id", req.OwnerUserID.String())
 	}
 	if req.DryRun {
 		args = append(args, "--dry-run")

@@ -199,6 +199,8 @@ impl Ctx {
                 locale: "en".into(),
                 deploy_cohort: 0,
                 reason: "w1.5-provision-drill".into(),
+                // The drill provisions on behalf of nobody.
+                owner_user_id: None,
             };
             Provisioner::new(CapacityThresholds::default()).provision_reality(req, &snapshot, &mut effects)
         })

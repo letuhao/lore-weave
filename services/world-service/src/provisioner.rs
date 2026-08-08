@@ -59,6 +59,13 @@ pub struct ProvisionRequest {
     pub deploy_cohort: u8,
     /// Reason string written into the MetaWrite audit trail.
     pub reason: String,
+    /// W6 — the user who owns this reality, or `None` for a platform-owned one.
+    ///
+    /// The bridge derives `owner_kind` from this, so the registry's
+    /// (kind, owner) pair is consistent by construction. `None` is a real
+    /// category, not "unknown": an admin provisioning for the platform genuinely
+    /// has no user owner.
+    pub owner_user_id: Option<Uuid>,
 }
 
 impl ProvisionRequest {
@@ -427,6 +434,7 @@ mod tests {
             locale: "en-US".into(),
             deploy_cohort: 0,
             reason: "integration_test".into(),
+            owner_user_id: None,
         }
     }
 

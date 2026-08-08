@@ -659,8 +659,17 @@ func buildProvisionRealityHandler() (framework.Handler, func(), error) {
 		if err != nil {
 			return "", err
 		}
+		// Optional: absent means the PLATFORM owns the reality (owner_kind=system).
+		var owner uuid.UUID
+		if raw := strings.TrimSpace(inv.Params["owner_user_id"]); raw != "" {
+			owner, err = uuid.Parse(raw)
+			if err != nil {
+				return "", fmt.Errorf("invalid owner_user_id %q: %w", raw, err)
+			}
+		}
 		return commands.RunProvisionReality(ctx, commands.ProvisionRealityRequest{
 			RealityID:    rid,
+			OwnerUserID:  owner,
 			Locale:       inv.Params["locale"],
 			DeployCohort: cohort,
 			Actor:        inv.Actor,

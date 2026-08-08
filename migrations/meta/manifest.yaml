@@ -233,3 +233,9 @@ migrations:
     breaking: true
     dependencies: []
     description: "meta — drop player character index"
+
+  - id: "036_reality_ownership"
+    version: 36
+    breaking: false
+    dependencies: []
+    description: "meta — reality ownership: owner_kind tier + owner_user_id, consistency CHECK"

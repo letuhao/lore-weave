@@ -86,6 +86,8 @@ struct Args {
     deploy_cohort: u8,
     reason: String,
     dry_run: bool,
+    /// W6 — owning user; absent means the platform owns the reality.
+    owner_user_id: Option<Uuid>,
 }
 
 impl Args {
@@ -98,6 +100,7 @@ impl Args {
         let mut deploy_cohort: u8 = 0;
         let mut reason: Option<String> = None;
         let mut dry_run = false;
+        let mut owner_user_id: Option<Uuid> = None;
 
         let argv: Vec<String> = argv.collect();
         let mut i = 0;
@@ -122,6 +125,11 @@ impl Args {
                         val.parse().map_err(|e| format!("--deploy-cohort: {e}"))?;
                 }
                 "--reason" => reason = Some(val.clone()),
+                "--owner-user-id" => {
+                    owner_user_id = Some(
+                        Uuid::parse_str(val).map_err(|e| format!("--owner-user-id: {e}"))?,
+                    );
+                }
                 other => return Err(format!("unknown flag {other}")),
             }
             i += 2;
@@ -132,7 +140,7 @@ impl Args {
         // would leave the audit trail pointing at nothing on failure.
         let reality_id = reality_id.ok_or("--reality-id is required")?;
         let reason = reason.ok_or("--reason is required")?;
-        Ok(Args { reality_id, locale, deploy_cohort, reason, dry_run })
+        Ok(Args { reality_id, locale, deploy_cohort, reason, dry_run, owner_user_id })
     }
 }
 
@@ -353,6 +361,7 @@ async fn provision(
             locale: args.locale.clone(),
             deploy_cohort: args.deploy_cohort,
             reason: args.reason.clone(),
+            owner_user_id: args.owner_user_id,
         };
         async move {
             // Re-read live capacity and keep ONLY the shard the lock is held
@@ -473,6 +482,7 @@ async fn resume_on_shard(
         locale: args.locale.clone(),
         deploy_cohort: args.deploy_cohort,
         reason: args.reason.clone(),
+        owner_user_id: args.owner_user_id,
     };
     let handle = tokio::runtime::Handle::current();
     let report = tokio::task::spawn_blocking(move || {
@@ -684,6 +694,25 @@ mod tests {
     #[test]
     fn a_trailing_flag_without_a_value_is_an_error_not_a_panic() {
         assert!(args(&["--reality-id", RID, "--reason"]).is_err());
+    }
+
+    // W6 — ownership. `None` is a real category (platform-owned), so the parser
+    // must distinguish "absent" from "present", not coerce both to a default.
+    #[test]
+    fn owner_is_optional_and_absent_means_platform_owned() {
+        let a = args(&["--reality-id", RID, "--reason", "r"]).unwrap();
+        assert!(a.owner_user_id.is_none(), "absent --owner-user-id must stay None");
+
+        const OWNER: &str = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c";
+        let b = args(&["--reality-id", RID, "--reason", "r", "--owner-user-id", OWNER]).unwrap();
+        assert_eq!(b.owner_user_id.unwrap().to_string(), OWNER);
+    }
+
+    #[test]
+    fn a_malformed_owner_is_refused_not_ignored() {
+        // Silently dropping an unparseable owner would record the reality as
+        // platform-owned — the tenancy failure this column exists to prevent.
+        assert!(args(&["--reality-id", RID, "--reason", "r", "--owner-user-id", "nope"]).is_err());
     }
 
     #[test]
